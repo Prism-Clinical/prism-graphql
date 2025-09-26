@@ -1,0 +1,22 @@
+federation_version: =2.10.0
+subgraphs:
+  recommendations:
+    routing_url: http://localhost:4001
+    schema:
+      file: ./apps/recommendations-service/schema.graphql
+  patients:
+    routing_url: http://localhost:4002  
+    schema:
+      file: ./apps/patients-service/schema.graphql
+  providers:
+    routing_url: http://localhost:4003
+    schema:
+      file: ./apps/providers-service/schema.graphql
+  recommendation-items:
+    routing_url: http://localhost:4004
+    schema:
+      file: ./apps/recommendation-items-service/schema.graphql
+  institutions:
+    routing_url: http://localhost:4005
+    schema:
+      file: ./apps/institutions-service/schema.graphql

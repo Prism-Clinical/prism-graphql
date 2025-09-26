@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: subgraph-config
+  namespace: healthcare-federation
+  labels:
+    component: graphql-subgraph
+    purpose: shared-configuration
+data:
+  NODE_ENV: "production"
+  # Service-specific configurations will be overridden via env vars in deployments

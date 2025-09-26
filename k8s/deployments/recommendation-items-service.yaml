@@ -1,0 +1,69 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: recommendation-items-service
+  namespace: healthcare-federation
+  labels:
+    app: recommendation-items-service
+    component: graphql-subgraph
+    version: v1.0.0
+spec:
+  replicas: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: recommendation-items-service
+  template:
+    metadata:
+      labels:
+        app: recommendation-items-service
+        component: graphql-subgraph
+    spec:
+      containers:
+      - name: recommendation-items-service
+        image: healthcare/recommendation-items-service:latest
+        imagePullPolicy: Always
+        ports:
+        - name: http
+          containerPort: 4004
+          protocol: TCP
+        env:
+        - name: NODE_ENV
+          value: "production"
+        - name: PORT
+          value: "4004"
+        - name: SERVICE_NAME
+          value: "recommendation-items"
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /.well-known/apollo/server-health
+            port: http
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /.well-known/apollo/server-health
+            port: http
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 1001
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: false
+      restartPolicy: Always

@@ -1,0 +1,117 @@
+extend schema @link(url: "https://specs.apollo.dev/federation/v2.10", import: ["@key", "@external", "@shareable"])
+
+type Institution @key(fields: "id") {
+  id: ID!
+  name: String!
+  type: InstitutionType!
+  address: Address!
+  phone: String!
+  email: String
+  website: String
+  accreditation: [String!]!
+  isActive: Boolean!
+}
+
+type Hospital @key(fields: "id") {
+  id: ID!
+  name: String!
+  institutionId: ID!
+  address: Address!
+  phone: String!
+  email: String
+  website: String
+  beds: Int
+  departments: [String!]!
+  emergencyServices: Boolean!
+  isActive: Boolean!
+  visits: [Visit!]!
+}
+
+type Visit @key(fields: "id", resolvable: false) {
+  id: ID!
+}
+
+type Address @shareable {
+  street: String! @shareable
+  city: String! @shareable
+  state: String! @shareable
+  zipCode: String! @shareable
+  country: String! @shareable
+}
+
+enum InstitutionType {
+  HOSPITAL_SYSTEM
+  MEDICAL_CENTER
+  UNIVERSITY
+  RESEARCH_INSTITUTE
+  CLINIC_NETWORK
+  GOVERNMENT_AGENCY
+}
+
+type Query {
+  institution(id: ID!): Institution
+  institutions(type: InstitutionType): [Institution!]!
+  hospital(id: ID!): Hospital
+  hospitals(institutionId: ID): [Hospital!]!
+  hospitalsByInstitution(institutionId: ID!): [Hospital!]!
+}
+
+type Mutation {
+  createInstitution(input: CreateInstitutionInput!): Institution
+  updateInstitution(id: ID!, input: UpdateInstitutionInput!): Institution
+  createHospital(input: CreateHospitalInput!): Hospital
+  updateHospital(id: ID!, input: UpdateHospitalInput!): Hospital
+}
+
+input CreateInstitutionInput {
+  name: String!
+  type: InstitutionType!
+  address: AddressInput!
+  phone: String!
+  email: String
+  website: String
+  accreditation: [String!]!
+}
+
+input UpdateInstitutionInput {
+  name: String
+  type: InstitutionType
+  address: AddressInput
+  phone: String
+  email: String
+  website: String
+  accreditation: [String!]
+  isActive: Boolean
+}
+
+input CreateHospitalInput {
+  name: String!
+  institutionId: ID!
+  address: AddressInput!
+  phone: String!
+  email: String
+  website: String
+  beds: Int
+  departments: [String!]!
+  emergencyServices: Boolean!
+}
+
+input UpdateHospitalInput {
+  name: String
+  address: AddressInput
+  phone: String
+  email: String
+  website: String
+  beds: Int
+  departments: [String!]
+  emergencyServices: Boolean
+  isActive: Boolean
+}
+
+input AddressInput {
+  street: String!
+  city: String!
+  state: String!
+  zipCode: String!
+  country: String!
+}

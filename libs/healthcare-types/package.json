@@ -1,0 +1,14 @@
+{
+  "name": "@prism/healthcare-types",
+  "version": "1.0.0",
+  "description": "Shared TypeScript types for healthcare domain",
+  "main": "index.ts",
+  "types": "index.ts",
+  "scripts": {
+    "build": "tsc"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "typescript": "^5.0.0"
+  }
+}

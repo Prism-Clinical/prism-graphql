@@ -1,0 +1,143 @@
+version: '3.8'
+
+services:
+  # Healthcare GraphQL Federation Services
+  recommendations-service:
+    build:
+      context: ./apps/recommendations-service
+      dockerfile: Dockerfile
+    container_name: healthcare-recommendations
+    ports:
+      - "4001:4001"
+    environment:
+      - NODE_ENV=production
+      - PORT=4001
+      - SERVICE_NAME=recommendations
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:4001/.well-known/apollo/server-health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - healthcare-network
+
+  patients-service:
+    build:
+      context: ./apps/patients-service
+      dockerfile: Dockerfile
+    container_name: healthcare-patients
+    ports:
+      - "4002:4002"
+    environment:
+      - NODE_ENV=production
+      - PORT=4002
+      - SERVICE_NAME=patients
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:4002/.well-known/apollo/server-health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - healthcare-network
+
+  providers-service:
+    build:
+      context: ./apps/providers-service
+      dockerfile: Dockerfile
+    container_name: healthcare-providers
+    ports:
+      - "4003:4003"
+    environment:
+      - NODE_ENV=production
+      - PORT=4003
+      - SERVICE_NAME=providers
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:4003/.well-known/apollo/server-health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - healthcare-network
+
+  recommendation-items-service:
+    build:
+      context: ./apps/recommendation-items-service
+      dockerfile: Dockerfile
+    container_name: healthcare-recommendation-items
+    ports:
+      - "4004:4004"
+    environment:
+      - NODE_ENV=production
+      - PORT=4004
+      - SERVICE_NAME=recommendation-items
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:4004/.well-known/apollo/server-health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - healthcare-network
+
+  institutions-service:
+    build:
+      context: ./apps/institutions-service
+      dockerfile: Dockerfile
+    container_name: healthcare-institutions
+    ports:
+      - "4005:4005"
+    environment:
+      - NODE_ENV=production
+      - PORT=4005
+      - SERVICE_NAME=institutions
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:4005/.well-known/apollo/server-health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - healthcare-network
+
+  gateway:
+    build:
+      context: ./gateway
+      dockerfile: Dockerfile
+    container_name: healthcare-gateway
+    ports:
+      - "4000:4000"
+    environment:
+      - NODE_ENV=production
+      - PORT=4000
+      - RECOMMENDATIONS_URL=http://recommendations-service:4001
+      - PATIENTS_URL=http://patients-service:4002
+      - PROVIDERS_URL=http://providers-service:4003
+      - RECOMMENDATION_ITEMS_URL=http://recommendation-items-service:4004
+      - INSTITUTIONS_URL=http://institutions-service:4005
+    depends_on:
+      - recommendations-service
+      - patients-service
+      - providers-service
+      - recommendation-items-service
+      - institutions-service
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:4000/.well-known/apollo/server-health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - healthcare-network
+
+networks:
+  healthcare-network:
+    driver: bridge
+    name: healthcare-federation
+
+volumes:
+  # Add any persistent volumes here if needed for future database integration
+  healthcare-data:
+    name: healthcare-persistent-data

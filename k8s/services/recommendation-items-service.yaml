@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: recommendation-items-service
+  namespace: healthcare-federation
+  labels:
+    app: recommendation-items-service
+    component: graphql-subgraph
+spec:
+  type: ClusterIP
+  ports:
+  - port: 4004
+    targetPort: http
+    protocol: TCP
+    name: http
+  selector:
+    app: recommendation-items-service

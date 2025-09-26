@@ -1,0 +1,117 @@
+extend schema @link(url: "https://specs.apollo.dev/federation/v2.10", import: ["@key", "@external", "@shareable"])
+
+scalar Date
+scalar DateTime
+
+type Patient @key(fields: "id") {
+  id: ID!
+  mrn: String!
+  firstName: String!
+  lastName: String!
+  dateOfBirth: Date!
+  gender: Gender!
+  email: String
+  phone: String
+  address: Address
+  cases: [Case!]!
+}
+
+type Case @key(fields: "id") {
+  id: ID!
+  patientId: ID!
+  title: String!
+  description: String
+  status: CaseStatus!
+  priority: CasePriority!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+  closedAt: DateTime
+}
+
+enum CaseStatus {
+  OPEN
+  IN_PROGRESS
+  CLOSED
+  CANCELLED
+}
+
+enum CasePriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+type Address @shareable {
+  street: String! @shareable
+  city: String! @shareable
+  state: String! @shareable
+  zipCode: String! @shareable
+  country: String! @shareable
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+  UNKNOWN
+}
+
+
+type Query {
+  patient(id: ID!): Patient
+  patientByMrn(mrn: String!): Patient
+  patients(limit: Int, offset: Int): [Patient!]!
+  case(id: ID!): Case
+  casesForPatient(patientId: ID!): [Case!]!
+  casesByStatus(status: CaseStatus!): [Case!]!
+}
+
+type Mutation {
+  createPatient(input: CreatePatientInput!): Patient
+  updatePatient(id: ID!, input: UpdatePatientInput!): Patient
+  createCase(input: CreateCaseInput!): Case
+  updateCase(id: ID!, input: UpdateCaseInput!): Case
+  closeCase(id: ID!): Case
+}
+
+input CreatePatientInput {
+  mrn: String!
+  firstName: String!
+  lastName: String!
+  dateOfBirth: Date!
+  gender: Gender!
+  email: String
+  phone: String
+  address: AddressInput
+}
+
+input UpdatePatientInput {
+  firstName: String
+  lastName: String
+  email: String
+  phone: String
+  address: AddressInput
+}
+
+input AddressInput {
+  street: String!
+  city: String!
+  state: String!
+  zipCode: String!
+  country: String!
+}
+
+input CreateCaseInput {
+  patientId: ID!
+  title: String!
+  description: String
+  priority: CasePriority!
+}
+
+input UpdateCaseInput {
+  title: String
+  description: String
+  status: CaseStatus
+  priority: CasePriority
+}

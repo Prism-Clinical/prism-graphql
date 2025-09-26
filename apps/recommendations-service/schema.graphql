@@ -1,0 +1,63 @@
+extend schema @link(url: "https://specs.apollo.dev/federation/v2.10", import: ["@key", "@external"])
+
+scalar DateTime
+scalar Date
+
+type Recommendation @key(fields: "id") {
+  id: ID!
+  caseId: ID!
+  providerId: ID!
+  title: String!
+  description: String!
+  priority: Priority!
+  status: RecommendationStatus!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum RecommendationStatus {
+  DRAFT
+  ACTIVE
+  COMPLETED
+  CANCELLED
+}
+
+type Case @key(fields: "id") {
+  id: ID!
+  recommendations: [Recommendation!]!
+}
+
+type Provider @key(fields: "id") {
+  id: ID!
+  recommendations: [Recommendation!]!
+}
+
+type RecommendationItem @key(fields: "id", resolvable: false) {
+  id: ID!
+}
+
+type Query {
+  recommendation(id: ID!): Recommendation
+  recommendationsForCase(caseId: ID!): [Recommendation!]!
+  recommendationsByProvider(providerId: ID!): [Recommendation!]!
+}
+
+type Mutation {
+  createRecommendation(input: CreateRecommendationInput!): Recommendation
+  updateRecommendationStatus(id: ID!, status: RecommendationStatus!): Recommendation
+}
+
+input CreateRecommendationInput {
+  caseId: ID!
+  providerId: ID!
+  title: String!
+  description: String!
+  priority: Priority!
+}

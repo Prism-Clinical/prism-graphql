@@ -1,0 +1,164 @@
+extend schema @link(url: "https://specs.apollo.dev/federation/v2.10", import: ["@key", "@external", "@shareable"])
+
+type Provider @key(fields: "id") {
+  id: ID!
+  npi: String!
+  firstName: String!
+  lastName: String!
+  specialty: String!
+  credentials: String!
+  email: String!
+  phone: String!
+  facility: Facility
+  visits: [Visit!]!
+}
+
+scalar DateTime
+
+type Visit @key(fields: "id") {
+  id: ID!
+  patientId: ID!
+  hospitalId: ID!
+  providerId: ID!
+  caseIds: [ID!]!
+  type: VisitType!
+  status: VisitStatus!
+  scheduledAt: DateTime!
+  startedAt: DateTime
+  completedAt: DateTime
+  duration: Int
+  notes: String
+  chiefComplaint: String
+}
+
+enum VisitType {
+  CONSULTATION
+  FOLLOW_UP
+  PROCEDURE
+  SURGERY
+  EMERGENCY
+  ROUTINE_CHECK
+  DIAGNOSTIC
+  THERAPY
+}
+
+enum VisitStatus {
+  SCHEDULED
+  CHECKED_IN
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+}
+
+type Facility {
+  id: ID!
+  name: String!
+  address: Address!
+  phone: String!
+}
+
+type Address @shareable {
+  street: String! @shareable
+  city: String! @shareable
+  state: String! @shareable
+  zipCode: String! @shareable
+  country: String! @shareable
+}
+
+type Case @key(fields: "id", resolvable: false) {
+  id: ID!
+}
+
+type Patient @key(fields: "id", resolvable: false) {
+  id: ID!
+}
+
+type Hospital @key(fields: "id", resolvable: false) {
+  id: ID!
+}
+
+type Recommendation @key(fields: "id", resolvable: false) {
+  id: ID!
+}
+
+type Query {
+  provider(id: ID!): Provider
+  providerByNpi(npi: String!): Provider
+  providers(specialty: String): [Provider!]!
+  facility(id: ID!): Facility
+  visit(id: ID!): Visit
+  visitsForPatient(patientId: ID!): [Visit!]!
+  visitsForCase(caseId: ID!): [Visit!]!
+  visitsForHospital(hospitalId: ID!): [Visit!]!
+  visitsForProvider(providerId: ID!): [Visit!]!
+  visitsByDateRange(startDate: DateTime!, endDate: DateTime!): [Visit!]!
+}
+
+type Mutation {
+  createProvider(input: CreateProviderInput!): Provider
+  updateProvider(id: ID!, input: UpdateProviderInput!): Provider
+  createFacility(input: CreateFacilityInput!): Facility
+  createVisit(input: CreateVisitInput!): Visit
+  updateVisit(id: ID!, input: UpdateVisitInput!): Visit
+  checkInVisit(id: ID!): Visit
+  startVisit(id: ID!): Visit
+  completeVisit(id: ID!, notes: String): Visit
+  cancelVisit(id: ID!, reason: String): Visit
+  addCaseToVisit(visitId: ID!, caseId: ID!): Visit
+  removeCaseFromVisit(visitId: ID!, caseId: ID!): Visit
+}
+
+input CreateProviderInput {
+  npi: String!
+  firstName: String!
+  lastName: String!
+  specialty: String!
+  credentials: String!
+  email: String!
+  phone: String!
+  facilityId: ID
+}
+
+input UpdateProviderInput {
+  firstName: String
+  lastName: String
+  specialty: String
+  credentials: String
+  email: String
+  phone: String
+  facilityId: ID
+}
+
+input CreateFacilityInput {
+  name: String!
+  address: AddressInput!
+  phone: String!
+}
+
+input AddressInput {
+  street: String!
+  city: String!
+  state: String!
+  zipCode: String!
+  country: String!
+}
+
+input CreateVisitInput {
+  patientId: ID!
+  hospitalId: ID!
+  providerId: ID!
+  caseIds: [ID!]!
+  type: VisitType!
+  scheduledAt: DateTime!
+  chiefComplaint: String
+}
+
+input UpdateVisitInput {
+  type: VisitType
+  status: VisitStatus
+  scheduledAt: DateTime
+  duration: Int
+  notes: String
+  chiefComplaint: String
+}

@@ -1,0 +1,88 @@
+extend schema @link(url: "https://specs.apollo.dev/federation/v2.10", import: ["@key", "@external"])
+
+scalar DateTime
+
+type RecommendationItem @key(fields: "id") {
+  id: ID!
+  type: RecommendationItemType!
+  title: String!
+  description: String!
+  instructions: String
+  evidenceLevel: EvidenceLevel!
+  studyReferences: [String!]!
+  guidelines: [String!]!
+  contraindications: [String!]!
+  sideEffects: [String!]!
+  category: String!
+  isActive: Boolean!
+}
+
+enum RecommendationItemType {
+  MEDICATION
+  LAB_TEST
+  IMAGING
+  PROCEDURE
+  FOLLOW_UP
+  LIFESTYLE
+  EDUCATION
+  SCREENING
+  VACCINATION
+  THERAPY
+}
+
+enum EvidenceLevel {
+  LEVEL_I
+  LEVEL_II
+  LEVEL_III
+  LEVEL_IV
+  LEVEL_V
+  EXPERT_OPINION
+  CONSENSUS
+}
+
+type Recommendation @key(fields: "id") {
+  id: ID!
+  items: [RecommendationItem!]!
+}
+
+type Query {
+  recommendationItem(id: ID!): RecommendationItem
+  recommendationItems: [RecommendationItem!]!
+  itemsByType(type: RecommendationItemType!): [RecommendationItem!]!
+  itemsByCategory(category: String!): [RecommendationItem!]!
+  itemsByEvidenceLevel(evidenceLevel: EvidenceLevel!): [RecommendationItem!]!
+  searchRecommendationItems(searchTerm: String!): [RecommendationItem!]!
+}
+
+type Mutation {
+  createRecommendationItem(input: CreateRecommendationItemInput!): RecommendationItem
+  updateRecommendationItem(id: ID!, input: UpdateRecommendationItemInput!): RecommendationItem
+  deleteRecommendationItem(id: ID!): Boolean
+}
+
+input CreateRecommendationItemInput {
+  type: RecommendationItemType!
+  title: String!
+  description: String!
+  instructions: String
+  evidenceLevel: EvidenceLevel!
+  studyReferences: [String!]!
+  guidelines: [String!]!
+  contraindications: [String!]!
+  sideEffects: [String!]!
+  category: String!
+}
+
+input UpdateRecommendationItemInput {
+  type: RecommendationItemType
+  title: String
+  description: String
+  instructions: String
+  evidenceLevel: EvidenceLevel
+  studyReferences: [String!]
+  guidelines: [String!]
+  contraindications: [String!]
+  sideEffects: [String!]
+  category: String
+  isActive: Boolean
+}

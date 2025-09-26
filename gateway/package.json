@@ -1,0 +1,19 @@
+{
+  "name": "healthcare-gateway",
+  "version": "1.0.0",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "nodemon index.js"
+  },
+  "dependencies": {
+    "@apollo/gateway": "^2.10.0",
+    "@apollo/server": "^4.11.0",
+    "body-parser": "^1.20.2",
+    "express": "^4.18.2",
+    "graphql": "^16.8.1",
+    "graphql-playground-middleware-express": "^1.7.23"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.10"
+  }
+}
