@@ -1,5 +1,5 @@
-import { Resolvers, MutationCreateProviderArgs, MutationUpdateProviderArgs, MutationCreateFacilityArgs } from "../__generated__/resolvers-types";
-import { providersSource, facilitiesSource } from "../datasources/providersSource";
+import { Resolvers, MutationCreateProviderArgs, MutationUpdateProviderArgs, MutationCreateFacilityArgs } from "@providers/__generated__/resolvers-types";
+import { providersSource, facilitiesSource } from "@providers/datasources/providersSource";
 import { ApolloError } from "apollo-server-errors";
 
 export const Mutation: Resolvers = {

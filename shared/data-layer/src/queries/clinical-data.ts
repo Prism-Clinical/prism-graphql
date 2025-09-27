@@ -1,5 +1,5 @@
-import { db } from '../db/connection';
-import { ClinicalData, ClinicalDataType } from '../types';
+import { db } from '@shared/data-layer/src/db/connection';
+import { ClinicalData, ClinicalDataType } from '@shared/data-layer/src/types';
 
 export class ClinicalDataQueries {
 

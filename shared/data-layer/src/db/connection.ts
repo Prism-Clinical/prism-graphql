@@ -1,5 +1,5 @@
 import { Pool, PoolClient, QueryResult, QueryResultRow } from 'pg';
-import { DatabaseConfig } from '../types';
+import { DatabaseConfig } from '@shared/data-layer/src/types';
 
 class DatabaseConnection {
   private pool: Pool | null = null;

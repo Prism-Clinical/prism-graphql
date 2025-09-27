@@ -1,5 +1,5 @@
-import { db } from '../db/connection';
-import { RecommendationJob, JobStatus, RecommendationJobType, JobPriority } from '../types';
+import { db } from '@shared/data-layer/src/db/connection';
+import { RecommendationJob, JobStatus, RecommendationJobType, JobPriority } from '@shared/data-layer/src/types';
 
 export class RecommendationJobQueries {
 

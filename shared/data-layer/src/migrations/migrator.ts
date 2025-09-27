@@ -1,8 +1,8 @@
 import { readFileSync, readdirSync } from 'fs';
 import { join } from 'path';
 import { createHash } from 'crypto';
-import { db } from '../db/connection';
-import { Migration, MigrationStatus } from '../types';
+import { db } from '@shared/data-layer/src/db/connection';
+import { Migration, MigrationStatus } from '@shared/data-layer/src/types';
 
 export class Migrator {
   private migrationsPath: string;

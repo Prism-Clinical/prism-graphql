@@ -1,19 +1,19 @@
 // Main export for the healthcare federation data layer
 
 // Database connections
-import { db, getDatabaseConfig } from './db/connection';
-import { redis, getRedisConfig } from './redis/connection';
-import { Migrator } from './migrations/migrator';
+import { db, getDatabaseConfig } from '@shared/data-layer/src/db/connection';
+import { redis, getRedisConfig } from '@shared/data-layer/src/redis/connection';
+import { Migrator } from '@shared/data-layer/src/migrations/migrator';
 
 export { db, getDatabaseConfig, redis, getRedisConfig, Migrator };
 
 // Query modules
-export { PatientSessionQueries } from './queries/patient-sessions';
-export { ClinicalDataQueries } from './queries/clinical-data';
-export { RecommendationJobQueries } from './queries/recommendation-jobs';
+export { PatientSessionQueries } from '@shared/data-layer/src/queries/patient-sessions';
+export { ClinicalDataQueries } from '@shared/data-layer/src/queries/clinical-data';
+export { RecommendationJobQueries } from '@shared/data-layer/src/queries/recommendation-jobs';
 
 // Types
-export * from './types';
+export * from '@shared/data-layer/src/types';
 
 // Utility functions
 export async function initializeDataLayer(): Promise<void> {

@@ -12,6 +12,7 @@ yarn-debug.log*
 yarn-error.log*
 
 # Coverage (from Jest)
+pids/
 coverage/
 __temp
 

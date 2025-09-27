@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
-import { db, getDatabaseConfig } from '../db/connection';
-import { Migrator } from './migrator';
+import { db, getDatabaseConfig } from '@shared/data-layer/src/db/connection';
+import { Migrator } from '@shared/data-layer/src/migrations/migrator';
 
 async function runMigrations() {
   try {

@@ -1,44 +1,42 @@
-import { Resolvers } from "../__generated__/resolvers-types";
-import { providersSource, facilitiesSource, providerFacilityMapping } from "../datasources/providersSource";
+import { Resolvers } from "@providers/__generated__/resolvers-types";
+import { providerService, facilityService, visitService } from "@providers/services/database";
 
 export const Query: Resolvers = {
   Query: {
-    provider(_parent, { id }, _context) {
-      const provider = providersSource.find((p) => String(p.id) === String(id));
+    async provider(_parent, { id }, _context) {
+      const provider = await providerService.getProviderById(id);
       return provider ? { ...provider, visits: [] as any[] } : null;
     },
-    providerByNpi(_parent, { npi }, _context) {
-      const provider = providersSource.find((p) => p.npi === npi);
+    async providerByNpi(_parent, { npi }, _context) {
+      const provider = await providerService.getProviderByNpi(npi);
       return provider ? { ...provider, visits: [] as any[] } : null;
     },
-    providers(_parent, { specialty }, _context) {
-      let result = [...providersSource];
-      
-      if (specialty) {
-        result = result.filter((p) => p.specialty.toLowerCase().includes(specialty.toLowerCase()));
-      }
-      
-      return result.map((p) => ({ ...p, visits: [] as any[] }));
+    async providers(_parent, { specialty }, _context) {
+      const providers = await providerService.getProviders({ specialty });
+      return providers.map((p) => ({ ...p, visits: [] as any[] }));
     },
-    facility(_parent, { id }, _context) {
-      const facility = facilitiesSource.find((f) => String(f.id) === String(id));
-      return facility ? { ...facility } : null;
+    async facility(_parent, { id }, _context) {
+      const facility = await facilityService.getFacilityById(id);
+      return facility;
+    },
+    async visit(_parent, { id }, _context) {
+      return await visitService.getVisitById(id);
+    },
+    async visitsForProvider(_parent, { providerId }, _context) {
+      return await visitService.getVisitsForProvider(providerId);
     },
   },
   Provider: {
-    __resolveReference(reference) {
-      const provider = providersSource.find((p) => p.id === reference.id);
+    async __resolveReference(reference) {
+      const provider = await providerService.getProviderById(reference.id);
       return provider ? { ...provider, visits: [] as any[] } : null;
     },
-    facility(parent, _args, _context) {
-      const facilityId = providerFacilityMapping[parent.id];
-      if (!facilityId) return null;
-      const facility = facilitiesSource.find((f) => f.id === facilityId);
-      return facility ? { ...facility } : null;
+    async facility(parent, _args, _context) {
+      if (!parent.facilityId) return null;
+      return await facilityService.getFacilityById(parent.facilityId);
     },
-    visits(parent, _args, _context) {
-      // Return empty array for now - visits will be resolved by federation
-      return [];
+    async visits(parent, _args, _context) {
+      return await visitService.getVisitsForProvider(parent.id);
     },
   },
 };

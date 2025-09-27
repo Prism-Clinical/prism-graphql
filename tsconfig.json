@@ -1,7 +1,5 @@
 {
   "compilerOptions": {
-    "rootDir": "./src",
-    "outDir": "./dist",
     "target": "esnext",
     "module": "commonjs",
     "esModuleInterop": true,
@@ -16,11 +14,20 @@
     "forceConsistentCasingInFileNames": true,
     "lib": ["esnext", "esnext.asynciterable", "DOM"],
     "types": ["node", "jest"],
-    "baseUrl": "../subgraph-template-typescript-apollo-server-boilerplate",
+    "baseUrl": ".",
     "paths": {
-      "*": ["types/*"]
+      "@shared/*": ["shared/*"],
+      "@test-utils/*": ["shared/test-utils/*"],
+      "@patients/*": ["apps/patients-service/src/*"],
+      "@providers/*": ["apps/providers-service/src/*"],
+      "@recommendations/*": ["apps/recommendations-service/src/*"],
+      "@recommendation-items/*": ["apps/recommendation-items-service/src/*"],
+      "@institutions/*": ["apps/institutions-service/src/*"],
+      "@epic-api/*": ["apps/epic-api-service/src/*"],
+      "@epic-mock/*": ["apps/epic-mock-service/src/*"],
+      "@gateway/*": ["gateway/*"]
     }
   },
-  "exclude": [
-    "codegen.ts", "dist"]
+  "include": ["apps/**/*", "shared/**/*", "tests/**/*", "gateway/**/*"],
+  "exclude": ["codegen.ts", "dist", "node_modules"]
 }

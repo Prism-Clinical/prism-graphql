@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 
 import { config } from 'dotenv';
-import { Migrator } from './migrator';
-import { db, getDatabaseConfig } from '../db/connection';
+import { Migrator } from '@shared/data-layer/src/migrations/migrator';
+import { db, getDatabaseConfig } from '@shared/data-layer/src/db/connection';
 
 // Load environment variables
 config();

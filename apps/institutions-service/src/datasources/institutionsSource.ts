@@ -1,4 +1,4 @@
-import { InstitutionType } from '../__generated__/resolvers-types';
+import { InstitutionType } from '@institutions/__generated__/resolvers-types';
 
 export interface Address {
   street: string;

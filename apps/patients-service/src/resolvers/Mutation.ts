@@ -1,5 +1,5 @@
-import { Resolvers, MutationCreatePatientArgs, MutationUpdatePatientArgs, CaseStatus, CasePriority, Gender } from "../__generated__/resolvers-types";
-import { patientService, Patient } from "../services/database";
+import { Resolvers, MutationCreatePatientArgs, MutationUpdatePatientArgs, CaseStatus, CasePriority, Gender } from "@patients/__generated__/resolvers-types";
+import { patientService, Patient } from "@patients/services/database";
 import { ApolloError } from "apollo-server-errors";
 
 // Helper function to convert database patient to GraphQL patient

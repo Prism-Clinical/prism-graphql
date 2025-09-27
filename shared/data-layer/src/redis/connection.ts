@@ -1,5 +1,5 @@
 import { createClient, RedisClientType } from 'redis';
-import { RedisConfig, CacheEntry, CacheStats } from '../types';
+import { RedisConfig, CacheEntry, CacheStats } from '@shared/data-layer/src/types';
 
 class RedisConnection {
   private client: RedisClientType | null = null;

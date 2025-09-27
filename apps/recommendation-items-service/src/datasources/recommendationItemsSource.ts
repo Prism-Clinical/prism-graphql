@@ -1,4 +1,4 @@
-import { RecommendationItemType, EvidenceLevel } from '../__generated__/resolvers-types';
+import { RecommendationItemType, EvidenceLevel } from '@recommendation-items/__generated__/resolvers-types';
 
 export interface RecommendationItem {
   id: string;

@@ -5,7 +5,7 @@ import { ApolloServer } from "@apollo/server";
 import {
   startStandaloneServer,
 } from "@apollo/server/standalone";
-import resolvers from "./resolvers";
+import resolvers from "@institutions/resolvers";
 
 const port = "4005";
 const subgraphName = "institutions";

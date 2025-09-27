@@ -1,5 +1,5 @@
-import { Resolvers, MutationCreateRecommendationArgs, MutationUpdateRecommendationStatusArgs, RecommendationStatus } from "../__generated__/resolvers-types";
-import { recommendationsSource } from "../datasources/recommendationsSource";
+import { Resolvers, MutationCreateRecommendationArgs, MutationUpdateRecommendationStatusArgs, RecommendationStatus } from "@recommendations/__generated__/resolvers-types";
+import { recommendationsSource } from "@recommendations/datasources/recommendationsSource";
 import { ApolloError } from "apollo-server-errors";
 
 export const Mutation: Resolvers = {

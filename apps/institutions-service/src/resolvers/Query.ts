@@ -1,5 +1,5 @@
-import { Resolvers } from "../__generated__/resolvers-types";
-import { institutionsSource, hospitalsSource } from "../datasources/institutionsSource";
+import { Resolvers } from "@institutions/__generated__/resolvers-types";
+import { institutionsSource, hospitalsSource } from "@institutions/datasources/institutionsSource";
 
 export const Query: Resolvers = {
   Query: {

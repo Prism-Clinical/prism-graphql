@@ -1,5 +1,5 @@
-import { db } from '../db/connection';
-import { PatientSession, SessionStatus } from '../types';
+import { db } from '@shared/data-layer/src/db/connection';
+import { PatientSession, SessionStatus } from '@shared/data-layer/src/types';
 
 export class PatientSessionQueries {
   

@@ -1,5 +1,5 @@
-import { Resolvers } from "../__generated__/resolvers-types";
-import { recommendationsSource } from "../datasources/recommendationsSource";
+import { Resolvers } from "@recommendations/__generated__/resolvers-types";
+import { recommendationsSource } from "@recommendations/datasources/recommendationsSource";
 
 export const Query: Resolvers = {
   Query: {

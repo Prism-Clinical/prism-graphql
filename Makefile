@@ -111,6 +111,43 @@ migrate-clean: ## Database - Clean database and re-run all migrations
 	@./run-migrations.sh
 	@echo "$(GREEN)✓ Database cleaned and migrations completed$(NC)"
 
+# Testing Commands
+test: ## Test - Run all tests
+	@echo "$(BLUE)Running all tests...$(NC)"
+	@npm test
+	@echo "$(GREEN)✓ All tests completed$(NC)"
+
+test-unit: ## Test - Run unit tests only
+	@echo "$(BLUE)Running unit tests...$(NC)"
+	@npm run test:unit
+	@echo "$(GREEN)✓ Unit tests completed$(NC)"
+
+test-integration: ## Test - Run integration tests only
+	@echo "$(BLUE)Running integration tests...$(NC)"
+	@npm run test:integration
+	@echo "$(GREEN)✓ Integration tests completed$(NC)"
+
+test-coverage: ## Test - Run tests with coverage report
+	@echo "$(BLUE)Running tests with coverage...$(NC)"
+	@npm run test:coverage
+	@echo "$(GREEN)✓ Coverage report generated$(NC)"
+
+test-watch: ## Test - Run tests in watch mode
+	@echo "$(BLUE)Running tests in watch mode...$(NC)"
+	@npm run test:watch
+
+test-patients: ## Test - Run patients service tests
+	@echo "$(BLUE)Running patients service tests...$(NC)"
+	@npm run test:patients
+
+test-providers: ## Test - Run providers service tests
+	@echo "$(BLUE)Running providers service tests...$(NC)"
+	@npm run test:providers
+
+test-epic-api: ## Test - Run Epic API service tests
+	@echo "$(BLUE)Running Epic API service tests...$(NC)"
+	@npm run test:epic-api
+
 # Utility Commands
 status: ## Util - Show Docker container status
 	@echo "$(BLUE)Docker Container Status:$(NC)"
