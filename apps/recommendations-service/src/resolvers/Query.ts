@@ -1,41 +1,31 @@
 import { Resolvers } from "@recommendations/__generated__/resolvers-types";
-import { recommendationsSource } from "@recommendations/datasources/recommendationsSource";
+import { recommendationService } from "@recommendations/services/database";
 
 export const Query: Resolvers = {
   Query: {
-    recommendation(_parent, { id }, _context) {
-      const recommendation = recommendationsSource.find((r) => String(r.id) === String(id));
-      return recommendation ? { ...recommendation } : null;
+    async recommendation(_parent, { id }, _context) {
+      return await recommendationService.getRecommendationById(id);
     },
-    recommendationsForCase(_parent, { caseId }, _context) {
-      return recommendationsSource
-        .filter((r) => r.caseId === caseId)
-        .map((r) => ({ ...r }));
+    async recommendationsForPatient(_parent, { patientId }, _context) {
+      return await recommendationService.getRecommendationsForPatient(patientId);
     },
-    recommendationsByProvider(_parent, { providerId }, _context) {
-      return recommendationsSource
-        .filter((r) => r.providerId === providerId)
-        .map((r) => ({ ...r }));
+    async recommendationsByProvider(_parent, { providerId }, _context) {
+      return await recommendationService.getRecommendationsByProvider(providerId);
     },
   },
   Recommendation: {
-    __resolveReference(reference) {
-      const recommendation = recommendationsSource.find((r) => r.id === reference.id);
-      return recommendation ? { ...recommendation } : null;
+    async __resolveReference(reference) {
+      return await recommendationService.getRecommendationById(reference.id);
     },
   },
-  Case: {
-    recommendations(parent) {
-      return recommendationsSource
-        .filter((r) => r.caseId === parent.id)
-        .map((r) => ({ ...r }));
+  Patient: {
+    async recommendations(parent) {
+      return await recommendationService.getRecommendationsForPatient(parent.id);
     },
   },
   Provider: {
-    recommendations(parent) {
-      return recommendationsSource
-        .filter((r) => r.providerId === parent.id)
-        .map((r) => ({ ...r }));
+    async recommendations(parent) {
+      return await recommendationService.getRecommendationsByProvider(parent.id);
     },
   },
 };

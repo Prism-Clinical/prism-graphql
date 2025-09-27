@@ -1,10 +1,10 @@
-import { Resolvers, MutationCreateRecommendationArgs, MutationUpdateRecommendationStatusArgs, RecommendationStatus } from "@recommendations/__generated__/resolvers-types";
-import { recommendationsSource } from "@recommendations/datasources/recommendationsSource";
+import { Resolvers, MutationCreateRecommendationArgs, MutationUpdateRecommendationStatusArgs } from "@recommendations/__generated__/resolvers-types";
+import { recommendationService } from "@recommendations/services/database";
 import { ApolloError } from "apollo-server-errors";
 
 export const Mutation: Resolvers = {
   Mutation: {
-    createRecommendation(
+    async createRecommendation(
       _parent,
       { input }: MutationCreateRecommendationArgs,
       _context
@@ -15,49 +15,46 @@ export const Mutation: Resolvers = {
       if (!input.description || input.description.trim() === "") {
         throw new ApolloError("Recommendation description is required.", "BAD_USER_INPUT");
       }
-      if (!input.caseId) {
-        throw new ApolloError("Case ID is required.", "BAD_USER_INPUT");
+      if (!input.patientId) {
+        throw new ApolloError("Patient ID is required.", "BAD_USER_INPUT");
       }
       if (!input.providerId) {
         throw new ApolloError("Provider ID is required.", "BAD_USER_INPUT");
       }
       
-      const newId =
-        recommendationsSource.length > 0
-          ? String(Math.max(...recommendationsSource.map((r) => Number(r.id))) + 1)
-          : "1";
-          
-      const now = new Date().toISOString();
-      const newRecommendation = {
-        id: newId,
-        caseId: input.caseId,
-        providerId: input.providerId,
-        title: input.title,
-        description: input.description,
-        priority: input.priority,
-        status: RecommendationStatus.Draft,
-        createdAt: now,
-        updatedAt: now,
-      };
-      
-      recommendationsSource.push({ ...newRecommendation });
-      return { ...newRecommendation };
+      try {
+        return await recommendationService.createRecommendation({
+          patientId: input.patientId,
+          providerId: input.providerId,
+          title: input.title,
+          description: input.description,
+          priority: input.priority
+        });
+      } catch (error: any) {
+        if (error.message.includes('Foreign key constraint')) {
+          throw new ApolloError("Invalid patient or provider reference.", "BAD_USER_INPUT");
+        }
+        throw new ApolloError("Failed to create recommendation.", "INTERNAL_ERROR");
+      }
     },
     
-    updateRecommendationStatus(
+    async updateRecommendationStatus(
       _parent,
       { id, status }: MutationUpdateRecommendationStatusArgs,
       _context
     ) {
-      const recommendation = recommendationsSource.find((r) => r.id === id);
-      if (!recommendation) {
-        throw new ApolloError("Recommendation not found.", "NOT_FOUND");
+      try {
+        const recommendation = await recommendationService.updateRecommendationStatus(id, status);
+        if (!recommendation) {
+          throw new ApolloError("Recommendation not found.", "NOT_FOUND");
+        }
+        return recommendation;
+      } catch (error: any) {
+        if (error.message.includes('not found')) {
+          throw new ApolloError("Recommendation not found.", "NOT_FOUND");
+        }
+        throw new ApolloError("Failed to update recommendation status.", "INTERNAL_ERROR");
       }
-      
-      recommendation.status = status;
-      recommendation.updatedAt = new Date().toISOString();
-      
-      return { ...recommendation };
     },
   },
 };

@@ -1,49 +1,30 @@
 import { Resolvers } from "@recommendation-items/__generated__/resolvers-types";
-import { recommendationItemsSource } from "@recommendation-items/datasources/recommendationItemsSource";
+import { recommendationItemService } from "@recommendation-items/services/database";
 
 export const Query: Resolvers = {
   Query: {
-    recommendationItem(_parent, { id }, _context) {
-      const item = recommendationItemsSource.find((i) => String(i.id) === String(id));
-      return item ? { ...item } : null;
+    async recommendationItem(_parent, { id }, _context) {
+      return await recommendationItemService.getRecommendationItem(id);
     },
-    recommendationItems(_parent, _args, _context) {
-      return recommendationItemsSource
-        .filter((i) => i.isActive)
-        .map((i) => ({ ...i }));
+    async recommendationItems(_parent, _args, _context) {
+      return await recommendationItemService.getAllRecommendationItems();
     },
-    itemsByType(_parent, { type }, _context) {
-      return recommendationItemsSource
-        .filter((i) => i.type === type && i.isActive)
-        .map((i) => ({ ...i }));
+    async itemsByType(_parent, { type }, _context) {
+      return await recommendationItemService.getRecommendationItemsByType(type);
     },
-    itemsByCategory(_parent, { category }, _context) {
-      return recommendationItemsSource
-        .filter((i) => i.category.toLowerCase().includes(category.toLowerCase()) && i.isActive)
-        .map((i) => ({ ...i }));
+    async itemsByCategory(_parent, { category }, _context) {
+      return await recommendationItemService.getRecommendationItemsByCategory(category);
     },
-    itemsByEvidenceLevel(_parent, { evidenceLevel }, _context) {
-      return recommendationItemsSource
-        .filter((i) => i.evidenceLevel === evidenceLevel && i.isActive)
-        .map((i) => ({ ...i }));
+    async itemsByEvidenceLevel(_parent, { evidenceLevel }, _context) {
+      return await recommendationItemService.getRecommendationItemsByEvidenceLevel(evidenceLevel);
     },
-    searchRecommendationItems(_parent, { searchTerm }, _context) {
-      const term = searchTerm.toLowerCase();
-      return recommendationItemsSource
-        .filter((i) => 
-          i.isActive && (
-            i.title.toLowerCase().includes(term) ||
-            i.description.toLowerCase().includes(term) ||
-            i.category.toLowerCase().includes(term)
-          )
-        )
-        .map((i) => ({ ...i }));
+    async searchRecommendationItems(_parent, { searchTerm }, _context) {
+      return await recommendationItemService.searchRecommendationItems(searchTerm);
     },
   },
   RecommendationItem: {
-    __resolveReference(reference) {
-      const item = recommendationItemsSource.find((i) => i.id === reference.id);
-      return item ? { ...item } : null;
+    async __resolveReference(reference) {
+      return await recommendationItemService.getRecommendationItem(reference.id);
     },
   },
   Recommendation: {

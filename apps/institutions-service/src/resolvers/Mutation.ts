@@ -1,10 +1,10 @@
-import { Resolvers, MutationCreateInstitutionArgs, MutationCreateHospitalArgs } from "@institutions/__generated__/resolvers-types";
-import { institutionsSource, hospitalsSource } from "@institutions/datasources/institutionsSource";
+import { Resolvers, MutationCreateInstitutionArgs, MutationCreateHospitalArgs, MutationUpdateInstitutionArgs, MutationUpdateHospitalArgs } from "@institutions/__generated__/resolvers-types";
+import { institutionService, hospitalService } from "@institutions/services/database";
 import { GraphQLError } from "graphql";
 
 export const Mutation: Resolvers = {
   Mutation: {
-    createInstitution(
+    async createInstitution(
       _parent,
       { input }: MutationCreateInstitutionArgs,
       _context
@@ -18,29 +18,48 @@ export const Mutation: Resolvers = {
       if (!input.address) {
         throw new GraphQLError("Institution address is required.");
       }
+      if (!input.phone || input.phone.trim() === "") {
+        throw new GraphQLError("Institution phone is required.");
+      }
       
-      const newId =
-        institutionsSource.length > 0
-          ? `institution-${Math.max(...institutionsSource.map((i) => Number(i.id.split('-')[1]) || 0)) + 1}`
-          : "institution-1";
-          
-      const newInstitution = {
-        id: newId,
-        name: input.name,
-        type: input.type,
-        address: input.address,
-        phone: input.phone || "(555) 000-0000",
-        email: input.email,
-        website: input.website,
-        accreditation: input.accreditation || [],
-        isActive: true,
-      };
-      
-      institutionsSource.push({ ...newInstitution });
-      return { ...newInstitution };
+      try {
+        return await institutionService.createInstitution({
+          name: input.name,
+          type: input.type,
+          address: input.address,
+          phone: input.phone,
+          email: input.email,
+          website: input.website,
+          accreditation: input.accreditation || []
+        });
+      } catch (error: any) {
+        if (error.message.includes('Duplicate name')) {
+          throw new GraphQLError("Institution with this name already exists.");
+        }
+        throw new GraphQLError("Failed to create institution.");
+      }
     },
     
-    createHospital(
+    async updateInstitution(
+      _parent,
+      { id, input }: MutationUpdateInstitutionArgs,
+      _context
+    ) {
+      try {
+        const institution = await institutionService.updateInstitution(id, input);
+        if (!institution) {
+          throw new GraphQLError("Institution not found.");
+        }
+        return institution;
+      } catch (error: any) {
+        if (error.message.includes('not found')) {
+          throw new GraphQLError("Institution not found.");
+        }
+        throw new GraphQLError("Failed to update institution.");
+      }
+    },
+    
+    async createHospital(
       _parent,
       { input }: MutationCreateHospitalArgs,
       _context
@@ -54,33 +73,49 @@ export const Mutation: Resolvers = {
       if (!input.address) {
         throw new GraphQLError("Hospital address is required.");
       }
-      
-      // Validate institution exists
-      if (!institutionsSource.some((i) => i.id === input.institutionId)) {
-        throw new GraphQLError("Institution not found.");
+      if (!input.phone || input.phone.trim() === "") {
+        throw new GraphQLError("Hospital phone is required.");
       }
       
-      const newId =
-        hospitalsSource.length > 0
-          ? `hospital-${Math.max(...hospitalsSource.map((h) => Number(h.id.split('-')[1]) || 0)) + 1}`
-          : "hospital-1";
-          
-      const newHospital = {
-        id: newId,
-        name: input.name,
-        institutionId: input.institutionId,
-        address: input.address,
-        phone: input.phone || "(555) 000-0000",
-        email: input.email,
-        website: input.website,
-        beds: input.beds,
-        departments: input.departments || [],
-        emergencyServices: input.emergencyServices || false,
-        isActive: true,
-      };
-      
-      hospitalsSource.push({ ...newHospital });
-      return { ...newHospital, visits: [] as any[] };
+      try {
+        const hospital = await hospitalService.createHospital({
+          name: input.name,
+          institutionId: input.institutionId,
+          address: input.address,
+          phone: input.phone,
+          email: input.email,
+          website: input.website,
+          beds: input.beds,
+          departments: input.departments || [],
+          emergencyServices: input.emergencyServices
+        });
+        
+        return { ...hospital, visits: [] as any[] };
+      } catch (error: any) {
+        if (error.message.includes('Invalid institution reference')) {
+          throw new GraphQLError("Institution not found.");
+        }
+        throw new GraphQLError("Failed to create hospital.");
+      }
+    },
+    
+    async updateHospital(
+      _parent,
+      { id, input }: MutationUpdateHospitalArgs,
+      _context
+    ) {
+      try {
+        const hospital = await hospitalService.updateHospital(id, input);
+        if (!hospital) {
+          throw new GraphQLError("Hospital not found.");
+        }
+        return { ...hospital, visits: [] as any[] };
+      } catch (error: any) {
+        if (error.message.includes('not found')) {
+          throw new GraphQLError("Hospital not found.");
+        }
+        throw new GraphQLError("Failed to update hospital.");
+      }
     },
   },
 };
