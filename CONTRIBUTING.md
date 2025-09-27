@@ -32,9 +32,9 @@ Before contributing, ensure you have:
 
 ### Initial Setup
 
-1. **Fork the Repository**
+1. **Clone the Repository**
    ```bash
-   # Fork on GitHub, then clone your fork
+   # Clone on GitHub
    git clone https://github.com/YOUR_USERNAME/prism-codebase.git
    cd prism-codebase/prism-graphql
    ```

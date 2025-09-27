@@ -1,6 +1,114 @@
-version: '3.8'
-
 services:
+  # Database Services
+  postgres:
+    image: postgres:15-alpine
+    container_name: healthcare-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_DB=healthcare_federation
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - healthcare-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: healthcare-redis
+    ports:
+      - "6379:6379"
+    environment:
+      - REDIS_PASSWORD=redis_password
+    command: redis-server --requirepass redis_password
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - healthcare-network
+
+  # Epic Mock Service (for testing)
+  epic-mock:
+    build:
+      context: ./apps/epic-mock-service
+      dockerfile: Dockerfile
+    container_name: healthcare-epic-mock
+    ports:
+      - "8080:8080"
+    environment:
+      - PORT=8080
+      - NODE_ENV=development
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - healthcare-network
+
+  # Epic API Gateway Service
+  epic-api-service:
+    build:
+      context: ./apps/epic-api-service
+      dockerfile: Dockerfile
+    container_name: healthcare-epic-api
+    ports:
+      - "4006:4006"
+    environment:
+      - NODE_ENV=production
+      - PORT=4006
+      - SERVICE_NAME=epic-api
+      # Database connections
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=healthcare_federation
+      - DB_USER=postgres
+      - DB_PASSWORD=postgres
+      - DB_SSL=false
+      - DB_MAX_CONNECTIONS=20
+      # Redis connection
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=redis_password
+      - REDIS_DB=0
+      - REDIS_KEY_PREFIX=healthcare
+      # Epic configuration (pointing to mock service)
+      - EPIC_BASE_URL=http://epic-mock:8080
+      - EPIC_CLIENT_ID=mock_client_id
+      - EPIC_CLIENT_SECRET=mock_client_secret
+      - EPIC_TOKEN_URL=http://epic-mock:8080/auth/token
+      - EPIC_TIMEOUT=30000
+      - EPIC_MAX_RETRIES=3
+      - EPIC_RATE_LIMIT_DELAY=1000
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      epic-mock:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:4006/.well-known/apollo/server-health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - healthcare-network
+
   # Healthcare GraphQL Federation Services
   recommendations-service:
     build:
@@ -117,12 +225,14 @@ services:
       - PROVIDERS_URL=http://providers-service:4003
       - RECOMMENDATION_ITEMS_URL=http://recommendation-items-service:4004
       - INSTITUTIONS_URL=http://institutions-service:4005
+      - EPIC_API_URL=http://epic-api-service:4006
     depends_on:
       - recommendations-service
       - patients-service
       - providers-service
       - recommendation-items-service
       - institutions-service
+      - epic-api-service
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:4000/.well-known/apollo/server-health"]
       interval: 30s
@@ -138,6 +248,9 @@ networks:
     name: healthcare-federation
 
 volumes:
-  # Add any persistent volumes here if needed for future database integration
+  postgres-data:
+    name: healthcare-postgres-data
+  redis-data:
+    name: healthcare-redis-data
   healthcare-data:
     name: healthcare-persistent-data

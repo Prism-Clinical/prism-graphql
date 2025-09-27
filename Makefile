@@ -61,6 +61,8 @@ docker-build: ## Docker - Build images without compose
 	@docker build -t healthcare-providers ./apps/providers-service
 	@docker build -t healthcare-recommendation-items ./apps/recommendation-items-service
 	@docker build -t healthcare-institutions ./apps/institutions-service
+	@docker build -t healthcare-epic-api ./apps/epic-api-service
+	@docker build -t healthcare-epic-mock ./apps/epic-mock-service
 	@echo "$(GREEN)✓ All Docker images built$(NC)"
 
 docker-clean: ## Docker - Clean up Docker resources
@@ -92,6 +94,21 @@ k8s-status: ## K8s - Show Kubernetes deployment status
 	@echo "$(BLUE)Kubernetes Status:$(NC)"
 	@kubectl get pods,services,deployments -l app=healthcare-federation 2>/dev/null || \
 		echo "$(YELLOW)No healthcare federation resources found in current namespace$(NC)"
+
+# Database Commands
+migrate: ## Database - Run pending migrations
+	@echo "$(BLUE)Running database migrations...$(NC)"
+	@cd shared/data-layer && npm run migrate up
+	@echo "$(GREEN)✓ Migrations completed$(NC)"
+
+migrate-status: ## Database - Show migration status
+	@echo "$(BLUE)Migration Status:$(NC)"
+	@cd shared/data-layer && npm run migrate status
+
+migrate-down: ## Database - Rollback one migration
+	@echo "$(BLUE)Rolling back last migration...$(NC)"
+	@cd shared/data-layer && npm run migrate down
+	@echo "$(GREEN)✓ Migration rolled back$(NC)"
 
 # Utility Commands
 status: ## Util - Show Docker container status

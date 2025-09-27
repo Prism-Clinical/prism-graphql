@@ -9,7 +9,8 @@ async function startGateway() {
       { name: 'patients', url: process.env.PATIENTS_URL || 'http://localhost:4002' },
       { name: 'providers', url: process.env.PROVIDERS_URL || 'http://localhost:4003' },
       { name: 'recommendation-items', url: process.env.RECOMMENDATION_ITEMS_URL || 'http://localhost:4004' },
-      { name: 'institutions', url: process.env.INSTITUTIONS_URL || 'http://localhost:4005' }
+      { name: 'institutions', url: process.env.INSTITUTIONS_URL || 'http://localhost:4005' },
+      { name: 'epic-api', url: process.env.EPIC_API_URL || 'http://localhost:4006' }
     ],
   });
 
