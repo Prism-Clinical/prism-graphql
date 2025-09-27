@@ -1,34 +1,63 @@
 # Healthcare GraphQL Federation
 
-A comprehensive GraphQL federation system for healthcare data management, built with Apollo Federation 2.10 and Docker.
+A comprehensive GraphQL federation system for healthcare data management, built with Apollo Federation 2.10, PostgreSQL, Redis, and Epic FHIR integration.
 
 ## Overview
 
-This repository contains a federated GraphQL architecture composed of 6 microservices that handle different aspects of healthcare data:
+This repository contains a federated GraphQL architecture composed of 8 microservices with full database persistence and Epic EHR integration:
 
+### Core Services
 - **Gateway** (Port 4000) - Apollo Federation gateway that orchestrates all subgraph services
-- **Patients Service** (Port 4002) - Patient demographics and medical records
+- **Patients Service** (Port 4002) - Patient demographics and medical records with PostgreSQL persistence
 - **Providers Service** (Port 4003) - Healthcare provider information and specialties
 - **Recommendations Service** (Port 4001) - Medical recommendations and care plans
 - **Recommendation Items Service** (Port 4004) - Detailed recommendation items and evidence
 - **Institutions Service** (Port 4005) - Healthcare institutions and hospital data
 
+### Epic Integration Services
+- **Epic API Service** (Port 4006) - FHIR Epic integration for external healthcare data
+- **Epic Mock Service** (Port 8080) - Mock Epic FHIR server for testing and development
+
+### Database Infrastructure
+- **PostgreSQL** (Port 5432) - Primary database for persistent data storage
+- **Redis** (Port 6379) - Caching layer for improved performance
+
 ## Architecture
 
 ```
-┌─────────────────┐
-│   Gateway       │ ← GraphQL Federation Gateway
-│   (Port 4000)   │
-└─────────┬───────┘
-          │
-    ┌─────┴─────┐
-    │           │
-    ▼           ▼
-┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐
-│Patients │ │Provider │ │Recommend│ │Rec Items│ │Institu- │
-│Service  │ │Service  │ │Service  │ │Service  │ │tions    │
-│(4002)   │ │(4003)   │ │(4001)   │ │(4004)   │ │(4005)   │
-└─────────┘ └─────────┘ └─────────┘ └─────────┘ └─────────┘
+                    ┌─────────────────┐
+                    │   Gateway       │ ← GraphQL Federation Gateway
+                    │   (Port 4000)   │
+                    └─────────┬───────┘
+                              │
+        ┌─────────────────────┼─────────────────────┐
+        │                     │                     │
+        ▼                     ▼                     ▼
+┌─────────────┐    ┌─────────────────┐    ┌─────────────┐
+│ Core Services│    │ Epic Integration│    │ Infrastructure│
+│             │    │               │    │             │
+│ ┌─────────┐ │    │ ┌─────────────┐ │    │ ┌─────────┐ │
+│ │Patients │ │    │ │ Epic API    │ │    │ │PostgreSQL│ │
+│ │(4002)   │ │    │ │ Service     │ │    │ │(5432)   │ │
+│ └─────────┘ │    │ │(4006)       │ │    │ └─────────┘ │
+│ ┌─────────┐ │    │ └─────────────┘ │    │ ┌─────────┐ │
+│ │Provider │ │    │ ┌─────────────┐ │    │ │  Redis  │ │
+│ │(4003)   │ │    │ │ Epic Mock   │ │    │ │(6379)   │ │
+│ └─────────┘ │    │ │(8080)       │ │    │ └─────────┘ │
+│ ┌─────────┐ │    │ └─────────────┘ │    └─────────────┘
+│ │Recommend│ │    └─────────────────┘
+│ │(4001)   │ │
+│ └─────────┘ │
+│ ┌─────────┐ │
+│ │Rec Items│ │
+│ │(4004)   │ │
+│ └─────────┘ │
+│ ┌─────────┐ │
+│ │Institu- │ │
+│ │tions    │ │
+│ │(4005)   │ │
+│ └─────────┘ │
+└─────────────┘
 ```
 
 ## Quick Start
@@ -92,6 +121,14 @@ curl -s "http://localhost:4000/graphql" \
   -d '{"query": "query { providers { id name specialty email } }"}'
 ```
 
+### Epic Patient Data Sync
+```bash
+curl -s "http://localhost:4000/graphql" \
+  -H "Content-Type: application/json" \
+  -H "apollo-require-preflight: true" \
+  -d '{"query": "mutation { syncEpicPatientData(epicPatientId: \"123\") { success sessionId } }"}'
+```
+
 ### Complex Federation Query
 ```bash
 curl -s "http://localhost:4000/graphql" \
@@ -109,6 +146,11 @@ curl -s "http://localhost:4000/graphql" \
 - `make compose-build` - Build images
 - `make compose-restart` - Restart services
 - `make docker-clean` - Clean up Docker resources
+
+### Database Management
+- `make migrate` - Run pending database migrations
+- `make migrate-status` - Show migration status
+- `make migrate-clean` - Clean database and re-run all migrations
 
 ### Monitoring
 - `make status` - Show container status
@@ -129,9 +171,11 @@ curl -s "http://localhost:4000/graphql" \
 - **Features**: Schema composition, query planning, introspection
 
 ### Patients Service
+- **Technology**: PostgreSQL, Redis caching
 - **Schema**: Patient demographics, medical history, contact information
 - **Key Types**: `Patient`, `MedicalRecord`, `ContactInfo`
 - **Queries**: `patients`, `patient(id)`
+- **Features**: Database persistence, Epic patient ID mapping, Redis caching
 
 ### Providers Service
 - **Schema**: Healthcare provider profiles, specialties, availability
@@ -153,20 +197,40 @@ curl -s "http://localhost:4000/graphql" \
 - **Key Types**: `Institution`, `Hospital`, `Department`
 - **Queries**: `institutions`, `hospitals`, `institution(id)`
 
+### Epic API Service
+- **Technology**: FHIR Client, Redis caching, PostgreSQL
+- **Schema**: Epic patient data, sync operations, FHIR resources
+- **Key Types**: `EpicPatientData`, `SyncOperation`, `FHIRResource`
+- **Features**: Epic FHIR integration, smart caching, patient data sync
+- **Mutations**: `syncEpicPatientData`, `refreshPatientCache`
+
+### Epic Mock Service
+- **Technology**: Express.js, FHIR mock data
+- **Purpose**: Mock Epic FHIR server for testing
+- **Features**: Realistic FHIR responses, simulated latency, error scenarios
+
 ## Development
 
 ### Project Structure
 ```
 ├── apps/
-│   ├── patients-service/       # Patient data service
+│   ├── patients-service/       # Patient data service (PostgreSQL + Redis)
 │   ├── providers-service/      # Provider data service
 │   ├── recommendations-service/ # Recommendations service
 │   ├── recommendation-items-service/ # Recommendation items service
-│   └── institutions-service/   # Institutions service
-├── gateway/                    # Federation gateway
-├── docker-compose.yml         # Container orchestration
-├── Makefile                   # Build and deployment commands
-└── README.md                  # This file
+│   ├── institutions-service/   # Institutions service
+│   ├── epic-api-service/       # Epic FHIR integration service
+│   └── epic-mock-service/      # Mock Epic server for testing
+├── shared/
+│   └── data-layer/            # Shared database layer
+│       ├── src/               # Database connections, queries
+│       └── migrations/        # Database migration files
+├── gateway/                   # Federation gateway
+├── docker-compose.yml        # Container orchestration
+├── run-migrations.sh         # Database migration runner
+├── Makefile                  # Build and deployment commands
+├── MIGRATIONS.md             # Database migration documentation
+└── README.md                 # This file
 ```
 
 ### Local Development
@@ -175,6 +239,16 @@ Each service can be developed independently. All services use:
 - **Framework**: Apollo Server 4
 - **Federation**: Apollo Federation 2.10
 - **Language**: TypeScript
+- **Database**: PostgreSQL 15
+- **Cache**: Redis 7
+- **Migration System**: SQL-based with tracking
+
+### Database Development
+The system uses a shared data layer for database operations:
+- **Decoupled Architecture**: Services access data through shared modules
+- **Migration System**: Versioned SQL migrations with tracking
+- **Redis Caching**: Smart caching with TTL strategies
+- **Transaction Support**: Automatic transaction handling
 
 ### Adding New Services
 1. Create service directory under `apps/`
@@ -182,6 +256,9 @@ Each service can be developed independently. All services use:
 3. Update `docker-compose.yml`
 4. Add service to gateway's service list
 5. Update Makefile commands
+6. Create database migrations if needed
+7. Update shared data layer queries
+8. Add Redis caching strategy
 
 ## Contributing
 

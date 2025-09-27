@@ -98,17 +98,18 @@ k8s-status: ## K8s - Show Kubernetes deployment status
 # Database Commands
 migrate: ## Database - Run pending migrations
 	@echo "$(BLUE)Running database migrations...$(NC)"
-	@cd shared/data-layer && npm run migrate up
+	@./run-migrations.sh
 	@echo "$(GREEN)✓ Migrations completed$(NC)"
 
 migrate-status: ## Database - Show migration status
 	@echo "$(BLUE)Migration Status:$(NC)"
-	@cd shared/data-layer && npm run migrate status
+	@docker compose exec postgres psql -U postgres -d healthcare_federation -c "SELECT migration_id, name, applied_at FROM migration_history ORDER BY applied_at;"
 
-migrate-down: ## Database - Rollback one migration
-	@echo "$(BLUE)Rolling back last migration...$(NC)"
-	@cd shared/data-layer && npm run migrate down
-	@echo "$(GREEN)✓ Migration rolled back$(NC)"
+migrate-clean: ## Database - Clean database and re-run all migrations
+	@echo "$(BLUE)Cleaning database and re-running migrations...$(NC)"
+	@docker compose exec postgres psql -U postgres -d healthcare_federation -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"
+	@./run-migrations.sh
+	@echo "$(GREEN)✓ Database cleaned and migrations completed$(NC)"
 
 # Utility Commands
 status: ## Util - Show Docker container status
