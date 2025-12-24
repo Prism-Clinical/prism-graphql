@@ -20,3 +20,20 @@ subgraphs:
     routing_url: http://localhost:4005
     schema:
       file: ./apps/institutions-service/schema.graphql
+  # CISS Services
+  transcription:
+    routing_url: http://localhost:4007
+    schema:
+      file: ./apps/transcription-service/schema.graphql
+  rag:
+    routing_url: http://localhost:4008
+    schema:
+      file: ./apps/rag-service/schema.graphql
+  safety:
+    routing_url: http://localhost:4009
+    schema:
+      file: ./apps/safety-service/schema.graphql
+  careplan:
+    routing_url: http://localhost:4010
+    schema:
+      file: ./apps/careplan-service/schema.graphql

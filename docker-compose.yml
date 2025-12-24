@@ -225,6 +225,209 @@ services:
     networks:
       - healthcare-network
 
+  # CISS Services
+  transcription-service:
+    build:
+      context: ./apps/transcription-service
+      dockerfile: Dockerfile
+    container_name: healthcare-transcription
+    ports:
+      - "4007:4007"
+    environment:
+      - NODE_ENV=production
+      - PORT=4007
+      - SERVICE_NAME=transcription
+      # Database connections
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=healthcare_federation
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      # Redis connection
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=redis_password
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:4007/.well-known/apollo/server-health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - healthcare-network
+
+  rag-service:
+    build:
+      context: ./apps/rag-service
+      dockerfile: Dockerfile
+    container_name: healthcare-rag
+    ports:
+      - "4008:4008"
+    environment:
+      - NODE_ENV=production
+      - PORT=4008
+      - SERVICE_NAME=rag
+      # Database connections
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=healthcare_federation
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      # Redis connection
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=redis_password
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:4008/.well-known/apollo/server-health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - healthcare-network
+
+  safety-service:
+    build:
+      context: ./apps/safety-service
+      dockerfile: Dockerfile
+    container_name: healthcare-safety
+    ports:
+      - "4009:4009"
+    environment:
+      - NODE_ENV=production
+      - PORT=4009
+      - SERVICE_NAME=safety
+      # Database connections
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=healthcare_federation
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      # Redis connection
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=redis_password
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:4009/.well-known/apollo/server-health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - healthcare-network
+
+  careplan-service:
+    build:
+      context: ./apps/careplan-service
+      dockerfile: Dockerfile
+    container_name: healthcare-careplan
+    ports:
+      - "4010:4010"
+    environment:
+      - NODE_ENV=production
+      - PORT=4010
+      - SERVICE_NAME=careplan
+      # Database connections
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=healthcare_federation
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      # Redis connection
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=redis_password
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:4010/.well-known/apollo/server-health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - healthcare-network
+
+  # ML Services
+  audio-intelligence:
+    build:
+      context: ../prism-ml-infra
+      dockerfile: docker/audio_intelligence/Dockerfile.dev
+    container_name: healthcare-audio-intelligence
+    ports:
+      - "8081:8080"
+    environment:
+      - AUDIO_INTEL_ENVIRONMENT=development
+      - AUDIO_INTEL_WHISPER_MODEL=base
+      - AUDIO_INTEL_WHISPER_DEVICE=cpu
+      - AUDIO_INTEL_DIARIZATION_ENABLED=true
+      - PORT=8080
+      # Claude API for NLU extraction
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+    volumes:
+      - audio-models:/app/models
+    healthcheck:
+      test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:8080/health')"]
+      interval: 30s
+      timeout: 10s
+      start_period: 60s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - healthcare-network
+
+  # Transcription Worker (BullMQ job processor)
+  transcription-worker:
+    build:
+      context: ./apps/transcription-service
+      dockerfile: Dockerfile
+    container_name: healthcare-transcription-worker
+    command: ["node", "dist/workers/index.js"]
+    environment:
+      - NODE_ENV=production
+      - WORKER_CONCURRENCY=2
+      # ML Service connection
+      - ML_SERVICE_URL=http://audio-intelligence:8080
+      - ML_SERVICE_TIMEOUT=300000
+      # Database connections
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=healthcare_federation
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      # Redis connection
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=redis_password
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      audio-intelligence:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - healthcare-network
+
   gateway:
     build:
       context: ./gateway
@@ -241,6 +444,11 @@ services:
       - RECOMMENDATION_ITEMS_URL=http://recommendation-items-service:4004
       - INSTITUTIONS_URL=http://institutions-service:4005
       - EPIC_API_URL=http://epic-api-service:4006
+      # CISS Services
+      - TRANSCRIPTION_URL=http://transcription-service:4007
+      - RAG_URL=http://rag-service:4008
+      - SAFETY_URL=http://safety-service:4009
+      - CAREPLAN_URL=http://careplan-service:4010
     depends_on:
       - recommendations-service
       - patients-service
@@ -248,6 +456,10 @@ services:
       - recommendation-items-service
       - institutions-service
       - epic-api-service
+      - transcription-service
+      - rag-service
+      - safety-service
+      - careplan-service
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:4000/.well-known/apollo/server-health"]
       interval: 30s
@@ -269,3 +481,5 @@ volumes:
     name: healthcare-redis-data
   healthcare-data:
     name: healthcare-persistent-data
+  audio-models:
+    name: healthcare-audio-models

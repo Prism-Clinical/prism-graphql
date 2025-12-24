@@ -10,7 +10,12 @@ async function startGateway() {
       { name: 'providers', url: process.env.PROVIDERS_URL || 'http://localhost:4003' },
       { name: 'recommendation-items', url: process.env.RECOMMENDATION_ITEMS_URL || 'http://localhost:4004' },
       { name: 'institutions', url: process.env.INSTITUTIONS_URL || 'http://localhost:4005' },
-      { name: 'epic-api', url: process.env.EPIC_API_URL || 'http://localhost:4006' }
+      { name: 'epic-api', url: process.env.EPIC_API_URL || 'http://localhost:4006' },
+      // CISS Services
+      { name: 'transcription', url: process.env.TRANSCRIPTION_URL || 'http://localhost:4007' },
+      { name: 'rag', url: process.env.RAG_URL || 'http://localhost:4008' },
+      { name: 'safety', url: process.env.SAFETY_URL || 'http://localhost:4009' },
+      { name: 'careplan', url: process.env.CAREPLAN_URL || 'http://localhost:4010' },
     ],
   });
 

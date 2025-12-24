@@ -1,5 +1,5 @@
-import { Resolvers } from "@providers/__generated__/resolvers-types";
-import { providerService, facilityService, visitService } from "@providers/services/database";
+import { Resolvers } from "../__generated__/resolvers-types";
+import { providerService, facilityService, visitService } from "../services/database";
 
 export const Query: Resolvers = {
   Query: {
@@ -20,10 +20,10 @@ export const Query: Resolvers = {
       return facility;
     },
     async visit(_parent, { id }, _context) {
-      return await visitService.getVisitById(id);
+      return await visitService.getVisitById(id) as any;
     },
     async visitsForProvider(_parent, { providerId }, _context) {
-      return await visitService.getVisitsForProvider(providerId);
+      return await visitService.getVisitsForProvider(providerId) as any;
     },
   },
   Provider: {
@@ -32,11 +32,12 @@ export const Query: Resolvers = {
       return provider ? { ...provider, visits: [] as any[] } : null;
     },
     async facility(parent, _args, _context) {
-      if (!parent.facilityId) return null;
-      return await facilityService.getFacilityById(parent.facilityId);
+      const facilityId = (parent as any).facilityId || (parent.facility as any)?.id;
+      if (!facilityId) return null;
+      return await facilityService.getFacilityById(facilityId);
     },
     async visits(parent, _args, _context) {
-      return await visitService.getVisitsForProvider(parent.id);
+      return await visitService.getVisitsForProvider(parent.id) as any;
     },
   },
 };

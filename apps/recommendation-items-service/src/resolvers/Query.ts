@@ -1,5 +1,5 @@
-import { Resolvers } from "@recommendation-items/__generated__/resolvers-types";
-import { recommendationItemService } from "@recommendation-items/services/database";
+import { Resolvers } from "../__generated__/resolvers-types";
+import { recommendationItemService } from "../services/database";
 
 export const Query: Resolvers = {
   Query: {

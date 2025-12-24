@@ -1,6 +1,6 @@
-import { Resolvers, MutationCreatePatientArgs, MutationUpdatePatientArgs, CaseStatus, CasePriority, Gender } from "@patients/__generated__/resolvers-types";
-import { patientService, Patient } from "@patients/services/database";
-import { ApolloError } from "apollo-server-errors";
+import { Resolvers, MutationCreatePatientArgs, MutationUpdatePatientArgs, CaseStatus, CasePriority, Gender } from "../__generated__/resolvers-types";
+import { patientService, Patient } from "../services/database";
+import { GraphQLError } from "graphql";
 
 // Helper function to convert database patient to GraphQL patient
 function convertToGraphQLPatient(dbPatient: Patient) {
@@ -21,16 +21,16 @@ export const Mutation: Resolvers = {
     ) {
       try {
         if (!input.mrn || input.mrn.trim() === "") {
-          throw new ApolloError("Medical Record Number (MRN) is required.", "BAD_USER_INPUT");
+          throw new GraphQLError("Medical Record Number (MRN) is required.");
         }
         if (!input.firstName || input.firstName.trim() === "") {
-          throw new ApolloError("First name is required.", "BAD_USER_INPUT");
+          throw new GraphQLError("First name is required.");
         }
         if (!input.lastName || input.lastName.trim() === "") {
-          throw new ApolloError("Last name is required.", "BAD_USER_INPUT");
+          throw new GraphQLError("Last name is required.");
         }
         if (!input.dateOfBirth) {
-          throw new ApolloError("Date of birth is required.", "BAD_USER_INPUT");
+          throw new GraphQLError("Date of birth is required.");
         }
         
         const patientData = {
@@ -51,10 +51,10 @@ export const Mutation: Resolvers = {
         return convertToGraphQLPatient(newPatient);
       } catch (error) {
         console.error('Error creating patient:', error);
-        if (error instanceof ApolloError) {
+        if (error instanceof GraphQLError) {
           throw error;
         }
-        throw new ApolloError("Failed to create patient.", "INTERNAL_ERROR");
+        throw new GraphQLError("Failed to create patient.");
       }
     },
     
@@ -75,16 +75,16 @@ export const Mutation: Resolvers = {
         const updatedPatient = await patientService.updatePatient(id, updates);
         
         if (!updatedPatient) {
-          throw new ApolloError("Patient not found.", "NOT_FOUND");
+          throw new GraphQLError("Patient not found.");
         }
         
         return convertToGraphQLPatient(updatedPatient);
       } catch (error) {
         console.error('Error updating patient:', error);
-        if (error instanceof ApolloError) {
+        if (error instanceof GraphQLError) {
           throw error;
         }
-        throw new ApolloError("Failed to update patient.", "INTERNAL_ERROR");
+        throw new GraphQLError("Failed to update patient.");
       }
     },
     

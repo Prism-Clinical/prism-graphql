@@ -1,15 +1,26 @@
 {
-  "extends": "../../tsconfig.json",
   "compilerOptions": {
+    "target": "esnext",
+    "module": "commonjs",
+    "esModuleInterop": true,
+    "sourceMap": true,
+    "declaration": true,
+    "declarationMap": true,
+    "removeComments": true,
+    "skipLibCheck": true,
+    "noImplicitAny": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "forceConsistentCasingInFileNames": true,
+    "lib": ["esnext", "esnext.asynciterable", "DOM"],
+    "types": ["node", "jest"],
     "rootDir": "./src",
     "outDir": "./dist",
-    "baseUrl": "../../",
+    "baseUrl": "./src",
     "paths": {
-      "@shared/*": ["shared/*"],
-      "@test-utils/*": ["shared/test-utils/*"],
-      "@providers/*": ["apps/providers-service/src/*"]
+      "@providers/*": ["./*"]
     }
   },
   "include": ["src/**/*"],
-  "exclude": ["codegen.ts", "dist", "node_modules"]
+  "exclude": ["codegen.ts", "dist", "node_modules", "src/__tests__"]
 }

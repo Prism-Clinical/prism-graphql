@@ -1,4 +1,4 @@
-import { Priority, RecommendationStatus } from '@recommendations/__generated__/resolvers-types';
+import { Priority, RecommendationStatus } from '../__generated__/resolvers-types';
 
 export interface Recommendation {
   id: string;

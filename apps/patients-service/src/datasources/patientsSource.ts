@@ -1,4 +1,4 @@
-import { Gender } from '@patients/__generated__/resolvers-types';
+import { Gender } from '../__generated__/resolvers-types';
 
 export interface Address {
   street: string;

@@ -7,8 +7,8 @@ import {
 } from "@apollo/server/standalone";
 import { Pool } from 'pg';
 import Redis from 'ioredis';
-import resolvers from "@recommendation-items/resolvers";
-import { initializeDatabase } from "@recommendation-items/services/database";
+import resolvers from "./resolvers";
+import { initializeDatabase } from "./services/database";
 
 const port = "4004";
 const subgraphName = "recommendation-items";

@@ -1,5 +1,5 @@
-import { Resolvers, MutationCreateInstitutionArgs, MutationCreateHospitalArgs, MutationUpdateInstitutionArgs, MutationUpdateHospitalArgs } from "@institutions/__generated__/resolvers-types";
-import { institutionService, hospitalService } from "@institutions/services/database";
+import { Resolvers, MutationCreateInstitutionArgs, MutationCreateHospitalArgs, MutationUpdateInstitutionArgs, MutationUpdateHospitalArgs } from "../__generated__/resolvers-types";
+import { institutionService, hospitalService } from "../services/database";
 import { GraphQLError } from "graphql";
 
 export const Mutation: Resolvers = {
@@ -25,13 +25,13 @@ export const Mutation: Resolvers = {
       try {
         return await institutionService.createInstitution({
           name: input.name,
-          type: input.type,
+          type: input.type as any,
           address: input.address,
           phone: input.phone,
           email: input.email,
           website: input.website,
           accreditation: input.accreditation || []
-        });
+        }) as any;
       } catch (error: any) {
         if (error.message.includes('Duplicate name')) {
           throw new GraphQLError("Institution with this name already exists.");
@@ -46,11 +46,11 @@ export const Mutation: Resolvers = {
       _context
     ) {
       try {
-        const institution = await institutionService.updateInstitution(id, input);
+        const institution = await institutionService.updateInstitution(id, input as any);
         if (!institution) {
           throw new GraphQLError("Institution not found.");
         }
-        return institution;
+        return institution as any;
       } catch (error: any) {
         if (error.message.includes('not found')) {
           throw new GraphQLError("Institution not found.");

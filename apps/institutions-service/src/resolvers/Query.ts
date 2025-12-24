@@ -1,13 +1,13 @@
-import { Resolvers } from "@institutions/__generated__/resolvers-types";
-import { institutionService, hospitalService } from "@institutions/services/database";
+import { Resolvers } from "../__generated__/resolvers-types";
+import { institutionService, hospitalService } from "../services/database";
 
 export const Query: Resolvers = {
   Query: {
     async institution(_parent, { id }, _context) {
-      return await institutionService.getInstitutionById(id);
+      return await institutionService.getInstitutionById(id) as any;
     },
     async institutions(_parent, { type }, _context) {
-      return await institutionService.getInstitutions({ type });
+      return await institutionService.getInstitutions({ type: type as any }) as any;
     },
     async hospital(_parent, { id }, _context) {
       const hospital = await hospitalService.getHospitalById(id);
@@ -41,7 +41,7 @@ export const Query: Resolvers = {
   },
   Institution: {
     async __resolveReference(reference) {
-      return await institutionService.getInstitutionById(reference.id);
+      return await institutionService.getInstitutionById(reference.id) as any;
     },
   },
   Hospital: {
@@ -50,7 +50,7 @@ export const Query: Resolvers = {
       return hospital ? { ...hospital, visits: [] as any[] } : null;
     },
     async institution(parent: any, _args: any, _context: any) {
-      return await institutionService.getInstitutionById(parent.institutionId);
+      return await institutionService.getInstitutionById(parent.institutionId) as any;
     },
     visits(parent: any, _args: any, _context: any) {
       // Return empty array for now - visits will be resolved by federation

@@ -22,7 +22,7 @@ module.exports = {
       tsconfig: 'tsconfig.json'
     }
   },
-  moduleNameMapping: {
+  moduleNameMapper: {
     '^@shared/(.*)$': '<rootDir>/shared/$1',
     '^@test-utils/(.*)$': '<rootDir>/shared/test-utils/$1',
     '^@patients/(.*)$': '<rootDir>/apps/patients-service/src/$1',
@@ -32,6 +32,11 @@ module.exports = {
     '^@institutions/(.*)$': '<rootDir>/apps/institutions-service/src/$1',
     '^@epic-api/(.*)$': '<rootDir>/apps/epic-api-service/src/$1',
     '^@epic-mock/(.*)$': '<rootDir>/apps/epic-mock-service/src/$1',
-    '^@gateway/(.*)$': '<rootDir>/gateway/$1'
+    '^@gateway/(.*)$': '<rootDir>/gateway/$1',
+    // CISS Services
+    '^@transcription/(.*)$': '<rootDir>/apps/transcription-service/src/$1',
+    '^@rag/(.*)$': '<rootDir>/apps/rag-service/src/$1',
+    '^@safety/(.*)$': '<rootDir>/apps/safety-service/src/$1',
+    '^@careplan/(.*)$': '<rootDir>/apps/careplan-service/src/$1'
   }
 };

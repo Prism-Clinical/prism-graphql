@@ -7,8 +7,8 @@ import {
 } from "@apollo/server/standalone";
 import { Pool } from 'pg';
 import { Redis } from 'ioredis';
-import resolvers from "@providers/resolvers";
-import { initializeDatabase } from "@providers/services/database";
+import resolvers from "./resolvers";
+import { initializeDatabase } from "./services/database";
 
 const port = "4003";
 const subgraphName = "providers";
@@ -29,7 +29,6 @@ async function main() {
     host: process.env.REDIS_HOST || 'localhost',
     port: parseInt(process.env.REDIS_PORT || '6379'),
     password: process.env.REDIS_PASSWORD,
-    retryDelayOnFailover: 100,
   });
 
   // Initialize services with database connections

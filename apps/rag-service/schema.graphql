@@ -1,0 +1,252 @@
+extend schema @link(url: "https://specs.apollo.dev/federation/v2.10", import: ["@key", "@external", "@shareable"])
+
+# Custom scalars
+scalar DateTime
+scalar Date
+
+# =============================================================================
+# ENUMS - Structured query types (NO free-text allowed per RFC)
+# =============================================================================
+
+enum GuidelineSource {
+  USPSTF
+  AHA
+  ADA
+  ACOG
+  AAP
+  CDC
+  WHO
+  CUSTOM
+}
+
+enum GuidelineCategory {
+  SCREENING
+  PREVENTION
+  TREATMENT
+  MONITORING
+  LIFESTYLE
+  IMMUNIZATION
+}
+
+enum EvidenceGrade {
+  A
+  B
+  C
+  D
+  I
+}
+
+enum RecommendationStrength {
+  STRONG
+  MODERATE
+  WEAK
+  CONDITIONAL
+}
+
+enum RAGQueryType {
+  BY_CONDITION
+  BY_MEDICATION
+  BY_DEMOGRAPHICS
+  BY_GUIDELINE_ID
+}
+
+enum SynthesisStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+# =============================================================================
+# MAIN TYPES
+# =============================================================================
+
+type Guideline @key(fields: "id") {
+  id: ID!
+  source: GuidelineSource!
+  sourceId: String!
+  title: String!
+  category: GuidelineCategory!
+
+  # Evidence
+  evidenceGrade: EvidenceGrade
+  recommendationStrength: RecommendationStrength
+
+  # Applicability criteria (structured)
+  applicableConditions: [String!]!
+  applicableMedications: [String!]!
+  ageRangeMin: Int
+  ageRangeMax: Int
+  applicableSex: String
+
+  # Content
+  summaryText: String!
+  fullText: String
+  citations: [Citation!]!
+
+  # Metadata
+  publishedDate: Date
+  lastReviewedDate: Date
+  expirationDate: Date
+  version: String
+
+  # Audit
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
+type Citation {
+  id: ID!
+  reference: String!
+  url: String
+  pubmedId: String
+}
+
+type RAGSynthesis @key(fields: "id") {
+  id: ID!
+  patient: Patient!
+
+  # Query context (structured - no free text)
+  queryType: RAGQueryType!
+  queryConditionCodes: [String!]
+  queryMedicationCodes: [String!]
+
+  # Results
+  status: SynthesisStatus!
+  relevantGuidelines: [Guideline!]!
+  synthesizedRecommendations: [SynthesizedRecommendation!]!
+
+  # Processing metadata
+  processingTimeMs: Int
+  guidelinesConsulted: Int
+
+  # Audit
+  createdAt: DateTime!
+  createdBy: ID!
+}
+
+type SynthesizedRecommendation {
+  id: ID!
+  guidelineId: ID!
+  guideline: Guideline!
+
+  # Recommendation details
+  recommendationText: String!
+  rationale: String!
+  evidenceGrade: EvidenceGrade
+
+  # Applicability score (0-1)
+  applicabilityScore: Float!
+  applicabilityFactors: [ApplicabilityFactor!]!
+}
+
+type ApplicabilityFactor {
+  factor: String!
+  matched: Boolean!
+  details: String
+}
+
+# =============================================================================
+# PAGINATION
+# =============================================================================
+
+type GuidelineConnection {
+  edges: [GuidelineEdge!]!
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type GuidelineEdge {
+  node: Guideline!
+  cursor: String!
+}
+
+type PageInfo @shareable {
+  hasNextPage: Boolean!
+  hasPreviousPage: Boolean!
+  startCursor: String
+  endCursor: String
+}
+
+# =============================================================================
+# INPUTS - All structured, NO free-text queries
+# =============================================================================
+
+input GuidelineFilterInput {
+  source: GuidelineSource
+  category: GuidelineCategory
+  evidenceGrade: EvidenceGrade
+  conditionCode: String
+  medicationCode: String
+}
+
+input RAGQueryInput {
+  patientId: ID!
+  queryType: RAGQueryType!
+  conditionCodes: [String!]
+  medicationCodes: [String!]
+}
+
+input PaginationInput {
+  first: Int
+  after: String
+  last: Int
+  before: String
+}
+
+# =============================================================================
+# QUERIES - Structured lookups only
+# =============================================================================
+
+type Query {
+  # Get single guideline by ID
+  guideline(id: ID!): Guideline
+
+  # List guidelines with structured filters (NO free-text search)
+  guidelines(
+    filter: GuidelineFilterInput
+    pagination: PaginationInput
+  ): GuidelineConnection!
+
+  # Get guidelines applicable to a patient's conditions
+  guidelinesForPatient(
+    patientId: ID!
+    category: GuidelineCategory
+    pagination: PaginationInput
+  ): GuidelineConnection!
+
+  # Get RAG synthesis by ID
+  ragSynthesis(id: ID!): RAGSynthesis
+
+  # Get synthesis history for a patient
+  ragSynthesesForPatient(
+    patientId: ID!
+    pagination: PaginationInput
+  ): [RAGSynthesis!]!
+}
+
+# =============================================================================
+# MUTATIONS
+# =============================================================================
+
+type Mutation {
+  # Request RAG synthesis for a patient (structured query)
+  requestRAGSynthesis(input: RAGQueryInput!): RAGSynthesis!
+
+  # Refresh guideline cache from source
+  refreshGuidelineCache(source: GuidelineSource!): Boolean!
+}
+
+# =============================================================================
+# FEDERATION - Reference types from other subgraphs
+# =============================================================================
+
+# Extend Patient to add guideline-related fields
+extend type Patient @key(fields: "id") {
+  id: ID! @external
+  applicableGuidelines(
+    category: GuidelineCategory
+    pagination: PaginationInput
+  ): GuidelineConnection!
+  ragSyntheses(pagination: PaginationInput): [RAGSynthesis!]!
+}

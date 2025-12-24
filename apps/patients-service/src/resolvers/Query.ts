@@ -1,5 +1,5 @@
-import { Resolvers, CaseStatus, CasePriority, Gender } from "@patients/__generated__/resolvers-types";
-import { patientService, Patient } from "@patients/services/database";
+import { Resolvers, CaseStatus, CasePriority, Gender } from "../__generated__/resolvers-types";
+import { patientService, Patient } from "../services/database";
 
 // Helper function to convert database patient to GraphQL patient
 function convertToGraphQLPatient(dbPatient: Patient) {

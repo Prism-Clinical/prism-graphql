@@ -1,5 +1,5 @@
-import { Query } from "@patients/resolvers/Query";
-import { Mutation } from "@patients/resolvers/Mutation";
+import { Query } from "./Query";
+import { Mutation } from "./Mutation";
 
 const resolvers = {
   ...Query,

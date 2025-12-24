@@ -118,20 +118,20 @@ class RecommendationService {
     const { status, limit = 50, offset = 0 } = options;
     
     // Check cache for simple queries
-    const cacheKey = `recommendations:case:${caseId}:${status || 'all'}`;
+    const cacheKey = `recommendations:patient:${patientId}:${status || 'all'}`;
     const cached = await redis.get(cacheKey);
     if (cached && limit === 50 && offset === 0) {
       return JSON.parse(cached);
     }
 
     let query = `
-      SELECT id, case_id as "caseId", provider_id as "providerId", title, description,
+      SELECT id, patient_id as "patientId", provider_id as "providerId", title, description,
              priority, status, created_at as "createdAt", updated_at as "updatedAt"
       FROM recommendations
-      WHERE case_id = $1
+      WHERE patient_id = $1
     `;
-    
-    const params: any[] = [caseId];
+
+    const params: any[] = [patientId];
     
     if (status) {
       query += ` AND status = $2`;

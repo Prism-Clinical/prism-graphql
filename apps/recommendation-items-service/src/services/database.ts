@@ -1,11 +1,11 @@
 import { Pool, PoolClient } from 'pg';
 import Redis from 'ioredis';
-import { 
-  RecommendationItemType, 
+import {
+  RecommendationItemType,
   EvidenceLevel,
   CreateRecommendationItemInput,
   UpdateRecommendationItemInput
-} from '@recommendation-items/__generated__/resolvers-types';
+} from '../__generated__/resolvers-types';
 
 export interface RecommendationItem {
   id: string;
