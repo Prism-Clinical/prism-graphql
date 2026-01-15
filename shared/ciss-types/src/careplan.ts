@@ -340,7 +340,7 @@ export interface CarePlanInterventionRow {
 }
 
 /**
- * Database row type for care_plan_templates table
+ * Database row type for care_plans table (clinical pathway definitions)
  */
 export interface CarePlanTemplateRow {
   id: string;

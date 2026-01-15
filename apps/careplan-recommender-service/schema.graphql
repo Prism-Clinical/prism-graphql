@@ -1,0 +1,633 @@
+extend schema @link(url: "https://specs.apollo.dev/federation/v2.10", import: ["@key", "@external", "@shareable"])
+
+# Custom scalars
+scalar DateTime
+scalar JSON
+
+# =============================================================================
+# ENUMS
+# =============================================================================
+
+enum RecommendationMode {
+  SIMPLE
+  FULL
+}
+
+enum DraftGenerationMethod {
+  TEMPLATE_BASED
+  RAG_SYNTHESIS
+  HYBRID
+}
+
+enum TrainingJobStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum GoalPriority {
+  HIGH
+  MEDIUM
+  LOW
+}
+
+# =============================================================================
+# TYPES
+# =============================================================================
+
+type TemplateRecommendation {
+  templateId: ID!
+  name: String!
+  category: String!
+  description: String
+  conditionCodes: [String!]!
+  similarityScore: Float!
+  rankingScore: Float!
+  confidence: Float!
+  matchFactors: [String!]!
+}
+
+type DraftGoal {
+  description: String!
+  targetValue: String
+  targetDays: Int
+  priority: GoalPriority!
+  guidelineReference: String
+  confidence: Float!
+}
+
+type DraftIntervention {
+  type: String!
+  description: String!
+  medicationCode: String
+  dosage: String
+  frequency: String
+  procedureCode: String
+  guidelineReference: String
+  confidence: Float!
+}
+
+type DraftCarePlan {
+  title: String!
+  conditionCodes: [String!]!
+  goals: [DraftGoal!]!
+  interventions: [DraftIntervention!]!
+  confidenceScore: Float!
+  sourceTemplateId: ID
+  similarTrainingPlanIds: [ID!]!
+  generationMethod: DraftGenerationMethod!
+}
+
+type RecommendationResult {
+  templates: [TemplateRecommendation!]!
+  drafts: [DraftCarePlan!]!
+  processingTimeMs: Float!
+  modelVersion: String!
+  queryMode: RecommendationMode!
+}
+
+type TrainingJob {
+  id: ID!
+  modelType: String!
+  jobName: String
+  status: TrainingJobStatus!
+  progressPercent: Int!
+  statusMessage: String
+  metrics: JSON
+  modelPath: String
+  modelVersion: String
+  trainingExamplesCount: Int
+  startedAt: DateTime
+  completedAt: DateTime
+  createdAt: DateTime!
+}
+
+type ModelInfo {
+  modelType: String!
+  version: String!
+  isLoaded: Boolean!
+  lastTrainedAt: DateTime
+  trainingMetrics: JSON
+  featureDimension: Int!
+}
+
+type RecommenderStats {
+  totalTrainingExamples: Int!
+  totalTemplates: Int!
+  embeddingsGenerated: Int!
+  pendingEmbeddings: Int!
+  modelVersion: String
+  lastTrainedAt: DateTime
+  averageConfidence: Float
+}
+
+type EmbeddingGenerationResult {
+  generatedCount: Int!
+  failedCount: Int!
+  processingTimeMs: Float!
+}
+
+# =============================================================================
+# ML MODEL REGISTRY TYPES
+# =============================================================================
+
+type MLModel @key(fields: "id") {
+  id: ID!
+  name: String!
+  slug: String!
+  description: String
+  modelType: String!
+  filterCriteria: MLModelFilterCriteria
+  targetConditions: [String!]
+  isActive: Boolean!
+  isDefault: Boolean!
+  versions: [MLModelVersion!]!
+  activeVersion: MLModelVersion
+  trainingDataCount: Int!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
+type MLModelFilterCriteria {
+  conditionCodePrefixes: [String!]
+  conditionCodes: [String!]
+  trainingTags: [String!]
+  categories: [String!]
+}
+
+type MLModelVersion {
+  id: ID!
+  modelId: ID!
+  version: String!
+  modelPath: String!
+  isActive: Boolean!
+  isDefault: Boolean!
+  metrics: JSON
+  trainingJobId: ID
+  trainingDataSnapshot: JSON
+  createdAt: DateTime!
+  deployedAt: DateTime
+}
+
+type MLModelTrainingData {
+  id: ID!
+  modelId: ID!
+  carePlanId: ID!
+  assignmentType: String!
+  carePlanTitle: String
+  conditionCodes: [String!]
+  trainingTags: [String!]
+  assignedAt: DateTime!
+  assignedBy: ID
+  notes: String
+}
+
+type ModelLoadStatus {
+  modelId: ID!
+  modelSlug: String!
+  versionId: ID!
+  version: String!
+  isLoaded: Boolean!
+  isDefault: Boolean!
+  isFitted: Boolean!
+  loadedAt: DateTime
+  metrics: JSON
+}
+
+type FilterPreviewResult {
+  carePlanId: ID!
+  title: String!
+  conditionCodes: [String!]!
+  trainingTags: [String!]
+}
+
+type TrainingPreview {
+  modelId: ID!
+  modelName: String
+  totalExamples: Int!
+  withEmbeddings: Int!
+  byAssignmentType: JSON!
+  conditionCodes: [String!]!
+}
+
+# =============================================================================
+# INPUTS
+# =============================================================================
+
+input SimpleRecommendationInput {
+  conditionCodes: [String!]!
+  maxResults: Int
+  includeDrafts: Boolean
+}
+
+input PatientDemographicsInput {
+  age: Int
+  sex: String
+  race: String
+  ethnicity: String
+}
+
+input FullRecommendationInput {
+  conditionCodes: [String!]!
+  conditionNames: [String!]
+  medicationCodes: [String!]
+  medicationNames: [String!]
+  labCodes: [String!]
+  labValues: JSON
+  demographics: PatientDemographicsInput
+  riskFactors: [String!]
+  complications: [String!]
+  maxResults: Int
+  includeDrafts: Boolean
+}
+
+input TriggerTrainingInput {
+  jobName: String
+  includeValidationOutcomes: Boolean
+  config: JSON
+}
+
+# --- ML Model Inputs ---
+
+input MLModelFilterCriteriaInput {
+  conditionCodePrefixes: [String!]
+  conditionCodes: [String!]
+  trainingTags: [String!]
+  categories: [String!]
+}
+
+input CreateMLModelInput {
+  name: String!
+  slug: String!
+  description: String
+  filterCriteria: MLModelFilterCriteriaInput
+  targetConditions: [String!]
+  isDefault: Boolean
+}
+
+input UpdateMLModelInput {
+  name: String
+  description: String
+  filterCriteria: MLModelFilterCriteriaInput
+  targetConditions: [String!]
+  isActive: Boolean
+  isDefault: Boolean
+}
+
+input TrainModelInput {
+  modelId: ID!
+  jobName: String
+  includeValidationOutcomes: Boolean
+}
+
+input SetActiveVersionInput {
+  versionId: ID!
+  isDefault: Boolean
+}
+
+input AssignTrainingDataInput {
+  modelId: ID!
+  carePlanIds: [ID!]!
+  notes: String
+}
+
+input UnassignTrainingDataInput {
+  modelId: ID!
+  carePlanIds: [ID!]!
+}
+
+input LoadModelInput {
+  modelId: ID!
+  versionId: ID
+}
+
+# =============================================================================
+# QUERIES
+# =============================================================================
+
+type Query {
+  # Get care plan recommendations (simple mode - diagnosis codes only)
+  recommendCarePlansSimple(input: SimpleRecommendationInput!): RecommendationResult!
+
+  # Get care plan recommendations (full mode - complete patient context)
+  recommendCarePlansFull(input: FullRecommendationInput!): RecommendationResult!
+
+  # Get training job by ID
+  trainingJob(id: ID!): TrainingJob
+
+  # List training jobs with optional filters
+  trainingJobs(status: TrainingJobStatus, first: Int): [TrainingJob!]!
+
+  # Get recommender model info
+  recommenderModelInfo: ModelInfo!
+
+  # Get recommender statistics
+  recommenderStats: RecommenderStats!
+
+  # --- ML Model Registry ---
+
+  # List all ML models
+  mlModels(isActive: Boolean): [MLModel!]!
+
+  # Get a specific ML model by ID
+  mlModel(id: ID!): MLModel
+
+  # Get a specific ML model by slug
+  mlModelBySlug(slug: String!): MLModel
+
+  # List versions for a model
+  mlModelVersions(modelId: ID!, isActive: Boolean): [MLModelVersion!]!
+
+  # Get training data assignments for a model
+  mlModelTrainingData(modelId: ID!, assignmentType: String): [MLModelTrainingData!]!
+
+  # Preview training data for a model
+  mlModelTrainingPreview(modelId: ID!): TrainingPreview!
+
+  # Preview filter criteria results
+  previewFilterCriteria(filterCriteria: MLModelFilterCriteriaInput!): [FilterPreviewResult!]!
+
+  # List currently loaded models in memory
+  loadedModels: [ModelLoadStatus!]!
+
+  # --- Three-Layer Recommendation Engine ---
+
+  # Get care plan recommendations using three-layer engine
+  engineRecommend(input: EngineRecommendInput!): EngineRecommendationResult!
+
+  # Explain a recommendation session
+  engineExplainSession(sessionId: ID!): SessionExplanation
+
+  # List variant groups
+  variantGroups(conditionCode: String): [VariantGroup!]!
+
+  # Get a specific variant group
+  variantGroup(id: ID!): VariantGroup
+
+  # List selection rules
+  selectionRules(variantGroupId: ID, isActive: Boolean): [SelectionRule!]!
+
+  # Get engine analytics summary
+  engineAnalytics(days: Int): EngineAnalyticsSummary!
+}
+
+# =============================================================================
+# MUTATIONS
+# =============================================================================
+
+type Mutation {
+  # Trigger model training
+  triggerRecommenderTraining(input: TriggerTrainingInput): TrainingJob!
+
+  # Cancel a training job
+  cancelTrainingJob(id: ID!): TrainingJob!
+
+  # Generate missing embeddings for training examples
+  generateMissingEmbeddings: EmbeddingGenerationResult!
+
+  # Reload recommender model from disk
+  reloadRecommenderModel: ModelInfo!
+
+  # --- ML Model Registry ---
+
+  # Create a new ML model
+  createMLModel(input: CreateMLModelInput!): MLModel!
+
+  # Update an existing ML model
+  updateMLModel(id: ID!, input: UpdateMLModelInput!): MLModel!
+
+  # Delete an ML model
+  deleteMLModel(id: ID!): Boolean!
+
+  # Train a specific model
+  trainModel(input: TrainModelInput!): TrainingJob!
+
+  # Set a version as active/default
+  setActiveVersion(input: SetActiveVersionInput!): MLModelVersion!
+
+  # Assign training data to a model
+  assignTrainingData(input: AssignTrainingDataInput!): [MLModelTrainingData!]!
+
+  # Unassign training data from a model
+  unassignTrainingData(input: UnassignTrainingDataInput!): Boolean!
+
+  # Load a model into memory
+  loadModel(input: LoadModelInput!): ModelLoadStatus!
+
+  # Unload a model from memory
+  unloadModel(modelId: ID!): Boolean!
+
+  # --- Three-Layer Recommendation Engine ---
+
+  # Record outcome for a recommendation (accepted/rejected)
+  recordRecommendationOutcome(input: RecordOutcomeInput!): Boolean!
+
+  # Create a new variant group
+  createVariantGroup(input: CreateVariantGroupInput!): VariantGroup!
+
+  # Create a new variant (care plan assignment to variant group)
+  createVariant(input: CreateVariantInput!): Variant!
+
+  # Create a new selection rule
+  createSelectionRule(input: CreateSelectionRuleInput!): SelectionRule!
+
+  # Delete a selection rule
+  deleteSelectionRule(id: ID!): Boolean!
+}
+
+# =============================================================================
+# THREE-LAYER RECOMMENDATION ENGINE TYPES
+# =============================================================================
+
+enum MatchType {
+  EXACT_CODE
+  PREFIX_CODE
+  VARIANT_GROUP
+  EMBEDDING_SIMILARITY
+}
+
+enum SelectionMethod {
+  RULE_BASED
+  TARGETING_CRITERIA
+  DEFAULT_VARIANT
+}
+
+enum PersonalizationMethod {
+  DECISION_EXPLORER
+  RAG_SYNTHESIS
+  OUTCOME_LEARNING
+}
+
+type MatchReason {
+  reasonType: String!
+  description: String!
+  metadata: JSON
+  scoreImpact: Float!
+}
+
+type EngineRecommendation {
+  carePlanId: ID!
+  title: String!
+  conditionCodes: [String!]!
+  score: Float!
+  rank: Int!
+  matchType: MatchType
+  matchedCodes: [String!]!
+  variantGroupId: ID
+  variantGroupName: String
+  variantId: ID
+  variantName: String
+  embeddingSimilarity: Float
+  selectionScore: Float
+  personalizationScore: Float
+  reasons: [MatchReason!]!
+}
+
+type LayerSummary {
+  layer: Int!
+  layerName: String!
+  candidateCount: Int!
+  processingTimeMs: Float!
+  metadata: JSON
+}
+
+type EngineRecommendationResult {
+  sessionId: ID!
+  recommendations: [EngineRecommendation!]!
+  layerSummaries: [LayerSummary!]!
+  totalProcessingTimeMs: Float!
+  engineVersion: String!
+}
+
+type VariantGroup {
+  id: ID!
+  name: String!
+  description: String
+  conditionCodes: [String!]!
+  variants: [Variant!]!
+  isActive: Boolean!
+  createdAt: DateTime!
+}
+
+type Variant {
+  id: ID!
+  variantGroupId: ID!
+  carePlanId: ID!
+  variantName: String!
+  targetAgeMin: Int
+  targetAgeMax: Int
+  targetSex: String
+  targetConditions: [String!]
+  targetRiskFactors: [String!]
+  exclusionConditions: [String!]
+  priorityScore: Int!
+  isDefault: Boolean!
+}
+
+type SelectionRule {
+  id: ID!
+  name: String!
+  description: String
+  variantGroupId: ID
+  ruleDefinition: JSON!
+  priority: Int!
+  isActive: Boolean!
+  createdAt: DateTime!
+}
+
+type EngineAnalyticsSummary {
+  totalSessions: Int!
+  averageProcessingTimeMs: Float!
+  topMatchTypes: JSON!
+  topConditionCodes: JSON!
+  acceptanceRate: Float!
+  period: String!
+}
+
+type SessionExplanation {
+  sessionId: ID!
+  patientContext: JSON!
+  layers: [LayerDetail!]!
+  finalRecommendations: [EngineRecommendation!]!
+  createdAt: DateTime!
+}
+
+type LayerDetail {
+  layer: Int!
+  layerName: String!
+  inputCount: Int!
+  outputCount: Int!
+  candidateDetails: [JSON!]!
+  processingTimeMs: Float!
+}
+
+# Engine-specific inputs
+input EnginePatientContextInput {
+  conditionCodes: [String!]!
+  age: Int
+  sex: String
+  medicationCodes: [String!]
+  labCodes: [String!]
+  labValues: JSON
+  comorbidities: [String!]
+  riskFactors: [String!]
+  patientId: ID
+  providerId: ID
+  clinicalNotes: String
+}
+
+input EngineRecommendInput {
+  patientContext: EnginePatientContextInput!
+  maxResults: Int
+  enablePersonalization: Boolean
+  enableDecisionExplorer: Boolean
+  enableRag: Boolean
+}
+
+input RecordOutcomeInput {
+  sessionId: ID!
+  carePlanId: ID!
+  accepted: Boolean!
+  feedback: String
+  selectedRank: Int
+}
+
+input CreateVariantGroupInput {
+  name: String!
+  description: String
+  conditionCodes: [String!]!
+}
+
+input CreateVariantInput {
+  variantGroupId: ID!
+  carePlanId: ID!
+  variantName: String!
+  targetAgeMin: Int
+  targetAgeMax: Int
+  targetSex: String
+  targetConditions: [String!]
+  targetRiskFactors: [String!]
+  exclusionConditions: [String!]
+  priorityScore: Int
+  isDefault: Boolean
+}
+
+input CreateSelectionRuleInput {
+  name: String!
+  description: String
+  variantGroupId: ID
+  ruleDefinition: JSON!
+  priority: Int
+}
+
+# =============================================================================
+# FEDERATION - Extend Patient type
+# =============================================================================
+
+extend type Patient @key(fields: "id") {
+  id: ID! @external
+  recommendedCarePlans(maxResults: Int, includeDrafts: Boolean): RecommendationResult!
+  engineRecommendations(maxResults: Int, enablePersonalization: Boolean): EngineRecommendationResult!
+}

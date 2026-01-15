@@ -1,0 +1,468 @@
+extend schema @link(url: "https://specs.apollo.dev/federation/v2.10", import: ["@key", "@external", "@shareable"])
+
+# Custom scalars
+scalar DateTime
+scalar JSON
+
+# =============================================================================
+# ENUMS
+# =============================================================================
+
+enum PathwayNodeType {
+  ROOT
+  DECISION
+  BRANCH
+  RECOMMENDATION
+}
+
+enum PathwayActionType {
+  MEDICATION
+  LAB
+  REFERRAL
+  PROCEDURE
+  EDUCATION
+  MONITORING
+  LIFESTYLE
+  FOLLOW_UP
+  URGENT_CARE
+}
+
+enum DecisionFactorType {
+  CONDITION
+  MEDICATION
+  LAB
+  DEMOGRAPHIC
+  HISTORY
+  SYMPTOM
+  ALLERGY
+  VITAL
+}
+
+enum FactorImpact {
+  HIGH
+  MEDIUM
+  LOW
+}
+
+enum PathwayInstanceStatus {
+  IN_PROGRESS
+  COMPLETED
+  ABANDONED
+  OVERRIDDEN
+}
+
+enum SelectionType {
+  ML_RECOMMENDED
+  PROVIDER_SELECTED
+  AUTO_APPLIED
+}
+
+# =============================================================================
+# MAIN TYPES
+# =============================================================================
+
+type ClinicalPathway @key(fields: "id") {
+  id: ID!
+  name: String!
+  slug: String!
+  description: String
+  primaryConditionCodes: [String!]!
+  applicableContexts: JSON
+  version: String!
+  evidenceSource: String
+  evidenceGrade: String
+  isActive: Boolean!
+  isPublished: Boolean!
+  publishedAt: DateTime
+  createdAt: DateTime!
+  createdBy: ID
+  updatedAt: DateTime!
+  # Relationships
+  rootNode: PathwayNode
+  nodes: [PathwayNode!]!
+  nodeCount: Int!
+  # Usage statistics
+  usageStats: PathwayUsageStats
+}
+
+type PathwayNode @key(fields: "id") {
+  id: ID!
+  pathwayId: ID!
+  parentNodeId: ID
+  nodeType: PathwayNodeType!
+  title: String!
+  description: String
+  actionType: PathwayActionType
+  decisionFactors: [DecisionFactor!]!
+  suggestedTemplateId: ID
+  sortOrder: Int!
+  baseConfidence: Float!
+  isActive: Boolean!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+  # Relationships
+  pathway: ClinicalPathway!
+  parentNode: PathwayNode
+  children: [PathwayNode!]!
+  outcomes: [PathwayNodeOutcome!]!
+  # ML-computed (only available when patient context is provided)
+  mlConfidence: Float
+  isRecommendedPath: Boolean
+  # Statistics
+  selectionStats: NodeSelectionStats
+}
+
+type PathwayNodeOutcome {
+  id: ID!
+  nodeId: ID!
+  label: String!
+  description: String
+  medicationCode: String
+  procedureCode: String
+  labCode: String
+  diagnosisCode: String
+  outcomeFactors: JSON
+  sortOrder: Int!
+  createdAt: DateTime!
+}
+
+type DecisionFactor {
+  type: DecisionFactorType!
+  label: String!
+  value: String
+  impact: FactorImpact!
+}
+
+type PatientPathwayInstance @key(fields: "id") {
+  id: ID!
+  patientId: ID!
+  providerId: ID
+  pathwayId: ID!
+  patientContext: JSON!
+  mlModelId: ID
+  mlModelVersion: String
+  mlRecommendedPath: [ID!]
+  mlConfidenceScores: JSON
+  status: PathwayInstanceStatus!
+  startedAt: DateTime!
+  completedAt: DateTime
+  createdAt: DateTime!
+  updatedAt: DateTime!
+  # Relationships
+  pathway: ClinicalPathway!
+  selections: [PatientPathwaySelection!]!
+}
+
+type PatientPathwaySelection @key(fields: "id") {
+  id: ID!
+  instanceId: ID!
+  nodeId: ID!
+  selectionType: SelectionType!
+  mlConfidence: Float
+  mlRank: Int
+  overrideReason: String
+  resultingCarePlanId: ID
+  selectedAt: DateTime!
+  selectedBy: ID
+  # Relationships
+  instance: PatientPathwayInstance!
+  node: PathwayNode!
+}
+
+type PathwayUsageStats {
+  totalInstances: Int!
+  completedInstances: Int!
+  abandonedInstances: Int!
+  overrideRate: Float!
+  avgCompletionTimeMinutes: Int!
+}
+
+type NodeSelectionStats {
+  totalSelections: Int!
+  mlRecommendedCount: Int!
+  providerSelectedCount: Int!
+  avgMlConfidence: Float!
+  linkedCarePlans: Int!
+}
+
+# =============================================================================
+# ML-ENHANCED TYPES (for Decision Explorer UI)
+# =============================================================================
+
+type DecisionTreeResult {
+  pathway: ClinicalPathway!
+  tree: DecisionNodeTree!
+  modelVersion: String
+  processingTimeMs: Float!
+}
+
+type DecisionNodeTree {
+  id: ID!
+  type: PathwayNodeType!
+  title: String!
+  description: String!
+  confidence: Float!
+  factors: [DecisionFactor!]!
+  children: [DecisionNodeTree!]!
+  alternativeCount: Int!
+  isRecommendedPath: Boolean!
+  recommendation: CarePlanRecommendation
+}
+
+type CarePlanRecommendation {
+  templateId: ID
+  title: String!
+  description: String
+  actionType: PathwayActionType
+  medications: [String!]
+  procedures: [String!]
+  confidence: Float!
+}
+
+type PathwayRecommendation {
+  pathway: ClinicalPathway!
+  matchScore: Float!
+  matchReasons: [String!]!
+  mlConfidence: Float!
+}
+
+# =============================================================================
+# PAGINATION
+# =============================================================================
+
+type ClinicalPathwayConnection {
+  edges: [ClinicalPathwayEdge!]!
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type ClinicalPathwayEdge {
+  node: ClinicalPathway!
+  cursor: String!
+}
+
+type PathwayNodeConnection {
+  edges: [PathwayNodeEdge!]!
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type PathwayNodeEdge {
+  node: PathwayNode!
+  cursor: String!
+}
+
+type PatientPathwayInstanceConnection {
+  edges: [PatientPathwayInstanceEdge!]!
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type PatientPathwayInstanceEdge {
+  node: PatientPathwayInstance!
+  cursor: String!
+}
+
+type PageInfo @shareable {
+  hasNextPage: Boolean!
+  hasPreviousPage: Boolean!
+  startCursor: String
+  endCursor: String
+}
+
+# =============================================================================
+# INPUTS
+# =============================================================================
+
+input PatientContextInput {
+  patientId: ID
+  age: Int
+  gender: String
+  conditions: [String!]
+  allergies: [String!]
+  currentMedications: [String!]
+  labResults: JSON
+  vitalSigns: JSON
+  medicalHistory: [String!]
+}
+
+input PathwayFilterInput {
+  isActive: Boolean
+  isPublished: Boolean
+  conditionCode: String
+  searchTerm: String
+}
+
+input CreateClinicalPathwayInput {
+  name: String!
+  slug: String
+  description: String
+  primaryConditionCodes: [String!]!
+  applicableContexts: JSON
+  evidenceSource: String
+  evidenceGrade: String
+}
+
+input UpdateClinicalPathwayInput {
+  name: String
+  description: String
+  primaryConditionCodes: [String!]
+  applicableContexts: JSON
+  evidenceSource: String
+  evidenceGrade: String
+  isActive: Boolean
+}
+
+input CreatePathwayNodeInput {
+  pathwayId: ID!
+  parentNodeId: ID
+  nodeType: PathwayNodeType!
+  title: String!
+  description: String
+  actionType: PathwayActionType
+  decisionFactors: [DecisionFactorInput!]
+  suggestedTemplateId: ID
+  sortOrder: Int
+  baseConfidence: Float
+}
+
+input UpdatePathwayNodeInput {
+  title: String
+  description: String
+  actionType: PathwayActionType
+  decisionFactors: [DecisionFactorInput!]
+  suggestedTemplateId: ID
+  sortOrder: Int
+  baseConfidence: Float
+  isActive: Boolean
+}
+
+input DecisionFactorInput {
+  type: DecisionFactorType!
+  label: String!
+  value: String
+  impact: FactorImpact!
+}
+
+input CreatePathwayNodeOutcomeInput {
+  nodeId: ID!
+  label: String!
+  description: String
+  medicationCode: String
+  procedureCode: String
+  labCode: String
+  diagnosisCode: String
+  outcomeFactors: JSON
+  sortOrder: Int
+}
+
+input StartPathwayInstanceInput {
+  patientId: ID!
+  pathwayId: ID!
+  providerId: ID
+  patientContext: JSON!
+  mlModelId: ID
+}
+
+input RecordPathwaySelectionInput {
+  instanceId: ID!
+  nodeId: ID!
+  selectionType: SelectionType
+  overrideReason: String
+  resultingCarePlanId: ID
+}
+
+input PaginationInput {
+  first: Int
+  after: String
+  last: Int
+  before: String
+}
+
+input InstanceFilterInput {
+  patientId: ID
+  pathwayId: ID
+  status: PathwayInstanceStatus
+  providerId: ID
+  startDateAfter: DateTime
+  startDateBefore: DateTime
+}
+
+# =============================================================================
+# QUERIES
+# =============================================================================
+
+type Query {
+  # Pathway management
+  clinicalPathway(id: ID!): ClinicalPathway
+  clinicalPathwayBySlug(slug: String!): ClinicalPathway
+  clinicalPathways(
+    filter: PathwayFilterInput
+    pagination: PaginationInput
+  ): ClinicalPathwayConnection!
+
+  # Node management
+  pathwayNode(id: ID!): PathwayNode
+  pathwayNodes(pathwayId: ID!): [PathwayNode!]!
+  pathwayTree(pathwayId: ID!): PathwayNode
+
+  # ML-powered queries
+  recommendPathwaysForPatient(
+    context: PatientContextInput!
+    first: Int
+  ): [PathwayRecommendation!]!
+
+  getDecisionTree(
+    pathwayId: ID!
+    patientContext: PatientContextInput
+  ): DecisionTreeResult!
+
+  # Patient history
+  patientPathwayInstance(id: ID!): PatientPathwayInstance
+  patientPathwayInstances(
+    filter: InstanceFilterInput
+    pagination: PaginationInput
+  ): PatientPathwayInstanceConnection!
+
+  patientPathwayHistory(patientId: ID!): [PatientPathwayInstance!]!
+
+  # Statistics
+  pathwayUsageStats(pathwayId: ID!): PathwayUsageStats!
+  nodeSelectionStats(nodeId: ID!): NodeSelectionStats!
+}
+
+# =============================================================================
+# MUTATIONS
+# =============================================================================
+
+type Mutation {
+  # Pathway CRUD
+  createClinicalPathway(input: CreateClinicalPathwayInput!): ClinicalPathway!
+  updateClinicalPathway(id: ID!, input: UpdateClinicalPathwayInput!): ClinicalPathway!
+  deleteClinicalPathway(id: ID!): Boolean!
+  publishClinicalPathway(id: ID!): ClinicalPathway!
+  unpublishClinicalPathway(id: ID!): ClinicalPathway!
+  duplicateClinicalPathway(id: ID!, newName: String!): ClinicalPathway!
+
+  # Node CRUD
+  createPathwayNode(input: CreatePathwayNodeInput!): PathwayNode!
+  updatePathwayNode(id: ID!, input: UpdatePathwayNodeInput!): PathwayNode!
+  deletePathwayNode(id: ID!): Boolean!
+  movePathwayNode(id: ID!, newParentId: ID, newSortOrder: Int): PathwayNode!
+
+  # Outcome CRUD
+  createPathwayNodeOutcome(input: CreatePathwayNodeOutcomeInput!): PathwayNodeOutcome!
+  updatePathwayNodeOutcome(id: ID!, input: CreatePathwayNodeOutcomeInput!): PathwayNodeOutcome!
+  deletePathwayNodeOutcome(id: ID!): Boolean!
+
+  # Patient tracking
+  startPathwayInstance(input: StartPathwayInstanceInput!): PatientPathwayInstance!
+  recordPathwaySelection(input: RecordPathwaySelectionInput!): PatientPathwaySelection!
+  completePathwayInstance(instanceId: ID!): PatientPathwayInstance!
+  abandonPathwayInstance(instanceId: ID!, reason: String): PatientPathwayInstance!
+  linkSelectionToCarePlan(selectionId: ID!, carePlanId: ID!): PatientPathwaySelection!
+
+  # ML operations
+  generatePathwayEmbeddings(pathwayId: ID!): Boolean!
+  generateNodeEmbeddings(pathwayId: ID!): Int!
+}

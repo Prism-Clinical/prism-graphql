@@ -1,0 +1,253 @@
+================================================================================
+CARE PLAN DOCUMENT
+================================================================================
+
+[METADATA]
+Title: Rh-Negative Pregnancy Care Pathway
+Category: PREVENTIVE_CARE
+Version: 1.0
+Last Updated: 2024-01-04
+Author: Clinical Guidelines Committee
+Guideline Source: ACOG Practice Bulletin 2024, AABB Guidelines
+Evidence Grade: A
+
+[CONDITION CODES]
+| Code       | System    | Description                              |
+|------------|-----------|------------------------------------------|
+| O36.0110   | ICD-10    | Maternal care for anti-D antibodies, 1st tri |
+| O36.0120   | ICD-10    | Maternal care for anti-D antibodies, 2nd tri |
+| O36.0130   | ICD-10    | Maternal care for anti-D antibodies, 3rd tri |
+| 165746003  | SNOMED    | RhD negative                             |
+| 44795003   | SNOMED    | Rh isoimmunization in pregnancy          |
+| P55.0      | ICD-10    | Rh isoimmunization of newborn            |
+
+[MEDICATION CODES]
+| Code       | System    | Description                              |
+|------------|-----------|------------------------------------------|
+| 35465      | RxNorm    | Rho(D) Immune Globulin 300 MCG IM        |
+| 1664982    | RxNorm    | Rho(D) Immune Globulin 50 MCG IM         |
+
+[LAB CODES]
+| Code       | System    | Description                              |
+|------------|-----------|------------------------------------------|
+| 882-1      | LOINC     | ABO and Rh group [Type] in Blood         |
+| 890-4      | LOINC     | Blood group antibody screen [Presence]   |
+| 24364-2    | LOINC     | Prenatal panel                           |
+| 4633-4     | LOINC     | Hemoglobin F/Total by Kleihauer-Betke    |
+| 100670-9   | LOINC     | RHD gene allele in maternal cfDNA        |
+| 1250-0     | LOINC     | Direct antiglobulin test (DAT)           |
+
+[PROCEDURE CODES]
+| Code       | System    | Description                              |
+|------------|-----------|------------------------------------------|
+| 86901      | CPT       | Blood typing ABO                         |
+| 86900      | CPT       | Blood typing Rh(D)                       |
+| 86886      | CPT       | Antibody identification RBC              |
+| 86880      | CPT       | Antihuman globulin test (Coombs)         |
+| 85460      | CPT       | Kleihauer-Betke test                     |
+| 76816      | CPT       | Fetal biophysical profile               |
+| 76821      | CPT       | Middle cerebral artery Doppler           |
+
+[GOALS]
+GOAL-001:
+  Description: Identify Rh-negative status at first prenatal visit
+  Target Value: ABO/Rh typing completed
+  Target Days: 1
+  Priority: HIGH
+  Guideline: ACOG - universal screening at first visit
+
+GOAL-002:
+  Description: Prevent Rh alloimmunization with timely RhIG prophylaxis
+  Target Value: Antibody screen remains negative
+  Target Days: 280
+  Priority: HIGH
+  Guideline: RhIG reduces sensitization from 12-13% to less than 1%
+
+GOAL-003:
+  Description: Administer routine 28-week RhIG prophylaxis
+  Target Value: RhIG given at 28 weeks
+  Target Days: 196
+  Priority: HIGH
+  Guideline: ACOG - standard antenatal prophylaxis
+
+GOAL-004:
+  Description: Administer postpartum RhIG within 72 hours if infant Rh-positive
+  Target Value: Postpartum RhIG given
+  Target Days: 3
+  Priority: HIGH
+  Guideline: Critical window for postpartum protection
+
+GOAL-005:
+  Description: Monitor alloimmunized pregnancies for fetal anemia
+  Target Value: No hydrops fetalis
+  Target Days: 280
+  Priority: HIGH
+  Guideline: MCA Doppler monitoring for sensitized patients
+
+[INTERVENTIONS]
+INT-001:
+  Type: PROCEDURE
+  Description: ABO and Rh blood typing at first prenatal visit
+  Procedure Code: 86900
+  Instructions: Universal screening for all pregnant patients. Identifies Rh-negative patients requiring prophylaxis.
+
+INT-002:
+  Type: PROCEDURE
+  Description: Antibody screen (indirect Coombs test)
+  Procedure Code: 86880
+  Instructions: Performed at first visit and 28 weeks. Detects pre-existing alloimmunization.
+
+INT-003:
+  Type: MEDICATION
+  Description: Routine 28-week RhIG prophylaxis
+  Medication Code: 35465
+  Dosage: 300 mcg
+  Frequency: Single dose at 28 weeks gestation
+  Instructions: Give IM. Repeat antibody screen before administration. Provides 12 weeks coverage.
+
+INT-004:
+  Type: MEDICATION
+  Description: Postpartum RhIG within 72 hours
+  Medication Code: 35465
+  Dosage: 300 mcg
+  Frequency: Single dose within 72 hours of delivery
+  Instructions: Give if newborn is Rh-positive. Perform Kleihauer-Betke if large FMH suspected.
+
+INT-005:
+  Type: MEDICATION
+  Description: RhIG for sensitizing events
+  Medication Code: 35465
+  Dosage: 300 mcg
+  Frequency: Within 72 hours of event
+  Instructions: Give after trauma, bleeding, amniocentesis, CVS, external version, or pregnancy loss >= 12 weeks.
+
+INT-006:
+  Type: MEDICATION
+  Description: First-trimester mini-dose RhIG (if used)
+  Medication Code: 1664982
+  Dosage: 50 mcg
+  Frequency: Single dose if indicated
+  Instructions: For events < 12 weeks if RhIG given. Note: ACOG 2024 suggests routine RhIG not required < 12 weeks.
+
+INT-007:
+  Type: PROCEDURE
+  Description: Kleihauer-Betke test for large fetomaternal hemorrhage
+  Procedure Code: 85460
+  Instructions: Perform if significant trauma, abruption, or postpartum bleeding. Calculate additional RhIG doses needed.
+
+INT-008:
+  Type: PROCEDURE
+  Description: Middle cerebral artery Doppler for alloimmunized patients
+  Procedure Code: 76821
+  Instructions: Start by 16-18 weeks if sensitized. Monitor every 1-2 weeks. MCA PSV > 1.5 MoM indicates anemia.
+
+INT-009:
+  Type: REFERRAL
+  Description: Maternal-Fetal Medicine referral for alloimmunization
+  Referral Specialty: Maternal-Fetal Medicine
+  Instructions: Refer if antibody screen positive or critical titer reached. MFM manages fetal monitoring and potential transfusions.
+
+INT-010:
+  Type: PROCEDURE
+  Description: Cell-free fetal DNA testing for fetal Rh status
+  Procedure Code: 100670-9
+  Instructions: Non-invasive test after 10 weeks. May be used in RhIG shortage or when paternal status unknown.
+
+INT-011:
+  Type: EDUCATION
+  Description: Patient education on Rh incompatibility
+  Instructions: Explain importance of RhIG timing. Ensure patient knows to report trauma, bleeding, or procedures.
+
+INT-012:
+  Type: MONITORING
+  Description: Serial antibody titers for alloimmunized patients
+  Schedule Days: 28
+  Instructions: Check titers every 4 weeks until 24 weeks, then every 2 weeks. Critical titer is typically 1:16-1:32.
+
+---
+
+[OVERVIEW]
+Rh-negative pregnancy occurs in approximately 15% of Caucasian patients. Without
+prophylaxis, an Rh-negative mother carrying an Rh-positive fetus can develop anti-D
+antibodies that cause hemolytic disease of the fetus/newborn (HDFN) in current or
+future pregnancies. RhIG (Rho(D) Immune Globulin) prophylaxis has reduced Rh
+alloimmunization from 12-13% to less than 1%, making this a preventable condition.
+
+[SYMPTOMS]
+Rh-negative status itself has no symptoms. However, in alloimmunized pregnancies:
+Maternal Signs:
+- None specific (maternal antibodies do not affect mother)
+
+Fetal/Neonatal Complications (if sensitized):
+- Fetal anemia
+- Hydrops fetalis (fluid accumulation)
+- Neonatal hyperbilirubinemia
+- Kernicterus
+- Fetal or neonatal death (severe cases)
+
+[DIAGNOSIS]
+Initial Screening (All Patients):
+- ABO and Rh blood typing at first prenatal visit
+- Red blood cell antibody screen (indirect Coombs test)
+
+Positive Screen Management:
+- If antibody screen negative: proceed with prophylaxis pathway
+- If antibody screen positive: patient is alloimmunized - do NOT give RhIG
+
+Fetal Assessment (if sensitized):
+- Paternal Rh testing if possible
+- Cell-free fetal DNA for RHD genotype
+- Middle cerebral artery Doppler surveillance
+- Serial antibody titers until critical threshold
+
+[TREATMENT]
+UNSENSITIZED Rh-NEGATIVE PATIENT:
+
+First Trimester (<12 weeks):
+- ACOG 2024: Routine RhIG NOT required for losses/procedures < 12 weeks
+- May give RhIG for ectopic pregnancy, molar pregnancy, or patient preference
+- If given, 50 mcg (mini-dose) is sufficient
+
+Second Trimester (12-27 weeks):
+- RhIG 300 mcg required for:
+  * Pregnancy loss >= 12 weeks
+  * Threatened abortion with bleeding
+  * Amniocentesis, CVS, cordocentesis
+  * Abdominal trauma
+  * Molar pregnancy evacuation
+- Give within 72 hours of event; partial benefit up to 28 days
+
+Third Trimester (28 weeks to delivery):
+- ROUTINE: RhIG 300 mcg at 28 weeks (all unsensitized patients)
+- Repeat antibody screen before 28-week dose
+- Additional RhIG for: antepartum hemorrhage, external cephalic version, trauma
+- If > 12 weeks since last RhIG and still pregnant, consider repeat dose
+
+Postpartum:
+- Test cord blood for infant Rh type and DAT
+- If infant Rh-positive: RhIG 300 mcg within 72 hours
+- Kleihauer-Betke if large FMH suspected (> 30 mL coverage per 300 mcg dose)
+- If infant Rh-negative: no postpartum RhIG needed
+
+ALLOIMMUNIZED PATIENT (Positive Antibody Screen):
+- Do NOT give RhIG (ineffective once sensitized)
+- Refer to Maternal-Fetal Medicine
+- Quantitative anti-D titer monitoring
+- If titer >= 1:16-1:32 or prior affected pregnancy: MCA Doppler surveillance
+- May require intrauterine transfusion if severe fetal anemia
+- Plan delivery at 37-38 weeks with NICU availability
+
+[FOLLOW_UP]
+- Repeat antibody screen at 28 weeks before routine RhIG
+- Document all RhIG administrations
+- Passive anti-D from RhIG may cause positive screen for 2-3 months
+- Postpartum: reassess need for ongoing Rh care in future pregnancies
+- Ensure intrapartum team aware of Rh status
+
+[PATIENT_EDUCATION]
+- Explain that RhIG prevents formation of harmful antibodies
+- Emphasize importance of receiving RhIG at 28 weeks and after delivery
+- Report any trauma, bleeding, or procedures immediately
+- RhIG is a blood product - discuss if patient has religious concerns
+- Future pregnancies will also require Rh screening and prophylaxis
+- If already sensitized, close monitoring protects the baby

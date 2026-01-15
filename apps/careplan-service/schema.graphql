@@ -58,10 +58,15 @@ enum CarePlanQueryFilter {
 
 enum TemplateCategory {
   CHRONIC_DISEASE
+  ACUTE_CARE
   PREVENTIVE_CARE
   POST_PROCEDURE
   MEDICATION_MANAGEMENT
   LIFESTYLE_MODIFICATION
+  MENTAL_HEALTH
+  PEDIATRIC
+  GERIATRIC
+  GENERAL
 }
 
 # =============================================================================
@@ -70,7 +75,7 @@ enum TemplateCategory {
 
 type CarePlan @key(fields: "id") {
   id: ID!
-  patient: Patient!
+  patient: Patient
 
   # Plan metadata
   title: String!
@@ -98,9 +103,14 @@ type CarePlan @key(fields: "id") {
   sourceRAGSynthesisId: ID
   templateId: ID
 
+  # Training example fields (for RAG/ML training)
+  isTrainingExample: Boolean!
+  trainingDescription: String
+  trainingTags: [String!]
+
   # Audit
   createdAt: DateTime!
-  createdBy: ID!
+  createdBy: ID
   updatedAt: DateTime!
 }
 
@@ -176,6 +186,7 @@ type CarePlanTemplate @key(fields: "id") {
 
   # Template metadata
   name: String!
+  description: String
   category: TemplateCategory!
   conditionCodes: [String!]!
 
@@ -192,6 +203,7 @@ type CarePlanTemplate @key(fields: "id") {
   version: String!
 
   createdAt: DateTime!
+  createdBy: ID
   updatedAt: DateTime!
 }
 
@@ -317,6 +329,137 @@ input PaginationInput {
 }
 
 # =============================================================================
+# TEMPLATE CRUD INPUTS
+# =============================================================================
+
+input CreateCarePlanTemplateInput {
+  name: String!
+  description: String
+  category: TemplateCategory!
+  conditionCodes: [String!]!
+  guidelineSource: String
+  evidenceGrade: String
+  goals: [CreateTemplateGoalInput!]
+  interventions: [CreateTemplateInterventionInput!]
+}
+
+input UpdateCarePlanTemplateInput {
+  name: String
+  description: String
+  category: TemplateCategory
+  conditionCodes: [String!]
+  guidelineSource: String
+  evidenceGrade: String
+  isActive: Boolean
+}
+
+input CreateTemplateGoalInput {
+  description: String!
+  defaultTargetValue: String
+  defaultTargetDays: Int
+  priority: GoalPriority!
+}
+
+input CreateTemplateInterventionInput {
+  type: InterventionType!
+  description: String!
+  medicationCode: String
+  procedureCode: String
+  defaultScheduleDays: Int
+}
+
+# =============================================================================
+# TRAINING CARE PLAN INPUTS
+# =============================================================================
+
+input CreateTrainingCarePlanInput {
+  title: String!
+  conditionCodes: [String!]!
+  trainingDescription: String
+  trainingTags: [String!]
+  startDate: Date!
+  targetEndDate: Date
+  goals: [CreateTrainingGoalInput!]
+  interventions: [CreateTrainingInterventionInput!]
+}
+
+input UpdateTrainingCarePlanInput {
+  title: String
+  conditionCodes: [String!]
+  trainingDescription: String
+  trainingTags: [String!]
+  startDate: Date
+  targetEndDate: Date
+  status: CarePlanStatus
+}
+
+input CreateTrainingGoalInput {
+  description: String!
+  targetValue: String
+  targetDate: Date
+  priority: GoalPriority!
+  guidelineReference: String
+}
+
+input CreateTrainingInterventionInput {
+  type: InterventionType!
+  description: String!
+  medicationCode: String
+  dosage: String
+  frequency: String
+  procedureCode: String
+  referralSpecialty: String
+  scheduledDate: Date
+  patientInstructions: String
+  guidelineReference: String
+}
+
+input TrainingCarePlanFilterInput {
+  status: CarePlanStatus
+  conditionCode: String
+  trainingTag: String
+  createdAfter: DateTime
+  createdBefore: DateTime
+}
+
+# =============================================================================
+# PDF IMPORT INPUTS
+# =============================================================================
+
+input ImportCarePlanFromPdfInput {
+  # Basic info
+  title: String!
+  description: String
+  category: TemplateCategory!
+
+  # Medical codes
+  conditionCodes: [String!]!
+  medicationCodes: [String!]
+  labCodes: [String!]
+
+  # Raw text for RAG embeddings
+  rawText: String!
+
+  # Goals and interventions
+  goals: [CreateTemplateGoalInput!]
+  interventions: [CreateTemplateInterventionInput!]
+
+  # Import options
+  createTemplate: Boolean!
+  createTrainingExample: Boolean!
+
+  # Training metadata (only used if createTrainingExample is true)
+  trainingTags: [String!]
+  trainingDescription: String
+}
+
+type ImportCarePlanFromPdfResult {
+  template: CarePlanTemplate
+  trainingExample: CarePlan
+  embeddingGenerated: Boolean!
+}
+
+# =============================================================================
 # QUERIES - Structured lookups only
 # =============================================================================
 
@@ -351,6 +494,14 @@ type Query {
 
   # Get applicable templates for conditions
   templatesForConditions(conditionCodes: [String!]!): [CarePlanTemplate!]!
+
+  # Training care plans (for RAG/ML training context)
+  trainingCarePlans(
+    filter: TrainingCarePlanFilterInput
+    pagination: PaginationInput
+  ): CarePlanConnection!
+
+  trainingCarePlan(id: ID!): CarePlan
 }
 
 # =============================================================================
@@ -391,6 +542,52 @@ type Mutation {
 
   # Approve care plan (activates it)
   approveCarePlan(id: ID!): CarePlan!
+
+  # =============================================================================
+  # TEMPLATE CRUD MUTATIONS
+  # =============================================================================
+
+  # Create a new care plan template
+  createCarePlanTemplate(input: CreateCarePlanTemplateInput!): CarePlanTemplate!
+
+  # Update a care plan template
+  updateCarePlanTemplate(id: ID!, input: UpdateCarePlanTemplateInput!): CarePlanTemplate!
+
+  # Delete a care plan template
+  deleteCarePlanTemplate(id: ID!): Boolean!
+
+  # =============================================================================
+  # TRAINING CARE PLAN MUTATIONS
+  # =============================================================================
+
+  # Create a training care plan (for RAG/ML training)
+  createTrainingCarePlan(input: CreateTrainingCarePlanInput!): CarePlan!
+
+  # Update a training care plan
+  updateTrainingCarePlan(id: ID!, input: UpdateTrainingCarePlanInput!): CarePlan!
+
+  # Delete a training care plan
+  deleteTrainingCarePlan(id: ID!): Boolean!
+
+  # Add goal to training care plan
+  addTrainingGoal(carePlanId: ID!, input: CreateTrainingGoalInput!): CarePlan!
+
+  # Remove goal from training care plan
+  removeTrainingGoal(goalId: ID!): Boolean!
+
+  # Add intervention to training care plan
+  addTrainingIntervention(carePlanId: ID!, input: CreateTrainingInterventionInput!): CarePlan!
+
+  # Remove intervention from training care plan
+  removeTrainingIntervention(interventionId: ID!): Boolean!
+
+  # =============================================================================
+  # PDF IMPORT MUTATIONS
+  # =============================================================================
+
+  # Import care plan from PDF extracted data
+  # Creates template and/or training example based on options
+  importCarePlanFromPdf(input: ImportCarePlanFromPdfInput!): ImportCarePlanFromPdfResult!
 }
 
 # =============================================================================

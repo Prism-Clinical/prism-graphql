@@ -1,0 +1,314 @@
+================================================================================
+CARE PLAN DOCUMENT
+================================================================================
+
+[METADATA]
+Title: Urinary Tract Infections in Pregnancy Care Pathway
+Category: ACUTE_CARE
+Version: 1.0
+Last Updated: 2024-01-04
+Author: Clinical Guidelines Committee
+Guideline Source: USPSTF 2019, IDSA 2019, ACOG Committee Opinion, CDC Guidelines
+Evidence Grade: A
+
+[CONDITION CODES]
+| Code       | System    | Description                              |
+|------------|-----------|------------------------------------------|
+| O23.10     | ICD-10    | Infections of bladder in pregnancy       |
+| O23.00     | ICD-10    | Infections of kidney in pregnancy        |
+| O23.40     | ICD-10    | Unspecified UTI in pregnancy             |
+| N39.0      | ICD-10    | Urinary tract infection, site not specified |
+| 301011002  | SNOMED    | Asymptomatic bacteriuria                 |
+| 68566005   | SNOMED    | Urinary tract infection                  |
+| 45816000   | SNOMED    | Pyelonephritis                           |
+| 197927001  | SNOMED    | Acute cystitis                           |
+
+[MEDICATION CODES]
+| Code       | System    | Description                              |
+|------------|-----------|------------------------------------------|
+| 539712     | RxNorm    | Nitrofurantoin 100 MG Oral Capsule       |
+| 309114     | RxNorm    | Cephalexin 500 MG Oral Capsule           |
+| 824194     | RxNorm    | Amoxicillin-Clavulanate 875/125 MG Tab   |
+| 808917     | RxNorm    | Fosfomycin 3 GM Oral Powder              |
+| 198335     | RxNorm    | TMP-SMX 160/800 MG Oral Tablet           |
+| 1665021    | RxNorm    | Ceftriaxone 1 GM IV Injection            |
+| 1665020    | RxNorm    | Ceftriaxone 500 MG IV Injection          |
+| 789980     | RxNorm    | Ampicillin 2 GM IV Injection             |
+| 310137     | RxNorm    | Gentamicin 80 MG IV Injection            |
+
+[LAB CODES]
+| Code       | System    | Description                              |
+|------------|-----------|------------------------------------------|
+| 5799-2     | LOINC     | Leukocyte esterase [Presence] in Urine   |
+| 5802-4     | LOINC     | Nitrite [Presence] in Urine              |
+| 630-4      | LOINC     | Bacteria [#/area] in Urine sediment      |
+| 5821-4     | LOINC     | WBC [#/area] in Urine sediment           |
+| 630-4      | LOINC     | Urine culture                            |
+| 600-7      | LOINC     | Bacteria identified in Urine culture     |
+| 6463-4     | LOINC     | Bacteria susceptibility panel            |
+
+[PROCEDURE CODES]
+| Code       | System    | Description                              |
+|------------|-----------|------------------------------------------|
+| 81001      | CPT       | Urinalysis with microscopy               |
+| 87086      | CPT       | Urine culture bacterial quantitative     |
+| 87088      | CPT       | Urine culture identification             |
+| 87181      | CPT       | Susceptibility studies antimicrobial     |
+| 76770      | CPT       | Renal ultrasound complete                |
+| 99223      | CPT       | Hospital admission high complexity       |
+
+[GOALS]
+GOAL-001:
+  Description: Screen all pregnant patients for asymptomatic bacteriuria
+  Target Value: Urine culture at 12-16 weeks
+  Target Days: 112
+  Priority: HIGH
+  Guideline: USPSTF Grade A recommendation
+
+GOAL-002:
+  Description: Eradicate bacteriuria to prevent pyelonephritis
+  Target Value: Negative test-of-cure culture
+  Target Days: 14
+  Priority: HIGH
+  Guideline: Treatment reduces pyelonephritis risk by 70-80%
+
+GOAL-003:
+  Description: Resolve cystitis symptoms within 48-72 hours
+  Target Value: Symptom relief
+  Target Days: 3
+  Priority: HIGH
+  Guideline: Empiric therapy while awaiting culture
+
+GOAL-004:
+  Description: Achieve defervescence within 48-72 hours for pyelonephritis
+  Target Value: Afebrile
+  Target Days: 3
+  Priority: HIGH
+  Guideline: IV antibiotics with close monitoring
+
+GOAL-005:
+  Description: Prevent recurrent UTIs with prophylaxis when indicated
+  Target Value: No recurrent infections
+  Target Days: 168
+  Priority: MEDIUM
+  Guideline: Suppressive therapy after >= 2 infections or pyelonephritis
+
+[INTERVENTIONS]
+INT-001:
+  Type: PROCEDURE
+  Description: Urine culture screening at first prenatal visit
+  Procedure Code: 87086
+  Instructions: Clean-catch midstream urine. Screen all patients 12-16 weeks or first visit.
+
+INT-002:
+  Type: MEDICATION
+  Description: Nitrofurantoin for ASB or cystitis
+  Medication Code: 539712
+  Dosage: 100 mg
+  Frequency: Twice daily for 5-7 days
+  Instructions: Take with food. Avoid at >= 38 weeks and during labor. Category B except near term.
+
+INT-003:
+  Type: MEDICATION
+  Description: Cephalexin for ASB or cystitis
+  Medication Code: 309114
+  Dosage: 500 mg
+  Frequency: Four times daily for 7 days
+  Instructions: Safe in all trimesters. Good E. coli coverage. May use if nitrofurantoin contraindicated.
+
+INT-004:
+  Type: MEDICATION
+  Description: Amoxicillin-Clavulanate for resistant organisms
+  Medication Code: 824194
+  Dosage: 875/125 mg
+  Frequency: Twice daily for 7 days
+  Instructions: Broad spectrum. Take with food to reduce GI upset. Safe in pregnancy.
+
+INT-005:
+  Type: MEDICATION
+  Description: Fosfomycin single-dose therapy
+  Medication Code: 808917
+  Dosage: 3 grams
+  Frequency: Single dose
+  Instructions: Convenient option for uncomplicated cystitis. Not for pyelonephritis. Dissolve in water.
+
+INT-006:
+  Type: MEDICATION
+  Description: TMP-SMX (second trimester only)
+  Medication Code: 198335
+  Dosage: 160/800 mg
+  Frequency: Twice daily for 3-7 days
+  Instructions: AVOID in 1st trimester (folate antagonist) and near term (kernicterus). Use only if no alternative.
+
+INT-007:
+  Type: MEDICATION
+  Description: Ceftriaxone IV for pyelonephritis
+  Medication Code: 1665021
+  Dosage: 1 gram
+  Frequency: Every 24 hours IV
+  Instructions: First-line for pyelonephritis. Continue until afebrile 24-48h, then switch to oral.
+
+INT-008:
+  Type: MEDICATION
+  Description: Nitrofurantoin suppressive prophylaxis
+  Medication Code: 539712
+  Dosage: 100 mg
+  Frequency: Once daily at bedtime
+  Instructions: For recurrent UTIs (>= 2 episodes) or post-pyelonephritis. Continue until delivery.
+
+INT-009:
+  Type: MEDICATION
+  Description: Cephalexin suppressive prophylaxis
+  Medication Code: 309114
+  Dosage: 250-500 mg
+  Frequency: Once daily at bedtime
+  Instructions: Alternative prophylaxis. Safe in all trimesters including near term.
+
+INT-010:
+  Type: PROCEDURE
+  Description: Test-of-cure urine culture
+  Procedure Code: 87086
+  Schedule Days: 14
+  Instructions: Obtain 1-2 weeks after completing treatment. Confirm bacteriuria clearance.
+
+INT-011:
+  Type: PROCEDURE
+  Description: Renal ultrasound for persistent pyelonephritis
+  Procedure Code: 76770
+  Instructions: Obtain if fever persists > 48-72 hours. Rule out obstruction or abscess.
+
+INT-012:
+  Type: REFERRAL
+  Description: Obstetric specialist consultation for pyelonephritis
+  Referral Specialty: Obstetrics/Maternal-Fetal Medicine
+  Instructions: All pyelonephritis cases. Monitor for preterm labor. Consider tocolysis if contractions develop.
+
+INT-013:
+  Type: REFERRAL
+  Description: Infectious Disease consultation for resistant organisms
+  Referral Specialty: Infectious Disease
+  Instructions: Consult for ESBL-producers, VRE, or treatment failures. May need carbapenem therapy.
+
+INT-014:
+  Type: MONITORING
+  Description: Inpatient monitoring for pyelonephritis
+  Schedule Days: 1
+  Instructions: Admit all pregnant pyelonephritis patients. IV fluids, monitor vitals, fetal monitoring if > 24 weeks.
+
+INT-015:
+  Type: EDUCATION
+  Description: UTI prevention counseling
+  Instructions: Adequate hydration, void after intercourse, avoid spermicides, proper perineal hygiene.
+
+---
+
+[OVERVIEW]
+Urinary tract infections affect approximately 8% of pregnant patients. Up to 10% have
+asymptomatic bacteriuria (ASB), which if untreated progresses to symptomatic infection
+in 20-40% of cases, including pyelonephritis. UTIs in pregnancy are associated with
+serious complications including preterm labor, low birth weight, and maternal sepsis.
+Universal screening and prompt treatment significantly reduce these risks.
+
+[SYMPTOMS]
+Asymptomatic Bacteriuria (ASB):
+- No urinary symptoms
+- Diagnosed by screening culture only
+- >= 100,000 CFU/mL of single uropathogen
+
+Acute Cystitis (Lower UTI):
+- Dysuria (burning with urination)
+- Urinary frequency and urgency
+- Suprapubic discomfort
+- Hematuria (sometimes)
+- No fever or flank pain
+- Patient appears well
+
+Acute Pyelonephritis (Upper UTI) - MEDICAL EMERGENCY:
+- Fever >= 38C (100.4F)
+- Chills and rigors
+- Flank pain (costovertebral angle tenderness)
+- Nausea and vomiting
+- May have lower UTI symptoms
+- Patient appears ill, may have tachycardia
+
+[DIAGNOSIS]
+Screening:
+- Urine culture for ALL pregnant patients at 12-16 weeks or first visit
+- Positive screen: >= 100,000 CFU/mL single uropathogen
+- GBS bacteriuria: >= 10,000 CFU/mL requires treatment
+
+Symptomatic Evaluation:
+- Urinalysis with microscopy (leukocyte esterase, nitrites, pyuria, bacteriuria)
+- Urine culture before starting antibiotics (do not delay treatment)
+- Blood cultures for pyelonephritis
+- Consider renal ultrasound if fever persists > 48-72 hours
+
+Culture Interpretation:
+- ASB/Cystitis: >= 100,000 CFU/mL
+- Symptomatic with lower counts: >= 100 CFU/mL may be significant
+- Mixed flora: likely contamination, repeat if symptomatic
+
+[TREATMENT]
+ANTIBIOTIC SELECTION BY TRIMESTER:
+
+First Trimester (0-13 weeks):
+- Preferred: Cephalexin, Amoxicillin-Clavulanate
+- Acceptable: Nitrofurantoin (if no alternative), Fosfomycin
+- AVOID: TMP-SMX (folate antagonist), Fluoroquinolones, Tetracyclines
+
+Second Trimester (14-27 weeks):
+- Preferred: Nitrofurantoin, Cephalexin, Amoxicillin-Clavulanate
+- Acceptable: TMP-SMX (if needed), Fosfomycin
+- AVOID: Fluoroquinolones, Tetracyclines
+
+Third Trimester (28+ weeks):
+- Preferred: Cephalexin, Amoxicillin-Clavulanate
+- Acceptable: Nitrofurantoin (until 36-37 weeks)
+- AVOID: Nitrofurantoin >= 38 weeks, TMP-SMX near term, Fluoroquinolones
+
+ASYMPTOMATIC BACTERIURIA:
+- Treat with 5-7 day course of appropriate antibiotic
+- Test-of-cure culture 1-2 weeks after treatment
+- If persistent: different antibiotic for 10-14 days
+
+ACUTE CYSTITIS:
+- Empiric therapy: Nitrofurantoin or Cephalexin
+- Duration: 5-7 days (7 days preferred in pregnancy)
+- Symptoms should improve within 48-72 hours
+- Test-of-cure culture 1-2 weeks after treatment
+
+ACUTE PYELONEPHRITIS:
+- ADMIT to hospital
+- IV fluids (avoid overload - risk of pulmonary edema)
+- IV antibiotics: Ceftriaxone 1g q24h (first-line)
+- Alternatives: Aztreonam, Ampicillin + Gentamicin
+- Continue IV until afebrile 24-48 hours
+- Transition to oral antibiotics
+- Total duration: 10-14 days
+- Begin suppressive prophylaxis after treatment
+- If fever persists > 48-72 hours: renal ultrasound, broaden coverage
+
+RECURRENT UTI PROPHYLAXIS:
+Indications:
+- >= 2 symptomatic UTIs in pregnancy
+- >= 3 episodes of bacteriuria
+- After one episode of pyelonephritis
+
+Regimens:
+- Nitrofurantoin 100 mg PO qHS (avoid near term)
+- Cephalexin 250-500 mg PO qHS
+Continue until delivery
+
+[FOLLOW_UP]
+- Test-of-cure culture 1-2 weeks after ALL UTI treatment
+- Monthly or periodic cultures if on prophylaxis
+- Communicate GBS bacteriuria to labor team for intrapartum prophylaxis
+- Postpartum: discontinue prophylaxis, reassess if symptoms persist
+
+[PATIENT_EDUCATION]
+- Complete full course of antibiotics even if symptoms resolve
+- Stay well hydrated
+- Void frequently and after intercourse
+- Recognize symptoms requiring urgent evaluation (fever, flank pain)
+- Importance of follow-up cultures to confirm cure
+- Safe medications for pregnancy were chosen

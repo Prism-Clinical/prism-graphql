@@ -148,7 +148,7 @@ class CarePlanService {
             const countResult = await pool.query(countQuery, params.slice(0, -1));
             const hasNextPage = result.rows.length > first;
             const carePlans = result.rows.slice(0, first);
-            const totalCount = parseInt(countResult.rows[0].count);
+            const totalCount = parseInt(countResult.rows[0]?.count, 10) || 0;
             return { carePlans, hasNextPage, totalCount };
         }
         catch (error) {
@@ -418,7 +418,7 @@ class CarePlanTemplateService {
             const countResult = await pool.query(countQuery, params.slice(0, -1));
             const hasNextPage = result.rows.length > first;
             const templates = result.rows.slice(0, first);
-            const totalCount = parseInt(countResult.rows[0].count);
+            const totalCount = parseInt(countResult.rows[0]?.count, 10) || 0;
             return { templates, hasNextPage, totalCount };
         }
         catch (error) {

@@ -1,6 +1,8 @@
 import { Pool } from 'pg';
 import { Redis } from 'ioredis';
 import { v4 as uuidv4 } from 'uuid';
+import { validationIntegrationService } from './validation-integration';
+import { PatientContext } from '../clients/validator-client';
 
 // Types
 export enum SafetyCheckType {
@@ -250,8 +252,141 @@ class SafetyCheckService {
     conditionCodes?: string[];
     checkTypes?: SafetyCheckType[];
   }): Promise<{ checks: SafetyCheck[]; blockers: SafetyCheck[]; warnings: SafetyCheck[] }> {
-    // Stub implementation - would integrate with ML safety service
-    return { checks: [], blockers: [], warnings: [] };
+    ensureInitialized();
+
+    // Build patient context for ML validation
+    const patientContext: PatientContext = {
+      conditionCodes: input.conditionCodes || [],
+      medicationCodes: input.medicationCodes || [],
+    };
+
+    // If we have medication codes, create recommendations for validation
+    const recommendations = (input.medicationCodes || []).map((code) => ({
+      type: 'MEDICATION',
+      code,
+      text: `Medication ${code}`,
+    }));
+
+    // If no recommendations to validate, return empty
+    if (recommendations.length === 0) {
+      return { checks: [], blockers: [], warnings: [] };
+    }
+
+    try {
+      // Use the ML validator integration service
+      const validationResult = await validationIntegrationService.validateAndGenerateChecks({
+        patientId: input.patientId,
+        encounterId: input.encounterId,
+        patientContext,
+        recommendations,
+        checkTypes: input.checkTypes,
+      });
+
+      // Persist the generated safety checks to the database
+      for (const check of validationResult.checks) {
+        await this.persistSafetyCheck(check);
+      }
+
+      // Create review queue items for blockers and warnings that need review
+      for (const blocker of validationResult.blockers) {
+        await this.createReviewQueueItem(blocker, ReviewPriority.P0_CRITICAL);
+      }
+
+      for (const warning of validationResult.warnings) {
+        if (warning.severity === SafetySeverity.CRITICAL) {
+          await this.createReviewQueueItem(warning, ReviewPriority.P1_HIGH);
+        } else if (warning.severity === SafetySeverity.WARNING) {
+          await this.createReviewQueueItem(warning, ReviewPriority.P2_MEDIUM);
+        }
+      }
+
+      return {
+        checks: validationResult.checks,
+        blockers: validationResult.blockers,
+        warnings: validationResult.warnings,
+      };
+    } catch (error) {
+      console.error('Error in validateSafety:', error);
+      // Return empty results if validation fails
+      return { checks: [], blockers: [], warnings: [] };
+    }
+  }
+
+  /**
+   * Persist a safety check to the database.
+   */
+  private async persistSafetyCheck(check: SafetyCheck): Promise<void> {
+    const query = `
+      INSERT INTO safety_checks (
+        id, patient_id, encounter_id, check_type,
+        trigger_medication_code, trigger_condition_code,
+        status, severity, title, description, clinical_rationale,
+        related_medications, related_conditions, related_allergies,
+        guideline_references, created_at, updated_at
+      ) VALUES (
+        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17
+      )
+      ON CONFLICT (id) DO UPDATE SET
+        status = EXCLUDED.status,
+        severity = EXCLUDED.severity,
+        updated_at = NOW()
+    `;
+
+    try {
+      await pool.query(query, [
+        check.id,
+        check.patientId,
+        check.encounterId || null,
+        check.checkType,
+        check.triggerMedicationCode || null,
+        check.triggerConditionCode || null,
+        check.status,
+        check.severity,
+        check.title,
+        check.description,
+        check.clinicalRationale,
+        check.relatedMedications,
+        check.relatedConditions,
+        check.relatedAllergies,
+        check.guidelineReferences,
+        check.createdAt,
+        check.updatedAt,
+      ]);
+    } catch (error) {
+      console.error('Error persisting safety check:', error);
+    }
+  }
+
+  /**
+   * Create a review queue item for a safety check.
+   */
+  private async createReviewQueueItem(
+    check: SafetyCheck,
+    priority: ReviewPriority
+  ): Promise<void> {
+    const slaDeadline = validationIntegrationService.getSlaDeadline(priority);
+
+    const query = `
+      INSERT INTO review_queue (
+        id, patient_id, safety_check_id, status, priority,
+        sla_deadline, created_at, updated_at
+      ) VALUES (
+        $1, $2, $3, 'PENDING_REVIEW', $4, $5, NOW(), NOW()
+      )
+      ON CONFLICT (safety_check_id) DO NOTHING
+    `;
+
+    try {
+      await pool.query(query, [
+        uuidv4(),
+        check.patientId,
+        check.id,
+        priority,
+        slaDeadline,
+      ]);
+    } catch (error) {
+      console.error('Error creating review queue item:', error);
+    }
   }
 
   async overrideSafetyCheck(
