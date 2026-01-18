@@ -24,7 +24,7 @@ import { useAuth } from '@/contexts/AuthContext';
 const navigation = [
   { name: 'Dashboard', href: '/dashboard', icon: HomeIcon },
   { name: 'Provider Approvals', href: '/provider-approvals', icon: UserGroupIcon },
-  { name: 'Templates', href: '/templates', icon: DocumentDuplicateIcon },
+  { name: 'Care Plans', href: '/care-plans', icon: DocumentDuplicateIcon },
   { name: 'Training Examples', href: '/training-examples', icon: AcademicCapIcon },
   { name: 'ML Models', href: '/ml-models', icon: Square3Stack3DIcon },
   { name: 'Recommendation Engine', href: '/recommendation-engine', icon: SparklesIcon },

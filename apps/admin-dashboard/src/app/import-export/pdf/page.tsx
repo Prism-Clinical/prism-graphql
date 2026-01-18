@@ -711,14 +711,14 @@ export default function CarePlanImportPage() {
         <h2 className="text-2xl font-bold text-gray-900 mb-2">Import Successful!</h2>
         <p className="text-gray-600 mb-6">
           {createTemplate && createTrainingExample
-            ? 'Template and training example have been created.'
+            ? 'Care plan and training example have been created.'
             : createTemplate
-            ? 'Care plan template has been created.'
+            ? 'Care plan has been created.'
             : 'Training example has been created.'}
         </p>
         <div className="flex justify-center gap-4">
-          <Link href="/templates">
-            <Button variant="secondary">View Templates</Button>
+          <Link href="/care-plans">
+            <Button variant="secondary">View Care Plans</Button>
           </Link>
           <Button onClick={() => {
             setStep('upload');

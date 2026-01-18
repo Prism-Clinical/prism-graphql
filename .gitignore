@@ -6,6 +6,23 @@ out/
 # TypeScript incremental compilation cache
 *.tsbuildinfo
 
+# TypeScript compiled output (declaration files and source maps)
+# Keep next-env.d.ts for Next.js
+*.d.ts
+*.d.ts.map
+*.js.map
+!next-env.d.ts
+
+# Compiled JavaScript from TypeScript (in src directories)
+apps/*/src/**/*.js
+apps/*/src/**/*.js.map
+shared/*/src/**/*.js
+shared/*/src/**/*.js.map
+shared/*/*.js
+shared/*/*.js.map
+tests/**/*.js
+tests/**/*.js.map
+
 # Logs
 logs
 *.log

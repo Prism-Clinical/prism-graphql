@@ -15,7 +15,7 @@ import { useAdminStats } from '@/lib/hooks/useAdminStats';
 import { useAuditLogs } from '@/lib/hooks/useAuditLogs';
 
 const quickActions = [
-  { name: 'Create Template', description: 'Add a new care plan template', href: '/templates/new', icon: DocumentDuplicateIcon },
+  { name: 'Create Care Plan', description: 'Add a new care plan', href: '/care-plans/new', icon: DocumentDuplicateIcon },
   { name: 'Add Clinical Alert', description: 'Create a patient safety alert', href: '/safety-rules/new', icon: ShieldExclamationIcon },
   { name: 'Manage Users', description: 'Add or modify user accounts', href: '/users', icon: UsersIcon },
   { name: 'Import Data', description: 'Import care plan documents', href: '/import-export', icon: ArrowDownTrayIcon },
@@ -38,7 +38,7 @@ export default function AdminDashboardPage() {
   const { logs, loading: logsLoading } = useAuditLogs({ first: 5 });
 
   const statsData = [
-    { name: 'Care Plan Templates', value: stats?.totalTemplates ?? '-', active: stats?.activeTemplates, icon: DocumentDuplicateIcon, href: '/templates', color: 'bg-blue-500' },
+    { name: 'Care Plans', value: stats?.totalTemplates ?? '-', active: stats?.activeTemplates, icon: DocumentDuplicateIcon, href: '/care-plans', color: 'bg-blue-500' },
     { name: 'Clinical Alerts', value: stats?.totalSafetyRules ?? '-', active: stats?.activeSafetyRules, icon: ShieldExclamationIcon, href: '/safety-rules', color: 'bg-orange-500' },
     { name: 'Active Users', value: stats?.activeUsers ?? '-', total: stats?.totalUsers, icon: UsersIcon, href: '/users', color: 'bg-green-500' },
     { name: 'Medications', value: stats?.totalMedications ?? '-', icon: BeakerIcon, href: '/medications', color: 'bg-purple-500' },
@@ -49,7 +49,7 @@ export default function AdminDashboardPage() {
       <div className="mb-8">
         <h1 className="text-2xl font-bold text-gray-900">Admin Dashboard</h1>
         <p className="mt-1 text-sm text-gray-500">
-          Manage Prism system configuration, templates, and users
+          Manage Prism system configuration, care plans, and users
         </p>
       </div>
 

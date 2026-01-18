@@ -5,7 +5,7 @@ import type { NextRequest } from 'next/server';
 const publicRoutes = ['/login', '/signup', '/forgot-password', '/reset-password', '/verify-email'];
 
 // Routes that are always protected
-const protectedRoutes = ['/dashboard', '/templates', '/safety-rules', '/users', '/medications', '/import-export', '/audit-logs', '/provider-approvals'];
+const protectedRoutes = ['/dashboard', '/care-plans', '/safety-rules', '/users', '/medications', '/import-export', '/audit-logs', '/provider-approvals'];
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
