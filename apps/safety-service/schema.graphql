@@ -1,0 +1,324 @@
+extend schema @link(url: "https://specs.apollo.dev/federation/v2.10", import: ["@key", "@external", "@shareable"])
+
+# Custom scalars
+scalar DateTime
+scalar Date
+
+# =============================================================================
+# ENUMS - Structured query types (NO free-text allowed per RFC)
+# =============================================================================
+
+enum SafetyCheckType {
+  DRUG_INTERACTION
+  ALLERGY_CONFLICT
+  CONTRAINDICATION
+  DOSAGE_VALIDATION
+  DUPLICATE_THERAPY
+  AGE_APPROPRIATENESS
+  PREGNANCY_SAFETY
+  RENAL_ADJUSTMENT
+  HEPATIC_ADJUSTMENT
+}
+
+enum SafetySeverity {
+  INFO
+  WARNING
+  CRITICAL
+  CONTRAINDICATED
+}
+
+enum SafetyCheckStatus {
+  PENDING
+  PASSED
+  FLAGGED
+  OVERRIDDEN
+  BLOCKED
+}
+
+enum ReviewQueueStatus {
+  PENDING_REVIEW
+  IN_REVIEW
+  APPROVED
+  REJECTED
+  ESCALATED
+}
+
+enum ReviewPriority {
+  P0_CRITICAL
+  P1_HIGH
+  P2_MEDIUM
+  P3_LOW
+}
+
+enum ReviewQueryFilter {
+  BY_PATIENT
+  BY_PROVIDER
+  BY_STATUS
+  BY_PRIORITY
+  BY_CHECK_TYPE
+}
+
+enum OverrideReason {
+  CLINICAL_JUDGMENT
+  PATIENT_INFORMED_CONSENT
+  NO_ALTERNATIVE_AVAILABLE
+  MONITORING_IN_PLACE
+  DOSAGE_ADJUSTED
+  SPECIALIST_APPROVED
+}
+
+# =============================================================================
+# MAIN TYPES
+# =============================================================================
+
+type SafetyCheck @key(fields: "id") {
+  id: ID!
+  patient: Patient!
+  encounterId: ID
+
+  # What triggered the check
+  checkType: SafetyCheckType!
+  triggerMedicationCode: String
+  triggerConditionCode: String
+
+  # Check results
+  status: SafetyCheckStatus!
+  severity: SafetySeverity!
+
+  # Details
+  title: String!
+  description: String!
+  clinicalRationale: String!
+
+  # Related items
+  relatedMedications: [String!]!
+  relatedConditions: [String!]!
+  relatedAllergies: [String!]!
+
+  # Citations
+  guidelineReferences: [String!]!
+
+  # Override info (if overridden)
+  overrideInfo: SafetyOverride
+
+  # Audit
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
+type SafetyOverride {
+  overriddenBy: ID!
+  overriddenAt: DateTime!
+  reason: OverrideReason!
+  justification: String!
+  expiresAt: DateTime
+}
+
+type ReviewQueueItem @key(fields: "id") {
+  id: ID!
+  patient: Patient!
+
+  # What needs review
+  safetyCheck: SafetyCheck!
+  recommendationId: ID
+
+  # Queue status
+  status: ReviewQueueStatus!
+  priority: ReviewPriority!
+
+  # Assignment
+  assignedTo: ID
+  assignedAt: DateTime
+
+  # SLA tracking
+  slaDeadline: DateTime!
+  isOverdue: Boolean!
+
+  # Resolution
+  resolution: ReviewResolution
+
+  # Audit
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
+type ReviewResolution {
+  resolvedBy: ID!
+  resolvedAt: DateTime!
+  decision: ReviewQueueStatus!
+  notes: String
+  escalationReason: String
+}
+
+type SafetyValidationResult {
+  isValid: Boolean!
+  checks: [SafetyCheck!]!
+  blockers: [SafetyCheck!]!
+  warnings: [SafetyCheck!]!
+  requiresReview: Boolean!
+  reviewQueueItem: ReviewQueueItem
+}
+
+# =============================================================================
+# PAGINATION
+# =============================================================================
+
+type SafetyCheckConnection {
+  edges: [SafetyCheckEdge!]!
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type SafetyCheckEdge {
+  node: SafetyCheck!
+  cursor: String!
+}
+
+type ReviewQueueConnection {
+  edges: [ReviewQueueEdge!]!
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type ReviewQueueEdge {
+  node: ReviewQueueItem!
+  cursor: String!
+}
+
+type PageInfo @shareable {
+  hasNextPage: Boolean!
+  hasPreviousPage: Boolean!
+  startCursor: String
+  endCursor: String
+}
+
+# =============================================================================
+# INPUTS - All structured, NO free-text queries
+# =============================================================================
+
+input SafetyValidationInput {
+  patientId: ID!
+  encounterId: ID
+  medicationCodes: [String!]
+  conditionCodes: [String!]
+  checkTypes: [SafetyCheckType!]
+}
+
+input SafetyCheckFilterInput {
+  patientId: ID
+  encounterId: ID
+  checkType: SafetyCheckType
+  status: SafetyCheckStatus
+  severity: SafetySeverity
+}
+
+input ReviewQueueFilterInput {
+  patientId: ID
+  assignedTo: ID
+  status: ReviewQueueStatus
+  priority: ReviewPriority
+  isOverdue: Boolean
+}
+
+input OverrideSafetyCheckInput {
+  safetyCheckId: ID!
+  reason: OverrideReason!
+  justification: String!
+  expiresInHours: Int
+}
+
+input ResolveReviewInput {
+  reviewQueueItemId: ID!
+  decision: ReviewQueueStatus!
+  notes: String
+  escalationReason: String
+}
+
+input AssignReviewInput {
+  reviewQueueItemId: ID!
+  assignTo: ID!
+}
+
+input PaginationInput {
+  first: Int
+  after: String
+  last: Int
+  before: String
+}
+
+# =============================================================================
+# QUERIES - Structured lookups only
+# =============================================================================
+
+type Query {
+  # Get single safety check by ID
+  safetyCheck(id: ID!): SafetyCheck
+
+  # List safety checks with structured filters
+  safetyChecks(
+    filter: SafetyCheckFilterInput
+    pagination: PaginationInput
+  ): SafetyCheckConnection!
+
+  # Get safety checks for a patient
+  safetyChecksForPatient(
+    patientId: ID!
+    status: SafetyCheckStatus
+    severity: SafetySeverity
+    pagination: PaginationInput
+  ): SafetyCheckConnection!
+
+  # Get review queue item by ID
+  reviewQueueItem(id: ID!): ReviewQueueItem
+
+  # List review queue with filters
+  reviewQueue(
+    filter: ReviewQueueFilterInput
+    pagination: PaginationInput
+  ): ReviewQueueConnection!
+
+  # Get my assigned reviews
+  myReviewQueue(
+    status: ReviewQueueStatus
+    pagination: PaginationInput
+  ): ReviewQueueConnection!
+
+  # Get overdue reviews (for alerts)
+  overdueReviews(pagination: PaginationInput): ReviewQueueConnection!
+}
+
+# =============================================================================
+# MUTATIONS
+# =============================================================================
+
+type Mutation {
+  # Run safety validation for a set of medications/conditions
+  validateSafety(input: SafetyValidationInput!): SafetyValidationResult!
+
+  # Override a safety check (with required justification)
+  overrideSafetyCheck(input: OverrideSafetyCheckInput!): SafetyCheck!
+
+  # Assign a review queue item
+  assignReview(input: AssignReviewInput!): ReviewQueueItem!
+
+  # Resolve a review queue item
+  resolveReview(input: ResolveReviewInput!): ReviewQueueItem!
+
+  # Escalate a review
+  escalateReview(reviewQueueItemId: ID!, reason: String!): ReviewQueueItem!
+}
+
+# =============================================================================
+# FEDERATION - Reference types from other subgraphs
+# =============================================================================
+
+# Extend Patient to add safety-related fields
+extend type Patient @key(fields: "id") {
+  id: ID! @external
+  safetyChecks(
+    status: SafetyCheckStatus
+    severity: SafetySeverity
+    pagination: PaginationInput
+  ): SafetyCheckConnection!
+  activeSafetyAlerts: [SafetyCheck!]!
+}

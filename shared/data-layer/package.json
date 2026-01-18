@@ -1,0 +1,25 @@
+{
+  "name": "@healthcare-federation/data-layer",
+  "version": "1.0.0",
+  "description": "Shared data layer for healthcare federation services",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "migrate": "node dist/migrations/migrate.js",
+    "migrate:up": "node dist/migrations/migrate.js up",
+    "migrate:down": "node dist/migrations/migrate.js down",
+    "migrate:create": "node dist/migrations/create-migration.js"
+  },
+  "dependencies": {
+    "pg": "^8.11.3",
+    "redis": "^4.6.10",
+    "@types/pg": "^8.10.7",
+    "dotenv": "^16.3.1"
+  },
+  "devDependencies": {
+    "typescript": "^5.2.2",
+    "@types/node": "^20.8.0"
+  }
+}

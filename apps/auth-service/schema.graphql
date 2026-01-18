@@ -1,0 +1,306 @@
+extend schema @link(url: "https://specs.apollo.dev/federation/v2.10", import: ["@key", "@external", "@shareable"])
+
+scalar DateTime
+
+# =============================================================================
+# ENUMS
+# =============================================================================
+
+enum UserType {
+  ADMIN
+  PROVIDER
+}
+
+enum ProviderRole {
+  PHYSICIAN
+  NURSE
+  PHARMACIST
+  CARE_COORDINATOR
+}
+
+enum ProviderStatus {
+  PENDING_VERIFICATION
+  PENDING_APPROVAL
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+}
+
+enum AdminRole {
+  ADMIN
+  CLINICIAN
+  REVIEWER
+  AUDITOR
+  READ_ONLY
+}
+
+enum AdminStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+  PENDING
+}
+
+enum DomainType {
+  HOSPITAL
+  ACADEMIC
+  RESEARCH
+  CLINIC
+  INTERNAL
+}
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+# =============================================================================
+# TYPES
+# =============================================================================
+
+type AuthPayload {
+  accessToken: String!
+  refreshToken: String!
+  expiresIn: Int!
+  user: AuthUser!
+}
+
+type AuthUser {
+  id: ID!
+  email: String!
+  firstName: String!
+  lastName: String!
+  userType: UserType!
+  roles: [String!]!
+  institutionId: ID
+  providerId: ID
+  status: String!
+  emailVerified: Boolean!
+}
+
+type AuthAdminUser @key(fields: "id") {
+  id: ID!
+  email: String!
+  firstName: String!
+  lastName: String!
+  role: AdminRole!
+  status: AdminStatus!
+  emailVerified: Boolean!
+  lastLoginAt: DateTime
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
+type ProviderUser @key(fields: "id") {
+  id: ID!
+  email: String!
+  firstName: String!
+  lastName: String!
+  npi: String!
+  institution: AuthInstitution
+  role: ProviderRole!
+  status: ProviderStatus!
+  emailVerified: Boolean!
+  npiVerified: Boolean!
+  adminApproved: Boolean!
+  lastLoginAt: DateTime
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
+type AuthInstitution @key(fields: "id") {
+  id: ID!
+  name: String!
+  code: String!
+  domain: String
+  isActive: Boolean!
+  createdAt: DateTime!
+}
+
+type ApprovedDomain {
+  id: ID!
+  domain: String!
+  organizationName: String!
+  domainType: DomainType!
+  isActive: Boolean!
+}
+
+type ProviderApprovalRequest {
+  id: ID!
+  providerUser: ProviderUser!
+  status: ApprovalStatus!
+  reviewedBy: AuthAdminUser
+  reviewedAt: DateTime
+  reviewNotes: String
+  createdAt: DateTime!
+}
+
+type TokenValidationResult {
+  isValid: Boolean!
+  user: AuthUser
+  error: String
+}
+
+type EmailVerificationResult {
+  success: Boolean!
+  message: String!
+}
+
+type PasswordResetResult {
+  success: Boolean!
+  message: String!
+}
+
+type ApprovalResult {
+  success: Boolean!
+  message: String!
+  providerUser: ProviderUser
+}
+
+type NPIValidationResult {
+  isValid: Boolean!
+  providerName: String
+  specialty: String
+  error: String
+}
+
+type PageInfo @shareable {
+  hasNextPage: Boolean!
+  hasPreviousPage: Boolean!
+  startCursor: String
+  endCursor: String
+}
+
+type ProviderApprovalConnection {
+  edges: [ProviderApprovalEdge!]!
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type ProviderApprovalEdge {
+  node: ProviderApprovalRequest!
+  cursor: String!
+}
+
+# =============================================================================
+# INPUTS
+# =============================================================================
+
+input AdminSignupInput {
+  email: String!
+  password: String!
+  firstName: String!
+  lastName: String!
+}
+
+input ProviderSignupInput {
+  email: String!
+  password: String!
+  firstName: String!
+  lastName: String!
+  npi: String!
+  institutionCode: String!
+  role: ProviderRole!
+}
+
+input LoginInput {
+  email: String!
+  password: String!
+  userType: UserType!
+}
+
+input RefreshTokenInput {
+  refreshToken: String!
+}
+
+input PasswordResetRequestInput {
+  email: String!
+  userType: UserType!
+}
+
+input PasswordResetInput {
+  token: String!
+  newPassword: String!
+}
+
+input ChangePasswordInput {
+  currentPassword: String!
+  newPassword: String!
+}
+
+input ApprovalDecisionInput {
+  requestId: ID!
+  approved: Boolean!
+  notes: String
+}
+
+input AuthCreateInstitutionInput {
+  name: String!
+  code: String!
+  domain: String
+  addressStreet: String
+  addressCity: String
+  addressState: String
+  addressZip: String
+}
+
+input CreateApprovedDomainInput {
+  domain: String!
+  organizationName: String!
+  domainType: DomainType!
+}
+
+# =============================================================================
+# QUERIES
+# =============================================================================
+
+type Query {
+  # Token validation
+  validateToken(token: String!): TokenValidationResult!
+  me: AuthUser
+
+  # Admin queries (protected)
+  pendingApprovals(first: Int, after: String): ProviderApprovalConnection!
+  approvedDomains: [ApprovedDomain!]!
+  authInstitutions: [AuthInstitution!]!
+  authInstitution(id: ID!): AuthInstitution
+  authInstitutionByCode(code: String!): AuthInstitution
+
+  # NPI validation
+  validateNPI(npi: String!): NPIValidationResult!
+
+  # Domain validation
+  isApprovedDomain(domain: String!): Boolean!
+}
+
+# =============================================================================
+# MUTATIONS
+# =============================================================================
+
+type Mutation {
+  # Authentication
+  adminSignup(input: AdminSignupInput!): AuthPayload!
+  providerSignup(input: ProviderSignupInput!): EmailVerificationResult!
+  login(input: LoginInput!): AuthPayload!
+  logout: Boolean!
+  refreshToken(input: RefreshTokenInput!): AuthPayload!
+
+  # Email verification
+  verifyEmail(token: String!): EmailVerificationResult!
+  resendVerificationEmail(email: String!, userType: UserType!): EmailVerificationResult!
+
+  # Password reset
+  requestPasswordReset(input: PasswordResetRequestInput!): PasswordResetResult!
+  resetPassword(input: PasswordResetInput!): PasswordResetResult!
+  changePassword(input: ChangePasswordInput!): PasswordResetResult!
+
+  # Admin-only: Provider approval
+  approveProvider(input: ApprovalDecisionInput!): ApprovalResult!
+
+  # Admin-only: Domain/Institution management
+  createApprovedDomain(input: CreateApprovedDomainInput!): ApprovedDomain!
+  deactivateDomain(id: ID!): ApprovedDomain!
+  createAuthInstitution(input: AuthCreateInstitutionInput!): AuthInstitution!
+  deactivateAuthInstitution(id: ID!): AuthInstitution!
+}

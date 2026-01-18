@@ -2,13 +2,13 @@ import { buildSubgraphSchema } from "@apollo/subgraph";
 import { ApolloServer } from "@apollo/server";
 import { readFileSync } from "fs";
 import gql from "graphql-tag";
-import resolvers from "../resolvers";
+import resolvers from "@institutions/resolvers";
 
 describe("Product Mutation", () => {
   const server = new ApolloServer({
     schema: buildSubgraphSchema({
       typeDefs: gql(
-        readFileSync("products.graphql", {
+        readFileSync("schema.graphql", {
           encoding: "utf-8",
         })
       ),

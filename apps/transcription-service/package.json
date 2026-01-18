@@ -1,0 +1,59 @@
+{
+  "name": "transcription-service",
+  "private": true,
+  "description": "CISS Transcription Service - Audio transcription management for clinical encounters",
+  "version": "1.0.0",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "engines": {
+    "node": ">=18.0"
+  },
+  "scripts": {
+    "build": "npm run codegen && tsc",
+    "codegen": "graphql-codegen",
+    "postinstall": "npm run build",
+    "start": "node dist/index.js",
+    "start:worker": "node dist/workers/index.js",
+    "dev": "nodemon --watch \"src/**\" --ext \"ts,json,graphql\" --exec \"npm run build && npm run start\" --ignore src/__generated__",
+    "dev:worker": "nodemon --watch \"src/**\" --ext \"ts,json\" --exec \"npm run build && npm run start:worker\" --ignore src/__generated__",
+    "test": "jest"
+  },
+  "dependencies": {
+    "@apollo/server": "^4.3.3",
+    "@apollo/subgraph": "^2.3.1",
+    "@types/pg": "^8.15.5",
+    "@types/uuid": "^9.0.0",
+    "apollo-server-errors": "^3.3.1",
+    "bullmq": "^5.0.0",
+    "graphql": "latest",
+    "graphql-tag": "latest",
+    "ioredis": "^5.8.0",
+    "pg": "^8.16.3",
+    "uuid": "^9.0.1"
+  },
+  "devDependencies": {
+    "@graphql-codegen/cli": "^5.0.0",
+    "@graphql-codegen/typescript": "^4.0.0",
+    "@graphql-codegen/typescript-resolvers": "^4.0.0",
+    "@types/jest": "^29.0.3",
+    "@types/node": "^22.0.0",
+    "jest": "^29.0.3",
+    "nodemon": "^3.0.0",
+    "ts-jest": "^29.0.2",
+    "ts-node": "^10.9.1",
+    "typescript": "^5.0.0"
+  },
+  "jest": {
+    "preset": "ts-jest",
+    "testEnvironment": "node",
+    "roots": [
+      "src"
+    ],
+    "globals": {
+      "ts-jest": {
+        "testRegext": "/__tests__/.*.test.ts",
+        "verbose": true
+      }
+    }
+  }
+}

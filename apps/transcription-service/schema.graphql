@@ -1,0 +1,203 @@
+extend schema @link(url: "https://specs.apollo.dev/federation/v2.10", import: ["@key", "@external", "@shareable"])
+
+# Custom scalars
+scalar DateTime
+scalar Date
+
+# =============================================================================
+# ENUMS - Structured query types (NO free-text allowed per RFC)
+# =============================================================================
+
+enum TranscriptionStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum TranscriptionQueryFilter {
+  BY_PATIENT
+  BY_ENCOUNTER
+  BY_STATUS
+  BY_DATE_RANGE
+}
+
+enum EntityType {
+  MEDICATION
+  SYMPTOM
+  VITAL_SIGN
+  ALLERGY
+  PROCEDURE
+  CONDITION
+  TEMPORAL
+}
+
+enum SpeakerRole {
+  CLINICIAN
+  PATIENT
+  FAMILY_MEMBER
+  OTHER
+}
+
+# =============================================================================
+# MAIN TYPES
+# =============================================================================
+
+type Transcription @key(fields: "id") {
+  id: ID!
+  patient: Patient!
+  encounterId: ID
+
+  # Audio metadata
+  audioUri: String!
+  audioDurationSeconds: Int
+
+  # Processing state
+  status: TranscriptionStatus!
+  processingStartedAt: DateTime
+  processingCompletedAt: DateTime
+  errorMessage: String
+
+  # Results
+  transcript: TranscriptResult
+  entities: [ExtractedEntity!]!
+
+  # Audit
+  createdAt: DateTime!
+  createdBy: ID!
+  updatedAt: DateTime!
+}
+
+type TranscriptResult {
+  fullText: String!
+  segments: [TranscriptSegment!]!
+  confidenceScore: Float!
+  wordErrorRate: Float
+}
+
+type TranscriptSegment {
+  id: ID!
+  speaker: SpeakerRole!
+  speakerLabel: String
+  text: String!
+  startTimeMs: Int!
+  endTimeMs: Int!
+  confidence: Float!
+}
+
+type ExtractedEntity {
+  id: ID!
+  entityType: EntityType!
+  text: String!
+  startOffset: Int!
+  endOffset: Int!
+  confidence: Float!
+
+  # Normalized codes (RxNorm, SNOMED, etc.)
+  normalizedCode: String
+  normalizedSystem: String
+  normalizedDisplay: String
+}
+
+# =============================================================================
+# PAGINATION
+# =============================================================================
+
+type TranscriptionConnection {
+  edges: [TranscriptionEdge!]!
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type TranscriptionEdge {
+  node: Transcription!
+  cursor: String!
+}
+
+type PageInfo @shareable {
+  hasNextPage: Boolean!
+  hasPreviousPage: Boolean!
+  startCursor: String
+  endCursor: String
+}
+
+# =============================================================================
+# INPUTS - All structured, NO free-text queries
+# =============================================================================
+
+input TranscribeAudioInput {
+  patientId: ID!
+  encounterId: ID
+  audioUri: String!
+  speakerCount: Int
+  vocabularyHints: [String!]
+}
+
+input TranscriptionFilterInput {
+  patientId: ID
+  encounterId: ID
+  status: TranscriptionStatus
+  createdAfter: DateTime
+  createdBefore: DateTime
+}
+
+input PaginationInput {
+  first: Int
+  after: String
+  last: Int
+  before: String
+}
+
+# =============================================================================
+# QUERIES - Structured lookups only
+# =============================================================================
+
+type Query {
+  # Get single transcription by ID
+  transcription(id: ID!): Transcription
+
+  # List transcriptions with structured filters (NO free-text search)
+  transcriptions(
+    filter: TranscriptionFilterInput
+    pagination: PaginationInput
+  ): TranscriptionConnection!
+
+  # Get transcriptions for a specific patient
+  transcriptionsForPatient(
+    patientId: ID!
+    status: TranscriptionStatus
+    pagination: PaginationInput
+  ): TranscriptionConnection!
+
+  # Get transcriptions for a specific encounter
+  transcriptionsForEncounter(encounterId: ID!): [Transcription!]!
+}
+
+# =============================================================================
+# MUTATIONS
+# =============================================================================
+
+type Mutation {
+  # Submit audio for transcription (batch processing)
+  submitTranscription(input: TranscribeAudioInput!): Transcription!
+
+  # Cancel a pending/processing transcription
+  cancelTranscription(id: ID!): Transcription!
+
+  # Retry a failed transcription
+  retryTranscription(id: ID!): Transcription!
+}
+
+# =============================================================================
+# FEDERATION - Reference types from other subgraphs
+# =============================================================================
+
+# Extend Patient to add transcriptions field
+extend type Patient @key(fields: "id") {
+  id: ID! @external
+  transcriptions(
+    status: TranscriptionStatus
+    pagination: PaginationInput
+  ): TranscriptionConnection!
+}

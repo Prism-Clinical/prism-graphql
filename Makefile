@@ -61,6 +61,8 @@ docker-build: ## Docker - Build images without compose
 	@docker build -t healthcare-providers ./apps/providers-service
 	@docker build -t healthcare-recommendation-items ./apps/recommendation-items-service
 	@docker build -t healthcare-institutions ./apps/institutions-service
+	@docker build -t healthcare-epic-api ./apps/epic-api-service
+	@docker build -t healthcare-epic-mock ./apps/epic-mock-service
 	@echo "$(GREEN)✓ All Docker images built$(NC)"
 
 docker-clean: ## Docker - Clean up Docker resources
@@ -92,6 +94,59 @@ k8s-status: ## K8s - Show Kubernetes deployment status
 	@echo "$(BLUE)Kubernetes Status:$(NC)"
 	@kubectl get pods,services,deployments -l app=healthcare-federation 2>/dev/null || \
 		echo "$(YELLOW)No healthcare federation resources found in current namespace$(NC)"
+
+# Database Commands
+migrate: ## Database - Run pending migrations
+	@echo "$(BLUE)Running database migrations...$(NC)"
+	@./run-migrations.sh
+	@echo "$(GREEN)✓ Migrations completed$(NC)"
+
+migrate-status: ## Database - Show migration status
+	@echo "$(BLUE)Migration Status:$(NC)"
+	@docker compose exec postgres psql -U postgres -d healthcare_federation -c "SELECT migration_id, name, applied_at FROM migration_history ORDER BY applied_at;"
+
+migrate-clean: ## Database - Clean database and re-run all migrations
+	@echo "$(BLUE)Cleaning database and re-running migrations...$(NC)"
+	@docker compose exec postgres psql -U postgres -d healthcare_federation -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"
+	@./run-migrations.sh
+	@echo "$(GREEN)✓ Database cleaned and migrations completed$(NC)"
+
+# Testing Commands
+test: ## Test - Run all tests
+	@echo "$(BLUE)Running all tests...$(NC)"
+	@npm test
+	@echo "$(GREEN)✓ All tests completed$(NC)"
+
+test-unit: ## Test - Run unit tests only
+	@echo "$(BLUE)Running unit tests...$(NC)"
+	@npm run test:unit
+	@echo "$(GREEN)✓ Unit tests completed$(NC)"
+
+test-integration: ## Test - Run integration tests only
+	@echo "$(BLUE)Running integration tests...$(NC)"
+	@npm run test:integration
+	@echo "$(GREEN)✓ Integration tests completed$(NC)"
+
+test-coverage: ## Test - Run tests with coverage report
+	@echo "$(BLUE)Running tests with coverage...$(NC)"
+	@npm run test:coverage
+	@echo "$(GREEN)✓ Coverage report generated$(NC)"
+
+test-watch: ## Test - Run tests in watch mode
+	@echo "$(BLUE)Running tests in watch mode...$(NC)"
+	@npm run test:watch
+
+test-patients: ## Test - Run patients service tests
+	@echo "$(BLUE)Running patients service tests...$(NC)"
+	@npm run test:patients
+
+test-providers: ## Test - Run providers service tests
+	@echo "$(BLUE)Running providers service tests...$(NC)"
+	@npm run test:providers
+
+test-epic-api: ## Test - Run Epic API service tests
+	@echo "$(BLUE)Running Epic API service tests...$(NC)"
+	@npm run test:epic-api
 
 # Utility Commands
 status: ## Util - Show Docker container status

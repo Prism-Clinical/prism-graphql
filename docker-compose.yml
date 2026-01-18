@@ -1,6 +1,114 @@
-version: '3.8'
-
 services:
+  # Database Services
+  postgres:
+    image: pgvector/pgvector:pg15
+    container_name: healthcare-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_DB=healthcare_federation
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - healthcare-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: healthcare-redis
+    ports:
+      - "6379:6379"
+    environment:
+      - REDIS_PASSWORD=redis_password
+    command: redis-server --requirepass redis_password
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - healthcare-network
+
+  # Epic Mock Service (for testing)
+  epic-mock:
+    build:
+      context: ./apps/epic-mock-service
+      dockerfile: Dockerfile
+    container_name: healthcare-epic-mock
+    ports:
+      - "8080:8080"
+    environment:
+      - PORT=8080
+      - NODE_ENV=development
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - healthcare-network
+
+  # Epic API Gateway Service
+  epic-api-service:
+    build:
+      context: ./apps/epic-api-service
+      dockerfile: Dockerfile
+    container_name: healthcare-epic-api
+    ports:
+      - "4006:4006"
+    environment:
+      - NODE_ENV=production
+      - PORT=4006
+      - SERVICE_NAME=epic-api
+      # Database connections
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=healthcare_federation
+      - DB_USER=postgres
+      - DB_PASSWORD=postgres
+      - DB_SSL=false
+      - DB_MAX_CONNECTIONS=20
+      # Redis connection
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=redis_password
+      - REDIS_DB=0
+      - REDIS_KEY_PREFIX=healthcare
+      # Epic configuration (pointing to mock service)
+      - EPIC_BASE_URL=http://epic-mock:8080
+      - EPIC_CLIENT_ID=mock_client_id
+      - EPIC_CLIENT_SECRET=mock_client_secret
+      - EPIC_TOKEN_URL=http://epic-mock:8080/auth/token
+      - EPIC_TIMEOUT=30000
+      - EPIC_MAX_RETRIES=3
+      - EPIC_RATE_LIMIT_DELAY=1000
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      epic-mock:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:4006/.well-known/apollo/server-health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - healthcare-network
+
   # Healthcare GraphQL Federation Services
   recommendations-service:
     build:
@@ -33,6 +141,21 @@ services:
       - NODE_ENV=production
       - PORT=4002
       - SERVICE_NAME=patients
+      # Database connections
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=healthcare_federation
+      - DB_USER=postgres
+      - DB_PASSWORD=postgres
+      # Redis connection
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=redis_password
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:4002/.well-known/apollo/server-health"]
       interval: 30s
@@ -102,6 +225,520 @@ services:
     networks:
       - healthcare-network
 
+  # Prism Clinical Services
+  transcription-service:
+    build:
+      context: ./apps/transcription-service
+      dockerfile: Dockerfile
+    container_name: healthcare-transcription
+    ports:
+      - "4007:4007"
+    environment:
+      - NODE_ENV=production
+      - PORT=4007
+      - SERVICE_NAME=transcription
+      # Database connections
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=healthcare_federation
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      # Redis connection
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=redis_password
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:4007/.well-known/apollo/server-health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - healthcare-network
+
+  rag-service:
+    build:
+      context: ./apps/rag-service
+      dockerfile: Dockerfile
+    container_name: healthcare-rag
+    ports:
+      - "4008:4008"
+    environment:
+      - NODE_ENV=production
+      - PORT=4008
+      - SERVICE_NAME=rag
+      # Database connections
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=healthcare_federation
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      # Redis connection
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=redis_password
+      # ML Service connections
+      - ML_EMBEDDINGS_URL=http://rag-embeddings:8080
+      - ML_VALIDATOR_URL=http://care-plan-validator:8080
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:4008/.well-known/apollo/server-health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - healthcare-network
+
+  safety-service:
+    build:
+      context: ./apps/safety-service
+      dockerfile: Dockerfile
+    container_name: healthcare-safety
+    ports:
+      - "4009:4009"
+    environment:
+      - NODE_ENV=production
+      - PORT=4009
+      - SERVICE_NAME=safety
+      # Database connections
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=healthcare_federation
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      # Redis connection
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=redis_password
+      # ML Service connection
+      - ML_VALIDATOR_URL=http://care-plan-validator:8080
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      care-plan-validator:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:4009/.well-known/apollo/server-health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - healthcare-network
+
+  careplan-service:
+    build:
+      context: ./apps/careplan-service
+      dockerfile: Dockerfile
+    container_name: healthcare-careplan
+    ports:
+      - "4010:4010"
+    environment:
+      - NODE_ENV=production
+      - PORT=4010
+      - SERVICE_NAME=careplan
+      # Database connections
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=healthcare_federation
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      # Redis connection
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=redis_password
+      # ML Service connection
+      - ML_VALIDATOR_URL=http://care-plan-validator:8080
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:4010/.well-known/apollo/server-health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - healthcare-network
+
+  # Admin Service (user management, audit logs, admin operations)
+  admin-service:
+    build:
+      context: ./apps/admin-service
+      dockerfile: Dockerfile
+    container_name: healthcare-admin
+    ports:
+      - "4011:4011"
+    environment:
+      - NODE_ENV=production
+      - PORT=4011
+      - SERVICE_NAME=admin
+      # Database connections
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=healthcare_federation
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      # Redis connection
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=redis_password
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:4011/.well-known/apollo/server-health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - healthcare-network
+
+  # Auth Service (unified authentication for Admin and Provider dashboards)
+  auth-service:
+    build:
+      context: ./apps/auth-service
+      dockerfile: Dockerfile
+    container_name: healthcare-auth
+    ports:
+      - "4012:4012"
+    environment:
+      - NODE_ENV=production
+      - PORT=4012
+      - SERVICE_NAME=auth
+      # Database connections
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=healthcare_federation
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      # Redis connection
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=redis_password
+      # JWT Secret (should be set via environment variable in production)
+      - JWT_SECRET=${JWT_SECRET:-your-super-secret-jwt-key-change-in-production}
+      # Email configuration (for email verification)
+      - SMTP_HOST=${SMTP_HOST:-localhost}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USER=${SMTP_USER:-}
+      - SMTP_PASS=${SMTP_PASS:-}
+      - FROM_EMAIL=${FROM_EMAIL:-noreply@prism-clinical.com}
+      # App URLs for email links
+      - APP_URL=http://localhost:3000
+      - ADMIN_APP_URL=http://localhost:3001
+      # Skip NPI lookup in development
+      - SKIP_NPI_LOOKUP=true
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:4012/.well-known/apollo/server-health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - healthcare-network
+
+  # ML Services
+  audio-intelligence:
+    build:
+      context: ../prism-ml-infra
+      dockerfile: docker/audio_intelligence/Dockerfile.dev
+    container_name: healthcare-audio-intelligence
+    ports:
+      - "8081:8080"
+    environment:
+      - AUDIO_INTEL_ENVIRONMENT=development
+      - AUDIO_INTEL_WHISPER_MODEL=base
+      - AUDIO_INTEL_WHISPER_DEVICE=cpu
+      - AUDIO_INTEL_DIARIZATION_ENABLED=true
+      - PORT=8080
+      # Claude API for NLU extraction
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+    volumes:
+      - audio-models:/app/models
+    healthcheck:
+      test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:8080/health')"]
+      interval: 30s
+      timeout: 10s
+      start_period: 60s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - healthcare-network
+
+  # RAG Embeddings Service (vector embeddings for semantic search)
+  rag-embeddings:
+    build:
+      context: ../prism-ml-infra
+      dockerfile: docker/rag_embeddings/Dockerfile.dev
+    container_name: healthcare-rag-embeddings
+    ports:
+      - "8082:8080"
+    environment:
+      - RAG_EMBEDDINGS_ENVIRONMENT=development
+      - RAG_EMBEDDINGS_EMBEDDING_MODEL=sentence-transformers/all-mpnet-base-v2
+      - RAG_EMBEDDINGS_DEVICE=cpu
+      - RAG_EMBEDDINGS_CACHE_EMBEDDINGS=true
+      - PORT=8080
+      # Database connections
+      - RAG_EMBEDDINGS_POSTGRES_HOST=postgres
+      - RAG_EMBEDDINGS_POSTGRES_PORT=5432
+      - RAG_EMBEDDINGS_POSTGRES_DB=healthcare_federation
+      - RAG_EMBEDDINGS_POSTGRES_USER=postgres
+      - RAG_EMBEDDINGS_POSTGRES_PASSWORD=postgres
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 120s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - healthcare-network
+
+  # Care Plan Validator (ML-based recommendation validation)
+  care-plan-validator:
+    build:
+      context: ../prism-ml-infra
+      dockerfile: docker/care_plan_validator/Dockerfile.dev
+    container_name: healthcare-care-plan-validator
+    ports:
+      - "8083:8080"
+    environment:
+      - VALIDATOR_ENVIRONMENT=development
+      - VALIDATOR_MODEL_PATH=/app/models
+      - PORT=8080
+      # Thresholds
+      - VALIDATOR_HIGH_CONFIDENCE_THRESHOLD=0.85
+      - VALIDATOR_NEEDS_REVIEW_THRESHOLD=0.6
+      - VALIDATOR_ANOMALY_THRESHOLD=0.5
+      # Database connections
+      - VALIDATOR_POSTGRES_HOST=postgres
+      - VALIDATOR_POSTGRES_PORT=5432
+      - VALIDATOR_POSTGRES_DB=healthcare_federation
+      - VALIDATOR_POSTGRES_USER=postgres
+      - VALIDATOR_POSTGRES_PASSWORD=postgres
+    volumes:
+      - validator-models:/app/models
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 30s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - healthcare-network
+
+  # Care Plan Recommender ML Service (ML-based care plan recommendations)
+  careplan-recommender-ml:
+    build:
+      context: ../prism-ml-infra
+      dockerfile: docker/careplan_recommender/Dockerfile.dev
+    container_name: healthcare-careplan-recommender-ml
+    ports:
+      - "8084:8080"
+    environment:
+      - RECOMMENDER_ENVIRONMENT=development
+      - RECOMMENDER_MODEL_PATH=/app/models
+      - PORT=8080
+      # Embedding service connection
+      - RECOMMENDER_EMBEDDINGS_URL=http://rag-embeddings:8080
+      - RECOMMENDER_EMBEDDING_TIMEOUT=30.0
+      # Validator service connection
+      - RECOMMENDER_VALIDATOR_URL=http://care-plan-validator:8080
+      # Database connections
+      - RECOMMENDER_POSTGRES_HOST=postgres
+      - RECOMMENDER_POSTGRES_PORT=5432
+      - RECOMMENDER_POSTGRES_DB=healthcare_federation
+      - RECOMMENDER_POSTGRES_USER=postgres
+      - RECOMMENDER_POSTGRES_PASSWORD=postgres
+      # Recommendation settings
+      - RECOMMENDER_SIMILARITY_THRESHOLD=0.25
+      - RECOMMENDER_DEFAULT_MAX_RESULTS=5
+    volumes:
+      - recommender-models:/app/models
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rag-embeddings:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 30s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - healthcare-network
+
+  # PDF Parser Service (rule-based PDF extraction for care plans)
+  pdf-parser:
+    build:
+      context: ../prism-ml-infra
+      dockerfile: docker/pdf_parser/Dockerfile.dev
+    container_name: healthcare-pdf-parser
+    ports:
+      - "8085:8085"
+    environment:
+      - PDF_PARSER_ENVIRONMENT=development
+      - PDF_PARSER_MAX_FILE_SIZE_MB=10
+      - PDF_PARSER_MIN_CODE_CONFIDENCE=0.5
+      - PDF_PARSER_LOG_LEVEL=INFO
+      - PORT=8085
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8085/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 30s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - healthcare-network
+
+  # Care Plan Recommender GraphQL Service
+  careplan-recommender-service:
+    build:
+      context: ./apps/careplan-recommender-service
+      dockerfile: Dockerfile
+    container_name: healthcare-careplan-recommender
+    ports:
+      - "4013:4013"
+    environment:
+      - NODE_ENV=production
+      - PORT=4013
+      - SERVICE_NAME=careplan-recommender
+      # Database connections
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=healthcare_federation
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      # Redis connection
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=redis_password
+      # ML Service connection
+      - ML_RECOMMENDER_URL=http://careplan-recommender-ml:8080
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      careplan-recommender-ml:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:4013/.well-known/apollo/server-health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - healthcare-network
+
+  # Decision Explorer Service (Clinical pathways and ML recommendations)
+  decision-explorer-service:
+    build:
+      context: ./apps/decision-explorer-service
+      dockerfile: Dockerfile
+    container_name: healthcare-decision-explorer
+    ports:
+      - "4015:4015"
+    environment:
+      - NODE_ENV=production
+      - PORT=4015
+      - SERVICE_NAME=decision-explorer
+      # Database connections
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=healthcare_federation
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      # Redis connection
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=redis_password
+      # ML Service connection
+      - ML_SERVICE_URL=http://careplan-recommender-ml:8080
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      careplan-recommender-ml:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:4015/.well-known/apollo/server-health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - healthcare-network
+
+  # Transcription Worker (BullMQ job processor)
+  transcription-worker:
+    build:
+      context: ./apps/transcription-service
+      dockerfile: Dockerfile
+    container_name: healthcare-transcription-worker
+    command: ["node", "dist/workers/index.js"]
+    environment:
+      - NODE_ENV=production
+      - WORKER_CONCURRENCY=2
+      # ML Service connection
+      - ML_SERVICE_URL=http://audio-intelligence:8080
+      - ML_SERVICE_TIMEOUT=300000
+      # Database connections
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=healthcare_federation
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      # Redis connection
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=redis_password
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      audio-intelligence:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - healthcare-network
+
   gateway:
     build:
       context: ./gateway
@@ -117,14 +754,79 @@ services:
       - PROVIDERS_URL=http://providers-service:4003
       - RECOMMENDATION_ITEMS_URL=http://recommendation-items-service:4004
       - INSTITUTIONS_URL=http://institutions-service:4005
+      - EPIC_API_URL=http://epic-api-service:4006
+      # Prism Clinical Services
+      - TRANSCRIPTION_URL=http://transcription-service:4007
+      - RAG_URL=http://rag-service:4008
+      - SAFETY_URL=http://safety-service:4009
+      - CAREPLAN_URL=http://careplan-service:4010
+      # Admin Service
+      - ADMIN_URL=http://admin-service:4011
+      # Auth Service
+      - AUTH_URL=http://auth-service:4012/graphql
+      # Care Plan Recommender Service
+      - CAREPLAN_RECOMMENDER_URL=http://careplan-recommender-service:4013
+      # Decision Explorer Service
+      - DECISION_EXPLORER_URL=http://decision-explorer-service:4015
     depends_on:
       - recommendations-service
       - patients-service
       - providers-service
       - recommendation-items-service
       - institutions-service
+      - epic-api-service
+      - transcription-service
+      - rag-service
+      - safety-service
+      - careplan-service
+      - admin-service
+      - auth-service
+      - careplan-recommender-service
+      - decision-explorer-service
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:4000/.well-known/apollo/server-health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - healthcare-network
+
+  # Web Dashboard (Next.js Frontend)
+  web-dashboard:
+    build:
+      context: ./apps/web-dashboard
+      dockerfile: Dockerfile
+    container_name: healthcare-web-dashboard
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+    depends_on:
+      - gateway
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - healthcare-network
+
+  # Admin Dashboard (Next.js Frontend for admin operations)
+  admin-dashboard:
+    build:
+      context: ./apps/admin-dashboard
+      dockerfile: Dockerfile
+    container_name: healthcare-admin-dashboard
+    ports:
+      - "3001:3001"
+    environment:
+      - NODE_ENV=production
+    depends_on:
+      - gateway
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3001/api/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -138,6 +840,15 @@ networks:
     name: healthcare-federation
 
 volumes:
-  # Add any persistent volumes here if needed for future database integration
+  postgres-data:
+    name: healthcare-postgres-data
+  redis-data:
+    name: healthcare-redis-data
   healthcare-data:
     name: healthcare-persistent-data
+  audio-models:
+    name: healthcare-audio-models
+  validator-models:
+    name: healthcare-validator-models
+  recommender-models:
+    name: healthcare-recommender-models

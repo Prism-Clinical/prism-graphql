@@ -1,0 +1,19 @@
+{
+  "name": "@prism/auth",
+  "version": "1.0.0",
+  "description": "Shared authentication utilities for PRISM GraphQL services",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "jsonwebtoken": "^9.0.2"
+  },
+  "devDependencies": {
+    "@types/jsonwebtoken": "^9.0.5",
+    "@types/node": "^20.10.0",
+    "typescript": "^5.3.2"
+  }
+}

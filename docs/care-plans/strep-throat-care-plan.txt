@@ -1,0 +1,395 @@
+================================================================================
+CARE PLAN DOCUMENT
+================================================================================
+
+[METADATA]
+Title: Strep Throat (GAS Pharyngitis) Care Pathway
+Category: ACUTE_CARE
+Version: 1.0
+Last Updated: 2024-01-15
+Author: Clinical Guidelines Committee
+Guideline Source: IDSA Clinical Practice Guideline 2012, CDC Guidelines 2023
+Evidence Grade: A
+
+[CONDITION CODES]
+| Code       | System    | Description                              |
+|------------|-----------|------------------------------------------|
+| J02.0      | ICD-10    | Streptococcal pharyngitis                |
+| 43878008   | SNOMED    | Streptococcal sore throat                |
+| 195668008  | SNOMED    | Acute pharyngitis                        |
+| 38906004   | SNOMED    | Acute tonsillitis                        |
+| J03.00     | ICD-10    | Acute streptococcal tonsillitis          |
+
+[MEDICATION CODES]
+| Code       | System    | Description                              |
+|------------|-----------|------------------------------------------|
+| 834061     | RxNorm    | Penicillin V Potassium 500 MG Oral Tab   |
+| 834060     | RxNorm    | Penicillin V Potassium 250 MG Oral Tab   |
+| 308192     | RxNorm    | Amoxicillin 500 MG Oral Capsule          |
+| 308191     | RxNorm    | Amoxicillin 250 MG Oral Capsule          |
+| 197511     | RxNorm    | Azithromycin 250 MG Oral Tablet          |
+| 308460     | RxNorm    | Cephalexin 500 MG Oral Capsule           |
+| 197591     | RxNorm    | Cefadroxil 500 MG Oral Capsule           |
+| 310132     | RxNorm    | Clindamycin 300 MG Oral Capsule          |
+| 198405     | RxNorm    | Acetaminophen 500 MG Oral Tablet         |
+| 310965     | RxNorm    | Ibuprofen 400 MG Oral Tablet             |
+
+[LAB CODES]
+| Code       | System    | Description                              |
+|------------|-----------|------------------------------------------|
+| 78012-2    | LOINC     | Strep A Ag Throat Rapid                  |
+| 17898-3    | LOINC     | Strep A Ag Throat Culture                |
+| 546-2      | LOINC     | Bacteria Throat Culture                  |
+| 18481-2    | LOINC     | Strep A DNA Throat PCR                   |
+| 49085-6    | LOINC     | ASO Titer Serum                          |
+
+[PROCEDURE CODES]
+| Code       | System    | Description                              |
+|------------|-----------|------------------------------------------|
+| 87880      | CPT       | Strep A Assay with Optical               |
+| 87070      | CPT       | Bacterial Culture Any Source             |
+| 87081      | CPT       | Bacterial Culture Screening Only         |
+| 99213      | CPT       | Office Visit Established Low             |
+| 99214      | CPT       | Office Visit Established Moderate        |
+
+[GOALS]
+GOAL-001:
+  Description: Achieve complete resolution of pharyngitis symptoms
+  Target Value: Symptom-free
+  Target Days: 3
+  Priority: HIGH
+  Guideline: IDSA Guidelines - symptoms typically resolve within 3-4 days
+
+GOAL-002:
+  Description: Complete full course of antibiotic therapy
+  Target Value: 100% medication adherence
+  Target Days: 10
+  Priority: HIGH
+  Guideline: Full course required to prevent rheumatic fever
+
+GOAL-003:
+  Description: Achieve bacterial eradication from pharynx
+  Target Value: Negative throat culture
+  Target Days: 10
+  Priority: HIGH
+  Guideline: Bacteriologic cure prevents transmission
+
+GOAL-004:
+  Description: Prevent suppurative complications
+  Target Value: No peritonsillar abscess or cervical lymphadenitis
+  Target Days: 14
+  Priority: MEDIUM
+  Guideline: Complications rare with appropriate antibiotic therapy
+
+GOAL-005:
+  Description: Prevent rheumatic fever
+  Target Value: No carditis or arthritis development
+  Target Days: 21
+  Priority: HIGH
+  Guideline: Primary prevention with timely antibiotic treatment
+
+GOAL-006:
+  Description: Minimize transmission to close contacts
+  Target Value: Return to school/work after 24h antibiotics
+  Target Days: 1
+  Priority: MEDIUM
+  Guideline: CDC school exclusion guidelines
+
+[INTERVENTIONS]
+INT-001:
+  Type: PROCEDURE
+  Description: Rapid Antigen Detection Test (RADT) for Group A Streptococcus
+  Procedure Code: 87880
+  Schedule Days: 0
+  Instructions: Swab both tonsillar pillars and posterior pharyngeal wall; avoid tongue contact
+  Guideline: First-line diagnostic test; sensitivity 70-90%, specificity >95%
+
+INT-002:
+  Type: PROCEDURE
+  Description: Throat culture for Group A Streptococcus
+  Procedure Code: 87070
+  Schedule Days: 0
+  Instructions: Perform if RADT negative in children/adolescents with high clinical suspicion
+  Guideline: Gold standard; required for negative RADT in pediatric patients
+
+INT-003:
+  Type: MEDICATION
+  Description: Penicillin V Potassium first-line therapy
+  Medication Code: 834061
+  Dosage: 500mg
+  Frequency: BID
+  Schedule Days: 10
+  Instructions: Take on empty stomach 1 hour before or 2 hours after meals; complete full course
+  Guideline: First-line treatment per IDSA; narrow spectrum preserves microbiome
+
+INT-004:
+  Type: MEDICATION
+  Description: Amoxicillin alternative first-line (better palatability)
+  Medication Code: 308192
+  Dosage: 500mg
+  Frequency: BID
+  Schedule Days: 10
+  Instructions: May take with or without food; complete full course even if feeling better
+  Guideline: Equivalent efficacy to penicillin; preferred in children for taste
+
+INT-005:
+  Type: MEDICATION
+  Description: Amoxicillin once-daily high-dose option
+  Medication Code: 308192
+  Dosage: 1000mg
+  Frequency: QD
+  Schedule Days: 10
+  Instructions: Single daily dose improves compliance; take at same time each day
+  Guideline: FDA-approved once-daily regimen with equivalent efficacy
+
+INT-006:
+  Type: MEDICATION
+  Description: Azithromycin for penicillin-allergic patients
+  Medication Code: 197511
+  Dosage: 500mg day 1, then 250mg days 2-5
+  Frequency: QD
+  Schedule Days: 5
+  Instructions: Take 1 hour before or 2 hours after meals
+  Guideline: Second-line for penicillin allergy; increasing resistance noted
+
+INT-007:
+  Type: MEDICATION
+  Description: Cephalexin for penicillin-allergic patients (non-anaphylactic)
+  Medication Code: 308460
+  Dosage: 500mg
+  Frequency: BID
+  Schedule Days: 10
+  Instructions: Safe if prior penicillin reaction was non-anaphylactic (rash only)
+  Guideline: First-generation cephalosporin; <1% cross-reactivity
+
+INT-008:
+  Type: MEDICATION
+  Description: Clindamycin for severe penicillin allergy
+  Medication Code: 310132
+  Dosage: 300mg
+  Frequency: TID
+  Schedule Days: 10
+  Instructions: Take with full glass of water; may take with food to reduce GI upset
+  Guideline: Alternative for anaphylactic penicillin allergy
+
+INT-009:
+  Type: MEDICATION
+  Description: Acetaminophen for fever and pain relief
+  Medication Code: 198405
+  Dosage: 500-1000mg
+  Frequency: Q6H PRN
+  Schedule Days: 3
+  Instructions: Maximum 3000mg per day in adults; do not exceed 5 doses in 24 hours
+  Guideline: Symptomatic relief; does not affect disease course
+
+INT-010:
+  Type: MEDICATION
+  Description: Ibuprofen for fever and pain relief
+  Medication Code: 310965
+  Dosage: 400mg
+  Frequency: Q6H PRN
+  Schedule Days: 3
+  Instructions: Take with food; maximum 1200mg per day for OTC use
+  Guideline: Anti-inflammatory effect may provide better pain relief than acetaminophen
+
+INT-011:
+  Type: EDUCATION
+  Description: Antibiotic adherence counseling
+  Schedule Days: 0
+  Instructions: Emphasize importance of completing full 10-day course even when symptoms resolve at day 3-4; explain risk of rheumatic fever with incomplete treatment
+  Guideline: Critical for rheumatic fever prevention
+
+INT-012:
+  Type: EDUCATION
+  Description: Contagion period and return-to-school guidance
+  Schedule Days: 0
+  Instructions: Patient may return to school or work after 24 hours of antibiotic therapy AND fever-free without antipyretics; practice good hand hygiene
+  Guideline: CDC school exclusion guidelines
+
+INT-013:
+  Type: EDUCATION
+  Description: Symptomatic care measures
+  Schedule Days: 0
+  Instructions: Encourage warm salt water gargles, cold fluids, soft foods, adequate hydration; humidifier may help; avoid irritants
+  Guideline: Supportive care adjuncts
+
+INT-014:
+  Type: MONITORING
+  Description: Symptom reassessment for treatment failure
+  Schedule Days: 3
+  Instructions: If no improvement after 48-72 hours of antibiotics, contact provider for reassessment and possible alternative diagnosis
+  Guideline: Treatment failure workup may include throat culture if not already done
+
+INT-015:
+  Type: FOLLOW_UP
+  Description: Follow-up visit for persistent or recurrent symptoms
+  Procedure Code: 99213
+  Schedule Days: 14
+  Instructions: Schedule if symptoms persist beyond 7 days, recur within 2 weeks, or if any complications develop
+  Guideline: Routine follow-up not needed for uncomplicated cases
+
+INT-016:
+  Type: REFERRAL
+  Description: ENT referral for recurrent strep pharyngitis
+  Referral Specialty: Otolaryngology
+  Schedule Days: 0
+  Instructions: Consider referral for patients with 7+ episodes per year, 5+/year for 2 years, or 3+/year for 3 years for tonsillectomy evaluation
+  Guideline: Paradise criteria for tonsillectomy consideration
+
+[CLINICAL CONTENT]
+--- OVERVIEW ---
+Streptococcal pharyngitis (strep throat) is an acute bacterial infection of the
+oropharynx caused by Group A Streptococcus (Streptococcus pyogenes). It accounts
+for approximately 15-30% of pharyngitis cases in children aged 5-15 years and
+5-15% of cases in adults. The condition is most common during late winter and
+early spring months.
+
+Accurate diagnosis is important because untreated or inadequately treated GAS
+pharyngitis can lead to suppurative complications (peritonsillar abscess,
+retropharyngeal abscess, cervical lymphadenitis, mastoiditis) and non-suppurative
+sequelae (acute rheumatic fever, post-streptococcal glomerulonephritis).
+
+Antibiotic therapy is recommended for confirmed GAS pharyngitis to reduce
+symptom duration, prevent complications, reduce transmission, and most
+importantly, prevent acute rheumatic fever.
+
+--- SYMPTOMS ---
+- Sudden onset of sore throat (odynophagia)
+- Fever, often >38.3C (101F)
+- Tonsillar erythema and exudates (white/yellow patches)
+- Tender, enlarged anterior cervical lymph nodes
+- Palatal petechiae (red spots on soft palate)
+- Headache
+- Abdominal pain (especially in children)
+- Nausea or vomiting (more common in children)
+- Scarlatiniform rash (sandpaper texture) in scarlet fever
+
+Symptoms that suggest viral etiology rather than GAS:
+- Cough
+- Rhinorrhea (runny nose)
+- Hoarseness
+- Oral ulcers
+- Viral exanthem
+- Conjunctivitis
+- Diarrhea
+
+--- DIAGNOSIS ---
+Clinical scoring systems (Centor/McIsaac) can help stratify probability but
+microbiologic testing is required for diagnosis confirmation.
+
+Modified Centor (McIsaac) Score:
+- Tonsillar exudates: +1 point
+- Tender anterior cervical adenopathy: +1 point
+- Fever history (>38C): +1 point
+- Absence of cough: +1 point
+- Age 3-14 years: +1 point
+- Age 15-44 years: 0 points
+- Age 45+ years: -1 point
+
+Interpretation:
+- Score 0-1: No testing or antibiotics (risk <10%)
+- Score 2-3: Perform RADT, treat if positive
+- Score 4-5: Perform RADT, consider empiric treatment
+
+Diagnostic Algorithm:
+1. Calculate modified Centor score
+2. If score >= 2: Perform RADT
+3. If RADT positive: Diagnose GAS pharyngitis, initiate antibiotics
+4. If RADT negative in children/adolescents: Perform backup throat culture
+5. If RADT negative in adults (score 2-3): No further testing needed
+6. Treat based on culture result if performed
+
+--- TREATMENT ---
+First-Line Therapy (No Penicillin Allergy):
+- Penicillin V 500mg PO BID x 10 days (adults)
+- Penicillin V 250mg PO BID-TID x 10 days (children <27kg)
+- Amoxicillin 500mg PO BID x 10 days (adults) - better palatability
+- Amoxicillin 50mg/kg PO once daily (max 1000mg) x 10 days (children)
+
+Penicillin Allergy (Non-Anaphylactic):
+- Cephalexin 500mg PO BID x 10 days
+- Cefadroxil 500mg PO BID x 10 days
+
+Penicillin Allergy (Anaphylactic/Severe):
+- Azithromycin 500mg day 1, then 250mg days 2-5
+- Clindamycin 300mg PO TID x 10 days
+
+Note: Macrolide resistance in GAS is increasing (5-10% in US), so azithromycin
+should be reserved for patients with true severe penicillin allergy.
+
+--- COMPLICATIONS ---
+Suppurative Complications (days to weeks after infection):
+- Peritonsillar abscess (quinsy) - most common
+- Retropharyngeal abscess
+- Cervical lymphadenitis
+- Mastoiditis
+- Sinusitis
+- Otitis media
+- Meningitis (rare)
+
+Non-Suppurative Complications (weeks after infection):
+- Acute rheumatic fever (2-4 weeks post-infection)
+  - Carditis, arthritis, chorea, erythema marginatum, subcutaneous nodules
+  - Prevented by antibiotic treatment within 9 days of symptom onset
+- Post-streptococcal glomerulonephritis (1-3 weeks post-infection)
+  - Hematuria, edema, hypertension
+  - NOT prevented by antibiotic treatment
+- PANDAS (Pediatric Autoimmune Neuropsychiatric Disorders Associated with Strep)
+  - Controversial; characterized by sudden onset OCD/tics
+
+--- FOLLOW_UP ---
+Routine follow-up is not necessary for uncomplicated strep pharyngitis with
+appropriate antibiotic therapy and clinical response.
+
+Indications for Follow-Up:
+- Symptoms not improving after 48-72 hours of antibiotics
+- Recurrence of symptoms within 2-4 weeks
+- Development of new symptoms suggesting complications
+- Multiple recurrences (>3 per year)
+
+Test of Cure:
+- Not routinely recommended
+- Consider in patients with history of rheumatic fever
+- Consider in outbreak settings
+
+Recurrent Strep Pharyngitis:
+- Ensure compliance with full antibiotic course
+- Consider carrier state vs. re-infection
+- Alternative antibiotic regimens for failures
+- ENT referral for tonsillectomy consideration if frequent
+
+--- PATIENT_EDUCATION ---
+Key Teaching Points:
+1. Complete all antibiotics even when feeling better
+2. Discard toothbrush after 24 hours of antibiotics
+3. Stay home from work/school until on antibiotics for 24 hours AND fever-free
+4. Wash hands frequently to prevent spread
+5. Do not share drinking glasses or eating utensils
+6. Supportive measures: rest, fluids, soft foods, salt water gargles
+
+Warning Signs to Seek Care:
+- Difficulty breathing or swallowing
+- Inability to swallow saliva (drooling)
+- Muffled or "hot potato" voice
+- Neck stiffness or severe neck swelling
+- High fever not responding to medications
+- No improvement after 48-72 hours of antibiotics
+- Worsening symptoms after initial improvement
+
+--- REFERENCES ---
+1. Shulman ST, et al. Clinical Practice Guideline for the Diagnosis and
+   Management of Group A Streptococcal Pharyngitis: 2012 Update by the
+   Infectious Diseases Society of America. Clin Infect Dis. 2012;55(10):e86-102.
+
+2. CDC. Pharyngitis (Strep Throat). Available at:
+   https://www.cdc.gov/groupastrep/diseases-public/strep-throat.html
+
+3. Wald ER. Group A streptococcal tonsillopharyngitis in children and
+   adolescents: Clinical features and diagnosis. UpToDate. 2023.
+
+4. Paradise JL, et al. Efficacy of tonsillectomy for recurrent throat
+   infection in severely affected children. N Engl J Med. 1984;310:674-83.
+
+================================================================================
+END OF DOCUMENT
+================================================================================

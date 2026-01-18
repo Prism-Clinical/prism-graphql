@@ -1,0 +1,227 @@
+================================================================================
+CARE PLAN DOCUMENT
+================================================================================
+
+[METADATA]
+Title: Gastroesophageal Reflux Disease (GERD) in Pregnancy Care Pathway
+Category: CHRONIC_DISEASE
+Version: 1.0
+Last Updated: 2024-01-04
+Author: Clinical Guidelines Committee
+Guideline Source: ACG Clinical Guideline 2022, ACOG Practice Advisory
+Evidence Grade: B
+
+[CONDITION CODES]
+| Code       | System    | Description                              |
+|------------|-----------|------------------------------------------|
+| K21.0      | ICD-10    | GERD with esophagitis                    |
+| K21.9      | ICD-10    | GERD without esophagitis                 |
+| 235595009  | SNOMED    | Gastroesophageal reflux disease          |
+| 16331000   | SNOMED    | Heartburn                                |
+| O99.89     | ICD-10    | Other diseases complicating pregnancy    |
+
+[MEDICATION CODES]
+| Code       | System    | Description                              |
+|------------|-----------|------------------------------------------|
+| 308907     | RxNorm    | Calcium carbonate 500 MG Chewable Tab    |
+| 153010     | RxNorm    | Aluminum/Magnesium hydroxide suspension  |
+| 314234     | RxNorm    | Sucralfate 1 GM Oral Tablet              |
+| 310273     | RxNorm    | Famotidine 20 MG Oral Tablet             |
+| 314200     | RxNorm    | Pantoprazole 40 MG DR Oral Tablet        |
+| 311277     | RxNorm    | Lansoprazole 30 MG DR Oral Capsule       |
+| 606726     | RxNorm    | Esomeprazole 20 MG DR Oral Capsule       |
+| 207212     | RxNorm    | Omeprazole 20 MG DR Oral Capsule         |
+| 311666     | RxNorm    | Metoclopramide 10 MG Oral Tablet         |
+
+[LAB CODES]
+| Code       | System    | Description                              |
+|------------|-----------|------------------------------------------|
+| 2339-0     | LOINC     | Glucose SerPl                            |
+| 718-7      | LOINC     | Hemoglobin Blood                         |
+
+[PROCEDURE CODES]
+| Code       | System    | Description                              |
+|------------|-----------|------------------------------------------|
+| 43239      | CPT       | EGD with biopsy                          |
+| 43235      | CPT       | EGD diagnostic                           |
+| 99213      | CPT       | Office Visit Established Low             |
+| 99214      | CPT       | Office Visit Established Moderate        |
+
+[GOALS]
+GOAL-001:
+  Description: Achieve symptom relief from heartburn and regurgitation
+  Target Value: Symptoms controlled
+  Target Days: 14
+  Priority: HIGH
+  Guideline: ACG - stepwise therapy for symptom control
+
+GOAL-002:
+  Description: Maintain adequate nutritional intake during pregnancy
+  Target Value: Normal weight gain trajectory
+  Target Days: 280
+  Priority: HIGH
+  Guideline: ACOG - maternal nutrition guidelines
+
+GOAL-003:
+  Description: Use lowest effective medication dose
+  Target Value: Minimal fetal exposure
+  Target Days: 280
+  Priority: MEDIUM
+  Guideline: FDA Category B/C medications preferred
+
+GOAL-004:
+  Description: Monitor for alarm symptoms requiring specialist referral
+  Target Value: No complications
+  Target Days: 280
+  Priority: HIGH
+  Guideline: ACG - dysphagia, bleeding, weight loss require EGD
+
+GOAL-005:
+  Description: Step down therapy postpartum when possible
+  Target Value: Reduced medication use
+  Target Days: 14
+  Priority: LOW
+  Guideline: Symptoms often improve after delivery
+
+[INTERVENTIONS]
+INT-001:
+  Type: LIFESTYLE
+  Description: Dietary modifications - small frequent meals, avoid triggers
+  Instructions: Eat small meals, avoid fatty/spicy foods, citrus, chocolate, caffeine. No eating within 3 hours of bedtime.
+
+INT-002:
+  Type: LIFESTYLE
+  Description: Positional modifications for sleep
+  Instructions: Elevate head of bed 6-8 inches. Sleep on left side. Avoid tight garments.
+
+INT-003:
+  Type: MEDICATION
+  Description: First-line antacid therapy with calcium carbonate
+  Medication Code: 308907
+  Dosage: 500-1000 mg
+  Frequency: After meals and at bedtime as needed
+  Instructions: Chew 2-4 tablets for heartburn relief. Preferred antacid in pregnancy.
+
+INT-004:
+  Type: MEDICATION
+  Description: Sucralfate for persistent symptoms
+  Medication Code: 314234
+  Dosage: 1 gram
+  Frequency: Three times daily before meals
+  Instructions: Minimal systemic absorption, safe in pregnancy. Separate from other medications by 2 hours.
+
+INT-005:
+  Type: MEDICATION
+  Description: H2 receptor antagonist - Famotidine
+  Medication Code: 310273
+  Dosage: 20 mg
+  Frequency: Once daily at bedtime or twice daily
+  Instructions: Category B medication. Use if lifestyle and antacids insufficient.
+
+INT-006:
+  Type: MEDICATION
+  Description: Proton pump inhibitor - Pantoprazole
+  Medication Code: 314200
+  Dosage: 40 mg
+  Frequency: Once daily before breakfast
+  Instructions: Category B PPI. Take 30-60 minutes before meals. Reserve for refractory symptoms.
+
+INT-007:
+  Type: MEDICATION
+  Description: Proton pump inhibitor - Lansoprazole
+  Medication Code: 311277
+  Dosage: 30 mg
+  Frequency: Once daily before breakfast
+  Instructions: Category B PPI. Often preferred in pregnancy. Take 30-60 min before meals.
+
+INT-008:
+  Type: REFERRAL
+  Description: Gastroenterology referral for alarm symptoms
+  Referral Specialty: Gastroenterology
+  Instructions: Refer if dysphagia, GI bleeding, persistent vomiting, weight loss, or refractory symptoms.
+
+INT-009:
+  Type: PROCEDURE
+  Description: Upper endoscopy if alarm symptoms present
+  Procedure Code: 43235
+  Instructions: Ideally performed in second trimester. Do not delay if indicated. Low sedation doses with fetal monitoring.
+
+INT-010:
+  Type: EDUCATION
+  Description: Patient education on GERD management in pregnancy
+  Instructions: Reassure that medications are low-risk. Explain stepwise approach. Discuss that symptoms often improve postpartum.
+
+INT-011:
+  Type: MONITORING
+  Description: Follow-up assessment every 2-4 weeks
+  Schedule Days: 14
+  Instructions: Assess symptom control, medication adherence, emerging alarm signs. Adjust therapy as needed.
+
+---
+
+[OVERVIEW]
+Gastroesophageal reflux disease (GERD) is extremely common in pregnancy, affecting
+up to 80% of pregnant patients. Hormonal effects (progesterone-mediated LES relaxation)
+and mechanical factors from the enlarging uterus contribute to symptoms. Diagnosis is
+clinical based on heartburn and regurgitation. Routine endoscopy is not indicated
+unless alarm symptoms are present.
+
+[SYMPTOMS]
+- Heartburn (burning chest sensation)
+- Regurgitation of stomach contents
+- Dyspepsia and bloating
+- Nausea (may overlap with pregnancy-related nausea)
+- Nocturnal symptoms and sleep disturbance
+- Waterbrash (hypersalivation)
+
+Alarm Symptoms Requiring Urgent Evaluation:
+- GI bleeding (hematemesis, melena)
+- Dysphagia or odynophagia
+- Persistent vomiting beyond typical morning sickness
+- Involuntary weight loss
+- Chest pain not clearly reflux-related
+
+[DIAGNOSIS]
+- Clinical diagnosis based on typical symptoms
+- No routine diagnostic testing for uncomplicated heartburn
+- Endoscopy (EGD) indicated only for alarm symptoms or refractory cases
+- If EGD needed, perform ideally in second trimester with appropriate precautions
+
+[TREATMENT]
+Stepwise approach prioritizing safety:
+
+Step 1: Lifestyle and Dietary Modifications
+- Small, frequent meals; avoid eating 3 hours before bed
+- Avoid triggers: fatty/spicy foods, citrus, tomato, chocolate, caffeine, carbonated drinks
+- Elevate head of bed 6-8 inches; left lateral sleeping position
+- Avoid tight garments; limit excessive weight gain
+
+Step 2: Antacids (OTC) - First-line medication
+- Calcium carbonate (Tums) preferred - safe and provides calcium
+- Avoid sodium bicarbonate and magnesium trisilicate
+
+Step 3: Sucralfate - Add for persistent symptoms
+- 1 gram BID-QID before meals
+- Minimal absorption; 90% symptom relief in studies
+
+Step 4: H2 Receptor Antagonists
+- Famotidine 20 mg once or twice daily (Category B)
+- Avoid ranitidine (withdrawn from market)
+
+Step 5: Proton Pump Inhibitors - For refractory/severe symptoms
+- Lansoprazole or pantoprazole preferred (Category B)
+- Omeprazole acceptable if needed (extensive safety data)
+- Use lowest effective dose
+
+[FOLLOW_UP]
+- Reassess every 2-4 weeks during active treatment
+- Step down therapy when symptoms controlled
+- Consider step-down postpartum as symptoms often improve
+- 20% may continue to have GERD postpartum - transition to standard management
+
+[PATIENT_EDUCATION]
+- Medications discussed are considered low-risk in pregnancy
+- Untreated severe GERD can adversely affect nutrition, sleep, and quality of life
+- Most patients respond to conservative measures initially
+- Full symptom control may require medication escalation
+- Report any alarm symptoms immediately

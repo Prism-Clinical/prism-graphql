@@ -1,0 +1,463 @@
+extend schema @link(url: "https://specs.apollo.dev/federation/v2.10", import: ["@key", "@external", "@shareable"])
+
+# Custom scalars
+scalar DateTime
+scalar Date
+scalar JSON
+
+# =============================================================================
+# ENUMS
+# =============================================================================
+
+enum UserRole {
+  ADMIN
+  CLINICIAN
+  REVIEWER
+  AUDITOR
+  READ_ONLY
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+  PENDING
+}
+
+enum SafetyRuleType {
+  DRUG_INTERACTION
+  ALLERGY_ALERT
+  CONTRAINDICATION
+  DOSAGE_CHECK
+  AGE_RESTRICTION
+  LAB_VALUE_CHECK
+}
+
+enum SafetyRuleSeverity {
+  CRITICAL
+  HIGH
+  MEDIUM
+  LOW
+  INFO
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+  IMPORT
+  EXPORT
+  LOGIN
+  LOGOUT
+  VIEW
+}
+
+enum AuditEntityType {
+  USER
+  CARE_PLAN_TEMPLATE
+  SAFETY_RULE
+  MEDICATION
+  PATIENT
+  CARE_PLAN
+  IMPORT_JOB
+}
+
+enum ImportJobStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum ImportJobType {
+  PATIENTS
+  CARE_PLAN_TEMPLATES
+  SAFETY_RULES
+  MEDICATIONS
+}
+
+# =============================================================================
+# MAIN TYPES
+# =============================================================================
+
+type AdminUser @key(fields: "id") {
+  id: ID!
+  email: String!
+  firstName: String!
+  lastName: String!
+  role: UserRole!
+  status: UserStatus!
+  lastLoginAt: DateTime
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
+type MedicationDefinition @key(fields: "code") {
+  code: String!
+  name: String!
+  genericName: String
+  drugClass: String
+  description: String
+  interactions: [DrugInteraction!]!
+  contraindications: [String!]!
+  isActive: Boolean!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
+type DrugInteraction {
+  id: ID!
+  interactingDrugCode: String!
+  interactingDrugName: String!
+  severity: SafetyRuleSeverity!
+  description: String!
+  clinicalEffect: String
+  managementRecommendation: String
+}
+
+type SafetyRule @key(fields: "id") {
+  id: ID!
+  name: String!
+  ruleType: SafetyRuleType!
+  severity: SafetyRuleSeverity!
+  description: String!
+  alertMessage: String!
+  triggerConditions: String!
+  isActive: Boolean!
+  version: String!
+  createdBy: ID
+  createdAt: DateTime!
+  updatedAt: DateTime!
+  validFrom: DateTime
+  # Version history
+  versionCount: Int!
+  history: [SafetyRuleVersion!]!
+}
+
+# Version history for SafetyRule (temporal table record)
+type SafetyRuleVersion {
+  historyId: ID!
+  id: ID!
+  name: String!
+  ruleType: SafetyRuleType!
+  severity: SafetyRuleSeverity!
+  description: String!
+  alertMessage: String!
+  triggerConditions: String!
+  isActive: Boolean!
+  version: String!
+  createdBy: ID
+  createdAt: DateTime!
+  updatedAt: DateTime!
+  # Temporal fields
+  validFrom: DateTime!
+  validTo: DateTime!
+  changeType: String!
+}
+
+type AuditLog @key(fields: "id") {
+  id: ID!
+  action: AuditAction!
+  entityType: AuditEntityType!
+  entityId: String!
+  userId: ID
+  userName: String
+  changes: JSON
+  ipAddress: String
+  userAgent: String
+  timestamp: DateTime!
+}
+
+type ImportJob @key(fields: "id") {
+  id: ID!
+  type: ImportJobType!
+  status: ImportJobStatus!
+  fileName: String!
+  totalRows: Int!
+  processedRows: Int!
+  successRows: Int!
+  errorRows: Int!
+  errors: [ImportError!]!
+  startedAt: DateTime
+  completedAt: DateTime
+  createdBy: ID!
+  createdAt: DateTime!
+}
+
+type ImportError {
+  rowNumber: Int!
+  field: String
+  message: String!
+  value: String
+}
+
+type AdminStats {
+  totalUsers: Int!
+  activeUsers: Int!
+  totalTemplates: Int!
+  activeTemplates: Int!
+  totalSafetyRules: Int!
+  activeSafetyRules: Int!
+  totalMedications: Int!
+  recentImportJobs: Int!
+  recentAuditLogs: Int!
+}
+
+# =============================================================================
+# PAGINATION
+# =============================================================================
+
+type AdminUserConnection {
+  edges: [AdminUserEdge!]!
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type AdminUserEdge {
+  node: AdminUser!
+  cursor: String!
+}
+
+type MedicationDefinitionConnection {
+  edges: [MedicationDefinitionEdge!]!
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type MedicationDefinitionEdge {
+  node: MedicationDefinition!
+  cursor: String!
+}
+
+type SafetyRuleConnection {
+  edges: [SafetyRuleEdge!]!
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type SafetyRuleEdge {
+  node: SafetyRule!
+  cursor: String!
+}
+
+type AuditLogConnection {
+  edges: [AuditLogEdge!]!
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type AuditLogEdge {
+  node: AuditLog!
+  cursor: String!
+}
+
+type ImportJobConnection {
+  edges: [ImportJobEdge!]!
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type ImportJobEdge {
+  node: ImportJob!
+  cursor: String!
+}
+
+type PageInfo @shareable {
+  hasNextPage: Boolean!
+  hasPreviousPage: Boolean!
+  startCursor: String
+  endCursor: String
+}
+
+# =============================================================================
+# INPUTS
+# =============================================================================
+
+input CreateUserInput {
+  email: String!
+  firstName: String!
+  lastName: String!
+  role: UserRole!
+}
+
+input UpdateUserInput {
+  firstName: String
+  lastName: String
+  role: UserRole
+  status: UserStatus
+}
+
+input CreateMedicationInput {
+  code: String!
+  name: String!
+  genericName: String
+  drugClass: String
+  description: String
+  contraindications: [String!]
+}
+
+input UpdateMedicationInput {
+  name: String
+  genericName: String
+  drugClass: String
+  description: String
+  contraindications: [String!]
+  isActive: Boolean
+}
+
+input CreateDrugInteractionInput {
+  medicationCode: String!
+  interactingDrugCode: String!
+  severity: SafetyRuleSeverity!
+  description: String!
+  clinicalEffect: String
+  managementRecommendation: String
+}
+
+input CreateSafetyRuleInput {
+  name: String!
+  ruleType: SafetyRuleType!
+  severity: SafetyRuleSeverity!
+  description: String!
+  alertMessage: String!
+  triggerConditions: String!
+}
+
+input UpdateSafetyRuleInput {
+  name: String
+  severity: SafetyRuleSeverity
+  description: String
+  alertMessage: String
+  triggerConditions: String
+  isActive: Boolean
+}
+
+input UserFilterInput {
+  role: UserRole
+  status: UserStatus
+  searchTerm: String
+}
+
+input MedicationFilterInput {
+  drugClass: String
+  searchTerm: String
+  isActive: Boolean
+}
+
+input SafetyRuleFilterInput {
+  ruleType: SafetyRuleType
+  severity: SafetyRuleSeverity
+  isActive: Boolean
+  searchTerm: String
+}
+
+input AuditLogFilterInput {
+  action: AuditAction
+  entityType: AuditEntityType
+  entityId: String
+  userId: ID
+  startDate: DateTime
+  endDate: DateTime
+}
+
+input ImportJobFilterInput {
+  type: ImportJobType
+  status: ImportJobStatus
+}
+
+input PaginationInput {
+  first: Int
+  after: String
+  last: Int
+  before: String
+}
+
+# =============================================================================
+# QUERIES
+# =============================================================================
+
+type Query {
+  # Admin stats
+  adminStats: AdminStats!
+
+  # User management
+  adminUser(id: ID!): AdminUser
+  adminUsers(
+    filter: UserFilterInput
+    pagination: PaginationInput
+  ): AdminUserConnection!
+
+  # Medication management
+  medicationDefinition(code: String!): MedicationDefinition
+  medicationDefinitions(
+    filter: MedicationFilterInput
+    pagination: PaginationInput
+  ): MedicationDefinitionConnection!
+
+  # Safety rules
+  safetyRule(id: ID!): SafetyRule
+  safetyRules(
+    filter: SafetyRuleFilterInput
+    pagination: PaginationInput
+  ): SafetyRuleConnection!
+
+  # Safety rule version history
+  safetyRuleHistory(id: ID!): [SafetyRuleVersion!]!
+  safetyRuleAtTime(id: ID!, timestamp: DateTime!): SafetyRule
+  safetyRuleVersionCount(id: ID!): Int!
+
+  # Audit logs
+  auditLog(id: ID!): AuditLog
+  auditLogs(
+    filter: AuditLogFilterInput
+    pagination: PaginationInput
+  ): AuditLogConnection!
+
+  # Import jobs
+  importJob(id: ID!): ImportJob
+  importJobs(
+    filter: ImportJobFilterInput
+    pagination: PaginationInput
+  ): ImportJobConnection!
+}
+
+# =============================================================================
+# MUTATIONS
+# =============================================================================
+
+type Mutation {
+  # User management
+  createUser(input: CreateUserInput!): AdminUser!
+  updateUser(id: ID!, input: UpdateUserInput!): AdminUser!
+  deleteUser(id: ID!): Boolean!
+  activateUser(id: ID!): AdminUser!
+  suspendUser(id: ID!): AdminUser!
+
+  # Medication management
+  createMedicationDefinition(input: CreateMedicationInput!): MedicationDefinition!
+  updateMedicationDefinition(code: String!, input: UpdateMedicationInput!): MedicationDefinition!
+  deleteMedicationDefinition(code: String!): Boolean!
+  addDrugInteraction(input: CreateDrugInteractionInput!): DrugInteraction!
+  removeDrugInteraction(id: ID!): Boolean!
+
+  # Safety rules
+  createSafetyRule(input: CreateSafetyRuleInput!): SafetyRule!
+  updateSafetyRule(id: ID!, input: UpdateSafetyRuleInput!): SafetyRule!
+  deleteSafetyRule(id: ID!): Boolean!
+  activateSafetyRule(id: ID!): SafetyRule!
+  deactivateSafetyRule(id: ID!): SafetyRule!
+  restoreSafetyRuleVersion(id: ID!, historyId: ID!): SafetyRule!
+
+  # Import jobs
+  createImportJob(type: ImportJobType!, fileName: String!): ImportJob!
+  cancelImportJob(id: ID!): ImportJob!
+
+  # Audit logging (internal use)
+  logAuditEvent(
+    action: AuditAction!
+    entityType: AuditEntityType!
+    entityId: String!
+    changes: JSON
+  ): AuditLog!
+}

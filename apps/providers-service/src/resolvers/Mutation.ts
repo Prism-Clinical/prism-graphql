@@ -1,6 +1,6 @@
 import { Resolvers, MutationCreateProviderArgs, MutationUpdateProviderArgs, MutationCreateFacilityArgs } from "../__generated__/resolvers-types";
 import { providersSource, facilitiesSource } from "../datasources/providersSource";
-import { ApolloError } from "apollo-server-errors";
+import { GraphQLError } from "graphql";
 
 export const Mutation: Resolvers = {
   Mutation: {
@@ -10,27 +10,27 @@ export const Mutation: Resolvers = {
       _context
     ) {
       if (!input.npi || input.npi.trim() === "") {
-        throw new ApolloError("NPI is required.", "BAD_USER_INPUT");
+        throw new GraphQLError("NPI is required.");
       }
       if (!input.firstName || input.firstName.trim() === "") {
-        throw new ApolloError("First name is required.", "BAD_USER_INPUT");
+        throw new GraphQLError("First name is required.");
       }
       if (!input.lastName || input.lastName.trim() === "") {
-        throw new ApolloError("Last name is required.", "BAD_USER_INPUT");
+        throw new GraphQLError("Last name is required.");
       }
       if (!input.specialty || input.specialty.trim() === "") {
-        throw new ApolloError("Specialty is required.", "BAD_USER_INPUT");
+        throw new GraphQLError("Specialty is required.");
       }
       if (!input.email || input.email.trim() === "") {
-        throw new ApolloError("Email is required.", "BAD_USER_INPUT");
+        throw new GraphQLError("Email is required.");
       }
       
       if (providersSource.some((p) => p.npi === input.npi)) {
-        throw new ApolloError("A provider with this NPI already exists.", "BAD_USER_INPUT");
+        throw new GraphQLError("A provider with this NPI already exists.");
       }
       
       if (input.facilityId && !facilitiesSource.some((f) => f.id === input.facilityId)) {
-        throw new ApolloError("Facility not found.", "BAD_USER_INPUT");
+        throw new GraphQLError("Facility not found.");
       }
       
       const newId =
@@ -61,11 +61,11 @@ export const Mutation: Resolvers = {
     ) {
       const provider = providersSource.find((p) => p.id === id);
       if (!provider) {
-        throw new ApolloError("Provider not found.", "NOT_FOUND");
+        throw new GraphQLError("Provider not found.");
       }
       
       if (input.facilityId && !facilitiesSource.some((f) => f.id === input.facilityId)) {
-        throw new ApolloError("Facility not found.", "BAD_USER_INPUT");
+        throw new GraphQLError("Facility not found.");
       }
       
       if (input.firstName !== undefined) provider.firstName = input.firstName;
@@ -85,13 +85,13 @@ export const Mutation: Resolvers = {
       _context
     ) {
       if (!input.name || input.name.trim() === "") {
-        throw new ApolloError("Facility name is required.", "BAD_USER_INPUT");
+        throw new GraphQLError("Facility name is required.");
       }
       if (!input.address) {
-        throw new ApolloError("Facility address is required.", "BAD_USER_INPUT");
+        throw new GraphQLError("Facility address is required.");
       }
       if (!input.phone || input.phone.trim() === "") {
-        throw new ApolloError("Facility phone is required.", "BAD_USER_INPUT");
+        throw new GraphQLError("Facility phone is required.");
       }
       
       const newId =

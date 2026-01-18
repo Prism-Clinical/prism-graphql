@@ -5,7 +5,7 @@ scalar Date
 
 type Recommendation @key(fields: "id") {
   id: ID!
-  caseId: ID!
+  patientId: ID!
   providerId: ID!
   title: String!
   description: String!
@@ -29,7 +29,7 @@ enum RecommendationStatus {
   CANCELLED
 }
 
-type Case @key(fields: "id") {
+type Patient @key(fields: "id") {
   id: ID!
   recommendations: [Recommendation!]!
 }
@@ -45,7 +45,7 @@ type RecommendationItem @key(fields: "id", resolvable: false) {
 
 type Query {
   recommendation(id: ID!): Recommendation
-  recommendationsForCase(caseId: ID!): [Recommendation!]!
+  recommendationsForPatient(patientId: ID!): [Recommendation!]!
   recommendationsByProvider(providerId: ID!): [Recommendation!]!
 }
 
@@ -55,7 +55,7 @@ type Mutation {
 }
 
 input CreateRecommendationInput {
-  caseId: ID!
+  patientId: ID!
   providerId: ID!
   title: String!
   description: String!

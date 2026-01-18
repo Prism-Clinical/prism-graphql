@@ -1,27 +1,46 @@
-import { Resolvers, CaseStatus, CasePriority } from "../__generated__/resolvers-types";
-import { patientsSource } from "../datasources/patientsSource";
+import { Resolvers, CaseStatus, CasePriority, Gender } from "../__generated__/resolvers-types";
+import { patientService, Patient } from "../services/database";
+
+// Helper function to convert database patient to GraphQL patient
+function convertToGraphQLPatient(dbPatient: Patient) {
+  return {
+    ...dbPatient,
+    mrn: dbPatient.medicalRecordNumber,
+    gender: dbPatient.gender ? (dbPatient.gender.toUpperCase() as Gender) : Gender.Unknown,
+    cases: [] as any
+  };
+}
 
 export const Query: Resolvers = {
   Query: {
-    patient(_parent, { id }, _context) {
-      const patient = patientsSource.find((p) => String(p.id) === String(id));
-      return patient ? { ...patient, cases: [] } : null;
-    },
-    patientByMrn(_parent, { mrn }, _context) {
-      const patient = patientsSource.find((p) => p.mrn === mrn);
-      return patient ? { ...patient, cases: [] } : null;
-    },
-    patients(_parent, { limit, offset }, _context) {
-      let result = [...patientsSource];
-      
-      if (offset) {
-        result = result.slice(offset);
+    async patient(_parent, { id }, _context) {
+      try {
+        const patient = await patientService.getPatientById(id);
+        return patient ? convertToGraphQLPatient(patient) : null;
+      } catch (error) {
+        console.error('Error fetching patient:', error);
+        return null;
       }
-      if (limit) {
-        result = result.slice(0, limit);
+    },
+    async patientByMrn(_parent, { mrn }, _context) {
+      try {
+        // For now, we'll search by medical record number - this could be optimized with a specific query
+        const patients = await patientService.getAllPatients(1000, 0);
+        const patient = patients.find((p) => p.medicalRecordNumber === mrn);
+        return patient ? convertToGraphQLPatient(patient) : null;
+      } catch (error) {
+        console.error('Error fetching patient by MRN:', error);
+        return null;
       }
-      
-      return result.map((p) => ({ ...p, cases: [] as any }));
+    },
+    async patients(_parent, { limit = 50, offset = 0 }, _context) {
+      try {
+        const patients = await patientService.getAllPatients(limit, offset);
+        return patients.map(convertToGraphQLPatient);
+      } catch (error) {
+        console.error('Error fetching patients:', error);
+        return [];
+      }
     },
     case(_parent, { id }, _context) {
       // Mock case data for now
@@ -73,9 +92,14 @@ export const Query: Resolvers = {
     },
   },
   Patient: {
-    __resolveReference(reference) {
-      const patient = patientsSource.find((p) => p.id === reference.id);
-      return patient ? { ...patient, cases: [] } : null;
+    async __resolveReference(reference) {
+      try {
+        const patient = await patientService.getPatientById(reference.id);
+        return patient ? convertToGraphQLPatient(patient) : null;
+      } catch (error) {
+        console.error('Error resolving patient reference:', error);
+        return null;
+      }
     },
     cases(parent) {
       // Mock case data linked to patient

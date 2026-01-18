@@ -1,23 +1,16 @@
 import { Resolvers } from "../__generated__/resolvers-types";
-import { institutionsSource, hospitalsSource } from "../datasources/institutionsSource";
+import { institutionService, hospitalService } from "../services/database";
 
 export const Query: Resolvers = {
   Query: {
-    institution(_parent, { id }, _context) {
-      const institution = institutionsSource.find((i) => String(i.id) === String(id));
-      return institution ? { ...institution } : null;
+    async institution(_parent, { id }, _context) {
+      return await institutionService.getInstitutionById(id) as any;
     },
-    institutions(_parent, { type }, _context) {
-      let result = [...institutionsSource];
-      
-      if (type) {
-        result = result.filter((i) => i.type === type);
-      }
-      
-      return result.map((i) => ({ ...i }));
+    async institutions(_parent, { type }, _context) {
+      return await institutionService.getInstitutions({ type: type as any }) as any;
     },
-    hospital(_parent, { id }, _context) {
-      const hospital = hospitalsSource.find((h) => String(h.id) === String(id));
+    async hospital(_parent, { id }, _context) {
+      const hospital = await hospitalService.getHospitalById(id);
       if (!hospital) return null;
       
       return {
@@ -25,33 +18,39 @@ export const Query: Resolvers = {
         visits: [] as any[] // Federation will resolve visits
       };
     },
-    hospitals(_parent, { institutionId }, _context) {
-      let result = [...hospitalsSource];
-      
+    async hospitals(_parent, { institutionId }, _context) {
       if (institutionId) {
-        result = result.filter((h) => h.institutionId === institutionId);
+        const hospitals = await hospitalService.getHospitalsByInstitution(institutionId);
+        return hospitals.map((h) => ({
+          ...h,
+          visits: [] as any[] // Federation will resolve visits
+        }));
       }
       
-      return result.map((h) => ({
+      // For now, return empty array when no institutionId provided
+      // Could implement getAllHospitals method if needed
+      return [];
+    },
+    async hospitalsByInstitution(_parent, { institutionId }, _context) {
+      const hospitals = await hospitalService.getHospitalsByInstitution(institutionId);
+      return hospitals.map((h) => ({
         ...h,
         visits: [] as any[] // Federation will resolve visits
       }));
     },
   },
   Institution: {
-    __resolveReference(reference) {
-      const institution = institutionsSource.find((i) => i.id === reference.id);
-      return institution ? { ...institution } : null;
+    async __resolveReference(reference) {
+      return await institutionService.getInstitutionById(reference.id) as any;
     },
   },
   Hospital: {
-    __resolveReference(reference) {
-      const hospital = hospitalsSource.find((h) => h.id === reference.id);
+    async __resolveReference(reference) {
+      const hospital = await hospitalService.getHospitalById(reference.id);
       return hospital ? { ...hospital, visits: [] as any[] } : null;
     },
-    institution(parent: any, _args: any, _context: any) {
-      const institution = institutionsSource.find((i) => i.id === parent.institutionId);
-      return institution ? { ...institution } : null;
+    async institution(parent: any, _args: any, _context: any) {
+      return await institutionService.getInstitutionById(parent.institutionId) as any;
     },
     visits(parent: any, _args: any, _context: any) {
       // Return empty array for now - visits will be resolved by federation
