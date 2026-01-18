@@ -1,9 +1,0 @@
-{
-  "/not-found": "app/not-found.js",
-  "/recommendation-engine/page": "app/recommendation-engine/page.js",
-  "/recommendation-engine/test/page": "app/recommendation-engine/test/page.js",
-  "/decision-explorer/page": "app/decision-explorer/page.js",
-  "/dashboard/page": "app/dashboard/page.js",
-  "/ml-models/page": "app/ml-models/page.js",
-  "/(auth)/login/page": "app/(auth)/login/page.js"
-}
