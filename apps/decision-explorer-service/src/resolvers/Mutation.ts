@@ -231,7 +231,7 @@ export const Mutation = {
         return 0;
       }
 
-      const result = await response.json();
+      const result = await response.json() as { count?: number };
       return result.count || 0;
     } catch (error) {
       console.error('ML service unavailable for node embeddings:', error);
