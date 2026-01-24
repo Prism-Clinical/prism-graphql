@@ -470,14 +470,14 @@ services:
   #   2. Or manually: echo $GHCR_TOKEN | docker login ghcr.io -u $GHCR_USERNAME --password-stdin
   #
   # CONFIGURATION (in .env file):
-  #   ML_REGISTRY=ghcr.io/your-github-org/prism-ml-infra
+  #   ML_REGISTRY=ghcr.io/prism-clinical/prism-ml-infra
   #   ML_IMAGE_TAG=latest
   #
   # PULL IMAGES:
   #   docker compose pull
   # ============================================================================
   audio-intelligence:
-    image: ${ML_REGISTRY:-ghcr.io/your-org/prism-ml-infra}/audio-intelligence:${ML_IMAGE_TAG:-latest}
+    image: ${ML_REGISTRY:-ghcr.io/prism-clinical/prism-ml-infra}/audio-intelligence:${ML_IMAGE_TAG:-latest}
     container_name: healthcare-audio-intelligence
     ports:
       - "8081:8080"
@@ -503,7 +503,7 @@ services:
 
   # RAG Embeddings Service (vector embeddings for semantic search)
   rag-embeddings:
-    image: ${ML_REGISTRY:-ghcr.io/your-org/prism-ml-infra}/rag-embeddings:${ML_IMAGE_TAG:-latest}
+    image: ${ML_REGISTRY:-ghcr.io/prism-clinical/prism-ml-infra}/rag-embeddings:${ML_IMAGE_TAG:-latest}
     container_name: healthcare-rag-embeddings
     ports:
       - "8082:8080"
@@ -534,7 +534,7 @@ services:
 
   # Care Plan Validator (ML-based recommendation validation)
   care-plan-validator:
-    image: ${ML_REGISTRY:-ghcr.io/your-org/prism-ml-infra}/care-plan-validator:${ML_IMAGE_TAG:-latest}
+    image: ${ML_REGISTRY:-ghcr.io/prism-clinical/prism-ml-infra}/care-plan-validator:${ML_IMAGE_TAG:-latest}
     container_name: healthcare-care-plan-validator
     ports:
       - "8083:8080"
@@ -569,7 +569,7 @@ services:
 
   # Care Plan Recommender ML Service (ML-based care plan recommendations)
   careplan-recommender-ml:
-    image: ${ML_REGISTRY:-ghcr.io/your-org/prism-ml-infra}/careplan-recommender-ml:${ML_IMAGE_TAG:-latest}
+    image: ${ML_REGISTRY:-ghcr.io/prism-clinical/prism-ml-infra}/careplan-recommender-ml:${ML_IMAGE_TAG:-latest}
     container_name: healthcare-careplan-recommender-ml
     ports:
       - "8084:8080"
@@ -610,7 +610,7 @@ services:
 
   # PDF Parser Service (rule-based PDF extraction for care plans)
   pdf-parser:
-    image: ${ML_REGISTRY:-ghcr.io/your-org/prism-ml-infra}/pdf-parser:${ML_IMAGE_TAG:-latest}
+    image: ${ML_REGISTRY:-ghcr.io/prism-clinical/prism-ml-infra}/pdf-parser:${ML_IMAGE_TAG:-latest}
     container_name: healthcare-pdf-parser
     ports:
       - "8085:8085"

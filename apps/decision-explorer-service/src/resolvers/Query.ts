@@ -10,7 +10,7 @@ import {
 // ML Service endpoint for scoring
 const ML_SERVICE_URL = process.env.ML_SERVICE_URL || 'http://localhost:8000';
 
-interface PatientContext {
+export interface PatientContext {
   patientId?: string;
   age?: number;
   gender?: string;
@@ -75,7 +75,7 @@ async function getMLPathwayRecommendations(
       return [];
     }
 
-    return await response.json();
+    return await response.json() as any[];
   } catch (error) {
     console.warn('ML service unavailable, using fallback:', error);
     return [];
@@ -110,7 +110,7 @@ async function getMLTreeScores(
       return {};
     }
 
-    return await response.json();
+    return await response.json() as Record<string, { confidence: number; isRecommended: boolean }>;
   } catch (error) {
     console.warn('ML service unavailable for tree scoring:', error);
     return {};
