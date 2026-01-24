@@ -1,0 +1,77 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: prism-ingress
+  namespace: prism
+  annotations:
+    kubernetes.io/ingress.global-static-ip-name: prism-static-ip
+    networking.gke.io/managed-certificates: prism-cert
+    kubernetes.io/ingress.class: "gce"
+    kubernetes.io/ingress.allow-http: "false"
+spec:
+  rules:
+    # Admin Dashboard
+    - host: admin.prism.health
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: admin-dashboard
+                port:
+                  number: 3001
+
+    # Web Dashboard
+    - host: app.prism.health
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: web-dashboard
+                port:
+                  number: 3000
+
+    # GraphQL API
+    - host: api.prism.health
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: apollo-router
+                port:
+                  number: 4000
+---
+apiVersion: networking.gke.io/v1
+kind: ManagedCertificate
+metadata:
+  name: prism-cert
+  namespace: prism
+spec:
+  domains:
+    - admin.prism.health
+    - app.prism.health
+    - api.prism.health
+---
+apiVersion: cloud.google.com/v1
+kind: BackendConfig
+metadata:
+  name: prism-backend-config
+  namespace: prism
+spec:
+  healthCheck:
+    checkIntervalSec: 15
+    timeoutSec: 5
+    healthyThreshold: 1
+    unhealthyThreshold: 2
+    type: HTTP
+    requestPath: /health
+  connectionDraining:
+    drainingTimeoutSec: 60
+  sessionAffinity:
+    affinityType: "GENERATED_COOKIE"
+    affinityCookieTtlSec: 50

@@ -12,7 +12,7 @@ import { Redis } from "ioredis";
 import resolvers from "./resolvers";
 import { initializeDatabase } from "./services/database";
 
-const port = 4011;
+const port = parseInt(process.env.PORT || "4013");
 const subgraphName = "admin";
 
 async function main() {

@@ -1,0 +1,211 @@
+# Production docker-compose override
+# Usage: docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+
+services:
+  # Caddy reverse proxy with automatic HTTPS
+  caddy:
+    image: caddy:2-alpine
+    container_name: healthcare-caddy
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    environment:
+      - DOMAIN=${DOMAIN:-localhost}
+    depends_on:
+      - gateway
+      - web-dashboard
+      - admin-dashboard
+    restart: unless-stopped
+    networks:
+      - healthcare-network
+
+  # Production overrides for postgres
+  postgres:
+    environment:
+      - POSTGRES_PASSWORD=${DB_PASSWORD:?DB_PASSWORD is required}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init.sql:ro
+
+  # Production overrides for redis
+  redis:
+    command: redis-server --requirepass ${REDIS_PASSWORD:?REDIS_PASSWORD is required} --appendonly yes
+
+  # Gateway - remove port exposure (caddy handles it)
+  gateway:
+    ports: []
+    environment:
+      - NODE_ENV=production
+      - PORT=4000
+      - RECOMMENDATIONS_URL=http://recommendations-service:4001
+      - PATIENTS_URL=http://patients-service:4002
+      - PROVIDERS_URL=http://providers-service:4003
+      - RECOMMENDATION_ITEMS_URL=http://recommendation-items-service:4004
+      - INSTITUTIONS_URL=http://institutions-service:4005
+      - EPIC_API_URL=http://epic-api-service:4006
+      - TRANSCRIPTION_URL=http://transcription-service:4007
+      - RAG_URL=http://rag-service:4008
+      - SAFETY_URL=http://safety-service:4009
+      - CAREPLAN_URL=http://careplan-service:4010
+      - ADMIN_URL=http://admin-service:4011
+      - AUTH_URL=http://auth-service:4012/graphql
+      - CAREPLAN_RECOMMENDER_URL=http://careplan-recommender-service:4013
+      - DECISION_EXPLORER_URL=http://decision-explorer-service:4015
+
+  # Web Dashboard - remove port exposure
+  web-dashboard:
+    ports: []
+    environment:
+      - NODE_ENV=production
+      - NEXT_PUBLIC_GRAPHQL_URL=https://${DOMAIN}/graphql
+      - NEXT_PUBLIC_API_URL=https://${DOMAIN}
+
+  # Admin Dashboard - remove port exposure
+  admin-dashboard:
+    ports: []
+    environment:
+      - NODE_ENV=production
+      - NEXT_PUBLIC_GRAPHQL_URL=https://${DOMAIN}/graphql
+      - NEXT_PUBLIC_API_URL=https://${DOMAIN}
+
+  # Auth service production config
+  auth-service:
+    ports: []
+    environment:
+      - NODE_ENV=production
+      - PORT=4012
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=healthcare_federation
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - JWT_SECRET=${JWT_SECRET:?JWT_SECRET is required}
+      - SMTP_HOST=${SMTP_HOST:-}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USER=${SMTP_USER:-}
+      - SMTP_PASS=${SMTP_PASS:-}
+      - FROM_EMAIL=${FROM_EMAIL:-noreply@prism-clinical.com}
+      - APP_URL=https://${DOMAIN}
+      - ADMIN_APP_URL=https://${DOMAIN}/admin
+
+  # All other services - use production DB password
+  patients-service:
+    ports: []
+    environment:
+      - NODE_ENV=production
+      - DB_PASSWORD=${DB_PASSWORD}
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+
+  providers-service:
+    ports: []
+
+  institutions-service:
+    ports: []
+
+  recommendations-service:
+    ports: []
+
+  recommendation-items-service:
+    ports: []
+
+  epic-api-service:
+    ports: []
+    environment:
+      - DB_PASSWORD=${DB_PASSWORD}
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+
+  transcription-service:
+    ports: []
+    environment:
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+
+  rag-service:
+    ports: []
+    environment:
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+
+  safety-service:
+    ports: []
+    environment:
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+
+  careplan-service:
+    ports: []
+    environment:
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+
+  admin-service:
+    ports: []
+    environment:
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+
+  careplan-recommender-service:
+    ports: []
+    environment:
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+
+  decision-explorer-service:
+    ports: []
+    environment:
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+
+  # ML Services - production config
+  audio-intelligence:
+    ports: []
+    environment:
+      - AUDIO_INTEL_ENVIRONMENT=production
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+
+  rag-embeddings:
+    ports: []
+    environment:
+      - RAG_EMBEDDINGS_ENVIRONMENT=production
+      - RAG_EMBEDDINGS_POSTGRES_PASSWORD=${DB_PASSWORD}
+
+  care-plan-validator:
+    ports: []
+    environment:
+      - VALIDATOR_ENVIRONMENT=production
+      - VALIDATOR_POSTGRES_PASSWORD=${DB_PASSWORD}
+
+  careplan-recommender-ml:
+    ports: []
+    environment:
+      - RECOMMENDER_ENVIRONMENT=production
+      - RECOMMENDER_POSTGRES_PASSWORD=${DB_PASSWORD}
+
+  pdf-parser:
+    ports: []
+    environment:
+      - PDF_PARSER_ENVIRONMENT=production
+
+  transcription-worker:
+    environment:
+      - NODE_ENV=production
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+
+  # Don't include epic-mock in production
+  epic-mock:
+    profiles:
+      - development
+
+volumes:
+  caddy-data:
+    name: healthcare-caddy-data
+  caddy-config:
+    name: healthcare-caddy-config

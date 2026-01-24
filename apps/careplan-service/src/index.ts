@@ -10,7 +10,7 @@ import { Redis } from 'ioredis';
 import resolvers from "./resolvers";
 import { initializeDatabase } from "./services/database";
 
-const port = "4010";
+const port = process.env.PORT || "4004";
 const subgraphName = "careplan";
 
 async function main() {

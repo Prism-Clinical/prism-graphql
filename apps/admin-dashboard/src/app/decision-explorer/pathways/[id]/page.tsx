@@ -26,6 +26,8 @@ import {
   useUpdatePathwayNode,
   useDeletePathwayNode,
   PathwayNode,
+  PathwayNodeType,
+  PathwayActionType,
 } from '@/lib/hooks/usePathways';
 
 interface PathwayNodeForm {
@@ -33,8 +35,8 @@ interface PathwayNodeForm {
   isNew?: boolean;
   title: string;
   description: string;
-  nodeType: 'ROOT' | 'DECISION' | 'BRANCH' | 'RECOMMENDATION';
-  actionType?: string;
+  nodeType: PathwayNodeType;
+  actionType?: PathwayActionType;
   baseConfidence: number;
   parentNodeId?: string;
   sortOrder: number;
@@ -74,8 +76,8 @@ function buildNodeTree(nodes: PathwayNode[]): PathwayNodeForm | null {
       isNew: false,
       title: node.title,
       description: node.description || '',
-      nodeType: node.nodeType as PathwayNodeForm['nodeType'],
-      actionType: node.actionType || undefined,
+      nodeType: node.nodeType as PathwayNodeType,
+      actionType: node.actionType as PathwayActionType | undefined,
       baseConfidence: node.baseConfidence,
       parentNodeId: node.parentNodeId || undefined,
       sortOrder: node.sortOrder,
@@ -161,7 +163,7 @@ export default function EditPathwayPage() {
         isNew: true,
         title: pathway.name,
         description: pathway.description || '',
-        nodeType: 'ROOT',
+        nodeType: PathwayNodeType.ROOT,
         baseConfidence: 0.9,
         sortOrder: 0,
         children: [],
@@ -210,7 +212,7 @@ export default function EditPathwayPage() {
       isNew: true,
       title: '',
       description: '',
-      nodeType: 'BRANCH',
+      nodeType: PathwayNodeType.BRANCH,
       baseConfidence: 0.7,
       parentNodeId: parentId,
       sortOrder: 0,
@@ -323,9 +325,8 @@ export default function EditPathwayPage() {
             realId = created.id;
             savedNodeIds.set(node.id, realId);
           } else if (node.isDirty) {
-            // Update existing node
+            // Update existing node (nodeType cannot be changed after creation)
             await updatePathwayNode(node.id, {
-              nodeType: node.nodeType,
               title: node.title.trim(),
               description: node.description.trim() || undefined,
               actionType: node.actionType || undefined,
@@ -538,7 +539,7 @@ export default function EditPathwayPage() {
                 </label>
                 <select
                   value={node.actionType || ''}
-                  onChange={(e) => updateNode(node.id, { actionType: e.target.value || undefined })}
+                  onChange={(e) => updateNode(node.id, { actionType: (e.target.value || undefined) as PathwayActionType | undefined })}
                   className="w-full text-sm border-gray-300 dark:border-gray-600 rounded-md dark:bg-gray-700"
                 >
                   <option value="">Select action type...</option>
@@ -793,7 +794,7 @@ export default function EditPathwayPage() {
                     isNew: true,
                     title: name || 'Root',
                     description: description || '',
-                    nodeType: 'ROOT',
+                    nodeType: PathwayNodeType.ROOT,
                     baseConfidence: 0.9,
                     sortOrder: 0,
                     children: [],

@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { gql } from 'graphql-tag';
+import type { TrainingJob } from './useMLModels';
 
 const GRAPHQL_ENDPOINT = process.env.NEXT_PUBLIC_GRAPHQL_URL || 'http://localhost:4000/graphql';
 
@@ -21,22 +22,6 @@ export interface ModelInfo {
   lastTrainedAt: string | null;
   trainingMetrics: Record<string, any> | null;
   featureDimension: number;
-}
-
-export interface TrainingJob {
-  id: string;
-  modelType: string;
-  jobName: string | null;
-  status: string;
-  progressPercent: number;
-  statusMessage: string | null;
-  metrics: Record<string, any> | null;
-  modelPath: string | null;
-  modelVersion: string | null;
-  trainingExamplesCount: number | null;
-  startedAt: string | null;
-  completedAt: string | null;
-  createdAt: string;
 }
 
 // Queries

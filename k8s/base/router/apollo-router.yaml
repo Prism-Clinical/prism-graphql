@@ -1,0 +1,117 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: apollo-router
+  namespace: prism
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: apollo-router-config
+  namespace: prism
+data:
+  router.yaml: |
+    supergraph:
+      listen: 0.0.0.0:4000
+      introspection: true
+
+    sandbox:
+      enabled: true
+
+    headers:
+      all:
+        request:
+          - propagate:
+              matching: ".*"
+
+    cors:
+      origins:
+        - "*"
+      allow_credentials: true
+
+    health_check:
+      listen: 0.0.0.0:8088
+      enabled: true
+      path: /health
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: apollo-router
+  namespace: prism
+  labels:
+    app: apollo-router
+    tier: gateway
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: apollo-router
+  template:
+    metadata:
+      labels:
+        app: apollo-router
+        tier: gateway
+    spec:
+      serviceAccountName: apollo-router
+      containers:
+        - name: apollo-router
+          image: apollo-router
+          ports:
+            - containerPort: 4000
+          env:
+            - name: APOLLO_ROUTER_LOG
+              value: "info"
+            # Disable services that aren't deployed
+            - name: SAFETY_URL_DISABLED
+              value: "true"
+            - name: TRANSCRIPTION_URL_DISABLED
+              value: "true"
+            - name: RAG_URL_DISABLED
+              value: "true"
+            - name: CAREPLAN_RECOMMENDER_URL_DISABLED
+              value: "true"
+          volumeMounts:
+            - name: router-config
+              mountPath: /dist/config
+              readOnly: true
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "250m"
+            limits:
+              memory: "1Gi"
+              cpu: "1000m"
+          livenessProbe:
+            httpGet:
+              path: /.well-known/apollo/server-health
+              port: 4000
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /.well-known/apollo/server-health
+              port: 4000
+            initialDelaySeconds: 10
+            periodSeconds: 5
+      volumes:
+        - name: router-config
+          configMap:
+            name: apollo-router-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: apollo-router
+  namespace: prism
+spec:
+  selector:
+    app: apollo-router
+  ports:
+    - name: graphql
+      port: 4000
+      targetPort: 4000
+    - name: health
+      port: 8088
+      targetPort: 8088
+  type: ClusterIP

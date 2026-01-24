@@ -15,14 +15,14 @@ import { Card, CardBody, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Spinner } from '@/components/ui/Spinner';
-import { useCreatePathway, useCreatePathwayNode } from '@/lib/hooks/usePathways';
+import { useCreatePathway, useCreatePathwayNode, PathwayNodeType, PathwayActionType } from '@/lib/hooks/usePathways';
 
 interface PathwayNodeForm {
   id: string;
   title: string;
   description: string;
-  nodeType: 'ROOT' | 'DECISION' | 'BRANCH' | 'RECOMMENDATION';
-  actionType?: string;
+  nodeType: PathwayNodeType;
+  actionType?: PathwayActionType;
   baseConfidence: number;
   children: PathwayNodeForm[];
   isExpanded: boolean;
@@ -63,7 +63,7 @@ export default function NewPathwayPage() {
     id: generateId(),
     title: '',
     description: '',
-    nodeType: 'ROOT',
+    nodeType: PathwayNodeType.ROOT,
     baseConfidence: 0.7,
     children: [],
     isExpanded: true,
@@ -105,7 +105,7 @@ export default function NewPathwayPage() {
       id: generateId(),
       title: '',
       description: '',
-      nodeType: 'BRANCH',
+      nodeType: PathwayNodeType.BRANCH,
       baseConfidence: 0.7,
       children: [],
       isExpanded: true,
@@ -356,7 +356,7 @@ export default function NewPathwayPage() {
                 </label>
                 <select
                   value={node.actionType || ''}
-                  onChange={(e) => updateNode(node.id, { actionType: e.target.value || undefined })}
+                  onChange={(e) => updateNode(node.id, { actionType: (e.target.value || undefined) as PathwayActionType | undefined })}
                   className="w-full text-sm border-gray-300 dark:border-gray-600 rounded-md dark:bg-gray-700"
                 >
                   <option value="">Select action type...</option>

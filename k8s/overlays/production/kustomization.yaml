@@ -1,0 +1,71 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: prism
+
+resources:
+  - ../../base
+  - hpa/
+
+labels:
+  - pairs:
+      environment: production
+    includeSelectors: true
+
+# Production images from Artifact Registry
+images:
+  - name: user-service
+    newName: us-central1-docker.pkg.dev/athena-prod-484720/prism/user-service
+  - name: organization-service
+    newName: us-central1-docker.pkg.dev/athena-prod-484720/prism/organization-service
+  - name: template-service
+    newName: us-central1-docker.pkg.dev/athena-prod-484720/prism/template-service
+  - name: care-plan-service
+    newName: us-central1-docker.pkg.dev/athena-prod-484720/prism/care-plan-service
+  - name: patient-service
+    newName: us-central1-docker.pkg.dev/athena-prod-484720/prism/patient-service
+  - name: provider-service
+    newName: us-central1-docker.pkg.dev/athena-prod-484720/prism/provider-service
+  - name: scheduling-service
+    newName: us-central1-docker.pkg.dev/athena-prod-484720/prism/scheduling-service
+  - name: medication-service
+    newName: us-central1-docker.pkg.dev/athena-prod-484720/prism/medication-service
+  - name: document-service
+    newName: us-central1-docker.pkg.dev/athena-prod-484720/prism/document-service
+  - name: notification-service
+    newName: us-central1-docker.pkg.dev/athena-prod-484720/prism/notification-service
+  - name: analytics-service
+    newName: us-central1-docker.pkg.dev/athena-prod-484720/prism/analytics-service
+  - name: audit-service
+    newName: us-central1-docker.pkg.dev/athena-prod-484720/prism/audit-service
+  - name: admin-service
+    newName: us-central1-docker.pkg.dev/athena-prod-484720/prism/admin-service
+  - name: safety-rules-service
+    newName: us-central1-docker.pkg.dev/athena-prod-484720/prism/safety-rules-service
+  - name: ml-models-service
+    newName: us-central1-docker.pkg.dev/athena-prod-484720/prism/ml-models-service
+  - name: import-export-service
+    newName: us-central1-docker.pkg.dev/athena-prod-484720/prism/import-export-service
+  - name: auth-service
+    newName: us-central1-docker.pkg.dev/athena-prod-484720/prism/auth-service
+  - name: careplan-recommender
+    newName: us-central1-docker.pkg.dev/athena-prod-484720/prism/careplan-recommender
+  - name: audio-intelligence
+    newName: us-central1-docker.pkg.dev/athena-prod-484720/prism/audio-intelligence
+  - name: care-plan-validator
+    newName: us-central1-docker.pkg.dev/athena-prod-484720/prism/care-plan-validator
+  - name: rag-embeddings
+    newName: us-central1-docker.pkg.dev/athena-prod-484720/prism/rag-embeddings
+  - name: admin-dashboard
+    newName: us-central1-docker.pkg.dev/athena-prod-484720/prism/admin-dashboard
+  - name: web-dashboard
+    newName: us-central1-docker.pkg.dev/athena-prod-484720/prism/web-dashboard
+  - name: apollo-router
+    newName: us-central1-docker.pkg.dev/athena-prod-484720/prism/apollo-router
+
+configMapGenerator:
+  - name: prism-config
+    behavior: merge
+    literals:
+      - NODE_ENV=production
+      - LOG_LEVEL=warn

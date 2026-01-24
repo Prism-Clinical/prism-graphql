@@ -1,0 +1,295 @@
+# Docker Compose for pulling pre-built images from a registry
+# Usage: REGISTRY=ghcr.io/your-org/prism docker compose -f docker-compose.registry.yml up -d
+#
+# This file allows others to run without building - just pull and go!
+
+x-registry: &registry
+  # Set REGISTRY env var or change this default
+  image: ${REGISTRY:-ghcr.io/your-org/prism}
+
+services:
+  # Database Services (use standard images)
+  postgres:
+    image: pgvector/pgvector:pg15
+    container_name: healthcare-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_DB=healthcare_federation
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=${DB_PASSWORD:-postgres}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - healthcare-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: healthcare-redis
+    ports:
+      - "6379:6379"
+    command: redis-server --requirepass ${REDIS_PASSWORD:-redis_password}
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - healthcare-network
+
+  # GraphQL Services (pull from registry)
+  gateway:
+    image: ${REGISTRY:-ghcr.io/your-org/prism}/gateway:${TAG:-latest}
+    container_name: healthcare-gateway
+    ports:
+      - "4000:4000"
+    environment:
+      - NODE_ENV=production
+      - PORT=4000
+      - RECOMMENDATIONS_URL=http://recommendations-service:4001
+      - PATIENTS_URL=http://patients-service:4002
+      - PROVIDERS_URL=http://providers-service:4003
+      - RECOMMENDATION_ITEMS_URL=http://recommendation-items-service:4004
+      - INSTITUTIONS_URL=http://institutions-service:4005
+      - EPIC_API_URL=http://epic-api-service:4006
+      - TRANSCRIPTION_URL=http://transcription-service:4007
+      - RAG_URL=http://rag-service:4008
+      - SAFETY_URL=http://safety-service:4009
+      - CAREPLAN_URL=http://careplan-service:4010
+      - ADMIN_URL=http://admin-service:4011
+      - AUTH_URL=http://auth-service:4012/graphql
+      - CAREPLAN_RECOMMENDER_URL=http://careplan-recommender-service:4013
+      - DECISION_EXPLORER_URL=http://decision-explorer-service:4015
+    depends_on:
+      - auth-service
+      - admin-service
+      - patients-service
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:4000/.well-known/apollo/server-health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - healthcare-network
+
+  auth-service:
+    image: ${REGISTRY:-ghcr.io/your-org/prism}/auth-service:${TAG:-latest}
+    container_name: healthcare-auth
+    ports:
+      - "4012:4012"
+    environment:
+      - NODE_ENV=production
+      - PORT=4012
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=healthcare_federation
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=${DB_PASSWORD:-postgres}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-redis_password}
+      - JWT_SECRET=${JWT_SECRET:-local-dev-secret}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - healthcare-network
+
+  admin-service:
+    image: ${REGISTRY:-ghcr.io/your-org/prism}/admin-service:${TAG:-latest}
+    container_name: healthcare-admin
+    ports:
+      - "4011:4011"
+    environment:
+      - NODE_ENV=production
+      - PORT=4011
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=healthcare_federation
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=${DB_PASSWORD:-postgres}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-redis_password}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - healthcare-network
+
+  patients-service:
+    image: ${REGISTRY:-ghcr.io/your-org/prism}/patients-service:${TAG:-latest}
+    container_name: healthcare-patients
+    ports:
+      - "4002:4002"
+    environment:
+      - NODE_ENV=production
+      - PORT=4002
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=healthcare_federation
+      - DB_USER=postgres
+      - DB_PASSWORD=${DB_PASSWORD:-postgres}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-redis_password}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - healthcare-network
+
+  providers-service:
+    image: ${REGISTRY:-ghcr.io/your-org/prism}/providers-service:${TAG:-latest}
+    container_name: healthcare-providers
+    ports:
+      - "4003:4003"
+    environment:
+      - NODE_ENV=production
+      - PORT=4003
+    restart: unless-stopped
+    networks:
+      - healthcare-network
+
+  institutions-service:
+    image: ${REGISTRY:-ghcr.io/your-org/prism}/institutions-service:${TAG:-latest}
+    container_name: healthcare-institutions
+    ports:
+      - "4005:4005"
+    environment:
+      - NODE_ENV=production
+      - PORT=4005
+    restart: unless-stopped
+    networks:
+      - healthcare-network
+
+  recommendations-service:
+    image: ${REGISTRY:-ghcr.io/your-org/prism}/recommendations-service:${TAG:-latest}
+    container_name: healthcare-recommendations
+    ports:
+      - "4001:4001"
+    environment:
+      - NODE_ENV=production
+      - PORT=4001
+    restart: unless-stopped
+    networks:
+      - healthcare-network
+
+  recommendation-items-service:
+    image: ${REGISTRY:-ghcr.io/your-org/prism}/recommendation-items-service:${TAG:-latest}
+    container_name: healthcare-recommendation-items
+    ports:
+      - "4004:4004"
+    environment:
+      - NODE_ENV=production
+      - PORT=4004
+    restart: unless-stopped
+    networks:
+      - healthcare-network
+
+  careplan-service:
+    image: ${REGISTRY:-ghcr.io/your-org/prism}/careplan-service:${TAG:-latest}
+    container_name: healthcare-careplan
+    ports:
+      - "4010:4010"
+    environment:
+      - NODE_ENV=production
+      - PORT=4010
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=healthcare_federation
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=${DB_PASSWORD:-postgres}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-redis_password}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - healthcare-network
+
+  decision-explorer-service:
+    image: ${REGISTRY:-ghcr.io/your-org/prism}/decision-explorer-service:${TAG:-latest}
+    container_name: healthcare-decision-explorer
+    ports:
+      - "4015:4015"
+    environment:
+      - NODE_ENV=production
+      - PORT=4015
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=healthcare_federation
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=${DB_PASSWORD:-postgres}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-redis_password}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - healthcare-network
+
+  # Frontends
+  web-dashboard:
+    image: ${REGISTRY:-ghcr.io/your-org/prism}/web-dashboard:${TAG:-latest}
+    container_name: healthcare-web-dashboard
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+    depends_on:
+      - gateway
+    restart: unless-stopped
+    networks:
+      - healthcare-network
+
+  admin-dashboard:
+    image: ${REGISTRY:-ghcr.io/your-org/prism}/admin-dashboard:${TAG:-latest}
+    container_name: healthcare-admin-dashboard
+    ports:
+      - "3001:3001"
+    environment:
+      - NODE_ENV=production
+    depends_on:
+      - gateway
+    restart: unless-stopped
+    networks:
+      - healthcare-network
+
+networks:
+  healthcare-network:
+    driver: bridge
+    name: healthcare-federation
+
+volumes:
+  postgres-data:
+    name: healthcare-postgres-data
+  redis-data:
+    name: healthcare-redis-data

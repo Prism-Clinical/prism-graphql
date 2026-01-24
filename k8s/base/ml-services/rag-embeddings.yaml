@@ -1,0 +1,95 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: rag-embeddings
+  namespace: prism
+  annotations:
+    iam.gke.io/gcp-service-account: prism-ml-workload@athena-prod-484720.iam.gserviceaccount.com
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rag-embeddings
+  namespace: prism
+  labels:
+    app: rag-embeddings
+    tier: ml
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: rag-embeddings
+  template:
+    metadata:
+      labels:
+        app: rag-embeddings
+        tier: ml
+    spec:
+      serviceAccountName: rag-embeddings
+      containers:
+        - name: rag-embeddings
+          image: rag-embeddings
+          ports:
+            - containerPort: 8103
+          env:
+            - name: PORT
+              value: "8103"
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: prism-secrets
+                  key: DATABASE_URL
+            - name: OPENAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: prism-secrets
+                  key: OPENAI_API_KEY
+            - name: LOG_LEVEL
+              value: "INFO"
+          resources:
+            requests:
+              memory: "1Gi"
+              cpu: "500m"
+            limits:
+              memory: "4Gi"
+              cpu: "2000m"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8103
+            initialDelaySeconds: 60
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8103
+            initialDelaySeconds: 30
+            periodSeconds: 10
+        - name: cloud-sql-proxy
+          image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.8.0
+          args:
+            - "--structured-logs"
+            - "--auto-iam-authn"
+            - "athena-prod-484720:us-central1:prism-db"
+          securityContext:
+            runAsNonRoot: true
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "50m"
+            limits:
+              memory: "128Mi"
+              cpu: "100m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rag-embeddings
+  namespace: prism
+spec:
+  selector:
+    app: rag-embeddings
+  ports:
+    - port: 8103
+      targetPort: 8103
+  type: ClusterIP

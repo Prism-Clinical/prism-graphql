@@ -363,6 +363,17 @@ const Query: Record<string, any> = {
     const analytics = await recommenderClient.getEngineAnalytics(days);
     return RecommenderClient.analyticsToGraphQL(analytics);
   },
+
+  async engineConfiguration(
+    _: unknown,
+    __: unknown,
+    context: DataSourceContext
+  ) {
+    const { recommenderClient } = context;
+
+    const config = await recommenderClient.getEngineConfiguration();
+    return RecommenderClient.configurationToGraphQL(config);
+  },
 };
 
 export interface MLModelFilterCriteriaInput {
