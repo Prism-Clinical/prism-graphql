@@ -7,6 +7,7 @@ import {
   GET_VARIANT_GROUP,
   GET_SELECTION_RULES,
   GET_ENGINE_ANALYTICS,
+  GET_ENGINE_CONFIGURATION,
 } from '../graphql/queries/recommendationEngine';
 import {
   RECORD_RECOMMENDATION_OUTCOME,
@@ -14,6 +15,13 @@ import {
   CREATE_VARIANT,
   CREATE_SELECTION_RULE,
   DELETE_SELECTION_RULE,
+  UPDATE_VARIANT,
+  DELETE_VARIANT,
+  UPDATE_SELECTION_RULE,
+  UPDATE_VARIANT_GROUP,
+  DELETE_VARIANT_GROUP,
+  SAVE_MATCHING_CONFIG,
+  SAVE_PERSONALIZATION_CONFIG,
 } from '../graphql/mutations/recommendationEngine';
 
 // Types
@@ -367,21 +375,58 @@ export function useAddVariant() {
 
 /**
  * Remove a variant from a group
- * Note: This requires a DELETE mutation that may not exist in GraphQL yet.
- * For now, we'll keep using REST for this operation or implement later.
  */
 export function useRemoveVariant() {
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<Error | null>(null);
+  const [executeMutation, { loading, error }] = useMutation(DELETE_VARIANT, {
+    refetchQueries: [{ query: GET_VARIANT_GROUPS }],
+  });
 
-  const removeVariant = useCallback(async (_groupId: string, _variantId: string) => {
-    // TODO: Implement when DELETE_VARIANT mutation is added to GraphQL schema
-    setLoading(false);
-    setError(new Error('Remove variant not yet implemented in GraphQL'));
-    throw new Error('Remove variant not yet implemented in GraphQL');
-  }, []);
+  const removeVariant = useCallback(
+    async (_groupId: string, variantId: string) => {
+      await executeMutation({
+        variables: { id: variantId },
+      });
+      return true;
+    },
+    [executeMutation]
+  );
 
-  return { removeVariant, loading, error };
+  return { removeVariant, loading, error: error || null };
+}
+
+/**
+ * Update a variant
+ */
+export function useUpdateVariant() {
+  const [executeMutation, { loading, error }] = useMutation(UPDATE_VARIANT, {
+    refetchQueries: [{ query: GET_VARIANT_GROUPS }],
+  });
+
+  const updateVariant = useCallback(
+    async (
+      variantId: string,
+      input: {
+        variantName?: string;
+        targetAgeMin?: number;
+        targetAgeMax?: number;
+        targetSex?: string;
+        targetConditions?: string[];
+        targetRiskFactors?: string[];
+        exclusionConditions?: string[];
+        priorityScore?: number;
+        isDefault?: boolean;
+      }
+    ) => {
+      const { data } = await executeMutation({
+        variables: { id: variantId, input },
+      });
+
+      return data?.updateVariant as Variant;
+    },
+    [executeMutation]
+  );
+
+  return { updateVariant, loading, error: error || null };
 }
 
 // ============================================================================
@@ -457,6 +502,88 @@ export function useDeleteSelectionRule() {
   return { deleteRule, loading, error: error || null };
 }
 
+/**
+ * Update a selection rule
+ */
+export function useUpdateSelectionRule() {
+  const [executeMutation, { loading, error }] = useMutation(UPDATE_SELECTION_RULE, {
+    refetchQueries: [{ query: GET_SELECTION_RULES }],
+  });
+
+  const updateRule = useCallback(
+    async (
+      ruleId: string,
+      input: {
+        name?: string;
+        description?: string;
+        ruleDefinition?: Record<string, any>;
+        priority?: number;
+        isActive?: boolean;
+      }
+    ) => {
+      const { data } = await executeMutation({
+        variables: { id: ruleId, input },
+      });
+
+      return data?.updateSelectionRule as SelectionRule;
+    },
+    [executeMutation]
+  );
+
+  return { updateRule, loading, error: error || null };
+}
+
+/**
+ * Update a variant group
+ */
+export function useUpdateVariantGroup() {
+  const [executeMutation, { loading, error }] = useMutation(UPDATE_VARIANT_GROUP, {
+    refetchQueries: [{ query: GET_VARIANT_GROUPS }],
+  });
+
+  const updateGroup = useCallback(
+    async (
+      groupId: string,
+      input: {
+        name?: string;
+        description?: string;
+        conditionCodes?: string[];
+        isActive?: boolean;
+      }
+    ) => {
+      const { data } = await executeMutation({
+        variables: { id: groupId, input },
+      });
+
+      return data?.updateVariantGroup as VariantGroup;
+    },
+    [executeMutation]
+  );
+
+  return { updateGroup, loading, error: error || null };
+}
+
+/**
+ * Delete a variant group
+ */
+export function useDeleteVariantGroup() {
+  const [executeMutation, { loading, error }] = useMutation(DELETE_VARIANT_GROUP, {
+    refetchQueries: [{ query: GET_VARIANT_GROUPS }],
+  });
+
+  const deleteGroup = useCallback(
+    async (groupId: string) => {
+      await executeMutation({
+        variables: { id: groupId },
+      });
+      return true;
+    },
+    [executeMutation]
+  );
+
+  return { deleteGroup, loading, error: error || null };
+}
+
 // ============================================================================
 // Analytics Hooks
 // ============================================================================
@@ -501,4 +628,95 @@ export function useRecordOutcome() {
   );
 
   return { record, loading, error: error || null };
+}
+
+// ============================================================================
+// Configuration Hooks
+// ============================================================================
+
+export interface ScoreWeights {
+  exactMatch: number;
+  prefixMatch: number;
+  categoryMatch: number;
+  embeddingMatch: number;
+}
+
+export interface MatchingConfig {
+  strategy: string;
+  codeMatchPriority: string;
+  enableEmbeddings: boolean;
+  similarityThreshold: number;
+  maxCandidates: number;
+  scoreWeights: ScoreWeights;
+}
+
+export interface PersonalizationConfig {
+  enableRag: boolean;
+  enableOutcomeLearning: boolean;
+  enableDecisionPaths: boolean;
+  knowledgeSources: string[];
+  learningRate: string;
+}
+
+export interface EngineConfiguration {
+  matching: MatchingConfig;
+  personalization: PersonalizationConfig;
+}
+
+/**
+ * Fetch engine configuration
+ */
+export function useEngineConfiguration() {
+  const { data, loading, error, refetch } = useQuery(GET_ENGINE_CONFIGURATION, {
+    fetchPolicy: 'cache-and-network',
+  });
+
+  return {
+    config: (data?.engineConfiguration || null) as EngineConfiguration | null,
+    loading,
+    error: error || null,
+    refetch,
+  };
+}
+
+/**
+ * Save matching configuration
+ */
+export function useSaveMatchingConfig() {
+  const [executeMutation, { loading, error }] = useMutation(SAVE_MATCHING_CONFIG, {
+    refetchQueries: [{ query: GET_ENGINE_CONFIGURATION }],
+  });
+
+  const saveConfig = useCallback(
+    async (input: MatchingConfig) => {
+      const { data } = await executeMutation({
+        variables: { input },
+      });
+      return data?.saveMatchingConfig as MatchingConfig;
+    },
+    [executeMutation]
+  );
+
+  return { saveConfig, loading, error: error || null };
+}
+
+/**
+ * Save personalization configuration
+ */
+export function useSavePersonalizationConfig() {
+  const [executeMutation, { loading, error }] = useMutation(SAVE_PERSONALIZATION_CONFIG, {
+    refetchQueries: [{ query: GET_ENGINE_CONFIGURATION }],
+  });
+
+  const saveConfig = useCallback(
+    async (input: PersonalizationConfig) => {
+      const { data } = await executeMutation({
+        variables: { input },
+      });
+      return data?.savePersonalizationConfig as PersonalizationConfig;
+    },
+    [executeMutation]
+  );
+
+  return { saveConfig, loading, error: error || null };
 }

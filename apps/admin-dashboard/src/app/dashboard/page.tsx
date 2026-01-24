@@ -4,10 +4,10 @@ import Link from 'next/link';
 import {
   DocumentDuplicateIcon,
   ShieldExclamationIcon,
-  UsersIcon,
   BeakerIcon,
   ArrowDownTrayIcon,
   ClipboardDocumentListIcon,
+  CpuChipIcon,
 } from '@heroicons/react/24/outline';
 import { Card, CardBody, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Spinner } from '@/components/ui/Spinner';
@@ -17,7 +17,7 @@ import { useAuditLogs } from '@/lib/hooks/useAuditLogs';
 const quickActions = [
   { name: 'Create Care Plan', description: 'Add a new care plan', href: '/care-plans/new', icon: DocumentDuplicateIcon },
   { name: 'Add Clinical Alert', description: 'Create a patient safety alert', href: '/safety-rules/new', icon: ShieldExclamationIcon },
-  { name: 'Manage Users', description: 'Add or modify user accounts', href: '/users', icon: UsersIcon },
+  { name: 'Recommendation Engine', description: 'Configure ML recommendations', href: '/recommendation-engine', icon: CpuChipIcon },
   { name: 'Import Data', description: 'Import care plan documents', href: '/import-export', icon: ArrowDownTrayIcon },
   { name: 'View Audit Logs', description: 'Review system activity', href: '/audit-logs', icon: ClipboardDocumentListIcon },
 ];
@@ -40,7 +40,7 @@ export default function AdminDashboardPage() {
   const statsData = [
     { name: 'Care Plans', value: stats?.totalTemplates ?? '-', active: stats?.activeTemplates, icon: DocumentDuplicateIcon, href: '/care-plans', color: 'bg-blue-500' },
     { name: 'Clinical Alerts', value: stats?.totalSafetyRules ?? '-', active: stats?.activeSafetyRules, icon: ShieldExclamationIcon, href: '/safety-rules', color: 'bg-orange-500' },
-    { name: 'Active Users', value: stats?.activeUsers ?? '-', total: stats?.totalUsers, icon: UsersIcon, href: '/users', color: 'bg-green-500' },
+    { name: 'ML Models', value: '-', icon: CpuChipIcon, href: '/ml-models', color: 'bg-green-500' },
     { name: 'Medications', value: stats?.totalMedications ?? '-', icon: BeakerIcon, href: '/medications', color: 'bg-purple-500' },
   ];
 
@@ -74,9 +74,6 @@ export default function AdminDashboardPage() {
                         </p>
                         {stat.active !== undefined && (
                           <p className="text-xs text-gray-500">{stat.active} active</p>
-                        )}
-                        {stat.total !== undefined && (
-                          <p className="text-xs text-gray-500">of {stat.total} total</p>
                         )}
                       </div>
                     )}

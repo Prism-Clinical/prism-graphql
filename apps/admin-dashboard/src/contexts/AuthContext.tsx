@@ -67,9 +67,22 @@ function clearTokens(): void {
   deleteCookie(REFRESH_TOKEN_KEY);
 }
 
+// DEV MODE: Mock user for development without authentication
+const DEV_MODE = true;
+const MOCK_USER: User = {
+  id: 'dev-user-1',
+  email: 'admin@prism.dev',
+  firstName: 'Dev',
+  lastName: 'Admin',
+  userType: 'ADMIN',
+  roles: ['ADMIN'],
+  status: 'ACTIVE',
+  emailVerified: true,
+};
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [user, setUser] = useState<User | null>(DEV_MODE ? MOCK_USER : null);
+  const [isLoading, setIsLoading] = useState(DEV_MODE ? false : true);
   const router = useRouter();
 
   const [loginMutation] = useMutation(LOGIN);
@@ -132,7 +145,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [getMe, refreshAuth]);
 
   useEffect(() => {
-    checkAuth();
+    if (!DEV_MODE) {
+      checkAuth();
+    }
   }, [checkAuth]);
 
   const login = async (email: string, password: string, redirectTo?: string) => {
@@ -173,6 +188,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const logout = async () => {
+    if (DEV_MODE) {
+      // In dev mode, just refresh the page
+      router.push('/dashboard');
+      return;
+    }
     try {
       await logoutMutation();
     } catch (error) {

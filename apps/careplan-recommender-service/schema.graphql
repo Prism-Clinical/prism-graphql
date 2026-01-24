@@ -371,6 +371,9 @@ type Query {
 
   # Get engine analytics summary
   engineAnalytics(days: Int): EngineAnalyticsSummary!
+
+  # Get engine configuration
+  engineConfiguration: EngineConfiguration!
 }
 
 # =============================================================================
@@ -435,6 +438,27 @@ type Mutation {
 
   # Delete a selection rule
   deleteSelectionRule(id: ID!): Boolean!
+
+  # Update an existing variant
+  updateVariant(id: ID!, input: UpdateVariantInput!): Variant!
+
+  # Delete a variant
+  deleteVariant(id: ID!): Boolean!
+
+  # Update an existing selection rule
+  updateSelectionRule(id: ID!, input: UpdateSelectionRuleInput!): SelectionRule!
+
+  # Update a variant group
+  updateVariantGroup(id: ID!, input: UpdateVariantGroupInput!): VariantGroup!
+
+  # Delete a variant group
+  deleteVariantGroup(id: ID!): Boolean!
+
+  # Save matching configuration
+  saveMatchingConfig(input: MatchingConfigInput!): MatchingConfig!
+
+  # Save personalization configuration
+  savePersonalizationConfig(input: PersonalizationConfigInput!): PersonalizationConfig!
 }
 
 # =============================================================================
@@ -620,6 +644,90 @@ input CreateSelectionRuleInput {
   variantGroupId: ID
   ruleDefinition: JSON!
   priority: Int
+}
+
+input UpdateVariantInput {
+  variantName: String
+  targetAgeMin: Int
+  targetAgeMax: Int
+  targetSex: String
+  targetConditions: [String!]
+  targetRiskFactors: [String!]
+  exclusionConditions: [String!]
+  priorityScore: Int
+  isDefault: Boolean
+}
+
+input UpdateSelectionRuleInput {
+  name: String
+  description: String
+  ruleDefinition: JSON
+  priority: Int
+  isActive: Boolean
+}
+
+input UpdateVariantGroupInput {
+  name: String
+  description: String
+  conditionCodes: [String!]
+  isActive: Boolean
+}
+
+# =============================================================================
+# ENGINE CONFIGURATION TYPES
+# =============================================================================
+
+type MatchingConfig {
+  strategy: String!
+  codeMatchPriority: String!
+  enableEmbeddings: Boolean!
+  similarityThreshold: Float!
+  maxCandidates: Int!
+  scoreWeights: ScoreWeights!
+}
+
+type ScoreWeights {
+  exactMatch: Int!
+  prefixMatch: Int!
+  categoryMatch: Int!
+  embeddingMatch: Int!
+}
+
+type PersonalizationConfig {
+  enableRag: Boolean!
+  enableOutcomeLearning: Boolean!
+  enableDecisionPaths: Boolean!
+  knowledgeSources: [String!]!
+  learningRate: String!
+}
+
+type EngineConfiguration {
+  matching: MatchingConfig!
+  personalization: PersonalizationConfig!
+}
+
+input MatchingConfigInput {
+  strategy: String!
+  codeMatchPriority: String!
+  enableEmbeddings: Boolean!
+  similarityThreshold: Float!
+  maxCandidates: Int!
+  scoreWeights: ScoreWeightsInput!
+}
+
+input ScoreWeightsInput {
+  exactMatch: Int!
+  prefixMatch: Int!
+  categoryMatch: Int!
+  embeddingMatch: Int!
+}
+
+input PersonalizationConfigInput {
+  enableRag: Boolean!
+  enableOutcomeLearning: Boolean!
+  enableDecisionPaths: Boolean!
+  knowledgeSources: [String!]!
+  learningRate: String!
 }
 
 # =============================================================================

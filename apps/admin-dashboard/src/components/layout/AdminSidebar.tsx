@@ -7,12 +7,10 @@ import {
   HomeIcon,
   DocumentDuplicateIcon,
   ShieldExclamationIcon,
-  UsersIcon,
   BeakerIcon,
   ArrowDownTrayIcon,
   ClipboardDocumentListIcon,
   Cog6ToothIcon,
-  UserGroupIcon,
   ArrowRightOnRectangleIcon,
   AcademicCapIcon,
   Square3Stack3DIcon,
@@ -23,22 +21,18 @@ import { useAuth } from '@/contexts/AuthContext';
 
 const navigation = [
   { name: 'Dashboard', href: '/dashboard', icon: HomeIcon },
-  { name: 'Provider Approvals', href: '/provider-approvals', icon: UserGroupIcon },
   { name: 'Care Plans', href: '/care-plans', icon: DocumentDuplicateIcon },
-  { name: 'Training Examples', href: '/training-examples', icon: AcademicCapIcon },
+  { name: 'Training Data', href: '/training-data', icon: AcademicCapIcon },
   { name: 'ML Models', href: '/ml-models', icon: Square3Stack3DIcon },
   { name: 'Recommendation Engine', href: '/recommendation-engine', icon: SparklesIcon },
   { name: 'Decision Explorer', href: '/decision-explorer', icon: MapIcon },
   { name: 'Clinical Alerts', href: '/safety-rules', icon: ShieldExclamationIcon },
-  { name: 'Users', href: '/users', icon: UsersIcon },
   { name: 'Medications', href: '/medications', icon: BeakerIcon },
   { name: 'Import/Export', href: '/import-export', icon: ArrowDownTrayIcon },
   { name: 'Audit Logs', href: '/audit-logs', icon: ClipboardDocumentListIcon },
 ];
 
-const secondaryNavigation = [
-  { name: 'Settings', href: '/settings', icon: Cog6ToothIcon },
-];
+const secondaryNavigation: { name: string; href: string; icon: typeof Cog6ToothIcon }[] = [];
 
 export function AdminSidebar() {
   const pathname = usePathname();

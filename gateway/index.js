@@ -6,26 +6,33 @@ const cors = require('cors');
 const http = require('http');
 
 async function startGateway() {
+  // Build service list dynamically - only include services with URLs configured
+  const serviceList = [];
+
+  const services = [
+    { name: 'auth', envVar: 'AUTH_URL', defaultUrl: 'http://auth-service:4017/graphql' },
+    { name: 'patients', envVar: 'PATIENTS_URL', defaultUrl: 'http://patient-service:4005/graphql' },
+    { name: 'providers', envVar: 'PROVIDERS_URL', defaultUrl: 'http://provider-service:4006/graphql' },
+    { name: 'institutions', envVar: 'INSTITUTIONS_URL', defaultUrl: 'http://organization-service:4002/graphql' },
+    { name: 'careplan', envVar: 'CAREPLAN_URL', defaultUrl: 'http://care-plan-service:4004/graphql' },
+    { name: 'admin', envVar: 'ADMIN_URL', defaultUrl: 'http://admin-service:4013/graphql' },
+    { name: 'safety', envVar: 'SAFETY_URL', defaultUrl: 'http://safety-rules-service:4014/graphql' },
+    { name: 'transcription', envVar: 'TRANSCRIPTION_URL', defaultUrl: 'http://audio-intelligence:8101/graphql' },
+    { name: 'rag', envVar: 'RAG_URL', defaultUrl: 'http://rag-embeddings:8103/graphql' },
+    { name: 'careplan-recommender', envVar: 'CAREPLAN_RECOMMENDER_URL', defaultUrl: 'http://careplan-recommender:8100/graphql' },
+  ];
+
+  for (const svc of services) {
+    const url = process.env[svc.envVar] || svc.defaultUrl;
+    // Skip services marked as disabled
+    if (process.env[`${svc.envVar}_DISABLED`] !== 'true') {
+      serviceList.push({ name: svc.name, url });
+      console.log(`Adding service: ${svc.name} at ${url}`);
+    }
+  }
+
   const gateway = new ApolloGateway({
-    serviceList: [
-      { name: 'recommendations', url: process.env.RECOMMENDATIONS_URL || 'http://localhost:4001' },
-      { name: 'patients', url: process.env.PATIENTS_URL || 'http://localhost:4002' },
-      { name: 'providers', url: process.env.PROVIDERS_URL || 'http://localhost:4003' },
-      { name: 'recommendation-items', url: process.env.RECOMMENDATION_ITEMS_URL || 'http://localhost:4004' },
-      { name: 'institutions', url: process.env.INSTITUTIONS_URL || 'http://localhost:4005' },
-      { name: 'epic-api', url: process.env.EPIC_API_URL || 'http://localhost:4006' },
-      // Prism Clinical Services
-      { name: 'transcription', url: process.env.TRANSCRIPTION_URL || 'http://localhost:4007' },
-      { name: 'rag', url: process.env.RAG_URL || 'http://localhost:4008' },
-      { name: 'safety', url: process.env.SAFETY_URL || 'http://localhost:4009' },
-      { name: 'careplan', url: process.env.CAREPLAN_URL || 'http://localhost:4010' },
-      // Admin Service
-      { name: 'admin', url: process.env.ADMIN_URL || 'http://localhost:4011' },
-      // Auth Service
-      { name: 'auth', url: process.env.AUTH_URL || 'http://localhost:4012/graphql' },
-      // Care Plan Recommender Service
-      { name: 'careplan-recommender', url: process.env.CAREPLAN_RECOMMENDER_URL || 'http://localhost:4013' },
-    ],
+    serviceList,
   });
 
   const app = express();

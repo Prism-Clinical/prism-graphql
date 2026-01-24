@@ -1,0 +1,129 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: prism
+
+resources:
+  - namespace.yaml
+
+  # Node.js GraphQL Services
+  - services/user-service.yaml
+  - services/organization-service.yaml
+  - services/template-service.yaml
+  - services/care-plan-service.yaml
+  - services/patient-service.yaml
+  - services/provider-service.yaml
+  - services/scheduling-service.yaml
+  - services/medication-service.yaml
+  - services/document-service.yaml
+  - services/notification-service.yaml
+  - services/analytics-service.yaml
+  - services/audit-service.yaml
+  - services/admin-service.yaml
+  - services/safety-rules-service.yaml
+  - services/ml-models-service.yaml
+  - services/import-export-service.yaml
+  - services/auth-service.yaml
+
+  # Python ML Services
+  - ml-services/careplan-recommender.yaml
+  - ml-services/audio-intelligence.yaml
+  - ml-services/care-plan-validator.yaml
+  - ml-services/rag-embeddings.yaml
+
+  # Frontends
+  - frontends/admin-dashboard.yaml
+  - frontends/web-dashboard.yaml
+
+  # Router
+  - router/apollo-router.yaml
+
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: prism
+    includeSelectors: true
+
+configMapGenerator:
+  - name: prism-config
+    literals:
+      - NODE_ENV=production
+      - LOG_LEVEL=info
+      - DB_HOST=localhost
+      - DB_PORT=5432
+      - DB_NAME=prism
+      - REDIS_PORT=6379
+      - USER_SERVICE_URL=http://user-service:4001
+      - ORGANIZATION_SERVICE_URL=http://organization-service:4002
+      - TEMPLATE_SERVICE_URL=http://template-service:4003
+      - CARE_PLAN_SERVICE_URL=http://care-plan-service:4004
+      - PATIENT_SERVICE_URL=http://patient-service:4005
+      - PROVIDER_SERVICE_URL=http://provider-service:4006
+      - SCHEDULING_SERVICE_URL=http://scheduling-service:4007
+      - MEDICATION_SERVICE_URL=http://medication-service:4008
+      - DOCUMENT_SERVICE_URL=http://document-service:4009
+      - NOTIFICATION_SERVICE_URL=http://notification-service:4010
+      - ANALYTICS_SERVICE_URL=http://analytics-service:4011
+      - AUDIT_SERVICE_URL=http://audit-service:4012
+      - ADMIN_SERVICE_URL=http://admin-service:4013
+      - SAFETY_RULES_SERVICE_URL=http://safety-rules-service:4014
+      - ML_MODELS_SERVICE_URL=http://ml-models-service:4015
+      - IMPORT_EXPORT_SERVICE_URL=http://import-export-service:4016
+      - AUTH_SERVICE_URL=http://auth-service:4017
+      - CAREPLAN_RECOMMENDER_URL=http://careplan-recommender:8100
+      - AUDIO_INTELLIGENCE_URL=http://audio-intelligence:8101
+      - CARE_PLAN_VALIDATOR_URL=http://care-plan-validator:8102
+      - RAG_EMBEDDINGS_URL=http://rag-embeddings:8103
+      - APOLLO_ROUTER_URL=http://apollo-router:4000
+
+generatorOptions:
+  disableNameSuffixHash: true
+
+images:
+  - name: user-service
+    newName: us-central1-docker.pkg.dev/athena-prod-484720/prism/user-service
+  - name: organization-service
+    newName: us-central1-docker.pkg.dev/athena-prod-484720/prism/organization-service
+  - name: template-service
+    newName: us-central1-docker.pkg.dev/athena-prod-484720/prism/template-service
+  - name: care-plan-service
+    newName: us-central1-docker.pkg.dev/athena-prod-484720/prism/care-plan-service
+  - name: patient-service
+    newName: us-central1-docker.pkg.dev/athena-prod-484720/prism/patient-service
+  - name: provider-service
+    newName: us-central1-docker.pkg.dev/athena-prod-484720/prism/provider-service
+  - name: scheduling-service
+    newName: us-central1-docker.pkg.dev/athena-prod-484720/prism/scheduling-service
+  - name: medication-service
+    newName: us-central1-docker.pkg.dev/athena-prod-484720/prism/medication-service
+  - name: document-service
+    newName: us-central1-docker.pkg.dev/athena-prod-484720/prism/document-service
+  - name: notification-service
+    newName: us-central1-docker.pkg.dev/athena-prod-484720/prism/notification-service
+  - name: analytics-service
+    newName: us-central1-docker.pkg.dev/athena-prod-484720/prism/analytics-service
+  - name: audit-service
+    newName: us-central1-docker.pkg.dev/athena-prod-484720/prism/audit-service
+  - name: admin-service
+    newName: us-central1-docker.pkg.dev/athena-prod-484720/prism/admin-service
+  - name: safety-rules-service
+    newName: us-central1-docker.pkg.dev/athena-prod-484720/prism/safety-rules-service
+  - name: ml-models-service
+    newName: us-central1-docker.pkg.dev/athena-prod-484720/prism/ml-models-service
+  - name: import-export-service
+    newName: us-central1-docker.pkg.dev/athena-prod-484720/prism/import-export-service
+  - name: auth-service
+    newName: us-central1-docker.pkg.dev/athena-prod-484720/prism/auth-service
+  - name: careplan-recommender
+    newName: us-central1-docker.pkg.dev/athena-prod-484720/prism/careplan-recommender
+  - name: audio-intelligence
+    newName: us-central1-docker.pkg.dev/athena-prod-484720/prism/audio-intelligence
+  - name: care-plan-validator
+    newName: us-central1-docker.pkg.dev/athena-prod-484720/prism/care-plan-validator
+  - name: rag-embeddings
+    newName: us-central1-docker.pkg.dev/athena-prod-484720/prism/rag-embeddings
+  - name: admin-dashboard
+    newName: us-central1-docker.pkg.dev/athena-prod-484720/prism/admin-dashboard
+  - name: web-dashboard
+    newName: us-central1-docker.pkg.dev/athena-prod-484720/prism/web-dashboard
+  - name: apollo-router
+    newName: us-central1-docker.pkg.dev/athena-prod-484720/prism/apollo-router

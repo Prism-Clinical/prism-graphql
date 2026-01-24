@@ -1,0 +1,96 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: template-service
+  namespace: prism
+  annotations:
+    iam.gke.io/gcp-service-account: prism-workload@athena-prod-484720.iam.gserviceaccount.com
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: template-service
+  namespace: prism
+  labels:
+    app: template-service
+    tier: backend
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: template-service
+  template:
+    metadata:
+      labels:
+        app: template-service
+        tier: backend
+    spec:
+      serviceAccountName: template-service
+      containers:
+        - name: template-service
+          image: template-service
+          ports:
+            - containerPort: 4003
+          envFrom:
+            - configMapRef:
+                name: prism-config
+          env:
+            - name: PORT
+              value: "4003"
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: prism-secrets
+                  key: DB_PASSWORD
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: prism-secrets
+                  key: JWT_SECRET
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 4003
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 4003
+            initialDelaySeconds: 5
+            periodSeconds: 5
+        - name: cloud-sql-proxy
+          image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.8.0
+          args:
+            - "--structured-logs"
+            - "--auto-iam-authn"
+            - "athena-prod-484720:us-central1:prism-db"
+          securityContext:
+            runAsNonRoot: true
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "50m"
+            limits:
+              memory: "128Mi"
+              cpu: "100m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: template-service
+  namespace: prism
+spec:
+  selector:
+    app: template-service
+  ports:
+    - port: 4003
+      targetPort: 4003
+  type: ClusterIP

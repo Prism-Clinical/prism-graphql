@@ -711,10 +711,10 @@ export default function CarePlanImportPage() {
         <h2 className="text-2xl font-bold text-gray-900 mb-2">Import Successful!</h2>
         <p className="text-gray-600 mb-6">
           {createTemplate && createTrainingExample
-            ? 'Care plan and training example have been created.'
+            ? 'Care plan and training data have been created.'
             : createTemplate
             ? 'Care plan has been created.'
-            : 'Training example has been created.'}
+            : 'Training data has been created.'}
         </p>
         <div className="flex justify-center gap-4">
           <Link href="/care-plans">
@@ -747,7 +747,7 @@ export default function CarePlanImportPage() {
         <div className="flex-1">
           <h1 className="text-2xl font-bold text-gray-900">Import Care Plan</h1>
           <p className="mt-1 text-sm text-gray-500">
-            Upload a standardized care plan document (.txt), review extracted data, and import as template or training example
+            Upload a standardized care plan document (.txt), review extracted data, and import as care plan or training data
           </p>
         </div>
         <div className="flex gap-2">
@@ -1198,9 +1198,9 @@ export default function CarePlanImportPage() {
                     className="mt-1 h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
                   />
                   <div>
-                    <p className="font-medium text-gray-900">Create Training Example</p>
+                    <p className="font-medium text-gray-900">Create Training Data</p>
                     <p className="text-sm text-gray-500">
-                      Creates a training example for the ML recommendation model. Embeddings will be generated automatically.
+                      Creates training data for the ML recommendation model. Embeddings will be generated automatically.
                     </p>
                   </div>
                 </label>

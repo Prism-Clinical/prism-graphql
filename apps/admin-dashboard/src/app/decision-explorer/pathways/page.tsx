@@ -335,7 +335,7 @@ export default function PathwaysListPage() {
                 Cancel
               </Button>
               <Button
-                variant="destructive"
+                variant="danger"
                 onClick={() => handleDelete(showDeleteModal)}
                 disabled={deleteLoading}
               >

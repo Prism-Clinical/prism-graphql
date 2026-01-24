@@ -1,0 +1,43 @@
+# Caddyfile for Prism Healthcare Platform
+# Automatic HTTPS with Let's Encrypt
+
+{$DOMAIN:localhost} {
+    # GraphQL API
+    handle /graphql* {
+        reverse_proxy gateway:4000
+    }
+
+    # Apollo Server health check
+    handle /.well-known/apollo/* {
+        reverse_proxy gateway:4000
+    }
+
+    # Admin Dashboard
+    handle /admin* {
+        reverse_proxy admin-dashboard:3001
+    }
+
+    # Web Dashboard (default)
+    handle {
+        reverse_proxy web-dashboard:3000
+    }
+
+    # Logging
+    log {
+        output stdout
+        format json
+    }
+
+    # Security headers
+    header {
+        X-Content-Type-Options nosniff
+        X-Frame-Options DENY
+        Referrer-Policy strict-origin-when-cross-origin
+        -Server
+    }
+}
+
+# Health check endpoint (no HTTPS required)
+:8080 {
+    respond /health "OK" 200
+}

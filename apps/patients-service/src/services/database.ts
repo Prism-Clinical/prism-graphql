@@ -14,10 +14,14 @@ const pool = new Pool({
   connectionTimeoutMillis: 2000,
 });
 
-// Redis client
-const redis = createClient({
-  url: `redis://:${process.env.REDIS_PASSWORD || 'redis_password'}@${process.env.REDIS_HOST || 'localhost'}:${process.env.REDIS_PORT || '6379'}`
-});
+// Redis client - build URL with optional password
+const redisPassword = process.env.REDIS_PASSWORD;
+const redisHost = process.env.REDIS_HOST || 'localhost';
+const redisPort = process.env.REDIS_PORT || '6379';
+const redisUrl = redisPassword
+  ? `redis://:${redisPassword}@${redisHost}:${redisPort}`
+  : `redis://${redisHost}:${redisPort}`;
+const redis = createClient({ url: redisUrl });
 
 redis.on('error', (err) => console.error('Redis Client Error', err));
 

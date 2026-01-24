@@ -7,7 +7,7 @@ import {
 } from "@apollo/server/standalone";
 import resolvers from "./resolvers";
 
-const port = "4002";
+const port = process.env.PORT || "4005";
 const subgraphName = "patients";
 
 async function main() {

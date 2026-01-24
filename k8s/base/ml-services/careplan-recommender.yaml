@@ -1,0 +1,100 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: careplan-recommender
+  namespace: prism
+  annotations:
+    iam.gke.io/gcp-service-account: prism-ml-workload@athena-prod-484720.iam.gserviceaccount.com
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: careplan-recommender
+  namespace: prism
+  labels:
+    app: careplan-recommender
+    tier: ml
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: careplan-recommender
+  template:
+    metadata:
+      labels:
+        app: careplan-recommender
+        tier: ml
+    spec:
+      serviceAccountName: careplan-recommender
+      containers:
+        - name: careplan-recommender
+          image: careplan-recommender
+          ports:
+            - containerPort: 8100
+          env:
+            - name: PORT
+              value: "8100"
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: prism-secrets
+                  key: DATABASE_URL
+            - name: REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: prism-secrets
+                  key: REDIS_URL
+            - name: OPENAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: prism-secrets
+                  key: OPENAI_API_KEY
+            - name: LOG_LEVEL
+              value: "INFO"
+          resources:
+            requests:
+              memory: "1Gi"
+              cpu: "500m"
+            limits:
+              memory: "4Gi"
+              cpu: "2000m"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8100
+            initialDelaySeconds: 60
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8100
+            initialDelaySeconds: 30
+            periodSeconds: 10
+        - name: cloud-sql-proxy
+          image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.8.0
+          args:
+            - "--structured-logs"
+            - "--auto-iam-authn"
+            - "athena-prod-484720:us-central1:prism-db"
+          securityContext:
+            runAsNonRoot: true
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "50m"
+            limits:
+              memory: "128Mi"
+              cpu: "100m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: careplan-recommender
+  namespace: prism
+spec:
+  selector:
+    app: careplan-recommender
+  ports:
+    - port: 8100
+      targetPort: 8100
+  type: ClusterIP

@@ -38,8 +38,9 @@ import {
   useUnloadModel,
   useDeleteMLModel,
   useLoadedModels,
+  TrainingJob,
 } from '@/lib/hooks/useMLModels';
-import { useTrainingJobs, TrainingJob } from '@/lib/hooks/useMLTraining';
+import { useTrainingJobs } from '@/lib/hooks/useMLTraining';
 
 const ML_SERVICE_URL = process.env.NEXT_PUBLIC_ML_SERVICE_URL || 'http://localhost:8084';
 
@@ -617,18 +618,18 @@ export default function MLModelDetailPage({ params }: { params: { id: string } }
                           Training will use care plans matching the configured filter criteria.
                         </p>
                         <div className="space-y-2">
-                          {model.filterCriteria.conditionCodePrefixes?.length > 0 && (
+                          {(model.filterCriteria.conditionCodePrefixes?.length ?? 0) > 0 && (
                             <div className="text-sm">
                               <span className="text-gray-500">Condition prefixes:</span>{' '}
-                              {model.filterCriteria.conditionCodePrefixes.map(p => (
+                              {model.filterCriteria.conditionCodePrefixes?.map(p => (
                                 <span key={p} className="inline-block px-2 py-0.5 bg-blue-100 text-blue-700 rounded mr-1">{p}*</span>
                               ))}
                             </div>
                           )}
-                          {model.filterCriteria.trainingTags?.length > 0 && (
+                          {(model.filterCriteria.trainingTags?.length ?? 0) > 0 && (
                             <div className="text-sm">
                               <span className="text-gray-500">Tags:</span>{' '}
-                              {model.filterCriteria.trainingTags.map(t => (
+                              {model.filterCriteria.trainingTags?.map(t => (
                                 <span key={t} className="inline-block px-2 py-0.5 bg-purple-100 text-purple-700 rounded mr-1">#{t}</span>
                               ))}
                             </div>
@@ -659,7 +660,7 @@ export default function MLModelDetailPage({ params }: { params: { id: string } }
                     </p>
                     {trainingData.length === 0 && (
                       <p className="text-sm text-yellow-600">
-                        No care plans manually assigned. Use the Training Examples page to assign specific care plans.
+                        No care plans manually assigned. Use the Training Data page to assign specific care plans.
                       </p>
                     )}
                   </div>

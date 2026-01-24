@@ -1,15 +1,41 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import Link from 'next/link';
 import { useSelectionRules, useDeleteSelectionRule, useVariantGroups } from '@/lib/hooks/useRecommendationEngine';
 
 export default function SelectionRulesPage() {
-  const [includeGlobal, setIncludeGlobal] = useState(true);
-  // Note: includeGlobal filter not currently implemented in GraphQL - showing all rules
+  const [showGlobal, setShowGlobal] = useState(true);
+  const [showGroupSpecific, setShowGroupSpecific] = useState(true);
+  const [showInactive, setShowInactive] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
   const { rules, loading, error, refetch } = useSelectionRules();
   const { groups } = useVariantGroups();
   const { deleteRule, loading: deleting } = useDeleteSelectionRule();
+
+  // Client-side filtering
+  const filteredRules = useMemo(() => {
+    return rules.filter((rule) => {
+      // Filter by global/group-specific
+      const isGlobal = !rule.variantGroupId;
+      if (isGlobal && !showGlobal) return false;
+      if (!isGlobal && !showGroupSpecific) return false;
+      // Filter by active status
+      if (!showInactive && !rule.isActive) return false;
+      // Filter by search term
+      if (searchTerm) {
+        const search = searchTerm.toLowerCase();
+        if (!rule.name.toLowerCase().includes(search) &&
+            !(rule.description || '').toLowerCase().includes(search)) {
+          return false;
+        }
+      }
+      return true;
+    });
+  }, [rules, showGlobal, showGroupSpecific, showInactive, searchTerm]);
+
+  const globalRules = filteredRules.filter(r => !r.variantGroupId);
+  const groupRules = filteredRules.filter(r => r.variantGroupId);
 
   const handleDelete = async (ruleId: string, ruleName: string) => {
     if (!confirm(`Delete rule "${ruleName}"?`)) return;
@@ -52,6 +78,51 @@ export default function SelectionRulesPage() {
         </Link>
       </div>
 
+      {/* Filters */}
+      <div className="bg-white rounded-lg shadow p-4">
+        <div className="flex flex-wrap gap-4 items-center">
+          <div className="flex-1 min-w-[200px]">
+            <input
+              type="text"
+              placeholder="Search rules by name..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-blue-500 focus:border-blue-500"
+            />
+          </div>
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={showGlobal}
+              onChange={(e) => setShowGlobal(e.target.checked)}
+              className="rounded border-gray-300"
+            />
+            Global rules
+          </label>
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={showGroupSpecific}
+              onChange={(e) => setShowGroupSpecific(e.target.checked)}
+              className="rounded border-gray-300"
+            />
+            Group-specific
+          </label>
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={showInactive}
+              onChange={(e) => setShowInactive(e.target.checked)}
+              className="rounded border-gray-300"
+            />
+            Show inactive
+          </label>
+          <span className="text-sm text-gray-500">
+            {filteredRules.length} of {rules.length} rules
+          </span>
+        </div>
+      </div>
+
       {/* Error */}
       {error && (
         <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-700">
@@ -65,7 +136,7 @@ export default function SelectionRulesPage() {
       )}
 
       {/* Empty State */}
-      {!loading && rules.length === 0 && (
+      {!loading && filteredRules.length === 0 && (
         <div className="bg-white rounded-lg shadow p-12 text-center">
           <div className="text-gray-400 mb-4">
             <svg className="w-16 h-16 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -86,57 +157,61 @@ export default function SelectionRulesPage() {
       )}
 
       {/* Rules List */}
-      {!loading && rules.length > 0 && (
+      {!loading && filteredRules.length > 0 && (
         <div className="space-y-4">
           {/* Global Rules */}
-          <div className="bg-white rounded-lg shadow overflow-hidden">
-            <div className="px-6 py-4 bg-gray-50 border-b">
-              <h2 className="font-semibold text-gray-900">Global Rules</h2>
-              <p className="text-sm text-gray-500">Applied to all variant selections</p>
+          {showGlobal && (
+            <div className="bg-white rounded-lg shadow overflow-hidden">
+              <div className="px-6 py-4 bg-gray-50 border-b">
+                <h2 className="font-semibold text-gray-900">Global Rules</h2>
+                <p className="text-sm text-gray-500">Applied to all variant selections</p>
+              </div>
+              <div className="divide-y divide-gray-200">
+                {globalRules.length === 0 ? (
+                  <div className="px-6 py-8 text-center text-gray-500">
+                    No global rules match the current filters
+                  </div>
+                ) : (
+                  globalRules.map((rule) => (
+                    <RuleRow
+                      key={rule.id}
+                      rule={rule}
+                      groupName="Global"
+                      onDelete={() => handleDelete(rule.id, rule.name)}
+                      deleting={deleting}
+                    />
+                  ))
+                )}
+              </div>
             </div>
-            <div className="divide-y divide-gray-200">
-              {rules.filter(r => !r.variantGroupId).length === 0 ? (
-                <div className="px-6 py-8 text-center text-gray-500">
-                  No global rules defined
-                </div>
-              ) : (
-                rules.filter(r => !r.variantGroupId).map((rule) => (
-                  <RuleRow
-                    key={rule.id}
-                    rule={rule}
-                    groupName="Global"
-                    onDelete={() => handleDelete(rule.id, rule.name)}
-                    deleting={deleting}
-                  />
-                ))
-              )}
-            </div>
-          </div>
+          )}
 
           {/* Group-specific Rules */}
-          <div className="bg-white rounded-lg shadow overflow-hidden">
-            <div className="px-6 py-4 bg-gray-50 border-b">
-              <h2 className="font-semibold text-gray-900">Group-Specific Rules</h2>
-              <p className="text-sm text-gray-500">Applied only to specific variant groups</p>
+          {showGroupSpecific && (
+            <div className="bg-white rounded-lg shadow overflow-hidden">
+              <div className="px-6 py-4 bg-gray-50 border-b">
+                <h2 className="font-semibold text-gray-900">Group-Specific Rules</h2>
+                <p className="text-sm text-gray-500">Applied only to specific variant groups</p>
+              </div>
+              <div className="divide-y divide-gray-200">
+                {groupRules.length === 0 ? (
+                  <div className="px-6 py-8 text-center text-gray-500">
+                    No group-specific rules match the current filters
+                  </div>
+                ) : (
+                  groupRules.map((rule) => (
+                    <RuleRow
+                      key={rule.id}
+                      rule={rule}
+                      groupName={getGroupName(rule.variantGroupId)}
+                      onDelete={() => handleDelete(rule.id, rule.name)}
+                      deleting={deleting}
+                    />
+                  ))
+                )}
+              </div>
             </div>
-            <div className="divide-y divide-gray-200">
-              {rules.filter(r => r.variantGroupId).length === 0 ? (
-                <div className="px-6 py-8 text-center text-gray-500">
-                  No group-specific rules defined
-                </div>
-              ) : (
-                rules.filter(r => r.variantGroupId).map((rule) => (
-                  <RuleRow
-                    key={rule.id}
-                    rule={rule}
-                    groupName={getGroupName(rule.variantGroupId)}
-                    onDelete={() => handleDelete(rule.id, rule.name)}
-                    deleting={deleting}
-                  />
-                ))
-              )}
-            </div>
-          </div>
+          )}
         </div>
       )}
 

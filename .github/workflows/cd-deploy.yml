@@ -1,0 +1,86 @@
+name: CD - Deploy to VM
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - staging
+          - production
+
+env:
+  DEPLOY_PATH: /opt/prism
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment || 'staging' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set environment variables
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "ENVIRONMENT=${{ github.event.inputs.environment }}" >> $GITHUB_ENV
+          else
+            echo "ENVIRONMENT=staging" >> $GITHUB_ENV
+          fi
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H ${{ secrets.DEPLOY_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Deploy to VM
+        run: |
+          ssh -i ~/.ssh/deploy_key ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} << 'ENDSSH'
+          set -e
+
+          cd ${{ env.DEPLOY_PATH }}
+
+          # Pull latest code
+          git fetch origin main
+          git reset --hard origin/main
+
+          # Build and deploy with production config
+          docker compose -f docker-compose.yml -f docker-compose.prod.yml build --parallel
+          docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --remove-orphans
+
+          # Clean up old images
+          docker image prune -f
+
+          # Wait for services to be healthy
+          sleep 30
+
+          # Show status
+          docker compose ps
+          ENDSSH
+
+      - name: Health Check
+        run: |
+          ssh -i ~/.ssh/deploy_key ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} << 'ENDSSH'
+          # Check if gateway is responding
+          curl -sf http://localhost:4000/.well-known/apollo/server-health || {
+            echo "Gateway health check failed"
+            docker compose logs gateway --tail=50
+            exit 1
+          }
+          echo "Health check passed!"
+          ENDSSH
+
+      - name: Deployment Summary
+        if: always()
+        run: |
+          echo "## Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Environment:** ${{ env.ENVIRONMENT }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Deployed by:** ${{ github.actor }}" >> $GITHUB_STEP_SUMMARY

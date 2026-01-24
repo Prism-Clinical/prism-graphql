@@ -6,8 +6,8 @@ import { Card, CardBody, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 
 const exportTypes = [
-  { name: 'Templates', description: 'Export care plan templates' },
-  { name: 'Training Examples', description: 'Export ML training examples' },
+  { name: 'Care Plans', description: 'Export care plans' },
+  { name: 'Training Data', description: 'Export ML training data' },
   { name: 'Clinical Alerts', description: 'Export clinical alert configurations' },
   { name: 'Audit Logs', description: 'Export audit trail' },
 ];
@@ -31,7 +31,7 @@ export default function ImportExportPage() {
               <div>
                 <h3 className="text-lg font-medium text-gray-900">Import Care Plan</h3>
                 <p className="text-sm text-gray-600">
-                  Upload standardized care plan documents (.txt), review extracted data, and import as templates or training examples
+                  Upload standardized care plan documents (.txt), review extracted data, and import as care plans or training data
                 </p>
               </div>
             </div>

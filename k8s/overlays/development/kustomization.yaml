@@ -1,0 +1,106 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: prism-dev
+
+resources:
+  - ../../base
+
+nameSuffix: ""
+
+labels:
+  - pairs:
+      environment: development
+    includeSelectors: true
+
+# Development-specific patches
+patches:
+  # Reduce replicas for all deployments
+  - patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 1
+    target:
+      kind: Deployment
+
+# Development images (local registry)
+images:
+  - name: user-service
+    newName: localhost:5001/prism/user-service
+    newTag: dev
+  - name: organization-service
+    newName: localhost:5001/prism/organization-service
+    newTag: dev
+  - name: template-service
+    newName: localhost:5001/prism/template-service
+    newTag: dev
+  - name: care-plan-service
+    newName: localhost:5001/prism/care-plan-service
+    newTag: dev
+  - name: patient-service
+    newName: localhost:5001/prism/patient-service
+    newTag: dev
+  - name: provider-service
+    newName: localhost:5001/prism/provider-service
+    newTag: dev
+  - name: scheduling-service
+    newName: localhost:5001/prism/scheduling-service
+    newTag: dev
+  - name: medication-service
+    newName: localhost:5001/prism/medication-service
+    newTag: dev
+  - name: document-service
+    newName: localhost:5001/prism/document-service
+    newTag: dev
+  - name: notification-service
+    newName: localhost:5001/prism/notification-service
+    newTag: dev
+  - name: analytics-service
+    newName: localhost:5001/prism/analytics-service
+    newTag: dev
+  - name: audit-service
+    newName: localhost:5001/prism/audit-service
+    newTag: dev
+  - name: admin-service
+    newName: localhost:5001/prism/admin-service
+    newTag: dev
+  - name: safety-rules-service
+    newName: localhost:5001/prism/safety-rules-service
+    newTag: dev
+  - name: ml-models-service
+    newName: localhost:5001/prism/ml-models-service
+    newTag: dev
+  - name: import-export-service
+    newName: localhost:5001/prism/import-export-service
+    newTag: dev
+  - name: auth-service
+    newName: localhost:5001/prism/auth-service
+    newTag: dev
+  - name: careplan-recommender
+    newName: localhost:5001/prism/careplan-recommender
+    newTag: dev
+  - name: audio-intelligence
+    newName: localhost:5001/prism/audio-intelligence
+    newTag: dev
+  - name: care-plan-validator
+    newName: localhost:5001/prism/care-plan-validator
+    newTag: dev
+  - name: rag-embeddings
+    newName: localhost:5001/prism/rag-embeddings
+    newTag: dev
+  - name: admin-dashboard
+    newName: localhost:5001/prism/admin-dashboard
+    newTag: dev
+  - name: web-dashboard
+    newName: localhost:5001/prism/web-dashboard
+    newTag: dev
+  - name: apollo-router
+    newName: localhost:5001/prism/apollo-router
+    newTag: dev
+
+configMapGenerator:
+  - name: prism-config
+    behavior: merge
+    literals:
+      - NODE_ENV=development
+      - LOG_LEVEL=debug

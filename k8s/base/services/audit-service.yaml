@@ -1,0 +1,96 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: audit-service
+  namespace: prism
+  annotations:
+    iam.gke.io/gcp-service-account: prism-workload@athena-prod-484720.iam.gserviceaccount.com
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: audit-service
+  namespace: prism
+  labels:
+    app: audit-service
+    tier: backend
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: audit-service
+  template:
+    metadata:
+      labels:
+        app: audit-service
+        tier: backend
+    spec:
+      serviceAccountName: audit-service
+      containers:
+        - name: audit-service
+          image: audit-service
+          ports:
+            - containerPort: 4012
+          envFrom:
+            - configMapRef:
+                name: prism-config
+          env:
+            - name: PORT
+              value: "4012"
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: prism-secrets
+                  key: DB_PASSWORD
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: prism-secrets
+                  key: JWT_SECRET
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 4012
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 4012
+            initialDelaySeconds: 5
+            periodSeconds: 5
+        - name: cloud-sql-proxy
+          image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.8.0
+          args:
+            - "--structured-logs"
+            - "--auto-iam-authn"
+            - "athena-prod-484720:us-central1:prism-db"
+          securityContext:
+            runAsNonRoot: true
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "50m"
+            limits:
+              memory: "128Mi"
+              cpu: "100m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: audit-service
+  namespace: prism
+spec:
+  selector:
+    app: audit-service
+  ports:
+    - port: 4012
+      targetPort: 4012
+  type: ClusterIP

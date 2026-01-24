@@ -407,6 +407,81 @@ interface CreateSelectionRuleRequest {
   priority?: number;
 }
 
+interface UpdateVariantRequest {
+  variant_name?: string;
+  target_age_min?: number;
+  target_age_max?: number;
+  target_sex?: string;
+  target_conditions?: string[];
+  target_risk_factors?: string[];
+  exclusion_conditions?: string[];
+  priority_score?: number;
+  is_default?: boolean;
+}
+
+interface UpdateSelectionRuleRequest {
+  name?: string;
+  description?: string;
+  rule_definition?: Record<string, unknown>;
+  priority?: number;
+  is_active?: boolean;
+}
+
+interface UpdateVariantGroupRequest {
+  name?: string;
+  description?: string;
+  condition_codes?: string[];
+  is_active?: boolean;
+}
+
+// --- Engine Configuration Types ---
+
+interface ScoreWeightsConfig {
+  exact_match: number;
+  prefix_match: number;
+  category_match: number;
+  embedding_match: number;
+}
+
+interface MatchingConfigResponse {
+  strategy: string;
+  code_match_priority: string;
+  enable_embeddings: boolean;
+  similarity_threshold: number;
+  max_candidates: number;
+  score_weights: ScoreWeightsConfig;
+}
+
+interface PersonalizationConfigResponse {
+  enable_rag: boolean;
+  enable_outcome_learning: boolean;
+  enable_decision_paths: boolean;
+  knowledge_sources: string[];
+  learning_rate: string;
+}
+
+interface EngineConfigurationResponse {
+  matching: MatchingConfigResponse;
+  personalization: PersonalizationConfigResponse;
+}
+
+interface MatchingConfigRequest {
+  strategy: string;
+  code_match_priority: string;
+  enable_embeddings: boolean;
+  similarity_threshold: number;
+  max_candidates: number;
+  score_weights: ScoreWeightsConfig;
+}
+
+interface PersonalizationConfigRequest {
+  enable_rag: boolean;
+  enable_outcome_learning: boolean;
+  enable_decision_paths: boolean;
+  knowledge_sources: string[];
+  learning_rate: string;
+}
+
 export class RecommenderClient {
   private baseUrl: string;
   private timeout: number;
@@ -932,6 +1007,74 @@ export class RecommenderClient {
     return response.json() as Promise<EngineVariant>;
   }
 
+  async updateVariant(
+    id: string,
+    request: UpdateVariantRequest
+  ): Promise<EngineVariant> {
+    const response = await fetch(`${this.baseUrl}/engine/variants/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+      signal: AbortSignal.timeout(this.timeout),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Recommender API error: ${response.status}`);
+    }
+
+    return response.json() as Promise<EngineVariant>;
+  }
+
+  async deleteVariant(id: string): Promise<boolean> {
+    const response = await fetch(`${this.baseUrl}/engine/variants/${id}`, {
+      method: "DELETE",
+      signal: AbortSignal.timeout(this.timeout),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Recommender API error: ${response.status}`);
+    }
+
+    return true;
+  }
+
+  async updateVariantGroup(
+    id: string,
+    request: UpdateVariantGroupRequest
+  ): Promise<EngineVariantGroup> {
+    const response = await fetch(
+      `${this.baseUrl}/engine/variant-groups/${id}`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(request),
+        signal: AbortSignal.timeout(this.timeout),
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error(`Recommender API error: ${response.status}`);
+    }
+
+    return response.json() as Promise<EngineVariantGroup>;
+  }
+
+  async deleteVariantGroup(id: string): Promise<boolean> {
+    const response = await fetch(
+      `${this.baseUrl}/engine/variant-groups/${id}`,
+      {
+        method: "DELETE",
+        signal: AbortSignal.timeout(this.timeout),
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error(`Recommender API error: ${response.status}`);
+    }
+
+    return true;
+  }
+
   async getSelectionRules(
     variantGroupId?: string,
     isActive?: boolean
@@ -987,6 +1130,27 @@ export class RecommenderClient {
     }
 
     return true;
+  }
+
+  async updateSelectionRule(
+    id: string,
+    request: UpdateSelectionRuleRequest
+  ): Promise<EngineSelectionRule> {
+    const response = await fetch(
+      `${this.baseUrl}/engine/selection-rules/${id}`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(request),
+        signal: AbortSignal.timeout(this.timeout),
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error(`Recommender API error: ${response.status}`);
+    }
+
+    return response.json() as Promise<EngineSelectionRule>;
   }
 
   async recordOutcome(
@@ -1049,6 +1213,126 @@ export class RecommenderClient {
       top_condition_codes: {},
       acceptance_rate: acceptanceRate,
       period: `${data.period_days} days`,
+    };
+  }
+
+  // --- Engine Configuration Methods ---
+
+  async getEngineConfiguration(): Promise<EngineConfigurationResponse> {
+    const response = await fetch(`${this.baseUrl}/engine/configuration`, {
+      signal: AbortSignal.timeout(this.timeout),
+    });
+
+    if (!response.ok) {
+      // Return defaults if config endpoint doesn't exist
+      if (response.status === 404) {
+        return {
+          matching: {
+            strategy: "hybrid",
+            code_match_priority: "exact_first",
+            enable_embeddings: true,
+            similarity_threshold: 0.75,
+            max_candidates: 50,
+            score_weights: {
+              exact_match: 100,
+              prefix_match: 75,
+              category_match: 50,
+              embedding_match: 60,
+            },
+          },
+          personalization: {
+            enable_rag: true,
+            enable_outcome_learning: false,
+            enable_decision_paths: true,
+            knowledge_sources: ["training_data", "clinical_guidelines", "care_plans"],
+            learning_rate: "moderate",
+          },
+        };
+      }
+      throw new Error(`Recommender API error: ${response.status}`);
+    }
+
+    return response.json() as Promise<EngineConfigurationResponse>;
+  }
+
+  async saveMatchingConfig(config: MatchingConfigRequest): Promise<MatchingConfigResponse> {
+    const response = await fetch(`${this.baseUrl}/engine/configuration/matching`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(config),
+      signal: AbortSignal.timeout(this.timeout),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Recommender API error: ${response.status}`);
+    }
+
+    return response.json() as Promise<MatchingConfigResponse>;
+  }
+
+  async savePersonalizationConfig(config: PersonalizationConfigRequest): Promise<PersonalizationConfigResponse> {
+    const response = await fetch(`${this.baseUrl}/engine/configuration/personalization`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(config),
+      signal: AbortSignal.timeout(this.timeout),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Recommender API error: ${response.status}`);
+    }
+
+    return response.json() as Promise<PersonalizationConfigResponse>;
+  }
+
+  static configurationToGraphQL(config: EngineConfigurationResponse) {
+    return {
+      matching: {
+        strategy: config.matching.strategy,
+        codeMatchPriority: config.matching.code_match_priority,
+        enableEmbeddings: config.matching.enable_embeddings,
+        similarityThreshold: config.matching.similarity_threshold,
+        maxCandidates: config.matching.max_candidates,
+        scoreWeights: {
+          exactMatch: config.matching.score_weights.exact_match,
+          prefixMatch: config.matching.score_weights.prefix_match,
+          categoryMatch: config.matching.score_weights.category_match,
+          embeddingMatch: config.matching.score_weights.embedding_match,
+        },
+      },
+      personalization: {
+        enableRag: config.personalization.enable_rag,
+        enableOutcomeLearning: config.personalization.enable_outcome_learning,
+        enableDecisionPaths: config.personalization.enable_decision_paths,
+        knowledgeSources: config.personalization.knowledge_sources,
+        learningRate: config.personalization.learning_rate,
+      },
+    };
+  }
+
+  static matchingConfigToGraphQL(config: MatchingConfigResponse) {
+    return {
+      strategy: config.strategy,
+      codeMatchPriority: config.code_match_priority,
+      enableEmbeddings: config.enable_embeddings,
+      similarityThreshold: config.similarity_threshold,
+      maxCandidates: config.max_candidates,
+      scoreWeights: {
+        exactMatch: config.score_weights.exact_match,
+        prefixMatch: config.score_weights.prefix_match,
+        categoryMatch: config.score_weights.category_match,
+        embeddingMatch: config.score_weights.embedding_match,
+      },
+    };
+  }
+
+  static personalizationConfigToGraphQL(config: PersonalizationConfigResponse) {
+    return {
+      enableRag: config.enable_rag,
+      enableOutcomeLearning: config.enable_outcome_learning,
+      enableDecisionPaths: config.enable_decision_paths,
+      knowledgeSources: config.knowledge_sources,
+      learningRate: config.learning_rate,
     };
   }
 

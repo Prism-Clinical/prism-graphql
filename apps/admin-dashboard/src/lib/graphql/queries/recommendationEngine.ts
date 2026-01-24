@@ -150,3 +150,30 @@ export const GET_ENGINE_ANALYTICS = gql`
     }
   }
 `;
+
+export const GET_ENGINE_CONFIGURATION = gql`
+  query GetEngineConfiguration {
+    engineConfiguration {
+      matching {
+        strategy
+        codeMatchPriority
+        enableEmbeddings
+        similarityThreshold
+        maxCandidates
+        scoreWeights {
+          exactMatch
+          prefixMatch
+          categoryMatch
+          embeddingMatch
+        }
+      }
+      personalization {
+        enableRag
+        enableOutcomeLearning
+        enableDecisionPaths
+        knowledgeSources
+        learningRate
+      }
+    }
+  }
+`;

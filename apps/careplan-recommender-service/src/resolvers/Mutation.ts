@@ -387,6 +387,127 @@ const Mutation: Record<string, any> = {
     await recommenderClient.deleteSelectionRule(id);
     return true;
   },
+
+  async updateVariant(
+    _: unknown,
+    { id, input }: { id: string; input: UpdateVariantInput },
+    context: DataSourceContext
+  ) {
+    const { recommenderClient } = context;
+
+    const response = await recommenderClient.updateVariant(id, {
+      variant_name: input.variantName,
+      target_age_min: input.targetAgeMin,
+      target_age_max: input.targetAgeMax,
+      target_sex: input.targetSex,
+      target_conditions: input.targetConditions,
+      target_risk_factors: input.targetRiskFactors,
+      exclusion_conditions: input.exclusionConditions,
+      priority_score: input.priorityScore,
+      is_default: input.isDefault,
+    });
+
+    return RecommenderClient.variantToGraphQL(response);
+  },
+
+  async deleteVariant(
+    _: unknown,
+    { id }: { id: string },
+    context: DataSourceContext
+  ) {
+    const { recommenderClient } = context;
+
+    await recommenderClient.deleteVariant(id);
+    return true;
+  },
+
+  async updateSelectionRule(
+    _: unknown,
+    { id, input }: { id: string; input: UpdateSelectionRuleInput },
+    context: DataSourceContext
+  ) {
+    const { recommenderClient } = context;
+
+    const response = await recommenderClient.updateSelectionRule(id, {
+      name: input.name,
+      description: input.description,
+      rule_definition: input.ruleDefinition,
+      priority: input.priority,
+      is_active: input.isActive,
+    });
+
+    return RecommenderClient.selectionRuleToGraphQL(response);
+  },
+
+  async updateVariantGroup(
+    _: unknown,
+    { id, input }: { id: string; input: UpdateVariantGroupInput },
+    context: DataSourceContext
+  ) {
+    const { recommenderClient } = context;
+
+    const response = await recommenderClient.updateVariantGroup(id, {
+      name: input.name,
+      description: input.description,
+      condition_codes: input.conditionCodes,
+      is_active: input.isActive,
+    });
+
+    return RecommenderClient.variantGroupToGraphQL(response);
+  },
+
+  async deleteVariantGroup(
+    _: unknown,
+    { id }: { id: string },
+    context: DataSourceContext
+  ) {
+    const { recommenderClient } = context;
+
+    await recommenderClient.deleteVariantGroup(id);
+    return true;
+  },
+
+  async saveMatchingConfig(
+    _: unknown,
+    { input }: { input: MatchingConfigInput },
+    context: DataSourceContext
+  ) {
+    const { recommenderClient } = context;
+
+    const config = await recommenderClient.saveMatchingConfig({
+      strategy: input.strategy,
+      code_match_priority: input.codeMatchPriority,
+      enable_embeddings: input.enableEmbeddings,
+      similarity_threshold: input.similarityThreshold,
+      max_candidates: input.maxCandidates,
+      score_weights: {
+        exact_match: input.scoreWeights.exactMatch,
+        prefix_match: input.scoreWeights.prefixMatch,
+        category_match: input.scoreWeights.categoryMatch,
+        embedding_match: input.scoreWeights.embeddingMatch,
+      },
+    });
+
+    return RecommenderClient.matchingConfigToGraphQL(config);
+  },
+
+  async savePersonalizationConfig(
+    _: unknown,
+    { input }: { input: PersonalizationConfigInput },
+    context: DataSourceContext
+  ) {
+    const { recommenderClient } = context;
+
+    const config = await recommenderClient.savePersonalizationConfig({
+      enable_rag: input.enableRag,
+      enable_outcome_learning: input.enableOutcomeLearning,
+      enable_decision_paths: input.enableDecisionPaths,
+      knowledge_sources: input.knowledgeSources,
+      learning_rate: input.learningRate,
+    });
+
+    return RecommenderClient.personalizationConfigToGraphQL(config);
+  },
 };
 
 export interface RecordOutcomeInput {
@@ -423,6 +544,57 @@ export interface CreateSelectionRuleInput {
   variantGroupId?: string;
   ruleDefinition: Record<string, unknown>;
   priority?: number;
+}
+
+export interface UpdateVariantInput {
+  variantName?: string;
+  targetAgeMin?: number;
+  targetAgeMax?: number;
+  targetSex?: string;
+  targetConditions?: string[];
+  targetRiskFactors?: string[];
+  exclusionConditions?: string[];
+  priorityScore?: number;
+  isDefault?: boolean;
+}
+
+export interface UpdateSelectionRuleInput {
+  name?: string;
+  description?: string;
+  ruleDefinition?: Record<string, unknown>;
+  priority?: number;
+  isActive?: boolean;
+}
+
+export interface UpdateVariantGroupInput {
+  name?: string;
+  description?: string;
+  conditionCodes?: string[];
+  isActive?: boolean;
+}
+
+export interface ScoreWeightsInput {
+  exactMatch: number;
+  prefixMatch: number;
+  categoryMatch: number;
+  embeddingMatch: number;
+}
+
+export interface MatchingConfigInput {
+  strategy: string;
+  codeMatchPriority: string;
+  enableEmbeddings: boolean;
+  similarityThreshold: number;
+  maxCandidates: number;
+  scoreWeights: ScoreWeightsInput;
+}
+
+export interface PersonalizationConfigInput {
+  enableRag: boolean;
+  enableOutcomeLearning: boolean;
+  enableDecisionPaths: boolean;
+  knowledgeSources: string[];
+  learningRate: string;
 }
 
 export default Mutation;
