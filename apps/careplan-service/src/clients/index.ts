@@ -3,3 +3,4 @@
  */
 
 export * from "./validator-client";
+export * from "./parser-client";
