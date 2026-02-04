@@ -3,6 +3,7 @@ import { startStandaloneServer } from '@apollo/server/standalone';
 import { buildSubgraphSchema } from '@apollo/subgraph';
 import gql from 'graphql-tag';
 import axios from 'axios';
+import { getExtractionClient, FHIRObservation } from './clients';
 
 const typeDefs = gql`
   extend schema @link(url: "https://specs.apollo.dev/federation/v2.10", import: ["@key", "@external", "@shareable"])
@@ -105,6 +106,30 @@ const resolvers = {
           params: { patient: `Patient/${epicPatientId}` }
         });
 
+        // Extract vitals via feature-extraction service, with fallback to raw observations
+        let vitals: Array<{ type: string; value: number; unit: string; recordedDate: string }> = [];
+        const rawEntries = vitalsResponse.data.entry || [];
+        try {
+          const observations: FHIRObservation[] = rawEntries.map((entry: any) => entry.resource);
+          if (observations.length > 0) {
+            const result = await getExtractionClient().extractVitals(observations);
+            vitals = result.vitals.map((v) => ({
+              type: v.type,
+              value: v.normalizedValue,
+              unit: v.normalizedUnit,
+              recordedDate: v.timestamp || ''
+            }));
+          }
+        } catch (extractionError) {
+          console.warn('Feature extraction service unavailable, falling back to raw observations:', extractionError);
+          vitals = rawEntries.map((entry: any) => ({
+            type: entry.resource.code?.coding?.[0]?.display || 'Unknown',
+            value: entry.resource.valueQuantity?.value || 0,
+            unit: entry.resource.valueQuantity?.unit || '',
+            recordedDate: entry.resource.effectiveDateTime || ''
+          }));
+        }
+
         return {
           epicPatientId,
           demographics: {
@@ -114,12 +139,7 @@ const resolvers = {
             dateOfBirth: patient.birthDate || '',
             mrn: patient.identifier?.[0]?.value || ''
           },
-          vitals: vitalsResponse.data.entry?.map((entry: any) => ({
-            type: entry.resource.code?.coding?.[0]?.display || 'Unknown',
-            value: entry.resource.valueQuantity?.value || 0,
-            unit: entry.resource.valueQuantity?.unit || '',
-            recordedDate: entry.resource.effectiveDateTime || ''
-          })) || [],
+          vitals,
           medications: medsResponse.data.entry?.map((entry: any) => ({
             name: entry.resource.medicationCodeableConcept?.coding?.[0]?.display || 'Unknown',
             status: entry.resource.status || 'unknown',
