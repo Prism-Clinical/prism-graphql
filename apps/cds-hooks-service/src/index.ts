@@ -1,7 +1,7 @@
 import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import { discoveryRouter } from './routes';
-import { patientViewRouter } from './handlers';
+import { patientViewRouter, orderReviewRouter } from './handlers';
 import { getConfig } from './config';
 import type { CDSErrorResponse } from './types';
 
@@ -59,6 +59,7 @@ app.use('/cds-services', discoveryRouter);
 
 // CDS Hooks Service endpoints
 app.use('/cds-services/prism-patient-view', patientViewRouter);
+app.use('/cds-services/prism-order-review', orderReviewRouter);
 
 // 404 handler for unknown routes
 app.use((_req: Request, res: Response) => {
