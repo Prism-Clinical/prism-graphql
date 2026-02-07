@@ -161,3 +161,64 @@ export function zodErrorHandler(
 
   next(error);
 }
+
+/**
+ * Factory function to create hook-specific validation middleware
+ *
+ * Use this when mounting a handler at a specific hook endpoint where
+ * you know the expected hook type in advance.
+ *
+ * @param expectedHook - The expected CDS hook type for this endpoint
+ * @returns Express middleware function
+ */
+export function createHookValidator(expectedHook: CDSHookType) {
+  return (req: Request, res: Response, next: NextFunction): void => {
+    const body = req.body as unknown;
+
+    // Validate the base request structure first
+    const baseValidation = baseCDSRequestSchema.safeParse(body);
+
+    if (!baseValidation.success) {
+      const errors = extractValidationErrors(baseValidation.error);
+      const response: ValidationErrorResponse = {
+        error: 'invalid_request',
+        message: 'Request validation failed',
+        validationErrors: errors,
+      };
+      res.status(400).json(response);
+      return;
+    }
+
+    const { hook } = baseValidation.data;
+
+    // Verify hook matches expected
+    if (hook !== expectedHook) {
+      const response: CDSErrorResponse = {
+        error: 'invalid_request',
+        message: `Expected hook type '${expectedHook}', got '${hook}'`,
+      };
+      res.status(400).json(response);
+      return;
+    }
+
+    // Validate against the hook-specific schema
+    const hookSchema = createCDSRequestSchema(expectedHook);
+    const hookValidation = hookSchema.safeParse(body);
+
+    if (!hookValidation.success) {
+      const errors = extractValidationErrors(hookValidation.error);
+      const response: ValidationErrorResponse = {
+        error: 'invalid_request',
+        message: 'Request context validation failed',
+        validationErrors: errors,
+      };
+      res.status(400).json(response);
+      return;
+    }
+
+    // Attach validated request to locals
+    res.locals.validatedRequest = hookValidation.data;
+
+    next();
+  };
+}
