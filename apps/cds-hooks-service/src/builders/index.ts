@@ -18,3 +18,14 @@ export {
   createUpdateSuggestion,
 } from './suggestion';
 export type { FHIRResourceBase, ActionType } from './suggestion';
+
+export {
+  LinkBuilder,
+  LinkValidationError,
+  createLinkBuilder,
+  createAbsoluteLink,
+  createSmartLink,
+  createDocumentationLink,
+  createGuidelineLink,
+} from './link';
+export type { LinkType } from './link';
