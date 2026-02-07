@@ -1,0 +1,108 @@
+{
+  "aspirin-order": {
+    "resourceType": "MedicationRequest",
+    "id": "draft-aspirin",
+    "status": "draft",
+    "intent": "order",
+    "medicationCodeableConcept": {
+      "coding": [
+        { "system": "http://www.nlm.nih.gov/research/umls/rxnorm", "code": "1191", "display": "Aspirin" }
+      ],
+      "text": "Aspirin 81mg"
+    },
+    "subject": { "reference": "Patient/patient-complex" },
+    "dosageInstruction": [
+      { "text": "81mg once daily" }
+    ]
+  },
+  "amoxicillin-order": {
+    "resourceType": "MedicationRequest",
+    "id": "draft-amoxicillin",
+    "status": "draft",
+    "intent": "order",
+    "medicationCodeableConcept": {
+      "coding": [
+        { "system": "http://www.nlm.nih.gov/research/umls/rxnorm", "code": "723", "display": "Amoxicillin" }
+      ],
+      "text": "Amoxicillin 500mg"
+    },
+    "subject": { "reference": "Patient/patient-allergies" },
+    "dosageInstruction": [
+      { "text": "500mg three times daily for 10 days" }
+    ]
+  },
+  "nsaid-order": {
+    "resourceType": "MedicationRequest",
+    "id": "draft-ibuprofen",
+    "status": "draft",
+    "intent": "order",
+    "medicationCodeableConcept": {
+      "coding": [
+        { "system": "http://www.nlm.nih.gov/research/umls/rxnorm", "code": "5640", "display": "Ibuprofen" }
+      ],
+      "text": "Ibuprofen 400mg"
+    },
+    "subject": { "reference": "Patient/patient-renal" },
+    "dosageInstruction": [
+      { "text": "400mg every 6 hours as needed" }
+    ]
+  },
+  "potassium-order": {
+    "resourceType": "MedicationRequest",
+    "id": "draft-potassium",
+    "status": "draft",
+    "intent": "order",
+    "medicationCodeableConcept": {
+      "coding": [
+        { "system": "http://www.nlm.nih.gov/research/umls/rxnorm", "code": "8591", "display": "Potassium chloride" }
+      ],
+      "text": "Potassium chloride 20mEq"
+    },
+    "subject": { "reference": "Patient/patient-renal" },
+    "dosageInstruction": [
+      { "text": "20mEq once daily" }
+    ]
+  },
+  "cbc-order": {
+    "resourceType": "ServiceRequest",
+    "id": "draft-cbc",
+    "status": "draft",
+    "intent": "order",
+    "code": {
+      "coding": [
+        { "system": "http://loinc.org", "code": "58410-2", "display": "CBC panel" }
+      ],
+      "text": "Complete Blood Count"
+    },
+    "subject": { "reference": "Patient/patient-healthy" }
+  },
+  "duplicate-cbc-order": {
+    "resourceType": "ServiceRequest",
+    "id": "draft-cbc-duplicate",
+    "status": "draft",
+    "intent": "order",
+    "code": {
+      "coding": [
+        { "system": "http://loinc.org", "code": "58410-2", "display": "CBC panel" }
+      ],
+      "text": "Complete Blood Count"
+    },
+    "subject": { "reference": "Patient/patient-healthy" }
+  },
+  "digoxin-order": {
+    "resourceType": "MedicationRequest",
+    "id": "draft-digoxin",
+    "status": "draft",
+    "intent": "order",
+    "medicationCodeableConcept": {
+      "coding": [
+        { "system": "http://www.nlm.nih.gov/research/umls/rxnorm", "code": "3407", "display": "Digoxin" }
+      ],
+      "text": "Digoxin 0.25mg"
+    },
+    "subject": { "reference": "Patient/patient-complex" },
+    "dosageInstruction": [
+      { "text": "0.25mg once daily" }
+    ]
+  }
+}

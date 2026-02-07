@@ -1,0 +1,72 @@
+{
+  "diabetes-type-2": {
+    "resourceType": "Condition",
+    "id": "condition-diabetes-type2",
+    "clinicalStatus": {
+      "coding": [{ "code": "active" }]
+    },
+    "code": {
+      "coding": [
+        { "system": "http://snomed.info/sct", "code": "44054006", "display": "Type 2 diabetes mellitus" }
+      ],
+      "text": "Type 2 Diabetes"
+    },
+    "subject": { "reference": "Patient/patient-diabetic" }
+  },
+  "hypertension": {
+    "resourceType": "Condition",
+    "id": "condition-hypertension",
+    "clinicalStatus": {
+      "coding": [{ "code": "active" }]
+    },
+    "code": {
+      "coding": [
+        { "system": "http://snomed.info/sct", "code": "38341003", "display": "Essential hypertension" }
+      ],
+      "text": "Hypertension"
+    },
+    "subject": { "reference": "Patient/patient-complex" }
+  },
+  "chronic-kidney-disease": {
+    "resourceType": "Condition",
+    "id": "condition-ckd",
+    "clinicalStatus": {
+      "coding": [{ "code": "active" }]
+    },
+    "code": {
+      "coding": [
+        { "system": "http://snomed.info/sct", "code": "709044004", "display": "Chronic kidney disease" }
+      ],
+      "text": "Chronic Kidney Disease Stage 3"
+    },
+    "subject": { "reference": "Patient/patient-renal" }
+  },
+  "atrial-fibrillation": {
+    "resourceType": "Condition",
+    "id": "condition-afib",
+    "clinicalStatus": {
+      "coding": [{ "code": "active" }]
+    },
+    "code": {
+      "coding": [
+        { "system": "http://snomed.info/sct", "code": "49436004", "display": "Atrial fibrillation" }
+      ],
+      "text": "Atrial Fibrillation"
+    },
+    "subject": { "reference": "Patient/patient-complex" }
+  },
+  "heart-failure": {
+    "resourceType": "Condition",
+    "id": "condition-heart-failure",
+    "clinicalStatus": {
+      "coding": [{ "code": "active" }]
+    },
+    "code": {
+      "coding": [
+        { "system": "http://snomed.info/sct", "code": "84114007", "display": "Heart failure" }
+      ],
+      "text": "Congestive Heart Failure"
+    },
+    "subject": { "reference": "Patient/patient-complex" }
+  }
+}
