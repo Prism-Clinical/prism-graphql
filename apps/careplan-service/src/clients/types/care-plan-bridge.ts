@@ -110,7 +110,7 @@ export function toDocumentFormat(
       status: carePlan.status,
     },
     codes: {
-      conditions: carePlan.conditionCodes.map((code) => ({
+      conditions: carePlan.conditionCodes.map((code: string) => ({
         code,
         system: "ICD-10",
         description: code,

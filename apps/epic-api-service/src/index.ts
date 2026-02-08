@@ -1,12 +1,156 @@
-import { ApolloServer } from '@apollo/server';
-import { startStandaloneServer } from '@apollo/server/standalone';
-import { buildSubgraphSchema } from '@apollo/subgraph';
-import gql from 'graphql-tag';
-import axios from 'axios';
-import { getExtractionClient, FHIRObservation } from './clients';
+/**
+ * Epic API Service
+ *
+ * GraphQL subgraph for Epic EHR integration.
+ * Fetches patient data from Epic FHIR APIs and normalizes it for the federated graph.
+ *
+ * Improvements:
+ * - Proper TypeScript types (no `any`)
+ * - Explicit error handling with error field in responses
+ * - Uses FeatureExtractionClient with graceful fallback
+ * - Structured logging
+ * - Request correlation
+ */
+
+import { ApolloServer } from "@apollo/server";
+import { startStandaloneServer } from "@apollo/server/standalone";
+import { buildSubgraphSchema } from "@apollo/subgraph";
+import gql from "graphql-tag";
+import axios, { AxiosError } from "axios";
+import {
+  getExtractionClient,
+  FHIRObservation,
+} from "./clients";
+import { createLogger } from "./clients/logger";
+import { generateRequestId } from "./clients/http-utils";
+
+// =============================================================================
+// TYPES
+// =============================================================================
+
+interface PatientDemographics {
+  firstName: string;
+  lastName: string;
+  gender: string;
+  dateOfBirth: string;
+  mrn: string;
+}
+
+interface Vital {
+  type: string;
+  value: number;
+  unit: string;
+  recordedDate: string;
+  isNormalized: boolean;
+}
+
+interface Medication {
+  name: string;
+  status: string;
+  dosage: string;
+}
+
+interface Diagnosis {
+  code: string;
+  display: string;
+  recordedDate: string;
+}
+
+interface EpicPatientData {
+  epicPatientId: string;
+  demographics: PatientDemographics | null;
+  vitals: Vital[];
+  medications: Medication[];
+  diagnoses: Diagnosis[];
+  lastSync: string;
+  errors: DataFetchError[];
+}
+
+interface DataFetchError {
+  dataType: string;
+  message: string;
+  code?: string;
+}
+
+interface EpicConnectionStatus {
+  connected: boolean;
+  lastConnectionTest: string;
+  responseTime: number;
+  errors: string[];
+}
+
+interface SyncResult {
+  success: boolean;
+  syncedDataTypes: string[];
+  totalRecords: number;
+  processingTime: number;
+  errors: SyncError[];
+}
+
+interface SyncError {
+  dataType: string;
+  message: string;
+}
+
+// FHIR Bundle types
+interface FHIRBundleEntry<T> {
+  resource: T;
+}
+
+interface FHIRBundle<T> {
+  entry?: FHIRBundleEntry<T>[];
+}
+
+interface FHIRPatient {
+  name?: Array<{
+    given?: string[];
+    family?: string;
+  }>;
+  gender?: string;
+  birthDate?: string;
+  identifier?: Array<{
+    value?: string;
+  }>;
+}
+
+interface FHIRMedicationRequest {
+  medicationCodeableConcept?: {
+    coding?: Array<{
+      display?: string;
+    }>;
+  };
+  status?: string;
+  dosageInstruction?: Array<{
+    text?: string;
+  }>;
+}
+
+interface FHIRCondition {
+  code?: {
+    coding?: Array<{
+      code?: string;
+      display?: string;
+    }>;
+  };
+  recordedDate?: string;
+}
+
+// =============================================================================
+// LOGGER
+// =============================================================================
+
+const logger = createLogger("epic-api-service");
+
+// =============================================================================
+// SCHEMA
+// =============================================================================
 
 const typeDefs = gql`
-  extend schema @link(url: "https://specs.apollo.dev/federation/v2.10", import: ["@key", "@external", "@shareable"])
+  extend schema
+    @link(
+      url: "https://specs.apollo.dev/federation/v2.10"
+      import: ["@key", "@external", "@shareable"]
+    )
 
   type EpicPatientData @key(fields: "epicPatientId") {
     epicPatientId: ID!
@@ -15,6 +159,7 @@ const typeDefs = gql`
     medications: [Medication!]!
     diagnoses: [Diagnosis!]!
     lastSync: String
+    errors: [DataFetchError!]!
   }
 
   type PatientDemographics {
@@ -30,6 +175,7 @@ const typeDefs = gql`
     value: Float!
     unit: String!
     recordedDate: String!
+    isNormalized: Boolean!
   }
 
   type Medication {
@@ -42,6 +188,12 @@ const typeDefs = gql`
     code: String!
     display: String!
     recordedDate: String!
+  }
+
+  type DataFetchError {
+    dataType: String!
+    message: String!
+    code: String
   }
 
   type EpicConnectionStatus {
@@ -77,106 +229,178 @@ const typeDefs = gql`
   }
 
   type Mutation {
-    syncPatientDataFromEpic(epicPatientId: ID!, dataTypes: [EpicDataType!]!): SyncResult!
+    syncPatientDataFromEpic(
+      epicPatientId: ID!
+      dataTypes: [EpicDataType!]!
+    ): SyncResult!
   }
 `;
 
+// =============================================================================
+// RESOLVERS
+// =============================================================================
+
 const resolvers = {
   Query: {
-    async epicPatientData(_: any, { epicPatientId }: { epicPatientId: string }) {
-      try {
-        const epicBaseUrl = process.env.EPIC_BASE_URL || 'http://epic-mock:8080';
-        
-        // Fetch patient demographics
-        const patientResponse = await axios.get(`${epicBaseUrl}/Patient/${epicPatientId}`);
-        const patient = patientResponse.data;
+    async epicPatientData(
+      _: unknown,
+      { epicPatientId }: { epicPatientId: string }
+    ): Promise<EpicPatientData> {
+      const requestId = generateRequestId();
+      const epicBaseUrl = process.env.EPIC_BASE_URL || "http://epic-mock:8080";
+      const errors: DataFetchError[] = [];
 
-        // Fetch vitals
-        const vitalsResponse = await axios.get(`${epicBaseUrl}/Observation`, {
-          params: { patient: `Patient/${epicPatientId}`, category: 'vital-signs' }
-        });
+      logger.info("Fetching Epic patient data", { requestId, epicPatientId });
 
-        // Fetch medications
-        const medsResponse = await axios.get(`${epicBaseUrl}/MedicationRequest`, {
-          params: { patient: `Patient/${epicPatientId}` }
-        });
+      // Fetch all data in parallel
+      const [patientResult, vitalsResult, medsResult, conditionsResult] =
+        await Promise.allSettled([
+          axios.get<FHIRPatient>(`${epicBaseUrl}/Patient/${epicPatientId}`),
+          axios.get<FHIRBundle<FHIRObservation>>(`${epicBaseUrl}/Observation`, {
+            params: {
+              patient: `Patient/${epicPatientId}`,
+              category: "vital-signs",
+            },
+          }),
+          axios.get<FHIRBundle<FHIRMedicationRequest>>(
+            `${epicBaseUrl}/MedicationRequest`,
+            {
+              params: { patient: `Patient/${epicPatientId}` },
+            }
+          ),
+          axios.get<FHIRBundle<FHIRCondition>>(`${epicBaseUrl}/Condition`, {
+            params: { patient: `Patient/${epicPatientId}` },
+          }),
+        ]);
 
-        // Fetch conditions
-        const conditionsResponse = await axios.get(`${epicBaseUrl}/Condition`, {
-          params: { patient: `Patient/${epicPatientId}` }
-        });
-
-        // Extract vitals via feature-extraction service, with fallback to raw observations
-        let vitals: Array<{ type: string; value: number; unit: string; recordedDate: string }> = [];
-        const rawEntries = vitalsResponse.data.entry || [];
-        try {
-          const observations: FHIRObservation[] = rawEntries.map((entry: any) => entry.resource);
-          if (observations.length > 0) {
-            const result = await getExtractionClient().extractVitals(observations);
-            vitals = result.vitals.map((v) => ({
-              type: v.type,
-              value: v.normalizedValue,
-              unit: v.normalizedUnit,
-              recordedDate: v.timestamp || ''
-            }));
-          }
-        } catch (extractionError) {
-          console.warn('Feature extraction service unavailable, falling back to raw observations:', extractionError);
-          vitals = rawEntries.map((entry: any) => ({
-            type: entry.resource.code?.coding?.[0]?.display || 'Unknown',
-            value: entry.resource.valueQuantity?.value || 0,
-            unit: entry.resource.valueQuantity?.unit || '',
-            recordedDate: entry.resource.effectiveDateTime || ''
-          }));
-        }
-
-        return {
-          epicPatientId,
-          demographics: {
-            firstName: patient.name?.[0]?.given?.[0] || '',
-            lastName: patient.name?.[0]?.family || '',
-            gender: patient.gender || '',
-            dateOfBirth: patient.birthDate || '',
-            mrn: patient.identifier?.[0]?.value || ''
-          },
-          vitals,
-          medications: medsResponse.data.entry?.map((entry: any) => ({
-            name: entry.resource.medicationCodeableConcept?.coding?.[0]?.display || 'Unknown',
-            status: entry.resource.status || 'unknown',
-            dosage: entry.resource.dosageInstruction?.[0]?.text || ''
-          })) || [],
-          diagnoses: conditionsResponse.data.entry?.map((entry: any) => ({
-            code: entry.resource.code?.coding?.[0]?.code || '',
-            display: entry.resource.code?.coding?.[0]?.display || 'Unknown',
-            recordedDate: entry.resource.recordedDate || ''
-          })) || [],
-          lastSync: new Date().toISOString()
+      // Process demographics
+      let demographics: PatientDemographics | null = null;
+      if (patientResult.status === "fulfilled") {
+        const patient = patientResult.value.data;
+        demographics = {
+          firstName: patient.name?.[0]?.given?.[0] || "",
+          lastName: patient.name?.[0]?.family || "",
+          gender: patient.gender || "",
+          dateOfBirth: patient.birthDate || "",
+          mrn: patient.identifier?.[0]?.value || "",
         };
-      } catch (error) {
-        console.error('Error fetching Epic patient data:', error);
-        return {
-          epicPatientId,
-          demographics: null,
-          vitals: [],
-          medications: [],
-          diagnoses: [],
-          lastSync: new Date().toISOString()
-        };
+      } else {
+        errors.push({
+          dataType: "DEMOGRAPHICS",
+          message: extractErrorMessage(patientResult.reason),
+          code: extractErrorCode(patientResult.reason),
+        });
       }
+
+      // Process vitals with extraction service
+      let vitals: Vital[] = [];
+      if (vitalsResult.status === "fulfilled") {
+        const rawEntries = vitalsResult.value.data.entry || [];
+        const observations: FHIRObservation[] = rawEntries.map(
+          (entry) => entry.resource
+        );
+
+        if (observations.length > 0) {
+          const extractionResult =
+            await getExtractionClient().extractVitalsWithFallback(
+              observations,
+              requestId
+            );
+
+          vitals = extractionResult.result.vitals.map((v) => ({
+            type: v.type,
+            value: v.normalizedValue,
+            unit: v.normalizedUnit,
+            recordedDate: v.timestamp || "",
+            isNormalized: extractionResult.fromService,
+          }));
+
+          if (!extractionResult.fromService) {
+            logger.warn("Using fallback vitals extraction", {
+              requestId,
+              epicPatientId,
+              serviceError: extractionResult.serviceError,
+            });
+          }
+        }
+      } else {
+        errors.push({
+          dataType: "VITALS",
+          message: extractErrorMessage(vitalsResult.reason),
+          code: extractErrorCode(vitalsResult.reason),
+        });
+      }
+
+      // Process medications
+      let medications: Medication[] = [];
+      if (medsResult.status === "fulfilled") {
+        medications =
+          medsResult.value.data.entry?.map((entry) => ({
+            name:
+              entry.resource.medicationCodeableConcept?.coding?.[0]?.display ||
+              "Unknown",
+            status: entry.resource.status || "unknown",
+            dosage: entry.resource.dosageInstruction?.[0]?.text || "",
+          })) || [];
+      } else {
+        errors.push({
+          dataType: "MEDICATIONS",
+          message: extractErrorMessage(medsResult.reason),
+          code: extractErrorCode(medsResult.reason),
+        });
+      }
+
+      // Process diagnoses
+      let diagnoses: Diagnosis[] = [];
+      if (conditionsResult.status === "fulfilled") {
+        diagnoses =
+          conditionsResult.value.data.entry?.map((entry) => ({
+            code: entry.resource.code?.coding?.[0]?.code || "",
+            display: entry.resource.code?.coding?.[0]?.display || "Unknown",
+            recordedDate: entry.resource.recordedDate || "",
+          })) || [];
+      } else {
+        errors.push({
+          dataType: "DIAGNOSES",
+          message: extractErrorMessage(conditionsResult.reason),
+          code: extractErrorCode(conditionsResult.reason),
+        });
+      }
+
+      logger.info("Epic patient data fetch completed", {
+        requestId,
+        epicPatientId,
+        hasErrors: errors.length > 0,
+        errorCount: errors.length,
+        vitalCount: vitals.length,
+        medicationCount: medications.length,
+        diagnosisCount: diagnoses.length,
+      });
+
+      return {
+        epicPatientId,
+        demographics,
+        vitals,
+        medications,
+        diagnoses,
+        lastSync: new Date().toISOString(),
+        errors,
+      };
     },
 
-    async epicConnectionStatus() {
+    async epicConnectionStatus(): Promise<EpicConnectionStatus> {
       const start = Date.now();
+      const epicBaseUrl = process.env.EPIC_BASE_URL || "http://epic-mock:8080";
+
       try {
-        const epicBaseUrl = process.env.EPIC_BASE_URL || 'http://epic-mock:8080';
-        await axios.get(`${epicBaseUrl}/health`);
+        await axios.get(`${epicBaseUrl}/health`, { timeout: 5000 });
         const responseTime = Date.now() - start;
-        
+
         return {
           connected: true,
           lastConnectionTest: new Date().toISOString(),
           responseTime,
-          errors: []
+          errors: [],
         };
       } catch (error) {
         const responseTime = Date.now() - start;
@@ -184,81 +408,176 @@ const resolvers = {
           connected: false,
           lastConnectionTest: new Date().toISOString(),
           responseTime,
-          errors: [error instanceof Error ? error.message : 'Unknown error']
+          errors: [extractErrorMessage(error)],
         };
       }
-    }
+    },
   },
 
   Mutation: {
-    async syncPatientDataFromEpic(_: any, { epicPatientId, dataTypes }: { epicPatientId: string, dataTypes: string[] }) {
+    async syncPatientDataFromEpic(
+      _: unknown,
+      {
+        epicPatientId,
+        dataTypes,
+      }: { epicPatientId: string; dataTypes: string[] }
+    ): Promise<SyncResult> {
+      const requestId = generateRequestId();
       const start = Date.now();
       const syncedDataTypes: string[] = [];
-      const errors: Array<{ dataType: string, message: string }> = [];
+      const errors: SyncError[] = [];
       let totalRecords = 0;
 
-      try {
-        const epicBaseUrl = process.env.EPIC_BASE_URL || 'http://epic-mock:8080';
+      logger.info("Syncing patient data from Epic", {
+        requestId,
+        epicPatientId,
+        dataTypes,
+      });
 
-        for (const dataType of dataTypes) {
-          try {
-            switch (dataType) {
-              case 'DEMOGRAPHICS':
-                await axios.get(`${epicBaseUrl}/Patient/${epicPatientId}`);
-                syncedDataTypes.push(dataType);
-                totalRecords += 1;
-                break;
-              case 'VITALS':
-                const vitalsResponse = await axios.get(`${epicBaseUrl}/Observation`, {
-                  params: { patient: `Patient/${epicPatientId}`, category: 'vital-signs' }
-                });
-                syncedDataTypes.push(dataType);
-                totalRecords += vitalsResponse.data.entry?.length || 0;
-                break;
-              case 'MEDICATIONS':
-                const medsResponse = await axios.get(`${epicBaseUrl}/MedicationRequest`, {
-                  params: { patient: `Patient/${epicPatientId}` }
-                });
-                syncedDataTypes.push(dataType);
-                totalRecords += medsResponse.data.entry?.length || 0;
-                break;
-              case 'DIAGNOSES':
-                const conditionsResponse = await axios.get(`${epicBaseUrl}/Condition`, {
-                  params: { patient: `Patient/${epicPatientId}` }
-                });
-                syncedDataTypes.push(dataType);
-                totalRecords += conditionsResponse.data.entry?.length || 0;
-                break;
+      const epicBaseUrl = process.env.EPIC_BASE_URL || "http://epic-mock:8080";
+
+      // Process each data type
+      const syncPromises = dataTypes.map(async (dataType) => {
+        try {
+          switch (dataType) {
+            case "DEMOGRAPHICS": {
+              await axios.get(`${epicBaseUrl}/Patient/${epicPatientId}`);
+              return { dataType, records: 1, success: true };
             }
-          } catch (error) {
-            errors.push({
-              dataType,
-              message: error instanceof Error ? error.message : 'Unknown error'
-            });
+            case "VITALS": {
+              const response = await axios.get<FHIRBundle<FHIRObservation>>(
+                `${epicBaseUrl}/Observation`,
+                {
+                  params: {
+                    patient: `Patient/${epicPatientId}`,
+                    category: "vital-signs",
+                  },
+                }
+              );
+              return {
+                dataType,
+                records: response.data.entry?.length || 0,
+                success: true,
+              };
+            }
+            case "MEDICATIONS": {
+              const response = await axios.get<
+                FHIRBundle<FHIRMedicationRequest>
+              >(`${epicBaseUrl}/MedicationRequest`, {
+                params: { patient: `Patient/${epicPatientId}` },
+              });
+              return {
+                dataType,
+                records: response.data.entry?.length || 0,
+                success: true,
+              };
+            }
+            case "DIAGNOSES": {
+              const response = await axios.get<FHIRBundle<FHIRCondition>>(
+                `${epicBaseUrl}/Condition`,
+                {
+                  params: { patient: `Patient/${epicPatientId}` },
+                }
+              );
+              return {
+                dataType,
+                records: response.data.entry?.length || 0,
+                success: true,
+              };
+            }
+            default:
+              return {
+                dataType,
+                records: 0,
+                success: false,
+                error: `Unknown data type: ${dataType}`,
+              };
           }
+        } catch (error) {
+          return {
+            dataType,
+            records: 0,
+            success: false,
+            error: extractErrorMessage(error),
+          };
         }
+      });
 
-        return {
-          success: errors.length === 0,
-          syncedDataTypes,
-          totalRecords,
-          processingTime: Date.now() - start,
-          errors
-        };
-      } catch (error) {
-        return {
-          success: false,
-          syncedDataTypes,
-          totalRecords,
-          processingTime: Date.now() - start,
-          errors: [{ dataType: 'ALL', message: error instanceof Error ? error.message : 'Unknown error' }]
-        };
+      const results = await Promise.all(syncPromises);
+
+      for (const result of results) {
+        if (result.success) {
+          syncedDataTypes.push(result.dataType);
+          totalRecords += result.records;
+        } else {
+          errors.push({
+            dataType: result.dataType,
+            message: result.error || "Unknown error",
+          });
+        }
       }
-    }
-  }
+
+      const processingTime = Date.now() - start;
+
+      logger.info("Patient data sync completed", {
+        requestId,
+        epicPatientId,
+        success: errors.length === 0,
+        syncedDataTypes,
+        totalRecords,
+        processingTime,
+        errorCount: errors.length,
+      });
+
+      return {
+        success: errors.length === 0,
+        syncedDataTypes,
+        totalRecords,
+        processingTime,
+        errors,
+      };
+    },
+  },
 };
 
-async function main() {
+// =============================================================================
+// HELPERS
+// =============================================================================
+
+function extractErrorMessage(error: unknown): string {
+  if (error instanceof AxiosError) {
+    if (error.response) {
+      return `HTTP ${error.response.status}: ${error.response.statusText}`;
+    }
+    if (error.code === "ECONNREFUSED") {
+      return "Connection refused - service may be down";
+    }
+    if (error.code === "ETIMEDOUT") {
+      return "Request timed out";
+    }
+    return error.message;
+  }
+  if (error instanceof Error) {
+    return error.message;
+  }
+  return "Unknown error";
+}
+
+function extractErrorCode(error: unknown): string | undefined {
+  if (error instanceof AxiosError) {
+    if (error.response) {
+      return `HTTP_${error.response.status}`;
+    }
+    return error.code;
+  }
+  return undefined;
+}
+
+// =============================================================================
+// SERVER
+// =============================================================================
+
+async function main(): Promise<void> {
   try {
     const server = new ApolloServer({
       schema: buildSubgraphSchema({
@@ -268,17 +587,23 @@ async function main() {
     });
 
     const { url } = await startStandaloneServer(server, {
-      listen: { port: parseInt(process.env.PORT || '4006') },
+      listen: { port: parseInt(process.env.PORT || "4006") },
     });
 
-    console.log(`🚀 Epic API Service ready at ${url}`);
+    logger.info(`Epic API Service ready at ${url}`);
   } catch (error) {
-    console.error('Failed to start Epic API service:', error);
+    logger.error(
+      "Failed to start Epic API service",
+      error instanceof Error ? error : undefined
+    );
     process.exit(1);
   }
 }
 
 main().catch((error) => {
-  console.error('Failed to start Epic API service:', error);
+  logger.error(
+    "Failed to start Epic API service",
+    error instanceof Error ? error : undefined
+  );
   process.exit(1);
 });
