@@ -1,0 +1,150 @@
+{
+  "hba1c-high": {
+    "resourceType": "Observation",
+    "id": "obs-hba1c-high",
+    "status": "final",
+    "code": {
+      "coding": [
+        { "system": "http://loinc.org", "code": "4548-4", "display": "Hemoglobin A1c" }
+      ],
+      "text": "HbA1c"
+    },
+    "subject": { "reference": "Patient/patient-diabetic" },
+    "effectiveDateTime": "2026-02-01T10:00:00Z",
+    "valueQuantity": {
+      "value": 8.5,
+      "unit": "%",
+      "system": "http://unitsofmeasure.org",
+      "code": "%"
+    },
+    "interpretation": [
+      {
+        "coding": [{ "code": "H", "display": "High" }]
+      }
+    ]
+  },
+  "hba1c-controlled": {
+    "resourceType": "Observation",
+    "id": "obs-hba1c-controlled",
+    "status": "final",
+    "code": {
+      "coding": [
+        { "system": "http://loinc.org", "code": "4548-4", "display": "Hemoglobin A1c" }
+      ],
+      "text": "HbA1c"
+    },
+    "subject": { "reference": "Patient/patient-diabetic" },
+    "effectiveDateTime": "2026-02-01T10:00:00Z",
+    "valueQuantity": {
+      "value": 6.5,
+      "unit": "%",
+      "system": "http://unitsofmeasure.org",
+      "code": "%"
+    }
+  },
+  "egfr-low": {
+    "resourceType": "Observation",
+    "id": "obs-egfr-low",
+    "status": "final",
+    "code": {
+      "coding": [
+        { "system": "http://loinc.org", "code": "33914-3", "display": "eGFR" }
+      ],
+      "text": "eGFR"
+    },
+    "subject": { "reference": "Patient/patient-renal" },
+    "effectiveDateTime": "2026-02-01T10:00:00Z",
+    "valueQuantity": {
+      "value": 35,
+      "unit": "mL/min/1.73m2",
+      "system": "http://unitsofmeasure.org",
+      "code": "mL/min/{1.73_m2}"
+    },
+    "interpretation": [
+      {
+        "coding": [{ "code": "L", "display": "Low" }]
+      }
+    ]
+  },
+  "inr-therapeutic": {
+    "resourceType": "Observation",
+    "id": "obs-inr-therapeutic",
+    "status": "final",
+    "code": {
+      "coding": [
+        { "system": "http://loinc.org", "code": "34714-6", "display": "INR" }
+      ],
+      "text": "INR"
+    },
+    "subject": { "reference": "Patient/patient-complex" },
+    "effectiveDateTime": "2026-02-05T10:00:00Z",
+    "valueQuantity": {
+      "value": 2.5,
+      "unit": "{ratio}",
+      "system": "http://unitsofmeasure.org",
+      "code": "{ratio}"
+    }
+  },
+  "bp-high": {
+    "resourceType": "Observation",
+    "id": "obs-bp-high",
+    "status": "final",
+    "code": {
+      "coding": [
+        { "system": "http://loinc.org", "code": "85354-9", "display": "Blood pressure panel" }
+      ],
+      "text": "Blood Pressure"
+    },
+    "subject": { "reference": "Patient/patient-complex" },
+    "effectiveDateTime": "2026-02-06T14:00:00Z",
+    "component": [
+      {
+        "code": {
+          "coding": [{ "system": "http://loinc.org", "code": "8480-6", "display": "Systolic BP" }]
+        },
+        "valueQuantity": {
+          "value": 158,
+          "unit": "mmHg"
+        }
+      },
+      {
+        "code": {
+          "coding": [{ "system": "http://loinc.org", "code": "8462-4", "display": "Diastolic BP" }]
+        },
+        "valueQuantity": {
+          "value": 95,
+          "unit": "mmHg"
+        }
+      }
+    ],
+    "interpretation": [
+      {
+        "coding": [{ "code": "H", "display": "High" }]
+      }
+    ]
+  },
+  "potassium-high": {
+    "resourceType": "Observation",
+    "id": "obs-potassium-high",
+    "status": "final",
+    "code": {
+      "coding": [
+        { "system": "http://loinc.org", "code": "2823-3", "display": "Potassium" }
+      ],
+      "text": "Potassium"
+    },
+    "subject": { "reference": "Patient/patient-renal" },
+    "effectiveDateTime": "2026-02-01T10:00:00Z",
+    "valueQuantity": {
+      "value": 5.8,
+      "unit": "mmol/L",
+      "system": "http://unitsofmeasure.org",
+      "code": "mmol/L"
+    },
+    "interpretation": [
+      {
+        "coding": [{ "code": "H", "display": "High" }]
+      }
+    ]
+  }
+}

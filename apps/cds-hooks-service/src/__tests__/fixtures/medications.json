@@ -1,0 +1,98 @@
+{
+  "metformin": {
+    "resourceType": "MedicationRequest",
+    "id": "medrx-metformin",
+    "status": "active",
+    "intent": "order",
+    "medicationCodeableConcept": {
+      "coding": [
+        { "system": "http://www.nlm.nih.gov/research/umls/rxnorm", "code": "6809", "display": "Metformin" }
+      ],
+      "text": "Metformin 500mg"
+    },
+    "subject": { "reference": "Patient/patient-diabetic" },
+    "dosageInstruction": [
+      { "text": "500mg twice daily with meals" }
+    ]
+  },
+  "warfarin": {
+    "resourceType": "MedicationRequest",
+    "id": "medrx-warfarin",
+    "status": "active",
+    "intent": "order",
+    "medicationCodeableConcept": {
+      "coding": [
+        { "system": "http://www.nlm.nih.gov/research/umls/rxnorm", "code": "11289", "display": "Warfarin" }
+      ],
+      "text": "Warfarin 5mg"
+    },
+    "subject": { "reference": "Patient/patient-complex" },
+    "dosageInstruction": [
+      { "text": "5mg once daily" }
+    ]
+  },
+  "lisinopril": {
+    "resourceType": "MedicationRequest",
+    "id": "medrx-lisinopril",
+    "status": "active",
+    "intent": "order",
+    "medicationCodeableConcept": {
+      "coding": [
+        { "system": "http://www.nlm.nih.gov/research/umls/rxnorm", "code": "29046", "display": "Lisinopril" }
+      ],
+      "text": "Lisinopril 10mg"
+    },
+    "subject": { "reference": "Patient/patient-complex" },
+    "dosageInstruction": [
+      { "text": "10mg once daily" }
+    ]
+  },
+  "digoxin": {
+    "resourceType": "MedicationRequest",
+    "id": "medrx-digoxin",
+    "status": "active",
+    "intent": "order",
+    "medicationCodeableConcept": {
+      "coding": [
+        { "system": "http://www.nlm.nih.gov/research/umls/rxnorm", "code": "3407", "display": "Digoxin" }
+      ],
+      "text": "Digoxin 0.125mg"
+    },
+    "subject": { "reference": "Patient/patient-complex" },
+    "dosageInstruction": [
+      { "text": "0.125mg once daily" }
+    ]
+  },
+  "furosemide": {
+    "resourceType": "MedicationRequest",
+    "id": "medrx-furosemide",
+    "status": "active",
+    "intent": "order",
+    "medicationCodeableConcept": {
+      "coding": [
+        { "system": "http://www.nlm.nih.gov/research/umls/rxnorm", "code": "4603", "display": "Furosemide" }
+      ],
+      "text": "Furosemide 40mg"
+    },
+    "subject": { "reference": "Patient/patient-renal" },
+    "dosageInstruction": [
+      { "text": "40mg once daily in morning" }
+    ]
+  },
+  "atorvastatin": {
+    "resourceType": "MedicationRequest",
+    "id": "medrx-atorvastatin",
+    "status": "active",
+    "intent": "order",
+    "medicationCodeableConcept": {
+      "coding": [
+        { "system": "http://www.nlm.nih.gov/research/umls/rxnorm", "code": "83367", "display": "Atorvastatin" }
+      ],
+      "text": "Atorvastatin 20mg"
+    },
+    "subject": { "reference": "Patient/patient-diabetic" },
+    "dosageInstruction": [
+      { "text": "20mg once daily at bedtime" }
+    ]
+  }
+}

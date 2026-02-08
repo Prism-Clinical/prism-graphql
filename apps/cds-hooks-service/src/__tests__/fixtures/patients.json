@@ -1,0 +1,37 @@
+{
+  "patient-healthy": {
+    "resourceType": "Patient",
+    "id": "patient-healthy",
+    "name": [{ "given": ["John"], "family": "Healthy" }],
+    "birthDate": "1985-06-15",
+    "gender": "male"
+  },
+  "patient-diabetic": {
+    "resourceType": "Patient",
+    "id": "patient-diabetic",
+    "name": [{ "given": ["Jane"], "family": "Diabetic" }],
+    "birthDate": "1970-03-22",
+    "gender": "female"
+  },
+  "patient-allergies": {
+    "resourceType": "Patient",
+    "id": "patient-allergies",
+    "name": [{ "given": ["Bob"], "family": "Allergic" }],
+    "birthDate": "1990-11-08",
+    "gender": "male"
+  },
+  "patient-complex": {
+    "resourceType": "Patient",
+    "id": "patient-complex",
+    "name": [{ "given": ["Alice"], "family": "Complex" }],
+    "birthDate": "1955-01-30",
+    "gender": "female"
+  },
+  "patient-renal": {
+    "resourceType": "Patient",
+    "id": "patient-renal",
+    "name": [{ "given": ["Charlie"], "family": "Renal" }],
+    "birthDate": "1965-07-20",
+    "gender": "male"
+  }
+}

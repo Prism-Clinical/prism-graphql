@@ -1,0 +1,83 @@
+{
+  "penicillin-allergy": {
+    "resourceType": "AllergyIntolerance",
+    "id": "allergy-penicillin",
+    "clinicalStatus": {
+      "coding": [{ "code": "active" }]
+    },
+    "code": {
+      "coding": [
+        { "system": "http://www.nlm.nih.gov/research/umls/rxnorm", "code": "7984", "display": "Penicillin" }
+      ],
+      "text": "Penicillin"
+    },
+    "patient": { "reference": "Patient/patient-allergies" },
+    "reaction": [
+      {
+        "manifestation": [{ "text": "Anaphylaxis" }],
+        "severity": "severe"
+      }
+    ]
+  },
+  "aspirin-allergy": {
+    "resourceType": "AllergyIntolerance",
+    "id": "allergy-aspirin",
+    "clinicalStatus": {
+      "coding": [{ "code": "active" }]
+    },
+    "code": {
+      "coding": [
+        { "system": "http://www.nlm.nih.gov/research/umls/rxnorm", "code": "1191", "display": "Aspirin" }
+      ],
+      "text": "Aspirin"
+    },
+    "patient": { "reference": "Patient/patient-allergies" },
+    "reaction": [
+      {
+        "manifestation": [{ "text": "Hives" }],
+        "severity": "moderate"
+      }
+    ]
+  },
+  "sulfa-allergy": {
+    "resourceType": "AllergyIntolerance",
+    "id": "allergy-sulfa",
+    "clinicalStatus": {
+      "coding": [{ "code": "active" }]
+    },
+    "code": {
+      "coding": [
+        { "system": "http://www.nlm.nih.gov/research/umls/rxnorm", "code": "10831", "display": "Sulfonamide" }
+      ],
+      "text": "Sulfa drugs"
+    },
+    "patient": { "reference": "Patient/patient-allergies" },
+    "reaction": [
+      {
+        "manifestation": [{ "text": "Rash" }],
+        "severity": "mild"
+      }
+    ]
+  },
+  "ace-inhibitor-cough": {
+    "resourceType": "AllergyIntolerance",
+    "id": "allergy-ace-cough",
+    "clinicalStatus": {
+      "coding": [{ "code": "active" }]
+    },
+    "type": "intolerance",
+    "code": {
+      "coding": [
+        { "system": "http://www.nlm.nih.gov/research/umls/rxnorm", "code": "29046", "display": "Lisinopril" }
+      ],
+      "text": "ACE Inhibitors"
+    },
+    "patient": { "reference": "Patient/patient-complex" },
+    "reaction": [
+      {
+        "manifestation": [{ "text": "Persistent cough" }],
+        "severity": "moderate"
+      }
+    ]
+  }
+}
