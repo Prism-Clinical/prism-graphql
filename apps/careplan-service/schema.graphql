@@ -423,6 +423,45 @@ input TrainingCarePlanFilterInput {
 }
 
 # =============================================================================
+# DOCUMENT IMPORT/EXPORT TYPES
+# =============================================================================
+
+input ImportDocumentInput {
+  documentText: String!
+  patientId: ID!
+  createTemplate: Boolean
+}
+
+type ImportDocumentResult {
+  carePlan: CarePlan!
+  validationReport: DocumentValidationReport!
+}
+
+type ExportDocumentResult {
+  documentText: String!
+  filename: String!
+}
+
+type DocumentValidationReport {
+  isValid: Boolean!
+  violations: [DocumentValidationViolation!]!
+  crossReferenceIssues: [CrossReferenceIssue!]!
+}
+
+type DocumentValidationViolation {
+  rule: String!
+  severity: String!
+  message: String!
+  line: Int
+}
+
+type CrossReferenceIssue {
+  code: String!
+  severity: String!
+  message: String!
+}
+
+# =============================================================================
 # PDF IMPORT INPUTS
 # =============================================================================
 
@@ -502,6 +541,12 @@ type Query {
   ): CarePlanConnection!
 
   trainingCarePlan(id: ID!): CarePlan
+
+  # Export care plan as structured document
+  exportCarePlanDocument(carePlanId: ID!): ExportDocumentResult!
+
+  # Validate a document without persisting
+  validateCarePlanDocument(documentText: String!): DocumentValidationReport!
 }
 
 # =============================================================================
@@ -588,6 +633,9 @@ type Mutation {
   # Import care plan from PDF extracted data
   # Creates template and/or training example based on options
   importCarePlanFromPdf(input: ImportCarePlanFromPdfInput!): ImportCarePlanFromPdfResult!
+
+  # Import care plan from structured document text
+  importCarePlanDocument(input: ImportDocumentInput!): ImportDocumentResult!
 }
 
 # =============================================================================
