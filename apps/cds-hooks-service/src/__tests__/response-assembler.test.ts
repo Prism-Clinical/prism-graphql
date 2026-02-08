@@ -298,33 +298,6 @@ describe('ResponseAssembler', () => {
     });
   });
 
-  describe('reset', () => {
-    it('should reset assembler state', () => {
-      const assembler = new ResponseAssembler()
-        .addCard(createTestCard('info', 'Card'))
-        .addSystemAction({ type: 'create', description: 'Create' });
-
-      assembler.reset();
-
-      expect(assembler.getCardCount()).toBe(0);
-      expect(assembler.build().systemActions).toBeUndefined();
-    });
-
-    it('should allow building new response after reset', () => {
-      const assembler = new ResponseAssembler()
-        .addCard(createTestCard('info', 'First'));
-
-      const first = assembler.build();
-      assembler.reset();
-
-      const second = assembler
-        .addCard(createTestCard('critical', 'Second'))
-        .build();
-
-      expect(first.cards[0]?.summary).toBe('First');
-      expect(second.cards[0]?.summary).toBe('Second');
-    });
-  });
 });
 
 describe('createResponseAssembler', () => {

@@ -2,16 +2,17 @@ import { Router, Request, Response, NextFunction } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import type {
   CDSHookRequest,
-  CDSHookResponse,
-  CDSCard,
   CDSIndicator,
-  CDSSuggestion,
   CDSAction,
   MedicationPrescribeContext,
 } from '../types';
 import { createHookValidator } from '../middleware/validation';
 import { buildHookContext, createPrefetchWarningCard, shouldAddPrefetchWarning } from '../services/prefetch';
 import type { FHIRBundle, FHIRResource } from '../clients/fhir';
+import { CardBuilder } from '../builders/card';
+import { SuggestionBuilder } from '../builders/suggestion';
+import { ResponseAssembler } from '../assemblers/response';
+import { SOURCE_LABELS } from '../constants';
 
 const router = Router();
 
@@ -881,19 +882,9 @@ function severityToIndicator(severity: MedicationSafetyIssue['severity']): CDSIn
 }
 
 /**
- * Build CDS card from medication safety issue
+ * Build detail markdown from medication safety issue
  */
-function buildCard(issue: MedicationSafetyIssue): CDSCard {
-  const card: CDSCard = {
-    uuid: issue.id,
-    summary: issue.title,
-    indicator: severityToIndicator(issue.severity),
-    source: issue.source ?? {
-      label: 'Prism Medication Safety',
-    },
-  };
-
-  // Build detail markdown
+function buildSafetyIssueDetail(issue: MedicationSafetyIssue): string {
   let detail = issue.description;
 
   if (issue.rationale) {
@@ -906,19 +897,33 @@ function buildCard(issue: MedicationSafetyIssue): CDSCard {
 
   detail += `\n\n**Prescribed Medication:** ${issue.medicationDisplay}`;
 
-  card.detail = detail;
+  return detail;
+}
+
+/**
+ * Build CDS card from medication safety issue using CardBuilder
+ */
+function buildSafetyIssueCard(issue: MedicationSafetyIssue) {
+  const builder = new CardBuilder()
+    .withUuid(issue.id)
+    .withSummary(issue.title)
+    .withIndicator(severityToIndicator(issue.severity))
+    .withSource(issue.source ?? { label: SOURCE_LABELS.PRISM_MEDICATION_SAFETY })
+    .withDetail(buildSafetyIssueDetail(issue));
 
   // Add suggestion if present
   if (issue.suggestion) {
-    const suggestion: CDSSuggestion = {
-      label: issue.suggestion.label,
-      uuid: uuidv4(),
-      actions: issue.suggestion.actions,
-    };
-    card.suggestions = [suggestion];
+    const suggestion = new SuggestionBuilder()
+      .withLabel(issue.suggestion.label);
+
+    for (const action of issue.suggestion.actions) {
+      suggestion.addAction(action);
+    }
+
+    builder.addSuggestion(suggestion.build());
   }
 
-  return card;
+  return builder.build();
 }
 
 /**
@@ -959,31 +964,21 @@ router.post(
         labResults
       );
 
-      // Build response cards
-      const cards: CDSCard[] = [];
+      // Build response using ResponseAssembler
+      const assembler = new ResponseAssembler();
 
       // Add warning card if prefetch issues
       if (shouldAddPrefetchWarning(hookContext)) {
-        cards.push(createPrefetchWarningCard(warnings));
+        assembler.addCard(createPrefetchWarningCard(warnings));
       }
 
       // Add issue cards
       for (const issue of issues) {
-        cards.push(buildCard(issue));
+        assembler.addCard(buildSafetyIssueCard(issue));
       }
 
-      // Sort cards by severity (critical > warning > info)
-      cards.sort((a, b) => {
-        const order: Record<CDSIndicator, number> = { critical: 0, warning: 1, info: 2 };
-        return order[a.indicator] - order[b.indicator];
-      });
-
-      // Limit to 10 cards to avoid overwhelming the UI
-      const limitedCards = cards.slice(0, 10);
-
-      const response: CDSHookResponse = {
-        cards: limitedCards,
-      };
+      // Build response (automatically sorts by severity and limits to 10)
+      const response = assembler.build();
 
       res.status(200).json(response);
     } catch (error) {

@@ -279,16 +279,6 @@ export class SuggestionBuilder {
     }
   }
 
-  /**
-   * Reset the builder to initial state
-   */
-  reset(): this {
-    this.label = undefined;
-    this.uuid = undefined;
-    this.isRecommended = undefined;
-    this.actions = [];
-    return this;
-  }
 }
 
 /**

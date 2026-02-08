@@ -36,7 +36,7 @@ describe('Patient-View Hook Integration Tests', () => {
         expect(Array.isArray(response.body.cards)).toBe(true);
       });
 
-      it('should return info cards for healthy patient', async () => {
+      it('should not return critical cards for healthy patient', async () => {
         const hookRequest = createPatientViewRequest({
           patientId: 'patient-healthy',
         });
@@ -45,14 +45,14 @@ describe('Patient-View Hook Integration Tests', () => {
           .post('/cds-services/prism-patient-view')
           .send(hookRequest);
 
-        // Healthy patients may have wellness/preventive care cards
-        if (response.body.cards.length > 0) {
-          const indicators = response.body.cards.map(
-            (c: { indicator: string }) => c.indicator
-          );
-          // Should not have critical or warning for healthy patient
-          expect(indicators).not.toContain('critical');
-        }
+        expect(response.status).toBe(200);
+        expect(response.body).toHaveProperty('cards');
+
+        // Healthy patients should never have critical alerts
+        const indicators = response.body.cards.map(
+          (c: { indicator: string }) => c.indicator
+        );
+        expect(indicators).not.toContain('critical');
       });
     });
 
@@ -128,7 +128,7 @@ describe('Patient-View Hook Integration Tests', () => {
         expect(response.body.cards.length).toBeGreaterThanOrEqual(1);
       });
 
-      it('should include anticoagulation monitoring for warfarin patient', async () => {
+      it('should return cards with valid structure for complex patient', async () => {
         const scenario = TestScenarios.complexPatientOnWarfarin;
         const hookRequest = createPatientViewRequest({
           patientId: 'patient-complex',
@@ -144,23 +144,16 @@ describe('Patient-View Hook Integration Tests', () => {
           .post('/cds-services/prism-patient-view')
           .send(hookRequest);
 
-        // Look for anticoagulation-related cards
-        const cardTexts = response.body.cards.flatMap((c: { summary: string; detail?: string }) => [
-          c.summary.toLowerCase(),
-          (c.detail || '').toLowerCase(),
-        ]);
+        expect(response.status).toBe(200);
+        expect(response.body.cards.length).toBeGreaterThan(0);
 
-        const hasAnticoagCard = cardTexts.some(
-          (text: string) =>
-            text.includes('warfarin') ||
-            text.includes('inr') ||
-            text.includes('anticoagul') ||
-            text.includes('blood thinner')
-        );
-
-        // This is a soft check - the card may exist
-        if (response.body.cards.length > 0) {
-          expect(typeof hasAnticoagCard).toBe('boolean');
+        // All cards should have valid structure
+        for (const card of response.body.cards) {
+          expect(card).toHaveProperty('summary');
+          expect(card).toHaveProperty('indicator');
+          expect(card).toHaveProperty('source');
+          expect(card.source).toHaveProperty('label');
+          expect(['info', 'warning', 'critical']).toContain(card.indicator);
         }
       });
     });
@@ -226,14 +219,19 @@ describe('Patient-View Hook Integration Tests', () => {
           .post('/cds-services/prism-patient-view')
           .send(hookRequest);
 
-        if (response.body.cards.length > 1) {
-          const uuids = response.body.cards
-            .filter((c: { uuid?: string }) => c.uuid)
-            .map((c: { uuid: string }) => c.uuid);
-          const uniqueUuids = [...new Set(uuids)];
+        expect(response.status).toBe(200);
+        expect(response.body.cards.length).toBeGreaterThan(0);
 
-          expect(uuids.length).toBe(uniqueUuids.length);
-        }
+        // All cards should have UUIDs
+        const uuids = response.body.cards
+          .map((c: { uuid?: string }) => c.uuid)
+          .filter(Boolean);
+
+        expect(uuids.length).toBe(response.body.cards.length);
+
+        // UUIDs should be unique
+        const uniqueUuids = [...new Set(uuids)];
+        expect(uuids.length).toBe(uniqueUuids.length);
       });
 
       it('should order cards by severity', async () => {

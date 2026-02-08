@@ -180,16 +180,6 @@ export class LinkBuilder {
     }
   }
 
-  /**
-   * Reset the builder to initial state
-   */
-  reset(): this {
-    this.label = undefined;
-    this.url = undefined;
-    this.type = undefined;
-    this.appContext = undefined;
-    return this;
-  }
 }
 
 /**

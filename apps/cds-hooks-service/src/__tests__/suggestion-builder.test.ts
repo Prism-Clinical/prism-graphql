@@ -264,36 +264,6 @@ describe('SuggestionBuilder', () => {
     });
   });
 
-  describe('reset', () => {
-    it('should reset builder to initial state', () => {
-      const builder = new SuggestionBuilder()
-        .withLabel('Test')
-        .addDeleteAction('id', 'desc');
-
-      builder.reset();
-
-      expect(() => builder.build()).toThrow(SuggestionValidationError);
-    });
-
-    it('should allow building new suggestion after reset', () => {
-      const builder = new SuggestionBuilder()
-        .withLabel('First')
-        .addDeleteAction('id', 'desc');
-
-      const first = builder.build();
-      builder.reset();
-
-      const second = builder
-        .withLabel('Second')
-        .build();
-
-      expect(first.label).toBe('First');
-      expect(second.label).toBe('Second');
-      expect(first.actions).toHaveLength(1);
-      expect(second.actions).toBeUndefined();
-    });
-  });
-
   describe('Fluent interface', () => {
     it('should support method chaining', () => {
       const suggestion = new SuggestionBuilder()

@@ -350,15 +350,21 @@ describe('Medication-Prescribe Hook Integration Tests', () => {
           .post('/cds-services/prism-medication-prescribe')
           .send(hookRequest);
 
-        if (response.body.cards.length > 1) {
-          const indicators = response.body.cards.map(
-            (c: { indicator: string }) => c.indicator
-          );
+        expect(response.status).toBe(200);
+        expect(response.body.cards.length).toBeGreaterThan(0);
 
-          // First card should be critical if any critical cards exist
-          if (indicators.includes('critical')) {
-            expect(indicators[0]).toBe('critical');
-          }
+        const indicators = response.body.cards.map(
+          (c: { indicator: string }) => c.indicator
+        );
+
+        // Cards should be ordered by severity
+        const severityOrder = { critical: 0, warning: 1, info: 2 };
+        let lastSeverity = -1;
+
+        for (const indicator of indicators) {
+          const currentSeverity = severityOrder[indicator as keyof typeof severityOrder];
+          expect(currentSeverity).toBeGreaterThanOrEqual(lastSeverity);
+          lastSeverity = currentSeverity;
         }
       });
 

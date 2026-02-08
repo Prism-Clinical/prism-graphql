@@ -1,6 +1,8 @@
 import type { CDSHookRequest, CDSServiceDefinition, FHIRAuthorization, CDSCard } from '../types';
 import { createFHIRClient, type FHIRResource, type FHIRBundle } from '../clients/fhir';
 import { serviceById } from '../config/services';
+import { createWarningCard } from '../builders/card';
+import { SOURCE_LABELS } from '../constants';
 
 /**
  * Prefetch data from FHIR server or provided prefetch
@@ -226,18 +228,12 @@ export async function buildHookContext(
 /**
  * Create a warning card for prefetch errors
  */
-export function createPrefetchWarningCard(
-  warnings: string[]
-): CDSCard {
-  return {
-    summary: 'Data fetch warning',
-    detail: warnings.join('\n'),
-    indicator: 'warning',
-    source: {
-      label: 'Prism CDS',
-      url: 'https://prism.health/cds',
-    },
-  };
+export function createPrefetchWarningCard(warnings: string[]): CDSCard {
+  return createWarningCard(
+    'Data fetch warning',
+    SOURCE_LABELS.PRISM_CDS,
+    warnings.join('\n')
+  );
 }
 
 /**

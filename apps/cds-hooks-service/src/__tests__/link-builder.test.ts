@@ -203,40 +203,6 @@ describe('LinkBuilder', () => {
     });
   });
 
-  describe('reset', () => {
-    it('should reset builder to initial state', () => {
-      const builder = new LinkBuilder()
-        .withLabel('Link')
-        .withUrl('https://example.com')
-        .asAbsolute();
-
-      builder.reset();
-
-      expect(() => builder.build()).toThrow(LinkValidationError);
-    });
-
-    it('should allow building new link after reset', () => {
-      const builder = new LinkBuilder()
-        .withLabel('First')
-        .withUrl('https://first.com')
-        .asAbsolute();
-
-      const first = builder.build();
-      builder.reset();
-
-      const second = builder
-        .withLabel('Second')
-        .withUrl('https://second.com')
-        .asSmart()
-        .build();
-
-      expect(first.label).toBe('First');
-      expect(first.type).toBe('absolute');
-      expect(second.label).toBe('Second');
-      expect(second.type).toBe('smart');
-    });
-  });
-
   describe('Fluent interface', () => {
     it('should support method chaining', () => {
       const link = new LinkBuilder()

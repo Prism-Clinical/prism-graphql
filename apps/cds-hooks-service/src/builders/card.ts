@@ -303,21 +303,6 @@ export class CardBuilder {
     }
   }
 
-  /**
-   * Reset the builder to initial state
-   */
-  reset(): this {
-    this.uuid = undefined;
-    this.summary = undefined;
-    this.detail = undefined;
-    this.indicator = undefined;
-    this.source = undefined;
-    this.suggestions = undefined;
-    this.links = undefined;
-    this.overrideReasons = undefined;
-    this.selectionBehavior = undefined;
-    return this;
-  }
 }
 
 /**

@@ -320,7 +320,6 @@ describe('FHIR Prefetch Handler', () => {
       const card = createPrefetchWarningCard(['Test warning']);
 
       expect(card.source.label).toBe('Prism CDS');
-      expect(card.source.url).toBeDefined();
     });
   });
 

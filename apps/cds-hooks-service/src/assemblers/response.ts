@@ -241,14 +241,6 @@ export class ResponseAssembler {
     };
   }
 
-  /**
-   * Reset the assembler to initial state
-   */
-  reset(): this {
-    this.cards = [];
-    this.systemActions = [];
-    return this;
-  }
 }
 
 /**

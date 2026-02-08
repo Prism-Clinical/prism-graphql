@@ -396,38 +396,6 @@ describe('CardBuilder', () => {
     });
   });
 
-  describe('reset', () => {
-    it('should reset builder to initial state', () => {
-      const builder = new CardBuilder()
-        .withSummary('Test')
-        .withIndicator('info')
-        .withSource({ label: 'Source' });
-
-      builder.reset();
-
-      expect(() => builder.build()).toThrow(CardValidationError);
-    });
-
-    it('should allow building new card after reset', () => {
-      const builder = new CardBuilder()
-        .withSummary('First card')
-        .withIndicator('info')
-        .withSource({ label: 'Source' });
-
-      const firstCard = builder.build();
-      builder.reset();
-
-      const secondCard = builder
-        .withSummary('Second card')
-        .withIndicator('warning')
-        .withSource({ label: 'Source 2' })
-        .build();
-
-      expect(firstCard.summary).toBe('First card');
-      expect(secondCard.summary).toBe('Second card');
-    });
-  });
-
   describe('Fluent interface', () => {
     it('should support method chaining', () => {
       const card = new CardBuilder()
