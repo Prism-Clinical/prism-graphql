@@ -1,0 +1,361 @@
+# =============================================================================
+# PIPELINE TYPES - Care Plan Generation Pipeline
+# =============================================================================
+
+# Red flag severity levels
+enum RedFlagSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+# Pipeline stage identifiers
+enum PipelineStage {
+  VALIDATION
+  ENTITY_EXTRACTION
+  EMBEDDING_GENERATION
+  TEMPLATE_RECOMMENDATION
+  DRAFT_GENERATION
+  SAFETY_VALIDATION
+}
+
+# Stage execution status
+enum StageStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  SKIPPED
+  FAILED
+}
+
+# Pipeline request status
+enum PipelineRequestStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  FAILED
+  EXPIRED
+}
+
+# =============================================================================
+# PIPELINE OUTPUT TYPES
+# =============================================================================
+
+# Extracted clinical entity
+type ClinicalEntity {
+  text: String!
+  type: String!
+  confidence: Float!
+  code: String
+  codeSystem: String
+  offset: Int
+  length: Int
+}
+
+# Extracted entities from transcript
+type ExtractedEntities {
+  symptoms: [ClinicalEntity!]!
+  medications: [ClinicalEntity!]!
+  vitals: [ClinicalEntity!]!
+  procedures: [ClinicalEntity!]!
+  diagnoses: [ClinicalEntity!]!
+  allergies: [ClinicalEntity!]!
+  extractedAt: DateTime!
+  modelVersion: String!
+}
+
+# Clinical red flag requiring attention
+type RedFlag {
+  severity: RedFlagSeverity!
+  description: String!
+  sourceText: String
+  recommendedAction: String
+  category: String!
+  confidence: Float!
+}
+
+# Care plan recommendation from ML service
+type CarePlanRecommendation {
+  templateId: ID!
+  title: String!
+  confidence: Float!
+  matchedConditions: [String!]!
+  reasoning: String
+  guidelineSource: String
+  evidenceGrade: String
+}
+
+# Draft goal for care plan
+type DraftGoal {
+  description: String!
+  targetValue: String
+  targetDate: Date
+  priority: GoalPriority!
+  guidelineReference: String
+}
+
+# Draft intervention for care plan
+type DraftIntervention {
+  type: InterventionType!
+  description: String!
+  medicationCode: String
+  dosage: String
+  frequency: String
+  procedureCode: String
+  scheduledDate: Date
+  patientInstructions: String
+  guidelineReference: String
+}
+
+# Draft care plan generated from recommendations
+type DraftCarePlan {
+  id: ID!
+  title: String!
+  conditionCodes: [String!]!
+  templateId: ID
+  goals: [DraftGoal!]!
+  interventions: [DraftIntervention!]!
+  generatedAt: DateTime!
+  confidence: Float!
+  requiresReview: Boolean!
+}
+
+# Individual stage result
+type StageResult {
+  stage: PipelineStage!
+  status: StageStatus!
+  durationMs: Float!
+  error: String
+  cacheHit: Boolean
+}
+
+# Processing metadata for the pipeline
+type ProcessingMetadata {
+  requestId: ID!
+  correlationId: ID!
+  totalDurationMs: Float!
+  stageResults: [StageResult!]!
+  cacheHit: Boolean!
+  modelVersions: [ModelVersion!]!
+  processedAt: DateTime!
+}
+
+type ModelVersion {
+  service: String!
+  version: String!
+}
+
+# Suggested edit for draft review
+type SuggestedEdit {
+  field: String!
+  currentValue: String
+  suggestedValue: String!
+  reason: String!
+  confidence: Float!
+}
+
+# =============================================================================
+# PIPELINE INPUT TYPES
+# =============================================================================
+
+# Input for generating care plan from visit
+input GenerateCarePlanInput {
+  visitId: ID!
+  patientId: ID!
+  transcriptText: String
+  audioUrl: String
+  conditionCodes: [String!]!
+  generateDraft: Boolean = true
+  preferredTemplateIds: [ID!]
+  idempotencyKey: String!
+}
+
+# Edit to apply to care plan draft
+input CarePlanEditInput {
+  field: String!
+  value: String!
+}
+
+# Preferences for regenerating care plan
+input RegenerationPreferences {
+  excludeTemplateIds: [ID!]
+  preferredTemplateIds: [ID!]
+  focusConditions: [String!]
+}
+
+# =============================================================================
+# PIPELINE RESULT TYPES
+# =============================================================================
+
+# Result of care plan generation
+type GenerateCarePlanResult {
+  requestId: ID!
+  recommendations: [CarePlanRecommendation!]!
+  draftCarePlan: DraftCarePlan
+  extractedEntities: ExtractedEntities
+  redFlags: [RedFlag!]!
+  processingTime: Float!
+  cacheHit: Boolean!
+  degradedServices: [String!]!
+  requiresManualReview: Boolean!
+}
+
+# Generation request for tracking
+type GenerationRequest {
+  requestId: ID!
+  status: PipelineRequestStatus!
+  createdAt: DateTime!
+  startedAt: DateTime
+  completedAt: DateTime
+}
+
+# Progress update for subscription
+type GenerationProgress {
+  requestId: ID!
+  stage: PipelineStage!
+  status: StageStatus!
+  message: String
+  partialResult: GenerateCarePlanResult
+}
+
+# PDF import result
+type PdfImportResult {
+  requestId: ID!
+  parsedCarePlan: DraftCarePlan
+  extractedCodes: [ExtractedCode!]!
+  validationResult: FileValidationResult!
+}
+
+type ExtractedCode {
+  code: String!
+  codeSystem: String!
+  display: String
+  confidence: Float!
+}
+
+type FileValidationResult {
+  valid: Boolean!
+  errors: [String!]!
+  warnings: [String!]!
+  fileSize: Int!
+  mimeType: String!
+}
+
+# Care plan review data
+type CarePlanReview {
+  request: GenerationRequest!
+  recommendations: [CarePlanRecommendation!]!
+  draftCarePlan: DraftCarePlan
+  extractedEntities: ExtractedEntities
+  redFlags: [RedFlag!]!
+  suggestedEdits: [SuggestedEdit!]!
+  degradedServices: [String!]!
+}
+
+# =============================================================================
+# SERVICE HEALTH TYPES
+# =============================================================================
+
+enum CircuitBreakerState {
+  CLOSED
+  OPEN
+  HALF_OPEN
+}
+
+type MLServiceHealth {
+  service: String!
+  status: String!
+  latencyMs: Float!
+  circuitState: CircuitBreakerState!
+  lastError: String
+  lastSuccess: DateTime
+}
+
+type PipelineHealth {
+  overall: String!
+  services: [MLServiceHealth!]!
+  degradedServices: [String!]!
+  checkDurationMs: Float!
+}
+
+# =============================================================================
+# EXTEND QUERY
+# =============================================================================
+
+extend type Query {
+  # Get pipeline request by ID
+  pipelineRequest(requestId: ID!): GenerationRequest
+
+  # Get care plan review data
+  carePlanReview(requestId: ID!): CarePlanReview
+
+  # Get pipeline health status
+  pipelineHealth: PipelineHealth!
+
+  # Get pending recommendations for a visit
+  pendingRecommendationsForVisit(visitId: ID!): [CarePlanRecommendation!]!
+}
+
+# =============================================================================
+# EXTEND MUTATION
+# =============================================================================
+
+extend type Mutation {
+  # Generate care plan from visit data
+  generateCarePlanFromVisit(input: GenerateCarePlanInput!): GenerateCarePlanResult!
+
+  # Import care plan from PDF file
+  # Note: Actual file upload handled via separate endpoint
+  importCarePlanFromPdfFile(
+    patientId: ID!
+    fileKey: String!
+  ): PdfImportResult!
+
+  # Accept a draft care plan with optional edits
+  acceptCarePlanDraft(
+    requestId: ID!
+    edits: [CarePlanEditInput!]
+  ): CarePlan!
+
+  # Reject a draft care plan
+  rejectCarePlanDraft(
+    requestId: ID!
+    reason: String!
+  ): GenerationRequest!
+
+  # Regenerate care plan with new preferences
+  regenerateCarePlan(
+    requestId: ID!
+    preferences: RegenerationPreferences!
+  ): GenerationRequest!
+
+  # Cancel a pending generation request
+  cancelPipelineRequest(requestId: ID!): GenerationRequest!
+}
+
+# =============================================================================
+# SUBSCRIPTIONS
+# =============================================================================
+
+type Subscription {
+  # Subscribe to care plan generation progress
+  carePlanGenerationProgress(requestId: ID!): GenerationProgress!
+}
+
+# =============================================================================
+# EXTEND VISIT TYPE (from providers-service)
+# =============================================================================
+
+extend type Visit @key(fields: "id") {
+  id: ID! @external
+
+  # Pending care plan recommendations for this visit
+  pendingCarePlanRecommendations: [CarePlanRecommendation!]!
+
+  # Last extraction from this visit's transcript
+  lastExtraction: ExtractedEntities
+
+  # Whether this visit has an active generation request
+  hasActiveGenerationRequest: Boolean!
+}

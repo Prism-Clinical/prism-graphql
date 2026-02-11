@@ -1,0 +1,54 @@
+[
+  {
+    "httpRequest": {
+      "method": "POST",
+      "path": "/extract"
+    },
+    "httpResponse": {
+      "statusCode": 200,
+      "headers": {
+        "Content-Type": ["application/json"]
+      },
+      "body": {
+        "entities": [
+          {
+            "type": "SYMPTOM",
+            "text": "chest pain",
+            "confidence": 0.95,
+            "span": {"start": 10, "end": 20}
+          },
+          {
+            "type": "MEDICATION",
+            "text": "aspirin",
+            "confidence": 0.92,
+            "span": {"start": 50, "end": 57}
+          }
+        ],
+        "redFlags": [
+          {
+            "type": "CRITICAL_SYMPTOM",
+            "description": "Chest pain requires immediate evaluation",
+            "confidence": 0.89
+          }
+        ],
+        "processingTime": 1200
+      }
+    }
+  },
+  {
+    "httpRequest": {
+      "method": "GET",
+      "path": "/health"
+    },
+    "httpResponse": {
+      "statusCode": 200,
+      "headers": {
+        "Content-Type": ["application/json"]
+      },
+      "body": {
+        "status": "healthy",
+        "version": "1.0.0"
+      }
+    }
+  }
+]

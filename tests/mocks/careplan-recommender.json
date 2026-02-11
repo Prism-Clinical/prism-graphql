@@ -1,0 +1,82 @@
+[
+  {
+    "httpRequest": {
+      "method": "POST",
+      "path": "/recommend"
+    },
+    "httpResponse": {
+      "statusCode": 200,
+      "headers": {
+        "Content-Type": ["application/json"]
+      },
+      "body": {
+        "recommendations": [
+          {
+            "templateId": "template-001",
+            "title": "Cardiac Care Plan",
+            "confidence": 0.92,
+            "matchedConditions": ["I25.10", "I10"],
+            "reasoning": "Based on hypertension and coronary artery disease diagnosis"
+          },
+          {
+            "templateId": "template-002",
+            "title": "Hypertension Management Plan",
+            "confidence": 0.88,
+            "matchedConditions": ["I10"],
+            "reasoning": "Primary hypertension management protocol"
+          }
+        ],
+        "processingTime": 800
+      }
+    }
+  },
+  {
+    "httpRequest": {
+      "method": "POST",
+      "path": "/generate-draft"
+    },
+    "httpResponse": {
+      "statusCode": 200,
+      "headers": {
+        "Content-Type": ["application/json"]
+      },
+      "body": {
+        "draft": {
+          "id": "draft-001",
+          "title": "Care Plan Draft",
+          "goals": [
+            {
+              "id": "goal-001",
+              "description": "Reduce blood pressure to <130/80",
+              "priority": "HIGH"
+            }
+          ],
+          "interventions": [
+            {
+              "id": "int-001",
+              "description": "Daily blood pressure monitoring",
+              "frequency": "DAILY"
+            }
+          ]
+        },
+        "processingTime": 1500
+      }
+    }
+  },
+  {
+    "httpRequest": {
+      "method": "GET",
+      "path": "/health"
+    },
+    "httpResponse": {
+      "statusCode": 200,
+      "headers": {
+        "Content-Type": ["application/json"]
+      },
+      "body": {
+        "status": "healthy",
+        "version": "1.0.0"
+      }
+    }
+  }
+]

@@ -1,0 +1,179 @@
+# Security Alerting Rules
+# Prometheus alerting rules for security monitoring
+
+groups:
+  - name: security-alerts
+    interval: 30s
+    rules:
+      # High authentication failure rate
+      - alert: HighAuthFailureRate
+        expr: rate(auth_failures_total[5m]) > 10
+        for: 2m
+        labels:
+          severity: critical
+          team: security
+        annotations:
+          summary: "High authentication failure rate"
+          description: "Authentication failures at {{ $value | humanize }} per second"
+          runbook_url: "https://wiki.example.com/runbooks/auth-failures"
+
+      # Unusual PHI access pattern
+      - alert: UnusualPHIAccessPattern
+        expr: rate(phi_access_total[5m]) > 100
+        for: 5m
+        labels:
+          severity: warning
+          team: security
+        annotations:
+          summary: "Unusual PHI access pattern detected"
+          description: "PHI access rate is {{ $value | humanize }} per second"
+          runbook_url: "https://wiki.example.com/runbooks/phi-access"
+
+      # Bulk PHI export
+      - alert: BulkPHIExport
+        expr: |
+          increase(phi_access_total{action="EXPORT"}[1h]) > 1000
+        for: 5m
+        labels:
+          severity: high
+          team: security
+        annotations:
+          summary: "Bulk PHI export detected"
+          description: "{{ $value }} PHI export operations in the last hour"
+          runbook_url: "https://wiki.example.com/runbooks/bulk-export"
+
+      # Service authentication failure
+      - alert: ServiceAuthFailure
+        expr: |
+          increase(auth_failures_total{reason="SERVICE_AUTH_FAILURE"}[5m]) > 5
+        for: 1m
+        labels:
+          severity: critical
+          team: security
+        annotations:
+          summary: "Service-to-service authentication failures"
+          description: "{{ $value }} service auth failures in the last 5 minutes"
+          runbook_url: "https://wiki.example.com/runbooks/service-auth"
+
+      # Injection attempt detected
+      - alert: InjectionAttemptDetected
+        expr: |
+          increase(auth_failures_total{reason="INJECTION_ATTEMPT"}[5m]) > 0
+        for: 0m
+        labels:
+          severity: critical
+          team: security
+        annotations:
+          summary: "Injection attempt detected"
+          description: "{{ $value }} injection attempts detected"
+          runbook_url: "https://wiki.example.com/runbooks/injection"
+
+      # Rate limiting triggered frequently
+      - alert: FrequentRateLimiting
+        expr: |
+          increase(auth_failures_total{reason="RATE_LIMIT_EXCEEDED"}[15m]) > 50
+        for: 5m
+        labels:
+          severity: warning
+          team: security
+        annotations:
+          summary: "Frequent rate limiting"
+          description: "{{ $value }} rate limit events in the last 15 minutes"
+          runbook_url: "https://wiki.example.com/runbooks/rate-limit"
+
+      # DLQ security concern
+      - alert: DLQSecurityConcern
+        expr: dlq_depth > 100
+        for: 1h
+        labels:
+          severity: warning
+          team: security
+        annotations:
+          summary: "DLQ contains many failed jobs"
+          description: "DLQ has {{ $value }} unresolved jobs - may contain sensitive data"
+          runbook_url: "https://wiki.example.com/runbooks/dlq-security"
+
+  - name: compliance-alerts
+    interval: 1m
+    rules:
+      # Audit log gaps
+      - alert: AuditLogGap
+        expr: |
+          time() - audit_log_last_write_timestamp > 300
+        for: 5m
+        labels:
+          severity: critical
+          team: compliance
+        annotations:
+          summary: "Audit logging gap detected"
+          description: "No audit logs written in the last 5 minutes"
+          runbook_url: "https://wiki.example.com/runbooks/audit-gap"
+
+      # Encryption key expiring soon
+      - alert: EncryptionKeyExpiringSoon
+        expr: |
+          encryption_key_expiry_days < 14
+        for: 1d
+        labels:
+          severity: warning
+          team: security
+        annotations:
+          summary: "Encryption key expiring soon"
+          description: "Encryption key {{ $labels.key_id }} expires in {{ $value }} days"
+          runbook_url: "https://wiki.example.com/runbooks/key-rotation"
+
+      # Certificate expiring soon
+      - alert: CertificateExpiringSoon
+        expr: |
+          certificate_expiry_days < 30
+        for: 1d
+        labels:
+          severity: warning
+          team: security
+        annotations:
+          summary: "TLS certificate expiring soon"
+          description: "Certificate {{ $labels.cert_name }} expires in {{ $value }} days"
+          runbook_url: "https://wiki.example.com/runbooks/cert-renewal"
+
+  - name: access-control-alerts
+    interval: 30s
+    rules:
+      # Privilege escalation attempt
+      - alert: PrivilegeEscalationAttempt
+        expr: |
+          increase(auth_failures_total{reason="UNAUTHORIZED_ACCESS"}[5m]) > 10
+        for: 2m
+        labels:
+          severity: critical
+          team: security
+        annotations:
+          summary: "Possible privilege escalation attempt"
+          description: "{{ $value }} unauthorized access attempts in 5 minutes"
+          runbook_url: "https://wiki.example.com/runbooks/privilege-escalation"
+
+      # After-hours PHI access
+      - alert: AfterHoursPHIAccess
+        expr: |
+          (hour() < 6 or hour() > 22) and
+          rate(phi_access_total[5m]) > 0
+        for: 10m
+        labels:
+          severity: warning
+          team: security
+        annotations:
+          summary: "PHI access during off-hours"
+          description: "PHI access detected outside normal business hours"
+          runbook_url: "https://wiki.example.com/runbooks/off-hours-access"
+
+      # Single user accessing many patients
+      - alert: ManyPatientsAccessed
+        expr: |
+          increase(phi_access_unique_patients_total[1h]) > 50
+        for: 5m
+        labels:
+          severity: warning
+          team: security
+        annotations:
+          summary: "User accessing many patient records"
+          description: "User accessed {{ $value }} unique patient records in 1 hour"
+          runbook_url: "https://wiki.example.com/runbooks/mass-access"
