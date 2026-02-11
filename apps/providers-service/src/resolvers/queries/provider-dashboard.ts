@@ -104,13 +104,13 @@ export async function providerDashboard(
           context.carePlanService
             .getActiveCarePlanForPatient(visit.patientId)
             .then((cp) => !!cp)
-            .catch(() => false),
+            .catch((): boolean => false),
           context.carePlanService
             .getPendingRecommendationsForVisit(visit.id)
-            .catch(() => []),
+            .catch((): any[] => []),
           context.carePlanService
             .getRedFlagsForVisit(visit.id)
-            .catch(() => []),
+            .catch((): any[] => []),
         ]);
 
         // Log PHI access for each patient
@@ -222,13 +222,13 @@ export async function visitsWithCarePlanStatus(
           context.carePlanService
             .getActiveCarePlanForPatient(visit.patientId)
             .then((cp) => !!cp)
-            .catch(() => false),
+            .catch((): boolean => false),
           context.carePlanService
             .getPendingRecommendationsForVisit(visit.id)
-            .catch(() => []),
+            .catch((): any[] => []),
           context.carePlanService
             .getRedFlagsForVisit(visit.id)
-            .catch(() => []),
+            .catch((): any[] => []),
         ]);
 
         return {

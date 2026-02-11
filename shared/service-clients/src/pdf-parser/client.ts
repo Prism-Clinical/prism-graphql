@@ -58,7 +58,7 @@ export class PdfParserClient extends BaseHttpClient {
       throw new Error(validation.error);
     }
 
-    const response = await this.uploadFile<ParsedCarePlanResponse>(
+    const response = await this.uploadFile<Record<string, unknown>>(
       '/api/v1/parse',
       file,
       'file',
@@ -353,26 +353,32 @@ export class PdfParserClient extends BaseHttpClient {
       procedureCodes: this.transformCodes(data.procedure_codes as unknown[] || []),
 
       suggestedGoals: ((data.suggested_goals as unknown[]) || []).map(
-        (g: Record<string, unknown>) => ({
-          description: g.description as string,
-          targetValue: g.target_value as string | undefined,
-          targetDays: g.target_days as number | undefined,
-          priority: g.priority as 'HIGH' | 'MEDIUM' | 'LOW',
-        })
+        (item) => {
+          const g = item as Record<string, unknown>;
+          return {
+            description: g.description as string,
+            targetValue: g.target_value as string | undefined,
+            targetDays: g.target_days as number | undefined,
+            priority: g.priority as 'HIGH' | 'MEDIUM' | 'LOW',
+          };
+        }
       ),
 
       suggestedInterventions: ((data.suggested_interventions as unknown[]) || []).map(
-        (i: Record<string, unknown>) => ({
-          description: i.description as string,
-          type: i.type as ParsedCarePlanResponse['suggestedInterventions'][0]['type'],
-          medicationCode: i.medication_code as string | undefined,
-          procedureCode: i.procedure_code as string | undefined,
-          dosage: i.dosage as string | undefined,
-          frequency: i.frequency as string | undefined,
-          referralSpecialty: i.referral_specialty as string | undefined,
-          scheduleDays: i.schedule_days as number | undefined,
-          instructions: i.instructions as string | undefined,
-        })
+        (item) => {
+          const i = item as Record<string, unknown>;
+          return {
+            description: i.description as string,
+            type: i.type as ParsedCarePlanResponse['suggestedInterventions'][0]['type'],
+            medicationCode: i.medication_code as string | undefined,
+            procedureCode: i.procedure_code as string | undefined,
+            dosage: i.dosage as string | undefined,
+            frequency: i.frequency as string | undefined,
+            referralSpecialty: i.referral_specialty as string | undefined,
+            scheduleDays: i.schedule_days as number | undefined,
+            instructions: i.instructions as string | undefined,
+          };
+        }
       ),
 
       isStructuredFormat: data.is_structured_format as boolean,
@@ -387,12 +393,15 @@ export class PdfParserClient extends BaseHttpClient {
    * Transform extracted codes
    */
   private transformCodes(codes: unknown[]): ParsedCarePlanResponse['conditionCodes'] {
-    return codes.map((c: Record<string, unknown>) => ({
-      code: c.code as string,
-      codeSystem: c.code_system as ParsedCarePlanResponse['conditionCodes'][0]['codeSystem'],
-      displayText: c.display_text as string | undefined,
-      confidence: c.confidence as number,
-    }));
+    return codes.map((item) => {
+      const c = item as Record<string, unknown>;
+      return {
+        code: c.code as string,
+        codeSystem: c.code_system as ParsedCarePlanResponse['conditionCodes'][0]['codeSystem'],
+        displayText: c.display_text as string | undefined,
+        confidence: c.confidence as number,
+      };
+    });
   }
 }
 

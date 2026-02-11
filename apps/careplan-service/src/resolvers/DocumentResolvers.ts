@@ -52,13 +52,13 @@ interface CarePlanDataSource {
   deleteCarePlan?: (id: string) => Promise<void>;
 }
 
-interface DataSourceContext {
+export interface DataSourceContext {
   dataSources: {
     carePlanDB: CarePlanDataSource;
   };
 }
 
-interface ImportDocumentInput {
+export interface ImportDocumentInput {
   documentText: string;
   patientId: string;
   createTemplate?: boolean;
@@ -72,7 +72,7 @@ interface DocumentValidationViolation {
   line: number | null;
 }
 
-interface DocumentValidationReport {
+export interface DocumentValidationReport {
   isValid: boolean;
   violations: DocumentValidationViolation[];
   crossReferenceIssues: CrossReferenceIssue[];
@@ -84,12 +84,12 @@ interface CrossReferenceIssue {
   message: string;
 }
 
-interface ExportDocumentResult {
+export interface ExportDocumentResult {
   documentText: string;
   filename: string;
 }
 
-interface ImportDocumentResult {
+export interface ImportDocumentResult {
   carePlan: CarePlan | null;
   validationReport: DocumentValidationReport;
   importError?: string;

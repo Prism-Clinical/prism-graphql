@@ -318,7 +318,7 @@ export class PipelineOrchestrator {
             await this.config.auditLogger.logDataSharing(
               dataMinimizer.createDataSharingAuditEntry(
                 'audio-intelligence',
-                minimalContext,
+                minimalContext as unknown as Record<string, unknown>,
                 input.correlationId
               )
             );
@@ -330,14 +330,14 @@ export class PipelineOrchestrator {
 
             // Map response to our types
             const entities: ExtractedEntities = {
-              symptoms: response.entities?.symptoms ?? [],
-              medications: response.entities?.medications ?? [],
-              vitals: response.entities?.vitals ?? [],
-              procedures: response.entities?.procedures ?? [],
-              diagnoses: response.entities?.diagnoses ?? [],
-              allergies: response.entities?.allergies ?? [],
+              symptoms: response.symptoms ?? [],
+              medications: response.medications ?? [],
+              vitals: response.vitals ?? [],
+              procedures: [],
+              diagnoses: [],
+              allergies: [],
               extractedAt: new Date(),
-              modelVersion: response.modelVersion ?? 'unknown',
+              modelVersion: response.nluTier ?? 'unknown',
             };
 
             // Extract red flags
@@ -401,19 +401,19 @@ export class PipelineOrchestrator {
           await this.config.auditLogger.logDataSharing(
             dataMinimizer.createDataSharingAuditEntry(
               'rag-embeddings',
-              minimalContext,
+              minimalContext as unknown as Record<string, unknown>,
               input.correlationId
             )
           );
 
           // Generate patient context embedding
-          const response = await this.ragClient.embedPatientContext({
+          const embeddingVector = await this.ragClient.embedPatientContext({
             conditionCodes: minimalContext.conditionCodes,
-            chiefComplaint: minimalContext.chiefComplaint,
+            symptoms: minimalContext.chiefComplaint ? [minimalContext.chiefComplaint] : undefined,
           });
 
-          modelVersions['rag-embeddings'] = response.modelVersion ?? 'unknown';
-          return { embedding: response.embedding };
+          modelVersions['rag-embeddings'] = 'unknown';
+          return { embedding: embeddingVector };
         },
         requestId,
         input.correlationId,
@@ -459,7 +459,7 @@ export class PipelineOrchestrator {
           await this.config.auditLogger.logDataSharing(
             dataMinimizer.createDataSharingAuditEntry(
               'careplan-recommender',
-              minimalContext,
+              minimalContext as unknown as Record<string, unknown>,
               input.correlationId
             )
           );
@@ -473,23 +473,22 @@ export class PipelineOrchestrator {
           } else {
             response = await this.recommenderClient.recommendWithContext({
               conditionCodes: minimalContext.conditionCodes,
-              patientContext: {
+              demographics: {
                 age: minimalContext.age,
-                gender: minimalContext.gender,
+                sex: minimalContext.gender === 'male' ? 'M' : minimalContext.gender === 'female' ? 'F' : undefined,
               },
-              embedding,
             });
           }
 
-          const recs: CarePlanRecommendation[] = (response.recommendations ?? []).map(
-            (r: any) => ({
+          const recs: CarePlanRecommendation[] = (response.templates ?? []).map(
+            (r: any): CarePlanRecommendation => ({
               templateId: r.templateId,
-              title: r.title,
+              title: r.name,
               confidence: r.confidence,
-              matchedConditions: r.matchedConditions ?? [],
-              reasoning: r.reasoning,
-              guidelineSource: r.guidelineSource,
-              evidenceGrade: r.evidenceGrade,
+              matchedConditions: r.conditionCodes ?? [],
+              reasoning: r.matchFactors ? `Match factors: ${JSON.stringify(r.matchFactors)}` : undefined,
+              guidelineSource: undefined as string | undefined,
+              evidenceGrade: undefined as string | undefined,
             })
           );
 
@@ -531,32 +530,29 @@ export class PipelineOrchestrator {
             // Use the top recommendation for draft
             const topRecommendation = recommendations[0];
 
-            const response = await this.recommenderClient.generateDraft({
-              templateId: topRecommendation.templateId,
-              conditionCodes: input.conditionCodes,
-              patientContext: {
-                extractedEntities: extractedEntities
-                  ? {
-                      symptoms: extractedEntities.symptoms.map((s) => s.text),
-                      medications: extractedEntities.medications.map((m) => m.text),
-                    }
-                  : undefined,
-              },
-            });
+            const response = await this.recommenderClient.generateDraft(
+              [topRecommendation.templateId],
+              {
+                conditionCodes: input.conditionCodes,
+              }
+            );
+
+            // Get the first draft from the response
+            const generatedDraft = response.drafts?.[0];
 
             const draft: DraftCarePlan = {
               id: uuidv4(),
-              title: response.title ?? `Care Plan for ${input.conditionCodes.join(', ')}`,
+              title: generatedDraft?.title ?? `Care Plan for ${input.conditionCodes.join(', ')}`,
               conditionCodes: input.conditionCodes,
               templateId: topRecommendation.templateId,
-              goals: (response.goals ?? []).map((g: any) => ({
+              goals: (generatedDraft?.goals ?? []).map((g: any) => ({
                 description: g.description,
                 targetValue: g.targetValue,
                 targetDate: g.targetDate ? new Date(g.targetDate) : undefined,
                 priority: g.priority ?? 'MEDIUM',
                 guidelineReference: g.guidelineReference,
               })),
-              interventions: (response.interventions ?? []).map((i: any) => ({
+              interventions: (generatedDraft?.interventions ?? []).map((i: any) => ({
                 type: i.type,
                 description: i.description,
                 medicationCode: i.medicationCode,
@@ -568,8 +564,8 @@ export class PipelineOrchestrator {
                 guidelineReference: i.guidelineReference,
               })),
               generatedAt: new Date(),
-              confidence: response.confidence ?? topRecommendation.confidence,
-              requiresReview: response.requiresReview ?? false,
+              confidence: generatedDraft?.confidenceScore ?? topRecommendation.confidence,
+              requiresReview: (generatedDraft?.confidenceScore ?? 1) < 0.8,
             };
 
             return { draft };

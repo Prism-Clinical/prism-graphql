@@ -373,7 +373,7 @@ export function validateArray<T>(
         ...w,
         field: `${fieldName}[${i}].${w.field}`,
       })));
-      validatedItems.push(result.sanitizedValue ?? value[i]);
+      validatedItems.push((result.sanitizedValue as T | undefined) ?? value[i]);
     }
 
     return {

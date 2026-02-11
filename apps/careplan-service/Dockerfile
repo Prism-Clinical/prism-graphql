@@ -16,10 +16,10 @@ WORKDIR /app/shared/ciss-types
 RUN npm install && npm run build
 
 WORKDIR /app/shared/security
-RUN npm install && npm run build
+RUN npm install && npm run build && npm link
 
 WORKDIR /app/shared/service-clients
-RUN npm install && npm run build
+RUN npm link @prism/security && npm install && npm run build && npm link
 
 # Now build the service
 WORKDIR /app/service
@@ -28,6 +28,10 @@ WORKDIR /app/service
 COPY apps/careplan-service/package*.json ./
 COPY apps/careplan-service/codegen.ts ./
 COPY apps/careplan-service/schema.graphql ./
+
+# Replace workspace:* references with file references for Docker build
+RUN sed -i 's/"@prism\/security": "workspace:\*"/"@prism\/security": "file:..\/shared\/security"/g' package.json && \
+    sed -i 's/"@prism\/service-clients": "workspace:\*"/"@prism\/service-clients": "file:..\/shared\/service-clients"/g' package.json
 
 # Create tsconfig that extends base and includes shared paths
 RUN echo '{\

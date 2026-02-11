@@ -251,7 +251,6 @@ export function createGenerationQueue(redis: Redis): Queue<GenerationJobData> {
         type: 'exponential',
         delay: 2000,
       },
-      timeout: 300000, // 5 minutes
       removeOnComplete: {
         age: 3600,
         count: 100,
@@ -277,7 +276,6 @@ export function createPdfImportQueue(redis: Redis): Queue<PdfImportJobData> {
         type: 'exponential',
         delay: 5000,
       },
-      timeout: 600000, // 10 minutes for large PDFs
       removeOnComplete: {
         age: 3600,
         count: 50,

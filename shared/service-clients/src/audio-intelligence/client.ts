@@ -51,7 +51,7 @@ export class AudioIntelligenceClient extends BaseHttpClient {
       // Validate input
       this.validateExtractionRequest(request);
 
-      const response = await this.post<ExtractionResponse>(
+      const response = await this.post<Record<string, unknown>>(
         '/api/v1/extract',
         {
           transcript_text: request.transcriptText,
@@ -105,7 +105,7 @@ export class AudioIntelligenceClient extends BaseHttpClient {
       // Validate each request
       request.transcripts.forEach((r) => this.validateExtractionRequest(r));
 
-      const response = await this.post<BatchExtractionResponse>(
+      const response = await this.post<Record<string, unknown>>(
         '/api/v1/extract/batch',
         {
           transcripts: request.transcripts.map((t) => ({
@@ -123,13 +123,14 @@ export class AudioIntelligenceClient extends BaseHttpClient {
         }
       );
 
+      const data = response.data;
       return {
-        results: response.data.results.map((r) => this.transformExtractionResponse(r)),
-        totalCount: response.data.totalCount,
-        successCount: response.data.successCount,
-        errorCount: response.data.errorCount,
-        totalCostUsd: response.data.totalCostUsd,
-        totalProcessingTimeSeconds: response.data.totalProcessingTimeSeconds,
+        results: ((data.results as unknown[]) || []).map((r) => this.transformExtractionResponse(r as Record<string, unknown>)),
+        totalCount: data.total_count as number,
+        successCount: data.success_count as number,
+        errorCount: data.error_count as number,
+        totalCostUsd: data.total_cost_usd as number,
+        totalProcessingTimeSeconds: data.total_processing_time_seconds as number,
       };
     } catch (error) {
       if (this.fallbackEnabled) {
@@ -161,7 +162,7 @@ export class AudioIntelligenceClient extends BaseHttpClient {
     request: TranscriptionRequest,
     options?: RequestOptions
   ): Promise<TranscriptionResponse> {
-    const response = await this.post<TranscriptionResponse>(
+    const response = await this.post<Record<string, unknown>>(
       '/api/v1/transcribe',
       {
         audio_uri: request.audioUri,
@@ -187,7 +188,7 @@ export class AudioIntelligenceClient extends BaseHttpClient {
     transcriptionId: string,
     options?: RequestOptions
   ): Promise<TranscriptionResponse> {
-    const response = await this.get<TranscriptionResponse>(
+    const response = await this.get<Record<string, unknown>>(
       `/api/v1/transcribe/${transcriptionId}`,
       options
     );
@@ -244,45 +245,54 @@ export class AudioIntelligenceClient extends BaseHttpClient {
    * Transform entity array
    */
   private transformEntities(entities: unknown[]): ExtractionResponse['symptoms'] {
-    return entities.map((e: Record<string, unknown>) => ({
-      text: e.text as string,
-      type: e.type as string,
-      snomedCode: e.snomed_code as string | undefined,
-      snomedDisplay: e.snomed_display as string | undefined,
-      confidence: e.confidence as number,
-      startOffset: e.start_offset as number | undefined,
-      endOffset: e.end_offset as number | undefined,
-      negated: e.negated as boolean | undefined,
-      attributes: e.attributes as Record<string, unknown> | undefined,
-    }));
+    return entities.map((item) => {
+      const e = item as Record<string, unknown>;
+      return {
+        text: e.text as string,
+        type: e.type as string,
+        snomedCode: e.snomed_code as string | undefined,
+        snomedDisplay: e.snomed_display as string | undefined,
+        confidence: e.confidence as number,
+        startOffset: e.start_offset as number | undefined,
+        endOffset: e.end_offset as number | undefined,
+        negated: e.negated as boolean | undefined,
+        attributes: e.attributes as Record<string, unknown> | undefined,
+      };
+    });
   }
 
   /**
    * Transform red flags array
    */
   private transformRedFlags(redFlags: unknown[]): ExtractionResponse['redFlags'] {
-    return redFlags.map((r: Record<string, unknown>) => ({
-      severity: r.severity as 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL',
-      description: r.description as string,
-      sourceText: r.source_text as string | undefined,
-      recommendedAction: r.recommended_action as string | undefined,
-      relatedEntity: r.related_entity
-        ? this.transformEntities([r.related_entity])[0]
-        : undefined,
-    }));
+    return redFlags.map((item) => {
+      const r = item as Record<string, unknown>;
+      return {
+        severity: r.severity as 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL',
+        description: r.description as string,
+        sourceText: r.source_text as string | undefined,
+        recommendedAction: r.recommended_action as string | undefined,
+        relatedEntity: r.related_entity
+          ? this.transformEntities([r.related_entity])[0]
+          : undefined,
+      };
+    });
   }
 
   /**
    * Transform pattern matches array
    */
   private transformPatternMatches(matches: unknown[]): ExtractionResponse['patternMatches'] {
-    return matches.map((m: Record<string, unknown>) => ({
-      patternName: m.pattern_name as string,
-      category: m.category as string,
-      matchedText: m.matched_text as string,
-      confidence: m.confidence as number,
-      data: m.data as Record<string, unknown> | undefined,
-    }));
+    return matches.map((item) => {
+      const m = item as Record<string, unknown>;
+      return {
+        patternName: m.pattern_name as string,
+        category: m.category as string,
+        matchedText: m.matched_text as string,
+        confidence: m.confidence as number,
+        data: m.data as Record<string, unknown> | undefined,
+      };
+    });
   }
 
   /**
@@ -295,13 +305,16 @@ export class AudioIntelligenceClient extends BaseHttpClient {
       fullText: data.full_text as string | undefined,
       audioDurationSeconds: data.audio_duration_seconds as number | undefined,
       confidenceScore: data.confidence_score as number | undefined,
-      segments: (data.segments as unknown[] || []).map((s: Record<string, unknown>) => ({
-        text: s.text as string,
-        speaker: s.speaker as string | undefined,
-        startTime: s.start_time as number,
-        endTime: s.end_time as number,
-        confidence: s.confidence as number,
-      })),
+      segments: (data.segments as unknown[] || []).map((item) => {
+        const s = item as Record<string, unknown>;
+        return {
+          text: s.text as string,
+          speaker: s.speaker as string | undefined,
+          startTime: s.start_time as number,
+          endTime: s.end_time as number,
+          confidence: s.confidence as number,
+        };
+      }),
       entities: data.entities
         ? this.transformEntities(data.entities as unknown[])
         : undefined,

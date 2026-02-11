@@ -10,7 +10,7 @@ import { Redis } from 'ioredis';
 /**
  * Context for the subscription
  */
-interface SubscriptionContext {
+export interface SubscriptionContext {
   userId: string;
   userRole: string;
   redis: Redis;
@@ -22,7 +22,7 @@ interface SubscriptionContext {
 /**
  * Progress message structure
  */
-interface ProgressMessage {
+export interface ProgressMessage {
   requestId: string;
   stage: string;
   status: string;
