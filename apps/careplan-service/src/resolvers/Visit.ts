@@ -9,7 +9,7 @@ import { GraphQLError } from 'graphql';
 /**
  * Context for resolvers
  */
-interface ResolverContext {
+export interface ResolverContext {
   userId: string;
   userRole: string;
   pipelineRequestRepository: {

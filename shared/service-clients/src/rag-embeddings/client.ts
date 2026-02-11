@@ -221,11 +221,11 @@ export class RagEmbeddingsClient extends BaseHttpClient {
     );
 
     return {
-      results: response.data.results.map((r: Record<string, unknown>) => ({
-        id: r.id as string,
-        embedding: r.embedding as number[],
-        success: r.success as boolean,
-        error: r.error as string | undefined,
+      results: response.data.results.map((r) => ({
+        id: r.id,
+        embedding: r.embedding,
+        success: r.success,
+        error: r.error,
       })),
       successCount: response.data.successCount,
       errorCount: response.data.errorCount,
@@ -260,11 +260,11 @@ export class RagEmbeddingsClient extends BaseHttpClient {
     );
 
     return {
-      results: response.data.results.map((r: Record<string, unknown>) => ({
-        id: r.id as string,
-        embedding: r.embedding as number[],
-        success: r.success as boolean,
-        error: r.error as string | undefined,
+      results: response.data.results.map((r) => ({
+        id: r.id,
+        embedding: r.embedding,
+        success: r.success,
+        error: r.error,
       })),
       successCount: response.data.successCount,
       errorCount: response.data.errorCount,
@@ -294,12 +294,12 @@ export class RagEmbeddingsClient extends BaseHttpClient {
     );
 
     return {
-      results: response.data.results.map((r: Record<string, unknown>) => ({
-        id: r.id as string,
-        similarity: r.similarity as number,
-        title: r.title as string | undefined,
-        category: r.category as string | undefined,
-        metadata: r.metadata as Record<string, unknown> | undefined,
+      results: response.data.results.map((r) => ({
+        id: r.id,
+        similarity: r.similarity,
+        title: r.title,
+        category: r.category,
+        metadata: r.metadata,
       })),
       count: response.data.count,
       queryTimeMs: response.data.queryTimeMs,

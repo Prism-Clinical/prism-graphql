@@ -91,7 +91,7 @@ export class CarePlanRecommenderClient extends BaseHttpClient {
     }
 
     try {
-      const response = await this.post<RecommendResponse>(
+      const response = await this.post<Record<string, unknown>>(
         '/api/v1/recommend',
         {
           condition_codes: request.conditionCodes,
@@ -134,7 +134,7 @@ export class CarePlanRecommenderClient extends BaseHttpClient {
     }
 
     try {
-      const response = await this.post<RecommendResponse>(
+      const response = await this.post<Record<string, unknown>>(
         '/api/v1/recommend/full',
         {
           condition_codes: request.conditionCodes,
@@ -185,7 +185,7 @@ export class CarePlanRecommenderClient extends BaseHttpClient {
     this.validateConditionCodes(request.conditionCodes);
 
     try {
-      const response = await this.post<RecommendResponse>(
+      const response = await this.post<Record<string, unknown>>(
         '/api/v1/engine/recommend',
         {
           condition_codes: request.conditionCodes,
@@ -236,7 +236,7 @@ export class CarePlanRecommenderClient extends BaseHttpClient {
     context: FullContextRequest,
     options?: RequestOptions
   ): Promise<RecommendResponse> {
-    const response = await this.post<RecommendResponse>(
+    const response = await this.post<Record<string, unknown>>(
       '/api/v1/draft',
       {
         template_ids: templateIds,
@@ -258,7 +258,7 @@ export class CarePlanRecommenderClient extends BaseHttpClient {
    * Get training job status
    */
   async getTrainingJob(jobId: string, options?: RequestOptions): Promise<TrainingJobResponse> {
-    const response = await this.get<TrainingJobResponse>(
+    const response = await this.get<Record<string, unknown>>(
       `/api/v1/training/${jobId}`,
       options
     );
@@ -373,47 +373,59 @@ export class CarePlanRecommenderClient extends BaseHttpClient {
    */
   private transformResponse(data: Record<string, unknown>): RecommendResponse {
     return {
-      templates: ((data.templates as unknown[]) || []).map((t: Record<string, unknown>) => ({
-        templateId: t.template_id as string,
-        name: t.name as string,
-        category: t.category as string,
-        conditionCodes: t.condition_codes as string[],
-        similarityScore: t.similarity_score as number,
-        rankingScore: t.ranking_score as number,
-        confidence: t.confidence as number,
-        matchFactors: {
-          conditionMatch: (t.match_factors as Record<string, number>)?.condition_match || 0,
-          medicationMatch: (t.match_factors as Record<string, number>)?.medication_match,
-          labMatch: (t.match_factors as Record<string, number>)?.lab_match,
-          demographicMatch: (t.match_factors as Record<string, number>)?.demographic_match,
-          historicalPreference: (t.match_factors as Record<string, number>)?.historical_preference,
-        },
-      })),
-      drafts: ((data.drafts as unknown[]) || []).map((d: Record<string, unknown>) => ({
-        title: d.title as string,
-        conditionCodes: d.condition_codes as string[],
-        goals: ((d.goals as unknown[]) || []).map((g: Record<string, unknown>) => ({
-          description: g.description as string,
-          targetValue: g.target_value as string | undefined,
-          targetDays: g.target_days as number | undefined,
-          priority: g.priority as 'HIGH' | 'MEDIUM' | 'LOW',
-          confidence: g.confidence as number | undefined,
-        })),
-        interventions: ((d.interventions as unknown[]) || []).map((i: Record<string, unknown>) => ({
-          description: i.description as string,
-          type: i.type as string,
-          medicationCode: i.medication_code as string | undefined,
-          procedureCode: i.procedure_code as string | undefined,
-          dosage: i.dosage as string | undefined,
-          frequency: i.frequency as string | undefined,
-          referralSpecialty: i.referral_specialty as string | undefined,
-          scheduleDays: i.schedule_days as number | undefined,
-          instructions: i.instructions as string | undefined,
-          confidence: i.confidence as number | undefined,
-        })),
-        confidenceScore: d.confidence_score as number,
-        generationMethod: d.generation_method as string,
-      })),
+      templates: ((data.templates as unknown[]) || []).map((item) => {
+        const t = item as Record<string, unknown>;
+        return {
+          templateId: t.template_id as string,
+          name: t.name as string,
+          category: t.category as string,
+          conditionCodes: t.condition_codes as string[],
+          similarityScore: t.similarity_score as number,
+          rankingScore: t.ranking_score as number,
+          confidence: t.confidence as number,
+          matchFactors: {
+            conditionMatch: (t.match_factors as Record<string, number>)?.condition_match || 0,
+            medicationMatch: (t.match_factors as Record<string, number>)?.medication_match,
+            labMatch: (t.match_factors as Record<string, number>)?.lab_match,
+            demographicMatch: (t.match_factors as Record<string, number>)?.demographic_match,
+            historicalPreference: (t.match_factors as Record<string, number>)?.historical_preference,
+          },
+        };
+      }),
+      drafts: ((data.drafts as unknown[]) || []).map((item) => {
+        const d = item as Record<string, unknown>;
+        return {
+          title: d.title as string,
+          conditionCodes: d.condition_codes as string[],
+          goals: ((d.goals as unknown[]) || []).map((gItem) => {
+            const g = gItem as Record<string, unknown>;
+            return {
+              description: g.description as string,
+              targetValue: g.target_value as string | undefined,
+              targetDays: g.target_days as number | undefined,
+              priority: g.priority as 'HIGH' | 'MEDIUM' | 'LOW',
+              confidence: g.confidence as number | undefined,
+            };
+          }),
+          interventions: ((d.interventions as unknown[]) || []).map((iItem) => {
+            const i = iItem as Record<string, unknown>;
+            return {
+              description: i.description as string,
+              type: i.type as string,
+              medicationCode: i.medication_code as string | undefined,
+              procedureCode: i.procedure_code as string | undefined,
+              dosage: i.dosage as string | undefined,
+              frequency: i.frequency as string | undefined,
+              referralSpecialty: i.referral_specialty as string | undefined,
+              scheduleDays: i.schedule_days as number | undefined,
+              instructions: i.instructions as string | undefined,
+              confidence: i.confidence as number | undefined,
+            };
+          }),
+          confidenceScore: d.confidence_score as number,
+          generationMethod: d.generation_method as string,
+        };
+      }),
       processingTimeMs: data.processing_time_ms as number,
       modelVersion: data.model_version as string,
       queryMode: data.query_mode as string,

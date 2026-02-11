@@ -235,8 +235,8 @@ export function createPdfImportWorker(
           extractedCodes: parseResult.codes || [],
         };
 
-        // Update request
-        await config.requestTracker.complete(data.requestId, result);
+        // Update request (cast to any to allow partial pipeline output)
+        await config.requestTracker.complete(data.requestId, result as any);
 
         await job.updateProgress({ stage: 'COMPLETE', percentage: 100 });
 

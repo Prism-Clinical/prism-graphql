@@ -5,6 +5,17 @@ import {
   documentMutationResolvers,
 } from "./DocumentResolvers";
 
+// Re-export types that are used in resolvers
+export type {
+  DataSourceContext,
+  DocumentValidationReport,
+  ExportDocumentResult,
+  ImportDocumentInput,
+  ImportDocumentResult,
+} from "./DocumentResolvers";
+export type { ProgressMessage, SubscriptionContext } from "./subscriptions/generation-progress";
+export type { ResolverContext } from "./Visit";
+
 // Pipeline resolvers
 import {
   generateCarePlanFromVisit,

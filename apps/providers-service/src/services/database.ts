@@ -67,6 +67,11 @@ export interface Visit {
   duration?: number;
   notes?: string;
   chiefComplaint?: string;
+  recordingKey?: string;
+  recordingEndedAt?: Date;
+  conditionCodes?: string[];
+  carePlanRequestId?: string;
+  carePlanRequestedAt?: Date;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -436,15 +441,20 @@ class VisitService {
 
   async updateVisit(id: string, updates: Partial<Omit<Visit, 'id' | 'createdAt' | 'updatedAt'>>): Promise<Visit | null> {
     ensureInitialized();
-    const allowedFields = ['type', 'status', 'scheduledAt', 'startedAt', 'completedAt', 'duration', 'notes', 'chiefComplaint'];
+    const allowedFields = ['type', 'status', 'scheduledAt', 'startedAt', 'completedAt', 'duration', 'notes', 'chiefComplaint', 'recordingKey', 'recordingEndedAt', 'conditionCodes', 'carePlanRequestId', 'carePlanRequestedAt'];
     const updateFields: string[] = [];
     const values: any[] = [];
-    
+
     Object.entries(updates).forEach(([key, value]) => {
       const dbKey = key === 'scheduledAt' ? 'scheduled_at' :
                    key === 'startedAt' ? 'started_at' :
                    key === 'completedAt' ? 'completed_at' :
-                   key === 'chiefComplaint' ? 'chief_complaint' : key;
+                   key === 'chiefComplaint' ? 'chief_complaint' :
+                   key === 'recordingKey' ? 'recording_key' :
+                   key === 'recordingEndedAt' ? 'recording_ended_at' :
+                   key === 'conditionCodes' ? 'condition_codes' :
+                   key === 'carePlanRequestId' ? 'care_plan_request_id' :
+                   key === 'carePlanRequestedAt' ? 'care_plan_requested_at' : key;
       
       if (allowedFields.includes(key) && value !== undefined) {
         updateFields.push(`${dbKey} = $${values.length + 1}`);
@@ -467,18 +477,97 @@ class VisitService {
     `;
     
     values.push(id);
-    
+
     try {
       const result = await pool.query(query, values);
       const visit = result.rows[0] || null;
-      
+
       if (visit) {
         visit.caseIds = typeof visit.caseIds === 'string' ? JSON.parse(visit.caseIds) : visit.caseIds;
       }
-      
+
       return visit;
     } catch (error) {
       return null;
+    }
+  }
+
+  async updateVisitStatus(id: string, status: VisitStatus | string): Promise<Visit | null> {
+    return this.updateVisit(id, { status: status as VisitStatus });
+  }
+
+  async completeVisit(id: string, data: { notes?: string; completedAt: Date; completedBy: string }): Promise<Visit | null> {
+    return this.updateVisit(id, {
+      status: VisitStatus.COMPLETED,
+      completedAt: data.completedAt,
+      notes: data.notes,
+    });
+  }
+
+  async getVisitsForProviderOnDate(providerId: string, date: Date): Promise<Visit[]> {
+    ensureInitialized();
+    const startOfDay = new Date(date);
+    startOfDay.setHours(0, 0, 0, 0);
+    const endOfDay = new Date(date);
+    endOfDay.setHours(23, 59, 59, 999);
+
+    const query = `
+      SELECT id, patient_id as "patientId", hospital_id as "hospitalId", provider_id as "providerId",
+             case_ids as "caseIds", type, status, scheduled_at as "scheduledAt",
+             started_at as "startedAt", completed_at as "completedAt", duration, notes,
+             chief_complaint as "chiefComplaint", recording_key as "recordingKey",
+             recording_ended_at as "recordingEndedAt", condition_codes as "conditionCodes",
+             care_plan_request_id as "carePlanRequestId", care_plan_requested_at as "carePlanRequestedAt",
+             created_at as "createdAt", updated_at as "updatedAt"
+      FROM visits
+      WHERE provider_id = $1 AND scheduled_at >= $2 AND scheduled_at <= $3
+      ORDER BY scheduled_at ASC
+    `;
+
+    try {
+      const result = await pool.query(query, [providerId, startOfDay, endOfDay]);
+      return result.rows.map(visit => ({
+        ...visit,
+        caseIds: typeof visit.caseIds === 'string' ? JSON.parse(visit.caseIds) : visit.caseIds,
+        conditionCodes: typeof visit.conditionCodes === 'string' ? JSON.parse(visit.conditionCodes) : visit.conditionCodes,
+      }));
+    } catch (error) {
+      return [];
+    }
+  }
+
+  async getVisitsForProviderInRange(providerId: string, startDate: Date, endDate: Date, status?: string): Promise<Visit[]> {
+    ensureInitialized();
+    let query = `
+      SELECT id, patient_id as "patientId", hospital_id as "hospitalId", provider_id as "providerId",
+             case_ids as "caseIds", type, status, scheduled_at as "scheduledAt",
+             started_at as "startedAt", completed_at as "completedAt", duration, notes,
+             chief_complaint as "chiefComplaint", recording_key as "recordingKey",
+             recording_ended_at as "recordingEndedAt", condition_codes as "conditionCodes",
+             care_plan_request_id as "carePlanRequestId", care_plan_requested_at as "carePlanRequestedAt",
+             created_at as "createdAt", updated_at as "updatedAt"
+      FROM visits
+      WHERE provider_id = $1 AND scheduled_at >= $2 AND scheduled_at <= $3
+    `;
+
+    const params: any[] = [providerId, startDate, endDate];
+
+    if (status) {
+      query += ` AND status = $4`;
+      params.push(status);
+    }
+
+    query += ` ORDER BY scheduled_at ASC`;
+
+    try {
+      const result = await pool.query(query, params);
+      return result.rows.map(visit => ({
+        ...visit,
+        caseIds: typeof visit.caseIds === 'string' ? JSON.parse(visit.caseIds) : visit.caseIds,
+        conditionCodes: typeof visit.conditionCodes === 'string' ? JSON.parse(visit.conditionCodes) : visit.conditionCodes,
+      }));
+    } catch (error) {
+      return [];
     }
   }
 }
