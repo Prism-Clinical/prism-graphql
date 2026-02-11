@@ -3,17 +3,67 @@ FROM node:18-alpine AS builder
 
 WORKDIR /app
 
-# Copy package files
-COPY package*.json ./
-COPY codegen.ts ./
-COPY tsconfig.json ./
-COPY schema.graphql ./
+# Copy root tsconfig for path alias resolution
+COPY tsconfig.json ./tsconfig.base.json
+
+# Copy shared modules
+COPY shared/ciss-types ./shared/ciss-types
+COPY shared/security ./shared/security
+COPY shared/service-clients ./shared/service-clients
+
+# Build shared modules
+WORKDIR /app/shared/ciss-types
+RUN npm install && npm run build
+
+WORKDIR /app/shared/security
+RUN npm install && npm run build
+
+WORKDIR /app/shared/service-clients
+RUN npm install && npm run build
+
+# Now build the service
+WORKDIR /app/service
+
+# Copy service package files
+COPY apps/careplan-service/package*.json ./
+COPY apps/careplan-service/codegen.ts ./
+COPY apps/careplan-service/schema.graphql ./
+
+# Create tsconfig that extends base and includes shared paths
+RUN echo '{\
+  "extends": "../tsconfig.base.json",\
+  "compilerOptions": {\
+    "target": "esnext",\
+    "module": "commonjs",\
+    "esModuleInterop": true,\
+    "sourceMap": true,\
+    "declaration": true,\
+    "declarationMap": true,\
+    "removeComments": true,\
+    "skipLibCheck": true,\
+    "noImplicitAny": true,\
+    "noImplicitReturns": true,\
+    "noFallthroughCasesInSwitch": true,\
+    "forceConsistentCasingInFileNames": true,\
+    "lib": ["esnext", "esnext.asynciterable", "DOM"],\
+    "types": ["node", "jest"],\
+    "rootDir": "./src",\
+    "outDir": "./dist",\
+    "baseUrl": "..",\
+    "paths": {\
+      "@careplan/*": ["service/src/*"],\
+      "@shared/*": ["shared/*"]\
+    }\
+  },\
+  "include": ["src/**/*"],\
+  "exclude": ["codegen.ts", "dist", "node_modules", "src/__tests__"]\
+}' > tsconfig.json
 
 # Install dependencies (skip scripts to avoid build errors)
 RUN npm install --ignore-scripts
 
 # Copy source code
-COPY src/ ./src/
+COPY apps/careplan-service/src/ ./src/
 
 # Generate types and build
 RUN npm run codegen
@@ -29,9 +79,10 @@ RUN addgroup -g 1001 -S nodejs
 RUN adduser -S graphql -u 1001
 
 # Copy built application
-COPY --from=builder --chown=graphql:nodejs /app/dist ./dist
-COPY --from=builder --chown=graphql:nodejs /app/node_modules ./node_modules
-COPY --chown=graphql:nodejs schema.graphql ./
+COPY --from=builder --chown=graphql:nodejs /app/service/dist ./dist
+COPY --from=builder --chown=graphql:nodejs /app/service/node_modules ./node_modules
+COPY --from=builder --chown=graphql:nodejs /app/shared ./shared
+COPY --chown=graphql:nodejs apps/careplan-service/schema.graphql ./
 
 USER graphql
 

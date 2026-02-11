@@ -1,0 +1,86 @@
+version: '3.8'
+
+# Docker Compose configuration for running tests
+# Usage: docker compose -f docker-compose.test.yml up -d
+
+services:
+  # Test PostgreSQL database
+  test-postgres:
+    image: postgres:15-alpine
+    container_name: prism-test-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: healthcare_federation_test
+    ports:
+      - "5433:5432"
+    volumes:
+      - test-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Test Redis instance
+  test-redis:
+    image: redis:7-alpine
+    container_name: prism-test-redis
+    ports:
+      - "6380:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Mock Audio Intelligence Service
+  mock-audio-intelligence:
+    image: mockserver/mockserver:latest
+    container_name: prism-mock-audio-intelligence
+    environment:
+      MOCKSERVER_INITIALIZATION_JSON_PATH: /config/audio-intelligence.json
+    ports:
+      - "8101:1080"
+    volumes:
+      - ./tests/mocks/audio-intelligence.json:/config/audio-intelligence.json
+
+  # Mock Care Plan Recommender Service
+  mock-careplan-recommender:
+    image: mockserver/mockserver:latest
+    container_name: prism-mock-careplan-recommender
+    environment:
+      MOCKSERVER_INITIALIZATION_JSON_PATH: /config/careplan-recommender.json
+    ports:
+      - "8100:1080"
+    volumes:
+      - ./tests/mocks/careplan-recommender.json:/config/careplan-recommender.json
+
+  # Mock RAG Embeddings Service
+  mock-rag-embeddings:
+    image: mockserver/mockserver:latest
+    container_name: prism-mock-rag-embeddings
+    environment:
+      MOCKSERVER_INITIALIZATION_JSON_PATH: /config/rag-embeddings.json
+    ports:
+      - "8103:1080"
+    volumes:
+      - ./tests/mocks/rag-embeddings.json:/config/rag-embeddings.json
+
+  # Mock PDF Parser Service
+  mock-pdf-parser:
+    image: mockserver/mockserver:latest
+    container_name: prism-mock-pdf-parser
+    environment:
+      MOCKSERVER_INITIALIZATION_JSON_PATH: /config/pdf-parser.json
+    ports:
+      - "8102:1080"
+    volumes:
+      - ./tests/mocks/pdf-parser.json:/config/pdf-parser.json
+
+volumes:
+  test-postgres-data:
+
+networks:
+  default:
+    name: prism-test-network

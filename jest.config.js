@@ -25,6 +25,13 @@ module.exports = {
   moduleNameMapper: {
     '^@shared/(.*)$': '<rootDir>/shared/$1',
     '^@test-utils/(.*)$': '<rootDir>/shared/test-utils/$1',
+    '^@test-utils$': '<rootDir>/shared/test-utils',
+    // Shared packages
+    '^@prism/security$': '<rootDir>/shared/security/src',
+    '^@prism/security/(.*)$': '<rootDir>/shared/security/src/$1',
+    '^@prism/service-clients$': '<rootDir>/shared/service-clients/src',
+    '^@prism/service-clients/(.*)$': '<rootDir>/shared/service-clients/src/$1',
+    // App services
     '^@patients/(.*)$': '<rootDir>/apps/patients-service/src/$1',
     '^@providers/(.*)$': '<rootDir>/apps/providers-service/src/$1',
     '^@recommendations/(.*)$': '<rootDir>/apps/recommendations-service/src/$1',

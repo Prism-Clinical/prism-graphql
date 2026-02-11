@@ -1,0 +1,166 @@
+# Pipeline Alerting Rules
+# Prometheus alerting rules for the care plan generation pipeline
+
+groups:
+  - name: pipeline-alerts
+    interval: 30s
+    rules:
+      # High error rate
+      - alert: PipelineHighErrorRate
+        expr: |
+          rate(pipeline_requests_total{status="failure"}[5m]) /
+          rate(pipeline_requests_total[5m]) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "Pipeline error rate is high"
+          description: "Pipeline error rate is {{ $value | humanizePercentage }} over the last 5 minutes"
+          runbook_url: "https://wiki.example.com/runbooks/pipeline-errors"
+
+      # Very high error rate - critical
+      - alert: PipelineCriticalErrorRate
+        expr: |
+          rate(pipeline_requests_total{status="failure"}[5m]) /
+          rate(pipeline_requests_total[5m]) > 0.25
+        for: 2m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: "Pipeline error rate is critical"
+          description: "Pipeline error rate is {{ $value | humanizePercentage }} over the last 5 minutes"
+          runbook_url: "https://wiki.example.com/runbooks/pipeline-errors"
+
+      # ML service down
+      - alert: MLServiceDown
+        expr: |
+          up{job=~"audio-intelligence|careplan-recommender|rag-embeddings|pdf-parser"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          team: ml-infra
+        annotations:
+          summary: "ML service {{ $labels.job }} is down"
+          description: "ML service {{ $labels.job }} has been unreachable for more than 2 minutes"
+          runbook_url: "https://wiki.example.com/runbooks/ml-service-down"
+
+      # ML service high latency
+      - alert: MLServiceHighLatency
+        expr: |
+          histogram_quantile(0.95,
+            rate(ml_service_latency_seconds_bucket[5m])
+          ) > 5
+        for: 5m
+        labels:
+          severity: warning
+          team: ml-infra
+        annotations:
+          summary: "ML service {{ $labels.service }} has high latency"
+          description: "95th percentile latency for {{ $labels.service }} is {{ $value | humanizeDuration }}"
+          runbook_url: "https://wiki.example.com/runbooks/ml-latency"
+
+      # Pipeline queue backlog
+      - alert: PipelineQueueBacklog
+        expr: pipeline_queue_depth > 100
+        for: 10m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "Pipeline queue has backlog"
+          description: "Queue {{ $labels.queue }} has {{ $value }} pending jobs"
+          runbook_url: "https://wiki.example.com/runbooks/queue-backlog"
+
+      # Pipeline queue critical backlog
+      - alert: PipelineQueueCriticalBacklog
+        expr: pipeline_queue_depth > 500
+        for: 5m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: "Pipeline queue backlog is critical"
+          description: "Queue {{ $labels.queue }} has {{ $value }} pending jobs"
+          runbook_url: "https://wiki.example.com/runbooks/queue-backlog"
+
+      # Circuit breaker open
+      - alert: CircuitBreakerOpen
+        expr: circuit_breaker_state > 0
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "Circuit breaker is open for {{ $labels.service }}"
+          description: "Circuit breaker for {{ $labels.service }} has been {{ if eq $value 1.0 }}open{{ else }}half-open{{ end }} for 5 minutes"
+          runbook_url: "https://wiki.example.com/runbooks/circuit-breaker"
+
+      # Pipeline processing slow
+      - alert: PipelineProcessingSlow
+        expr: |
+          histogram_quantile(0.95,
+            rate(pipeline_duration_seconds_bucket{stage="total"}[5m])
+          ) > 30
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "Pipeline processing is slow"
+          description: "95th percentile pipeline duration is {{ $value | humanizeDuration }}"
+          runbook_url: "https://wiki.example.com/runbooks/pipeline-slow"
+
+      # DLQ depth high
+      - alert: DLQDepthHigh
+        expr: dlq_depth > 50
+        for: 30m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "Dead letter queue has accumulated jobs"
+          description: "DLQ has {{ $value }} unresolved jobs"
+          runbook_url: "https://wiki.example.com/runbooks/dlq"
+
+      # No pipeline requests
+      - alert: NoPipelineRequests
+        expr: |
+          rate(pipeline_requests_total[30m]) == 0
+        for: 30m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "No pipeline requests in 30 minutes"
+          description: "Pipeline has not received any requests in the last 30 minutes"
+          runbook_url: "https://wiki.example.com/runbooks/no-traffic"
+
+  - name: resource-alerts
+    interval: 1m
+    rules:
+      # High memory usage
+      - alert: HighMemoryUsage
+        expr: |
+          process_resident_memory_bytes /
+          machine_memory_bytes > 0.8
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "High memory usage on {{ $labels.instance }}"
+          description: "Memory usage is {{ $value | humanizePercentage }}"
+
+      # High CPU usage
+      - alert: HighCPUUsage
+        expr: |
+          rate(process_cpu_seconds_total[5m]) > 0.8
+        for: 10m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "High CPU usage on {{ $labels.instance }}"
+          description: "CPU usage is {{ $value | humanizePercentage }}"

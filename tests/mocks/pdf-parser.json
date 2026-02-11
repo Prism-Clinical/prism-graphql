@@ -1,0 +1,55 @@
+[
+  {
+    "httpRequest": {
+      "method": "POST",
+      "path": "/parse"
+    },
+    "httpResponse": {
+      "statusCode": 200,
+      "headers": {
+        "Content-Type": ["application/json"]
+      },
+      "body": {
+        "title": "Imported Care Plan",
+        "goals": [
+          {
+            "description": "Improve cardiovascular health",
+            "targetDate": "2024-12-31"
+          }
+        ],
+        "interventions": [
+          {
+            "description": "Regular exercise program",
+            "frequency": "3x weekly"
+          }
+        ],
+        "medications": [
+          {
+            "name": "Metoprolol",
+            "dosage": "25mg",
+            "frequency": "Twice daily"
+          }
+        ],
+        "extractedText": "This is the extracted text from the PDF...",
+        "pageCount": 5,
+        "processingTime": 2000
+      }
+    }
+  },
+  {
+    "httpRequest": {
+      "method": "GET",
+      "path": "/health"
+    },
+    "httpResponse": {
+      "statusCode": 200,
+      "headers": {
+        "Content-Type": ["application/json"]
+      },
+      "body": {
+        "status": "healthy",
+        "version": "1.0.0"
+      }
+    }
+  }
+]

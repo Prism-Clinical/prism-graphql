@@ -342,8 +342,8 @@ services:
 
   careplan-service:
     build:
-      context: ./apps/careplan-service
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: apps/careplan-service/Dockerfile
     container_name: healthcare-careplan
     ports:
       - "4010:4010"
