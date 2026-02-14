@@ -51,7 +51,7 @@ CREATE TABLE IF NOT EXISTS snapshot_demographics (
     general_practitioner JSONB DEFAULT '[]',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
 
-    FOREIGN KEY (snapshot_id) REFERENCES patient_clinical_snapshots(id) ON DELETE CASCADE
+    FOREIGN KEY (snapshot_id) REFERENCES patient_clinical_snapshots(id) ON DELETE RESTRICT
 );
 
 CREATE INDEX IF NOT EXISTS idx_snapshot_demographics_snapshot
@@ -80,7 +80,7 @@ CREATE TABLE IF NOT EXISTS snapshot_vitals (
     is_normalized BOOLEAN DEFAULT false,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
 
-    FOREIGN KEY (snapshot_id) REFERENCES patient_clinical_snapshots(id) ON DELETE CASCADE
+    FOREIGN KEY (snapshot_id) REFERENCES patient_clinical_snapshots(id) ON DELETE RESTRICT
 );
 
 CREATE INDEX IF NOT EXISTS idx_snapshot_vitals_snapshot
@@ -115,7 +115,7 @@ CREATE TABLE IF NOT EXISTS snapshot_lab_results (
     notes TEXT[],
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
 
-    FOREIGN KEY (snapshot_id) REFERENCES patient_clinical_snapshots(id) ON DELETE CASCADE
+    FOREIGN KEY (snapshot_id) REFERENCES patient_clinical_snapshots(id) ON DELETE RESTRICT
 );
 
 CREATE INDEX IF NOT EXISTS idx_snapshot_labs_snapshot
@@ -149,7 +149,7 @@ CREATE TABLE IF NOT EXISTS snapshot_medications (
     notes TEXT[],
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
 
-    FOREIGN KEY (snapshot_id) REFERENCES patient_clinical_snapshots(id) ON DELETE CASCADE
+    FOREIGN KEY (snapshot_id) REFERENCES patient_clinical_snapshots(id) ON DELETE RESTRICT
 );
 
 CREATE INDEX IF NOT EXISTS idx_snapshot_medications_snapshot
@@ -187,7 +187,7 @@ CREATE TABLE IF NOT EXISTS snapshot_conditions (
     notes TEXT[],
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
 
-    FOREIGN KEY (snapshot_id) REFERENCES patient_clinical_snapshots(id) ON DELETE CASCADE
+    FOREIGN KEY (snapshot_id) REFERENCES patient_clinical_snapshots(id) ON DELETE RESTRICT
 );
 
 CREATE INDEX IF NOT EXISTS idx_snapshot_conditions_snapshot
