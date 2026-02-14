@@ -490,6 +490,7 @@ export const resolvers = {
       _: unknown,
       { epicPatientId }: { epicPatientId: string }
     ): Promise<EpicPatientData> {
+      validateResourceId(epicPatientId, "epicPatientId");
       const requestId = generateRequestId();
       const fhirClient = getFhirClient();
 
@@ -670,6 +671,7 @@ export const resolvers = {
       _: unknown,
       { epicPatientId }: { epicPatientId: string }
     ): Promise<ClinicalSnapshotFull | null> {
+      validateResourceId(epicPatientId, "epicPatientId");
       return getLatestSnapshot(epicPatientId);
     },
 
@@ -677,6 +679,7 @@ export const resolvers = {
       _: unknown,
       { epicPatientId, limit }: { epicPatientId: string; limit?: number }
     ): Promise<SnapshotSummary[]> {
+      validateResourceId(epicPatientId, "epicPatientId");
       return getSnapshotHistory(epicPatientId, limit ?? 20);
     },
 
@@ -684,6 +687,7 @@ export const resolvers = {
       _: unknown,
       { snapshotId }: { snapshotId: string }
     ): Promise<ClinicalSnapshotFull | null> {
+      validateResourceId(snapshotId, "snapshotId");
       return getSnapshot(snapshotId);
     },
   },
@@ -696,6 +700,7 @@ export const resolvers = {
         dataTypes,
       }: { epicPatientId: string; dataTypes: string[] }
     ): Promise<SyncResult> {
+      validateResourceId(epicPatientId, "epicPatientId");
       const requestId = generateRequestId();
       const start = Date.now();
       const syncedDataTypes: string[] = [];
@@ -842,6 +847,7 @@ export const resolvers = {
         trigger,
       }: { epicPatientId: string; trigger: string }
     ): Promise<{ snapshot: ClinicalSnapshotFull; isNew: boolean }> {
+      validateResourceId(epicPatientId, "epicPatientId");
       const requestId = generateRequestId();
       const fhirClient = getFhirClient();
 
@@ -935,6 +941,27 @@ export const resolvers = {
 // =============================================================================
 // HELPERS
 // =============================================================================
+
+/** Maximum allowed length for FHIR resource IDs. */
+const MAX_ID_LENGTH = 128;
+
+/** Pattern for valid FHIR resource IDs (alphanumeric, hyphens, dots). */
+const VALID_ID_PATTERN = /^[A-Za-z0-9\-._]+$/;
+
+/**
+ * Validate a FHIR resource ID. Throws a GraphQL-friendly error if invalid.
+ */
+export function validateResourceId(id: string, label: string): void {
+  if (!id || id.trim().length === 0) {
+    throw new Error(`${label} is required`);
+  }
+  if (id.length > MAX_ID_LENGTH) {
+    throw new Error(`${label} exceeds maximum length of ${MAX_ID_LENGTH} characters`);
+  }
+  if (!VALID_ID_PATTERN.test(id)) {
+    throw new Error(`${label} contains invalid characters`);
+  }
+}
 
 /**
  * Resolve medicationReferences from a list of MedicationRequests.

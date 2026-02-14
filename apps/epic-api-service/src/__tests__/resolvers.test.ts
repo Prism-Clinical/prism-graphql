@@ -93,7 +93,7 @@ jest.mock("../services/database", () => ({
 // Imports — after all mocks
 // ---------------------------------------------------------------------------
 
-import { resolvers, extractErrorMessage, extractErrorCode } from "../index";
+import { resolvers, extractErrorMessage, extractErrorCode, validateResourceId } from "../index";
 import { AxiosError, type InternalAxiosRequestConfig } from "axios";
 
 // ---------------------------------------------------------------------------
@@ -368,5 +368,43 @@ describe("extractErrorCode", () => {
   it("returns undefined for non-Axios errors", () => {
     expect(extractErrorCode(new Error("fail"))).toBeUndefined();
     expect(extractErrorCode("string")).toBeUndefined();
+  });
+});
+
+describe("validateResourceId", () => {
+  it("accepts valid FHIR resource IDs", () => {
+    expect(() => validateResourceId("erXuFYUfucBZaryVksYEcMg3", "id")).not.toThrow();
+    expect(() => validateResourceId("abc-123.def", "id")).not.toThrow();
+    expect(() => validateResourceId("snap_uuid_1", "id")).not.toThrow();
+  });
+
+  it("rejects empty strings", () => {
+    expect(() => validateResourceId("", "epicPatientId")).toThrow("epicPatientId is required");
+  });
+
+  it("rejects whitespace-only strings", () => {
+    expect(() => validateResourceId("   ", "epicPatientId")).toThrow("epicPatientId is required");
+  });
+
+  it("rejects IDs exceeding max length", () => {
+    const longId = "a".repeat(129);
+    expect(() => validateResourceId(longId, "epicPatientId")).toThrow("exceeds maximum length");
+  });
+
+  it("rejects IDs with invalid characters", () => {
+    expect(() => validateResourceId("id with spaces", "epicPatientId")).toThrow("contains invalid characters");
+    expect(() => validateResourceId("id;DROP TABLE", "epicPatientId")).toThrow("contains invalid characters");
+    expect(() => validateResourceId("id<script>", "epicPatientId")).toThrow("contains invalid characters");
+    expect(() => validateResourceId("../etc/passwd", "epicPatientId")).toThrow("contains invalid characters");
+  });
+
+  it("rejects IDs used in resolver calls", async () => {
+    await expect(
+      resolvers.Query.epicPatientData({}, { epicPatientId: "" })
+    ).rejects.toThrow("epicPatientId is required");
+
+    await expect(
+      resolvers.Query.epicPatientData({}, { epicPatientId: "id<script>" })
+    ).rejects.toThrow("contains invalid characters");
   });
 });
