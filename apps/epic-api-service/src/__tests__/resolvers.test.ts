@@ -1,25 +1,15 @@
 /**
- * Tests for index.ts resolver logic
+ * Tests for the exported resolvers and helpers from index.ts.
  *
- * Since resolvers are not exported from index.ts, we test the same logic
- * by exercising the same dependency chain with mocked externals.
- * This validates the integration between transforms, cache, database,
- * and FHIR client layers.
+ * Mocks all external dependencies (FHIR client, extraction client, cache,
+ * database) so we can exercise the actual resolver functions in isolation.
+ *
+ * Server startup code lives in server.ts, so no Apollo/PG/Redis mocks needed.
  */
 
-import type {
-  PatientDemographicsOut,
-  VitalOut,
-  LabResultOut,
-  MedicationOut,
-  DiagnosisOut,
-} from "../services/transforms";
-import type { FHIRObservation } from "../clients/feature-extraction-client";
-import type { FHIRMedication, FHIRPatient, FHIRMedicationRequest, FHIRCondition } from "../clients/epic-fhir-client";
-
-// We replicate the resolver logic directly in tests rather than trying
-// to extract unexported resolvers from index.ts. This tests the same
-// behavior without module-loading side effects.
+// ---------------------------------------------------------------------------
+// Mocks — must be declared before any imports that trigger module loading
+// ---------------------------------------------------------------------------
 
 jest.mock("../clients/logger", () => ({
   createLogger: () => ({
@@ -30,363 +20,353 @@ jest.mock("../clients/logger", () => ({
   }),
 }));
 
-import {
-  transformPatient,
-  transformVitals,
-  transformLabResults,
-  transformMedications,
-  transformConditions,
-} from "../services/transforms";
+const mockGetPatient = jest.fn();
+const mockGetObservations = jest.fn();
+const mockGetLabObservations = jest.fn();
+const mockGetMedicationRequests = jest.fn();
+const mockGetConditions = jest.fn();
+const mockGetMedication = jest.fn();
+const mockHealthCheck = jest.fn();
 
-// =============================================================================
-// epicPatientData resolver logic
-// =============================================================================
-
-describe("epicPatientData resolver logic", () => {
-  // Replicate the core resolver pattern: cache-first, then fetch + transform
-
-  it("returns cached data without calling FHIR when all resources are cached", async () => {
-    const cachedDemo: PatientDemographicsOut = {
-      firstName: "Cached", lastName: "Patient", gender: "male", dateOfBirth: "1990-01-01",
-      mrn: "C123", active: true, deceasedBoolean: null, deceasedDateTime: null,
-      maritalStatus: null, raceEthnicity: null, identifiers: [], names: [],
-      telecom: [], addresses: [], emergencyContacts: [], communications: [],
-      generalPractitioner: [],
-    };
-    const cachedVitals: VitalOut[] = [];
-    const cachedLabs: LabResultOut[] = [];
-    const cachedMeds: MedicationOut[] = [];
-    const cachedDx: DiagnosisOut[] = [];
-
-    // Simulate what the resolver does when all caches hit
-    const allCached = cachedDemo && cachedVitals && cachedLabs && cachedMeds && cachedDx;
-    expect(allCached).toBeTruthy();
-
-    // When all are cached, resolver returns immediately without FHIR calls
-    const result = {
-      epicPatientId: "epic-123",
-      demographics: cachedDemo,
-      vitals: cachedVitals,
-      labs: cachedLabs,
-      medications: cachedMeds,
-      diagnoses: cachedDx,
-      lastSync: new Date().toISOString(),
-      errors: [] as Array<{ dataType: string; message: string; code?: string }>,
-    };
-
-    expect(result.demographics.firstName).toBe("Cached");
-    expect(result.errors).toEqual([]);
-  });
-
-  it("transforms FHIR patient data correctly in the resolver flow", () => {
-    const fhirPatient: FHIRPatient = {
-      id: "abc",
-      name: [{ use: "official", given: ["John"], family: "Smith" }],
-      gender: "male",
-      birthDate: "1985-05-15",
-      identifier: [{ value: "MRN001", type: { coding: [{ code: "MR" }] } }],
-    };
-
-    const demographics = transformPatient(fhirPatient);
-    expect(demographics.firstName).toBe("John");
-    expect(demographics.lastName).toBe("Smith");
-    expect(demographics.mrn).toBe("MRN001");
-  });
-
-  it("transforms and merges vitals with extraction service results", () => {
-    const observations: FHIRObservation[] = [
-      {
-        resourceType: "Observation",
-        status: "final",
-        code: { coding: [{ system: "http://loinc.org", code: "8867-4", display: "Heart rate" }] },
-        valueQuantity: { value: 72, unit: "beats/min" },
-        effectiveDateTime: "2024-01-15T10:00:00Z",
-      },
-    ];
-
-    const transformed = transformVitals(observations);
-
-    // Simulate extraction service merge (what the resolver does)
-    const extractionResult = {
-      result: {
-        vitals: [{
-          type: "Heart rate",
-          normalizedValue: 72,
-          normalizedUnit: "/min",
-          timestamp: "2024-01-15T10:00:00Z",
-        }],
-      },
-      fromService: true,
-    };
-
-    const merged = transformed.map((v) => {
-      const extracted = extractionResult.result.vitals.find(
-        (ev) => ev.type === v.type && ev.timestamp === v.recordedDate
-      );
-      if (extracted && extractionResult.fromService) {
-        return { ...v, value: extracted.normalizedValue, unit: extracted.normalizedUnit, isNormalized: true };
-      }
-      return v;
-    });
-
-    expect(merged).toHaveLength(1);
-    expect(merged[0].unit).toBe("/min"); // normalized
-    expect(merged[0].isNormalized).toBe(true);
-  });
-
-  it("keeps raw values when extraction service is unavailable", () => {
-    const observations: FHIRObservation[] = [
-      {
-        resourceType: "Observation",
-        status: "final",
-        code: { coding: [{ system: "http://loinc.org", code: "8867-4", display: "Heart rate" }] },
-        valueQuantity: { value: 72, unit: "beats/min" },
-        effectiveDateTime: "2024-01-15T10:00:00Z",
-      },
-    ];
-
-    const transformed = transformVitals(observations);
-
-    // Simulate fallback (fromService: false)
-    const extractionResult = {
-      result: { vitals: [{ type: "Heart rate", normalizedValue: 72, normalizedUnit: "beats/min", timestamp: "2024-01-15T10:00:00Z" }] },
+jest.mock("../clients", () => ({
+  getFhirClient: () => ({
+    getPatient: mockGetPatient,
+    getObservations: mockGetObservations,
+    getLabObservations: mockGetLabObservations,
+    getMedicationRequests: mockGetMedicationRequests,
+    getConditions: mockGetConditions,
+    getMedication: mockGetMedication,
+    healthCheck: mockHealthCheck,
+  }),
+  getExtractionClient: () => ({
+    extractVitalsWithFallback: jest.fn().mockResolvedValue({
+      result: { vitals: [], warnings: [], observationsProcessed: 0, observationsSkipped: 0 },
       fromService: false,
-    };
+    }),
+  }),
+  // Re-export types used by index.ts
+  EpicFhirClient: jest.fn(),
+  FHIRMedication: {},
+  FHIRMedicationRequest: {},
+  FHIRObservation: {},
+  generateRequestId: () => "test-request-id",
+}));
 
-    const merged = transformed.map((v) => {
-      const extracted = extractionResult.result.vitals.find(
-        (ev) => ev.type === v.type && ev.timestamp === v.recordedDate
-      );
-      if (extracted && extractionResult.fromService) {
-        return { ...v, value: extracted.normalizedValue, unit: extracted.normalizedUnit, isNormalized: true };
-      }
-      return v;
-    });
+jest.mock("../clients/http-utils", () => ({
+  generateRequestId: () => "test-request-id",
+  ResilientHttpClient: jest.fn(),
+  HttpError: class extends Error {},
+  CircuitOpenError: class extends Error {},
+  PayloadTooLargeError: class extends Error {},
+}));
 
-    expect(merged[0].isNormalized).toBe(false);
-    expect(merged[0].unit).toBe("beats/min"); // raw
+const mockGetCached = jest.fn().mockResolvedValue(null);
+const mockSetCached = jest.fn().mockResolvedValue(undefined);
+const mockGetCachedMedicationRef = jest.fn().mockResolvedValue(null);
+const mockSetCachedMedicationRef = jest.fn().mockResolvedValue(undefined);
+const mockInvalidatePatientCache = jest.fn().mockResolvedValue(undefined);
+
+jest.mock("../services/cache", () => ({
+  getCached: (...args: unknown[]) => mockGetCached(...args),
+  setCached: (...args: unknown[]) => mockSetCached(...args),
+  getCachedMedicationRef: (...args: unknown[]) => mockGetCachedMedicationRef(...args),
+  setCachedMedicationRef: (...args: unknown[]) => mockSetCachedMedicationRef(...args),
+  invalidatePatientCache: (...args: unknown[]) => mockInvalidatePatientCache(...args),
+  initializeCache: jest.fn(),
+  CACHE_TTL: { PATIENT: 600, VITALS: 300, LABS: 300, MEDICATIONS: 600, CONDITIONS: 600, MEDICATION_REF: 3600 },
+}));
+
+const mockCreateSnapshot = jest.fn();
+const mockGetLatestSnapshot = jest.fn();
+const mockGetSnapshotHistory = jest.fn();
+const mockGetSnapshot = jest.fn();
+
+jest.mock("../services/database", () => ({
+  createSnapshot: (...args: unknown[]) => mockCreateSnapshot(...args),
+  getLatestSnapshot: (...args: unknown[]) => mockGetLatestSnapshot(...args),
+  getSnapshotHistory: (...args: unknown[]) => mockGetSnapshotHistory(...args),
+  getSnapshot: (...args: unknown[]) => mockGetSnapshot(...args),
+  initializeDatabase: jest.fn(),
+}));
+
+// ---------------------------------------------------------------------------
+// Imports — after all mocks
+// ---------------------------------------------------------------------------
+
+import { resolvers, extractErrorMessage, extractErrorCode } from "../index";
+import { AxiosError, type InternalAxiosRequestConfig } from "axios";
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+describe("epicPatientData resolver", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockGetCached.mockResolvedValue(null);
   });
 
-  it("captures errors per data type when individual FHIR calls fail", async () => {
-    interface DataFetchError { dataType: string; message: string; code?: string; }
+  it("returns cached data when all resources are cached", async () => {
+    const cachedDemo = { firstName: "Cached", lastName: "Patient" };
+    const cachedVitals = [{ type: "HR", value: 72 }];
+    const cachedLabs = [{ id: "lab-1" }];
+    const cachedMeds = [{ name: "Aspirin" }];
+    const cachedDx = [{ code: "123" }];
 
-    // Simulate the resolver's error capture pattern
-    const errors: DataFetchError[] = [];
+    mockGetCached
+      .mockResolvedValueOnce(cachedDemo)    // patient
+      .mockResolvedValueOnce(cachedVitals)  // vitals
+      .mockResolvedValueOnce(cachedLabs)    // labs
+      .mockResolvedValueOnce(cachedMeds)    // medications
+      .mockResolvedValueOnce(cachedDx);     // conditions
 
-    const patientResult = { status: "rejected" as const, reason: new Error("Patient API down") };
-    const vitalsResult = { status: "fulfilled" as const, value: { data: { entry: [] as unknown[] } } };
-
-    if (patientResult.status === "rejected") {
-      errors.push({
-        dataType: "DEMOGRAPHICS",
-        message: patientResult.reason.message,
-      });
-    }
-
-    expect(errors).toHaveLength(1);
-    expect(errors[0].dataType).toBe("DEMOGRAPHICS");
-    expect(errors[0].message).toBe("Patient API down");
-  });
-});
-
-// =============================================================================
-// Medication reference resolution
-// =============================================================================
-
-describe("medication reference resolution", () => {
-  it("resolves medicationReference and uses resolved name", () => {
-    const medRequests: FHIRMedicationRequest[] = [
-      {
-        id: "med-1",
-        status: "active",
-        intent: "order",
-        medicationReference: { reference: "Medication/abc" },
-      },
-    ];
-
-    const resolvedMeds = new Map<string, FHIRMedication>();
-    resolvedMeds.set("Medication/abc", {
-      code: { coding: [{ display: "Resolved Med Name" }], text: "Resolved Med Name" },
-    });
-
-    const result = transformMedications(medRequests, resolvedMeds);
-    expect(result[0].name).toBe("Resolved Med Name");
-  });
-
-  it("deduplicates medication references", () => {
-    const medRequests: FHIRMedicationRequest[] = [
-      { status: "active", intent: "order", medicationReference: { reference: "Medication/abc" } },
-      { status: "active", intent: "order", medicationReference: { reference: "Medication/abc" } },
-      { status: "active", intent: "order", medicationReference: { reference: "Medication/xyz" } },
-    ];
-
-    // Simulate resolver's dedup logic
-    const refsToResolve = medRequests
-      .filter((m) => m.medicationReference?.reference)
-      .map((m) => m.medicationReference!.reference!);
-    const uniqueRefs = [...new Set(refsToResolve)];
-
-    expect(uniqueRefs).toEqual(["Medication/abc", "Medication/xyz"]);
-  });
-});
-
-// =============================================================================
-// syncPatientDataFromEpic logic
-// =============================================================================
-
-describe("syncPatientDataFromEpic resolver logic", () => {
-  it("transforms and caches each data type on sync", () => {
-    // Verify transform functions work for each resource type
-    const demographics = transformPatient({
-      name: [{ given: ["Test"], family: "User" }],
-      gender: "male",
-      birthDate: "2000-01-01",
-    });
-    expect(demographics.firstName).toBe("Test");
-
-    const vitals = transformVitals([
-      {
-        resourceType: "Observation",
-        status: "final",
-        code: { coding: [{ system: "http://loinc.org", code: "8867-4", display: "HR" }] },
-        valueQuantity: { value: 72, unit: "bpm" },
-        effectiveDateTime: "2024-01-15",
-      },
-    ]);
-    expect(vitals).toHaveLength(1);
-
-    const labs = transformLabResults([
-      {
-        resourceType: "Observation",
-        status: "final",
-        code: { coding: [{ system: "http://loinc.org", code: "2345-7", display: "Glucose" }] },
-        valueQuantity: { value: 95, unit: "mg/dL" },
-      },
-    ]);
-    expect(labs).toHaveLength(1);
-
-    const meds = transformMedications(
-      [{ status: "active", intent: "order", medicationCodeableConcept: { text: "Aspirin" } }],
-      new Map()
+    const result = await resolvers.Query.epicPatientData(
+      {},
+      { epicPatientId: "epic-123" }
     );
-    expect(meds).toHaveLength(1);
 
-    const conditions = transformConditions([
-      { code: { coding: [{ code: "38341003", display: "HTN" }] } },
-    ]);
-    expect(conditions).toHaveLength(1);
+    expect(result.demographics).toEqual(cachedDemo);
+    expect(result.vitals).toEqual(cachedVitals);
+    expect(result.labs).toEqual(cachedLabs);
+    expect(result.medications).toEqual(cachedMeds);
+    expect(result.diagnoses).toEqual(cachedDx);
+    expect(result.errors).toEqual([]);
+
+    // No FHIR calls should have been made
+    expect(mockGetPatient).not.toHaveBeenCalled();
+    expect(mockGetObservations).not.toHaveBeenCalled();
   });
 
-  it("handles unknown data type in sync", () => {
-    const dataType = "UNKNOWN_TYPE";
-    const knownTypes = ["DEMOGRAPHICS", "VITALS", "LABS", "MEDICATIONS", "DIAGNOSES"];
+  it("fetches from FHIR and caches on cache miss", async () => {
+    // All cache misses
+    mockGetCached.mockResolvedValue(null);
 
-    expect(knownTypes.includes(dataType)).toBe(false);
+    mockGetPatient.mockResolvedValue({
+      data: { name: [{ given: ["Jane"], family: "Doe" }], gender: "female", birthDate: "1990-01-01" },
+    });
+    mockGetObservations.mockResolvedValue({ data: { entry: [] } });
+    mockGetLabObservations.mockResolvedValue({ data: { entry: [] } });
+    mockGetMedicationRequests.mockResolvedValue({ data: { entry: [] } });
+    mockGetConditions.mockResolvedValue({ data: { entry: [] } });
+
+    const result = await resolvers.Query.epicPatientData(
+      {},
+      { epicPatientId: "epic-456" }
+    );
+
+    expect(result.demographics?.firstName).toBe("Jane");
+    expect(result.demographics?.lastName).toBe("Doe");
+    expect(result.vitals).toEqual([]);
+    expect(result.errors).toEqual([]);
+
+    // Should have cached the transformed data
+    expect(mockSetCached).toHaveBeenCalledWith("patient", "epic-456", expect.any(Object));
+    expect(mockSetCached).toHaveBeenCalledWith("vitals", "epic-456", expect.any(Array));
+  });
+
+  it("captures errors per data type when FHIR calls fail", async () => {
+    mockGetCached.mockResolvedValue(null);
+
+    mockGetPatient.mockRejectedValue(new Error("Patient API down"));
+    mockGetObservations.mockResolvedValue({ data: { entry: [] } });
+    mockGetLabObservations.mockRejectedValue(new Error("Labs timeout"));
+    mockGetMedicationRequests.mockResolvedValue({ data: { entry: [] } });
+    mockGetConditions.mockResolvedValue({ data: { entry: [] } });
+
+    const result = await resolvers.Query.epicPatientData(
+      {},
+      { epicPatientId: "epic-err" }
+    );
+
+    expect(result.demographics).toBeNull();
+    expect(result.errors).toHaveLength(2);
+    expect(result.errors.map((e: { dataType: string }) => e.dataType).sort()).toEqual(
+      ["DEMOGRAPHICS", "LABS"]
+    );
+  });
+
+  it("resolves medication references from FHIR", async () => {
+    mockGetCached.mockResolvedValue(null);
+
+    mockGetPatient.mockResolvedValue({
+      data: { name: [{ given: ["Test"], family: "User" }] },
+    });
+    mockGetObservations.mockResolvedValue({ data: { entry: [] } });
+    mockGetLabObservations.mockResolvedValue({ data: { entry: [] } });
+    mockGetMedicationRequests.mockResolvedValue({
+      data: {
+        entry: [
+          {
+            resource: {
+              id: "med-1",
+              status: "active",
+              intent: "order",
+              medicationReference: { reference: "Medication/abc" },
+            },
+          },
+        ],
+      },
+    });
+    mockGetMedication.mockResolvedValue({
+      data: { code: { coding: [{ display: "Resolved Med" }], text: "Resolved Med" } },
+    });
+    mockGetConditions.mockResolvedValue({ data: { entry: [] } });
+
+    const result = await resolvers.Query.epicPatientData(
+      {},
+      { epicPatientId: "epic-med" }
+    );
+
+    expect(result.medications).toHaveLength(1);
+    expect(result.medications[0].name).toBe("Resolved Med");
+    expect(mockSetCachedMedicationRef).toHaveBeenCalledWith("Medication/abc", expect.any(Object));
   });
 });
 
-// =============================================================================
-// createClinicalSnapshot resolver logic
-// =============================================================================
+describe("latestSnapshot resolver", () => {
+  it("delegates to getLatestSnapshot", async () => {
+    const mockSnapshot = { id: "snap-1", epicPatientId: "epic-123" };
+    mockGetLatestSnapshot.mockResolvedValue(mockSnapshot);
 
-describe("createClinicalSnapshot resolver logic", () => {
-  it("builds snapshot data from all transformed resources", () => {
-    const demographics = transformPatient({
-      name: [{ given: ["Jane"], family: "Doe" }],
+    const result = await resolvers.Query.latestSnapshot(
+      {},
+      { epicPatientId: "epic-123" }
+    );
+
+    expect(result).toEqual(mockSnapshot);
+    expect(mockGetLatestSnapshot).toHaveBeenCalledWith("epic-123");
+  });
+});
+
+describe("snapshotHistory resolver", () => {
+  it("delegates to getSnapshotHistory with default limit", async () => {
+    mockGetSnapshotHistory.mockResolvedValue([]);
+
+    await resolvers.Query.snapshotHistory(
+      {},
+      { epicPatientId: "epic-123" }
+    );
+
+    expect(mockGetSnapshotHistory).toHaveBeenCalledWith("epic-123", 20);
+  });
+
+  it("passes custom limit", async () => {
+    mockGetSnapshotHistory.mockResolvedValue([]);
+
+    await resolvers.Query.snapshotHistory(
+      {},
+      { epicPatientId: "epic-123", limit: 5 }
+    );
+
+    expect(mockGetSnapshotHistory).toHaveBeenCalledWith("epic-123", 5);
+  });
+});
+
+describe("createClinicalSnapshot resolver", () => {
+  it("fetches all data, creates snapshot, and invalidates cache", async () => {
+    mockGetPatient.mockResolvedValue({
+      data: { name: [{ given: ["Snap"], family: "Patient" }] },
+    });
+    mockGetObservations.mockResolvedValue({ data: { entry: [] } });
+    mockGetLabObservations.mockResolvedValue({ data: { entry: [] } });
+    mockGetMedicationRequests.mockResolvedValue({ data: { entry: [] } });
+    mockGetConditions.mockResolvedValue({ data: { entry: [] } });
+
+    mockCreateSnapshot.mockResolvedValue({
+      id: "snap-uuid",
+      epicPatientId: "epic-snap",
+      snapshotVersion: 1,
+      triggerEvent: "VISIT",
+      createdAt: "2024-01-15",
     });
 
-    const vitals = transformVitals([
-      {
-        resourceType: "Observation",
-        status: "final",
-        code: { coding: [{ system: "http://loinc.org", code: "8867-4", display: "HR" }] },
-        valueQuantity: { value: 80, unit: "bpm" },
-        effectiveDateTime: "2024-01-15",
-      },
-    ]);
+    const result = await resolvers.Mutation.createClinicalSnapshot(
+      {},
+      { epicPatientId: "epic-snap", trigger: "VISIT" }
+    );
 
-    const labs = transformLabResults([]);
-    const meds = transformMedications([], new Map());
-    const conditions = transformConditions([]);
-
-    const snapshotData = { demographics, vitals, labs, medications: meds, diagnoses: conditions };
-
-    expect(snapshotData.demographics.firstName).toBe("Jane");
-    expect(snapshotData.vitals).toHaveLength(1);
-    expect(snapshotData.labs).toHaveLength(0);
-    expect(snapshotData.medications).toHaveLength(0);
-    expect(snapshotData.diagnoses).toHaveLength(0);
-  });
-
-  it("creates snapshot with null demographics when patient fetch fails", () => {
-    // When the patient fetch rejects in allSettled, demographics stays null
-    const demographics: PatientDemographicsOut | null = null;
-
-    expect(demographics).toBeNull();
-
-    const snapshotData = {
-      demographics: null as PatientDemographicsOut | null,
-      vitals: [] as VitalOut[],
-      labs: [] as LabResultOut[],
-      medications: [] as MedicationOut[],
-      diagnoses: [] as DiagnosisOut[],
-    };
-
-    expect(snapshotData.demographics).toBeNull();
-    expect(snapshotData.vitals).toEqual([]);
-  });
-
-  it("always creates a snapshot even with all empty data", () => {
-    const snapshotData = {
-      demographics: null as PatientDemographicsOut | null,
-      vitals: [] as VitalOut[],
-      labs: [] as LabResultOut[],
-      medications: [] as MedicationOut[],
-      diagnoses: [] as DiagnosisOut[],
-    };
-
-    // The resolver would pass this to createSnapshot() — snapshot is always created
-    expect(snapshotData.demographics).toBeNull();
-    expect(snapshotData.vitals).toHaveLength(0);
-    expect(snapshotData.labs).toHaveLength(0);
-    expect(snapshotData.medications).toHaveLength(0);
-    expect(snapshotData.diagnoses).toHaveLength(0);
+    expect(result.isNew).toBe(true);
+    expect(result.snapshot.id).toBe("snap-uuid");
+    expect(mockCreateSnapshot).toHaveBeenCalledWith(
+      "epic-snap",
+      "VISIT",
+      expect.objectContaining({
+        demographics: expect.any(Object),
+        vitals: expect.any(Array),
+        labs: expect.any(Array),
+        medications: expect.any(Array),
+        diagnoses: expect.any(Array),
+      })
+    );
+    // Verify cache was updated with fresh data
+    expect(mockSetCached).toHaveBeenCalledWith("patient", "epic-snap", expect.any(Object));
   });
 });
 
-// =============================================================================
-// Error extraction helpers
-// =============================================================================
-
-describe("error extraction", () => {
-  // Test the same extraction logic used by the resolvers
-
-  it("extracts message from AxiosError with response", () => {
-    const { AxiosError } = require("axios");
-    const error = new AxiosError("Request failed", "ERR_BAD_REQUEST", undefined, undefined, {
+describe("extractErrorMessage", () => {
+  it("extracts HTTP status from AxiosError with response", () => {
+    const error = new AxiosError("fail", "ERR_BAD_REQUEST", undefined, undefined, {
       status: 404,
       statusText: "Not Found",
       data: {},
       headers: {},
-      config: {} as import("axios").InternalAxiosRequestConfig,
+      config: {} as InternalAxiosRequestConfig,
     });
 
-    if (error.response) {
-      const message = `HTTP ${error.response.status}: ${error.response.statusText}`;
-      expect(message).toBe("HTTP 404: Not Found");
-    }
+    expect(extractErrorMessage(error)).toBe("HTTP 404: Not Found");
   });
 
-  it("extracts code from AxiosError", () => {
-    const { AxiosError } = require("axios");
-    const error = new AxiosError("Connection refused");
+  it("handles ECONNREFUSED", () => {
+    const error = new AxiosError("fail");
     error.code = "ECONNREFUSED";
 
-    expect(error.code).toBe("ECONNREFUSED");
+    expect(extractErrorMessage(error)).toBe("Connection refused - service may be down");
   });
 
-  it("extracts message from generic Error", () => {
-    const error = new Error("Something broke");
-    expect(error.message).toBe("Something broke");
+  it("handles ETIMEDOUT", () => {
+    const error = new AxiosError("fail");
+    error.code = "ETIMEDOUT";
+
+    expect(extractErrorMessage(error)).toBe("Request timed out");
+  });
+
+  it("handles generic AxiosError", () => {
+    const error = new AxiosError("Network Error");
+    expect(extractErrorMessage(error)).toBe("Network Error");
+  });
+
+  it("handles generic Error", () => {
+    expect(extractErrorMessage(new Error("Something broke"))).toBe("Something broke");
+  });
+
+  it("handles unknown error types", () => {
+    expect(extractErrorMessage("string error")).toBe("Unknown error");
+    expect(extractErrorMessage(42)).toBe("Unknown error");
+  });
+});
+
+describe("extractErrorCode", () => {
+  it("extracts HTTP status code from AxiosError", () => {
+    const error = new AxiosError("fail", "ERR_BAD_REQUEST", undefined, undefined, {
+      status: 500,
+      statusText: "Internal Server Error",
+      data: {},
+      headers: {},
+      config: {} as InternalAxiosRequestConfig,
+    });
+
+    expect(extractErrorCode(error)).toBe("HTTP_500");
+  });
+
+  it("extracts error code from AxiosError without response", () => {
+    const error = new AxiosError("fail");
+    error.code = "ECONNREFUSED";
+
+    expect(extractErrorCode(error)).toBe("ECONNREFUSED");
+  });
+
+  it("returns undefined for non-Axios errors", () => {
+    expect(extractErrorCode(new Error("fail"))).toBeUndefined();
+    expect(extractErrorCode("string")).toBeUndefined();
   });
 });

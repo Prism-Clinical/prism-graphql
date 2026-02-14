@@ -8,12 +8,7 @@
  * - Feature extraction service integration with graceful fallback
  */
 
-import { ApolloServer } from "@apollo/server";
-import { startStandaloneServer } from "@apollo/server/standalone";
-import { buildSubgraphSchema } from "@apollo/subgraph";
 import gql from "graphql-tag";
-import { Pool } from "pg";
-import { Redis } from "ioredis";
 import { AxiosError } from "axios";
 import {
   getExtractionClient,
@@ -37,8 +32,8 @@ import {
   type MedicationOut,
   type DiagnosisOut,
 } from "./services/transforms";
-import { initializeCache, getCached, setCached, getCachedMedicationRef, setCachedMedicationRef, invalidatePatientCache, type CacheResource } from "./services/cache";
-import { initializeDatabase, createSnapshot, getLatestSnapshot, getSnapshotHistory, getSnapshot, type SnapshotData, type ClinicalSnapshotFull, type SnapshotSummary } from "./services/database";
+import { getCached, setCached, getCachedMedicationRef, setCachedMedicationRef, invalidatePatientCache } from "./services/cache";
+import { createSnapshot, getLatestSnapshot, getSnapshotHistory, getSnapshot, type SnapshotData, type ClinicalSnapshotFull, type SnapshotSummary } from "./services/database";
 
 // =============================================================================
 // TYPES
@@ -91,7 +86,7 @@ const logger = createLogger("epic-api-service");
 // SCHEMA
 // =============================================================================
 
-const typeDefs = gql`
+export const typeDefs = gql`
   extend schema
     @link(
       url: "https://specs.apollo.dev/federation/v2.10"
@@ -489,7 +484,7 @@ const typeDefs = gql`
 // RESOLVERS
 // =============================================================================
 
-const resolvers = {
+export const resolvers = {
   Query: {
     async epicPatientData(
       _: unknown,
@@ -981,7 +976,7 @@ async function resolveMedicationReferences(
   return resolvedMeds;
 }
 
-function extractErrorMessage(error: unknown): string {
+export function extractErrorMessage(error: unknown): string {
   if (error instanceof AxiosError) {
     if (error.response) {
       return `HTTP ${error.response.status}: ${error.response.statusText}`;
@@ -1000,7 +995,7 @@ function extractErrorMessage(error: unknown): string {
   return "Unknown error";
 }
 
-function extractErrorCode(error: unknown): string | undefined {
+export function extractErrorCode(error: unknown): string | undefined {
   if (error instanceof AxiosError) {
     if (error.response) {
       return `HTTP_${error.response.status}`;
@@ -1010,64 +1005,3 @@ function extractErrorCode(error: unknown): string | undefined {
   return undefined;
 }
 
-// =============================================================================
-// SERVER
-// =============================================================================
-
-async function main(): Promise<void> {
-  try {
-    // Initialize PostgreSQL
-    const pgPool = new Pool({
-      connectionString:
-        process.env.DATABASE_URL ||
-        "postgresql://postgres:postgres@localhost:5432/prism",
-      max: 10,
-    });
-
-    // Initialize Redis
-    const redisClient = new Redis(
-      process.env.REDIS_URL || "redis://localhost:6379",
-      {
-        maxRetriesPerRequest: 3,
-        lazyConnect: true,
-      }
-    );
-    await redisClient.connect();
-
-    // Initialize services
-    initializeDatabase(pgPool, redisClient);
-    initializeCache(redisClient);
-
-    logger.info("Database and cache initialized");
-
-    const server = new ApolloServer({
-      schema: buildSubgraphSchema({
-        typeDefs,
-        resolvers,
-      }),
-    });
-
-    const { url } = await startStandaloneServer(server, {
-      listen: { port: parseInt(process.env.PORT || "4006") },
-    });
-
-    logger.info(`Epic API Service ready at ${url}`, {
-      epicAuthEnabled: process.env.EPIC_AUTH_ENABLED === "true",
-      epicBaseUrl: process.env.EPIC_BASE_URL || "http://epic-mock:8080",
-    });
-  } catch (error) {
-    logger.error(
-      "Failed to start Epic API service",
-      error instanceof Error ? error : undefined
-    );
-    process.exit(1);
-  }
-}
-
-main().catch((error) => {
-  logger.error(
-    "Failed to start Epic API service",
-    error instanceof Error ? error : undefined
-  );
-  process.exit(1);
-});
