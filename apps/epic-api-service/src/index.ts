@@ -497,7 +497,6 @@ const resolvers = {
     ): Promise<EpicPatientData> {
       const requestId = generateRequestId();
       const fhirClient = getFhirClient();
-      const errors: DataFetchError[] = [];
 
       logger.info("Fetching Epic patient data", { requestId, epicPatientId });
 
@@ -543,162 +542,101 @@ const resolvers = {
       }
 
       // -----------------------------------------------------------------------
-      // Fetch missing data from Epic in parallel
+      // Fetch missing data from Epic in parallel using allSettled
+      // Each fetcher returns its typed result; failures are captured below.
       // -----------------------------------------------------------------------
-      const fetchPromises: Promise<void>[] = [];
+      const [demoResult, vitalsResult, labsResult, medsResult, dxResult] =
+        await Promise.allSettled([
+          // Demographics
+          cachedDemographics
+            ? Promise.resolve(cachedDemographics)
+            : (async (): Promise<PatientDemographicsOut> => {
+                const result = await fhirClient.getPatient(epicPatientId, requestId);
+                const demo = transformPatient(result.data);
+                await setCached("patient", epicPatientId, demo);
+                return demo;
+              })(),
 
-      let demographics: PatientDemographicsOut | null =
-        cachedDemographics || null;
-      let vitals: VitalOut[] = cachedVitals || [];
-      let labs: LabResultOut[] = cachedLabs || [];
-      let medications: MedicationOut[] = cachedMedications || [];
-      let diagnoses: DiagnosisOut[] = cachedDiagnoses || [];
+          // Vitals
+          cachedVitals
+            ? Promise.resolve(cachedVitals)
+            : (async (): Promise<VitalOut[]> => {
+                const result = await fhirClient.getObservations(epicPatientId, "vital-signs", requestId);
+                const observations: FHIRObservation[] = result.data.entry?.map((e) => e.resource) || [];
+                let transformed = transformVitals(observations);
+                if (observations.length > 0) {
+                  const extractionResult = await getExtractionClient().extractVitalsWithFallback(observations, requestId);
+                  transformed = transformed.map((v) => {
+                    const extracted = extractionResult.result.vitals.find(
+                      (ev) => ev.type === v.type && ev.timestamp === v.recordedDate
+                    );
+                    if (extracted && extractionResult.fromService) {
+                      return { ...v, value: extracted.normalizedValue, unit: extracted.normalizedUnit, isNormalized: true };
+                    }
+                    return v;
+                  });
+                }
+                await setCached("vitals", epicPatientId, transformed);
+                return transformed;
+              })(),
 
-      // Demographics
-      if (!cachedDemographics) {
-        fetchPromises.push(
-          (async () => {
-            try {
-              const result = await fhirClient.getPatient(
-                epicPatientId,
-                requestId
-              );
-              demographics = transformPatient(result.data);
-              await setCached("patient", epicPatientId, demographics);
-            } catch (error) {
-              errors.push({
-                dataType: "DEMOGRAPHICS",
-                message: extractErrorMessage(error),
-                code: extractErrorCode(error),
-              });
-            }
-          })()
-        );
+          // Labs
+          cachedLabs
+            ? Promise.resolve(cachedLabs)
+            : (async (): Promise<LabResultOut[]> => {
+                const result = await fhirClient.getLabObservations(epicPatientId, requestId);
+                const observations: FHIRObservation[] = result.data.entry?.map((e) => e.resource) || [];
+                const transformed = transformLabResults(observations);
+                await setCached("labs", epicPatientId, transformed);
+                return transformed;
+              })(),
+
+          // Medications
+          cachedMedications
+            ? Promise.resolve(cachedMedications)
+            : (async (): Promise<MedicationOut[]> => {
+                const result = await fhirClient.getMedicationRequests(epicPatientId, requestId);
+                const medRequests = result.data.entry?.map((e) => e.resource) || [];
+                const resolvedMeds = await resolveMedicationReferences(medRequests, fhirClient, requestId);
+                const transformed = transformMedications(medRequests, resolvedMeds);
+                await setCached("medications", epicPatientId, transformed);
+                return transformed;
+              })(),
+
+          // Diagnoses
+          cachedDiagnoses
+            ? Promise.resolve(cachedDiagnoses)
+            : (async (): Promise<DiagnosisOut[]> => {
+                const result = await fhirClient.getConditions(epicPatientId, requestId);
+                const conditions = result.data.entry?.map((e) => e.resource) || [];
+                const transformed = transformConditions(conditions);
+                await setCached("conditions", epicPatientId, transformed);
+                return transformed;
+              })(),
+        ]);
+
+      // -----------------------------------------------------------------------
+      // Extract results — collect errors for any rejected fetches
+      // -----------------------------------------------------------------------
+      const errors: DataFetchError[] = [];
+      const dataTypeLabels = ["DEMOGRAPHICS", "VITALS", "LABS", "MEDICATIONS", "DIAGNOSES"] as const;
+      const results = [demoResult, vitalsResult, labsResult, medsResult, dxResult];
+      for (let i = 0; i < results.length; i++) {
+        const r = results[i];
+        if (r.status === "rejected") {
+          errors.push({
+            dataType: dataTypeLabels[i],
+            message: extractErrorMessage(r.reason),
+            code: extractErrorCode(r.reason),
+          });
+        }
       }
 
-      // Vitals
-      if (!cachedVitals) {
-        fetchPromises.push(
-          (async () => {
-            try {
-              const result = await fhirClient.getObservations(
-                epicPatientId,
-                "vital-signs",
-                requestId
-              );
-              const observations: FHIRObservation[] =
-                result.data.entry?.map((e) => e.resource) || [];
-
-              if (observations.length > 0) {
-                // Use extraction service with fallback
-                const extractionResult =
-                  await getExtractionClient().extractVitalsWithFallback(
-                    observations,
-                    requestId
-                  );
-
-                // Transform raw observations for full schema data
-                const transformed = transformVitals(observations);
-                // Merge normalized values from extraction service
-                vitals = transformed.map((v) => {
-                  const extracted = extractionResult.result.vitals.find(
-                    (ev) => ev.type === v.type && ev.timestamp === v.recordedDate
-                  );
-                  if (extracted && extractionResult.fromService) {
-                    return {
-                      ...v,
-                      value: extracted.normalizedValue,
-                      unit: extracted.normalizedUnit,
-                      isNormalized: true,
-                    };
-                  }
-                  return v;
-                });
-              }
-              await setCached("vitals", epicPatientId, vitals);
-            } catch (error) {
-              errors.push({
-                dataType: "VITALS",
-                message: extractErrorMessage(error),
-                code: extractErrorCode(error),
-              });
-            }
-          })()
-        );
-      }
-
-      // Labs
-      if (!cachedLabs) {
-        fetchPromises.push(
-          (async () => {
-            try {
-              const result = await fhirClient.getLabObservations(
-                epicPatientId,
-                requestId
-              );
-              const observations: FHIRObservation[] =
-                result.data.entry?.map((e) => e.resource) || [];
-              labs = transformLabResults(observations);
-              await setCached("labs", epicPatientId, labs);
-            } catch (error) {
-              errors.push({
-                dataType: "LABS",
-                message: extractErrorMessage(error),
-                code: extractErrorCode(error),
-              });
-            }
-          })()
-        );
-      }
-
-      // Medications
-      if (!cachedMedications) {
-        fetchPromises.push(
-          (async () => {
-            try {
-              const result = await fhirClient.getMedicationRequests(
-                epicPatientId,
-                requestId
-              );
-              const medRequests = result.data.entry?.map((e) => e.resource) || [];
-              const resolvedMeds = await resolveMedicationReferences(medRequests, fhirClient, requestId);
-              medications = transformMedications(medRequests, resolvedMeds);
-              await setCached("medications", epicPatientId, medications);
-            } catch (error) {
-              errors.push({
-                dataType: "MEDICATIONS",
-                message: extractErrorMessage(error),
-                code: extractErrorCode(error),
-              });
-            }
-          })()
-        );
-      }
-
-      // Diagnoses
-      if (!cachedDiagnoses) {
-        fetchPromises.push(
-          (async () => {
-            try {
-              const result = await fhirClient.getConditions(
-                epicPatientId,
-                requestId
-              );
-              const conditions = result.data.entry?.map((e) => e.resource) || [];
-              diagnoses = transformConditions(conditions);
-              await setCached("conditions", epicPatientId, diagnoses);
-            } catch (error) {
-              errors.push({
-                dataType: "DIAGNOSES",
-                message: extractErrorMessage(error),
-                code: extractErrorCode(error),
-              });
-            }
-          })()
-        );
-      }
-
-      await Promise.all(fetchPromises);
+      const demographics = demoResult.status === "fulfilled" ? demoResult.value : null;
+      const vitals = vitalsResult.status === "fulfilled" ? vitalsResult.value : [];
+      const labs = labsResult.status === "fulfilled" ? labsResult.value : [];
+      const medications = medsResult.status === "fulfilled" ? medsResult.value : [];
+      const diagnoses = dxResult.status === "fulfilled" ? dxResult.value : [];
 
       logger.info("Epic patient data fetch completed", {
         requestId,
