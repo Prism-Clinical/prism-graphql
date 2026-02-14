@@ -20,6 +20,8 @@ import {
   getFhirClient,
   FHIRObservation,
   FHIRMedication,
+  FHIRMedicationRequest,
+  EpicFhirClient,
 } from "./clients";
 import { createLogger } from "./clients/logger";
 import { generateRequestId } from "./clients/http-utils";
@@ -659,40 +661,7 @@ const resolvers = {
                 requestId
               );
               const medRequests = result.data.entry?.map((e) => e.resource) || [];
-
-              // Resolve medicationReferences
-              const resolvedMeds = new Map<string, FHIRMedication>();
-              const refsToResolve = medRequests
-                .filter((m) => m.medicationReference?.reference)
-                .map((m) => m.medicationReference!.reference!);
-              const uniqueRefs = [...new Set(refsToResolve)];
-
-              await Promise.all(
-                uniqueRefs.map(async (ref) => {
-                  // Check medication ref cache first
-                  const cached = await getCachedMedicationRef<FHIRMedication>(ref);
-                  if (cached) {
-                    resolvedMeds.set(ref, cached);
-                    return;
-                  }
-                  try {
-                    const medResult = await fhirClient.getMedication(
-                      ref,
-                      requestId
-                    );
-                    resolvedMeds.set(ref, medResult.data);
-                    await setCachedMedicationRef(ref, medResult.data);
-                  } catch (err) {
-                    logger.warn("Failed to resolve medication reference", {
-                      requestId,
-                      reference: ref,
-                      error:
-                        err instanceof Error ? err.message : "Unknown error",
-                    });
-                  }
-                })
-              );
-
+              const resolvedMeds = await resolveMedicationReferences(medRequests, fhirClient, requestId);
               medications = transformMedications(medRequests, resolvedMeds);
               await setCached("medications", epicPatientId, medications);
             } catch (error) {
@@ -857,7 +826,8 @@ const resolvers = {
                 requestId
               );
               const medRequests = result.data.entry?.map((e) => e.resource) || [];
-              const transformed = transformMedications(medRequests, new Map());
+              const resolvedMeds = await resolveMedicationReferences(medRequests, fhirClient, requestId);
+              const transformed = transformMedications(medRequests, resolvedMeds);
               await setCached("medications", epicPatientId, transformed);
               return {
                 dataType,
@@ -984,29 +954,7 @@ const resolvers = {
       let medications: MedicationOut[] = [];
       if (medsResult.status === "fulfilled") {
         const medRequests = medsResult.value.data.entry?.map((e) => e.resource) || [];
-        const resolvedMeds = new Map<string, FHIRMedication>();
-        const refsToResolve = medRequests
-          .filter((m) => m.medicationReference?.reference)
-          .map((m) => m.medicationReference!.reference!);
-        const uniqueRefs = [...new Set(refsToResolve)];
-
-        await Promise.all(
-          uniqueRefs.map(async (ref) => {
-            try {
-              const cached = await getCachedMedicationRef<FHIRMedication>(ref);
-              if (cached) {
-                resolvedMeds.set(ref, cached);
-                return;
-              }
-              const medResult = await fhirClient.getMedication(ref, requestId);
-              resolvedMeds.set(ref, medResult.data);
-              await setCachedMedicationRef(ref, medResult.data);
-            } catch {
-              // Non-critical: medication name falls back to reference display
-            }
-          })
-        );
-
+        const resolvedMeds = await resolveMedicationReferences(medRequests, fhirClient, requestId);
         medications = transformMedications(medRequests, resolvedMeds);
       }
 
@@ -1054,6 +1002,46 @@ const resolvers = {
 // =============================================================================
 // HELPERS
 // =============================================================================
+
+/**
+ * Resolve medicationReferences from a list of MedicationRequests.
+ * Deduplicates references, checks cache first, fetches missing ones,
+ * and caches newly resolved medications.
+ */
+async function resolveMedicationReferences(
+  medRequests: FHIRMedicationRequest[],
+  fhirClient: EpicFhirClient,
+  requestId: string
+): Promise<Map<string, FHIRMedication>> {
+  const resolvedMeds = new Map<string, FHIRMedication>();
+  const refsToResolve = medRequests
+    .filter((m) => m.medicationReference?.reference)
+    .map((m) => m.medicationReference!.reference!);
+  const uniqueRefs = [...new Set(refsToResolve)];
+
+  await Promise.all(
+    uniqueRefs.map(async (ref) => {
+      const cached = await getCachedMedicationRef<FHIRMedication>(ref);
+      if (cached) {
+        resolvedMeds.set(ref, cached);
+        return;
+      }
+      try {
+        const medResult = await fhirClient.getMedication(ref, requestId);
+        resolvedMeds.set(ref, medResult.data);
+        await setCachedMedicationRef(ref, medResult.data);
+      } catch (err) {
+        logger.warn("Failed to resolve medication reference", {
+          requestId,
+          reference: ref,
+          error: err instanceof Error ? err.message : "Unknown error",
+        });
+      }
+    })
+  );
+
+  return resolvedMeds;
+}
 
 function extractErrorMessage(error: unknown): string {
   if (error instanceof AxiosError) {
