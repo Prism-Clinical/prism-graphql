@@ -919,12 +919,13 @@ export const resolvers = {
         snapshotData
       );
 
-      // Also update the cache with fresh data
+      // Always update the cache with fresh data (including empty arrays)
+      // so subsequent reads don't trigger unnecessary FHIR fetches.
       if (demographics) await setCached("patient", epicPatientId, demographics);
-      if (vitals.length > 0) await setCached("vitals", epicPatientId, vitals);
-      if (labs.length > 0) await setCached("labs", epicPatientId, labs);
-      if (medications.length > 0) await setCached("medications", epicPatientId, medications);
-      if (diagnoses.length > 0) await setCached("conditions", epicPatientId, diagnoses);
+      await setCached("vitals", epicPatientId, vitals);
+      await setCached("labs", epicPatientId, labs);
+      await setCached("medications", epicPatientId, medications);
+      await setCached("conditions", epicPatientId, diagnoses);
 
       logger.info("Clinical snapshot created successfully", {
         requestId,
