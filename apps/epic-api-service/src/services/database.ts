@@ -409,23 +409,45 @@ async function loadSnapshotDetails(
 ): Promise<ClinicalSnapshotFull> {
   const [demoResult, vitalsResult, labsResult, medsResult, conditionsResult] =
     await Promise.all([
-      db.query(`SELECT * FROM snapshot_demographics WHERE snapshot_id = $1`, [
-        row.id,
-      ]),
       db.query(
-        `SELECT * FROM snapshot_vitals WHERE snapshot_id = $1 ORDER BY recorded_date`,
+        `SELECT first_name, last_name, gender, date_of_birth, mrn, active,
+                deceased_boolean, deceased_date_time, marital_status, race_ethnicity,
+                identifiers, names, telecom, addresses, emergency_contacts,
+                communications, general_practitioner
+         FROM snapshot_demographics WHERE snapshot_id = $1`,
         [row.id]
       ),
       db.query(
-        `SELECT * FROM snapshot_lab_results WHERE snapshot_id = $1 ORDER BY effective_date_time`,
+        `SELECT observation_type, value, unit, recorded_date, status, category,
+                code, interpretation, reference_range, body_site, performer,
+                encounter, issued_date, components, is_normalized
+         FROM snapshot_vitals WHERE snapshot_id = $1 ORDER BY recorded_date`,
         [row.id]
       ),
       db.query(
-        `SELECT * FROM snapshot_medications WHERE snapshot_id = $1 ORDER BY name`,
+        `SELECT observation_id, code, status, category, effective_date_time,
+                issued_date, value_quantity, value_unit, value_string,
+                value_codeable_concept, interpretation, reference_range,
+                performer, encounter, specimen, body_site, has_member,
+                components, notes
+         FROM snapshot_lab_results WHERE snapshot_id = $1 ORDER BY effective_date_time`,
         [row.id]
       ),
       db.query(
-        `SELECT * FROM snapshot_conditions WHERE snapshot_id = $1 ORDER BY code`,
+        `SELECT medication_request_id, name, status, intent, category, priority,
+                medication_code, medication_reference, authored_on, requester,
+                encounter, reason_code, reason_reference, dosage_instructions,
+                dispense_request, substitution, course_of_therapy_type, notes
+         FROM snapshot_medications WHERE snapshot_id = $1 ORDER BY name`,
+        [row.id]
+      ),
+      db.query(
+        `SELECT condition_id, code, display, code_detail, clinical_status,
+                verification_status, category, severity, body_site, encounter,
+                onset_date_time, onset_age, onset_string, abatement_date_time,
+                abatement_age, abatement_string, recorded_date, recorder,
+                asserter, stage, evidence, notes
+         FROM snapshot_conditions WHERE snapshot_id = $1 ORDER BY code`,
         [row.id]
       ),
     ]);
