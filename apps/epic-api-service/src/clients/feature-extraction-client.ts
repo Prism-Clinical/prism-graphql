@@ -22,16 +22,21 @@ import { Logger, createLogger } from "./logger";
 // TYPES
 // =============================================================================
 
-export interface FHIRObservation {
-  resourceType: "Observation";
-  id?: string;
-  status: string;
+export interface FHIRObservationReferenceRange {
+  low?: { value: number; unit: string; system?: string; code?: string };
+  high?: { value: number; unit: string; system?: string; code?: string };
+  type?: { coding?: Array<{ system?: string; code?: string; display?: string }>; text?: string };
+  text?: string;
+}
+
+export interface FHIRObservationComponent {
   code: {
     coding: Array<{
       system: string;
       code: string;
       display?: string;
     }>;
+    text?: string;
   };
   valueQuantity?: {
     value: number;
@@ -39,20 +44,49 @@ export interface FHIRObservation {
     system?: string;
     code?: string;
   };
-  component?: Array<{
-    code: {
-      coding: Array<{
-        system: string;
-        code: string;
-        display?: string;
-      }>;
-    };
-    valueQuantity?: {
-      value: number;
-      unit: string;
-    };
-  }>;
+  valueCodeableConcept?: { coding?: Array<{ system?: string; code?: string; display?: string }>; text?: string };
+  valueString?: string;
+  interpretation?: Array<{ coding?: Array<{ system?: string; code?: string; display?: string }>; text?: string }>;
+  referenceRange?: FHIRObservationReferenceRange[];
+}
+
+export interface FHIRObservation {
+  resourceType: "Observation";
+  id?: string;
+  status: string;
+  category?: Array<{ coding?: Array<{ system?: string; code?: string; display?: string }>; text?: string }>;
+  code: {
+    coding: Array<{
+      system: string;
+      code: string;
+      display?: string;
+    }>;
+    text?: string;
+  };
+  subject?: { reference?: string; display?: string };
+  encounter?: { reference?: string; display?: string };
   effectiveDateTime?: string;
+  effectivePeriod?: { start?: string; end?: string };
+  issued?: string;
+  performer?: Array<{ reference?: string; display?: string }>;
+  valueQuantity?: {
+    value: number;
+    unit: string;
+    system?: string;
+    code?: string;
+  };
+  valueCodeableConcept?: { coding?: Array<{ system?: string; code?: string; display?: string }>; text?: string };
+  valueString?: string;
+  valueBoolean?: boolean;
+  valueInteger?: number;
+  interpretation?: Array<{ coding?: Array<{ system?: string; code?: string; display?: string }>; text?: string }>;
+  bodySite?: { coding?: Array<{ system?: string; code?: string; display?: string }>; text?: string };
+  method?: { coding?: Array<{ system?: string; code?: string; display?: string }>; text?: string };
+  specimen?: { reference?: string; display?: string };
+  referenceRange?: FHIRObservationReferenceRange[];
+  hasMember?: Array<{ reference?: string; display?: string }>;
+  component?: FHIRObservationComponent[];
+  note?: Array<{ text: string; time?: string }>;
 }
 
 export interface ExtractedVitalSign {

@@ -85,16 +85,26 @@ services:
       - REDIS_PASSWORD=redis_password
       - REDIS_DB=0
       - REDIS_KEY_PREFIX=healthcare
-      # Epic configuration (pointing to mock service)
+      # Epic configuration (pointing to mock service by default)
       - EPIC_BASE_URL=http://epic-mock:8080
       - EPIC_CLIENT_ID=mock_client_id
-      - EPIC_CLIENT_SECRET=mock_client_secret
       - EPIC_TOKEN_URL=http://epic-mock:8080/auth/token
+      - EPIC_AUTH_ENABLED=false
+      - EPIC_PRIVATE_KEY_PATH=/app/keys/epic-private-key.pem
+      - EPIC_KID=prism-clinical-sandbox
+      - EPIC_SCOPE=system/Patient.rs system/Observation.rs system/MedicationRequest.rs system/Condition.rs
       - EPIC_TIMEOUT=30000
       - EPIC_MAX_RETRIES=3
       - EPIC_RATE_LIMIT_DELAY=1000
+      # --- Epic Sandbox (uncomment below and comment out mock config above) ---
+      # - EPIC_BASE_URL=https://fhir.epic.com/interconnect-fhir-oauth/api/FHIR/R4
+      # - EPIC_CLIENT_ID=b071ea66-9918-43f2-ae82-9a67a322ca36
+      # - EPIC_TOKEN_URL=https://fhir.epic.com/interconnect-fhir-oauth/oauth2/token
+      # - EPIC_AUTH_ENABLED=true
       # ML Service connections
       - FEATURE_EXTRACTION_URL=http://feature-extraction:8081
+    volumes:
+      - ./keys:/app/keys:ro
     depends_on:
       postgres:
         condition: service_healthy
