@@ -103,29 +103,21 @@ export async function createSnapshot(
     const snapshotId: string = snapshotResult.rows[0].id;
     const createdAt: string = snapshotResult.rows[0].created_at;
 
-    // Insert demographics
+    // Insert child data (batched for performance)
     if (data.demographics) {
       await insertDemographics(client, snapshotId, data.demographics);
     }
-
-    // Insert vitals
-    for (const v of data.vitals) {
-      await insertVital(client, snapshotId, v);
+    if (data.vitals.length > 0) {
+      await insertVitalsBatch(client, snapshotId, data.vitals);
     }
-
-    // Insert labs
-    for (const lab of data.labs) {
-      await insertLab(client, snapshotId, lab);
+    if (data.labs.length > 0) {
+      await insertLabsBatch(client, snapshotId, data.labs);
     }
-
-    // Insert medications
-    for (const med of data.medications) {
-      await insertMedication(client, snapshotId, med);
+    if (data.medications.length > 0) {
+      await insertMedicationsBatch(client, snapshotId, data.medications);
     }
-
-    // Insert conditions
-    for (const dx of data.diagnoses) {
-      await insertCondition(client, snapshotId, dx);
+    if (data.diagnoses.length > 0) {
+      await insertConditionsBatch(client, snapshotId, data.diagnoses);
     }
 
     await client.query("COMMIT");
@@ -281,150 +273,124 @@ async function insertDemographics(
   );
 }
 
-async function insertVital(
-  client: PoolClient,
-  snapshotId: string,
-  v: VitalOut
-): Promise<void> {
-  await client.query(
-    `INSERT INTO snapshot_vitals (
-      snapshot_id, observation_type, value, unit, recorded_date, status,
-      category, code, interpretation, reference_range, body_site,
-      performer, encounter, issued_date, components, is_normalized
-    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
-    [
-      snapshotId,
-      v.type,
-      v.value,
-      v.unit,
-      v.recordedDate,
-      v.status,
-      v.category,
-      JSON.stringify(v.code),
-      JSON.stringify(v.interpretation),
-      JSON.stringify(v.referenceRange),
-      JSON.stringify(v.bodySite),
-      JSON.stringify(v.performer),
-      JSON.stringify(v.encounter),
-      v.issuedDate,
-      JSON.stringify(v.components),
-      v.isNormalized,
-    ]
-  );
+/**
+ * Build a multi-row INSERT statement with parameterized placeholders.
+ * Returns { text, values } for use with client.query().
+ */
+function buildBatchInsert(
+  table: string,
+  columns: string[],
+  rows: unknown[][]
+): { text: string; values: unknown[] } {
+  const colsPerRow = columns.length;
+  const valueClauses: string[] = [];
+  const values: unknown[] = [];
+
+  for (let i = 0; i < rows.length; i++) {
+    const offset = i * colsPerRow;
+    const placeholders = columns.map((_, j) => `$${offset + j + 1}`);
+    valueClauses.push(`(${placeholders.join(",")})`);
+    values.push(...rows[i]);
+  }
+
+  const text = `INSERT INTO ${table} (${columns.join(", ")}) VALUES ${valueClauses.join(", ")}`;
+  return { text, values };
 }
 
-async function insertLab(
+async function insertVitalsBatch(
   client: PoolClient,
   snapshotId: string,
-  lab: LabResultOut
+  vitals: VitalOut[]
 ): Promise<void> {
-  await client.query(
-    `INSERT INTO snapshot_lab_results (
-      snapshot_id, observation_id, code, status, category, effective_date_time,
-      issued_date, value_quantity, value_unit, value_string, value_codeable_concept,
-      interpretation, reference_range, performer, encounter, specimen,
-      body_site, has_member, components, notes
-    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`,
-    [
-      snapshotId,
-      lab.id,
-      JSON.stringify(lab.code),
-      lab.status,
-      lab.category,
-      lab.effectiveDateTime,
-      lab.issuedDate,
-      lab.valueQuantity,
-      lab.valueUnit,
-      lab.valueString,
-      JSON.stringify(lab.valueCodeableConcept),
-      JSON.stringify(lab.interpretation),
-      JSON.stringify(lab.referenceRange),
-      JSON.stringify(lab.performer),
-      JSON.stringify(lab.encounter),
-      JSON.stringify(lab.specimen),
-      JSON.stringify(lab.bodySite),
-      JSON.stringify(lab.hasMember),
-      JSON.stringify(lab.components),
-      lab.notes,
-    ]
-  );
+  const columns = [
+    "snapshot_id", "observation_type", "value", "unit", "recorded_date", "status",
+    "category", "code", "interpretation", "reference_range", "body_site",
+    "performer", "encounter", "issued_date", "components", "is_normalized",
+  ];
+  const rows = vitals.map((v) => [
+    snapshotId, v.type, v.value, v.unit, v.recordedDate, v.status,
+    v.category, JSON.stringify(v.code), JSON.stringify(v.interpretation),
+    JSON.stringify(v.referenceRange), JSON.stringify(v.bodySite),
+    JSON.stringify(v.performer), JSON.stringify(v.encounter), v.issuedDate,
+    JSON.stringify(v.components), v.isNormalized,
+  ]);
+  const { text, values } = buildBatchInsert("snapshot_vitals", columns, rows);
+  await client.query(text, values);
 }
 
-async function insertMedication(
+async function insertLabsBatch(
   client: PoolClient,
   snapshotId: string,
-  med: MedicationOut
+  labs: LabResultOut[]
 ): Promise<void> {
-  await client.query(
-    `INSERT INTO snapshot_medications (
-      snapshot_id, medication_request_id, name, status, intent, category,
-      priority, medication_code, medication_reference, authored_on,
-      requester, encounter, reason_code, reason_reference, dosage_instructions,
-      dispense_request, substitution, course_of_therapy_type, notes
-    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)`,
-    [
-      snapshotId,
-      med.id,
-      med.name,
-      med.status,
-      med.intent,
-      JSON.stringify(med.category),
-      med.priority,
-      JSON.stringify(med.medicationCode),
-      JSON.stringify(med.medicationReference),
-      med.authoredOn,
-      JSON.stringify(med.requester),
-      JSON.stringify(med.encounter),
-      JSON.stringify(med.reasonCode),
-      JSON.stringify(med.reasonReference),
-      JSON.stringify(med.dosageInstructions),
-      JSON.stringify(med.dispenseRequest),
-      JSON.stringify(med.substitution),
-      JSON.stringify(med.courseOfTherapyType),
-      med.notes,
-    ]
-  );
+  const columns = [
+    "snapshot_id", "observation_id", "code", "status", "category", "effective_date_time",
+    "issued_date", "value_quantity", "value_unit", "value_string", "value_codeable_concept",
+    "interpretation", "reference_range", "performer", "encounter", "specimen",
+    "body_site", "has_member", "components", "notes",
+  ];
+  const rows = labs.map((lab) => [
+    snapshotId, lab.id, JSON.stringify(lab.code), lab.status, lab.category,
+    lab.effectiveDateTime, lab.issuedDate, lab.valueQuantity, lab.valueUnit,
+    lab.valueString, JSON.stringify(lab.valueCodeableConcept),
+    JSON.stringify(lab.interpretation), JSON.stringify(lab.referenceRange),
+    JSON.stringify(lab.performer), JSON.stringify(lab.encounter),
+    JSON.stringify(lab.specimen), JSON.stringify(lab.bodySite),
+    JSON.stringify(lab.hasMember), JSON.stringify(lab.components), lab.notes,
+  ]);
+  const { text, values } = buildBatchInsert("snapshot_lab_results", columns, rows);
+  await client.query(text, values);
 }
 
-async function insertCondition(
+async function insertMedicationsBatch(
   client: PoolClient,
   snapshotId: string,
-  dx: DiagnosisOut
+  medications: MedicationOut[]
 ): Promise<void> {
-  await client.query(
-    `INSERT INTO snapshot_conditions (
-      snapshot_id, condition_id, code, display, code_detail, clinical_status,
-      verification_status, category, severity, body_site, encounter,
-      onset_date_time, onset_age, onset_string, abatement_date_time,
-      abatement_age, abatement_string, recorded_date, recorder, asserter,
-      stage, evidence, notes
-    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)`,
-    [
-      snapshotId,
-      dx.id,
-      dx.code,
-      dx.display,
-      JSON.stringify(dx.codeDetail),
-      JSON.stringify(dx.clinicalStatus),
-      JSON.stringify(dx.verificationStatus),
-      JSON.stringify(dx.category),
-      JSON.stringify(dx.severity),
-      JSON.stringify(dx.bodySite),
-      JSON.stringify(dx.encounter),
-      dx.onsetDateTime,
-      dx.onsetAge,
-      dx.onsetString,
-      dx.abatementDateTime,
-      dx.abatementAge,
-      dx.abatementString,
-      dx.recordedDate,
-      JSON.stringify(dx.recorder),
-      JSON.stringify(dx.asserter),
-      JSON.stringify(dx.stage),
-      JSON.stringify(dx.evidence),
-      dx.notes,
-    ]
-  );
+  const columns = [
+    "snapshot_id", "medication_request_id", "name", "status", "intent", "category",
+    "priority", "medication_code", "medication_reference", "authored_on",
+    "requester", "encounter", "reason_code", "reason_reference", "dosage_instructions",
+    "dispense_request", "substitution", "course_of_therapy_type", "notes",
+  ];
+  const rows = medications.map((med) => [
+    snapshotId, med.id, med.name, med.status, med.intent,
+    JSON.stringify(med.category), med.priority, JSON.stringify(med.medicationCode),
+    JSON.stringify(med.medicationReference), med.authoredOn,
+    JSON.stringify(med.requester), JSON.stringify(med.encounter),
+    JSON.stringify(med.reasonCode), JSON.stringify(med.reasonReference),
+    JSON.stringify(med.dosageInstructions), JSON.stringify(med.dispenseRequest),
+    JSON.stringify(med.substitution), JSON.stringify(med.courseOfTherapyType),
+    med.notes,
+  ]);
+  const { text, values } = buildBatchInsert("snapshot_medications", columns, rows);
+  await client.query(text, values);
+}
+
+async function insertConditionsBatch(
+  client: PoolClient,
+  snapshotId: string,
+  diagnoses: DiagnosisOut[]
+): Promise<void> {
+  const columns = [
+    "snapshot_id", "condition_id", "code", "display", "code_detail", "clinical_status",
+    "verification_status", "category", "severity", "body_site", "encounter",
+    "onset_date_time", "onset_age", "onset_string", "abatement_date_time",
+    "abatement_age", "abatement_string", "recorded_date", "recorder", "asserter",
+    "stage", "evidence", "notes",
+  ];
+  const rows = diagnoses.map((dx) => [
+    snapshotId, dx.id, dx.code, dx.display, JSON.stringify(dx.codeDetail),
+    JSON.stringify(dx.clinicalStatus), JSON.stringify(dx.verificationStatus),
+    JSON.stringify(dx.category), JSON.stringify(dx.severity),
+    JSON.stringify(dx.bodySite), JSON.stringify(dx.encounter),
+    dx.onsetDateTime, dx.onsetAge, dx.onsetString, dx.abatementDateTime,
+    dx.abatementAge, dx.abatementString, dx.recordedDate,
+    JSON.stringify(dx.recorder), JSON.stringify(dx.asserter),
+    JSON.stringify(dx.stage), JSON.stringify(dx.evidence), dx.notes,
+  ]);
+  const { text, values } = buildBatchInsert("snapshot_conditions", columns, rows);
+  await client.query(text, values);
 }
 
 // =============================================================================
