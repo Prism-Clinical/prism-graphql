@@ -122,6 +122,23 @@ docker compose exec postgres psql -U postgres -d healthcare_federation -c "
 INSERT INTO patients SELECT * FROM patients_backup;
 " 2>/dev/null || echo "No existing patient data to restore"
 
+# Migration 026: Create clinical snapshots
+if ! docker compose exec postgres psql -U postgres -d healthcare_federation -c "SELECT 1 FROM migration_history WHERE migration_id = '026_create_clinical_snapshots'" | grep -q '1 row'; then
+  echo "📋 Running migration: 026_create_clinical_snapshots"
+  MIGRATION_SQL=$(cat shared/data-layer/migrations/026_create_clinical_snapshots.sql)
+  CHECKSUM=$(calculate_checksum "$MIGRATION_SQL")
+
+  docker compose exec postgres psql -U postgres -d healthcare_federation -f /dev/stdin << EOF
+BEGIN;
+$MIGRATION_SQL
+INSERT INTO migration_history (migration_id, name, checksum) VALUES ('026_create_clinical_snapshots', 'Create clinical snapshots tables', '$CHECKSUM');
+COMMIT;
+EOF
+  echo "✅ Applied: 026_create_clinical_snapshots"
+else
+  echo "⏭️  Skipping: 026_create_clinical_snapshots (already applied)"
+fi
+
 echo "✅ All migrations completed successfully!"
 echo "📊 Migration status:"
 docker compose exec postgres psql -U postgres -d healthcare_federation -c "

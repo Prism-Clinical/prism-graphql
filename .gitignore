@@ -94,6 +94,9 @@ env/
 # Docker
 *.log
 
+# Private keys
+keys/
+
 # Temporary files
 *.tmp
 *.temp
