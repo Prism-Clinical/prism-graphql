@@ -39,7 +39,7 @@ async function main(): Promise<void> {
     await redisClient.connect();
 
     // Initialize services
-    initializeDatabase(pgPool, redisClient);
+    initializeDatabase(pgPool);
     initializeCache(redisClient);
 
     logger.info("Database and cache initialized");

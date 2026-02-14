@@ -6,7 +6,6 @@
  */
 
 import { Pool, PoolClient } from "pg";
-import { Redis } from "ioredis";
 import { createLogger } from "../clients/logger";
 import type {
   PatientDemographicsOut,
@@ -19,21 +18,19 @@ import type {
 const logger = createLogger("epic-database");
 
 let pool: Pool | null = null;
-let redis: Redis | null = null;
 
-export function initializeDatabase(pgPool: Pool, redisClient: Redis): void {
+export function initializeDatabase(pgPool: Pool): void {
   pool = pgPool;
-  redis = redisClient;
   logger.info("Database initialized");
 }
 
-function ensureInitialized() {
-  if (!pool || !redis) {
+function ensureInitialized(): Pool {
+  if (!pool) {
     throw new Error(
       "Database not initialized. Call initializeDatabase() first."
     );
   }
-  return { pool, redis };
+  return pool;
 }
 
 // =============================================================================
@@ -77,7 +74,7 @@ export async function createSnapshot(
   triggerEvent: string,
   data: SnapshotData
 ): Promise<ClinicalSnapshotFull> {
-  const { pool: db } = ensureInitialized();
+  const db = ensureInitialized();
   const client = await db.connect();
 
   try {
@@ -160,7 +157,7 @@ export async function createSnapshot(
 export async function getLatestSnapshot(
   epicPatientId: string
 ): Promise<ClinicalSnapshotFull | null> {
-  const { pool: db } = ensureInitialized();
+  const db = ensureInitialized();
 
   const snapshotResult = await db.query(
     `SELECT id, epic_patient_id, snapshot_version, trigger_event, created_at
@@ -181,7 +178,7 @@ export async function getLatestSnapshot(
 export async function getSnapshot(
   snapshotId: string
 ): Promise<ClinicalSnapshotFull | null> {
-  const { pool: db } = ensureInitialized();
+  const db = ensureInitialized();
 
   const snapshotResult = await db.query(
     `SELECT id, epic_patient_id, snapshot_version, trigger_event, created_at
@@ -201,7 +198,7 @@ export async function getSnapshotHistory(
   epicPatientId: string,
   limit: number = 20
 ): Promise<SnapshotSummary[]> {
-  const { pool: db } = ensureInitialized();
+  const db = ensureInitialized();
 
   const result = await db.query(
     `SELECT

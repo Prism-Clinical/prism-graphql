@@ -15,10 +15,6 @@ jest.mock("pg", () => ({
   })),
 }));
 
-jest.mock("ioredis", () => ({
-  Redis: jest.fn().mockImplementation(() => ({})),
-}));
-
 jest.mock("../clients/logger", () => ({
   createLogger: () => ({
     debug: jest.fn(),
@@ -29,7 +25,6 @@ jest.mock("../clients/logger", () => ({
 }));
 
 import { Pool } from "pg";
-import { Redis } from "ioredis";
 import {
   initializeDatabase,
   createSnapshot,
@@ -161,10 +156,9 @@ const mockDiagnosis: DiagnosisOut = {
 
 describe("database service", () => {
   const pool = new Pool();
-  const redis = new Redis();
 
   beforeAll(() => {
-    initializeDatabase(pool, redis);
+    initializeDatabase(pool);
   });
 
   beforeEach(() => {
