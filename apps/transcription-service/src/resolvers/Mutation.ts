@@ -1,5 +1,5 @@
 import { Resolvers, MutationSubmitTranscriptionArgs, MutationCancelTranscriptionArgs, MutationRetryTranscriptionArgs } from "../__generated__/resolvers-types";
-import { transcriptionService } from "../services/database";
+import { transcriptionService, ForeignKeyError } from "../services/database";
 import { addTranscriptionJob, cancelJob } from "../services/transcription-queue";
 import { GraphQLError } from "graphql";
 
@@ -53,9 +53,10 @@ export const Mutation: Resolvers = {
           entities: [] as any[],
         } as any;
       } catch (error: any) {
-        if (error.message.includes('Foreign key constraint')) {
+        if (error instanceof ForeignKeyError) {
           throw new GraphQLError("Invalid patient reference.");
         }
+        console.error(JSON.stringify({ service: 'transcription-service', message: 'submitTranscription failed', error: error.message }));
         throw new GraphQLError("Failed to submit transcription.");
       }
     },
@@ -89,6 +90,7 @@ export const Mutation: Resolvers = {
         if (error.extensions?.code === 'NOT_FOUND') {
           throw error;
         }
+        console.error(JSON.stringify({ service: 'transcription-service', message: 'cancelTranscription failed', error: error.message }));
         throw new GraphQLError("Failed to cancel transcription.");
       }
     },
@@ -127,6 +129,7 @@ export const Mutation: Resolvers = {
         if (error.extensions?.code === 'NOT_FOUND') {
           throw error;
         }
+        console.error(JSON.stringify({ service: 'transcription-service', message: 'retryTranscription failed', error: error.message }));
         throw new GraphQLError("Failed to retry transcription.");
       }
     },
