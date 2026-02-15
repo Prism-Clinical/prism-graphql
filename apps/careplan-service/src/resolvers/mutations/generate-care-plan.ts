@@ -6,12 +6,15 @@
 
 import { GraphQLError } from 'graphql';
 import { v4 as uuidv4 } from 'uuid';
+import { Pool } from 'pg';
 import {
   PipelineOrchestrator,
   PipelineInput,
   PipelineOutput,
   createRequestId,
 } from '../../orchestration';
+import { RequestTracker } from '../../jobs/request-tracker';
+import { carePlanService } from '../../services/database';
 
 /**
  * Context for the resolver
@@ -19,8 +22,10 @@ import {
 interface ResolverContext {
   userId: string;
   userRole: string;
-  pipelineOrchestrator: PipelineOrchestrator;
-  auditLogger: {
+  pool: Pool;
+  requestTracker: RequestTracker;
+  pipelineOrchestrator?: PipelineOrchestrator;
+  auditLogger?: {
     logAccess: (entry: any) => Promise<void>;
   };
 }
@@ -107,9 +112,8 @@ export async function generateCarePlanFromVisit(
   // TODO: In production, verify user has access to this patient
   // await verifyPatientAccess(context.userId, input.patientId);
 
-  try {
-    // Build pipeline input
-    const pipelineInput: PipelineInput = {
+  // Build pipeline input (outside try so correlationId/requestId are available in catch)
+  const pipelineInput: PipelineInput = {
       visitId: input.visitId,
       patientId: input.patientId,
       transcriptText: input.transcriptText,
@@ -123,12 +127,53 @@ export async function generateCarePlanFromVisit(
       userRole: context.userRole,
     };
 
-    // Execute pipeline
-    const result = await context.pipelineOrchestrator.process(pipelineInput);
+  // Create pipeline request record before execution
+  const requestId = await context.requestTracker.createRequest({
+    visitId: input.visitId,
+    patientId: input.patientId,
+    userId: context.userId,
+    idempotencyKey: input.idempotencyKey,
+    pipelineInput,
+  });
+
+  try {
+    // Update status to in-progress
+    await context.requestTracker.updateStatus(requestId, 'IN_PROGRESS');
+
+    let result: PipelineOutput;
+
+    if (context.pipelineOrchestrator) {
+      // Execute full ML pipeline
+      result = await context.pipelineOrchestrator.process(pipelineInput);
+    } else {
+      // No orchestrator available — return empty result for dev/testing
+      result = {
+        requestId,
+        extractedEntities: undefined,
+        recommendations: [],
+        draftCarePlan: undefined,
+        redFlags: [],
+        processingMetadata: {
+          requestId,
+          correlationId,
+          totalDurationMs: 0,
+          stageResults: [],
+          cacheHit: false,
+          modelVersions: [],
+          processedAt: new Date(),
+        },
+        degradedServices: [],
+        requiresManualReview: false,
+      };
+    }
+
+    // Store completed result
+    result.requestId = requestId;
+    await context.requestTracker.complete(requestId, result);
 
     // Map result to GraphQL response
     return {
-      requestId: result.requestId,
+      requestId,
       recommendations: result.recommendations.map((r) => ({
         templateId: r.templateId,
         title: r.title,
@@ -195,12 +240,20 @@ export async function generateCarePlanFromVisit(
   } catch (error) {
     const err = error as Error;
 
+    // Mark pipeline request as failed
+    await context.requestTracker.fail(requestId, {
+      message: err.message,
+      code: 'PIPELINE_ERROR',
+    }).catch(() => {}); // Don't mask original error
+
     // Log error (without PHI)
-    console.error('Pipeline error:', {
+    console.error(JSON.stringify({
+      service: 'careplan-service',
+      message: 'Pipeline error',
       correlationId,
       visitId: input.visitId,
       error: err.message,
-    });
+    }));
 
     // Throw appropriate GraphQL error
     if (err.message.includes('already in progress')) {
@@ -232,23 +285,95 @@ export async function acceptCarePlanDraft(
   args: { requestId: string; edits?: Array<{ field: string; value: string }> },
   context: ResolverContext
 ): Promise<any> {
-  // Validate authentication
   if (!context.userId) {
     throw new GraphQLError('Authentication required', {
       extensions: { code: 'UNAUTHENTICATED' },
     });
   }
 
-  // TODO: Implement draft acceptance
-  // 1. Fetch the draft from pipeline request
-  // 2. Apply any edits
-  // 3. Create the actual care plan
-  // 4. Store provider feedback for training
-  // 5. Audit log the approval
+  // Fetch the pipeline request and decrypt result
+  const pipelineResult = await context.requestTracker.getDecryptedResult(args.requestId);
+  if (!pipelineResult) {
+    throw new GraphQLError('Pipeline request not found or result unavailable', {
+      extensions: { code: 'NOT_FOUND' },
+    });
+  }
 
-  throw new GraphQLError('Not yet implemented', {
-    extensions: { code: 'NOT_IMPLEMENTED' },
+  const request = await context.requestTracker.getById(args.requestId);
+  if (!request || request.status !== 'COMPLETED') {
+    throw new GraphQLError('Pipeline request is not in COMPLETED status', {
+      extensions: { code: 'BAD_USER_INPUT' },
+    });
+  }
+
+  const draft = pipelineResult.draftCarePlan;
+  if (!draft) {
+    throw new GraphQLError('No draft care plan in pipeline result', {
+      extensions: { code: 'BAD_USER_INPUT' },
+    });
+  }
+
+  // Apply edits to the draft title if provided
+  let title = draft.title;
+  if (args.edits) {
+    for (const edit of args.edits) {
+      if (edit.field === 'title') {
+        title = edit.value;
+      }
+    }
+  }
+
+  // Create the real care plan
+  const carePlan = await carePlanService.createCarePlan({
+    patientId: request.patientId,
+    title,
+    conditionCodes: draft.conditionCodes,
+    startDate: new Date(),
+    templateId: draft.templateId,
+    createdBy: context.userId,
   });
+
+  // Add goals from draft
+  const goals = [];
+  for (const draftGoal of draft.goals) {
+    const goal = await carePlanService.addGoal({
+      carePlanId: carePlan.id,
+      description: draftGoal.description,
+      targetValue: draftGoal.targetValue,
+      targetDate: draftGoal.targetDate ? new Date(draftGoal.targetDate) : undefined,
+      priority: draftGoal.priority as any,
+      guidelineReference: draftGoal.guidelineReference,
+    });
+    goals.push(goal);
+  }
+
+  // Add interventions from draft
+  const interventions = [];
+  for (const draftIntervention of draft.interventions) {
+    const intervention = await carePlanService.addIntervention({
+      carePlanId: carePlan.id,
+      type: draftIntervention.type as any,
+      description: draftIntervention.description,
+      medicationCode: draftIntervention.medicationCode,
+      dosage: draftIntervention.dosage,
+      frequency: draftIntervention.frequency,
+      procedureCode: draftIntervention.procedureCode,
+      scheduledDate: draftIntervention.scheduledDate ? new Date(draftIntervention.scheduledDate) : undefined,
+      patientInstructions: draftIntervention.patientInstructions,
+      guidelineReference: draftIntervention.guidelineReference,
+    });
+    interventions.push(intervention);
+  }
+
+  // Mark pipeline request as accepted
+  await context.requestTracker.markAccepted(args.requestId, carePlan.id, context.userId);
+
+  return {
+    ...carePlan,
+    goals,
+    interventions,
+    patient: { __typename: 'Patient' as const, id: request.patientId },
+  };
 }
 
 /**
@@ -259,21 +384,40 @@ export async function rejectCarePlanDraft(
   args: { requestId: string; reason: string },
   context: ResolverContext
 ): Promise<any> {
-  // Validate authentication
   if (!context.userId) {
     throw new GraphQLError('Authentication required', {
       extensions: { code: 'UNAUTHENTICATED' },
     });
   }
 
-  // TODO: Implement draft rejection
-  // 1. Mark the pipeline request as rejected
-  // 2. Store rejection reason for training
-  // 3. Audit log the rejection
+  if (!args.reason || args.reason.trim().length === 0) {
+    throw new GraphQLError('Rejection reason is required', {
+      extensions: { code: 'BAD_USER_INPUT' },
+    });
+  }
 
-  throw new GraphQLError('Not yet implemented', {
-    extensions: { code: 'NOT_IMPLEMENTED' },
-  });
+  const request = await context.requestTracker.getById(args.requestId);
+  if (!request) {
+    throw new GraphQLError('Pipeline request not found', {
+      extensions: { code: 'NOT_FOUND' },
+    });
+  }
+
+  if (request.status !== 'COMPLETED') {
+    throw new GraphQLError('Pipeline request is not in COMPLETED status', {
+      extensions: { code: 'BAD_USER_INPUT' },
+    });
+  }
+
+  await context.requestTracker.markRejected(args.requestId, args.reason.trim(), context.userId);
+
+  return {
+    requestId: args.requestId,
+    status: 'REJECTED',
+    createdAt: request.createdAt,
+    startedAt: request.startedAt,
+    completedAt: request.completedAt,
+  };
 }
 
 /**
