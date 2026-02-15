@@ -199,7 +199,18 @@ services:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - REDIS_PASSWORD=redis_password
+      # PostgreSQL connection
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=healthcare_federation
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      # GCS audio upload
+      - GCS_BUCKET_NAME=${GCS_BUCKET_NAME:-prism-audio-dev}
+      - GCP_PROJECT_ID=${GCP_PROJECT_ID:-athena-dev-475922}
     depends_on:
+      postgres:
+        condition: service_healthy
       redis:
         condition: service_healthy
     healthcheck:
