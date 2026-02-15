@@ -111,6 +111,9 @@ interface FHIRBundleEntry<T> {
 }
 
 export interface FHIRBundle<T> {
+  resourceType?: string;
+  type?: string;
+  total?: number;
   entry?: FHIRBundleEntry<T>[];
   link?: Array<{
     relation: string;
@@ -376,6 +379,30 @@ export class EpicFhirClient {
     requestId?: string
   ): Promise<AxiosResponse<FHIRMedication>> {
     return this.get<FHIRMedication>(medicationReference, undefined, requestId);
+  }
+
+  async searchPatients(
+    params: {
+      name?: string;
+      family?: string;
+      given?: string;
+      birthdate?: string;
+      gender?: string;
+      identifier?: string;
+      _count?: number;
+    },
+    requestId?: string
+  ): Promise<AxiosResponse<FHIRBundle<FHIRPatient>>> {
+    const searchParams: Record<string, string> = {};
+    if (params.name) searchParams.name = params.name;
+    if (params.family) searchParams.family = params.family;
+    if (params.given) searchParams.given = params.given;
+    if (params.birthdate) searchParams.birthdate = params.birthdate;
+    if (params.gender) searchParams.gender = params.gender;
+    if (params.identifier) searchParams.identifier = params.identifier;
+    if (params._count !== undefined) searchParams._count = String(params._count);
+
+    return this.get<FHIRBundle<FHIRPatient>>("Patient", searchParams, requestId);
   }
 
   async healthCheck(): Promise<{

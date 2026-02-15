@@ -811,7 +811,7 @@ services:
       - PROVIDERS_URL=http://providers-service:4003
       - RECOMMENDATION_ITEMS_URL=http://recommendation-items-service:4004
       - INSTITUTIONS_URL=http://institutions-service:4005
-      - EPIC_API_URL=http://epic-api-service:4006
+      - EPIC_API_URL=http://epic-api-service:4006/graphql
       # Prism Clinical Services
       - TRANSCRIPTION_URL=http://transcription-service:4007
       - RAG_URL=http://rag-service:4008

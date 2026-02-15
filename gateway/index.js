@@ -20,6 +20,7 @@ async function startGateway() {
     { name: 'transcription', envVar: 'TRANSCRIPTION_URL', defaultUrl: 'http://audio-intelligence:8101/graphql' },
     { name: 'rag', envVar: 'RAG_URL', defaultUrl: 'http://rag-embeddings:8103/graphql' },
     { name: 'careplan-recommender', envVar: 'CAREPLAN_RECOMMENDER_URL', defaultUrl: 'http://careplan-recommender:8100/graphql' },
+    { name: 'epic-api', envVar: 'EPIC_API_URL', defaultUrl: 'http://epic-api-service:4006/graphql' },
   ];
 
   for (const svc of services) {
