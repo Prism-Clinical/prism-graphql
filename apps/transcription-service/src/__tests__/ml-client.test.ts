@@ -167,6 +167,12 @@ describe('MLClient', () => {
       await expect(shortTimeoutClient.healthCheck()).rejects.toThrow(
         'ML service request timed out after 50ms'
       );
+
+      // Verify AbortSignal was actually passed to fetch
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({ signal: expect.any(AbortSignal) })
+      );
     });
 
     it('propagates non-abort errors unchanged', async () => {

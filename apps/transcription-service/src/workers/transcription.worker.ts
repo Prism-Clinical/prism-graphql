@@ -181,16 +181,6 @@ async function saveTranscriptionResults(
 
     // Insert transcript segments
     if (result.segments && result.segments.length > 0) {
-      const segmentValues = result.segments
-        .map(
-          (seg, idx) =>
-            `($1, '${seg.id || `seg-${idx}`}', '${seg.speaker}', ${
-              seg.speaker_label ? `'${seg.speaker_label}'` : 'NULL'
-            }, $${idx + 2}, ${seg.start_time_ms}, ${seg.end_time_ms}, ${seg.confidence})`
-        )
-        .join(', ');
-
-      // Use parameterized query for text to prevent SQL injection
       const segmentQuery = `
         INSERT INTO transcript_segments
           (transcription_id, id, speaker, speaker_label, text, start_time_ms, end_time_ms, confidence)
