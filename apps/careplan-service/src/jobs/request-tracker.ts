@@ -11,7 +11,7 @@ import { PipelineInput, PipelineOutput } from '../orchestration';
 /**
  * Request status
  */
-export type RequestStatus = 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'FAILED' | 'EXPIRED';
+export type RequestStatus = 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'FAILED' | 'EXPIRED' | 'ACCEPTED' | 'REJECTED';
 
 /**
  * Pipeline request record
@@ -34,6 +34,12 @@ export interface PipelineRequest {
   startedAt?: Date;
   completedAt?: Date;
   createdAt: Date;
+  acceptedAt?: Date;
+  acceptedBy?: string;
+  rejectedAt?: Date;
+  rejectedBy?: string;
+  rejectionReason?: string;
+  patientCarePlanId?: string;
 }
 
 /**
@@ -203,7 +209,9 @@ export class RequestTracker {
       SELECT id, visit_id, patient_id, user_id, idempotency_key,
              status, input_encrypted, result_encrypted, error,
              stages_completed, degraded_services,
-             started_at, completed_at, created_at
+             started_at, completed_at, created_at,
+             accepted_at, accepted_by, rejected_at, rejected_by,
+             rejection_reason, patient_care_plan_id
       FROM ${this.tableName}
       WHERE id = $1
     `;
@@ -224,7 +232,9 @@ export class RequestTracker {
       SELECT id, visit_id, patient_id, user_id, idempotency_key,
              status, input_encrypted, result_encrypted, error,
              stages_completed, degraded_services,
-             started_at, completed_at, created_at
+             started_at, completed_at, created_at,
+             accepted_at, accepted_by, rejected_at, rejected_by,
+             rejection_reason, patient_care_plan_id
       FROM ${this.tableName}
       WHERE visit_id = $1
       ORDER BY created_at DESC
@@ -242,7 +252,9 @@ export class RequestTracker {
       SELECT id, visit_id, patient_id, user_id, idempotency_key,
              status, input_encrypted, result_encrypted, error,
              stages_completed, degraded_services,
-             started_at, completed_at, created_at
+             started_at, completed_at, created_at,
+             accepted_at, accepted_by, rejected_at, rejected_by,
+             rejection_reason, patient_care_plan_id
       FROM ${this.tableName}
       WHERE visit_id = $1
         AND status IN ('PENDING', 'IN_PROGRESS')
@@ -269,7 +281,9 @@ export class RequestTracker {
       SELECT id, visit_id, patient_id, user_id, idempotency_key,
              status, input_encrypted, result_encrypted, error,
              stages_completed, degraded_services,
-             started_at, completed_at, created_at
+             started_at, completed_at, created_at,
+             accepted_at, accepted_by, rejected_at, rejected_by,
+             rejection_reason, patient_care_plan_id
       FROM ${this.tableName}
       WHERE user_id = $1
       ORDER BY created_at DESC
@@ -311,6 +325,54 @@ export class RequestTracker {
   }
 
   /**
+   * Mark request as accepted and link to created care plan
+   */
+  async markAccepted(
+    requestId: string,
+    carePlanId: string,
+    userId: string
+  ): Promise<void> {
+    const query = `
+      UPDATE ${this.tableName}
+      SET status = 'ACCEPTED',
+          accepted_at = NOW(),
+          accepted_by = $2,
+          patient_care_plan_id = $3
+      WHERE id = $1
+        AND status = 'COMPLETED'
+    `;
+
+    const result = await this.pool.query(query, [requestId, userId, carePlanId]);
+    if (result.rowCount === 0) {
+      throw new Error(`Request ${requestId} not found or not in COMPLETED status`);
+    }
+  }
+
+  /**
+   * Mark request as rejected with reason
+   */
+  async markRejected(
+    requestId: string,
+    reason: string,
+    userId: string
+  ): Promise<void> {
+    const query = `
+      UPDATE ${this.tableName}
+      SET status = 'REJECTED',
+          rejected_at = NOW(),
+          rejected_by = $2,
+          rejection_reason = $3
+      WHERE id = $1
+        AND status = 'COMPLETED'
+    `;
+
+    const result = await this.pool.query(query, [requestId, userId, reason]);
+    if (result.rowCount === 0) {
+      throw new Error(`Request ${requestId} not found or not in COMPLETED status`);
+    }
+  }
+
+  /**
    * Expire stale requests
    */
   async expireStaleRequests(olderThanMinutes: number = 60): Promise<number> {
@@ -332,7 +394,7 @@ export class RequestTracker {
   async cleanOldRequests(olderThanDays: number = 90): Promise<number> {
     const query = `
       DELETE FROM ${this.tableName}
-      WHERE status IN ('COMPLETED', 'FAILED', 'EXPIRED')
+      WHERE status IN ('COMPLETED', 'FAILED', 'EXPIRED', 'ACCEPTED', 'REJECTED')
         AND created_at < NOW() - INTERVAL '${olderThanDays} days'
     `;
 
@@ -351,6 +413,8 @@ export class RequestTracker {
         COUNT(*) FILTER (WHERE status = 'COMPLETED') as completed,
         COUNT(*) FILTER (WHERE status = 'FAILED') as failed,
         COUNT(*) FILTER (WHERE status = 'EXPIRED') as expired,
+        COUNT(*) FILTER (WHERE status = 'ACCEPTED') as accepted,
+        COUNT(*) FILTER (WHERE status = 'REJECTED') as rejected,
         AVG(EXTRACT(EPOCH FROM (completed_at - started_at)) * 1000)
           FILTER (WHERE status = 'COMPLETED') as avg_duration_ms
       FROM ${this.tableName}
@@ -366,6 +430,8 @@ export class RequestTracker {
       completed: parseInt(row.completed) || 0,
       failed: parseInt(row.failed) || 0,
       expired: parseInt(row.expired) || 0,
+      accepted: parseInt(row.accepted) || 0,
+      rejected: parseInt(row.rejected) || 0,
       avgDurationMs: parseFloat(row.avg_duration_ms) || 0,
     };
   }
@@ -389,6 +455,12 @@ export class RequestTracker {
       startedAt: row.started_at,
       completedAt: row.completed_at,
       createdAt: row.created_at,
+      acceptedAt: row.accepted_at,
+      acceptedBy: row.accepted_by,
+      rejectedAt: row.rejected_at,
+      rejectedBy: row.rejected_by,
+      rejectionReason: row.rejection_reason,
+      patientCarePlanId: row.patient_care_plan_id,
     };
   }
 }
@@ -402,5 +474,7 @@ export interface RequestStats {
   completed: number;
   failed: number;
   expired: number;
+  accepted: number;
+  rejected: number;
   avgDurationMs: number;
 }

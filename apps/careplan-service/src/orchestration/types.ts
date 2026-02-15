@@ -242,7 +242,7 @@ export interface ProcessingMetadata {
   /** Whether any cache was hit */
   cacheHit: boolean;
   /** Model versions used */
-  modelVersions: Record<string, string>;
+  modelVersions: Array<{ service: string; version: string }>;
   /** Processing timestamp */
   processedAt: Date;
 }

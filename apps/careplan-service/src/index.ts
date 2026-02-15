@@ -7,10 +7,12 @@ import {
 } from "@apollo/server/standalone";
 import { Pool } from 'pg';
 import { Redis } from 'ioredis';
+import crypto from 'crypto';
 import resolvers from "./resolvers";
 import { initializeDatabase } from "./services/database";
+import { RequestTracker } from "./jobs/request-tracker";
 
-const port = process.env.PORT || "4004";
+const port = process.env.PORT || "4010";
 const subgraphName = "careplan";
 
 async function main() {
@@ -34,16 +36,34 @@ async function main() {
   // Initialize services with database connections
   initializeDatabase(pool, redis);
 
-  let typeDefs = gql(
-    readFileSync("schema.graphql", {
-      encoding: "utf-8",
-    })
-  );
+  // Initialize request tracker for pipeline request persistence
+  const encryptionKey = process.env.PIPELINE_ENCRYPTION_KEY
+    ? Buffer.from(process.env.PIPELINE_ENCRYPTION_KEY, 'hex')
+    : crypto.randomBytes(32); // Dev fallback — not stable across restarts
+
+  const requestTracker = new RequestTracker({
+    pool,
+    encryptionKey,
+  });
+
+  // Load both schema files
+  const baseSchema = readFileSync("schema.graphql", { encoding: "utf-8" });
+  const pipelineSchema = readFileSync("schema-pipeline.graphql", { encoding: "utf-8" });
+  const typeDefs = gql(baseSchema + "\n" + pipelineSchema);
+
   const server = new ApolloServer({
     schema: buildSubgraphSchema({ typeDefs, resolvers }),
   });
   const { url } = await startStandaloneServer(server, {
     listen: { port: Number.parseInt(port) },
+    context: async () => ({
+      pool,
+      redis,
+      requestTracker,
+      // TODO: Extract userId/userRole from auth token in request headers
+      userId: 'system',
+      userRole: 'PROVIDER',
+    }),
   });
 
   console.log(`🚀  Subgraph ${subgraphName} ready at ${url}`);

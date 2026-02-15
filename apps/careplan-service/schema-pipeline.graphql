@@ -36,6 +36,8 @@ enum PipelineRequestStatus {
   COMPLETED
   FAILED
   EXPIRED
+  ACCEPTED
+  REJECTED
 }
 
 # =============================================================================
