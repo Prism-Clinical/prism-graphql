@@ -2,6 +2,14 @@ import { Pool } from 'pg';
 import { Redis } from 'ioredis';
 import { v4 as uuidv4 } from 'uuid';
 
+export class ForeignKeyError extends Error {
+  code = 'FOREIGN_KEY' as const;
+  constructor(message: string) {
+    super(message);
+    this.name = 'ForeignKeyError';
+  }
+}
+
 // Types
 export enum TranscriptionStatus {
   PENDING = 'PENDING',
@@ -130,7 +138,7 @@ class TranscriptionService {
       return result.rows[0];
     } catch (error: any) {
       if (error.code === '23503') {
-        throw new Error('Foreign key constraint: Invalid patient reference');
+        throw new ForeignKeyError('Invalid patient reference');
       }
       throw error;
     }

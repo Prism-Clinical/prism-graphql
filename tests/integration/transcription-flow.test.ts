@@ -18,17 +18,23 @@ const mockRetryTranscription = jest.fn();
 const mockGetTranscriptions = jest.fn();
 const mockGetTranscriptionsForEncounter = jest.fn();
 
-jest.mock('@transcription/services/database', () => ({
-  transcriptionService: {
-    submitTranscription: (...args: unknown[]) => mockSubmitTranscription(...args),
-    getTranscriptionById: (...args: unknown[]) => mockGetTranscriptionById(...args),
-    getTranscriptionsForPatient: (...args: unknown[]) => mockGetTranscriptionsForPatient(...args),
-    cancelTranscription: (...args: unknown[]) => mockCancelTranscription(...args),
-    retryTranscription: (...args: unknown[]) => mockRetryTranscription(...args),
-    getTranscriptions: (...args: unknown[]) => mockGetTranscriptions(...args),
-    getTranscriptionsForEncounter: (...args: unknown[]) => mockGetTranscriptionsForEncounter(...args),
-  },
-}));
+const { ForeignKeyError } = jest.requireActual('@transcription/services/database');
+
+jest.mock('@transcription/services/database', () => {
+  const actual = jest.requireActual('@transcription/services/database');
+  return {
+    ForeignKeyError: actual.ForeignKeyError,
+    transcriptionService: {
+      submitTranscription: (...args: unknown[]) => mockSubmitTranscription(...args),
+      getTranscriptionById: (...args: unknown[]) => mockGetTranscriptionById(...args),
+      getTranscriptionsForPatient: (...args: unknown[]) => mockGetTranscriptionsForPatient(...args),
+      cancelTranscription: (...args: unknown[]) => mockCancelTranscription(...args),
+      retryTranscription: (...args: unknown[]) => mockRetryTranscription(...args),
+      getTranscriptions: (...args: unknown[]) => mockGetTranscriptions(...args),
+      getTranscriptionsForEncounter: (...args: unknown[]) => mockGetTranscriptionsForEncounter(...args),
+    },
+  };
+});
 
 // Mock queue service
 const mockAddTranscriptionJob = jest.fn();
@@ -214,7 +220,7 @@ describe('Transcription Flow', () => {
     });
 
     it('wraps FK constraint errors', async () => {
-      mockSubmitTranscription.mockRejectedValue(new Error('Foreign key constraint on patient_id'));
+      mockSubmitTranscription.mockRejectedValue(new ForeignKeyError('Invalid patient reference'));
 
       await expect(
         (mutationResolvers as any).submitTranscription(

@@ -197,39 +197,4 @@ describe('Retry Behavior', () => {
     });
   });
 
-  describe('retryTranscription mutation flow', () => {
-    it('resets status to PENDING and requeues job', async () => {
-      // This tests the resolver path: retryTranscription resets DB state,
-      // then addTranscriptionJob queues a new job with the same ID
-      const mockRetryTranscription = jest.fn().mockResolvedValue({
-        id: 'txn-123',
-        patientId: 'patient-456',
-        encounterId: 'enc-789',
-        audioUri: 'gs://bucket/audio.webm',
-        status: 'PENDING',
-        errorMessage: null,
-      });
-
-      const mockAddJob = jest.fn().mockResolvedValue('txn-123');
-
-      // Simulate the resolver logic
-      const transcription = await mockRetryTranscription('txn-123');
-      expect(transcription).not.toBeNull();
-      expect(transcription.status).toBe('PENDING');
-
-      await mockAddJob({
-        transcriptionId: transcription.id,
-        patientId: transcription.patientId,
-        encounterId: transcription.encounterId,
-        audioUri: transcription.audioUri,
-      });
-
-      expect(mockAddJob).toHaveBeenCalledWith(
-        expect.objectContaining({
-          transcriptionId: 'txn-123',
-          audioUri: 'gs://bucket/audio.webm',
-        }),
-      );
-    });
-  });
 });
