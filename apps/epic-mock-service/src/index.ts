@@ -460,24 +460,45 @@ const MOCK_PATIENT_DATABASE = [
     gender: 'female',
     mrn: 'MRN-10005',
   },
+  // Edge-case patients for null-handling testing
+  {
+    id: 'epic-patient-006',
+    family: 'O\'Brien',
+    given: ['Sean'],
+    birthDate: '1980-06-01',
+    gender: 'male',
+    mrn: null,        // No MRN assigned
+  },
+  {
+    id: 'epic-patient-007',
+    family: 'Kim',
+    given: [],         // No given name
+    birthDate: '2000-12-25',
+    gender: 'female',
+    mrn: 'MRN-10007',
+  },
 ];
 
 function buildMockPatientResource(p: typeof MOCK_PATIENT_DATABASE[0]) {
+  const identifiers = p.mrn
+    ? [{
+        use: 'usual',
+        type: {
+          coding: [{
+            system: 'http://terminology.hl7.org/CodeSystem/v2-0203',
+            code: 'MR',
+            display: 'Medical Record Number',
+          }],
+        },
+        system: 'http://example.hospital.com/patients',
+        value: p.mrn,
+      }]
+    : [];
+
   return {
     resourceType: 'Patient',
     id: p.id,
-    identifier: [{
-      use: 'usual',
-      type: {
-        coding: [{
-          system: 'http://terminology.hl7.org/CodeSystem/v2-0203',
-          code: 'MR',
-          display: 'Medical Record Number',
-        }],
-      },
-      system: 'http://example.hospital.com/patients',
-      value: p.mrn,
-    }],
+    identifier: identifiers,
     active: true,
     name: [{
       use: 'official',
@@ -545,9 +566,10 @@ app.get('/Patient', (req, res) => {
   if (gender) {
     results = results.filter((p) => p.gender === gender);
   }
+  // Identifier uses exact match (not substring) per FHIR search spec
   if (identifier) {
     const q = (identifier as string).toUpperCase();
-    results = results.filter((p) => p.mrn.toUpperCase() === q);
+    results = results.filter((p) => p.mrn?.toUpperCase() === q);
   }
 
   results = results.slice(0, maxResults);

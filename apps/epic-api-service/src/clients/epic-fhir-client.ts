@@ -111,6 +111,9 @@ interface FHIRBundleEntry<T> {
 }
 
 export interface FHIRBundle<T> {
+  resourceType?: string;
+  type?: string;
+  total?: number;
   entry?: FHIRBundleEntry<T>[];
   link?: Array<{
     relation: string;

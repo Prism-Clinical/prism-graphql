@@ -95,7 +95,7 @@ jest.mock("../services/database", () => ({
 // Imports — after all mocks
 // ---------------------------------------------------------------------------
 
-import { resolvers, extractErrorMessage, extractErrorCode, validateResourceId } from "../index";
+import { resolvers, extractErrorMessage, extractErrorCode, validateResourceId, validateSearchInput } from "../index";
 import { AxiosError, type InternalAxiosRequestConfig } from "axios";
 
 // ---------------------------------------------------------------------------
@@ -523,5 +523,88 @@ describe("searchEpicPatients resolver", () => {
       { family: "Smith", birthdate: "1990-01-01", gender: "female", _count: 10 },
       "test-request-id"
     );
+  });
+
+  it("uses FHIR Bundle total for totalCount", async () => {
+    mockSearchPatients.mockResolvedValue({
+      data: {
+        total: 42,
+        entry: [
+          {
+            resource: {
+              resourceType: "Patient",
+              id: "patient-1",
+              name: [{ given: ["Test"], family: "User" }],
+            },
+          },
+        ],
+      },
+    });
+
+    const result = await resolvers.Query.searchEpicPatients(
+      {},
+      { input: { name: "Test" } }
+    );
+
+    expect(result.results).toHaveLength(1);
+    expect(result.totalCount).toBe(42);
+  });
+
+  it("rejects empty input", async () => {
+    await expect(
+      resolvers.Query.searchEpicPatients({}, { input: {} })
+    ).rejects.toThrow("At least one search parameter is required");
+  });
+
+  it("rejects invalid birthdate format", async () => {
+    await expect(
+      resolvers.Query.searchEpicPatients({}, { input: { birthdate: "March 15" } })
+    ).rejects.toThrow("birthdate must be in YYYY-MM-DD format");
+  });
+
+  it("rejects _count exceeding maximum", async () => {
+    await expect(
+      resolvers.Query.searchEpicPatients({}, { input: { name: "test", _count: 100 } })
+    ).rejects.toThrow("_count must be between 1 and 50");
+  });
+
+  it("rejects strings with control characters", async () => {
+    await expect(
+      resolvers.Query.searchEpicPatients({}, { input: { name: "test\x00injection" } })
+    ).rejects.toThrow("contains invalid characters");
+  });
+
+  it("wraps FHIR client errors with context", async () => {
+    mockSearchPatients.mockRejectedValue(new Error("Connection refused"));
+
+    await expect(
+      resolvers.Query.searchEpicPatients({}, { input: { name: "test" } })
+    ).rejects.toThrow("Epic patient search failed: Connection refused");
+  });
+});
+
+describe("validateSearchInput", () => {
+  it("accepts valid input with at least one field", () => {
+    expect(() => validateSearchInput({ name: "Sarah" })).not.toThrow();
+    expect(() => validateSearchInput({ identifier: "MRN-001" })).not.toThrow();
+    expect(() => validateSearchInput({ family: "Johnson", birthdate: "1985-03-15" })).not.toThrow();
+  });
+
+  it("rejects completely empty input", () => {
+    expect(() => validateSearchInput({})).toThrow("At least one search parameter is required");
+  });
+
+  it("rejects strings exceeding max length", () => {
+    expect(() => validateSearchInput({ name: "a".repeat(201) })).toThrow("exceeds maximum length");
+  });
+
+  it("rejects invalid birthdate formats", () => {
+    expect(() => validateSearchInput({ birthdate: "1985/03/15" })).toThrow("YYYY-MM-DD");
+    expect(() => validateSearchInput({ birthdate: "03-15-1985" })).toThrow("YYYY-MM-DD");
+  });
+
+  it("rejects _count out of range", () => {
+    expect(() => validateSearchInput({ name: "test", _count: 0 })).toThrow("between 1 and 50");
+    expect(() => validateSearchInput({ name: "test", _count: 51 })).toThrow("between 1 and 50");
   });
 });

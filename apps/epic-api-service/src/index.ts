@@ -56,6 +56,16 @@ interface DataFetchError {
   code?: string;
 }
 
+interface EpicPatientSearchInput {
+  name?: string;
+  family?: string;
+  given?: string;
+  birthdate?: string;
+  gender?: string;
+  identifier?: string;
+  _count?: number;
+}
+
 interface EpicPatientSearchResult {
   epicPatientId: string;
   firstName: string | null;
@@ -712,39 +722,54 @@ export const resolvers = {
 
     async searchEpicPatients(
       _: unknown,
-      { input }: { input: { name?: string; family?: string; given?: string; birthdate?: string; gender?: string; identifier?: string; _count?: number } }
+      { input }: { input: EpicPatientSearchInput }
     ): Promise<EpicPatientSearchResponse> {
+      validateSearchInput(input);
+
       const requestId = generateRequestId();
       const fhirClient = getFhirClient();
 
-      logger.info("Searching Epic patients", { requestId, searchParams: input });
-
-      const result = await fhirClient.searchPatients(input, requestId);
-      const entries = result.data.entry || [];
-
-      const results: EpicPatientSearchResult[] = entries.map((entry) => {
-        const patient = entry.resource;
-        const officialName = patient.name?.find((n) => n.use === "official") || patient.name?.[0];
-        const mrnIdentifier = patient.identifier?.find(
-          (id) => id.type?.coding?.some((c) => c.code === "MR")
-        );
-
-        return {
-          epicPatientId: patient.id || "",
-          firstName: officialName?.given?.[0] || null,
-          lastName: officialName?.family || null,
-          dateOfBirth: patient.birthDate || null,
-          gender: patient.gender || null,
-          mrn: mrnIdentifier?.value || null,
-        };
-      });
-
-      logger.info("Epic patient search completed", {
+      logger.info("Searching Epic patients", {
         requestId,
-        resultCount: results.length,
+        searchFields: Object.keys(input).filter((k) => (input as Record<string, unknown>)[k] !== undefined),
       });
 
-      return { results, totalCount: results.length };
+      try {
+        const result = await fhirClient.searchPatients(input, requestId);
+        const entries = result.data.entry || [];
+
+        const results: EpicPatientSearchResult[] = entries.map((entry) => {
+          const patient = entry.resource;
+          const officialName = patient.name?.find((n) => n.use === "official") || patient.name?.[0];
+          const mrnIdentifier = patient.identifier?.find(
+            (id) => id.type?.coding?.some((c) => c.code === "MR")
+          );
+
+          return {
+            epicPatientId: patient.id || "",
+            firstName: officialName?.given?.[0] || null,
+            lastName: officialName?.family || null,
+            dateOfBirth: patient.birthDate || null,
+            gender: patient.gender || null,
+            mrn: mrnIdentifier?.value || null,
+          };
+        });
+
+        logger.info("Epic patient search completed", {
+          requestId,
+          resultCount: results.length,
+        });
+
+        return { results, totalCount: result.data.total ?? results.length };
+      } catch (error) {
+        const errorMessage = extractErrorMessage(error);
+        logger.error(
+          "Epic patient search failed",
+          error instanceof Error ? error : new Error(errorMessage),
+          { requestId, code: extractErrorCode(error) }
+        );
+        throw new Error(`Epic patient search failed: ${errorMessage}`);
+      }
     },
 
     async latestSnapshot(
@@ -1082,6 +1107,56 @@ async function resolveMedicationReferences(
   );
 
   return resolvedMeds;
+}
+
+/** Maximum allowed length for search string parameters. */
+const MAX_SEARCH_STRING_LENGTH = 200;
+
+/** Maximum allowed value for _count. */
+const MAX_COUNT = 50;
+
+/** Pattern for valid date strings (YYYY-MM-DD). */
+const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+
+/** Pattern to reject control characters. */
+const CONTROL_CHAR_PATTERN = /[\x00-\x1f\x7f]/;
+
+/**
+ * Validate search input. Throws if:
+ * - No search params provided
+ * - String params exceed length or contain control chars
+ * - birthdate is not YYYY-MM-DD
+ * - _count exceeds maximum
+ */
+export function validateSearchInput(input: EpicPatientSearchInput): void {
+  const stringFields: (keyof EpicPatientSearchInput)[] = ["name", "family", "given", "birthdate", "gender", "identifier"];
+  const providedFields = stringFields.filter((k) => input[k] !== undefined && input[k] !== "");
+
+  if (providedFields.length === 0 && input._count === undefined) {
+    throw new Error("At least one search parameter is required");
+  }
+
+  for (const field of providedFields) {
+    const value = input[field] as string;
+    if (value.length > MAX_SEARCH_STRING_LENGTH) {
+      throw new Error(`${field} exceeds maximum length of ${MAX_SEARCH_STRING_LENGTH} characters`);
+    }
+    if (CONTROL_CHAR_PATTERN.test(value)) {
+      throw new Error(`${field} contains invalid characters`);
+    }
+  }
+
+  if (input.birthdate !== undefined && input.birthdate !== "") {
+    if (!DATE_PATTERN.test(input.birthdate)) {
+      throw new Error("birthdate must be in YYYY-MM-DD format");
+    }
+  }
+
+  if (input._count !== undefined) {
+    if (input._count < 1 || input._count > MAX_COUNT) {
+      throw new Error(`_count must be between 1 and ${MAX_COUNT}`);
+    }
+  }
 }
 
 export function extractErrorMessage(error: unknown): string {
