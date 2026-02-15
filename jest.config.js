@@ -17,10 +17,11 @@ module.exports = {
   setupFilesAfterEnv: ['<rootDir>/tests/setup.ts'],
   testTimeout: 30000,
   maxWorkers: 1, // Prevent parallel tests from interfering with shared test database
-  globals: {
-    'ts-jest': {
-      tsconfig: 'tsconfig.json'
-    }
+  transform: {
+    '^.+\\.ts$': ['ts-jest', {
+      tsconfig: 'tsconfig.json',
+      diagnostics: false,
+    }],
   },
   moduleNameMapper: {
     '^@shared/(.*)$': '<rootDir>/shared/$1',
