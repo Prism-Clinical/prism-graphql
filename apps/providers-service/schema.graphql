@@ -29,6 +29,14 @@ type Visit @key(fields: "id") {
   duration: Int
   notes: String
   chiefComplaint: String
+  audioUri: String
+  audioUploadedAt: DateTime
+}
+
+type AudioUploadUrl {
+  uploadUrl: String!
+  storageUri: String!
+  expiresAt: DateTime!
 }
 
 enum VisitType {
@@ -107,6 +115,12 @@ type Mutation {
   cancelVisit(id: ID!, reason: String): Visit
   addCaseToVisit(visitId: ID!, caseId: ID!): Visit
   removeCaseFromVisit(visitId: ID!, caseId: ID!): Visit
+  """
+  Generate a signed GCS upload URL for visit audio.
+  contentType defaults to "audio/webm" if not provided.
+  """
+  requestAudioUploadUrl(visitId: ID!, contentType: String): AudioUploadUrl!
+  updateVisitAudio(visitId: ID!, audioUri: String!): Visit
 }
 
 input CreateProviderInput {

@@ -9,6 +9,7 @@ import { Pool } from 'pg';
 import { Redis } from 'ioredis';
 import resolvers from "./resolvers";
 import { initializeDatabase } from "./services/database";
+import { initializeStorageService } from "./services/storage";
 
 const port = process.env.PORT || "4006";
 const subgraphName = "providers";
@@ -33,6 +34,16 @@ async function main() {
 
   // Initialize services with database connections
   initializeDatabase(pool, redis);
+
+  // Initialize GCS storage service for audio uploads
+  const gcsBucket = process.env.GCS_BUCKET_NAME;
+  const gcpProject = process.env.GCP_PROJECT_ID;
+  if (gcsBucket && gcpProject) {
+    initializeStorageService(gcsBucket, gcpProject);
+    console.log(`GCS storage initialized: bucket=${gcsBucket}`);
+  } else {
+    console.warn('GCS_BUCKET_NAME or GCP_PROJECT_ID not set — audio upload disabled');
+  }
 
   let typeDefs = gql(
     readFileSync("schema.graphql", {

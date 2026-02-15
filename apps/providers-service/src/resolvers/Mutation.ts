@@ -1,6 +1,7 @@
 import { Resolvers, MutationCreateProviderArgs, MutationUpdateProviderArgs, MutationCreateFacilityArgs } from "../__generated__/resolvers-types";
 import { providersSource, facilitiesSource } from "../datasources/providersSource";
 import { GraphQLError } from "graphql";
+import { audioUploadResolvers } from "./mutations/audio-upload";
 
 export const Mutation: Resolvers = {
   Mutation: {
@@ -109,5 +110,8 @@ export const Mutation: Resolvers = {
       facilitiesSource.push({ ...newFacility });
       return { ...newFacility };
     },
+
+    requestAudioUploadUrl: audioUploadResolvers.requestAudioUploadUrl,
+    updateVisitAudio: audioUploadResolvers.updateVisitAudio,
   },
 };
