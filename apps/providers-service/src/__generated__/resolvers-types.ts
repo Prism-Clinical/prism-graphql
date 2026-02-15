@@ -1,5 +1,5 @@
 import { GraphQLResolveInfo, GraphQLScalarType, GraphQLScalarTypeConfig } from 'graphql';
-import { DataSourceContext } from '@providers/types/DataSourceContext';
+import { DataSourceContext } from '../types/DataSourceContext';
 export type Maybe<T> = T | null;
 export type InputMaybe<T> = Maybe<T>;
 export type Exact<T extends { [key: string]: unknown }> = { [K in keyof T]: T[K] };
@@ -34,6 +34,13 @@ export type AddressInput = {
   state: Scalars['String']['input'];
   street: Scalars['String']['input'];
   zipCode: Scalars['String']['input'];
+};
+
+export type AudioUploadUrl = {
+  __typename?: 'AudioUploadUrl';
+  expiresAt: Scalars['DateTime']['output'];
+  storageUri: Scalars['String']['output'];
+  uploadUrl: Scalars['String']['output'];
 };
 
 export type Case = {
@@ -90,10 +97,12 @@ export type Mutation = {
   createFacility?: Maybe<Facility>;
   createProvider?: Maybe<Provider>;
   createVisit?: Maybe<Visit>;
+  getAudioUploadUrl: AudioUploadUrl;
   removeCaseFromVisit?: Maybe<Visit>;
   startVisit?: Maybe<Visit>;
   updateProvider?: Maybe<Provider>;
   updateVisit?: Maybe<Visit>;
+  updateVisitAudio?: Maybe<Visit>;
 };
 
 
@@ -135,6 +144,12 @@ export type MutationCreateVisitArgs = {
 };
 
 
+export type MutationGetAudioUploadUrlArgs = {
+  contentType?: InputMaybe<Scalars['String']['input']>;
+  visitId: Scalars['ID']['input'];
+};
+
+
 export type MutationRemoveCaseFromVisitArgs = {
   caseId: Scalars['ID']['input'];
   visitId: Scalars['ID']['input'];
@@ -155,6 +170,12 @@ export type MutationUpdateProviderArgs = {
 export type MutationUpdateVisitArgs = {
   id: Scalars['ID']['input'];
   input: UpdateVisitInput;
+};
+
+
+export type MutationUpdateVisitAudioArgs = {
+  audioUri: Scalars['String']['input'];
+  visitId: Scalars['ID']['input'];
 };
 
 export type Patient = {
@@ -267,6 +288,8 @@ export type UpdateVisitInput = {
 
 export type Visit = {
   __typename?: 'Visit';
+  audioUploadedAt?: Maybe<Scalars['DateTime']['output']>;
+  audioUri?: Maybe<Scalars['String']['output']>;
   caseIds: Array<Scalars['ID']['output']>;
   chiefComplaint?: Maybe<Scalars['String']['output']>;
   completedAt?: Maybe<Scalars['DateTime']['output']>;
@@ -388,6 +411,7 @@ export type ResolversTypes = ResolversObject<{
   Address: ResolverTypeWrapper<Address>;
   String: ResolverTypeWrapper<Scalars['String']['output']>;
   AddressInput: AddressInput;
+  AudioUploadUrl: ResolverTypeWrapper<AudioUploadUrl>;
   Case: ResolverTypeWrapper<Case>;
   ID: ResolverTypeWrapper<Scalars['ID']['output']>;
   CreateFacilityInput: CreateFacilityInput;
@@ -415,6 +439,7 @@ export type ResolversParentTypes = ResolversObject<{
   Address: Address;
   String: Scalars['String']['output'];
   AddressInput: AddressInput;
+  AudioUploadUrl: AudioUploadUrl;
   Case: Case;
   ID: Scalars['ID']['output'];
   CreateFacilityInput: CreateFacilityInput;
@@ -441,6 +466,13 @@ export type AddressResolvers<ContextType = DataSourceContext, ParentType extends
   state?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   street?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   zipCode?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
+}>;
+
+export type AudioUploadUrlResolvers<ContextType = DataSourceContext, ParentType extends ResolversParentTypes['AudioUploadUrl'] = ResolversParentTypes['AudioUploadUrl']> = ResolversObject<{
+  expiresAt?: Resolver<ResolversTypes['DateTime'], ParentType, ContextType>;
+  storageUri?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  uploadUrl?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
 }>;
 
@@ -476,10 +508,12 @@ export type MutationResolvers<ContextType = DataSourceContext, ParentType extend
   createFacility?: Resolver<Maybe<ResolversTypes['Facility']>, ParentType, ContextType, RequireFields<MutationCreateFacilityArgs, 'input'>>;
   createProvider?: Resolver<Maybe<ResolversTypes['Provider']>, ParentType, ContextType, RequireFields<MutationCreateProviderArgs, 'input'>>;
   createVisit?: Resolver<Maybe<ResolversTypes['Visit']>, ParentType, ContextType, RequireFields<MutationCreateVisitArgs, 'input'>>;
+  getAudioUploadUrl?: Resolver<ResolversTypes['AudioUploadUrl'], ParentType, ContextType, RequireFields<MutationGetAudioUploadUrlArgs, 'visitId'>>;
   removeCaseFromVisit?: Resolver<Maybe<ResolversTypes['Visit']>, ParentType, ContextType, RequireFields<MutationRemoveCaseFromVisitArgs, 'caseId' | 'visitId'>>;
   startVisit?: Resolver<Maybe<ResolversTypes['Visit']>, ParentType, ContextType, RequireFields<MutationStartVisitArgs, 'id'>>;
   updateProvider?: Resolver<Maybe<ResolversTypes['Provider']>, ParentType, ContextType, RequireFields<MutationUpdateProviderArgs, 'id' | 'input'>>;
   updateVisit?: Resolver<Maybe<ResolversTypes['Visit']>, ParentType, ContextType, RequireFields<MutationUpdateVisitArgs, 'id' | 'input'>>;
+  updateVisitAudio?: Resolver<Maybe<ResolversTypes['Visit']>, ParentType, ContextType, RequireFields<MutationUpdateVisitAudioArgs, 'audioUri' | 'visitId'>>;
 }>;
 
 export type PatientResolvers<ContextType = DataSourceContext, ParentType extends ResolversParentTypes['Patient'] = ResolversParentTypes['Patient']> = ResolversObject<{
@@ -524,6 +558,8 @@ export type RecommendationResolvers<ContextType = DataSourceContext, ParentType 
 
 export type VisitResolvers<ContextType = DataSourceContext, ParentType extends ResolversParentTypes['Visit'] = ResolversParentTypes['Visit']> = ResolversObject<{
   __resolveReference?: ReferenceResolver<Maybe<ResolversTypes['Visit']>, { __typename: 'Visit' } & GraphQLRecursivePick<ParentType, {"id":true}>, ContextType>;
+  audioUploadedAt?: Resolver<Maybe<ResolversTypes['DateTime']>, ParentType, ContextType>;
+  audioUri?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   caseIds?: Resolver<Array<ResolversTypes['ID']>, ParentType, ContextType>;
   chiefComplaint?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   completedAt?: Resolver<Maybe<ResolversTypes['DateTime']>, ParentType, ContextType>;
@@ -542,6 +578,7 @@ export type VisitResolvers<ContextType = DataSourceContext, ParentType extends R
 
 export type Resolvers<ContextType = DataSourceContext> = ResolversObject<{
   Address?: AddressResolvers<ContextType>;
+  AudioUploadUrl?: AudioUploadUrlResolvers<ContextType>;
   Case?: CaseResolvers<ContextType>;
   DateTime?: GraphQLScalarType;
   Facility?: FacilityResolvers<ContextType>;
