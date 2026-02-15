@@ -72,6 +72,8 @@ export interface Visit {
   conditionCodes?: string[];
   carePlanRequestId?: string;
   carePlanRequestedAt?: Date;
+  audioUri?: string;
+  audioUploadedAt?: Date;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -370,7 +372,9 @@ class VisitService {
       RETURNING id, patient_id as "patientId", hospital_id as "hospitalId", provider_id as "providerId",
                 case_ids as "caseIds", type, status, scheduled_at as "scheduledAt",
                 started_at as "startedAt", completed_at as "completedAt", duration, notes,
-                chief_complaint as "chiefComplaint", created_at as "createdAt", updated_at as "updatedAt"
+                chief_complaint as "chiefComplaint", audio_uri as "audioUri",
+                audio_uploaded_at as "audioUploadedAt",
+                created_at as "createdAt", updated_at as "updatedAt"
     `;
     
     const result = await pool.query(query, [
@@ -397,7 +401,9 @@ class VisitService {
       SELECT id, patient_id as "patientId", hospital_id as "hospitalId", provider_id as "providerId",
              case_ids as "caseIds", type, status, scheduled_at as "scheduledAt",
              started_at as "startedAt", completed_at as "completedAt", duration, notes,
-             chief_complaint as "chiefComplaint", created_at as "createdAt", updated_at as "updatedAt"
+             chief_complaint as "chiefComplaint", audio_uri as "audioUri",
+             audio_uploaded_at as "audioUploadedAt",
+             created_at as "createdAt", updated_at as "updatedAt"
       FROM visits
       WHERE id = $1
     `;
@@ -422,7 +428,9 @@ class VisitService {
       SELECT id, patient_id as "patientId", hospital_id as "hospitalId", provider_id as "providerId",
              case_ids as "caseIds", type, status, scheduled_at as "scheduledAt",
              started_at as "startedAt", completed_at as "completedAt", duration, notes,
-             chief_complaint as "chiefComplaint", created_at as "createdAt", updated_at as "updatedAt"
+             chief_complaint as "chiefComplaint", audio_uri as "audioUri",
+             audio_uploaded_at as "audioUploadedAt",
+             created_at as "createdAt", updated_at as "updatedAt"
       FROM visits
       WHERE provider_id = $1
       ORDER BY scheduled_at DESC
@@ -441,7 +449,7 @@ class VisitService {
 
   async updateVisit(id: string, updates: Partial<Omit<Visit, 'id' | 'createdAt' | 'updatedAt'>>): Promise<Visit | null> {
     ensureInitialized();
-    const allowedFields = ['type', 'status', 'scheduledAt', 'startedAt', 'completedAt', 'duration', 'notes', 'chiefComplaint', 'recordingKey', 'recordingEndedAt', 'conditionCodes', 'carePlanRequestId', 'carePlanRequestedAt'];
+    const allowedFields = ['type', 'status', 'scheduledAt', 'startedAt', 'completedAt', 'duration', 'notes', 'chiefComplaint', 'recordingKey', 'recordingEndedAt', 'conditionCodes', 'carePlanRequestId', 'carePlanRequestedAt', 'audioUri', 'audioUploadedAt'];
     const updateFields: string[] = [];
     const values: any[] = [];
 
@@ -454,7 +462,9 @@ class VisitService {
                    key === 'recordingEndedAt' ? 'recording_ended_at' :
                    key === 'conditionCodes' ? 'condition_codes' :
                    key === 'carePlanRequestId' ? 'care_plan_request_id' :
-                   key === 'carePlanRequestedAt' ? 'care_plan_requested_at' : key;
+                   key === 'carePlanRequestedAt' ? 'care_plan_requested_at' :
+                   key === 'audioUri' ? 'audio_uri' :
+                   key === 'audioUploadedAt' ? 'audio_uploaded_at' : key;
       
       if (allowedFields.includes(key) && value !== undefined) {
         updateFields.push(`${dbKey} = $${values.length + 1}`);
@@ -467,13 +477,15 @@ class VisitService {
     }
     
     const query = `
-      UPDATE visits 
+      UPDATE visits
       SET ${updateFields.join(', ')}, updated_at = NOW()
       WHERE id = $${values.length + 1}
       RETURNING id, patient_id as "patientId", hospital_id as "hospitalId", provider_id as "providerId",
                 case_ids as "caseIds", type, status, scheduled_at as "scheduledAt",
                 started_at as "startedAt", completed_at as "completedAt", duration, notes,
-                chief_complaint as "chiefComplaint", created_at as "createdAt", updated_at as "updatedAt"
+                chief_complaint as "chiefComplaint", audio_uri as "audioUri",
+                audio_uploaded_at as "audioUploadedAt",
+                created_at as "createdAt", updated_at as "updatedAt"
     `;
     
     values.push(id);
@@ -490,6 +502,13 @@ class VisitService {
     } catch (error) {
       return null;
     }
+  }
+
+  async updateVisitAudioUri(id: string, audioUri: string): Promise<Visit | null> {
+    return this.updateVisit(id, {
+      audioUri,
+      audioUploadedAt: new Date(),
+    });
   }
 
   async updateVisitStatus(id: string, status: VisitStatus | string): Promise<Visit | null> {
