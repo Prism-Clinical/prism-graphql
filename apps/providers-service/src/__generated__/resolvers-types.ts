@@ -97,8 +97,12 @@ export type Mutation = {
   createFacility?: Maybe<Facility>;
   createProvider?: Maybe<Provider>;
   createVisit?: Maybe<Visit>;
-  getAudioUploadUrl: AudioUploadUrl;
   removeCaseFromVisit?: Maybe<Visit>;
+  /**
+   * Generate a signed GCS upload URL for visit audio.
+   * contentType defaults to "audio/webm" if not provided.
+   */
+  requestAudioUploadUrl: AudioUploadUrl;
   startVisit?: Maybe<Visit>;
   updateProvider?: Maybe<Provider>;
   updateVisit?: Maybe<Visit>;
@@ -144,14 +148,14 @@ export type MutationCreateVisitArgs = {
 };
 
 
-export type MutationGetAudioUploadUrlArgs = {
-  contentType?: InputMaybe<Scalars['String']['input']>;
+export type MutationRemoveCaseFromVisitArgs = {
+  caseId: Scalars['ID']['input'];
   visitId: Scalars['ID']['input'];
 };
 
 
-export type MutationRemoveCaseFromVisitArgs = {
-  caseId: Scalars['ID']['input'];
+export type MutationRequestAudioUploadUrlArgs = {
+  contentType?: InputMaybe<Scalars['String']['input']>;
   visitId: Scalars['ID']['input'];
 };
 
@@ -508,8 +512,8 @@ export type MutationResolvers<ContextType = DataSourceContext, ParentType extend
   createFacility?: Resolver<Maybe<ResolversTypes['Facility']>, ParentType, ContextType, RequireFields<MutationCreateFacilityArgs, 'input'>>;
   createProvider?: Resolver<Maybe<ResolversTypes['Provider']>, ParentType, ContextType, RequireFields<MutationCreateProviderArgs, 'input'>>;
   createVisit?: Resolver<Maybe<ResolversTypes['Visit']>, ParentType, ContextType, RequireFields<MutationCreateVisitArgs, 'input'>>;
-  getAudioUploadUrl?: Resolver<ResolversTypes['AudioUploadUrl'], ParentType, ContextType, RequireFields<MutationGetAudioUploadUrlArgs, 'visitId'>>;
   removeCaseFromVisit?: Resolver<Maybe<ResolversTypes['Visit']>, ParentType, ContextType, RequireFields<MutationRemoveCaseFromVisitArgs, 'caseId' | 'visitId'>>;
+  requestAudioUploadUrl?: Resolver<ResolversTypes['AudioUploadUrl'], ParentType, ContextType, RequireFields<MutationRequestAudioUploadUrlArgs, 'visitId'>>;
   startVisit?: Resolver<Maybe<ResolversTypes['Visit']>, ParentType, ContextType, RequireFields<MutationStartVisitArgs, 'id'>>;
   updateProvider?: Resolver<Maybe<ResolversTypes['Provider']>, ParentType, ContextType, RequireFields<MutationUpdateProviderArgs, 'id' | 'input'>>;
   updateVisit?: Resolver<Maybe<ResolversTypes['Visit']>, ParentType, ContextType, RequireFields<MutationUpdateVisitArgs, 'id' | 'input'>>;

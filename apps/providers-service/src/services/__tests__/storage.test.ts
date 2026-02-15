@@ -86,13 +86,13 @@ describe('StorageService', () => {
       expect(diffMinutes).toBeLessThan(32);
     });
 
-    it('defaults to 15-minute expiration', async () => {
+    it('defaults to 30-minute expiration', async () => {
       await service.generateSignedUploadUrl('visit-123', 'audio/webm');
 
       const callArgs = mockGetSignedUrl.mock.calls[0][0];
       const diffMinutes = (callArgs.expires.getTime() - Date.now()) / 60000;
-      expect(diffMinutes).toBeGreaterThan(13);
-      expect(diffMinutes).toBeLessThan(17);
+      expect(diffMinutes).toBeGreaterThan(28);
+      expect(diffMinutes).toBeLessThan(32);
     });
   });
 
@@ -134,9 +134,9 @@ describe('StorageService', () => {
     });
 
     it('getStorageService throws when not initialized', () => {
-      // Reset the singleton by re-importing — in practice this tests the guard
-      // We can't easily reset the module state, so just verify the function exists
-      expect(typeof getStorageService).toBe('function');
+      jest.resetModules();
+      const { getStorageService: freshGet } = require('../storage');
+      expect(() => freshGet()).toThrow('StorageService not initialized');
     });
   });
 });

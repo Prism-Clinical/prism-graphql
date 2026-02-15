@@ -28,7 +28,7 @@ export class StorageService {
   async generateSignedUploadUrl(
     visitId: string,
     contentType: string,
-    expiresInMinutes = 15,
+    expiresInMinutes = 30,
   ): Promise<SignedUploadUrl> {
     if (!visitId || visitId.trim() === '') {
       throw new Error('visitId is required');

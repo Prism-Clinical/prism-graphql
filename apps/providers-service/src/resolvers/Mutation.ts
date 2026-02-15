@@ -111,7 +111,7 @@ export const Mutation: Resolvers = {
       return { ...newFacility };
     },
 
-    getAudioUploadUrl: audioUploadResolvers.getAudioUploadUrl as any,
-    updateVisitAudio: audioUploadResolvers.updateVisitAudio as any,
+    requestAudioUploadUrl: audioUploadResolvers.requestAudioUploadUrl,
+    updateVisitAudio: audioUploadResolvers.updateVisitAudio,
   },
 };
