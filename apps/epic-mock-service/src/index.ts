@@ -415,6 +415,80 @@ const generateMockLabResults = (patientId: string) => ({
   ]
 });
 
+// =============================================================================
+// Mock Patient Database — for search endpoint
+// =============================================================================
+
+const MOCK_PATIENT_DATABASE = [
+  {
+    id: 'epic-patient-001',
+    family: 'Johnson',
+    given: ['Sarah', 'Marie'],
+    birthDate: '1985-03-15',
+    gender: 'female',
+    mrn: 'MRN-10001',
+  },
+  {
+    id: 'epic-patient-002',
+    family: 'Wilson',
+    given: ['James', 'Robert'],
+    birthDate: '1972-08-20',
+    gender: 'male',
+    mrn: 'MRN-10002',
+  },
+  {
+    id: 'epic-patient-003',
+    family: 'Chen',
+    given: ['Emily', 'Lin'],
+    birthDate: '1990-11-05',
+    gender: 'female',
+    mrn: 'MRN-10003',
+  },
+  {
+    id: 'epic-patient-004',
+    family: 'Garcia',
+    given: ['Carlos', 'Miguel'],
+    birthDate: '1968-02-28',
+    gender: 'male',
+    mrn: 'MRN-10004',
+  },
+  {
+    id: 'epic-patient-005',
+    family: 'Patel',
+    given: ['Priya', 'Anjali'],
+    birthDate: '1995-07-12',
+    gender: 'female',
+    mrn: 'MRN-10005',
+  },
+];
+
+function buildMockPatientResource(p: typeof MOCK_PATIENT_DATABASE[0]) {
+  return {
+    resourceType: 'Patient',
+    id: p.id,
+    identifier: [{
+      use: 'usual',
+      type: {
+        coding: [{
+          system: 'http://terminology.hl7.org/CodeSystem/v2-0203',
+          code: 'MR',
+          display: 'Medical Record Number',
+        }],
+      },
+      system: 'http://example.hospital.com/patients',
+      value: p.mrn,
+    }],
+    active: true,
+    name: [{
+      use: 'official',
+      family: p.family,
+      given: p.given,
+    }],
+    gender: p.gender,
+    birthDate: p.birthDate,
+  };
+}
+
 // Auth endpoint
 app.post('/auth/token', (req, res) => {
   // Simulate auth token response
@@ -440,13 +514,68 @@ app.get('/metadata', (req, res) => {
   });
 });
 
-// Patient endpoints
+// Patient search endpoint — must be before /Patient/:patientId
+app.get('/Patient', (req, res) => {
+  const { name, family, given, birthdate, gender, identifier, _count } = req.query;
+  const maxResults = _count ? parseInt(_count as string, 10) : 20;
+
+  let results = [...MOCK_PATIENT_DATABASE];
+
+  if (name) {
+    const q = (name as string).toLowerCase();
+    results = results.filter(
+      (p) =>
+        p.family.toLowerCase().includes(q) ||
+        p.given.some((g) => g.toLowerCase().includes(q))
+    );
+  }
+  if (family) {
+    const q = (family as string).toLowerCase();
+    results = results.filter((p) => p.family.toLowerCase().includes(q));
+  }
+  if (given) {
+    const q = (given as string).toLowerCase();
+    results = results.filter((p) =>
+      p.given.some((g) => g.toLowerCase().includes(q))
+    );
+  }
+  if (birthdate) {
+    results = results.filter((p) => p.birthDate === birthdate);
+  }
+  if (gender) {
+    results = results.filter((p) => p.gender === gender);
+  }
+  if (identifier) {
+    const q = (identifier as string).toUpperCase();
+    results = results.filter((p) => p.mrn.toUpperCase() === q);
+  }
+
+  results = results.slice(0, maxResults);
+
+  setTimeout(() => {
+    res.json({
+      resourceType: 'Bundle',
+      id: uuidv4(),
+      type: 'searchset',
+      total: results.length,
+      entry: results.map((p) => ({ resource: buildMockPatientResource(p) })),
+    });
+  }, 50 + Math.random() * 100);
+});
+
+// Patient by ID endpoint
 app.get('/Patient/:patientId', (req, res) => {
   const { patientId } = req.params;
-  
-  // Simulate some delay
+
+  // Check mock database first
+  const known = MOCK_PATIENT_DATABASE.find((p) => p.id === patientId);
+
   setTimeout(() => {
-    res.json(generateMockPatient(patientId));
+    if (known) {
+      res.json(buildMockPatientResource(known));
+    } else {
+      res.json(generateMockPatient(patientId));
+    }
   }, 100 + Math.random() * 200);
 });
 
