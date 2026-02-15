@@ -505,6 +505,9 @@ class VisitService {
   }
 
   async updateVisitAudioUri(id: string, audioUri: string): Promise<Visit | null> {
+    if (!audioUri.startsWith('gs://')) {
+      throw new Error('Invalid audio URI: must be a GCS path starting with gs://');
+    }
     return this.updateVisit(id, {
       audioUri,
       audioUploadedAt: new Date(),
@@ -537,6 +540,7 @@ class VisitService {
              chief_complaint as "chiefComplaint", recording_key as "recordingKey",
              recording_ended_at as "recordingEndedAt", condition_codes as "conditionCodes",
              care_plan_request_id as "carePlanRequestId", care_plan_requested_at as "carePlanRequestedAt",
+             audio_uri as "audioUri", audio_uploaded_at as "audioUploadedAt",
              created_at as "createdAt", updated_at as "updatedAt"
       FROM visits
       WHERE provider_id = $1 AND scheduled_at >= $2 AND scheduled_at <= $3
@@ -564,6 +568,7 @@ class VisitService {
              chief_complaint as "chiefComplaint", recording_key as "recordingKey",
              recording_ended_at as "recordingEndedAt", condition_codes as "conditionCodes",
              care_plan_request_id as "carePlanRequestId", care_plan_requested_at as "carePlanRequestedAt",
+             audio_uri as "audioUri", audio_uploaded_at as "audioUploadedAt",
              created_at as "createdAt", updated_at as "updatedAt"
       FROM visits
       WHERE provider_id = $1 AND scheduled_at >= $2 AND scheduled_at <= $3
