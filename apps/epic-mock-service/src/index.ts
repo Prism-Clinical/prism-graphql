@@ -572,6 +572,7 @@ app.get('/Patient', (req, res) => {
     results = results.filter((p) => p.mrn?.toUpperCase() === q);
   }
 
+  const allMatchingCount = results.length;
   results = results.slice(0, maxResults);
 
   setTimeout(() => {
@@ -579,7 +580,7 @@ app.get('/Patient', (req, res) => {
       resourceType: 'Bundle',
       id: uuidv4(),
       type: 'searchset',
-      total: results.length,
+      total: allMatchingCount,
       entry: results.map((p) => ({ resource: buildMockPatientResource(p) })),
     });
   }, 50 + Math.random() * 100);

@@ -594,6 +594,10 @@ describe("validateSearchInput", () => {
     expect(() => validateSearchInput({})).toThrow("At least one search parameter is required");
   });
 
+  it("rejects _count as sole parameter", () => {
+    expect(() => validateSearchInput({ _count: 5 })).toThrow("At least one search parameter is required");
+  });
+
   it("rejects strings exceeding max length", () => {
     expect(() => validateSearchInput({ name: "a".repeat(201) })).toThrow("exceeds maximum length");
   });

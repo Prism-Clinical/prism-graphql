@@ -1132,7 +1132,7 @@ export function validateSearchInput(input: EpicPatientSearchInput): void {
   const stringFields: (keyof EpicPatientSearchInput)[] = ["name", "family", "given", "birthdate", "gender", "identifier"];
   const providedFields = stringFields.filter((k) => input[k] !== undefined && input[k] !== "");
 
-  if (providedFields.length === 0 && input._count === undefined) {
+  if (providedFields.length === 0) {
     throw new Error("At least one search parameter is required");
   }
 
