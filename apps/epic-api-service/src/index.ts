@@ -56,6 +56,20 @@ interface DataFetchError {
   code?: string;
 }
 
+interface EpicPatientSearchResult {
+  epicPatientId: string;
+  firstName: string | null;
+  lastName: string | null;
+  dateOfBirth: string | null;
+  gender: string | null;
+  mrn: string | null;
+}
+
+interface EpicPatientSearchResponse {
+  results: EpicPatientSearchResult[];
+  totalCount: number;
+}
+
 interface EpicConnectionStatus {
   connected: boolean;
   lastConnectionTest: string;
@@ -456,12 +470,41 @@ export const typeDefs = gql`
   }
 
   # =========================================================================
+  # Patient Search
+  # =========================================================================
+
+  input EpicPatientSearchInput {
+    name: String
+    family: String
+    given: String
+    birthdate: String
+    gender: String
+    identifier: String
+    _count: Int
+  }
+
+  type EpicPatientSearchResult {
+    epicPatientId: ID!
+    firstName: String
+    lastName: String
+    dateOfBirth: String
+    gender: String
+    mrn: String
+  }
+
+  type EpicPatientSearchResponse {
+    results: [EpicPatientSearchResult!]!
+    totalCount: Int!
+  }
+
+  # =========================================================================
   # Queries & Mutations
   # =========================================================================
 
   type Query {
     epicPatientData(epicPatientId: ID!): EpicPatientData
     epicConnectionStatus: EpicConnectionStatus!
+    searchEpicPatients(input: EpicPatientSearchInput!): EpicPatientSearchResponse!
     latestSnapshot(epicPatientId: ID!): ClinicalSnapshot
     snapshotHistory(epicPatientId: ID!, limit: Int): [SnapshotSummary!]!
     snapshot(snapshotId: ID!): ClinicalSnapshot
@@ -665,6 +708,43 @@ export const resolvers = {
         responseTime: result.responseTime,
         errors: result.errors,
       };
+    },
+
+    async searchEpicPatients(
+      _: unknown,
+      { input }: { input: { name?: string; family?: string; given?: string; birthdate?: string; gender?: string; identifier?: string; _count?: number } }
+    ): Promise<EpicPatientSearchResponse> {
+      const requestId = generateRequestId();
+      const fhirClient = getFhirClient();
+
+      logger.info("Searching Epic patients", { requestId, searchParams: input });
+
+      const result = await fhirClient.searchPatients(input, requestId);
+      const entries = result.data.entry || [];
+
+      const results: EpicPatientSearchResult[] = entries.map((entry) => {
+        const patient = entry.resource;
+        const officialName = patient.name?.find((n) => n.use === "official") || patient.name?.[0];
+        const mrnIdentifier = patient.identifier?.find(
+          (id) => id.type?.coding?.some((c) => c.code === "MR")
+        );
+
+        return {
+          epicPatientId: patient.id || "",
+          firstName: officialName?.given?.[0] || null,
+          lastName: officialName?.family || null,
+          dateOfBirth: patient.birthDate || null,
+          gender: patient.gender || null,
+          mrn: mrnIdentifier?.value || null,
+        };
+      });
+
+      logger.info("Epic patient search completed", {
+        requestId,
+        resultCount: results.length,
+      });
+
+      return { results, totalCount: results.length };
     },
 
     async latestSnapshot(

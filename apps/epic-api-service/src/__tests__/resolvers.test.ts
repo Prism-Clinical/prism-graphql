@@ -27,6 +27,7 @@ const mockGetMedicationRequests = jest.fn();
 const mockGetConditions = jest.fn();
 const mockGetMedication = jest.fn();
 const mockHealthCheck = jest.fn();
+const mockSearchPatients = jest.fn();
 
 jest.mock("../clients", () => ({
   getFhirClient: () => ({
@@ -37,6 +38,7 @@ jest.mock("../clients", () => ({
     getConditions: mockGetConditions,
     getMedication: mockGetMedication,
     healthCheck: mockHealthCheck,
+    searchPatients: mockSearchPatients,
   }),
   getExtractionClient: () => ({
     extractVitalsWithFallback: jest.fn().mockResolvedValue({
@@ -406,5 +408,120 @@ describe("validateResourceId", () => {
     await expect(
       resolvers.Query.epicPatientData({}, { epicPatientId: "id<script>" })
     ).rejects.toThrow("contains invalid characters");
+  });
+});
+
+describe("searchEpicPatients resolver", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it("transforms FHIR bundle to simplified search results", async () => {
+    mockSearchPatients.mockResolvedValue({
+      data: {
+        entry: [
+          {
+            resource: {
+              resourceType: "Patient",
+              id: "patient-1",
+              name: [{ use: "official", given: ["Sarah", "Marie"], family: "Johnson" }],
+              gender: "female",
+              birthDate: "1985-03-15",
+              identifier: [
+                { type: { coding: [{ code: "MR" }] }, value: "MRN-001" },
+              ],
+            },
+          },
+          {
+            resource: {
+              resourceType: "Patient",
+              id: "patient-2",
+              name: [{ use: "official", given: ["James"], family: "Wilson" }],
+              gender: "male",
+              birthDate: "1972-08-20",
+              identifier: [
+                { type: { coding: [{ code: "MR" }] }, value: "MRN-002" },
+              ],
+            },
+          },
+        ],
+      },
+    });
+
+    const result = await resolvers.Query.searchEpicPatients(
+      {},
+      { input: { name: "test" } }
+    );
+
+    expect(result.results).toHaveLength(2);
+    expect(result.results[0]).toEqual({
+      epicPatientId: "patient-1",
+      firstName: "Sarah",
+      lastName: "Johnson",
+      dateOfBirth: "1985-03-15",
+      gender: "female",
+      mrn: "MRN-001",
+    });
+    expect(result.results[1].epicPatientId).toBe("patient-2");
+    expect(result.totalCount).toBe(2);
+  });
+
+  it("returns empty results when no patients match", async () => {
+    mockSearchPatients.mockResolvedValue({
+      data: {},
+    });
+
+    const result = await resolvers.Query.searchEpicPatients(
+      {},
+      { input: { name: "NoMatch" } }
+    );
+
+    expect(result.results).toEqual([]);
+    expect(result.totalCount).toBe(0);
+  });
+
+  it("handles patients with missing optional fields", async () => {
+    mockSearchPatients.mockResolvedValue({
+      data: {
+        entry: [
+          {
+            resource: {
+              resourceType: "Patient",
+              id: "patient-3",
+              name: [{ family: "Minimal" }],
+            },
+          },
+        ],
+      },
+    });
+
+    const result = await resolvers.Query.searchEpicPatients(
+      {},
+      { input: { family: "Minimal" } }
+    );
+
+    expect(result.results).toHaveLength(1);
+    expect(result.results[0]).toEqual({
+      epicPatientId: "patient-3",
+      firstName: null,
+      lastName: "Minimal",
+      dateOfBirth: null,
+      gender: null,
+      mrn: null,
+    });
+  });
+
+  it("passes search params to FHIR client", async () => {
+    mockSearchPatients.mockResolvedValue({ data: {} });
+
+    await resolvers.Query.searchEpicPatients(
+      {},
+      { input: { family: "Smith", birthdate: "1990-01-01", gender: "female", _count: 10 } }
+    );
+
+    expect(mockSearchPatients).toHaveBeenCalledWith(
+      { family: "Smith", birthdate: "1990-01-01", gender: "female", _count: 10 },
+      "test-request-id"
+    );
   });
 });
