@@ -21,6 +21,30 @@ import { MLClient, TranscribeResponse } from './ml-client';
 // Worker configuration
 const WORKER_CONCURRENCY = parseInt(process.env.WORKER_CONCURRENCY || '2');
 
+function log(transcriptionId: string, message: string, data?: Record<string, unknown>): void {
+  const entry = {
+    timestamp: new Date().toISOString(),
+    service: 'transcription-worker',
+    transcriptionId,
+    message,
+    ...data,
+  };
+  console.log(JSON.stringify(entry));
+}
+
+function logError(transcriptionId: string, message: string, error: Error, data?: Record<string, unknown>): void {
+  const entry = {
+    timestamp: new Date().toISOString(),
+    service: 'transcription-worker',
+    level: 'error',
+    transcriptionId,
+    message,
+    error: error.message,
+    ...data,
+  };
+  console.error(JSON.stringify(entry));
+}
+
 /**
  * Create and start the transcription worker
  */
@@ -44,21 +68,29 @@ export function createTranscriptionWorker(
 
   // Event handlers
   worker.on('completed', (job, result) => {
-    console.log(
-      `Job ${job.id} completed: transcription ${result.transcriptionId} ` +
-        `in ${result.processingTimeSeconds?.toFixed(1)}s`
-    );
+    log(result.transcriptionId, 'Processing completed', {
+      jobId: job.id,
+      processingTimeSeconds: result.processingTimeSeconds,
+    });
   });
 
   worker.on('failed', (job, err) => {
-    console.error(`Job ${job?.id} failed:`, err.message);
+    logError(job?.data?.transcriptionId || 'unknown', 'Job failed', err, {
+      jobId: job?.id,
+      attemptsMade: job?.attemptsMade,
+    });
   });
 
   worker.on('error', (err) => {
-    console.error('Worker error:', err);
+    logError('unknown', 'Worker error', err);
   });
 
-  console.log(`Transcription worker started with concurrency ${WORKER_CONCURRENCY}`);
+  console.log(JSON.stringify({
+    timestamp: new Date().toISOString(),
+    service: 'transcription-worker',
+    message: 'Worker started',
+    concurrency: WORKER_CONCURRENCY,
+  }));
 
   return worker;
 }
@@ -82,7 +114,12 @@ async function processTranscriptionJob(
     await job.updateProgress(10);
 
     // Step 2: Call ML service
-    console.log(`Processing transcription ${transcriptionId}: ${audioUri}`);
+    log(transcriptionId, 'Processing started', {
+      audioUri,
+      patientId,
+      encounterId,
+      attempt: job.attemptsMade + 1,
+    });
     await job.updateProgress(20);
 
     const result = await mlClient.transcribe({
@@ -113,6 +150,14 @@ async function processTranscriptionJob(
 
     const processingTimeSeconds = (Date.now() - startTime) / 1000;
 
+    log(transcriptionId, 'Results saved', {
+      segmentCount: result.segments?.length ?? 0,
+      entityCount: result.entities?.length ?? 0,
+      confidenceScore: result.confidence_score,
+      audioDurationSeconds: result.audio_duration_seconds,
+      processingTimeSeconds,
+    });
+
     return {
       success: true,
       transcriptionId,
@@ -123,6 +168,12 @@ async function processTranscriptionJob(
     await updateTranscriptionFailed(pool, transcriptionId, error.message);
 
     const processingTimeSeconds = (Date.now() - startTime) / 1000;
+
+    logError(transcriptionId, 'Processing failed', error, {
+      processingTimeSeconds,
+      attempt: job.attemptsMade + 1,
+      maxAttempts: job.opts?.attempts ?? 3,
+    });
 
     // Re-throw to trigger BullMQ retry logic
     throw error;
