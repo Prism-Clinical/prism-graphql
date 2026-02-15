@@ -54,7 +54,7 @@ describe('Epic Patient Lookup — integration', () => {
             totalCount
           }
         }`,
-        { input: { family: 'Smith' } }
+        { input: { family: 'Johnson' } }
       );
 
       expect(result.errors).toBeUndefined();
@@ -65,7 +65,7 @@ describe('Epic Patient Lookup — integration', () => {
       // Verify result shape
       const patient = result.data!.searchEpicPatients.results[0];
       expect(patient.epicPatientId).toBeDefined();
-      expect(patient.lastName?.toLowerCase()).toContain('smith');
+      expect(patient.lastName?.toLowerCase()).toContain('johnson');
     });
 
     it('searches by MRN identifier', async () => {
@@ -81,12 +81,12 @@ describe('Epic Patient Lookup — integration', () => {
             totalCount
           }
         }`,
-        { input: { identifier: 'MRN12345' } }
+        { input: { identifier: 'MRN-10001' } }
       );
 
       expect(result.errors).toBeUndefined();
       expect(result.data?.searchEpicPatients.results.length).toBe(1);
-      expect(result.data!.searchEpicPatients.results[0].mrn).toBe('MRN12345');
+      expect(result.data!.searchEpicPatients.results[0].mrn).toBe('MRN-10001');
     });
 
     it('returns empty results for non-matching search', async () => {
@@ -154,7 +154,7 @@ describe('Epic Patient Lookup — integration', () => {
             results { epicPatientId }
           }
         }`,
-        { input: { family: 'Smith' } }
+        { input: { family: 'Johnson' } }
       );
 
       const epicPatientId = searchResult.data!.searchEpicPatients.results[0].epicPatientId;
@@ -208,7 +208,7 @@ describe('Epic Patient Lookup — integration', () => {
             results { epicPatientId }
           }
         }`,
-        { input: { identifier: 'MRN12345' } }
+        { input: { identifier: 'MRN-10001' } }
       );
 
       const epicPatientId = searchResult.data!.searchEpicPatients.results[0].epicPatientId;
