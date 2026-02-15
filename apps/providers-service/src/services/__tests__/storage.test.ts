@@ -65,6 +65,21 @@ describe('StorageService', () => {
       expect(wav.storageUri).toMatch(/\.wav$/);
     });
 
+    it('accepts codec-qualified content types', async () => {
+      const result = await service.generateSignedUploadUrl('v1', 'audio/webm;codecs=opus');
+      expect(result.storageUri).toMatch(/\.webm$/);
+    });
+
+    it('signs URL with original codec-qualified content type', async () => {
+      await service.generateSignedUploadUrl('v1', 'audio/webm;codecs=opus');
+
+      expect(mockGetSignedUrl).toHaveBeenCalledWith(
+        expect.objectContaining({
+          contentType: 'audio/webm;codecs=opus',
+        })
+      );
+    });
+
     it('calls GCS with correct signed URL options', async () => {
       await service.generateSignedUploadUrl('visit-123', 'audio/webm', 30);
 

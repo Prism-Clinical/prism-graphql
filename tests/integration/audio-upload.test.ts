@@ -1,5 +1,5 @@
 import { audioUploadResolvers } from '@providers/resolvers/mutations/audio-upload';
-import { GraphQLResolveInfo, GraphQLError } from 'graphql';
+import { GraphQLResolveInfo } from 'graphql';
 
 // Mock visitService
 const mockGetVisitById = jest.fn();
@@ -11,14 +11,15 @@ jest.mock('@providers/services/database', () => ({
   },
 }));
 
-// Mock storage service
+// Mock storage service — configurable to simulate "not initialized"
 const mockGenerateSignedUploadUrl = jest.fn();
 const mockVerifyFileExists = jest.fn();
+const mockGetStorageService = jest.fn(() => ({
+  generateSignedUploadUrl: mockGenerateSignedUploadUrl,
+  verifyFileExists: mockVerifyFileExists,
+}));
 jest.mock('@providers/services/storage', () => ({
-  getStorageService: () => ({
-    generateSignedUploadUrl: mockGenerateSignedUploadUrl,
-    verifyFileExists: mockVerifyFileExists,
-  }),
+  getStorageService: () => mockGetStorageService(),
 }));
 
 const info = {} as GraphQLResolveInfo;
@@ -28,6 +29,10 @@ const unauthContext = {};
 describe('Audio Upload Resolvers', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockGetStorageService.mockReturnValue({
+      generateSignedUploadUrl: mockGenerateSignedUploadUrl,
+      verifyFileExists: mockVerifyFileExists,
+    });
   });
 
   describe('requestAudioUploadUrl', () => {
@@ -126,6 +131,22 @@ describe('Audio Upload Resolvers', () => {
         ),
       ).rejects.toThrow('Cannot upload audio for a completed or cancelled visit');
     });
+
+    it('returns SERVICE_UNAVAILABLE when storage is not configured', async () => {
+      mockGetVisitById.mockResolvedValue(validVisit);
+      mockGetStorageService.mockImplementation(() => {
+        throw new Error('StorageService not initialized');
+      });
+
+      await expect(
+        audioUploadResolvers.requestAudioUploadUrl(
+          {},
+          { visitId: 'visit-1' },
+          authedContext,
+          info,
+        ),
+      ).rejects.toThrow('Audio upload is not configured on this server');
+    });
   });
 
   describe('updateVisitAudio', () => {
@@ -212,6 +233,22 @@ describe('Audio Upload Resolvers', () => {
           info,
         ),
       ).rejects.toThrow('Failed to update visit audio URI');
+    });
+
+    it('returns SERVICE_UNAVAILABLE when storage is not configured', async () => {
+      mockGetVisitById.mockResolvedValue(validVisit);
+      mockGetStorageService.mockImplementation(() => {
+        throw new Error('StorageService not initialized');
+      });
+
+      await expect(
+        audioUploadResolvers.updateVisitAudio(
+          {},
+          { visitId: 'visit-1', audioUri },
+          authedContext,
+          info,
+        ),
+      ).rejects.toThrow('Audio upload is not configured on this server');
     });
   });
 });

@@ -34,11 +34,16 @@ export class StorageService {
       throw new Error('visitId is required');
     }
 
-    if (!ALLOWED_CONTENT_TYPES.includes(contentType)) {
+    // Strip codec parameters (e.g. "audio/webm;codecs=opus" → "audio/webm")
+    // for allowlist validation and extension mapping, but keep the original
+    // contentType for the signed URL so it matches the browser's upload header.
+    const baseType = contentType.split(';')[0].trim();
+
+    if (!ALLOWED_CONTENT_TYPES.includes(baseType)) {
       throw new Error(`Unsupported content type: ${contentType}. Allowed: ${ALLOWED_CONTENT_TYPES.join(', ')}`);
     }
 
-    const extension = EXTENSION_MAP[contentType];
+    const extension = EXTENSION_MAP[baseType];
     const timestamp = Date.now();
     const objectPath = `visits/${visitId}/audio/${timestamp}.${extension}`;
     const expiresAt = new Date(Date.now() + expiresInMinutes * 60 * 1000);
