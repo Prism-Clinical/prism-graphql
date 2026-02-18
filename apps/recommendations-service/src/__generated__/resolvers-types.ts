@@ -1,5 +1,5 @@
 import { GraphQLResolveInfo, GraphQLScalarType, GraphQLScalarTypeConfig } from 'graphql';
-import { DataSourceContext } from '@recommendations/types/DataSourceContext';
+import { DataSourceContext } from '../types/DataSourceContext';
 export type Maybe<T> = T | null;
 export type InputMaybe<T> = Maybe<T>;
 export type Exact<T extends { [key: string]: unknown }> = { [K in keyof T]: T[K] };
@@ -20,15 +20,9 @@ export type Scalars = {
   _FieldSet: { input: any; output: any; }
 };
 
-export type Case = {
-  __typename?: 'Case';
-  id: Scalars['ID']['output'];
-  recommendations: Array<Recommendation>;
-};
-
 export type CreateRecommendationInput = {
-  caseId: Scalars['ID']['input'];
   description: Scalars['String']['input'];
+  patientId: Scalars['ID']['input'];
   priority: Priority;
   providerId: Scalars['ID']['input'];
   title: Scalars['String']['input'];
@@ -51,6 +45,12 @@ export type MutationUpdateRecommendationStatusArgs = {
   status: RecommendationStatus;
 };
 
+export type Patient = {
+  __typename?: 'Patient';
+  id: Scalars['ID']['output'];
+  recommendations: Array<Recommendation>;
+};
+
 export enum Priority {
   High = 'HIGH',
   Low = 'LOW',
@@ -68,7 +68,7 @@ export type Query = {
   __typename?: 'Query';
   recommendation?: Maybe<Recommendation>;
   recommendationsByProvider: Array<Recommendation>;
-  recommendationsForCase: Array<Recommendation>;
+  recommendationsForPatient: Array<Recommendation>;
 };
 
 
@@ -82,16 +82,16 @@ export type QueryRecommendationsByProviderArgs = {
 };
 
 
-export type QueryRecommendationsForCaseArgs = {
-  caseId: Scalars['ID']['input'];
+export type QueryRecommendationsForPatientArgs = {
+  patientId: Scalars['ID']['input'];
 };
 
 export type Recommendation = {
   __typename?: 'Recommendation';
-  caseId: Scalars['ID']['output'];
   createdAt: Scalars['DateTime']['output'];
   description: Scalars['String']['output'];
   id: Scalars['ID']['output'];
+  patientId: Scalars['ID']['output'];
   priority: Priority;
   providerId: Scalars['ID']['output'];
   status: RecommendationStatus;
@@ -194,13 +194,13 @@ export type DirectiveResolverFn<TResult = {}, TParent = {}, TContext = {}, TArgs
 
 /** Mapping between all available schema types and the resolvers types */
 export type ResolversTypes = ResolversObject<{
-  Case: ResolverTypeWrapper<Case>;
-  ID: ResolverTypeWrapper<Scalars['ID']['output']>;
   CreateRecommendationInput: CreateRecommendationInput;
   String: ResolverTypeWrapper<Scalars['String']['output']>;
+  ID: ResolverTypeWrapper<Scalars['ID']['output']>;
   Date: ResolverTypeWrapper<Scalars['Date']['output']>;
   DateTime: ResolverTypeWrapper<Scalars['DateTime']['output']>;
   Mutation: ResolverTypeWrapper<{}>;
+  Patient: ResolverTypeWrapper<Patient>;
   Priority: Priority;
   Provider: ResolverTypeWrapper<Provider>;
   Query: ResolverTypeWrapper<{}>;
@@ -212,25 +212,18 @@ export type ResolversTypes = ResolversObject<{
 
 /** Mapping between all available schema types and the resolvers parents */
 export type ResolversParentTypes = ResolversObject<{
-  Case: Case;
-  ID: Scalars['ID']['output'];
   CreateRecommendationInput: CreateRecommendationInput;
   String: Scalars['String']['output'];
+  ID: Scalars['ID']['output'];
   Date: Scalars['Date']['output'];
   DateTime: Scalars['DateTime']['output'];
   Mutation: {};
+  Patient: Patient;
   Provider: Provider;
   Query: {};
   Recommendation: Recommendation;
   RecommendationItem: RecommendationItem;
   Boolean: Scalars['Boolean']['output'];
-}>;
-
-export type CaseResolvers<ContextType = DataSourceContext, ParentType extends ResolversParentTypes['Case'] = ResolversParentTypes['Case']> = ResolversObject<{
-  __resolveReference?: ReferenceResolver<Maybe<ResolversTypes['Case']>, { __typename: 'Case' } & GraphQLRecursivePick<ParentType, {"id":true}>, ContextType>;
-  id?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
-  recommendations?: Resolver<Array<ResolversTypes['Recommendation']>, ParentType, ContextType>;
-  __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
 }>;
 
 export interface DateScalarConfig extends GraphQLScalarTypeConfig<ResolversTypes['Date'], any> {
@@ -246,6 +239,13 @@ export type MutationResolvers<ContextType = DataSourceContext, ParentType extend
   updateRecommendationStatus?: Resolver<Maybe<ResolversTypes['Recommendation']>, ParentType, ContextType, RequireFields<MutationUpdateRecommendationStatusArgs, 'id' | 'status'>>;
 }>;
 
+export type PatientResolvers<ContextType = DataSourceContext, ParentType extends ResolversParentTypes['Patient'] = ResolversParentTypes['Patient']> = ResolversObject<{
+  __resolveReference?: ReferenceResolver<Maybe<ResolversTypes['Patient']>, { __typename: 'Patient' } & GraphQLRecursivePick<ParentType, {"id":true}>, ContextType>;
+  id?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
+  recommendations?: Resolver<Array<ResolversTypes['Recommendation']>, ParentType, ContextType>;
+  __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
+}>;
+
 export type ProviderResolvers<ContextType = DataSourceContext, ParentType extends ResolversParentTypes['Provider'] = ResolversParentTypes['Provider']> = ResolversObject<{
   __resolveReference?: ReferenceResolver<Maybe<ResolversTypes['Provider']>, { __typename: 'Provider' } & GraphQLRecursivePick<ParentType, {"id":true}>, ContextType>;
   id?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
@@ -256,15 +256,15 @@ export type ProviderResolvers<ContextType = DataSourceContext, ParentType extend
 export type QueryResolvers<ContextType = DataSourceContext, ParentType extends ResolversParentTypes['Query'] = ResolversParentTypes['Query']> = ResolversObject<{
   recommendation?: Resolver<Maybe<ResolversTypes['Recommendation']>, ParentType, ContextType, RequireFields<QueryRecommendationArgs, 'id'>>;
   recommendationsByProvider?: Resolver<Array<ResolversTypes['Recommendation']>, ParentType, ContextType, RequireFields<QueryRecommendationsByProviderArgs, 'providerId'>>;
-  recommendationsForCase?: Resolver<Array<ResolversTypes['Recommendation']>, ParentType, ContextType, RequireFields<QueryRecommendationsForCaseArgs, 'caseId'>>;
+  recommendationsForPatient?: Resolver<Array<ResolversTypes['Recommendation']>, ParentType, ContextType, RequireFields<QueryRecommendationsForPatientArgs, 'patientId'>>;
 }>;
 
 export type RecommendationResolvers<ContextType = DataSourceContext, ParentType extends ResolversParentTypes['Recommendation'] = ResolversParentTypes['Recommendation']> = ResolversObject<{
   __resolveReference?: ReferenceResolver<Maybe<ResolversTypes['Recommendation']>, { __typename: 'Recommendation' } & GraphQLRecursivePick<ParentType, {"id":true}>, ContextType>;
-  caseId?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
   createdAt?: Resolver<ResolversTypes['DateTime'], ParentType, ContextType>;
   description?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   id?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
+  patientId?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
   priority?: Resolver<ResolversTypes['Priority'], ParentType, ContextType>;
   providerId?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
   status?: Resolver<ResolversTypes['RecommendationStatus'], ParentType, ContextType>;
@@ -280,10 +280,10 @@ export type RecommendationItemResolvers<ContextType = DataSourceContext, ParentT
 }>;
 
 export type Resolvers<ContextType = DataSourceContext> = ResolversObject<{
-  Case?: CaseResolvers<ContextType>;
   Date?: GraphQLScalarType;
   DateTime?: GraphQLScalarType;
   Mutation?: MutationResolvers<ContextType>;
+  Patient?: PatientResolvers<ContextType>;
   Provider?: ProviderResolvers<ContextType>;
   Query?: QueryResolvers<ContextType>;
   Recommendation?: RecommendationResolvers<ContextType>;
