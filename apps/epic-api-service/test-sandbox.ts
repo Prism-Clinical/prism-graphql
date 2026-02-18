@@ -17,7 +17,7 @@ async function runTest() {
       "/Users/wyethjackson_1/codebase/prism-codebase/prism-graphql/keys/epic-private-key.pem",
     kid: "prism-clinical-sandbox",
     scope:
-      "system/Patient.rs system/Observation.rs system/MedicationRequest.rs system/Condition.rs",
+      "system/Patient.rs system/Observation.rs system/MedicationRequest.rs system/Condition.rs system/AllergyIntolerance.rs",
     tokenRefreshBufferSeconds: 30,
   });
   setAuthClient(authClient);

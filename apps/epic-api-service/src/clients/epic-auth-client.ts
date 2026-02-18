@@ -110,7 +110,7 @@ export class EpicAuthClient {
       scope:
         config?.scope ||
         process.env.EPIC_SCOPE ||
-        "system/Patient.rs system/Observation.rs system/MedicationRequest.rs system/Condition.rs",
+        "system/Patient.rs system/Observation.rs system/MedicationRequest.rs system/Condition.rs system/AllergyIntolerance.rs",
       tokenRefreshBufferSeconds: config?.tokenRefreshBufferSeconds ?? 30,
     };
     this.logger = createLogger("epic-auth-client");
