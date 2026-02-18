@@ -30,6 +30,7 @@ export const CACHE_TTL = {
   LABS: 300, // 5 minutes
   MEDICATIONS: 600, // 10 minutes
   CONDITIONS: 600, // 10 minutes
+  ALLERGIES: 600, // 10 minutes
   MEDICATION_REF: 3600, // 1 hour (reference data is stable)
 } as const;
 
@@ -38,7 +39,8 @@ export type CacheResource =
   | "vitals"
   | "labs"
   | "medications"
-  | "conditions";
+  | "conditions"
+  | "allergies";
 
 function cacheKey(resource: CacheResource, epicPatientId: string): string {
   return `epic:${resource}:${epicPatientId}`;
@@ -85,6 +87,7 @@ export async function setCached<T>(
     labs: CACHE_TTL.LABS,
     medications: CACHE_TTL.MEDICATIONS,
     conditions: CACHE_TTL.CONDITIONS,
+    allergies: CACHE_TTL.ALLERGIES,
   };
   try {
     await r.setex(key, ttlMap[resource], JSON.stringify(data));
@@ -107,6 +110,7 @@ export async function invalidatePatientCache(
     "labs",
     "medications",
     "conditions",
+    "allergies",
   ];
   const keys = resources.map((res) => cacheKey(res, epicPatientId));
   try {
