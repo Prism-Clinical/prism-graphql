@@ -1,0 +1,13 @@
+# Docker Compose override for Epic FHIR sandbox.
+# Usage: docker compose -f docker-compose.yml -f docker-compose.epic-sandbox.yml up -d
+#
+# Note: Docker Compose deep-merges depends_on mappings, so epic-mock from
+# the base file will still start. This is harmless — epic-api-service
+# simply ignores it and talks to fhir.epic.com instead.
+services:
+  epic-api-service:
+    environment:
+      - EPIC_BASE_URL=https://fhir.epic.com/interconnect-fhir-oauth/api/FHIR/R4
+      - EPIC_CLIENT_ID=b071ea66-9918-43f2-ae82-9a67a322ca36
+      - EPIC_TOKEN_URL=https://fhir.epic.com/interconnect-fhir-oauth/oauth2/token
+      - EPIC_AUTH_ENABLED=true
