@@ -26,11 +26,13 @@ import {
   transformLabResults,
   transformMedications,
   transformConditions,
+  transformAllergyIntolerances,
   type PatientDemographicsOut,
   type VitalOut,
   type LabResultOut,
   type MedicationOut,
   type DiagnosisOut,
+  type AllergyOut,
 } from "./services/transforms";
 import { getCached, setCached, getCachedMedicationRef, setCachedMedicationRef, invalidatePatientCache } from "./services/cache";
 import { createSnapshot, getLatestSnapshot, getSnapshotHistory, getSnapshot, type SnapshotData, type ClinicalSnapshotFull, type SnapshotSummary } from "./services/database";
@@ -46,6 +48,7 @@ interface EpicPatientData {
   labs: LabResultOut[];
   medications: MedicationOut[];
   diagnoses: DiagnosisOut[];
+  allergies: AllergyOut[];
   lastSync: string;
   errors: DataFetchError[];
 }
@@ -386,6 +389,39 @@ export const typeDefs = gql`
   }
 
   # =========================================================================
+  # Allergies / Intolerances
+  # =========================================================================
+
+  type AllergyReaction {
+    substance: CodeableConcept
+    manifestations: [CodeableConcept!]!
+    description: String
+    onset: String
+    severity: String
+    exposureRoute: CodeableConcept
+  }
+
+  type Allergy {
+    id: String
+    code: CodeableConcept
+    clinicalStatus: CodeableConcept
+    verificationStatus: CodeableConcept
+    type: String
+    categories: [String!]!
+    criticality: String
+    onsetDateTime: String
+    onsetAge: Float
+    onsetString: String
+    recordedDate: String
+    lastOccurrence: String
+    recorder: ReferenceInfo
+    asserter: ReferenceInfo
+    encounter: ReferenceInfo
+    reactions: [AllergyReaction!]!
+    notes: [String!]!
+  }
+
+  # =========================================================================
   # Error types
   # =========================================================================
 
@@ -415,6 +451,7 @@ export const typeDefs = gql`
     labs: [LabResult!]!
     medications: [Medication!]!
     diagnoses: [Diagnosis!]!
+    allergies: [Allergy!]!
   }
 
   type SnapshotSummary {
@@ -427,6 +464,7 @@ export const typeDefs = gql`
     labCount: Int!
     medicationCount: Int!
     diagnosisCount: Int!
+    allergyCount: Int!
   }
 
   type SnapshotResult {
@@ -445,6 +483,7 @@ export const typeDefs = gql`
     labs: [LabResult!]!
     medications: [Medication!]!
     diagnoses: [Diagnosis!]!
+    allergies: [Allergy!]!
     lastSync: String
     errors: [DataFetchError!]!
   }
@@ -470,6 +509,7 @@ export const typeDefs = gql`
     LABS
     MEDICATIONS
     DIAGNOSES
+    ALLERGIES
   }
 
   enum SnapshotTrigger {
@@ -558,12 +598,14 @@ export const resolvers = {
         cachedLabs,
         cachedMedications,
         cachedDiagnoses,
+        cachedAllergies,
       ] = await Promise.all([
         getCached<PatientDemographicsOut>("patient", epicPatientId),
         getCached<VitalOut[]>("vitals", epicPatientId),
         getCached<LabResultOut[]>("labs", epicPatientId),
         getCached<MedicationOut[]>("medications", epicPatientId),
         getCached<DiagnosisOut[]>("conditions", epicPatientId),
+        getCached<AllergyOut[]>("allergies", epicPatientId),
       ]);
 
       // If everything is cached, return immediately
@@ -572,7 +614,8 @@ export const resolvers = {
         cachedVitals &&
         cachedLabs &&
         cachedMedications &&
-        cachedDiagnoses
+        cachedDiagnoses &&
+        cachedAllergies
       ) {
         logger.info("Full cache hit for patient data", {
           requestId,
@@ -585,6 +628,7 @@ export const resolvers = {
           labs: cachedLabs,
           medications: cachedMedications,
           diagnoses: cachedDiagnoses,
+          allergies: cachedAllergies,
           lastSync: new Date().toISOString(),
           errors: [],
         };
@@ -594,7 +638,7 @@ export const resolvers = {
       // Fetch missing data from Epic in parallel using allSettled
       // Each fetcher returns its typed result; failures are captured below.
       // -----------------------------------------------------------------------
-      const [demoResult, vitalsResult, labsResult, medsResult, dxResult] =
+      const [demoResult, vitalsResult, labsResult, medsResult, dxResult, allergyResult] =
         await Promise.allSettled([
           // Demographics
           cachedDemographics
@@ -662,14 +706,25 @@ export const resolvers = {
                 await setCached("conditions", epicPatientId, transformed);
                 return transformed;
               })(),
+
+          // Allergies
+          cachedAllergies
+            ? Promise.resolve(cachedAllergies)
+            : (async (): Promise<AllergyOut[]> => {
+                const result = await fhirClient.getAllergyIntolerances(epicPatientId, requestId);
+                const allergyIntolerances = result.data.entry?.map((e) => e.resource) || [];
+                const transformed = transformAllergyIntolerances(allergyIntolerances);
+                await setCached("allergies", epicPatientId, transformed);
+                return transformed;
+              })(),
         ]);
 
       // -----------------------------------------------------------------------
       // Extract results — collect errors for any rejected fetches
       // -----------------------------------------------------------------------
       const errors: DataFetchError[] = [];
-      const dataTypeLabels = ["DEMOGRAPHICS", "VITALS", "LABS", "MEDICATIONS", "DIAGNOSES"] as const;
-      const results = [demoResult, vitalsResult, labsResult, medsResult, dxResult];
+      const dataTypeLabels = ["DEMOGRAPHICS", "VITALS", "LABS", "MEDICATIONS", "DIAGNOSES", "ALLERGIES"] as const;
+      const results = [demoResult, vitalsResult, labsResult, medsResult, dxResult, allergyResult];
       for (let i = 0; i < results.length; i++) {
         const r = results[i];
         if (r.status === "rejected") {
@@ -686,6 +741,7 @@ export const resolvers = {
       const labs = labsResult.status === "fulfilled" ? labsResult.value : [];
       const medications = medsResult.status === "fulfilled" ? medsResult.value : [];
       const diagnoses = dxResult.status === "fulfilled" ? dxResult.value : [];
+      const allergies = allergyResult.status === "fulfilled" ? allergyResult.value : [];
 
       logger.info("Epic patient data fetch completed", {
         requestId,
@@ -696,6 +752,7 @@ export const resolvers = {
         labCount: labs.length,
         medicationCount: medications.length,
         diagnosisCount: diagnoses.length,
+        allergyCount: allergies.length,
       });
 
       return {
@@ -705,6 +762,7 @@ export const resolvers = {
         labs,
         medications,
         diagnoses,
+        allergies,
         lastSync: new Date().toISOString(),
         errors,
       };
@@ -963,13 +1021,14 @@ export const resolvers = {
       });
 
       // Always fetch fresh data for snapshots (bypass cache)
-      const [patientResult, vitalsResult, labsResult, medsResult, conditionsResult] =
+      const [patientResult, vitalsResult, labsResult, medsResult, conditionsResult, allergyResult] =
         await Promise.allSettled([
           fhirClient.getPatient(epicPatientId, requestId),
           fhirClient.getObservations(epicPatientId, "vital-signs", requestId),
           fhirClient.getLabObservations(epicPatientId, requestId),
           fhirClient.getMedicationRequests(epicPatientId, requestId),
           fhirClient.getConditions(epicPatientId, requestId),
+          fhirClient.getAllergyIntolerances(epicPatientId, requestId),
         ]);
 
       // Transform demographics
@@ -1010,12 +1069,21 @@ export const resolvers = {
         diagnoses = transformConditions(conditions);
       }
 
+      // Transform allergies
+      let allergies: AllergyOut[] = [];
+      if (allergyResult.status === "fulfilled") {
+        const allergyIntolerances =
+          allergyResult.value.data.entry?.map((e) => e.resource) || [];
+        allergies = transformAllergyIntolerances(allergyIntolerances);
+      }
+
       const snapshotData: SnapshotData = {
         demographics,
         vitals,
         labs,
         medications,
         diagnoses,
+        allergies,
       };
 
       const snapshot = await createSnapshot(
@@ -1031,6 +1099,7 @@ export const resolvers = {
       await setCached("labs", epicPatientId, labs);
       await setCached("medications", epicPatientId, medications);
       await setCached("conditions", epicPatientId, diagnoses);
+      await setCached("allergies", epicPatientId, allergies);
 
       logger.info("Clinical snapshot created successfully", {
         requestId,
