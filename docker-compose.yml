@@ -849,23 +849,28 @@ services:
     networks:
       - healthcare-network
 
-  # Web Dashboard (Next.js Frontend)
+  # Web Dashboard (Next.js Frontend - prism-provider-front-end)
   web-dashboard:
     build:
-      context: ./apps/web-dashboard
-      dockerfile: Dockerfile
+      context: ../prism-provider-front-end
+      dockerfile: Dockerfile.dev
     container_name: healthcare-web-dashboard
     ports:
       - "3000:3000"
     environment:
-      - NODE_ENV=production
+      - NODE_ENV=development
+      - NEXT_PUBLIC_GRAPHQL_URL=http://gateway:4000/graphql
+    volumes:
+      - ../prism-provider-front-end/src:/app/src
+      - ../prism-provider-front-end/public:/app/public
     depends_on:
       - gateway
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/api/health"]
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000"]
       interval: 30s
       timeout: 10s
-      retries: 3
+      retries: 5
+      start_period: 30s
     restart: unless-stopped
     networks:
       - healthcare-network
