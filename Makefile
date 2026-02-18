@@ -1,8 +1,9 @@
 # Healthcare GraphQL Federation Makefile
 # Docker and Kubernetes deployment management
 
-.PHONY: help compose-up compose-down compose-logs compose-build compose-restart
+.PHONY: help compose-up compose-down compose-logs compose-build compose-restart compose-up-epic
 .PHONY: docker-build docker-clean k8s-deploy k8s-delete k8s-status
+.PHONY: seed-epic-data seed-epic-sql
 
 # Default target
 .DEFAULT_GOAL := help
@@ -52,7 +53,16 @@ compose-restart: ## Docker - Restart all services
 	@docker compose restart
 	@echo "$(GREEN)✓ All services restarted$(NC)"
 
-# Individual Docker Commands  
+compose-up-epic: ## Docker - Start services with Epic FHIR sandbox (not mock)
+	@echo "$(BLUE)Starting with Epic FHIR sandbox...$(NC)"
+	@if [ ! -f keys/epic-private-key.pem ]; then \
+		echo "$(RED)Missing keys/epic-private-key.pem$(NC)"; \
+		exit 1; \
+	fi
+	@docker compose -f docker-compose.yml -f docker-compose.epic-sandbox.yml up -d --build
+	@echo "$(GREEN)✅ Services started with Epic sandbox! Gateway at http://localhost:4000$(NC)"
+
+# Individual Docker Commands
 docker-build: ## Docker - Build images without compose
 	@echo "$(BLUE)Building individual Docker images...$(NC)"
 	@docker build -t healthcare-gateway ./gateway
@@ -110,6 +120,15 @@ migrate-clean: ## Database - Clean database and re-run all migrations
 	@docker compose exec postgres psql -U postgres -d healthcare_federation -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"
 	@./run-migrations.sh
 	@echo "$(GREEN)✓ Database cleaned and migrations completed$(NC)"
+
+seed-epic-data: ## Database - Seed Epic sandbox test patients + clinical snapshots
+	@echo "$(BLUE)Seeding Epic sandbox data...$(NC)"
+	@./shared/data-layer/seed/seed-runner.sh
+
+seed-epic-sql: ## Database - Seed patients/providers/institutions only (no snapshots)
+	@echo "$(BLUE)Seeding SQL data only...$(NC)"
+	@docker compose exec -T postgres psql -U postgres -d healthcare_federation < shared/data-layer/seed/epic-sandbox-patients.sql
+	@echo "$(GREEN)✓ SQL seed completed$(NC)"
 
 # Testing Commands
 test: ## Test - Run all tests
