@@ -180,10 +180,10 @@ class CarePlanService {
              last_reviewed_by as "lastReviewedBy",
              source_transcription_id as "sourceTranscriptionId",
              source_rag_synthesis_id as "sourceRAGSynthesisId",
-             template_id as "templateId",
+             care_plan_id as "templateId",
              created_at as "createdAt", created_by as "createdBy",
              updated_at as "updatedAt"
-      FROM care_plans
+      FROM patient_care_plans
       WHERE id = $1
     `;
 
@@ -222,7 +222,7 @@ class CarePlanService {
              next_review_date as "nextReviewDate",
              created_at as "createdAt", created_by as "createdBy",
              updated_at as "updatedAt"
-      FROM care_plans
+      FROM patient_care_plans
       WHERE 1=1
     `;
 
@@ -289,7 +289,7 @@ class CarePlanService {
              next_review_date as "nextReviewDate",
              created_at as "createdAt", created_by as "createdBy",
              updated_at as "updatedAt"
-      FROM care_plans
+      FROM patient_care_plans
       WHERE patient_id = $1 AND status = 'ACTIVE'
       ORDER BY created_at DESC
       LIMIT 1
@@ -319,8 +319,8 @@ class CarePlanService {
     const id = uuidv4();
 
     const query = `
-      INSERT INTO care_plans (id, patient_id, title, status, condition_codes, start_date,
-                              target_end_date, template_id, source_transcription_id,
+      INSERT INTO patient_care_plans (id, patient_id, title, status, condition_codes, start_date,
+                              target_end_date, care_plan_id, source_transcription_id,
                               source_rag_synthesis_id, created_by)
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
       RETURNING id, patient_id as "patientId", title, status,
@@ -356,7 +356,7 @@ class CarePlanService {
     ensureInitialized();
 
     const query = `
-      UPDATE care_plans
+      UPDATE patient_care_plans
       SET status = $1, updated_at = NOW()
       WHERE id = $2
       RETURNING id, patient_id as "patientId", title, status,
@@ -382,15 +382,15 @@ class CarePlanService {
     ensureInitialized();
 
     const query = `
-      SELECT id, care_plan_id as "carePlanId", description,
+      SELECT id, patient_care_plan_id as "carePlanId", description,
              target_value as "targetValue", target_date as "targetDate",
              status, priority, current_value as "currentValue",
              percent_complete as "percentComplete",
              linked_intervention_ids as "linkedInterventionIds",
              guideline_reference as "guidelineReference",
              created_at as "createdAt", updated_at as "updatedAt"
-      FROM care_plan_goals
-      WHERE care_plan_id = $1
+      FROM patient_care_plan_goals
+      WHERE patient_care_plan_id = $1
       ORDER BY priority ASC, created_at ASC
     `;
 
@@ -407,7 +407,7 @@ class CarePlanService {
     ensureInitialized();
 
     const query = `
-      SELECT id, care_plan_id as "carePlanId", type, description,
+      SELECT id, patient_care_plan_id as "carePlanId", type, description,
              medication_code as "medicationCode", dosage, frequency,
              procedure_code as "procedureCode",
              referral_specialty as "referralSpecialty",
@@ -417,8 +417,8 @@ class CarePlanService {
              provider_notes as "providerNotes",
              guideline_reference as "guidelineReference",
              created_at as "createdAt", updated_at as "updatedAt"
-      FROM care_plan_interventions
-      WHERE care_plan_id = $1
+      FROM patient_care_plan_interventions
+      WHERE patient_care_plan_id = $1
       ORDER BY scheduled_date ASC NULLS LAST, created_at ASC
     `;
 
@@ -443,10 +443,10 @@ class CarePlanService {
     const id = uuidv4();
 
     const query = `
-      INSERT INTO care_plan_goals (id, care_plan_id, description, target_value,
+      INSERT INTO patient_care_plan_goals (id, patient_care_plan_id, description, target_value,
                                    target_date, status, priority, guideline_reference)
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-      RETURNING id, care_plan_id as "carePlanId", description,
+      RETURNING id, patient_care_plan_id as "carePlanId", description,
                 target_value as "targetValue", target_date as "targetDate",
                 status, priority, guideline_reference as "guidelineReference",
                 created_at as "createdAt", updated_at as "updatedAt"
@@ -488,13 +488,13 @@ class CarePlanService {
     const id = uuidv4();
 
     const query = `
-      INSERT INTO care_plan_interventions (id, care_plan_id, type, description,
+      INSERT INTO patient_care_plan_interventions (id, patient_care_plan_id, type, description,
                                            medication_code, dosage, frequency,
                                            procedure_code, referral_specialty,
                                            status, scheduled_date, patient_instructions,
                                            guideline_reference)
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-      RETURNING id, care_plan_id as "carePlanId", type, description,
+      RETURNING id, patient_care_plan_id as "carePlanId", type, description,
                 medication_code as "medicationCode", dosage, frequency,
                 procedure_code as "procedureCode",
                 referral_specialty as "referralSpecialty",
@@ -787,7 +787,7 @@ class CarePlanService {
   async deleteGoal(goalId: string): Promise<boolean> {
     ensureInitialized();
 
-    const query = `DELETE FROM care_plan_goals WHERE id = $1`;
+    const query = `DELETE FROM patient_care_plan_goals WHERE id = $1`;
 
     try {
       const result = await pool.query(query, [goalId]);
@@ -801,7 +801,7 @@ class CarePlanService {
   async deleteIntervention(interventionId: string): Promise<boolean> {
     ensureInitialized();
 
-    const query = `DELETE FROM care_plan_interventions WHERE id = $1`;
+    const query = `DELETE FROM patient_care_plan_interventions WHERE id = $1`;
 
     try {
       const result = await pool.query(query, [interventionId]);

@@ -111,8 +111,10 @@ CREATE INDEX IF NOT EXISTS idx_review_queue_status ON review_queue(status);
 CREATE INDEX IF NOT EXISTS idx_review_queue_priority ON review_queue(priority);
 CREATE INDEX IF NOT EXISTS idx_review_queue_sla ON review_queue(sla_deadline)
     WHERE status IN ('PENDING_REVIEW', 'IN_REVIEW');
-CREATE INDEX IF NOT EXISTS idx_review_queue_overdue ON review_queue(sla_deadline)
-    WHERE status IN ('PENDING_REVIEW', 'IN_REVIEW') AND sla_deadline < CURRENT_TIMESTAMP;
+-- Overdue items should be found via application query, not a partial index
+-- (CURRENT_TIMESTAMP is not IMMUTABLE so cannot be used in index predicates)
+CREATE INDEX IF NOT EXISTS idx_review_queue_overdue ON review_queue(status, sla_deadline)
+    WHERE status IN ('PENDING_REVIEW', 'IN_REVIEW');
 
 -- Triggers for updated_at
 CREATE OR REPLACE FUNCTION update_safety_check_updated_at()

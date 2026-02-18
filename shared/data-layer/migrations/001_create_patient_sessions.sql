@@ -19,6 +19,3 @@ CREATE INDEX idx_patient_sessions_patient_id ON patient_sessions(patient_id);
 CREATE INDEX idx_patient_sessions_epic_patient_id ON patient_sessions(epic_patient_id);
 CREATE INDEX idx_patient_sessions_status ON patient_sessions(status);
 CREATE INDEX idx_patient_sessions_expires_at ON patient_sessions(expires_at);
-
--- DOWN
-DROP TABLE IF EXISTS patient_sessions;

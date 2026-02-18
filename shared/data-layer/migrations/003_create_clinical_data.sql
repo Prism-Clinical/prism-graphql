@@ -26,6 +26,3 @@ CREATE INDEX idx_clinical_data_patient_type ON clinical_data(patient_id, data_ty
 
 -- Composite unique constraint to prevent duplicate data
 CREATE UNIQUE INDEX idx_clinical_data_unique ON clinical_data(patient_id, data_type, source_system);
-
--- DOWN
-DROP TABLE IF EXISTS clinical_data;
