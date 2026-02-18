@@ -280,6 +280,42 @@ export interface FHIRMedication {
 }
 
 // =============================================================================
+// TYPES — FHIR AllergyIntolerance (R4)
+// =============================================================================
+
+export interface FHIRAllergyIntoleranceReaction {
+  substance?: FHIRCodeableConcept;
+  manifestation: FHIRCodeableConcept[];
+  description?: string;
+  onset?: string;
+  severity?: string;
+  exposureRoute?: FHIRCodeableConcept;
+  note?: FHIRAnnotation[];
+}
+
+export interface FHIRAllergyIntolerance {
+  resourceType?: string;
+  id?: string;
+  clinicalStatus?: FHIRCodeableConcept;
+  verificationStatus?: FHIRCodeableConcept;
+  type?: string;
+  category?: string[];
+  criticality?: string;
+  code?: FHIRCodeableConcept;
+  patient?: FHIRReference;
+  encounter?: FHIRReference;
+  onsetDateTime?: string;
+  onsetAge?: { value: number; unit: string };
+  onsetString?: string;
+  recordedDate?: string;
+  recorder?: FHIRReference;
+  asserter?: FHIRReference;
+  lastOccurrence?: string;
+  note?: FHIRAnnotation[];
+  reaction?: FHIRAllergyIntoleranceReaction[];
+}
+
+// =============================================================================
 // CLIENT IMPLEMENTATION
 // =============================================================================
 
@@ -365,6 +401,13 @@ export class EpicFhirClient {
     requestId?: string
   ): Promise<AxiosResponse<FHIRBundle<FHIRCondition>>> {
     return this.get(`Condition`, { patient: patientId }, requestId);
+  }
+
+  async getAllergyIntolerances(
+    patientId: string,
+    requestId?: string
+  ): Promise<AxiosResponse<FHIRBundle<FHIRAllergyIntolerance>>> {
+    return this.get(`AllergyIntolerance`, { patient: patientId }, requestId);
   }
 
   async getLabObservations(

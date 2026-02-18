@@ -11,6 +11,7 @@ import type {
   FHIRMedicationRequest,
   FHIRCondition,
   FHIRMedication,
+  FHIRAllergyIntolerance,
   FHIRCodeableConcept,
   FHIRReference,
   FHIRExtension,
@@ -269,6 +270,35 @@ export interface DiagnosisOut {
   asserter: ReferenceInfo | null;
   stage: ConditionStageOut[];
   evidence: ConditionEvidenceOut[];
+  notes: string[];
+}
+
+export interface AllergyReactionOut {
+  substance: CodeableConceptOut | null;
+  manifestations: CodeableConceptOut[];
+  description: string | null;
+  onset: string | null;
+  severity: string | null;
+  exposureRoute: CodeableConceptOut | null;
+}
+
+export interface AllergyOut {
+  id: string | null;
+  code: CodeableConceptOut | null;
+  clinicalStatus: CodeableConceptOut | null;
+  verificationStatus: CodeableConceptOut | null;
+  type: string | null;
+  categories: string[];
+  criticality: string | null;
+  onsetDateTime: string | null;
+  onsetAge: number | null;
+  onsetString: string | null;
+  recordedDate: string | null;
+  lastOccurrence: string | null;
+  recorder: ReferenceInfo | null;
+  asserter: ReferenceInfo | null;
+  encounter: ReferenceInfo | null;
+  reactions: AllergyReactionOut[];
   notes: string[];
 }
 
@@ -725,5 +755,40 @@ export function transformConditions(
       detail: transformReferenceArray(e.detail),
     })),
     notes: (cond.note || []).map((n) => n.text),
+  }));
+}
+
+// =============================================================================
+// Transform: Allergy Intolerances
+// =============================================================================
+
+export function transformAllergyIntolerances(
+  allergyIntolerances: FHIRAllergyIntolerance[]
+): AllergyOut[] {
+  return allergyIntolerances.map((ai) => ({
+    id: ai.id || null,
+    code: transformCodeableConcept(ai.code),
+    clinicalStatus: transformCodeableConcept(ai.clinicalStatus),
+    verificationStatus: transformCodeableConcept(ai.verificationStatus),
+    type: ai.type || null,
+    categories: ai.category || [],
+    criticality: ai.criticality || null,
+    onsetDateTime: ai.onsetDateTime || null,
+    onsetAge: ai.onsetAge?.value ?? null,
+    onsetString: ai.onsetString || null,
+    recordedDate: ai.recordedDate || null,
+    lastOccurrence: ai.lastOccurrence || null,
+    recorder: transformReference(ai.recorder),
+    asserter: transformReference(ai.asserter),
+    encounter: transformReference(ai.encounter),
+    reactions: (ai.reaction || []).map((r) => ({
+      substance: transformCodeableConcept(r.substance),
+      manifestations: transformCodeableConceptArray(r.manifestation),
+      description: r.description || null,
+      onset: r.onset || null,
+      severity: r.severity || null,
+      exposureRoute: transformCodeableConcept(r.exposureRoute),
+    })),
+    notes: (ai.note || []).map((n) => n.text),
   }));
 }
