@@ -950,6 +950,20 @@ export const resolvers = {
                 success: true,
               };
             }
+            case "ALLERGIES": {
+              const result = await fhirClient.getAllergyIntolerances(
+                epicPatientId,
+                requestId
+              );
+              const allergyIntolerances = result.data.entry?.map((e) => e.resource) || [];
+              const transformed = transformAllergyIntolerances(allergyIntolerances);
+              await setCached("allergies", epicPatientId, transformed);
+              return {
+                dataType,
+                records: transformed.length,
+                success: true,
+              };
+            }
             default:
               return {
                 dataType,
