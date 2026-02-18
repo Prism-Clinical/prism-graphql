@@ -13,6 +13,7 @@ import type {
   LabResultOut,
   MedicationOut,
   DiagnosisOut,
+  AllergyOut,
 } from "./transforms";
 
 const logger = createLogger("epic-database");
@@ -43,6 +44,7 @@ export interface SnapshotData {
   labs: LabResultOut[];
   medications: MedicationOut[];
   diagnoses: DiagnosisOut[];
+  allergies: AllergyOut[];
 }
 
 export interface ClinicalSnapshotFull extends SnapshotData {
@@ -63,6 +65,7 @@ export interface SnapshotSummary {
   labCount: number;
   medicationCount: number;
   diagnosisCount: number;
+  allergyCount: number;
 }
 
 // =============================================================================
@@ -119,6 +122,9 @@ export async function createSnapshot(
     if (data.diagnoses.length > 0) {
       await insertConditionsBatch(client, snapshotId, data.diagnoses);
     }
+    if (data.allergies.length > 0) {
+      await insertAllergiesBatch(client, snapshotId, data.allergies);
+    }
 
     await client.query("COMMIT");
 
@@ -131,6 +137,7 @@ export async function createSnapshot(
       labCount: data.labs.length,
       medicationCount: data.medications.length,
       diagnosisCount: data.diagnoses.length,
+      allergyCount: data.allergies.length,
     });
 
     return {
@@ -213,7 +220,8 @@ export async function getSnapshotHistory(
        (SELECT COUNT(*) FROM snapshot_vitals v WHERE v.snapshot_id = s.id)::int AS vital_count,
        (SELECT COUNT(*) FROM snapshot_lab_results l WHERE l.snapshot_id = s.id)::int AS lab_count,
        (SELECT COUNT(*) FROM snapshot_medications m WHERE m.snapshot_id = s.id)::int AS medication_count,
-       (SELECT COUNT(*) FROM snapshot_conditions c WHERE c.snapshot_id = s.id)::int AS diagnosis_count
+       (SELECT COUNT(*) FROM snapshot_conditions c WHERE c.snapshot_id = s.id)::int AS diagnosis_count,
+       (SELECT COUNT(*) FROM snapshot_allergies a WHERE a.snapshot_id = s.id)::int AS allergy_count
      FROM patient_clinical_snapshots s
      WHERE s.epic_patient_id = $1
      ORDER BY s.snapshot_version DESC
@@ -231,6 +239,7 @@ export async function getSnapshotHistory(
     labCount: row.lab_count as number,
     medicationCount: row.medication_count as number,
     diagnosisCount: row.diagnosis_count as number,
+    allergyCount: row.allergy_count as number,
   }));
 }
 
@@ -393,6 +402,28 @@ async function insertConditionsBatch(
   await client.query(text, values);
 }
 
+async function insertAllergiesBatch(
+  client: PoolClient,
+  snapshotId: string,
+  allergies: AllergyOut[]
+): Promise<void> {
+  const columns = [
+    "snapshot_id", "allergy_intolerance_id", "code", "clinical_status",
+    "verification_status", "type", "categories", "criticality",
+    "onset_date_time", "onset_age", "onset_string", "recorded_date",
+    "last_occurrence", "recorder", "asserter", "encounter", "reactions", "notes",
+  ];
+  const rows = allergies.map((a) => [
+    snapshotId, a.id, JSON.stringify(a.code), JSON.stringify(a.clinicalStatus),
+    JSON.stringify(a.verificationStatus), a.type, a.categories, a.criticality,
+    a.onsetDateTime, a.onsetAge, a.onsetString, a.recordedDate,
+    a.lastOccurrence, JSON.stringify(a.recorder), JSON.stringify(a.asserter),
+    JSON.stringify(a.encounter), JSON.stringify(a.reactions), a.notes,
+  ]);
+  const { text, values } = buildBatchInsert("snapshot_allergies", columns, rows);
+  await client.query(text, values);
+}
+
 // =============================================================================
 // Helper: Load full snapshot details from DB
 // =============================================================================
@@ -407,7 +438,7 @@ async function loadSnapshotDetails(
     created_at: string;
   }
 ): Promise<ClinicalSnapshotFull> {
-  const [demoResult, vitalsResult, labsResult, medsResult, conditionsResult] =
+  const [demoResult, vitalsResult, labsResult, medsResult, conditionsResult, allergiesResult] =
     await Promise.all([
       db.query(
         `SELECT first_name, last_name, gender, date_of_birth, mrn, active,
@@ -448,6 +479,14 @@ async function loadSnapshotDetails(
                 abatement_age, abatement_string, recorded_date, recorder,
                 asserter, stage, evidence, notes
          FROM snapshot_conditions WHERE snapshot_id = $1 ORDER BY code`,
+        [row.id]
+      ),
+      db.query(
+        `SELECT allergy_intolerance_id, code, clinical_status, verification_status,
+                type, categories, criticality, onset_date_time, onset_age,
+                onset_string, recorded_date, last_occurrence, recorder,
+                asserter, encounter, reactions, notes
+         FROM snapshot_allergies WHERE snapshot_id = $1 ORDER BY allergy_intolerance_id`,
         [row.id]
       ),
     ]);
@@ -563,6 +602,25 @@ async function loadSnapshotDetails(
       asserter: r.asserter as DiagnosisOut["asserter"],
       stage: (r.stage || []) as DiagnosisOut["stage"],
       evidence: (r.evidence || []) as DiagnosisOut["evidence"],
+      notes: (r.notes || []) as string[],
+    })),
+    allergies: allergiesResult.rows.map((r: Record<string, unknown>) => ({
+      id: r.allergy_intolerance_id as string | null,
+      code: r.code as AllergyOut["code"],
+      clinicalStatus: r.clinical_status as AllergyOut["clinicalStatus"],
+      verificationStatus: r.verification_status as AllergyOut["verificationStatus"],
+      type: r.type as string | null,
+      categories: (r.categories || []) as string[],
+      criticality: r.criticality as string | null,
+      onsetDateTime: r.onset_date_time as string | null,
+      onsetAge: r.onset_age ? parseFloat(r.onset_age as string) : null,
+      onsetString: r.onset_string as string | null,
+      recordedDate: r.recorded_date as string | null,
+      lastOccurrence: r.last_occurrence as string | null,
+      recorder: r.recorder as AllergyOut["recorder"],
+      asserter: r.asserter as AllergyOut["asserter"],
+      encounter: r.encounter as AllergyOut["encounter"],
+      reactions: (r.reactions || []) as AllergyOut["reactions"],
       notes: (r.notes || []) as string[],
     })),
   };
