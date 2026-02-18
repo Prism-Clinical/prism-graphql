@@ -38,6 +38,8 @@
 --      - Camila Lopez:    erXuFYUfucBZaryVksYEcMg3
 --      - Derrick Lin:     eq081-VQEgP8drUUqCWzHfw3
 --      - Jason Argonaut:  TgnR.yiGmEKkry0K5Rnj4kgB
+--      - Linda Ross:      eIXesllypH3M9tAA5WdJftQ3
+--      - Jayden Jackson:  eNO3wqOfAltfnWMfWBQ1WmQ3
 --
 -- ============================================================================
 
@@ -114,6 +116,90 @@ INSERT INTO patients (
     'female',
     'EPIC-SEED-001',
     'erXuFYUfucBZaryVksYEcMg3'
+) ON CONFLICT (medical_record_number) DO NOTHING;
+
+-- ---------------------------------------------------------------------------
+-- Patient: Derrick Lin (Epic sandbox)
+-- ---------------------------------------------------------------------------
+INSERT INTO patients (
+    id,
+    first_name,
+    last_name,
+    date_of_birth,
+    gender,
+    medical_record_number,
+    epic_patient_id
+) VALUES (
+    '00000000-0000-4000-b000-000000000002',
+    'Derrick',
+    'Lin',
+    '1973-06-15',
+    'male',
+    'EPIC-SEED-002',
+    'eq081-VQEgP8drUUqCWzHfw3'
+) ON CONFLICT (medical_record_number) DO NOTHING;
+
+-- ---------------------------------------------------------------------------
+-- Patient: Jason Argonaut (Epic sandbox)
+-- ---------------------------------------------------------------------------
+INSERT INTO patients (
+    id,
+    first_name,
+    last_name,
+    date_of_birth,
+    gender,
+    medical_record_number,
+    epic_patient_id
+) VALUES (
+    '00000000-0000-4000-b000-000000000003',
+    'Jason',
+    'Argonaut',
+    '1985-08-01',
+    'male',
+    'EPIC-SEED-003',
+    'TgnR.yiGmEKkry0K5Rnj4kgB'
+) ON CONFLICT (medical_record_number) DO NOTHING;
+
+-- ---------------------------------------------------------------------------
+-- Patient: Linda Ross (Epic sandbox)
+-- ---------------------------------------------------------------------------
+INSERT INTO patients (
+    id,
+    first_name,
+    last_name,
+    date_of_birth,
+    gender,
+    medical_record_number,
+    epic_patient_id
+) VALUES (
+    '00000000-0000-4000-b000-000000000004',
+    'Linda',
+    'Ross',
+    '1967-03-22',
+    'female',
+    'EPIC-SEED-004',
+    'eIXesllypH3M9tAA5WdJftQ3'
+) ON CONFLICT (medical_record_number) DO NOTHING;
+
+-- ---------------------------------------------------------------------------
+-- Patient: Jayden Jackson (Epic sandbox)
+-- ---------------------------------------------------------------------------
+INSERT INTO patients (
+    id,
+    first_name,
+    last_name,
+    date_of_birth,
+    gender,
+    medical_record_number,
+    epic_patient_id
+) VALUES (
+    '00000000-0000-4000-b000-000000000005',
+    'Jayden',
+    'Jackson',
+    '2015-11-09',
+    'male',
+    'EPIC-SEED-005',
+    'eNO3wqOfAltfnWMfWBQ1WmQ3'
 ) ON CONFLICT (medical_record_number) DO NOTHING;
 
 COMMIT;
