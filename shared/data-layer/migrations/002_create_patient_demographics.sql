@@ -32,8 +32,3 @@ $$ language 'plpgsql';
 CREATE TRIGGER update_patient_demographics_updated_at 
     BEFORE UPDATE ON patient_demographics 
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-
--- DOWN
-DROP TRIGGER IF EXISTS update_patient_demographics_updated_at ON patient_demographics;
-DROP FUNCTION IF EXISTS update_updated_at_column();
-DROP TABLE IF EXISTS patient_demographics;

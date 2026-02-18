@@ -4,7 +4,7 @@
 -- UP
 CREATE TABLE recommendation_jobs (
     job_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    session_id UUID REFERENCES patient_sessions(session_id) ON DELETE CASCADE,
+    session_id UUID,
     patient_id VARCHAR(255) NOT NULL,
     status VARCHAR(50) NOT NULL DEFAULT 'pending',
     job_type VARCHAR(100) NOT NULL,
@@ -34,6 +34,3 @@ CREATE INDEX idx_recommendation_jobs_created_at ON recommendation_jobs(created_a
 -- Index for job queue processing (pending jobs by priority)
 CREATE INDEX idx_recommendation_jobs_queue ON recommendation_jobs(status, priority DESC, created_at ASC) 
 WHERE status = 'pending';
-
--- DOWN
-DROP TABLE IF EXISTS recommendation_jobs;
