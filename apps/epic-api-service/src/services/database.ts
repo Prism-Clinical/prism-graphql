@@ -80,12 +80,15 @@ export async function createSnapshot(
   try {
     await client.query("BEGIN");
 
-    // Compute next version (FOR UPDATE prevents concurrent transactions
-    // from reading the same max, avoiding duplicate version numbers)
+    // Lock existing rows for this patient to prevent concurrent version conflicts,
+    // then compute next version number.
+    await client.query(
+      `SELECT 1 FROM patient_clinical_snapshots WHERE epic_patient_id = $1 FOR UPDATE`,
+      [epicPatientId]
+    );
     const versionResult = await client.query(
       `SELECT COALESCE(MAX(snapshot_version), 0) + 1 AS next_version
-       FROM patient_clinical_snapshots WHERE epic_patient_id = $1
-       FOR UPDATE`,
+       FROM patient_clinical_snapshots WHERE epic_patient_id = $1`,
       [epicPatientId]
     );
     const snapshotVersion: number = versionResult.rows[0].next_version;
