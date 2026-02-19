@@ -214,6 +214,7 @@ export type Query = {
   provider?: Maybe<Provider>;
   providerByNpi?: Maybe<Provider>;
   providers: Array<Provider>;
+  todaySchedule: Array<Visit>;
   visit?: Maybe<Visit>;
   visitsByDateRange: Array<Visit>;
   visitsForCase: Array<Visit>;
@@ -247,6 +248,11 @@ export type QueryProviderByNpiArgs = {
 
 export type QueryProvidersArgs = {
   specialty?: InputMaybe<Scalars['String']['input']>;
+};
+
+
+export type QueryTodayScheduleArgs = {
+  providerId: Scalars['ID']['input'];
 };
 
 
@@ -569,6 +575,7 @@ export type QueryResolvers<ContextType = DataSourceContext, ParentType extends R
   provider?: Resolver<Maybe<ResolversTypes['Provider']>, ParentType, ContextType, RequireFields<QueryProviderArgs, 'id'>>;
   providerByNpi?: Resolver<Maybe<ResolversTypes['Provider']>, ParentType, ContextType, RequireFields<QueryProviderByNpiArgs, 'npi'>>;
   providers?: Resolver<Array<ResolversTypes['Provider']>, ParentType, ContextType, Partial<QueryProvidersArgs>>;
+  todaySchedule?: Resolver<Array<ResolversTypes['Visit']>, ParentType, ContextType, RequireFields<QueryTodayScheduleArgs, 'providerId'>>;
   visit?: Resolver<Maybe<ResolversTypes['Visit']>, ParentType, ContextType, RequireFields<QueryVisitArgs, 'id'>>;
   visitsByDateRange?: Resolver<Array<ResolversTypes['Visit']>, ParentType, ContextType, RequireFields<QueryVisitsByDateRangeArgs, 'endDate' | 'startDate'>>;
   visitsForCase?: Resolver<Array<ResolversTypes['Visit']>, ParentType, ContextType, RequireFields<QueryVisitsForCaseArgs, 'caseId'>>;

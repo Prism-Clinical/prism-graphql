@@ -29,6 +29,9 @@ export const Query: Resolvers = {
       const result = await visitService.getVisitsForPatient(patientId, { limit: 100, offset: 0 });
       return result.visits as any;
     },
+    async todaySchedule(_parent, { providerId }, _context) {
+      return await visitService.getVisitsForProviderOnDate(providerId, new Date()) as any;
+    },
     async patientVisits(_parent, { patientId, limit, offset }, _context) {
       const result = await visitService.getVisitsForPatient(patientId, {
         limit: limit ?? 10,

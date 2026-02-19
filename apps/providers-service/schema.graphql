@@ -107,6 +107,7 @@ type Query {
   visitsForHospital(hospitalId: ID!): [Visit!]!
   visitsForProvider(providerId: ID!): [Visit!]!
   visitsByDateRange(startDate: DateTime!, endDate: DateTime!): [Visit!]!
+  todaySchedule(providerId: ID!): [Visit!]!
 }
 
 type Mutation {
