@@ -187,6 +187,12 @@ export type Patient = {
   id: Scalars['ID']['output'];
 };
 
+export type PatientVisitsConnection = {
+  __typename?: 'PatientVisitsConnection';
+  nodes: Array<Visit>;
+  totalCount: Scalars['Int']['output'];
+};
+
 export type Provider = {
   __typename?: 'Provider';
   credentials: Scalars['String']['output'];
@@ -204,9 +210,11 @@ export type Provider = {
 export type Query = {
   __typename?: 'Query';
   facility?: Maybe<Facility>;
+  patientVisits: PatientVisitsConnection;
   provider?: Maybe<Provider>;
   providerByNpi?: Maybe<Provider>;
   providers: Array<Provider>;
+  todaySchedule: Array<Visit>;
   visit?: Maybe<Visit>;
   visitsByDateRange: Array<Visit>;
   visitsForCase: Array<Visit>;
@@ -218,6 +226,13 @@ export type Query = {
 
 export type QueryFacilityArgs = {
   id: Scalars['ID']['input'];
+};
+
+
+export type QueryPatientVisitsArgs = {
+  limit?: InputMaybe<Scalars['Int']['input']>;
+  offset?: InputMaybe<Scalars['Int']['input']>;
+  patientId: Scalars['ID']['input'];
 };
 
 
@@ -233,6 +248,11 @@ export type QueryProviderByNpiArgs = {
 
 export type QueryProvidersArgs = {
   specialty?: InputMaybe<Scalars['String']['input']>;
+};
+
+
+export type QueryTodayScheduleArgs = {
+  providerId: Scalars['ID']['input'];
 };
 
 
@@ -426,12 +446,13 @@ export type ResolversTypes = ResolversObject<{
   Hospital: ResolverTypeWrapper<Hospital>;
   Mutation: ResolverTypeWrapper<{}>;
   Patient: ResolverTypeWrapper<Patient>;
+  PatientVisitsConnection: ResolverTypeWrapper<PatientVisitsConnection>;
+  Int: ResolverTypeWrapper<Scalars['Int']['output']>;
   Provider: ResolverTypeWrapper<Provider>;
   Query: ResolverTypeWrapper<{}>;
   Recommendation: ResolverTypeWrapper<Recommendation>;
   UpdateProviderInput: UpdateProviderInput;
   UpdateVisitInput: UpdateVisitInput;
-  Int: ResolverTypeWrapper<Scalars['Int']['output']>;
   Visit: ResolverTypeWrapper<Visit>;
   VisitStatus: VisitStatus;
   VisitType: VisitType;
@@ -454,12 +475,13 @@ export type ResolversParentTypes = ResolversObject<{
   Hospital: Hospital;
   Mutation: {};
   Patient: Patient;
+  PatientVisitsConnection: PatientVisitsConnection;
+  Int: Scalars['Int']['output'];
   Provider: Provider;
   Query: {};
   Recommendation: Recommendation;
   UpdateProviderInput: UpdateProviderInput;
   UpdateVisitInput: UpdateVisitInput;
-  Int: Scalars['Int']['output'];
   Visit: Visit;
   Boolean: Scalars['Boolean']['output'];
 }>;
@@ -526,6 +548,12 @@ export type PatientResolvers<ContextType = DataSourceContext, ParentType extends
   __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
 }>;
 
+export type PatientVisitsConnectionResolvers<ContextType = DataSourceContext, ParentType extends ResolversParentTypes['PatientVisitsConnection'] = ResolversParentTypes['PatientVisitsConnection']> = ResolversObject<{
+  nodes?: Resolver<Array<ResolversTypes['Visit']>, ParentType, ContextType>;
+  totalCount?: Resolver<ResolversTypes['Int'], ParentType, ContextType>;
+  __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
+}>;
+
 export type ProviderResolvers<ContextType = DataSourceContext, ParentType extends ResolversParentTypes['Provider'] = ResolversParentTypes['Provider']> = ResolversObject<{
   __resolveReference?: ReferenceResolver<Maybe<ResolversTypes['Provider']>, { __typename: 'Provider' } & GraphQLRecursivePick<ParentType, {"id":true}>, ContextType>;
   credentials?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
@@ -543,9 +571,11 @@ export type ProviderResolvers<ContextType = DataSourceContext, ParentType extend
 
 export type QueryResolvers<ContextType = DataSourceContext, ParentType extends ResolversParentTypes['Query'] = ResolversParentTypes['Query']> = ResolversObject<{
   facility?: Resolver<Maybe<ResolversTypes['Facility']>, ParentType, ContextType, RequireFields<QueryFacilityArgs, 'id'>>;
+  patientVisits?: Resolver<ResolversTypes['PatientVisitsConnection'], ParentType, ContextType, RequireFields<QueryPatientVisitsArgs, 'patientId'>>;
   provider?: Resolver<Maybe<ResolversTypes['Provider']>, ParentType, ContextType, RequireFields<QueryProviderArgs, 'id'>>;
   providerByNpi?: Resolver<Maybe<ResolversTypes['Provider']>, ParentType, ContextType, RequireFields<QueryProviderByNpiArgs, 'npi'>>;
   providers?: Resolver<Array<ResolversTypes['Provider']>, ParentType, ContextType, Partial<QueryProvidersArgs>>;
+  todaySchedule?: Resolver<Array<ResolversTypes['Visit']>, ParentType, ContextType, RequireFields<QueryTodayScheduleArgs, 'providerId'>>;
   visit?: Resolver<Maybe<ResolversTypes['Visit']>, ParentType, ContextType, RequireFields<QueryVisitArgs, 'id'>>;
   visitsByDateRange?: Resolver<Array<ResolversTypes['Visit']>, ParentType, ContextType, RequireFields<QueryVisitsByDateRangeArgs, 'endDate' | 'startDate'>>;
   visitsForCase?: Resolver<Array<ResolversTypes['Visit']>, ParentType, ContextType, RequireFields<QueryVisitsForCaseArgs, 'caseId'>>;
@@ -589,6 +619,7 @@ export type Resolvers<ContextType = DataSourceContext> = ResolversObject<{
   Hospital?: HospitalResolvers<ContextType>;
   Mutation?: MutationResolvers<ContextType>;
   Patient?: PatientResolvers<ContextType>;
+  PatientVisitsConnection?: PatientVisitsConnectionResolvers<ContextType>;
   Provider?: ProviderResolvers<ContextType>;
   Query?: QueryResolvers<ContextType>;
   Recommendation?: RecommendationResolvers<ContextType>;

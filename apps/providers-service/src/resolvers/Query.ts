@@ -25,6 +25,23 @@ export const Query: Resolvers = {
     async visitsForProvider(_parent, { providerId }, _context) {
       return await visitService.getVisitsForProvider(providerId) as any;
     },
+    async visitsForPatient(_parent, { patientId }, _context) {
+      const result = await visitService.getVisitsForPatient(patientId, { limit: 100, offset: 0 });
+      return result.visits as any;
+    },
+    async todaySchedule(_parent, { providerId }, _context) {
+      return await visitService.getVisitsForProviderOnDate(providerId, new Date()) as any;
+    },
+    async patientVisits(_parent, { patientId, limit, offset }, _context) {
+      const result = await visitService.getVisitsForPatient(patientId, {
+        limit: limit ?? 10,
+        offset: offset ?? 0,
+      });
+      return {
+        totalCount: result.totalCount,
+        nodes: result.visits,
+      } as any;
+    },
   },
   Provider: {
     async __resolveReference(reference) {

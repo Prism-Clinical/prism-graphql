@@ -447,6 +447,46 @@ class VisitService {
     }
   }
 
+  async getVisitsForPatient(
+    patientId: string,
+    options?: { limit?: number; offset?: number }
+  ): Promise<{ visits: Visit[]; totalCount: number }> {
+    ensureInitialized();
+    const limit = options?.limit ?? 10;
+    const offset = options?.offset ?? 0;
+
+    const countQuery = `SELECT COUNT(*) as count FROM visits WHERE patient_id = $1`;
+    const dataQuery = `
+      SELECT id, patient_id as "patientId", hospital_id as "hospitalId", provider_id as "providerId",
+             case_ids as "caseIds", type, status, scheduled_at as "scheduledAt",
+             started_at as "startedAt", completed_at as "completedAt", duration, notes,
+             chief_complaint as "chiefComplaint", audio_uri as "audioUri",
+             audio_uploaded_at as "audioUploadedAt",
+             created_at as "createdAt", updated_at as "updatedAt"
+      FROM visits
+      WHERE patient_id = $1
+      ORDER BY scheduled_at DESC
+      LIMIT $2 OFFSET $3
+    `;
+
+    try {
+      const [countResult, dataResult] = await Promise.all([
+        pool.query(countQuery, [patientId]),
+        pool.query(dataQuery, [patientId, limit, offset]),
+      ]);
+
+      return {
+        totalCount: parseInt(countResult.rows[0].count, 10),
+        visits: dataResult.rows.map(visit => ({
+          ...visit,
+          caseIds: typeof visit.caseIds === 'string' ? JSON.parse(visit.caseIds) : visit.caseIds,
+        })),
+      };
+    } catch (error) {
+      return { visits: [], totalCount: 0 };
+    }
+  }
+
   async updateVisit(id: string, updates: Partial<Omit<Visit, 'id' | 'createdAt' | 'updatedAt'>>): Promise<Visit | null> {
     ensureInitialized();
     const allowedFields = ['type', 'status', 'scheduledAt', 'startedAt', 'completedAt', 'duration', 'notes', 'chiefComplaint', 'recordingKey', 'recordingEndedAt', 'conditionCodes', 'carePlanRequestId', 'carePlanRequestedAt', 'audioUri', 'audioUploadedAt'];

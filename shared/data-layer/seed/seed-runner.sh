@@ -92,7 +92,7 @@ docker compose exec -T postgres psql -U postgres -d healthcare_federation -tAc "
   UNION ALL
   SELECT format('  Vitals:      %s', count(*)) FROM snapshot_vitals
   UNION ALL
-  SELECT format('  Labs:        %s', count(*)) FROM snapshot_labs
+  SELECT format('  Labs:        %s', count(*)) FROM snapshot_lab_results
   UNION ALL
   SELECT format('  Allergies:   %s', count(*)) FROM snapshot_allergies;
 "

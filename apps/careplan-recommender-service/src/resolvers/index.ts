@@ -6,6 +6,9 @@ const resolvers: Record<string, any> = {
   Query,
   Mutation,
   Patient: {
+    __resolveReference(reference: { id: string }) {
+      return { id: reference.id };
+    },
     async recommendedCarePlans(
       patient: { id: string },
       args: { maxResults?: number; includeDrafts?: boolean },

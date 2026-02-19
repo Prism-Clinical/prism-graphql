@@ -31,8 +31,10 @@ import {
   getLatestSnapshot,
   getSnapshot,
   getSnapshotHistory,
+  getEpicPatientIdByPatientId,
+  getLatestSnapshotClinicalData,
 } from "../services/database";
-import type { PatientDemographicsOut, VitalOut, LabResultOut, MedicationOut, DiagnosisOut } from "../services/transforms";
+import type { PatientDemographicsOut, VitalOut, LabResultOut, MedicationOut, DiagnosisOut, AllergyOut } from "../services/transforms";
 
 // Helper: create a mock PoolClient
 function setupMockClient() {
@@ -175,6 +177,8 @@ describe("database service", () => {
 
       // BEGIN
       clientQuery.mockResolvedValueOnce({});
+      // lock query (SELECT 1 ... FOR UPDATE)
+      clientQuery.mockResolvedValueOnce({ rows: [] });
       // version query
       clientQuery.mockResolvedValueOnce({ rows: [{ next_version: 1 }] });
       // snapshot insert
@@ -191,8 +195,30 @@ describe("database service", () => {
       clientQuery.mockResolvedValueOnce({});
       // condition insert
       clientQuery.mockResolvedValueOnce({});
+      // allergy insert
+      clientQuery.mockResolvedValueOnce({});
       // COMMIT
       clientQuery.mockResolvedValueOnce({});
+
+      const mockAllergy: AllergyOut = {
+        id: "allergy-1",
+        code: { coding: [{ system: null, code: "12345", display: "Penicillin" }], text: "Penicillin" },
+        clinicalStatus: null,
+        verificationStatus: null,
+        type: "allergy",
+        categories: ["medication"],
+        criticality: "high",
+        onsetDateTime: null,
+        onsetAge: null,
+        onsetString: null,
+        recordedDate: "2024-01-01",
+        lastOccurrence: null,
+        recorder: null,
+        asserter: null,
+        encounter: null,
+        reactions: [],
+        notes: [],
+      };
 
       const result = await createSnapshot("epic-123", "VISIT", {
         demographics: mockDemographics,
@@ -200,6 +226,7 @@ describe("database service", () => {
         labs: [mockLab],
         medications: [mockMedication],
         diagnoses: [mockDiagnosis],
+        allergies: [mockAllergy],
       });
 
       expect(result.id).toBe("snap-uuid-1");
@@ -212,6 +239,7 @@ describe("database service", () => {
       expect(result.labs).toHaveLength(1);
       expect(result.medications).toHaveLength(1);
       expect(result.diagnoses).toHaveLength(1);
+      expect(result.allergies).toHaveLength(1);
 
       // Verify transaction
       expect(clientQuery.mock.calls[0][0]).toBe("BEGIN");
@@ -223,6 +251,7 @@ describe("database service", () => {
       const { clientQuery } = setupMockClient();
 
       clientQuery.mockResolvedValueOnce({}); // BEGIN
+      clientQuery.mockResolvedValueOnce({ rows: [] }); // lock query
       clientQuery.mockResolvedValueOnce({ rows: [{ next_version: 5 }] }); // version
       clientQuery.mockResolvedValueOnce({
         rows: [{ id: "snap-uuid-5", created_at: "2024-02-01" }],
@@ -235,6 +264,7 @@ describe("database service", () => {
         labs: [],
         medications: [],
         diagnoses: [],
+        allergies: [],
       });
 
       expect(result.snapshotVersion).toBe(5);
@@ -244,7 +274,7 @@ describe("database service", () => {
       const { clientQuery } = setupMockClient();
 
       clientQuery.mockResolvedValueOnce({}); // BEGIN
-      clientQuery.mockRejectedValueOnce(new Error("DB error")); // version query fails
+      clientQuery.mockRejectedValueOnce(new Error("DB error")); // lock query fails
 
       await expect(
         createSnapshot("epic-123", "VISIT", {
@@ -253,6 +283,7 @@ describe("database service", () => {
           labs: [],
           medications: [],
           diagnoses: [],
+          allergies: [],
         })
       ).rejects.toThrow("DB error");
 
@@ -268,10 +299,11 @@ describe("database service", () => {
       const { clientQuery } = setupMockClient();
 
       clientQuery.mockResolvedValueOnce({}); // BEGIN
-      clientQuery.mockResolvedValueOnce({ rows: [{ next_version: 1 }] });
+      clientQuery.mockResolvedValueOnce({ rows: [] }); // lock query
+      clientQuery.mockResolvedValueOnce({ rows: [{ next_version: 1 }] }); // version
       clientQuery.mockResolvedValueOnce({
         rows: [{ id: "snap-uuid", created_at: "2024-01-15" }],
-      });
+      }); // snapshot insert
       clientQuery.mockResolvedValueOnce({}); // COMMIT
 
       await createSnapshot("epic-123", "VISIT", {
@@ -280,10 +312,11 @@ describe("database service", () => {
         labs: [],
         medications: [],
         diagnoses: [],
+        allergies: [],
       });
 
-      // Should only have BEGIN, version, snapshot INSERT, COMMIT (4 calls)
-      expect(clientQuery).toHaveBeenCalledTimes(4);
+      // Should only have BEGIN, lock, version, snapshot INSERT, COMMIT (5 calls)
+      expect(clientQuery).toHaveBeenCalledTimes(5);
     });
   });
 
@@ -313,13 +346,14 @@ describe("database service", () => {
         }],
       });
 
-      // Child table queries (demographics, vitals, labs, meds, conditions)
+      // Child table queries (demographics, vitals, labs, meds, conditions, allergies)
       mockQuery
         .mockResolvedValueOnce({ rows: [{ first_name: "Jane", last_name: "Doe", gender: "female", date_of_birth: "1990-01-01", mrn: "MRN123", active: true, deceased_boolean: null, deceased_date_time: null, marital_status: null, race_ethnicity: null, identifiers: [], names: [], telecom: [], addresses: [], emergency_contacts: [], communications: [], general_practitioner: [] }] })
         .mockResolvedValueOnce({ rows: [] }) // vitals
         .mockResolvedValueOnce({ rows: [] }) // labs
         .mockResolvedValueOnce({ rows: [] }) // meds
-        .mockResolvedValueOnce({ rows: [] }); // conditions
+        .mockResolvedValueOnce({ rows: [] }) // conditions
+        .mockResolvedValueOnce({ rows: [] }); // allergies
 
       const result = await getLatestSnapshot("epic-123");
 
@@ -354,13 +388,14 @@ describe("database service", () => {
         }],
       });
 
-      // Child queries
+      // Child queries (demographics, vitals, labs, meds, conditions, allergies)
       mockQuery
         .mockResolvedValueOnce({ rows: [] }) // demographics
-        .mockResolvedValueOnce({ rows: [] })
-        .mockResolvedValueOnce({ rows: [] })
-        .mockResolvedValueOnce({ rows: [] })
-        .mockResolvedValueOnce({ rows: [] });
+        .mockResolvedValueOnce({ rows: [] }) // vitals
+        .mockResolvedValueOnce({ rows: [] }) // labs
+        .mockResolvedValueOnce({ rows: [] }) // meds
+        .mockResolvedValueOnce({ rows: [] }) // conditions
+        .mockResolvedValueOnce({ rows: [] }); // allergies
 
       const result = await getSnapshot("snap-abc");
 
@@ -430,6 +465,150 @@ describe("database service", () => {
         expect.any(String),
         ["epic-123", 20]
       );
+    });
+  });
+
+  // ===========================================================================
+  // getEpicPatientIdByPatientId
+  // ===========================================================================
+
+  describe("getEpicPatientIdByPatientId", () => {
+    it("returns epic_patient_id when patient exists", async () => {
+      mockQuery.mockResolvedValueOnce({
+        rows: [{ epic_patient_id: "erXuFYUfucBZaryVksYEcMg3" }],
+      });
+
+      const result = await getEpicPatientIdByPatientId("patient-uuid-1");
+
+      expect(result).toBe("erXuFYUfucBZaryVksYEcMg3");
+      expect(mockQuery).toHaveBeenCalledWith(
+        expect.stringContaining("FROM patients"),
+        ["patient-uuid-1"]
+      );
+    });
+
+    it("returns null when patient has no epic_patient_id", async () => {
+      mockQuery.mockResolvedValueOnce({
+        rows: [{ epic_patient_id: null }],
+      });
+
+      const result = await getEpicPatientIdByPatientId("patient-uuid-2");
+
+      expect(result).toBeNull();
+    });
+
+    it("returns null when patient does not exist", async () => {
+      mockQuery.mockResolvedValueOnce({ rows: [] });
+
+      const result = await getEpicPatientIdByPatientId("nonexistent-uuid");
+
+      expect(result).toBeNull();
+    });
+  });
+
+  // ===========================================================================
+  // getLatestSnapshotClinicalData
+  // ===========================================================================
+
+  describe("getLatestSnapshotClinicalData", () => {
+    it("returns conditions, medications, and allergies from latest snapshot", async () => {
+      // Snapshot lookup
+      mockQuery.mockResolvedValueOnce({
+        rows: [{ id: "snap-1" }],
+      });
+
+      // Parallel queries: conditions, medications, allergies
+      mockQuery
+        .mockResolvedValueOnce({
+          rows: [{
+            condition_id: "cond-1",
+            code: "38341003",
+            display: "Hypertension",
+            code_detail: null,
+            clinical_status: null,
+            verification_status: null,
+            category: [],
+            severity: null,
+            body_site: [],
+            encounter: null,
+            onset_date_time: null,
+            onset_age: null,
+            onset_string: null,
+            abatement_date_time: null,
+            abatement_age: null,
+            abatement_string: null,
+            recorded_date: "2024-01-01",
+            recorder: null,
+            asserter: null,
+            stage: [],
+            evidence: [],
+            notes: [],
+          }],
+        })
+        .mockResolvedValueOnce({
+          rows: [{
+            medication_request_id: "med-1",
+            name: "Lisinopril",
+            status: "active",
+            intent: "order",
+            category: [],
+            priority: null,
+            medication_code: null,
+            medication_reference: null,
+            authored_on: "2024-01-01",
+            requester: null,
+            encounter: null,
+            reason_code: [],
+            reason_reference: [],
+            dosage_instructions: [],
+            dispense_request: null,
+            substitution: null,
+            course_of_therapy_type: null,
+            notes: [],
+          }],
+        })
+        .mockResolvedValueOnce({
+          rows: [{
+            allergy_intolerance_id: "allergy-1",
+            code: { coding: [{ system: null, code: "12345", display: "Penicillin" }], text: "Penicillin" },
+            clinical_status: null,
+            verification_status: null,
+            type: "allergy",
+            categories: ["medication"],
+            criticality: "high",
+            onset_date_time: null,
+            onset_age: null,
+            onset_string: null,
+            recorded_date: "2024-01-01",
+            last_occurrence: null,
+            recorder: null,
+            asserter: null,
+            encounter: null,
+            reactions: [],
+            notes: [],
+          }],
+        });
+
+      const result = await getLatestSnapshotClinicalData("epic-123");
+
+      expect(result).not.toBeNull();
+      expect(result!.diagnoses).toHaveLength(1);
+      expect(result!.diagnoses[0].code).toBe("38341003");
+      expect(result!.diagnoses[0].display).toBe("Hypertension");
+      expect(result!.medications).toHaveLength(1);
+      expect(result!.medications[0].name).toBe("Lisinopril");
+      expect(result!.allergies).toHaveLength(1);
+      expect(result!.allergies[0].id).toBe("allergy-1");
+      expect(result!.allergies[0].criticality).toBe("high");
+    });
+
+    it("returns null when no snapshot exists", async () => {
+      mockQuery.mockResolvedValueOnce({ rows: [] });
+
+      const result = await getLatestSnapshotClinicalData("epic-999");
+
+      expect(result).toBeNull();
+      expect(mockQuery).toHaveBeenCalledTimes(1);
     });
   });
 });
