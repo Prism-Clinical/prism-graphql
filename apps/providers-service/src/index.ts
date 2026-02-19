@@ -9,7 +9,7 @@ import { Pool } from 'pg';
 import { Redis } from 'ioredis';
 import resolvers from "./resolvers";
 import { initializeDatabase } from "./services/database";
-import { initializeStorageService } from "./services/storage";
+import { initializeStorageService, initializeDevStorageService } from "./services/storage";
 
 const port = process.env.PORT || "4006";
 const subgraphName = "providers";
@@ -42,7 +42,8 @@ async function main() {
     initializeStorageService(gcsBucket, gcpProject);
     console.log(`GCS storage initialized: bucket=${gcsBucket}`);
   } else {
-    console.warn('GCS_BUCKET_NAME or GCP_PROJECT_ID not set — audio upload disabled');
+    initializeDevStorageService();
+    console.warn('GCS_BUCKET_NAME or GCP_PROJECT_ID not set — using dev mock storage');
   }
 
   let typeDefs = gql(

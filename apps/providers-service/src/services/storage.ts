@@ -87,11 +87,53 @@ export class StorageService {
   }
 }
 
+/**
+ * Dev-mode mock storage that returns fake signed URLs.
+ * Audio data is not actually stored anywhere — this just unblocks
+ * the upload flow so the frontend can progress through the visit workflow.
+ */
+class DevStorageService extends StorageService {
+  constructor() {
+    // Pass dummy values — the GCS client is never called
+    super('dev-bucket', 'dev-project');
+  }
+
+  async generateSignedUploadUrl(
+    visitId: string,
+    contentType: string,
+  ): Promise<SignedUploadUrl> {
+    const baseType = contentType.split(';')[0].trim();
+    const extension = EXTENSION_MAP[baseType] || 'webm';
+    const timestamp = Date.now();
+    const objectPath = `visits/${visitId}/audio/${timestamp}.${extension}`;
+    const expiresAt = new Date(Date.now() + 30 * 60 * 1000);
+
+    return {
+      // In dev mode, return a data URI placeholder.
+      // The browser will "upload" to this URL which will 404, but
+      // updateVisitAudio can be called directly with the storageUri.
+      uploadUrl: `http://localhost:4003/dev-audio-upload/${objectPath}`,
+      storageUri: `gs://dev-bucket/${objectPath}`,
+      expiresAt,
+    };
+  }
+
+  async verifyFileExists(_storageUri: string): Promise<boolean> {
+    // In dev mode, always return true
+    return true;
+  }
+}
+
 // Singleton
 let storageServiceInstance: StorageService | null = null;
 
 export function initializeStorageService(bucketName: string, projectId: string): StorageService {
   storageServiceInstance = new StorageService(bucketName, projectId);
+  return storageServiceInstance;
+}
+
+export function initializeDevStorageService(): StorageService {
+  storageServiceInstance = new DevStorageService();
   return storageServiceInstance;
 }
 
