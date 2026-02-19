@@ -316,6 +316,64 @@ export interface FHIRAllergyIntolerance {
 }
 
 // =============================================================================
+// TYPES — FHIR Encounter (R4)
+// =============================================================================
+
+export interface FHIREncounterLocation {
+  location: FHIRReference;
+  status?: string;
+  period?: FHIRPeriod;
+}
+
+export interface FHIREncounterParticipant {
+  type?: FHIRCodeableConcept[];
+  period?: FHIRPeriod;
+  individual?: FHIRReference;
+}
+
+export interface FHIREncounter {
+  resourceType?: string;
+  id?: string;
+  identifier?: FHIRIdentifier[];
+  status: string;
+  class: FHIRCoding;
+  type?: FHIRCodeableConcept[];
+  priority?: FHIRCodeableConcept;
+  subject?: FHIRReference;
+  participant?: FHIREncounterParticipant[];
+  period?: FHIRPeriod;
+  reasonCode?: FHIRCodeableConcept[];
+  location?: FHIREncounterLocation[];
+  serviceProvider?: FHIRReference;
+}
+
+// =============================================================================
+// TYPES — FHIR Appointment (R4)
+// =============================================================================
+
+export interface FHIRAppointmentParticipant {
+  actor?: FHIRReference;
+  status: string;
+  type?: FHIRCodeableConcept[];
+}
+
+export interface FHIRAppointment {
+  resourceType?: string;
+  id?: string;
+  identifier?: FHIRIdentifier[];
+  status: string;
+  serviceType?: FHIRCodeableConcept[];
+  start?: string;
+  end?: string;
+  participant?: FHIRAppointmentParticipant[];
+  reasonCode?: FHIRCodeableConcept[];
+  description?: string;
+  cancelationReason?: FHIRCodeableConcept;
+  patientInstruction?: string;
+  priority?: number;
+}
+
+// =============================================================================
 // CLIENT IMPLEMENTATION
 // =============================================================================
 
