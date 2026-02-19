@@ -16,6 +16,8 @@ import {
   FHIRObservation,
   FHIRMedication,
   FHIRMedicationRequest,
+  FHIREncounter,
+  FHIRAppointment,
   EpicFhirClient,
 } from "./clients";
 import { createLogger } from "./clients/logger";
@@ -27,12 +29,16 @@ import {
   transformMedications,
   transformConditions,
   transformAllergyIntolerances,
+  transformEncounters,
+  transformAppointments,
   type PatientDemographicsOut,
   type VitalOut,
   type LabResultOut,
   type MedicationOut,
   type DiagnosisOut,
   type AllergyOut,
+  type EncounterOut,
+  type AppointmentOut,
 } from "./services/transforms";
 import { getCached, setCached, getCachedMedicationRef, setCachedMedicationRef, invalidatePatientCache } from "./services/cache";
 import { createSnapshot, getLatestSnapshot, getSnapshotHistory, getSnapshot, getEpicPatientIdByPatientId, getLatestSnapshotClinicalData, type SnapshotData, type ClinicalSnapshotFull, type SnapshotSummary } from "./services/database";
@@ -50,6 +56,8 @@ interface EpicPatientData {
   medications: MedicationOut[];
   diagnoses: DiagnosisOut[];
   allergies: AllergyOut[];
+  encounters: EncounterOut[];
+  appointments: AppointmentOut[];
   lastSync: string;
   errors: DataFetchError[];
 }
@@ -423,6 +431,50 @@ export const typeDefs = gql`
   }
 
   # =========================================================================
+  # Encounters & Appointments
+  # =========================================================================
+
+  type EpicEncounter {
+    id: ID
+    status: String!
+    encounterClass: String!
+    classDisplay: String
+    typeDisplay: String
+    periodStart: String
+    periodEnd: String
+    reasonCodes: [CodeableConcept!]!
+    participants: [EncounterParticipant!]!
+    locationDisplay: String
+    epicIdentifier: String
+    priorityDisplay: String
+  }
+
+  type EncounterParticipant {
+    role: CodeableConcept
+    individual: ReferenceInfo
+  }
+
+  type EpicAppointment {
+    id: ID
+    status: String!
+    serviceTypeDisplay: String
+    start: String
+    end: String
+    reasonCodes: [CodeableConcept!]!
+    participants: [AppointmentParticipant!]!
+    description: String
+    cancellationReason: String
+    patientInstruction: String
+    epicIdentifier: String
+    priority: Int
+  }
+
+  type AppointmentParticipant {
+    actor: ReferenceInfo
+    status: String!
+  }
+
+  # =========================================================================
   # Error types
   # =========================================================================
 
@@ -538,6 +590,8 @@ export const typeDefs = gql`
     medications: [Medication!]!
     diagnoses: [Diagnosis!]!
     allergies: [Allergy!]!
+    encounters: [EpicEncounter!]!
+    appointments: [EpicAppointment!]!
     lastSync: String
     errors: [DataFetchError!]!
   }
@@ -564,6 +618,8 @@ export const typeDefs = gql`
     MEDICATIONS
     DIAGNOSES
     ALLERGIES
+    ENCOUNTERS
+    APPOINTMENTS
   }
 
   enum SnapshotTrigger {
