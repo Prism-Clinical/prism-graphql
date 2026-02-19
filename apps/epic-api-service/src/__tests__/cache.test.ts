@@ -187,7 +187,10 @@ describe("cache service", () => {
         "epic:vitals:epic-123",
         "epic:labs:epic-123",
         "epic:medications:epic-123",
-        "epic:conditions:epic-123"
+        "epic:conditions:epic-123",
+        "epic:allergies:epic-123",
+        "epic:encounters:epic-123",
+        "epic:appointments:epic-123"
       );
     });
 
