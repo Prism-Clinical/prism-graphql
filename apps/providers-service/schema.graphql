@@ -33,6 +33,11 @@ type Visit @key(fields: "id") {
   audioUploadedAt: DateTime
 }
 
+type PatientVisitsConnection {
+  totalCount: Int!
+  nodes: [Visit!]!
+}
+
 type AudioUploadUrl {
   uploadUrl: String!
   storageUri: String!
@@ -97,6 +102,7 @@ type Query {
   facility(id: ID!): Facility
   visit(id: ID!): Visit
   visitsForPatient(patientId: ID!): [Visit!]!
+  patientVisits(patientId: ID!, limit: Int, offset: Int): PatientVisitsConnection!
   visitsForCase(caseId: ID!): [Visit!]!
   visitsForHospital(hospitalId: ID!): [Visit!]!
   visitsForProvider(providerId: ID!): [Visit!]!
