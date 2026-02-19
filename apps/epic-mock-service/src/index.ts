@@ -695,7 +695,90 @@ app.get('/Procedure', (req, res) => {
 // Encounter endpoints
 app.get('/Encounter', (req, res) => {
   const { patient } = req.query;
-  
+
+  if (!patient) {
+    return res.status(400).json({ error: 'Patient parameter required' });
+  }
+
+  setTimeout(() => {
+    return res.json({
+      resourceType: 'Bundle',
+      id: uuidv4(),
+      type: 'searchset',
+      total: 3,
+      entry: [
+        {
+          resource: {
+            resourceType: 'Encounter',
+            id: `enc-${patient}-001`,
+            identifier: [{ system: 'urn:oid:1.2.840.114350', value: 'VN-2026-0042' }],
+            status: 'finished',
+            class: {
+              system: 'http://terminology.hl7.org/CodeSystem/v3-ActCode',
+              code: 'AMB',
+              display: 'ambulatory'
+            },
+            type: [{
+              coding: [{ system: 'http://snomed.info/sct', code: '185349003', display: 'Encounter for check up' }],
+              text: 'Annual Physical'
+            }],
+            priority: { coding: [{ code: 'R', display: 'routine' }] },
+            subject: { reference: `Patient/${patient}`, display: 'Test Patient' },
+            period: {
+              start: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
+              end: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000 + 60 * 60 * 1000).toISOString()
+            },
+            participant: [{
+              type: [{ coding: [{ code: 'ATND', display: 'attender' }] }],
+              individual: { reference: 'Practitioner/prov-001', display: 'Dr. Smith, Family Medicine' }
+            }],
+            reasonCode: [{
+              coding: [{ system: 'http://snomed.info/sct', code: '185349003', display: 'General examination' }],
+              text: 'Annual wellness exam'
+            }],
+            location: [{ location: { display: 'Room 204, Building A' } }],
+          }
+        },
+        {
+          resource: {
+            resourceType: 'Encounter',
+            id: `enc-${patient}-002`,
+            identifier: [{ system: 'urn:oid:1.2.840.114350', value: 'VN-2026-0058' }],
+            status: 'finished',
+            class: { system: 'http://terminology.hl7.org/CodeSystem/v3-ActCode', code: 'AMB', display: 'ambulatory' },
+            type: [{ coding: [{ code: '185389009', display: 'Follow-up visit' }], text: 'Follow-up' }],
+            subject: { reference: `Patient/${patient}` },
+            period: {
+              start: new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString(),
+              end: new Date(Date.now() - 14 * 24 * 60 * 60 * 1000 + 30 * 60 * 1000).toISOString()
+            },
+            participant: [{ individual: { display: 'Dr. Smith, Family Medicine' } }],
+            reasonCode: [{ text: 'Diabetes follow-up' }],
+            location: [{ location: { display: 'Room 102' } }],
+          }
+        },
+        {
+          resource: {
+            resourceType: 'Encounter',
+            id: `enc-${patient}-003`,
+            status: 'in-progress',
+            class: { system: 'http://terminology.hl7.org/CodeSystem/v3-ActCode', code: 'AMB', display: 'ambulatory' },
+            type: [{ text: 'Consultation' }],
+            subject: { reference: `Patient/${patient}` },
+            period: { start: new Date().toISOString() },
+            participant: [{ individual: { display: 'Dr. Jones, Endocrinology' } }],
+            reasonCode: [{ text: 'Blood sugar management' }],
+          }
+        },
+      ]
+    });
+  }, 130 + Math.random() * 270);
+});
+
+// Appointment endpoints
+app.get('/Appointment', (req, res) => {
+  const { patient } = req.query;
+
   if (!patient) {
     return res.status(400).json({ error: 'Patient parameter required' });
   }
@@ -709,35 +792,46 @@ app.get('/Encounter', (req, res) => {
       entry: [
         {
           resource: {
-            resourceType: 'Encounter',
-            id: uuidv4(),
-            status: 'finished',
-            class: {
-              system: 'http://terminology.hl7.org/CodeSystem/v3-ActCode',
-              code: 'AMB',
-              display: 'ambulatory'
-            },
-            type: [{
-              coding: [{
-                system: 'http://snomed.info/sct',
-                code: '185349003',
-                display: 'Encounter for check up'
-              }],
-              text: 'Annual Physical'
+            resourceType: 'Appointment',
+            id: `apt-${patient}-001`,
+            identifier: [{ system: 'urn:oid:1.2.840.114350', value: 'APT-2026-0103' }],
+            status: 'booked',
+            serviceType: [{
+              coding: [{ system: 'http://snomed.info/sct', code: '394802001', display: 'General medicine' }],
+              text: 'General Medicine'
             }],
-            subject: { reference: `Patient/${patient}` },
-            period: {
-              start: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
-              end: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000 + 60 * 60 * 1000).toISOString()
-            },
-            participant: [{
-              individual: { display: 'Dr. Smith, Family Medicine' }
-            }]
+            start: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+            end: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000 + 30 * 60 * 1000).toISOString(),
+            participant: [
+              { actor: { reference: `Patient/${patient}`, display: 'Test Patient' }, status: 'accepted' },
+              { actor: { reference: 'Practitioner/prov-001', display: 'Dr. Smith' }, status: 'accepted' },
+            ],
+            reasonCode: [{ text: 'Lab results review' }],
+            description: 'Review recent lab results and adjust medications',
+            patientInstruction: 'Please bring your medication list and glucose log.',
+            priority: 0,
           }
-        }
+        },
+        {
+          resource: {
+            resourceType: 'Appointment',
+            id: `apt-${patient}-002`,
+            identifier: [{ system: 'urn:oid:1.2.840.114350', value: 'APT-2026-0104' }],
+            status: 'booked',
+            serviceType: [{ text: 'Diagnostic' }],
+            start: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(),
+            end: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000 + 60 * 60 * 1000).toISOString(),
+            participant: [
+              { actor: { reference: `Patient/${patient}` }, status: 'accepted' },
+              { actor: { reference: 'Practitioner/prov-002', display: 'Dr. Jones, Endocrinology' }, status: 'accepted' },
+            ],
+            reasonCode: [{ text: 'A1C monitoring' }],
+            description: 'Quarterly diabetes monitoring',
+          }
+        },
       ]
     });
-  }, 130 + Math.random() * 270);
+  }, 100 + Math.random() * 200);
 });
 
 // Health check

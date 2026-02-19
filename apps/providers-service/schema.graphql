@@ -31,6 +31,17 @@ type Visit @key(fields: "id") {
   chiefComplaint: String
   audioUri: String
   audioUploadedAt: DateTime
+  epicEncounterId: String
+  epicAppointmentId: String
+  epicIdentifier: String
+  encounterClass: String
+  reasonCodes: String
+  priority: String
+  locationDisplay: String
+  participantDetails: String
+  cancellationReason: String
+  patientInstructions: String
+  epicLastSyncedAt: DateTime
 }
 
 type PatientVisitsConnection {

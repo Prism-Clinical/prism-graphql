@@ -74,6 +74,17 @@ export interface Visit {
   carePlanRequestedAt?: Date;
   audioUri?: string;
   audioUploadedAt?: Date;
+  epicEncounterId?: string;
+  epicAppointmentId?: string;
+  epicIdentifier?: string;
+  encounterClass?: string;
+  reasonCodes?: unknown;
+  priority?: string;
+  locationDisplay?: string;
+  participantDetails?: unknown;
+  cancellationReason?: string;
+  patientInstructions?: string;
+  epicLastSyncedAt?: Date;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -374,9 +385,20 @@ class VisitService {
                 started_at as "startedAt", completed_at as "completedAt", duration, notes,
                 chief_complaint as "chiefComplaint", audio_uri as "audioUri",
                 audio_uploaded_at as "audioUploadedAt",
+                epic_encounter_id as "epicEncounterId",
+                epic_appointment_id as "epicAppointmentId",
+                epic_identifier as "epicIdentifier",
+                encounter_class as "encounterClass",
+                reason_codes as "reasonCodes",
+                priority,
+                location_display as "locationDisplay",
+                participant_details as "participantDetails",
+                cancellation_reason as "cancellationReason",
+                patient_instructions as "patientInstructions",
+                epic_last_synced_at as "epicLastSyncedAt",
                 created_at as "createdAt", updated_at as "updatedAt"
     `;
-    
+
     const result = await pool.query(query, [
       data.patientId,
       data.hospitalId,
@@ -403,6 +425,17 @@ class VisitService {
              started_at as "startedAt", completed_at as "completedAt", duration, notes,
              chief_complaint as "chiefComplaint", audio_uri as "audioUri",
              audio_uploaded_at as "audioUploadedAt",
+             epic_encounter_id as "epicEncounterId",
+             epic_appointment_id as "epicAppointmentId",
+             epic_identifier as "epicIdentifier",
+             encounter_class as "encounterClass",
+             reason_codes as "reasonCodes",
+             priority,
+             location_display as "locationDisplay",
+             participant_details as "participantDetails",
+             cancellation_reason as "cancellationReason",
+             patient_instructions as "patientInstructions",
+             epic_last_synced_at as "epicLastSyncedAt",
              created_at as "createdAt", updated_at as "updatedAt"
       FROM visits
       WHERE id = $1
@@ -430,6 +463,17 @@ class VisitService {
              started_at as "startedAt", completed_at as "completedAt", duration, notes,
              chief_complaint as "chiefComplaint", audio_uri as "audioUri",
              audio_uploaded_at as "audioUploadedAt",
+             epic_encounter_id as "epicEncounterId",
+             epic_appointment_id as "epicAppointmentId",
+             epic_identifier as "epicIdentifier",
+             encounter_class as "encounterClass",
+             reason_codes as "reasonCodes",
+             priority,
+             location_display as "locationDisplay",
+             participant_details as "participantDetails",
+             cancellation_reason as "cancellationReason",
+             patient_instructions as "patientInstructions",
+             epic_last_synced_at as "epicLastSyncedAt",
              created_at as "createdAt", updated_at as "updatedAt"
       FROM visits
       WHERE provider_id = $1
@@ -462,6 +506,17 @@ class VisitService {
              started_at as "startedAt", completed_at as "completedAt", duration, notes,
              chief_complaint as "chiefComplaint", audio_uri as "audioUri",
              audio_uploaded_at as "audioUploadedAt",
+             epic_encounter_id as "epicEncounterId",
+             epic_appointment_id as "epicAppointmentId",
+             epic_identifier as "epicIdentifier",
+             encounter_class as "encounterClass",
+             reason_codes as "reasonCodes",
+             priority,
+             location_display as "locationDisplay",
+             participant_details as "participantDetails",
+             cancellation_reason as "cancellationReason",
+             patient_instructions as "patientInstructions",
+             epic_last_synced_at as "epicLastSyncedAt",
              created_at as "createdAt", updated_at as "updatedAt"
       FROM visits
       WHERE patient_id = $1
@@ -489,7 +544,7 @@ class VisitService {
 
   async updateVisit(id: string, updates: Partial<Omit<Visit, 'id' | 'createdAt' | 'updatedAt'>>): Promise<Visit | null> {
     ensureInitialized();
-    const allowedFields = ['type', 'status', 'scheduledAt', 'startedAt', 'completedAt', 'duration', 'notes', 'chiefComplaint', 'recordingKey', 'recordingEndedAt', 'conditionCodes', 'carePlanRequestId', 'carePlanRequestedAt', 'audioUri', 'audioUploadedAt'];
+    const allowedFields = ['type', 'status', 'scheduledAt', 'startedAt', 'completedAt', 'duration', 'notes', 'chiefComplaint', 'recordingKey', 'recordingEndedAt', 'conditionCodes', 'carePlanRequestId', 'carePlanRequestedAt', 'audioUri', 'audioUploadedAt', 'epicEncounterId', 'epicAppointmentId', 'epicIdentifier', 'encounterClass', 'reasonCodes', 'priority', 'locationDisplay', 'participantDetails', 'cancellationReason', 'patientInstructions', 'epicLastSyncedAt'];
     const updateFields: string[] = [];
     const values: any[] = [];
 
@@ -504,7 +559,17 @@ class VisitService {
                    key === 'carePlanRequestId' ? 'care_plan_request_id' :
                    key === 'carePlanRequestedAt' ? 'care_plan_requested_at' :
                    key === 'audioUri' ? 'audio_uri' :
-                   key === 'audioUploadedAt' ? 'audio_uploaded_at' : key;
+                   key === 'audioUploadedAt' ? 'audio_uploaded_at' :
+                   key === 'epicEncounterId' ? 'epic_encounter_id' :
+                   key === 'epicAppointmentId' ? 'epic_appointment_id' :
+                   key === 'epicIdentifier' ? 'epic_identifier' :
+                   key === 'encounterClass' ? 'encounter_class' :
+                   key === 'reasonCodes' ? 'reason_codes' :
+                   key === 'locationDisplay' ? 'location_display' :
+                   key === 'participantDetails' ? 'participant_details' :
+                   key === 'cancellationReason' ? 'cancellation_reason' :
+                   key === 'patientInstructions' ? 'patient_instructions' :
+                   key === 'epicLastSyncedAt' ? 'epic_last_synced_at' : key;
       
       if (allowedFields.includes(key) && value !== undefined) {
         updateFields.push(`${dbKey} = $${values.length + 1}`);
@@ -525,9 +590,20 @@ class VisitService {
                 started_at as "startedAt", completed_at as "completedAt", duration, notes,
                 chief_complaint as "chiefComplaint", audio_uri as "audioUri",
                 audio_uploaded_at as "audioUploadedAt",
+                epic_encounter_id as "epicEncounterId",
+                epic_appointment_id as "epicAppointmentId",
+                epic_identifier as "epicIdentifier",
+                encounter_class as "encounterClass",
+                reason_codes as "reasonCodes",
+                priority,
+                location_display as "locationDisplay",
+                participant_details as "participantDetails",
+                cancellation_reason as "cancellationReason",
+                patient_instructions as "patientInstructions",
+                epic_last_synced_at as "epicLastSyncedAt",
                 created_at as "createdAt", updated_at as "updatedAt"
     `;
-    
+
     values.push(id);
 
     try {
@@ -581,6 +657,17 @@ class VisitService {
              recording_ended_at as "recordingEndedAt", condition_codes as "conditionCodes",
              care_plan_request_id as "carePlanRequestId", care_plan_requested_at as "carePlanRequestedAt",
              audio_uri as "audioUri", audio_uploaded_at as "audioUploadedAt",
+             epic_encounter_id as "epicEncounterId",
+             epic_appointment_id as "epicAppointmentId",
+             epic_identifier as "epicIdentifier",
+             encounter_class as "encounterClass",
+             reason_codes as "reasonCodes",
+             priority,
+             location_display as "locationDisplay",
+             participant_details as "participantDetails",
+             cancellation_reason as "cancellationReason",
+             patient_instructions as "patientInstructions",
+             epic_last_synced_at as "epicLastSyncedAt",
              created_at as "createdAt", updated_at as "updatedAt"
       FROM visits
       WHERE provider_id = $1 AND scheduled_at >= $2 AND scheduled_at <= $3
@@ -609,6 +696,17 @@ class VisitService {
              recording_ended_at as "recordingEndedAt", condition_codes as "conditionCodes",
              care_plan_request_id as "carePlanRequestId", care_plan_requested_at as "carePlanRequestedAt",
              audio_uri as "audioUri", audio_uploaded_at as "audioUploadedAt",
+             epic_encounter_id as "epicEncounterId",
+             epic_appointment_id as "epicAppointmentId",
+             epic_identifier as "epicIdentifier",
+             encounter_class as "encounterClass",
+             reason_codes as "reasonCodes",
+             priority,
+             location_display as "locationDisplay",
+             participant_details as "participantDetails",
+             cancellation_reason as "cancellationReason",
+             patient_instructions as "patientInstructions",
+             epic_last_synced_at as "epicLastSyncedAt",
              created_at as "createdAt", updated_at as "updatedAt"
       FROM visits
       WHERE provider_id = $1 AND scheduled_at >= $2 AND scheduled_at <= $3

@@ -12,6 +12,8 @@ import type {
   FHIRCondition,
   FHIRMedication,
   FHIRAllergyIntolerance,
+  FHIREncounter,
+  FHIRAppointment,
   FHIRCodeableConcept,
   FHIRReference,
   FHIRExtension,
@@ -300,6 +302,47 @@ export interface AllergyOut {
   encounter: ReferenceInfo | null;
   reactions: AllergyReactionOut[];
   notes: string[];
+}
+
+// =============================================================================
+// Output: Encounter
+// =============================================================================
+
+export interface EncounterOut {
+  id: string | null;
+  status: string;
+  encounterClass: string;
+  classDisplay: string | null;
+  typeDisplay: string | null;
+  typeCoding: CodeableConceptOut | null;
+  periodStart: string | null;
+  periodEnd: string | null;
+  reasonCodes: CodeableConceptOut[];
+  participants: { role: CodeableConceptOut | null; individual: ReferenceInfo | null }[];
+  locationDisplay: string | null;
+  serviceProvider: ReferenceInfo | null;
+  epicIdentifier: string | null;
+  priorityDisplay: string | null;
+}
+
+// =============================================================================
+// Output: Appointment
+// =============================================================================
+
+export interface AppointmentOut {
+  id: string | null;
+  status: string;
+  serviceTypeDisplay: string | null;
+  serviceTypeCoding: CodeableConceptOut | null;
+  start: string | null;
+  end: string | null;
+  reasonCodes: CodeableConceptOut[];
+  participants: { actor: ReferenceInfo | null; status: string }[];
+  description: string | null;
+  cancellationReason: string | null;
+  patientInstruction: string | null;
+  epicIdentifier: string | null;
+  priority: number | null;
 }
 
 // =============================================================================
@@ -790,5 +833,60 @@ export function transformAllergyIntolerances(
       exposureRoute: transformCodeableConcept(r.exposureRoute),
     })),
     notes: (ai.note || []).map((n) => n.text),
+  }));
+}
+
+// =============================================================================
+// Transform: Encounters
+// =============================================================================
+
+export function transformEncounters(
+  encounters: FHIREncounter[]
+): EncounterOut[] {
+  return encounters.map((enc) => ({
+    id: enc.id || null,
+    status: enc.status,
+    encounterClass: enc.class?.code || "unknown",
+    classDisplay: enc.class?.display || null,
+    typeDisplay: enc.type?.[0]?.text || enc.type?.[0]?.coding?.[0]?.display || null,
+    typeCoding: enc.type?.[0] ? transformCodeableConcept(enc.type[0]) : null,
+    periodStart: enc.period?.start || null,
+    periodEnd: enc.period?.end || null,
+    reasonCodes: transformCodeableConceptArray(enc.reasonCode || []),
+    participants: (enc.participant || []).map((p) => ({
+      role: p.type?.[0] ? transformCodeableConcept(p.type[0]) : null,
+      individual: transformReference(p.individual),
+    })),
+    locationDisplay: enc.location?.[0]?.location?.display || null,
+    serviceProvider: transformReference(enc.serviceProvider),
+    epicIdentifier: enc.identifier?.[0]?.value || null,
+    priorityDisplay: enc.priority?.coding?.[0]?.display || null,
+  }));
+}
+
+// =============================================================================
+// Transform: Appointments
+// =============================================================================
+
+export function transformAppointments(
+  appointments: FHIRAppointment[]
+): AppointmentOut[] {
+  return appointments.map((apt) => ({
+    id: apt.id || null,
+    status: apt.status,
+    serviceTypeDisplay: apt.serviceType?.[0]?.text || apt.serviceType?.[0]?.coding?.[0]?.display || null,
+    serviceTypeCoding: apt.serviceType?.[0] ? transformCodeableConcept(apt.serviceType[0]) : null,
+    start: apt.start || null,
+    end: apt.end || null,
+    reasonCodes: transformCodeableConceptArray(apt.reasonCode || []),
+    participants: (apt.participant || []).map((p) => ({
+      actor: transformReference(p.actor),
+      status: p.status,
+    })),
+    description: apt.description || null,
+    cancellationReason: apt.cancelationReason?.text || apt.cancelationReason?.coding?.[0]?.display || null,
+    patientInstruction: apt.patientInstruction || null,
+    epicIdentifier: apt.identifier?.[0]?.value || null,
+    priority: apt.priority ?? null,
   }));
 }

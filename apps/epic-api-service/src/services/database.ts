@@ -14,6 +14,8 @@ import type {
   MedicationOut,
   DiagnosisOut,
   AllergyOut,
+  EncounterOut,
+  AppointmentOut,
 } from "./transforms";
 
 const logger = createLogger("epic-database");
@@ -762,4 +764,174 @@ async function loadSnapshotDetails(
       notes: (r.notes || []) as string[],
     })),
   };
+}
+
+// =============================================================================
+// Encounter/Appointment → Visits Sync
+// =============================================================================
+
+const ENCOUNTER_STATUS_MAP: Record<string, string> = {
+  planned: "SCHEDULED",
+  arrived: "CHECKED_IN",
+  "in-progress": "IN_PROGRESS",
+  finished: "COMPLETED",
+  cancelled: "CANCELLED",
+  onleave: "IN_PROGRESS",
+  "entered-in-error": "CANCELLED",
+  unknown: "SCHEDULED",
+};
+
+const ENCOUNTER_TYPE_MAP: Record<string, string> = {
+  "encounter for check up": "ROUTINE_CHECK",
+  "annual physical": "ROUTINE_CHECK",
+  "follow up": "FOLLOW_UP",
+  "follow-up": "FOLLOW_UP",
+  consultation: "CONSULTATION",
+  emergency: "EMERGENCY",
+  procedure: "PROCEDURE",
+  surgery: "SURGERY",
+  diagnostic: "DIAGNOSTIC",
+  therapy: "THERAPY",
+};
+
+function mapEncounterType(typeDisplay: string | null): string {
+  if (!typeDisplay) return "CONSULTATION";
+  const key = typeDisplay.toLowerCase();
+  for (const [pattern, visitType] of Object.entries(ENCOUNTER_TYPE_MAP)) {
+    if (key.includes(pattern)) return visitType;
+  }
+  return "CONSULTATION";
+}
+
+export async function syncEncountersToVisits(
+  patientId: string,
+  providerId: string,
+  hospitalId: string,
+  encounters: EncounterOut[]
+): Promise<{ synced: number; errors: string[] }> {
+  const db = ensureInitialized();
+  let synced = 0;
+  const errors: string[] = [];
+
+  for (const enc of encounters) {
+    if (!enc.id) continue;
+    try {
+      await db.query(
+        `INSERT INTO visits (
+          patient_id, provider_id, hospital_id,
+          epic_encounter_id, epic_identifier,
+          status, type, encounter_class,
+          scheduled_at, started_at, completed_at,
+          chief_complaint, reason_codes, priority,
+          location_display, participant_details,
+          case_ids, epic_last_synced_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17::jsonb, NOW())
+        ON CONFLICT (epic_encounter_id) WHERE epic_encounter_id IS NOT NULL
+        DO UPDATE SET
+          status = EXCLUDED.status,
+          type = EXCLUDED.type,
+          encounter_class = EXCLUDED.encounter_class,
+          started_at = EXCLUDED.started_at,
+          completed_at = EXCLUDED.completed_at,
+          chief_complaint = EXCLUDED.chief_complaint,
+          reason_codes = EXCLUDED.reason_codes,
+          priority = EXCLUDED.priority,
+          location_display = EXCLUDED.location_display,
+          participant_details = EXCLUDED.participant_details,
+          epic_last_synced_at = NOW(),
+          updated_at = NOW()`,
+        [
+          patientId,
+          providerId,
+          hospitalId,
+          enc.id,
+          enc.epicIdentifier,
+          ENCOUNTER_STATUS_MAP[enc.status] || "SCHEDULED",
+          mapEncounterType(enc.typeDisplay),
+          enc.encounterClass,
+          enc.periodStart || new Date().toISOString(),
+          enc.status === "in-progress" || enc.status === "finished" ? enc.periodStart : null,
+          enc.status === "finished" ? enc.periodEnd : null,
+          enc.reasonCodes[0]?.text || null,
+          enc.reasonCodes.length > 0 ? JSON.stringify(enc.reasonCodes) : null,
+          enc.priorityDisplay,
+          enc.locationDisplay,
+          enc.participants.length > 0 ? JSON.stringify(enc.participants) : null,
+          "[]",
+        ]
+      );
+      synced++;
+    } catch (error) {
+      errors.push(`Encounter ${enc.id}: ${(error as Error).message}`);
+    }
+  }
+
+  return { synced, errors };
+}
+
+export async function syncAppointmentsToVisits(
+  patientId: string,
+  providerId: string,
+  hospitalId: string,
+  appointments: AppointmentOut[]
+): Promise<{ synced: number; errors: string[] }> {
+  const db = ensureInitialized();
+  let synced = 0;
+  const errors: string[] = [];
+
+  for (const apt of appointments) {
+    if (!apt.id) continue;
+    try {
+      const status = apt.status === "cancelled" ? "CANCELLED"
+        : apt.status === "noshow" ? "NO_SHOW"
+        : "SCHEDULED";
+
+      await db.query(
+        `INSERT INTO visits (
+          patient_id, provider_id, hospital_id,
+          epic_appointment_id, epic_identifier,
+          status, type,
+          scheduled_at,
+          chief_complaint, reason_codes, priority,
+          patient_instructions, cancellation_reason,
+          participant_details,
+          case_ids, epic_last_synced_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15::jsonb, NOW())
+        ON CONFLICT (epic_appointment_id) WHERE epic_appointment_id IS NOT NULL
+        DO UPDATE SET
+          status = EXCLUDED.status,
+          scheduled_at = EXCLUDED.scheduled_at,
+          chief_complaint = EXCLUDED.chief_complaint,
+          reason_codes = EXCLUDED.reason_codes,
+          priority = EXCLUDED.priority,
+          patient_instructions = EXCLUDED.patient_instructions,
+          cancellation_reason = EXCLUDED.cancellation_reason,
+          participant_details = EXCLUDED.participant_details,
+          epic_last_synced_at = NOW(),
+          updated_at = NOW()`,
+        [
+          patientId,
+          providerId,
+          hospitalId,
+          apt.id,
+          apt.epicIdentifier,
+          status,
+          mapEncounterType(apt.serviceTypeDisplay),
+          apt.start || new Date().toISOString(),
+          apt.reasonCodes[0]?.text || apt.description || null,
+          apt.reasonCodes.length > 0 ? JSON.stringify(apt.reasonCodes) : null,
+          apt.priority !== null ? String(apt.priority) : null,
+          apt.patientInstruction,
+          apt.cancellationReason,
+          apt.participants.length > 0 ? JSON.stringify(apt.participants) : null,
+          "[]",
+        ]
+      );
+      synced++;
+    } catch (error) {
+      errors.push(`Appointment ${apt.id}: ${(error as Error).message}`);
+    }
+  }
+
+  return { synced, errors };
 }

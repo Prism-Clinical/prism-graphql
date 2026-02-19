@@ -16,6 +16,8 @@ import {
   FHIRObservation,
   FHIRMedication,
   FHIRMedicationRequest,
+  FHIREncounter,
+  FHIRAppointment,
   EpicFhirClient,
 } from "./clients";
 import { createLogger } from "./clients/logger";
@@ -27,15 +29,19 @@ import {
   transformMedications,
   transformConditions,
   transformAllergyIntolerances,
+  transformEncounters,
+  transformAppointments,
   type PatientDemographicsOut,
   type VitalOut,
   type LabResultOut,
   type MedicationOut,
   type DiagnosisOut,
   type AllergyOut,
+  type EncounterOut,
+  type AppointmentOut,
 } from "./services/transforms";
 import { getCached, setCached, getCachedMedicationRef, setCachedMedicationRef, invalidatePatientCache } from "./services/cache";
-import { createSnapshot, getLatestSnapshot, getSnapshotHistory, getSnapshot, getEpicPatientIdByPatientId, getLatestSnapshotClinicalData, type SnapshotData, type ClinicalSnapshotFull, type SnapshotSummary } from "./services/database";
+import { createSnapshot, getLatestSnapshot, getSnapshotHistory, getSnapshot, getEpicPatientIdByPatientId, getLatestSnapshotClinicalData, syncEncountersToVisits, syncAppointmentsToVisits, type SnapshotData, type ClinicalSnapshotFull, type SnapshotSummary } from "./services/database";
 import { mapConditions, mapMedications, mapAllergies } from "./services/patient-clinical-mappers";
 
 // =============================================================================
@@ -50,6 +56,8 @@ interface EpicPatientData {
   medications: MedicationOut[];
   diagnoses: DiagnosisOut[];
   allergies: AllergyOut[];
+  encounters: EncounterOut[];
+  appointments: AppointmentOut[];
   lastSync: string;
   errors: DataFetchError[];
 }
@@ -423,6 +431,50 @@ export const typeDefs = gql`
   }
 
   # =========================================================================
+  # Encounters & Appointments
+  # =========================================================================
+
+  type EpicEncounter {
+    id: ID
+    status: String!
+    encounterClass: String!
+    classDisplay: String
+    typeDisplay: String
+    periodStart: String
+    periodEnd: String
+    reasonCodes: [CodeableConcept!]!
+    participants: [EncounterParticipant!]!
+    locationDisplay: String
+    epicIdentifier: String
+    priorityDisplay: String
+  }
+
+  type EncounterParticipant {
+    role: CodeableConcept
+    individual: ReferenceInfo
+  }
+
+  type EpicAppointment {
+    id: ID
+    status: String!
+    serviceTypeDisplay: String
+    start: String
+    end: String
+    reasonCodes: [CodeableConcept!]!
+    participants: [AppointmentParticipant!]!
+    description: String
+    cancellationReason: String
+    patientInstruction: String
+    epicIdentifier: String
+    priority: Int
+  }
+
+  type AppointmentParticipant {
+    actor: ReferenceInfo
+    status: String!
+  }
+
+  # =========================================================================
   # Error types
   # =========================================================================
 
@@ -538,6 +590,8 @@ export const typeDefs = gql`
     medications: [Medication!]!
     diagnoses: [Diagnosis!]!
     allergies: [Allergy!]!
+    encounters: [EpicEncounter!]!
+    appointments: [EpicAppointment!]!
     lastSync: String
     errors: [DataFetchError!]!
   }
@@ -564,6 +618,8 @@ export const typeDefs = gql`
     MEDICATIONS
     DIAGNOSES
     ALLERGIES
+    ENCOUNTERS
+    APPOINTMENTS
   }
 
   enum SnapshotTrigger {
@@ -653,6 +709,8 @@ export const resolvers = {
         cachedMedications,
         cachedDiagnoses,
         cachedAllergies,
+        cachedEncounters,
+        cachedAppointments,
       ] = await Promise.all([
         getCached<PatientDemographicsOut>("patient", epicPatientId),
         getCached<VitalOut[]>("vitals", epicPatientId),
@@ -660,6 +718,8 @@ export const resolvers = {
         getCached<MedicationOut[]>("medications", epicPatientId),
         getCached<DiagnosisOut[]>("conditions", epicPatientId),
         getCached<AllergyOut[]>("allergies", epicPatientId),
+        getCached<EncounterOut[]>("encounters", epicPatientId),
+        getCached<AppointmentOut[]>("appointments", epicPatientId),
       ]);
 
       // If everything is cached, return immediately
@@ -669,7 +729,9 @@ export const resolvers = {
         cachedLabs &&
         cachedMedications &&
         cachedDiagnoses &&
-        cachedAllergies
+        cachedAllergies &&
+        cachedEncounters &&
+        cachedAppointments
       ) {
         logger.info("Full cache hit for patient data", {
           requestId,
@@ -683,6 +745,8 @@ export const resolvers = {
           medications: cachedMedications,
           diagnoses: cachedDiagnoses,
           allergies: cachedAllergies,
+          encounters: cachedEncounters,
+          appointments: cachedAppointments,
           lastSync: new Date().toISOString(),
           errors: [],
         };
@@ -692,7 +756,7 @@ export const resolvers = {
       // Fetch missing data from Epic in parallel using allSettled
       // Each fetcher returns its typed result; failures are captured below.
       // -----------------------------------------------------------------------
-      const [demoResult, vitalsResult, labsResult, medsResult, dxResult, allergyResult] =
+      const [demoResult, vitalsResult, labsResult, medsResult, dxResult, allergyResult, encounterResult, appointmentResult] =
         await Promise.allSettled([
           // Demographics
           cachedDemographics
@@ -771,14 +835,36 @@ export const resolvers = {
                 await setCached("allergies", epicPatientId, transformed);
                 return transformed;
               })(),
+
+          // Encounters
+          cachedEncounters
+            ? Promise.resolve(cachedEncounters)
+            : (async (): Promise<EncounterOut[]> => {
+                const result = await fhirClient.getEncounters(epicPatientId, requestId);
+                const encounters: FHIREncounter[] = result.data.entry?.map((e) => e.resource) || [];
+                const transformed = transformEncounters(encounters);
+                await setCached("encounters", epicPatientId, transformed);
+                return transformed;
+              })(),
+
+          // Appointments
+          cachedAppointments
+            ? Promise.resolve(cachedAppointments)
+            : (async (): Promise<AppointmentOut[]> => {
+                const result = await fhirClient.getAppointments(epicPatientId, requestId);
+                const appointments: FHIRAppointment[] = result.data.entry?.map((e) => e.resource) || [];
+                const transformed = transformAppointments(appointments);
+                await setCached("appointments", epicPatientId, transformed);
+                return transformed;
+              })(),
         ]);
 
       // -----------------------------------------------------------------------
       // Extract results — collect errors for any rejected fetches
       // -----------------------------------------------------------------------
       const errors: DataFetchError[] = [];
-      const dataTypeLabels = ["DEMOGRAPHICS", "VITALS", "LABS", "MEDICATIONS", "DIAGNOSES", "ALLERGIES"] as const;
-      const results = [demoResult, vitalsResult, labsResult, medsResult, dxResult, allergyResult];
+      const dataTypeLabels = ["DEMOGRAPHICS", "VITALS", "LABS", "MEDICATIONS", "DIAGNOSES", "ALLERGIES", "ENCOUNTERS", "APPOINTMENTS"] as const;
+      const results = [demoResult, vitalsResult, labsResult, medsResult, dxResult, allergyResult, encounterResult, appointmentResult];
       for (let i = 0; i < results.length; i++) {
         const r = results[i];
         if (r.status === "rejected") {
@@ -796,6 +882,8 @@ export const resolvers = {
       const medications = medsResult.status === "fulfilled" ? medsResult.value : [];
       const diagnoses = dxResult.status === "fulfilled" ? dxResult.value : [];
       const allergies = allergyResult.status === "fulfilled" ? allergyResult.value : [];
+      const encounters = encounterResult.status === "fulfilled" ? encounterResult.value : [];
+      const appointments = appointmentResult.status === "fulfilled" ? appointmentResult.value : [];
 
       logger.info("Epic patient data fetch completed", {
         requestId,
@@ -807,6 +895,8 @@ export const resolvers = {
         medicationCount: medications.length,
         diagnosisCount: diagnoses.length,
         allergyCount: allergies.length,
+        encounterCount: encounters.length,
+        appointmentCount: appointments.length,
       });
 
       return {
@@ -817,6 +907,8 @@ export const resolvers = {
         medications,
         diagnoses,
         allergies,
+        encounters,
+        appointments,
         lastSync: new Date().toISOString(),
         errors,
       };
@@ -1018,6 +1110,36 @@ export const resolvers = {
                 success: true,
               };
             }
+            case "ENCOUNTERS": {
+              const result = await fhirClient.getEncounters(
+                epicPatientId,
+                requestId
+              );
+              const encounters: FHIREncounter[] =
+                result.data.entry?.map((e) => e.resource) || [];
+              const transformed = transformEncounters(encounters);
+              await setCached("encounters", epicPatientId, transformed);
+              return {
+                dataType,
+                records: transformed.length,
+                success: true,
+              };
+            }
+            case "APPOINTMENTS": {
+              const result = await fhirClient.getAppointments(
+                epicPatientId,
+                requestId
+              );
+              const appointments: FHIRAppointment[] =
+                result.data.entry?.map((e) => e.resource) || [];
+              const transformed = transformAppointments(appointments);
+              await setCached("appointments", epicPatientId, transformed);
+              return {
+                dataType,
+                records: transformed.length,
+                success: true,
+              };
+            }
             default:
               return {
                 dataType,
@@ -1089,7 +1211,7 @@ export const resolvers = {
       });
 
       // Always fetch fresh data for snapshots (bypass cache)
-      const [patientResult, vitalsResult, labsResult, medsResult, conditionsResult, allergyResult] =
+      const [patientResult, vitalsResult, labsResult, medsResult, conditionsResult, allergyResult, encountersResult, appointmentsResult] =
         await Promise.allSettled([
           fhirClient.getPatient(epicPatientId, requestId),
           fhirClient.getObservations(epicPatientId, "vital-signs", requestId),
@@ -1097,6 +1219,8 @@ export const resolvers = {
           fhirClient.getMedicationRequests(epicPatientId, requestId),
           fhirClient.getConditions(epicPatientId, requestId),
           fhirClient.getAllergyIntolerances(epicPatientId, requestId),
+          fhirClient.getEncounters(epicPatientId, requestId),
+          fhirClient.getAppointments(epicPatientId, requestId),
         ]);
 
       // Transform demographics
@@ -1145,6 +1269,22 @@ export const resolvers = {
         allergies = transformAllergyIntolerances(allergyIntolerances);
       }
 
+      // Transform encounters
+      let encounters: EncounterOut[] = [];
+      if (encountersResult.status === "fulfilled") {
+        const rawEncounters: FHIREncounter[] =
+          encountersResult.value.data.entry?.map((e) => e.resource) || [];
+        encounters = transformEncounters(rawEncounters);
+      }
+
+      // Transform appointments
+      let appointments: AppointmentOut[] = [];
+      if (appointmentsResult.status === "fulfilled") {
+        const rawAppointments: FHIRAppointment[] =
+          appointmentsResult.value.data.entry?.map((e) => e.resource) || [];
+        appointments = transformAppointments(rawAppointments);
+      }
+
       const snapshotData: SnapshotData = {
         demographics,
         vitals,
@@ -1168,6 +1308,29 @@ export const resolvers = {
       await setCached("medications", epicPatientId, medications);
       await setCached("conditions", epicPatientId, diagnoses);
       await setCached("allergies", epicPatientId, allergies);
+      await setCached("encounters", epicPatientId, encounters);
+      await setCached("appointments", epicPatientId, appointments);
+
+      // Sync encounters and appointments to visits table
+      if (encounters.length > 0 || appointments.length > 0) {
+        try {
+          if (encounters.length > 0) {
+            const encounterSync = await syncEncountersToVisits(epicPatientId, "system", "system", encounters);
+            logger.info("Encounters synced to visits", { requestId, epicPatientId, synced: encounterSync.synced, errors: encounterSync.errors });
+          }
+          if (appointments.length > 0) {
+            const appointmentSync = await syncAppointmentsToVisits(epicPatientId, "system", "system", appointments);
+            logger.info("Appointments synced to visits", { requestId, epicPatientId, synced: appointmentSync.synced, errors: appointmentSync.errors });
+          }
+        } catch (syncError) {
+          // Don't fail the snapshot if visit sync fails
+          logger.warn("Failed to sync encounters/appointments to visits", {
+            requestId,
+            epicPatientId,
+            error: syncError instanceof Error ? syncError.message : "Unknown error",
+          });
+        }
+      }
 
       logger.info("Clinical snapshot created successfully", {
         requestId,
