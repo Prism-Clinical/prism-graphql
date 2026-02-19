@@ -468,6 +468,20 @@ export class EpicFhirClient {
     return this.get(`AllergyIntolerance`, { patient: patientId }, requestId);
   }
 
+  async getEncounters(
+    patientId: string,
+    requestId?: string
+  ): Promise<AxiosResponse<FHIRBundle<FHIREncounter>>> {
+    return this.get(`Encounter`, { patient: patientId }, requestId);
+  }
+
+  async getAppointments(
+    patientId: string,
+    requestId?: string
+  ): Promise<AxiosResponse<FHIRBundle<FHIRAppointment>>> {
+    return this.get(`Appointment`, { patient: patientId }, requestId);
+  }
+
   async getLabObservations(
     patientId: string,
     requestId?: string
