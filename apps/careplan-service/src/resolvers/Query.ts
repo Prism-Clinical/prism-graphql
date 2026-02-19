@@ -115,6 +115,35 @@ export const Query: Resolvers = {
       } as any;
     },
 
+    async patientCarePlans(_parent, { patientId, limit, offset }, _context) {
+      const effectiveLimit = limit ?? 10;
+      const effectiveOffset = offset ?? 0;
+
+      const result = await carePlanService.getCarePlans(
+        { patientId },
+        { first: effectiveLimit + effectiveOffset }
+      );
+
+      const slicedPlans = result.carePlans.slice(effectiveOffset, effectiveOffset + effectiveLimit);
+
+      const enrichedNodes = await Promise.all(
+        slicedPlans.map(async (cp) => {
+          const enriched = await enrichCarePlan(cp);
+          const totalGoals = enriched.goals.length;
+          const achievedGoals = enriched.goals.filter((g: any) => g.status === 'ACHIEVED').length;
+          return {
+            ...enriched,
+            progress: totalGoals > 0 ? Math.round((achievedGoals / totalGoals) * 100) : 0,
+          };
+        })
+      );
+
+      return {
+        totalCount: result.totalCount,
+        nodes: enrichedNodes,
+      } as any;
+    },
+
     async activeCarePlanForPatient(_parent, { patientId }, _context) {
       const carePlan = await carePlanService.getActiveCarePlanForPatient(patientId);
       if (!carePlan) return null;

@@ -80,6 +80,7 @@ type CarePlan @key(fields: "id") {
   # Plan metadata
   title: String!
   status: CarePlanStatus!
+  progress: Int
 
   # Conditions being addressed (ICD-10 codes)
   conditionCodes: [String!]!
@@ -225,6 +226,11 @@ type TemplateIntervention {
 # =============================================================================
 # PAGINATION
 # =============================================================================
+
+type PatientCarePlansConnection {
+  totalCount: Int!
+  nodes: [CarePlan!]!
+}
 
 type CarePlanConnection {
   edges: [CarePlanEdge!]!
@@ -518,6 +524,13 @@ type Query {
     status: CarePlanStatus
     pagination: PaginationInput
   ): CarePlanConnection!
+
+  # Get care plans for patient with offset pagination (for frontend)
+  patientCarePlans(
+    patientId: ID!
+    limit: Int
+    offset: Int
+  ): PatientCarePlansConnection!
 
   # Get active care plan for a patient (should be at most one)
   activeCarePlanForPatient(patientId: ID!): CarePlan
