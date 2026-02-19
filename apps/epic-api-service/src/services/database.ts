@@ -244,6 +244,144 @@ export async function getSnapshotHistory(
 }
 
 // =============================================================================
+// getEpicPatientIdByPatientId
+// =============================================================================
+
+export async function getEpicPatientIdByPatientId(
+  patientId: string
+): Promise<string | null> {
+  const db = ensureInitialized();
+  const result = await db.query(
+    `SELECT epic_patient_id FROM patients WHERE id = $1`,
+    [patientId]
+  );
+  if (result.rows.length === 0) return null;
+  return (result.rows[0].epic_patient_id as string) || null;
+}
+
+// =============================================================================
+// getLatestSnapshotClinicalData
+// =============================================================================
+
+export interface SnapshotClinicalData {
+  diagnoses: DiagnosisOut[];
+  medications: MedicationOut[];
+  allergies: AllergyOut[];
+}
+
+export async function getLatestSnapshotClinicalData(
+  epicPatientId: string
+): Promise<SnapshotClinicalData | null> {
+  const db = ensureInitialized();
+
+  const snapshotResult = await db.query(
+    `SELECT id FROM patient_clinical_snapshots
+     WHERE epic_patient_id = $1
+     ORDER BY snapshot_version DESC LIMIT 1`,
+    [epicPatientId]
+  );
+
+  if (snapshotResult.rows.length === 0) return null;
+
+  const snapshotId = snapshotResult.rows[0].id as string;
+
+  const [conditionsResult, medsResult, allergiesResult] = await Promise.all([
+    db.query(
+      `SELECT condition_id, code, display, code_detail, clinical_status,
+              verification_status, category, severity, body_site, encounter,
+              onset_date_time, onset_age, onset_string, abatement_date_time,
+              abatement_age, abatement_string, recorded_date, recorder,
+              asserter, stage, evidence, notes
+       FROM snapshot_conditions WHERE snapshot_id = $1 ORDER BY code`,
+      [snapshotId]
+    ),
+    db.query(
+      `SELECT medication_request_id, name, status, intent, category, priority,
+              medication_code, medication_reference, authored_on, requester,
+              encounter, reason_code, reason_reference, dosage_instructions,
+              dispense_request, substitution, course_of_therapy_type, notes
+       FROM snapshot_medications WHERE snapshot_id = $1 ORDER BY name`,
+      [snapshotId]
+    ),
+    db.query(
+      `SELECT allergy_intolerance_id, code, clinical_status, verification_status,
+              type, categories, criticality, onset_date_time, onset_age,
+              onset_string, recorded_date, last_occurrence, recorder,
+              asserter, encounter, reactions, notes
+       FROM snapshot_allergies WHERE snapshot_id = $1 ORDER BY allergy_intolerance_id`,
+      [snapshotId]
+    ),
+  ]);
+
+  return {
+    diagnoses: conditionsResult.rows.map((r: Record<string, unknown>) => ({
+      code: (r.code as string) || "",
+      display: (r.display as string) || "",
+      recordedDate: (r.recorded_date as string) || "",
+      id: r.condition_id as string | null,
+      clinicalStatus: r.clinical_status as DiagnosisOut["clinicalStatus"],
+      verificationStatus: r.verification_status as DiagnosisOut["verificationStatus"],
+      category: (r.category || []) as DiagnosisOut["category"],
+      severity: r.severity as DiagnosisOut["severity"],
+      codeDetail: r.code_detail as DiagnosisOut["codeDetail"],
+      bodySite: (r.body_site || []) as DiagnosisOut["bodySite"],
+      encounter: r.encounter as DiagnosisOut["encounter"],
+      onsetDateTime: r.onset_date_time as string | null,
+      onsetAge: r.onset_age ? parseFloat(r.onset_age as string) : null,
+      onsetString: r.onset_string as string | null,
+      abatementDateTime: r.abatement_date_time as string | null,
+      abatementAge: r.abatement_age ? parseFloat(r.abatement_age as string) : null,
+      abatementString: r.abatement_string as string | null,
+      recorder: r.recorder as DiagnosisOut["recorder"],
+      asserter: r.asserter as DiagnosisOut["asserter"],
+      stage: (r.stage || []) as DiagnosisOut["stage"],
+      evidence: (r.evidence || []) as DiagnosisOut["evidence"],
+      notes: (r.notes || []) as string[],
+    })),
+    medications: medsResult.rows.map((r: Record<string, unknown>) => ({
+      name: r.name as string,
+      status: r.status as string,
+      dosage: ((r.dosage_instructions as MedicationOut["dosageInstructions"])?.[0]?.text) || null,
+      id: r.medication_request_id as string | null,
+      medicationCode: r.medication_code as MedicationOut["medicationCode"],
+      medicationReference: r.medication_reference as MedicationOut["medicationReference"],
+      intent: r.intent as string | null,
+      category: (r.category || []) as MedicationOut["category"],
+      priority: r.priority as string | null,
+      authoredOn: r.authored_on as string | null,
+      requester: r.requester as MedicationOut["requester"],
+      encounter: r.encounter as MedicationOut["encounter"],
+      reasonCode: (r.reason_code || []) as MedicationOut["reasonCode"],
+      reasonReference: (r.reason_reference || []) as MedicationOut["reasonReference"],
+      dosageInstructions: (r.dosage_instructions || []) as MedicationOut["dosageInstructions"],
+      dispenseRequest: r.dispense_request as MedicationOut["dispenseRequest"],
+      substitution: r.substitution as MedicationOut["substitution"],
+      courseOfTherapyType: r.course_of_therapy_type as MedicationOut["courseOfTherapyType"],
+      notes: (r.notes || []) as string[],
+    })),
+    allergies: allergiesResult.rows.map((r: Record<string, unknown>) => ({
+      id: r.allergy_intolerance_id as string | null,
+      code: r.code as AllergyOut["code"],
+      clinicalStatus: r.clinical_status as AllergyOut["clinicalStatus"],
+      verificationStatus: r.verification_status as AllergyOut["verificationStatus"],
+      type: r.type as string | null,
+      categories: (r.categories || []) as string[],
+      criticality: r.criticality as string | null,
+      onsetDateTime: r.onset_date_time as string | null,
+      onsetAge: r.onset_age ? parseFloat(r.onset_age as string) : null,
+      onsetString: r.onset_string as string | null,
+      recordedDate: r.recorded_date as string | null,
+      lastOccurrence: r.last_occurrence as string | null,
+      recorder: r.recorder as AllergyOut["recorder"],
+      asserter: r.asserter as AllergyOut["asserter"],
+      encounter: r.encounter as AllergyOut["encounter"],
+      reactions: (r.reactions || []) as AllergyOut["reactions"],
+      notes: (r.notes || []) as string[],
+    })),
+  };
+}
+
+// =============================================================================
 // Helpers: Insert
 // =============================================================================
 
