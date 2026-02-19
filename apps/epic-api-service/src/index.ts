@@ -35,7 +35,8 @@ import {
   type AllergyOut,
 } from "./services/transforms";
 import { getCached, setCached, getCachedMedicationRef, setCachedMedicationRef, invalidatePatientCache } from "./services/cache";
-import { createSnapshot, getLatestSnapshot, getSnapshotHistory, getSnapshot, type SnapshotData, type ClinicalSnapshotFull, type SnapshotSummary } from "./services/database";
+import { createSnapshot, getLatestSnapshot, getSnapshotHistory, getSnapshot, getEpicPatientIdByPatientId, getLatestSnapshotClinicalData, type SnapshotData, type ClinicalSnapshotFull, type SnapshotSummary } from "./services/database";
+import { mapConditions, mapMedications, mapAllergies } from "./services/patient-clinical-mappers";
 
 // =============================================================================
 // TYPES
@@ -470,6 +471,59 @@ export const typeDefs = gql`
   type SnapshotResult {
     snapshot: ClinicalSnapshot!
     isNew: Boolean!
+  }
+
+  # =========================================================================
+  # Patient Federation Extension (simplified clinical data)
+  # =========================================================================
+
+  enum PatientConditionStatus {
+    ACTIVE
+    RESOLVED
+    INACTIVE
+  }
+
+  enum PatientMedicationStatus {
+    ACTIVE
+    DISCONTINUED
+  }
+
+  enum AllergySeverity {
+    MILD
+    MODERATE
+    SEVERE
+  }
+
+  type PatientCondition {
+    id: ID!
+    code: String!
+    codeSystem: String
+    name: String!
+    status: PatientConditionStatus!
+    onsetDate: String
+  }
+
+  type PatientMedication {
+    id: ID!
+    name: String!
+    dosage: String
+    frequency: String
+    status: PatientMedicationStatus!
+    prescribedDate: String
+  }
+
+  type PatientAllergy {
+    id: ID!
+    allergen: String!
+    reaction: String
+    severity: AllergySeverity!
+  }
+
+  extend type Patient @key(fields: "id") {
+    id: ID! @external
+    conditions: [PatientCondition!]!
+    medications: [PatientMedication!]!
+    allergies: [PatientAllergy!]!
   }
 
   # =========================================================================
@@ -1123,6 +1177,29 @@ export const resolvers = {
       });
 
       return { snapshot, isNew: true };
+    },
+  },
+
+  Patient: {
+    async __resolveReference(ref: { id: string }) {
+      const epicPatientId = await getEpicPatientIdByPatientId(ref.id);
+
+      if (!epicPatientId) {
+        return { id: ref.id, conditions: [], medications: [], allergies: [] };
+      }
+
+      const clinicalData = await getLatestSnapshotClinicalData(epicPatientId);
+
+      if (!clinicalData) {
+        return { id: ref.id, conditions: [], medications: [], allergies: [] };
+      }
+
+      return {
+        id: ref.id,
+        conditions: mapConditions(clinicalData.diagnoses),
+        medications: mapMedications(clinicalData.medications),
+        allergies: mapAllergies(clinicalData.allergies),
+      };
     },
   },
 };

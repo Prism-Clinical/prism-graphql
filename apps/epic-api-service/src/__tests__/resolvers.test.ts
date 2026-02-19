@@ -25,6 +25,7 @@ const mockGetObservations = jest.fn();
 const mockGetLabObservations = jest.fn();
 const mockGetMedicationRequests = jest.fn();
 const mockGetConditions = jest.fn();
+const mockGetAllergyIntolerances = jest.fn();
 const mockGetMedication = jest.fn();
 const mockHealthCheck = jest.fn();
 const mockSearchPatients = jest.fn();
@@ -36,6 +37,7 @@ jest.mock("../clients", () => ({
     getLabObservations: mockGetLabObservations,
     getMedicationRequests: mockGetMedicationRequests,
     getConditions: mockGetConditions,
+    getAllergyIntolerances: mockGetAllergyIntolerances,
     getMedication: mockGetMedication,
     healthCheck: mockHealthCheck,
     searchPatients: mockSearchPatients,
@@ -82,13 +84,41 @@ const mockCreateSnapshot = jest.fn();
 const mockGetLatestSnapshot = jest.fn();
 const mockGetSnapshotHistory = jest.fn();
 const mockGetSnapshot = jest.fn();
+const mockGetEpicPatientIdByPatientId = jest.fn();
+const mockGetLatestSnapshotClinicalData = jest.fn();
 
 jest.mock("../services/database", () => ({
   createSnapshot: (...args: unknown[]) => mockCreateSnapshot(...args),
   getLatestSnapshot: (...args: unknown[]) => mockGetLatestSnapshot(...args),
   getSnapshotHistory: (...args: unknown[]) => mockGetSnapshotHistory(...args),
   getSnapshot: (...args: unknown[]) => mockGetSnapshot(...args),
+  getEpicPatientIdByPatientId: (...args: unknown[]) => mockGetEpicPatientIdByPatientId(...args),
+  getLatestSnapshotClinicalData: (...args: unknown[]) => mockGetLatestSnapshotClinicalData(...args),
   initializeDatabase: jest.fn(),
+}));
+
+jest.mock("../services/patient-clinical-mappers", () => ({
+  mapConditions: jest.fn((diagnoses) => diagnoses.map((d: Record<string, unknown>) => ({
+    id: d.id ?? "condition-0",
+    name: d.display,
+    code: d.code,
+    codeSystem: null,
+    status: "ACTIVE",
+    onsetDate: d.recordedDate,
+  }))),
+  mapMedications: jest.fn((meds) => meds.map((m: Record<string, unknown>) => ({
+    id: m.id,
+    name: m.name,
+    status: "ACTIVE",
+    dosage: m.dosage ?? null,
+    frequency: null,
+  }))),
+  mapAllergies: jest.fn((allergies) => allergies.map((a: Record<string, unknown>) => ({
+    id: a.id,
+    allergen: a.allergen ?? "Unknown allergen",
+    reaction: null,
+    severity: a.criticality === "high" ? "SEVERE" : "MODERATE",
+  }))),
 }));
 
 // ---------------------------------------------------------------------------
@@ -114,13 +144,15 @@ describe("epicPatientData resolver", () => {
     const cachedLabs = [{ id: "lab-1" }];
     const cachedMeds = [{ name: "Aspirin" }];
     const cachedDx = [{ code: "123" }];
+    const cachedAllergies = [{ id: "allergy-1" }];
 
     mockGetCached
-      .mockResolvedValueOnce(cachedDemo)    // patient
-      .mockResolvedValueOnce(cachedVitals)  // vitals
-      .mockResolvedValueOnce(cachedLabs)    // labs
-      .mockResolvedValueOnce(cachedMeds)    // medications
-      .mockResolvedValueOnce(cachedDx);     // conditions
+      .mockResolvedValueOnce(cachedDemo)      // patient
+      .mockResolvedValueOnce(cachedVitals)    // vitals
+      .mockResolvedValueOnce(cachedLabs)      // labs
+      .mockResolvedValueOnce(cachedMeds)      // medications
+      .mockResolvedValueOnce(cachedDx)        // conditions
+      .mockResolvedValueOnce(cachedAllergies); // allergies
 
     const result = await resolvers.Query.epicPatientData(
       {},
@@ -150,6 +182,7 @@ describe("epicPatientData resolver", () => {
     mockGetLabObservations.mockResolvedValue({ data: { entry: [] } });
     mockGetMedicationRequests.mockResolvedValue({ data: { entry: [] } });
     mockGetConditions.mockResolvedValue({ data: { entry: [] } });
+    mockGetAllergyIntolerances.mockResolvedValue({ data: { entry: [] } });
 
     const result = await resolvers.Query.epicPatientData(
       {},
@@ -174,6 +207,7 @@ describe("epicPatientData resolver", () => {
     mockGetLabObservations.mockRejectedValue(new Error("Labs timeout"));
     mockGetMedicationRequests.mockResolvedValue({ data: { entry: [] } });
     mockGetConditions.mockResolvedValue({ data: { entry: [] } });
+    mockGetAllergyIntolerances.mockResolvedValue({ data: { entry: [] } });
 
     const result = await resolvers.Query.epicPatientData(
       {},
@@ -213,6 +247,7 @@ describe("epicPatientData resolver", () => {
       data: { code: { coding: [{ display: "Resolved Med" }], text: "Resolved Med" } },
     });
     mockGetConditions.mockResolvedValue({ data: { entry: [] } });
+    mockGetAllergyIntolerances.mockResolvedValue({ data: { entry: [] } });
 
     const result = await resolvers.Query.epicPatientData(
       {},
@@ -273,6 +308,7 @@ describe("createClinicalSnapshot resolver", () => {
     mockGetLabObservations.mockResolvedValue({ data: { entry: [] } });
     mockGetMedicationRequests.mockResolvedValue({ data: { entry: [] } });
     mockGetConditions.mockResolvedValue({ data: { entry: [] } });
+    mockGetAllergyIntolerances.mockResolvedValue({ data: { entry: [] } });
 
     mockCreateSnapshot.mockResolvedValue({
       id: "snap-uuid",
@@ -610,5 +646,90 @@ describe("validateSearchInput", () => {
   it("rejects _count out of range", () => {
     expect(() => validateSearchInput({ name: "test", _count: 0 })).toThrow("between 1 and 50");
     expect(() => validateSearchInput({ name: "test", _count: 51 })).toThrow("between 1 and 50");
+  });
+});
+
+describe("Patient.__resolveReference", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it("returns conditions, medications, allergies from latest snapshot", async () => {
+    mockGetEpicPatientIdByPatientId.mockResolvedValue("epic-123");
+    mockGetLatestSnapshotClinicalData.mockResolvedValue({
+      diagnoses: [
+        {
+          id: "dx-1",
+          code: "I10",
+          display: "Hypertension",
+          recordedDate: "2024-01-01",
+          clinicalStatus: { coding: [{ code: "active" }], text: "Active" },
+          codeDetail: null,
+        },
+      ],
+      medications: [
+        {
+          id: "med-1",
+          name: "Lisinopril",
+          status: "active",
+          dosage: "10mg daily",
+          dosageInstructions: [{ text: "10mg daily", timing: null }],
+        },
+      ],
+      allergies: [
+        {
+          id: "allergy-1",
+          allergen: "Penicillin",
+          criticality: "high",
+          code: { coding: [{ display: "Penicillin" }], text: "Penicillin" },
+          reactions: [],
+        },
+      ],
+    });
+
+    const result = await resolvers.Patient.__resolveReference({
+      __typename: "Patient",
+      id: "patient-uuid-1",
+    });
+
+    expect(mockGetEpicPatientIdByPatientId).toHaveBeenCalledWith("patient-uuid-1");
+    expect(mockGetLatestSnapshotClinicalData).toHaveBeenCalledWith("epic-123");
+    expect(result.id).toBe("patient-uuid-1");
+    expect(result.conditions).toHaveLength(1);
+    expect(result.conditions[0].name).toBe("Hypertension");
+    expect(result.medications).toHaveLength(1);
+    expect(result.medications[0].name).toBe("Lisinopril");
+    expect(result.allergies).toHaveLength(1);
+    expect(result.allergies[0].severity).toBe("SEVERE");
+  });
+
+  it("returns empty arrays when patient has no epic_patient_id", async () => {
+    mockGetEpicPatientIdByPatientId.mockResolvedValue(null);
+
+    const result = await resolvers.Patient.__resolveReference({
+      __typename: "Patient",
+      id: "patient-no-epic",
+    });
+
+    expect(result.id).toBe("patient-no-epic");
+    expect(result.conditions).toEqual([]);
+    expect(result.medications).toEqual([]);
+    expect(result.allergies).toEqual([]);
+    expect(mockGetLatestSnapshotClinicalData).not.toHaveBeenCalled();
+  });
+
+  it("returns empty arrays when no snapshot exists", async () => {
+    mockGetEpicPatientIdByPatientId.mockResolvedValue("epic-999");
+    mockGetLatestSnapshotClinicalData.mockResolvedValue(null);
+
+    const result = await resolvers.Patient.__resolveReference({
+      __typename: "Patient",
+      id: "patient-no-snapshot",
+    });
+
+    expect(result.id).toBe("patient-no-snapshot");
+    expect(result.conditions).toEqual([]);
+    expect(result.medications).toEqual([]);
+    expect(result.allergies).toEqual([]);
   });
 });
