@@ -134,6 +134,9 @@ export const Mutation: Resolvers = {
       if (!visit) {
         throw new GraphQLError("Visit not found.");
       }
+      if (visit.status !== 'IN_PROGRESS' && visit.status !== 'CHECKED_IN') {
+        throw new GraphQLError("Visit must be in progress or checked in to complete.");
+      }
       return visitService.completeVisit(id, {
         notes,
         completedAt: new Date(),
@@ -159,7 +162,9 @@ export const Mutation: Resolvers = {
       }
       return visitService.updateVisit(id, {
         status: 'CANCELLED' as any,
-        notes: reason ? `Cancelled: ${reason}` : visit.notes,
+        notes: reason
+          ? `${visit.notes ? visit.notes + '\n' : ''}Cancelled: ${reason}`
+          : visit.notes,
       }) as any;
     },
   },

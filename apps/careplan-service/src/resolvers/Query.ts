@@ -5,6 +5,9 @@ function createCursor(item: { createdAt: Date; id: string }): string {
   return Buffer.from(`${item.createdAt.toISOString()}|${item.id}`).toString('base64');
 }
 
+// Graceful fallbacks for non-nullable connection types. In federation, one
+// subgraph failure should not break the entire query — return empty results
+// so the page renders with "no care plans" instead of a full error screen.
 const EMPTY_CONNECTION = {
   edges: [],
   pageInfo: { hasNextPage: false, hasPreviousPage: false, startCursor: null, endCursor: null },
