@@ -5,6 +5,17 @@ function createCursor(item: { createdAt: Date; id: string }): string {
   return Buffer.from(`${item.createdAt.toISOString()}|${item.id}`).toString('base64');
 }
 
+const EMPTY_CONNECTION = {
+  edges: [],
+  pageInfo: { hasNextPage: false, hasPreviousPage: false, startCursor: null, endCursor: null },
+  totalCount: 0,
+} as any;
+
+const EMPTY_PATIENT_CONNECTION = {
+  totalCount: 0,
+  nodes: [],
+} as any;
+
 async function enrichCarePlan(carePlan: CarePlan) {
   const goals = await carePlanService.getGoalsForCarePlan(carePlan.id);
   const interventions = await carePlanService.getInterventionsForCarePlan(carePlan.id);
@@ -55,93 +66,108 @@ export const Query: Resolvers = {
     },
 
     async carePlans(_parent, { filter, pagination }, _context) {
-      const result = await carePlanService.getCarePlans(
-        {
-          patientId: filter?.patientId || undefined,
-          status: filter?.status as any || undefined,
-          conditionCode: filter?.conditionCode || undefined,
-          createdAfter: filter?.createdAfter ? new Date(filter.createdAfter) : undefined,
-          createdBefore: filter?.createdBefore ? new Date(filter.createdBefore) : undefined,
-        },
-        {
-          first: pagination?.first || undefined,
-          after: pagination?.after || undefined,
-        }
-      );
+      try {
+        const result = await carePlanService.getCarePlans(
+          {
+            patientId: filter?.patientId || undefined,
+            status: filter?.status as any || undefined,
+            conditionCode: filter?.conditionCode || undefined,
+            createdAfter: filter?.createdAfter ? new Date(filter.createdAfter) : undefined,
+            createdBefore: filter?.createdBefore ? new Date(filter.createdBefore) : undefined,
+          },
+          {
+            first: pagination?.first || undefined,
+            after: pagination?.after || undefined,
+          }
+        );
 
-      const edges = await Promise.all(result.carePlans.map(async cp => ({
-        node: await enrichCarePlan(cp),
-        cursor: createCursor(cp),
-      })));
+        const edges = await Promise.all(result.carePlans.map(async cp => ({
+          node: await enrichCarePlan(cp),
+          cursor: createCursor(cp),
+        })));
 
-      return {
-        edges,
-        pageInfo: {
-          hasNextPage: result.hasNextPage,
-          hasPreviousPage: false,
-          startCursor: edges.length > 0 ? edges[0].cursor : null,
-          endCursor: edges.length > 0 ? edges[edges.length - 1].cursor : null,
-        },
-        totalCount: result.totalCount,
-      } as any;
+        return {
+          edges,
+          pageInfo: {
+            hasNextPage: result.hasNextPage,
+            hasPreviousPage: false,
+            startCursor: edges.length > 0 ? edges[0].cursor : null,
+            endCursor: edges.length > 0 ? edges[edges.length - 1].cursor : null,
+          },
+          totalCount: result.totalCount,
+        } as any;
+      } catch (error) {
+        console.error('carePlans resolver error:', error);
+        return EMPTY_CONNECTION;
+      }
     },
 
     async carePlansForPatient(_parent, { patientId, status, pagination }, _context) {
-      const result = await carePlanService.getCarePlans(
-        {
-          patientId,
-          status: status as any || undefined,
-        },
-        {
-          first: pagination?.first || undefined,
-          after: pagination?.after || undefined,
-        }
-      );
+      try {
+        const result = await carePlanService.getCarePlans(
+          {
+            patientId,
+            status: status as any || undefined,
+          },
+          {
+            first: pagination?.first || undefined,
+            after: pagination?.after || undefined,
+          }
+        );
 
-      const edges = await Promise.all(result.carePlans.map(async cp => ({
-        node: await enrichCarePlan(cp),
-        cursor: createCursor(cp),
-      })));
+        const edges = await Promise.all(result.carePlans.map(async cp => ({
+          node: await enrichCarePlan(cp),
+          cursor: createCursor(cp),
+        })));
 
-      return {
-        edges,
-        pageInfo: {
-          hasNextPage: result.hasNextPage,
-          hasPreviousPage: false,
-          startCursor: edges.length > 0 ? edges[0].cursor : null,
-          endCursor: edges.length > 0 ? edges[edges.length - 1].cursor : null,
-        },
-        totalCount: result.totalCount,
-      } as any;
+        return {
+          edges,
+          pageInfo: {
+            hasNextPage: result.hasNextPage,
+            hasPreviousPage: false,
+            startCursor: edges.length > 0 ? edges[0].cursor : null,
+            endCursor: edges.length > 0 ? edges[edges.length - 1].cursor : null,
+          },
+          totalCount: result.totalCount,
+        } as any;
+      } catch (error) {
+        console.error('carePlansForPatient resolver error:', error);
+        return EMPTY_CONNECTION;
+      }
     },
 
     async patientCarePlans(_parent, { patientId, limit, offset }, _context) {
-      const effectiveLimit = limit ?? 10;
-      const effectiveOffset = offset ?? 0;
+      try {
+        const effectiveLimit = limit ?? 10;
+        const effectiveOffset = offset ?? 0;
 
-      const result = await carePlanService.getCarePlans(
-        { patientId },
-        { first: effectiveLimit + effectiveOffset }
-      );
+        const result = await carePlanService.getCarePlans(
+          { patientId },
+          { first: effectiveLimit + effectiveOffset }
+        );
 
-      const slicedPlans = result.carePlans.slice(effectiveOffset, effectiveOffset + effectiveLimit);
+        const slicedPlans = result.carePlans.slice(effectiveOffset, effectiveOffset + effectiveLimit);
 
-      const enrichedNodes = await Promise.all(
-        slicedPlans.map(async (cp) => {
-          const enriched = await enrichCarePlan(cp);
-          const totalGoals = enriched.goals.length;
-          const achievedGoals = enriched.goals.filter((g: any) => g.status === 'ACHIEVED').length;
-          return {
-            ...enriched,
-            progress: totalGoals > 0 ? Math.round((achievedGoals / totalGoals) * 100) : 0,
-          };
-        })
-      );
+        const enrichedNodes = await Promise.all(
+          slicedPlans.map(async (cp) => {
+            const enriched = await enrichCarePlan(cp);
+            const totalGoals = enriched.goals.length;
+            const achievedGoals = enriched.goals.filter((g: any) => g.status === 'ACHIEVED').length;
+            return {
+              ...enriched,
+              progress: totalGoals > 0 ? Math.round((achievedGoals / totalGoals) * 100) : 0,
+            };
+          })
+        );
 
-      return {
-        totalCount: result.totalCount,
-        nodes: enrichedNodes,
-      } as any;
+        return {
+          totalCount: result.totalCount,
+          nodes: enrichedNodes,
+        } as any;
+      } catch (error) {
+        console.error('patientCarePlans resolver error:', error);
+        return EMPTY_PATIENT_CONNECTION;
+      }
     },
 
     async activeCarePlanForPatient(_parent, { patientId }, _context) {
@@ -194,35 +220,40 @@ export const Query: Resolvers = {
     },
 
     async trainingCarePlans(_parent, { filter, pagination }, _context) {
-      const result = await carePlanService.getTrainingCarePlans(
-        {
-          status: filter?.status as any || undefined,
-          conditionCode: filter?.conditionCode || undefined,
-          trainingTag: filter?.trainingTag || undefined,
-          createdAfter: filter?.createdAfter ? new Date(filter.createdAfter) : undefined,
-          createdBefore: filter?.createdBefore ? new Date(filter.createdBefore) : undefined,
-        },
-        {
-          first: pagination?.first || undefined,
-          after: pagination?.after || undefined,
-        }
-      );
+      try {
+        const result = await carePlanService.getTrainingCarePlans(
+          {
+            status: filter?.status as any || undefined,
+            conditionCode: filter?.conditionCode || undefined,
+            trainingTag: filter?.trainingTag || undefined,
+            createdAfter: filter?.createdAfter ? new Date(filter.createdAfter) : undefined,
+            createdBefore: filter?.createdBefore ? new Date(filter.createdBefore) : undefined,
+          },
+          {
+            first: pagination?.first || undefined,
+            after: pagination?.after || undefined,
+          }
+        );
 
-      const edges = await Promise.all(result.carePlans.map(async cp => ({
-        node: await enrichCarePlan(cp),
-        cursor: createCursor(cp),
-      })));
+        const edges = await Promise.all(result.carePlans.map(async cp => ({
+          node: await enrichCarePlan(cp),
+          cursor: createCursor(cp),
+        })));
 
-      return {
-        edges,
-        pageInfo: {
-          hasNextPage: result.hasNextPage,
-          hasPreviousPage: false,
-          startCursor: edges.length > 0 ? edges[0].cursor : null,
-          endCursor: edges.length > 0 ? edges[edges.length - 1].cursor : null,
-        },
-        totalCount: result.totalCount,
-      } as any;
+        return {
+          edges,
+          pageInfo: {
+            hasNextPage: result.hasNextPage,
+            hasPreviousPage: false,
+            startCursor: edges.length > 0 ? edges[0].cursor : null,
+            endCursor: edges.length > 0 ? edges[edges.length - 1].cursor : null,
+          },
+          totalCount: result.totalCount,
+        } as any;
+      } catch (error) {
+        console.error('trainingCarePlans resolver error:', error);
+        return EMPTY_CONNECTION;
+      }
     },
 
     async trainingCarePlan(_parent, { id }, _context) {
@@ -253,32 +284,37 @@ export const Query: Resolvers = {
 
   Patient: {
     async carePlans(parent, { status, pagination }) {
-      const result = await carePlanService.getCarePlans(
-        {
-          patientId: parent.id,
-          status: status as any || undefined,
-        },
-        {
-          first: pagination?.first || undefined,
-          after: pagination?.after || undefined,
-        }
-      );
+      try {
+        const result = await carePlanService.getCarePlans(
+          {
+            patientId: parent.id,
+            status: status as any || undefined,
+          },
+          {
+            first: pagination?.first || undefined,
+            after: pagination?.after || undefined,
+          }
+        );
 
-      const edges = await Promise.all(result.carePlans.map(async cp => ({
-        node: await enrichCarePlan(cp),
-        cursor: createCursor(cp),
-      })));
+        const edges = await Promise.all(result.carePlans.map(async cp => ({
+          node: await enrichCarePlan(cp),
+          cursor: createCursor(cp),
+        })));
 
-      return {
-        edges,
-        pageInfo: {
-          hasNextPage: result.hasNextPage,
-          hasPreviousPage: false,
-          startCursor: edges.length > 0 ? edges[0].cursor : null,
-          endCursor: edges.length > 0 ? edges[edges.length - 1].cursor : null,
-        },
-        totalCount: result.totalCount,
-      } as any;
+        return {
+          edges,
+          pageInfo: {
+            hasNextPage: result.hasNextPage,
+            hasPreviousPage: false,
+            startCursor: edges.length > 0 ? edges[0].cursor : null,
+            endCursor: edges.length > 0 ? edges[edges.length - 1].cursor : null,
+          },
+          totalCount: result.totalCount,
+        } as any;
+      } catch (error) {
+        console.error('Patient.carePlans resolver error:', error);
+        return EMPTY_CONNECTION;
+      }
     },
 
     async activeCarePlan(parent) {
