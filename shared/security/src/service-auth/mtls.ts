@@ -256,10 +256,12 @@ export class MTLSManager {
    */
   private extractIdentityFromCert(cert: tls.PeerCertificate): ServiceIdentity {
     // Parse common name for service name
-    const cn = cert.subject?.CN || 'unknown';
+    const rawCn = cert.subject?.CN || 'unknown';
+    const cn = Array.isArray(rawCn) ? rawCn[0] : rawCn;
 
     // Parse OU for additional info
-    const ou = cert.subject?.OU || '';
+    const rawOu = cert.subject?.OU || '';
+    const ou = Array.isArray(rawOu) ? rawOu[0] : rawOu;
 
     return {
       serviceName: cn,

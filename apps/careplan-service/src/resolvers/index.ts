@@ -37,6 +37,7 @@ const resolvers = {
   ...Query,
   ...Mutation,
   Query: {
+    ...(Query as any).Query,
     ...documentQueryResolvers,
     // Pipeline queries
     pipelineRequest,
@@ -45,6 +46,7 @@ const resolvers = {
     pendingRecommendationsForVisit,
   },
   Mutation: {
+    ...(Mutation as any).Mutation,
     ...documentMutationResolvers,
     // Pipeline mutations
     generateCarePlanFromVisit,
