@@ -466,7 +466,7 @@ class VisitService {
 
     if (options?.status?.length) {
       conditions.push(`status = ANY($${paramIdx}::text[])`);
-      params.push(options.status.map(s => s.toLowerCase()));
+      params.push(options.status);
       paramIdx++;
     }
 

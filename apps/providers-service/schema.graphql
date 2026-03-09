@@ -201,5 +201,4 @@ input UpdateVisitInput {
   duration: Int
   notes: String
   chiefComplaint: String
-  relatedVisitIds: [ID!]
 }

@@ -114,8 +114,8 @@ export const Mutation: Resolvers = {
 
     async createVisit(_parent: unknown, { input }: { input: any }) {
       const { relatedVisitIds, ...visitInput } = input;
-      const visit = await visitService.createVisit(visitInput);
 
+      // Validate related visits before creating the visit
       if (relatedVisitIds?.length > 0) {
         for (const relatedId of relatedVisitIds) {
           const relatedVisit = await visitService.getVisitById(relatedId);
@@ -126,6 +126,11 @@ export const Mutation: Resolvers = {
             throw new GraphQLError(`Related visit ${relatedId} belongs to a different patient.`);
           }
         }
+      }
+
+      const visit = await visitService.createVisit(visitInput);
+
+      if (relatedVisitIds?.length > 0) {
         await visitService.addVisitRelations(visit.id, relatedVisitIds);
       }
 
