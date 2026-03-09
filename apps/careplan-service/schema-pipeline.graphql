@@ -170,6 +170,7 @@ input GenerateCarePlanInput {
   conditionCodes: [String!]!
   generateDraft: Boolean = true
   preferredTemplateIds: [ID!]
+  additionalContext: String
   idempotencyKey: String!
 }
 
