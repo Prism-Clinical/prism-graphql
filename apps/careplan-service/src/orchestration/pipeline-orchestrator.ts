@@ -644,7 +644,7 @@ export class PipelineOrchestrator {
         totalDurationMs: Date.now() - startTime,
         stageResults,
         cacheHit: overallCacheHit,
-        modelVersions,
+        modelVersions: Object.entries(modelVersions).map(([service, version]) => ({ service, version })),
         processedAt: new Date(),
       };
 
