@@ -47,6 +47,11 @@ export const Query: Resolvers = {
       } as any;
     },
   },
+  Visit: {
+    async relatedVisits(parent: any) {
+      return visitService.getRelatedVisits(parent.id);
+    },
+  },
   Provider: {
     async __resolveReference(reference) {
       const provider = await providerService.getProviderById(reference.id);

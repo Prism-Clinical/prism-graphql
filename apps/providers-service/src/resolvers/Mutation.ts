@@ -113,7 +113,23 @@ export const Mutation: Resolvers = {
     },
 
     async createVisit(_parent: unknown, { input }: { input: any }) {
-      return visitService.createVisit(input) as any;
+      const { relatedVisitIds, ...visitInput } = input;
+      const visit = await visitService.createVisit(visitInput);
+
+      if (relatedVisitIds?.length > 0) {
+        for (const relatedId of relatedVisitIds) {
+          const relatedVisit = await visitService.getVisitById(relatedId);
+          if (!relatedVisit) {
+            throw new GraphQLError(`Related visit ${relatedId} not found.`);
+          }
+          if (relatedVisit.patientId !== visitInput.patientId) {
+            throw new GraphQLError(`Related visit ${relatedId} belongs to a different patient.`);
+          }
+        }
+        await visitService.addVisitRelations(visit.id, relatedVisitIds);
+      }
+
+      return visit as any;
     },
 
     requestAudioUploadUrl: audioUploadResolvers.requestAudioUploadUrl,

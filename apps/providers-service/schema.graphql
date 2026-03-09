@@ -31,6 +31,7 @@ type Visit @key(fields: "id") {
   chiefComplaint: String
   audioUri: String
   audioUploadedAt: DateTime
+  relatedVisits: [Visit!]
   epicEncounterId: String
   epicAppointmentId: String
   epicIdentifier: String
@@ -190,6 +191,7 @@ input CreateVisitInput {
   type: VisitType!
   scheduledAt: DateTime!
   chiefComplaint: String
+  relatedVisitIds: [ID!]
 }
 
 input UpdateVisitInput {
@@ -199,4 +201,5 @@ input UpdateVisitInput {
   duration: Int
   notes: String
   chiefComplaint: String
+  relatedVisitIds: [ID!]
 }

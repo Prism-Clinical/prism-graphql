@@ -721,6 +721,50 @@ class VisitService {
     }
   }
 
+  async getRelatedVisits(visitId: string): Promise<Visit[]> {
+    ensureInitialized();
+    const query = `
+      SELECT v.id, v.patient_id as "patientId", v.hospital_id as "hospitalId",
+             v.provider_id as "providerId", v.case_ids as "caseIds", v.type, v.status,
+             v.scheduled_at as "scheduledAt", v.started_at as "startedAt",
+             v.completed_at as "completedAt", v.duration, v.notes,
+             v.chief_complaint as "chiefComplaint", v.audio_uri as "audioUri",
+             v.audio_uploaded_at as "audioUploadedAt",
+             v.created_at as "createdAt", v.updated_at as "updatedAt"
+      FROM visits v
+      INNER JOIN visit_relations vr ON v.id = vr.related_visit_id
+      WHERE vr.visit_id = $1
+      ORDER BY v.scheduled_at DESC
+    `;
+
+    try {
+      const result = await pool.query(query, [visitId]);
+      return result.rows.map(visit => ({
+        ...visit,
+        caseIds: typeof visit.caseIds === 'string' ? JSON.parse(visit.caseIds) : visit.caseIds,
+      }));
+    } catch (error) {
+      return [];
+    }
+  }
+
+  async addVisitRelations(visitId: string, relatedVisitIds: string[]): Promise<void> {
+    ensureInitialized();
+    if (relatedVisitIds.length === 0) return;
+
+    const values = relatedVisitIds
+      .map((_, i) => `($1, $${i + 2})`)
+      .join(', ');
+
+    const query = `
+      INSERT INTO visit_relations (visit_id, related_visit_id)
+      VALUES ${values}
+      ON CONFLICT (visit_id, related_visit_id) DO NOTHING
+    `;
+
+    await pool.query(query, [visitId, ...relatedVisitIds]);
+  }
+
   async getVisitsForProviderInRange(providerId: string, startDate: Date, endDate: Date, status?: string): Promise<Visit[]> {
     ensureInitialized();
     let query = `
