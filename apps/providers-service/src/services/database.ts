@@ -78,7 +78,7 @@ export interface Visit {
   epicAppointmentId?: string;
   epicIdentifier?: string;
   encounterClass?: string;
-  reasonCodes?: unknown;
+  reasonCodes?: string;
   priority?: string;
   locationDisplay?: string;
   participantDetails?: string;
