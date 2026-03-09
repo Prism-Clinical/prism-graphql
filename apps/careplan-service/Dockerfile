@@ -87,6 +87,7 @@ COPY --from=builder --chown=graphql:nodejs /app/service/dist ./dist
 COPY --from=builder --chown=graphql:nodejs /app/service/node_modules ./node_modules
 COPY --from=builder --chown=graphql:nodejs /app/shared ./shared
 COPY --chown=graphql:nodejs apps/careplan-service/schema.graphql ./
+COPY --chown=graphql:nodejs apps/careplan-service/schema-pipeline.graphql ./
 
 USER graphql
 
