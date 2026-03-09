@@ -136,6 +136,7 @@ type Mutation {
   startVisit(id: ID!): Visit
   completeVisit(id: ID!, notes: String): Visit
   cancelVisit(id: ID!, reason: String): Visit
+  reopenVisit(id: ID!): Visit
   addCaseToVisit(visitId: ID!, caseId: ID!): Visit
   removeCaseFromVisit(visitId: ID!, caseId: ID!): Visit
   """

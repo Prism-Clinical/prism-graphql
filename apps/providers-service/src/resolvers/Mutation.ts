@@ -112,6 +112,10 @@ export const Mutation: Resolvers = {
       return { ...newFacility };
     },
 
+    async createVisit(_parent: unknown, { input }: { input: any }) {
+      return visitService.createVisit(input) as any;
+    },
+
     requestAudioUploadUrl: audioUploadResolvers.requestAudioUploadUrl,
     updateVisitAudio: audioUploadResolvers.updateVisitAudio,
 
@@ -165,6 +169,20 @@ export const Mutation: Resolvers = {
         notes: reason
           ? `${visit.notes ? visit.notes + '\n' : ''}Cancelled: ${reason}`
           : visit.notes,
+      }) as any;
+    },
+
+    async reopenVisit(_parent: unknown, { id }: { id: string }) {
+      const visit = await visitService.getVisitById(id);
+      if (!visit) {
+        throw new GraphQLError("Visit not found.");
+      }
+      if (visit.status !== 'COMPLETED') {
+        throw new GraphQLError("Only completed visits can be reopened.");
+      }
+      return visitService.updateVisit(id, {
+        status: 'IN_PROGRESS' as any,
+        completedAt: null as any,
       }) as any;
     },
   },
