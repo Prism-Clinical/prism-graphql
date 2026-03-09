@@ -389,7 +389,7 @@ class VisitService {
       data.providerId,
       JSON.stringify(data.caseIds),
       data.type,
-      VisitStatus.SCHEDULED,
+      VisitStatus.Scheduled,
       data.scheduledAt,
       data.chiefComplaint || null
     ]);
@@ -655,7 +655,7 @@ class VisitService {
 
   async completeVisit(id: string, data: { notes?: string; completedAt: Date; completedBy: string }): Promise<Visit | null> {
     return this.updateVisit(id, {
-      status: VisitStatus.COMPLETED,
+      status: VisitStatus.Completed,
       completedAt: data.completedAt,
       notes: data.notes,
     });
