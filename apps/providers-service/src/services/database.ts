@@ -81,7 +81,7 @@ export interface Visit {
   reasonCodes?: unknown;
   priority?: string;
   locationDisplay?: string;
-  participantDetails?: unknown;
+  participantDetails?: string;
   cancellationReason?: string;
   patientInstructions?: string;
   epicLastSyncedAt?: Date;
