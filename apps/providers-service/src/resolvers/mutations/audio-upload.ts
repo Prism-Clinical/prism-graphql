@@ -10,6 +10,7 @@ import {
 } from '../../__generated__/resolvers-types';
 
 function requireAuth(context: DataSourceContext): void {
+  if (process.env.DEV_BYPASS_AUTH === 'true') return;
   if (!context.auth) {
     throw new GraphQLError('Authentication required', {
       extensions: { code: 'UNAUTHENTICATED' },

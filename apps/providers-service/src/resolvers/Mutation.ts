@@ -2,6 +2,7 @@ import { Resolvers, MutationCreateProviderArgs, MutationUpdateProviderArgs, Muta
 import { providersSource, facilitiesSource } from "../datasources/providersSource";
 import { GraphQLError } from "graphql";
 import { audioUploadResolvers } from "./mutations/audio-upload";
+import { visitService } from "../services/database";
 
 export const Mutation: Resolvers = {
   Mutation: {
@@ -113,5 +114,58 @@ export const Mutation: Resolvers = {
 
     requestAudioUploadUrl: audioUploadResolvers.requestAudioUploadUrl,
     updateVisitAudio: audioUploadResolvers.updateVisitAudio,
+
+    async startVisit(_parent: unknown, { id }: { id: string }) {
+      const visit = await visitService.getVisitById(id);
+      if (!visit) {
+        throw new GraphQLError("Visit not found.");
+      }
+      if (visit.status !== 'SCHEDULED' && visit.status !== 'CHECKED_IN') {
+        throw new GraphQLError("Visit must be scheduled or checked in to start.");
+      }
+      return visitService.updateVisit(id, {
+        status: 'IN_PROGRESS' as any,
+        startedAt: new Date(),
+      }) as any;
+    },
+
+    async completeVisit(_parent: unknown, { id, notes }: { id: string; notes?: string }) {
+      const visit = await visitService.getVisitById(id);
+      if (!visit) {
+        throw new GraphQLError("Visit not found.");
+      }
+      if (visit.status !== 'IN_PROGRESS' && visit.status !== 'CHECKED_IN') {
+        throw new GraphQLError("Visit must be in progress or checked in to complete.");
+      }
+      return visitService.completeVisit(id, {
+        notes,
+        completedAt: new Date(),
+        completedBy: 'system',
+      }) as any;
+    },
+
+    async checkInVisit(_parent: unknown, { id }: { id: string }) {
+      const visit = await visitService.getVisitById(id);
+      if (!visit) {
+        throw new GraphQLError("Visit not found.");
+      }
+      if (visit.status !== 'SCHEDULED') {
+        throw new GraphQLError("Visit must be scheduled to check in.");
+      }
+      return visitService.updateVisitStatus(id, 'CHECKED_IN') as any;
+    },
+
+    async cancelVisit(_parent: unknown, { id, reason }: { id: string; reason?: string }) {
+      const visit = await visitService.getVisitById(id);
+      if (!visit) {
+        throw new GraphQLError("Visit not found.");
+      }
+      return visitService.updateVisit(id, {
+        status: 'CANCELLED' as any,
+        notes: reason
+          ? `${visit.notes ? visit.notes + '\n' : ''}Cancelled: ${reason}`
+          : visit.notes,
+      }) as any;
+    },
   },
 };
