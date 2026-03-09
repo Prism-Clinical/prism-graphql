@@ -22,20 +22,22 @@ async function main(): Promise<void> {
   try {
     // Initialize PostgreSQL
     const pgPool = new Pool({
-      connectionString:
-        process.env.DATABASE_URL ||
-        "postgresql://postgres:postgres@localhost:5432/prism",
-      max: 10,
+      host: process.env.DB_HOST || "localhost",
+      port: parseInt(process.env.DB_PORT || "5432"),
+      database: process.env.DB_NAME || "healthcare_federation",
+      user: process.env.DB_USER || "postgres",
+      password: process.env.DB_PASSWORD || "postgres",
+      max: parseInt(process.env.DB_MAX_CONNECTIONS || "10"),
     });
 
     // Initialize Redis
-    const redisClient = new Redis(
-      process.env.REDIS_URL || "redis://localhost:6379",
-      {
-        maxRetriesPerRequest: 3,
-        lazyConnect: true,
-      }
-    );
+    const redisClient = new Redis({
+      host: process.env.REDIS_HOST || "localhost",
+      port: parseInt(process.env.REDIS_PORT || "6379"),
+      password: process.env.REDIS_PASSWORD,
+      maxRetriesPerRequest: 3,
+      lazyConnect: true,
+    });
     await redisClient.connect();
 
     // Initialize services

@@ -182,7 +182,7 @@ export const typeDefs = gql`
     rank: Int
   }
 
-  type Address {
+  type FhirAddress {
     use: String
     type: String
     line: [String!]!
@@ -226,7 +226,7 @@ export const typeDefs = gql`
     identifiers: [PatientIdentifier!]!
     names: [PatientName!]!
     telecom: [ContactPoint!]!
-    addresses: [Address!]!
+    addresses: [FhirAddress!]!
     emergencyContacts: [EmergencyContact!]!
     communications: [Communication!]!
     generalPractitioner: [ReferenceInfo!]!

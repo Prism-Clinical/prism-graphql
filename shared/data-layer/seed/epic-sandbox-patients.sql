@@ -202,4 +202,138 @@ INSERT INTO patients (
     'eNO3wqOfAltfnWMfWBQ1WmQ3'
 ) ON CONFLICT (medical_record_number) DO NOTHING;
 
+-- ---------------------------------------------------------------------------
+-- Visits: Seed visits for Dev Doctor across all patients
+-- ---------------------------------------------------------------------------
+
+-- Today's visits (for todaySchedule query)
+INSERT INTO visits (
+    id, patient_id, provider_id, scheduled_at, type, status, chief_complaint
+) VALUES
+    -- Camila Lopez: morning consultation (completed)
+    (
+        '00000000-0000-4000-c000-000000000001',
+        '00000000-0000-4000-b000-000000000001',
+        '00000000-0000-4000-a000-000000000002',
+        CURRENT_DATE + TIME '09:00',
+        'CONSULTATION',
+        'COMPLETED',
+        'Annual physical exam and medication review'
+    ),
+    -- Derrick Lin: mid-morning follow-up (in_progress)
+    (
+        '00000000-0000-4000-c000-000000000002',
+        '00000000-0000-4000-b000-000000000002',
+        '00000000-0000-4000-a000-000000000002',
+        CURRENT_DATE + TIME '10:30',
+        'FOLLOW_UP',
+        'IN_PROGRESS',
+        'Follow-up on hypertension management'
+    ),
+    -- Jason Argonaut: afternoon routine (scheduled)
+    (
+        '00000000-0000-4000-c000-000000000003',
+        '00000000-0000-4000-b000-000000000003',
+        '00000000-0000-4000-a000-000000000002',
+        CURRENT_DATE + TIME '14:00',
+        'ROUTINE_CHECK',
+        'SCHEDULED',
+        'Diabetes management check-in'
+    ),
+    -- Linda Ross: late afternoon consultation (scheduled)
+    (
+        '00000000-0000-4000-c000-000000000004',
+        '00000000-0000-4000-b000-000000000004',
+        '00000000-0000-4000-a000-000000000002',
+        CURRENT_DATE + TIME '15:30',
+        'CONSULTATION',
+        'SCHEDULED',
+        'New patient evaluation - chronic pain'
+    )
+ON CONFLICT (id) DO NOTHING;
+
+-- Update completed visit timestamps
+UPDATE visits SET
+    started_at = CURRENT_DATE + TIME '09:02',
+    completed_at = CURRENT_DATE + TIME '09:35',
+    notes = 'Patient reports feeling well. Vitals within normal limits. Continue current medications.'
+WHERE id = '00000000-0000-4000-c000-000000000001';
+
+-- Update in-progress visit timestamps
+UPDATE visits SET
+    started_at = CURRENT_DATE + TIME '10:32'
+WHERE id = '00000000-0000-4000-c000-000000000002';
+
+-- Past visits (for visit history)
+INSERT INTO visits (
+    id, patient_id, provider_id, scheduled_at, started_at, completed_at,
+    type, status, chief_complaint, notes
+) VALUES
+    -- Camila Lopez: last week follow-up
+    (
+        '00000000-0000-4000-c000-000000000010',
+        '00000000-0000-4000-b000-000000000001',
+        '00000000-0000-4000-a000-000000000002',
+        CURRENT_DATE - INTERVAL '7 days' + TIME '11:00',
+        CURRENT_DATE - INTERVAL '7 days' + TIME '11:05',
+        CURRENT_DATE - INTERVAL '7 days' + TIME '11:40',
+        'FOLLOW_UP',
+        'COMPLETED',
+        'Medication adjustment follow-up',
+        'Adjusted metformin dosage. Schedule labs in 2 weeks.'
+    ),
+    -- Derrick Lin: two weeks ago consultation
+    (
+        '00000000-0000-4000-c000-000000000011',
+        '00000000-0000-4000-b000-000000000002',
+        '00000000-0000-4000-a000-000000000002',
+        CURRENT_DATE - INTERVAL '14 days' + TIME '09:00',
+        CURRENT_DATE - INTERVAL '14 days' + TIME '09:03',
+        CURRENT_DATE - INTERVAL '14 days' + TIME '09:45',
+        'CONSULTATION',
+        'COMPLETED',
+        'Elevated blood pressure readings at home',
+        'Started lisinopril 10mg daily. Follow up in 2 weeks.'
+    ),
+    -- Jayden Jackson: last month routine
+    (
+        '00000000-0000-4000-c000-000000000012',
+        '00000000-0000-4000-b000-000000000005',
+        '00000000-0000-4000-a000-000000000002',
+        CURRENT_DATE - INTERVAL '30 days' + TIME '13:00',
+        CURRENT_DATE - INTERVAL '30 days' + TIME '13:10',
+        CURRENT_DATE - INTERVAL '30 days' + TIME '13:35',
+        'ROUTINE_CHECK',
+        'COMPLETED',
+        'Well-child visit',
+        'Growth and development on track. Immunizations up to date.'
+    ),
+    -- Jason Argonaut: 3 weeks ago emergency
+    (
+        '00000000-0000-4000-c000-000000000013',
+        '00000000-0000-4000-b000-000000000003',
+        '00000000-0000-4000-a000-000000000002',
+        CURRENT_DATE - INTERVAL '21 days' + TIME '16:00',
+        CURRENT_DATE - INTERVAL '21 days' + TIME '16:05',
+        CURRENT_DATE - INTERVAL '21 days' + TIME '17:00',
+        'EMERGENCY',
+        'COMPLETED',
+        'Hypoglycemic episode',
+        'Blood glucose 52 mg/dL on arrival. Treated with oral glucose. Adjusted insulin regimen.'
+    ),
+    -- Linda Ross: cancelled visit
+    (
+        '00000000-0000-4000-c000-000000000014',
+        '00000000-0000-4000-b000-000000000004',
+        '00000000-0000-4000-a000-000000000002',
+        CURRENT_DATE - INTERVAL '3 days' + TIME '10:00',
+        NULL,
+        NULL,
+        'CONSULTATION',
+        'CANCELLED',
+        'Initial evaluation - chronic pain',
+        NULL
+    )
+ON CONFLICT (id) DO NOTHING;
+
 COMMIT;

@@ -59,7 +59,7 @@ export function createTranscriptionWorker(
       return processTranscriptionJob(job, pool, mlClient);
     },
     {
-      connection: redis,
+      connection: redis as any,
       concurrency: WORKER_CONCURRENCY,
       removeOnComplete: { count: 1000 },
       removeOnFail: { count: 5000 },

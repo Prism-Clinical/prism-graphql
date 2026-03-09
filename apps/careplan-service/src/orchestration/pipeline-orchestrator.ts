@@ -220,7 +220,7 @@ export class PipelineOrchestrator {
     const stageResults: StageResult[] = [];
     const errorAggregator = new PipelineErrorAggregator();
     const fallbacksUsed: string[] = [];
-    const modelVersions: Record<string, string> = {};
+    const modelVersionsMap: Record<string, string> = {};
 
     let extractedEntities: ExtractedEntities | undefined;
     let recommendations: CarePlanRecommendation[] = [];
@@ -361,7 +361,7 @@ export class PipelineOrchestrator {
               );
             }
 
-            modelVersions['audio-intelligence'] = entities.modelVersion;
+            modelVersionsMap['audio-intelligence'] = entities.modelVersion;
             return { entities, cacheHit: false };
           },
           requestId,
@@ -412,7 +412,7 @@ export class PipelineOrchestrator {
             symptoms: minimalContext.chiefComplaint ? [minimalContext.chiefComplaint] : undefined,
           });
 
-          modelVersions['rag-embeddings'] = 'unknown';
+          modelVersionsMap['rag-embeddings'] = 'unknown';
           return { embedding: embeddingVector };
         },
         requestId,
@@ -502,7 +502,7 @@ export class PipelineOrchestrator {
             );
           }
 
-          modelVersions['careplan-recommender'] = response.modelVersion ?? 'unknown';
+          modelVersionsMap['careplan-recommender'] = response.modelVersion ?? 'unknown';
           return { recommendations: recs, cacheHit: false };
         },
         requestId,
@@ -644,7 +644,7 @@ export class PipelineOrchestrator {
         totalDurationMs: Date.now() - startTime,
         stageResults,
         cacheHit: overallCacheHit,
-        modelVersions,
+        modelVersions: Object.entries(modelVersionsMap).map(([service, version]) => ({ service, version })),
         processedAt: new Date(),
       };
 
