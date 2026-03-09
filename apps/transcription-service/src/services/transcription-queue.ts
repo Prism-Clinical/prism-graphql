@@ -5,7 +5,7 @@
  * Jobs are processed by workers that call the ML service for STT + NER.
  */
 
-import { Queue, QueueEvents } from 'bullmq';
+import { Queue, QueueEvents, ConnectionOptions } from 'bullmq';
 import { Redis } from 'ioredis';
 
 // Job data interface
@@ -35,15 +35,29 @@ let transcriptionQueue: Queue<TranscriptionJobData, TranscriptionJobResult> | nu
 let queueEvents: QueueEvents | null = null;
 
 /**
+ * Extract BullMQ-compatible connection options from an ioredis instance
+ */
+function getConnectionOptions(redis: Redis): ConnectionOptions {
+  const opts = redis.options;
+  return {
+    host: opts.host || 'localhost',
+    port: opts.port || 6379,
+    password: opts.password,
+    db: opts.db,
+  };
+}
+
+/**
  * Initialize the transcription queue with Redis connection
  */
 export function initializeQueue(redis: Redis): Queue<TranscriptionJobData, TranscriptionJobResult> {
   redisConnection = redis;
+  const connectionOptions = getConnectionOptions(redis);
 
-  transcriptionQueue = new Queue<TranscriptionJobData, TranscriptionJobResult>(
+  transcriptionQueue = new Queue(
     TRANSCRIPTION_QUEUE_NAME,
     {
-      connection: redis,
+      connection: connectionOptions,
       defaultJobOptions: {
         attempts: 3,
         backoff: {
@@ -63,7 +77,7 @@ export function initializeQueue(redis: Redis): Queue<TranscriptionJobData, Trans
 
   // Initialize queue events for monitoring
   queueEvents = new QueueEvents(TRANSCRIPTION_QUEUE_NAME, {
-    connection: redis,
+    connection: connectionOptions,
   });
 
   console.log('Transcription queue initialized');

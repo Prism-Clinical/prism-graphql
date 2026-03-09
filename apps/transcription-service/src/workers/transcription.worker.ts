@@ -8,7 +8,7 @@
  * 4. Updating status to COMPLETED or FAILED
  */
 
-import { Worker, Job } from 'bullmq';
+import { Worker, Job, ConnectionOptions } from 'bullmq';
 import { Redis } from 'ioredis';
 import { Pool } from 'pg';
 import {
@@ -53,13 +53,20 @@ export function createTranscriptionWorker(
   pool: Pool,
   mlClient: MLClient
 ): Worker<TranscriptionJobData, TranscriptionJobResult> {
+  const connectionOptions: ConnectionOptions = {
+    host: redis.options.host || 'localhost',
+    port: redis.options.port || 6379,
+    password: redis.options.password,
+    db: redis.options.db,
+  };
+
   const worker = new Worker<TranscriptionJobData, TranscriptionJobResult>(
     TRANSCRIPTION_QUEUE_NAME,
     async (job: Job<TranscriptionJobData>) => {
       return processTranscriptionJob(job, pool, mlClient);
     },
     {
-      connection: redis,
+      connection: connectionOptions,
       concurrency: WORKER_CONCURRENCY,
       removeOnComplete: { count: 1000 },
       removeOnFail: { count: 5000 },
