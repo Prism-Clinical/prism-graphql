@@ -33,6 +33,16 @@ enum GoalPriority {
   LOW
 }
 
+enum InterventionType {
+  MEDICATION
+  PROCEDURE
+  LIFESTYLE
+  MONITORING
+  REFERRAL
+  EDUCATION
+  FOLLOW_UP
+}
+
 # =============================================================================
 # TYPES
 # =============================================================================
@@ -49,7 +59,7 @@ type TemplateRecommendation {
   matchFactors: [String!]!
 }
 
-type DraftGoal {
+type RecommenderDraftGoal {
   description: String!
   targetValue: String
   targetDays: Int
@@ -58,8 +68,8 @@ type DraftGoal {
   confidence: Float!
 }
 
-type DraftIntervention {
-  type: String!
+type RecommenderDraftIntervention {
+  type: InterventionType!
   description: String!
   medicationCode: String
   dosage: String
@@ -69,11 +79,11 @@ type DraftIntervention {
   confidence: Float!
 }
 
-type DraftCarePlan {
+type RecommenderDraftCarePlan {
   title: String!
   conditionCodes: [String!]!
-  goals: [DraftGoal!]!
-  interventions: [DraftIntervention!]!
+  goals: [RecommenderDraftGoal!]!
+  interventions: [RecommenderDraftIntervention!]!
   confidenceScore: Float!
   sourceTemplateId: ID
   similarTrainingPlanIds: [ID!]!
@@ -82,7 +92,7 @@ type DraftCarePlan {
 
 type RecommendationResult {
   templates: [TemplateRecommendation!]!
-  drafts: [DraftCarePlan!]!
+  drafts: [RecommenderDraftCarePlan!]!
   processingTimeMs: Float!
   modelVersion: String!
   queryMode: RecommendationMode!

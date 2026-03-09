@@ -43,8 +43,8 @@ EXPOSE 4006
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD node -e "require('http').get('http://localhost:4006/.well-known/apollo/server-health', (res) => { process.exit(res.statusCode === 200 ? 0 : 1) }).on('error', () => process.exit(1))"
+  CMD node -e "const d=JSON.stringify({query:'{__typename}'});const r=require('http').request({hostname:'localhost',port:4006,path:'/',method:'POST',headers:{'Content-Type':'application/json','Content-Length':d.length}},(res)=>{process.exit(res.statusCode===200?0:1)});r.on('error',()=>process.exit(1));r.write(d);r.end()"
 
 # Start the application
 ENTRYPOINT ["dumb-init", "--"]
-CMD ["node", "dist/index.js"]
+CMD ["node", "dist/server.js"]

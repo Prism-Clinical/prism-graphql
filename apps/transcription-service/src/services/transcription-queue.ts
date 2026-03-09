@@ -43,7 +43,7 @@ export function initializeQueue(redis: Redis): Queue<TranscriptionJobData, Trans
   transcriptionQueue = new Queue<TranscriptionJobData, TranscriptionJobResult>(
     TRANSCRIPTION_QUEUE_NAME,
     {
-      connection: redis,
+      connection: redis as any,
       defaultJobOptions: {
         attempts: 3,
         backoff: {
@@ -63,7 +63,7 @@ export function initializeQueue(redis: Redis): Queue<TranscriptionJobData, Trans
 
   // Initialize queue events for monitoring
   queueEvents = new QueueEvents(TRANSCRIPTION_QUEUE_NAME, {
-    connection: redis,
+    connection: redis as any,
   });
 
   console.log('Transcription queue initialized');
