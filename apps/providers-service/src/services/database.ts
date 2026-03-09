@@ -1,5 +1,8 @@
 import { Pool } from 'pg';
 import { Redis } from 'ioredis';
+import { VisitStatus, VisitType } from '../__generated__/resolvers-types';
+
+export { VisitStatus, VisitType };
 
 // Types
 export interface Address {
@@ -33,25 +36,6 @@ export interface Facility {
   updatedAt: Date;
 }
 
-export enum VisitType {
-  CONSULTATION = 'CONSULTATION',
-  FOLLOW_UP = 'FOLLOW_UP',
-  PROCEDURE = 'PROCEDURE',
-  SURGERY = 'SURGERY',
-  EMERGENCY = 'EMERGENCY',
-  ROUTINE_CHECK = 'ROUTINE_CHECK',
-  DIAGNOSTIC = 'DIAGNOSTIC',
-  THERAPY = 'THERAPY'
-}
-
-export enum VisitStatus {
-  SCHEDULED = 'SCHEDULED',
-  CHECKED_IN = 'CHECKED_IN',
-  IN_PROGRESS = 'IN_PROGRESS',
-  COMPLETED = 'COMPLETED',
-  CANCELLED = 'CANCELLED',
-  NO_SHOW = 'NO_SHOW'
-}
 
 export interface Visit {
   id: string;
