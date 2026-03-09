@@ -49,6 +49,11 @@ type PatientVisitsConnection {
   nodes: [Visit!]!
 }
 
+type VisitsResult {
+  visits: [Visit!]!
+  totalCount: Int!
+}
+
 type AudioUploadUrl {
   uploadUrl: String!
   storageUri: String!
@@ -116,7 +121,7 @@ type Query {
   patientVisits(patientId: ID!, limit: Int, offset: Int): PatientVisitsConnection!
   visitsForCase(caseId: ID!): [Visit!]!
   visitsForHospital(hospitalId: ID!): [Visit!]!
-  visitsForProvider(providerId: ID!): [Visit!]!
+  visitsForProvider(providerId: ID!, status: [VisitStatus!], limit: Int, offset: Int): VisitsResult!
   visitsByDateRange(startDate: DateTime!, endDate: DateTime!): [Visit!]!
   todaySchedule(providerId: ID!): [Visit!]!
 }

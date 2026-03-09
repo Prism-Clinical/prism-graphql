@@ -455,9 +455,26 @@ class VisitService {
     }
   }
 
-  async getVisitsForProvider(providerId: string): Promise<Visit[]> {
+  async getVisitsForProvider(
+    providerId: string,
+    options?: { status?: string[]; limit?: number; offset?: number }
+  ): Promise<{ visits: Visit[]; totalCount: number }> {
     ensureInitialized();
-    const query = `
+    const conditions = ['provider_id = $1'];
+    const params: any[] = [providerId];
+    let paramIdx = 2;
+
+    if (options?.status?.length) {
+      conditions.push(`status = ANY($${paramIdx}::text[])`);
+      params.push(options.status.map(s => s.toLowerCase()));
+      paramIdx++;
+    }
+
+    const whereClause = conditions.join(' AND ');
+    const countQuery = `SELECT COUNT(*) as count FROM visits WHERE ${whereClause}`;
+    const countParams = [...params];
+
+    let dataQuery = `
       SELECT id, patient_id as "patientId", hospital_id as "hospitalId", provider_id as "providerId",
              case_ids as "caseIds", type, status, scheduled_at as "scheduledAt",
              started_at as "startedAt", completed_at as "completedAt", duration, notes,
@@ -476,18 +493,36 @@ class VisitService {
              epic_last_synced_at as "epicLastSyncedAt",
              created_at as "createdAt", updated_at as "updatedAt"
       FROM visits
-      WHERE provider_id = $1
+      WHERE ${whereClause}
       ORDER BY scheduled_at DESC
     `;
-    
+
+    if (options?.limit) {
+      dataQuery += ` LIMIT $${paramIdx}`;
+      params.push(options.limit);
+      paramIdx++;
+    }
+    if (options?.offset) {
+      dataQuery += ` OFFSET $${paramIdx}`;
+      params.push(options.offset);
+      paramIdx++;
+    }
+
     try {
-      const result = await pool.query(query, [providerId]);
-      return result.rows.map(visit => ({
-        ...visit,
-        caseIds: typeof visit.caseIds === 'string' ? JSON.parse(visit.caseIds) : visit.caseIds
-      }));
+      const [countResult, dataResult] = await Promise.all([
+        pool.query(countQuery, countParams),
+        pool.query(dataQuery, params),
+      ]);
+
+      return {
+        totalCount: parseInt(countResult.rows[0].count, 10),
+        visits: dataResult.rows.map(visit => ({
+          ...visit,
+          caseIds: typeof visit.caseIds === 'string' ? JSON.parse(visit.caseIds) : visit.caseIds,
+        })),
+      };
     } catch (error) {
-      return [];
+      return { visits: [], totalCount: 0 };
     }
   }
 

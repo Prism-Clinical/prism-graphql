@@ -220,7 +220,7 @@ export type Query = {
   visitsForCase: Array<Visit>;
   visitsForHospital: Array<Visit>;
   visitsForPatient: Array<Visit>;
-  visitsForProvider: Array<Visit>;
+  visitsForProvider: VisitsResult;
 };
 
 
@@ -283,7 +283,10 @@ export type QueryVisitsForPatientArgs = {
 
 
 export type QueryVisitsForProviderArgs = {
+  limit?: InputMaybe<Scalars['Int']['input']>;
+  offset?: InputMaybe<Scalars['Int']['input']>;
   providerId: Scalars['ID']['input'];
+  status?: InputMaybe<Array<VisitStatus>>;
 };
 
 export type Recommendation = {
@@ -314,15 +317,26 @@ export type Visit = {
   __typename?: 'Visit';
   audioUploadedAt?: Maybe<Scalars['DateTime']['output']>;
   audioUri?: Maybe<Scalars['String']['output']>;
+  cancellationReason?: Maybe<Scalars['String']['output']>;
   caseIds: Array<Scalars['ID']['output']>;
   chiefComplaint?: Maybe<Scalars['String']['output']>;
   completedAt?: Maybe<Scalars['DateTime']['output']>;
   duration?: Maybe<Scalars['Int']['output']>;
+  encounterClass?: Maybe<Scalars['String']['output']>;
+  epicAppointmentId?: Maybe<Scalars['String']['output']>;
+  epicEncounterId?: Maybe<Scalars['String']['output']>;
+  epicIdentifier?: Maybe<Scalars['String']['output']>;
+  epicLastSyncedAt?: Maybe<Scalars['DateTime']['output']>;
   hospitalId: Scalars['ID']['output'];
   id: Scalars['ID']['output'];
+  locationDisplay?: Maybe<Scalars['String']['output']>;
   notes?: Maybe<Scalars['String']['output']>;
+  participantDetails?: Maybe<Scalars['String']['output']>;
   patientId: Scalars['ID']['output'];
+  patientInstructions?: Maybe<Scalars['String']['output']>;
+  priority?: Maybe<Scalars['String']['output']>;
   providerId: Scalars['ID']['output'];
+  reasonCodes?: Maybe<Scalars['String']['output']>;
   scheduledAt: Scalars['DateTime']['output'];
   startedAt?: Maybe<Scalars['DateTime']['output']>;
   status: VisitStatus;
@@ -348,6 +362,12 @@ export enum VisitType {
   Surgery = 'SURGERY',
   Therapy = 'THERAPY'
 }
+
+export type VisitsResult = {
+  __typename?: 'VisitsResult';
+  totalCount: Scalars['Int']['output'];
+  visits: Array<Visit>;
+};
 
 export type WithIndex<TObject> = TObject & Record<string, any>;
 export type ResolversObject<TObject> = WithIndex<TObject>;
@@ -456,6 +476,7 @@ export type ResolversTypes = ResolversObject<{
   Visit: ResolverTypeWrapper<Visit>;
   VisitStatus: VisitStatus;
   VisitType: VisitType;
+  VisitsResult: ResolverTypeWrapper<VisitsResult>;
   Boolean: ResolverTypeWrapper<Scalars['Boolean']['output']>;
 }>;
 
@@ -483,6 +504,7 @@ export type ResolversParentTypes = ResolversObject<{
   UpdateProviderInput: UpdateProviderInput;
   UpdateVisitInput: UpdateVisitInput;
   Visit: Visit;
+  VisitsResult: VisitsResult;
   Boolean: Scalars['Boolean']['output'];
 }>;
 
@@ -581,7 +603,7 @@ export type QueryResolvers<ContextType = DataSourceContext, ParentType extends R
   visitsForCase?: Resolver<Array<ResolversTypes['Visit']>, ParentType, ContextType, RequireFields<QueryVisitsForCaseArgs, 'caseId'>>;
   visitsForHospital?: Resolver<Array<ResolversTypes['Visit']>, ParentType, ContextType, RequireFields<QueryVisitsForHospitalArgs, 'hospitalId'>>;
   visitsForPatient?: Resolver<Array<ResolversTypes['Visit']>, ParentType, ContextType, RequireFields<QueryVisitsForPatientArgs, 'patientId'>>;
-  visitsForProvider?: Resolver<Array<ResolversTypes['Visit']>, ParentType, ContextType, RequireFields<QueryVisitsForProviderArgs, 'providerId'>>;
+  visitsForProvider?: Resolver<ResolversTypes['VisitsResult'], ParentType, ContextType, RequireFields<QueryVisitsForProviderArgs, 'providerId'>>;
 }>;
 
 export type RecommendationResolvers<ContextType = DataSourceContext, ParentType extends ResolversParentTypes['Recommendation'] = ResolversParentTypes['Recommendation']> = ResolversObject<{
@@ -594,19 +616,36 @@ export type VisitResolvers<ContextType = DataSourceContext, ParentType extends R
   __resolveReference?: ReferenceResolver<Maybe<ResolversTypes['Visit']>, { __typename: 'Visit' } & GraphQLRecursivePick<ParentType, {"id":true}>, ContextType>;
   audioUploadedAt?: Resolver<Maybe<ResolversTypes['DateTime']>, ParentType, ContextType>;
   audioUri?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  cancellationReason?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   caseIds?: Resolver<Array<ResolversTypes['ID']>, ParentType, ContextType>;
   chiefComplaint?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   completedAt?: Resolver<Maybe<ResolversTypes['DateTime']>, ParentType, ContextType>;
   duration?: Resolver<Maybe<ResolversTypes['Int']>, ParentType, ContextType>;
+  encounterClass?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  epicAppointmentId?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  epicEncounterId?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  epicIdentifier?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  epicLastSyncedAt?: Resolver<Maybe<ResolversTypes['DateTime']>, ParentType, ContextType>;
   hospitalId?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
   id?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
+  locationDisplay?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   notes?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  participantDetails?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   patientId?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
+  patientInstructions?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  priority?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   providerId?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
+  reasonCodes?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   scheduledAt?: Resolver<ResolversTypes['DateTime'], ParentType, ContextType>;
   startedAt?: Resolver<Maybe<ResolversTypes['DateTime']>, ParentType, ContextType>;
   status?: Resolver<ResolversTypes['VisitStatus'], ParentType, ContextType>;
   type?: Resolver<ResolversTypes['VisitType'], ParentType, ContextType>;
+  __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
+}>;
+
+export type VisitsResultResolvers<ContextType = DataSourceContext, ParentType extends ResolversParentTypes['VisitsResult'] = ResolversParentTypes['VisitsResult']> = ResolversObject<{
+  totalCount?: Resolver<ResolversTypes['Int'], ParentType, ContextType>;
+  visits?: Resolver<Array<ResolversTypes['Visit']>, ParentType, ContextType>;
   __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
 }>;
 
@@ -624,5 +663,6 @@ export type Resolvers<ContextType = DataSourceContext> = ResolversObject<{
   Query?: QueryResolvers<ContextType>;
   Recommendation?: RecommendationResolvers<ContextType>;
   Visit?: VisitResolvers<ContextType>;
+  VisitsResult?: VisitsResultResolvers<ContextType>;
 }>;
 
