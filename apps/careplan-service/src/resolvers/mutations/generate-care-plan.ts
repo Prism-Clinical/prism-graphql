@@ -39,8 +39,10 @@ interface GenerateCarePlanInput {
   transcriptText?: string;
   audioUrl?: string;
   conditionCodes: string[];
+  generationMode?: 'TEMPLATE' | 'ML_ASSISTED' | 'MANUAL';
   generateDraft?: boolean;
   preferredTemplateIds?: string[];
+  additionalContext?: string;
   idempotencyKey: string;
 }
 
@@ -119,6 +121,8 @@ export async function generateCarePlanFromVisit(
       transcriptText: input.transcriptText,
       audioUrl: input.audioUrl,
       conditionCodes: input.conditionCodes,
+      generationMode: input.generationMode,
+      additionalContext: input.additionalContext,
       idempotencyKey: input.idempotencyKey,
       correlationId,
       generateDraft: input.generateDraft,

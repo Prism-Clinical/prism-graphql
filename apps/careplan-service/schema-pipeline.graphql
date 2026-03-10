@@ -161,6 +161,12 @@ type SuggestedEdit {
 # PIPELINE INPUT TYPES
 # =============================================================================
 
+enum GenerationMode {
+  TEMPLATE
+  ML_ASSISTED
+  MANUAL
+}
+
 # Input for generating care plan from visit
 input GenerateCarePlanInput {
   visitId: ID!
@@ -168,6 +174,7 @@ input GenerateCarePlanInput {
   transcriptText: String
   audioUrl: String
   conditionCodes: [String!]!
+  generationMode: GenerationMode = ML_ASSISTED
   generateDraft: Boolean = true
   preferredTemplateIds: [ID!]
   additionalContext: String

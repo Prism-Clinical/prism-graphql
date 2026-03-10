@@ -20,6 +20,10 @@ export interface PipelineInput {
   audioUrl?: string;
   /** ICD-10 condition codes */
   conditionCodes: string[];
+  /** Generation mode: TEMPLATE, ML_ASSISTED, or MANUAL */
+  generationMode?: 'TEMPLATE' | 'ML_ASSISTED' | 'MANUAL';
+  /** Additional context for generation (chief complaint, related visit notes) */
+  additionalContext?: string;
   /** Idempotency key for deduplication (required) */
   idempotencyKey: string;
   /** Correlation ID for distributed tracing */
