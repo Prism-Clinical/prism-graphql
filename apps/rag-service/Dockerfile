@@ -38,6 +38,6 @@ USER graphql
 EXPOSE 4008
 
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD wget --no-verbose --tries=1 --spider http://localhost:4008/.well-known/apollo/server-health || exit 1
+  CMD wget -qO /dev/null --post-data='{"query":"{__typename}"}' --header='Content-Type: application/json' http://localhost:4008/ || exit 1
 
 CMD ["node", "dist/index.js"]

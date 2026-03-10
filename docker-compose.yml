@@ -113,7 +113,7 @@ services:
       epic-mock:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:4006/.well-known/apollo/server-health"]
+      test: ["CMD-SHELL", "wget -qO /dev/null --post-data='{\"query\":\"{__typename}\"}' --header='Content-Type: application/json' http://localhost:4006/ || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -141,7 +141,7 @@ services:
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:4001/.well-known/apollo/server-health"]
+      test: ["CMD-SHELL", "wget -qO /dev/null --post-data='{\"query\":\"{__typename}\"}' --header='Content-Type: application/json' http://localhost:4001/ || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -176,7 +176,7 @@ services:
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:4002/.well-known/apollo/server-health"]
+      test: ["CMD-SHELL", "wget -qO /dev/null --post-data='{\"query\":\"{__typename}\"}' --header='Content-Type: application/json' http://localhost:4002/ || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -214,7 +214,7 @@ services:
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:4003/.well-known/apollo/server-health"]
+      test: ["CMD-SHELL", "wget -qO /dev/null --post-data='{\"query\":\"{__typename}\"}' --header='Content-Type: application/json' http://localhost:4003/ || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -241,7 +241,7 @@ services:
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:4004/.well-known/apollo/server-health"]
+      test: ["CMD-SHELL", "wget -qO /dev/null --post-data='{\"query\":\"{__typename}\"}' --header='Content-Type: application/json' http://localhost:4004/ || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -268,7 +268,7 @@ services:
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:4005/.well-known/apollo/server-health"]
+      test: ["CMD-SHELL", "wget -qO /dev/null --post-data='{\"query\":\"{__typename}\"}' --header='Content-Type: application/json' http://localhost:4005/ || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -304,7 +304,7 @@ services:
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:4007/.well-known/apollo/server-health"]
+      test: ["CMD-SHELL", "wget -qO /dev/null --post-data='{\"query\":\"{__typename}\"}' --header='Content-Type: application/json' http://localhost:4007/ || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -342,7 +342,7 @@ services:
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:4008/.well-known/apollo/server-health"]
+      test: ["CMD-SHELL", "wget -qO /dev/null --post-data='{\"query\":\"{__typename}\"}' --header='Content-Type: application/json' http://localhost:4008/ || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -381,7 +381,7 @@ services:
       care-plan-validator:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:4009/.well-known/apollo/server-health"]
+      test: ["CMD-SHELL", "wget -qO /dev/null --post-data='{\"query\":\"{__typename}\"}' --header='Content-Type: application/json' http://localhost:4009/ || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -419,7 +419,7 @@ services:
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:4010/.well-known/apollo/server-health"]
+      test: ["CMD-SHELL", "wget -qO /dev/null --post-data='{\"query\":\"{__typename}\"}' --header='Content-Type: application/json' http://localhost:4010/ || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -714,7 +714,7 @@ services:
       careplan-recommender-ml:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:4013/.well-known/apollo/server-health"]
+      test: ["CMD-SHELL", "node -e \"const d=JSON.stringify({query:'{__typename}'});const r=require('http').request({hostname:'localhost',port:4013,path:'/',method:'POST',headers:{'Content-Type':'application/json','Content-Length':d.length}},(res)=>{process.exit(res.statusCode===200?0:1)});r.on('error',()=>process.exit(1));r.write(d);r.end()\""]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -792,6 +792,11 @@ services:
         condition: service_healthy
       audio-intelligence:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -f 'node dist/workers' > /dev/null || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
     restart: unless-stopped
     networks:
       - healthcare-network
