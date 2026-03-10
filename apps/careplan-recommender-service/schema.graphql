@@ -59,7 +59,7 @@ type TemplateRecommendation {
   matchFactors: [String!]!
 }
 
-type RecommenderDraftGoal {
+type RecommenderDraftGoal @shareable {
   description: String!
   targetValue: String
   targetDays: Int
@@ -68,7 +68,7 @@ type RecommenderDraftGoal {
   confidence: Float!
 }
 
-type RecommenderDraftIntervention {
+type RecommenderDraftIntervention @shareable {
   type: InterventionType!
   description: String!
   medicationCode: String
@@ -79,7 +79,7 @@ type RecommenderDraftIntervention {
   confidence: Float!
 }
 
-type RecommenderDraftCarePlan {
+type RecommenderDraftCarePlan @shareable {
   title: String!
   conditionCodes: [String!]!
   goals: [RecommenderDraftGoal!]!

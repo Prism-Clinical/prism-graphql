@@ -1,5 +1,8 @@
 import { Pool } from 'pg';
 import { Redis } from 'ioredis';
+import { VisitStatus, VisitType } from '../__generated__/resolvers-types';
+
+export { VisitStatus, VisitType };
 
 // Types
 export interface Address {
@@ -33,25 +36,6 @@ export interface Facility {
   updatedAt: Date;
 }
 
-export enum VisitType {
-  CONSULTATION = 'CONSULTATION',
-  FOLLOW_UP = 'FOLLOW_UP',
-  PROCEDURE = 'PROCEDURE',
-  SURGERY = 'SURGERY',
-  EMERGENCY = 'EMERGENCY',
-  ROUTINE_CHECK = 'ROUTINE_CHECK',
-  DIAGNOSTIC = 'DIAGNOSTIC',
-  THERAPY = 'THERAPY'
-}
-
-export enum VisitStatus {
-  SCHEDULED = 'SCHEDULED',
-  CHECKED_IN = 'CHECKED_IN',
-  IN_PROGRESS = 'IN_PROGRESS',
-  COMPLETED = 'COMPLETED',
-  CANCELLED = 'CANCELLED',
-  NO_SHOW = 'NO_SHOW'
-}
 
 export interface Visit {
   id: string;
@@ -78,10 +62,10 @@ export interface Visit {
   epicAppointmentId?: string;
   epicIdentifier?: string;
   encounterClass?: string;
-  reasonCodes?: unknown;
+  reasonCodes?: string;
   priority?: string;
   locationDisplay?: string;
-  participantDetails?: unknown;
+  participantDetails?: string;
   cancellationReason?: string;
   patientInstructions?: string;
   epicLastSyncedAt?: Date;
@@ -405,7 +389,7 @@ class VisitService {
       data.providerId,
       JSON.stringify(data.caseIds),
       data.type,
-      VisitStatus.SCHEDULED,
+      VisitStatus.Scheduled,
       data.scheduledAt,
       data.chiefComplaint || null
     ]);
@@ -455,9 +439,26 @@ class VisitService {
     }
   }
 
-  async getVisitsForProvider(providerId: string): Promise<Visit[]> {
+  async getVisitsForProvider(
+    providerId: string,
+    options?: { status?: string[]; limit?: number; offset?: number }
+  ): Promise<{ visits: Visit[]; totalCount: number }> {
     ensureInitialized();
-    const query = `
+    const conditions = ['provider_id = $1'];
+    const params: any[] = [providerId];
+    let paramIdx = 2;
+
+    if (options?.status?.length) {
+      conditions.push(`status = ANY($${paramIdx}::text[])`);
+      params.push(options.status);
+      paramIdx++;
+    }
+
+    const whereClause = conditions.join(' AND ');
+    const countQuery = `SELECT COUNT(*) as count FROM visits WHERE ${whereClause}`;
+    const countParams = [...params];
+
+    let dataQuery = `
       SELECT id, patient_id as "patientId", hospital_id as "hospitalId", provider_id as "providerId",
              case_ids as "caseIds", type, status, scheduled_at as "scheduledAt",
              started_at as "startedAt", completed_at as "completedAt", duration, notes,
@@ -476,18 +477,36 @@ class VisitService {
              epic_last_synced_at as "epicLastSyncedAt",
              created_at as "createdAt", updated_at as "updatedAt"
       FROM visits
-      WHERE provider_id = $1
+      WHERE ${whereClause}
       ORDER BY scheduled_at DESC
     `;
-    
+
+    if (options?.limit) {
+      dataQuery += ` LIMIT $${paramIdx}`;
+      params.push(options.limit);
+      paramIdx++;
+    }
+    if (options?.offset) {
+      dataQuery += ` OFFSET $${paramIdx}`;
+      params.push(options.offset);
+      paramIdx++;
+    }
+
     try {
-      const result = await pool.query(query, [providerId]);
-      return result.rows.map(visit => ({
-        ...visit,
-        caseIds: typeof visit.caseIds === 'string' ? JSON.parse(visit.caseIds) : visit.caseIds
-      }));
+      const [countResult, dataResult] = await Promise.all([
+        pool.query(countQuery, countParams),
+        pool.query(dataQuery, params),
+      ]);
+
+      return {
+        totalCount: parseInt(countResult.rows[0].count, 10),
+        visits: dataResult.rows.map(visit => ({
+          ...visit,
+          caseIds: typeof visit.caseIds === 'string' ? JSON.parse(visit.caseIds) : visit.caseIds,
+        })),
+      };
     } catch (error) {
-      return [];
+      return { visits: [], totalCount: 0 };
     }
   }
 
@@ -636,7 +655,7 @@ class VisitService {
 
   async completeVisit(id: string, data: { notes?: string; completedAt: Date; completedBy: string }): Promise<Visit | null> {
     return this.updateVisit(id, {
-      status: VisitStatus.COMPLETED,
+      status: VisitStatus.Completed,
       completedAt: data.completedAt,
       notes: data.notes,
     });
@@ -684,6 +703,50 @@ class VisitService {
     } catch (error) {
       return [];
     }
+  }
+
+  async getRelatedVisits(visitId: string): Promise<Visit[]> {
+    ensureInitialized();
+    const query = `
+      SELECT v.id, v.patient_id as "patientId", v.hospital_id as "hospitalId",
+             v.provider_id as "providerId", v.case_ids as "caseIds", v.type, v.status,
+             v.scheduled_at as "scheduledAt", v.started_at as "startedAt",
+             v.completed_at as "completedAt", v.duration, v.notes,
+             v.chief_complaint as "chiefComplaint", v.audio_uri as "audioUri",
+             v.audio_uploaded_at as "audioUploadedAt",
+             v.created_at as "createdAt", v.updated_at as "updatedAt"
+      FROM visits v
+      INNER JOIN visit_relations vr ON v.id = vr.related_visit_id
+      WHERE vr.visit_id = $1
+      ORDER BY v.scheduled_at DESC
+    `;
+
+    try {
+      const result = await pool.query(query, [visitId]);
+      return result.rows.map(visit => ({
+        ...visit,
+        caseIds: typeof visit.caseIds === 'string' ? JSON.parse(visit.caseIds) : visit.caseIds,
+      }));
+    } catch (error) {
+      return [];
+    }
+  }
+
+  async addVisitRelations(visitId: string, relatedVisitIds: string[]): Promise<void> {
+    ensureInitialized();
+    if (relatedVisitIds.length === 0) return;
+
+    const values = relatedVisitIds
+      .map((_, i) => `($1, $${i + 2})`)
+      .join(', ');
+
+    const query = `
+      INSERT INTO visit_relations (visit_id, related_visit_id)
+      VALUES ${values}
+      ON CONFLICT (visit_id, related_visit_id) DO NOTHING
+    `;
+
+    await pool.query(query, [visitId, ...relatedVisitIds]);
   }
 
   async getVisitsForProviderInRange(providerId: string, startDate: Date, endDate: Date, status?: string): Promise<Visit[]> {

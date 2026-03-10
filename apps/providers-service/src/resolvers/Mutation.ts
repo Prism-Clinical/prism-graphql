@@ -112,6 +112,31 @@ export const Mutation: Resolvers = {
       return { ...newFacility };
     },
 
+    async createVisit(_parent: unknown, { input }: { input: any }) {
+      const { relatedVisitIds, ...visitInput } = input;
+
+      // Validate related visits before creating the visit
+      if (relatedVisitIds?.length > 0) {
+        for (const relatedId of relatedVisitIds) {
+          const relatedVisit = await visitService.getVisitById(relatedId);
+          if (!relatedVisit) {
+            throw new GraphQLError(`Related visit ${relatedId} not found.`);
+          }
+          if (relatedVisit.patientId !== visitInput.patientId) {
+            throw new GraphQLError(`Related visit ${relatedId} belongs to a different patient.`);
+          }
+        }
+      }
+
+      const visit = await visitService.createVisit(visitInput);
+
+      if (relatedVisitIds?.length > 0) {
+        await visitService.addVisitRelations(visit.id, relatedVisitIds);
+      }
+
+      return visit as any;
+    },
+
     requestAudioUploadUrl: audioUploadResolvers.requestAudioUploadUrl,
     updateVisitAudio: audioUploadResolvers.updateVisitAudio,
 
@@ -165,6 +190,20 @@ export const Mutation: Resolvers = {
         notes: reason
           ? `${visit.notes ? visit.notes + '\n' : ''}Cancelled: ${reason}`
           : visit.notes,
+      }) as any;
+    },
+
+    async reopenVisit(_parent: unknown, { id }: { id: string }) {
+      const visit = await visitService.getVisitById(id);
+      if (!visit) {
+        throw new GraphQLError("Visit not found.");
+      }
+      if (visit.status !== 'COMPLETED') {
+        throw new GraphQLError("Only completed visits can be reopened.");
+      }
+      return visitService.updateVisit(id, {
+        status: 'IN_PROGRESS' as any,
+        completedAt: null as any,
       }) as any;
     },
   },

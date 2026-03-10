@@ -21,20 +21,27 @@ const logger = createLogger("epic-api-service");
 async function main(): Promise<void> {
   try {
     // Initialize PostgreSQL
+    const dbHost = process.env.DB_HOST || "localhost";
+    const dbPort = process.env.DB_PORT || "5432";
+    const dbName = process.env.DB_NAME || "prism";
+    const dbUser = process.env.DB_USER || "postgres";
+    const dbPassword = process.env.DB_PASSWORD || "postgres";
     const pgPool = new Pool({
-      host: process.env.DB_HOST || "localhost",
-      port: parseInt(process.env.DB_PORT || "5432"),
-      database: process.env.DB_NAME || "healthcare_federation",
-      user: process.env.DB_USER || "postgres",
-      password: process.env.DB_PASSWORD || "postgres",
+      connectionString:
+        process.env.DATABASE_URL ||
+        `postgresql://${dbUser}:${dbPassword}@${dbHost}:${dbPort}/${dbName}`,
       max: parseInt(process.env.DB_MAX_CONNECTIONS || "10"),
     });
 
     // Initialize Redis
-    const redisClient = new Redis({
-      host: process.env.REDIS_HOST || "localhost",
-      port: parseInt(process.env.REDIS_PORT || "6379"),
-      password: process.env.REDIS_PASSWORD,
+    const redisHost = process.env.REDIS_HOST || "localhost";
+    const redisPort = parseInt(process.env.REDIS_PORT || "6379");
+    const redisPassword = process.env.REDIS_PASSWORD || undefined;
+    const redisDb = parseInt(process.env.REDIS_DB || "0");
+    const redisUrl =
+      process.env.REDIS_URL ||
+      `redis://${redisPassword ? `:${redisPassword}@` : ""}${redisHost}:${redisPort}/${redisDb}`;
+    const redisClient = new Redis(redisUrl, {
       maxRetriesPerRequest: 3,
       lazyConnect: true,
     });

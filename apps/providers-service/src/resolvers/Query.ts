@@ -22,8 +22,12 @@ export const Query: Resolvers = {
     async visit(_parent, { id }, _context) {
       return await visitService.getVisitById(id) as any;
     },
-    async visitsForProvider(_parent, { providerId }, _context) {
-      return await visitService.getVisitsForProvider(providerId) as any;
+    async visitsForProvider(_parent, { providerId, status, limit, offset }, _context) {
+      return await visitService.getVisitsForProvider(providerId, {
+        status: status || undefined,
+        limit: limit ?? undefined,
+        offset: offset ?? undefined,
+      }) as any;
     },
     async visitsForPatient(_parent, { patientId }, _context) {
       const result = await visitService.getVisitsForPatient(patientId, { limit: 100, offset: 0 });
@@ -43,6 +47,11 @@ export const Query: Resolvers = {
       } as any;
     },
   },
+  Visit: {
+    async relatedVisits(parent: any) {
+      return visitService.getRelatedVisits(parent.id);
+    },
+  },
   Provider: {
     async __resolveReference(reference) {
       const provider = await providerService.getProviderById(reference.id);
@@ -54,7 +63,8 @@ export const Query: Resolvers = {
       return await facilityService.getFacilityById(facilityId);
     },
     async visits(parent, _args, _context) {
-      return await visitService.getVisitsForProvider(parent.id) as any;
+      const result = await visitService.getVisitsForProvider(parent.id);
+      return result.visits as any;
     },
   },
 };
