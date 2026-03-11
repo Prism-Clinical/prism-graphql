@@ -13,6 +13,7 @@ import type {
   CodeableConceptOut,
   AllergyReactionOut,
 } from "./transforms";
+import { extractIcd10FromCoding } from "./snomed-icd10-lookup";
 
 // =============================================================================
 // Frontend-Friendly Output Types
@@ -23,6 +24,7 @@ export interface PatientCondition {
   name: string;
   code: string;
   codeSystem: string | null;
+  icd10Code: string | null;
   status: "ACTIVE" | "RESOLVED" | "INACTIVE";
   onsetDate: string;
 }
@@ -108,6 +110,7 @@ export function mapConditions(diagnoses: DiagnosisOut[]): PatientCondition[] {
     name: d.display,
     code: d.code,
     codeSystem: d.codeDetail?.coding[0]?.system ?? null,
+    icd10Code: extractIcd10FromCoding(d.codeDetail),
     status: mapClinicalStatus(d.clinicalStatus),
     onsetDate: d.recordedDate,
   }));

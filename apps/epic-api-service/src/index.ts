@@ -41,8 +41,9 @@ import {
   type AppointmentOut,
 } from "./services/transforms";
 import { getCached, setCached, getCachedMedicationRef, setCachedMedicationRef, invalidatePatientCache } from "./services/cache";
-import { createSnapshot, getLatestSnapshot, getSnapshotHistory, getSnapshot, getEpicPatientIdByPatientId, getLatestSnapshotClinicalData, syncEncountersToVisits, syncAppointmentsToVisits, type SnapshotData, type ClinicalSnapshotFull, type SnapshotSummary } from "./services/database";
+import { createSnapshot, getLatestSnapshot, getSnapshotHistory, getSnapshot, getEpicPatientIdByPatientId, getLatestSnapshotClinicalData, syncEncountersToVisits, syncAppointmentsToVisits, getPool, type SnapshotData, type ClinicalSnapshotFull, type SnapshotSummary } from "./services/database";
 import { mapConditions, mapMedications, mapAllergies } from "./services/patient-clinical-mappers";
+import { lookupSnomedToIcd10 } from "./services/snomed-icd10-lookup";
 
 // =============================================================================
 // TYPES
@@ -550,6 +551,7 @@ export const typeDefs = gql`
     id: ID!
     code: String!
     codeSystem: String
+    icd10Code: String
     name: String!
     status: PatientConditionStatus!
     onsetDate: String
@@ -1357,9 +1359,22 @@ export const resolvers = {
         return { id: ref.id, conditions: [], medications: [], allergies: [] };
       }
 
+      const conditions = mapConditions(clinicalData.diagnoses);
+
+      // Apply fallback SNOMED→ICD-10 lookup for conditions missing ICD-10
+      const db = getPool();
+      for (const condition of conditions) {
+        if (condition.icd10Code === null && condition.code) {
+          condition.icd10Code = await lookupSnomedToIcd10(
+            condition.code,
+            (sql) => db.query(sql)
+          );
+        }
+      }
+
       return {
         id: ref.id,
-        conditions: mapConditions(clinicalData.diagnoses),
+        conditions,
         medications: mapMedications(clinicalData.medications),
         allergies: mapAllergies(clinicalData.allergies),
       };
