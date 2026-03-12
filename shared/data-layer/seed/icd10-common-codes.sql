@@ -149,6 +149,7 @@ VALUES
   ('F90.1', 'Attention-deficit hyperactivity disorder, predominantly hyperactive type', 'F90', 'Attention-deficit hyperactivity disorders', true),
   ('F90.2', 'Attention-deficit hyperactivity disorder, combined type', 'F90', 'Attention-deficit hyperactivity disorders', true),
   ('F90.9', 'Attention-deficit hyperactivity disorder, unspecified type', 'F90', 'Attention-deficit hyperactivity disorders', true),
+  ('F31.9', 'Bipolar disorder, unspecified', 'F31', 'Bipolar disorder', true),
   ('F51.01', 'Primary insomnia', 'F51', 'Sleep disorders', true),
   ('F51.02', 'Adjustment insomnia', 'F51', 'Sleep disorders', true),
 
@@ -194,6 +195,7 @@ VALUES
   ('J45.90', 'Unspecified asthma, uncomplicated', 'J45', 'Asthma', true),
   ('J45.901', 'Unspecified asthma with (acute) exacerbation', 'J45', 'Asthma', true),
   ('J45.902', 'Unspecified asthma with status asthmaticus', 'J45', 'Asthma', true),
+  ('J45.909', 'Unspecified asthma, uncomplicated', 'J45', 'Asthma', true),
   ('J45.990', 'Exercise induced bronchospasm', 'J45', 'Asthma', true),
   ('J45.991', 'Cough variant asthma', 'J45', 'Asthma', true),
 
@@ -419,8 +421,11 @@ VALUES
   ('K58.2', 'Mixed irritable bowel syndrome', 'K58', 'Irritable bowel syndrome', true),
   ('K58.8', 'Other irritable bowel syndrome', 'K58', 'Irritable bowel syndrome', true),
   ('K58.9', 'Irritable bowel syndrome without diarrhea', 'K58', 'Irritable bowel syndrome', true),
+  ('K57.30', 'Diverticulosis of large intestine without perforation or abscess without bleeding', 'K57', 'Diverticular disease of intestine', true),
   ('K59.00', 'Constipation, unspecified', 'K59', 'Other functional intestinal disorders', true),
   ('K59.04', 'Chronic idiopathic constipation', 'K59', 'Other functional intestinal disorders', true),
+  ('K76.0', 'Fatty (change of) liver, not elsewhere classified', 'K76', 'Other diseases of liver', true),
+  ('K92.1', 'Melena', 'K92', 'Other diseases of digestive system', true),
 
   -- =========================================================================
   -- ANEMIA (D50, D64)
@@ -535,12 +540,17 @@ VALUES
   -- =========================================================================
   -- EPILEPSY (G40)
   -- =========================================================================
+  ('G20', 'Parkinson disease', 'G20', 'Parkinson disease', true),
   ('G40.909', 'Epilepsy, unspecified, not intractable, without status epilepticus', 'G40', 'Epilepsy and recurrent seizures', true),
   ('G40.919', 'Epilepsy, unspecified, intractable, without status epilepticus', 'G40', 'Epilepsy and recurrent seizures', true),
 
   -- =========================================================================
-  -- BENIGN NEOPLASMS AND SCREENING
+  -- NEOPLASMS AND SCREENING
   -- =========================================================================
+  ('C18.9', 'Malignant neoplasm of colon, unspecified', 'C18', 'Malignant neoplasm of colon', true),
+  ('C34.90', 'Malignant neoplasm of unspecified part of unspecified bronchus or lung', 'C34', 'Malignant neoplasm of bronchus and lung', true),
+  ('C50.919', 'Malignant neoplasm of unspecified site of unspecified female breast', 'C50', 'Malignant neoplasm of breast', true),
+  ('C61', 'Malignant neoplasm of prostate', 'C61', 'Malignant neoplasm of prostate', true),
   ('D17.9', 'Benign lipomatous neoplasm, unspecified', 'D17', 'Benign lipomatous neoplasm', true),
   ('D22.9', 'Melanocytic nevi, unspecified', 'D22', 'Melanocytic nevi', true),
   ('Z12.11', 'Encounter for screening for malignant neoplasm of colon', 'Z12', 'Encounter for screening for malignant neoplasms', true),
@@ -554,6 +564,11 @@ VALUES
   ('Z00.01', 'Encounter for general adult medical examination with abnormal findings', 'Z00', 'Encounter for general examination without complaint', true),
   ('Z23', 'Encounter for immunization', 'Z23', 'Encounter for immunization', true),
   ('Z71.3', 'Dietary counseling and surveillance', 'Z71', 'Persons encountering health services for other counseling', true),
+
+  -- =========================================================================
+  -- INFECTIOUS DISEASES (B15-B19)
+  -- =========================================================================
+  ('B18.2', 'Chronic viral hepatitis C', 'B18', 'Chronic viral hepatitis', true),
 
   -- =========================================================================
   -- SUBSTANCE USE

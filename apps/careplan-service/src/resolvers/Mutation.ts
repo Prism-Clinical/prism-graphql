@@ -4,7 +4,7 @@ import { GraphQLError } from "graphql";
 
 export const Mutation: Resolvers = {
   Mutation: {
-    async createCarePlan(_parent, { input }, _context) {
+    async createCarePlan(_parent, { input }, context) {
       if (!input.patientId) {
         throw new GraphQLError("Patient ID is required.");
       }
@@ -28,7 +28,7 @@ export const Mutation: Resolvers = {
           templateId: input.templateId || undefined,
           sourceTranscriptionId: input.sourceTranscriptionId || undefined,
           sourceRAGSynthesisId: input.sourceRAGSynthesisId || undefined,
-          createdBy: 'system', // TODO: Get from auth context
+          createdBy: (context as any).userId || '00000000-0000-4000-a000-000000000002',
         });
 
         // Log audit event
@@ -50,7 +50,7 @@ export const Mutation: Resolvers = {
       }
     },
 
-    async createCarePlanFromTemplate(_parent, { patientId, templateId, startDate }, _context) {
+    async createCarePlanFromTemplate(_parent, { patientId, templateId, startDate }, context) {
       if (!patientId) {
         throw new GraphQLError("Patient ID is required.");
       }
@@ -73,7 +73,7 @@ export const Mutation: Resolvers = {
           conditionCodes: template.conditionCodes,
           startDate: new Date(startDate),
           templateId,
-          createdBy: 'system', // TODO: Get from auth context
+          createdBy: (context as any).userId || '00000000-0000-4000-a000-000000000002',
         });
 
         // TODO: Copy goals and interventions from template

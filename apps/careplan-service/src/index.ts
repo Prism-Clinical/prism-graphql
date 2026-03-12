@@ -56,14 +56,20 @@ async function main() {
   });
   const { url } = await startStandaloneServer(server, {
     listen: { port: Number.parseInt(port) },
-    context: async () => ({
-      pool,
-      redis,
-      requestTracker,
+    context: async ({ req }) => {
       // TODO: Extract userId/userRole from auth token in request headers
-      userId: 'system',
-      userRole: 'PROVIDER',
-    }),
+      // For now, use dev provider UUID as fallback
+      const DEV_PROVIDER_ID = '00000000-0000-4000-a000-000000000002';
+      const userId = req.headers['x-user-id'] as string || DEV_PROVIDER_ID;
+      const userRole = req.headers['x-user-role'] as string || 'PROVIDER';
+      return {
+        pool,
+        redis,
+        requestTracker,
+        userId,
+        userRole,
+      };
+    },
   });
 
   console.log(`🚀  Subgraph ${subgraphName} ready at ${url}`);
