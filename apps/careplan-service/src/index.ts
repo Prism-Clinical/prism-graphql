@@ -11,6 +11,8 @@ import crypto from 'crypto';
 import resolvers from "./resolvers";
 import { initializeDatabase } from "./services/database";
 import { RequestTracker } from "./jobs/request-tracker";
+import { createPipelineOrchestrator } from "./orchestration";
+import { createMLClientFactory, createMLConfigFromEnv } from '@prism/service-clients';
 
 const port = process.env.PORT || "4010";
 const subgraphName = "careplan";
@@ -46,6 +48,31 @@ async function main() {
     encryptionKey,
   });
 
+  // Initialize ML client factory and pipeline orchestrator
+  const mlConfig = createMLConfigFromEnv();
+  const mlClientFactory = createMLClientFactory(mlConfig);
+  mlClientFactory.setRedisClient(redis);
+
+  const pipelineOrchestrator = createPipelineOrchestrator({
+    mlClientFactory,
+    redis,
+    pool,
+    auditLogger: {
+      async logPHIAccess(entry) {
+        console.log(JSON.stringify({ service: subgraphName, audit: 'PHI_ACCESS', ...entry }));
+      },
+      async logMLServiceCall(entry) {
+        console.log(JSON.stringify({ service: subgraphName, audit: 'ML_CALL', ...entry }));
+      },
+      async logDataSharing(entry) {
+        console.log(JSON.stringify({ service: subgraphName, audit: 'DATA_SHARING', ...entry }));
+      },
+    },
+    cacheEncryptionKey: encryptionKey,
+    enableCaching: true,
+    enableIdempotency: true,
+  });
+
   // Load both schema files
   const baseSchema = readFileSync("schema.graphql", { encoding: "utf-8" });
   const pipelineSchema = readFileSync("schema-pipeline.graphql", { encoding: "utf-8" });
@@ -66,12 +93,16 @@ async function main() {
         pool,
         redis,
         requestTracker,
+        pipelineOrchestrator,
         userId,
         userRole,
       };
     },
   });
 
+  // Log ML service configuration on startup
+  console.log(`🔧  ML services configured:`, JSON.stringify(mlConfig.urls, null, 2));
+  console.log(`🔧  Fallbacks: ${mlConfig.enableFallbacks ? 'enabled' : 'disabled'}`);
   console.log(`🚀  Subgraph ${subgraphName} ready at ${url}`);
 }
 
