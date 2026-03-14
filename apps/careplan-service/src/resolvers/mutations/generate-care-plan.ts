@@ -286,7 +286,7 @@ export async function generateCarePlanFromVisit(
  */
 export async function acceptCarePlanDraft(
   _parent: unknown,
-  args: { requestId: string; edits?: Array<{ field: string; value: string }> },
+  args: { requestId: string; edits?: Array<{ field: string; action?: string; value?: any }> },
   context: ResolverContext
 ): Promise<any> {
   if (!context.userId) {
@@ -317,12 +317,29 @@ export async function acceptCarePlanDraft(
     });
   }
 
-  // Apply edits to the draft title if provided
+  // Apply edits to the draft if provided
   let title = draft.title;
+  let editedGoals: any[] | null = null;
+  let editedInterventions: any[] | null = null;
+
   if (args.edits) {
     for (const edit of args.edits) {
-      if (edit.field === 'title') {
-        title = edit.value;
+      switch (edit.field) {
+        case 'title':
+          if (typeof edit.value === 'string') {
+            title = edit.value;
+          }
+          break;
+        case 'goals':
+          if (Array.isArray(edit.value)) {
+            editedGoals = edit.value;
+          }
+          break;
+        case 'interventions':
+          if (Array.isArray(edit.value)) {
+            editedInterventions = edit.value;
+          }
+          break;
       }
     }
   }
@@ -337,34 +354,36 @@ export async function acceptCarePlanDraft(
     createdBy: context.userId,
   });
 
-  // Add goals from draft
+  // Use edited goals if provided, otherwise fall back to draft goals
+  const goalSource = editedGoals || draft.goals;
   const goals = [];
-  for (const draftGoal of draft.goals) {
+  for (const g of goalSource) {
     const goal = await carePlanService.addGoal({
       carePlanId: carePlan.id,
-      description: draftGoal.description,
-      targetValue: draftGoal.targetValue,
-      targetDate: draftGoal.targetDate ? new Date(draftGoal.targetDate) : undefined,
-      priority: draftGoal.priority as any,
-      guidelineReference: draftGoal.guidelineReference,
+      description: g.description,
+      targetValue: g.targetValue,
+      targetDate: g.targetDate ? new Date(g.targetDate) : undefined,
+      priority: (g.priority || 'MEDIUM') as any,
+      guidelineReference: g.guidelineReference,
     });
     goals.push(goal);
   }
 
-  // Add interventions from draft
+  // Use edited interventions if provided, otherwise fall back to draft interventions
+  const interventionSource = editedInterventions || draft.interventions;
   const interventions = [];
-  for (const draftIntervention of draft.interventions) {
+  for (const i of interventionSource) {
     const intervention = await carePlanService.addIntervention({
       carePlanId: carePlan.id,
-      type: draftIntervention.type as any,
-      description: draftIntervention.description,
-      medicationCode: draftIntervention.medicationCode,
-      dosage: draftIntervention.dosage,
-      frequency: draftIntervention.frequency,
-      procedureCode: draftIntervention.procedureCode,
-      scheduledDate: draftIntervention.scheduledDate ? new Date(draftIntervention.scheduledDate) : undefined,
-      patientInstructions: draftIntervention.patientInstructions,
-      guidelineReference: draftIntervention.guidelineReference,
+      type: (i.type || 'MONITORING') as any,
+      description: i.description,
+      medicationCode: i.medicationCode,
+      dosage: i.dosage,
+      frequency: i.frequency,
+      procedureCode: i.procedureCode,
+      scheduledDate: i.scheduledDate ? new Date(i.scheduledDate) : undefined,
+      patientInstructions: i.patientInstructions,
+      guidelineReference: i.guidelineReference,
     });
     interventions.push(intervention);
   }

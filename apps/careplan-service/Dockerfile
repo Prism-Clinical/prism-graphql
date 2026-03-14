@@ -89,6 +89,12 @@ COPY --from=builder --chown=graphql:nodejs /app/shared ./shared
 COPY --chown=graphql:nodejs apps/careplan-service/schema.graphql ./
 COPY --chown=graphql:nodejs apps/careplan-service/schema-pipeline.graphql ./
 
+# Re-link shared packages (npm link symlinks don't survive Docker COPY)
+RUN rm -rf node_modules/@prism/security node_modules/@prism/service-clients && \
+    mkdir -p node_modules/@prism && \
+    ln -s /app/shared/security node_modules/@prism/security && \
+    ln -s /app/shared/service-clients node_modules/@prism/service-clients
+
 USER graphql
 
 EXPOSE 4010

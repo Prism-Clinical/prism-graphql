@@ -51,7 +51,7 @@ async function main() {
   // Initialize ML client factory and pipeline orchestrator
   const mlConfig = createMLConfigFromEnv();
   const mlClientFactory = createMLClientFactory(mlConfig);
-  mlClientFactory.setRedisClient(redis);
+  mlClientFactory.setRedisClient(redis as any);
 
   const pipelineOrchestrator = createPipelineOrchestrator({
     mlClientFactory,

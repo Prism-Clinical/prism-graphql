@@ -2,6 +2,9 @@
 # PIPELINE TYPES - Care Plan Generation Pipeline
 # =============================================================================
 
+# JSON scalar for flexible input values (goals, interventions arrays, etc.)
+scalar JSON
+
 # Red flag severity levels
 enum RedFlagSeverity {
   LOW
@@ -184,7 +187,8 @@ input GenerateCarePlanInput {
 # Edit to apply to care plan draft
 input CarePlanEditInput {
   field: String!
-  value: String!
+  action: String
+  value: JSON
 }
 
 # Preferences for regenerating care plan
