@@ -1,7 +1,9 @@
 services:
   # Database Services
   postgres:
-    image: pgvector/pgvector:pg15
+    build:
+      context: ./docker/postgres-age
+      dockerfile: Dockerfile
     container_name: healthcare-postgres
     ports:
       - "5432:5432"
