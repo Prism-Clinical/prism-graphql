@@ -77,7 +77,7 @@ export class RagEmbeddingsClient extends BaseHttpClient {
     }
 
     const response = await this.post<EmbeddingResponse>(
-      '/api/v1/embed/text',
+      '/embeddings/raw',
       { text },
       options
     );
@@ -108,7 +108,7 @@ export class RagEmbeddingsClient extends BaseHttpClient {
     }
 
     const response = await this.post<EmbeddingResponse>(
-      '/api/v1/embed/patient-context',
+      '/embeddings/patient-context',
       {
         condition_codes: context.conditionCodes,
         condition_names: context.conditionNames,
@@ -170,7 +170,7 @@ export class RagEmbeddingsClient extends BaseHttpClient {
 
     // Embed uncached texts
     const response = await this.post<BatchEmbeddingResponse>(
-      '/api/v1/embed/batch',
+      '/embeddings/guidelines/batch',
       { texts: uncachedTexts, type },
       {
         ...options,
@@ -200,7 +200,7 @@ export class RagEmbeddingsClient extends BaseHttpClient {
     options?: RequestOptions
   ): Promise<BatchGuidelineResponse> {
     const response = await this.post<BatchGuidelineResponse>(
-      '/api/v1/embed/guidelines',
+      '/embeddings/guidelines/batch',
       {
         guidelines: guidelines.map((g) => ({
           id: g.id,
@@ -241,7 +241,7 @@ export class RagEmbeddingsClient extends BaseHttpClient {
     options?: RequestOptions
   ): Promise<BatchTemplateResponse> {
     const response = await this.post<BatchTemplateResponse>(
-      '/api/v1/embed/templates',
+      '/embeddings/templates/batch',
       {
         templates: templates.map((t) => ({
           id: t.id,
@@ -283,7 +283,7 @@ export class RagEmbeddingsClient extends BaseHttpClient {
     this.validateEmbedding(request.queryEmbedding);
 
     const response = await this.post<SimilaritySearchResponse>(
-      '/api/v1/search',
+      '/embeddings/search',
       {
         query_embedding: request.queryEmbedding,
         table: request.table,

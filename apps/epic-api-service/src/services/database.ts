@@ -36,6 +36,14 @@ function ensureInitialized(): Pool {
   return pool;
 }
 
+/**
+ * Get the initialized database pool. Throws if not initialized.
+ * Exported for use by resolvers that need direct query access.
+ */
+export function getPool(): Pool {
+  return ensureInitialized();
+}
+
 // =============================================================================
 // Types
 // =============================================================================

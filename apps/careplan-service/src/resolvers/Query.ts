@@ -265,6 +265,49 @@ export const Query: Resolvers = {
 
       return await enrichCarePlan(carePlan) as any;
     },
+
+    async searchIcd10Codes(_parent, { query, limit }: { query: string; limit: number }, context: any) {
+      const trimmed = query.trim();
+      if (trimmed.length < 2) return [];
+
+      const searchLimit = Math.min(limit || 20, 50);
+      const pool = context.pool;
+
+      // If input looks like an ICD-10 code (letter + digit), prioritize code prefix match
+      const looksLikeCode = /^[A-Za-z]\d/.test(trimmed);
+
+      let rows;
+      if (looksLikeCode) {
+        const result = await pool.query(
+          `SELECT code, description, category, category_description, is_billable
+           FROM icd10_codes
+           WHERE code ILIKE $1
+           ORDER BY code
+           LIMIT $2`,
+          [`${trimmed.toUpperCase()}%`, searchLimit]
+        );
+        rows = result.rows;
+      } else {
+        const result = await pool.query(
+          `SELECT code, description, category, category_description, is_billable,
+                  similarity(description, $1) AS sim
+           FROM icd10_codes
+           WHERE description % $1 OR description ILIKE '%' || $1 || '%'
+           ORDER BY sim DESC, code
+           LIMIT $2`,
+          [trimmed, searchLimit]
+        );
+        rows = result.rows;
+      }
+
+      return rows.map((row: any) => ({
+        code: row.code,
+        description: row.description,
+        category: row.category,
+        categoryDescription: row.category_description,
+        isBillable: row.is_billable,
+      }));
+    },
   },
 
   CarePlan: {

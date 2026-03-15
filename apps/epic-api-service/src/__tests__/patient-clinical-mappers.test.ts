@@ -3,6 +3,9 @@ import {
   mapMedications,
   mapAllergies,
 } from "../services/patient-clinical-mappers";
+import {
+  extractIcd10FromCoding,
+} from "../services/snomed-icd10-lookup";
 import type {
   DiagnosisOut,
   MedicationOut,
@@ -273,6 +276,123 @@ describe("mapConditions", () => {
     const result = mapConditions([]);
 
     expect(result).toEqual([]);
+  });
+
+  it("populates icd10Code from ICD-10 entry in codeDetail.coding", () => {
+    const input = [makeDiagnosis({
+      code: "38341003",
+      codeDetail: {
+        coding: [
+          { system: "http://snomed.info/sct", code: "38341003", display: "Hypertension" },
+          { system: "http://hl7.org/fhir/sid/icd-10-cm", code: "I10", display: "Essential hypertension" },
+        ],
+        text: "Hypertension",
+      },
+    })];
+
+    const result = mapConditions(input);
+
+    expect(result[0].icd10Code).toBe("I10");
+  });
+
+  it("returns null icd10Code when only SNOMED in codeDetail", () => {
+    const input = [makeDiagnosis({
+      code: "38341003",
+      codeDetail: {
+        coding: [{ system: "http://snomed.info/sct", code: "38341003", display: "Hypertension" }],
+        text: "Hypertension",
+      },
+    })];
+
+    const result = mapConditions(input);
+
+    expect(result[0].icd10Code).toBeNull();
+  });
+
+  it("returns the code itself as icd10Code when code is already ICD-10 format", () => {
+    const input = [makeDiagnosis({
+      code: "I10",
+      codeDetail: {
+        coding: [{ system: "http://hl7.org/fhir/sid/icd-10-cm", code: "I10", display: "Hypertension" }],
+        text: "Hypertension",
+      },
+    })];
+
+    const result = mapConditions(input);
+
+    expect(result[0].icd10Code).toBe("I10");
+  });
+});
+
+// =============================================================================
+// extractIcd10FromCoding
+// =============================================================================
+
+describe("extractIcd10FromCoding", () => {
+  it("extracts ICD-10 code when present in coding array", () => {
+    const codeDetail = {
+      coding: [
+        { system: "http://snomed.info/sct", code: "38341003", display: "Hypertension" },
+        { system: "http://hl7.org/fhir/sid/icd-10-cm", code: "I10", display: "Essential hypertension" },
+      ],
+      text: "Hypertension",
+    };
+
+    expect(extractIcd10FromCoding(codeDetail)).toBe("I10");
+  });
+
+  it("returns null when only SNOMED coding present", () => {
+    const codeDetail = {
+      coding: [
+        { system: "http://snomed.info/sct", code: "38341003", display: "Hypertension" },
+      ],
+      text: "Hypertension",
+    };
+
+    expect(extractIcd10FromCoding(codeDetail)).toBeNull();
+  });
+
+  it("returns null when codeDetail is null", () => {
+    expect(extractIcd10FromCoding(null)).toBeNull();
+  });
+
+  it("returns null when coding array is empty", () => {
+    expect(extractIcd10FromCoding({ coding: [], text: null })).toBeNull();
+  });
+
+  it("handles ICD-10 with decimal codes", () => {
+    const codeDetail = {
+      coding: [
+        { system: "http://hl7.org/fhir/sid/icd-10-cm", code: "E11.9", display: "Type 2 diabetes" },
+      ],
+      text: "Type 2 diabetes",
+    };
+
+    expect(extractIcd10FromCoding(codeDetail)).toBe("E11.9");
+  });
+
+  it("handles alternative ICD-10 system URI", () => {
+    const codeDetail = {
+      coding: [
+        { system: "urn:oid:2.16.840.1.113883.6.90", code: "J45.20", display: "Mild asthma" },
+      ],
+      text: "Mild asthma",
+    };
+
+    expect(extractIcd10FromCoding(codeDetail)).toBe("J45.20");
+  });
+
+  it("skips coding entries with null system or code", () => {
+    const codeDetail = {
+      coding: [
+        { system: null, code: "38341003", display: "Hypertension" },
+        { system: "http://hl7.org/fhir/sid/icd-10-cm", code: null, display: "Hypertension" },
+        { system: "http://hl7.org/fhir/sid/icd-10-cm", code: "I10", display: "Hypertension" },
+      ],
+      text: "Hypertension",
+    };
+
+    expect(extractIcd10FromCoding(codeDetail)).toBe("I10");
   });
 });
 

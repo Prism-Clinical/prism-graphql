@@ -504,6 +504,14 @@ type ImportCarePlanFromPdfResult {
   embeddingGenerated: Boolean!
 }
 
+type Icd10Code {
+  code: String!
+  description: String!
+  category: String!
+  categoryDescription: String!
+  isBillable: Boolean!
+}
+
 # =============================================================================
 # QUERIES - Structured lookups only
 # =============================================================================
@@ -554,6 +562,9 @@ type Query {
   ): CarePlanConnection!
 
   trainingCarePlan(id: ID!): CarePlan
+
+  # Search ICD-10 codes by code prefix or description text
+  searchIcd10Codes(query: String!, limit: Int = 20): [Icd10Code!]!
 
   # Export care plan as structured document
   exportCarePlanDocument(carePlanId: ID!): ExportDocumentResult!

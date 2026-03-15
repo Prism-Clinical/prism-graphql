@@ -2,6 +2,9 @@
 # PIPELINE TYPES - Care Plan Generation Pipeline
 # =============================================================================
 
+# JSON scalar for flexible input values (goals, interventions arrays, etc.)
+scalar JSON
+
 # Red flag severity levels
 enum RedFlagSeverity {
   LOW
@@ -161,6 +164,12 @@ type SuggestedEdit {
 # PIPELINE INPUT TYPES
 # =============================================================================
 
+enum GenerationMode {
+  TEMPLATE
+  ML_ASSISTED
+  MANUAL
+}
+
 # Input for generating care plan from visit
 input GenerateCarePlanInput {
   visitId: ID!
@@ -168,6 +177,7 @@ input GenerateCarePlanInput {
   transcriptText: String
   audioUrl: String
   conditionCodes: [String!]!
+  generationMode: GenerationMode = ML_ASSISTED
   generateDraft: Boolean = true
   preferredTemplateIds: [ID!]
   additionalContext: String
@@ -177,7 +187,8 @@ input GenerateCarePlanInput {
 # Edit to apply to care plan draft
 input CarePlanEditInput {
   field: String!
-  value: String!
+  action: String
+  value: JSON
 }
 
 # Preferences for regenerating care plan

@@ -410,13 +410,25 @@ services:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - REDIS_PASSWORD=redis_password
-      # ML Service connections
+      # ML Service connections (pipeline orchestrator)
+      - AUDIO_INTELLIGENCE_URL=http://audio-intelligence:8080
+      - CAREPLAN_RECOMMENDER_URL=http://careplan-recommender-ml:8080
+      - RAG_EMBEDDINGS_URL=http://rag-embeddings:8080
+      - PDF_PARSER_URL=http://care-plan-parser:8080
+      # Legacy ML connections
       - ML_VALIDATOR_URL=http://care-plan-validator:8080
       - CARE_PLAN_PARSER_URL=http://care-plan-parser:8080
+      - ML_EMBEDDINGS_URL=http://rag-embeddings:8080
     depends_on:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      audio-intelligence:
+        condition: service_healthy
+      rag-embeddings:
+        condition: service_healthy
+      careplan-recommender-ml:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "wget -qO /dev/null --post-data='{\"query\":\"{__typename}\"}' --header='Content-Type: application/json' http://localhost:4010/ || exit 1"]

@@ -92,7 +92,7 @@ export class CarePlanRecommenderClient extends BaseHttpClient {
 
     try {
       const response = await this.post<Record<string, unknown>>(
-        '/api/v1/recommend',
+        '/recommend/simple',
         {
           condition_codes: request.conditionCodes,
           max_results: request.maxResults ?? 5,
@@ -135,7 +135,7 @@ export class CarePlanRecommenderClient extends BaseHttpClient {
 
     try {
       const response = await this.post<Record<string, unknown>>(
-        '/api/v1/recommend/full',
+        '/recommend/full',
         {
           condition_codes: request.conditionCodes,
           condition_names: request.conditionNames,
@@ -186,7 +186,7 @@ export class CarePlanRecommenderClient extends BaseHttpClient {
 
     try {
       const response = await this.post<Record<string, unknown>>(
-        '/api/v1/engine/recommend',
+        '/engine/recommend',
         {
           condition_codes: request.conditionCodes,
           condition_names: request.conditionNames,
@@ -237,7 +237,7 @@ export class CarePlanRecommenderClient extends BaseHttpClient {
     options?: RequestOptions
   ): Promise<RecommendResponse> {
     const response = await this.post<Record<string, unknown>>(
-      '/api/v1/draft',
+      '/draft',
       {
         template_ids: templateIds,
         context: {
@@ -259,7 +259,7 @@ export class CarePlanRecommenderClient extends BaseHttpClient {
    */
   async getTrainingJob(jobId: string, options?: RequestOptions): Promise<TrainingJobResponse> {
     const response = await this.get<Record<string, unknown>>(
-      `/api/v1/training/${jobId}`,
+      `/training/status/${jobId}`,
       options
     );
 

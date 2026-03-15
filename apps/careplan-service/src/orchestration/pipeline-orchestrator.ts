@@ -530,42 +530,52 @@ export class PipelineOrchestrator {
             // Use the top recommendation for draft
             const topRecommendation = recommendations[0];
 
-            const response = await this.recommenderClient.generateDraft(
-              [topRecommendation.templateId],
-              {
-                conditionCodes: input.conditionCodes,
-              }
+            // Fetch template goals and interventions from DB
+            const templateGoals = await this.config.pool.query(
+              'SELECT description, default_target_value, default_target_days, priority FROM care_plan_goals WHERE care_plan_id = $1',
+              [topRecommendation.templateId]
+            );
+            const templateInterventions = await this.config.pool.query(
+              'SELECT type, description, medication_code, procedure_code, default_schedule_days FROM care_plan_interventions WHERE care_plan_id = $1',
+              [topRecommendation.templateId]
+            );
+            const templateRow = await this.config.pool.query(
+              'SELECT name, guideline_source FROM care_plans WHERE id = $1',
+              [topRecommendation.templateId]
             );
 
-            // Get the first draft from the response
-            const generatedDraft = response.drafts?.[0];
+            const templateName = templateRow.rows[0]?.name ?? `Care Plan for ${input.conditionCodes.join(', ')}`;
 
             const draft: DraftCarePlan = {
               id: uuidv4(),
-              title: generatedDraft?.title ?? `Care Plan for ${input.conditionCodes.join(', ')}`,
+              title: templateName,
               conditionCodes: input.conditionCodes,
               templateId: topRecommendation.templateId,
-              goals: (generatedDraft?.goals ?? []).map((g: any) => ({
+              goals: templateGoals.rows.map((g: any) => ({
                 description: g.description,
-                targetValue: g.targetValue,
-                targetDate: g.targetDate ? new Date(g.targetDate) : undefined,
+                targetValue: g.default_target_value,
+                targetDate: g.default_target_days
+                  ? new Date(Date.now() + g.default_target_days * 86400000)
+                  : undefined,
                 priority: g.priority ?? 'MEDIUM',
-                guidelineReference: g.guidelineReference,
+                guidelineReference: templateRow.rows[0]?.guideline_source,
               })),
-              interventions: (generatedDraft?.interventions ?? []).map((i: any) => ({
+              interventions: templateInterventions.rows.map((i: any) => ({
                 type: i.type,
                 description: i.description,
-                medicationCode: i.medicationCode,
-                dosage: i.dosage,
-                frequency: i.frequency,
-                procedureCode: i.procedureCode,
-                scheduledDate: i.scheduledDate ? new Date(i.scheduledDate) : undefined,
-                patientInstructions: i.patientInstructions,
-                guidelineReference: i.guidelineReference,
+                medicationCode: i.medication_code as string | undefined,
+                dosage: undefined as string | undefined,
+                frequency: undefined as string | undefined,
+                procedureCode: i.procedure_code as string | undefined,
+                scheduledDate: i.default_schedule_days
+                  ? new Date(Date.now() + i.default_schedule_days * 86400000)
+                  : undefined,
+                patientInstructions: undefined as string | undefined,
+                guidelineReference: templateRow.rows[0]?.guideline_source,
               })),
               generatedAt: new Date(),
-              confidence: generatedDraft?.confidenceScore ?? topRecommendation.confidence,
-              requiresReview: (generatedDraft?.confidenceScore ?? 1) < 0.8,
+              confidence: topRecommendation.confidence,
+              requiresReview: topRecommendation.confidence < 0.8,
             };
 
             return { draft };
@@ -794,6 +804,8 @@ export class PipelineOrchestrator {
     if (message.includes('forbidden') || message.includes('permission'))
       return PipelineErrorCategory.AUTHORIZATION_FAILED;
     if (message.includes('service unavailable') || message.includes('503'))
+      return PipelineErrorCategory.SERVICE_UNAVAILABLE;
+    if (message.includes('not found') || message.includes('404'))
       return PipelineErrorCategory.SERVICE_UNAVAILABLE;
     if (message.includes('validation')) return PipelineErrorCategory.VALIDATION_FAILED;
 

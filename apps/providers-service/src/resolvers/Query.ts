@@ -51,6 +51,9 @@ export const Query: Resolvers = {
     async relatedVisits(parent: any) {
       return visitService.getRelatedVisits(parent.id);
     },
+    patient(parent: any) {
+      return { __typename: 'Patient', id: parent.patientId };
+    },
   },
   Provider: {
     async __resolveReference(reference) {
