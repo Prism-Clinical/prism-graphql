@@ -29,4 +29,16 @@ describe('buildCypherQuery', () => {
     );
     expect(result).toContain("cypher('clinical_pathways'");
   });
+
+  it('should reject invalid graph names', () => {
+    expect(() =>
+      buildCypherQuery('malicious_graph; DROP TABLE users', 'RETURN 1', '(v agtype)')
+    ).toThrow('Invalid graph name');
+  });
+
+  it('should reject invalid returnType format', () => {
+    expect(() =>
+      buildCypherQuery('clinical_pathways', 'RETURN 1', '(v agtype); DROP TABLE users--')
+    ).toThrow('Invalid returnType format');
+  });
 });

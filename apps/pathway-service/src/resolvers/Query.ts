@@ -1,5 +1,14 @@
 import { DataSourceContext } from '../types';
 
+const PATHWAY_COLUMNS = `
+  id, age_node_id AS "ageNodeId", logical_id AS "logicalId",
+  title, version, category, status,
+  condition_codes AS "conditionCodes",
+  scope, target_population AS "targetPopulation",
+  is_active AS "isActive",
+  created_at AS "createdAt", updated_at AS "updatedAt"
+`;
+
 export const Query = {
   Query: {
     pathwayServiceHealth: (): boolean => true,
@@ -12,16 +21,7 @@ export const Query = {
       const { pool } = context;
       const first = args.first ?? 50;
 
-      let query = `
-        SELECT id, age_node_id AS "ageNodeId", logical_id AS "logicalId",
-               title, version, category, status,
-               condition_codes AS "conditionCodes",
-               scope, target_population AS "targetPopulation",
-               is_active AS "isActive",
-               created_at AS "createdAt", updated_at AS "updatedAt"
-        FROM pathway_graph_index
-        WHERE 1=1
-      `;
+      let query = `SELECT ${PATHWAY_COLUMNS} FROM pathway_graph_index WHERE 1=1`;
       const params: unknown[] = [];
       let paramIdx = 1;
 
@@ -49,17 +49,10 @@ export const Query = {
       context: DataSourceContext
     ) => {
       const { pool } = context;
-      const query = `
-        SELECT id, age_node_id AS "ageNodeId", logical_id AS "logicalId",
-               title, version, category, status,
-               condition_codes AS "conditionCodes",
-               scope, target_population AS "targetPopulation",
-               is_active AS "isActive",
-               created_at AS "createdAt", updated_at AS "updatedAt"
-        FROM pathway_graph_index
-        WHERE id = $1
-      `;
-      const result = await pool.query(query, [args.id]);
+      const result = await pool.query(
+        `SELECT ${PATHWAY_COLUMNS} FROM pathway_graph_index WHERE id = $1`,
+        [args.id]
+      );
       return result.rows[0] || null;
     },
   },
@@ -71,17 +64,10 @@ export const Query = {
       context: DataSourceContext
     ) => {
       const { pool } = context;
-      const query = `
-        SELECT id, age_node_id AS "ageNodeId", logical_id AS "logicalId",
-               title, version, category, status,
-               condition_codes AS "conditionCodes",
-               scope, target_population AS "targetPopulation",
-               is_active AS "isActive",
-               created_at AS "createdAt", updated_at AS "updatedAt"
-        FROM pathway_graph_index
-        WHERE id = $1
-      `;
-      const result = await pool.query(query, [ref.id]);
+      const result = await pool.query(
+        `SELECT ${PATHWAY_COLUMNS} FROM pathway_graph_index WHERE id = $1`,
+        [ref.id]
+      );
       return result.rows[0] || null;
     },
   },

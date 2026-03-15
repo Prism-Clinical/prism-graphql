@@ -21,7 +21,7 @@ async function startGateway() {
     { name: 'rag', envVar: 'RAG_URL', defaultUrl: 'http://rag-embeddings:8103/graphql' },
     { name: 'careplan-recommender', envVar: 'CAREPLAN_RECOMMENDER_URL', defaultUrl: 'http://careplan-recommender:8100/graphql' },
     { name: 'epic-api', envVar: 'EPIC_API_URL', defaultUrl: 'http://epic-api-service:4006/graphql' },
-    { name: 'pathway', envVar: 'PATHWAY_URL', defaultUrl: 'http://pathway-service:4016' },
+    { name: 'pathway', envVar: 'PATHWAY_URL', defaultUrl: 'http://pathway-service:4016/graphql' },
   ];
 
   for (const svc of services) {
