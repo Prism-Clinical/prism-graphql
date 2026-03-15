@@ -1,0 +1,45 @@
+extend schema @link(url: "https://specs.apollo.dev/federation/v2.10", import: ["@key", "@external", "@shareable"])
+
+# Enums
+enum PathwayStatus {
+  DRAFT
+  ACTIVE
+  ARCHIVED
+  SUPERSEDED
+}
+
+enum PathwayCategory {
+  CHRONIC_DISEASE
+  ACUTE_CARE
+  PREVENTIVE_CARE
+  POST_PROCEDURE
+  MEDICATION_MANAGEMENT
+  LIFESTYLE_MODIFICATION
+  MENTAL_HEALTH
+  PEDIATRIC
+  GERIATRIC
+  OBSTETRIC
+}
+
+# Core types
+type Pathway @key(fields: "id") {
+  id: ID!
+  logicalId: String!
+  title: String!
+  version: String!
+  category: PathwayCategory!
+  status: PathwayStatus!
+  conditionCodes: [String!]!
+  scope: String
+  targetPopulation: String
+  isActive: Boolean!
+  createdAt: String!
+  updatedAt: String!
+}
+
+# Queries — stub for health check and basic listing
+type Query {
+  pathwayServiceHealth: Boolean!
+  pathways(status: PathwayStatus, category: PathwayCategory, first: Int): [Pathway!]!
+  pathway(id: ID!): Pathway
+}
