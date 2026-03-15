@@ -45,6 +45,7 @@ module.exports = {
     '^@transcription/(.*)$': '<rootDir>/apps/transcription-service/src/$1',
     '^@rag/(.*)$': '<rootDir>/apps/rag-service/src/$1',
     '^@safety/(.*)$': '<rootDir>/apps/safety-service/src/$1',
-    '^@careplan/(.*)$': '<rootDir>/apps/careplan-service/src/$1'
+    '^@careplan/(.*)$': '<rootDir>/apps/careplan-service/src/$1',
+    '^@pathway/(.*)$': '<rootDir>/apps/pathway-service/src/$1'
   }
 };
