@@ -6,6 +6,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     postgresql-server-dev-15 \
     git \
     ca-certificates \
+    flex \
+    bison \
     && rm -rf /var/lib/apt/lists/*
 
 # Clone and compile Apache AGE 1.5.0 (pinned release — not main branch)
@@ -16,7 +18,7 @@ RUN git clone --branch PG15/v1.5.0-rc0 --depth 1 https://github.com/apache/age.g
     && rm -rf /tmp/age
 
 # Clean up build dependencies to reduce image size
-RUN apt-get purge -y build-essential postgresql-server-dev-15 git \
+RUN apt-get purge -y build-essential postgresql-server-dev-15 git flex bison \
     && apt-get autoremove -y \
     && rm -rf /var/lib/apt/lists/*
 
