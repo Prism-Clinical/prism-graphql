@@ -49,6 +49,13 @@ export interface PathwayGraphIndex {
   updatedAt: Date;
 }
 
+// Import modes
+export enum ImportMode {
+  NEW_PATHWAY = 'NEW_PATHWAY',
+  DRAFT_UPDATE = 'DRAFT_UPDATE',
+  NEW_VERSION = 'NEW_VERSION',
+}
+
 // Resolution session status
 export enum ResolutionSessionStatus {
   IN_PROGRESS = 'IN_PROGRESS',
