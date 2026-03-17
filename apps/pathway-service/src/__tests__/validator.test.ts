@@ -186,4 +186,93 @@ describe('validatePathwayJson', () => {
       expect(result.errors.length).toBeGreaterThanOrEqual(3);
     });
   });
+
+  describe('semantic rules', () => {
+    // SE1: ICD-10 code format
+    it('should reject invalid ICD-10 code format', () => {
+      const pw = clonePathway();
+      pw.pathway.condition_codes[0].code = 'INVALID';
+      const result = validatePathwayJson(pw);
+      expect(result.valid).toBe(false);
+      expect(result.errors).toContainEqual(expect.stringContaining('ICD-10'));
+    });
+
+    // SE2: must have at least one Stage node
+    it('should reject pathway with no Stage nodes', () => {
+      const pw = clonePathway();
+      pw.nodes = pw.nodes.filter(n => n.type !== 'Stage');
+      // Also remove edges that reference removed stages
+      pw.edges = pw.edges.filter(e => {
+        const stageIds = ['stage-1', 'stage-2', 'stage-3'];
+        return !stageIds.includes(e.from) && !stageIds.includes(e.to);
+      });
+      const result = validatePathwayJson(pw);
+      expect(result.valid).toBe(false);
+      expect(result.errors).toContainEqual(expect.stringContaining('Stage'));
+    });
+
+    // SE3: graph depth check
+    it('should not warn for shallow pathways', () => {
+      const pw = clonePathway();
+      const result = validatePathwayJson(pw);
+      expect(result.warnings.filter(w => w.includes('depth'))).toHaveLength(0);
+    });
+
+    it('should warn when graph depth exceeds 30', () => {
+      const pw = clonePathway();
+      // Build a chain of 32 nested steps to trigger the warning
+      for (let i = 10; i <= 41; i++) {
+        pw.nodes.push({ id: `deep-step-${i}`, type: 'Step', properties: { stage_number: 1, step_number: i, display_number: `1.${i}`, title: `Deep Step ${i}` } });
+        pw.edges.push({ from: i === 10 ? 'step-1-1' : `deep-step-${i-1}`, to: `deep-step-${i}`, type: 'HAS_DECISION_POINT' as any });
+      }
+      const result = validatePathwayJson(pw);
+      expect(result.warnings).toContainEqual(expect.stringContaining('depth'));
+    });
+
+    // SE4: root must have at least one HAS_STAGE edge
+    it('should reject pathway with no root → HAS_STAGE edges', () => {
+      const pw = clonePathway();
+      pw.edges = pw.edges.filter(e => !(e.from === 'root' && e.type === 'HAS_STAGE'));
+      const result = validatePathwayJson(pw);
+      expect(result.valid).toBe(false);
+      expect(result.errors).toContainEqual(expect.stringContaining('HAS_STAGE'));
+    });
+
+    // SE5: DecisionPoint should have at least one BRANCHES_TO edge
+    it('should warn when DecisionPoint has no BRANCHES_TO edges', () => {
+      const pw = clonePathway();
+      pw.edges = pw.edges.filter(e => e.type !== 'BRANCHES_TO');
+      const result = validatePathwayJson(pw);
+      expect(result.warnings).toContainEqual(expect.stringContaining('BRANCHES_TO'));
+    });
+
+    // SE6: orphan nodes (nodes not connected by any edge)
+    it('should warn about orphan nodes', () => {
+      const pw = clonePathway();
+      pw.nodes.push({ id: 'orphan-1', type: 'Stage', properties: { stage_number: 99, title: 'Orphan' } });
+      const result = validatePathwayJson(pw);
+      expect(result.warnings).toContainEqual(expect.stringContaining('orphan'));
+    });
+
+    // SE7: CodeEntry code format validation for non-ICD-10 systems
+    it('should reject CodeEntry with invalid LOINC code format', () => {
+      const pw = clonePathway();
+      const codeEntry = pw.nodes.find(n => n.id === 'code-1')!;
+      codeEntry.properties.system = 'LOINC';
+      codeEntry.properties.code = 'NOT-A-LOINC';
+      const result = validatePathwayJson(pw);
+      expect(result.valid).toBe(false);
+      expect(result.errors).toContainEqual(expect.stringContaining('LOINC'));
+    });
+
+    // SE8: cross-reference validation — condition codes used in criteria must be defined
+    it('should warn when criterion references code not in condition_codes', () => {
+      const pw = clonePathway();
+      // Change a criterion's code to something not in condition_codes
+      const crit = pw.nodes.find(n => n.id === 'crit-1')!;
+      crit.properties.code_value = 'Z99.99';
+      const result = validatePathwayJson(pw);
+      expect(result.warnings).toContainEqual(expect.stringContaining('Z99.99'));
+    });
+  });
 });
