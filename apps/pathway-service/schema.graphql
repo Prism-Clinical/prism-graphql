@@ -1,6 +1,7 @@
 extend schema @link(url: "https://specs.apollo.dev/federation/v2.10", import: ["@key", "@external", "@shareable"])
 
-# Enums
+# ─── Enums ─────────────────────────────────────────────────────────────
+
 enum PathwayStatus {
   DRAFT
   ACTIVE
@@ -21,7 +22,14 @@ enum PathwayCategory {
   OBSTETRIC
 }
 
-# Core types
+enum ImportMode {
+  NEW_PATHWAY
+  DRAFT_UPDATE
+  NEW_VERSION
+}
+
+# ─── Core Types ────────────────────────────────────────────────────────
+
 type Pathway @key(fields: "id") {
   id: ID!
   logicalId: String!
@@ -37,9 +45,77 @@ type Pathway @key(fields: "id") {
   updatedAt: String!
 }
 
-# Queries — stub for health check and basic listing
+# ─── Import Types ──────────────────────────────────────────────────────
+
+type ValidationResult {
+  valid: Boolean!
+  errors: [String!]!
+  warnings: [String!]!
+}
+
+type ImportDiffSummary {
+  nodesAdded: Int!
+  nodesRemoved: Int!
+  nodesModified: Int!
+  edgesAdded: Int!
+  edgesRemoved: Int!
+  edgesModified: Int!
+}
+
+type DiffDetail {
+  entityType: String!
+  action: String!
+  entityId: String!
+  entityLabel: String!
+}
+
+type ImportDiff {
+  summary: ImportDiffSummary!
+  details: [DiffDetail!]!
+}
+
+type ImportPathwayResult {
+  pathway: Pathway
+  validation: ValidationResult!
+  diff: ImportDiff
+  importType: ImportMode!
+}
+
+type PathwayStatusResult {
+  pathway: Pathway!
+  previousStatus: PathwayStatus!
+}
+
+# ─── Queries ───────────────────────────────────────────────────────────
+
 type Query {
   pathwayServiceHealth: Boolean!
   pathways(status: PathwayStatus, category: PathwayCategory, first: Int): [Pathway!]!
   pathway(id: ID!): Pathway
+}
+
+# ─── Mutations ─────────────────────────────────────────────────────────
+
+type Mutation {
+  """
+  Import a clinical pathway from JSON. Supports three modes:
+  - NEW_PATHWAY: First import of a new pathway
+  - DRAFT_UPDATE: Re-import of an existing DRAFT pathway (applies diff)
+  - NEW_VERSION: Create a new version of an existing pathway
+
+  pathwayJson is a JSON string conforming to the PathwayJson schema (see
+  apps/pathway-service/src/services/import/types.ts). It includes schema_version,
+  pathway metadata, nodes array, and edges array. The pipeline validates the
+  full structure and returns all errors at once.
+  """
+  importPathway(pathwayJson: String!, importMode: ImportMode!): ImportPathwayResult!
+
+  """Activate a DRAFT pathway, making it available for patient matching."""
+  activatePathway(id: ID!): PathwayStatusResult!
+
+  """Archive an ACTIVE pathway, removing it from patient matching."""
+  archivePathway(id: ID!): PathwayStatusResult!
+
+  """Reactivate a SUPERSEDED or ARCHIVED pathway."""
+  reactivatePathway(id: ID!): PathwayStatusResult!
 }
