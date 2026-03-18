@@ -301,6 +301,9 @@ async function findExistingPathwayByLogicalId(
  * Delete all graph nodes and edges belonging to a pathway.
  * Uses the age_node_id from the relational index to find the root Pathway node,
  * then DETACH DELETEs the entire connected subgraph.
+ *
+ * Split into two queries because AGE's OPTIONAL MATCH with variable-length paths
+ * combined with DETACH DELETE can leave nodes undeleted, causing duplicates.
  */
 async function deleteGraphSubtree(
   client: PoolClient,
@@ -314,12 +317,17 @@ async function deleteGraphSubtree(
   const ageNodeId = indexRow.rows[0]?.age_node_id;
   if (!ageNodeId) return; // No graph to delete
 
-  // Delete all nodes reachable from the root via any relationship.
-  // The variable-length path [*0..] matches the root itself plus all descendants.
-  const deleteCypher = `MATCH (p:Pathway) WHERE id(p) = ${ageNodeId} ` +
-    `OPTIONAL MATCH (p)-[*0..]->(n) DETACH DELETE p, n`;
-  const sql = buildCypherQuery(undefined, deleteCypher, '(v agtype)');
-  await client.query(sql);
+  // Step 1: Delete all descendant nodes (and their relationships).
+  // MATCH (not OPTIONAL MATCH) returns 0 rows if no descendants exist, which is fine.
+  const deleteDescCypher = `MATCH (p:Pathway) WHERE id(p) = ${ageNodeId} ` +
+    `MATCH (p)-[*1..]->(n) DETACH DELETE n`;
+  const descSql = buildCypherQuery(undefined, deleteDescCypher, '(v agtype)');
+  await client.query(descSql);
+
+  // Step 2: Delete the root Pathway node itself.
+  const deleteRootCypher = `MATCH (p:Pathway) WHERE id(p) = ${ageNodeId} DETACH DELETE p`;
+  const rootSql = buildCypherQuery(undefined, deleteRootCypher, '(v agtype)');
+  await client.query(rootSql);
 }
 
 /**

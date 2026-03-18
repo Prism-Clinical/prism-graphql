@@ -339,11 +339,21 @@ function computeMaxDepth(edges: PathwayJson['edges']): number {
 
   // BFS from root, tracking maximum depth per node (handles DAGs where
   // the same node is reachable via multiple paths at different depths).
+  // Iteration limit prevents infinite loops from cyclic graphs — in a valid
+  // acyclic graph each node is re-enqueued at most once per incoming edge,
+  // so total iterations are bounded by |nodes| + |edges|.
+  const maxIterations = edges.length * 3 + 100;
+  let iterations = 0;
   const maxDepthMap = new Map<string, number>();
   let maxDepth = 0;
   const queue: Array<{ node: string; depth: number }> = [{ node: 'root', depth: 0 }];
 
   while (queue.length > 0) {
+    if (++iterations > maxIterations) {
+      // Cycle detected — depth is unbounded, report as exceeding limit
+      return MAX_GRAPH_DEPTH + 1;
+    }
+
     const { node, depth } = queue.shift()!;
     const knownDepth = maxDepthMap.get(node);
     if (knownDepth !== undefined && knownDepth >= depth) continue;
