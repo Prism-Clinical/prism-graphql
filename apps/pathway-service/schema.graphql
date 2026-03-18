@@ -72,6 +72,8 @@ type DiffDetail {
 type ImportDiff {
   summary: ImportDiffSummary!
   details: [DiffDetail!]!
+  """True when the diff is a placeholder (creation summary or graph reconstruction unavailable)."""
+  synthetic: Boolean!
 }
 
 type ImportPathwayResult {

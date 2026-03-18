@@ -8,6 +8,7 @@ import {
   VALID_MEDICATION_ROLES,
   VALID_EVIDENCE_LEVELS,
   MAX_GRAPH_NODES,
+  MAX_GRAPH_EDGES,
   MAX_GRAPH_DEPTH,
   ValidationResult,
 } from './types';
@@ -28,6 +29,8 @@ export function validatePathwayJson(pw: PathwayJson): ValidationResult {
   // ─── Top-level structure ─────────────────────────────────────────
   if (!pw.schema_version) {
     errors.push('Missing required field: schema_version');
+  } else if (pw.schema_version !== '1.0') {
+    errors.push(`Unsupported schema_version "${pw.schema_version}". Currently supported: "1.0"`);
   }
 
   if (!pw.pathway) {
@@ -92,6 +95,10 @@ export function validatePathwayJson(pw: PathwayJson): ValidationResult {
   if (!pw.edges || !Array.isArray(pw.edges)) {
     errors.push('Missing required field: edges (must be an array)');
     return { valid: errors.length === 0, errors, warnings };
+  }
+
+  if (pw.edges.length > MAX_GRAPH_EDGES) {
+    errors.push(`Pathway exceeds maximum edge count: ${pw.edges.length} > ${MAX_GRAPH_EDGES}`);
   }
 
   for (let i = 0; i < pw.edges.length; i++) {

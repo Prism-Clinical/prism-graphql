@@ -51,15 +51,16 @@ describe('writePathwayIndex', () => {
 });
 
 describe('writeConditionCodes', () => {
-  it('should INSERT one row per condition code', async () => {
+  it('should INSERT all condition codes in a single batch query', async () => {
     const client = createMockClient();
     const pathwayId = '00000000-0000-4000-a000-000000000099';
     await writeConditionCodes(client as any, pathwayId, REFERENCE_PATHWAY.pathway.condition_codes);
 
-    expect(client.query).toHaveBeenCalledTimes(2); // 2 condition codes
-    for (const q of client.queries) {
-      expect(q.text).toContain('INSERT INTO pathway_condition_codes');
-    }
+    expect(client.query).toHaveBeenCalledTimes(1); // Single batch INSERT
+    const call = client.queries[0];
+    expect(call.text).toContain('INSERT INTO pathway_condition_codes');
+    // 2 condition codes × 6 params each = 12 values
+    expect(call.values).toHaveLength(12);
   });
 
   it('should skip if no condition codes', async () => {

@@ -57,6 +57,7 @@ export const Mutation = {
         diff: result.diff ? {
           summary: result.diff.summary,
           details: result.diff.details,
+          synthetic: result.diff.synthetic,
         } : null,
         importType: result.importType,
       };
@@ -69,45 +70,41 @@ export const Mutation = {
     ) {
       const { pool } = context;
 
-      const current = await pool.query(
-        `SELECT ${PATHWAY_COLUMNS} FROM pathway_graph_index WHERE id = $1`,
+      // Single atomic query: check existence + validate status + supersede old ACTIVE + activate.
+      // The CTE chain ensures no TOCTOU race between reading status and updating.
+      const result = await pool.query(
+        `WITH target AS (
+           SELECT id, status, logical_id FROM pathway_graph_index WHERE id = $1
+         ),
+         superseded AS (
+           UPDATE pathway_graph_index SET status = 'SUPERSEDED', is_active = false
+           WHERE logical_id = (SELECT logical_id FROM target)
+             AND status = 'ACTIVE' AND id != $1
+             AND (SELECT status FROM target) = 'DRAFT'
+         ),
+         activated AS (
+           UPDATE pathway_graph_index SET status = 'ACTIVE', is_active = true
+           WHERE id = $1 AND status = 'DRAFT'
+           RETURNING ${PATHWAY_COLUMNS}
+         )
+         SELECT activated.*, target.status AS "previousStatus"
+         FROM activated, target`,
         [args.id]
       );
-      if (!current.rows[0]) {
-        throw new GraphQLError('Pathway not found', { extensions: { code: 'NOT_FOUND' } });
-      }
 
-      const pathway = current.rows[0];
-      if (pathway.status !== 'DRAFT') {
-        throw new GraphQLError(`Cannot activate pathway with status "${pathway.status}". Only DRAFT pathways can be activated.`, {
+      if (!result.rows[0]) {
+        // Distinguish between not-found and wrong-status
+        const check = await pool.query('SELECT status FROM pathway_graph_index WHERE id = $1', [args.id]);
+        if (!check.rows[0]) {
+          throw new GraphQLError('Pathway not found', { extensions: { code: 'NOT_FOUND' } });
+        }
+        throw new GraphQLError(`Cannot activate pathway with status "${check.rows[0].status}". Only DRAFT pathways can be activated.`, {
           extensions: { code: 'BAD_USER_INPUT' },
         });
       }
 
-      // Atomic: supersede existing ACTIVE + activate this one in a single CTE.
-      // Prevents race conditions where two concurrent activations could both succeed.
-      const updated = await pool.query(
-        `WITH superseded AS (
-           UPDATE pathway_graph_index SET status = 'SUPERSEDED', is_active = false
-           WHERE logical_id = (SELECT logical_id FROM pathway_graph_index WHERE id = $1)
-             AND status = 'ACTIVE' AND id != $1
-         )
-         UPDATE pathway_graph_index SET status = 'ACTIVE', is_active = true
-         WHERE id = $1 AND status = 'DRAFT'
-         RETURNING ${PATHWAY_COLUMNS}`,
-        [args.id]
-      );
-
-      if (!updated.rows[0]) {
-        throw new GraphQLError('Failed to activate pathway — it may have been modified concurrently.', {
-          extensions: { code: 'INTERNAL_SERVER_ERROR' },
-        });
-      }
-
-      return {
-        pathway: updated.rows[0],
-        previousStatus: 'DRAFT',
-      };
+      const { previousStatus, ...pathway } = result.rows[0];
+      return { pathway, previousStatus };
     },
 
     async archivePathway(
@@ -150,46 +147,39 @@ export const Mutation = {
     ) {
       const { pool } = context;
 
-      const current = await pool.query(
-        `SELECT ${PATHWAY_COLUMNS} FROM pathway_graph_index WHERE id = $1`,
+      // Single atomic query: check existence + validate status + supersede old ACTIVE + reactivate.
+      const result = await pool.query(
+        `WITH target AS (
+           SELECT id, status, logical_id FROM pathway_graph_index WHERE id = $1
+         ),
+         superseded AS (
+           UPDATE pathway_graph_index SET status = 'SUPERSEDED', is_active = false
+           WHERE logical_id = (SELECT logical_id FROM target)
+             AND status = 'ACTIVE' AND id != $1
+             AND (SELECT status FROM target) IN ('SUPERSEDED', 'ARCHIVED')
+         ),
+         reactivated AS (
+           UPDATE pathway_graph_index SET status = 'ACTIVE', is_active = true
+           WHERE id = $1 AND status IN ('SUPERSEDED', 'ARCHIVED')
+           RETURNING ${PATHWAY_COLUMNS}
+         )
+         SELECT reactivated.*, target.status AS "previousStatus"
+         FROM reactivated, target`,
         [args.id]
       );
-      if (!current.rows[0]) {
-        throw new GraphQLError('Pathway not found', { extensions: { code: 'NOT_FOUND' } });
-      }
 
-      const pathway = current.rows[0];
-      if (pathway.status !== 'SUPERSEDED' && pathway.status !== 'ARCHIVED') {
-        throw new GraphQLError(`Cannot reactivate pathway with status "${pathway.status}". Only SUPERSEDED or ARCHIVED pathways can be reactivated.`, {
+      if (!result.rows[0]) {
+        const check = await pool.query('SELECT status FROM pathway_graph_index WHERE id = $1', [args.id]);
+        if (!check.rows[0]) {
+          throw new GraphQLError('Pathway not found', { extensions: { code: 'NOT_FOUND' } });
+        }
+        throw new GraphQLError(`Cannot reactivate pathway with status "${check.rows[0].status}". Only SUPERSEDED or ARCHIVED pathways can be reactivated.`, {
           extensions: { code: 'BAD_USER_INPUT' },
         });
       }
 
-      const previousStatus = pathway.status;
-
-      // Atomic: supersede existing ACTIVE + reactivate this one in a single CTE.
-      const updated = await pool.query(
-        `WITH superseded AS (
-           UPDATE pathway_graph_index SET status = 'SUPERSEDED', is_active = false
-           WHERE logical_id = (SELECT logical_id FROM pathway_graph_index WHERE id = $1)
-             AND status = 'ACTIVE' AND id != $1
-         )
-         UPDATE pathway_graph_index SET status = 'ACTIVE', is_active = true
-         WHERE id = $1 AND status IN ('SUPERSEDED', 'ARCHIVED')
-         RETURNING ${PATHWAY_COLUMNS}`,
-        [args.id]
-      );
-
-      if (!updated.rows[0]) {
-        throw new GraphQLError('Failed to reactivate pathway — it may have been modified concurrently.', {
-          extensions: { code: 'INTERNAL_SERVER_ERROR' },
-        });
-      }
-
-      return {
-        pathway: updated.rows[0],
-        previousStatus,
-      };
+      const { previousStatus, ...pathway } = result.rows[0];
+      return { pathway, previousStatus };
     },
   },
 };

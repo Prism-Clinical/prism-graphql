@@ -118,6 +118,7 @@ export const VALID_EVIDENCE_LEVELS = ['Level A', 'Level B', 'Level C', 'Expert C
 // Graph size limits (enforced at import time per spec)
 export const MAX_GRAPH_DEPTH = 50;
 export const MAX_GRAPH_NODES = 500;
+export const MAX_GRAPH_EDGES = 2000;
 
 // ─── Import Pipeline Types ───────────────────────────────────────────
 
@@ -125,11 +126,6 @@ export const MAX_GRAPH_NODES = 500;
 // Do NOT define a duplicate here.
 import { ImportMode } from '../../types';
 export { ImportMode };
-
-export interface ImportPathwayInput {
-  pathwayJson: PathwayJson;
-  importMode: ImportMode;
-}
 
 export interface ValidationResult {
   valid: boolean;
@@ -170,6 +166,8 @@ export interface ImportResult {
   diff: {
     summary: ImportDiffSummary;
     details: DiffDetail[];
+    /** True when the diff is a placeholder (e.g., creation summary or failed reconstruction). */
+    synthetic: boolean;
   } | null;
   importType: ImportMode;
 }

@@ -41,20 +41,31 @@ export async function writePathwayIndex(
 
 /**
  * Insert rows into pathway_condition_codes for a given pathway.
+ * Uses a single multi-row INSERT to minimize round-trips within the transaction.
  */
 export async function writeConditionCodes(
   client: PoolClient,
   pathwayId: string,
   conditionCodes: ConditionCodeDefinition[]
 ): Promise<void> {
-  for (const cc of conditionCodes) {
-    await client.query(
-      `INSERT INTO pathway_condition_codes
-        (pathway_id, code, system, description, usage, grouping)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
-      [pathwayId, cc.code, cc.system, cc.description || null, cc.usage || null, cc.grouping || null]
-    );
+  if (conditionCodes.length === 0) return;
+
+  const values: unknown[] = [];
+  const placeholders: string[] = [];
+
+  for (let i = 0; i < conditionCodes.length; i++) {
+    const cc = conditionCodes[i];
+    const offset = i * 6;
+    placeholders.push(`($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6})`);
+    values.push(pathwayId, cc.code, cc.system, cc.description || null, cc.usage || null, cc.grouping || null);
   }
+
+  await client.query(
+    `INSERT INTO pathway_condition_codes
+      (pathway_id, code, system, description, usage, grouping)
+     VALUES ${placeholders.join(', ')}`,
+    values
+  );
 }
 
 /**

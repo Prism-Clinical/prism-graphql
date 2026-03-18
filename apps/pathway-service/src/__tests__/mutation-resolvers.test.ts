@@ -80,38 +80,32 @@ describe('Mutation resolvers', () => {
   });
 
   describe('activatePathway', () => {
-    it('should activate a DRAFT pathway using atomic CTE', async () => {
+    it('should activate a DRAFT pathway using single atomic CTE', async () => {
       const ctx = createMockContext();
-      // First query: SELECT current state (DRAFT) — already returns DRAFT from default mock
-      // Second query: CTE update
-      ctx.pool.query = jest.fn()
-        .mockResolvedValueOnce({
-          rows: [{
-            id: 'test-id', status: 'DRAFT', logicalId: 'CP-Test',
-            ageNodeId: null, title: 'Test', version: '1.0', category: 'ACUTE_CARE',
-            conditionCodes: [], scope: null, targetPopulation: null,
-            isActive: false, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
-          }],
-        })
-        .mockResolvedValueOnce({
-          rows: [{
-            id: 'test-id', status: 'ACTIVE', logicalId: 'CP-Test',
-            ageNodeId: null, title: 'Test', version: '1.0', category: 'ACUTE_CARE',
-            conditionCodes: [], scope: null, targetPopulation: null,
-            isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
-          }],
-        });
+      // Single query returns both the activated pathway and previousStatus
+      ctx.pool.query = jest.fn().mockResolvedValueOnce({
+        rows: [{
+          id: 'test-id', status: 'ACTIVE', logicalId: 'CP-Test',
+          ageNodeId: null, title: 'Test', version: '1.0', category: 'ACUTE_CARE',
+          conditionCodes: [], scope: null, targetPopulation: null,
+          isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+          previousStatus: 'DRAFT',
+        }],
+      });
 
       const result = await Mutation.Mutation.activatePathway({}, { id: 'test-id' }, ctx);
       expect(result).toBeDefined();
       expect(result.previousStatus).toBe('DRAFT');
+      // Should only need one query for the happy path
+      expect(ctx.pool.query).toHaveBeenCalledTimes(1);
     });
 
     it('should reject activating a non-DRAFT pathway', async () => {
       const ctx = createMockContext();
-      ctx.pool.query = jest.fn().mockResolvedValueOnce({
-        rows: [{ status: 'ACTIVE', logicalId: 'CP-Test' }],
-      });
+      // CTE returns empty (status wasn't DRAFT), fallback SELECT returns ACTIVE
+      ctx.pool.query = jest.fn()
+        .mockResolvedValueOnce({ rows: [] })
+        .mockResolvedValueOnce({ rows: [{ status: 'ACTIVE' }] });
 
       await expect(
         Mutation.Mutation.activatePathway({}, { id: 'test-id' }, ctx)
@@ -120,7 +114,10 @@ describe('Mutation resolvers', () => {
 
     it('should throw NOT_FOUND for nonexistent pathway', async () => {
       const ctx = createMockContext();
-      ctx.pool.query = jest.fn().mockResolvedValueOnce({ rows: [] });
+      // CTE returns empty, fallback SELECT also returns empty
+      ctx.pool.query = jest.fn()
+        .mockResolvedValueOnce({ rows: [] })
+        .mockResolvedValueOnce({ rows: [] });
 
       await expect(
         Mutation.Mutation.activatePathway({}, { id: 'nonexistent' }, ctx)
@@ -144,9 +141,10 @@ describe('Mutation resolvers', () => {
   describe('reactivatePathway', () => {
     it('should reject reactivating a DRAFT pathway', async () => {
       const ctx = createMockContext();
-      ctx.pool.query = jest.fn().mockResolvedValueOnce({
-        rows: [{ status: 'DRAFT', logicalId: 'CP-Test' }],
-      });
+      // CTE returns empty (status wasn't SUPERSEDED/ARCHIVED), fallback SELECT returns DRAFT
+      ctx.pool.query = jest.fn()
+        .mockResolvedValueOnce({ rows: [] })
+        .mockResolvedValueOnce({ rows: [{ status: 'DRAFT' }] });
 
       await expect(
         Mutation.Mutation.reactivatePathway({}, { id: 'test-id' }, ctx)
@@ -155,9 +153,10 @@ describe('Mutation resolvers', () => {
 
     it('should reject reactivating an ACTIVE pathway', async () => {
       const ctx = createMockContext();
-      ctx.pool.query = jest.fn().mockResolvedValueOnce({
-        rows: [{ status: 'ACTIVE', logicalId: 'CP-Test' }],
-      });
+      // CTE returns empty (status wasn't SUPERSEDED/ARCHIVED), fallback SELECT returns ACTIVE
+      ctx.pool.query = jest.fn()
+        .mockResolvedValueOnce({ rows: [] })
+        .mockResolvedValueOnce({ rows: [{ status: 'ACTIVE' }] });
 
       await expect(
         Mutation.Mutation.reactivatePathway({}, { id: 'test-id' }, ctx)

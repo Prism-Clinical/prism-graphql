@@ -24,6 +24,14 @@ describe('validatePathwayJson', () => {
       expect(result.errors).toContainEqual(expect.stringContaining('schema_version'));
     });
 
+    it('should reject unsupported schema_version', () => {
+      const pw = clonePathway();
+      pw.schema_version = '2.0';
+      const result = validatePathwayJson(pw);
+      expect(result.valid).toBe(false);
+      expect(result.errors).toContainEqual(expect.stringContaining('schema_version'));
+    });
+
     // S2: pathway metadata required
     it('should reject missing pathway metadata', () => {
       const pw = clonePathway();
@@ -91,6 +99,19 @@ describe('validatePathwayJson', () => {
       const result = validatePathwayJson(pw);
       expect(result.valid).toBe(false);
       expect(result.errors).toContainEqual(expect.stringContaining('edges'));
+    });
+
+    // S6b: edge count limit
+    it('should reject edge count exceeding MAX_GRAPH_EDGES', () => {
+      const pw = clonePathway();
+      // Fill with 2001 edges (all referencing existing nodes to avoid other errors)
+      const originalEdges = [...pw.edges];
+      for (let i = pw.edges.length; i <= 2000; i++) {
+        pw.edges.push({ ...originalEdges[0] });
+      }
+      const result = validatePathwayJson(pw);
+      expect(result.valid).toBe(false);
+      expect(result.errors).toContainEqual(expect.stringContaining('edge count'));
     });
 
     // S7: node must have id, type, properties
@@ -220,10 +241,19 @@ describe('validatePathwayJson', () => {
 
     it('should warn when graph depth exceeds 30', () => {
       const pw = clonePathway();
-      // Build a chain of 32 nested steps to trigger the warning
-      for (let i = 10; i <= 41; i++) {
-        pw.nodes.push({ id: `deep-step-${i}`, type: 'Step', properties: { stage_number: 1, step_number: i, display_number: `1.${i}`, title: `Deep Step ${i}` } });
-        pw.edges.push({ from: i === 10 ? 'step-1-1' : `deep-step-${i-1}`, to: `deep-step-${i}`, type: 'HAS_DECISION_POINT' as any });
+      // Build a deep chain using valid edge types:
+      // Step → DecisionPoint (HAS_DECISION_POINT) → Step (BRANCHES_TO) → ...
+      // Each iteration adds 2 depth levels. 16 iterations = 32 extra depth.
+      // step-1-1 is at ~depth 2, so total ~34: above 30 (warning) but below 50 (error).
+      let prevId = 'step-1-1';
+      for (let i = 10; i <= 25; i++) {
+        const dpId = `deep-dp-${i}`;
+        const stepId = `deep-step-${i}`;
+        pw.nodes.push({ id: dpId, type: 'DecisionPoint', properties: { title: `Decision ${i}` } });
+        pw.nodes.push({ id: stepId, type: 'Step', properties: { stage_number: 1, step_number: i, display_number: `1.${i}`, title: `Deep Step ${i}` } });
+        pw.edges.push({ from: prevId, to: dpId, type: 'HAS_DECISION_POINT' });
+        pw.edges.push({ from: dpId, to: stepId, type: 'BRANCHES_TO' });
+        prevId = stepId;
       }
       const result = validatePathwayJson(pw);
       expect(result.warnings).toContainEqual(expect.stringContaining('depth'));

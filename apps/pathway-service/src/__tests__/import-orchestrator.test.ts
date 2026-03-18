@@ -63,6 +63,9 @@ describe('importPathway', () => {
     expect(result.validation.valid).toBe(true);
     expect(result.pathwayId).toBeDefined();
     expect(result.importType).toBe('NEW_PATHWAY');
+    // NEW_PATHWAY diff is synthetic (creation summary, no previous version to compare)
+    expect(result.diff).toBeDefined();
+    expect(result.diff!.synthetic).toBe(true);
   });
 
   it('should return validation errors without writing to DB', async () => {

@@ -3,6 +3,7 @@ import { PathwayJson, ImportMode, ImportResult, ImportDiffSummary, DiffDetail } 
 import { validatePathwayJson } from './validator';
 import { buildGraphCommands } from './graph-builder';
 import { buildCypherQuery } from '../age-client';
+import { computeDiff } from './diff-engine';
 import {
   writePathwayIndex,
   writeConditionCodes,
@@ -139,7 +140,14 @@ export async function importPathway(
       }
     }
 
-    // Step 4: Build and execute graph commands
+    // Step 4: For DRAFT_UPDATE, reconstruct old JSON for diffing, then delete old graph
+    let oldPathwayJson: PathwayJson | null = null;
+    if (importMode === 'DRAFT_UPDATE' && existing) {
+      oldPathwayJson = await reconstructPathwayJson(client, existing.id);
+      await deleteGraphSubtree(client, existing.id);
+    }
+
+    // Step 5: Build and execute graph commands (always creates fresh graph)
     const commands = buildGraphCommands(pathwayJson);
     let rootAgeNodeId: string | null = null;
 
@@ -151,15 +159,15 @@ export async function importPathway(
         try {
           const parsed = JSON.parse(result.rows[0].v);
           rootAgeNodeId = String(parsed.id);
-        } catch {
-          // AGE may return different formats — not critical
+        } catch (err) {
+          console.warn('Failed to parse AGE root node ID — graph↔relational linkage will be null:', err);
         }
       }
     }
 
-    // Step 5: Write relational tables
+    // Step 6: Write relational tables + compute diffs
     let pathwayId: string;
-    let diffResult: { summary: ImportDiffSummary; details: DiffDetail[] } | null = null;
+    let diffResult: { summary: ImportDiffSummary; details: DiffDetail[]; synthetic: boolean } | null = null;
 
     if (importMode === 'DRAFT_UPDATE' && existing) {
       // Update existing index row, replace condition codes
@@ -168,13 +176,18 @@ export async function importPathway(
       pathwayId = updated.id;
       await writeConditionCodes(client, pathwayId, pathwayJson.pathway.condition_codes);
 
-      // TODO: Reconstruct old pathway JSON from AGE graph and call computeDiff()
-      // for proper DRAFT_UPDATE auditing. For now, record an empty diff — the import
-      // itself is still correct, but the audit trail lacks granular change detail.
-      diffResult = {
-        summary: { nodesAdded: 0, nodesRemoved: 0, nodesModified: 0, edgesAdded: 0, edgesRemoved: 0, edgesModified: 0 },
-        details: [],
-      };
+      if (oldPathwayJson) {
+        // Real diff from reconstructed old graph
+        const diff = computeDiff(oldPathwayJson, pathwayJson);
+        diffResult = { ...diff, synthetic: false };
+      } else {
+        // Reconstruction failed — record synthetic empty diff
+        diffResult = {
+          summary: { nodesAdded: 0, nodesRemoved: 0, nodesModified: 0, edgesAdded: 0, edgesRemoved: 0, edgesModified: 0 },
+          details: [],
+          synthetic: true,
+        };
+      }
     } else {
       // NEW_PATHWAY or NEW_VERSION — insert new rows
       const indexRow = await writePathwayIndex(client, pathwayJson.pathway, rootAgeNodeId, userId);
@@ -182,7 +195,7 @@ export async function importPathway(
       await writeConditionCodes(client, pathwayId, pathwayJson.pathway.condition_codes);
 
       if (importMode === 'NEW_PATHWAY') {
-        // No diff for brand new pathways — record the creation summary
+        // No diff for brand new pathways — record the creation summary (synthetic)
         diffResult = {
           summary: {
             nodesAdded: pathwayJson.nodes.length + 1, // +1 for root
@@ -193,20 +206,31 @@ export async function importPathway(
             edgesModified: 0,
           },
           details: [],
+          synthetic: true,
         };
       } else {
-        // NEW_VERSION — would diff against the previous active version's JSON
-        diffResult = {
-          summary: {
-            nodesAdded: pathwayJson.nodes.length + 1,
-            nodesRemoved: 0,
-            nodesModified: 0,
-            edgesAdded: pathwayJson.edges.length,
-            edgesRemoved: 0,
-            edgesModified: 0,
-          },
-          details: [],
-        };
+        // NEW_VERSION — diff against previous version if available
+        const previousJson = latestExistingByLogicalId
+          ? await reconstructPathwayJson(client, latestExistingByLogicalId.id)
+          : null;
+
+        if (previousJson) {
+          const diff = computeDiff(previousJson, pathwayJson);
+          diffResult = { ...diff, synthetic: false };
+        } else {
+          diffResult = {
+            summary: {
+              nodesAdded: pathwayJson.nodes.length + 1,
+              nodesRemoved: 0,
+              nodesModified: 0,
+              edgesAdded: pathwayJson.edges.length,
+              edgesRemoved: 0,
+              edgesModified: 0,
+            },
+            details: [],
+            synthetic: true,
+          };
+        }
       }
     }
 
@@ -271,4 +295,139 @@ async function findExistingPathwayByLogicalId(
     [logicalId]
   );
   return result.rows[0] || null;
+}
+
+/**
+ * Delete all graph nodes and edges belonging to a pathway.
+ * Uses the age_node_id from the relational index to find the root Pathway node,
+ * then DETACH DELETEs the entire connected subgraph.
+ */
+async function deleteGraphSubtree(
+  client: PoolClient,
+  pathwayId: string
+): Promise<void> {
+  // Get the AGE node ID for this pathway's root
+  const indexRow = await client.query(
+    'SELECT age_node_id FROM pathway_graph_index WHERE id = $1',
+    [pathwayId]
+  );
+  const ageNodeId = indexRow.rows[0]?.age_node_id;
+  if (!ageNodeId) return; // No graph to delete
+
+  // Delete all nodes reachable from the root via any relationship.
+  // The variable-length path [*0..] matches the root itself plus all descendants.
+  const deleteCypher = `MATCH (p:Pathway) WHERE id(p) = ${ageNodeId} ` +
+    `OPTIONAL MATCH (p)-[*0..]->(n) DETACH DELETE p, n`;
+  const sql = buildCypherQuery(undefined, deleteCypher, '(v agtype)');
+  await client.query(sql);
+}
+
+/**
+ * Reconstruct a PathwayJson from the AGE graph and relational tables for a given pathway.
+ * Used for computing diffs during DRAFT_UPDATE and NEW_VERSION imports.
+ * Returns null if reconstruction fails (e.g., no graph data found).
+ */
+async function reconstructPathwayJson(
+  client: PoolClient,
+  pathwayId: string
+): Promise<PathwayJson | null> {
+  try {
+    // Get relational metadata
+    const indexRow = await client.query(
+      'SELECT * FROM pathway_graph_index WHERE id = $1',
+      [pathwayId]
+    );
+    if (!indexRow.rows[0]) return null;
+    const meta = indexRow.rows[0];
+
+    // Get condition codes
+    const ccRows = await client.query(
+      'SELECT code, system, description, usage, grouping FROM pathway_condition_codes WHERE pathway_id = $1',
+      [pathwayId]
+    );
+
+    if (!meta.age_node_id) return null;
+
+    // Get all nodes from the graph (match root + all connected nodes)
+    const nodesCypher = `MATCH (p:Pathway) WHERE id(p) = ${meta.age_node_id} ` +
+      `OPTIONAL MATCH (p)-[*1..]->(n) RETURN n`;
+    const nodesSql = buildCypherQuery(undefined, nodesCypher, '(v agtype)');
+    const nodesResult = await client.query(nodesSql);
+
+    // Get all edges from the graph
+    const edgesCypher = `MATCH (p:Pathway) WHERE id(p) = ${meta.age_node_id} ` +
+      `OPTIONAL MATCH (p)-[*0..]->(a)-[r]->(b) RETURN a, r, b`;
+    const edgesSql = buildCypherQuery(undefined, edgesCypher, '(a agtype, r agtype, b agtype)');
+    const edgesResult = await client.query(edgesSql);
+
+    // Parse AGE results into PathwayJson structure
+    const nodes: PathwayJson['nodes'] = [];
+    const seenNodeIds = new Set<string>();
+
+    for (const row of nodesResult.rows) {
+      if (!row.v) continue;
+      try {
+        const node = JSON.parse(row.v);
+        if (!node || !node.properties) continue;
+        const props = node.properties;
+        const nodeId = props.node_id;
+        if (!nodeId || seenNodeIds.has(nodeId)) continue;
+        seenNodeIds.add(nodeId);
+
+        // Extract node_type and node_id from properties, keep the rest
+        const { node_id: _nid, node_type, ...restProps } = props;
+        if (node_type) {
+          nodes.push({ id: nodeId, type: node_type, properties: restProps });
+        }
+      } catch {
+        // Skip unparseable nodes
+      }
+    }
+
+    const edges: PathwayJson['edges'] = [];
+    for (const row of edgesResult.rows) {
+      if (!row.a || !row.r || !row.b) continue;
+      try {
+        const a = JSON.parse(row.a);
+        const r = JSON.parse(row.r);
+        const b = JSON.parse(row.b);
+
+        const fromId = a.label === 'Pathway' ? 'root' : a.properties?.node_id;
+        const toId = b.properties?.node_id;
+        const edgeType = r.label;
+
+        if (fromId && toId && edgeType) {
+          const edgeProps = r.properties && Object.keys(r.properties).length > 0
+            ? r.properties : undefined;
+          edges.push({ from: fromId, to: toId, type: edgeType, properties: edgeProps });
+        }
+      } catch {
+        // Skip unparseable edges
+      }
+    }
+
+    return {
+      schema_version: '1.0',
+      pathway: {
+        logical_id: meta.logical_id,
+        title: meta.title,
+        version: meta.version,
+        category: meta.category,
+        scope: meta.scope || undefined,
+        target_population: meta.target_population || undefined,
+        condition_codes: ccRows.rows.map((r: any) => ({
+          code: r.code,
+          system: r.system,
+          description: r.description || undefined,
+          usage: r.usage || undefined,
+          grouping: r.grouping || undefined,
+        })),
+      },
+      nodes,
+      edges,
+    };
+  } catch {
+    // Reconstruction is best-effort — return null on any failure
+    return null;
+  }
 }
