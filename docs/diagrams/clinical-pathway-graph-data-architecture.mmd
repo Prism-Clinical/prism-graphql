@@ -1,0 +1,180 @@
+---
+title: Clinical Pathway Graph — Data Architecture
+---
+graph TB
+    subgraph IMPORT["Import Pipeline"]
+        direction TB
+        JSON["Pathway JSON<br/>(from AI conversion)"]
+        VAL["Validator<br/>(23 rules)"]
+        DIFF["Diff Engine<br/>(node/edge/property)"]
+        BUILD["Graph Builder"]
+        JSON --> VAL --> DIFF --> BUILD
+    end
+
+    subgraph PG["PostgreSQL 15 (Single Transaction Boundary)"]
+        direction TB
+
+        subgraph AGE["Apache AGE 1.5.0 — Graph Namespace: clinical_pathways"]
+            direction LR
+
+            subgraph NODES["Node Types"]
+                direction TB
+                PW_NODE["🔵 Pathway<br/>(root node)"]
+                STAGE["🟢 Stage<br/>(stage_number, title)"]
+                STEP["🟢 Step<br/>(step_number, display_number)"]
+                DP["🟡 DecisionPoint<br/>(auto_resolve_eligible)"]
+                CRIT["🟡 Criterion<br/>(base_rate, is_critical)"]
+                CODE["⚪ CodeEntry<br/>(system, value)"]
+                MED["🟠 Medication<br/>(role: preferred/acceptable/<br/>avoid/contraindicated)"]
+                LAB["⚪ LabTest"]
+                PROC["⚪ Procedure"]
+                EVID["📄 EvidenceCitation<br/>(reference_number, grade)"]
+                QUAL["📊 QualityMetric"]
+                SCHED["⏱️ Schedule"]
+            end
+
+            subgraph EDGES["Key Relationships"]
+                direction TB
+                E1["Pathway ──HAS_STAGE──▶ Stage"]
+                E2["Stage ──HAS_STEP──▶ Step"]
+                E3["Step ──HAS_DECISION_POINT──▶ DecisionPoint"]
+                E4["DecisionPoint ──HAS_CRITERION──▶ Criterion"]
+                E5["DecisionPoint ──BRANCHES_TO──▶ Step/Stage"]
+                E6["Step ──USES_MEDICATION──▶ Medication"]
+                E7["Medication ──ESCALATES_TO──▶ Medication"]
+                E8["* ──CITES_EVIDENCE──▶ EvidenceCitation"]
+            end
+        end
+
+        subgraph PGVEC["pgvector Extension"]
+            VEC["Vector embeddings<br/>(RAG queries)"]
+        end
+
+        subgraph REL["Relational Side Tables"]
+            direction TB
+
+            subgraph CORE_TABLES["Pathway Core"]
+                PGI["pathway_graph_index<br/>─────────────────<br/>id (UUID) PK<br/>age_node_id (VARCHAR)<br/>logical_id (VARCHAR)<br/>version (VARCHAR)<br/>category (VARCHAR)<br/>status: DRAFT│ACTIVE│<br/>ARCHIVED│SUPERSEDED<br/>condition_codes (TEXT[] GIN)<br/>is_active (BOOLEAN)"]
+
+                PCC["pathway_condition_codes<br/>─────────────────<br/>pathway_id FK → pathway_graph_index<br/>code (VARCHAR)<br/>system: ICD-10│SNOMED│<br/>RXNORM│LOINC│CPT<br/>description, usage, grouping"]
+
+                PVD["pathway_version_diffs<br/>─────────────────<br/>pathway_id FK → pathway_graph_index<br/>previous_pathway_id FK<br/>import_type: NEW_PATHWAY│<br/>DRAFT_UPDATE│NEW_VERSION<br/>diff_summary (JSONB)<br/>diff_details (JSONB)"]
+            end
+
+            subgraph RES_TABLES["Resolution Tracking"]
+                PRS["pathway_resolution_sessions<br/>─────────────────<br/>patient_id (UUID)<br/>provider_id (UUID)<br/>pathway_id FK → pathway_graph_index<br/>patient_context (JSONB)<br/>status: IN_PROGRESS│<br/>COMPLETED│ABANDONED<br/>resulting_care_plan_id (UUID)"]
+
+                PRD["pathway_resolution_decisions<br/>─────────────────<br/>session_id FK → sessions<br/>decision_point_graph_id (VARCHAR)<br/>resolution_type: AUTO_RESOLVED│<br/>SYSTEM_SUGGESTED│<br/>PROVIDER_DECIDED│FORCED_MANUAL<br/>confidence_score (DECIMAL)<br/>confidence_breakdown (JSONB)<br/>provider_override (BOOLEAN)"]
+            end
+
+            subgraph CONF_TABLES["Confidence Framework"]
+                CSD["confidence_signal_definitions<br/>─────────────────<br/>name, display_name<br/>scoring_type: DATA_PRESENCE│<br/>MAPPING_LOOKUP│CRITERIA_MATCH│<br/>RISK_INVERSE│CUSTOM_RULES<br/>scoring_rules (JSONB)<br/>scope: SYSTEM│ORG│INSTITUTION<br/>default_weight (DECIMAL)"]
+
+                CSW["confidence_signal_weights<br/>─────────────────<br/>signal_definition_id FK<br/>weight (DECIMAL)<br/>scope: NODE│PATHWAY│<br/>INSTITUTION_GLOBAL│ORG_GLOBAL<br/>pathway_id FK (optional)<br/>node_identifier (optional)<br/>institution_id (optional)"]
+
+                CNW["confidence_node_weights<br/>─────────────────<br/>pathway_id FK<br/>node_identifier (VARCHAR)<br/>node_type (VARCHAR)<br/>default_weight (DECIMAL)<br/>institution_id (optional)<br/>weight_override (DECIMAL)"]
+
+                CRT["confidence_resolution_thresholds<br/>─────────────────<br/>auto_resolve: ≥0.85 → auto<br/>suggest: 0.60–0.84 → review<br/>below 0.60 → provider decides<br/>scope: SYSTEM_DEFAULT│ORG│<br/>INSTITUTION│PATHWAY│NODE"]
+            end
+        end
+    end
+
+    subgraph SERVICES["Service Layer"]
+        direction LR
+
+        PS["pathway-service<br/>(port 4016)<br/>─────────────<br/>Graph CRUD<br/>Import pipeline<br/>Confidence engine<br/>Resolution sessions"]
+
+        CRS["careplan-recommender<br/>(port 4013)<br/>─────────────<br/>Layer 1: code matching<br/>(templates + pathways)<br/>Layer 2: variant selection<br/>Layer 3: personalization"]
+
+        CPS["careplan-service<br/>(port 4010)<br/>─────────────<br/>Draft/accept/reject<br/>(unchanged)"]
+
+        GW["Apollo Gateway<br/>(port 4000)<br/>─────────────<br/>Federation routing"]
+    end
+
+    subgraph RESOLUTION["Resolution Flow (Stateful Mutations)"]
+        direction LR
+        M1["matchedPathways<br/>(patientId)"]
+        M2["startPathwayResolution<br/>(pathwayId, patientId,<br/>patientContext)"]
+        M3["resolveDecisionPoint<br/>(sessionId,<br/>decisionPointId,<br/>providerChoice)"]
+        M4["generateCarePlanFromResolution<br/>(sessionId)"]
+        M1 --> M2 --> M3 --> M4
+    end
+
+    subgraph LIFECYCLE["Pathway Version Lifecycle"]
+        direction LR
+        DRAFT["DRAFT"]
+        ACTIVE["ACTIVE"]
+        ARCHIVED["ARCHIVED"]
+        SUPERSEDED["SUPERSEDED"]
+
+        DRAFT -->|activate| ACTIVE
+        ACTIVE -->|archive| ARCHIVED
+        ACTIVE -->|"new version activated"| SUPERSEDED
+        ARCHIVED -->|reactivate| ACTIVE
+        SUPERSEDED -->|reactivate| ACTIVE
+        DRAFT -->|"re-import same version"| DRAFT
+    end
+
+    subgraph CONFIDENCE["Confidence Computation"]
+        direction TB
+        SIG["Per-Signal Scores (0.0–1.0)<br/>─────────────────<br/>Data Completeness: available/required<br/>Evidence Strength: A→0.95 B→0.80 C→0.65<br/>Patient Match Quality: weighted code match<br/>Risk Magnitude: log-inverse<br/>+ Custom institution signals"]
+
+        NODE_CONF["Per-Node Confidence<br/>Σ(signal_score × weight) / Σ(weight)"]
+
+        PATH_CONF["Pathway Rollup<br/>Σ(node_confidence × node_weight) / Σ(node_weight)"]
+
+        THRESH["Thresholds<br/>≥0.85 → Auto-resolve<br/>0.60–0.84 → Suggest<br/><0.60 → Provider decides"]
+
+        SIG --> NODE_CONF --> PATH_CONF --> THRESH
+    end
+
+    subgraph WEIGHT_CASCADE["Weight Override Cascade (highest → lowest)"]
+        direction TB
+        W1["1. auto_resolve_eligible: false<br/>(forces manual)"]
+        W2["2. Node-level override<br/>(per-institution)"]
+        W3["3. Pathway-level override<br/>(per-institution)"]
+        W4["4. Institution-global"]
+        W5["5. Organization-global"]
+        W6["6. System defaults"]
+        W1 --- W2 --- W3 --- W4 --- W5 --- W6
+    end
+
+    %% Connections
+    BUILD --> AGE
+    BUILD --> REL
+    PS --> AGE
+    PS --> REL
+    CRS -->|"queries pathway_condition_codes"| PCC
+    M1 -->|"GIN index lookup"| PGI
+    M2 -->|"creates"| PRS
+    M3 -->|"creates"| PRD
+    M4 -->|"draft care plan"| CPS
+    GW --> PS
+    GW --> CRS
+    GW --> CPS
+
+    %% FK relationships
+    PCC -.->|FK| PGI
+    PVD -.->|FK| PGI
+    PRS -.->|FK| PGI
+    PRD -.->|FK| PRS
+    CSW -.->|FK| CSD
+    CSW -.->|FK| PGI
+    CNW -.->|FK| PGI
+
+    %% Styling
+    classDef graphNode fill:#e3f2fd,stroke:#1565c0,stroke-width:2px
+    classDef relTable fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
+    classDef confTable fill:#fff3e0,stroke:#e65100,stroke-width:2px
+    classDef resTable fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
+    classDef service fill:#fce4ec,stroke:#c62828,stroke-width:2px
+    classDef mutation fill:#e0f2f1,stroke:#00695c,stroke-width:2px
+    classDef lifecycle fill:#f5f5f5,stroke:#616161,stroke-width:2px
+
+    class PW_NODE,STAGE,STEP,DP,CRIT,CODE,MED,LAB,PROC,EVID,QUAL,SCHED graphNode
+    class PGI,PCC,PVD relTable
+    class CSD,CSW,CNW,CRT confTable
+    class PRS,PRD resTable
+    class PS,CRS,CPS,GW service
+    class M1,M2,M3,M4 mutation
+    class DRAFT,ACTIVE,ARCHIVED,SUPERSEDED lifecycle
