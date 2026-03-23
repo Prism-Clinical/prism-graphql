@@ -8,7 +8,7 @@
 INSERT INTO confidence_signal_definitions (id, name, display_name, description, scoring_type, scoring_rules, scope, default_weight, is_active)
 VALUES
   (
-    gen_random_uuid(),
+    '00000000-0000-4000-a000-000000000001',
     'data_completeness',
     'Data Completeness',
     'Fraction of required inputs available in patient clinical context. Missing data is the most common source of incorrect auto-resolution.',
@@ -19,7 +19,7 @@ VALUES
     true
   ),
   (
-    gen_random_uuid(),
+    '00000000-0000-4000-a000-000000000002',
     'evidence_strength',
     'Evidence Strength',
     'Maps the evidence level backing this node to a confidence score. Stronger evidence increases trustworthiness of the recommendation.',
@@ -30,7 +30,7 @@ VALUES
     true
   ),
   (
-    gen_random_uuid(),
+    '00000000-0000-4000-a000-000000000003',
     'match_quality',
     'Patient Match Quality',
     'How precisely patient data matches pathway criteria. Compares patient codes and values against each criterion.',
@@ -41,7 +41,7 @@ VALUES
     true
   ),
   (
-    gen_random_uuid(),
+    '00000000-0000-4000-a000-000000000004',
     'risk_magnitude',
     'Risk Magnitude',
     'Inverse of clinical risk — higher risk lowers confidence for auto-resolution, forcing provider involvement for high-stakes decisions.',

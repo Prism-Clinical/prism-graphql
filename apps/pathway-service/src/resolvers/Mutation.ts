@@ -79,6 +79,18 @@ export const Mutation = {
       const { pool } = context;
       const { input } = args;
 
+      if (input.suggestThreshold < 0 || input.suggestThreshold > 1 ||
+          input.autoResolveThreshold < 0 || input.autoResolveThreshold > 1) {
+        throw new GraphQLError('Thresholds must be between 0.0 and 1.0', {
+          extensions: { code: 'BAD_USER_INPUT' },
+        });
+      }
+      if (input.suggestThreshold >= input.autoResolveThreshold) {
+        throw new GraphQLError('suggestThreshold must be less than autoResolveThreshold', {
+          extensions: { code: 'BAD_USER_INPUT' },
+        });
+      }
+
       const result = await pool.query(
         `INSERT INTO confidence_resolution_thresholds
          (auto_resolve_threshold, suggest_threshold, scope, pathway_id, node_identifier, institution_id)

@@ -87,6 +87,54 @@ export const Query = {
       return result.rows.map(hydrateSignalDefinition);
     },
 
+    effectiveWeights: async (
+      _: unknown,
+      args: { pathwayId: string; institutionId?: string; organizationId?: string },
+      context: DataSourceContext
+    ) => {
+      const { pool } = context;
+
+      const signalResult = await pool.query(
+        `SELECT id, name, display_name, description, scoring_type, scoring_rules,
+                scope, institution_id, default_weight, is_active
+         FROM confidence_signal_definitions WHERE is_active = true ORDER BY name ASC`
+      );
+      const signals = signalResult.rows.map(hydrateSignalDefinition);
+
+      const nodeResult = await pool.query(
+        `SELECT node_identifier, node_type
+         FROM confidence_node_weights WHERE pathway_id = $1`,
+        [args.pathwayId]
+      );
+
+      const cascadeResolver = new WeightCascadeResolver();
+      const matrix = await cascadeResolver.resolveAllWeights({
+        pool,
+        pathwayId: args.pathwayId,
+        signalDefinitions: signals,
+        nodeIdentifiers: nodeResult.rows.map((r: any) => ({
+          nodeIdentifier: r.node_identifier,
+          nodeType: r.node_type,
+        })),
+        institutionId: args.institutionId,
+        organizationId: args.organizationId,
+      });
+
+      const entries: Array<{ nodeIdentifier: string; signalName: string; weight: number; source: string }> = [];
+      for (const [nodeId, nodeSignals] of Object.entries(matrix)) {
+        for (const [signalName, resolved] of Object.entries(nodeSignals as any)) {
+          entries.push({
+            nodeIdentifier: nodeId,
+            signalName,
+            weight: (resolved as any).weight,
+            source: (resolved as any).source,
+          });
+        }
+      }
+
+      return { entries };
+    },
+
     effectiveThresholds: async (
       _: unknown,
       args: { pathwayId: string; nodeIdentifier?: string; institutionId?: string; organizationId?: string },

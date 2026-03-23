@@ -92,6 +92,28 @@ export class ConfidenceEngine {
       nodes, edges, signalDefinitions, rawScores, propagationOverrides
     );
 
+    // Merge propagated scores into rawScores: take min(direct, worst propagated) per (node, signal)
+    for (const [nodeId, influences] of propagationInfluences) {
+      const nodeScores = rawScores.get(nodeId);
+      if (!nodeScores) continue;
+
+      // Group influences by signal, take the worst (lowest) propagated score per signal
+      const worstBySignal = new Map<string, number>();
+      for (const inf of influences) {
+        const current = worstBySignal.get(inf.signalName);
+        if (current === undefined || inf.propagatedScore < current) {
+          worstBySignal.set(inf.signalName, inf.propagatedScore);
+        }
+      }
+
+      for (const [signalName, propagatedScore] of worstBySignal) {
+        const entry = nodeScores.get(signalName);
+        if (entry && propagatedScore < entry.score) {
+          entry.score = Math.min(entry.score, propagatedScore);
+        }
+      }
+    }
+
     // Compute per-node confidence (weighted average of signal scores)
     const nodeResults: NodeConfidenceResult[] = [];
 

@@ -49,9 +49,18 @@ export class RiskMagnitudeScorer implements SignalScorer {
       };
     }
 
-    // Formula: max(0.10, 1.0 - (log10(risk * 1000 + 1) / 3.0))
+    // Validate: risk must be non-negative
+    if (riskValue < 0) {
+      return {
+        score: NO_DATA_SCORE,
+        missingInputs: ['risk_value'],
+        metadata: { reason: 'negative_risk_value', riskValue },
+      };
+    }
+
+    // Formula: clamp(0.10, 1.0 - (log10(risk * 1000 + 1) / 3.0), 1.0)
     const rawScore = 1.0 - (Math.log10(riskValue * 1000 + 1) / 3.0);
-    const score = Math.max(FLOOR_SCORE, rawScore);
+    const score = Math.min(1.0, Math.max(FLOOR_SCORE, rawScore));
 
     return {
       score: Math.round(score * 100) / 100, // Round to 2 decimal places

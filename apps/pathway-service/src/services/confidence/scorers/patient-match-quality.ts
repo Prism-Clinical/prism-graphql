@@ -134,7 +134,12 @@ export class PatientMatchQualityScorer implements SignalScorer {
     }
 
     for (const code of patientCodes) {
-      if (code.startsWith(targetCode) || targetCode.startsWith(code)) {
+      // Patient has more specific code than criterion requires — full match
+      if (code.startsWith(targetCode)) {
+        return 1.0;
+      }
+      // Patient has less specific code — partial match
+      if (targetCode.startsWith(code)) {
         return 0.7;
       }
     }

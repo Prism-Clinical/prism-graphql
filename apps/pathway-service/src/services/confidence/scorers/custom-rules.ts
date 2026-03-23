@@ -78,7 +78,7 @@ export class CustomRulesScorer implements SignalScorer {
 
     const decay = propagationConfig.decayFactor ?? 0.8;
     return {
-      propagatedScore: sourceScore * decay,
+      propagatedScore: sourceScore * Math.pow(decay, hopDistance),
       shouldPropagate: hopDistance < maxHops,
     };
   }

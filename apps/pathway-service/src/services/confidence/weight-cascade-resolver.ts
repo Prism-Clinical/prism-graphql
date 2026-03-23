@@ -33,7 +33,7 @@ export class WeightCascadeResolver {
     institutionId?: string;
     organizationId?: string;
   }): Promise<WeightMatrix> {
-    const { pool, pathwayId, signalDefinitions, nodeIdentifiers, institutionId } = params;
+    const { pool, pathwayId, signalDefinitions, nodeIdentifiers, institutionId, organizationId } = params;
 
     const queryParams: unknown[] = [pathwayId];
     let whereClause = `pathway_id = $1 OR pathway_id IS NULL`;
@@ -41,6 +41,11 @@ export class WeightCascadeResolver {
     if (institutionId) {
       queryParams.push(institutionId);
       whereClause += ` AND (institution_id = $${queryParams.length} OR institution_id IS NULL)`;
+    }
+
+    if (organizationId) {
+      queryParams.push(organizationId);
+      whereClause += ` AND (organization_id = $${queryParams.length} OR organization_id IS NULL)`;
     }
 
     const result = await pool.query(
@@ -85,7 +90,7 @@ export class WeightCascadeResolver {
     institutionId?: string;
     organizationId?: string;
   }): Promise<ResolvedThresholds> {
-    const { pool, pathwayId, nodeIdentifier, institutionId } = params;
+    const { pool, pathwayId, nodeIdentifier, institutionId, organizationId } = params;
 
     const queryParams: unknown[] = [pathwayId];
     let query = `
@@ -104,6 +109,11 @@ export class WeightCascadeResolver {
     if (institutionId) {
       queryParams.push(institutionId);
       query += ` AND (institution_id = $${queryParams.length} OR institution_id IS NULL)`;
+    }
+
+    if (organizationId) {
+      queryParams.push(organizationId);
+      query += ` AND (organization_id = $${queryParams.length} OR organization_id IS NULL)`;
     }
 
     query += ` ORDER BY scope ASC`;

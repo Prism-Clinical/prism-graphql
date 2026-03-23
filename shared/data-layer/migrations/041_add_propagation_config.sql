@@ -6,9 +6,7 @@ ALTER TABLE confidence_node_weights
 COMMENT ON COLUMN confidence_node_weights.propagation_overrides IS
   'Per-signal propagation config overrides. Keys are signal names, values are PropagationConfig objects. Overrides the signal-level default.';
 
-ALTER TABLE confidence_resolution_thresholds
-  ADD CONSTRAINT confidence_resolution_thresholds_unique
-  UNIQUE NULLS NOT DISTINCT (scope, pathway_id, node_identifier, institution_id);
+-- Note: confidence_resolution_thresholds_unique constraint is in 038
 
 UPDATE confidence_signal_definitions
   SET scoring_rules = scoring_rules || '{"propagation": {"mode": "transitive_with_decay", "decayFactor": 0.8, "maxHops": 3}}'::jsonb

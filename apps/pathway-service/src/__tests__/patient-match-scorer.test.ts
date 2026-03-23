@@ -56,7 +56,7 @@ describe('PatientMatchQualityScorer', () => {
       expect(result.score).toBe(1.0);
     });
 
-    it('should score 0.7 for a parent prefix match (e.g., O34.2 matches O34.211)', () => {
+    it('should score 1.0 when patient has more specific code than criterion (O34.211 matches O34.2)', () => {
       const node: GraphNode = {
         id: 'age-1', nodeIdentifier: 'crit-x', nodeType: 'Criterion',
         properties: { code_system: 'ICD-10', code_value: 'O34.2', is_critical: false },
@@ -64,7 +64,22 @@ describe('PatientMatchQualityScorer', () => {
       const result = scorer.score({
         node,
         signalDefinition: makeSignalDef(),
-        patientContext: REFERENCE_PATIENT,
+        patientContext: REFERENCE_PATIENT, // Has O34.211 which is more specific than O34.2
+        graphContext: makeGraphContext(),
+      });
+      expect(result.score).toBe(1.0);
+    });
+
+    it('should score 0.7 when patient has less specific code than criterion', () => {
+      const node: GraphNode = {
+        id: 'age-1', nodeIdentifier: 'crit-x', nodeType: 'Criterion',
+        properties: { code_system: 'ICD-10', code_value: 'O34.211', is_critical: false },
+      };
+      // Patient has Z87.51 but not O34.211 — and Z87 doesn't prefix-match O34
+      const result = scorer.score({
+        node,
+        signalDefinition: makeSignalDef(),
+        patientContext: { ...REFERENCE_PATIENT, conditionCodes: [{ code: 'O34', system: 'ICD-10' }] },
         graphContext: makeGraphContext(),
       });
       expect(result.score).toBe(0.7);
