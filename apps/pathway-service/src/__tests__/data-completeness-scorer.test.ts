@@ -4,14 +4,13 @@ import { DataCompletenessScorer } from '../services/confidence/scorers/data-comp
 import {
   GraphNode,
   GraphEdge,
-  GraphContext,
   SignalDefinition,
   ScorerParams,
   PatientContext,
   ScoringType,
   PropagationConfig,
 } from '../services/confidence/types';
-import { REFERENCE_PATIENT, EMPTY_PATIENT } from './fixtures/reference-patient-context';
+import { REFERENCE_PATIENT, EMPTY_PATIENT, makeGraphContext } from './fixtures/reference-patient-context';
 
 function makeNode(overrides: Partial<GraphNode> = {}): GraphNode {
   return {
@@ -35,22 +34,6 @@ function makeSignalDef(): SignalDefinition {
     scope: 'SYSTEM',
     defaultWeight: 0.30,
     isActive: true,
-  };
-}
-
-function makeGraphContext(nodes: GraphNode[] = [], edges: GraphEdge[] = []): GraphContext {
-  return {
-    allNodes: nodes,
-    allEdges: edges,
-    incomingEdges: (nodeId: string) => edges.filter(e => e.targetId === nodeId),
-    outgoingEdges: (nodeId: string) => edges.filter(e => e.sourceId === nodeId),
-    getNode: (nodeId: string) => nodes.find(n => n.nodeIdentifier === nodeId),
-    linkedNodes: (nodeId: string, edgeType: string) => {
-      const targetIds = edges
-        .filter(e => e.sourceId === nodeId && e.edgeType === edgeType)
-        .map(e => e.targetId);
-      return nodes.filter(n => targetIds.includes(n.nodeIdentifier));
-    },
   };
 }
 

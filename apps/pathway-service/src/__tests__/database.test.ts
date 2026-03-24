@@ -32,4 +32,27 @@ describe('database initialization', () => {
 
     expect(mockPool.on).toHaveBeenCalledWith('connect', expect.any(Function));
   });
+
+  it('should execute AGE LOAD SQL when connect handler is invoked', async () => {
+    const { initializeDatabase } = require('../services/database');
+    const mockQuery = jest.fn().mockResolvedValue({});
+    const mockClient = { query: mockQuery };
+    const mockPool = { on: jest.fn() } as any;
+    const mockRedis = {} as any;
+    initializeDatabase(mockPool, mockRedis);
+
+    // Extract and invoke the registered connect callback
+    const connectCallback = mockPool.on.mock.calls.find(
+      (call: unknown[]) => call[0] === 'connect'
+    )?.[1];
+    expect(connectCallback).toBeDefined();
+    await connectCallback(mockClient);
+
+    expect(mockQuery).toHaveBeenCalledWith(
+      expect.stringContaining("LOAD 'age'")
+    );
+    expect(mockQuery).toHaveBeenCalledWith(
+      expect.stringContaining('SET search_path')
+    );
+  });
 });

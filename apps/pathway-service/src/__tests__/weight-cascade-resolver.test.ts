@@ -93,6 +93,85 @@ describe('WeightCascadeResolver', () => {
       expect(result['dp-1']['data_completeness'].source).toBe(WeightSource.NODE_OVERRIDE);
     });
 
+    it('should apply INSTITUTION_GLOBAL when no node or pathway override', async () => {
+      mockPool.query.mockResolvedValue({
+        rows: [
+          {
+            signal_definition_id: '00000000-0000-4000-a000-000000000001',
+            node_identifier: null,
+            weight: 0.35,
+            scope: 'INSTITUTION_GLOBAL',
+          },
+        ],
+      });
+
+      const result = await resolver.resolveAllWeights({
+        pool: mockPool,
+        pathwayId: 'pathway-1',
+        signalDefinitions: makeSignalDefs(),
+        nodeIdentifiers: [{ nodeIdentifier: 'dp-1', nodeType: 'DecisionPoint' }],
+        institutionId: 'inst-1',
+      });
+
+      expect(result['dp-1']['data_completeness'].weight).toBe(0.35);
+      expect(result['dp-1']['data_completeness'].source).toBe(WeightSource.INSTITUTION_GLOBAL);
+    });
+
+    it('should apply ORGANIZATION_GLOBAL when no higher-priority override', async () => {
+      mockPool.query.mockResolvedValue({
+        rows: [
+          {
+            signal_definition_id: '00000000-0000-4000-a000-000000000001',
+            node_identifier: null,
+            weight: 0.45,
+            scope: 'ORGANIZATION_GLOBAL',
+          },
+        ],
+      });
+
+      const result = await resolver.resolveAllWeights({
+        pool: mockPool,
+        pathwayId: 'pathway-1',
+        signalDefinitions: makeSignalDefs(),
+        nodeIdentifiers: [{ nodeIdentifier: 'dp-1', nodeType: 'DecisionPoint' }],
+        organizationId: 'org-1',
+      });
+
+      expect(result['dp-1']['data_completeness'].weight).toBe(0.45);
+      expect(result['dp-1']['data_completeness'].source).toBe(WeightSource.ORGANIZATION_GLOBAL);
+    });
+
+    it('should prefer INSTITUTION_GLOBAL over ORGANIZATION_GLOBAL', async () => {
+      mockPool.query.mockResolvedValue({
+        rows: [
+          {
+            signal_definition_id: '00000000-0000-4000-a000-000000000001',
+            node_identifier: null,
+            weight: 0.35,
+            scope: 'INSTITUTION_GLOBAL',
+          },
+          {
+            signal_definition_id: '00000000-0000-4000-a000-000000000001',
+            node_identifier: null,
+            weight: 0.45,
+            scope: 'ORGANIZATION_GLOBAL',
+          },
+        ],
+      });
+
+      const result = await resolver.resolveAllWeights({
+        pool: mockPool,
+        pathwayId: 'pathway-1',
+        signalDefinitions: makeSignalDefs(),
+        nodeIdentifiers: [{ nodeIdentifier: 'dp-1', nodeType: 'DecisionPoint' }],
+        institutionId: 'inst-1',
+        organizationId: 'org-1',
+      });
+
+      expect(result['dp-1']['data_completeness'].weight).toBe(0.35);
+      expect(result['dp-1']['data_completeness'].source).toBe(WeightSource.INSTITUTION_GLOBAL);
+    });
+
     it('should prefer node override over pathway override', async () => {
       mockPool.query.mockResolvedValue({
         rows: [

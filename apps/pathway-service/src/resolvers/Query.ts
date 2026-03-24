@@ -1,6 +1,8 @@
 import { DataSourceContext } from '../types';
 import { WeightCascadeResolver } from '../services/confidence/weight-cascade-resolver';
-import { SignalDefinition } from '../services/confidence/types';
+import { SignalDefinition, ResolvedWeight, normalizePropagationMode } from '../services/confidence/types';
+
+const sharedCascadeResolver = new WeightCascadeResolver();
 
 const PATHWAY_COLUMNS = `
   id, age_node_id AS "ageNodeId", logical_id AS "logicalId",
@@ -101,18 +103,18 @@ export const Query = {
       );
       const signals = signalResult.rows.map(hydrateSignalDefinition);
 
-      const nodeResult = await pool.query(
+      const nodeResult = await pool.query<{ node_identifier: string; node_type: string }>(
         `SELECT node_identifier, node_type
          FROM confidence_node_weights WHERE pathway_id = $1`,
         [args.pathwayId]
       );
 
-      const cascadeResolver = new WeightCascadeResolver();
+      const cascadeResolver = sharedCascadeResolver;
       const matrix = await cascadeResolver.resolveAllWeights({
         pool,
         pathwayId: args.pathwayId,
         signalDefinitions: signals,
-        nodeIdentifiers: nodeResult.rows.map((r: any) => ({
+        nodeIdentifiers: nodeResult.rows.map(r => ({
           nodeIdentifier: r.node_identifier,
           nodeType: r.node_type,
         })),
@@ -122,12 +124,12 @@ export const Query = {
 
       const entries: Array<{ nodeIdentifier: string; signalName: string; weight: number; source: string }> = [];
       for (const [nodeId, nodeSignals] of Object.entries(matrix)) {
-        for (const [signalName, resolved] of Object.entries(nodeSignals as any)) {
+        for (const [signalName, resolved] of Object.entries(nodeSignals) as Array<[string, ResolvedWeight]>) {
           entries.push({
             nodeIdentifier: nodeId,
             signalName,
-            weight: (resolved as any).weight,
-            source: (resolved as any).source,
+            weight: resolved.weight,
+            source: resolved.source,
           });
         }
       }
@@ -140,7 +142,7 @@ export const Query = {
       args: { pathwayId: string; nodeIdentifier?: string; institutionId?: string; organizationId?: string },
       context: DataSourceContext
     ) => {
-      const cascadeResolver = new WeightCascadeResolver();
+      const cascadeResolver = sharedCascadeResolver;
       return cascadeResolver.resolveThresholds({
         pool: context.pool,
         pathwayId: args.pathwayId,
@@ -179,7 +181,9 @@ export function hydrateSignalDefinition(row: any): SignalDefinition {
     description: row.description,
     scoringType: row.scoring_type,
     scoringRules,
-    propagationConfig: scoringRules.propagation ?? { mode: 'none' },
+    propagationConfig: scoringRules.propagation
+      ? { ...scoringRules.propagation, mode: normalizePropagationMode(scoringRules.propagation.mode) }
+      : { mode: 'none' },
     scope: row.scope,
     institutionId: row.institution_id,
     defaultWeight: parseFloat(row.default_weight),

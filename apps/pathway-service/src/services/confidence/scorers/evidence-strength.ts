@@ -70,17 +70,19 @@ export class EvidenceStrengthScorer implements SignalScorer {
 
     // Use the highest evidence level score
     let bestScore = defaultScore;
+    let bestLevel: string = 'default';
     for (const level of evidenceLevels) {
       const levelScore = mappings[level] ?? defaultScore;
       if (levelScore > bestScore) {
         bestScore = levelScore;
+        bestLevel = level;
       }
     }
 
     return {
       score: bestScore,
       missingInputs: [],
-      metadata: { evidenceLevels, bestLevel: evidenceLevels.find(l => (mappings[l] ?? defaultScore) === bestScore) },
+      metadata: { evidenceLevels, bestLevel },
     };
   }
 

@@ -4,11 +4,10 @@ import { EvidenceStrengthScorer } from '../services/confidence/scorers/evidence-
 import {
   GraphNode,
   GraphEdge,
-  GraphContext,
   SignalDefinition,
   ScoringType,
 } from '../services/confidence/types';
-import { REFERENCE_PATIENT } from './fixtures/reference-patient-context';
+import { REFERENCE_PATIENT, makeGraphContext } from './fixtures/reference-patient-context';
 
 function makeSignalDef(): SignalDefinition {
   return {
@@ -30,22 +29,6 @@ function makeSignalDef(): SignalDefinition {
     scope: 'SYSTEM',
     defaultWeight: 0.25,
     isActive: true,
-  };
-}
-
-function makeGraphContext(nodes: GraphNode[], edges: GraphEdge[]): GraphContext {
-  return {
-    allNodes: nodes,
-    allEdges: edges,
-    incomingEdges: (nodeId) => edges.filter(e => e.targetId === nodeId),
-    outgoingEdges: (nodeId) => edges.filter(e => e.sourceId === nodeId),
-    getNode: (nodeId) => nodes.find(n => n.nodeIdentifier === nodeId),
-    linkedNodes: (nodeId, edgeType) => {
-      const targetIds = edges
-        .filter(e => e.sourceId === nodeId && e.edgeType === edgeType)
-        .map(e => e.targetId);
-      return nodes.filter(n => targetIds.includes(n.nodeIdentifier));
-    },
   };
 }
 

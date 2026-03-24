@@ -1,12 +1,11 @@
 import { PatientMatchQualityScorer } from '../services/confidence/scorers/patient-match-quality';
 import {
   GraphNode,
-  GraphContext,
   SignalDefinition,
   ScoringType,
   PatientContext,
 } from '../services/confidence/types';
-import { REFERENCE_PATIENT, EMPTY_PATIENT, FULLY_MATCHED_PATIENT } from './fixtures/reference-patient-context';
+import { REFERENCE_PATIENT, EMPTY_PATIENT, FULLY_MATCHED_PATIENT, makeGraphContext } from './fixtures/reference-patient-context';
 
 function makeSignalDef(): SignalDefinition {
   return {
@@ -20,17 +19,6 @@ function makeSignalDef(): SignalDefinition {
     scope: 'SYSTEM',
     defaultWeight: 0.25,
     isActive: true,
-  };
-}
-
-function makeGraphContext(): GraphContext {
-  return {
-    allNodes: [],
-    allEdges: [],
-    incomingEdges: () => [],
-    outgoingEdges: () => [],
-    getNode: () => undefined,
-    linkedNodes: () => [],
   };
 }
 
@@ -99,7 +87,7 @@ describe('PatientMatchQualityScorer', () => {
       expect(result.score).toBe(0.0);
     });
 
-    it('should cap at 0.5 when a critical criterion is missing', () => {
+    it('should return 0.0 when a critical criterion is missing', () => {
       const node: GraphNode = {
         id: 'age-1', nodeIdentifier: 'crit-2', nodeType: 'Criterion',
         properties: { code_system: 'ICD-10', code_value: 'O34.29', is_critical: true },
@@ -110,7 +98,8 @@ describe('PatientMatchQualityScorer', () => {
         patientContext: EMPTY_PATIENT,
         graphContext: makeGraphContext(),
       });
-      expect(result.score).toBeLessThanOrEqual(0.5);
+      expect(result.score).toBe(0.0);
+      expect(result.metadata).toHaveProperty('critical', true);
     });
 
     it('should score 1.0 for Medication nodes when patient has matching med', () => {
@@ -124,8 +113,41 @@ describe('PatientMatchQualityScorer', () => {
         patientContext: REFERENCE_PATIENT,
         graphContext: makeGraphContext(),
       });
-      expect(result.score).toBeGreaterThanOrEqual(0.0);
-      expect(result.score).toBeLessThanOrEqual(1.0);
+      expect(result.score).toBe(1.0);
+      expect(result.missingInputs).toHaveLength(0);
+    });
+
+    it('should score 0.5 for Medication nodes when no match found', () => {
+      const node: GraphNode = {
+        id: 'age-1', nodeIdentifier: 'med-1', nodeType: 'Medication',
+        properties: { name: 'Metformin' },
+      };
+      const result = scorer.score({
+        node,
+        signalDefinition: makeSignalDef(),
+        patientContext: REFERENCE_PATIENT,
+        graphContext: makeGraphContext(),
+      });
+      expect(result.score).toBe(0.5);
+      expect(result.missingInputs).toContain('medication_match');
+    });
+
+    it('should not match medications with undefined display', () => {
+      const node: GraphNode = {
+        id: 'age-1', nodeIdentifier: 'med-1', nodeType: 'Medication',
+        properties: { name: 'SomeMed' },
+      };
+      const patientWithUndefinedDisplay: PatientContext = {
+        ...EMPTY_PATIENT,
+        medications: [{ code: '12345', system: 'RXNORM' }],
+      };
+      const result = scorer.score({
+        node,
+        signalDefinition: makeSignalDef(),
+        patientContext: patientWithUndefinedDisplay,
+        graphContext: makeGraphContext(),
+      });
+      expect(result.score).toBe(0.5);
     });
 
     it('should return 1.0 for nodes without matchable codes (e.g., Stage)', () => {

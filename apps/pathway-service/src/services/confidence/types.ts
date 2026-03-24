@@ -137,6 +137,34 @@ export interface PropagationResult {
   shouldPropagate: boolean;
 }
 
+// Shared propagation implementations — used by scorers with identical logic
+export function defaultDirectPropagate(params: PropagationParams): PropagationResult {
+  const { sourceScore, propagationConfig } = params;
+  if (propagationConfig.mode === 'none') {
+    return { propagatedScore: 0, shouldPropagate: false };
+  }
+  return { propagatedScore: sourceScore, shouldPropagate: false };
+}
+
+export function defaultTransitivePropagate(params: PropagationParams): PropagationResult {
+  const { sourceScore, propagationConfig, hopDistance } = params;
+  if (propagationConfig.mode === 'none') {
+    return { propagatedScore: 0, shouldPropagate: false };
+  }
+  if (propagationConfig.mode === 'direct') {
+    return { propagatedScore: sourceScore, shouldPropagate: false };
+  }
+  const maxHops = propagationConfig.maxHops ?? 3;
+  if (hopDistance > maxHops) {
+    return { propagatedScore: 0, shouldPropagate: false };
+  }
+  const decay = propagationConfig.decayFactor ?? 0.8;
+  return {
+    propagatedScore: sourceScore * Math.pow(decay, hopDistance),
+    shouldPropagate: hopDistance < maxHops,
+  };
+}
+
 // ─── Patient Context ─────────────────────────────────────────────────
 
 export interface CodeEntry {

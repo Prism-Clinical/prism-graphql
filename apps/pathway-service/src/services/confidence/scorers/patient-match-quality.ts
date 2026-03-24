@@ -9,6 +9,7 @@ import {
   PropagationParams,
   PropagationResult,
   PatientContext,
+  defaultDirectPropagate,
 } from '../types';
 
 /**
@@ -49,16 +50,7 @@ export class PatientMatchQualityScorer implements SignalScorer {
   }
 
   propagate(params: PropagationParams): PropagationResult {
-    const { sourceScore, propagationConfig } = params;
-
-    if (propagationConfig.mode === 'none') {
-      return { propagatedScore: 0, shouldPropagate: false };
-    }
-
-    return {
-      propagatedScore: sourceScore,
-      shouldPropagate: false,
-    };
+    return defaultDirectPropagate(params);
   }
 
   private scoreCriterion(node: GraphNode, patient: PatientContext): SignalScore {
@@ -91,9 +83,11 @@ export class PatientMatchQualityScorer implements SignalScorer {
   private scoreMedication(node: GraphNode, patient: PatientContext): SignalScore {
     const medName = (node.properties.name as string || '').toLowerCase();
 
-    const hasMatch = patient.medications.some(
-      m => m.display?.toLowerCase().includes(medName) || medName.includes(m.display?.toLowerCase() || '')
-    );
+    const hasMatch = patient.medications.some(m => {
+      const mDisplay = m.display?.toLowerCase();
+      if (!mDisplay) return false;
+      return mDisplay.includes(medName) || medName.includes(mDisplay);
+    });
 
     return {
       score: hasMatch ? 1.0 : 0.5,
@@ -104,7 +98,7 @@ export class PatientMatchQualityScorer implements SignalScorer {
   private scoreLabTest(node: GraphNode, patient: PatientContext): SignalScore {
     const codeValue = node.properties.code_value as string | undefined;
     if (!codeValue) {
-      return { score: 0.5, missingInputs: [], metadata: { reason: 'no_code_on_lab' } };
+      return { score: 0.5, missingInputs: ['code_value'], metadata: { reason: 'no_code_on_lab' } };
     }
 
     const hasMatch = patient.labResults.some(l => l.code === codeValue);

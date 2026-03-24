@@ -50,16 +50,13 @@ VALUES
     'SYSTEM',
     0.20,
     true
-  );
+  )
+ON CONFLICT (id) DO NOTHING;
 
 -- =============================================================================
 -- 2. SYSTEM DEFAULT THRESHOLDS
 -- =============================================================================
 
-INSERT INTO confidence_resolution_thresholds (id, auto_resolve_threshold, suggest_threshold, scope)
-VALUES (
-  gen_random_uuid(),
-  0.85,
-  0.60,
-  'SYSTEM_DEFAULT'
-);
+INSERT INTO confidence_resolution_thresholds (auto_resolve_threshold, suggest_threshold, scope)
+VALUES (0.85, 0.60, 'SYSTEM_DEFAULT')
+ON CONFLICT ON CONSTRAINT confidence_resolution_thresholds_unique DO NOTHING;

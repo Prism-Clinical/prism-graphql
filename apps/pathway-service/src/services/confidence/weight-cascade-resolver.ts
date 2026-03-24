@@ -9,13 +9,6 @@ import {
   ThresholdScope,
 } from './types';
 
-const WEIGHT_SCOPE_PRIORITY: Record<string, { source: WeightSource; priority: number }> = {
-  NODE: { source: WeightSource.NODE_OVERRIDE, priority: 1 },
-  PATHWAY: { source: WeightSource.PATHWAY_OVERRIDE, priority: 2 },
-  INSTITUTION_GLOBAL: { source: WeightSource.INSTITUTION_GLOBAL, priority: 3 },
-  ORGANIZATION_GLOBAL: { source: WeightSource.ORGANIZATION_GLOBAL, priority: 4 },
-};
-
 const THRESHOLD_SCOPE_PRIORITY: Record<string, number> = {
   NODE: 1,
   PATHWAY: 2,
@@ -41,18 +34,21 @@ export class WeightCascadeResolver {
     if (institutionId) {
       queryParams.push(institutionId);
       whereClause += ` AND (institution_id = $${queryParams.length} OR institution_id IS NULL)`;
+    } else {
+      whereClause += ` AND institution_id IS NULL`;
     }
 
     if (organizationId) {
       queryParams.push(organizationId);
       whereClause += ` AND (organization_id = $${queryParams.length} OR organization_id IS NULL)`;
+    } else {
+      whereClause += ` AND organization_id IS NULL`;
     }
 
     const result = await pool.query(
       `SELECT signal_definition_id, node_identifier, weight, scope
        FROM confidence_signal_weights
-       WHERE (${whereClause})
-       ORDER BY scope ASC`,
+       WHERE (${whereClause})`,
       queryParams
     );
 
@@ -109,14 +105,16 @@ export class WeightCascadeResolver {
     if (institutionId) {
       queryParams.push(institutionId);
       query += ` AND (institution_id = $${queryParams.length} OR institution_id IS NULL)`;
+    } else {
+      query += ` AND institution_id IS NULL`;
     }
 
     if (organizationId) {
       queryParams.push(organizationId);
       query += ` AND (organization_id = $${queryParams.length} OR organization_id IS NULL)`;
+    } else {
+      query += ` AND organization_id IS NULL`;
     }
-
-    query += ` ORDER BY scope ASC`;
 
     const result = await pool.query(query, queryParams);
 

@@ -1,4 +1,4 @@
-import { PatientContext } from '../../services/confidence/types';
+import { PatientContext, GraphNode, GraphEdge, GraphContext } from '../../services/confidence/types';
 
 export const REFERENCE_PATIENT: PatientContext = {
   patientId: 'patient-test-001',
@@ -15,6 +15,8 @@ export const REFERENCE_PATIENT: PatientContext = {
       code: '58410-2',
       system: 'LOINC',
       display: 'Complete Blood Count',
+      value: 8.2,
+      unit: '10*3/uL',
       date: '2026-03-20',
     },
     {
@@ -65,3 +67,23 @@ export const FULLY_MATCHED_PATIENT: PatientContext = {
     heartRate: 72,
   },
 };
+
+export function makeGraphContext(nodes: GraphNode[] = [], edges: GraphEdge[] = []): GraphContext {
+  const nodeMap = new Map(nodes.map(n => [n.nodeIdentifier, n]));
+  const outEdgeMap = new Map<string, GraphEdge[]>();
+  for (const node of nodes) outEdgeMap.set(node.nodeIdentifier, []);
+  for (const edge of edges) outEdgeMap.get(edge.sourceId)?.push(edge);
+
+  return {
+    allNodes: nodes,
+    allEdges: edges,
+    incomingEdges: (nodeId: string) => edges.filter(e => e.targetId === nodeId),
+    outgoingEdges: (nodeId: string) => outEdgeMap.get(nodeId) ?? [],
+    getNode: (nodeId: string) => nodeMap.get(nodeId),
+    linkedNodes: (nodeId: string, edgeType: string) => {
+      const out = outEdgeMap.get(nodeId) ?? [];
+      const targetIds = out.filter(e => e.edgeType === edgeType).map(e => e.targetId);
+      return targetIds.map(id => nodeMap.get(id)).filter((n): n is GraphNode => n !== undefined);
+    },
+  };
+}

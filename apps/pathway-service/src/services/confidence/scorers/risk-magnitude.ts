@@ -8,6 +8,7 @@ import {
   ScorerParams,
   PropagationParams,
   PropagationResult,
+  defaultDirectPropagate,
 } from '../types';
 
 const NO_DATA_SCORE = 0.50;
@@ -70,15 +71,6 @@ export class RiskMagnitudeScorer implements SignalScorer {
   }
 
   propagate(params: PropagationParams): PropagationResult {
-    const { sourceScore, propagationConfig } = params;
-
-    if (propagationConfig.mode === 'none') {
-      return { propagatedScore: 0, shouldPropagate: false };
-    }
-
-    return {
-      propagatedScore: sourceScore,
-      shouldPropagate: false, // direct = one hop
-    };
+    return defaultDirectPropagate(params);
   }
 }

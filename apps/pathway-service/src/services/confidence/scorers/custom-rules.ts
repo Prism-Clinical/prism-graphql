@@ -9,6 +9,7 @@ import {
   PropagationParams,
   PropagationResult,
   PatientContext,
+  defaultTransitivePropagate,
 } from '../types';
 
 interface CustomRule {
@@ -60,27 +61,7 @@ export class CustomRulesScorer implements SignalScorer {
   }
 
   propagate(params: PropagationParams): PropagationResult {
-    const { sourceScore, propagationConfig, hopDistance } = params;
-
-    if (propagationConfig.mode === 'none') {
-      return { propagatedScore: 0, shouldPropagate: false };
-    }
-
-    if (propagationConfig.mode === 'direct') {
-      return { propagatedScore: sourceScore, shouldPropagate: false };
-    }
-
-    // transitive_with_decay
-    const maxHops = propagationConfig.maxHops ?? 3;
-    if (hopDistance > maxHops) {
-      return { propagatedScore: 0, shouldPropagate: false };
-    }
-
-    const decay = propagationConfig.decayFactor ?? 0.8;
-    return {
-      propagatedScore: sourceScore * Math.pow(decay, hopDistance),
-      shouldPropagate: hopDistance < maxHops,
-    };
+    return defaultTransitivePropagate(params);
   }
 
   private evaluateCondition(rule: CustomRule, patient: PatientContext): boolean {

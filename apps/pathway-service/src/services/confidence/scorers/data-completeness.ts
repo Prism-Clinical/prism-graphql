@@ -11,6 +11,7 @@ import {
   PropagationParams,
   PropagationResult,
   PatientContext,
+  defaultTransitivePropagate,
 } from '../types';
 
 /**
@@ -70,34 +71,12 @@ export class DataCompletenessScorer implements SignalScorer {
   }
 
   propagate(params: PropagationParams): PropagationResult {
-    const { sourceScore, propagationConfig, hopDistance } = params;
-
-    if (propagationConfig.mode === 'none') {
-      return { propagatedScore: 0, shouldPropagate: false };
-    }
-
-    if (propagationConfig.mode === 'direct') {
-      return {
-        propagatedScore: sourceScore,
-        shouldPropagate: false, // direct = one hop only
-      };
-    }
-
-    // transitive_with_decay
-    const maxHops = propagationConfig.maxHops ?? 3;
-    if (hopDistance > maxHops) {
-      return { propagatedScore: 0, shouldPropagate: false };
-    }
-
-    const decay = propagationConfig.decayFactor ?? 0.8;
-    return {
-      propagatedScore: sourceScore * Math.pow(decay, hopDistance),
-      shouldPropagate: hopDistance < maxHops,
-    };
+    return defaultTransitivePropagate(params);
   }
 
   private scoreLabTest(node: GraphNode, patient: PatientContext): SignalScore {
     const codeValue = node.properties.code_value as string | undefined;
+    const codeSystem = node.properties.code_system as string | undefined;
     const missingInputs: string[] = [];
     const total = 2; // result_value + result_date
     let available = 0;
@@ -106,7 +85,9 @@ export class DataCompletenessScorer implements SignalScorer {
       return { score: 0.0, missingInputs: ['result_value', 'result_date'] };
     }
 
-    const matchingLab = patient.labResults.find(l => l.code === codeValue);
+    const matchingLab = patient.labResults.find(
+      l => l.code === codeValue && (!codeSystem || l.system === codeSystem)
+    );
     if (!matchingLab) {
       return { score: 0.0, missingInputs: ['result_value', 'result_date'] };
     }

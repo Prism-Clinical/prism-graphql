@@ -50,8 +50,8 @@ export class ConfidenceEngine {
       organizationId,
     });
 
-    // Load propagation overrides from DB
-    const propagationOverrides = await this.loadPropagationOverrides(pool, pathwayId);
+    // Load node weights and propagation overrides in a single query
+    const { nodeWeightMap, propagationOverrides } = await this.loadNodeWeightsAndOverrides(pool, pathwayId);
 
     // Resolve thresholds
     const thresholds = await this.cascadeResolver.resolveThresholds({
@@ -109,7 +109,7 @@ export class ConfidenceEngine {
       for (const [signalName, propagatedScore] of worstBySignal) {
         const entry = nodeScores.get(signalName);
         if (entry && propagatedScore < entry.score) {
-          entry.score = Math.min(entry.score, propagatedScore);
+          entry.score = propagatedScore;
         }
       }
     }
@@ -164,7 +164,6 @@ export class ConfidenceEngine {
     }
 
     // Pathway rollup: weighted average of node confidences using node weights
-    const nodeWeightMap = await this.loadNodeWeights(pool, pathwayId);
     let rollupWeightedSum = 0;
     let rollupTotalWeight = 0;
     for (const nr of nodeResults) {
@@ -184,17 +183,29 @@ export class ConfidenceEngine {
   }
 
   private buildGraphContext(nodes: GraphNode[], edges: GraphEdge[]): GraphContext {
+    const nodeMap = new Map(nodes.map(n => [n.nodeIdentifier, n]));
+    const inEdgeMap = new Map<string, GraphEdge[]>();
+    const outEdgeMap = new Map<string, GraphEdge[]>();
+
+    for (const node of nodes) {
+      inEdgeMap.set(node.nodeIdentifier, []);
+      outEdgeMap.set(node.nodeIdentifier, []);
+    }
+    for (const edge of edges) {
+      inEdgeMap.get(edge.targetId)?.push(edge);
+      outEdgeMap.get(edge.sourceId)?.push(edge);
+    }
+
     return {
       allNodes: nodes,
       allEdges: edges,
-      incomingEdges: (nodeId: string) => edges.filter(e => e.targetId === nodeId),
-      outgoingEdges: (nodeId: string) => edges.filter(e => e.sourceId === nodeId),
-      getNode: (nodeId: string) => nodes.find(n => n.nodeIdentifier === nodeId),
+      incomingEdges: (nodeId: string) => inEdgeMap.get(nodeId) ?? [],
+      outgoingEdges: (nodeId: string) => outEdgeMap.get(nodeId) ?? [],
+      getNode: (nodeId: string) => nodeMap.get(nodeId),
       linkedNodes: (nodeId: string, edgeType: string) => {
-        const targetIds = edges
-          .filter(e => e.sourceId === nodeId && e.edgeType === edgeType)
-          .map(e => e.targetId);
-        return nodes.filter(n => targetIds.includes(n.nodeIdentifier));
+        const out = outEdgeMap.get(nodeId) ?? [];
+        const targetIds = out.filter(e => e.edgeType === edgeType).map(e => e.targetId);
+        return targetIds.map(id => nodeMap.get(id)).filter((n): n is GraphNode => n !== undefined);
       },
     };
   }
@@ -230,10 +241,18 @@ export class ConfidenceEngine {
 
     const sorted = this.topologicalSort(nodes, edges);
     if (!sorted) {
+      console.warn(
+        `[ConfidenceEngine] Cycle detected in pathway graph — propagation skipped. ` +
+        `${nodes.length} nodes, ${edges.length} edges. Raw scores used without propagation.`
+      );
       return influences;
     }
 
     const propagatedState = new Map<string, { score: number; hopDistance: number; originNodeId: string }>();
+    const nodeMap = new Map(nodes.map(n => [n.nodeIdentifier, n]));
+    const outEdgeMap = new Map<string, GraphEdge[]>();
+    for (const node of nodes) outEdgeMap.set(node.nodeIdentifier, []);
+    for (const edge of edges) outEdgeMap.get(edge.sourceId)?.push(edge);
 
     for (const node of sorted) {
       for (const signal of signalDefinitions) {
@@ -252,10 +271,19 @@ export class ConfidenceEngine {
 
         const stateKey = `${node.nodeIdentifier}:${signal.name}`;
         const incomingState = propagatedState.get(stateKey);
-        const effectiveScore = incomingState ? Math.min(rawScore, incomingState.score) : rawScore;
-        const baseHopDistance = incomingState?.hopDistance ?? 0;
 
-        const outEdges = edges.filter(e => e.sourceId === node.nodeIdentifier);
+        // #7: For direct-mode, ignore transitive propagated state — use raw score only
+        let effectiveScore: number;
+        let baseHopDistance: number;
+        if (effectiveConfig.mode === 'direct') {
+          effectiveScore = rawScore;
+          baseHopDistance = 0;
+        } else {
+          effectiveScore = incomingState ? Math.min(rawScore, incomingState.score) : rawScore;
+          baseHopDistance = incomingState?.hopDistance ?? 0;
+        }
+
+        const outEdges = outEdgeMap.get(node.nodeIdentifier) ?? [];
 
         for (const edge of outEdges) {
           if (effectiveConfig.edgeTypes && !effectiveConfig.edgeTypes.includes(edge.edgeType)) {
@@ -266,13 +294,13 @@ export class ConfidenceEngine {
           const result = scorer.propagate({
             sourceNode: node,
             sourceScore: effectiveScore,
-            targetNode: nodes.find(n => n.nodeIdentifier === edge.targetId) ?? node,
+            targetNode: nodeMap.get(edge.targetId) ?? node,
             edge,
             propagationConfig: effectiveConfig,
             hopDistance,
           });
 
-          if (result.propagatedScore > 0) {
+          if (result.propagatedScore > 0 || result.shouldPropagate) {
             if (!influences.has(edge.targetId)) {
               influences.set(edge.targetId, []);
             }
@@ -346,40 +374,32 @@ export class ConfidenceEngine {
     return sorted;
   }
 
-  private async loadNodeWeights(
+  private async loadNodeWeightsAndOverrides(
     pool: Pool,
     pathwayId: string
-  ): Promise<Map<string, number>> {
+  ): Promise<{
+    nodeWeightMap: Map<string, number>;
+    propagationOverrides: Map<string, Record<string, PropagationConfig>>;
+  }> {
     const result = await pool.query(
-      `SELECT node_identifier, COALESCE(weight_override, default_weight) as effective_weight
+      `SELECT node_identifier,
+              COALESCE(weight_override, default_weight) as effective_weight,
+              propagation_overrides
        FROM confidence_node_weights
        WHERE pathway_id = $1`,
       [pathwayId]
     );
-    const weights = new Map<string, number>();
-    for (const row of result.rows) {
-      weights.set(row.node_identifier, parseFloat(row.effective_weight));
-    }
-    return weights;
-  }
 
-  private async loadPropagationOverrides(
-    pool: Pool,
-    pathwayId: string
-  ): Promise<Map<string, Record<string, PropagationConfig>>> {
-    const result = await pool.query(
-      `SELECT node_identifier, propagation_overrides
-       FROM confidence_node_weights
-       WHERE pathway_id = $1 AND propagation_overrides != '{}'::jsonb`,
-      [pathwayId]
-    );
+    const nodeWeightMap = new Map<string, number>();
+    const propagationOverrides = new Map<string, Record<string, PropagationConfig>>();
 
-    const overrides = new Map<string, Record<string, PropagationConfig>>();
     for (const row of result.rows) {
+      nodeWeightMap.set(row.node_identifier, parseFloat(row.effective_weight));
       if (row.propagation_overrides && Object.keys(row.propagation_overrides).length > 0) {
-        overrides.set(row.node_identifier, row.propagation_overrides);
+        propagationOverrides.set(row.node_identifier, row.propagation_overrides);
       }
     }
-    return overrides;
+
+    return { nodeWeightMap, propagationOverrides };
   }
 }

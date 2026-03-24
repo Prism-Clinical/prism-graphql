@@ -1,4 +1,4 @@
-import { Query } from '../resolvers/Query';
+import { Query, hydrateSignalDefinition } from '../resolvers/Query';
 
 function createMockContext() {
   return {
@@ -47,6 +47,41 @@ describe('Confidence query resolvers', () => {
       const call = (ctx.pool.query as jest.Mock).mock.calls[0];
       expect(call[0]).toContain('scope = $1');
       expect(call[1]).toContain('INSTITUTION');
+    });
+  });
+
+  describe('hydrateSignalDefinition', () => {
+    it('should normalize propagation mode from uppercase DB value', () => {
+      const row = {
+        id: 'test-id', name: 'test', display_name: 'Test', description: '',
+        scoring_type: 'DATA_PRESENCE',
+        scoring_rules: JSON.stringify({ propagation: { mode: 'TRANSITIVE_WITH_DECAY', decayFactor: 0.8 } }),
+        scope: 'SYSTEM', institution_id: null, default_weight: '0.30', is_active: true,
+      };
+      const result = hydrateSignalDefinition(row);
+      expect(result.propagationConfig.mode).toBe('transitive_with_decay');
+      expect(result.propagationConfig.decayFactor).toBe(0.8);
+    });
+
+    it('should default to mode none when no propagation config', () => {
+      const row = {
+        id: 'test-id', name: 'test', display_name: 'Test', description: '',
+        scoring_type: 'MAPPING_LOOKUP', scoring_rules: '{}',
+        scope: 'SYSTEM', institution_id: null, default_weight: '0.25', is_active: true,
+      };
+      const result = hydrateSignalDefinition(row);
+      expect(result.propagationConfig.mode).toBe('none');
+    });
+
+    it('should handle already-lowercase mode values', () => {
+      const row = {
+        id: 'test-id', name: 'test', display_name: 'Test', description: '',
+        scoring_type: 'CRITERIA_MATCH',
+        scoring_rules: { propagation: { mode: 'direct' } },
+        scope: 'SYSTEM', institution_id: null, default_weight: '0.25', is_active: true,
+      };
+      const result = hydrateSignalDefinition(row);
+      expect(result.propagationConfig.mode).toBe('direct');
     });
   });
 

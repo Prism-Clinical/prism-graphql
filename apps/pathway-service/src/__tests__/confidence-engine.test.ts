@@ -320,8 +320,8 @@ describe('ConfidenceEngine', () => {
 
       const stepResult = result.nodes.find(n => n.nodeIdentifier === 'step-1')!;
       // step-1 raw score is 0.9 but propagated score from lab-1 is 0.3 * 0.8 = 0.24
-      // min(0.9, 0.24) = 0.24, so confidence should be degraded
-      expect(stepResult.confidence).toBeLessThan(0.9);
+      // min(0.9, 0.24) = 0.24, so confidence should be 0.24
+      expect(stepResult.confidence).toBeCloseTo(0.24, 2);
       expect(stepResult.propagationInfluences).toHaveLength(1);
       expect(stepResult.propagationInfluences[0].sourceNodeIdentifier).toBe('lab-1');
     });
