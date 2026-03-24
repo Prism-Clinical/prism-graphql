@@ -1,4 +1,5 @@
 import { Pool, QueryResult } from 'pg';
+import { randomBytes } from 'crypto';
 
 const DEFAULT_GRAPH = 'clinical_pathways';
 
@@ -11,12 +12,12 @@ const RETURN_TYPE_PATTERN = /^\([a-zA-Z_][a-zA-Z0-9_]*\s+agtype(?:,\s*[a-zA-Z_][
 
 /**
  * Build a SQL string that wraps a Cypher query for execution via the pg driver.
- * AGE Cypher is called through: SELECT * FROM cypher('graph', $$ ... $$) AS (columns)
+ * AGE Cypher is called through: SELECT * FROM cypher('graph', $tag$ ... $tag$) AS (columns)
  *
  * SECURITY: graphName is validated against an allowlist. returnType is validated
- * against a strict format pattern. The Cypher string itself is passed through AGE's
- * $$ quoting — callers should use Cypher parameters ($param) for any user-supplied
- * values within the Cypher query, never string interpolation.
+ * against a strict format pattern. The Cypher string is wrapped in a uniquely-tagged
+ * dollar-quoted block ($cypher_<random>$) to prevent injection via $$ sequences in
+ * property values.
  */
 export function buildCypherQuery(
   graphName: string | undefined,
@@ -33,7 +34,12 @@ export function buildCypherQuery(
     throw new Error(`Invalid returnType format: "${returnType}". Must match pattern: (col agtype, ...)`);
   }
 
-  return `SELECT * FROM cypher('${graph}', $$ ${cypher} $$) AS ${returnType}`;
+  // Use a unique tagged dollar-quote to prevent content from escaping the block.
+  // PostgreSQL dollar quoting: $tag$content$tag$ — content cannot break out unless
+  // it contains the exact same $tag$ string, which is cryptographically unlikely.
+  const tag = `$cypher_${randomBytes(4).toString('hex')}$`;
+
+  return `SELECT * FROM cypher('${graph}', ${tag} ${cypher} ${tag}) AS ${returnType}`;
 }
 
 /**
