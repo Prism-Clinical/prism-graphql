@@ -36,7 +36,7 @@ export class WeightCascadeResolver {
     const { pool, pathwayId, signalDefinitions, nodeIdentifiers, institutionId, organizationId } = params;
 
     const queryParams: unknown[] = [pathwayId];
-    let whereClause = `pathway_id = $1 OR pathway_id IS NULL`;
+    let whereClause = `(pathway_id = $1 OR pathway_id IS NULL)`;
 
     if (institutionId) {
       queryParams.push(institutionId);
