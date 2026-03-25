@@ -114,3 +114,53 @@ export enum WeightSource {
   ORGANIZATION_GLOBAL = 'ORGANIZATION_GLOBAL',
   SYSTEM_DEFAULT = 'SYSTEM_DEFAULT',
 }
+
+// ─── Resolution Engine Enums (Plan 4) ────────────────────────────────
+
+// Replaces ResolutionSessionStatus (Plan 1 scaffold)
+export enum SessionStatus {
+  ACTIVE = 'ACTIVE',
+  COMPLETED = 'COMPLETED',
+  ABANDONED = 'ABANDONED',
+  DEGRADED = 'DEGRADED',
+}
+
+export enum NodeStatus {
+  INCLUDED = 'INCLUDED',
+  EXCLUDED = 'EXCLUDED',
+  GATED_OUT = 'GATED_OUT',
+  PENDING_QUESTION = 'PENDING_QUESTION',
+  TIMEOUT = 'TIMEOUT',
+  CASCADE_LIMIT = 'CASCADE_LIMIT',
+  UNKNOWN = 'UNKNOWN',
+}
+
+export enum OverrideAction {
+  INCLUDE = 'INCLUDE',
+  EXCLUDE = 'EXCLUDE',
+}
+
+export enum AnswerType {
+  BOOLEAN = 'BOOLEAN',
+  NUMERIC = 'NUMERIC',
+  SELECT = 'SELECT',
+}
+
+export enum BlockerType {
+  EMPTY_PLAN = 'EMPTY_PLAN',
+  UNRESOLVED_RED_FLAG = 'UNRESOLVED_RED_FLAG',
+  CONTRADICTION = 'CONTRADICTION',
+  PENDING_GATE = 'PENDING_GATE',
+}
+
+export enum GateType {
+  PATIENT_ATTRIBUTE = 'patient_attribute',
+  QUESTION = 'question',
+  PRIOR_NODE_RESULT = 'prior_node_result',
+  COMPOUND = 'compound',
+}
+
+export enum DefaultBehavior {
+  SKIP = 'skip',
+  TRAVERSE = 'traverse',
+}
