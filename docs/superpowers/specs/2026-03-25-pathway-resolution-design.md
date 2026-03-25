@@ -561,8 +561,9 @@ type MatchedPathway {
 type ResolutionSession {
   id: ID!
   pathwayId: ID!
-  pathwayVersion: String!              # version at time of resolution
+  pathwayVersion: String!              # snapshot at time of resolution
   patientId: ID!
+  providerId: ID!
   status: SessionStatus!
 
   includedNodes: [ResolvedNode!]!
@@ -739,11 +740,13 @@ ALTER TABLE pathway_resolution_sessions
   ADD CONSTRAINT pathway_resolution_sessions_status_check
   CHECK (status IN ('ACTIVE', 'COMPLETED', 'ABANDONED', 'DEGRADED'));
 
--- 5. Add composite index for provider's active sessions
+-- 5. Snapshot pathway version at resolution time (immutable)
+ALTER TABLE pathway_resolution_sessions
+  ADD COLUMN pathway_version VARCHAR(20);
+
+-- 6. Add composite index for provider's active sessions
 CREATE INDEX idx_resolution_sessions_patient_provider
   ON pathway_resolution_sessions(patient_id, provider_id, status);
-
-COMMIT;
 
 -- Resolution events: audit trail of every interaction
 CREATE TABLE pathway_resolution_events (
@@ -762,6 +765,8 @@ CREATE TABLE pathway_resolution_events (
 
 CREATE INDEX idx_resolution_events_session
   ON pathway_resolution_events(session_id, created_at);
+
+COMMIT;
 ```
 
 ### Migration 043: Node Overrides and Gate Answers (Relational Analytics)
