@@ -1,8 +1,123 @@
 import { DataSourceContext } from '../types';
 import { WeightCascadeResolver } from '../services/confidence/weight-cascade-resolver';
 import { SignalDefinition, ResolvedWeight, normalizePropagationMode } from '../services/confidence/types';
+import {
+  getSession,
+  getMatchedPathways,
+  getPatientSessions,
+} from '../services/resolution/session-store';
+import { ResolutionSession, NodeResult, NodeStatus } from '../services/resolution/types';
 
 const sharedCascadeResolver = new WeightCascadeResolver();
+
+// ─── GraphQL Formatting ──────────────────────────────────────────────
+
+function formatNodeForGraphQL(node: NodeResult) {
+  return {
+    nodeId: node.nodeId,
+    nodeType: node.nodeType,
+    title: node.title,
+    status: node.status,
+    confidence: node.confidence,
+    confidenceBreakdown: node.confidenceBreakdown ?? [],
+    providerOverride: node.providerOverride
+      ? {
+          action: node.providerOverride.action,
+          reason: node.providerOverride.reason ?? null,
+          originalStatus: node.providerOverride.originalStatus,
+          originalConfidence: node.providerOverride.originalConfidence,
+        }
+      : null,
+    excludeReason: node.excludeReason ?? null,
+    parentNodeId: node.parentNodeId ?? null,
+    depth: node.depth,
+  };
+}
+
+function formatEventForGraphQL(event: {
+  id?: string;
+  event_type?: string;
+  eventType?: string;
+  trigger_data?: unknown;
+  triggerData?: unknown;
+  nodes_recomputed?: number;
+  nodesRecomputed?: number;
+  status_changes?: unknown;
+  statusChanges?: unknown;
+  created_at?: Date | string;
+  createdAt?: Date | string;
+}) {
+  return {
+    id: event.id ?? '',
+    eventType: event.event_type ?? event.eventType ?? '',
+    triggerData: event.trigger_data ?? event.triggerData ?? null,
+    nodesRecomputed: event.nodes_recomputed ?? event.nodesRecomputed ?? 0,
+    statusChanges: event.status_changes ?? event.statusChanges ?? null,
+    createdAt: (event.created_at ?? event.createdAt)?.toString() ?? '',
+  };
+}
+
+export function formatSessionForGraphQL(session: ResolutionSession) {
+  const includedNodes: ReturnType<typeof formatNodeForGraphQL>[] = [];
+  const excludedNodes: ReturnType<typeof formatNodeForGraphQL>[] = [];
+  const gatedOutNodes: ReturnType<typeof formatNodeForGraphQL>[] = [];
+
+  for (const node of session.resolutionState.values()) {
+    const formatted = formatNodeForGraphQL(node);
+    switch (node.status) {
+      case NodeStatus.INCLUDED:
+        includedNodes.push(formatted);
+        break;
+      case NodeStatus.EXCLUDED:
+        excludedNodes.push(formatted);
+        break;
+      case NodeStatus.GATED_OUT:
+        gatedOutNodes.push(formatted);
+        break;
+      default:
+        // PENDING_QUESTION, TIMEOUT, CASCADE_LIMIT, UNKNOWN go into gatedOut
+        gatedOutNodes.push(formatted);
+        break;
+    }
+  }
+
+  return {
+    id: session.id,
+    pathwayId: session.pathwayId,
+    pathwayVersion: session.pathwayVersion,
+    patientId: session.patientId,
+    providerId: session.providerId,
+    status: session.status,
+    includedNodes,
+    excludedNodes,
+    gatedOutNodes,
+    pendingQuestions: session.pendingQuestions.map(q => ({
+      gateId: q.gateId,
+      prompt: q.prompt,
+      answerType: q.answerType,
+      options: q.options ?? null,
+      affectedSubtreeSize: q.affectedSubtreeSize,
+      estimatedImpact: q.estimatedImpact,
+    })),
+    redFlags: session.redFlags.map(f => ({
+      nodeId: f.nodeId,
+      nodeTitle: f.nodeTitle,
+      type: f.type,
+      description: f.description,
+      branches: f.branches?.map(b => ({
+        nodeId: b.nodeId,
+        title: b.title,
+        confidence: b.confidence,
+        topExcludeReason: b.topExcludeReason ?? null,
+      })) ?? null,
+    })),
+    resolutionEvents: (session.resolutionEvents ?? []).map(formatEventForGraphQL),
+    totalNodesEvaluated: session.totalNodesEvaluated,
+    traversalDurationMs: session.traversalDurationMs,
+    createdAt: session.createdAt?.toString() ?? '',
+    updatedAt: session.updatedAt?.toString() ?? '',
+  };
+}
 
 const PATHWAY_COLUMNS = `
   id, age_node_id AS "ageNodeId", logical_id AS "logicalId",
@@ -150,6 +265,72 @@ export const Query = {
         institutionId: args.institutionId,
         organizationId: args.organizationId,
       });
+    },
+
+    // ─── Resolution Query Resolvers ─────────────────────────────────────
+
+    matchedPathways: async (
+      _: unknown,
+      args: { patientId: string },
+      context: DataSourceContext
+    ) => {
+      return getMatchedPathways(context.pool, args.patientId);
+    },
+
+    resolutionSession: async (
+      _: unknown,
+      args: { sessionId: string },
+      context: DataSourceContext
+    ) => {
+      const session = await getSession(context.pool, args.sessionId);
+      if (!session) return null;
+      return formatSessionForGraphQL(session);
+    },
+
+    pendingQuestions: async (
+      _: unknown,
+      args: { sessionId: string },
+      context: DataSourceContext
+    ) => {
+      const session = await getSession(context.pool, args.sessionId);
+      if (!session) return [];
+      return session.pendingQuestions.map(q => ({
+        gateId: q.gateId,
+        prompt: q.prompt,
+        answerType: q.answerType,
+        options: q.options ?? null,
+        affectedSubtreeSize: q.affectedSubtreeSize,
+        estimatedImpact: q.estimatedImpact,
+      }));
+    },
+
+    redFlags: async (
+      _: unknown,
+      args: { sessionId: string },
+      context: DataSourceContext
+    ) => {
+      const session = await getSession(context.pool, args.sessionId);
+      if (!session) return [];
+      return session.redFlags.map(f => ({
+        nodeId: f.nodeId,
+        nodeTitle: f.nodeTitle,
+        type: f.type,
+        description: f.description,
+        branches: f.branches?.map(b => ({
+          nodeId: b.nodeId,
+          title: b.title,
+          confidence: b.confidence,
+          topExcludeReason: b.topExcludeReason ?? null,
+        })) ?? null,
+      }));
+    },
+
+    patientResolutionSessions: async (
+      _: unknown,
+      args: { patientId: string; status?: string },
+      context: DataSourceContext
+    ) => {
+      return getPatientSessions(context.pool, args.patientId, args.status);
     },
   },
 
