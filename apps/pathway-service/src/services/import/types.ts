@@ -41,7 +41,8 @@ export type PathwayNodeType =
   | 'Procedure'
   | 'EvidenceCitation'
   | 'QualityMetric'
-  | 'Schedule';
+  | 'Schedule'
+  | 'Gate';
 
 export interface PathwayNodeDefinition {
   id: string;
@@ -63,7 +64,8 @@ export type PathwayEdgeType =
   | 'HAS_PROCEDURE'
   | 'HAS_QUALITY_METRIC'
   | 'HAS_SCHEDULE'
-  | 'HAS_CODE';
+  | 'HAS_CODE'
+  | 'HAS_GATE';
 
 export interface PathwayEdgeDefinition {
   from: string;          // node id or "root" for the Pathway root node
@@ -87,6 +89,7 @@ export const REQUIRED_NODE_PROPERTIES: Record<PathwayNodeType, string[]> = {
   EvidenceCitation: ['reference_number', 'title', 'evidence_level'],
   QualityMetric:    ['name', 'measure'],
   Schedule:         ['interval', 'description'],
+  Gate:             ['title', 'gate_type', 'default_behavior'],
 };
 
 // Valid edge source→target type constraints
@@ -95,7 +98,7 @@ export const VALID_EDGE_ENDPOINTS: Record<PathwayEdgeType, { from: ('root' | Pat
   HAS_STEP:            { from: ['Stage'],           to: ['Step'] },
   HAS_DECISION_POINT:  { from: ['Step'],            to: ['DecisionPoint'] },
   HAS_CRITERION:       { from: ['DecisionPoint'],   to: ['Criterion'] },
-  BRANCHES_TO:         { from: ['DecisionPoint'],   to: ['Step', 'Stage'] },
+  BRANCHES_TO:         { from: ['DecisionPoint', 'Gate'], to: ['Step', 'Stage'] },
   USES_MEDICATION:     { from: ['Step'],            to: ['Medication'] },
   ESCALATES_TO:        { from: ['Medication'],      to: ['Medication'] },
   CITES_EVIDENCE:      { from: ['Stage', 'Step', 'DecisionPoint', 'Criterion', 'Medication', 'LabTest', 'Procedure'], to: ['EvidenceCitation'] },
@@ -104,6 +107,7 @@ export const VALID_EDGE_ENDPOINTS: Record<PathwayEdgeType, { from: ('root' | Pat
   HAS_QUALITY_METRIC:  { from: ['Step'],            to: ['QualityMetric'] },
   HAS_SCHEDULE:        { from: ['Step'],            to: ['Schedule'] },
   HAS_CODE:            { from: ['Step', 'Criterion', 'Medication', 'LabTest', 'Procedure'], to: ['CodeEntry'] },
+  HAS_GATE:            { from: ['Step', 'Stage', 'DecisionPoint'], to: ['Gate'] },
 };
 
 // Valid code systems for ConditionCodeDefinition and CodeEntry nodes
