@@ -506,7 +506,10 @@ export const MAX_CASCADE_DEPTH = 10;
 /** Node types that are structural (always traversed, confidence is aggregate) */
 export const STRUCTURAL_NODE_TYPES = new Set(['Stage', 'Step']);
 
-/** Node types that are action nodes (included/excluded based on confidence) */
+/** Node types that are action nodes (included/excluded based on confidence).
+ *  Monitoring, Lifestyle, Referral are forward-looking — not yet in PathwayNodeType
+ *  (import schema). They will be added when pathways use them. The traversal engine
+ *  handles them already so no code change is needed when they appear. */
 export const ACTION_NODE_TYPES = new Set([
   'Medication', 'LabTest', 'Procedure', 'Monitoring', 'Lifestyle', 'Referral',
 ]);
@@ -562,8 +565,8 @@ Add to the `VALID_EDGE_ENDPOINTS` object (read file to find exact structure):
 
 ```typescript
 HAS_GATE: {
-  sources: ['Step', 'Stage', 'DecisionPoint'],
-  targets: ['Gate'],
+  from: ['Step', 'Stage', 'DecisionPoint'],
+  to: ['Gate'],
 },
 ```
 
@@ -833,7 +836,11 @@ import { REFERENCE_PATHWAY, clonePathway } from './reference-pathway';
  *
  * 1. gate-transplant-screen (patient_attribute): guards immunosuppression subtree
  * 2. gate-prior-cesarean (question): "Was the prior surgery a cesarean?"
- * 3. gate-med-included (prior_node_result): opens monitoring if medication step included
+ * 3. gate-med-monitoring (prior_node_result): opens monitoring if step-3-1 included
+ *
+ * Uses actual node IDs from REFERENCE_PATHWAY:
+ *   stage-1 (Initial Assessment), stage-2 (Risk Stratification), stage-3 (TOLAC)
+ *   step-1-1, step-1-2, step-2-1, step-3-1
  */
 export function createPathwayWithGates(): PathwayJson {
   const pathway = clonePathway();
@@ -868,12 +875,12 @@ export function createPathwayWithGates(): PathwayJson {
         title: 'Medication monitoring gate',
         gate_type: 'prior_node_result',
         default_behavior: 'skip',
-        depends_on: [{ node_id: 'step-delivery-planning', status: 'included' }],
+        depends_on: [{ node_id: 'step-3-1', status: 'included' }],
       },
     },
   );
 
-  // Add a simple action node behind each gate for testing
+  // Add action nodes behind each gate for testing
   pathway.nodes.push(
     {
       id: 'step-immunosuppression',
@@ -892,16 +899,16 @@ export function createPathwayWithGates(): PathwayJson {
     },
   );
 
-  // Wire gates into the graph
+  // Wire gates into the graph (using actual REFERENCE_PATHWAY node IDs)
   pathway.edges.push(
-    // Gate 1: from stage-3 to transplant gate, gate to immunosuppression step
-    { from: 'stage-delivery', to: 'gate-transplant-screen', type: 'HAS_GATE' as any },
+    // Gate 1: from stage-3 (TOLAC) to transplant gate
+    { from: 'stage-3', to: 'gate-transplant-screen', type: 'HAS_GATE' as any },
     { from: 'gate-transplant-screen', to: 'step-immunosuppression', type: 'BRANCHES_TO' },
-    // Gate 2: from stage-2 to prior cesarean gate, gate to cesarean step
-    { from: 'stage-scar-assessment', to: 'gate-prior-cesarean', type: 'HAS_GATE' as any },
+    // Gate 2: from stage-2 (Risk Stratification) to prior cesarean gate
+    { from: 'stage-2', to: 'gate-prior-cesarean', type: 'HAS_GATE' as any },
     { from: 'gate-prior-cesarean', to: 'step-cesarean-specific', type: 'BRANCHES_TO' },
-    // Gate 3: from stage-3 to med monitoring gate, gate to monitoring step
-    { from: 'stage-delivery', to: 'gate-med-monitoring', type: 'HAS_GATE' as any },
+    // Gate 3: from stage-3 to med monitoring gate (depends on step-3-1)
+    { from: 'stage-3', to: 'gate-med-monitoring', type: 'HAS_GATE' as any },
     { from: 'gate-med-monitoring', to: 'step-med-monitoring', type: 'BRANCHES_TO' },
   );
 
@@ -1045,7 +1052,7 @@ describe('GateEvaluator', () => {
         operator: 'AND',
         conditions: [
           { field: 'conditions', operator: 'includes_code', value: 'O34.211', system: 'ICD-10' },
-          { field: 'medications', operator: 'includes_code', value: '310798', system: 'RXNORM' },
+          { field: 'medications', operator: 'includes_code', value: '7052', system: 'RXNORM' },
         ],
       });
       const result = evaluateGate(gate, REFERENCE_PATIENT, new Map(), new Map());
@@ -1328,6 +1335,8 @@ describe('TraversalEngine', () => {
 
   it('should traverse a simple pathway and include nodes above threshold', async () => {
     // Build a minimal graph: root -> stage -> step -> medication
+    // IMPORTANT: sourceId/targetId must use nodeIdentifier values (not id)
+    // because makeGraphContext indexes outEdgeMap by nodeIdentifier
     const nodes: GraphNode[] = [
       { id: '1', nodeIdentifier: 'root', nodeType: 'Pathway', properties: { title: 'Test' } },
       { id: '2', nodeIdentifier: 'stage-1', nodeType: 'Stage', properties: { title: 'Stage 1', stage_number: 1 } },
@@ -1335,9 +1344,9 @@ describe('TraversalEngine', () => {
       { id: '4', nodeIdentifier: 'med-1', nodeType: 'Medication', properties: { title: 'Metformin', name: 'Metformin' } },
     ];
     const edges: GraphEdge[] = [
-      { id: 'e1', edgeType: 'HAS_STAGE', sourceId: '1', targetId: '2', properties: {} },
-      { id: 'e2', edgeType: 'HAS_STEP', sourceId: '2', targetId: '3', properties: {} },
-      { id: 'e3', edgeType: 'USES_MEDICATION', sourceId: '3', targetId: '4', properties: {} },
+      { id: 'e1', edgeType: 'HAS_STAGE', sourceId: 'root', targetId: 'stage-1', properties: {} },
+      { id: 'e2', edgeType: 'HAS_STEP', sourceId: 'stage-1', targetId: 'step-1', properties: {} },
+      { id: 'e3', edgeType: 'USES_MEDICATION', sourceId: 'step-1', targetId: 'med-1', properties: {} },
     ];
     const graphContext = makeGraphContext(nodes, edges);
 
@@ -1362,9 +1371,9 @@ describe('TraversalEngine', () => {
       { id: '4', nodeIdentifier: 'med-low', nodeType: 'Medication', properties: { title: 'Low conf' } },
     ];
     const edges: GraphEdge[] = [
-      { id: 'e1', edgeType: 'HAS_STAGE', sourceId: '1', targetId: '2', properties: {} },
-      { id: 'e2', edgeType: 'USES_MEDICATION', sourceId: '2', targetId: '3', properties: {} },
-      { id: 'e3', edgeType: 'USES_MEDICATION', sourceId: '2', targetId: '4', properties: {} },
+      { id: 'e1', edgeType: 'HAS_STAGE', sourceId: 'root', targetId: 'stage-1', properties: {} },
+      { id: 'e2', edgeType: 'USES_MEDICATION', sourceId: 'stage-1', targetId: 'med-high', properties: {} },
+      { id: 'e3', edgeType: 'USES_MEDICATION', sourceId: 'stage-1', targetId: 'med-low', properties: {} },
     ];
     const graphContext = makeGraphContext(nodes, edges);
 
@@ -1386,10 +1395,10 @@ describe('TraversalEngine', () => {
       { id: '5', nodeIdentifier: 'med-gated', nodeType: 'Medication', properties: { title: 'Gated med' } },
     ];
     const edges: GraphEdge[] = [
-      { id: 'e1', edgeType: 'HAS_STAGE', sourceId: '1', targetId: '2', properties: {} },
-      { id: 'e2', edgeType: 'HAS_GATE', sourceId: '2', targetId: '3', properties: {} },
-      { id: 'e3', edgeType: 'BRANCHES_TO', sourceId: '3', targetId: '4', properties: {} },
-      { id: 'e4', edgeType: 'USES_MEDICATION', sourceId: '4', targetId: '5', properties: {} },
+      { id: 'e1', edgeType: 'HAS_STAGE', sourceId: 'root', targetId: 'stage-1', properties: {} },
+      { id: 'e2', edgeType: 'HAS_GATE', sourceId: 'stage-1', targetId: 'gate-1', properties: {} },
+      { id: 'e3', edgeType: 'BRANCHES_TO', sourceId: 'gate-1', targetId: 'step-gated', properties: {} },
+      { id: 'e4', edgeType: 'USES_MEDICATION', sourceId: 'step-gated', targetId: 'med-gated', properties: {} },
     ];
     const graphContext = makeGraphContext(nodes, edges);
 
@@ -1412,9 +1421,9 @@ describe('TraversalEngine', () => {
       { id: '4', nodeIdentifier: 'step-behind-q', nodeType: 'Step', properties: { title: 'Behind question', stage_number: 1, step_number: 1, display_number: '1.1' } },
     ];
     const edges: GraphEdge[] = [
-      { id: 'e1', edgeType: 'HAS_STAGE', sourceId: '1', targetId: '2', properties: {} },
-      { id: 'e2', edgeType: 'HAS_GATE', sourceId: '2', targetId: '3', properties: {} },
-      { id: 'e3', edgeType: 'BRANCHES_TO', sourceId: '3', targetId: '4', properties: {} },
+      { id: 'e1', edgeType: 'HAS_STAGE', sourceId: 'root', targetId: 'stage-1', properties: {} },
+      { id: 'e2', edgeType: 'HAS_GATE', sourceId: 'stage-1', targetId: 'gate-q', properties: {} },
+      { id: 'e3', edgeType: 'BRANCHES_TO', sourceId: 'gate-q', targetId: 'step-behind-q', properties: {} },
     ];
     const graphContext = makeGraphContext(nodes, edges);
 
@@ -1438,10 +1447,10 @@ describe('TraversalEngine', () => {
       { id: '5', nodeIdentifier: 'step-b', nodeType: 'Step', properties: { title: 'Step B', stage_number: 1, step_number: 2, display_number: '1.2' } },
     ];
     const edges: GraphEdge[] = [
-      { id: 'e1', edgeType: 'HAS_STAGE', sourceId: '1', targetId: '2', properties: {} },
-      { id: 'e2', edgeType: 'HAS_STEP', sourceId: '2', targetId: '3', properties: {} },
-      { id: 'e3', edgeType: 'HAS_GATE', sourceId: '2', targetId: '4', properties: {} },
-      { id: 'e4', edgeType: 'BRANCHES_TO', sourceId: '4', targetId: '5', properties: {} },
+      { id: 'e1', edgeType: 'HAS_STAGE', sourceId: 'root', targetId: 'stage-1', properties: {} },
+      { id: 'e2', edgeType: 'HAS_STEP', sourceId: 'stage-1', targetId: 'step-a', properties: {} },
+      { id: 'e3', edgeType: 'HAS_GATE', sourceId: 'stage-1', targetId: 'gate-dep', properties: {} },
+      { id: 'e4', edgeType: 'BRANCHES_TO', sourceId: 'gate-dep', targetId: 'step-b', properties: {} },
     ];
     const graphContext = makeGraphContext(nodes, edges);
 
@@ -1466,10 +1475,10 @@ describe('TraversalEngine', () => {
       { id: '5', nodeIdentifier: 'med-b', nodeType: 'Medication', properties: { title: 'Med B' } },
     ];
     const edges: GraphEdge[] = [
-      { id: 'e1', edgeType: 'HAS_STAGE', sourceId: '1', targetId: '2', properties: {} },
-      { id: 'e2', edgeType: 'HAS_DECISION_POINT', sourceId: '2', targetId: '3', properties: {} },
-      { id: 'e3', edgeType: 'BRANCHES_TO', sourceId: '3', targetId: '4', properties: {} },
-      { id: 'e4', edgeType: 'BRANCHES_TO', sourceId: '3', targetId: '5', properties: {} },
+      { id: 'e1', edgeType: 'HAS_STAGE', sourceId: 'root', targetId: 'stage-1', properties: {} },
+      { id: 'e2', edgeType: 'HAS_DECISION_POINT', sourceId: 'stage-1', targetId: 'dp-1', properties: {} },
+      { id: 'e3', edgeType: 'BRANCHES_TO', sourceId: 'dp-1', targetId: 'med-a', properties: {} },
+      { id: 'e4', edgeType: 'BRANCHES_TO', sourceId: 'dp-1', targetId: 'med-b', properties: {} },
     ];
     const graphContext = makeGraphContext(nodes, edges);
 
