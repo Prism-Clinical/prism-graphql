@@ -148,10 +148,63 @@ export function validatePathwayJson(pw: PathwayJson): ValidationResult {
     }
   }
 
+  // ─── Gate-specific validation ───────────────────────────────────
+  validateGateNodes(pw, nodeIds, errors, warnings);
+
   // ─── Semantic validation ────────────────────────────────────────
   validateSemanticRules(pw, nodeIds, nodeTypeMap, errors, warnings);
 
   return { valid: errors.length === 0, errors, warnings };
+}
+
+// ─── Gate Validation ──────────────────────────────────────────────────
+
+function validateGateNodes(
+  pw: PathwayJson,
+  nodeIds: Set<string>,
+  errors: string[],
+  warnings: string[]
+): void {
+  const edges = pw.edges && Array.isArray(pw.edges) ? pw.edges : [];
+  const gateNodes = pw.nodes.filter(n => n.type === 'Gate');
+
+  for (const gate of gateNodes) {
+    const props = gate.properties || {};
+
+    // Gate must have at least one outbound edge
+    const outbound = edges.filter(e => e.from === gate.id);
+    if (outbound.length === 0) {
+      errors.push(`Gate "${gate.id}": must have at least one outbound edge`);
+    }
+
+    // depends_on node IDs must exist in the pathway
+    if (props.depends_on) {
+      const dependsOn = Array.isArray(props.depends_on)
+        ? props.depends_on as string[]
+        : [props.depends_on as string];
+      for (const depId of dependsOn) {
+        if (!nodeIds.has(depId)) {
+          errors.push(`Gate "${gate.id}": depends_on references nonexistent node "${depId}"`);
+        }
+      }
+    }
+
+    // select answer_type requires non-empty options array
+    if (props.gate_type === 'select') {
+      const options = props.options;
+      if (!options || !Array.isArray(options) || options.length === 0) {
+        errors.push(`Gate "${gate.id}": gate_type "select" requires a non-empty "options" array`);
+      }
+    }
+
+    // compound gates must have non-empty conditions array
+    if (props.gate_type === 'compound') {
+      const conditions = props.conditions;
+      if (!conditions || !Array.isArray(conditions) || conditions.length === 0) {
+        errors.push(`Gate "${gate.id}": gate_type "compound" requires a non-empty "conditions" array`);
+      }
+    }
+  }
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────
