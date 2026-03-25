@@ -3,3 +3,17 @@ export { evaluateGate } from './gate-evaluator';
 export { TraversalEngine } from './traversal-engine';
 export { detectCycle, enforceTimeout, checkMissingCriticalData, isCascadeLimitReached, TraversalTimeoutError } from './safety';
 export { RetraversalEngine } from './retraversal-engine';
+export {
+  serializeResolutionState,
+  deserializeResolutionState,
+  serializeDependencyMap,
+  deserializeDependencyMap,
+  createSession,
+  getSession,
+  updateSession,
+  logEvent,
+  logNodeOverride,
+  logGateAnswer,
+  getMatchedPathways,
+  getPatientSessions,
+} from './session-store';
