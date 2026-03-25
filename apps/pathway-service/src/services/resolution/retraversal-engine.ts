@@ -1,4 +1,4 @@
-import { GraphContext, PatientContext } from '../confidence/types';
+import { GraphContext, PatientContext, SignalBreakdown } from '../confidence/types';
 import {
   NodeResult,
   NodeStatus,
@@ -64,7 +64,7 @@ export class RetraversalEngine {
   constructor(
     private confidenceEngine: { computeNodeConfidence: (...args: unknown[]) => Promise<{
       confidence: number;
-      breakdown: Array<{ signalName: string; score: number; weight: number; weightSource: string; missingInputs: string[] }>;
+      breakdown: SignalBreakdown[];
       resolutionType: string;
     }> },
     private thresholds: { autoResolveThreshold: number; suggestThreshold: number },

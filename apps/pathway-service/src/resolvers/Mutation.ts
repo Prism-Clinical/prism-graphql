@@ -41,7 +41,7 @@ const PATHWAY_COLUMNS = `
   created_at AS "createdAt", updated_at AS "updatedAt"
 `;
 
-interface CreateSignalInput {
+export interface CreateSignalInput {
   name: string;
   displayName: string;
   description?: string;
@@ -53,7 +53,7 @@ interface CreateSignalInput {
   defaultWeight: number;
 }
 
-interface SetSignalWeightInput {
+export interface SetSignalWeightInput {
   signalDefinitionId: string;
   weight: number;
   scope: string;
@@ -63,7 +63,7 @@ interface SetSignalWeightInput {
   institutionId?: string;
 }
 
-interface SetThresholdsInput {
+export interface SetThresholdsInput {
   autoResolveThreshold: number;
   suggestThreshold: number;
   scope: string;
@@ -72,7 +72,7 @@ interface SetThresholdsInput {
   institutionId?: string;
 }
 
-interface SetNodeWeightInput {
+export interface SetNodeWeightInput {
   pathwayId: string;
   nodeIdentifier: string;
   nodeType: string;
@@ -81,7 +81,7 @@ interface SetNodeWeightInput {
   propagationOverrides?: Record<string, PropagationConfig>;
 }
 
-interface UpdateSignalInput {
+export interface UpdateSignalInput {
   displayName?: string;
   description?: string;
   scoringRules?: ScoringRules;
@@ -90,13 +90,13 @@ interface UpdateSignalInput {
   isActive?: boolean;
 }
 
-interface GateAnswerInput {
+export interface GateAnswerInput {
   booleanValue?: boolean;
   numericValue?: number;
   selectedOption?: string;
 }
 
-interface AdditionalContextInput {
+export interface AdditionalContextInput {
   conditionCodes?: Array<{ code: string; system: string; display?: string }>;
   medications?: Array<{ code: string; system: string; display?: string }>;
   labResults?: Array<{ code: string; system: string; value?: number; unit?: string; date?: string; display?: string }>;
@@ -1238,9 +1238,9 @@ export const Mutation = {
       const blockers = validateForGeneration(session.resolutionState, session.redFlags);
       if (blockers.length > 0) {
         return {
-          success: false,
-          carePlanId: null,
-          warnings: [],
+          success: false as const,
+          carePlanId: null as string | null,
+          warnings: [] as string[],
           blockers: blockers.map(b => ({
             type: b.type,
             description: b.description,
@@ -1318,10 +1318,10 @@ export const Mutation = {
       });
 
       return {
-        success: true,
+        success: true as const,
         carePlanId,
-        warnings: [],
-        blockers: [],
+        warnings: [] as string[],
+        blockers: [] as Array<{ type: string; description: string; relatedNodeIds: string[] }>,
       };
     },
 
