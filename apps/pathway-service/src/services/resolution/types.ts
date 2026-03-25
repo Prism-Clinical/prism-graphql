@@ -47,6 +47,8 @@ export interface NodeResult {
   providerOverride?: ProviderOverride;
   parentNodeId?: string;
   depth: number;
+  /** Carried from GraphNode.properties for care plan generation */
+  properties?: Record<string, unknown>;
 }
 
 // ─── Resolution State ───────────────────────────────────────────────

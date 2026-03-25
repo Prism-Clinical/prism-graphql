@@ -17,3 +17,5 @@ export {
   getMatchedPathways,
   getPatientSessions,
 } from './session-store';
+export { validateForGeneration, generateCarePlan } from './care-plan-generator';
+export type { CarePlanData, CarePlanGoalData, CarePlanInterventionData } from './care-plan-generator';
