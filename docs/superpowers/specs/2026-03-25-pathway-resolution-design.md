@@ -190,10 +190,19 @@ abandonSession(sessionId)
 The core data structure is a `Map<nodeId, NodeResult>`:
 
 ```typescript
+type NodeStatus =
+  | 'included'      // confidence above threshold or provider override
+  | 'excluded'      // confidence below threshold or provider override
+  | 'gated_out'     // behind a gate that evaluated to skip
+  | 'pending_question' // behind a gate with unanswered question
+  | 'timeout'       // traversal timed out before evaluation
+  | 'cascade_limit' // max re-traversal cascade depth exceeded
+  | 'unknown';      // cycle detected, used default_behavior
+
 interface NodeResult {
   nodeId: string;
   nodeType: string;
-  status: 'included' | 'excluded' | 'gated_out' | 'pending_question';
+  status: NodeStatus;
   confidence: number;
   confidenceBreakdown: SignalBreakdown[];
   excludeReason?: string; // "below_threshold" | "gate_skipped" | "provider_excluded"
@@ -280,6 +289,10 @@ Every time the engine evaluates a gate's `depends_on`, reads a patient context f
 ```
 retraverse(affectedNodeIds: Set<string>):
   queue = topological_sort(affectedNodeIds)
+  // If topological sort detects a cycle in the affected set,
+  // break it using the same cycle-detection logic from Section 6.1:
+  // treat the back-edge node as status 'unknown', evaluate gate
+  // against default_behavior, and continue.
 
   for each nodeId in queue:
     previousResult = resolutionState.get(nodeId)
@@ -509,7 +522,7 @@ answerGateQuestion(
 # Provider adds clinical context
 addPatientContext(
   sessionId: ID!
-  additionalContext: PatientContextInput!
+  additionalContext: AdditionalContextInput!
 ): ResolutionSession!
 
 # Generate draft care plan from resolved session
@@ -524,14 +537,33 @@ abandonSession(
 ): ResolutionSession!
 ```
 
+### Enums and Scalars
+
+```graphql
+enum SessionStatus { ACTIVE COMPLETED ABANDONED DEGRADED }
+enum NodeStatus { INCLUDED EXCLUDED GATED_OUT PENDING_QUESTION TIMEOUT CASCADE_LIMIT UNKNOWN }
+enum OverrideAction { INCLUDE EXCLUDE }
+enum AnswerType { BOOLEAN NUMERIC SELECT }
+enum BlockerType { EMPTY_PLAN UNRESOLVED_RED_FLAG CONTRADICTION PENDING_GATE }
+```
+
+Note: The existing schema uses `String!` for timestamps. This plan continues that convention (not `DateTime`).
+
 ### Key Return Types
 
 ```graphql
+type MatchedPathway {
+  pathway: Pathway!
+  matchedConditionCodes: [String!]!   # which patient codes matched
+  matchScore: Float!                   # relevance ranking
+}
+
 type ResolutionSession {
   id: ID!
   pathwayId: ID!
+  pathwayVersion: String!              # version at time of resolution
   patientId: ID!
-  status: SessionStatus!  # ACTIVE | COMPLETED | ABANDONED | DEGRADED
+  status: SessionStatus!
 
   includedNodes: [ResolvedNode!]!
   excludedNodes: [ResolvedNode!]!
@@ -543,8 +575,21 @@ type ResolutionSession {
 
   totalNodesEvaluated: Int!
   traversalDurationMs: Int!
-  createdAt: DateTime!
-  updatedAt: DateTime!
+  createdAt: String!
+  updatedAt: String!
+}
+
+type ResolutionSessionSummary {
+  id: ID!
+  pathwayId: ID!
+  pathwayTitle: String!
+  status: SessionStatus!
+  totalNodesEvaluated: Int!
+  includedCount: Int!
+  redFlagCount: Int!
+  carePlanId: ID
+  createdAt: String!
+  updatedAt: String!
 }
 
 type ResolvedNode {
@@ -553,20 +598,66 @@ type ResolvedNode {
   title: String!
   status: NodeStatus!
   confidence: Float!
-  confidenceBreakdown: [SignalScore!]!
+  confidenceBreakdown: [SignalBreakdown!]!
   providerOverride: ProviderOverride
   excludeReason: String
   parentNodeId: ID
   depth: Int!
 }
 
+type ProviderOverride {
+  action: OverrideAction!
+  reason: String
+  originalStatus: NodeStatus!
+  originalConfidence: Float!
+}
+
+type ResolutionEvent {
+  id: ID!
+  eventType: String!
+  triggerData: JSON!
+  nodesRecomputed: Int!
+  statusChanges: JSON!
+  createdAt: String!
+}
+
+type RedFlag {
+  nodeId: ID!
+  nodeTitle: String!
+  type: String!  # all_branches_excluded | contradiction | missing_critical_data
+  description: String!
+  branches: [RedFlagBranch!]
+}
+
+type RedFlagBranch {
+  nodeId: ID!
+  title: String!
+  confidence: Float!
+  topExcludeReason: String!
+}
+
 type PendingQuestion {
   gateId: ID!
   prompt: String!
-  answerType: AnswerType!  # BOOLEAN | NUMERIC | SELECT
+  answerType: AnswerType!
   options: [String!]
   affectedSubtreeSize: Int!
   estimatedImpact: String
+}
+
+input GateAnswerInput {
+  booleanValue: Boolean     # for BOOLEAN gates
+  numericValue: Float       # for NUMERIC gates
+  selectedOption: String    # for SELECT gates
+}
+
+input AdditionalContextInput {
+  conditionCodes: [CodeInput!]
+  medications: [CodeInput!]
+  labResults: [LabResultInput!]
+  allergies: [CodeInput!]
+  vitalSigns: JSON
+  freeformData: JSON        # flexible key-value for pathway-specific fields
 }
 
 type CarePlanGenerationResult {
@@ -577,18 +668,30 @@ type CarePlanGenerationResult {
 }
 
 type ValidationBlocker {
-  type: BlockerType!  # EMPTY_PLAN | UNRESOLVED_RED_FLAG | CONTRADICTION
+  type: BlockerType!
   description: String!
   relatedNodeIds: [ID!]!
 }
 ```
 
+Note: `AdditionalContextInput` is used instead of `PatientContextInput` for the `addPatientContext` mutation. The existing `PatientContextInput` includes a required `patientId` field which is redundant when the session already knows the patient. `startResolution` continues to accept the existing `PatientContextInput` since it needs the patient ID for initial context loading.
+
 ### Design Decisions
 
 - Every mutation that modifies the session returns the full `ResolutionSession` -- avoids separate refetch.
-- `PatientContextInput` is flexible JSONB-style -- different pathways need different context fields.
-- `estimatedImpact` on `PendingQuestion` is pre-computed so the frontend can show impact without understanding the graph.
+- `estimatedImpact` on `PendingQuestion` is pre-computed at initial traversal and recomputed on re-traversals that affect the gate's subtree.
 - `CarePlanGenerationResult` separates `warnings` (informational) from `blockers` (must resolve first).
+- **`provider_id` comes from auth context**, not as a mutation input. During development with `DEV_BYPASS_AUTH=true`, fallback to a hardcoded dev provider ID (same pattern as other services). This is a known gap tracked in the project's current state assessment.
+
+### Departure from RFC
+
+The RFC (Section 7.2) describes the resolution API as: `startPathwayResolution` --> `resolveDecisionPoint` --> `generateCarePlanFromResolution`. This spec replaces the single `resolveDecisionPoint` mutation with three separate mutations:
+
+- `overrideNode` -- Provider flips a node's inclusion/exclusion
+- `answerGateQuestion` -- Provider answers a gate's question
+- `addPatientContext` -- Provider adds clinical data
+
+This split reflects the design evolution during brainstorming: the RFC assumed providers step through individual DecisionPoints, but the actual model is an automated traversal with three distinct types of provider interaction. A single `resolveDecisionPoint` mutation would conflate these different operations.
 
 ---
 
@@ -599,31 +702,48 @@ type ValidationBlocker {
 The existing `pathway_resolution_sessions` table (from migration 038) is a minimal scaffold. This migration extends it with the full resolution state and adds the events table.
 
 ```sql
--- Extend pathway_resolution_sessions with full resolution state
+BEGIN;
+
+-- Migration 038 created pathway_resolution_sessions with minimal columns:
+--   id, patient_id, provider_id, pathway_id, patient_context, status,
+--   resulting_care_plan_id, started_at, completed_at, timestamps
+--
+-- This migration extends the table for the full resolution engine.
+-- Column renames/drops address naming evolution from the scaffold.
+
+-- 1. Rename patient_context -> initial_patient_context (clearer semantics)
+ALTER TABLE pathway_resolution_sessions
+  RENAME COLUMN patient_context TO initial_patient_context;
+
+-- 2. Rename resulting_care_plan_id -> care_plan_id (consistent naming)
+ALTER TABLE pathway_resolution_sessions
+  RENAME COLUMN resulting_care_plan_id TO care_plan_id;
+
+-- 3. Add new columns for full resolution state
 ALTER TABLE pathway_resolution_sessions
   ADD COLUMN resolution_state JSONB NOT NULL DEFAULT '{}',
   ADD COLUMN dependency_map JSONB NOT NULL DEFAULT '{}',
-  ADD COLUMN initial_patient_context JSONB NOT NULL DEFAULT '{}',
   ADD COLUMN additional_context JSONB NOT NULL DEFAULT '{}',
   ADD COLUMN pending_questions JSONB NOT NULL DEFAULT '[]',
   ADD COLUMN red_flags JSONB NOT NULL DEFAULT '[]',
   ADD COLUMN total_nodes_evaluated INT NOT NULL DEFAULT 0,
-  ADD COLUMN traversal_duration_ms INT,
-  ADD COLUMN care_plan_id UUID;
+  ADD COLUMN traversal_duration_ms INT;
 
--- Add DEGRADED to status check
+-- 4. Update status constraint: IN_PROGRESS -> ACTIVE, add DEGRADED
+-- This is safe for pre-production: no real sessions exist yet.
+-- Semantic mapping: IN_PROGRESS (038 scaffold) = ACTIVE (Plan 4 runtime)
 ALTER TABLE pathway_resolution_sessions
   DROP CONSTRAINT pathway_resolution_sessions_status_check;
+UPDATE pathway_resolution_sessions SET status = 'ACTIVE' WHERE status = 'IN_PROGRESS';
 ALTER TABLE pathway_resolution_sessions
   ADD CONSTRAINT pathway_resolution_sessions_status_check
   CHECK (status IN ('ACTIVE', 'COMPLETED', 'ABANDONED', 'DEGRADED'));
 
--- Update existing status values to match new convention
-UPDATE pathway_resolution_sessions SET status = 'ACTIVE' WHERE status = 'IN_PROGRESS';
-
--- Add composite index for provider's active sessions
+-- 5. Add composite index for provider's active sessions
 CREATE INDEX idx_resolution_sessions_patient_provider
   ON pathway_resolution_sessions(patient_id, provider_id, status);
+
+COMMIT;
 
 -- Resolution events: audit trail of every interaction
 CREATE TABLE pathway_resolution_events (
@@ -647,6 +767,13 @@ CREATE INDEX idx_resolution_events_session
 ### Migration 043: Node Overrides and Gate Answers (Relational Analytics)
 
 The resolution state JSONB holds the full picture for fast reads. These relational tables enable cross-session analytics ("how often do providers override this node?").
+
+**Relationship to `pathway_resolution_decisions` (migration 038):** The existing `pathway_resolution_decisions` table tracks individual DecisionPoint resolutions (which branch was chosen, confidence, override). It is **complementary** to the new tables:
+- `pathway_resolution_decisions` -- Records DecisionPoint branch selections (auto-resolved or provider-chosen)
+- `pathway_node_overrides` -- Records provider overrides on any node type (include/exclude)
+- `pathway_gate_answers` -- Records provider answers to Gate questions
+
+All three tables are written during resolution interactions. `pathway_resolution_decisions` continues to serve its original purpose for DecisionPoint-specific analytics.
 
 ```sql
 -- Individual node overrides (queryable across sessions)
@@ -701,6 +828,8 @@ Both are written in the same transaction, always consistent.
 | `generateCarePlanFromResolution` | 200-500ms | Transform + validation + safety check |
 
 The 10s/5s timeouts provide safety nets. Pathways near the 500-node limit may be 2-3x slower.
+
+**Implementation note:** The confidence engine (Plan 3) is called per-node during traversal. To meet the 500ms-1s target for 150-node pathways, signal weights and resolution thresholds must be batch-loaded at traversal start (one query) rather than fetched per-node. The confidence engine's `WeightCascadeResolver` already supports this pattern.
 
 ---
 
