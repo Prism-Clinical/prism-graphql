@@ -238,6 +238,10 @@ CREATE INDEX idx_confidence_resolution_thresholds_scope ON confidence_resolution
 CREATE INDEX idx_confidence_resolution_thresholds_pathway ON confidence_resolution_thresholds(pathway_id);
 CREATE INDEX idx_confidence_resolution_thresholds_institution ON confidence_resolution_thresholds(institution_id);
 
+ALTER TABLE confidence_resolution_thresholds
+  ADD CONSTRAINT confidence_resolution_thresholds_unique
+  UNIQUE NULLS NOT DISTINCT (scope, pathway_id, node_identifier, institution_id);
+
 -- =============================================================================
 -- 10. UPDATED_AT TRIGGERS
 -- =============================================================================

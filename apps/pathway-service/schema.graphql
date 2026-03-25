@@ -28,6 +28,21 @@ enum ImportMode {
   NEW_VERSION
 }
 
+enum ScoringType {
+  DATA_PRESENCE
+  MAPPING_LOOKUP
+  CRITERIA_MATCH
+  RISK_INVERSE
+  CUSTOM_RULES
+}
+
+enum SignalScope { SYSTEM ORGANIZATION INSTITUTION }
+enum WeightScope { NODE PATHWAY INSTITUTION_GLOBAL ORGANIZATION_GLOBAL }
+enum ThresholdScope { SYSTEM_DEFAULT ORGANIZATION INSTITUTION PATHWAY NODE }
+enum WeightSource { NODE_OVERRIDE PATHWAY_OVERRIDE INSTITUTION_GLOBAL ORGANIZATION_GLOBAL SYSTEM_DEFAULT }
+enum PropagationMode { NONE DIRECT TRANSITIVE_WITH_DECAY }
+enum ResolutionType { AUTO_RESOLVED SYSTEM_SUGGESTED PROVIDER_DECIDED FORCED_MANUAL }
+
 # ─── Core Types ────────────────────────────────────────────────────────
 
 type Pathway @key(fields: "id") {
@@ -88,12 +103,228 @@ type PathwayStatusResult {
   previousStatus: PathwayStatus!
 }
 
-# ─── Queries ───────────────────────────────────────────────────────────
+# ─── Confidence Types ─────────────────────────────────────────────────
+
+type PathwayConfidenceResult {
+  pathwayId: ID!
+  overallConfidence: Float!
+  nodes: [NodeConfidenceResult!]!
+}
+
+type NodeConfidenceResult {
+  nodeIdentifier: String!
+  nodeType: String!
+  confidence: Float!
+  resolutionType: ResolutionType
+  breakdown: [SignalBreakdown!]!
+  propagationInfluences: [PropagationInfluence!]!
+}
+
+type SignalBreakdown {
+  signalName: String!
+  score: Float!
+  weight: Float!
+  weightSource: WeightSource!
+  missingInputs: [String!]!
+}
+
+type PropagationInfluence {
+  sourceNodeIdentifier: String!
+  signalName: String!
+  originalScore: Float!
+  propagatedScore: Float!
+  hopDistance: Int!
+}
+
+type SignalDefinitionType {
+  id: ID!
+  name: String!
+  displayName: String!
+  description: String
+  scoringType: ScoringType!
+  scoringRules: JSON!
+  propagationConfig: PropagationConfigType
+  scope: SignalScope!
+  institutionId: ID
+  defaultWeight: Float!
+  isActive: Boolean!
+}
+
+type PropagationConfigType {
+  mode: PropagationMode!
+  decayFactor: Float
+  maxHops: Int
+  edgeTypes: [String!]
+  sourceNodeTypes: [String!]
+  immuneToSignals: [String!]
+}
+
+type SignalWeight {
+  id: ID!
+  signalDefinitionId: ID!
+  weight: Float!
+  scope: WeightScope!
+  pathwayId: ID
+  nodeIdentifier: String
+  nodeType: String
+  institutionId: ID
+}
+
+type NodeWeight {
+  id: ID!
+  pathwayId: ID!
+  nodeIdentifier: String!
+  nodeType: String!
+  defaultWeight: Float!
+  institutionId: ID
+  weightOverride: Float
+  propagationOverrides: JSON
+}
+
+type ResolutionThresholds {
+  id: ID!
+  autoResolveThreshold: Float!
+  suggestThreshold: Float!
+  scope: ThresholdScope!
+  pathwayId: ID
+  nodeIdentifier: String
+  institutionId: ID
+}
+
+type WeightMatrixEntry {
+  nodeIdentifier: String!
+  signalName: String!
+  weight: Float!
+  source: WeightSource!
+}
+
+type WeightMatrix {
+  entries: [WeightMatrixEntry!]!
+}
+
+type ResolvedThresholds {
+  autoResolveThreshold: Float!
+  suggestThreshold: Float!
+  scope: ThresholdScope!
+}
+
+# ─── Confidence Inputs ────────────────────────────────────────────────
+
+input PatientContextInput {
+  patientId: ID!
+  conditionCodes: [CodeInput!]
+  medications: [CodeInput!]
+  labResults: [LabResultInput!]
+  allergies: [CodeInput!]
+  vitalSigns: JSON
+}
+
+input CodeInput {
+  code: String!
+  system: String!
+  display: String
+}
+
+input LabResultInput {
+  code: String!
+  system: String!
+  value: Float
+  unit: String
+  date: String
+  display: String
+}
+
+input PropagationConfigInput {
+  mode: PropagationMode!
+  decayFactor: Float
+  maxHops: Int
+  edgeTypes: [String!]
+  sourceNodeTypes: [String!]
+  immuneToSignals: [String!]
+}
+
+input CreateSignalDefinitionInput {
+  name: String!
+  displayName: String!
+  description: String
+  scoringType: ScoringType!
+  scoringRules: JSON!
+  scope: SignalScope!
+  institutionId: ID
+  defaultWeight: Float!
+  propagationConfig: PropagationConfigInput
+}
+
+input UpdateSignalDefinitionInput {
+  displayName: String
+  description: String
+  scoringRules: JSON
+  defaultWeight: Float
+  propagationConfig: PropagationConfigInput
+  isActive: Boolean
+}
+
+input SetSignalWeightInput {
+  signalDefinitionId: ID!
+  weight: Float!
+  scope: WeightScope!
+  pathwayId: ID
+  nodeIdentifier: String
+  nodeType: String
+  institutionId: ID
+}
+
+input SetNodeWeightInput {
+  pathwayId: ID!
+  nodeIdentifier: String!
+  nodeType: String!
+  institutionId: ID
+  weightOverride: Float
+  propagationOverrides: JSON
+}
+
+input SetResolutionThresholdsInput {
+  autoResolveThreshold: Float!
+  suggestThreshold: Float!
+  scope: ThresholdScope!
+  pathwayId: ID
+  nodeIdentifier: String
+  institutionId: ID
+}
+
+scalar JSON
+
+# ─── Queries ──────────────────────────────────────────────────────────
 
 type Query {
   pathwayServiceHealth: Boolean!
   pathways(status: PathwayStatus, category: PathwayCategory, first: Int): [Pathway!]!
   pathway(id: ID!): Pathway
+
+  pathwayConfidence(
+    pathwayId: ID!
+    patientContext: PatientContextInput!
+    institutionId: ID
+    organizationId: ID
+  ): PathwayConfidenceResult!
+
+  signalDefinitions(
+    scope: SignalScope
+    institutionId: ID
+  ): [SignalDefinitionType!]!
+
+  effectiveWeights(
+    pathwayId: ID!
+    institutionId: ID
+    organizationId: ID
+  ): WeightMatrix!
+
+  effectiveThresholds(
+    pathwayId: ID!
+    nodeIdentifier: String
+    institutionId: ID
+    organizationId: ID
+  ): ResolvedThresholds!
 }
 
 # ─── Mutations ─────────────────────────────────────────────────────────
@@ -120,4 +351,17 @@ type Mutation {
 
   """Reactivate a SUPERSEDED or ARCHIVED pathway."""
   reactivatePathway(id: ID!): PathwayStatusResult!
+
+  createSignalDefinition(input: CreateSignalDefinitionInput!): SignalDefinitionType!
+  updateSignalDefinition(id: ID!, input: UpdateSignalDefinitionInput!): SignalDefinitionType!
+  deleteSignalDefinition(id: ID!): Boolean!
+
+  setSignalWeight(input: SetSignalWeightInput!): SignalWeight!
+  removeSignalWeight(id: ID!): Boolean!
+
+  setNodeWeight(input: SetNodeWeightInput!): NodeWeight!
+  removeNodeWeight(id: ID!): Boolean!
+
+  setResolutionThresholds(input: SetResolutionThresholdsInput!): ResolutionThresholds!
+  removeResolutionThresholds(id: ID!): Boolean!
 }
