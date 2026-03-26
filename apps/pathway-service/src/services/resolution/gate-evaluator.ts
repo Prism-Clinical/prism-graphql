@@ -119,7 +119,7 @@ function evaluateCondition(
 
     case 'greater_than': {
       const numericVal = getNumericValue(patientContext, field, condition);
-      const threshold = parseFloat(value);
+      const threshold = condition.threshold ?? parseFloat(value);
       if (numericVal === undefined) {
         return {
           satisfied: false,
@@ -139,7 +139,7 @@ function evaluateCondition(
 
     case 'less_than': {
       const numericVal = getNumericValue(patientContext, field, condition);
-      const threshold = parseFloat(value);
+      const threshold = condition.threshold ?? parseFloat(value);
       if (numericVal === undefined) {
         return {
           satisfied: false,

@@ -78,6 +78,8 @@ export interface GateCondition {
   operator: string;
   value: string;
   system?: string;
+  /** Numeric threshold for greater_than/less_than operators. When present, `value` is the code to look up. */
+  threshold?: number;
 }
 
 export interface GateDependsOn {
@@ -139,6 +141,7 @@ export interface RedFlag {
   type: RedFlagType;
   description: string;
   branches?: RedFlagBranch[];
+  acknowledged?: boolean;
 }
 
 // ─── Resolution Event ───────────────────────────────────────────────
@@ -168,6 +171,7 @@ export interface ResolutionSession {
   pendingQuestions: PendingQuestion[];
   redFlags: RedFlag[];
   resolutionEvents: ResolutionEvent[];
+  gateAnswers: Map<string, GateAnswer>;
   totalNodesEvaluated: number;
   traversalDurationMs: number;
   carePlanId?: string;
@@ -194,6 +198,7 @@ export interface RetraversalResult {
   nodesRecomputed: number;
   newPendingQuestions: PendingQuestion[];
   newRedFlags: RedFlag[];
+  isIncomplete?: boolean;
 }
 
 // ─── Care Plan Generation ───────────────────────────────────────────
@@ -225,6 +230,16 @@ export interface MatchedPathway {
   };
   matchedConditionCodes: string[];
   matchScore: number;
+}
+
+// ─── Traversal Confidence Adapter ───────────────────────────────────
+
+export interface TraversalConfidenceAdapter {
+  computeNodeConfidence: (
+    node: GraphNode,
+    graphContext: GraphContext,
+    patientContext: PatientContext,
+  ) => Promise<NodeConfidenceResult>;
 }
 
 // ─── Constants ──────────────────────────────────────────────────────

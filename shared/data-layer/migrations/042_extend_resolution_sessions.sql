@@ -57,4 +57,9 @@ CREATE TABLE pathway_resolution_events (
 CREATE INDEX idx_resolution_events_session
   ON pathway_resolution_events(session_id, created_at);
 
+-- 7. Index for care_plan_id lookups ("which session produced this care plan?")
+CREATE INDEX idx_resolution_sessions_care_plan
+  ON pathway_resolution_sessions(care_plan_id)
+  WHERE care_plan_id IS NOT NULL;
+
 COMMIT;

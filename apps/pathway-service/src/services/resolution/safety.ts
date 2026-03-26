@@ -1,3 +1,12 @@
+/**
+ * Safety utilities for pathway traversal.
+ *
+ * NOTE: The TraversalEngine and RetraversalEngine currently implement
+ * equivalent safety checks inline (timeout, cycle detection, cascade limit,
+ * critical data checks) because they need context-specific handling within
+ * the BFS loop. These exported functions remain available for other consumers
+ * and are covered by safety.test.ts.
+ */
 import { GraphNode, SignalBreakdown } from '../confidence/types';
 import { RedFlag, MAX_CASCADE_DEPTH } from './types';
 

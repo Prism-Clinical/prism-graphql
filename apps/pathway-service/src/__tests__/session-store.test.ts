@@ -97,7 +97,7 @@ describe('SessionStore serialization', () => {
           nodeId: 'node-3',
           nodeType: 'Procedure',
           title: 'Biopsy',
-          status: NodeStatus.PENDING,
+          status: NodeStatus.PENDING_QUESTION,
           confidence: 0.5,
           confidenceBreakdown: [],
           depth: 2,
@@ -111,7 +111,7 @@ describe('SessionStore serialization', () => {
 
     expect(restored.size).toBe(3);
     expect(restored.get('node-2')?.excludeReason).toBe('Not indicated');
-    expect(restored.get('node-3')?.status).toBe(NodeStatus.PENDING);
+    expect(restored.get('node-3')?.status).toBe(NodeStatus.PENDING_QUESTION);
   });
 
   it('should preserve provider override in NodeResult', () => {

@@ -56,13 +56,6 @@ export enum ImportMode {
   NEW_VERSION = 'NEW_VERSION',
 }
 
-// Resolution session status
-export enum ResolutionSessionStatus {
-  IN_PROGRESS = 'IN_PROGRESS',
-  COMPLETED = 'COMPLETED',
-  ABANDONED = 'ABANDONED',
-}
-
 // Resolution decision types
 export enum ResolutionType {
   AUTO_RESOLVED = 'AUTO_RESOLVED',
@@ -117,7 +110,6 @@ export enum WeightSource {
 
 // ─── Resolution Engine Enums (Plan 4) ────────────────────────────────
 
-// Replaces ResolutionSessionStatus (Plan 1 scaffold)
 export enum SessionStatus {
   ACTIVE = 'ACTIVE',
   COMPLETED = 'COMPLETED',

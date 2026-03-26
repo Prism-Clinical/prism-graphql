@@ -1,4 +1,4 @@
-import { GraphContext, PatientContext, GraphNode, GraphEdge, NodeConfidenceResult } from '../confidence/types';
+import { GraphContext, PatientContext, GraphNode } from '../confidence/types';
 import { evaluateGate } from './gate-evaluator';
 import {
   NodeResult,
@@ -9,6 +9,7 @@ import {
   DefaultBehavior,
   AnswerType,
   TraversalResult,
+  TraversalConfidenceAdapter,
   DependencyMap,
   PendingQuestion,
   RedFlag,
@@ -85,6 +86,9 @@ function markSubtree(
 
   while (queue.length > 0) {
     const { id, depth } = queue.shift()!;
+    // Design: first-writer-wins for diamond-shaped graphs. If a node is
+    // reachable via multiple paths, the first path to evaluate it determines
+    // its status. BFS ordering is deterministic for a given graph structure.
     if (marked.has(id) || resolutionState.has(id)) continue;
     marked.add(id);
 
@@ -101,6 +105,7 @@ function markSubtree(
       excludeReason,
       parentNodeId,
       depth,
+      properties: node.properties,
     });
 
     for (const edge of graphContext.outgoingEdges(id)) {
@@ -132,7 +137,7 @@ function recordGateContextFields(depMap: DependencyMap, gateId: string, fields: 
 
 export class TraversalEngine {
   constructor(
-    private confidenceEngine: { computeNodeConfidence: (...args: unknown[]) => Promise<NodeConfidenceResult> },
+    private confidenceEngine: TraversalConfidenceAdapter,
     private thresholds: { autoResolveThreshold: number; suggestThreshold: number },
   ) {}
 
@@ -190,12 +195,13 @@ export class TraversalEngine {
             excludeReason: 'Traversal timeout exceeded',
             parentNodeId,
             depth,
+            properties: n.properties,
           });
         }
         break;
       }
 
-      // Skip if already resolved (memoized)
+      // Memoization: skip already-resolved nodes (first-writer-wins for diamond graphs)
       if (resolutionState.has(nodeIdentifier)) continue;
 
       const node = graphContext.getNode(nodeIdentifier);
@@ -241,6 +247,7 @@ export class TraversalEngine {
               excludeReason: 'Cycle detected in gate dependencies',
               parentNodeId,
               depth,
+              properties: node.properties,
             });
             if (defaultStatus === NodeStatus.GATED_OUT) {
               const childIds = graphContext.outgoingEdges(nodeIdentifier).map(e => e.targetId);
@@ -279,6 +286,7 @@ export class TraversalEngine {
             confidenceBreakdown: [],
             parentNodeId,
             depth,
+            properties: node.properties,
           });
           for (const edge of graphContext.outgoingEdges(nodeIdentifier)) {
             if (!resolutionState.has(edge.targetId)) {
@@ -303,6 +311,7 @@ export class TraversalEngine {
               excludeReason: 'Question has not been answered',
               parentNodeId,
               depth,
+              properties: node.properties,
             });
 
             // Mark subtree as PENDING_QUESTION
@@ -331,6 +340,7 @@ export class TraversalEngine {
               excludeReason: gateResult.reason,
               parentNodeId,
               depth,
+              properties: node.properties,
             });
             const childIds = graphContext.outgoingEdges(nodeIdentifier).map(e => e.targetId);
             markSubtree(childIds, graphContext, resolutionState, NodeStatus.GATED_OUT,
@@ -346,6 +356,7 @@ export class TraversalEngine {
               confidenceBreakdown: [],
               parentNodeId,
               depth,
+              properties: node.properties,
             });
             for (const edge of graphContext.outgoingEdges(nodeIdentifier)) {
               if (!resolutionState.has(edge.targetId)) {
@@ -400,6 +411,7 @@ export class TraversalEngine {
           confidenceBreakdown: [],
           parentNodeId,
           depth,
+          properties: node.properties,
         });
 
         // Record branch results
@@ -423,7 +435,12 @@ export class TraversalEngine {
                 excludeReason: br.excludeReason,
                 parentNodeId: nodeIdentifier,
                 depth: depth + 1,
+                properties: targetNode.properties,
               });
+              // Mark the excluded branch's subtree too
+              const childIds = graphContext.outgoingEdges(br.targetId).map(e => e.targetId);
+              markSubtree(childIds, graphContext, resolutionState, NodeStatus.EXCLUDED,
+                `Excluded by decision point: ${br.excludeReason}`, br.targetId, depth + 1);
             }
           }
           recordInfluence(dependencyMap, nodeIdentifier, br.targetId);
@@ -472,6 +489,7 @@ export class TraversalEngine {
           confidenceBreakdown: confResult.breakdown,
           parentNodeId,
           depth,
+          properties: node.properties,
         });
 
         for (const edge of graphContext.outgoingEdges(nodeIdentifier)) {
@@ -506,6 +524,7 @@ export class TraversalEngine {
           excludeReason,
           parentNodeId,
           depth,
+          properties: node.properties,
         });
 
         // Check for missing critical data
@@ -543,6 +562,7 @@ export class TraversalEngine {
         confidenceBreakdown: [],
         parentNodeId,
         depth,
+        properties: node.properties,
       });
 
       for (const edge of graphContext.outgoingEdges(nodeIdentifier)) {
@@ -613,9 +633,28 @@ export class TraversalEngine {
           : undefined,
         parentNodeId,
         depth,
+        properties: node.properties,
       });
-    } else {
-      // For other node types, just include
+    } else if (node.nodeType === 'Gate') {
+      // For gate nodes, evaluate the gate properly
+      const gateProps = node.properties as unknown as GateProperties;
+      const gateResult = evaluateGate(
+        gateProps, patientContext, resolutionState, gateAnswers, nodeIdentifier,
+      );
+      resolutionState.set(nodeIdentifier, {
+        nodeId: nodeIdentifier,
+        nodeType: node.nodeType,
+        title: nodeTitle(node),
+        status: gateResult.satisfied ? NodeStatus.INCLUDED : NodeStatus.GATED_OUT,
+        confidence: gateResult.satisfied ? 1 : 0,
+        confidenceBreakdown: [],
+        excludeReason: gateResult.satisfied ? undefined : gateResult.reason,
+        parentNodeId,
+        depth,
+        properties: node.properties,
+      });
+    } else if (node.nodeType === 'DecisionPoint') {
+      // DecisionPoint: include it, branches will be evaluated during main BFS
       resolutionState.set(nodeIdentifier, {
         nodeId: nodeIdentifier,
         nodeType: node.nodeType,
@@ -625,6 +664,20 @@ export class TraversalEngine {
         confidenceBreakdown: [],
         parentNodeId,
         depth,
+        properties: node.properties,
+      });
+    } else {
+      // For other node types (Criterion, Evidence, CodeEntry), just include
+      resolutionState.set(nodeIdentifier, {
+        nodeId: nodeIdentifier,
+        nodeType: node.nodeType,
+        title: nodeTitle(node),
+        status: NodeStatus.INCLUDED,
+        confidence: 1,
+        confidenceBreakdown: [],
+        parentNodeId,
+        depth,
+        properties: node.properties,
       });
     }
 

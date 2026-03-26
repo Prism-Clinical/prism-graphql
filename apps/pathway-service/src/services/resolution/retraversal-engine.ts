@@ -60,13 +60,21 @@ function topologicalOrder(
 
 // ─── RetraversalEngine ───────────────────────────────────────────────
 
+export interface RetraversalConfidenceAdapter {
+  computeNodeConfidence: (
+    nodeId: string,
+    graphContext: GraphContext,
+    patientContext: PatientContext,
+  ) => Promise<{
+    confidence: number;
+    breakdown: SignalBreakdown[];
+    resolutionType: string;
+  }>;
+}
+
 export class RetraversalEngine {
   constructor(
-    private confidenceEngine: { computeNodeConfidence: (...args: unknown[]) => Promise<{
-      confidence: number;
-      breakdown: SignalBreakdown[];
-      resolutionType: string;
-    }> },
+    private confidenceEngine: RetraversalConfidenceAdapter,
     private thresholds: { autoResolveThreshold: number; suggestThreshold: number },
   ) {}
 
@@ -95,9 +103,12 @@ export class RetraversalEngine {
       enqueued.add(nodeId);
     }
 
+    let isIncomplete = false;
+
     while (queue.length > 0) {
       // Timeout check
       if (Date.now() - startTime > RETRAVERSAL_TIMEOUT_MS) {
+        isIncomplete = true;
         break;
       }
 
@@ -118,6 +129,12 @@ export class RetraversalEngine {
       if (!existing) continue;
 
       const previousStatus = existing.status;
+
+      // Check for provider override first — don't touch overridden nodes
+      if (existing.providerOverride) {
+        continue;
+      }
+
       nodesRecomputed++;
 
       // Re-evaluate the node
@@ -168,11 +185,6 @@ export class RetraversalEngine {
         );
       }
 
-      // Check for provider override — don't change overridden nodes
-      if (existing.providerOverride) {
-        continue;
-      }
-
       existing.status = newStatus;
 
       // If status changed, propagate to dependents
@@ -190,6 +202,26 @@ export class RetraversalEngine {
           }
         }
       }
+
+      // Check for new red flags: all branches of a DecisionPoint excluded
+      if (existing.nodeType === 'DecisionPoint') {
+        const branches = graphContext.outgoingEdges(nodeId)
+          .filter(e => e.edgeType === 'BRANCHES_TO');
+        if (branches.length > 0) {
+          const allExcluded = branches.every(b => {
+            const branchNode = resolutionState.get(b.targetId);
+            return branchNode && branchNode.status === NodeStatus.EXCLUDED;
+          });
+          if (allExcluded) {
+            newRedFlags.push({
+              nodeId,
+              nodeTitle: existing.title,
+              type: 'all_branches_excluded',
+              description: `All ${branches.length} branches of decision point "${existing.title}" are now excluded after re-evaluation`,
+            });
+          }
+        }
+      }
     }
 
     return {
@@ -197,6 +229,7 @@ export class RetraversalEngine {
       nodesRecomputed,
       newPendingQuestions,
       newRedFlags,
+      isIncomplete,
     };
   }
 }

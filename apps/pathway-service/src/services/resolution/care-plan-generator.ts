@@ -122,13 +122,15 @@ export function validateForGeneration(
     });
   }
 
-  // 2. Unresolved red flags
+  // 2. Unresolved red flags (only block on unacknowledged ones)
   for (const flag of redFlags) {
-    blockers.push({
-      type: BlockerType.UNRESOLVED_RED_FLAG,
-      description: `Unresolved red flag: ${flag.description}`,
-      relatedNodeIds: [flag.nodeId],
-    });
+    if (!flag.acknowledged) {
+      blockers.push({
+        type: BlockerType.UNRESOLVED_RED_FLAG,
+        description: `Unresolved red flag: ${flag.description}`,
+        relatedNodeIds: [flag.nodeId],
+      });
+    }
   }
 
   // 3. Pending gates guarding included subtrees
@@ -193,19 +195,20 @@ export function generateCarePlan(
 ): CarePlanData {
   const goals: CarePlanGoalData[] = [];
   const interventions: CarePlanInterventionData[] = [];
-  const conditionCodes: string[] = [];
-
-  // Collect condition codes from any node that carries them
+  // Collect condition codes only from INCLUDED nodes
+  const conditionCodeSet = new Set<string>();
   for (const node of state.values()) {
+    if (!isIncluded(node)) continue;
     const codes = node.properties?.condition_codes;
     if (Array.isArray(codes)) {
       for (const c of codes) {
-        if (typeof c === 'string' && !conditionCodes.includes(c)) {
-          conditionCodes.push(c);
+        if (typeof c === 'string') {
+          conditionCodeSet.add(c);
         }
       }
     }
   }
+  const conditionCodes = [...conditionCodeSet];
 
   // Build goals from included Stage nodes that have action descendants
   for (const node of state.values()) {

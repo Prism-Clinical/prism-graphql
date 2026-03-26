@@ -1,14 +1,14 @@
+import { GraphQLError } from 'graphql';
 import { DataSourceContext } from '../types';
-import { WeightCascadeResolver } from '../services/confidence/weight-cascade-resolver';
-import { SignalDefinition, ResolvedWeight, normalizePropagationMode } from '../services/confidence/types';
+import { ConfidenceEngine } from '../services/confidence/confidence-engine';
+import { SignalDefinition, ResolvedWeight, normalizePropagationMode, PatientContext } from '../services/confidence/types';
 import {
   getSession,
   getMatchedPathways,
   getPatientSessions,
 } from '../services/resolution/session-store';
 import { ResolutionSession, NodeResult, NodeStatus } from '../services/resolution/types';
-
-const sharedCascadeResolver = new WeightCascadeResolver();
+import { fetchGraphFromAGE, buildGraphContext, sharedScorerRegistry, sharedCascadeResolver } from './helpers/resolution-context';
 
 // ─── GraphQL Formatting ──────────────────────────────────────────────
 
@@ -119,7 +119,7 @@ export function formatSessionForGraphQL(session: ResolutionSession) {
   };
 }
 
-const PATHWAY_COLUMNS = `
+export const PATHWAY_COLUMNS = `
   id, age_node_id AS "ageNodeId", logical_id AS "logicalId",
   title, version, category, status,
   condition_codes AS "conditionCodes",
@@ -265,6 +265,73 @@ export const Query = {
         institutionId: args.institutionId,
         organizationId: args.organizationId,
       });
+    },
+
+    pathwayConfidence: async (
+      _: unknown,
+      args: {
+        pathwayId: string;
+        patientContext: {
+          patientId: string;
+          conditionCodes?: Array<{ code: string; system: string; display?: string }>;
+          medications?: Array<{ code: string; system: string; display?: string }>;
+          labResults?: Array<{ code: string; system: string; value?: number; unit?: string; date?: string; display?: string }>;
+          allergies?: Array<{ code: string; system: string; display?: string }>;
+          vitalSigns?: Record<string, unknown>;
+        };
+        institutionId?: string;
+        organizationId?: string;
+      },
+      context: DataSourceContext
+    ) => {
+      const { pool } = context;
+
+      const pathwayResult = await pool.query(
+        'SELECT age_node_id FROM pathway_graph_index WHERE id = $1',
+        [args.pathwayId],
+      );
+      const ageNodeId = pathwayResult.rows[0]?.age_node_id;
+      if (!ageNodeId) {
+        throw new GraphQLError('Pathway not found or has no graph data', {
+          extensions: { code: 'NOT_FOUND' },
+        });
+      }
+
+      // Fetch graph and signals in parallel
+      const [{ nodes, edges }, signalResult] = await Promise.all([
+        fetchGraphFromAGE(pool, ageNodeId),
+        pool.query(
+          `SELECT id, name, display_name, description, scoring_type, scoring_rules,
+                  scope, institution_id, default_weight, is_active
+           FROM confidence_signal_definitions WHERE is_active = true ORDER BY name ASC`
+        ),
+      ]);
+      const signals = signalResult.rows.map(hydrateSignalDefinition);
+
+      const pc: PatientContext = {
+        patientId: args.patientContext.patientId,
+        conditionCodes: args.patientContext.conditionCodes ?? [],
+        medications: args.patientContext.medications ?? [],
+        labResults: args.patientContext.labResults ?? [],
+        allergies: args.patientContext.allergies ?? [],
+        vitalSigns: args.patientContext.vitalSigns,
+      };
+
+      const confidenceEngine = new ConfidenceEngine(sharedScorerRegistry, sharedCascadeResolver);
+      const result = await confidenceEngine.computePathwayConfidence({
+        pool,
+        pathwayId: args.pathwayId,
+        nodes,
+        edges,
+        signalDefinitions: signals,
+        patientContext: pc,
+      });
+
+      return {
+        pathwayId: args.pathwayId,
+        overallConfidence: result.overallConfidence,
+        nodes: result.nodes,
+      };
     },
 
     // ─── Resolution Query Resolvers ─────────────────────────────────────

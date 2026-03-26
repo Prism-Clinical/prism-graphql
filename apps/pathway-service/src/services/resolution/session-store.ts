@@ -12,6 +12,7 @@ import {
   DependencyMap,
   ResolutionSession,
   MatchedPathway,
+  GateAnswer,
 } from './types';
 
 // ─── Helpers ───────────────────────────────────────────────────────
@@ -28,6 +29,25 @@ function objToMapOfSets(obj: Record<string, string[]>): Map<string, Set<string>>
   const map = new Map<string, Set<string>>();
   for (const [key, arr] of Object.entries(obj)) {
     map.set(key, new Set(arr));
+  }
+  return map;
+}
+
+// ─── Gate Answer Serialization ─────────────────────────────────────
+
+function serializeGateAnswers(answers: Map<string, GateAnswer>): Record<string, GateAnswer> {
+  const obj: Record<string, GateAnswer> = {};
+  for (const [key, value] of answers) {
+    obj[key] = value;
+  }
+  return obj;
+}
+
+function deserializeGateAnswers(json: Record<string, GateAnswer> | null | undefined): Map<string, GateAnswer> {
+  const map = new Map<string, GateAnswer>();
+  if (!json) return map;
+  for (const [key, value] of Object.entries(json)) {
+    map.set(key, value as GateAnswer);
   }
   return map;
 }
@@ -84,6 +104,7 @@ export async function createSession(
     dependencyMap: DependencyMap;
     pendingQuestions: unknown[];
     redFlags: unknown[];
+    gateAnswers?: Map<string, GateAnswer>;
     totalNodesEvaluated: number;
     traversalDurationMs: number;
   },
@@ -91,9 +112,9 @@ export async function createSession(
   const result = await pool.query(
     `INSERT INTO pathway_resolution_sessions
      (pathway_id, pathway_version, patient_id, provider_id, status, initial_patient_context,
-      resolution_state, dependency_map, pending_questions, red_flags,
+      resolution_state, dependency_map, pending_questions, red_flags, gate_answers,
       total_nodes_evaluated, traversal_duration_ms)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
      RETURNING id`,
     [
       session.pathwayId,
@@ -106,6 +127,7 @@ export async function createSession(
       JSON.stringify(serializeDependencyMap(session.dependencyMap)),
       JSON.stringify(session.pendingQuestions),
       JSON.stringify(session.redFlags),
+      JSON.stringify(serializeGateAnswers(session.gateAnswers ?? new Map())),
       session.totalNodesEvaluated,
       session.traversalDurationMs,
     ],
@@ -146,6 +168,7 @@ export async function getSession(
     pendingQuestions: row.pending_questions ?? [],
     redFlags: row.red_flags ?? [],
     resolutionEvents: events.rows,
+    gateAnswers: deserializeGateAnswers(row.gate_answers),
     totalNodesEvaluated: row.total_nodes_evaluated,
     traversalDurationMs: row.traversal_duration_ms,
     carePlanId: row.care_plan_id,
@@ -164,9 +187,11 @@ export async function updateSession(
     additionalContext?: unknown;
     pendingQuestions?: unknown[];
     redFlags?: unknown[];
+    gateAnswers?: Map<string, GateAnswer>;
     totalNodesEvaluated?: number;
     carePlanId?: string;
   },
+  expectedUpdatedAt?: Date,
 ): Promise<void> {
   const sets: string[] = ['updated_at = NOW()'];
   const values: unknown[] = [];
@@ -196,6 +221,10 @@ export async function updateSession(
     sets.push(`red_flags = $${idx++}`);
     values.push(JSON.stringify(updates.redFlags));
   }
+  if (updates.gateAnswers) {
+    sets.push(`gate_answers = $${idx++}`);
+    values.push(JSON.stringify(serializeGateAnswers(updates.gateAnswers)));
+  }
   if (updates.totalNodesEvaluated !== undefined) {
     sets.push(`total_nodes_evaluated = $${idx++}`);
     values.push(updates.totalNodesEvaluated);
@@ -205,11 +234,26 @@ export async function updateSession(
     values.push(updates.carePlanId);
   }
 
+  // Optimistic locking: if expectedUpdatedAt is provided, only update if the row
+  // hasn't been modified by another request since we read it
+  let whereClause = `id = $${idx++}`;
   values.push(sessionId);
-  await pool.query(
-    `UPDATE pathway_resolution_sessions SET ${sets.join(', ')} WHERE id = $${idx}`,
+
+  if (expectedUpdatedAt) {
+    whereClause += ` AND updated_at = $${idx++}`;
+    values.push(expectedUpdatedAt);
+  }
+
+  const result = await pool.query(
+    `UPDATE pathway_resolution_sessions SET ${sets.join(', ')} WHERE ${whereClause}`,
     values,
   );
+
+  if (expectedUpdatedAt && result.rowCount === 0) {
+    throw new Error(
+      'Session was modified by another request (optimistic lock conflict). Please reload and retry.',
+    );
+  }
 }
 
 // ─── DB: Events & Analytics ────────────────────────────────────────
@@ -294,39 +338,53 @@ export async function logGateAnswer(
 
 export async function getMatchedPathways(
   pool: Pool,
-  _patientId: string,
+  patientId: string,
 ): Promise<MatchedPathway[]> {
   const result = await pool.query(
-    `SELECT DISTINCT pgi.*, pc.code as matched_code
+    `WITH patient_codes AS (
+       SELECT DISTINCT sc.code
+       FROM snapshot_conditions sc
+       JOIN patient_clinical_snapshots pcs ON sc.snapshot_id = pcs.id
+       JOIN patients p ON pcs.epic_patient_id = p.epic_patient_id
+       WHERE p.id = $1
+         AND pcs.snapshot_version = (
+           SELECT MAX(snapshot_version) FROM patient_clinical_snapshots
+           WHERE epic_patient_id = p.epic_patient_id
+         )
+         AND sc.code IS NOT NULL
+     ),
+     pathway_totals AS (
+       SELECT pathway_id, COUNT(*) AS total_codes
+       FROM pathway_condition_codes
+       GROUP BY pathway_id
+     )
+     SELECT pgi.id, pgi.logical_id, pgi.title, pgi.version, pgi.category,
+            pgi.status, pgi.condition_codes,
+            array_agg(DISTINCT pc.code) AS matched_codes,
+            pt.total_codes
      FROM pathway_graph_index pgi
      JOIN pathway_condition_codes pc ON pc.pathway_id = pgi.id
+     JOIN patient_codes ON patient_codes.code = pc.code
+     JOIN pathway_totals pt ON pt.pathway_id = pgi.id
      WHERE pgi.status = 'ACTIVE' AND pgi.is_active = true
+     GROUP BY pgi.id, pgi.logical_id, pgi.title, pgi.version, pgi.category,
+              pgi.status, pgi.condition_codes, pt.total_codes
      ORDER BY pgi.title`,
+    [patientId],
   );
 
-  const pathwayMap = new Map<string, { pathway: MatchedPathway['pathway']; matchedCodes: Set<string> }>();
-  for (const row of result.rows) {
-    if (!pathwayMap.has(row.id)) {
-      pathwayMap.set(row.id, {
-        pathway: {
-          id: row.id,
-          logicalId: row.logical_id,
-          title: row.title,
-          version: row.version,
-          category: row.category,
-          status: row.status,
-          conditionCodes: row.condition_codes,
-        },
-        matchedCodes: new Set(),
-      });
-    }
-    pathwayMap.get(row.id)!.matchedCodes.add(row.matched_code);
-  }
-
-  return [...pathwayMap.values()].map(({ pathway, matchedCodes }) => ({
-    pathway,
-    matchedConditionCodes: [...matchedCodes],
-    matchScore: matchedCodes.size / (pathway.conditionCodes?.length || 1),
+  return result.rows.map(row => ({
+    pathway: {
+      id: row.id,
+      logicalId: row.logical_id,
+      title: row.title,
+      version: row.version,
+      category: row.category,
+      status: row.status,
+      conditionCodes: row.condition_codes,
+    },
+    matchedConditionCodes: row.matched_codes || [],
+    matchScore: (row.matched_codes?.length || 0) / (row.total_codes || 1),
   }));
 }
 
