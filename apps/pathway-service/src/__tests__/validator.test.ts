@@ -305,4 +305,108 @@ describe('validatePathwayJson', () => {
       expect(result.warnings).toContainEqual(expect.stringContaining('Z99.99'));
     });
   });
+
+  describe('Gate node validation', () => {
+    function addValidGate(pw: ReturnType<typeof clonePathway>): void {
+      pw.nodes.push({
+        id: 'gate-1',
+        type: 'Gate' as any,
+        properties: {
+          title: 'Transplant screening',
+          gate_type: 'patient_attribute',
+          default_behavior: 'skip',
+          condition: { field: 'conditions', operator: 'includes_code', value: 'Z94.*', system: 'ICD-10' },
+        },
+      });
+      pw.edges.push({ from: 'step-1-1', to: 'gate-1', type: 'HAS_GATE' as any });
+      pw.edges.push({ from: 'gate-1', to: 'step-1-2', type: 'BRANCHES_TO' as any });
+    }
+
+    it('should accept a valid Gate node', () => {
+      const pw = clonePathway();
+      addValidGate(pw);
+      const result = validatePathwayJson(pw);
+      expect(result.valid).toBe(true);
+      expect(result.errors).toHaveLength(0);
+    });
+
+    it('should reject Gate with no outbound edges', () => {
+      const pw = clonePathway();
+      pw.nodes.push({
+        id: 'gate-orphan',
+        type: 'Gate' as any,
+        properties: {
+          title: 'Orphan gate',
+          gate_type: 'patient_attribute',
+          default_behavior: 'skip',
+        },
+      });
+      // Only inbound edge, no outbound
+      pw.edges.push({ from: 'step-1-1', to: 'gate-orphan', type: 'HAS_GATE' as any });
+      const result = validatePathwayJson(pw);
+      expect(result.valid).toBe(false);
+      expect(result.errors).toContainEqual(expect.stringContaining('gate-orphan'));
+      expect(result.errors).toContainEqual(expect.stringContaining('outbound edge'));
+    });
+
+    it('should reject Gate with nonexistent depends_on references', () => {
+      const pw = clonePathway();
+      pw.nodes.push({
+        id: 'gate-bad-dep',
+        type: 'Gate' as any,
+        properties: {
+          title: 'Bad dep gate',
+          gate_type: 'patient_attribute',
+          default_behavior: 'skip',
+          depends_on: ['nonexistent-node'],
+        },
+      });
+      pw.edges.push({ from: 'step-1-1', to: 'gate-bad-dep', type: 'HAS_GATE' as any });
+      pw.edges.push({ from: 'gate-bad-dep', to: 'step-1-2', type: 'BRANCHES_TO' as any });
+      const result = validatePathwayJson(pw);
+      expect(result.valid).toBe(false);
+      expect(result.errors).toContainEqual(expect.stringContaining('nonexistent-node'));
+      expect(result.errors).toContainEqual(expect.stringContaining('depends_on'));
+    });
+
+    it('should reject select Gate without options', () => {
+      const pw = clonePathway();
+      pw.nodes.push({
+        id: 'gate-select',
+        type: 'Gate' as any,
+        properties: {
+          title: 'Select gate',
+          gate_type: 'select',
+          default_behavior: 'skip',
+          // missing options array
+        },
+      });
+      pw.edges.push({ from: 'step-1-1', to: 'gate-select', type: 'HAS_GATE' as any });
+      pw.edges.push({ from: 'gate-select', to: 'step-1-2', type: 'BRANCHES_TO' as any });
+      const result = validatePathwayJson(pw);
+      expect(result.valid).toBe(false);
+      expect(result.errors).toContainEqual(expect.stringContaining('select'));
+      expect(result.errors).toContainEqual(expect.stringContaining('options'));
+    });
+
+    it('should reject compound Gate with empty conditions', () => {
+      const pw = clonePathway();
+      pw.nodes.push({
+        id: 'gate-compound',
+        type: 'Gate' as any,
+        properties: {
+          title: 'Compound gate',
+          gate_type: 'compound',
+          default_behavior: 'skip',
+          conditions: [],
+        },
+      });
+      pw.edges.push({ from: 'step-1-1', to: 'gate-compound', type: 'HAS_GATE' as any });
+      pw.edges.push({ from: 'gate-compound', to: 'step-1-2', type: 'BRANCHES_TO' as any });
+      const result = validatePathwayJson(pw);
+      expect(result.valid).toBe(false);
+      expect(result.errors).toContainEqual(expect.stringContaining('compound'));
+      expect(result.errors).toContainEqual(expect.stringContaining('conditions'));
+    });
+  });
 });

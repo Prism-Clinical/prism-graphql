@@ -1,10 +1,125 @@
+import { GraphQLError } from 'graphql';
 import { DataSourceContext } from '../types';
-import { WeightCascadeResolver } from '../services/confidence/weight-cascade-resolver';
-import { SignalDefinition, ResolvedWeight, normalizePropagationMode } from '../services/confidence/types';
+import { ConfidenceEngine } from '../services/confidence/confidence-engine';
+import { SignalDefinition, ResolvedWeight, normalizePropagationMode, PatientContext } from '../services/confidence/types';
+import {
+  getSession,
+  getMatchedPathways,
+  getPatientSessions,
+} from '../services/resolution/session-store';
+import { ResolutionSession, NodeResult, NodeStatus } from '../services/resolution/types';
+import { fetchGraphFromAGE, buildGraphContext, sharedScorerRegistry, sharedCascadeResolver } from './helpers/resolution-context';
 
-const sharedCascadeResolver = new WeightCascadeResolver();
+// ─── GraphQL Formatting ──────────────────────────────────────────────
 
-const PATHWAY_COLUMNS = `
+function formatNodeForGraphQL(node: NodeResult) {
+  return {
+    nodeId: node.nodeId,
+    nodeType: node.nodeType,
+    title: node.title,
+    status: node.status,
+    confidence: node.confidence,
+    confidenceBreakdown: node.confidenceBreakdown ?? [],
+    providerOverride: node.providerOverride
+      ? {
+          action: node.providerOverride.action,
+          reason: node.providerOverride.reason ?? null,
+          originalStatus: node.providerOverride.originalStatus,
+          originalConfidence: node.providerOverride.originalConfidence,
+        }
+      : null,
+    excludeReason: node.excludeReason ?? null,
+    parentNodeId: node.parentNodeId ?? null,
+    depth: node.depth,
+  };
+}
+
+function formatEventForGraphQL(event: {
+  id?: string;
+  event_type?: string;
+  eventType?: string;
+  trigger_data?: unknown;
+  triggerData?: unknown;
+  nodes_recomputed?: number;
+  nodesRecomputed?: number;
+  status_changes?: unknown;
+  statusChanges?: unknown;
+  created_at?: Date | string;
+  createdAt?: Date | string;
+}) {
+  return {
+    id: event.id ?? '',
+    eventType: event.event_type ?? event.eventType ?? '',
+    triggerData: event.trigger_data ?? event.triggerData ?? null,
+    nodesRecomputed: event.nodes_recomputed ?? event.nodesRecomputed ?? 0,
+    statusChanges: event.status_changes ?? event.statusChanges ?? null,
+    createdAt: (event.created_at ?? event.createdAt)?.toString() ?? '',
+  };
+}
+
+export function formatSessionForGraphQL(session: ResolutionSession) {
+  const includedNodes: ReturnType<typeof formatNodeForGraphQL>[] = [];
+  const excludedNodes: ReturnType<typeof formatNodeForGraphQL>[] = [];
+  const gatedOutNodes: ReturnType<typeof formatNodeForGraphQL>[] = [];
+
+  for (const node of session.resolutionState.values()) {
+    const formatted = formatNodeForGraphQL(node);
+    switch (node.status) {
+      case NodeStatus.INCLUDED:
+        includedNodes.push(formatted);
+        break;
+      case NodeStatus.EXCLUDED:
+        excludedNodes.push(formatted);
+        break;
+      case NodeStatus.GATED_OUT:
+        gatedOutNodes.push(formatted);
+        break;
+      default:
+        // PENDING_QUESTION, TIMEOUT, CASCADE_LIMIT, UNKNOWN go into gatedOut
+        gatedOutNodes.push(formatted);
+        break;
+    }
+  }
+
+  return {
+    id: session.id,
+    pathwayId: session.pathwayId,
+    pathwayVersion: session.pathwayVersion,
+    patientId: session.patientId,
+    providerId: session.providerId,
+    status: session.status,
+    includedNodes,
+    excludedNodes,
+    gatedOutNodes,
+    pendingQuestions: session.pendingQuestions.map(q => ({
+      gateId: q.gateId,
+      prompt: q.prompt,
+      answerType: q.answerType,
+      options: q.options ?? null,
+      affectedSubtreeSize: q.affectedSubtreeSize,
+      estimatedImpact: q.estimatedImpact,
+    })),
+    redFlags: session.redFlags.map(f => ({
+      nodeId: f.nodeId,
+      nodeTitle: f.nodeTitle,
+      type: f.type,
+      description: f.description,
+      branches: f.branches?.map(b => ({
+        nodeId: b.nodeId,
+        title: b.title,
+        confidence: b.confidence,
+        topExcludeReason: b.topExcludeReason ?? null,
+      })) ?? null,
+    })),
+    resolutionEvents: (session.resolutionEvents ?? []).map(formatEventForGraphQL),
+    totalNodesEvaluated: session.totalNodesEvaluated,
+    traversalDurationMs: session.traversalDurationMs,
+    createdAt: session.createdAt?.toString() ?? '',
+    updatedAt: session.updatedAt?.toString() ?? '',
+  };
+}
+
+export const PATHWAY_COLUMNS = `
   id, age_node_id AS "ageNodeId", logical_id AS "logicalId",
   title, version, category, status,
   condition_codes AS "conditionCodes",
@@ -150,6 +265,139 @@ export const Query = {
         institutionId: args.institutionId,
         organizationId: args.organizationId,
       });
+    },
+
+    pathwayConfidence: async (
+      _: unknown,
+      args: {
+        pathwayId: string;
+        patientContext: {
+          patientId: string;
+          conditionCodes?: Array<{ code: string; system: string; display?: string }>;
+          medications?: Array<{ code: string; system: string; display?: string }>;
+          labResults?: Array<{ code: string; system: string; value?: number; unit?: string; date?: string; display?: string }>;
+          allergies?: Array<{ code: string; system: string; display?: string }>;
+          vitalSigns?: Record<string, unknown>;
+        };
+        institutionId?: string;
+        organizationId?: string;
+      },
+      context: DataSourceContext
+    ) => {
+      const { pool } = context;
+
+      const pathwayResult = await pool.query(
+        'SELECT age_node_id FROM pathway_graph_index WHERE id = $1',
+        [args.pathwayId],
+      );
+      const ageNodeId = pathwayResult.rows[0]?.age_node_id;
+      if (!ageNodeId) {
+        throw new GraphQLError('Pathway not found or has no graph data', {
+          extensions: { code: 'NOT_FOUND' },
+        });
+      }
+
+      // Fetch graph and signals in parallel
+      const [{ nodes, edges }, signalResult] = await Promise.all([
+        fetchGraphFromAGE(pool, ageNodeId),
+        pool.query(
+          `SELECT id, name, display_name, description, scoring_type, scoring_rules,
+                  scope, institution_id, default_weight, is_active
+           FROM confidence_signal_definitions WHERE is_active = true ORDER BY name ASC`
+        ),
+      ]);
+      const signals = signalResult.rows.map(hydrateSignalDefinition);
+
+      const pc: PatientContext = {
+        patientId: args.patientContext.patientId,
+        conditionCodes: args.patientContext.conditionCodes ?? [],
+        medications: args.patientContext.medications ?? [],
+        labResults: args.patientContext.labResults ?? [],
+        allergies: args.patientContext.allergies ?? [],
+        vitalSigns: args.patientContext.vitalSigns,
+      };
+
+      const confidenceEngine = new ConfidenceEngine(sharedScorerRegistry, sharedCascadeResolver);
+      const result = await confidenceEngine.computePathwayConfidence({
+        pool,
+        pathwayId: args.pathwayId,
+        nodes,
+        edges,
+        signalDefinitions: signals,
+        patientContext: pc,
+      });
+
+      return {
+        pathwayId: args.pathwayId,
+        overallConfidence: result.overallConfidence,
+        nodes: result.nodes,
+      };
+    },
+
+    // ─── Resolution Query Resolvers ─────────────────────────────────────
+
+    matchedPathways: async (
+      _: unknown,
+      args: { patientId: string },
+      context: DataSourceContext
+    ) => {
+      return getMatchedPathways(context.pool, args.patientId);
+    },
+
+    resolutionSession: async (
+      _: unknown,
+      args: { sessionId: string },
+      context: DataSourceContext
+    ) => {
+      const session = await getSession(context.pool, args.sessionId);
+      if (!session) return null;
+      return formatSessionForGraphQL(session);
+    },
+
+    pendingQuestions: async (
+      _: unknown,
+      args: { sessionId: string },
+      context: DataSourceContext
+    ) => {
+      const session = await getSession(context.pool, args.sessionId);
+      if (!session) return [];
+      return session.pendingQuestions.map(q => ({
+        gateId: q.gateId,
+        prompt: q.prompt,
+        answerType: q.answerType,
+        options: q.options ?? null,
+        affectedSubtreeSize: q.affectedSubtreeSize,
+        estimatedImpact: q.estimatedImpact,
+      }));
+    },
+
+    redFlags: async (
+      _: unknown,
+      args: { sessionId: string },
+      context: DataSourceContext
+    ) => {
+      const session = await getSession(context.pool, args.sessionId);
+      if (!session) return [];
+      return session.redFlags.map(f => ({
+        nodeId: f.nodeId,
+        nodeTitle: f.nodeTitle,
+        type: f.type,
+        description: f.description,
+        branches: f.branches?.map(b => ({
+          nodeId: b.nodeId,
+          title: b.title,
+          confidence: b.confidence,
+          topExcludeReason: b.topExcludeReason ?? null,
+        })) ?? null,
+      }));
+    },
+
+    patientResolutionSessions: async (
+      _: unknown,
+      args: { patientId: string; status?: string },
+      context: DataSourceContext
+    ) => {
+      return getPatientSessions(context.pool, args.patientId, args.status);
     },
   },
 

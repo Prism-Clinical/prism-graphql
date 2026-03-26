@@ -128,9 +128,10 @@ describe('Mutation resolvers', () => {
   describe('archivePathway', () => {
     it('should reject archiving a non-ACTIVE pathway', async () => {
       const ctx = createMockContext();
-      ctx.pool.query = jest.fn().mockResolvedValueOnce({
-        rows: [{ status: 'DRAFT', logicalId: 'CP-Test' }],
-      });
+      // CTE returns empty (status wasn't ACTIVE), fallback SELECT returns DRAFT
+      ctx.pool.query = jest.fn()
+        .mockResolvedValueOnce({ rows: [] })
+        .mockResolvedValueOnce({ rows: [{ status: 'DRAFT' }] });
 
       await expect(
         Mutation.Mutation.archivePathway({}, { id: 'test-id' }, ctx)
