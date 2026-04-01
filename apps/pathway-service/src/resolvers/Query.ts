@@ -9,6 +9,7 @@ import {
 } from '../services/resolution/session-store';
 import { ResolutionSession, NodeResult, NodeStatus } from '../services/resolution/types';
 import { fetchGraphFromAGE, buildGraphContext, sharedScorerRegistry, sharedCascadeResolver } from './helpers/resolution-context';
+import { reconstructPathwayJson } from '../services/import/import-orchestrator';
 
 // ─── GraphQL Formatting ──────────────────────────────────────────────
 
@@ -173,6 +174,35 @@ export const Query = {
         [args.id]
       );
       return result.rows[0] || null;
+    },
+
+    pathwayGraph: async (_: unknown, { id }: { id: string }, context: DataSourceContext) => {
+      const client = await context.pool.connect();
+      try {
+        // First get the pathway metadata
+        const pathwayResult = await client.query(
+          `SELECT ${PATHWAY_COLUMNS} FROM pathway_graph_index WHERE id = $1`,
+          [id],
+        );
+        const pathway = pathwayResult.rows[0];
+        if (!pathway) return null;
+
+        // Reconstruct the full graph
+        const pathwayJson = await reconstructPathwayJson(client, id);
+        if (!pathwayJson) {
+          // Return pathway with empty graph if reconstruction fails
+          return { pathway, nodes: [], edges: [], conditionCodeDetails: [] };
+        }
+
+        return {
+          pathway,
+          nodes: pathwayJson.nodes,
+          edges: pathwayJson.edges,
+          conditionCodeDetails: pathwayJson.pathway.condition_codes,
+        };
+      } finally {
+        client.release();
+      }
     },
 
     signalDefinitions: async (

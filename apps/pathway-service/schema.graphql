@@ -66,6 +66,34 @@ type Pathway @key(fields: "id") {
   updatedAt: String!
 }
 
+type PathwayGraphNode {
+  id: String!
+  type: String!
+  properties: JSON!
+}
+
+type PathwayGraphEdge {
+  from: String!
+  to: String!
+  type: String!
+  properties: JSON
+}
+
+type PathwayConditionCode {
+  code: String!
+  system: String!
+  description: String
+  usage: String
+  grouping: String
+}
+
+type PathwayGraph {
+  pathway: Pathway!
+  nodes: [PathwayGraphNode!]!
+  edges: [PathwayGraphEdge!]!
+  conditionCodeDetails: [PathwayConditionCode!]!
+}
+
 # ─── Import Types ──────────────────────────────────────────────────────
 
 type ValidationResult {
@@ -429,6 +457,7 @@ type Query {
   pathwayServiceHealth: Boolean!
   pathways(status: PathwayStatus, category: PathwayCategory, first: Int): [Pathway!]!
   pathway(id: ID!): Pathway
+  pathwayGraph(id: ID!): PathwayGraph
 
   pathwayConfidence(
     pathwayId: ID!

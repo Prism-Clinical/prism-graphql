@@ -335,7 +335,7 @@ async function deleteGraphSubtree(
  * Used for computing diffs during DRAFT_UPDATE and NEW_VERSION imports.
  * Returns null if reconstruction fails (e.g., no graph data found).
  */
-async function reconstructPathwayJson(
+export async function reconstructPathwayJson(
   client: PoolClient,
   pathwayId: string
 ): Promise<PathwayJson | null> {
