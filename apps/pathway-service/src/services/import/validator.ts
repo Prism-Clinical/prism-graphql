@@ -18,11 +18,21 @@ const VALID_NODE_TYPES = new Set<string>(Object.keys(REQUIRED_NODE_PROPERTIES));
 const VALID_EDGE_TYPES = new Set<string>(Object.keys(VALID_EDGE_ENDPOINTS));
 const VALID_CATEGORIES = new Set<string>(Object.values(PathwayCategory));
 
+interface ValidateOptions {
+  /** When true, missing required properties and other WIP issues become warnings instead of errors */
+  draftMode?: boolean;
+}
+
 /**
  * Validate a pathway JSON definition.
  * Collects ALL errors — never fails on first error.
+ *
+ * In draftMode, "soft" issues (missing required properties, missing Stage nodes,
+ * code format violations) are collected as warnings instead of errors, allowing
+ * work-in-progress drafts to be saved.
  */
-export function validatePathwayJson(pw: PathwayJson): ValidationResult {
+export function validatePathwayJson(pw: PathwayJson, options: ValidateOptions = {}): ValidationResult {
+  const { draftMode = false } = options;
   const errors: string[] = [];
   const warnings: string[] = [];
 
@@ -87,7 +97,7 @@ export function validatePathwayJson(pw: PathwayJson): ValidationResult {
       errors.push(`node[${i}] (${node.id}): invalid node type "${node.type}". Must be one of: ${[...VALID_NODE_TYPES].join(', ')}`);
     } else {
       nodeTypeMap.set(node.id, node.type);
-      validateNodeProperties(node.id, node.type as PathwayNodeType, node.properties, i, errors, warnings);
+      validateNodeProperties(node.id, node.type as PathwayNodeType, node.properties, i, errors, warnings, draftMode);
     }
   }
 
@@ -152,7 +162,7 @@ export function validatePathwayJson(pw: PathwayJson): ValidationResult {
   validateGateNodes(pw, nodeIds, errors, warnings);
 
   // ─── Semantic validation ────────────────────────────────────────
-  validateSemanticRules(pw, nodeIds, nodeTypeMap, errors, warnings);
+  validateSemanticRules(pw, nodeIds, nodeTypeMap, errors, warnings, draftMode);
 
   return { valid: errors.length === 0, errors, warnings };
 }
@@ -231,7 +241,8 @@ function validateNodeProperties(
   properties: Record<string, unknown> | undefined,
   index: number,
   errors: string[],
-  warnings: string[]
+  warnings: string[],
+  draftMode: boolean
 ): void {
   if (!properties || typeof properties !== 'object') {
     errors.push(`node[${index}] (${nodeId}): missing "properties" object`);
@@ -239,9 +250,11 @@ function validateNodeProperties(
   }
 
   const required = REQUIRED_NODE_PROPERTIES[nodeType];
+  // In draft mode, missing required properties are warnings (WIP is expected)
+  const target = draftMode ? warnings : errors;
   for (const prop of required) {
     if (properties[prop] === undefined || properties[prop] === null) {
-      errors.push(`node[${index}] (${nodeId}): ${nodeType} missing required property "${prop}"`);
+      target.push(`node[${index}] (${nodeId}): ${nodeType} missing required property "${prop}"`);
     }
   }
 
@@ -273,17 +286,21 @@ function validateSemanticRules(
   nodeIds: Set<string>,
   nodeTypeMap: Map<string, string>,
   errors: string[],
-  warnings: string[]
+  warnings: string[],
+  draftMode: boolean
 ): void {
   // Guard: edges may be absent if structural validation already flagged it
   const edges = pw.edges && Array.isArray(pw.edges) ? pw.edges : [];
+
+  // In draft mode, WIP-related semantic issues are warnings
+  const softTarget = draftMode ? warnings : errors;
 
   // SE1: Code format validation for condition_codes
   if (pw.pathway.condition_codes) {
     for (let i = 0; i < pw.pathway.condition_codes.length; i++) {
       const cc = pw.pathway.condition_codes[i];
       if (cc.system && cc.code) {
-        validateCodeFormat(cc.system, cc.code, `condition_codes[${i}]`, errors);
+        validateCodeFormat(cc.system, cc.code, `condition_codes[${i}]`, draftMode ? warnings : errors);
       }
     }
   }
@@ -291,7 +308,7 @@ function validateSemanticRules(
   // SE2: At least one Stage node required
   const stageNodes = pw.nodes.filter(n => n.type === 'Stage');
   if (stageNodes.length === 0) {
-    errors.push('Pathway must contain at least one Stage node');
+    softTarget.push('Pathway must contain at least one Stage node');
   }
 
   // SE3: Graph depth check (compute from edge structure)
@@ -305,7 +322,7 @@ function validateSemanticRules(
   // SE4: Root must have at least one HAS_STAGE edge
   const rootStageEdges = edges.filter(e => e.from === 'root' && e.type === 'HAS_STAGE');
   if (rootStageEdges.length === 0) {
-    errors.push('Pathway must have at least one root → HAS_STAGE edge');
+    softTarget.push('Pathway must have at least one root → HAS_STAGE edge');
   }
 
   // SE5: DecisionPoints should have BRANCHES_TO edges
@@ -337,7 +354,7 @@ function validateSemanticRules(
         node.properties.system as string,
         node.properties.code as string,
         `node[${i}] (${node.id})`,
-        errors
+        draftMode ? warnings : errors
       );
     }
   }

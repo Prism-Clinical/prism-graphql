@@ -12,7 +12,9 @@ import {
   PropagationResult,
   PatientContext,
   defaultTransitivePropagate,
+  GraphContext,
 } from '../types';
+import { getLinkedCodes, getLinkedCodesBySystem } from '../code-lookup';
 
 /**
  * Scores data availability for a node. Node-type-specific required inputs:
@@ -53,15 +55,15 @@ export class DataCompletenessScorer implements SignalScorer {
   }
 
   score(params: ScorerParams): SignalScore {
-    const { node, patientContext } = params;
+    const { node, patientContext, graphContext } = params;
 
     switch (node.nodeType) {
       case 'LabTest':
-        return this.scoreLabTest(node, patientContext);
+        return this.scoreLabTest(node, patientContext, graphContext);
       case 'Medication':
-        return this.scoreMedication(node, patientContext);
+        return this.scoreMedication(node, patientContext, graphContext);
       case 'Criterion':
-        return this.scoreCriterion(node, patientContext);
+        return this.scoreCriterion(node, patientContext, graphContext);
       case 'DecisionPoint':
         return this.scoreDecisionPoint(node, params);
       default:
@@ -74,71 +76,105 @@ export class DataCompletenessScorer implements SignalScorer {
     return defaultTransitivePropagate(params);
   }
 
-  private scoreLabTest(node: GraphNode, patient: PatientContext): SignalScore {
-    const codeValue = node.properties.code_value as string | undefined;
-    const codeSystem = node.properties.code_system as string | undefined;
-    const missingInputs: string[] = [];
-    const total = 2; // result_value + result_date
+  private scoreLabTest(node: GraphNode, patient: PatientContext, graphContext: GraphContext): SignalScore {
+    // Look up LOINC codes from CodeEntry children via HAS_CODE edges
+    const loincCodes = getLinkedCodesBySystem(node, graphContext, 'LOINC');
+
+    if (loincCodes.length === 0) {
+      return { score: 0.5, missingInputs: ['lab_codes'], metadata: { reason: 'no_loinc_codes_linked' } };
+    }
+
+    const total = loincCodes.length * 2; // For each code: result_value + result_date
     let available = 0;
+    const missingInputs: string[] = [];
 
-    if (!codeValue) {
-      return { score: 0.0, missingInputs: ['result_value', 'result_date'] };
-    }
+    for (const loinc of loincCodes) {
+      const matchingLab = patient.labResults.find(l => l.code === loinc.code);
+      if (!matchingLab) {
+        missingInputs.push(`result_value:${loinc.code}`, `result_date:${loinc.code}`);
+        continue;
+      }
 
-    const matchingLab = patient.labResults.find(
-      l => l.code === codeValue && (!codeSystem || l.system === codeSystem)
-    );
-    if (!matchingLab) {
-      return { score: 0.0, missingInputs: ['result_value', 'result_date'] };
-    }
+      if (matchingLab.value !== undefined && matchingLab.value !== null) {
+        available += 1;
+      } else {
+        missingInputs.push(`result_value:${loinc.code}`);
+      }
 
-    if (matchingLab.value !== undefined && matchingLab.value !== null) {
-      available += 1;
-    } else {
-      missingInputs.push('result_value');
-    }
-
-    if (matchingLab.date) {
-      available += 1;
-    } else {
-      missingInputs.push('result_date');
+      if (matchingLab.date) {
+        available += 1;
+      } else {
+        missingInputs.push(`result_date:${loinc.code}`);
+      }
     }
 
     return { score: available / total, missingInputs };
   }
 
-  private scoreMedication(node: GraphNode, patient: PatientContext): SignalScore {
+  private scoreMedication(node: GraphNode, patient: PatientContext, graphContext: GraphContext): SignalScore {
+    const rxnormCodes = getLinkedCodesBySystem(node, graphContext, 'RXNORM');
     const missingInputs: string[] = [];
     let available = 0;
-    const total = 2;
+    let total = 0;
 
-    // Check if allergies have been assessed (patient has allergy data)
-    if (patient.allergies.length > 0) {
-      available += 1;
+    if (rxnormCodes.length > 0) {
+      // Check if patient has the medication in their med list (code match)
+      total += rxnormCodes.length;
+      for (const rx of rxnormCodes) {
+        if (patient.medications.some(m => m.code === rx.code)) {
+          available += 1;
+        } else {
+          missingInputs.push(`medication_match:${rx.code}`);
+        }
+      }
+
+      // Check allergy data availability (one check for the whole node)
+      total += 1;
+      if (patient.allergies.length > 0) {
+        available += 1;
+      } else {
+        missingInputs.push('allergies_checked');
+      }
     } else {
-      missingInputs.push('allergies_checked');
+      // Fall back to name-based matching when no RXNORM codes
+      const medName = (node.properties.name as string || '').toLowerCase();
+      total = 2;
+
+      if (medName && patient.medications.some(
+        m => m.display?.toLowerCase().includes(medName) || medName.includes(m.display?.toLowerCase() || '')
+      )) {
+        available += 1;
+      } else {
+        missingInputs.push('medication_match');
+      }
+
+      if (patient.allergies.length > 0) {
+        available += 1;
+      } else {
+        missingInputs.push('allergies_checked');
+      }
     }
 
-    // Check if medication interactions are assessable (patient has medication list)
-    if (patient.medications.length > 0) {
-      available += 1;
-    } else {
-      missingInputs.push('interactions_checked');
-    }
-
-    return { score: available / total, missingInputs };
+    return { score: total > 0 ? available / total : 0.5, missingInputs };
   }
 
-  private scoreCriterion(node: GraphNode, patient: PatientContext): SignalScore {
-    const codeValue = node.properties.code_value as string | undefined;
-    const codeSystem = node.properties.code_system as string | undefined;
+  private scoreCriterion(node: GraphNode, patient: PatientContext, graphContext: GraphContext): SignalScore {
+    // Look up all codes from CodeEntry children — criteria may link to ICD-10, SNOMED, etc.
+    const linkedCodes = getLinkedCodes(node, graphContext);
 
-    if (!codeValue || !codeSystem) {
+    if (linkedCodes.length === 0) {
       return { score: 0.5, missingInputs: ['code_match'], metadata: { reason: 'no_code_on_criterion' } };
     }
 
-    const hasMatch = patient.conditionCodes.some(
-      c => c.code === codeValue && c.system === codeSystem
+    // Check if any linked code matches patient condition codes (exact or prefix match)
+    const hasMatch = linkedCodes.some(lc =>
+      patient.conditionCodes.some(
+        pc => pc.code === lc.code && pc.system === lc.system
+      ) ||
+      // Prefix match: patient has a more specific code
+      patient.conditionCodes.some(
+        pc => pc.system === lc.system && pc.code.startsWith(lc.code)
+      )
     );
 
     if (hasMatch) {
@@ -149,7 +185,7 @@ export class DataCompletenessScorer implements SignalScorer {
   }
 
   private scoreDecisionPoint(node: GraphNode, params: ScorerParams): SignalScore {
-    const { graphContext } = params;
+    const { graphContext, patientContext } = params;
     // Check how many criteria are connected and have data
     const criteria = graphContext.linkedNodes(node.nodeIdentifier, 'HAS_CRITERION');
 
@@ -161,7 +197,7 @@ export class DataCompletenessScorer implements SignalScorer {
     const missingInputs: string[] = [];
 
     for (const crit of criteria) {
-      const critScore = this.scoreCriterion(crit, params.patientContext);
+      const critScore = this.scoreCriterion(crit, patientContext, graphContext);
       if (critScore.score > 0) {
         resolved++;
       } else {

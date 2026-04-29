@@ -93,6 +93,22 @@ export interface SignalDefinition {
   isActive: boolean;
 }
 
+// ─── Admin Evidence ─────────────────────────────────────────────────
+
+export interface AdminEvidenceEntry {
+  id: string;
+  pathwayId: string;
+  nodeIdentifier: string;
+  title: string;
+  source?: string;
+  year?: number;
+  evidenceLevel: string;
+  url?: string;
+  notes?: string;
+  applicableCriteria?: string[];
+  populationDescription?: string;
+}
+
 // ─── Scorer Interface ────────────────────────────────────────────────
 
 export interface RequiredInput {
@@ -112,6 +128,7 @@ export interface ScorerParams {
   signalDefinition: SignalDefinition;
   patientContext: PatientContext;
   graphContext: GraphContext;
+  adminEvidenceEntries?: AdminEvidenceEntry[];
 }
 
 export interface SignalScorer {
