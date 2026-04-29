@@ -1,102 +1,73 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
 
-@layer base {
-  :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
-  }
+/* ============================================
+   PRISM ADMIN DESIGN SYSTEM
+   ============================================ */
 
-  body {
-    @apply bg-gray-50 text-gray-900 antialiased;
-  }
+:root {
+  /* Primary Colors — matches provider frontend */
+  --primary-50: #eff6ff;
+  --primary-100: #dbeafe;
+  --primary-200: #bfdbfe;
+  --primary-300: #93c5fd;
+  --primary-400: #60a5fa;
+  --primary-500: #3b82f6;
+  --primary-600: #2563eb;
+  --primary-700: #1d4ed8;
+  --primary-800: #1e40af;
+  --primary-900: #1e3a8a;
+
+  /* Semantic Colors */
+  --success-50: #f0fdfa;
+  --success-500: #14b8a6;
+  --success-600: #0d9488;
+
+  --warning-50: #fffbeb;
+  --warning-500: #f59e0b;
+  --warning-600: #d97706;
+
+  --danger-50: #fef2f2;
+  --danger-500: #ef4444;
+  --danger-600: #dc2626;
+
+  /* Admin-specific: subtle purple accent for admin context */
+  --admin-50: #faf5ff;
+  --admin-500: #a855f7;
+  --admin-600: #9333ea;
+
+  /* Pathway Status Colors */
+  --status-draft: #f59e0b;
+  --status-active: #14b8a6;
+  --status-archived: #6b7280;
+  --status-superseded: #8b5cf6;
+
+  /* Layout */
+  --sidebar-width: 256px;
+  --sidebar-collapsed-width: 80px;
 }
 
-@layer components {
-  .card {
-    @apply bg-white rounded-lg shadow-sm border border-gray-200;
-  }
-
-  .card-header {
-    @apply px-6 py-4 border-b border-gray-200;
-  }
-
-  .card-body {
-    @apply px-6 py-4;
-  }
-
-  .btn {
-    @apply inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none;
-  }
-
-  .btn-primary {
-    @apply bg-blue-600 text-white hover:bg-blue-700 focus-visible:ring-blue-500;
-  }
-
-  .btn-secondary {
-    @apply bg-gray-100 text-gray-900 hover:bg-gray-200 focus-visible:ring-gray-500;
-  }
-
-  .btn-danger {
-    @apply bg-red-600 text-white hover:bg-red-700 focus-visible:ring-red-500;
-  }
-
-  .btn-sm {
-    @apply h-8 px-3 text-xs;
-  }
-
-  .btn-md {
-    @apply h-10 px-4;
-  }
-
-  .btn-lg {
-    @apply h-12 px-6 text-base;
-  }
-
-  .input {
-    @apply flex h-10 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:cursor-not-allowed disabled:opacity-50;
-  }
-
-  .label {
-    @apply text-sm font-medium text-gray-700;
-  }
-
-  .badge {
-    @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium;
-  }
-
-  /* SLA indicator animations */
-  .sla-critical {
-    @apply animate-pulse bg-red-100 border-red-300;
-  }
-
-  .sla-warning {
-    @apply bg-yellow-100 border-yellow-300;
-  }
-
-  .sla-normal {
-    @apply bg-green-100 border-green-300;
-  }
+/* Base body styles */
+body {
+  font-family: var(--font-inter, system-ui, -apple-system, sans-serif);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-@layer utilities {
-  .scrollbar-thin {
-    scrollbar-width: thin;
-    scrollbar-color: rgb(209 213 219) transparent;
-  }
+/* Animations */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
 
-  .scrollbar-thin::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
-  }
+@keyframes slideInLeft {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(0); }
+}
 
-  .scrollbar-thin::-webkit-scrollbar-track {
-    background: transparent;
-  }
+.animate-fadeIn {
+  animation: fadeIn 0.2s ease-out;
+}
 
-  .scrollbar-thin::-webkit-scrollbar-thumb {
-    background-color: rgb(209 213 219);
-    border-radius: 3px;
-  }
+.animate-slideInLeft {
+  animation: slideInLeft 0.3s ease-out;
 }

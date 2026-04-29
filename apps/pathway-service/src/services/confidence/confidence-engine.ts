@@ -17,6 +17,7 @@ import {
   ResolvedThresholds,
   ResolutionType,
   WeightMatrix,
+  AdminEvidenceEntry,
 } from './types';
 
 export class ConfidenceEngine {
@@ -34,8 +35,29 @@ export class ConfidenceEngine {
     patientContext: PatientContext;
     institutionId?: string;
     organizationId?: string;
+    adminEvidenceEntries?: AdminEvidenceEntry[];
   }): Promise<PathwayConfidenceResult> {
     const { pool, pathwayId, nodes, edges, signalDefinitions, patientContext, institutionId, organizationId } = params;
+
+    // Load admin evidence entries (from params or DB)
+    let adminEvidenceEntries = params.adminEvidenceEntries;
+    if (!adminEvidenceEntries) {
+      const adminEvResult = await pool.query(
+        'SELECT * FROM confidence_admin_evidence WHERE pathway_id = $1',
+        [pathwayId]
+      );
+      adminEvidenceEntries = adminEvResult.rows.map((row: any) => ({
+        id: row.id,
+        pathwayId: row.pathway_id,
+        nodeIdentifier: row.node_identifier,
+        title: row.title,
+        source: row.source,
+        year: row.year,
+        evidenceLevel: row.evidence_level,
+        url: row.url,
+        notes: row.notes,
+      }));
+    }
 
     // Build graph context with convenience lookups
     const graphContext = this.buildGraphContext(nodes, edges);
@@ -79,6 +101,7 @@ export class ConfidenceEngine {
           signalDefinition: signal,
           patientContext,
           graphContext,
+          adminEvidenceEntries,
         });
 
         nodeScores.set(signal.name, { score: result.score, missingInputs: result.missingInputs });
@@ -147,10 +170,16 @@ export class ConfidenceEngine {
 
       const confidence = totalWeight > 0 ? weightedSum / totalWeight : 0;
 
-      // Classify resolution type for DecisionPoint nodes
-      let resolutionType: ResolutionType | undefined;
+      // Classify resolution type
+      let resolutionType: ResolutionType;
       if (node.nodeType === 'DecisionPoint') {
         resolutionType = this.classifyResolution(node, confidence, thresholds);
+      } else if (confidence >= thresholds.autoResolveThreshold) {
+        resolutionType = ResolutionType.AUTO_RESOLVED;
+      } else if (confidence >= thresholds.suggestThreshold) {
+        resolutionType = ResolutionType.SYSTEM_SUGGESTED;
+      } else {
+        resolutionType = ResolutionType.PROVIDER_DECIDED;
       }
 
       nodeResults.push({

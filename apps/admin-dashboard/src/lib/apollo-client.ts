@@ -1,93 +1,62 @@
-'use client';
-
-import { ApolloClient, InMemoryCache, HttpLink, from } from '@apollo/client';
-import { setContext } from '@apollo/client/link/context';
-import { onError } from '@apollo/client/link/error';
+import { ApolloClient, InMemoryCache, HttpLink, from } from '@apollo/client/core';
+import { ErrorLink } from '@apollo/client/link/error';
+import { CombinedGraphQLErrors } from '@apollo/client/errors';
 
 const httpLink = new HttpLink({
-  uri: process.env.NEXT_PUBLIC_GRAPHQL_URL || 'http://localhost:4000/graphql',
+  uri: typeof window !== 'undefined'
+    ? '/graphql'
+    : (process.env.NEXT_PUBLIC_GRAPHQL_URL || 'http://localhost:4000/graphql'),
 });
 
-const authLink = setContext((_, { headers }) => {
-  const token = typeof window !== 'undefined' ? localStorage.getItem('prism_access_token') : null;
-  return {
-    headers: {
-      ...headers,
-      authorization: token ? `Bearer ${token}` : '',
-    },
-  };
-});
-
-const errorLink = onError(({ graphQLErrors, networkError }) => {
-  if (graphQLErrors) {
-    graphQLErrors.forEach(({ message, locations, path }) => {
+const errorLink = new ErrorLink(({ error }) => {
+  if (CombinedGraphQLErrors.is(error)) {
+    error.errors.forEach((graphqlError) => {
       console.error(
-        `[GraphQL error]: Message: ${message}, Location: ${locations}, Path: ${path}`
+        `[GraphQL error]: ${graphqlError.message}`,
+        graphqlError.locations,
+        graphqlError.path
       );
     });
-  }
-  if (networkError) {
-    console.error(`[Network error]: ${networkError}`);
+  } else {
+    console.error(`[Network error]: ${error}`);
   }
 });
 
-export const apolloClient = new ApolloClient({
-  link: from([errorLink, authLink, httpLink]),
-  cache: new InMemoryCache({
-    typePolicies: {
-      Query: {
-        fields: {
-          safetyChecks: {
-            keyArgs: ['filter'],
-            merge(existing, incoming, { args }) {
-              if (!args?.pagination?.after) {
-                return incoming;
-              }
-              return {
-                ...incoming,
-                edges: [...(existing?.edges || []), ...incoming.edges],
-              };
-            },
-          },
-          reviewQueue: {
-            keyArgs: ['filter'],
-            merge(existing, incoming, { args }) {
-              if (!args?.pagination?.after) {
-                return incoming;
-              }
-              return {
-                ...incoming,
-                edges: [...(existing?.edges || []), ...incoming.edges],
-              };
-            },
-          },
-          carePlans: {
-            keyArgs: ['filter'],
-            merge(existing, incoming, { args }) {
-              if (!args?.pagination?.after) {
-                return incoming;
-              }
-              return {
-                ...incoming,
-                edges: [...(existing?.edges || []), ...incoming.edges],
-              };
-            },
-          },
+let apolloClient: ApolloClient | null = null;
+
+function createApolloClient(): ApolloClient {
+  return new ApolloClient({
+    ssrMode: typeof window === 'undefined',
+    link: from([errorLink, httpLink]),
+    cache: new InMemoryCache({
+      typePolicies: {
+        Pathway: {
+          keyFields: ['id'],
         },
       },
+    }),
+    defaultOptions: {
+      watchQuery: {
+        fetchPolicy: 'cache-and-network',
+        errorPolicy: 'all',
+      },
+      query: {
+        fetchPolicy: 'cache-first',
+        errorPolicy: 'all',
+      },
+      mutate: {
+        errorPolicy: 'all',
+      },
     },
-  }),
-  defaultOptions: {
-    watchQuery: {
-      fetchPolicy: 'cache-and-network',
-      errorPolicy: 'all',
-    },
-    query: {
-      fetchPolicy: 'network-only',
-      errorPolicy: 'all',
-    },
-    mutate: {
-      errorPolicy: 'all',
-    },
-  },
-});
+  });
+}
+
+export function getApolloClient(): ApolloClient {
+  if (typeof window === 'undefined') {
+    return createApolloClient();
+  }
+  if (!apolloClient) {
+    apolloClient = createApolloClient();
+  }
+  return apolloClient;
+}

@@ -60,6 +60,15 @@ export class EvidenceStrengthScorer implements SignalScorer {
       }
     }
 
+    // Admin-provided evidence entries
+    if (params.adminEvidenceEntries) {
+      const nodeEvidence = params.adminEvidenceEntries
+        .filter(e => e.nodeIdentifier === node.nodeIdentifier);
+      for (const entry of nodeEvidence) {
+        evidenceLevels.push(entry.evidenceLevel);
+      }
+    }
+
     if (evidenceLevels.length === 0) {
       return {
         score: defaultScore,

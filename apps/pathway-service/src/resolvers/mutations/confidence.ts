@@ -260,4 +260,54 @@ export const confidenceMutations = {
     if (result.rowCount === 0) throw new GraphQLError('Node weight not found', { extensions: { code: 'NOT_FOUND' } });
     return true;
   },
+
+  async addAdminEvidence(_parent: unknown, args: { input: any }, context: DataSourceContext) {
+    const { pool } = context;
+    const { input } = args;
+
+    const validLevels = ['Level A', 'Level B', 'Level C', 'Expert Consensus'];
+    if (!validLevels.includes(input.evidenceLevel)) {
+      throw new GraphQLError(
+        `evidenceLevel must be one of: ${validLevels.join(', ')}`,
+        { extensions: { code: 'BAD_USER_INPUT' } }
+      );
+    }
+
+    const result = await pool.query(
+      `INSERT INTO confidence_admin_evidence
+       (pathway_id, node_identifier, title, source, year, evidence_level, url, notes, created_by, applicable_criteria, population_description)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+       RETURNING *`,
+      [input.pathwayId, input.nodeIdentifier, input.title, input.source || null,
+       input.year || null, input.evidenceLevel, input.url || null, input.notes || null, null,
+       input.applicableCriteria || '{}', input.populationDescription || null]
+    );
+
+    const row = result.rows[0];
+    return {
+      id: row.id,
+      pathwayId: row.pathway_id,
+      nodeIdentifier: row.node_identifier,
+      title: row.title,
+      source: row.source,
+      year: row.year,
+      evidenceLevel: row.evidence_level,
+      url: row.url,
+      notes: row.notes,
+      applicableCriteria: row.applicable_criteria ?? [],
+      populationDescription: row.population_description,
+      createdBy: row.created_by,
+      createdAt: row.created_at?.toISOString?.() ?? row.created_at,
+    };
+  },
+
+  async removeAdminEvidence(_parent: unknown, args: { id: string }, context: DataSourceContext) {
+    const result = await context.pool.query(
+      'DELETE FROM confidence_admin_evidence WHERE id = $1', [args.id]
+    );
+    if (result.rowCount === 0) {
+      throw new GraphQLError('Admin evidence entry not found', { extensions: { code: 'NOT_FOUND' } });
+    }
+    return true;
+  },
 };

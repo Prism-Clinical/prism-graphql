@@ -46,25 +46,52 @@ export function buildGraphContext(nodes: GraphNode[], edges: GraphEdge[]): Graph
 
 // ─── AGE Graph Fetcher ──────────────────────────────────────────────
 
+/**
+ * Load nodes and edges from AGE graph for a pathway.
+ *
+ * Uses iterative BFS (single-hop per round) to collect all reachable AGE node
+ * IDs from the root, then fetches nodes and edges by ID list. This avoids
+ * variable-length path patterns (`*0..`) which cause combinatorial explosion
+ * on dense graphs.
+ */
 export async function fetchGraphFromAGE(
   pool: import('pg').Pool,
   ageNodeId: string,
 ): Promise<{ nodes: GraphNode[]; edges: GraphEdge[] }> {
   // Validate ageNodeId is a numeric AGE internal ID to prevent Cypher injection
-  if (!/^\d+$/.test(ageNodeId)) {
+  if (!/^\d+$/.test(String(ageNodeId))) {
     throw new GraphQLError(`Invalid AGE node ID: "${ageNodeId}"`, {
       extensions: { code: 'INTERNAL_SERVER_ERROR' },
     });
   }
 
-  const nodesCypher =
-    `MATCH (p:Pathway) WHERE id(p) = ${ageNodeId} ` +
-    `OPTIONAL MATCH (p)-[*0..]->(n) RETURN n`;
-  const edgesCypher =
-    `MATCH (p:Pathway) WHERE id(p) = ${ageNodeId} ` +
-    `OPTIONAL MATCH (p)-[*0..]->(a)-[r]->(b) RETURN a, r, b`;
+  const rootId = String(ageNodeId);
 
-  // Fetch nodes and edges in parallel — independent queries on the same graph
+  // BFS: collect all reachable AGE node IDs from the root
+  const allAgeIds = new Set<string>([rootId]);
+  let frontier = [rootId];
+
+  while (frontier.length > 0) {
+    const idList = frontier.join(', ');
+    const bfsCypher = `MATCH (a)-[]->(b) WHERE id(a) IN [${idList}] RETURN DISTINCT id(b)`;
+    const bfsResult = await executeCypher(pool, bfsCypher, '(bid agtype)');
+
+    frontier = [];
+    for (const row of bfsResult.rows) {
+      const bid = String(JSON.parse(row.bid));
+      if (!allAgeIds.has(bid)) {
+        allAgeIds.add(bid);
+        frontier.push(bid);
+      }
+    }
+  }
+
+  const ageIdList = [...allAgeIds].join(', ');
+
+  // Fetch all nodes and edges in parallel
+  const nodesCypher = `MATCH (n) WHERE id(n) IN [${ageIdList}] RETURN n`;
+  const edgesCypher = `MATCH (a)-[r]->(b) WHERE id(a) IN [${ageIdList}] RETURN a, r, b`;
+
   const [nodesResult, edgesResult] = await Promise.all([
     executeCypher(pool, nodesCypher, '(v agtype)'),
     executeCypher(pool, edgesCypher, '(a agtype, r agtype, b agtype)'),

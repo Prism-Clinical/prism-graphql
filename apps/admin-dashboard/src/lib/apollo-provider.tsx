@@ -1,13 +1,13 @@
 'use client';
 
-import { ApolloProvider } from '@apollo/client';
-import { apolloClient } from './apollo-client';
-import { AuthProvider } from '@/contexts/AuthContext';
+import { ApolloProvider as BaseApolloProvider } from '@apollo/client/react';
+import { getApolloClient } from './apollo-client';
 
-export function ApolloWrapper({ children }: { children: React.ReactNode }) {
+export function ApolloProvider({ children }: { children: React.ReactNode }) {
+  const client = getApolloClient();
   return (
-    <ApolloProvider client={apolloClient}>
-      <AuthProvider>{children}</AuthProvider>
-    </ApolloProvider>
+    <BaseApolloProvider client={client}>
+      {children}
+    </BaseApolloProvider>
   );
 }

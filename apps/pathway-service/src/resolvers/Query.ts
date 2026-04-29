@@ -1,7 +1,7 @@
 import { GraphQLError } from 'graphql';
 import { DataSourceContext } from '../types';
 import { ConfidenceEngine } from '../services/confidence/confidence-engine';
-import { SignalDefinition, ResolvedWeight, normalizePropagationMode, PatientContext } from '../services/confidence/types';
+import { SignalDefinition, ResolvedWeight, normalizePropagationMode, PatientContext, AdminEvidenceEntry } from '../services/confidence/types';
 import {
   getSession,
   getMatchedPathways,
@@ -175,6 +175,45 @@ export const Query = {
       return result.rows[0] || null;
     },
 
+    pathwayGraph: async (
+      _: unknown,
+      args: { id: string },
+      context: DataSourceContext
+    ) => {
+      const { pool } = context;
+
+      const indexResult = await pool.query(
+        `SELECT ${PATHWAY_COLUMNS} FROM pathway_graph_index WHERE id = $1`,
+        [args.id]
+      );
+      const pathway = indexResult.rows[0];
+      if (!pathway) return null;
+
+      const ccResult = await pool.query(
+        'SELECT code, system, description, usage, grouping FROM pathway_condition_codes WHERE pathway_id = $1',
+        [args.id]
+      );
+
+      let nodes: Array<{ id: string; type: string; properties: Record<string, unknown> }> = [];
+      let edges: Array<{ from: string; to: string; type: string; properties?: Record<string, unknown> }> = [];
+
+      if (pathway.ageNodeId) {
+        const graph = await fetchGraphFromAGE(pool, String(pathway.ageNodeId));
+        nodes = graph.nodes.map(n => ({ id: n.nodeIdentifier, type: n.nodeType, properties: n.properties }));
+        edges = graph.edges.map(e => ({
+          from: e.sourceId, to: e.targetId, type: e.edgeType,
+          properties: Object.keys(e.properties ?? {}).length > 0 ? e.properties : undefined,
+        }));
+      }
+
+      return {
+        pathway,
+        nodes,
+        edges,
+        conditionCodeDetails: ccResult.rows,
+      };
+    },
+
     signalDefinitions: async (
       _: unknown,
       args: { scope?: string; institutionId?: string },
@@ -249,7 +288,109 @@ export const Query = {
         }
       }
 
+      // Also return pathway-level signal weight overrides directly.
+      // The cascade resolver only iterates over nodes from confidence_node_weights,
+      // so pathway-level overrides (node_identifier IS NULL) are never surfaced
+      // when that table is empty. Query them directly here.
+      const pathwayOverrides = await pool.query(
+        `SELECT csw.signal_definition_id, csd.name AS signal_name, csw.weight
+         FROM confidence_signal_weights csw
+         JOIN confidence_signal_definitions csd ON csd.id = csw.signal_definition_id
+         WHERE csw.pathway_id = $1 AND csw.scope = 'PATHWAY' AND csw.node_identifier IS NULL`,
+        [args.pathwayId]
+      );
+      for (const row of pathwayOverrides.rows) {
+        entries.push({
+          nodeIdentifier: '__pathway__',
+          signalName: row.signal_name,
+          weight: parseFloat(row.weight),
+          source: 'PATHWAY_OVERRIDE',
+        });
+      }
+
       return { entries };
+    },
+
+    adminEvidenceEntries: async (
+      _: unknown,
+      args: { pathwayId: string; nodeIdentifier?: string },
+      context: DataSourceContext
+    ) => {
+      const { pool } = context;
+      let query = 'SELECT * FROM confidence_admin_evidence WHERE pathway_id = $1';
+      const params: unknown[] = [args.pathwayId];
+
+      if (args.nodeIdentifier) {
+        query += ' AND node_identifier = $2';
+        params.push(args.nodeIdentifier);
+      }
+
+      query += ' ORDER BY created_at DESC';
+      const result = await pool.query(query, params);
+
+      return result.rows.map((row: any) => ({
+        id: row.id,
+        pathwayId: row.pathway_id,
+        nodeIdentifier: row.node_identifier,
+        title: row.title,
+        source: row.source,
+        year: row.year,
+        evidenceLevel: row.evidence_level,
+        url: row.url,
+        notes: row.notes,
+        applicableCriteria: row.applicable_criteria ?? [],
+        populationDescription: row.population_description,
+        createdBy: row.created_by,
+        createdAt: row.created_at?.toISOString?.() ?? row.created_at,
+      }));
+    },
+
+    searchCodes: async (
+      _: unknown,
+      args: { query: string; system?: string; limit?: number },
+      context: DataSourceContext
+    ) => {
+      const { pool } = context;
+      const limit = Math.min(args.limit ?? 20, 100);
+      const searchPattern = `%${args.query}%`;
+
+      let query: string;
+      const params: unknown[] = [searchPattern, searchPattern];
+      let paramIdx = 3;
+
+      if (args.system) {
+        query = `
+          SELECT code, system, description, category, is_common AS "isCommon"
+          FROM clinical_code_reference
+          WHERE (code ILIKE $1 OR description ILIKE $2)
+            AND system = $${paramIdx}
+          ORDER BY
+            (code ILIKE $${paramIdx + 1}) DESC,
+            is_common DESC,
+            length(code) ASC,
+            code ASC
+          LIMIT $${paramIdx + 2}
+        `;
+        const prefixPattern = `${args.query}%`;
+        params.push(args.system, prefixPattern, limit);
+      } else {
+        query = `
+          SELECT code, system, description, category, is_common AS "isCommon"
+          FROM clinical_code_reference
+          WHERE (code ILIKE $1 OR description ILIKE $2)
+          ORDER BY
+            (code ILIKE $3) DESC,
+            is_common DESC,
+            length(code) ASC,
+            code ASC
+          LIMIT $4
+        `;
+        const prefixPattern = `${args.query}%`;
+        params.push(prefixPattern, limit);
+      }
+
+      const result = await pool.query(query, params);
+      return result.rows;
     },
 
     effectiveThresholds: async (

@@ -10,7 +10,9 @@ import {
   PropagationResult,
   PatientContext,
   defaultDirectPropagate,
+  GraphContext,
 } from '../types';
+import { getLinkedCodes, getLinkedCodesBySystem } from '../code-lookup';
 
 /**
  * Scores how well the patient's clinical codes match a node's expected codes.
@@ -35,15 +37,15 @@ export class PatientMatchQualityScorer implements SignalScorer {
   }
 
   score(params: ScorerParams): SignalScore {
-    const { node, patientContext } = params;
+    const { node, patientContext, graphContext } = params;
 
     switch (node.nodeType) {
       case 'Criterion':
-        return this.scoreCriterion(node, patientContext);
+        return this.scoreCriterion(node, patientContext, graphContext);
       case 'Medication':
-        return this.scoreMedication(node, patientContext);
+        return this.scoreMedication(node, patientContext, graphContext);
       case 'LabTest':
-        return this.scoreLabTest(node, patientContext);
+        return this.scoreLabTest(node, patientContext, graphContext);
       default:
         return { score: 1.0, missingInputs: [] };
     }
@@ -53,59 +55,88 @@ export class PatientMatchQualityScorer implements SignalScorer {
     return defaultDirectPropagate(params);
   }
 
-  private scoreCriterion(node: GraphNode, patient: PatientContext): SignalScore {
-    const codeValue = node.properties.code_value as string | undefined;
-    const codeSystem = node.properties.code_system as string | undefined;
+  private scoreCriterion(node: GraphNode, patient: PatientContext, graphContext: GraphContext): SignalScore {
     const isCritical = node.properties.is_critical as boolean | undefined;
 
-    if (!codeValue || !codeSystem) {
+    // Use linked CodeEntry codes instead of node.properties.code_value
+    const linkedCodes = getLinkedCodes(node, graphContext);
+
+    if (linkedCodes.length === 0) {
       return { score: 0.5, missingInputs: ['code_value'], metadata: { reason: 'no_code_on_criterion' } };
     }
 
-    const codes = this.getCodesForSystem(patient, codeSystem);
-    const matchScore = this.findBestMatch(codeValue, codes);
+    // Find the best match across all linked codes
+    let bestMatchScore = 0.0;
+    for (const lc of linkedCodes) {
+      const codes = this.getCodesForSystem(patient, lc.system);
+      const matchScore = this.findBestMatch(lc.code, codes);
+      if (matchScore > bestMatchScore) {
+        bestMatchScore = matchScore;
+      }
+    }
 
-    if (isCritical && matchScore === 0.0) {
+    if (isCritical && bestMatchScore === 0.0) {
       return {
         score: 0.0,
         missingInputs: ['code_match'],
-        metadata: { critical: true, expectedCode: codeValue },
+        metadata: { critical: true, expectedCodes: linkedCodes.map(c => c.code) },
       };
     }
 
     return {
-      score: matchScore,
-      missingInputs: matchScore === 0.0 ? ['code_match'] : [],
-      metadata: { matchType: matchScore === 1.0 ? 'exact' : matchScore === 0.7 ? 'prefix' : matchScore === 0.5 ? 'inferred' : 'absent' },
+      score: bestMatchScore,
+      missingInputs: bestMatchScore === 0.0 ? ['code_match'] : [],
+      metadata: { matchType: bestMatchScore === 1.0 ? 'exact' : bestMatchScore === 0.7 ? 'prefix' : bestMatchScore === 0.5 ? 'inferred' : 'absent' },
     };
   }
 
-  private scoreMedication(node: GraphNode, patient: PatientContext): SignalScore {
+  private scoreMedication(node: GraphNode, patient: PatientContext, graphContext: GraphContext): SignalScore {
+    // Use RXNORM codes from CodeEntry children for exact code matching
+    const rxnormCodes = getLinkedCodesBySystem(node, graphContext, 'RXNORM');
+
+    if (rxnormCodes.length > 0) {
+      const hasCodeMatch = rxnormCodes.some(rx =>
+        patient.medications.some(m => m.code === rx.code)
+      );
+
+      return {
+        score: hasCodeMatch ? 1.0 : 0.0,
+        missingInputs: hasCodeMatch ? [] : ['medication_match'],
+        metadata: { matchType: hasCodeMatch ? 'code' : 'absent' },
+      };
+    }
+
+    // Fall back to display-name matching only when no CodeEntry exists
     const medName = (node.properties.name as string || '').toLowerCase();
 
-    const hasMatch = patient.medications.some(m => {
-      const mDisplay = m.display?.toLowerCase();
-      if (!mDisplay) return false;
-      return mDisplay.includes(medName) || medName.includes(mDisplay);
-    });
+    const hasMatch = medName && patient.medications.some(
+      m => m.display?.toLowerCase().includes(medName) || medName.includes(m.display?.toLowerCase() || '')
+    );
 
     return {
       score: hasMatch ? 1.0 : 0.5,
       missingInputs: hasMatch ? [] : ['medication_match'],
+      metadata: { matchType: hasMatch ? 'name' : 'fallback' },
     };
   }
 
-  private scoreLabTest(node: GraphNode, patient: PatientContext): SignalScore {
-    const codeValue = node.properties.code_value as string | undefined;
-    if (!codeValue) {
-      return { score: 0.5, missingInputs: ['code_value'], metadata: { reason: 'no_code_on_lab' } };
+  private scoreLabTest(node: GraphNode, patient: PatientContext, graphContext: GraphContext): SignalScore {
+    // Use LOINC codes from CodeEntry children
+    const loincCodes = getLinkedCodesBySystem(node, graphContext, 'LOINC');
+
+    if (loincCodes.length > 0) {
+      const hasMatch = loincCodes.some(lc =>
+        patient.labResults.some(l => l.code === lc.code)
+      );
+
+      return {
+        score: hasMatch ? 1.0 : 0.0,
+        missingInputs: hasMatch ? [] : ['lab_match'],
+        metadata: { matchType: hasMatch ? 'code' : 'absent' },
+      };
     }
 
-    const hasMatch = patient.labResults.some(l => l.code === codeValue);
-    return {
-      score: hasMatch ? 1.0 : 0.0,
-      missingInputs: hasMatch ? [] : ['lab_match'],
-    };
+    return { score: 0.5, missingInputs: [], metadata: { reason: 'no_loinc_codes_linked' } };
   }
 
   private getCodesForSystem(patient: PatientContext, system: string): string[] {
