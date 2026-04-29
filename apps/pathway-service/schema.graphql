@@ -43,6 +43,12 @@ enum WeightSource { NODE_OVERRIDE PATHWAY_OVERRIDE INSTITUTION_GLOBAL ORGANIZATI
 enum PropagationMode { NONE DIRECT TRANSITIVE_WITH_DECAY }
 enum ResolutionType { AUTO_RESOLVED SYSTEM_SUGGESTED PROVIDER_DECIDED FORCED_MANUAL }
 
+enum SessionStatus { ACTIVE COMPLETED ABANDONED DEGRADED }
+enum NodeStatus { INCLUDED EXCLUDED GATED_OUT PENDING_QUESTION TIMEOUT CASCADE_LIMIT UNKNOWN }
+enum OverrideAction { INCLUDE EXCLUDE }
+enum AnswerType { BOOLEAN NUMERIC SELECT }
+enum BlockerType { EMPTY_PLAN UNRESOLVED_RED_FLAG CONTRADICTION PENDING_GATE }
+
 # ─── Core Types ────────────────────────────────────────────────────────
 
 type Pathway @key(fields: "id") {
@@ -206,6 +212,129 @@ type ResolvedThresholds {
   autoResolveThreshold: Float!
   suggestThreshold: Float!
   scope: ThresholdScope!
+}
+
+# ─── Resolution Types ─────────────────────────────────────────────────
+
+type MatchedPathway {
+  pathway: Pathway!
+  matchedConditionCodes: [String!]!
+  matchScore: Float!
+}
+
+type ResolutionSession {
+  id: ID!
+  pathwayId: ID!
+  pathwayVersion: String!
+  patientId: ID!
+  providerId: ID!
+  status: SessionStatus!
+  includedNodes: [ResolvedNode!]!
+  excludedNodes: [ResolvedNode!]!
+  gatedOutNodes: [ResolvedNode!]!
+  pendingQuestions: [PendingQuestionType!]!
+  redFlags: [RedFlagType!]!
+  resolutionEvents: [ResolutionEventType!]!
+  totalNodesEvaluated: Int!
+  traversalDurationMs: Int!
+  createdAt: String!
+  updatedAt: String!
+}
+
+type ResolutionSessionSummary {
+  id: ID!
+  pathwayId: ID!
+  pathwayTitle: String!
+  status: SessionStatus!
+  totalNodesEvaluated: Int!
+  includedCount: Int!
+  redFlagCount: Int!
+  carePlanId: ID
+  createdAt: String!
+  updatedAt: String!
+}
+
+type ResolvedNode {
+  nodeId: ID!
+  nodeType: String!
+  title: String!
+  status: NodeStatus!
+  confidence: Float!
+  confidenceBreakdown: [SignalBreakdown!]!
+  providerOverride: ProviderOverrideType
+  excludeReason: String
+  parentNodeId: ID
+  depth: Int!
+}
+
+type ProviderOverrideType {
+  action: OverrideAction!
+  reason: String
+  originalStatus: NodeStatus!
+  originalConfidence: Float!
+}
+
+type ResolutionEventType {
+  id: ID!
+  eventType: String!
+  triggerData: JSON
+  nodesRecomputed: Int!
+  statusChanges: JSON
+  createdAt: String!
+}
+
+type RedFlagType {
+  nodeId: ID!
+  nodeTitle: String!
+  type: String!
+  description: String!
+  branches: [RedFlagBranchType!]
+}
+
+type RedFlagBranchType {
+  nodeId: ID!
+  title: String!
+  confidence: Float!
+  topExcludeReason: String
+}
+
+type PendingQuestionType {
+  gateId: ID!
+  prompt: String!
+  answerType: AnswerType!
+  options: [String!]
+  affectedSubtreeSize: Int!
+  estimatedImpact: String!
+}
+
+type CarePlanGenerationResult {
+  success: Boolean!
+  carePlanId: ID
+  warnings: [String!]!
+  blockers: [ValidationBlockerType!]!
+}
+
+type ValidationBlockerType {
+  type: BlockerType!
+  description: String!
+  relatedNodeIds: [ID!]!
+}
+
+# ─── Resolution Inputs ───────────────────────────────────────────────
+
+input GateAnswerInput {
+  booleanValue: Boolean
+  numericValue: Float
+  selectedOption: String
+}
+
+input AdditionalContextInput {
+  conditionCodes: [CodeInput!]
+  medications: [CodeInput!]
+  labResults: [LabResultInput!]
+  allergies: [CodeInput!]
+  vitalSigns: JSON
+  freeformData: JSON
 }
 
 # ─── Confidence Inputs ────────────────────────────────────────────────
@@ -409,6 +538,12 @@ type Query {
   adminEvidenceEntries(pathwayId: ID!, nodeIdentifier: String): [AdminEvidenceEntry!]!
 
   searchCodes(query: String!, system: String, limit: Int): [CodeDefinition!]!
+
+  matchedPathways(patientId: ID!): [MatchedPathway!]!
+  resolutionSession(sessionId: ID!): ResolutionSession
+  pendingQuestions(sessionId: ID!): [PendingQuestionType!]!
+  redFlags(sessionId: ID!): [RedFlagType!]!
+  patientResolutionSessions(patientId: ID!, status: SessionStatus): [ResolutionSessionSummary!]!
 }
 
 # ─── Mutations ─────────────────────────────────────────────────────────
@@ -451,4 +586,11 @@ type Mutation {
 
   addAdminEvidence(input: AddAdminEvidenceInput!): AdminEvidenceEntry!
   removeAdminEvidence(id: ID!): Boolean!
+
+  startResolution(pathwayId: ID!, patientId: ID!, patientContext: PatientContextInput): ResolutionSession!
+  overrideNode(sessionId: ID!, nodeId: ID!, action: OverrideAction!, reason: String): ResolutionSession!
+  answerGateQuestion(sessionId: ID!, gateId: ID!, answer: GateAnswerInput!): ResolutionSession!
+  addPatientContext(sessionId: ID!, additionalContext: AdditionalContextInput!): ResolutionSession!
+  generateCarePlanFromResolution(sessionId: ID!): CarePlanGenerationResult!
+  abandonSession(sessionId: ID!, reason: String): ResolutionSession!
 }

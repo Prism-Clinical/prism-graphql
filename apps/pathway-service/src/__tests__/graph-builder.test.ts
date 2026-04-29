@@ -65,4 +65,30 @@ describe('buildGraphCommands', () => {
       expect(cmd.cypher).toContain('node_id:');
     }
   });
+
+  describe('Gate node Cypher generation', () => {
+    it('should generate CREATE for Gate node with all properties', () => {
+      const pathway = clonePathway();
+      pathway.nodes.push({
+        id: 'gate-transplant',
+        type: 'Gate' as any,
+        properties: {
+          title: 'Transplant screening',
+          gate_type: 'patient_attribute',
+          default_behavior: 'skip',
+          condition: { field: 'conditions', operator: 'includes_code', value: 'Z94.*', system: 'ICD-10' },
+        },
+      });
+      pathway.edges.push({ from: 'step-1-1', to: 'gate-transplant', type: 'HAS_GATE' as any });
+      pathway.edges.push({ from: 'gate-transplant', to: 'step-1-2', type: 'BRANCHES_TO' });
+
+      const commands = buildGraphCommands(pathway);
+      const gateCmd = commands.find(c => c.nodeId === 'gate-transplant');
+      expect(gateCmd).toBeDefined();
+      expect(gateCmd!.cypher).toContain(':Gate');
+
+      const edgeCmd = commands.find(c => c.cypher.includes('HAS_GATE'));
+      expect(edgeCmd).toBeDefined();
+    });
+  });
 });
