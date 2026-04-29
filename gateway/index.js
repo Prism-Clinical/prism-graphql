@@ -35,6 +35,7 @@ async function startGateway() {
 
   const gateway = new ApolloGateway({
     serviceList,
+    pollIntervalInMs: process.env.NODE_ENV === 'production' ? undefined : 10000,
   });
 
   const app = express();
@@ -48,6 +49,7 @@ async function startGateway() {
   await server.start();
 
   // CORS configuration - allow frontend origins
+  const extraOrigins = (process.env.CORS_ORIGINS || '').split(',').filter(Boolean);
   app.use(
     '/graphql',
     cors({
@@ -60,11 +62,13 @@ async function startGateway() {
         'http://localhost:3001',
         'http://127.0.0.1:3001',
         'http://admin-dashboard:3001',
-        'http://healthcare-admin-dashboard:3001'
+        'http://healthcare-admin-dashboard:3001',
+        // Production domains (via CORS_ORIGINS env var)
+        ...extraOrigins
       ],
       credentials: true
     }),
-    express.json(),
+    express.json({ limit: '10mb' }),
     expressMiddleware(server)
   );
 

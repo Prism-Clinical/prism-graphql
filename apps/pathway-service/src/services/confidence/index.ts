@@ -6,4 +6,5 @@ export { EvidenceStrengthScorer } from './scorers/evidence-strength';
 export { PatientMatchQualityScorer } from './scorers/patient-match-quality';
 export { RiskMagnitudeScorer } from './scorers/risk-magnitude';
 export { CustomRulesScorer } from './scorers/custom-rules';
+export { getLinkedCodes, getLinkedCodesBySystem } from './code-lookup';
 export * from './types';

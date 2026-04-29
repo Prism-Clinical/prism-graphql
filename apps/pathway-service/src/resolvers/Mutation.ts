@@ -3,7 +3,7 @@ import { DataSourceContext, ImportMode } from '../types';
 import { hydrateSignalDefinition } from './Query';
 import { PropagationConfig, ScoringRules } from '../services/confidence/types';
 import { importPathway } from '../services/import/import-orchestrator';
-import { PathwayJson, ImportMode } from '../services/import/types';
+import { PathwayJson } from '../services/import/types';
 
 const PATHWAY_COLUMNS = `
   id, age_node_id AS "ageNodeId", logical_id AS "logicalId",
@@ -14,7 +14,7 @@ const PATHWAY_COLUMNS = `
   created_at AS "createdAt", updated_at AS "updatedAt"
 `;
 
-interface CreateSignalInput {
+export interface CreateSignalInput {
   name: string;
   displayName: string;
   description?: string;
@@ -26,7 +26,7 @@ interface CreateSignalInput {
   defaultWeight: number;
 }
 
-interface SetSignalWeightInput {
+export interface SetSignalWeightInput {
   signalDefinitionId: string;
   weight: number;
   scope: string;
@@ -36,7 +36,7 @@ interface SetSignalWeightInput {
   institutionId?: string;
 }
 
-interface SetThresholdsInput {
+export interface SetThresholdsInput {
   autoResolveThreshold: number;
   suggestThreshold: number;
   scope: string;
@@ -45,7 +45,7 @@ interface SetThresholdsInput {
   institutionId?: string;
 }
 
-interface SetNodeWeightInput {
+export interface SetNodeWeightInput {
   pathwayId: string;
   nodeIdentifier: string;
   nodeType: string;
@@ -54,7 +54,7 @@ interface SetNodeWeightInput {
   propagationOverrides?: Record<string, PropagationConfig>;
 }
 
-interface UpdateSignalInput {
+export interface UpdateSignalInput {
   displayName?: string;
   description?: string;
   scoringRules?: ScoringRules;
