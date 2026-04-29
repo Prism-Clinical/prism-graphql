@@ -1,7 +1,7 @@
 import { Pool, PoolClient } from 'pg';
 import { PathwayJson, ImportMode, ImportResult, ImportDiffSummary, DiffDetail } from './types';
 import { validatePathwayJson } from './validator';
-import { buildGraphCommands } from './graph-builder';
+import { buildGraphCommands, buildBatchedGraphCommands } from './graph-builder';
 import { buildCypherQuery } from '../age-client';
 import { computeDiff } from './diff-engine';
 import {
@@ -11,6 +11,14 @@ import {
   deleteConditionCodes,
   updatePathwayIndex,
 } from './relational-writer';
+
+/** Parse AGE agtype values which may have ::vertex or ::edge suffix */
+function parseAgtype(val: unknown): any {
+  if (!val) return null;
+  const str = typeof val === 'string' ? val : String(val);
+  const cleaned = str.replace(/::(?:vertex|edge)$/, '');
+  return JSON.parse(cleaned);
+}
 
 /**
  * Import a clinical pathway from JSON.
@@ -32,8 +40,8 @@ export async function importPathway(
   importMode: ImportMode,
   userId: string
 ): Promise<ImportResult> {
-  // Step 1: Validate
-  const validation = validatePathwayJson(pathwayJson);
+  // Step 1: Validate (draft mode is lenient on missing properties)
+  const validation = validatePathwayJson(pathwayJson, { draftMode: importMode === 'DRAFT_UPDATE' });
   if (!validation.valid) {
     return {
       pathwayId: '',
@@ -148,22 +156,43 @@ export async function importPathway(
     }
 
     // Step 5: Build and execute graph commands (always creates fresh graph)
-    const commands = buildGraphCommands(pathwayJson);
+    //
+    // Uses batched Cypher: nodes are comma-separated CREATEs (50/query),
+    // edges are UNWIND per type (200/query). This reduces ~3000 individual
+    // round-trips to ~25 for a typical large pathway.
+    const batched = buildBatchedGraphCommands(pathwayJson);
     let rootAgeNodeId: string | null = null;
 
-    for (const cmd of commands) {
-      const sql = buildCypherQuery(undefined, cmd.cypher, cmd.type === 'edge' ? '(a agtype, b agtype)' : '(v agtype)');
-      const result = await client.query(sql);
-      // Capture root node's AGE id
-      if (cmd.nodeId === 'root' && result.rows[0]) {
-        try {
-          const parsed = JSON.parse(result.rows[0].v);
-          rootAgeNodeId = String(parsed.id);
-        } catch (err) {
-          console.warn('Failed to parse AGE root node ID — graph↔relational linkage will be null:', err);
-        }
+    // 5a. Create root node (need its AGE id for relational linkage)
+    const rootSql = buildCypherQuery(undefined, batched.rootCypher, '(v agtype)');
+    const rootResult = await client.query(rootSql);
+    if (rootResult.rows[0]) {
+      try {
+        const parsed = parseAgtype(rootResult.rows[0].v);
+        rootAgeNodeId = String(parsed.id);
+      } catch (err) {
+        console.warn('Failed to parse AGE root node ID — graph↔relational linkage will be null:', err);
       }
     }
+
+    // 5b. Batch-create all other nodes
+    for (const cypher of batched.nodeCyphers) {
+      const sql = buildCypherQuery(undefined, cypher, '(v agtype)');
+      await client.query(sql);
+    }
+
+    // 5c. Batch-create edges via UNWIND (grouped by type)
+    for (const cypher of batched.edgeCyphers) {
+      const sql = buildCypherQuery(undefined, cypher, '(v agtype)');
+      await client.query(sql);
+    }
+
+    // 5d. Create edges with properties individually (rare)
+    for (const cypher of batched.edgeWithPropsCyphers) {
+      const sql = buildCypherQuery(undefined, cypher, '(a agtype, b agtype)');
+      await client.query(sql);
+    }
+
 
     // Step 6: Write relational tables + compute diffs
     let pathwayId: string;
@@ -299,11 +328,13 @@ async function findExistingPathwayByLogicalId(
 
 /**
  * Delete all graph nodes and edges belonging to a pathway.
- * Uses the age_node_id from the relational index to find the root Pathway node,
- * then DETACH DELETEs the entire connected subgraph.
  *
- * Split into two queries because AGE's OPTIONAL MATCH with variable-length paths
- * combined with DETACH DELETE can leave nodes undeleted, causing duplicates.
+ * Uses an iterative BFS (single-hop per round) to collect all reachable AGE
+ * node IDs from the root, then bulk-deletes them with DETACH DELETE.
+ *
+ * This avoids variable-length path patterns (`*1..`) which cause combinatorial
+ * path expansion on dense graphs — e.g. 2500 edges can produce millions of
+ * paths and hang for minutes, while BFS with ~5 rounds completes in seconds.
  */
 async function deleteGraphSubtree(
   client: PoolClient,
@@ -317,15 +348,37 @@ async function deleteGraphSubtree(
   const ageNodeId = indexRow.rows[0]?.age_node_id;
   if (!ageNodeId) return; // No graph to delete
 
-  // Step 1: Delete all descendant nodes (and their relationships).
-  // MATCH (not OPTIONAL MATCH) returns 0 rows if no descendants exist, which is fine.
-  const deleteDescCypher = `MATCH (p:Pathway) WHERE id(p) = ${ageNodeId} ` +
-    `MATCH (p)-[*1..]->(n) DETACH DELETE n`;
-  const descSql = buildCypherQuery(undefined, deleteDescCypher, '(v agtype)');
-  await client.query(descSql);
+  // Step 1: BFS — collect all reachable node IDs via single-hop traversals.
+  const allNodeIds = new Set<string>();
+  let frontier = [ageNodeId];
 
-  // Step 2: Delete the root Pathway node itself.
-  const deleteRootCypher = `MATCH (p:Pathway) WHERE id(p) = ${ageNodeId} DETACH DELETE p`;
+  while (frontier.length > 0) {
+    const idList = frontier.join(', ');
+    const cypher =
+      `MATCH (a)-[]->(b) WHERE id(a) IN [${idList}] RETURN DISTINCT id(b)`;
+    const sql = buildCypherQuery(undefined, cypher, '(bid agtype)');
+    const result = await client.query(sql);
+
+    frontier = [];
+    for (const row of result.rows) {
+      const bid = String(parseAgtype(row.bid));
+      if (!allNodeIds.has(bid)) {
+        allNodeIds.add(bid);
+        frontier.push(bid);
+      }
+    }
+  }
+
+  // Step 2: Bulk-delete all descendant nodes (DETACH DELETE removes their edges too).
+  if (allNodeIds.size > 0) {
+    const idList = [...allNodeIds].join(', ');
+    const cypher = `MATCH (n) WHERE id(n) IN [${idList}] DETACH DELETE n RETURN 1`;
+    const sql = buildCypherQuery(undefined, cypher, '(v agtype)');
+    await client.query(sql);
+  }
+
+  // Step 3: Delete the root Pathway node itself.
+  const deleteRootCypher = `MATCH (p:Pathway) WHERE id(p) = ${ageNodeId} DETACH DELETE p RETURN 1`;
   const rootSql = buildCypherQuery(undefined, deleteRootCypher, '(v agtype)');
   await client.query(rootSql);
 }
@@ -356,15 +409,35 @@ async function reconstructPathwayJson(
 
     if (!meta.age_node_id) return null;
 
-    // Get all nodes from the graph (match root + all connected nodes)
-    const nodesCypher = `MATCH (p:Pathway) WHERE id(p) = ${meta.age_node_id} ` +
-      `OPTIONAL MATCH (p)-[*1..]->(n) RETURN n`;
+    // BFS to collect all reachable AGE node IDs from the root
+    const allAgeIds = new Set<string>([String(meta.age_node_id)]);
+    let frontier = [String(meta.age_node_id)];
+
+    while (frontier.length > 0) {
+      const idList = frontier.join(', ');
+      const bfsCypher = `MATCH (a)-[]->(b) WHERE id(a) IN [${idList}] RETURN DISTINCT id(b)`;
+      const bfsSql = buildCypherQuery(undefined, bfsCypher, '(bid agtype)');
+      const bfsResult = await client.query(bfsSql);
+
+      frontier = [];
+      for (const row of bfsResult.rows) {
+        const bid = String(parseAgtype(row.bid));
+        if (!allAgeIds.has(bid)) {
+          allAgeIds.add(bid);
+          frontier.push(bid);
+        }
+      }
+    }
+
+    const ageIdList = [...allAgeIds].join(', ');
+
+    // Get all nodes by their collected IDs
+    const nodesCypher = `MATCH (n) WHERE id(n) IN [${ageIdList}] RETURN n`;
     const nodesSql = buildCypherQuery(undefined, nodesCypher, '(v agtype)');
     const nodesResult = await client.query(nodesSql);
 
-    // Get all edges from the graph
-    const edgesCypher = `MATCH (p:Pathway) WHERE id(p) = ${meta.age_node_id} ` +
-      `OPTIONAL MATCH (p)-[*0..]->(a)-[r]->(b) RETURN a, r, b`;
+    // Get all edges between collected nodes
+    const edgesCypher = `MATCH (a)-[r]->(b) WHERE id(a) IN [${ageIdList}] RETURN a, r, b`;
     const edgesSql = buildCypherQuery(undefined, edgesCypher, '(a agtype, r agtype, b agtype)');
     const edgesResult = await client.query(edgesSql);
 
@@ -375,7 +448,7 @@ async function reconstructPathwayJson(
     for (const row of nodesResult.rows) {
       if (!row.v) continue;
       try {
-        const node = JSON.parse(row.v);
+        const node = parseAgtype(row.v);
         if (!node || !node.properties) continue;
         const props = node.properties;
         const nodeId = props.node_id;
@@ -396,9 +469,9 @@ async function reconstructPathwayJson(
     for (const row of edgesResult.rows) {
       if (!row.a || !row.r || !row.b) continue;
       try {
-        const a = JSON.parse(row.a);
-        const r = JSON.parse(row.r);
-        const b = JSON.parse(row.b);
+        const a = parseAgtype(row.a);
+        const r = parseAgtype(row.r);
+        const b = parseAgtype(row.b);
 
         const fromId = a.label === 'Pathway' ? 'root' : a.properties?.node_id;
         const toId = b.properties?.node_id;

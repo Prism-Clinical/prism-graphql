@@ -110,15 +110,21 @@ export const VALID_EDGE_ENDPOINTS: Record<PathwayEdgeType, { from: ('root' | Pat
 export const VALID_CODE_SYSTEMS = ['ICD-10', 'SNOMED', 'RXNORM', 'LOINC', 'CPT'] as const;
 
 // Valid medication roles
-export const VALID_MEDICATION_ROLES = ['preferred', 'acceptable', 'avoid', 'contraindicated'] as const;
+export const VALID_MEDICATION_ROLES = [
+  'first_line', 'second_line', 'alternative',
+  'preferred', 'acceptable', 'avoid', 'contraindicated',
+] as const;
 
 // Valid evidence levels
-export const VALID_EVIDENCE_LEVELS = ['Level A', 'Level B', 'Level C', 'Expert Consensus'] as const;
+export const VALID_EVIDENCE_LEVELS = [
+  'A', 'B', 'C',
+  'Level A', 'Level B', 'Level C', 'Expert Consensus',
+] as const;
 
 // Graph size limits (enforced at import time per spec)
 export const MAX_GRAPH_DEPTH = 50;
 export const MAX_GRAPH_NODES = 500;
-export const MAX_GRAPH_EDGES = 2000;
+export const MAX_GRAPH_EDGES = 5000;
 
 // ─── Import Pipeline Types ───────────────────────────────────────────
 

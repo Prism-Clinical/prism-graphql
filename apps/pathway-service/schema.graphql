@@ -292,14 +292,94 @@ input SetResolutionThresholdsInput {
   institutionId: ID
 }
 
+# ─── Pathway Graph Types ─────────────────────────────────────────────
+
+type PathwayGraphNode {
+  id: String!
+  type: String!
+  properties: JSON
+}
+
+type PathwayGraphEdge {
+  from: String!
+  to: String!
+  type: String!
+  properties: JSON
+}
+
+type ConditionCodeDetail {
+  code: String!
+  system: String!
+  description: String
+  usage: String
+  grouping: String
+}
+
+type PathwayGraph {
+  pathway: Pathway!
+  nodes: [PathwayGraphNode!]!
+  edges: [PathwayGraphEdge!]!
+  conditionCodeDetails: [ConditionCodeDetail!]!
+}
+
 scalar JSON
 
+# ─── Archive / Lifecycle Result ──────────────────────────────────────
+
+type ArchiveResult {
+  pathway: Pathway!
+  success: Boolean!
+}
+
+# ─── Admin Evidence Types ────────────────────────────────────────────
+
+type AdminEvidenceEntry {
+  id: ID!
+  pathwayId: ID!
+  nodeIdentifier: String!
+  title: String!
+  source: String
+  year: Int
+  evidenceLevel: String!
+  url: String
+  notes: String
+  applicableCriteria: [String!]
+  populationDescription: String
+  createdBy: String
+  createdAt: String!
+}
+
+input AddAdminEvidenceInput {
+  pathwayId: ID!
+  nodeIdentifier: String!
+  title: String!
+  source: String
+  year: Int
+  evidenceLevel: String!
+  url: String
+  notes: String
+  applicableCriteria: [String!]
+  populationDescription: String
+}
+
+# ─── Clinical Code Reference ────────────────────────────────────────
+
+type CodeDefinition {
+  code: String!
+  system: String!
+  description: String!
+  category: String
+  isCommon: Boolean!
+}
+
 # ─── Queries ──────────────────────────────────────────────────────────
+
 
 type Query {
   pathwayServiceHealth: Boolean!
   pathways(status: PathwayStatus, category: PathwayCategory, first: Int): [Pathway!]!
   pathway(id: ID!): Pathway
+  pathwayGraph(id: ID!): PathwayGraph
 
   pathwayConfidence(
     pathwayId: ID!
@@ -325,6 +405,10 @@ type Query {
     institutionId: ID
     organizationId: ID
   ): ResolvedThresholds!
+
+  adminEvidenceEntries(pathwayId: ID!, nodeIdentifier: String): [AdminEvidenceEntry!]!
+
+  searchCodes(query: String!, system: String, limit: Int): [CodeDefinition!]!
 }
 
 # ─── Mutations ─────────────────────────────────────────────────────────
@@ -364,4 +448,7 @@ type Mutation {
 
   setResolutionThresholds(input: SetResolutionThresholdsInput!): ResolutionThresholds!
   removeResolutionThresholds(id: ID!): Boolean!
+
+  addAdminEvidence(input: AddAdminEvidenceInput!): AdminEvidenceEntry!
+  removeAdminEvidence(id: ID!): Boolean!
 }
