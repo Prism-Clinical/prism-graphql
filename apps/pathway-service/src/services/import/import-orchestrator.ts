@@ -11,6 +11,7 @@ import {
   deleteConditionCodes,
   updatePathwayIndex,
 } from './relational-writer';
+import { ensureIcd10Codes } from '../codes/icd10-hierarchy';
 
 /** Parse AGE agtype values which may have ::vertex or ::edge suffix */
 function parseAgtype(val: unknown): any {
@@ -181,13 +182,19 @@ export async function importPathway(
       await client.query(sql);
     }
 
-    // 5c. Batch-create edges via UNWIND (grouped by type)
+    // 5c. Create root-originated edges individually (label+id+version-scoped MATCH).
+    for (const cypher of batched.rootEdgeCyphers) {
+      const sql = buildCypherQuery(undefined, cypher, '(v agtype)');
+      await client.query(sql);
+    }
+
+    // 5d. Batch-create non-root edges via UNWIND (grouped by type)
     for (const cypher of batched.edgeCyphers) {
       const sql = buildCypherQuery(undefined, cypher, '(v agtype)');
       await client.query(sql);
     }
 
-    // 5d. Create edges with properties individually (rare)
+    // 5e. Create edges with properties individually (rare)
     for (const cypher of batched.edgeWithPropsCyphers) {
       const sql = buildCypherQuery(undefined, cypher, '(a agtype, b agtype)');
       await client.query(sql);
@@ -203,6 +210,7 @@ export async function importPathway(
       await deleteConditionCodes(client, existing.id);
       const updated = await updatePathwayIndex(client, existing.id, pathwayJson.pathway, rootAgeNodeId);
       pathwayId = updated.id;
+      await ensureIcd10Codes(client, pathwayJson.pathway.condition_codes);
       await writeConditionCodes(client, pathwayId, pathwayJson.pathway.condition_codes);
 
       if (oldPathwayJson) {
@@ -221,6 +229,7 @@ export async function importPathway(
       // NEW_PATHWAY or NEW_VERSION — insert new rows
       const indexRow = await writePathwayIndex(client, pathwayJson.pathway, rootAgeNodeId, userId);
       pathwayId = indexRow.id;
+      await ensureIcd10Codes(client, pathwayJson.pathway.condition_codes);
       await writeConditionCodes(client, pathwayId, pathwayJson.pathway.condition_codes);
 
       if (importMode === 'NEW_PATHWAY') {

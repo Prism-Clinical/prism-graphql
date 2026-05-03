@@ -14,6 +14,7 @@ import {
   MatchedPathway,
   GateAnswer,
 } from './types';
+import { activeConditionPredicate } from '../snapshot/active-context-filter';
 
 // ─── Helpers ───────────────────────────────────────────────────────
 
@@ -340,6 +341,12 @@ export async function getMatchedPathways(
   pool: Pool,
   patientId: string,
 ): Promise<MatchedPathway[]> {
+  // Ontology-aware match: a pathway requiring E11 (Type 2 diabetes, broad) should
+  // match a patient whose snapshot only carries E11.65 (with hyperglycemia, more
+  // specific). The expanded_codes CTE unions the patient's literal snapshot
+  // codes with all their ICD-10 ancestors via the icd10_codes ltree path.
+  // Codes from other systems (or ICD-10 codes not in icd10_codes) pass through
+  // the UNION's anchor side unchanged.
   const result = await pool.query(
     `WITH patient_codes AS (
        SELECT DISTINCT sc.code
@@ -352,6 +359,16 @@ export async function getMatchedPathways(
            WHERE epic_patient_id = p.epic_patient_id
          )
          AND sc.code IS NOT NULL
+         AND ${activeConditionPredicate('sc')}
+     ),
+     expanded_codes AS (
+       SELECT code FROM patient_codes
+       UNION
+       SELECT ancestor.code
+       FROM patient_codes pc
+       JOIN icd10_codes leaf ON leaf.code = pc.code
+       JOIN icd10_codes ancestor ON leaf.path <@ ancestor.path
+       WHERE ancestor.code != leaf.code
      ),
      pathway_totals AS (
        SELECT pathway_id, COUNT(*) AS total_codes
@@ -364,7 +381,7 @@ export async function getMatchedPathways(
             pt.total_codes
      FROM pathway_graph_index pgi
      JOIN pathway_condition_codes pc ON pc.pathway_id = pgi.id
-     JOIN patient_codes ON patient_codes.code = pc.code
+     JOIN expanded_codes ON expanded_codes.code = pc.code
      JOIN pathway_totals pt ON pt.pathway_id = pgi.id
      WHERE pgi.status = 'ACTIVE' AND pgi.is_active = true
      GROUP BY pgi.id, pgi.logical_id, pgi.title, pgi.version, pgi.category,

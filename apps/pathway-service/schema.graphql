@@ -220,6 +220,83 @@ type MatchedPathway {
   pathway: Pathway!
   matchedConditionCodes: [String!]!
   matchScore: Float!
+  """
+  Decision-point reachability score for this patient. Lazy field — computed
+  only when requested. Indicates how many of the pathway's gates can be
+  auto-resolved from the patient's current snapshot data.
+  """
+  reachability: ReachabilityScore!
+}
+
+"""
+Per-pathway gate-resolvability metrics for a specific patient. `autoResolvableScore`
+is the headline value: (alwaysEvaluableGates + dataAvailableGates) / totalGates.
+The remaining counts let the UI surface specifics like "needs N more lab values".
+`gateExplanations` provides per-gate detail for explainability surfaces.
+"""
+type ReachabilityScore {
+  totalGates: Int!
+  alwaysEvaluableGates: Int!
+  dataDependentGates: Int!
+  dataAvailableGates: Int!
+  questionGates: Int!
+  indeterminateGates: Int!
+  autoResolvableScore: Float
+  gateExplanations: [GateExplanation!]!
+}
+
+enum GateClassification {
+  ALWAYS_EVALUABLE
+  DATA_AVAILABLE
+  DATA_BLOCKED
+  QUESTION
+  INDETERMINATE
+}
+
+"""
+Per-gate explanation surfaced for a pathway/patient pair. `missingData` is
+populated only when classification is DATA_BLOCKED — it lists the specific
+data items needed to make the gate resolvable.
+"""
+type GateExplanation {
+  gateNodeIdentifier: String!
+  gateTitle: String!
+  classification: GateClassification!
+  reason: String!
+  missingData: [MissingData!]!
+}
+
+type MissingData {
+  field: String!
+  code: String
+  system: String
+  vitalName: String
+  threshold: Float
+  comparison: String
+}
+
+enum PathwayRelationshipType {
+  """Code sets are equal."""
+  IDENTICAL
+  """Candidate's code set is a strict subset of the input pathway's code set (candidate is more specific)."""
+  SUBSET
+  """Candidate's code set is a strict superset of the input pathway's code set (candidate is broader)."""
+  SUPERSET
+  """Code sets overlap but neither contains the other."""
+  PARTIAL_OVERLAP
+}
+
+"""
+A pathway whose condition-code set overlaps with another pathway's, with the
+specific overlap classification and the actual code differences. Used to
+surface related/conflicting/duplicate pathways at upload time.
+"""
+type RelatedPathway {
+  pathway: Pathway!
+  relationshipType: PathwayRelationshipType!
+  sharedCodes: [String!]!
+  uniqueToCandidate: [String!]!
+  uniqueToInput: [String!]!
 }
 
 type ResolutionSession {
@@ -540,6 +617,14 @@ type Query {
   searchCodes(query: String!, system: String, limit: Int): [CodeDefinition!]!
 
   matchedPathways(patientId: ID!): [MatchedPathway!]!
+
+  """
+  Find pathways whose condition-code set overlaps with this pathway's set.
+  Used at upload time to surface related/conflicting/duplicate pathways for
+  admin review. Excludes the input pathway itself; ACTIVE pathways only.
+  Ordered by relationship strength: IDENTICAL > SUBSET > SUPERSET > PARTIAL_OVERLAP.
+  """
+  relatedPathways(pathwayId: ID!): [RelatedPathway!]!
   resolutionSession(sessionId: ID!): ResolutionSession
   pendingQuestions(sessionId: ID!): [PendingQuestionType!]!
   redFlags(sessionId: ID!): [RedFlagType!]!
