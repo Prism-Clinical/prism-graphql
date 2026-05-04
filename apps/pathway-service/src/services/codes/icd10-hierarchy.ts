@@ -126,8 +126,8 @@ interface ConditionCodeInput {
  *
  * Non-ICD-10 codes are silently ignored — only ICD-10 has hierarchy.
  *
- * MUST run inside the same transaction as writeConditionCodes so a failure
- * rolls back both the pathway and any partial hierarchy additions.
+ * MUST run inside the same transaction as writeCodeSets so a failure rolls
+ * back both the pathway and any partial hierarchy additions.
  */
 export async function ensureIcd10Codes(
   client: PoolClient,

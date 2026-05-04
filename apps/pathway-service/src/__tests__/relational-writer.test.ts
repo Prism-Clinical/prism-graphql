@@ -1,6 +1,5 @@
 import {
   writePathwayIndex,
-  writeConditionCodes,
   writeCodeSets,
   deleteCodeSets,
   writeVersionDiff,
@@ -49,26 +48,6 @@ describe('writePathwayIndex', () => {
     expect(call.values).toContain('1.0');
     expect(call.values).toContain('OBSTETRIC');
     expect(call.values).toContain('age-node-123');
-  });
-});
-
-describe('writeConditionCodes', () => {
-  it('should INSERT all condition codes in a single batch query', async () => {
-    const client = createMockClient();
-    const pathwayId = '00000000-0000-4000-a000-000000000099';
-    await writeConditionCodes(client as any, pathwayId, REFERENCE_PATHWAY.pathway.condition_codes);
-
-    expect(client.query).toHaveBeenCalledTimes(1); // Single batch INSERT
-    const call = client.queries[0];
-    expect(call.text).toContain('INSERT INTO pathway_condition_codes');
-    // 2 condition codes × 6 params each = 12 values
-    expect(call.values).toHaveLength(12);
-  });
-
-  it('should skip if no condition codes', async () => {
-    const client = createMockClient();
-    await writeConditionCodes(client as any, 'pid', []);
-    expect(client.query).not.toHaveBeenCalled();
   });
 });
 

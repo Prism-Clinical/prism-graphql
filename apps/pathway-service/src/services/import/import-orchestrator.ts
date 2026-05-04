@@ -1,15 +1,13 @@
 import { Pool, PoolClient } from 'pg';
-import { PathwayJson, ImportMode, ImportResult, ImportDiffSummary, DiffDetail } from './types';
+import { PathwayJson, ImportMode, ImportResult, ImportDiffSummary, DiffDetail, CodeSetScope } from './types';
 import { validatePathwayJson } from './validator';
 import { buildGraphCommands, buildBatchedGraphCommands } from './graph-builder';
 import { buildCypherQuery } from '../age-client';
 import { computeDiff } from './diff-engine';
 import {
   writePathwayIndex,
-  writeConditionCodes,
   writeCodeSets,
   writeVersionDiff,
-  deleteConditionCodes,
   deleteCodeSets,
   updatePathwayIndex,
 } from './relational-writer';
@@ -208,15 +206,11 @@ export async function importPathway(
     let diffResult: { summary: ImportDiffSummary; details: DiffDetail[]; synthetic: boolean } | null = null;
 
     if (importMode === 'DRAFT_UPDATE' && existing) {
-      // Update existing index row, replace condition codes + code sets
-      await deleteConditionCodes(client, existing.id);
+      // Update existing index row, replace code sets (members cascade-delete via FK).
       await deleteCodeSets(client, existing.id);
       const updated = await updatePathwayIndex(client, existing.id, pathwayJson.pathway, rootAgeNodeId);
       pathwayId = updated.id;
       await ensureIcd10Codes(client, pathwayJson.pathway.condition_codes);
-      // Phase 1b transition: dual-write to old (read-path) + new (write-path) tables.
-      // Commit 3 cuts over the read path; commit 4 drops the old table + writer.
-      await writeConditionCodes(client, pathwayId, pathwayJson.pathway.condition_codes);
       await writeCodeSets(client, pathwayId, pathwayJson.pathway);
 
       if (oldPathwayJson) {
@@ -236,9 +230,6 @@ export async function importPathway(
       const indexRow = await writePathwayIndex(client, pathwayJson.pathway, rootAgeNodeId, userId);
       pathwayId = indexRow.id;
       await ensureIcd10Codes(client, pathwayJson.pathway.condition_codes);
-      // Phase 1b transition: dual-write to old (read-path) + new (write-path) tables.
-      // Commit 3 cuts over the read path; commit 4 drops the old table + writer.
-      await writeConditionCodes(client, pathwayId, pathwayJson.pathway.condition_codes);
       await writeCodeSets(client, pathwayId, pathwayJson.pathway);
 
       if (importMode === 'NEW_PATHWAY') {
@@ -419,9 +410,26 @@ async function reconstructPathwayJson(
     if (!indexRow.rows[0]) return null;
     const meta = indexRow.rows[0];
 
-    // Get condition codes
-    const ccRows = await client.query(
-      'SELECT code, system, description, usage, grouping FROM pathway_condition_codes WHERE pathway_id = $1',
+    // Get code sets and their members. We rebuild both the legacy
+    // condition_codes (deduped union of members) and the new code_sets
+    // shape so the diff engine sees a faithful snapshot of the prior import.
+    const setRows = await client.query(
+      `SELECT cs.id AS set_id, cs.scope, cs.entry_node_id, cs.description,
+              COALESCE(
+                jsonb_agg(
+                  jsonb_build_object(
+                    'code', m.code,
+                    'system', m.system,
+                    'scope_override', m.scope_override,
+                    'description', m.description
+                  ) ORDER BY m.code
+                ) FILTER (WHERE m.id IS NOT NULL),
+                '[]'::jsonb
+              ) AS members
+         FROM pathway_code_sets cs
+         LEFT JOIN pathway_code_set_members m ON m.code_set_id = cs.id
+        WHERE cs.pathway_id = $1
+        GROUP BY cs.id, cs.scope, cs.entry_node_id, cs.description`,
       [pathwayId]
     );
 
@@ -505,6 +513,44 @@ async function reconstructPathwayJson(
       }
     }
 
+    // Build condition_codes as a deduped union of all members (preserves the
+    // legacy authoring shape) and code_sets as a faithful reconstruction.
+    const seenCodes = new Set<string>();
+    const conditionCodes: PathwayJson['pathway']['condition_codes'] = [];
+    const codeSets: NonNullable<PathwayJson['pathway']['code_sets']> = [];
+
+    for (const row of setRows.rows) {
+      const members = (row.members as Array<{
+        code: string;
+        system: string;
+        scope_override: string | null;
+        description: string | null;
+      }>) ?? [];
+
+      codeSets.push({
+        description: row.description || undefined,
+        scope: row.scope as CodeSetScope,
+        entry_node_id: row.entry_node_id || undefined,
+        required_codes: members.map((m) => ({
+          code: m.code,
+          system: m.system,
+          scope_override: (m.scope_override as CodeSetScope | null) || undefined,
+          description: m.description || undefined,
+        })),
+      });
+
+      for (const m of members) {
+        const key = `${m.system}|${m.code}`;
+        if (seenCodes.has(key)) continue;
+        seenCodes.add(key);
+        conditionCodes.push({
+          code: m.code,
+          system: m.system,
+          description: m.description || undefined,
+        });
+      }
+    }
+
     return {
       schema_version: '1.0',
       pathway: {
@@ -514,13 +560,8 @@ async function reconstructPathwayJson(
         category: meta.category,
         scope: meta.scope || undefined,
         target_population: meta.target_population || undefined,
-        condition_codes: ccRows.rows.map((r: any) => ({
-          code: r.code,
-          system: r.system,
-          description: r.description || undefined,
-          usage: r.usage || undefined,
-          grouping: r.grouping || undefined,
-        })),
+        condition_codes: conditionCodes,
+        code_sets: codeSets,
       },
       nodes,
       edges,

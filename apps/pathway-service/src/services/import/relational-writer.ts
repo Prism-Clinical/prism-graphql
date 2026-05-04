@@ -41,34 +41,9 @@ export async function writePathwayIndex(
   return result.rows[0];
 }
 
-/**
- * Insert rows into pathway_condition_codes for a given pathway.
- * Uses a single multi-row INSERT to minimize round-trips within the transaction.
- */
-export async function writeConditionCodes(
-  client: PoolClient,
-  pathwayId: string,
-  conditionCodes: ConditionCodeDefinition[]
-): Promise<void> {
-  if (conditionCodes.length === 0) return;
-
-  const values: unknown[] = [];
-  const placeholders: string[] = [];
-
-  for (let i = 0; i < conditionCodes.length; i++) {
-    const cc = conditionCodes[i];
-    const offset = i * 6;
-    placeholders.push(`($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6})`);
-    values.push(pathwayId, cc.code, cc.system, cc.description || null, cc.usage || null, cc.grouping || null);
-  }
-
-  await client.query(
-    `INSERT INTO pathway_condition_codes
-      (pathway_id, code, system, description, usage, grouping)
-     VALUES ${placeholders.join(', ')}`,
-    values
-  );
-}
+// writeConditionCodes / deleteConditionCodes were removed in Phase 1b commit 4
+// when pathway_condition_codes was dropped. All code-set storage now lives in
+// pathway_code_sets + pathway_code_set_members; see writeCodeSets below.
 
 /**
  * Insert a row into pathway_version_diffs to record the import audit trail.
@@ -88,16 +63,6 @@ export async function writeVersionDiff(
      VALUES ($1, $2, $3, $4, $5, $6)`,
     [pathwayId, previousPathwayId, importType, JSON.stringify(summary), JSON.stringify(details), userId]
   );
-}
-
-/**
- * Delete condition codes for a pathway (used during DRAFT_UPDATE to replace them).
- */
-export async function deleteConditionCodes(
-  client: PoolClient,
-  pathwayId: string
-): Promise<void> {
-  await client.query('DELETE FROM pathway_condition_codes WHERE pathway_id = $1', [pathwayId]);
 }
 
 // ─── Phase 1b: code-set writers ─────────────────────────────────────

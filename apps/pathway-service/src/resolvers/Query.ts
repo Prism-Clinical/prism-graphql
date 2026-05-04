@@ -201,8 +201,16 @@ export const Query = {
       const pathway = indexResult.rows[0];
       if (!pathway) return null;
 
+      // Phase 1b: condition codes are stored as code-set members. Flatten
+      // member rows into the legacy ConditionCodeDetail shape (one row per
+      // (set, member) pair). description = set-level; usage = per-member;
+      // grouping is no longer captured (always null).
       const ccResult = await pool.query(
-        'SELECT code, system, description, usage, grouping FROM pathway_condition_codes WHERE pathway_id = $1',
+        `SELECT m.code, m.system, cs.description, m.description AS usage, NULL AS grouping
+           FROM pathway_code_set_members m
+           JOIN pathway_code_sets cs ON cs.id = m.code_set_id
+          WHERE cs.pathway_id = $1
+          ORDER BY cs.id, m.code`,
         [args.id]
       );
 
