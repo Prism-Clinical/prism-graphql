@@ -19,6 +19,13 @@ export interface PathwayMetadata {
   scope?: string;
   target_population?: string;
   condition_codes: ConditionCodeDefinition[];
+  /**
+   * Phase 1b: explicit set-based authoring. Optional — when present, each
+   * entry becomes one row in `pathway_code_sets` plus N rows in
+   * `pathway_code_set_members`. When absent, the import pipeline synthesizes
+   * one set per code in `condition_codes` (legacy disjunction semantic).
+   */
+  code_sets?: CodeSetDefinition[];
 }
 
 export interface ConditionCodeDefinition {
@@ -27,6 +34,63 @@ export interface ConditionCodeDefinition {
   description?: string;
   usage?: string;
   grouping?: string;
+}
+
+// ─── Phase 1b: Code Set authoring types ─────────────────────────────
+
+/** JSON-side: the author's declaration of one code set within a pathway. */
+export interface CodeSetDefinition {
+  /** Author-facing label, e.g. "T2DM with hypertension". */
+  description?: string;
+  /** Default scope applied to every member; defaults to EXACT. */
+  scope?: CodeSetScope;
+  /** AGE node_id where this set's match should route resolution. */
+  entry_node_id?: string;
+  /**
+   * Member codes that must ALL be present in the patient's expanded code
+   * set for this set to match. Cross-system conjunctions are supported by
+   * letting each member declare its own system.
+   */
+  required_codes: CodeSetMemberDefinition[];
+}
+
+export interface CodeSetMemberDefinition {
+  code: string;
+  system: string;
+  /** Per-code scope override; null/undefined = inherit from CodeSetDefinition.scope. */
+  scope_override?: CodeSetScope;
+  /** Per-code authoring note. */
+  description?: string;
+}
+
+export type CodeSetScope = 'EXACT' | 'EXACT_AND_DESCENDANTS' | 'DESCENDANTS_OK';
+
+export const VALID_CODE_SET_SCOPES: CodeSetScope[] = [
+  'EXACT',
+  'EXACT_AND_DESCENDANTS',
+  'DESCENDANTS_OK',
+];
+
+// ─── Phase 1b: DB row types (used by writers and readers) ────────────
+
+export interface PathwayCodeSetRow {
+  id: string;
+  pathway_id: string;
+  scope: CodeSetScope;
+  semantics: 'ALL_OF';
+  entry_node_id: string | null;
+  description: string | null;
+  created_at: Date;
+  updated_at: Date;
+}
+
+export interface PathwayCodeSetMemberRow {
+  id: string;
+  code_set_id: string;
+  code: string;
+  system: string;
+  scope_override: CodeSetScope | null;
+  description: string | null;
 }
 
 // All valid node types in the graph
