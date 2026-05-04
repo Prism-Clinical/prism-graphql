@@ -2,6 +2,8 @@ import { PoolClient } from 'pg';
 import {
   PathwayMetadata,
   ConditionCodeDefinition,
+  CodeSetDefinition,
+  CodeSetMemberDefinition,
   ImportMode,
   ImportDiffSummary,
   DiffDetail,
@@ -39,34 +41,9 @@ export async function writePathwayIndex(
   return result.rows[0];
 }
 
-/**
- * Insert rows into pathway_condition_codes for a given pathway.
- * Uses a single multi-row INSERT to minimize round-trips within the transaction.
- */
-export async function writeConditionCodes(
-  client: PoolClient,
-  pathwayId: string,
-  conditionCodes: ConditionCodeDefinition[]
-): Promise<void> {
-  if (conditionCodes.length === 0) return;
-
-  const values: unknown[] = [];
-  const placeholders: string[] = [];
-
-  for (let i = 0; i < conditionCodes.length; i++) {
-    const cc = conditionCodes[i];
-    const offset = i * 6;
-    placeholders.push(`($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6})`);
-    values.push(pathwayId, cc.code, cc.system, cc.description || null, cc.usage || null, cc.grouping || null);
-  }
-
-  await client.query(
-    `INSERT INTO pathway_condition_codes
-      (pathway_id, code, system, description, usage, grouping)
-     VALUES ${placeholders.join(', ')}`,
-    values
-  );
-}
+// writeConditionCodes / deleteConditionCodes were removed in Phase 1b commit 4
+// when pathway_condition_codes was dropped. All code-set storage now lives in
+// pathway_code_sets + pathway_code_set_members; see writeCodeSets below.
 
 /**
  * Insert a row into pathway_version_diffs to record the import audit trail.
@@ -88,14 +65,108 @@ export async function writeVersionDiff(
   );
 }
 
+// ─── Phase 1b: code-set writers ─────────────────────────────────────
+
 /**
- * Delete condition codes for a pathway (used during DRAFT_UPDATE to replace them).
+ * Build the effective code-set list to persist for a pathway:
+ *   - If meta.code_sets is non-empty, use it directly.
+ *   - Otherwise, synthesize one single-element set per condition_code
+ *     (legacy disjunction semantic preserved).
  */
-export async function deleteConditionCodes(
+function effectiveCodeSets(meta: PathwayMetadata): CodeSetDefinition[] {
+  if (meta.code_sets && meta.code_sets.length > 0) {
+    return meta.code_sets;
+  }
+  return synthesizeFromConditionCodes(meta.condition_codes);
+}
+
+function synthesizeFromConditionCodes(
+  codes: ConditionCodeDefinition[]
+): CodeSetDefinition[] {
+  return codes.map((cc) => ({
+    description: cc.description,
+    scope: 'EXACT',
+    required_codes: [
+      {
+        code: cc.code,
+        system: cc.system,
+        description: cc.usage,
+      } as CodeSetMemberDefinition,
+    ],
+  }));
+}
+
+/**
+ * Insert pathway_code_sets and pathway_code_set_members rows for a pathway.
+ *
+ * If `meta.code_sets` is provided, writes those directly. Otherwise synthesizes
+ * one single-element set per `condition_codes` entry — preserves the legacy
+ * "any code matches" behavior under set-based matching.
+ */
+export async function writeCodeSets(
+  client: PoolClient,
+  pathwayId: string,
+  meta: PathwayMetadata
+): Promise<void> {
+  const sets = effectiveCodeSets(meta);
+  if (sets.length === 0) return;
+
+  for (const setDef of sets) {
+    const setResult = await client.query(
+      `INSERT INTO pathway_code_sets
+        (pathway_id, scope, semantics, entry_node_id, description)
+       VALUES ($1, $2, 'ALL_OF', $3, $4)
+       RETURNING id`,
+      [
+        pathwayId,
+        setDef.scope ?? 'EXACT',
+        setDef.entry_node_id ?? null,
+        setDef.description ?? null,
+      ]
+    );
+    const setId = setResult.rows[0].id;
+
+    if (setDef.required_codes.length === 0) continue;
+
+    const values: unknown[] = [];
+    const placeholders: string[] = [];
+    for (let i = 0; i < setDef.required_codes.length; i++) {
+      const m = setDef.required_codes[i];
+      const offset = i * 5;
+      placeholders.push(
+        `($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5})`
+      );
+      values.push(
+        setId,
+        m.code,
+        m.system,
+        m.scope_override ?? null,
+        m.description ?? null,
+      );
+    }
+
+    await client.query(
+      `INSERT INTO pathway_code_set_members
+        (code_set_id, code, system, scope_override, description)
+       VALUES ${placeholders.join(', ')}
+       ON CONFLICT (code_set_id, code, system) DO NOTHING`,
+      values
+    );
+  }
+}
+
+/**
+ * Delete all code sets (and their members via CASCADE) for a pathway.
+ * Used during DRAFT_UPDATE to replace them.
+ */
+export async function deleteCodeSets(
   client: PoolClient,
   pathwayId: string
 ): Promise<void> {
-  await client.query('DELETE FROM pathway_condition_codes WHERE pathway_id = $1', [pathwayId]);
+  await client.query(
+    'DELETE FROM pathway_code_sets WHERE pathway_id = $1',
+    [pathwayId]
+  );
 }
 
 /**

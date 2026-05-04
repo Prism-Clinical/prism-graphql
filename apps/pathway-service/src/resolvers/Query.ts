@@ -7,8 +7,20 @@ import {
   getMatchedPathways,
   getPatientSessions,
 } from '../services/resolution/session-store';
-import { ResolutionSession, NodeResult, NodeStatus } from '../services/resolution/types';
+import { ResolutionSession, NodeResult, NodeStatus, MatchedPathway } from '../services/resolution/types';
 import { fetchGraphFromAGE, buildGraphContext, sharedScorerRegistry, sharedCascadeResolver } from './helpers/resolution-context';
+import { createPatientContextLoader } from '../services/resolution/snapshot-context';
+import { computePathwayReachability } from '../services/resolution/reachability-loader';
+
+// Internal parent type for MatchedPathway field resolvers. Carries a per-request
+// memoized patient-context loader so MatchedPathway.reachability can compute
+// against snapshot data without reloading per-row.
+type MatchedPathwayParent = MatchedPathway & {
+  __ctx: {
+    patientId: string;
+    loadPatientContext: () => Promise<import('../services/confidence/types').PatientContext>;
+  };
+};
 
 // ─── GraphQL Formatting ──────────────────────────────────────────────
 
@@ -189,8 +201,16 @@ export const Query = {
       const pathway = indexResult.rows[0];
       if (!pathway) return null;
 
+      // Phase 1b: condition codes are stored as code-set members. Flatten
+      // member rows into the legacy ConditionCodeDetail shape (one row per
+      // (set, member) pair). description = set-level; usage = per-member;
+      // grouping is no longer captured (always null).
       const ccResult = await pool.query(
-        'SELECT code, system, description, usage, grouping FROM pathway_condition_codes WHERE pathway_id = $1',
+        `SELECT m.code, m.system, cs.description, m.description AS usage, NULL AS grouping
+           FROM pathway_code_set_members m
+           JOIN pathway_code_sets cs ON cs.id = m.code_set_id
+          WHERE cs.pathway_id = $1
+          ORDER BY cs.id, m.code`,
         [args.id]
       );
 
@@ -481,8 +501,144 @@ export const Query = {
       _: unknown,
       args: { patientId: string },
       context: DataSourceContext
+    ): Promise<MatchedPathwayParent[]> => {
+      const rows = await getMatchedPathways(context.pool, args.patientId);
+      const loadPatientContext = createPatientContextLoader(context.pool, args.patientId);
+      return rows.map((row) => ({
+        ...row,
+        __ctx: { patientId: args.patientId, loadPatientContext },
+      }));
+    },
+
+    relatedPathways: async (
+      _: unknown,
+      args: { pathwayId: string },
+      context: DataSourceContext,
     ) => {
-      return getMatchedPathways(context.pool, args.patientId);
+      const { pool } = context;
+
+      const inputResult = await pool.query(
+        `SELECT condition_codes FROM pathway_graph_index WHERE id = $1`,
+        [args.pathwayId],
+      );
+      if (inputResult.rows.length === 0) {
+        throw new GraphQLError('Pathway not found', { extensions: { code: 'NOT_FOUND' } });
+      }
+      const inputCodes: string[] = inputResult.rows[0].condition_codes ?? [];
+      if (inputCodes.length === 0) {
+        return [];
+      }
+
+      // Ontology-aware classification: a candidate code is "in input's territory"
+      // if it equals an input code OR (both have ICD-10 paths AND candidate's path
+      // is a descendant of an input's path). Subset = every candidate code in
+      // input's territory; superset = every input code in candidate's territory.
+      // Non-ICD-10 codes participate via flat equality only — they pass through
+      // the OR branch and are correctly classified relative to other flat matches.
+      //
+      // The WHERE clause filters to candidates that have ANY relationship at all
+      // (flat overlap OR any ltree path relationship in either direction). The
+      // outer subquery wrap lets us reference relationship_type in ORDER BY.
+      const result = await pool.query(
+        `SELECT * FROM (
+           SELECT
+             pgi.id, pgi.age_node_id AS "ageNodeId", pgi.logical_id AS "logicalId",
+             pgi.title, pgi.version, pgi.category, pgi.status,
+             pgi.condition_codes AS "conditionCodes",
+             pgi.scope, pgi.target_population AS "targetPopulation",
+             pgi.is_active AS "isActive",
+             pgi.created_at AS "createdAt", pgi.updated_at AS "updatedAt",
+             CASE
+               WHEN pgi.condition_codes = $2::text[] THEN 'IDENTICAL'
+               WHEN NOT EXISTS (
+                 SELECT 1 FROM unnest(pgi.condition_codes) AS uc(code)
+                 WHERE NOT (
+                   uc.code = ANY($2::text[])
+                   OR EXISTS (
+                     SELECT 1 FROM unnest($2::text[]) AS ui(code)
+                     JOIN icd10_codes ucn ON ucn.code = uc.code
+                     JOIN icd10_codes uin ON uin.code = ui.code
+                     WHERE ucn.path <@ uin.path
+                   )
+                 )
+               ) THEN 'SUBSET'
+               WHEN NOT EXISTS (
+                 SELECT 1 FROM unnest($2::text[]) AS ui(code)
+                 WHERE NOT (
+                   ui.code = ANY(pgi.condition_codes)
+                   OR EXISTS (
+                     SELECT 1 FROM unnest(pgi.condition_codes) AS uc(code)
+                     JOIN icd10_codes ucn ON ucn.code = uc.code
+                     JOIN icd10_codes uin ON uin.code = ui.code
+                     WHERE uin.path <@ ucn.path
+                   )
+                 )
+               ) THEN 'SUPERSET'
+               ELSE 'PARTIAL_OVERLAP'
+             END AS relationship_type,
+             ARRAY(
+               SELECT UNNEST(pgi.condition_codes)
+               INTERSECT
+               SELECT UNNEST($2::text[])
+             ) AS shared_codes,
+             ARRAY(
+               SELECT UNNEST(pgi.condition_codes)
+               EXCEPT
+               SELECT UNNEST($2::text[])
+             ) AS unique_to_candidate,
+             ARRAY(
+               SELECT UNNEST($2::text[])
+               EXCEPT
+               SELECT UNNEST(pgi.condition_codes)
+             ) AS unique_to_input
+           FROM pathway_graph_index pgi
+           WHERE pgi.id != $1
+             AND pgi.status = 'ACTIVE'
+             AND pgi.is_active = true
+             AND (
+               pgi.condition_codes && $2::text[]
+               OR EXISTS (
+                 SELECT 1
+                 FROM unnest(pgi.condition_codes) AS uc(code)
+                 JOIN unnest($2::text[]) AS ui(code) ON true
+                 JOIN icd10_codes ucn ON ucn.code = uc.code
+                 JOIN icd10_codes uin ON uin.code = ui.code
+                 WHERE ucn.path <@ uin.path OR uin.path <@ ucn.path
+               )
+             )
+         ) results
+         ORDER BY
+           CASE relationship_type
+             WHEN 'IDENTICAL' THEN 0
+             WHEN 'SUBSET' THEN 1
+             WHEN 'SUPERSET' THEN 2
+             ELSE 3
+           END,
+           title`,
+        [args.pathwayId, inputCodes],
+      );
+
+      return result.rows.map((row) => ({
+        pathway: {
+          id: row.id,
+          ageNodeId: row.ageNodeId,
+          logicalId: row.logicalId,
+          title: row.title,
+          version: row.version,
+          category: row.category,
+          status: row.status,
+          conditionCodes: row.conditionCodes,
+          scope: row.scope,
+          targetPopulation: row.targetPopulation,
+          isActive: row.isActive,
+          createdAt: row.createdAt,
+          updatedAt: row.updatedAt,
+        },
+        relationshipType: row.relationship_type,
+        sharedCodes: row.shared_codes ?? [],
+        uniqueToCandidate: row.unique_to_candidate ?? [],
+        uniqueToInput: row.unique_to_input ?? [],
+      }));
     },
 
     resolutionSession: async (
@@ -554,6 +710,30 @@ export const Query = {
         [ref.id]
       );
       return result.rows[0] || null;
+    },
+  },
+
+  MatchedPathway: {
+    reachability: async (
+      parent: MatchedPathway,
+      _args: unknown,
+      context: DataSourceContext,
+    ) => {
+      const ctx = (parent as MatchedPathwayParent).__ctx;
+      if (!ctx) {
+        return {
+          totalGates: 0,
+          alwaysEvaluableGates: 0,
+          dataDependentGates: 0,
+          dataAvailableGates: 0,
+          questionGates: 0,
+          indeterminateGates: 0,
+          autoResolvableScore: null,
+          gateExplanations: [],
+        };
+      }
+      const patient = await ctx.loadPatientContext();
+      return computePathwayReachability(context.pool, parent.pathway.id, patient);
     },
   },
 };

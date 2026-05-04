@@ -39,6 +39,12 @@ function createMockPool() {
           }],
         };
       }
+      // Handle pathway_code_sets INSERT (returns id for the new row)
+      if (text.includes('INSERT INTO pathway_code_sets')) {
+        return {
+          rows: [{ id: '00000000-0000-4000-a000-00000000aaaa' }],
+        };
+      }
       // Handle other INSERTs
       if (text.includes('INSERT')) {
         return { rows: [] };
@@ -106,6 +112,9 @@ describe('importPathway', () => {
       }
       if (text.includes('INSERT INTO pathway_graph_index')) {
         return { rows: [{ id: 'test-id' }] };
+      }
+      if (text.includes('INSERT INTO pathway_code_sets')) {
+        return { rows: [{ id: '00000000-0000-4000-a000-00000000bbbb' }] };
       }
       return { rows: [] };
     });

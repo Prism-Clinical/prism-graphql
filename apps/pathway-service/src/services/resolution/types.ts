@@ -216,7 +216,21 @@ export interface CarePlanGenerationResult {
   blockers: ValidationBlocker[];
 }
 
-// ─── Matched Pathway ────────────────────────────────────────────────
+// ─── Matched Pathway (Phase 1b) ─────────────────────────────────────
+
+export interface MatchedCodeSetMember {
+  code: string;
+  system: string;
+}
+
+export interface MatchedCodeSet {
+  setId: string;
+  description: string | null;
+  scope: string;
+  entryNodeId: string | null;
+  members: MatchedCodeSetMember[];
+  memberCount: number;
+}
 
 export interface MatchedPathway {
   pathway: {
@@ -228,8 +242,14 @@ export interface MatchedPathway {
     status: string;
     conditionCodes: string[];
   };
-  matchedConditionCodes: string[];
+  matched: true;
+  matchedSets: MatchedCodeSet[];
+  mostSpecificMatchedSet: MatchedCodeSet;
+  specificityDepth: number;
+  patientCodesAddressed: string[];
+  patientCodesUnaddressed: string[];
   matchScore: number;
+  matchedConditionCodes: string[];
 }
 
 // ─── Traversal Confidence Adapter ───────────────────────────────────

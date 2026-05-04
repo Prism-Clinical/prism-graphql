@@ -97,13 +97,18 @@ export async function fetchGraphFromAGE(
     executeCypher(pool, edgesCypher, '(a agtype, r agtype, b agtype)'),
   ]);
 
+  // AGE returns vertex/edge values with a "::vertex" or "::edge" type suffix
+  // appended to the JSON. Strip it before parsing.
+  const stripAgtypeSuffix = (val: unknown): string =>
+    String(val).replace(/::(?:vertex|edge)$/, '');
+
   const nodes: GraphNode[] = [];
   const seenNodeIds = new Set<string>();
 
   for (const row of nodesResult.rows) {
     if (!row.v) continue;
     try {
-      const parsed = JSON.parse(row.v);
+      const parsed = JSON.parse(stripAgtypeSuffix(row.v));
       if (!parsed || !parsed.properties) continue;
       const props = parsed.properties;
       const nodeId = props.node_id ?? `age_${parsed.id}`;
@@ -126,9 +131,9 @@ export async function fetchGraphFromAGE(
   for (const row of edgesResult.rows) {
     if (!row.a || !row.r || !row.b) continue;
     try {
-      const a = JSON.parse(row.a);
-      const r = JSON.parse(row.r);
-      const b = JSON.parse(row.b);
+      const a = JSON.parse(stripAgtypeSuffix(row.a));
+      const r = JSON.parse(stripAgtypeSuffix(row.r));
+      const b = JSON.parse(stripAgtypeSuffix(row.b));
 
       const fromId = a.label === 'Pathway' ? (a.properties?.node_id ?? `age_${a.id}`) : a.properties?.node_id;
       const toId = b.properties?.node_id ?? `age_${b.id}`;

@@ -1,16 +1,17 @@
 import { Pool, PoolClient } from 'pg';
-import { PathwayJson, ImportMode, ImportResult, ImportDiffSummary, DiffDetail } from './types';
+import { PathwayJson, ImportMode, ImportResult, ImportDiffSummary, DiffDetail, CodeSetScope } from './types';
 import { validatePathwayJson } from './validator';
 import { buildGraphCommands, buildBatchedGraphCommands } from './graph-builder';
 import { buildCypherQuery } from '../age-client';
 import { computeDiff } from './diff-engine';
 import {
   writePathwayIndex,
-  writeConditionCodes,
+  writeCodeSets,
   writeVersionDiff,
-  deleteConditionCodes,
+  deleteCodeSets,
   updatePathwayIndex,
 } from './relational-writer';
+import { ensureIcd10Codes } from '../codes/icd10-hierarchy';
 
 /** Parse AGE agtype values which may have ::vertex or ::edge suffix */
 function parseAgtype(val: unknown): any {
@@ -181,13 +182,19 @@ export async function importPathway(
       await client.query(sql);
     }
 
-    // 5c. Batch-create edges via UNWIND (grouped by type)
+    // 5c. Create root-originated edges individually (label+id+version-scoped MATCH).
+    for (const cypher of batched.rootEdgeCyphers) {
+      const sql = buildCypherQuery(undefined, cypher, '(v agtype)');
+      await client.query(sql);
+    }
+
+    // 5d. Batch-create non-root edges via UNWIND (grouped by type)
     for (const cypher of batched.edgeCyphers) {
       const sql = buildCypherQuery(undefined, cypher, '(v agtype)');
       await client.query(sql);
     }
 
-    // 5d. Create edges with properties individually (rare)
+    // 5e. Create edges with properties individually (rare)
     for (const cypher of batched.edgeWithPropsCyphers) {
       const sql = buildCypherQuery(undefined, cypher, '(a agtype, b agtype)');
       await client.query(sql);
@@ -199,11 +206,12 @@ export async function importPathway(
     let diffResult: { summary: ImportDiffSummary; details: DiffDetail[]; synthetic: boolean } | null = null;
 
     if (importMode === 'DRAFT_UPDATE' && existing) {
-      // Update existing index row, replace condition codes
-      await deleteConditionCodes(client, existing.id);
+      // Update existing index row, replace code sets (members cascade-delete via FK).
+      await deleteCodeSets(client, existing.id);
       const updated = await updatePathwayIndex(client, existing.id, pathwayJson.pathway, rootAgeNodeId);
       pathwayId = updated.id;
-      await writeConditionCodes(client, pathwayId, pathwayJson.pathway.condition_codes);
+      await ensureIcd10Codes(client, pathwayJson.pathway.condition_codes);
+      await writeCodeSets(client, pathwayId, pathwayJson.pathway);
 
       if (oldPathwayJson) {
         // Real diff from reconstructed old graph
@@ -221,7 +229,8 @@ export async function importPathway(
       // NEW_PATHWAY or NEW_VERSION — insert new rows
       const indexRow = await writePathwayIndex(client, pathwayJson.pathway, rootAgeNodeId, userId);
       pathwayId = indexRow.id;
-      await writeConditionCodes(client, pathwayId, pathwayJson.pathway.condition_codes);
+      await ensureIcd10Codes(client, pathwayJson.pathway.condition_codes);
+      await writeCodeSets(client, pathwayId, pathwayJson.pathway);
 
       if (importMode === 'NEW_PATHWAY') {
         // No diff for brand new pathways — record the creation summary (synthetic)
@@ -401,9 +410,26 @@ async function reconstructPathwayJson(
     if (!indexRow.rows[0]) return null;
     const meta = indexRow.rows[0];
 
-    // Get condition codes
-    const ccRows = await client.query(
-      'SELECT code, system, description, usage, grouping FROM pathway_condition_codes WHERE pathway_id = $1',
+    // Get code sets and their members. We rebuild both the legacy
+    // condition_codes (deduped union of members) and the new code_sets
+    // shape so the diff engine sees a faithful snapshot of the prior import.
+    const setRows = await client.query(
+      `SELECT cs.id AS set_id, cs.scope, cs.entry_node_id, cs.description,
+              COALESCE(
+                jsonb_agg(
+                  jsonb_build_object(
+                    'code', m.code,
+                    'system', m.system,
+                    'scope_override', m.scope_override,
+                    'description', m.description
+                  ) ORDER BY m.code
+                ) FILTER (WHERE m.id IS NOT NULL),
+                '[]'::jsonb
+              ) AS members
+         FROM pathway_code_sets cs
+         LEFT JOIN pathway_code_set_members m ON m.code_set_id = cs.id
+        WHERE cs.pathway_id = $1
+        GROUP BY cs.id, cs.scope, cs.entry_node_id, cs.description`,
       [pathwayId]
     );
 
@@ -487,6 +513,44 @@ async function reconstructPathwayJson(
       }
     }
 
+    // Build condition_codes as a deduped union of all members (preserves the
+    // legacy authoring shape) and code_sets as a faithful reconstruction.
+    const seenCodes = new Set<string>();
+    const conditionCodes: PathwayJson['pathway']['condition_codes'] = [];
+    const codeSets: NonNullable<PathwayJson['pathway']['code_sets']> = [];
+
+    for (const row of setRows.rows) {
+      const members = (row.members as Array<{
+        code: string;
+        system: string;
+        scope_override: string | null;
+        description: string | null;
+      }>) ?? [];
+
+      codeSets.push({
+        description: row.description || undefined,
+        scope: row.scope as CodeSetScope,
+        entry_node_id: row.entry_node_id || undefined,
+        required_codes: members.map((m) => ({
+          code: m.code,
+          system: m.system,
+          scope_override: (m.scope_override as CodeSetScope | null) || undefined,
+          description: m.description || undefined,
+        })),
+      });
+
+      for (const m of members) {
+        const key = `${m.system}|${m.code}`;
+        if (seenCodes.has(key)) continue;
+        seenCodes.add(key);
+        conditionCodes.push({
+          code: m.code,
+          system: m.system,
+          description: m.description || undefined,
+        });
+      }
+    }
+
     return {
       schema_version: '1.0',
       pathway: {
@@ -496,13 +560,8 @@ async function reconstructPathwayJson(
         category: meta.category,
         scope: meta.scope || undefined,
         target_population: meta.target_population || undefined,
-        condition_codes: ccRows.rows.map((r: any) => ({
-          code: r.code,
-          system: r.system,
-          description: r.description || undefined,
-          usage: r.usage || undefined,
-          grouping: r.grouping || undefined,
-        })),
+        condition_codes: conditionCodes,
+        code_sets: codeSets,
       },
       nodes,
       edges,
