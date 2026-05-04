@@ -7,8 +7,10 @@ import { computeDiff } from './diff-engine';
 import {
   writePathwayIndex,
   writeConditionCodes,
+  writeCodeSets,
   writeVersionDiff,
   deleteConditionCodes,
+  deleteCodeSets,
   updatePathwayIndex,
 } from './relational-writer';
 import { ensureIcd10Codes } from '../codes/icd10-hierarchy';
@@ -206,12 +208,16 @@ export async function importPathway(
     let diffResult: { summary: ImportDiffSummary; details: DiffDetail[]; synthetic: boolean } | null = null;
 
     if (importMode === 'DRAFT_UPDATE' && existing) {
-      // Update existing index row, replace condition codes
+      // Update existing index row, replace condition codes + code sets
       await deleteConditionCodes(client, existing.id);
+      await deleteCodeSets(client, existing.id);
       const updated = await updatePathwayIndex(client, existing.id, pathwayJson.pathway, rootAgeNodeId);
       pathwayId = updated.id;
       await ensureIcd10Codes(client, pathwayJson.pathway.condition_codes);
+      // Phase 1b transition: dual-write to old (read-path) + new (write-path) tables.
+      // Commit 3 cuts over the read path; commit 4 drops the old table + writer.
       await writeConditionCodes(client, pathwayId, pathwayJson.pathway.condition_codes);
+      await writeCodeSets(client, pathwayId, pathwayJson.pathway);
 
       if (oldPathwayJson) {
         // Real diff from reconstructed old graph
@@ -230,7 +236,10 @@ export async function importPathway(
       const indexRow = await writePathwayIndex(client, pathwayJson.pathway, rootAgeNodeId, userId);
       pathwayId = indexRow.id;
       await ensureIcd10Codes(client, pathwayJson.pathway.condition_codes);
+      // Phase 1b transition: dual-write to old (read-path) + new (write-path) tables.
+      // Commit 3 cuts over the read path; commit 4 drops the old table + writer.
       await writeConditionCodes(client, pathwayId, pathwayJson.pathway.condition_codes);
+      await writeCodeSets(client, pathwayId, pathwayJson.pathway);
 
       if (importMode === 'NEW_PATHWAY') {
         // No diff for brand new pathways — record the creation summary (synthetic)

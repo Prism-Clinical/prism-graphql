@@ -409,4 +409,111 @@ describe('validatePathwayJson', () => {
       expect(result.errors).toContainEqual(expect.stringContaining('conditions'));
     });
   });
+
+  describe('Phase 1b code_sets validation', () => {
+    it('accepts pathway with no code_sets (legacy shape)', () => {
+      const pw = clonePathway(MINIMAL_PATHWAY);
+      expect(pw.pathway.code_sets).toBeUndefined();
+      const result = validatePathwayJson(pw);
+      expect(result.valid).toBe(true);
+    });
+
+    it('accepts pathway with valid code_sets', () => {
+      const pw = clonePathway(MINIMAL_PATHWAY);
+      pw.pathway.code_sets = [
+        {
+          description: 'T2DM with HTN',
+          scope: 'EXACT',
+          required_codes: [
+            { code: 'E11', system: 'ICD-10' },
+            { code: 'I10', system: 'ICD-10' },
+          ],
+        },
+      ];
+      const result = validatePathwayJson(pw);
+      expect(result.valid).toBe(true);
+    });
+
+    it('accepts cross-system code_sets', () => {
+      const pw = clonePathway(MINIMAL_PATHWAY);
+      pw.pathway.code_sets = [
+        {
+          description: 'AF on warfarin',
+          required_codes: [
+            { code: 'I48.91', system: 'ICD-10' },
+            { code: '11289', system: 'RXNORM' },
+          ],
+        },
+      ];
+      const result = validatePathwayJson(pw);
+      expect(result.valid).toBe(true);
+    });
+
+    it('rejects code_sets that is not an array', () => {
+      const pw = clonePathway(MINIMAL_PATHWAY);
+      (pw.pathway as any).code_sets = 'not an array';
+      const result = validatePathwayJson(pw);
+      expect(result.valid).toBe(false);
+      expect(result.errors).toContainEqual(expect.stringContaining('code_sets must be an array'));
+    });
+
+    it('rejects code_set with empty required_codes', () => {
+      const pw = clonePathway(MINIMAL_PATHWAY);
+      pw.pathway.code_sets = [{ description: 'empty', required_codes: [] }];
+      const result = validatePathwayJson(pw);
+      expect(result.valid).toBe(false);
+      expect(result.errors).toContainEqual(expect.stringContaining('required_codes must be a non-empty array'));
+    });
+
+    it('rejects invalid scope value', () => {
+      const pw = clonePathway(MINIMAL_PATHWAY);
+      pw.pathway.code_sets = [
+        {
+          scope: 'BOGUS' as any,
+          required_codes: [{ code: 'E11', system: 'ICD-10' }],
+        },
+      ];
+      const result = validatePathwayJson(pw);
+      expect(result.valid).toBe(false);
+      expect(result.errors).toContainEqual(expect.stringContaining('invalid scope'));
+    });
+
+    it('rejects invalid system on a member', () => {
+      const pw = clonePathway(MINIMAL_PATHWAY);
+      pw.pathway.code_sets = [
+        {
+          required_codes: [{ code: 'E11', system: 'NOT-A-SYSTEM' as any }],
+        },
+      ];
+      const result = validatePathwayJson(pw);
+      expect(result.valid).toBe(false);
+      expect(result.errors).toContainEqual(expect.stringMatching(/invalid system "NOT-A-SYSTEM"/));
+    });
+
+    it('rejects member missing code', () => {
+      const pw = clonePathway(MINIMAL_PATHWAY);
+      pw.pathway.code_sets = [
+        {
+          required_codes: [{ system: 'ICD-10' } as any],
+        },
+      ];
+      const result = validatePathwayJson(pw);
+      expect(result.valid).toBe(false);
+      expect(result.errors).toContainEqual(expect.stringContaining('missing "code"'));
+    });
+
+    it('rejects invalid scope_override on a member', () => {
+      const pw = clonePathway(MINIMAL_PATHWAY);
+      pw.pathway.code_sets = [
+        {
+          required_codes: [
+            { code: 'E11', system: 'ICD-10', scope_override: 'BOGUS' as any },
+          ],
+        },
+      ];
+      const result = validatePathwayJson(pw);
+      expect(result.valid).toBe(false);
+      expect(result.errors).toContainEqual(expect.stringContaining('invalid scope_override'));
+    });
+  });
 });

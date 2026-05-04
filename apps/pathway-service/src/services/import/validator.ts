@@ -2,9 +2,11 @@ import {
   PathwayJson,
   PathwayNodeType,
   PathwayEdgeType,
+  CodeSetDefinition,
   REQUIRED_NODE_PROPERTIES,
   VALID_EDGE_ENDPOINTS,
   VALID_CODE_SYSTEMS,
+  VALID_CODE_SET_SCOPES,
   VALID_MEDICATION_ROLES,
   VALID_EVIDENCE_LEVELS,
   MAX_GRAPH_NODES,
@@ -64,6 +66,15 @@ export function validatePathwayJson(pw: PathwayJson, options: ValidateOptions = 
     errors.push('pathway.condition_codes must be a non-empty array');
   } else {
     validateConditionCodes(meta.condition_codes, errors, warnings);
+  }
+
+  // Phase 1b: validate optional code_sets if present.
+  if (meta.code_sets !== undefined) {
+    if (!Array.isArray(meta.code_sets)) {
+      errors.push('pathway.code_sets must be an array when present');
+    } else {
+      validateCodeSets(meta.code_sets, errors, warnings);
+    }
   }
 
   // ─── Nodes array ────────────────────────────────────────────────
@@ -231,6 +242,46 @@ function validateConditionCodes(
       errors.push(`condition_codes[${i}]: missing "system"`);
     } else if (!VALID_CODE_SYSTEMS.includes(cc.system as any)) {
       errors.push(`condition_codes[${i}]: invalid system "${cc.system}". Must be one of: ${VALID_CODE_SYSTEMS.join(', ')}`);
+    }
+  }
+}
+
+/**
+ * Phase 1b: validate the optional `code_sets` JSON shape.
+ * Each set must have a non-empty required_codes array; each member must have a
+ * valid (code, system); scope and scope_override must be one of the supported
+ * enum values.
+ */
+function validateCodeSets(
+  sets: CodeSetDefinition[],
+  errors: string[],
+  warnings: string[]
+): void {
+  for (let i = 0; i < sets.length; i++) {
+    const set = sets[i];
+
+    if (set.scope !== undefined && !VALID_CODE_SET_SCOPES.includes(set.scope)) {
+      errors.push(`code_sets[${i}]: invalid scope "${set.scope}". Must be one of: ${VALID_CODE_SET_SCOPES.join(', ')}`);
+    }
+
+    if (!set.required_codes || !Array.isArray(set.required_codes) || set.required_codes.length === 0) {
+      errors.push(`code_sets[${i}]: required_codes must be a non-empty array`);
+      continue;
+    }
+
+    for (let j = 0; j < set.required_codes.length; j++) {
+      const m = set.required_codes[j];
+      if (!m.code) {
+        errors.push(`code_sets[${i}].required_codes[${j}]: missing "code"`);
+      }
+      if (!m.system) {
+        errors.push(`code_sets[${i}].required_codes[${j}]: missing "system"`);
+      } else if (!VALID_CODE_SYSTEMS.includes(m.system as any)) {
+        errors.push(`code_sets[${i}].required_codes[${j}]: invalid system "${m.system}". Must be one of: ${VALID_CODE_SYSTEMS.join(', ')}`);
+      }
+      if (m.scope_override !== undefined && !VALID_CODE_SET_SCOPES.includes(m.scope_override)) {
+        errors.push(`code_sets[${i}].required_codes[${j}]: invalid scope_override "${m.scope_override}". Must be one of: ${VALID_CODE_SET_SCOPES.join(', ')}`);
+      }
     }
   }
 }
