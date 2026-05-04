@@ -1,6 +1,7 @@
 import { importMutations } from './mutations/import';
 import { confidenceMutations } from './mutations/confidence';
 import { resolutionMutations } from './mutations/resolution';
+import { multiPathwayResolutionMutations } from './mutations/multi-pathway-resolution';
 
 // Re-export interfaces for external consumers
 export type {
@@ -31,5 +32,6 @@ export const Mutation = {
     ...importMutations,
     ...confidenceMutations,
     ...resolutionMutations,
+    ...multiPathwayResolutionMutations,
   },
 };

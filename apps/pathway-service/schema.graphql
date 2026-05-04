@@ -299,6 +299,131 @@ type MatchedCodeSetMember {
   system: String!
 }
 
+# ─── Multi-Pathway Merged Care Plan (Phase 3) ─────────────────────────
+
+"""
+Result of resolving every matched pathway for a patient and merging their
+recommendations. Each `MergedRecommendation` carries the IDs of all pathways
+whose resolution contributed it. `suppressed` lists recommendations that were
+hidden because some pathway flagged the same drug as contraindicated/avoid.
+
+v1 surfaces only auto-resolved cases — provider conflict UX (commit 4) will
+add `pendingProviderChoice` entries for soft conflicts.
+"""
+type MergedCarePlan {
+  """Pathways whose resolution fed this merge (post-lattice-collapse)."""
+  sourcePathwayIds: [ID!]!
+  medications: [MergedMedicationRecommendation!]!
+  labs: [MergedLabRecommendation!]!
+  procedures: [MergedProcedureRecommendation!]!
+  schedules: [MergedScheduleRecommendation!]!
+  qualityMetrics: [MergedQualityMetricRecommendation!]!
+  suppressed: [SuppressedRecommendation!]!
+}
+
+enum RecommendationState {
+  AUTO_INCLUDED
+}
+
+type ResolvedMedication {
+  name: String!
+  role: String!
+  dose: String
+  frequency: String
+  duration: String
+  route: String
+  sourcePathwayId: ID!
+  sourceNodeId: String
+}
+
+type ResolvedLab {
+  name: String!
+  code: String
+  system: String
+  specimen: String
+  sourcePathwayId: ID!
+  sourceNodeId: String
+}
+
+type ResolvedProcedure {
+  name: String!
+  code: String
+  system: String
+  sourcePathwayId: ID!
+  sourceNodeId: String
+}
+
+type ResolvedSchedule {
+  interval: String!
+  description: String!
+  sourcePathwayId: ID!
+  sourceNodeId: String
+}
+
+type ResolvedQualityMetric {
+  name: String!
+  measure: String!
+  sourcePathwayId: ID!
+  sourceNodeId: String
+}
+
+type MergedMedicationRecommendation {
+  recommendation: ResolvedMedication!
+  sourcePathwayIds: [ID!]!
+  state: RecommendationState!
+}
+
+type MergedLabRecommendation {
+  recommendation: ResolvedLab!
+  sourcePathwayIds: [ID!]!
+  state: RecommendationState!
+}
+
+type MergedProcedureRecommendation {
+  recommendation: ResolvedProcedure!
+  sourcePathwayIds: [ID!]!
+  state: RecommendationState!
+}
+
+type MergedScheduleRecommendation {
+  recommendation: ResolvedSchedule!
+  sourcePathwayIds: [ID!]!
+  state: RecommendationState!
+}
+
+type MergedQualityMetricRecommendation {
+  recommendation: ResolvedQualityMetric!
+  sourcePathwayIds: [ID!]!
+  state: RecommendationState!
+}
+
+enum SuppressionReason {
+  CONTRAINDICATED
+  AVOID
+}
+
+enum SuppressedRecommendationType {
+  MEDICATION
+  LAB
+  PROCEDURE
+  SCHEDULE
+  QUALITY_METRIC
+}
+
+"""
+A recommendation that was hidden during merge. v1: medications flagged
+`contraindicated` or `avoid` by any matched pathway suppress the same drug
+in every other pathway; the suppressed entry stays in the response so
+clinicians can see why a drug they expected isn't recommended.
+"""
+type SuppressedRecommendation {
+  type: SuppressedRecommendationType!
+  name: String!
+  reason: SuppressionReason!
+  suppressedByPathwayId: ID!
+  suppressedByPathwayTitle: String!
+}
+
 """
 Per-pathway gate-resolvability metrics for a specific patient. `autoResolvableScore`
 is the headline value: (alwaysEvaluableGates + dataAvailableGates) / totalGates.
@@ -744,6 +869,16 @@ type Mutation {
   removeAdminEvidence(id: ID!): Boolean!
 
   startResolution(pathwayId: ID!, patientId: ID!, patientContext: PatientContextInput): ResolutionSession!
+
+  """
+  Run resolution against every pathway that matches the patient and merge
+  the results into a single care plan. Internally: matchedPathways →
+  lattice-collapse to drop dominated scenarios → per-pathway TraversalEngine
+  → project each into a ResolvedCarePlan → merge with hard-constraint
+  suppression. v1 does NOT persist anything (no ResolutionSession rows),
+  the merged plan is returned directly.
+  """
+  startMultiPathwayResolution(patientId: ID!, patientContext: PatientContextInput): MergedCarePlan!
   overrideNode(sessionId: ID!, nodeId: ID!, action: OverrideAction!, reason: String): ResolutionSession!
   answerGateQuestion(sessionId: ID!, gateId: ID!, answer: GateAnswerInput!): ResolutionSession!
   addPatientContext(sessionId: ID!, additionalContext: AdditionalContextInput!): ResolutionSession!
