@@ -218,14 +218,85 @@ type ResolvedThresholds {
 
 type MatchedPathway {
   pathway: Pathway!
-  matchedConditionCodes: [String!]!
+
+  """
+  Always true for results in the matchedPathways list (a non-match wouldn't
+  appear). Explicit field for clients that want to render binary state.
+  """
+  matched: Boolean!
+
+  """
+  Every code set whose member codes are all satisfied by the patient's
+  expanded code set. Multiple sets fire when a patient's profile satisfies
+  multiple scenarios (typically nested ones — broader sets fire when the
+  more-specific set fires).
+  """
+  matchedSets: [MatchedCodeSet!]!
+
+  """
+  Pointer to the matched set with the largest member count — i.e. the most
+  specific scenario this patient triggers within the pathway. The clinical
+  surface a provider should look at first.
+  """
+  mostSpecificMatchedSet: MatchedCodeSet!
+
+  """
+  Member count of mostSpecificMatchedSet. Useful for ranking pathways by
+  match depth (bigger = more nuanced clinical scenario triggered).
+  """
+  specificityDepth: Int!
+
+  """
+  Patient's literal active condition codes that fall under at least one
+  member of the most-specific matched set (member codes themselves OR ICD-10
+  descendants thereof). These are the patient problems THIS pathway addresses.
+  """
+  patientCodesAddressed: [String!]!
+
+  """
+  Patient's literal active condition codes NOT covered by any matched-set
+  member. Signals "consider other pathways" for these clinical problems.
+  """
+  patientCodesUnaddressed: [String!]!
+
+  """
+  Coverage score: patientCodesAddressed.length / (addressed + unaddressed).
+  An honest measure of how comprehensively this pathway addresses the
+  patient's clinical profile. NOTE: semantic shifted from the legacy
+  "matched_codes / total_codes" computation; same field shape.
+  """
   matchScore: Float!
+
+  """
+  Union of code-set member codes that fired across all matched sets.
+  Retained from the pre-Phase-1b shape for backwards compatibility.
+  """
+  matchedConditionCodes: [String!]!
+
   """
   Decision-point reachability score for this patient. Lazy field — computed
   only when requested. Indicates how many of the pathway's gates can be
   auto-resolved from the patient's current snapshot data.
   """
   reachability: ReachabilityScore!
+}
+
+"""
+A code set whose member codes are all satisfied by the patient. The
+matcher returns one of these per fired set per matched pathway.
+"""
+type MatchedCodeSet {
+  setId: ID!
+  description: String
+  scope: String!
+  entryNodeId: String
+  members: [MatchedCodeSetMember!]!
+  memberCount: Int!
+}
+
+type MatchedCodeSetMember {
+  code: String!
+  system: String!
 }
 
 """

@@ -12,9 +12,12 @@ import {
   DependencyMap,
   ResolutionSession,
   MatchedPathway,
+  MatchedCodeSet,
+  MatchedCodeSetMember,
   GateAnswer,
 } from './types';
 import { activeConditionPredicate } from '../snapshot/active-context-filter';
+import { findAncestors } from '../codes/icd10-hierarchy';
 
 // ─── Helpers ───────────────────────────────────────────────────────
 
@@ -337,19 +340,29 @@ export async function logGateAnswer(
 
 // ─── DB: Queries ───────────────────────────────────────────────────
 
+interface PatientLiteralCode {
+  code: string;
+  system: string;
+}
+
+/**
+ * Phase 1b set-based matcher.
+ *
+ * A pathway matches when at least one of its code sets is fully covered by
+ * the patient's expanded code set (set member ∈ patient_codes ∪ ancestors).
+ * For each matched pathway we collect the matched sets, identify the most
+ * specific (largest) one, and compute coverage of the patient's literal
+ * problems against that set.
+ */
 export async function getMatchedPathways(
   pool: Pool,
   patientId: string,
 ): Promise<MatchedPathway[]> {
-  // Ontology-aware match: a pathway requiring E11 (Type 2 diabetes, broad) should
-  // match a patient whose snapshot only carries E11.65 (with hyperglycemia, more
-  // specific). The expanded_codes CTE unions the patient's literal snapshot
-  // codes with all their ICD-10 ancestors via the icd10_codes ltree path.
-  // Codes from other systems (or ICD-10 codes not in icd10_codes) pass through
-  // the UNION's anchor side unchanged.
-  const result = await pool.query(
+  // 1. Find matched (pathway, set) pairs using set containment + Phase 1a's
+  //    ancestor expansion + Phase 1.5's active-condition filter.
+  const matchedRowsRes = await pool.query(
     `WITH patient_codes AS (
-       SELECT DISTINCT sc.code
+       SELECT DISTINCT sc.code, 'ICD-10' AS system
        FROM snapshot_conditions sc
        JOIN patient_clinical_snapshots pcs ON sc.snapshot_id = pcs.id
        JOIN patients p ON pcs.epic_patient_id = p.epic_patient_id
@@ -362,47 +375,191 @@ export async function getMatchedPathways(
          AND ${activeConditionPredicate('sc')}
      ),
      expanded_codes AS (
-       SELECT code FROM patient_codes
+       SELECT code, system FROM patient_codes
        UNION
-       SELECT ancestor.code
+       SELECT ancestor.code, 'ICD-10' AS system
        FROM patient_codes pc
        JOIN icd10_codes leaf ON leaf.code = pc.code
        JOIN icd10_codes ancestor ON leaf.path <@ ancestor.path
        WHERE ancestor.code != leaf.code
+         AND pc.system = 'ICD-10'
      ),
-     pathway_totals AS (
-       SELECT pathway_id, COUNT(*) AS total_codes
-       FROM pathway_condition_codes
-       GROUP BY pathway_id
+     matched_set_ids AS (
+       SELECT cs.id AS set_id, cs.pathway_id
+       FROM pathway_code_sets cs
+       WHERE NOT EXISTS (
+         SELECT 1 FROM pathway_code_set_members m
+         WHERE m.code_set_id = cs.id
+           AND NOT EXISTS (
+             SELECT 1 FROM expanded_codes e
+             WHERE e.code = m.code AND e.system = m.system
+           )
+       )
      )
-     SELECT pgi.id, pgi.logical_id, pgi.title, pgi.version, pgi.category,
-            pgi.status, pgi.condition_codes,
-            array_agg(DISTINCT pc.code) AS matched_codes,
-            pt.total_codes
+     SELECT
+       pgi.id, pgi.logical_id, pgi.title, pgi.version, pgi.category,
+       pgi.status, pgi.condition_codes,
+       ARRAY_AGG(ms.set_id) AS matched_set_ids
      FROM pathway_graph_index pgi
-     JOIN pathway_condition_codes pc ON pc.pathway_id = pgi.id
-     JOIN expanded_codes ON expanded_codes.code = pc.code
-     JOIN pathway_totals pt ON pt.pathway_id = pgi.id
+     JOIN matched_set_ids ms ON ms.pathway_id = pgi.id
      WHERE pgi.status = 'ACTIVE' AND pgi.is_active = true
      GROUP BY pgi.id, pgi.logical_id, pgi.title, pgi.version, pgi.category,
-              pgi.status, pgi.condition_codes, pt.total_codes
+              pgi.status, pgi.condition_codes
      ORDER BY pgi.title`,
     [patientId],
   );
 
-  return result.rows.map(row => ({
-    pathway: {
-      id: row.id,
-      logicalId: row.logical_id,
-      title: row.title,
-      version: row.version,
-      category: row.category,
-      status: row.status,
-      conditionCodes: row.condition_codes,
-    },
-    matchedConditionCodes: row.matched_codes || [],
-    matchScore: (row.matched_codes?.length || 0) / (row.total_codes || 1),
+  if (matchedRowsRes.rows.length === 0) return [];
+
+  // 2. Fetch patient's literal active codes for the addressed/unaddressed
+  //    computation. Don't include ancestor expansion — addressed/unaddressed
+  //    is about the patient's actual problems, not the expanded set.
+  const patientCodesRes = await pool.query(
+    `SELECT DISTINCT sc.code, 'ICD-10' AS system
+       FROM snapshot_conditions sc
+       JOIN patient_clinical_snapshots pcs ON sc.snapshot_id = pcs.id
+       JOIN patients p ON pcs.epic_patient_id = p.epic_patient_id
+      WHERE p.id = $1
+        AND pcs.snapshot_version = (
+          SELECT MAX(snapshot_version) FROM patient_clinical_snapshots
+          WHERE epic_patient_id = p.epic_patient_id
+        )
+        AND sc.code IS NOT NULL
+        AND ${activeConditionPredicate('sc')}`,
+    [patientId],
+  );
+  const patientLiteralCodes: PatientLiteralCode[] = patientCodesRes.rows.map((r) => ({
+    code: r.code,
+    system: r.system,
   }));
+
+  // 3. Fetch all matched code sets (with their members) in one query.
+  const allMatchedSetIds = Array.from(
+    new Set(matchedRowsRes.rows.flatMap((r) => r.matched_set_ids as string[])),
+  );
+  const setsByIdMap = await fetchCodeSetsWithMembers(pool, allMatchedSetIds);
+
+  // 4. Compose each MatchedPathway.
+  const composed: MatchedPathway[] = [];
+  for (const row of matchedRowsRes.rows) {
+    const matchedSets: MatchedCodeSet[] = (row.matched_set_ids as string[])
+      .map((id) => setsByIdMap.get(id))
+      .filter((s): s is MatchedCodeSet => s !== undefined);
+
+    if (matchedSets.length === 0) continue;
+
+    const mostSpecific = matchedSets.reduce((a, b) =>
+      a.memberCount >= b.memberCount ? a : b,
+    );
+
+    const { addressed, unaddressed } = await computeCoverage(
+      pool,
+      patientLiteralCodes,
+      mostSpecific.members,
+    );
+
+    const total = addressed.length + unaddressed.length;
+    const matchScore = total === 0 ? 0 : addressed.length / total;
+
+    const matchedConditionCodes = Array.from(
+      new Set(matchedSets.flatMap((s) => s.members.map((m) => m.code))),
+    );
+
+    composed.push({
+      pathway: {
+        id: row.id,
+        logicalId: row.logical_id,
+        title: row.title,
+        version: row.version,
+        category: row.category,
+        status: row.status,
+        conditionCodes: row.condition_codes,
+      },
+      matched: true,
+      matchedSets,
+      mostSpecificMatchedSet: mostSpecific,
+      specificityDepth: mostSpecific.memberCount,
+      patientCodesAddressed: addressed,
+      patientCodesUnaddressed: unaddressed,
+      matchScore,
+      matchedConditionCodes,
+    });
+  }
+  return composed;
+}
+
+/**
+ * Fetch a batch of code sets with their members, returned as a Map keyed by set id.
+ */
+async function fetchCodeSetsWithMembers(
+  pool: Pool,
+  setIds: string[],
+): Promise<Map<string, MatchedCodeSet>> {
+  if (setIds.length === 0) return new Map();
+  const result = await pool.query(
+    `SELECT cs.id, cs.description, cs.scope, cs.entry_node_id,
+            COALESCE(
+              jsonb_agg(
+                jsonb_build_object('code', m.code, 'system', m.system)
+                ORDER BY m.code
+              ) FILTER (WHERE m.id IS NOT NULL),
+              '[]'::jsonb
+            ) AS members
+     FROM pathway_code_sets cs
+     LEFT JOIN pathway_code_set_members m ON m.code_set_id = cs.id
+     WHERE cs.id = ANY($1::uuid[])
+     GROUP BY cs.id, cs.description, cs.scope, cs.entry_node_id`,
+    [setIds],
+  );
+  const out = new Map<string, MatchedCodeSet>();
+  for (const row of result.rows) {
+    const members: MatchedCodeSetMember[] = (row.members as MatchedCodeSetMember[]) ?? [];
+    out.set(row.id, {
+      setId: row.id,
+      description: row.description,
+      scope: row.scope,
+      entryNodeId: row.entry_node_id,
+      members,
+      memberCount: members.length,
+    });
+  }
+  return out;
+}
+
+/**
+ * For each patient literal code, decide whether it falls under any member of
+ * the most-specific matched set. ICD-10 codes are matched literally OR via
+ * ancestor relationships (using the icd10_codes hierarchy). Non-ICD-10
+ * codes only match literally.
+ */
+async function computeCoverage(
+  pool: Pool,
+  patientCodes: PatientLiteralCode[],
+  members: MatchedCodeSetMember[],
+): Promise<{ addressed: string[]; unaddressed: string[] }> {
+  const addressed: string[] = [];
+  const unaddressed: string[] = [];
+
+  const memberSet = new Set(members.map((m) => `${m.system}|${m.code}`));
+
+  for (const pc of patientCodes) {
+    const literalKey = `${pc.system}|${pc.code}`;
+    if (memberSet.has(literalKey)) {
+      addressed.push(pc.code);
+      continue;
+    }
+
+    if (pc.system === 'ICD-10') {
+      const ancestors = await findAncestors(pool, pc.code);
+      const covered = ancestors.some((a) => memberSet.has(`ICD-10|${a}`));
+      if (covered) addressed.push(pc.code);
+      else unaddressed.push(pc.code);
+    } else {
+      unaddressed.push(pc.code);
+    }
+  }
+
+  return { addressed, unaddressed };
 }
 
 export async function getPatientSessions(
