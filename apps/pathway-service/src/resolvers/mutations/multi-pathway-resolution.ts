@@ -44,7 +44,14 @@ import {
   ConflictResolution,
   ConflictResolutionKind,
   CustomMedicationOverride,
+  SuppressedRecommendation,
+  SuppressionSource,
 } from '../../services/resolution/care-plan-merge';
+import {
+  runPatientContextDdi,
+  runCrossRecommendationDdi,
+  DdiFinding,
+} from '../../services/medications/ddi-pass';
 import { projectResolutionToCarePlan } from '../../services/resolution/care-plan-projection';
 import {
   buildResolutionContext,
@@ -126,7 +133,67 @@ export const multiPathwayResolutionMutations = {
     const { resolvedPlans, contributingSessionIds, contributingPathwayIds } =
       await resolveAndPersistAll(pool, surviving, patientContext, context.userId);
 
-    const merged = mergeResolvedCarePlans(resolvedPlans);
+    // ── DDI stage 1: pre-merge, per-plan against patient context ──
+    const preMergeWarnings: unknown[] = [];
+    const preMergeSuppressions: SuppressedRecommendation[] = [];
+    const ddiCleanedPlans: ResolvedCarePlan[] = [];
+
+    for (const plan of resolvedPlans) {
+      const candidates = plan.medications.map((m) => ({
+        recommendationId: m.sourceNodeId ?? `${plan.pathwayId}|${m.name}`,
+        drugName: m.name,
+      }));
+      const ddi = await runPatientContextDdi(pool, candidates, patientContext);
+      preMergeWarnings.push(...ddi.findings.filter((f) => f.action === 'WARN'));
+
+      // Translate suppressions to SuppressedRecommendation entries; drop them
+      // from the plan's medications so merge doesn't see them.
+      const suppressedIds = ddi.suppressedRecommendationIds;
+      for (const finding of ddi.findings) {
+        if (finding.action !== 'SUPPRESS') continue;
+        const med = plan.medications.find((m) => (m.sourceNodeId ?? `${plan.pathwayId}|${m.name}`) === finding.recommendationId);
+        if (!med) continue;
+        preMergeSuppressions.push(buildDdiSuppression(med, finding));
+      }
+
+      ddiCleanedPlans.push({
+        ...plan,
+        medications: plan.medications.filter(
+          (m) => !suppressedIds.has(m.sourceNodeId ?? `${plan.pathwayId}|${m.name}`),
+        ),
+      });
+    }
+
+    const merged = mergeResolvedCarePlans(ddiCleanedPlans);
+
+    // ── DDI stage 2: post-merge, cross-recommendation pairs ──
+    const crossCandidates = merged.medications.map((m) => ({
+      recommendationId: m.recommendation.sourceNodeId ?? `${m.recommendation.sourcePathwayId}|${m.recommendation.name}`,
+      drugName: m.recommendation.name,
+      sourcePathwayId: m.recommendation.sourcePathwayId,
+    }));
+    const cross = await runCrossRecommendationDdi(pool, crossCandidates);
+    const crossWarnings = cross.findings.filter((f) => f.action === 'WARN');
+    const crossSuppressedIds = cross.suppressedRecommendationIds;
+    const crossSuppressions: SuppressedRecommendation[] = [];
+    for (const finding of cross.findings) {
+      if (finding.action !== 'SUPPRESS') continue;
+      const med = merged.medications.find(
+        (m) => (m.recommendation.sourceNodeId ?? `${m.recommendation.sourcePathwayId}|${m.recommendation.name}`) === finding.recommendationId,
+      );
+      if (!med) continue;
+      crossSuppressions.push(buildDdiSuppression(med.recommendation, finding));
+    }
+
+    const finalMerged: MergedCarePlan = {
+      ...merged,
+      medications: merged.medications.filter(
+        (m) => !crossSuppressedIds.has(m.recommendation.sourceNodeId ?? `${m.recommendation.sourcePathwayId}|${m.recommendation.name}`),
+      ),
+      suppressed: [...merged.suppressed, ...preMergeSuppressions, ...crossSuppressions],
+    };
+
+    const ddiWarnings = [...preMergeWarnings, ...crossWarnings];
 
     const sessionId = await createMultiPathwaySession(pool, {
       patientId: args.patientId,
@@ -134,7 +201,8 @@ export const multiPathwayResolutionMutations = {
       initialPatientContext: patientContext,
       contributingSessionIds,
       contributingPathwayIds,
-      mergedPlan: merged,
+      mergedPlan: finalMerged,
+      ddiWarnings,
     });
 
     const session = await getMultiPathwaySession(pool, sessionId);
@@ -613,8 +681,30 @@ export function formatSessionForGraphQL(s: MultiPathwayResolutionSession) {
     contributingSessionIds: s.contributingSessionIds,
     contributingPathwayIds: s.contributingPathwayIds,
     carePlanId: s.carePlanId,
+    ddiWarnings: (s.ddiWarnings ?? []).map(formatDdiWarningForGraphQL),
     createdAt: s.createdAt.toISOString(),
     updatedAt: s.updatedAt.toISOString(),
+  };
+}
+
+function formatDdiWarningForGraphQL(w: unknown) {
+  const wo = (w ?? {}) as Record<string, unknown>;
+  const source = (wo.source ?? {}) as Record<string, unknown>;
+  return {
+    recommendationId: wo.recommendationId ?? '',
+    drugName: wo.drugName ?? '',
+    category: wo.category ?? 'DDI_MODERATE',
+    severity: wo.severity ?? 'MODERATE',
+    mechanism: wo.mechanism ?? null,
+    clinicalAdvice: wo.clinicalAdvice ?? null,
+    source: {
+      kind: source.kind ?? '',
+      rxcui: source.rxcui ?? null,
+      name: source.name ?? null,
+      snomedCode: source.snomedCode ?? null,
+      snomedDisplay: source.snomedDisplay ?? null,
+      recommendationId: source.recommendationId ?? null,
+    },
   };
 }
 
@@ -670,12 +760,29 @@ function formatSuppressedForGraphQL(s: MergedCarePlan['suppressed'][number]) {
     schedule: 'SCHEDULE',
     qualityMetric: 'QUALITY_METRIC',
   } as const;
+  const reasonMap: Record<string, string> = {
+    contraindicated: 'CONTRAINDICATED',
+    avoid: 'AVOID',
+    ddi_contraindicated: 'DDI_CONTRAINDICATED',
+    ddi_severe: 'DDI_SEVERE',
+    allergy: 'ALLERGY',
+  };
+  // Pathway-source: legacy fields stay populated; DDI-source: legacy fields null.
+  const src = s.source;
   return {
     type: typeMap[s.type],
     name: s.name,
-    reason: s.reason === 'contraindicated' ? 'CONTRAINDICATED' : 'AVOID',
-    suppressedByPathwayId: s.suppressedBy.pathwayId,
-    suppressedByPathwayTitle: s.suppressedBy.pathwayTitle,
+    reason: reasonMap[s.reason] ?? 'CONTRAINDICATED',
+    suppressedByPathwayId: src.kind === 'PATHWAY' ? src.pathwayId : null,
+    suppressedByPathwayTitle: src.kind === 'PATHWAY' ? src.pathwayTitle : null,
+    suppressedByPatientMedRxcui:
+      src.kind === 'PATIENT_MEDICATION' ? src.rxcui : null,
+    suppressedByPatientMedName:
+      src.kind === 'PATIENT_MEDICATION' ? src.name : null,
+    suppressedByAllergyCode:
+      src.kind === 'PATIENT_ALLERGY' ? src.snomedCode : null,
+    suppressedByAllergyDisplay:
+      src.kind === 'PATIENT_ALLERGY' ? src.snomedDisplay : null,
   };
 }
 
@@ -705,6 +812,36 @@ function formatResolutionForGraphQL(r: ConflictResolution) {
   if (r.kind === 'CONFIRM_PATHWAY') base.chosenPathwayId = r.chosenPathwayId;
   if (r.kind === 'CUSTOM_OVERRIDE') base.customMedication = r.customMedication;
   return base;
+}
+
+function buildDdiSuppression(
+  med: ResolvedMedication,
+  finding: DdiFinding,
+): SuppressedRecommendation {
+  const reasonMap: Record<string, SuppressedRecommendation['reason']> = {
+    DDI_CONTRAINDICATED: 'ddi_contraindicated',
+    DDI_SEVERE: 'ddi_severe',
+    ALLERGY: 'allergy',
+  };
+  let source: SuppressionSource;
+  switch (finding.source.kind) {
+    case 'PATIENT_MEDICATION':
+      source = { kind: 'PATIENT_MEDICATION', rxcui: finding.source.rxcui, name: finding.source.name };
+      break;
+    case 'PATIENT_ALLERGY':
+      source = { kind: 'PATIENT_ALLERGY', snomedCode: finding.source.snomedCode, snomedDisplay: finding.source.snomedDisplay };
+      break;
+    case 'OTHER_RECOMMENDATION':
+      source = { kind: 'OTHER_RECOMMENDATION', recommendationId: finding.source.recommendationId, drugName: finding.source.drugName };
+      break;
+  }
+  return {
+    type: 'medication',
+    name: med.name,
+    reason: reasonMap[finding.category] ?? 'ddi_severe',
+    source,
+    original: med,
+  };
 }
 
 function emptyMergedCarePlan(): MergedCarePlan {
