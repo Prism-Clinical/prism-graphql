@@ -47,7 +47,8 @@ INSERT INTO drug_interactions (rxcui_a, rxcui_b, severity, mechanism, clinical_a
   ('1727', '6809', 'SEVERE',
    'Iodinated contrast risks acute kidney injury → metformin-associated lactic acidosis.',
    'Hold metformin at the time of contrast and for 48h post-procedure; resume after eGFR confirmed stable.',
-   'clinician_review', 'phase-4-example-seed');
+   'clinician_review', 'phase-4-example-seed')
+ON CONFLICT (rxcui_a, rxcui_b) DO NOTHING;
 
 -- =============================================================================
 -- DRUG_CLASS_INTERACTIONS (ATC class fallback)
@@ -65,7 +66,8 @@ INSERT INTO drug_class_interactions (atc_class_a, atc_class_b, severity, mechani
   ('N06AB', 'N06AF', 'CONTRAINDICATED',
    'Class-wide serotonin syndrome risk.',
    'Do not co-administer; allow 2-week washout.',
-   'clinician_review', 'phase-4-example-seed');
+   'clinician_review', 'phase-4-example-seed')
+ON CONFLICT (atc_class_a, atc_class_b) DO NOTHING;
 
 -- =============================================================================
 -- ALLERGY_CLASS_MAPPINGS
@@ -78,4 +80,5 @@ INSERT INTO allergy_class_mappings (snomed_code, snomed_display, atc_class, note
   ('418689008', 'Sulfonamide allergy',          'J01E',   'Sulfonamide antibiotics; non-antibiotic sulfa cross-reactivity is debated and not modeled here.', 'clinician_review', 'phase-4-example-seed'),
   ('294505008', 'HMG-CoA reductase inhibitor allergy', 'C10AA', 'Statin allergy.', 'clinician_review', 'phase-4-example-seed'),
   ('293584003', 'NSAID allergy',                'M01A',   'Non-steroidal anti-inflammatory drugs.', 'clinician_review', 'phase-4-example-seed'),
-  ('300916003', 'Local anaesthetic allergy',    'N01B',   'Local anesthetics; ester vs amide cross-reactivity not modeled here.', 'clinician_review', 'phase-4-example-seed');
+  ('300916003', 'Local anaesthetic allergy',    'N01B',   'Local anesthetics; ester vs amide cross-reactivity not modeled here.', 'clinician_review', 'phase-4-example-seed')
+ON CONFLICT (snomed_code) DO NOTHING;

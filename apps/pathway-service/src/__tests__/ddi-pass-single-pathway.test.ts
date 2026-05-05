@@ -11,7 +11,11 @@ jest.mock('../services/medications/normalizer', () => ({
 }));
 jest.mock('../services/medications/ddi-engine', () => ({
   checkDrugDrugInteraction: jest.fn(),
-  checkDrugAllergy: jest.fn(),
+  // Phase-4 review fix #7: allergy lookup is now split into a fetch + a sync
+  // matcher so the patient's mappings are resolved once per pass instead of
+  // once per candidate.
+  fetchAllergyMappings: jest.fn(),
+  matchDrugAllergyAgainstMappings: jest.fn(),
   moreSevere: jest.fn(),
 }));
 
@@ -21,7 +25,8 @@ import {
 import { lookupNormalizedMedication } from '../services/medications/normalizer';
 import {
   checkDrugDrugInteraction,
-  checkDrugAllergy,
+  fetchAllergyMappings,
+  matchDrugAllergyAgainstMappings,
 } from '../services/medications/ddi-engine';
 import { NodeStatus } from '../types';
 
@@ -88,7 +93,7 @@ describe('applyDdiToResolutionState — empty / no-op cases', () => {
     const result = await applyDdiToResolutionState(fakePool, state, emptyContext);
     expect(result.suppressedNodeCount).toBe(0);
     expect(checkDrugDrugInteraction).not.toHaveBeenCalled();
-    expect(checkDrugAllergy).not.toHaveBeenCalled();
+    expect(matchDrugAllergyAgainstMappings).not.toHaveBeenCalled();
   });
 });
 
@@ -118,7 +123,8 @@ describe('applyDdiToResolutionState — drug↔drug suppression', () => {
       matchType: 'PAIR',
       matchedClasses: null,
     });
-    (checkDrugAllergy as jest.Mock).mockResolvedValue([]);
+    (fetchAllergyMappings as jest.Mock).mockResolvedValue([]);
+    (matchDrugAllergyAgainstMappings as jest.Mock).mockReturnValue([]);
 
     const result = await applyDdiToResolutionState(fakePool, state, ctx);
     expect(result.suppressedNodeCount).toBe(1);
@@ -148,7 +154,8 @@ describe('applyDdiToResolutionState — drug↔drug suppression', () => {
       matchType: 'PAIR',
       matchedClasses: null,
     });
-    (checkDrugAllergy as jest.Mock).mockResolvedValue([]);
+    (fetchAllergyMappings as jest.Mock).mockResolvedValue([]);
+    (matchDrugAllergyAgainstMappings as jest.Mock).mockReturnValue([]);
 
     const result = await applyDdiToResolutionState(fakePool, state, ctx);
     expect(result.suppressedNodeCount).toBe(0);
@@ -172,7 +179,8 @@ describe('applyDdiToResolutionState — drug↔drug suppression', () => {
       severity: 'MINOR',
       mechanism: null, clinicalAdvice: null, matchType: 'PAIR', matchedClasses: null,
     });
-    (checkDrugAllergy as jest.Mock).mockResolvedValue([]);
+    (fetchAllergyMappings as jest.Mock).mockResolvedValue([]);
+    (matchDrugAllergyAgainstMappings as jest.Mock).mockReturnValue([]);
 
     const result = await applyDdiToResolutionState(fakePool, state, ctx);
     expect(result.findings).toEqual([]);
@@ -192,7 +200,10 @@ describe('applyDdiToResolutionState — allergy suppression', () => {
       atcClasses: ['J01CA04'],
     });
     (checkDrugDrugInteraction as jest.Mock).mockResolvedValue(null);
-    (checkDrugAllergy as jest.Mock).mockResolvedValue([{
+    (fetchAllergyMappings as jest.Mock).mockResolvedValue([
+      { snomedCode: '91936005', snomedDisplay: 'Penicillin allergy', atcClass: 'J01C' },
+    ]);
+    (matchDrugAllergyAgainstMappings as jest.Mock).mockReturnValue([{
       severity: 'SEVERE',
       snomedCode: '91936005',
       snomedDisplay: 'Penicillin allergy',
@@ -224,7 +235,10 @@ describe('applyDdiToResolutionState — allergy suppression', () => {
     (checkDrugDrugInteraction as jest.Mock).mockResolvedValue({
       severity: 'SEVERE', mechanism: 'CYP2C9', clinicalAdvice: null, matchType: 'PAIR', matchedClasses: null,
     });
-    (checkDrugAllergy as jest.Mock).mockResolvedValue([{
+    (fetchAllergyMappings as jest.Mock).mockResolvedValue([
+      { snomedCode: '91936005', snomedDisplay: 'Penicillin allergy', atcClass: 'J01C' },
+    ]);
+    (matchDrugAllergyAgainstMappings as jest.Mock).mockReturnValue([{
       severity: 'SEVERE', snomedCode: '91936005', snomedDisplay: 'Penicillin allergy',
       allergyAtcClass: 'J01C', matchedDrugAtcClass: 'J01CA04',
     }]);
@@ -256,7 +270,8 @@ describe('applyDdiToResolutionState — multi-medication scenarios', () => {
       }
       return null;
     });
-    (checkDrugAllergy as jest.Mock).mockResolvedValue([]);
+    (fetchAllergyMappings as jest.Mock).mockResolvedValue([]);
+    (matchDrugAllergyAgainstMappings as jest.Mock).mockReturnValue([]);
 
     const result = await applyDdiToResolutionState(fakePool, state, ctx);
     expect(result.suppressedNodeCount).toBe(1);

@@ -16,6 +16,7 @@
  */
 
 const RXNAV_BASE = 'https://rxnav.nlm.nih.gov/REST';
+const RXNAV_TIMEOUT_MS = 5_000;
 
 export class RxNavError extends Error {
   constructor(message: string, public readonly status?: number) {
@@ -26,7 +27,10 @@ export class RxNavError extends Error {
 
 async function rxnavFetch(path: string): Promise<unknown> {
   const url = `${RXNAV_BASE}${path}`;
-  const res = await fetch(url, { headers: { Accept: 'application/json' } });
+  const res = await fetch(url, {
+    headers: { Accept: 'application/json' },
+    signal: AbortSignal.timeout(RXNAV_TIMEOUT_MS),
+  });
   if (!res.ok) {
     throw new RxNavError(`RxNav ${res.status} for ${path}`, res.status);
   }

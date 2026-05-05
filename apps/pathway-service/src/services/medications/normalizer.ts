@@ -124,12 +124,15 @@ export async function lookupNormalizedMedication(
 
 /**
  * Cache-or-fetch. If cached, return as-is. If not cached, call RxNav,
- * persist, return. NULL-cache on no-match.
+ * persist, return.
  *
- * Never throws on RxNav failure mid-pipeline — those become NULL cache
- * entries so the pre-warm batch can keep going. RxNav being completely
- * unreachable is the caller's problem to handle (caller decides whether
- * a complete RxNav outage should fail the import or proceed).
+ * Two failure modes, distinct on disk:
+ *   - "RxNav has no exact match" → persist NULL cache row + return null.
+ *     Subsequent calls hit the cache; caller can surface via admin queue.
+ *   - "RxNav HTTP / network error" → throw. Nothing is cached, so the
+ *     next call retries from scratch. The bulk variant `prewarmMedications`
+ *     catches these and counts as failed; individual callers handle as
+ *     they see fit.
  */
 export async function prewarmMedication(
   pool: Pool,

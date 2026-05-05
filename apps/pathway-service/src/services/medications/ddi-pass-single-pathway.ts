@@ -48,9 +48,12 @@ export async function applyDdiToResolutionState(
   for (const id of result.suppressedRecommendationIds) {
     const node = state.get(id);
     if (!node) continue;
-    if (node.status === NodeStatus.INCLUDED) {
-      node.status = NodeStatus.EXCLUDED;
-    }
+    // Only flip + retitle nodes the traversal had INCLUDED. If the node was
+    // already EXCLUDED for another reason (low confidence, gate, etc.), the
+    // original excludeReason stays — overwriting it with a DDI prefix would
+    // misattribute the original cause.
+    if (node.status !== NodeStatus.INCLUDED) continue;
+    node.status = NodeStatus.EXCLUDED;
     const reason = ddiSuppressionReason(result.findings, id);
     if (reason) node.excludeReason = reason;
     suppressedNodeCount++;

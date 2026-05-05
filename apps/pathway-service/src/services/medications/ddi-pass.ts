@@ -12,7 +12,7 @@
  *   4. Sort findings into suppress vs warn buckets per Decision 5:
  *        CONTRAINDICATED + SEVERE → SUPPRESS
  *        MODERATE                 → WARN
- *        MINOR                    → ignore (logged, not surfaced)
+ *        MINOR                    → dropped (not surfaced)
  *
  * Returns a structured result the caller can apply to its session shape
  * (single-pathway: mutate resolutionState; multi-pathway: prune from merge
@@ -22,8 +22,9 @@
 import { Pool } from 'pg';
 import { PatientContext } from '../confidence/types';
 import {
-  checkDrugAllergy,
   checkDrugDrugInteraction,
+  fetchAllergyMappings,
+  matchDrugAllergyAgainstMappings,
   AllergyMatchResult,
   DdiSeverity,
   InteractionResult,
@@ -93,6 +94,14 @@ export async function runPatientContextDdi(
   const candidateNorms = await normalizeCandidates(pool, candidates);
   const patientMedNorms = await normalizePatientMeds(pool, patientContext);
 
+  // Resolve allergy → ATC class mappings ONCE per pass. The patient's allergy
+  // list doesn't change between candidates; before this fix the mapping query
+  // ran once per candidate, scaling at O(R) for R recommendations.
+  const snomedAllergies = (patientContext.allergies ?? [])
+    .filter((a) => a.system === 'SNOMED')
+    .map((a) => ({ snomedCode: a.code }));
+  const allergyMappings = await fetchAllergyMappings(pool, snomedAllergies);
+
   const findings: DdiFinding[] = [];
   const suppressed = new Set<string>();
 
@@ -114,14 +123,8 @@ export async function runPatientContextDdi(
       if (finding.action === 'SUPPRESS') suppressed.add(c.recommendationId);
     }
 
-    // ── drug ↔ patient allergies ──
-    const allergyHits = await checkDrugAllergy(
-      pool,
-      cEngine,
-      (patientContext.allergies ?? [])
-        .filter((a) => a.system === 'SNOMED')
-        .map((a) => ({ snomedCode: a.code })),
-    );
+    // ── drug ↔ patient allergies (sync match against pre-fetched mappings) ──
+    const allergyHits = matchDrugAllergyAgainstMappings(cEngine, allergyMappings);
     for (const hit of allergyHits) {
       findings.push({
         recommendationId: c.recommendationId,

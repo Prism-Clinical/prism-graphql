@@ -134,13 +134,70 @@ export async function checkDrugDrugInteraction(
 // ─── Drug ↔ allergy ───────────────────────────────────────────────────
 
 /**
- * Check whether a drug's ATC classes match any of the patient's coded
- * allergies. ATC level 3-4 in the allergy table prefix-matches all level-5
- * descendants in the drug's class list ("J01C" matches "J01CA04" amoxicillin).
- *
- * Returns one match per fired (drug-class, allergy) pair. A drug in two ATC
- * classes that both match the same allergy will produce two results — the
- * caller is expected to dedupe by snomedCode if they want.
+ * Pre-resolved allergy mapping. Produced once per patient by
+ * `fetchAllergyMappings`, then re-used by `matchDrugAllergyAgainstMappings`
+ * for every candidate drug — so checking a list of meds against a patient's
+ * allergies is one SQL query, not N.
+ */
+export interface AllergyMapping {
+  snomedCode: string;
+  snomedDisplay: string;
+  atcClass: string;
+}
+
+/**
+ * Resolve each SNOMED allergen to its ATC class via `allergy_class_mappings`.
+ * Allergens with no mapping are silently dropped — they can't fire any check.
+ */
+export async function fetchAllergyMappings(
+  pool: Pool,
+  allergies: PatientAllergyInput[],
+): Promise<AllergyMapping[]> {
+  if (allergies.length === 0) return [];
+  const r = await pool.query(
+    `SELECT snomed_code, snomed_display, atc_class
+       FROM allergy_class_mappings
+       WHERE snomed_code = ANY($1::text[])`,
+    [allergies.map((a) => a.snomedCode)],
+  );
+  return r.rows.map((row) => ({
+    snomedCode: row.snomed_code,
+    snomedDisplay: row.snomed_display,
+    atcClass: row.atc_class,
+  }));
+}
+
+/**
+ * Pure prefix-match: does any of the drug's ATC classes start with any
+ * allergy mapping's ATC class? Each fired (drug-class, allergy) pair
+ * produces one result — caller dedupes by snomedCode if desired.
+ */
+export function matchDrugAllergyAgainstMappings(
+  drug: { atcClasses: string[] },
+  mappings: AllergyMapping[],
+): AllergyMatchResult[] {
+  if (drug.atcClasses.length === 0 || mappings.length === 0) return [];
+  const results: AllergyMatchResult[] = [];
+  for (const m of mappings) {
+    for (const drugAtc of drug.atcClasses) {
+      if (drugAtc.startsWith(m.atcClass)) {
+        results.push({
+          severity: 'SEVERE',
+          snomedCode: m.snomedCode,
+          snomedDisplay: m.snomedDisplay,
+          allergyAtcClass: m.atcClass,
+          matchedDrugAtcClass: drugAtc,
+        });
+      }
+    }
+  }
+  return results;
+}
+
+/**
+ * Convenience: fetch + match in one async call. Equivalent to the original
+ * one-shot signature; preserved so consumers that don't need the per-patient
+ * memoization can stay simple.
  */
 export async function checkDrugAllergy(
   pool: Pool,
@@ -148,31 +205,8 @@ export async function checkDrugAllergy(
   allergies: PatientAllergyInput[],
 ): Promise<AllergyMatchResult[]> {
   if (drug.atcClasses.length === 0 || allergies.length === 0) return [];
-
-  const allergyMappings = await pool.query(
-    `SELECT snomed_code, snomed_display, atc_class
-       FROM allergy_class_mappings
-       WHERE snomed_code = ANY($1::text[])`,
-    [allergies.map((a) => a.snomedCode)],
-  );
-  if (allergyMappings.rows.length === 0) return [];
-
-  const results: AllergyMatchResult[] = [];
-  for (const row of allergyMappings.rows) {
-    const allergyAtcClass: string = row.atc_class;
-    for (const drugAtc of drug.atcClasses) {
-      if (drugAtc.startsWith(allergyAtcClass)) {
-        results.push({
-          severity: 'SEVERE',
-          snomedCode: row.snomed_code,
-          snomedDisplay: row.snomed_display,
-          allergyAtcClass,
-          matchedDrugAtcClass: drugAtc,
-        });
-      }
-    }
-  }
-  return results;
+  const mappings = await fetchAllergyMappings(pool, allergies);
+  return matchDrugAllergyAgainstMappings(drug, mappings);
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────
