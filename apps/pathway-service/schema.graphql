@@ -414,6 +414,52 @@ type MergedQualityMetricRecommendation {
 enum SuppressionReason {
   CONTRAINDICATED
   AVOID
+  """Phase 4: drug↔drug interaction at CONTRAINDICATED severity."""
+  DDI_CONTRAINDICATED
+  """Phase 4: drug↔drug interaction at SEVERE severity."""
+  DDI_SEVERE
+  """Phase 4: drug recommendation matches a patient allergy class."""
+  ALLERGY
+}
+
+# ─── DDI Warnings (Phase 4) ───────────────────────────────────────────
+
+enum DDIFindingCategory {
+  DDI_CONTRAINDICATED
+  DDI_SEVERE
+  DDI_MODERATE
+  ALLERGY
+}
+
+"""Reference to the patient med, allergy, or other recommendation that fired the finding."""
+type DDIFindingSource {
+  """One of: PATIENT_MEDICATION | PATIENT_ALLERGY | OTHER_RECOMMENDATION."""
+  kind: String!
+  """Set when kind=PATIENT_MEDICATION (RxCUI of patient drug) or OTHER_RECOMMENDATION (RxCUI of other rec)."""
+  rxcui: String
+  """Set when kind=PATIENT_MEDICATION or OTHER_RECOMMENDATION."""
+  name: String
+  """Set when kind=PATIENT_ALLERGY."""
+  snomedCode: String
+  """Set when kind=PATIENT_ALLERGY."""
+  snomedDisplay: String
+  """Set when kind=OTHER_RECOMMENDATION."""
+  recommendationId: String
+}
+
+"""
+A DDI finding at MODERATE severity. Suppressions (CONTRAINDICATED/SEVERE)
+flow through the existing SuppressedRecommendation surface; warnings are
+advisory and surface inline so providers see them before signing.
+"""
+type DDIWarning {
+  recommendationId: String!
+  drugName: String!
+  category: DDIFindingCategory!
+  severity: String!
+  mechanism: String
+  clinicalAdvice: String
+  source: DDIFindingSource!
 }
 
 enum SuppressedRecommendationType {
@@ -430,12 +476,29 @@ A recommendation that was hidden during merge. v1: medications flagged
 in every other pathway; the suppressed entry stays in the response so
 clinicians can see why a drug they expected isn't recommended.
 """
+"""
+Suppressed recommendation. v3+: source can be a pathway (Phase 3
+contraindicated/avoid), a patient med (Phase 4 drug↔drug), an allergy
+(Phase 4 drug↔allergy), or another recommendation in the merge (Phase 4
+cross-recommendation). Exactly one source-specific field-set is populated
+per row depending on the SuppressionReason.
+"""
 type SuppressedRecommendation {
   type: SuppressedRecommendationType!
   name: String!
   reason: SuppressionReason!
-  suppressedByPathwayId: ID!
-  suppressedByPathwayTitle: String!
+  """Set when reason=CONTRAINDICATED or AVOID."""
+  suppressedByPathwayId: ID
+  """Set when reason=CONTRAINDICATED or AVOID."""
+  suppressedByPathwayTitle: String
+  """Set when reason=DDI_CONTRAINDICATED or DDI_SEVERE (drug↔drug source)."""
+  suppressedByPatientMedRxcui: String
+  """Set when reason=DDI_CONTRAINDICATED or DDI_SEVERE (drug↔drug source)."""
+  suppressedByPatientMedName: String
+  """Set when reason=ALLERGY."""
+  suppressedByAllergyCode: String
+  """Set when reason=ALLERGY."""
+  suppressedByAllergyDisplay: String
 }
 
 # ─── Conflicts (Phase 3 commit 4) ─────────────────────────────────────
@@ -553,6 +616,8 @@ type MultiPathwayResolutionSession {
   contributingSessionIds: [ID!]!
   contributingPathwayIds: [ID!]!
   carePlanId: ID
+  """Phase 4: DDI MODERATE-severity findings — pre-merge + cross-recommendation."""
+  ddiWarnings: [DDIWarning!]!
   createdAt: String!
   updatedAt: String!
 }
@@ -654,6 +719,8 @@ type ResolutionSession {
   pendingQuestions: [PendingQuestionType!]!
   redFlags: [RedFlagType!]!
   resolutionEvents: [ResolutionEventType!]!
+  """Phase 4: DDI MODERATE-severity findings. Suppressions (CONTRAINDICATED/SEVERE) appear in excludedNodes with a DDI excludeReason."""
+  ddiWarnings: [DDIWarning!]!
   totalNodesEvaluated: Int!
   traversalDurationMs: Int!
   createdAt: String!
@@ -980,6 +1047,31 @@ type Query {
     patientId: ID!,
     status: MultiPathwayResolutionSessionStatus
   ): [MultiPathwayResolutionSessionSummary!]!
+
+  """
+  Admin queue: medications whose RxNav normalization failed at import or
+  snapshot ingestion. Surfaced here for a clinician to manually resolve
+  via `manuallyResolveMedicationNormalization`.
+  """
+  unnormalizedMedications: [UnnormalizedMedication!]!
+}
+
+# ─── Phase 4 admin queue ─────────────────────────────────────────────
+
+type UnnormalizedMedication {
+  inputText: String!
+  inputSystem: String
+  inputCode: String
+  attemptedAt: String!
+}
+
+type ManuallyResolvedMedication {
+  inputText: String!
+  inputSystem: String
+  inputCode: String
+  ingredientRxcui: String!
+  ingredientName: String!
+  atcClasses: [String!]!
 }
 
 # ─── Mutations ─────────────────────────────────────────────────────────
@@ -1053,6 +1145,18 @@ type Mutation {
 
   """Mark a multi-pathway session ABANDONED."""
   abandonMultiPathwaySession(sessionId: ID!, reason: String): MultiPathwayResolutionSession!
+
+  """
+  Phase 4: clinician-supplied resolution for a medication that failed to
+  normalize. Provide the canonical RxCUI; the system fetches ATC classes
+  from RxNav and rewrites the cache entry. Returns the resolved record.
+  """
+  manuallyResolveMedicationNormalization(
+    inputText: String!,
+    inputSystem: String,
+    inputCode: String,
+    rxcui: String!
+  ): ManuallyResolvedMedication!
   overrideNode(sessionId: ID!, nodeId: ID!, action: OverrideAction!, reason: String): ResolutionSession!
   answerGateQuestion(sessionId: ID!, gateId: ID!, answer: GateAnswerInput!): ResolutionSession!
   addPatientContext(sessionId: ID!, additionalContext: AdditionalContextInput!): ResolutionSession!

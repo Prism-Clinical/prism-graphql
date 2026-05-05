@@ -152,11 +152,30 @@ export type SuppressedRecommendationType =
   | 'schedule'
   | 'qualityMetric';
 
+export type SuppressionReason =
+  | 'contraindicated'
+  | 'avoid'
+  | 'ddi_contraindicated'
+  | 'ddi_severe'
+  | 'allergy';
+
+export type SuppressionSource =
+  | { kind: 'PATHWAY'; pathwayId: string; pathwayTitle: string }
+  | { kind: 'PATIENT_MEDICATION'; rxcui: string; name: string }
+  | { kind: 'PATIENT_ALLERGY'; snomedCode: string; snomedDisplay: string }
+  | { kind: 'OTHER_RECOMMENDATION'; recommendationId: string; drugName: string };
+
 export interface SuppressedRecommendation {
   type: SuppressedRecommendationType;
   name: string;
-  reason: 'contraindicated' | 'avoid';
-  suppressedBy: { pathwayId: string; pathwayTitle: string };
+  reason: SuppressionReason;
+  source: SuppressionSource;
+  /**
+   * Legacy pathway-source convenience field. Populated for PATHWAY-source
+   * suppressions (the original Phase 3 contraindicated/avoid flow). DDI
+   * suppressions leave this undefined and use `source` instead.
+   */
+  suppressedBy?: { pathwayId: string; pathwayTitle: string };
   original:
     | ResolvedMedication
     | ResolvedLab
@@ -234,6 +253,7 @@ export function mergeResolvedCarePlans(
           type: 'medication',
           name: med.name,
           reason: med.role,
+          source: { kind: 'PATHWAY', pathwayId: plan.pathwayId, pathwayTitle: plan.pathwayTitle },
           suppressedBy: { pathwayId: plan.pathwayId, pathwayTitle: plan.pathwayTitle },
           original: med,
         });
@@ -248,6 +268,7 @@ export function mergeResolvedCarePlans(
           type: 'medication',
           name: med.name,
           reason: flagger.reason,
+          source: { kind: 'PATHWAY', pathwayId: flagger.pathwayId, pathwayTitle: flagger.pathwayTitle },
           suppressedBy: {
             pathwayId: flagger.pathwayId,
             pathwayTitle: flagger.pathwayTitle,

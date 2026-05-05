@@ -175,6 +175,8 @@ export interface ResolutionSession {
   totalNodesEvaluated: number;
   traversalDurationMs: number;
   carePlanId?: string;
+  /** Phase 4: DDI MODERATE-severity findings persisted with the session. */
+  ddiWarnings: unknown[];
   createdAt: Date;
   updatedAt: Date;
 }

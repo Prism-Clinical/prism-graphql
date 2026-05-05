@@ -26,6 +26,8 @@ export interface MultiPathwayResolutionSession {
   mergedPlan: MergedCarePlan;
   conflictResolutions: Record<string, ConflictResolution>;
   carePlanId: string | null;
+  /** Phase 4: DDI warnings (MODERATE) — pre-merge + cross-recommendation. */
+  ddiWarnings: unknown[];
   createdAt: Date;
   updatedAt: Date;
 }
@@ -53,14 +55,15 @@ export async function createMultiPathwaySession(
     contributingSessionIds: string[];
     contributingPathwayIds: string[];
     mergedPlan: MergedCarePlan;
+    ddiWarnings?: unknown[];
   },
 ): Promise<string> {
   const result = await pool.query(
     `INSERT INTO multi_pathway_resolution_sessions
        (patient_id, provider_id, status, initial_patient_context,
         contributing_session_ids, contributing_pathway_ids,
-        merged_plan, conflict_resolutions)
-     VALUES ($1, $2, 'ACTIVE', $3::jsonb, $4::uuid[], $5::uuid[], $6::jsonb, '{}'::jsonb)
+        merged_plan, conflict_resolutions, ddi_warnings)
+     VALUES ($1, $2, 'ACTIVE', $3::jsonb, $4::uuid[], $5::uuid[], $6::jsonb, '{}'::jsonb, $7::jsonb)
      RETURNING id`,
     [
       s.patientId,
@@ -69,6 +72,7 @@ export async function createMultiPathwaySession(
       s.contributingSessionIds,
       s.contributingPathwayIds,
       JSON.stringify(s.mergedPlan),
+      JSON.stringify(s.ddiWarnings ?? []),
     ],
   );
   return result.rows[0].id;
@@ -171,6 +175,7 @@ function rowToSession(row: Record<string, unknown>): MultiPathwayResolutionSessi
     mergedPlan: row.merged_plan as MergedCarePlan,
     conflictResolutions: (row.conflict_resolutions as Record<string, ConflictResolution>) ?? {},
     carePlanId: (row.care_plan_id as string) ?? null,
+    ddiWarnings: (row.ddi_warnings as unknown[]) ?? [],
     createdAt: row.created_at as Date,
     updatedAt: row.updated_at as Date,
   };

@@ -46,6 +46,20 @@ jest.mock('../services/resolution/multi-pathway-session-store', () => ({
   updateMergedPlanAndResolutions: jest.fn(),
 }));
 
+// Phase 4: DDI passes are no-ops by default in these orchestration tests.
+// Phase 4 commit 5 has a dedicated test file (ddi-multi-pathway.test.ts) that
+// drives findings into the orchestrator.
+jest.mock('../services/medications/ddi-pass', () => ({
+  runPatientContextDdi: jest.fn().mockResolvedValue({
+    findings: [],
+    suppressedRecommendationIds: new Set(),
+  }),
+  runCrossRecommendationDdi: jest.fn().mockResolvedValue({
+    findings: [],
+    suppressedRecommendationIds: new Set(),
+  }),
+}));
+
 import {
   multiPathwayResolutionMutations,
   applyResolution,
