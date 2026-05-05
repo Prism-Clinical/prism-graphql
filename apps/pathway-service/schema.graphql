@@ -303,12 +303,11 @@ type MatchedCodeSetMember {
 
 """
 Result of resolving every matched pathway for a patient and merging their
-recommendations. Each `MergedRecommendation` carries the IDs of all pathways
-whose resolution contributed it. `suppressed` lists recommendations that were
-hidden because some pathway flagged the same drug as contraindicated/avoid.
-
-v1 surfaces only auto-resolved cases — provider conflict UX (commit 4) will
-add `pendingProviderChoice` entries for soft conflicts.
+recommendations. `medications`/`labs`/etc. carry auto-resolved entries;
+`conflicts` carries cross-pathway soft conflicts (medications-only in v1)
+that the provider has to resolve before the merged plan can become a real
+care plan; `suppressed` carries entries hidden because some pathway flagged
+the same drug as contraindicated/avoid.
 """
 type MergedCarePlan {
   """Pathways whose resolution fed this merge (post-lattice-collapse)."""
@@ -319,10 +318,19 @@ type MergedCarePlan {
   schedules: [MergedScheduleRecommendation!]!
   qualityMetrics: [MergedQualityMetricRecommendation!]!
   suppressed: [SuppressedRecommendation!]!
+  """
+  Soft conflicts requiring provider resolution. v1: medications only —
+  surfaced when ≥2 pathways tag different drugs with the same `clinical_role`.
+  Resolved conflicts stay in this list with `resolution` populated.
+  """
+  conflicts: [MergedConflict!]!
 }
 
 enum RecommendationState {
   AUTO_INCLUDED
+  PENDING_PROVIDER_CHOICE
+  PROVIDER_CONFIRMED
+  PROVIDER_OVERRIDE
 }
 
 type ResolvedMedication {
@@ -332,6 +340,12 @@ type ResolvedMedication {
   frequency: String
   duration: String
   route: String
+  """
+  Optional author tag identifying the clinical lane this drug occupies,
+  e.g. "first_line_beta_blocker_for_chf". Two pathways tagging different
+  drugs with the same role surface as a soft conflict.
+  """
+  clinicalRole: String
   sourcePathwayId: ID!
   sourceNodeId: String
 }
@@ -422,6 +436,138 @@ type SuppressedRecommendation {
   reason: SuppressionReason!
   suppressedByPathwayId: ID!
   suppressedByPathwayTitle: String!
+}
+
+# ─── Conflicts (Phase 3 commit 4) ─────────────────────────────────────
+
+enum ConflictType {
+  MEDICATION
+}
+
+enum ConflictResolutionKind {
+  CONFIRM_PATHWAY
+  ACCEPT_BOTH
+  REJECT_BOTH
+  CUSTOM_OVERRIDE
+}
+
+"""
+A custom medication a provider wrote in to replace both candidates of a
+soft conflict. Free-text in v1; no RxNorm normalization. The downstream
+care plan carries the strings through verbatim.
+"""
+type CustomMedicationOverride {
+  name: String!
+  dose: String
+  frequency: String
+  duration: String
+  route: String
+  note: String
+}
+
+input CustomMedicationOverrideInput {
+  name: String!
+  dose: String
+  frequency: String
+  duration: String
+  route: String
+  note: String
+}
+
+type ConflictCandidate {
+  recommendation: ResolvedMedication!
+  sourcePathwayId: ID!
+  sourcePathwayTitle: String!
+}
+
+type ConflictResolution {
+  kind: ConflictResolutionKind!
+  resolvedBy: ID!
+  resolvedAt: String!
+  reason: String
+  """Set when kind=CONFIRM_PATHWAY."""
+  chosenPathwayId: ID
+  """Set when kind=CUSTOM_OVERRIDE."""
+  customMedication: CustomMedicationOverride
+}
+
+"""
+A cross-pathway soft conflict (medications-only in v1). Triggered when ≥2
+pathways tag different drugs with the same `clinical_role`. The provider
+must resolve every conflict before the merged plan can be turned into a
+real care plan via `generateMergedCarePlan`.
+"""
+type MergedConflict {
+  """Stable id within the session — equals the clinical_role tag value."""
+  conflictId: String!
+  type: ConflictType!
+  clinicalRole: String!
+  candidates: [ConflictCandidate!]!
+  """Null while the conflict is unresolved."""
+  resolution: ConflictResolution
+}
+
+"""
+Provider's choice for one conflict. Exactly one of the kind-specific fields
+must be populated; the resolver validates which is required for each kind.
+
+  CONFIRM_PATHWAY  → chosenPathwayId
+  ACCEPT_BOTH      → (no extra fields)
+  REJECT_BOTH      → (no extra fields)
+  CUSTOM_OVERRIDE  → customMedication
+"""
+input ConflictChoiceInput {
+  kind: ConflictResolutionKind!
+  reason: String
+  chosenPathwayId: ID
+  customMedication: CustomMedicationOverrideInput
+}
+
+# ─── Multi-Pathway Resolution Session ─────────────────────────────────
+
+enum MultiPathwayResolutionSessionStatus {
+  ACTIVE
+  COMPLETED
+  ABANDONED
+}
+
+"""
+Persistent session for a multi-pathway resolution. Carries the merged plan,
+the per-pathway sessions that fed the merge, and the provider's conflict
+resolutions. Lifecycle:
+
+  ACTIVE      — merge produced; provider working on conflicts
+  COMPLETED   — generateMergedCarePlan succeeded; care_plan_id populated
+  ABANDONED   — provider abandoned without generating
+
+`mergedPlan.conflicts` is the source of truth for whether the session is
+ready to generate; while any conflict has `resolution: null`,
+generateMergedCarePlan will return `success: false` with a blocker.
+"""
+type MultiPathwayResolutionSession {
+  id: ID!
+  patientId: ID!
+  providerId: ID!
+  status: MultiPathwayResolutionSessionStatus!
+  mergedPlan: MergedCarePlan!
+  contributingSessionIds: [ID!]!
+  contributingPathwayIds: [ID!]!
+  carePlanId: ID
+  createdAt: String!
+  updatedAt: String!
+}
+
+"""Lightweight summary for list views (no embedded merged plan)."""
+type MultiPathwayResolutionSessionSummary {
+  id: ID!
+  patientId: ID!
+  providerId: ID!
+  status: MultiPathwayResolutionSessionStatus!
+  contributingPathwayCount: Int!
+  unresolvedConflictCount: Int!
+  carePlanId: ID
+  createdAt: String!
+  updatedAt: String!
 }
 
 """
@@ -825,6 +971,15 @@ type Query {
   pendingQuestions(sessionId: ID!): [PendingQuestionType!]!
   redFlags(sessionId: ID!): [RedFlagType!]!
   patientResolutionSessions(patientId: ID!, status: SessionStatus): [ResolutionSessionSummary!]!
+
+  """Fetch a single multi-pathway resolution session including its merged plan."""
+  multiPathwayResolutionSession(sessionId: ID!): MultiPathwayResolutionSession
+
+  """List a patient's multi-pathway sessions, optionally filtered by status."""
+  patientMultiPathwayResolutionSessions(
+    patientId: ID!,
+    status: MultiPathwayResolutionSessionStatus
+  ): [MultiPathwayResolutionSessionSummary!]!
 }
 
 # ─── Mutations ─────────────────────────────────────────────────────────
@@ -872,13 +1027,32 @@ type Mutation {
 
   """
   Run resolution against every pathway that matches the patient and merge
-  the results into a single care plan. Internally: matchedPathways →
-  lattice-collapse to drop dominated scenarios → per-pathway TraversalEngine
-  → project each into a ResolvedCarePlan → merge with hard-constraint
-  suppression. v1 does NOT persist anything (no ResolutionSession rows),
-  the merged plan is returned directly.
+  the results into a single care plan, persisting both the per-pathway
+  sessions and the multi-pathway session. Soft conflicts (medications with
+  the same clinical_role across pathways) are surfaced inside
+  `mergedPlan.conflicts` for the provider to resolve via `resolveConflict`.
+  Once all conflicts are resolved, `generateMergedCarePlan` materializes
+  the actual care plan rows.
   """
-  startMultiPathwayResolution(patientId: ID!, patientContext: PatientContextInput): MergedCarePlan!
+  startMultiPathwayResolution(patientId: ID!, patientContext: PatientContextInput): MultiPathwayResolutionSession!
+
+  """
+  Record a provider's choice for one conflict. The session's mergedPlan is
+  rewritten to reflect the choice (chosen drug moves to PROVIDER_CONFIRMED,
+  losers move to PROVIDER_OVERRIDE; CUSTOM_OVERRIDE attaches a write-in
+  recommendation). Returns the updated session.
+  """
+  resolveConflict(sessionId: ID!, conflictId: String!, choice: ConflictChoiceInput!): MultiPathwayResolutionSession!
+
+  """
+  Materialize the merged plan into actual care_plans / care_plan_goals /
+  care_plan_interventions rows. Returns `success=false` with blockers if
+  any conflict is unresolved or if validation fails.
+  """
+  generateMergedCarePlan(sessionId: ID!): CarePlanGenerationResult!
+
+  """Mark a multi-pathway session ABANDONED."""
+  abandonMultiPathwaySession(sessionId: ID!, reason: String): MultiPathwayResolutionSession!
   overrideNode(sessionId: ID!, nodeId: ID!, action: OverrideAction!, reason: String): ResolutionSession!
   answerGateQuestion(sessionId: ID!, gateId: ID!, answer: GateAnswerInput!): ResolutionSession!
   addPatientContext(sessionId: ID!, additionalContext: AdditionalContextInput!): ResolutionSession!

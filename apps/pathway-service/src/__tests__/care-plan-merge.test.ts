@@ -390,3 +390,154 @@ describe('mergeResolvedCarePlans — multi-pathway scenarios', () => {
     expect(merged.medications[0].sourcePathwayIds).toEqual(['p1']); // dedup
   });
 });
+
+// ─── clinical_role conflicts (Phase 3 commit 4) ───────────────────────
+
+describe('mergeResolvedCarePlans — clinical_role soft conflicts', () => {
+  it('passes untagged different drugs through as separate auto-included entries', () => {
+    const a = makePathway({
+      title: 'AF',
+      medications: [{ name: 'Metoprolol', role: 'first_line' }],
+    });
+    const b = makePathway({
+      title: 'HFrEF',
+      medications: [{ name: 'Carvedilol', role: 'first_line' }],
+    });
+    const merged = mergeResolvedCarePlans([a, b]);
+    expect(merged.conflicts).toEqual([]);
+    expect(merged.medications).toHaveLength(2);
+  });
+
+  it('flags a conflict when two pathways tag different drugs with the same clinical_role', () => {
+    const a = makePathway({
+      title: 'AF',
+      medications: [{
+        name: 'Metoprolol',
+        role: 'first_line',
+        clinicalRole: 'first_line_beta_blocker_for_chf',
+      }],
+    });
+    const b = makePathway({
+      title: 'HFrEF',
+      medications: [{
+        name: 'Carvedilol',
+        role: 'first_line',
+        clinicalRole: 'first_line_beta_blocker_for_chf',
+      }],
+    });
+    const merged = mergeResolvedCarePlans([a, b]);
+
+    expect(merged.medications).toEqual([]);
+    expect(merged.conflicts).toHaveLength(1);
+    const c = merged.conflicts[0];
+    expect(c.conflictId).toBe('first_line_beta_blocker_for_chf');
+    expect(c.clinicalRole).toBe('first_line_beta_blocker_for_chf');
+    expect(c.candidates).toHaveLength(2);
+    expect(c.candidates.map((x) => x.recommendation.name).sort()).toEqual(['Carvedilol', 'Metoprolol']);
+    expect(c.resolution).toBeNull();
+  });
+
+  it('passes through as auto-included when two pathways tag the SAME drug with the same role', () => {
+    const a = makePathway({
+      title: 'A',
+      medications: [{ name: 'Metoprolol', role: 'first_line', clinicalRole: 'first_line_bb' }],
+    });
+    const b = makePathway({
+      title: 'B',
+      medications: [{ name: 'metoprolol', role: 'first_line', clinicalRole: 'first_line_bb' }],
+    });
+    const merged = mergeResolvedCarePlans([a, b]);
+    expect(merged.conflicts).toEqual([]);
+    expect(merged.medications).toHaveLength(1);
+    expect(merged.medications[0].sourcePathwayIds.sort()).toEqual([a.pathwayId, b.pathwayId].sort());
+  });
+
+  it('does not flag a conflict if only one pathway tagged the role', () => {
+    const a = makePathway({
+      title: 'A',
+      medications: [{ name: 'Metoprolol', role: 'first_line', clinicalRole: 'first_line_bb' }],
+    });
+    const b = makePathway({
+      title: 'B',
+      medications: [{ name: 'Carvedilol', role: 'first_line' }], // untagged
+    });
+    const merged = mergeResolvedCarePlans([a, b]);
+    expect(merged.conflicts).toEqual([]);
+    expect(merged.medications).toHaveLength(2);
+  });
+
+  it('handles multiple distinct conflicts in one merge', () => {
+    const a = makePathway({
+      title: 'A',
+      medications: [
+        { name: 'Metoprolol', role: 'first_line', clinicalRole: 'first_line_bb' },
+        { name: 'Sertraline', role: 'first_line', clinicalRole: 'first_line_ssri' },
+      ],
+    });
+    const b = makePathway({
+      title: 'B',
+      medications: [
+        { name: 'Carvedilol', role: 'first_line', clinicalRole: 'first_line_bb' },
+        { name: 'Escitalopram', role: 'first_line', clinicalRole: 'first_line_ssri' },
+      ],
+    });
+    const merged = mergeResolvedCarePlans([a, b]);
+    expect(merged.conflicts).toHaveLength(2);
+    expect(merged.conflicts.map((c) => c.clinicalRole).sort()).toEqual([
+      'first_line_bb',
+      'first_line_ssri',
+    ]);
+  });
+
+  it('handles three pathways recommending three different drugs in the same lane', () => {
+    const a = makePathway({
+      title: 'A',
+      medications: [{ name: 'Metoprolol', role: 'first_line', clinicalRole: 'first_line_bb' }],
+    });
+    const b = makePathway({
+      title: 'B',
+      medications: [{ name: 'Carvedilol', role: 'first_line', clinicalRole: 'first_line_bb' }],
+    });
+    const c = makePathway({
+      title: 'C',
+      medications: [{ name: 'Bisoprolol', role: 'first_line', clinicalRole: 'first_line_bb' }],
+    });
+    const merged = mergeResolvedCarePlans([a, b, c]);
+    expect(merged.conflicts).toHaveLength(1);
+    expect(merged.conflicts[0].candidates).toHaveLength(3);
+  });
+
+  it('contraindication takes precedence over conflict — drug never reaches conflict detection', () => {
+    const a = makePathway({
+      title: 'A',
+      medications: [{ name: 'Metoprolol', role: 'avoid', clinicalRole: 'first_line_bb' }],
+    });
+    const b = makePathway({
+      title: 'B',
+      medications: [{ name: 'Carvedilol', role: 'first_line', clinicalRole: 'first_line_bb' }],
+    });
+    const merged = mergeResolvedCarePlans([a, b]);
+
+    // Metoprolol was avoid → suppressed before reaching conflict detection;
+    // Carvedilol stands alone in the role → not a conflict.
+    expect(merged.conflicts).toEqual([]);
+    expect(merged.medications).toHaveLength(1);
+    expect(merged.medications[0].recommendation.name).toBe('Carvedilol');
+    expect(merged.suppressed).toHaveLength(1);
+    expect(merged.suppressed[0].name).toBe('Metoprolol');
+  });
+
+  it('preserves source pathway titles on conflict candidates for UX', () => {
+    const a = makePathway({
+      title: 'Atrial Fibrillation',
+      medications: [{ name: 'Metoprolol', role: 'first_line', clinicalRole: 'role_x' }],
+    });
+    const b = makePathway({
+      title: 'Heart Failure',
+      medications: [{ name: 'Carvedilol', role: 'first_line', clinicalRole: 'role_x' }],
+    });
+    const merged = mergeResolvedCarePlans([a, b]);
+    const titles = merged.conflicts[0].candidates.map((c) => c.sourcePathwayTitle).sort();
+    expect(titles).toEqual(['Atrial Fibrillation', 'Heart Failure']);
+  });
+});

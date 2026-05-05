@@ -32,6 +32,14 @@ export interface ResolvedMedication {
   frequency?: string;
   duration?: string;
   route?: string;
+  /**
+   * Optional author-supplied tag identifying the clinical lane this medication
+   * occupies (e.g. "first_line_beta_blocker_for_chf"). Two pathways tagging
+   * different drugs with the same role surfaces as a soft conflict in the
+   * merge — Phase 3 commit 4. Untagged drugs do not participate in conflict
+   * detection.
+   */
+  clinicalRole?: string;
   sourcePathwayId: string;
   sourceNodeId?: string;
 }
@@ -80,14 +88,61 @@ export interface ResolvedCarePlan {
 
 // ─── Merged (output) shapes ───────────────────────────────────────────
 
-export type RecommendationState = 'auto-included';
+export type RecommendationState =
+  | 'auto-included'
+  | 'pending-provider-choice'
+  | 'provider-confirmed'
+  | 'provider-override';
 
 export interface MergedRecommendation<T> {
   recommendation: T;
   /** All pathway IDs whose resolution contributed this recommendation. */
   sourcePathwayIds: string[];
-  /** v1: always 'auto-included'. Commit 4 adds 'pending-provider-choice'. */
   state: RecommendationState;
+}
+
+// ─── Conflict shapes (Phase 3 commit 4) ──────────────────────────────
+
+export type ConflictResolutionKind =
+  | 'CONFIRM_PATHWAY'
+  | 'ACCEPT_BOTH'
+  | 'REJECT_BOTH'
+  | 'CUSTOM_OVERRIDE';
+
+export interface ConflictResolutionMeta {
+  resolvedBy: string;
+  resolvedAt: string;
+  reason?: string;
+}
+
+export interface CustomMedicationOverride {
+  name: string;
+  dose?: string;
+  frequency?: string;
+  duration?: string;
+  route?: string;
+  note?: string;
+}
+
+export type ConflictResolution =
+  | ({ kind: 'CONFIRM_PATHWAY'; chosenPathwayId: string } & ConflictResolutionMeta)
+  | ({ kind: 'ACCEPT_BOTH' } & ConflictResolutionMeta)
+  | ({ kind: 'REJECT_BOTH' } & ConflictResolutionMeta)
+  | ({ kind: 'CUSTOM_OVERRIDE'; customMedication: CustomMedicationOverride } & ConflictResolutionMeta);
+
+export interface ConflictCandidate {
+  recommendation: ResolvedMedication;
+  sourcePathwayId: string;
+  sourcePathwayTitle: string;
+}
+
+export interface MergedConflict {
+  /** Stable id within the session — equals the clinical_role tag value. */
+  conflictId: string;
+  type: 'medication';
+  clinicalRole: string;
+  candidates: ConflictCandidate[];
+  resolution: ConflictResolution | null;
 }
 
 export type SuppressedRecommendationType =
@@ -118,6 +173,13 @@ export interface MergedCarePlan {
   schedules: MergedRecommendation<ResolvedSchedule>[];
   qualityMetrics: MergedRecommendation<ResolvedQualityMetric>[];
   suppressed: SuppressedRecommendation[];
+  /**
+   * Cross-pathway soft conflicts (medications-only in v1). Each entry has
+   * candidates from ≥2 pathways and an optional resolution. While any
+   * conflict has `resolution: null`, the session is not ready for care-plan
+   * generation. Resolved conflicts stay in this list for audit/UX.
+   */
+  conflicts: MergedConflict[];
 }
 
 // ─── Public API ───────────────────────────────────────────────────────
@@ -200,7 +262,19 @@ export function mergeResolvedCarePlans(
     }
   }
 
-  const medications = mapMergeBucket(medsByKey);
+  const namedMedications = mapMergeBucket(medsByKey);
+
+  // Detect cross-pathway soft conflicts on clinical_role. A name-group's
+  // canonical recommendation contributes its role to the pool; if ≥2 distinct
+  // name-groups share a role, all of them migrate from `medications` into a
+  // single `MergedConflict` entry.
+  const titleByPathwayId = new Map<string, string>();
+  for (const p of plans) titleByPathwayId.set(p.pathwayId, p.pathwayTitle);
+
+  const { medications, conflicts } = detectConflicts(
+    namedMedications,
+    titleByPathwayId,
+  );
 
   // Labs/procedures/schedules/quality metrics: pure dedup by appropriate key.
   // Hard constraints don't apply (only medications carry contraindication
@@ -222,7 +296,65 @@ export function mergeResolvedCarePlans(
     schedules,
     qualityMetrics,
     suppressed,
+    conflicts,
   };
+}
+
+/**
+ * After name-grouping, look for cases where two distinct drug-groups share a
+ * clinical_role. Those become a `MergedConflict`; non-conflicting groups pass
+ * through as auto-included recommendations.
+ *
+ * A drug-group's role is the first non-empty `clinicalRole` among its members
+ * — name-groups are stable across pathways so the first canonical wins.
+ */
+function detectConflicts(
+  namedMedications: MergedRecommendation<ResolvedMedication>[],
+  titleByPathwayId: Map<string, string>,
+): {
+  medications: MergedRecommendation<ResolvedMedication>[];
+  conflicts: MergedConflict[];
+} {
+  // role → list of (drug-group canonical recommendation + sourcePathwayIds)
+  const groupsByRole = new Map<string, MergedRecommendation<ResolvedMedication>[]>();
+  for (const group of namedMedications) {
+    const role = group.recommendation.clinicalRole;
+    if (!role) continue;
+    if (!groupsByRole.has(role)) groupsByRole.set(role, []);
+    groupsByRole.get(role)!.push(group);
+  }
+
+  const conflictingGroupIds = new Set<MergedRecommendation<ResolvedMedication>>();
+  const conflicts: MergedConflict[] = [];
+
+  for (const [role, groups] of groupsByRole) {
+    const distinctNames = new Set(groups.map((g) => drugKey(g.recommendation.name)));
+    if (distinctNames.size < 2) continue;
+
+    for (const g of groups) conflictingGroupIds.add(g);
+
+    const candidates: ConflictCandidate[] = groups.map((g) => ({
+      recommendation: g.recommendation,
+      sourcePathwayId: g.sourcePathwayIds[0],
+      sourcePathwayTitle:
+        titleByPathwayId.get(g.sourcePathwayIds[0]) ?? g.sourcePathwayIds[0],
+    }));
+
+    conflicts.push({
+      conflictId: role,
+      type: 'medication',
+      clinicalRole: role,
+      candidates,
+      resolution: null,
+    });
+  }
+
+  // Mark conflict-group entries with the pending state and surface them as
+  // both (a) absent from the active medications list (they're not auto-included)
+  // and (b) inside a MergedConflict entry. Non-conflict groups pass through
+  // unchanged.
+  const medications = namedMedications.filter((g) => !conflictingGroupIds.has(g));
+  return { medications, conflicts };
 }
 
 // ─── Internal helpers ─────────────────────────────────────────────────
@@ -236,6 +368,7 @@ function emptyMergedPlan(): MergedCarePlan {
     schedules: [],
     qualityMetrics: [],
     suppressed: [],
+    conflicts: [],
   };
 }
 

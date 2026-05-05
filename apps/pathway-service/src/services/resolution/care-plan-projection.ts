@@ -114,6 +114,7 @@ function projectMedication(
     frequency: strProp(node, 'frequency'),
     duration: strProp(node, 'duration'),
     route: strProp(node, 'route'),
+    clinicalRole: strProp(node, 'clinical_role'),
     sourcePathwayId: pathwayId,
     sourceNodeId: node.nodeId,
   };

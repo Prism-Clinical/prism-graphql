@@ -125,6 +125,34 @@ describe('projectResolutionToCarePlan — basic projection', () => {
     const result = projectResolutionToCarePlan(state, META);
     expect(result.medications).toEqual([]);
   });
+
+  it('carries clinical_role through to the projection', () => {
+    const state = makeState([
+      makeNode({
+        nodeId: 'med-1',
+        nodeType: 'Medication',
+        properties: {
+          name: 'Metoprolol',
+          role: 'first_line',
+          clinical_role: 'first_line_beta_blocker_for_chf',
+        },
+      }),
+    ]);
+    const result = projectResolutionToCarePlan(state, META);
+    expect(result.medications[0].clinicalRole).toBe('first_line_beta_blocker_for_chf');
+  });
+
+  it('leaves clinicalRole undefined when the property is absent', () => {
+    const state = makeState([
+      makeNode({
+        nodeId: 'med-1',
+        nodeType: 'Medication',
+        properties: { name: 'Lisinopril', role: 'first_line' },
+      }),
+    ]);
+    const result = projectResolutionToCarePlan(state, META);
+    expect(result.medications[0].clinicalRole).toBeUndefined();
+  });
 });
 
 describe('projectResolutionToCarePlan — status filtering', () => {
