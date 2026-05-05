@@ -22,6 +22,7 @@ import {
   makeTraversalAdapter,
   makeRetraversalAdapter,
 } from '../helpers/resolution-context';
+import { applyDdiToResolutionState } from '../../services/medications/ddi-pass-single-pathway';
 
 export interface GateAnswerInput {
   booleanValue?: boolean;
@@ -102,6 +103,15 @@ export const resolutionMutations = {
       ? SessionStatus.DEGRADED
       : SessionStatus.ACTIVE;
 
+    // DDI: post-traversal pass over the resolutionState. Suppresses nodes in
+    // place via NodeStatus.EXCLUDED; warnings persist on the session for UX.
+    const ddiResult = await applyDdiToResolutionState(
+      pool,
+      traversalResult.resolutionState,
+      patientContext,
+    );
+    const ddiWarnings = ddiResult.findings.filter((f) => f.action === 'WARN');
+
     const sessionId = await createSession(pool, {
       pathwayId: args.pathwayId,
       pathwayVersion: pathway.version,
@@ -115,6 +125,7 @@ export const resolutionMutations = {
       redFlags: traversalResult.redFlags,
       totalNodesEvaluated: traversalResult.totalNodesEvaluated,
       traversalDurationMs: traversalResult.traversalDurationMs,
+      ddiWarnings,
     });
 
     // 11. Log event

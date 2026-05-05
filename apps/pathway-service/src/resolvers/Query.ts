@@ -125,10 +125,31 @@ export function formatSessionForGraphQL(session: ResolutionSession) {
       })) ?? null,
     })),
     resolutionEvents: (session.resolutionEvents ?? []).map(formatEventForGraphQL),
+    ddiWarnings: ((session.ddiWarnings ?? []) as Array<Record<string, unknown>>).map(formatDdiWarningForGraphQL),
     totalNodesEvaluated: session.totalNodesEvaluated,
     traversalDurationMs: session.traversalDurationMs,
     createdAt: session.createdAt?.toString() ?? '',
     updatedAt: session.updatedAt?.toString() ?? '',
+  };
+}
+
+function formatDdiWarningForGraphQL(w: Record<string, unknown>) {
+  const source = (w.source ?? {}) as Record<string, unknown>;
+  return {
+    recommendationId: w.recommendationId ?? '',
+    drugName: w.drugName ?? '',
+    category: w.category ?? 'DDI_MODERATE',
+    severity: w.severity ?? 'MODERATE',
+    mechanism: w.mechanism ?? null,
+    clinicalAdvice: w.clinicalAdvice ?? null,
+    source: {
+      kind: source.kind ?? '',
+      rxcui: source.rxcui ?? null,
+      name: source.name ?? null,
+      snomedCode: source.snomedCode ?? null,
+      snomedDisplay: source.snomedDisplay ?? null,
+      recommendationId: source.recommendationId ?? null,
+    },
   };
 }
 

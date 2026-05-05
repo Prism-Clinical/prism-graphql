@@ -111,14 +111,15 @@ export async function createSession(
     gateAnswers?: Map<string, GateAnswer>;
     totalNodesEvaluated: number;
     traversalDurationMs: number;
+    ddiWarnings?: unknown[];
   },
 ): Promise<string> {
   const result = await pool.query(
     `INSERT INTO pathway_resolution_sessions
      (pathway_id, pathway_version, patient_id, provider_id, status, initial_patient_context,
       resolution_state, dependency_map, pending_questions, red_flags, gate_answers,
-      total_nodes_evaluated, traversal_duration_ms)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+      total_nodes_evaluated, traversal_duration_ms, ddi_warnings)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
      RETURNING id`,
     [
       session.pathwayId,
@@ -134,6 +135,7 @@ export async function createSession(
       JSON.stringify(serializeGateAnswers(session.gateAnswers ?? new Map())),
       session.totalNodesEvaluated,
       session.traversalDurationMs,
+      JSON.stringify(session.ddiWarnings ?? []),
     ],
   );
   return result.rows[0].id;
@@ -176,6 +178,7 @@ export async function getSession(
     totalNodesEvaluated: row.total_nodes_evaluated,
     traversalDurationMs: row.traversal_duration_ms,
     carePlanId: row.care_plan_id,
+    ddiWarnings: row.ddi_warnings ?? [],
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };

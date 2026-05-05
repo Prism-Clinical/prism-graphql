@@ -414,6 +414,52 @@ type MergedQualityMetricRecommendation {
 enum SuppressionReason {
   CONTRAINDICATED
   AVOID
+  """Phase 4: drug↔drug interaction at CONTRAINDICATED severity."""
+  DDI_CONTRAINDICATED
+  """Phase 4: drug↔drug interaction at SEVERE severity."""
+  DDI_SEVERE
+  """Phase 4: drug recommendation matches a patient allergy class."""
+  ALLERGY
+}
+
+# ─── DDI Warnings (Phase 4) ───────────────────────────────────────────
+
+enum DDIFindingCategory {
+  DDI_CONTRAINDICATED
+  DDI_SEVERE
+  DDI_MODERATE
+  ALLERGY
+}
+
+"""Reference to the patient med, allergy, or other recommendation that fired the finding."""
+type DDIFindingSource {
+  """One of: PATIENT_MEDICATION | PATIENT_ALLERGY | OTHER_RECOMMENDATION."""
+  kind: String!
+  """Set when kind=PATIENT_MEDICATION (RxCUI of patient drug) or OTHER_RECOMMENDATION (RxCUI of other rec)."""
+  rxcui: String
+  """Set when kind=PATIENT_MEDICATION or OTHER_RECOMMENDATION."""
+  name: String
+  """Set when kind=PATIENT_ALLERGY."""
+  snomedCode: String
+  """Set when kind=PATIENT_ALLERGY."""
+  snomedDisplay: String
+  """Set when kind=OTHER_RECOMMENDATION."""
+  recommendationId: String
+}
+
+"""
+A DDI finding at MODERATE severity. Suppressions (CONTRAINDICATED/SEVERE)
+flow through the existing SuppressedRecommendation surface; warnings are
+advisory and surface inline so providers see them before signing.
+"""
+type DDIWarning {
+  recommendationId: String!
+  drugName: String!
+  category: DDIFindingCategory!
+  severity: String!
+  mechanism: String
+  clinicalAdvice: String
+  source: DDIFindingSource!
 }
 
 enum SuppressedRecommendationType {
@@ -654,6 +700,8 @@ type ResolutionSession {
   pendingQuestions: [PendingQuestionType!]!
   redFlags: [RedFlagType!]!
   resolutionEvents: [ResolutionEventType!]!
+  """Phase 4: DDI MODERATE-severity findings. Suppressions (CONTRAINDICATED/SEVERE) appear in excludedNodes with a DDI excludeReason."""
+  ddiWarnings: [DDIWarning!]!
   totalNodesEvaluated: Int!
   traversalDurationMs: Int!
   createdAt: String!
