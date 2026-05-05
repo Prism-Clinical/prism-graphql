@@ -336,6 +336,44 @@ export const multiPathwayResolutionQueries = {
   },
 };
 
+// ─── Type field resolvers ──────────────────────────────────────────
+
+/**
+ * MultiPathwayResolutionSession.contributingPathways — lazily fetches the
+ * hydrated Pathway objects for the IDs already on the parent. Single SQL
+ * query (`WHERE id = ANY($1)`), one round trip per session. Order is
+ * preserved to match `contributingPathwayIds` so the FE can correlate
+ * positionally with `sourcePathwayIds` elsewhere on the session.
+ */
+export const multiPathwayResolutionTypeResolvers = {
+  MultiPathwayResolutionSession: {
+    contributingPathways: async (
+      parent: { contributingPathwayIds: string[] },
+      _args: unknown,
+      context: DataSourceContext,
+    ) => {
+      if (!parent.contributingPathwayIds || parent.contributingPathwayIds.length === 0) {
+        return [];
+      }
+      const result = await context.pool.query(
+        `SELECT id, age_node_id AS "ageNodeId", logical_id AS "logicalId",
+                title, version, category, status,
+                condition_codes AS "conditionCodes",
+                scope, target_population AS "targetPopulation",
+                is_active AS "isActive",
+                created_at AS "createdAt", updated_at AS "updatedAt"
+           FROM pathway_graph_index
+           WHERE id = ANY($1::uuid[])`,
+        [parent.contributingPathwayIds],
+      );
+      const byId = new Map(result.rows.map((row) => [row.id as string, row]));
+      return parent.contributingPathwayIds
+        .map((id) => byId.get(id))
+        .filter((row): row is Record<string, unknown> => row !== undefined);
+    },
+  },
+};
+
 // ─── Internals ──────────────────────────────────────────────────────
 
 function buildPatientContext(args: MultiPathwayResolutionArgs): PatientContext {

@@ -614,7 +614,14 @@ type MultiPathwayResolutionSession {
   status: MultiPathwayResolutionSessionStatus!
   mergedPlan: MergedCarePlan!
   contributingSessionIds: [ID!]!
+  """Bare ID list of pathways that fed the merge. For full pathway data use `contributingPathways`."""
   contributingPathwayIds: [ID!]!
+  """
+  Hydrated Pathway objects for `contributingPathwayIds`. Lazily resolved —
+  the FE uses these to decorate merged recommendations + conflicts with
+  pathway titles + condition codes for clinical-meaningful provenance.
+  """
+  contributingPathways: [Pathway!]!
   carePlanId: ID
   """Phase 4: DDI MODERATE-severity findings — pre-merge + cross-recommendation."""
   ddiWarnings: [DDIWarning!]!
