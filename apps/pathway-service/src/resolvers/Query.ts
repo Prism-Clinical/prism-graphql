@@ -12,6 +12,7 @@ import { fetchGraphFromAGE, buildGraphContext, sharedScorerRegistry, sharedCasca
 import { createPatientContextLoader } from '../services/resolution/snapshot-context';
 import { computePathwayReachability } from '../services/resolution/reachability-loader';
 import { multiPathwayResolutionQueries } from './mutations/multi-pathway-resolution';
+import { medicationAdminQueries } from './mutations/medication-admin';
 
 // Internal parent type for MatchedPathway field resolvers. Carries a per-request
 // memoized patient-context loader so MatchedPathway.reachability can compute
@@ -720,6 +721,7 @@ export const Query = {
     },
 
     ...multiPathwayResolutionQueries,
+    ...medicationAdminQueries,
   },
 
   // Federation reference resolver

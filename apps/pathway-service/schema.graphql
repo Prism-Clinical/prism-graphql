@@ -1047,6 +1047,31 @@ type Query {
     patientId: ID!,
     status: MultiPathwayResolutionSessionStatus
   ): [MultiPathwayResolutionSessionSummary!]!
+
+  """
+  Admin queue: medications whose RxNav normalization failed at import or
+  snapshot ingestion. Surfaced here for a clinician to manually resolve
+  via `manuallyResolveMedicationNormalization`.
+  """
+  unnormalizedMedications: [UnnormalizedMedication!]!
+}
+
+# ─── Phase 4 admin queue ─────────────────────────────────────────────
+
+type UnnormalizedMedication {
+  inputText: String!
+  inputSystem: String
+  inputCode: String
+  attemptedAt: String!
+}
+
+type ManuallyResolvedMedication {
+  inputText: String!
+  inputSystem: String
+  inputCode: String
+  ingredientRxcui: String!
+  ingredientName: String!
+  atcClasses: [String!]!
 }
 
 # ─── Mutations ─────────────────────────────────────────────────────────
@@ -1120,6 +1145,18 @@ type Mutation {
 
   """Mark a multi-pathway session ABANDONED."""
   abandonMultiPathwaySession(sessionId: ID!, reason: String): MultiPathwayResolutionSession!
+
+  """
+  Phase 4: clinician-supplied resolution for a medication that failed to
+  normalize. Provide the canonical RxCUI; the system fetches ATC classes
+  from RxNav and rewrites the cache entry. Returns the resolved record.
+  """
+  manuallyResolveMedicationNormalization(
+    inputText: String!,
+    inputSystem: String,
+    inputCode: String,
+    rxcui: String!
+  ): ManuallyResolvedMedication!
   overrideNode(sessionId: ID!, nodeId: ID!, action: OverrideAction!, reason: String): ResolutionSession!
   answerGateQuestion(sessionId: ID!, gateId: ID!, answer: GateAnswerInput!): ResolutionSession!
   addPatientContext(sessionId: ID!, additionalContext: AdditionalContextInput!): ResolutionSession!
