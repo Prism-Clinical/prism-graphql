@@ -183,6 +183,8 @@ export const VALID_MEDICATION_ROLES = [
   'preferred', 'acceptable', 'avoid', 'contraindicated',
 ] as const;
 
+export type MedicationRole = typeof VALID_MEDICATION_ROLES[number];
+
 // Valid evidence levels
 export const VALID_EVIDENCE_LEVELS = [
   'A', 'B', 'C',
