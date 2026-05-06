@@ -11,6 +11,11 @@ import {
 import { ConfidenceEngine } from '../../services/confidence/confidence-engine';
 import { ScorerRegistry } from '../../services/confidence/scorer-registry';
 import { WeightCascadeResolver } from '../../services/confidence/weight-cascade-resolver';
+import { DataCompletenessScorer } from '../../services/confidence/scorers/data-completeness';
+import { PatientMatchQualityScorer } from '../../services/confidence/scorers/patient-match-quality';
+import { EvidenceStrengthScorer } from '../../services/confidence/scorers/evidence-strength';
+import { CustomRulesScorer } from '../../services/confidence/scorers/custom-rules';
+import { RiskMagnitudeScorer } from '../../services/confidence/scorers/risk-magnitude';
 import { hydrateSignalDefinition } from '../Query';
 import { executeCypher } from '../../services/age-client';
 
@@ -159,6 +164,20 @@ export async function fetchGraphFromAGE(
 // ─── Shared Engine Instances ────────────────────────────────────────
 
 export const sharedScorerRegistry = new ScorerRegistry();
+
+// Register the production scorer modules at module load. Without this every
+// signal misses the registry lookup in ConfidenceEngine.scoreSignals and
+// returns the `score: 0.5, missingInputs: ['scorer_not_found']` fallback —
+// which is why simulations were showing every node at 50% confidence.
+// One scorer per ScoringType enum value; if a new ScoringType is added
+// without a scorer the engine still falls back gracefully (and the
+// missing-inputs UI surfaces the gap).
+sharedScorerRegistry.register(new DataCompletenessScorer());
+sharedScorerRegistry.register(new PatientMatchQualityScorer());
+sharedScorerRegistry.register(new EvidenceStrengthScorer());
+sharedScorerRegistry.register(new CustomRulesScorer());
+sharedScorerRegistry.register(new RiskMagnitudeScorer());
+
 export const sharedCascadeResolver = new WeightCascadeResolver();
 
 // ─── Resolution Context Builder ────────────────────────────────────
