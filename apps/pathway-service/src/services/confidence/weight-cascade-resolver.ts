@@ -38,12 +38,14 @@ export class WeightCascadeResolver {
       whereClause += ` AND institution_id IS NULL`;
     }
 
-    if (organizationId) {
-      queryParams.push(organizationId);
-      whereClause += ` AND (organization_id = $${queryParams.length} OR organization_id IS NULL)`;
-    } else {
-      whereClause += ` AND organization_id IS NULL`;
-    }
+    // organization_id WHERE clause was here but the column does not exist on
+    // confidence_signal_weights — only the scope='ORGANIZATION_GLOBAL' enum
+    // value was wired up; the column itself was never added. Both the
+    // organizationId branch AND the bare `organization_id IS NULL` fallback
+    // produced the same SQL error ("column 'organization_id' does not exist"),
+    // making this resolver fail on every call. Drop both branches until the
+    // column lands.
+    void organizationId;
 
     const result = await pool.query(
       `SELECT signal_definition_id, node_identifier, weight, scope
@@ -109,12 +111,10 @@ export class WeightCascadeResolver {
       query += ` AND institution_id IS NULL`;
     }
 
-    if (organizationId) {
-      queryParams.push(organizationId);
-      query += ` AND (organization_id = $${queryParams.length} OR organization_id IS NULL)`;
-    } else {
-      query += ` AND organization_id IS NULL`;
-    }
+    // Same deal as resolveSignalWeights: organization_id column doesn't exist
+    // on confidence_resolution_thresholds. Branch removed until the column is
+    // added.
+    void organizationId;
 
     const result = await pool.query(query, queryParams);
 
