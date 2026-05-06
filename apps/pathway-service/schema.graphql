@@ -471,13 +471,7 @@ enum SuppressedRecommendationType {
 }
 
 """
-A recommendation that was hidden during merge. v1: medications flagged
-`contraindicated` or `avoid` by any matched pathway suppress the same drug
-in every other pathway; the suppressed entry stays in the response so
-clinicians can see why a drug they expected isn't recommended.
-"""
-"""
-Suppressed recommendation. v3+: source can be a pathway (Phase 3
+Suppressed recommendation. Source can be a pathway (Phase 3
 contraindicated/avoid), a patient med (Phase 4 drug↔drug), an allergy
 (Phase 4 drug↔allergy), or another recommendation in the merge (Phase 4
 cross-recommendation). Exactly one source-specific field-set is populated
