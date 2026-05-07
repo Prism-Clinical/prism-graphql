@@ -140,16 +140,23 @@ export function buildBatchedGraphCommands(pw: PathwayJson): BatchedGraphCommands
   }
 
   // ── Root-originated edges: individual Cypher with label+id+version scoping ──
+  //
+  // MERGE (not CREATE) on the edge so a retry of a partially-failed import
+  // doesn't duplicate edges between the same (a, b). Note: this protects
+  // against re-running the SAME edge spec; it does NOT protect against
+  // MATCH returning multiple (a) or (b) nodes — that's caught by the
+  // post-write count assertion in import-orchestrator (layer 3, fail-fast).
   const rootEdgeCyphers: string[] = [];
   for (const edge of rootEdgesNoProps) {
     rootEdgeCyphers.push(
       `MATCH (a:Pathway {node_id: 'root', logical_id: ${lidLit}, version: ${verLit}}), ` +
       `(b {node_id: ${esc(edge.to)}, pathway_logical_id: ${lidLit}, pathway_version: ${verLit}}) ` +
-      `CREATE (a)-[:${edge.type}]->(b) RETURN 1`,
+      `MERGE (a)-[:${edge.type}]->(b) RETURN 1`,
     );
   }
 
   // ── Non-root edges: UNWIND per (type, batch) with pathway-scoped MATCH ──
+  // Same MERGE-instead-of-CREATE pattern as root edges.
   const edgeCyphers: string[] = [];
   for (const [edgeType, edges] of edgesByType) {
     for (let i = 0; i < edges.length; i += EDGE_BATCH_SIZE) {
@@ -162,12 +169,16 @@ export function buildBatchedGraphCommands(pw: PathwayJson): BatchedGraphCommands
         `UNWIND edges AS e ` +
         `MATCH (a {node_id: e.f, pathway_logical_id: ${lidLit}, pathway_version: ${verLit}}), ` +
         `(b {node_id: e.t, pathway_logical_id: ${lidLit}, pathway_version: ${verLit}}) ` +
-        `CREATE (a)-[:${edgeType}]->(b) RETURN 1`,
+        `MERGE (a)-[:${edgeType}]->(b) RETURN 1`,
       );
     }
   }
 
   // ── Edges with properties: individual (rare) ──
+  // Edges with properties stay as CREATE — MERGE on a property-bearing edge
+  // would match ANY existing edge ignoring properties (Cypher MERGE matches
+  // structure first, then SETs properties), so MERGE here is wrong. Property-
+  // carrying edges are rare; the count assertion still catches duplication.
   const edgeWithPropsCyphers: string[] = [];
   for (const edge of edgesWithProps) {
     const fromMatch = edge.from === 'root'
