@@ -127,7 +127,21 @@ export async function fetchGraphFromAGE(
     }
   }
 
+  // Dedupe by logical edge identity (sourceId, targetId, edgeType). The
+  // node loop above already deduplicates AGE nodes that share a `node_id`
+  // property — that means multiple physical AGE nodes can collapse into
+  // one logical node here. When that happens, every outgoing edge from
+  // each duplicate AGE node still appears in `edgesResult`, producing a
+  // Cartesian product on the wire (e.g. 4 stage-1 × 5 step-1-1 = 20
+  // HAS_STEP edges for what's logically a single edge).
+  //
+  // Defense-in-depth: dedupe at the resolver boundary so consumers see
+  // a clean logical graph regardless of any data drift in AGE storage.
+  // Layer 2 (cleanup migration) and layer 3 (idempotent import) address
+  // the underlying data; this layer keeps the API contract honest in the
+  // meantime.
   const edges: GraphEdge[] = [];
+  const seenEdgeKeys = new Set<string>();
   for (const row of edgesResult.rows) {
     if (!row.a || !row.r || !row.b) continue;
     try {
@@ -139,15 +153,19 @@ export async function fetchGraphFromAGE(
       const toId = b.properties?.node_id ?? `age_${b.id}`;
       const edgeType = r.label;
 
-      if (fromId && toId && edgeType) {
-        edges.push({
-          id: String(r.id),
-          edgeType,
-          sourceId: fromId,
-          targetId: toId,
-          properties: r.properties ?? {},
-        });
-      }
+      if (!fromId || !toId || !edgeType) continue;
+
+      const key = `${fromId}::${edgeType}::${toId}`;
+      if (seenEdgeKeys.has(key)) continue;
+      seenEdgeKeys.add(key);
+
+      edges.push({
+        id: String(r.id),
+        edgeType,
+        sourceId: fromId,
+        targetId: toId,
+        properties: r.properties ?? {},
+      });
     } catch {
       // Skip unparseable edges
     }
