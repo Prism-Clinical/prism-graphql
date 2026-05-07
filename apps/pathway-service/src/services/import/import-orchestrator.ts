@@ -200,6 +200,24 @@ export async function importPathway(
       await client.query(sql);
     }
 
+    // 5f. Post-write integrity check: count actual edges in the imported
+    //     graph and compare to the JSON's edge count. If they don't match,
+    //     MATCH found multiple endpoints somewhere and the Cartesian product
+    //     duplicated edges — fail the import so it rolls back rather than
+    //     leaking dirty data into AGE.
+    if (rootAgeNodeId) {
+      const expectedEdges = pathwayJson.edges.length;
+      const actualEdges = await countEdgesInSubtree(client, rootAgeNodeId);
+      if (actualEdges !== expectedEdges) {
+        throw new Error(
+          `Import integrity check failed: graph contains ${actualEdges} edges ` +
+            `but ${expectedEdges} were expected from the JSON. This usually means ` +
+            `MATCH found duplicate node endpoints during edge creation; the import ` +
+            `transaction will be rolled back. Check pathway_graph_index for stale ` +
+            `nodes with the same (pathway_logical_id, pathway_version) as this import.`,
+        );
+      }
+    }
 
     // Step 6: Write relational tables + compute diffs
     let pathwayId: string;
@@ -390,6 +408,53 @@ async function deleteGraphSubtree(
   const deleteRootCypher = `MATCH (p:Pathway) WHERE id(p) = ${ageNodeId} DETACH DELETE p RETURN 1`;
   const rootSql = buildCypherQuery(undefined, deleteRootCypher, '(v agtype)');
   await client.query(rootSql);
+}
+
+/**
+ * Count every edge reachable from a freshly-imported root. Used as a
+ * post-write integrity check: if the count exceeds what the JSON specified,
+ * MATCH must have found duplicate endpoints during edge creation and
+ * Cartesian-multiplied. Bail the import so the transaction rolls back.
+ *
+ * Uses single-hop BFS to avoid AGE's variable-length path explosion (same
+ * pattern as deleteGraphSubtree).
+ */
+async function countEdgesInSubtree(
+  client: PoolClient,
+  ageNodeId: string,
+): Promise<number> {
+  if (!/^\d+$/.test(String(ageNodeId))) return 0;
+
+  const allNodeIds = new Set<string>([String(ageNodeId)]);
+  let frontier = [String(ageNodeId)];
+
+  while (frontier.length > 0) {
+    const idList = frontier.join(', ');
+    const cypher =
+      `MATCH (a)-[]->(b) WHERE id(a) IN [${idList}] RETURN DISTINCT id(b) AS bid`;
+    const sql = buildCypherQuery(undefined, cypher, '(bid agtype)');
+    const result = await client.query(sql);
+
+    frontier = [];
+    for (const row of result.rows) {
+      const bid = String(parseAgtype(row.bid));
+      if (!allNodeIds.has(bid)) {
+        allNodeIds.add(bid);
+        frontier.push(bid);
+      }
+    }
+  }
+
+  if (allNodeIds.size === 0) return 0;
+
+  const idList = [...allNodeIds].join(', ');
+  const cypher =
+    `MATCH (a)-[r]->(b) WHERE id(a) IN [${idList}] AND id(b) IN [${idList}] RETURN count(r) AS c`;
+  const sql = buildCypherQuery(undefined, cypher, '(c agtype)');
+  const result = await client.query(sql);
+
+  if (result.rows.length === 0) return 0;
+  return Number(parseAgtype(result.rows[0].c));
 }
 
 /**

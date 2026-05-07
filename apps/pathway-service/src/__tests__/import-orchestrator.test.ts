@@ -2,7 +2,8 @@ import { importPathway } from '../services/import/import-orchestrator';
 import { MINIMAL_PATHWAY, clonePathway } from './fixtures/reference-pathway';
 
 // Mock the pool and client
-function createMockPool() {
+function createMockPool(opts: { expectedEdgeCount?: number } = {}) {
+  const expectedEdgeCount = opts.expectedEdgeCount ?? MINIMAL_PATHWAY.edges.length;
   const client = {
     query: jest.fn(async (text: string, values?: unknown[]) => {
       // Handle BEGIN/COMMIT/ROLLBACK
@@ -13,8 +14,19 @@ function createMockPool() {
       if (text.includes('LOAD') || text.includes('search_path')) {
         return { rows: [] };
       }
-      // Handle Cypher queries (SELECT * FROM cypher...)
+      // Handle Cypher queries (SELECT * FROM cypher...). Differentiate by
+      // return-type spec so the post-write integrity check (which BFSes for
+      // node ids and then counts edges) reads matching shapes:
+      //   - RETURN count(r) AS c → return `c` matching the JSON edge count
+      //   - RETURN DISTINCT id(b) → empty rows so BFS terminates immediately
+      //   - everything else      → original `{ v: { id: 123456 } }` shape
       if (text.includes('cypher(')) {
+        if (text.includes('count(r)') || text.includes('(c agtype)')) {
+          return { rows: [{ c: String(expectedEdgeCount) }] };
+        }
+        if (text.includes('(bid agtype)')) {
+          return { rows: [] };
+        }
         return { rows: [{ v: JSON.stringify({ id: 123456 }) }] };
       }
       // Handle SELECT for existing pathway lookup
