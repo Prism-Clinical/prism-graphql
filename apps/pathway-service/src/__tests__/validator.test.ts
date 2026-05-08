@@ -104,9 +104,9 @@ describe('validatePathwayJson', () => {
     // S6b: edge count limit
     it('should reject edge count exceeding MAX_GRAPH_EDGES', () => {
       const pw = clonePathway();
-      // Fill with 2001 edges (all referencing existing nodes to avoid other errors)
+      // Fill past the 5000-edge limit with copies of an existing edge.
       const originalEdges = [...pw.edges];
-      for (let i = pw.edges.length; i <= 2000; i++) {
+      for (let i = pw.edges.length; i <= 5001; i++) {
         pw.edges.push({ ...originalEdges[0] });
       }
       const result = validatePathwayJson(pw);
@@ -237,6 +237,32 @@ describe('validatePathwayJson', () => {
       const pw = clonePathway();
       const result = validatePathwayJson(pw);
       expect(result.warnings.filter(w => w.includes('depth'))).toHaveLength(0);
+    });
+
+    it('should not flag a high-fan-in DAG as cyclic (depth = longest path, not BFS iteration count)', () => {
+      // Regression: a previous BFS-based algorithm with an iteration cap
+      // misclassified DAGs with many shared leaf targets as cycles.
+      const pw = clonePathway();
+      // Add 200 medication nodes that all CITES_EVIDENCE the same evidence node.
+      // Real depth is unchanged (2 deeper than any USES_MEDICATION step), but
+      // the high fan-in inflates a naive BFS iteration count.
+      pw.nodes.push({
+        id: 'shared-evidence',
+        type: 'EvidenceCitation',
+        properties: { title: 'Shared evidence', source: 'X', year: 2024, evidence_level: 'A' },
+      });
+      for (let i = 0; i < 200; i++) {
+        const medId = `fanin-med-${i}`;
+        pw.nodes.push({
+          id: medId,
+          type: 'Medication',
+          properties: { name: `Med ${i}`, role: 'first_line' },
+        });
+        pw.edges.push({ from: 'step-1-1', to: medId, type: 'USES_MEDICATION' });
+        pw.edges.push({ from: medId, to: 'shared-evidence', type: 'CITES_EVIDENCE' });
+      }
+      const result = validatePathwayJson(pw);
+      expect(result.errors.filter((e) => e.includes('depth'))).toHaveLength(0);
     });
 
     it('should warn when graph depth exceeds 30', () => {
