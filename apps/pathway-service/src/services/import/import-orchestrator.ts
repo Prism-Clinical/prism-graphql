@@ -12,6 +12,57 @@ import {
   updatePathwayIndex,
 } from './relational-writer';
 import { ensureIcd10Codes } from '../codes/icd10-hierarchy';
+import { ensureClinicalCodeReference, type ClinicalCodeRef } from '../codes/clinical-code-reference';
+
+/**
+ * Collect every code referenced anywhere in the pathway JSON for indexing
+ * into `clinical_code_reference` (the table the searchCodes typeahead reads).
+ *
+ * Sources:
+ *   - pathway.condition_codes (all systems)
+ *   - CodeEntry nodes (carry their own code/system/description)
+ *   - code_sets[].codes[] members (Phase 1b)
+ *
+ * Returns deduped (the writer also dedupes, but we limit allocations here).
+ */
+function collectAllPathwayCodes(pathwayJson: PathwayJson): ClinicalCodeRef[] {
+  const out: ClinicalCodeRef[] = [];
+
+  for (const cc of pathwayJson.pathway.condition_codes ?? []) {
+    if (cc.code && cc.system) {
+      out.push({ code: cc.code, system: cc.system, description: cc.description });
+    }
+  }
+
+  for (const node of pathwayJson.nodes ?? []) {
+    if (node.type !== 'CodeEntry') continue;
+    const props = node.properties ?? {};
+    const code = (props as Record<string, unknown>).code;
+    const system = (props as Record<string, unknown>).system;
+    const description = (props as Record<string, unknown>).description;
+    if (typeof code === 'string' && typeof system === 'string') {
+      out.push({
+        code,
+        system,
+        description: typeof description === 'string' ? description : undefined,
+      });
+    }
+  }
+
+  for (const cs of pathwayJson.pathway.code_sets ?? []) {
+    for (const member of cs.required_codes ?? []) {
+      if (member.code && member.system) {
+        out.push({
+          code: member.code,
+          system: member.system,
+          description: member.description,
+        });
+      }
+    }
+  }
+
+  return out;
+}
 
 /** Parse AGE agtype values which may have ::vertex or ::edge suffix */
 function parseAgtype(val: unknown): any {
@@ -229,6 +280,7 @@ export async function importPathway(
       const updated = await updatePathwayIndex(client, existing.id, pathwayJson.pathway, rootAgeNodeId);
       pathwayId = updated.id;
       await ensureIcd10Codes(client, pathwayJson.pathway.condition_codes);
+      await ensureClinicalCodeReference(client, collectAllPathwayCodes(pathwayJson));
       await writeCodeSets(client, pathwayId, pathwayJson.pathway);
 
       if (oldPathwayJson) {
@@ -248,6 +300,7 @@ export async function importPathway(
       const indexRow = await writePathwayIndex(client, pathwayJson.pathway, rootAgeNodeId, userId);
       pathwayId = indexRow.id;
       await ensureIcd10Codes(client, pathwayJson.pathway.condition_codes);
+      await ensureClinicalCodeReference(client, collectAllPathwayCodes(pathwayJson));
       await writeCodeSets(client, pathwayId, pathwayJson.pathway);
 
       if (importMode === 'NEW_PATHWAY') {
