@@ -1127,7 +1127,21 @@ type Mutation {
   Once all conflicts are resolved, `generateMergedCarePlan` materializes
   the actual care plan rows.
   """
-  startMultiPathwayResolution(patientId: ID!, patientContext: PatientContextInput): MultiPathwayResolutionSession!
+  startMultiPathwayResolution(
+    patientId: ID!,
+    patientContext: PatientContextInput,
+    """
+    Admin-only QA flag. When true, DRAFT pathways are also matched (in addition
+    to ACTIVE). Production encounter callers should leave this false / unset.
+    """
+    includeDraftPathways: Boolean,
+    """
+    Admin-only QA flag. When true, the matcher uses `patientContext.conditionCodes`
+    directly instead of reading from the EMR-synced snapshot tables. Required
+    for synthetic patients (admin simulator) where there is no real patient row.
+    """
+    syntheticPatient: Boolean
+  ): MultiPathwayResolutionSession!
 
   """
   Record a provider's choice for one conflict. The session's mergedPlan is

@@ -348,6 +348,21 @@ interface PatientLiteralCode {
   system: string;
 }
 
+export interface GetMatchedPathwaysOptions {
+  /**
+   * When provided, the matcher uses these codes directly instead of looking
+   * up the patient row in `snapshot_conditions`. Use for synthetic patients
+   * (admin simulator, what-if analysis) where there's no EMR-synced row.
+   */
+  directPatientCodes?: PatientLiteralCode[];
+  /**
+   * When true, also matches DRAFT pathways (default false matches only ACTIVE).
+   * Use for admin QA tooling. Production encounter callers should leave this
+   * false so providers don't see unfinished pathways.
+   */
+  includeDraftPathways?: boolean;
+}
+
 /**
  * Phase 1b set-based matcher.
  *
@@ -360,12 +375,17 @@ interface PatientLiteralCode {
 export async function getMatchedPathways(
   pool: Pool,
   patientId: string,
+  options: GetMatchedPathwaysOptions = {},
 ): Promise<MatchedPathway[]> {
-  // 1. Find matched (pathway, set) pairs using set containment + Phase 1a's
-  //    ancestor expansion + Phase 1.5's active-condition filter.
-  const matchedRowsRes = await pool.query(
-    `WITH patient_codes AS (
-       SELECT DISTINCT sc.code, 'ICD-10' AS system
+  const { directPatientCodes, includeDraftPathways = false } = options;
+  const useDirectCodes = directPatientCodes !== undefined;
+
+  // The patient_codes CTE either pulls from snapshot_conditions (real patient)
+  // or is built from a VALUES list (synthetic patient). We branch the SQL up
+  // front so the rest of the CTE chain reads from a uniform `patient_codes`.
+  const patientCodesCte = useDirectCodes
+    ? buildDirectCodesCte(directPatientCodes ?? [])
+    : `SELECT DISTINCT sc.code, 'ICD-10' AS system
        FROM snapshot_conditions sc
        JOIN patient_clinical_snapshots pcs ON sc.snapshot_id = pcs.id
        JOIN patients p ON pcs.epic_patient_id = p.epic_patient_id
@@ -375,7 +395,20 @@ export async function getMatchedPathways(
            WHERE epic_patient_id = p.epic_patient_id
          )
          AND sc.code IS NOT NULL
-         AND ${activeConditionPredicate('sc')}
+         AND ${activeConditionPredicate('sc')}`;
+
+  // When draft pathways are included, also relax the is_active filter — drafts
+  // carry is_active=false because they haven't been published yet, but for QA
+  // tooling we still want to surface them.
+  const statusAndActiveFilter = includeDraftPathways
+    ? `pgi.status IN ('ACTIVE', 'DRAFT') AND (pgi.is_active = true OR pgi.status = 'DRAFT')`
+    : `pgi.status = 'ACTIVE' AND pgi.is_active = true`;
+
+  const queryParams = useDirectCodes ? [] : [patientId];
+
+  const matchedRowsRes = await pool.query(
+    `WITH patient_codes AS (
+       ${patientCodesCte}
      ),
      expanded_codes AS (
        SELECT code, system FROM patient_codes
@@ -405,36 +438,44 @@ export async function getMatchedPathways(
        ARRAY_AGG(ms.set_id) AS matched_set_ids
      FROM pathway_graph_index pgi
      JOIN matched_set_ids ms ON ms.pathway_id = pgi.id
-     WHERE pgi.status = 'ACTIVE' AND pgi.is_active = true
+     WHERE ${statusAndActiveFilter}
      GROUP BY pgi.id, pgi.logical_id, pgi.title, pgi.version, pgi.category,
               pgi.status, pgi.condition_codes
      ORDER BY pgi.title`,
-    [patientId],
+    queryParams,
   );
 
   if (matchedRowsRes.rows.length === 0) return [];
 
-  // 2. Fetch patient's literal active codes for the addressed/unaddressed
-  //    computation. Don't include ancestor expansion — addressed/unaddressed
-  //    is about the patient's actual problems, not the expanded set.
-  const patientCodesRes = await pool.query(
-    `SELECT DISTINCT sc.code, 'ICD-10' AS system
-       FROM snapshot_conditions sc
-       JOIN patient_clinical_snapshots pcs ON sc.snapshot_id = pcs.id
-       JOIN patients p ON pcs.epic_patient_id = p.epic_patient_id
-      WHERE p.id = $1
-        AND pcs.snapshot_version = (
-          SELECT MAX(snapshot_version) FROM patient_clinical_snapshots
-          WHERE epic_patient_id = p.epic_patient_id
-        )
-        AND sc.code IS NOT NULL
-        AND ${activeConditionPredicate('sc')}`,
-    [patientId],
-  );
-  const patientLiteralCodes: PatientLiteralCode[] = patientCodesRes.rows.map((r) => ({
-    code: r.code,
-    system: r.system,
-  }));
+  // Patient's literal active codes for the addressed/unaddressed computation.
+  // Synthetic-patient callers use the codes they passed; real-patient callers
+  // re-query snapshot_conditions.
+  let patientLiteralCodes: PatientLiteralCode[];
+  if (useDirectCodes) {
+    patientLiteralCodes = (directPatientCodes ?? []).map((c) => ({
+      code: c.code,
+      system: c.system,
+    }));
+  } else {
+    const patientCodesRes = await pool.query(
+      `SELECT DISTINCT sc.code, 'ICD-10' AS system
+         FROM snapshot_conditions sc
+         JOIN patient_clinical_snapshots pcs ON sc.snapshot_id = pcs.id
+         JOIN patients p ON pcs.epic_patient_id = p.epic_patient_id
+        WHERE p.id = $1
+          AND pcs.snapshot_version = (
+            SELECT MAX(snapshot_version) FROM patient_clinical_snapshots
+            WHERE epic_patient_id = p.epic_patient_id
+          )
+          AND sc.code IS NOT NULL
+          AND ${activeConditionPredicate('sc')}`,
+      [patientId],
+    );
+    patientLiteralCodes = patientCodesRes.rows.map((r) => ({
+      code: r.code,
+      system: r.system,
+    }));
+  }
 
   // 3. Fetch all matched code sets (with their members) in one query.
   const allMatchedSetIds = Array.from(
@@ -489,6 +530,27 @@ export async function getMatchedPathways(
     });
   }
   return composed;
+}
+
+/**
+ * Build the body of the `patient_codes` CTE from a caller-supplied code list.
+ * Used for synthetic patients (admin simulator) where there's no real EMR row.
+ *
+ * Returns a `SELECT … UNION ALL …` literal so the surrounding WITH clause can
+ * read from `patient_codes` uniformly. Codes/systems are escaped via single-
+ * quote doubling — they're short clinical identifiers, not free text, so this
+ * is safe and avoids the parameter-expansion plumbing that VALUES would need.
+ */
+function buildDirectCodesCte(codes: PatientLiteralCode[]): string {
+  if (codes.length === 0) {
+    // Empty patient_codes — produces zero matches. Use a no-row SELECT.
+    return `SELECT NULL::text AS code, NULL::text AS system WHERE FALSE`;
+  }
+  const escape = (s: string) => s.replace(/'/g, "''");
+  const lines = codes.map(
+    (c) => `SELECT '${escape(c.code)}'::text AS code, '${escape(c.system)}'::text AS system`,
+  );
+  return lines.join('\n       UNION ALL\n       ');
 }
 
 /**

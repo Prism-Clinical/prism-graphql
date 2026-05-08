@@ -26,7 +26,11 @@ export class WeightCascadeResolver {
     institutionId?: string;
     organizationId?: string;
   }): Promise<WeightMatrix> {
-    const { pool, pathwayId, signalDefinitions, nodeIdentifiers, institutionId, organizationId } = params;
+    // organizationId is accepted for API compatibility but ignored: the
+    // confidence_signal_weights table doesn't have an organization_id column
+    // yet. Pass-through callers still send it; we silently drop it here.
+    void params.organizationId;
+    const { pool, pathwayId, signalDefinitions, nodeIdentifiers, institutionId } = params;
 
     const queryParams: unknown[] = [pathwayId];
     let whereClause = `(pathway_id = $1 OR pathway_id IS NULL)`;
@@ -36,13 +40,6 @@ export class WeightCascadeResolver {
       whereClause += ` AND (institution_id = $${queryParams.length} OR institution_id IS NULL)`;
     } else {
       whereClause += ` AND institution_id IS NULL`;
-    }
-
-    if (organizationId) {
-      queryParams.push(organizationId);
-      whereClause += ` AND (organization_id = $${queryParams.length} OR organization_id IS NULL)`;
-    } else {
-      whereClause += ` AND organization_id IS NULL`;
     }
 
     const result = await pool.query(
@@ -86,7 +83,10 @@ export class WeightCascadeResolver {
     institutionId?: string;
     organizationId?: string;
   }): Promise<ResolvedThresholds> {
-    const { pool, pathwayId, nodeIdentifier, institutionId, organizationId } = params;
+    // organizationId is accepted for API compatibility but ignored — see
+    // resolveAllWeights above for context.
+    void params.organizationId;
+    const { pool, pathwayId, nodeIdentifier, institutionId } = params;
 
     const queryParams: unknown[] = [pathwayId];
     let query = `
@@ -107,13 +107,6 @@ export class WeightCascadeResolver {
       query += ` AND (institution_id = $${queryParams.length} OR institution_id IS NULL)`;
     } else {
       query += ` AND institution_id IS NULL`;
-    }
-
-    if (organizationId) {
-      queryParams.push(organizationId);
-      query += ` AND (organization_id = $${queryParams.length} OR organization_id IS NULL)`;
-    } else {
-      query += ` AND organization_id IS NULL`;
     }
 
     const result = await pool.query(query, queryParams);

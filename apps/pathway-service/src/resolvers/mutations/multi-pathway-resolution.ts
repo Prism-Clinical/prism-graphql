@@ -86,6 +86,18 @@ export interface MultiPathwayResolutionArgs {
     allergies?: Array<{ code: string; system: string; display?: string }>;
     vitalSigns?: Record<string, unknown>;
   };
+  /**
+   * Admin-only flag. When true, DRAFT pathways are also considered for matching
+   * (in addition to ACTIVE). Use for QA tooling against unpublished pathways.
+   */
+  includeDraftPathways?: boolean;
+  /**
+   * Synthetic-patient flag. When true, the matcher uses
+   * `patientContext.conditionCodes` directly instead of looking up the patient
+   * row in the EMR-synced snapshot tables. Required for admin simulator where
+   * there's no real patient.
+   */
+  syntheticPatient?: boolean;
 }
 
 export interface ConflictChoiceInput {
@@ -111,7 +123,21 @@ export const multiPathwayResolutionMutations = {
   ) {
     const { pool } = context;
 
-    const matched = await getMatchedPathways(pool, args.patientId);
+    const matcherOptions: { directPatientCodes?: Array<{ code: string; system: string }>; includeDraftPathways?: boolean } = {};
+    if (args.includeDraftPathways) {
+      matcherOptions.includeDraftPathways = true;
+    }
+    if (args.syntheticPatient) {
+      // For synthetic patients, drive matching off the supplied codes only —
+      // there is no real patients row to read from.
+      const codes = (args.patientContext?.conditionCodes ?? []).map((c) => ({
+        code: c.code,
+        system: c.system,
+      }));
+      matcherOptions.directPatientCodes = codes;
+    }
+
+    const matched = await getMatchedPathways(pool, args.patientId, matcherOptions);
     if (matched.length === 0) {
       // Persist an empty session so the FE has something to show — and so we
       // have a paper trail that no pathways matched on this date.
