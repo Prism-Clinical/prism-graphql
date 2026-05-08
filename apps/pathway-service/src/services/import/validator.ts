@@ -451,43 +451,55 @@ function validateCodeFormat(system: string, code: string, context: string, error
 }
 
 function computeMaxDepth(edges: PathwayJson['edges']): number {
-  // Build adjacency list
+  // Build adjacency list and in-degree map. Cycle detection is via Kahn's
+  // topological sort: if any node remains unprocessed, the graph has a cycle.
+  // Longest-path-in-DAG is then computed in topological order in O(V+E).
   const children = new Map<string, string[]>();
+  const inDegree = new Map<string, number>();
+  const allNodes = new Set<string>(['root']);
+
   for (const edge of edges) {
     if (!children.has(edge.from)) children.set(edge.from, []);
     children.get(edge.from)!.push(edge.to);
+    inDegree.set(edge.to, (inDegree.get(edge.to) ?? 0) + 1);
+    allNodes.add(edge.from);
+    allNodes.add(edge.to);
+  }
+  for (const n of allNodes) {
+    if (!inDegree.has(n)) inDegree.set(n, 0);
   }
 
-  // BFS from root, tracking maximum depth per node (handles DAGs where
-  // the same node is reachable via multiple paths at different depths).
-  // Iteration limit prevents infinite loops from cyclic graphs — in a valid
-  // acyclic graph each node is re-enqueued at most once per incoming edge,
-  // so total iterations are bounded by |nodes| + |edges|.
-  const maxIterations = edges.length * 3 + 100;
-  let iterations = 0;
-  const maxDepthMap = new Map<string, number>();
+  // Topo-sort sources first
+  const queue: string[] = [];
+  for (const [n, d] of inDegree) {
+    if (d === 0) queue.push(n);
+  }
+
+  const depthMap = new Map<string, number>();
+  depthMap.set('root', 0);
+  let processed = 0;
   let maxDepth = 0;
-  const queue: Array<{ node: string; depth: number }> = [{ node: 'root', depth: 0 }];
 
   while (queue.length > 0) {
-    if (++iterations > maxIterations) {
-      // Cycle detected — depth is unbounded, report as exceeding limit
-      return MAX_GRAPH_DEPTH + 1;
-    }
+    const node = queue.shift()!;
+    processed++;
+    const d = depthMap.get(node) ?? 0;
+    if (d > maxDepth) maxDepth = d;
 
-    const { node, depth } = queue.shift()!;
-    const knownDepth = maxDepthMap.get(node);
-    if (knownDepth !== undefined && knownDepth >= depth) continue;
-    maxDepthMap.set(node, depth);
-    maxDepth = Math.max(maxDepth, depth);
-
-    const kids = children.get(node) || [];
-    for (const kid of kids) {
-      const kidDepth = maxDepthMap.get(kid);
-      if (kidDepth === undefined || kidDepth < depth + 1) {
-        queue.push({ node: kid, depth: depth + 1 });
+    for (const kid of children.get(node) ?? []) {
+      const kidDepth = depthMap.get(kid);
+      if (kidDepth === undefined || kidDepth < d + 1) {
+        depthMap.set(kid, d + 1);
       }
+      const remaining = (inDegree.get(kid) ?? 0) - 1;
+      inDegree.set(kid, remaining);
+      if (remaining === 0) queue.push(kid);
     }
+  }
+
+  // Cycle: some node never reached zero in-degree
+  if (processed < allNodes.size) {
+    return MAX_GRAPH_DEPTH + 1;
   }
 
   return maxDepth;

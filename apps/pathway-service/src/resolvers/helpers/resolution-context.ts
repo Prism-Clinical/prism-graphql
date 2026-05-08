@@ -11,6 +11,11 @@ import {
 import { ConfidenceEngine } from '../../services/confidence/confidence-engine';
 import { ScorerRegistry } from '../../services/confidence/scorer-registry';
 import { WeightCascadeResolver } from '../../services/confidence/weight-cascade-resolver';
+import { CustomRulesScorer } from '../../services/confidence/scorers/custom-rules';
+import { DataCompletenessScorer } from '../../services/confidence/scorers/data-completeness';
+import { EvidenceStrengthScorer } from '../../services/confidence/scorers/evidence-strength';
+import { PatientMatchQualityScorer } from '../../services/confidence/scorers/patient-match-quality';
+import { RiskMagnitudeScorer } from '../../services/confidence/scorers/risk-magnitude';
 import { hydrateSignalDefinition } from '../Query';
 import { executeCypher } from '../../services/age-client';
 
@@ -177,6 +182,15 @@ export async function fetchGraphFromAGE(
 // ─── Shared Engine Instances ────────────────────────────────────────
 
 export const sharedScorerRegistry = new ScorerRegistry();
+// Register all production scorers. Without this, the confidence engine looks up
+// each signal's scoring type, gets undefined, and falls back to 0.5 — so every
+// node displays as "50% confidence" regardless of the underlying signals.
+sharedScorerRegistry.register(new CustomRulesScorer());
+sharedScorerRegistry.register(new DataCompletenessScorer());
+sharedScorerRegistry.register(new EvidenceStrengthScorer());
+sharedScorerRegistry.register(new PatientMatchQualityScorer());
+sharedScorerRegistry.register(new RiskMagnitudeScorer());
+
 export const sharedCascadeResolver = new WeightCascadeResolver();
 
 // ─── Resolution Context Builder ────────────────────────────────────
