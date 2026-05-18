@@ -646,46 +646,72 @@ export const resolutionMutations = {
         ? `Care Plan: ${pathwayTitleResult.rows[0].title}`
         : 'Pathway-Generated Care Plan';
 
+      // Ensure the patient row exists so the patient_care_plans FK is
+      // satisfied. No-op for real patients; creates a placeholder for the
+      // admin simulator's synthetic UUIDs.
+      await client.query(
+        `INSERT INTO patients (id, first_name, last_name, date_of_birth)
+         VALUES ($1, 'Synthetic', 'Simulator Patient', CURRENT_DATE)
+         ON CONFLICT (id) DO NOTHING`,
+        [session.patientId],
+      );
+
+      // Per migration 019: target the patient-specific instance tables.
+      // `care_plans` is the patient-agnostic pathway-definition table and
+      // does not have patient_id/provider_id/status/source columns.
       const carePlanResult = await client.query(
-        `INSERT INTO care_plans (patient_id, title, provider_id, status, condition_codes, source, pathway_session_id, created_by)
-         VALUES ($1, $2, $3, 'DRAFT', $4, 'pathway_resolution', $5, $6)
+        `INSERT INTO patient_care_plans
+           (patient_id, title, provider_id, status, condition_codes, start_date, created_by)
+         VALUES ($1, $2, $3, 'DRAFT', $4, CURRENT_DATE, $5)
          RETURNING id`,
         [
           session.patientId,
           carePlanTitle,
           session.providerId,
           carePlanData.conditionCodes,
-          args.sessionId,
           session.providerId,
         ]
       );
       carePlanId = carePlanResult.rows[0].id;
 
-      // 5. Insert goals
+      // 5. Insert goals. The patient-specific table has no `pathway_node_id`
+      // column; we stash the source node id in `guideline_reference`
+      // alongside any caller-supplied reference so provenance is preserved.
       for (const goal of carePlanData.goals) {
+        const refParts: string[] = [];
+        if (goal.guidelineReference) refParts.push(goal.guidelineReference);
+        if (goal.pathwayNodeId) refParts.push(`node:${goal.pathwayNodeId}`);
         await client.query(
-          `INSERT INTO care_plan_goals (care_plan_id, description, priority, guideline_reference, pathway_node_id)
-           VALUES ($1, $2, $3, $4, $5)`,
-          [carePlanId, goal.description, goal.priority, goal.guidelineReference ?? null, goal.pathwayNodeId]
+          `INSERT INTO patient_care_plan_goals
+             (patient_care_plan_id, description, priority, guideline_reference)
+           VALUES ($1, $2, $3, $4)`,
+          [carePlanId, goal.description, goal.priority, refParts.length > 0 ? refParts.join(' ') : null]
         );
       }
 
-      // 6. Insert interventions
+      // 6. Insert interventions. Per the patient-specific table's column
+      // list, we drop recommendation_confidence / source / pathway_node_id /
+      // pathway_id / session_id (none exist) and fold provenance into
+      // guideline_reference. Lab interventions also don't have a `lab_code`
+      // column — callers should send them as MONITORING with the LOINC in
+      // the description.
       for (const intervention of carePlanData.interventions) {
+        const refParts: string[] = [];
+        if (intervention.guidelineReference) refParts.push(intervention.guidelineReference);
+        if (intervention.pathwayId) refParts.push(`pathway:${intervention.pathwayId}`);
+        if (intervention.pathwayNodeId) refParts.push(`node:${intervention.pathwayNodeId}`);
+        if (intervention.sessionId) refParts.push(`session:${intervention.sessionId}`);
         await client.query(
-          `INSERT INTO care_plan_interventions
-           (care_plan_id, type, description, medication_code, dosage, frequency,
-            procedure_code, referral_specialty, patient_instructions, guideline_reference,
-            recommendation_confidence, source, pathway_node_id, pathway_id, session_id)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
+          `INSERT INTO patient_care_plan_interventions
+             (patient_care_plan_id, type, description, medication_code, dosage, frequency,
+              procedure_code, referral_specialty, patient_instructions, guideline_reference)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
           [
             carePlanId, intervention.type, intervention.description,
             intervention.medicationCode ?? null, intervention.dosage ?? null,
             intervention.frequency ?? null, intervention.procedureCode ?? null,
             intervention.referralSpecialty ?? null, intervention.patientInstructions ?? null,
-            intervention.guidelineReference ?? null, intervention.recommendationConfidence,
-            intervention.source, intervention.pathwayNodeId,
-            intervention.pathwayId, intervention.sessionId,
+            refParts.length > 0 ? refParts.join(' ') : null,
           ]
         );
       }

@@ -84,15 +84,16 @@ export class ConfidenceEngine {
     });
 
     // Score each (node, signal) pair
-    const rawScores = new Map<string, Map<string, { score: number; missingInputs: string[] }>>();
+    type NodeScoreEntry = { score: number; missingInputs: string[]; skipped: boolean };
+    const rawScores = new Map<string, Map<string, NodeScoreEntry>>();
 
     for (const node of nodes) {
-      const nodeScores = new Map<string, { score: number; missingInputs: string[] }>();
+      const nodeScores = new Map<string, NodeScoreEntry>();
 
       for (const signal of signalDefinitions) {
         const scorer = this.registry.get(signal.scoringType);
         if (!scorer) {
-          nodeScores.set(signal.name, { score: 0.5, missingInputs: ['scorer_not_found'] });
+          nodeScores.set(signal.name, { score: 0.5, missingInputs: ['scorer_not_found'], skipped: false });
           continue;
         }
 
@@ -104,7 +105,11 @@ export class ConfidenceEngine {
           adminEvidenceEntries,
         });
 
-        nodeScores.set(signal.name, { score: result.score, missingInputs: result.missingInputs });
+        nodeScores.set(signal.name, {
+          score: result.score,
+          missingInputs: result.missingInputs,
+          skipped: result.skipped === true,
+        });
       }
 
       rawScores.set(node.nodeIdentifier, nodeScores);
@@ -156,16 +161,26 @@ export class ConfidenceEngine {
         if (!scoreEntry || !weightEntry) continue;
 
         const weight = weightEntry.weight;
+        const skipped = scoreEntry.skipped === true;
+
         breakdown.push({
           signalName: signal.name,
           score: scoreEntry.score,
           weight,
           weightSource: weightEntry.source,
           missingInputs: scoreEntry.missingInputs,
+          skipped,
         });
 
-        weightedSum += scoreEntry.score * weight;
-        totalWeight += weight;
+        // Skipped signals don't contribute to the weighted average — and
+        // their weight is dropped from the denominator so the remaining
+        // signals renormalize to sum to 1. This matches the principle that
+        // a genuinely unknown signal (e.g. risk with no risk_value) is
+        // neutral, not depressing.
+        if (!skipped) {
+          weightedSum += scoreEntry.score * weight;
+          totalWeight += weight;
+        }
       }
 
       const confidence = totalWeight > 0 ? weightedSum / totalWeight : 0;

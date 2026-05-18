@@ -13,6 +13,7 @@ import { createPatientContextLoader } from '../services/resolution/snapshot-cont
 import { computePathwayReachability } from '../services/resolution/reachability-loader';
 import { multiPathwayResolutionQueries } from './mutations/multi-pathway-resolution';
 import { medicationAdminQueries } from './mutations/medication-admin';
+import { simulatorScenarioQueries } from './mutations/simulator-scenarios';
 
 // Internal parent type for MatchedPathway field resolvers. Carries a per-request
 // memoized patient-context loader so MatchedPathway.reachability can compute
@@ -722,6 +723,7 @@ export const Query = {
 
     ...multiPathwayResolutionQueries,
     ...medicationAdminQueries,
+    ...simulatorScenarioQueries,
   },
 
   // Federation reference resolver
