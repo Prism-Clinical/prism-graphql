@@ -32,6 +32,7 @@ import {
 import {
   getMatchedPathways,
   createSession,
+  getSession,
 } from '../../services/resolution/session-store';
 import { collapseLattice } from '../../services/resolution/lattice-collapse';
 import {
@@ -159,67 +160,11 @@ export const multiPathwayResolutionMutations = {
     const { resolvedPlans, contributingSessionIds, contributingPathwayIds } =
       await resolveAndPersistAll(pool, surviving, patientContext, context.userId);
 
-    // ── DDI stage 1: pre-merge, per-plan against patient context ──
-    const preMergeWarnings: unknown[] = [];
-    const preMergeSuppressions: SuppressedRecommendation[] = [];
-    const ddiCleanedPlans: ResolvedCarePlan[] = [];
-
-    for (const plan of resolvedPlans) {
-      const candidates = plan.medications.map((m) => ({
-        recommendationId: m.sourceNodeId ?? `${plan.pathwayId}|${m.name}`,
-        drugName: m.name,
-      }));
-      const ddi = await runPatientContextDdi(pool, candidates, patientContext);
-      preMergeWarnings.push(...ddi.findings.filter((f) => f.action === 'WARN'));
-
-      // Translate suppressions to SuppressedRecommendation entries; drop them
-      // from the plan's medications so merge doesn't see them.
-      const suppressedIds = ddi.suppressedRecommendationIds;
-      for (const finding of ddi.findings) {
-        if (finding.action !== 'SUPPRESS') continue;
-        const med = plan.medications.find((m) => (m.sourceNodeId ?? `${plan.pathwayId}|${m.name}`) === finding.recommendationId);
-        if (!med) continue;
-        preMergeSuppressions.push(buildDdiSuppression(med, finding));
-      }
-
-      ddiCleanedPlans.push({
-        ...plan,
-        medications: plan.medications.filter(
-          (m) => !suppressedIds.has(m.sourceNodeId ?? `${plan.pathwayId}|${m.name}`),
-        ),
-      });
-    }
-
-    const merged = mergeResolvedCarePlans(ddiCleanedPlans);
-
-    // ── DDI stage 2: post-merge, cross-recommendation pairs ──
-    const crossCandidates = merged.medications.map((m) => ({
-      recommendationId: m.recommendation.sourceNodeId ?? `${m.recommendation.sourcePathwayId}|${m.recommendation.name}`,
-      drugName: m.recommendation.name,
-      sourcePathwayId: m.recommendation.sourcePathwayId,
-    }));
-    const cross = await runCrossRecommendationDdi(pool, crossCandidates);
-    const crossWarnings = cross.findings.filter((f) => f.action === 'WARN');
-    const crossSuppressedIds = cross.suppressedRecommendationIds;
-    const crossSuppressions: SuppressedRecommendation[] = [];
-    for (const finding of cross.findings) {
-      if (finding.action !== 'SUPPRESS') continue;
-      const med = merged.medications.find(
-        (m) => (m.recommendation.sourceNodeId ?? `${m.recommendation.sourcePathwayId}|${m.recommendation.name}`) === finding.recommendationId,
-      );
-      if (!med) continue;
-      crossSuppressions.push(buildDdiSuppression(med.recommendation, finding));
-    }
-
-    const finalMerged: MergedCarePlan = {
-      ...merged,
-      medications: merged.medications.filter(
-        (m) => !crossSuppressedIds.has(m.recommendation.sourceNodeId ?? `${m.recommendation.sourcePathwayId}|${m.recommendation.name}`),
-      ),
-      suppressed: [...merged.suppressed, ...preMergeSuppressions, ...crossSuppressions],
-    };
-
-    const ddiWarnings = [...preMergeWarnings, ...crossWarnings];
+    const { mergedPlan: finalMerged, ddiWarnings } = await runMergePipeline(
+      pool,
+      resolvedPlans,
+      patientContext,
+    );
 
     const sessionId = await createMultiPathwaySession(pool, {
       patientId: args.patientId,
@@ -324,6 +269,59 @@ export const multiPathwayResolutionMutations = {
     const refreshed = await getMultiPathwaySession(pool, args.sessionId);
     return formatSessionForGraphQL(refreshed!);
   },
+
+  /**
+   * Re-run the merge pipeline against the current state of every contributing
+   * per-pathway session, then update this multi-pathway session's stored
+   * mergedPlan + ddiWarnings. Used after a provider answers a Gate question
+   * (which re-traverses the per-pathway session) so the merged view picks up
+   * the new per-pathway state without forcing a full new resolution.
+   *
+   * Existing conflict resolutions are preserved — the new merged plan is
+   * re-derived from the resolved per-pathway plans, then any prior provider
+   * conflict choices replay on top of it.
+   */
+  async reMergeMultiPathwaySession(
+    _parent: unknown,
+    args: { sessionId: string },
+    context: DataSourceContext,
+  ) {
+    const { pool } = context;
+    const session = await loadActiveSession(pool, args.sessionId);
+
+    const resolvedPlans = await buildResolvedPlansFromSessions(
+      pool,
+      session.contributingSessionIds,
+    );
+    const patientContext = session.initialPatientContext as PatientContext;
+    const { mergedPlan, ddiWarnings } = await runMergePipeline(
+      pool,
+      resolvedPlans,
+      patientContext,
+    );
+
+    // Replay prior conflict resolutions onto the freshly-merged plan so the
+    // provider doesn't have to re-pick them. Conflicts whose clinical_role
+    // disappeared from the new merge are simply dropped (their resolution
+    // becomes moot); conflicts that show up newly will surface unresolved.
+    let replayedPlan = mergedPlan;
+    for (const conflict of replayedPlan.conflicts) {
+      const prior = session.conflictResolutions[conflict.conflictId];
+      if (!prior) continue;
+      replayedPlan = applyResolution(replayedPlan, conflict, prior);
+    }
+
+    await updateMergedPlanAndResolutions(
+      pool,
+      args.sessionId,
+      replayedPlan,
+      session.conflictResolutions,
+      ddiWarnings,
+    );
+
+    const refreshed = await getMultiPathwaySession(pool, args.sessionId);
+    return formatSessionForGraphQL(refreshed!);
+  },
 };
 
 // ─── Query resolvers (exported separately for Query.ts) ─────────────
@@ -397,6 +395,61 @@ export const multiPathwayResolutionTypeResolvers = {
         .map((id) => byId.get(id))
         .filter((row): row is Record<string, unknown> => row !== undefined);
     },
+
+    /**
+     * Aggregate pending Gate questions across all contributing per-pathway
+     * sessions. Each entry carries `sessionId` + `pathwayId` so the FE can
+     * route the answer to the right per-pathway session and surface which
+     * pathway the gate belongs to.
+     */
+    pendingGateQuestions: async (
+      parent: { contributingSessionIds: string[] },
+      _args: unknown,
+      context: DataSourceContext,
+    ) => {
+      if (!parent.contributingSessionIds || parent.contributingSessionIds.length === 0) {
+        return [];
+      }
+      const result = await context.pool.query(
+        `SELECT s.id AS session_id,
+                s.pathway_id AS pathway_id,
+                p.title AS pathway_title,
+                s.pending_questions AS pending_questions
+           FROM pathway_resolution_sessions s
+           LEFT JOIN pathway_graph_index p ON p.id = s.pathway_id
+          WHERE s.id = ANY($1::uuid[])
+            AND jsonb_array_length(s.pending_questions) > 0`,
+        [parent.contributingSessionIds],
+      );
+      const out: Array<{
+        sessionId: string;
+        pathwayId: string;
+        pathwayTitle: string;
+        gateId: string;
+        prompt: string;
+        answerType: string;
+        options: string[] | null;
+        affectedSubtreeSize: number;
+        estimatedImpact: string;
+      }> = [];
+      for (const row of result.rows) {
+        const questions = (row.pending_questions ?? []) as Array<Record<string, unknown>>;
+        for (const q of questions) {
+          out.push({
+            sessionId: String(row.session_id),
+            pathwayId: String(row.pathway_id),
+            pathwayTitle: String(row.pathway_title ?? '(untitled pathway)'),
+            gateId: String(q.gateId ?? q.gate_id ?? ''),
+            prompt: String(q.prompt ?? ''),
+            answerType: String(q.answerType ?? q.answer_type ?? 'BOOLEAN'),
+            options: Array.isArray(q.options) ? (q.options as string[]) : null,
+            affectedSubtreeSize: Number(q.affectedSubtreeSize ?? q.affected_subtree_size ?? 0),
+            estimatedImpact: String(q.estimatedImpact ?? q.estimated_impact ?? 'unknown'),
+          });
+        }
+      }
+      return out;
+    },
   },
 };
 
@@ -412,6 +465,124 @@ function buildPatientContext(args: MultiPathwayResolutionArgs): PatientContext {
     allergies: pc?.allergies ?? [],
     vitalSigns: pc?.vitalSigns,
   };
+}
+
+/**
+ * Run the full merge pipeline (DDI stage 1 → merge → DDI stage 2) over a set
+ * of already-resolved per-pathway care plans. Used both by the initial
+ * `startMultiPathwayResolution` flow and by `reMergeMultiPathwaySession` after
+ * gate answers re-traverse a contributing session.
+ *
+ * Returns the final merged plan plus the DDI WARN-severity findings; the
+ * suppressions are folded into `mergedPlan.suppressed` directly.
+ */
+export async function runMergePipeline(
+  pool: Pool,
+  resolvedPlans: ResolvedCarePlan[],
+  patientContext: PatientContext,
+): Promise<{ mergedPlan: MergedCarePlan; ddiWarnings: unknown[] }> {
+  // ── DDI stage 1: pre-merge, per-plan against patient context ──
+  const preMergeWarnings: unknown[] = [];
+  const preMergeSuppressions: SuppressedRecommendation[] = [];
+  const ddiCleanedPlans: ResolvedCarePlan[] = [];
+
+  for (const plan of resolvedPlans) {
+    const candidates = plan.medications.map((m) => ({
+      recommendationId: m.sourceNodeId ?? `${plan.pathwayId}|${m.name}`,
+      drugName: m.name,
+    }));
+    const ddi = await runPatientContextDdi(pool, candidates, patientContext);
+    preMergeWarnings.push(...ddi.findings.filter((f) => f.action === 'WARN'));
+
+    const suppressedIds = ddi.suppressedRecommendationIds;
+    for (const finding of ddi.findings) {
+      if (finding.action !== 'SUPPRESS') continue;
+      const med = plan.medications.find(
+        (m) => (m.sourceNodeId ?? `${plan.pathwayId}|${m.name}`) === finding.recommendationId,
+      );
+      if (!med) continue;
+      preMergeSuppressions.push(buildDdiSuppression(med, finding));
+    }
+
+    ddiCleanedPlans.push({
+      ...plan,
+      medications: plan.medications.filter(
+        (m) => !suppressedIds.has(m.sourceNodeId ?? `${plan.pathwayId}|${m.name}`),
+      ),
+    });
+  }
+
+  const merged = mergeResolvedCarePlans(ddiCleanedPlans);
+
+  // ── DDI stage 2: post-merge, cross-recommendation pairs ──
+  const crossCandidates = merged.medications.map((m) => ({
+    recommendationId:
+      m.recommendation.sourceNodeId ??
+      `${m.recommendation.sourcePathwayId}|${m.recommendation.name}`,
+    drugName: m.recommendation.name,
+    sourcePathwayId: m.recommendation.sourcePathwayId,
+  }));
+  const cross = await runCrossRecommendationDdi(pool, crossCandidates);
+  const crossWarnings = cross.findings.filter((f) => f.action === 'WARN');
+  const crossSuppressedIds = cross.suppressedRecommendationIds;
+  const crossSuppressions: SuppressedRecommendation[] = [];
+  for (const finding of cross.findings) {
+    if (finding.action !== 'SUPPRESS') continue;
+    const med = merged.medications.find(
+      (m) =>
+        (m.recommendation.sourceNodeId ??
+          `${m.recommendation.sourcePathwayId}|${m.recommendation.name}`) === finding.recommendationId,
+    );
+    if (!med) continue;
+    crossSuppressions.push(buildDdiSuppression(med.recommendation, finding));
+  }
+
+  const finalMerged: MergedCarePlan = {
+    ...merged,
+    medications: merged.medications.filter(
+      (m) =>
+        !crossSuppressedIds.has(
+          m.recommendation.sourceNodeId ??
+            `${m.recommendation.sourcePathwayId}|${m.recommendation.name}`,
+        ),
+    ),
+    suppressed: [...merged.suppressed, ...preMergeSuppressions, ...crossSuppressions],
+  };
+
+  return { mergedPlan: finalMerged, ddiWarnings: [...preMergeWarnings, ...crossWarnings] };
+}
+
+/**
+ * Rebuild `ResolvedCarePlan` array by re-projecting the current state of
+ * each contributing per-pathway session. Used by `reMergeMultiPathwaySession`
+ * — the gate answers that have been applied since session creation are
+ * reflected in the per-pathway session's `resolutionState`, so re-projection
+ * picks up the post-answer state. Sessions with missing rows are skipped
+ * (consistent with the initial-merge behavior).
+ */
+export async function buildResolvedPlansFromSessions(
+  pool: Pool,
+  sessionIds: string[],
+): Promise<ResolvedCarePlan[]> {
+  const plans: ResolvedCarePlan[] = [];
+  for (const sessionId of sessionIds) {
+    const session = await getSession(pool, sessionId);
+    if (!session) continue;
+    const meta = await pool.query<{ logical_id: string; title: string }>(
+      `SELECT logical_id, title FROM pathway_graph_index WHERE id = $1`,
+      [session.pathwayId],
+    );
+    const pathwayLogicalId = meta.rows[0]?.logical_id ?? session.pathwayId;
+    const pathwayTitle = meta.rows[0]?.title ?? session.pathwayId;
+    plans.push(
+      projectResolutionToCarePlan(session.resolutionState, {
+        pathwayId: session.pathwayId,
+        pathwayLogicalId,
+        pathwayTitle,
+      }),
+    );
+  }
+  return plans;
 }
 
 /**
@@ -656,70 +827,84 @@ async function materializeCarePlan(
   pool: Pool,
   session: MultiPathwayResolutionSession,
 ): Promise<string> {
+  // Per migration 019: `care_plans` is the patient-agnostic pathway-definition
+  // table; per-patient instances belong in `patient_care_plans` (with
+  // `patient_care_plan_goals` / `patient_care_plan_interventions` for children).
+  // Earlier versions of this resolver targeted `care_plans` directly and broke
+  // at runtime because `patient_id` / `provider_id` / `source` etc. only exist
+  // on the patient-specific table. Provenance (source pathway, source node)
+  // is stashed in `guideline_reference` since the patient tables don't carry
+  // dedicated columns for it.
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
 
+    // Ensure the patient row exists. For real-patient flows this is a no-op
+    // (ON CONFLICT DO NOTHING). For simulator flows where patient_id is a
+    // freshly-generated UUID with no matching `patients` row, this stashes a
+    // placeholder so the patient_care_plans FK is satisfied.
+    await ensurePatientRowExists(client, session.patientId);
+
     const carePlanResult = await client.query(
-      `INSERT INTO care_plans
-         (patient_id, title, provider_id, status, condition_codes, source, created_by)
-       VALUES ($1, $2, $3, 'DRAFT', $4, 'multi_pathway_resolution', $5)
+      `INSERT INTO patient_care_plans
+         (patient_id, title, provider_id, status, condition_codes, start_date, created_by)
+       VALUES ($1, $2, $3, 'DRAFT', $4, CURRENT_DATE, $5)
        RETURNING id`,
       [
         session.patientId,
         'Multi-Pathway Care Plan',
         session.providerId,
-        [], // condition codes aggregation deferred — single-pathway flow does this from included nodes
+        [], // condition codes aggregation deferred
         session.providerId,
       ],
     );
     const carePlanId: string = carePlanResult.rows[0].id;
 
-    // One goal per contributing pathway as a placeholder; richer goal
-    // synthesis can come later.
+    // One placeholder goal per contributing pathway. Pathway id lives in
+    // guideline_reference (the only free-text-ish column on the table).
     for (const pathwayId of session.contributingPathwayIds) {
       await client.query(
-        `INSERT INTO care_plan_goals (care_plan_id, description, priority, pathway_node_id)
+        `INSERT INTO patient_care_plan_goals
+           (patient_care_plan_id, description, priority, guideline_reference)
          VALUES ($1, $2, 'HIGH', $3)`,
-        [carePlanId, `Goals from pathway ${pathwayId}`, pathwayId],
+        [carePlanId, `Goals from pathway ${pathwayId}`, `pathway:${pathwayId}`],
       );
     }
 
-    // Interventions: one row per merged recommendation across all types.
+    // Interventions: one row per merged recommendation. Per the
+    // check_constraint on patient_care_plan_interventions.type, labs map to
+    // MONITORING (no LAB type exists).
     for (const m of session.mergedPlan.medications) {
       const r = m.recommendation;
       await client.query(
-        `INSERT INTO care_plan_interventions
-           (care_plan_id, type, description, dosage, frequency,
-            recommendation_confidence, source, pathway_node_id, pathway_id, session_id)
-         VALUES ($1, 'MEDICATION', $2, $3, $4, $5, $6, $7, $8, $9)`,
+        `INSERT INTO patient_care_plan_interventions
+           (patient_care_plan_id, type, description, dosage, frequency, guideline_reference)
+         VALUES ($1, 'MEDICATION', $2, $3, $4, $5)`,
         [
           carePlanId,
           r.name,
           r.dose ?? null,
           r.frequency ?? null,
-          1.0,
-          m.state === 'provider-override' ? 'provider_override' : 'pathway_recommendation',
-          r.sourceNodeId ?? null,
-          r.sourcePathwayId === 'provider-override' ? null : r.sourcePathwayId,
-          null,
+          provenance(r.sourcePathwayId, r.sourceNodeId),
         ],
       );
     }
     for (const l of session.mergedPlan.labs) {
+      const r = l.recommendation;
       await client.query(
-        `INSERT INTO care_plan_interventions
-           (care_plan_id, type, description, recommendation_confidence, source, pathway_node_id, pathway_id, session_id)
-         VALUES ($1, 'MONITORING', $2, $3, $4, $5, $6, $7)`,
-        [carePlanId, l.recommendation.name, 1.0, 'pathway_recommendation', l.recommendation.sourceNodeId ?? null, l.recommendation.sourcePathwayId, null],
+        `INSERT INTO patient_care_plan_interventions
+           (patient_care_plan_id, type, description, guideline_reference)
+         VALUES ($1, 'MONITORING', $2, $3)`,
+        [carePlanId, r.name, provenance(r.sourcePathwayId, r.sourceNodeId)],
       );
     }
     for (const p of session.mergedPlan.procedures) {
+      const r = p.recommendation;
       await client.query(
-        `INSERT INTO care_plan_interventions
-           (care_plan_id, type, description, procedure_code, recommendation_confidence, source, pathway_node_id, pathway_id, session_id)
-         VALUES ($1, 'PROCEDURE', $2, $3, $4, $5, $6, $7, $8)`,
-        [carePlanId, p.recommendation.name, p.recommendation.code ?? null, 1.0, 'pathway_recommendation', p.recommendation.sourceNodeId ?? null, p.recommendation.sourcePathwayId, null],
+        `INSERT INTO patient_care_plan_interventions
+           (patient_care_plan_id, type, description, procedure_code, guideline_reference)
+         VALUES ($1, 'PROCEDURE', $2, $3, $4)`,
+        [carePlanId, r.name, r.code ?? null, provenance(r.sourcePathwayId, r.sourceNodeId)],
       );
     }
 
@@ -731,6 +916,31 @@ async function materializeCarePlan(
   } finally {
     client.release();
   }
+}
+
+function provenance(pathwayId: string | undefined, nodeId: string | null | undefined): string | null {
+  if (!pathwayId && !nodeId) return null;
+  const parts: string[] = [];
+  if (pathwayId && pathwayId !== 'provider-override') parts.push(`pathway:${pathwayId}`);
+  if (nodeId) parts.push(`node:${nodeId}`);
+  return parts.length > 0 ? parts.join(' ') : null;
+}
+
+/**
+ * Ensure a row exists in `patients` for the given id so the FK on
+ * `patient_care_plans.patient_id` can be satisfied. For real patient flows
+ * the row exists from EMR sync and this is a no-op. For the admin simulator
+ * (which fabricates patientIds via crypto.randomUUID()) it creates a
+ * placeholder so the commit flow can complete; the row remains discoverable
+ * for any downstream audit.
+ */
+async function ensurePatientRowExists(client: { query: (sql: string, params: unknown[]) => Promise<unknown> }, patientId: string): Promise<void> {
+  await client.query(
+    `INSERT INTO patients (id, first_name, last_name, date_of_birth)
+     VALUES ($1, 'Synthetic', 'Simulator Patient', CURRENT_DATE)
+     ON CONFLICT (id) DO NOTHING`,
+    [patientId],
+  );
 }
 
 // ─── GraphQL formatting ─────────────────────────────────────────────

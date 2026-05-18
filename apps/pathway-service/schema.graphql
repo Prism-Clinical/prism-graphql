@@ -132,6 +132,15 @@ type SignalBreakdown {
   weight: Float!
   weightSource: WeightSource!
   missingInputs: [String!]!
+  """
+  True when this signal was excluded from the weighted-average confidence
+  computation because its score was genuinely unknown (e.g. risk magnitude
+  with no `risk_value` declared on the node). The score field still carries
+  whatever the scorer last computed, but it did not contribute to the
+  overall confidence. UI should render the dimension as "Unknown" / neutral
+  rather than treating the score as a depressing factor.
+  """
+  skipped: Boolean!
 }
 
 type PropagationInfluence {
@@ -619,8 +628,35 @@ type MultiPathwayResolutionSession {
   carePlanId: ID
   """Phase 4: DDI MODERATE-severity findings — pre-merge + cross-recommendation."""
   ddiWarnings: [DDIWarning!]!
+  """
+  Aggregated pending Gate questions across every contributing per-pathway
+  session. Empty when every gate has been auto-resolved from patient data or
+  hand-answered. Each entry carries `sessionId` so the FE can call
+  `answerGateQuestion` against the correct per-pathway session. Until a
+  re-merge surface exists, answering a gate updates the per-pathway state
+  but NOT the merged plan — re-run resolution to see merge changes.
+  """
+  pendingGateQuestions: [MultiPathwayPendingGate!]!
   createdAt: String!
   updatedAt: String!
+}
+
+"""
+A pending Gate question surfaced from one of the contributing per-pathway
+sessions of a multi-pathway resolution. Carries enough metadata for the FE
+to route the answer to the correct per-pathway session via
+`answerGateQuestion(sessionId, gateId, answer)`.
+"""
+type MultiPathwayPendingGate {
+  sessionId: ID!
+  pathwayId: ID!
+  pathwayTitle: String!
+  gateId: ID!
+  prompt: String!
+  answerType: AnswerType!
+  options: [String!]
+  affectedSubtreeSize: Int!
+  estimatedImpact: String!
 }
 
 """Lightweight summary for list views (no embedded merged plan)."""
@@ -1055,6 +1091,12 @@ type Query {
   via `manuallyResolveMedicationNormalization`.
   """
   unnormalizedMedications: [UnnormalizedMedication!]!
+
+  """All saved simulator scenarios, most-recently-updated first."""
+  simulatorScenarios: [SimulatorScenario!]!
+
+  """Fetch a single saved simulator scenario by id."""
+  simulatorScenario(id: ID!): SimulatorScenario
 }
 
 # ─── Phase 4 admin queue ─────────────────────────────────────────────
@@ -1162,6 +1204,16 @@ type Mutation {
   abandonMultiPathwaySession(sessionId: ID!, reason: String): MultiPathwayResolutionSession!
 
   """
+  Re-run the merge pipeline against the current state of every contributing
+  per-pathway session, then update this multi-pathway session's stored
+  `mergedPlan` and `ddiWarnings`. Use after a provider answers a Gate
+  question (which re-traverses the per-pathway session) so the merged view
+  picks up the new per-pathway state without forcing a full new resolution.
+  Existing conflict resolutions are preserved.
+  """
+  reMergeMultiPathwaySession(sessionId: ID!): MultiPathwayResolutionSession!
+
+  """
   Phase 4: clinician-supplied resolution for a medication that failed to
   normalize. Provide the canonical RxCUI; the system fetches ATC classes
   from RxNav and rewrites the cache entry. Returns the resolved record.
@@ -1177,4 +1229,65 @@ type Mutation {
   addPatientContext(sessionId: ID!, additionalContext: AdditionalContextInput!): ResolutionSession!
   generateCarePlanFromResolution(sessionId: ID!): CarePlanGenerationResult!
   abandonSession(sessionId: ID!, reason: String): ResolutionSession!
+
+  """
+  Save a synthetic-patient scenario for the admin simulator. When `id` is
+  provided in input, the existing scenario is overwritten; otherwise a new
+  one is created. Names must be unique — duplicate-name inserts fail and
+  the FE should prompt for a different name.
+  """
+  saveSimulatorScenario(input: SaveSimulatorScenarioInput!): SimulatorScenario!
+
+  """Delete a saved simulator scenario. Returns true when a row was removed."""
+  deleteSimulatorScenario(id: ID!): Boolean!
+}
+
+# ─── Simulator Scenarios ──────────────────────────────────────────────
+
+"""
+A named synthetic-patient scenario saved by the admin simulator for
+regression-testing pathway authoring changes. Re-runnable end-to-end:
+the FE loads the scenario, repopulates the patient composer, and submits
+the same resolution it always would.
+"""
+type SimulatorScenario {
+  id: ID!
+  name: String!
+  description: String
+  conditionCodes: [SimulatorScenarioCode!]!
+  medications: [SimulatorScenarioCode!]!
+  allergies: [SimulatorScenarioCode!]!
+  labResults: [SimulatorScenarioLabResult!]!
+  includeDraftPathways: Boolean!
+  createdAt: String!
+  updatedAt: String!
+}
+
+"""Output mirror of `CodeInput` — output types cannot use input types as fields."""
+type SimulatorScenarioCode {
+  code: String!
+  system: String!
+  display: String
+}
+
+"""Output mirror of `LabResultInput`."""
+type SimulatorScenarioLabResult {
+  code: String!
+  system: String!
+  value: Float
+  unit: String
+  date: String
+  display: String
+}
+
+input SaveSimulatorScenarioInput {
+  """When provided, updates the existing scenario; otherwise creates a new one."""
+  id: ID
+  name: String!
+  description: String
+  conditionCodes: [CodeInput!]
+  medications: [CodeInput!]
+  allergies: [CodeInput!]
+  labResults: [LabResultInput!]
+  includeDraftPathways: Boolean
 }

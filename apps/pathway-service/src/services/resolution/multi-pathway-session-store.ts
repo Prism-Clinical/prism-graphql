@@ -134,7 +134,26 @@ export async function updateMergedPlanAndResolutions(
   sessionId: string,
   mergedPlan: MergedCarePlan,
   conflictResolutions: Record<string, ConflictResolution>,
+  /** Optional: when re-merging after gate answers, ddi warnings also change. */
+  ddiWarnings?: unknown[],
 ): Promise<void> {
+  if (ddiWarnings !== undefined) {
+    await pool.query(
+      `UPDATE multi_pathway_resolution_sessions
+         SET merged_plan = $2::jsonb,
+             conflict_resolutions = $3::jsonb,
+             ddi_warnings = $4::jsonb,
+             updated_at = NOW()
+       WHERE id = $1`,
+      [
+        sessionId,
+        JSON.stringify(mergedPlan),
+        JSON.stringify(conflictResolutions),
+        JSON.stringify(ddiWarnings),
+      ],
+    );
+    return;
+  }
   await pool.query(
     `UPDATE multi_pathway_resolution_sessions
        SET merged_plan = $2::jsonb,

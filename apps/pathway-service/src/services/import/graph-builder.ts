@@ -105,16 +105,26 @@ export function buildBatchedGraphCommands(pw: PathwayJson): BatchedGraphCommands
   const rootCypher = `CREATE (v:Pathway {node_id: ${esc('root')}, logical_id: ${esc(meta.logical_id)}, title: ${esc(meta.title)}, version: ${esc(meta.version)}, category: ${esc(meta.category)}, scope: ${esc(meta.scope || '')}, target_population: ${esc(meta.target_population || '')}}) RETURN v`;
 
   // ── Batch nodes: comma-separated CREATE ──
+  //
+  // System-supplied identity fields (`node_id`, `node_type`, `pathway_logical_id`,
+  // `pathway_version`) are spread AFTER the user-supplied properties so the
+  // pathway-scoped MATCH at edge-creation time always sees the correct
+  // (logical_id, version) pair. Without this, callers that re-import a
+  // pathway as NEW_VERSION (where they deserialized the prior version's
+  // nodes, kept the old pathway_version in properties, and re-serialized
+  // for the new version) would create nodes tagged with the OLD version —
+  // edge MATCH would then find zero endpoints and the integrity check
+  // would fail with "graph contains 0 edges". Identity wins over payload.
   const nodeCyphers: string[] = [];
   for (let i = 0; i < pw.nodes.length; i += NODE_BATCH_SIZE) {
     const batch = pw.nodes.slice(i, i + NODE_BATCH_SIZE);
     const patterns = batch.map((node, idx) => {
       const props = serializeProperties({
+        ...node.properties,
         node_id: node.id,
         node_type: node.type,
         pathway_logical_id: meta.logical_id,
         pathway_version: meta.version,
-        ...node.properties,
       });
       return `(v${idx}:${node.type} {${props}})`;
     });

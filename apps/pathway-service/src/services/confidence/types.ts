@@ -121,6 +121,19 @@ export interface SignalScore {
   score: number;
   missingInputs: string[];
   metadata?: Record<string, unknown>;
+  /**
+   * When true, this signal's score is genuinely unknown (e.g. risk magnitude
+   * with no `risk_value` declared) — neither favorable nor unfavorable for
+   * the recommendation. The engine excludes it from the weighted average
+   * and renormalizes the remaining signal weights so they sum to 1.
+   *
+   * Use sparingly: only when the signal would otherwise return a default
+   * neutral value (e.g. 0.5) that misleadingly contributes to confidence.
+   * Signals where "missing input" means "weak / no evidence" (e.g.
+   * evidence_strength with no citation) should NOT skip — they correctly
+   * depress confidence.
+   */
+  skipped?: boolean;
 }
 
 export interface ScorerParams {
@@ -245,6 +258,14 @@ export interface SignalBreakdown {
   weight: number;
   weightSource: WeightSource;
   missingInputs: string[];
+  /**
+   * True when this signal was excluded from the weighted-average confidence
+   * computation because its score was genuinely unknown. The breakdown row
+   * is still returned so the FE can render "Unknown" for the dimension; the
+   * score field still carries whatever the scorer last computed (often a
+   * neutral default like 0.5) but it did not contribute to the overall.
+   */
+  skipped: boolean;
 }
 
 export interface PropagationInfluence {
