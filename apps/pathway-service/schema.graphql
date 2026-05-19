@@ -1258,6 +1258,13 @@ type SimulatorScenario {
   medications: [SimulatorScenarioCode!]!
   allergies: [SimulatorScenarioCode!]!
   labResults: [SimulatorScenarioLabResult!]!
+  """
+  Structured uncoded numeric data — BP, HR, SpO2, temp, weight, height,
+  computed BMI, plus a `custom` map for ad-hoc entries. Shape mirrors the
+  FE's VitalsSnapshot interface; pathway authors target paths like
+  `vitals.systolic_bp` via Gate nodes with gate_type=patient_attribute.
+  """
+  vitals: JSON!
   includeDraftPathways: Boolean!
   createdAt: String!
   updatedAt: String!
@@ -1289,5 +1296,7 @@ input SaveSimulatorScenarioInput {
   medications: [CodeInput!]
   allergies: [CodeInput!]
   labResults: [LabResultInput!]
+  """Vitals snapshot — same shape as the FE's VitalsSnapshot, stored as JSON."""
+  vitals: JSON
   includeDraftPathways: Boolean
 }

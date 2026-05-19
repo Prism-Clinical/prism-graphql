@@ -36,6 +36,8 @@ export interface SaveSimulatorScenarioInput {
   medications?: CodeInputPayload[];
   allergies?: CodeInputPayload[];
   labResults?: LabResultInputPayload[];
+  /** Structured uncoded numeric data (BP, HR, SpO2, weight, height, custom). */
+  vitals?: Record<string, unknown>;
   includeDraftPathways?: boolean;
 }
 
@@ -47,6 +49,7 @@ interface SimulatorScenarioRow {
   medications: CodeInputPayload[];
   allergies: CodeInputPayload[];
   lab_results: LabResultInputPayload[];
+  vitals: Record<string, unknown>;
   include_draft_pathways: boolean;
   created_at: Date;
   updated_at: Date;
@@ -61,6 +64,7 @@ function formatScenario(row: SimulatorScenarioRow) {
     medications: row.medications ?? [],
     allergies: row.allergies ?? [],
     labResults: row.lab_results ?? [],
+    vitals: row.vitals ?? {},
     includeDraftPathways: row.include_draft_pathways,
     createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at,
     updatedAt: row.updated_at instanceof Date ? row.updated_at.toISOString() : row.updated_at,
@@ -71,7 +75,7 @@ export const simulatorScenarioQueries = {
   async simulatorScenarios(_p: unknown, _args: unknown, context: DataSourceContext) {
     const { rows } = await context.pool.query<SimulatorScenarioRow>(
       `SELECT id, name, description, condition_codes, medications, allergies,
-              lab_results, include_draft_pathways, created_at, updated_at
+              lab_results, vitals, include_draft_pathways, created_at, updated_at
        FROM simulator_scenarios
        ORDER BY updated_at DESC`,
     );
@@ -81,7 +85,7 @@ export const simulatorScenarioQueries = {
   async simulatorScenario(_p: unknown, args: { id: string }, context: DataSourceContext) {
     const { rows } = await context.pool.query<SimulatorScenarioRow>(
       `SELECT id, name, description, condition_codes, medications, allergies,
-              lab_results, include_draft_pathways, created_at, updated_at
+              lab_results, vitals, include_draft_pathways, created_at, updated_at
        FROM simulator_scenarios
        WHERE id = $1`,
       [args.id],
@@ -101,6 +105,7 @@ export const simulatorScenarioMutations = {
     const meds = input.medications ?? [];
     const allergies = input.allergies ?? [];
     const labs = input.labResults ?? [];
+    const vitals = input.vitals ?? {};
     const includeDrafts = input.includeDraftPathways ?? true;
 
     if (input.id) {
@@ -112,11 +117,12 @@ export const simulatorScenarioMutations = {
                 medications = $5::jsonb,
                 allergies = $6::jsonb,
                 lab_results = $7::jsonb,
-                include_draft_pathways = $8,
+                vitals = $8::jsonb,
+                include_draft_pathways = $9,
                 updated_at = NOW()
           WHERE id = $1
         RETURNING id, name, description, condition_codes, medications, allergies,
-                  lab_results, include_draft_pathways, created_at, updated_at`,
+                  lab_results, vitals, include_draft_pathways, created_at, updated_at`,
         [
           input.id,
           input.name,
@@ -125,6 +131,7 @@ export const simulatorScenarioMutations = {
           JSON.stringify(meds),
           JSON.stringify(allergies),
           JSON.stringify(labs),
+          JSON.stringify(vitals),
           includeDrafts,
         ],
       );
@@ -137,10 +144,10 @@ export const simulatorScenarioMutations = {
     const { rows } = await context.pool.query<SimulatorScenarioRow>(
       `INSERT INTO simulator_scenarios
          (name, description, condition_codes, medications, allergies,
-          lab_results, include_draft_pathways)
-       VALUES ($1, $2, $3::jsonb, $4::jsonb, $5::jsonb, $6::jsonb, $7)
+          lab_results, vitals, include_draft_pathways)
+       VALUES ($1, $2, $3::jsonb, $4::jsonb, $5::jsonb, $6::jsonb, $7::jsonb, $8)
        RETURNING id, name, description, condition_codes, medications, allergies,
-                 lab_results, include_draft_pathways, created_at, updated_at`,
+                 lab_results, vitals, include_draft_pathways, created_at, updated_at`,
       [
         input.name,
         input.description ?? null,
@@ -148,6 +155,7 @@ export const simulatorScenarioMutations = {
         JSON.stringify(meds),
         JSON.stringify(allergies),
         JSON.stringify(labs),
+        JSON.stringify(vitals),
         includeDrafts,
       ],
     );
