@@ -87,6 +87,7 @@ export interface MultiPathwayResolutionArgs {
     }>;
     allergies?: Array<{ code: string; system: string; display?: string }>;
     vitalSigns?: Record<string, unknown>;
+    freeformData?: Record<string, unknown>;
   };
   /**
    * Admin-only flag. When true, DRAFT pathways are also considered for matching
@@ -432,10 +433,15 @@ export const multiPathwayResolutionTypeResolvers = {
         options: string[] | null;
         affectedSubtreeSize: number;
         estimatedImpact: string;
+        tentative: boolean | null;
+        tentativeBranch: string | null;
+        tentativeConfidence: number | null;
+        tentativeReasoning: string | null;
       }> = [];
       for (const row of result.rows) {
         const questions = (row.pending_questions ?? []) as Array<Record<string, unknown>>;
         for (const q of questions) {
+          const tentativeConfidenceRaw = q.tentativeConfidence ?? q.tentative_confidence;
           out.push({
             sessionId: String(row.session_id),
             pathwayId: String(row.pathway_id),
@@ -446,6 +452,16 @@ export const multiPathwayResolutionTypeResolvers = {
             options: Array.isArray(q.options) ? (q.options as string[]) : null,
             affectedSubtreeSize: Number(q.affectedSubtreeSize ?? q.affected_subtree_size ?? 0),
             estimatedImpact: String(q.estimatedImpact ?? q.estimated_impact ?? 'unknown'),
+            tentative: q.tentative == null ? null : Boolean(q.tentative),
+            tentativeBranch: q.tentativeBranch == null && q.tentative_branch == null
+              ? null
+              : String(q.tentativeBranch ?? q.tentative_branch),
+            tentativeConfidence: tentativeConfidenceRaw == null
+              ? null
+              : Number(tentativeConfidenceRaw),
+            tentativeReasoning: q.tentativeReasoning == null && q.tentative_reasoning == null
+              ? null
+              : String(q.tentativeReasoning ?? q.tentative_reasoning),
           });
         }
       }
@@ -465,6 +481,7 @@ function buildPatientContext(args: MultiPathwayResolutionArgs): PatientContext {
     labResults: pc?.labResults ?? [],
     allergies: pc?.allergies ?? [],
     vitalSigns: pc?.vitalSigns,
+    freeformData: pc?.freeformData,
   };
 }
 

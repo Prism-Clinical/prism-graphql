@@ -113,6 +113,10 @@ export function formatSessionForGraphQL(session: ResolutionSession) {
       options: q.options ?? null,
       affectedSubtreeSize: q.affectedSubtreeSize,
       estimatedImpact: q.estimatedImpact,
+      tentative: q.tentative ?? null,
+      tentativeBranch: q.tentativeBranch ?? null,
+      tentativeConfidence: q.tentativeConfidence ?? null,
+      tentativeReasoning: q.tentativeReasoning ?? null,
     })),
     redFlags: session.redFlags.map(f => ({
       nodeId: f.nodeId,
@@ -689,6 +693,10 @@ export const Query = {
         options: q.options ?? null,
         affectedSubtreeSize: q.affectedSubtreeSize,
         estimatedImpact: q.estimatedImpact,
+        tentative: q.tentative ?? null,
+        tentativeBranch: q.tentativeBranch ?? null,
+        tentativeConfidence: q.tentativeConfidence ?? null,
+        tentativeReasoning: q.tentativeReasoning ?? null,
       }));
     },
 
@@ -710,6 +718,46 @@ export const Query = {
           confidence: b.confidence,
           topExcludeReason: b.topExcludeReason ?? null,
         })) ?? null,
+      }));
+    },
+
+    llmGateEvaluations: async (
+      _: unknown,
+      args: { sessionId: string; gateId?: string },
+      context: DataSourceContext,
+    ) => {
+      const params: unknown[] = [args.sessionId];
+      let where = `session_id = $1`;
+      if (args.gateId) {
+        params.push(args.gateId);
+        where += ` AND gate_id = $2`;
+      }
+      const { rows } = await context.pool.query(
+        `SELECT id, session_id, gate_id, pathway_id, input_attribute, input_text,
+                prompt, branches, model, chosen_branch, confidence, reasoning,
+                tentative, error_message, latency_ms, created_at
+           FROM llm_gate_evaluations
+          WHERE ${where}
+          ORDER BY created_at DESC`,
+        params,
+      );
+      return rows.map((r) => ({
+        id: r.id,
+        sessionId: r.session_id,
+        gateId: r.gate_id,
+        pathwayId: r.pathway_id,
+        inputAttribute: r.input_attribute,
+        inputText: r.input_text,
+        prompt: r.prompt,
+        branches: r.branches ?? [],
+        model: r.model,
+        chosenBranch: r.chosen_branch,
+        confidence: r.confidence == null ? null : Number(r.confidence),
+        reasoning: r.reasoning,
+        tentative: r.tentative,
+        errorMessage: r.error_message,
+        latencyMs: r.latency_ms,
+        createdAt: r.created_at instanceof Date ? r.created_at.toISOString() : r.created_at,
       }));
     },
 

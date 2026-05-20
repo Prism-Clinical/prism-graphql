@@ -657,6 +657,19 @@ type MultiPathwayPendingGate {
   options: [String!]
   affectedSubtreeSize: Int!
   estimatedImpact: String!
+  """
+  True when this question was surfaced by an llm_text_analysis Gate whose
+  confidence fell below the authored threshold. The safe-default branch
+  has already been routed; the provider can confirm or pick a different
+  branch via the standard answer mutation.
+  """
+  tentative: Boolean
+  """The branch the LLM picked (already routed); null for non-LLM gates."""
+  tentativeBranch: String
+  """Self-reported LLM confidence in [0, 1]; null for non-LLM gates."""
+  tentativeConfidence: Float
+  """LLM reasoning shown to the provider so they can decide whether to override."""
+  tentativeReasoning: String
 }
 
 """Lightweight summary for list views (no embedded merged plan)."""
@@ -828,6 +841,14 @@ type PendingQuestionType {
   options: [String!]
   affectedSubtreeSize: Int!
   estimatedImpact: String!
+  """True when this question was surfaced by a low-confidence LLM gate."""
+  tentative: Boolean
+  """Branch the LLM picked (already routed); null for non-LLM gates."""
+  tentativeBranch: String
+  """Self-reported LLM confidence in [0, 1]; null for non-LLM gates."""
+  tentativeConfidence: Float
+  """LLM reasoning shown to the provider."""
+  tentativeReasoning: String
 }
 
 type CarePlanGenerationResult {
@@ -835,6 +856,30 @@ type CarePlanGenerationResult {
   carePlanId: ID
   warnings: [String!]!
   blockers: [ValidationBlockerType!]!
+}
+
+"""
+Audit row for one llm_text_analysis Gate evaluation. Persisted in
+llm_gate_evaluations; surfaced to providers as the "show me what the AI saw"
+popout.
+"""
+type LlmGateEvaluation {
+  id: ID!
+  sessionId: ID!
+  gateId: String!
+  pathwayId: ID!
+  inputAttribute: String
+  inputText: String
+  prompt: String!
+  branches: JSON!
+  model: String!
+  chosenBranch: String
+  confidence: Float
+  reasoning: String
+  tentative: Boolean!
+  errorMessage: String
+  latencyMs: Int
+  createdAt: String!
 }
 
 type ValidationBlockerType {
@@ -1075,6 +1120,12 @@ type Query {
   resolutionSession(sessionId: ID!): ResolutionSession
   pendingQuestions(sessionId: ID!): [PendingQuestionType!]!
   redFlags(sessionId: ID!): [RedFlagType!]!
+
+  """
+  Audit trail for llm_text_analysis Gate evaluations on a given session.
+  When `gateId` is provided, scopes to that gate. Most-recent first.
+  """
+  llmGateEvaluations(sessionId: ID!, gateId: String): [LlmGateEvaluation!]!
   patientResolutionSessions(patientId: ID!, status: SessionStatus): [ResolutionSessionSummary!]!
 
   """Fetch a single multi-pathway resolution session including its merged plan."""
