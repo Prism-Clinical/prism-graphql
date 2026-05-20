@@ -207,6 +207,19 @@ export async function importPathway(
       await deleteGraphSubtree(client, existing.id);
     }
 
+    // Step 4b: Sweep any AGE nodes still tagged with this (logical_id, version)
+    // but unreachable from the recorded root. These are orphans from earlier
+    // failed imports — they share the same scope tags the edge-creation MATCH
+    // filters by, so leaving them in place causes MATCH to land edges on
+    // orphans (post-write integrity check fails with fewer-than-expected edges
+    // reachable from the new root). Always runs, regardless of import mode,
+    // since orphans from any past failure poison the current import.
+    await deleteOrphanedPathwayNodes(
+      client,
+      pathwayJson.pathway.logical_id,
+      pathwayJson.pathway.version,
+    );
+
     // Step 5: Build and execute graph commands (always creates fresh graph)
     //
     // Uses batched Cypher: nodes are comma-separated CREATEs (50/query),
@@ -416,6 +429,47 @@ async function findExistingPathwayByLogicalId(
  * path expansion on dense graphs — e.g. 2500 edges can produce millions of
  * paths and hang for minutes, while BFS with ~5 rounds completes in seconds.
  */
+/**
+ * Sweep every AGE node tagged with this (logical_id, version) — including
+ * orphans that were never linked into pathway_graph_index (e.g. from a
+ * previous import that died after the AGE CREATE but before the relational
+ * INSERT). Without this, the next import's edge-creation MATCH on
+ * (node_id, pathway_logical_id, pathway_version) can find both the fresh
+ * node AND the orphan; some edges then land on orphans and aren't reachable
+ * from the new root, so the post-write integrity check fails with fewer
+ * edges than expected.
+ *
+ * Two passes: Pathway-labeled root nodes (matched by `logical_id`/`version`
+ * properties), and every other node (matched by `pathway_logical_id`/
+ * `pathway_version`). DETACH DELETE removes their edges too.
+ */
+async function deleteOrphanedPathwayNodes(
+  client: PoolClient,
+  logicalId: string,
+  version: string,
+): Promise<void> {
+  // Escape single quotes for Cypher string literals — same convention as
+  // graph-builder.ts. AGE Cypher doesn't support parameter binding for
+  // literals inside MATCH property maps.
+  const escape = (v: string) => v.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+  const lid = `'${escape(logicalId)}'`;
+  const ver = `'${escape(version)}'`;
+
+  // Wipe non-Pathway nodes tagged for this (logical_id, version).
+  const nonRootCypher =
+    `MATCH (n) WHERE n.pathway_logical_id = ${lid} AND n.pathway_version = ${ver} ` +
+    `DETACH DELETE n RETURN 1`;
+  await client.query(buildCypherQuery(undefined, nonRootCypher, '(v agtype)'));
+
+  // Wipe Pathway root nodes for this (logical_id, version). The root carries
+  // `logical_id`/`version` directly (not the `pathway_*` prefixed copies),
+  // so it needs a separate sweep.
+  const rootCypher =
+    `MATCH (p:Pathway) WHERE p.logical_id = ${lid} AND p.version = ${ver} ` +
+    `DETACH DELETE p RETURN 1`;
+  await client.query(buildCypherQuery(undefined, rootCypher, '(v agtype)'));
+}
+
 async function deleteGraphSubtree(
   client: PoolClient,
   pathwayId: string
