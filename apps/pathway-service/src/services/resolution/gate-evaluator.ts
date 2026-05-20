@@ -45,7 +45,16 @@ function getCodeEntries(
 
 /**
  * Get a numeric value from patient context for comparison operators.
- * Supports lab results (by code) and vital signs (by key).
+ * Supports lab results (by code) and vital signs (by key or dotted path).
+ *
+ * For vitals, the condition's `value` is the key within the vitalSigns bag.
+ * Fixed vitals live at the root (`systolic_bp`, `heart_rate`, ...) and custom
+ * vitals nest under `custom.<key>` — so callers can target either with a
+ * single string:
+ *   value: "systolic_bp"        → vitalSigns.systolic_bp
+ *   value: "custom.pain_score"  → vitalSigns.custom.pain_score
+ *
+ * Returns undefined if the path doesn't resolve to a finite number.
  */
 function getNumericValue(
   patientContext: PatientContext,
@@ -59,10 +68,24 @@ function getNumericValue(
     return lab?.value;
   }
   if (field === 'vitals' && patientContext.vitalSigns) {
-    const val = patientContext.vitalSigns[condition.value];
-    return typeof val === 'number' ? val : undefined;
+    return resolveNumericPath(patientContext.vitalSigns, condition.value);
   }
   return undefined;
+}
+
+/**
+ * Walk a dotted path through a JSON bag, returning the value only if it's a
+ * finite number. Tolerates missing segments at any depth.
+ */
+function resolveNumericPath(bag: Record<string, unknown>, path: string): number | undefined {
+  if (!path) return undefined;
+  const segments = path.split('.');
+  let cursor: unknown = bag;
+  for (const seg of segments) {
+    if (cursor == null || typeof cursor !== 'object') return undefined;
+    cursor = (cursor as Record<string, unknown>)[seg];
+  }
+  return typeof cursor === 'number' && Number.isFinite(cursor) ? cursor : undefined;
 }
 
 // ─── Condition Evaluator ──────────────────────────────────────────────
@@ -345,6 +368,107 @@ function evaluateCompound(
   };
 }
 
+// ─── llm_text_analysis evaluator ──────────────────────────────────────
+
+/**
+ * Result of one LLM gate evaluation, in the shape the gate-evaluator expects
+ * back from its async callback. The callback owns the actual API call,
+ * caching, audit-trail writing — this layer just consumes the verdict and
+ * folds it into a GateEvaluationResult.
+ */
+export interface LlmGateVerdict {
+  chosenBranch: string;
+  confidence: number;
+  reasoning: string;
+  /** True if the LLM call itself failed; evaluator falls back to safe-default. */
+  failed?: boolean;
+  errorMessage?: string;
+}
+
+export type LlmGateEvaluator = (
+  gate: GateProperties,
+  gateId: string,
+  patientContext: PatientContext,
+) => Promise<LlmGateVerdict>;
+
+async function evaluateLlmTextAnalysis(
+  gate: GateProperties,
+  gateId: string | undefined,
+  patientContext: PatientContext,
+  llmEvaluator?: LlmGateEvaluator,
+): Promise<GateEvaluationResult> {
+  if (!gateId) {
+    return {
+      satisfied: false,
+      reason: 'LLM gate evaluated without gateId',
+      contextFieldsRead: [],
+      dependedOnNodes: [],
+    };
+  }
+  if (!gate.branches || gate.branches.length === 0) {
+    return {
+      satisfied: false,
+      reason: 'LLM gate has no declared branches',
+      contextFieldsRead: [],
+      dependedOnNodes: [],
+    };
+  }
+
+  const safeDefault =
+    gate.branches.find((b) => b.is_safe_default)?.name ?? gate.branches[0].name;
+  const threshold = gate.confidence_threshold ?? 0.75;
+  const inputAttr = gate.input_attribute ?? '';
+
+  // Missing callback (no LLM_GATE_API_KEY configured) → fall back to
+  // safe-default + tentative, so the gate surfaces as a pending question
+  // for manual provider answer.
+  if (!llmEvaluator) {
+    return {
+      satisfied: true,
+      reason: 'LLM gate evaluator not configured; defaulted to safe branch',
+      contextFieldsRead: inputAttr ? [inputAttr] : [],
+      dependedOnNodes: [],
+      tentative: true,
+      chosenBranch: safeDefault,
+      llmConfidence: 0,
+      llmReasoning: 'LLM gate evaluator not configured.',
+    };
+  }
+
+  const verdict = await llmEvaluator(gate, gateId, patientContext);
+
+  if (verdict.failed) {
+    return {
+      satisfied: true,
+      reason: `LLM call failed (${verdict.errorMessage ?? 'unknown'}); defaulted to safe branch`,
+      contextFieldsRead: inputAttr ? [inputAttr] : [],
+      dependedOnNodes: [],
+      tentative: true,
+      chosenBranch: safeDefault,
+      llmConfidence: 0,
+      llmReasoning: verdict.errorMessage ?? 'LLM call failed',
+    };
+  }
+
+  const tentative = verdict.confidence < threshold;
+  const effectiveBranch = tentative ? safeDefault : verdict.chosenBranch;
+  return {
+    // A gate is "satisfied" (subtree traversed) whenever it routes a branch.
+    // For LLM gates the branch IS the gate's output; downstream branch routing
+    // is handled separately by the traversal engine via gate properties.
+    satisfied: true,
+    reason: tentative
+      ? `LLM picked "${verdict.chosenBranch}" with confidence ${verdict.confidence.toFixed(2)} < ${threshold}; routing safe-default "${safeDefault}" pending provider confirmation`
+      : `LLM picked "${verdict.chosenBranch}" with confidence ${verdict.confidence.toFixed(2)}`,
+    contextFieldsRead: inputAttr ? [inputAttr] : [],
+    dependedOnNodes: [],
+    tentative,
+    chosenBranch: effectiveBranch,
+    llmConfidence: verdict.confidence,
+    llmReasoning: verdict.reasoning,
+  };
+}
+
 // ─── Main Evaluator ───────────────────────────────────────────────────
 
 /**
@@ -354,15 +478,21 @@ function evaluateCompound(
  * @param patientContext - Current patient clinical context
  * @param resolutionState - Map of nodeId → NodeResult for prior_node_result gates
  * @param gateAnswers - Map of gateId → provider answer for question gates
- * @param gateId     - The gate's own ID (needed for question lookup)
+ * @param gateId     - The gate's own ID (needed for question + LLM lookup)
+ * @param llmEvaluator - Optional async callback that performs the LLM call
+ *                       for llm_text_analysis gates. The resolver wires this
+ *                       in (with caching + audit-trail writing); call sites
+ *                       that don't supply it default LLM gates to the
+ *                       safe-default branch with tentative=true.
  */
-export function evaluateGate(
+export async function evaluateGate(
   gate: GateProperties,
   patientContext: PatientContext,
   resolutionState: Map<string, NodeResult>,
   gateAnswers: Map<string, GateAnswer>,
   gateId?: string,
-): GateEvaluationResult {
+  llmEvaluator?: LlmGateEvaluator,
+): Promise<GateEvaluationResult> {
   switch (gate.gate_type) {
     case GateType.PATIENT_ATTRIBUTE:
       return evaluatePatientAttribute(gate, patientContext);
@@ -375,6 +505,9 @@ export function evaluateGate(
 
     case GateType.COMPOUND:
       return evaluateCompound(gate, patientContext);
+
+    case GateType.LLM_TEXT_ANALYSIS:
+      return evaluateLlmTextAnalysis(gate, gateId, patientContext, llmEvaluator);
 
     default:
       return {

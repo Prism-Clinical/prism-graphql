@@ -21,6 +21,7 @@ import {
   buildResolutionContext,
   makeTraversalAdapter,
   makeRetraversalAdapter,
+  makeLlmGateEvaluator,
 } from '../helpers/resolution-context';
 import { applyDdiToResolutionState } from '../../services/medications/ddi-pass-single-pathway';
 
@@ -52,6 +53,7 @@ export const resolutionMutations = {
         labResults?: Array<{ code: string; system: string; value?: number; unit?: string; date?: string; display?: string }>;
         allergies?: Array<{ code: string; system: string; display?: string }>;
         vitalSigns?: Record<string, unknown>;
+        freeformData?: Record<string, unknown>;
       };
     },
     context: DataSourceContext
@@ -87,11 +89,14 @@ export const resolutionMutations = {
       labResults: pc?.labResults ?? [],
       allergies: pc?.allergies ?? [],
       vitalSigns: pc?.vitalSigns,
+      freeformData: pc?.freeformData,
     };
 
+    const llmBundle = makeLlmGateEvaluator(pool, args.pathwayId);
     const traversalEngine = new TraversalEngine(
       makeTraversalAdapter(rctx, pool, args.pathwayId, patientContext),
       rctx.thresholds,
+      llmBundle?.evaluator,
     );
     const traversalResult = await traversalEngine.traverse(
       rctx.graphContext,
@@ -127,6 +132,11 @@ export const resolutionMutations = {
       traversalDurationMs: traversalResult.traversalDurationMs,
       ddiWarnings,
     });
+
+    // Flush buffered LLM gate audit rows now that the session ID exists.
+    if (llmBundle) {
+      await llmBundle.flushAudits(sessionId);
+    }
 
     // 11. Log event
     await logEvent(pool, sessionId, {
@@ -209,9 +219,11 @@ export const resolutionMutations = {
       const rctx = await buildResolutionContext(pool, session.pathwayId);
       const patientCtx = session.initialPatientContext as PatientContext;
 
+      const llmBundle = makeLlmGateEvaluator(pool, session.pathwayId, args.sessionId);
       const retraversalEngine = new RetraversalEngine(
         makeRetraversalAdapter(rctx, pool, session.pathwayId, patientCtx),
         rctx.thresholds,
+        llmBundle?.evaluator,
       );
 
       const reResult = await retraversalEngine.retraverse(
@@ -222,6 +234,8 @@ export const resolutionMutations = {
         patientCtx,
         session.gateAnswers,
       );
+
+      if (llmBundle) await llmBundle.flushAudits(args.sessionId);
 
       statusChanges.push(...reResult.statusChanges);
     }
@@ -343,9 +357,11 @@ export const resolutionMutations = {
         }
       }
 
+      const llmBundle = makeLlmGateEvaluator(pool, session.pathwayId, args.sessionId);
       const retraversalEngine = new RetraversalEngine(
         makeRetraversalAdapter(rctx, pool, session.pathwayId, patientCtx),
         rctx.thresholds,
+        llmBundle?.evaluator,
       );
 
       const reResult = await retraversalEngine.retraverse(
@@ -356,6 +372,8 @@ export const resolutionMutations = {
         patientCtx,
         session.gateAnswers,
       );
+
+      if (llmBundle) await llmBundle.flushAudits(args.sessionId);
 
       statusChanges.push(...reResult.statusChanges);
       nodesRecomputed = reResult.nodesRecomputed;
@@ -481,6 +499,10 @@ export const resolutionMutations = {
         ...(basePc.vitalSigns ?? {}),
         ...(args.additionalContext.vitalSigns ?? {}),
       },
+      freeformData: {
+        ...(basePc.freeformData ?? {}),
+        ...(args.additionalContext.freeformData ?? {}),
+      },
     };
 
     // 4. Identify affected nodes via dependency maps
@@ -490,6 +512,7 @@ export const resolutionMutations = {
     if (args.additionalContext.labResults) changedFields.add('labs');
     if (args.additionalContext.allergies) changedFields.add('allergies');
     if (args.additionalContext.vitalSigns) changedFields.add('vitalSigns');
+    if (args.additionalContext.freeformData) changedFields.add('freeformData');
 
     const affectedNodes = new Set<string>();
 
@@ -529,9 +552,11 @@ export const resolutionMutations = {
     if (affectedNodes.size > 0) {
       const rctx = await buildResolutionContext(pool, session.pathwayId);
 
+      const llmBundle = makeLlmGateEvaluator(pool, session.pathwayId, args.sessionId);
       const retraversalEngine = new RetraversalEngine(
         makeRetraversalAdapter(rctx, pool, session.pathwayId, updatedPc),
         rctx.thresholds,
+        llmBundle?.evaluator,
       );
 
       const reResult = await retraversalEngine.retraverse(
@@ -542,6 +567,8 @@ export const resolutionMutations = {
         updatedPc,
         session.gateAnswers,
       );
+
+      if (llmBundle) await llmBundle.flushAudits(args.sessionId);
 
       statusChanges.push(...reResult.statusChanges);
       nodesRecomputed = reResult.nodesRecomputed;

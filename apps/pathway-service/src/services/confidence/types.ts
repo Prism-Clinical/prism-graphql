@@ -219,6 +219,12 @@ export interface PatientContext {
   labResults: LabResult[];
   allergies: CodeEntry[];
   vitalSigns?: Record<string, unknown>;
+  /**
+   * Unstructured narrative bag — chief complaint, HPI, social history, etc.
+   * Consumed by `llm_text_analysis` Gate nodes via dotted-path lookup
+   * (`freeformData.narrative.chief_complaint`).
+   */
+  freeformData?: Record<string, unknown>;
 }
 
 // ─── Weight Cascade ──────────────────────────────────────────────────

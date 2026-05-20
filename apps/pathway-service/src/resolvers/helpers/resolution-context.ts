@@ -8,6 +8,16 @@ import {
   PatientContext,
   SignalDefinition,
 } from '../../services/confidence/types';
+import { GateProperties } from '../../services/resolution/types';
+import {
+  LlmGateEvaluator,
+  LlmGateVerdict,
+} from '../../services/resolution/gate-evaluator';
+import {
+  loadLLMGateConfig,
+  evaluateGateWithLLM,
+  LLMGateError,
+} from '../../services/llm/llm-gate-client';
 import { ConfidenceEngine } from '../../services/confidence/confidence-engine';
 import { ScorerRegistry } from '../../services/confidence/scorer-registry';
 import { WeightCascadeResolver } from '../../services/confidence/weight-cascade-resolver';
@@ -292,4 +302,191 @@ export function makeRetraversalAdapter(
         : { confidence: 0.5, breakdown: [], resolutionType: 'SYSTEM_SUGGESTED' };
     },
   };
+}
+
+// ─── LLM Gate Evaluator ─────────────────────────────────────────────
+
+/**
+ * Walk a dotted path into a JSON bag. Returns undefined if any segment is
+ * missing. Used to resolve a gate's `input_attribute` against the patient
+ * narrative (e.g. `freeformData.narrative.chief_complaint`).
+ */
+function resolveDottedPath(root: unknown, path: string): unknown {
+  if (!path) return undefined;
+  let cursor: unknown = root;
+  for (const segment of path.split('.')) {
+    if (cursor == null || typeof cursor !== 'object') return undefined;
+    cursor = (cursor as Record<string, unknown>)[segment];
+  }
+  return cursor;
+}
+
+interface PendingAuditRow {
+  gateId: string;
+  pathwayId: string;
+  inputAttribute: string | null;
+  inputText: string | null;
+  prompt: string;
+  branches: unknown;
+  model: string;
+  chosenBranch: string | null;
+  confidence: number | null;
+  reasoning: string | null;
+  fullResponse: unknown;
+  tentative: boolean;
+  errorMessage: string | null;
+  latencyMs: number | null;
+}
+
+export interface LlmEvaluatorBundle {
+  evaluator: LlmGateEvaluator;
+  flushAudits: (sessionId: string) => Promise<void>;
+}
+
+/**
+ * Build an LLM gate evaluator bundle for one resolver call. Returns null when
+ * no API key is configured — callers pass that through to TraversalEngine,
+ * which routes the gate's safe-default branch with tentative=true.
+ *
+ * The evaluator:
+ *   - resolves the gate's `input_attribute` dotted path against patientContext
+ *   - looks up the result in a per-bundle cache to dedupe re-evaluations on
+ *     the same gate during this resolver call (retraversal can hit the same
+ *     gate multiple times)
+ *   - calls evaluateGateWithLLM; on failure returns a `failed: true` verdict
+ *     so the upstream evaluator falls back to safe-default + tentative
+ *   - buffers an audit row; `flushAudits(sessionId)` writes them all at once
+ *     once the resolver has a session_id (startResolution creates the session
+ *     AFTER the initial traversal, so audit writes must be deferred)
+ *
+ * @param initialSessionId - When known up-front (overrideNode, addPatientContext,
+ *   answerQuestion), audit rows can carry the session_id from the start.
+ *   For startResolution this is null and gets filled in at flush time.
+ */
+export function makeLlmGateEvaluator(
+  pool: import('pg').Pool,
+  pathwayId: string,
+  _initialSessionId: string | null = null,
+): LlmEvaluatorBundle | null {
+  const config = loadLLMGateConfig();
+  if (!config) return null;
+
+  const cache = new Map<string, LlmGateVerdict>();
+  const pendingAudits: PendingAuditRow[] = [];
+
+  const evaluator: LlmGateEvaluator = async (
+    gate: GateProperties,
+    gateId: string,
+    patientContext: PatientContext,
+  ): Promise<LlmGateVerdict> => {
+    const inputAttr = gate.input_attribute ?? '';
+    const narrativeRaw = resolveDottedPath(patientContext, inputAttr);
+    const narrative = typeof narrativeRaw === 'string' ? narrativeRaw : '';
+
+    const cacheKey = `${gateId}::${narrative}`;
+    const cached = cache.get(cacheKey);
+    if (cached) return cached;
+
+    const branches = (gate.branches ?? []).map((b) => ({
+      name: b.name,
+      description: b.description,
+    }));
+    const promptText = gate.prompt ?? gate.title;
+
+    try {
+      const out = await evaluateGateWithLLM(
+        { prompt: promptText, narrative, branches },
+        config,
+      );
+      const threshold = gate.confidence_threshold ?? 0.75;
+      const tentative = out.confidence < threshold;
+      pendingAudits.push({
+        gateId,
+        pathwayId,
+        inputAttribute: inputAttr || null,
+        inputText: narrative,
+        prompt: promptText,
+        branches: gate.branches ?? [],
+        model: out.model,
+        chosenBranch: out.chosenBranch,
+        confidence: out.confidence,
+        reasoning: out.reasoning,
+        fullResponse: out.rawResponse,
+        tentative,
+        errorMessage: null,
+        latencyMs: out.latencyMs,
+      });
+      const verdict: LlmGateVerdict = {
+        chosenBranch: out.chosenBranch,
+        confidence: out.confidence,
+        reasoning: out.reasoning,
+      };
+      cache.set(cacheKey, verdict);
+      return verdict;
+    } catch (err) {
+      const message = err instanceof LLMGateError
+        ? err.message
+        : err instanceof Error
+          ? err.message
+          : String(err);
+      pendingAudits.push({
+        gateId,
+        pathwayId,
+        inputAttribute: inputAttr || null,
+        inputText: narrative,
+        prompt: promptText,
+        branches: gate.branches ?? [],
+        model: config.model,
+        chosenBranch: null,
+        confidence: null,
+        reasoning: null,
+        fullResponse: null,
+        tentative: true,
+        errorMessage: message,
+        latencyMs: null,
+      });
+      const verdict: LlmGateVerdict = {
+        chosenBranch: '',
+        confidence: 0,
+        reasoning: message,
+        failed: true,
+        errorMessage: message,
+      };
+      cache.set(cacheKey, verdict);
+      return verdict;
+    }
+  };
+
+  const flushAudits = async (sessionId: string): Promise<void> => {
+    if (pendingAudits.length === 0) return;
+    const rows = pendingAudits.splice(0);
+    for (const row of rows) {
+      await pool.query(
+        `INSERT INTO llm_gate_evaluations (
+           session_id, gate_id, pathway_id, input_attribute, input_text,
+           prompt, branches, model, chosen_branch, confidence, reasoning,
+           full_response, tentative, error_message, latency_ms
+         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
+        [
+          sessionId,
+          row.gateId,
+          row.pathwayId,
+          row.inputAttribute,
+          row.inputText,
+          row.prompt,
+          JSON.stringify(row.branches),
+          row.model,
+          row.chosenBranch,
+          row.confidence,
+          row.reasoning,
+          row.fullResponse ? JSON.stringify(row.fullResponse) : null,
+          row.tentative,
+          row.errorMessage,
+          row.latencyMs,
+        ],
+      );
+    }
+  };
+
+  return { evaluator, flushAudits };
 }

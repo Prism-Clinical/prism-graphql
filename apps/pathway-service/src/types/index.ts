@@ -150,6 +150,13 @@ export enum GateType {
   QUESTION = 'question',
   PRIOR_NODE_RESULT = 'prior_node_result',
   COMPOUND = 'compound',
+  /**
+   * LLM-evaluated gate: an authored prompt + declared branches; the model
+   * picks one branch with self-reported confidence. Falls back to the
+   * declared safe-default branch (tentative) when confidence < threshold,
+   * which surfaces as a pending question for provider confirmation.
+   */
+  LLM_TEXT_ANALYSIS = 'llm_text_analysis',
 }
 
 export enum DefaultBehavior {

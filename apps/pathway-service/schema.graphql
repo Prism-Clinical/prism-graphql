@@ -869,6 +869,7 @@ input PatientContextInput {
   labResults: [LabResultInput!]
   allergies: [CodeInput!]
   vitalSigns: JSON
+  freeformData: JSON
 }
 
 input CodeInput {
@@ -1265,6 +1266,12 @@ type SimulatorScenario {
   `vitals.systolic_bp` via Gate nodes with gate_type=patient_attribute.
   """
   vitals: JSON!
+  """
+  Unstructured narrative bag — chief_complaint, HPI, social_history, plus
+  an ad-hoc map for custom keys. Consumed by `llm_text_analysis` Gate nodes
+  via dotted paths like `freeformData.narrative.chief_complaint`.
+  """
+  narrative: JSON!
   includeDraftPathways: Boolean!
   createdAt: String!
   updatedAt: String!
@@ -1298,5 +1305,7 @@ input SaveSimulatorScenarioInput {
   labResults: [LabResultInput!]
   """Vitals snapshot — same shape as the FE's VitalsSnapshot, stored as JSON."""
   vitals: JSON
+  """Narrative snapshot — same shape as the FE's NarrativeSnapshot, stored as JSON."""
+  narrative: JSON
   includeDraftPathways: Boolean
 }

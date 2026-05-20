@@ -14,7 +14,7 @@ import {
   ACTION_NODE_TYPES,
   AnswerType,
 } from './types';
-import { evaluateGate } from './gate-evaluator';
+import { evaluateGate, LlmGateEvaluator } from './gate-evaluator';
 
 // ─── Helpers ──────────────────────────────────────────────────────────
 
@@ -76,6 +76,7 @@ export class RetraversalEngine {
   constructor(
     private confidenceEngine: RetraversalConfidenceAdapter,
     private thresholds: { autoResolveThreshold: number; suggestThreshold: number },
+    private llmGateEvaluator?: LlmGateEvaluator,
   ) {}
 
   async retraverse(
@@ -145,14 +146,31 @@ export class RetraversalEngine {
         const graphNode = graphContext.getNode(nodeId);
         const gateProps = graphNode?.properties as unknown as GateProperties | undefined;
         if (gateProps) {
-          const gateResult = evaluateGate(
+          const gateResult = await evaluateGate(
             gateProps,
             patientContext,
             resolutionState,
             gateAnswers,
             nodeId,
+            this.llmGateEvaluator,
           );
-          if (!gateResult.satisfied && gateProps.prompt && gateProps.answer_type && !gateAnswers.has(nodeId)) {
+          if (gateResult.tentative && !gateAnswers.has(nodeId)) {
+            // LLM gate fell below threshold: route safe-default, but surface
+            // as a pending question so the provider can confirm or flip.
+            newStatus = NodeStatus.INCLUDED;
+            newPendingQuestions.push({
+              gateId: nodeId,
+              prompt: gateProps.prompt ?? 'Confirm AI-resolved branch',
+              answerType: AnswerType.SELECT,
+              options: (gateProps.branches ?? []).map((b) => b.name),
+              affectedSubtreeSize: 0,
+              estimatedImpact: 'unknown',
+              tentative: true,
+              tentativeBranch: gateResult.chosenBranch,
+              tentativeConfidence: gateResult.llmConfidence,
+              tentativeReasoning: gateResult.llmReasoning,
+            });
+          } else if (!gateResult.satisfied && gateProps.prompt && gateProps.answer_type && !gateAnswers.has(nodeId)) {
             newStatus = NodeStatus.PENDING_QUESTION;
             newPendingQuestions.push({
               gateId: nodeId,

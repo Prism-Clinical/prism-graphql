@@ -57,6 +57,7 @@ import { projectResolutionToCarePlan } from '../../services/resolution/care-plan
 import {
   buildResolutionContext,
   makeTraversalAdapter,
+  makeLlmGateEvaluator,
 } from '../helpers/resolution-context';
 import {
   createMultiPathwaySession,
@@ -608,9 +609,11 @@ export async function resolveAndPersistAll(
     const rctx = await buildResolutionContext(pool, m.pathway.id);
     if (rctx.graphContext.allNodes.length === 0) continue;
 
+    const llmBundle = makeLlmGateEvaluator(pool, m.pathway.id);
     const engine = new TraversalEngine(
       makeTraversalAdapter(rctx, pool, m.pathway.id, patientContext),
       rctx.thresholds,
+      llmBundle?.evaluator,
     );
     const traversalResult = await engine.traverse(
       rctx.graphContext,
@@ -636,6 +639,8 @@ export async function resolveAndPersistAll(
       totalNodesEvaluated: traversalResult.totalNodesEvaluated,
       traversalDurationMs: traversalResult.traversalDurationMs,
     });
+
+    if (llmBundle) await llmBundle.flushAudits(sessionId);
 
     contributingSessionIds.push(sessionId);
     contributingPathwayIds.push(m.pathway.id);
