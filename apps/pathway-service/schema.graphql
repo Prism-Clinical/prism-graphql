@@ -1062,12 +1062,37 @@ input AddAdminEvidenceInput {
 
 # ─── Clinical Code Reference ────────────────────────────────────────
 
+"""
+LOINC codes can be individual analytes ("TEST") or collections ("PANEL").
+Null for every other code system (ICD-10, SNOMED, RxNorm, CPT).
+"""
+enum LabKind {
+  TEST
+  PANEL
+}
+
 type CodeDefinition {
   code: String!
   system: String!
   description: String!
   category: String
   isCommon: Boolean!
+  """
+  For LOINC: TEST or PANEL. Null for non-LOINC systems. Drives the simulator's
+  panel-expansion affordance and the pathway editor's LabTest authoring (which
+  filters PANEL out — gates target individual analytes).
+  """
+  labKind: LabKind
+}
+
+"""
+One constituent test of a LOINC panel — the analyte that gets a real value
+when the panel is run. Returned by `loincPanelConstituents(panelCode)`.
+"""
+type LoincPanelConstituent {
+  code: String!
+  description: String!
+  displayOrder: Int!
 }
 
 # ─── Queries ──────────────────────────────────────────────────────────
@@ -1107,6 +1132,13 @@ type Query {
   adminEvidenceEntries(pathwayId: ID!, nodeIdentifier: String): [AdminEvidenceEntry!]!
 
   searchCodes(query: String!, system: String, limit: Int): [CodeDefinition!]!
+
+  """
+  Return the constituent LOINC tests for a panel code (ordered as a clinician
+  would expect to enter them). Returns an empty list for non-panel codes or
+  panels whose constituents aren't yet seeded.
+  """
+  loincPanelConstituents(panelCode: String!): [LoincPanelConstituent!]!
 
   matchedPathways(patientId: ID!): [MatchedPathway!]!
 

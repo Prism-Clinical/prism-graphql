@@ -408,7 +408,8 @@ export const Query = {
 
       if (args.system) {
         query = `
-          SELECT code, system, description, category, is_common AS "isCommon"
+          SELECT code, system, description, category, is_common AS "isCommon",
+                 lab_kind AS "labKind"
           FROM clinical_code_reference
           WHERE (code ILIKE $1 OR description ILIKE $2)
             AND system = $${paramIdx}
@@ -423,7 +424,8 @@ export const Query = {
         params.push(args.system, prefixPattern, limit);
       } else {
         query = `
-          SELECT code, system, description, category, is_common AS "isCommon"
+          SELECT code, system, description, category, is_common AS "isCommon",
+                 lab_kind AS "labKind"
           FROM clinical_code_reference
           WHERE (code ILIKE $1 OR description ILIKE $2)
           ORDER BY
@@ -439,6 +441,25 @@ export const Query = {
 
       const result = await pool.query(query, params);
       return result.rows;
+    },
+
+    loincPanelConstituents: async (
+      _: unknown,
+      args: { panelCode: string },
+      context: DataSourceContext,
+    ) => {
+      const { rows } = await context.pool.query(
+        `SELECT c.constituent_code AS code,
+                r.description       AS description,
+                c.display_order     AS "displayOrder"
+           FROM loinc_panel_constituents c
+           JOIN clinical_code_reference r
+             ON r.code = c.constituent_code AND r.system = 'LOINC'
+          WHERE c.panel_code = $1
+          ORDER BY c.display_order ASC`,
+        [args.panelCode],
+      );
+      return rows;
     },
 
     effectiveThresholds: async (
