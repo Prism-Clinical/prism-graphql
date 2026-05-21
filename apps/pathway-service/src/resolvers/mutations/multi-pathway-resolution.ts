@@ -1052,7 +1052,9 @@ function formatSuppressedForGraphQL(s: MergedCarePlan['suppressed'][number]) {
   const typeMap = {
     medication: 'MEDICATION',
     lab: 'LAB',
+    imaging: 'IMAGING',
     procedure: 'PROCEDURE',
+    guidance: 'GUIDANCE',
     schedule: 'SCHEDULE',
     qualityMetric: 'QUALITY_METRIC',
   } as const;
@@ -1145,7 +1147,9 @@ function emptyMergedCarePlan(): MergedCarePlan {
     sourcePathwayIds: [],
     medications: [],
     labs: [],
+    imaging: [],
     procedures: [],
+    guidance: [],
     schedules: [],
     qualityMetrics: [],
     suppressed: [],

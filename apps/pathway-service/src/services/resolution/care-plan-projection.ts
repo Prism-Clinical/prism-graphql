@@ -21,7 +21,9 @@ import {
   ResolvedCarePlan,
   ResolvedMedication,
   ResolvedLab,
+  ResolvedImaging,
   ResolvedProcedure,
+  ResolvedGuidance,
   ResolvedSchedule,
   ResolvedQualityMetric,
 } from './care-plan-merge';
@@ -39,7 +41,9 @@ export function projectResolutionToCarePlan(
 ): ResolvedCarePlan {
   const medications: ResolvedMedication[] = [];
   const labs: ResolvedLab[] = [];
+  const imaging: ResolvedImaging[] = [];
   const procedures: ResolvedProcedure[] = [];
+  const guidance: ResolvedGuidance[] = [];
   const schedules: ResolvedSchedule[] = [];
   const qualityMetrics: ResolvedQualityMetric[] = [];
 
@@ -57,9 +61,19 @@ export function projectResolutionToCarePlan(
         if (lab) labs.push(lab);
         break;
       }
+      case 'Imaging': {
+        const img = projectImaging(node, meta.pathwayId);
+        if (img) imaging.push(img);
+        break;
+      }
       case 'Procedure': {
         const proc = projectProcedure(node, meta.pathwayId);
         if (proc) procedures.push(proc);
+        break;
+      }
+      case 'Guidance': {
+        const g = projectGuidance(node, meta.pathwayId);
+        if (g) guidance.push(g);
         break;
       }
       case 'Schedule': {
@@ -84,7 +98,9 @@ export function projectResolutionToCarePlan(
     pathwayTitle: meta.pathwayTitle,
     medications,
     labs,
+    imaging,
     procedures,
+    guidance,
     schedules,
     qualityMetrics,
   };
@@ -144,6 +160,42 @@ function projectProcedure(
     name,
     code: strProp(node, 'code') ?? strProp(node, 'procedure_code'),
     system: strProp(node, 'system'),
+    sourcePathwayId: pathwayId,
+    sourceNodeId: node.nodeId,
+  };
+}
+
+function projectImaging(
+  node: NodeResult,
+  pathwayId: string,
+): ResolvedImaging | null {
+  const name = strProp(node, 'name') ?? node.title;
+  const modality = strProp(node, 'modality');
+  if (!modality) return null; // imaging without a modality isn't actionable
+  const contrastRaw = node.properties?.['contrast'];
+  return {
+    name,
+    modality,
+    bodyRegion: strProp(node, 'body_region'),
+    contrast: typeof contrastRaw === 'boolean' ? contrastRaw : undefined,
+    code: strProp(node, 'code') ?? strProp(node, 'code_value'),
+    system: strProp(node, 'system') ?? strProp(node, 'code_system'),
+    sourcePathwayId: pathwayId,
+    sourceNodeId: node.nodeId,
+  };
+}
+
+function projectGuidance(
+  node: NodeResult,
+  pathwayId: string,
+): ResolvedGuidance | null {
+  const topic = strProp(node, 'topic') ?? node.title;
+  const instructions = strProp(node, 'instructions');
+  if (!instructions) return null;
+  return {
+    topic,
+    instructions,
+    category: strProp(node, 'category'),
     sourcePathwayId: pathwayId,
     sourceNodeId: node.nodeId,
   };

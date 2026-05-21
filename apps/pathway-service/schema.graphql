@@ -323,7 +323,9 @@ type MergedCarePlan {
   sourcePathwayIds: [ID!]!
   medications: [MergedMedicationRecommendation!]!
   labs: [MergedLabRecommendation!]!
+  imaging: [MergedImagingRecommendation!]!
   procedures: [MergedProcedureRecommendation!]!
+  guidance: [MergedGuidanceRecommendation!]!
   schedules: [MergedScheduleRecommendation!]!
   qualityMetrics: [MergedQualityMetricRecommendation!]!
   suppressed: [SuppressedRecommendation!]!
@@ -376,6 +378,31 @@ type ResolvedProcedure {
   sourceNodeId: String
 }
 
+"""Imaging order — e.g. "MRI head without contrast"."""
+type ResolvedImaging {
+  name: String!
+  """Modality (X-ray, CT, MRI, Ultrasound, etc.)."""
+  modality: String!
+  bodyRegion: String
+  contrast: Boolean
+  code: String
+  system: String
+  sourcePathwayId: ID!
+  sourceNodeId: String
+}
+
+"""Patient instruction / counseling content."""
+type ResolvedGuidance {
+  """Short title for the care-plan section."""
+  topic: String!
+  """Longer narrative — the actual instruction the provider gives the patient."""
+  instructions: String!
+  """Optional category (counseling, lifestyle, medication_adherence, self_monitoring, other)."""
+  category: String
+  sourcePathwayId: ID!
+  sourceNodeId: String
+}
+
 type ResolvedSchedule {
   interval: String!
   description: String!
@@ -404,6 +431,18 @@ type MergedLabRecommendation {
 
 type MergedProcedureRecommendation {
   recommendation: ResolvedProcedure!
+  sourcePathwayIds: [ID!]!
+  state: RecommendationState!
+}
+
+type MergedImagingRecommendation {
+  recommendation: ResolvedImaging!
+  sourcePathwayIds: [ID!]!
+  state: RecommendationState!
+}
+
+type MergedGuidanceRecommendation {
+  recommendation: ResolvedGuidance!
   sourcePathwayIds: [ID!]!
   state: RecommendationState!
 }
@@ -474,7 +513,9 @@ type DDIWarning {
 enum SuppressedRecommendationType {
   MEDICATION
   LAB
+  IMAGING
   PROCEDURE
+  GUIDANCE
   SCHEDULE
   QUALITY_METRIC
 }

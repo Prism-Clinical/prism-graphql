@@ -333,5 +333,6 @@ export const STRUCTURAL_NODE_TYPES = new Set(['Stage', 'Step']);
  *  (import schema). They will be added when pathways use them. The traversal engine
  *  handles them already so no code change is needed when they appear. */
 export const ACTION_NODE_TYPES = new Set([
-  'Medication', 'LabTest', 'Procedure', 'Monitoring', 'Lifestyle', 'Referral',
+  'Medication', 'LabTest', 'Imaging', 'Procedure', 'Guidance',
+  'Monitoring', 'Lifestyle', 'Referral',
 ]);

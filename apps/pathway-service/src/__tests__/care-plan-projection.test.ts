@@ -53,7 +53,9 @@ describe('projectResolutionToCarePlan — basic projection', () => {
       pathwayTitle: 'Hypertension',
       medications: [],
       labs: [],
+      imaging: [],
       procedures: [],
+      guidance: [],
       schedules: [],
       qualityMetrics: [],
     });

@@ -102,7 +102,9 @@ export type PathwayNodeType =
   | 'CodeEntry'
   | 'Medication'
   | 'LabTest'
+  | 'Imaging'
   | 'Procedure'
+  | 'Guidance'
   | 'EvidenceCitation'
   | 'QualityMetric'
   | 'Schedule'
@@ -125,7 +127,9 @@ export type PathwayEdgeType =
   | 'ESCALATES_TO'
   | 'CITES_EVIDENCE'
   | 'HAS_LAB_TEST'
+  | 'HAS_IMAGING'
   | 'HAS_PROCEDURE'
+  | 'HAS_GUIDANCE'
   | 'HAS_QUALITY_METRIC'
   | 'HAS_SCHEDULE'
   | 'HAS_CODE'
@@ -149,7 +153,9 @@ export const REQUIRED_NODE_PROPERTIES: Record<PathwayNodeType, string[]> = {
   CodeEntry:        ['system', 'code'],
   Medication:       ['name', 'role'],
   LabTest:          ['name'],
+  Imaging:          ['name', 'modality'],
   Procedure:        ['name'],
+  Guidance:         ['topic', 'instructions'],
   EvidenceCitation: ['reference_number', 'title', 'evidence_level'],
   QualityMetric:    ['name', 'measure'],
   Schedule:         ['interval', 'description'],
@@ -165,12 +171,14 @@ export const VALID_EDGE_ENDPOINTS: Record<PathwayEdgeType, { from: ('root' | Pat
   BRANCHES_TO:         { from: ['DecisionPoint', 'Gate'], to: ['Step', 'Stage'] },
   USES_MEDICATION:     { from: ['Step'],            to: ['Medication'] },
   ESCALATES_TO:        { from: ['Medication'],      to: ['Medication'] },
-  CITES_EVIDENCE:      { from: ['Stage', 'Step', 'DecisionPoint', 'Criterion', 'Medication', 'LabTest', 'Procedure'], to: ['EvidenceCitation'] },
+  CITES_EVIDENCE:      { from: ['Stage', 'Step', 'DecisionPoint', 'Criterion', 'Medication', 'LabTest', 'Imaging', 'Procedure', 'Guidance'], to: ['EvidenceCitation'] },
   HAS_LAB_TEST:        { from: ['Step'],            to: ['LabTest'] },
+  HAS_IMAGING:         { from: ['Step'],            to: ['Imaging'] },
   HAS_PROCEDURE:       { from: ['Step'],            to: ['Procedure'] },
+  HAS_GUIDANCE:        { from: ['Step'],            to: ['Guidance'] },
   HAS_QUALITY_METRIC:  { from: ['Step'],            to: ['QualityMetric'] },
   HAS_SCHEDULE:        { from: ['Step'],            to: ['Schedule'] },
-  HAS_CODE:            { from: ['Step', 'Criterion', 'Medication', 'LabTest', 'Procedure'], to: ['CodeEntry'] },
+  HAS_CODE:            { from: ['Step', 'Criterion', 'Medication', 'LabTest', 'Imaging', 'Procedure'], to: ['CodeEntry'] },
   HAS_GATE:            { from: ['Step', 'Stage', 'DecisionPoint'], to: ['Gate'] },
 };
 

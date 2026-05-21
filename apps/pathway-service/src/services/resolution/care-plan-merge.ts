@@ -61,6 +61,38 @@ export interface ResolvedProcedure {
   sourceNodeId?: string;
 }
 
+export interface ResolvedImaging {
+  name: string;
+  /**
+   * Imaging modality (X-ray, CT, MRI, Ultrasound, etc.). Kept as a free-form
+   * string at the data layer — the editor enforces a select list, but other
+   * import sources (manual JSON, future migrations) may carry modalities not
+   * in the canonical enum.
+   */
+  modality: string;
+  bodyRegion?: string;
+  contrast?: boolean;
+  code?: string;
+  system?: string;
+  sourcePathwayId: string;
+  sourceNodeId?: string;
+}
+
+export interface ResolvedGuidance {
+  /** Short title shown in the care plan section. */
+  topic: string;
+  /** Longer narrative — the actual instruction the provider gives the patient. */
+  instructions: string;
+  /**
+   * Free-form category tag (counseling, lifestyle, medication_adherence,
+   * self_monitoring, other). Editor uses a select; persisted as a string
+   * for forward-compat with future categories.
+   */
+  category?: string;
+  sourcePathwayId: string;
+  sourceNodeId?: string;
+}
+
 export interface ResolvedSchedule {
   interval: string;
   description: string;
@@ -81,7 +113,9 @@ export interface ResolvedCarePlan {
   pathwayTitle: string;
   medications: ResolvedMedication[];
   labs: ResolvedLab[];
+  imaging: ResolvedImaging[];
   procedures: ResolvedProcedure[];
+  guidance: ResolvedGuidance[];
   schedules: ResolvedSchedule[];
   qualityMetrics: ResolvedQualityMetric[];
 }
@@ -148,7 +182,9 @@ export interface MergedConflict {
 export type SuppressedRecommendationType =
   | 'medication'
   | 'lab'
+  | 'imaging'
   | 'procedure'
+  | 'guidance'
   | 'schedule'
   | 'qualityMetric';
 
@@ -179,7 +215,9 @@ export interface SuppressedRecommendation {
   original:
     | ResolvedMedication
     | ResolvedLab
+    | ResolvedImaging
     | ResolvedProcedure
+    | ResolvedGuidance
     | ResolvedSchedule
     | ResolvedQualityMetric;
 }
@@ -188,7 +226,9 @@ export interface MergedCarePlan {
   sourcePathwayIds: string[];
   medications: MergedRecommendation<ResolvedMedication>[];
   labs: MergedRecommendation<ResolvedLab>[];
+  imaging: MergedRecommendation<ResolvedImaging>[];
   procedures: MergedRecommendation<ResolvedProcedure>[];
+  guidance: MergedRecommendation<ResolvedGuidance>[];
   schedules: MergedRecommendation<ResolvedSchedule>[];
   qualityMetrics: MergedRecommendation<ResolvedQualityMetric>[];
   suppressed: SuppressedRecommendation[];
@@ -297,11 +337,13 @@ export function mergeResolvedCarePlans(
     titleByPathwayId,
   );
 
-  // Labs/procedures/schedules/quality metrics: pure dedup by appropriate key.
-  // Hard constraints don't apply (only medications carry contraindication
-  // semantics in the existing schema).
+  // Labs/imaging/procedures/guidance/schedules/quality metrics: pure dedup
+  // by appropriate key. Hard constraints don't apply (only medications carry
+  // contraindication semantics in the existing schema).
   const labs = mergeByKey(plans, (p) => p.labs, labKey);
+  const imaging = mergeByKey(plans, (p) => p.imaging, imagingKey);
   const procedures = mergeByKey(plans, (p) => p.procedures, procedureKey);
+  const guidance = mergeByKey(plans, (p) => p.guidance, guidanceKey);
   const schedules = mergeByKey(plans, (p) => p.schedules, scheduleKey);
   const qualityMetrics = mergeByKey(
     plans,
@@ -313,7 +355,9 @@ export function mergeResolvedCarePlans(
     sourcePathwayIds: plans.map((p) => p.pathwayId),
     medications,
     labs,
+    imaging,
     procedures,
+    guidance,
     schedules,
     qualityMetrics,
     suppressed,
@@ -385,7 +429,9 @@ function emptyMergedPlan(): MergedCarePlan {
     sourcePathwayIds: [],
     medications: [],
     labs: [],
+    imaging: [],
     procedures: [],
+    guidance: [],
     schedules: [],
     qualityMetrics: [],
     suppressed: [],
@@ -405,6 +451,20 @@ function labKey(l: ResolvedLab): string {
 function procedureKey(p: ResolvedProcedure): string {
   if (p.code && p.system) return `${p.system}|${p.code}`;
   return p.name.toLowerCase().trim();
+}
+
+function imagingKey(i: ResolvedImaging): string {
+  if (i.code && i.system) return `${i.system}|${i.code}`;
+  // Modality + name + body region uniquely identifies an order in the
+  // absence of a code (e.g. "MRI head without contrast").
+  return `${i.modality.toLowerCase().trim()}|${i.name.toLowerCase().trim()}|${(i.bodyRegion ?? '').toLowerCase().trim()}`;
+}
+
+function guidanceKey(g: ResolvedGuidance): string {
+  // Topic alone — two pathways shipping the same counseling topic should
+  // dedupe even if the instruction text differs slightly. The first plan's
+  // text wins (mergeByKey takes the first occurrence).
+  return g.topic.toLowerCase().trim();
 }
 
 function scheduleKey(s: ResolvedSchedule): string {

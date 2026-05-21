@@ -36,11 +36,13 @@ function makePathway(opts: {
       sourcePathwayId: id,
       ...l,
     })) as ResolvedLab[],
+    imaging: [],
     procedures: (opts.procedures ?? []).map((p) => ({
       name: 'Proc',
       sourcePathwayId: id,
       ...p,
     })) as ResolvedProcedure[],
+    guidance: [],
     schedules: (opts.schedules ?? []).map((s) => ({
       interval: '3 months',
       description: 'Follow up',
@@ -381,7 +383,9 @@ describe('mergeResolvedCarePlans — multi-pathway scenarios', () => {
         { name: 'Drug', role: 'preferred', sourcePathwayId: 'p1' },
       ],
       labs: [],
+      imaging: [],
       procedures: [],
+      guidance: [],
       schedules: [],
       qualityMetrics: [],
     };
