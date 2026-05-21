@@ -64,10 +64,14 @@ export function buildGraphContext(nodes: GraphNode[], edges: GraphEdge[]): Graph
 /**
  * Load nodes and edges from AGE graph for a pathway.
  *
- * Uses iterative BFS (single-hop per round) to collect all reachable AGE node
- * IDs from the root, then fetches nodes and edges by ID list. This avoids
- * variable-length path patterns (`*0..`) which cause combinatorial explosion
- * on dense graphs.
+ * Scopes by (root id + pathway_logical_id/pathway_version tags) rather than
+ * BFS reachability from the root. A node the author dropped on the canvas
+ * but hasn't wired into an incoming edge yet (e.g. a Gate with one outgoing
+ * BRANCHES_TO and nothing pointing in) is unreachable from root via outgoing
+ * BFS — reachability-only loaders silently drop it on every reload, even
+ * though the import correctly persisted it. The orphan sweep at import time
+ * guarantees no other (lid, ver)-tagged nodes survive, so the tag scope is
+ * unambiguous.
  */
 export async function fetchGraphFromAGE(
   pool: import('pg').Pool,
@@ -82,30 +86,34 @@ export async function fetchGraphFromAGE(
 
   const rootId = String(ageNodeId);
 
-  // BFS: collect all reachable AGE node IDs from the root
-  const allAgeIds = new Set<string>([rootId]);
-  let frontier = [rootId];
-
-  while (frontier.length > 0) {
-    const idList = frontier.join(', ');
-    const bfsCypher = `MATCH (a)-[]->(b) WHERE id(a) IN [${idList}] RETURN DISTINCT id(b)`;
-    const bfsResult = await executeCypher(pool, bfsCypher, '(bid agtype)');
-
-    frontier = [];
-    for (const row of bfsResult.rows) {
-      const bid = String(JSON.parse(row.bid));
-      if (!allAgeIds.has(bid)) {
-        allAgeIds.add(bid);
-        frontier.push(bid);
-      }
-    }
+  // Pull the root's logical_id + version so we can scope the rest of the
+  // graph fetch by tag. The root itself carries `logical_id`/`version`
+  // directly; every other node carries the `pathway_*`-prefixed copies.
+  const rootMetaCypher =
+    `MATCH (p:Pathway) WHERE id(p) = ${rootId} RETURN p.logical_id AS lid, p.version AS ver`;
+  const rootMetaResult = await executeCypher(pool, rootMetaCypher, '(lid agtype, ver agtype)');
+  const rootRow = rootMetaResult.rows[0];
+  if (!rootRow) {
+    return { nodes: [], edges: [] };
   }
+  const logicalId = String(JSON.parse(rootRow.lid));
+  const version = String(JSON.parse(rootRow.ver));
+  const escape = (v: string) => v.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+  const lid = `'${escape(logicalId)}'`;
+  const ver = `'${escape(version)}'`;
 
-  const ageIdList = [...allAgeIds].join(', ');
-
-  // Fetch all nodes and edges in parallel
-  const nodesCypher = `MATCH (n) WHERE id(n) IN [${ageIdList}] RETURN n`;
-  const edgesCypher = `MATCH (a)-[r]->(b) WHERE id(a) IN [${ageIdList}] RETURN a, r, b`;
+  // Fetch every node belonging to this pathway version: the root (by id),
+  // plus all nodes tagged with the matching (logical_id, version). Edges
+  // are fetched the same way — both endpoints must be in scope.
+  const nodesCypher =
+    `MATCH (n) WHERE id(n) = ${rootId} ` +
+    `   OR (n.pathway_logical_id = ${lid} AND n.pathway_version = ${ver}) ` +
+    `RETURN n`;
+  const edgesCypher =
+    `MATCH (a)-[r]->(b) ` +
+    `WHERE (id(a) = ${rootId} OR (a.pathway_logical_id = ${lid} AND a.pathway_version = ${ver})) ` +
+    `  AND (id(b) = ${rootId} OR (b.pathway_logical_id = ${lid} AND b.pathway_version = ${ver})) ` +
+    `RETURN a, r, b`;
 
   const [nodesResult, edgesResult] = await Promise.all([
     executeCypher(pool, nodesCypher, '(v agtype)'),
