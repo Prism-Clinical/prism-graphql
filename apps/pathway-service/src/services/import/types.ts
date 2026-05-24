@@ -123,6 +123,7 @@ export type PathwayEdgeType =
   | 'HAS_DECISION_POINT'
   | 'HAS_CRITERION'
   | 'BRANCHES_TO'
+  | 'SELECTS_BRANCH'
   | 'USES_MEDICATION'
   | 'ESCALATES_TO'
   | 'CITES_EVIDENCE'
@@ -169,6 +170,13 @@ export const VALID_EDGE_ENDPOINTS: Record<PathwayEdgeType, { from: ('root' | Pat
   HAS_DECISION_POINT:  { from: ['Step'],            to: ['DecisionPoint'] },
   HAS_CRITERION:       { from: ['DecisionPoint'],   to: ['Criterion'] },
   BRANCHES_TO:         { from: ['DecisionPoint', 'Gate'], to: ['Step', 'Stage'] },
+  // Per-criterion routing: when this Criterion is satisfied, the patient
+  // takes this specific BRANCHES_TO target. Tying criterion → target lets
+  // the engine compute exclusion lineage (taking branch A automatically
+  // excludes everything reachable only via branch B at a one_of decision)
+  // and lets the UI show "If X then go to Y" inline instead of leaving the
+  // mapping implicit in the criterion description.
+  SELECTS_BRANCH:      { from: ['Criterion'], to: ['Step', 'Stage'] },
   USES_MEDICATION:     { from: ['Step'],            to: ['Medication'] },
   ESCALATES_TO:        { from: ['Medication'],      to: ['Medication'] },
   CITES_EVIDENCE:      { from: ['Stage', 'Step', 'DecisionPoint', 'Criterion', 'Medication', 'LabTest', 'Imaging', 'Procedure', 'Guidance'], to: ['EvidenceCitation'] },
