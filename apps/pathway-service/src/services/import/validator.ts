@@ -9,6 +9,7 @@ import {
   VALID_CODE_SET_SCOPES,
   VALID_MEDICATION_ROLES,
   VALID_EVIDENCE_LEVELS,
+  VALID_BRANCH_MODES,
   MAX_GRAPH_NODES,
   MAX_GRAPH_EDGES,
   MAX_GRAPH_DEPTH,
@@ -336,6 +337,15 @@ function validateNodeProperties(
     const system = properties.system as string;
     if (system && !VALID_CODE_SYSTEMS.includes(system as any)) {
       errors.push(`node[${index}] (${nodeId}): invalid code system "${system}". Must be one of: ${VALID_CODE_SYSTEMS.join(', ')}`);
+    }
+  }
+
+  if (nodeType === 'DecisionPoint') {
+    const mode = properties.branch_mode as string | undefined;
+    if (mode && !VALID_BRANCH_MODES.includes(mode as any)) {
+      errors.push(
+        `node[${index}] (${nodeId}): invalid branch_mode "${mode}". Must be one of: ${VALID_BRANCH_MODES.join(', ')}`,
+      );
     }
   }
 }

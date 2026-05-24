@@ -193,6 +193,28 @@ export const VALID_MEDICATION_ROLES = [
 
 export type MedicationRole = typeof VALID_MEDICATION_ROLES[number];
 
+/**
+ * How a DecisionPoint's BRANCHES_TO edges should be interpreted:
+ *
+ *   one_of  — mutually exclusive fork; the provider picks exactly one
+ *             branch based on criteria. The historical default and the
+ *             right model for true clinical decisions (delivery method,
+ *             drug selection, etc.).
+ *   all_of  — concurrent next steps; every branch happens. Used when a
+ *             "DecisionPoint" is really a sequencing fan-out (e.g.
+ *             "after assessment, start workup AND prophylaxis").
+ *   any_of  — provider's choice; any subset is valid. Used for optional
+ *             add-ons or non-mandatory alternatives.
+ *
+ * The drill-down view tones the callout differently per mode so
+ * providers see "patient takes one of" vs "next: all of" vs "optional"
+ * at a glance. Resolution engine treats one_of as exclusive (existing
+ * behavior) and all_of / any_of as inclusive — i.e., none of the
+ * branches are filtered out by exclusivity logic.
+ */
+export const VALID_BRANCH_MODES = ['one_of', 'all_of', 'any_of'] as const;
+export type BranchMode = typeof VALID_BRANCH_MODES[number];
+
 // Valid evidence levels
 export const VALID_EVIDENCE_LEVELS = [
   'A', 'B', 'C',
