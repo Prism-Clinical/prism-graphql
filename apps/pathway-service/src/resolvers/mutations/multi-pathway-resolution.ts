@@ -57,6 +57,7 @@ import { projectResolutionToCarePlan } from '../../services/resolution/care-plan
 import {
   buildResolutionContext,
   makeTraversalAdapter,
+  makeLlmGateEvaluator,
 } from '../helpers/resolution-context';
 import {
   createMultiPathwaySession,
@@ -86,6 +87,7 @@ export interface MultiPathwayResolutionArgs {
     }>;
     allergies?: Array<{ code: string; system: string; display?: string }>;
     vitalSigns?: Record<string, unknown>;
+    freeformData?: Record<string, unknown>;
   };
   /**
    * Admin-only flag. When true, DRAFT pathways are also considered for matching
@@ -431,10 +433,15 @@ export const multiPathwayResolutionTypeResolvers = {
         options: string[] | null;
         affectedSubtreeSize: number;
         estimatedImpact: string;
+        tentative: boolean | null;
+        tentativeBranch: string | null;
+        tentativeConfidence: number | null;
+        tentativeReasoning: string | null;
       }> = [];
       for (const row of result.rows) {
         const questions = (row.pending_questions ?? []) as Array<Record<string, unknown>>;
         for (const q of questions) {
+          const tentativeConfidenceRaw = q.tentativeConfidence ?? q.tentative_confidence;
           out.push({
             sessionId: String(row.session_id),
             pathwayId: String(row.pathway_id),
@@ -445,6 +452,16 @@ export const multiPathwayResolutionTypeResolvers = {
             options: Array.isArray(q.options) ? (q.options as string[]) : null,
             affectedSubtreeSize: Number(q.affectedSubtreeSize ?? q.affected_subtree_size ?? 0),
             estimatedImpact: String(q.estimatedImpact ?? q.estimated_impact ?? 'unknown'),
+            tentative: q.tentative == null ? null : Boolean(q.tentative),
+            tentativeBranch: q.tentativeBranch == null && q.tentative_branch == null
+              ? null
+              : String(q.tentativeBranch ?? q.tentative_branch),
+            tentativeConfidence: tentativeConfidenceRaw == null
+              ? null
+              : Number(tentativeConfidenceRaw),
+            tentativeReasoning: q.tentativeReasoning == null && q.tentative_reasoning == null
+              ? null
+              : String(q.tentativeReasoning ?? q.tentative_reasoning),
           });
         }
       }
@@ -464,6 +481,7 @@ function buildPatientContext(args: MultiPathwayResolutionArgs): PatientContext {
     labResults: pc?.labResults ?? [],
     allergies: pc?.allergies ?? [],
     vitalSigns: pc?.vitalSigns,
+    freeformData: pc?.freeformData,
   };
 }
 
@@ -608,9 +626,11 @@ export async function resolveAndPersistAll(
     const rctx = await buildResolutionContext(pool, m.pathway.id);
     if (rctx.graphContext.allNodes.length === 0) continue;
 
+    const llmBundle = makeLlmGateEvaluator(pool, m.pathway.id);
     const engine = new TraversalEngine(
       makeTraversalAdapter(rctx, pool, m.pathway.id, patientContext),
       rctx.thresholds,
+      llmBundle?.evaluator,
     );
     const traversalResult = await engine.traverse(
       rctx.graphContext,
@@ -636,6 +656,8 @@ export async function resolveAndPersistAll(
       totalNodesEvaluated: traversalResult.totalNodesEvaluated,
       traversalDurationMs: traversalResult.traversalDurationMs,
     });
+
+    if (llmBundle) await llmBundle.flushAudits(sessionId);
 
     contributingSessionIds.push(sessionId);
     contributingPathwayIds.push(m.pathway.id);
@@ -1030,7 +1052,9 @@ function formatSuppressedForGraphQL(s: MergedCarePlan['suppressed'][number]) {
   const typeMap = {
     medication: 'MEDICATION',
     lab: 'LAB',
+    imaging: 'IMAGING',
     procedure: 'PROCEDURE',
+    guidance: 'GUIDANCE',
     schedule: 'SCHEDULE',
     qualityMetric: 'QUALITY_METRIC',
   } as const;
@@ -1123,7 +1147,9 @@ function emptyMergedCarePlan(): MergedCarePlan {
     sourcePathwayIds: [],
     medications: [],
     labs: [],
+    imaging: [],
     procedures: [],
+    guidance: [],
     schedules: [],
     qualityMetrics: [],
     suppressed: [],

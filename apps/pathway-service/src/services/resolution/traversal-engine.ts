@@ -1,5 +1,5 @@
 import { GraphContext, PatientContext, GraphNode } from '../confidence/types';
-import { evaluateGate } from './gate-evaluator';
+import { evaluateGate, LlmGateEvaluator } from './gate-evaluator';
 import {
   NodeResult,
   NodeStatus,
@@ -139,6 +139,7 @@ export class TraversalEngine {
   constructor(
     private confidenceEngine: TraversalConfidenceAdapter,
     private thresholds: { autoResolveThreshold: number; suggestThreshold: number },
+    private llmGateEvaluator?: LlmGateEvaluator,
   ) {}
 
   async traverse(
@@ -265,8 +266,9 @@ export class TraversalEngine {
           }
         }
 
-        const gateResult = evaluateGate(
+        const gateResult = await evaluateGate(
           gateProps, patientContext, resolutionState, gateAnswers, nodeIdentifier,
+          this.llmGateEvaluator,
         );
 
         // Record dependencies
@@ -288,6 +290,25 @@ export class TraversalEngine {
             depth,
             properties: node.properties,
           });
+          // Tentative LLM-resolved gate: include + traverse, but ALSO surface
+          // as a pending question so the provider can confirm the safe-default
+          // branch the LLM picked or flip to a different branch.
+          if (gateResult.tentative && !gateAnswers.has(nodeIdentifier)) {
+            const childIds = graphContext.outgoingEdges(nodeIdentifier).map(e => e.targetId);
+            const subtreeSize = countSubtree(childIds, graphContext);
+            pendingQuestions.push({
+              gateId: nodeIdentifier,
+              prompt: gateProps.prompt ?? gateProps.title,
+              answerType: AnswerType.SELECT,
+              options: (gateProps.branches ?? []).map((b) => b.name),
+              affectedSubtreeSize: subtreeSize,
+              estimatedImpact: subtreeSize > 3 ? 'high' : subtreeSize > 1 ? 'medium' : 'low',
+              tentative: true,
+              tentativeBranch: gateResult.chosenBranch,
+              tentativeConfidence: gateResult.llmConfidence,
+              tentativeReasoning: gateResult.llmReasoning,
+            });
+          }
           for (const edge of graphContext.outgoingEdges(nodeIdentifier)) {
             if (!resolutionState.has(edge.targetId)) {
               queue.push({ nodeIdentifier: edge.targetId, parentNodeId: nodeIdentifier, depth: depth + 1 });
@@ -638,8 +659,9 @@ export class TraversalEngine {
     } else if (node.nodeType === 'Gate') {
       // For gate nodes, evaluate the gate properly
       const gateProps = node.properties as unknown as GateProperties;
-      const gateResult = evaluateGate(
+      const gateResult = await evaluateGate(
         gateProps, patientContext, resolutionState, gateAnswers, nodeIdentifier,
+        this.llmGateEvaluator,
       );
       resolutionState.set(nodeIdentifier, {
         nodeId: nodeIdentifier,

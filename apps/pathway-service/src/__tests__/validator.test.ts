@@ -375,6 +375,23 @@ describe('validatePathwayJson', () => {
       expect(result.errors).toContainEqual(expect.stringContaining('outbound edge'));
     });
 
+    it('accepts Gate with no outbound edges in draft mode (warning, not error)', () => {
+      // Mid-authoring case: an author drops a Gate on the canvas but hasn't
+      // wired its branches yet. Autosave (DRAFT_UPDATE) must persist the gate
+      // so the user doesn't lose work; publishing re-promotes this to an error.
+      const pw = clonePathway();
+      pw.nodes.push({
+        id: 'gate-orphan',
+        type: 'Gate' as any,
+        properties: {},
+      });
+      pw.edges.push({ from: 'step-1-1', to: 'gate-orphan', type: 'HAS_GATE' as any });
+      const result = validatePathwayJson(pw, { draftMode: true });
+      expect(result.valid).toBe(true);
+      expect(result.errors).not.toContainEqual(expect.stringContaining('outbound edge'));
+      expect(result.warnings).toContainEqual(expect.stringContaining('outbound edge'));
+    });
+
     it('should reject Gate with nonexistent depends_on references', () => {
       const pw = clonePathway();
       pw.nodes.push({

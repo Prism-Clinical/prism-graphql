@@ -102,7 +102,9 @@ export type PathwayNodeType =
   | 'CodeEntry'
   | 'Medication'
   | 'LabTest'
+  | 'Imaging'
   | 'Procedure'
+  | 'Guidance'
   | 'EvidenceCitation'
   | 'QualityMetric'
   | 'Schedule'
@@ -121,11 +123,14 @@ export type PathwayEdgeType =
   | 'HAS_DECISION_POINT'
   | 'HAS_CRITERION'
   | 'BRANCHES_TO'
+  | 'SELECTS_BRANCH'
   | 'USES_MEDICATION'
   | 'ESCALATES_TO'
   | 'CITES_EVIDENCE'
   | 'HAS_LAB_TEST'
+  | 'HAS_IMAGING'
   | 'HAS_PROCEDURE'
+  | 'HAS_GUIDANCE'
   | 'HAS_QUALITY_METRIC'
   | 'HAS_SCHEDULE'
   | 'HAS_CODE'
@@ -149,7 +154,9 @@ export const REQUIRED_NODE_PROPERTIES: Record<PathwayNodeType, string[]> = {
   CodeEntry:        ['system', 'code'],
   Medication:       ['name', 'role'],
   LabTest:          ['name'],
+  Imaging:          ['name', 'modality'],
   Procedure:        ['name'],
+  Guidance:         ['topic', 'instructions'],
   EvidenceCitation: ['reference_number', 'title', 'evidence_level'],
   QualityMetric:    ['name', 'measure'],
   Schedule:         ['interval', 'description'],
@@ -163,14 +170,23 @@ export const VALID_EDGE_ENDPOINTS: Record<PathwayEdgeType, { from: ('root' | Pat
   HAS_DECISION_POINT:  { from: ['Step'],            to: ['DecisionPoint'] },
   HAS_CRITERION:       { from: ['DecisionPoint'],   to: ['Criterion'] },
   BRANCHES_TO:         { from: ['DecisionPoint', 'Gate'], to: ['Step', 'Stage'] },
+  // Per-criterion routing: when this Criterion is satisfied, the patient
+  // takes this specific BRANCHES_TO target. Tying criterion → target lets
+  // the engine compute exclusion lineage (taking branch A automatically
+  // excludes everything reachable only via branch B at a one_of decision)
+  // and lets the UI show "If X then go to Y" inline instead of leaving the
+  // mapping implicit in the criterion description.
+  SELECTS_BRANCH:      { from: ['Criterion'], to: ['Step', 'Stage'] },
   USES_MEDICATION:     { from: ['Step'],            to: ['Medication'] },
   ESCALATES_TO:        { from: ['Medication'],      to: ['Medication'] },
-  CITES_EVIDENCE:      { from: ['Stage', 'Step', 'DecisionPoint', 'Criterion', 'Medication', 'LabTest', 'Procedure'], to: ['EvidenceCitation'] },
+  CITES_EVIDENCE:      { from: ['Stage', 'Step', 'DecisionPoint', 'Criterion', 'Medication', 'LabTest', 'Imaging', 'Procedure', 'Guidance'], to: ['EvidenceCitation'] },
   HAS_LAB_TEST:        { from: ['Step'],            to: ['LabTest'] },
+  HAS_IMAGING:         { from: ['Step'],            to: ['Imaging'] },
   HAS_PROCEDURE:       { from: ['Step'],            to: ['Procedure'] },
+  HAS_GUIDANCE:        { from: ['Step'],            to: ['Guidance'] },
   HAS_QUALITY_METRIC:  { from: ['Step'],            to: ['QualityMetric'] },
   HAS_SCHEDULE:        { from: ['Step'],            to: ['Schedule'] },
-  HAS_CODE:            { from: ['Step', 'Criterion', 'Medication', 'LabTest', 'Procedure'], to: ['CodeEntry'] },
+  HAS_CODE:            { from: ['Step', 'Criterion', 'Medication', 'LabTest', 'Imaging', 'Procedure'], to: ['CodeEntry'] },
   HAS_GATE:            { from: ['Step', 'Stage', 'DecisionPoint'], to: ['Gate'] },
 };
 
@@ -184,6 +200,28 @@ export const VALID_MEDICATION_ROLES = [
 ] as const;
 
 export type MedicationRole = typeof VALID_MEDICATION_ROLES[number];
+
+/**
+ * How a DecisionPoint's BRANCHES_TO edges should be interpreted:
+ *
+ *   one_of  — mutually exclusive fork; the provider picks exactly one
+ *             branch based on criteria. The historical default and the
+ *             right model for true clinical decisions (delivery method,
+ *             drug selection, etc.).
+ *   all_of  — concurrent next steps; every branch happens. Used when a
+ *             "DecisionPoint" is really a sequencing fan-out (e.g.
+ *             "after assessment, start workup AND prophylaxis").
+ *   any_of  — provider's choice; any subset is valid. Used for optional
+ *             add-ons or non-mandatory alternatives.
+ *
+ * The drill-down view tones the callout differently per mode so
+ * providers see "patient takes one of" vs "next: all of" vs "optional"
+ * at a glance. Resolution engine treats one_of as exclusive (existing
+ * behavior) and all_of / any_of as inclusive — i.e., none of the
+ * branches are filtered out by exclusivity logic.
+ */
+export const VALID_BRANCH_MODES = ['one_of', 'all_of', 'any_of'] as const;
+export type BranchMode = typeof VALID_BRANCH_MODES[number];
 
 // Valid evidence levels
 export const VALID_EVIDENCE_LEVELS = [

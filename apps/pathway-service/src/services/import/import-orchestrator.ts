@@ -207,6 +207,19 @@ export async function importPathway(
       await deleteGraphSubtree(client, existing.id);
     }
 
+    // Step 4b: Sweep any AGE nodes still tagged with this (logical_id, version)
+    // but unreachable from the recorded root. These are orphans from earlier
+    // failed imports — they share the same scope tags the edge-creation MATCH
+    // filters by, so leaving them in place causes MATCH to land edges on
+    // orphans (post-write integrity check fails with fewer-than-expected edges
+    // reachable from the new root). Always runs, regardless of import mode,
+    // since orphans from any past failure poison the current import.
+    await deleteOrphanedPathwayNodes(
+      client,
+      pathwayJson.pathway.logical_id,
+      pathwayJson.pathway.version,
+    );
+
     // Step 5: Build and execute graph commands (always creates fresh graph)
     //
     // Uses batched Cypher: nodes are comma-separated CREATEs (50/query),
@@ -252,20 +265,58 @@ export async function importPathway(
     }
 
     // 5f. Post-write integrity check: count actual edges in the imported
-    //     graph and compare to the JSON's edge count. If they don't match,
-    //     MATCH found multiple endpoints somewhere and the Cartesian product
-    //     duplicated edges — fail the import so it rolls back rather than
-    //     leaking dirty data into AGE.
+    //     graph and compare to the JSON's edge count. Edge creation uses
+    //     MERGE, so duplicate (from, to, type) triples in the JSON collapse
+    //     into one AGE edge — compare against the count of UNIQUE triples,
+    //     not the raw JSON count, otherwise harmless JSON-level dupes
+    //     (common after autosave round-trips) trip a false-positive failure.
+    //     If the unique count still doesn't match, something real is wrong:
+    //     either a node is missing (MATCH found zero endpoints) or stale
+    //     orphans Cartesian-multiplied. Report which specific edges drifted.
     if (rootAgeNodeId) {
-      const expectedEdges = pathwayJson.edges.length;
-      const actualEdges = await countEdgesInSubtree(client, rootAgeNodeId);
-      if (actualEdges !== expectedEdges) {
+      const uniqueEdges = new Set<string>();
+      for (const e of pathwayJson.edges) {
+        uniqueEdges.add(`${e.from} ${e.type} ${e.to}`);
+      }
+      const expectedUniqueEdges = uniqueEdges.size;
+      const rawExpectedEdges = pathwayJson.edges.length;
+      // Scope by (logical_id, version) instead of reachability-from-root.
+      // A freshly-added node without an incoming edge (e.g. a Gate dropped
+      // on the canvas with one outgoing BRANCHES_TO but nothing pointing in
+      // yet) wouldn't be reachable via outgoing BFS from root, so its
+      // outgoing edges would be invisible to a reachability-based count —
+      // tripping a false-positive integrity failure during autosave.
+      const actualEdges = await countPathwayScopedEdges(
+        client,
+        rootAgeNodeId,
+        pathwayJson.pathway.logical_id,
+        pathwayJson.pathway.version,
+      );
+
+      if (actualEdges !== expectedUniqueEdges) {
+        const diagnostic = await diagnoseEdgeMismatch(
+          client,
+          rootAgeNodeId,
+          pathwayJson,
+        );
         throw new Error(
           `Import integrity check failed: graph contains ${actualEdges} edges ` +
-            `but ${expectedEdges} were expected from the JSON. This usually means ` +
-            `MATCH found duplicate node endpoints during edge creation; the import ` +
-            `transaction will be rolled back. Check pathway_graph_index for stale ` +
-            `nodes with the same (pathway_logical_id, pathway_version) as this import.`,
+            `but ${expectedUniqueEdges} unique edges were expected from the JSON ` +
+            `(raw JSON edge count: ${rawExpectedEdges}). ` +
+            `${diagnostic} ` +
+            `The import transaction will be rolled back.`,
+        );
+      }
+
+      // Soft diagnostic when the JSON itself carried duplicate edges. Not a
+      // failure (MERGE handled them), but worth surfacing so the FE can fix
+      // its serializer if these accumulate.
+      if (rawExpectedEdges !== expectedUniqueEdges) {
+        console.warn(
+          `[importPathway] JSON had ${rawExpectedEdges - expectedUniqueEdges} ` +
+            `duplicate edge triples (logical_id=${pathwayJson.pathway.logical_id}, ` +
+            `version=${pathwayJson.pathway.version}). MERGE collapsed them; ` +
+            `consider deduping on serialize.`,
         );
       }
     }
@@ -416,6 +467,149 @@ async function findExistingPathwayByLogicalId(
  * path expansion on dense graphs — e.g. 2500 edges can produce millions of
  * paths and hang for minutes, while BFS with ~5 rounds completes in seconds.
  */
+/**
+ * When the integrity check fires, report which JSON edges didn't land in
+ * AGE (or, if AGE has too many, by how much). Best-effort — runs inside
+ * the failing transaction so it sees the actual post-write graph state.
+ */
+async function diagnoseEdgeMismatch(
+  client: PoolClient,
+  rootAgeNodeId: string,
+  pathwayJson: PathwayJson,
+): Promise<string> {
+  try {
+    // Pull every triple where both endpoints belong to this pathway version
+    // (either the new root, or tagged with the right logical_id+version).
+    // Scoping by tags rather than reachability matches the integrity check,
+    // so the diagnostic sees the same set of edges the check counted.
+    const lidEsc = pathwayJson.pathway.logical_id.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+    const verEsc = pathwayJson.pathway.version.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+    const rid = String(rootAgeNodeId);
+    const triplesSql = buildCypherQuery(
+      undefined,
+      `MATCH (a)-[r]->(b) ` +
+        `WHERE (id(a) = ${rid} OR (a.pathway_logical_id = '${lidEsc}' AND a.pathway_version = '${verEsc}')) ` +
+        `  AND (id(b) = ${rid} OR (b.pathway_logical_id = '${lidEsc}' AND b.pathway_version = '${verEsc}')) ` +
+        `RETURN coalesce(a.node_id, 'root') AS af, type(r) AS rt, b.node_id AS bt`,
+      '(af agtype, rt agtype, bt agtype)',
+    );
+    const triplesRes = await client.query(triplesSql);
+    const actual = new Set<string>();
+    for (const row of triplesRes.rows) {
+      const af = String(parseAgtype(row.af));
+      const rt = String(parseAgtype(row.rt));
+      const bt = String(parseAgtype(row.bt));
+      actual.add(`${af} ${rt} ${bt}`);
+    }
+
+    const expected = new Set<string>();
+    for (const e of pathwayJson.edges) {
+      expected.add(`${e.from} ${e.type} ${e.to}`);
+    }
+
+    const missing: string[] = [];
+    for (const tri of expected) if (!actual.has(tri)) missing.push(tri);
+    const extra: string[] = [];
+    for (const tri of actual) if (!expected.has(tri)) extra.push(tri);
+
+    // For each missing edge, check whether each endpoint actually got created
+    // in AGE with the expected (logical_id, version) tagging. If a node is
+    // missing, MATCH found zero endpoints because the node wasn't there.
+    const lid = pathwayJson.pathway.logical_id.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+    const ver = pathwayJson.pathway.version.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+    const missingNodes: string[] = [];
+    const multiNodes: string[] = [];
+    const endpointsToCheck = new Set<string>();
+    for (const tri of missing.slice(0, 10)) {
+      const [from, , to] = tri.split(' ');
+      if (from !== 'root') endpointsToCheck.add(from);
+      endpointsToCheck.add(to);
+    }
+    for (const nodeId of endpointsToCheck) {
+      const idEsc = nodeId.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+      const sql = buildCypherQuery(
+        undefined,
+        `MATCH (n) WHERE n.node_id = '${idEsc}' ` +
+          `AND n.pathway_logical_id = '${lid}' ` +
+          `AND n.pathway_version = '${ver}' RETURN count(n) AS c`,
+        '(c agtype)',
+      );
+      const res = await client.query(sql);
+      const cnt = Number(parseAgtype(res.rows[0]?.c ?? 0));
+      if (cnt === 0) missingNodes.push(nodeId);
+      else if (cnt > 1) multiNodes.push(`${nodeId} (×${cnt})`);
+    }
+
+    const parts: string[] = [];
+    if (missing.length > 0) {
+      parts.push(
+        `${missing.length} edge(s) in JSON did not land in AGE: ` +
+          `${missing.slice(0, 5).join(' | ')}${missing.length > 5 ? ' …' : ''}`,
+      );
+    }
+    if (missingNodes.length > 0) {
+      parts.push(
+        `endpoint nodes missing from AGE (MATCH found 0): ${missingNodes.join(', ')}`,
+      );
+    }
+    if (multiNodes.length > 0) {
+      parts.push(
+        `endpoint nodes duplicated in AGE (MATCH found >1, Cartesian risk): ${multiNodes.join(', ')}`,
+      );
+    }
+    if (extra.length > 0) {
+      parts.push(
+        `${extra.length} edge(s) in AGE not in JSON (stale orphans Cartesian-multiplied?): ` +
+          `${extra.slice(0, 5).join(' | ')}${extra.length > 5 ? ' …' : ''}`,
+      );
+    }
+    return parts.join(' | ');
+  } catch (err) {
+    return `(diagnostic failed: ${err instanceof Error ? err.message : String(err)})`;
+  }
+}
+
+/**
+ * Sweep every AGE node tagged with this (logical_id, version) — including
+ * orphans that were never linked into pathway_graph_index (e.g. from a
+ * previous import that died after the AGE CREATE but before the relational
+ * INSERT). Without this, the next import's edge-creation MATCH on
+ * (node_id, pathway_logical_id, pathway_version) can find both the fresh
+ * node AND the orphan; some edges then land on orphans and aren't reachable
+ * from the new root, so the post-write integrity check fails with fewer
+ * edges than expected.
+ *
+ * Two passes: Pathway-labeled root nodes (matched by `logical_id`/`version`
+ * properties), and every other node (matched by `pathway_logical_id`/
+ * `pathway_version`). DETACH DELETE removes their edges too.
+ */
+async function deleteOrphanedPathwayNodes(
+  client: PoolClient,
+  logicalId: string,
+  version: string,
+): Promise<void> {
+  // Escape single quotes for Cypher string literals — same convention as
+  // graph-builder.ts. AGE Cypher doesn't support parameter binding for
+  // literals inside MATCH property maps.
+  const escape = (v: string) => v.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+  const lid = `'${escape(logicalId)}'`;
+  const ver = `'${escape(version)}'`;
+
+  // Wipe non-Pathway nodes tagged for this (logical_id, version).
+  const nonRootCypher =
+    `MATCH (n) WHERE n.pathway_logical_id = ${lid} AND n.pathway_version = ${ver} ` +
+    `DETACH DELETE n RETURN 1`;
+  await client.query(buildCypherQuery(undefined, nonRootCypher, '(v agtype)'));
+
+  // Wipe Pathway root nodes for this (logical_id, version). The root carries
+  // `logical_id`/`version` directly (not the `pathway_*` prefixed copies),
+  // so it needs a separate sweep.
+  const rootCypher =
+    `MATCH (p:Pathway) WHERE p.logical_id = ${lid} AND p.version = ${ver} ` +
+    `DETACH DELETE p RETURN 1`;
+  await client.query(buildCypherQuery(undefined, rootCypher, '(v agtype)'));
+}
+
 async function deleteGraphSubtree(
   client: PoolClient,
   pathwayId: string
@@ -506,6 +700,46 @@ async function countEdgesInSubtree(
   const sql = buildCypherQuery(undefined, cypher, '(c agtype)');
   const result = await client.query(sql);
 
+  if (result.rows.length === 0) return 0;
+  return Number(parseAgtype(result.rows[0].c));
+}
+
+/**
+ * Count every edge belonging to this pathway version. An edge counts if
+ * BOTH endpoints are either:
+ *   - the freshly-created Pathway root (matched by id), OR
+ *   - a node tagged with this (logical_id, version).
+ *
+ * Unlike countEdgesInSubtree, this doesn't require nodes to be reachable
+ * from root via outgoing BFS — a Gate the author just dropped on the canvas
+ * with one outgoing edge and no incoming edge yet still has its outgoing
+ * edge counted, so autosave doesn't false-positive while mid-authoring.
+ *
+ * The orphan sweep that runs before CREATE guarantees no stale nodes
+ * carry this (logical_id, version), so the scope filter is unambiguous.
+ */
+async function countPathwayScopedEdges(
+  client: PoolClient,
+  rootAgeNodeId: string,
+  logicalId: string,
+  version: string,
+): Promise<number> {
+  if (!/^\d+$/.test(String(rootAgeNodeId))) return 0;
+  const escape = (v: string) => v.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+  const lid = `'${escape(logicalId)}'`;
+  const ver = `'${escape(version)}'`;
+  const rid = String(rootAgeNodeId);
+
+  // An endpoint is "in scope" if it's the new root OR carries the
+  // (pathway_logical_id, pathway_version) tags. Each MATCH leg uses one of
+  // those two predicates joined by OR.
+  const cypher =
+    `MATCH (a)-[r]->(b) ` +
+    `WHERE (id(a) = ${rid} OR (a.pathway_logical_id = ${lid} AND a.pathway_version = ${ver})) ` +
+    `  AND (id(b) = ${rid} OR (b.pathway_logical_id = ${lid} AND b.pathway_version = ${ver})) ` +
+    `RETURN count(r) AS c`;
+  const sql = buildCypherQuery(undefined, cypher, '(c agtype)');
+  const result = await client.query(sql);
   if (result.rows.length === 0) return 0;
   return Number(parseAgtype(result.rows[0].c));
 }

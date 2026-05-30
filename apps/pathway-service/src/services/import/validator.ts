@@ -9,6 +9,7 @@ import {
   VALID_CODE_SET_SCOPES,
   VALID_MEDICATION_ROLES,
   VALID_EVIDENCE_LEVELS,
+  VALID_BRANCH_MODES,
   MAX_GRAPH_NODES,
   MAX_GRAPH_EDGES,
   MAX_GRAPH_DEPTH,
@@ -170,7 +171,7 @@ export function validatePathwayJson(pw: PathwayJson, options: ValidateOptions = 
   }
 
   // ─── Gate-specific validation ───────────────────────────────────
-  validateGateNodes(pw, nodeIds, errors, warnings);
+  validateGateNodes(pw, nodeIds, errors, warnings, draftMode);
 
   // ─── Semantic validation ────────────────────────────────────────
   validateSemanticRules(pw, nodeIds, nodeTypeMap, errors, warnings, draftMode);
@@ -184,18 +185,25 @@ function validateGateNodes(
   pw: PathwayJson,
   nodeIds: Set<string>,
   errors: string[],
-  warnings: string[]
+  warnings: string[],
+  draftMode: boolean,
 ): void {
   const edges = pw.edges && Array.isArray(pw.edges) ? pw.edges : [];
   const gateNodes = pw.nodes.filter(n => n.type === 'Gate');
 
+  // Structural completeness checks fall into `warnings` in draft mode so a
+  // gate that's mid-authoring (just dropped on the canvas, not yet wired or
+  // configured) still autosaves. They re-promote to errors at publish time.
+  const softTarget = draftMode ? warnings : errors;
+
   for (const gate of gateNodes) {
     const props = gate.properties || {};
 
-    // Gate must have at least one outbound edge
+    // Gate must have at least one outbound edge — soft in draft mode so a
+    // newly-added gate doesn't block autosave before the user wires it up.
     const outbound = edges.filter(e => e.from === gate.id);
     if (outbound.length === 0) {
-      errors.push(`Gate "${gate.id}": must have at least one outbound edge`);
+      softTarget.push(`Gate "${gate.id}": must have at least one outbound edge`);
     }
 
     // depends_on node IDs must exist in the pathway
@@ -210,19 +218,20 @@ function validateGateNodes(
       }
     }
 
-    // select answer_type requires non-empty options array
+    // select answer_type requires non-empty options array — also soft in
+    // draft mode (author may still be filling in the options list).
     if (props.gate_type === 'select') {
       const options = props.options;
       if (!options || !Array.isArray(options) || options.length === 0) {
-        errors.push(`Gate "${gate.id}": gate_type "select" requires a non-empty "options" array`);
+        softTarget.push(`Gate "${gate.id}": gate_type "select" requires a non-empty "options" array`);
       }
     }
 
-    // compound gates must have non-empty conditions array
+    // compound gates must have non-empty conditions array — soft in draft.
     if (props.gate_type === 'compound') {
       const conditions = props.conditions;
       if (!conditions || !Array.isArray(conditions) || conditions.length === 0) {
-        errors.push(`Gate "${gate.id}": gate_type "compound" requires a non-empty "conditions" array`);
+        softTarget.push(`Gate "${gate.id}": gate_type "compound" requires a non-empty "conditions" array`);
       }
     }
   }
@@ -328,6 +337,15 @@ function validateNodeProperties(
     const system = properties.system as string;
     if (system && !VALID_CODE_SYSTEMS.includes(system as any)) {
       errors.push(`node[${index}] (${nodeId}): invalid code system "${system}". Must be one of: ${VALID_CODE_SYSTEMS.join(', ')}`);
+    }
+  }
+
+  if (nodeType === 'DecisionPoint') {
+    const mode = properties.branch_mode as string | undefined;
+    if (mode && !VALID_BRANCH_MODES.includes(mode as any)) {
+      errors.push(
+        `node[${index}] (${nodeId}): invalid branch_mode "${mode}". Must be one of: ${VALID_BRANCH_MODES.join(', ')}`,
+      );
     }
   }
 }

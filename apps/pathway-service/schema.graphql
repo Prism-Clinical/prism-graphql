@@ -323,7 +323,9 @@ type MergedCarePlan {
   sourcePathwayIds: [ID!]!
   medications: [MergedMedicationRecommendation!]!
   labs: [MergedLabRecommendation!]!
+  imaging: [MergedImagingRecommendation!]!
   procedures: [MergedProcedureRecommendation!]!
+  guidance: [MergedGuidanceRecommendation!]!
   schedules: [MergedScheduleRecommendation!]!
   qualityMetrics: [MergedQualityMetricRecommendation!]!
   suppressed: [SuppressedRecommendation!]!
@@ -376,6 +378,31 @@ type ResolvedProcedure {
   sourceNodeId: String
 }
 
+"""Imaging order — e.g. "MRI head without contrast"."""
+type ResolvedImaging {
+  name: String!
+  """Modality (X-ray, CT, MRI, Ultrasound, etc.)."""
+  modality: String!
+  bodyRegion: String
+  contrast: Boolean
+  code: String
+  system: String
+  sourcePathwayId: ID!
+  sourceNodeId: String
+}
+
+"""Patient instruction / counseling content."""
+type ResolvedGuidance {
+  """Short title for the care-plan section."""
+  topic: String!
+  """Longer narrative — the actual instruction the provider gives the patient."""
+  instructions: String!
+  """Optional category (counseling, lifestyle, medication_adherence, self_monitoring, other)."""
+  category: String
+  sourcePathwayId: ID!
+  sourceNodeId: String
+}
+
 type ResolvedSchedule {
   interval: String!
   description: String!
@@ -404,6 +431,18 @@ type MergedLabRecommendation {
 
 type MergedProcedureRecommendation {
   recommendation: ResolvedProcedure!
+  sourcePathwayIds: [ID!]!
+  state: RecommendationState!
+}
+
+type MergedImagingRecommendation {
+  recommendation: ResolvedImaging!
+  sourcePathwayIds: [ID!]!
+  state: RecommendationState!
+}
+
+type MergedGuidanceRecommendation {
+  recommendation: ResolvedGuidance!
   sourcePathwayIds: [ID!]!
   state: RecommendationState!
 }
@@ -474,7 +513,9 @@ type DDIWarning {
 enum SuppressedRecommendationType {
   MEDICATION
   LAB
+  IMAGING
   PROCEDURE
+  GUIDANCE
   SCHEDULE
   QUALITY_METRIC
 }
@@ -657,6 +698,19 @@ type MultiPathwayPendingGate {
   options: [String!]
   affectedSubtreeSize: Int!
   estimatedImpact: String!
+  """
+  True when this question was surfaced by an llm_text_analysis Gate whose
+  confidence fell below the authored threshold. The safe-default branch
+  has already been routed; the provider can confirm or pick a different
+  branch via the standard answer mutation.
+  """
+  tentative: Boolean
+  """The branch the LLM picked (already routed); null for non-LLM gates."""
+  tentativeBranch: String
+  """Self-reported LLM confidence in [0, 1]; null for non-LLM gates."""
+  tentativeConfidence: Float
+  """LLM reasoning shown to the provider so they can decide whether to override."""
+  tentativeReasoning: String
 }
 
 """Lightweight summary for list views (no embedded merged plan)."""
@@ -828,6 +882,14 @@ type PendingQuestionType {
   options: [String!]
   affectedSubtreeSize: Int!
   estimatedImpact: String!
+  """True when this question was surfaced by a low-confidence LLM gate."""
+  tentative: Boolean
+  """Branch the LLM picked (already routed); null for non-LLM gates."""
+  tentativeBranch: String
+  """Self-reported LLM confidence in [0, 1]; null for non-LLM gates."""
+  tentativeConfidence: Float
+  """LLM reasoning shown to the provider."""
+  tentativeReasoning: String
 }
 
 type CarePlanGenerationResult {
@@ -835,6 +897,30 @@ type CarePlanGenerationResult {
   carePlanId: ID
   warnings: [String!]!
   blockers: [ValidationBlockerType!]!
+}
+
+"""
+Audit row for one llm_text_analysis Gate evaluation. Persisted in
+llm_gate_evaluations; surfaced to providers as the "show me what the AI saw"
+popout.
+"""
+type LlmGateEvaluation {
+  id: ID!
+  sessionId: ID!
+  gateId: String!
+  pathwayId: ID!
+  inputAttribute: String
+  inputText: String
+  prompt: String!
+  branches: JSON!
+  model: String!
+  chosenBranch: String
+  confidence: Float
+  reasoning: String
+  tentative: Boolean!
+  errorMessage: String
+  latencyMs: Int
+  createdAt: String!
 }
 
 type ValidationBlockerType {
@@ -869,6 +955,7 @@ input PatientContextInput {
   labResults: [LabResultInput!]
   allergies: [CodeInput!]
   vitalSigns: JSON
+  freeformData: JSON
 }
 
 input CodeInput {
@@ -1016,12 +1103,37 @@ input AddAdminEvidenceInput {
 
 # ─── Clinical Code Reference ────────────────────────────────────────
 
+"""
+LOINC codes can be individual analytes ("TEST") or collections ("PANEL").
+Null for every other code system (ICD-10, SNOMED, RxNorm, CPT).
+"""
+enum LabKind {
+  TEST
+  PANEL
+}
+
 type CodeDefinition {
   code: String!
   system: String!
   description: String!
   category: String
   isCommon: Boolean!
+  """
+  For LOINC: TEST or PANEL. Null for non-LOINC systems. Drives the simulator's
+  panel-expansion affordance and the pathway editor's LabTest authoring (which
+  filters PANEL out — gates target individual analytes).
+  """
+  labKind: LabKind
+}
+
+"""
+One constituent test of a LOINC panel — the analyte that gets a real value
+when the panel is run. Returned by `loincPanelConstituents(panelCode)`.
+"""
+type LoincPanelConstituent {
+  code: String!
+  description: String!
+  displayOrder: Int!
 }
 
 # ─── Queries ──────────────────────────────────────────────────────────
@@ -1062,6 +1174,13 @@ type Query {
 
   searchCodes(query: String!, system: String, limit: Int): [CodeDefinition!]!
 
+  """
+  Return the constituent LOINC tests for a panel code (ordered as a clinician
+  would expect to enter them). Returns an empty list for non-panel codes or
+  panels whose constituents aren't yet seeded.
+  """
+  loincPanelConstituents(panelCode: String!): [LoincPanelConstituent!]!
+
   matchedPathways(patientId: ID!): [MatchedPathway!]!
 
   """
@@ -1074,6 +1193,12 @@ type Query {
   resolutionSession(sessionId: ID!): ResolutionSession
   pendingQuestions(sessionId: ID!): [PendingQuestionType!]!
   redFlags(sessionId: ID!): [RedFlagType!]!
+
+  """
+  Audit trail for llm_text_analysis Gate evaluations on a given session.
+  When `gateId` is provided, scopes to that gate. Most-recent first.
+  """
+  llmGateEvaluations(sessionId: ID!, gateId: String): [LlmGateEvaluation!]!
   patientResolutionSessions(patientId: ID!, status: SessionStatus): [ResolutionSessionSummary!]!
 
   """Fetch a single multi-pathway resolution session including its merged plan."""
@@ -1258,6 +1383,19 @@ type SimulatorScenario {
   medications: [SimulatorScenarioCode!]!
   allergies: [SimulatorScenarioCode!]!
   labResults: [SimulatorScenarioLabResult!]!
+  """
+  Structured uncoded numeric data — BP, HR, SpO2, temp, weight, height,
+  computed BMI, plus a `custom` map for ad-hoc entries. Shape mirrors the
+  FE's VitalsSnapshot interface; pathway authors target paths like
+  `vitals.systolic_bp` via Gate nodes with gate_type=patient_attribute.
+  """
+  vitals: JSON!
+  """
+  Unstructured narrative bag — chief_complaint, HPI, social_history, plus
+  an ad-hoc map for custom keys. Consumed by `llm_text_analysis` Gate nodes
+  via dotted paths like `freeformData.narrative.chief_complaint`.
+  """
+  narrative: JSON!
   includeDraftPathways: Boolean!
   createdAt: String!
   updatedAt: String!
@@ -1289,5 +1427,9 @@ input SaveSimulatorScenarioInput {
   medications: [CodeInput!]
   allergies: [CodeInput!]
   labResults: [LabResultInput!]
+  """Vitals snapshot — same shape as the FE's VitalsSnapshot, stored as JSON."""
+  vitals: JSON
+  """Narrative snapshot — same shape as the FE's NarrativeSnapshot, stored as JSON."""
+  narrative: JSON
   includeDraftPathways: Boolean
 }
