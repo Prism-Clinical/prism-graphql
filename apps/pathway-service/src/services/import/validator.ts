@@ -380,12 +380,29 @@ function validateSemanticRules(
     softTarget.push('Pathway must contain at least one Stage node');
   }
 
-  // SE3: Graph depth check (compute from edge structure)
-  const depth = computeMaxDepth(edges);
+  // SE3: Graph depth check (compute from edge structure). REQUIRES is
+  // cross-cut: it intentionally points "backwards" from a dependent node
+  // to its prerequisite, so feeding it into the linear depth pass would
+  // either inflate the depth or trigger a false cycle. Exclude it.
+  const treeShapedEdges = edges.filter((e) => e.type !== 'REQUIRES');
+  const depth = computeMaxDepth(treeShapedEdges);
   if (depth > MAX_GRAPH_DEPTH) {
     errors.push(`Pathway graph depth ${depth} exceeds maximum of ${MAX_GRAPH_DEPTH}`);
   } else if (depth > 30) {
     warnings.push(`Pathway graph depth is ${depth} — approaching the limit of ${MAX_GRAPH_DEPTH}`);
+  }
+
+  // SE3b: REQUIRES subgraph must be acyclic. A cycle here means the
+  // backtracking resolver would loop forever ("28w requires 20w which
+  // requires 28w"). Run a dedicated Kahn pass on only the REQUIRES
+  // edges so the error can name the offending nodes precisely.
+  const requiresCycle = detectRequiresCycle(edges);
+  if (requiresCycle.length > 0) {
+    errors.push(
+      `REQUIRES subgraph contains a cycle through node(s): ${requiresCycle.join(
+        ' → ',
+      )}. Prerequisite chains must terminate.`,
+    );
   }
 
   // SE4: Root must have at least one HAS_STAGE edge
@@ -521,4 +538,52 @@ function computeMaxDepth(edges: PathwayJson['edges']): number {
   }
 
   return maxDepth;
+}
+
+/**
+ * Detects a cycle in the REQUIRES subgraph using Kahn's algorithm
+ * restricted to REQUIRES edges. Returns the node ids that remain in the
+ * cycle (i.e. couldn't reach in-degree zero) so the validator can name
+ * them in the error message. Returns an empty array when the subgraph
+ * is acyclic.
+ */
+function detectRequiresCycle(edges: PathwayJson['edges']): string[] {
+  const requiresEdges = (edges ?? []).filter((e) => e.type === 'REQUIRES');
+  if (requiresEdges.length === 0) return [];
+
+  const children = new Map<string, string[]>();
+  const inDegree = new Map<string, number>();
+  const allNodes = new Set<string>();
+
+  for (const edge of requiresEdges) {
+    if (!children.has(edge.from)) children.set(edge.from, []);
+    children.get(edge.from)!.push(edge.to);
+    inDegree.set(edge.to, (inDegree.get(edge.to) ?? 0) + 1);
+    allNodes.add(edge.from);
+    allNodes.add(edge.to);
+  }
+  for (const n of allNodes) {
+    if (!inDegree.has(n)) inDegree.set(n, 0);
+  }
+
+  const queue: string[] = [];
+  for (const [n, d] of inDegree) {
+    if (d === 0) queue.push(n);
+  }
+  let processed = 0;
+  while (queue.length > 0) {
+    const node = queue.shift()!;
+    processed++;
+    for (const kid of children.get(node) ?? []) {
+      const remaining = (inDegree.get(kid) ?? 0) - 1;
+      inDegree.set(kid, remaining);
+      if (remaining === 0) queue.push(kid);
+    }
+  }
+
+  if (processed === allNodes.size) return [];
+  // Anything still with non-zero in-degree is in (or downstream of) a cycle.
+  return Array.from(inDegree)
+    .filter(([, d]) => d > 0)
+    .map(([n]) => n);
 }

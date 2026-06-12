@@ -134,7 +134,8 @@ export type PathwayEdgeType =
   | 'HAS_QUALITY_METRIC'
   | 'HAS_SCHEDULE'
   | 'HAS_CODE'
-  | 'HAS_GATE';
+  | 'HAS_GATE'
+  | 'REQUIRES';
 
 export interface PathwayEdgeDefinition {
   from: string;          // node id or "root" for the Pathway root node
@@ -188,6 +189,15 @@ export const VALID_EDGE_ENDPOINTS: Record<PathwayEdgeType, { from: ('root' | Pat
   HAS_SCHEDULE:        { from: ['Step'],            to: ['Schedule'] },
   HAS_CODE:            { from: ['Step', 'Criterion', 'Medication', 'LabTest', 'Imaging', 'Procedure'], to: ['CodeEntry'] },
   HAS_GATE:            { from: ['Step', 'Stage', 'DecisionPoint'], to: ['Gate'] },
+  // Prerequisite — "X requires Y to have been done first." Used by the
+  // resolver's backtracking pass to surface catch-up work when a patient
+  // arrives at a node whose upstream prerequisites haven't been
+  // satisfied (e.g. first prenatal visit at 28w needs to also cover the
+  // 20w anatomy ultrasound and any missed milestones). Edge runs from
+  // the DEPENDENT (the thing that needs the prereq) to the PREREQUISITE
+  // (the thing that must be done first), so it reads "X REQUIRES Y."
+  // Restricted to Stage/Step peers in v1; cross-pathway prereqs deferred.
+  REQUIRES:            { from: ['Stage', 'Step'],     to: ['Stage', 'Step'] },
 };
 
 // Valid code systems for ConditionCodeDefinition and CodeEntry nodes
