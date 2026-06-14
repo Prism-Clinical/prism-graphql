@@ -118,6 +118,28 @@ export interface ResolvedCarePlan {
   guidance: ResolvedGuidance[];
   schedules: ResolvedSchedule[];
   qualityMetrics: ResolvedQualityMetric[];
+  /**
+   * Unmet prerequisites surfaced by the REQUIRES backtracking pass.
+   * Each entry names a node the patient hasn't satisfied (per the
+   * node's `satisfaction_check` property) but that was required by an
+   * included downstream node — i.e. "catch-up" work the encounter
+   * should also cover. Lineage is carried via `dependentNodeId`.
+   */
+  catchUpItems: CatchUpItem[];
+}
+
+/** REQUIRES backtracking — see services/resolution/prerequisites.ts. */
+export interface CatchUpItem {
+  /** The unmet prerequisite node. */
+  nodeId: string;
+  nodeType: string;
+  title: string;
+  /** The downstream node that REQUIRES this prereq. */
+  dependentNodeId: string;
+  /** Why it was flagged: 'no-satisfaction-check' | 'code-not-in-snapshot' | 'attestation-required'. */
+  reason: string;
+  /** Pathway this catch-up item belongs to (filled at merge time when aggregating across plans). */
+  sourcePathwayId: string;
 }
 
 // ─── Merged (output) shapes ───────────────────────────────────────────
@@ -239,6 +261,12 @@ export interface MergedCarePlan {
    * generation. Resolved conflicts stay in this list for audit/UX.
    */
   conflicts: MergedConflict[];
+  /**
+   * Unmet prerequisites surfaced by the REQUIRES backtracking pass,
+   * aggregated across every contributing pathway. Each entry's
+   * `sourcePathwayId` names the pathway that flagged the catch-up.
+   */
+  catchUpItems: CatchUpItem[];
 }
 
 // ─── Public API ───────────────────────────────────────────────────────
@@ -351,6 +379,22 @@ export function mergeResolvedCarePlans(
     (q) => q.name.toLowerCase().trim(),
   );
 
+  // Aggregate catch-up items across pathways. Dedup by (nodeId,
+  // sourcePathwayId) so the same prereq surfaced by two siblings within
+  // one pathway only appears once; cross-pathway prereqs against the
+  // same patient gap (rare) still surface independently so the lineage
+  // makes sense.
+  const seenCatchUp = new Set<string>();
+  const catchUpItems: CatchUpItem[] = [];
+  for (const plan of plans) {
+    for (const item of plan.catchUpItems ?? []) {
+      const key = `${item.sourcePathwayId}::${item.nodeId}`;
+      if (seenCatchUp.has(key)) continue;
+      seenCatchUp.add(key);
+      catchUpItems.push(item);
+    }
+  }
+
   return {
     sourcePathwayIds: plans.map((p) => p.pathwayId),
     medications,
@@ -362,6 +406,7 @@ export function mergeResolvedCarePlans(
     qualityMetrics,
     suppressed,
     conflicts,
+    catchUpItems,
   };
 }
 
@@ -436,6 +481,7 @@ function emptyMergedPlan(): MergedCarePlan {
     qualityMetrics: [],
     suppressed: [],
     conflicts: [],
+    catchUpItems: [],
   };
 }
 

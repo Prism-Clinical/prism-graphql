@@ -335,6 +335,37 @@ type MergedCarePlan {
   Resolved conflicts stay in this list with `resolution` populated.
   """
   conflicts: [MergedConflict!]!
+  """
+  Unmet prerequisites surfaced by the REQUIRES backtracking pass —
+  catch-up work the encounter should cover because a downstream
+  recommendation requires a prereq the patient hasn't satisfied per
+  the prereq's `satisfaction_check` property.
+  """
+  catchUpItems: [CatchUpItem!]!
+}
+
+"""
+A pathway node the patient hasn't satisfied (per its `satisfaction_check`)
+that was required by a downstream node that did fire. Surfaced so the
+encounter can cover catch-up work alongside the actually-requested
+recommendation.
+"""
+type CatchUpItem {
+  """The unmet prerequisite node."""
+  nodeId: ID!
+  nodeType: String!
+  title: String!
+  """The downstream node that REQUIRES this prereq."""
+  dependentNodeId: ID!
+  """
+  Why the prereq was flagged. One of:
+    no-satisfaction-check  — the prereq node has no `satisfaction_check` authored.
+    code-not-in-snapshot   — code-based check found no matching code in the patient context.
+    attestation-required   — explicit attestation, provider must confirm.
+  """
+  reason: String!
+  """Pathway whose backtracking pass flagged this catch-up."""
+  sourcePathwayId: ID!
 }
 
 enum RecommendationState {
