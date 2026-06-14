@@ -38,6 +38,7 @@ export interface PathwayProjectionMetadata {
 export function projectResolutionToCarePlan(
   resolutionState: ResolutionState,
   meta: PathwayProjectionMetadata,
+  catchUpItems: ResolvedCarePlan['catchUpItems'] = [],
 ): ResolvedCarePlan {
   const medications: ResolvedMedication[] = [];
   const labs: ResolvedLab[] = [];
@@ -103,6 +104,7 @@ export function projectResolutionToCarePlan(
     guidance,
     schedules,
     qualityMetrics,
+    catchUpItems,
   };
 }
 

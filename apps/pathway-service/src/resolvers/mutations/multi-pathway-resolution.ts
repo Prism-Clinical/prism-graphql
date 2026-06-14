@@ -28,6 +28,7 @@ import { TraversalEngine } from '../../services/resolution/traversal-engine';
 import {
   GateAnswer,
   MatchedPathway,
+  NodeStatus,
 } from '../../services/resolution/types';
 import {
   getMatchedPathways,
@@ -54,6 +55,8 @@ import {
   DdiFinding,
 } from '../../services/medications/ddi-pass';
 import { projectResolutionToCarePlan } from '../../services/resolution/care-plan-projection';
+import { findUnmetPrerequisites } from '../../services/resolution/prerequisites';
+import { CatchUpItem } from '../../services/resolution/care-plan-merge';
 import {
   buildResolutionContext,
   makeTraversalAdapter,
@@ -638,6 +641,34 @@ export async function resolveAndPersistAll(
       new Map<string, GateAnswer>(),
     );
 
+    // REQUIRES backtracking pass — for every included Stage/Step node,
+    // walk outgoing REQUIRES edges and check each prereq's
+    // satisfaction_check against the patient snapshot. Deduplicate by
+    // prereq nodeId (one prereq can be reached from many dependents).
+    const catchUpItems: CatchUpItem[] = [];
+    const seenPrereqs = new Set<string>();
+    for (const node of traversalResult.resolutionState.values()) {
+      if (node.status !== NodeStatus.INCLUDED) continue;
+      if (node.nodeType !== 'Stage' && node.nodeType !== 'Step') continue;
+      const unmet = findUnmetPrerequisites(
+        node.nodeId,
+        patientContext,
+        rctx.graphContext,
+      );
+      for (const u of unmet) {
+        if (seenPrereqs.has(u.nodeId)) continue;
+        seenPrereqs.add(u.nodeId);
+        catchUpItems.push({
+          nodeId: u.nodeId,
+          nodeType: u.nodeType,
+          title: u.title,
+          dependentNodeId: u.dependentNodeId,
+          reason: u.reason,
+          sourcePathwayId: m.pathway.id,
+        });
+      }
+    }
+
     const status = traversalResult.isDegraded
       ? SessionStatus.DEGRADED
       : SessionStatus.ACTIVE;
@@ -663,11 +694,15 @@ export async function resolveAndPersistAll(
     contributingPathwayIds.push(m.pathway.id);
 
     resolvedPlans.push(
-      projectResolutionToCarePlan(traversalResult.resolutionState, {
-        pathwayId: m.pathway.id,
-        pathwayLogicalId: m.pathway.logicalId,
-        pathwayTitle: m.pathway.title,
-      }),
+      projectResolutionToCarePlan(
+        traversalResult.resolutionState,
+        {
+          pathwayId: m.pathway.id,
+          pathwayLogicalId: m.pathway.logicalId,
+          pathwayTitle: m.pathway.title,
+        },
+        catchUpItems,
+      ),
     );
   }
 
@@ -1154,5 +1189,6 @@ function emptyMergedCarePlan(): MergedCarePlan {
     qualityMetrics: [],
     suppressed: [],
     conflicts: [],
+    catchUpItems: [],
   };
 }
