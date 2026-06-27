@@ -74,6 +74,89 @@ function getNumericValue(
 }
 
 /**
+ * Time-shape operators (count_in_window, trend_*, delta_from_baseline)
+ * read this to decide whether a snapshot entry counts for the gate.
+ *
+ * - When `windowDays` is undefined, no filtering — the entry counts
+ *   regardless of its date or absence of one. Lets "ever had X"-style
+ *   patterns work for snapshots that don't track dates.
+ * - When `windowDays` is set, the entry's `date` must parse to a finite
+ *   timestamp and fall within `windowDays` of `now` (inclusive). Entries
+ *   without dates are excluded — date-aware gates can't reason about
+ *   un-dated history.
+ *
+ * `now` is injected so tests can pin the clock; production callers pass
+ * `Date.now()`.
+ */
+function isWithinWindow(
+  entryDate: string | undefined,
+  windowDays: number | undefined,
+  now: number,
+): boolean {
+  if (windowDays === undefined) return true;
+  if (!entryDate) return false;
+  const ts = Date.parse(entryDate);
+  if (!Number.isFinite(ts)) return false;
+  const ageMs = now - ts;
+  if (ageMs < 0) return false; // Future-dated entries don't count
+  const ageDays = ageMs / 86_400_000;
+  return ageDays <= windowDays;
+}
+
+/**
+ * Collect lab values matching (code [+ system]) into a `(timestamp,
+ * value)` series, sorted ascending by timestamp. Used by trend_up,
+ * trend_down, and delta_from_baseline. Entries without a parseable
+ * date or a finite numeric value are dropped — they can't contribute
+ * to a time series. If `windowDays` is set, only in-window entries
+ * are kept; future-dated entries are always excluded.
+ */
+function collectLabSeries(
+  patientContext: PatientContext,
+  code: string,
+  system: string | undefined,
+  windowDays: number | undefined,
+  now: number,
+): Array<{ ts: number; value: number }> {
+  const series: Array<{ ts: number; value: number }> = [];
+  for (const lab of patientContext.labResults) {
+    if (!matchesCodePattern(lab.code, code)) continue;
+    if (system && lab.system !== system) continue;
+    if (typeof lab.value !== 'number' || !Number.isFinite(lab.value)) continue;
+    if (!lab.date) continue;
+    const ts = Date.parse(lab.date);
+    if (!Number.isFinite(ts)) continue;
+    if (ts > now) continue; // Future-dated entries excluded
+    if (!isWithinWindow(lab.date, windowDays, now)) continue;
+    series.push({ ts, value: lab.value });
+  }
+  series.sort((a, b) => a.ts - b.ts);
+  return series;
+}
+
+/**
+ * Linear-regression slope over (timestamp-in-days, value) points.
+ * Returns the slope in value-units per day. Series must have ≥2 points;
+ * collapses to 0 (no trend) when all timestamps are equal (vertical line).
+ */
+function linearSlope(series: Array<{ ts: number; value: number }>): number {
+  const n = series.length;
+  if (n < 2) return 0;
+  const days = series.map((p) => p.ts / 86_400_000);
+  const meanX = days.reduce((s, x) => s + x, 0) / n;
+  const meanY = series.reduce((s, p) => s + p.value, 0) / n;
+  let num = 0;
+  let den = 0;
+  for (let i = 0; i < n; i++) {
+    const dx = days[i] - meanX;
+    num += dx * (series[i].value - meanY);
+    den += dx * dx;
+  }
+  if (den === 0) return 0;
+  return num / den;
+}
+
+/**
  * Walk a dotted path through a JSON bag, returning the value only if it's a
  * finite number. Tolerates missing segments at any depth.
  */
@@ -93,6 +176,7 @@ function resolveNumericPath(bag: Record<string, unknown>, path: string): number 
 function evaluateCondition(
   condition: GateCondition,
   patientContext: PatientContext,
+  now: number = Date.now(),
 ): { satisfied: boolean; reason: string; fieldsRead: string[] } {
   const { field, operator, value, system } = condition;
   const fieldsRead = [field];
@@ -180,6 +264,148 @@ function evaluateCondition(
       };
     }
 
+    /**
+     * count_in_window — recurrence pattern. Counts entries matching
+     * (code [+ system]) optionally filtered to entries dated within
+     * `window_days` of now. Satisfied when the count reaches
+     * `count_threshold` (default 2 — "more than once").
+     *
+     * Works against `labs` (LabResult.date) and the code buckets
+     * (CodeEntry.date) — recurrent UTIs, repeat ED visits, ≥3 abnormal
+     * lab values, etc. Without `window_days`, counts all matching
+     * entries regardless of date (or absence of one).
+     */
+    case 'count_in_window': {
+      const threshold = condition.count_threshold ?? 2;
+      const windowDays = condition.window_days;
+      let matches = 0;
+      if (field === 'labs') {
+        for (const lab of patientContext.labResults) {
+          if (!matchesCodePattern(lab.code, value)) continue;
+          if (system && lab.system !== system) continue;
+          if (!isWithinWindow(lab.date, windowDays, now)) continue;
+          matches += 1;
+        }
+      } else {
+        const entries = getCodeEntries(patientContext, field);
+        for (const e of entries) {
+          if (!matchesCodePattern(e.code, value)) continue;
+          if (system && e.system !== system) continue;
+          if (!isWithinWindow(e.date, windowDays, now)) continue;
+          matches += 1;
+        }
+      }
+      const satisfied = matches >= threshold;
+      const windowDesc = windowDays === undefined
+        ? 'lifetime'
+        : `last ${windowDays} day${windowDays === 1 ? '' : 's'}`;
+      return {
+        satisfied,
+        reason: satisfied
+          ? `Found ${matches} matching ${value} in ${field} within ${windowDesc} (≥${threshold})`
+          : `Found ${matches} matching ${value} in ${field} within ${windowDesc} (<${threshold})`,
+        fieldsRead,
+      };
+    }
+
+    /**
+     * trend_up / trend_down — directional slope over the matching
+     * dated lab series within window_days. Computes linear-regression
+     * slope and compares its sign + magnitude to slope_threshold
+     * (default 0 = any non-flat slope in the declared direction). Needs
+     * at least min_points dated, finite values inside the window.
+     *
+     * Only meaningful on labs in v1 — condition/medication entries
+     * don't carry numeric values, so a trend over them isn't defined.
+     */
+    case 'trend_up':
+    case 'trend_down': {
+      const minPoints = Math.max(2, condition.min_points ?? 3);
+      const slopeFloor = condition.slope_threshold ?? 0;
+      if (field !== 'labs') {
+        return {
+          satisfied: false,
+          reason: `${operator} only supports field=labs (got "${field}")`,
+          fieldsRead,
+        };
+      }
+      const series = collectLabSeries(
+        patientContext,
+        value,
+        system,
+        condition.window_days,
+        now,
+      );
+      if (series.length < minPoints) {
+        return {
+          satisfied: false,
+          reason: `Need ≥${minPoints} dated values for ${value}; found ${series.length}`,
+          fieldsRead,
+        };
+      }
+      const slope = linearSlope(series);
+      const ok =
+        operator === 'trend_up'
+          ? slope > slopeFloor
+          : slope < -slopeFloor;
+      return {
+        satisfied: ok,
+        reason: ok
+          ? `${value} slope ${slope.toFixed(4)} value/day satisfies ${operator}${slopeFloor !== 0 ? ` (|slope| > ${slopeFloor})` : ''}`
+          : `${value} slope ${slope.toFixed(4)} value/day does not satisfy ${operator}`,
+        fieldsRead,
+      };
+    }
+
+    /**
+     * delta_from_baseline — change between newest and oldest in-window
+     * value vs a signed delta_threshold. Positive threshold = rose by
+     * at least that much. Negative threshold = dropped by at least the
+     * magnitude. Zero is degenerate (any non-flat change fires).
+     */
+    case 'delta_from_baseline': {
+      const minPoints = Math.max(2, condition.min_points ?? 2);
+      const delta = condition.delta_threshold ?? 0;
+      if (field !== 'labs') {
+        return {
+          satisfied: false,
+          reason: `delta_from_baseline only supports field=labs (got "${field}")`,
+          fieldsRead,
+        };
+      }
+      const series = collectLabSeries(
+        patientContext,
+        value,
+        system,
+        condition.window_days,
+        now,
+      );
+      if (series.length < minPoints) {
+        return {
+          satisfied: false,
+          reason: `Need ≥${minPoints} dated values for ${value}; found ${series.length}`,
+          fieldsRead,
+        };
+      }
+      const baseline = series[0].value;
+      const current = series[series.length - 1].value;
+      const observed = current - baseline;
+      const ok =
+        delta === 0
+          ? observed !== 0
+          : delta > 0
+            ? observed >= delta
+            : observed <= delta;
+      const decoration = `(baseline ${baseline}, current ${current})`;
+      return {
+        satisfied: ok,
+        reason: ok
+          ? `${value} delta ${observed.toFixed(4)} ${decoration} satisfies threshold ${delta}`
+          : `${value} delta ${observed.toFixed(4)} ${decoration} does not satisfy threshold ${delta}`,
+        fieldsRead,
+      };
+    }
+
     default:
       return {
         satisfied: false,
@@ -194,6 +420,7 @@ function evaluateCondition(
 function evaluatePatientAttribute(
   gate: GateProperties,
   patientContext: PatientContext,
+  now: number = Date.now(),
 ): GateEvaluationResult {
   if (!gate.condition) {
     return {
@@ -204,7 +431,7 @@ function evaluatePatientAttribute(
     };
   }
 
-  const result = evaluateCondition(gate.condition, patientContext);
+  const result = evaluateCondition(gate.condition, patientContext, now);
   return {
     satisfied: result.satisfied,
     reason: result.reason,
@@ -316,6 +543,7 @@ function evaluatePriorNodeResult(
 function evaluateCompound(
   gate: GateProperties,
   patientContext: PatientContext,
+  now: number = Date.now(),
 ): GateEvaluationResult {
   if (!gate.conditions || gate.conditions.length === 0) {
     return {
@@ -331,7 +559,7 @@ function evaluateCompound(
   const results: Array<{ satisfied: boolean; reason: string }> = [];
 
   for (const condition of gate.conditions) {
-    const result = evaluateCondition(condition, patientContext);
+    const result = evaluateCondition(condition, patientContext, now);
     results.push(result);
     allFieldsRead.push(...result.fieldsRead);
   }
@@ -492,10 +720,17 @@ export async function evaluateGate(
   gateAnswers: Map<string, GateAnswer>,
   gateId?: string,
   llmEvaluator?: LlmGateEvaluator,
+  /**
+   * Pin the "now" timestamp for time-shape operators (count_in_window,
+   * trend_*, delta_from_baseline). Tests pin this so window-boundary
+   * behavior is deterministic. Production callers omit — defaults to
+   * Date.now() inside the operator implementations.
+   */
+  now: number = Date.now(),
 ): Promise<GateEvaluationResult> {
   switch (gate.gate_type) {
     case GateType.PATIENT_ATTRIBUTE:
-      return evaluatePatientAttribute(gate, patientContext);
+      return evaluatePatientAttribute(gate, patientContext, now);
 
     case GateType.QUESTION:
       return evaluateQuestion(gate, gateAnswers, gateId);
@@ -504,7 +739,7 @@ export async function evaluateGate(
       return evaluatePriorNodeResult(gate, resolutionState);
 
     case GateType.COMPOUND:
-      return evaluateCompound(gate, patientContext);
+      return evaluateCompound(gate, patientContext, now);
 
     case GateType.LLM_TEXT_ANALYSIS:
       return evaluateLlmTextAnalysis(gate, gateId, patientContext, llmEvaluator);

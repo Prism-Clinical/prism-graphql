@@ -201,6 +201,14 @@ export interface CodeEntry {
   code: string;
   system: string;
   display?: string;
+  /**
+   * Occurrence date, ISO 8601. Read by time-shape gate operators
+   * (count_in_window, trend_*, delta_from_baseline). Optional —
+   * point-in-time operators ignore it. When set on a condition code,
+   * means "this condition was active/noted on this date" — repeated
+   * entries with the same code at different dates represent recurrence.
+   */
+  date?: string;
 }
 
 export interface LabResult {

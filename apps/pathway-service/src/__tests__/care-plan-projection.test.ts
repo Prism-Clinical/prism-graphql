@@ -58,6 +58,9 @@ describe('projectResolutionToCarePlan — basic projection', () => {
       guidance: [],
       schedules: [],
       qualityMetrics: [],
+      catchUpItems: [],
+      evidenceTrail: [],
+      dataGapHints: [],
     });
   });
 
@@ -87,6 +90,7 @@ describe('projectResolutionToCarePlan — basic projection', () => {
         route: 'oral',
         sourcePathwayId: 'p-1',
         sourceNodeId: 'med-1',
+        evidenceGateIds: [],
       },
     ]);
   });
@@ -230,6 +234,7 @@ describe('projectResolutionToCarePlan — labs / procedures / schedules / qualit
         specimen: 'blood',
         sourcePathwayId: 'p-1',
         sourceNodeId: 'lab-1',
+        evidenceGateIds: [],
       },
     ]);
   });
