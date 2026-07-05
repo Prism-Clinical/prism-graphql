@@ -642,11 +642,16 @@ export async function buildResolvedPlansFromSessions(
     const pathwayLogicalId = meta.rows[0]?.logical_id ?? session.pathwayId;
     const pathwayTitle = meta.rows[0]?.title ?? session.pathwayId;
     plans.push(
-      projectResolutionToCarePlan(session.resolutionState, {
-        pathwayId: session.pathwayId,
-        pathwayLogicalId,
-        pathwayTitle,
-      }),
+      projectResolutionToCarePlan(
+        session.resolutionState,
+        {
+          pathwayId: session.pathwayId,
+          pathwayLogicalId,
+          pathwayTitle,
+        },
+        [],
+        session.dependencyMap,
+      ),
     );
   }
   return plans;
@@ -748,6 +753,7 @@ export async function resolveAndPersistAll(
           pathwayTitle: m.pathway.title,
         },
         catchUpItems,
+        traversalResult.dependencyMap,
       ),
     );
   }
@@ -875,6 +881,8 @@ export function applyResolution(
         duration: custom.duration,
         route: custom.route,
         sourcePathwayId: 'provider-override',
+        // Provider-typed override doesn't trace back to any pathway gate.
+        evidenceGateIds: [],
       };
       const rec: MergedRecommendation<ResolvedMedication> = {
         recommendation: customMed,
@@ -1237,5 +1245,7 @@ function emptyMergedCarePlan(): MergedCarePlan {
     suppressed: [],
     conflicts: [],
     catchUpItems: [],
+    evidenceTrail: [],
+    dataGapHints: [],
   };
 }
