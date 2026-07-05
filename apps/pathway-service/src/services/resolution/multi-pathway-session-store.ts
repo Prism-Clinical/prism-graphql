@@ -20,6 +20,16 @@ export interface MultiPathwayResolutionSession {
   patientId: string;
   providerId: string;
   status: MultiPathwaySessionStatus;
+  /**
+   * True when this session was created by admin/QA/preview tooling
+   * (currently: `startMultiPathwayResolution` called with
+   * `syntheticPatient: true`). Preview sessions:
+   *   - are filtered out of default list queries;
+   *   - can be hard-deleted via `deletePreviewSession`;
+   *   - otherwise use the identical resolver code path as real sessions
+   *     so preview runs exercise the same behavior we ship to prod.
+   */
+  isPreview: boolean;
   initialPatientContext: unknown;
   contributingSessionIds: string[];
   contributingPathwayIds: string[];
@@ -37,6 +47,7 @@ export interface MultiPathwayResolutionSessionSummary {
   patientId: string;
   providerId: string;
   status: MultiPathwaySessionStatus;
+  isPreview: boolean;
   contributingPathwayCount: number;
   unresolvedConflictCount: number;
   carePlanId: string | null;
@@ -56,18 +67,20 @@ export async function createMultiPathwaySession(
     contributingPathwayIds: string[];
     mergedPlan: MergedCarePlan;
     ddiWarnings?: unknown[];
+    isPreview?: boolean;
   },
 ): Promise<string> {
   const result = await pool.query(
     `INSERT INTO multi_pathway_resolution_sessions
-       (patient_id, provider_id, status, initial_patient_context,
+       (patient_id, provider_id, status, is_preview, initial_patient_context,
         contributing_session_ids, contributing_pathway_ids,
         merged_plan, conflict_resolutions, ddi_warnings)
-     VALUES ($1, $2, 'ACTIVE', $3::jsonb, $4::uuid[], $5::uuid[], $6::jsonb, '{}'::jsonb, $7::jsonb)
+     VALUES ($1, $2, 'ACTIVE', $3, $4::jsonb, $5::uuid[], $6::uuid[], $7::jsonb, '{}'::jsonb, $8::jsonb)
      RETURNING id`,
     [
       s.patientId,
       s.providerId,
+      s.isPreview ?? false,
       JSON.stringify(s.initialPatientContext),
       s.contributingSessionIds,
       s.contributingPathwayIds,
@@ -94,15 +107,24 @@ export async function getPatientMultiPathwaySessions(
   pool: Pool,
   patientId: string,
   status?: MultiPathwaySessionStatus,
+  /**
+   * When true, preview sessions (`is_preview = true`) are returned alongside
+   * real sessions. Default is false so real provider views never see preview
+   * runs by accident. Admin/QA tooling can opt in explicitly.
+   */
+  includePreview: boolean = false,
 ): Promise<MultiPathwayResolutionSessionSummary[]> {
   const params: unknown[] = [patientId];
   let where = 'patient_id = $1';
+  if (!includePreview) {
+    where += ' AND is_preview = false';
+  }
   if (status) {
     params.push(status);
     where += ` AND status = $${params.length}`;
   }
   const r = await pool.query(
-    `SELECT id, patient_id, provider_id, status,
+    `SELECT id, patient_id, provider_id, status, is_preview,
             array_length(contributing_pathway_ids, 1) AS contributing_pathway_count,
             merged_plan, care_plan_id, created_at, updated_at
        FROM multi_pathway_resolution_sessions
@@ -115,6 +137,7 @@ export async function getPatientMultiPathwaySessions(
     patientId: row.patient_id,
     providerId: row.provider_id,
     status: row.status,
+    isPreview: row.is_preview ?? false,
     contributingPathwayCount: row.contributing_pathway_count ?? 0,
     unresolvedConflictCount: countUnresolvedConflicts(row.merged_plan),
     carePlanId: row.care_plan_id,
@@ -164,6 +187,80 @@ export async function updateMergedPlanAndResolutions(
   );
 }
 
+/**
+ * Hard-delete a preview session and its contributing per-pathway sessions.
+ * Real (non-preview) sessions are refused with a `NotPreviewError` — the
+ * caller has to use `markMultiPathwaySessionStatus(..., 'ABANDONED')` for
+ * those, which preserves the row for audit.
+ *
+ * Result kinds:
+ *   - 'not-found'     — no row for this id
+ *   - 'not-preview'   — row exists but is_preview = false; deletion refused
+ *   - 'deleted'       — row (and any contributing per-pathway sessions) gone
+ *
+ * Wrapped in a transaction so the multi-pathway row and its per-pathway
+ * children are removed atomically. Per-pathway sessions ids live in the
+ * `contributing_session_ids` UUID array on the multi-pathway row; we drop
+ * them with a `WHERE id = ANY($1::uuid[])` fan-out — no FK from
+ * pathway_resolution_sessions back up, so the delete has to be explicit.
+ */
+export async function deletePreviewSession(
+  pool: Pool,
+  sessionId: string,
+): Promise<
+  | { kind: 'not-found' }
+  | { kind: 'not-preview' }
+  | { kind: 'deleted'; contributingSessionsDeleted: number }
+> {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const lookup = await client.query<{
+      is_preview: boolean;
+      contributing_session_ids: string[] | null;
+    }>(
+      `SELECT is_preview, contributing_session_ids
+         FROM multi_pathway_resolution_sessions
+        WHERE id = $1
+        FOR UPDATE`,
+      [sessionId],
+    );
+    if (lookup.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return { kind: 'not-found' };
+    }
+    if (!lookup.rows[0].is_preview) {
+      await client.query('ROLLBACK');
+      return { kind: 'not-preview' };
+    }
+
+    const contributingIds = lookup.rows[0].contributing_session_ids ?? [];
+    let contributingSessionsDeleted = 0;
+    if (contributingIds.length > 0) {
+      const del = await client.query(
+        `DELETE FROM pathway_resolution_sessions
+          WHERE id = ANY($1::uuid[])`,
+        [contributingIds],
+      );
+      contributingSessionsDeleted = del.rowCount ?? 0;
+    }
+
+    await client.query(
+      `DELETE FROM multi_pathway_resolution_sessions WHERE id = $1`,
+      [sessionId],
+    );
+
+    await client.query('COMMIT');
+    return { kind: 'deleted', contributingSessionsDeleted };
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
 export async function markMultiPathwaySessionStatus(
   pool: Pool,
   sessionId: string,
@@ -188,6 +285,7 @@ function rowToSession(row: Record<string, unknown>): MultiPathwayResolutionSessi
     patientId: row.patient_id as string,
     providerId: row.provider_id as string,
     status: row.status as MultiPathwaySessionStatus,
+    isPreview: (row.is_preview as boolean) ?? false,
     initialPatientContext: row.initial_patient_context,
     contributingSessionIds: (row.contributing_session_ids as string[]) ?? [],
     contributingPathwayIds: (row.contributing_pathway_ids as string[]) ?? [],
