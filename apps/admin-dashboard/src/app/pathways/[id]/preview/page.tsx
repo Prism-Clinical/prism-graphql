@@ -13,6 +13,7 @@ import type {
 } from '@/types';
 import {
   buildHierarchy,
+  buildEvidenceLookup,
   countNodeTypes,
   PathwayTopBar,
   PathwayMetaStrip,
@@ -213,6 +214,12 @@ export default function PathwayPreviewPage() {
     [graphNodes, graphEdges, confidenceMap],
   );
 
+  /* ── Evidence lookup for per-rec chips ──────────────────── */
+  const evidenceLookup = useMemo(
+    () => buildEvidenceLookup(previewMergedPlan),
+    [previewMergedPlan],
+  );
+
   /* ── Loading / Error States ─────────────────────────────── */
   if (graphLoading) {
     return (
@@ -286,6 +293,7 @@ export default function PathwayPreviewPage() {
               scoredNodeCount={confidenceResult?.nodes.length ?? 0}
               error={simError}
               confidenceNodes={confidenceResult?.nodes}
+              evidenceLookup={evidenceLookup}
             />
           </div>
         </div>

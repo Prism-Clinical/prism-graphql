@@ -372,6 +372,13 @@ export interface ResolvedMedication {
   clinicalRole: string | null;
   sourcePathwayId: string;
   sourceNodeId: string | null;
+  /**
+   * Gate/DP node ids the resolver evaluated on the way to including
+   * this recommendation. Empty when the rec was included without any
+   * gating decisions. Resolve into `MergedCarePlan.evidenceTrail` for
+   * the gate title + patient fields consulted.
+   */
+  evidenceGateIds: string[];
 }
 
 export interface ResolvedLab {
@@ -381,6 +388,7 @@ export interface ResolvedLab {
   specimen: string | null;
   sourcePathwayId: string;
   sourceNodeId: string | null;
+  evidenceGateIds: string[];
 }
 
 export interface ResolvedImaging {
@@ -392,6 +400,7 @@ export interface ResolvedImaging {
   system: string | null;
   sourcePathwayId: string;
   sourceNodeId: string | null;
+  evidenceGateIds: string[];
 }
 
 export interface ResolvedProcedure {
@@ -400,6 +409,7 @@ export interface ResolvedProcedure {
   system: string | null;
   sourcePathwayId: string;
   sourceNodeId: string | null;
+  evidenceGateIds: string[];
 }
 
 export interface ResolvedGuidance {
@@ -408,6 +418,7 @@ export interface ResolvedGuidance {
   category: string | null;
   sourcePathwayId: string;
   sourceNodeId: string | null;
+  evidenceGateIds: string[];
 }
 
 export interface ResolvedSchedule {
@@ -415,6 +426,7 @@ export interface ResolvedSchedule {
   description: string;
   sourcePathwayId: string;
   sourceNodeId: string | null;
+  evidenceGateIds: string[];
 }
 
 export interface ResolvedQualityMetric {
@@ -422,6 +434,7 @@ export interface ResolvedQualityMetric {
   measure: string;
   sourcePathwayId: string;
   sourceNodeId: string | null;
+  evidenceGateIds: string[];
 }
 
 export interface MergedRecommendation<T> {
@@ -473,6 +486,42 @@ export interface CatchUpItem {
   sourcePathwayId: string;
 }
 
+/**
+ * One gate/DP the resolver evaluated on the way to this merged plan.
+ * The `fieldsRead` list is what the UI shows on hover so providers can
+ * see what patient data drove the decision.
+ */
+export interface GateEvidence {
+  nodeId: string;
+  title: string;
+  kind: string;
+  status: string;
+  reason: string | null;
+  fieldsRead: string[];
+}
+
+/**
+ * A gated-out branch paired with the recommendations it *would* unlock
+ * if the missing patient data were available. Used by the sidebar's
+ * data-gap panel (slice D) to surface actionable "add X → unlocks N
+ * recs" prompts.
+ */
+export interface UnlockedRecommendation {
+  nodeId: string;
+  nodeType: string;
+  title: string;
+}
+
+export interface DataGapHint {
+  gateNodeId: string;
+  gateTitle: string;
+  kind: string;
+  status: string;
+  reason: string | null;
+  fieldsRead: string[];
+  unlockedRecommendations: UnlockedRecommendation[];
+}
+
 export interface MergedCarePlan {
   sourcePathwayIds: string[];
   medications: MergedRecommendation<ResolvedMedication>[];
@@ -485,6 +534,8 @@ export interface MergedCarePlan {
   suppressed: SuppressedRecommendation[];
   conflicts: MergedConflict[];
   catchUpItems: CatchUpItem[];
+  evidenceTrail: GateEvidence[];
+  dataGapHints: DataGapHint[];
 }
 
 export interface PreviewSession {

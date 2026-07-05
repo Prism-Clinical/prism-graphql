@@ -3,12 +3,10 @@ import { gql } from '@apollo/client/core';
 /**
  * MergedCarePlan fragment used by the pathway preview page.
  *
- * Slice B scope: enough shape for a compact summary (per-collection counts,
- * conflict list, catch-up items). Recommendation details are fetched in
- * full so consumers can drill in without a second round trip. Evidence
- * fields (`evidenceGateIds`, `evidenceTrail`, `dataGapHints`) are added
- * in slice C once the time-shape gates PR lands on main — until then this
- * fragment matches only what's in the current schema.
+ * Includes evidence lineage fields — per-rec `evidenceGateIds`,
+ * plan-level `evidenceTrail` and `dataGapHints` — so the preview UI can
+ * render "decided from" chips (slice C) and "data-gap" hints (slice D)
+ * without a second round trip.
  */
 export const PREVIEW_MERGED_CARE_PLAN_FRAGMENT = gql`
   fragment PreviewMergedCarePlanFields on MergedCarePlan {
@@ -24,6 +22,7 @@ export const PREVIEW_MERGED_CARE_PLAN_FRAGMENT = gql`
         clinicalRole
         sourcePathwayId
         sourceNodeId
+        evidenceGateIds
       }
       sourcePathwayIds
       state
@@ -36,6 +35,7 @@ export const PREVIEW_MERGED_CARE_PLAN_FRAGMENT = gql`
         specimen
         sourcePathwayId
         sourceNodeId
+        evidenceGateIds
       }
       sourcePathwayIds
       state
@@ -50,6 +50,7 @@ export const PREVIEW_MERGED_CARE_PLAN_FRAGMENT = gql`
         system
         sourcePathwayId
         sourceNodeId
+        evidenceGateIds
       }
       sourcePathwayIds
       state
@@ -61,6 +62,7 @@ export const PREVIEW_MERGED_CARE_PLAN_FRAGMENT = gql`
         system
         sourcePathwayId
         sourceNodeId
+        evidenceGateIds
       }
       sourcePathwayIds
       state
@@ -72,6 +74,7 @@ export const PREVIEW_MERGED_CARE_PLAN_FRAGMENT = gql`
         category
         sourcePathwayId
         sourceNodeId
+        evidenceGateIds
       }
       sourcePathwayIds
       state
@@ -82,6 +85,7 @@ export const PREVIEW_MERGED_CARE_PLAN_FRAGMENT = gql`
         description
         sourcePathwayId
         sourceNodeId
+        evidenceGateIds
       }
       sourcePathwayIds
       state
@@ -92,9 +96,31 @@ export const PREVIEW_MERGED_CARE_PLAN_FRAGMENT = gql`
         measure
         sourcePathwayId
         sourceNodeId
+        evidenceGateIds
       }
       sourcePathwayIds
       state
+    }
+    evidenceTrail {
+      nodeId
+      title
+      kind
+      status
+      reason
+      fieldsRead
+    }
+    dataGapHints {
+      gateNodeId
+      gateTitle
+      kind
+      status
+      reason
+      fieldsRead
+      unlockedRecommendations {
+        nodeId
+        nodeType
+        title
+      }
     }
     suppressed {
       type

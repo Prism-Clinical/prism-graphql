@@ -3,6 +3,12 @@ export type { StageView, StepView, DecisionPointView, PlanItemView, SidebarTab }
 export { buildHierarchy, countNodeTypes } from './graph-hierarchy';
 
 export {
+  buildEvidenceLookup,
+  EMPTY_EVIDENCE_LOOKUP,
+} from './evidence-lookup';
+export type { EvidenceLookup } from './evidence-lookup';
+
+export {
   confidenceCssColor,
   confidenceCssBg,
   confidenceCssBorder,

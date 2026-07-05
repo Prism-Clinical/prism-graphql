@@ -3,6 +3,8 @@
 import { useState } from 'react';
 import type { NodeConfidenceResult, ResolutionType, PathwayGraphNode } from '@/types';
 import type { StageView, StepView, DecisionPointView, PlanItemView } from './types';
+import type { EvidenceLookup } from './evidence-lookup';
+import { EMPTY_EVIDENCE_LOOKUP } from './evidence-lookup';
 import {
   confidenceCssColor,
   confidenceCssBg,
@@ -23,6 +25,12 @@ interface SimulatePhaseProps {
   scoredNodeCount: number;
   error: string | null;
   confidenceNodes?: NodeConfidenceResult[];
+  /**
+   * Pre-computed evidenceGateIds + gate titles keyed by graph node id.
+   * Empty by default so consumers that don't fetch the merged plan still
+   * work (chips just don't render).
+   */
+  evidenceLookup?: EvidenceLookup;
 }
 
 export default function SimulatePhase({
@@ -32,6 +40,7 @@ export default function SimulatePhase({
   scoredNodeCount,
   error,
   confidenceNodes,
+  evidenceLookup = EMPTY_EVIDENCE_LOOKUP,
 }: SimulatePhaseProps) {
   const [expandedNodeId, setExpandedNodeId] = useState<string | null>(null);
 
@@ -156,6 +165,7 @@ export default function SimulatePhase({
               stage={stage}
               expandedNodeId={expandedNodeId}
               onToggleExpand={toggleExpand}
+              evidenceLookup={evidenceLookup}
             />
           ))}
         </div>
@@ -441,9 +451,10 @@ import React from 'react';
 interface ExpandableProps {
   expandedNodeId: string | null;
   onToggleExpand: (nodeId: string) => void;
+  evidenceLookup: EvidenceLookup;
 }
 
-function StageCard({ stage, expandedNodeId, onToggleExpand }: { stage: StageView } & ExpandableProps) {
+function StageCard({ stage, expandedNodeId, onToggleExpand, evidenceLookup }: { stage: StageView } & ExpandableProps) {
   const conf = stage.confidence;
   const pct = conf ? Math.round(conf.confidence * 100) : null;
   const isExpanded = expandedNodeId === stage.node.id;
@@ -501,6 +512,7 @@ function StageCard({ stage, expandedNodeId, onToggleExpand }: { stage: StageView
           step={step}
           expandedNodeId={expandedNodeId}
           onToggleExpand={onToggleExpand}
+          evidenceLookup={evidenceLookup}
         />
       ))}
     </div>
@@ -509,7 +521,7 @@ function StageCard({ stage, expandedNodeId, onToggleExpand }: { stage: StageView
 
 // ─── Step Section (enc-evidence-section style) ───────────────────────
 
-function StepSection({ step, expandedNodeId, onToggleExpand }: { step: StepView } & ExpandableProps) {
+function StepSection({ step, expandedNodeId, onToggleExpand, evidenceLookup }: { step: StepView } & ExpandableProps) {
   const conf = step.confidence;
   const pct = conf ? Math.round(conf.confidence * 100) : null;
   const isExpanded = expandedNodeId === step.node.id;
@@ -558,6 +570,7 @@ function StepSection({ step, expandedNodeId, onToggleExpand }: { step: StepView 
               dp={dp}
               expandedNodeId={expandedNodeId}
               onToggleExpand={onToggleExpand}
+              evidenceLookup={evidenceLookup}
             />
           ))}
         </div>
@@ -572,6 +585,7 @@ function StepSection({ step, expandedNodeId, onToggleExpand }: { step: StepView 
               item={m}
               expandedNodeId={expandedNodeId}
               onToggleExpand={onToggleExpand}
+              evidenceLookup={evidenceLookup}
             />
           ))}
           {step.labTests.map((l, i) => (
@@ -580,6 +594,7 @@ function StepSection({ step, expandedNodeId, onToggleExpand }: { step: StepView 
               item={l}
               expandedNodeId={expandedNodeId}
               onToggleExpand={onToggleExpand}
+              evidenceLookup={evidenceLookup}
             />
           ))}
           {step.procedures.map((p, i) => (
@@ -588,6 +603,7 @@ function StepSection({ step, expandedNodeId, onToggleExpand }: { step: StepView 
               item={p}
               expandedNodeId={expandedNodeId}
               onToggleExpand={onToggleExpand}
+              evidenceLookup={evidenceLookup}
             />
           ))}
         </div>
@@ -599,6 +615,9 @@ function StepSection({ step, expandedNodeId, onToggleExpand }: { step: StepView 
 // ─── Decision Point Row (enc-attr-entry style) ──────────────────────
 
 function DecisionPointRow({ dp, expandedNodeId, onToggleExpand }: { dp: DecisionPointView } & ExpandableProps) {
+  // DecisionPoints don't render evidence chips themselves — they ARE the
+  // gates in most cases. The evidenceLookup is threaded to satisfy the
+  // shared ExpandableProps interface without special-casing.
   const conf = dp.confidence;
   const pct = conf ? Math.round(conf.confidence * 100) : null;
   const isExpanded = expandedNodeId === dp.node.id;
@@ -666,7 +685,7 @@ function DecisionPointRow({ dp, expandedNodeId, onToggleExpand }: { dp: Decision
 
 // ─── Plan Item Row (enc-plan-item style) ─────────────────────────────
 
-function PlanItemRow({ item, expandedNodeId, onToggleExpand }: { item: PlanItemView } & ExpandableProps) {
+function PlanItemRow({ item, expandedNodeId, onToggleExpand, evidenceLookup }: { item: PlanItemView } & ExpandableProps) {
   const conf = item.confidence;
   const pct = conf ? Math.round(conf.confidence * 100) : null;
   const isExpanded = expandedNodeId === item.node.id;
@@ -677,6 +696,15 @@ function PlanItemRow({ item, expandedNodeId, onToggleExpand }: { item: PlanItemV
     Procedure: { label: 'Proc', cssClass: 'img' },
   };
   const icon = iconMap[item.itemType] ?? { label: '?', cssClass: 'lab' };
+
+  // Chips resolve gate ids into titles via the plan-level evidenceTrail.
+  // We hide the chip row when either (a) the rec has no evidence gates,
+  // or (b) the merged plan wasn't fetched — the graph node just renders
+  // with confidence badges only, same as before slice C.
+  const evidence = evidenceLookup.evidenceByNodeId.get(item.node.id);
+  const gateChips = (evidence?.gateIds ?? [])
+    .map((id) => evidenceLookup.gatesById.get(id))
+    .filter((g): g is NonNullable<typeof g> => g !== undefined);
 
   return (
     <>
@@ -700,6 +728,9 @@ function PlanItemRow({ item, expandedNodeId, onToggleExpand }: { item: PlanItemV
               {item.itemType}
             </span>
           </div>
+          {gateChips.length > 0 && (
+            <EvidenceChipRow chips={gateChips} />
+          )}
         </div>
         {pct !== null && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
@@ -717,6 +748,73 @@ function PlanItemRow({ item, expandedNodeId, onToggleExpand }: { item: PlanItemV
         />
       )}
     </>
+  );
+}
+
+// ─── Evidence Chip Row (slice C) ─────────────────────────────────────
+
+/**
+ * One row of "decided from" chips under a Plan Item. Each chip renders
+ * a gate title plus a native `title` attribute containing the fields
+ * read from patient context, so hovering surfaces "what data drove
+ * this decision" without a modal. Kept intentionally minimal — richer
+ * lineage rendering (evidenceTrail table, dataGapHints) ships in slice
+ * D on the PreviewSidebar.
+ */
+function EvidenceChipRow({
+  chips,
+}: {
+  chips: Array<{ title: string; fieldsRead: string[]; status: string; reason: string | null }>;
+}) {
+  return (
+    <div
+      style={{
+        display: 'flex',
+        gap: 4,
+        flexWrap: 'wrap',
+        marginTop: 6,
+        alignItems: 'center',
+      }}
+    >
+      <span
+        style={{
+          fontSize: 9,
+          fontWeight: 700,
+          textTransform: 'uppercase',
+          letterSpacing: '.08em',
+          color: 'var(--ink-3)',
+          fontFamily: 'var(--font-manrope)',
+        }}
+      >
+        Decided from
+      </span>
+      {chips.map((chip, i) => {
+        const fieldSummary =
+          chip.fieldsRead.length > 0
+            ? `Reads: ${chip.fieldsRead.join(', ')}`
+            : 'No patient fields recorded';
+        const reasonLine = chip.reason ? `\n${chip.reason}` : '';
+        return (
+          <span
+            key={`${chip.title}-${i}`}
+            title={`${chip.title} — ${chip.status}\n${fieldSummary}${reasonLine}`}
+            style={{
+              fontSize: 10,
+              padding: '2px 7px',
+              borderRadius: 10,
+              background: 'var(--inst-soft)',
+              color: 'var(--inst)',
+              fontWeight: 600,
+              fontFamily: 'var(--font-manrope)',
+              cursor: 'help',
+              lineHeight: 1.4,
+            }}
+          >
+            {chip.title}
+          </span>
+        );
+      })}
+    </div>
   );
 }
 
