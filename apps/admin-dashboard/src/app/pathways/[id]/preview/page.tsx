@@ -4,6 +4,7 @@ import { useState, useCallback, useRef, useMemo } from 'react';
 import { useParams } from 'next/navigation';
 import { useQuery, useLazyQuery } from '@apollo/client/react';
 import { GET_PATHWAY_GRAPH, GET_PATHWAY_CONFIDENCE } from '@/lib/graphql/queries/pathways';
+import { usePreviewMergedPlan } from '@/lib/hooks/usePreviewMergedPlan';
 import type {
   PathwayGraph,
   PathwayConfidenceResult,
@@ -87,53 +88,72 @@ export default function PathwayPreviewPage() {
     fetchPolicy: 'network-only',
   });
 
+  /* ── GraphQL: Preview Merged Plan (multi-pathway resolver) ─
+   * Fires alongside the confidence sim so preview reflects both
+   * per-node scoring AND the final merged care plan (with lineage,
+   * suppressions, conflicts, catch-up items). Preview sessions are
+   * hard-deleted on unmount / next run by the hook itself. */
+  const {
+    sessionId: previewSessionId,
+    mergedPlan: previewMergedPlan,
+    loading: mergedPlanLoading,
+    error: mergedPlanError,
+    run: runMergedPlanPreview,
+  } = usePreviewMergedPlan();
+
   const handleRunSimulation = useCallback(
     async (context: PatientContextInput) => {
       setPatientContext(context);
       setSimError(null);
-      try {
-        const { data, error } = await runSimulation({
-          variables: {
-            pathwayId,
-            patientContext: context,
-          },
-        });
 
-        if (error) {
-          console.error('[Simulation] GraphQL error:', error.message);
-          setSimError(error.message);
-          setConfidenceResult(null);
-          goToResults();
-          return;
-        }
+      // Fire both calls in parallel — they hit different resolvers, and
+      // the merged-plan preview shouldn't block the confidence sim (or
+      // vice-versa) if one of them fails. Promise.allSettled so a failure
+      // on one side surfaces its error without hiding the other's result.
+      const [confidenceOutcome] = await Promise.allSettled([
+        runSimulation({ variables: { pathwayId, patientContext: context } }),
+        runMergedPlanPreview(pathwayId, context),
+      ]);
 
-        const result = data?.pathwayConfidence ?? null;
-        console.log('[Simulation] result:', result);
-        if (result) {
-          console.log('[Simulation] overallConfidence:', result.overallConfidence);
-          console.log('[Simulation] node count:', result.nodes?.length);
-          console.log('[Simulation] first 3 nodeIdentifiers:', result.nodes.slice(0, 3).map((n: NodeConfidenceResult) => n.nodeIdentifier));
-          console.log('[Simulation] graph node IDs (first 5):', graphNodes.slice(0, 5).map(n => n.id));
-        }
-
-        if (!result) {
-          setSimError('No confidence data returned from server.');
-          setConfidenceResult(null);
-        } else {
-          setSimError(null);
-          setConfidenceResult(result);
-        }
-        goToResults();
-        setSidebarTab('confidence');
-      } catch (err: unknown) {
+      if (confidenceOutcome.status === 'rejected') {
+        const err = confidenceOutcome.reason;
         const message = err instanceof Error ? err.message : String(err);
         console.error('[Simulation] Network/unexpected error:', message);
         setSimError(message);
         setConfidenceResult(null);
         goToResults();
+        return;
       }
+
+      const { data, error } = confidenceOutcome.value;
+      if (error) {
+        console.error('[Simulation] GraphQL error:', error.message);
+        setSimError(error.message);
+        setConfidenceResult(null);
+        goToResults();
+        return;
+      }
+
+      const result = data?.pathwayConfidence ?? null;
+      console.log('[Simulation] result:', result);
+      if (result) {
+        console.log('[Simulation] overallConfidence:', result.overallConfidence);
+        console.log('[Simulation] node count:', result.nodes?.length);
+        console.log('[Simulation] first 3 nodeIdentifiers:', result.nodes.slice(0, 3).map((n: NodeConfidenceResult) => n.nodeIdentifier));
+        console.log('[Simulation] graph node IDs (first 5):', graphNodes.slice(0, 5).map(n => n.id));
+      }
+
+      if (!result) {
+        setSimError('No confidence data returned from server.');
+        setConfidenceResult(null);
+      } else {
+        setSimError(null);
+        setConfidenceResult(result);
+      }
+      goToResults();
+      setSidebarTab('confidence');
     },
-    [pathwayId, runSimulation, goToResults, graphNodes],
+    [pathwayId, runSimulation, runMergedPlanPreview, goToResults, graphNodes],
   );
 
   /* ── Confidence Map for Hierarchy ───────────────────────── */
@@ -275,11 +295,14 @@ export default function PathwayPreviewPage() {
           onTabChange={setSidebarTab}
           patientContext={patientContext}
           selectedPreset={selectedPreset}
-          simulationRunning={simLoading}
+          simulationRunning={simLoading || mergedPlanLoading}
           confidenceResult={confidenceResult}
           nodes={graphNodes}
           edges={graphEdges}
           pathwayId={pathwayId}
+          previewSessionId={previewSessionId}
+          previewMergedPlan={previewMergedPlan}
+          previewMergedPlanError={mergedPlanError}
         />
       </div>
 

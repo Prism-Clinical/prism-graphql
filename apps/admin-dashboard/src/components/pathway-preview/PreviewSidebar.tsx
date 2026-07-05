@@ -7,6 +7,7 @@ import type {
   PathwayGraphNode,
   PathwayGraphEdge,
   ResolutionType,
+  MergedCarePlan,
 } from '@/types';
 import type { SidebarTab } from './types';
 import {
@@ -28,6 +29,15 @@ interface PreviewSidebarProps {
   nodes: PathwayGraphNode[];
   edges: PathwayGraphEdge[];
   pathwayId: string;
+  /**
+   * Slice B: merged-plan preview surfaces alongside the confidence sim.
+   * `null` before the first run; populated after a successful preview
+   * resolution. `previewSessionId` is the server-side session UUID
+   * (isPreview=true) whose lifecycle is managed by usePreviewMergedPlan.
+   */
+  previewSessionId?: string | null;
+  previewMergedPlan?: MergedCarePlan | null;
+  previewMergedPlanError?: string | null;
 }
 
 export default function PreviewSidebar({
@@ -38,6 +48,9 @@ export default function PreviewSidebar({
   simulationRunning,
   confidenceResult,
   nodes,
+  previewSessionId = null,
+  previewMergedPlan = null,
+  previewMergedPlanError = null,
 }: PreviewSidebarProps) {
   return (
     <div className="enc-copilot">
@@ -70,6 +83,9 @@ export default function PreviewSidebar({
             patientContext={patientContext}
             selectedPreset={selectedPreset}
             simulationRunning={simulationRunning}
+            previewSessionId={previewSessionId}
+            previewMergedPlan={previewMergedPlan}
+            previewMergedPlanError={previewMergedPlanError}
           />
         )}
         {activeTab === 'confidence' && (
@@ -114,10 +130,16 @@ function ContextTab({
   patientContext,
   selectedPreset,
   simulationRunning,
+  previewSessionId,
+  previewMergedPlan,
+  previewMergedPlanError,
 }: {
   patientContext: PatientContextInput | null;
   selectedPreset: string;
   simulationRunning: boolean;
+  previewSessionId: string | null;
+  previewMergedPlan: MergedCarePlan | null;
+  previewMergedPlanError: string | null;
 }) {
   const presetLabel = SAMPLE_PATIENTS[selectedPreset]?.label ?? 'Custom';
 
@@ -138,6 +160,16 @@ function ContextTab({
           )}
         </div>
       </div>
+
+      {/* Merged Plan Preview — slice B minimum: a compact readout so the
+          full resolver → merge pipeline is verifiably alive alongside the
+          confidence sim. Chips + lineage panels ship in slices C / D. */}
+      <MergedPlanPreviewSection
+        sessionId={previewSessionId}
+        mergedPlan={previewMergedPlan}
+        error={previewMergedPlanError}
+        running={simulationRunning}
+      />
 
       {/* Patient summary */}
       {patientContext && (
@@ -172,6 +204,98 @@ function ContextTab({
         </div>
       )}
     </>
+  );
+}
+
+// ─── Merged Plan Preview (slice B) ───────────────────────────────────
+
+function MergedPlanPreviewSection({
+  sessionId,
+  mergedPlan,
+  error,
+  running,
+}: {
+  sessionId: string | null;
+  mergedPlan: MergedCarePlan | null;
+  error: string | null;
+  running: boolean;
+}) {
+  if (error) {
+    return (
+      <div className="enc-copilot-section">
+        <div className="enc-cp-h" style={{ color: 'var(--danger)' }}>
+          Merged Plan Preview
+        </div>
+        <div className="enc-cp-msg" style={{ color: 'var(--danger)' }}>
+          {error}
+        </div>
+      </div>
+    );
+  }
+  if (!mergedPlan) {
+    return (
+      <div className="enc-copilot-section govern">
+        <div className="enc-cp-h" style={{ color: 'var(--brand)' }}>
+          Merged Plan Preview
+        </div>
+        <div className="enc-cp-msg">
+          {running
+            ? <em>Resolving merged plan…</em>
+            : <>Run a simulation to see the merged care plan.</>}
+        </div>
+      </div>
+    );
+  }
+
+  const recCount =
+    mergedPlan.medications.length +
+    mergedPlan.labs.length +
+    mergedPlan.imaging.length +
+    mergedPlan.procedures.length +
+    mergedPlan.guidance.length +
+    mergedPlan.schedules.length +
+    mergedPlan.qualityMetrics.length;
+  const unresolvedConflicts = mergedPlan.conflicts.filter((c) => c.resolution == null).length;
+
+  return (
+    <div className="enc-copilot-section govern">
+      <div className="enc-cp-h" style={{ color: 'var(--brand)' }}>
+        Merged Plan Preview
+      </div>
+      <div className="enc-cp-rows">
+        <div className="enc-cp-row">
+          <span>Session ID</span>
+          <strong
+            style={{ fontFamily: 'var(--font-jetbrains)', fontSize: 10 }}
+            title={sessionId ?? undefined}
+          >
+            {sessionId ? sessionId.slice(0, 8) : '—'}
+          </strong>
+        </div>
+        <div className="enc-cp-row">
+          <span>Contributing pathways</span>
+          <strong>{mergedPlan.sourcePathwayIds.length}</strong>
+        </div>
+        <div className="enc-cp-row">
+          <span>Recommendations</span>
+          <strong>{recCount}</strong>
+        </div>
+        <div className="enc-cp-row">
+          <span>Suppressed</span>
+          <strong>{mergedPlan.suppressed.length}</strong>
+        </div>
+        <div className="enc-cp-row">
+          <span>Unresolved conflicts</span>
+          <strong style={{ color: unresolvedConflicts > 0 ? 'var(--danger)' : undefined }}>
+            {unresolvedConflicts}
+          </strong>
+        </div>
+        <div className="enc-cp-row">
+          <span>Catch-up items</span>
+          <strong>{mergedPlan.catchUpItems.length}</strong>
+        </div>
+      </div>
+    </div>
   );
 }
 
