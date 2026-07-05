@@ -73,6 +73,7 @@ export default function PreviewSidebar({
           <TabButton label="Context" tab="context" activeTab={activeTab} onClick={onTabChange} />
           <TabButton label="Confidence" tab="confidence" activeTab={activeTab} onClick={onTabChange} />
           <TabButton label="Evidence" tab="evidence" activeTab={activeTab} onClick={onTabChange} />
+          <TabButton label="Lineage" tab="lineage" activeTab={activeTab} onClick={onTabChange} />
         </div>
       </div>
 
@@ -93,6 +94,13 @@ export default function PreviewSidebar({
         )}
         {activeTab === 'evidence' && (
           <EvidenceTab confidenceResult={confidenceResult} nodes={nodes} />
+        )}
+        {activeTab === 'lineage' && (
+          <LineageTab
+            mergedPlan={previewMergedPlan}
+            simulationRunning={simulationRunning}
+            error={previewMergedPlanError}
+          />
         )}
       </div>
     </div>
@@ -509,4 +517,284 @@ function EvidenceTab({
       )}
     </>
   );
+}
+
+// ─── Lineage Tab (slice D) ───────────────────────────────────────────
+//
+// Renders the merged-plan lineage returned by the resolver:
+//   - Evidence Trail — every Gate/DP the resolver evaluated, sorted so
+//     satisfied gates come first, pending/unknown next, then gated-out
+//     (i.e. "what closed off a branch") last.
+//   - Data Gaps — only the gates that gated a branch out AND cascade
+//     into at least one Resolved* rec. Each row surfaces "add these
+//     patient fields → unlock N recs" so the provider can see exactly
+//     what data would broaden the plan.
+//
+// Evidence Trail and Data Gaps are two views of the same underlying
+// state (both come from `MergedCarePlan.evidenceTrail` +
+// `dataGapHints`), presented at different levels of aggregation.
+
+type GateStatus =
+  | 'SATISFIED'
+  | 'PENDING_QUESTION'
+  | 'UNKNOWN'
+  | 'GATED_OUT'
+  | 'EXCLUDED';
+
+// Ordering used to sort the evidence trail rows top → bottom.
+const STATUS_ORDER: Record<GateStatus, number> = {
+  SATISFIED: 0,
+  PENDING_QUESTION: 1,
+  UNKNOWN: 2,
+  GATED_OUT: 3,
+  EXCLUDED: 4,
+};
+
+function LineageTab({
+  mergedPlan,
+  simulationRunning,
+  error,
+}: {
+  mergedPlan: MergedCarePlan | null;
+  simulationRunning: boolean;
+  error: string | null;
+}) {
+  const sortedTrail = useMemo(() => {
+    if (!mergedPlan) return [];
+    const trail = [...mergedPlan.evidenceTrail];
+    trail.sort((a, b) => {
+      const sa = STATUS_ORDER[a.status as GateStatus] ?? 99;
+      const sb = STATUS_ORDER[b.status as GateStatus] ?? 99;
+      if (sa !== sb) return sa - sb;
+      return a.title.localeCompare(b.title);
+    });
+    return trail;
+  }, [mergedPlan]);
+
+  const dataGaps = mergedPlan?.dataGapHints ?? [];
+
+  if (error) {
+    return (
+      <div className="enc-copilot-section">
+        <div className="enc-cp-h" style={{ color: 'var(--danger)' }}>Lineage</div>
+        <div className="enc-cp-msg" style={{ color: 'var(--danger)' }}>{error}</div>
+      </div>
+    );
+  }
+  if (!mergedPlan) {
+    return (
+      <div className="enc-copilot-section govern">
+        <div className="enc-cp-h" style={{ color: 'var(--brand)' }}>Lineage</div>
+        <div className="enc-cp-msg">
+          {simulationRunning
+            ? <em>Resolving merged plan…</em>
+            : <>Run a simulation to see how gates and data drove the plan.</>}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <div className="enc-copilot-section">
+        <div className="enc-cp-h">Evidence Trail</div>
+        <div className="enc-cp-msg">
+          <strong>{sortedTrail.length}</strong> gate{sortedTrail.length === 1 ? '' : 's'} evaluated across contributing pathways
+        </div>
+      </div>
+
+      {sortedTrail.length > 0 && (
+        <div className="enc-copilot-section govern" style={{ paddingTop: 8 }}>
+          <div className="enc-cp-pref-rows">
+            {sortedTrail.slice(0, 40).map((g, i) => (
+              <GateEvidenceRow key={`${g.nodeId}-${i}`} gate={g} />
+            ))}
+            {sortedTrail.length > 40 && (
+              <div style={{ fontSize: 10, color: 'var(--ink-3)', textAlign: 'center', padding: '4px 0' }}>
+                + {sortedTrail.length - 40} more
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      <div className="enc-copilot-section">
+        <div className="enc-cp-h">Data Gaps</div>
+        <div className="enc-cp-msg">
+          {dataGaps.length === 0
+            ? <>No data gaps — every gate that fired had the inputs it needed.</>
+            : <><strong>{dataGaps.length}</strong> gap{dataGaps.length === 1 ? '' : 's'} could unlock more recommendations if resolved.</>}
+        </div>
+      </div>
+
+      {dataGaps.map((hint, i) => (
+        <DataGapCard key={`${hint.gateNodeId}-${i}`} hint={hint} />
+      ))}
+    </>
+  );
+}
+
+// One row in the evidence trail table.
+function GateEvidenceRow({
+  gate,
+}: {
+  gate: {
+    nodeId: string;
+    title: string;
+    kind: string;
+    status: string;
+    reason: string | null;
+    fieldsRead: string[];
+  };
+}) {
+  const statusColor = gateStatusColor(gate.status as GateStatus);
+  const fieldsSummary =
+    gate.fieldsRead.length === 0
+      ? 'no patient fields'
+      : gate.fieldsRead.join(', ');
+  const hoverTitle = [
+    `${gate.title} — ${gate.status}`,
+    gate.reason ? `Reason: ${gate.reason}` : null,
+    `Reads: ${fieldsSummary}`,
+    `Kind: ${gate.kind}`,
+  ]
+    .filter(Boolean)
+    .join('\n');
+
+  return (
+    <div
+      className="enc-cp-pref-row"
+      title={hoverTitle}
+      style={{ cursor: 'help', alignItems: 'flex-start' }}
+    >
+      <span className="enc-cp-pref-lbl-dot" style={{ background: statusColor, marginTop: 4 }} />
+      <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
+        <span
+          style={{
+            fontSize: 11,
+            fontWeight: 600,
+            color: 'var(--ink)',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {gate.title}
+        </span>
+        {gate.fieldsRead.length > 0 && (
+          <span
+            style={{
+              fontSize: 9,
+              color: 'var(--ink-3)',
+              fontFamily: 'var(--font-jetbrains)',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {fieldsSummary}
+          </span>
+        )}
+      </div>
+      <span
+        style={{
+          fontSize: 9,
+          fontWeight: 700,
+          textTransform: 'uppercase',
+          letterSpacing: '.06em',
+          color: statusColor,
+          fontFamily: 'var(--font-manrope)',
+        }}
+      >
+        {gate.status.replace(/_/g, ' ')}
+      </span>
+    </div>
+  );
+}
+
+// One "Add X → unlocks N recs" callout.
+function DataGapCard({
+  hint,
+}: {
+  hint: {
+    gateNodeId: string;
+    gateTitle: string;
+    kind: string;
+    status: string;
+    reason: string | null;
+    fieldsRead: string[];
+    unlockedRecommendations: Array<{ nodeId: string; nodeType: string; title: string }>;
+  };
+}) {
+  const unlocked = hint.unlockedRecommendations;
+  return (
+    <div className="enc-copilot-section govern">
+      <div className="enc-cp-h" style={{ color: 'var(--brand)' }}>
+        {hint.gateTitle}
+      </div>
+      {hint.fieldsRead.length > 0 && (
+        <div style={{ fontSize: 10, color: 'var(--ink-3)', fontFamily: 'var(--font-jetbrains)', marginBottom: 6 }}>
+          Add: {hint.fieldsRead.join(', ')}
+        </div>
+      )}
+      {hint.reason && (
+        <div style={{ fontSize: 10, color: 'var(--ink-3)', marginBottom: 6, fontStyle: 'italic' }}>
+          {hint.reason}
+        </div>
+      )}
+      <div className="enc-cp-msg" style={{ marginBottom: 6 }}>
+        Would unlock <strong>{unlocked.length}</strong> recommendation{unlocked.length === 1 ? '' : 's'}
+      </div>
+      {unlocked.length > 0 && (
+        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+          {unlocked.slice(0, 8).map((r, i) => (
+            <span
+              key={`${r.nodeId}-${i}`}
+              title={`${r.nodeType} — ${r.title}`}
+              style={{
+                fontSize: 10,
+                padding: '2px 7px',
+                borderRadius: 10,
+                background: 'var(--ok-soft)',
+                color: 'var(--ok)',
+                fontWeight: 600,
+                fontFamily: 'var(--font-manrope)',
+                lineHeight: 1.4,
+              }}
+            >
+              {r.title}
+            </span>
+          ))}
+          {unlocked.length > 8 && (
+            <span
+              style={{
+                fontSize: 10,
+                color: 'var(--ink-3)',
+                padding: '2px 7px',
+              }}
+            >
+              + {unlocked.length - 8} more
+            </span>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function gateStatusColor(status: GateStatus): string {
+  switch (status) {
+    case 'SATISFIED':
+      return 'var(--ok)';
+    case 'PENDING_QUESTION':
+      return 'var(--warn)';
+    case 'UNKNOWN':
+      return 'var(--ink-3)';
+    case 'GATED_OUT':
+      return 'var(--danger)';
+    case 'EXCLUDED':
+      return 'var(--ink-3)';
+    default:
+      return 'var(--ink-3)';
+  }
 }
