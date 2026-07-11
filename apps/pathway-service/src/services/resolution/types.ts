@@ -73,53 +73,55 @@ export function createEmptyDependencyMap(): DependencyMap {
 
 // ─── Gate Evaluation ────────────────────────────────────────────────
 
-export interface GateCondition {
-  field: string;
-  operator: string;
+export type CodedOperator =
+  | 'includes_code' | 'equals' | 'exists'
+  | 'greater_than' | 'less_than'
+  | 'count_in_window' | 'trend_up' | 'trend_down' | 'delta_from_baseline';
+
+export type AttributeOperator =
+  | 'equals' | 'not_equals'
+  | 'greater_than' | 'greater_or_equal' | 'less_than' | 'less_or_equal'
+  | 'in' | 'exists';
+
+export interface CodedCondition {
+  field: 'conditions' | 'medications' | 'allergies' | 'labs' | 'vitals';
+  operator: CodedOperator;
   value: string;
   system?: string;
-  /** Numeric threshold for greater_than/less_than operators. When present, `value` is the code to look up. */
   threshold?: number;
-  /**
-   * Time-shape operators (count_in_window, and the upcoming trend_up /
-   * trend_down / delta_from_baseline) only consider entries whose date
-   * falls within `window_days` of "now". When omitted, the operator
-   * counts/measures all matching entries regardless of date — useful
-   * for ever-had patterns like lifetime allergy history. The window is
-   * a calendar-day count, evaluated against the snapshot's wall clock.
-   */
   window_days?: number;
-  /**
-   * For count_in_window: how many matching entries trigger the gate.
-   * The default is 2 (≥2 = "this happened more than once"), since the
-   * common authoring intent is "recurrent X" rather than "ever had X"
-   * (the latter is what `includes_code` already covers).
-   */
   count_threshold?: number;
-  /**
-   * For trend_up / trend_down / delta_from_baseline: the smallest number
-   * of dated, in-window data points required before the operator will
-   * fire. Default 3 (a slope through 2 points is just a line). Setting
-   * this lower than 2 doesn't make sense and is treated as 2.
-   */
   min_points?: number;
-  /**
-   * For trend_up / trend_down: minimum |slope| (value-units per day) to
-   * count as a "meaningful" trend. Default 0 — any non-flat slope in the
-   * declared direction satisfies. Authors set this when a slow drift
-   * shouldn't fire the gate (e.g. HbA1c rising < 0.05/day = noise).
-   */
   slope_threshold?: number;
-  /**
-   * For delta_from_baseline: signed delta between newest and oldest
-   * in-window value that satisfies the gate. Positive threshold = rise
-   * by ≥this much (current ≥ baseline + threshold). Negative threshold
-   * = drop by ≥this much (current ≤ baseline + threshold, since
-   * threshold is negative). Zero is degenerate — any non-flat change
-   * fires.
-   */
   delta_threshold?: number;
+  display?: string; // UI decorator — ignored by the evaluator
+  note?: string;    // UI decorator — ignored by the evaluator
 }
+
+export interface AttributeCondition {
+  attribute: string;
+  operator: AttributeOperator;
+  value: string | number | boolean | Array<string | number>;
+  unit?: string;
+  display?: string; // UI decorator
+  note?: string;    // UI decorator
+}
+
+export type GateCondition = CodedCondition | AttributeCondition;
+
+export function isAttributeCondition(c: GateCondition): c is AttributeCondition {
+  return typeof (c as AttributeCondition).attribute === 'string';
+}
+
+export interface AttributeCodeEntry {
+  attributeName: string;
+  namespace: string;
+  system: string;
+  code: string;
+  valueType: 'number' | 'boolean' | 'string';
+}
+
+export type AttributeCodeMap = Map<string, AttributeCodeEntry>;
 
 export interface GateDependsOn {
   node_id: string;
