@@ -12,10 +12,10 @@
         reverse_proxy gateway:4000
     }
 
-    # Admin Dashboard
-    handle /admin* {
-        reverse_proxy admin-dashboard:3001
-    }
+    # Admin Dashboard is deployed from the standalone prism-admin-dashboard
+    # repo, not this stack. If you need to proxy /admin here, point at
+    # whatever host runs the standalone dashboard (e.g. `reverse_proxy
+    # host.docker.internal:3001` for a local dev server).
 
     # Web Dashboard (default)
     handle {
