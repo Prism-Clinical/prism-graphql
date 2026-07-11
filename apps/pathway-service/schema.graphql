@@ -342,6 +342,78 @@ type MergedCarePlan {
   the prereq's `satisfaction_check` property.
   """
   catchUpItems: [CatchUpItem!]!
+  """
+  Provenance: every gate / decision-point across the contributing
+  pathways that fired during resolution, with the patient-context
+  fields each one read. Lets the UI render "the system considered
+  these patient signals" alongside the merged plan, so providers can
+  see what drove the recommendations and what additional data could
+  influence them.
+  """
+  evidenceTrail: [GateEvidence!]!
+  """
+  Gates that DIDN'T fire (gated out, pending an answer, or
+  unevaluable for lack of data) and the recommendations their subtree
+  would have surfaced. Lets the UI render "Add this data → unlocks N
+  more recommendations" prompts.
+  """
+  dataGapHints: [DataGapHint!]!
+}
+
+"""
+A closed-off branch: a gate that didn't fire, plus the action-node
+recommendations the system would have surfaced if it had. Powers
+"add this data" affordances in the provider UI.
+"""
+type DataGapHint {
+  """Gate node id."""
+  gateNodeId: ID!
+  gateTitle: String!
+  """Same kind vocabulary as GateEvidence.kind."""
+  kind: String!
+  """GATED_OUT / PENDING_QUESTION / UNKNOWN."""
+  status: String!
+  reason: String
+  fieldsRead: [String!]!
+  """Action-node recommendations downstream of this gate."""
+  unlockedRecommendations: [UnlockedRecommendation!]!
+  """Pathway that produced this hint (set in the merged plan)."""
+  sourcePathwayId: ID!
+}
+
+type UnlockedRecommendation {
+  nodeId: ID!
+  nodeType: String!
+  title: String!
+}
+
+"""
+One gate / decision-point's contribution to a pathway's resolution.
+Surfaced for provider transparency — clinicians can see what patient
+data the pathway considered, not just the final care plan.
+"""
+type GateEvidence {
+  """Pathway node id of the gate / decision point."""
+  nodeId: ID!
+  """Display title (e.g. "BP > 130", "HbA1c trending up over 6mo")."""
+  title: String!
+  """
+  Source kind: 'patient_attribute' | 'compound' | 'question' |
+  'llm_text_analysis' | 'prior_node_result' | 'decision_point'.
+  """
+  kind: String!
+  """INCLUDED / GATED_OUT / PENDING_QUESTION / etc."""
+  status: String!
+  """Human-readable evaluator output (e.g. "labs value 8.1 > 7.0")."""
+  reason: String
+  """
+  Patient-context field paths the gate read (e.g. "labs",
+  "conditions", "vitals.systolic_bp"). Lets the dashboard render
+  which signals drove the gate.
+  """
+  fieldsRead: [String!]!
+  """Pathway that produced this evidence (set in the merged plan)."""
+  sourcePathwayId: ID!
 }
 
 """
@@ -390,6 +462,12 @@ type ResolvedMedication {
   clinicalRole: String
   sourcePathwayId: ID!
   sourceNodeId: String
+  """
+  Gate / decision-point node ids that gated the path to this
+  recommendation. Cross-reference with MergedCarePlan.evidenceTrail
+  to render "this fired because of A, B, C" chips per rec.
+  """
+  evidenceGateIds: [String!]!
 }
 
 type ResolvedLab {
@@ -399,6 +477,12 @@ type ResolvedLab {
   specimen: String
   sourcePathwayId: ID!
   sourceNodeId: String
+  """
+  Gate / decision-point node ids that gated the path to this
+  recommendation. Cross-reference with MergedCarePlan.evidenceTrail
+  to render "this fired because of A, B, C" chips per rec.
+  """
+  evidenceGateIds: [String!]!
 }
 
 type ResolvedProcedure {
@@ -407,6 +491,12 @@ type ResolvedProcedure {
   system: String
   sourcePathwayId: ID!
   sourceNodeId: String
+  """
+  Gate / decision-point node ids that gated the path to this
+  recommendation. Cross-reference with MergedCarePlan.evidenceTrail
+  to render "this fired because of A, B, C" chips per rec.
+  """
+  evidenceGateIds: [String!]!
 }
 
 """Imaging order — e.g. "MRI head without contrast"."""
@@ -420,6 +510,12 @@ type ResolvedImaging {
   system: String
   sourcePathwayId: ID!
   sourceNodeId: String
+  """
+  Gate / decision-point node ids that gated the path to this
+  recommendation. Cross-reference with MergedCarePlan.evidenceTrail
+  to render "this fired because of A, B, C" chips per rec.
+  """
+  evidenceGateIds: [String!]!
 }
 
 """Patient instruction / counseling content."""
@@ -432,6 +528,12 @@ type ResolvedGuidance {
   category: String
   sourcePathwayId: ID!
   sourceNodeId: String
+  """
+  Gate / decision-point node ids that gated the path to this
+  recommendation. Cross-reference with MergedCarePlan.evidenceTrail
+  to render "this fired because of A, B, C" chips per rec.
+  """
+  evidenceGateIds: [String!]!
 }
 
 type ResolvedSchedule {
@@ -439,6 +541,12 @@ type ResolvedSchedule {
   description: String!
   sourcePathwayId: ID!
   sourceNodeId: String
+  """
+  Gate / decision-point node ids that gated the path to this
+  recommendation. Cross-reference with MergedCarePlan.evidenceTrail
+  to render "this fired because of A, B, C" chips per rec.
+  """
+  evidenceGateIds: [String!]!
 }
 
 type ResolvedQualityMetric {
@@ -446,6 +554,12 @@ type ResolvedQualityMetric {
   measure: String!
   sourcePathwayId: ID!
   sourceNodeId: String
+  """
+  Gate / decision-point node ids that gated the path to this
+  recommendation. Cross-reference with MergedCarePlan.evidenceTrail
+  to render "this fired because of A, B, C" chips per rec.
+  """
+  evidenceGateIds: [String!]!
 }
 
 type MergedMedicationRecommendation {
@@ -687,6 +801,15 @@ type MultiPathwayResolutionSession {
   patientId: ID!
   providerId: ID!
   status: MultiPathwayResolutionSessionStatus!
+  """
+  True when this session was created by admin/QA/preview tooling
+  (currently: `startMultiPathwayResolution` called with
+  `syntheticPatient: true`). Preview sessions are filtered out of
+  default list queries and can be hard-deleted via
+  `deletePreviewSession`. They exercise the exact same resolver code
+  path as real sessions so preview traffic tests what ships to prod.
+  """
+  isPreview: Boolean!
   mergedPlan: MergedCarePlan!
   contributingSessionIds: [ID!]!
   """Bare ID list of pathways that fed the merge. For full pathway data use `contributingPathways`."""
@@ -750,6 +873,8 @@ type MultiPathwayResolutionSessionSummary {
   patientId: ID!
   providerId: ID!
   status: MultiPathwayResolutionSessionStatus!
+  """See `MultiPathwayResolutionSession.isPreview`."""
+  isPreview: Boolean!
   contributingPathwayCount: Int!
   unresolvedConflictCount: Int!
   carePlanId: ID
@@ -928,6 +1053,16 @@ type CarePlanGenerationResult {
   carePlanId: ID
   warnings: [String!]!
   blockers: [ValidationBlockerType!]!
+}
+
+"""
+Result of `deletePreviewSession`. Reports the deleted multi-pathway
+session id plus how many per-pathway contributing sessions were removed
+as part of the cascade.
+"""
+type DeletePreviewSessionResult {
+  sessionId: ID!
+  contributingSessionsDeleted: Int!
 }
 
 """
@@ -1235,10 +1370,16 @@ type Query {
   """Fetch a single multi-pathway resolution session including its merged plan."""
   multiPathwayResolutionSession(sessionId: ID!): MultiPathwayResolutionSession
 
-  """List a patient's multi-pathway sessions, optionally filtered by status."""
+  """
+  List a patient's multi-pathway sessions, optionally filtered by status.
+  Preview sessions (created by admin/QA tooling with `syntheticPatient:
+  true`) are excluded by default. Pass `includePreview: true` to include
+  them — intended for admin surfaces only.
+  """
   patientMultiPathwayResolutionSessions(
     patientId: ID!,
-    status: MultiPathwayResolutionSessionStatus
+    status: MultiPathwayResolutionSessionStatus,
+    includePreview: Boolean
   ): [MultiPathwayResolutionSessionSummary!]!
 
   """
@@ -1358,6 +1499,15 @@ type Mutation {
 
   """Mark a multi-pathway session ABANDONED."""
   abandonMultiPathwaySession(sessionId: ID!, reason: String): MultiPathwayResolutionSession!
+
+  """
+  Hard-delete a preview session (one whose `isPreview` is true) and its
+  contributing per-pathway sessions. Refuses to touch a real (non-preview)
+  session — those must go through `abandonMultiPathwaySession`, which
+  preserves the row for audit. Intended for admin/QA/preview UIs so they
+  can clean up their own traffic instead of leaving rows behind.
+  """
+  deletePreviewSession(sessionId: ID!): DeletePreviewSessionResult!
 
   """
   Re-run the merge pipeline against the current state of every contributing

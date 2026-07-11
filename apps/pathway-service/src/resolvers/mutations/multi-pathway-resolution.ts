@@ -13,7 +13,9 @@
  *   - resolveConflict                applies one provider choice
  *   - generateMergedCarePlan         materializes care_plans rows (validates
  *                                    no unresolved conflicts remain)
- *   - abandonMultiPathwaySession     marks ABANDONED
+ *   - abandonMultiPathwaySession     marks ABANDONED (row preserved for audit)
+ *   - deletePreviewSession           hard-deletes a preview session and its
+ *                                    contributing per-pathway sessions
  */
 
 import { GraphQLError } from 'graphql';
@@ -64,6 +66,7 @@ import {
 } from '../helpers/resolution-context';
 import {
   createMultiPathwaySession,
+  deletePreviewSession,
   getMultiPathwaySession,
   getPatientMultiPathwaySessions,
   markMultiPathwaySessionStatus,
@@ -143,6 +146,11 @@ export const multiPathwayResolutionMutations = {
       matcherOptions.directPatientCodes = codes;
     }
 
+    // syntheticPatient signals this is admin/QA/preview traffic; persist that
+    // so downstream list views can filter it out and `deletePreviewSession`
+    // can clean up. Real provider encounters never set this flag.
+    const isPreview = args.syntheticPatient === true;
+
     const matched = await getMatchedPathways(pool, args.patientId, matcherOptions);
     if (matched.length === 0) {
       // Persist an empty session so the FE has something to show — and so we
@@ -154,6 +162,7 @@ export const multiPathwayResolutionMutations = {
         contributingSessionIds: [],
         contributingPathwayIds: [],
         mergedPlan: emptyMergedCarePlan(),
+        isPreview,
       });
       const session = await getMultiPathwaySession(pool, sessionId);
       return formatSessionForGraphQL(session!);
@@ -179,6 +188,7 @@ export const multiPathwayResolutionMutations = {
       contributingPathwayIds,
       mergedPlan: finalMerged,
       ddiWarnings,
+      isPreview,
     });
 
     const session = await getMultiPathwaySession(pool, sessionId);
@@ -276,6 +286,36 @@ export const multiPathwayResolutionMutations = {
   },
 
   /**
+   * Hard-delete a preview session (and its contributing per-pathway
+   * sessions). Refuses to touch a real session — those must go through
+   * `abandonMultiPathwaySession`, which preserves the row for audit.
+   * Intended for admin/QA/preview UIs to clean up after themselves so
+   * preview traffic doesn't accumulate in the database.
+   */
+  async deletePreviewSession(
+    _parent: unknown,
+    args: { sessionId: string },
+    context: DataSourceContext,
+  ) {
+    const result = await deletePreviewSession(context.pool, args.sessionId);
+    if (result.kind === 'not-found') {
+      throw new GraphQLError('Session not found', {
+        extensions: { code: 'NOT_FOUND' },
+      });
+    }
+    if (result.kind === 'not-preview') {
+      throw new GraphQLError(
+        'Session is not a preview session and cannot be hard-deleted; use abandonMultiPathwaySession instead',
+        { extensions: { code: 'FORBIDDEN' } },
+      );
+    }
+    return {
+      sessionId: args.sessionId,
+      contributingSessionsDeleted: result.contributingSessionsDeleted,
+    };
+  },
+
+  /**
    * Re-run the merge pipeline against the current state of every contributing
    * per-pathway session, then update this multi-pathway session's stored
    * mergedPlan + ddiWarnings. Used after a provider answers a Gate question
@@ -343,19 +383,25 @@ export const multiPathwayResolutionQueries = {
 
   async patientMultiPathwayResolutionSessions(
     _: unknown,
-    args: { patientId: string; status?: MultiPathwaySessionStatus },
+    args: {
+      patientId: string;
+      status?: MultiPathwaySessionStatus;
+      includePreview?: boolean;
+    },
     context: DataSourceContext,
   ) {
     const summaries = await getPatientMultiPathwaySessions(
       context.pool,
       args.patientId,
       args.status,
+      args.includePreview ?? false,
     );
     return summaries.map((s) => ({
       id: s.id,
       patientId: s.patientId,
       providerId: s.providerId,
       status: s.status,
+      isPreview: s.isPreview,
       contributingPathwayCount: s.contributingPathwayCount,
       unresolvedConflictCount: s.unresolvedConflictCount,
       carePlanId: s.carePlanId,
@@ -596,11 +642,16 @@ export async function buildResolvedPlansFromSessions(
     const pathwayLogicalId = meta.rows[0]?.logical_id ?? session.pathwayId;
     const pathwayTitle = meta.rows[0]?.title ?? session.pathwayId;
     plans.push(
-      projectResolutionToCarePlan(session.resolutionState, {
-        pathwayId: session.pathwayId,
-        pathwayLogicalId,
-        pathwayTitle,
-      }),
+      projectResolutionToCarePlan(
+        session.resolutionState,
+        {
+          pathwayId: session.pathwayId,
+          pathwayLogicalId,
+          pathwayTitle,
+        },
+        [],
+        session.dependencyMap,
+      ),
     );
   }
   return plans;
@@ -702,6 +753,7 @@ export async function resolveAndPersistAll(
           pathwayTitle: m.pathway.title,
         },
         catchUpItems,
+        traversalResult.dependencyMap,
       ),
     );
   }
@@ -829,6 +881,8 @@ export function applyResolution(
         duration: custom.duration,
         route: custom.route,
         sourcePathwayId: 'provider-override',
+        // Provider-typed override doesn't trace back to any pathway gate.
+        evidenceGateIds: [],
       };
       const rec: MergedRecommendation<ResolvedMedication> = {
         recommendation: customMed,
@@ -1008,6 +1062,7 @@ export function formatSessionForGraphQL(s: MultiPathwayResolutionSession) {
     patientId: s.patientId,
     providerId: s.providerId,
     status: s.status,
+    isPreview: s.isPreview,
     mergedPlan: formatMergedForGraphQL(s.mergedPlan),
     contributingSessionIds: s.contributingSessionIds,
     contributingPathwayIds: s.contributingPathwayIds,
@@ -1051,6 +1106,10 @@ function gqlState(state: string): string {
 }
 
 export function formatMergedForGraphQL(merged: MergedCarePlan) {
+  // Defensive defaults on read: sessions stored under prior schema versions
+  // may not carry the newer fields (imaging / guidance / catchUpItems /
+  // evidenceTrail / dataGapHints). Coalescing to [] here keeps old rows
+  // renderable through the current non-nullable schema.
   return {
     sourcePathwayIds: merged.sourcePathwayIds,
     medications: merged.medications.map((m) => ({
@@ -1063,7 +1122,17 @@ export function formatMergedForGraphQL(merged: MergedCarePlan) {
       sourcePathwayIds: m.sourcePathwayIds,
       state: gqlState(m.state),
     })),
+    imaging: (merged.imaging ?? []).map((m) => ({
+      recommendation: m.recommendation,
+      sourcePathwayIds: m.sourcePathwayIds,
+      state: gqlState(m.state),
+    })),
     procedures: merged.procedures.map((m) => ({
+      recommendation: m.recommendation,
+      sourcePathwayIds: m.sourcePathwayIds,
+      state: gqlState(m.state),
+    })),
+    guidance: (merged.guidance ?? []).map((m) => ({
       recommendation: m.recommendation,
       sourcePathwayIds: m.sourcePathwayIds,
       state: gqlState(m.state),
@@ -1080,6 +1149,9 @@ export function formatMergedForGraphQL(merged: MergedCarePlan) {
     })),
     suppressed: merged.suppressed.map(formatSuppressedForGraphQL),
     conflicts: merged.conflicts.map(formatConflictForGraphQL),
+    catchUpItems: merged.catchUpItems ?? [],
+    evidenceTrail: merged.evidenceTrail ?? [],
+    dataGapHints: merged.dataGapHints ?? [],
   };
 }
 
@@ -1190,5 +1262,7 @@ function emptyMergedCarePlan(): MergedCarePlan {
     suppressed: [],
     conflicts: [],
     catchUpItems: [],
+    evidenceTrail: [],
+    dataGapHints: [],
   };
 }

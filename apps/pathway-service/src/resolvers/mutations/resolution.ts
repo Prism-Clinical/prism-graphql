@@ -286,139 +286,167 @@ export const resolutionMutations = {
   ) {
     const { pool } = context;
 
-    // 1. Load session
-    const session = await getSession(pool, args.sessionId);
-    if (!session) {
-      throw new GraphQLError('Session not found', { extensions: { code: 'NOT_FOUND' } });
-    }
-    if (session.status !== SessionStatus.ACTIVE && session.status !== SessionStatus.DEGRADED) {
-      throw new GraphQLError(`Cannot modify session with status "${session.status}"`, {
-        extensions: { code: 'BAD_USER_INPUT' },
-      });
-    }
-
-    // 2. Find gate in resolution state
-    const gateResult = session.resolutionState.get(args.gateId);
-    if (!gateResult) {
-      throw new GraphQLError(`Gate "${args.gateId}" not found in session`, {
-        extensions: { code: 'NOT_FOUND' },
-      });
-    }
-
-    const newAnswer: GateAnswer = {
-      booleanValue: args.answer.booleanValue,
-      numericValue: args.answer.numericValue,
-      selectedOption: args.answer.selectedOption,
-    };
-    session.gateAnswers.set(args.gateId, newAnswer);
-
-    // Determine if gate opens: delegate to gate evaluator after building context.
-    // For now, any non-null answer value is treated as opening the gate.
-    // The retraversal will use the proper gate evaluator for final status.
-    const gateOpened = args.answer.booleanValue === true ||
-      (args.answer.selectedOption != null) ||
-      (args.answer.numericValue != null);
-
-    // 4. Build resolution context and find affected subtree
-    const rctx = await buildResolutionContext(pool, session.pathwayId);
-
-    const affectedNodes = new Set<string>();
-    affectedNodes.add(args.gateId);
-    const subtreeQueue = [args.gateId];
-    while (subtreeQueue.length > 0) {
-      const id = subtreeQueue.shift()!;
-      for (const edge of rctx.graphContext.outgoingEdges(id)) {
-        if (!affectedNodes.has(edge.targetId)) {
-          affectedNodes.add(edge.targetId);
-          subtreeQueue.push(edge.targetId);
-        }
-      }
-    }
-
-    const statusChanges: Array<{ nodeId: string; from: string; to: string }> = [];
+    // Optimistic-lock retry loop. The read/compute/write cycle can lose
+    // the WHERE-updated_at guard when another request lands on the same
+    // session between our read and our write (typical in the preview
+    // flow where the composer applies several pre-answers back-to-back
+    // and the merged-plan re-render kicks other traffic against the row).
+    // Retry with a fresh load — the answer itself is idempotent from the
+    // caller's perspective. Cap attempts so a real conflict (e.g. two
+    // providers editing) still surfaces after we've done our best.
+    const MAX_ATTEMPTS = 4;
+    let statusChanges: Array<{ nodeId: string; from: string; to: string }> = [];
     let nodesRecomputed = 0;
-    const patientCtx = session.initialPatientContext as PatientContext;
+    let gateOpened = false;
+    let pathwayIdForLog = '';
 
-    if (gateOpened) {
-      // 5a. Gate opens: mark gate as INCLUDED and re-evaluate subtree
-      const previousGateStatus = gateResult.status;
-      gateResult.status = NodeStatus.INCLUDED;
-      gateResult.confidence = 1;
-      gateResult.excludeReason = undefined;
-      statusChanges.push({ nodeId: args.gateId, from: previousGateStatus, to: NodeStatus.INCLUDED });
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+      // 1. Load session (fresh every attempt so updated_at matches).
+      const session = await getSession(pool, args.sessionId);
+      if (!session) {
+        throw new GraphQLError('Session not found', { extensions: { code: 'NOT_FOUND' } });
+      }
+      if (session.status !== SessionStatus.ACTIVE && session.status !== SessionStatus.DEGRADED) {
+        throw new GraphQLError(`Cannot modify session with status "${session.status}"`, {
+          extensions: { code: 'BAD_USER_INPUT' },
+        });
+      }
+      pathwayIdForLog = session.pathwayId;
 
-      // Remove stale subtree nodes so RetraversalEngine re-evaluates them
-      for (const nodeId of affectedNodes) {
-        if (nodeId !== args.gateId && session.resolutionState.has(nodeId)) {
-          const existing = session.resolutionState.get(nodeId)!;
-          if (existing.status === NodeStatus.PENDING_QUESTION || existing.status === NodeStatus.GATED_OUT) {
-            session.resolutionState.delete(nodeId);
+      // 2. Find gate in resolution state
+      const gateResult = session.resolutionState.get(args.gateId);
+      if (!gateResult) {
+        throw new GraphQLError(`Gate "${args.gateId}" not found in session`, {
+          extensions: { code: 'NOT_FOUND' },
+        });
+      }
+
+      const newAnswer: GateAnswer = {
+        booleanValue: args.answer.booleanValue,
+        numericValue: args.answer.numericValue,
+        selectedOption: args.answer.selectedOption,
+      };
+      session.gateAnswers.set(args.gateId, newAnswer);
+
+      // Determine if gate opens: delegate to gate evaluator after building context.
+      // For now, any non-null answer value is treated as opening the gate.
+      // The retraversal will use the proper gate evaluator for final status.
+      gateOpened = args.answer.booleanValue === true ||
+        (args.answer.selectedOption != null) ||
+        (args.answer.numericValue != null);
+
+      // 4. Build resolution context and find affected subtree
+      const rctx = await buildResolutionContext(pool, session.pathwayId);
+
+      const affectedNodes = new Set<string>();
+      affectedNodes.add(args.gateId);
+      const subtreeQueue = [args.gateId];
+      while (subtreeQueue.length > 0) {
+        const id = subtreeQueue.shift()!;
+        for (const edge of rctx.graphContext.outgoingEdges(id)) {
+          if (!affectedNodes.has(edge.targetId)) {
+            affectedNodes.add(edge.targetId);
+            subtreeQueue.push(edge.targetId);
           }
         }
       }
 
-      const llmBundle = makeLlmGateEvaluator(pool, session.pathwayId, args.sessionId);
-      const retraversalEngine = new RetraversalEngine(
-        makeRetraversalAdapter(rctx, pool, session.pathwayId, patientCtx),
-        rctx.thresholds,
-        llmBundle?.evaluator,
-      );
+      statusChanges = [];
+      nodesRecomputed = 0;
+      const patientCtx = session.initialPatientContext as PatientContext;
 
-      const reResult = await retraversalEngine.retraverse(
-        affectedNodes,
-        session.resolutionState,
-        session.dependencyMap,
-        rctx.graphContext,
-        patientCtx,
-        session.gateAnswers,
-      );
+      if (gateOpened) {
+        // 5a. Gate opens: mark gate as INCLUDED and re-evaluate subtree
+        const previousGateStatus = gateResult.status;
+        gateResult.status = NodeStatus.INCLUDED;
+        gateResult.confidence = 1;
+        gateResult.excludeReason = undefined;
+        statusChanges.push({ nodeId: args.gateId, from: previousGateStatus, to: NodeStatus.INCLUDED });
 
-      if (llmBundle) await llmBundle.flushAudits(args.sessionId);
-
-      statusChanges.push(...reResult.statusChanges);
-      nodesRecomputed = reResult.nodesRecomputed;
-
-      // Update pending questions and red flags
-      // Remove the answered gate from pending, add any new ones
-      session.pendingQuestions = session.pendingQuestions
-        .filter(q => q.gateId !== args.gateId)
-        .concat(reResult.newPendingQuestions);
-      if (reResult.newRedFlags.length > 0) {
-        session.redFlags = [...session.redFlags, ...reResult.newRedFlags];
-      }
-    } else {
-      // 5b. Gate closes: mark subtree as GATED_OUT
-      const previousGateStatus = gateResult.status;
-      gateResult.status = NodeStatus.GATED_OUT;
-      gateResult.excludeReason = 'Gate answer: condition not met';
-      statusChanges.push({ nodeId: args.gateId, from: previousGateStatus, to: NodeStatus.GATED_OUT });
-
-      for (const nodeId of affectedNodes) {
-        if (nodeId === args.gateId) continue;
-        const existing = session.resolutionState.get(nodeId);
-        if (existing) {
-          const oldStatus = existing.status;
-          existing.status = NodeStatus.GATED_OUT;
-          existing.excludeReason = `Gated out by answer to ${gateResult.title}`;
-          if (oldStatus !== NodeStatus.GATED_OUT) {
-            statusChanges.push({ nodeId, from: oldStatus, to: NodeStatus.GATED_OUT });
+        // Remove stale subtree nodes so RetraversalEngine re-evaluates them
+        for (const nodeId of affectedNodes) {
+          if (nodeId !== args.gateId && session.resolutionState.has(nodeId)) {
+            const existing = session.resolutionState.get(nodeId)!;
+            if (existing.status === NodeStatus.PENDING_QUESTION || existing.status === NodeStatus.GATED_OUT) {
+              session.resolutionState.delete(nodeId);
+            }
           }
-          nodesRecomputed++;
         }
+
+        const llmBundle = makeLlmGateEvaluator(pool, session.pathwayId, args.sessionId);
+        const retraversalEngine = new RetraversalEngine(
+          makeRetraversalAdapter(rctx, pool, session.pathwayId, patientCtx),
+          rctx.thresholds,
+          llmBundle?.evaluator,
+        );
+
+        const reResult = await retraversalEngine.retraverse(
+          affectedNodes,
+          session.resolutionState,
+          session.dependencyMap,
+          rctx.graphContext,
+          patientCtx,
+          session.gateAnswers,
+        );
+
+        if (llmBundle) await llmBundle.flushAudits(args.sessionId);
+
+        statusChanges.push(...reResult.statusChanges);
+        nodesRecomputed = reResult.nodesRecomputed;
+
+        // Update pending questions and red flags
+        // Remove the answered gate from pending, add any new ones
+        session.pendingQuestions = session.pendingQuestions
+          .filter(q => q.gateId !== args.gateId)
+          .concat(reResult.newPendingQuestions);
+        if (reResult.newRedFlags.length > 0) {
+          session.redFlags = [...session.redFlags, ...reResult.newRedFlags];
+        }
+      } else {
+        // 5b. Gate closes: mark subtree as GATED_OUT
+        const previousGateStatus = gateResult.status;
+        gateResult.status = NodeStatus.GATED_OUT;
+        gateResult.excludeReason = 'Gate answer: condition not met';
+        statusChanges.push({ nodeId: args.gateId, from: previousGateStatus, to: NodeStatus.GATED_OUT });
+
+        for (const nodeId of affectedNodes) {
+          if (nodeId === args.gateId) continue;
+          const existing = session.resolutionState.get(nodeId);
+          if (existing) {
+            const oldStatus = existing.status;
+            existing.status = NodeStatus.GATED_OUT;
+            existing.excludeReason = `Gated out by answer to ${gateResult.title}`;
+            if (oldStatus !== NodeStatus.GATED_OUT) {
+              statusChanges.push({ nodeId, from: oldStatus, to: NodeStatus.GATED_OUT });
+            }
+            nodesRecomputed++;
+          }
+        }
+
+        // Remove the answered question from pending
+        session.pendingQuestions = session.pendingQuestions.filter(q => q.gateId !== args.gateId);
       }
 
-      // Remove the answered question from pending
-      session.pendingQuestions = session.pendingQuestions.filter(q => q.gateId !== args.gateId);
+      // 7. Update session (optimistic lock)
+      try {
+        await updateSession(pool, args.sessionId, {
+          resolutionState: session.resolutionState,
+          pendingQuestions: session.pendingQuestions,
+          redFlags: session.redFlags,
+          gateAnswers: session.gateAnswers,
+          totalNodesEvaluated: session.resolutionState.size,
+        }, session.updatedAt);
+        break; // committed
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        if (message.includes('optimistic lock') && attempt < MAX_ATTEMPTS) {
+          // Small jitter (10–40ms) so parallel callers don't lock-step.
+          await new Promise((r) => setTimeout(r, 10 + Math.random() * 30));
+          continue;
+        }
+        throw err;
+      }
     }
-
-    // 7. Update session
-    await updateSession(pool, args.sessionId, {
-      resolutionState: session.resolutionState,
-      pendingQuestions: session.pendingQuestions,
-      redFlags: session.redFlags,
-      gateAnswers: session.gateAnswers,
-      totalNodesEvaluated: session.resolutionState.size,
-    }, session.updatedAt);
 
     // 8. Log event
     await logEvent(pool, args.sessionId, {
@@ -436,7 +464,7 @@ export const resolutionMutations = {
     await logGateAnswer(pool, {
       sessionId: args.sessionId,
       gateId: args.gateId,
-      pathwayId: session.pathwayId,
+      pathwayId: pathwayIdForLog,
       answer: args.answer,
       gateOpened,
     });

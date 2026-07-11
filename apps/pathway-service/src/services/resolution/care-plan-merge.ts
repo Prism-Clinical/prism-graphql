@@ -25,7 +25,19 @@ import { MedicationRole } from '../import/types';
 
 // ─── Resolved (per-pathway) shapes ────────────────────────────────────
 
-export interface ResolvedMedication {
+/**
+ * Per-recommendation attribution: the Gate / DecisionPoint node ids
+ * whose evaluation gated the path to this recommendation. Set by the
+ * projection from the parentNodeId-chain walk. Consumers cross-
+ * reference these ids against ResolvedCarePlan.evidenceTrail to render
+ * per-rec evidence chips ("this fired because of A, B, C").
+ *
+ * Empty array means no scoped gates / DPs influenced this rec (it
+ * lives outside the gated subtree).
+ */
+type WithEvidence = { evidenceGateIds: string[] };
+
+export interface ResolvedMedication extends WithEvidence {
   name: string;
   role: MedicationRole;
   dose?: string;
@@ -44,7 +56,7 @@ export interface ResolvedMedication {
   sourceNodeId?: string;
 }
 
-export interface ResolvedLab {
+export interface ResolvedLab extends WithEvidence {
   name: string;
   code?: string;
   system?: string;
@@ -53,7 +65,7 @@ export interface ResolvedLab {
   sourceNodeId?: string;
 }
 
-export interface ResolvedProcedure {
+export interface ResolvedProcedure extends WithEvidence {
   name: string;
   code?: string;
   system?: string;
@@ -61,7 +73,7 @@ export interface ResolvedProcedure {
   sourceNodeId?: string;
 }
 
-export interface ResolvedImaging {
+export interface ResolvedImaging extends WithEvidence {
   name: string;
   /**
    * Imaging modality (X-ray, CT, MRI, Ultrasound, etc.). Kept as a free-form
@@ -78,7 +90,7 @@ export interface ResolvedImaging {
   sourceNodeId?: string;
 }
 
-export interface ResolvedGuidance {
+export interface ResolvedGuidance extends WithEvidence {
   /** Short title shown in the care plan section. */
   topic: string;
   /** Longer narrative — the actual instruction the provider gives the patient. */
@@ -93,14 +105,14 @@ export interface ResolvedGuidance {
   sourceNodeId?: string;
 }
 
-export interface ResolvedSchedule {
+export interface ResolvedSchedule extends WithEvidence {
   interval: string;
   description: string;
   sourcePathwayId: string;
   sourceNodeId?: string;
 }
 
-export interface ResolvedQualityMetric {
+export interface ResolvedQualityMetric extends WithEvidence {
   name: string;
   measure: string;
   sourcePathwayId: string;
@@ -126,6 +138,87 @@ export interface ResolvedCarePlan {
    * should also cover. Lineage is carried via `dependentNodeId`.
    */
   catchUpItems: CatchUpItem[];
+  /**
+   * Every gate / decision-point in this pathway that fired during
+   * resolution, with the patient-context fields it read and the reason
+   * it satisfied. Lets downstream UI render "this pathway considered
+   * the patient's HbA1c, BP series, recurrent UTI count, etc." — the
+   * provenance behind the recommendations.
+   *
+   * Pathway-level for v1: every recommendation in this plan is
+   * influenced by these gates collectively. Per-recommendation
+   * attribution (which gate caused which recommendation) is a follow-up
+   * slice that requires walking the gate-to-recommendation lineage in
+   * the dependency map.
+   */
+  evidenceTrail: GateEvidence[];
+  /**
+   * Gates that DIDN'T fire (gated out, pending answer, or unevaluable
+   * for lack of data) and the recommendations their subtree would
+   * potentially have unlocked. Lets the dashboard surface "Add HbA1c
+   * series → unlocks Metformin titration" prompts so the author can
+   * see which patient inputs would shift the care plan.
+   */
+  dataGapHints: DataGapHint[];
+}
+
+/**
+ * One closed-off branch — a gate that didn't fire and the action nodes
+ * it would otherwise have led to. Authors and providers read this as
+ * "the system was prepared to recommend X, but needed Y data first."
+ */
+export interface DataGapHint {
+  /** Gate node id. */
+  gateNodeId: string;
+  gateTitle: string;
+  /** Gate kind — same vocabulary as GateEvidence.kind. */
+  kind: string;
+  /** Why the gate didn't fire (GATED_OUT / PENDING_QUESTION / UNKNOWN). */
+  status: string;
+  /** Evaluator's reason string, when available. */
+  reason?: string;
+  /** Patient-context field paths the gate would have read. */
+  fieldsRead: string[];
+  /** Action-node recommendations downstream of this gate. */
+  unlockedRecommendations: UnlockedRecommendation[];
+}
+
+export interface UnlockedRecommendation {
+  nodeId: string;
+  nodeType: string;
+  title: string;
+}
+
+/**
+ * One gate's contribution to the pathway's resolution. Surfaced for
+ * provider transparency — clinicians can see what patient data the
+ * pathway looked at, not just the final care plan.
+ */
+export interface GateEvidence {
+  /** Pathway node id of the gate / decision point. */
+  nodeId: string;
+  /** Display title (e.g. "BP > 130", "HbA1c trending up over 6mo"). */
+  title: string;
+  /**
+   * Gate type — 'patient_attribute' | 'compound' | 'question' |
+   * 'llm_text_analysis' | 'prior_node_result' | 'decision_point'.
+   * Lets the dashboard render different chips per source kind.
+   */
+  kind: string;
+  /** INCLUDED / GATED_OUT / PENDING_QUESTION / etc. */
+  status: string;
+  /**
+   * Human-readable explanation of how the gate evaluated, written by
+   * the gate evaluator (e.g. "labs value 8.1 > 7.0", "Found 3 matching
+   * N39.0 in conditions within last 180 days (≥2)").
+   */
+  reason?: string;
+  /**
+   * Patient-context field paths the gate read (e.g. "labs",
+   * "conditions", "vitals.systolic_bp"). Lets the dashboard render
+   * which signals drove the gate.
+   */
+  fieldsRead: string[];
 }
 
 /** REQUIRES backtracking — see services/resolution/prerequisites.ts. */
@@ -267,6 +360,18 @@ export interface MergedCarePlan {
    * `sourcePathwayId` names the pathway that flagged the catch-up.
    */
   catchUpItems: CatchUpItem[];
+  /**
+   * Evidence aggregated across every contributing pathway. Each entry
+   * carries `sourcePathwayId` so the dashboard can group by pathway or
+   * surface a flat "everything the system looked at" view.
+   */
+  evidenceTrail: (GateEvidence & { sourcePathwayId: string })[];
+  /**
+   * Data-gap hints aggregated across contributing pathways. Each entry
+   * has `sourcePathwayId` so the dashboard can attribute "this pathway
+   * would have recommended X if you had Y."
+   */
+  dataGapHints: (DataGapHint & { sourcePathwayId: string })[];
 }
 
 // ─── Public API ───────────────────────────────────────────────────────
@@ -395,6 +500,37 @@ export function mergeResolvedCarePlans(
     }
   }
 
+  // Aggregate gate evidence across pathways. Nested pathways commonly
+  // walk the same DP node (e.g. "BP ≥ 140/90?"), so if we concatenated
+  // naively the merged trail would show the same gate N times — once
+  // per contributing pathway. Dedup by nodeId, first-seen wins, keep
+  // the winning entry's sourcePathwayId for attribution. If two
+  // pathways evaluate the same node to different statuses that would
+  // be a resolver bug worth surfacing separately; here we treat the
+  // gate as a merged decision and emit it once.
+  const evidenceTrail: (GateEvidence & { sourcePathwayId: string })[] = [];
+  const seenGateNodes = new Set<string>();
+  for (const plan of plans) {
+    for (const ev of plan.evidenceTrail ?? []) {
+      if (seenGateNodes.has(ev.nodeId)) continue;
+      seenGateNodes.add(ev.nodeId);
+      evidenceTrail.push({ ...ev, sourcePathwayId: plan.pathwayId });
+    }
+  }
+
+  // Same dedup logic for data-gap hints — same gateNodeId across
+  // pathways would otherwise show the same "add X → unlocks N recs"
+  // card twice.
+  const dataGapHints: (DataGapHint & { sourcePathwayId: string })[] = [];
+  const seenGapNodes = new Set<string>();
+  for (const plan of plans) {
+    for (const hint of plan.dataGapHints ?? []) {
+      if (seenGapNodes.has(hint.gateNodeId)) continue;
+      seenGapNodes.add(hint.gateNodeId);
+      dataGapHints.push({ ...hint, sourcePathwayId: plan.pathwayId });
+    }
+  }
+
   return {
     sourcePathwayIds: plans.map((p) => p.pathwayId),
     medications,
@@ -407,6 +543,8 @@ export function mergeResolvedCarePlans(
     suppressed,
     conflicts,
     catchUpItems,
+    evidenceTrail,
+    dataGapHints,
   };
 }
 
@@ -482,6 +620,8 @@ function emptyMergedPlan(): MergedCarePlan {
     suppressed: [],
     conflicts: [],
     catchUpItems: [],
+    evidenceTrail: [],
+    dataGapHints: [],
   };
 }
 
