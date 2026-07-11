@@ -801,6 +801,15 @@ type MultiPathwayResolutionSession {
   patientId: ID!
   providerId: ID!
   status: MultiPathwayResolutionSessionStatus!
+  """
+  True when this session was created by admin/QA/preview tooling
+  (currently: `startMultiPathwayResolution` called with
+  `syntheticPatient: true`). Preview sessions are filtered out of
+  default list queries and can be hard-deleted via
+  `deletePreviewSession`. They exercise the exact same resolver code
+  path as real sessions so preview traffic tests what ships to prod.
+  """
+  isPreview: Boolean!
   mergedPlan: MergedCarePlan!
   contributingSessionIds: [ID!]!
   """Bare ID list of pathways that fed the merge. For full pathway data use `contributingPathways`."""
@@ -864,6 +873,8 @@ type MultiPathwayResolutionSessionSummary {
   patientId: ID!
   providerId: ID!
   status: MultiPathwayResolutionSessionStatus!
+  """See `MultiPathwayResolutionSession.isPreview`."""
+  isPreview: Boolean!
   contributingPathwayCount: Int!
   unresolvedConflictCount: Int!
   carePlanId: ID
@@ -1042,6 +1053,16 @@ type CarePlanGenerationResult {
   carePlanId: ID
   warnings: [String!]!
   blockers: [ValidationBlockerType!]!
+}
+
+"""
+Result of `deletePreviewSession`. Reports the deleted multi-pathway
+session id plus how many per-pathway contributing sessions were removed
+as part of the cascade.
+"""
+type DeletePreviewSessionResult {
+  sessionId: ID!
+  contributingSessionsDeleted: Int!
 }
 
 """
@@ -1349,10 +1370,16 @@ type Query {
   """Fetch a single multi-pathway resolution session including its merged plan."""
   multiPathwayResolutionSession(sessionId: ID!): MultiPathwayResolutionSession
 
-  """List a patient's multi-pathway sessions, optionally filtered by status."""
+  """
+  List a patient's multi-pathway sessions, optionally filtered by status.
+  Preview sessions (created by admin/QA tooling with `syntheticPatient:
+  true`) are excluded by default. Pass `includePreview: true` to include
+  them — intended for admin surfaces only.
+  """
   patientMultiPathwayResolutionSessions(
     patientId: ID!,
-    status: MultiPathwayResolutionSessionStatus
+    status: MultiPathwayResolutionSessionStatus,
+    includePreview: Boolean
   ): [MultiPathwayResolutionSessionSummary!]!
 
   """
@@ -1472,6 +1499,15 @@ type Mutation {
 
   """Mark a multi-pathway session ABANDONED."""
   abandonMultiPathwaySession(sessionId: ID!, reason: String): MultiPathwayResolutionSession!
+
+  """
+  Hard-delete a preview session (one whose `isPreview` is true) and its
+  contributing per-pathway sessions. Refuses to touch a real (non-preview)
+  session — those must go through `abandonMultiPathwaySession`, which
+  preserves the row for audit. Intended for admin/QA/preview UIs so they
+  can clean up their own traffic instead of leaving rows behind.
+  """
+  deletePreviewSession(sessionId: ID!): DeletePreviewSessionResult!
 
   """
   Re-run the merge pipeline against the current state of every contributing
