@@ -16,6 +16,7 @@ import {
   NodeResult,
   NodeStatus,
   ResolutionState,
+  DependencyMap,
 } from './types';
 import {
   ResolvedCarePlan,
@@ -26,6 +27,9 @@ import {
   ResolvedGuidance,
   ResolvedSchedule,
   ResolvedQualityMetric,
+  GateEvidence,
+  DataGapHint,
+  UnlockedRecommendation,
 } from './care-plan-merge';
 import { MedicationRole } from '../import/types';
 
@@ -39,6 +43,7 @@ export function projectResolutionToCarePlan(
   resolutionState: ResolutionState,
   meta: PathwayProjectionMetadata,
   catchUpItems: ResolvedCarePlan['catchUpItems'] = [],
+  dependencyMap?: DependencyMap,
 ): ResolvedCarePlan {
   const medications: ResolvedMedication[] = [];
   const labs: ResolvedLab[] = [];
@@ -48,42 +53,55 @@ export function projectResolutionToCarePlan(
   const schedules: ResolvedSchedule[] = [];
   const qualityMetrics: ResolvedQualityMetric[] = [];
 
+  // Compute per-action-node attribution once — every included action
+  // node looks up its own evidenceGateIds from this map below. Walking
+  // the parentNodeId chain per node is O(depth) per lookup; pre-computing
+  // here keeps the projection loop linear.
+  const attributionByActionId = computeAttribution(resolutionState);
+
+  const attach = <T>(rec: T | null, nodeId: string): T | null => {
+    if (!rec) return null;
+    (rec as unknown as { evidenceGateIds: string[] }).evidenceGateIds =
+      attributionByActionId.get(nodeId) ?? [];
+    return rec;
+  };
+
   for (const node of resolutionState.values()) {
     if (node.status !== NodeStatus.INCLUDED) continue;
 
     switch (node.nodeType) {
       case 'Medication': {
-        const med = projectMedication(node, meta.pathwayId);
+        const med = attach(projectMedication(node, meta.pathwayId), node.nodeId);
         if (med) medications.push(med);
         break;
       }
       case 'LabTest': {
-        const lab = projectLab(node, meta.pathwayId);
+        const lab = attach(projectLab(node, meta.pathwayId), node.nodeId);
         if (lab) labs.push(lab);
         break;
       }
       case 'Imaging': {
-        const img = projectImaging(node, meta.pathwayId);
+        const img = attach(projectImaging(node, meta.pathwayId), node.nodeId);
         if (img) imaging.push(img);
         break;
       }
       case 'Procedure': {
-        const proc = projectProcedure(node, meta.pathwayId);
+        const proc = attach(projectProcedure(node, meta.pathwayId), node.nodeId);
         if (proc) procedures.push(proc);
         break;
       }
       case 'Guidance': {
-        const g = projectGuidance(node, meta.pathwayId);
+        const g = attach(projectGuidance(node, meta.pathwayId), node.nodeId);
         if (g) guidance.push(g);
         break;
       }
       case 'Schedule': {
-        const sched = projectSchedule(node, meta.pathwayId);
+        const sched = attach(projectSchedule(node, meta.pathwayId), node.nodeId);
         if (sched) schedules.push(sched);
         break;
       }
       case 'QualityMetric': {
-        const qm = projectQualityMetric(node, meta.pathwayId);
+        const qm = attach(projectQualityMetric(node, meta.pathwayId), node.nodeId);
         if (qm) qualityMetrics.push(qm);
         break;
       }
@@ -105,7 +123,180 @@ export function projectResolutionToCarePlan(
     schedules,
     qualityMetrics,
     catchUpItems,
+    evidenceTrail: collectEvidenceTrail(resolutionState, dependencyMap),
+    dataGapHints: collectDataGapHints(resolutionState, dependencyMap),
   };
+}
+
+/**
+ * Action-node types that represent recommendations the dashboard
+ * should surface as "would have been recommended." Same set the action
+ * branch of the traversal engine emits.
+ */
+const ACTION_NODE_TYPES = new Set([
+  'Medication',
+  'LabTest',
+  'Imaging',
+  'Procedure',
+  'Guidance',
+  'Schedule',
+  'QualityMetric',
+]);
+
+/**
+ * Per-recommendation attribution: for every action node in the
+ * resolution state, collect the Gate / DecisionPoint node ids that
+ * gated the path to it. Walks the action node's parentNodeId chain
+ * up; at each ancestor, any Gate / DP that shares the ancestor as its
+ * own parentNodeId is a "sibling at this level" — those gates govern
+ * whether this action node fires.
+ *
+ * Only INCLUDED / PENDING_QUESTION gates are attributed (EXCLUDED
+ * ones didn't participate; GATED_OUT siblings are already surfaced in
+ * data-gap hints, not as evidence). EXCLUDED gates are dropped here
+ * because they don't represent "what fired this rec" — the rec fired
+ * around them.
+ *
+ * Cycle-safe: parentNodeId chains are walked with a visited set so a
+ * pathological self-reference can't loop forever.
+ */
+function computeAttribution(
+  resolutionState: ResolutionState,
+): Map<string, string[]> {
+  // First pass: bucket Gate / DecisionPoint nodes by their parentNodeId.
+  const gatesByParent = new Map<string, string[]>();
+  for (const n of resolutionState.values()) {
+    if (n.nodeType !== 'Gate' && n.nodeType !== 'DecisionPoint') continue;
+    if (n.status === NodeStatus.EXCLUDED) continue;
+    if (!n.parentNodeId) continue;
+    const arr = gatesByParent.get(n.parentNodeId) ?? [];
+    arr.push(n.nodeId);
+    gatesByParent.set(n.parentNodeId, arr);
+  }
+
+  // Second pass: for each action node, walk up and collect.
+  const out = new Map<string, string[]>();
+  for (const action of resolutionState.values()) {
+    if (!ACTION_NODE_TYPES.has(action.nodeType)) continue;
+    if (action.status !== NodeStatus.INCLUDED) continue;
+
+    const collected = new Set<string>();
+    const visited = new Set<string>();
+    let cur: NodeResult | undefined = action;
+    while (cur?.parentNodeId && !visited.has(cur.parentNodeId)) {
+      visited.add(cur.parentNodeId);
+      const sibs = gatesByParent.get(cur.parentNodeId);
+      if (sibs) for (const id of sibs) collected.add(id);
+      cur = resolutionState.get(cur.parentNodeId);
+    }
+    out.set(action.nodeId, Array.from(collected));
+  }
+  return out;
+}
+
+/**
+ * For every gate that DIDN'T fire — GATED_OUT, PENDING_QUESTION, or
+ * UNKNOWN — collect the action-node recommendations whose subtree
+ * markSubtree-stamped them with that gate's id as parentNodeId. The
+ * resulting "Add X → unlocks Y, Z" hints feed the dashboard's
+ * data-gap surface.
+ *
+ * Only emits a hint when at least one action node exists downstream —
+ * gates with no downstream recs aren't actionable to the provider.
+ */
+function collectDataGapHints(
+  resolutionState: ResolutionState,
+  dependencyMap: DependencyMap | undefined,
+): DataGapHint[] {
+  const fieldsByGate = dependencyMap?.gateContextFields ?? new Map<string, Set<string>>();
+
+  // Pre-build the "gate id → downstream action nodes" index. markSubtree
+  // assigns the gate's id to every gated-out descendant's parentNodeId,
+  // so this is a single pass.
+  const downstreamByGate = new Map<string, UnlockedRecommendation[]>();
+  for (const node of resolutionState.values()) {
+    if (!ACTION_NODE_TYPES.has(node.nodeType)) continue;
+    if (!node.parentNodeId) continue;
+    if (node.status !== NodeStatus.GATED_OUT && node.status !== NodeStatus.PENDING_QUESTION) continue;
+    const arr = downstreamByGate.get(node.parentNodeId) ?? [];
+    arr.push({ nodeId: node.nodeId, nodeType: node.nodeType, title: node.title });
+    downstreamByGate.set(node.parentNodeId, arr);
+  }
+
+  const hints: DataGapHint[] = [];
+  for (const node of resolutionState.values()) {
+    const isGate = node.nodeType === 'Gate';
+    const isDp = node.nodeType === 'DecisionPoint';
+    if (!isGate && !isDp) continue;
+    if (
+      node.status !== NodeStatus.GATED_OUT &&
+      node.status !== NodeStatus.PENDING_QUESTION &&
+      node.status !== NodeStatus.UNKNOWN
+    ) continue;
+    const downstream = downstreamByGate.get(node.nodeId) ?? [];
+    if (downstream.length === 0) continue;
+
+    const props = node.properties ?? {};
+    const kind = isGate
+      ? typeof props.gate_type === 'string'
+        ? props.gate_type
+        : 'patient_attribute'
+      : 'decision_point';
+
+    hints.push({
+      gateNodeId: node.nodeId,
+      gateTitle: node.title,
+      kind,
+      status: node.status,
+      reason: node.excludeReason ?? undefined,
+      fieldsRead: Array.from(fieldsByGate.get(node.nodeId) ?? []),
+      unlockedRecommendations: downstream,
+    });
+  }
+  return hints;
+}
+
+/**
+ * Walk the resolution state for Gate and DecisionPoint nodes and emit a
+ * GateEvidence row per one that participated in this pathway's resolve
+ * (status INCLUDED, GATED_OUT, or PENDING_QUESTION — i.e. the gate
+ * actually evaluated; not just structurally present). Fields-read come
+ * from the dependency map's gateContextFields side-table.
+ */
+function collectEvidenceTrail(
+  resolutionState: ResolutionState,
+  dependencyMap: DependencyMap | undefined,
+): GateEvidence[] {
+  const out: GateEvidence[] = [];
+  const fieldsByGate = dependencyMap?.gateContextFields ?? new Map<string, Set<string>>();
+
+  for (const node of resolutionState.values()) {
+    const isGate = node.nodeType === 'Gate';
+    const isDp = node.nodeType === 'DecisionPoint';
+    if (!isGate && !isDp) continue;
+
+    // Skip unevaluated gates — they didn't contribute. UNKNOWN ones,
+    // however, indicate "we couldn't decide" which IS evidence-shaped
+    // ("here's a gate that wanted data we don't have").
+    if (node.status === NodeStatus.EXCLUDED) continue;
+
+    const props = node.properties ?? {};
+    const kind = isGate
+      ? typeof props.gate_type === 'string'
+        ? props.gate_type
+        : 'patient_attribute'
+      : 'decision_point';
+
+    out.push({
+      nodeId: node.nodeId,
+      title: node.title,
+      kind,
+      status: node.status,
+      reason: node.excludeReason ?? undefined,
+      fieldsRead: Array.from(fieldsByGate.get(node.nodeId) ?? []),
+    });
+  }
+  return out;
 }
 
 // ─── Per-type projection helpers ─────────────────────────────────────
@@ -135,6 +326,7 @@ function projectMedication(
     clinicalRole: strProp(node, 'clinical_role'),
     sourcePathwayId: pathwayId,
     sourceNodeId: node.nodeId,
+    evidenceGateIds: [], // overwritten by attach() in projectResolutionToCarePlan
   };
 }
 
@@ -150,6 +342,7 @@ function projectLab(
     specimen: strProp(node, 'specimen'),
     sourcePathwayId: pathwayId,
     sourceNodeId: node.nodeId,
+    evidenceGateIds: [],
   };
 }
 
@@ -164,6 +357,7 @@ function projectProcedure(
     system: strProp(node, 'system'),
     sourcePathwayId: pathwayId,
     sourceNodeId: node.nodeId,
+    evidenceGateIds: [],
   };
 }
 
@@ -184,6 +378,7 @@ function projectImaging(
     system: strProp(node, 'system') ?? strProp(node, 'code_system'),
     sourcePathwayId: pathwayId,
     sourceNodeId: node.nodeId,
+    evidenceGateIds: [],
   };
 }
 
@@ -200,6 +395,7 @@ function projectGuidance(
     category: strProp(node, 'category'),
     sourcePathwayId: pathwayId,
     sourceNodeId: node.nodeId,
+    evidenceGateIds: [],
   };
 }
 
@@ -215,6 +411,7 @@ function projectSchedule(
     description,
     sourcePathwayId: pathwayId,
     sourceNodeId: node.nodeId,
+    evidenceGateIds: [],
   };
 }
 
@@ -230,5 +427,6 @@ function projectQualityMetric(
     measure,
     sourcePathwayId: pathwayId,
     sourceNodeId: node.nodeId,
+    evidenceGateIds: [],
   };
 }

@@ -80,6 +80,45 @@ export interface GateCondition {
   system?: string;
   /** Numeric threshold for greater_than/less_than operators. When present, `value` is the code to look up. */
   threshold?: number;
+  /**
+   * Time-shape operators (count_in_window, and the upcoming trend_up /
+   * trend_down / delta_from_baseline) only consider entries whose date
+   * falls within `window_days` of "now". When omitted, the operator
+   * counts/measures all matching entries regardless of date — useful
+   * for ever-had patterns like lifetime allergy history. The window is
+   * a calendar-day count, evaluated against the snapshot's wall clock.
+   */
+  window_days?: number;
+  /**
+   * For count_in_window: how many matching entries trigger the gate.
+   * The default is 2 (≥2 = "this happened more than once"), since the
+   * common authoring intent is "recurrent X" rather than "ever had X"
+   * (the latter is what `includes_code` already covers).
+   */
+  count_threshold?: number;
+  /**
+   * For trend_up / trend_down / delta_from_baseline: the smallest number
+   * of dated, in-window data points required before the operator will
+   * fire. Default 3 (a slope through 2 points is just a line). Setting
+   * this lower than 2 doesn't make sense and is treated as 2.
+   */
+  min_points?: number;
+  /**
+   * For trend_up / trend_down: minimum |slope| (value-units per day) to
+   * count as a "meaningful" trend. Default 0 — any non-flat slope in the
+   * declared direction satisfies. Authors set this when a slow drift
+   * shouldn't fire the gate (e.g. HbA1c rising < 0.05/day = noise).
+   */
+  slope_threshold?: number;
+  /**
+   * For delta_from_baseline: signed delta between newest and oldest
+   * in-window value that satisfies the gate. Positive threshold = rise
+   * by ≥this much (current ≥ baseline + threshold). Negative threshold
+   * = drop by ≥this much (current ≤ baseline + threshold, since
+   * threshold is negative). Zero is degenerate — any non-flat change
+   * fires.
+   */
+  delta_threshold?: number;
 }
 
 export interface GateDependsOn {
