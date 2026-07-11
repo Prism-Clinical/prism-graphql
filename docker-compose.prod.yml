@@ -18,7 +18,6 @@ services:
     depends_on:
       - gateway
       - web-dashboard
-      - admin-dashboard
     restart: unless-stopped
     networks:
       - healthcare-network
@@ -64,13 +63,8 @@ services:
       - NEXT_PUBLIC_GRAPHQL_URL=https://${DOMAIN}/graphql
       - NEXT_PUBLIC_API_URL=https://${DOMAIN}
 
-  # Admin Dashboard - remove port exposure
-  admin-dashboard:
-    ports: []
-    environment:
-      - NODE_ENV=production
-      - NEXT_PUBLIC_GRAPHQL_URL=https://${DOMAIN}/graphql
-      - NEXT_PUBLIC_API_URL=https://${DOMAIN}
+  # Admin Dashboard lives in the standalone prism-admin-dashboard repo
+  # and is deployed separately from this compose file.
 
   # Auth service production config
   auth-service:

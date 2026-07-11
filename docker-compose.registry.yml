@@ -270,18 +270,9 @@ services:
     networks:
       - healthcare-network
 
-  admin-dashboard:
-    image: ${REGISTRY:-ghcr.io/your-org/prism}/admin-dashboard:${TAG:-latest}
-    container_name: healthcare-admin-dashboard
-    ports:
-      - "3001:3001"
-    environment:
-      - NODE_ENV=production
-    depends_on:
-      - gateway
-    restart: unless-stopped
-    networks:
-      - healthcare-network
+  # Admin Dashboard lives in the standalone prism-admin-dashboard repo
+  # (github.com/Prism-Clinical/prism-admin-dashboard) and is deployed
+  # from its own registry image, not this compose file.
 
 networks:
   healthcare-network:
