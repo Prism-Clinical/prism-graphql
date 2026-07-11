@@ -500,21 +500,33 @@ export function mergeResolvedCarePlans(
     }
   }
 
-  // Aggregate gate evidence across pathways. Stamp each entry with its
-  // source pathway so the dashboard can group / filter. No dedup —
-  // two pathways may legitimately read the same field via different
-  // gates, and we want both surfaced.
+  // Aggregate gate evidence across pathways. Nested pathways commonly
+  // walk the same DP node (e.g. "BP ≥ 140/90?"), so if we concatenated
+  // naively the merged trail would show the same gate N times — once
+  // per contributing pathway. Dedup by nodeId, first-seen wins, keep
+  // the winning entry's sourcePathwayId for attribution. If two
+  // pathways evaluate the same node to different statuses that would
+  // be a resolver bug worth surfacing separately; here we treat the
+  // gate as a merged decision and emit it once.
   const evidenceTrail: (GateEvidence & { sourcePathwayId: string })[] = [];
+  const seenGateNodes = new Set<string>();
   for (const plan of plans) {
     for (const ev of plan.evidenceTrail ?? []) {
+      if (seenGateNodes.has(ev.nodeId)) continue;
+      seenGateNodes.add(ev.nodeId);
       evidenceTrail.push({ ...ev, sourcePathwayId: plan.pathwayId });
     }
   }
 
-  // Same shape for data-gap hints.
+  // Same dedup logic for data-gap hints — same gateNodeId across
+  // pathways would otherwise show the same "add X → unlocks N recs"
+  // card twice.
   const dataGapHints: (DataGapHint & { sourcePathwayId: string })[] = [];
+  const seenGapNodes = new Set<string>();
   for (const plan of plans) {
     for (const hint of plan.dataGapHints ?? []) {
+      if (seenGapNodes.has(hint.gateNodeId)) continue;
+      seenGapNodes.add(hint.gateNodeId);
       dataGapHints.push({ ...hint, sourcePathwayId: plan.pathwayId });
     }
   }

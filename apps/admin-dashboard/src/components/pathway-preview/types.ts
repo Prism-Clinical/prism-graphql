@@ -50,4 +50,4 @@ export interface StageView {
 
 // ─── Sidebar Tab ─────────────────────────────────────────────────────
 
-export type SidebarTab = 'context' | 'confidence' | 'evidence';
+export type SidebarTab = 'context' | 'confidence' | 'evidence' | 'lineage';
