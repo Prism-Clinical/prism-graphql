@@ -1059,6 +1059,10 @@ function gqlState(state: string): string {
 }
 
 export function formatMergedForGraphQL(merged: MergedCarePlan) {
+  // Defensive defaults on read: sessions stored under prior schema versions
+  // may not carry the newer fields (imaging / guidance / catchUpItems /
+  // evidenceTrail / dataGapHints). Coalescing to [] here keeps old rows
+  // renderable through the current non-nullable schema.
   return {
     sourcePathwayIds: merged.sourcePathwayIds,
     medications: merged.medications.map((m) => ({
@@ -1071,7 +1075,17 @@ export function formatMergedForGraphQL(merged: MergedCarePlan) {
       sourcePathwayIds: m.sourcePathwayIds,
       state: gqlState(m.state),
     })),
+    imaging: (merged.imaging ?? []).map((m) => ({
+      recommendation: m.recommendation,
+      sourcePathwayIds: m.sourcePathwayIds,
+      state: gqlState(m.state),
+    })),
     procedures: merged.procedures.map((m) => ({
+      recommendation: m.recommendation,
+      sourcePathwayIds: m.sourcePathwayIds,
+      state: gqlState(m.state),
+    })),
+    guidance: (merged.guidance ?? []).map((m) => ({
       recommendation: m.recommendation,
       sourcePathwayIds: m.sourcePathwayIds,
       state: gqlState(m.state),
@@ -1088,6 +1102,9 @@ export function formatMergedForGraphQL(merged: MergedCarePlan) {
     })),
     suppressed: merged.suppressed.map(formatSuppressedForGraphQL),
     conflicts: merged.conflicts.map(formatConflictForGraphQL),
+    catchUpItems: merged.catchUpItems ?? [],
+    evidenceTrail: merged.evidenceTrail ?? [],
+    dataGapHints: merged.dataGapHints ?? [],
   };
 }
 
