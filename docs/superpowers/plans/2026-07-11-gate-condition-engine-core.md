@@ -16,6 +16,7 @@
 - Commit messages use conventional prefixes (`feat:`, `test:`, `chore:`). No `@anthropic.com`/`@claude.com` Co-Authored-By lines, no "Generated with Claude Code".
 - Run a task's tests with: `npm test --prefix <repo-root> -- <testfile-substring>` (ts-jest). Migrations are applied against the live dev DB `prism_db` (user `prism`) — see Task 2.
 - Canonical operators are snake_case only. SQL-style `LT`/`GTE`/`EQUALS`/`IN` are never accepted.
+- **Typecheck reality (read before trusting any typecheck step):** `npm run typecheck` runs over the whole monorepo and reports **~3990 pre-existing errors** across other apps (missing `__generated__`, missing `cors` types, etc.), and the pathway-service test suite has never `tsc`-cleaned either (e.g. `default_behavior: 'skip'` vs `DefaultBehavior`). Tests run under ts-jest (lenient on types), which is the **real gate**. Do NOT gate a task on a clean whole-project typecheck. To check a task's *own* type safety, compile-scope to the files it changed, e.g. `npx tsc --noEmit -p apps/pathway-service/tsconfig.json 2>&1 | grep <changed-file>` and confirm no NEW errors there. The discriminated-union change also introduces exactly two incremental test-file errors — `gate-evaluator-count-in-window.test.ts` (widened inline `operator: string`) and `reachability.test.ts:168` (`operator: 'matches_regex'`, not in either union) — fixed in Task 5 and Plan 2 respectively (see those tasks).
 
 ---
 
@@ -711,10 +712,10 @@ export async function evaluateGate(
 Run: `npm test --prefix /home/claude/workspace/features/feat-gate-condition-field-attribute-model/prism-graphql -- gate-evaluator-attribute`
 Expected: PASS (both cases).
 
-- [ ] **Step 6: Run the full gate-evaluator + projection suites (no regressions)**
+- [ ] **Step 6: Run the full gate-evaluator + projection suites (no regressions) — jest is the gate**
 
 Run: `npm test --prefix /home/claude/workspace/features/feat-gate-condition-field-attribute-model/prism-graphql -- gate-evaluator care-plan-projection scalar-compare attribute`
-Expected: PASS — all existing coded-operator tests still green; the `field ? [field] : []` guard preserved.
+Expected: PASS — all existing coded-operator tests still green; the `field ? [field] : []` guard preserved. (Per Global Constraints, do NOT gate on a clean whole-project `tsc`. The union change leaves one known incremental `tsc`-only error in `gate-evaluator-count-in-window.test.ts:111,128` — inline gate literals widen `operator` to `string`. This does not fail jest and that file already carries pre-existing `tsc` errors, so leave it; a fully `tsc`-clean test suite is out of this plan's scope.)
 
 - [ ] **Step 7: Commit**
 
@@ -790,13 +791,15 @@ import { AttributeCodeMap } from '../../services/resolution/types';
 
 In `src/services/resolution/traversal-engine.ts`, at the two `evaluateGate(...)` calls (near the `gateProps` casts ~lines 213 and 661), pass the context's `codeMap` as the trailing argument. The traversal already receives the resolution context; thread `codeMap` from it to both calls.
 
-- [ ] **Step 6: Typecheck + full suite**
+- [ ] **Step 6: Scoped typecheck of changed production files + full jest suite**
 
-Run: `npm run typecheck --prefix /home/claude/workspace/features/feat-gate-condition-field-attribute-model/prism-graphql`
-Expected: PASS — no remaining `condition.field`-without-narrowing errors in gate-evaluator (reachability.ts errors are expected and handled in Plan 2; if the build fails only there, temporarily narrow with `isAttributeCondition` guard returning "indeterminate" and leave a `// Plan 2` comment).
+Do NOT expect a clean whole-project `tsc` (see Global Constraints — ~3990 pre-existing monorepo errors). Instead verify our changed **production** files carry no NEW type errors:
+
+Run: `npx tsc --noEmit -p apps/pathway-service/tsconfig.json 2>&1 | grep -E "resolution/(gate-evaluator|traversal-engine|attribute-registry|attribute-code-map|scalar-compare)|helpers/resolution-context"`
+Expected: no output (these production modules are clean). `gate-evaluator.ts` must no longer show `condition.field`-without-narrowing errors — the Task 5 `isAttributeCondition` split resolves them. `reachability.ts` errors remain and are handled in Plan 2.
 
 Run: `npm test --prefix /home/claude/workspace/features/feat-gate-condition-field-attribute-model/prism-graphql`
-Expected: PASS.
+Expected: PASS (ignore the known `tsc`-only test-file errors documented in Global Constraints; they do not fail jest).
 
 - [ ] **Step 7: Commit**
 
