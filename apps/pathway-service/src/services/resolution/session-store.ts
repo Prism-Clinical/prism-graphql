@@ -242,12 +242,21 @@ export async function updateSession(
   }
 
   // Optimistic locking: if expectedUpdatedAt is provided, only update if the row
-  // hasn't been modified by another request since we read it
+  // hasn't been modified by another request since we read it.
+  //
+  // Precision note: Postgres TIMESTAMPTZ has microsecond precision, but
+  // node-pg deserialises into a JS Date which only carries milliseconds.
+  // If we compared `updated_at = $expected` directly, every guard would
+  // fail whenever the row's timestamp has any sub-millisecond content
+  // (i.e. almost always), because the parameter round-trips as
+  // `.529000` while the row is stored as e.g. `.529591`. Truncating the
+  // row's timestamp to milliseconds before the comparison matches the
+  // precision of the JS Date we're comparing against.
   let whereClause = `id = $${idx++}`;
   values.push(sessionId);
 
   if (expectedUpdatedAt) {
-    whereClause += ` AND updated_at = $${idx++}`;
+    whereClause += ` AND date_trunc('milliseconds', updated_at) = date_trunc('milliseconds', $${idx++}::timestamptz)`;
     values.push(expectedUpdatedAt);
   }
 
