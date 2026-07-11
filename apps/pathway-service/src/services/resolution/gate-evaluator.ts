@@ -179,7 +179,11 @@ function evaluateCondition(
   now: number = Date.now(),
 ): { satisfied: boolean; reason: string; fieldsRead: string[] } {
   const { field, operator, value, system } = condition;
-  const fieldsRead = [field];
+  // `field` is required by the GateCondition type, but pathway JSON is
+  // loaded from the graph store un-type-checked — an under-specified
+  // condition can arrive with no field. Emit an empty read-set rather
+  // than leaking `undefined` into the non-nullable GateEvidence.fieldsRead.
+  const fieldsRead = field ? [field] : [];
 
   switch (operator) {
     case 'includes_code': {

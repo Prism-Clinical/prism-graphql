@@ -249,7 +249,7 @@ function collectDataGapHints(
       kind,
       status: node.status,
       reason: node.excludeReason ?? undefined,
-      fieldsRead: Array.from(fieldsByGate.get(node.nodeId) ?? []),
+      fieldsRead: cleanFields(fieldsByGate.get(node.nodeId)),
       unlockedRecommendations: downstream,
     });
   }
@@ -293,10 +293,23 @@ function collectEvidenceTrail(
       kind,
       status: node.status,
       reason: node.excludeReason ?? undefined,
-      fieldsRead: Array.from(fieldsByGate.get(node.nodeId) ?? []),
+      fieldsRead: cleanFields(fieldsByGate.get(node.nodeId)),
     });
   }
   return out;
+}
+
+/**
+ * Materialize a gate's context-field set into the non-nullable
+ * GateEvidence.fieldsRead / DataGapHint.fieldsRead list. Drops any
+ * non-string members — an under-specified gate condition can seed the
+ * set with `undefined` (see gate-evaluator), and the JSON round-trip
+ * through session-store could otherwise surface it as a null list
+ * element, which GraphQL rejects.
+ */
+function cleanFields(fields: Set<string> | undefined): string[] {
+  if (!fields) return [];
+  return Array.from(fields).filter((f): f is string => typeof f === 'string');
 }
 
 // ─── Per-type projection helpers ─────────────────────────────────────
