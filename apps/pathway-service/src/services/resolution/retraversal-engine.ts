@@ -13,6 +13,7 @@ import {
   STRUCTURAL_NODE_TYPES,
   ACTION_NODE_TYPES,
   AnswerType,
+  AttributeCodeMap,
 } from './types';
 import { evaluateGate, LlmGateEvaluator } from './gate-evaluator';
 
@@ -77,6 +78,7 @@ export class RetraversalEngine {
     private confidenceEngine: RetraversalConfidenceAdapter,
     private thresholds: { autoResolveThreshold: number; suggestThreshold: number },
     private llmGateEvaluator?: LlmGateEvaluator,
+    private codeMap: AttributeCodeMap = new Map(),
   ) {}
 
   async retraverse(
@@ -153,6 +155,8 @@ export class RetraversalEngine {
             gateAnswers,
             nodeId,
             this.llmGateEvaluator,
+            undefined,
+            this.codeMap,
           );
           if (gateResult.tentative && !gateAnswers.has(nodeId)) {
             // LLM gate fell below threshold: route safe-default, but surface

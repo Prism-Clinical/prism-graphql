@@ -685,6 +685,7 @@ export async function resolveAndPersistAll(
       makeTraversalAdapter(rctx, pool, m.pathway.id, patientContext),
       rctx.thresholds,
       llmBundle?.evaluator,
+      rctx.codeMap,
     );
     const traversalResult = await engine.traverse(
       rctx.graphContext,

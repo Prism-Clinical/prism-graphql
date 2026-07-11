@@ -2,6 +2,7 @@ import { PatientContext, CodeEntry, LabResult } from '../confidence/types';
 import {
   GateProperties,
   GateCondition,
+  CodedCondition,
   GateAnswer,
   GateEvaluationResult,
   NodeResult,
@@ -63,7 +64,7 @@ function getCodeEntries(
 function getNumericValue(
   patientContext: PatientContext,
   field: string,
-  condition: GateCondition,
+  condition: CodedCondition,
 ): number | undefined {
   if (field === 'labs') {
     const lab = patientContext.labResults.find(

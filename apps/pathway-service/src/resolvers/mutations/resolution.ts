@@ -97,6 +97,7 @@ export const resolutionMutations = {
       makeTraversalAdapter(rctx, pool, args.pathwayId, patientContext),
       rctx.thresholds,
       llmBundle?.evaluator,
+      rctx.codeMap,
     );
     const traversalResult = await traversalEngine.traverse(
       rctx.graphContext,
@@ -224,6 +225,7 @@ export const resolutionMutations = {
         makeRetraversalAdapter(rctx, pool, session.pathwayId, patientCtx),
         rctx.thresholds,
         llmBundle?.evaluator,
+        rctx.codeMap,
       );
 
       const reResult = await retraversalEngine.retraverse(
@@ -378,6 +380,7 @@ export const resolutionMutations = {
           makeRetraversalAdapter(rctx, pool, session.pathwayId, patientCtx),
           rctx.thresholds,
           llmBundle?.evaluator,
+          rctx.codeMap,
         );
 
         const reResult = await retraversalEngine.retraverse(
@@ -585,6 +588,7 @@ export const resolutionMutations = {
         makeRetraversalAdapter(rctx, pool, session.pathwayId, updatedPc),
         rctx.thresholds,
         llmBundle?.evaluator,
+        rctx.codeMap,
       );
 
       const reResult = await retraversalEngine.retraverse(

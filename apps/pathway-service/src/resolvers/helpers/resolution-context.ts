@@ -8,7 +8,8 @@ import {
   PatientContext,
   SignalDefinition,
 } from '../../services/confidence/types';
-import { GateProperties } from '../../services/resolution/types';
+import { GateProperties, AttributeCodeMap } from '../../services/resolution/types';
+import { loadAttributeCodeMap } from '../../services/resolution/attribute-code-map';
 import {
   LlmGateEvaluator,
   LlmGateVerdict,
@@ -221,6 +222,7 @@ export interface ResolutionContext {
   signals: SignalDefinition[];
   thresholds: { autoResolveThreshold: number; suggestThreshold: number };
   confidenceEngine: ConfidenceEngine;
+  codeMap: AttributeCodeMap;
 }
 
 export async function buildResolutionContext(
@@ -239,8 +241,8 @@ export async function buildResolutionContext(
     });
   }
 
-  // These three operations are independent — run in parallel
-  const [{ nodes, edges }, signalResult, thresholds] = await Promise.all([
+  // These four operations are independent — run in parallel
+  const [{ nodes, edges }, signalResult, thresholds, codeMap] = await Promise.all([
     fetchGraphFromAGE(pool, ageNodeId),
     pool.query(
       `SELECT id, name, display_name, description, scoring_type, scoring_rules,
@@ -248,13 +250,14 @@ export async function buildResolutionContext(
        FROM confidence_signal_definitions WHERE is_active = true ORDER BY name ASC`,
     ),
     sharedCascadeResolver.resolveThresholds({ pool, pathwayId }),
+    loadAttributeCodeMap(pool),
   ]);
   const graphContext = buildGraphContext(nodes, edges);
   const signals: SignalDefinition[] = signalResult.rows.map(hydrateSignalDefinition);
 
   const confidenceEngine = new ConfidenceEngine(sharedScorerRegistry, sharedCascadeResolver);
 
-  return { graphContext, edges, signals, thresholds, confidenceEngine };
+  return { graphContext, edges, signals, thresholds, confidenceEngine, codeMap };
 }
 
 export function makeTraversalAdapter(
