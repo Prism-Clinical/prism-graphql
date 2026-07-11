@@ -6,7 +6,11 @@ import {
   GateEvaluationResult,
   NodeResult,
   GateType,
+  isAttributeCondition,
+  AttributeCodeMap,
 } from './types';
+import { resolveAttribute } from './attribute-registry';
+import { compareScalar } from './scalar-compare';
 
 // ─── Helpers ──────────────────────────────────────────────────────────
 
@@ -177,9 +181,16 @@ function evaluateCondition(
   condition: GateCondition,
   patientContext: PatientContext,
   now: number = Date.now(),
+  codeMap: AttributeCodeMap = new Map(),
 ): { satisfied: boolean; reason: string; fieldsRead: string[] } {
+  if (isAttributeCondition(condition)) {
+    const { value, fieldsRead } = resolveAttribute(patientContext, condition.attribute, codeMap);
+    const { satisfied, reason } = compareScalar(value, condition.operator, condition.value);
+    return { satisfied, reason, fieldsRead };
+  }
+  // Coded path below — `condition` is now narrowed to CodedCondition.
   const { field, operator, value, system } = condition;
-  const fieldsRead = [field];
+  const fieldsRead = field ? [field] : [];
 
   switch (operator) {
     case 'includes_code': {
@@ -421,6 +432,7 @@ function evaluatePatientAttribute(
   gate: GateProperties,
   patientContext: PatientContext,
   now: number = Date.now(),
+  codeMap: AttributeCodeMap = new Map(),
 ): GateEvaluationResult {
   if (!gate.condition) {
     return {
@@ -431,7 +443,7 @@ function evaluatePatientAttribute(
     };
   }
 
-  const result = evaluateCondition(gate.condition, patientContext, now);
+  const result = evaluateCondition(gate.condition, patientContext, now, codeMap);
   return {
     satisfied: result.satisfied,
     reason: result.reason,
@@ -544,6 +556,7 @@ function evaluateCompound(
   gate: GateProperties,
   patientContext: PatientContext,
   now: number = Date.now(),
+  codeMap: AttributeCodeMap = new Map(),
 ): GateEvaluationResult {
   if (!gate.conditions || gate.conditions.length === 0) {
     return {
@@ -559,7 +572,7 @@ function evaluateCompound(
   const results: Array<{ satisfied: boolean; reason: string }> = [];
 
   for (const condition of gate.conditions) {
-    const result = evaluateCondition(condition, patientContext, now);
+    const result = evaluateCondition(condition, patientContext, now, codeMap);
     results.push(result);
     allFieldsRead.push(...result.fieldsRead);
   }
@@ -727,10 +740,16 @@ export async function evaluateGate(
    * Date.now() inside the operator implementations.
    */
   now: number = Date.now(),
+  /**
+   * Namespace/system/code lookup table for attribute conditions (e.g.
+   * `lab.hemoglobin` → LOINC 718-7). Defaults to an empty map for call
+   * sites that don't use attribute-style conditions.
+   */
+  codeMap: AttributeCodeMap = new Map(),
 ): Promise<GateEvaluationResult> {
   switch (gate.gate_type) {
     case GateType.PATIENT_ATTRIBUTE:
-      return evaluatePatientAttribute(gate, patientContext, now);
+      return evaluatePatientAttribute(gate, patientContext, now, codeMap);
 
     case GateType.QUESTION:
       return evaluateQuestion(gate, gateAnswers, gateId);
@@ -739,7 +758,7 @@ export async function evaluateGate(
       return evaluatePriorNodeResult(gate, resolutionState);
 
     case GateType.COMPOUND:
-      return evaluateCompound(gate, patientContext, now);
+      return evaluateCompound(gate, patientContext, now, codeMap);
 
     case GateType.LLM_TEXT_ANALYSIS:
       return evaluateLlmTextAnalysis(gate, gateId, patientContext, llmEvaluator);
