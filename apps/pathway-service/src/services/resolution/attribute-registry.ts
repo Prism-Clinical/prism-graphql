@@ -55,7 +55,7 @@ export function resolveAttribute(
   const dot = attribute.indexOf('.');
   const namespace = dot === -1 ? attribute : attribute.slice(0, dot);
   const rest = dot === -1 ? '' : attribute.slice(dot + 1);
-  const resolver = RESOLVERS[namespace];
+  const resolver = (RESOLVERS as Record<string, NamespaceResolver | undefined>)[namespace];
   const value = resolver ? resolver(ctx, rest, attribute, codeMap) : undefined;
   return { value, fieldsRead: [attribute] };
 }
