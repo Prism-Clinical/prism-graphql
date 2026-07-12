@@ -25,6 +25,7 @@ import {
 } from '../helpers/resolution-context';
 import { applyDdiToResolutionState } from '../../services/medications/ddi-pass-single-pathway';
 import { normalizePatientAttributes } from '../../services/resolution/patient-attributes';
+import { buildEffectivePatientContext, dependencyContextKey } from '../../services/resolution/effective-context';
 
 export interface GateAnswerInput {
   booleanValue?: boolean;
@@ -507,42 +508,10 @@ export const resolutionMutations = {
     // 2. Merge additional context
     const merged = { ...(session.additionalContext ?? {}), ...args.additionalContext };
 
-    // 3. Build updated patient context for re-evaluation
+    // 3. Build updated patient context for re-evaluation (rebuilt from the
+    // accumulated `merged` bag so retraversal context accumulates across calls)
     const basePc = session.initialPatientContext as PatientContext;
-
-    // Deduplicate by code+system when merging
-    const dedup = <T extends { code: string; system: string }>(base: T[], added: T[]): T[] => {
-      const seen = new Set(base.map(e => `${e.code}|${e.system}`));
-      const result = [...base];
-      for (const item of added) {
-        const key = `${item.code}|${item.system}`;
-        if (!seen.has(key)) {
-          seen.add(key);
-          result.push(item);
-        }
-      }
-      return result;
-    };
-
-    const updatedPc: PatientContext = {
-      patientId: basePc.patientId,
-      conditionCodes: dedup(basePc.conditionCodes, args.additionalContext.conditionCodes ?? []),
-      medications: dedup(basePc.medications, args.additionalContext.medications ?? []),
-      labResults: dedup(basePc.labResults, args.additionalContext.labResults ?? []),
-      allergies: dedup(basePc.allergies, args.additionalContext.allergies ?? []),
-      vitalSigns: {
-        ...(basePc.vitalSigns ?? {}),
-        ...(args.additionalContext.vitalSigns ?? {}),
-      },
-      freeformData: {
-        ...(basePc.freeformData ?? {}),
-        ...(args.additionalContext.freeformData ?? {}),
-      },
-      patientAttributes: {
-        ...(basePc.patientAttributes ?? {}),
-        ...(normalizePatientAttributes(args.additionalContext.patientAttributes) ?? {}),
-      },
-    };
+    const updatedPc = buildEffectivePatientContext(basePc, merged as Partial<AdditionalContextInput>);
 
     // 4. Identify affected nodes via dependency maps
     const changedFields = new Set<string>();
@@ -552,24 +521,20 @@ export const resolutionMutations = {
     if (args.additionalContext.allergies) changedFields.add('allergies');
     if (args.additionalContext.vitalSigns) changedFields.add('vitalSigns');
     if (args.additionalContext.freeformData) changedFields.add('freeformData');
+    if (args.additionalContext.patientAttributes) changedFields.add('patientAttributes');
 
     const affectedNodes = new Set<string>();
 
     // Gates: mark if any context field they read was updated.
-    // Field names must match exactly what gate-evaluator.ts getCodeEntries uses:
-    // 'conditions', 'medications', 'labs', 'allergies', 'vitals'
-    const fieldToContextKey: Record<string, keyof AdditionalContextInput> = {
-      conditions: 'conditionCodes',
-      medications: 'medications',
-      labs: 'labResults',
-      allergies: 'allergies',
-      vitals: 'vitalSigns',
-    };
+    // Legacy coded deps use bucket names ('labs'); attribute-condition deps use
+    // dotted paths ('lab.hemoglobin'). dependencyContextKey maps both to the
+    // AdditionalContextInput key that supplies the data.
     for (const [gateId, fields] of session.dependencyMap.gateContextFields) {
       for (const field of fields) {
-        const contextKey = fieldToContextKey[field];
+        const contextKey = dependencyContextKey(field);
         if (contextKey && args.additionalContext[contextKey] !== undefined) {
           affectedNodes.add(gateId);
+          break;
         }
       }
     }

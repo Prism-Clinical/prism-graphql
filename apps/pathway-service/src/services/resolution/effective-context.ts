@@ -48,3 +48,32 @@ export function buildEffectivePatientContext(
     },
   };
 }
+
+const CODED_FIELD_TO_KEY: Record<string, keyof AdditionalContextInput> = {
+  conditions: 'conditionCodes',
+  medications: 'medications',
+  labs: 'labResults',
+  allergies: 'allergies',
+  vitals: 'vitalSigns',
+};
+
+const ATTRIBUTE_NAMESPACE_TO_KEY: Record<string, keyof AdditionalContextInput> = {
+  patient: 'patientAttributes',
+  lab: 'labResults',
+  vitals: 'vitalSigns',
+  allergy: 'allergies',
+};
+
+/**
+ * The AdditionalContextInput key whose presence means "the data this gate
+ * dependency reads may have changed". Coded gate deps are bucket names
+ * ('labs'); attribute gate deps are dotted paths ('lab.hemoglobin') keyed by
+ * namespace. Unknown deps map to undefined (never marked affected).
+ */
+export function dependencyContextKey(field: string): keyof AdditionalContextInput | undefined {
+  const coded = CODED_FIELD_TO_KEY[field];
+  if (coded) return coded;
+  const dot = field.indexOf('.');
+  if (dot > 0) return ATTRIBUTE_NAMESPACE_TO_KEY[field.slice(0, dot)];
+  return undefined;
+}
