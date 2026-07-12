@@ -348,6 +348,23 @@ describe('validatePathwayJson', () => {
       pw.edges.push({ from: 'gate-1', to: 'step-1-2', type: 'BRANCHES_TO' as any });
     }
 
+    // addValidGate hardcodes its condition; this variant lets a test inject
+    // a raw condition object to exercise condition-schema validation.
+    function addGateWithCondition(pw: ReturnType<typeof clonePathway>, condition: Record<string, unknown>): void {
+      pw.nodes.push({
+        id: 'gate-cond',
+        type: 'Gate' as any,
+        properties: {
+          title: 'Condition test gate',
+          gate_type: 'patient_attribute',
+          default_behavior: 'skip',
+          condition: condition as any,
+        },
+      });
+      pw.edges.push({ from: 'step-1-1', to: 'gate-cond', type: 'HAS_GATE' as any });
+      pw.edges.push({ from: 'gate-cond', to: 'step-1-2', type: 'BRANCHES_TO' as any });
+    }
+
     it('should accept a valid Gate node', () => {
       const pw = clonePathway();
       addValidGate(pw);
@@ -450,6 +467,52 @@ describe('validatePathwayJson', () => {
       expect(result.valid).toBe(false);
       expect(result.errors).toContainEqual(expect.stringContaining('compound'));
       expect(result.errors).toContainEqual(expect.stringContaining('conditions'));
+    });
+
+    describe('condition schema validation', () => {
+      it('rejects a condition with neither field nor attribute', () => {
+        const pw = clonePathway(REFERENCE_PATHWAY);
+        addGateWithCondition(pw, { operator: 'less_than', value: '7' }); // no field, no attribute
+        const result = validatePathwayJson(pw);
+        expect(result.valid).toBe(false);
+        expect(result.errors).toContainEqual(expect.stringContaining('exactly one of'));
+      });
+
+      it('rejects a condition with both field and attribute', () => {
+        const pw = clonePathway(REFERENCE_PATHWAY);
+        addGateWithCondition(pw, { field: 'labs', attribute: 'lab.hemoglobin', operator: 'less_than', value: '7' });
+        expect(validatePathwayJson(pw).errors).toContainEqual(expect.stringContaining('exactly one of'));
+      });
+
+      it('rejects an SQL-style operator (LT) on a coded condition', () => {
+        const pw = clonePathway(REFERENCE_PATHWAY);
+        addGateWithCondition(pw, { field: 'labs', operator: 'LT', value: '718-7' });
+        expect(validatePathwayJson(pw).errors).toContainEqual(expect.stringContaining('operator'));
+      });
+
+      it('rejects an attribute with an unregistered namespace', () => {
+        const pw = clonePathway(REFERENCE_PATHWAY);
+        addGateWithCondition(pw, { attribute: 'bogus.thing', operator: 'exists', value: true });
+        expect(validatePathwayJson(pw).errors).toContainEqual(expect.stringContaining('namespace'));
+      });
+
+      it('rejects an unknown decorator/extra key', () => {
+        const pw = clonePathway(REFERENCE_PATHWAY);
+        addGateWithCondition(pw, { field: 'labs', operator: 'less_than', value: '718-7', threshold: 7, bogusKey: 1 });
+        expect(validatePathwayJson(pw).errors).toContainEqual(expect.stringContaining('unknown'));
+      });
+
+      it('accepts a valid coded condition with a display decorator', () => {
+        const pw = clonePathway(REFERENCE_PATHWAY);
+        addGateWithCondition(pw, { field: 'labs', operator: 'less_than', value: '718-7', system: 'LOINC', threshold: 7, display: 'Hemoglobin' });
+        expect(validatePathwayJson(pw).valid).toBe(true);
+      });
+
+      it('accepts a valid attribute condition', () => {
+        const pw = clonePathway(REFERENCE_PATHWAY);
+        addGateWithCondition(pw, { attribute: 'patient.trimester', operator: 'in', value: [1, 3] });
+        expect(validatePathwayJson(pw).valid).toBe(true);
+      });
     });
   });
 

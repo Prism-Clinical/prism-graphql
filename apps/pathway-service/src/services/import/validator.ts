@@ -16,10 +16,23 @@ import {
   ValidationResult,
 } from './types';
 import { PathwayCategory } from '../../types';
+import { VALID_CODED_OPERATORS, VALID_ATTRIBUTE_OPERATORS } from '../resolution/types';
+import { VALID_ATTRIBUTE_NAMESPACES } from '../resolution/attribute-registry';
 
 const VALID_NODE_TYPES = new Set<string>(Object.keys(REQUIRED_NODE_PROPERTIES));
 const VALID_EDGE_TYPES = new Set<string>(Object.keys(VALID_EDGE_ENDPOINTS));
 const VALID_CATEGORIES = new Set<string>(Object.values(PathwayCategory));
+
+// ─── Gate condition schema ─────────────────────────────────────────────
+const CODED_KEYS = new Set([
+  'field', 'operator', 'value', 'system', 'threshold',
+  'window_days', 'count_threshold', 'min_points', 'slope_threshold', 'delta_threshold',
+  'display', 'note',
+]);
+const ATTRIBUTE_KEYS = new Set(['attribute', 'operator', 'value', 'unit', 'display', 'note']);
+const CODED_OPS = new Set<string>(VALID_CODED_OPERATORS);
+const ATTR_OPS = new Set<string>(VALID_ATTRIBUTE_OPERATORS);
+const NAMESPACES = new Set<string>(VALID_ATTRIBUTE_NAMESPACES);
 
 interface ValidateOptions {
   /** When true, missing required properties and other WIP issues become warnings instead of errors */
@@ -234,7 +247,48 @@ function validateGateNodes(
         softTarget.push(`Gate "${gate.id}": gate_type "compound" requires a non-empty "conditions" array`);
       }
     }
+
+    // Condition schema validation — always a hard error, even in draft mode.
+    // A malformed operator/field/namespace/key is schema-invalid, not WIP-incomplete.
+    const conds = [
+      ...(props.condition && typeof props.condition === 'object' ? [props.condition as Record<string, unknown>] : []),
+      ...(Array.isArray(props.conditions) ? (props.conditions as Array<Record<string, unknown>>) : []),
+    ];
+    if (conds.length > 0) validateGateConditions(gate.id, conds, errors);
   }
+}
+
+/**
+ * Validates the schema of one or more gate conditions: exactly one of
+ * field/attribute, a canonical operator for the condition kind, a
+ * registered attribute namespace, and no unrecognized keys. Always pushes
+ * to `errors` — a schema-invalid condition is not a WIP/draft concern.
+ */
+function validateGateConditions(
+  gateId: string,
+  conditions: Array<Record<string, unknown>>,
+  errors: string[],
+): void {
+  conditions.forEach((c, i) => {
+    const where = `Gate "${gateId}" condition[${i}]`;
+    const hasField = typeof c.field === 'string';
+    const hasAttr = typeof c.attribute === 'string';
+    if (hasField === hasAttr) {
+      errors.push(`${where}: must have exactly one of "field" or "attribute".`);
+      return; // can't classify further
+    }
+    const op = typeof c.operator === 'string' ? c.operator : '';
+    if (hasAttr) {
+      if (!ATTR_OPS.has(op)) errors.push(`${where}: operator "${op}" is not a valid attribute operator.`);
+      const ns = (c.attribute as string).split('.')[0];
+      if (!NAMESPACES.has(ns)) errors.push(`${where}: attribute namespace "${ns}" is not registered.`);
+      for (const k of Object.keys(c)) if (!ATTRIBUTE_KEYS.has(k)) errors.push(`${where}: unknown key "${k}" on attribute condition.`);
+    } else {
+      if (!CODED_OPS.has(op)) errors.push(`${where}: operator "${op}" is not a valid coded operator.`);
+      if (c.value == null) errors.push(`${where}: coded condition requires a "value".`);
+      for (const k of Object.keys(c)) if (!CODED_KEYS.has(k)) errors.push(`${where}: unknown key "${k}" on coded condition.`);
+    }
+  });
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────
