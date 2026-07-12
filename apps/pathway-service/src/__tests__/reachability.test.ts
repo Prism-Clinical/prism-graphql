@@ -179,6 +179,75 @@ describe('hasDataForCondition', () => {
       ),
     ).toBe(false);
   });
+
+  // ─── DATA_DEPENDENT_OPERATORS additions (count_in_window, trend_up,
+  //     trend_down, delta_from_baseline) — these key off `field` exactly like
+  //     greater_than/less_than do (see hasDataForCondition's coded branch). ───
+
+  it('returns true for trend_up on labs when the matching lab is present with a numeric value', () => {
+    const condition: GateCondition = {
+      field: 'labs',
+      operator: 'trend_up',
+      value: '718-7',
+      system: 'LOINC',
+      min_points: 2,
+      slope_threshold: 0.1,
+    };
+    expect(hasDataForCondition(condition, REFERENCE_PATIENT, new Map())).toBe(true);
+  });
+
+  it('returns false for trend_up on labs when the matching lab is absent', () => {
+    const condition: GateCondition = {
+      field: 'labs',
+      operator: 'trend_up',
+      value: 'missing-loinc',
+      system: 'LOINC',
+      min_points: 2,
+      slope_threshold: 0.1,
+    };
+    expect(hasDataForCondition(condition, REFERENCE_PATIENT, new Map())).toBe(false);
+  });
+
+  it('returns true for count_in_window on labs when the matching lab is present with a numeric value', () => {
+    const condition: GateCondition = {
+      field: 'labs',
+      operator: 'count_in_window',
+      value: '58410-2',
+      system: 'LOINC',
+      window_days: 30,
+      count_threshold: 1,
+    };
+    expect(hasDataForCondition(condition, REFERENCE_PATIENT, new Map())).toBe(true);
+  });
+
+  it('returns false for count_in_window on labs when the matching lab is absent', () => {
+    const condition: GateCondition = {
+      field: 'labs',
+      operator: 'count_in_window',
+      value: 'missing-loinc',
+      system: 'LOINC',
+      window_days: 30,
+      count_threshold: 1,
+    };
+    expect(hasDataForCondition(condition, REFERENCE_PATIENT, new Map())).toBe(false);
+  });
+
+  it('returns false for delta_from_baseline and trend_down on labs when the matching lab is absent', () => {
+    expect(
+      hasDataForCondition(
+        { field: 'labs', operator: 'delta_from_baseline', value: 'missing-loinc', system: 'LOINC', delta_threshold: 1 },
+        REFERENCE_PATIENT,
+        new Map(),
+      ),
+    ).toBe(false);
+    expect(
+      hasDataForCondition(
+        { field: 'labs', operator: 'trend_down', value: 'missing-loinc', system: 'LOINC' },
+        REFERENCE_PATIENT,
+        new Map(),
+      ),
+    ).toBe(false);
+  });
 });
 
 // ─── reachability — attribute conditions ───────────────────────────────
@@ -201,6 +270,15 @@ describe('reachability — attribute conditions', () => {
     const withTri = { ...EMPTY_PATIENT, patientAttributes: { trimester: 2 } };
     expect(hasDataForCondition(cond, withTri, HB_MAP)).toBe(true);
     expect(hasDataForCondition(cond, EMPTY_PATIENT, HB_MAP)).toBe(false);
+  });
+
+  // Locks in `!== undefined` (not truthiness) semantics in hasDataForCondition
+  // (reachability.ts): a falsy-but-present value like trimester=0 must count
+  // as data-PRESENT, not absent. Guards against a future `!value` regression.
+  it('treats a falsy-but-present attribute value (trimester=0) as data-present, not absent', () => {
+    const cond = { attribute: 'patient.trimester', operator: 'equals', value: 0 } as const;
+    const withTriZero = { ...EMPTY_PATIENT, patientAttributes: { trimester: 0 } };
+    expect(hasDataForCondition(cond, withTriZero, HB_MAP)).toBe(true);
   });
 });
 
@@ -576,5 +654,48 @@ describe('scoreReachability — explanation details', () => {
     const result = scoreReachability([compound, priorNode], REFERENCE_PATIENT, new Map());
     expect(result.gateExplanations[0].reason).toContain('Compound');
     expect(result.gateExplanations[1].reason).toContain('upstream node');
+  });
+});
+
+// ─── scoreReachability — attribute-conditioned gate (Finding 1/2 regression) ──
+//
+// This is the integration path the raw `MissingData` object actually travels
+// through the live resolver (Query.ts `MatchedPathway.reachability` ->
+// computePathwayReachability -> scoreReachability). It flows to GraphQL with
+// no mapper, so `missingData[0]` here must be readable without throwing and
+// must carry `attribute` (not smuggle the attribute name into `field`).
+
+describe('scoreReachability — attribute-conditioned gate', () => {
+  beforeEach(() => {
+    nodeIdCounter = 1;
+  });
+
+  it('classifies DATA_BLOCKED with a first-class `attribute` in missingData when the datum is absent', () => {
+    const gate = makeGateNode(
+      patientAttrGate({ attribute: 'lab.hemoglobin', operator: 'less_than', value: 7 }),
+    );
+    const result = scoreReachability([gate], EMPTY_PATIENT, HB_MAP);
+    const explanation = result.gateExplanations[0];
+
+    expect(explanation.classification).toBe('DATA_BLOCKED');
+    expect(explanation.missingData).toHaveLength(1);
+    expect(() => explanation.missingData[0]).not.toThrow();
+    expect(explanation.missingData[0].attribute).toBe('lab.hemoglobin');
+    expect(explanation.missingData[0].field).toBeUndefined();
+  });
+
+  it('does not classify DATA_BLOCKED when the attribute datum is present', () => {
+    const gate = makeGateNode(
+      patientAttrGate({ attribute: 'lab.hemoglobin', operator: 'less_than', value: 7 }),
+    );
+    const withHb = {
+      ...EMPTY_PATIENT,
+      labResults: [{ code: '718-7', system: 'LOINC', value: 8.1 }],
+    };
+    const result = scoreReachability([gate], withHb, HB_MAP);
+    const explanation = result.gateExplanations[0];
+
+    expect(explanation.classification).toBe('DATA_AVAILABLE');
+    expect(explanation.missingData).toEqual([]);
   });
 });

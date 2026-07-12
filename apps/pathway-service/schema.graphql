@@ -921,12 +921,13 @@ type GateExplanation {
 }
 
 type MissingData {
-  field: String!
+  field: String
   code: String
   system: String
   vitalName: String
   threshold: Float
   comparison: String
+  attribute: String
 }
 
 enum PathwayRelationshipType {
