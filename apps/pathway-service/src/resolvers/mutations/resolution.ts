@@ -223,7 +223,10 @@ export const resolutionMutations = {
 
     if (affectedNodes.size > 0) {
       const rctx = await buildResolutionContext(pool, session.pathwayId);
-      const patientCtx = session.initialPatientContext as PatientContext;
+      const patientCtx = buildEffectivePatientContext(
+        session.initialPatientContext as PatientContext,
+        session.additionalContext as Partial<AdditionalContextInput>,
+      );
 
       const llmBundle = makeLlmGateEvaluator(pool, session.pathwayId, args.sessionId);
       const retraversalEngine = new RetraversalEngine(
@@ -360,7 +363,10 @@ export const resolutionMutations = {
 
       statusChanges = [];
       nodesRecomputed = 0;
-      const patientCtx = session.initialPatientContext as PatientContext;
+      const patientCtx = buildEffectivePatientContext(
+        session.initialPatientContext as PatientContext,
+        session.additionalContext as Partial<AdditionalContextInput>,
+      );
 
       if (gateOpened) {
         // 5a. Gate opens: mark gate as INCLUDED and re-evaluate subtree
