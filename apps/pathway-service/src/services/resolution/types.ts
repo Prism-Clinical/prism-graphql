@@ -83,6 +83,18 @@ export type AttributeOperator =
   | 'greater_than' | 'greater_or_equal' | 'less_than' | 'less_or_equal'
   | 'in' | 'exists';
 
+export const VALID_CODED_OPERATORS = [
+  'includes_code', 'equals', 'exists',
+  'greater_than', 'less_than',
+  'count_in_window', 'trend_up', 'trend_down', 'delta_from_baseline',
+] as const satisfies readonly CodedOperator[];
+
+export const VALID_ATTRIBUTE_OPERATORS = [
+  'equals', 'not_equals',
+  'greater_than', 'greater_or_equal', 'less_than', 'less_or_equal',
+  'in', 'exists',
+] as const satisfies readonly AttributeOperator[];
+
 export interface CodedCondition {
   field: 'conditions' | 'medications' | 'allergies' | 'labs' | 'vitals';
   operator: CodedOperator;

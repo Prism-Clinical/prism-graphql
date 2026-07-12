@@ -24,7 +24,10 @@ type NamespaceResolver = (
   codeMap: AttributeCodeMap,
 ) => number | string | boolean | undefined;
 
-const RESOLVERS: Record<string, NamespaceResolver> = {
+export const VALID_ATTRIBUTE_NAMESPACES = ['lab', 'vitals', 'allergy', 'patient'] as const;
+export type AttributeNamespace = (typeof VALID_ATTRIBUTE_NAMESPACES)[number];
+
+const RESOLVERS: Record<AttributeNamespace, NamespaceResolver> = {
   lab: (ctx, _rest, fullName, codeMap) => {
     const entry = codeMap.get(fullName);
     if (!entry) return undefined;
