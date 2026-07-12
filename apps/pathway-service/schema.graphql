@@ -1111,6 +1111,7 @@ input AdditionalContextInput {
   allergies: [CodeInput!]
   vitalSigns: JSON
   freeformData: JSON
+  patientAttributes: JSON
 }
 
 # ─── Confidence Inputs ────────────────────────────────────────────────
@@ -1123,6 +1124,7 @@ input PatientContextInput {
   allergies: [CodeInput!]
   vitalSigns: JSON
   freeformData: JSON
+  patientAttributes: JSON
 }
 
 input CodeInput {

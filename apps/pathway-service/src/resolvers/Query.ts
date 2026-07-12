@@ -2,6 +2,7 @@ import { GraphQLError } from 'graphql';
 import { DataSourceContext } from '../types';
 import { ConfidenceEngine } from '../services/confidence/confidence-engine';
 import { SignalDefinition, ResolvedWeight, normalizePropagationMode, PatientContext, AdminEvidenceEntry } from '../services/confidence/types';
+import { normalizePatientAttributes } from '../services/resolution/patient-attributes';
 import {
   getSession,
   getMatchedPathways,
@@ -488,6 +489,7 @@ export const Query = {
           labResults?: Array<{ code: string; system: string; value?: number; unit?: string; date?: string; display?: string }>;
           allergies?: Array<{ code: string; system: string; display?: string }>;
           vitalSigns?: Record<string, unknown>;
+          patientAttributes?: Record<string, unknown>;
         };
         institutionId?: string;
         organizationId?: string;
@@ -525,6 +527,7 @@ export const Query = {
         labResults: args.patientContext.labResults ?? [],
         allergies: args.patientContext.allergies ?? [],
         vitalSigns: args.patientContext.vitalSigns,
+        patientAttributes: normalizePatientAttributes(args.patientContext.patientAttributes),
       };
 
       const confidenceEngine = new ConfidenceEngine(sharedScorerRegistry, sharedCascadeResolver);

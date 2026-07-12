@@ -24,6 +24,7 @@ import {
   makeLlmGateEvaluator,
 } from '../helpers/resolution-context';
 import { applyDdiToResolutionState } from '../../services/medications/ddi-pass-single-pathway';
+import { normalizePatientAttributes } from '../../services/resolution/patient-attributes';
 
 export interface GateAnswerInput {
   booleanValue?: boolean;
@@ -38,6 +39,7 @@ export interface AdditionalContextInput {
   allergies?: Array<{ code: string; system: string; display?: string }>;
   vitalSigns?: Record<string, unknown>;
   freeformData?: Record<string, unknown>;
+  patientAttributes?: Record<string, unknown>;
 }
 
 export const resolutionMutations = {
@@ -54,6 +56,7 @@ export const resolutionMutations = {
         allergies?: Array<{ code: string; system: string; display?: string }>;
         vitalSigns?: Record<string, unknown>;
         freeformData?: Record<string, unknown>;
+        patientAttributes?: Record<string, unknown>;
       };
     },
     context: DataSourceContext
@@ -90,6 +93,7 @@ export const resolutionMutations = {
       allergies: pc?.allergies ?? [],
       vitalSigns: pc?.vitalSigns,
       freeformData: pc?.freeformData,
+      patientAttributes: normalizePatientAttributes(pc?.patientAttributes),
     };
 
     const llmBundle = makeLlmGateEvaluator(pool, args.pathwayId);
@@ -533,6 +537,10 @@ export const resolutionMutations = {
       freeformData: {
         ...(basePc.freeformData ?? {}),
         ...(args.additionalContext.freeformData ?? {}),
+      },
+      patientAttributes: {
+        ...(basePc.patientAttributes ?? {}),
+        ...(normalizePatientAttributes(args.additionalContext.patientAttributes) ?? {}),
       },
     };
 
