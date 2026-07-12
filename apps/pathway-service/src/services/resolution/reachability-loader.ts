@@ -2,6 +2,7 @@ import { Pool } from 'pg';
 import { fetchGraphFromAGE } from '../../resolvers/helpers/resolution-context';
 import { PatientContext } from '../confidence/types';
 import { ReachabilityScore, scoreReachability } from './reachability';
+import { loadAttributeCodeMap } from './attribute-code-map';
 
 const EMPTY_SCORE: ReachabilityScore = {
   totalGates: 0,
@@ -38,5 +39,6 @@ export async function computePathwayReachability(
 
   const { nodes } = await fetchGraphFromAGE(pool, ageNodeId);
   const gateNodes = nodes.filter((n) => n.nodeType === 'Gate');
-  return scoreReachability(gateNodes, patient);
+  const codeMap = await loadAttributeCodeMap(pool);
+  return scoreReachability(gateNodes, patient, codeMap);
 }

@@ -1,4 +1,5 @@
-import { GateProperties, GateCondition } from './types';
+import { GateProperties, GateCondition, isAttributeCondition, AttributeCodeMap } from './types';
+import { resolveAttribute } from './attribute-registry';
 import { PatientContext, GraphNode } from '../confidence/types';
 import { GateType } from '../../types';
 
@@ -10,12 +11,13 @@ export type GateClassification =
   | 'INDETERMINATE';
 
 export interface MissingData {
-  field: string;
+  field?: string;
   code?: string;
   system?: string;
   vitalName?: string;
   threshold?: number;
   comparison?: 'greater_than' | 'less_than';
+  attribute?: string;
 }
 
 export interface GateExplanation {
@@ -46,6 +48,10 @@ const ALWAYS_EVALUABLE_OPERATORS: ReadonlySet<string> = new Set([
 const DATA_DEPENDENT_OPERATORS: ReadonlySet<string> = new Set([
   'greater_than',
   'less_than',
+  'count_in_window',
+  'trend_up',
+  'trend_down',
+  'delta_from_baseline',
 ]);
 
 export function extractGateProperties(node: GraphNode): GateProperties | null {
@@ -60,8 +66,14 @@ export function extractGateProperties(node: GraphNode): GateProperties | null {
 export function hasDataForCondition(
   condition: GateCondition,
   patient: PatientContext,
+  codeMap: AttributeCodeMap,
 ): boolean {
-  const { field, operator } = condition;
+  if (isAttributeCondition(condition)) {
+    if (condition.operator === 'exists') return true; // data-independent
+    return resolveAttribute(patient, condition.attribute, codeMap).value !== undefined;
+  }
+
+  const { field, operator } = condition; // coded path (unchanged below)
 
   if (ALWAYS_EVALUABLE_OPERATORS.has(operator)) {
     return true;
@@ -89,6 +101,10 @@ export function hasDataForCondition(
 }
 
 function missingDataForCondition(condition: GateCondition): MissingData {
+  if (isAttributeCondition(condition)) {
+    return { attribute: condition.attribute, comparison: undefined };
+  }
+
   const comparison =
     condition.operator === 'greater_than' || condition.operator === 'less_than'
       ? condition.operator
@@ -110,9 +126,17 @@ function missingDataForCondition(condition: GateCondition): MissingData {
   };
 }
 
+/** Kind-aware "does this condition depend on patient data?" check. An attribute
+ *  condition is data-dependent unless its operator is `exists` (data-independent);
+ *  a coded condition is data-dependent iff its operator is in DATA_DEPENDENT_OPERATORS. */
+function isDataDependent(c: GateCondition): boolean {
+  return isAttributeCondition(c) ? c.operator !== 'exists' : DATA_DEPENDENT_OPERATORS.has(c.operator);
+}
+
 function classifyGate(
   gate: GateProperties,
   patient: PatientContext,
+  codeMap: AttributeCodeMap,
 ): GateClassification {
   if (gate.gate_type === GateType.QUESTION) {
     return 'QUESTION';
@@ -132,15 +156,13 @@ function classifyGate(
     return 'INDETERMINATE';
   }
 
-  const hasDataDependent = conditions.some((c) =>
-    DATA_DEPENDENT_OPERATORS.has(c.operator),
-  );
+  const hasDataDependent = conditions.some(isDataDependent);
 
   if (!hasDataDependent) {
     return 'ALWAYS_EVALUABLE';
   }
 
-  const allDataPresent = conditions.every((c) => hasDataForCondition(c, patient));
+  const allDataPresent = conditions.every((c) => hasDataForCondition(c, patient, codeMap));
   return allDataPresent ? 'DATA_AVAILABLE' : 'DATA_BLOCKED';
 }
 
@@ -149,6 +171,7 @@ function buildExplanation(
   gate: GateProperties,
   classification: GateClassification,
   patient: PatientContext,
+  codeMap: AttributeCodeMap,
 ): GateExplanation {
   const conditions: GateCondition[] =
     gate.conditions ?? (gate.condition ? [gate.condition] : []);
@@ -190,18 +213,14 @@ function buildExplanation(
       };
     case 'DATA_BLOCKED': {
       const missing = conditions
-        .filter(
-          (c) =>
-            DATA_DEPENDENT_OPERATORS.has(c.operator) &&
-            !hasDataForCondition(c, patient),
-        )
+        .filter((c) => isDataDependent(c) && !hasDataForCondition(c, patient, codeMap))
         .map(missingDataForCondition);
 
       const summary = missing
         .map((m) => {
           if (m.vitalName) return m.vitalName;
           if (m.code && m.system) return `${m.system} ${m.code}`;
-          return m.code ?? m.field;
+          return m.code ?? m.field ?? m.attribute;
         })
         .join(', ');
 
@@ -219,6 +238,7 @@ function buildExplanation(
 export function scoreReachability(
   gateNodes: GraphNode[],
   patient: PatientContext,
+  codeMap: AttributeCodeMap,
 ): ReachabilityScore {
   let totalGates = 0;
   let alwaysEvaluableGates = 0;
@@ -233,8 +253,8 @@ export function scoreReachability(
     if (!gate) continue;
 
     totalGates++;
-    const classification = classifyGate(gate, patient);
-    gateExplanations.push(buildExplanation(node, gate, classification, patient));
+    const classification = classifyGate(gate, patient, codeMap);
+    gateExplanations.push(buildExplanation(node, gate, classification, patient, codeMap));
 
     switch (classification) {
       case 'ALWAYS_EVALUABLE':
