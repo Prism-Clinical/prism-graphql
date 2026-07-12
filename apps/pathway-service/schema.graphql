@@ -1305,6 +1305,22 @@ type LoincPanelConstituent {
   displayOrder: Int!
 }
 
+# ─── Attribute Vocabulary (named attribute conditions) ────────────────
+
+"""
+One entry in the authoring vocabulary for named attribute conditions:
+either a curated code-map row (lab.*/allergy.*) or a derived patient.*
+attribute. Used by the admin UI authoring picker so it never drifts from
+what the resolver actually understands.
+"""
+type AttributeVocabularyEntry {
+  attribute: String!
+  namespace: String!
+  display: String!
+  valueType: String!
+  unit: String
+}
+
 # ─── Queries ──────────────────────────────────────────────────────────
 
 
@@ -1397,6 +1413,9 @@ type Query {
 
   """Fetch a single saved simulator scenario by id."""
   simulatorScenario(id: ID!): SimulatorScenario
+
+  """Authoring vocabulary for named attribute conditions (code-map + derived patient.* attributes)."""
+  attributeVocabulary: [AttributeVocabularyEntry!]!
 }
 
 # ─── Phase 4 admin queue ─────────────────────────────────────────────
