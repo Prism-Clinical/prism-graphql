@@ -233,6 +233,13 @@ export interface PatientContext {
    * (`freeformData.narrative.chief_complaint`).
    */
   freeformData?: Record<string, unknown>;
+  /**
+   * Derived/named scalar signals that have no natural terminology code
+   * (e.g. trimester, rh_factor, gestational_age_weeks). Read by the
+   * attribute registry's `patient.*` namespace. Populated by the
+   * snapshot/composer layer (Plan 3).
+   */
+  patientAttributes?: Record<string, number | string | boolean>;
 }
 
 // ─── Weight Cascade ──────────────────────────────────────────────────

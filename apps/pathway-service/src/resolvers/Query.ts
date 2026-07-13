@@ -2,6 +2,9 @@ import { GraphQLError } from 'graphql';
 import { DataSourceContext } from '../types';
 import { ConfidenceEngine } from '../services/confidence/confidence-engine';
 import { SignalDefinition, ResolvedWeight, normalizePropagationMode, PatientContext, AdminEvidenceEntry } from '../services/confidence/types';
+import { normalizePatientAttributes } from '../services/resolution/patient-attributes';
+import { loadAttributeCodeMap } from '../services/resolution/attribute-code-map';
+import { buildAttributeVocabulary } from '../services/resolution/attribute-vocabulary';
 import {
   getSession,
   getMatchedPathways,
@@ -488,6 +491,7 @@ export const Query = {
           labResults?: Array<{ code: string; system: string; value?: number; unit?: string; date?: string; display?: string }>;
           allergies?: Array<{ code: string; system: string; display?: string }>;
           vitalSigns?: Record<string, unknown>;
+          patientAttributes?: Record<string, unknown>;
         };
         institutionId?: string;
         organizationId?: string;
@@ -525,6 +529,7 @@ export const Query = {
         labResults: args.patientContext.labResults ?? [],
         allergies: args.patientContext.allergies ?? [],
         vitalSigns: args.patientContext.vitalSigns,
+        patientAttributes: normalizePatientAttributes(args.patientContext.patientAttributes),
       };
 
       const confidenceEngine = new ConfidenceEngine(sharedScorerRegistry, sharedCascadeResolver);
@@ -788,6 +793,15 @@ export const Query = {
       context: DataSourceContext
     ) => {
       return getPatientSessions(context.pool, args.patientId, args.status);
+    },
+
+    attributeVocabulary: async (
+      _: unknown,
+      _args: unknown,
+      context: DataSourceContext
+    ) => {
+      const map = await loadAttributeCodeMap(context.pool);
+      return buildAttributeVocabulary([...map.values()]);
     },
 
     ...multiPathwayResolutionQueries,

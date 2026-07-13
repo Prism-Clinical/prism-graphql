@@ -69,7 +69,6 @@ describe('Confidence mutation resolvers', () => {
       expect(result.weight).toBe(0.40);
       expect(result.scope).toBe('PATHWAY');
     });
-  });
 
     it('should reject weight outside 0-1 range', async () => {
       const ctx = createMockContext();

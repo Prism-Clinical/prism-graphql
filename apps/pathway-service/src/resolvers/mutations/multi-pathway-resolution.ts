@@ -26,6 +26,7 @@ import {
   BlockerType,
 } from '../../types';
 import { PatientContext } from '../../services/confidence/types';
+import { normalizePatientAttributes } from '../../services/resolution/patient-attributes';
 import { TraversalEngine } from '../../services/resolution/traversal-engine';
 import {
   GateAnswer,
@@ -94,6 +95,7 @@ export interface MultiPathwayResolutionArgs {
     allergies?: Array<{ code: string; system: string; display?: string }>;
     vitalSigns?: Record<string, unknown>;
     freeformData?: Record<string, unknown>;
+    patientAttributes?: Record<string, unknown>;
   };
   /**
    * Admin-only flag. When true, DRAFT pathways are also considered for matching
@@ -521,7 +523,7 @@ export const multiPathwayResolutionTypeResolvers = {
 
 // ─── Internals ──────────────────────────────────────────────────────
 
-function buildPatientContext(args: MultiPathwayResolutionArgs): PatientContext {
+export function buildPatientContext(args: MultiPathwayResolutionArgs): PatientContext {
   const pc = args.patientContext;
   return {
     patientId: args.patientId,
@@ -531,6 +533,7 @@ function buildPatientContext(args: MultiPathwayResolutionArgs): PatientContext {
     allergies: pc?.allergies ?? [],
     vitalSigns: pc?.vitalSigns,
     freeformData: pc?.freeformData,
+    patientAttributes: normalizePatientAttributes(pc?.patientAttributes),
   };
 }
 
@@ -685,6 +688,7 @@ export async function resolveAndPersistAll(
       makeTraversalAdapter(rctx, pool, m.pathway.id, patientContext),
       rctx.thresholds,
       llmBundle?.evaluator,
+      rctx.codeMap,
     );
     const traversalResult = await engine.traverse(
       rctx.graphContext,

@@ -18,6 +18,7 @@ import {
   TRAVERSAL_TIMEOUT_MS,
   STRUCTURAL_NODE_TYPES,
   ACTION_NODE_TYPES,
+  AttributeCodeMap,
 } from './types';
 
 // ─── Helpers ──────────────────────────────────────────────────────────
@@ -140,6 +141,7 @@ export class TraversalEngine {
     private confidenceEngine: TraversalConfidenceAdapter,
     private thresholds: { autoResolveThreshold: number; suggestThreshold: number },
     private llmGateEvaluator?: LlmGateEvaluator,
+    private codeMap: AttributeCodeMap = new Map(),
   ) {}
 
   async traverse(
@@ -268,7 +270,7 @@ export class TraversalEngine {
 
         const gateResult = await evaluateGate(
           gateProps, patientContext, resolutionState, gateAnswers, nodeIdentifier,
-          this.llmGateEvaluator,
+          this.llmGateEvaluator, undefined, this.codeMap,
         );
 
         // Record dependencies
@@ -661,7 +663,7 @@ export class TraversalEngine {
       const gateProps = node.properties as unknown as GateProperties;
       const gateResult = await evaluateGate(
         gateProps, patientContext, resolutionState, gateAnswers, nodeIdentifier,
-        this.llmGateEvaluator,
+        this.llmGateEvaluator, undefined, this.codeMap,
       );
       resolutionState.set(nodeIdentifier, {
         nodeId: nodeIdentifier,
