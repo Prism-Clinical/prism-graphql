@@ -1,0 +1,129 @@
+# Pathway Temporal Horizon — Plan Suite Overview
+
+> **For agentic workers:** this is the index for a nine-plan suite. Each numbered
+> plan (`2026-07-26-temporal-horizon-0N-*.md`) is executed on its own via
+> superpowers:executing-plans or subagent-driven-development. Execute in numeric
+> order — later plans consume interfaces earlier plans produce (the
+> Produces/Consumes blocks below are the contract).
+
+**Design source:** `docs/superpowers/specs/2026-07-21-pathway-temporal-horizon-design.md`
+(revised through three review rounds). Section references (§N) point there.
+
+**Goal:** Give pathway authors explicit, layered control over the time window
+(`Horizon`) and clinical `status` a gate condition examines, with record-validity
+as a non-overridable platform safety filter, reproducible evaluation, and
+per-condition audit evidence.
+
+**Repos:** `prism-graphql` (pathway-service) for plans 1–8; `prism-admin-dashboard`
+for plan 9 (plan 6 touches both).
+
+## Global Constraints (apply to every plan)
+
+- **Language/stack:** TypeScript 5 strict (`noImplicitAny`, `noImplicitReturns`),
+  Apollo Server 4 + Federation 2.10, PostgreSQL 15 + Apache AGE, Redis. Tests: Jest
+  + ts-jest, `maxWorkers=1`, 30s timeout, files `*.test.ts` in `src/__tests__/`.
+- **Commands (run with `--prefix` / `-C`, never `cd &&`):**
+  `npm run --prefix apps/pathway-service typecheck`,
+  `npx --prefix apps/pathway-service jest <path>`.
+- **Commit prefixes:** `feat:` / `fix:` / `test:` / `refactor:` / `docs:`. No
+  `@anthropic.com`/`@claude.com`, no "Generated with" lines. End commit messages
+  with `Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>`.
+- **Branch:** `feat/pathway-temporal-horizon` (already checked out in this worktree).
+- **v1 vs legacy:** `temporalPolicyVersion` selects **defaults only**, not the whole
+  kernel. The current evaluator is the shadow baseline; existing sessions are
+  non-retraversable (§5). No production sessions exist.
+- **Deployment vs development order:** these plans are *development* order. Behavior
+  is activated later via shadow evaluation → explicit `v1` flip (§Rollout,
+  deployment order). Plans 1–8 must not change live routing until the `v1` flip.
+- **Empty substrate:** all `snapshot_*` tables are empty; the encounter simulator is
+  the only live context source. v1 runs in SYNTHETIC mode. Plan 7 (snapshot mapper)
+  is therefore last among backend layers and untestable against real data.
+
+## Decomposition (files locked here)
+
+Each layer is one plan. New pure code lives under
+`apps/pathway-service/src/services/resolution/temporal/`.
+
+| Plan | Layer (§) | Primary new/changed files |
+|---|---|---|
+| 01 | Fact model + `selectFacts` kernel (§2,§3,§4) | `temporal/fact-model.ts`, `temporal/interval.ts`, `temporal/overlap.ts`, `temporal/state-mapping.ts`, `temporal/select-facts.ts` |
+| 02 | Pinned clock (§1) | `temporal/evaluation-context.ts`; edits to `traversal-engine.ts`, `retraversal-engine.ts`, `gate-evaluator.ts`, session persistence |
+| 03 | Policy registry + cascade (§5,§7-load) | `temporal/policy-registry.ts`, `temporal/cascade.ts`; migration `0NN_pathway_temporal_defaults.sql`; edit `resolvers/helpers/resolution-context.ts` |
+| 04 | Evaluator + reachability via kernel (§4,§8-kernel) | edits to `gate-evaluator.ts`, `reachability.ts` |
+| 05 | Input contract + trust modes + assembler (§8) | `temporal/context-assembler.ts`, `temporal/trust-mode.ts`; edits to `schema.graphql`, `resolvers/mutations/resolution.ts`, `multi-pathway-resolution.ts` |
+| 06 | Canonicalization + pathway-default persistence (§6,§7) | `services/import/canonicalize.ts`; edits to `import/validator.ts`, `import/types.ts`, `import/graph-builder.ts`, `import/import-orchestrator.ts`, `schema.graphql`; admin `src/lib/pathway-json/canonicalize.ts` + shared fixtures |
+| 07 | Snapshot mapper → `NormalizedFact[]` (§8b) | edits to `resolution/snapshot-context.ts` |
+| 08 | Per-condition evidence + GraphQL surfaces (§9,§11) | `temporal/evidence.ts`; edits to `traversal-engine.ts`, `retraversal-engine.ts`, `schema.graphql`, `resolvers/Query.ts` (formatter), session persistence |
+| 09 | Admin UI (§10) | admin `GateConditionEditor.tsx`, new `PathwayMetadataPanel.tsx`, `PublishValidationModal.tsx`, resolved-value caption |
+
+## Cross-plan interface contract
+
+The exact names/types each plan **Produces** (later plans depend on) and
+**Consumes** (must already exist). Plan 01 produces the vocabulary the whole suite
+uses.
+
+### Plan 01 — Produces
+```ts
+// temporal/fact-model.ts
+interface TemporalBound { value: string; precision: 'year'|'month'|'day'|'instant'; }
+type TemporalEnd =
+  | { kind: 'KNOWN'; bound: TemporalBound }
+  | { kind: 'OPEN'; assertedCurrentAt: string }
+  | { kind: 'UNKNOWN' };
+interface FactBase {
+  factId: string; code: string; system: string; display?: string;
+  interval: { start?: TemporalBound; end: TemporalEnd };
+  recordValidity: 'VALID'|'INVALID'|'UNKNOWN'; validityBasis: string;
+  provenance: { sourceType: 'FHIR'|'SYNTHETIC'; sourceId?: string; snapshotId?: string };
+}
+interface StatefulFact extends FactBase {
+  kind: 'condition'|'medication_order'|'allergy';
+  clinicalState: 'ACTIVE'|'INACTIVE'|'ON_HOLD'|'UNKNOWN'|'CONFLICT';
+  stateAsOf?: string;
+  stateBasis: 'FHIR_STATUS'|'ABATEMENT'|'SNAPSHOT_ASSERTION'|'SYNTHETIC'|'MISSING_STATUS_FAIL_OPEN';
+}
+interface LabFact extends FactBase {
+  kind: 'lab'; value?: number; unit?: string; observationStatus?: string; issuedAt?: string;
+}
+type NormalizedFact = StatefulFact | LabFact;
+type FactStore = ReadonlyArray<NormalizedFact>;
+
+// temporal/overlap.ts
+type ThreeValued = 'MATCH' | 'NO_MATCH' | 'UNKNOWN';
+interface ResolvedHorizon { lowerBound: string | null; upperBound: string; } // upperBound = evaluationAsOf
+function overlap(interval: FactBase['interval'], horizon: ResolvedHorizon): ThreeValued;
+
+// temporal/select-facts.ts
+interface EffectivePolicy { horizon: ResolvedHorizon; status?: 'active'|'inactive'|'any'; }
+interface FactDecision {
+  fact: NormalizedFact;
+  validityDecision: 'ADMIT'|'DROP_INVALID'|'UNKNOWN';
+  stateMatch: 'MATCH'|'NO_MATCH'|'UNKNOWN'|'NOT_APPLICABLE';
+  temporalMatch: ThreeValued;
+  operatorDecision: 'INCLUDE'|'EXCLUDE'|'INDETERMINATE';
+}
+interface SelectionResult {
+  decisions: FactDecision[];            // one per candidate fact, for evidence
+  selected: NormalizedFact[];           // operator-included facts, selection-ordered
+  temporallyUnverified: boolean; stateUnverified: boolean; validityUnverified: boolean;
+}
+function selectFacts(
+  condition: CodedCondition, store: FactStore, policy: EffectivePolicy,
+): SelectionResult;
+```
+Consumes: `CodedCondition` from `resolution/types.ts` (exists).
+
+### Plan 02 — Produces `EvaluationTemporalContext` (§1) + `resolveHorizon(tier, ctx)`; threads it to `selectFacts` callers. Consumes Plan 01.
+### Plan 03 — Produces `TEMPORAL_POLICIES` registry, `resolveEffectivePolicy(field, version, pathwayDefaults, condition)`; `temporal_defaults` column + loader. Consumes 01–02.
+### Plan 04 — Rewrites `evaluateGate` scalar/membership/aggregate branches to call `selectFacts`; `reachability` calls it too. Consumes 01–03.
+### Plan 05 — Produces `ResolutionMode`, `assembleContext(mode, ...) → FactStore`, extended `CodeInput`; `factId` assignment. Consumes 01–04.
+### Plan 06 — Produces `canonicalize(json) → { json, warnings }`, `conditionId` on `GateCondition`, `temporal_defaults` round-trip. Consumes 01,03.
+### Plan 07 — Rewrites `snapshot-context.ts` to emit `NormalizedFact[]`. Consumes 01,03,05.
+### Plan 08 — Produces `GateEvaluationEvidence`/`GateConditionEvidence` on `NodeResult` + GraphQL. Consumes 01–05.
+### Plan 09 — Admin controls. Consumes 03,06,08 (GraphQL shapes).
+
+## Self-review note
+
+Spec coverage map (design § → plan): §1→02, §2/§3/§4→01, §5→03, §6→06, §7→03+06,
+§8→05(+04 kernel), §9→08, §10→09, §11→08, §12→04+05, §13→acceptance criteria
+embedded per plan. Compatibility/rollout are cross-cutting (Global Constraints).
