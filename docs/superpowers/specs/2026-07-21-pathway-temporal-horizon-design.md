@@ -1,7 +1,7 @@
 # Pathway Temporal Horizon — Design
 
-**Date:** 2026-07-21 (revised 2026-07-26, two review rounds)
-**Status:** Revised after two architecture-review rounds — ready for implementation planning
+**Date:** 2026-07-21 (revised 2026-07-26, three review rounds)
+**Status:** Ready for implementation planning
 **Repos:** `prism-graphql` (pathway-service), `prism-admin-dashboard` (authoring UI)
 **Branch:** `feat/pathway-temporal-horizon`
 
@@ -13,17 +13,30 @@
   three-valued overlap, the record-validity filter, operator-specific selection,
   data-flow retargeting to the input contract, pathway-default persistence, a
   separate canonicalization stage, and evidence persistence.
-- **2026-07-26 round 2.** Review approved the direction, requested one more
-  revision on semantic precision and reproducibility. This document folds in all
-  six P1 findings and four additional findings. All file:line claims in both
-  rounds were verified against the worktree before acceptance. Round-2 disposition
-  table is at the end.
+- **2026-07-26 round 2.** Direction approved. Folded in six P1 + four additional
+  findings: the `TemporalEnd` disposition, the clinical-state contract + operator
+  taxonomy (`equals` is membership), trust modes, an executable version registry,
+  per-condition evidence, a shared reachability kernel, and a
+  development-vs-deployment split.
+- **2026-07-26 round 3.** Marked "ready for planning after five contract-level
+  corrections." Four accepted (§1 clock contract, §2 discriminated fact union +
+  id, §3 decoupled decision dimensions, §5 version-baseline reframe); one
+  (import/canonicalization) **rejected on premise** — see the correction note in
+  §6. Added explicit GraphQL/persistence surfaces, reachability clock ownership,
+  and algorithm-level acceptance criteria. Round-3 disposition table is at the end.
 
-The **architecture is unchanged since round 1**; round 2 sharpens six things:
-the fact end-model, the clinical-state contract, the operator taxonomy, the
-trusted-input boundary, the executable version registry, and per-condition
-evidence — plus a shared selection kernel for reachability and a
-development-vs-deployment split.
+All file:line claims across all three rounds were verified against **this branch's
+worktree** before acceptance. One recurring correction: the round-1 and round-3
+reviews asserted the import validator has no gate-condition schema
+(`CODED_KEYS`/`ATTRIBUTE_KEYS`). It does, since PR #48
+(`feat/gate-condition-field-attribute-model`, merged into this branch's base) —
+verified at `validator.ts:27/32`. That review was run against a checkout predating
+PR #48; §6 reflects the actual code.
+
+The **architecture is unchanged since round 1.** Rounds 2–3 sharpen contracts:
+the fact model, the three decoupled decision dimensions, the trusted-input
+boundary, version baselining, per-condition evidence, and the concrete
+GraphQL/persistence surfaces.
 
 A load-bearing deployment fact still shapes everything: **all `snapshot_*` tables
 are empty, there is no clinical data on the host, and the principal resolution
@@ -99,10 +112,20 @@ caller (synthetic mode) supplies none, and never again at evaluation time.
 `evaluateGate` / `evaluateCompound` receive `evaluationAsOf` from the traversal
 boundary instead of defaulting.
 
-**`encounterStart` rule (P1-5).** `ENCOUNTER` depends on `encounterStart`, which is
-optional. If a gate's effective horizon resolves to `ENCOUNTER` and no
-`encounterStart` is present, resolution **rejects** (or returns a structured
-indeterminate result) — it never silently substitutes `evaluationAsOf`.
+**`encounterStart` rule (round 3, single contract).** `ENCOUNTER` depends on
+`encounterStart`. The round-2 draft left two possible behaviors (reject *or*
+indeterminate); those are different contracts, so v1 picks one:
+
+> **Validate before traversal and reject session creation** if any effective gate
+> horizon in the pathway resolves to `ENCOUNTER` and the mode cannot supply
+> `encounterStart`.
+
+LIVE mode derives `encounterStart` from the encounter; SYNTHETIC mode supplies it.
+This avoids partially-initialized sessions and new three-valued compound-gate
+behavior for a merely-missing required anchor. Reachability (which runs before a
+session exists) may report an advisory indeterminate, but authoritative resolution
+has exactly this one deterministic contract, and never silently substitutes
+`evaluationAsOf`.
 
 ### 2. The normalized fact model and interval matching
 
@@ -116,28 +139,52 @@ LIFETIME | YEAR | QUARTER | MONTH | WEEK | DAY | ENCOUNTER | { days: N }
 day-count sugar (365/90/30/7/1) measured back from `evaluationAsOf`. Every form
 resolves to a `{ lowerBound, upperBound }` instant pair.
 
-Every clinical fact normalizes to:
+Every clinical fact normalizes to a **discriminated union** (round 3) — labs carry
+no clinical state, so a single universal interface is wrong:
 
 ```ts
 interface TemporalBound { value: string; precision: 'year' | 'month' | 'day' | 'instant'; }
 
-// P1-2: "ongoing" and "unknown" are NOT interchangeable — an explicit disposition.
+// "ongoing" and "unknown" are NOT interchangeable — an explicit disposition.
 type TemporalEnd =
   | { kind: 'KNOWN';   bound: TemporalBound }        // a real end (abatement, resolution, stop)
   | { kind: 'OPEN';    assertedCurrentAt: string }   // ongoing, known-current only as of this instant
   | { kind: 'UNKNOWN' };                             // no usable end signal — do NOT invent one
 
-interface NormalizedFact {
-  factId: string;              // ALWAYS present — synthesized deterministically if source lacks an id (P1-4)
-  kind: 'condition' | 'medication_order' | 'allergy' | 'lab';
-  code: string; system: string; value?: number;
+interface FactBase {
+  factId: string;                                    // ALWAYS present; assigned at ingestion (see below)
+  code: string; system: string; display?: string;   // display is used by DDI/scorers (ddi-pass.ts:226)
   interval: { start?: TemporalBound; end: TemporalEnd };
-  clinicalState: 'ACTIVE' | 'INACTIVE' | 'ON_HOLD' | 'UNKNOWN' | 'CONFLICT';   // P1-2
-  stateAsOf?: string;
-  stateBasis: 'FHIR_STATUS' | 'ABATEMENT' | 'SNAPSHOT_ASSERTION' | 'SYNTHETIC'; // P1-2
-  recordValidity: 'VALID' | 'INVALID' | 'UNKNOWN';                              // §3
+  recordValidity: 'VALID' | 'INVALID' | 'UNKNOWN';
+  validityBasis: string;                             // which status/rule produced recordValidity
+  provenance: { sourceType: 'FHIR' | 'SYNTHETIC'; sourceId?: string; snapshotId?: string };
 }
+
+interface StatefulFact extends FactBase {            // conditions, medication orders, allergies
+  kind: 'condition' | 'medication_order' | 'allergy';
+  clinicalState: 'ACTIVE' | 'INACTIVE' | 'ON_HOLD' | 'UNKNOWN' | 'CONFLICT';
+  stateAsOf?: string;
+  stateBasis: 'FHIR_STATUS' | 'ABATEMENT' | 'SNAPSHOT_ASSERTION'
+            | 'SYNTHETIC' | 'MISSING_STATUS_FAIL_OPEN';
+}
+
+interface LabFact extends FactBase {                 // labs have no clinical state
+  kind: 'lab';
+  value?: number; unit?: string;
+  observationStatus?: string;                        // registered|preliminary|final|amended|corrected|...
+  issuedAt?: string;                                 // for choosing among amended/corrected results
+}
+
+type NormalizedFact = StatefulFact | LabFact;
 ```
+
+**`factId` is assigned, not hashed (round 3).** A deterministic hash of
+`kind+code+system+start` collapses two distinct same-code occurrences on the same
+date with no source id — which would silently corrupt `count_in_window` (it counts
+distinct ids). The assembler assigns a **distinct** `factId` at ingestion and
+persists it in the normalized session context; replay reuses the persisted id and
+never regenerates. If a deterministic id is ever required for idempotency, it must
+include the full canonical payload **plus an occurrence ordinal**, not a lossy hash.
 
 Interval construction (verified schema: migrations 026/030; all date columns are
 `VARCHAR(30)` FHIR strings). **No end is ever fabricated as `start`:**
@@ -165,6 +212,12 @@ falls before the horizon's lower bound (P1-2 subtlety):
 > (typically `snapshotCapturedAt`). If the entire horizon window lies *after*
 > `assertedCurrentAt`, the fact was active but is not *known* active in-window →
 > `UNKNOWN`, not `MATCH` and not `NO_MATCH`.
+
+In **synthetic** mode there is no `snapshotCapturedAt`, so
+`OPEN.assertedCurrentAt = stateAsOf ?? evaluationAsOf`, with the invariant that a
+supplied `stateAsOf` and `assertedCurrentAt` may not disagree. (Acceptance
+criterion: an ACTIVE fact with no onset but an `OPEN.assertedCurrentAt` inside the
+window is a `MATCH`, not merely "undated → UNKNOWN.")
 
 #### Operator taxonomy and the `UNKNOWN` policy (P1-3 — corrected)
 
@@ -203,34 +256,59 @@ explicit table:
 
 | Kind | Source field | → clinicalState |
 |---|---|---|
-| condition | `abatement_date_time` present | `INACTIVE` (basis `ABATEMENT`) — dominates status |
-| condition | `clinical_status` ∈ {active, recurrence, relapse} | `ACTIVE` |
+| condition | `abatement_date_time` present **and** `clinical_status` ∈ {inactive, remission, resolved} or absent | `INACTIVE` (basis `ABATEMENT`) |
+| condition | `abatement_date_time` present **and** `clinical_status` = active | `CONFLICT` — FHIR forbids an abated-yet-active condition; do not silently pick one |
+| condition | `clinical_status` ∈ {active, recurrence, relapse}, no abatement | `ACTIVE` |
 | condition | `clinical_status` ∈ {inactive, remission, resolved} | `INACTIVE` |
-| condition | missing / malformed `clinical_status` | `ACTIVE`, `stateBasis` unverified — **preserves today's fail-safe** |
+| condition | missing / malformed `clinical_status`, no abatement | `ACTIVE`, basis `MISSING_STATUS_FAIL_OPEN` — **preserves today's fail-safe** |
 | medication_order | `status` = active | `ACTIVE` |
 | medication_order | `status` = on-hold | `ON_HOLD` |
 | medication_order | `status` ∈ {stopped, completed, cancelled} | `INACTIVE` |
 | medication_order | `status` ∈ {draft, unknown} | `UNKNOWN` |
 | allergy | `clinical_status` = active | `ACTIVE` |
 | allergy | `clinical_status` ∈ {inactive, resolved} | `INACTIVE` |
-| allergy | missing | `ACTIVE`, unverified (preserves today's fail-safe) |
-| any | `start` and `end` endpoints contradict `clinicalState` | `CONFLICT` |
+| allergy | missing | `ACTIVE`, basis `MISSING_STATUS_FAIL_OPEN` (preserves today's fail-safe) |
 
-Author `status` filtering: `active` admits `ACTIVE`; `inactive` admits `INACTIVE`;
-`any` admits `ACTIVE`, `INACTIVE`, and `ON_HOLD`. `UNKNOWN` / `CONFLICT` are
-admitted only when the operator's `UNKNOWN` policy is fail-open (membership), and
-carry a marker into the evidence (§9). `labs` have no clinical status — author
-`status` is rejected at validation for `field: "labs"`.
+**The three dimensions are decided independently (round 3).** The round-2 draft
+admitted `UNKNOWN`/`CONFLICT` state via the operator's *temporal* fail-open policy
+— which leaked the temporal axis into the state axis. Selection instead produces a
+per-fact decision with three separate results plus the operator's combination:
+
+```ts
+interface FactDecision {
+  validityDecision: 'ADMIT' | 'DROP_INVALID' | 'UNKNOWN';
+  stateMatch:       'MATCH' | 'NO_MATCH' | 'UNKNOWN' | 'NOT_APPLICABLE'; // NOT_APPLICABLE for labs
+  temporalMatch:    'MATCH' | 'NO_MATCH' | 'UNKNOWN';
+  operatorDecision: 'INCLUDE' | 'EXCLUDE' | 'INDETERMINATE';
+}
+```
+
+Independent policies, none derived from another axis:
+
+- `recordValidity = INVALID` → **always drop** (validity dominates).
+- `recordValidity = UNKNOWN` → **admit with evidence** (`validityUnverified: true`).
+- Author `status: active` admits `ACTIVE`; `inactive` admits `INACTIVE`; **`any`
+  bypasses state filtering entirely** — it admits every state including `UNKNOWN`
+  and `CONFLICT`, each still marked in evidence.
+- `status: active` with `MISSING_STATUS_FAIL_OPEN` state is admitted (preserving
+  today's fail-safe), but evidence records `stateUnverified: true`.
+- A `CONFLICT` state under `status: active`/`inactive` is **excluded** — a temporal
+  membership fail-open must **not** silently resolve a clinical-state conflict.
+- `labs` have no clinical status (`stateMatch: NOT_APPLICABLE`); author `status` is
+  rejected at validation for `field: "labs"`.
 
 **Record validity is a non-overridable platform safety filter** (orthogonal to
-`status`), applied *before* any author dimension:
+`status`), applied *before* any author dimension. The full mapping (round 3 — the
+draft's partial list is completed, per the FHIR `Observation.status` value set):
 
-| Kind | `recordValidity = INVALID` (dropped) when |
-|---|---|
-| condition | `verification_status` ∈ {refuted, entered-in-error} |
-| allergy | `verification_status` ∈ {refuted, entered-in-error} |
-| lab / vital | `Observation.status` ∈ {cancelled, entered-in-error} |
-| medication_order | `status` = entered-in-error |
+| Kind | Source | `recordValidity` |
+|---|---|---|
+| condition / allergy | `verification_status` ∈ {refuted, entered-in-error} | `INVALID` |
+| condition / allergy | `verification_status` ∈ {confirmed, provisional, presumed} or absent | `VALID` |
+| medication_order | `status` = entered-in-error | `INVALID` |
+| lab / vital | `Observation.status` ∈ {cancelled, entered-in-error} | `INVALID` |
+| lab / vital | `Observation.status` ∈ {final, amended, corrected} | `VALID` |
+| lab / vital | `Observation.status` ∈ {registered, preliminary, unknown} | `UNKNOWN` (no/partial result — admit with `validityUnverified`, but a scalar/aggregate gate treats it fail-closed) |
 
 These columns exist (`snapshot_conditions.verification_status`,
 `snapshot_allergies.verification_status`, `snapshot_lab_results.status`,
@@ -298,12 +376,26 @@ Rules:
 - Evaluation selects constants by the session's stored `temporalPolicyVersion`.
 - An **unknown version is a hard error**, never "use latest."
 - Every rolling-deployment pod must understand all still-active session versions.
-- Existing sessions (there are none in production) are pinned to `legacy-v0`, or
-  explicitly made non-retraversable.
 - Temporal context is persisted for both single- and multi-pathway sessions.
 
-`legacy-v0` is what makes "reproduces today" *checkable*: it is today, and the
-deployment's shadow-evaluation step (§Rollout) diffs `legacy-v0` against `v1`.
+**Version selects defaults, not the whole evaluation kernel (round 3).** `v1`
+changes more than default horizons/statuses — it also changes scalar selection
+(`.find()` → latest dated), adds the validity filter, precision-aware partial
+dates, decoupled unknown-state handling, the allergy projection, and consumer
+projections. So a session pinned to `legacy-v0` but run through the **new** kernel
+would *not* reproduce today's behavior, and `legacy-v0` must not be advertised as
+replayable through it.
+
+Because there are **no production sessions**, v1 takes the simple, correct path
+(the reviewer's recommended option): the **current evaluator itself is the shadow
+baseline** for the deployment's shadow-evaluation step (§Rollout) — the new `v1`
+path is diffed against the *legacy code path*, not against an in-kernel
+`legacy-v0`. Existing sessions are declared **non-retraversable** across
+activation. `temporalPolicyVersion` still governs `v1` vs a future `v2` going
+forward; full cross-kernel replay of old sessions would require versioning the
+entire `EvaluationSemantics` (scalar selection, validity mode, state mode,
+partial-date mode, projection mode), which is explicitly deferred until a real
+replay requirement exists.
 
 Resolution stays a pure, synchronous function —
 `resolveHorizon(dataType, effectivePolicy, pathwayHeader, condition)` — with the
@@ -330,6 +422,31 @@ dashboard validator has no allowlist (`src/lib/pathway-json/`), so the same
 canonicalizer is mirrored client-side and covered by **shared conformance fixtures**
 to prevent client/server drift. No live data uses `window_days`.
 
+**Correction (round 3): this branch already has a gate-condition validator.** The
+round-1 and round-3 reviews (run against a checkout predating PR #48) claimed there
+is no `CODED_KEYS`/`ATTRIBUTE_KEYS` and that a gate-condition schema must be
+introduced from scratch. Verified against **this** worktree: `CODED_KEYS`
+(with `window_days`) and `ATTRIBUTE_KEYS` exist at `validator.ts:27/32`, alongside
+operator validation and structural gate checks. So the plan **extends** that
+validator; it does not create one. What the reviews got right, and what the plan
+must still do — because the existing validator checks condition *keys*, not *value
+shapes* (`PathwayNodeDefinition.properties` is `Record<string, unknown>`,
+`types.ts:117`):
+
+1. **Value-validate** `horizon` shape, `{days:N}` bounds, `status` applicability
+   (reject on `labs`), and the `window_days`/`horizon` conflict.
+2. Register `horizon`/`status` in `CODED_KEYS`; traverse **both**
+   `properties.condition` and `properties.conditions[]` (compound gates).
+3. **`conditionId`** does not exist on `GateCondition`
+   (`GateCondition = CodedCondition | AttributeCondition`, verified). Add it;
+   generate + persist a stable id for legacy conditions on import; require
+   uniqueness within a gate; preserve it across admin edits and import/export
+   round-trips. The per-condition evidence (§9) depends on it.
+4. **Schema-version decision:** the validator accepts only `"1.0"`
+   (`validator.ts:58`). Decide whether `horizon`/`status`/`conditionId` are
+   backward-compatible `1.0` additions or warrant a version bump — a mandatory
+   planning decision.
+
 ### 7. Pathway-level defaults need real storage
 
 Putting `default_horizons` in the header is not enough — it is decomposed on import
@@ -339,13 +456,17 @@ and only known fields survive (`PathwayMetadata` has no temporal fields,
 reconstruction rebuilds only known fields, `import-orchestrator.ts:906`).
 
 1. `PathwayMetadata` gains `default_horizons?` / `default_statuses?`.
-2. A `temporal_defaults JSONB` column on `pathway_graph_index` (single source — no
-   second copy on the AGE root).
+2. A `temporal_defaults JSONB` column on `pathway_graph_index` is the **single
+   source** — there is no copy on the AGE root node.
 3. The `Pathway` GraphQL type exposes it.
-4. Root creation and import reconstruction read/write it, so it round-trips.
+4. **Ownership is relational, not graph (round 3):** the relational writer persists
+   `temporal_defaults` to `pathway_graph_index`; import reconstruction reads it back
+   from the relational index; graph root creation (`graph-builder.ts`, AGE Cypher)
+   deliberately **ignores** it — so it round-trips through the relational store, not
+   the graph.
 5. **`buildResolutionContext` loads it (P1-5).** Today it selects only `age_node_id`
-   (`resolution-context.ts:230`); it must also load `temporal_defaults` and pass it
-   to the evaluator.
+   (`resolution-context.ts:230`); it must also read `temporal_defaults` from the
+   relational index and pass it to the evaluator.
 
 ### 8. Data flow: input contract, trust boundary, shared assembler
 
@@ -392,14 +513,21 @@ synthetic input.
 DDI screens every med/allergy unfiltered (`ddi-pass.ts:100`), the completeness
 scorer counts raw arrays (`data-completeness.ts:124`), custom-rules unions all
 codes (`custom-rules.ts:87`). The widened fact list feeds **only the gate
-evaluator**; DDI, scorers, and custom-rules keep the **existing filtered
-projection** (valid + currently-active) — zero behavior change. Explicit
-projections off one fact store:
+evaluator**; every other consumer reads an **explicit named projection** off one
+fact store, so none is *silently* contaminated by the widening:
 
 - `selectFacts(condition, factStore, effectivePolicy, temporalContext)` — the gate
   kernel (below).
-- `actionableMedications` / `actionableAllergies` — valid + active, for DDI.
+- `actionableMedications` / `actionableAllergies` — **valid + active**, for DDI.
 - scorer projections declaring `current | historical | any`.
+
+This is **not "zero behavior change" (round-3 correction).** Snapshot allergies are
+loaded with no status filter today (`snapshot-context.ts:79`,
+`SELECT code FROM snapshot_allergies`), so DDI's `valid + active` allergy projection
+*changes what DDI sees* — a deliberate `v1` correction (a refuted or resolved
+allergy should not screen a candidate drug). The point of the isolation is that each
+consumer's projection is chosen **deliberately** and its `v1` delta disclosed
+(Compatibility), not that consumers are unchanged.
 
 **A shared selection kernel for reachability (finding 7).** Reachability currently
 treats {includes_code, equals, exists} as `ALWAYS_EVALUABLE` and only checks
@@ -425,20 +553,25 @@ interface GateEvaluationEvidence {
   conditions: GateConditionEvidence[];
 }
 interface GateConditionEvidence {
-  conditionId: string;                 // stable per condition
+  conditionId: string;                 // stable per condition (§6)
   field: string; operator: string;
   effectiveHorizon: string;  horizonSource: 'SYSTEM_DEFAULT' | 'PATHWAY' | 'NODE';
   effectiveStatus?: string;  statusSource?: 'SYSTEM_DEFAULT' | 'PATHWAY' | 'NODE';
   resolvedBounds: { lowerBound: string | null; upperBound: string };
-  temporalMatch: 'MATCH' | 'NO_MATCH' | 'UNKNOWN';
-  temporallyUnverified: boolean;       // admitted via a fail-open UNKNOWN
+  // all three decision dimensions are visible, not just the temporal one (round 3):
+  temporalMatch: 'MATCH' | 'NO_MATCH' | 'UNKNOWN';   temporallyUnverified: boolean;
+  stateMatch: 'MATCH' | 'NO_MATCH' | 'UNKNOWN' | 'NOT_APPLICABLE';  stateUnverified: boolean;
+  recordValidity: 'VALID' | 'INVALID' | 'UNKNOWN';   validityUnverified: boolean;
   selectedFactIds: string[];
   explanation: string;
 }
 ```
 
-The simulator surfaces `temporallyUnverified` per condition, so an author sees a
-compound gate satisfied only by undated facts.
+Exposing all three dimensions (not just `temporalMatch`) is what keeps the audit
+record honest: an author must see a gate satisfied only by undated facts
+(`temporallyUnverified`), *and* one admitted only by a fail-open missing status
+(`stateUnverified`), *and* one leaning on an unverified record
+(`validityUnverified`). The simulator surfaces all three per condition.
 
 ### 10. Authoring UI
 
@@ -461,6 +594,52 @@ the check is not "shorter than ENCOUNTER"; it warns on **any finite / non-lifeti
 horizon applied to a data type whose facts are typically undated** (it would match
 everything via membership fail-open), and when both `window_days` and `horizon`
 appear on one condition.
+
+### 11. GraphQL and persistence surfaces (round-3 hardening — made explicit)
+
+The API/DB changes must be enumerated, not implied. Today `ResolutionSession`
+exposes no temporal context or policy version, `ResolvedNode` exposes no evidence
+(`schema.graphql:991`), and the formatter would drop new fields (`Query.ts:75`):
+
+- A **`temporal_context JSONB`** column on the session row, for single- **and**
+  multi-pathway sessions, holding the `EvaluationTemporalContext`.
+- GraphQL exposure of the session temporal context and `temporalPolicyVersion`.
+- GraphQL exposure of `GateEvaluationEvidence` on `ResolvedNode`.
+- Formatter / hydrator updates so the new fields survive to the response.
+- Evidence may remain **embedded in `resolution_state`** (no separate evidence
+  column) unless evidence must be queried independently.
+
+### 12. Reachability clock ownership (round-3 hardening)
+
+The shared `selectFacts` kernel (§8) fixes semantics, but `MatchedPathway.reachability`
+runs **before a session exists** — via `matchedPathways(patientId)`
+(`Query.ts:549/813`), with no temporal arguments — so it cannot reuse a persisted
+session context. Contract:
+
+- Reachability is **advisory**: it receives a **request-scoped `evaluationAsOf`**
+  and reports whether usable facts exist, running the same `selectFacts` kernel.
+- Authoritative resolution **recomputes** with its own pinned
+  `EvaluationTemporalContext`; reachability's result is never treated as binding.
+- Optionally, reachability may return a context/snapshot **token** that
+  `startResolution` can adopt — but it does not read a session context that does
+  not yet exist.
+
+### 13. Algorithm-level acceptance criteria (round-3 — to seed the plan)
+
+Recorded here as mandatory, testable planning decisions:
+
+- **`{days:N}` validation:** a finite positive integer with an agreed maximum;
+  otherwise a validation error.
+- **Upper bound = `evaluationAsOf`** for every horizon; a fact dated in the future
+  (after `evaluationAsOf`) never matches.
+- **OPEN in-window:** an ACTIVE fact with no onset but `OPEN.assertedCurrentAt`
+  inside the window is `MATCH`, not "undated → UNKNOWN."
+- **Lab ties:** when two equally authoritative results share an effective time,
+  selection is deterministic — prefer `corrected` > `amended` > `final`, then a
+  stable tiebreak on `factId`; never array order.
+- **Amended/corrected supersede** earlier results at the same effective time.
+- **Shadow evaluation is side-effect-free:** no duplicate LLM calls, audit events,
+  or session mutations while diffing the new path against the legacy evaluator.
 
 ## Compatibility (all deltas versioned as `v1`)
 
@@ -580,8 +759,20 @@ policy into the matcher — deferred, recorded as a decision.
 | 9 | Compatibility language overstated | **Accepted** — Compatibility lists validity-drop, allergy active-filter, and windowed-lab `QUARTER` inheritance as `v1` changes; `legacy-v0` makes the diff shadow-testable. |
 | 9b | Publish-warning wording | **Accepted** — §10 warns on any finite/non-lifetime horizon over typically-undated facts, not "shorter than ENCOUNTER." |
 
+## Reviewer findings — round 3 disposition
+
+| # | Finding | Disposition |
+|---|---|---|
+| 1 | `legacy-v0` doesn't reproduce today through defaults alone | **Accepted** — §5 reframed: the current evaluator is the shadow baseline; `legacy-v0` not replayable through the new kernel; existing sessions non-retraversable; "zero behavior change" for DDI/scorers removed (§8, Compatibility). |
+| 2 | `NormalizedFact` should be a discriminated union; `factId` synthesis collides | **Accepted** — §2 `FactBase \| StatefulFact \| LabFact` with `display`/`unit`/`provenance`/`observationStatus`/`issuedAt`/`validityBasis` and `MISSING_STATUS_FAIL_OPEN`; `factId` assigned + persisted at ingestion, not hashed; synthetic `assertedCurrentAt = stateAsOf ?? evaluationAsOf`. |
+| 3 | Temporal / state / validity uncertainty still coupled | **Accepted** — §3 independent `FactDecision` axes + policies; evidence exposes `stateMatch`/`stateUnverified`/`recordValidity`/`validityUnverified` (§9); full `Observation.status` mapping; `active + abatement → CONFLICT`. |
+| 4 | Import/canonicalization based on incorrect repo claim | **Rejected on premise, substance accepted** — `CODED_KEYS`/`ATTRIBUTE_KEYS` **do** exist in this branch (PR #48; `validator.ts:27/32`), so the plan extends the validator rather than creating one. The valid substance (value-validation, `conditionId`, traversing `condition`+`conditions[]`, schema-version decision) is captured in §6. |
+| 5 | `encounterStart` has two possible behaviors | **Accepted** — §1 single contract: validate before traversal, reject session creation when an effective `ENCOUNTER` horizon lacks an anchor; reachability may report advisory indeterminate. |
+| H | GraphQL/persistence surfaces, reachability clock, default ownership, acceptance criteria | **Accepted** — §11 (surfaces), §12 (reachability clock ownership), §7 (relational ownership wording), §13 (acceptance criteria). |
+
 ## Open Questions
 
 None blocking. Deferred by explicit decision: institution/organization cascade
 levels; vitals as a dated series; windowed operators in the UI; entry-criteria
-temporal policy; medication *exposure* (vs order) semantics; numeric `value_equals`.
+temporal policy; medication *exposure* (vs order) semantics; numeric `value_equals`;
+full `EvaluationSemantics` versioning for cross-kernel replay of old sessions (§5).
