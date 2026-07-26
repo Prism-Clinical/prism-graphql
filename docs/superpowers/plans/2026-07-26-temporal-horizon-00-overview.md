@@ -63,7 +63,22 @@ The exact names/types each plan **Produces** (later plans depend on) and
 uses.
 
 ### Plan 01 — Produces
+Plan 01 is a genuine leaf: it defines its **own** operator/condition contract and
+imports nothing from `resolution/types.ts`. (Plan 04 owns the
+`GateCondition → FactSelectionCondition` adapter.)
 ```ts
+// temporal/contract.ts
+type TemporalOperator = 'includes_code'|'equals'|'exists'|'greater_than'|'less_than'
+  |'count_in_window'|'trend_up'|'trend_down'|'delta_from_baseline';
+type OperatorClass = 'membership'|'scalar'|'aggregate';
+function isTemporalOperator(op: string): op is TemporalOperator;
+function operatorClass(op: TemporalOperator): OperatorClass;   // throws on unknown
+type GateField = 'conditions'|'medications'|'allergies'|'labs'|'vitals';
+type FactKind = 'condition'|'medication_order'|'allergy'|'lab'|'vital';
+function fieldToKind(field: GateField): FactKind;              // throws on unknown
+interface FactSelectionCondition { field: GateField; operator: TemporalOperator; value: string; system?: string; }
+type UncertaintyReason = 'TEMPORAL_UNKNOWN'|'STATE_UNKNOWN'|'VALIDITY_UNKNOWN'|'AMBIGUOUS_LATEST';
+
 // temporal/fact-model.ts
 interface TemporalBound { value: string; precision: 'year'|'month'|'day'|'instant'; }
 type TemporalEnd =
@@ -73,7 +88,7 @@ type TemporalEnd =
 interface FactBase {
   factId: string; code: string; system: string; display?: string;
   interval: { start?: TemporalBound; end: TemporalEnd };
-  recordValidity: 'VALID'|'INVALID'|'UNKNOWN'; validityBasis: string;
+  recordValidity: 'VALID'|'INVALID'|'UNKNOWN'; validityBasis: string;   // tri-state
   provenance: { sourceType: 'FHIR'|'SYNTHETIC'; sourceId?: string; snapshotId?: string };
 }
 interface StatefulFact extends FactBase {
@@ -82,18 +97,23 @@ interface StatefulFact extends FactBase {
   stateAsOf?: string;
   stateBasis: 'FHIR_STATUS'|'ABATEMENT'|'SNAPSHOT_ASSERTION'|'SYNTHETIC'|'MISSING_STATUS_FAIL_OPEN';
 }
-interface LabFact extends FactBase {
-  kind: 'lab'; value?: number; unit?: string; observationStatus?: string; issuedAt?: string;
+interface ObservationFact extends FactBase {  // labs AND vitals
+  kind: 'lab'|'vital'; value?: number; unit?: string; observationStatus?: string; issuedAt?: string;
 }
-type NormalizedFact = StatefulFact | LabFact;
+type NormalizedFact = StatefulFact | ObservationFact;
 type FactStore = ReadonlyArray<NormalizedFact>;
 
-// temporal/overlap.ts
-type ThreeValued = 'MATCH' | 'NO_MATCH' | 'UNKNOWN';
-interface ResolvedHorizon { lowerBound: string | null; upperBound: string; } // upperBound = evaluationAsOf
-function overlap(interval: FactBase['interval'], horizon: ResolvedHorizon): ThreeValued;
+// temporal/interval.ts — strict FHIR parsing to epoch ranges
+function parseFhirDate(s: string|null|undefined): TemporalBound | null;   // calendar-validated
+function boundEpochRange(b: TemporalBound): { loMs: number; hiMs: number };
+function instantEpoch(s: string): number;
 
-// temporal/select-facts.ts
+// temporal/overlap.ts — possible/established three-valued reasoning
+type ThreeValued = 'MATCH'|'NO_MATCH'|'UNKNOWN';
+interface ResolvedHorizon { lowerBound: string | null; upperBound: string; } // upperBound = evaluationAsOf
+function overlap(interval: FactBase['interval'], horizon: ResolvedHorizon): ThreeValued; // throws on inverted interval
+
+// temporal/select-facts.ts — discriminated outcome
 interface EffectivePolicy { horizon: ResolvedHorizon; status?: 'active'|'inactive'|'any'; }
 interface FactDecision {
   fact: NormalizedFact;
@@ -102,21 +122,19 @@ interface FactDecision {
   temporalMatch: ThreeValued;
   operatorDecision: 'INCLUDE'|'EXCLUDE'|'INDETERMINATE';
 }
-interface SelectionResult {
-  decisions: FactDecision[];            // one per candidate fact, for evidence
-  selected: NormalizedFact[];           // operator-included facts, selection-ordered
-  temporallyUnverified: boolean; stateUnverified: boolean; validityUnverified: boolean;
-}
-function selectFacts(
-  condition: CodedCondition, store: FactStore, policy: EffectivePolicy,
-): SelectionResult;
+type SelectionOutcome =
+  | { status: 'READY'; selected: NormalizedFact[]; decisions: FactDecision[];
+      temporallyUnverified: boolean; stateUnverified: boolean; validityUnverified: boolean }
+  | { status: 'NO_MATCH'; decisions: FactDecision[] }
+  | { status: 'INDETERMINATE'; reasons: UncertaintyReason[]; decisions: FactDecision[] };
+function selectFacts(condition: FactSelectionCondition, store: FactStore, policy: EffectivePolicy): SelectionOutcome;
 ```
-Consumes: `CodedCondition` from `resolution/types.ts` (exists).
+Consumes: nothing (leaf module).
 
 ### Plan 02 — Produces `EvaluationTemporalContext` (§1) + `resolveHorizon(tier, ctx)`; threads it to `selectFacts` callers. Consumes Plan 01.
 ### Plan 03 — Produces `TEMPORAL_POLICIES` registry, `resolveEffectivePolicy(field, version, pathwayDefaults, condition)`; `temporal_defaults` column + loader. Consumes 01–02.
-### Plan 04 — Rewrites `evaluateGate` scalar/membership/aggregate branches to call `selectFacts`; `reachability` calls it too. Consumes 01–03.
-### Plan 05 — Produces `ResolutionMode`, `assembleContext(mode, ...) → FactStore`, extended `CodeInput`; `factId` assignment. Consumes 01–04.
+### Plan 04 — Produces the validated `GateCondition → FactSelectionCondition` adapter (rejecting unknown operators/fields); rewrites `evaluateGate` scalar/membership/aggregate branches to call `selectFacts` and apply the numeric `<`/`>` to `selected`, mapping `INDETERMINATE` to fail-closed (gate not satisfied) while recording it for evidence; `reachability` calls the same kernel. Consumes 01–03.
+### Plan 05 — Produces `ResolutionMode` (LIVE/SYNTHETIC/REPLAY), `assembleContext(mode, ...) → FactStore`, extended `CodeInput`; deterministic `factId` assignment (persisted, never a lossy hash); constructs the always-current interval for undated vitals (`OPEN(evaluationAsOf)`). Consumes 01–04.
 ### Plan 06 — Produces `canonicalize(json) → { json, warnings }`, `conditionId` on `GateCondition`, `temporal_defaults` round-trip. Consumes 01,03.
 ### Plan 07 — Rewrites `snapshot-context.ts` to emit `NormalizedFact[]`. Consumes 01,03,05.
 ### Plan 08 — Produces `GateEvaluationEvidence`/`GateConditionEvidence` on `NodeResult` + GraphQL. Consumes 01–05.
