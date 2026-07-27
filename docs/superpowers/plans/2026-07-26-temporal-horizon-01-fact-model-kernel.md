@@ -413,8 +413,8 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
   - `OPEN(a)` → `[epoch(a), +∞]`, **and clamp `sHi = min(sHi, epoch(a))`** (active-at-`a` ⇒ started by `a`).
   - `UNKNOWN` → `[sLo, +∞]` (ended at or after the earliest possible start; upper unknown).
   - Reject if `end.kind==='KNOWN'` and `sLo > eHi` (inverted).
-  - `possibleActive = [sLo, eHi]`; `NO_MATCH` if `sLo > Hhi` or `eHi < Hlo`.
-  - `guaranteedActive = [sHi, eLo]` (non-empty iff `sHi ≤ eLo`); `MATCH` if non-empty and `sHi ≤ Hhi` and `eLo ≥ Hlo`.
+  - `NO_MATCH` if no realization can overlap: `sLo > Hhi` or `eHi < Hlo`.
+  - `MATCH` if **every** realization overlaps: `sHi ≤ Hhi` **and** `eLo ≥ Hlo`. (Because `S ≤ E` holds in every realization, these two independent bounds are sufficient — no separate `sHi ≤ eLo` check, which would wrongly demand a single common instant and miss e.g. a dated-start/UNKNOWN-end fact whose start is inside the horizon.)
   - else `UNKNOWN`.
 
 - [ ] **Step 1: Write the failing test (table-driven truth table)**
@@ -435,7 +435,7 @@ const rows: Row[] = [
   ['point lab inside window',            iv(day('2026-05-10'), known('2026-05-10')), Q, 'MATCH'],
   ['point lab before window',            iv(day('2026-01-10'), known('2026-01-10')), Q, 'NO_MATCH'],
   ['point lab after upperBound (future)',iv(day('2026-08-10'), known('2026-08-10')), Q, 'NO_MATCH'],
-  ['point lab straddling lower bound',   iv(day('2026-04-27'), { kind: 'KNOWN', bound: { value: '2026-04', precision: 'month' } }), Q, 'UNKNOWN'],
+  ['month-precision point straddling lower bound', iv({ value: '2026-04', precision: 'month' }, { kind: 'KNOWN', bound: { value: '2026-04', precision: 'month' } }), Q, 'UNKNOWN'],
   ['durational OPEN asserted in window', iv(day('2019-01-01'), { kind: 'OPEN', assertedCurrentAt: '2026-06-01T00:00:00.000Z' }), Q, 'MATCH'],
   ['durational OPEN asserted before win',iv(day('2019-01-01'), { kind: 'OPEN', assertedCurrentAt: '2026-01-01T00:00:00.000Z' }), Q, 'UNKNOWN'],
   ['active no-onset OPEN in window',     iv(undefined,          { kind: 'OPEN', assertedCurrentAt: '2026-06-01T00:00:00.000Z' }), Q, 'MATCH'],
@@ -503,10 +503,11 @@ export function overlap(interval: FactBase['interval'], horizon: ResolvedHorizon
     eLo = sLo; eHi = Infinity;
   }
 
-  // Possible overlap?
+  // No possible overlap → NO_MATCH.
   if (sLo > Hhi || eHi < Hlo) return 'NO_MATCH';
-  // Guaranteed overlap?
-  if (sHi <= eLo && sHi <= Hhi && eLo >= Hlo) return 'MATCH';
+  // Established overlap: EVERY realization overlaps. Since S ≤ E in all
+  // realizations, [S,E] meets [Hlo,Hhi] whenever sHi ≤ Hhi and eLo ≥ Hlo.
+  if (sHi <= Hhi && eLo >= Hlo) return 'MATCH';
   return 'UNKNOWN';
 }
 ```
@@ -514,7 +515,7 @@ export function overlap(interval: FactBase['interval'], horizon: ResolvedHorizon
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `npm test --prefix apps/pathway-service -- --runInBand src/__tests__/temporal/overlap.test.ts`
-Expected: PASS (all table rows + the inverted-interval throw).
+Expected: PASS (all table rows + the inverted-interval throw). Note the `MATCH` check is `sHi <= Hhi && eLo >= Hlo` — deliberately **not** gated on `sHi <= eLo`, so a dated-start/UNKNOWN-end fact whose start lies in the horizon (e.g. an old diagnosis over LIFETIME) is correctly `MATCH`.
 
 - [ ] **Step 5: Commit**
 
