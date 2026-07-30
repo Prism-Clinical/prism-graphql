@@ -45,4 +45,7 @@ export interface FactSelectionCondition {
 }
 
 export type UncertaintyReason =
-  | 'TEMPORAL_UNKNOWN' | 'STATE_UNKNOWN' | 'VALIDITY_UNKNOWN' | 'AMBIGUOUS_LATEST';
+  | 'TEMPORAL_UNKNOWN' | 'STATE_UNKNOWN' | 'VALIDITY_UNKNOWN'
+  | 'AMBIGUOUS_LATEST'
+  /** A trend/delta series whose facts cannot be put in a proven total order. */
+  | 'AMBIGUOUS_SERIES_ORDER';
