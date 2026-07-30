@@ -945,3 +945,90 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 ## Execution Handoff
 
 Plan complete and saved. Recommended: **subagent-driven-development** (fresh subagent per task, review between tasks) — the six tasks are independently testable. Alternatively **executing-plans** inline. Plans 02–09 will be written next, each grounded in the code this plan lands.
+
+---
+
+## Post-execution corrections (review round 4)
+
+This plan was executed in full (commits `15b2f3e`…`0720e3d`, reconciled by
+`3adb8a9`). A subsequent review of the **landed code** found six defects that
+originate in this plan's Task 2 and Task 5 code blocks. They are fixed in
+`d41f73f` and `e0b1b37`. The code blocks above are left as originally written —
+this section is the authoritative delta, and anyone re-reading Tasks 2/5 should
+apply it.
+
+**Task 2 (`interval.ts`) — the "strict" parser was not strict.**
+The instant regex matched a shape and delegated component validation to
+`Date.parse`, which *normalizes* rather than rejects. Confirmed accepted by
+probe: year `0000`, `2026-01-01T24:00:00Z` (silently rolled to Jan 2), and
+offsets `+15:00` / `+14:01`. Every numeric component is now range-checked
+explicitly: year 0001-9999, hour 00-23, minute 00-59, second 00-59, offset
+bounded to ±14:00 per the FHIR R4 grammar.
+
+Separately, `boundEpochRange` used `Date.UTC(y, ...)`, which maps years 0-99 to
+1900+y — FHIR years `0001`-`0099` landed ~1900 years late. All bounds now build
+through a `utcEpoch()` helper using `setUTCFullYear`.
+
+**Deliberate narrowing:** FHIR permits `:60` (leap second); we reject it.
+ECMAScript cannot represent a leap second, so accepting it would mean clamping
+to `:59` or rolling the minute — the silent normalization this parser exists to
+prevent.
+
+**Task 5 (`select-facts.ts`) — four defects.**
+
+1. **Candidate rules must be per-OPERATOR, not per-operator-class.** The landed
+   `candidateMatches` required a finite-valued observation for the entire
+   aggregate class, which broke `count_in_window` for conditions, medications,
+   and allergies (returning `NO_MATCH` with zero decisions), wrongly required a
+   numeric value on counted labs, and dropped wildcard support. The three
+   aggregate operators do not share a rule. Correct rules, each mirroring the
+   current evaluator so `legacy-v0` stays behavior-preserving:
+   - `count_in_window` — any fact kind, trailing wildcard, **no** value
+     requirement (`gate-evaluator.ts` walks every code bucket, not just labs).
+   - `trend_*` / `delta_from_baseline` — observation, wildcard, finite value
+     (`collectLabSeries` uses `matchesCodePattern`).
+   - `greater_than` / `less_than` — observation, **exact** code, finite value
+     (`getNumericValue` uses `===`).
+
+2. **`definiteLatest` must compare strictly.** The landed `>=` meant two facts
+   at the same exact instant each satisfied the predicate against the other, so
+   the first array element won — the input-order dependence this kernel exists
+   to remove. Now strictly after; equal instants → `AMBIGUOUS_LATEST`. The
+   original test only covered two day-precision bounds, whose ranges overlap but
+   are not zero-width, so it missed this.
+
+3. **Aggregate uncertainty was labeled and then discarded.** Uncertain facts got
+   `INDETERMINATE`, but the aggregate branch selected only from `included` and
+   computed flags over `included`, so one uncertain lab returned `READY` with an
+   empty selection and `validityUnverified: false`. Aggregates now fail
+   **closed** per design §13, with the reasons retained on
+   `FactDecision.uncertainty` (a new required field) and aggregate flags
+   computed over included ∪ uncertain-excluded.
+
+   Boundary decision not specified by the review: for aggregates, `NO_MATCH` now
+   means "nothing matched the candidate rule at all". Candidates that matched
+   but did not survive are a legitimate answer of zero — `READY` with an empty
+   selection plus flags — rather than being conflated with "no such facts".
+
+4. **Trend/delta series ordering must be proven, not merely sorted.** Sorting by
+   lower bound alone left facts with equal or overlapping ranges (two
+   month-precision results in the same month) in input order, which can invert
+   baseline vs current in `delta_from_baseline`. The order is now proven
+   pairwise (`prev.hiMs < next.loMs`), else `AMBIGUOUS_SERIES_ORDER` — a new
+   `UncertaintyReason` added to Task 0's contract.
+
+5. **`exists` applied the system filter before the existence check** (P2), so an
+   `exists` condition carrying a different system returned `NO_MATCH`. It is
+   bucket existence only, matching the current evaluator; Plan 04's adapter
+   rejects a stray system/value at the authoring boundary.
+
+6. **Scalar `INDETERMINATE` always reported `TEMPORAL_UNKNOWN`** (P2), even for a
+   fact whose only uncertainty was validity. Reasons are now derived from the
+   decisions and deduplicated.
+
+**Verification after fixes:** temporal suite 57/57 pass (was 37); full
+pathway-service suite 679 passed / 15 failed, the same 15 pre-existing failures
+in `data-completeness-scorer`, `patient-match-scorer`, `ddi-multi-pathway`, and
+`multi-pathway-resolution` that fail independently of this work (Plan 01 added
+only new files — `git diff --stat 00e19c9..3adb8a9 -- apps/` is 12 files, all
+insertions). Typecheck clean.
