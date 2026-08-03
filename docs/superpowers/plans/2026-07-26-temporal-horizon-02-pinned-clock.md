@@ -138,13 +138,19 @@ Two facts that shape this plan:
   context in `startResolution` (`:47`); read it back at the three
   `RetraversalEngine` sites (`:232`, `:390`, `:566`).
 - `apps/pathway-service/src/resolvers/mutations/multi-pathway-resolution.ts` —
-  stamp once and reuse for every per-pathway traversal (`:687`, `:731`).
+  stamp once in `startMultiPathwayResolution` (`:129`) and thread it down:
+  both `createMultiPathwaySession` calls (`:160` zero-match, `:185` normal), a
+  new required parameter on `resolveAndPersistAll` (`:668`), then the engine
+  (`:687`) and `createSession` (`:731`) inside it.
 - Test constructor call sites (mechanical, 3 of them):
   `__tests__/traversal-engine.test.ts:46`,
   `__tests__/retraversal-engine.test.ts:29`,
   `__tests__/anemia-pathway-e2e.test.ts:39`.
 - `__tests__/resolution-retraversal-context.test.ts` — its `makeSession()`
-  fixture (`:91`) needs a `temporalContext`.
+  fixture (`:91`) needs a `temporalContext`. Also the reference harness: Task 6's
+  new test must mirror its mock set exactly.
+- `__tests__/multi-pathway-resolution.test.ts` — two new cases asserting the
+  parent and contributing sessions share one clock (Task 6 Step 7).
 
 ---
 
@@ -164,6 +170,7 @@ Pure value-type work. Produces the vocabulary Plans 03/06 consume.
   interface CustomHorizon { days: number }
   type Horizon = NamedHorizon | CustomHorizon;
   const NAMED_HORIZON_DAYS: Record<'YEAR'|'QUARTER'|'MONTH'|'WEEK'|'DAY', number>;
+  const MAX_CUSTOM_HORIZON_DAYS: number;   // 36_525 — see below
   function isNamedHorizon(h: unknown): h is NamedHorizon;
   function isCustomHorizon(h: unknown): h is CustomHorizon;
   function requiresEncounterAnchor(h: Horizon): boolean;
@@ -180,6 +187,18 @@ Pure value-type work. Produces the vocabulary Plans 03/06 consume.
 Day counts per §2: `YEAR`=365, `QUARTER`=90, `MONTH`=30, `WEEK`=7, `DAY`=1 —
 plain day arithmetic back from `evaluationAsOf`, no calendar months, no DST.
 
+**Custom-horizon maximum.** Design §13 mandates `{days:N}` be "a finite positive
+integer with an agreed maximum" but leaves the number to the plan. This plan sets
+`MAX_CUSTOM_HORIZON_DAYS = 36_525` (100 Julian years) and rejects anything above
+it with `INVALID_HORIZON`. Rationale: a window wider than a human lifespan is
+`LIFETIME`, which already exists as an unbounded tier and costs nothing — a
+larger day count is an authoring mistake, not a use case. The cap is also what
+keeps the arithmetic in range: without it, `{days: 1e15}` reaches
+`new Date(...).toISOString()` with a time value past ECMAScript's ±8.64e15 limit
+and throws a bare `RangeError` that no caller is typed to catch. Plan 06's
+validator will reuse this constant so a bad value is rejected at authoring time,
+not at evaluation time; exporting it here is what makes that possible.
+
 - [ ] **Step 1: Write the failing test**
 
 Create `apps/pathway-service/src/__tests__/temporal/evaluation-context.test.ts`:
@@ -190,9 +209,11 @@ import {
   requiresEncounterAnchor,
   isCustomHorizon,
   isNamedHorizon,
+  MAX_CUSTOM_HORIZON_DAYS,
   TemporalContextError,
   EvaluationTemporalContext,
 } from '../../services/resolution/temporal/evaluation-context';
+import { instantEpoch } from '../../services/resolution/temporal/interval';
 
 const AS_OF = '2026-07-30T12:00:00.000Z';
 
@@ -221,8 +242,8 @@ describe('resolveHorizon', () => {
   it('every resolved bound is a parseable FHIR instant (feeds instantEpoch)', () => {
     const { lowerBound, upperBound } = resolveHorizon({ days: 45 }, ctx());
     // overlap() calls instantEpoch on both; it throws on non-instants.
-    expect(() => require('../../services/resolution/temporal/interval').instantEpoch(lowerBound)).not.toThrow();
-    expect(() => require('../../services/resolution/temporal/interval').instantEpoch(upperBound)).not.toThrow();
+    expect(() => instantEpoch(lowerBound as string)).not.toThrow();
+    expect(() => instantEpoch(upperBound)).not.toThrow();
   });
 
   it('custom day counts are honored', () => {
@@ -262,6 +283,37 @@ describe('resolveHorizon', () => {
       throw new Error('expected resolveHorizon to throw');
     } catch (e) {
       expect(e).toBeInstanceOf(TemporalContextError);
+      expect((e as TemporalContextError).code).toBe('INVALID_HORIZON');
+    }
+  });
+
+  it('accepts exactly MAX_CUSTOM_HORIZON_DAYS', () => {
+    const out = resolveHorizon({ days: MAX_CUSTOM_HORIZON_DAYS }, ctx());
+    expect(out.upperBound).toBe(AS_OF);
+    expect(out.lowerBound).toBe('1926-07-30T12:00:00.000Z'); // 36_525 days before AS_OF
+    expect(() => instantEpoch(out.lowerBound as string)).not.toThrow();
+  });
+
+  it('rejects MAX_CUSTOM_HORIZON_DAYS + 1', () => {
+    try {
+      resolveHorizon({ days: MAX_CUSTOM_HORIZON_DAYS + 1 }, ctx());
+      throw new Error('expected resolveHorizon to throw');
+    } catch (e) {
+      expect(e).toBeInstanceOf(TemporalContextError);
+      expect((e as TemporalContextError).code).toBe('INVALID_HORIZON');
+    }
+  });
+
+  it('a day count large enough to overflow Date throws TemporalContextError, never RangeError', () => {
+    // Guards the failure mode the cap exists to prevent: without it this
+    // reaches `new Date(...).toISOString()` out of range and throws a bare,
+    // untyped RangeError that no caller is written to handle.
+    try {
+      resolveHorizon({ days: 1e15 }, ctx());
+      throw new Error('expected resolveHorizon to throw');
+    } catch (e) {
+      expect(e).toBeInstanceOf(TemporalContextError);
+      expect(e).not.toBeInstanceOf(RangeError);
       expect((e as TemporalContextError).code).toBe('INVALID_HORIZON');
     }
   });
@@ -332,6 +384,21 @@ export const NAMED_HORIZON_DAYS: Record<'YEAR' | 'QUARTER' | 'MONTH' | 'WEEK' | 
   WEEK: 7,
   DAY: 1,
 };
+
+/**
+ * Upper bound for `{days:N}` (design §13: "a finite positive integer with an
+ * agreed maximum"). 100 Julian years — a window wider than a human lifespan is
+ * `LIFETIME`, which is already an unbounded tier, so a larger day count is an
+ * authoring mistake rather than a use case.
+ *
+ * Exported because Plan 06's import validator must reject an out-of-range
+ * horizon at AUTHORING time using the same number this function enforces at
+ * evaluation time. Two copies of the limit would drift.
+ */
+export const MAX_CUSTOM_HORIZON_DAYS = 36_525;
+
+/** ECMAScript's maximum time value (ES2024 §21.4.1.1). */
+const MAX_TIME_VALUE = 8.64e15;
 
 const NAMED: readonly string[] = [
   'LIFETIME', 'YEAR', 'QUARTER', 'MONTH', 'WEEK', 'DAY', 'ENCOUNTER',
@@ -446,15 +513,28 @@ export function resolveHorizon(h: Horizon, ctx: EvaluationTemporalContext): Reso
     );
   }
 
-  if (!Number.isInteger(days) || days <= 0) {
+  if (!Number.isInteger(days) || days <= 0 || days > MAX_CUSTOM_HORIZON_DAYS) {
     throw new TemporalContextError(
-      `horizon day count must be a positive integer (got: ${days})`,
+      `horizon day count must be an integer in 1..${MAX_CUSTOM_HORIZON_DAYS} (got: ${days})`,
+      'INVALID_HORIZON',
+    );
+  }
+
+  const lowerMs = upperMs - days * MS_PER_DAY;
+  // Belt and braces. The cap above already keeps a well-formed call in range,
+  // but `new Date(x).toISOString()` throws a bare RangeError when it does not,
+  // and no caller of resolveHorizon is typed to catch that. Note a plain
+  // Number.isFinite check is NOT sufficient: the overflowed product is finite
+  // (1e15 days past AS_OF gives ≈ -8.6e22), just outside Date's range.
+  if (!Number.isFinite(lowerMs) || Math.abs(lowerMs) > MAX_TIME_VALUE) {
+    throw new TemporalContextError(
+      `horizon of ${days} days is not representable as a date from ${upperBound}`,
       'INVALID_HORIZON',
     );
   }
 
   return {
-    lowerBound: new Date(upperMs - days * MS_PER_DAY).toISOString(),
+    lowerBound: new Date(lowerMs).toISOString(),
     upperBound,
   };
 }
@@ -1309,10 +1389,19 @@ Keep it that way — do not import `types.ts` from the temporal module.
 
 - [ ] **Step 5: Write and read the column in `session-store.ts`**
 
-In `createSession`'s parameter object, add:
+In `createSession`'s parameter object, add it as **required** (no `?`):
 ```ts
-    temporalContext?: EvaluationTemporalContext;
+    temporalContext: EvaluationTemporalContext;
 ```
+
+**Required on the way in, optional on the way out — this asymmetry is
+deliberate.** The column is nullable and `ResolutionSession.temporalContext` is
+optional because pre-migration rows genuinely have no clock. But every session
+created from now on must have one, and making the creation parameter required
+is what lets the compiler prove it: a new `createSession` call site that forgets
+the clock becomes a build error instead of a session that silently cannot be
+retraversed. There are only two `createSession` call sites (`resolution.ts:126`,
+`multi-pathway-resolution.ts:731`) and Task 6 updates both, so the cost is nil.
 
 Extend the INSERT to a 15th column and placeholder:
 ```ts
@@ -1346,9 +1435,13 @@ import { EvaluationTemporalContext } from './temporal/evaluation-context';
 - [ ] **Step 6: Do the same for the multi-pathway store**
 
 In `multi-pathway-session-store.ts`:
-- add `temporalContext?: EvaluationTemporalContext;` to the
-  `MultiPathwayResolutionSession` interface (`:18`) and to
-  `createMultiPathwaySession`'s parameter object (`:60`);
+- add `temporalContext?: EvaluationTemporalContext;` (optional) to the
+  `MultiPathwayResolutionSession` interface (`:18`), and
+  `temporalContext: EvaluationTemporalContext;` (**required**) to
+  `createMultiPathwaySession`'s parameter object (`:60`) — same read-optional /
+  write-required split as `createSession`, and for the same reason. Both
+  `createMultiPathwaySession` call sites live in `startMultiPathwayResolution`
+  and Task 6 Step 5 updates both, including the zero-match path;
 - extend the INSERT to include `temporal_context` as a `$9::jsonb` placeholder
   and pass `s.temporalContext ? JSON.stringify(s.temporalContext) : null`;
 - in `rowToSession`, map
@@ -1418,7 +1511,10 @@ fresh one.
 - Modify: `apps/pathway-service/src/resolvers/mutations/resolution.ts`
   (`startResolution` `:47`; the three `RetraversalEngine` sites `:232`, `:390`, `:566`)
 - Modify: `apps/pathway-service/src/resolvers/mutations/multi-pathway-resolution.ts`
-  (`:687` engine, `:731` createSession)
+  — `startMultiPathwayResolution` (`:129`): create the context, and stamp it on
+  **both** `createMultiPathwaySession` calls (`:160` zero-match, `:185` normal);
+  `resolveAndPersistAll` (`:668`): new required parameter, `:687` engine,
+  `:731` createSession
 - Modify: `apps/pathway-service/src/__tests__/resolution-retraversal-context.test.ts`
   (`makeSession()` `:91`)
 - Test: `apps/pathway-service/src/__tests__/temporal/retraversal-clock-reuse.test.ts` (create)
@@ -1432,9 +1528,22 @@ fresh one.
 - [ ] **Step 1: Write the failing test**
 
 Create `apps/pathway-service/src/__tests__/temporal/retraversal-clock-reuse.test.ts`.
-Mirror the mocking style of the existing `resolution-retraversal-context.test.ts`
-(which mocks `session-store` and `retraversal-engine` and asserts on what the
-engine was constructed with).
+
+**Mirror `resolution-retraversal-context.test.ts` exactly** — read it before
+writing this file. A partial mock does not fail loudly here: `overrideNode`
+calls `makeRetraversalAdapter`, `makeLlmGateEvaluator` and `logNodeOverride` in
+addition to `buildResolutionContext` and `getSession`, and `jest.mock` with a
+factory replaces the **whole** module, so any export left out of the factory is
+`undefined` at call time. The positive case then dies with
+"`makeLlmGateEvaluator` is not a function" *before* it ever constructs the
+engine, so `retraversalCtor` is never called and the assertion fails with a
+confusing message.
+
+The negative case hides this: `requireSessionTemporalContext` is hoisted above
+the retraversal, so it throws before reaching any of those helpers and passes
+whether or not the mocks are complete. Do not read one green test as evidence
+the harness is sound — mock every export the resolver touches, not just the
+ones this test asserts on.
 
 ```ts
 const mockRetraverse = jest.fn().mockResolvedValue({
@@ -1443,10 +1552,14 @@ const mockRetraverse = jest.fn().mockResolvedValue({
 });
 const retraversalCtor = jest.fn();
 
+// Every session-store export `resolution.ts` imports — see its import block.
 jest.mock('../../services/resolution/session-store', () => ({
+  createSession: jest.fn().mockResolvedValue('session-1'),
   getSession: jest.fn(),
   updateSession: jest.fn().mockResolvedValue(undefined),
   logEvent: jest.fn().mockResolvedValue(undefined),
+  logNodeOverride: jest.fn().mockResolvedValue(undefined),
+  logGateAnswer: jest.fn().mockResolvedValue(undefined),
 }));
 
 jest.mock('../../services/resolution/retraversal-engine', () => ({
@@ -1456,12 +1569,28 @@ jest.mock('../../services/resolution/retraversal-engine', () => ({
   },
 }));
 
+// All four resolution-context helpers, and the full graphContext shape the
+// canonical test uses — a thinner stub breaks as soon as the resolver walks
+// edges.
 jest.mock('../../resolvers/helpers/resolution-context', () => ({
   buildResolutionContext: jest.fn().mockResolvedValue({
-    graphContext: { allNodes: [], getNode: () => undefined, outgoingEdges: () => [] },
+    graphContext: {
+      allNodes: [],
+      allEdges: [],
+      incomingEdges: () => [],
+      outgoingEdges: () => [],
+      getNode: () => undefined,
+      linkedNodes: () => [],
+    },
+    edges: [],
+    signals: [],
     thresholds: { autoResolveThreshold: 0.85, suggestThreshold: 0.6 },
+    confidenceEngine: {},
     codeMap: new Map(),
   }),
+  makeTraversalAdapter: jest.fn(),
+  makeRetraversalAdapter: jest.fn(() => ({ computeNodeConfidence: jest.fn() })),
+  makeLlmGateEvaluator: jest.fn(() => null),
 }));
 
 import { getSession } from '../../services/resolution/session-store';
@@ -1593,7 +1722,27 @@ function requireSessionTemporalContext(session: ResolutionSession): EvaluationTe
 }
 ```
 
-Import `EvaluationTemporalContext` alongside `makeEvaluationTemporalContext`.
+**Two imports this helper needs, neither of which `resolution.ts` has today:**
+
+1. `ResolutionSession`. The file currently imports only `GateAnswer` from the
+   resolution types module:
+   ```ts
+   import { GateAnswer } from '../../services/resolution/types';
+   ```
+   Widen it to a type-only import for the added name, so the value import is
+   untouched and nothing new lands in the emitted JS:
+   ```ts
+   import { GateAnswer } from '../../services/resolution/types';
+   import type { ResolutionSession } from '../../services/resolution/types';
+   ```
+2. `EvaluationTemporalContext`, alongside `makeEvaluationTemporalContext` from
+   `../../services/resolution/temporal/evaluation-context` — also a type-only
+   use, so import it with `import type` unless it shares a line with the
+   factory.
+
+Without (1) the helper's signature references an undeclared name and the file
+will not compile — a failure Task 6 Step 7's typecheck catches, but only after
+you have written every other change in this task.
 
 Then at each of the three `RetraversalEngine` constructions (`:232`, `:390`,
 `:566`), replace the Task 4 placeholder with the session's clock. Each site
@@ -1617,26 +1766,98 @@ triggered. At `:566` the local patient context variable is `updatedPc`, not
 
 - [ ] **Step 5: Stamp once for the multi-pathway run**
 
-In `multi-pathway-resolution.ts`, hoist a single context **outside** the
-`for (const m of pathways)` loop, so every per-pathway traversal in one
-multi-pathway resolution shares one instant:
+**Stamp in `startMultiPathwayResolution`, not in `resolveAndPersistAll`.** The
+clock has to be created at the outermost boundary of the run, because
+`resolveAndPersistAll` is not that boundary:
+
+- `startMultiPathwayResolution` (`:129`) calls `createMultiPathwaySession`
+  **twice** — once on the zero-match early return (`:160`) and once on the
+  normal path (`:185`) — and both are *outside* `resolveAndPersistAll`
+  (`:668`).
+- The zero-match branch returns before `resolveAndPersistAll` is ever called.
+  A context created inside that function therefore cannot reach the parent
+  session at all on that path, and on the normal path the parent would need the
+  child's clock handed back out.
+
+Creating it inside the callee gives the parent session either no clock or a
+different clock from its own children — exactly the divergence the pinned clock
+exists to prevent.
+
+**5a. Create the context at the top of `startMultiPathwayResolution`**, before
+`getMatchedPathways` (`:157`), so both branches below can see it:
 
 ```ts
-  // One clock for the whole multi-pathway run — every contributing session
-  // resolves horizons against the same instant.
-  const temporalContext = makeEvaluationTemporalContext();
+    // One clock for the entire multi-pathway run (§1) — the parent session and
+    // every contributing session resolve horizons against the same instant.
+    // Created here, before the zero-match branch, so BOTH exits stamp it.
+    const temporalContext = makeEvaluationTemporalContext();
 ```
 
-Pass it to the engine (`:687`, replacing the Task 4 placeholder) and to
-`createSession` (`:731`, alongside the other fields):
+**5b. Persist it on the zero-match `createMultiPathwaySession`** (`:160`),
+alongside `isPreview`:
+```ts
+        mergedPlan: emptyMergedCarePlan(),
+        isPreview,
+        temporalContext,
+```
+
+An empty session still records *when* "no pathways matched" was decided — that
+is the paper trail the existing comment there promises, and without a clock it
+is not reproducible.
+
+**5c. Thread it into `resolveAndPersistAll`** as a new required parameter rather
+than letting the callee stamp its own. Its current signature (`:668`) is
+`(pool, surviving, patientContext, userId)`; add the context last:
+
+```ts
+export async function resolveAndPersistAll(
+  pool: Pool,
+  pathways: MatchedPathway[],
+  patientContext: PatientContext,
+  providerId: string,
+  temporalContext: EvaluationTemporalContext,
+): Promise<...>
+```
+
+and update the single call site (`:172` in `startMultiPathwayResolution`):
+```ts
+      await resolveAndPersistAll(pool, surviving, patientContext, context.userId, temporalContext);
+```
+
+Import `EvaluationTemporalContext` in `multi-pathway-resolution.ts`. Keep the
+parameter required — it is the whole point of this step that the callee cannot
+invent its own clock.
+
+**5d. Use it for every `TraversalEngine` in the loop** (`:687`, replacing the
+Task 4 placeholder). The parameter is now in scope for every iteration, so all
+contributing pathways in one run share one instant:
+```ts
+    const engine = new TraversalEngine(
+      makeTraversalAdapter(rctx, pool, m.pathwayId, patientContext),
+      rctx.thresholds,
+      temporalContext,
+      llmBundle?.evaluator,
+      rctx.codeMap,
+    );
+```
+
+**5e. Persist it on every contributing `createSession`** (`:731`):
 ```ts
       traversalDurationMs: traversalResult.traversalDurationMs,
       temporalContext,
 ```
 
-If this function also calls `createMultiPathwaySession`, pass the same
-`temporalContext` there too — find the call site with
-`grep -n "createMultiPathwaySession" src/resolvers/mutations/multi-pathway-resolution.ts`.
+**5f. Persist it on the normal-path `createMultiPathwaySession`** (`:185`),
+alongside `ddiWarnings`:
+```ts
+      ddiWarnings,
+      isPreview,
+      temporalContext,
+```
+
+After this step the parent session and all of its contributing sessions carry
+byte-identical `temporal_context` values. That is the invariant Step 7's
+assertion checks.
 
 - [ ] **Step 6: Update the existing retraversal-context test fixture**
 
@@ -1665,11 +1886,75 @@ Import from `../services/resolution/temporal/evaluation-context`.
 Run: `npm test --prefix apps/pathway-service -- --runInBand src/__tests__/temporal/retraversal-clock-reuse.test.ts`
 Expected: PASS.
 
+Then check the multi-pathway invariant from Step 5 — that the parent session and
+its contributing sessions share one clock, and that the zero-match parent gets
+one at all. `multi-pathway-resolution.test.ts` already mocks both session stores
+and has fixtures for the zero-match and two-pathway cases, so add to it rather
+than building a second harness.
+
+**First, repair that file's `resolution-context` mock — it is currently broken,
+and two of its tests fail before you touch anything.** Its factory (`:32`) omits
+`makeLlmGateEvaluator`, which `resolveAndPersistAll` calls at `:686`, so
+`persists per-pathway sessions...` and `skips a pathway whose graph is empty...`
+both die with `makeLlmGateEvaluator is not a function`. These are two of the 15
+pre-existing failures in the repo baseline, and they are the same defect review
+found in Task 6 Step 1's harness — the incomplete-mock trap is not hypothetical,
+it is already live here. Both new cases below run through `resolveAndPersistAll`
+and would fail the same way. Add the missing export:
+
+```ts
+jest.mock('../resolvers/helpers/resolution-context', () => ({
+  buildResolutionContext: jest.fn(),
+  makeTraversalAdapter: jest.fn(() => ({})),
+  makeLlmGateEvaluator: jest.fn(() => null),   // ← was missing
+}));
+```
+
+Expect the baseline to improve from 15 failures to 13. Say so in the commit
+message — a *drop* in the failure count is as much a change in the suite's
+behavior as a rise, and the next person comparing against the recorded baseline
+needs to know why. Do not extend this to the other three failing suites; they
+are unrelated and out of scope.
+
+Then the two new cases:
+
+```ts
+it('stamps one clock across the parent and every contributing session', async () => {
+  await multiPathwayResolutionMutations.startMultiPathwayResolution(undefined, args, ctx);
+
+  const parent = (createMultiPathwaySession as jest.Mock).mock.calls[0][1];
+  const children = (createSession as jest.Mock).mock.calls.map((c) => c[1]);
+
+  expect(parent.temporalContext).toBeDefined();
+  expect(children.length).toBeGreaterThan(0);
+  for (const child of children) {
+    // Identity, not just "both defined" — two clocks stamped microseconds
+    // apart would satisfy a weaker assertion and still break replay.
+    expect(child.temporalContext).toEqual(parent.temporalContext);
+  }
+});
+
+it('stamps a clock on the zero-match parent session too', async () => {
+  // getMatchedPathways mocked to return []
+  await multiPathwayResolutionMutations.startMultiPathwayResolution(undefined, args, ctx);
+  const parent = (createMultiPathwaySession as jest.Mock).mock.calls[0][1];
+  expect(parent.temporalContext).toMatchObject({ timezone: 'UTC' });
+  expect(parent.temporalContext.evaluationAsOf).toEqual(expect.any(String));
+});
+```
+
+Match the file's existing mock/arg fixtures rather than the placeholder `args` /
+`ctx` names above.
+
 Then everything, plus a typecheck:
 ```
 npm test --prefix apps/pathway-service -- --runInBand
 ```
-Expected: PASS, no drop from the Task 4 baseline.
+Expected: no *new* failures versus the Task 4 baseline, and two *fewer* — the
+repo carries 15 pre-existing failures across `data-completeness-scorer`,
+`patient-match-scorer`, `ddi-multi-pathway` and `multi-pathway-resolution`; the
+mock repair above clears the two in `multi-pathway-resolution`, leaving 13. The
+other three suites are untouched by this plan.
 
 From `apps/pathway-service`:
 ```
@@ -1700,6 +1985,7 @@ Expected: exactly one hit — inside `makeEvaluationTemporalContext`.
 git add apps/pathway-service/src/resolvers/mutations/resolution.ts \
         apps/pathway-service/src/resolvers/mutations/multi-pathway-resolution.ts \
         apps/pathway-service/src/__tests__/resolution-retraversal-context.test.ts \
+        apps/pathway-service/src/__tests__/multi-pathway-resolution.test.ts \
         apps/pathway-service/src/__tests__/temporal/retraversal-clock-reuse.test.ts
 git commit -m "feat: stamp the session clock at startResolution and reuse it on retraversal
 
@@ -1719,6 +2005,14 @@ From design §13, the subset this plan is responsible for:
 - **No `evaluationAsOf` substitution.** `ENCOUNTER` without an `encounterStart`
   throws `MISSING_ENCOUNTER_ANCHOR`; it never silently narrows to a zero-width
   window (`evaluation-context.test.ts`).
+- **`{days:N}` bounds.** A finite positive integer no greater than
+  `MAX_CUSTOM_HORIZON_DAYS` (36_525); the maximum is accepted, maximum-plus-one
+  is rejected with `INVALID_HORIZON`, and an overflowing value raises
+  `TemporalContextError` rather than a bare `RangeError`
+  (`evaluation-context.test.ts`).
+- **One clock per run.** Every contributing session in a multi-pathway
+  resolution carries a `temporal_context` equal to its parent's, and the
+  zero-match parent is stamped too (`multi-pathway-resolution.test.ts`).
 - **Single wall-clock read.** Exactly one `Date.now()` in the temporal module,
   inside `makeEvaluationTemporalContext` (Task 6 Step 8 grep).
 - **No behavior change.** The full pathway-service suite passes with unchanged
@@ -1741,7 +2035,8 @@ enforcement of a caller-supplied clock (Plan 05).
 - §1 `encounterStart` single contract (reject, never substitute) → Task 1
   mechanism; the pathway-wide sweep is explicitly deferred to Plan 03 with the
   reason stated (needs the cascade).
-- §2 Horizon tiers + `{days:N}` → Task 1.
+- §2 Horizon tiers + `{days:N}` → Task 1, including §13's "agreed maximum"
+  (`MAX_CUSTOM_HORIZON_DAYS = 36_525`, exported for Plan 06's validator).
 - §11 `temporal_context JSONB` on both session tables → Task 5. GraphQL exposure
   deferred to Plan 08 (§11 bullets 2–4 are Plan 08's, per the suite overview).
 - §12 reachability → explicitly out of scope, with the reason.
@@ -1761,15 +2056,52 @@ strings in Tasks 1, 2, and 6. Constructor argument order
 identical across Tasks 4 and 6 and both engines. Field name is `temporalContext`
 in TypeScript and `temporal_context` in SQL throughout.
 
+**Optionality is deliberately asymmetric,** and the three places it appears now
+agree: the DB column is nullable (Task 5 Step 1), the read-side
+`ResolutionSession.temporalContext` / `MultiPathwayResolutionSession.temporalContext`
+are optional (Task 5 Steps 4, 6) because pre-migration rows have no clock, but
+both *creation* parameters are required (Task 5 Steps 5, 6) so a new call site
+cannot forget one. Task 6 updates all four call sites — two `createSession`, two
+`createMultiPathwaySession`.
+
+**Every import the new code needs is named explicitly,** after review found
+`requireSessionTemporalContext` using a `ResolutionSession` that `resolution.ts`
+does not currently import: Task 6 Step 4 now spells out both that type-only
+import and `EvaluationTemporalContext`.
+
+**Mock completeness:** Task 6 Step 1's harness mocks all six `session-store`
+exports and all four `resolution-context` exports that `resolution.ts` imports,
+matching `resolution-retraversal-context.test.ts`. This matters more than it
+looks: the negative case in that test passes even with incomplete mocks, because
+the clock guard throws before the resolver reaches the unmocked helpers.
+
+Checking that finding against the repo turned up the same bug already live:
+`multi-pathway-resolution.test.ts:32` omits `makeLlmGateEvaluator`, and two of
+its tests fail today with `makeLlmGateEvaluator is not a function` — two of the
+15 baseline failures, with a one-line cause. Step 7 repairs it, because the new
+multi-pathway assertions run through the same code path and would fail
+identically. This is a scope addition (a pre-existing failure, not something
+this plan breaks), taken because the alternative is adding tests to a file that
+cannot go green.
+
 **One gap accepted deliberately:** the exported `evaluateGate` keeps a
 `Date.now()` fallback, so a *new* call site could still omit the clock. Task 3
 documents it in code and Plan 04 removes it. The alternative — making it required
 now — is a ~50-site positional edit in test files for a signature Plan 04
 rewrites anyway.
 
-**One correction to the suite overview:** the overview's Global Constraints list
-`npm run --prefix apps/pathway-service typecheck` and
-`npx --prefix apps/pathway-service jest <path>`. Neither works — there is no
-`typecheck` script, and `npx tsc` resolves to a decoy package. The working
-commands are in this plan's Global Constraints. Plan 01's revision noted the same
-thing; the overview was never updated. Fix it in the overview when writing Plan 03.
+**The suite overview's broken commands are fixed** (commit `e0a8e32`) — it had
+listed a `typecheck` npm script that does not exist and a bare `npx tsc` that
+resolves to a decoy package. Both this plan and the overview now carry the
+working versions.
+
+**Where the clock is created is the load-bearing choice in Task 6,** and review
+round 1 found it in the wrong place. `resolveAndPersistAll` looks like the
+multi-pathway boundary but is not: `startMultiPathwayResolution` creates the
+parent session on two separate paths, one of which (zero matches) returns before
+`resolveAndPersistAll` is ever called. Stamping inside the callee left the parent
+either unstamped or holding a clock its children did not share. Step 5 now
+creates it once at the true entry point and threads it down as a required
+parameter, and Step 7 asserts parent/child identity rather than mere presence —
+two clocks stamped microseconds apart would satisfy a weaker check and still
+break replay.
