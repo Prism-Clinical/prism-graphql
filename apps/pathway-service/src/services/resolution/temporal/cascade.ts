@@ -6,6 +6,7 @@ import {
   TemporalContextError,
   EvaluationTemporalContext,
   resolveHorizon,
+  requiresEncounterAnchor,
 } from './evaluation-context';
 import { GateField, FIELD_TO_KIND } from './contract';
 import {
@@ -13,6 +14,7 @@ import {
   FieldPolicy,
   fieldHasClinicalState,
   systemDefaultFor,
+  getTemporalPolicy,
 } from './policy-registry';
 import { EffectivePolicy } from './select-facts';
 
@@ -262,4 +264,54 @@ export function toEffectivePolicy(
   const policy: EffectivePolicy = { horizon: resolveHorizon(tier.horizon, ctx) };
   if (tier.status !== undefined) policy.status = tier.status;
   return policy;
+}
+
+/** One gate condition, reduced to what the anchor sweep needs. */
+export interface SweepableCondition {
+  /** Human-readable location, used verbatim in the rejection message. */
+  label: string;
+  field: GateField;
+  override?: ConditionTemporalOverride;
+}
+
+export interface EncounterAnchorRequirement {
+  label: string;
+  field: GateField;
+  /** Which cascade level introduced the ENCOUNTER horizon. */
+  level: PolicyLevel;
+}
+
+/**
+ * Every condition in a pathway whose effective horizon needs an
+ * `encounterStart`, resolved through the same cascade evaluation uses.
+ *
+ * Run this at session creation. `resolveHorizon` refuses to invent an anchor,
+ * so without a preflight the first ENCOUNTER condition throws mid-traversal —
+ * after LLM gates have already been called and audit rows written, and with a
+ * message that names no gate. Sweeping first turns that into one up-front
+ * rejection listing every offending condition.
+ *
+ * Reports ALL offenders rather than short-circuiting on the first: an author
+ * fixing a pathway wants the whole list in one pass.
+ */
+export function collectEncounterAnchorRequirements(
+  conditions: readonly SweepableCondition[],
+  version: string,
+  pathwayDefaults: PathwayTemporalDefaults,
+): EncounterAnchorRequirement[] {
+  // Validate the version BEFORE the loop. Left to the loop, an empty or
+  // attribute-only pathway would sweep zero conditions, never touch the
+  // registry, and report "no anchors needed" for a version that does not
+  // exist — the session would then be created pinned to a version nothing
+  // can evaluate.
+  getTemporalPolicy(version);
+
+  const out: EncounterAnchorRequirement[] = [];
+  for (const c of conditions) {
+    const tier = resolveEffectivePolicy(c.field, version, pathwayDefaults, c.override);
+    if (requiresEncounterAnchor(tier.horizon)) {
+      out.push({ label: c.label, field: c.field, level: tier.horizonLevel });
+    }
+  }
+  return out;
 }
