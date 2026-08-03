@@ -19,6 +19,16 @@ export interface FactDecision {
    * (aggregate fail-closed). Empty when the fact was decided definitely.
    */
   uncertainty: UncertaintyReason[];
+  /**
+   * The clinical state was not established: an UNKNOWN/CONFLICT state, or a
+   * status inferred by failing open on a missing FHIR status.
+   *
+   * Tracked separately from `uncertainty` because `status: any` bypasses state
+   * filtering: under `any` the doubt is real evidence but must NOT reach the
+   * operator policy, or the aggregate fail-closed rule would exclude exactly
+   * the facts the author asked to admit.
+   */
+  stateUnverified: boolean;
 }
 export type SelectionOutcome =
   | {
@@ -109,10 +119,15 @@ function stateMatchFor(
   const st = fact.clinicalState;
   const unverified = fact.stateBasis === 'MISSING_STATUS_FAIL_OPEN';
   if (status === undefined || status === 'any') {
-    return { result: st === 'UNKNOWN' || st === 'CONFLICT' ? 'UNKNOWN' : 'MATCH', unverified };
+    // RFC §3: `any` bypasses state filtering ENTIRELY — it admits every state,
+    // including UNKNOWN and CONFLICT. Returning UNKNOWN here instead would feed
+    // the bypassed doubt into the operator policy, and the aggregate
+    // fail-closed rule would then drop the very facts `any` exists to admit.
+    // The doubt is preserved as evidence via `unverified`.
+    return { result: 'MATCH', unverified: unverified || st === 'UNKNOWN' || st === 'CONFLICT' };
   }
   if (st === 'CONFLICT') return { result: 'NO_MATCH', unverified };
-  if (st === 'UNKNOWN') return { result: 'UNKNOWN', unverified };
+  if (st === 'UNKNOWN') return { result: 'UNKNOWN', unverified: true };
   if (status === 'active') return { result: st === 'ACTIVE' ? 'MATCH' : 'NO_MATCH', unverified };
   return { result: st === 'INACTIVE' ? 'MATCH' : 'NO_MATCH', unverified };
 }
@@ -154,7 +169,7 @@ export function selectFacts(
     if (!candidateMatches(fact, condition)) continue;
     const validityDecision: FactDecision['validityDecision'] =
       fact.recordValidity === 'INVALID' ? 'DROP_INVALID' : fact.recordValidity === 'UNKNOWN' ? 'UNKNOWN' : 'ADMIT';
-    const { result: stateMatch } = stateMatchFor(fact, policy.status);
+    const { result: stateMatch, unverified: stateUnverified } = stateMatchFor(fact, policy.status);
     const temporalMatch = overlap(fact.interval, policy.horizon);
 
     let operatorDecision: FactDecision['operatorDecision'];
@@ -177,7 +192,9 @@ export function selectFacts(
         operatorDecision = 'EXCLUDE';
       }
     }
-    decisions.push({ fact, validityDecision, stateMatch, temporalMatch, operatorDecision, uncertainty });
+    decisions.push({
+      fact, validityDecision, stateMatch, temporalMatch, operatorDecision, uncertainty, stateUnverified,
+    });
   }
 
   const included = decisions.filter((d) => d.operatorDecision === 'INCLUDE');
@@ -188,9 +205,7 @@ export function selectFacts(
 
   const flags = (subset: FactDecision[]) => ({
     temporallyUnverified: subset.some((d) => d.temporalMatch === 'UNKNOWN'),
-    stateUnverified: subset.some(
-      (d) => d.stateMatch === 'UNKNOWN' || (isStatefulFact(d.fact) && d.fact.stateBasis === 'MISSING_STATUS_FAIL_OPEN'),
-    ),
+    stateUnverified: subset.some((d) => d.stateUnverified),
     validityUnverified: subset.some((d) => d.validityDecision === 'UNKNOWN'),
   });
 

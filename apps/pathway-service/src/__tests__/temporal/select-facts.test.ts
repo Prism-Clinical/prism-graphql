@@ -305,3 +305,101 @@ describe('P2: indeterminate reasons are derived from the decisions', () => {
     }
   });
 });
+
+// ─── review round 5 ───────────────────────────────────────────────────
+
+/** A condition whose interval sits unambiguously inside Q, so only state varies. */
+const statedCond = (
+  factId: string,
+  state: 'ACTIVE' | 'INACTIVE' | 'ON_HOLD' | 'UNKNOWN' | 'CONFLICT',
+): NormalizedFact => ({
+  kind: 'condition', factId, code: 'N39.0', system: 'ICD-10',
+  interval: {
+    start: { value: '2026-05-01', precision: 'day' },
+    end: { kind: 'KNOWN', bound: { value: '2026-05-02', precision: 'day' } },
+  },
+  recordValidity: 'VALID', validityBasis: 'verification:confirmed',
+  provenance: { sourceType: 'SYNTHETIC' },
+  clinicalState: state, stateBasis: 'FHIR_STATUS',
+});
+
+describe('P1: status "any" bypasses state filtering entirely (RFC §3)', () => {
+  it('count_in_window with status any counts an UNKNOWN-state condition', () => {
+    const out = selectFacts(
+      { field: 'conditions', operator: 'count_in_window', value: 'N39.0', system: 'ICD-10' },
+      [statedCond('c1', 'UNKNOWN')],
+      { horizon: Q, status: 'any' },
+    );
+    expect(out.status).toBe('READY');
+    if (out.status === 'READY') {
+      expect(out.selected.map((f) => f.factId)).toEqual(['c1']);
+      // Bypassed-but-uncertain state is still surfaced as evidence.
+      expect(out.stateUnverified).toBe(true);
+    }
+  });
+
+  it('count_in_window with status any counts a CONFLICT-state condition', () => {
+    const out = selectFacts(
+      { field: 'conditions', operator: 'count_in_window', value: 'N39.0', system: 'ICD-10' },
+      [statedCond('c1', 'CONFLICT'), statedCond('c2', 'ACTIVE')],
+      { horizon: Q, status: 'any' },
+    );
+    expect(out.status).toBe('READY');
+    if (out.status === 'READY') {
+      expect(out.selected.map((f) => f.factId).sort()).toEqual(['c1', 'c2']);
+      expect(out.stateUnverified).toBe(true);
+    }
+  });
+
+  it('an all-definite status-any aggregate reports stateUnverified false', () => {
+    const out = selectFacts(
+      { field: 'conditions', operator: 'count_in_window', value: 'N39.0', system: 'ICD-10' },
+      [statedCond('c1', 'ACTIVE'), statedCond('c2', 'INACTIVE')],
+      { horizon: Q, status: 'any' },
+    );
+    expect(out.status).toBe('READY');
+    if (out.status === 'READY') {
+      expect(out.selected).toHaveLength(2);
+      expect(out.stateUnverified).toBe(false);
+    }
+  });
+
+  it('membership with status any admits every state without uncertainty', () => {
+    const out = selectFacts(
+      { field: 'conditions', operator: 'includes_code', value: 'N39.0', system: 'ICD-10' },
+      [statedCond('c1', 'UNKNOWN')],
+      { horizon: Q, status: 'any' },
+    );
+    expect(out.status).toBe('READY');
+    if (out.status === 'READY') {
+      const d = out.decisions.find((x) => x.fact.factId === 'c1');
+      expect(d?.stateMatch).toBe('MATCH');
+      expect(d?.uncertainty).not.toContain('STATE_UNKNOWN');
+    }
+  });
+
+  it('status active still EXCLUDES a CONFLICT state (fail-open must not resolve a conflict)', () => {
+    const out = selectFacts(
+      { field: 'conditions', operator: 'count_in_window', value: 'N39.0', system: 'ICD-10' },
+      [statedCond('c1', 'CONFLICT')],
+      { horizon: Q, status: 'active' },
+    );
+    expect(out.status).toBe('READY');
+    if (out.status === 'READY') expect(out.selected).toHaveLength(0);
+  });
+
+  it('status active still treats an UNKNOWN state as uncertain', () => {
+    const out = selectFacts(
+      { field: 'conditions', operator: 'count_in_window', value: 'N39.0', system: 'ICD-10' },
+      [statedCond('c1', 'UNKNOWN')],
+      { horizon: Q, status: 'active' },
+    );
+    expect(out.status).toBe('READY');
+    if (out.status === 'READY') {
+      expect(out.selected).toHaveLength(0);
+      expect(out.stateUnverified).toBe(true);
+      const d = out.decisions.find((x) => x.fact.factId === 'c1');
+      expect(d?.uncertainty).toContain('STATE_UNKNOWN');
+    }
+  });
+});
