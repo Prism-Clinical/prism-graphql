@@ -16,6 +16,10 @@ import {
   ResolvedThresholds,
   NodeConfidenceResult,
 } from '../confidence/types';
+// Acyclic: temporal/evaluation-context.ts imports only ./overlap and
+// ./interval, neither of which imports types.ts. Keep it that way — do not
+// import types.ts from the temporal module.
+import { EvaluationTemporalContext } from './temporal/evaluation-context';
 
 export {
   NodeStatus,
@@ -285,6 +289,12 @@ export interface ResolutionSession {
   carePlanId?: string;
   /** Phase 4: DDI MODERATE-severity findings persisted with the session. */
   ddiWarnings: unknown[];
+  /**
+   * The pinned evaluation clock this session was created with (§1).
+   * Optional only for rows written before migration 063 — those sessions
+   * are not retraversable.
+   */
+  temporalContext?: EvaluationTemporalContext;
   createdAt: Date;
   updatedAt: Date;
 }

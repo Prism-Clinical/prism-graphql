@@ -10,6 +10,7 @@
 
 import { Pool } from 'pg';
 import { MergedCarePlan, ConflictResolution } from './care-plan-merge';
+import { EvaluationTemporalContext } from './temporal/evaluation-context';
 
 // ─── Types ──────────────────────────────────────────────────────────
 
@@ -38,6 +39,11 @@ export interface MultiPathwayResolutionSession {
   carePlanId: string | null;
   /** Phase 4: DDI warnings (MODERATE) — pre-merge + cross-recommendation. */
   ddiWarnings: unknown[];
+  /**
+   * The clock stamped once for the whole multi-pathway run and shared by
+   * every contributing session. Optional only for pre-migration-063 rows.
+   */
+  temporalContext?: EvaluationTemporalContext;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -68,14 +74,16 @@ export async function createMultiPathwaySession(
     mergedPlan: MergedCarePlan;
     ddiWarnings?: unknown[];
     isPreview?: boolean;
+    // Optional here; Task 6 Step 6b tightens this to required.
+    temporalContext?: EvaluationTemporalContext;
   },
 ): Promise<string> {
   const result = await pool.query(
     `INSERT INTO multi_pathway_resolution_sessions
        (patient_id, provider_id, status, is_preview, initial_patient_context,
         contributing_session_ids, contributing_pathway_ids,
-        merged_plan, conflict_resolutions, ddi_warnings)
-     VALUES ($1, $2, 'ACTIVE', $3, $4::jsonb, $5::uuid[], $6::uuid[], $7::jsonb, '{}'::jsonb, $8::jsonb)
+        merged_plan, conflict_resolutions, ddi_warnings, temporal_context)
+     VALUES ($1, $2, 'ACTIVE', $3, $4::jsonb, $5::uuid[], $6::uuid[], $7::jsonb, '{}'::jsonb, $8::jsonb, $9::jsonb)
      RETURNING id`,
     [
       s.patientId,
@@ -86,6 +94,7 @@ export async function createMultiPathwaySession(
       s.contributingPathwayIds,
       JSON.stringify(s.mergedPlan),
       JSON.stringify(s.ddiWarnings ?? []),
+      s.temporalContext ? JSON.stringify(s.temporalContext) : null,
     ],
   );
   return result.rows[0].id;
@@ -293,6 +302,8 @@ function rowToSession(row: Record<string, unknown>): MultiPathwayResolutionSessi
     conflictResolutions: (row.conflict_resolutions as Record<string, ConflictResolution>) ?? {},
     carePlanId: (row.care_plan_id as string) ?? null,
     ddiWarnings: (row.ddi_warnings as unknown[]) ?? [],
+    // pg parses JSONB already; `?? undefined` maps SQL NULL to undefined.
+    temporalContext: (row.temporal_context ?? undefined) as EvaluationTemporalContext | undefined,
     createdAt: row.created_at as Date,
     updatedAt: row.updated_at as Date,
   };

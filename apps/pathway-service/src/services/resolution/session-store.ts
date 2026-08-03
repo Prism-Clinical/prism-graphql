@@ -6,6 +6,7 @@
  */
 
 import { Pool } from 'pg';
+import { EvaluationTemporalContext } from './temporal/evaluation-context';
 import {
   ResolutionState,
   NodeResult,
@@ -112,14 +113,18 @@ export async function createSession(
     totalNodesEvaluated: number;
     traversalDurationMs: number;
     ddiWarnings?: unknown[];
+    // Optional here; Task 6 Step 6b tightens this to required once every
+    // call site supplies a clock. The stored column stays nullable for
+    // pre-migration rows.
+    temporalContext?: EvaluationTemporalContext;
   },
 ): Promise<string> {
   const result = await pool.query(
     `INSERT INTO pathway_resolution_sessions
      (pathway_id, pathway_version, patient_id, provider_id, status, initial_patient_context,
       resolution_state, dependency_map, pending_questions, red_flags, gate_answers,
-      total_nodes_evaluated, traversal_duration_ms, ddi_warnings)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+      total_nodes_evaluated, traversal_duration_ms, ddi_warnings, temporal_context)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
      RETURNING id`,
     [
       session.pathwayId,
@@ -136,6 +141,7 @@ export async function createSession(
       session.totalNodesEvaluated,
       session.traversalDurationMs,
       JSON.stringify(session.ddiWarnings ?? []),
+      session.temporalContext ? JSON.stringify(session.temporalContext) : null,
     ],
   );
   return result.rows[0].id;
@@ -179,6 +185,11 @@ export async function getSession(
     traversalDurationMs: row.traversal_duration_ms,
     carePlanId: row.care_plan_id,
     ddiWarnings: row.ddi_warnings ?? [],
+    // pg already parses JSONB into an object — do NOT JSON.parse this. The
+    // `?? undefined` turns a SQL NULL into undefined rather than null; the
+    // type says optional and strictNullChecks is off, so nothing else would
+    // catch a stray null.
+    temporalContext: (row.temporal_context ?? undefined) as EvaluationTemporalContext | undefined,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
