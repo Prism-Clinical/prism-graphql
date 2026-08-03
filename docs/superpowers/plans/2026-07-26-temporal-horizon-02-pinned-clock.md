@@ -54,6 +54,35 @@ back on every retraversal. Gate evaluation's internal clock parameter loses its
 - **`timezone` is the literal `'UTC'`** everywhere. Do not introduce a timezone
   library or a second zone.
 
+## Test baseline (every full-suite checkpoint is relative to this)
+
+**The pathway-service suite does not go green, and never has on this branch.**
+Before starting, record the baseline:
+
+```
+npm test --prefix apps/pathway-service -- --runInBand 2>&1 | tail -5
+```
+
+As of plan 01's completion (`e0a8e32`) that is **685 passed, 15 failed**, the
+failures confined to four suites — `data-completeness-scorer`,
+`patient-match-scorer`, `ddi-multi-pathway`, `multi-pathway-resolution`. None
+are temporal; plan 01 added only new files and could not have caused them.
+
+So no checkpoint in this plan may say "expect PASS". Every full-suite step means:
+
+- **no new failing suite** appears, and
+- **no test that passed at baseline** now fails.
+
+A failure *count* alone is not the check — 15 → 15 could hide one fix and one
+regression. Compare the failing suite names.
+
+**One deliberate exception:** Task 6 Step 7 repairs an incomplete mock in
+`multi-pathway-resolution.test.ts`, taking the baseline from **15 to 13**. That
+is the only sanctioned change to the count in this plan. A drop anywhere else is
+as suspicious as a rise — it usually means tests stopped running, not that they
+started passing. If your totals disagree with this section, re-measure before
+assuming the plan is stale: another branch may have landed since.
+
 ## Scope Boundaries (read before starting)
 
 Three things that look in-scope but are **not**, because a later plan owns them:
@@ -920,9 +949,10 @@ re-add a `Date.now()` default.
 - [ ] **Step 5: Run the gate-evaluator suites**
 
 Run: `npm test --prefix apps/pathway-service -- --runInBand src/__tests__/gate-evaluator`
-Expected: PASS, unchanged counts. These suites exercise the operators that
-consume `now` (`count_in_window`, `trend_*`) and pin it explicitly, so they are
-the real regression net for this task.
+Expected: PASS — these suites are fully green at baseline (they are not among
+the four failing ones), so here a literal all-pass *is* the bar. They exercise
+the operators that consume `now` (`count_in_window`, `trend_*`) and pin it
+explicitly, which makes them the real regression net for this task.
 
 - [ ] **Step 6: Commit**
 
@@ -1235,8 +1265,11 @@ targeted run is not enough:
 ```
 npm test --prefix apps/pathway-service -- --runInBand
 ```
-Expected: PASS. Compare the totals against a pre-task baseline; the count must
-not drop.
+Expected: **the baseline, unchanged** — 15 failures across the same four suites
+(see "Test baseline"). Not a clean pass; the suite has never been green on this
+branch. What matters is that no *new* suite joins the failing set and no test
+that passed before this task fails now. Task 6 is the only place the count is
+allowed to move, and only downward, from 15 to 13.
 
 - [ ] **Step 9: Commit**
 
@@ -1296,6 +1329,10 @@ this asserts the column is written and read, not that Postgres works.
 
 ```ts
 import { createSession, getSession } from '../../services/resolution/session-store';
+import {
+  createMultiPathwaySession,
+  getMultiPathwaySession,
+} from '../../services/resolution/multi-pathway-session-store';
 import { makeEvaluationTemporalContext } from '../../services/resolution/temporal/evaluation-context';
 import { createEmptyDependencyMap } from '../../services/resolution/types';
 
@@ -1355,6 +1392,75 @@ describe('session temporal_context persistence', () => {
     const session = await getSession(pool as never, 'session-1');
     expect(session!.temporalContext).toEqual(TCTX);
     expect(session!.temporalContext!.evaluationAsOf).toBe('2026-07-30T12:00:00.000Z');
+  });
+
+  // ── multi-pathway store ────────────────────────────────────────────
+  //
+  // These are NOT redundant with the createSession cases above: the two
+  // stores are separate files with separate SQL. The multi-pathway INSERT
+  // currently ends at $8 and gains a 9th placeholder, and its read path goes
+  // through `rowToSession` rather than an inline literal. A mis-numbered
+  // placeholder or a `rowToSession` that never maps the column would leave
+  // every multi-pathway session silently clock-less — and nothing else in
+  // this plan would catch it, because Task 6's resolver tests mock this
+  // module out entirely.
+
+  it('createMultiPathwaySession writes the temporal context as JSON', async () => {
+    const { pool, calls } = fakePool([]);
+    await createMultiPathwaySession(pool as never, {
+      patientId: 'pt', providerId: 'pr',
+      initialPatientContext: {},
+      contributingSessionIds: [], contributingPathwayIds: [],
+      // `emptyMergedCarePlan()` is private to multi-pathway-resolution.ts —
+      // do not try to import it. The plan's contents are irrelevant here;
+      // only the SQL and the parameter array are under test.
+      mergedPlan: {} as never,
+      temporalContext: TCTX,
+    });
+
+    const insert = calls.find((c) => c.sql.includes('INSERT INTO multi_pathway_resolution_sessions'))!;
+    expect(insert.sql).toContain('temporal_context');
+    // Placeholder count must match the parameter array, or pg throws at
+    // runtime — the defect a SQL-string-only assertion would miss.
+    expect(insert.sql).toContain('$9::jsonb');
+    expect(insert.params).toHaveLength(9);
+    expect(insert.params[8]).toBe(JSON.stringify(TCTX));
+  });
+
+  it('getMultiPathwaySession hydrates the temporal context via rowToSession', async () => {
+    const pool = {
+      query: jest.fn().mockResolvedValue({
+        rows: [{
+          id: 'mp-1', patient_id: 'pt', provider_id: 'pr', status: 'ACTIVE',
+          is_preview: false, initial_patient_context: {},
+          contributing_session_ids: [], contributing_pathway_ids: [],
+          merged_plan: {}, conflict_resolutions: {}, ddi_warnings: [],
+          temporal_context: TCTX,
+          created_at: new Date(), updated_at: new Date(),
+        }],
+      }),
+    };
+
+    const session = await getMultiPathwaySession(pool as never, 'mp-1');
+    expect(session!.temporalContext).toEqual(TCTX);
+  });
+
+  it('getMultiPathwaySession leaves temporalContext undefined for a pre-migration row', async () => {
+    const pool = {
+      query: jest.fn().mockResolvedValue({
+        rows: [{
+          id: 'mp-1', patient_id: 'pt', provider_id: 'pr', status: 'ACTIVE',
+          is_preview: false, initial_patient_context: {},
+          contributing_session_ids: [], contributing_pathway_ids: [],
+          merged_plan: {}, conflict_resolutions: {}, ddi_warnings: [],
+          temporal_context: null,
+          created_at: new Date(), updated_at: new Date(),
+        }],
+      }),
+    };
+
+    const session = await getMultiPathwaySession(pool as never, 'mp-1');
+    expect(session!.temporalContext).toBeUndefined();
   });
 
   it('getSession leaves temporalContext undefined for a pre-migration row', async () => {
@@ -1539,11 +1645,24 @@ psql -h localhost -U prism -d prism_db -c \
   "INSERT INTO migration_history (migration_id, name, checksum) VALUES ('063_add_temporal_context_to_sessions', '063_add_temporal_context_to_sessions', '$checksum');"
 ```
 
-Verify:
+Verify **both** tables — the migration alters two, and a `\d+` on one proves
+nothing about the other:
 ```bash
-psql -h localhost -U prism -d prism_db -c "\d+ pathway_resolution_sessions" | grep temporal_context
+psql -h localhost -U prism -d prism_db -Atc "
+  SELECT table_name, data_type, is_nullable
+    FROM information_schema.columns
+   WHERE column_name = 'temporal_context'
+   ORDER BY table_name;"
 ```
-Expected: one row showing `temporal_context | jsonb`.
+Expected exactly two rows:
+```
+multi_pathway_resolution_sessions|jsonb|YES
+pathway_resolution_sessions|jsonb|YES
+```
+
+One row means half the migration applied — most likely the second `ALTER TABLE`
+failed after the first committed. Both must be `jsonb` and both nullable;
+`YES` is what makes pre-migration rows legal.
 
 **This mutates the live host database.** The change is additive and nullable, so
 it is safe against the running pm2 processes (they never SELECT the new column
@@ -2083,11 +2202,15 @@ mentioning `Date.now()` inflate it further. Compare against an allowed set of
 locations instead.
 
 ```bash
-grep -rn "Date\.now()" apps/pathway-service/src/services/resolution/ --include=*.ts \
+grep -rn "Date\.now()" apps/pathway-service/src/services/resolution/ --include='*.ts' \
   | grep -v '__tests__' \
   | grep -vE ':[0-9]+: *(\*|//|/\*)' \
   | awk -F: '{print $1}' | sed 's|.*/services/resolution/||' | sort | uniq -c
 ```
+
+Quote `'*.ts'`. Unquoted, zsh expands it before `grep` sees it and aborts the
+whole pipeline with `zsh: no matches found: --include=*.ts` — bash leaves it
+alone, so this passes in one shell and fails in another.
 
 Expected, exactly:
 ```
@@ -2119,12 +2242,19 @@ committing rather than updating the expected list.
 - [ ] **Step 9: Commit**
 
 ```bash
-git add apps/pathway-service/src/resolvers/mutations/resolution.ts \
+# The two stores are here because Step 6b edits them — the required creation
+# signatures live in these files, not in the resolvers.
+git add apps/pathway-service/src/services/resolution/session-store.ts \
+        apps/pathway-service/src/services/resolution/multi-pathway-session-store.ts \
+        apps/pathway-service/src/resolvers/mutations/resolution.ts \
         apps/pathway-service/src/resolvers/mutations/multi-pathway-resolution.ts \
         apps/pathway-service/src/__tests__/resolution-retraversal-context.test.ts \
         apps/pathway-service/src/__tests__/multi-pathway-resolution.test.ts \
         apps/pathway-service/src/__tests__/temporal/retraversal-clock-reuse.test.ts
-git commit -m "feat: stamp the session clock at startResolution and reuse it on retraversal
+git commit -m "feat: pin one evaluation clock per session and reuse it on retraversal
+
+Also repairs multi-pathway-resolution.test.ts's resolution-context mock, which
+omitted makeLlmGateEvaluator: the suite's failing count drops 15 -> 13.
 
 Co-Authored-By: Claude Opus 5 (1M context) <noreply@example.com>"
 ```
@@ -2161,8 +2291,11 @@ From design §13, the subset this plan is responsible for:
   pre-migration rows (Task 6 Step 6b typecheck).
 - **Single wall-clock read.** Exactly one `Date.now()` in the temporal module,
   inside `makeEvaluationTemporalContext` (Task 6 Step 8 grep).
-- **No behavior change.** The full pathway-service suite passes with unchanged
-  counts, and `temporalPolicyVersion` defaults to `legacy-v0`.
+- **No behavior change.** The full pathway-service suite ends at its documented
+  baseline with no new failing suite and nothing newly broken — 13 failures
+  across the same four suites, down from 15 only because Task 6 Step 7 repairs
+  an unrelated incomplete mock. See "Test baseline"; this is deliberately *not*
+  "the suite passes". `temporalPolicyVersion` defaults to `legacy-v0`.
 
 Deferred by design, and **not** acceptance criteria here: the pathway-wide
 ENCOUNTER pre-traversal sweep (Plan 03), GraphQL exposure of the context
@@ -2221,6 +2354,16 @@ as the proof.
 does not currently import: Task 6 Step 4 now spells out both that type-only
 import and `EvaluationTemporalContext`.
 
+**Persistence is covered directly, not only through resolvers.** Task 5's tests
+now drive both stores against a fake pool — `createSession`/`getSession` and
+`createMultiPathwaySession`/`getMultiPathwaySession` — asserting the `$9::jsonb`
+placeholder, a 9-element parameter array, and the `rowToSession` mapping in both
+the populated and pre-migration cases. Task 6's resolver tests mock the
+multi-pathway store out entirely, so without these a mis-numbered placeholder or
+an unmapped column would leave every multi-pathway session clock-less with a
+fully green suite. Step 8 checks both tables via `information_schema` rather
+than `\d+` on one.
+
 **Mock completeness:** Task 6 Step 1's harness mocks all six `session-store`
 exports and all four `resolution-context` exports that `resolution.ts` imports,
 matching `resolution-retraversal-context.test.ts`. This matters more than it
@@ -2258,6 +2401,21 @@ parameter, and Step 7 asserts reference identity (`toBe`) across the parent,
 every child, and every `TraversalEngine` — not `toEqual`, which two clocks
 stamped in the same millisecond would satisfy while the bug remained, and would
 do so non-deterministically: green on a fast machine, red on a slow one.
+
+**Full-suite checkpoints are baseline-relative, and say so in one place.** An
+earlier draft had Task 4 expecting a clean PASS while Task 6 documented 15
+pre-existing failures — contradictory instructions in the same plan, and the
+kind an executor resolves by assuming they broke something. The "Test baseline"
+section up front now defines the bar (no new failing suite, nothing newly
+broken; count is not the check, suite names are), every full-suite step defers
+to it, and Task 6 Step 7's 15 → 13 is called out as the single sanctioned
+change. Targeted runs that *are* green at baseline, like Task 3's
+gate-evaluator suites, still say PASS and note why.
+
+**Commands are shell-portable.** Step 8's `--include='*.ts'` is quoted: unquoted,
+zsh glob-expands it and aborts the pipeline with `no matches found`, while bash
+passes it through — a check that works for whoever wrote it and fails for the
+next person.
 
 **Verification steps assert locations, not counts.** Step 8 originally expected
 "exactly four" `Date.now()` hits; the real figure is 14 today and ~12 after
