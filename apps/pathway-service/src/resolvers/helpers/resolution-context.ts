@@ -9,6 +9,7 @@ import {
   SignalDefinition,
 } from '../../services/confidence/types';
 import { GateProperties, AttributeCodeMap } from '../../services/resolution/types';
+import { GateType } from '../../types';
 import { loadAttributeCodeMap } from '../../services/resolution/attribute-code-map';
 import {
   LlmGateEvaluator,
@@ -29,6 +30,19 @@ import { PatientMatchQualityScorer } from '../../services/confidence/scorers/pat
 import { RiskMagnitudeScorer } from '../../services/confidence/scorers/risk-magnitude';
 import { hydrateSignalDefinition } from '../Query';
 import { executeCypher } from '../../services/age-client';
+import {
+  PathwayTemporalDefaults,
+  parsePathwayTemporalDefaults,
+  collectEncounterAnchorRequirements,
+  SweepableCondition,
+  ConditionTemporalOverride,
+} from '../../services/resolution/temporal/cascade';
+import {
+  EvaluationTemporalContext,
+  TemporalContextError,
+} from '../../services/resolution/temporal/evaluation-context';
+import { GateField, FIELD_TO_KIND } from '../../services/resolution/temporal/contract';
+import { getTemporalPolicy } from '../../services/resolution/temporal/policy-registry';
 
 // ─── Graph Context Builder ──────────────────────────────────────────
 
@@ -223,15 +237,20 @@ export interface ResolutionContext {
   thresholds: { autoResolveThreshold: number; suggestThreshold: number };
   confidenceEngine: ConfidenceEngine;
   codeMap: AttributeCodeMap;
+  /**
+   * The PATHWAY level of the temporal cascade (§7.5), read from the
+   * relational index. `{}` when the pathway states no opinion.
+   */
+  temporalDefaults: PathwayTemporalDefaults;
 }
 
 export async function buildResolutionContext(
   pool: import('pg').Pool,
   pathwayId: string,
 ): Promise<ResolutionContext> {
-  // Fetch AGE node ID
+  // Fetch AGE node ID and the pathway-level temporal cascade defaults
   const pathwayRow = await pool.query(
-    'SELECT age_node_id FROM pathway_graph_index WHERE id = $1',
+    'SELECT age_node_id, temporal_defaults FROM pathway_graph_index WHERE id = $1',
     [pathwayId],
   );
   const ageNodeId = pathwayRow.rows[0]?.age_node_id;
@@ -240,6 +259,9 @@ export async function buildResolutionContext(
       extensions: { code: 'INTERNAL_SERVER_ERROR' },
     });
   }
+  // Parsed before any traversal work starts: a corrupt policy must stop the
+  // session, not resolve gates against a window the author never chose.
+  const temporalDefaults = parsePathwayTemporalDefaults(pathwayRow.rows[0]?.temporal_defaults);
 
   // These four operations are independent — run in parallel
   const [{ nodes, edges }, signalResult, thresholds, codeMap] = await Promise.all([
@@ -257,7 +279,15 @@ export async function buildResolutionContext(
 
   const confidenceEngine = new ConfidenceEngine(sharedScorerRegistry, sharedCascadeResolver);
 
-  return { graphContext, edges, signals, thresholds, confidenceEngine, codeMap };
+  return {
+    graphContext,
+    edges,
+    signals,
+    thresholds,
+    confidenceEngine,
+    codeMap,
+    temporalDefaults,
+  };
 }
 
 export function makeTraversalAdapter(
@@ -500,4 +530,123 @@ export function makeLlmGateEvaluator(
   };
 
   return { evaluator, flushAudits };
+}
+
+// ─── ENCOUNTER anchor preflight ─────────────────────────────────────
+
+/**
+ * Pull the sweepable temporal conditions out of a loaded graph.
+ *
+ * Reads node properties defensively rather than through `GateProperties`:
+ * these come straight from AGE as untyped JSON, `horizon`/`status` are not on
+ * `CodedCondition` yet (Plan 06 adds them), and a malformed node must not
+ * crash the preflight — Plan 04's adapter is where a bad condition is
+ * rejected properly.
+ */
+function sweepableConditions(nodes: readonly GraphNode[]): SweepableCondition[] {
+  const out: SweepableCondition[] = [];
+
+  for (const node of nodes) {
+    // Only Gate nodes carry evaluable conditions: `condition`/`conditions` are
+    // read exclusively from GateProperties. Without this check, any imported
+    // node that happens to carry a condition-shaped property would trigger a
+    // false missing-anchor rejection for a gate that is never evaluated.
+    //
+    // `satisfaction_check` on Stage/Step prerequisite nodes is a different
+    // shape ({type, code, system, lookback_days}) with no `field` key, so it
+    // is already excluded below.
+    if (node.nodeType !== 'Gate') continue;
+
+    const props = node.properties as Record<string, unknown> | undefined;
+    if (!props) continue;
+
+    // Collect exactly what `evaluateGate` would read for THIS gate type
+    // (gate-evaluator.ts:753). A question / prior_node_result /
+    // llm_text_analysis gate reads neither key, so a leftover `condition`
+    // left on one by an earlier edit is dead weight — the validator does not
+    // currently forbid the combination, and rejecting a session over a
+    // condition that is never evaluated would be a false positive.
+    const raw: unknown[] = [];
+    switch (props.gate_type) {
+      case GateType.PATIENT_ATTRIBUTE:
+        // evaluatePatientAttribute reads `condition` only.
+        if (props.condition) raw.push(props.condition);
+        break;
+      case GateType.COMPOUND:
+        // evaluateCompound reads `conditions` only.
+        if (Array.isArray(props.conditions)) raw.push(...props.conditions);
+        break;
+      default:
+        // question / prior_node_result / llm_text_analysis / unknown — no
+        // condition is ever evaluated.
+        continue;
+    }
+
+    raw.forEach((c, i) => {
+      if (!c || typeof c !== 'object') return;
+      const cond = c as Record<string, unknown>;
+      const field = cond.field;
+      // Attribute conditions have `attribute`, not `field`, and are not swept
+      // because they never resolve a horizon: `resolveAttribute` reads the
+      // PatientContext arrays directly and Plan 04 rewrites only the coded
+      // branches onto the kernel. Sweeping them would reject sessions for
+      // gates that cannot need an anchor.
+      //
+      // NOTE — this is NOT because attribute conditions are timeless. The
+      // registry's namespaces are lab / vitals / allergy / patient
+      // (attribute-registry.ts:27), so only `patient.*` is genuinely
+      // encounter-derived; a `lab.a1c > 9` attribute gate reads the same
+      // clinical data a coded labs gate does, with no temporal filtering at
+      // all. Tracked as a known gap, parked on Plan 04.
+      if (typeof field !== 'string') return;
+      if (!Object.prototype.hasOwnProperty.call(FIELD_TO_KIND, field)) return;
+
+      const override: ConditionTemporalOverride = {};
+      if (cond.horizon !== undefined) override.horizon = cond.horizon as never;
+      if (cond.status !== undefined) override.status = cond.status as never;
+
+      const entry: SweepableCondition = {
+        label: `${node.nodeIdentifier} / condition ${i}`,
+        field: field as GateField,
+      };
+      if (Object.keys(override).length > 0) entry.override = override;
+      out.push(entry);
+    });
+  }
+
+  return out;
+}
+
+/**
+ * Refuse to start a session whose pathway resolves an ENCOUNTER horizon when
+ * the context carries no `encounterStart`.
+ *
+ * Called at session CREATION only. Retraversal reuses the clock its session
+ * was created with, and that session already passed this check — re-running it
+ * there would reject a session that is by construction still valid.
+ */
+export function assertEncounterAnchor(
+  rctx: ResolutionContext,
+  temporalCtx: EvaluationTemporalContext,
+): void {
+  // Unconditionally, before any early return: a session must never be created
+  // pinned to a policy version nothing can evaluate. Behind the encounterStart
+  // check, an unknown version would sail through whenever an anchor happened
+  // to be present.
+  getTemporalPolicy(temporalCtx.temporalPolicyVersion);
+
+  if (temporalCtx.encounterStart) return;
+
+  const required = collectEncounterAnchorRequirements(
+    sweepableConditions(rctx.graphContext.allNodes),
+    temporalCtx.temporalPolicyVersion,
+    rctx.temporalDefaults,
+  );
+  if (required.length === 0) return;
+
+  const detail = required.map((r) => `${r.label} (${r.field}, from ${r.level})`).join('; ');
+  throw new TemporalContextError(
+    `this pathway resolves an ENCOUNTER horizon but the session has no encounterStart: ${detail}`,
+    'MISSING_ENCOUNTER_ANCHOR',
+  );
 }
