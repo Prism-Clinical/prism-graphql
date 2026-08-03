@@ -19,6 +19,7 @@
 
 import { NodeStatus, OverrideAction, SessionStatus, DataSourceContext } from '../types';
 import type { ResolutionSession, NodeResult, DependencyMap } from '../services/resolution/types';
+import { makeEvaluationTemporalContext } from '../services/resolution/temporal/evaluation-context';
 import type { PatientContext } from '../services/confidence/types';
 
 // ── Mocks (must precede import of unit under test) ──────────────────
@@ -107,6 +108,10 @@ function makeSession(overrides: Partial<ResolutionSession> = {}): ResolutionSess
     totalNodesEvaluated: 0,
     traversalDurationMs: 0,
     ddiWarnings: [],
+    // Before `...overrides` so a test can still override it — and required at
+    // all because every retraversal path now rejects a clock-less session
+    // with SESSION_NOT_RETRAVERSABLE.
+    temporalContext: makeEvaluationTemporalContext({ evaluationAsOf: '2026-07-30T12:00:00.000Z' }),
     createdAt: new Date(),
     updatedAt: new Date(),
     ...overrides,

@@ -3,6 +3,7 @@ import { DataSourceContext, NodeStatus, OverrideAction, SessionStatus } from '..
 import { PatientContext } from '../../services/confidence/types';
 import { PATHWAY_COLUMNS, formatSessionForGraphQL } from '../Query';
 import { TraversalEngine } from '../../services/resolution/traversal-engine';
+import { makeEvaluationTemporalContext } from '../../services/resolution/temporal/evaluation-context';
 import { RetraversalEngine } from '../../services/resolution/retraversal-engine';
 import {
   createSession,
@@ -17,6 +18,8 @@ import {
   generateCarePlan,
 } from '../../services/resolution/care-plan-generator';
 import { GateAnswer } from '../../services/resolution/types';
+import type { ResolutionSession } from '../../services/resolution/types';
+import type { EvaluationTemporalContext } from '../../services/resolution/temporal/evaluation-context';
 import {
   buildResolutionContext,
   makeTraversalAdapter,
@@ -41,6 +44,22 @@ export interface AdditionalContextInput {
   vitalSigns?: Record<string, unknown>;
   freeformData?: Record<string, unknown>;
   patientAttributes?: Record<string, unknown>;
+}
+
+/**
+ * A retraversal must reuse the clock its session was created with — never
+ * stamp a new one, or the same data could resolve differently than it did at
+ * creation. Sessions written before migration 063 have no clock and are not
+ * retraversable (§5).
+ */
+function requireSessionTemporalContext(session: ResolutionSession): EvaluationTemporalContext {
+  if (!session.temporalContext) {
+    throw new GraphQLError(
+      'Session has no pinned evaluation clock and cannot be retraversed (created before temporal context was introduced)',
+      { extensions: { code: 'SESSION_NOT_RETRAVERSABLE' } },
+    );
+  }
+  return session.temporalContext;
 }
 
 export const resolutionMutations = {
@@ -97,10 +116,16 @@ export const resolutionMutations = {
       patientAttributes: normalizePatientAttributes(pc?.patientAttributes),
     };
 
+    // One clock for the whole session (§1). The wall clock is read exactly
+    // once, here — every gate evaluation, retraversal and replay of this
+    // session uses this instant.
+    const temporalContext = makeEvaluationTemporalContext();
+
     const llmBundle = makeLlmGateEvaluator(pool, args.pathwayId);
     const traversalEngine = new TraversalEngine(
       makeTraversalAdapter(rctx, pool, args.pathwayId, patientContext),
       rctx.thresholds,
+      temporalContext,
       llmBundle?.evaluator,
       rctx.codeMap,
     );
@@ -137,6 +162,7 @@ export const resolutionMutations = {
       totalNodesEvaluated: traversalResult.totalNodesEvaluated,
       traversalDurationMs: traversalResult.traversalDurationMs,
       ddiWarnings,
+      temporalContext,
     });
 
     // Flush buffered LLM gate audit rows now that the session ID exists.
@@ -207,6 +233,10 @@ export const resolutionMutations = {
       ? NodeStatus.INCLUDED
       : NodeStatus.EXCLUDED;
 
+    // Reject a clock-less session up front, not only when a retraversal
+    // happens to be triggered — the session is un-retraversable either way.
+    const sessionClock = requireSessionTemporalContext(session);
+
     // 5. Find affected nodes
     const affectedNodes = new Set<string>();
     const influenced = session.dependencyMap.influences.get(args.nodeId);
@@ -232,6 +262,7 @@ export const resolutionMutations = {
       const retraversalEngine = new RetraversalEngine(
         makeRetraversalAdapter(rctx, pool, session.pathwayId, patientCtx),
         rctx.thresholds,
+        sessionClock,
         llmBundle?.evaluator,
         rctx.codeMap,
       );
@@ -348,6 +379,10 @@ export const resolutionMutations = {
       // 4. Build resolution context and find affected subtree
       const rctx = await buildResolutionContext(pool, session.pathwayId);
 
+      // Reject a clock-less session up front, not only when a retraversal
+      // happens to be triggered — the session is un-retraversable either way.
+      const sessionClock = requireSessionTemporalContext(session);
+
       const affectedNodes = new Set<string>();
       affectedNodes.add(args.gateId);
       const subtreeQueue = [args.gateId];
@@ -390,6 +425,7 @@ export const resolutionMutations = {
         const retraversalEngine = new RetraversalEngine(
           makeRetraversalAdapter(rctx, pool, session.pathwayId, patientCtx),
           rctx.thresholds,
+          sessionClock,
           llmBundle?.evaluator,
           rctx.codeMap,
         );
@@ -529,6 +565,10 @@ export const resolutionMutations = {
     if (args.additionalContext.freeformData) changedFields.add('freeformData');
     if (args.additionalContext.patientAttributes) changedFields.add('patientAttributes');
 
+    // Reject a clock-less session up front, not only when a retraversal
+    // happens to be triggered — the session is un-retraversable either way.
+    const sessionClock = requireSessionTemporalContext(session);
+
     const affectedNodes = new Set<string>();
 
     // Gates: mark if any context field they read was updated.
@@ -566,6 +606,7 @@ export const resolutionMutations = {
       const retraversalEngine = new RetraversalEngine(
         makeRetraversalAdapter(rctx, pool, session.pathwayId, updatedPc),
         rctx.thresholds,
+        sessionClock,
         llmBundle?.evaluator,
         rctx.codeMap,
       );

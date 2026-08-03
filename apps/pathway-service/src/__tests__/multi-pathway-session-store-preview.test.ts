@@ -19,6 +19,14 @@ import {
   getPatientMultiPathwaySessions,
   deletePreviewSession,
 } from '../services/resolution/multi-pathway-session-store';
+import { makeEvaluationTemporalContext } from '../services/resolution/temporal/evaluation-context';
+
+/**
+ * Every new session needs a pinned clock — createMultiPathwaySession now
+ * rejects one without it, since a NULL clock on a fresh row means a session
+ * that can never be retraversed.
+ */
+const TEST_TCTX = makeEvaluationTemporalContext({ evaluationAsOf: '2026-07-30T12:00:00.000Z' });
 
 function makeSpyPool(canned: Array<{ rows: unknown[]; rowCount?: number }>) {
   const calls: Array<{ sql: string; params: unknown[] }> = [];
@@ -68,6 +76,7 @@ describe('createMultiPathwaySession: is_preview persistence', () => {
       contributingSessionIds: [],
       contributingPathwayIds: [],
       mergedPlan: EMPTY_MERGED_PLAN,
+      temporalContext: TEST_TCTX,
     });
     expect(calls).toHaveLength(1);
     expect(calls[0].sql).toMatch(/is_preview/);
@@ -86,6 +95,7 @@ describe('createMultiPathwaySession: is_preview persistence', () => {
       contributingPathwayIds: [],
       mergedPlan: EMPTY_MERGED_PLAN,
       isPreview: true,
+      temporalContext: TEST_TCTX,
     });
     expect(calls[0].params[2]).toBe(true);
   });

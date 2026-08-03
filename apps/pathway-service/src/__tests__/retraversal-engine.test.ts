@@ -1,4 +1,5 @@
 import { RetraversalEngine } from '../services/resolution/retraversal-engine';
+import { makeEvaluationTemporalContext } from '../services/resolution/temporal/evaluation-context';
 import { NodeStatus, NodeResult, createEmptyDependencyMap } from '../services/resolution/types';
 
 const mockConfidenceEngine = {
@@ -26,7 +27,11 @@ describe('RetraversalEngine', () => {
   let engine: RetraversalEngine;
 
   beforeEach(() => {
-    engine = new RetraversalEngine(mockConfidenceEngine as any, mockThresholds);
+    engine = new RetraversalEngine(
+      mockConfidenceEngine as any,
+      mockThresholds,
+      makeEvaluationTemporalContext({ evaluationAsOf: '2026-07-30T12:00:00.000Z' }),
+    );
     jest.clearAllMocks();
     // Reset default mock
     mockConfidenceEngine.computeNodeConfidence.mockResolvedValue({

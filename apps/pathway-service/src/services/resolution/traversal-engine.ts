@@ -1,5 +1,6 @@
 import { GraphContext, PatientContext, GraphNode } from '../confidence/types';
 import { evaluateGate, LlmGateEvaluator } from './gate-evaluator';
+import { EvaluationTemporalContext } from './temporal/evaluation-context';
 import {
   NodeResult,
   NodeStatus,
@@ -140,9 +141,23 @@ export class TraversalEngine {
   constructor(
     private confidenceEngine: TraversalConfidenceAdapter,
     private thresholds: { autoResolveThreshold: number; suggestThreshold: number },
+    /**
+     * The session's pinned clock. Required: every gate evaluation in this
+     * traversal reads `evaluationAsOf` from here instead of the wall clock,
+     * so a retraversal or replay reproduces this traversal exactly.
+     *
+     * Third, not appended, because TypeScript forbids a required parameter
+     * after an optional one.
+     */
+    private temporalContext: EvaluationTemporalContext,
     private llmGateEvaluator?: LlmGateEvaluator,
     private codeMap: AttributeCodeMap = new Map(),
   ) {}
+
+  /** The pinned clock as epoch ms, for the operator implementations. */
+  private evaluationNowMs(): number {
+    return Date.parse(this.temporalContext.evaluationAsOf);
+  }
 
   async traverse(
     graphContext: GraphContext,
@@ -270,7 +285,7 @@ export class TraversalEngine {
 
         const gateResult = await evaluateGate(
           gateProps, patientContext, resolutionState, gateAnswers, nodeIdentifier,
-          this.llmGateEvaluator, undefined, this.codeMap,
+          this.llmGateEvaluator, this.evaluationNowMs(), this.codeMap,
         );
 
         // Record dependencies
@@ -663,7 +678,7 @@ export class TraversalEngine {
       const gateProps = node.properties as unknown as GateProperties;
       const gateResult = await evaluateGate(
         gateProps, patientContext, resolutionState, gateAnswers, nodeIdentifier,
-        this.llmGateEvaluator, undefined, this.codeMap,
+        this.llmGateEvaluator, this.evaluationNowMs(), this.codeMap,
       );
       resolutionState.set(nodeIdentifier, {
         nodeId: nodeIdentifier,

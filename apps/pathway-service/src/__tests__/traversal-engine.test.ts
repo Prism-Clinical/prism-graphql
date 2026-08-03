@@ -1,4 +1,5 @@
 import { TraversalEngine } from '../services/resolution/traversal-engine';
+import { makeEvaluationTemporalContext } from '../services/resolution/temporal/evaluation-context';
 import {
   NodeStatus,
   GateAnswer,
@@ -43,7 +44,11 @@ function createEngine(): TraversalEngine {
     ],
     resolutionType: 'AUTO_RESOLVED',
   });
-  return new TraversalEngine(mockConfidenceEngine, mockThresholds);
+  return new TraversalEngine(
+    mockConfidenceEngine,
+    mockThresholds,
+    makeEvaluationTemporalContext({ evaluationAsOf: '2026-07-30T12:00:00.000Z' }),
+  );
 }
 
 // ─── Tests ────────────────────────────────────────────────────────────

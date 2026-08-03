@@ -90,8 +90,9 @@ function getNumericValue(
  *   without dates are excluded — date-aware gates can't reason about
  *   un-dated history.
  *
- * `now` is injected so tests can pin the clock; production callers pass
- * `Date.now()`.
+ * `now` is the session's pinned `evaluationAsOf` (see
+ * temporal/evaluation-context.ts), supplied by the traversal boundary. Tests
+ * pin it directly so window-boundary behavior is deterministic.
  */
 function isWithinWindow(
   entryDate: string | undefined,
@@ -181,7 +182,7 @@ function resolveNumericPath(bag: Record<string, unknown>, path: string): number 
 function evaluateCondition(
   condition: GateCondition,
   patientContext: PatientContext,
-  now: number = Date.now(),
+  now: number,
   codeMap: AttributeCodeMap = new Map(),
 ): { satisfied: boolean; reason: string; fieldsRead: string[] } {
   if (isAttributeCondition(condition)) {
@@ -432,7 +433,7 @@ function evaluateCondition(
 function evaluatePatientAttribute(
   gate: GateProperties,
   patientContext: PatientContext,
-  now: number = Date.now(),
+  now: number,
   codeMap: AttributeCodeMap = new Map(),
 ): GateEvaluationResult {
   if (!gate.condition) {
@@ -556,7 +557,7 @@ function evaluatePriorNodeResult(
 function evaluateCompound(
   gate: GateProperties,
   patientContext: PatientContext,
-  now: number = Date.now(),
+  now: number,
   codeMap: AttributeCodeMap = new Map(),
 ): GateEvaluationResult {
   if (!gate.conditions || gate.conditions.length === 0) {
@@ -735,10 +736,11 @@ export async function evaluateGate(
   gateId?: string,
   llmEvaluator?: LlmGateEvaluator,
   /**
-   * Pin the "now" timestamp for time-shape operators (count_in_window,
-   * trend_*, delta_from_baseline). Tests pin this so window-boundary
-   * behavior is deterministic. Production callers omit — defaults to
-   * Date.now() inside the operator implementations.
+   * The session's pinned evaluation clock (`EvaluationTemporalContext
+   * .evaluationAsOf`, as epoch ms). TraversalEngine and RetraversalEngine
+   * always supply it. The `Date.now()` fallback exists only for the many
+   * unit-test call sites that omit it positionally; Plan 04 removes the
+   * fallback when this signature is reworked for `selectFacts`.
    */
   now: number = Date.now(),
   /**

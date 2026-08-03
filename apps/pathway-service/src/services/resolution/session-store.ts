@@ -6,6 +6,7 @@
  */
 
 import { Pool } from 'pg';
+import { EvaluationTemporalContext } from './temporal/evaluation-context';
 import {
   ResolutionState,
   NodeResult,
@@ -112,14 +113,31 @@ export async function createSession(
     totalNodesEvaluated: number;
     traversalDurationMs: number;
     ddiWarnings?: unknown[];
+    // Required on the way IN, optional on the way OUT. Every session created
+    // from now on has a clock, and a required parameter is what lets the
+    // compiler prove it — a new call site that forgets one is a build error,
+    // not a session that silently cannot be retraversed. The column and
+    // ResolutionSession.temporalContext stay optional for pre-migration rows.
+    temporalContext: EvaluationTemporalContext;
   },
 ): Promise<string> {
+  // The declared type is not a runtime guard: tsconfig excludes src/__tests__
+  // and types are erased anyway, so an untyped caller can reach here without a
+  // clock. Serializing that to NULL would mint a session that is already
+  // non-retraversable — a silent, permanent defect in a brand new row. NULL is
+  // reserved for rows that predate migration 063; nothing may create one now.
+  if (!session.temporalContext) {
+    throw new Error(
+      'createSession requires temporalContext — a session with no pinned evaluation clock cannot be retraversed',
+    );
+  }
+
   const result = await pool.query(
     `INSERT INTO pathway_resolution_sessions
      (pathway_id, pathway_version, patient_id, provider_id, status, initial_patient_context,
       resolution_state, dependency_map, pending_questions, red_flags, gate_answers,
-      total_nodes_evaluated, traversal_duration_ms, ddi_warnings)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+      total_nodes_evaluated, traversal_duration_ms, ddi_warnings, temporal_context)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
      RETURNING id`,
     [
       session.pathwayId,
@@ -136,6 +154,7 @@ export async function createSession(
       session.totalNodesEvaluated,
       session.traversalDurationMs,
       JSON.stringify(session.ddiWarnings ?? []),
+      JSON.stringify(session.temporalContext),
     ],
   );
   return result.rows[0].id;
@@ -179,6 +198,11 @@ export async function getSession(
     traversalDurationMs: row.traversal_duration_ms,
     carePlanId: row.care_plan_id,
     ddiWarnings: row.ddi_warnings ?? [],
+    // pg already parses JSONB into an object — do NOT JSON.parse this. The
+    // `?? undefined` turns a SQL NULL into undefined rather than null; the
+    // type says optional and strictNullChecks is off, so nothing else would
+    // catch a stray null.
+    temporalContext: (row.temporal_context ?? undefined) as EvaluationTemporalContext | undefined,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
