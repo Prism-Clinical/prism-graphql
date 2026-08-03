@@ -133,6 +133,50 @@ describe('session temporal_context persistence', () => {
     expect(session!.temporalContext).toBeUndefined();
   });
 
+  // ── the type is not the guard ──────────────────────────────────────
+  //
+  // Both creation parameters are declared required, but tsconfig excludes
+  // src/__tests__ and types are erased at runtime, so nothing stops an
+  // untyped caller from omitting the clock — and the old `? ... : null`
+  // serialization turned that omission into a NULL column, i.e. a brand new
+  // session that is already non-retraversable. Persisting must fail loudly
+  // instead: a clock-less NEW session is always a bug, and the only rows
+  // legitimately holding NULL predate migration 063.
+
+  it('createSession refuses to persist a session with no clock', async () => {
+    const { pool, calls } = fakePool([]);
+    await expect(
+      createSession(pool as never, {
+        pathwayId: 'p', pathwayVersion: '1', patientId: 'pt', providerId: 'pr',
+        status: 'ACTIVE',
+        initialPatientContext: {},
+        resolutionState: new Map(),
+        dependencyMap: createEmptyDependencyMap(),
+        pendingQuestions: [], redFlags: [],
+        totalNodesEvaluated: 0, traversalDurationMs: 1,
+        // temporalContext deliberately omitted
+      } as never),
+    ).rejects.toThrow(/temporalContext|evaluation clock/i);
+
+    // It must fail BEFORE writing, not roll back after.
+    expect(calls).toHaveLength(0);
+  });
+
+  it('createMultiPathwaySession refuses to persist a session with no clock', async () => {
+    const { pool, calls } = fakePool([]);
+    await expect(
+      createMultiPathwaySession(pool as never, {
+        patientId: 'pt', providerId: 'pr',
+        initialPatientContext: {},
+        contributingSessionIds: [], contributingPathwayIds: [],
+        mergedPlan: {} as never,
+        // temporalContext deliberately omitted
+      } as never),
+    ).rejects.toThrow(/temporalContext|evaluation clock/i);
+
+    expect(calls).toHaveLength(0);
+  });
+
   it('getSession leaves temporalContext undefined for a pre-migration row', async () => {
     const pool = {
       query: jest.fn()

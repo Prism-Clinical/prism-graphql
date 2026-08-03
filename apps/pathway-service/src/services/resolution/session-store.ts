@@ -121,6 +121,17 @@ export async function createSession(
     temporalContext: EvaluationTemporalContext;
   },
 ): Promise<string> {
+  // The declared type is not a runtime guard: tsconfig excludes src/__tests__
+  // and types are erased anyway, so an untyped caller can reach here without a
+  // clock. Serializing that to NULL would mint a session that is already
+  // non-retraversable — a silent, permanent defect in a brand new row. NULL is
+  // reserved for rows that predate migration 063; nothing may create one now.
+  if (!session.temporalContext) {
+    throw new Error(
+      'createSession requires temporalContext — a session with no pinned evaluation clock cannot be retraversed',
+    );
+  }
+
   const result = await pool.query(
     `INSERT INTO pathway_resolution_sessions
      (pathway_id, pathway_version, patient_id, provider_id, status, initial_patient_context,
@@ -143,7 +154,7 @@ export async function createSession(
       session.totalNodesEvaluated,
       session.traversalDurationMs,
       JSON.stringify(session.ddiWarnings ?? []),
-      session.temporalContext ? JSON.stringify(session.temporalContext) : null,
+      JSON.stringify(session.temporalContext),
     ],
   );
   return result.rows[0].id;

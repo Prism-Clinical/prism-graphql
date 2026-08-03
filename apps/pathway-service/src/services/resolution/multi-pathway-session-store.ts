@@ -79,6 +79,15 @@ export async function createMultiPathwaySession(
     temporalContext: EvaluationTemporalContext;
   },
 ): Promise<string> {
+  // Same runtime guard as createSession — the declared type is erased and
+  // does not cover untyped callers, and a NULL clock on a new row means a
+  // session that can never be retraversed. See session-store.ts.
+  if (!s.temporalContext) {
+    throw new Error(
+      'createMultiPathwaySession requires temporalContext — a session with no pinned evaluation clock cannot be retraversed',
+    );
+  }
+
   const result = await pool.query(
     `INSERT INTO multi_pathway_resolution_sessions
        (patient_id, provider_id, status, is_preview, initial_patient_context,
@@ -95,7 +104,7 @@ export async function createMultiPathwaySession(
       s.contributingPathwayIds,
       JSON.stringify(s.mergedPlan),
       JSON.stringify(s.ddiWarnings ?? []),
-      s.temporalContext ? JSON.stringify(s.temporalContext) : null,
+      JSON.stringify(s.temporalContext),
     ],
   );
   return result.rows[0].id;
