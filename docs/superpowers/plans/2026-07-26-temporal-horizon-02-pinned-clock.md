@@ -192,12 +192,27 @@ integer with an agreed maximum" but leaves the number to the plan. This plan set
 `MAX_CUSTOM_HORIZON_DAYS = 36_525` (100 Julian years) and rejects anything above
 it with `INVALID_HORIZON`. Rationale: a window wider than a human lifespan is
 `LIFETIME`, which already exists as an unbounded tier and costs nothing — a
-larger day count is an authoring mistake, not a use case. The cap is also what
-keeps the arithmetic in range: without it, `{days: 1e15}` reaches
-`new Date(...).toISOString()` with a time value past ECMAScript's ±8.64e15 limit
-and throws a bare `RangeError` that no caller is typed to catch. Plan 06's
-validator will reuse this constant so a bad value is rejected at authoring time,
-not at evaluation time; exporting it here is what makes that possible.
+larger day count is an authoring mistake, not a use case. Plan 06's validator
+will reuse this constant so a bad value is rejected at authoring time, not at
+evaluation time; exporting it here is what makes that possible.
+
+**The cap is necessary but not sufficient**, and `resolveHorizon` therefore
+carries two further guards. The day count and the resulting *date* are separate
+questions:
+
+1. **Representable as a `Date`.** Without the cap, `{days: 1e15}` reaches
+   `new Date(...).toISOString()` past ECMAScript's ±8.64e15 limit and throws a
+   bare `RangeError` no caller is typed to catch. Checking `Number.isFinite` is
+   not enough — the overflowed product is finite, merely out of range.
+2. **Representable as a FHIR instant**, which is strictly narrower than
+   `Date`'s ±273,790 years: FHIR permits years 0001–9999 only. A legal clock of
+   `0050-01-01T00:00:00.000Z` minus the maximum horizon gives
+   `-000050-01-01T00:00:00.000Z` — comfortably inside `Date`, rejected by
+   Plan 01's parser. No cap can prevent this, because any cap useful for a
+   modern clock still underflows an early one. The generated `lowerBound` is
+   validated with `instantEpoch` and the failure converted to
+   `INVALID_HORIZON`, so the error surfaces here rather than as an opaque throw
+   from `overlap()` on every fact evaluated.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -302,6 +317,29 @@ describe('resolveHorizon', () => {
       expect(e).toBeInstanceOf(TemporalContextError);
       expect((e as TemporalContextError).code).toBe('INVALID_HORIZON');
     }
+  });
+
+  it('rejects a horizon that underflows the FHIR year range from an early clock', () => {
+    // Regression: the day cap alone does not make the lower bound valid. From
+    // a legal FHIR clock in year 0050, 36_525 days back lands in year -50,
+    // which toISOString() emits as "-000050-01-01T00:00:00.000Z" — inside
+    // Date's range, outside FHIR's. Must be INVALID_HORIZON here, not an
+    // opaque parser throw later.
+    try {
+      resolveHorizon({ days: MAX_CUSTOM_HORIZON_DAYS }, ctx({ evaluationAsOf: '0050-01-01T00:00:00.000Z' }));
+      throw new Error('expected resolveHorizon to throw');
+    } catch (e) {
+      expect(e).toBeInstanceOf(TemporalContextError);
+      expect((e as TemporalContextError).code).toBe('INVALID_HORIZON');
+    }
+  });
+
+  it('accepts a horizon that stays inside the FHIR year range from an early clock', () => {
+    // The complement of the case above — an early clock is not itself an
+    // error, only one whose lower bound underflows year 0001.
+    const out = resolveHorizon({ days: 365 }, ctx({ evaluationAsOf: '0050-01-01T00:00:00.000Z' }));
+    expect(out.lowerBound).toBe('0049-01-01T00:00:00.000Z');
+    expect(() => instantEpoch(out.lowerBound as string)).not.toThrow();
   });
 
   it('a day count large enough to overflow Date throws TemporalContextError, never RangeError', () => {
@@ -521,11 +559,12 @@ export function resolveHorizon(h: Horizon, ctx: EvaluationTemporalContext): Reso
   }
 
   const lowerMs = upperMs - days * MS_PER_DAY;
-  // Belt and braces. The cap above already keeps a well-formed call in range,
-  // but `new Date(x).toISOString()` throws a bare RangeError when it does not,
-  // and no caller of resolveHorizon is typed to catch that. Note a plain
-  // Number.isFinite check is NOT sufficient: the overflowed product is finite
-  // (1e15 days past AS_OF gives ≈ -8.6e22), just outside Date's range.
+
+  // Guard 1 — representable as a Date at all. `new Date(x).toISOString()`
+  // throws a bare RangeError otherwise, and no caller of resolveHorizon is
+  // typed to catch that. A plain Number.isFinite check is NOT sufficient: the
+  // overflowed product is finite (1e15 days before AS_OF gives ≈ -8.6e22),
+  // just outside Date's range.
   if (!Number.isFinite(lowerMs) || Math.abs(lowerMs) > MAX_TIME_VALUE) {
     throw new TemporalContextError(
       `horizon of ${days} days is not representable as a date from ${upperBound}`,
@@ -533,10 +572,28 @@ export function resolveHorizon(h: Horizon, ctx: EvaluationTemporalContext): Reso
     );
   }
 
-  return {
-    lowerBound: new Date(lowerMs).toISOString(),
-    upperBound,
-  };
+  const lowerBound = new Date(lowerMs).toISOString();
+
+  // Guard 2 — representable as a FHIR instant, which is strictly narrower.
+  // Date's range is ±273,790 years but FHIR allows years 0001–9999 only, and
+  // toISOString() emits the ISO extended format outside that: from a valid
+  // clock of 0050-01-01T00:00:00.000Z, a 36_525-day horizon yields
+  // "-000050-01-01T00:00:00.000Z". Guard 1 accepts it (well inside Date's
+  // range) and Plan 01's parser then rejects it — so without this check the
+  // failure surfaces later, as an opaque throw from overlap() on every fact
+  // rather than an INVALID_HORIZON here. The cap alone cannot prevent this:
+  // any cap large enough to be useful can still underflow a low-year clock.
+  try {
+    instantEpoch(lowerBound);
+  } catch {
+    throw new TemporalContextError(
+      `horizon of ${days} days from ${upperBound} falls outside the FHIR year range ` +
+        `(computed: ${lowerBound})`,
+      'INVALID_HORIZON',
+    );
+  }
+
+  return { lowerBound, upperBound };
 }
 ```
 
@@ -1214,7 +1271,9 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@example.com>"
 **Interfaces:**
 - Consumes: `EvaluationTemporalContext` (Task 1).
 - Produces: `ResolutionSession.temporalContext?: EvaluationTemporalContext`;
-  `createSession({ ..., temporalContext })`.
+  `createSession({ ..., temporalContext })`. Both creation parameters are
+  **optional in this task and tightened to required in Task 6 Step 6b**, once
+  the four production call sites pass a clock — see Step 5's note.
 
 **Nullability decision:** the column is **nullable**, with no default. A null
 means "session created before the temporal clock existed". Design §5 states such
@@ -1389,19 +1448,24 @@ Keep it that way — do not import `types.ts` from the temporal module.
 
 - [ ] **Step 5: Write and read the column in `session-store.ts`**
 
-In `createSession`'s parameter object, add it as **required** (no `?`):
+In `createSession`'s parameter object, add it as **optional for now**:
 ```ts
-    temporalContext: EvaluationTemporalContext;
+    temporalContext?: EvaluationTemporalContext;
 ```
 
-**Required on the way in, optional on the way out — this asymmetry is
-deliberate.** The column is nullable and `ResolutionSession.temporalContext` is
-optional because pre-migration rows genuinely have no clock. But every session
-created from now on must have one, and making the creation parameter required
-is what lets the compiler prove it: a new `createSession` call site that forgets
-the clock becomes a build error instead of a session that silently cannot be
-retraversed. There are only two `createSession` call sites (`resolution.ts:126`,
-`multi-pathway-resolution.ts:731`) and Task 6 updates both, so the cost is nil.
+**It becomes required in Task 6 Step 6b, not here.** The end state is
+required-on-write / optional-on-read: the column is nullable and
+`ResolutionSession.temporalContext` is optional because pre-migration rows
+genuinely have no clock, but every session created from now on must have one,
+and a required creation parameter is what lets the compiler prove it — a new
+call site that forgets the clock becomes a build error rather than a session
+that silently cannot be retraversed.
+
+It cannot be required *in this task*, though. The four production call sites
+(two `createSession`, two `createMultiPathwaySession`) are not wired until
+Task 6, so tightening the signature here would make Step 7's `tsc --noEmit`
+fail on four "property is missing" errors — a task that cannot reach its own
+green checkpoint. Optional here, required once the callers exist.
 
 Extend the INSERT to a 15th column and placeholder:
 ```ts
@@ -1435,13 +1499,12 @@ import { EvaluationTemporalContext } from './temporal/evaluation-context';
 - [ ] **Step 6: Do the same for the multi-pathway store**
 
 In `multi-pathway-session-store.ts`:
-- add `temporalContext?: EvaluationTemporalContext;` (optional) to the
-  `MultiPathwayResolutionSession` interface (`:18`), and
-  `temporalContext: EvaluationTemporalContext;` (**required**) to
-  `createMultiPathwaySession`'s parameter object (`:60`) — same read-optional /
-  write-required split as `createSession`, and for the same reason. Both
-  `createMultiPathwaySession` call sites live in `startMultiPathwayResolution`
-  and Task 6 Step 5 updates both, including the zero-match path;
+- add `temporalContext?: EvaluationTemporalContext;` to the
+  `MultiPathwayResolutionSession` interface (`:18`) **and** to
+  `createMultiPathwaySession`'s parameter object (`:60`) — optional in this
+  task for the same sequencing reason as `createSession` above; Task 6 Step 6b
+  tightens the creation parameter to required once both call sites in
+  `startMultiPathwayResolution` (including the zero-match path) pass one;
 - extend the INSERT to include `temporal_context` as a `$9::jsonb` placeholder
   and pass `s.temporalContext ? JSON.stringify(s.temporalContext) : null`;
 - in `rowToSession`, map
@@ -1881,6 +1944,40 @@ function makeSession(overrides: Partial<ResolutionSession> = {}): ResolutionSess
 Put `temporalContext` **before** `...overrides` so a test can still override it.
 Import from `../services/resolution/temporal/evaluation-context`.
 
+- [ ] **Step 6b: Tighten both creation signatures to required**
+
+Only now — with all four call sites passing a clock — drop the `?` from the two
+*creation* parameter objects. This is the step Task 5 deferred.
+
+In `session-store.ts`, `createSession`'s parameter object:
+```ts
+    temporalContext: EvaluationTemporalContext;   // was `temporalContext?:`
+```
+
+In `multi-pathway-session-store.ts`, `createMultiPathwaySession`'s parameter
+object: the same change.
+
+**Change only the creation parameters.** The three read-side declarations stay
+optional and must not be touched:
+- the `temporal_context` DB column (nullable),
+- `ResolutionSession.temporalContext?` in `types.ts`,
+- `MultiPathwayResolutionSession.temporalContext?` in the multi-pathway store.
+
+Pre-migration rows genuinely have no clock; that is what
+`SESSION_NOT_RETRAVERSABLE` exists to report. Making the read side required
+would be a lie the type system cannot back, and would break `getSession` for
+every legacy row.
+
+Verify immediately — this step's whole value is that the compiler now proves
+every creation site supplies a clock:
+```
+./node_modules/.bin/tsc -p tsconfig.json --noEmit
+```
+Expected: exit 0. If you get "property `temporalContext` is missing", you have
+found a `createSession` / `createMultiPathwaySession` call that Steps 3–5
+missed — wire it rather than relaxing the signature back to optional. That
+error is the feature.
+
 - [ ] **Step 7: Run the new test, then the full suite**
 
 Run: `npm test --prefix apps/pathway-service -- --runInBand src/__tests__/temporal/retraversal-clock-reuse.test.ts`
@@ -1919,7 +2016,7 @@ are unrelated and out of scope.
 Then the two new cases:
 
 ```ts
-it('stamps one clock across the parent and every contributing session', async () => {
+it('stamps one clock instance across the parent, every child, and every engine', async () => {
   await multiPathwayResolutionMutations.startMultiPathwayResolution(undefined, args, ctx);
 
   const parent = (createMultiPathwaySession as jest.Mock).mock.calls[0][1];
@@ -1927,10 +2024,25 @@ it('stamps one clock across the parent and every contributing session', async ()
 
   expect(parent.temporalContext).toBeDefined();
   expect(children.length).toBeGreaterThan(0);
+
+  // `toBe`, NOT `toEqual`. This test exists to prove ONE context object was
+  // created and passed down. Two separate makeEvaluationTemporalContext()
+  // calls in the same millisecond produce structurally equal objects, so
+  // toEqual passes against exactly the bug being guarded against — and it
+  // would pass non-deterministically, going green on a fast machine and red
+  // on a slow one. Reference equality is the only assertion that means
+  // "one clock".
   for (const child of children) {
-    // Identity, not just "both defined" — two clocks stamped microseconds
-    // apart would satisfy a weaker assertion and still break replay.
-    expect(child.temporalContext).toEqual(parent.temporalContext);
+    expect(child.temporalContext).toBe(parent.temporalContext);
+  }
+
+  // Persistence is only half of it: the engines that actually resolve the
+  // horizons must receive that same object as their 3rd constructor argument.
+  // A session could store the right clock while its traversal ran on another.
+  const engineCalls = (TraversalEngine as unknown as jest.Mock).mock.calls;
+  expect(engineCalls.length).toBe(children.length);
+  for (const call of engineCalls) {
+    expect(call[2]).toBe(parent.temporalContext);
   }
 });
 
@@ -1964,20 +2076,45 @@ Expected: exit 0.
 
 - [ ] **Step 8: Verify no stray wall-clock reads remain in the temporal path**
 
-```bash
-grep -rn "Date.now()" apps/pathway-service/src/services/resolution/ --include=*.ts | grep -v __tests__
-```
-Expected: exactly four hits, all timeout-related and all correct to leave:
-`safety.ts:32`, `traversal-engine.ts` (startTime / elapsed checks),
-`retraversal-engine.ts` (startTime / elapsed check) — plus the one deliberate
-fallback on the exported `evaluateGate`. If you see a `Date.now()` inside an
-operator implementation or a horizon computation, that is a bug from an earlier
-task: fix it before committing.
+Check *where* the wall clock is read, not how many times. A raw total is the
+wrong instrument: the legitimate timeout reads outnumber the ones this plan
+cares about, prose counts rot the moment anyone adds a timer, and comment lines
+mentioning `Date.now()` inflate it further. Compare against an allowed set of
+locations instead.
 
 ```bash
-grep -rn "Date.now()" apps/pathway-service/src/services/resolution/temporal/ --include=*.ts
+grep -rn "Date\.now()" apps/pathway-service/src/services/resolution/ --include=*.ts \
+  | grep -v '__tests__' \
+  | grep -vE ':[0-9]+: *(\*|//|/\*)' \
+  | awk -F: '{print $1}' | sed 's|.*/services/resolution/||' | sort | uniq -c
 ```
-Expected: exactly one hit — inside `makeEvaluationTemporalContext`.
+
+Expected, exactly:
+```
+      1 gate-evaluator.ts
+      2 retraversal-engine.ts
+      1 safety.ts
+      1 temporal/evaluation-context.ts
+      5 traversal-engine.ts
+```
+
+Each entry, and why it is allowed:
+- **`traversal-engine.ts` ×5** (`:152`, `:169`, `:183`, `:604`, `:629`) and
+  **`retraversal-engine.ts` ×2** (`:92`, `:113`) — elapsed-time guards and
+  `traversalDurationMs`. Wall-clock *duration*, not clinical *as-of*. Correct
+  to leave; pinning these would break the timeouts.
+- **`safety.ts` ×1** (`:32`) — the same, in the shared timeout helper.
+- **`gate-evaluator.ts` ×1** — the single deliberate fallback on the exported
+  `evaluateGate` (Task 3). This count going to 1 *is* Task 3's proof: it was 4
+  before, and the three internal `now: number = Date.now()` defaults at `:184`,
+  `:435` and `:559` are gone. If you still see 4, Task 3 is incomplete.
+- **`temporal/evaluation-context.ts` ×1** — `makeEvaluationTemporalContext`, the
+  one sanctioned wall-clock boundary (§1).
+
+Any other file appearing in this list is a bug. So is a second hit inside
+`temporal/`. A `Date.now()` in an operator implementation or a horizon
+computation is the exact defect this plan exists to remove — fix it before
+committing rather than updating the expected list.
 
 - [ ] **Step 9: Commit**
 
@@ -2010,9 +2147,18 @@ From design §13, the subset this plan is responsible for:
   is rejected with `INVALID_HORIZON`, and an overflowing value raises
   `TemporalContextError` rather than a bare `RangeError`
   (`evaluation-context.test.ts`).
-- **One clock per run.** Every contributing session in a multi-pathway
-  resolution carries a `temporal_context` equal to its parent's, and the
-  zero-match parent is stamped too (`multi-pathway-resolution.test.ts`).
+- **Every resolved bound is a valid FHIR instant.** A horizon whose lower bound
+  would fall outside years 0001–9999 is rejected with `INVALID_HORIZON` at
+  `resolveHorizon`, not later inside `overlap()`
+  (`evaluation-context.test.ts`, early-clock cases).
+- **One clock per run.** In a multi-pathway resolution the parent session,
+  every contributing session, and every `TraversalEngine` receive the *same
+  context instance* (`toBe`, not `toEqual`), and the zero-match parent is
+  stamped too (`multi-pathway-resolution.test.ts`).
+- **Creation requires a clock.** `createSession` and `createMultiPathwaySession`
+  take `temporalContext` as a required parameter, so a new call site that omits
+  it fails to compile; the column and both read-side types stay optional for
+  pre-migration rows (Task 6 Step 6b typecheck).
 - **Single wall-clock read.** Exactly one `Date.now()` in the temporal module,
   inside `makeEvaluationTemporalContext` (Task 6 Step 8 grep).
 - **No behavior change.** The full pathway-service suite passes with unchanged
@@ -2056,13 +2202,19 @@ strings in Tasks 1, 2, and 6. Constructor argument order
 identical across Tasks 4 and 6 and both engines. Field name is `temporalContext`
 in TypeScript and `temporal_context` in SQL throughout.
 
-**Optionality is deliberately asymmetric,** and the three places it appears now
-agree: the DB column is nullable (Task 5 Step 1), the read-side
+**Optionality is deliberately asymmetric, and is reached in two stages** — the
+staging matters, because doing it in one was a defect in the previous revision.
+End state: nullable column (Task 5 Step 1), optional read-side
 `ResolutionSession.temporalContext` / `MultiPathwayResolutionSession.temporalContext`
-are optional (Task 5 Steps 4, 6) because pre-migration rows have no clock, but
-both *creation* parameters are required (Task 5 Steps 5, 6) so a new call site
-cannot forget one. Task 6 updates all four call sites — two `createSession`, two
-`createMultiPathwaySession`.
+(Task 5 Steps 4, 6) since pre-migration rows have no clock, but *required*
+creation parameters so a new call site cannot forget one.
+
+The creation parameters cannot be tightened in Task 5, because the four
+production call sites are not wired until Task 6 — Task 5 Step 7's
+`tsc --noEmit` would fail on four missing-property errors, leaving a task unable
+to reach its own green checkpoint. So Task 5 adds them optional, Task 6 wires
+all four callers, and **Task 6 Step 6b** drops the `?` and re-runs the typecheck
+as the proof.
 
 **Every import the new code needs is named explicitly,** after review found
 `requireSessionTemporalContext` using a `ResolutionSession` that `resolution.ts`
@@ -2102,6 +2254,16 @@ parent session on two separate paths, one of which (zero matches) returns before
 `resolveAndPersistAll` is ever called. Stamping inside the callee left the parent
 either unstamped or holding a clock its children did not share. Step 5 now
 creates it once at the true entry point and threads it down as a required
-parameter, and Step 7 asserts parent/child identity rather than mere presence —
-two clocks stamped microseconds apart would satisfy a weaker check and still
-break replay.
+parameter, and Step 7 asserts reference identity (`toBe`) across the parent,
+every child, and every `TraversalEngine` — not `toEqual`, which two clocks
+stamped in the same millisecond would satisfy while the bug remained, and would
+do so non-deterministically: green on a fast machine, red on a slow one.
+
+**Verification steps assert locations, not counts.** Step 8 originally expected
+"exactly four" `Date.now()` hits; the real figure is 14 today and ~12 after
+Task 3, because the legitimate timeout reads in the two engines and `safety.ts`
+outnumber the clock reads this plan governs, and comment lines mentioning
+`Date.now()` inflate the total further. It now filters comments and compares a
+per-file breakdown against an allowed set — which also turns Task 3 into
+something checkable, since `gate-evaluator.ts` going from 4 to 1 *is* the proof
+that the three internal defaults were removed.
