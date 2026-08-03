@@ -23,11 +23,16 @@ for plan 9 (plan 6 touches both).
   Apollo Server 4 + Federation 2.10, PostgreSQL 15 + Apache AGE, Redis. Tests: Jest
   + ts-jest, `maxWorkers=1`, 30s timeout, files `*.test.ts` in `src/__tests__/`.
 - **Commands (run with `--prefix` / `-C`, never `cd &&`):**
-  `npm run --prefix apps/pathway-service typecheck`,
-  `npx --prefix apps/pathway-service jest <path>`.
+  - Typecheck: `cd apps/pathway-service` as its OWN step, then
+    `./node_modules/.bin/tsc -p tsconfig.json --noEmit`. There is no `typecheck`
+    npm script, and bare `npx tsc` resolves to a decoy package that prints
+    "This is not the tsc command you are looking for".
+  - Tests: `npm test --prefix apps/pathway-service -- --runInBand <path>`.
+    Jest's `testRegex` is `/__tests__/.*.test.ts`, so a test file placed
+    anywhere else (e.g. beside its source) is silently **not run**.
 - **Commit prefixes:** `feat:` / `fix:` / `test:` / `refactor:` / `docs:`. No
   `@anthropic.com`/`@claude.com`, no "Generated with" lines. End commit messages
-  with `Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>`.
+  with `Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@example.com>`.
 - **Branch:** `feat/pathway-temporal-horizon` (already checked out in this worktree).
 - **v1 vs legacy:** `temporalPolicyVersion` selects **defaults only**, not the whole
   kernel. The current evaluator is the shadow baseline; existing sessions are
@@ -62,6 +67,12 @@ The exact names/types each plan **Produces** (later plans depend on) and
 **Consumes** (must already exist). Plan 01 produces the vocabulary the whole suite
 uses.
 
+> **This section is normative and later plans treat it as locked.** If execution
+> adds or changes a published name, update it HERE in the same commit. A plan that
+> reads a stale contract will implement an incompatible type — the types below
+> drifted once already (`FactDecision.uncertainty`, `AMBIGUOUS_SERIES_ORDER`,
+> `FactDecision.stateUnverified` all landed in code before appearing here).
+
 ### Plan 01 — Produces
 Plan 01 is a genuine leaf: it defines its **own** operator/condition contract and
 imports nothing from `resolution/types.ts`. (Plan 04 owns the
@@ -77,7 +88,8 @@ type GateField = 'conditions'|'medications'|'allergies'|'labs'|'vitals';
 type FactKind = 'condition'|'medication_order'|'allergy'|'lab'|'vital';
 function fieldToKind(field: GateField): FactKind;              // throws on unknown
 interface FactSelectionCondition { field: GateField; operator: TemporalOperator; value: string; system?: string; }
-type UncertaintyReason = 'TEMPORAL_UNKNOWN'|'STATE_UNKNOWN'|'VALIDITY_UNKNOWN'|'AMBIGUOUS_LATEST';
+type UncertaintyReason = 'TEMPORAL_UNKNOWN'|'STATE_UNKNOWN'|'VALIDITY_UNKNOWN'|'AMBIGUOUS_LATEST'
+  |'AMBIGUOUS_SERIES_ORDER';   // added in execution: trend/delta series with no proven total order
 
 // temporal/fact-model.ts
 interface TemporalBound { value: string; precision: 'year'|'month'|'day'|'instant'; }
@@ -121,6 +133,16 @@ interface FactDecision {
   stateMatch: 'MATCH'|'NO_MATCH'|'UNKNOWN'|'NOT_APPLICABLE';
   temporalMatch: ThreeValued;
   operatorDecision: 'INCLUDE'|'EXCLUDE'|'INDETERMINATE';
+  // Both added during execution — Plan 08 evidence MUST surface them.
+  uncertainty: UncertaintyReason[];  // why uncertain; retained even when the operator
+                                     // policy resolved it to EXCLUDE (aggregate
+                                     // fail-closed), so evidence can show a count is
+                                     // a lower bound. Empty when decided definitely.
+  stateUnverified: boolean;          // UNKNOWN/CONFLICT state, or a status inferred by
+                                     // failing open. Separate from `uncertainty`
+                                     // because `status: any` bypasses state filtering
+                                     // (RFC §3): the doubt is evidence, but must not
+                                     // reach the operator policy.
 }
 type SelectionOutcome =
   | { status: 'READY'; selected: NormalizedFact[]; decisions: FactDecision[];

@@ -45,7 +45,7 @@ back on every retraversal. Gate evaluation's internal clock parameter loses its
 - **Commit prefixes:** `feat:` / `fix:` / `test:` / `refactor:` / `docs:`. No
   `@anthropic.com` / `@claude.com` addresses, no "Generated with" lines. End each
   commit message with:
-  `Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>`
+  `Co-Authored-By: Claude Opus 5 (1M context) <noreply@example.com>`
 - **No behavior activation.** Plans 01–08 must not change live gate outcomes
   until the `v1` flip (§Rollout). This plan is a pure plumbing change: with
   `temporalPolicyVersion = 'legacy-v0'` and the clock pinned to "now", every
@@ -475,7 +475,7 @@ git add apps/pathway-service/src/services/resolution/temporal/evaluation-context
         apps/pathway-service/src/__tests__/temporal/evaluation-context.test.ts
 git commit -m "feat: Horizon value type and resolveHorizon
 
-Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
+Co-Authored-By: Claude Opus 5 (1M context) <noreply@example.com>"
 ```
 
 ---
@@ -659,7 +659,7 @@ git add apps/pathway-service/src/services/resolution/temporal/evaluation-context
         apps/pathway-service/src/__tests__/temporal/evaluation-context.test.ts
 git commit -m "feat: single wall-clock boundary for the evaluation context
 
-Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
+Co-Authored-By: Claude Opus 5 (1M context) <noreply@example.com>"
 ```
 
 ---
@@ -793,7 +793,7 @@ the real regression net for this task.
 git add apps/pathway-service/src/services/resolution/gate-evaluator.ts
 git commit -m "refactor: require an explicit clock in the internal gate evaluators
 
-Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
+Co-Authored-By: Claude Opus 5 (1M context) <noreply@example.com>"
 ```
 
 ---
@@ -1114,7 +1114,7 @@ git add apps/pathway-service/src/services/resolution/traversal-engine.ts \
         apps/pathway-service/src/__tests__/temporal/clock-pinning.test.ts
 git commit -m "feat: thread the pinned evaluation clock through both engines
 
-Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
+Co-Authored-By: Claude Opus 5 (1M context) <noreply@example.com>"
 ```
 
 ---
@@ -1403,7 +1403,7 @@ git add shared/data-layer/migrations/063_add_temporal_context_to_sessions.sql \
         apps/pathway-service/src/__tests__/temporal/session-temporal-context.test.ts
 git commit -m "feat: persist the pinned evaluation clock on resolution sessions
 
-Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
+Co-Authored-By: Claude Opus 5 (1M context) <noreply@example.com>"
 ```
 
 ---
@@ -1703,7 +1703,7 @@ git add apps/pathway-service/src/resolvers/mutations/resolution.ts \
         apps/pathway-service/src/__tests__/temporal/retraversal-clock-reuse.test.ts
 git commit -m "feat: stamp the session clock at startResolution and reuse it on retraversal
 
-Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
+Co-Authored-By: Claude Opus 5 (1M context) <noreply@example.com>"
 ```
 
 ---

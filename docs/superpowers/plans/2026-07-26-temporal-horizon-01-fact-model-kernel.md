@@ -17,7 +17,7 @@
 - **Run one test file:** `npm test --prefix apps/pathway-service -- --runInBand <relative-path-from-pathway-service>`
 - **Typecheck (no `typecheck` npm script exists):** `npx tsc -p apps/pathway-service/tsconfig.json --noEmit`
 - This plan touches **only** files under `apps/pathway-service/src/services/resolution/temporal/` and their tests. It must not modify `gate-evaluator.ts`, `snapshot-context.ts`, or any resolver — later plans do that. Live routing is unchanged.
-- Commit prefixes `feat:`/`test:`. Per project policy (CLAUDE.md) end every commit message with `Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>`.
+- Commit prefixes `feat:`/`test:`. Per project policy (CLAUDE.md) end every commit message with `Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@example.com>`.
 - Design reference: `docs/superpowers/specs/2026-07-21-pathway-temporal-horizon-design.md` §2, §3, §4 (committed on this branch).
 
 ---
@@ -135,7 +135,7 @@ Expected: PASS.
 git -C apps/pathway-service add src/services/resolution/temporal/contract.ts src/__tests__/temporal/contract.test.ts
 git commit -m "feat: temporal-owned operator/field contract with unknown-op rejection
 
-Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@example.com>"
 ```
 
 ---
@@ -255,7 +255,7 @@ Expected: PASS.
 git -C apps/pathway-service add src/services/resolution/temporal/fact-model.ts src/__tests__/temporal/fact-model.test.ts
 git commit -m "feat: normalized fact model (stateful + observation subtypes)
 
-Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@example.com>"
 ```
 
 ---
@@ -391,7 +391,7 @@ Expected: PASS.
 git -C apps/pathway-service add src/services/resolution/temporal/interval.ts src/__tests__/temporal/interval.test.ts
 git commit -m "feat: strict FHIR date parsing to epoch ranges
 
-Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@example.com>"
 ```
 
 ---
@@ -523,7 +523,7 @@ Expected: PASS (all table rows + the inverted-interval throw). Note the `MATCH` 
 git -C apps/pathway-service add src/services/resolution/temporal/overlap.ts src/__tests__/temporal/overlap.test.ts
 git commit -m "feat: possible/established three-valued interval overlap
 
-Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@example.com>"
 ```
 
 ---
@@ -669,7 +669,7 @@ Expected: PASS.
 git -C apps/pathway-service add src/services/resolution/temporal/state-mapping.ts src/__tests__/temporal/state-mapping.test.ts
 git commit -m "feat: reconciled FHIR clinical-state + tri-state validity mapping
 
-Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@example.com>"
 ```
 
 ---
@@ -929,7 +929,7 @@ Expected: no new errors under `services/resolution/temporal/`. Fix any `noImplic
 git -C apps/pathway-service add src/services/resolution/temporal/select-facts.ts src/__tests__/temporal/select-facts.test.ts
 git commit -m "feat: selectFacts kernel with discriminated SelectionOutcome
 
-Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@example.com>"
 ```
 
 ---
@@ -1032,3 +1032,51 @@ in `data-completeness-scorer`, `patient-match-scorer`, `ddi-multi-pathway`, and
 `multi-pathway-resolution` that fail independently of this work (Plan 01 added
 only new files — `git diff --stat 00e19c9..3adb8a9 -- apps/` is 12 files, all
 insertions). Typecheck clean.
+
+## Post-execution corrections (review round 5)
+
+Two findings against `6da5012`'s parent. Both confirmed; both fixed.
+
+**1. [P1] `status: any` did not actually bypass state filtering.** Task 5's
+`stateMatchFor` mapped `UNKNOWN` and `CONFLICT` to `stateMatch: 'UNKNOWN'` even
+under `any`. The round-4 aggregate policy (fail-closed on uncertainty) then
+excluded those facts, so a valid, in-window condition with an `UNKNOWN` state
+under `count_in_window` + `status: any` returned `READY` with an empty
+selection — the bypass did the opposite of what it promised. RFC §3 is explicit:
+`any` "admits every state including `UNKNOWN` and `CONFLICT`, each still marked
+in evidence."
+
+Under `any`, `stateMatchFor` now returns `MATCH` unconditionally. The doubt is
+not discarded — it moves to a new `FactDecision.stateUnverified: boolean`, which
+feeds the evidence flag and nothing else. This is the general shape of the fix:
+**`uncertainty` drives operator decisions; `stateUnverified` only reports.**
+Collapsing them is what caused the bug, because it let a bypassed filter's doubt
+reach the operator policy.
+
+`status: active` / `inactive` are unchanged and now have regression tests:
+`CONFLICT` still excludes (a temporal fail-open must not silently resolve a
+clinical-state conflict, per §3) and `UNKNOWN` is still uncertain.
+
+`flags()` no longer recomputes state doubt from `stateBasis`; it reads
+`d.stateUnverified`, so `stateMatchFor` is the single source of truth. Note this
+makes `stateUnverified` true in one case where it previously was not: an
+`UNKNOWN` clinical state under `status: active` (previously only
+`MISSING_STATUS_FAIL_OPEN` set it). That is the correct reading of "state not
+established."
+
+**2. [P2] The suite overview's locked contract had gone stale.** Round 4 added
+`FactDecision.uncertainty` and `AMBIGUOUS_SERIES_ORDER`; this round adds
+`FactDecision.stateUnverified`. None had been published in the overview's
+cross-plan contract, which later plans treat as their locked interface — Plan 08
+in particular would have built evidence surfaces that omit all three. The
+overview now carries them plus a normative note that execution-time contract
+changes must be published in the same commit.
+
+Also corrected in the overview while there: the Global Constraints' commands
+(no `typecheck` script; `npx tsc` hits a decoy package; Jest's `testRegex`
+requires `src/__tests__/`), and the `Co-Authored-By` trailer, which specified an
+`@anthropic.com` address two lines after forbidding exactly that.
+
+**Verification:** temporal suite 63/63 (was 57). Full pathway-service suite 685
+passed / 15 failed — the same pre-existing 15 across the same four suites.
+Typecheck clean; `git diff --check` clean.
