@@ -87,7 +87,11 @@ export type TemporalContextErrorCode =
   | 'MISSING_ENCOUNTER_ANCHOR'
   | 'INVALID_HORIZON'
   | 'INVALID_CLOCK'
-  | 'SESSION_NOT_RETRAVERSABLE';
+  | 'SESSION_NOT_RETRAVERSABLE'
+  /** A session pinned a temporalPolicyVersion the registry does not define (§5). */
+  | 'UNKNOWN_POLICY_VERSION'
+  /** A pathway-level or condition-level policy value is structurally invalid. */
+  | 'INVALID_TEMPORAL_DEFAULTS';
 
 export class TemporalContextError extends Error {
   constructor(
