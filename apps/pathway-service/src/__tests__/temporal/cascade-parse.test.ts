@@ -62,6 +62,18 @@ describe('parsePathwayTemporalDefaults', () => {
     ).toThrow(/extra/);
   });
 
+  it('rejects a present-but-null section — only an ABSENT section means inherit', () => {
+    // {"default_horizons": null} looks like a document that states an opinion.
+    // Treating it as inherit would silently resolve every gate against system
+    // defaults. Only SQL NULL or an absent key is "inherit".
+    expect(() => parsePathwayTemporalDefaults({ default_horizons: null })).toThrow(
+      TemporalContextError,
+    );
+    expect(() => parsePathwayTemporalDefaults({ default_statuses: null })).toThrow(
+      TemporalContextError,
+    );
+  });
+
   it('rejects a non-object column value', () => {
     expect(() => parsePathwayTemporalDefaults(42)).toThrow(TemporalContextError);
     expect(() => parsePathwayTemporalDefaults([])).toThrow(TemporalContextError);

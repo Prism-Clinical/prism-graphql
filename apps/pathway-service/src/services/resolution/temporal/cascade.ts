@@ -123,7 +123,11 @@ export function parsePathwayTemporalDefaults(raw: unknown): PathwayTemporalDefau
 
   const out: PathwayTemporalDefaults = {};
 
-  if (root.default_horizons !== undefined && root.default_horizons !== null) {
+  // An ABSENT section means "inherit". A section that is present but null is
+  // not the same thing — asRecord rejects it. Exempting null here would let
+  // {"default_horizons": null} silently resolve every gate against system
+  // defaults while the stored document looks like it states an opinion.
+  if (root.default_horizons !== undefined) {
     const src = asRecord(root.default_horizons, 'temporal_defaults.default_horizons');
     const horizons: Partial<Record<GateField, Horizon>> = {};
     for (const [key, val] of Object.entries(src)) {
@@ -138,7 +142,7 @@ export function parsePathwayTemporalDefaults(raw: unknown): PathwayTemporalDefau
     if (Object.keys(horizons).length > 0) out.horizons = horizons;
   }
 
-  if (root.default_statuses !== undefined && root.default_statuses !== null) {
+  if (root.default_statuses !== undefined) {
     const src = asRecord(root.default_statuses, 'temporal_defaults.default_statuses');
     const statuses: Partial<Record<GateField, TemporalStatus>> = {};
     for (const [key, val] of Object.entries(src)) {

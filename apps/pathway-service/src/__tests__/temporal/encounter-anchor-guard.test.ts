@@ -45,7 +45,7 @@ function rctx(nodes: GraphNode[], defaults = {}): ResolutionContext {
 
 const vitalsGate = gate('g-bp', {
   title: 'BP check',
-  gate_type: 'coded',
+  gate_type: 'patient_attribute',
   default_behavior: 'skip',
   condition: { field: 'vitals', operator: 'greater_than', value: '8480-6' },
 });
@@ -91,7 +91,7 @@ describe('assertEncounterAnchor', () => {
   it('ignores attribute conditions — they never resolve a horizon (see "Known gap")', () => {
     const attrGate = gate('g-age', {
       title: 'age',
-      gate_type: 'attribute',
+      gate_type: 'patient_attribute',
       default_behavior: 'skip',
       condition: { attribute: 'age', operator: 'greater_than', value: 18 },
     });
@@ -119,6 +119,47 @@ describe('assertEncounterAnchor', () => {
     expect(() => assertEncounterAnchor(rctx([step]), ctx())).not.toThrow();
   });
 
+  it('ignores a leftover condition on a question gate — evaluateQuestion never reads it', () => {
+    // evaluateGate dispatches on gate_type (gate-evaluator.ts:753): question,
+    // prior_node_result and llm_text_analysis read neither `condition` nor
+    // `conditions`. The import validator does not currently forbid a stale
+    // `condition` surviving a gate-type change, so rejecting a session over
+    // one would be a false positive on a condition that is never evaluated.
+    for (const gateType of ['question', 'prior_node_result', 'llm_text_analysis']) {
+      const g = gate(`g-${gateType}`, {
+        title: gateType,
+        gate_type: gateType,
+        default_behavior: 'skip',
+        condition: { field: 'vitals', operator: 'greater_than', value: '8480-6' },
+        conditions: [{ field: 'vitals', operator: 'greater_than', value: '8480-6' }],
+      });
+      expect(() => assertEncounterAnchor(rctx([g]), ctx())).not.toThrow();
+    }
+  });
+
+  it('reads only the key its gate type evaluates', () => {
+    // patient_attribute reads `condition`; a stray `conditions[]` on it is
+    // never evaluated. compound is the mirror image.
+    const attrWithStrayArray = gate('g-attr', {
+      title: 'attr',
+      gate_type: 'patient_attribute',
+      default_behavior: 'skip',
+      condition: { field: 'labs', operator: 'greater_than', value: '4548-4' },
+      conditions: [{ field: 'vitals', operator: 'greater_than', value: '8480-6' }],
+    });
+    expect(() => assertEncounterAnchor(rctx([attrWithStrayArray]), ctx())).not.toThrow();
+
+    const compoundWithStraySingular = gate('g-comp', {
+      title: 'comp',
+      gate_type: 'compound',
+      default_behavior: 'skip',
+      operator: 'AND',
+      condition: { field: 'vitals', operator: 'greater_than', value: '8480-6' },
+      conditions: [{ field: 'labs', operator: 'greater_than', value: '4548-4' }],
+    });
+    expect(() => assertEncounterAnchor(rctx([compoundWithStraySingular]), ctx())).not.toThrow();
+  });
+
   it('ignores a satisfaction_check, which is not a gate condition', () => {
     const step: GraphNode = {
       id: 'n-prereq',
@@ -140,7 +181,7 @@ describe('assertEncounterAnchor', () => {
   it('honors a pathway-level ENCOUNTER default on an ordinary field', () => {
     const labsGate = gate('g-a1c', {
       title: 'A1c',
-      gate_type: 'coded',
+      gate_type: 'patient_attribute',
       default_behavior: 'skip',
       condition: { field: 'labs', operator: 'greater_than', value: '4548-4' },
     });
@@ -176,7 +217,7 @@ describe('assertEncounterAnchor', () => {
           vitalsGate,
           gate('g-hr', {
             title: 'HR',
-            gate_type: 'coded',
+            gate_type: 'patient_attribute',
             default_behavior: 'skip',
             condition: { field: 'vitals', operator: 'greater_than', value: '8867-4' },
           }),

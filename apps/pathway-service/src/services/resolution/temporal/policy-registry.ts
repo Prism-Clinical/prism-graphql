@@ -5,12 +5,12 @@ import { GateField, FIELD_TO_KIND, fieldToKind } from './contract';
 export type TemporalStatus = 'active' | 'inactive' | 'any';
 
 export interface FieldPolicy {
-  horizon: Horizon;
+  readonly horizon: Horizon;
   /**
    * Absent for observation fields — labs and vitals carry no clinical state
    * (`stateMatch: NOT_APPLICABLE`), so a status here would be meaningless.
    */
-  status?: TemporalStatus;
+  readonly status?: TemporalStatus;
 }
 
 export type TemporalPolicySet = Readonly<Record<GateField, FieldPolicy>>;
@@ -42,28 +42,49 @@ export function fieldHasClinicalState(field: GateField): boolean {
  * through the new kernel (§5) — it is the default until the v1 flip, not a
  * time machine.
  */
-export const TEMPORAL_POLICIES: Readonly<Record<string, TemporalPolicySet>> = Object.freeze({
-  'legacy-v0': Object.freeze({
-    conditions: Object.freeze({ horizon: 'LIFETIME', status: 'active' }),
-    medications: Object.freeze({ horizon: 'LIFETIME', status: 'active' }),
-    allergies: Object.freeze({ horizon: 'LIFETIME', status: 'active' }),
-    labs: Object.freeze({ horizon: 'LIFETIME' }),
-    vitals: Object.freeze({ horizon: 'LIFETIME' }),
-  }) as TemporalPolicySet,
-  v1: Object.freeze({
-    conditions: Object.freeze({ horizon: 'LIFETIME', status: 'active' }),
-    medications: Object.freeze({ horizon: 'LIFETIME', status: 'active' }),
-    allergies: Object.freeze({ horizon: 'LIFETIME', status: 'active' }),
+/**
+ * Freeze every level, not just the top two.
+ *
+ * `Object.freeze` is shallow, so a future custom-horizon default written as
+ * `{ horizon: { days: 30 } }` would leave that inner object mutable — and an
+ * existing version's meaning must never be mutable, which is the entire point
+ * of the registry. Latent while every horizon is a string; deliberately fixed
+ * before it can bite.
+ */
+function deepFreeze<T>(value: T): T {
+  if (value !== null && typeof value === 'object' && !Object.isFrozen(value)) {
+    Object.freeze(value);
+    for (const inner of Object.values(value)) deepFreeze(inner);
+  }
+  return value;
+}
+
+// `satisfies` rather than `as`: an assertion would weaken the completeness
+// check, and a version missing a GateField must be a compile error.
+const POLICIES = {
+  'legacy-v0': {
+    conditions: { horizon: 'LIFETIME', status: 'active' },
+    medications: { horizon: 'LIFETIME', status: 'active' },
+    allergies: { horizon: 'LIFETIME', status: 'active' },
+    labs: { horizon: 'LIFETIME' },
+    vitals: { horizon: 'LIFETIME' },
+  },
+  v1: {
+    conditions: { horizon: 'LIFETIME', status: 'active' },
+    medications: { horizon: 'LIFETIME', status: 'active' },
+    allergies: { horizon: 'LIFETIME', status: 'active' },
     // A lifetime of lab results is not "the patient's A1c" — 90 days is.
     // This is a deliberate, versioned behavior change (§Compatibility).
-    labs: Object.freeze({ horizon: 'QUARTER' }),
+    labs: { horizon: 'QUARTER' },
     // Vitals are encounter-scoped (§10). This hard-requires an encounterStart
     // on any session whose pathway reads vitals — see
     // collectEncounterAnchorRequirements, which rejects such a session up
     // front rather than throwing partway through a traversal.
-    vitals: Object.freeze({ horizon: 'ENCOUNTER' }),
-  }) as TemporalPolicySet,
-});
+    vitals: { horizon: 'ENCOUNTER' },
+  },
+} satisfies Record<string, TemporalPolicySet>;
+
+export const TEMPORAL_POLICIES: Readonly<Record<string, TemporalPolicySet>> = deepFreeze(POLICIES);
 
 export const KNOWN_TEMPORAL_POLICY_VERSIONS: readonly string[] = Object.freeze(
   Object.keys(TEMPORAL_POLICIES),

@@ -9,6 +9,7 @@ import {
   SignalDefinition,
 } from '../../services/confidence/types';
 import { GateProperties, AttributeCodeMap } from '../../services/resolution/types';
+import { GateType } from '../../types';
 import { loadAttributeCodeMap } from '../../services/resolution/attribute-code-map';
 import {
   LlmGateEvaluator,
@@ -547,10 +548,9 @@ function sweepableConditions(nodes: readonly GraphNode[]): SweepableCondition[] 
 
   for (const node of nodes) {
     // Only Gate nodes carry evaluable conditions: `condition`/`conditions` are
-    // read exclusively from GateProperties (gate-evaluator.ts:439/563,
-    // reachability.ts:153/177). Without this check, any imported node that
-    // happens to carry a condition-shaped property would trigger a false
-    // missing-anchor rejection for a gate that is never evaluated.
+    // read exclusively from GateProperties. Without this check, any imported
+    // node that happens to carry a condition-shaped property would trigger a
+    // false missing-anchor rejection for a gate that is never evaluated.
     //
     // `satisfaction_check` on Stage/Step prerequisite nodes is a different
     // shape ({type, code, system, lookback_days}) with no `field` key, so it
@@ -560,9 +560,27 @@ function sweepableConditions(nodes: readonly GraphNode[]): SweepableCondition[] 
     const props = node.properties as Record<string, unknown> | undefined;
     if (!props) continue;
 
+    // Collect exactly what `evaluateGate` would read for THIS gate type
+    // (gate-evaluator.ts:753). A question / prior_node_result /
+    // llm_text_analysis gate reads neither key, so a leftover `condition`
+    // left on one by an earlier edit is dead weight — the validator does not
+    // currently forbid the combination, and rejecting a session over a
+    // condition that is never evaluated would be a false positive.
     const raw: unknown[] = [];
-    if (props.condition) raw.push(props.condition);
-    if (Array.isArray(props.conditions)) raw.push(...props.conditions);
+    switch (props.gate_type) {
+      case GateType.PATIENT_ATTRIBUTE:
+        // evaluatePatientAttribute reads `condition` only.
+        if (props.condition) raw.push(props.condition);
+        break;
+      case GateType.COMPOUND:
+        // evaluateCompound reads `conditions` only.
+        if (Array.isArray(props.conditions)) raw.push(...props.conditions);
+        break;
+      default:
+        // question / prior_node_result / llm_text_analysis / unknown — no
+        // condition is ever evaluated.
+        continue;
+    }
 
     raw.forEach((c, i) => {
       if (!c || typeof c !== 'object') return;

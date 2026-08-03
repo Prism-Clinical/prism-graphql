@@ -58,6 +58,21 @@ describe('TEMPORAL_POLICIES', () => {
       (TEMPORAL_POLICIES.v1.labs as { horizon: string }).horizon = 'DAY';
     }).toThrow(TypeError);
   });
+
+  it('is frozen ALL the way down, not just two levels', () => {
+    // Object.freeze is shallow. Every horizon is a string today, so this
+    // walks a tree with no third level — but the moment someone adds a
+    // custom-horizon default like { horizon: { days: 30 } }, an unfrozen
+    // inner object would let an existing version's meaning be mutated.
+    const unfrozen: string[] = [];
+    const walk = (value: unknown, path: string): void => {
+      if (value === null || typeof value !== 'object') return;
+      if (!Object.isFrozen(value)) unfrozen.push(path);
+      for (const [k, v] of Object.entries(value)) walk(v, `${path}.${k}`);
+    };
+    walk(TEMPORAL_POLICIES, 'TEMPORAL_POLICIES');
+    expect(unfrozen).toEqual([]);
+  });
 });
 
 describe('getTemporalPolicy', () => {
