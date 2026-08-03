@@ -53,6 +53,32 @@ reviewer does not read their absence as a gap:
 - **Calling `resolveEffectivePolicy` during gate evaluation** — **Plan 04**. Nothing in
   this plan is on the evaluation path yet apart from the session-creation preflight.
 
+## Known gap — attribute conditions bypass temporal policy entirely
+
+Raised in review of this plan, verified, and **deliberately not fixed here.**
+
+`VALID_ATTRIBUTE_NAMESPACES` is `['lab', 'vitals', 'allergy', 'patient']`
+(`attribute-registry.ts:27`). Only `patient.*` is genuinely encounter-derived; the
+other three read the same clinical arrays a coded condition does — `lab.*` does
+`ctx.labResults.find(...)`, `vitals.*` walks `ctx.vitalSigns`, `allergy.*` scans
+`ctx.allergies`. None of them go through `selectFacts`, and Plan 04 rewrites only
+`evaluateGate`'s coded branches, so **none of them will honor a horizon or a status**.
+
+The consequence, once `v1` is flipped on: a coded `labs` gate respects QUARTER while
+an equivalent `lab.a1c > 9` attribute gate silently reads a result of any age. The
+feature's guarantee holds for one authoring style and not the other.
+
+The review proposed mapping attribute namespaces to `GateField` inside the anchor
+sweep. That is the wrong lever — it would reject sessions over gates that never
+resolve a horizon (a false rejection), while leaving the actual hole, that those gates
+ignore horizons at evaluation time, wide open. Closing it properly means routing
+`lab.*`/`vitals.*`/`allergy.*` attribute resolution through the kernel, which
+contradicts design §10 ("attribute conditions get no horizon control") and belongs to
+a design revision plus Plan 04 — **not to this plan.**
+
+**Decision needed from the design owner** before `v1` is activated. Until then the gap
+is documented, not silently inherited.
+
 ---
 
 ### Task 1: Policy registry
@@ -408,6 +434,18 @@ describe('parsePathwayTemporalDefaults', () => {
     ).toThrow(TemporalContextError);
   });
 
+  it('rejects an unknown root key — a typo must not silently erase the override', () => {
+    // The singular typo is the realistic one, and it is the dangerous one:
+    // ignoring it resolves every gate against system defaults while the
+    // author believes their pathway-level horizon is in force.
+    expect(() =>
+      parsePathwayTemporalDefaults({ default_horizon: { labs: 'YEAR' } }),
+    ).toThrow(/default_horizon\b/);
+    expect(() =>
+      parsePathwayTemporalDefaults({ default_horizons: { labs: 'YEAR' }, extra: 1 }),
+    ).toThrow(/extra/);
+  });
+
   it('rejects a non-object column value', () => {
     expect(() => parsePathwayTemporalDefaults(42)).toThrow(TemporalContextError);
     expect(() => parsePathwayTemporalDefaults([])).toThrow(TemporalContextError);
@@ -559,6 +597,22 @@ export function parsePathwayTemporalDefaults(raw: unknown): PathwayTemporalDefau
   }
 
   const root = asRecord(value, 'temporal_defaults');
+
+  // Allowlist the root keys. Without this a typo — `default_horizon`,
+  // singular — parses to `{}` and the author's override is silently replaced
+  // by the system defaults, which is exactly the failure the fail-closed
+  // contract exists to prevent. Ignoring an unknown key is indistinguishable
+  // from ignoring the author.
+  for (const key of Object.keys(root)) {
+    if (key !== 'default_horizons' && key !== 'default_statuses') {
+      throw new TemporalContextError(
+        `temporal_defaults.${key}: unknown key ` +
+          `(expected default_horizons or default_statuses)`,
+        'INVALID_TEMPORAL_DEFAULTS',
+      );
+    }
+  }
+
   const out: PathwayTemporalDefaults = {};
 
   if (root.default_horizons !== undefined && root.default_horizons !== null) {
@@ -604,7 +658,7 @@ export function parsePathwayTemporalDefaults(raw: unknown): PathwayTemporalDefau
 - [ ] **Step 4: Run the test to verify it passes**
 
 Run: `npm test --prefix apps/pathway-service -- --runInBand src/__tests__/temporal/cascade-parse.test.ts`
-Expected: PASS, 13 tests.
+Expected: PASS, 14 tests.
 
 - [ ] **Step 5: Typecheck**
 
@@ -1042,6 +1096,14 @@ describe('collectEncounterAnchorRequirements', () => {
   it('propagates an unknown version rather than reporting "no anchors needed"', () => {
     expect(() => collectEncounterAnchorRequirements([vitalsGate], 'v99', {})).toThrow();
   });
+
+  it('rejects an unknown version even when there is nothing to sweep', () => {
+    // Regression: validating inside the loop meant an empty pathway reported
+    // "no anchors needed" for a version that does not exist.
+    expect(() => collectEncounterAnchorRequirements([], 'v99', {})).toThrow(
+      /unknown temporalPolicyVersion/,
+    );
+  });
 });
 ```
 
@@ -1052,7 +1114,7 @@ Expected: FAIL — `collectEncounterAnchorRequirements is not a function`.
 
 - [ ] **Step 3: Append the sweep**
 
-Add to `apps/pathway-service/src/services/resolution/temporal/cascade.ts` (add `requiresEncounterAnchor` to the `./evaluation-context` import):
+Add to `apps/pathway-service/src/services/resolution/temporal/cascade.ts` (add `requiresEncounterAnchor` to the `./evaluation-context` import and `getTemporalPolicy` to the `./policy-registry` import):
 
 ```ts
 /** One gate condition, reduced to what the anchor sweep needs. */
@@ -1088,6 +1150,13 @@ export function collectEncounterAnchorRequirements(
   version: string,
   pathwayDefaults: PathwayTemporalDefaults,
 ): EncounterAnchorRequirement[] {
+  // Validate the version BEFORE the loop. Left to the loop, an empty or
+  // attribute-only pathway would sweep zero conditions, never touch the
+  // registry, and report "no anchors needed" for a version that does not
+  // exist — the session would then be created pinned to a version nothing
+  // can evaluate.
+  getTemporalPolicy(version);
+
   const out: EncounterAnchorRequirement[] = [];
   for (const c of conditions) {
     const tier = resolveEffectivePolicy(c.field, version, pathwayDefaults, c.override);
@@ -1102,7 +1171,7 @@ export function collectEncounterAnchorRequirements(
 - [ ] **Step 4: Run the test to verify it passes**
 
 Run: `npm test --prefix apps/pathway-service -- --runInBand src/__tests__/temporal/encounter-anchor-sweep.test.ts`
-Expected: PASS, 8 tests.
+Expected: PASS, 9 tests.
 
 - [ ] **Step 5: Typecheck**
 
@@ -1458,7 +1527,7 @@ describe('assertEncounterAnchor', () => {
     expect(() => assertEncounterAnchor(rctx([compound]), ctx())).toThrow(/g-compound/);
   });
 
-  it('ignores attribute conditions, which have no field and no timeline', () => {
+  it('ignores attribute conditions — they never resolve a horizon (see "Known gap")', () => {
     const attrGate = gate('g-age', {
       title: 'age',
       gate_type: 'attribute',
@@ -1488,6 +1557,23 @@ describe('assertEncounterAnchor', () => {
     ).toThrow(/g-a1c/);
   });
 
+  it('rejects an unknown policy version even when an anchor is present', () => {
+    // Regression: behind the encounterStart early return, a bad version
+    // sailed through whenever an anchor happened to be supplied.
+    expect(() =>
+      assertEncounterAnchor(
+        rctx([vitalsGate]),
+        ctx({ temporalPolicyVersion: 'v99', encounterStart: '2026-08-03T09:00:00.000Z' }),
+      ),
+    ).toThrow(/unknown temporalPolicyVersion/);
+  });
+
+  it('rejects an unknown policy version on a pathway with nothing to sweep', () => {
+    expect(() =>
+      assertEncounterAnchor(rctx([]), ctx({ temporalPolicyVersion: 'v99' })),
+    ).toThrow(/unknown temporalPolicyVersion/);
+  });
+
   it('lists every offending gate in one message', () => {
     try {
       assertEncounterAnchor(rctx([vitalsGate, gate('g-hr', {
@@ -1512,7 +1598,16 @@ Expected: FAIL — `assertEncounterAnchor is not a function`.
 
 - [ ] **Step 3: Write the guard**
 
-Append to `apps/pathway-service/src/resolvers/helpers/resolution-context.ts` (extend the temporal import with `collectEncounterAnchorRequirements`, `SweepableCondition`, `ConditionTemporalOverride`; add `EvaluationTemporalContext`, `TemporalContextError` from `../../services/resolution/temporal/evaluation-context`; add `GateField`, `FIELD_TO_KIND` from `../../services/resolution/temporal/contract`):
+Append to `apps/pathway-service/src/resolvers/helpers/resolution-context.ts`. Extend the imports: the `temporal/cascade` import gains `collectEncounterAnchorRequirements`, `SweepableCondition` and `ConditionTemporalOverride`, plus three new lines:
+
+```ts
+import {
+  EvaluationTemporalContext,
+  TemporalContextError,
+} from '../../services/resolution/temporal/evaluation-context';
+import { GateField, FIELD_TO_KIND } from '../../services/resolution/temporal/contract';
+import { getTemporalPolicy } from '../../services/resolution/temporal/policy-registry';
+```
 
 ```ts
 // ─── ENCOUNTER anchor preflight ─────────────────────────────────────
@@ -1541,8 +1636,19 @@ function sweepableConditions(nodes: readonly GraphNode[]): SweepableCondition[] 
       if (!c || typeof c !== 'object') return;
       const cond = c as Record<string, unknown>;
       const field = cond.field;
-      // Attribute conditions have no `field` — they are encounter-derived and
-      // carry no timeline (§10), so they are not swept.
+      // Attribute conditions have `attribute`, not `field`, and are not swept
+      // because they never resolve a horizon: `resolveAttribute` reads the
+      // PatientContext arrays directly and Plan 04 rewrites only the coded
+      // branches onto the kernel. Sweeping them would reject sessions for
+      // gates that cannot need an anchor.
+      //
+      // NOTE — this is NOT because attribute conditions are timeless. The
+      // registry's namespaces are lab / vitals / allergy / patient
+      // (attribute-registry.ts:27), so only `patient.*` is genuinely
+      // encounter-derived; a `lab.a1c > 9` attribute gate reads the same
+      // clinical data a coded labs gate does, with no temporal filtering at
+      // all. That inconsistency is real and is tracked in "Known gap" below —
+      // it is a design-scope question, not something the sweep can fix.
       if (typeof field !== 'string') return;
       if (!Object.prototype.hasOwnProperty.call(FIELD_TO_KIND, field)) return;
 
@@ -1574,6 +1680,12 @@ export function assertEncounterAnchor(
   rctx: ResolutionContext,
   temporalCtx: EvaluationTemporalContext,
 ): void {
+  // Unconditionally, before any early return: a session must never be created
+  // pinned to a policy version nothing can evaluate. Behind the encounterStart
+  // check, an unknown version would sail through whenever an anchor happened
+  // to be present.
+  getTemporalPolicy(temporalCtx.temporalPolicyVersion);
+
   if (temporalCtx.encounterStart) return;
 
   const required = collectEncounterAnchorRequirements(
@@ -1596,7 +1708,7 @@ export function assertEncounterAnchor(
 - [ ] **Step 4: Run the test to verify it passes**
 
 Run: `npm test --prefix apps/pathway-service -- --runInBand src/__tests__/temporal/encounter-anchor-guard.test.ts`
-Expected: PASS, 8 tests.
+Expected: PASS, 10 tests.
 
 - [ ] **Step 5: Wire the single-pathway site**
 
@@ -1611,26 +1723,65 @@ In `apps/pathway-service/src/resolvers/mutations/resolution.ts`, add `assertEnco
 
 - [ ] **Step 6: Wire the multi-pathway site**
 
-In `apps/pathway-service/src/resolvers/mutations/multi-pathway-resolution.ts`, add `assertEncounterAnchor` to the existing import from `../helpers/resolution-context`, then insert the call inside `resolveAndPersistAll`'s `for (const m of pathways)` loop (~line 702). `resolveAndPersistAll` receives the run's clock as its 5th parameter, named `temporalContext` (verified 2026-08-03), and it is in scope here.
+In `apps/pathway-service/src/resolvers/mutations/multi-pathway-resolution.ts`, add `assertEncounterAnchor` to the existing import from `../helpers/resolution-context`.
 
-Place it **after** the empty-graph guard, so a pathway with no nodes is skipped rather than swept:
+`resolveAndPersistAll` currently loads, traverses and persists each pathway in **one** loop (`for (const m of pathways)`, ~line 701; `createSession` at ~751). Validating inside that loop is not a preflight: if pathway B lacks an anchor, pathway A has already created a child session and flushed its LLM audit rows, and the mutation then throws — leaving orphaned sessions behind and no parent session to reference them.
+
+Split it into two passes. The clock arrives as `resolveAndPersistAll`'s 5th parameter, named `temporalContext` (verified 2026-08-03).
+
+**Pass 1 — load and validate everything, mutate nothing:**
 
 ```ts
+  // Load every pathway's context and validate the whole set BEFORE any
+  // traversal. Nothing here writes: a rejection must leave no child sessions
+  // and no audit rows behind.
+  const loaded: Array<{ m: MatchedPathway; rctx: ResolutionContext }> = [];
   for (const m of pathways) {
     const rctx = await buildResolutionContext(pool, m.pathway.id);
     if (rctx.graphContext.allNodes.length === 0) continue;
-
     assertEncounterAnchor(rctx, temporalContext);
+    loaded.push({ m, rctx });
+  }
 ```
+
+**Pass 2 — the existing loop body, now iterating the validated set.** Change the loop header and drop the two lines Pass 1 took over:
+
+```ts
+  for (const { m, rctx } of loaded) {
+    const llmBundle = makeLlmGateEvaluator(pool, m.pathway.id);
+    // ...the rest of the body is unchanged...
+```
+
+`ResolutionContext` is already imported in this file only as a type via the helpers import — add it to that import if it is not already there. `MatchedPathway` is already imported.
 
 Note this rejects the **whole multi-pathway run**, not just the offending pathway. That is deliberate: the alternative is silently dropping a matched pathway from a merged care plan, which is exactly the class of invisible omission this feature exists to prevent.
 
-- [ ] **Step 7: Typecheck**
+- [ ] **Step 7: Update the two existing mocks that replace this module**
+
+Both multi-pathway test files mock `resolution-context` with a **factory**, which replaces the entire module — any export not listed is `undefined` at call time. `resolveAndPersistAll` now calls `assertEncounterAnchor`, so both must declare it or every normal-path test dies with "assertEncounterAnchor is not a function". This is the same failure mode that cost two tests in Plan 02 (`makeLlmGateEvaluator` omitted from this exact mock).
+
+In `apps/pathway-service/src/__tests__/multi-pathway-resolution.test.ts`, add to the existing `jest.mock('../resolvers/helpers/resolution-context', …)` factory (~line 32):
+
+```ts
+  // Same reason as makeLlmGateEvaluator above: a factory mock replaces the
+  // whole module, so an unlisted export is undefined at call time.
+  // resolveAndPersistAll's preflight calls this on every run.
+  assertEncounterAnchor: jest.fn(),
+```
+
+In `apps/pathway-service/src/__tests__/ddi-multi-pathway.test.ts`, add the same line to its factory (~line 22). This suite is one of the three documented baseline failures — without the no-op guard it would fail with a *new, earlier* exception, masking the failures the baseline is supposed to be tracking.
+
+- [ ] **Step 8: Verify both multi-pathway suites behave as documented**
+
+Run: `npm test --prefix apps/pathway-service -- --runInBand src/__tests__/multi-pathway-resolution.test.ts src/__tests__/ddi-multi-pathway.test.ts`
+Expected: `multi-pathway-resolution` passes in full. `ddi-multi-pathway` still fails with **its own documented baseline failures** — confirm the failure messages match the pre-existing ones and are not `assertEncounterAnchor is not a function`.
+
+- [ ] **Step 9: Typecheck**
 
 Run: `./node_modules/.bin/tsc -p apps/pathway-service/tsconfig.json --noEmit`
 Expected: exit 0.
 
-- [ ] **Step 8: Update the suite overview**
+- [ ] **Step 10: Update the suite overview**
 
 In `docs/superpowers/plans/2026-07-26-temporal-horizon-00-overview.md`:
 
@@ -1653,21 +1804,32 @@ In `docs/superpowers/plans/2026-07-26-temporal-horizon-00-overview.md`:
    `temporal/policy-registry.ts`, `temporal/cascade.ts`, migration `064_add_temporal_defaults_to_pathway_graph_index.sql`, `resolvers/helpers/resolution-context.ts`, plus one-line guard calls in `resolvers/mutations/resolution.ts` and `multi-pathway-resolution.ts`.
 4. Record the vitals decision under Plan 03: `legacy-v0` vitals = LIFETIME, `v1` vitals = ENCOUNTER (design §5's table omitted vitals; §10 fixes them to Encounter).
 
-- [ ] **Step 9: Run the full suite and compare against the baseline**
+- [ ] **Step 11: Run the full suite and compare against the baseline**
 
 Run: `npm test --prefix apps/pathway-service -- --runInBand 2>&1 | tail -30`
 Expected: **13 failed** across `data-completeness-scorer`, `patient-match-scorer`, `ddi-multi-pathway` — the documented pre-existing baseline. Any new failure, or any failure in a fourth suite, belongs to this plan. Record the exact passed/failed counts for the commit message.
 
-- [ ] **Step 10: Commit**
+- [ ] **Step 12: Commit**
 
 ```bash
-git add apps/pathway-service/src/resolvers/helpers/resolution-context.ts apps/pathway-service/src/resolvers/mutations/resolution.ts apps/pathway-service/src/resolvers/mutations/multi-pathway-resolution.ts apps/pathway-service/src/__tests__/temporal/encounter-anchor-guard.test.ts docs/superpowers/plans/2026-07-26-temporal-horizon-00-overview.md
+git add apps/pathway-service/src/resolvers/helpers/resolution-context.ts apps/pathway-service/src/resolvers/mutations/resolution.ts apps/pathway-service/src/resolvers/mutations/multi-pathway-resolution.ts apps/pathway-service/src/__tests__/temporal/encounter-anchor-guard.test.ts apps/pathway-service/src/__tests__/multi-pathway-resolution.test.ts apps/pathway-service/src/__tests__/ddi-multi-pathway.test.ts docs/superpowers/plans/2026-07-26-temporal-horizon-00-overview.md
 git commit -m "feat: reject a session that cannot anchor its ENCOUNTER horizons
 
 Both session-creating mutations now sweep the loaded pathway before any
 traversal work. The four retraversal sites deliberately do not: they
 reuse the clock their session was created with, and that session already
 passed this check at creation.
+
+resolveAndPersistAll is split into two passes — load and validate every
+pathway, then traverse and persist. Validating inside the single loop
+was not a preflight: a rejection on pathway B would leave pathway A's
+child session and flushed LLM audit rows behind, with no parent session
+to reference them.
+
+Both multi-pathway test files mock this module with a factory, which
+replaces the whole module, so both now declare the new export. Without
+that, ddi-multi-pathway would fail with a new earlier exception that
+masks the baseline failures it is meant to track.
 
 Conditions are read defensively from AGE node properties rather than
 through GateProperties — horizon/status are not on CodedCondition until
@@ -1691,6 +1853,9 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@example.com>"
 ## Acceptance criteria
 
 - [ ] `getTemporalPolicy('v99')` throws `UNKNOWN_POLICY_VERSION`; there is no "use latest" path anywhere in the module.
+- [ ] An unknown policy version is rejected **unconditionally** at session creation — including when `encounterStart` is present and when the pathway has nothing to sweep.
+- [ ] An unknown root key in `temporal_defaults` (e.g. the singular `default_horizon`) throws rather than resolving to `{}`.
+- [ ] A multi-pathway run rejected for a missing anchor creates **no** child sessions and flushes **no** LLM audit rows — validation completes before any traversal begins.
 - [ ] Every `GateField` resolves to a defined `FieldPolicy` in every known version.
 - [ ] `resolveEffectivePolicy` resolves horizon and status as independent axes, each reporting the level that supplied it.
 - [ ] `labs` and `vitals` never carry a status, at any cascade level, in any version.
