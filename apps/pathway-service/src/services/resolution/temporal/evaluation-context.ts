@@ -203,3 +203,59 @@ export function resolveHorizon(h: Horizon, ctx: EvaluationTemporalContext): Reso
 
   return { lowerBound, upperBound };
 }
+
+// ─── Context construction — the ONLY wall-clock read ──────────────────
+
+/**
+ * Baseline policy version: reproduces today's effective semantics (§5).
+ * Plan 03 introduces the registry and makes an unknown version a hard error.
+ */
+export const DEFAULT_TEMPORAL_POLICY_VERSION = 'legacy-v0';
+
+export interface TemporalContextInput {
+  evaluationAsOf?: string;
+  encounterStart?: string;
+  snapshotId?: string;
+  snapshotCapturedAt?: string;
+  temporalPolicyVersion?: string;
+}
+
+/**
+ * Build the one context a session is pinned to. This is the ONLY place the
+ * wall clock is read for temporal evaluation — every downstream computation
+ * takes `evaluationAsOf` from the returned object, so a session retraversed
+ * next week resolves the same horizons it did when it was created.
+ *
+ * (Wall-clock reads for *timeouts* — traversal-engine.ts, retraversal-engine.ts,
+ * safety.ts — are unrelated and must stay as they are.)
+ */
+export function makeEvaluationTemporalContext(
+  input: TemporalContextInput = {},
+): EvaluationTemporalContext {
+  const evaluationAsOf = input.evaluationAsOf ?? new Date(Date.now()).toISOString();
+  const upperMs = clockEpoch('evaluationAsOf', evaluationAsOf);
+
+  const ctx: EvaluationTemporalContext = {
+    evaluationAsOf,
+    timezone: 'UTC',
+    temporalPolicyVersion: input.temporalPolicyVersion ?? DEFAULT_TEMPORAL_POLICY_VERSION,
+  };
+
+  if (input.encounterStart !== undefined) {
+    const startMs = clockEpoch('encounterStart', input.encounterStart);
+    if (startMs > upperMs) {
+      throw new TemporalContextError(
+        `encounterStart (${input.encounterStart}) is after evaluationAsOf (${evaluationAsOf})`,
+        'INVALID_CLOCK',
+      );
+    }
+    ctx.encounterStart = input.encounterStart;
+  }
+  if (input.snapshotId !== undefined) ctx.snapshotId = input.snapshotId;
+  if (input.snapshotCapturedAt !== undefined) {
+    clockEpoch('snapshotCapturedAt', input.snapshotCapturedAt);
+    ctx.snapshotCapturedAt = input.snapshotCapturedAt;
+  }
+
+  return ctx;
+}

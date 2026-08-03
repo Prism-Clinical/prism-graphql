@@ -3,7 +3,9 @@ import {
   requiresEncounterAnchor,
   isCustomHorizon,
   isNamedHorizon,
+  makeEvaluationTemporalContext,
   MAX_CUSTOM_HORIZON_DAYS,
+  DEFAULT_TEMPORAL_POLICY_VERSION,
   TemporalContextError,
   EvaluationTemporalContext,
 } from '../../services/resolution/temporal/evaluation-context';
@@ -155,5 +157,63 @@ describe('horizon predicates', () => {
     expect(requiresEncounterAnchor('ENCOUNTER')).toBe(true);
     expect(requiresEncounterAnchor('LIFETIME')).toBe(false);
     expect(requiresEncounterAnchor({ days: 30 })).toBe(false);
+  });
+});
+
+describe('makeEvaluationTemporalContext', () => {
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('stamps evaluationAsOf from the wall clock when the caller supplies none', () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-07-30T12:00:00.000Z'));
+    const c = makeEvaluationTemporalContext();
+    expect(c.evaluationAsOf).toBe('2026-07-30T12:00:00.000Z');
+    expect(c.timezone).toBe('UTC');
+    expect(c.temporalPolicyVersion).toBe(DEFAULT_TEMPORAL_POLICY_VERSION);
+    expect(DEFAULT_TEMPORAL_POLICY_VERSION).toBe('legacy-v0');
+  });
+
+  it('honors a caller-supplied evaluationAsOf verbatim and ignores the wall clock', () => {
+    jest.useFakeTimers().setSystemTime(new Date('2030-01-01T00:00:00.000Z'));
+    const c = makeEvaluationTemporalContext({ evaluationAsOf: '2026-07-30T12:00:00.000Z' });
+    expect(c.evaluationAsOf).toBe('2026-07-30T12:00:00.000Z');
+  });
+
+  it('carries the optional anchors through', () => {
+    const c = makeEvaluationTemporalContext({
+      evaluationAsOf: '2026-07-30T12:00:00.000Z',
+      encounterStart: '2026-07-30T09:00:00.000Z',
+      snapshotId: 'snap-1',
+      snapshotCapturedAt: '2026-07-30T08:00:00.000Z',
+      temporalPolicyVersion: 'v1',
+    });
+    expect(c.encounterStart).toBe('2026-07-30T09:00:00.000Z');
+    expect(c.snapshotId).toBe('snap-1');
+    expect(c.snapshotCapturedAt).toBe('2026-07-30T08:00:00.000Z');
+    expect(c.temporalPolicyVersion).toBe('v1');
+  });
+
+  it('omits absent optional fields rather than setting them undefined-in-JSON', () => {
+    const c = makeEvaluationTemporalContext({ evaluationAsOf: '2026-07-30T12:00:00.000Z' });
+    expect(Object.keys(JSON.parse(JSON.stringify(c))).sort()).toEqual([
+      'evaluationAsOf', 'temporalPolicyVersion', 'timezone',
+    ]);
+  });
+
+  it('rejects a malformed caller-supplied clock', () => {
+    expect(() => makeEvaluationTemporalContext({ evaluationAsOf: '2026-07-30' }))
+      .toThrow(/INVALID_CLOCK|instant/i);
+    expect(() => makeEvaluationTemporalContext({ evaluationAsOf: 'not-a-date' }))
+      .toThrow(/INVALID_CLOCK|instant/i);
+  });
+
+  it('rejects a malformed encounterStart, and one after evaluationAsOf', () => {
+    expect(() => makeEvaluationTemporalContext({
+      evaluationAsOf: '2026-07-30T12:00:00.000Z', encounterStart: 'nope',
+    })).toThrow(/INVALID_CLOCK|instant/i);
+    expect(() => makeEvaluationTemporalContext({
+      evaluationAsOf: '2026-07-30T12:00:00.000Z', encounterStart: '2026-07-31T00:00:00.000Z',
+    })).toThrow(/after/i);
   });
 });
