@@ -3,6 +3,7 @@ import { DataSourceContext, NodeStatus, OverrideAction, SessionStatus } from '..
 import { PatientContext } from '../../services/confidence/types';
 import { PATHWAY_COLUMNS, formatSessionForGraphQL } from '../Query';
 import { TraversalEngine } from '../../services/resolution/traversal-engine';
+import { makeEvaluationTemporalContext } from '../../services/resolution/temporal/evaluation-context';
 import { RetraversalEngine } from '../../services/resolution/retraversal-engine';
 import {
   createSession,
@@ -101,6 +102,7 @@ export const resolutionMutations = {
     const traversalEngine = new TraversalEngine(
       makeTraversalAdapter(rctx, pool, args.pathwayId, patientContext),
       rctx.thresholds,
+      makeEvaluationTemporalContext(),
       llmBundle?.evaluator,
       rctx.codeMap,
     );
@@ -232,6 +234,8 @@ export const resolutionMutations = {
       const retraversalEngine = new RetraversalEngine(
         makeRetraversalAdapter(rctx, pool, session.pathwayId, patientCtx),
         rctx.thresholds,
+        // Task 6 replaces this with the context persisted on the session.
+        makeEvaluationTemporalContext(),
         llmBundle?.evaluator,
         rctx.codeMap,
       );
@@ -390,6 +394,8 @@ export const resolutionMutations = {
         const retraversalEngine = new RetraversalEngine(
           makeRetraversalAdapter(rctx, pool, session.pathwayId, patientCtx),
           rctx.thresholds,
+          // Task 6 replaces this with the context persisted on the session.
+          makeEvaluationTemporalContext(),
           llmBundle?.evaluator,
           rctx.codeMap,
         );
@@ -566,6 +572,8 @@ export const resolutionMutations = {
       const retraversalEngine = new RetraversalEngine(
         makeRetraversalAdapter(rctx, pool, session.pathwayId, updatedPc),
         rctx.thresholds,
+        // Task 6 replaces this with the context persisted on the session.
+        makeEvaluationTemporalContext(),
         llmBundle?.evaluator,
         rctx.codeMap,
       );

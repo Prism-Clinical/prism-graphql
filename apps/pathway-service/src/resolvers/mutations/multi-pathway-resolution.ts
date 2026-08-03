@@ -28,6 +28,7 @@ import {
 import { PatientContext } from '../../services/confidence/types';
 import { normalizePatientAttributes } from '../../services/resolution/patient-attributes';
 import { TraversalEngine } from '../../services/resolution/traversal-engine';
+import { makeEvaluationTemporalContext } from '../../services/resolution/temporal/evaluation-context';
 import {
   GateAnswer,
   MatchedPathway,
@@ -687,6 +688,7 @@ export async function resolveAndPersistAll(
     const engine = new TraversalEngine(
       makeTraversalAdapter(rctx, pool, m.pathway.id, patientContext),
       rctx.thresholds,
+      makeEvaluationTemporalContext(),
       llmBundle?.evaluator,
       rctx.codeMap,
     );

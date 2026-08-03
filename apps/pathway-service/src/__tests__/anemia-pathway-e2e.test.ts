@@ -12,6 +12,14 @@ import {
 } from './fixtures/anemia-pathway-canonical';
 import { buildCodeMap } from '../services/resolution/attribute-code-map';
 import { TraversalEngine } from '../services/resolution/traversal-engine';
+import { makeEvaluationTemporalContext } from '../services/resolution/temporal/evaluation-context';
+
+/**
+ * The pinned evaluation clock for this suite. Both the engine and the dated
+ * fixtures below measure from it, so the suite no longer depends on when it
+ * happens to be run.
+ */
+const PINNED_AS_OF = '2026-07-30T12:00:00.000Z';
 import { NodeStatus } from '../services/resolution/types';
 import type { PatientContext } from '../services/confidence/types';
 
@@ -36,7 +44,13 @@ const mockConfidenceEngine = {
 const mockThresholds = { autoResolveThreshold: 0.85, suggestThreshold: 0.60 };
 
 function createEngine(): TraversalEngine {
-  return new TraversalEngine(mockConfidenceEngine, mockThresholds, undefined, CODE_MAP);
+  return new TraversalEngine(
+    mockConfidenceEngine,
+    mockThresholds,
+    makeEvaluationTemporalContext({ evaluationAsOf: PINNED_AS_OF }),
+    undefined,
+    CODE_MAP,
+  );
 }
 
 function anemicSecondTrimesterPatient(): PatientContext {
@@ -68,12 +82,15 @@ function firstTrimesterAnemicPatient(): PatientContext {
 
 // Dated 2-point Hb series rising ≥1 g/dL within the 14-day window that
 // gate-oral-iron-response's delta_from_baseline condition requires.
-// Dates are computed relative to the real clock (Date.now()) because the
-// TraversalEngine path (unlike direct evaluateGate() unit tests) does not
-// expose an injectable `now` — production callers always evaluate against
-// Date.now(), so this fixture must too.
+//
+// These dates were previously computed from the real clock, because the
+// TraversalEngine path had no injectable `now` and evaluated against
+// Date.now(). It does now — the engine takes a pinned EvaluationTemporalContext
+// — so the fixture is measured back from that same pinned instant. Leaving it
+// on the wall clock would compare wall-clock-dated labs against a fixed 2026
+// evaluation clock and put them ~centuries outside a 14-day window.
 function oralIronResponseRisingPatient(): PatientContext {
-  const now = Date.now();
+  const now = Date.parse(PINNED_AS_OF);
   const daysAgo = (n: number): string => new Date(now - n * 86_400_000).toISOString();
   return {
     patientId: 'p3', conditionCodes: [], medications: [], allergies: [],

@@ -16,6 +16,7 @@ import {
   AttributeCodeMap,
 } from './types';
 import { evaluateGate, LlmGateEvaluator } from './gate-evaluator';
+import { EvaluationTemporalContext } from './temporal/evaluation-context';
 
 // ─── Helpers ──────────────────────────────────────────────────────────
 
@@ -77,9 +78,16 @@ export class RetraversalEngine {
   constructor(
     private confidenceEngine: RetraversalConfidenceAdapter,
     private thresholds: { autoResolveThreshold: number; suggestThreshold: number },
+    /** The pinned clock read back off the session — never re-stamped here. */
+    private temporalContext: EvaluationTemporalContext,
     private llmGateEvaluator?: LlmGateEvaluator,
     private codeMap: AttributeCodeMap = new Map(),
   ) {}
+
+  /** The pinned clock as epoch ms, for the operator implementations. */
+  private evaluationNowMs(): number {
+    return Date.parse(this.temporalContext.evaluationAsOf);
+  }
 
   async retraverse(
     affectedNodeIds: Set<string>,
@@ -155,7 +163,7 @@ export class RetraversalEngine {
             gateAnswers,
             nodeId,
             this.llmGateEvaluator,
-            undefined,
+            this.evaluationNowMs(),
             this.codeMap,
           );
           if (gateResult.tentative && !gateAnswers.has(nodeId)) {
