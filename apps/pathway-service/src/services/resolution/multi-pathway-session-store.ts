@@ -74,8 +74,9 @@ export async function createMultiPathwaySession(
     mergedPlan: MergedCarePlan;
     ddiWarnings?: unknown[];
     isPreview?: boolean;
-    // Optional here; Task 6 Step 6b tightens this to required.
-    temporalContext?: EvaluationTemporalContext;
+    // Required on the way in — same read-optional / write-required split as
+    // createSession, and for the same reason.
+    temporalContext: EvaluationTemporalContext;
   },
 ): Promise<string> {
   const result = await pool.query(

@@ -113,10 +113,12 @@ export async function createSession(
     totalNodesEvaluated: number;
     traversalDurationMs: number;
     ddiWarnings?: unknown[];
-    // Optional here; Task 6 Step 6b tightens this to required once every
-    // call site supplies a clock. The stored column stays nullable for
-    // pre-migration rows.
-    temporalContext?: EvaluationTemporalContext;
+    // Required on the way IN, optional on the way OUT. Every session created
+    // from now on has a clock, and a required parameter is what lets the
+    // compiler prove it — a new call site that forgets one is a build error,
+    // not a session that silently cannot be retraversed. The column and
+    // ResolutionSession.temporalContext stay optional for pre-migration rows.
+    temporalContext: EvaluationTemporalContext;
   },
 ): Promise<string> {
   const result = await pool.query(

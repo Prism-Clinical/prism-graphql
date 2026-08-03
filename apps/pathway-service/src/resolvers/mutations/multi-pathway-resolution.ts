@@ -29,6 +29,7 @@ import { PatientContext } from '../../services/confidence/types';
 import { normalizePatientAttributes } from '../../services/resolution/patient-attributes';
 import { TraversalEngine } from '../../services/resolution/traversal-engine';
 import { makeEvaluationTemporalContext } from '../../services/resolution/temporal/evaluation-context';
+import type { EvaluationTemporalContext } from '../../services/resolution/temporal/evaluation-context';
 import {
   GateAnswer,
   MatchedPathway,
@@ -154,6 +155,11 @@ export const multiPathwayResolutionMutations = {
     // can clean up. Real provider encounters never set this flag.
     const isPreview = args.syntheticPatient === true;
 
+    // One clock for the entire multi-pathway run (§1) — the parent session and
+    // every contributing session resolve horizons against the same instant.
+    // Created here, before the zero-match branch, so BOTH exits stamp it.
+    const temporalContext = makeEvaluationTemporalContext();
+
     const matched = await getMatchedPathways(pool, args.patientId, matcherOptions);
     if (matched.length === 0) {
       // Persist an empty session so the FE has something to show — and so we
@@ -166,6 +172,7 @@ export const multiPathwayResolutionMutations = {
         contributingPathwayIds: [],
         mergedPlan: emptyMergedCarePlan(),
         isPreview,
+        temporalContext,
       });
       const session = await getMultiPathwaySession(pool, sessionId);
       return formatSessionForGraphQL(session!);
@@ -175,7 +182,7 @@ export const multiPathwayResolutionMutations = {
     const patientContext = buildPatientContext(args);
 
     const { resolvedPlans, contributingSessionIds, contributingPathwayIds } =
-      await resolveAndPersistAll(pool, surviving, patientContext, context.userId);
+      await resolveAndPersistAll(pool, surviving, patientContext, context.userId, temporalContext);
 
     const { mergedPlan: finalMerged, ddiWarnings } = await runMergePipeline(
       pool,
@@ -192,6 +199,7 @@ export const multiPathwayResolutionMutations = {
       mergedPlan: finalMerged,
       ddiWarnings,
       isPreview,
+      temporalContext,
     });
 
     const session = await getMultiPathwaySession(pool, sessionId);
@@ -671,6 +679,16 @@ export async function resolveAndPersistAll(
   pathways: MatchedPathway[],
   patientContext: PatientContext,
   providerId: string,
+  /**
+   * Created by the caller, never here. `startMultiPathwayResolution` stamps
+   * one clock for the whole run and hands it down, because it — not this
+   * function — is the outermost boundary: it creates the parent session on
+   * two paths, one of which (zero matches) returns before this is ever
+   * called. A clock created here could not reach the parent at all on that
+   * path, and on the other the parent would need the child's clock handed
+   * back out.
+   */
+  temporalContext: EvaluationTemporalContext,
 ): Promise<{
   resolvedPlans: ResolvedCarePlan[];
   contributingSessionIds: string[];
@@ -688,7 +706,7 @@ export async function resolveAndPersistAll(
     const engine = new TraversalEngine(
       makeTraversalAdapter(rctx, pool, m.pathway.id, patientContext),
       rctx.thresholds,
-      makeEvaluationTemporalContext(),
+      temporalContext,
       llmBundle?.evaluator,
       rctx.codeMap,
     );
@@ -743,6 +761,7 @@ export async function resolveAndPersistAll(
       redFlags: traversalResult.redFlags,
       totalNodesEvaluated: traversalResult.totalNodesEvaluated,
       traversalDurationMs: traversalResult.traversalDurationMs,
+      temporalContext,
     });
 
     if (llmBundle) await llmBundle.flushAudits(sessionId);

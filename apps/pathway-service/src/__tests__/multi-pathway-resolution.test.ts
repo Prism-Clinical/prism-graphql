@@ -32,6 +32,10 @@ jest.mock('../services/resolution/lattice-collapse', () => ({
 jest.mock('../resolvers/helpers/resolution-context', () => ({
   buildResolutionContext: jest.fn(),
   makeTraversalAdapter: jest.fn(() => ({})),
+  // Was missing: resolveAndPersistAll calls this, and a factory mock replaces
+  // the whole module, so its absence made the export undefined and killed two
+  // tests with "makeLlmGateEvaluator is not a function".
+  makeLlmGateEvaluator: jest.fn(() => null),
 }));
 
 jest.mock('../services/resolution/traversal-engine', () => ({
@@ -260,6 +264,63 @@ describe('startMultiPathwayResolution', () => {
     expect(persisted.contributingSessionIds).toEqual(['per-a', 'per-b']);
     expect(persisted.contributingPathwayIds).toEqual(['a', 'b']);
     expect(result.id).toBe('mp-99');
+  });
+
+  it('stamps one clock instance across the parent, every child, and every engine', async () => {
+    const a = fakeMatched('a', 'AF');
+    const b = fakeMatched('b', 'HFrEF');
+    (getMatchedPathways as jest.Mock).mockResolvedValue([a, b]);
+    (collapseLattice as jest.Mock).mockResolvedValue([a, b]);
+    (buildResolutionContext as jest.Mock).mockResolvedValue(fakeRctx());
+    (createSession as jest.Mock).mockResolvedValueOnce('per-a').mockResolvedValueOnce('per-b');
+    (createMultiPathwaySession as jest.Mock).mockResolvedValue('mp-99');
+    (getMultiPathwaySession as jest.Mock).mockResolvedValue(fakeStoredSession({ id: 'mp-99' }));
+    setupTraverseSeq([
+      makeResolutionStateWith([{ nodeId: 'med-a', nodeType: 'Medication', properties: { name: 'M', role: 'first_line' } }]),
+      makeResolutionStateWith([{ nodeId: 'med-b', nodeType: 'Medication', properties: { name: 'C', role: 'first_line' } }]),
+    ]);
+
+    await multiPathwayResolutionMutations.startMultiPathwayResolution({}, { patientId: 'pat-1' }, fakeContext());
+
+    const parent = (createMultiPathwaySession as jest.Mock).mock.calls[0][1];
+    const children = (createSession as jest.Mock).mock.calls.map((c) => c[1]);
+
+    expect(parent.temporalContext).toBeDefined();
+    expect(children.length).toBeGreaterThan(0);
+
+    // `toBe`, NOT `toEqual`. This test exists to prove ONE context object was
+    // created and passed down. Two separate makeEvaluationTemporalContext()
+    // calls in the same millisecond produce structurally equal objects, so
+    // toEqual passes against exactly the bug being guarded against — and it
+    // would pass non-deterministically, going green on a fast machine and red
+    // on a slow one. Reference equality is the only assertion that means
+    // "one clock".
+    for (const child of children) {
+      expect(child.temporalContext).toBe(parent.temporalContext);
+    }
+
+    // Persistence is only half of it: the engines that actually resolve the
+    // horizons must receive that same object as their 3rd constructor argument.
+    // A session could store the right clock while its traversal ran on another.
+    const engineCalls = (TraversalEngine as unknown as jest.Mock).mock.calls;
+    expect(engineCalls.length).toBe(children.length);
+    for (const call of engineCalls) {
+      expect(call[2]).toBe(parent.temporalContext);
+    }
+  });
+
+  it('stamps a clock on the zero-match parent session too', async () => {
+    (getMatchedPathways as jest.Mock).mockResolvedValue([]);
+    (createMultiPathwaySession as jest.Mock).mockResolvedValue('mp-1');
+    (getMultiPathwaySession as jest.Mock).mockResolvedValue(fakeStoredSession({ id: 'mp-1' }));
+
+    await multiPathwayResolutionMutations.startMultiPathwayResolution({}, { patientId: 'pat-1' }, fakeContext());
+
+    // The empty session still records WHEN "no pathways matched" was decided.
+    // Without a clock that verdict is not reproducible.
+    const parent = (createMultiPathwaySession as jest.Mock).mock.calls[0][1];
+    expect(parent.temporalContext).toMatchObject({ timezone: 'UTC' });
+    expect(parent.temporalContext.evaluationAsOf).toEqual(expect.any(String));
   });
 
   it('skips a pathway whose graph is empty (no per-pathway session row created)', async () => {
