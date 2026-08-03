@@ -23,10 +23,13 @@ for plan 9 (plan 6 touches both).
   Apollo Server 4 + Federation 2.10, PostgreSQL 15 + Apache AGE, Redis. Tests: Jest
   + ts-jest, `maxWorkers=1`, 30s timeout, files `*.test.ts` in `src/__tests__/`.
 - **Commands (run with `--prefix` / `-C`, never `cd &&`):**
-  - Typecheck: `cd apps/pathway-service` as its OWN step, then
-    `./node_modules/.bin/tsc -p tsconfig.json --noEmit`. There is no `typecheck`
-    npm script, and bare `npx tsc` resolves to a decoy package that prints
-    "This is not the tsc command you are looking for".
+  - Typecheck, from the repo root:
+    `./node_modules/.bin/tsc -p apps/pathway-service/tsconfig.json --noEmit`.
+    There is no `typecheck` npm script, there is **no `apps/pathway-service/node_modules`**
+    (this monorepo hoists binaries to the root), and bare `npx tsc` resolves to a
+    decoy package that prints "This is not the tsc command you are looking for".
+    (Corrected during plan 03 execution — the previous instruction to `cd
+    apps/pathway-service` first named a directory that does not exist.)
   - Tests: `npm test --prefix apps/pathway-service -- --runInBand <path>`.
     Jest's `testRegex` is `/__tests__/.*.test.ts`, so a test file placed
     anywhere else (e.g. beside its source) is silently **not run**.
@@ -36,7 +39,14 @@ for plan 9 (plan 6 touches both).
 - **Branch:** `feat/pathway-temporal-horizon` (already checked out in this worktree).
 - **v1 vs legacy:** `temporalPolicyVersion` selects **defaults only**, not the whole
   kernel. The current evaluator is the shadow baseline; existing sessions are
-  non-retraversable (§5). No production sessions exist.
+  non-retraversable (§5).
+- **The "no production sessions" premise is FALSE** (verified on the live host, and
+  corrected here 2026-08-03). There are **41 `pathway_resolution_sessions` + 14
+  multi-pathway sessions** across 5 patients, all ACTIVE, created 2026-05-18…07-13.
+  All carry `temporal_context NULL`, so every one raises `SESSION_NOT_RETRAVERSABLE`
+  once plan 02 is **deployed** (nothing breaks while it is merely merged — the column
+  is additive and the live pm2 processes never select it). Backfill-vs-accept is still
+  undecided and is a deployment decision, not a plan decision.
 - **Deployment vs development order:** these plans are *development* order. Behavior
   is activated later via shadow evaluation → explicit `v1` flip (§Rollout,
   deployment order). Plans 1–8 must not change live routing until the `v1` flip.
@@ -53,7 +63,7 @@ Each layer is one plan. New pure code lives under
 |---|---|---|
 | 01 | Fact model + `selectFacts` kernel (§2,§3,§4) | `temporal/fact-model.ts`, `temporal/interval.ts`, `temporal/overlap.ts`, `temporal/state-mapping.ts`, `temporal/select-facts.ts` |
 | 02 | Pinned clock (§1) | `temporal/evaluation-context.ts`; edits to `traversal-engine.ts`, `retraversal-engine.ts`, `gate-evaluator.ts`, session persistence |
-| 03 | Policy registry + cascade (§5,§7-load) | `temporal/policy-registry.ts`, `temporal/cascade.ts`; migration `0NN_pathway_temporal_defaults.sql`; edit `resolvers/helpers/resolution-context.ts` |
+| 03 | Policy registry + cascade (§5,§7-load) | `temporal/policy-registry.ts`, `temporal/cascade.ts`; migration `064_add_temporal_defaults_to_pathway_graph_index.sql`; edits to `resolvers/helpers/resolution-context.ts`, `temporal/evaluation-context.ts` (2 error codes), plus guard calls in `resolvers/mutations/resolution.ts` and `multi-pathway-resolution.ts` |
 | 04 | Evaluator + reachability via kernel (§4,§8-kernel) | edits to `gate-evaluator.ts`, `reachability.ts` |
 | 05 | Input contract + trust modes + assembler (§8) | `temporal/context-assembler.ts`, `temporal/trust-mode.ts`; edits to `schema.graphql`, `resolvers/mutations/resolution.ts`, `multi-pathway-resolution.ts` |
 | 06 | Canonicalization + pathway-default persistence (§6,§7) | `services/import/canonicalize.ts`; edits to `import/validator.ts`, `import/types.ts`, `import/graph-builder.ts`, `import/import-orchestrator.ts`, `schema.graphql`; admin `src/lib/pathway-json/canonicalize.ts` + shared fixtures |
@@ -154,7 +164,9 @@ function selectFacts(condition: FactSelectionCondition, store: FactStore, policy
 Consumes: nothing (leaf module).
 
 ### Plan 02 — Produces `EvaluationTemporalContext` (§1) + `resolveHorizon(tier, ctx)`; threads it to `selectFacts` callers. Consumes Plan 01.
-### Plan 03 — Produces `TEMPORAL_POLICIES` registry, `resolveEffectivePolicy(field, version, pathwayDefaults, condition)`; `temporal_defaults` column + loader. Consumes 01–02.
+### Plan 03 — Produces `TEMPORAL_POLICIES` + `getTemporalPolicy(version)` / `assertKnownPolicyVersion(version)` (unknown version = hard error); `TemporalStatus`, `FieldPolicy`, `fieldHasClinicalState(field)`, `systemDefaultFor(field, version)`; `PathwayTemporalDefaults` + `parsePathwayTemporalDefaults(raw)` + `parseHorizonValue(raw, where)`; `PolicyLevel`/`PolicyTier`/`ConditionTemporalOverride`; `resolveEffectivePolicy(field, version, pathwayDefaults, condition?)` returning an **unresolved tier**; `toEffectivePolicy(tier, ctx)` producing Plan 01's `EffectivePolicy`; `SweepableCondition`/`EncounterAnchorRequirement` + `collectEncounterAnchorRequirements(...)`; `assertEncounterAnchor(rctx, temporalCtx)` from `resolvers/helpers/resolution-context`; `temporal_defaults` column (migration 064) + `ResolutionContext.temporalDefaults`. Adds `UNKNOWN_POLICY_VERSION` and `INVALID_TEMPORAL_DEFAULTS` to `TemporalContextErrorCode`. Consumes 01–02.
+
+**Plan 03 decisions (executed 2026-08-03):** `vitals` joins the registry — `legacy-v0` LIFETIME, `v1` ENCOUNTER (§5's table omitted it while `GateField` includes it; §10 fixes vitals to Encounter). The anchor sweep runs at **session creation only** — both creating mutations, never the four retraversal sites, which reuse a clock from a session that already passed. `resolveAndPersistAll` is split into two passes so a rejection leaves no child sessions or audit rows.
 ### Plan 04 — Produces the validated `GateCondition → FactSelectionCondition` adapter (rejecting unknown operators/fields); rewrites `evaluateGate` scalar/membership/aggregate branches to call `selectFacts` and apply the numeric `<`/`>` to `selected`, mapping `INDETERMINATE` to fail-closed (gate not satisfied) while recording it for evidence; `reachability` calls the same kernel. Consumes 01–03.
 ### Plan 05 — Produces `ResolutionMode` (LIVE/SYNTHETIC/REPLAY), `assembleContext(mode, ...) → FactStore`, extended `CodeInput`; deterministic `factId` assignment (persisted, never a lossy hash); constructs the always-current interval for undated vitals (`OPEN(evaluationAsOf)`). Consumes 01–04.
 ### Plan 06 — Produces `canonicalize(json) → { json, warnings }`, `conditionId` on `GateCondition`, `temporal_defaults` round-trip. Consumes 01,03.

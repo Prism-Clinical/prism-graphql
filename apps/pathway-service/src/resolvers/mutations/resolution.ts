@@ -25,7 +25,9 @@ import {
   makeTraversalAdapter,
   makeRetraversalAdapter,
   makeLlmGateEvaluator,
+  assertEncounterAnchor,
 } from '../helpers/resolution-context';
+import { assertKnownPolicyVersion } from '../../services/resolution/temporal/policy-registry';
 import { applyDdiToResolutionState } from '../../services/medications/ddi-pass-single-pathway';
 import { normalizePatientAttributes } from '../../services/resolution/patient-attributes';
 import { buildEffectivePatientContext, dependencyContextKey } from '../../services/resolution/effective-context';
@@ -120,6 +122,16 @@ export const resolutionMutations = {
     // once, here — every gate evaluation, retraversal and replay of this
     // session uses this instant.
     const temporalContext = makeEvaluationTemporalContext();
+
+    // The version gates everything downstream, so it is checked at the
+    // boundary — not left to the sweep, which never runs on a pathway with
+    // nothing to sweep.
+    assertKnownPolicyVersion(temporalContext.temporalPolicyVersion);
+
+    // Refuse up front rather than throwing partway through: an ENCOUNTER
+    // horizon with no anchor is unresolvable, and by the time the first
+    // such gate is reached the traversal has already called LLM gates.
+    assertEncounterAnchor(rctx, temporalContext);
 
     const llmBundle = makeLlmGateEvaluator(pool, args.pathwayId);
     const traversalEngine = new TraversalEngine(

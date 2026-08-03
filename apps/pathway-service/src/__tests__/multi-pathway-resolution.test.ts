@@ -29,6 +29,16 @@ jest.mock('../services/resolution/lattice-collapse', () => ({
   collapseLattice: jest.fn(),
 }));
 
+// Spreads the real module so only the clock factory is controllable — the
+// version guard, resolveHorizon and TemporalContextError must stay genuine.
+jest.mock('../services/resolution/temporal/evaluation-context', () => {
+  const actual = jest.requireActual('../services/resolution/temporal/evaluation-context');
+  return {
+    ...actual,
+    makeEvaluationTemporalContext: jest.fn(actual.makeEvaluationTemporalContext),
+  };
+});
+
 jest.mock('../resolvers/helpers/resolution-context', () => ({
   buildResolutionContext: jest.fn(),
   makeTraversalAdapter: jest.fn(() => ({})),
@@ -36,6 +46,8 @@ jest.mock('../resolvers/helpers/resolution-context', () => ({
   // the whole module, so its absence made the export undefined and killed two
   // tests with "makeLlmGateEvaluator is not a function".
   makeLlmGateEvaluator: jest.fn(() => null),
+  // Same reason: resolveAndPersistAll's preflight calls this on every run.
+  assertEncounterAnchor: jest.fn(),
 }));
 
 jest.mock('../services/resolution/traversal-engine', () => ({
@@ -74,8 +86,13 @@ import {
   createSession,
 } from '../services/resolution/session-store';
 import { collapseLattice } from '../services/resolution/lattice-collapse';
-import { buildResolutionContext } from '../resolvers/helpers/resolution-context';
+import {
+  buildResolutionContext,
+  assertEncounterAnchor,
+  makeLlmGateEvaluator,
+} from '../resolvers/helpers/resolution-context';
 import { TraversalEngine } from '../services/resolution/traversal-engine';
+import { makeEvaluationTemporalContext } from '../services/resolution/temporal/evaluation-context';
 import {
   createMultiPathwaySession,
   getMultiPathwaySession,
@@ -672,5 +689,92 @@ describe('formatMergedForGraphQL — conflict formatting', () => {
     };
     const out = formatMergedForGraphQL(internal);
     expect(out.medications.map((m) => m.state)).toEqual(['AUTO_INCLUDED', 'PROVIDER_CONFIRMED', 'PROVIDER_OVERRIDE']);
+  });
+});
+
+// ── Temporal preflight (plan 03) ────────────────────────────────────
+
+describe('resolveAndPersistAll — validation is a preflight', () => {
+  it('writes nothing when a LATER pathway fails validation', async () => {
+    // Two pathways, both with non-empty graphs. The FIRST passes validation,
+    // the SECOND throws. If validation still ran inside the traversal loop,
+    // pathway one would already have been traversed and persisted by the time
+    // pathway two was rejected — exactly the orphaned-session state the
+    // two-pass split exists to prevent. This test fails if the passes are
+    // merged back together.
+    const a = fakeMatched('a', 'AF');
+    const b = fakeMatched('b', 'HFrEF');
+    const flushAudits = jest.fn();
+
+    (getMatchedPathways as jest.Mock).mockResolvedValue([a, b]);
+    (collapseLattice as jest.Mock).mockResolvedValue([a, b]);
+    (buildResolutionContext as jest.Mock).mockResolvedValue(fakeRctx());
+    (makeLlmGateEvaluator as jest.Mock).mockReturnValue({
+      evaluator: jest.fn(),
+      flushAudits,
+    });
+    (assertEncounterAnchor as jest.Mock)
+      .mockImplementationOnce(() => undefined)
+      .mockImplementationOnce(() => {
+        throw new Error('MISSING_ENCOUNTER_ANCHOR');
+      });
+
+    await expect(
+      multiPathwayResolutionMutations.startMultiPathwayResolution(
+        {},
+        { patientId: 'pat-1' },
+        fakeContext(),
+      ),
+    ).rejects.toThrow('MISSING_ENCOUNTER_ANCHOR');
+
+    // The three things that must NOT have happened.
+    expect(TraversalEngine).not.toHaveBeenCalled();
+    expect(createSession).not.toHaveBeenCalled();
+    expect(flushAudits).not.toHaveBeenCalled();
+  });
+});
+
+describe('startMultiPathwayResolution — policy version guard', () => {
+  // makeEvaluationTemporalContext takes no arguments today and always yields
+  // legacy-v0, so an unknown version is not reachable through the resolver
+  // until plan 05 wires the input contract. Injected here so the boundary
+  // guard is covered before that door opens.
+  const badClock = {
+    evaluationAsOf: '2026-08-03T12:00:00.000Z',
+    timezone: 'UTC' as const,
+    temporalPolicyVersion: 'v99',
+  };
+
+  it('rejects an unknown version before creating a zero-match parent session', async () => {
+    (makeEvaluationTemporalContext as jest.Mock).mockReturnValueOnce(badClock);
+    (getMatchedPathways as jest.Mock).mockResolvedValue([]); // zero-match exit
+
+    await expect(
+      multiPathwayResolutionMutations.startMultiPathwayResolution(
+        {},
+        { patientId: 'pat-1' },
+        fakeContext(),
+      ),
+    ).rejects.toThrow(/unknown temporalPolicyVersion/);
+
+    expect(createMultiPathwaySession).not.toHaveBeenCalled();
+  });
+
+  it('rejects an unknown version when every matched pathway has an empty graph', async () => {
+    const a = fakeMatched('a', 'AF');
+    (makeEvaluationTemporalContext as jest.Mock).mockReturnValueOnce(badClock);
+    (getMatchedPathways as jest.Mock).mockResolvedValue([a]);
+    (collapseLattice as jest.Mock).mockResolvedValue([a]);
+    (buildResolutionContext as jest.Mock).mockResolvedValue(fakeRctx(0)); // sweeps nothing
+
+    await expect(
+      multiPathwayResolutionMutations.startMultiPathwayResolution(
+        {},
+        { patientId: 'pat-1' },
+        fakeContext(),
+      ),
+    ).rejects.toThrow(/unknown temporalPolicyVersion/);
+
+    expect(createMultiPathwaySession).not.toHaveBeenCalled();
   });
 });

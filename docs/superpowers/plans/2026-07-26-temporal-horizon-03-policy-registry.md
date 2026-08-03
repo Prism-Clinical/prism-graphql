@@ -23,7 +23,8 @@
   ```
   Jest's `testRegex` is `/__tests__/.*.test.ts`, so a test file placed anywhere else (e.g. beside its source) is silently **not run**.
 - **`tsconfig` is NOT full strict** — only `noImplicitAny` + `noImplicitReturns`, and it **excludes `src/__tests__`**. A required TypeScript parameter therefore enforces nothing against a test caller and nothing at runtime. Where an invariant matters, it needs a runtime throw *and* a test that fails without it (this is the root cause behind four separate review findings across Plans 01–02).
-- **Suite baseline is 13 pre-existing failures** in `data-completeness-scorer`, `patient-match-scorer` and `ddi-multi-pathway`. The full suite has **never** been green. Never expect a clean pass; assert the count did not grow.
+- **Suite baseline was 13 pre-existing failures** in `data-completeness-scorer`, `patient-match-scorer` and `ddi-multi-pathway`. The full suite has **never** been green. Never expect a clean pass; assert the count did not grow.
+  - **Updated after execution (2026-08-03): the baseline is now 9 failures across 2 suites** — `data-completeness-scorer` and `patient-match-scorer`. Task 6's mock repair fixed `ddi-multi-pathway` outright: its `jest.mock` factory omitted `makeLlmGateEvaluator`, so the export was `undefined` at call time. That is the *same* root cause Plan 02 fixed in the sibling `multi-pathway-resolution.test.ts` — the second file was simply never checked. Suite total: **798 passed / 9 failed**.
 - **No live behavior change.** `legacy-v0` is the default version and defines no ENCOUNTER horizon, and no deployed pathway condition carries a `horizon` key (design §"Current Deployed State"). Plans 1–8 must not change live routing until the explicit `v1` flip.
 - **Commit prefixes:** `feat:` / `fix:` / `test:` / `refactor:` / `docs:`. No `@anthropic.com`/`@claude.com` domains, no "Generated with" lines. End every commit message with:
   `Co-Authored-By: Claude Opus 5 (1M context) <noreply@example.com>`
@@ -1780,7 +1781,7 @@ export function assertEncounterAnchor(
 - [ ] **Step 4: Run the test to verify it passes**
 
 Run: `npm test --prefix apps/pathway-service -- --runInBand src/__tests__/temporal/encounter-anchor-guard.test.ts`
-Expected: PASS, 14 tests.
+Expected: PASS, 12 tests.
 
 - [ ] **Step 5: Wire the single-pathway site**
 

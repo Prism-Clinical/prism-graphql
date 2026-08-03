@@ -22,6 +22,12 @@ jest.mock('../services/resolution/lattice-collapse', () => ({
 jest.mock('../resolvers/helpers/resolution-context', () => ({
   buildResolutionContext: jest.fn(),
   makeTraversalAdapter: jest.fn(() => ({})),
+  // A factory mock replaces the whole module, so an unlisted export is
+  // undefined at call time. resolveAndPersistAll's preflight calls this on
+  // every run; without it this suite would fail with a new, earlier exception
+  // that masks its own documented baseline failures.
+  makeLlmGateEvaluator: jest.fn(() => null),
+  assertEncounterAnchor: jest.fn(),
 }));
 
 jest.mock('../services/resolution/traversal-engine', () => ({

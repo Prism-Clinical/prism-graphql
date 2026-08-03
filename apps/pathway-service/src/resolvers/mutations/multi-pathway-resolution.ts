@@ -66,7 +66,10 @@ import {
   buildResolutionContext,
   makeTraversalAdapter,
   makeLlmGateEvaluator,
+  assertEncounterAnchor,
+  ResolutionContext,
 } from '../helpers/resolution-context';
+import { assertKnownPolicyVersion } from '../../services/resolution/temporal/policy-registry';
 import {
   createMultiPathwaySession,
   deletePreviewSession,
@@ -159,6 +162,11 @@ export const multiPathwayResolutionMutations = {
     // every contributing session resolve horizons against the same instant.
     // Created here, before the zero-match branch, so BOTH exits stamp it.
     const temporalContext = makeEvaluationTemporalContext();
+
+    // Before the zero-match branch: that path creates a parent session and
+    // returns without ever entering resolveAndPersistAll, so a version
+    // validated only during the sweep would never be checked at all.
+    assertKnownPolicyVersion(temporalContext.temporalPolicyVersion);
 
     const matched = await getMatchedPathways(pool, args.patientId, matcherOptions);
     if (matched.length === 0) {
@@ -698,10 +706,19 @@ export async function resolveAndPersistAll(
   const contributingSessionIds: string[] = [];
   const contributingPathwayIds: string[] = [];
 
+  // Load every pathway's context and validate the whole set BEFORE any
+  // traversal. Nothing here writes: a rejection must leave no child sessions
+  // and no audit rows behind. Validating inside the traversal loop would mean
+  // pathway A is already persisted by the time pathway B is rejected.
+  const loaded: Array<{ m: MatchedPathway; rctx: ResolutionContext }> = [];
   for (const m of pathways) {
     const rctx = await buildResolutionContext(pool, m.pathway.id);
     if (rctx.graphContext.allNodes.length === 0) continue;
+    assertEncounterAnchor(rctx, temporalContext);
+    loaded.push({ m, rctx });
+  }
 
+  for (const { m, rctx } of loaded) {
     const llmBundle = makeLlmGateEvaluator(pool, m.pathway.id);
     const engine = new TraversalEngine(
       makeTraversalAdapter(rctx, pool, m.pathway.id, patientContext),
