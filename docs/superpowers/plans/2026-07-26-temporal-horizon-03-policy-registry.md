@@ -82,8 +82,12 @@ A second instance of the same class, found while restricting the sweep to `Gate`
 horizon governs. It is not a gate condition and is out of scope here, but it is the
 same feature being answered two different ways in two places.
 
-**Decision needed from the design owner** before `v1` is activated. Until then the gap
-is documented, not silently inherited.
+**Decision (2026-08-03, design owner): parked until Plan 04.** No §10 revision is drafted
+now. Plan 04 owns rewiring `evaluateGate` onto the kernel and is where the
+attribute-condition path either joins it or is explicitly declared out of the feature's
+guarantee. This remains a **release blocker for the `v1` flip** — `v1` must not be
+activated while a coded `labs` gate honors QUARTER and an equivalent `lab.a1c > 9`
+attribute gate does not.
 
 ---
 
