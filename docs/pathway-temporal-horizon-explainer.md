@@ -76,6 +76,22 @@ Stages 4 and 5 were deliberately reordered during planning: building the engine 
 
 **Nothing is switched on for users yet.** Every stage so far adds capability without changing what any existing pathway decides. The visible change arrives when the authoring controls ship and we activate the new defaults — both deliberate, reviewable steps.
 
+## How we know this is right
+
+Every stage has been reviewed before it was built and again after — roughly a dozen review rounds and about sixty findings so far. A few examples of what that caught, because they say more about the process than a summary would.
+
+**We were doing work before checking whether we should.** When a patient matches several pathways at once, the system handles them one after another. Our safety check ran *inside* that sequence — so if the third pathway failed, the first two had already been saved, and the run then stopped. That leaves orphaned records: half a decision, with nothing tying it together. It now checks every pathway first and writes nothing unless all of them pass.
+
+**Silence was being treated as agreement.** Several findings were the same shape: an author writes a setting slightly wrong — a misspelled name, an empty section — and the system quietly ignored it and used the platform default instead. The author sees their setting saved and believes it is in force; it never is. That is the worst kind of failure, because nobody finds out. Anything unrecognised is now rejected outright, naming what is wrong and where.
+
+**Our safety net had holes in it — three separate times.** Reviews kept finding tests that *looked* like they checked something but would have passed whether the feature worked or not: an example built the wrong way, so it never exercised the case it claimed to; a stand-in used during testing set to always succeed, so it could not detect the failure it existed to catch. The code was largely right — the proof that it was right was not. Each was rewritten so it genuinely fails when the feature breaks.
+
+**We were also being too cautious in one place.** Our check was examining clinical questions attached to parts of a pathway the system never actually asks — leftovers from earlier edits. It would have blocked an encounter over a question that has no effect on anything. We narrowed it to exactly what gets used.
+
+**Two reviews were wrong, and we showed why.** Review here is a dialogue, not dictation. One proposed a fix that would have worsened the over-blocking above while leaving the real gap untouched; we addressed the underlying issue differently. Another reported our test baseline was wrong; re-running the measurement showed the reviewer had measured a copy of our own changes rather than the original.
+
+**And one review disagreement uncovered a real gap in the plan.** Pathways can express a clinical question in two different styles, and only one of them would have honoured the new time windows — meaning the same question could behave differently depending on how it was written. That is now a documented prerequisite before the new defaults are switched on. It surfaced from an argument, not a checklist.
+
 ## What we still owe
 
 Two open items are tracked and neither is a surprise:
