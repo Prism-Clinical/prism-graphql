@@ -29,6 +29,10 @@ import { PatientMatchQualityScorer } from '../../services/confidence/scorers/pat
 import { RiskMagnitudeScorer } from '../../services/confidence/scorers/risk-magnitude';
 import { hydrateSignalDefinition } from '../Query';
 import { executeCypher } from '../../services/age-client';
+import {
+  PathwayTemporalDefaults,
+  parsePathwayTemporalDefaults,
+} from '../../services/resolution/temporal/cascade';
 
 // ─── Graph Context Builder ──────────────────────────────────────────
 
@@ -223,15 +227,20 @@ export interface ResolutionContext {
   thresholds: { autoResolveThreshold: number; suggestThreshold: number };
   confidenceEngine: ConfidenceEngine;
   codeMap: AttributeCodeMap;
+  /**
+   * The PATHWAY level of the temporal cascade (§7.5), read from the
+   * relational index. `{}` when the pathway states no opinion.
+   */
+  temporalDefaults: PathwayTemporalDefaults;
 }
 
 export async function buildResolutionContext(
   pool: import('pg').Pool,
   pathwayId: string,
 ): Promise<ResolutionContext> {
-  // Fetch AGE node ID
+  // Fetch AGE node ID and the pathway-level temporal cascade defaults
   const pathwayRow = await pool.query(
-    'SELECT age_node_id FROM pathway_graph_index WHERE id = $1',
+    'SELECT age_node_id, temporal_defaults FROM pathway_graph_index WHERE id = $1',
     [pathwayId],
   );
   const ageNodeId = pathwayRow.rows[0]?.age_node_id;
@@ -240,6 +249,9 @@ export async function buildResolutionContext(
       extensions: { code: 'INTERNAL_SERVER_ERROR' },
     });
   }
+  // Parsed before any traversal work starts: a corrupt policy must stop the
+  // session, not resolve gates against a window the author never chose.
+  const temporalDefaults = parsePathwayTemporalDefaults(pathwayRow.rows[0]?.temporal_defaults);
 
   // These four operations are independent — run in parallel
   const [{ nodes, edges }, signalResult, thresholds, codeMap] = await Promise.all([
@@ -257,7 +269,15 @@ export async function buildResolutionContext(
 
   const confidenceEngine = new ConfidenceEngine(sharedScorerRegistry, sharedCascadeResolver);
 
-  return { graphContext, edges, signals, thresholds, confidenceEngine, codeMap };
+  return {
+    graphContext,
+    edges,
+    signals,
+    thresholds,
+    confidenceEngine,
+    codeMap,
+    temporalDefaults,
+  };
 }
 
 export function makeTraversalAdapter(
