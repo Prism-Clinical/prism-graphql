@@ -2,979 +2,545 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Turn the resolver's `PatientContext` input into a `NormalizedFact[]` fact store under an explicit trust mode, so the gate evaluator can be rewired onto `selectFacts` without changing what today's gates decide.
+**Goal:** Turn resolution input into a `NormalizedFact[]` fact store under an explicit, enforced trust mode, so the gate evaluator can be rewired onto `selectFacts` without changing what today's gates decide.
 
-**Architecture:** Two pure modules. `trust-mode.ts` defines `ResolutionMode` (LIVE / SYNTHETIC / REPLAY) and enforces which caller-supplied fields each mode may carry — LIVE derives validity, state and clock server-side and *rejects* them on input. `context-assembler.ts` maps each `PatientContext` array into Plan 01's discriminated `NormalizedFact` union, assigns a deterministic `factId`, and models undated facts as `OPEN(evaluationAsOf)`. Nothing here is on the evaluation path yet; Plan 04 wires it in.
+**Architecture:** `trust-mode.ts` defines `ResolutionInput` — a discriminated union where **the payload lives inside the variant**, so a LIVE resolution structurally cannot carry caller-supplied clinical facts. `synthetic-values.ts` parses the SYNTHETIC-only fields into their closed unions at runtime. `context-assembler.ts` maps a SYNTHETIC payload into Plan 01's `NormalizedFact` union, assigns per-kind fact IDs, and models undated facts as `OPEN(evaluationAsOf)`. Both mutations gain an explicit mode and temporal anchors. Nothing reaches the evaluator until Plan 04.
 
-**Tech Stack:** TypeScript 5, Apollo Server 4, Jest + ts-jest.
+**Tech Stack:** TypeScript 5, Apollo Server 4 + Federation 2.10, Jest + ts-jest.
+
+## Revision history
+
+- **v1 (2026-08-03, `3a42a1b`)** — first draft.
+- **v2 (this document)** — rewritten after review. Five P1/P2 findings, all confirmed and accepted; three smaller corrections accepted. The trust boundary was decorative (LIVE accepted caller facts), the mutations exposed synthetic fields with no mode and no `encounterStart` — which made every `v1` vitals pathway unstartable against Plan 03's guard — several accepted fields were ignored or unvalidated, `factId` renumbered across kinds, and the type expansion covered two inline shapes out of many. Details under each task.
 
 ## Why this plan runs BEFORE plan 04
 
 The suite overview orders these 04 → 05. **That order is wrong and this plan supersedes it** (decision 2026-08-03, verified by probe).
 
-Plan 04 rewires `evaluateGate` onto `selectFacts`. `selectFacts` maps a scalar operator over an uncertain fact to `INDETERMINATE`, which Plan 04 maps to fail-closed. Probing `overlap()` directly:
+Plan 04 rewires `evaluateGate` onto `selectFacts`, which maps an uncertain scalar to `INDETERMINATE`, and thence to fail-closed. Probing `overlap()` directly:
 
 ```
-undated fact, modeled naively  + LIFETIME = UNKNOWN   ⇒ scalar INDETERMINATE ⇒ gate fails
-undated fact, modeled naively  + QUARTER  = UNKNOWN
-undated fact, as OPEN(asOf)    + LIFETIME = MATCH     ⇒ preserves today
-undated fact, as OPEN(asOf)    + QUARTER  = MATCH
+undated fact, end: UNKNOWN     + LIFETIME = UNKNOWN   ⇒ scalar INDETERMINATE ⇒ gate fails
+undated fact, end: OPEN(asOf)  + LIFETIME = MATCH     ⇒ preserves today
 ```
 
-`PatientContext.vitalSigns` is a `Record<string, unknown>` bag carrying **no dates at all**, and `LabResult.date` is optional. So without the `OPEN(evaluationAsOf)` modeling that this plan owns, Plan 04 would make every vitals `greater_than`/`less_than` gate — and every undated lab gate — stop being satisfied, under `legacy-v0`, which is supposed to reproduce today. That violates the Global Constraint that plans 1–8 must not change live routing before the `v1` flip.
-
-Plan 05's listed "Consumes 01–04" was nominal: the assembler needs the fact model (01) and the clock (02), and nothing from the evaluator.
+`PatientContext.vitalSigns` is a `Record<string, unknown>` carrying **no dates anywhere**, and `LabResult.date` is optional. Without the `OPEN(evaluationAsOf)` modeling this plan owns, Plan 04 would stop every vitals and undated-lab scalar gate from being satisfied under `legacy-v0`, which exists to reproduce today. Plan 05's listed "Consumes 01–04" was nominal: the assembler needs the fact model (01) and the clock (02), nothing from the evaluator.
 
 ## Global Constraints
 
-- **Branch:** `feat/temporal-horizon-context-assembler`, worktree `/home/claude/workspace/features/feat-temporal-horizon-context-assembler/prism-graphql`, branched from `origin/main` at `8abfda4` (PR #51 — plan 03 — merged).
-- **All commands run from the worktree root.** Never chain `cd` with `&&`.
-- **Typecheck:** `./node_modules/.bin/tsc -p apps/pathway-service/tsconfig.json --noEmit`. No `typecheck` script, no `apps/pathway-service/node_modules`, and bare `npx tsc` hits a decoy package.
-- **Tests:** `npm test --prefix apps/pathway-service -- --runInBand <path>`. `testRegex` is `/__tests__/.*.test.ts` — a file placed anywhere else is silently not run.
-- **`tsconfig` is NOT full strict** (`noImplicitAny` + `noImplicitReturns` only) and **excludes `src/__tests__`**. A required parameter enforces nothing against a test caller and nothing at runtime; invariants need a runtime throw *and* a test that fails without it.
-- **Suite baseline: 9 failures across 2 suites** (`data-completeness-scorer`, `patient-match-scorer`), measured on `main` at `8abfda4` — **805 passed / 9 failed**. Measure the baseline on `main`, never on a copy of this branch.
-- **No live behavior change.** This plan adds modules and additive schema fields; nothing it produces reaches the evaluator until Plan 04.
-- **Commit prefixes** `feat:`/`fix:`/`test:`/`refactor:`/`docs:`; no `@anthropic.com`/`@claude.com`; end every message with
+- **Branch:** `feat/temporal-horizon-context-assembler`, worktree `/home/claude/workspace/features/feat-temporal-horizon-context-assembler/prism-graphql`, from `origin/main` at `8abfda4`.
+- **All commands from the worktree root.** Never chain `cd` with `&&`.
+- **Typecheck:** `./node_modules/.bin/tsc -p apps/pathway-service/tsconfig.json --noEmit`. No `typecheck` script, no per-app `node_modules`, bare `npx tsc` hits a decoy.
+- **Tests:** `npm test --prefix apps/pathway-service -- --runInBand <path>`. `testRegex` is `/__tests__/.*.test.ts`.
+- **`tsconfig` is NOT full strict** and **excludes `src/__tests__`**. A type enforces nothing at runtime or against a test caller; invariants need a runtime throw plus a test that fails without it.
+- **Baseline: 9 failures / 2 suites** (`data-completeness-scorer`, `patient-match-scorer`) — **805 passed / 9 failed**, measured on `main` @ `8abfda4`. Measure on `main`, never on a copy of this branch.
+- **No live behavior change.** Additive schema, new modules, and a mode that defaults to today's behavior.
+- **Commit prefixes** `feat:`/`fix:`/`test:`/`refactor:`/`docs:`; no `@anthropic.com`/`@claude.com`; end each message with
   `Co-Authored-By: Claude Opus 5 (1M context) <noreply@example.com>`
 
 ## Decisions this plan locks
 
-1. **Undated ⇒ `OPEN(evaluationAsOf)`, not `UNKNOWN` end.** An undated entry in the resolver's input means "asserted current as of now" — that is what the encounter simulator is expressing when it composes a vitals bag. Modeling it as an unknown end would silently fail-close every scalar gate over it. Recorded on the fact as `stateBasis`/provenance so evidence can show the assumption.
-2. **`vitals` are always undated by construction.** The bag has no date field anywhere in the input schema, so every vital gets `OPEN(evaluationAsOf)`. This is the single biggest behavior-preservation dependency in the suite.
-3. **`factId` is assigned, never a lossy hash of content.** Plan 01's review found a content hash collided for same-code/same-date facts and broke `count_in_window`. The assembler assigns `<kind>:<ordinal>` within a run, deterministic for a given input ordering, and carries any source identifier in `provenance.sourceId`.
-4. **LIVE rejects caller-supplied validity/state/clock; SYNTHETIC accepts them.** v1 is effectively SYNTHETIC-only (all `snapshot_*` tables are empty), but LIVE is defined now so it is safe by construction when Plan 07 wires the snapshot mapper.
-5. **Extended `CodeInput` fields are additive and SYNTHETIC-only.** Adding them cannot change any existing query, and supplying them under LIVE is an error rather than a silent ignore.
+1. **The payload lives inside the mode.** `ResolutionInput` is a discriminated union: SYNTHETIC carries a caller `PatientContext`; LIVE carries a `snapshotId` and server-loaded records; REPLAY carries a `sessionId` and persisted facts. A LIVE caller cannot supply clinical facts because there is nowhere in the type to put them. *(Review P1-1. The v1 draft took `PatientContext` alongside the mode, so LIVE could inject an assumed-active diagnosis and every fact was stamped `SYNTHETIC` regardless.)*
+2. **LIVE and REPLAY are defined, not implemented, here.** Both throw `NOT_IMPLEMENTED`. LIVE needs Plan 07's snapshot mapper; REPLAY needs fact persistence (see decision 5). Defining them now is what makes the union enforceable; pretending to implement them would be worse than the gap.
+3. **Undated ⇒ `OPEN(evaluationAsOf)` — except when the fact is inactive.** An undated *active* fact is asserted current at the clock. An undated fact whose supplied `clinicalState` is `INACTIVE` gets `{ kind: 'UNKNOWN' }`: asserting an inactive condition is current at the evaluation instant is simply false, and would let it match a narrow horizon. *(Review P1-3.)*
+4. **Every SYNTHETIC value is parsed, never cast.** `clinicalState` and `recordValidity` are closed unions; the v1 draft cast arbitrary strings into them. They now go through runtime parsers backed by GraphQL enums, and `endDate` — declared but silently ignored in the draft — becomes a validated `KNOWN` end. *(Review P1-3.)*
+5. **`factId` is per-kind and stable under input growth; persistence is deferred with a stated reason.** Ordinals are scoped per kind, so adding a condition no longer renumbers every medication, allergy and lab. Persisting normalized facts is genuinely required for REPLAY and is deferred to Plan 05b **because retraversal does not need it**: retraversal re-assembles from the stored `initialPatientContext` plus additions, and identical input yields identical IDs. If a reviewer disagrees that determinism-from-stored-input is sufficient for v1, that is the thing to push back on. *(Review P1-4, accepted in part with a stated boundary.)*
+6. **Distinct occurrences must survive the merge.** `buildEffectivePatientContext` deduplicates on `code|system` alone (`effective-context.ts:18`), so a recurrence on a different date is discarded before assembly — `count_in_window` is broken upstream of everything this plan does. The merge key gains date and source id. *(Review P1-4. Pre-existing defect, but this plan's promises depend on it.)*
+7. **Trust/input errors get their own code.** `INVALID_RESOLUTION_INPUT`, not `INVALID_TEMPORAL_DEFAULTS` — the latter means a pathway's stored policy is corrupt, which is a different operator response. *(Review, smaller correction.)*
+8. **The SYNTHETIC authorization check is defence-in-depth, NOT a security boundary.** `userRole` is read from an unverified `x-user-role` header defaulting to `PROVIDER` (`index.ts:44`), so any caller can claim any role. The check belongs here and must be written, but the plan must not imply it secures anything until real authentication exists. Record it as a known limitation.
 
 ## Deliberately out of scope
 
-- **Wiring the assembler into `evaluateGate`/reachability** — Plan 04. This plan ships pure modules plus schema; it is a leaf, exactly as Plan 01 was.
-- **The snapshot mapper** (`snapshot-context.ts` → `NormalizedFact[]`) — Plan 07.
-- **Consumer projections** (`actionableMedications`, scorer projections) — design §8 assigns them here, but they only matter once the widened store feeds consumers, which is Plan 04's wiring. Deferred with the wiring so this plan stays a leaf.
+- **Wiring the assembler into `evaluateGate`/reachability** — Plan 04.
+- **The snapshot mapper (LIVE)** — Plan 07.
+- **Normalized-fact persistence and REPLAY loading** — Plan 05b, per decision 5.
+- **Consumer projections** (`actionableMedications`, scorer projections) — they matter once the widened store feeds consumers, which is Plan 04's wiring.
 
 ---
 
-### Task 1: Trust modes
+### Task 1: `ResolutionInput` — the payload inside the mode
 
 **Files:**
 - Create: `apps/pathway-service/src/services/resolution/temporal/trust-mode.ts`
+- Modify: `apps/pathway-service/src/services/resolution/temporal/evaluation-context.ts` (add `INVALID_RESOLUTION_INPUT` to `TemporalContextErrorCode`)
 - Test: `apps/pathway-service/src/__tests__/temporal/trust-mode.test.ts`
 
 **Interfaces:**
-- Consumes: `TemporalContextError` from `./evaluation-context`.
-- Produces: `ResolutionMode`, `ResolutionModeKind`, `SyntheticFactInput`, `assertModeAllows(mode, input, where)`.
+- Produces: `ResolutionInput`, `ResolutionModeKind`, `SyntheticPatientContext`, `SyntheticCodeEntry`, `SyntheticLabResult`, `assertSyntheticAuthorized(role)`.
 
 - [ ] **Step 1: Write the failing test**
 
 ```ts
 import {
-  assertModeAllows,
-  ResolutionMode,
+  ResolutionInput,
+  assertSyntheticAuthorized,
 } from '../../services/resolution/temporal/trust-mode';
 import { TemporalContextError } from '../../services/resolution/temporal/evaluation-context';
 
-const LIVE: ResolutionMode = { mode: 'LIVE', snapshotId: 'snap-1' };
-const SYNTHETIC: ResolutionMode = { mode: 'SYNTHETIC' };
-const REPLAY: ResolutionMode = { mode: 'REPLAY', sessionId: 'sess-1' };
+describe('ResolutionInput — the type IS the boundary', () => {
+  it('carries a caller patientContext only on the SYNTHETIC variant', () => {
+    // Compile-time is the real assertion; this documents it at runtime.
+    const synthetic: ResolutionInput = {
+      mode: 'SYNTHETIC',
+      patientContext: { patientId: 'p', conditionCodes: [], medications: [], labResults: [], allergies: [] },
+    };
+    const live: ResolutionInput = { mode: 'LIVE', snapshotId: 'snap-1' };
+    const replay: ResolutionInput = { mode: 'REPLAY', sessionId: 'sess-1' };
 
-describe('assertModeAllows', () => {
-  it('lets plain code/system/display through in every mode', () => {
-    for (const mode of [LIVE, SYNTHETIC, REPLAY]) {
-      expect(() =>
-        assertModeAllows(mode, { code: 'E11.9', system: 'icd10', display: 'T2DM' }, 'conditions[0]'),
-      ).not.toThrow();
-    }
+    expect('patientContext' in synthetic).toBe(true);
+    expect('patientContext' in live).toBe(false);
+    expect('patientContext' in replay).toBe(false);
+  });
+});
+
+describe('assertSyntheticAuthorized', () => {
+  it('allows an admin to select SYNTHETIC', () => {
+    expect(() => assertSyntheticAuthorized('ADMIN')).not.toThrow();
   });
 
-  it('rejects caller-supplied clinical state under LIVE', () => {
-    expect(() =>
-      assertModeAllows(LIVE, { code: 'E11.9', system: 'icd10', clinicalState: 'ACTIVE' }, 'conditions[0]'),
-    ).toThrow(TemporalContextError);
+  it('rejects a provider selecting SYNTHETIC', () => {
+    expect(() => assertSyntheticAuthorized('PROVIDER')).toThrow(TemporalContextError);
   });
 
-  it('rejects caller-supplied record validity under LIVE', () => {
-    expect(() =>
-      assertModeAllows(LIVE, { code: 'E11.9', system: 'icd10', recordValidity: 'VALID' }, 'conditions[0]'),
-    ).toThrow(/recordValidity/);
+  it('rejects a missing role rather than defaulting to permitted', () => {
+    expect(() => assertSyntheticAuthorized(undefined)).toThrow(/INVALID_RESOLUTION_INPUT|authorized/);
   });
 
-  it('names the offending field AND the path — this surfaces to an API caller', () => {
+  it('uses the dedicated input error code, not the pathway-policy one', () => {
     try {
-      assertModeAllows(LIVE, { code: 'x', system: 'y', clinicalState: 'ACTIVE' }, 'medications[2]');
+      assertSyntheticAuthorized('PROVIDER');
       throw new Error('expected a throw');
     } catch (e) {
-      expect((e as Error).message).toContain('medications[2]');
-      expect((e as Error).message).toContain('clinicalState');
+      expect((e as TemporalContextError).code).toBe('INVALID_RESOLUTION_INPUT');
     }
-  });
-
-  it('reports every offending field at once, not just the first', () => {
-    try {
-      assertModeAllows(
-        LIVE,
-        { code: 'x', system: 'y', clinicalState: 'ACTIVE', recordValidity: 'VALID', date: '2026-01-01' },
-        'conditions[0]',
-      );
-      throw new Error('expected a throw');
-    } catch (e) {
-      const msg = (e as Error).message;
-      expect(msg).toContain('clinicalState');
-      expect(msg).toContain('recordValidity');
-      expect(msg).toContain('date');
-    }
-  });
-
-  it('accepts all of them under SYNTHETIC', () => {
-    expect(() =>
-      assertModeAllows(
-        SYNTHETIC,
-        {
-          code: 'x',
-          system: 'y',
-          date: '2026-01-01',
-          clinicalState: 'INACTIVE',
-          recordValidity: 'UNKNOWN',
-          sourceId: 'sim-1',
-        },
-        'conditions[0]',
-      ),
-    ).not.toThrow();
-  });
-
-  it('rejects them under REPLAY — a replay re-reads facts, it does not accept new ones', () => {
-    expect(() =>
-      assertModeAllows(REPLAY, { code: 'x', system: 'y', clinicalState: 'ACTIVE' }, 'conditions[0]'),
-    ).toThrow(TemporalContextError);
   });
 });
 ```
 
-- [ ] **Step 2: Run it and confirm it fails** — `Cannot find module '.../trust-mode'`.
+- [ ] **Step 2: Run it, confirm it fails.**
 
-- [ ] **Step 3: Implement**
+- [ ] **Step 3: Add the error code** to `TemporalContextErrorCode` in `evaluation-context.ts`:
 
 ```ts
+  /** Resolution input violated its trust mode or failed validation (§8). */
+  | 'INVALID_RESOLUTION_INPUT'
+```
+
+- [ ] **Step 4: Implement `trust-mode.ts`**
+
+```ts
+import type { PatientContext, CodeEntry, LabResult } from '../../confidence/types';
 import { TemporalContextError } from './evaluation-context';
 
 export type ResolutionModeKind = 'LIVE' | 'SYNTHETIC' | 'REPLAY';
 
-/**
- * Exactly one mode per resolution, always explicit — never inferred from
- * whether an optional `patientContext` happens to be present (design §8, P1-4).
- */
-export type ResolutionMode =
-  | { mode: 'LIVE'; snapshotId: string }
-  | { mode: 'SYNTHETIC' }
-  | { mode: 'REPLAY'; sessionId: string };
-
-/** The fields only an authorized SYNTHETIC caller may supply. */
-export interface SyntheticFactInput {
-  code: string;
-  system: string;
-  display?: string;
-  date?: string;
+/** The SYNTHETIC-only fields an authorized simulator may assert. */
+export interface SyntheticCodeEntry extends CodeEntry {
   endDate?: string;
   clinicalState?: string;
   recordValidity?: string;
   sourceId?: string;
 }
 
-/** Everything beyond code/system/display is server-derived outside SYNTHETIC. */
-const TRUSTED_ONLY_FIELDS = [
-  'date',
-  'endDate',
-  'clinicalState',
-  'recordValidity',
-  'sourceId',
-] as const;
+export interface SyntheticLabResult extends LabResult {
+  /** Labs carry no clinical state — supplying one is rejected, not ignored. */
+  recordValidity?: string;
+  sourceId?: string;
+}
+
+export interface SyntheticPatientContext extends Omit<PatientContext, 'conditionCodes' | 'medications' | 'allergies' | 'labResults'> {
+  conditionCodes: SyntheticCodeEntry[];
+  medications: SyntheticCodeEntry[];
+  allergies: SyntheticCodeEntry[];
+  labResults: SyntheticLabResult[];
+}
 
 /**
- * Reject caller-supplied fields the mode does not permit.
+ * Exactly one mode per resolution, and the payload lives INSIDE the variant.
  *
- * Under LIVE the server derives `recordValidity` and `clinicalState` from the
- * source record and stamps the clock itself; accepting them from the caller
- * would let a client bypass the validity filter or spoof the clinical clock.
- * REPLAY re-reads persisted facts, so it accepts none of them either.
- *
- * Reports EVERY offending field, not just the first — an API caller fixing a
- * request wants the whole list in one response.
+ * This is the trust boundary. A LIVE resolution cannot carry caller-supplied
+ * clinical facts because the type has nowhere to put them — which is stronger
+ * than validating a shared payload after the fact, since validation can be
+ * forgotten at a new call site and a missing union member cannot.
  */
-export function assertModeAllows(
-  mode: ResolutionMode,
-  input: Record<string, unknown>,
-  where: string,
-): void {
-  if (mode.mode === 'SYNTHETIC') return;
+export type ResolutionInput =
+  | { mode: 'SYNTHETIC'; patientContext: SyntheticPatientContext }
+  | { mode: 'LIVE'; snapshotId: string }
+  | { mode: 'REPLAY'; sessionId: string };
 
-  const offending = TRUSTED_ONLY_FIELDS.filter((f) => input[f] !== undefined);
-  if (offending.length === 0) return;
-
-  throw new TemporalContextError(
-    `${where}: ${offending.join(', ')} may only be supplied in SYNTHETIC mode ` +
-      `(this resolution is ${mode.mode}; the server derives these)`,
-    'INVALID_TEMPORAL_DEFAULTS',
-  );
+/**
+ * Only an admin may assert synthetic clinical facts.
+ *
+ * DEFENCE IN DEPTH ONLY — NOT a security boundary. `userRole` is read from an
+ * unverified `x-user-role` header that defaults to PROVIDER (index.ts:44), so
+ * any caller can claim any role. This check is correct and belongs here, and
+ * it secures nothing until real authentication exists. Do not cite it as an
+ * access control.
+ */
+export function assertSyntheticAuthorized(role: string | undefined): void {
+  if (role !== 'ADMIN') {
+    throw new TemporalContextError(
+      `SYNTHETIC resolution requires an ADMIN role (got: ${role ?? 'none'})`,
+      'INVALID_RESOLUTION_INPUT',
+    );
+  }
 }
 ```
 
-- [ ] **Step 4: Run the test** — expect PASS, 7 tests.
-- [ ] **Step 5: Typecheck** — `./node_modules/.bin/tsc -p apps/pathway-service/tsconfig.json --noEmit`, exit 0.
-- [ ] **Step 6: Commit**
+- [ ] **Step 5: Run the test** — PASS, 5 tests. **Step 6: Typecheck.** **Step 7: Commit.**
 
 ```bash
-git add apps/pathway-service/src/services/resolution/temporal/trust-mode.ts apps/pathway-service/src/__tests__/temporal/trust-mode.test.ts
-git commit -m "feat: explicit resolution trust modes
+git commit -m "feat: resolution trust modes with the payload inside the mode
 
-One mode per resolution, always explicit — never inferred from whether
-an optional patientContext is present (design §8, P1-4). LIVE derives
-validity, state and the clock server-side and rejects them on input,
-closing the 'caller bypasses the validity filter or spoofs the clinical
-clock' hole. REPLAY re-reads persisted facts and accepts none either.
+ResolutionInput is a discriminated union whose variants carry their own
+payload, so a LIVE resolution structurally cannot hold caller-supplied
+clinical facts. The previous shape took a PatientContext alongside the
+mode and validated the extra fields afterwards, which left the core
+payload wide open: a LIVE caller could inject an assumed-active,
+assumed-valid diagnosis and every fact was stamped SYNTHETIC regardless.
+A forgotten validation call is possible; a missing union member is not.
 
-Every offending field is reported at once: a caller fixing a request
-wants the whole list, not one field per round trip.
+The SYNTHETIC authorization check is written but documented as defence in
+depth only — userRole comes from an unverified header defaulting to
+PROVIDER, so it secures nothing until real auth exists.
 
 Co-Authored-By: Claude Opus 5 (1M context) <noreply@example.com>"
 ```
 
 ---
 
-### Task 2: Assemble stateful facts (conditions, medications, allergies)
+### Task 2: Runtime parsers for the SYNTHETIC values
+
+**Files:**
+- Create: `apps/pathway-service/src/services/resolution/temporal/synthetic-values.ts`
+- Test: `apps/pathway-service/src/__tests__/temporal/synthetic-values.test.ts`
+
+**Interfaces:**
+- Produces: `parseClinicalState`, `parseRecordValidity`, `parseSyntheticDate`, `CLINICAL_STATES`, `RECORD_VALIDITIES`.
+
+The v1 draft wrote `entry.clinicalState as StatefulFact['clinicalState']` — an assertion that turns any string into a member of a closed union, so `clinicalState: "banana"` would flow into the kernel and be compared against `'ACTIVE'` forever unequal. Every value is now parsed.
+
+- [ ] **Step 1: Write the failing test**
+
+```ts
+import {
+  parseClinicalState,
+  parseRecordValidity,
+  parseSyntheticDate,
+  CLINICAL_STATES,
+  RECORD_VALIDITIES,
+} from '../../services/resolution/temporal/synthetic-values';
+import { TemporalContextError } from '../../services/resolution/temporal/evaluation-context';
+
+describe('parseClinicalState', () => {
+  it('accepts every member of the closed union', () => {
+    for (const s of CLINICAL_STATES) expect(parseClinicalState(s, 'conditions[0]')).toBe(s);
+  });
+  it('rejects an unknown string instead of casting it in', () => {
+    expect(() => parseClinicalState('banana', 'conditions[0]')).toThrow(TemporalContextError);
+  });
+  it('names the field path and the allowed values', () => {
+    try {
+      parseClinicalState('banana', 'medications[2]');
+      throw new Error('expected a throw');
+    } catch (e) {
+      expect((e as Error).message).toContain('medications[2]');
+      expect((e as Error).message).toContain('ACTIVE');
+    }
+  });
+  it('is case sensitive — "active" is not ACTIVE', () => {
+    expect(() => parseClinicalState('active', 'conditions[0]')).toThrow(TemporalContextError);
+  });
+});
+
+describe('parseRecordValidity', () => {
+  it('accepts every member', () => {
+    for (const v of RECORD_VALIDITIES) expect(parseRecordValidity(v, 'labs[0]')).toBe(v);
+  });
+  it('rejects anything else', () => {
+    expect(() => parseRecordValidity('MAYBE', 'labs[0]')).toThrow(TemporalContextError);
+  });
+});
+
+describe('parseSyntheticDate', () => {
+  it('returns a precision-carrying bound', () => {
+    expect(parseSyntheticDate('2026-01-15', 'conditions[0].date')).toEqual({
+      value: '2026-01-15', precision: 'day',
+    });
+  });
+  it('rejects an unparseable date rather than dropping it', () => {
+    expect(() => parseSyntheticDate('last tuesday', 'conditions[0].date')).toThrow(/conditions\[0\]\.date/);
+  });
+  it('uses the resolution-input error code', () => {
+    try {
+      parseSyntheticDate('nope', 'x');
+      throw new Error('expected a throw');
+    } catch (e) {
+      expect((e as TemporalContextError).code).toBe('INVALID_RESOLUTION_INPUT');
+    }
+  });
+});
+```
+
+- [ ] **Step 2: Run it, confirm it fails.**
+
+- [ ] **Step 3: Implement.** `CLINICAL_STATES` must be exactly the members of `StatefulFact['clinicalState']` in `fact-model.ts` and `RECORD_VALIDITIES` exactly those of `FactBase['recordValidity']`; read both before writing them, and use `satisfies` so a drift in the fact model breaks the build here.
+
+```ts
+import { TemporalBound } from './fact-model';
+import { parseFhirDate } from './interval';
+import { TemporalContextError } from './evaluation-context';
+
+export const CLINICAL_STATES = ['ACTIVE', 'INACTIVE', 'ON_HOLD', 'UNKNOWN', 'CONFLICT'] as const;
+export const RECORD_VALIDITIES = ['VALID', 'INVALID', 'UNKNOWN'] as const;
+
+export type SyntheticClinicalState = (typeof CLINICAL_STATES)[number];
+export type SyntheticRecordValidity = (typeof RECORD_VALIDITIES)[number];
+
+function reject(where: string, got: unknown, allowed: readonly string[]): never {
+  throw new TemporalContextError(
+    `${where}: ${JSON.stringify(got)} is not one of ${allowed.join(' | ')}`,
+    'INVALID_RESOLUTION_INPUT',
+  );
+}
+
+export function parseClinicalState(raw: unknown, where: string): SyntheticClinicalState {
+  if (typeof raw === 'string' && (CLINICAL_STATES as readonly string[]).includes(raw)) {
+    return raw as SyntheticClinicalState;
+  }
+  reject(where, raw, CLINICAL_STATES);
+}
+
+export function parseRecordValidity(raw: unknown, where: string): SyntheticRecordValidity {
+  if (typeof raw === 'string' && (RECORD_VALIDITIES as readonly string[]).includes(raw)) {
+    return raw as SyntheticRecordValidity;
+  }
+  reject(where, raw, RECORD_VALIDITIES);
+}
+
+export function parseSyntheticDate(raw: string, where: string): TemporalBound {
+  const bound = parseFhirDate(raw);
+  if (!bound) {
+    throw new TemporalContextError(
+      `${where}: "${raw}" is not a valid FHIR date`,
+      'INVALID_RESOLUTION_INPUT',
+    );
+  }
+  return bound;
+}
+```
+
+- [ ] **Step 4–6: Run (PASS, 10 tests), typecheck, commit.**
+
+---
+
+### Task 3: Assemble stateful facts
 
 **Files:**
 - Create: `apps/pathway-service/src/services/resolution/temporal/context-assembler.ts`
 - Test: `apps/pathway-service/src/__tests__/temporal/context-assembler-stateful.test.ts`
 
 **Interfaces:**
-- Consumes: `NormalizedFact`, `StatefulFact`, `TemporalBound`, `TemporalEnd` from `./fact-model`; `parseFhirDate` from `./interval`; `EvaluationTemporalContext` from `./evaluation-context`; Task 1's `ResolutionMode`, `assertModeAllows`; `PatientContext`, `CodeEntry` from `../../confidence/types`.
-- Produces: `assembleContext(mode, patientContext, ctx) → FactStore` (stateful kinds in this task; observations added in Task 3).
+- Produces: `assembleContext(input: ResolutionInput, ctx) → FactStore` (stateful kinds here; observations in Task 4).
 
-**The behavior-preservation rules this task encodes** (design §3, and they must not drift):
+**Interval rules — the table this task encodes:**
 
-| Input | `clinicalState` | `stateBasis` | `recordValidity` |
-|---|---|---|---|
-| no status supplied (all current input) | `ACTIVE` | `MISSING_STATUS_FAIL_OPEN` | `VALID` |
-| SYNTHETIC `clinicalState: 'INACTIVE'` | `INACTIVE` | `SYNTHETIC` | `VALID` |
-| SYNTHETIC `recordValidity: 'INVALID'` | as above | as above | `INVALID` |
+| Supplied | `interval.start` | `interval.end` |
+|---|---|---|
+| nothing | absent | `OPEN(evaluationAsOf)` |
+| `date` | parsed bound | `OPEN(evaluationAsOf)` |
+| `date` + `endDate` | parsed bound | `KNOWN(parsed endDate)` |
+| `clinicalState: INACTIVE`, no `endDate` | as above | `{ kind: 'UNKNOWN' }` |
 
-Today's `PatientContext` carries no status at all, so **every** fact from the live path takes row 1 — `ACTIVE` with `MISSING_STATUS_FAIL_OPEN`. That is what preserves today's fail-safe, and `stateUnverified` in the evidence is how the doubt still surfaces.
+The last row is review finding P1-3: asserting an inactive condition is *current at the evaluation instant* is false, and would let it match a narrow horizon.
 
-- [ ] **Step 1: Write the failing test**
+- [ ] **Step 1: Write the failing test.** Cover: kind mapping; no status ⇒ `ACTIVE`/`MISSING_STATUS_FAIL_OPEN`/`VALID`; undated active ⇒ `OPEN(asOf)`; `date` parsed with precision; `endDate` ⇒ `KNOWN` end; **`INACTIVE` with no `endDate` ⇒ `UNKNOWN` end, not OPEN**; supplied `clinicalState`/`recordValidity` honored with basis `SYNTHETIC`; `recordValidity: 'INVALID'` surviving onto the fact; unparseable date rejected naming the path; `sourceId` landing in `provenance.sourceId`; LIVE and REPLAY each throwing `NOT_IMPLEMENTED`.
 
-```ts
-import { assembleContext } from '../../services/resolution/temporal/context-assembler';
-import { ResolutionMode } from '../../services/resolution/temporal/trust-mode';
-import { EvaluationTemporalContext } from '../../services/resolution/temporal/evaluation-context';
-import { PatientContext } from '../../services/confidence/types';
-import { isStatefulFact } from '../../services/resolution/temporal/fact-model';
+- [ ] **Step 2: Run it, confirm it fails.**
 
-const AS_OF = '2026-08-03T12:00:00.000Z';
-const ctx: EvaluationTemporalContext = {
-  evaluationAsOf: AS_OF,
-  timezone: 'UTC',
-  temporalPolicyVersion: 'legacy-v0',
-};
-const SYNTHETIC: ResolutionMode = { mode: 'SYNTHETIC' };
-
-function pc(over: Partial<PatientContext> = {}): PatientContext {
-  return {
-    patientId: 'pat-1',
-    conditionCodes: [],
-    medications: [],
-    labResults: [],
-    allergies: [],
-    ...over,
-  };
-}
-
-describe('assembleContext — stateful kinds', () => {
-  it('maps each array to its fact kind', () => {
-    const store = assembleContext(SYNTHETIC, pc({
-      conditionCodes: [{ code: 'E11.9', system: 'icd10' }],
-      medications: [{ code: '860975', system: 'rxnorm' }],
-      allergies: [{ code: '7980', system: 'rxnorm' }],
-    }), ctx);
-    expect(store.map((f) => f.kind).sort()).toEqual(['allergy', 'condition', 'medication_order']);
-  });
-
-  it('preserves today: no supplied status means ACTIVE by failing open', () => {
-    const [fact] = assembleContext(SYNTHETIC, pc({
-      conditionCodes: [{ code: 'E11.9', system: 'icd10' }],
-    }), ctx);
-    expect(isStatefulFact(fact)).toBe(true);
-    if (!isStatefulFact(fact)) throw new Error('expected a stateful fact');
-    expect(fact.clinicalState).toBe('ACTIVE');
-    expect(fact.stateBasis).toBe('MISSING_STATUS_FAIL_OPEN');
-    expect(fact.recordValidity).toBe('VALID');
-  });
-
-  it('models an undated fact as OPEN at the pinned clock, never an UNKNOWN end', () => {
-    // The single most important rule in this plan: an UNKNOWN end makes
-    // overlap() return UNKNOWN even under LIFETIME, which fails scalar gates
-    // closed once plan 04 lands.
-    const [fact] = assembleContext(SYNTHETIC, pc({
-      conditionCodes: [{ code: 'E11.9', system: 'icd10' }],
-    }), ctx);
-    expect(fact.interval.start).toBeUndefined();
-    expect(fact.interval.end).toEqual({ kind: 'OPEN', assertedCurrentAt: AS_OF });
-  });
-
-  it('parses a supplied date into a precision-carrying start bound', () => {
-    const [fact] = assembleContext(SYNTHETIC, pc({
-      conditionCodes: [{ code: 'E11.9', system: 'icd10', date: '2026-01-15' }],
-    }), ctx);
-    expect(fact.interval.start).toEqual({ value: '2026-01-15', precision: 'day' });
-  });
-
-  it('rejects an unparseable date rather than silently dropping it', () => {
-    expect(() =>
-      assembleContext(SYNTHETIC, pc({
-        conditionCodes: [{ code: 'E11.9', system: 'icd10', date: 'last tuesday' }],
-      }), ctx),
-    ).toThrow(/conditions\[0\]/);
-  });
-
-  it('assigns a unique factId per fact, never a content hash', () => {
-    // Two identical codes on the same date are a real clinical pattern
-    // (recurrence) and count_in_window counts DISTINCT factIds — a content
-    // hash collided here and broke the count.
-    const store = assembleContext(SYNTHETIC, pc({
-      conditionCodes: [
-        { code: 'N39.0', system: 'icd10', date: '2026-01-15' },
-        { code: 'N39.0', system: 'icd10', date: '2026-01-15' },
-      ],
-    }), ctx);
-    expect(store).toHaveLength(2);
-    expect(new Set(store.map((f) => f.factId)).size).toBe(2);
-  });
-
-  it('is deterministic for a given input ordering', () => {
-    const input = pc({ conditionCodes: [{ code: 'E11.9', system: 'icd10' }] });
-    const a = assembleContext(SYNTHETIC, input, ctx);
-    const b = assembleContext(SYNTHETIC, input, ctx);
-    expect(a.map((f) => f.factId)).toEqual(b.map((f) => f.factId));
-  });
-
-  it('records provenance so evidence can show where a fact came from', () => {
-    const [fact] = assembleContext(SYNTHETIC, pc({
-      conditionCodes: [{ code: 'E11.9', system: 'icd10' }],
-    }), ctx);
-    expect(fact.provenance.sourceType).toBe('SYNTHETIC');
-  });
-
-  it('enforces the trust mode on every entry, not just the first', () => {
-    const LIVE: ResolutionMode = { mode: 'LIVE', snapshotId: 'snap-1' };
-    expect(() =>
-      assembleContext(LIVE, pc({
-        conditionCodes: [
-          { code: 'E11.9', system: 'icd10' },
-          { code: 'I10', system: 'icd10', date: '2026-01-01' },
-        ],
-      }), ctx),
-    ).toThrow(/conditions\[1\]/);
-  });
-});
-```
-
-- [ ] **Step 2: Run it and confirm it fails.**
-
-- [ ] **Step 3: Implement** (observation kinds are added in Task 3 — this task returns stateful facts only)
+- [ ] **Step 3: Implement.** Key fragments — the rest follows the table:
 
 ```ts
-import { PatientContext, CodeEntry } from '../../confidence/types';
-import {
-  NormalizedFact,
-  StatefulFact,
-  FactStore,
-  TemporalBound,
-  TemporalEnd,
-} from './fact-model';
-import { parseFhirDate } from './interval';
-import { EvaluationTemporalContext, TemporalContextError } from './evaluation-context';
-import { ResolutionMode, assertModeAllows } from './trust-mode';
-
-/**
- * An entry with no date is "asserted current as of the evaluation clock" —
- * which is exactly what the encounter simulator means when it composes a
- * context without dates.
- *
- * It must NOT become `{ kind: 'UNKNOWN' }`. An unknown end makes `overlap()`
- * return UNKNOWN even against a LIFETIME horizon, and `selectFacts` turns an
- * uncertain scalar into INDETERMINATE — so once plan 04 maps INDETERMINATE to
- * fail-closed, every undated lab and every vital (the vitals bag has no date
- * field at all) would stop satisfying the gate it satisfies today.
- */
-function openAt(ctx: EvaluationTemporalContext): TemporalEnd {
-  return { kind: 'OPEN', assertedCurrentAt: ctx.evaluationAsOf };
-}
-
-function parseStart(raw: string | undefined, where: string): TemporalBound | undefined {
-  if (raw === undefined) return undefined;
-  const bound = parseFhirDate(raw);
-  if (!bound) {
-    throw new TemporalContextError(
-      `${where}: "${raw}" is not a valid FHIR date`,
-      'INVALID_TEMPORAL_DEFAULTS',
-    );
-  }
-  return bound;
-}
-
-function statefulFrom(
-  entry: CodeEntry & Record<string, unknown>,
-  kind: StatefulFact['kind'],
-  factId: string,
+function endFor(
+  entry: SyntheticCodeEntry,
+  state: StatefulFact['clinicalState'],
   ctx: EvaluationTemporalContext,
   where: string,
-): StatefulFact {
-  const start = parseStart(entry.date, where);
-  const suppliedState = entry.clinicalState as StatefulFact['clinicalState'] | undefined;
-  const suppliedValidity = entry.recordValidity as StatefulFact['recordValidity'] | undefined;
-
-  const fact: StatefulFact = {
-    factId,
-    kind,
-    code: entry.code,
-    system: entry.system,
-    interval: { end: openAt(ctx) },
-    // No status in the input means ACTIVE by failing open — this is what
-    // preserves today's fail-safe. The doubt is not lost: stateBasis marks it
-    // and selectFacts surfaces it as stateUnverified.
-    clinicalState: suppliedState ?? 'ACTIVE',
-    stateBasis: suppliedState ? 'SYNTHETIC' : 'MISSING_STATUS_FAIL_OPEN',
-    recordValidity: suppliedValidity ?? 'VALID',
-    validityBasis: suppliedValidity ? 'SYNTHETIC' : 'ASSUMED_VALID_NO_SOURCE_STATUS',
-    provenance: { sourceType: 'SYNTHETIC' },
-  };
-  if (entry.display !== undefined) fact.display = entry.display;
-  if (start) fact.interval.start = start;
-  if (typeof entry.sourceId === 'string') fact.provenance.sourceId = entry.sourceId;
-  return fact;
+): TemporalEnd {
+  if (entry.endDate !== undefined) {
+    return { kind: 'KNOWN', bound: parseSyntheticDate(entry.endDate, `${where}.endDate`) };
+  }
+  // An inactive fact with no known end is NOT current: OPEN(asOf) would assert
+  // it is, and let it match a narrow horizon it has no business matching.
+  if (state === 'INACTIVE' || state === 'CONFLICT') return { kind: 'UNKNOWN' };
+  return { kind: 'OPEN', assertedCurrentAt: ctx.evaluationAsOf };
 }
+```
 
-/**
- * Build the fact store the gate kernel consumes.
- *
- * `factId` is ASSIGNED here, never hashed from content: two identical codes on
- * the same date are a real clinical pattern (recurrence), `count_in_window`
- * counts distinct factIds, and a content hash collided on exactly that case.
- * Ordinals are stable for a given input ordering, which is what replay needs.
- */
+```ts
 export function assembleContext(
-  mode: ResolutionMode,
-  patientContext: PatientContext,
+  input: ResolutionInput,
   ctx: EvaluationTemporalContext,
 ): FactStore {
-  const out: NormalizedFact[] = [];
-  let ordinal = 0;
-
-  const addStateful = (
-    entries: readonly CodeEntry[] | undefined,
-    kind: StatefulFact['kind'],
-    label: string,
-  ): void => {
-    (entries ?? []).forEach((entry, i) => {
-      const where = `${label}[${i}]`;
-      assertModeAllows(mode, entry as unknown as Record<string, unknown>, where);
-      out.push(
-        statefulFrom(entry as CodeEntry & Record<string, unknown>, kind, `${kind}:${ordinal++}`, ctx, where),
-      );
-    });
-  };
-
-  addStateful(patientContext.conditionCodes, 'condition', 'conditions');
-  addStateful(patientContext.medications, 'medication_order', 'medications');
-  addStateful(patientContext.allergies, 'allergy', 'allergies');
-
-  return out;
+  if (input.mode === 'LIVE') {
+    throw new TemporalContextError(
+      'LIVE resolution requires the snapshot mapper (plan 07)',
+      'INVALID_RESOLUTION_INPUT',
+    );
+  }
+  if (input.mode === 'REPLAY') {
+    throw new TemporalContextError(
+      'REPLAY resolution requires persisted normalized facts (plan 05b)',
+      'INVALID_RESOLUTION_INPUT',
+    );
+  }
+  // ...SYNTHETIC assembly
 }
 ```
 
-`validityBasis` is a free-form `string` on `FactBase` (`fact-model.ts:20`), not a closed union — `ASSUMED_VALID_NO_SOURCE_STATUS` is a new value and needs no type change. `stateBasis` **is** a closed union (`StateBasis`, `fact-model.ts:32`); `SYNTHETIC` and `MISSING_STATUS_FAIL_OPEN` are both existing members, so it needs no change either.
+Per-kind ordinals (review P1-4) — one counter per kind, never a shared one:
 
-- [ ] **Step 4: Run the test** — expect PASS, 9 tests.
-- [ ] **Step 5: Typecheck** — exit 0.
-- [ ] **Step 6: Commit**
-
-```bash
-git add apps/pathway-service/src/services/resolution/temporal/context-assembler.ts apps/pathway-service/src/__tests__/temporal/context-assembler-stateful.test.ts
-git commit -m "feat: assemble conditions, medications and allergies into facts
-
-An entry with no date becomes OPEN(evaluationAsOf), not an UNKNOWN end.
-This is the load-bearing rule of the plan: an UNKNOWN end makes overlap()
-return UNKNOWN even against LIFETIME, and selectFacts turns an uncertain
-scalar into INDETERMINATE — so with plan 04's fail-closed mapping every
-undated fact would stop satisfying the gate it satisfies today.
-
-No supplied status means ACTIVE via MISSING_STATUS_FAIL_OPEN, preserving
-today's fail-safe; the doubt survives as stateUnverified in evidence.
-
-factId is assigned, never hashed from content: two identical codes on one
-date are recurrence, count_in_window counts distinct ids, and a content
-hash collided on exactly that case during plan 01.
-
-Co-Authored-By: Claude Opus 5 (1M context) <noreply@example.com>"
+```ts
+  const nextId = (() => {
+    const counters: Record<string, number> = {};
+    return (kind: string) => `${kind}:${(counters[kind] = (counters[kind] ?? 0) + 1) - 1}`;
+  })();
 ```
+
+- [ ] **Step 4–7: Run, run the whole temporal directory, typecheck, commit.**
 
 ---
 
-### Task 3: Assemble observations (labs and vitals)
+### Task 4: Assemble observations
+
+**Files:** modify `context-assembler.ts`; test `context-assembler-observations.test.ts`.
+
+Labs must honor `recordValidity` and `sourceId` — the v1 draft accepted both in the SDL and hardcoded `VALID` with no source, so **an explicitly invalid lab became an admitted fact** (review P1-3). Labs must also *reject* `clinicalState`: observations carry none, and silently ignoring it hides an authoring error.
+
+Vitals flatten to the keys the evaluator already resolves — root keys, and `custom.<key>` — because a different key means the gate silently finds nothing.
+
+- [ ] **Step 1: Write the failing test.** Nine tests for labs (value/unit carried; dated ⇒ point fact; undated ⇒ `OPEN(asOf)`; valueless lab retained for `exists`; `recordValidity: 'INVALID'` carried onto the fact; `sourceId` in provenance; supplied `clinicalState` **rejected** naming the path) and six for vitals (one fact per numeric root key; `custom.<key>` flattening; always `OPEN(asOf)`; non-numeric skipped; no `clinicalState` property present; `system` set to the local vitals urn).
+- [ ] **Steps 2–7:** fail → implement → run → temporal directory → typecheck → commit.
+
+---
+
+### Task 5: Fact identity and merge semantics
 
 **Files:**
-- Modify: `apps/pathway-service/src/services/resolution/temporal/context-assembler.ts`
-- Test: `apps/pathway-service/src/__tests__/temporal/context-assembler-observations.test.ts`
+- Modify: `apps/pathway-service/src/services/resolution/effective-context.ts`
+- Test: `apps/pathway-service/src/__tests__/temporal/fact-identity.test.ts`
 
-**Interfaces:**
-- Consumes: Task 2's internals; `ObservationFact` from `./fact-model`; `LabResult` from `../../confidence/types`.
-- Produces: labs and vitals in the same `assembleContext` return.
-
-Vitals need a shape decision the other kinds do not. `vitalSigns` is `Record<string, unknown>` where fixed vitals live at the root (`systolic_bp`, `heart_rate`) and custom ones nest under `custom.<key>` — the existing evaluator resolves either with a single string key (`gate-evaluator.ts`, `getNumericValue`). The assembler must produce one `ObservationFact` per numeric leaf, keyed the same way, or vitals gates silently find nothing.
+Two defects, one of them pre-existing and more serious than anything else in this plan.
 
 - [ ] **Step 1: Write the failing test**
 
 ```ts
-import { assembleContext } from '../../services/resolution/temporal/context-assembler';
-import { ResolutionMode } from '../../services/resolution/temporal/trust-mode';
-import { EvaluationTemporalContext } from '../../services/resolution/temporal/evaluation-context';
-import { PatientContext } from '../../services/confidence/types';
-import { isObservationFact } from '../../services/resolution/temporal/fact-model';
-
-const AS_OF = '2026-08-03T12:00:00.000Z';
-const ctx: EvaluationTemporalContext = {
-  evaluationAsOf: AS_OF,
-  timezone: 'UTC',
-  temporalPolicyVersion: 'legacy-v0',
-};
-const SYNTHETIC: ResolutionMode = { mode: 'SYNTHETIC' };
-
-function pc(over: Partial<PatientContext> = {}): PatientContext {
-  return { patientId: 'p', conditionCodes: [], medications: [], labResults: [], allergies: [], ...over };
-}
-
-describe('assembleContext — labs', () => {
-  it('carries the numeric value and unit onto the fact', () => {
-    const [fact] = assembleContext(SYNTHETIC, pc({
-      labResults: [{ code: '4548-4', system: 'loinc', value: 9.1, unit: '%', date: '2026-06-01' }],
-    }), ctx);
-    expect(isObservationFact(fact)).toBe(true);
-    if (!isObservationFact(fact)) throw new Error('expected an observation');
-    expect(fact.kind).toBe('lab');
-    expect(fact.value).toBe(9.1);
-    expect(fact.unit).toBe('%');
-  });
-
-  it('models a DATED lab as a point fact — start and end at the same bound', () => {
-    const [fact] = assembleContext(SYNTHETIC, pc({
-      labResults: [{ code: '4548-4', system: 'loinc', value: 9.1, date: '2026-06-01' }],
-    }), ctx);
-    expect(fact.interval.start).toEqual({ value: '2026-06-01', precision: 'day' });
-    expect(fact.interval.end).toEqual({ kind: 'KNOWN', bound: { value: '2026-06-01', precision: 'day' } });
-  });
-
-  it('models an UNDATED lab as OPEN at the clock, preserving today', () => {
-    const [fact] = assembleContext(SYNTHETIC, pc({
-      labResults: [{ code: '4548-4', system: 'loinc', value: 9.1 }],
-    }), ctx);
-    expect(fact.interval.start).toBeUndefined();
-    expect(fact.interval.end).toEqual({ kind: 'OPEN', assertedCurrentAt: AS_OF });
-  });
-
-  it('keeps a lab with no value — exists/includes_code still need the bucket', () => {
-    const store = assembleContext(SYNTHETIC, pc({
-      labResults: [{ code: '4548-4', system: 'loinc' }],
-    }), ctx);
-    expect(store).toHaveLength(1);
-    if (!isObservationFact(store[0])) throw new Error('expected an observation');
-    expect(store[0].value).toBeUndefined();
+describe('factId stability', () => {
+  it('does not renumber other kinds when a condition is added', () => {
+    // A shared ordinal counter meant inserting one condition shifted every
+    // medication, allergy and lab id — so nothing downstream could reference
+    // a fact across two assemblies of nearly-identical input.
+    const base = { medications: [{ code: 'm1', system: 's' }], labResults: [{ code: 'l1', system: 's' }] };
+    const before = assembleContext(synthetic(base), ctx);
+    const after = assembleContext(synthetic({ ...base, conditionCodes: [{ code: 'c1', system: 's' }] }), ctx);
+    const idOf = (store, kind) => store.filter((f) => f.kind === kind).map((f) => f.factId);
+    expect(idOf(after, 'medication_order')).toEqual(idOf(before, 'medication_order'));
+    expect(idOf(after, 'lab')).toEqual(idOf(before, 'lab'));
   });
 });
 
-describe('assembleContext — vitals', () => {
-  it('emits one fact per numeric root key, coded by that key', () => {
-    const store = assembleContext(SYNTHETIC, pc({
-      vitalSigns: { systolic_bp: 148, heart_rate: 88 },
-    }), ctx);
-    expect(store).toHaveLength(2);
-    expect(store.map((f) => f.code).sort()).toEqual(['heart_rate', 'systolic_bp']);
+describe('buildEffectivePatientContext — distinct occurrences survive', () => {
+  it('keeps the same code on a DIFFERENT date', () => {
+    // Deduplicating on code|system alone discarded recurrence entirely, so
+    // count_in_window counted 1 no matter how many events occurred. This is
+    // upstream of the assembler: no amount of fact-model correctness fixes it.
+    const merged = buildEffectivePatientContext(
+      pc({ conditionCodes: [{ code: 'N39.0', system: 'icd10', date: '2026-01-15' }] }),
+      { conditionCodes: [{ code: 'N39.0', system: 'icd10', date: '2026-06-02' }] },
+    );
+    expect(merged.conditionCodes).toHaveLength(2);
   });
 
-  it('flattens custom.<key> to the same dotted key the evaluator looks up', () => {
-    const store = assembleContext(SYNTHETIC, pc({
-      vitalSigns: { custom: { peak_flow: 320 } },
-    }), ctx);
-    expect(store.map((f) => f.code)).toEqual(['custom.peak_flow']);
+  it('keeps the same code and date under a different sourceId', () => {
+    const merged = buildEffectivePatientContext(
+      pc({ conditionCodes: [{ code: 'N39.0', system: 'icd10', date: '2026-01-15', sourceId: 'a' }] }),
+      { conditionCodes: [{ code: 'N39.0', system: 'icd10', date: '2026-01-15', sourceId: 'b' }] },
+    );
+    expect(merged.conditionCodes).toHaveLength(2);
   });
 
-  it('is ALWAYS OPEN at the clock — the vitals bag carries no dates anywhere', () => {
-    const [fact] = assembleContext(SYNTHETIC, pc({ vitalSigns: { systolic_bp: 148 } }), ctx);
-    expect(fact.interval.start).toBeUndefined();
-    expect(fact.interval.end).toEqual({ kind: 'OPEN', assertedCurrentAt: AS_OF });
+  it('STILL collapses a genuine duplicate — same code, system, date and source', () => {
+    const entry = { code: 'N39.0', system: 'icd10', date: '2026-01-15' };
+    const merged = buildEffectivePatientContext(pc({ conditionCodes: [entry] }), { conditionCodes: [{ ...entry }] });
+    expect(merged.conditionCodes).toHaveLength(1);
   });
 
-  it('skips non-numeric entries rather than emitting a valueless vital', () => {
-    const store = assembleContext(SYNTHETIC, pc({
-      vitalSigns: { systolic_bp: 148, comment: 'patient anxious', bp_cuff: null },
-    }), ctx);
-    expect(store.map((f) => f.code)).toEqual(['systolic_bp']);
-  });
-
-  it('gives every observation NOT_APPLICABLE state by carrying no clinical state', () => {
-    const [fact] = assembleContext(SYNTHETIC, pc({ vitalSigns: { systolic_bp: 148 } }), ctx);
-    expect('clinicalState' in fact).toBe(false);
+  it('collapses undated duplicates, preserving today for the no-date case', () => {
+    const entry = { code: 'E11.9', system: 'icd10' };
+    const merged = buildEffectivePatientContext(pc({ conditionCodes: [entry] }), { conditionCodes: [{ ...entry }] });
+    expect(merged.conditionCodes).toHaveLength(1);
   });
 });
 ```
 
-- [ ] **Step 2: Run it and confirm it fails.**
-
-- [ ] **Step 3: Implement** — add to `context-assembler.ts` and call both from `assembleContext` after the stateful kinds:
-
-```ts
-/**
- * A DATED observation is a point fact: start and end at the same bound, which
- * is what `overlap()` recognises as a point and matches strictly inside the
- * horizon. An UNDATED one takes the OPEN(clock) rule like everything else.
- */
-function observationInterval(
-  start: TemporalBound | undefined,
-  ctx: EvaluationTemporalContext,
-): NormalizedFact['interval'] {
-  if (!start) return { end: openAt(ctx) };
-  return { start, end: { kind: 'KNOWN', bound: start } };
-}
-
-/**
- * Flatten the vitals bag to the keys the evaluator already resolves: fixed
- * vitals at the root, custom ones as `custom.<key>`. Anything non-numeric is
- * skipped — a valueless vital would sit in the store as a candidate that no
- * scalar operator can use.
- */
-function flattenVitals(bag: Record<string, unknown>): Array<{ key: string; value: number }> {
-  const out: Array<{ key: string; value: number }> = [];
-  for (const [key, raw] of Object.entries(bag)) {
-    if (key === 'custom' && raw !== null && typeof raw === 'object') {
-      for (const [ck, cv] of Object.entries(raw as Record<string, unknown>)) {
-        if (typeof cv === 'number' && Number.isFinite(cv)) out.push({ key: `custom.${ck}`, value: cv });
-      }
-      continue;
-    }
-    if (typeof raw === 'number' && Number.isFinite(raw)) out.push({ key, value: raw });
-  }
-  return out;
-}
-```
-
-Inside `assembleContext`, after the stateful kinds:
-
-```ts
-  (patientContext.labResults ?? []).forEach((lab, i) => {
-    const where = `labs[${i}]`;
-    assertModeAllows(mode, lab as unknown as Record<string, unknown>, where);
-    const start = parseStart(lab.date, where);
-    const fact: ObservationFact = {
-      factId: `lab:${ordinal++}`,
-      kind: 'lab',
-      code: lab.code,
-      system: lab.system,
-      interval: observationInterval(start, ctx),
-      recordValidity: 'VALID',
-      validityBasis: 'ASSUMED_VALID_NO_SOURCE_STATUS',
-      provenance: { sourceType: 'SYNTHETIC' },
-    };
-    if (lab.display !== undefined) fact.display = lab.display;
-    if (typeof lab.value === 'number') fact.value = lab.value;
-    if (lab.unit !== undefined) fact.unit = lab.unit;
-    out.push(fact);
-  });
-
-  // Vitals carry no dates anywhere in the input schema, so every one of them
-  // takes the OPEN(clock) rule. This is the case that would break loudest
-  // without it — every vitals scalar gate fails closed.
-  for (const { key, value } of flattenVitals(patientContext.vitalSigns ?? {})) {
-    out.push({
-      factId: `vital:${ordinal++}`,
-      kind: 'vital',
-      code: key,
-      // The bag is keyed by name, not by a terminology. Plan 07 maps real
-      // LOINC-coded vitals from the snapshot; the simulator's bag is local.
-      system: 'urn:prism:vitals',
-      interval: { end: openAt(ctx) },
-      value,
-      recordValidity: 'VALID',
-      validityBasis: 'ASSUMED_VALID_NO_SOURCE_STATUS',
-      provenance: { sourceType: 'SYNTHETIC' },
-    });
-  }
-```
-
-- [ ] **Step 4: Run the test** — expect PASS, 10 tests.
-- [ ] **Step 5: Run the whole temporal directory** — plans 01–03 must be untouched.
-- [ ] **Step 6: Typecheck** — exit 0.
-- [ ] **Step 7: Commit**
-
-```bash
-git add apps/pathway-service/src/services/resolution/temporal/context-assembler.ts apps/pathway-service/src/__tests__/temporal/context-assembler-observations.test.ts
-git commit -m "feat: assemble labs and vitals into observation facts
-
-A dated observation is a point fact (start == end), which overlap()
-matches strictly inside the horizon. An undated one takes the OPEN(clock)
-rule.
-
-Vitals are the reason this plan runs before plan 04: the bag carries no
-date field anywhere in the input schema, so every vital is undated by
-construction and every vitals scalar gate would fail closed without the
-OPEN(clock) rule. They are flattened to the same keys the evaluator
-already resolves — fixed at the root, custom as custom.<key> — because a
-different key means the gate silently finds nothing.
-
-Co-Authored-By: Claude Opus 5 (1M context) <noreply@example.com>"
-```
+- [ ] **Step 2: Run, confirm the merge tests fail** (the identity test may already pass if Task 3 used per-kind counters — that is fine, it is a regression guard).
+- [ ] **Step 3: Widen the merge key** in `effective-context.ts` from `` `${code}|${system}` `` to `` `${code}|${system}|${date ?? ''}|${sourceId ?? ''}` ``. Note in the code comment that undated entries still collapse, which is what preserves today's behavior for the common case.
+- [ ] **Step 4: Run the retraversal suites** — `resolution-retraversal-context.test.ts` and anything else exercising `addPatientContext` — and confirm no count regressions.
+- [ ] **Steps 5–6: Typecheck, commit.**
 
 ---
 
-### Task 4: Extend `CodeInput` with the SYNTHETIC-only fields
+### Task 6: GraphQL — explicit mode, temporal anchors, and central types
 
 **Files:**
-- Modify: `apps/pathway-service/schema.graphql` (`CodeInput` at ~1130, `LabResultInput` at ~1136)
-- Modify: `apps/pathway-service/src/resolvers/mutations/resolution.ts` (the inline arg types at ~46 and ~79)
-- Test: `apps/pathway-service/src/__tests__/temporal/synthetic-input-contract.test.ts`
+- Modify: `apps/pathway-service/schema.graphql`
+- Modify: `apps/pathway-service/src/services/confidence/types.ts` (extend `CodeEntry`/`LabResult` centrally)
+- Modify: `apps/pathway-service/src/resolvers/mutations/resolution.ts`, `multi-pathway-resolution.ts`
+- Test: `apps/pathway-service/src/__tests__/temporal/resolution-input-contract.test.ts`
 
-**Interfaces:**
-- Produces: `date`, `endDate`, `clinicalState`, `recordValidity`, `sourceId` on `CodeInput`; `clinicalState`/`recordValidity`/`sourceId` on `LabResultInput`.
+Review P1-2 and P2. Two defects: the mutations exposed synthetic fields with **no mode input and no temporal anchors**, and the TypeScript expansion touched two inline shapes while `CodeInput`/`LabResultInput` are shared by `PatientContextInput` *and* `AdditionalContextInput` and several other consumers.
 
-Every field is **optional and additive** — no existing query changes shape. `LabResultInput` already has `date`.
+**The anchor gap is not cosmetic.** Both resolvers call `makeEvaluationTemporalContext()` with no arguments, so `encounterStart` is never set. Under `v1`, Plan 03 defaults vitals to `ENCOUNTER`, and Plan 03's guard rejects any session whose pathway resolves an ENCOUNTER horizon without an anchor. **Every `v1` pathway reading vitals would therefore be unstartable, with no way for a caller to supply the anchor.** This task closes that.
 
-- [ ] **Step 1: Write the failing test** — assert the SDL exposes the fields, so a schema edit that misses one is caught:
-
-```ts
-import { readFileSync } from 'fs';
-import { join } from 'path';
-
-const sdl = readFileSync(join(__dirname, '../../../schema.graphql'), 'utf-8');
-
-function inputBlock(name: string): string {
-  const start = sdl.indexOf(`input ${name} {`);
-  if (start === -1) throw new Error(`no input ${name} in the SDL`);
-  return sdl.slice(start, sdl.indexOf('}', start));
-}
-
-describe('SYNTHETIC input contract', () => {
-  it('CodeInput carries the trusted-only fields', () => {
-    const block = inputBlock('CodeInput');
-    for (const field of ['date', 'endDate', 'clinicalState', 'recordValidity', 'sourceId']) {
-      expect(block).toContain(field);
-    }
-  });
-
-  it('keeps every trusted-only field OPTIONAL — additive, so no existing query breaks', () => {
-    const block = inputBlock('CodeInput');
-    for (const line of block.split('\n')) {
-      const m = line.match(/^\s*(date|endDate|clinicalState|recordValidity|sourceId):\s*(\S+)/);
-      if (m) expect(m[2]).not.toContain('!');
-    }
-  });
-
-  it('leaves code and system required', () => {
-    const block = inputBlock('CodeInput');
-    expect(block).toMatch(/code:\s*String!/);
-    expect(block).toMatch(/system:\s*String!/);
-  });
-
-  it('LabResultInput carries validity and provenance too', () => {
-    const block = inputBlock('LabResultInput');
-    for (const field of ['clinicalState', 'recordValidity', 'sourceId']) {
-      expect(block).toContain(field);
-    }
-  });
-});
-```
-
-- [ ] **Step 2: Run it and confirm it fails** on the missing fields.
-
-- [ ] **Step 3: Edit the SDL**
-
-```graphql
-input CodeInput {
-  code: String!
-  system: String!
-  display: String
-  """
-  SYNTHETIC-only. Rejected under LIVE and REPLAY, where the server derives
-  these from the source record — see ResolutionMode (design §8).
-  """
-  date: String
-  endDate: String
-  clinicalState: String
-  recordValidity: String
-  sourceId: String
-}
-```
-
-Add `clinicalState`, `recordValidity` and `sourceId` to `LabResultInput` the same way; it already has `date`.
-
-- [ ] **Step 4: Widen the resolver's inline arg types** in `resolution.ts` so the new fields survive to the assembler. The `CodeInput`-shaped literals appear twice (~46 and ~79). Extend **both** — TypeScript will not warn that one was missed, because dropping a field is a silent narrowing, not an error:
-
-```ts
-        conditionCodes?: Array<{
-          code: string;
-          system: string;
-          display?: string;
-          // SYNTHETIC-only; assertModeAllows rejects them under LIVE/REPLAY.
-          date?: string;
-          endDate?: string;
-          clinicalState?: string;
-          recordValidity?: string;
-          sourceId?: string;
-        }>;
-```
-
-Apply the same five fields to the `medications` and `allergies` literals, and add `clinicalState`/`recordValidity`/`sourceId` to the `labResults` literal (it already declares `date`).
-
-- [ ] **Step 5: Run the test** — expect PASS, 4 tests.
-- [ ] **Step 6: Typecheck** — exit 0.
-- [ ] **Step 7: Regenerate types if the build does so** — `npm run build --prefix apps/pathway-service` runs `graphql-codegen` before `tsc`. Run it and confirm it succeeds; commit any regenerated output it produces under `src/__generated__/`.
-- [ ] **Step 8: Commit**
-
-```bash
-git add apps/pathway-service/schema.graphql apps/pathway-service/src/resolvers/mutations/resolution.ts apps/pathway-service/src/__tests__/temporal/synthetic-input-contract.test.ts
-git commit -m "feat: SYNTHETIC-only fields on the coded input types
-
-date, endDate, clinicalState, recordValidity and sourceId are how an
-authorized simulator expresses a fact the server cannot derive — all
-optional and additive, so no existing query changes shape, and all
-rejected under LIVE and REPLAY by assertModeAllows.
-
-The test reads the SDL directly: a schema edit that misses a field, or
-makes one required, fails rather than surfacing as a runtime shape
-mismatch later.
-
-Co-Authored-By: Claude Opus 5 (1M context) <noreply@example.com>"
-```
+- [ ] **Step 1: Write the failing test** — assert against the SDL and the resolver behavior: `resolutionMode` exists on both mutations; `evaluationAsOf` and `encounterStart` are accepted and threaded into `makeEvaluationTemporalContext`; SYNTHETIC without ADMIN is rejected; a v1 vitals pathway with `encounterStart` supplied starts, and without it fails with `MISSING_ENCOUNTER_ANCHOR` (proving the anchor actually reaches the guard); every new SDL field is optional.
+- [ ] **Step 2: Run, confirm it fails.**
+- [ ] **Step 3: SDL.** Add a `ResolutionModeInput` enum (`LIVE`/`SYNTHETIC`/`REPLAY`), `snapshotId`, `sessionId`, `evaluationAsOf`, `encounterStart` to both mutations, and enums `ClinicalStateInput`/`RecordValidityInput` so invalid values are rejected at the GraphQL layer as well as by Task 2's parsers. Add the SYNTHETIC-only fields to `CodeInput`; add `recordValidity`/`sourceId` — **not** `clinicalState` — to `LabResultInput`. All optional.
+- [ ] **Step 4: Runtime exactly-one validation.** GraphQL cannot express a discriminated input union, so the resolver validates: `SYNTHETIC` requires `patientContext` and forbids `snapshotId`/`sessionId`; `LIVE` requires `snapshotId`; `REPLAY` requires `sessionId`. Absent mode defaults to `SYNTHETIC` **only if** `patientContext` is present — preserving every existing caller — and that default is asserted by a test.
+- [ ] **Step 5: Central types.** Add the optional fields to `CodeEntry` and `LabResult` in `confidence/types.ts` so the assembler needs no intersection casts, then update every consumer the compiler flags. Do not add per-call-site inline shapes.
+- [ ] **Step 6: Compile-time fixtures** for the single-pathway, multi-pathway and additional-context paths, so a consumer missed during the widening fails the build rather than at runtime.
+- [ ] **Steps 7–9: Run, `npm run build --prefix apps/pathway-service` (codegen + tsc), commit.**
 
 ---
 
-### Task 5: Behavior-preservation proof against the kernel
+### Task 7: Behavior-preservation proof, suite, and overview
 
-**Files:**
-- Test: `apps/pathway-service/src/__tests__/temporal/assembler-preserves-today.test.ts`
+**Files:** test `assembler-preserves-today.test.ts`; modify the suite overview.
 
-This task adds no production code. It exists because the whole plan is a bet — that assembling today's `PatientContext` and running it through `selectFacts` under `legacy-v0` selects the same facts today's evaluator does. If that bet is wrong, Plan 04 cannot land, and it is far cheaper to learn it here.
-
-- [ ] **Step 1: Write the test**
-
-```ts
-import { assembleContext } from '../../services/resolution/temporal/context-assembler';
-import { selectFacts } from '../../services/resolution/temporal/select-facts';
-import { resolveEffectivePolicy, toEffectivePolicy } from '../../services/resolution/temporal/cascade';
-import { EvaluationTemporalContext } from '../../services/resolution/temporal/evaluation-context';
-import { ResolutionMode } from '../../services/resolution/temporal/trust-mode';
-import { PatientContext } from '../../services/confidence/types';
-
-const AS_OF = '2026-08-03T12:00:00.000Z';
-const ctx: EvaluationTemporalContext = {
-  evaluationAsOf: AS_OF,
-  timezone: 'UTC',
-  temporalPolicyVersion: 'legacy-v0',
-};
-const SYNTHETIC: ResolutionMode = { mode: 'SYNTHETIC' };
-
-function pc(over: Partial<PatientContext> = {}): PatientContext {
-  return { patientId: 'p', conditionCodes: [], medications: [], labResults: [], allergies: [], ...over };
-}
-
-function run(patientContext: PatientContext, field: string, operator: string, value: string) {
-  const store = assembleContext(SYNTHETIC, patientContext, ctx);
-  const tier = resolveEffectivePolicy(field as never, 'legacy-v0', {});
-  const policy = toEffectivePolicy(tier, ctx);
-  return selectFacts({ field, operator, value } as never, store, policy);
-}
-
-describe('legacy-v0 through the kernel reproduces today', () => {
-  it('an UNDATED condition still satisfies includes_code', () => {
-    const out = run(pc({ conditionCodes: [{ code: 'E11.9', system: 'icd10' }] }), 'conditions', 'includes_code', 'E11.9');
-    expect(out.status).toBe('READY');
-  });
-
-  it('an UNDATED lab still resolves for a scalar comparison — NOT indeterminate', () => {
-    // This is the assertion the whole plan ordering exists for. If the
-    // assembler ever stops modelling undated facts as OPEN(clock), this goes
-    // INDETERMINATE and plan 04's fail-closed mapping silently breaks every
-    // undated lab gate.
-    const out = run(pc({ labResults: [{ code: '4548-4', system: 'loinc', value: 9.1 }] }), 'labs', 'greater_than', '4548-4');
-    expect(out.status).toBe('READY');
-    if (out.status !== 'READY') throw new Error('unreachable');
-    expect(out.selected).toHaveLength(1);
-  });
-
-  it('a VITAL resolves for a scalar comparison — vitals are always undated', () => {
-    const out = run(pc({ vitalSigns: { systolic_bp: 148 } }), 'vitals', 'greater_than', 'systolic_bp');
-    expect(out.status).toBe('READY');
-  });
-
-  it('a dated lab inside the lifetime window still resolves', () => {
-    const out = run(pc({ labResults: [{ code: '4548-4', system: 'loinc', value: 9.1, date: '2020-01-01' }] }), 'labs', 'greater_than', '4548-4');
-    expect(out.status).toBe('READY');
-  });
-
-  it('a FUTURE-dated fact does not match — the horizon upper bound is the clock', () => {
-    const out = run(pc({ labResults: [{ code: '4548-4', system: 'loinc', value: 9.1, date: '2099-01-01' }] }), 'labs', 'greater_than', '4548-4');
-    expect(out.status).toBe('NO_MATCH');
-  });
-
-  it('under v1 the same undated lab still resolves, but a 2-year-old one does not', () => {
-    const v1ctx = { ...ctx, temporalPolicyVersion: 'v1' };
-    const store = assembleContext(SYNTHETIC, pc({
-      labResults: [{ code: '4548-4', system: 'loinc', value: 9.1, date: '2024-01-01' }],
-    }), v1ctx);
-    const policy = toEffectivePolicy(resolveEffectivePolicy('labs', 'v1', {}), v1ctx);
-    expect(selectFacts({ field: 'labs', operator: 'greater_than', value: '4548-4' } as never, store, policy).status)
-      .toBe('NO_MATCH');
-  });
-});
-```
-
-- [ ] **Step 2: Run it.** Every case must pass. **If any fails, stop and report** — a failure here means the assembler's interval modeling is wrong, and Plan 04 must not be written against it.
-- [ ] **Step 3: Commit**
-
-```bash
-git add apps/pathway-service/src/__tests__/temporal/assembler-preserves-today.test.ts
-git commit -m "test: prove legacy-v0 through the kernel reproduces today
-
-The plan's central bet, asserted rather than assumed: today's
-PatientContext, assembled and run through selectFacts under legacy-v0,
-selects the facts the current evaluator selects. Undated conditions,
-undated labs and vitals all resolve READY rather than INDETERMINATE;
-future-dated facts do not match; and under v1 the same undated lab still
-resolves while a two-year-old one falls outside QUARTER.
-
-If the OPEN(clock) modelling ever regresses, this fails here instead of
-silently breaking every undated gate when plan 04 maps INDETERMINATE to
-fail-closed.
-
-Co-Authored-By: Claude Opus 5 (1M context) <noreply@example.com>"
-```
-
----
-
-### Task 6: Suite check and overview reconciliation
-
-**Files:**
-- Modify: `docs/superpowers/plans/2026-07-26-temporal-horizon-00-overview.md`
-
-- [ ] **Step 1: Full suite** — `npm test --prefix apps/pathway-service -- --runInBand`
-  Expected: **9 failed / 2 suites** (`data-completeness-scorer`, `patient-match-scorer`), passing count risen by the tests this plan added. Any third failing suite belongs to this plan.
-- [ ] **Step 2: Typecheck** — exit 0.
-- [ ] **Step 3: Record the order swap in the overview.** Under the decomposition table, state that **05 executes before 04**, with the one-line reason (04 needs a `FactStore`; only 05 produces one; undated facts otherwise fail scalar gates closed under `legacy-v0`). Update Plan 05's Produces line with the real exported names: `ResolutionMode`, `assertModeAllows`, `SyntheticFactInput`, `assembleContext(mode, patientContext, ctx)`, and the extended `CodeInput`/`LabResultInput` fields. Update Plan 04's Consumes to `01–03, 05`.
-- [ ] **Step 4: Commit** the overview edit with the measured suite numbers in the message.
+- [ ] **Step 1: Write the proof.** Under `legacy-v0`: an undated condition satisfies `includes_code`; an **undated lab** resolves `READY` for a scalar comparison, not `INDETERMINATE`; a **vital** resolves `READY`; a dated lab inside the window resolves; a future-dated fact is `NO_MATCH`.
+  Under `v1`, **assert both halves separately** — the v1 draft claimed to prove undated-still-resolves *and* two-year-old-does-not but only asserted the second (review, smaller correction):
+  ```ts
+  it('v1: an undated lab still resolves', () => { /* expect READY */ });
+  it('v1: a two-year-old lab falls outside QUARTER', () => { /* expect NO_MATCH */ });
+  ```
+- [ ] **Step 2: Run it. If any case fails, STOP and report** — the interval modeling is wrong and Plan 04 must not be written against it.
+- [ ] **Step 3: Full suite** — expect 9 failed / 2 suites, passing count risen. Any third failing suite belongs to this plan.
+- [ ] **Step 4: Typecheck.**
+- [ ] **Step 5: Overview.** Record that 05 runs before 04 and why; update Plan 05's Produces with the real names; set Plan 04's Consumes to `01–03, 05`; add Plan 05b (fact persistence + REPLAY).
+- [ ] **Step 6: Commit** with the measured suite numbers.
 
 ---
 
 ## Acceptance criteria
 
-- [ ] An undated condition, an undated lab and any vital all resolve `READY` — never `INDETERMINATE` — under `legacy-v0`, proven by Task 5.
-- [ ] A future-dated fact never matches, at any horizon.
-- [ ] `factId` is unique across facts, including two identical codes on the same date, and stable for a given input ordering.
-- [ ] LIVE and REPLAY reject every trusted-only field, naming all offenders and the input path.
-- [ ] Every new `CodeInput`/`LabResultInput` field is optional in the SDL.
-- [ ] Vitals flatten to exactly the keys the current evaluator resolves (root, and `custom.<key>`).
-- [ ] Full suite still fails only the two scorer suites; `tsc --noEmit` exits 0.
-- [ ] Nothing in this plan is reachable from `evaluateGate` or reachability yet.
+- [ ] A LIVE or REPLAY resolution **cannot** carry caller-supplied clinical facts — enforced by the type, not by a validation call.
+- [ ] LIVE and REPLAY throw `NOT_IMPLEMENTED`-style errors naming the plan that will implement them.
+- [ ] `clinicalState`, `recordValidity` and both dates are **parsed**; no `as` cast turns a string into a closed-union member.
+- [ ] `endDate` produces a `KNOWN` end; an `INACTIVE` fact with no end gets `UNKNOWN`, never `OPEN`.
+- [ ] A lab marked `recordValidity: 'INVALID'` reaches the kernel as invalid; a `clinicalState` on a lab is rejected.
+- [ ] Adding a fact of one kind does not renumber any other kind's `factId`.
+- [ ] Two occurrences of the same code on different dates, or with different source ids, both survive the merge; genuine duplicates still collapse.
+- [ ] A `v1` pathway reading vitals can be started by supplying `encounterStart`, and fails with `MISSING_ENCOUNTER_ANCHOR` without it.
+- [ ] Every new SDL field is optional; existing callers that send no mode still work.
+- [ ] Undated conditions, undated labs and vitals all resolve `READY` under `legacy-v0`.
+- [ ] Full suite fails only the two scorer suites; `tsc --noEmit` exits 0.
+- [ ] The SYNTHETIC authorization check is documented as defence-in-depth, not access control.
