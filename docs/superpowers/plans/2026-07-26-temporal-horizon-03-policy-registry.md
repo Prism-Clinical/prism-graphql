@@ -76,6 +76,12 @@ ignore horizons at evaluation time, wide open. Closing it properly means routing
 contradicts design §10 ("attribute conditions get no horizon control") and belongs to
 a design revision plus Plan 04 — **not to this plan.**
 
+A second instance of the same class, found while restricting the sweep to `Gate` nodes:
+`satisfaction_check` on prerequisite nodes carries its own `lookback_days`
+(`prerequisites.ts:131`), a temporal window that no cascade level, policy version or
+horizon governs. It is not a gate condition and is out of scope here, but it is the
+same feature being answered two different ways in two places.
+
 **Decision needed from the design owner** before `v1` is activated. Until then the gap
 is documented, not silently inherited.
 
@@ -101,6 +107,7 @@ import {
   TEMPORAL_POLICIES,
   KNOWN_TEMPORAL_POLICY_VERSIONS,
   getTemporalPolicy,
+  assertKnownPolicyVersion,
   systemDefaultFor,
   fieldHasClinicalState,
 } from '../../services/resolution/temporal/policy-registry';
@@ -172,6 +179,14 @@ describe('getTemporalPolicy', () => {
   it('rejects a prototype key that is not a real version', () => {
     expect(() => getTemporalPolicy('constructor')).toThrow(TemporalContextError);
     expect(() => getTemporalPolicy('toString')).toThrow(TemporalContextError);
+  });
+});
+
+describe('assertKnownPolicyVersion', () => {
+  it('passes for a known version and throws for an unknown one', () => {
+    expect(() => assertKnownPolicyVersion('legacy-v0')).not.toThrow();
+    expect(() => assertKnownPolicyVersion('v1')).not.toThrow();
+    expect(() => assertKnownPolicyVersion('v99')).toThrow(TemporalContextError);
   });
 });
 
@@ -319,6 +334,18 @@ export function getTemporalPolicy(version: string): TemporalPolicySet {
   return TEMPORAL_POLICIES[version];
 }
 
+/**
+ * Assert a version exists, for call sites that only want the check.
+ *
+ * Exists so the resolver boundary reads as an assertion rather than a
+ * discarded lookup — the two mutations call this immediately after creating
+ * the clock, covering paths where no condition is ever swept (zero matched
+ * pathways, every graph empty).
+ */
+export function assertKnownPolicyVersion(version: string): void {
+  getTemporalPolicy(version);
+}
+
 export function systemDefaultFor(field: GateField, version: string): FieldPolicy {
   const set = getTemporalPolicy(version);
   if (!Object.prototype.hasOwnProperty.call(FIELD_TO_KIND, field)) {
@@ -334,7 +361,7 @@ export function systemDefaultFor(field: GateField, version: string): FieldPolicy
 - [ ] **Step 5: Run the test to verify it passes**
 
 Run: `npm test --prefix apps/pathway-service -- --runInBand src/__tests__/temporal/policy-registry.test.ts`
-Expected: PASS, 12 tests.
+Expected: PASS, 13 tests.
 
 - [ ] **Step 6: Typecheck**
 
@@ -658,7 +685,7 @@ export function parsePathwayTemporalDefaults(raw: unknown): PathwayTemporalDefau
 - [ ] **Step 4: Run the test to verify it passes**
 
 Run: `npm test --prefix apps/pathway-service -- --runInBand src/__tests__/temporal/cascade-parse.test.ts`
-Expected: PASS, 14 tests.
+Expected: PASS, 13 tests.
 
 - [ ] **Step 5: Typecheck**
 
@@ -979,7 +1006,7 @@ Note: `parseStatusValue` is currently module-private from Task 2 — no export c
 - [ ] **Step 4: Run the test to verify it passes**
 
 Run: `npm test --prefix apps/pathway-service -- --runInBand src/__tests__/temporal/cascade-resolve.test.ts`
-Expected: PASS, 15 tests.
+Expected: PASS, 16 tests.
 
 - [ ] **Step 5: Run the whole temporal directory — Plans 01/02 must be untouched**
 
@@ -1537,9 +1564,38 @@ describe('assertEncounterAnchor', () => {
     expect(() => assertEncounterAnchor(rctx([attrGate]), ctx())).not.toThrow();
   });
 
-  it('ignores non-gate nodes and gates with no condition', () => {
-    const plain = gate('n-step', { title: 'step' });
+  it('ignores a gate with no condition', () => {
+    const plain = gate('g-empty', { title: 'no condition' });
     expect(() => assertEncounterAnchor(rctx([plain]), ctx())).not.toThrow();
+  });
+
+  it('ignores a NON-Gate node even when it carries a condition-shaped property', () => {
+    // Must not use the gate() helper — that sets nodeType 'Gate', so the
+    // test would pass with or without the nodeType check and prove nothing.
+    const step: GraphNode = {
+      id: 'n-step',
+      nodeIdentifier: 'n-step',
+      nodeType: 'Step',
+      properties: {
+        title: 'Order vitals',
+        // Condition-shaped, but nothing ever evaluates it on a Step node.
+        condition: { field: 'vitals', operator: 'greater_than', value: '8480-6' },
+      },
+    };
+    expect(() => assertEncounterAnchor(rctx([step]), ctx())).not.toThrow();
+  });
+
+  it('ignores a satisfaction_check, which is not a gate condition', () => {
+    const step: GraphNode = {
+      id: 'n-prereq',
+      nodeIdentifier: 'n-prereq',
+      nodeType: 'Step',
+      properties: {
+        title: 'A1c drawn',
+        satisfaction_check: { type: 'code', code: '4548-4', system: 'http://loinc.org', lookback_days: 90 },
+      },
+    };
+    expect(() => assertEncounterAnchor(rctx([step]), ctx())).not.toThrow();
   });
 
   it('honors a pathway-level ENCOUNTER default on an ordinary field', () => {
@@ -1625,6 +1681,18 @@ function sweepableConditions(nodes: readonly GraphNode[]): SweepableCondition[] 
   const out: SweepableCondition[] = [];
 
   for (const node of nodes) {
+    // Only Gate nodes carry evaluable conditions: `condition`/`conditions` are
+    // read exclusively from GateProperties (gate-evaluator.ts:439/563,
+    // reachability.ts:153/177). Without this check, any imported node that
+    // happens to carry a condition-shaped property would trigger a false
+    // missing-anchor rejection for a gate that is never evaluated.
+    //
+    // `satisfaction_check` on Stage/Step prerequisite nodes is a different
+    // shape ({type, code, system, lookback_days}) with no `field` key, so it
+    // is already excluded below — see "Known gap" for its own untracked
+    // temporal window.
+    if (node.nodeType !== 'Gate') continue;
+
     const props = node.properties as Record<string, unknown> | undefined;
     if (!props) continue;
 
@@ -1708,13 +1776,24 @@ export function assertEncounterAnchor(
 - [ ] **Step 4: Run the test to verify it passes**
 
 Run: `npm test --prefix apps/pathway-service -- --runInBand src/__tests__/temporal/encounter-anchor-guard.test.ts`
-Expected: PASS, 10 tests.
+Expected: PASS, 14 tests.
 
 - [ ] **Step 5: Wire the single-pathway site**
 
-In `apps/pathway-service/src/resolvers/mutations/resolution.ts`, add `assertEncounterAnchor` to the existing `buildResolutionContext` import block, then insert one call immediately after the `const temporalContext = makeEvaluationTemporalContext();` line (~122), before `makeLlmGateEvaluator`:
+In `apps/pathway-service/src/resolvers/mutations/resolution.ts`, add `assertEncounterAnchor` to the existing `buildResolutionContext` import block, and add:
 
 ```ts
+import { assertKnownPolicyVersion } from '../../services/resolution/temporal/policy-registry';
+```
+
+Insert both calls immediately after the `const temporalContext = makeEvaluationTemporalContext();` line (~122), before `makeLlmGateEvaluator`:
+
+```ts
+    // The version gates everything downstream, so it is checked at the
+    // boundary — not left to the sweep, which never runs on a pathway with
+    // nothing to sweep.
+    assertKnownPolicyVersion(temporalContext.temporalPolicyVersion);
+
     // Refuse up front rather than throwing partway through: an ENCOUNTER
     // horizon with no anchor is unresolvable, and by the time the first
     // such gate is reached the traversal has already called LLM gates.
@@ -1723,7 +1802,22 @@ In `apps/pathway-service/src/resolvers/mutations/resolution.ts`, add `assertEnco
 
 - [ ] **Step 6: Wire the multi-pathway site**
 
-In `apps/pathway-service/src/resolvers/mutations/multi-pathway-resolution.ts`, add `assertEncounterAnchor` to the existing import from `../helpers/resolution-context`.
+In `apps/pathway-service/src/resolvers/mutations/multi-pathway-resolution.ts`, add `assertEncounterAnchor` to the existing import from `../helpers/resolution-context`, and add:
+
+```ts
+import { assertKnownPolicyVersion } from '../../services/resolution/temporal/policy-registry';
+```
+
+**First, the version check at the outer boundary.** `startMultiPathwayResolution` has two exits that never reach `resolveAndPersistAll` — the zero-match branch returns after creating a parent session (~line 164), and a run where every matched pathway has an empty graph sweeps nothing. Both would otherwise persist a parent session pinned to a version nothing can evaluate. Insert immediately after `const temporalContext = makeEvaluationTemporalContext();` (~line 161), **before** `getMatchedPathways`:
+
+```ts
+    // Before the zero-match branch: that path creates a parent session and
+    // returns without ever entering resolveAndPersistAll, so a version
+    // validated only during the sweep would never be checked at all.
+    assertKnownPolicyVersion(temporalContext.temporalPolicyVersion);
+```
+
+**Then the two-pass split inside `resolveAndPersistAll`.**
 
 `resolveAndPersistAll` currently loads, traverses and persists each pathway in **one** loop (`for (const m of pathways)`, ~line 701; `createSession` at ~751). Validating inside that loop is not a preflight: if pathway B lacks an anchor, pathway A has already created a child session and flushed its LLM audit rows, and the mutation then throws — leaving orphaned sessions behind and no parent session to reference them.
 
@@ -1771,17 +1865,92 @@ In `apps/pathway-service/src/__tests__/multi-pathway-resolution.test.ts`, add to
 
 In `apps/pathway-service/src/__tests__/ddi-multi-pathway.test.ts`, add the same line to its factory (~line 22). This suite is one of the three documented baseline failures — without the no-op guard it would fail with a *new, earlier* exception, masking the failures the baseline is supposed to be tracking.
 
-- [ ] **Step 8: Verify both multi-pathway suites behave as documented**
+- [ ] **Step 8: Prove the two-pass guarantee with a regression test**
+
+The mock added in Step 7 makes `assertEncounterAnchor` a permanent no-op, so on its own it would **not** catch someone moving validation back inside the traversal loop. The no-side-effects guarantee needs a test that fails when the passes are merged.
+
+Add to `apps/pathway-service/src/__tests__/multi-pathway-resolution.test.ts`. Adjust the imported mock handles to whatever the file already binds (`createSession` from the session-store mock, the `TraversalEngine` constructor mock, `makeLlmGateEvaluator`):
+
+```ts
+describe('resolveAndPersistAll — validation is a preflight', () => {
+  it('writes nothing when a later pathway fails validation', async () => {
+    // Two pathways, both with non-empty graphs. The FIRST passes validation,
+    // the SECOND throws. If validation still ran inside the traversal loop,
+    // pathway one would already have been traversed and persisted by the
+    // time pathway two was rejected — which is exactly the orphaned-session
+    // state the two-pass split exists to prevent.
+    const flushAudits = jest.fn();
+    (makeLlmGateEvaluator as jest.Mock).mockReturnValue({
+      evaluator: jest.fn(),
+      flushAudits,
+    });
+    (buildResolutionContext as jest.Mock).mockResolvedValue({
+      graphContext: { allNodes: [{ nodeIdentifier: 'n1' }], allEdges: [] },
+      edges: [],
+      signals: [],
+      thresholds: { autoResolveThreshold: 0.8, suggestThreshold: 0.5 },
+      confidenceEngine: {},
+      codeMap: new Map(),
+      temporalDefaults: {},
+    });
+    (assertEncounterAnchor as jest.Mock)
+      .mockImplementationOnce(() => undefined)
+      .mockImplementationOnce(() => {
+        throw new Error('MISSING_ENCOUNTER_ANCHOR');
+      });
+
+    await expect(
+      resolveAndPersistAll(
+        pool,
+        [matchedPathway('p1'), matchedPathway('p2')],
+        patientContext,
+        'provider-1',
+        temporalContext,
+      ),
+    ).rejects.toThrow('MISSING_ENCOUNTER_ANCHOR');
+
+    // The three things that must NOT have happened.
+    expect(TraversalEngine).not.toHaveBeenCalled();
+    expect(createSession).not.toHaveBeenCalled();
+    expect(flushAudits).not.toHaveBeenCalled();
+  });
+});
+```
+
+Also add a boundary test for the version check on the zero-match path. `makeEvaluationTemporalContext` currently takes no arguments and always yields `legacy-v0`, so an unknown version is not reachable through the resolver until Plan 05 wires the input contract — mock the factory to inject one:
+
+```ts
+jest.mock('../services/resolution/temporal/evaluation-context', () => {
+  const actual = jest.requireActual('../services/resolution/temporal/evaluation-context');
+  return { ...actual, makeEvaluationTemporalContext: jest.fn(actual.makeEvaluationTemporalContext) };
+});
+
+it('rejects an unknown policy version before creating a zero-match parent session', async () => {
+  (makeEvaluationTemporalContext as jest.Mock).mockReturnValueOnce({
+    evaluationAsOf: '2026-08-03T12:00:00.000Z',
+    timezone: 'UTC',
+    temporalPolicyVersion: 'v99',
+  });
+  (getMatchedPathways as jest.Mock).mockResolvedValue([]); // zero-match exit
+
+  await expect(startMultiPathwayResolution(...)).rejects.toThrow(/unknown temporalPolicyVersion/);
+  expect(createMultiPathwaySession).not.toHaveBeenCalled();
+});
+```
+
+Repeat the second test with `getMatchedPathways` returning one pathway whose `buildResolutionContext` yields `allNodes: []` — the all-empty path, which also sweeps nothing.
+
+- [ ] **Step 9: Verify both multi-pathway suites behave as documented**
 
 Run: `npm test --prefix apps/pathway-service -- --runInBand src/__tests__/multi-pathway-resolution.test.ts src/__tests__/ddi-multi-pathway.test.ts`
 Expected: `multi-pathway-resolution` passes in full. `ddi-multi-pathway` still fails with **its own documented baseline failures** — confirm the failure messages match the pre-existing ones and are not `assertEncounterAnchor is not a function`.
 
-- [ ] **Step 9: Typecheck**
+- [ ] **Step 10: Typecheck**
 
 Run: `./node_modules/.bin/tsc -p apps/pathway-service/tsconfig.json --noEmit`
 Expected: exit 0.
 
-- [ ] **Step 10: Update the suite overview**
+- [ ] **Step 11: Update the suite overview**
 
 In `docs/superpowers/plans/2026-07-26-temporal-horizon-00-overview.md`:
 
@@ -1804,12 +1973,12 @@ In `docs/superpowers/plans/2026-07-26-temporal-horizon-00-overview.md`:
    `temporal/policy-registry.ts`, `temporal/cascade.ts`, migration `064_add_temporal_defaults_to_pathway_graph_index.sql`, `resolvers/helpers/resolution-context.ts`, plus one-line guard calls in `resolvers/mutations/resolution.ts` and `multi-pathway-resolution.ts`.
 4. Record the vitals decision under Plan 03: `legacy-v0` vitals = LIFETIME, `v1` vitals = ENCOUNTER (design §5's table omitted vitals; §10 fixes them to Encounter).
 
-- [ ] **Step 11: Run the full suite and compare against the baseline**
+- [ ] **Step 12: Run the full suite and compare against the baseline**
 
 Run: `npm test --prefix apps/pathway-service -- --runInBand 2>&1 | tail -30`
 Expected: **13 failed** across `data-completeness-scorer`, `patient-match-scorer`, `ddi-multi-pathway` — the documented pre-existing baseline. Any new failure, or any failure in a fourth suite, belongs to this plan. Record the exact passed/failed counts for the commit message.
 
-- [ ] **Step 12: Commit**
+- [ ] **Step 13: Commit**
 
 ```bash
 git add apps/pathway-service/src/resolvers/helpers/resolution-context.ts apps/pathway-service/src/resolvers/mutations/resolution.ts apps/pathway-service/src/resolvers/mutations/multi-pathway-resolution.ts apps/pathway-service/src/__tests__/temporal/encounter-anchor-guard.test.ts apps/pathway-service/src/__tests__/multi-pathway-resolution.test.ts apps/pathway-service/src/__tests__/ddi-multi-pathway.test.ts docs/superpowers/plans/2026-07-26-temporal-horizon-00-overview.md
@@ -1853,9 +2022,10 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@example.com>"
 ## Acceptance criteria
 
 - [ ] `getTemporalPolicy('v99')` throws `UNKNOWN_POLICY_VERSION`; there is no "use latest" path anywhere in the module.
-- [ ] An unknown policy version is rejected **unconditionally** at session creation — including when `encounterStart` is present and when the pathway has nothing to sweep.
+- [ ] An unknown policy version is rejected **unconditionally** at session creation — including when `encounterStart` is present, when the pathway has nothing to sweep, when zero pathways match, and when every matched pathway has an empty graph.
+- [ ] The anchor sweep inspects **only `Gate` nodes**; a `Step`/`Criterion` carrying a condition-shaped property or a `satisfaction_check` never triggers a rejection, proven by fixtures that are not built with the `gate()` helper.
 - [ ] An unknown root key in `temporal_defaults` (e.g. the singular `default_horizon`) throws rather than resolving to `{}`.
-- [ ] A multi-pathway run rejected for a missing anchor creates **no** child sessions and flushes **no** LLM audit rows — validation completes before any traversal begins.
+- [ ] A multi-pathway run rejected for a missing anchor creates **no** child sessions and flushes **no** LLM audit rows — validation completes before any traversal begins. Proven by a two-pathway test (first passes, second throws) that **fails if the two passes are merged back together**; the no-op mock alone does not prove this.
 - [ ] Every `GateField` resolves to a defined `FieldPolicy` in every known version.
 - [ ] `resolveEffectivePolicy` resolves horizon and status as independent axes, each reporting the level that supplied it.
 - [ ] `labs` and `vitals` never carry a status, at any cascade level, in any version.
