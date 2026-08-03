@@ -4,9 +4,17 @@ import {
   isCustomHorizon,
   MAX_CUSTOM_HORIZON_DAYS,
   TemporalContextError,
+  EvaluationTemporalContext,
+  resolveHorizon,
 } from './evaluation-context';
 import { GateField, FIELD_TO_KIND } from './contract';
-import { TemporalStatus, fieldHasClinicalState } from './policy-registry';
+import {
+  TemporalStatus,
+  FieldPolicy,
+  fieldHasClinicalState,
+  systemDefaultFor,
+} from './policy-registry';
+import { EffectivePolicy } from './select-facts';
 
 /** The PATHWAY level of the cascade, as loaded from `temporal_defaults`. */
 export interface PathwayTemporalDefaults {
@@ -150,4 +158,108 @@ export function parsePathwayTemporalDefaults(raw: unknown): PathwayTemporalDefau
   }
 
   return out;
+}
+
+/** Which cascade level supplied a resolved value — surfaced in evidence (Plan 08). */
+export type PolicyLevel = 'SYSTEM_DEFAULT' | 'PATHWAY' | 'NODE';
+
+/** The NODE level: the author's per-condition overrides. */
+export interface ConditionTemporalOverride {
+  horizon?: Horizon;
+  status?: TemporalStatus;
+}
+
+/**
+ * A resolved policy that has NOT yet been anchored to a clock. Horizon is
+ * still a tier (`'QUARTER'`, `{days:45}`), not a date range — resolving it
+ * requires the session's pinned context, and keeping that separate is what
+ * lets the cascade be tested without a clock and keeps `evaluationAsOf` the
+ * single wall-clock read.
+ */
+export interface PolicyTier {
+  horizon: Horizon;
+  status?: TemporalStatus;
+  horizonLevel: PolicyLevel;
+  statusLevel?: PolicyLevel;
+}
+
+/**
+ * Resolve SYSTEM_DEFAULT → PATHWAY → NODE for one (field, condition) pair
+ * (design §5).
+ *
+ * The two axes resolve independently: a condition that overrides only
+ * `status` keeps whatever horizon it inherits, and vice versa. Folding them
+ * into one "the node has an opinion" check would silently reset the other.
+ *
+ * Observation fields never carry a status at any level.
+ */
+export function resolveEffectivePolicy(
+  field: GateField,
+  version: string,
+  pathwayDefaults: PathwayTemporalDefaults,
+  condition?: ConditionTemporalOverride,
+): PolicyTier {
+  const system: FieldPolicy = systemDefaultFor(field, version);
+
+  let horizon: Horizon = system.horizon;
+  let horizonLevel: PolicyLevel = 'SYSTEM_DEFAULT';
+
+  const fromPathway = pathwayDefaults.horizons?.[field];
+  if (fromPathway !== undefined) {
+    horizon = parseHorizonValue(fromPathway, `default_horizons.${field}`);
+    horizonLevel = 'PATHWAY';
+  }
+  if (condition?.horizon !== undefined) {
+    horizon = parseHorizonValue(condition.horizon, `condition.horizon (${field})`);
+    horizonLevel = 'NODE';
+  }
+
+  if (!fieldHasClinicalState(field)) {
+    if (condition?.status !== undefined) {
+      throw new TemporalContextError(
+        `condition.status (${field}): ${field} have no clinical state, so a status is meaningless`,
+        'INVALID_TEMPORAL_DEFAULTS',
+      );
+    }
+    return { horizon, horizonLevel };
+  }
+
+  let status: TemporalStatus | undefined = system.status;
+  let statusLevel: PolicyLevel | undefined = status === undefined ? undefined : 'SYSTEM_DEFAULT';
+
+  const statusFromPathway = pathwayDefaults.statuses?.[field];
+  if (statusFromPathway !== undefined) {
+    status = parseStatusValue(statusFromPathway, `default_statuses.${field}`);
+    statusLevel = 'PATHWAY';
+  }
+  if (condition?.status !== undefined) {
+    status = parseStatusValue(condition.status, `condition.status (${field})`);
+    statusLevel = 'NODE';
+  }
+
+  const tier: PolicyTier = { horizon, horizonLevel };
+  if (status !== undefined) {
+    tier.status = status;
+    tier.statusLevel = statusLevel;
+  }
+  return tier;
+}
+
+/**
+ * Anchor a resolved tier to the session's pinned clock, producing the
+ * `EffectivePolicy` Plan 01's `selectFacts` consumes.
+ *
+ * Throws `MISSING_ENCOUNTER_ANCHOR` when an ENCOUNTER horizon has no
+ * `encounterStart` — `resolveHorizon` never substitutes `evaluationAsOf`,
+ * which would silently narrow the window to zero width. Call
+ * `collectEncounterAnchorRequirements` at session creation so this surfaces
+ * before a traversal starts rather than partway through one.
+ */
+export function toEffectivePolicy(
+  tier: PolicyTier,
+  ctx: EvaluationTemporalContext,
+): EffectivePolicy {
+  const policy: EffectivePolicy = { horizon: resolveHorizon(tier.horizon, ctx) };
+  if (tier.status !== undefined) policy.status = tier.status;
+  return policy;
 }
