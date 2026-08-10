@@ -1885,17 +1885,24 @@ export type SimulatorScenario = {
 /** Output mirror of `CodeInput` — output types cannot use input types as fields. */
 export type SimulatorScenarioCode = {
   __typename?: 'SimulatorScenarioCode';
+  clinicalState?: Maybe<ClinicalStateInput>;
   code: Scalars['String']['output'];
+  date?: Maybe<Scalars['String']['output']>;
   display?: Maybe<Scalars['String']['output']>;
+  endDate?: Maybe<Scalars['String']['output']>;
+  recordValidity?: Maybe<RecordValidityInput>;
+  sourceId?: Maybe<Scalars['String']['output']>;
   system: Scalars['String']['output'];
 };
 
-/** Output mirror of `LabResultInput`. */
+/** Output mirror of `LabResultInput`. Observations carry no clinical state. */
 export type SimulatorScenarioLabResult = {
   __typename?: 'SimulatorScenarioLabResult';
   code: Scalars['String']['output'];
   date?: Maybe<Scalars['String']['output']>;
   display?: Maybe<Scalars['String']['output']>;
+  recordValidity?: Maybe<RecordValidityInput>;
+  sourceId?: Maybe<Scalars['String']['output']>;
   system: Scalars['String']['output'];
   unit?: Maybe<Scalars['String']['output']>;
   value?: Maybe<Scalars['Float']['output']>;
@@ -3162,8 +3169,13 @@ export type SimulatorScenarioResolvers<ContextType = DataSourceContext, ParentTy
 }>;
 
 export type SimulatorScenarioCodeResolvers<ContextType = DataSourceContext, ParentType extends ResolversParentTypes['SimulatorScenarioCode'] = ResolversParentTypes['SimulatorScenarioCode']> = ResolversObject<{
+  clinicalState?: Resolver<Maybe<ResolversTypes['ClinicalStateInput']>, ParentType, ContextType>;
   code?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  date?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   display?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  endDate?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  recordValidity?: Resolver<Maybe<ResolversTypes['RecordValidityInput']>, ParentType, ContextType>;
+  sourceId?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   system?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
 }>;
@@ -3172,6 +3184,8 @@ export type SimulatorScenarioLabResultResolvers<ContextType = DataSourceContext,
   code?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   date?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   display?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  recordValidity?: Resolver<Maybe<ResolversTypes['RecordValidityInput']>, ParentType, ContextType>;
+  sourceId?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   system?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   unit?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   value?: Resolver<Maybe<ResolversTypes['Float']>, ParentType, ContextType>;

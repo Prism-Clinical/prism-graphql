@@ -38,7 +38,11 @@ import {
 import { assertKnownPolicyVersion } from '../../services/resolution/temporal/policy-registry';
 import { applyDdiToResolutionState } from '../../services/medications/ddi-pass-single-pathway';
 import { normalizePatientAttributes } from '../../services/resolution/patient-attributes';
-import { buildEffectivePatientContext, dependencyContextKey } from '../../services/resolution/effective-context';
+import {
+  buildEffectivePatientContext,
+  dependencyContextKey,
+  mergeAdditionalContext,
+} from '../../services/resolution/effective-context';
 
 export interface GateAnswerInput {
   booleanValue?: boolean;
@@ -628,8 +632,14 @@ export const resolutionMutations = {
       });
     }
 
-    // 2. Merge additional context
-    const merged = { ...(session.additionalContext ?? {}), ...args.additionalContext };
+    // 2. Accumulate additional context onto everything supplied before it.
+    //    A shallow spread replaced each key instead of merging it, so adding
+    //    condition A and then condition B stored only B — and every later
+    //    retraversal lost evidence a gate had already counted.
+    const merged = mergeAdditionalContext(
+      session.additionalContext as Partial<AdditionalContextInput> | undefined,
+      args.additionalContext,
+    );
 
     // 3. Build updated patient context for re-evaluation (rebuilt from the
     // accumulated `merged` bag so retraversal context accumulates across calls)

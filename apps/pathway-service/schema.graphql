@@ -1702,9 +1702,14 @@ type SimulatorScenarioCode {
   code: String!
   system: String!
   display: String
+  date: String
+  endDate: String
+  clinicalState: ClinicalStateInput
+  recordValidity: RecordValidityInput
+  sourceId: String
 }
 
-"""Output mirror of `LabResultInput`."""
+"""Output mirror of `LabResultInput`. Observations carry no clinical state."""
 type SimulatorScenarioLabResult {
   code: String!
   system: String!
@@ -1712,6 +1717,8 @@ type SimulatorScenarioLabResult {
   unit: String
   date: String
   display: String
+  recordValidity: RecordValidityInput
+  sourceId: String
 }
 
 input SaveSimulatorScenarioInput {

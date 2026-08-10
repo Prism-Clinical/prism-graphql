@@ -5,7 +5,10 @@ import {
   makeEvaluationTemporalContext,
 } from '../../services/resolution/temporal/evaluation-context';
 import { NormalizedFact } from '../../services/resolution/temporal/fact-model';
-import { buildEffectivePatientContext } from '../../services/resolution/effective-context';
+import {
+  buildEffectivePatientContext,
+  mergeAdditionalContext,
+} from '../../services/resolution/effective-context';
 import type { PatientContext } from '../../services/confidence/types';
 
 const AS_OF = '2026-06-01T12:00:00.000Z';
@@ -126,5 +129,114 @@ describe('buildEffectivePatientContext — distinct occurrences survive', () => 
     expect(merged.labResults).toHaveLength(2);
     expect(merged.medications).toHaveLength(2);
     expect(merged.allergies).toHaveLength(2);
+  });
+});
+
+describe('mergeAdditionalContext — a session accumulates across calls', () => {
+  // This bag IS the session's memory of mid-session additions: it is persisted
+  // on the session and replayed by every retraversal entry point. A shallow
+  // spread meant adding condition A and then condition B stored only B, so A
+  // vanished from every later retraversal — silently removing evidence a gate
+  // had already counted.
+  const A = { code: 'A', system: 'icd10' };
+  const B = { code: 'B', system: 'icd10' };
+
+  it('keeps the first condition when a second is added later', () => {
+    const afterFirst = mergeAdditionalContext(undefined, { conditionCodes: [A] });
+    const afterSecond = mergeAdditionalContext(afterFirst, { conditionCodes: [B] });
+    expect(afterSecond.conditionCodes?.map((c) => c.code)).toEqual(['A', 'B']);
+  });
+
+  it('accumulates across three calls, not just two', () => {
+    let bag = mergeAdditionalContext(undefined, { conditionCodes: [A] });
+    bag = mergeAdditionalContext(bag, { conditionCodes: [B] });
+    bag = mergeAdditionalContext(bag, { conditionCodes: [{ code: 'C', system: 'icd10' }] });
+    expect(bag.conditionCodes?.map((c) => c.code)).toEqual(['A', 'B', 'C']);
+  });
+
+  it('applies to labs, medications and allergies too', () => {
+    let bag = mergeAdditionalContext(undefined, {
+      labResults: [{ code: 'l1', system: 'loinc', value: 1 }],
+      medications: [{ code: 'm1', system: 'rx' }],
+      allergies: [{ code: 'a1', system: 'sn' }],
+    });
+    bag = mergeAdditionalContext(bag, {
+      labResults: [{ code: 'l2', system: 'loinc', value: 2 }],
+      medications: [{ code: 'm2', system: 'rx' }],
+      allergies: [{ code: 'a2', system: 'sn' }],
+    });
+    expect(bag.labResults).toHaveLength(2);
+    expect(bag.medications).toHaveLength(2);
+    expect(bag.allergies).toHaveLength(2);
+  });
+
+  it('keeps the same code re-reported on a later date — recurrence is evidence', () => {
+    let bag = mergeAdditionalContext(undefined, {
+      conditionCodes: [{ ...A, date: '2026-01-15' }],
+    });
+    bag = mergeAdditionalContext(bag, { conditionCodes: [{ ...A, date: '2026-06-02' }] });
+    expect(bag.conditionCodes).toHaveLength(2);
+  });
+
+  it('still collapses a genuine re-send of the same occurrence', () => {
+    let bag = mergeAdditionalContext(undefined, { conditionCodes: [A] });
+    bag = mergeAdditionalContext(bag, { conditionCodes: [{ ...A }] });
+    expect(bag.conditionCodes).toHaveLength(1);
+  });
+
+  it('deep-merges the vitals bag instead of replacing it wholesale', () => {
+    let bag = mergeAdditionalContext(undefined, { vitalSigns: { heart_rate: 80 } });
+    bag = mergeAdditionalContext(bag, { vitalSigns: { systolic_bp: 148 } });
+    expect(bag.vitalSigns).toEqual({ heart_rate: 80, systolic_bp: 148 });
+  });
+
+  it('deep-merges nested vitals, keeping siblings under custom', () => {
+    let bag = mergeAdditionalContext(undefined, { vitalSigns: { custom: { pain_score: 7 } } });
+    bag = mergeAdditionalContext(bag, { vitalSigns: { custom: { mood: 3 } } });
+    expect(bag.vitalSigns).toEqual({ custom: { pain_score: 7, mood: 3 } });
+  });
+
+  it('lets a newer reading overwrite the same vital key', () => {
+    let bag = mergeAdditionalContext(undefined, { vitalSigns: { heart_rate: 80 } });
+    bag = mergeAdditionalContext(bag, { vitalSigns: { heart_rate: 96 } });
+    expect(bag.vitalSigns).toEqual({ heart_rate: 96 });
+  });
+
+  it('deep-merges freeformData and patientAttributes on the same rule', () => {
+    let bag = mergeAdditionalContext(undefined, {
+      freeformData: { narrative: { chief_complaint: 'cough' } },
+      patientAttributes: { trimester: 2 },
+    });
+    bag = mergeAdditionalContext(bag, {
+      freeformData: { narrative: { hpi: 'three days' } },
+      patientAttributes: { rh_factor: 'positive' },
+    });
+    expect(bag.freeformData).toEqual({
+      narrative: { chief_complaint: 'cough', hpi: 'three days' },
+    });
+    expect(bag.patientAttributes).toEqual({ trimester: 2, rh_factor: 'positive' });
+  });
+
+  it('leaves keys absent when neither call supplied them', () => {
+    const bag = mergeAdditionalContext(undefined, { conditionCodes: [A] });
+    expect('vitalSigns' in bag).toBe(false);
+    expect('labResults' in bag).toBe(false);
+  });
+
+  it('does not mutate either input', () => {
+    const prev = { conditionCodes: [A], vitalSigns: { heart_rate: 80 } };
+    const next = { conditionCodes: [B], vitalSigns: { systolic_bp: 148 } };
+    mergeAdditionalContext(prev, next);
+    expect(prev.conditionCodes).toHaveLength(1);
+    expect(prev.vitalSigns).toEqual({ heart_rate: 80 });
+    expect(next.conditionCodes).toHaveLength(1);
+  });
+
+  it('feeds the accumulated bag through to the effective context', () => {
+    // The end-to-end shape retraversal actually sees.
+    let bag = mergeAdditionalContext(undefined, { conditionCodes: [A] });
+    bag = mergeAdditionalContext(bag, { conditionCodes: [B] });
+    const effective = buildEffectivePatientContext(pc(), bag);
+    expect(effective.conditionCodes.map((c) => c.code)).toEqual(['A', 'B']);
   });
 });

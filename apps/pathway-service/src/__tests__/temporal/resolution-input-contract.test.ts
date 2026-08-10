@@ -183,6 +183,40 @@ describe('SDL — the resolution input surface', () => {
   });
 });
 
+describe('SDL — saved scenarios mirror the inputs they persist', () => {
+  // A scenario is stored as raw JSONB, so the mutation already persists every
+  // field. But a field missing from the OUTPUT type cannot be read back, and
+  // the simulator's load-edit-save cycle then writes the truncated version
+  // over the original — silent data loss on a round trip. A drift test rather
+  // than a field list, so the next input field is caught automatically.
+  const objectType = (name: string): ObjectTypeDefinitionNode => {
+    const d = SDL.definitions.find(
+      (x) => x.kind === 'ObjectTypeDefinition' && x.name.value === name,
+    );
+    if (!d) throw new Error(`no type ${name}`);
+    return d as ObjectTypeDefinitionNode;
+  };
+
+  it.each([
+    ['CodeInput', 'SimulatorScenarioCode', [] as string[]],
+    // Observations carry no clinical state, so the lab mirror must not gain one.
+    ['LabResultInput', 'SimulatorScenarioLabResult', ['clinicalState']],
+  ])('%s round-trips through %s', (input, output, exempt) => {
+    const outFields = new Set(
+      objectType(output).fields?.map((f) => f.name.value) ?? [],
+    );
+    for (const f of fieldNames(inputType(input))) {
+      if (exempt.includes(f)) continue;
+      expect(outFields).toContain(f);
+    }
+  });
+
+  it('does not put clinicalState on the lab mirror', () => {
+    const outFields = objectType('SimulatorScenarioLabResult').fields?.map((f) => f.name.value);
+    expect(outFields).not.toContain('clinicalState');
+  });
+});
+
 // ─── parseResolutionInput ─────────────────────────────────────────────
 
 /** Only the fields a caller could already send before this feature existed. */

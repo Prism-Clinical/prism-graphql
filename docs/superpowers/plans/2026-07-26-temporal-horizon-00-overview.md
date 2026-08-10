@@ -39,10 +39,10 @@ for plan 9 (plan 6 touches both).
   test that fails without it.
 - **Suite baseline: 9 failures across 2 suites** (`data-completeness-scorer`,
   `patient-match-scorer`), both pre-existing and unrelated. The suite has NEVER
-  been green — never expect a clean pass. Passing count after plan 05:
-  **896 passed / 9 failed / 905 total, 84 of 86 suites green** (was 805 passed
-  on `main` @ `8abfda4`). A *third* failing suite belongs to whatever plan is
-  in flight.
+  been green — never expect a clean pass. Passing count after plan 05 and its
+  review round: **939 passed / 9 failed / 948 total, 84 of 86 suites green**
+  (was 805 passed on `main` @ `8abfda4`). A *third* failing suite belongs to
+  whatever plan is in flight.
 - **Commit prefixes:** `feat:` / `fix:` / `test:` / `refactor:` / `docs:`. No
   `@anthropic.com`/`@claude.com`, no "Generated with" lines. End commit messages
   with `Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@example.com>`.
