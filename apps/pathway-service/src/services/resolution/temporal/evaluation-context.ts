@@ -91,7 +91,9 @@ export type TemporalContextErrorCode =
   /** A session pinned a temporalPolicyVersion the registry does not define (§5). */
   | 'UNKNOWN_POLICY_VERSION'
   /** A pathway-level or condition-level policy value is structurally invalid. */
-  | 'INVALID_TEMPORAL_DEFAULTS';
+  | 'INVALID_TEMPORAL_DEFAULTS'
+  /** Resolution input violated its trust mode or failed validation (§8). */
+  | 'INVALID_RESOLUTION_INPUT';
 
 export class TemporalContextError extends Error {
   constructor(
