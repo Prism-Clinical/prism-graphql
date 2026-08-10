@@ -4,7 +4,9 @@ import { PatientContext, CodeEntry, LabResult } from '../../services/confidence/
 import {
   parseResolutionInput,
   ResolutionModeArgs,
+  RawPatientContextInput,
 } from '../../services/resolution/temporal/trust-mode';
+import type { ResolutionInput } from '../../services/resolution/temporal/trust-mode';
 import { assertAssemblableMode } from '../../services/resolution/temporal/context-assembler';
 import type { TemporalContextInput } from '../../services/resolution/temporal/evaluation-context';
 import { PATHWAY_COLUMNS, formatSessionForGraphQL } from '../Query';
@@ -83,15 +85,8 @@ function requireSessionTemporalContext(session: ResolutionSession): EvaluationTe
  * site, so widening the coded entries meant finding every copy — and missing
  * one produced a field the resolver silently dropped.
  */
-export interface PatientContextArgs {
+export interface PatientContextArgs extends RawPatientContextInput {
   patientId: string;
-  conditionCodes?: CodeEntry[];
-  medications?: CodeEntry[];
-  labResults?: LabResult[];
-  allergies?: CodeEntry[];
-  vitalSigns?: Record<string, unknown>;
-  freeformData?: Record<string, unknown>;
-  patientAttributes?: Record<string, unknown>;
 }
 
 /** The clock arguments both start mutations accept. */
@@ -100,11 +95,47 @@ export interface TemporalAnchorArgs {
   encounterStart?: string | null;
 }
 
-/** Only pass through what the caller actually supplied — absent means "read the wall clock". */
+/**
+ * Project a parsed SYNTHETIC variant into the `PatientContext` the traversal,
+ * DDI pass and session record all consume.
+ *
+ * Takes the whole `ResolutionInput` rather than a bare context, so the only
+ * way to reach the clinical payload is through a variant that has already been
+ * validated. Throws on LIVE/REPLAY: callers run `assertAssemblableMode` first,
+ * and this is the backstop if one forgets.
+ */
+export function toPatientContext(input: ResolutionInput): PatientContext {
+  if (input.mode !== 'SYNTHETIC') {
+    throw new GraphQLError(`cannot build a patient context in ${input.mode} mode`, {
+      extensions: { code: 'INVALID_RESOLUTION_INPUT' },
+    });
+  }
+  const pc = input.patientContext;
+  return {
+    patientId: pc.patientId,
+    conditionCodes: pc.conditionCodes,
+    medications: pc.medications,
+    labResults: pc.labResults,
+    allergies: pc.allergies,
+    vitalSigns: pc.vitalSigns,
+    freeformData: pc.freeformData,
+    patientAttributes: normalizePatientAttributes(pc.patientAttributes),
+  };
+}
+
+/**
+ * Only pass through what the caller actually supplied — absent means "read the
+ * wall clock".
+ *
+ * Tested for null/undefined, NOT truthiness. `evaluationAsOf: ""` is a
+ * malformed clock, not an absent one: dropping it silently substituted the wall
+ * clock and pinned the session to an instant the caller never asked for.
+ * Forwarded, it reaches the strict parser and is rejected as INVALID_CLOCK.
+ */
 export function temporalInputFrom(args: TemporalAnchorArgs): TemporalContextInput {
   const input: TemporalContextInput = {};
-  if (args.evaluationAsOf) input.evaluationAsOf = args.evaluationAsOf;
-  if (args.encounterStart) input.encounterStart = args.encounterStart;
+  if (args.evaluationAsOf != null) input.evaluationAsOf = args.evaluationAsOf;
+  if (args.encounterStart != null) input.encounterStart = args.encounterStart;
   return input;
 }
 
@@ -142,24 +173,18 @@ export const resolutionMutations = {
       });
     }
 
-    const pc = args.patientContext;
-    const patientContext: PatientContext = {
-      patientId: args.patientId,
-      conditionCodes: pc?.conditionCodes ?? [],
-      medications: pc?.medications ?? [],
-      labResults: pc?.labResults ?? [],
-      allergies: pc?.allergies ?? [],
-      vitalSigns: pc?.vitalSigns,
-      freeformData: pc?.freeformData,
-      patientAttributes: normalizePatientAttributes(pc?.patientAttributes),
-    };
-
-    // Exactly one payload per trust mode. A LIVE caller structurally cannot
-    // supply clinical facts, and an explicit SYNTHETIC needs ADMIN. An absent
-    // mode stays SYNTHETIC so every existing caller keeps working.
-    const resolutionInput = parseResolutionInput(args, patientContext, context.userRole);
-    // Refuse LIVE/REPLAY here rather than resolving against an empty context.
+    // Exactly one payload per trust mode, policed over the WHOLE raw request:
+    // a LIVE or REPLAY caller cannot smuggle in facts or a clock, and an
+    // explicit SYNTHETIC needs ADMIN. An absent mode stays SYNTHETIC so every
+    // existing caller keeps working, but admits only what they could already
+    // send. Refuse LIVE/REPLAY before any work rather than silently resolving
+    // against an empty context.
+    const resolutionInput = parseResolutionInput(args, args.patientId, context.userRole);
     assertAssemblableMode(resolutionInput);
+
+    // Dispatch from the VARIANT, never from `args.patientContext` — reading the
+    // raw args here is what made the union decorative in the first place.
+    const patientContext: PatientContext = toPatientContext(resolutionInput);
 
     // One clock for the whole session (§1). The wall clock is read exactly
     // once, here — every gate evaluation, retraversal and replay of this

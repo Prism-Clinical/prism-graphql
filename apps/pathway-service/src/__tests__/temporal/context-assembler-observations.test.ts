@@ -185,3 +185,124 @@ describe('assembleContext — vitals', () => {
     expect(f.system).toBe(VITALS_SYSTEM);
   });
 });
+
+describe('assembleContext — vitals path parity with resolveNumericPath', () => {
+  // resolveNumericPath (gate-evaluator.ts:169) splits the condition value on
+  // '.' and walks arbitrary depth. Anything it can reach must become a fact,
+  // or plan 04 turns a working gate into a silent NO_MATCH.
+  it('reaches a numeric leaf nested deeper than one custom level', () => {
+    const facts = obs(
+      assembleContext(
+        synthetic({ vitalSigns: { custom: { nested: { deeper: 42 } } } }),
+        ctx(),
+      ),
+      'vital',
+    );
+    expect(facts.map((f) => f.code)).toEqual(['custom.nested.deeper']);
+    expect(facts[0].value).toBe(42);
+  });
+
+  it('emits every leaf across mixed depths in one bag', () => {
+    const facts = obs(
+      assembleContext(
+        synthetic({
+          vitalSigns: {
+            heart_rate: 80,
+            custom: { pain_score: 7, nested: { deeper: 42 } },
+            bp: { systolic: 148, diastolic: 92 },
+          },
+        }),
+        ctx(),
+      ),
+      'vital',
+    );
+    expect(facts.map((f) => f.code).sort()).toEqual([
+      'bp.diastolic',
+      'bp.systolic',
+      'custom.nested.deeper',
+      'custom.pain_score',
+      'heart_rate',
+    ]);
+  });
+
+  it('indexes arrays by string key, matching how resolveNumericPath walks them', () => {
+    const facts = obs(
+      assembleContext(synthetic({ vitalSigns: { readings: [10, 20] } }), ctx()),
+      'vital',
+    );
+    expect(facts.map((f) => f.code)).toEqual(['readings.0', 'readings.1']);
+  });
+
+  it('still skips non-numeric leaves at depth', () => {
+    const facts = obs(
+      assembleContext(
+        synthetic({ vitalSigns: { custom: { note: 'fine', score: 3, bad: NaN } } }),
+        ctx(),
+      ),
+      'vital',
+    );
+    expect(facts.map((f) => f.code)).toEqual(['custom.score']);
+  });
+
+  it('terminates on a cyclic bag instead of recursing forever', () => {
+    const bag: Record<string, unknown> = { heart_rate: 80 };
+    bag.self = bag;
+    expect(() => assembleContext(synthetic({ vitalSigns: bag }), ctx())).not.toThrow();
+  });
+});
+
+describe('assembleContext — inverted intervals are input errors', () => {
+  it('rejects an endDate before the date rather than deferring to overlap()', () => {
+    // overlap() throws a bare Error on this (overlap.ts:42) — no code, and
+    // mid-traversal, after LLM gates have already run.
+    expect(() =>
+      assembleContext(
+        synthetic({
+          conditionCodes: [
+            { code: 'c', system: 's', date: '2026-06-10', endDate: '2026-06-01' },
+          ],
+        }),
+        ctx(),
+      ),
+    ).toThrow(/endDate/);
+  });
+
+  it('uses the resolution-input error code', () => {
+    try {
+      assembleContext(
+        synthetic({
+          medications: [{ code: 'm', system: 's', date: '2026-06-10', endDate: '2026-06-01' }],
+        }),
+        ctx(),
+      );
+      throw new Error('expected a throw');
+    } catch (e) {
+      expect((e as { code?: string }).code).toBe('INVALID_RESOLUTION_INPUT');
+    }
+  });
+
+  it('accepts an endDate equal to the date', () => {
+    expect(() =>
+      assembleContext(
+        synthetic({
+          conditionCodes: [
+            { code: 'c', system: 's', date: '2026-06-01', endDate: '2026-06-01' },
+          ],
+        }),
+        ctx(),
+      ),
+    ).not.toThrow();
+  });
+
+  it('accepts a coarser end whose range still overlaps the start', () => {
+    // date 2026-06-10, endDate 2026-06 (month precision, hi = end of June).
+    expect(() =>
+      assembleContext(
+        synthetic({
+          conditionCodes: [{ code: 'c', system: 's', date: '2026-06-10', endDate: '2026-06' }],
+        }),
+        ctx(),
+      ),
+    ).not.toThrow();
+  });
+});

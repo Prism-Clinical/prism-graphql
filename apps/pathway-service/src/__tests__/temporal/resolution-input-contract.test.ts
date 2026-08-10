@@ -56,7 +56,7 @@ import { parse, DocumentNode, ObjectTypeDefinitionNode, InputObjectTypeDefinitio
 import { resolutionMutations } from '../../resolvers/mutations/resolution';
 import {
   parseResolutionInput,
-  SyntheticPatientContext,
+  RawPatientContextInput,
 } from '../../services/resolution/temporal/trust-mode';
 import { TemporalContextError } from '../../services/resolution/temporal/evaluation-context';
 import { GraphNode } from '../../services/confidence/types';
@@ -185,9 +185,9 @@ describe('SDL — the resolution input surface', () => {
 
 // ─── parseResolutionInput ─────────────────────────────────────────────
 
-const emptyPc = (): SyntheticPatientContext => ({
-  patientId: 'p1',
-  conditionCodes: [],
+/** Only the fields a caller could already send before this feature existed. */
+const legacyPc = (): RawPatientContextInput => ({
+  conditionCodes: [{ code: 'E11.9', system: 'icd10' }],
   medications: [],
   labResults: [],
   allergies: [],
@@ -195,73 +195,244 @@ const emptyPc = (): SyntheticPatientContext => ({
 
 describe('parseResolutionInput — exactly one payload per mode', () => {
   it('defaults to SYNTHETIC when no mode is given, preserving existing callers', () => {
-    const input = parseResolutionInput({}, emptyPc(), 'PROVIDER');
+    const input = parseResolutionInput({ patientContext: legacyPc() }, 'p1', 'PROVIDER');
     expect(input.mode).toBe('SYNTHETIC');
   });
 
   it('does NOT demand ADMIN for the defaulted mode — that would break every caller', () => {
-    expect(() => parseResolutionInput({}, emptyPc(), 'PROVIDER')).not.toThrow();
+    expect(() =>
+      parseResolutionInput({ patientContext: legacyPc() }, 'p1', 'PROVIDER'),
+    ).not.toThrow();
+  });
+
+  it('works with no patientContext at all, as startResolution has always allowed', () => {
+    expect(parseResolutionInput({}, 'p1', 'PROVIDER').mode).toBe('SYNTHETIC');
+  });
+
+  it('stamps the patientId from the mutation argument onto the variant', () => {
+    const input = parseResolutionInput({ patientContext: legacyPc() }, 'pt-42', 'PROVIDER');
+    expect(input.mode === 'SYNTHETIC' && input.patientContext.patientId).toBe('pt-42');
   });
 
   it('demands ADMIN when SYNTHETIC is selected explicitly', () => {
     expect(() =>
-      parseResolutionInput({ resolutionMode: 'SYNTHETIC' }, emptyPc(), 'PROVIDER'),
+      parseResolutionInput(
+        { resolutionMode: 'SYNTHETIC', patientContext: legacyPc() },
+        'p1',
+        'PROVIDER',
+      ),
     ).toThrow(TemporalContextError);
     expect(() =>
-      parseResolutionInput({ resolutionMode: 'SYNTHETIC' }, emptyPc(), 'ADMIN'),
+      parseResolutionInput(
+        { resolutionMode: 'SYNTHETIC', patientContext: legacyPc() },
+        'p1',
+        'ADMIN',
+      ),
     ).not.toThrow();
+  });
+
+  it('requires a patientContext for an explicit SYNTHETIC', () => {
+    expect(() => parseResolutionInput({ resolutionMode: 'SYNTHETIC' }, 'p1', 'ADMIN')).toThrow(
+      /patientContext/,
+    );
   });
 
   it('rejects a snapshotId alongside SYNTHETIC', () => {
     expect(() =>
       parseResolutionInput(
-        { resolutionMode: 'SYNTHETIC', snapshotId: 'snap-1' },
-        emptyPc(),
+        { resolutionMode: 'SYNTHETIC', snapshotId: 'snap-1', patientContext: legacyPc() },
+        'p1',
         'ADMIN',
       ),
     ).toThrow(/snapshotId/);
   });
 
   it('requires a snapshotId for LIVE and carries it on the variant', () => {
-    expect(() => parseResolutionInput({ resolutionMode: 'LIVE' }, emptyPc(), 'ADMIN')).toThrow(
+    expect(() => parseResolutionInput({ resolutionMode: 'LIVE' }, 'p1', 'ADMIN')).toThrow(
       /snapshotId/,
     );
-    const input = parseResolutionInput(
-      { resolutionMode: 'LIVE', snapshotId: 'snap-1' },
-      emptyPc(),
-      'ADMIN',
-    );
-    expect(input).toEqual({ mode: 'LIVE', snapshotId: 'snap-1' });
+    expect(
+      parseResolutionInput({ resolutionMode: 'LIVE', snapshotId: 'snap-1' }, 'p1', 'ADMIN'),
+    ).toEqual({ mode: 'LIVE', snapshotId: 'snap-1' });
   });
 
   it('requires a sessionId for REPLAY', () => {
-    expect(() => parseResolutionInput({ resolutionMode: 'REPLAY' }, emptyPc(), 'ADMIN')).toThrow(
+    expect(() => parseResolutionInput({ resolutionMode: 'REPLAY' }, 'p1', 'ADMIN')).toThrow(
       /sessionId/,
     );
     expect(
-      parseResolutionInput({ resolutionMode: 'REPLAY', sessionId: 's-1' }, emptyPc(), 'ADMIN'),
+      parseResolutionInput({ resolutionMode: 'REPLAY', sessionId: 's-1' }, 'p1', 'ADMIN'),
     ).toEqual({ mode: 'REPLAY', sessionId: 's-1' });
   });
 
   it('rejects an unknown mode string', () => {
-    expect(() => parseResolutionInput({ resolutionMode: 'GUESS' }, emptyPc(), 'ADMIN')).toThrow(
+    expect(() => parseResolutionInput({ resolutionMode: 'GUESS' }, 'p1', 'ADMIN')).toThrow(
       TemporalContextError,
     );
   });
 
   it('rejects a payload id supplied with no mode at all', () => {
-    expect(() => parseResolutionInput({ snapshotId: 'snap-1' }, emptyPc(), 'ADMIN')).toThrow(
+    expect(() => parseResolutionInput({ snapshotId: 'snap-1' }, 'p1', 'ADMIN')).toThrow(
       /resolutionMode/,
     );
   });
 
   it('uses the resolution-input error code throughout', () => {
     try {
-      parseResolutionInput({ resolutionMode: 'LIVE' }, emptyPc(), 'ADMIN');
+      parseResolutionInput({ resolutionMode: 'LIVE' }, 'p1', 'ADMIN');
       throw new Error('expected a throw');
     } catch (e) {
       expect((e as TemporalContextError).code).toBe('INVALID_RESOLUTION_INPUT');
     }
+  });
+});
+
+describe('parseResolutionInput — LIVE and REPLAY cannot smuggle a payload', () => {
+  // The union guarantees this in the type, but a caller reaches the parser
+  // through untyped GraphQL args. Before this, the parser never saw
+  // patientContext at all, so the guarantee stopped at the boundary — and
+  // would have reopened the moment LIVE stopped throwing.
+  it('rejects clinical facts sent with LIVE', () => {
+    expect(() =>
+      parseResolutionInput(
+        { resolutionMode: 'LIVE', snapshotId: 'snap-1', patientContext: legacyPc() },
+        'p1',
+        'ADMIN',
+      ),
+    ).toThrow(/patientContext/);
+  });
+
+  it('rejects clinical facts sent with REPLAY', () => {
+    expect(() =>
+      parseResolutionInput(
+        { resolutionMode: 'REPLAY', sessionId: 's-1', patientContext: legacyPc() },
+        'p1',
+        'ADMIN',
+      ),
+    ).toThrow(/patientContext/);
+  });
+
+  it('rejects a caller-pinned clock on LIVE', () => {
+    expect(() =>
+      parseResolutionInput(
+        { resolutionMode: 'LIVE', snapshotId: 'snap-1', evaluationAsOf: '2020-01-01T00:00:00.000Z' },
+        'p1',
+        'ADMIN',
+      ),
+    ).toThrow(/evaluationAsOf/);
+  });
+
+  it('rejects both anchors on REPLAY, which must reuse the recorded clock', () => {
+    expect(() =>
+      parseResolutionInput(
+        { resolutionMode: 'REPLAY', sessionId: 's-1', evaluationAsOf: '2020-01-01T00:00:00.000Z' },
+        'p1',
+        'ADMIN',
+      ),
+    ).toThrow(/evaluationAsOf/);
+    expect(() =>
+      parseResolutionInput(
+        { resolutionMode: 'REPLAY', sessionId: 's-1', encounterStart: '2020-01-01T00:00:00.000Z' },
+        'p1',
+        'ADMIN',
+      ),
+    ).toThrow(/encounterStart/);
+  });
+
+  it('still allows encounterStart on LIVE — a real encounter has a real anchor', () => {
+    expect(() =>
+      parseResolutionInput(
+        {
+          resolutionMode: 'LIVE',
+          snapshotId: 'snap-1',
+          encounterStart: '2026-06-01T08:00:00.000Z',
+        },
+        'p1',
+        'ADMIN',
+      ),
+    ).not.toThrow();
+  });
+});
+
+describe('parseResolutionInput — omitting the mode is not a bypass', () => {
+  // Omitting resolutionMode used to return before assertSyntheticAuthorized,
+  // so a PROVIDER could assert clinical truth and pin the clock with a
+  // one-word omission. Real authentication would not have closed that.
+  it.each([
+    ['clinicalState', { conditionCodes: [{ code: 'c', system: 's', clinicalState: 'ACTIVE' }] }],
+    ['recordValidity', { conditionCodes: [{ code: 'c', system: 's', recordValidity: 'VALID' }] }],
+    ['endDate', { medications: [{ code: 'm', system: 's', endDate: '2026-01-01' }] }],
+    ['sourceId', { allergies: [{ code: 'a', system: 's', sourceId: 'x' }] }],
+    ['a lab recordValidity', { labResults: [{ code: 'l', system: 's', recordValidity: 'INVALID' }] }],
+    ['a lab sourceId', { labResults: [{ code: 'l', system: 's', sourceId: 'x' }] }],
+  ])('refuses %s without an explicit SYNTHETIC mode', (_label, over) => {
+    expect(() =>
+      parseResolutionInput({ patientContext: { ...legacyPc(), ...over } }, 'p1', 'PROVIDER'),
+    ).toThrow(/SYNTHETIC/);
+  });
+
+  it('refuses a caller-pinned clock without an explicit SYNTHETIC mode', () => {
+    expect(() =>
+      parseResolutionInput(
+        { patientContext: legacyPc(), evaluationAsOf: '2020-01-01T00:00:00.000Z' },
+        'p1',
+        'PROVIDER',
+      ),
+    ).toThrow(/evaluationAsOf/);
+  });
+
+  it('names the offending field path so the caller can find it', () => {
+    expect(() =>
+      parseResolutionInput(
+        {
+          patientContext: {
+            ...legacyPc(),
+            medications: [
+              { code: 'm0', system: 's' },
+              { code: 'm1', system: 's', clinicalState: 'ON_HOLD' },
+            ],
+          },
+        },
+        'p1',
+        'PROVIDER',
+      ),
+    ).toThrow(/medications\[1\]\.clinicalState/);
+  });
+
+  it('STILL allows an authorized caller to send the same assertions explicitly', () => {
+    expect(() =>
+      parseResolutionInput(
+        {
+          resolutionMode: 'SYNTHETIC',
+          patientContext: {
+            ...legacyPc(),
+            conditionCodes: [{ code: 'c', system: 's', clinicalState: 'INACTIVE' }],
+          },
+          evaluationAsOf: '2020-01-01T00:00:00.000Z',
+        },
+        'p1',
+        'ADMIN',
+      ),
+    ).not.toThrow();
+  });
+
+  it('leaves the legacy field set alone — code, system, display, date all pass', () => {
+    expect(() =>
+      parseResolutionInput(
+        {
+          patientContext: {
+            ...legacyPc(),
+            conditionCodes: [
+              { code: 'c', system: 's', display: 'C', date: '2026-01-01' },
+            ],
+            labResults: [{ code: 'l', system: 'loinc', value: 1, unit: '%', date: '2026-01-01' }],
+          },
+          encounterStart: '2026-06-01T08:00:00.000Z',
+        },
+        'p1',
+        'PROVIDER',
+      ),
+    ).not.toThrow();
   });
 });
 
@@ -344,9 +515,32 @@ describe('startResolution — temporal anchors', () => {
   const capturedTemporalContext = () => traversalCtor.mock.calls[0][2];
 
   it('threads a supplied evaluationAsOf into the session clock', async () => {
+    // A pinned clock is an ADMIN-only assertion, so this goes through the
+    // explicit SYNTHETIC path.
     mockBuildResolutionContext.mockResolvedValue(rctxWith([PLAIN_NODE]));
-    await start({ evaluationAsOf: '2026-03-04T05:06:07.000Z' });
+    await start(
+      {
+        resolutionMode: 'SYNTHETIC',
+        patientContext: { conditionCodes: [], medications: [], labResults: [], allergies: [] },
+        evaluationAsOf: '2026-03-04T05:06:07.000Z',
+      },
+      'ADMIN',
+    );
     expect(capturedTemporalContext().evaluationAsOf).toBe('2026-03-04T05:06:07.000Z');
+  });
+
+  it('rejects an empty evaluationAsOf instead of silently using the wall clock', async () => {
+    mockBuildResolutionContext.mockResolvedValue(rctxWith([PLAIN_NODE]));
+    await expect(
+      start(
+        {
+          resolutionMode: 'SYNTHETIC',
+          patientContext: { conditionCodes: [], medications: [], labResults: [], allergies: [] },
+          evaluationAsOf: '',
+        },
+        'ADMIN',
+      ),
+    ).rejects.toThrow(/evaluationAsOf/);
   });
 
   it('still reads the wall clock when no evaluationAsOf is given', async () => {
@@ -361,10 +555,10 @@ describe('startResolution — temporal anchors', () => {
   });
 
   it('starts once encounterStart is supplied, and pins it on the clock', async () => {
-    await start({
-      evaluationAsOf: '2026-03-04T05:06:07.000Z',
-      encounterStart: '2026-03-04T04:00:00.000Z',
-    });
+    // Deliberately a PROVIDER with no explicit mode: encounterStart is the one
+    // anchor an ordinary caller must be able to send, because without it a
+    // pathway with an ENCOUNTER horizon is unstartable.
+    await start({ encounterStart: '2026-03-04T04:00:00.000Z' });
     expect(capturedTemporalContext().encounterStart).toBe('2026-03-04T04:00:00.000Z');
   });
 

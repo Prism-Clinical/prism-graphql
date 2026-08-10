@@ -3,9 +3,11 @@ import {
   NormalizedFact,
   ObservationFact,
   StatefulFact,
+  TemporalBound,
   TemporalEnd,
   ClinicalState,
 } from './fact-model';
+import { boundEpochRange } from './interval';
 import { EvaluationTemporalContext, TemporalContextError } from './evaluation-context';
 import { ResolutionInput, SyntheticCodeEntry, SyntheticLabResult } from './trust-mode';
 import { parseClinicalState, parseRecordValidity, parseSyntheticDate } from './synthetic-values';
@@ -38,6 +40,24 @@ function makeIdFactory(): (kind: string) => string {
 }
 
 /**
+ * Reject an interval that ends before it starts, at the boundary.
+ *
+ * `overlap()` throws a bare `Error` on the same condition (overlap.ts:42) — no
+ * error code, and by then it is mid-traversal, one fact at a time, after LLM
+ * gates have already run. Caught here it is what it actually is: invalid
+ * input. The comparison mirrors overlap's exactly (earliest possible start
+ * after latest possible end) so a fact this accepts can never trip that throw.
+ */
+function assertOrdered(start: TemporalBound, end: TemporalBound, where: string): void {
+  if (boundEpochRange(start).loMs > boundEpochRange(end).hiMs) {
+    throw new TemporalContextError(
+      `${where}: endDate (${end.value}) is before date (${start.value})`,
+      'INVALID_RESOLUTION_INPUT',
+    );
+  }
+}
+
+/**
  * The end of a synthetic fact's interval.
  *
  * An undated *active* fact is asserted current at the evaluation clock, which
@@ -54,9 +74,12 @@ function endFor(
   state: ClinicalState,
   ctx: EvaluationTemporalContext,
   where: string,
+  start: TemporalBound | undefined,
 ): TemporalEnd {
   if (entry.endDate !== undefined) {
-    return { kind: 'KNOWN', bound: parseSyntheticDate(entry.endDate, `${where}.endDate`) };
+    const bound = parseSyntheticDate(entry.endDate, `${where}.endDate`);
+    if (start) assertOrdered(start, bound, where);
+    return { kind: 'KNOWN', bound };
   }
   if (state === 'INACTIVE' || state === 'CONFLICT') return { kind: 'UNKNOWN' };
   return { kind: 'OPEN', assertedCurrentAt: ctx.evaluationAsOf };
@@ -94,7 +117,7 @@ function assembleStateful(
       kind,
       code: entry.code,
       system: entry.system,
-      interval: { start, end: endFor(entry, state, ctx, where) },
+      interval: { start, end: endFor(entry, state, ctx, where, start) },
       recordValidity,
       validityBasis,
       provenance: { sourceType: 'SYNTHETIC' },
@@ -168,20 +191,40 @@ function assembleLabs(
 }
 
 /**
- * Flatten the vitalSigns bag to exactly the keys the evaluator already
- * resolves: numeric root keys, and `custom.<key>` one level down. A different
- * key would mean the gate silently finds nothing.
+ * Depth cap for the vitals walk. `resolveNumericPath` has no cap because it
+ * follows one caller-supplied path; this walks the whole bag, so a cyclic or
+ * pathological object needs a bound. Ten levels is far past any real vitals
+ * shape — the deepest in use is `custom.<key>`.
  */
-function flattenVitals(bag: Record<string, unknown>): Array<{ key: string; value: number }> {
-  const out: Array<{ key: string; value: number }> = [];
+const MAX_VITALS_DEPTH = 10;
+
+/**
+ * Flatten the vitalSigns bag to every dotted path the evaluator can resolve.
+ *
+ * This must match `resolveNumericPath` (gate-evaluator.ts:169) exactly, which
+ * splits the condition's `value` on '.' and walks arbitrary depth. An earlier
+ * version handled only root keys and one `custom.<key>` level, so a gate
+ * targeting `custom.nested.deeper` — which resolves today — would find no fact
+ * at all once plan 04 routes the evaluator through the kernel, silently
+ * turning a working gate into NO_MATCH.
+ *
+ * Arrays are walked as objects for the same reason: `resolveNumericPath`
+ * indexes them by string key, so `readings.0` resolves today.
+ */
+function flattenVitals(
+  bag: Record<string, unknown>,
+  prefix = '',
+  depth = 0,
+  out: Array<{ key: string; value: number }> = [],
+): Array<{ key: string; value: number }> {
+  if (depth > MAX_VITALS_DEPTH) return out;
   for (const [key, raw] of Object.entries(bag)) {
-    if (key === 'custom' && typeof raw === 'object' && raw !== null) {
-      for (const [ck, cv] of Object.entries(raw as Record<string, unknown>)) {
-        if (typeof cv === 'number' && Number.isFinite(cv)) out.push({ key: `custom.${ck}`, value: cv });
-      }
-      continue;
+    const path = prefix ? `${prefix}.${key}` : key;
+    if (typeof raw === 'number' && Number.isFinite(raw)) {
+      out.push({ key: path, value: raw });
+    } else if (typeof raw === 'object' && raw !== null) {
+      flattenVitals(raw as Record<string, unknown>, path, depth + 1, out);
     }
-    if (typeof raw === 'number' && Number.isFinite(raw)) out.push({ key, value: raw });
   }
   return out;
 }

@@ -18,11 +18,33 @@ export interface SyntheticLabResult extends LabResult {
 }
 
 export interface SyntheticPatientContext
-  extends Omit<PatientContext, 'conditionCodes' | 'medications' | 'allergies' | 'labResults'> {
+  extends Omit<
+    PatientContext,
+    'conditionCodes' | 'medications' | 'allergies' | 'labResults' | 'patientAttributes'
+  > {
   conditionCodes: SyntheticCodeEntry[];
   medications: SyntheticCodeEntry[];
   allergies: SyntheticCodeEntry[];
   labResults: SyntheticLabResult[];
+  /** Normalized by the resolver, so the raw caller shape is carried here. */
+  patientAttributes?: Record<string, unknown>;
+}
+
+/**
+ * The caller's `PatientContextInput` exactly as GraphQL delivers it — every
+ * array optional, nothing normalized. `parseResolutionInput` takes THIS rather
+ * than an already-built context, so it can tell "no patientContext supplied"
+ * from "an empty one", and reject one supplied alongside LIVE or REPLAY.
+ */
+export interface RawPatientContextInput {
+  patientId?: string;
+  conditionCodes?: SyntheticCodeEntry[];
+  medications?: SyntheticCodeEntry[];
+  allergies?: SyntheticCodeEntry[];
+  labResults?: SyntheticLabResult[];
+  vitalSigns?: Record<string, unknown>;
+  freeformData?: Record<string, unknown>;
+  patientAttributes?: Record<string, unknown>;
 }
 
 /**
@@ -63,34 +85,112 @@ export interface ResolutionModeArgs {
   sessionId?: string | null;
 }
 
+/** The complete raw request, so the parser can police every field at once. */
+export interface RawResolutionRequest extends ResolutionModeArgs {
+  patientContext?: RawPatientContextInput | null;
+  evaluationAsOf?: string | null;
+  encounterStart?: string | null;
+}
+
 function reject(message: string): never {
   throw new TemporalContextError(message, 'INVALID_RESOLUTION_INPUT');
 }
 
 /**
- * Turn the flat GraphQL arguments into the discriminated `ResolutionInput`.
+ * The fields that are *assertions about clinical truth* rather than clinical
+ * data. Supplying one says "trust me that this diagnosis is active and this
+ * record is valid" — which is exactly what an unauthorized caller must not be
+ * able to do implicitly.
+ *
+ * `date` is deliberately NOT here. It is observational data, no more
+ * privileged than the code beside it, and `LabResultInput.date` was already
+ * accepted before this feature existed.
+ */
+const CODE_ASSERTION_FIELDS = ['endDate', 'clinicalState', 'recordValidity', 'sourceId'] as const;
+const LAB_ASSERTION_FIELDS = ['recordValidity', 'sourceId'] as const;
+
+function firstAssertion(pc: RawPatientContextInput | null | undefined): string | undefined {
+  if (!pc) return undefined;
+  const coded: Array<[string, SyntheticCodeEntry[] | undefined]> = [
+    ['conditionCodes', pc.conditionCodes],
+    ['medications', pc.medications],
+    ['allergies', pc.allergies],
+  ];
+  for (const [bucket, entries] of coded) {
+    for (const [i, e] of (entries ?? []).entries()) {
+      for (const f of CODE_ASSERTION_FIELDS) {
+        if (e[f] !== undefined) return `${bucket}[${i}].${f}`;
+      }
+    }
+  }
+  for (const [i, e] of (pc.labResults ?? []).entries()) {
+    for (const f of LAB_ASSERTION_FIELDS) {
+      if (e[f] !== undefined) return `labResults[${i}].${f}`;
+    }
+  }
+  return undefined;
+}
+
+function normalizeSynthetic(
+  raw: RawPatientContextInput | null | undefined,
+  patientId: string,
+): SyntheticPatientContext {
+  const pc = raw ?? {};
+  const out: SyntheticPatientContext = {
+    patientId,
+    conditionCodes: pc.conditionCodes ?? [],
+    medications: pc.medications ?? [],
+    allergies: pc.allergies ?? [],
+    labResults: pc.labResults ?? [],
+  };
+  if (pc.vitalSigns !== undefined) out.vitalSigns = pc.vitalSigns;
+  if (pc.freeformData !== undefined) out.freeformData = pc.freeformData;
+  if (pc.patientAttributes !== undefined) out.patientAttributes = pc.patientAttributes;
+  return out;
+}
+
+/**
+ * Turn the complete raw GraphQL request into the discriminated `ResolutionInput`.
  *
  * GraphQL cannot express a discriminated input union, so exactly-one is
- * enforced here: each mode requires its own payload id and forbids the others'.
+ * enforced here — and it must see the WHOLE request to do it. An earlier
+ * version took only the mode ids plus an already-built context, so it could
+ * not reject a `patientContext` sent alongside LIVE, nor a caller-pinned
+ * clock: the union's guarantee held in the type but not at the boundary, and
+ * would have reopened the moment LIVE stopped throwing. Callers must dispatch
+ * from the returned variant, never from the raw args.
  *
- * An absent mode defaults to SYNTHETIC and is NOT authorization-checked. Every
- * caller that exists today omits the mode, and the simulator runs as PROVIDER
- * — demanding ADMIN for the default would break all of them. The check applies
- * only when a caller explicitly names SYNTHETIC, which is the honest boundary
- * given that `userRole` is an unverified header (see assertSyntheticAuthorized):
- * this is defence in depth, not access control.
+ * `encounterStart` stays legal in every mode: it anchors a real encounter and
+ * is the input a provider needs for an ENCOUNTER horizon. `evaluationAsOf` is
+ * the clock-spoofing vector and is confined to explicit SYNTHETIC.
  */
 export function parseResolutionInput(
-  args: ResolutionModeArgs,
-  syntheticContext: SyntheticPatientContext,
+  req: RawResolutionRequest,
+  patientId: string,
   userRole: string | undefined,
 ): ResolutionInput {
-  const { resolutionMode, snapshotId, sessionId } = args;
+  const { resolutionMode, snapshotId, sessionId, patientContext, evaluationAsOf } = req;
 
   if (resolutionMode === undefined || resolutionMode === null) {
     if (snapshotId) reject('snapshotId requires resolutionMode: LIVE');
     if (sessionId) reject('sessionId requires resolutionMode: REPLAY');
-    return { mode: 'SYNTHETIC', patientContext: syntheticContext };
+
+    // The implicit mode exists ONLY to keep pre-existing callers working, so
+    // it admits only what they could already send. Anything this feature added
+    // — a trust assertion about a fact, or a caller-pinned clock — requires an
+    // explicitly authorized SYNTHETIC. Without this, omitting the mode was a
+    // one-word bypass of the authorization check below, and no amount of real
+    // authentication later would have closed it.
+    const assertion = firstAssertion(patientContext);
+    if (assertion) {
+      reject(
+        `${assertion} is a SYNTHETIC assertion and requires resolutionMode: SYNTHETIC`,
+      );
+    }
+    if (evaluationAsOf != null) {
+      reject('evaluationAsOf requires resolutionMode: SYNTHETIC — the clock is server-stamped');
+    }
+    return { mode: 'SYNTHETIC', patientContext: normalizeSynthetic(patientContext, patientId) };
   }
 
   switch (resolutionMode) {
@@ -98,16 +198,27 @@ export function parseResolutionInput(
       assertSyntheticAuthorized(userRole);
       if (snapshotId) reject('snapshotId is not valid on a SYNTHETIC resolution');
       if (sessionId) reject('sessionId is not valid on a SYNTHETIC resolution');
-      return { mode: 'SYNTHETIC', patientContext: syntheticContext };
+      if (!patientContext) reject('resolutionMode: SYNTHETIC requires a patientContext');
+      return { mode: 'SYNTHETIC', patientContext: normalizeSynthetic(patientContext, patientId) };
 
     case 'LIVE':
       if (!snapshotId) reject('resolutionMode: LIVE requires a snapshotId');
       if (sessionId) reject('sessionId is not valid on a LIVE resolution');
+      // The whole point of the union: a LIVE resolution cannot carry facts.
+      if (patientContext) reject('patientContext is not valid on a LIVE resolution');
+      if (evaluationAsOf != null) reject('evaluationAsOf is not valid on a LIVE resolution');
       return { mode: 'LIVE', snapshotId };
 
     case 'REPLAY':
       if (!sessionId) reject('resolutionMode: REPLAY requires a sessionId');
       if (snapshotId) reject('snapshotId is not valid on a REPLAY resolution');
+      if (patientContext) reject('patientContext is not valid on a REPLAY resolution');
+      // A replay reuses the clock recorded on the session it replays; accepting
+      // either anchor here would let a caller replay against a different one.
+      if (evaluationAsOf != null) reject('evaluationAsOf is not valid on a REPLAY resolution');
+      if (req.encounterStart != null) {
+        reject('encounterStart is not valid on a REPLAY resolution');
+      }
       return { mode: 'REPLAY', sessionId };
 
     default:

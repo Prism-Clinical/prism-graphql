@@ -39,6 +39,7 @@ import {
   PatientContextArgs,
   TemporalAnchorArgs,
   temporalInputFrom,
+  toPatientContext,
 } from './resolution';
 import {
   GateAnswer,
@@ -158,10 +159,16 @@ export const multiPathwayResolutionMutations = {
     // can clean up. Real provider encounters never set this flag.
     const isPreview = args.syntheticPatient === true;
 
-    // Exactly one payload per trust mode, and an explicit SYNTHETIC needs
-    // ADMIN. An absent mode stays SYNTHETIC so every existing caller works.
-    const resolutionInput = parseResolutionInput(args, buildPatientContext(args), context.userRole);
+    // Exactly one payload per trust mode, policed over the WHOLE raw request:
+    // a LIVE or REPLAY caller cannot smuggle in facts or a clock, and an
+    // explicit SYNTHETIC needs ADMIN. An absent mode stays SYNTHETIC so every
+    // existing caller works, but admits only what they could already send.
+    const resolutionInput = parseResolutionInput(args, args.patientId, context.userRole);
     assertAssemblableMode(resolutionInput);
+
+    // Built once, from the VARIANT — never re-derived from args.patientContext,
+    // which would reintroduce the raw payload on a path that already validated.
+    const patientContext = toPatientContext(resolutionInput);
 
     // One clock for the entire multi-pathway run (§1) — the parent session and
     // every contributing session resolve horizons against the same instant.
@@ -180,7 +187,7 @@ export const multiPathwayResolutionMutations = {
       const sessionId = await createMultiPathwaySession(pool, {
         patientId: args.patientId,
         providerId: context.userId,
-        initialPatientContext: buildPatientContext(args),
+        initialPatientContext: patientContext,
         contributingSessionIds: [],
         contributingPathwayIds: [],
         mergedPlan: emptyMergedCarePlan(),
@@ -192,7 +199,6 @@ export const multiPathwayResolutionMutations = {
     }
 
     const surviving = await collapseLattice(pool, matched);
-    const patientContext = buildPatientContext(args);
 
     const { resolvedPlans, contributingSessionIds, contributingPathwayIds } =
       await resolveAndPersistAll(pool, surviving, patientContext, context.userId, temporalContext);
