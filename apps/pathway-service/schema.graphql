@@ -1127,10 +1127,53 @@ input PatientContextInput {
   patientAttributes: JSON
 }
 
+"""
+Which trust mode a resolution runs under. The payload differs per mode:
+SYNTHETIC carries `patientContext`, LIVE carries `snapshotId`, REPLAY carries
+`sessionId`. Supplying the wrong one for the mode is rejected.
+"""
+enum ResolutionModeInput {
+  LIVE
+  SYNTHETIC
+  REPLAY
+}
+
+"""Clinical state a SYNTHETIC caller may assert on a coded entry."""
+enum ClinicalStateInput {
+  ACTIVE
+  INACTIVE
+  ON_HOLD
+  UNKNOWN
+  CONFLICT
+}
+
+"""Record-validity a SYNTHETIC caller may assert. Orthogonal to clinical state."""
+enum RecordValidityInput {
+  VALID
+  INVALID
+  UNKNOWN
+}
+
 input CodeInput {
   code: String!
   system: String!
   display: String
+  """
+  Occurrence date (FHIR date or instant). Two entries with the same code on
+  different dates are distinct occurrences, not duplicates.
+  """
+  date: String
+  """
+  End of the occurrence. Absent on an active entry means "still ongoing"; on an
+  INACTIVE entry it means the end is simply unknown.
+  """
+  endDate: String
+  """SYNTHETIC only. Absent means ACTIVE, recorded as a fail-open default."""
+  clinicalState: ClinicalStateInput
+  """SYNTHETIC only. Absent means VALID."""
+  recordValidity: RecordValidityInput
+  """Opaque source identifier — part of what makes an occurrence distinct."""
+  sourceId: String
 }
 
 input LabResultInput {
@@ -1140,6 +1183,10 @@ input LabResultInput {
   unit: String
   date: String
   display: String
+  """SYNTHETIC only. Absent means VALID."""
+  recordValidity: RecordValidityInput
+  """Opaque source identifier — part of what makes an occurrence distinct."""
+  sourceId: String
 }
 
 input PropagationConfigInput {
@@ -1477,7 +1524,33 @@ type Mutation {
   addAdminEvidence(input: AddAdminEvidenceInput!): AdminEvidenceEntry!
   removeAdminEvidence(id: ID!): Boolean!
 
-  startResolution(pathwayId: ID!, patientId: ID!, patientContext: PatientContextInput): ResolutionSession!
+  startResolution(
+    pathwayId: ID!,
+    patientId: ID!,
+    patientContext: PatientContextInput,
+    """
+    Trust mode for this resolution. Omit to keep today's behavior (SYNTHETIC
+    from `patientContext`). LIVE and REPLAY are accepted by the schema but not
+    yet implemented.
+    """
+    resolutionMode: ResolutionModeInput,
+    """Pinned clinical snapshot. Required for LIVE, rejected otherwise."""
+    snapshotId: ID,
+    """Session whose persisted facts to replay. Required for REPLAY, rejected otherwise."""
+    sessionId: ID,
+    """
+    Pins the session's evaluation clock. Omit to read the wall clock once, at
+    session creation. Every horizon this session ever resolves — including on
+    retraversal — is measured from this instant.
+    """
+    evaluationAsOf: String,
+    """
+    Anchors the ENCOUNTER horizon. Required when the pathway resolves an
+    ENCOUNTER horizon for any gate condition; without it such a session is
+    refused with MISSING_ENCOUNTER_ANCHOR rather than silently narrowed.
+    """
+    encounterStart: String
+  ): ResolutionSession!
 
   """
   Run resolution against every pathway that matches the patient and merge
@@ -1501,7 +1574,27 @@ type Mutation {
     directly instead of reading from the EMR-synced snapshot tables. Required
     for synthetic patients (admin simulator) where there is no real patient row.
     """
-    syntheticPatient: Boolean
+    syntheticPatient: Boolean,
+    """
+    Trust mode for this resolution. Omit to keep today's behavior (SYNTHETIC
+    from `patientContext`). LIVE and REPLAY are accepted by the schema but not
+    yet implemented.
+    """
+    resolutionMode: ResolutionModeInput,
+    """Pinned clinical snapshot. Required for LIVE, rejected otherwise."""
+    snapshotId: ID,
+    """Session whose persisted facts to replay. Required for REPLAY, rejected otherwise."""
+    sessionId: ID,
+    """
+    Pins the evaluation clock for the parent session and every contributing
+    session. Omit to read the wall clock once, at creation.
+    """
+    evaluationAsOf: String,
+    """
+    Anchors the ENCOUNTER horizon. Required when any matched pathway resolves an
+    ENCOUNTER horizon; without it the run is refused with MISSING_ENCOUNTER_ANCHOR.
+    """
+    encounterStart: String
   ): MultiPathwayResolutionSession!
 
   """

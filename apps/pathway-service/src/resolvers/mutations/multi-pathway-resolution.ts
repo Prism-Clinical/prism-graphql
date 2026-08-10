@@ -31,6 +31,16 @@ import { TraversalEngine } from '../../services/resolution/traversal-engine';
 import { makeEvaluationTemporalContext } from '../../services/resolution/temporal/evaluation-context';
 import type { EvaluationTemporalContext } from '../../services/resolution/temporal/evaluation-context';
 import {
+  parseResolutionInput,
+  ResolutionModeArgs,
+} from '../../services/resolution/temporal/trust-mode';
+import { assertAssemblableMode } from '../../services/resolution/temporal/context-assembler';
+import {
+  PatientContextArgs,
+  TemporalAnchorArgs,
+  temporalInputFrom,
+} from './resolution';
+import {
   GateAnswer,
   MatchedPathway,
   NodeStatus,
@@ -83,25 +93,15 @@ import {
 
 // ─── Argument shapes ────────────────────────────────────────────────
 
-export interface MultiPathwayResolutionArgs {
+export interface MultiPathwayResolutionArgs extends ResolutionModeArgs, TemporalAnchorArgs {
   patientId: string;
-  patientContext?: {
-    patientId: string;
-    conditionCodes?: Array<{ code: string; system: string; display?: string }>;
-    medications?: Array<{ code: string; system: string; display?: string }>;
-    labResults?: Array<{
-      code: string;
-      system: string;
-      value?: number;
-      unit?: string;
-      date?: string;
-      display?: string;
-    }>;
-    allergies?: Array<{ code: string; system: string; display?: string }>;
-    vitalSigns?: Record<string, unknown>;
-    freeformData?: Record<string, unknown>;
-    patientAttributes?: Record<string, unknown>;
-  };
+  /**
+   * Expressed against the shared `PatientContextArgs` rather than re-declared
+   * inline: `CodeInput`/`LabResultInput` are one SDL type each, and a second
+   * copy of their TypeScript shape is a field the resolver silently drops the
+   * next time the input grows.
+   */
+  patientContext?: PatientContextArgs;
   /**
    * Admin-only flag. When true, DRAFT pathways are also considered for matching
    * (in addition to ACTIVE). Use for QA tooling against unpublished pathways.
@@ -158,10 +158,15 @@ export const multiPathwayResolutionMutations = {
     // can clean up. Real provider encounters never set this flag.
     const isPreview = args.syntheticPatient === true;
 
+    // Exactly one payload per trust mode, and an explicit SYNTHETIC needs
+    // ADMIN. An absent mode stays SYNTHETIC so every existing caller works.
+    const resolutionInput = parseResolutionInput(args, buildPatientContext(args), context.userRole);
+    assertAssemblableMode(resolutionInput);
+
     // One clock for the entire multi-pathway run (§1) — the parent session and
     // every contributing session resolve horizons against the same instant.
     // Created here, before the zero-match branch, so BOTH exits stamp it.
-    const temporalContext = makeEvaluationTemporalContext();
+    const temporalContext = makeEvaluationTemporalContext(temporalInputFrom(args));
 
     // Before the zero-match branch: that path creates a parent session and
     // returns without ever entering resolveAndPersistAll, so a version

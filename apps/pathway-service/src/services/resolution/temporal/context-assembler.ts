@@ -206,10 +206,12 @@ function assembleVitals(
   }));
 }
 
-export function assembleContext(
-  input: ResolutionInput,
-  ctx: EvaluationTemporalContext,
-): FactStore {
+/**
+ * The modes that cannot yet produce a fact store. Called both here and at the
+ * mutation boundary, so a caller selecting LIVE is refused up front rather than
+ * silently resolving against an empty context.
+ */
+export function assertAssemblableMode(input: ResolutionInput): void {
   if (input.mode === 'LIVE') {
     throw new TemporalContextError(
       'LIVE resolution requires the snapshot mapper (plan 07)',
@@ -221,6 +223,18 @@ export function assembleContext(
       'REPLAY resolution requires persisted normalized facts (plan 05b)',
       'INVALID_RESOLUTION_INPUT',
     );
+  }
+}
+
+export function assembleContext(
+  input: ResolutionInput,
+  ctx: EvaluationTemporalContext,
+): FactStore {
+  assertAssemblableMode(input);
+  if (input.mode !== 'SYNTHETIC') {
+    // Unreachable — assertAssemblableMode throws for the other two. Present so
+    // the narrowing is explicit rather than an assertion.
+    throw new TemporalContextError('unsupported resolution mode', 'INVALID_RESOLUTION_INPUT');
   }
 
   const pc = input.patientContext;

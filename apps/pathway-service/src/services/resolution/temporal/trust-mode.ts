@@ -55,3 +55,64 @@ export function assertSyntheticAuthorized(role: string | undefined): void {
     );
   }
 }
+
+/** The mode-selection arguments both start mutations accept. */
+export interface ResolutionModeArgs {
+  resolutionMode?: string | null;
+  snapshotId?: string | null;
+  sessionId?: string | null;
+}
+
+function reject(message: string): never {
+  throw new TemporalContextError(message, 'INVALID_RESOLUTION_INPUT');
+}
+
+/**
+ * Turn the flat GraphQL arguments into the discriminated `ResolutionInput`.
+ *
+ * GraphQL cannot express a discriminated input union, so exactly-one is
+ * enforced here: each mode requires its own payload id and forbids the others'.
+ *
+ * An absent mode defaults to SYNTHETIC and is NOT authorization-checked. Every
+ * caller that exists today omits the mode, and the simulator runs as PROVIDER
+ * — demanding ADMIN for the default would break all of them. The check applies
+ * only when a caller explicitly names SYNTHETIC, which is the honest boundary
+ * given that `userRole` is an unverified header (see assertSyntheticAuthorized):
+ * this is defence in depth, not access control.
+ */
+export function parseResolutionInput(
+  args: ResolutionModeArgs,
+  syntheticContext: SyntheticPatientContext,
+  userRole: string | undefined,
+): ResolutionInput {
+  const { resolutionMode, snapshotId, sessionId } = args;
+
+  if (resolutionMode === undefined || resolutionMode === null) {
+    if (snapshotId) reject('snapshotId requires resolutionMode: LIVE');
+    if (sessionId) reject('sessionId requires resolutionMode: REPLAY');
+    return { mode: 'SYNTHETIC', patientContext: syntheticContext };
+  }
+
+  switch (resolutionMode) {
+    case 'SYNTHETIC':
+      assertSyntheticAuthorized(userRole);
+      if (snapshotId) reject('snapshotId is not valid on a SYNTHETIC resolution');
+      if (sessionId) reject('sessionId is not valid on a SYNTHETIC resolution');
+      return { mode: 'SYNTHETIC', patientContext: syntheticContext };
+
+    case 'LIVE':
+      if (!snapshotId) reject('resolutionMode: LIVE requires a snapshotId');
+      if (sessionId) reject('sessionId is not valid on a LIVE resolution');
+      return { mode: 'LIVE', snapshotId };
+
+    case 'REPLAY':
+      if (!sessionId) reject('resolutionMode: REPLAY requires a sessionId');
+      if (snapshotId) reject('snapshotId is not valid on a REPLAY resolution');
+      return { mode: 'REPLAY', sessionId };
+
+    default:
+      return reject(
+        `unknown resolutionMode "${resolutionMode}" — expected LIVE | SYNTHETIC | REPLAY`,
+      );
+  }
+}
