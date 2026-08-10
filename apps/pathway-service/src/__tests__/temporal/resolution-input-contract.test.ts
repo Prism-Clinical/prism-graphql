@@ -734,3 +734,32 @@ describe('startResolution — temporal anchors', () => {
     await expect(start({})).resolves.toBeDefined();
   });
 });
+
+describe('SDL — unenforced capabilities say so', () => {
+  // The flags were documented "Admin-only QA flag" while enforcing nothing.
+  // A TypeScript comment does not reach anyone reading the public schema.
+  const argDoc = (mutation: string, arg: string): string => {
+    const a = mutationField(mutation).arguments?.find((x) => x.name.value === arg);
+    return a?.description?.value ?? '';
+  };
+
+  it.each(['includeDraftPathways', 'syntheticPatient'])(
+    '%s is not described as admin-only',
+    (arg) => {
+      expect(argDoc('startMultiPathwayResolution', arg)).not.toMatch(/admin-only/i);
+    },
+  );
+
+  it.each(['includeDraftPathways', 'syntheticPatient'])(
+    '%s states that it is not access-controlled',
+    (arg) => {
+      expect(argDoc('startMultiPathwayResolution', arg)).toMatch(/NOT ACCESS-CONTROLLED/);
+    },
+  );
+
+  it('points readers at the tracked debt rather than leaving it implicit', () => {
+    expect(argDoc('startMultiPathwayResolution', 'includeDraftPathways')).toMatch(
+      /AUTHORIZATION_DEBT\.md/,
+    );
+  });
+});

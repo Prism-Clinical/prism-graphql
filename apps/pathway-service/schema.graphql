@@ -1565,14 +1565,28 @@ type Mutation {
     patientId: ID!,
     patientContext: PatientContextInput,
     """
-    Admin-only QA flag. When true, DRAFT pathways are also matched (in addition
-    to ACTIVE). Production encounter callers should leave this false / unset.
+    QA / preview capability. When true, DRAFT pathways are also matched (in
+    addition to ACTIVE). Production encounter callers should leave this false
+    or unset.
+
+    **NOT ACCESS-CONTROLLED.** Despite the intent, any caller may set this
+    today: the service reads `x-user-role` straight off the request with a
+    PROVIDER default and never derives it from a bearer token, so a role check
+    here would be caller-asserted and secure nothing. Gating is tracked as
+    authentication debt in `docs/AUTHORIZATION_DEBT.md` and will land with real
+    authentication, not before.
     """
     includeDraftPathways: Boolean,
     """
-    Admin-only QA flag. When true, the matcher uses `patientContext.conditionCodes`
-    directly instead of reading from the EMR-synced snapshot tables. Required
-    for synthetic patients (admin simulator) where there is no real patient row.
+    QA / preview capability. When true, the matcher uses the resolved
+    `patientContext.conditionCodes` directly instead of reading from the
+    EMR-synced snapshot tables. Required for synthetic patients (admin
+    simulator) where there is no real patient row.
+
+    **NOT ACCESS-CONTROLLED** — same caveat and same tracking issue as
+    `includeDraftPathways`. Only valid on a SYNTHETIC resolution: there is no
+    coherent meaning for a caller-supplied code set in LIVE or REPLAY mode, and
+    the resolver rejects the combination.
     """
     syntheticPatient: Boolean,
     """

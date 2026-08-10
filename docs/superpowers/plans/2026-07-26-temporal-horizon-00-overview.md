@@ -40,7 +40,7 @@ for plan 9 (plan 6 touches both).
 - **Suite baseline: 9 failures across 2 suites** (`data-completeness-scorer`,
   `patient-match-scorer`), both pre-existing and unrelated. The suite has NEVER
   been green — never expect a clean pass. Passing count after plan 05 and its
-  two review rounds: **953 passed / 9 failed / 962 total, 84 of 86 suites
+  two review rounds: **958 passed / 9 failed / 967 total, 84 of 86 suites
   green** (was 805 passed on `main` @ `8abfda4`). A *third* failing suite
   belongs to whatever plan is in flight.
 - **Object key order is NOT stable across a session's lifetime.** Session

@@ -104,26 +104,32 @@ export interface MultiPathwayResolutionArgs extends ResolutionModeArgs, Temporal
    */
   patientContext?: PatientContextArgs;
   /**
-   * "Admin-only" flag. When true, DRAFT pathways are also considered for
+   * QA / preview capability. When true, DRAFT pathways are also considered for
    * matching (in addition to ACTIVE). Use for QA tooling against unpublished
    * pathways.
    *
-   * NOT ENFORCED, and deliberately left that way for now. Enforcing an ADMIN
-   * role here would break the only deployed admin UI outright: the dashboard's
-   * Apollo client sets no auth headers at all (`lib/apollo-client.ts`), so
-   * every request arrives as the `x-user-role` default of PROVIDER, and both
-   * the encounter simulator (`PatientComposer.tsx`) and the pathway preview
-   * (`PreviewResolutionPanel.tsx`) send `includeDraftPathways: true` and
-   * `syntheticPatient: true`. The check would also secure nothing, since
-   * `x-user-role` is caller-asserted — any client could send ADMIN. The real
-   * fix is authentication; gate these flags when it exists, not before.
+   * NOT ACCESS-CONTROLLED, deliberately, for now. A role check here would be
+   * caller-asserted and therefore worthless: this service reads `x-user-role`
+   * straight off the request with a PROVIDER default (`index.ts`) and never
+   * derives it from the bearer token — `prism-provider-front-end` does send
+   * `authorization: Bearer <token>` (its `lib/apollo-client.ts`), but nothing
+   * here reads it. Meanwhile `prism-admin-dashboard`, the client that actually
+   * calls this mutation, sets no auth header at all, so an ADMIN check would
+   * break the encounter simulator (`PatientComposer.tsx`) and pathway preview
+   * (`PreviewResolutionPanel.tsx`) — both of which send these flags — while
+   * securing nothing.
+   *
+   * Tracked as authentication debt: `docs/AUTHORIZATION_DEBT.md`. Gate on
+   * verified claims when auth lands, not before.
    */
   includeDraftPathways?: boolean;
   /**
-   * Synthetic-patient flag. When true, the matcher uses the resolved
+   * QA / preview capability. When true, the matcher uses the resolved
    * `conditionCodes` directly instead of looking up the patient row in the
    * EMR-synced snapshot tables. Required for the admin simulator, where there
    * is no real patient. Same non-enforcement note as `includeDraftPathways`.
+   *
+   * Only coherent on a SYNTHETIC resolution — see the guard in the resolver.
    */
   syntheticPatient?: boolean;
 }
@@ -166,6 +172,18 @@ export const multiPathwayResolutionMutations = {
     // Built once, from the VARIANT — never re-derived from args.patientContext,
     // which would reintroduce the raw payload on a path that already validated.
     const patientContext = toPatientContext(resolutionInput);
+
+    // `syntheticPatient` means "drive matching from the caller's own code set",
+    // which has no coherent meaning once the facts come from a snapshot (LIVE)
+    // or from a recorded session (REPLAY). Encoded as a guard rather than left
+    // to documentation, so the combination cannot quietly become valid when
+    // plan 07 makes LIVE reachable.
+    if (args.syntheticPatient && resolutionInput.mode !== 'SYNTHETIC') {
+      throw new GraphQLError(
+        `syntheticPatient is not valid on a ${resolutionInput.mode} resolution`,
+        { extensions: { code: 'INVALID_RESOLUTION_INPUT' } },
+      );
+    }
 
     const matcherOptions: { directPatientCodes?: Array<{ code: string; system: string }>; includeDraftPathways?: boolean } = {};
     if (args.includeDraftPathways) {
