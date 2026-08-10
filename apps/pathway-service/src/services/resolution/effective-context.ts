@@ -14,12 +14,26 @@ export function buildEffectivePatientContext(
 ): PatientContext {
   const add = additions ?? {};
 
-  // Deduplicate by code+system when merging
-  const dedup = <T extends { code: string; system: string }>(base: T[], added: T[]): T[] => {
-    const seen = new Set(base.map(e => `${e.code}|${e.system}`));
+  // Deduplicate by code+system+date+source when merging.
+  //
+  // The key used to be code+system alone, which discarded recurrence: the same
+  // diagnosis noted on two different dates collapsed to one entry before the
+  // fact assembler ever saw it, so count_in_window counted 1 no matter how many
+  // events occurred. Date and source id are part of what makes an occurrence
+  // distinct.
+  //
+  // Undated entries still collapse — `date ?? ''` gives them a common key —
+  // which is what preserves today's behavior for the common case where no
+  // caller supplies dates at all.
+  const dedup = <T extends { code: string; system: string; date?: string; sourceId?: string }>(
+    base: T[],
+    added: T[],
+  ): T[] => {
+    const keyOf = (e: T) => `${e.code}|${e.system}|${e.date ?? ''}|${e.sourceId ?? ''}`;
+    const seen = new Set(base.map(keyOf));
     const result = [...base];
     for (const item of added) {
-      const key = `${item.code}|${item.system}`;
+      const key = keyOf(item);
       if (!seen.has(key)) {
         seen.add(key);
         result.push(item);
