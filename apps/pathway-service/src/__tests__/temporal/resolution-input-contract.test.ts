@@ -373,7 +373,10 @@ describe('parseResolutionInput — LIVE and REPLAY cannot smuggle a payload', ()
     ).toThrow(/encounterStart/);
   });
 
-  it('still allows encounterStart on LIVE — a real encounter has a real anchor', () => {
+  it('rejects encounterStart on LIVE — design §1 derives it from the encounter', () => {
+    // "LIVE mode derives encounterStart from the encounter; SYNTHETIC mode
+    // supplies it." A caller-supplied anchor here becomes a clock-spoofing
+    // path the moment plan 07 stops throwing.
     expect(() =>
       parseResolutionInput(
         {
@@ -384,6 +387,117 @@ describe('parseResolutionInput — LIVE and REPLAY cannot smuggle a payload', ()
         'p1',
         'ADMIN',
       ),
+    ).toThrow(/encounterStart/);
+  });
+
+  it('keeps encounterStart available on SYNTHETIC, which is the mode providers use', () => {
+    expect(() =>
+      parseResolutionInput(
+        { patientContext: legacyPc(), encounterStart: '2026-06-01T08:00:00.000Z' },
+        'p1',
+        'PROVIDER',
+      ),
+    ).not.toThrow();
+  });
+});
+
+describe('parseResolutionInput — explicit null is omission', () => {
+  // The generated resolver types model optionals as InputMaybe<T> — T | null |
+  // undefined — but the hand-written ones stopped at undefined. A client that
+  // binds an unset form field sends null, which was read as "a value was
+  // supplied": counted as a privileged assertion implicitly, and rejected as
+  // an invalid enum member explicitly.
+  const withNulls = () => ({
+    conditionCodes: [
+      {
+        code: 'c',
+        system: 's',
+        display: null,
+        date: null,
+        endDate: null,
+        clinicalState: null,
+        recordValidity: null,
+        sourceId: null,
+      },
+    ],
+    medications: [],
+    allergies: [],
+    labResults: [{ code: 'l', system: 'loinc', recordValidity: null, sourceId: null }],
+  });
+
+  it('does not treat a null assertion as privileged in implicit mode', () => {
+    expect(() =>
+      parseResolutionInput({ patientContext: withNulls() as never }, 'p1', 'PROVIDER'),
+    ).not.toThrow();
+  });
+
+  it('strips the nulls so downstream sees omission, not an invalid enum', () => {
+    const input = parseResolutionInput({ patientContext: withNulls() as never }, 'p1', 'PROVIDER');
+    const entry = input.mode === 'SYNTHETIC' ? input.patientContext.conditionCodes[0] : null;
+    expect(entry && 'clinicalState' in entry).toBe(false);
+    expect(entry && 'recordValidity' in entry).toBe(false);
+    expect(entry && 'endDate' in entry).toBe(false);
+  });
+
+  it('produces the same variant as omitting the fields entirely', () => {
+    const withNull = parseResolutionInput(
+      { patientContext: withNulls() as never },
+      'p1',
+      'PROVIDER',
+    );
+    const omitted = parseResolutionInput(
+      {
+        patientContext: {
+          conditionCodes: [{ code: 'c', system: 's' }],
+          medications: [],
+          allergies: [],
+          labResults: [{ code: 'l', system: 'loinc' }],
+        },
+      },
+      'p1',
+      'PROVIDER',
+    );
+    expect(withNull).toEqual(omitted);
+  });
+
+  it('treats a null anchor as absent rather than as a pinned clock', () => {
+    expect(() =>
+      parseResolutionInput(
+        { patientContext: legacyPc(), evaluationAsOf: null },
+        'p1',
+        'PROVIDER',
+      ),
+    ).not.toThrow();
+  });
+});
+
+describe('parseResolutionInput — the nested patientId must agree', () => {
+  it('rejects a context labelled for a different patient', () => {
+    // PatientContextInput.patientId is required by the SDL, and normalization
+    // used to ignore it — so a context built for patient B could be stored and
+    // evaluated as patient A.
+    expect(() =>
+      parseResolutionInput(
+        { patientContext: { ...legacyPc(), patientId: 'patient-B' } },
+        'patient-A',
+        'PROVIDER',
+      ),
+    ).toThrow(/does not match/);
+  });
+
+  it('accepts a matching nested patientId, as the simulator sends', () => {
+    expect(() =>
+      parseResolutionInput(
+        { patientContext: { ...legacyPc(), patientId: 'patient-A' } },
+        'patient-A',
+        'PROVIDER',
+      ),
+    ).not.toThrow();
+  });
+
+  it('accepts an omitted nested patientId', () => {
+    expect(() =>
+      parseResolutionInput({ patientContext: legacyPc() }, 'patient-A', 'PROVIDER'),
     ).not.toThrow();
   });
 });

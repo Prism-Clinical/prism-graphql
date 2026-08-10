@@ -235,8 +235,19 @@ function assembleVitals(
   nextId: (kind: string) => string,
 ): ObservationFact[] {
   if (!bag) return [];
+  // Sorted by path before ids are assigned, because object key order is NOT
+  // stable across a session's lifetime: `initial_patient_context` is a JSONB
+  // column, and Postgres jsonb reorders keys by (length, bytewise) —
+  // '{"z_long_key":1,"a":2}'::jsonb reads back as '{"a":2,"z_long_key":1}'.
+  // Assigning ordinals from Object.entries order therefore gave the same
+  // semantic bag different factIds at creation and at retraversal, which is
+  // exactly the determinism plan 05's decision 5 relies on in place of
+  // persisting normalized facts. Coded arrays need no such treatment: JSON
+  // arrays preserve order.
+  //
   // The bag carries no dates anywhere, so a vital is always asserted current.
-  return flattenVitals(bag).map(({ key, value }) => ({
+  const flattened = flattenVitals(bag).sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
+  return flattened.map(({ key, value }) => ({
     factId: nextId('vital'),
     kind: 'vital',
     code: key,

@@ -104,15 +104,26 @@ export interface MultiPathwayResolutionArgs extends ResolutionModeArgs, Temporal
    */
   patientContext?: PatientContextArgs;
   /**
-   * Admin-only flag. When true, DRAFT pathways are also considered for matching
-   * (in addition to ACTIVE). Use for QA tooling against unpublished pathways.
+   * "Admin-only" flag. When true, DRAFT pathways are also considered for
+   * matching (in addition to ACTIVE). Use for QA tooling against unpublished
+   * pathways.
+   *
+   * NOT ENFORCED, and deliberately left that way for now. Enforcing an ADMIN
+   * role here would break the only deployed admin UI outright: the dashboard's
+   * Apollo client sets no auth headers at all (`lib/apollo-client.ts`), so
+   * every request arrives as the `x-user-role` default of PROVIDER, and both
+   * the encounter simulator (`PatientComposer.tsx`) and the pathway preview
+   * (`PreviewResolutionPanel.tsx`) send `includeDraftPathways: true` and
+   * `syntheticPatient: true`. The check would also secure nothing, since
+   * `x-user-role` is caller-asserted — any client could send ADMIN. The real
+   * fix is authentication; gate these flags when it exists, not before.
    */
   includeDraftPathways?: boolean;
   /**
-   * Synthetic-patient flag. When true, the matcher uses
-   * `patientContext.conditionCodes` directly instead of looking up the patient
-   * row in the EMR-synced snapshot tables. Required for admin simulator where
-   * there's no real patient.
+   * Synthetic-patient flag. When true, the matcher uses the resolved
+   * `conditionCodes` directly instead of looking up the patient row in the
+   * EMR-synced snapshot tables. Required for the admin simulator, where there
+   * is no real patient. Same non-enforcement note as `includeDraftPathways`.
    */
   syntheticPatient?: boolean;
 }
@@ -140,25 +151,11 @@ export const multiPathwayResolutionMutations = {
   ) {
     const { pool } = context;
 
-    const matcherOptions: { directPatientCodes?: Array<{ code: string; system: string }>; includeDraftPathways?: boolean } = {};
-    if (args.includeDraftPathways) {
-      matcherOptions.includeDraftPathways = true;
-    }
-    if (args.syntheticPatient) {
-      // For synthetic patients, drive matching off the supplied codes only —
-      // there is no real patients row to read from.
-      const codes = (args.patientContext?.conditionCodes ?? []).map((c) => ({
-        code: c.code,
-        system: c.system,
-      }));
-      matcherOptions.directPatientCodes = codes;
-    }
-
-    // syntheticPatient signals this is admin/QA/preview traffic; persist that
-    // so downstream list views can filter it out and `deletePreviewSession`
-    // can clean up. Real provider encounters never set this flag.
-    const isPreview = args.syntheticPatient === true;
-
+    // Validation FIRST. The matcher options below decide which pathways are
+    // even considered, so building them from `args.patientContext` before the
+    // trust boundary ran meant raw caller codes drove matching on a request
+    // the boundary might reject.
+    //
     // Exactly one payload per trust mode, policed over the WHOLE raw request:
     // a LIVE or REPLAY caller cannot smuggle in facts or a clock, and an
     // explicit SYNTHETIC needs ADMIN. An absent mode stays SYNTHETIC so every
@@ -169,6 +166,29 @@ export const multiPathwayResolutionMutations = {
     // Built once, from the VARIANT — never re-derived from args.patientContext,
     // which would reintroduce the raw payload on a path that already validated.
     const patientContext = toPatientContext(resolutionInput);
+
+    const matcherOptions: { directPatientCodes?: Array<{ code: string; system: string }>; includeDraftPathways?: boolean } = {};
+    if (args.includeDraftPathways) {
+      matcherOptions.includeDraftPathways = true;
+    }
+    if (args.syntheticPatient) {
+      // For synthetic patients, drive matching off the supplied codes only —
+      // there is no real patients row to read from. Read from the VALIDATED
+      // context, so every code that reaches the matcher has been through the
+      // same boundary as the codes that reach the evaluator.
+      matcherOptions.directPatientCodes = patientContext.conditionCodes.map((c) => ({
+        code: c.code,
+        system: c.system,
+      }));
+    }
+
+    // syntheticPatient signals this is admin/QA/preview traffic; persist that
+    // so downstream list views can filter it out and `deletePreviewSession`
+    // can clean up. Real provider encounters never set this flag.
+    //
+    // NOT role-gated, deliberately — see the note on `includeDraftPathways` in
+    // MultiPathwayResolutionArgs.
+    const isPreview = args.syntheticPatient === true;
 
     // One clock for the entire multi-pathway run (§1) — the parent session and
     // every contributing session resolve horizons against the same instant.

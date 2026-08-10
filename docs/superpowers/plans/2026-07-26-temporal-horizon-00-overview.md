@@ -40,9 +40,15 @@ for plan 9 (plan 6 touches both).
 - **Suite baseline: 9 failures across 2 suites** (`data-completeness-scorer`,
   `patient-match-scorer`), both pre-existing and unrelated. The suite has NEVER
   been green — never expect a clean pass. Passing count after plan 05 and its
-  review round: **939 passed / 9 failed / 948 total, 84 of 86 suites green**
-  (was 805 passed on `main` @ `8abfda4`). A *third* failing suite belongs to
-  whatever plan is in flight.
+  two review rounds: **953 passed / 9 failed / 962 total, 84 of 86 suites
+  green** (was 805 passed on `main` @ `8abfda4`). A *third* failing suite
+  belongs to whatever plan is in flight.
+- **Object key order is NOT stable across a session's lifetime.** Session
+  context columns are `JSONB`, and Postgres jsonb reorders keys by (length,
+  bytewise): `'{"z_long_key":1,"a":2}'::jsonb` reads back as
+  `'{"a":2,"z_long_key":1}'`. Anything deriving an identifier or an ordinal
+  from `Object.entries` order must sort canonically first. JSON *arrays* do
+  preserve order.
 - **Commit prefixes:** `feat:` / `fix:` / `test:` / `refactor:` / `docs:`. No
   `@anthropic.com`/`@claude.com`, no "Generated with" lines. End commit messages
   with `Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@example.com>`.

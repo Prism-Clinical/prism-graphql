@@ -119,16 +119,37 @@ function firstAssertion(pc: RawPatientContextInput | null | undefined): string |
   for (const [bucket, entries] of coded) {
     for (const [i, e] of (entries ?? []).entries()) {
       for (const f of CODE_ASSERTION_FIELDS) {
-        if (e[f] !== undefined) return `${bucket}[${i}].${f}`;
+        // `!= null`, not `!== undefined`: GraphQL delivers an explicitly-null
+        // optional field as null, and null MUST behave exactly like omission.
+        if (e[f] != null) return `${bucket}[${i}].${f}`;
       }
     }
   }
   for (const [i, e] of (pc.labResults ?? []).entries()) {
     for (const f of LAB_ASSERTION_FIELDS) {
-      if (e[f] !== undefined) return `labResults[${i}].${f}`;
+      if (e[f] != null) return `labResults[${i}].${f}`;
     }
   }
   return undefined;
+}
+
+/**
+ * Drop explicitly-null optional fields so downstream code sees omission.
+ *
+ * The generated resolver types model every optional input as `InputMaybe<T>`
+ * (`T | null | undefined`), but the hand-written types stop at `undefined`. So
+ * `clinicalState: null` — which a client sends simply by binding an unset form
+ * field — was read as "a value was supplied": it counted as a privileged
+ * assertion in implicit mode, and in explicit SYNTHETIC mode it reached
+ * `parseClinicalState` and was rejected as an invalid enum member. Normalizing
+ * here means null and omitted are the same request everywhere after this point.
+ */
+function stripNulls<T extends object>(entry: T): T {
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(entry)) {
+    if (v !== null) out[k] = v;
+  }
+  return out as T;
 }
 
 function normalizeSynthetic(
@@ -136,16 +157,27 @@ function normalizeSynthetic(
   patientId: string,
 ): SyntheticPatientContext {
   const pc = raw ?? {};
+
+  // A context labelled for another patient must not be silently relabelled.
+  // `PatientContextInput.patientId` is required by the SDL, and normalization
+  // used to ignore it and stamp the top-level id — so a context built for
+  // patient B could be stored and evaluated as patient A.
+  if (pc.patientId != null && pc.patientId !== patientId) {
+    reject(
+      `patientContext.patientId (${pc.patientId}) does not match the patientId argument (${patientId})`,
+    );
+  }
+
   const out: SyntheticPatientContext = {
     patientId,
-    conditionCodes: pc.conditionCodes ?? [],
-    medications: pc.medications ?? [],
-    allergies: pc.allergies ?? [],
-    labResults: pc.labResults ?? [],
+    conditionCodes: (pc.conditionCodes ?? []).map(stripNulls),
+    medications: (pc.medications ?? []).map(stripNulls),
+    allergies: (pc.allergies ?? []).map(stripNulls),
+    labResults: (pc.labResults ?? []).map(stripNulls),
   };
-  if (pc.vitalSigns !== undefined) out.vitalSigns = pc.vitalSigns;
-  if (pc.freeformData !== undefined) out.freeformData = pc.freeformData;
-  if (pc.patientAttributes !== undefined) out.patientAttributes = pc.patientAttributes;
+  if (pc.vitalSigns != null) out.vitalSigns = pc.vitalSigns;
+  if (pc.freeformData != null) out.freeformData = pc.freeformData;
+  if (pc.patientAttributes != null) out.patientAttributes = pc.patientAttributes;
   return out;
 }
 
@@ -160,9 +192,14 @@ function normalizeSynthetic(
  * would have reopened the moment LIVE stopped throwing. Callers must dispatch
  * from the returned variant, never from the raw args.
  *
- * `encounterStart` stays legal in every mode: it anchors a real encounter and
- * is the input a provider needs for an ENCOUNTER horizon. `evaluationAsOf` is
- * the clock-spoofing vector and is confined to explicit SYNTHETIC.
+ * Both temporal anchors belong to the SYNTHETIC variant only. Design §1 is
+ * explicit: "LIVE mode derives `encounterStart` from the encounter; SYNTHETIC
+ * mode supplies it." An earlier revision allowed a caller-supplied anchor on
+ * LIVE, reasoning that a provider needs to send one — but the mode a provider
+ * actually uses today IS SYNTHETIC (implicit), so that reasoning never applied
+ * to LIVE, and permitting it there would become a clock-spoofing path the
+ * moment Plan 07 stops throwing. `evaluationAsOf` is narrower still: confined
+ * to EXPLICIT SYNTHETIC, since pinning the clock is a privileged assertion.
  */
 export function parseResolutionInput(
   req: RawResolutionRequest,
@@ -207,6 +244,11 @@ export function parseResolutionInput(
       // The whole point of the union: a LIVE resolution cannot carry facts.
       if (patientContext) reject('patientContext is not valid on a LIVE resolution');
       if (evaluationAsOf != null) reject('evaluationAsOf is not valid on a LIVE resolution');
+      // Design §1: LIVE derives its anchor from the encounter (plan 07). A
+      // caller-supplied one would be a clock-spoofing path once LIVE works.
+      if (req.encounterStart != null) {
+        reject('encounterStart is derived from the encounter on a LIVE resolution');
+      }
       return { mode: 'LIVE', snapshotId };
 
     case 'REPLAY':

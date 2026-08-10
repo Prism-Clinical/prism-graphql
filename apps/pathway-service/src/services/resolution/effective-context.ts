@@ -2,6 +2,29 @@ import type { PatientContext } from '../confidence/types';
 import type { AdditionalContextInput } from '../../resolvers/mutations/resolution';
 import { normalizePatientAttributes } from './patient-attributes';
 
+function isPlainObject(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v);
+}
+
+/**
+ * Deep-merge two bags. Nested objects are merged recursively; scalars and
+ * arrays are replaced by the newer value.
+ *
+ * A shallow spread replaced `vitalSigns` wholesale, so recording a heart rate
+ * and then a blood pressure kept only the blood pressure.
+ */
+function deepMerge(
+  base: Record<string, unknown>,
+  add: Record<string, unknown>,
+): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...base };
+  for (const [k, v] of Object.entries(add)) {
+    const prev = out[k];
+    out[k] = isPlainObject(prev) && isPlainObject(v) ? deepMerge(prev, v) : v;
+  }
+  return out;
+}
+
 /**
  * Reconstruct the effective PatientContext for a resolution session:
  * initial snapshot merged with accumulated additional context. Mirrors the
@@ -48,47 +71,23 @@ export function buildEffectivePatientContext(
     medications: dedup(initialPc.medications, add.medications ?? []),
     labResults: dedup(initialPc.labResults, add.labResults ?? []),
     allergies: dedup(initialPc.allergies, add.allergies ?? []),
-    vitalSigns: {
-      ...(initialPc.vitalSigns ?? {}),
-      ...(add.vitalSigns ?? {}),
-    },
-    freeformData: {
-      ...(initialPc.freeformData ?? {}),
-      ...(add.freeformData ?? {}),
-    },
-    patientAttributes: {
-      ...(initialPc.patientAttributes ?? {}),
-      ...(normalizePatientAttributes(add.patientAttributes) ?? {}),
-    },
+    // Deep, not shallow. Additions merge deeply with each other, but this
+    // merge — the one every retraversal runs — was still a spread, so
+    // updating `custom.pain` mid-session dropped the sibling `custom.mood`
+    // that was in the initial context, and updating
+    // `narrative.chief_complaint` dropped `narrative.hpi`.
+    vitalSigns: deepMerge(initialPc.vitalSigns ?? {}, add.vitalSigns ?? {}),
+    freeformData: deepMerge(initialPc.freeformData ?? {}, add.freeformData ?? {}),
+    patientAttributes: deepMerge(
+      initialPc.patientAttributes ?? {},
+      normalizePatientAttributes(add.patientAttributes) ?? {},
+    ) as PatientContext['patientAttributes'],
   };
 }
 
 /** Occurrence identity — the same key `buildEffectivePatientContext` dedupes on. */
 const occurrenceKey = (e: { code: string; system: string; date?: string; sourceId?: string }) =>
   `${e.code}|${e.system}|${e.date ?? ''}|${e.sourceId ?? ''}`;
-
-function isPlainObject(v: unknown): v is Record<string, unknown> {
-  return typeof v === 'object' && v !== null && !Array.isArray(v);
-}
-
-/**
- * Deep-merge two bags. Nested objects are merged recursively; scalars and
- * arrays are replaced by the newer value.
- *
- * A shallow spread replaced `vitalSigns` wholesale, so recording a heart rate
- * and then a blood pressure kept only the blood pressure.
- */
-function deepMerge(
-  base: Record<string, unknown>,
-  add: Record<string, unknown>,
-): Record<string, unknown> {
-  const out: Record<string, unknown> = { ...base };
-  for (const [k, v] of Object.entries(add)) {
-    const prev = out[k];
-    out[k] = isPlainObject(prev) && isPlainObject(v) ? deepMerge(prev, v) : v;
-  }
-  return out;
-}
 
 function concatOccurrences<T extends { code: string; system: string; date?: string; sourceId?: string }>(
   base: T[] | undefined,

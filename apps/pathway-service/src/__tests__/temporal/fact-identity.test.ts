@@ -240,3 +240,66 @@ describe('mergeAdditionalContext — a session accumulates across calls', () => 
     expect(effective.conditionCodes.map((c) => c.code)).toEqual(['A', 'B']);
   });
 });
+
+describe('vital factIds survive a JSONB round trip', () => {
+  // Postgres jsonb reorders object keys by (length, bytewise) — verified
+  // directly: '{"z_long_key":1,"a":2,"mm":3}'::jsonb reads back as
+  // '{"a":2,"mm":3,"z_long_key":1}'. initial_patient_context IS a jsonb
+  // column, so the bag a retraversal assembles has a different key order than
+  // the one session creation assembled. Assigning ordinals from
+  // Object.entries order therefore broke the very determinism that lets plan
+  // 05 defer persisting normalized facts.
+  const idsFor = (bag: Record<string, unknown>) => {
+    const store = assembleContext(synthetic({ vitalSigns: bag }), ctx());
+    return store
+      .filter((f) => f.kind === 'vital')
+      .map((f) => `${f.factId}=${f.code}`);
+  };
+
+  it('assigns the same ids however the bag keys are ordered', () => {
+    expect(idsFor({ z_long_key: 1, a: 2, mm: 3 })).toEqual(idsFor({ a: 2, mm: 3, z_long_key: 1 }));
+  });
+
+  it('maps a given id to the same code under the jsonb ordering', () => {
+    // The exact reordering Postgres applies to this bag.
+    expect(idsFor({ z_long_key: 1, a: 2, mm: 3 })).toEqual([
+      'vital:0=a',
+      'vital:1=mm',
+      'vital:2=z_long_key',
+    ]);
+  });
+
+  it('holds for nested paths too', () => {
+    const a = idsFor({ custom: { pain: 1, mood: 2 }, heart_rate: 3 });
+    const b = idsFor({ heart_rate: 3, custom: { mood: 2, pain: 1 } });
+    expect(a).toEqual(b);
+  });
+});
+
+describe('buildEffectivePatientContext — nested initial context survives', () => {
+  it('keeps a sibling custom vital when another is updated mid-session', () => {
+    // The additions bag deep-merges with itself, but this merge — the one
+    // every retraversal runs — was still a spread, so the initial context's
+    // siblings were dropped.
+    const merged = buildEffectivePatientContext(
+      pc({ vitalSigns: { custom: { pain: 3, mood: 5 } } }),
+      { vitalSigns: { custom: { pain: 8 } } },
+    );
+    expect(merged.vitalSigns).toEqual({ custom: { pain: 8, mood: 5 } });
+  });
+
+  it('keeps a sibling narrative key when another is updated', () => {
+    const merged = buildEffectivePatientContext(
+      pc({ freeformData: { narrative: { chief: 'cough', hpi: 'three days' } } }),
+      { freeformData: { narrative: { chief: 'fever' } } },
+    );
+    expect(merged.freeformData).toEqual({ narrative: { chief: 'fever', hpi: 'three days' } });
+  });
+
+  it('still lets an addition win at the leaf', () => {
+    const merged = buildEffectivePatientContext(pc({ vitalSigns: { heart_rate: 80 } }), {
+      vitalSigns: { heart_rate: 96 },
+    });
+    expect(merged.vitalSigns).toEqual({ heart_rate: 96 });
+  });
+});
