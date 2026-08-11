@@ -148,10 +148,16 @@ The **Sweep field** column is the round-2 addition: `attributeNamespaceToField()
   | Task 3 (`8c98e03`) | 1024 | 9 | 1033 | 88 / 90 |
   | Task 4 (`88ce6bb`) | 1039 | 9 | 1048 | 89 / 91 |
   | Task 4 | 1039 | 9 | 1048 | 89 / 91 |
+  | Task 5 (`8fd537d`) | 1057 | 9 | 1066 | 90 / 92 |
 
   Task 4's delta is +15 passed / +15 total: **16 added** in the new
   `gate-evaluator-membership-kernel.test.ts`, **1 deleted** — Task 3's no-op-fork
   test, whose deletion this task mandates because the paths now diverge.
+
+  Task 5's delta is +18 passed / +18 total / +1 suite: **18 added**, all in the
+  new `gate-evaluator-scalar-kernel.test.ts`, **none deleted and none modified**.
+  No pre-existing assertion changed — the scalar branch is additive, so unlike
+  Task 3 there was no call-site churn at all.
 
   **Append a row per task.** *(Round 8, self-found during Task 3: every "compare against 958/9" instruction below was stale the moment Task 1 landed, and an executor following it literally would either think they had broken 50 tests or would fail to notice breaking some. The count is only meaningful as a delta whose additions are each accounted for.)*
 - **`legacy-v0` executes no kernel code, and no code this plan adds.** Structural, not behavioral: the version seam (Task 3) routes `legacy-v0` to the untouched legacy function; the assembler is not called; override parsing does not reject (D1). Every pre-existing gate-evaluator and traversal test must pass with **unmodified assertions** — that is the proof.
@@ -574,6 +580,22 @@ describe('disclosed v1 deltas — these MUST differ from legacy-v0', () => {
 Covers `greater_than`, `less_than`. `selectFacts` returns the **definite latest** fact, or `INDETERMINATE` when no total order is provable. The comparison stays here; only selection moves.
 
 > **This is where plan 05's `OPEN(evaluationAsOf)` modeling pays off.** An undated vital is `OPEN(asOf)`, which `overlap()` reports as MATCH against any horizon containing the clock. If these fail with `INDETERMINATE` on undated vitals, the assembler is not wired — check Task 9 before touching the kernel.
+
+> **Round 9, found executing this task — three corrections.**
+>
+> **1. `OPEN(asOf)` fixes admission but NOT ordering, and there is an undisclosed `v1` delta hiding in the gap.** Verified against the code, not reasoned about. `overlap()` does admit an undated observation — the paragraph above is right. But `definiteLatest` does not order by `overlap`; it orders by `effectiveRange` (`select-facts.ts:143-146`), which reads `interval.start` **only** and returns `(-∞, +∞)` when there is none. It never looks at `interval.end`, so an `OPEN(asOf)` fact — which is precisely a fact anchored to `asOf` — is treated as total temporal ignorance. Consequences, all confirmed by running `selectFacts` directly:
+>   - one undated lab alone → `READY` (the `every` in `definiteLatest` is vacuous for a single candidate), so the happy path hides this;
+>   - **two labs of the same code where at least one is undated → `INDETERMINATE`/`AMBIGUOUS_LATEST`**, even when the other is precisely dated. The gate fails closed while `legacy-v0` `.find()`s the first and decides.
+>
+>   This directly defeats the assembler's stated intent: `context-assembler.ts:167-169` chooses `OPEN(asOf)` for an undated lab *because* "otherwise every scalar gate reading it would fail closed" — and the gate fails closed anyway, one layer further down, for a reason the comment does not anticipate. `SyntheticLabResult.date` is optional, so a `labResults` array with a repeated code and one missing date is ordinary input, not a contrived fixture. **This is a real behavior delta that no task discloses**, and locked decision #2 requires every `v1` delta to be disclosed and pinned. Task 5 did not fix or pin it: the fix is a judgement call in plan 01/05 territory (either `effectiveRange` consults `interval.end`, or `AMBIGUOUS_LATEST` on an undated-vs-dated pair is accepted and *disclosed*), and guessing it here would be inventing kernel semantics inside an evaluator task. **Decide it before Task 6**, which inherits the identical blind spot through `AMBIGUOUS_SERIES_ORDER` (`select-facts.ts:267-273`, the same `effectiveRange`) — there a single undated lab poisons every `trend_*`/`delta_from_baseline` series.
+>
+>   *Defect class note: rounds 1–3 were design, 4–5 plan mechanics, 6 cross-layer consistency, 7 pseudocode, 8 field-level dependencies. This one is none of those — it is a **cross-plan intent** defect: layer A (the assembler) documents a guarantee it believes it is providing, and layer B (the kernel's ordering helper) silently does not honor it. Neither layer is wrong read on its own, which is why five rounds of reading them separately never surfaced it. **Before round 10, check every comment that asserts what ANOTHER module will do with the value being constructed, and verify that module actually does it.***
+>
+> **2. Step 1's block never exercises `less_than`,** though the task covers it — the exact defect round 8 recorded against Task 4's `equals`, recurring here because that fix was applied locally instead of swept across the remaining tasks. Add a `less_than` case: its comparison direction AND its distinct reason strings (`<` / `>=`) are otherwise wholly uncovered. **Task 6 has the same hole**: its sketch names four operators and exercises `count_in_window` and "trend and delta" generically, so `trend_down` and the `trend_up`/`delta_from_baseline` split are uncovered there too. When a round finds a class of defect, sweep the class.
+>
+> **3. The diagnostic hint above ("check Task 9 before touching the kernel") cannot be acted on at this task.** `factStore` is `[]` at every resolver until Task 9, so these tests build the store by hand and the assembler is not involved at all — an executor whose undated-vital case failed would go read Task 9 and find nothing. The hint belongs at Task 9. Mild, but it is the P1-16 class inverted: not a test that cannot fail, a debugging instruction that cannot help.
+>
+> **Also: `threshold` is never mentioned.** The comparison keeps legacy's `condition.threshold ?? parseFloat(condition.value)`, where `value` is the observation *code* — so an authored `greater_than` with no `threshold` compares against `parseFloat('718-7') === 718`. Preserved deliberately (this task moves selection, not comparison), but it is a live authoring trap that plan 06 should reject rather than a behavior worth inheriting forever.
 
 - [ ] **Step 1: Write the failing test**
 
