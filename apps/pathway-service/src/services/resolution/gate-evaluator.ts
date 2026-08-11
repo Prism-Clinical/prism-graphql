@@ -3,6 +3,7 @@ import {
   GateProperties,
   GateCondition,
   CodedCondition,
+  AttributeCondition,
   GateAnswer,
   GateEvaluationResult,
   NodeResult,
@@ -24,7 +25,7 @@ import { boundEpochRange } from './temporal/interval';
 import type { ResolvedHorizon } from './temporal/overlap';
 import { isTemporalOperator, operatorClass } from './temporal/contract';
 import type { UncertaintyReason } from './temporal/contract';
-import { adaptCodedCondition } from './temporal/condition-adapter';
+import { adaptAttributeCondition, adaptCodedCondition } from './temporal/condition-adapter';
 import { effectivePolicyFor } from './temporal/gate-policy';
 import { selectFacts } from './temporal/select-facts';
 
@@ -900,6 +901,95 @@ function evaluateAggregateKernel(
 }
 
 /**
+ * Clinical attribute conditions on the kernel (Task 7, D3).
+ *
+ * `lab.*`, `vitals.*` and `allergy.*` read the fact store; `patient.*` keeps
+ * `resolveAttribute` forever — it is demographics, with no `FactKind`, interval,
+ * or clinical state to govern.
+ *
+ * **Selection is chosen by namespace, never by the operator**, and the whole of
+ * that choice lives in `adaptAttributeCondition`. Only two things happen here:
+ * turning the selection into the value `resolveAttribute` would have produced,
+ * and handing it to `compareScalar` — the same comparison, with the same reason
+ * strings, that `legacy-v0` uses. `v1` changes which fact is read, not how the
+ * answer reads.
+ *
+ * The fallback to legacy is not a leak of `patientContext` into `v1` clinical
+ * decisions: `adaptAttributeCondition` returns `null` only for `patient.*`, an
+ * unrecognized namespace, or a `lab`/`allergy` with no `codeMap` row — and in
+ * that last case `resolveAttribute` bails on the missing row before reading any
+ * clinical array.
+ *
+ * Errors from the adapter and the cascade PROPAGATE, exactly as for the coded
+ * classes. The `v1` anchor sweep now covers these namespaces (P1-8), so anything
+ * that throws here was already rejected at session creation; swallowing it into
+ * a quiet `false` would hide a preflight that never ran.
+ */
+function evaluateAttributeKernel(
+  condition: AttributeCondition,
+  deps: GateEvaluationDeps,
+): ConditionOutcome {
+  const where = `condition (${condition.attribute})`;
+  const adapted = adaptAttributeCondition(condition, deps.codeMap ?? new Map(), where);
+  if (adapted === null) return evaluateConditionLegacyAdapted(condition, deps);
+
+  const policy = effectivePolicyFor(adapted, deps.temporalContext, deps.pathwayDefaults);
+  const outcome = selectFacts(adapted.selection, deps.factStore, policy);
+
+  // Byte-identical to `resolveAttribute`'s: the attribute name, not the gate
+  // field. Reporting `labs` here would change what every audit row records for
+  // a condition whose decision is unchanged.
+  const fieldsRead = [condition.attribute];
+
+  // Per-fact doubt plus, when the kernel refused to decide, the reasons it
+  // refused for. `AMBIGUOUS_LATEST` exists ONLY on the outcome — no single fact
+  // is uncertain when two of them merely cannot be ordered — so reading the
+  // decisions alone would silently drop it.
+  const uncertainty: UncertaintyReason[] = [
+    ...new Set([
+      ...outcome.decisions.flatMap((d) => d.uncertainty),
+      ...(outcome.status === 'INDETERMINATE' ? outcome.reasons : []),
+    ]),
+  ];
+
+  if (outcome.status === 'INDETERMINATE') {
+    return {
+      satisfied: false,
+      // Deliberately NOT compareScalar's "attribute has no value" — a
+      // fail-closed refusal must stay distinguishable from a genuinely absent
+      // attribute in every audit row.
+      reason: `Indeterminate value for ${condition.attribute} (${uncertainty.join(', ')})`,
+      fieldsRead,
+      indeterminate: true,
+      uncertainty,
+    };
+  }
+
+  // Membership derives a BOOLEAN — always one, never `undefined`, exactly as
+  // `allergies.some(...)` does today, so `exists` on an allergy stays satisfied
+  // whether or not the allergy is present. Scalar derives the numeric value of
+  // the single definitely-latest fact, or `undefined` when nothing matched.
+  const klass = operatorClass(adapted.selection.operator);
+  const value =
+    klass === 'membership'
+      ? outcome.status === 'READY'
+      : outcome.status === 'READY'
+        ? scalarValueOf(outcome.selected[0])
+        : undefined;
+
+  const { satisfied, reason } = compareScalar(value, condition.operator, condition.value);
+  return {
+    satisfied,
+    reason,
+    fieldsRead,
+    // Derived, never hard-coded: a READY or NO_MATCH selection is by definition
+    // a decision the kernel was able to make.
+    indeterminate: false,
+    uncertainty,
+  };
+}
+
+/**
  * The `v1` condition evaluator.
  *
  * Tasks 4–8 replace this body one operator class at a time; everything not yet
@@ -908,9 +998,10 @@ function evaluateAggregateKernel(
  *
  * Moved so far: **membership** (`includes_code`, `equals`, `exists`) — Task 4;
  * **scalar** (`greater_than`, `less_than`) — Task 5; **aggregate**
- * (`count_in_window`, `trend_up`, `trend_down`, `delta_from_baseline`) — Task 6.
- * Still legacy: attribute conditions (Task 7). An operator the kernel does not
- * model at all — an authoring typo that reached evaluation — also lands on
+ * (`count_in_window`, `trend_up`, `trend_down`, `delta_from_baseline`) — Task 6;
+ * **clinical attributes** (`lab.*`, `vitals.*`, `allergy.*`) — Task 7. Still
+ * legacy by design: `patient.*` demographics (D3). An operator the kernel does
+ * not model at all — an authoring typo that reached evaluation — also lands on
  * legacy, which reports it as an unknown operator exactly as it does today.
  */
 function evaluateConditionKernel(
@@ -918,7 +1009,7 @@ function evaluateConditionKernel(
   deps: GateEvaluationDeps,
 ): ConditionOutcome {
   if (isAttributeCondition(condition)) {
-    return evaluateConditionLegacyAdapted(condition, deps);
+    return evaluateAttributeKernel(condition, deps);
   }
   const { operator } = condition;
   if (isTemporalOperator(operator) && operatorClass(operator) === 'membership') {

@@ -646,8 +646,18 @@ export function sweepableConditions(
       }
 
       // v1 attribute: `patient.*` and unrecognized namespaces resolve no
-      // horizon, so they are skipped rather than rejected. Task 7 replaces this
-      // with `adaptAttributeCondition`, which will validate the operator too.
+      // horizon, so they are skipped rather than rejected.
+      //
+      // **This deliberately does NOT call `adaptAttributeCondition` (Task 7).**
+      // That adapter needs the attribute `codeMap` to turn `lab.a1c` into a
+      // (code, system) pair, and the sweep has none: it reads pathway JSON off
+      // AGE with no attribute registry in scope. Calling it with an empty map
+      // would make every `lab.*` / `allergy.*` condition adapt to `null` and
+      // vanish from the sweep — reopening exactly the preflight hole P1-8 closed.
+      // What preflight actually needs is the cascade key and the NODE tier, and
+      // both come from the shared `attributeNamespaceToField` and
+      // `parseConditionOverride` the adapter itself uses (locked decision #6).
+      // The agreement is asserted by test, not assumed.
       const attribute = cond.attribute;
       if (typeof attribute !== 'string') return;
       const attrField = attributeNamespaceToField(attribute.split('.')[0]);

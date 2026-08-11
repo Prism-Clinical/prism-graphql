@@ -2,11 +2,16 @@ import {
   FactSelectionCondition,
   GateField,
   FIELD_TO_KIND,
+  TemporalOperator,
   isTemporalOperator,
 } from './contract';
 import { ConditionTemporalOverride, parseHorizonValue, parseStatusValue } from './cascade';
 import { TemporalContextError } from './evaluation-context';
-import { CodedCondition } from '../types';
+// Only the urn constant. Vitals carry no terminology code, so the assembler
+// stamps every vital with this system and the adapter must select on the same
+// one; a second spelling here would silently match nothing.
+import { VITALS_SYSTEM } from './context-assembler';
+import { AttributeCodeMap, AttributeCondition, CodedCondition } from '../types';
 
 /**
  * The one shape both condition kinds adapt to (P1-20).
@@ -171,6 +176,137 @@ export function nodeOverrideFor(
 export function adaptCodedCondition(condition: CodedCondition, where?: string): AdaptedCondition {
   const adapted: AdaptedCondition = { selection: toFactSelectionCondition(condition, where) };
   const override = nodeOverrideFor(condition, where);
+  if (override !== undefined) adapted.override = override;
+  return adapted;
+}
+
+/**
+ * Which selection class a clinical attribute namespace resolves through (D3).
+ *
+ * Keyed on the namespace and on the TYPE OF VALUE that namespace resolves to —
+ * **never** on the condition's operator. `attribute-registry.ts` is the source:
+ * `lab` returns `lab?.value`, a number, and `vitals` returns a number off the
+ * bag, so both need the scalar rules (exact code + a finite value + the
+ * definite-latest winner). `allergy` returns `allergies.some(...)`, a boolean,
+ * and allergy facts are `StatefulFact`s carrying no numeric value at all — a
+ * scalar selection would reject every one of them via `hasFiniteValue`
+ * (`select-facts.ts:50`).
+ *
+ * Two traps this ordering closes, both named by D3:
+ *  - an attribute `exists` must NOT become the kernel's `exists`, which ignores
+ *    code and system by design (`select-facts.ts:106`) and would be satisfied by
+ *    any unrelated lab;
+ *  - an attribute `equals` on a `lab.*` must NOT become the kernel's membership
+ *    `equals`, which returns every matching result in array order instead of the
+ *    one definitely-latest value.
+ */
+function attributeSelectionClass(namespace: string): 'membership' | 'scalar' {
+  return namespace === 'allergy' ? 'membership' : 'scalar';
+}
+
+/**
+ * The temporal operator that stands for each attribute selection class.
+ *
+ * The attribute operator set is not the coded one: `not_equals`,
+ * `greater_or_equal`, `less_or_equal` and `in` have no `TemporalOperator`
+ * equivalent, and `TemporalOperator` is deliberately not widened for them. Each
+ * maps to the nearest operator of the SAME selection class, for SELECTION only —
+ * the real comparison stays in `compareScalar`, exactly where `legacy-v0` does
+ * it.
+ */
+const ATTRIBUTE_SELECTION_OPERATOR: Record<'membership' | 'scalar', TemporalOperator> = {
+  // Exact-code membership. `equals` is the kernel's exact-code candidate rule;
+  // `includes_code` would apply the trailing wildcard, which `resolveAttribute`
+  // never does.
+  membership: 'equals',
+  // Exact code plus a finite value. `greater_than` and `less_than` share ONE
+  // candidate rule (`select-facts.ts:121-123`) and one class, so which stands
+  // for the class cannot change what is selected.
+  scalar: 'greater_than',
+  // No `aggregate` entry, and the key type is narrowed rather than
+  // `OperatorClass`: no attribute namespace resolves an aggregate, and a
+  // never-taken third branch is an invariant no test can cover.
+};
+
+/**
+ * Translate a clinical attribute condition onto the kernel's selection shape.
+ *
+ * Returns **the same `AdaptedCondition` shape as `adaptCodedCondition`** so both
+ * kinds reach `effectivePolicyFor` through byte-identical code (P1-20). Resolving
+ * attribute policy inline is how preflight and evaluation drift apart, which is
+ * the whole of locked decision #7.
+ *
+ * `null` means "not routable through the kernel — use `resolveAttribute`", and
+ * there are two ways to earn it:
+ *  - **`patient.*` or an unrecognized namespace.** Demographics have no
+ *    `FactKind`, interval, or clinical state (D3).
+ *  - **A `lab.*` / `allergy.*` with no `codeMap` row.** There is no code to
+ *    select on. `resolveAttribute` returns `undefined` for exactly this case
+ *    today — it bails on the missing row before reading any clinical data — so
+ *    the fallback decides identically and reads nothing from `patientContext`.
+ *    Widening this to a throw would reject at evaluation what the anchor sweep
+ *    cannot see: the sweep has no `codeMap`, so it could never reject the same
+ *    condition at preflight.
+ *
+ * **The sweep derives its field from `attributeNamespaceToField` rather than
+ * from this function, and that is not an oversight.** `sweepableConditions`
+ * reads pathway JSON off AGE with no attribute registry in scope, so it cannot
+ * resolve a code. Sharing the namespace map and `parseConditionOverride` is what
+ * makes the two agree on the only two things preflight computes — the cascade
+ * key and the NODE tier — and that agreement is asserted by test.
+ */
+export function adaptAttributeCondition(
+  condition: AttributeCondition,
+  codeMap: AttributeCodeMap,
+  where?: string,
+): AdaptedCondition | null {
+  const attribute = condition.attribute;
+  const dot = attribute.indexOf('.');
+  const namespace = dot === -1 ? attribute : attribute.slice(0, dot);
+  const rest = dot === -1 ? '' : attribute.slice(dot + 1);
+
+  // The SAME mapping the anchor sweep uses (locked decision #6). Checked FIRST,
+  // and before the override is parsed, because the sweep also returns before
+  // parsing for a `null` field — a malformed `horizon` on a `patient.*`
+  // condition is ignored by both sides, not rejected by one.
+  const field = attributeNamespaceToField(namespace);
+  if (field === null) return null;
+
+  // Parsed BEFORE the codeMap lookup, deliberately. The sweep parses every
+  // clinical-namespace attribute condition it sees and has no codeMap at all,
+  // so resolving the code first would let a malformed override on an UNMAPPED
+  // attribute reject session creation while evaluation ignored it — the two
+  // sides asymmetric over one condition, which is locked decision #7 read in
+  // the other direction.
+  const override = parseConditionOverride(condition, where ?? `condition (${attribute})`);
+
+  let value: string;
+  let system: string | undefined;
+  if (namespace === 'vitals') {
+    // No terminology code exists: the dotted remainder IS the code, matching
+    // both `resolveAttribute`'s `numericPath` and the flattened key the
+    // assembler stamps on every vital (`context-assembler.ts:264-268`). That is
+    // what makes a nested `vitals.custom.pain_score` resolve with no codeMap row.
+    value = rest;
+    system = VITALS_SYSTEM;
+  } else {
+    const entry = codeMap.get(attribute);
+    if (!entry) return null;
+    value = entry.code;
+    // An empty system means "any system", mirroring `resolveAttribute`'s
+    // `!entry.system ||` guard. Passing '' would narrow the selection to facts
+    // whose system is literally empty.
+    system = entry.system ? entry.system : undefined;
+  }
+
+  const selection: FactSelectionCondition = {
+    field,
+    operator: ATTRIBUTE_SELECTION_OPERATOR[attributeSelectionClass(namespace)],
+    value,
+  };
+  if (system !== undefined) selection.system = system;
+
+  const adapted: AdaptedCondition = { selection };
   if (override !== undefined) adapted.override = override;
   return adapted;
 }
