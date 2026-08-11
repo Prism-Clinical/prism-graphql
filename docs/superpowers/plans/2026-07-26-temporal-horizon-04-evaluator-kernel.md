@@ -20,7 +20,9 @@
   **Round-5 trend note.** Five rounds, 23 findings, none rejected. The defect *class* has shifted: rounds 1–3 found design errors, rounds 4–5 found plan-mechanics errors — tasks that cannot run in order, tests that cannot fail, interfaces that contradict their own injection. That is convergence, but it also says the remaining risk is concentrated in whether an executor can follow this document task-by-task, not in whether the architecture is right. **Before round 6, dry-run the task order rather than re-reading the prose:** for each task, check that every symbol its tests reference is produced by that task or an earlier one.
 - **v7 (this document)** — revised after review round 6. One finding, P1, verified and accepted: coded `exists` was specified to *reject* a supplied `value`/`system` at runtime, which the import validator makes nearly unsatisfiable (it *requires* `value`), which fires after a preflight that cannot catch it, and which breaks a fixture merged on `main`. Now normalized to bucket semantics, with authoring rejection handed to plan 06.
 
-  **Round-6 trend note.** The ordering check added in v6 worked — it found nothing new, and round 6 found nothing of that class. But it also would never have caught this one, because the defect was a **semantic** rule that no symbol-level check can see: an invariant asserted in one layer (the adapter) that a different layer (the validator) contradicts. **Before round 7, run the cross-layer check:** for every rule this plan adds at runtime, find the import validator rule and the existing fixtures governing the same field, and confirm all three agree. Rounds 1–3 were design, 4–5 were mechanics, 6 was cross-layer consistency — each round's check has to be *different* from the last one's, because a check that already ran is the least likely to find the next defect.
+  **Round-6 trend note.** The ordering check added in v6 worked — it found nothing new, and round 6 found nothing of that class. But it also would never have caught this one, because the defect was a **semantic** rule that no symbol-level check can see: an invariant asserted in one layer (the adapter) that a different layer (the validator) contradicts. **Round-8 addendum, found executing Task 4: the ordering check has a blind spot.** It checks that every *symbol* a task's tests reference is produced by that task or earlier. Task 4's specified test reads `r.indeterminate` / `r.uncertainty` — **fields on an interface**, not symbols — and the widening that creates them is claimed by Task 8. A field-level dependency is invisible to a symbol-level check. Extend it: for each task's tests, check the *properties* they read, not only the identifiers they import.
+
+  **Before round 7, run the cross-layer check:** for every rule this plan adds at runtime, find the import validator rule and the existing fixtures governing the same field, and confirm all three agree. Rounds 1–3 were design, 4–5 were mechanics, 6 was cross-layer consistency — each round's check has to be *different* from the last one's, because a check that already ran is the least likely to find the next defect.
 
 ---
 
@@ -144,6 +146,7 @@ The **Sweep field** column is the round-2 addition: `attributeNamespaceToField()
   | Task 2 (`df23141`) | 1000 | 9 | 1009 | 86 / 88 |
   | Round-7 fixes (`4083ef4`) | 1008 | 9 | 1017 | 86 / 88 |
   | Task 3 (`8c98e03`) | 1024 | 9 | 1033 | 88 / 90 |
+  | Task 4 (`88ce6bb`) | 1039 | 9 | 1048 | 89 / 91 |
   | Task 4 | 1039 | 9 | 1048 | 89 / 91 |
 
   Task 4's delta is +15 passed / +15 total: **16 added** in the new
@@ -501,6 +504,16 @@ describe('the fork is a no-op until Task 4', () => {
 
 Covers `includes_code`, `equals`, `exists`. Delete Task 3's no-op-fork test — this is where the paths diverge.
 
+> **Round 8, found executing this task — three corrections to what follows.**
+>
+> **1. The `ConditionOutcome` widening happens HERE, not at Task 8.** Task 8's text claims it, but Step 1 below asserts `r.indeterminate` / `r.uncertainty` off `evaluateGate`, which is unsatisfiable without it. Widen with **optional** fields and propagate through the **single-condition path only**; the compound boundary is genuinely Task 8's. Copy the two fields onto the result **only when present** — adding them unconditionally stamps `indeterminate: undefined` on every `legacy-v0` result and breaks byte-identity with today's object. Derive `indeterminate` from the selection outcome; never hard-code `false`.
+>
+> **2. Step 1's block never exercises `equals`,** though the task covers it. Add a case: an exact match, plus a literal `Z94.*` that must **not** match `Z94.0` — otherwise the `equals` candidate rule and its reason string are uncovered.
+>
+> **3. The vitals membership case needs an `encounterStart`.** Under `v1`, vitals pin to `ENCOUNTER`, so `toEffectivePolicy` throws `MISSING_ENCOUNTER_ANCHOR` before any comparison happens. The sketch below does not supply one. Supply it, and add a companion case pinning that a vital taken *before* the encounter is dropped.
+>
+> **Open question deferred to plan 08 — do NOT guess it here.** `stateUnverified` is not folded into `uncertainty`. Under `status: 'any'`, `selectFacts` deliberately reports that doubt through the separate `stateUnverified` flag rather than as a `STATE_UNKNOWN` reason (`select-facts.ts:120-133`), and no `UncertaintyReason` exists for it. D5's prose arguably covers it, but inventing a reason code here would contradict the kernel. Plan 08 owns evidence and should decide.
+
 > **`exists` is bucket existence, and the adapter NORMALIZES rather than rejects.** `select-facts.ts:75` short-circuits it to match any fact of the kind, ignoring code and system — which is what today's `entries.length > 0` means. The adapter therefore **drops `value` and `system` for `exists`**, so `value: ''` and `value: '718-7'` behave identically, exactly as they do today. Coded `exists` has **no `v1` delta**.
 >
 > *(Round 6, P1 — accepted. v6 said "reject a `system` or non-empty `value` supplied alongside `exists`." Three things were wrong with it. **One:** the import validator **requires** `value` on every coded condition (`validator.ts:289`), so an author following the import contract produces precisely the condition the adapter would reject — only the undocumented `value: ''` satisfies both, and the repo is already split between that spelling and a real code. **Two:** the rejection fires in the adapter at **evaluation**, while the `v1` preflight sweep runs only `parseConditionOverride` (Task 1 Step 4), so such a pathway passes preflight and throws mid-traversal — precisely what locked decision #7 forbids, and the same divergence class as P1-8, P1-10 and P1-18. **Three:** a merged fixture already carries `{ field: 'labs', operator: 'exists', value: '718-7' }` (`resolution-input-contract.test.ts:602`), so the rejection would break a test that passes on `main` today. Authoring-time rejection is worth doing — an author writing `exists` with a code probably means `includes_code` — but it belongs to **plan 06**, which owns the validator and canonicalization and can warn and migrate rather than throw.)*
@@ -699,7 +712,9 @@ describe('attribute policy flows through the shared seam (P1-20)', () => {
 
 ---
 
-### Task 8: Compound gates propagate uncertainty (P2-6, P1-11)
+### Task 8: Compound gates propagate uncertainty
+
+> **Round 8: the `ConditionOutcome` widening this task claims already happened at Task 4** — Task 4's own specified test reads `r.indeterminate`/`r.uncertainty` and cannot pass without it. What remains here is genuinely this task's: propagating both signals across the **compound** boundary, which Task 4 deliberately left dropping them. (P2-6, P1-11)
 
 **Files:** `gate-evaluator.ts`; test `gate-evaluator-compound-uncertainty.test.ts`
 
