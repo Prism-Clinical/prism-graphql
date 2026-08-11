@@ -128,6 +128,17 @@ The **Sweep field** column is the round-2 addition: `attributeNamespaceToField()
 
 **D6 — `evaluateGate`'s positional parameters become an options object, and `pathwayDefaults` is required.** *(Round 1: accepted. Round 2: `pathwayDefaults` promoted from optional per P1-10.)* An optional cascade input is a silent-divergence generator: omitted at one of five call sites, that pathway evaluates against system defaults while its preflight used pathway defaults.
 
+**D7 — an undated observation is admitted but NOT orderable; scalar and series gates over it fail closed, and that is disclosed rather than fixed.** *(Round 9, found executing Task 5. Decision taken 2026-08-11.)*
+
+`OPEN(assertedCurrentAt: asOf)` fixes **admission**, not **ordering**. `effectiveRange` (`select-facts.ts:143`) reads `interval.start` only and returns `(-Inf, +Inf)` without one, so an undated fact has no position in time. One undated fact alone is `READY`; an undated fact **plus any other candidate** is `AMBIGUOUS_LATEST` and fails closed. `context-assembler.ts` previously claimed `OPEN(asOf)` prevented exactly this — it does not, and that comment is corrected.
+
+**Consulting `interval.end` does not fix it** and was checked: the undated fact becomes `(-Inf, asOf]`, which still overlaps a dated point, so `definiteLatest` still finds no strict winner. The ambiguity is genuine, not a coding slip.
+
+**Accepted, because failing closed beats legacy's arbitrary `.find()` on the first array element** for a scalar clinical comparison. Consequences that MUST be carried:
+- **Task 6 inherits this identically** through `AMBIGUOUS_SERIES_ORDER` — one undated lab poisons every `trend_*` / `delta_from_baseline` series over that code. Same decision applies; do not re-litigate it there.
+- **Task 10 must disclose it** as a `v1` delta. It is currently undisclosed, which locked decision #2 forbids.
+- **Plan 09's authoring UI should require a date on lab input**, and `SyntheticLabResult.date` being optional is the reason this is ordinary input rather than an edge case.
+
 ---
 
 ## Global Constraints
@@ -626,7 +637,13 @@ describe('scalar INDETERMINATE fails closed and is recorded (D5)', () => {
 
 ---
 
-### Task 6: Aggregate operators on the kernel (`v1` branch)
+### Task 6: Aggregate operators on the kernel
+
+> **Round 9, two things before you start.**
+>
+> **1. D7 applies here unchanged.** One undated fact poisons every `trend_*` / `delta_from_baseline` series over that code, via `AMBIGUOUS_SERIES_ORDER` and the same `effectiveRange` blind spot. That is accepted and disclosed — implement it, do not re-litigate it, and do not invent an ordering rule to work around it.
+>
+> **2. Test every operator this task NAMES.** It covers four — `count_in_window`, `trend_up`, `trend_down`, `delta_from_baseline` — but the sketch tests "trend and delta" generically, leaving `trend_down` and the `trend_up`/`delta_from_baseline` split uncovered. Task 4 had this hole for `equals` and Task 5 for `less_than`; the fix was applied locally each time instead of swept. **When a round finds a class, sweep the class.** (`v1` branch)
 
 **Files:** `gate-evaluator.ts`; test `gate-evaluator-aggregate-kernel.test.ts`
 
@@ -900,7 +917,7 @@ describe('the pathway-default cascade, proven behaviorally (moved from Task 3, P
 **Files:** `docs/superpowers/plans/2026-07-26-temporal-horizon-00-overview.md`, `docs/superpowers/specs/2026-07-21-pathway-temporal-horizon-design.md` (§6, §10, Compatibility), `temporal/select-facts.ts` (comment)
 
 - [ ] **Step 1: Prove `legacy-v0` is untouched.** The evidence is that **every pre-existing gate-evaluator and traversal test passes with unmodified assertions** — only call shapes changed. Run the full suite, diff against the last row of the baseline table. Any assertion that had to be weakened is a seam bug; fix the seam, not the test.
-- [ ] **Step 2: Enumerate the `v1` deltas** in Compatibility, from the tests that pin them: validity filtering, latest-vs-first scalar selection, equal-time ambiguity, future-date exclusion, horizon filtering of membership, vitals membership/count becoming satisfiable, **and the attribute-specific deltas** — `lab.*`/`vitals.*`/`allergy.*` gaining horizon and validity filtering, and attribute `exists` becoming exact-code rather than any-fact. **Record coded `exists` explicitly as a NON-delta** — it keeps bucket semantics under `v1`, ignoring `value` and `system` exactly as today, with authoring-time rejection deferred to plan 06 (round 6, P1). An audit that lists only deltas hides the operator where a delta was proposed and deliberately rejected, which is how it would get reintroduced.
+- [ ] **Step 2: Enumerate the `v1` deltas** in Compatibility, from the tests that pin them: validity filtering, latest-vs-first scalar selection, equal-time ambiguity, future-date exclusion, horizon filtering of membership, vitals membership/count becoming satisfiable, **and the attribute-specific deltas** — `lab.*`/`vitals.*`/`allergy.*` gaining horizon and validity filtering, and attribute `exists` becoming exact-code rather than any-fact. **Record the undated-observation delta (D7)**: a scalar or series gate over an undated fact plus any other candidate is `AMBIGUOUS_LATEST` and fails closed, where `legacy-v0` picked the first array element and decided. This is the delta most likely to surprise, because the simulator's lab `date` is optional. **Record coded `exists` explicitly as a NON-delta** — it keeps bucket semantics under `v1`, ignoring `value` and `system` exactly as today, with authoring-time rejection deferred to plan 06 (round 6, P1). An audit that lists only deltas hides the operator where a delta was proposed and deliberately rejected, which is how it would get reintroduced.
 - [ ] **Step 3: Revise design §10 (P2-13).** §589 says "Attribute conditions get no horizon control (encounter-derived, no timeline)." That is now false for the three clinical namespaces and true only for `patient.*`. Update it, and note that §590's fixed-Encounter vitals control is what makes the attribute anchor sweep (P1-8) mandatory.
 - [ ] **Step 4: Correct `select-facts.ts:58`.** Its comment claims the candidate rules make `legacy-v0` "genuinely behavior-preserving." They mirror the current evaluator's *candidate* rules only; validity, ordering, and vitals bucketing still differ. Rewrite it to say what it actually guarantees.
 - [ ] **Step 5: State the shadow boundary (P2-13).** Retaining `evaluateConditionLegacy` is a *precondition* for shadow evaluation, not shadow evaluation. Nothing in this plan runs both paths or diffs them; the rollout change owns that, along with retiring the legacy path.
