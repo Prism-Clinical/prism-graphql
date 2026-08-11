@@ -147,7 +147,6 @@ The **Sweep field** column is the round-2 addition: `attributeNamespaceToField()
   | Round-7 fixes (`4083ef4`) | 1008 | 9 | 1017 | 86 / 88 |
   | Task 3 (`8c98e03`) | 1024 | 9 | 1033 | 88 / 90 |
   | Task 4 (`88ce6bb`) | 1039 | 9 | 1048 | 89 / 91 |
-  | Task 4 | 1039 | 9 | 1048 | 89 / 91 |
   | Task 5 (`8fd537d`) | 1057 | 9 | 1066 | 90 / 92 |
 
   Task 4's delta is +15 passed / +15 total: **16 added** in the new
