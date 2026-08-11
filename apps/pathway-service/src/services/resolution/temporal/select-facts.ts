@@ -70,8 +70,16 @@ function candidateMatches(fact: NormalizedFact, cond: FactSelectionCondition): b
   if (fact.kind !== fieldToKind(cond.field)) return false;
 
   // `exists` is bucket existence and nothing else — it ignores both value and
-  // system, matching the current evaluator. (Plan 04's adapter rejects a
-  // system/value supplied alongside `exists` at the authoring boundary.)
+  // system, matching the current evaluator.
+  //
+  // Plan 04's adapter NORMALIZES to this rather than rejecting it: it drops
+  // `value` and `system` for `exists`, so `value: ''` and `value: '718-7'`
+  // produce an identical selection. A runtime rejection was specified once and
+  // reverted — the import validator REQUIRES `value` on every coded condition
+  // (`validator.ts:289`), so an author following the authoring contract writes
+  // exactly what the rejection would refuse. Rejecting an `exists` that carries
+  // a code belongs at the AUTHORING boundary, which is plan 06's canonicalizer,
+  // and it can warn and migrate rather than throw mid-traversal.
   if (cond.operator === 'exists') return true;
 
   if (cond.system && fact.system !== cond.system) return false;

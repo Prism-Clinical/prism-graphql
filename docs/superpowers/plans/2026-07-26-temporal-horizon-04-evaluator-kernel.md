@@ -144,6 +144,11 @@ The **Sweep field** column is the round-2 addition: `attributeNamespaceToField()
   | Task 2 (`df23141`) | 1000 | 9 | 1009 | 86 / 88 |
   | Round-7 fixes (`4083ef4`) | 1008 | 9 | 1017 | 86 / 88 |
   | Task 3 (`8c98e03`) | 1024 | 9 | 1033 | 88 / 90 |
+  | Task 4 | 1039 | 9 | 1048 | 89 / 91 |
+
+  Task 4's delta is +15 passed / +15 total: **16 added** in the new
+  `gate-evaluator-membership-kernel.test.ts`, **1 deleted** — Task 3's no-op-fork
+  test, whose deletion this task mandates because the paths now diverge.
 
   **Append a row per task.** *(Round 8, self-found during Task 3: every "compare against 958/9" instruction below was stale the moment Task 1 landed, and an executor following it literally would either think they had broken 50 tests or would fail to notice breaking some. The count is only meaningful as a delta whose additions are each accounted for.)*
 - **`legacy-v0` executes no kernel code, and no code this plan adds.** Structural, not behavioral: the version seam (Task 3) routes `legacy-v0` to the untouched legacy function; the assembler is not called; override parsing does not reject (D1). Every pre-existing gate-evaluator and traversal test must pass with **unmodified assertions** — that is the proof.

@@ -205,15 +205,9 @@ describe('the version seam dispatches on the session policy version', () => {
   });
 });
 
-// ─── The fork changes nothing yet ─────────────────────────────────────
-
-describe('the fork is a no-op until Task 4', () => {
-  // DELETED in Task 4 — that is where the paths diverge.
-  it('decides identically under legacy-v0 and v1 for a membership gate', async () => {
-    const legacy = await evaluateGate(CODED_GATE, deps('legacy-v0'));
-    const v1 = await evaluateGate(CODED_GATE, deps('v1'));
-
-    expect(legacy.satisfied).toBe(true);
-    expect(v1).toEqual(legacy);
-  });
-});
+// ─── The fork is no longer a no-op ────────────────────────────────────
+//
+// Task 3's "decides identically under legacy-v0 and v1 for a membership gate"
+// was DELETED at Task 4 — that is where the paths diverge, so the test became
+// false by design. The membership deltas are pinned, both versions asserted, in
+// gate-evaluator-membership-kernel.test.ts.

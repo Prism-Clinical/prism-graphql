@@ -19,6 +19,11 @@ import {
 import { assertKnownPolicyVersion } from './temporal/policy-registry';
 import type { PathwayTemporalDefaults } from './temporal/cascade';
 import type { FactStore } from './temporal/fact-model';
+import { isTemporalOperator, operatorClass } from './temporal/contract';
+import type { UncertaintyReason } from './temporal/contract';
+import { adaptCodedCondition } from './temporal/condition-adapter';
+import { effectivePolicyFor } from './temporal/gate-policy';
+import { selectFacts } from './temporal/select-facts';
 
 // ─── Helpers ──────────────────────────────────────────────────────────
 
@@ -451,6 +456,25 @@ export interface ConditionOutcome {
   satisfied: boolean;
   reason: string;
   fieldsRead: string[];
+  /**
+   * D5, and **only** populated by the `v1` kernel. Both keys stay absent on the
+   * `legacy-v0` path so its result object is byte-identical to today's — a new
+   * key there would be a behavior change reachable under `legacy-v0`, which
+   * locked decision #2 makes a bug in the seam.
+   *
+   * `indeterminate` — uncertainty *could have prevented* a definitive outcome.
+   * For membership it is always `false`: `selectFacts` resolves uncertainty to
+   * INCLUDE for this operator class, so INDETERMINATE is unreachable
+   * (`select-facts.ts:184-190`). The compound truth table is Task 8's.
+   */
+  indeterminate?: boolean;
+  /**
+   * `uncertainty` — relevant uncertainty that *existed*, retained even when the
+   * outcome is definite (D5, P1-11). A fail-open membership match on a
+   * validity-UNKNOWN fact is certain in its answer and doubtful in its
+   * evidence; both facts are true and plan 08 has to show the second.
+   */
+  uncertainty?: UncertaintyReason[];
 }
 
 export type ConditionEvaluator = (
@@ -477,18 +501,100 @@ function evaluateConditionLegacyAdapted(
 }
 
 /**
+ * The membership reason strings, kept byte-identical to the legacy evaluator's.
+ *
+ * `v1` changes *which facts* are admitted, not how the decision reads. Rewriting
+ * the prose here would make every `legacy-v0`/`v1` diff — the whole point of
+ * keeping the baseline — noisy with cosmetic differences.
+ */
+function membershipReason(
+  condition: CodedCondition,
+  satisfied: boolean,
+): string {
+  const { field, operator, value } = condition;
+  switch (operator) {
+    case 'exists':
+      return satisfied
+        ? `Patient has entries in ${field}`
+        : `Patient has no entries in ${field}`;
+    case 'equals':
+      return satisfied
+        ? `Patient has exact code ${value} in ${field}`
+        : `No exact code ${value} found in patient ${field}`;
+    default:
+      return satisfied
+        ? `Patient has matching code ${value} in ${field}`
+        : `No matching code ${value} found in patient ${field}`;
+  }
+}
+
+/**
+ * `includes_code` / `equals` / `exists` on the kernel (Task 4).
+ *
+ * Every read of clinical data goes through `selectFacts`, so horizon, clinical
+ * status and record validity govern the gate. Nothing about fail-open is
+ * decided here: `selectFacts` already resolves membership uncertainty to
+ * INCLUDE (`select-facts.ts:184-190`, locked decision #3), and re-deciding it
+ * per operator is how the three membership operators would come to disagree.
+ *
+ * Errors from the adapter and the cascade PROPAGATE. Under `v1` the anchor
+ * sweep runs the same `adaptCodedCondition`, so a condition that throws here
+ * was already rejected at session creation; swallowing it into a quiet `false`
+ * would hide a preflight that never ran (locked decision #7).
+ */
+function evaluateMembershipKernel(
+  condition: CodedCondition,
+  deps: GateEvaluationDeps,
+): ConditionOutcome {
+  const where = `condition (${condition.field})`;
+  const adapted = adaptCodedCondition(condition, where);
+  const policy = effectivePolicyFor(adapted, deps.temporalContext, deps.pathwayDefaults);
+  const outcome = selectFacts(adapted.selection, deps.factStore, policy);
+
+  // Uncertainty is read off the DECISIONS, not off the outcome's summary flags,
+  // because the flags are booleans and D5 requires the reasons themselves. For
+  // membership every uncertain candidate is INCLUDEd, so no reason is lost by
+  // reading them all: a decision that was EXCLUDEd was definitely out on some
+  // axis and carries an empty `uncertainty` by construction.
+  const uncertainty = [...new Set(outcome.decisions.flatMap((d) => d.uncertainty))];
+
+  const satisfied = outcome.status === 'READY';
+  return {
+    satisfied,
+    reason: membershipReason(condition, satisfied),
+    fieldsRead: condition.field ? [condition.field] : [],
+    // Derived rather than hard-coded to `false`: membership cannot be
+    // INDETERMINATE today, and if that ever changes this reports the truth
+    // instead of asserting a stale one.
+    indeterminate: outcome.status === 'INDETERMINATE',
+    uncertainty,
+  };
+}
+
+/**
  * The `v1` condition evaluator.
  *
- * At Task 3 it delegates to the legacy evaluator: the fork is deliberately a
- * no-op so that the dispatch, the deps object and every updated call site are
- * proven in isolation. Tasks 4–8 replace this body operator class by operator
- * class with `selectFacts`-backed selection, at which point a failure is
- * attributable to the operator rewrite rather than to the plumbing.
+ * Tasks 4–8 replace this body one operator class at a time; everything not yet
+ * moved still delegates to the legacy evaluator, so a failure is attributable to
+ * the operator rewrite rather than to the plumbing.
+ *
+ * Moved so far: **membership** (`includes_code`, `equals`, `exists`) — Task 4.
+ * Still legacy: scalar (Task 5), aggregate (Task 6), attribute conditions
+ * (Task 7). An operator the kernel does not model at all — an authoring typo
+ * that reached evaluation — also lands on legacy, which reports it as an
+ * unknown operator exactly as it does today.
  */
 function evaluateConditionKernel(
   condition: GateCondition,
   deps: GateEvaluationDeps,
 ): ConditionOutcome {
+  if (isAttributeCondition(condition)) {
+    return evaluateConditionLegacyAdapted(condition, deps);
+  }
+  const { operator } = condition;
+  if (isTemporalOperator(operator) && operatorClass(operator) === 'membership') {
+    return evaluateMembershipKernel(condition, deps);
+  }
   return evaluateConditionLegacyAdapted(condition, deps);
 }
 
@@ -543,12 +649,22 @@ function evaluatePatientAttribute(
   }
 
   const result = conditionEvaluatorFor(deps)(gate.condition, deps);
-  return {
+  const out: GateEvaluationResult = {
     satisfied: result.satisfied,
     reason: result.reason,
     contextFieldsRead: result.fieldsRead,
     dependedOnNodes: [],
   };
+  // Copied only when the evaluator reported them, which is `v1` alone. Setting
+  // them unconditionally would put `indeterminate: undefined` on every
+  // `legacy-v0` result and break `toEqual` against today's shape — a behavior
+  // change reachable under `legacy-v0` is a bug in the seam (locked decision #2).
+  //
+  // Single-condition gates only. The compound gate still drops these signals at
+  // its boundary; widening it needs the truth table, which is Task 8.
+  if (result.indeterminate !== undefined) out.indeterminate = result.indeterminate;
+  if (result.uncertainty !== undefined) out.uncertainty = result.uncertainty;
+  return out;
 }
 
 function evaluateQuestion(
