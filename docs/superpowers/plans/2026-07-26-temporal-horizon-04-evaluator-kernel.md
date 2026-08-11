@@ -135,7 +135,17 @@ The **Sweep field** column is the round-2 addition: `attributeNamespaceToField()
 - **Typecheck:** `./node_modules/.bin/tsc -p apps/pathway-service/tsconfig.json --noEmit`. There is no `typecheck` script, no `apps/pathway-service/node_modules` (binaries hoist to the root), and bare `npx tsc` resolves to a decoy that prints "This is not the tsc command you are looking for".
 - **Tests:** `npm test --prefix apps/pathway-service -- --runInBand <path>`. `testRegex` is `/__tests__/.*.test.ts` — a test file placed beside its source is silently never run.
 - **`tsconfig` is NOT full strict and excludes `src/__tests__`** (`diagnostics: false`). **Test files are never typechecked.** Every invariant needs a runtime throw plus a test that fails without it. A type alone enforces nothing.
-- **Baseline: 9 failures / 2 suites** (`data-completeness-scorer`, `patient-match-scorer`) — **958 passed / 9 failed / 967 total, 84 of 86 suites green**, measured on `main` @ `d6f51fd` on 2026-08-11. Measure on `main`, never on a copy of this branch. The suite has never been green; do not chase these two.
+- **Baseline: the INVARIANT is 9 failures / 2 suites** (`data-completeness-scorer`, `patient-match-scorer`). Those two have never passed; never fix, chase, or count them. The pass COUNT is a moving number and every task must compare against the previous task's, not against `main`.
+
+  | After | Passed | Failed | Total | Suites |
+  |---|---|---|---|---|
+  | `main` @ `d6f51fd` (pre-execution) | 958 | 9 | 967 | 84 / 86 |
+  | Task 1 (`b28ab0c`) | 991 | 9 | 1000 | 85 / 87 |
+  | Task 2 (`df23141`) | 1000 | 9 | 1009 | 86 / 88 |
+  | Round-7 fixes (`4083ef4`) | 1008 | 9 | 1017 | 86 / 88 |
+  | Task 3 (`8c98e03`) | 1024 | 9 | 1033 | 88 / 90 |
+
+  **Append a row per task.** *(Round 8, self-found during Task 3: every "compare against 958/9" instruction below was stale the moment Task 1 landed, and an executor following it literally would either think they had broken 50 tests or would fail to notice breaking some. The count is only meaningful as a delta whose additions are each accounted for.)*
 - **`legacy-v0` executes no kernel code, and no code this plan adds.** Structural, not behavioral: the version seam (Task 3) routes `legacy-v0` to the untouched legacy function; the assembler is not called; override parsing does not reject (D1). Every pre-existing gate-evaluator and traversal test must pass with **unmodified assertions** — that is the proof.
 - **No caller can select `v1`.** `resolveTemporalPolicyVersion(ctx: DataSourceContext): string` reads a **server-owned field on the GraphQL context** — `temporalPolicyVersion?: string` on `DataSourceContext` (`types/index.ts:5`), populated in `index.ts` from deployment config and never from a request header (AD-1). It applies the `legacy-v0` default and calls `assertKnownPolicyVersion`. It takes the **GraphQL** context and explicitly **not** a `ResolutionContext`: the multi-pathway resolver stamps its clock before any pathway is matched, and its zero-match path never builds one (P1-14). *(Round 5: v5 said "takes no `ResolutionContext`" and then wrote the call as zero-argument, which cannot read a per-request value without the module-level global this plan forbids. The P1-14 reasoning was right; only the signature was wrong.)* Adding a GraphQL *argument* would let an unauthenticated caller (AD-1, `docs/AUTHORIZATION_DEBT.md`) choose evaluation semantics; a read-only *output* field is fine and is planned for plan 08 (design §606). The rollout flip changes deployment config, not the schema.
 - **`apps/pathway-service/src/__generated__/resolvers-types.ts` is now tracked** (PR #53). Do not delete it; if `npm run build` rewrites it, commit the change with the task that caused it.
@@ -439,6 +449,8 @@ Load-bearing, and it must land **before** any operator moves. Introduces `GateEv
 
 A no-op fork sounds pointless. It is not: it proves the dispatch, the deps object, and every updated call site in isolation, so when Tasks 4–8 change the `v1` branch, a failure is attributable to the operator rewrite and not the plumbing.
 
+> **Round 8, found during execution: the routing tests below are unobservable as written.** Step 1 asks for "routes `legacy-v0` to the legacy evaluator" and "routes `v1` to the kernel evaluator", while the task also requires both branches to decide **identically**. With the two functions module-private behind a `switch`, no assertion can distinguish them — this is exactly the defect P1-16 diagnosed for the cascade test, one level down, and round 3 did not notice it applied here too. Resolved in execution by giving the dispatch an observable seam: an exported `CONDITION_EVALUATORS` table keyed by version, with `conditionEvaluatorFor` reading `temporalPolicyVersion` **once** per gate so sibling conditions of a compound gate cannot resolve against different semantics. `assertKnownPolicyVersion` runs at the top of `evaluateGate` rather than inside the condition evaluator, so a question or `prior_node_result` gate on a session pinned to an unknown version also rejects instead of quietly succeeding through a path that reads no condition. Tasks 4–8 still only replace `evaluateConditionKernel`'s body.
+
 - [ ] **Step 1: Write the failing test**
 
 ```ts
@@ -471,9 +483,9 @@ describe('the fork is a no-op until Task 4', () => {
 
 - [ ] **Step 2: Run it, confirm it fails.**
 - [ ] **Step 3: Implement.** `evaluateGate(gate, deps)` with `GateEvaluationDeps = { temporalContext, pathwayDefaults, factStore, patientContext, resolutionState, gateAnswers, gateId?, llmEvaluator?, codeMap? }`. Throw on a missing `temporalContext` or `pathwayDefaults`. Rename `evaluateCondition` → `evaluateConditionLegacy` **without editing its body**.
-- [ ] **Step 4: Thread `pathwayDefaults` through both engines.** Add it to the `TraversalEngine` and `RetraversalEngine` constructors beside the existing `temporalContext` (`traversal-engine.ts:152`, `retraversal-engine.ts:82`), and supply `rctx.temporalDefaults` at **all five** construction sites — `resolution.ts:347`, `:510`, `:697`, plus both start paths and `multi-pathway-resolution.ts`. Pass the `temporalContext` object, not the derived `now`. `factStore` is `[]` at this task; Task 9 fills it.
+- [ ] **Step 4: Thread `pathwayDefaults` through both engines.** Add it to the `TraversalEngine` and `RetraversalEngine` constructors beside the existing `temporalContext` (`traversal-engine.ts:152`, `retraversal-engine.ts:82`), and supply `rctx.temporalDefaults` at **all five** construction sites — `resolution.ts` `:210` (startResolution), `:347`, `:510`, `:697`, and `multi-pathway-resolution.ts` `:772`. *(Round 8: the old phrasing, "plus both start paths and multi-pathway-resolution.ts", read as six — one of the "start paths" IS the multi-pathway file.)* Pass the `temporalContext` object, not the derived `now`. `factStore` is `[]` at this task; Task 9 fills it.
 - [ ] **Step 5: Assert the plumbing with spies, not with behavior (P1-16).** At this task `evaluateConditionKernel` still delegates to the legacy evaluator and `factStore` is `[]`, so a behavioral cascade test **cannot fail** — the legacy path never reads `pathwayDefaults`, and the 200-day-old lab is admitted either way. Instead, spy on both engine constructors and assert every one of the five sites passes `rctx.temporalDefaults` by identity. The behavioral proof moves to Task 9, where the kernel and assembler are live.
-- [ ] **Step 6: Run the FULL suite.** Broad mechanical churn in test call sites is expected. **Existing assertions must not be weakened** — only call shapes change. Compare against 958/9.
+- [ ] **Step 6: Run the FULL suite.** Broad mechanical churn in test call sites is expected. **Existing assertions must not be weakened** — only call shapes change. Compare against the previous row of the baseline table, and account for every added test.
 - [ ] **Step 7: Commit** — `refactor: give evaluateGate explicit dependencies and a version seam`
 
 ---
@@ -837,7 +849,7 @@ describe('the pathway-default cascade, proven behaviorally (moved from Task 3, P
 
 - [ ] **Step 2: Run it, confirm it fails.**
 - [ ] **Step 3: Implement.** Add the selector; gate assembly on `version === 'v1'`; build the two helpers over a shared core. Retraversal must not stamp a fresh clock — it reads `session.temporal_context`.
-- [ ] **Step 4: Run the FULL suite.** Compare against 958/9.
+- [ ] **Step 4: Run the FULL suite.** Compare against the previous row of the baseline table, and account for every added test.
 - [ ] **Step 5: Commit** — `feat: assemble a fact store at every v1 resolution entry point`
 
 ---
@@ -846,7 +858,7 @@ describe('the pathway-default cascade, proven behaviorally (moved from Task 3, P
 
 **Files:** `docs/superpowers/plans/2026-07-26-temporal-horizon-00-overview.md`, `docs/superpowers/specs/2026-07-21-pathway-temporal-horizon-design.md` (§6, §10, Compatibility), `temporal/select-facts.ts` (comment)
 
-- [ ] **Step 1: Prove `legacy-v0` is untouched.** The evidence is that **every pre-existing gate-evaluator and traversal test passes with unmodified assertions** — only call shapes changed. Run the full suite, diff against 958/9. Any assertion that had to be weakened is a seam bug; fix the seam, not the test.
+- [ ] **Step 1: Prove `legacy-v0` is untouched.** The evidence is that **every pre-existing gate-evaluator and traversal test passes with unmodified assertions** — only call shapes changed. Run the full suite, diff against the last row of the baseline table. Any assertion that had to be weakened is a seam bug; fix the seam, not the test.
 - [ ] **Step 2: Enumerate the `v1` deltas** in Compatibility, from the tests that pin them: validity filtering, latest-vs-first scalar selection, equal-time ambiguity, future-date exclusion, horizon filtering of membership, vitals membership/count becoming satisfiable, **and the attribute-specific deltas** — `lab.*`/`vitals.*`/`allergy.*` gaining horizon and validity filtering, and attribute `exists` becoming exact-code rather than any-fact. **Record coded `exists` explicitly as a NON-delta** — it keeps bucket semantics under `v1`, ignoring `value` and `system` exactly as today, with authoring-time rejection deferred to plan 06 (round 6, P1). An audit that lists only deltas hides the operator where a delta was proposed and deliberately rejected, which is how it would get reintroduced.
 - [ ] **Step 3: Revise design §10 (P2-13).** §589 says "Attribute conditions get no horizon control (encounter-derived, no timeline)." That is now false for the three clinical namespaces and true only for `patient.*`. Update it, and note that §590's fixed-Encounter vitals control is what makes the attribute anchor sweep (P1-8) mandatory.
 - [ ] **Step 4: Correct `select-facts.ts:58`.** Its comment claims the candidate rules make `legacy-v0` "genuinely behavior-preserving." They mirror the current evaluator's *candidate* rules only; validity, ordering, and vitals bucketing still differ. Rewrite it to say what it actually guarantees.
@@ -859,7 +871,7 @@ describe('the pathway-default cascade, proven behaviorally (moved from Task 3, P
 ## Acceptance criteria
 
 - [ ] `legacy-v0` executes no kernel code and never calls the assembler; its sweep rejects **exactly** what it rejects today — no more (widened coverage) and no less (swallowed parser errors); every pre-existing test passes with **unmodified assertions**.
-- [ ] Full suite at 958 passed / 9 failed or better; the 9 are the two known scorer suites.
+- [ ] Full suite failing exactly 9, in the two known scorer suites; the pass count equals the previous task's plus every test that task added, each accounted for.
 - [ ] `evaluateGate` has no `Date.now()` fallback and throws without `temporalContext` **or** `pathwayDefaults`.
 - [ ] A pathway `YEAR` lab default beats `v1`'s `QUARTER` **through a real traversal at Task 9**, where the kernel is live; Task 3 proves the plumbing with constructor spies instead.
 - [ ] A `v1` `vitals.*` attribute gate without `encounterStart` is rejected at **preflight**, not mid-traversal — proven by a direct `assertEncounterAnchor` call, since no activation seam exists at Task 1.
