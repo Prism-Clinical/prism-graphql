@@ -139,6 +139,20 @@ The **Sweep field** column is the round-2 addition: `attributeNamespaceToField()
 - **Task 10 must disclose it** as a `v1` delta. It is currently undisclosed, which locked decision #2 forbids.
 - **Plan 09's authoring UI should require a date on lab input**, and `SyntheticLabResult.date` being optional is the reason this is ordinary input rather than an edge case.
 
+**D8 — OPEN, NOT DECIDED. `count_in_window` asks the wrong temporal question for stateful facts, and under `v1` its window stops discriminating on them.** *(Round 10, found executing Task 6. Pinned by test, deliberately not fixed.)*
+
+`selectFacts` has exactly one temporal predicate, `overlap(fact.interval, horizon)` — "was this fact true at some point inside the window". That is the right question for **membership** ("does the patient have X?") and, via `definiteLatest`, workable for **scalar**. It is the **wrong question for `count_in_window`**, whose entire purpose is *recurrence*: three UTIs in twelve months, repeat ED visits — the examples `select-facts.ts:60-62` names itself.
+
+The mechanism, confirmed by running it, not reasoned about. `assembleStateful` gives every entry with no `endDate` and a non-INACTIVE state `end: OPEN(evaluationAsOf)` (`context-assembler.ts:84-85`), and the default state for an entry that omits `clinicalState` is `ACTIVE` (`:98-101`). Such an interval therefore reaches the clock, so `overlap` returns MATCH against **every** horizon that contains the clock — which is every horizon `resolveHorizon` can produce, since `upperBound` is always `evaluationAsOf`. Consequences on `conditions` / `medications` / `allergies`:
+
+- `window_days` has **no effect at all** on a count over those buckets. A UTI with an onset 218 days ago counts inside a 90-day window.
+- `legacy-v0` filters on the **entry date** (`isWithinWindow` reads `entry.date`), so it excludes it. The two versions therefore disagree in the **permissive** direction on the operator's primary use case: a recurrence gate fires where it did not.
+- Labs are unaffected: `assembleLabs` models a dated lab as a POINT (`start === end`), so a dated lab outside the window is correctly NO_MATCH.
+
+**Not fixed here, for the same reason D7 was not fixed at Task 5**: the fix is a kernel-semantics judgement in plan 01/05 territory — either `count_in_window` selects on the **start bound** (occurrence semantics) rather than on interval overlap, or the overlap answer is accepted and disclosed as "count of matching facts *present during* the window". Inventing either inside an evaluator task would be writing kernel semantics from the wrong layer. **Task 6 pinned the current behavior with a test** (`counts an ONGOING condition whose onset is outside the window`) so it cannot change silently, and **Task 10 must disclose it** as a `v1` delta, which locked decision #2 requires.
+
+**Defect-class note.** Locked decision #3 assigns each operator class an *uncertainty* policy (membership fails open, scalar and aggregate fail closed) — and nothing in this plan or plan 01 ever assigned each class a *temporal predicate*. The three classes were given one, `overlap`, by default. That gap is a new class: not design, mechanics, cross-layer, pseudocode, field-level dependency, or cross-plan intent, but **a shared primitive silently generalized to a case it does not model**. *Before round 11, for each shared kernel primitive, enumerate every operator that consumes it and state what question that operator is actually asking — then check the primitive answers that question, not a neighbouring one.*
+
 ---
 
 ## Global Constraints
@@ -159,6 +173,7 @@ The **Sweep field** column is the round-2 addition: `attributeNamespaceToField()
   | Task 3 (`8c98e03`) | 1024 | 9 | 1033 | 88 / 90 |
   | Task 4 (`88ce6bb`) | 1039 | 9 | 1048 | 89 / 91 |
   | Task 5 (`8fd537d`) | 1057 | 9 | 1066 | 90 / 92 |
+  | Task 6 (`af9fd17`) | 1092 | 9 | 1101 | 91 / 93 |
 
   Task 4's delta is +15 passed / +15 total: **16 added** in the new
   `gate-evaluator-membership-kernel.test.ts`, **1 deleted** — Task 3's no-op-fork
@@ -168,6 +183,11 @@ The **Sweep field** column is the round-2 addition: `attributeNamespaceToField()
   new `gate-evaluator-scalar-kernel.test.ts`, **none deleted and none modified**.
   No pre-existing assertion changed — the scalar branch is additive, so unlike
   Task 3 there was no call-site churn at all.
+
+  Task 6's delta is +35 passed / +35 total / +1 suite: **35 added**, all in the
+  new `gate-evaluator-aggregate-kernel.test.ts`, **none deleted and none
+  modified**. Additive again; the only non-test file touched is
+  `gate-evaluator.ts`.
 
   **Append a row per task.** *(Round 8, self-found during Task 3: every "compare against 958/9" instruction below was stale the moment Task 1 landed, and an executor following it literally would either think they had broken 50 tests or would fail to notice breaking some. The count is only meaningful as a delta whose additions are each accounted for.)*
 - **`legacy-v0` executes no kernel code, and no code this plan adds.** Structural, not behavioral: the version seam (Task 3) routes `legacy-v0` to the untouched legacy function; the assembler is not called; override parsing does not reject (D1). Every pre-existing gate-evaluator and traversal test must pass with **unmodified assertions** — that is the proof.
@@ -649,7 +669,19 @@ describe('scalar INDETERMINATE fails closed and is recorded (D5)', () => {
 
 Covers `count_in_window`, `trend_up`, `trend_down`, `delta_from_baseline`. `linearSlope` stays — pure math over a series. The `v1` series comes from `selected`, sorted by effective time; `collectLabSeries` and `isWithinWindow` remain for `legacy-v0`.
 
-> **`count_in_window` counts distinct `factId`** (design §4). Plan 05 decision 6 widened the `buildEffectivePatientContext` merge key for this reason. If a count reads 1 where 2 is expected, check the merge key before the kernel.
+> **`count_in_window` counts distinct `factId`** (design §4). Plan 05 decision 6 widened the `buildEffectivePatientContext` merge key for this reason. If a count reads 1 where 2 is expected, check the merge key before the kernel. *(Round 10: verified, and it holds — the key is `code|system|date|sourceId` (`effective-context.ts:53-56`) and `makeIdFactory` assigns one id per kind per entry, so two same-code labs on different dates survive the merge and get distinct `factId`s. This is the one cross-plan claim in this task that checked out.)*
+
+> **Round 10, found executing this task — three findings. Read them before writing the count branch.**
+>
+> **1. `count_in_window` loses its window entirely on `conditions` / `medications` / `allergies` under `v1`. See D8 — OPEN.** Every still-active entry is `OPEN(evaluationAsOf)`, so `overlap` matches every horizon and `window_days` stops discriminating on exactly the buckets the operator exists for. Pinned by test, not fixed. Task 10 must disclose it.
+>
+> **2. An UNDATED observation is counted inside a window `legacy-v0` drops** — `isWithinWindow(undefined, 90, now)` is `false`, while `OPEN(asOf)` matches. The admission half of D7 surfacing in the aggregate class, again in the permissive direction. Pinned by test; ordinary input, because `SyntheticLabResult.date` is optional.
+>
+> **3. `select-facts.ts:55-68` overstates its own candidate rules.** It says each rule "mirrors what the current evaluator does, so `legacy-v0` is genuinely behavior-preserving", and for `trend_*` / `delta_from_baseline` cites `collectLabSeries`'s wildcard match and finite-value requirement — but omits that `collectLabSeries` **also requires a parseable date** (`gate-evaluator.ts:145-147`). `candidateMatches` has no such requirement, which is precisely how an undated lab enters a series and triggers `AMBIGUOUS_SERIES_ORDER`. The comment should say so; the behavior is D7's and stays.
+>
+> **4. The reason string cannot be keyed on `condition.window_days`.** Legacy derives its `windowDesc` from `window_days` alone, so under `v1` a labs count with no `window_days` would print "within lifetime" while in fact looking back only a QUARTER. Implemented instead as a function of the **resolved horizon**, which renders `{days:90}` and `QUARTER` identically as "last 90 days" and LIFETIME as "lifetime" — byte-identical wherever the outcome matches legacy's, and honest where it does not.
+>
+> **Also settled in execution: the policy is resolved BEFORE the labs-only check.** Legacy short-circuits `field !== 'labs'` first. Inheriting that order would let a `vitals` trend gate answer a quiet `false` at evaluation while the `v1` anchor sweep rejects the whole session for the same condition — locked decision #7. A test pins the ordering.
 
 - [ ] **Step 1: Write the failing test**
 

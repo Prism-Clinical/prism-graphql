@@ -62,7 +62,13 @@ function hasFiniteValue(fact: NormalizedFact): boolean {
  *    labs), matches the trailing wildcard, and requires no numeric value.
  *  - `trend_*` / `delta_from_baseline` build a numeric series, so they need an
  *    observation with a finite value; they match the wildcard
- *    (collectLabSeries uses matchesCodePattern).
+ *    (collectLabSeries uses matchesCodePattern). **They deliberately do NOT
+ *    mirror collectLabSeries's third requirement, a parseable date
+ *    (gate-evaluator.ts:145-147):** an undated observation is admitted as a
+ *    candidate here and then fails the series-ordering check below, rather than
+ *    being dropped silently. That is D7 — admitted but not orderable — and it is
+ *    why one undated result makes the whole series AMBIGUOUS_SERIES_ORDER
+ *    instead of quietly shrinking it. Disclosed as a `v1` delta, not a slip.
  *  - `greater_than` / `less_than` read one numeric observation by EXACT code
  *    (getNumericValue uses `===`, never a pattern).
  */
