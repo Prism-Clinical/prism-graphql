@@ -18,7 +18,8 @@ import {
 } from './temporal/evaluation-context';
 import { assertKnownPolicyVersion } from './temporal/policy-registry';
 import type { PathwayTemporalDefaults } from './temporal/cascade';
-import type { FactStore } from './temporal/fact-model';
+import type { FactStore, NormalizedFact } from './temporal/fact-model';
+import { isObservationFact } from './temporal/fact-model';
 import { isTemporalOperator, operatorClass } from './temporal/contract';
 import type { UncertaintyReason } from './temporal/contract';
 import { adaptCodedCondition } from './temporal/condition-adapter';
@@ -572,17 +573,143 @@ function evaluateMembershipKernel(
 }
 
 /**
+ * The scalar reason strings, kept byte-identical to the legacy evaluator's
+ * (`greater_than` / `less_than` above). Same rationale as `membershipReason`:
+ * `v1` changes *which fact* is compared, not how the comparison reads.
+ */
+function scalarReason(
+  condition: CodedCondition,
+  numericVal: number,
+  threshold: number,
+  satisfied: boolean,
+): string {
+  const symbol =
+    condition.operator === 'greater_than'
+      ? satisfied
+        ? '>'
+        : '<='
+      : satisfied
+        ? '<'
+        : '>=';
+  return `${condition.field} value ${numericVal} ${symbol} ${threshold}`;
+}
+
+/**
+ * The comparable number carried by a selected fact.
+ *
+ * `candidateMatches` already requires a finite-valued observation for the
+ * scalar class (`select-facts.ts:98-100`), so this re-narrowing is a type
+ * bridge rather than a second rule: `NormalizedFact` also covers stateful
+ * facts, which carry no value at all. Returning `undefined` rather than
+ * throwing keeps the single "no numeric value" exit — an unreachable throw
+ * would be an invariant no test could cover.
+ */
+function scalarValueOf(fact: NormalizedFact): number | undefined {
+  if (!isObservationFact(fact)) return undefined;
+  return typeof fact.value === 'number' && Number.isFinite(fact.value) ? fact.value : undefined;
+}
+
+/**
+ * `greater_than` / `less_than` on the kernel (Task 5).
+ *
+ * Only **selection** moves: `selectFacts` returns the definite latest valid,
+ * in-window fact — sorted by effective time, never by array order (design §4,
+ * fixing today's `getNumericValue` `.find()`) — and the numeric comparison plus
+ * its threshold derivation stay here, unchanged from `legacy-v0`.
+ *
+ * **Fail-closed, and recorded.** Scalar is the one class where `selectFacts`
+ * resolves uncertainty to INDETERMINATE (`select-facts.ts:194-195`, locked
+ * decision #3): a single untrustworthy value poisons a comparison in a way it
+ * cannot poison a membership test. The gate is therefore unsatisfied — but it
+ * must not read as an ordinary "no match", so `indeterminate` is set and the
+ * reasons are named in both `uncertainty` and the reason string. An outcome
+ * that says only `satisfied: false` cannot be told apart later from "the
+ * patient had no such result", and plan 08's evidence has to tell them apart.
+ *
+ * Errors from the adapter and the cascade PROPAGATE, exactly as for membership:
+ * the `v1` anchor sweep runs the same `adaptCodedCondition` and the same
+ * cascade, so anything that throws here was already rejected at session
+ * creation (locked decision #7).
+ */
+function evaluateScalarKernel(
+  condition: CodedCondition,
+  deps: GateEvaluationDeps,
+): ConditionOutcome {
+  const where = `condition (${condition.field})`;
+  const adapted = adaptCodedCondition(condition, where);
+  const policy = effectivePolicyFor(adapted, deps.temporalContext, deps.pathwayDefaults);
+  const outcome = selectFacts(adapted.selection, deps.factStore, policy);
+
+  const fieldsRead = condition.field ? [condition.field] : [];
+
+  // The per-fact doubt plus, when the kernel refused to decide, the reasons it
+  // refused for. `AMBIGUOUS_LATEST` exists ONLY on the outcome — no single fact
+  // is uncertain when two of them merely cannot be ordered — so reading the
+  // decisions alone would silently drop it.
+  const uncertainty: UncertaintyReason[] = [
+    ...new Set([
+      ...outcome.decisions.flatMap((d) => d.uncertainty),
+      ...(outcome.status === 'INDETERMINATE' ? outcome.reasons : []),
+    ]),
+  ];
+
+  if (outcome.status === 'INDETERMINATE') {
+    return {
+      satisfied: false,
+      // Deliberately NOT legacy's "No numeric value found" — that outcome has no
+      // legacy counterpart, and reusing its prose would make a fail-closed
+      // refusal indistinguishable from an absent result in every audit row.
+      reason:
+        `Indeterminate numeric value for ${condition.field}:${condition.value} ` +
+        `(${uncertainty.join(', ')})`,
+      fieldsRead,
+      indeterminate: true,
+      uncertainty,
+    };
+  }
+
+  const numericVal = outcome.status === 'READY' ? scalarValueOf(outcome.selected[0]) : undefined;
+  if (numericVal === undefined) {
+    return {
+      satisfied: false,
+      reason: `No numeric value found for ${condition.field}:${condition.value}`,
+      fieldsRead,
+      indeterminate: false,
+      uncertainty,
+    };
+  }
+
+  // Threshold derivation is the legacy expression, untouched — including its
+  // `parseFloat(value)` fallback, where `value` is the observation code. Odd,
+  // but it is current behavior and this task moves selection, not comparison.
+  const threshold = condition.threshold ?? parseFloat(condition.value);
+  const satisfied =
+    condition.operator === 'greater_than' ? numericVal > threshold : numericVal < threshold;
+
+  return {
+    satisfied,
+    reason: scalarReason(condition, numericVal, threshold, satisfied),
+    fieldsRead,
+    // Derived, never hard-coded: a READY or NO_MATCH selection is by definition
+    // a decision the kernel was able to make.
+    indeterminate: false,
+    uncertainty,
+  };
+}
+
+/**
  * The `v1` condition evaluator.
  *
  * Tasks 4–8 replace this body one operator class at a time; everything not yet
  * moved still delegates to the legacy evaluator, so a failure is attributable to
  * the operator rewrite rather than to the plumbing.
  *
- * Moved so far: **membership** (`includes_code`, `equals`, `exists`) — Task 4.
- * Still legacy: scalar (Task 5), aggregate (Task 6), attribute conditions
- * (Task 7). An operator the kernel does not model at all — an authoring typo
- * that reached evaluation — also lands on legacy, which reports it as an
- * unknown operator exactly as it does today.
+ * Moved so far: **membership** (`includes_code`, `equals`, `exists`) — Task 4;
+ * **scalar** (`greater_than`, `less_than`) — Task 5.
+ * Still legacy: aggregate (Task 6), attribute conditions (Task 7). An operator
+ * the kernel does not model at all — an authoring typo that reached evaluation
+ * — also lands on legacy, which reports it as an unknown operator exactly as it
+ * does today.
  */
 function evaluateConditionKernel(
   condition: GateCondition,
@@ -594,6 +721,9 @@ function evaluateConditionKernel(
   const { operator } = condition;
   if (isTemporalOperator(operator) && operatorClass(operator) === 'membership') {
     return evaluateMembershipKernel(condition, deps);
+  }
+  if (isTemporalOperator(operator) && operatorClass(operator) === 'scalar') {
+    return evaluateScalarKernel(condition, deps);
   }
   return evaluateConditionLegacyAdapted(condition, deps);
 }
