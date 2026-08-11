@@ -14,7 +14,10 @@
 - **v2 (2026-08-11, `907a674`)** — rewritten after review round 1. Seven findings (4×P1), all verified, all accepted. Central premise inverted: the kernel became the `v1` path and the legacy evaluator was retained as the shadow baseline.
 - **v3 (2026-08-11, `8e7cab1`)** — revised after review round 2. Six findings (4×P1), all verified, all accepted. Round 2 found that the v2 rewrite *introduced* three new defects while fixing round 1's: the attribute routing bypassed the anchor sweep, assembly was wired unconditionally and so leaked validation into `legacy-v0`, and Tasks 6 and 8 stated contradictory uncertainty contracts.
 - **v4 (2026-08-11, `2f9a07f`)** — revised after review round 3. Four findings (3×P1), all verified, all accepted. Mostly *sequencing and scope*: the policy selector was given a shape the multi-pathway resolver cannot supply, two tests were placed at tasks where they could not fail, and v3's own `legacy-v0` compatibility fix was itself a behavior change in the opposite direction. Applied as targeted edits, not a rewrite.
-- **v5 (this document)** — revised after review round 4. Three findings, all P1, all verified, all accepted. Two are **inherited-conditionality and vacuous-test defects that v4 itself introduced**, and one is an interface gap open since v3: attribute conditions never had a defined route into the policy seam. Targeted edits again.
+- **v5 (2026-08-11, `83f9a38`)** — revised after review round 4. Three findings, all P1, all verified, all accepted. Two are **inherited-conditionality and vacuous-test defects that v4 itself introduced**, and one is an interface gap open since v3: attribute conditions never had a defined route into the policy seam. Targeted edits again.
+- **v6 (this document)** — revised after review round 5. Three findings (2×P1), all verified, all accepted. All three are **executability defects in the plan-as-instructions rather than errors in the design**: a Task 2 test calling a function Task 7 creates, a selector whose stated signature could not read its own stated injection seam, and a test calling a module-private helper no task exports. The design decisions they touch (P1-14's no-`ResolutionContext` rule, locked decision #7, D3's attribute routing) were all re-verified and none changed. Targeted edits.
+
+  **Round-5 trend note.** Five rounds, 23 findings, none rejected. The defect *class* has shifted: rounds 1–3 found design errors, rounds 4–5 found plan-mechanics errors — tasks that cannot run in order, tests that cannot fail, interfaces that contradict their own injection. That is convergence, but it also says the remaining risk is concentrated in whether an executor can follow this document task-by-task, not in whether the architecture is right. **Before round 6, dry-run the task order rather than re-reading the prose:** for each task, check that every symbol its tests reference is produced by that task or an earlier one.
 
 ---
 
@@ -131,7 +134,7 @@ The **Sweep field** column is the round-2 addition: `attributeNamespaceToField()
 - **`tsconfig` is NOT full strict and excludes `src/__tests__`** (`diagnostics: false`). **Test files are never typechecked.** Every invariant needs a runtime throw plus a test that fails without it. A type alone enforces nothing.
 - **Baseline: 9 failures / 2 suites** (`data-completeness-scorer`, `patient-match-scorer`) — **958 passed / 9 failed / 967 total, 84 of 86 suites green**, measured on `main` @ `d6f51fd` on 2026-08-11. Measure on `main`, never on a copy of this branch. The suite has never been green; do not chase these two.
 - **`legacy-v0` executes no kernel code, and no code this plan adds.** Structural, not behavioral: the version seam (Task 3) routes `legacy-v0` to the untouched legacy function; the assembler is not called; override parsing does not reject (D1). Every pre-existing gate-evaluator and traversal test must pass with **unmodified assertions** — that is the proof.
-- **No caller can select `v1`.** `resolveTemporalPolicyVersion()` is **request/deployment-scoped** — it takes no `ResolutionContext`, because the multi-pathway resolver stamps its clock before any pathway is matched and its zero-match path never builds one (P1-14). It defaults to `legacy-v0` and is injectable only from tests. Adding a GraphQL *argument* would let an unauthenticated caller (AD-1, `docs/AUTHORIZATION_DEBT.md`) choose evaluation semantics; a read-only *output* field is fine and is planned for plan 08 (design §606). The rollout flip changes the selector, not the schema.
+- **No caller can select `v1`.** `resolveTemporalPolicyVersion(ctx: DataSourceContext): string` reads a **server-owned field on the GraphQL context** — `temporalPolicyVersion?: string` on `DataSourceContext` (`types/index.ts:5`), populated in `index.ts` from deployment config and never from a request header (AD-1). It applies the `legacy-v0` default and calls `assertKnownPolicyVersion`. It takes the **GraphQL** context and explicitly **not** a `ResolutionContext`: the multi-pathway resolver stamps its clock before any pathway is matched, and its zero-match path never builds one (P1-14). *(Round 5: v5 said "takes no `ResolutionContext`" and then wrote the call as zero-argument, which cannot read a per-request value without the module-level global this plan forbids. The P1-14 reasoning was right; only the signature was wrong.)* Adding a GraphQL *argument* would let an unauthenticated caller (AD-1, `docs/AUTHORIZATION_DEBT.md`) choose evaluation semantics; a read-only *output* field is fine and is planned for plan 08 (design §606). The rollout flip changes deployment config, not the schema.
 - **`apps/pathway-service/src/__generated__/resolvers-types.ts` is now tracked** (PR #53). Do not delete it; if `npm run build` rewrites it, commit the change with the task that caused it.
 - **Commit prefixes** `feat:`/`fix:`/`test:`/`refactor:`/`docs:`; no `@anthropic.com`/`@claude.com`, no "Generated with" lines. End each message with
   `Co-Authored-By: Claude Opus 5 (1M context) <noreply@example.com>`
@@ -168,6 +171,7 @@ The **Sweep field** column is the round-2 addition: `attributeNamespaceToField()
 
 **Interfaces:**
 - Produces: `AdaptedCondition`, `adaptCodedCondition(c): AdaptedCondition`, `toFactSelectionCondition`, `parseConditionOverride(raw, where)`, `nodeOverrideFor`, `attributeNamespaceToField(ns): GateField | null`.
+- Also **exports `sweepableConditions`** from `resolution-context.ts`, which is module-private today (`:546`). Locked decision #7 — preflight and evaluation must never disagree — is only testable by comparing the swept field/override against the adapter's for the same condition, and `assertEncounterAnchor` exposes neither: it returns `void` and throws only when an anchor is missing. Export it with a comment saying it is exported for that agreement test, not for production callers outside this module.
 - Consumes: `contract.ts`, `cascade.ts`, `evaluation-context.ts`.
 
 **One adapted shape for both condition kinds (P1-20):**
@@ -305,7 +309,7 @@ describe('v1 validation is not behind the encounterStart early return (P1-18)', 
 
 - [ ] **Step 2: Run it, confirm it fails.**
 - [ ] **Step 3: Implement the adapter.** Add `horizon?: Horizon` / `status?: TemporalStatus` to `CodedCondition`. `toFactSelectionCondition` guards with `isTemporalOperator` and `fieldToKind`; copy `system` only when present. `parseConditionOverride` rejects the `window_days`+`horizon` pair first, then validates and calls `parseHorizonValue`.
-- [ ] **Step 4: Give `sweepableConditions` a version parameter and two paths (D1, P1-15).** Under `legacy-v0`, leave the body exactly as it is — coded conditions only, raw `as never` copy, cascade validates downstream. Under `v1`, additionally sweep attribute conditions whose namespace maps via `attributeNamespaceToField` (`null` ⇒ skip), and extract overrides with `parseConditionOverride`. **Neither path catches parser errors.** Update the comment at `:589-601`: it is still correct for `legacy-v0` and false for `v1`, so it must say which.
+- [ ] **Step 4: Give `sweepableConditions` a version parameter and two paths (D1, P1-15).** Under `legacy-v0`, leave the body exactly as it is — coded conditions only, raw `as never` copy, cascade validates downstream. Under `v1`, additionally sweep attribute conditions whose namespace maps via `attributeNamespaceToField` (`null` ⇒ skip), and extract overrides with `parseConditionOverride`. **Neither path catches parser errors.** Update the comment at `:589-601`: it is still correct for `legacy-v0` and false for `v1`, so it must say which. **Add `export` to the declaration** (it is module-private at `:546`) so Task 7's preflight/evaluation agreement test can call it; note in a comment that the export exists for that test.
 - [ ] **Step 5: Restructure `assertEncounterAnchor` so `v1` validation escapes the early return (P1-18).** Today the function returns at `:638` whenever `encounterStart` is present, which under `v1` would skip override parsing and the `window_days`/`horizon` conflict check entirely. New shape:
 
 ```ts
@@ -377,9 +381,19 @@ describe('effectivePolicyFor', () => {
   it('resolves the version from the context, never from an argument', () => { /* ... */ });
 
   it('resolves an ADAPTED attribute condition through the same path (P1-20)', () => {
-    // vitals.systolic_bp adapts to selection.field === 'vitals'. Under v1 that
-    // is ENCOUNTER — the same tier the anchor sweep computed for it.
-    const adapted = adaptAttributeCondition(vitalsAttrCondition, codeMap)!;
+    // A LITERAL AdaptedCondition, not adaptAttributeCondition(...) — that
+    // function is Task 7's deliverable and does not exist yet, so calling it
+    // here would leave Task 2 unable to finish green. This is also the better
+    // unit: the claim under test is that the seam is keyed on the ADAPTED
+    // SHAPE, not on the condition kind, and a literal proves exactly that
+    // without coupling to the attribute adapter. Task 7 adds the integration
+    // assertion that the real adapter produces this shape.
+    //
+    // Stand-in for `vitals.systolic_bp`. Under v1 the vitals system default
+    // is ENCOUNTER — the same tier the anchor sweep computes for it.
+    const adapted: AdaptedCondition = {
+      selection: { field: 'vitals', operator: 'greater_than', value: 'systolic_bp' },
+    };
     expect(effectivePolicyFor(adapted, v1WithAnchor, {}).horizon.lowerBound)
       .toBe(v1WithAnchor.encounterStart);
   });
@@ -671,16 +685,18 @@ it('leaves a legacy-v0 compound gate’s result shape unchanged', async () => { 
 
 ### Task 9: Wire the assembler at every entry point, under `v1` only (P1-2, P1-9, P2-12)
 
-**Files:** `resolvers/mutations/resolution.ts` (start + `:347`, `:510`, `:697`), `resolvers/mutations/multi-pathway-resolution.ts`, `resolvers/helpers/resolution-context.ts` (policy selector); test `resolution-fact-store-wiring.test.ts`
+**Files:** `resolvers/mutations/resolution.ts` (start + `:347`, `:510`, `:697`), `resolvers/mutations/multi-pathway-resolution.ts`, `resolvers/helpers/resolution-context.ts` (policy selector), `types/index.ts` (`DataSourceContext` gains `temporalPolicyVersion?: string`), `index.ts` (populate it from deployment config); test `resolution-fact-store-wiring.test.ts`
 
 Until this lands, `assembleContext` has no callers and Tasks 4–8 run only in unit tests. Facts are **not persisted** (plan 05b), so every entry point re-assembles from `buildEffectivePatientContext(initialPatientContext, additionalContext)` under the session's **stored** temporal context. Plan 05 decision 5 makes this sound: identical input yields identical `factId`s.
 
 **Three constraints from round 2:**
 1. **`v1` only (P1-9).** The assembler validates and throws. Under `legacy-v0` it is never called and the store is `[]`.
 2. **Two helpers, not one (P1-9).** At `startResolution` there is no session — only resolution input and a fresh clock. `factStoreForInput(input, ctx, defaults)` and `factStoreForSession(session, additions)` share a lower-level core taking normalized context + clock.
-3. **A request-scoped server-side selector (P2-12, corrected by P1-14 and P1-19).** `resolveTemporalPolicyVersion()` takes **no `ResolutionContext`** — `multi-pathway-resolution.ts:214` stamps the shared clock before `getMatchedPathways`, and its zero-match branch returns without ever building one. Call it once, immediately before `makeEvaluationTemporalContext`, in both start paths — the same position `assertKnownPolicyVersion` already occupies at `:219`, for the same reason. One call per request means every child session in a multi-pathway run shares one version, as §1 requires.
+3. **A request-scoped server-side selector (P2-12, corrected by P1-14, P1-19, and round 5).** `resolveTemporalPolicyVersion(ctx: DataSourceContext): string` takes the **GraphQL** context and **not** a `ResolutionContext` — `multi-pathway-resolution.ts:214` stamps the shared clock before `getMatchedPathways`, and its zero-match branch returns without ever building one. Call it immediately before `makeEvaluationTemporalContext` in both start paths — the same position `assertKnownPolicyVersion` already occupies at `:219`, for the same reason. Reading one context field per request is what gives every child session in a multi-pathway run the same version, as §1 requires.
 
-   **The injection seam is concrete: a server-owned field on the GraphQL context**, populated in `index.ts` from deployment config and never read from a request header (AD-1). Tests construct the context object directly, the way they already do for `userId` — no module mocking and no mutable global. Assertions must read the **persisted `temporal_context`**, because `formatSessionForGraphQL` (`:1150-1164`) does not return it and will not until plan 08.
+   **The injection seam is a plain string field, not a callback:** `temporalPolicyVersion?: string` on `DataSourceContext` (`types/index.ts:5`), populated in `index.ts` from deployment config and never read from a request header (AD-1). Tests construct the context object directly, the way they already do for `userId` — no module mocking and no mutable global. Assertions must read the **persisted `temporal_context`**, because `formatSessionForGraphQL` (`:1150-1164`) does not return it and will not until plan 08.
+
+   **There is deliberately no call-count assertion.** v5 asserted the selector ran exactly once via a `selectorCalls` array that nothing populated — an unimplementable test of the *mechanism* rather than the property. For a string field, reading it once or three times is not a behavioral difference; the property that matters is that every child carries the same injected value, which the child-session test below asserts directly.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -717,10 +733,11 @@ describe('retraversal reuses the stored clock', () => {
 });
 
 describe('the policy selector is request-scoped and server-side (P2-12, P1-14, P1-19)', () => {
-  // The seam: a server-owned field on the GraphQL context, populated in
-  // index.ts from deployment config and NEVER from a request header (AD-1).
-  // Tests build the context directly — no module mocking, no globals.
-  const ctxWith = (v) => ({ ...baseContext, temporalPolicyVersion: v, selectorCalls: [] });
+  // The seam: a plain server-owned string field on the GraphQL context,
+  // populated in index.ts from deployment config and NEVER from a request
+  // header (AD-1). Tests build the context directly — no module mocking,
+  // no globals, no callback.
+  const ctxWith = (v) => ({ ...baseContext, temporalPolicyVersion: v });
 
   // Every assertion below reads the PERSISTED session row, not the GraphQL
   // payload: formatSessionForGraphQL (:1150-1164) returns no temporalContext,
@@ -751,11 +768,9 @@ describe('the policy selector is request-scoped and server-side (P2-12, P1-14, P
     expect(versions.every((v) => v === 'v1')).toBe(true);
   });
 
-  it('runs the selector exactly once per request', async () => {
-    const c = ctxWith('v1');
-    await startMultiPathwayResolution(argsMatchingThreePathways(), c);
-    expect(c.selectorCalls).toHaveLength(1);   // not once per child
-  });
+  // No call-count test: see Task 9 constraint 3. The property v5 tried to
+  // reach through `selectorCalls` — one version shared across every child —
+  // is what the preceding test asserts, against persisted rows.
 
   it('is not selectable from either start mutation’s arguments', () => {
     // Narrowed from a whole-SDL regex (P2-17): that would also forbid the
@@ -809,7 +824,7 @@ describe('the pathway-default cascade, proven behaviorally (moved from Task 3, P
 - [ ] `evaluateGate` has no `Date.now()` fallback and throws without `temporalContext` **or** `pathwayDefaults`.
 - [ ] A pathway `YEAR` lab default beats `v1`'s `QUARTER` **through a real traversal at Task 9**, where the kernel is live; Task 3 proves the plumbing with constructor spies instead.
 - [ ] A `v1` `vitals.*` attribute gate without `encounterStart` is rejected at **preflight**, not mid-traversal — proven by a direct `assertEncounterAnchor` call, since no activation seam exists at Task 1.
-- [ ] `resolveTemporalPolicyVersion()` takes no `ResolutionContext`, runs before `getMatchedPathways`, and stamps the **injected** version on the zero-match path; every child of one multi-pathway run carries that same value; the selector runs exactly once per request. Every such assertion reads the persisted `temporal_context`, never the GraphQL payload.
+- [ ] `resolveTemporalPolicyVersion(ctx: DataSourceContext)` takes the GraphQL context and no `ResolutionContext`, runs before `getMatchedPathways`, and stamps the **injected** version on the zero-match path; every child of one multi-pathway run carries that same value. Every such assertion reads the persisted `temporal_context`, never the GraphQL payload.
 - [ ] Under `v1`, a malformed override or `window_days`/`horizon` conflict is rejected at preflight **even when `encounterStart` is supplied**; under `legacy-v0` that same pathway still starts.
 - [ ] `effectivePolicyFor` takes an `AdaptedCondition`; a `vitals.*` attribute condition resolves the same field and override through `sweepableConditions` and through the adapter.
 - [ ] Neither start mutation accepts a `temporalPolicyVersion` **argument**, and the guard does not forbid the read-only output field design §606 plans.
