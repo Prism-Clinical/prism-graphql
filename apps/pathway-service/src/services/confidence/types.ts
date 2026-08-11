@@ -209,6 +209,25 @@ export interface CodeEntry {
    * entries with the same code at different dates represent recurrence.
    */
   date?: string;
+  /**
+   * End of the occurrence. Absent on an active entry means "still ongoing";
+   * absent on an inactive one means the end is genuinely unknown, which the
+   * fact assembler models as an UNKNOWN end rather than inventing one.
+   */
+  endDate?: string;
+  /**
+   * SYNTHETIC-asserted clinical state. Parsed against a closed union at the
+   * assembly boundary — never cast. Absent means ACTIVE, by failing open.
+   */
+  clinicalState?: string;
+  /** SYNTHETIC-asserted record validity. Absent means VALID. */
+  recordValidity?: string;
+  /**
+   * Opaque source identifier. Part of the occurrence identity used when
+   * merging additional context, so two entries from different sources are not
+   * collapsed into one.
+   */
+  sourceId?: string;
 }
 
 export interface LabResult {
@@ -218,6 +237,15 @@ export interface LabResult {
   unit?: string;
   date?: string;
   display?: string;
+  /** SYNTHETIC-asserted record validity. Absent means VALID. */
+  recordValidity?: string;
+  /** Opaque source identifier — see CodeEntry.sourceId. */
+  sourceId?: string;
+  /**
+   * Observations carry no clinical state. Declared so the assembler can detect
+   * and REJECT a supplied one rather than silently ignoring it.
+   */
+  clinicalState?: never;
 }
 
 export interface PatientContext {

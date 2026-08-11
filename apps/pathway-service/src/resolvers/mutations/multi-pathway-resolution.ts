@@ -31,6 +31,17 @@ import { TraversalEngine } from '../../services/resolution/traversal-engine';
 import { makeEvaluationTemporalContext } from '../../services/resolution/temporal/evaluation-context';
 import type { EvaluationTemporalContext } from '../../services/resolution/temporal/evaluation-context';
 import {
+  parseResolutionInput,
+  ResolutionModeArgs,
+} from '../../services/resolution/temporal/trust-mode';
+import { assertAssemblableMode } from '../../services/resolution/temporal/context-assembler';
+import {
+  PatientContextArgs,
+  TemporalAnchorArgs,
+  temporalInputFrom,
+  toPatientContext,
+} from './resolution';
+import {
   GateAnswer,
   MatchedPathway,
   NodeStatus,
@@ -83,35 +94,42 @@ import {
 
 // ─── Argument shapes ────────────────────────────────────────────────
 
-export interface MultiPathwayResolutionArgs {
+export interface MultiPathwayResolutionArgs extends ResolutionModeArgs, TemporalAnchorArgs {
   patientId: string;
-  patientContext?: {
-    patientId: string;
-    conditionCodes?: Array<{ code: string; system: string; display?: string }>;
-    medications?: Array<{ code: string; system: string; display?: string }>;
-    labResults?: Array<{
-      code: string;
-      system: string;
-      value?: number;
-      unit?: string;
-      date?: string;
-      display?: string;
-    }>;
-    allergies?: Array<{ code: string; system: string; display?: string }>;
-    vitalSigns?: Record<string, unknown>;
-    freeformData?: Record<string, unknown>;
-    patientAttributes?: Record<string, unknown>;
-  };
   /**
-   * Admin-only flag. When true, DRAFT pathways are also considered for matching
-   * (in addition to ACTIVE). Use for QA tooling against unpublished pathways.
+   * Expressed against the shared `PatientContextArgs` rather than re-declared
+   * inline: `CodeInput`/`LabResultInput` are one SDL type each, and a second
+   * copy of their TypeScript shape is a field the resolver silently drops the
+   * next time the input grows.
+   */
+  patientContext?: PatientContextArgs;
+  /**
+   * QA / preview capability. When true, DRAFT pathways are also considered for
+   * matching (in addition to ACTIVE). Use for QA tooling against unpublished
+   * pathways.
+   *
+   * NOT ACCESS-CONTROLLED, deliberately, for now. A role check here would be
+   * caller-asserted and therefore worthless: this service reads `x-user-role`
+   * straight off the request with a PROVIDER default (`index.ts`) and never
+   * derives it from the bearer token — `prism-provider-front-end` does send
+   * `authorization: Bearer <token>` (its `lib/apollo-client.ts`), but nothing
+   * here reads it. Meanwhile `prism-admin-dashboard`, the client that actually
+   * calls this mutation, sets no auth header at all, so an ADMIN check would
+   * break the encounter simulator (`PatientComposer.tsx`) and pathway preview
+   * (`PreviewResolutionPanel.tsx`) — both of which send these flags — while
+   * securing nothing.
+   *
+   * Tracked as authentication debt: `docs/AUTHORIZATION_DEBT.md`. Gate on
+   * verified claims when auth lands, not before.
    */
   includeDraftPathways?: boolean;
   /**
-   * Synthetic-patient flag. When true, the matcher uses
-   * `patientContext.conditionCodes` directly instead of looking up the patient
-   * row in the EMR-synced snapshot tables. Required for admin simulator where
-   * there's no real patient.
+   * QA / preview capability. When true, the matcher uses the resolved
+   * `conditionCodes` directly instead of looking up the patient row in the
+   * EMR-synced snapshot tables. Required for the admin simulator, where there
+   * is no real patient. Same non-enforcement note as `includeDraftPathways`.
+   *
+   * Only coherent on a SYNTHETIC resolution — see the guard in the resolver.
    */
   syntheticPatient?: boolean;
 }
@@ -139,29 +157,61 @@ export const multiPathwayResolutionMutations = {
   ) {
     const { pool } = context;
 
+    // Validation FIRST. The matcher options below decide which pathways are
+    // even considered, so building them from `args.patientContext` before the
+    // trust boundary ran meant raw caller codes drove matching on a request
+    // the boundary might reject.
+    //
+    // Exactly one payload per trust mode, policed over the WHOLE raw request:
+    // a LIVE or REPLAY caller cannot smuggle in facts or a clock, and an
+    // explicit SYNTHETIC needs ADMIN. An absent mode stays SYNTHETIC so every
+    // existing caller works, but admits only what they could already send.
+    const resolutionInput = parseResolutionInput(args, args.patientId, context.userRole);
+    assertAssemblableMode(resolutionInput);
+
+    // Built once, from the VARIANT — never re-derived from args.patientContext,
+    // which would reintroduce the raw payload on a path that already validated.
+    const patientContext = toPatientContext(resolutionInput);
+
+    // `syntheticPatient` means "drive matching from the caller's own code set",
+    // which has no coherent meaning once the facts come from a snapshot (LIVE)
+    // or from a recorded session (REPLAY). Encoded as a guard rather than left
+    // to documentation, so the combination cannot quietly become valid when
+    // plan 07 makes LIVE reachable.
+    if (args.syntheticPatient && resolutionInput.mode !== 'SYNTHETIC') {
+      throw new GraphQLError(
+        `syntheticPatient is not valid on a ${resolutionInput.mode} resolution`,
+        { extensions: { code: 'INVALID_RESOLUTION_INPUT' } },
+      );
+    }
+
     const matcherOptions: { directPatientCodes?: Array<{ code: string; system: string }>; includeDraftPathways?: boolean } = {};
     if (args.includeDraftPathways) {
       matcherOptions.includeDraftPathways = true;
     }
     if (args.syntheticPatient) {
       // For synthetic patients, drive matching off the supplied codes only —
-      // there is no real patients row to read from.
-      const codes = (args.patientContext?.conditionCodes ?? []).map((c) => ({
+      // there is no real patients row to read from. Read from the VALIDATED
+      // context, so every code that reaches the matcher has been through the
+      // same boundary as the codes that reach the evaluator.
+      matcherOptions.directPatientCodes = patientContext.conditionCodes.map((c) => ({
         code: c.code,
         system: c.system,
       }));
-      matcherOptions.directPatientCodes = codes;
     }
 
     // syntheticPatient signals this is admin/QA/preview traffic; persist that
     // so downstream list views can filter it out and `deletePreviewSession`
     // can clean up. Real provider encounters never set this flag.
+    //
+    // NOT role-gated, deliberately — see the note on `includeDraftPathways` in
+    // MultiPathwayResolutionArgs.
     const isPreview = args.syntheticPatient === true;
 
     // One clock for the entire multi-pathway run (§1) — the parent session and
     // every contributing session resolve horizons against the same instant.
     // Created here, before the zero-match branch, so BOTH exits stamp it.
-    const temporalContext = makeEvaluationTemporalContext();
+    const temporalContext = makeEvaluationTemporalContext(temporalInputFrom(args));
 
     // Before the zero-match branch: that path creates a parent session and
     // returns without ever entering resolveAndPersistAll, so a version
@@ -175,7 +225,7 @@ export const multiPathwayResolutionMutations = {
       const sessionId = await createMultiPathwaySession(pool, {
         patientId: args.patientId,
         providerId: context.userId,
-        initialPatientContext: buildPatientContext(args),
+        initialPatientContext: patientContext,
         contributingSessionIds: [],
         contributingPathwayIds: [],
         mergedPlan: emptyMergedCarePlan(),
@@ -187,7 +237,6 @@ export const multiPathwayResolutionMutations = {
     }
 
     const surviving = await collapseLattice(pool, matched);
-    const patientContext = buildPatientContext(args);
 
     const { resolvedPlans, contributingSessionIds, contributingPathwayIds } =
       await resolveAndPersistAll(pool, surviving, patientContext, context.userId, temporalContext);

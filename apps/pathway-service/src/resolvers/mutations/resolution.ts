@@ -1,6 +1,14 @@
 import { GraphQLError } from 'graphql';
 import { DataSourceContext, NodeStatus, OverrideAction, SessionStatus } from '../../types';
-import { PatientContext } from '../../services/confidence/types';
+import { PatientContext, CodeEntry, LabResult } from '../../services/confidence/types';
+import {
+  parseResolutionInput,
+  ResolutionModeArgs,
+  RawPatientContextInput,
+} from '../../services/resolution/temporal/trust-mode';
+import type { ResolutionInput } from '../../services/resolution/temporal/trust-mode';
+import { assertAssemblableMode } from '../../services/resolution/temporal/context-assembler';
+import type { TemporalContextInput } from '../../services/resolution/temporal/evaluation-context';
 import { PATHWAY_COLUMNS, formatSessionForGraphQL } from '../Query';
 import { TraversalEngine } from '../../services/resolution/traversal-engine';
 import { makeEvaluationTemporalContext } from '../../services/resolution/temporal/evaluation-context';
@@ -30,7 +38,11 @@ import {
 import { assertKnownPolicyVersion } from '../../services/resolution/temporal/policy-registry';
 import { applyDdiToResolutionState } from '../../services/medications/ddi-pass-single-pathway';
 import { normalizePatientAttributes } from '../../services/resolution/patient-attributes';
-import { buildEffectivePatientContext, dependencyContextKey } from '../../services/resolution/effective-context';
+import {
+  buildEffectivePatientContext,
+  dependencyContextKey,
+  mergeAdditionalContext,
+} from '../../services/resolution/effective-context';
 
 export interface GateAnswerInput {
   booleanValue?: boolean;
@@ -38,11 +50,18 @@ export interface GateAnswerInput {
   selectedOption?: string;
 }
 
+/**
+ * `AdditionalContextInput` shares `CodeInput`/`LabResultInput` with
+ * `PatientContextInput` in the SDL, so it shares their TypeScript types here
+ * too. When these were separate inline copies, a field added to the shared SDL
+ * input reached one path and was dropped on the other — and the merge key in
+ * effective-context.ts reads `date` and `sourceId` off exactly these entries.
+ */
 export interface AdditionalContextInput {
-  conditionCodes?: Array<{ code: string; system: string; display?: string }>;
-  medications?: Array<{ code: string; system: string; display?: string }>;
-  labResults?: Array<{ code: string; system: string; value?: number; unit?: string; date?: string; display?: string }>;
-  allergies?: Array<{ code: string; system: string; display?: string }>;
+  conditionCodes?: CodeEntry[];
+  medications?: CodeEntry[];
+  labResults?: LabResult[];
+  allergies?: CodeEntry[];
   vitalSigns?: Record<string, unknown>;
   freeformData?: Record<string, unknown>;
   patientAttributes?: Record<string, unknown>;
@@ -64,23 +83,75 @@ function requireSessionTemporalContext(session: ResolutionSession): EvaluationTe
   return session.temporalContext;
 }
 
+/**
+ * The GraphQL `PatientContextInput` shape, expressed once against the central
+ * `CodeEntry`/`LabResult` types. It used to be re-declared inline at each call
+ * site, so widening the coded entries meant finding every copy — and missing
+ * one produced a field the resolver silently dropped.
+ */
+export interface PatientContextArgs extends RawPatientContextInput {
+  patientId: string;
+}
+
+/** The clock arguments both start mutations accept. */
+export interface TemporalAnchorArgs {
+  evaluationAsOf?: string | null;
+  encounterStart?: string | null;
+}
+
+/**
+ * Project a parsed SYNTHETIC variant into the `PatientContext` the traversal,
+ * DDI pass and session record all consume.
+ *
+ * Takes the whole `ResolutionInput` rather than a bare context, so the only
+ * way to reach the clinical payload is through a variant that has already been
+ * validated. Throws on LIVE/REPLAY: callers run `assertAssemblableMode` first,
+ * and this is the backstop if one forgets.
+ */
+export function toPatientContext(input: ResolutionInput): PatientContext {
+  if (input.mode !== 'SYNTHETIC') {
+    throw new GraphQLError(`cannot build a patient context in ${input.mode} mode`, {
+      extensions: { code: 'INVALID_RESOLUTION_INPUT' },
+    });
+  }
+  const pc = input.patientContext;
+  return {
+    patientId: pc.patientId,
+    conditionCodes: pc.conditionCodes,
+    medications: pc.medications,
+    labResults: pc.labResults,
+    allergies: pc.allergies,
+    vitalSigns: pc.vitalSigns,
+    freeformData: pc.freeformData,
+    patientAttributes: normalizePatientAttributes(pc.patientAttributes),
+  };
+}
+
+/**
+ * Only pass through what the caller actually supplied — absent means "read the
+ * wall clock".
+ *
+ * Tested for null/undefined, NOT truthiness. `evaluationAsOf: ""` is a
+ * malformed clock, not an absent one: dropping it silently substituted the wall
+ * clock and pinned the session to an instant the caller never asked for.
+ * Forwarded, it reaches the strict parser and is rejected as INVALID_CLOCK.
+ */
+export function temporalInputFrom(args: TemporalAnchorArgs): TemporalContextInput {
+  const input: TemporalContextInput = {};
+  if (args.evaluationAsOf != null) input.evaluationAsOf = args.evaluationAsOf;
+  if (args.encounterStart != null) input.encounterStart = args.encounterStart;
+  return input;
+}
+
 export const resolutionMutations = {
   async startResolution(
     _parent: unknown,
     args: {
       pathwayId: string;
       patientId: string;
-      patientContext?: {
-        patientId: string;
-        conditionCodes?: Array<{ code: string; system: string; display?: string }>;
-        medications?: Array<{ code: string; system: string; display?: string }>;
-        labResults?: Array<{ code: string; system: string; value?: number; unit?: string; date?: string; display?: string }>;
-        allergies?: Array<{ code: string; system: string; display?: string }>;
-        vitalSigns?: Record<string, unknown>;
-        freeformData?: Record<string, unknown>;
-        patientAttributes?: Record<string, unknown>;
-      };
-    },
+      patientContext?: PatientContextArgs;
+    } & ResolutionModeArgs &
+      TemporalAnchorArgs,
     context: DataSourceContext
   ) {
     const { pool } = context;
@@ -106,22 +177,24 @@ export const resolutionMutations = {
       });
     }
 
-    const pc = args.patientContext;
-    const patientContext: PatientContext = {
-      patientId: args.patientId,
-      conditionCodes: pc?.conditionCodes ?? [],
-      medications: pc?.medications ?? [],
-      labResults: pc?.labResults ?? [],
-      allergies: pc?.allergies ?? [],
-      vitalSigns: pc?.vitalSigns,
-      freeformData: pc?.freeformData,
-      patientAttributes: normalizePatientAttributes(pc?.patientAttributes),
-    };
+    // Exactly one payload per trust mode, policed over the WHOLE raw request:
+    // a LIVE or REPLAY caller cannot smuggle in facts or a clock, and an
+    // explicit SYNTHETIC needs ADMIN. An absent mode stays SYNTHETIC so every
+    // existing caller keeps working, but admits only what they could already
+    // send. Refuse LIVE/REPLAY before any work rather than silently resolving
+    // against an empty context.
+    const resolutionInput = parseResolutionInput(args, args.patientId, context.userRole);
+    assertAssemblableMode(resolutionInput);
+
+    // Dispatch from the VARIANT, never from `args.patientContext` — reading the
+    // raw args here is what made the union decorative in the first place.
+    const patientContext: PatientContext = toPatientContext(resolutionInput);
 
     // One clock for the whole session (§1). The wall clock is read exactly
     // once, here — every gate evaluation, retraversal and replay of this
-    // session uses this instant.
-    const temporalContext = makeEvaluationTemporalContext();
+    // session uses this instant. A caller may pin it instead, and must supply
+    // encounterStart when the pathway resolves an ENCOUNTER horizon.
+    const temporalContext = makeEvaluationTemporalContext(temporalInputFrom(args));
 
     // The version gates everything downstream, so it is checked at the
     // boundary — not left to the sweep, which never runs on a pathway with
@@ -559,8 +632,14 @@ export const resolutionMutations = {
       });
     }
 
-    // 2. Merge additional context
-    const merged = { ...(session.additionalContext ?? {}), ...args.additionalContext };
+    // 2. Accumulate additional context onto everything supplied before it.
+    //    A shallow spread replaced each key instead of merging it, so adding
+    //    condition A and then condition B stored only B — and every later
+    //    retraversal lost evidence a gate had already counted.
+    const merged = mergeAdditionalContext(
+      session.additionalContext as Partial<AdditionalContextInput> | undefined,
+      args.additionalContext,
+    );
 
     // 3. Build updated patient context for re-evaluation (rebuilt from the
     // accumulated `merged` bag so retraversal context accumulates across calls)

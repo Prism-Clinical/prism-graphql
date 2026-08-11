@@ -12,12 +12,25 @@
 
 import { DataSourceContext } from '../../types';
 
+/**
+ * Mirrors `CodeInput`. A scenario is persisted as raw JSONB, so anything the
+ * input accepts is already stored — but a field missing from this type and
+ * from the `SimulatorScenarioCode` output type cannot be read back, and the
+ * simulator's load-edit-save cycle then writes the truncated version over the
+ * original. Keep these in lockstep with the SDL inputs.
+ */
 export interface CodeInputPayload {
   code: string;
   system: string;
   display?: string | null;
+  date?: string | null;
+  endDate?: string | null;
+  clinicalState?: string | null;
+  recordValidity?: string | null;
+  sourceId?: string | null;
 }
 
+/** Mirrors `LabResultInput`. Observations carry no clinical state. */
 export interface LabResultInputPayload {
   code: string;
   system: string;
@@ -25,6 +38,8 @@ export interface LabResultInputPayload {
   unit?: string | null;
   date?: string | null;
   display?: string | null;
+  recordValidity?: string | null;
+  sourceId?: string | null;
 }
 
 export interface SaveSimulatorScenarioInput {

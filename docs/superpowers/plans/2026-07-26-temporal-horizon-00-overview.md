@@ -33,6 +33,22 @@ for plan 9 (plan 6 touches both).
   - Tests: `npm test --prefix apps/pathway-service -- --runInBand <path>`.
     Jest's `testRegex` is `/__tests__/.*.test.ts`, so a test file placed
     anywhere else (e.g. beside its source) is silently **not run**.
+- **ts-jest runs with `diagnostics: false`** and `tsconfig` excludes
+  `src/__tests__`, so **test files are never typechecked**. A type enforces
+  nothing against a test caller: every invariant needs a runtime throw plus a
+  test that fails without it.
+- **Suite baseline: 9 failures across 2 suites** (`data-completeness-scorer`,
+  `patient-match-scorer`), both pre-existing and unrelated. The suite has NEVER
+  been green — never expect a clean pass. Passing count after plan 05 and its
+  two review rounds: **958 passed / 9 failed / 967 total, 84 of 86 suites
+  green** (was 805 passed on `main` @ `8abfda4`). A *third* failing suite
+  belongs to whatever plan is in flight.
+- **Object key order is NOT stable across a session's lifetime.** Session
+  context columns are `JSONB`, and Postgres jsonb reorders keys by (length,
+  bytewise): `'{"z_long_key":1,"a":2}'::jsonb` reads back as
+  `'{"a":2,"z_long_key":1}'`. Anything deriving an identifier or an ordinal
+  from `Object.entries` order must sort canonically first. JSON *arrays* do
+  preserve order.
 - **Commit prefixes:** `feat:` / `fix:` / `test:` / `refactor:` / `docs:`. No
   `@anthropic.com`/`@claude.com`, no "Generated with" lines. End commit messages
   with `Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@example.com>`.
@@ -54,6 +70,33 @@ for plan 9 (plan 6 touches both).
   the only live context source. v1 runs in SYNTHETIC mode. Plan 7 (snapshot mapper)
   is therefore last among backend layers and untestable against real data.
 
+## Execution order — 05 runs BEFORE 04
+
+The numbered order below is the *decomposition*, not the execution order. **Plan
+05 executes before plan 04**, and this is load-bearing rather than a preference
+(decision 2026-08-03, verified by probe, and confirmed by plan 05's
+`assembler-preserves-today` suite on execution).
+
+Plan 04 rewires `evaluateGate` onto `selectFacts`, which maps an uncertain
+scalar to `INDETERMINATE` and thence to fail-closed. `PatientContext.vitalSigns`
+is a `Record<string, unknown>` with **no date field anywhere**, and
+`LabResult.date` is optional. Probing `overlap()` directly:
+
+```
+undated fact, end: UNKNOWN     + LIFETIME = UNKNOWN   ⇒ scalar INDETERMINATE ⇒ gate fails
+undated fact, end: OPEN(asOf)  + LIFETIME = MATCH     ⇒ preserves today
+```
+
+So plan 04 in the documented order would stop **every vitals scalar gate and
+every undated-lab gate** from being satisfied under `legacy-v0` — the version
+that exists to reproduce today. The `OPEN(evaluationAsOf)` modeling that fixes
+it is plan 05's deliverable. Plan 05's originally-listed "Consumes 01–04" was
+nominal: the assembler needs the fact model (01) and the clock (02), nothing
+from the evaluator.
+
+**Status:** 01, 02, 03 merged to `main`. 05 executed on
+`feat/temporal-horizon-context-assembler`. 04, 05b, 06, 07, 08, 09 outstanding.
+
 ## Decomposition (files locked here)
 
 Each layer is one plan. New pure code lives under
@@ -65,7 +108,8 @@ Each layer is one plan. New pure code lives under
 | 02 | Pinned clock (§1) | `temporal/evaluation-context.ts`; edits to `traversal-engine.ts`, `retraversal-engine.ts`, `gate-evaluator.ts`, session persistence |
 | 03 | Policy registry + cascade (§5,§7-load) | `temporal/policy-registry.ts`, `temporal/cascade.ts`; migration `064_add_temporal_defaults_to_pathway_graph_index.sql`; edits to `resolvers/helpers/resolution-context.ts`, `temporal/evaluation-context.ts` (2 error codes), plus guard calls in `resolvers/mutations/resolution.ts` and `multi-pathway-resolution.ts` |
 | 04 | Evaluator + reachability via kernel (§4,§8-kernel) | edits to `gate-evaluator.ts`, `reachability.ts` |
-| 05 | Input contract + trust modes + assembler (§8) | `temporal/context-assembler.ts`, `temporal/trust-mode.ts`; edits to `schema.graphql`, `resolvers/mutations/resolution.ts`, `multi-pathway-resolution.ts` |
+| 05 | Input contract + trust modes + assembler (§8) | `temporal/context-assembler.ts`, `temporal/trust-mode.ts`, `temporal/synthetic-values.ts`; edits to `schema.graphql`, `resolvers/mutations/resolution.ts`, `multi-pathway-resolution.ts`, `services/confidence/types.ts`, `resolution/effective-context.ts` |
+| 05b | Normalized-fact persistence + REPLAY (§8) | deferred; see the interface contract below |
 | 06 | Canonicalization + pathway-default persistence (§6,§7) | `services/import/canonicalize.ts`; edits to `import/validator.ts`, `import/types.ts`, `import/graph-builder.ts`, `import/import-orchestrator.ts`, `schema.graphql`; admin `src/lib/pathway-json/canonicalize.ts` + shared fixtures |
 | 07 | Snapshot mapper → `NormalizedFact[]` (§8b) | edits to `resolution/snapshot-context.ts` |
 | 08 | Per-condition evidence + GraphQL surfaces (§9,§11) | `temporal/evidence.ts`; edits to `traversal-engine.ts`, `retraversal-engine.ts`, `schema.graphql`, `resolvers/Query.ts` (formatter), session persistence |
@@ -167,9 +211,10 @@ Consumes: nothing (leaf module).
 ### Plan 03 — Produces `TEMPORAL_POLICIES` + `getTemporalPolicy(version)` / `assertKnownPolicyVersion(version)` (unknown version = hard error); `TemporalStatus`, `FieldPolicy`, `fieldHasClinicalState(field)`, `systemDefaultFor(field, version)`; `PathwayTemporalDefaults` + `parsePathwayTemporalDefaults(raw)` + `parseHorizonValue(raw, where)`; `PolicyLevel`/`PolicyTier`/`ConditionTemporalOverride`; `resolveEffectivePolicy(field, version, pathwayDefaults, condition?)` returning an **unresolved tier**; `toEffectivePolicy(tier, ctx)` producing Plan 01's `EffectivePolicy`; `SweepableCondition`/`EncounterAnchorRequirement` + `collectEncounterAnchorRequirements(...)`; `assertEncounterAnchor(rctx, temporalCtx)` from `resolvers/helpers/resolution-context`; `temporal_defaults` column (migration 064) + `ResolutionContext.temporalDefaults`. Adds `UNKNOWN_POLICY_VERSION` and `INVALID_TEMPORAL_DEFAULTS` to `TemporalContextErrorCode`. Consumes 01–02.
 
 **Plan 03 decisions (executed 2026-08-03):** `vitals` joins the registry — `legacy-v0` LIFETIME, `v1` ENCOUNTER (§5's table omitted it while `GateField` includes it; §10 fixes vitals to Encounter). The anchor sweep runs at **session creation only** — both creating mutations, never the four retraversal sites, which reuse a clock from a session that already passed. `resolveAndPersistAll` is split into two passes so a rejection leaves no child sessions or audit rows.
-### Plan 04 — Produces the validated `GateCondition → FactSelectionCondition` adapter (rejecting unknown operators/fields); rewrites `evaluateGate` scalar/membership/aggregate branches to call `selectFacts` and apply the numeric `<`/`>` to `selected`, mapping `INDETERMINATE` to fail-closed (gate not satisfied) while recording it for evidence; `reachability` calls the same kernel. Consumes 01–03.
-### Plan 05 — Produces `ResolutionMode` (LIVE/SYNTHETIC/REPLAY), `assembleContext(mode, ...) → FactStore`, extended `CodeInput`; deterministic `factId` assignment (persisted, never a lossy hash); constructs the always-current interval for undated vitals (`OPEN(evaluationAsOf)`). Consumes 01–04.
+### Plan 04 — Produces the validated `GateCondition → FactSelectionCondition` adapter (rejecting unknown operators/fields); rewrites `evaluateGate` scalar/membership/aggregate branches to call `selectFacts` and apply the numeric `<`/`>` to `selected`, mapping `INDETERMINATE` to fail-closed (gate not satisfied) while recording it for evidence; `reachability` calls the same kernel. **Consumes 01–03 and 05.**
+### Plan 05 — **EXECUTED 2026-08-10.** Produces, in `temporal/trust-mode.ts`: `ResolutionModeKind`, the `ResolutionInput` discriminated union (payload inside the variant), `SyntheticCodeEntry`/`SyntheticLabResult`/`SyntheticPatientContext`, `assertSyntheticAuthorized(role)`, `ResolutionModeArgs`, `parseResolutionInput(args, syntheticContext, userRole)`. In `temporal/synthetic-values.ts`: `CLINICAL_STATES`, `RECORD_VALIDITIES`, `parseClinicalState`, `parseRecordValidity`, `parseSyntheticDate`. In `temporal/context-assembler.ts`: `assembleContext(input, ctx) → FactStore`, `assertAssemblableMode(input)`, `VITALS_SYSTEM`. In `resolvers/mutations/resolution.ts`: `PatientContextArgs`, `TemporalAnchorArgs`, `temporalInputFrom(args)`. Adds `INVALID_RESOLUTION_INPUT` to `TemporalContextErrorCode`; widens `CodeEntry`/`LabResult` centrally; widens the `buildEffectivePatientContext` merge key to `code|system|date|sourceId`. Consumes 01–03.
 ### Plan 06 — Produces `canonicalize(json) → { json, warnings }`, `conditionId` on `GateCondition`, `temporal_defaults` round-trip. Consumes 01,03.
+### Plan 05b — Normalized-fact persistence and REPLAY loading. Split out of 05 (decision 5 there): REPLAY needs persisted facts, but retraversal does not, because it re-assembles from the stored `initialPatientContext` plus additions and identical input yields identical `factId`s. Until this lands, `assembleContext` and both start mutations refuse REPLAY by name. Consumes 01,05.
 ### Plan 07 — Rewrites `snapshot-context.ts` to emit `NormalizedFact[]`. Consumes 01,03,05.
 ### Plan 08 — Produces `GateEvaluationEvidence`/`GateConditionEvidence` on `NodeResult` + GraphQL. Consumes 01–05.
 ### Plan 09 — Admin controls. Consumes 03,06,08 (GraphQL shapes).
