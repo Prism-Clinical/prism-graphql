@@ -40,8 +40,13 @@ import {
 import {
   EvaluationTemporalContext,
   TemporalContextError,
+  DEFAULT_TEMPORAL_POLICY_VERSION,
 } from '../../services/resolution/temporal/evaluation-context';
 import { GateField, FIELD_TO_KIND } from '../../services/resolution/temporal/contract';
+import {
+  attributeNamespaceToField,
+  parseConditionOverride,
+} from '../../services/resolution/temporal/condition-adapter';
 import { getTemporalPolicy } from '../../services/resolution/temporal/policy-registry';
 
 // ─── Graph Context Builder ──────────────────────────────────────────
@@ -535,15 +540,60 @@ export function makeLlmGateEvaluator(
 // ─── ENCOUNTER anchor preflight ─────────────────────────────────────
 
 /**
+ * Which gate field a raw condition sweeps under, or `null` to skip it.
+ *
+ * Under `legacy-v0` only coded conditions are swept — exactly today's scope.
+ * Under `v1` the three clinical attribute namespaces join them, because D3
+ * gives `vitals.*` an ENCOUNTER horizon and an unswept attribute gate would
+ * pass preflight and throw mid-traversal (P1-8).
+ */
+function sweptFieldFor(cond: Record<string, unknown>, isV1: boolean): GateField | null {
+  const field = cond.field;
+  if (typeof field === 'string') {
+    return Object.prototype.hasOwnProperty.call(FIELD_TO_KIND, field)
+      ? (field as GateField)
+      : null;
+  }
+  if (!isV1) return null;
+
+  // Attribute condition. `patient.*` and unrecognized namespaces map to null —
+  // they never resolve a horizon, so sweeping them would reject sessions over
+  // gates that cannot need an anchor.
+  const attribute = cond.attribute;
+  if (typeof attribute !== 'string') return null;
+  return attributeNamespaceToField(attribute.split('.')[0]);
+}
+
+/**
  * Pull the sweepable temporal conditions out of a loaded graph.
  *
  * Reads node properties defensively rather than through `GateProperties`:
- * these come straight from AGE as untyped JSON, `horizon`/`status` are not on
- * `CodedCondition` yet (Plan 06 adds them), and a malformed node must not
- * crash the preflight — Plan 04's adapter is where a bad condition is
- * rejected properly.
+ * these come straight from AGE as untyped JSON, and a malformed *node* must not
+ * crash the preflight.
+ *
+ * **A malformed override is a different matter, and the two versions differ
+ * (D1, P1-15, P1-18).** Under `legacy-v0` the raw value is copied through and
+ * the cascade validates it downstream — which already rejects session creation
+ * today, but only when `encounterStart` is absent, because
+ * `assertEncounterAnchor` returns early otherwise. That conditional rejection
+ * is current behavior and is preserved byte-for-byte. Under `v1` the override
+ * goes through `parseConditionOverride`, the same parser the evaluator uses, so
+ * preflight and evaluation cannot disagree about the same pathway.
+ *
+ * **Neither path catches parser errors.** Swallowing them would turn requests
+ * that are rejected today into successes.
+ *
+ * Exported for plan 04 Task 7's preflight/evaluation agreement test, which
+ * compares the swept field and override against the adapter's for the same
+ * condition. `assertEncounterAnchor` cannot serve that test: it returns `void`
+ * and throws only when an anchor is missing, so it exposes neither value. Not
+ * intended for production callers outside this module.
  */
-function sweepableConditions(nodes: readonly GraphNode[]): SweepableCondition[] {
+export function sweepableConditions(
+  nodes: readonly GraphNode[],
+  version: string,
+): SweepableCondition[] {
+  const isV1 = version !== DEFAULT_TEMPORAL_POLICY_VERSION;
   const out: SweepableCondition[] = [];
 
   for (const node of nodes) {
@@ -585,31 +635,28 @@ function sweepableConditions(nodes: readonly GraphNode[]): SweepableCondition[] 
     raw.forEach((c, i) => {
       if (!c || typeof c !== 'object') return;
       const cond = c as Record<string, unknown>;
-      const field = cond.field;
-      // Attribute conditions have `attribute`, not `field`, and are not swept
-      // because they never resolve a horizon: `resolveAttribute` reads the
-      // PatientContext arrays directly and Plan 04 rewrites only the coded
-      // branches onto the kernel. Sweeping them would reject sessions for
-      // gates that cannot need an anchor.
-      //
-      // NOTE — this is NOT because attribute conditions are timeless. The
-      // registry's namespaces are lab / vitals / allergy / patient
-      // (attribute-registry.ts:27), so only `patient.*` is genuinely
-      // encounter-derived; a `lab.a1c > 9` attribute gate reads the same
-      // clinical data a coded labs gate does, with no temporal filtering at
-      // all. Tracked as a known gap, parked on Plan 04.
-      if (typeof field !== 'string') return;
-      if (!Object.prototype.hasOwnProperty.call(FIELD_TO_KIND, field)) return;
+      const label = `${node.nodeIdentifier} / condition ${i}`;
 
-      const override: ConditionTemporalOverride = {};
-      if (cond.horizon !== undefined) override.horizon = cond.horizon as never;
-      if (cond.status !== undefined) override.status = cond.status as never;
+      const field = sweptFieldFor(cond, isV1);
+      if (field === null) return;
 
-      const entry: SweepableCondition = {
-        label: `${node.nodeIdentifier} / condition ${i}`,
-        field: field as GateField,
-      };
-      if (Object.keys(override).length > 0) entry.override = override;
+      const entry: SweepableCondition = { label, field };
+
+      if (isV1) {
+        // Strict shared parsing. Errors propagate: under v1 this is the only
+        // preflight that catches a malformed override or a
+        // window_days/horizon conflict (P1-18).
+        const override = parseConditionOverride(cond, label);
+        if (override !== undefined) entry.override = override;
+      } else {
+        // legacy-v0: byte-for-byte today's extraction. The raw value is copied
+        // and the cascade validates it downstream, conditionally.
+        const override: ConditionTemporalOverride = {};
+        if (cond.horizon !== undefined) override.horizon = cond.horizon as never;
+        if (cond.status !== undefined) override.status = cond.status as never;
+        if (Object.keys(override).length > 0) entry.override = override;
+      }
+
       out.push(entry);
     });
   }
@@ -633,12 +680,44 @@ export function assertEncounterAnchor(
   // pinned to a policy version nothing can evaluate. Behind the encounterStart
   // check, an unknown version would sail through whenever an anchor happened
   // to be present.
+  // Unconditionally, before any early return: a session must never be created
+  // pinned to a policy version nothing can evaluate. Behind the encounterStart
+  // check, an unknown version would sail through whenever an anchor happened
+  // to be present.
   getTemporalPolicy(temporalCtx.temporalPolicyVersion);
 
-  if (temporalCtx.encounterStart) return;
+  const version = temporalCtx.temporalPolicyVersion;
 
+  if (version === DEFAULT_TEMPORAL_POLICY_VERSION) {
+    // EXACTLY today's flow. The early return must stay AHEAD of the sweep: the
+    // sweep's raw override copy is validated downstream by the cascade, so
+    // moving it earlier would start rejecting malformed overrides on sessions
+    // that succeed today (P1-15).
+    if (temporalCtx.encounterStart) return;
+    throwIfAnchorsRequired(rctx, temporalCtx, sweepableConditions(rctx.graphContext.allNodes, version));
+    return;
+  }
+
+  // v1: parse and validate every condition regardless of the anchor. This sweep
+  // is the only preflight that catches a malformed override or a
+  // window_days/horizon conflict, so leaving it behind the early return means a
+  // pathway that supplies an anchor is never validated at all and throws
+  // mid-traversal instead — after LLM gates have run and audit rows exist
+  // (P1-18). Parse errors propagate from here.
+  const swept = sweepableConditions(rctx.graphContext.allNodes, version);
+
+  // Validated above; the ANCHOR requirement itself is what an anchor satisfies.
+  if (temporalCtx.encounterStart) return;
+  throwIfAnchorsRequired(rctx, temporalCtx, swept);
+}
+
+function throwIfAnchorsRequired(
+  rctx: ResolutionContext,
+  temporalCtx: EvaluationTemporalContext,
+  swept: SweepableCondition[],
+): void {
   const required = collectEncounterAnchorRequirements(
-    sweepableConditions(rctx.graphContext.allNodes),
+    swept,
     temporalCtx.temporalPolicyVersion,
     rctx.temporalDefaults,
   );

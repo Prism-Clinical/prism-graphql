@@ -104,6 +104,14 @@ export interface CodedCondition {
   operator: CodedOperator;
   value: string;
   system?: string;
+  /**
+   * NODE tier of the temporal cascade (plan 04, D1). Typed as `unknown` on
+   * purpose: these arrive off untyped AGE JSON and are validated at runtime by
+   * `parseConditionOverride`, so a declared `Horizon` here would assert a
+   * guarantee the boundary does not provide.
+   */
+  horizon?: unknown;
+  status?: unknown;
   threshold?: number;
   window_days?: number;
   count_threshold?: number;

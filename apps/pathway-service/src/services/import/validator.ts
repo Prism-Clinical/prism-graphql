@@ -24,12 +24,24 @@ const VALID_EDGE_TYPES = new Set<string>(Object.keys(VALID_EDGE_ENDPOINTS));
 const VALID_CATEGORIES = new Set<string>(Object.values(PathwayCategory));
 
 // ─── Gate condition schema ─────────────────────────────────────────────
+// `horizon`/`status` are the NODE tier of the temporal cascade (plan 04). They
+// are allowed as KEYS here; their VALUES are validated by
+// `parseConditionOverride` at session-creation preflight, which owns the
+// horizon grammar, the status vocabulary, and the window_days/horizon conflict
+// rule. Duplicating that grammar here would give authors two places to disagree
+// with. Without these entries a per-condition horizon fails import as an
+// unknown key and the NODE tier is unauthorable.
 const CODED_KEYS = new Set([
   'field', 'operator', 'value', 'system', 'threshold',
   'window_days', 'count_threshold', 'min_points', 'slope_threshold', 'delta_threshold',
+  'horizon', 'status',
   'display', 'note',
 ]);
-const ATTRIBUTE_KEYS = new Set(['attribute', 'operator', 'value', 'unit', 'display', 'note']);
+const ATTRIBUTE_KEYS = new Set([
+  'attribute', 'operator', 'value', 'unit',
+  'horizon', 'status',
+  'display', 'note',
+]);
 const CODED_OPS = new Set<string>(VALID_CODED_OPERATORS);
 const ATTR_OPS = new Set<string>(VALID_ATTRIBUTE_OPERATORS);
 const NAMESPACES = new Set<string>(VALID_ATTRIBUTE_NAMESPACES);

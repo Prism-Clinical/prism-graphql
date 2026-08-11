@@ -490,6 +490,63 @@ describe('validatePathwayJson', () => {
         expect(validatePathwayJson(pw).errors).toContainEqual(expect.stringContaining('operator'));
       });
 
+      // Plan 04 Task 1: the NODE tier of the temporal cascade. Without these
+      // keys on CODED_KEYS/ATTRIBUTE_KEYS the validator rejects them as unknown
+      // keys, and a per-condition horizon becomes unauthorable — the whole
+      // point of the feature would be reachable only from hand-built fixtures.
+      it('accepts a per-condition horizon on a coded condition', () => {
+        const pw = clonePathway(REFERENCE_PATHWAY);
+        addGateWithCondition(pw, {
+          field: 'labs',
+          operator: 'greater_than',
+          value: '718-7',
+          horizon: 'QUARTER',
+        });
+        const result = validatePathwayJson(pw);
+        expect(result.errors).not.toContainEqual(expect.stringContaining('unknown key'));
+        expect(result.valid).toBe(true);
+      });
+
+      it('accepts a per-condition status on a coded condition', () => {
+        const pw = clonePathway(REFERENCE_PATHWAY);
+        addGateWithCondition(pw, {
+          field: 'conditions',
+          operator: 'includes_code',
+          value: 'E11.9',
+          status: 'any',
+        });
+        const result = validatePathwayJson(pw);
+        expect(result.errors).not.toContainEqual(expect.stringContaining('unknown key'));
+        expect(result.valid).toBe(true);
+      });
+
+      it('accepts a per-condition horizon on an attribute condition', () => {
+        const pw = clonePathway(REFERENCE_PATHWAY);
+        addGateWithCondition(pw, {
+          attribute: 'lab.hemoglobin',
+          operator: 'less_than',
+          value: 7,
+          horizon: 'ENCOUNTER',
+        });
+        const result = validatePathwayJson(pw);
+        expect(result.errors).not.toContainEqual(expect.stringContaining('unknown key'));
+        expect(result.valid).toBe(true);
+      });
+
+      it('still rejects a key that is neither', () => {
+        // The allowlist must widen by exactly two keys, not collapse.
+        const pw = clonePathway(REFERENCE_PATHWAY);
+        addGateWithCondition(pw, {
+          field: 'labs',
+          operator: 'greater_than',
+          value: '718-7',
+          hoziron: 'QUARTER',
+        });
+        expect(validatePathwayJson(pw).errors).toContainEqual(
+          expect.stringContaining('unknown key'),
+        );
+      });
+
       it('rejects an attribute with an unregistered namespace', () => {
         const pw = clonePathway(REFERENCE_PATHWAY);
         addGateWithCondition(pw, { attribute: 'bogus.thing', operator: 'exists', value: true });

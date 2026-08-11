@@ -855,6 +855,7 @@ describe('the pathway-default cascade, proven behaviorally (moved from Task 3, P
 - [ ] Under `v1`, no operator branch reads `patientContext.labResults`, `.conditionCodes`, `.medications`, `.allergies`, or `.vitalSigns` directly.
 - [ ] A condition carrying both `window_days` and `horizon` is rejected; `window_days` alone still filters.
 - [ ] `sweepableConditions` and the evaluator share one override parser and one namespace→field map.
+- [ ] A pathway carrying a per-condition `horizon` **imports without a validation error** — `CODED_KEYS` and `ATTRIBUTE_KEYS` list `horizon` and `status`, so the NODE tier is reachable through the real authoring path and not only from hand-built fixtures (round 6, self-found).
 - [ ] `lab.a1c exists` with only an unrelated lab present is unsatisfied; an `allergy.*` equality gate is satisfiable; a nested custom vital resolves.
 - [ ] `addPatientContext` can flip a previously unsatisfied gate.
 - [ ] A definite aggregate reports `indeterminate: false` with non-empty `uncertainty`; each truth-table row has a passing test.
