@@ -15,9 +15,12 @@
 - **v3 (2026-08-11, `8e7cab1`)** — revised after review round 2. Six findings (4×P1), all verified, all accepted. Round 2 found that the v2 rewrite *introduced* three new defects while fixing round 1's: the attribute routing bypassed the anchor sweep, assembly was wired unconditionally and so leaked validation into `legacy-v0`, and Tasks 6 and 8 stated contradictory uncertainty contracts.
 - **v4 (2026-08-11, `2f9a07f`)** — revised after review round 3. Four findings (3×P1), all verified, all accepted. Mostly *sequencing and scope*: the policy selector was given a shape the multi-pathway resolver cannot supply, two tests were placed at tasks where they could not fail, and v3's own `legacy-v0` compatibility fix was itself a behavior change in the opposite direction. Applied as targeted edits, not a rewrite.
 - **v5 (2026-08-11, `83f9a38`)** — revised after review round 4. Three findings, all P1, all verified, all accepted. Two are **inherited-conditionality and vacuous-test defects that v4 itself introduced**, and one is an interface gap open since v3: attribute conditions never had a defined route into the policy seam. Targeted edits again.
-- **v6 (this document)** — revised after review round 5. Three findings (2×P1), all verified, all accepted. All three are **executability defects in the plan-as-instructions rather than errors in the design**: a Task 2 test calling a function Task 7 creates, a selector whose stated signature could not read its own stated injection seam, and a test calling a module-private helper no task exports. The design decisions they touch (P1-14's no-`ResolutionContext` rule, locked decision #7, D3's attribute routing) were all re-verified and none changed. Targeted edits.
+- **v6 (2026-08-11, `45aca57`)** — revised after review round 5. Three findings (2×P1), all verified, all accepted. All three are **executability defects in the plan-as-instructions rather than errors in the design**: a Task 2 test calling a function Task 7 creates, a selector whose stated signature could not read its own stated injection seam, and a test calling a module-private helper no task exports. The design decisions they touch (P1-14's no-`ResolutionContext` rule, locked decision #7, D3's attribute routing) were all re-verified and none changed. Targeted edits.
 
   **Round-5 trend note.** Five rounds, 23 findings, none rejected. The defect *class* has shifted: rounds 1–3 found design errors, rounds 4–5 found plan-mechanics errors — tasks that cannot run in order, tests that cannot fail, interfaces that contradict their own injection. That is convergence, but it also says the remaining risk is concentrated in whether an executor can follow this document task-by-task, not in whether the architecture is right. **Before round 6, dry-run the task order rather than re-reading the prose:** for each task, check that every symbol its tests reference is produced by that task or an earlier one.
+- **v7 (this document)** — revised after review round 6. One finding, P1, verified and accepted: coded `exists` was specified to *reject* a supplied `value`/`system` at runtime, which the import validator makes nearly unsatisfiable (it *requires* `value`), which fires after a preflight that cannot catch it, and which breaks a fixture merged on `main`. Now normalized to bucket semantics, with authoring rejection handed to plan 06.
+
+  **Round-6 trend note.** The ordering check added in v6 worked — it found nothing new, and round 6 found nothing of that class. But it also would never have caught this one, because the defect was a **semantic** rule that no symbol-level check can see: an invariant asserted in one layer (the adapter) that a different layer (the validator) contradicts. **Before round 7, run the cross-layer check:** for every rule this plan adds at runtime, find the import validator rule and the existing fixtures governing the same field, and confirm all three agree. Rounds 1–3 were design, 4–5 were mechanics, 6 was cross-layer consistency — each round's check has to be *different* from the last one's, because a check that already ran is the least likely to find the next defect.
 
 ---
 
@@ -166,7 +169,7 @@ The **Sweep field** column is the round-2 addition: `attributeNamespaceToField()
 
 **Files:**
 - Create: `apps/pathway-service/src/services/resolution/temporal/condition-adapter.ts`
-- Modify: `apps/pathway-service/src/services/resolution/types.ts` (add `horizon?`/`status?` to `CodedCondition`), `apps/pathway-service/src/resolvers/helpers/resolution-context.ts` (`sweepableConditions`)
+- Modify: `apps/pathway-service/src/services/resolution/types.ts` (add `horizon?`/`status?` to `CodedCondition`), `apps/pathway-service/src/resolvers/helpers/resolution-context.ts` (`sweepableConditions`), `apps/pathway-service/src/services/import/validator.ts` (`CODED_KEYS` + `ATTRIBUTE_KEYS` gain `horizon`/`status`)
 - Test: `apps/pathway-service/src/__tests__/temporal/condition-adapter.test.ts`, and extend the plan-03 anchor-sweep suite
 
 **Interfaces:**
@@ -184,6 +187,12 @@ export interface AdaptedCondition {
 ```
 
 `adaptCodedCondition` (Task 1) and `adaptAttributeCondition` (Task 7) both return this. **The policy seam consumes only this shape**, never a raw condition — an `AttributeCondition` has no `field`, so a seam typed on the raw condition forces the attribute path to resolve policy inline, and inline resolution is how preflight and evaluation drift apart (locked decision #7).
+
+**The import validator must learn the two new keys, or the NODE tier is unauthorable (round 6, self-found).** `CODED_KEYS` (`validator.ts:27-31`) lists every key a coded condition may carry and the validator errors on anything else — `unknown key "${k}" on coded condition` (`:290`). It does not contain `horizon` or `status`, and `ATTRIBUTE_KEYS` (`:32`) does not either. This task adds both to `CodedCondition`, so **without a matching validator change every pathway authored with a per-condition horizon fails import** — and the NODE tier, the whole point of this feature, would be reachable only from hand-built `GraphNode` fixtures that bypass authoring. That is the same weakness already recorded against plan 05 ("proven at the guard boundary, not end-to-end"), and it would make Task 2's "a NODE horizon beats the pathway default" criterion unprovable through the real path.
+
+Neither this plan nor plan 06 claimed this: plan 06 owns `temporal_defaults`, which is the **PATHWAY** tier, on the pathway header. The NODE tier belongs to whoever adds the fields, which is this task. Add both keys to both sets; the *values* are still validated by `parseConditionOverride` at preflight, so the validator change is a key-allowlist change only. Add an import test that a condition carrying `horizon` round-trips instead of erroring.
+
+*(Found by the cross-layer check this round prescribes, not by review. It is the identical shape to round 6's `exists` finding — a rule asserted in one layer that a different layer contradicts — which is why that check now runs before every round.)*
 
 **Why one parser and one namespace map (D1, D3, P1-8):** plan 03's sweep reads `horizon`/`status` off untyped AGE JSON and skips attribute conditions entirely. Once D3 gives `vitals.*` an ENCOUNTER horizon under `v1`, that skip is a preflight hole. Both the sweep and the attribute router must derive the field from the same function, or they will disagree.
 
@@ -460,7 +469,11 @@ describe('the fork is a no-op until Task 4', () => {
 
 Covers `includes_code`, `equals`, `exists`. Delete Task 3's no-op-fork test — this is where the paths diverge.
 
-> **`exists` is bucket existence.** `select-facts.ts:75` short-circuits it to match any fact of the kind, ignoring code and system — which is what today's `entries.length > 0` means. Reject a `system` or non-empty `value` supplied alongside `exists` in the adapter rather than silently ignoring it.
+> **`exists` is bucket existence, and the adapter NORMALIZES rather than rejects.** `select-facts.ts:75` short-circuits it to match any fact of the kind, ignoring code and system — which is what today's `entries.length > 0` means. The adapter therefore **drops `value` and `system` for `exists`**, so `value: ''` and `value: '718-7'` behave identically, exactly as they do today. Coded `exists` has **no `v1` delta**.
+>
+> *(Round 6, P1 — accepted. v6 said "reject a `system` or non-empty `value` supplied alongside `exists`." Three things were wrong with it. **One:** the import validator **requires** `value` on every coded condition (`validator.ts:289`), so an author following the import contract produces precisely the condition the adapter would reject — only the undocumented `value: ''` satisfies both, and the repo is already split between that spelling and a real code. **Two:** the rejection fires in the adapter at **evaluation**, while the `v1` preflight sweep runs only `parseConditionOverride` (Task 1 Step 4), so such a pathway passes preflight and throws mid-traversal — precisely what locked decision #7 forbids, and the same divergence class as P1-8, P1-10 and P1-18. **Three:** a merged fixture already carries `{ field: 'labs', operator: 'exists', value: '718-7' }` (`resolution-input-contract.test.ts:602`), so the rejection would break a test that passes on `main` today. Authoring-time rejection is worth doing — an author writing `exists` with a code probably means `includes_code` — but it belongs to **plan 06**, which owns the validator and canonicalization and can warn and migrate rather than throw.)*
+>
+> **Also correct the comment at `select-facts.ts:73-75`**, which claims "Plan 04's adapter rejects a system/value supplied alongside `exists` at the authoring boundary." That becomes false here, and it already conflates the runtime adapter with the authoring boundary — the conflation that produced this defect.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -469,6 +482,17 @@ describe('membership under v1 preserves the shape of today’s matching', () => 
   it('matches a trailing-wildcard code pattern (Z94.* matches Z94.0)', async () => { /* ... */ });
   it('respects an explicit system filter', async () => { /* ... */ });
   it('exists is satisfied by any admitted fact, unsatisfied when the field is empty', async () => { /* ... */ });
+  it('ignores value and system on exists, exactly as legacy-v0 does', async () => {
+    // Both spellings must decide identically: `value: ''` (the convention in
+    // reachability.test.ts and select-facts.test.ts) and a real code (the
+    // merged fixture at resolution-input-contract.test.ts:602). A 718-7
+    // `exists` on a patient whose only lab is 4548-4 is SATISFIED under both
+    // versions, and a `system` that matches nothing does not narrow it.
+    //
+    // This test is the guard on plan 06's future authoring change: with the
+    // behavior pinned here, changing it later is a deliberate, visible move
+    // rather than a silent regression.
+  });
 });
 
 describe('membership fails open on uncertainty, and says so (D5)', () => {
@@ -808,7 +832,7 @@ describe('the pathway-default cascade, proven behaviorally (moved from Task 3, P
 **Files:** `docs/superpowers/plans/2026-07-26-temporal-horizon-00-overview.md`, `docs/superpowers/specs/2026-07-21-pathway-temporal-horizon-design.md` (§6, §10, Compatibility), `temporal/select-facts.ts` (comment)
 
 - [ ] **Step 1: Prove `legacy-v0` is untouched.** The evidence is that **every pre-existing gate-evaluator and traversal test passes with unmodified assertions** — only call shapes changed. Run the full suite, diff against 958/9. Any assertion that had to be weakened is a seam bug; fix the seam, not the test.
-- [ ] **Step 2: Enumerate the `v1` deltas** in Compatibility, from the tests that pin them: validity filtering, latest-vs-first scalar selection, equal-time ambiguity, future-date exclusion, horizon filtering of membership, vitals membership/count becoming satisfiable, **and the attribute-specific deltas** — `lab.*`/`vitals.*`/`allergy.*` gaining horizon and validity filtering, and attribute `exists` becoming exact-code rather than any-fact.
+- [ ] **Step 2: Enumerate the `v1` deltas** in Compatibility, from the tests that pin them: validity filtering, latest-vs-first scalar selection, equal-time ambiguity, future-date exclusion, horizon filtering of membership, vitals membership/count becoming satisfiable, **and the attribute-specific deltas** — `lab.*`/`vitals.*`/`allergy.*` gaining horizon and validity filtering, and attribute `exists` becoming exact-code rather than any-fact. **Record coded `exists` explicitly as a NON-delta** — it keeps bucket semantics under `v1`, ignoring `value` and `system` exactly as today, with authoring-time rejection deferred to plan 06 (round 6, P1). An audit that lists only deltas hides the operator where a delta was proposed and deliberately rejected, which is how it would get reintroduced.
 - [ ] **Step 3: Revise design §10 (P2-13).** §589 says "Attribute conditions get no horizon control (encounter-derived, no timeline)." That is now false for the three clinical namespaces and true only for `patient.*`. Update it, and note that §590's fixed-Encounter vitals control is what makes the attribute anchor sweep (P1-8) mandatory.
 - [ ] **Step 4: Correct `select-facts.ts:58`.** Its comment claims the candidate rules make `legacy-v0` "genuinely behavior-preserving." They mirror the current evaluator's *candidate* rules only; validity, ordering, and vitals bucketing still differ. Rewrite it to say what it actually guarantees.
 - [ ] **Step 5: State the shadow boundary (P2-13).** Retaining `evaluateConditionLegacy` is a *precondition* for shadow evaluation, not shadow evaluation. Nothing in this plan runs both paths or diffs them; the rollout change owns that, along with retiring the legacy path.
