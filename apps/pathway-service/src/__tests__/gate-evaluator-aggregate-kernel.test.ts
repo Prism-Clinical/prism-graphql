@@ -328,13 +328,40 @@ describe('disclosed v1 deltas — count_in_window', () => {
     expect(v1.reason).toBe(`Found 2 matching ${HGB} in labs within lifetime (≥2)`);
   });
 
-  it('counts an UNDATED lab inside a window that legacy-v0 drops', async () => {
+});
+
+// ─── D8: the aggregate class selects on the START bound ────────────────
+
+/**
+ * *** These two tests were INVERTED by the D8 decision. ***
+ *
+ * Task 6 wrote them as `disclosed v1 deltas`, pinning a defect it had found and
+ * deliberately not fixed: `selectFacts` applied `overlap` to every operator
+ * class, so a `count_in_window` counted any fact that was TRUE AT SOME POINT
+ * inside the window rather than one that OCCURRED inside it. Because
+ * `assembleStateful` gives every still-active entry `OPEN(evaluationAsOf)`
+ * (context-assembler.ts:85), such a fact overlapped every horizon the resolver
+ * can produce, and `window_days` was inert on conditions / medications /
+ * allergies — the operator's own documented use case — with `v1` diverging from
+ * `legacy-v0` in the PERMISSIVE direction on a recurrence gate.
+ *
+ * D8 settled it: the aggregate class gets occurrence semantics — in-window iff
+ * `interval.start` is inside the horizon, with an undated fact excluded under a
+ * bounded horizon and admitted under LIFETIME, faithfully translating legacy's
+ * `isWithinWindow`. Membership and scalar keep `overlap`.
+ *
+ * They are kept, not deleted: the pinning is the point. What each pins is now
+ * a CONVERGENCE with `legacy-v0` rather than a divergence from it, so a
+ * regression to overlap-for-aggregates fails here exactly as loudly.
+ */
+describe('D8 — a count is over occurrences, so window_days discriminates again', () => {
+  it('drops an UNDATED lab from a bounded window, exactly as legacy-v0 does', async () => {
     // legacy: `isWithinWindow(undefined, 90, now)` is false — a date-aware gate
     // cannot reason about un-dated history, so the entry is dropped.
-    // v1: the assembler models an undated lab as OPEN(evaluationAsOf), which
-    // overlaps every horizon containing the clock, so it counts.
-    // Disclosed, not endorsed: this is the admission half of D7 showing up in
-    // the aggregate class, and it moves in the permissive direction.
+    // v1 before D8: the assembler models an undated lab as OPEN(evaluationAsOf),
+    // which overlapped every horizon containing the clock, so it counted.
+    // v1 after D8: no `interval.start` and a bounded horizon ⇒ excluded, and
+    // DEFINITELY so — this is not a fail-closed exclusion carrying doubt.
     const shared = {
       patientContext: patient({
         labResults: [labEntry(HGB, 7, D_JUL), labEntry(HGB, 8)],
@@ -352,26 +379,18 @@ describe('disclosed v1 deltas — count_in_window', () => {
     const v1 = await evaluateGate(gate, deps('v1', shared));
     expect(legacy.satisfied).toBe(false);
     expect(legacy.reason).toBe(`Found 1 matching ${HGB} in labs within last 90 days (<2)`);
-    expect(v1.satisfied).toBe(true);
-    expect(v1.reason).toBe(`Found 2 matching ${HGB} in labs within last 90 days (≥2)`);
+    expect(v1.satisfied).toBe(false);
+    expect(v1.reason).toBe(legacy.reason);
+    expect(v1.indeterminate).toBe(false);
+    expect(v1.uncertainty).toEqual([]);
   });
 
-  it('counts an ONGOING condition whose onset is outside the window (INTERVAL OVERLAP, not onset)', async () => {
-    // *** Pinned as a DEFECT, not as intended behavior. ***
-    //
+  it('does NOT count an ONGOING condition whose onset is outside the window', async () => {
     // `count_in_window` exists for recurrence — "3 UTIs in 12 months"
-    // (select-facts.ts:60). legacy-v0 filters on the ENTRY DATE, so an onset
-    // 218 days ago falls outside a 90-day window. v1 asks `overlap()` instead,
-    // and `assembleStateful` gives every still-active entry `OPEN(asOf)`
-    // (context-assembler.ts:85) — so the interval reaches the clock and matches
-    // EVERY horizon, whatever the onset. Under v1 a `count_in_window` over
-    // conditions / medications / allergies therefore counts presence, not
-    // occurrences, and `window_days` stops discriminating on those buckets.
-    //
-    // Not fixed here: the fix is a kernel-semantics judgement (count over the
-    // START bound rather than over interval overlap) that belongs to plan 01/05,
-    // exactly as D7's ordering blind spot did. Pinned so it cannot change
-    // silently.
+    // (select-facts.ts). legacy-v0 filters on the ENTRY DATE, so an onset 218
+    // days ago falls outside a 90-day window. v1 now asks the same question of
+    // the START bound, so the still-open end no longer drags the fact into
+    // every horizon. Both versions count 1.
     const gate = gateFor({
       field: 'conditions',
       operator: 'count_in_window',
@@ -392,8 +411,51 @@ describe('disclosed v1 deltas — count_in_window', () => {
     const v1 = await evaluateGate(gate, deps('v1', shared));
     expect(legacy.satisfied).toBe(false);
     expect(legacy.reason).toBe('Found 1 matching N39.0 in conditions within last 90 days (<2)');
+    expect(v1.satisfied).toBe(false);
+    expect(v1.reason).toBe(legacy.reason);
+    expect(v1.indeterminate).toBe(false);
+    expect(v1.uncertainty).toEqual([]);
+  });
+
+  it('an UNDATED fact is still counted under LIFETIME, where legacy also counts it', async () => {
+    // The other half of the translation: legacy's `windowDays === undefined`
+    // branch returns true without looking at the date, so LIFETIME admits an
+    // undated fact. A bounded horizon and LIFETIME must not answer alike, or
+    // "exclude the undated" would just be "drop the undated".
+    const shared = {
+      patientContext: patient({
+        labResults: [labEntry(HGB, 7, D_JUL), labEntry(HGB, 8)],
+      }),
+      factStore: [labFact('l1', HGB, D_JUL, 7), undatedLabFact('l2', HGB, 8)],
+    };
+    const gate = gateFor({
+      field: 'labs',
+      operator: 'count_in_window',
+      value: HGB,
+      system: 'LOINC',
+      horizon: 'LIFETIME',
+    });
+    const legacy = await evaluateGate(gate, deps('legacy-v0', shared));
+    const v1 = await evaluateGate(gate, deps('v1', shared));
+    expect(legacy.reason).toBe(`Found 2 matching ${HGB} in labs within lifetime (≥2)`);
     expect(v1.satisfied).toBe(true);
-    expect(v1.reason).toBe('Found 2 matching N39.0 in conditions within last 90 days (≥2)');
+    expect(v1.reason).toBe(legacy.reason);
+  });
+
+  it('membership over the SAME ongoing condition is unaffected — it keeps overlap', async () => {
+    // The scope boundary, asserted rather than asserted-about. "Does the patient
+    // have an active UTI during the window?" is a genuine overlap question and
+    // its answer must not move when the count's does.
+    const gate = gateFor({
+      field: 'conditions',
+      operator: 'includes_code',
+      value: 'N39.0',
+      system: 'ICD-10',
+      window_days: 90,
+    });
+    const shared = { factStore: [conditionFact('c2', 'N39.0', D_OLD)] };
+    const v1 = await evaluateGate(gate, deps('v1', shared));
+    expect(v1.satisfied).toBe(true);
   });
 });
 
@@ -687,13 +749,62 @@ describe('delta_from_baseline operates on the kernel-selected series', () => {
 // ─── D7: an undated fact poisons the series ───────────────────────────
 
 describe('D7 — an undated observation is admitted but not orderable', () => {
-  it('fails closed on a series containing one undated lab, and says why', async () => {
+  it('fails closed on a LIFETIME series containing one undated lab, and says why', async () => {
     // Three perfectly dated, rising results plus ONE undated one. legacy-v0
-    // drops the undated entry and sees a clean rising series. v1 admits it —
-    // OPEN(asOf) overlaps the horizon — but `effectiveRange` gives it
-    // (-∞, +∞), so no strict total order exists and the series is refused
-    // (select-facts.ts:267-273). Accepted and disclosed (D7); do not "fix" it
-    // by inventing an ordering rule.
+    // drops the undated entry and sees a clean rising series. v1 admits it, but
+    // `effectiveRange` gives it (-∞, +∞), so no strict total order exists and
+    // the series is refused (select-facts.ts). Accepted and disclosed (D7); do
+    // not "fix" it by inventing an ordering rule.
+    //
+    // **The explicit LIFETIME horizon is required by D8 and was not here
+    // before.** `trend_*` is an aggregate operator, so under the default lab
+    // horizon (QUARTER — bounded) the undated lab is now excluded outright and
+    // the series is clean. D8's residual difference is exactly this: LIFETIME
+    // admits an undated observation that legacy's `collectLabSeries` always
+    // drops, and D7 then makes it poison the ordering. That is the surviving
+    // reach of D7 in the aggregate class, so this is where it must be pinned.
+    // The bounded-horizon case is pinned by the next test.
+    const shared = {
+      patientContext: patient({
+        labResults: [
+          labEntry(HGB, 5, D_JUN),
+          labEntry(HGB, 7, D_JUL),
+          labEntry(HGB, 9, D_AUG),
+          labEntry(HGB, 3),
+        ],
+      }),
+      factStore: [
+        labFact('l1', HGB, D_JUN, 5),
+        labFact('l2', HGB, D_JUL, 7),
+        labFact('l3', HGB, D_AUG, 9),
+        undatedLabFact('l4', HGB, 3),
+      ],
+    };
+    const gate = gateFor({
+      field: 'labs',
+      operator: 'trend_up',
+      value: HGB,
+      system: 'LOINC',
+      horizon: 'LIFETIME',
+    });
+    const legacy = await evaluateGate(gate, deps('legacy-v0', shared));
+    expect(legacy.satisfied).toBe(true);
+
+    const v1 = await evaluateGate(gate, deps('v1', shared));
+    expect(v1.satisfied).toBe(false);
+    expect(v1.indeterminate).toBe(true);
+    expect(v1.uncertainty).toContain('AMBIGUOUS_SERIES_ORDER');
+    // A fail-closed refusal must not read like an ordinary shortfall.
+    expect(v1.reason).not.toMatch(/dated values/);
+    expect(v1.reason).toMatch(/AMBIGUOUS_SERIES_ORDER/);
+  });
+
+  it('does NOT poison a BOUNDED-horizon series — D8 drops the undated lab first', async () => {
+    // The same four results under the default QUARTER lab horizon. The undated
+    // lab has no start bound, so the aggregate predicate excludes it before
+    // ordering is ever attempted, and v1 converges on legacy-v0's clean rising
+    // series. D7's reach is narrowed by D8, not removed: it survives at
+    // LIFETIME, pinned by the test above.
     const shared = {
       patientContext: patient({
         labResults: [
@@ -712,15 +823,11 @@ describe('D7 — an undated observation is admitted but not orderable', () => {
     };
     const gate = gateFor({ field: 'labs', operator: 'trend_up', value: HGB, system: 'LOINC' });
     const legacy = await evaluateGate(gate, deps('legacy-v0', shared));
-    expect(legacy.satisfied).toBe(true);
-
     const v1 = await evaluateGate(gate, deps('v1', shared));
-    expect(v1.satisfied).toBe(false);
-    expect(v1.indeterminate).toBe(true);
-    expect(v1.uncertainty).toContain('AMBIGUOUS_SERIES_ORDER');
-    // A fail-closed refusal must not read like an ordinary shortfall.
-    expect(v1.reason).not.toMatch(/dated values/);
-    expect(v1.reason).toMatch(/AMBIGUOUS_SERIES_ORDER/);
+    expect(legacy.satisfied).toBe(true);
+    expect(v1.satisfied).toBe(true);
+    expect(v1.indeterminate).toBe(false);
+    expect(v1.reason).toBe(legacy.reason);
   });
 
   it('refuses a delta over two results on the SAME day that legacy-v0 computes', async () => {

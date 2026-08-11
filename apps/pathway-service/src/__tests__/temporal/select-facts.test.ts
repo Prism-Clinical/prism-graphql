@@ -403,3 +403,220 @@ describe('P1: status "any" bypasses state filtering entirely (RFC §3)', () => {
     }
   });
 });
+
+// ─── D8: the AGGREGATE class selects on the START bound ────────────────
+//
+// `selectFacts` used to apply one temporal predicate, `overlap`, to all three
+// operator classes. For the aggregate class that answers the wrong question:
+// `count_in_window` counts RECURRENCE, and a still-active stateful fact is
+// `OPEN(evaluationAsOf)`, which overlaps every horizon the resolver can
+// produce — so `window_days` stopped discriminating on conditions /
+// medications / allergies entirely. D8 gives the aggregate class occurrence
+// semantics: a fact is in-window iff its `interval.start` falls inside the
+// horizon. Membership ("was this active during the window") and scalar (whose
+// facts — vitals above all — are routinely undated) keep `overlap`.
+
+const AS_OF = '2026-07-26T00:00:00.000Z'; // = Q.upperBound = LIFE.upperBound
+
+/** A still-active stateful fact, exactly as `assembleStateful` builds one. */
+const ongoingCond = (factId: string, day?: string): NormalizedFact => ({
+  kind: 'condition', factId, code: 'N39.0', system: 'ICD-10',
+  interval: {
+    ...(day ? { start: { value: day, precision: 'day' as const } } : {}),
+    end: { kind: 'OPEN', assertedCurrentAt: AS_OF },
+  },
+  recordValidity: 'VALID', validityBasis: 'verification:confirmed',
+  provenance: { sourceType: 'SYNTHETIC' },
+  clinicalState: 'ACTIVE', stateBasis: 'FHIR_STATUS',
+});
+
+/** An undated observation, exactly as `assembleLabs` builds one (no `start`). */
+const undatedLab = (factId: string, value: number): NormalizedFact => ({
+  kind: 'lab', factId, code: '718-7', system: 'LOINC', value, unit: 'g/dL',
+  observationStatus: 'final',
+  interval: { end: { kind: 'OPEN', assertedCurrentAt: AS_OF } },
+  recordValidity: 'VALID', validityBasis: 'observation:final',
+  provenance: { sourceType: 'SYNTHETIC' },
+});
+
+const countN390 = {
+  field: 'conditions' as const, operator: 'count_in_window' as const,
+  value: 'N39.0', system: 'ICD-10',
+};
+const countLab = {
+  field: 'labs' as const, operator: 'count_in_window' as const,
+  value: '718-7', system: 'LOINC',
+};
+
+describe('D8: aggregate selects on the start bound, not on interval overlap', () => {
+  it('excludes an ONGOING fact whose onset predates a bounded horizon', () => {
+    // c1 onset is ~4 months before Q opens but the condition is still active,
+    // so its interval reaches the clock and OVERLAPS Q. Occurrence semantics
+    // count the onset, so only c2 is in-window.
+    const out = selectFacts(
+      countN390,
+      [ongoingCond('c1', '2026-01-05'), ongoingCond('c2', '2026-05-02')],
+      { horizon: Q, status: 'active' },
+    );
+    expect(out.status).toBe('READY');
+    if (out.status === 'READY') expect(out.selected.map((f) => f.factId)).toEqual(['c2']);
+    const d1 = out.decisions.find((x) => x.fact.factId === 'c1');
+    expect(d1?.temporalMatch).toBe('NO_MATCH');
+    expect(d1?.operatorDecision).toBe('EXCLUDE');
+    // Definitely out — not a fail-closed exclusion dressed up as doubt.
+    expect(d1?.uncertainty).toEqual([]);
+  });
+
+  it('excludes an UNDATED fact from a bounded horizon (legacy isWithinWindow(undefined, N))', () => {
+    const out = selectFacts(countLab, [undatedLab('l1', 9)], { horizon: Q });
+    // Something matched the candidate rule, so this is a definite count of
+    // zero, not "no such fact".
+    expect(out.status).toBe('READY');
+    if (out.status === 'READY') expect(out.selected).toHaveLength(0);
+    expect(out.decisions[0].temporalMatch).toBe('NO_MATCH');
+    expect(out.decisions[0].uncertainty).toEqual([]);
+  });
+
+  it('INCLUDES an undated fact under LIFETIME (legacy windowDays === undefined)', () => {
+    const out = selectFacts(countLab, [undatedLab('l1', 9)], { horizon: LIFE });
+    expect(out.status).toBe('READY');
+    if (out.status === 'READY') expect(out.selected.map((f) => f.factId)).toEqual(['l1']);
+    expect(out.decisions[0].temporalMatch).toBe('MATCH');
+  });
+
+  it('includes an undated STATEFUL fact under LIFETIME too — the rule is per-class, not per-kind', () => {
+    const out = selectFacts(countN390, [ongoingCond('c1')], { horizon: LIFE, status: 'active' });
+    expect(out.status).toBe('READY');
+    if (out.status === 'READY') expect(out.selected.map((f) => f.factId)).toEqual(['c1']);
+  });
+
+  it('still excludes a future onset under LIFETIME (upperBound = evaluationAsOf)', () => {
+    const out = selectFacts(countN390, [ongoingCond('c1', '2026-08-01')], {
+      horizon: LIFE, status: 'active',
+    });
+    expect(out.status).toBe('READY');
+    if (out.status === 'READY') expect(out.selected).toHaveLength(0);
+    expect(out.decisions[0].temporalMatch).toBe('NO_MATCH');
+  });
+
+  // A bound is a RANGE, not an instant. We require the WHOLE range inside the
+  // horizon — the same containment test `overlap` already applies to point
+  // facts — so an onset whose precision cannot resolve which side of the
+  // boundary it falls on is UNKNOWN, and the aggregate class fails closed on it.
+  describe('a start bound is a RANGE: whole-range containment, imprecision is UNKNOWN', () => {
+    const MIDDAY: ResolvedHorizon = { lowerBound: '2026-04-27T12:00:00.000Z', upperBound: AS_OF };
+
+    it('a day-precision onset straddling the lower bound is UNKNOWN and fails closed', () => {
+      const out = selectFacts(countN390, [ongoingCond('c1', '2026-04-27')], {
+        horizon: MIDDAY, status: 'active',
+      });
+      expect(out.status).toBe('READY');
+      if (out.status === 'READY') {
+        expect(out.selected).toHaveLength(0);
+        expect(out.temporallyUnverified).toBe(true);
+      }
+      expect(out.decisions[0].temporalMatch).toBe('UNKNOWN');
+      expect(out.decisions[0].operatorDecision).toBe('EXCLUDE');
+      expect(out.decisions[0].uncertainty).toContain('TEMPORAL_UNKNOWN');
+    });
+
+    it('the next whole day is entirely inside and MATCHes', () => {
+      const out = selectFacts(countN390, [ongoingCond('c1', '2026-04-28')], {
+        horizon: MIDDAY, status: 'active',
+      });
+      expect(out.status).toBe('READY');
+      if (out.status === 'READY') expect(out.selected.map((f) => f.factId)).toEqual(['c1']);
+    });
+
+    it('a day-precision onset ON the upper bound straddles it and is UNKNOWN', () => {
+      // Q.upperBound is midnight on 2026-07-26; the day spans past it.
+      const out = selectFacts(countN390, [ongoingCond('c1', '2026-07-26')], {
+        horizon: Q, status: 'active',
+      });
+      expect(out.decisions[0].temporalMatch).toBe('UNKNOWN');
+      if (out.status === 'READY') expect(out.selected).toHaveLength(0);
+    });
+
+    it('a year-precision onset wholly inside a LIFETIME horizon still MATCHes', () => {
+      const yearCond: NormalizedFact = {
+        ...(ongoingCond('c1', '2020') as NormalizedFact),
+        interval: {
+          start: { value: '2020', precision: 'year' },
+          end: { kind: 'OPEN', assertedCurrentAt: AS_OF },
+        },
+      };
+      const out = selectFacts(countN390, [yearCond], { horizon: LIFE, status: 'active' });
+      expect(out.decisions[0].temporalMatch).toBe('MATCH');
+      if (out.status === 'READY') expect(out.selected).toHaveLength(1);
+    });
+  });
+
+  describe('SCOPE: membership and scalar are untouched by the same fixtures', () => {
+    it('membership still admits the ongoing fact whose onset predates the horizon', () => {
+      // "Does the patient have an active UTI during the window?" is a genuine
+      // overlap question, and the answer is yes regardless of onset.
+      const out = selectFacts(
+        { field: 'conditions', operator: 'includes_code', value: 'N39.0', system: 'ICD-10' },
+        [ongoingCond('c1', '2026-01-05')],
+        { horizon: Q, status: 'active' },
+      );
+      expect(out.status).toBe('READY');
+      if (out.status === 'READY') {
+        expect(out.selected.map((f) => f.factId)).toEqual(['c1']);
+        expect(out.temporallyUnverified).toBe(false);
+      }
+      expect(out.decisions[0].temporalMatch).toBe('MATCH');
+    });
+
+    it('membership still admits an undated fact under a BOUNDED horizon', () => {
+      const out = selectFacts(
+        { field: 'conditions', operator: 'includes_code', value: 'N39.0', system: 'ICD-10' },
+        [ongoingCond('c1')],
+        { horizon: Q, status: 'active' },
+      );
+      expect(out.status).toBe('READY');
+      if (out.status === 'READY') expect(out.selected).toHaveLength(1);
+      expect(out.decisions[0].temporalMatch).toBe('MATCH');
+    });
+
+    it('scalar still selects an UNDATED observation under a bounded horizon', () => {
+      // THE scope boundary. `PatientContext.vitalSigns` carries no dates at
+      // all, so every vital is assembled undated; start-bound selection here
+      // would make every vitals scalar gate select nothing and fail closed.
+      const out = selectFacts(
+        { field: 'labs', operator: 'less_than', value: '718-7', system: 'LOINC' },
+        [undatedLab('l1', 9)],
+        { horizon: Q },
+      );
+      expect(out.status).toBe('READY');
+      if (out.status === 'READY') expect(out.selected.map((f) => f.factId)).toEqual(['l1']);
+      expect(out.decisions[0].temporalMatch).toBe('MATCH');
+    });
+
+    it('the SAME undated fixture is excluded by aggregate and selected by scalar', () => {
+      const store = [undatedLab('l1', 9)];
+      const agg = selectFacts(countLab, store, { horizon: Q });
+      const scalar = selectFacts(
+        { field: 'labs', operator: 'less_than', value: '718-7', system: 'LOINC' },
+        store, { horizon: Q },
+      );
+      expect(agg.status === 'READY' && agg.selected).toHaveLength(0);
+      expect(scalar.status === 'READY' && scalar.selected).toHaveLength(1);
+    });
+  });
+
+  it('keeps rejecting an inverted interval rather than silently accepting it', () => {
+    // `overlap` throws on start-after-known-end (overlap.ts:42); the start-bound
+    // predicate would not notice, so the check is carried explicitly.
+    const inverted: NormalizedFact = {
+      ...(ongoingCond('c1', '2026-06-10') as NormalizedFact),
+      interval: {
+        start: { value: '2026-06-10', precision: 'day' },
+        end: { kind: 'KNOWN', bound: { value: '2026-06-01', precision: 'day' } },
+      },
+    };
+    expect(() => selectFacts(countN390, [inverted], { horizon: Q, status: 'active' })).toThrow(
+      /inverted interval/,
+    );
+  });
+});

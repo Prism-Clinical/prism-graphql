@@ -734,10 +734,12 @@ function windowDescription(horizon: ResolvedHorizon): string {
  *
  * A fact with no `interval.start` contributes no point: it has no position in
  * time, and legacy's `collectLabSeries` drops undated entries for the same
- * reason (`if (!lab.date) continue`). D7 makes this reachable only for a
- * single-candidate selection — an undated fact alongside any other candidate is
- * `AMBIGUOUS_SERIES_ORDER` and never reaches here — so the shortfall message
- * that follows reads exactly as `legacy-v0`'s does.
+ * reason (`if (!lab.date) continue`). Two rules keep this branch narrow, and
+ * both leave the shortfall message reading exactly as `legacy-v0`'s does:
+ * D8 excludes an undated fact from the selection outright under any BOUNDED
+ * horizon, so it can only arrive here under LIFETIME; and D7 then admits it
+ * only as a single-candidate selection, since an undated fact alongside any
+ * other candidate is `AMBIGUOUS_SERIES_ORDER` and never reaches here.
  */
 function seriesPoints(facts: readonly NormalizedFact[]): Array<{ ts: number; value: number }> {
   const points: Array<{ ts: number; value: number }> = [];

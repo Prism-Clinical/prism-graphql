@@ -139,7 +139,7 @@ The **Sweep field** column is the round-2 addition: `attributeNamespaceToField()
 - **Task 10 must disclose it** as a `v1` delta. It is currently undisclosed, which locked decision #2 forbids.
 - **Plan 09's authoring UI should require a date on lab input**, and `SyntheticLabResult.date` being optional is the reason this is ordinary input rather than an edge case.
 
-**D8 — OPEN, NOT DECIDED. `count_in_window` asks the wrong temporal question for stateful facts, and under `v1` its window stops discriminating on them.** *(Round 10, found executing Task 6. Pinned by test, deliberately not fixed.)*
+**D8 — ~~OPEN, NOT DECIDED~~ SUPERSEDED by the settled D8 below, and now IMPLEMENTED. `count_in_window` asks the wrong temporal question for stateful facts, and under `v1` its window stops discriminating on them.** *(Round 10, found executing Task 6. Pinned by test, then decided and fixed in the D8 follow-up to Task 6 — retained for the finding's provenance; read the settled D8 below for the rule that is in force.)*
 
 `selectFacts` has exactly one temporal predicate, `overlap(fact.interval, horizon)` — "was this fact true at some point inside the window". That is the right question for **membership** ("does the patient have X?") and, via `definiteLatest`, workable for **scalar**. It is the **wrong question for `count_in_window`**, whose entire purpose is *recurrence*: three UTIs in twelve months, repeat ED visits — the examples `select-facts.ts:60-62` names itself.
 
@@ -169,6 +169,11 @@ For `count_in_window` that is wrong. The operator counts **recurrence**, and `as
 
 **Carried:** Task 6's D8 pinning tests flip from documenting the defect to documenting the fix. Task 10 discloses what remains.
 
+**Implemented** in the D8 follow-up to Task 6 (`select-facts.ts`, `startsWithin`). Three things the decision text did not anticipate, settled in execution:
+- **A start bound is a RANGE, and whole-range containment is the rule.** `startsWithin` reuses the containment test `overlap` already applies to a POINT fact (`overlap.ts:20-25`): MATCH when the whole range is inside, NO_MATCH when it is wholly outside, UNKNOWN when it straddles a boundary — which the aggregate class then fails closed on, recording `TEMPORAL_UNKNOWN`. Keying on the range's lower edge alone would match legacy's `Date.parse` byte-for-byte but would silently pick one side of an imprecise bound. Reusing the point-fact rule is also what CONFINES the change: for a dated observation the two predicates are the identical formula, so every dated-lab aggregate answers exactly as before D8 and only stateful/undated facts move.
+- **D7's reach in the aggregate class narrows to LIFETIME, and the Task 6 test had to move with it.** `trend_*` is an aggregate operator, so under the default bounded QUARTER lab horizon an undated lab is now excluded before ordering is attempted and the series is clean. The D7 pinning test (`fails closed on a series containing one undated lab`) therefore needed an explicit `horizon: 'LIFETIME'` to keep reproducing — exactly the residual difference recorded above. Its assertions are unchanged; a companion test pins the bounded-horizon convergence.
+- **`overlap`'s inverted-interval throw is carried into `startsWithin`.** A start-only predicate cannot notice `start > known end`, so the check is explicit. The assembler already rejects these with a coded error; this is the kernel's second line of defence against a hand-built store, and it is pinned by a test.
+
 ---
 
 ## Global Constraints
@@ -190,6 +195,7 @@ For `count_in_window` that is wrong. The operator counts **recurrence**, and `as
   | Task 4 (`88ce6bb`) | 1039 | 9 | 1048 | 89 / 91 |
   | Task 5 (`8fd537d`) | 1057 | 9 | 1066 | 90 / 92 |
   | Task 6 (`af9fd17`) | 1092 | 9 | 1101 | 91 / 93 |
+  | D8 follow-up to Task 6 | 1109 | 9 | 1118 | 91 / 93 |
 
   Task 4's delta is +15 passed / +15 total: **16 added** in the new
   `gate-evaluator-membership-kernel.test.ts`, **1 deleted** — Task 3's no-op-fork
@@ -204,6 +210,15 @@ For `count_in_window` that is wrong. The operator counts **recurrence**, and `as
   new `gate-evaluator-aggregate-kernel.test.ts`, **none deleted and none
   modified**. Additive again; the only non-test file touched is
   `gate-evaluator.ts`.
+
+  The D8 follow-up's delta is +17 passed / +17 total / no suite change: **14
+  added** in `temporal/select-facts.test.ts` and **3 added** in
+  `gate-evaluator-aggregate-kernel.test.ts`, **none deleted**. **Three
+  modified**, each accounted for: the two D8 pinning tests inverted as the
+  decision requires (`counts an UNDATED lab…` and `counts an ONGOING
+  condition…`, both now asserting convergence with `legacy-v0`), and the D7
+  series test, which keeps every assertion but gains an explicit
+  `horizon: 'LIFETIME'` — see the D8 implementation notes above.
 
   **Append a row per task.** *(Round 8, self-found during Task 3: every "compare against 958/9" instruction below was stale the moment Task 1 landed, and an executor following it literally would either think they had broken 50 tests or would fail to notice breaking some. The count is only meaningful as a delta whose additions are each accounted for.)*
 - **`legacy-v0` executes no kernel code, and no code this plan adds.** Structural, not behavioral: the version seam (Task 3) routes `legacy-v0` to the untouched legacy function; the assembler is not called; override parsing does not reject (D1). Every pre-existing gate-evaluator and traversal test must pass with **unmodified assertions** — that is the proof.
@@ -689,9 +704,9 @@ Covers `count_in_window`, `trend_up`, `trend_down`, `delta_from_baseline`. `line
 
 > **Round 10, found executing this task — three findings. Read them before writing the count branch.**
 >
-> **1. `count_in_window` loses its window entirely on `conditions` / `medications` / `allergies` under `v1`. See D8 — OPEN.** Every still-active entry is `OPEN(evaluationAsOf)`, so `overlap` matches every horizon and `window_days` stops discriminating on exactly the buckets the operator exists for. Pinned by test, not fixed. Task 10 must disclose it.
+> **1. `count_in_window` loses its window entirely on `conditions` / `medications` / `allergies` under `v1`. See D8 — SETTLED AND FIXED.** Every still-active entry is `OPEN(evaluationAsOf)`, so `overlap` matched every horizon and `window_days` stopped discriminating on exactly the buckets the operator exists for. Pinned by test at Task 6, then fixed in the D8 follow-up: the aggregate class selects on the start bound. The pinning test is inverted, not deleted. **No longer a `v1` delta** — Task 10 must record it as a defect found and closed, not disclose it as behaviour.
 >
-> **2. An UNDATED observation is counted inside a window `legacy-v0` drops** — `isWithinWindow(undefined, 90, now)` is `false`, while `OPEN(asOf)` matches. The admission half of D7 surfacing in the aggregate class, again in the permissive direction. Pinned by test; ordinary input, because `SyntheticLabResult.date` is optional.
+> **2. An UNDATED observation is counted inside a window `legacy-v0` drops** — `isWithinWindow(undefined, 90, now)` is `false`, while `OPEN(asOf)` matched. The admission half of D7 surfacing in the aggregate class, again in the permissive direction. Pinned by test at Task 6; ordinary input, because `SyntheticLabResult.date` is optional. **Also closed by D8** for a BOUNDED horizon; it survives under LIFETIME, where legacy also admits by date-blind short-circuit for a count but where legacy's `collectLabSeries` still drops the undated point from a `trend_*` series. That last sliver is D8's disclosed residual and is what Task 10 must carry.
 >
 > **3. `select-facts.ts:55-68` overstates its own candidate rules.** It says each rule "mirrors what the current evaluator does, so `legacy-v0` is genuinely behavior-preserving", and for `trend_*` / `delta_from_baseline` cites `collectLabSeries`'s wildcard match and finite-value requirement — but omits that `collectLabSeries` **also requires a parseable date** (`gate-evaluator.ts:145-147`). `candidateMatches` has no such requirement, which is precisely how an undated lab enters a series and triggers `AMBIGUOUS_SERIES_ORDER`. The comment should say so; the behavior is D7's and stays.
 >
