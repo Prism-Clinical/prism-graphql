@@ -177,6 +177,26 @@ For `count_in_window` that is wrong. The operator counts **recurrence**, and `as
 
 ---
 
+## Round 11 — findings from executing Task 7
+
+Six findings. Two are defects in work already landed, one was self-found and fixed inside this task, three are risks to carry forward.
+
+**[R11-1] P1 — a coded `vitals` scalar condition carrying a `system` is satisfiable under `legacy-v0` and UNSATISFIABLE under `v1`. Undisclosed delta from Task 5.** Confirmed by running both paths against one clinical reality, not reasoned about. `getNumericValue` reads `condition.system` on the `labs` branch and **never on the `vitals` branch** (`gate-evaluator.ts:84-93`) — vitals resolve by dotted path through the bag, which has no system concept at all. `evaluateScalarKernel` goes through `adaptCodedCondition`, which copies `system` when present, and `candidateMatches` then rejects every vital whose system is not the assembler's `urn:prism:vitals` (`select-facts.ts:108`). So `{field:'vitals', operator:'greater_than', value:'systolic_bp', system:'LOINC', threshold:140}` against `vitalSigns:{systolic_bp:148}` answers `satisfied: true / "vitals value 148 > 140"` under `legacy-v0` and `satisfied: false / "No numeric value found for vitals:systolic_bp"` under `v1`. `system` is in `CODED_KEYS`, so this is authorable and passes import. Not fixed at Task 7 — it is a Task 5 semantic question (does a vitals gate's `system` mean anything at all, or should the adapter drop it for `vitals` the way it drops `value`/`system` for `exists`?) and D7/D8 set the precedent that an evaluator task does not decide one from the wrong layer. **Task 10 must either disclose it or Task 5 must fix it; leaving it silent is what locked decision #2 forbids.**
+
+**[R11-2] P1 — Task 1 Step 4's instruction that Task 7 would replace the sweep's inline attribute branch with `adaptAttributeCondition` is structurally impossible.** The sweep reads pathway JSON off AGE inside `assertEncounterAnchor`, which has **no attribute registry in scope**; `adaptAttributeCondition` needs a `codeMap` to turn `lab.a1c` into a `(code, system)` pair. Calling it with an empty map would make every `lab.*` / `allergy.*` condition adapt to `null` and vanish from the sweep — reopening exactly the preflight hole P1-8 closed, one task after closing it. What preflight actually needs is the cascade key and the NODE tier, and both already come from the shared `attributeNamespaceToField` + `parseConditionOverride` (locked decision #6). Resolved by leaving the sweep's branch in place, correcting the comment that promised otherwise, and asserting the agreement by test rather than assuming it from shared code. *(Class: an instruction whose precondition is created by a LATER task than the one that states it — the symbol-level and property-level ordering checks both pass, because every symbol and field exists; what does not exist is the DATA the symbol needs.)*
+
+**[R11-3] Self-found and fixed inside Task 7 — the adapter's parse/lookup ordering was a preflight/evaluation asymmetry in the permissive direction.** First cut resolved the `codeMap` row before parsing the NODE override, so `{attribute:'lab.unmapped', horizon:'FORTNIGHT'}` was rejected at session creation by the sweep (which parses every clinical-namespace condition and has no codeMap) and silently ignored at evaluation. Reordered: the namespace check first (so `patient.*` is ignored by both sides), then `parseConditionOverride`, then the code. Pinned by a test that asserts the sweep and `evaluateGate` throw for the same condition, plus its mirror for `patient.*` where neither may.
+
+**[R11-4] P2 — `codeMap` is still an optional constructor parameter defaulting to an empty `Map` at both engines** (`traversal-engine.ts:166`, `retraversal-engine.ts:95`), and Task 7 makes it load-bearing for the `v1` kernel path. All five construction sites do pass `rctx.codeMap` today, so nothing is broken — but this is precisely the shape P1-10 promoted `pathwayDefaults` out of: omitted at one site, every `lab.*` / `allergy.*` attribute gate silently adapts to `null`, falls back to `resolveAttribute` with an empty map, and answers a quiet `false` — while the anchor preflight, which needs no codeMap, resolved policy for those same conditions. Consider promoting it to required alongside `pathwayDefaults`.
+
+**[R11-5] Task 10's `v1` delta list gains four attribute-route entries, one of which nothing in this plan anticipated.** The expected three: an attribute-targeted lab is now horizon-bounded (QUARTER), validity-governed, and compared **latest-first** rather than `.find()`-first (`attribute-registry.ts:34`). The unanticipated one: **an INACTIVE allergy stops matching.** `v1` gives `allergies` `status: 'active'`, while `resolveAttribute`'s `allergies.some(...)` has no notion of clinical state — so `allergy.penicillin == true` flips from satisfied to unsatisfied for a resolved allergy. This is the first delta in the plan that comes from the **status** axis rather than the horizon axis, and D3's table does not mention status at all.
+
+**[R11-6] Forward risk — the attribute route hardcodes `VITALS_SYSTEM`, coupling it to the SYNTHETIC assembler.** D3 specifies it and Task 7 implements it, so this is not a deviation. But `resolveAttribute` has no system concept for vitals, and the only reason the hardcoded urn matches is that `assembleVitals` stamps the same constant on every vital (`context-assembler.ts:269`). Plan 07's LIVE snapshot mapper, which will produce vitals from FHIR with real LOINC codes, would make every `vitals.*` attribute gate select nothing. Related to R11-1 from the other side: one route ignores `system` and the other invents one.
+
+**Defect-class note.** Rounds 1–3 design, 4–5 mechanics, 6 cross-layer, 7 pseudocode, 8 field-level dependency, 9 cross-plan intent, 10 a shared primitive generalized past its model. R11-1 is none of those: it is a **legacy function whose per-branch inconsistency the kernel silently regularizes**. `getNumericValue` honours `system` for labs and ignores it for vitals — an asymmetry nobody wrote down because nothing depended on it — and the kernel, being uniform by design, made the asymmetry observable as a behavior change in one direction only. *Before round 12, take each `legacy-v0` function the kernel replaces and enumerate the condition fields it reads **per branch**, not per function. Any field read on one branch and ignored on another is a `v1` delta the uniform kernel will introduce, and none of them are currently disclosed.*
+
+---
+
 ## Global Constraints
 
 - **Branch:** `feat/temporal-horizon-evaluator-kernel`, worktree `/home/claude/workspace/features/feat-temporal-horizon-evaluator-kernel/prism-graphql`, from `origin/main` at `d6f51fd`.
@@ -197,6 +217,7 @@ For `count_in_window` that is wrong. The operator counts **recurrence**, and `as
   | Task 5 (`8fd537d`) | 1057 | 9 | 1066 | 90 / 92 |
   | Task 6 (`af9fd17`) | 1092 | 9 | 1101 | 91 / 93 |
   | D8 follow-up to Task 6 | 1110 | 9 | 1119 | 91 / 93 |
+  | Task 7 (`db86a72`) | 1153 | 9 | 1162 | 92 / 94 |
 
   Task 4's delta is +15 passed / +15 total: **16 added** in the new
   `gate-evaluator-membership-kernel.test.ts`, **1 deleted** — Task 3's no-op-fork
@@ -220,6 +241,11 @@ For `count_in_window` that is wrong. The operator counts **recurrence**, and `as
   condition…`, both now asserting convergence with `legacy-v0`), and the D7
   series test, which keeps every assertion but gains an explicit
   `horizon: 'LIFETIME'` — see the D8 implementation notes above.
+
+  Task 7's delta is +43 passed / +43 total / +1 suite: **43 added**, all in the
+  new `temporal/attribute-condition-kernel.test.ts`, **none deleted and none
+  modified**. Additive; the non-test files touched are `condition-adapter.ts`,
+  `gate-evaluator.ts`, and one comment in `resolution-context.ts`.
 
   **Append a row per task.** *(Round 8, self-found during Task 3: every "compare against 958/9" instruction below was stale the moment Task 1 landed, and an executor following it literally would either think they had broken 50 tests or would fail to notice breaking some. The count is only meaningful as a delta whose additions are each accounted for.)*
 - **`legacy-v0` executes no kernel code, and no code this plan adds.** Structural, not behavioral: the version seam (Task 3) routes `legacy-v0` to the untouched legacy function; the assembler is not called; override parsing does not reject (D1). Every pre-existing gate-evaluator and traversal test must pass with **unmodified assertions** — that is the proof.
