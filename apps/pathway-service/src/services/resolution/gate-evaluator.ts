@@ -20,6 +20,8 @@ import { assertKnownPolicyVersion } from './temporal/policy-registry';
 import type { PathwayTemporalDefaults } from './temporal/cascade';
 import type { FactStore, NormalizedFact } from './temporal/fact-model';
 import { isObservationFact } from './temporal/fact-model';
+import { boundEpochRange } from './temporal/interval';
+import type { ResolvedHorizon } from './temporal/overlap';
 import { isTemporalOperator, operatorClass } from './temporal/contract';
 import type { UncertaintyReason } from './temporal/contract';
 import { adaptCodedCondition } from './temporal/condition-adapter';
@@ -698,6 +700,204 @@ function evaluateScalarKernel(
 }
 
 /**
+ * How the applied window reads in a `count_in_window` reason string.
+ *
+ * Derived from the RESOLVED horizon, never from `condition.window_days`, so the
+ * sentence always describes the window that was actually applied. Under `v1` the
+ * window can come from any cascade tier — a `window_days` the adapter translated
+ * into a NODE `{days:N}` (D2), a PATHWAY default, or the system default — and a
+ * description keyed on `window_days` alone would print "lifetime" for a labs
+ * count that in fact only looked back a QUARTER.
+ *
+ * The day-count spelling is legacy's, verbatim, so a count whose outcome matches
+ * `legacy-v0`'s reads identically: `{days:90}` and `QUARTER` both render
+ * "last 90 days", and LIFETIME renders "lifetime". Only a horizon with a
+ * non-integral width — ENCOUNTER — needs a spelling legacy never had.
+ */
+function windowDescription(horizon: ResolvedHorizon): string {
+  if (horizon.lowerBound === null) return 'lifetime';
+  const days = (Date.parse(horizon.upperBound) - Date.parse(horizon.lowerBound)) / 86_400_000;
+  if (!Number.isInteger(days)) return `the window since ${horizon.lowerBound}`;
+  return `last ${days} day${days === 1 ? '' : 's'}`;
+}
+
+/**
+ * Turn the kernel's selected facts into the `(timestamp, value)` series
+ * `linearSlope` and the delta comparison consume.
+ *
+ * **The order is the kernel's, not ours.** `selectFacts` already sorts the
+ * aggregate selection by effective time and refuses the series outright unless
+ * every adjacent pair is strictly ordered (`select-facts.ts:262-273`), so
+ * re-sorting here would only hide a kernel bug. `delta_from_baseline` depends on
+ * that order — it reads the first and last elements — which is precisely why the
+ * kernel proves it rather than assuming it.
+ *
+ * A fact with no `interval.start` contributes no point: it has no position in
+ * time, and legacy's `collectLabSeries` drops undated entries for the same
+ * reason (`if (!lab.date) continue`). D7 makes this reachable only for a
+ * single-candidate selection — an undated fact alongside any other candidate is
+ * `AMBIGUOUS_SERIES_ORDER` and never reaches here — so the shortfall message
+ * that follows reads exactly as `legacy-v0`'s does.
+ */
+function seriesPoints(facts: readonly NormalizedFact[]): Array<{ ts: number; value: number }> {
+  const points: Array<{ ts: number; value: number }> = [];
+  for (const fact of facts) {
+    const start = fact.interval.start;
+    const value = scalarValueOf(fact);
+    if (!start || value === undefined) continue;
+    points.push({ ts: boundEpochRange(start).loMs, value });
+  }
+  return points;
+}
+
+/**
+ * `count_in_window` / `trend_up` / `trend_down` / `delta_from_baseline` on the
+ * kernel (Task 6).
+ *
+ * Only **selection** moves. The count, `linearSlope`, the baseline/current
+ * delta, every knob (`count_threshold`, `min_points`, `slope_threshold`,
+ * `delta_threshold`) and every reason string stay here, unchanged from
+ * `legacy-v0`.
+ *
+ * **No window filtering happens in this function.** `window_days` is translated
+ * by the adapter into a NODE-level `{days:N}` horizon (D2), so the window
+ * arrives as part of the effective policy and `selectFacts` applies it. Filtering
+ * again here would be a second implementation of the same rule, and two
+ * implementations of one rule are how preflight and evaluation drift apart.
+ *
+ * **Fail-closed, and recorded.** The aggregate class resolves an uncertain fact
+ * to EXCLUDE (`select-facts.ts:196-201`, locked decision #3) while still
+ * reporting the selection as READY — so a definite count carrying non-empty
+ * `uncertainty` is the NORMAL case, not an edge case: the count is a lower
+ * bound (D5, P1-11). `indeterminate` and `uncertainty` are therefore derived
+ * independently, and only `AMBIGUOUS_SERIES_ORDER` makes an aggregate
+ * indeterminate.
+ *
+ * **The policy is resolved BEFORE the labs-only check**, unlike `legacy-v0`
+ * which short-circuits `field !== 'labs'` first. That ordering is deliberate:
+ * the `v1` anchor sweep resolves the cascade for every coded condition, so a
+ * `vitals` trend gate is rejected at session creation. Short-circuiting here
+ * would let evaluation quietly answer `false` for a condition preflight refuses
+ * — the divergence locked decision #7 forbids.
+ */
+function evaluateAggregateKernel(
+  condition: CodedCondition,
+  deps: GateEvaluationDeps,
+): ConditionOutcome {
+  const where = `condition (${condition.field})`;
+  const adapted = adaptCodedCondition(condition, where);
+  const policy = effectivePolicyFor(adapted, deps.temporalContext, deps.pathwayDefaults);
+  const outcome = selectFacts(adapted.selection, deps.factStore, policy);
+
+  const { field, operator, value } = condition;
+  const fieldsRead = field ? [field] : [];
+
+  // Per-fact doubt plus, when the kernel refused to order the series, the
+  // reason it refused for. `AMBIGUOUS_SERIES_ORDER` exists ONLY on the outcome —
+  // no single fact is uncertain when two of them merely cannot be ordered — so
+  // reading the decisions alone would silently drop it. (The series analogue of
+  // the `AMBIGUOUS_LATEST` gap Task 5 found.)
+  const uncertainty: UncertaintyReason[] = [
+    ...new Set([
+      ...outcome.decisions.flatMap((d) => d.uncertainty),
+      ...(outcome.status === 'INDETERMINATE' ? outcome.reasons : []),
+    ]),
+  ];
+
+  if (outcome.status === 'INDETERMINATE') {
+    return {
+      satisfied: false,
+      // Deliberately NOT legacy's "Need ≥N dated values" — a fail-closed refusal
+      // must not read like an ordinary shortfall, or no audit row can tell
+      // "there were too few results" from "the results could not be ordered".
+      reason:
+        `Indeterminate ${operator} series for ${field}:${value} ` +
+        `(${uncertainty.join(', ')})`,
+      fieldsRead,
+      indeterminate: true,
+      uncertainty,
+    };
+  }
+
+  const selected = outcome.status === 'READY' ? outcome.selected : [];
+
+  if (operator === 'count_in_window') {
+    // `selectFacts` has already deduplicated by `factId` (design §4), so the
+    // count is over distinct occurrences.
+    const matches = selected.length;
+    const threshold = condition.count_threshold ?? 2;
+    const satisfied = matches >= threshold;
+    const bound = satisfied ? `≥${threshold}` : `<${threshold}`;
+    return {
+      satisfied,
+      reason:
+        `Found ${matches} matching ${value} in ${field} ` +
+        `within ${windowDescription(policy.horizon)} (${bound})`,
+      fieldsRead,
+      // Derived, never hard-coded: only an unorderable series is indeterminate,
+      // and `count_in_window` never builds one.
+      indeterminate: false,
+      uncertainty,
+    };
+  }
+
+  // trend_up / trend_down / delta_from_baseline — a numeric series over labs.
+  if (field !== 'labs') {
+    return {
+      satisfied: false,
+      reason: `${operator} only supports field=labs (got "${field}")`,
+      fieldsRead,
+      indeterminate: false,
+      uncertainty,
+    };
+  }
+
+  const isDelta = operator === 'delta_from_baseline';
+  const minPoints = Math.max(2, condition.min_points ?? (isDelta ? 2 : 3));
+  const points = seriesPoints(selected);
+  if (points.length < minPoints) {
+    return {
+      satisfied: false,
+      reason: `Need ≥${minPoints} dated values for ${value}; found ${points.length}`,
+      fieldsRead,
+      indeterminate: false,
+      uncertainty,
+    };
+  }
+
+  if (isDelta) {
+    const baseline = points[0].value;
+    const current = points[points.length - 1].value;
+    const observed = current - baseline;
+    const delta = condition.delta_threshold ?? 0;
+    const ok = delta === 0 ? observed !== 0 : delta > 0 ? observed >= delta : observed <= delta;
+    const decoration = `(baseline ${baseline}, current ${current})`;
+    return {
+      satisfied: ok,
+      reason: ok
+        ? `${value} delta ${observed.toFixed(4)} ${decoration} satisfies threshold ${delta}`
+        : `${value} delta ${observed.toFixed(4)} ${decoration} does not satisfy threshold ${delta}`,
+      fieldsRead,
+      indeterminate: false,
+      uncertainty,
+    };
+  }
+
+  const slopeFloor = condition.slope_threshold ?? 0;
+  const slope = linearSlope(points);
+  const ok = operator === 'trend_up' ? slope > slopeFloor : slope < -slopeFloor;
+  return {
+    satisfied: ok,
+    reason: ok
+      ? `${value} slope ${slope.toFixed(4)} value/day satisfies ${operator}${slopeFloor !== 0 ? ` (|slope| > ${slopeFloor})` : ''}`
+      : `${value} slope ${slope.toFixed(4)} value/day does not satisfy ${operator}`,
+    fieldsRead,
+    indeterminate: false,
+    uncertainty,
+  };
+}
+
+/**
  * The `v1` condition evaluator.
  *
  * Tasks 4–8 replace this body one operator class at a time; everything not yet
@@ -705,11 +905,11 @@ function evaluateScalarKernel(
  * the operator rewrite rather than to the plumbing.
  *
  * Moved so far: **membership** (`includes_code`, `equals`, `exists`) — Task 4;
- * **scalar** (`greater_than`, `less_than`) — Task 5.
- * Still legacy: aggregate (Task 6), attribute conditions (Task 7). An operator
- * the kernel does not model at all — an authoring typo that reached evaluation
- * — also lands on legacy, which reports it as an unknown operator exactly as it
- * does today.
+ * **scalar** (`greater_than`, `less_than`) — Task 5; **aggregate**
+ * (`count_in_window`, `trend_up`, `trend_down`, `delta_from_baseline`) — Task 6.
+ * Still legacy: attribute conditions (Task 7). An operator the kernel does not
+ * model at all — an authoring typo that reached evaluation — also lands on
+ * legacy, which reports it as an unknown operator exactly as it does today.
  */
 function evaluateConditionKernel(
   condition: GateCondition,
@@ -724,6 +924,9 @@ function evaluateConditionKernel(
   }
   if (isTemporalOperator(operator) && operatorClass(operator) === 'scalar') {
     return evaluateScalarKernel(condition, deps);
+  }
+  if (isTemporalOperator(operator) && operatorClass(operator) === 'aggregate') {
+    return evaluateAggregateKernel(condition, deps);
   }
   return evaluateConditionLegacyAdapted(condition, deps);
 }
