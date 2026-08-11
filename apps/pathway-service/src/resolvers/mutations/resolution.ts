@@ -211,6 +211,7 @@ export const resolutionMutations = {
       makeTraversalAdapter(rctx, pool, args.pathwayId, patientContext),
       rctx.thresholds,
       temporalContext,
+      rctx.temporalDefaults,
       llmBundle?.evaluator,
       rctx.codeMap,
     );
@@ -348,6 +349,7 @@ export const resolutionMutations = {
         makeRetraversalAdapter(rctx, pool, session.pathwayId, patientCtx),
         rctx.thresholds,
         sessionClock,
+        rctx.temporalDefaults,
         llmBundle?.evaluator,
         rctx.codeMap,
       );
@@ -511,6 +513,7 @@ export const resolutionMutations = {
           makeRetraversalAdapter(rctx, pool, session.pathwayId, patientCtx),
           rctx.thresholds,
           sessionClock,
+          rctx.temporalDefaults,
           llmBundle?.evaluator,
           rctx.codeMap,
         );
@@ -698,6 +701,7 @@ export const resolutionMutations = {
         makeRetraversalAdapter(rctx, pool, session.pathwayId, updatedPc),
         rctx.thresholds,
         sessionClock,
+        rctx.temporalDefaults,
         llmBundle?.evaluator,
         rctx.codeMap,
       );

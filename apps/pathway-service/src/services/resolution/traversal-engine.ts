@@ -1,5 +1,7 @@
 import { GraphContext, PatientContext, GraphNode } from '../confidence/types';
 import { evaluateGate, LlmGateEvaluator } from './gate-evaluator';
+import type { GateEvaluationDeps } from './gate-evaluator';
+import type { PathwayTemporalDefaults } from './temporal/cascade';
 import { EvaluationTemporalContext } from './temporal/evaluation-context';
 import {
   NodeResult,
@@ -150,13 +152,43 @@ export class TraversalEngine {
      * after an optional one.
      */
     private temporalContext: EvaluationTemporalContext,
+    /**
+     * The PATHWAY tier of the horizon/status cascade (`rctx.temporalDefaults`).
+     * Required, and fourth for the same reason `temporalContext` is third.
+     *
+     * Threaded rather than defaulted because the anchor sweep already resolves
+     * against these defaults at preflight: if the traversal fell back to system
+     * defaults, preflight and evaluation would disagree about the very same
+     * pathway (P1-10, locked decision #7).
+     */
+    private pathwayDefaults: PathwayTemporalDefaults,
     private llmGateEvaluator?: LlmGateEvaluator,
     private codeMap: AttributeCodeMap = new Map(),
   ) {}
 
-  /** The pinned clock as epoch ms, for the operator implementations. */
-  private evaluationNowMs(): number {
-    return Date.parse(this.temporalContext.evaluationAsOf);
+  /**
+   * The dependencies every gate in this traversal is evaluated with.
+   *
+   * `factStore` is empty here: assembly is `v1`-only and is wired at plan 04
+   * Task 9 (locked decision #5). `legacy-v0` never reads it at all.
+   */
+  private gateDeps(
+    patientContext: PatientContext,
+    resolutionState: ResolutionState,
+    gateAnswers: Map<string, GateAnswer>,
+    gateId: string,
+  ): GateEvaluationDeps {
+    return {
+      temporalContext: this.temporalContext,
+      pathwayDefaults: this.pathwayDefaults,
+      factStore: [],
+      patientContext,
+      resolutionState,
+      gateAnswers,
+      gateId,
+      llmEvaluator: this.llmGateEvaluator,
+      codeMap: this.codeMap,
+    };
   }
 
   async traverse(
@@ -284,8 +316,8 @@ export class TraversalEngine {
         }
 
         const gateResult = await evaluateGate(
-          gateProps, patientContext, resolutionState, gateAnswers, nodeIdentifier,
-          this.llmGateEvaluator, this.evaluationNowMs(), this.codeMap,
+          gateProps,
+          this.gateDeps(patientContext, resolutionState, gateAnswers, nodeIdentifier),
         );
 
         // Record dependencies
@@ -677,8 +709,8 @@ export class TraversalEngine {
       // For gate nodes, evaluate the gate properly
       const gateProps = node.properties as unknown as GateProperties;
       const gateResult = await evaluateGate(
-        gateProps, patientContext, resolutionState, gateAnswers, nodeIdentifier,
-        this.llmGateEvaluator, this.evaluationNowMs(), this.codeMap,
+        gateProps,
+        this.gateDeps(patientContext, resolutionState, gateAnswers, nodeIdentifier),
       );
       resolutionState.set(nodeIdentifier, {
         nodeId: nodeIdentifier,

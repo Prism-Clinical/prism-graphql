@@ -1,4 +1,6 @@
 import { evaluateGate } from '../services/resolution/gate-evaluator';
+import type { GateEvaluationDeps } from '../services/resolution/gate-evaluator';
+import { makeEvaluationTemporalContext } from '../services/resolution/temporal/evaluation-context';
 import {
   GateProperties,
   GateAnswer,
@@ -27,6 +29,30 @@ function makeNodeResult(nodeId: string, status: NodeStatus): NodeResult {
 const emptyState = new Map<string, NodeResult>();
 const emptyAnswers = new Map<string, GateAnswer>();
 
+/**
+ * Plan 04 Task 3 turned `evaluateGate`'s positional parameters into one deps
+ * object with a required clock and required pathway defaults (D6). Only the
+ * call SHAPE changes here — every assertion below is the one that guarded
+ * `legacy-v0` before the seam existed, and that is the point: an unmodified
+ * assertion failing would mean the seam moved behavior.
+ *
+ * These gates read no dates, so the pinned instant is arbitrary; it replaces
+ * the `Date.now()` default the seam removed.
+ */
+const AS_OF = '2026-06-27T00:00:00.000Z';
+
+function deps(overrides: Partial<GateEvaluationDeps> = {}): GateEvaluationDeps {
+  return {
+    temporalContext: makeEvaluationTemporalContext({ evaluationAsOf: AS_OF }),
+    pathwayDefaults: {},
+    factStore: [],
+    patientContext: REFERENCE_PATIENT,
+    resolutionState: emptyState,
+    gateAnswers: emptyAnswers,
+    ...overrides,
+  };
+}
+
 // ─── patient_attribute ────────────────────────────────────────────────
 
 describe('evaluateGate — patient_attribute', () => {
@@ -43,7 +69,7 @@ describe('evaluateGate — patient_attribute', () => {
       },
     };
 
-    const result = await evaluateGate(gate, REFERENCE_PATIENT, emptyState, emptyAnswers);
+    const result = await evaluateGate(gate, deps());
     expect(result.satisfied).toBe(true);
     expect(result.contextFieldsRead).toContain('conditions');
     expect(result.dependedOnNodes).toEqual([]);
@@ -63,7 +89,7 @@ describe('evaluateGate — patient_attribute', () => {
     };
 
     // REFERENCE_PATIENT has O34.211 and Z87.51, but no Z94.x
-    const result = await evaluateGate(gate, REFERENCE_PATIENT, emptyState, emptyAnswers);
+    const result = await evaluateGate(gate, deps());
     expect(result.satisfied).toBe(false);
     expect(result.reason).toContain('Z94.*');
   });
@@ -81,7 +107,7 @@ describe('evaluateGate — patient_attribute', () => {
       },
     };
 
-    const result = await evaluateGate(gate, REFERENCE_PATIENT, emptyState, emptyAnswers);
+    const result = await evaluateGate(gate, deps());
     expect(result.satisfied).toBe(true);
   });
 
@@ -98,7 +124,7 @@ describe('evaluateGate — patient_attribute', () => {
       },
     };
 
-    const result = await evaluateGate(gate, REFERENCE_PATIENT, emptyState, emptyAnswers);
+    const result = await evaluateGate(gate, deps());
     expect(result.satisfied).toBe(true);
   });
 
@@ -114,7 +140,7 @@ describe('evaluateGate — patient_attribute', () => {
       },
     };
 
-    const result = await evaluateGate(gate, EMPTY_PATIENT, emptyState, emptyAnswers);
+    const result = await evaluateGate(gate, deps({ patientContext: EMPTY_PATIENT }));
     expect(result.satisfied).toBe(false);
   });
 
@@ -125,7 +151,7 @@ describe('evaluateGate — patient_attribute', () => {
       default_behavior: DefaultBehavior.SKIP,
     };
 
-    const result = await evaluateGate(gate, REFERENCE_PATIENT, emptyState, emptyAnswers);
+    const result = await evaluateGate(gate, deps());
     expect(result.satisfied).toBe(false);
     expect(result.reason).toContain('no condition');
   });
@@ -154,7 +180,7 @@ describe('evaluateGate — patient_attribute', () => {
         default_behavior: DefaultBehavior.SKIP,
         condition: { field: 'vitals', operator: 'greater_than', value: 'systolic_bp', threshold: 140 },
       };
-      const result = await evaluateGate(gate, SIM_PATIENT, emptyState, emptyAnswers);
+      const result = await evaluateGate(gate, deps({ patientContext: SIM_PATIENT }));
       expect(result.satisfied).toBe(true);
       expect(result.reason).toContain('142');
     });
@@ -166,7 +192,7 @@ describe('evaluateGate — patient_attribute', () => {
         default_behavior: DefaultBehavior.SKIP,
         condition: { field: 'vitals', operator: 'less_than', value: 'heart_rate', threshold: 60 },
       };
-      const result = await evaluateGate(gate, SIM_PATIENT, emptyState, emptyAnswers);
+      const result = await evaluateGate(gate, deps({ patientContext: SIM_PATIENT }));
       expect(result.satisfied).toBe(false);
       expect(result.reason).toContain('78');
     });
@@ -178,7 +204,7 @@ describe('evaluateGate — patient_attribute', () => {
         default_behavior: DefaultBehavior.SKIP,
         condition: { field: 'vitals', operator: 'greater_than', value: 'custom.pain_score', threshold: 6 },
       };
-      const result = await evaluateGate(gate, SIM_PATIENT, emptyState, emptyAnswers);
+      const result = await evaluateGate(gate, deps({ patientContext: SIM_PATIENT }));
       expect(result.satisfied).toBe(true);
     });
 
@@ -189,7 +215,7 @@ describe('evaluateGate — patient_attribute', () => {
         default_behavior: DefaultBehavior.SKIP,
         condition: { field: 'vitals', operator: 'greater_than', value: 'custom.nested.deeper', threshold: 2 },
       };
-      const result = await evaluateGate(gate, SIM_PATIENT, emptyState, emptyAnswers);
+      const result = await evaluateGate(gate, deps({ patientContext: SIM_PATIENT }));
       expect(result.satisfied).toBe(true);
     });
 
@@ -200,7 +226,7 @@ describe('evaluateGate — patient_attribute', () => {
         default_behavior: DefaultBehavior.SKIP,
         condition: { field: 'vitals', operator: 'greater_than', value: 'temperature_f', threshold: 100 },
       };
-      const result = await evaluateGate(gate, SIM_PATIENT, emptyState, emptyAnswers);
+      const result = await evaluateGate(gate, deps({ patientContext: SIM_PATIENT }));
       expect(result.satisfied).toBe(false);
       expect(result.reason).toMatch(/no numeric value/i);
     });
@@ -212,7 +238,7 @@ describe('evaluateGate — patient_attribute', () => {
         default_behavior: DefaultBehavior.SKIP,
         condition: { field: 'vitals', operator: 'less_than', value: 'custom.does_not_exist', threshold: 5 },
       };
-      const result = await evaluateGate(gate, SIM_PATIENT, emptyState, emptyAnswers);
+      const result = await evaluateGate(gate, deps({ patientContext: SIM_PATIENT }));
       expect(result.satisfied).toBe(false);
       expect(result.reason).toMatch(/no numeric value/i);
     });
@@ -224,7 +250,7 @@ describe('evaluateGate — patient_attribute', () => {
         default_behavior: DefaultBehavior.SKIP,
         condition: { field: 'vitals', operator: 'greater_than', value: 'systolic_bp', threshold: 140 },
       };
-      const result = await evaluateGate(gate, EMPTY_PATIENT, emptyState, emptyAnswers);
+      const result = await evaluateGate(gate, deps({ patientContext: EMPTY_PATIENT }));
       expect(result.satisfied).toBe(false);
     });
 
@@ -239,7 +265,7 @@ describe('evaluateGate — patient_attribute', () => {
         ...EMPTY_PATIENT,
         vitalSigns: { note: 'some text', systolic_bp: 130 },
       };
-      const result = await evaluateGate(gate, patientWithStringVital, emptyState, emptyAnswers);
+      const result = await evaluateGate(gate, deps({ patientContext: patientWithStringVital }));
       expect(result.satisfied).toBe(false);
     });
   });
@@ -261,7 +287,7 @@ describe('evaluateGate — prior_node_result', () => {
     const state = new Map<string, NodeResult>();
     state.set('step-3-1', makeNodeResult('step-3-1', NodeStatus.INCLUDED));
 
-    const result = await evaluateGate(gate, REFERENCE_PATIENT, state, emptyAnswers);
+    const result = await evaluateGate(gate, deps({ resolutionState: state }));
     expect(result.satisfied).toBe(true);
     expect(result.dependedOnNodes).toContain('step-3-1');
   });
@@ -279,7 +305,7 @@ describe('evaluateGate — prior_node_result', () => {
     const state = new Map<string, NodeResult>();
     state.set('step-3-1', makeNodeResult('step-3-1', NodeStatus.EXCLUDED));
 
-    const result = await evaluateGate(gate, REFERENCE_PATIENT, state, emptyAnswers);
+    const result = await evaluateGate(gate, deps({ resolutionState: state }));
     expect(result.satisfied).toBe(false);
     expect(result.reason).toContain('step-3-1');
     expect(result.dependedOnNodes).toContain('step-3-1');
@@ -295,7 +321,7 @@ describe('evaluateGate — prior_node_result', () => {
       ],
     };
 
-    const result = await evaluateGate(gate, REFERENCE_PATIENT, emptyState, emptyAnswers);
+    const result = await evaluateGate(gate, deps());
     expect(result.satisfied).toBe(false);
     expect(result.reason).toContain('NOT_FOUND');
   });
@@ -316,7 +342,7 @@ describe('evaluateGate — question', () => {
     const answers = new Map<string, GateAnswer>();
     answers.set('gate-q1', { booleanValue: true });
 
-    const result = await evaluateGate(gate, REFERENCE_PATIENT, emptyState, answers, 'gate-q1');
+    const result = await evaluateGate(gate, deps({ gateAnswers: answers, gateId: 'gate-q1' }));
     expect(result.satisfied).toBe(true);
   });
 
@@ -332,7 +358,7 @@ describe('evaluateGate — question', () => {
     const answers = new Map<string, GateAnswer>();
     answers.set('gate-q1', { booleanValue: false });
 
-    const result = await evaluateGate(gate, REFERENCE_PATIENT, emptyState, answers, 'gate-q1');
+    const result = await evaluateGate(gate, deps({ gateAnswers: answers, gateId: 'gate-q1' }));
     expect(result.satisfied).toBe(false);
   });
 
@@ -345,7 +371,7 @@ describe('evaluateGate — question', () => {
       answer_type: AnswerType.BOOLEAN,
     };
 
-    const result = await evaluateGate(gate, REFERENCE_PATIENT, emptyState, emptyAnswers, 'gate-q1');
+    const result = await evaluateGate(gate, deps({ gateId: 'gate-q1' }));
     expect(result.satisfied).toBe(false);
     expect(result.reason).toContain('not been answered');
   });
@@ -362,7 +388,7 @@ describe('evaluateGate — question', () => {
     const answers = new Map<string, GateAnswer>();
     answers.set('gate-q2', { numericValue: 2 });
 
-    const result = await evaluateGate(gate, REFERENCE_PATIENT, emptyState, answers, 'gate-q2');
+    const result = await evaluateGate(gate, deps({ gateAnswers: answers, gateId: 'gate-q2' }));
     expect(result.satisfied).toBe(true);
   });
 
@@ -379,7 +405,7 @@ describe('evaluateGate — question', () => {
     const answers = new Map<string, GateAnswer>();
     answers.set('gate-q3', { selectedOption: 'Low transverse' });
 
-    const result = await evaluateGate(gate, REFERENCE_PATIENT, emptyState, answers, 'gate-q3');
+    const result = await evaluateGate(gate, deps({ gateAnswers: answers, gateId: 'gate-q3' }));
     expect(result.satisfied).toBe(true);
     expect(result.reason).toContain('Low transverse');
   });
@@ -400,7 +426,7 @@ describe('evaluateGate — compound', () => {
       ],
     };
 
-    const result = await evaluateGate(gate, REFERENCE_PATIENT, emptyState, emptyAnswers);
+    const result = await evaluateGate(gate, deps());
     expect(result.satisfied).toBe(true);
     expect(result.contextFieldsRead).toContain('conditions');
     expect(result.contextFieldsRead).toContain('medications');
@@ -418,7 +444,7 @@ describe('evaluateGate — compound', () => {
       ],
     };
 
-    const result = await evaluateGate(gate, REFERENCE_PATIENT, emptyState, emptyAnswers);
+    const result = await evaluateGate(gate, deps());
     expect(result.satisfied).toBe(false);
     expect(result.reason).toContain('Unsatisfied');
   });
@@ -435,7 +461,7 @@ describe('evaluateGate — compound', () => {
       ],
     };
 
-    const result = await evaluateGate(gate, REFERENCE_PATIENT, emptyState, emptyAnswers);
+    const result = await evaluateGate(gate, deps());
     expect(result.satisfied).toBe(true);
   });
 
@@ -451,7 +477,7 @@ describe('evaluateGate — compound', () => {
       ],
     };
 
-    const result = await evaluateGate(gate, REFERENCE_PATIENT, emptyState, emptyAnswers);
+    const result = await evaluateGate(gate, deps());
     expect(result.satisfied).toBe(false);
   });
 });

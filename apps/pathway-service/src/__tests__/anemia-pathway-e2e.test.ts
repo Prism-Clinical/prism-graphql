@@ -48,6 +48,7 @@ function createEngine(): TraversalEngine {
     mockConfidenceEngine,
     mockThresholds,
     makeEvaluationTemporalContext({ evaluationAsOf: PINNED_AS_OF }),
+    {},
     undefined,
     CODE_MAP,
   );

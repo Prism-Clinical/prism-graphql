@@ -31,6 +31,7 @@ describe('RetraversalEngine', () => {
       mockConfidenceEngine as any,
       mockThresholds,
       makeEvaluationTemporalContext({ evaluationAsOf: '2026-07-30T12:00:00.000Z' }),
+      {},
     );
     jest.clearAllMocks();
     // Reset default mock

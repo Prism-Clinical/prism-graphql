@@ -20,6 +20,8 @@ import {
 // ./interval, neither of which imports types.ts. Keep it that way — do not
 // import types.ts from the temporal module.
 import { EvaluationTemporalContext } from './temporal/evaluation-context';
+// contract.ts imports nothing at all, so this stays acyclic too.
+import type { UncertaintyReason } from './temporal/contract';
 
 export {
   NodeStatus,
@@ -221,6 +223,27 @@ export interface GateEvaluationResult {
   llmConfidence?: number;
   /** Short rationale string from the LLM for the audit trail / UI popout. */
   llmReasoning?: string;
+
+  // ─── Temporal uncertainty (plan 04, D5) ───────────────────────────
+  /**
+   * Uncertainty *could have prevented a definitive outcome*. Governed by the
+   * compound truth table; false whenever the gate's answer is certain.
+   *
+   * Independent of `uncertainty` below (D5, P1-11): `selectFacts` deliberately
+   * returns an aggregate as READY, not INDETERMINATE, after excluding
+   * uncertain facts, so a definite outcome carrying real uncertainty is the
+   * normal case rather than an edge case.
+   *
+   * Recorded from Task 3; populated by the `v1` operators in Tasks 4–8.
+   * Nothing is exposed over GraphQL by this plan — that is plan 08.
+   */
+  indeterminate?: boolean;
+  /**
+   * Relevant uncertainty that *existed*, including excluded observations and
+   * counts that are lower bounds. Retained even when the outcome is definite:
+   * a `true`/`false` dominating the logic does not make the doubt untrue.
+   */
+  uncertainty?: UncertaintyReason[];
 }
 
 // ─── Pending Questions ──────────────────────────────────────────────

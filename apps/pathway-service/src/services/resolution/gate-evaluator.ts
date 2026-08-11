@@ -12,6 +12,13 @@ import {
 } from './types';
 import { resolveAttribute } from './attribute-registry';
 import { compareScalar } from './scalar-compare';
+import {
+  EvaluationTemporalContext,
+  TemporalContextError,
+} from './temporal/evaluation-context';
+import { assertKnownPolicyVersion } from './temporal/policy-registry';
+import type { PathwayTemporalDefaults } from './temporal/cascade';
+import type { FactStore } from './temporal/fact-model';
 
 // ─── Helpers ──────────────────────────────────────────────────────────
 
@@ -179,7 +186,16 @@ function resolveNumericPath(bag: Record<string, unknown>, path: string): number 
 
 // ─── Condition Evaluator ──────────────────────────────────────────────
 
-function evaluateCondition(
+/**
+ * The `legacy-v0` condition evaluator — today's code, unchanged.
+ *
+ * Renamed from `evaluateCondition` by plan 04 Task 3; the body is untouched,
+ * deliberately. It is the shadow baseline the `v1` kernel is diffed against,
+ * and locked decision #1 keeps it (with `getCodeEntries`, `getNumericValue`,
+ * `collectLabSeries` and `isWithinWindow`) until the rollout flip retires it.
+ * A behavior change reachable from here is a bug in the seam, not a feature.
+ */
+function evaluateConditionLegacy(
   condition: GateCondition,
   patientContext: PatientContext,
   now: number,
@@ -428,13 +444,94 @@ function evaluateCondition(
   }
 }
 
+// ─── The version seam ─────────────────────────────────────────────────
+
+/** What every condition evaluator, on either side of the seam, returns. */
+export interface ConditionOutcome {
+  satisfied: boolean;
+  reason: string;
+  fieldsRead: string[];
+}
+
+export type ConditionEvaluator = (
+  condition: GateCondition,
+  deps: GateEvaluationDeps,
+) => ConditionOutcome;
+
+/** The pinned clock as epoch ms — the ONLY clock a condition may read. */
+function evaluationNowMs(deps: GateEvaluationDeps): number {
+  return Date.parse(deps.temporalContext.evaluationAsOf);
+}
+
+/** `legacy-v0`, adapted onto the deps object. The legacy body itself is untouched. */
+function evaluateConditionLegacyAdapted(
+  condition: GateCondition,
+  deps: GateEvaluationDeps,
+): ConditionOutcome {
+  return evaluateConditionLegacy(
+    condition,
+    deps.patientContext,
+    evaluationNowMs(deps),
+    deps.codeMap ?? new Map(),
+  );
+}
+
+/**
+ * The `v1` condition evaluator.
+ *
+ * At Task 3 it delegates to the legacy evaluator: the fork is deliberately a
+ * no-op so that the dispatch, the deps object and every updated call site are
+ * proven in isolation. Tasks 4–8 replace this body operator class by operator
+ * class with `selectFacts`-backed selection, at which point a failure is
+ * attributable to the operator rewrite rather than to the plumbing.
+ */
+function evaluateConditionKernel(
+  condition: GateCondition,
+  deps: GateEvaluationDeps,
+): ConditionOutcome {
+  return evaluateConditionLegacyAdapted(condition, deps);
+}
+
+/**
+ * The dispatch table, keyed by `temporalContext.temporalPolicyVersion`.
+ *
+ * A table rather than a `switch` because the seam has to be *observable*: at
+ * this task both branches decide identically by construction, so the only
+ * honest proof that a version routes where it claims is a spy on the entry it
+ * is supposed to reach (P1-16). Keys must stay in step with
+ * `KNOWN_TEMPORAL_POLICY_VERSIONS` — `assertKnownPolicyVersion` runs first, so
+ * a registry key with no policy set would fail there before reaching here.
+ */
+export const CONDITION_EVALUATORS: Record<string, ConditionEvaluator> = {
+  'legacy-v0': evaluateConditionLegacyAdapted,
+  v1: evaluateConditionKernel,
+};
+
+/**
+ * Resolve the one condition evaluator this gate — and every sibling condition
+ * inside it — is evaluated with. Reading the version once, here, is what stops
+ * two conditions of a compound gate resolving against different semantics.
+ */
+function conditionEvaluatorFor(deps: GateEvaluationDeps): ConditionEvaluator {
+  const version = deps.temporalContext.temporalPolicyVersion;
+  // Throws `unknown temporalPolicyVersion "<v>"` for anything unregistered —
+  // never a silent fallback to legacy.
+  assertKnownPolicyVersion(version);
+  const evaluator = CONDITION_EVALUATORS[version];
+  if (!evaluator) {
+    throw new TemporalContextError(
+      `no condition evaluator registered for temporalPolicyVersion "${version}"`,
+      'UNKNOWN_POLICY_VERSION',
+    );
+  }
+  return evaluator;
+}
+
 // ─── Gate Type Evaluators ─────────────────────────────────────────────
 
 function evaluatePatientAttribute(
   gate: GateProperties,
-  patientContext: PatientContext,
-  now: number,
-  codeMap: AttributeCodeMap = new Map(),
+  deps: GateEvaluationDeps,
 ): GateEvaluationResult {
   if (!gate.condition) {
     return {
@@ -445,7 +542,7 @@ function evaluatePatientAttribute(
     };
   }
 
-  const result = evaluateCondition(gate.condition, patientContext, now, codeMap);
+  const result = conditionEvaluatorFor(deps)(gate.condition, deps);
   return {
     satisfied: result.satisfied,
     reason: result.reason,
@@ -556,9 +653,7 @@ function evaluatePriorNodeResult(
 
 function evaluateCompound(
   gate: GateProperties,
-  patientContext: PatientContext,
-  now: number,
-  codeMap: AttributeCodeMap = new Map(),
+  deps: GateEvaluationDeps,
 ): GateEvaluationResult {
   if (!gate.conditions || gate.conditions.length === 0) {
     return {
@@ -573,8 +668,12 @@ function evaluateCompound(
   const allFieldsRead: string[] = [];
   const results: Array<{ satisfied: boolean; reason: string }> = [];
 
+  // Resolved once for the whole gate: sibling conditions must never evaluate
+  // against different policy versions.
+  const evaluateOneCondition = conditionEvaluatorFor(deps);
+
   for (const condition of gate.conditions) {
-    const result = evaluateCondition(condition, patientContext, now, codeMap);
+    const result = evaluateOneCondition(condition, deps);
     results.push(result);
     allFieldsRead.push(...result.fieldsRead);
   }
@@ -715,56 +814,111 @@ async function evaluateLlmTextAnalysis(
 // ─── Main Evaluator ───────────────────────────────────────────────────
 
 /**
+ * Everything a gate evaluation reads, as one object (D6).
+ *
+ * An options object rather than eight positional parameters because the two
+ * cascade inputs — the clock and the pathway defaults — must be **impossible
+ * to omit**. As positional arguments they were both defaultable, and an
+ * omitted `pathwayDefaults` at one of five construction sites is a silent
+ * divergence generator: that pathway evaluates against system defaults while
+ * its own preflight used pathway defaults (P1-10, locked decision #7).
+ */
+export interface GateEvaluationDeps {
+  /**
+   * The session's pinned evaluation clock and policy version. Required — the
+   * `Date.now()` fallback this replaced meant a retraversal could silently
+   * resolve against a different instant than the traversal it repeats.
+   */
+  temporalContext: EvaluationTemporalContext;
+  /**
+   * The PATHWAY tier of the horizon/status cascade, from
+   * `rctx.temporalDefaults`. Required, never optional: see above.
+   */
+  pathwayDefaults: PathwayTemporalDefaults;
+  /**
+   * The normalized facts the `v1` kernel selects from. Empty at Task 3 and on
+   * `legacy-v0` forever — the assembler that fills it is wired at Task 9,
+   * under `v1` only (locked decision #5).
+   */
+  factStore: FactStore;
+  /** Current patient clinical context. */
+  patientContext: PatientContext;
+  /** Map of nodeId → NodeResult, for `prior_node_result` gates. */
+  resolutionState: Map<string, NodeResult>;
+  /** Map of gateId → provider answer, for `question` gates. */
+  gateAnswers: Map<string, GateAnswer>;
+  /** The gate's own ID (needed for question + LLM lookup). */
+  gateId?: string;
+  /**
+   * Optional async callback that performs the LLM call for
+   * `llm_text_analysis` gates. The resolver wires this in (with caching +
+   * audit-trail writing); call sites that don't supply it default LLM gates
+   * to the safe-default branch with `tentative: true`.
+   */
+  llmEvaluator?: LlmGateEvaluator;
+  /**
+   * Namespace/system/code lookup table for attribute conditions (e.g.
+   * `lab.hemoglobin` → LOINC 718-7). Absent means no attribute condition can
+   * resolve.
+   */
+  codeMap?: AttributeCodeMap;
+}
+
+/**
+ * Guard the two required cascade inputs at runtime.
+ *
+ * A type alone enforces nothing here: `tsconfig` excludes `src/__tests__` with
+ * `diagnostics: false`, so no test caller is ever typechecked, and the engines
+ * are constructed from resolvers whose `rctx` shape is partly `unknown` at the
+ * boundary. Every invariant this seam depends on needs a throw.
+ */
+function assertRequiredDeps(deps: GateEvaluationDeps): void {
+  if (!deps || !deps.temporalContext) {
+    throw new TemporalContextError(
+      'evaluateGate requires an explicit temporalContext — there is no wall-clock fallback',
+      'INVALID_CLOCK',
+    );
+  }
+  if (!deps.pathwayDefaults) {
+    throw new TemporalContextError(
+      'evaluateGate requires pathwayDefaults — omitting it resolves gates against ' +
+        'system defaults while their preflight used the pathway defaults',
+      'INVALID_TEMPORAL_DEFAULTS',
+    );
+  }
+}
+
+/**
  * Evaluate a gate to determine if its guarded subtree should be traversed.
  *
- * @param gate       - The gate's properties (type, condition, depends_on, etc.)
- * @param patientContext - Current patient clinical context
- * @param resolutionState - Map of nodeId → NodeResult for prior_node_result gates
- * @param gateAnswers - Map of gateId → provider answer for question gates
- * @param gateId     - The gate's own ID (needed for question + LLM lookup)
- * @param llmEvaluator - Optional async callback that performs the LLM call
- *                       for llm_text_analysis gates. The resolver wires this
- *                       in (with caching + audit-trail writing); call sites
- *                       that don't supply it default LLM gates to the
- *                       safe-default branch with tentative=true.
+ * @param gate - The gate's properties (type, condition, depends_on, etc.)
+ * @param deps - Everything the evaluation reads; see `GateEvaluationDeps`.
  */
 export async function evaluateGate(
   gate: GateProperties,
-  patientContext: PatientContext,
-  resolutionState: Map<string, NodeResult>,
-  gateAnswers: Map<string, GateAnswer>,
-  gateId?: string,
-  llmEvaluator?: LlmGateEvaluator,
-  /**
-   * The session's pinned evaluation clock (`EvaluationTemporalContext
-   * .evaluationAsOf`, as epoch ms). TraversalEngine and RetraversalEngine
-   * always supply it. The `Date.now()` fallback exists only for the many
-   * unit-test call sites that omit it positionally; Plan 04 removes the
-   * fallback when this signature is reworked for `selectFacts`.
-   */
-  now: number = Date.now(),
-  /**
-   * Namespace/system/code lookup table for attribute conditions (e.g.
-   * `lab.hemoglobin` → LOINC 718-7). Defaults to an empty map for call
-   * sites that don't use attribute-style conditions.
-   */
-  codeMap: AttributeCodeMap = new Map(),
+  deps: GateEvaluationDeps,
 ): Promise<GateEvaluationResult> {
+  assertRequiredDeps(deps);
+  // Checked here rather than lazily inside the condition evaluator: a question
+  // or prior_node_result gate reads no condition, and a session pinned to a
+  // version the registry cannot resolve must not quietly succeed through one.
+  assertKnownPolicyVersion(deps.temporalContext.temporalPolicyVersion);
+
   switch (gate.gate_type) {
     case GateType.PATIENT_ATTRIBUTE:
-      return evaluatePatientAttribute(gate, patientContext, now, codeMap);
+      return evaluatePatientAttribute(gate, deps);
 
     case GateType.QUESTION:
-      return evaluateQuestion(gate, gateAnswers, gateId);
+      return evaluateQuestion(gate, deps.gateAnswers, deps.gateId);
 
     case GateType.PRIOR_NODE_RESULT:
-      return evaluatePriorNodeResult(gate, resolutionState);
+      return evaluatePriorNodeResult(gate, deps.resolutionState);
 
     case GateType.COMPOUND:
-      return evaluateCompound(gate, patientContext, now, codeMap);
+      return evaluateCompound(gate, deps);
 
     case GateType.LLM_TEXT_ANALYSIS:
-      return evaluateLlmTextAnalysis(gate, gateId, patientContext, llmEvaluator);
+      return evaluateLlmTextAnalysis(gate, deps.gateId, deps.patientContext, deps.llmEvaluator);
 
     default:
       return {

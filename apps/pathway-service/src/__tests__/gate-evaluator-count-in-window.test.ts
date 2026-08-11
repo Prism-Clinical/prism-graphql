@@ -9,11 +9,30 @@
  */
 
 import { evaluateGate } from '../services/resolution/gate-evaluator';
+import type { GateEvaluationDeps } from '../services/resolution/gate-evaluator';
 import { GateType } from '../services/resolution/types';
+import { makeEvaluationTemporalContext } from '../services/resolution/temporal/evaluation-context';
 import type { PatientContext } from '../services/confidence/types';
 
 // 2026-06-27T00:00:00Z — pinned for boundary determinism.
-const NOW = Date.parse('2026-06-27T00:00:00Z');
+const AS_OF = '2026-06-27T00:00:00.000Z';
+const NOW = Date.parse(AS_OF);
+
+/**
+ * Plan 04 Task 3 replaced `evaluateGate`'s positional parameters with one deps
+ * object (D6). The pinned clock now travels in `temporalContext` instead of a
+ * positional `now`; every assertion below is unchanged.
+ */
+function deps(patientContext: PatientContext): GateEvaluationDeps {
+  return {
+    temporalContext: makeEvaluationTemporalContext({ evaluationAsOf: AS_OF }),
+    pathwayDefaults: {},
+    factStore: [],
+    patientContext,
+    resolutionState: new Map(),
+    gateAnswers: new Map(),
+  };
+}
 
 function daysAgo(n: number): string {
   return new Date(NOW - n * 86_400_000).toISOString();
@@ -46,17 +65,12 @@ describe('count_in_window operator', () => {
             window_days: 180,
           },
         },
-        ctx({
+        deps(ctx({
           conditionCodes: [
             { code: 'N39.0', system: 'ICD-10', date: daysAgo(10) },
             { code: 'N39.0', system: 'ICD-10', date: daysAgo(90) },
           ],
-        }),
-        new Map(),
-        new Map(),
-        undefined,
-        undefined,
-        NOW,
+        })),
       );
       expect(result.satisfied).toBe(true);
       expect(result.reason).toMatch(/Found 2 matching N39\.0/);
@@ -77,14 +91,9 @@ describe('count_in_window operator', () => {
             window_days: 180,
           },
         },
-        ctx({
+        deps(ctx({
           conditionCodes: [{ code: 'N39.0', system: 'ICD-10', date: daysAgo(10) }],
-        }),
-        new Map(),
-        new Map(),
-        undefined,
-        undefined,
-        NOW,
+        })),
       );
       expect(result.satisfied).toBe(false);
       expect(result.reason).toMatch(/Found 1 matching/);
@@ -109,35 +118,25 @@ describe('count_in_window operator', () => {
       // 2 in window — under threshold
       const two = await evaluateGate(
         baseGate,
-        ctx({
+        deps(ctx({
           conditionCodes: [
             { code: 'Z76.2', system: 'ICD-10', date: daysAgo(5) },
             { code: 'Z76.2', system: 'ICD-10', date: daysAgo(40) },
           ],
-        }),
-        new Map(),
-        new Map(),
-        undefined,
-        undefined,
-        NOW,
+        })),
       );
       expect(two.satisfied).toBe(false);
 
       // 3 in window — exactly threshold
       const three = await evaluateGate(
         baseGate,
-        ctx({
+        deps(ctx({
           conditionCodes: [
             { code: 'Z76.2', system: 'ICD-10', date: daysAgo(5) },
             { code: 'Z76.2', system: 'ICD-10', date: daysAgo(40) },
             { code: 'Z76.2', system: 'ICD-10', date: daysAgo(80) },
           ],
-        }),
-        new Map(),
-        new Map(),
-        undefined,
-        undefined,
-        NOW,
+        })),
       );
       expect(three.satisfied).toBe(true);
     });
@@ -158,18 +157,13 @@ describe('count_in_window operator', () => {
             count_threshold: 3,
           },
         },
-        ctx({
+        deps(ctx({
           conditionCodes: [
             { code: 'N39.0', system: 'ICD-10', date: daysAgo(30) },
             { code: 'N39.0', system: 'ICD-10', date: daysAgo(120) },
             { code: 'N39.0', system: 'ICD-10', date: daysAgo(400) },
           ],
-        }),
-        new Map(),
-        new Map(),
-        undefined,
-        undefined,
-        NOW,
+        })),
       );
       expect(result.satisfied).toBe(false);
       expect(result.reason).toMatch(/Found 2 matching/);
@@ -191,18 +185,13 @@ describe('count_in_window operator', () => {
             window_days: 180,
           },
         },
-        ctx({
+        deps(ctx({
           conditionCodes: [
             { code: 'N39.0', system: 'ICD-10', date: daysAgo(10) },
             { code: 'N39.0', system: 'ICD-10' }, // no date — skipped
             { code: 'N39.0', system: 'ICD-10', date: daysAgo(400) }, // out of window
           ],
-        }),
-        new Map(),
-        new Map(),
-        undefined,
-        undefined,
-        NOW,
+        })),
       );
       expect(result.satisfied).toBe(false);
     });
@@ -222,18 +211,13 @@ describe('count_in_window operator', () => {
             system: 'ICD-10',
           },
         },
-        ctx({
+        deps(ctx({
           conditionCodes: [
             { code: 'N39.0', system: 'ICD-10', date: daysAgo(10) },
             { code: 'N39.0', system: 'ICD-10' },
             { code: 'N39.0', system: 'ICD-10', date: daysAgo(400) },
           ],
-        }),
-        new Map(),
-        new Map(),
-        undefined,
-        undefined,
-        NOW,
+        })),
       );
       expect(result.satisfied).toBe(true);
       expect(result.reason).toMatch(/lifetime/);
@@ -254,17 +238,12 @@ describe('count_in_window operator', () => {
             system: 'ICD-10',
           },
         },
-        ctx({
+        deps(ctx({
           conditionCodes: [
             { code: 'N39.0', system: 'ICD-10' },
             { code: 'N39.0', system: 'SNOMED' },
           ],
-        }),
-        new Map(),
-        new Map(),
-        undefined,
-        undefined,
-        NOW,
+        })),
       );
       expect(result.satisfied).toBe(false); // only 1 in ICD-10
     });
@@ -286,19 +265,14 @@ describe('count_in_window operator', () => {
             count_threshold: 3,
           },
         },
-        ctx({
+        deps(ctx({
           labResults: [
             { code: '4548-4', system: 'LOINC', value: 7.8, date: daysAgo(30) },
             { code: '4548-4', system: 'LOINC', value: 8.1, date: daysAgo(150) },
             { code: '4548-4', system: 'LOINC', value: 7.5, date: daysAgo(310) },
             { code: '4548-4', system: 'LOINC', value: 6.2, date: daysAgo(400) }, // out of window
           ],
-        }),
-        new Map(),
-        new Map(),
-        undefined,
-        undefined,
-        NOW,
+        })),
       );
       expect(result.satisfied).toBe(true);
       expect(result.reason).toMatch(/Found 3 matching/);
@@ -321,17 +295,12 @@ describe('count_in_window operator', () => {
             window_days: 30,
           },
         },
-        ctx({
+        deps(ctx({
           conditionCodes: [
             { code: 'X', system: 'ICD-10', date: daysAgo(30) },
             { code: 'X', system: 'ICD-10', date: daysAgo(0) },
           ],
-        }),
-        new Map(),
-        new Map(),
-        undefined,
-        undefined,
-        NOW,
+        })),
       );
       expect(result.satisfied).toBe(true); // both inside ≤ 30
     });
@@ -352,17 +321,12 @@ describe('count_in_window operator', () => {
             window_days: 365,
           },
         },
-        ctx({
+        deps(ctx({
           conditionCodes: [
             { code: 'X', system: 'ICD-10', date: new Date(NOW + 86_400_000).toISOString() },
             { code: 'X', system: 'ICD-10', date: new Date(NOW + 2 * 86_400_000).toISOString() },
           ],
-        }),
-        new Map(),
-        new Map(),
-        undefined,
-        undefined,
-        NOW,
+        })),
       );
       expect(result.satisfied).toBe(false);
     });

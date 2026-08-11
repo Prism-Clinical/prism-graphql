@@ -72,6 +72,7 @@ async function traverseAtSystemTime(systemTime: string): Promise<NodeStatus | un
       mockConfidenceEngine as never,
       thresholds,
       makeEvaluationTemporalContext({ evaluationAsOf: PINNED }),
+      {},
     );
     const result = await engine.traverse(
       makeGraphContext(nodes, edges),

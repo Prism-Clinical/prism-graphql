@@ -773,6 +773,7 @@ export async function resolveAndPersistAll(
       makeTraversalAdapter(rctx, pool, m.pathway.id, patientContext),
       rctx.thresholds,
       temporalContext,
+      rctx.temporalDefaults,
       llmBundle?.evaluator,
       rctx.codeMap,
     );

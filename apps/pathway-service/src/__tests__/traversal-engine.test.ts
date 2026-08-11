@@ -48,6 +48,7 @@ function createEngine(): TraversalEngine {
     mockConfidenceEngine,
     mockThresholds,
     makeEvaluationTemporalContext({ evaluationAsOf: '2026-07-30T12:00:00.000Z' }),
+    {},
   );
 }
 
