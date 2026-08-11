@@ -318,7 +318,7 @@ describe('v1 validation is not behind the encounterStart early return (P1-18)', 
 
 - [ ] **Step 2: Run it, confirm it fails.**
 - [ ] **Step 3: Implement the adapter.** Add `horizon?: Horizon` / `status?: TemporalStatus` to `CodedCondition`. `toFactSelectionCondition` guards with `isTemporalOperator` and `fieldToKind`; copy `system` only when present. `parseConditionOverride` rejects the `window_days`+`horizon` pair first, then validates and calls `parseHorizonValue`.
-- [ ] **Step 4: Give `sweepableConditions` a version parameter and two paths (D1, P1-15).** Under `legacy-v0`, leave the body exactly as it is — coded conditions only, raw `as never` copy, cascade validates downstream. Under `v1`, additionally sweep attribute conditions whose namespace maps via `attributeNamespaceToField` (`null` ⇒ skip), and extract overrides with `parseConditionOverride`. **Neither path catches parser errors.** Update the comment at `:589-601`: it is still correct for `legacy-v0` and false for `v1`, so it must say which. **Add `export` to the declaration** (it is module-private at `:546`) so Task 7's preflight/evaluation agreement test can call it; note in a comment that the export exists for that test.
+- [ ] **Step 4: Give `sweepableConditions` a version parameter and two paths (D1, P1-15).** Under `legacy-v0`, leave the body exactly as it is — coded conditions only, an unknown field silently skipped, raw `as never` copy, cascade validates downstream. Under `v1`, run a **coded condition through `adaptCodedCondition(cond, label)` — the same adapter evaluation uses** (round 7, P1-22): skipping an unknown field here while `toFactSelectionCondition` throws on it is a preflight/evaluation divergence in the other direction, so an imported `{ field: 'horoscopes' }` passed import and preflight and died mid-traversal. One adapter call validates field, operator and override together; two validators are two chances to disagree. Attribute conditions still resolve their field via `attributeNamespaceToField` (`null` ⇒ skip) and their override via `parseConditionOverride`, until Task 7 gives them their own adapter. **Neither path catches parser errors.** Update the comment at `:589-601`: it is still correct for `legacy-v0` and false for `v1`, so it must say which. **Add `export` to the declaration** (it is module-private at `:546`) so Task 7's preflight/evaluation agreement test can call it; note in a comment that the export exists for that test.
 - [ ] **Step 5: Restructure `assertEncounterAnchor` so `v1` validation escapes the early return (P1-18).** Today the function returns at `:638` whenever `encounterStart` is present, which under `v1` would skip override parsing and the `window_days`/`horizon` conflict check entirely. New shape:
 
 ```ts
@@ -335,14 +335,29 @@ export function assertEncounterAnchor(rctx, temporalCtx): void {
     return;
   }
 
-  // v1: parse and validate every condition regardless of the anchor — this sweep
-  // is the only preflight that catches a malformed override or a
-  // window_days/horizon conflict. Parse errors propagate from here.
-  const swept = sweepableConditions(rctx.graphContext.allNodes, version);
-  if (temporalCtx.encounterStart) return;      // validated; no anchor needed
-  throwIfAnchorsRequired(swept, ...);
+  // v1: validate AND RESOLVE every condition regardless of the anchor. Parsing
+  // proves the horizon grammar; only resolution enforces the rest of the
+  // cascade. Errors propagate from here.
+  const required = collectEncounterAnchorRequirements(
+    sweepableConditions(rctx.graphContext.allNodes, version), version, rctx.temporalDefaults);
+  if (temporalCtx.encounterStart) return;      // ONLY the anchor throw is suppressed
+  throwIfAnchorsMissing(required);
 }
 ```
+
+> **Round 7, P1-21 — this pseudocode was wrong in v7 and is corrected here.** It
+> returned *before* `throwIfAnchorsRequired`, and that helper was what called
+> `collectEncounterAnchorRequirements` → `resolveEffectivePolicy`. So with an
+> anchor present, nothing resolved: `{ field: 'labs', status: 'active' }` passed
+> preflight and threw at evaluation, because "observation fields have no
+> clinical state" lives in `resolveEffectivePolicy` (`cascade.ts:228`), not in
+> the parser. The prose above it — *"only the anchor-requirement throw stays
+> behind the `encounterStart` check"* — was right all along; the code block
+> contradicted it, and the implementation followed the code block. **Resolution
+> must happen unconditionally; only the throw is skippable.** Note the helper
+> shape matters: one that both resolves and throws can only be called where its
+> side effect is skippable, so `throwIfAnchorsMissing` takes already-resolved
+> requirements.
 - [ ] **Step 5: Run both suites. Typecheck.**
 - [ ] **Step 6: Commit** — `feat: adapt a coded condition onto the fact-selection contract`
 
@@ -855,6 +870,8 @@ describe('the pathway-default cascade, proven behaviorally (moved from Task 3, P
 - [ ] Under `v1`, no operator branch reads `patientContext.labResults`, `.conditionCodes`, `.medications`, `.allergies`, or `.vitalSigns` directly.
 - [ ] A condition carrying both `window_days` and `horizon` is rejected; `window_days` alone still filters.
 - [ ] `sweepableConditions` and the evaluator share one override parser and one namespace→field map.
+- [ ] Under `v1`, preflight rejects **everything the runtime adapter would reject** — an unknown field, an unknown operator, a malformed override, a `window_days`/`horizon` conflict, and a `status` on an observation field — **whether or not `encounterStart` is supplied**. Only the missing-anchor error is suppressed by an anchor (round 7, P1-21/P1-22).
+- [ ] The import validator rejects a coded `field` outside `FIELD_TO_KIND`, so an unauthorable-at-runtime field cannot be stored in the first place.
 - [ ] A pathway carrying a per-condition `horizon` **imports without a validation error** — `CODED_KEYS` and `ATTRIBUTE_KEYS` list `horizon` and `status`, so the NODE tier is reachable through the real authoring path and not only from hand-built fixtures (round 6, self-found).
 - [ ] `lab.a1c exists` with only an unrelated lab present is unsatisfied; an `allergy.*` equality gate is satisfiable; a nested custom vital resolves.
 - [ ] `addPatientContext` can flip a previously unsatisfied gate.

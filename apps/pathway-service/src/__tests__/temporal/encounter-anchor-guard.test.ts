@@ -325,6 +325,75 @@ describe('the legacy-v0 sweep is preserved exactly (D1, P1-15)', () => {
   });
 });
 
+const statusOnLabsGate = gate('g-status-labs', {
+  title: 'status on an observation field',
+  gate_type: 'patient_attribute',
+  default_behavior: 'skip',
+  // labs have no clinical state, so resolveEffectivePolicy rejects a status.
+  condition: { field: 'labs', operator: 'greater_than', value: '4548-4', status: 'active' },
+});
+
+const unknownFieldGate = gate('g-horoscopes', {
+  title: 'unknown coded field',
+  gate_type: 'patient_attribute',
+  default_behavior: 'skip',
+  condition: { field: 'horoscopes', operator: 'exists', value: '' },
+});
+
+const unknownOperatorGate = gate('g-sounds-like', {
+  title: 'unknown coded operator',
+  gate_type: 'patient_attribute',
+  default_behavior: 'skip',
+  condition: { field: 'labs', operator: 'sounds_like', value: '4548-4' },
+});
+
+describe('v1 preflight resolves policies, it does not merely parse overrides', () => {
+  // Round 7 P1-21. Parsing the override proves the horizon GRAMMAR is valid; it
+  // does not prove the policy RESOLVES. Rules like "labs have no clinical
+  // state" live in resolveEffectivePolicy, reached only via
+  // collectEncounterAnchorRequirements — so returning before that call left
+  // them unenforced whenever an anchor happened to be present, and the throw
+  // landed mid-traversal instead.
+  it('rejects a status on an observation field even when an anchor IS supplied', () => {
+    expect(() => assertEncounterAnchor(rctx([statusOnLabsGate]), v1WithAnchor)).toThrow(
+      TemporalContextError,
+    );
+  });
+
+  it('rejects it when no anchor is supplied either', () => {
+    expect(() => assertEncounterAnchor(rctx([statusOnLabsGate]), ctx())).toThrow(
+      TemporalContextError,
+    );
+  });
+
+  it('leaves legacy-v0 alone — that pathway still starts today', () => {
+    expect(() => assertEncounterAnchor(rctx([statusOnLabsGate]), legacyWithAnchor)).not.toThrow();
+  });
+});
+
+describe('v1 preflight rejects what the runtime adapter would reject (round 7 P1-22)', () => {
+  // The sweep skipping an unknown field while toFactSelectionCondition throws
+  // on it is the same divergence in the other direction: the pathway imports,
+  // passes preflight, and dies at evaluation.
+  it('rejects an unknown coded field rather than silently skipping it', () => {
+    expect(() => assertEncounterAnchor(rctx([unknownFieldGate]), v1WithAnchor)).toThrow(
+      TemporalContextError,
+    );
+  });
+
+  it('rejects an unknown coded operator too', () => {
+    expect(() => assertEncounterAnchor(rctx([unknownOperatorGate]), v1WithAnchor)).toThrow(
+      TemporalContextError,
+    );
+  });
+
+  it('does NOT widen legacy-v0 coverage — an unknown field is still skipped there', () => {
+    // Widening the legacy path would stop a pathway that starts today.
+    expect(() => assertEncounterAnchor(rctx([unknownFieldGate]), legacyNoAnchor)).not.toThrow();
+    expect(() => assertEncounterAnchor(rctx([unknownOperatorGate]), legacyNoAnchor)).not.toThrow();
+  });
+});
+
 describe('v1 validation is not behind the encounterStart early return (P1-18)', () => {
   it('rejects a malformed v1 override even when an anchor IS supplied', () => {
     expect(() => assertEncounterAnchor(rctx([malformedOverrideGate]), v1WithAnchor)).toThrow(

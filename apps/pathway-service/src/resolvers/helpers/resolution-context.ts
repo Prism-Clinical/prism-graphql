@@ -8,7 +8,7 @@ import {
   PatientContext,
   SignalDefinition,
 } from '../../services/confidence/types';
-import { GateProperties, AttributeCodeMap } from '../../services/resolution/types';
+import { GateProperties, AttributeCodeMap, CodedCondition } from '../../services/resolution/types';
 import { GateType } from '../../types';
 import { loadAttributeCodeMap } from '../../services/resolution/attribute-code-map';
 import {
@@ -35,6 +35,7 @@ import {
   parsePathwayTemporalDefaults,
   collectEncounterAnchorRequirements,
   SweepableCondition,
+  EncounterAnchorRequirement,
   ConditionTemporalOverride,
 } from '../../services/resolution/temporal/cascade';
 import {
@@ -44,6 +45,7 @@ import {
 } from '../../services/resolution/temporal/evaluation-context';
 import { GateField, FIELD_TO_KIND } from '../../services/resolution/temporal/contract';
 import {
+  adaptCodedCondition,
   attributeNamespaceToField,
   parseConditionOverride,
 } from '../../services/resolution/temporal/condition-adapter';
@@ -540,31 +542,6 @@ export function makeLlmGateEvaluator(
 // ─── ENCOUNTER anchor preflight ─────────────────────────────────────
 
 /**
- * Which gate field a raw condition sweeps under, or `null` to skip it.
- *
- * Under `legacy-v0` only coded conditions are swept — exactly today's scope.
- * Under `v1` the three clinical attribute namespaces join them, because D3
- * gives `vitals.*` an ENCOUNTER horizon and an unswept attribute gate would
- * pass preflight and throw mid-traversal (P1-8).
- */
-function sweptFieldFor(cond: Record<string, unknown>, isV1: boolean): GateField | null {
-  const field = cond.field;
-  if (typeof field === 'string') {
-    return Object.prototype.hasOwnProperty.call(FIELD_TO_KIND, field)
-      ? (field as GateField)
-      : null;
-  }
-  if (!isV1) return null;
-
-  // Attribute condition. `patient.*` and unrecognized namespaces map to null —
-  // they never resolve a horizon, so sweeping them would reject sessions over
-  // gates that cannot need an anchor.
-  const attribute = cond.attribute;
-  if (typeof attribute !== 'string') return null;
-  return attributeNamespaceToField(attribute.split('.')[0]);
-}
-
-/**
  * Pull the sweepable temporal conditions out of a loaded graph.
  *
  * Reads node properties defensively rather than through `GateProperties`:
@@ -637,26 +614,48 @@ export function sweepableConditions(
       const cond = c as Record<string, unknown>;
       const label = `${node.nodeIdentifier} / condition ${i}`;
 
-      const field = sweptFieldFor(cond, isV1);
-      if (field === null) return;
+      if (!isV1) {
+        // legacy-v0: byte-for-byte today's extraction. Coded conditions only,
+        // an unknown field is silently skipped, the raw override value is
+        // copied, and the cascade validates it downstream — conditionally.
+        // Widening any of this would stop a pathway that starts today.
+        const field = cond.field;
+        if (typeof field !== 'string') return;
+        if (!Object.prototype.hasOwnProperty.call(FIELD_TO_KIND, field)) return;
 
-      const entry: SweepableCondition = { label, field };
-
-      if (isV1) {
-        // Strict shared parsing. Errors propagate: under v1 this is the only
-        // preflight that catches a malformed override or a
-        // window_days/horizon conflict (P1-18).
-        const override = parseConditionOverride(cond, label);
-        if (override !== undefined) entry.override = override;
-      } else {
-        // legacy-v0: byte-for-byte today's extraction. The raw value is copied
-        // and the cascade validates it downstream, conditionally.
+        const entry: SweepableCondition = { label, field: field as GateField };
         const override: ConditionTemporalOverride = {};
         if (cond.horizon !== undefined) override.horizon = cond.horizon as never;
         if (cond.status !== undefined) override.status = cond.status as never;
         if (Object.keys(override).length > 0) entry.override = override;
+        out.push(entry);
+        return;
       }
 
+      // v1 coded: run the SAME adapter evaluation runs, so preflight rejects
+      // exactly what the runtime would (round 7 P1-22). Skipping an unknown
+      // field here while `toFactSelectionCondition` throws on it is a
+      // preflight/evaluation divergence in the other direction — the pathway
+      // imports, passes preflight, and dies mid-traversal. Errors propagate.
+      if (typeof cond.field === 'string') {
+        const adapted = adaptCodedCondition(cond as unknown as CodedCondition, label);
+        const entry: SweepableCondition = { label, field: adapted.selection.field };
+        if (adapted.override !== undefined) entry.override = adapted.override;
+        out.push(entry);
+        return;
+      }
+
+      // v1 attribute: `patient.*` and unrecognized namespaces resolve no
+      // horizon, so they are skipped rather than rejected. Task 7 replaces this
+      // with `adaptAttributeCondition`, which will validate the operator too.
+      const attribute = cond.attribute;
+      if (typeof attribute !== 'string') return;
+      const attrField = attributeNamespaceToField(attribute.split('.')[0]);
+      if (attrField === null) return;
+
+      const entry: SweepableCondition = { label, field: attrField };
+      const override = parseConditionOverride(cond, label);
+      if (override !== undefined) entry.override = override;
       out.push(entry);
     });
   }
@@ -680,10 +679,6 @@ export function assertEncounterAnchor(
   // pinned to a policy version nothing can evaluate. Behind the encounterStart
   // check, an unknown version would sail through whenever an anchor happened
   // to be present.
-  // Unconditionally, before any early return: a session must never be created
-  // pinned to a policy version nothing can evaluate. Behind the encounterStart
-  // check, an unknown version would sail through whenever an anchor happened
-  // to be present.
   getTemporalPolicy(temporalCtx.temporalPolicyVersion);
 
   const version = temporalCtx.temporalPolicyVersion;
@@ -694,33 +689,47 @@ export function assertEncounterAnchor(
     // moving it earlier would start rejecting malformed overrides on sessions
     // that succeed today (P1-15).
     if (temporalCtx.encounterStart) return;
-    throwIfAnchorsRequired(rctx, temporalCtx, sweepableConditions(rctx.graphContext.allNodes, version));
+    throwIfAnchorsMissing(
+      collectEncounterAnchorRequirements(
+        sweepableConditions(rctx.graphContext.allNodes, version),
+        version,
+        rctx.temporalDefaults,
+      ),
+    );
     return;
   }
 
-  // v1: parse and validate every condition regardless of the anchor. This sweep
-  // is the only preflight that catches a malformed override or a
-  // window_days/horizon conflict, so leaving it behind the early return means a
-  // pathway that supplies an anchor is never validated at all and throws
-  // mid-traversal instead — after LLM gates have run and audit rows exist
-  // (P1-18). Parse errors propagate from here.
-  const swept = sweepableConditions(rctx.graphContext.allNodes, version);
-
-  // Validated above; the ANCHOR requirement itself is what an anchor satisfies.
-  if (temporalCtx.encounterStart) return;
-  throwIfAnchorsRequired(rctx, temporalCtx, swept);
-}
-
-function throwIfAnchorsRequired(
-  rctx: ResolutionContext,
-  temporalCtx: EvaluationTemporalContext,
-  swept: SweepableCondition[],
-): void {
+  // v1: validate every condition regardless of the anchor (P1-18), and RESOLVE
+  // every swept policy (round 7 P1-21). Both steps must run unconditionally.
+  //
+  // Parsing alone is not enough: it proves the horizon grammar is well formed,
+  // not that the policy resolves. Rules like "labs have no clinical state, so a
+  // status is meaningless" live in `resolveEffectivePolicy`, which only
+  // `collectEncounterAnchorRequirements` reaches — so returning before that
+  // call left them unenforced whenever an anchor happened to be present, and
+  // the throw landed mid-traversal instead. Errors propagate from here.
   const required = collectEncounterAnchorRequirements(
-    swept,
-    temporalCtx.temporalPolicyVersion,
+    sweepableConditions(rctx.graphContext.allNodes, version),
+    version,
     rctx.temporalDefaults,
   );
+
+  // ONLY the missing-anchor error is suppressed by an anchor — that is the one
+  // thing an anchor actually satisfies.
+  if (temporalCtx.encounterStart) return;
+  throwIfAnchorsMissing(required);
+}
+
+/**
+ * Raise the missing-anchor error, if any requirement went unsatisfied.
+ *
+ * Takes the ALREADY-RESOLVED requirements rather than resolving them itself:
+ * resolution enforces cascade rules beyond the anchor (round 7 P1-21), so it
+ * must happen before the caller decides whether an anchor lets it skip the
+ * throw. A helper that both resolved and threw could only be called in the
+ * position where its side effect is skippable.
+ */
+function throwIfAnchorsMissing(required: EncounterAnchorRequirement[]): void {
   if (required.length === 0) return;
 
   const detail = required.map((r) => `${r.label} (${r.field}, from ${r.level})`).join('; ');

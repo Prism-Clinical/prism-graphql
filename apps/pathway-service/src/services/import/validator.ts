@@ -18,6 +18,7 @@ import {
 import { PathwayCategory } from '../../types';
 import { VALID_CODED_OPERATORS, VALID_ATTRIBUTE_OPERATORS } from '../resolution/types';
 import { VALID_ATTRIBUTE_NAMESPACES } from '../resolution/attribute-registry';
+import { FIELD_TO_KIND } from '../resolution/temporal/contract';
 
 const VALID_NODE_TYPES = new Set<string>(Object.keys(REQUIRED_NODE_PROPERTIES));
 const VALID_EDGE_TYPES = new Set<string>(Object.keys(VALID_EDGE_ENDPOINTS));
@@ -43,6 +44,9 @@ const ATTRIBUTE_KEYS = new Set([
   'display', 'note',
 ]);
 const CODED_OPS = new Set<string>(VALID_CODED_OPERATORS);
+// The same map the kernel and the anchor sweep key on — one source, so the
+// authoring boundary cannot admit a field evaluation will reject.
+const CODED_FIELDS = new Set<string>(Object.keys(FIELD_TO_KIND));
 const ATTR_OPS = new Set<string>(VALID_ATTRIBUTE_OPERATORS);
 const NAMESPACES = new Set<string>(VALID_ATTRIBUTE_NAMESPACES);
 
@@ -297,6 +301,13 @@ function validateGateConditions(
       for (const k of Object.keys(c)) if (!ATTRIBUTE_KEYS.has(k)) errors.push(`${where}: unknown key "${k}" on attribute condition.`);
     } else {
       if (!CODED_OPS.has(op)) errors.push(`${where}: operator "${op}" is not a valid coded operator.`);
+      // Membership in FIELD_TO_KIND, not merely "is a string" (round 7 P1-22).
+      // An unknown field used to import cleanly, be silently skipped by the
+      // v1 anchor sweep, and then be rejected by the runtime adapter
+      // mid-traversal. The authoring boundary is where an author can act on it.
+      if (!CODED_FIELDS.has(c.field as string)) {
+        errors.push(`${where}: field "${String(c.field)}" is not a valid condition field.`);
+      }
       if (c.value == null) errors.push(`${where}: coded condition requires a "value".`);
       for (const k of Object.keys(c)) if (!CODED_KEYS.has(k)) errors.push(`${where}: unknown key "${k}" on coded condition.`);
     }

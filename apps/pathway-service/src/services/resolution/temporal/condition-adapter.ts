@@ -68,18 +68,21 @@ function isBucketExistence(operator: string): boolean {
  * contract produces exactly what the rejection would refuse. Authoring-time
  * rejection belongs to plan 06, which can warn and migrate rather than throw.
  */
-export function toFactSelectionCondition(condition: CodedCondition): FactSelectionCondition {
+export function toFactSelectionCondition(
+  condition: CodedCondition,
+  where = 'gate condition',
+): FactSelectionCondition {
   const { field, operator, value, system } = condition;
 
   if (!Object.prototype.hasOwnProperty.call(FIELD_TO_KIND, field)) {
     throw new TemporalContextError(
-      `gate condition field "${field}" has no fact kind`,
+      `${where}: field "${field}" has no fact kind`,
       'INVALID_TEMPORAL_DEFAULTS',
     );
   }
   if (!isTemporalOperator(operator)) {
     throw new TemporalContextError(
-      `gate condition operator "${operator}" is not modelled by the selection kernel`,
+      `${where}: operator "${operator}" is not modelled by the selection kernel`,
       'INVALID_TEMPORAL_DEFAULTS',
     );
   }
@@ -148,14 +151,26 @@ export function parseConditionOverride(
  * The NODE tier for a typed coded condition. Delegates to
  * `parseConditionOverride` so the typed and untyped paths cannot diverge.
  */
-export function nodeOverrideFor(condition: CodedCondition): ConditionTemporalOverride | undefined {
-  return parseConditionOverride(condition, `condition (${condition.field})`);
+export function nodeOverrideFor(
+  condition: CodedCondition,
+  where?: string,
+): ConditionTemporalOverride | undefined {
+  return parseConditionOverride(condition, where ?? `condition (${condition.field})`);
 }
 
-/** Both adapters return `AdaptedCondition`; this is the coded one. */
-export function adaptCodedCondition(condition: CodedCondition): AdaptedCondition {
-  const adapted: AdaptedCondition = { selection: toFactSelectionCondition(condition) };
-  const override = nodeOverrideFor(condition);
+/**
+ * Both adapters return `AdaptedCondition`; this is the coded one.
+ *
+ * `where` is an author-facing location (e.g. `"g-bp / condition 0"`). The
+ * anchor sweep passes the gate label so a preflight rejection names the gate
+ * rather than just the field — an author fixing a pathway needs to know which
+ * one. Validating field, operator and override in ONE call is what makes the
+ * `v1` sweep reject exactly what evaluation would (round 7 P1-22): two
+ * different validators are two chances to disagree.
+ */
+export function adaptCodedCondition(condition: CodedCondition, where?: string): AdaptedCondition {
+  const adapted: AdaptedCondition = { selection: toFactSelectionCondition(condition, where) };
+  const override = nodeOverrideFor(condition, where);
   if (override !== undefined) adapted.override = override;
   return adapted;
 }

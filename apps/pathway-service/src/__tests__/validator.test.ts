@@ -547,6 +547,25 @@ describe('validatePathwayJson', () => {
         );
       });
 
+      it('rejects a coded field that has no fact kind (round 7 P1-22)', () => {
+        // Previously only checked to be a string. An unknown field imported
+        // cleanly, was silently skipped by preflight, and was then rejected by
+        // the runtime adapter mid-traversal.
+        const pw = clonePathway(REFERENCE_PATHWAY);
+        addGateWithCondition(pw, { field: 'horoscopes', operator: 'exists', value: '' });
+        const result = validatePathwayJson(pw);
+        expect(result.valid).toBe(false);
+        expect(result.errors).toContainEqual(expect.stringContaining('horoscopes'));
+      });
+
+      it('accepts every field the kernel does model', () => {
+        for (const field of ['conditions', 'medications', 'allergies', 'labs', 'vitals']) {
+          const pw = clonePathway(REFERENCE_PATHWAY);
+          addGateWithCondition(pw, { field, operator: 'exists', value: '' });
+          expect(validatePathwayJson(pw).valid).toBe(true);
+        }
+      });
+
       it('rejects an attribute with an unregistered namespace', () => {
         const pw = clonePathway(REFERENCE_PATHWAY);
         addGateWithCondition(pw, { attribute: 'bogus.thing', operator: 'exists', value: true });
