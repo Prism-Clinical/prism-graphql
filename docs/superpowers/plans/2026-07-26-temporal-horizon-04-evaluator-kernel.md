@@ -2,39 +2,75 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans (recommended — this plan is larger than 05) or superpowers:subagent-driven-development to implement task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Make `selectFacts` the only path by which a gate condition reads clinical data, so horizon, clinical status, and record validity govern every gate — while `legacy-v0` continues to decide exactly what today's evaluator decides.
+**Goal:** Add a **`v1` evaluation path** in which `selectFacts` is the only way a gate condition reads clinical data, so horizon, clinical status, and record validity govern every gate — while `legacy-v0` keeps executing today's code, untouched, as the shadow baseline.
 
-**Architecture:** A new `temporal/condition-adapter.ts` translates a `GateCondition` into the kernel's `FactSelectionCondition` plus a NODE-level `ConditionTemporalOverride`, rejecting operators and fields the kernel does not model. `temporal/gate-policy.ts` composes the plan-03 cascade with the plan-02 clock to produce one `EffectivePolicy` per (condition, field). `gate-evaluator.ts` then loses its three private data-access helpers — `getCodeEntries`, `getNumericValue`, `collectLabSeries` — and every operator branch reads `selectFacts(...)` output instead. `reachability.ts` calls the same kernel with a request-scoped clock. Finally the resolvers call plan 05's `assembleContext`, which until now has no callers at all.
+**Architecture:** `evaluateGate` gains a **version seam**: it dispatches on `temporalContext.temporalPolicyVersion`. `legacy-v0` runs `evaluateConditionLegacy` — today's function, byte-for-byte, including `getCodeEntries` / `getNumericValue` / `collectLabSeries`. `v1` runs `evaluateConditionKernel`, built across Tasks 4–8. A new `temporal/condition-adapter.ts` translates a `GateCondition` into the kernel's `FactSelectionCondition` plus a NODE-level `ConditionTemporalOverride`; `temporal/gate-policy.ts` composes the plan-03 cascade with the plan-02 clock into one `EffectivePolicy` per condition. Finally the resolvers call plan 05's `assembleContext` at **all five** engine entry points, which until now has no callers at all.
 
 **Tech Stack:** TypeScript 5, Apollo Server 4 + Federation 2.10, Jest + ts-jest.
 
 ## Revision history
 
-- **v1 (2026-08-11, this document)** — first draft, written from the merged state of plans 01/02/03/05 (`main` @ `d6f51fd`). Not yet reviewed.
+- **v1 (2026-08-11, `a6b0c65`)** — first draft, written unattended from `main` @ `d6f51fd`.
+- **v2 (this document)** — rewritten after review. Seven findings (4×P1, 3×P2), all verified against the code and all accepted. The central premise was wrong: v1 asserted that `legacy-v0` could be reproduced *through* the kernel and deleted the legacy data-access helpers to prove it. The normative design already rules that out. Details under "Review dispositions".
 
 ---
 
-## Open decisions — review these
+## Review dispositions
 
-This draft was written unattended. Six decisions had no unambiguous prior answer; each is implemented below as stated, with the reasoning that produced it. **These are the things to push back on.** Everything else follows from the design doc or the locked interface contract.
+Every finding was checked against the code before acceptance. None were rejected.
 
-**D1 — `horizon` / `status` become typed fields on `CodedCondition` in this plan, not plan 06.**
-`resolution-context.ts:542` says "Plan 06 adds them," and plan 03's anchor sweep therefore reads them defensively off untyped AGE JSON. But this plan's adapter must read the same two keys to build the NODE tier, and a second defensive read would let the sweep and the evaluator disagree about what an override *is* — precisely the drift the anchor preflight exists to prevent. Plan 06 still owns canonicalization, `conditionId`, and `temporal_defaults` round-trip; it does not need to own the evaluator-facing type. *If you disagree, the alternative is that both readers share one parser function and neither uses the type — say so and Task 1 changes shape.*
+**[P1-1] `legacy-v0` cannot be reproduced through the kernel — ACCEPTED, architecture inverted.**
+Design §381–398 is explicit: *"a session pinned to `legacy-v0` but run through the **new** kernel would not reproduce today's behavior, and `legacy-v0` must not be advertised as replayable through it,"* and it already chose the remedy — *"the current evaluator itself is the shadow baseline … the new `v1` path is diffed against the legacy code path, not against an in-kernel `legacy-v0`."* v1 of this plan asserted the opposite in its Global Constraints and locked decisions #1/#2. Verified unversioned deltas: `.find()`-first vs latest-dated lab selection, equal-time ambiguity, future-date exclusion, `INVALID` filtering, and — most concretely — `getCodeEntries` returns `[]` for `vitals`, so membership and `count_in_window` gates on vitals are unsatisfiable today but start firing once the assembler emits vitals as `ObservationFact`s. **`select-facts.ts:58` carries the same false claim** ("so `legacy-v0` is genuinely behavior-preserving"); Task 10 corrects that comment and the overview's plan-01 contract.
 
-**D2 — `window_days` is translated by the adapter into a NODE-level `{days:N}` horizon; it is not ignored, and canonicalization stays in plan 06.**
-This is the largest compatibility call in the plan. Today `count_in_window` / `trend_*` / `delta_from_baseline` filter on `window_days` directly (`isWithinWindow`, `collectLabSeries`). Under `legacy-v0` labs default to LIFETIME, so an adapter that read only the cascade would silently widen every windowed gate from "last 90 days" to "ever" — a behavior change in the version whose entire purpose is reproducing today. Translating `window_days: 90` into a NODE override of `{days: 90}` preserves the current result exactly while routing it through the governed path. When a condition carries **both** `window_days` and an explicit `horizon`, `horizon` wins (explicit author intent over the legacy key) and the adapter records a warning for plan 06's canonicalizer to surface at publish time. Design §6 says "`horizon` supersedes `window_days`" — this is that rule, applied at read time because the JSON rewrite is plan 06's job.
+**[P1-2] Retraversal would run on stale or absent facts — ACCEPTED.**
+Three `new RetraversalEngine(...)` sites exist (`resolution.ts:347`, `:510`, `:697` — `overrideNode`, `answerGateQuestion`, `addPatientContext`), and v1's Task 6 assembled only in the two start mutations. Normalized facts are not persisted (plan 05b), so every retraversal entry point must **re-assemble** from `buildEffectivePatientContext(...)` under the session's stored temporal context. `addPatientContext` is the sharp case: it changes the effective context by design. Task 9 covers all five sites and adds the flip test.
 
-**D3 — Attribute conditions route through the kernel for the `lab`, `vitals`, and `allergy` namespaces; `patient.*` stays on `resolveAttribute`.**
-Memory records a 2026-08-03 decision to route attribute conditions through the kernel in plan 04, overriding design §10; the contemporaneous code comment at `resolution-context.ts:595-600` calls it "a known gap, parked on Plan 04" and notes only coded branches were expected to move. This draft honors the routing decision with a principled carve-out: `lab.*`, `vitals.*`, and `allergy.*` resolve through `codeMap` to a real `(field, code, system)` triple and read the same clinical data a coded condition reads, so leaving them unfiltered means `lab.a1c > 9` and `{field: labs, operator: greater_than}` disagree about the same lab. `patient.*` is demographics (age, sex) with no `FactKind`, no interval, and no clinical state — there is nothing for a horizon to filter, so forcing it through the kernel would be ceremony. **The attribute operator set does not need to change the locked contract:** `not_equals`, `greater_or_equal`, `less_or_equal`, and `in` are absent from `TemporalOperator`, but `selectFacts` only *selects*; the comparison stays in `compareScalar`. The adapter maps each attribute operator to the temporal operator **of the same `OperatorClass`** for selection purposes only.
+**[P1-3] The attribute→operator-class mapping cannot preserve semantics — ACCEPTED, redesigned.**
+Three independent breakages, all verified:
+- `select-facts.ts:75` — `exists` returns true for **any** fact of the kind, ignoring code and system. `lab.a1c exists` would match any lab.
+- `select-facts.ts:92` — the scalar branch requires `hasFiniteValue`. Allergies are `StatefulFact`s with no numeric value, so mapping `equals`/`not_equals`/`in` on `allergy.*` to the scalar class rejects every candidate.
+- `attribute-registry.ts` — `vitals` resolves via `numericPath(ctx.vitalSigns, rest)` with **no codeMap row**. D3 claimed all three namespaces resolve through `codeMap`.
 
-**D4 — `satisfaction_check.lookback_days` is out of scope and gets a tracked gap, not a fix.**
-`prerequisites.ts:139` is a second temporal filter no cascade level governs. It is a different evaluator (prerequisite satisfaction, not gate routing), a different property shape (`{type, code, system, lookback_days}` with no `field`), and it feeds `unmetPrerequisites`, not `NodeResult`. Folding it in here would mean designing a fourth cascade surface mid-plan. Task 8 adds it to the overview's gap list and files it as plan 04b.
+Selection is now chosen by **namespace and value type**, not by comparison operator. See D3 below.
 
-**D5 — `INDETERMINATE` fails closed *and* is recorded on the result.**
-Design §13 and the overview both fix scalar/aggregate `INDETERMINATE` to fail-closed, which matches today for scalars (a missing numeric value already returns `satisfied: false`). But a gate that fails because data is *uncertain* is not the same as one that fails because the patient's value is genuinely below threshold, and plan 08 has to tell them apart. `GateEvaluationResult` gains optional `indeterminate?: boolean` and `uncertainty?: UncertaintyReason[]`. `satisfied` is unchanged, so this is additive.
+**[P1-4] Reachability lacks the inputs to run the kernel — ACCEPTED, deferred to plan 07.**
+`computePathwayReachability(pool, pathwayRelationalId, patient)` (`reachability-loader.ts:26`) loads the graph and `codeMap` and nothing else — no `temporal_defaults`, no `FactStore`, no policy version, no request clock. The snapshot loader also discards validity and most state/date information the kernel needs, and the LIVE mapper is plan 07. Building a parallel snapshot→fact path here would duplicate plan 07 and then be thrown away. Since the kernel is now `v1`-only and nothing routes to `v1` until the rollout flip, **reachability correctly stays on today's classifier for this plan.** Task 10 documents the gap and moves governed reachability to plan 07.
 
-**D6 — `evaluateGate`'s positional parameter list is replaced by an options object.**
-`gate-evaluator.ts:745` carries an explicit instruction to remove the `now: number = Date.now()` default in this plan. Removing it from a 7-position signature whose last three params are optional would silently break every test call site that passes `codeMap` positionally. The signature becomes `evaluateGate(gate, deps)` where `deps` carries `factStore`, `temporalContext`, `patientContext`, `resolutionState`, `gateAnswers`, `gateId`, `llmEvaluator`, `codeMap`, `pathwayDefaults`. This is a mechanical churn cost across ~4 production and many test call sites, paid once, and it makes the missing-clock failure a compile error instead of a silent `Date.now()`.
+**[P2-5] A finite horizon does not make a membership gate unresolvable — ACCEPTED.**
+Membership fails open in the kernel, so a membership outcome is `READY` or `NO_MATCH`, never `INDETERMINATE`: an out-of-window membership gate has a deterministic `satisfied: false`. v1's locked decision #5 reclassified those as `DATA_BLOCKED`, conflating "no positive in-window evidence" with "cannot be evaluated" and depressing `autoResolvableScore` for gates that resolve fine. **`ALWAYS_EVALUABLE` keeps both its name and its meaning.** Folded into the plan-07 hand-off.
+
+**[P2-6] Compound gates discard the uncertainty signal — ACCEPTED.**
+`evaluateCondition` returns `{satisfied, reason, fieldsRead}` and `evaluateCompound` (`gate-evaluator.ts:557`) reduces on those alone, so D5's `indeterminate`/`uncertainty` would be dropped at the compound boundary. Task 8 defines AND/OR propagation explicitly and tests it.
+
+**[P2-7] D2 contradicted the canonical contract — ACCEPTED.**
+Design §419: the canonicalizer *"**rejects** a condition supplying both `window_days` and `horizon`"*, and §437 lists the conflict as a value-validation item. v1 made `horizon` win and emitted an `AdapterWarning` that no task consumed — different runtime behavior before and after plan 06, with no surface for the warning. The adapter now **rejects the pair**. The `window_days` → `{days:N}` translation shim stays.
+
+---
+
+## Open decisions — reviewed and settled
+
+D1–D6 were drafted unattended in v1 and reviewed. All six were accepted; four were modified.
+
+**D1 — `horizon`/`status` become typed fields on `CodedCondition` here, *and* both readers share one parser.** *(Accepted with the reviewer's amendment.)* v1 moved the types and left plan 03's anchor sweep on its own defensive read. TypeScript fields validate nothing against untyped AGE JSON, so the sweep and the evaluator could still disagree about what an override *is*. Task 1 produces `parseConditionOverride(raw, where)`; `sweepableConditions` (`resolution-context.ts:546`) is rewritten to call it. Plan 06 still owns canonicalization, `conditionId`, and `temporal_defaults` round-trip.
+
+**D2 — `window_days` is translated into a NODE-level `{days:N}` horizon; supplying both `window_days` and `horizon` is rejected.** *(Accepted with P2-7's correction.)* Translation preserves today's windowed-gate behavior when the cascade would otherwise widen a 90-day window to LIFETIME. Rejecting the conflicting pair matches design §419 and keeps read-time behavior identical before and after plan 06's rewrite. No warning channel is invented.
+
+**D3 — Attribute conditions route through the kernel for `lab`, `vitals`, and `allergy`; `patient.*` stays on `resolveAttribute`. Selection is chosen by namespace and value type, never by operator class.** *(Accepted; selection redesigned per P1-3.)*
+
+| Namespace | Resolves via | Kernel selection | Then |
+|---|---|---|---|
+| `lab.*` | `codeMap` → `(code, system)` | **exact-code scalar** (`greater_than` candidate rule) | `compareScalar(value, op, target)` |
+| `vitals.*` | dotted path remainder → `code` = path, `system` = `VITALS_SYSTEM` | **exact-code scalar** | `compareScalar(...)` |
+| `allergy.*` | `codeMap` → `(code, system)` | **exact-code membership** (`equals` candidate rule) | boolean derivation, then `compareScalar` |
+| `patient.*` | `resolveAttribute` | none — demographics have no `FactKind`, interval, or clinical state | unchanged |
+
+`exists` is never routed to the kernel's `exists` operator for attributes, because that operator ignores code and system by design. An attribute `exists` becomes an exact-code membership selection and is satisfied by a non-empty `selected`.
+
+**D4 — `satisfaction_check.lookback_days` is out of scope; tracked as plan 04b.** *(Accepted unchanged.)* `prerequisites.ts:139` is a different evaluator, a different property shape, and feeds `unmetPrerequisites` rather than `NodeResult`.
+
+**D5 — `INDETERMINATE` fails closed *and* is recorded, with explicit compound propagation.** *(Accepted with P2-6's amendment.)* `GateEvaluationResult` gains optional `indeterminate?: boolean` and `uncertainty?: UncertaintyReason[]`; `satisfied` is unchanged. Task 8 defines how the signal survives AND/OR.
+
+**D6 — `evaluateGate`'s positional parameters become an options object.** *(Accepted unchanged.)* `gate-evaluator.ts:745` instructs this plan to remove the `now: number = Date.now()` default; doing so in a 7-position signature whose last three params are optional would silently break every call site passing `codeMap` positionally. The seam also needs `temporalContext` as a first-class dependency for version dispatch.
 
 ---
 
@@ -46,51 +82,56 @@ Design §13 and the overview both fix scalar/aggregate `INDETERMINATE` to fail-c
 - **Tests:** `npm test --prefix apps/pathway-service -- --runInBand <path>`. `testRegex` is `/__tests__/.*.test.ts` — a test file placed beside its source is silently never run.
 - **`tsconfig` is NOT full strict and excludes `src/__tests__`** (`diagnostics: false`). **Test files are never typechecked.** Every invariant needs a runtime throw plus a test that fails without it. A type alone enforces nothing.
 - **Baseline: 9 failures / 2 suites** (`data-completeness-scorer`, `patient-match-scorer`) — **958 passed / 9 failed / 967 total, 84 of 86 suites green**, measured on `main` @ `d6f51fd` on 2026-08-11. Measure on `main`, never on a copy of this branch. The suite has never been green; do not chase these two.
-- **No live behavior change under `legacy-v0`.** That is this plan's central claim and Task 8 is where it is proven, not asserted.
+- **`legacy-v0` executes no kernel code.** This is now a *structural* guarantee rather than a behavioral claim: the version seam (Task 3) routes `legacy-v0` to the untouched legacy function. Existing gate-evaluator tests must pass **unmodified** — that is the proof, and Task 10 states it as such.
+- **Nothing routes to `v1` in this plan.** No SDL input selects `temporalPolicyVersion` (a known gap since plan 05), so `v1` is reachable only from tests until the rollout flip. That is deliberate: it is what makes this plan safe to merge.
 - **`apps/pathway-service/src/__generated__/resolvers-types.ts` is now tracked** (it became so in PR #53). Do not delete it; if `npm run build` rewrites it, commit the change with the task that caused it.
 - **Commit prefixes** `feat:`/`fix:`/`test:`/`refactor:`/`docs:`; no `@anthropic.com`/`@claude.com`, no "Generated with" lines. End each message with
   `Co-Authored-By: Claude Opus 5 (1M context) <noreply@example.com>`
 
 ## Decisions this plan locks
 
-1. **The kernel is the only data path for gate conditions.** When this plan lands, `getCodeEntries`, `getNumericValue`, and `collectLabSeries` are deleted from `gate-evaluator.ts`. If any operator branch still reads `patientContext.labResults` directly, the plan is not done — that is the drift the whole suite exists to remove.
-2. **`legacy-v0` reproduces today; `v1` is where behavior moves.** Every behavior change in this plan must be attributable to a policy version, not to the rewrite. A `legacy-v0` diff is a bug.
-3. **Membership fails open, scalar and aggregate fail closed.** Already implemented in `selectFacts` (`select-facts.ts:184-190`); this plan consumes that policy rather than re-deciding it per operator.
-4. **Reachability is advisory and recomputes nothing authoritative.** Per design §12 it takes a request-scoped `evaluationAsOf` (it runs before a session exists, via `matchedPathways(patientId)`), runs the same kernel, and its verdict never binds resolution.
-5. **`ALWAYS_EVALUABLE` keeps its name but narrows its meaning.** Once membership operators are horizon-filtered, "always evaluable" is false for a `QUARTER` condition. The classification stays in the enum (it is a GraphQL surface) but is reserved for conditions whose *effective horizon is LIFETIME*. Under `legacy-v0` everything is LIFETIME, so the reported score is unchanged; under `v1` a lab membership gate correctly becomes data-dependent.
-6. **The assembler gets wired here or the plan is inert.** `assembleContext` currently has zero callers outside its own module (verified 2026-08-11). Plan 05 built the input contract; this plan is what makes it load-bearing.
+1. **Two paths coexist, separated by version.** `getCodeEntries`, `getNumericValue`, `collectLabSeries`, and `isWithinWindow` are **not deleted** — they are the `legacy-v0` implementation and the shadow baseline the rollout diffs against. They are retired by the rollout flip, in a later change, once `v1` is proven.
+2. **`v1` is where behavior moves, and every delta is disclosed.** A behavior change reachable under `legacy-v0` is a bug in the seam. A behavior change under `v1` is expected and must appear in the Compatibility list.
+3. **Membership fails open; scalar and aggregate fail closed.** Already implemented in `selectFacts` (`select-facts.ts:184-190`); this plan consumes that policy rather than re-deciding it per operator.
+4. **Reachability is untouched by this plan.** It has neither the inputs nor a fact source until plan 07's snapshot mapper (P1-4). `ALWAYS_EVALUABLE` keeps its meaning (P2-5).
+5. **The assembler gets wired at every engine entry point or the plan is inert.** `assembleContext` currently has zero callers outside its own module (verified 2026-08-11). Five sites: two start mutations, three retraversal constructions.
+6. **The adapter is the single validation boundary for condition temporal keys.** Both the evaluator and plan 03's anchor sweep parse overrides through it (D1).
 
 ## Deliberately out of scope
 
 - **Per-condition evidence and its GraphQL surface** — plan 08. This plan records `indeterminate`/`uncertainty` on the result (D5) but exposes nothing.
-- **Canonicalization and the `window_days` → `horizon` JSON rewrite** — plan 06. The adapter shims at read time (D2).
+- **Canonicalization and the `window_days` → `horizon` JSON rewrite** — plan 06. The adapter shims at read time and rejects the conflicting pair (D2).
+- **Governed reachability** — plan 07, with the snapshot mapper that gives it facts (P1-4).
 - **The LIVE snapshot mapper** — plan 07. `assembleContext` still throws `NOT_IMPLEMENTED` for LIVE.
 - **Normalized-fact persistence and REPLAY** — plan 05b.
 - **`satisfaction_check.lookback_days`** — plan 04b (D4).
-- **Consumer projections** (`actionableMedications`, DDI, scorer projections). The fact store feeds the gate evaluator only. DDI and the scorers keep reading `PatientContext` exactly as they do today, so no consumer is silently contaminated by the widening (design §8). Moving them is a separate, disclosed change.
+- **Retiring the legacy path** — the rollout flip. Deleting it here is what P1-1 rejected.
+- **Consumer projections** (`actionableMedications`, DDI, scorer projections). The fact store feeds the gate evaluator only; DDI and the scorers keep reading `PatientContext` exactly as today.
 
 ---
 
-### Task 1: The condition adapter — and the NODE override that feeds the cascade
+### Task 1: The condition adapter, and the parser both readers share
 
 **Files:**
 - Create: `apps/pathway-service/src/services/resolution/temporal/condition-adapter.ts`
-- Modify: `apps/pathway-service/src/services/resolution/types.ts` (add `horizon?`/`status?` to `CodedCondition`)
+- Modify: `apps/pathway-service/src/services/resolution/types.ts` (add `horizon?`/`status?` to `CodedCondition`), `apps/pathway-service/src/resolvers/helpers/resolution-context.ts` (`sweepableConditions` calls the shared parser)
 - Test: `apps/pathway-service/src/__tests__/temporal/condition-adapter.test.ts`
 
 **Interfaces:**
-- Produces: `toFactSelectionCondition(c: CodedCondition): FactSelectionCondition`, `nodeOverrideFor(c: CodedCondition): ConditionTemporalOverride | undefined`, `AdapterWarning`, `adaptCodedCondition(c): { selection, override, warnings }`.
-- Consumes: `contract.ts` (`isTemporalOperator`, `fieldToKind`, `GateField`), `cascade.ts` (`ConditionTemporalOverride`), `evaluation-context.ts` (`TemporalContextError`).
+- Produces: `toFactSelectionCondition(c: CodedCondition): FactSelectionCondition`, `parseConditionOverride(raw: unknown, where: string): ConditionTemporalOverride | undefined`, `nodeOverrideFor(c: CodedCondition): ConditionTemporalOverride | undefined`.
+- Consumes: `contract.ts` (`isTemporalOperator`, `fieldToKind`, `GateField`), `cascade.ts` (`ConditionTemporalOverride`, `parseHorizonValue`), `evaluation-context.ts` (`TemporalContextError`).
 
-**Why an adapter at all:** `CodedCondition.operator` is a `CodedOperator` and `FactSelectionCondition.operator` is a `TemporalOperator`. They are currently identical string unions defined in two places, which is exactly the situation where a later edit to one silently diverges. The adapter is the single place that proves the mapping and throws when it fails.
+**Why an adapter at all:** `CodedCondition.operator` is a `CodedOperator` and `FactSelectionCondition.operator` is a `TemporalOperator`. They are currently identical string unions defined in two places — exactly the situation where a later edit to one silently diverges. The adapter proves the mapping and throws when it fails.
+
+**Why one parser (D1):** plan 03's sweep reads `horizon`/`status` defensively off untyped AGE JSON (`resolution-context.ts:604-606`). Adding TypeScript fields does not validate that JSON. If the sweep and the evaluator parse overrides differently, a pathway can pass the anchor preflight and then throw mid-traversal — the exact failure the preflight exists to prevent.
 
 - [ ] **Step 1: Write the failing test**
 
 ```ts
 import {
-  adaptCodedCondition,
   toFactSelectionCondition,
   nodeOverrideFor,
+  parseConditionOverride,
 } from '../../services/resolution/temporal/condition-adapter';
 import { TemporalContextError } from '../../services/resolution/temporal/evaluation-context';
 import { CodedCondition } from '../../services/resolution/types';
@@ -99,8 +140,7 @@ const base: CodedCondition = { field: 'labs', operator: 'greater_than', value: '
 
 describe('toFactSelectionCondition', () => {
   it('carries field, operator, value and system through unchanged', () => {
-    const out = toFactSelectionCondition({ ...base, system: 'http://loinc.org' });
-    expect(out).toEqual({
+    expect(toFactSelectionCondition({ ...base, system: 'http://loinc.org' })).toEqual({
       field: 'labs', operator: 'greater_than', value: '718-7', system: 'http://loinc.org',
     });
   });
@@ -113,8 +153,7 @@ describe('toFactSelectionCondition', () => {
   });
 
   it('rejects a field with no fact kind', () => {
-    expect(() => toFactSelectionCondition({ ...base, field: 'horoscope' as never }))
-      .toThrow(/field/i);
+    expect(() => toFactSelectionCondition({ ...base, field: 'horoscope' as never })).toThrow(/field/i);
   });
 });
 
@@ -123,45 +162,55 @@ describe('nodeOverrideFor — the NODE tier of the cascade', () => {
     expect(nodeOverrideFor(base)).toBeUndefined();
   });
 
-  it('carries an explicit horizon', () => {
-    expect(nodeOverrideFor({ ...base, horizon: 'QUARTER' })).toEqual({ horizon: 'QUARTER' });
-  });
-
   it('carries the two axes independently', () => {
-    const c: CodedCondition = { ...base, field: 'conditions', operator: 'includes_code', status: 'any' };
+    expect(nodeOverrideFor({ ...base, horizon: 'QUARTER' })).toEqual({ horizon: 'QUARTER' });
+    const c: CodedCondition = { field: 'conditions', operator: 'includes_code', value: 'E11.9', status: 'any' };
     expect(nodeOverrideFor(c)).toEqual({ status: 'any' });
   });
 });
 
-describe('window_days is translated, never dropped (decision D2)', () => {
-  it('becomes a NODE-level custom horizon so a legacy-v0 window still filters', () => {
+describe('window_days (decision D2)', () => {
+  it('is translated into a NODE-level custom horizon, never dropped', () => {
     const c: CodedCondition = { ...base, operator: 'count_in_window', window_days: 90 };
     expect(nodeOverrideFor(c)).toEqual({ horizon: { days: 90 } });
   });
 
-  it('yields to an explicit horizon and warns', () => {
-    const c: CodedCondition = {
-      ...base, operator: 'count_in_window', window_days: 90, horizon: 'YEAR',
-    };
-    const { override, warnings } = adaptCodedCondition(c);
-    expect(override).toEqual({ horizon: 'YEAR' });
-    expect(warnings).toEqual([
-      expect.objectContaining({ code: 'WINDOW_DAYS_SUPERSEDED' }),
-    ]);
+  it('REJECTS a condition supplying both window_days and horizon (design §419)', () => {
+    const c: CodedCondition = { ...base, operator: 'count_in_window', window_days: 90, horizon: 'YEAR' };
+    expect(() => nodeOverrideFor(c)).toThrow(TemporalContextError);
+    expect(() => nodeOverrideFor(c)).toThrow(/window_days.*horizon|horizon.*window_days/i);
   });
 
   it('rejects a window_days that is not a finite positive integer (design §13)', () => {
-    expect(() => nodeOverrideFor({ ...base, window_days: 0 })).toThrow(TemporalContextError);
-    expect(() => nodeOverrideFor({ ...base, window_days: -5 })).toThrow(TemporalContextError);
-    expect(() => nodeOverrideFor({ ...base, window_days: 1.5 })).toThrow(TemporalContextError);
+    for (const bad of [0, -5, 1.5, Number.NaN]) {
+      expect(() => nodeOverrideFor({ ...base, window_days: bad })).toThrow(TemporalContextError);
+    }
+  });
+});
+
+describe('parseConditionOverride — the shared boundary (D1)', () => {
+  it('parses the same keys the evaluator reads, from untyped JSON', () => {
+    expect(parseConditionOverride({ horizon: 'QUARTER' }, 'gate-1 / condition 0'))
+      .toEqual({ horizon: 'QUARTER' });
+  });
+
+  it('rejects a malformed horizon rather than passing it through as never', () => {
+    expect(() => parseConditionOverride({ horizon: { days: 'ninety' } }, 'gate-1 / condition 0'))
+      .toThrow(TemporalContextError);
+  });
+
+  it('names the location in the message so a sweep rejection is actionable', () => {
+    expect(() => parseConditionOverride({ status: 'purple' }, 'gate-7 / condition 2'))
+      .toThrow(/gate-7 \/ condition 2/);
   });
 });
 ```
 
 - [ ] **Step 2: Run it, confirm it fails.**
-- [ ] **Step 3: Implement.** Add `horizon?: Horizon` and `status?: TemporalStatus` to `CodedCondition`. `toFactSelectionCondition` guards with `isTemporalOperator` and `fieldToKind` (which already throws on unknown fields), and copies `system` only when present — `FactSelectionCondition.system` is optional and an explicit `undefined` key changes `toEqual` semantics. `nodeOverrideFor` reads `horizon` first, falls back to `window_days` via `parseHorizonValue({days: n})`, and validates the integer before constructing.
-- [ ] **Step 4: Run tests, confirm they pass. Typecheck.**
-- [ ] **Step 5: Commit** — `feat: adapt a coded condition onto the fact-selection contract`
+- [ ] **Step 3: Implement.** Add `horizon?: Horizon` and `status?: TemporalStatus` to `CodedCondition`. `toFactSelectionCondition` guards with `isTemporalOperator` and `fieldToKind` (which already throws on unknown fields) and copies `system` only when present — `FactSelectionCondition.system` is optional and an explicit `undefined` key changes `toEqual` semantics. `nodeOverrideFor` delegates to `parseConditionOverride`, which rejects the `window_days`+`horizon` pair before anything else, then validates the integer and calls `parseHorizonValue`.
+- [ ] **Step 4: Rewrite `sweepableConditions`** to call `parseConditionOverride(cond, label)` instead of its two `as never` casts. A malformed override now fails the session-creation preflight with a located message instead of reaching the evaluator.
+- [ ] **Step 5: Run tests, confirm they pass. Run the plan-03 anchor-sweep suite specifically — this step changes its behavior from "silently ignore garbage" to "reject". Typecheck.**
+- [ ] **Step 6: Commit** — `feat: adapt a coded condition onto the fact-selection contract`
 
 ---
 
@@ -172,18 +221,14 @@ describe('window_days is translated, never dropped (decision D2)', () => {
 - Test: `apps/pathway-service/src/__tests__/temporal/gate-policy.test.ts`
 
 **Interfaces:**
-- Produces: `effectivePolicyForCondition(condition, ctx, pathwayDefaults): EffectivePolicy`, `GatePolicyInputs`.
+- Produces: `effectivePolicyForCondition(condition, ctx, pathwayDefaults): EffectivePolicy`.
 - Consumes: `cascade.ts` (`resolveEffectivePolicy`, `toEffectivePolicy`), `evaluation-context.ts` (`EvaluationTemporalContext`), Task 1.
 
-This is a thin seam, and it is deliberate: it is the one place that reads `ctx.temporalPolicyVersion`, so no operator branch can accidentally resolve a policy against a different version than its siblings.
+A thin seam, deliberately: it is the one place that reads `ctx.temporalPolicyVersion`, so no operator branch can resolve a policy against a different version than its siblings.
 
 - [ ] **Step 1: Write the failing test**
 
 ```ts
-import { effectivePolicyForCondition } from '../../services/resolution/temporal/gate-policy';
-import { makeEvaluationTemporalContext } from '../../services/resolution/temporal/evaluation-context';
-import { CodedCondition } from '../../services/resolution/types';
-
 const ctx = makeEvaluationTemporalContext({
   evaluationAsOf: '2026-08-11T00:00:00.000Z',
   temporalPolicyVersion: 'legacy-v0',
@@ -204,170 +249,38 @@ describe('effectivePolicyForCondition', () => {
   });
 
   it('lets a NODE horizon beat the pathway default', () => {
-    const c: CodedCondition = {
-      field: 'labs', operator: 'greater_than', value: '718-7', horizon: 'QUARTER',
-    };
+    const c: CodedCondition = { field: 'labs', operator: 'greater_than', value: '718-7', horizon: 'QUARTER' };
     const p = effectivePolicyForCondition(c, ctx, { horizons: { labs: 'YEAR' } });
-    // 90 days before the pinned clock, not 365.
-    expect(p.horizon.lowerBound).toBe('2026-05-13T00:00:00.000Z');
+    expect(p.horizon.lowerBound).toBe('2026-05-13T00:00:00.000Z');   // 90 days, not 365
   });
 
   it('resolves the version from the context, never from an argument', () => {
     const v1 = makeEvaluationTemporalContext({
-      evaluationAsOf: '2026-08-11T00:00:00.000Z',
-      temporalPolicyVersion: 'v1',
+      evaluationAsOf: '2026-08-11T00:00:00.000Z', temporalPolicyVersion: 'v1',
     });
     const c: CodedCondition = { field: 'labs', operator: 'greater_than', value: '718-7' };
-    // v1 defaults labs to QUARTER; legacy-v0 to LIFETIME. Same condition, same call.
-    expect(effectivePolicyForCondition(c, v1, {}).horizon.lowerBound).not.toBeNull();
-    expect(effectivePolicyForCondition(c, ctx, {}).horizon.lowerBound).toBeNull();
+    expect(effectivePolicyForCondition(c, v1, {}).horizon.lowerBound).not.toBeNull();  // QUARTER
+    expect(effectivePolicyForCondition(c, ctx, {}).horizon.lowerBound).toBeNull();     // LIFETIME
   });
 });
 ```
 
 - [ ] **Step 2: Run it, confirm it fails.**
-- [ ] **Step 3: Implement.** Compose `resolveEffectivePolicy(field, ctx.temporalPolicyVersion, pathwayDefaults, nodeOverrideFor(condition))` then `toEffectivePolicy(tier, ctx)`. Do not catch `MISSING_ENCOUNTER_ANCHOR` — plan 03's session-creation sweep is what turns that into an up-front rejection, and swallowing it here would restore the mid-traversal throw the sweep exists to prevent.
+- [ ] **Step 3: Implement.** Compose `resolveEffectivePolicy(field, ctx.temporalPolicyVersion, pathwayDefaults, nodeOverrideFor(condition))` then `toEffectivePolicy(tier, ctx)`. Do not catch `MISSING_ENCOUNTER_ANCHOR` — plan 03's session-creation sweep turns that into an up-front rejection, and swallowing it here restores the mid-traversal throw the sweep exists to prevent.
 - [ ] **Step 4: Run tests, confirm they pass. Typecheck.**
 - [ ] **Step 5: Commit** — `feat: resolve one effective policy per gate condition`
 
 ---
 
-### Task 3: Membership operators read the kernel
-
-**Files:**
-- Modify: `apps/pathway-service/src/services/resolution/gate-evaluator.ts`
-- Test: `apps/pathway-service/src/__tests__/gate-evaluator-membership-kernel.test.ts`
-
-Covers `includes_code`, `equals`, `exists`. Today these call `getCodeEntries` and `.some(matchesCodePattern)`. Two behaviors must survive: **trailing-wildcard patterns** (`Z94.*`) and **`exists` meaning "the field is non-empty"**, which is not a code match at all.
-
-> **`exists` needs care.** `selectFacts` filters by code. `exists` has no code to match — `condition.value` is empty or ignored. Route `exists` to a kernel call with a wildcard candidate match and treat `status: 'READY'` with a non-empty `selected` as satisfied. Do **not** special-case it back onto `patientContext`; that reintroduces the unfiltered read this plan removes, and under `v1` an `exists` gate must respect the horizon like any other.
-
-- [ ] **Step 1: Write the failing test**
-
-```ts
-// Behavior-preservation first: these assertions must hold before AND after.
-describe('membership operators under legacy-v0 decide what they decide today', () => {
-  it('matches a trailing-wildcard code pattern', async () => { /* Z94.* matches Z94.0 */ });
-  it('respects an explicit system filter', async () => { /* ... */ });
-  it('exists is satisfied by any admitted fact in the field', async () => { /* ... */ });
-  it('exists is unsatisfied when the field is empty', async () => { /* ... */ });
-});
-
-describe('membership fails open on uncertainty (kernel policy)', () => {
-  it('counts a fact whose validity is UNKNOWN as a match', async () => { /* ... */ });
-  it('counts a temporally UNKNOWN fact as a match', async () => { /* ... */ });
-  it('does NOT count a fact whose recordValidity is INVALID', async () => {
-    // The one deliberate legacy-v0 delta: a refuted/entered-in-error fact
-    // matches today and must stop matching. Disclosed in Compatibility.
-  });
-});
-
-describe('membership respects the horizon under v1', () => {
-  it('drops a lab outside QUARTER that legacy-v0 admits', async () => { /* ... */ });
-});
-```
-
-- [ ] **Step 2: Run it, confirm it fails.**
-- [ ] **Step 3: Implement.** Replace the three branches. Keep the human-readable `reason` strings close to today's wording — they surface in the UI and several integration tests assert on them; changing them is churn this plan does not need.
-- [ ] **Step 4: Run tests, confirm they pass. Typecheck.**
-- [ ] **Step 5: Commit** — `feat: evaluate membership operators through selectFacts`
-
----
-
-### Task 4: Scalar operators read the kernel
+### Task 3: The version seam — dispatch that changes nothing yet
 
 **Files:**
 - Modify: `apps/pathway-service/src/services/resolution/gate-evaluator.ts`, `./types.ts` (`GateEvaluationResult` gains `indeterminate?`/`uncertainty?`)
-- Test: `apps/pathway-service/src/__tests__/gate-evaluator-scalar-kernel.test.ts`
+- Test: `apps/pathway-service/src/__tests__/gate-evaluator-version-seam.test.ts`
 
-Covers `greater_than`, `less_than`. `selectFacts` returns the **definite latest** fact for the scalar class, or `INDETERMINATE` when no total order is provable. The numeric comparison stays here; only selection moves.
+This is the load-bearing task and it must land **before** any operator moves. It introduces `GateEvaluationDeps` (D6), removes the `Date.now()` default, renames today's `evaluateCondition` to `evaluateConditionLegacy`, and adds `evaluateConditionKernel` which — **at the end of this task** — simply delegates to the legacy function.
 
-> **This is where plan 05's `OPEN(evaluationAsOf)` modeling pays off.** An undated vital is `OPEN(asOf)`, which `overlap()` reports as MATCH against LIFETIME — so a `legacy-v0` vitals gate still resolves. If these tests fail with `INDETERMINATE` on undated vitals, the assembler is not being used; check Task 6's wiring before touching the kernel.
-
-- [ ] **Step 1: Write the failing test**
-
-```ts
-describe('scalar operators under legacy-v0 decide what they decide today', () => {
-  it('compares an undated vital (OPEN interval) rather than failing closed', async () => { /* ... */ });
-  it('compares the latest of several dated labs, not the first in array order', async () => {
-    // Today's getNumericValue uses .find() — array order. This is a real bug fix,
-    // and the assertion must be written so it FAILS against the old evaluator.
-  });
-  it('is unsatisfied when no fact matches the code', async () => { /* satisfied: false */ });
-});
-
-describe('scalar INDETERMINATE fails closed and is recorded (decision D5)', () => {
-  it('is unsatisfied when two results tie with no provable order', async () => {
-    const r = await evaluateGate(/* ... */);
-    expect(r.satisfied).toBe(false);
-    expect(r.indeterminate).toBe(true);
-    expect(r.uncertainty).toContain('AMBIGUOUS_LATEST');
-  });
-  it('leaves indeterminate unset on a definite decision', async () => {
-    expect((await evaluateGate(/* ... */)).indeterminate).toBeUndefined();
-  });
-});
-```
-
-- [ ] **Step 2: Run it, confirm it fails.**
-- [ ] **Step 3: Implement.** On `READY`, take the single selected fact's `value`; a fact with no numeric `value` is "no numeric value found" exactly as today. On `INDETERMINATE`, return unsatisfied with `indeterminate: true` and the kernel's `reasons`.
-- [ ] **Step 4: Run tests, confirm they pass. Typecheck.**
-- [ ] **Step 5: Commit** — `feat: evaluate scalar operators through selectFacts`
-
----
-
-### Task 5: Aggregate operators read the kernel
-
-**Files:**
-- Modify: `apps/pathway-service/src/services/resolution/gate-evaluator.ts`
-- Test: `apps/pathway-service/src/__tests__/gate-evaluator-aggregate-kernel.test.ts`
-
-Covers `count_in_window`, `trend_up`, `trend_down`, `delta_from_baseline`. `linearSlope` stays — it is pure math over a series and has nothing to do with fact selection. `collectLabSeries` is deleted; the series comes from `selected`, sorted by effective time.
-
-> **`count_in_window` counts distinct `factId`** (design §4). This is why plan 05 decision 6 widened the `buildEffectivePatientContext` merge key — without it two occurrences of the same code on different dates collapse to one before assembly, and the count is wrong upstream of anything this task does. If a count test fails at 1 where 2 is expected, check the merge key before the kernel.
-
-- [ ] **Step 1: Write the failing test**
-
-```ts
-describe('count_in_window under legacy-v0', () => {
-  it('still filters to window_days via the translated NODE horizon (D2)', async () => {
-    // 3 occurrences, one 200 days old, window_days: 90 => count 2, threshold 2 => satisfied.
-    // If D2's shim regressed, this counts 3 and the test still passes at threshold 2 —
-    // so assert the count in the reason string, not just satisfaction.
-  });
-  it('counts distinct occurrences of the same code on different dates', async () => { /* ... */ });
-  it('excludes future-dated entries', async () => { /* upperBound = evaluationAsOf */ });
-});
-
-describe('trend and delta operate on the kernel-selected series', () => {
-  it('needs min_points dated values inside the horizon', async () => { /* ... */ });
-  it('rejects a non-labs field as today', async () => { /* field !== labs => unsatisfied */ });
-  it('orders the series by effective time, never array order', async () => { /* ... */ });
-});
-
-describe('aggregate uncertainty fails closed but is retained as evidence', () => {
-  it('excludes an uncertain fact from the count', async () => { /* ... */ });
-  it('records that the count is a lower bound', async () => {
-    // FactDecision.uncertainty survives even when the operator policy resolved
-    // to EXCLUDE — plan 08 needs it. Assert r.uncertainty is non-empty.
-  });
-});
-```
-
-- [ ] **Step 2: Run it, confirm it fails.**
-- [ ] **Step 3: Implement.** Delete `collectLabSeries` and `isWithinWindow`. Sort `selected` by effective time ascending for the series operators; drop facts with no finite numeric value, as today.
-- [ ] **Step 4: Run tests, confirm they pass. Typecheck.**
-- [ ] **Step 5: Commit** — `feat: evaluate aggregate operators through selectFacts`
-
----
-
-### Task 6: Thread the fact store, drop the wall clock, wire the assembler
-
-**Files:**
-- Modify: `gate-evaluator.ts` (signature), `traversal-engine.ts` (2 call sites, `:286`/`:679`), `retraversal-engine.ts` (1 call site, `:159`), `resolvers/mutations/resolution.ts`, `resolvers/mutations/multi-pathway-resolution.ts`
-- Test: `apps/pathway-service/src/__tests__/gate-evaluator-deps.test.ts`
-
-This is the task that makes the previous four reachable from a real request. Until it lands, `assembleContext` still has no callers and the rewritten operators only run in unit tests.
+A no-op fork sounds pointless. It is not: it proves the dispatch, the deps object, and every updated call site in isolation, so that when Tasks 4–8 change the `v1` branch, any failure is attributable to the operator rewrite and not to the plumbing.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -381,123 +294,302 @@ describe('evaluateGate requires an explicit clock (gate-evaluator.ts:745)', () =
   });
 });
 
-describe('both engines supply their pinned context, not a fresh clock', () => {
-  it('traversal passes the session temporalContext through to the kernel', async () => { /* ... */ });
-  it('retraversal reuses the stored context so a re-run resolves the same horizons', async () => {
-    // Pin evaluationAsOf in the past, assert a QUARTER lab that is in-window
-    // relative to the STORED clock still matches when re-traversed today.
+describe('the version seam dispatches on the session policy version', () => {
+  it('routes legacy-v0 to the legacy evaluator', async () => { /* spy or behavioral probe */ });
+  it('routes v1 to the kernel evaluator', async () => { /* ... */ });
+  it('rejects an unknown version rather than falling back to legacy', async () => {
+    // assertKnownPolicyVersion already throws; prove the seam does not swallow it.
+    await expect(evaluateGate(gate, depsWithVersion('v99'))).rejects.toThrow(/v99/);
   });
 });
 
-describe('the resolvers assemble a fact store', () => {
-  it('startResolution builds facts from the SYNTHETIC payload', async () => { /* ... */ });
-  it('a gate decides from assembled facts, not from PatientContext arrays', async () => { /* ... */ });
+describe('the fork is a no-op until Task 4', () => {
+  it('decides identically under legacy-v0 and v1 for a membership gate', async () => {
+    const a = await evaluateGate(gate, deps('legacy-v0'));
+    const b = await evaluateGate(gate, deps('v1'));
+    expect(b.satisfied).toBe(a.satisfied);
+    // This test is DELETED in Task 4, which is the point where the paths diverge.
+  });
 });
 ```
 
 - [ ] **Step 2: Run it, confirm it fails.**
-- [ ] **Step 3: Implement.** Introduce `GateEvaluationDeps` (D6) and update all four production call sites. Both engines already hold `temporalContext` privately (`traversal-engine.ts:152`, `retraversal-engine.ts:82`) — pass the object, not the derived `now`. Call `assembleContext` in both start mutations and thread the resulting `FactStore` into the engine. Mechanical test-call-site churn is expected here and is the price of D6.
-- [ ] **Step 4: Run the FULL suite.** This is the task most likely to break unrelated tests. Compare against the 958/9 baseline.
-- [ ] **Step 5: Commit** — `refactor: give evaluateGate explicit dependencies and a real fact store`
+- [ ] **Step 3: Implement.** `evaluateGate(gate, deps)` where `GateEvaluationDeps = { temporalContext, factStore, patientContext, resolutionState, gateAnswers, gateId?, llmEvaluator?, codeMap?, pathwayDefaults? }`. Throw a `TemporalContextError` when `temporalContext` is missing. Rename `evaluateCondition` → `evaluateConditionLegacy` **without editing its body**; add `evaluateConditionKernel` delegating to it. `evaluatePatientAttribute` and `evaluateCompound` take the deps and dispatch per condition.
+- [ ] **Step 4: Update all four production call sites** — `traversal-engine.ts:286`/`:679`, `retraversal-engine.ts:159`. Both engines already hold `temporalContext` privately (`traversal-engine.ts:152`, `retraversal-engine.ts:82`); pass the object, not the derived `now`. `factStore` is `[]` at this task — Task 9 fills it.
+- [ ] **Step 5: Run the FULL suite.** Expect broad mechanical churn in test call sites. **Existing gate-evaluator assertions must not be weakened** — only their call shape changes. Compare against 958/9.
+- [ ] **Step 6: Commit** — `refactor: give evaluateGate explicit dependencies and a version seam`
 
 ---
 
-### Task 7: Attribute conditions through the kernel
+### Task 4: Membership operators on the kernel (`v1` branch)
 
 **Files:**
-- Modify: `condition-adapter.ts` (attribute branch), `gate-evaluator.ts` (`evaluateCondition` attribute path), `attribute-registry.ts`
+- Modify: `gate-evaluator.ts` (`evaluateConditionKernel`)
+- Test: `apps/pathway-service/src/__tests__/gate-evaluator-membership-kernel.test.ts`
+
+Covers `includes_code`, `equals`, `exists`. Delete Task 3's no-op-fork test here; this is where the paths diverge.
+
+> **`exists` is bucket existence.** `select-facts.ts:75` short-circuits `exists` to match any fact of the kind, ignoring code and system — which is what today's `entries.length > 0` means. Reject a `system` or non-empty `value` supplied alongside `exists` in the adapter rather than silently ignoring it.
+
+- [ ] **Step 1: Write the failing test**
+
+```ts
+describe('membership under v1 preserves the shape of today’s matching', () => {
+  it('matches a trailing-wildcard code pattern (Z94.* matches Z94.0)', async () => { /* ... */ });
+  it('respects an explicit system filter', async () => { /* ... */ });
+  it('exists is satisfied by any admitted fact in the field, and unsatisfied when empty', async () => { /* ... */ });
+});
+
+describe('membership fails open on uncertainty (kernel policy)', () => {
+  it('counts a validity-UNKNOWN fact as a match', async () => { /* ... */ });
+  it('counts a temporally UNKNOWN fact as a match', async () => { /* ... */ });
+});
+
+describe('disclosed v1 deltas — these MUST differ from legacy-v0', () => {
+  it('drops a recordValidity INVALID fact that legacy-v0 matches', async () => {
+    const legacy = await evaluateGate(gate, deps('legacy-v0'));
+    const v1 = await evaluateGate(gate, deps('v1'));
+    expect(legacy.satisfied).toBe(true);
+    expect(v1.satisfied).toBe(false);
+  });
+
+  it('drops a lab outside QUARTER that legacy-v0 admits under LIFETIME', async () => { /* ... */ });
+
+  it('starts matching a vitals membership gate that legacy-v0 cannot satisfy', async () => {
+    // getCodeEntries returns [] for 'vitals', so this gate is unsatisfiable today.
+    // The assembler emits vitals as ObservationFacts, so v1 resolves it.
+    // This is the concrete example from review finding P1-1.
+  });
+});
+```
+
+- [ ] **Step 2: Run it, confirm it fails.**
+- [ ] **Step 3: Implement** the three branches in `evaluateConditionKernel`. Keep `reason` wording close to today's — it surfaces in the UI and several integration tests assert on it.
+- [ ] **Step 4: Run tests, confirm they pass. Typecheck.**
+- [ ] **Step 5: Commit** — `feat: evaluate membership operators through selectFacts under v1`
+
+---
+
+### Task 5: Scalar operators on the kernel (`v1` branch)
+
+**Files:** `gate-evaluator.ts`; test `gate-evaluator-scalar-kernel.test.ts`
+
+Covers `greater_than`, `less_than`. `selectFacts` returns the **definite latest** fact for the scalar class, or `INDETERMINATE` when no total order is provable. The numeric comparison stays here; only selection moves.
+
+> **This is where plan 05's `OPEN(evaluationAsOf)` modeling pays off.** An undated vital is `OPEN(asOf)`, which `overlap()` reports as MATCH against any horizon containing the clock. If these tests fail with `INDETERMINATE` on undated vitals, the assembler is not wired — check Task 9 before touching the kernel.
+
+- [ ] **Step 1: Write the failing test**
+
+```ts
+describe('scalar selection under v1', () => {
+  it('compares an undated vital (OPEN interval) rather than failing closed', async () => { /* ... */ });
+  it('is unsatisfied when no fact matches the code', async () => { /* satisfied: false */ });
+});
+
+describe('disclosed v1 delta — latest, not first', () => {
+  it('compares the latest of several dated labs where legacy-v0 takes array order', async () => {
+    // getNumericValue uses .find(). Order the fixture so first !== latest and the
+    // two paths disagree; assert BOTH, so the delta is pinned, not just the fix.
+  });
+});
+
+describe('scalar INDETERMINATE fails closed and is recorded (D5)', () => {
+  it('is unsatisfied when two results tie with no provable order', async () => {
+    const r = await evaluateGate(gate, deps('v1'));
+    expect(r.satisfied).toBe(false);
+    expect(r.indeterminate).toBe(true);
+    expect(r.uncertainty).toContain('AMBIGUOUS_LATEST');
+  });
+  it('leaves indeterminate unset on a definite decision', async () => { /* undefined */ });
+});
+```
+
+- [ ] **Step 2–5:** implement, test, typecheck, commit — `feat: evaluate scalar operators through selectFacts under v1`
+
+---
+
+### Task 6: Aggregate operators on the kernel (`v1` branch)
+
+**Files:** `gate-evaluator.ts`; test `gate-evaluator-aggregate-kernel.test.ts`
+
+Covers `count_in_window`, `trend_up`, `trend_down`, `delta_from_baseline`. `linearSlope` stays — pure math over a series, nothing to do with selection. The `v1` series comes from `selected`, sorted by effective time; `collectLabSeries` and `isWithinWindow` remain in place for `legacy-v0`.
+
+> **`count_in_window` counts distinct `factId`** (design §4). Plan 05 decision 6 widened the `buildEffectivePatientContext` merge key for this reason — without it, two occurrences of the same code on different dates collapse before assembly. If a count test reads 1 where 2 is expected, check the merge key before the kernel.
+
+- [ ] **Step 1: Write the failing test**
+
+```ts
+describe('count_in_window under v1', () => {
+  it('filters to the window via the translated NODE horizon (D2)', async () => {
+    // 3 occurrences, one 200 days old, window_days: 90 => count 2.
+    // Assert the COUNT in the reason string, not just satisfaction: at
+    // threshold 2 a regression to 3 would still satisfy and hide the bug.
+  });
+  it('counts distinct occurrences of the same code on different dates', async () => { /* ... */ });
+  it('excludes future-dated entries (upperBound = evaluationAsOf)', async () => { /* ... */ });
+});
+
+describe('trend and delta operate on the kernel-selected series', () => {
+  it('needs min_points dated values inside the horizon', async () => { /* ... */ });
+  it('rejects a non-labs field as today', async () => { /* ... */ });
+  it('orders the series by effective time, never array order', async () => { /* ... */ });
+});
+
+describe('aggregate uncertainty fails closed but is retained', () => {
+  it('excludes an uncertain fact from the count and records it as a lower bound', async () => {
+    // FactDecision.uncertainty survives even when the operator policy resolved to
+    // EXCLUDE — plan 08 needs it. Assert r.uncertainty is non-empty.
+  });
+});
+```
+
+- [ ] **Step 2–5:** implement, test, typecheck, commit — `feat: evaluate aggregate operators through selectFacts under v1`
+
+---
+
+### Task 7: Attribute conditions, selected by namespace (`v1` branch)
+
+**Files:**
+- Modify: `condition-adapter.ts` (attribute branch), `gate-evaluator.ts` (attribute path in `evaluateConditionKernel`)
 - Test: `apps/pathway-service/src/__tests__/temporal/attribute-condition-kernel.test.ts`
 
-Implements D3. `lab.*`, `vitals.*`, `allergy.*` resolve through `codeMap` to `(field, code, system)` and go through the kernel; `patient.*` keeps calling `resolveAttribute`.
+Implements D3 as redesigned by P1-3. Selection is chosen by **namespace and value type**; the comparison stays in `compareScalar`. `patient.*` never reaches the kernel.
 
 - [ ] **Step 1: Write the failing test**
 
 ```ts
-describe('attribute namespaces that read clinical data are governed (D3)', () => {
-  it('lab.a1c resolves the same fact a coded labs condition resolves', async () => {
-    // The point of the whole task: these two must agree.
+describe('namespace determines selection, not the operator (P1-3)', () => {
+  it('selects a lab by EXACT mapped code, not by any-lab existence', async () => {
+    // codeMap: lab.a1c -> LOINC 4548-4. Store holds an unrelated lab only.
+    // `lab.a1c exists` must be UNSATISFIED — the kernel's own `exists` operator
+    // would match the unrelated lab because it ignores code and system.
+    expect((await evaluateGate(a1cExistsGate, deps('v1'))).satisfied).toBe(false);
   });
-  it('vitals.systolic_bp respects the effective horizon under v1', async () => { /* ... */ });
-  it('allergy.penicillin drops a refuted allergy', async () => { /* ... */ });
-  it('an unmapped attribute is unsatisfied, not a crash', async () => { /* codeMap miss */ });
+
+  it('selects an allergy by exact code as MEMBERSHIP, then derives a boolean', async () => {
+    // Allergies are StatefulFacts with no numeric value. Scalar selection would
+    // reject every candidate via hasFiniteValue (select-facts.ts:92).
+    expect((await evaluateGate(allergyEqualsGate, deps('v1'))).satisfied).toBe(true);
+  });
+
+  it('selects a vital by dotted path, with no codeMap row', async () => {
+    // attribute-registry resolves vitals via numericPath, NOT codeMap.
+    // vitals.systolic_bp -> { field: 'vitals', code: 'systolic_bp', system: VITALS_SYSTEM }
+  });
+
+  it('resolves a nested custom vital path', async () => { /* custom.pain_score */ });
+
+  it('leaves patient.* on resolveAttribute', async () => {
+    // Demographics have no FactKind, interval, or clinical state.
+  });
 });
 
-describe('operator mapping preserves the comparison (D3)', () => {
-  it('maps greater_or_equal to the scalar selection class and still compares >=', async () => {
-    // value exactly equal to threshold => satisfied. Proves the comparison did
-    // NOT degrade to greater_than when mapped onto the temporal operator set.
-  });
-  it('maps not_equals to scalar selection and compares !=', async () => { /* ... */ });
-  it('maps in to scalar selection and tests membership of the value set', async () => { /* ... */ });
+describe('attribute operators outside TemporalOperator still work', () => {
+  for (const op of ['not_equals', 'greater_or_equal', 'less_or_equal', 'in']) {
+    it(`applies ${op} via compareScalar after kernel selection`, async () => { /* ... */ });
+  }
 });
 
-describe('patient.* stays off the kernel', () => {
-  it('resolves demographics with no horizon filtering', async () => { /* patient.age */ });
-  it('is not swept for an encounter anchor', () => { /* collectEncounterAnchorRequirements */ });
+describe('absent target with an unrelated fact present', () => {
+  it('is unsatisfied for every namespace rather than matching the unrelated fact', async () => { /* ... */ });
+  it('is unsatisfied when the attribute has no codeMap row at all', async () => { /* ... */ });
 });
 ```
 
 - [ ] **Step 2: Run it, confirm it fails.**
-- [ ] **Step 3: Implement.** Add `attributeSelectionFor(attribute, codeMap)` returning `null` for `patient.*` and a `FactSelectionCondition` otherwise. Map the operator by `OperatorClass`: `exists` → membership; everything else → the scalar class. Keep `compareScalar` as the comparator so no attribute operator semantics change.
+- [ ] **Step 3: Implement.** Add `adaptAttributeCondition(c, codeMap)` returning `{ selection, override } | null` — `null` means `patient.*`, handled by `resolveAttribute`. Map namespaces per the D3 table. An attribute with no `codeMap` row resolves to `undefined` today and must stay unsatisfied, not throw.
 - [ ] **Step 4: Run tests, confirm they pass. Typecheck.**
-- [ ] **Step 5: Update `sweepableConditions`.** The comment at `resolution-context.ts:589-600` explains attribute conditions are not swept because they never resolve a horizon. That is now false for three namespaces. Extend the sweep and update the comment, or a `v1` `vitals.*` attribute gate throws `MISSING_ENCOUNTER_ANCHOR` mid-traversal — the exact failure plan 03's preflight exists to prevent. **Add a test that fails without the sweep change.**
-- [ ] **Step 6: Commit** — `feat: route clinical attribute conditions through the kernel`
+- [ ] **Step 5: Commit** — `feat: route clinical attribute conditions through the kernel under v1`
 
 ---
 
-### Task 8: Reachability, the behavior-preservation proof, and reconciliation
+### Task 8: Compound gates propagate uncertainty (P2-6)
+
+**Files:** `gate-evaluator.ts` (`evaluateCompound`, `evaluateConditionKernel` return shape); test `gate-evaluator-compound-uncertainty.test.ts`
+
+`evaluateCondition*` returns `{satisfied, reason, fieldsRead}` today, so D5's signal dies at the compound boundary. Widen the internal return and define propagation. **Truth table, normative:**
+
+| Operator | Conditions | `satisfied` | `indeterminate` |
+|---|---|---|---|
+| AND | any definite `false` | `false` | `false` — a definite false dominates; the gate's outcome is certain |
+| AND | all `true` except ≥1 indeterminate | `false` | `true` |
+| AND | all definite `true` | `true` | `false` |
+| OR | any definite `true` | `true` | `false` — a definite true dominates |
+| OR | all `false` except ≥1 indeterminate | `false` | `true` |
+| OR | all definite `false` | `false` | `false` |
+| either | all indeterminate | `false` | `true` |
+
+The principle: **uncertainty is reported only when it could have changed the answer.** `uncertainty[]` is the deduplicated union of contributing conditions' reasons, and is empty whenever `indeterminate` is false.
+
+- [ ] **Step 1: Write the failing test** — one case per truth-table row, plus: `it('leaves a legacy-v0 compound gate’s result shape unchanged')`.
+- [ ] **Step 2–5:** implement, test, typecheck, commit — `feat: propagate condition uncertainty through compound gates`
+
+---
+
+### Task 9: Wire the assembler at every entry point (P1-2)
 
 **Files:**
-- Modify: `reachability.ts`, `docs/superpowers/plans/2026-07-26-temporal-horizon-00-overview.md`, `docs/superpowers/specs/2026-07-21-pathway-temporal-horizon-design.md` (§10 revision per D3)
-- Test: `apps/pathway-service/src/__tests__/reachability-kernel.test.ts`, `apps/pathway-service/src/__tests__/temporal/legacy-v0-preservation.test.ts`
+- Modify: `resolvers/mutations/resolution.ts` (start + **three** retraversal sites: `:347`, `:510`, `:697`), `resolvers/mutations/multi-pathway-resolution.ts`
+- Test: `apps/pathway-service/src/__tests__/resolution-fact-store-wiring.test.ts`
+
+Until this lands, `assembleContext` has no callers and Tasks 4–8 run only in unit tests. Facts are **not persisted** (plan 05b), so every entry point re-assembles from `buildEffectivePatientContext(initialPatientContext, additionalContext)` under the session's **stored** temporal context. Plan 05 decision 5 is what makes this sound: identical input yields identical `factId`s.
 
 - [ ] **Step 1: Write the failing test**
 
 ```ts
-describe('reachability runs the same kernel with a request-scoped clock (§12)', () => {
-  it('accepts an evaluationAsOf argument rather than reading the wall clock', () => { /* ... */ });
-  it('classifies a lab membership gate as DATA_AVAILABLE under v1, not ALWAYS_EVALUABLE', () => {
-    // Decision 5: the enum survives, its meaning narrows.
-  });
-  it('still reports ALWAYS_EVALUABLE under legacy-v0 where every horizon is LIFETIME', () => {
-    // Guards the user-visible autoResolvableScore against an accidental v0 change.
-  });
-  it('reports DATA_BLOCKED when the only matching fact is outside the horizon', () => { /* ... */ });
+describe('every engine entry point assembles a fact store', () => {
+  it('startResolution builds facts from the SYNTHETIC payload', async () => { /* ... */ });
+  it('startMultiPathwayResolution builds facts for each child session', async () => { /* ... */ });
+  for (const entry of ['overrideNode', 'answerGateQuestion', 'addPatientContext']) {
+    it(`${entry} re-assembles rather than passing an empty store`, async () => { /* ... */ });
+  }
 });
 
-describe('legacy-v0 preservation — the plan’s central claim', () => {
-  // Table-driven over every operator × every field. For each case, assert the
-  // kernel evaluator and the pre-plan-04 expectation agree.
-  it.each(LEGACY_CASES)('$name decides identically under legacy-v0', async (c) => { /* ... */ });
+describe('addPatientContext changes what a gate decides (the P1-2 flip test)', () => {
+  it('re-resolves a previously unsatisfied gate once the new fact arrives', async () => {
+    // 1. start a v1 session; a lab gate is unsatisfied (no matching fact)
+    // 2. addPatientContext supplies the matching lab
+    // 3. the gate is now satisfied
+    // With an empty or stale store this stays unsatisfied — which is the bug.
+  });
+});
 
-  it('documents the two deliberate v1-only deltas', async () => {
-    // (1) INVALID facts stop matching. (2) snapshot allergies gain a status
-    // filter. Both are disclosed in design §Compatibility; assert them so a
-    // future change cannot widen the delta set silently.
+describe('retraversal reuses the stored clock', () => {
+  it('resolves the same horizons on re-run as at creation', async () => {
+    // Pin evaluationAsOf in the past; a QUARTER lab in-window relative to the
+    // STORED clock must still match when retraversed today.
   });
 });
 ```
 
 - [ ] **Step 2: Run it, confirm it fails.**
-- [ ] **Step 3: Implement reachability.** Thread `evaluationAsOf` from `Query.ts:549/813`. Replace `hasDataForCondition`'s hand-rolled lookups with a `selectFacts` call. `ALWAYS_EVALUABLE_OPERATORS` becomes a horizon check rather than an operator check (decision 5).
-- [ ] **Step 4: Run the FULL suite** against the 958/9 baseline. Any new failure is this plan's, not a pre-existing one.
-- [ ] **Step 5: Reconcile the overview.** Mark 04 executed; update Plan 04's Produces with the real names (`adaptCodedCondition`, `effectivePolicyForCondition`, `GateEvaluationDeps`, `attributeSelectionFor`); record D1 (the `CodedCondition` fields moved from 06 to 04) so plan 06 does not add them twice; record D2 so plan 06 knows the shim exists and must be removed when canonicalization lands; add plan 04b for `satisfaction_check.lookback_days` (D4).
-- [ ] **Step 6: Revise design §10.** It states attribute conditions are outside temporal policy. D3 makes that false for three namespaces. The spec is the suite's source of truth and a stale §10 will mislead plan 09's UI work.
-- [ ] **Step 7: Commit** — `feat: score reachability through the kernel` and `docs: reconcile the suite overview and design with plan 04`
+- [ ] **Step 3: Implement.** Factor one helper — `factStoreForSession(session, additions)` — and call it at all five sites rather than repeating the assembly. Retraversal must not stamp a fresh clock; it reads `session.temporal_context`.
+- [ ] **Step 4: Run the FULL suite.** Compare against 958/9.
+- [ ] **Step 5: Commit** — `feat: assemble a fact store at every resolution entry point`
+
+---
+
+### Task 10: Prove it, document the gaps, reconcile the suite
+
+**Files:** `docs/superpowers/plans/2026-07-26-temporal-horizon-00-overview.md`, `docs/superpowers/specs/2026-07-21-pathway-temporal-horizon-design.md` (§6 note), `temporal/select-facts.ts` (comment correction)
+
+- [ ] **Step 1: Prove `legacy-v0` is untouched.** The claim is structural, and the evidence is that **every pre-existing gate-evaluator and traversal test passes with its assertions unmodified** — only call shapes changed (Task 3). Run the full suite and diff against 958/9. Any assertion that had to be weakened is a seam bug; fix the seam, not the test.
+- [ ] **Step 2: Enumerate the `v1` deltas** in the design doc's Compatibility section, from the tests that pin them: validity filtering, latest-vs-first scalar selection, equal-time ambiguity, future-date exclusion, horizon filtering of membership, and vitals membership/count becoming satisfiable.
+- [ ] **Step 3: Correct `select-facts.ts:58`.** Its comment claims the candidate rules make `legacy-v0` "genuinely behavior-preserving". They mirror the current evaluator's *candidate* rules only; validity, ordering, and vitals bucketing still differ. Rewrite it to say what it actually guarantees.
+- [ ] **Step 4: Update the overview.** Plan 04 Produces/Consumes; the corrected plan-01 claim; plan 04b (`satisfaction_check.lookback_days`, D4); governed reachability moved into plan 07 with its four open questions (request clock, policy version, `temporal_defaults` loading, snapshot→fact mapping); `ALWAYS_EVALUABLE` retains its meaning (P2-5).
+- [ ] **Step 5: Commit** — `docs: record the v1 deltas and reconcile the suite overview`
 
 ---
 
 ## Acceptance criteria
 
-- [ ] `gate-evaluator.ts` contains no direct read of `patientContext.conditionCodes`, `.medications`, `.allergies`, `.labResults`, or `.vitalSigns` on any coded or clinical-attribute path. `getCodeEntries`, `getNumericValue`, `collectLabSeries`, and `isWithinWindow` are deleted.
-- [ ] `evaluateGate` has no `Date.now()` fallback and throws when given no `temporalContext`, proven by a test that fails without the throw.
-- [ ] `assembleContext` has at least two production callers (both start mutations).
-- [ ] Every operator in `VALID_CODED_OPERATORS` has a legacy-v0 preservation test asserting it decides what it decided before this plan.
-- [ ] The only `legacy-v0` behavior changes are the two disclosed in design §Compatibility (INVALID facts dropped; allergy status filter). Any third is a bug.
-- [ ] A `v1` lab scalar gate filters to QUARTER; the same gate under `legacy-v0` filters to LIFETIME. Same pathway, same patient, same code.
-- [ ] `lab.a1c > 9` (attribute) and `{field: labs, operator: greater_than, value: <a1c code>}` (coded) select the same fact.
-- [ ] A `v1` `vitals.*` attribute gate with no `encounterStart` is rejected at session creation by the anchor sweep, not mid-traversal.
-- [ ] Reachability takes an explicit `evaluationAsOf` and reads no wall clock.
-- [ ] Suite is at **958 passed / 9 failed** or better, with the same two pre-existing scorer suites failing and no others.
-- [ ] `./node_modules/.bin/tsc -p apps/pathway-service/tsconfig.json --noEmit` is clean.
-- [ ] The overview's Plan 04 entry is marked executed with its real Produces list, and design §10 no longer contradicts D3.
+- [ ] `legacy-v0` executes no kernel code, and every pre-existing test passes with **unmodified assertions**.
+- [ ] Full suite at 958 passed / 9 failed or better; the 9 are the two known scorer suites.
+- [ ] `evaluateGate` has no `Date.now()` fallback and throws without a `temporalContext`.
+- [ ] Under `v1`, no operator branch reads `patientContext.labResults`, `.conditionCodes`, `.medications`, `.allergies`, or `.vitalSigns` directly — `grep` for those in `evaluateConditionKernel` returns nothing.
+- [ ] A condition carrying both `window_days` and `horizon` is rejected; `window_days` alone still filters.
+- [ ] `sweepableConditions` and the evaluator parse overrides through the same function.
+- [ ] `lab.a1c exists` with only an unrelated lab present is unsatisfied; an `allergy.*` equality gate is satisfiable; a nested custom vital resolves.
+- [ ] `addPatientContext` can flip a previously unsatisfied gate.
+- [ ] Each truth-table row in Task 8 has a passing test.
+- [ ] Reachability is unchanged, and the overview records why plus the four questions plan 07 must answer.
