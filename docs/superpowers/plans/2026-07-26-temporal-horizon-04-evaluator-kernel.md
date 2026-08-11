@@ -153,6 +153,22 @@ The mechanism, confirmed by running it, not reasoned about. `assembleStateful` g
 
 **Defect-class note.** Locked decision #3 assigns each operator class an *uncertainty* policy (membership fails open, scalar and aggregate fail closed) — and nothing in this plan or plan 01 ever assigned each class a *temporal predicate*. The three classes were given one, `overlap`, by default. That gap is a new class: not design, mechanics, cross-layer, pseudocode, field-level dependency, or cross-plan intent, but **a shared primitive silently generalized to a case it does not model**. *Before round 11, for each shared kernel primitive, enumerate every operator that consumes it and state what question that operator is actually asking — then check the primitive answers that question, not a neighbouring one.*
 
+**D8 — the AGGREGATE class gets occurrence semantics: it selects on the fact's START bound, not interval overlap. Membership and scalar keep overlap.** *(Round 10, found executing Task 6. Decision taken 2026-08-11.)*
+
+`selectFacts` had exactly one temporal predicate — `overlap(fact.interval, horizon)` — and all three operator classes inherited it. Locked decision #3 gave each class its own **uncertainty** policy but never gave each class a **temporal predicate**; `overlap` was generalized by default to a case it does not model.
+
+For `count_in_window` that is wrong. The operator counts **recurrence**, and `assembleStateful` gives any entry with no `endDate` and a non-INACTIVE state `end: OPEN(evaluationAsOf)` (`context-assembler.ts:85`), with a missing `clinicalState` failing open to active. Such an interval reaches the clock and therefore overlaps **every** horizon. Proven: a condition with onset 218 days ago is counted inside a 90-day window. **`window_days` was silently inert on `conditions` / `medications` / `allergies`** — the operator's own documented use case — and `v1` diverged from `legacy-v0` in the **permissive** direction on a recurrence gate.
+
+**The rule.** For the aggregate class, a fact is in-window iff its `interval.start` falls inside the resolved horizon. Faithful translation of legacy's `isWithinWindow`:
+- **Horizon with a lower bound** ⇒ require a `start` inside it. An undated fact is excluded — matching `isWithinWindow(undefined, N, now) === false`.
+- **LIFETIME (`lowerBound === null`)** ⇒ include undated facts, matching legacy's `windowDays === undefined` branch, which returns `true` regardless of date.
+
+**SCOPE BOUNDARY — DO NOT WIDEN THIS TO SCALAR.** It looks like the same bug and is not. `PatientContext.vitalSigns` carries **no dates anywhere**, so every vital is assembled undated; under start-bound selection every vitals scalar gate would select nothing and fail closed. That is the exact failure plan 05 was reordered before plan 04 to prevent. Membership likewise keeps `overlap`: "was this condition active during the window" is a genuine overlap question. **Aggregate only.**
+
+**Residual difference, disclose rather than fix:** legacy's `collectLabSeries` excludes an undated lab from a `trend_*` / `delta_from_baseline` series **always**, even with no window, whereas the LIFETIME rule above admits it — where D7 then makes it poison the ordering. Left as a disclosed `v1` delta; do not invent a fourth predicate for series.
+
+**Carried:** Task 6's D8 pinning tests flip from documenting the defect to documenting the fix. Task 10 discloses what remains.
+
 ---
 
 ## Global Constraints
