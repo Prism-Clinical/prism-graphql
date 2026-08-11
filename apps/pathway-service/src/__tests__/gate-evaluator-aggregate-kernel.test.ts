@@ -442,6 +442,40 @@ describe('D8 — a count is over occurrences, so window_days discriminates again
     expect(v1.reason).toBe(legacy.reason);
   });
 
+  it('makes a VITALS count always zero under v1 — the aggregate cost of the D8 rule', async () => {
+    // *** Pinned as a CONSEQUENCE, disclosed rather than fixed. ***
+    //
+    // `PatientContext.vitalSigns` carries no dates anywhere, so every vital is
+    // assembled undated; the vitals horizon is ENCOUNTER, which is always
+    // bounded. Undated + bounded ⇒ excluded, so a `count_in_window` over vitals
+    // now counts 0 no matter what the patient context holds. This is the
+    // AGGREGATE analogue of the failure D8's scope boundary warns about for
+    // scalar — and it is what D8's rule literally requires, since legacy's
+    // `isWithinWindow(undefined, N, now)` is false and legacy could not satisfy
+    // a vitals count either. Carving vitals out would mean a fourth predicate.
+    //
+    // The honest reading of the zero is "no dated occurrence in the window",
+    // and the gate is DEFINITE about it: no `TEMPORAL_UNKNOWN`, because an
+    // undated fact under a bounded window is a definite legacy exclusion, not a
+    // doubt. Task 10 must disclose this; the plan's delta list currently claims
+    // "vitals membership/count becoming satisfiable", which is now half true —
+    // membership still does, count no longer does.
+    const gate = gateFor({
+      field: 'vitals',
+      operator: 'count_in_window',
+      value: 'systolic_bp',
+      count_threshold: 1,
+    });
+    const r = await evaluateGate(
+      gate,
+      deps('v1', { factStore: [undatedVital('v1f', 'systolic_bp', 148)] }),
+    );
+    expect(r.satisfied).toBe(false);
+    expect(r.indeterminate).toBe(false);
+    expect(r.uncertainty).toEqual([]);
+    expect(r.reason).toMatch(/^Found 0 matching systolic_bp in vitals within /);
+  });
+
   it('membership over the SAME ongoing condition is unaffected — it keeps overlap', async () => {
     // The scope boundary, asserted rather than asserted-about. "Does the patient
     // have an active UTI during the window?" is a genuine overlap question and
