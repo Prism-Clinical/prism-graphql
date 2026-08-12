@@ -269,6 +269,18 @@ Four findings. One is P1 and is a defect class no round has looked at; the other
 
 **Defect-class note.** Rounds 1–3 design, 4–5 plan mechanics, 6 cross-layer, 7 pseudocode, 8 field-level dependency, 9 cross-plan intent, 10 a shared primitive generalized past its model, 11 a legacy function whose per-branch inconsistency the kernel regularized, 12 a signal with no reader. Round 13 is **a primitive with more than one door, only one of which is guarded**. *Before round 14: for every validating function this plan relies on, enumerate ALL the call paths that reach the data it validates — not the call paths that reach the function. `assembleContext` was reasoned about exhaustively from the version axis and not at all from the caller axis, and the hole was in the second.*
 
+**D10 — `addPatientContext` must run the same trust parsing as `startResolution`.** *(Round 13, found executing Task 9. Decision taken 2026-08-12.)*
+
+`parseResolutionInput` treats `endDate` / `clinicalState` / `recordValidity` / `sourceId` as privileged assertions about clinical truth — refused outright in implicit mode, ADMIN-only in explicit SYNTHETIC. It is called **once**, at `resolution.ts:191` (`startResolution`). `addPatientContext` runs no trust parsing at all, and `AdditionalContextInput` reuses the same `CodeInput` / `LabResultInput` SDL types, so all four fields are authorable there with no mode and no role.
+
+Before Task 9 this was inert — `legacy-v0` reads code/system/value/date only. Wiring `factStoreForSession` makes them govern selection under `v1`: `recordValidity: 'INVALID'` removes a fact from selection entirely, `clinicalState: 'INACTIVE'` flips it out of every `status: 'active'` gate. **A caller refused these at session creation can assert them mid-session and silently suppress a clinical fact from evaluation.**
+
+**This is NOT a security fix and must not be described as one.** Under AD-1 `userRole` is read from an unverified `x-user-role` header defaulting to `PROVIDER`, so a role check secures nothing and that was already accepted (2026-08-10). The defect is that **the same request is accepted or refused depending on which mutation carries it** — locked decision #7's shape, one layer up: two paths into one primitive that do not agree.
+
+**Both doors run the same parsing, whatever the rule is.** Zero breakage verified: nothing calls `addPatientContext` today, and the admin dashboard does not reference it.
+
+**Class note.** *A primitive with more than one door, only one of which is guarded.* The plan reasoned exhaustively about `legacy-v0` **not** reaching the assembler and not at all about **which callers** reach it under `v1`. Round-14 check: for every validating function, enumerate the call paths that reach the **data** it validates, not the call paths that reach the function.
+
 ---
 
 ## Global Constraints
