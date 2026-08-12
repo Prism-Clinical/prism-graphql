@@ -338,12 +338,13 @@ protocols — the D9 shape. Four things the decision text did not settle:
   | Task 4 (`88ce6bb`) | 1039 | 9 | 1048 | 89 / 91 |
   | Task 5 (`8fd537d`) | 1057 | 9 | 1066 | 90 / 92 |
   | Task 6 (`af9fd17`) | 1092 | 9 | 1101 | 91 / 93 |
-  | D8 follow-up to Task 6 | 1110 | 9 | 1119 | 91 / 93 |
+  | D8 follow-up (`611bcb8`) | 1110 | 9 | 1119 | 91 / 93 |
   | Task 7 (`db86a72`) | 1153 | 9 | 1162 | 92 / 94 |
-  | D9 implementation | 1163 | 9 | 1172 | 92 / 94 |
-  | Task 8 (`gate-evaluator-compound-uncertainty`) | 1195 | 9 | 1204 | 93 / 95 |
-  | Task 9 (assembler wired at all five entry points) | 1227 | 9 | 1236 | 95 / 97 |
-  | D10 implementation (both doors share the trust parsing) | 1236 | 9 | 1245 | 95 / 97 |
+  | D9 (`4ec24b2`) | 1163 | 9 | 1172 | 92 / 94 |
+  | Task 8 (`ab2f3b6`) | 1195 | 9 | 1204 | 93 / 95 |
+  | Task 9 (`2d185f7`) | 1227 | 9 | 1236 | 95 / 97 |
+  | D10 (`401a394`) | 1236 | 9 | 1245 | 95 / 97 |
+  | Task 10 (`7190e05`) — docs only, must not move | 1236 | 9 | 1245 | 95 / 97 |
 
   Task 4's delta is +15 passed / +15 total: **16 added** in the new
   `gate-evaluator-membership-kernel.test.ts`, **1 deleted** — Task 3's no-op-fork
@@ -1239,3 +1240,79 @@ describe('the pathway-default cascade, proven behaviorally (moved from Task 3, P
 - [ ] A definite aggregate reports `indeterminate: false` with non-empty `uncertainty`; each truth-table row has a passing test.
 - [ ] No GraphQL input selects `temporalPolicyVersion`, and a test guards against one being added.
 - [ ] Reachability is unchanged, and the overview records why plus the four questions plan 07 must answer.
+
+
+---
+
+## Task 10 — execution results (2026-08-12)
+
+### `legacy-v0` is untouched — the measurement, not the assertion
+
+The plan's central compatibility claim is that `legacy-v0` executes today's code and
+that every pre-existing test passes with **unmodified assertions**. That is checkable,
+and here is the check:
+
+```
+git diff --name-status main..HEAD -- 'apps/pathway-service/src/__tests__/*'
+# then, for each file marked M:
+git diff main..HEAD -- <file> | grep '^-' | grep 'expect('
+```
+
+**Result: 15 pre-existing test files were modified across the whole branch, and ZERO
+removed `expect(` lines among them.** They changed by pure insertion — call-shape
+edits added arguments to `evaluateGate` and the engine constructors; no assertion was
+deleted, reworded or loosened.
+
+All **9** `expect(` removals anywhere on the branch occurred inside test files the
+branch itself **created**, and each is accounted for:
+
+| # | Where | Why |
+|---|---|---|
+| 1 | `gate-evaluator-version-seam.test.ts` (Task 3's file) | Task 4 deleted the no-op-fork test — the paths diverge there by design |
+| 3 | `gate-evaluator-aggregate-kernel.test.ts` (Task 6's file) | D8 pinning flips: tests that documented the defect now document the fix |
+| 4 | `resolution-fact-store-wiring.test.ts` (Task 9's file) | D10 inversions: the R13-1 pins Task 9 wrote to document the gap |
+| 1 | same | a relocation, assertions byte-identical |
+
+**The precise claim: no assertion that existed on `main` was removed or weakened
+anywhere in this branch. Every removal was the branch editing its own new files.**
+Two of those groups are deliberate inversions with a comment on each recording which
+decision inverted it, so the history is readable from the tests themselves.
+
+### The shadow boundary — what this plan did NOT do
+
+Retaining `evaluateConditionLegacy` is a **precondition** for shadow evaluation, not
+shadow evaluation. **Nothing in this plan runs both paths or diffs them.** No request
+executes `legacy-v0` and `v1` together; no output is compared; no divergence is
+recorded anywhere at runtime. The version seam makes such a comparison *possible* —
+that is its whole purpose — but building it, and retiring the legacy path afterwards,
+belongs to the rollout change.
+
+Nor does anything route to `v1`. `resolveTemporalPolicyVersion` reads a server-owned
+deployment field that defaults to `legacy-v0`, and neither start mutation accepts a
+version argument. **Every `v1` behaviour in this branch is reachable only from tests.**
+The rollout flip changes deployment config, not the schema.
+
+### What later plans now owe
+
+Carried forward explicitly so none of it is lost when this branch merges:
+
+- **Plan 05b** — normalized-fact persistence and REPLAY. `assembleContext` still
+  refuses REPLAY by name.
+- **Plan 06** — canonicalization; authoring-time rejection of an `exists` carrying a
+  code (deliberately NOT done here, see the NON-delta note); `conditionId`.
+- **Plan 07** — the LIVE snapshot mapper. **Warning (R11-6):** it will emit vitals
+  with real LOINC codes, and every `vitals.*` attribute gate currently assumes the
+  assembler's `VITALS_SYSTEM` urn. That mapping has to be reconciled or every such
+  gate silently selects nothing. Reachability also moves here, unchanged by plan 04,
+  with its four open questions: request clock, policy version, `temporal_defaults`
+  loading, and snapshot→fact mapping.
+- **Plan 08** — `GateEvaluationEvidence`. **It must read the `indeterminate` /
+  `uncertainty` flags rather than the reason prose (R12).** The flags are produced on
+  every `v1` gate result today and read by nothing; the prose carrier is asymmetric,
+  so an OR compound refused for uncertainty is currently indistinguishable from one
+  where the patient had none of the codes.
+- **Plan 09** — authoring UI. Should require a date on lab input (D7, otherwise
+  scalar and series gates fail closed) and reject a `system` on a vitals condition
+  (D9, already rejected server-side — the UI should not let an author get there).
+- **Plan 04b** — `satisfaction_check.lookback_days` (`prerequisites.ts`), the second
+  temporal filter no cascade level governs. Out of scope here (D4), still unowned.
