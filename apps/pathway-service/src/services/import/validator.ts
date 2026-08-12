@@ -19,7 +19,10 @@ import { PathwayCategory } from '../../types';
 import { VALID_CODED_OPERATORS, VALID_ATTRIBUTE_OPERATORS } from '../resolution/types';
 import { VALID_ATTRIBUTE_NAMESPACES } from '../resolution/attribute-registry';
 import { FIELD_TO_KIND } from '../resolution/temporal/contract';
-import { codedVitalsSystemError } from '../resolution/temporal/condition-adapter';
+import {
+  codedVitalsSystemError,
+  conditionControlDomainError,
+} from '../resolution/temporal/condition-adapter';
 
 const VALID_NODE_TYPES = new Set<string>(Object.keys(REQUIRED_NODE_PROPERTIES));
 const VALID_EDGE_TYPES = new Set<string>(Object.keys(VALID_EDGE_ENDPOINTS));
@@ -318,6 +321,13 @@ function validateGateConditions(
       // disagree.
       const vitalsSystem = codedVitalsSystemError(c.field, c.system);
       if (vitalsSystem !== null) errors.push(`${where}: ${vitalsSystem}.`);
+      // The numeric CONTROLS' domains, from the same predicate the runtime
+      // adapter throws on. Keys alone were checked here before, so
+      // `slope_threshold: -1` imported cleanly and then inverted `trend_down`
+      // into "a rising series is falling" at evaluation. `window_days` is NOT
+      // covered by this predicate — `parseHorizonValue` owns that rule (D2).
+      const controlDomain = conditionControlDomainError(c);
+      if (controlDomain !== null) errors.push(`${where}: ${controlDomain}.`);
       for (const k of Object.keys(c)) if (!CODED_KEYS.has(k)) errors.push(`${where}: unknown key "${k}" on coded condition.`);
     }
   });

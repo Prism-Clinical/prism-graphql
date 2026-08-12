@@ -345,6 +345,7 @@ protocols — the D9 shape. Four things the decision text did not settle:
   | Task 9 (`2d185f7`) | 1227 | 9 | 1236 | 95 / 97 |
   | D10 (`401a394`) | 1236 | 9 | 1245 | 95 / 97 |
   | Task 10 (`7190e05`) — docs only, must not move | 1236 | 9 | 1245 | 95 / 97 |
+  | Review finding 1 — control domains | 1251 | 9 | 1260 | 96 / 98 |
 
   Task 4's delta is +15 passed / +15 total: **16 added** in the new
   `gate-evaluator-membership-kernel.test.ts`, **1 deleted** — Task 3's no-op-fork
@@ -419,6 +420,13 @@ protocols — the D9 shape. Four things the decision text did not settle:
   new `temporal/attribute-condition-kernel.test.ts`, **none deleted and none
   modified**. Additive; the non-test files touched are `condition-adapter.ts`,
   `gate-evaluator.ts`, and one comment in `resolution-context.ts`.
+
+  Review finding 1's delta is +15 passed / +15 total / +1 suite: **15 added**,
+  all in the new `temporal/condition-control-domains.test.ts`, **none deleted
+  and none modified**. The non-test files touched are `condition-adapter.ts`
+  (the shared `conditionControlDomainError` predicate + the adapter throw) and
+  `services/import/validator.ts` (the same predicate, pushed as an import
+  error) — the D9 shape exactly.
 
   **Append a row per task.** *(Round 8, self-found during Task 3: every "compare against 958/9" instruction below was stale the moment Task 1 landed, and an executor following it literally would either think they had broken 50 tests or would fail to notice breaking some. The count is only meaningful as a delta whose additions are each accounted for.)*
 - **`legacy-v0` executes no kernel code, and no code this plan adds.** Structural, not behavioral: the version seam (Task 3) routes `legacy-v0` to the untouched legacy function; the assembler is not called; override parsing does not reject (D1). Every pre-existing gate-evaluator and traversal test must pass with **unmodified assertions** — that is the proof.

@@ -99,6 +99,83 @@ export function codedVitalsSystemError(field: unknown, system: unknown): string 
 }
 
 /**
+ * The numeric CONTROLS on a coded condition, and the domain each one has.
+ *
+ * The validator checked keys, operators and fields; the adapter checked
+ * field/operator/override grammar. Neither checked what these contain, and the
+ * evaluator reads them raw — so a sign error in one of them silently reverses a
+ * clinical decision:
+ *
+ *  - **`slope_threshold` must be NON-NEGATIVE.** It is a magnitude: `trend_down`
+ *    is `slope < -slopeFloor` (`gate-evaluator.ts:388` legacy, `:891` kernel), so
+ *    a negative floor flips the comparison's sense. `slope_threshold: -1` makes
+ *    `trend_down` mean `slope < 1`, and a RISING series satisfies "trending
+ *    down". The evaluator's own negation is what consumes the sign; the author
+ *    supplies only the size.
+ *  - **`count_threshold` and `min_points` must be POSITIVE INTEGERS.**
+ *    `count_threshold: 0` makes an empty count succeed. A non-numeric
+ *    `min_points` reaches `Math.max(2, NaN)` as NaN, and `length < NaN` is
+ *    always false, so the series-length guard disappears entirely.
+ *  - **`threshold` and `delta_threshold` must be FINITE NUMBERS, and their sign
+ *    is the author's.** `delta_threshold: -3` means "fell by ≥3" (design's
+ *    signed-delta rule, pinned by `gate-evaluator-trend.test.ts`); constraining
+ *    it the way `slope_threshold` is constrained would break every drop gate.
+ *
+ * **`window_days` is deliberately absent.** Its domain — finite positive integer
+ * within the cap — is `parseHorizonValue`'s, reached through
+ * `parseConditionOverride` (D2), and a second copy here is exactly the two-places
+ * -to-disagree shape locked decision #7 forbids. It is checked, from inside the
+ * same `adaptCodedCondition` call, by the override parser.
+ *
+ * Keyed on the KEY BEING PRESENT, not on the operator — the same reasoning D9
+ * records: an operator-qualified rule would force the import validator to
+ * re-derive the kernel's operator classification, which is two validators and
+ * two chances to disagree.
+ *
+ * Exported returning a message rather than throwing, the D9 shape: the import
+ * validator pushes it onto `errors` and the adapter throws it. One source of
+ * truth, two error protocols. Returns the FIRST violation — an author fixing a
+ * pathway re-imports, and reporting one precise cause beats a list assembled
+ * from a condition that is already being rewritten.
+ */
+export function conditionControlDomainError(condition: unknown): string | null {
+  if (!condition || typeof condition !== 'object') return null;
+  const c = condition as Record<string, unknown>;
+
+  for (const key of ['threshold', 'delta_threshold'] as const) {
+    const v = c[key];
+    if (v === undefined) continue;
+    if (typeof v !== 'number' || !Number.isFinite(v)) {
+      return `"${key}" must be a finite number (got ${JSON.stringify(v)})`;
+    }
+  }
+
+  for (const key of ['count_threshold', 'min_points'] as const) {
+    const v = c[key];
+    if (v === undefined) continue;
+    if (typeof v !== 'number' || !Number.isInteger(v) || v < 1) {
+      return `"${key}" must be a positive integer (got ${JSON.stringify(v)})`;
+    }
+  }
+
+  const slope = c.slope_threshold;
+  if (slope !== undefined) {
+    if (typeof slope !== 'number' || !Number.isFinite(slope)) {
+      return `"slope_threshold" must be a finite non-negative number (got ${JSON.stringify(slope)})`;
+    }
+    if (slope < 0) {
+      return (
+        `"slope_threshold" must be non-negative (got ${JSON.stringify(slope)}) — ` +
+        `it is a MAGNITUDE, and trend_down already negates it (slope < -slope_threshold), ` +
+        `so a negative value inverts the comparison and a RISING series satisfies trend_down`
+      );
+    }
+  }
+
+  return null;
+}
+
+/**
  * Translate a coded condition into the kernel's selection shape, rejecting
  * anything the kernel does not model.
  *
@@ -135,6 +212,16 @@ export function toFactSelectionCondition(
   const vitalsSystem = codedVitalsSystemError(field, system);
   if (vitalsSystem !== null) {
     throw new TemporalContextError(`${where}: ${vitalsSystem}`, 'INVALID_TEMPORAL_DEFAULTS');
+  }
+
+  // Likewise before the early return, and for the same reason: the control
+  // rules are keyed on the key's presence, not on the operator, so an `exists`
+  // carrying a nonsense `slope_threshold` is rejected rather than silently
+  // dropped. Under `v1` the anchor sweep runs this same adapter, so a condition
+  // rejected here was already rejected at session creation (locked decision #7).
+  const controls = conditionControlDomainError(condition);
+  if (controls !== null) {
+    throw new TemporalContextError(`${where}: ${controls}`, 'INVALID_TEMPORAL_DEFAULTS');
   }
 
   if (isBucketExistence(operator)) {
