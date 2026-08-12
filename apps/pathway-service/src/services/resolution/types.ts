@@ -129,6 +129,22 @@ export interface AttributeCondition {
   operator: AttributeOperator;
   value: string | number | boolean | Array<string | number>;
   unit?: string;
+  /**
+   * NODE tier of the temporal cascade, exactly as on `CodedCondition`.
+   *
+   * The import validator has accepted these on attribute conditions since
+   * `ATTRIBUTE_KEYS` gained them, `adaptAttributeCondition` reads them through
+   * `parseConditionOverride`, and the `v1` anchor sweep parses them — but the
+   * type declared neither, so every caller constructing one had to cast, and a
+   * cast is exactly what stops the compiler noticing the next omission.
+   *
+   * Typed `unknown` deliberately, for the same reason `CodedCondition` is:
+   * these arrive off untyped AGE JSON and are validated at runtime, so a
+   * declared `Horizon` here would assert a guarantee the boundary does not
+   * provide.
+   */
+  horizon?: unknown;
+  status?: unknown;
   display?: string; // UI decorator
   note?: string;    // UI decorator
 }

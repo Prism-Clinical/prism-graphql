@@ -161,7 +161,7 @@ describe('an UNMAPPED clinical attribute must not be rejected by preflight alone
     operator: 'greater_than',
     value: 9,
     horizon: 'ENCOUNTER',
-  } as AttributeCondition;
+  };
 
   it('evaluates as an ordinary unsatisfied gate — no anchor is ever demanded', async () => {
     // The evaluation half of the divergence, asserted first so the preflight
@@ -191,7 +191,7 @@ describe('an UNMAPPED clinical attribute must not be rejected by preflight alone
       operator: 'greater_than',
       value: 9,
       horizon: 'ENCOUNTER',
-    } as AttributeCondition;
+    };
 
     expect(sweepableConditions([gateNode('g-a1c', mapped)], 'v1', CODE_MAP)).toEqual([
       { label: 'g-a1c / condition 0', field: 'labs', override: { horizon: 'ENCOUNTER' } },
@@ -210,7 +210,7 @@ describe('an UNMAPPED clinical attribute must not be rejected by preflight alone
       operator: 'equals',
       value: true,
       horizon: 'ENCOUNTER',
-    } as AttributeCondition;
+    };
     expect(sweepableConditions([gateNode('g-allergy', cond)], 'v1', CODE_MAP)).toEqual([]);
     const r = await evaluateGate(gateFor(cond), deps());
     expect(r.satisfied).toBe(false);
@@ -231,7 +231,7 @@ describe('the codeMap threading preserves the rules that predate it', () => {
       operator: 'greater_than',
       value: 9,
       horizon: 'FORTNIGHT',
-    } as AttributeCondition;
+    };
     expect(() => sweepableConditions([gateNode('g-bad', cond)], 'v1', CODE_MAP)).toThrow(
       /FORTNIGHT/,
     );
@@ -245,7 +245,7 @@ describe('the codeMap threading preserves the rules that predate it', () => {
       value: 9,
       horizon: 'QUARTER',
       window_days: 30,
-    } as AttributeCondition;
+    };
     expect(() => sweepableConditions([gateNode('g-both', cond)], 'v1', CODE_MAP)).toThrow(
       /not both/,
     );
@@ -259,7 +259,7 @@ describe('the codeMap threading preserves the rules that predate it', () => {
       attribute: 'vitals.systolic_bp',
       operator: 'greater_than',
       value: 140,
-    } as AttributeCondition;
+    };
     expect(sweepableConditions([gateNode('g-bp', cond)], 'v1', new Map())).toEqual([
       { label: 'g-bp / condition 0', field: 'vitals' },
     ]);
@@ -271,7 +271,7 @@ describe('the codeMap threading preserves the rules that predate it', () => {
       operator: 'greater_than',
       value: 60,
       horizon: 'FORTNIGHT',
-    } as AttributeCondition;
+    };
     expect(sweepableConditions([gateNode('g-age', cond)], 'v1', CODE_MAP)).toEqual([]);
     expect(adaptAttributeCondition(cond, CODE_MAP)).toBeNull();
   });
@@ -285,7 +285,7 @@ describe('the codeMap threading preserves the rules that predate it', () => {
       operator: 'greater_than',
       value: 9,
       horizon: 'ENCOUNTER',
-    } as AttributeCondition;
+    };
     expect(sweepableConditions([gateNode('g-a1c', mapped)], 'legacy-v0', CODE_MAP)).toEqual([]);
   });
 });
@@ -298,7 +298,7 @@ describe('the sweep and the adapter are now the SAME call', () => {
     ['allergy.penicillin', 'allergies'],
     ['vitals.systolic_bp', 'vitals'],
   ])('agrees on field and override for %s', (attribute, field) => {
-    const cond = { attribute, operator: 'greater_than', value: 1, horizon: 'YEAR' } as AttributeCondition;
+    const cond = { attribute, operator: 'greater_than', value: 1, horizon: 'YEAR' };
     const swept = sweepableConditions([gateNode('g', cond)], 'v1', CODE_MAP)[0];
     const adapted = adaptAttributeCondition(cond, CODE_MAP)!;
     expect(swept.field).toBe(field);
@@ -307,14 +307,14 @@ describe('the sweep and the adapter are now the SAME call', () => {
   });
 
   it('agrees that an unmapped clinical attribute is not routable', () => {
-    const cond = { attribute: 'lab.nope', operator: 'greater_than', value: 1 } as AttributeCondition;
+    const cond = { attribute: 'lab.nope', operator: 'greater_than', value: 1 };
     expect(adaptAttributeCondition(cond, CODE_MAP)).toBeNull();
     expect(sweepableConditions([gateNode('g', cond)], 'v1', CODE_MAP)).toEqual([]);
   });
 
   it('follows the map, not the namespace: the same attribute flips with the map', () => {
     // The property that makes this a real threading rather than a coincidence.
-    const cond = { attribute: 'lab.a1c', operator: 'greater_than', value: 9 } as AttributeCondition;
+    const cond = { attribute: 'lab.a1c', operator: 'greater_than', value: 9 };
     expect(sweepableConditions([gateNode('g', cond)], 'v1', CODE_MAP)).toHaveLength(1);
     expect(sweepableConditions([gateNode('g', cond)], 'v1', new Map())).toHaveLength(0);
   });
@@ -348,7 +348,7 @@ describe('the sweep and the adapter are now the SAME call', () => {
       operator: 'greater_than',
       value: 9,
       horizon: 'FORTNIGHT',
-    } as AttributeCondition;
+    };
     expect(() => sweepableConditions([gateNode('g-named', cond)], 'v1', CODE_MAP)).toThrow(
       /g-named \/ condition 0/,
     );
@@ -362,7 +362,7 @@ describe('the sweep and the adapter are now the SAME call', () => {
       operator: 'greater_than',
       value: 9,
       horizon: 'ENCOUNTER',
-    } as AttributeCondition;
+    };
     expect(() => assertEncounterAnchor(rctx([gateNode('g-a1c', mapped)]), tctx())).toThrow(
       /MISSING_ENCOUNTER_ANCHOR|encounterStart/,
     );
@@ -379,7 +379,7 @@ describe('the sweep and the adapter are now the SAME call', () => {
       operator: 'greater_than',
       value: 9,
       horizon: 'ENCOUNTER',
-    } as AttributeCondition;
+    };
     expect(() =>
       assertEncounterAnchor(
         rctx([gateNode('g-a1c', mapped)]),

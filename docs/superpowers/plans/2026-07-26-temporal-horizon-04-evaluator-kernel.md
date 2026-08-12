@@ -361,6 +361,7 @@ protocols — the D9 shape. Four things the decision text did not settle:
   | Review finding 2 — codeMap in the sweep (R11-2 corrected) | 1269 | 9 | 1278 | 97 / 99 |
   | Review finding 3 — codeMap required (R11-4 closed) | 1280 | 9 | 1289 | 98 / 100 |
   | Review finding 4 — policy capabilities | 1296 | 9 | 1305 | 99 / 101 |
+  | Review finding 5 — AttributeCondition temporal fields | 1302 | 9 | 1311 | 100 / 102 |
 
   Task 4's delta is +15 passed / +15 total: **16 added** in the new
   `gate-evaluator-membership-kernel.test.ts`, **1 deleted** — Task 3's no-op-fork
@@ -479,6 +480,19 @@ protocols — the D9 shape. Four things the decision text did not settle:
   those five fail and their `legacy-v0`-default twins pass — which is the finding
   exactly: today's identity test agrees with the capability by accident, and
   stops agreeing on the one config change this plan exists to enable.
+
+  Review finding 5's delta is +6 passed / +6 total / +1 suite: **6 added**, all
+  in the new `temporal/attribute-condition-temporal-fields.test.ts`, **none
+  deleted and none modified** in any pre-existing file. Non-test file touched:
+  `services/resolution/types.ts` (two declarations).
+
+  **Its reproduction is a TYPECHECK failure, not a test run** — `tsconfig`
+  excludes `src/__tests__` with `diagnostics: false`, so no probe placed in a
+  test file could have gone red. Reproduced with a temporary module under
+  `src/services` (`error TS2353: 'horizon' does not exist in type
+  'AttributeCondition'`), deleted once the declaration cleared it. The six tests
+  are the runtime half: every condition in them is declared `AttributeCondition`
+  with NO cast, which is what the missing fields used to force.
 
   **Append a row per task.** *(Round 8, self-found during Task 3: every "compare against 958/9" instruction below was stale the moment Task 1 landed, and an executor following it literally would either think they had broken 50 tests or would fail to notice breaking some. The count is only meaningful as a delta whose additions are each accounted for.)*
 - **`legacy-v0` executes no kernel code, and no code this plan adds.** Structural, not behavioral: the version seam (Task 3) routes `legacy-v0` to the untouched legacy function; the assembler is not called; override parsing does not reject (D1). Every pre-existing gate-evaluator and traversal test must pass with **unmodified assertions** — that is the proof.
