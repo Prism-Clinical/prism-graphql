@@ -362,6 +362,7 @@ protocols — the D9 shape. Four things the decision text did not settle:
   | Review finding 3 — codeMap required (R11-4 closed) | 1280 | 9 | 1289 | 98 / 100 |
   | Review finding 4 — policy capabilities | 1296 | 9 | 1305 | 99 / 101 |
   | Review finding 5 — AttributeCondition temporal fields | 1302 | 9 | 1311 | 100 / 102 |
+  | P1-A pinned (stale subtree) — assertions only, must not move | 1302 | 9 | 1311 | 100 / 102 |
 
   Task 4's delta is +15 passed / +15 total: **16 added** in the new
   `gate-evaluator-membership-kernel.test.ts`, **1 deleted** — Task 3's no-op-fork

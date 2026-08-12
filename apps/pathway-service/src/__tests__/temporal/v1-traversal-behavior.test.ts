@@ -13,6 +13,10 @@
  *      constructor spies instead.
  *   2. **The P1-2 flip.** `addPatientContext` must be able to flip a previously
  *      unsatisfied gate. With an empty or stale store it stays unsatisfied.
+ *      The flip test also pins a **known, unfixed defect**: the flip reaches
+ *      the gate row and stops there, leaving the guarded subtree GATED_OUT and
+ *      the gate's own `excludeReason` stale. See the block comment on it, and
+ *      `docs/superpowers/plans/2026-08-12-gate-subtree-retraversal.md`.
  *
  * The ENGINES ARE REAL here. Only the database seams are mocked, so the gate
  * decision under test is produced by the same `evaluateGate` a request runs.
@@ -248,8 +252,13 @@ describe('addPatientContext changes what a gate decides (the P1-2 flip test)', (
     // vacuous.
     const dependencyMap = created.dependencyMap as {
       gateContextFields: Map<string, Set<string>>;
+      influences: Map<string, Set<string>>;
     };
     expect([...(dependencyMap.gateContextFields.get('gate-1') ?? [])]).toContain('labs');
+
+    // The subtree the gate guards went out WITH it, carrying a reason derived
+    // from the gate's. This is the state the flip below fails to undo.
+    expect(resolutionState.get('step-1')!.status).toBe(NodeStatus.GATED_OUT);
 
     mockedGetSession.mockResolvedValue({
       id: 'session-1',
@@ -291,6 +300,53 @@ describe('addPatientContext changes what a gate decides (the P1-2 flip test)', (
     // 3. The gate is now satisfied. With an empty or stale store it would still
     //    be GATED_OUT — that is the bug this proves absent.
     expect(resolutionState.get('gate-1')!.status).toBe(NodeStatus.INCLUDED);
+
+    // ─── PINNED KNOWN DEFECT — the flip stops at the gate ──────────────
+    //
+    // *** These four assertions pin a defect that is NOT fixed here. When it
+    // is fixed they INVERT — they are written to be flipped, not rewritten.
+    // Follow-up: docs/superpowers/plans/2026-08-12-gate-subtree-retraversal.md
+    //
+    // As written above, this test asserted only that the gate became satisfied
+    // and stopped, so it read as proof that a mid-session fact re-resolves the
+    // pathway. It does not.
+    //
+    // `dependencyMap.influences` is the map retraversal walks to reach a
+    // changed node's dependents (retraversal-engine.ts:266, and again at
+    // resolution.ts:355 for `overrideNode`). It IS populated — but only by
+    // `recordInfluence`, from exactly two call sites: a gate's explicit
+    // `depends_on` entries (traversal-engine.ts:347) and a DecisionPoint's
+    // branch targets (traversal-engine.ts:537). It NEVER records the edge that
+    // matters here — a gate to the HAS_CHILD subtree it gates out. That
+    // relationship exists only in the graph, never in the dependency map, so
+    // retraversal has no way to reach it. The flip updates the gate ROW and
+    // nothing else:
+    //
+    //   - the guarded subtree stays GATED_OUT, still carrying a reason derived
+    //     from a gate decision that no longer holds; and
+    //   - the gate keeps the `excludeReason` and `confidence` from when it was
+    //     out, because `retraverse` assigns `existing.status` without clearing
+    //     either (retraversal-engine.ts:258).
+    //
+    // PRE-EXISTING, not introduced by plan 04: the gate→subtree edge has never
+    // been recorded, so `overrideNode`'s cascade has never re-resolved a gated
+    // subtree either. Plan 04 only made the flip REACHABLE under `v1`, which is
+    // what surfaced it. It does not block merging plan 04 — nothing routes to
+    // `v1` — but it does block the `v1` rollout flip, under which
+    // `addPatientContext` is the mutation most likely to flip a gate
+    // mid-session.
+    //
+    // This graph is HAS_CHILD-only with no `depends_on` and no DecisionPoint,
+    // so neither `recordInfluence` call site fires and the map is empty. That
+    // is the pin: the ONE relationship the flip needs is the one never present.
+    expect(dependencyMap.influences.size).toBe(0);
+    expect(resolutionState.get('step-1')!.status).toBe(NodeStatus.GATED_OUT);
+    expect(resolutionState.get('step-1')!.excludeReason).toBe(
+      'Gated out by gate-1: No numeric value found for labs:718-7',
+    );
+    expect(resolutionState.get('gate-1')!.excludeReason).toBe(
+      'No numeric value found for labs:718-7',
+    );
   });
 
   it('a lab outside the v1 horizon does NOT flip the gate', async () => {
