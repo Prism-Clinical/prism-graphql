@@ -566,6 +566,56 @@ describe('validatePathwayJson', () => {
         }
       });
 
+      // Plan 04 D9: `system` stays in CODED_KEYS because it is valid on every
+      // other field; this is a field-specific rule, not a key-allowlist change.
+      it('rejects a system on a coded vitals condition (D9)', () => {
+        const pw = clonePathway(REFERENCE_PATHWAY);
+        addGateWithCondition(pw, {
+          field: 'vitals',
+          operator: 'greater_than',
+          value: 'systolic_bp',
+          system: 'LOINC',
+          threshold: 140,
+        });
+        const result = validatePathwayJson(pw);
+        expect(result.valid).toBe(false);
+        // Not reported as an unknown key — `system` is a legitimate coded key.
+        expect(result.errors).not.toContainEqual(expect.stringContaining('unknown key'));
+        expect(result.errors).toContainEqual(expect.stringContaining('vitals'));
+        expect(result.errors).toContainEqual(expect.stringContaining('system'));
+      });
+
+      it('rejects a system on a vitals exists condition too (D9)', () => {
+        // Same field rule regardless of operator: the adapter rejects `exists`
+        // as well, and preflight and authoring must not disagree.
+        const pw = clonePathway(REFERENCE_PATHWAY);
+        addGateWithCondition(pw, { field: 'vitals', operator: 'exists', value: '', system: 'LOINC' });
+        expect(validatePathwayJson(pw).valid).toBe(false);
+      });
+
+      it('still accepts a system on a coded labs condition (D9 is field-specific)', () => {
+        const pw = clonePathway(REFERENCE_PATHWAY);
+        addGateWithCondition(pw, {
+          field: 'labs',
+          operator: 'greater_than',
+          value: '718-7',
+          system: 'LOINC',
+          threshold: 7,
+        });
+        expect(validatePathwayJson(pw).valid).toBe(true);
+      });
+
+      it('accepts a vitals condition that sets no system', () => {
+        const pw = clonePathway(REFERENCE_PATHWAY);
+        addGateWithCondition(pw, {
+          field: 'vitals',
+          operator: 'greater_than',
+          value: 'systolic_bp',
+          threshold: 140,
+        });
+        expect(validatePathwayJson(pw).valid).toBe(true);
+      });
+
       it('rejects an attribute with an unregistered namespace', () => {
         const pw = clonePathway(REFERENCE_PATHWAY);
         addGateWithCondition(pw, { attribute: 'bogus.thing', operator: 'exists', value: true });

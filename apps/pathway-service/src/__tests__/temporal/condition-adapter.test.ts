@@ -105,6 +105,70 @@ describe('window_days (D2)', () => {
   });
 });
 
+describe('a coded vitals condition may not carry a system (D9, R11-1)', () => {
+  // Legacy's `getNumericValue` honours `system` on its labs branch and ignores
+  // it entirely on its vitals branch; the uniform kernel applies it to both, so
+  // the same condition is satisfiable under `legacy-v0` and unsatisfiable under
+  // `v1`. `assembleVitals` stamps every vital with `urn:prism:vitals`, which no
+  // real terminology system equals — so ANY author-supplied system makes the
+  // gate permanently unsatisfiable. Rejected where the author can fix it.
+  const vitals: CodedCondition = { field: 'vitals', operator: 'greater_than', value: 'systolic_bp' };
+
+  it('rejects it, naming what the assembler stamps and what to do', () => {
+    expect(() => toFactSelectionCondition({ ...vitals, system: 'LOINC' })).toThrow(
+      TemporalContextError,
+    );
+    expect(() => toFactSelectionCondition({ ...vitals, system: 'LOINC' })).toThrow(
+      /vitals.*system/is,
+    );
+  });
+
+  it('rejects the assembler urn itself — this is not "spell it right"', () => {
+    // Passing `urn:prism:vitals` would in fact select, which makes it the most
+    // dangerous spelling: it teaches an author that a vitals `system` is
+    // meaningful and couples their pathway to the SYNTHETIC assembler (R11-6).
+    expect(() => toFactSelectionCondition({ ...vitals, system: 'urn:prism:vitals' })).toThrow(
+      TemporalContextError,
+    );
+  });
+
+  it('fires for exists too, which drops system rather than selecting on it', () => {
+    // `exists` returns early with system dropped, so the unsatisfiability
+    // argument does NOT apply to it — but the rule is FIELD-specific, not
+    // operator-specific. Silently discarding what the author wrote is the
+    // round-6 `exists` failure mode D9 cites, and an operator-qualified rule
+    // would force the import validator to re-derive the kernel's operator
+    // classification: two validators, two chances to disagree (decision #7).
+    expect(() =>
+      toFactSelectionCondition({ field: 'vitals', operator: 'exists', value: '', system: 'LOINC' }),
+    ).toThrow(TemporalContextError);
+  });
+
+  it('rejects through adaptCodedCondition, which is what the sweep calls', () => {
+    // The `v1` anchor sweep runs `adaptCodedCondition`, so preflight rejects
+    // exactly what evaluation would (locked decision #7).
+    expect(() => adaptCodedCondition({ ...vitals, system: 'LOINC' }, 'gate g-bp / condition 0'))
+      .toThrow(/g-bp/);
+  });
+
+  it('leaves a vitals condition with no system alone', () => {
+    expect(toFactSelectionCondition(vitals)).toEqual({
+      field: 'vitals',
+      operator: 'greater_than',
+      value: 'systolic_bp',
+    });
+  });
+
+  it('is field-specific: system stays valid on every other coded field', () => {
+    for (const field of ['labs', 'conditions', 'medications', 'allergies'] as const) {
+      expect(
+        toFactSelectionCondition({ field, operator: 'includes_code', value: 'X', system: 'LOINC' })
+          .system,
+      ).toBe('LOINC');
+    }
+  });
+});
+
 describe('adaptCodedCondition — the shape both adapters return (P1-20)', () => {
   it('pairs the selection with the NODE override', () => {
     expect(adaptCodedCondition({ ...base, horizon: 'QUARTER' })).toEqual({

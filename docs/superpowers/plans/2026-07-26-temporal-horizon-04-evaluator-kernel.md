@@ -205,6 +205,34 @@ It is not "the filter now works". `assembleVitals` stamps every vital with `VITA
 
 **Nothing stored or fixtured uses this pattern** (verified: zero coded `vitals` conditions carrying a `system`), so there is no migration and no compatibility break.
 
+**Implemented** (2026-08-12), before Task 8. Both layers read ONE exported
+predicate, `codedVitalsSystemError(field, system)` in `condition-adapter.ts`,
+which returns a message rather than throwing: the adapter wraps it in a
+`TemporalContextError`, the import validator pushes it onto `errors`. One
+source of truth, two error protocols — a second spelling in the validator would
+be a second chance to disagree (locked decision #7).
+
+Three things the decision text did not settle, resolved in execution:
+- **The guard fires for `exists` as well**, and is placed BEFORE that operator's
+  early return. `exists` drops `system` rather than selecting on it, so the
+  unsatisfiability argument does not apply to it — but the rule is keyed on the
+  FIELD, and discarding an author's `system` in silence is precisely the round-6
+  failure mode D9 rejects. An operator-qualified rule would also force the
+  validator to re-derive the kernel's operator classification.
+- **`system: "urn:prism:vitals"` is rejected too**, not accepted as the correct
+  spelling. It would in fact select, which makes it the most dangerous value: it
+  teaches an author that a vitals `system` is meaningful and couples the pathway
+  to the SYNTHETIC assembler, which is R11-6 from the authoring side.
+- **`system: null` is admitted**, because the predicate keys on `!== undefined`
+  and both layers share it. A JSON `null` behaves as "any system" in
+  `candidateMatches` exactly as an absent one does; the point is that preflight
+  and authoring cannot disagree about it.
+
+The adapter guard is `v1`-only by construction (nothing on the `legacy-v0` path
+calls the adapter). The **validator** guard is version-independent, so a stored
+pathway carrying the pattern would fail re-import under either version — which
+is what "nothing stored or fixtured uses this pattern" was verified for.
+
 **Class note.** R11-1 is a distinct defect class: **a legacy function whose PER-BRANCH inconsistency a uniform kernel silently regularizes.** The round-12 check follows from it — enumerate the condition fields each `legacy-v0` *branch* reads, not each function. Any field honoured on one branch and ignored on another is a `v1` delta the kernel will introduce, and none are currently disclosed.
 
 ---
@@ -230,6 +258,7 @@ It is not "the filter now works". `assembleVitals` stamps every vital with `VITA
   | Task 6 (`af9fd17`) | 1092 | 9 | 1101 | 91 / 93 |
   | D8 follow-up to Task 6 | 1110 | 9 | 1119 | 91 / 93 |
   | Task 7 (`db86a72`) | 1153 | 9 | 1162 | 92 / 94 |
+  | D9 implementation | 1163 | 9 | 1172 | 92 / 94 |
 
   Task 4's delta is +15 passed / +15 total: **16 added** in the new
   `gate-evaluator-membership-kernel.test.ts`, **1 deleted** — Task 3's no-op-fork
@@ -253,6 +282,13 @@ It is not "the filter now works". `assembleVitals` stamps every vital with `VITA
   condition…`, both now asserting convergence with `legacy-v0`), and the D7
   series test, which keeps every assertion but gains an explicit
   `horizon: 'LIFETIME'` — see the D8 implementation notes above.
+
+  The D9 implementation's delta is +10 passed / +10 total / no suite change:
+  **6 added** in `temporal/condition-adapter.test.ts` and **4 added** in
+  `validator.test.ts`, **none deleted and none modified**. The non-test files
+  touched are `condition-adapter.ts` (the shared `codedVitalsSystemError`
+  predicate + the adapter throw) and `services/import/validator.ts` (the same
+  predicate, pushed as an import error).
 
   Task 7's delta is +43 passed / +43 total / +1 suite: **43 added**, all in the
   new `temporal/attribute-condition-kernel.test.ts`, **none deleted and none

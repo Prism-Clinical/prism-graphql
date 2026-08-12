@@ -61,6 +61,44 @@ function isBucketExistence(operator: string): boolean {
 }
 
 /**
+ * D9 — a coded `vitals` condition may not carry a `system`.
+ *
+ * Legacy's `getNumericValue` honours `condition.system` on its **labs** branch
+ * and ignores it entirely on its **vitals** branch (`gate-evaluator.ts:84-93`):
+ * vitals resolve by dotted path through a bag that has no system concept. The
+ * kernel is uniform, so it applies `system` to both — and `assembleVitals`
+ * stamps every vital with `VITALS_SYSTEM`, which no real terminology system
+ * equals. Any author-supplied `system` therefore makes the gate permanently
+ * unsatisfiable under `v1` while it was satisfiable under `legacy-v0` (R11-1).
+ *
+ * Rejected where the author can act on it rather than ignored or disclosed
+ * (round-7 P1-22 precedent): silently discarding what the author wrote is the
+ * failure mode that produced the round-6 `exists` confusion, and disclosing it
+ * leaves a gate that imports cleanly, passes preflight, and can never fire.
+ *
+ * **The rule is keyed on the FIELD, not on the operator**, so it fires for
+ * `exists` too — which drops `system` rather than selecting on it, and so is
+ * not itself unsatisfiable. Two reasons: discarding an author's `system` in
+ * silence is the very thing being rejected, and an operator-qualified rule
+ * would force the import validator to re-derive the kernel's operator
+ * classification — two validators, two chances to disagree (locked decision #7).
+ *
+ * Exported (returning a message rather than throwing) so the import validator
+ * and the adapter reject **exactly** the same conditions from one predicate.
+ * The validator collects errors and never throws; the adapter throws. One
+ * source of truth, two error protocols.
+ */
+export function codedVitalsSystemError(field: unknown, system: unknown): string | null {
+  if (field !== 'vitals' || system === undefined) return null;
+  return (
+    `a "vitals" condition may not set "system" (got ${JSON.stringify(system)}) — ` +
+    `vitals carry no terminology code, so the assembler stamps every vital with ` +
+    `"${VITALS_SYSTEM}" and any supplied system makes this gate unsatisfiable. ` +
+    `Remove "system"; the condition's "value" is the vital's path (D9)`
+  );
+}
+
+/**
  * Translate a coded condition into the kernel's selection shape, rejecting
  * anything the kernel does not model.
  *
@@ -90,6 +128,13 @@ export function toFactSelectionCondition(
       `${where}: operator "${operator}" is not modelled by the selection kernel`,
       'INVALID_TEMPORAL_DEFAULTS',
     );
+  }
+
+  // Checked BEFORE the `exists` early return, which drops `system` and would
+  // otherwise let one operator through the field rule (D9, see above).
+  const vitalsSystem = codedVitalsSystemError(field, system);
+  if (vitalsSystem !== null) {
+    throw new TemporalContextError(`${where}: ${vitalsSystem}`, 'INVALID_TEMPORAL_DEFAULTS');
   }
 
   if (isBucketExistence(operator)) {

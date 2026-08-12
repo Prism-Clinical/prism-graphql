@@ -19,6 +19,7 @@ import { PathwayCategory } from '../../types';
 import { VALID_CODED_OPERATORS, VALID_ATTRIBUTE_OPERATORS } from '../resolution/types';
 import { VALID_ATTRIBUTE_NAMESPACES } from '../resolution/attribute-registry';
 import { FIELD_TO_KIND } from '../resolution/temporal/contract';
+import { codedVitalsSystemError } from '../resolution/temporal/condition-adapter';
 
 const VALID_NODE_TYPES = new Set<string>(Object.keys(REQUIRED_NODE_PROPERTIES));
 const VALID_EDGE_TYPES = new Set<string>(Object.keys(VALID_EDGE_ENDPOINTS));
@@ -309,6 +310,14 @@ function validateGateConditions(
         errors.push(`${where}: field "${String(c.field)}" is not a valid condition field.`);
       }
       if (c.value == null) errors.push(`${where}: coded condition requires a "value".`);
+      // D9 — a FIELD-specific rule, not a key-allowlist one: `system` stays in
+      // CODED_KEYS because it is valid on every other coded field. The message
+      // comes from the same predicate the runtime adapter throws on, so the
+      // authoring boundary rejects exactly what preflight and evaluation would
+      // (locked decision #7); a second spelling here is a second chance to
+      // disagree.
+      const vitalsSystem = codedVitalsSystemError(c.field, c.system);
+      if (vitalsSystem !== null) errors.push(`${where}: ${vitalsSystem}.`);
       for (const k of Object.keys(c)) if (!CODED_KEYS.has(k)) errors.push(`${where}: unknown key "${k}" on coded condition.`);
     }
   });
