@@ -599,63 +599,81 @@ describe('every engine entry point assembles under v1', () => {
 // ─────────────────────────────────────────────────────────────────────
 
 /**
- * DISCLOSED GAP, NOT DESIRED BEHAVIOR — found executing Task 9.
+ * D10 — BOTH DOORS RUN THE SAME TRUST PARSING.
  *
- * `parseResolutionInput` treats `endDate` / `clinicalState` / `recordValidity` /
- * `sourceId` as privileged assertions about clinical TRUTH: in implicit mode
- * they are refused outright, and in explicit SYNTHETIC mode they require ADMIN
- * (`firstAssertion`, trust-mode.ts:109-134). `addPatientContext` runs NO trust
- * parsing at all, and its `AdditionalContextInput` reuses the very same
- * `CodeInput` / `LabResultInput` SDL types — so all four fields are authorable
- * there by any caller.
+ * *These three tests were INVERTED by D10.* Task 9 wrote them to pin the gap
+ * R13-1 found: `addPatientContext` ran no trust parsing at all, so `endDate` /
+ * `clinicalState` / `recordValidity` / `sourceId` — which `parseResolutionInput`
+ * refuses outright in implicit mode and admits only to an ADMIN in explicit
+ * SYNTHETIC (`firstTrustAssertion`, trust-mode.ts) — were authorable mid-session
+ * by any caller, and under `v1` they govern selection. They now assert the
+ * settled rule instead of the gap; they are inverted rather than deleted so the
+ * before/after is visible in one place.
  *
- * Before Task 9 that was inert: `legacy-v0` reads code/system/value/date only.
- * Wiring `factStoreForSession` makes them load-bearing under `v1`, where
- * `recordValidity: 'INVALID'` removes a fact from selection entirely and
- * `clinicalState: 'INACTIVE'` flips it out of every `status: 'active'` gate.
- * A caller refused these at session creation can therefore assert them
- * mid-session, and suppress a clinical fact from evaluation.
- *
- * NOT fixed here, following the R11-1/D9 precedent: the policy — reject like
- * `startResolution`, strip silently, or require ADMIN — lives in plan 05's
- * trust-mode module, and an evaluator task does not decide it from the wrong
- * layer. Pinned in BOTH directions so the fix has a failing test to flip and
- * so `legacy-v0` is provably unaffected.
+ * NOT a security fix, and it must not be described as one: under AD-1 `userRole`
+ * comes from an unverified header defaulting to PROVIDER, so a role check
+ * secures nothing. The defect is that the SAME request was accepted or refused
+ * depending on which mutation carried it — locked decision #7's shape one layer
+ * up, two doors into one primitive that did not agree.
  */
-describe('the trust boundary is absent on addPatientContext (disclosed gap)', () => {
-  it('honours a caller-asserted clinicalState/recordValidity under v1', async () => {
+describe('addPatientContext runs the same trust parsing as startResolution (D10)', () => {
+  it('refuses a caller-asserted recordValidity under v1', async () => {
+    // D10 inverted this. It previously asserted the fact reached the store
+    // carrying `validityBasis: 'SYNTHETIC_ASSERTION'`, i.e. that a caller
+    // refused this at session creation could suppress a fact from evaluation
+    // mid-session.
     mockedGetSession.mockResolvedValue(sessionWith({ temporalContext: CLOCK_V1 }) as never);
 
-    await resolutionMutations.addPatientContext(
-      undefined,
-      {
-        sessionId: 'session-1',
-        additionalContext: {
-          labResults: [
-            {
-              code: '718-7',
-              system: 'LOINC',
-              value: 9.1,
-              date: '2026-01-10',
-              // Refused by parseResolutionInput at startResolution without
-              // resolutionMode: SYNTHETIC + ADMIN. Accepted here, from a
-              // PROVIDER context, with no mode at all.
-              recordValidity: 'INVALID',
-            } as never,
-          ],
+    await expect(
+      resolutionMutations.addPatientContext(
+        undefined,
+        {
+          sessionId: 'session-1',
+          additionalContext: {
+            labResults: [
+              {
+                code: '718-7',
+                system: 'LOINC',
+                value: 9.1,
+                date: '2026-01-10',
+                recordValidity: 'INVALID',
+              } as never,
+            ],
+          },
         },
-      },
-      gqlContext('v1'),
-    );
+        gqlContext('v1'),
+      ),
+    ).rejects.toThrow(/labResults\[0\]\.recordValidity is a SYNTHETIC assertion/);
 
-    const lab = storeAt(retraversalCtor).find((f) => f.code === '718-7')!;
-    expect(lab.recordValidity).toBe('INVALID');
-    expect(lab.validityBasis).toBe('SYNTHETIC_ASSERTION');
+    // Refused at the boundary: no retraversal was even constructed, so nothing
+    // downstream had a chance to read the assertion.
+    expect(retraversalCtor).not.toHaveBeenCalled();
+  });
+
+  it('refuses a caller-asserted clinicalState on a coded entry under v1', async () => {
+    mockedGetSession.mockResolvedValue(sessionWith({ temporalContext: CLOCK_V1 }) as never);
+
+    await expect(
+      resolutionMutations.addPatientContext(
+        undefined,
+        {
+          sessionId: 'session-1',
+          additionalContext: {
+            conditionCodes: [
+              { code: 'E11.9', system: 'ICD-10', clinicalState: 'INACTIVE' } as never,
+            ],
+          },
+        },
+        gqlContext('v1'),
+      ),
+    ).rejects.toThrow(/conditionCodes\[0\]\.clinicalState is a SYNTHETIC assertion/);
   });
 
   it('is refused on the same request through startResolution', async () => {
-    // The asymmetry itself, asserted rather than described: identical field,
-    // identical caller, opposite answer depending on the entry point.
+    // The agreement itself, asserted rather than described: identical field,
+    // identical caller, and now the same answer whichever entry point carries
+    // it. The message differs — two error protocols over one predicate, the
+    // shape D9 used — but the RULE does not.
     await expect(
       resolutionMutations.startResolution(
         null as never,
@@ -674,8 +692,45 @@ describe('the trust boundary is absent on addPatientContext (disclosed gap)', ()
     ).rejects.toThrow(/is a SYNTHETIC assertion and requires resolutionMode: SYNTHETIC/);
   });
 
-  it('is inert under legacy-v0 — the gap is a v1 delta, not a regression', async () => {
+  it('refuses it under legacy-v0 too — one rule, not a v1-only one', async () => {
+    // D10 inverted this. It previously asserted the addition was accepted and
+    // simply inert (empty store, assembler never called), which documented the
+    // gap as a `v1` delta. The trust rule is version-INDEPENDENT at
+    // `startResolution` — `parseResolutionInput` runs before the version is
+    // even resolved — so making the second door `v1`-only would leave the two
+    // doors still disagreeing under `legacy-v0`.
+    //
+    // This is a `legacy-v0` boundary move, and the only one this plan makes. It
+    // is confined to requests carrying one of the four assertion fields:
+    // nothing calls `addPatientContext` today (verified), and a `legacy-v0`
+    // addition WITHOUT them still runs and still gets an empty store — pinned
+    // by `passes an empty fact store on every retraversal entry point under
+    // legacy-v0` above, which sends the same lab with no assertion field.
     mockedGetSession.mockResolvedValue(sessionWith() as never);
+
+    await expect(
+      resolutionMutations.addPatientContext(
+        undefined,
+        {
+          sessionId: 'session-1',
+          additionalContext: {
+            labResults: [
+              { code: '718-7', system: 'LOINC', value: 9.1, recordValidity: 'INVALID' } as never,
+            ],
+          },
+        },
+        gqlContext(),
+      ),
+    ).rejects.toThrow(/labResults\[0\]\.recordValidity is a SYNTHETIC assertion/);
+
+    expect(mockedAssemble).not.toHaveBeenCalled();
+  });
+
+  it('admits an explicitly-null assertion field, exactly as omission (both doors)', async () => {
+    // The predicate keys on `!= null` so a client binding an unset form field
+    // sends the same request as one that omits it. Both doors share the
+    // predicate, so neither can disagree about null.
+    mockedGetSession.mockResolvedValue(sessionWith({ temporalContext: CLOCK_V1 }) as never);
 
     await resolutionMutations.addPatientContext(
       undefined,
@@ -683,15 +738,52 @@ describe('the trust boundary is absent on addPatientContext (disclosed gap)', ()
         sessionId: 'session-1',
         additionalContext: {
           labResults: [
-            { code: '718-7', system: 'LOINC', value: 9.1, recordValidity: 'INVALID' } as never,
+            {
+              code: '718-7',
+              system: 'LOINC',
+              value: 9.1,
+              date: '2026-01-10',
+              recordValidity: null,
+              sourceId: null,
+            } as never,
           ],
         },
       },
-      gqlContext(),
+      gqlContext('v1'),
     );
 
-    expect(storeAt(retraversalCtor)).toEqual([]);
-    expect(mockedAssemble).not.toHaveBeenCalled();
+    const lab = storeAt(retraversalCtor).find((f) => f.code === '718-7')!;
+    expect(lab.validityBasis).not.toBe('SYNTHETIC_ASSERTION');
+  });
+
+  it('leaves a fact already stored on the session untouched', async () => {
+    // The guard reads the NEWLY supplied payload, never the merged bag. A
+    // session whose stored `additionalContext` carries an assertion — put there
+    // before this rule existed, or by an authorized path — must not become
+    // permanently un-addable-to.
+    mockedGetSession.mockResolvedValue(
+      sessionWith({
+        temporalContext: CLOCK_V1,
+        additionalContext: {
+          labResults: [
+            { code: '4548-4', system: 'LOINC', value: 7.2, date: '2026-01-05', recordValidity: 'INVALID' },
+          ],
+        },
+      }) as never,
+    );
+
+    await resolutionMutations.addPatientContext(
+      undefined,
+      {
+        sessionId: 'session-1',
+        additionalContext: {
+          labResults: [{ code: '718-7', system: 'LOINC', value: 9.1, date: '2026-01-10' }],
+        },
+      },
+      gqlContext('v1'),
+    );
+
+    expect(retraversalCtor).toHaveBeenCalled();
   });
 });
 

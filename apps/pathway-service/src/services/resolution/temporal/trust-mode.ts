@@ -109,7 +109,26 @@ function reject(message: string): never {
 const CODE_ASSERTION_FIELDS = ['endDate', 'clinicalState', 'recordValidity', 'sourceId'] as const;
 const LAB_ASSERTION_FIELDS = ['recordValidity', 'sourceId'] as const;
 
-function firstAssertion(pc: RawPatientContextInput | null | undefined): string | undefined {
+/**
+ * The rule itself: the path of the first privileged assertion the payload
+ * carries, or `undefined`. Returns a path rather than throwing so each caller
+ * keeps its own error protocol — the shape D9 used for `codedVitalsSystemError`.
+ *
+ * **Exported for D10: one predicate, two callers.** `parseResolutionInput`
+ * applies it at `startResolution`; `addPatientContext` applies it directly,
+ * because `AdditionalContextInput` reuses the very same `CodeInput` /
+ * `LabResultInput` SDL types and so can carry every one of these fields. Two
+ * doors into the fact assembler that spell the rule separately are two chances
+ * to disagree — which is exactly what R13-1 found (locked decision #7, one
+ * layer up).
+ *
+ * NOT an access control. Under AD-1 `userRole` comes from an unverified header
+ * defaulting to PROVIDER, so nothing here secures anything; the property it
+ * buys is that the same request gets the same answer at either door.
+ */
+export function firstTrustAssertion(
+  pc: RawPatientContextInput | null | undefined,
+): string | undefined {
   if (!pc) return undefined;
   const coded: Array<[string, SyntheticCodeEntry[] | undefined]> = [
     ['conditionCodes', pc.conditionCodes],
@@ -152,11 +171,33 @@ function stripNulls<T extends object>(entry: T): T {
   return out as T;
 }
 
+/**
+ * Apply that normalization to a whole payload, leaving an ABSENT array absent —
+ * callers distinguish "no labs supplied" from "an empty list of labs", and
+ * `addPatientContext` keys its affected-node scan on exactly that difference.
+ *
+ * **Exported for D10, alongside `firstTrustAssertion`.** Null-vs-omitted is part
+ * of the same trust parsing, not a separate concern: `stripNulls` ran only
+ * inside `normalizeSynthetic`, so `recordValidity: null` was one request through
+ * `startResolution` and a different one through `addPatientContext`, where it
+ * reached `parseRecordValidity` and was rejected as an invalid enum member
+ * mid-session. Sharing the predicate without sharing this would have left the
+ * two doors still disagreeing, one value further along.
+ */
+export function normalizeContextEntryNulls<T extends RawPatientContextInput>(pc: T): T {
+  const out: RawPatientContextInput = { ...pc };
+  if (pc.conditionCodes) out.conditionCodes = pc.conditionCodes.map(stripNulls);
+  if (pc.medications) out.medications = pc.medications.map(stripNulls);
+  if (pc.allergies) out.allergies = pc.allergies.map(stripNulls);
+  if (pc.labResults) out.labResults = pc.labResults.map(stripNulls);
+  return out as T;
+}
+
 function normalizeSynthetic(
   raw: RawPatientContextInput | null | undefined,
   patientId: string,
 ): SyntheticPatientContext {
-  const pc = raw ?? {};
+  const pc = normalizeContextEntryNulls(raw ?? {});
 
   // A context labelled for another patient must not be silently relabelled.
   // `PatientContextInput.patientId` is required by the SDL, and normalization
@@ -170,10 +211,10 @@ function normalizeSynthetic(
 
   const out: SyntheticPatientContext = {
     patientId,
-    conditionCodes: (pc.conditionCodes ?? []).map(stripNulls),
-    medications: (pc.medications ?? []).map(stripNulls),
-    allergies: (pc.allergies ?? []).map(stripNulls),
-    labResults: (pc.labResults ?? []).map(stripNulls),
+    conditionCodes: pc.conditionCodes ?? [],
+    medications: pc.medications ?? [],
+    allergies: pc.allergies ?? [],
+    labResults: pc.labResults ?? [],
   };
   if (pc.vitalSigns != null) out.vitalSigns = pc.vitalSigns;
   if (pc.freeformData != null) out.freeformData = pc.freeformData;
@@ -218,7 +259,7 @@ export function parseResolutionInput(
     // explicitly authorized SYNTHETIC. Without this, omitting the mode was a
     // one-word bypass of the authorization check below, and no amount of real
     // authentication later would have closed it.
-    const assertion = firstAssertion(patientContext);
+    const assertion = firstTrustAssertion(patientContext);
     if (assertion) {
       reject(
         `${assertion} is a SYNTHETIC assertion and requires resolutionMode: SYNTHETIC`,

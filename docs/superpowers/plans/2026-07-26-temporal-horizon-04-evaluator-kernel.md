@@ -281,6 +281,42 @@ Before Task 9 this was inert — `legacy-v0` reads code/system/value/date only. 
 
 **Class note.** *A primitive with more than one door, only one of which is guarded.* The plan reasoned exhaustively about `legacy-v0` **not** reaching the assembler and not at all about **which callers** reach it under `v1`. Round-14 check: for every validating function, enumerate the call paths that reach the **data** it validates, not the call paths that reach the function.
 
+**Implemented** (2026-08-12), before Task 10. The rule lives in ONE exported
+predicate, `firstTrustAssertion(pc)` in `trust-mode.ts`, which returns the path
+of the first privileged assertion rather than throwing: `parseResolutionInput`
+wraps it in its existing `INVALID_RESOLUTION_INPUT` rejection, `addPatientContext`
+wraps it in a `GraphQLError` with the same code. One source of truth, two error
+protocols — the D9 shape. Four things the decision text did not settle:
+
+- **The guard is version-INDEPENDENT**, because `parseResolutionInput` is:
+  `startResolution` runs it before the policy version is even resolved. A
+  `v1`-only guard at the second door would have left the two doors disagreeing
+  under `legacy-v0`, which is the defect and not a narrower fix. **This is the
+  one `legacy-v0` boundary move in the plan**, and it is confined to a request
+  carrying one of the four fields: nothing calls `addPatientContext` today
+  (verified, including the admin dashboard), and a `legacy-v0` addition without
+  them still runs and still receives an empty store.
+- **`addPatientContext` refuses outright rather than admitting an ADMIN**, the
+  way explicit SYNTHETIC does at the first door. It carries no `resolutionMode`
+  argument, so every request through it is the *implicit* case, and the implicit
+  case refuses. Adding a mode argument would be handing a caller-selectable
+  trust escalation to an unauthenticated caller (AD-1) — the P2-12 mistake.
+- **Null-vs-omitted had to be shared too, and this was NOT anticipated.** Found
+  by running the flipped tests: `stripNulls` ran only inside
+  `normalizeSynthetic`, so `recordValidity: null` — which a client sends simply
+  by binding an unset form field — started a session cleanly through
+  `startResolution` and, through `addPatientContext`, reached
+  `parseRecordValidity` and threw `null is not one of VALID | INVALID | UNKNOWN`
+  mid-session under `v1`. That is the SAME defect one value further along:
+  sharing the predicate without sharing the normalization would have left the
+  doors still disagreeing about the same request. Both now run
+  `normalizeContextEntryNulls`, which leaves an ABSENT array absent —
+  `addPatientContext` keys its affected-node scan on exactly that difference.
+- **The guard reads the newly supplied payload, never `merged`.** Checking the
+  accumulated bag would make a session whose stored context already carries an
+  assertion permanently un-addable-to, and the boundary is what arrives at the
+  door.
+
 ---
 
 ## Global Constraints
@@ -307,6 +343,7 @@ Before Task 9 this was inert — `legacy-v0` reads code/system/value/date only. 
   | D9 implementation | 1163 | 9 | 1172 | 92 / 94 |
   | Task 8 (`gate-evaluator-compound-uncertainty`) | 1195 | 9 | 1204 | 93 / 95 |
   | Task 9 (assembler wired at all five entry points) | 1227 | 9 | 1236 | 95 / 97 |
+  | D10 implementation (both doors share the trust parsing) | 1236 | 9 | 1245 | 95 / 97 |
 
   Task 4's delta is +15 passed / +15 total: **16 added** in the new
   `gate-evaluator-membership-kernel.test.ts`, **1 deleted** — Task 3's no-op-fork
@@ -355,6 +392,20 @@ Before Task 9 this was inert — `legacy-v0` reads code/system/value/date only. 
   `index.ts`, `resolvers/helpers/resolution-context.ts`, both resolution
   mutation modules, both engines, `gate-evaluator.ts` (one guard), and the new
   `temporal/fact-store.ts`.
+
+  The D10 implementation's delta is +9 passed / +9 total / no suite change:
+  **6 added** in `temporal/trust-mode.test.ts` (the shared predicate on its own)
+  and **3 added** in `temporal/resolution-fact-store-wiring.test.ts`, **none
+  deleted**. **Two modified** — the two Task 9 tests that pinned the R13-1 gap,
+  inverted as D10 requires and carrying a comment saying so. Four `expect(`
+  lines were removed across the two: the pair asserting the asserted fact
+  reached the store (`lab.recordValidity` / `lab.validityBasis`), which is the
+  gap itself; `expect(storeAt(retraversalCtor)).toEqual([])` from the legacy
+  test, whose legacy-v0 empty-store coverage is unchanged in `passes an empty
+  fact store on every retraversal entry point under legacy-v0`; and
+  `expect(mockedAssemble).not.toHaveBeenCalled()`, which is re-added verbatim in
+  the flipped test and is a diff artifact rather than a deletion. Non-test files
+  touched: `temporal/trust-mode.ts` and `resolvers/mutations/resolution.ts`.
 
   The D9 implementation's delta is +10 passed / +10 total / no suite change:
   **6 added** in `temporal/condition-adapter.test.ts` and **4 added** in

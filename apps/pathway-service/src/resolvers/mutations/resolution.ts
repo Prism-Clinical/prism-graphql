@@ -3,6 +3,8 @@ import { DataSourceContext, NodeStatus, OverrideAction, SessionStatus } from '..
 import { PatientContext, CodeEntry, LabResult } from '../../services/confidence/types';
 import {
   parseResolutionInput,
+  firstTrustAssertion,
+  normalizeContextEntryNulls,
   ResolutionModeArgs,
   RawPatientContextInput,
 } from '../../services/resolution/temporal/trust-mode';
@@ -671,13 +673,51 @@ export const resolutionMutations = {
       });
     }
 
+    // 1b. The SAME trust parsing `startResolution` runs (D10).
+    //
+    //    `AdditionalContextInput` reuses the very same `CodeInput` /
+    //    `LabResultInput` SDL types as `PatientContextInput`, so it can carry
+    //    `endDate` / `clinicalState` / `recordValidity` / `sourceId` — the
+    //    fields `parseResolutionInput` treats as assertions about clinical
+    //    truth. Until this ran here, a request refused at session creation was
+    //    accepted mid-session, and under `v1` those fields govern selection:
+    //    `recordValidity: 'INVALID'` drops a fact from selection entirely and
+    //    `clinicalState: 'INACTIVE'` flips it out of every `status: 'active'`
+    //    gate.
+    //
+    //    NOT a security fix, and it must not be cited as one: under AD-1
+    //    `userRole` is caller-asserted, so a role check secures nothing. What
+    //    this buys is that one request gets one answer whichever mutation
+    //    carries it — locked decision #7's shape, one layer up.
+    //
+    //    Version-independent, exactly as at `startResolution`, where
+    //    `parseResolutionInput` runs before the policy version is even
+    //    resolved. A `v1`-only guard would leave the two doors disagreeing
+    //    under `legacy-v0`, which is the defect rather than a narrower fix.
+    //
+    //    Read from the NEWLY supplied payload, never from `merged`: a session
+    //    whose stored context already carries an assertion must not become
+    //    permanently un-addable-to, and the boundary is what arrives here.
+    const assertion = firstTrustAssertion(args.additionalContext);
+    if (assertion) {
+      throw new GraphQLError(
+        `additionalContext.${assertion} is a SYNTHETIC assertion about clinical truth and cannot be supplied through addPatientContext`,
+        { extensions: { code: 'INVALID_RESOLUTION_INPUT' } },
+      );
+    }
+    // Explicit nulls become omissions here too — otherwise `recordValidity:
+    // null`, which a client sends simply by binding an unset form field, starts
+    // a session cleanly and then throws out of `parseRecordValidity` on the
+    // first mid-session addition.
+    const additionalContext = normalizeContextEntryNulls(args.additionalContext);
+
     // 2. Accumulate additional context onto everything supplied before it.
     //    A shallow spread replaced each key instead of merging it, so adding
     //    condition A and then condition B stored only B — and every later
     //    retraversal lost evidence a gate had already counted.
     const merged = mergeAdditionalContext(
       session.additionalContext as Partial<AdditionalContextInput> | undefined,
-      args.additionalContext,
+      additionalContext,
     );
 
     // 3. Build updated patient context for re-evaluation (rebuilt from the
@@ -687,13 +727,13 @@ export const resolutionMutations = {
 
     // 4. Identify affected nodes via dependency maps
     const changedFields = new Set<string>();
-    if (args.additionalContext.conditionCodes) changedFields.add('conditions');
-    if (args.additionalContext.medications) changedFields.add('medications');
-    if (args.additionalContext.labResults) changedFields.add('labs');
-    if (args.additionalContext.allergies) changedFields.add('allergies');
-    if (args.additionalContext.vitalSigns) changedFields.add('vitalSigns');
-    if (args.additionalContext.freeformData) changedFields.add('freeformData');
-    if (args.additionalContext.patientAttributes) changedFields.add('patientAttributes');
+    if (additionalContext.conditionCodes) changedFields.add('conditions');
+    if (additionalContext.medications) changedFields.add('medications');
+    if (additionalContext.labResults) changedFields.add('labs');
+    if (additionalContext.allergies) changedFields.add('allergies');
+    if (additionalContext.vitalSigns) changedFields.add('vitalSigns');
+    if (additionalContext.freeformData) changedFields.add('freeformData');
+    if (additionalContext.patientAttributes) changedFields.add('patientAttributes');
 
     // Reject a clock-less session up front, not only when a retraversal
     // happens to be triggered — the session is un-retraversable either way.
@@ -708,7 +748,7 @@ export const resolutionMutations = {
     for (const [gateId, fields] of session.dependencyMap.gateContextFields) {
       for (const field of fields) {
         const contextKey = dependencyContextKey(field);
-        if (contextKey && args.additionalContext[contextKey] !== undefined) {
+        if (contextKey && additionalContext[contextKey] !== undefined) {
           affectedNodes.add(gateId);
           break;
         }
@@ -783,8 +823,8 @@ export const resolutionMutations = {
     await logEvent(pool, args.sessionId, {
       eventType: 'context_update',
       triggerData: {
-        addedContext: Object.keys(args.additionalContext).filter(
-          k => (args.additionalContext as Record<string, unknown>)[k] !== undefined
+        addedContext: Object.keys(additionalContext).filter(
+          k => (additionalContext as Record<string, unknown>)[k] !== undefined
         ),
       },
       nodesRecomputed,
