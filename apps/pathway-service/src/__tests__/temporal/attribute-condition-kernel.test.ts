@@ -492,7 +492,7 @@ describe('attribute policy flows through the shared seam (P1-20)', () => {
       },
     };
 
-    const swept = sweepableConditions([node], 'v1')[0];
+    const swept = sweepableConditions([node], 'v1', CODE_MAP)[0];
     const adapted = adaptAttributeCondition(vitalsAttrCondition, CODE_MAP)!;
     expect(adapted.selection.field).toBe(swept.field);
     expect(adapted.override).toEqual(swept.override);
@@ -523,7 +523,7 @@ describe('attribute policy flows through the shared seam (P1-20)', () => {
         condition: cond,
       },
     };
-    const swept = sweepableConditions([node], 'v1')[0];
+    const swept = sweepableConditions([node], 'v1', CODE_MAP)[0];
     const adapted = adaptAttributeCondition(cond, CODE_MAP)!;
     expect(swept.field).toBe('labs');
     expect(adapted.selection.field).toBe('labs');
@@ -544,7 +544,7 @@ describe('attribute policy flows through the shared seam (P1-20)', () => {
         condition: cond,
       },
     };
-    expect(sweepableConditions([node], 'v1')).toEqual([]);
+    expect(sweepableConditions([node], 'v1', CODE_MAP)).toEqual([]);
     expect(adaptAttributeCondition(cond, CODE_MAP)).toBeNull();
   });
 
@@ -599,7 +599,7 @@ describe('attribute policy flows through the shared seam (P1-20)', () => {
         condition: cond,
       },
     };
-    expect(() => sweepableConditions([node], 'v1')).toThrow(/FORTNIGHT/);
+    expect(() => sweepableConditions([node], 'v1', CODE_MAP)).toThrow(/FORTNIGHT/);
     await expect(evaluateGate(gateFor(cond), deps('v1'))).rejects.toThrow(/FORTNIGHT/);
   });
 
@@ -623,7 +623,7 @@ describe('attribute policy flows through the shared seam (P1-20)', () => {
         condition: cond,
       },
     };
-    expect(sweepableConditions([node], 'v1')).toEqual([]);
+    expect(sweepableConditions([node], 'v1', CODE_MAP)).toEqual([]);
     const r = await evaluateGate(
       gateFor(cond),
       deps('v1', { patientContext: patient({ patientAttributes: { age: 65 } }) }),

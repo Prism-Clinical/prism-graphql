@@ -380,12 +380,15 @@ const ATTRIBUTE_SELECTION_OPERATOR: Record<'membership' | 'scalar', TemporalOper
  *    cannot see: the sweep has no `codeMap`, so it could never reject the same
  *    condition at preflight.
  *
- * **The sweep derives its field from `attributeNamespaceToField` rather than
- * from this function, and that is not an oversight.** `sweepableConditions`
- * reads pathway JSON off AGE with no attribute registry in scope, so it cannot
- * resolve a code. Sharing the namespace map and `parseConditionOverride` is what
- * makes the two agree on the only two things preflight computes — the cascade
- * key and the NODE tier — and that agreement is asserted by test.
+ * **The anchor sweep calls THIS function**, with `rctx.codeMap`, exactly as it
+ * calls `adaptCodedCondition` for coded conditions. It briefly did not, on the
+ * strength of R11-2's claim that the sweep had no `codeMap` in scope — a claim
+ * that was false (`ResolutionContext.codeMap` is loaded for every resolution and
+ * `assertEncounterAnchor` receives the whole `rctx`). Deriving the field from the
+ * namespace alone made preflight reject `lab.unmapped` with `horizon: ENCOUNTER`
+ * while evaluation, reaching the `null` below, answered an ordinary unsatisfied —
+ * locked decision #7's exact failure. A `null` here now means the same thing on
+ * both sides: not routable through the kernel.
  */
 export function adaptAttributeCondition(
   condition: AttributeCondition,

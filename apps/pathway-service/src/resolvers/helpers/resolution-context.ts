@@ -8,7 +8,7 @@ import {
   PatientContext,
   SignalDefinition,
 } from '../../services/confidence/types';
-import { GateProperties, AttributeCodeMap, CodedCondition } from '../../services/resolution/types';
+import { GateProperties, AttributeCodeMap, AttributeCondition, CodedCondition } from '../../services/resolution/types';
 import { DataSourceContext, GateType } from '../../types';
 import { loadAttributeCodeMap } from '../../services/resolution/attribute-code-map';
 import {
@@ -45,9 +45,8 @@ import {
 } from '../../services/resolution/temporal/evaluation-context';
 import { GateField, FIELD_TO_KIND } from '../../services/resolution/temporal/contract';
 import {
+  adaptAttributeCondition,
   adaptCodedCondition,
-  attributeNamespaceToField,
-  parseConditionOverride,
 } from '../../services/resolution/temporal/condition-adapter';
 import {
   assertKnownPolicyVersion,
@@ -602,10 +601,18 @@ export function makeLlmGateEvaluator(
  * condition. `assertEncounterAnchor` cannot serve that test: it returns `void`
  * and throws only when an anchor is missing, so it exposes neither value. Not
  * intended for production callers outside this module.
+ *
+ * **`codeMap` is required, and is `rctx.codeMap`.** Under `v1` an attribute
+ * condition is adapted by the real `adaptAttributeCondition`, which needs it to
+ * turn `lab.a1c` into a `(code, system)` pair — and which returns `null` when
+ * there is no row, exactly as the evaluator sees it. Passing an empty map here
+ * would make every mapped `lab.*` / `allergy.*` condition vanish from preflight;
+ * omitting the parameter is not possible, which is the point.
  */
 export function sweepableConditions(
   nodes: readonly GraphNode[],
   version: string,
+  codeMap: AttributeCodeMap,
 ): SweepableCondition[] {
   const isV1 = version !== DEFAULT_TEMPORAL_POLICY_VERSION;
   const out: SweepableCondition[] = [];
@@ -682,27 +689,39 @@ export function sweepableConditions(
         return;
       }
 
-      // v1 attribute: `patient.*` and unrecognized namespaces resolve no
-      // horizon, so they are skipped rather than rejected.
+      // v1 attribute: run the SAME adapter evaluation runs, exactly as the
+      // coded branch above runs `adaptCodedCondition`.
       //
-      // **This deliberately does NOT call `adaptAttributeCondition` (Task 7).**
-      // That adapter needs the attribute `codeMap` to turn `lab.a1c` into a
-      // (code, system) pair, and the sweep has none: it reads pathway JSON off
-      // AGE with no attribute registry in scope. Calling it with an empty map
-      // would make every `lab.*` / `allergy.*` condition adapt to `null` and
-      // vanish from the sweep — reopening exactly the preflight hole P1-8 closed.
-      // What preflight actually needs is the cascade key and the NODE tier, and
-      // both come from the shared `attributeNamespaceToField` and
-      // `parseConditionOverride` the adapter itself uses (locked decision #6).
-      // The agreement is asserted by test, not assumed.
+      // **R11-2 claimed this was structurally impossible and was WRONG.** It
+      // reasoned that the sweep has no `codeMap` in scope. It does:
+      // `ResolutionContext.codeMap` is loaded by `buildResolutionContext` for
+      // every resolution, and `assertEncounterAnchor` already receives the whole
+      // `rctx` — the map was one field away. Deriving the cascade key from the
+      // NAMESPACE alone made preflight decide something evaluation does not:
+      // `adaptAttributeCondition` returns `null` for an attribute with no
+      // `codeMap` row, the evaluator falls back to `resolveAttribute`, and no
+      // temporal policy is resolved at all. So `lab.unmapped` with
+      // `horizon: ENCOUNTER` threw MISSING_ENCOUNTER_ANCHOR here and evaluated as
+      // an ordinary unsatisfied gate — one condition, two answers, which is
+      // locked decision #7.
+      //
+      // A `null` adaptation is therefore NOT the P1-8 hole reopening: it is the
+      // sweep agreeing with the evaluator that this condition is not routable
+      // through the kernel. A MAPPED `lab.*` still sweeps, which is the case
+      // P1-8 was about. And P1-18 survives because the adapter parses the NODE
+      // override BEFORE its code lookup, so a malformed override on an unmapped
+      // attribute still rejects here — pinned by test, not assumed.
       const attribute = cond.attribute;
       if (typeof attribute !== 'string') return;
-      const attrField = attributeNamespaceToField(attribute.split('.')[0]);
-      if (attrField === null) return;
+      const adaptedAttr = adaptAttributeCondition(
+        cond as unknown as AttributeCondition,
+        codeMap,
+        label,
+      );
+      if (adaptedAttr === null) return;
 
-      const entry: SweepableCondition = { label, field: attrField };
-      const override = parseConditionOverride(cond, label);
-      if (override !== undefined) entry.override = override;
+      const entry: SweepableCondition = { label, field: adaptedAttr.selection.field };
+      if (adaptedAttr.override !== undefined) entry.override = adaptedAttr.override;
       out.push(entry);
     });
   }
@@ -738,7 +757,7 @@ export function assertEncounterAnchor(
     if (temporalCtx.encounterStart) return;
     throwIfAnchorsMissing(
       collectEncounterAnchorRequirements(
-        sweepableConditions(rctx.graphContext.allNodes, version),
+        sweepableConditions(rctx.graphContext.allNodes, version, rctx.codeMap),
         version,
         rctx.temporalDefaults,
       ),
@@ -756,7 +775,7 @@ export function assertEncounterAnchor(
   // call left them unenforced whenever an anchor happened to be present, and
   // the throw landed mid-traversal instead. Errors propagate from here.
   const required = collectEncounterAnchorRequirements(
-    sweepableConditions(rctx.graphContext.allNodes, version),
+    sweepableConditions(rctx.graphContext.allNodes, version, rctx.codeMap),
     version,
     rctx.temporalDefaults,
   );
