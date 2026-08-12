@@ -321,6 +321,9 @@ describe('every engine construction site is handed rctx.temporalDefaults (P1-10)
       patientContext,
       'pr',
       CLOCK,
+      // `factStore` — assembled once per run by the caller from plan 04 Task 9
+      // on. Empty here: CLOCK is `legacy-v0`.
+      [],
     );
 
     expect(traversalCtor).toHaveBeenCalledTimes(1);

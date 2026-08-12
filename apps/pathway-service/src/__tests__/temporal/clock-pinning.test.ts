@@ -73,6 +73,8 @@ async function traverseAtSystemTime(systemTime: string): Promise<NodeStatus | un
       thresholds,
       makeEvaluationTemporalContext({ evaluationAsOf: PINNED }),
       {},
+      // Required from plan 04 Task 9 on; empty because this is `legacy-v0`.
+      [],
     );
     const result = await engine.traverse(
       makeGraphContext(nodes, edges),

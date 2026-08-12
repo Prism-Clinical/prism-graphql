@@ -9,7 +9,7 @@ import {
   SignalDefinition,
 } from '../../services/confidence/types';
 import { GateProperties, AttributeCodeMap, CodedCondition } from '../../services/resolution/types';
-import { GateType } from '../../types';
+import { DataSourceContext, GateType } from '../../types';
 import { loadAttributeCodeMap } from '../../services/resolution/attribute-code-map';
 import {
   LlmGateEvaluator,
@@ -49,7 +49,44 @@ import {
   attributeNamespaceToField,
   parseConditionOverride,
 } from '../../services/resolution/temporal/condition-adapter';
-import { getTemporalPolicy } from '../../services/resolution/temporal/policy-registry';
+import {
+  assertKnownPolicyVersion,
+  getTemporalPolicy,
+} from '../../services/resolution/temporal/policy-registry';
+
+// ─── Temporal policy version selection ──────────────────────────────
+
+/**
+ * The temporal policy version this request's sessions are pinned to.
+ *
+ * **Takes the GraphQL context, and explicitly NOT a `ResolutionContext`
+ * (P1-14).** `startMultiPathwayResolution` stamps the shared clock before
+ * `getMatchedPathways` runs, and its zero-match branch creates a parent session
+ * and returns without ever building a `ResolutionContext` — so a selector keyed
+ * on one could not be called at all on that path, and the session would be
+ * stamped with whatever `makeEvaluationTemporalContext` defaults to. Reading
+ * ONE field off the request context is also what gives every child session in a
+ * multi-pathway run the same version (§1).
+ *
+ * The seam is a **server-owned plain string field**, not a callback and not a
+ * mutable module global: `DataSourceContext.temporalPolicyVersion`, populated in
+ * `index.ts` from deployment config. There is deliberately **no call-count
+ * assertion** anywhere — for a string field, reading it once or three times is
+ * not a behavioral difference; the property that matters is that every child
+ * carries the same injected value, and that is asserted against persisted rows.
+ *
+ * Call it immediately before `makeEvaluationTemporalContext` in both start
+ * paths — the position `assertKnownPolicyVersion` already occupies, for the
+ * same reason.
+ */
+export function resolveTemporalPolicyVersion(ctx: DataSourceContext): string {
+  const injected = ctx?.temporalPolicyVersion;
+  const version = injected ?? DEFAULT_TEMPORAL_POLICY_VERSION;
+  // A misconfigured deployment must fail loudly, never fall back to "latest"
+  // or silently to legacy — the registry's second rule (§5).
+  assertKnownPolicyVersion(version);
+  return version;
+}
 
 // ─── Graph Context Builder ──────────────────────────────────────────
 

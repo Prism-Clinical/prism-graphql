@@ -2,6 +2,7 @@ import { GraphContext, PatientContext, GraphNode } from '../confidence/types';
 import { evaluateGate, LlmGateEvaluator } from './gate-evaluator';
 import type { GateEvaluationDeps } from './gate-evaluator';
 import type { PathwayTemporalDefaults } from './temporal/cascade';
+import type { FactStore } from './temporal/fact-model';
 import { EvaluationTemporalContext } from './temporal/evaluation-context';
 import {
   NodeResult,
@@ -162,16 +163,23 @@ export class TraversalEngine {
      * pathway (P1-10, locked decision #7).
      */
     private pathwayDefaults: PathwayTemporalDefaults,
+    /**
+     * The normalized facts the `v1` kernel selects from, assembled by the
+     * resolver (plan 04 Task 9, locked decision #5). `[]` under `legacy-v0`,
+     * which never reads it.
+     *
+     * REQUIRED and positioned before the optionals, for the reason P1-10
+     * promoted `pathwayDefaults` and R11-4 flags for `codeMap`: omitted at one
+     * construction site, every `v1` gate selects from nothing and answers a
+     * quiet `false` — while that pathway's anchor preflight resolved policies
+     * for the very conditions the gate could no longer see.
+     */
+    private factStore: FactStore,
     private llmGateEvaluator?: LlmGateEvaluator,
     private codeMap: AttributeCodeMap = new Map(),
   ) {}
 
-  /**
-   * The dependencies every gate in this traversal is evaluated with.
-   *
-   * `factStore` is empty here: assembly is `v1`-only and is wired at plan 04
-   * Task 9 (locked decision #5). `legacy-v0` never reads it at all.
-   */
+  /** The dependencies every gate in this traversal is evaluated with. */
   private gateDeps(
     patientContext: PatientContext,
     resolutionState: ResolutionState,
@@ -181,7 +189,7 @@ export class TraversalEngine {
     return {
       temporalContext: this.temporalContext,
       pathwayDefaults: this.pathwayDefaults,
-      factStore: [],
+      factStore: this.factStore,
       patientContext,
       resolutionState,
       gateAnswers,

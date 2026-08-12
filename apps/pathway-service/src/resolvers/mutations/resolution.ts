@@ -34,7 +34,12 @@ import {
   makeRetraversalAdapter,
   makeLlmGateEvaluator,
   assertEncounterAnchor,
+  resolveTemporalPolicyVersion,
 } from '../helpers/resolution-context';
+import {
+  factStoreForInput,
+  factStoreForSession,
+} from '../../services/resolution/temporal/fact-store';
 import { assertKnownPolicyVersion } from '../../services/resolution/temporal/policy-registry';
 import { applyDdiToResolutionState } from '../../services/medications/ddi-pass-single-pathway';
 import { normalizePatientAttributes } from '../../services/resolution/patient-attributes';
@@ -190,16 +195,35 @@ export const resolutionMutations = {
     // raw args here is what made the union decorative in the first place.
     const patientContext: PatientContext = toPatientContext(resolutionInput);
 
+    // The policy version comes from the SERVER, immediately before the clock is
+    // stamped — never from `args` (AD-1). Spread last so a future
+    // `temporalInputFrom` that ever carried one could not win.
+    const temporalPolicyVersion = resolveTemporalPolicyVersion(context);
+
     // One clock for the whole session (§1). The wall clock is read exactly
     // once, here — every gate evaluation, retraversal and replay of this
     // session uses this instant. A caller may pin it instead, and must supply
     // encounterStart when the pathway resolves an ENCOUNTER horizon.
-    const temporalContext = makeEvaluationTemporalContext(temporalInputFrom(args));
+    const temporalContext = makeEvaluationTemporalContext({
+      ...temporalInputFrom(args),
+      temporalPolicyVersion,
+    });
 
     // The version gates everything downstream, so it is checked at the
     // boundary — not left to the sweep, which never runs on a pathway with
     // nothing to sweep.
     assertKnownPolicyVersion(temporalContext.temporalPolicyVersion);
+
+    // `v1` only — under `legacy-v0` this returns `[]` without ever entering the
+    // assembler, which VALIDATES and throws (P1-9).
+    //
+    // Before the anchor sweep, so both start mutations order these the same
+    // way: the assembler validates the REQUEST, the sweep validates the PATHWAY
+    // against it. `startMultiPathwayResolution` has no choice — its zero-match
+    // branch returns before any pathway is loaded — so matching that here is
+    // what stops the same malformed context reporting two different errors
+    // depending on which mutation the caller used.
+    const factStore = factStoreForInput(resolutionInput, temporalContext);
 
     // Refuse up front rather than throwing partway through: an ENCOUNTER
     // horizon with no anchor is unresolvable, and by the time the first
@@ -212,6 +236,7 @@ export const resolutionMutations = {
       rctx.thresholds,
       temporalContext,
       rctx.temporalDefaults,
+      factStore,
       llmBundle?.evaluator,
       rctx.codeMap,
     );
@@ -350,6 +375,12 @@ export const resolutionMutations = {
         rctx.thresholds,
         sessionClock,
         rctx.temporalDefaults,
+        // Re-assembled from the SAME inputs `patientCtx` was built from, under
+        // the session's STORED clock — never a fresh one (plan 05b / §1).
+        factStoreForSession(
+          session,
+          session.additionalContext as Partial<AdditionalContextInput>,
+        ),
         llmBundle?.evaluator,
         rctx.codeMap,
       );
@@ -514,6 +545,11 @@ export const resolutionMutations = {
           rctx.thresholds,
           sessionClock,
           rctx.temporalDefaults,
+          // Same inputs as `patientCtx`, under the session's stored clock.
+          factStoreForSession(
+            session,
+            session.additionalContext as Partial<AdditionalContextInput>,
+          ),
           llmBundle?.evaluator,
           rctx.codeMap,
         );
@@ -702,6 +738,11 @@ export const resolutionMutations = {
         rctx.thresholds,
         sessionClock,
         rctx.temporalDefaults,
+        // `merged`, NOT `session.additionalContext` — the newly supplied facts
+        // must reach the very retraversal they triggered. Assembling from the
+        // stored bag is the stale-store half of P1-2: the gate would be marked
+        // affected, re-evaluated, and still see nothing new.
+        factStoreForSession(session, merged as Partial<AdditionalContextInput>),
         llmBundle?.evaluator,
         rctx.codeMap,
       );

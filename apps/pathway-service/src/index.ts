@@ -7,9 +7,28 @@ import { Pool } from 'pg';
 import { Redis } from 'ioredis';
 import resolvers from "./resolvers";
 import { initializeDatabase } from "./services/database";
+import {
+  assertKnownPolicyVersion,
+} from "./services/resolution/temporal/policy-registry";
+import { DEFAULT_TEMPORAL_POLICY_VERSION } from "./services/resolution/temporal/evaluation-context";
 
 const port = process.env.PORT || "4016";
 const subgraphName = "pathway";
+
+/**
+ * The temporal policy version this DEPLOYMENT evaluates with (design §5).
+ *
+ * Read once, at boot, from the environment — deliberately not inside the
+ * per-request context factory, so there is no code path along which a request
+ * header could reach it (AD-1). The rollout flip is an env change plus a
+ * restart; it is not a schema change and it is not caller-selectable.
+ *
+ * Validated here so a typo fails the process at boot rather than every request
+ * at runtime.
+ */
+const TEMPORAL_POLICY_VERSION =
+  process.env.TEMPORAL_POLICY_VERSION || DEFAULT_TEMPORAL_POLICY_VERSION;
+assertKnownPolicyVersion(TEMPORAL_POLICY_VERSION);
 
 async function main() {
   const pool = new Pool({
@@ -47,6 +66,8 @@ async function main() {
         redis,
         userId,
         userRole,
+        // From deployment config, closed over at boot — never from `req`.
+        temporalPolicyVersion: TEMPORAL_POLICY_VERSION,
       };
     },
   });

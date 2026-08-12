@@ -78,8 +78,11 @@ import {
   makeTraversalAdapter,
   makeLlmGateEvaluator,
   assertEncounterAnchor,
+  resolveTemporalPolicyVersion,
   ResolutionContext,
 } from '../helpers/resolution-context';
+import { factStoreForInput } from '../../services/resolution/temporal/fact-store';
+import type { FactStore } from '../../services/resolution/temporal/fact-model';
 import { assertKnownPolicyVersion } from '../../services/resolution/temporal/policy-registry';
 import {
   createMultiPathwaySession,
@@ -208,15 +211,32 @@ export const multiPathwayResolutionMutations = {
     // MultiPathwayResolutionArgs.
     const isPreview = args.syntheticPatient === true;
 
+    // The SERVER's policy version, read immediately before the clock is stamped
+    // and before `getMatchedPathways` — the zero-match branch below returns
+    // without ever building a `ResolutionContext`, which is why the selector
+    // takes the GraphQL context instead (P1-14). One read per request is also
+    // what gives every child session the same version (§1).
+    const temporalPolicyVersion = resolveTemporalPolicyVersion(context);
+
     // One clock for the entire multi-pathway run (§1) — the parent session and
     // every contributing session resolve horizons against the same instant.
     // Created here, before the zero-match branch, so BOTH exits stamp it.
-    const temporalContext = makeEvaluationTemporalContext(temporalInputFrom(args));
+    const temporalContext = makeEvaluationTemporalContext({
+      ...temporalInputFrom(args),
+      temporalPolicyVersion,
+    });
 
     // Before the zero-match branch: that path creates a parent session and
     // returns without ever entering resolveAndPersistAll, so a version
     // validated only during the sweep would never be checked at all.
     assertKnownPolicyVersion(temporalContext.temporalPolicyVersion);
+
+    // Assembled ONCE for the whole run, and — like the version check — before
+    // the zero-match branch: the assembler validates, and whether a malformed
+    // context is rejected must not depend on how many pathways happened to
+    // match. On the zero-match path the store is simply discarded. `[]` under
+    // `legacy-v0`, without entering the assembler at all (P1-9).
+    const factStore = factStoreForInput(resolutionInput, temporalContext);
 
     const matched = await getMatchedPathways(pool, args.patientId, matcherOptions);
     if (matched.length === 0) {
@@ -239,7 +259,14 @@ export const multiPathwayResolutionMutations = {
     const surviving = await collapseLattice(pool, matched);
 
     const { resolvedPlans, contributingSessionIds, contributingPathwayIds } =
-      await resolveAndPersistAll(pool, surviving, patientContext, context.userId, temporalContext);
+      await resolveAndPersistAll(
+        pool,
+        surviving,
+        patientContext,
+        context.userId,
+        temporalContext,
+        factStore,
+      );
 
     const { mergedPlan: finalMerged, ddiWarnings } = await runMergePipeline(
       pool,
@@ -746,6 +773,14 @@ export async function resolveAndPersistAll(
    * back out.
    */
   temporalContext: EvaluationTemporalContext,
+  /**
+   * Assembled by the caller for the same reason the clock is: one store for the
+   * whole run. Assembly is pathway-independent — it reads the patient payload
+   * and the clock, neither of which varies per pathway — so building it here,
+   * once per pathway, would do the same work N times and give sibling sessions
+   * distinct (though equal) fact objects.
+   */
+  factStore: FactStore,
 ): Promise<{
   resolvedPlans: ResolvedCarePlan[];
   contributingSessionIds: string[];
@@ -774,6 +809,7 @@ export async function resolveAndPersistAll(
       rctx.thresholds,
       temporalContext,
       rctx.temporalDefaults,
+      factStore,
       llmBundle?.evaluator,
       rctx.codeMap,
     );

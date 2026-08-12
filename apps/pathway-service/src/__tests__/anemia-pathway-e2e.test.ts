@@ -49,6 +49,8 @@ function createEngine(): TraversalEngine {
     mockThresholds,
     makeEvaluationTemporalContext({ evaluationAsOf: PINNED_AS_OF }),
     {},
+    // Required from plan 04 Task 9 on; empty because this is `legacy-v0`.
+    [],
     undefined,
     CODE_MAP,
   );

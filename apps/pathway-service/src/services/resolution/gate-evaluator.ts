@@ -1502,6 +1502,19 @@ function assertRequiredDeps(deps: GateEvaluationDeps): void {
       'INVALID_TEMPORAL_DEFAULTS',
     );
   }
+  // An ABSENT store is a wiring bug; an EMPTY one is `legacy-v0` working as
+  // designed, so the test is `Array.isArray`, not truthiness. Under `v1` an
+  // omitted store makes every kernel branch select from nothing and answer a
+  // quiet `false` — indistinguishable at the audit row from a patient who
+  // genuinely has no such fact (R11-4's failure mode, for the input that
+  // matters most).
+  if (!Array.isArray(deps.factStore)) {
+    throw new TemporalContextError(
+      'evaluateGate requires an explicit factStore — `[]` under legacy-v0, the ' +
+        'assembled store under v1; omitting it makes every v1 gate select from nothing',
+      'INVALID_RESOLUTION_INPUT',
+    );
+  }
 }
 
 /**

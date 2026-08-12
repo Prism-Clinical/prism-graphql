@@ -255,6 +255,22 @@ Four findings. Two are a single defect seen from both ends; none are in the trut
 
 ---
 
+## Round 13 — findings from executing Task 9
+
+Four findings. One is P1 and is a defect class no round has looked at; the other three are consequences of `v1` becoming reachable for the first time.
+
+**[R13-1] P1 — the trust boundary is enforced at `startResolution` and absent at `addPatientContext`, and Task 9 makes that difference load-bearing.** `parseResolutionInput` classifies `endDate` / `clinicalState` / `recordValidity` / `sourceId` as privileged assertions about clinical TRUTH: refused outright in implicit mode, ADMIN-only in explicit SYNTHETIC (`firstAssertion`, `trust-mode.ts:109-134`). `addPatientContext` runs **no trust parsing at all**, and its `AdditionalContextInput` reuses the very same `CodeInput` / `LabResultInput` SDL types (`schema.graphql:1107-1190`) — so all four fields are authorable there by any caller, with no mode and no role. Before Task 9 that was inert, because `legacy-v0` reads code/system/value/date only. Wiring `factStoreForSession` makes them govern selection under `v1`: verified by test that `recordValidity: 'INVALID'` supplied through `addPatientContext` reaches the fact with `validityBasis: 'SYNTHETIC_ASSERTION'`, which removes it from selection entirely; `clinicalState: 'INACTIVE'` flips it out of every `status: 'active'` gate. **A caller who is refused these at session creation can assert them mid-session and suppress a clinical fact from evaluation.** Not fixed, following the R11-1 → D9 precedent: the policy (reject like `startResolution` / strip silently / require ADMIN) lives in plan 05's trust-mode module, and an evaluator task does not decide it from the wrong layer. Pinned in both directions — `v1` honours it, `legacy-v0` is provably unaffected — so a fix has a failing test to flip. **Needs a decision; Task 10 must disclose it if the decision has not landed.** *(Class: a validation boundary enforced at ONE of several entry points that feed the same primitive. Every previous round examined what a layer reads or produces; none asked whether all the doors into a layer are guarded the same way. Note that this is the mirror of the plan's own P1-9 care: the plan reasoned very carefully about `legacy-v0` NOT reaching the assembler, and not at all about which callers reach it under `v1`.)*
+
+**[R13-2] R12-1/R12-2 stop being theoretical.** Until this task the `v1` path was unreachable in production, so "nothing above the gate evaluator reads `indeterminate`/`uncertainty`" described a signal that was never actually produced outside unit tests. From Task 9 on it is produced on every `v1` gate result on every real request and dropped whole by both engines. The disposition is unchanged (Task 10 discloses, plan 08 reads the flag) but the priority is not: an OR compound refused for uncertainty is now recorded, in a live audit row, byte-identically to one where the patient had none of the codes.
+
+**[R13-3] Retraversal determinism rests on `toPatientContext` copying entry arrays BY REFERENCE, which nothing names as a contract.** Facts are not persisted (plan 05b), so a retraversal reproduces the creating traversal's store only if `initial_patient_context` still carries the SYNTHETIC-only fields. It does — `toPatientContext` assigns `pc.conditionCodes` straight through, so `clinicalState` / `recordValidity` / `endDate` / `sourceId` ride along into the JSONB column even though the declared type (`CodeEntry`) has no such fields. A future "tidy-up" that mapped the entries field-by-field to `CodeEntry` would compile, pass every existing test, and silently make every retraversal assemble a *different* store than its creation — `stateBasis` flipping from `SYNTHETIC` to `MISSING_STATUS_FAIL_OPEN`, an INACTIVE condition becoming ACTIVE. Pinned indirectly by the `resolves the same factIds on re-run as at creation` test, which would NOT catch it: `factId`s are positional and would still match. Documented in `fact-store.ts:toSyntheticContext`; a direct test belongs with plan 05b.
+
+**[R13-4] `assembleContext` needs no `encounterStart`, but `selectFacts` does — and only the latter is preflighted.** A `v1` session over a `vitals` gate is rejected at preflight without an anchor (`collectEncounterAnchorRequirements`), yet assembly of vitals facts succeeds regardless. That is correct and deliberate — an assembler that demanded an anchor would make every anchor-less `v1` session unstartable even when no gate reads vitals — but it means the store is routinely a superset of what any gate can select, which is worth stating before someone "optimizes" assembly to skip kinds the pathway does not read. Pinned by `a v1 session created with no encounterStart still assembles vitals facts`.
+
+**Defect-class note.** Rounds 1–3 design, 4–5 plan mechanics, 6 cross-layer, 7 pseudocode, 8 field-level dependency, 9 cross-plan intent, 10 a shared primitive generalized past its model, 11 a legacy function whose per-branch inconsistency the kernel regularized, 12 a signal with no reader. Round 13 is **a primitive with more than one door, only one of which is guarded**. *Before round 14: for every validating function this plan relies on, enumerate ALL the call paths that reach the data it validates — not the call paths that reach the function. `assembleContext` was reasoned about exhaustively from the version axis and not at all from the caller axis, and the hole was in the second.*
+
+---
+
 ## Global Constraints
 
 - **Branch:** `feat/temporal-horizon-evaluator-kernel`, worktree `/home/claude/workspace/features/feat-temporal-horizon-evaluator-kernel/prism-graphql`, from `origin/main` at `d6f51fd`.
@@ -278,6 +294,7 @@ Four findings. Two are a single defect seen from both ends; none are in the trut
   | Task 7 (`db86a72`) | 1153 | 9 | 1162 | 92 / 94 |
   | D9 implementation | 1163 | 9 | 1172 | 92 / 94 |
   | Task 8 (`gate-evaluator-compound-uncertainty`) | 1195 | 9 | 1204 | 93 / 95 |
+  | Task 9 (assembler wired at all five entry points) | 1227 | 9 | 1236 | 95 / 97 |
 
   Task 4's delta is +15 passed / +15 total: **16 added** in the new
   `gate-evaluator-membership-kernel.test.ts`, **1 deleted** — Task 3's no-op-fork
@@ -310,6 +327,22 @@ Four findings. Two are a single defect seen from both ends; none are in the trut
   single-condition gates before any row is asserted over them: a row asserted
   against a mis-built fixture proves nothing, and three earlier tasks shipped a
   sketch that skipped a named case.
+
+  Task 9's delta is +32 passed / +32 total / +2 suites: **32 added**, **none
+  deleted and none modified** — the `expect(` churn in pre-existing test files
+  is zero, and in fact those files gained lines only. 26 are in the new
+  `temporal/resolution-fact-store-wiring.test.ts` (engine constructors spied,
+  assembler spied directly) and 6 in the new
+  `temporal/v1-traversal-behavior.test.ts` (real engines, the two deferred
+  behavioral proofs). Seven pre-existing test files changed by **call shape
+  only**: five engine/`resolveAndPersistAll` construction sites gained the new
+  required `factStore` argument, and two module-factory mocks gained
+  `resolveTemporalPolicyVersion` (kept REAL via `requireActual` — a `jest.fn()`
+  returning `undefined` would silently re-enable the legacy default the
+  selector exists to control). Non-test files touched: `types/index.ts`,
+  `index.ts`, `resolvers/helpers/resolution-context.ts`, both resolution
+  mutation modules, both engines, `gate-evaluator.ts` (one guard), and the new
+  `temporal/fact-store.ts`.
 
   The D9 implementation's delta is +10 passed / +10 total / no suite change:
   **6 added** in `temporal/condition-adapter.test.ts` and **4 added** in
@@ -1071,10 +1104,39 @@ describe('the pathway-default cascade, proven behaviorally (moved from Task 3, P
 });
 ```
 
-- [ ] **Step 2: Run it, confirm it fails.**
-- [ ] **Step 3: Implement.** Add the selector; gate assembly on `version === 'v1'`; build the two helpers over a shared core. Retraversal must not stamp a fresh clock — it reads `session.temporal_context`.
-- [ ] **Step 4: Run the FULL suite.** Compare against the previous row of the baseline table, and account for every added test.
-- [ ] **Step 5: Commit** — `feat: assemble a fact store at every v1 resolution entry point`
+- [x] **Step 2: Run it, confirm it fails.**
+- [x] **Step 3: Implement.** Add the selector; gate assembly on `version === 'v1'`; build the two helpers over a shared core. Retraversal must not stamp a fresh clock — it reads `session.temporal_context`.
+- [x] **Step 4: Run the FULL suite.** Compare against the previous row of the baseline table, and account for every added test.
+- [x] **Step 5: Commit** — `feat: assemble a fact store at every v1 resolution entry point`
+
+**Executed 2026-08-12.** Three implementation choices the plan left open:
+
+1. **`factStore` is a REQUIRED constructor parameter on both engines**, fifth —
+   after `pathwayDefaults`, before the optional `llmGateEvaluator`. Not
+   optional-with-a-default, because that is exactly the shape P1-10 promoted
+   `pathwayDefaults` out of and R11-4 flags for `codeMap`, and `factStore` is
+   the single most load-bearing `v1` input: omitted at one of the five sites,
+   every `v1` gate selects from nothing and answers a quiet `false` while that
+   pathway's preflight resolved policies for the conditions the gate can no
+   longer see. Backed by a runtime `Array.isArray` guard in
+   `assertRequiredDeps` — the type is not the guard (`src/__tests__` is
+   excluded from typechecking), and the test is `Array.isArray` rather than
+   truthiness because an EMPTY store is `legacy-v0` working as designed while
+   an ABSENT one is a wiring bug. Cost: five call-shape edits in pre-existing
+   tests, no assertion changes.
+2. **The two start mutations order request-validation before pathway-preflight,
+   identically.** `startMultiPathwayResolution` has no choice — its zero-match
+   branch returns before any pathway is loaded, and whether a malformed context
+   is rejected must not depend on how many pathways happened to match — so
+   `startResolution` was matched to it rather than the reverse. Otherwise the
+   same malformed context reports `INVALID_RESOLUTION_INPUT` through one
+   mutation and `MISSING_ENCOUNTER_ANCHOR` through the other.
+3. **`factStoreForInput(input, ctx)` takes two parameters, not the three named
+   in the prose.** There is no third input: assembly reads the patient payload
+   and the clock and nothing else — in particular it is pathway-independent,
+   which is what lets a multi-pathway run assemble once and hand the same store
+   to every child (asserted by identity, not equality). A `defaults` parameter
+   would have had no consumer.
 
 ---
 
