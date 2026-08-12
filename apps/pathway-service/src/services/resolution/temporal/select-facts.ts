@@ -72,8 +72,25 @@ function hasFiniteValue(fact: NormalizedFact): boolean {
  *    scalar class would make every undated vitals gate select nothing and fail
  *    closed, and applying overlap to aggregates is the bug D8 fixed.
  *
- * Each CANDIDATE rule mirrors what the current evaluator does, so `legacy-v0`
- * is genuinely behavior-preserving:
+ * Each CANDIDATE rule mirrors what the current evaluator does. **That makes the
+ * CANDIDATE SET match, and nothing more — it does NOT make `v1`
+ * behavior-preserving, and the original wording here claimed it did (corrected
+ * in plan 04 Task 10).** Candidate parity is one of four axes; the other three
+ * all differ by design, and every difference is disclosed in the design doc's
+ * Compatibility section:
+ *  - **record validity** filters facts that match today,
+ *  - **ordering** takes the definite latest rather than the first array element,
+ *    and refuses to order at all when it cannot (D7),
+ *  - **vitals bucketing** produces facts where `getCodeEntries('vitals')`
+ *    returned `[]`, so vitals membership becomes satisfiable while a vitals
+ *    `count_in_window` becomes permanently zero (D8).
+ *
+ * What `legacy-v0` preservation actually rests on is the **version seam**: it
+ * runs `evaluateConditionLegacy`, today's untouched code, and never reaches this
+ * module at all. The proof is that every pre-existing test passes with
+ * unmodified assertions, not that these candidate rules line up.
+ *
+ * The candidate rules themselves:
  *  - `count_in_window` counts occurrences over ANY fact kind (recurrent UTIs,
  *    repeat ED visits — gate-evaluator.ts walks every code bucket, not just
  *    labs), matches the trailing wildcard, and requires no numeric value.
