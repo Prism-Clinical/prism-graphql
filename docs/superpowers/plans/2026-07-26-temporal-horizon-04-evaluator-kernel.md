@@ -195,6 +195,18 @@ Six findings. Two are defects in work already landed, one was self-found and fix
 
 **Defect-class note.** Rounds 1–3 design, 4–5 mechanics, 6 cross-layer, 7 pseudocode, 8 field-level dependency, 9 cross-plan intent, 10 a shared primitive generalized past its model. R11-1 is none of those: it is a **legacy function whose per-branch inconsistency the kernel silently regularizes**. `getNumericValue` honours `system` for labs and ignores it for vitals — an asymmetry nobody wrote down because nothing depended on it — and the kernel, being uniform by design, made the asymmetry observable as a behavior change in one direction only. *Before round 12, take each `legacy-v0` function the kernel replaces and enumerate the condition fields it reads **per branch**, not per function. Any field read on one branch and ignored on another is a `v1` delta the uniform kernel will introduce, and none of them are currently disclosed.*
 
+**D9 — a coded `vitals` condition may not carry a `system`; it is rejected at authoring, in the adapter AND in the import validator.** *(Round 11, found executing Task 7. Decision taken 2026-08-12.)*
+
+Legacy's `getNumericValue` honours `condition.system` on its **labs** branch and ignores it entirely on its **vitals** branch (`gate-evaluator.ts`). The kernel applies `system` uniformly, so the same condition is satisfiable under `legacy-v0` and unsatisfiable under `v1`.
+
+It is not "the filter now works". `assembleVitals` stamps every vital with `VITALS_SYSTEM` (`urn:prism:vitals`), which no real terminology system equals — so **any** author-supplied `system` on a vitals condition makes that gate permanently unsatisfiable. `system` is in `CODED_KEYS`, so it imports cleanly and passes preflight today.
+
+**Rejected at authoring rather than ignored or disclosed**, following the round-7 P1-22 precedent: the validator is taught to reject what evaluation cannot satisfy, so the author sees it where they can fix it. Ignoring it silently discards what the author wrote — the failure mode that produced the round-6 `exists` confusion. Disclosing it leaves a gate that imports cleanly, passes preflight, and can never fire.
+
+**Nothing stored or fixtured uses this pattern** (verified: zero coded `vitals` conditions carrying a `system`), so there is no migration and no compatibility break.
+
+**Class note.** R11-1 is a distinct defect class: **a legacy function whose PER-BRANCH inconsistency a uniform kernel silently regularizes.** The round-12 check follows from it — enumerate the condition fields each `legacy-v0` *branch* reads, not each function. Any field honoured on one branch and ignored on another is a `v1` delta the kernel will introduce, and none are currently disclosed.
+
 ---
 
 ## Global Constraints
