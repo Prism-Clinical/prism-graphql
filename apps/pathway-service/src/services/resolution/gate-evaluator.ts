@@ -1193,6 +1193,49 @@ function evaluatePriorNodeResult(
   };
 }
 
+/**
+ * The `indeterminate` truth table for a compound gate (Task 8, D5 — normative).
+ *
+ * | Operator | Conditions | `satisfied` | `indeterminate` |
+ * |---|---|---|---|
+ * | AND | any definite `false` | `false` | `false` — a definite false dominates |
+ * | AND | all `true` except ≥1 indeterminate | `false` | `true` |
+ * | AND | all definite `true` | `true` | `false` |
+ * | OR | any definite `true` | `true` | `false` — a definite true dominates |
+ * | OR | all `false` except ≥1 indeterminate | `false` | `true` |
+ * | OR | all definite `false` | `false` | `false` |
+ * | either | all indeterminate | `false` | `true` |
+ *
+ * The principle: **report it only when uncertainty could have changed the
+ * answer.** So the rule is "some condition is indeterminate, and no condition
+ * decided the gate on its own" — the dominating value being `false` under AND
+ * and `true` under OR. The last row falls out of the first six rather than
+ * being special-cased: with every condition indeterminate there is no dominator
+ * under either operator.
+ *
+ * **`satisfied` is NOT recomputed here.** It stays legacy's `every`/`some` over
+ * the conditions, which already yields `false` for an indeterminate condition
+ * because every fail-closed kernel branch returns `satisfied: false` with it.
+ * Deriving it a second way would be a second thing to keep in step.
+ *
+ * A condition reporting `satisfied: true` **and** `indeterminate: true` is
+ * unreachable from every kernel branch today — INDETERMINATE always fails
+ * closed — and is classified here as neither a definite true nor a definite
+ * false, i.e. as a dominator of nothing. That is the conservative reading, and
+ * it is the reason the predicates below are written positively rather than as
+ * `!indeterminate` shorthands.
+ */
+function compoundIndeterminate(
+  op: 'AND' | 'OR',
+  results: readonly ConditionOutcome[],
+): boolean {
+  const isIndeterminate = (r: ConditionOutcome) => r.indeterminate === true;
+  const dominates = (r: ConditionOutcome) =>
+    op === 'AND' ? !r.satisfied && !isIndeterminate(r) : r.satisfied && !isIndeterminate(r);
+  if (results.some(dominates)) return false;
+  return results.some(isIndeterminate);
+}
+
 function evaluateCompound(
   gate: GateProperties,
   deps: GateEvaluationDeps,
@@ -1208,7 +1251,9 @@ function evaluateCompound(
 
   const op = gate.operator ?? 'AND';
   const allFieldsRead: string[] = [];
-  const results: Array<{ satisfied: boolean; reason: string }> = [];
+  // Typed as the full outcome, not `{satisfied, reason}`: the D5 signals died at
+  // this boundary because the narrowed type made dropping them invisible.
+  const results: ConditionOutcome[] = [];
 
   // Resolved once for the whole gate: sibling conditions must never evaluate
   // against different policy versions.
@@ -1222,12 +1267,13 @@ function evaluateCompound(
 
   const uniqueFields = [...new Set(allFieldsRead)];
 
+  let out: GateEvaluationResult;
   if (op === 'AND') {
     const allSatisfied = results.every((r) => r.satisfied);
     const failedReasons = results
       .filter((r) => !r.satisfied)
       .map((r) => r.reason);
-    return {
+    out = {
       satisfied: allSatisfied,
       reason: allSatisfied
         ? 'All compound conditions satisfied'
@@ -1235,21 +1281,49 @@ function evaluateCompound(
       contextFieldsRead: uniqueFields,
       dependedOnNodes: [],
     };
+  } else {
+    // OR
+    const anySatisfied = results.some((r) => r.satisfied);
+    const satisfiedReasons = results
+      .filter((r) => r.satisfied)
+      .map((r) => r.reason);
+    out = {
+      satisfied: anySatisfied,
+      reason: anySatisfied
+        ? `Satisfied conditions: ${satisfiedReasons.join('; ')}`
+        : 'No compound conditions satisfied',
+      contextFieldsRead: uniqueFields,
+      dependedOnNodes: [],
+    };
   }
 
-  // OR
-  const anySatisfied = results.some((r) => r.satisfied);
-  const satisfiedReasons = results
-    .filter((r) => r.satisfied)
-    .map((r) => r.reason);
-  return {
-    satisfied: anySatisfied,
-    reason: anySatisfied
-      ? `Satisfied conditions: ${satisfiedReasons.join('; ')}`
-      : 'No compound conditions satisfied',
-    contextFieldsRead: uniqueFields,
-    dependedOnNodes: [],
-  };
+  // ─── The D5 signals cross the compound boundary (Task 8) ───────────
+  //
+  // Copied only when a condition actually reported them, per key, which is the
+  // `v1` kernel alone: setting them unconditionally would put
+  // `indeterminate: undefined` on every `legacy-v0` compound result and break
+  // `toEqual` against today's shape, and a behavior change reachable under
+  // `legacy-v0` is a bug in the seam (locked decision #2). Same rule as the
+  // single-condition path in `evaluatePatientAttribute`.
+  //
+  // A condition that reported NEITHER key — `patient.*` under `v1`, which keeps
+  // `resolveAttribute` forever (D3) — reads as definite and doubt-free, which is
+  // what `indeterminate === true` and `?? []` below give it. Absent must not
+  // mean "unknown", or every demographic condition would make its gate
+  // indeterminate.
+  if (results.some((r) => r.indeterminate !== undefined)) {
+    out.indeterminate = compoundIndeterminate(op, results);
+  }
+  // The DEDUPLICATED UNION, retained regardless of `indeterminate` (D5, P1-11).
+  // The two signals are independent: a definite `true` dominating an OR does not
+  // make the excluded uncertain facts imaginary, and plan 08's evidence has to
+  // show them. Each condition's array already unions its per-fact reasons with
+  // the outcome-level ones (`AMBIGUOUS_LATEST` / `AMBIGUOUS_SERIES_ORDER` exist
+  // only on the outcome), so this needs no second source.
+  if (results.some((r) => r.uncertainty !== undefined)) {
+    out.uncertainty = [...new Set(results.flatMap((r) => r.uncertainty ?? []))];
+  }
+  return out;
 }
 
 // ─── llm_text_analysis evaluator ──────────────────────────────────────

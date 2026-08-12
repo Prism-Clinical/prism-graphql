@@ -237,6 +237,24 @@ is what "nothing stored or fixtured uses this pattern" was verified for.
 
 ---
 
+## Round 12 — findings from executing Task 8
+
+Four findings. Two are a single defect seen from both ends; none are in the truth table itself, which went in as specified.
+
+**[R12-1] P1 — nothing above the gate evaluator reads `indeterminate` or `uncertainty`.** Both signals are now produced on every `v1` gate result, single-condition and compound, and the traversal engine drops them whole. `traversal-engine.ts` reads `satisfied`, `reason`, `contextFieldsRead`, `dependedOnNodes`, `tentative`, `chosenBranch`, `llmConfidence`, `llmReasoning` (`:318-360`, `:711-722`) and never the two new keys; the retraversal engine is the same. The GraphQL surface is explicitly plan 08's, so *exposing* nothing is in scope — but the consequence is not: after Task 9 the ONLY trace of an indeterminate gate in anything persisted is `excludeReason`, i.e. the reason **prose**. Deciding this is fine requires reading R12-2 first.
+
+**[R12-2] P1 — and that prose carrier is asymmetric per compound operator, so OR loses the distinction entirely.** `evaluateCompound`'s AND branch joins every unsatisfied condition's reason into `Unsatisfied conditions: …`, so `Indeterminate numeric value for labs:4548-4 (VALIDITY_UNKNOWN)` reaches the audit row. The OR branch discards unsatisfied reasons and emits the literal `'No compound conditions satisfied'`. **An OR compound gate refused for uncertainty is therefore recorded byte-identically to one where the patient simply had none of the codes** — and with R12-1 there is no other carrier. Pinned by test (`keeps the OR prose exactly as it is when nothing is satisfied`) rather than fixed: changing the prose is a reason-string change, and the plan requires reasons byte-identical to legacy's wherever the outcome matches. Task 10 must disclose it, or plan 08 must read the flag.
+
+*(Class: a per-branch inconsistency in the function that CONSUMES the kernel, rather than one the kernel replaces — the mirror image of R11-1. Round 11's prescribed check enumerates the fields each legacy branch READS on the way in; this one is on the way out, and no round has looked there.)*
+
+**[R12-3] P2 — `GateEvaluationResult` now carries two unrelated uncertainty vocabularies and nothing names the relationship.** `tentative` means "an LLM answered below its authored confidence threshold and traversal took the safe-default branch"; `indeterminate` means "temporal doubt could have changed the answer". No gate can carry both today — an `llm_text_analysis` gate has no `conditions` — but a plan-08 consumer that renders certainty as `!indeterminate` will label a below-threshold LLM fallback *certain*. Decide whether they are one axis or two before either is exposed.
+
+**[R12-4] Risk — `satisfied: true` together with `indeterminate: true` is unmodelled.** The truth table has no row for a condition that is both, and it is unreachable from every kernel branch today because INDETERMINATE always fails closed. `compoundIndeterminate` classifies it as a dominator of neither operator (so the gate goes indeterminate), which is the conservative reading, and the predicates are written positively rather than as `!indeterminate` shorthands so the choice is visible. If a future operator class ever reports a satisfied-but-doubtful outcome, the table needs a row — not the code a patch.
+
+**Defect-class note.** Rounds 1–3 design, 4–5 mechanics, 6 cross-layer, 7 pseudocode, 8 field-level dependency, 9 cross-plan intent, 10 a shared primitive generalized past its model, 11 a legacy function whose per-branch inconsistency the kernel regularized. Round 12 is **a signal with no reader**: the work was correct, complete, and tested, and its output is discarded one layer up — which no check has looked for, because every previous check examined what the kernel consumes rather than what consumes the kernel. *Before round 13, take each value this plan PRODUCES and follow it upward to the nearest layer that persists or renders anything. A signal no consumer reads is indistinguishable at runtime from one that was never computed.*
+
+---
+
 ## Global Constraints
 
 - **Branch:** `feat/temporal-horizon-evaluator-kernel`, worktree `/home/claude/workspace/features/feat-temporal-horizon-evaluator-kernel/prism-graphql`, from `origin/main` at `d6f51fd`.
@@ -259,6 +277,7 @@ is what "nothing stored or fixtured uses this pattern" was verified for.
   | D8 follow-up to Task 6 | 1110 | 9 | 1119 | 91 / 93 |
   | Task 7 (`db86a72`) | 1153 | 9 | 1162 | 92 / 94 |
   | D9 implementation | 1163 | 9 | 1172 | 92 / 94 |
+  | Task 8 (`gate-evaluator-compound-uncertainty`) | 1195 | 9 | 1204 | 93 / 95 |
 
   Task 4's delta is +15 passed / +15 total: **16 added** in the new
   `gate-evaluator-membership-kernel.test.ts`, **1 deleted** — Task 3's no-op-fork
@@ -282,6 +301,15 @@ is what "nothing stored or fixtured uses this pattern" was verified for.
   condition…`, both now asserting convergence with `legacy-v0`), and the D7
   series test, which keeps every assertion but gains an explicit
   `horizon: 'LIFETIME'` — see the D8 implementation notes above.
+
+  Task 8's delta is +32 passed / +32 total / +1 suite: **32 added**, all in the
+  new `gate-evaluator-compound-uncertainty.test.ts`, **none deleted and none
+  modified** — not one pre-existing test file is touched, so the `expect(`
+  churn in pre-existing suites is zero. The only non-test file changed is
+  `gate-evaluator.ts`. Seven of the 32 pin the truth table's INPUTS as
+  single-condition gates before any row is asserted over them: a row asserted
+  against a mis-built fixture proves nothing, and three earlier tasks shipped a
+  sketch that skipped a named case.
 
   The D9 implementation's delta is +10 passed / +10 total / no suite change:
   **6 added** in `temporal/condition-adapter.test.ts` and **4 added** in
