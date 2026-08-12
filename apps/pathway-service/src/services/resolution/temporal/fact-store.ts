@@ -3,11 +3,8 @@ import type { ResolutionSession } from '../types';
 import type { AdditionalContextInput } from '../../../resolvers/mutations/resolution';
 import { buildEffectivePatientContext } from '../effective-context';
 import { assembleContext } from './context-assembler';
-import {
-  DEFAULT_TEMPORAL_POLICY_VERSION,
-  EvaluationTemporalContext,
-  TemporalContextError,
-} from './evaluation-context';
+import { EvaluationTemporalContext, TemporalContextError } from './evaluation-context';
+import { requiresFactStore } from './policy-registry';
 import { FactStore } from './fact-model';
 import {
   ResolutionInput,
@@ -46,8 +43,16 @@ function assembleUnderClock(
   return assembleContext({ mode: 'SYNTHETIC', patientContext }, temporalCtx);
 }
 
-function isLegacy(temporalCtx: EvaluationTemporalContext): boolean {
-  return temporalCtx.temporalPolicyVersion === DEFAULT_TEMPORAL_POLICY_VERSION;
+/**
+ * A CAPABILITY lookup, not an identity test against the deployment default.
+ *
+ * This read `version === DEFAULT_TEMPORAL_POLICY_VERSION`. That constant is the
+ * deployment default AND was doing duty as "is this legacy?", so flipping it to
+ * `v1` — the rollout action — would have handed `v1` an EMPTY fact store and
+ * `legacy-v0` a populated one, silently, from a one-line config change.
+ */
+function needsFactStore(temporalCtx: EvaluationTemporalContext): boolean {
+  return requiresFactStore(temporalCtx.temporalPolicyVersion);
 }
 
 /**
@@ -62,7 +67,7 @@ export function factStoreForInput(
   input: ResolutionInput,
   temporalCtx: EvaluationTemporalContext,
 ): FactStore {
-  if (isLegacy(temporalCtx)) return [];
+  if (!needsFactStore(temporalCtx)) return [];
   if (input.mode !== 'SYNTHETIC') {
     // Narrowing, not policy: `assembleContext` owns the refusal message for
     // LIVE (plan 07) and REPLAY (plan 05b), so route through it rather than
@@ -119,7 +124,7 @@ export function factStoreForSession(
   additions: Partial<AdditionalContextInput> | undefined,
 ): FactStore {
   const temporalCtx = session.temporalContext;
-  if (!temporalCtx || isLegacy(temporalCtx)) return [];
+  if (!temporalCtx || !needsFactStore(temporalCtx)) return [];
 
   if (!session.initialPatientContext) {
     throw new TemporalContextError(

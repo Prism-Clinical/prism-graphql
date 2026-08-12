@@ -51,6 +51,7 @@ import {
 import {
   assertKnownPolicyVersion,
   getTemporalPolicy,
+  usesKernelEvaluation,
 } from '../../services/resolution/temporal/policy-registry';
 
 // ─── Temporal policy version selection ──────────────────────────────
@@ -614,7 +615,11 @@ export function sweepableConditions(
   version: string,
   codeMap: AttributeCodeMap,
 ): SweepableCondition[] {
-  const isV1 = version !== DEFAULT_TEMPORAL_POLICY_VERSION;
+  // A CAPABILITY lookup, not `version !== DEFAULT_TEMPORAL_POLICY_VERSION`.
+  // That constant is the DEPLOYMENT default; using it as the "is this legacy?"
+  // test meant flipping it to `v1` — the rollout action — would have given `v1`
+  // this legacy branch and `legacy-v0` the kernel one.
+  const isV1 = usesKernelEvaluation(version);
   const out: SweepableCondition[] = [];
 
   for (const node of nodes) {
@@ -749,7 +754,11 @@ export function assertEncounterAnchor(
 
   const version = temporalCtx.temporalPolicyVersion;
 
-  if (version === DEFAULT_TEMPORAL_POLICY_VERSION) {
+  // Capability, not identity against the deployment default — the same
+  // correction as in `sweepableConditions`, and it MUST agree with it: a version
+  // whose sweep and preflight disagreed would parse conditions one way and
+  // resolve anchors the other.
+  if (!usesKernelEvaluation(version)) {
     // EXACTLY today's flow. The early return must stay AHEAD of the sweep: the
     // sweep's raw override copy is validated downstream by the cascade, so
     // moving it earlier would start rejecting malformed overrides on sessions

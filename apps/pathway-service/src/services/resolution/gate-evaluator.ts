@@ -17,7 +17,11 @@ import {
   EvaluationTemporalContext,
   TemporalContextError,
 } from './temporal/evaluation-context';
-import { assertKnownPolicyVersion } from './temporal/policy-registry';
+import {
+  assertKnownPolicyVersion,
+  KNOWN_TEMPORAL_POLICY_VERSIONS,
+} from './temporal/policy-registry';
+import type { TemporalPolicyVersion } from './temporal/policy-registry';
 import type { PathwayTemporalDefaults } from './temporal/cascade';
 import type { FactStore, NormalizedFact } from './temporal/fact-model';
 import { isObservationFact } from './temporal/fact-model';
@@ -1034,10 +1038,39 @@ function evaluateConditionKernel(
  * `KNOWN_TEMPORAL_POLICY_VERSIONS` — `assertKnownPolicyVersion` runs first, so
  * a registry key with no policy set would fail there before reaching here.
  */
-export const CONDITION_EVALUATORS: Record<string, ConditionEvaluator> = {
+export const CONDITION_EVALUATORS: Record<TemporalPolicyVersion, ConditionEvaluator> = {
   'legacy-v0': evaluateConditionLegacyAdapted,
   v1: evaluateConditionKernel,
 };
+
+/**
+ * Every registered policy version must have an evaluator — checked at module
+ * load, not at the first gate that needs one.
+ *
+ * The type above is the compile-time half: keyed on `TemporalPolicyVersion`,
+ * adding a version to the registry without an evaluator here is a compile
+ * error. This is the runtime half, and it is not redundant — `tsconfig` is not
+ * full strict, excludes `src/__tests__` entirely, and the table is exported and
+ * mutable, so nothing else stops a version reaching production with no
+ * evaluator. Without it, such a version passed `assertKnownPolicyVersion` at
+ * session creation and threw at the first CONDITION gate — mid-traversal, on a
+ * session already persisted.
+ */
+export function assertConditionEvaluatorCoverage(
+  evaluators: Partial<Record<string, ConditionEvaluator>>,
+): void {
+  for (const version of KNOWN_TEMPORAL_POLICY_VERSIONS) {
+    if (typeof evaluators[version] !== 'function') {
+      throw new TemporalContextError(
+        `temporal policy version "${version}" is registered but has no condition evaluator — ` +
+          'it would pass session creation and throw at the first condition gate',
+        'UNKNOWN_POLICY_VERSION',
+      );
+    }
+  }
+}
+
+assertConditionEvaluatorCoverage(CONDITION_EVALUATORS);
 
 /**
  * Resolve the one condition evaluator this gate — and every sibling condition
@@ -1049,7 +1082,12 @@ function conditionEvaluatorFor(deps: GateEvaluationDeps): ConditionEvaluator {
   // Throws `unknown temporalPolicyVersion "<v>"` for anything unregistered —
   // never a silent fallback to legacy.
   assertKnownPolicyVersion(version);
-  const evaluator = CONDITION_EVALUATORS[version];
+  // The cast is safe only because `assertKnownPolicyVersion` ran: it throws for
+  // anything outside `KNOWN_TEMPORAL_POLICY_VERSIONS`, which is the union this
+  // table is keyed on. The `!evaluator` guard below still stands — the table is
+  // exported and mutable, and the module-load coverage check proves only what
+  // was true at load.
+  const evaluator = CONDITION_EVALUATORS[version as TemporalPolicyVersion];
   if (!evaluator) {
     throw new TemporalContextError(
       `no condition evaluator registered for temporalPolicyVersion "${version}"`,

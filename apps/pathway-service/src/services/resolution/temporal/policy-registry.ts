@@ -86,9 +86,106 @@ const POLICIES = {
 
 export const TEMPORAL_POLICIES: Readonly<Record<string, TemporalPolicySet>> = deepFreeze(POLICIES);
 
-export const KNOWN_TEMPORAL_POLICY_VERSIONS: readonly string[] = Object.freeze(
-  Object.keys(TEMPORAL_POLICIES),
+/**
+ * The registry IS the version vocabulary — derived, never restated.
+ *
+ * A second hand-written union would let a version exist in one list and not the
+ * other, which is precisely the class of defect the capability table below
+ * exists to end.
+ */
+export type TemporalPolicyVersion = keyof typeof POLICIES;
+
+export const KNOWN_TEMPORAL_POLICY_VERSIONS: readonly TemporalPolicyVersion[] = Object.freeze(
+  Object.keys(TEMPORAL_POLICIES) as TemporalPolicyVersion[],
 );
+
+/**
+ * What a version DOES, as data — so nothing has to ask "is this the default?"
+ * in order to find out.
+ *
+ * The bug this closes: `DEFAULT_TEMPORAL_POLICY_VERSION` did double duty. It was
+ * both the **deployment default** (`index.ts:30`) and the semantic test for
+ * **"is this the legacy path?"** — `version !== DEFAULT` chose the sweep
+ * (`resolution-context.ts`), `version === DEFAULT` chose the preflight branch,
+ * and `=== DEFAULT` decided whether a fact store was assembled at all
+ * (`fact-store.ts`). Flipping the constant to `v1` — which is literally the
+ * rollout action this whole plan exists to enable — would therefore have given
+ * `v1` the LEGACY sweep, the LEGACY preflight and an EMPTY fact store, while
+ * handing `legacy-v0` the kernel treatment. Three silent inversions from a
+ * one-line config change.
+ *
+ * Capabilities are per-version facts. The default is a deployment choice. They
+ * are now different things, and the rollout flip moves only the second.
+ *
+ *  - **`evaluationMode`** — `'legacy'` routes to the untouched legacy condition
+ *    evaluator, today's sweep and today's preflight; `'kernel'` routes to the
+ *    `selectFacts` kernel, the adapter-based sweep and the unconditional `v1`
+ *    preflight (D1, P1-18).
+ *  - **`requiresFactStore`** — whether the assembler runs at all. `false` is not
+ *    an optimization: `assembleContext` VALIDATES, so running it for a
+ *    `legacy-v0` request would turn a malformed date the legacy evaluator
+ *    ignores into a session-creation rejection (P1-9).
+ */
+export interface TemporalPolicyCapabilities {
+  readonly evaluationMode: 'legacy' | 'kernel';
+  readonly requiresFactStore: boolean;
+}
+
+// `satisfies Record<TemporalPolicyVersion, ...>`: adding a version to POLICIES
+// without a capability row is a COMPILE error, not a runtime surprise.
+const CAPABILITIES = {
+  'legacy-v0': { evaluationMode: 'legacy', requiresFactStore: false },
+  v1: { evaluationMode: 'kernel', requiresFactStore: true },
+} satisfies Record<TemporalPolicyVersion, TemporalPolicyCapabilities>;
+
+export const TEMPORAL_POLICY_CAPABILITIES: Readonly<
+  Record<TemporalPolicyVersion, TemporalPolicyCapabilities>
+> = deepFreeze(CAPABILITIES);
+
+// The runtime half of the same guarantee. `tsconfig` is not full strict and
+// excludes `src/__tests__`, so the `satisfies` above binds only this file's
+// authors; this binds the module load. A version that reaches production
+// without capabilities must never be resolvable.
+for (const version of KNOWN_TEMPORAL_POLICY_VERSIONS) {
+  if (!Object.prototype.hasOwnProperty.call(TEMPORAL_POLICY_CAPABILITIES, version)) {
+    throw new TemporalContextError(
+      `temporal policy version "${version}" has a policy set but no capabilities`,
+      'UNKNOWN_POLICY_VERSION',
+    );
+  }
+}
+
+/**
+ * What this version does. Throws for an unregistered version, exactly as
+ * `getTemporalPolicy` does — a caller must never get a default set of
+ * capabilities for a version nobody declared.
+ */
+export function policyCapabilities(version: string): TemporalPolicyCapabilities {
+  if (!Object.prototype.hasOwnProperty.call(TEMPORAL_POLICY_CAPABILITIES, version)) {
+    throw new TemporalContextError(
+      `unknown temporalPolicyVersion "${version}" ` +
+        `(known: ${KNOWN_TEMPORAL_POLICY_VERSIONS.join(', ')})`,
+      'UNKNOWN_POLICY_VERSION',
+    );
+  }
+  return TEMPORAL_POLICY_CAPABILITIES[version as TemporalPolicyVersion];
+}
+
+/**
+ * Does this version evaluate through the kernel — the sweep, the preflight and
+ * the condition evaluator, which must always be the same answer?
+ *
+ * One predicate for all three, deliberately. Three call sites each comparing
+ * against a constant is how they came to be able to disagree.
+ */
+export function usesKernelEvaluation(version: string): boolean {
+  return policyCapabilities(version).evaluationMode === 'kernel';
+}
+
+/** Does this version read an assembled fact store (locked decision #5)? */
+export function requiresFactStore(version: string): boolean {
+  return policyCapabilities(version).requiresFactStore;
+}
 
 export function getTemporalPolicy(version: string): TemporalPolicySet {
   // Own-property check: a plain `TEMPORAL_POLICIES[version]` lookup would
