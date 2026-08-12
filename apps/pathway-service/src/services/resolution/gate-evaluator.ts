@@ -1031,17 +1031,30 @@ function evaluateConditionKernel(
 /**
  * The dispatch table, keyed by `temporalContext.temporalPolicyVersion`.
  *
- * A table rather than a `switch` because the seam has to be *observable*: at
- * this task both branches decide identically by construction, so the only
- * honest proof that a version routes where it claims is a spy on the entry it
- * is supposed to reach (P1-16). Keys must stay in step with
- * `KNOWN_TEMPORAL_POLICY_VERSIONS` — `assertKnownPolicyVersion` runs first, so
- * a registry key with no policy set would fail there before reaching here.
+ * A table rather than a `switch` so that coverage can be asserted over
+ * `KNOWN_TEMPORAL_POLICY_VERSIONS` at load — a `switch` offers nothing to
+ * enumerate. Keys must stay in step with `KNOWN_TEMPORAL_POLICY_VERSIONS`;
+ * `assertKnownPolicyVersion` runs first, so a registry key with no policy set
+ * would fail there before reaching here.
+ *
+ * **Frozen.** The coverage assertion below runs once, at module load; while the
+ * table was mutable that proved only what was true at that instant, since any
+ * importer could replace an entry afterwards. Freezing makes the load-time
+ * proof permanent. `TEMPORAL_POLICY_CAPABILITIES` is frozen for the same reason
+ * (`policy-registry.ts:143`).
+ *
+ * Task 3 additionally justified the table as the seam's *observation point* —
+ * both branches decided identically then, so a spy on the entry was the only
+ * proof a version routed where it claimed (P1-16). That expired at Task 4, when
+ * the paths diverged: routing is now proven behaviorally in
+ * `gate-evaluator-version-seam.test.ts`, which is why freezing costs nothing.
  */
-export const CONDITION_EVALUATORS: Record<TemporalPolicyVersion, ConditionEvaluator> = {
+export const CONDITION_EVALUATORS: Readonly<
+  Record<TemporalPolicyVersion, ConditionEvaluator>
+> = Object.freeze({
   'legacy-v0': evaluateConditionLegacyAdapted,
   v1: evaluateConditionKernel,
-};
+});
 
 /**
  * Every registered policy version must have an evaluator — checked at module
@@ -1050,11 +1063,15 @@ export const CONDITION_EVALUATORS: Record<TemporalPolicyVersion, ConditionEvalua
  * The type above is the compile-time half: keyed on `TemporalPolicyVersion`,
  * adding a version to the registry without an evaluator here is a compile
  * error. This is the runtime half, and it is not redundant — `tsconfig` is not
- * full strict, excludes `src/__tests__` entirely, and the table is exported and
- * mutable, so nothing else stops a version reaching production with no
- * evaluator. Without it, such a version passed `assertKnownPolicyVersion` at
- * session creation and threw at the first CONDITION gate — mid-traversal, on a
- * session already persisted.
+ * full strict and excludes `src/__tests__` entirely, so nothing else stops a
+ * version reaching production with no evaluator. Without it, such a version
+ * passed `assertKnownPolicyVersion` at session creation and threw at the first
+ * CONDITION gate — mid-traversal, on a session already persisted.
+ *
+ * Because the table is frozen, this check running once at load is now
+ * sufficient: there is no later moment at which its conclusion can stop being
+ * true. It takes a `Partial<Record<...>>` so a test can hand it a deliberately
+ * incomplete table.
  */
 export function assertConditionEvaluatorCoverage(
   evaluators: Partial<Record<string, ConditionEvaluator>>,
@@ -1084,9 +1101,12 @@ function conditionEvaluatorFor(deps: GateEvaluationDeps): ConditionEvaluator {
   assertKnownPolicyVersion(version);
   // The cast is safe only because `assertKnownPolicyVersion` ran: it throws for
   // anything outside `KNOWN_TEMPORAL_POLICY_VERSIONS`, which is the union this
-  // table is keyed on. The `!evaluator` guard below still stands — the table is
-  // exported and mutable, and the module-load coverage check proves only what
-  // was true at load.
+  // table is keyed on. The `!evaluator` guard below still stands even though the
+  // table is now frozen: `assertKnownPolicyVersion` validates against the POLICY
+  // registry, not against this table, and the cast is unchecked at the type
+  // level. Freezing stops the table drifting; the guard is what turns any
+  // remaining miss into a named error rather than "evaluator is not a function"
+  // deep inside a gate.
   const evaluator = CONDITION_EVALUATORS[version as TemporalPolicyVersion];
   if (!evaluator) {
     throw new TemporalContextError(

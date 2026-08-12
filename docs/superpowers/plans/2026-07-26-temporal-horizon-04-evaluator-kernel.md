@@ -363,6 +363,18 @@ protocols — the D9 shape. Four things the decision text did not settle:
   | Review finding 4 — policy capabilities | 1296 | 9 | 1305 | 99 / 101 |
   | Review finding 5 — AttributeCondition temporal fields | 1302 | 9 | 1311 | 100 / 102 |
   | P1-A pinned (stale subtree) — assertions only, must not move | 1302 | 9 | 1311 | 100 / 102 |
+  | `CONDITION_EVALUATORS` frozen | 1306 | 9 | 1315 | 100 / 102 |
+
+  The freeze delta is +4 passed / +4 total, all in the new "the condition
+  evaluator table cannot be mutated after load" block. No suite added. The
+  three routing tests in `gate-evaluator-version-seam.test.ts` changed
+  MECHANISM, not strength: `jest.spyOn` cannot patch a frozen object, so they
+  moved from spying on the table entry to the behavioral discriminator that
+  Task 4 made available (empty `factStore` + populated `patientContext`:
+  `legacy-v0` satisfies a coded gate, `v1` does not). The compound-gate test
+  switched `AND` to `OR` for the same reason it now proves more — under `AND` a
+  sibling escaping to the other version is invisible. That file goes 12 -> 18
+  `expect(` calls; no assertion was removed or weakened.
 
   Task 4's delta is +15 passed / +15 total: **16 added** in the new
   `gate-evaluator-membership-kernel.test.ts`, **1 deleted** — Task 3's no-op-fork

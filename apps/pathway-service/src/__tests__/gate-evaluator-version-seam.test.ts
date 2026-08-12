@@ -141,48 +141,75 @@ describe('evaluateGate requires an explicit clock', () => {
 
 // ─── The seam itself ──────────────────────────────────────────────────
 
+/**
+ * These three were SPY tests until the dispatch table was frozen.
+ *
+ * Task 3 wrote them with `jest.spyOn(CONDITION_EVALUATORS, ...)` and said so in
+ * the header: at that task the two branches decided identically by
+ * construction, so a spy on the table entry was the only honest proof that a
+ * version routed where it claimed (P1-16). **That rationale expired at Task 4**,
+ * where the paths diverged — the note at the bottom of this file records the
+ * membership test that was deleted for exactly that reason.
+ *
+ * Freezing the table (the load-time coverage assertion otherwise proves only
+ * what was true at module load) makes `jest.spyOn` impossible: it replaces the
+ * property via `defineProperty`, which throws on a frozen object. So the proof
+ * moves to behavior, which is now available and is strictly stronger — it shows
+ * the routing has semantic CONSEQUENCE, not merely that a table slot was
+ * touched.
+ *
+ * The discriminator: `factStore` is `[]` here while `patientContext` carries the
+ * codes. `legacy-v0` reads the patient context, so a coded gate is satisfied;
+ * `v1`'s kernel reads only the fact store, so the same gate is not. One input,
+ * two answers, no mocking of production state.
+ */
 describe('the version seam dispatches on the session policy version', () => {
-  afterEach(() => {
-    jest.restoreAllMocks();
+  it('routes legacy-v0 to the legacy evaluator, which reads the patient context', async () => {
+    const result = await evaluateGate(CODED_GATE, deps('legacy-v0'));
+    // Satisfied from `patientContext.conditionCodes` — only the legacy
+    // evaluator looks there.
+    expect(result.satisfied).toBe(true);
   });
 
-  it('routes legacy-v0 to the legacy evaluator', async () => {
-    const legacy = jest.spyOn(CONDITION_EVALUATORS, 'legacy-v0');
-    const kernel = jest.spyOn(CONDITION_EVALUATORS, 'v1');
-
-    await evaluateGate(CODED_GATE, deps('legacy-v0'));
-
-    expect(legacy).toHaveBeenCalledTimes(1);
-    expect(kernel).not.toHaveBeenCalled();
-  });
-
-  it('routes v1 to the kernel evaluator', async () => {
-    const legacy = jest.spyOn(CONDITION_EVALUATORS, 'legacy-v0');
-    const kernel = jest.spyOn(CONDITION_EVALUATORS, 'v1');
-
-    await evaluateGate(CODED_GATE, deps('v1'));
-
-    expect(kernel).toHaveBeenCalledTimes(1);
-    expect(legacy).not.toHaveBeenCalled();
+  it('routes v1 to the kernel evaluator, which reads only the fact store', async () => {
+    const result = await evaluateGate(CODED_GATE, deps('v1'));
+    // Identical inputs, opposite answer: the kernel ignores `patientContext`
+    // and the store is empty. If `v1` had fallen back to legacy this would be
+    // `true`.
+    expect(result.satisfied).toBe(false);
   });
 
   it('routes every condition of a compound gate through the same evaluator', async () => {
     // Sibling conditions must never resolve against different versions.
-    const kernel = jest.spyOn(CONDITION_EVALUATORS, 'v1');
+    //
+    // OR, not AND, and the patient satisfies BOTH conditions under legacy.
+    // That is what makes the assertion discriminating: under AND a single
+    // condition escaping to the other version is invisible, because AND is
+    // false either way. Under OR, `false` is only reachable if NEITHER sibling
+    // reached the legacy evaluator.
     const compound: GateProperties = {
       title: 'compound',
       gate_type: GateType.COMPOUND,
       default_behavior: DefaultBehavior.SKIP,
-      operator: 'AND',
+      operator: 'OR',
       conditions: [
         { field: 'conditions', operator: 'includes_code', value: 'I10', system: 'ICD-10' },
         { field: 'medications', operator: 'includes_code', value: '7052', system: 'RXNORM' },
       ],
     };
+    const pc = patient({
+      conditionCodes: [{ code: 'I10', system: 'ICD-10' }],
+      medications: [{ code: '7052', system: 'RXNORM' }],
+    });
 
-    await evaluateGate(compound, deps('v1'));
+    // Baseline: under legacy both siblings are satisfiable, so OR is true.
+    const legacy = await evaluateGate(compound, deps('legacy-v0', { patientContext: pc }));
+    expect(legacy.satisfied).toBe(true);
 
-    expect(kernel).toHaveBeenCalledTimes(2);
+    // Under v1 the whole gate must be false — one sibling on the legacy
+    // evaluator would make OR true.
+    const kernel = await evaluateGate(compound, deps('v1', { patientContext: pc }));
+    expect(kernel.satisfied).toBe(false);
   });
 
   it('rejects an unknown version rather than falling back to legacy', async () => {
@@ -205,6 +232,55 @@ describe('the version seam dispatches on the session policy version', () => {
     await expect(
       evaluateGate(question, deps('v99', { gateAnswers: answers, gateId: 'q1' })),
     ).rejects.toThrow(/v99/);
+  });
+});
+
+// ─── The routing table is frozen ──────────────────────────────────────
+
+/**
+ * `assertConditionEvaluatorCoverage(CONDITION_EVALUATORS)` runs at module load.
+ * While the table was mutable that proved only what was true AT load: any
+ * importer could delete or replace an entry afterwards and the check would
+ * never run again — the failure surfacing mid-traversal, on a session already
+ * persisted, which is the exact failure the load-time check exists to prevent.
+ *
+ * Freezing turns the load-time proof into a permanent one. `TEMPORAL_POLICY_CAPABILITIES`
+ * already had this treatment (`policy-registry.ts:143`, via `deepFreeze`); this
+ * closes the matching hole in the evaluator table.
+ *
+ * The `!evaluator` guard in `conditionEvaluatorFor` stays and is still correct
+ * defence: `assertKnownPolicyVersion` validates against the POLICY registry,
+ * and the `version as TemporalPolicyVersion` cast that follows is unchecked at
+ * the type level. Freezing stops the table from drifting; the guard is what
+ * turns any remaining miss into a named error rather than "evaluator is not a
+ * function" deep inside a gate.
+ */
+describe('the condition evaluator table cannot be mutated after load', () => {
+  it('refuses to replace a registered evaluator', () => {
+    const replacement = jest.fn();
+    expect(() => {
+      (CONDITION_EVALUATORS as Record<string, unknown>)['legacy-v0'] = replacement;
+    }).toThrow(TypeError);
+    // And the real evaluator is still in place.
+    expect(CONDITION_EVALUATORS['legacy-v0']).not.toBe(replacement);
+  });
+
+  it('refuses to delete a registered evaluator', () => {
+    expect(() => {
+      delete (CONDITION_EVALUATORS as Record<string, unknown>)['v1'];
+    }).toThrow(TypeError);
+    expect(typeof CONDITION_EVALUATORS['v1']).toBe('function');
+  });
+
+  it('refuses to add an unregistered version', () => {
+    expect(() => {
+      (CONDITION_EVALUATORS as Record<string, unknown>)['v99'] = jest.fn();
+    }).toThrow(TypeError);
+    expect((CONDITION_EVALUATORS as Record<string, unknown>)['v99']).toBeUndefined();
+  });
+
+  it('reports itself frozen', () => {
+    expect(Object.isFrozen(CONDITION_EVALUATORS)).toBe(true);
   });
 });
 
