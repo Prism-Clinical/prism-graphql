@@ -75,6 +75,9 @@ async function traverseAtSystemTime(systemTime: string): Promise<NodeStatus | un
       {},
       // Required from plan 04 Task 9 on; empty because this is `legacy-v0`.
       [],
+      // `codeMap`, required from review finding 3 on (R11-4); empty for the
+      // same reason.
+      new Map(),
     );
     const result = await engine.traverse(
       makeGraphContext(nodes, edges),

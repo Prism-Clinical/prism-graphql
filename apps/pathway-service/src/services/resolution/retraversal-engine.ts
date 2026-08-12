@@ -15,7 +15,7 @@ import {
   AnswerType,
   AttributeCodeMap,
 } from './types';
-import { evaluateGate, LlmGateEvaluator } from './gate-evaluator';
+import { assertEngineCodeMap, evaluateGate, LlmGateEvaluator } from './gate-evaluator';
 import type { GateEvaluationDeps } from './gate-evaluator';
 import type { PathwayTemporalDefaults } from './temporal/cascade';
 import type { FactStore } from './temporal/fact-model';
@@ -103,9 +103,18 @@ export class RetraversalEngine {
      * optionals, for the same reason as on `TraversalEngine`.
      */
     private factStore: FactStore,
+    /**
+     * The attribute namespace/system/code registry (`rctx.codeMap`). REQUIRED
+     * and positioned before the optionals, for the same reason as on
+     * `TraversalEngine` — see there (R11-4). A retraversal that lost the map
+     * would re-decide every attribute gate as a quiet `false` against the same
+     * facts its creating traversal satisfied them on.
+     */
+    private codeMap: AttributeCodeMap,
     private llmGateEvaluator?: LlmGateEvaluator,
-    private codeMap: AttributeCodeMap = new Map(),
-  ) {}
+  ) {
+    assertEngineCodeMap(codeMap, 'RetraversalEngine');
+  }
 
   /** The dependencies every gate in this retraversal is evaluated with. */
   private gateDeps(

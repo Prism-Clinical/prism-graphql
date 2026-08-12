@@ -239,8 +239,8 @@ export const resolutionMutations = {
       temporalContext,
       rctx.temporalDefaults,
       factStore,
-      llmBundle?.evaluator,
       rctx.codeMap,
+      llmBundle?.evaluator,
     );
     const traversalResult = await traversalEngine.traverse(
       rctx.graphContext,
@@ -383,8 +383,8 @@ export const resolutionMutations = {
           session,
           session.additionalContext as Partial<AdditionalContextInput>,
         ),
-        llmBundle?.evaluator,
         rctx.codeMap,
+        llmBundle?.evaluator,
       );
 
       const reResult = await retraversalEngine.retraverse(
@@ -552,8 +552,8 @@ export const resolutionMutations = {
             session,
             session.additionalContext as Partial<AdditionalContextInput>,
           ),
-          llmBundle?.evaluator,
           rctx.codeMap,
+          llmBundle?.evaluator,
         );
 
         const reResult = await retraversalEngine.retraverse(
@@ -783,8 +783,8 @@ export const resolutionMutations = {
         // stored bag is the stale-store half of P1-2: the gate would be marked
         // affected, re-evaluated, and still see nothing new.
         factStoreForSession(session, merged as Partial<AdditionalContextInput>),
-        llmBundle?.evaluator,
         rctx.codeMap,
+        llmBundle?.evaluator,
       );
 
       const reResult = await retraversalEngine.retraverse(

@@ -500,7 +500,7 @@ function evaluateConditionLegacyAdapted(
     condition,
     deps.patientContext,
     evaluationNowMs(deps),
-    deps.codeMap ?? new Map(),
+    deps.codeMap,
   );
 }
 
@@ -930,7 +930,7 @@ function evaluateAttributeKernel(
   deps: GateEvaluationDeps,
 ): ConditionOutcome {
   const where = `condition (${condition.attribute})`;
-  const adapted = adaptAttributeCondition(condition, deps.codeMap ?? new Map(), where);
+  const adapted = adaptAttributeCondition(condition, deps.codeMap, where);
   if (adapted === null) return evaluateConditionLegacyAdapted(condition, deps);
 
   const policy = effectivePolicyFor(adapted, deps.temporalContext, deps.pathwayDefaults);
@@ -1474,10 +1474,17 @@ export interface GateEvaluationDeps {
   llmEvaluator?: LlmGateEvaluator;
   /**
    * Namespace/system/code lookup table for attribute conditions (e.g.
-   * `lab.hemoglobin` → LOINC 718-7). Absent means no attribute condition can
-   * resolve.
+   * `lab.hemoglobin` → LOINC 718-7).
+   *
+   * REQUIRED (R11-4), for the reason P1-10 promoted `pathwayDefaults` and
+   * Task 9 promoted `factStore`: omitted at one of five construction sites,
+   * every mapped `lab.*` and `allergy.*` gate adapts to `null`, falls back to
+   * `resolveAttribute` with nothing to look up, and answers a quiet `false` —
+   * indistinguishable at the audit row from a patient who genuinely has no
+   * such lab. An EMPTY map is legitimate (`legacy-v0` never reads it, and a
+   * deployment with no registry rows has one); an ABSENT one is a wiring bug.
    */
-  codeMap?: AttributeCodeMap;
+  codeMap: AttributeCodeMap;
 }
 
 /**
@@ -1515,6 +1522,33 @@ function assertRequiredDeps(deps: GateEvaluationDeps): void {
       'INVALID_RESOLUTION_INPUT',
     );
   }
+  // Same shape, same reasoning (R11-4). Checked on BOTH versions —
+  // `evaluateConditionLegacyAdapted` reads the map too, and an input checked on
+  // one branch is an input one branch can skip.
+  assertEngineCodeMap(deps.codeMap, 'evaluateGate');
+}
+
+/**
+ * The `codeMap` wiring invariant, in one place (R11-4).
+ *
+ * `instanceof Map` rather than truthiness, for the reason `factStore` uses
+ * `Array.isArray`: an EMPTY map is a legitimate deployment — `legacy-v0` never
+ * reads it, and an installation with no attribute registry rows has one — while
+ * an absent or wrong-typed map is a wiring bug whose only symptom would
+ * otherwise be an attribute gate answering a quiet `false`.
+ *
+ * Exported so both engine constructors assert the same rule with the same
+ * message rather than each spelling its own; the engines are the sites where
+ * the argument can actually go missing.
+ */
+export function assertEngineCodeMap(codeMap: unknown, where: string): void {
+  if (codeMap instanceof Map) return;
+  throw new TemporalContextError(
+    `${where} requires an explicit codeMap (an empty Map is fine) — omitting it makes ` +
+      'every mapped lab.* / allergy.* attribute gate answer a quiet false, which is ' +
+      'indistinguishable at the audit row from a patient who has no such fact',
+    'INVALID_RESOLUTION_INPUT',
+  );
 }
 
 /**

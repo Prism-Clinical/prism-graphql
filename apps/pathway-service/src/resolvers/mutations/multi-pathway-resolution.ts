@@ -810,8 +810,8 @@ export async function resolveAndPersistAll(
       temporalContext,
       rctx.temporalDefaults,
       factStore,
-      llmBundle?.evaluator,
       rctx.codeMap,
+      llmBundle?.evaluator,
     );
     const traversalResult = await engine.traverse(
       rctx.graphContext,

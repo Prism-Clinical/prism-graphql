@@ -28,6 +28,9 @@ function deps(patientContext: PatientContext): GateEvaluationDeps {
     temporalContext: makeEvaluationTemporalContext({ evaluationAsOf: AS_OF }),
     pathwayDefaults: {},
     factStore: [],
+    // Required from review finding 3 on (R11-4). Empty: these gates evaluate no
+    // attribute condition, and an empty registry is a legitimate deployment.
+    codeMap: new Map(),
     patientContext,
     resolutionState: new Map(),
     gateAnswers: new Map(),

@@ -197,6 +197,8 @@ The original finding text, retained for provenance: The sweep reads pathway JSON
 
 **[R11-3] Self-found and fixed inside Task 7 — the adapter's parse/lookup ordering was a preflight/evaluation asymmetry in the permissive direction.** First cut resolved the `codeMap` row before parsing the NODE override, so `{attribute:'lab.unmapped', horizon:'FORTNIGHT'}` was rejected at session creation by the sweep (which parses every clinical-namespace condition and has no codeMap) and silently ignored at evaluation. Reordered: the namespace check first (so `patient.*` is ignored by both sides), then `parseConditionOverride`, then the code. Pinned by a test that asserts the sweep and `evaluateGate` throw for the same condition, plus its mirror for `patient.*` where neither may.
 
+**[R11-4] ~~P2~~ CLOSED (review finding 3, 2026-08-12) — `codeMap` is now required in `GateEvaluationDeps` and at both engine constructors, positioned before the optional `llmGateEvaluator`, with a shared `assertEngineCodeMap` runtime throw (`instanceof Map`, so an EMPTY map stays legitimate) alongside the existing `factStore` assertion. Original finding:**
+
 **[R11-4] P2 — `codeMap` is still an optional constructor parameter defaulting to an empty `Map` at both engines** (`traversal-engine.ts:166`, `retraversal-engine.ts:95`), and Task 7 makes it load-bearing for the `v1` kernel path. All five construction sites do pass `rctx.codeMap` today, so nothing is broken — but this is precisely the shape P1-10 promoted `pathwayDefaults` out of: omitted at one site, every `lab.*` / `allergy.*` attribute gate silently adapts to `null`, falls back to `resolveAttribute` with an empty map, and answers a quiet `false` — while the anchor preflight, which needs no codeMap, resolved policy for those same conditions. Consider promoting it to required alongside `pathwayDefaults`.
 
 **[R11-5] Task 10's `v1` delta list gains four attribute-route entries, one of which nothing in this plan anticipated.** The expected three: an attribute-targeted lab is now horizon-bounded (QUARTER), validity-governed, and compared **latest-first** rather than `.find()`-first (`attribute-registry.ts:34`). The unanticipated one: **an INACTIVE allergy stops matching.** `v1` gives `allergies` `status: 'active'`, while `resolveAttribute`'s `allergies.some(...)` has no notion of clinical state — so `allergy.penicillin == true` flips from satisfied to unsatisfied for a resolved allergy. This is the first delta in the plan that comes from the **status** axis rather than the horizon axis, and D3's table does not mention status at all.
@@ -357,6 +359,7 @@ protocols — the D9 shape. Four things the decision text did not settle:
   | Task 10 (`7190e05`) — docs only, must not move | 1236 | 9 | 1245 | 95 / 97 |
   | Review finding 1 — control domains | 1251 | 9 | 1260 | 96 / 98 |
   | Review finding 2 — codeMap in the sweep (R11-2 corrected) | 1269 | 9 | 1278 | 97 / 99 |
+  | Review finding 3 — codeMap required (R11-4 closed) | 1280 | 9 | 1289 | 98 / 100 |
 
   Task 4's delta is +15 passed / +15 total: **16 added** in the new
   `gate-evaluator-membership-kernel.test.ts`, **1 deleted** — Task 3's no-op-fork
@@ -448,6 +451,16 @@ protocols — the D9 shape. Four things the decision text did not settle:
   removed are each re-added verbatim with the extra argument. Non-test files
   touched: `resolvers/helpers/resolution-context.ts` and one doc comment in
   `condition-adapter.ts`.
+
+  Review finding 3's delta is +11 passed / +11 total / +1 suite: **11 added**,
+  all in the new `temporal/codemap-required.test.ts`, **none deleted**. **Eleven
+  pre-existing test files changed by CALL SHAPE only** — eight `deps()` builders
+  gained `codeMap: new Map()`, three engine construction sites gained the
+  argument, and `anemia-pathway-e2e.test.ts`'s existing `CODE_MAP` moved ahead of
+  the now-trailing optional `llmGateEvaluator`. **Zero `expect(` lines removed
+  across all of them.** Non-test files touched: `gate-evaluator.ts` (the type,
+  the shared `assertEngineCodeMap`, and dropping the two `?? new Map()`
+  fallbacks), both engines, and both resolution mutation modules.
 
   **Append a row per task.** *(Round 8, self-found during Task 3: every "compare against 958/9" instruction below was stale the moment Task 1 landed, and an executor following it literally would either think they had broken 50 tests or would fail to notice breaking some. The count is only meaningful as a delta whose additions are each accounted for.)*
 - **`legacy-v0` executes no kernel code, and no code this plan adds.** Structural, not behavioral: the version seam (Task 3) routes `legacy-v0` to the untouched legacy function; the assembler is not called; override parsing does not reject (D1). Every pre-existing gate-evaluator and traversal test must pass with **unmodified assertions** — that is the proof.

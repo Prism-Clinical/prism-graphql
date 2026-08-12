@@ -1,5 +1,5 @@
 import { GraphContext, PatientContext, GraphNode } from '../confidence/types';
-import { evaluateGate, LlmGateEvaluator } from './gate-evaluator';
+import { assertEngineCodeMap, evaluateGate, LlmGateEvaluator } from './gate-evaluator';
 import type { GateEvaluationDeps } from './gate-evaluator';
 import type { PathwayTemporalDefaults } from './temporal/cascade';
 import type { FactStore } from './temporal/fact-model';
@@ -175,9 +175,22 @@ export class TraversalEngine {
      * for the very conditions the gate could no longer see.
      */
     private factStore: FactStore,
+    /**
+     * The attribute namespace/system/code registry (`rctx.codeMap`).
+     *
+     * REQUIRED (R11-4), and positioned before the optional LLM evaluator for
+     * the same reason `factStore` is: defaulted to an empty `Map`, omitting it
+     * at one construction site makes every mapped `lab.*` / `allergy.*`
+     * attribute gate adapt to `null`, fall back to `resolveAttribute` with
+     * nothing to look up, and answer a quiet `false` — while that pathway's
+     * anchor preflight, which now shares this same map, resolved a policy for
+     * the very conditions the gate could no longer see.
+     */
+    private codeMap: AttributeCodeMap,
     private llmGateEvaluator?: LlmGateEvaluator,
-    private codeMap: AttributeCodeMap = new Map(),
-  ) {}
+  ) {
+    assertEngineCodeMap(codeMap, 'TraversalEngine');
+  }
 
   /** The dependencies every gate in this traversal is evaluated with. */
   private gateDeps(

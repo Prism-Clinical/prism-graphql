@@ -58,6 +58,9 @@ function deps(
     }),
     pathwayDefaults: {},
     factStore: [],
+    // Required from review finding 3 on (R11-4). Empty: these gates evaluate no
+    // attribute condition, and an empty registry is a legitimate deployment.
+    codeMap: new Map(),
     patientContext: patient(),
     resolutionState: new Map<string, NodeResult>(),
     gateAnswers: new Map<string, GateAnswer>(),
