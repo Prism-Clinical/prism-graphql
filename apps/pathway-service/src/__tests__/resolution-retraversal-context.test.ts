@@ -128,6 +128,10 @@ describe('resolution retraversal context reconstruction (Task 3)', () => {
       nodesRecomputed: 0,
       newPendingQuestions: [],
       newRedFlags: [],
+      // The reconciliation scope every retraversing resolver now folds
+      // findings back against; empty because this stub derives nothing.
+      reEvaluatedNodeIds: [],
+      reDerivedRedFlagTypes: ['all_branches_excluded'],
     });
   });
 

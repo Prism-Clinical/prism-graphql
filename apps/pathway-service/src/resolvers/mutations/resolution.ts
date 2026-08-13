@@ -28,7 +28,12 @@ import {
   generateCarePlan,
 } from '../../services/resolution/care-plan-generator';
 import { GateAnswer } from '../../services/resolution/types';
-import type { ResolutionSession } from '../../services/resolution/types';
+import type { ResolutionSession, RetraversalResult } from '../../services/resolution/types';
+import {
+  reconcileRedFlags,
+  reconcilePendingQuestions,
+  RED_FLAG_TYPES,
+} from '../../services/resolution/red-flags';
 import type { EvaluationTemporalContext } from '../../services/resolution/temporal/evaluation-context';
 import {
   buildResolutionContext,
@@ -88,6 +93,59 @@ function requireSessionTemporalContext(session: ResolutionSession): EvaluationTe
     );
   }
   return session.temporalContext;
+}
+
+/**
+ * Fold a retraversal's findings back onto the session by KEYED REPLACE over
+ * the scope the pass reports, instead of appending them.
+ *
+ * All three retraversing mutations route through here so they cannot drift
+ * apart again: `answerGateQuestion` reconciled pending questions but appended
+ * red flags, `addPatientContext` appended both, and `overrideNode` dropped
+ * both on the floor.
+ *
+ * The scope comes from the engine rather than from the resolver's own
+ * `affectedNodes` seed set, because the two differ in both directions: the
+ * cascade reaches past the seed, and inside the seed the engine skips
+ * provider-overridden and missing nodes. Reconciling against the seed would
+ * delete findings for nodes the pass never re-evaluated.
+ *
+ * @param answeredGateId when set, that gate's pending question is dropped
+ *   whether or not the pass re-derived one — the question is settled by the
+ *   answer itself. (This is the `.filter(q => q.gateId !== args.gateId)` the
+ *   old code had, kept.)
+ */
+function applyRetraversalFindings(
+  session: ResolutionSession,
+  reResult: RetraversalResult,
+  options: { answeredGateId?: string } = {},
+): void {
+  // Runtime, not type-level: `src/__tests__` is excluded from tsconfig, so a
+  // stubbed engine that forgets the scope would otherwise reconcile against
+  // `undefined` and silently keep every stale flag.
+  if (
+    !Array.isArray(reResult.reEvaluatedNodeIds) ||
+    !Array.isArray(reResult.reDerivedRedFlagTypes)
+  ) {
+    throw new GraphQLError(
+      'Retraversal returned no reconciliation scope; session findings cannot be reconciled',
+      { extensions: { code: 'INTERNAL_SERVER_ERROR' } },
+    );
+  }
+
+  session.redFlags = reconcileRedFlags(session.redFlags, reResult.newRedFlags, {
+    nodeIds: reResult.reEvaluatedNodeIds,
+    types: reResult.reDerivedRedFlagTypes,
+  });
+
+  session.pendingQuestions = reconcilePendingQuestions(
+    session.pendingQuestions,
+    reResult.newPendingQuestions,
+    {
+      gateIds: reResult.reEvaluatedNodeIds,
+      alsoDropGateIds: options.answeredGateId ? [options.answeredGateId] : [],
+    },
+  );
 }
 
 /**
@@ -399,11 +457,18 @@ export const resolutionMutations = {
       if (llmBundle) await llmBundle.flushAudits(args.sessionId);
 
       statusChanges.push(...reResult.statusChanges);
+
+      // An override can raise a red flag or open a question. Both used to be
+      // discarded here — only `statusChanges` was read — so a session never
+      // recorded either.
+      applyRetraversalFindings(session, reResult);
     }
 
     // 7. Update session (with optimistic lock)
     await updateSession(pool, args.sessionId, {
       resolutionState: session.resolutionState,
+      pendingQuestions: session.pendingQuestions,
+      redFlags: session.redFlags,
       totalNodesEvaluated: session.resolutionState.size,
     }, session.updatedAt);
 
@@ -570,14 +635,11 @@ export const resolutionMutations = {
         statusChanges.push(...reResult.statusChanges);
         nodesRecomputed = reResult.nodesRecomputed;
 
-        // Update pending questions and red flags
-        // Remove the answered gate from pending, add any new ones
-        session.pendingQuestions = session.pendingQuestions
-          .filter(q => q.gateId !== args.gateId)
-          .concat(reResult.newPendingQuestions);
-        if (reResult.newRedFlags.length > 0) {
-          session.redFlags = [...session.redFlags, ...reResult.newRedFlags];
-        }
+        // Reconcile pending questions AND red flags. The red-flag half used to
+        // be an append beside an already-correct keyed replace of the
+        // questions, which is what let an identical flag pile up once per
+        // retraversal and a resolved one never leave.
+        applyRetraversalFindings(session, reResult, { answeredGateId: args.gateId });
       } else {
         // 5b. Gate closes: mark subtree as GATED_OUT
         const previousGateStatus = gateResult.status;
@@ -601,6 +663,27 @@ export const resolutionMutations = {
 
         // Remove the answered question from pending
         session.pendingQuestions = session.pendingQuestions.filter(q => q.gateId !== args.gateId);
+
+        // This branch runs NO retraversal — deliberately. `RetraversalEngine`
+        // knows nothing about the answer that closed the gate; re-deriving the
+        // subtree through it would overwrite the GATED_OUT stamping just
+        // applied with confidence-derived INCLUDED/EXCLUDED, which is a
+        // behaviour change well past reconciliation. (Pinned by a test.)
+        //
+        // It does still RE-DECIDE these nodes: it forces the whole subtree to
+        // GATED_OUT. A node that is unreachable cannot carry a live finding —
+        // an `all_branches_excluded` on a gated-out decision point is about a
+        // decision the patient no longer reaches — so the same keyed replace
+        // applies over that scope with an empty derived set. Every flag type,
+        // not just the ones a retraversal re-derives, because being gated out
+        // moots all of them.
+        const gatedOutNodeIds = [...affectedNodes].filter(
+          id => session.resolutionState.has(id),
+        );
+        session.redFlags = reconcileRedFlags(session.redFlags, [], {
+          nodeIds: gatedOutNodeIds,
+          types: RED_FLAG_TYPES,
+        });
       }
 
       // 7. Update session (optimistic lock)
@@ -801,13 +884,10 @@ export const resolutionMutations = {
       statusChanges.push(...reResult.statusChanges);
       nodesRecomputed = reResult.nodesRecomputed;
 
-      // Update pending questions and red flags
-      if (reResult.newPendingQuestions.length > 0) {
-        session.pendingQuestions = [...session.pendingQuestions, ...reResult.newPendingQuestions];
-      }
-      if (reResult.newRedFlags.length > 0) {
-        session.redFlags = [...session.redFlags, ...reResult.newRedFlags];
-      }
+      // Reconcile pending questions and red flags. Both were appends: a gate
+      // that stayed PENDING_QUESTION grew one duplicate prompt per context
+      // addition, and a still-excluded decision point one duplicate flag.
+      applyRetraversalFindings(session, reResult);
     }
 
     // 6. Update session (with optimistic lock)

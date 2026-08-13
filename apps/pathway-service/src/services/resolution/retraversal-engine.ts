@@ -15,6 +15,7 @@ import {
   AnswerType,
   AttributeCodeMap,
 } from './types';
+import { RETRAVERSAL_RED_FLAG_TYPES } from './red-flags';
 import { assertEngineCodeMap, evaluateGate, LlmGateEvaluator } from './gate-evaluator';
 import type { GateEvaluationDeps } from './gate-evaluator';
 import type { PathwayTemporalDefaults } from './temporal/cascade';
@@ -149,6 +150,12 @@ export class RetraversalEngine {
     const newPendingQuestions: PendingQuestion[] = [];
     const newRedFlags: RedFlag[] = [];
     let nodesRecomputed = 0;
+    /**
+     * The nodes this pass genuinely re-evaluated — the reconciliation scope the
+     * resolvers replace flags and questions against. A Set because a node can
+     * be re-entered through a cascade, which `nodesRecomputed` counts twice.
+     */
+    const reEvaluatedNodeIds = new Set<string>();
 
     // Queue with cascade depth tracking
     const queue: Array<{ nodeId: string; cascadeDepth: number }> = [];
@@ -194,6 +201,11 @@ export class RetraversalEngine {
       }
 
       nodesRecomputed++;
+      // Recorded here, after every `continue` that skips evaluation (missing
+      // node, provider override, cascade limit) and before the evaluation
+      // itself — so the reported scope is exactly the nodes whose questions and
+      // flags this pass re-derived below.
+      reEvaluatedNodeIds.add(nodeId);
 
       // Re-evaluate the node
       let newStatus: NodeStatus;
@@ -289,6 +301,19 @@ export class RetraversalEngine {
               nodeTitle: existing.title,
               type: 'all_branches_excluded',
               description: `All ${branches.length} branches of decision point "${existing.title}" are now excluded after re-evaluation`,
+              // Populated for the same reason `TraversalEngine` populates it:
+              // reconciliation REPLACES the stored flag with this one, so a
+              // re-derived flag without `branches` would strip the branch
+              // detail off every flag a retraversal happens to touch.
+              branches: branches.map((b) => {
+                const branchNode = resolutionState.get(b.targetId)!;
+                return {
+                  nodeId: b.targetId,
+                  title: branchNode.title,
+                  confidence: branchNode.confidence,
+                  topExcludeReason: branchNode.excludeReason,
+                };
+              }),
             });
           }
         }
@@ -300,6 +325,11 @@ export class RetraversalEngine {
       nodesRecomputed,
       newPendingQuestions,
       newRedFlags,
+      reEvaluatedNodeIds: [...reEvaluatedNodeIds],
+      // This engine derives `all_branches_excluded` and nothing else; declaring
+      // it keeps callers from reconciling away a `missing_critical_data` flag
+      // that only `TraversalEngine` can speak to.
+      reDerivedRedFlagTypes: [...RETRAVERSAL_RED_FLAG_TYPES],
       isIncomplete,
     };
   }

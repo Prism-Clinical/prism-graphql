@@ -365,6 +365,30 @@ export interface RetraversalResult {
   nodesRecomputed: number;
   newPendingQuestions: PendingQuestion[];
   newRedFlags: RedFlag[];
+  /**
+   * The node IDs this pass actually re-evaluated — the ONLY nodes whose
+   * pending questions and red flags it is entitled to speak for.
+   *
+   * A retraversal touches a subset of the graph, and inside that subset it
+   * still skips provider-overridden nodes and nodes absent from the resolution
+   * state. Callers reconcile `newRedFlags` / `newPendingQuestions` against
+   * exactly this set; anything wider deletes findings the pass never looked at.
+   *
+   * NOT the same as `nodesRecomputed`, which double-counts a node re-entered
+   * through a cascade.
+   */
+  reEvaluatedNodeIds: string[];
+  /**
+   * The red-flag types this pass re-derives from scratch, and therefore the
+   * only types reconciliation may replace or drop.
+   *
+   * `RetraversalEngine` derives `all_branches_excluded` only — it has no
+   * `missing_critical_data` check at all (that lives in `TraversalEngine`).
+   * Treating the scope as "every flag on a re-evaluated node" would silently
+   * delete a critical-data flag on any unrelated retraversal that happened to
+   * touch the same node.
+   */
+  reDerivedRedFlagTypes: RedFlagType[];
   isIncomplete?: boolean;
 }
 

@@ -15,6 +15,9 @@
 
 const mockRetraverse = jest.fn().mockResolvedValue({
   statusChanges: [], newPendingQuestions: [], newRedFlags: [],
+  // The reconciliation scope every retraversing resolver now folds findings
+  // back against; empty because this stub derives nothing.
+  reEvaluatedNodeIds: [], reDerivedRedFlagTypes: ['all_branches_excluded'],
   nodesRecomputed: 0, isIncomplete: false,
 });
 const retraversalCtor = jest.fn();
