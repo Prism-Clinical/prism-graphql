@@ -19,9 +19,10 @@ import {
 } from './temporal/evaluation-context';
 import {
   assertKnownPolicyVersion,
-  KNOWN_TEMPORAL_POLICY_VERSIONS,
+  policyCapabilities,
+  EVALUATION_MODES,
 } from './temporal/policy-registry';
-import type { TemporalPolicyVersion } from './temporal/policy-registry';
+import type { EvaluationMode } from './temporal/policy-registry';
 import type { PathwayTemporalDefaults } from './temporal/cascade';
 import type { FactStore, NormalizedFact } from './temporal/fact-model';
 import { isObservationFact } from './temporal/fact-model';
@@ -1044,44 +1045,52 @@ function evaluateConditionKernel(
 }
 
 /**
- * The dispatch table, keyed by `temporalContext.temporalPolicyVersion`.
+ * The dispatch table, keyed by **evaluation MODE** — not by policy version.
  *
- * A table rather than a `switch` so that coverage can be asserted over
- * `KNOWN_TEMPORAL_POLICY_VERSIONS` at load — a `switch` offers nothing to
- * enumerate. Keys must stay in step with `KNOWN_TEMPORAL_POLICY_VERSIONS`;
- * `assertKnownPolicyVersion` runs first, so a registry key with no policy set
- * would fail there before reaching here.
+ * It was keyed on the version, which made it a second, independent source of
+ * routing truth (R14-2). `TEMPORAL_POLICY_CAPABILITIES` already declared what a
+ * version does; a version-keyed evaluator table declared it again, and the
+ * load-time coverage check proved only that every version had *an* evaluator —
+ * never that the evaluator agreed with the version's own capability row. A
+ * version could therefore compile and boot with `evaluationMode: 'kernel'` and
+ * the LEGACY evaluator, and nothing anywhere would notice.
+ *
+ * Keying on the mode removes the second source rather than reconciling it:
+ * there is no per-version entry left to disagree with a per-version
+ * declaration. Adding a policy version now consists of declaring its mode, and
+ * its evaluator follows by construction.
+ *
+ * A table rather than a `switch` so coverage can be asserted over
+ * `EVALUATION_MODES` at load — a `switch` offers nothing to enumerate.
  *
  * **Frozen.** The coverage assertion below runs once, at module load; while the
  * table was mutable that proved only what was true at that instant, since any
  * importer could replace an entry afterwards. Freezing makes the load-time
- * proof permanent. `TEMPORAL_POLICY_CAPABILITIES` is frozen for the same reason
- * (`policy-registry.ts:143`).
- *
- * Task 3 additionally justified the table as the seam's *observation point* —
- * both branches decided identically then, so a spy on the entry was the only
- * proof a version routed where it claimed (P1-16). That expired at Task 4, when
- * the paths diverged: routing is now proven behaviorally in
- * `gate-evaluator-version-seam.test.ts`, which is why freezing costs nothing.
+ * proof permanent. `TEMPORAL_POLICY_CAPABILITIES` is frozen for the same reason.
  */
 export const CONDITION_EVALUATORS: Readonly<
-  Record<TemporalPolicyVersion, ConditionEvaluator>
+  Record<EvaluationMode, ConditionEvaluator>
 > = Object.freeze({
-  'legacy-v0': evaluateConditionLegacyAdapted,
-  v1: evaluateConditionKernel,
+  legacy: evaluateConditionLegacyAdapted,
+  kernel: evaluateConditionKernel,
 });
 
 /**
- * Every registered policy version must have an evaluator — checked at module
- * load, not at the first gate that needs one.
+ * Every evaluation MODE must have an evaluator — checked at module load, not at
+ * the first gate that needs one.
  *
- * The type above is the compile-time half: keyed on `TemporalPolicyVersion`,
- * adding a version to the registry without an evaluator here is a compile
- * error. This is the runtime half, and it is not redundant — `tsconfig` is not
- * full strict and excludes `src/__tests__` entirely, so nothing else stops a
- * version reaching production with no evaluator. Without it, such a version
- * passed `assertKnownPolicyVersion` at session creation and threw at the first
- * CONDITION gate — mid-traversal, on a session already persisted.
+ * The type above is the compile-time half: keyed on `EvaluationMode`, adding a
+ * mode to the vocabulary without an evaluator here is a compile error. This is
+ * the runtime half, and it is not redundant — `tsconfig` is not full strict and
+ * excludes `src/__tests__` entirely, so nothing else stops a mode reaching
+ * production with no evaluator. Without it, a version declaring that mode
+ * passed session creation and threw at the first CONDITION gate — mid-traversal,
+ * on a session already persisted.
+ *
+ * Quantifying over modes rather than versions is what makes the check total:
+ * `policy-registry` already refuses to load a version whose mode is outside
+ * `EVALUATION_MODES`, so every registrable version's evaluator is covered by
+ * this loop, including versions that do not exist yet.
  *
  * Because the table is frozen, this check running once at load is now
  * sufficient: there is no later moment at which its conclusion can stop being
@@ -1091,11 +1100,12 @@ export const CONDITION_EVALUATORS: Readonly<
 export function assertConditionEvaluatorCoverage(
   evaluators: Partial<Record<string, ConditionEvaluator>>,
 ): void {
-  for (const version of KNOWN_TEMPORAL_POLICY_VERSIONS) {
-    if (typeof evaluators[version] !== 'function') {
+  for (const mode of EVALUATION_MODES) {
+    if (typeof evaluators[mode] !== 'function') {
       throw new TemporalContextError(
-        `temporal policy version "${version}" is registered but has no condition evaluator — ` +
-          'it would pass session creation and throw at the first condition gate',
+        `evaluation mode "${mode}" is registered but has no condition evaluator — ` +
+          'a policy version declaring it would pass session creation and throw at the ' +
+          'first condition gate',
         'UNKNOWN_POLICY_VERSION',
       );
     }
@@ -1104,32 +1114,39 @@ export function assertConditionEvaluatorCoverage(
 
 assertConditionEvaluatorCoverage(CONDITION_EVALUATORS);
 
-/**
- * Resolve the one condition evaluator this gate — and every sibling condition
- * inside it — is evaluated with. Reading the version once, here, is what stops
- * two conditions of a compound gate resolving against different semantics.
- */
-function conditionEvaluatorFor(deps: GateEvaluationDeps): ConditionEvaluator {
-  const version = deps.temporalContext.temporalPolicyVersion;
-  // Throws `unknown temporalPolicyVersion "<v>"` for anything unregistered —
-  // never a silent fallback to legacy.
-  assertKnownPolicyVersion(version);
-  // The cast is safe only because `assertKnownPolicyVersion` ran: it throws for
-  // anything outside `KNOWN_TEMPORAL_POLICY_VERSIONS`, which is the union this
-  // table is keyed on. The `!evaluator` guard below still stands even though the
-  // table is now frozen: `assertKnownPolicyVersion` validates against the POLICY
-  // registry, not against this table, and the cast is unchecked at the type
-  // level. Freezing stops the table drifting; the guard is what turns any
-  // remaining miss into a named error rather than "evaluator is not a function"
-  // deep inside a gate.
-  const evaluator = CONDITION_EVALUATORS[version as TemporalPolicyVersion];
+/** The evaluator a mode routes to. The whole of the routing decision. */
+export function conditionEvaluatorForMode(mode: EvaluationMode): ConditionEvaluator {
+  const evaluator = CONDITION_EVALUATORS[mode];
   if (!evaluator) {
+    // Unreachable from a loadable registry — `policy-registry` rejects a version
+    // whose mode is outside the vocabulary, and the table covers the vocabulary.
+    // Kept so a mode arriving from an untypechecked caller is a named error
+    // rather than "evaluator is not a function" deep inside a gate.
     throw new TemporalContextError(
-      `no condition evaluator registered for temporalPolicyVersion "${version}"`,
+      `no condition evaluator registered for evaluation mode "${mode}"`,
       'UNKNOWN_POLICY_VERSION',
     );
   }
   return evaluator;
+}
+
+/**
+ * Resolve the one condition evaluator this gate — and every sibling condition
+ * inside it — is evaluated with. Reading the version once, here, is what stops
+ * two conditions of a compound gate resolving against different semantics.
+ *
+ * The version is used ONLY to look up its capability row; the routing decision
+ * is the mode that row declares — the same row `requiresFactStore` reads to
+ * decide whether the store this evaluator will read was assembled at all.
+ */
+function conditionEvaluatorFor(deps: GateEvaluationDeps): ConditionEvaluator {
+  const version = deps.temporalContext.temporalPolicyVersion;
+  // Throws `unknown temporalPolicyVersion "<v>"` for anything with no POLICY
+  // SET — never a silent fallback to legacy. `policyCapabilities` below throws
+  // the same way for anything with no capability row; both are kept because
+  // they check different registries, and a version needs both to evaluate.
+  assertKnownPolicyVersion(version);
+  return conditionEvaluatorForMode(policyCapabilities(version).evaluationMode);
 }
 
 // ─── Gate Type Evaluators ─────────────────────────────────────────────

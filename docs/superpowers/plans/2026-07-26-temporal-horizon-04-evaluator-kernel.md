@@ -380,7 +380,40 @@ pinned so the shape cannot regress into them.
    at the flip. **Task 10's delta list gains it.**
 
 **[R14-2] P2 — the evaluator was still selected from a parallel version-keyed
-table. FIXED.** See the `CONDITION_EVALUATORS` note at Task 3.
+table. FIXED.** The previous round's capability work declared `evaluationMode`
+and `requiresFactStore` per version, but `conditionEvaluatorFor` still read
+`CONDITION_EVALUATORS`, keyed on the VERSION. Two routing declarations per
+version, and nothing compared them: the load-time coverage check proved every
+version had *an* evaluator, **never that the evaluator agreed with its own
+capability row**. `{ evaluationMode: 'kernel' }` plus the legacy evaluator
+compiled, booted and passed every check, with the sweep, the preflight and the
+assembler all on the kernel branch and the conditions themselves on the legacy
+one. `{ evaluationMode: 'kernel', requiresFactStore: false }` was equally
+representable — kernel evaluation against a store nobody assembled, every
+membership gate silently unsatisfied.
+
+Both are now **unrepresentable rather than merely untrue**, by removing the
+second source rather than reconciling it:
+
+- **`CONDITION_EVALUATORS` is re-keyed on the MODE** — `EVALUATION_MODES` is the
+  vocabulary and the source of the `EvaluationMode` type, derived the same way
+  `TemporalPolicyVersion` is derived from `POLICIES`. It is kept, rather than
+  collapsed into a `switch`, for the reason it was a table in the first place:
+  coverage has to be *enumerable* at load. `assertConditionEvaluatorCoverage`
+  now quantifies over modes, which is what makes it cover versions that do not
+  exist yet. `conditionEvaluatorForMode(mode)` is the whole routing decision.
+- **`requiresFactStore` is DERIVED, not declared.** A version declares exactly
+  one thing — its mode — in `EVALUATION_MODE_BY_VERSION`; `capabilitiesFor(mode)`
+  builds the row through `modeRequiresFactStore`. `policy-registry` additionally
+  refuses at load to register a version whose mode is outside the vocabulary,
+  which is what makes the mode-keyed coverage check total.
+
+Pinned in `evaluator-selected-by-capability.test.ts`, whose last block builds a
+**synthetic registry** — two versions that do not exist in production, one
+declaring `kernel` and one `legacy` — and shows each routes by its declared mode
+and gets the matching fact store **with no evaluator registered for it
+anywhere**. Built as a fixture module under `isolateModules`; the real tables are
+frozen and are never mutated.
 
 **Class note.** R14-1 is a new class: **a derived value that is faithful to the
 legacy path and wrong at the boundary that consumes it.** Every previous round
@@ -428,6 +461,16 @@ that separately from whether it matches.*
   | P1-A pinned (stale subtree) — assertions only, must not move | 1302 | 9 | 1311 | 100 / 102 |
   | `CONDITION_EVALUATORS` frozen | 1306 | 9 | 1315 | 100 / 102 |
   | R14-1 — absent allergy vs attribute `exists` | 1314 | 9 | 1323 | 100 / 102 |
+  | R14-2 — evaluator selected from the capability | 1331 | 9 | 1340 | 101 / 103 |
+
+  R14-2's delta is +17 passed / +17 total / +1 suite: **16 added** in the new
+  `evaluator-selected-by-capability.test.ts` and **1 added** to the seam suite
+  (`holds no per-VERSION entry at all`). The two suites that indexed
+  `CONDITION_EVALUATORS` by version were **re-keyed, never weakened** — the
+  freeze block's three tests keep their assertions with `legacy-v0`/`v1` replaced
+  by `legacy`/`kernel`, and `refuses a version registered with no evaluator`
+  became `refuses a MODE …` and gained a case (it now asserts BOTH modes are
+  required, where it asserted one). `expect(` counts rose 18 → 20 and 19 → 21.
 
   R14-1's delta is +8 passed / +8 total / no suite change: **8 added**, all in
   the new `an absent membership attribute does not satisfy exists` block of

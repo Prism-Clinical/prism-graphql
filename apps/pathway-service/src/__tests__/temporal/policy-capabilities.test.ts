@@ -42,6 +42,7 @@ import {
 import {
   CONDITION_EVALUATORS,
   assertConditionEvaluatorCoverage,
+  conditionEvaluatorForMode,
 } from '../../services/resolution/gate-evaluator';
 import type { GraphNode } from '../../services/confidence/types';
 import { GateType, DefaultBehavior } from '../../services/resolution/types';
@@ -60,18 +61,28 @@ describe('every registered version is fully described', () => {
   });
 
   it('has a condition evaluator for every version that has a policy set', () => {
+    // Re-keyed on the MODE at R14-2: the evaluator is reached THROUGH the
+    // version's capability row, not from a parallel version-keyed table. The
+    // property is unchanged and now unfalsifiable by a new version — see
+    // `evaluator-selected-by-capability.test.ts`.
     for (const version of KNOWN_TEMPORAL_POLICY_VERSIONS) {
-      expect(typeof CONDITION_EVALUATORS[version]).toBe('function');
+      const mode = policyCapabilities(version).evaluationMode;
+      expect(typeof CONDITION_EVALUATORS[mode]).toBe('function');
+      expect(conditionEvaluatorForMode(mode)).toBe(CONDITION_EVALUATORS[mode]);
     }
   });
 
-  it('refuses a version registered with no evaluator, at LOAD rather than mid-traversal', () => {
+  it('refuses a MODE registered with no evaluator, at LOAD rather than mid-traversal', () => {
     // The defect: a version added to the registry without an evaluator passed
     // `assertKnownPolicyVersion` at session creation and threw at the first
-    // condition gate — on a session already persisted.
-    expect(() =>
-      assertConditionEvaluatorCoverage({ 'legacy-v0': CONDITION_EVALUATORS['legacy-v0'] }),
-    ).toThrow(/v1/);
+    // condition gate — on a session already persisted. Quantified over modes
+    // since R14-2, which is what makes it cover versions that do not exist yet.
+    expect(() => assertConditionEvaluatorCoverage({ legacy: CONDITION_EVALUATORS.legacy })).toThrow(
+      /kernel/,
+    );
+    expect(() => assertConditionEvaluatorCoverage({ kernel: CONDITION_EVALUATORS.kernel })).toThrow(
+      /legacy/,
+    );
     expect(() => assertConditionEvaluatorCoverage(CONDITION_EVALUATORS)).not.toThrow();
   });
 

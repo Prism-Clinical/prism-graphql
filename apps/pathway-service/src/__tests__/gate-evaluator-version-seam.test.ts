@@ -256,27 +256,37 @@ describe('the version seam dispatches on the session policy version', () => {
  * function" deep inside a gate.
  */
 describe('the condition evaluator table cannot be mutated after load', () => {
+  // Keyed on the evaluation MODE since R14-2, not on the policy version — the
+  // version-keyed table was a second source of routing truth that could
+  // disagree with the version's own capability row.
   it('refuses to replace a registered evaluator', () => {
     const replacement = jest.fn();
     expect(() => {
-      (CONDITION_EVALUATORS as Record<string, unknown>)['legacy-v0'] = replacement;
+      (CONDITION_EVALUATORS as Record<string, unknown>)['legacy'] = replacement;
     }).toThrow(TypeError);
     // And the real evaluator is still in place.
-    expect(CONDITION_EVALUATORS['legacy-v0']).not.toBe(replacement);
+    expect(CONDITION_EVALUATORS['legacy']).not.toBe(replacement);
   });
 
   it('refuses to delete a registered evaluator', () => {
     expect(() => {
-      delete (CONDITION_EVALUATORS as Record<string, unknown>)['v1'];
+      delete (CONDITION_EVALUATORS as Record<string, unknown>)['kernel'];
     }).toThrow(TypeError);
-    expect(typeof CONDITION_EVALUATORS['v1']).toBe('function');
+    expect(typeof CONDITION_EVALUATORS['kernel']).toBe('function');
   });
 
-  it('refuses to add an unregistered version', () => {
+  it('refuses to add an unregistered mode', () => {
     expect(() => {
-      (CONDITION_EVALUATORS as Record<string, unknown>)['v99'] = jest.fn();
+      (CONDITION_EVALUATORS as Record<string, unknown>)['shadow'] = jest.fn();
     }).toThrow(TypeError);
-    expect((CONDITION_EVALUATORS as Record<string, unknown>)['v99']).toBeUndefined();
+    expect((CONDITION_EVALUATORS as Record<string, unknown>)['shadow']).toBeUndefined();
+  });
+
+  it('holds no per-VERSION entry at all — there is nothing to disagree with', () => {
+    // The R14-2 property, structurally: a table keyed on the version is what
+    // made `evaluationMode: 'kernel'` + the legacy evaluator representable.
+    expect((CONDITION_EVALUATORS as Record<string, unknown>)['legacy-v0']).toBeUndefined();
+    expect((CONDITION_EVALUATORS as Record<string, unknown>)['v1']).toBeUndefined();
   });
 
   it('reports itself frozen', () => {

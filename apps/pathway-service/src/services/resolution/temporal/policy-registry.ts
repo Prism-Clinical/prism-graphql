@@ -125,31 +125,83 @@ export const KNOWN_TEMPORAL_POLICY_VERSIONS: readonly TemporalPolicyVersion[] = 
  *    an optimization: `assembleContext` VALIDATES, so running it for a
  *    `legacy-v0` request would turn a malformed date the legacy evaluator
  *    ignores into a session-creation rejection (P1-9).
+ *
+ * **`requiresFactStore` is DERIVED from `evaluationMode`, not declared beside
+ * it (R14-2).** It was declared independently, which made a version that
+ * disagreed with itself representable: `{ evaluationMode: 'kernel',
+ * requiresFactStore: false }` compiles, boots, passes every coverage check, and
+ * evaluates every kernel gate against an empty store — every membership gate
+ * unsatisfied, silently. There is exactly one declaration per version now, and
+ * it is the mode.
  */
 export interface TemporalPolicyCapabilities {
-  readonly evaluationMode: 'legacy' | 'kernel';
+  readonly evaluationMode: EvaluationMode;
   readonly requiresFactStore: boolean;
 }
 
-// `satisfies Record<TemporalPolicyVersion, ...>`: adding a version to POLICIES
-// without a capability row is a COMPILE error, not a runtime surprise.
-const CAPABILITIES = {
-  'legacy-v0': { evaluationMode: 'legacy', requiresFactStore: false },
-  v1: { evaluationMode: 'kernel', requiresFactStore: true },
-} satisfies Record<TemporalPolicyVersion, TemporalPolicyCapabilities>;
+/**
+ * The evaluation-mode vocabulary, and the SOURCE of the mode type.
+ *
+ * A hand-written `'legacy' | 'kernel'` union would have nothing to enumerate at
+ * runtime, and the evaluator table's coverage check has to iterate the modes —
+ * the same reason `TemporalPolicyVersion` is derived from `POLICIES` rather
+ * than restated.
+ */
+export const EVALUATION_MODES = Object.freeze(['legacy', 'kernel'] as const);
+export type EvaluationMode = (typeof EVALUATION_MODES)[number];
+
+/**
+ * Kernel evaluation reads an assembled fact store; legacy evaluation must NOT
+ * have one assembled, because assembling it validates (P1-9).
+ *
+ * One function, so the two halves of a version's routing cannot be stated
+ * separately and therefore cannot disagree.
+ */
+export function modeRequiresFactStore(mode: EvaluationMode): boolean {
+  return mode === 'kernel';
+}
+
+/** The full capability row implied by a mode. A version declares only the mode. */
+export function capabilitiesFor(mode: EvaluationMode): TemporalPolicyCapabilities {
+  return { evaluationMode: mode, requiresFactStore: modeRequiresFactStore(mode) };
+}
+
+// `satisfies Record<TemporalPolicyVersion, EvaluationMode>`: adding a version to
+// POLICIES without a mode is a COMPILE error, not a runtime surprise. This table
+// is the ONLY place a version's routing is written down.
+const EVALUATION_MODE_BY_VERSION = {
+  'legacy-v0': 'legacy',
+  v1: 'kernel',
+} satisfies Record<TemporalPolicyVersion, EvaluationMode>;
 
 export const TEMPORAL_POLICY_CAPABILITIES: Readonly<
   Record<TemporalPolicyVersion, TemporalPolicyCapabilities>
-> = deepFreeze(CAPABILITIES);
+> = deepFreeze(
+  Object.fromEntries(
+    Object.entries(EVALUATION_MODE_BY_VERSION).map(([version, mode]) => [
+      version,
+      capabilitiesFor(mode),
+    ]),
+  ) as Record<TemporalPolicyVersion, TemporalPolicyCapabilities>,
+);
 
 // The runtime half of the same guarantee. `tsconfig` is not full strict and
 // excludes `src/__tests__`, so the `satisfies` above binds only this file's
 // authors; this binds the module load. A version that reaches production
-// without capabilities must never be resolvable.
+// without capabilities must never be resolvable, and a mode outside the
+// vocabulary must never reach the evaluator table's keys.
 for (const version of KNOWN_TEMPORAL_POLICY_VERSIONS) {
   if (!Object.prototype.hasOwnProperty.call(TEMPORAL_POLICY_CAPABILITIES, version)) {
     throw new TemporalContextError(
       `temporal policy version "${version}" has a policy set but no capabilities`,
+      'UNKNOWN_POLICY_VERSION',
+    );
+  }
+  const mode = TEMPORAL_POLICY_CAPABILITIES[version].evaluationMode;
+  if (!EVALUATION_MODES.includes(mode)) {
+    throw new TemporalContextError(
+      `temporal policy version "${version}" declares unknown evaluationMode "${mode}" ` +
+        `(known: ${EVALUATION_MODES.join(', ')})`,
       'UNKNOWN_POLICY_VERSION',
     );
   }
@@ -182,7 +234,12 @@ export function usesKernelEvaluation(version: string): boolean {
   return policyCapabilities(version).evaluationMode === 'kernel';
 }
 
-/** Does this version read an assembled fact store (locked decision #5)? */
+/**
+ * Does this version read an assembled fact store (locked decision #5)?
+ *
+ * Reads the same capability row `usesKernelEvaluation` reads, whose two fields
+ * come from one declaration — so this and the evaluator choice cannot disagree.
+ */
 export function requiresFactStore(version: string): boolean {
   return policyCapabilities(version).requiresFactStore;
 }
