@@ -7,6 +7,22 @@ export interface DataSourceContext {
   redis: Redis;
   userId: string;
   userRole: string;
+  /**
+   * The temporal policy version every session created on this request is
+   * pinned to (design §5).
+   *
+   * **Server-owned.** Populated in `index.ts` from deployment config and NEVER
+   * from a request header or a GraphQL argument (AD-1): `userRole` is already
+   * read straight off an unverified `x-user-role` header, so a caller-selectable
+   * evaluation semantics would be a one-header change of clinical meaning. The
+   * rollout flip changes deployment config, not the schema. A read-only OUTPUT
+   * field exposing the pinned version is fine and belongs to plan 08.
+   *
+   * A plain string, not a callback: tests construct the context object directly,
+   * the way they already do for `userId` — no module mocking, no mutable global.
+   * Absent means `legacy-v0` (see `resolveTemporalPolicyVersion`).
+   */
+  temporalPolicyVersion?: string;
 }
 
 // Pathway status lifecycle

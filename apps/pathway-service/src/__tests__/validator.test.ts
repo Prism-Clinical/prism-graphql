@@ -490,6 +490,132 @@ describe('validatePathwayJson', () => {
         expect(validatePathwayJson(pw).errors).toContainEqual(expect.stringContaining('operator'));
       });
 
+      // Plan 04 Task 1: the NODE tier of the temporal cascade. Without these
+      // keys on CODED_KEYS/ATTRIBUTE_KEYS the validator rejects them as unknown
+      // keys, and a per-condition horizon becomes unauthorable — the whole
+      // point of the feature would be reachable only from hand-built fixtures.
+      it('accepts a per-condition horizon on a coded condition', () => {
+        const pw = clonePathway(REFERENCE_PATHWAY);
+        addGateWithCondition(pw, {
+          field: 'labs',
+          operator: 'greater_than',
+          value: '718-7',
+          horizon: 'QUARTER',
+        });
+        const result = validatePathwayJson(pw);
+        expect(result.errors).not.toContainEqual(expect.stringContaining('unknown key'));
+        expect(result.valid).toBe(true);
+      });
+
+      it('accepts a per-condition status on a coded condition', () => {
+        const pw = clonePathway(REFERENCE_PATHWAY);
+        addGateWithCondition(pw, {
+          field: 'conditions',
+          operator: 'includes_code',
+          value: 'E11.9',
+          status: 'any',
+        });
+        const result = validatePathwayJson(pw);
+        expect(result.errors).not.toContainEqual(expect.stringContaining('unknown key'));
+        expect(result.valid).toBe(true);
+      });
+
+      it('accepts a per-condition horizon on an attribute condition', () => {
+        const pw = clonePathway(REFERENCE_PATHWAY);
+        addGateWithCondition(pw, {
+          attribute: 'lab.hemoglobin',
+          operator: 'less_than',
+          value: 7,
+          horizon: 'ENCOUNTER',
+        });
+        const result = validatePathwayJson(pw);
+        expect(result.errors).not.toContainEqual(expect.stringContaining('unknown key'));
+        expect(result.valid).toBe(true);
+      });
+
+      it('still rejects a key that is neither', () => {
+        // The allowlist must widen by exactly two keys, not collapse.
+        const pw = clonePathway(REFERENCE_PATHWAY);
+        addGateWithCondition(pw, {
+          field: 'labs',
+          operator: 'greater_than',
+          value: '718-7',
+          hoziron: 'QUARTER',
+        });
+        expect(validatePathwayJson(pw).errors).toContainEqual(
+          expect.stringContaining('unknown key'),
+        );
+      });
+
+      it('rejects a coded field that has no fact kind (round 7 P1-22)', () => {
+        // Previously only checked to be a string. An unknown field imported
+        // cleanly, was silently skipped by preflight, and was then rejected by
+        // the runtime adapter mid-traversal.
+        const pw = clonePathway(REFERENCE_PATHWAY);
+        addGateWithCondition(pw, { field: 'horoscopes', operator: 'exists', value: '' });
+        const result = validatePathwayJson(pw);
+        expect(result.valid).toBe(false);
+        expect(result.errors).toContainEqual(expect.stringContaining('horoscopes'));
+      });
+
+      it('accepts every field the kernel does model', () => {
+        for (const field of ['conditions', 'medications', 'allergies', 'labs', 'vitals']) {
+          const pw = clonePathway(REFERENCE_PATHWAY);
+          addGateWithCondition(pw, { field, operator: 'exists', value: '' });
+          expect(validatePathwayJson(pw).valid).toBe(true);
+        }
+      });
+
+      // Plan 04 D9: `system` stays in CODED_KEYS because it is valid on every
+      // other field; this is a field-specific rule, not a key-allowlist change.
+      it('rejects a system on a coded vitals condition (D9)', () => {
+        const pw = clonePathway(REFERENCE_PATHWAY);
+        addGateWithCondition(pw, {
+          field: 'vitals',
+          operator: 'greater_than',
+          value: 'systolic_bp',
+          system: 'LOINC',
+          threshold: 140,
+        });
+        const result = validatePathwayJson(pw);
+        expect(result.valid).toBe(false);
+        // Not reported as an unknown key — `system` is a legitimate coded key.
+        expect(result.errors).not.toContainEqual(expect.stringContaining('unknown key'));
+        expect(result.errors).toContainEqual(expect.stringContaining('vitals'));
+        expect(result.errors).toContainEqual(expect.stringContaining('system'));
+      });
+
+      it('rejects a system on a vitals exists condition too (D9)', () => {
+        // Same field rule regardless of operator: the adapter rejects `exists`
+        // as well, and preflight and authoring must not disagree.
+        const pw = clonePathway(REFERENCE_PATHWAY);
+        addGateWithCondition(pw, { field: 'vitals', operator: 'exists', value: '', system: 'LOINC' });
+        expect(validatePathwayJson(pw).valid).toBe(false);
+      });
+
+      it('still accepts a system on a coded labs condition (D9 is field-specific)', () => {
+        const pw = clonePathway(REFERENCE_PATHWAY);
+        addGateWithCondition(pw, {
+          field: 'labs',
+          operator: 'greater_than',
+          value: '718-7',
+          system: 'LOINC',
+          threshold: 7,
+        });
+        expect(validatePathwayJson(pw).valid).toBe(true);
+      });
+
+      it('accepts a vitals condition that sets no system', () => {
+        const pw = clonePathway(REFERENCE_PATHWAY);
+        addGateWithCondition(pw, {
+          field: 'vitals',
+          operator: 'greater_than',
+          value: 'systolic_bp',
+          threshold: 140,
+        });
+        expect(validatePathwayJson(pw).valid).toBe(true);
+      });
+
       it('rejects an attribute with an unregistered namespace', () => {
         const pw = clonePathway(REFERENCE_PATHWAY);
         addGateWithCondition(pw, { attribute: 'bogus.thing', operator: 'exists', value: true });

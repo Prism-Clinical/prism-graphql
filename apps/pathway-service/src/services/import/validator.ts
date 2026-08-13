@@ -18,19 +18,39 @@ import {
 import { PathwayCategory } from '../../types';
 import { VALID_CODED_OPERATORS, VALID_ATTRIBUTE_OPERATORS } from '../resolution/types';
 import { VALID_ATTRIBUTE_NAMESPACES } from '../resolution/attribute-registry';
+import { FIELD_TO_KIND } from '../resolution/temporal/contract';
+import {
+  codedVitalsSystemError,
+  conditionControlDomainError,
+} from '../resolution/temporal/condition-adapter';
 
 const VALID_NODE_TYPES = new Set<string>(Object.keys(REQUIRED_NODE_PROPERTIES));
 const VALID_EDGE_TYPES = new Set<string>(Object.keys(VALID_EDGE_ENDPOINTS));
 const VALID_CATEGORIES = new Set<string>(Object.values(PathwayCategory));
 
 // ─── Gate condition schema ─────────────────────────────────────────────
+// `horizon`/`status` are the NODE tier of the temporal cascade (plan 04). They
+// are allowed as KEYS here; their VALUES are validated by
+// `parseConditionOverride` at session-creation preflight, which owns the
+// horizon grammar, the status vocabulary, and the window_days/horizon conflict
+// rule. Duplicating that grammar here would give authors two places to disagree
+// with. Without these entries a per-condition horizon fails import as an
+// unknown key and the NODE tier is unauthorable.
 const CODED_KEYS = new Set([
   'field', 'operator', 'value', 'system', 'threshold',
   'window_days', 'count_threshold', 'min_points', 'slope_threshold', 'delta_threshold',
+  'horizon', 'status',
   'display', 'note',
 ]);
-const ATTRIBUTE_KEYS = new Set(['attribute', 'operator', 'value', 'unit', 'display', 'note']);
+const ATTRIBUTE_KEYS = new Set([
+  'attribute', 'operator', 'value', 'unit',
+  'horizon', 'status',
+  'display', 'note',
+]);
 const CODED_OPS = new Set<string>(VALID_CODED_OPERATORS);
+// The same map the kernel and the anchor sweep key on — one source, so the
+// authoring boundary cannot admit a field evaluation will reject.
+const CODED_FIELDS = new Set<string>(Object.keys(FIELD_TO_KIND));
 const ATTR_OPS = new Set<string>(VALID_ATTRIBUTE_OPERATORS);
 const NAMESPACES = new Set<string>(VALID_ATTRIBUTE_NAMESPACES);
 
@@ -285,7 +305,29 @@ function validateGateConditions(
       for (const k of Object.keys(c)) if (!ATTRIBUTE_KEYS.has(k)) errors.push(`${where}: unknown key "${k}" on attribute condition.`);
     } else {
       if (!CODED_OPS.has(op)) errors.push(`${where}: operator "${op}" is not a valid coded operator.`);
+      // Membership in FIELD_TO_KIND, not merely "is a string" (round 7 P1-22).
+      // An unknown field used to import cleanly, be silently skipped by the
+      // v1 anchor sweep, and then be rejected by the runtime adapter
+      // mid-traversal. The authoring boundary is where an author can act on it.
+      if (!CODED_FIELDS.has(c.field as string)) {
+        errors.push(`${where}: field "${String(c.field)}" is not a valid condition field.`);
+      }
       if (c.value == null) errors.push(`${where}: coded condition requires a "value".`);
+      // D9 — a FIELD-specific rule, not a key-allowlist one: `system` stays in
+      // CODED_KEYS because it is valid on every other coded field. The message
+      // comes from the same predicate the runtime adapter throws on, so the
+      // authoring boundary rejects exactly what preflight and evaluation would
+      // (locked decision #7); a second spelling here is a second chance to
+      // disagree.
+      const vitalsSystem = codedVitalsSystemError(c.field, c.system);
+      if (vitalsSystem !== null) errors.push(`${where}: ${vitalsSystem}.`);
+      // The numeric CONTROLS' domains, from the same predicate the runtime
+      // adapter throws on. Keys alone were checked here before, so
+      // `slope_threshold: -1` imported cleanly and then inverted `trend_down`
+      // into "a rising series is falling" at evaluation. `window_days` is NOT
+      // covered by this predicate — `parseHorizonValue` owns that rule (D2).
+      const controlDomain = conditionControlDomainError(c);
+      if (controlDomain !== null) errors.push(`${where}: ${controlDomain}.`);
       for (const k of Object.keys(c)) if (!CODED_KEYS.has(k)) errors.push(`${where}: unknown key "${k}" on coded condition.`);
     }
   });

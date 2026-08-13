@@ -62,7 +62,12 @@ export function parseHorizonValue(raw: unknown, where: string): Horizon {
   );
 }
 
-function parseStatusValue(raw: unknown, where: string): TemporalStatus {
+/**
+ * Exported for the condition adapter (plan 04). The NODE tier and the pathway
+ * tier must validate `status` through the same function, or a value the
+ * pathway header rejects could be accepted on a condition.
+ */
+export function parseStatusValue(raw: unknown, where: string): TemporalStatus {
   if (typeof raw === 'string' && STATUSES.includes(raw)) return raw as TemporalStatus;
   throw new TemporalContextError(
     `${where}: status must be one of ${STATUSES.join(' | ')} (got: ${JSON.stringify(raw)})`,

@@ -586,7 +586,18 @@ and the root is dropped from the canvas (`deserializer.ts:95`), so a new panel h
 `default_horizons` / `default_statuses`, one row per data type, defaulting to
 Inherit.
 
-**Attribute conditions** get no horizon control (encounter-derived, no timeline).
+**Attribute conditions** — *revised after plan 04 execution (P2-13). The original
+claim ("no horizon control, encounter-derived, no timeline") is false for the three
+CLINICAL namespaces and true only for `patient.*`.* Under `v1`, `lab.*`, `vitals.*`
+and `allergy.*` route through the same `selectFacts` kernel as coded conditions and
+therefore get the full horizon, status and record-validity treatment (plan 04 D3);
+they read the same clinical data a coded condition does, so exempting them was never
+defensible. Only `patient.*` is genuinely atemporal — demographics have no
+`FactKind`, no interval and no clinical state — and it stays on `resolveAttribute`.
+Note that §590's decision to fix the vitals control to Encounter is precisely what
+makes the attribute anchor sweep **mandatory**: a `v1` `vitals.systolic_bp` gate
+resolves an ENCOUNTER horizon, so without sweeping attribute conditions at
+session creation it passes preflight and throws mid-traversal (plan 04 P1-8).
 **Vitals** show a fixed "Encounter" horizon with a tooltip.
 
 **Publish validation (finding 9b — corrected).** ENCOUNTER has no fixed duration, so
@@ -664,6 +675,85 @@ The honest per-type statement:
 `legacy-v0` reproduces today's behavior exactly (labs lifetime, no validity filter
 semantics beyond today's), so the change from `legacy-v0` to `v1` is a reviewable,
 shadow-testable diff, not a silent shift.
+
+### Measured `v1` deltas (plan 04 execution, 2026-08-11/12)
+
+Every entry below is pinned by a test. Discovered while *executing* plan 04 rather
+than while reviewing it, which is why several were not anticipated above.
+
+**Selection semantics**
+- **Validity filtering** — `refuted` / `entered-in-error` facts are dropped where
+  today they match.
+- **Latest-vs-first scalar selection** — a scalar operator takes the *definite
+  latest* valid dated in-window result, where today's evaluator `.find()`s the first
+  array element.
+- **Equal-time ambiguity** — two equally authoritative results at the same instant
+  resolve to `AMBIGUOUS_LATEST` and fail closed, rather than silently taking array
+  order.
+- **Future-date exclusion** — a fact dated after `evaluationAsOf` never matches.
+- **Horizon filtering of membership** — a membership gate is now windowed by the
+  resolved horizon; under `legacy-v0` every operator ignored time.
+
+**D7 — undated observations are admitted but NOT orderable.**
+`OPEN(assertedCurrentAt: asOf)` fixes admission, not ordering: `effectiveRange`
+reads `interval.start` only. One undated fact alone is `READY`; an undated fact
+**plus any other candidate** is `AMBIGUOUS_LATEST` and fails closed — even against a
+precisely dated one. Accepted because failing closed beats legacy's arbitrary pick.
+The simulator's lab `date` is optional, so this is ordinary input, not an edge case.
+
+**D8 — aggregate operators select on the START bound, not interval overlap.**
+`assembleStateful` gives any entry with no `endDate` and a non-INACTIVE state
+`end: OPEN(asOf)`, which overlaps every horizon — so `window_days` was silently
+**inert** on `conditions` / `medications` / `allergies`, the operator's own
+documented use case, and `v1` diverged from `legacy-v0` *permissively* on recurrence
+gates. Now: bounded horizon requires a start (undated excluded, matching
+`isWithinWindow(undefined, N) === false`); LIFETIME admits undated.
+- **Consequence:** `count_in_window` over `vitals` is now **permanently zero** under
+  `v1`. Vitals carry no dates and pin to ENCOUNTER — always bounded — so every vital
+  is excluded. `legacy-v0` could not satisfy a vitals count either
+  (`getCodeEntries('vitals')` returns `[]`), so this is not a regression, but it is
+  not the "becoming satisfiable" the earlier draft of this section claimed.
+
+**D9 — a coded `vitals` condition may not carry a `system`.** Rejected at authoring,
+in both the adapter and the import validator. Legacy honoured `system` on its labs
+branch and ignored it on its vitals branch; the uniform kernel applies it to both,
+and `assembleVitals` stamps `urn:prism:vitals`, so any author-supplied system made
+the gate **permanently unsatisfiable**.
+
+**D10 — both context doors run the same trust parsing.** `addPatientContext`
+previously accepted `endDate` / `clinicalState` / `recordValidity` / `sourceId` with
+no parsing while `startResolution` refused them. Inert until the assembler was wired;
+after that a caller refused these at session creation could assert them mid-session
+and silently suppress a clinical fact from evaluation. Not a security fix — under
+AD-1 `userRole` is caller-asserted — but the same request must not be accepted or
+refused depending on which mutation carries it.
+
+**Attribute-route deltas (D3).** `lab.*` / `vitals.*` / `allergy.*` gain horizon and
+validity filtering, and an attribute `exists` becomes an **exact-code** selection
+rather than any-fact.
+- **An INACTIVE allergy stops matching.** `v1` gives `allergies` `status: 'active'`,
+  while `resolveAttribute`'s `allergies.some(...)` has no notion of clinical state.
+  This is the **first delta on the status axis** rather than the horizon axis, and
+  D3's table does not mention status at all.
+
+**R12 — the uncertainty signals have no reader (disclosed, not fixed).**
+`indeterminate` and `uncertainty` are produced on every `v1` gate result and dropped
+whole by both engines. After the assembler is wired, the only persisted trace of an
+indeterminate gate is `excludeReason` **prose** — and that carrier is asymmetric per
+compound operator: AND joins the condition reasons, OR emits the literal
+`'No compound conditions satisfied'`. **An OR compound gate refused for uncertainty
+is recorded byte-identically to one where the patient simply had none of the codes.**
+Plan 08 owns `GateEvaluationEvidence` and must read the flags rather than the prose;
+the OR prose is deliberately unchanged, because byte-identical reason strings are the
+proof `legacy-v0` is untouched.
+
+**NON-delta, recorded deliberately: coded `exists`.** It keeps bucket semantics under
+`v1`, ignoring `value` and `system` exactly as today. A runtime rejection was
+specified and reverted — the import validator *requires* `value` on every coded
+condition, so an author following the authoring contract writes precisely what the
+rejection would refuse. Authoring-time rejection is deferred to plan 06. Recorded
+here because an audit listing only deltas hides the operator where a delta was
+proposed and deliberately rejected, which is how it would get reintroduced.
 
 **Entry criteria are out of scope for v1.** Pathway *matching* filters to active
 conditions in SQL (`session-store.ts:407`), dropping resolved diagnoses before

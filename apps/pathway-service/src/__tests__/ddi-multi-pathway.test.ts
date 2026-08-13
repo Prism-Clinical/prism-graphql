@@ -28,6 +28,13 @@ jest.mock('../resolvers/helpers/resolution-context', () => ({
   // that masks its own documented baseline failures.
   makeLlmGateEvaluator: jest.fn(() => null),
   assertEncounterAnchor: jest.fn(),
+  // Same reason: both start mutations read the server-owned policy version
+  // through this from plan 04 Task 9 on. Kept REAL — a `jest.fn()` returning
+  // undefined would hand `makeEvaluationTemporalContext` an undefined version
+  // and silently re-enable the legacy default the selector exists to control.
+  resolveTemporalPolicyVersion: jest.requireActual(
+    '../resolvers/helpers/resolution-context',
+  ).resolveTemporalPolicyVersion,
 }));
 
 jest.mock('../services/resolution/traversal-engine', () => ({

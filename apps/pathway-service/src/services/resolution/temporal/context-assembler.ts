@@ -165,8 +165,23 @@ function assembleLabs(
     // KNOWN end equal to the start bound, which is the branch overlap() takes
     // for point facts. Modeling it as OPEN(asOf) would keep a two-year-old
     // result overlapping QUARTER forever. Undated, it has no anchor at all, so
-    // it is asserted current — otherwise every scalar gate reading it would
-    // fail closed under legacy-v0.
+    // it is asserted current.
+    //
+    // WHAT THIS BUYS, PRECISELY (corrected round 9 — the previous wording
+    // claimed more than it delivers): OPEN(asOf) fixes ADMISSION, not ORDERING.
+    // It makes an undated fact overlap any horizon, so it is not dropped. It
+    // does NOT make it orderable: `effectiveRange` (select-facts.ts:143) reads
+    // `interval.start` only and returns (-Inf, +Inf) when there is none, so an
+    // undated fact still has no position in time. A scalar gate over ONE
+    // undated fact is READY; over an undated fact PLUS any other candidate it
+    // is AMBIGUOUS_LATEST and fails closed.
+    //
+    // That is deliberate and was re-affirmed in round 9: an undated result
+    // genuinely cannot be ordered against a dated one, and consulting
+    // `interval.end` would not fix it — (-Inf, asOf] still overlaps a dated
+    // point. Failing closed beats legacy's arbitrary first-array-element pick.
+    // The v1 delta is disclosed in the plan's compatibility audit, and the
+    // authoring UI should require a date on lab input (plan 09).
     const start =
       entry.date !== undefined ? parseSyntheticDate(entry.date, `${where}.date`) : undefined;
     const end: TemporalEnd = start

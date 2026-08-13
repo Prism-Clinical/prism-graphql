@@ -48,6 +48,13 @@ jest.mock('../resolvers/helpers/resolution-context', () => ({
   makeLlmGateEvaluator: jest.fn(() => null),
   // Same reason: resolveAndPersistAll's preflight calls this on every run.
   assertEncounterAnchor: jest.fn(),
+  // Same reason again: both start mutations read the server-owned policy
+  // version through this from plan 04 Task 9 on. Kept REAL — a `jest.fn()`
+  // returning undefined would hand `makeEvaluationTemporalContext` an undefined
+  // version and silently re-enable the legacy default the selector controls.
+  resolveTemporalPolicyVersion: jest.requireActual(
+    '../resolvers/helpers/resolution-context',
+  ).resolveTemporalPolicyVersion,
 }));
 
 jest.mock('../services/resolution/traversal-engine', () => ({

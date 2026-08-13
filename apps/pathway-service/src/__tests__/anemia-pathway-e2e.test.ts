@@ -48,7 +48,11 @@ function createEngine(): TraversalEngine {
     mockConfidenceEngine,
     mockThresholds,
     makeEvaluationTemporalContext({ evaluationAsOf: PINNED_AS_OF }),
-    undefined,
+    {},
+    // Required from plan 04 Task 9 on; empty because this is `legacy-v0`.
+    [],
+    // `codeMap` moved AHEAD of the optional LLM evaluator when review finding 3
+    // (R11-4) made it required — same value, new position.
     CODE_MAP,
   );
 }

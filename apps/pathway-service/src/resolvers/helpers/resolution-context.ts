@@ -8,8 +8,8 @@ import {
   PatientContext,
   SignalDefinition,
 } from '../../services/confidence/types';
-import { GateProperties, AttributeCodeMap } from '../../services/resolution/types';
-import { GateType } from '../../types';
+import { GateProperties, AttributeCodeMap, AttributeCondition, CodedCondition } from '../../services/resolution/types';
+import { DataSourceContext, GateType } from '../../types';
 import { loadAttributeCodeMap } from '../../services/resolution/attribute-code-map';
 import {
   LlmGateEvaluator,
@@ -35,14 +35,58 @@ import {
   parsePathwayTemporalDefaults,
   collectEncounterAnchorRequirements,
   SweepableCondition,
+  EncounterAnchorRequirement,
   ConditionTemporalOverride,
 } from '../../services/resolution/temporal/cascade';
 import {
   EvaluationTemporalContext,
   TemporalContextError,
+  DEFAULT_TEMPORAL_POLICY_VERSION,
 } from '../../services/resolution/temporal/evaluation-context';
 import { GateField, FIELD_TO_KIND } from '../../services/resolution/temporal/contract';
-import { getTemporalPolicy } from '../../services/resolution/temporal/policy-registry';
+import {
+  adaptAttributeCondition,
+  adaptCodedCondition,
+} from '../../services/resolution/temporal/condition-adapter';
+import {
+  assertKnownPolicyVersion,
+  getTemporalPolicy,
+  usesKernelEvaluation,
+} from '../../services/resolution/temporal/policy-registry';
+
+// ─── Temporal policy version selection ──────────────────────────────
+
+/**
+ * The temporal policy version this request's sessions are pinned to.
+ *
+ * **Takes the GraphQL context, and explicitly NOT a `ResolutionContext`
+ * (P1-14).** `startMultiPathwayResolution` stamps the shared clock before
+ * `getMatchedPathways` runs, and its zero-match branch creates a parent session
+ * and returns without ever building a `ResolutionContext` — so a selector keyed
+ * on one could not be called at all on that path, and the session would be
+ * stamped with whatever `makeEvaluationTemporalContext` defaults to. Reading
+ * ONE field off the request context is also what gives every child session in a
+ * multi-pathway run the same version (§1).
+ *
+ * The seam is a **server-owned plain string field**, not a callback and not a
+ * mutable module global: `DataSourceContext.temporalPolicyVersion`, populated in
+ * `index.ts` from deployment config. There is deliberately **no call-count
+ * assertion** anywhere — for a string field, reading it once or three times is
+ * not a behavioral difference; the property that matters is that every child
+ * carries the same injected value, and that is asserted against persisted rows.
+ *
+ * Call it immediately before `makeEvaluationTemporalContext` in both start
+ * paths — the position `assertKnownPolicyVersion` already occupies, for the
+ * same reason.
+ */
+export function resolveTemporalPolicyVersion(ctx: DataSourceContext): string {
+  const injected = ctx?.temporalPolicyVersion;
+  const version = injected ?? DEFAULT_TEMPORAL_POLICY_VERSION;
+  // A misconfigured deployment must fail loudly, never fall back to "latest"
+  // or silently to legacy — the registry's second rule (§5).
+  assertKnownPolicyVersion(version);
+  return version;
+}
 
 // ─── Graph Context Builder ──────────────────────────────────────────
 
@@ -538,12 +582,44 @@ export function makeLlmGateEvaluator(
  * Pull the sweepable temporal conditions out of a loaded graph.
  *
  * Reads node properties defensively rather than through `GateProperties`:
- * these come straight from AGE as untyped JSON, `horizon`/`status` are not on
- * `CodedCondition` yet (Plan 06 adds them), and a malformed node must not
- * crash the preflight — Plan 04's adapter is where a bad condition is
- * rejected properly.
+ * these come straight from AGE as untyped JSON, and a malformed *node* must not
+ * crash the preflight.
+ *
+ * **A malformed override is a different matter, and the two versions differ
+ * (D1, P1-15, P1-18).** Under `legacy-v0` the raw value is copied through and
+ * the cascade validates it downstream — which already rejects session creation
+ * today, but only when `encounterStart` is absent, because
+ * `assertEncounterAnchor` returns early otherwise. That conditional rejection
+ * is current behavior and is preserved byte-for-byte. Under `v1` the override
+ * goes through `parseConditionOverride`, the same parser the evaluator uses, so
+ * preflight and evaluation cannot disagree about the same pathway.
+ *
+ * **Neither path catches parser errors.** Swallowing them would turn requests
+ * that are rejected today into successes.
+ *
+ * Exported for plan 04 Task 7's preflight/evaluation agreement test, which
+ * compares the swept field and override against the adapter's for the same
+ * condition. `assertEncounterAnchor` cannot serve that test: it returns `void`
+ * and throws only when an anchor is missing, so it exposes neither value. Not
+ * intended for production callers outside this module.
+ *
+ * **`codeMap` is required, and is `rctx.codeMap`.** Under `v1` an attribute
+ * condition is adapted by the real `adaptAttributeCondition`, which needs it to
+ * turn `lab.a1c` into a `(code, system)` pair — and which returns `null` when
+ * there is no row, exactly as the evaluator sees it. Passing an empty map here
+ * would make every mapped `lab.*` / `allergy.*` condition vanish from preflight;
+ * omitting the parameter is not possible, which is the point.
  */
-function sweepableConditions(nodes: readonly GraphNode[]): SweepableCondition[] {
+export function sweepableConditions(
+  nodes: readonly GraphNode[],
+  version: string,
+  codeMap: AttributeCodeMap,
+): SweepableCondition[] {
+  // A CAPABILITY lookup, not `version !== DEFAULT_TEMPORAL_POLICY_VERSION`.
+  // That constant is the DEPLOYMENT default; using it as the "is this legacy?"
+  // test meant flipping it to `v1` — the rollout action — would have given `v1`
+  // this legacy branch and `legacy-v0` the kernel one.
+  const isV1 = usesKernelEvaluation(version);
   const out: SweepableCondition[] = [];
 
   for (const node of nodes) {
@@ -585,31 +661,72 @@ function sweepableConditions(nodes: readonly GraphNode[]): SweepableCondition[] 
     raw.forEach((c, i) => {
       if (!c || typeof c !== 'object') return;
       const cond = c as Record<string, unknown>;
-      const field = cond.field;
-      // Attribute conditions have `attribute`, not `field`, and are not swept
-      // because they never resolve a horizon: `resolveAttribute` reads the
-      // PatientContext arrays directly and Plan 04 rewrites only the coded
-      // branches onto the kernel. Sweeping them would reject sessions for
-      // gates that cannot need an anchor.
+      const label = `${node.nodeIdentifier} / condition ${i}`;
+
+      if (!isV1) {
+        // legacy-v0: byte-for-byte today's extraction. Coded conditions only,
+        // an unknown field is silently skipped, the raw override value is
+        // copied, and the cascade validates it downstream — conditionally.
+        // Widening any of this would stop a pathway that starts today.
+        const field = cond.field;
+        if (typeof field !== 'string') return;
+        if (!Object.prototype.hasOwnProperty.call(FIELD_TO_KIND, field)) return;
+
+        const entry: SweepableCondition = { label, field: field as GateField };
+        const override: ConditionTemporalOverride = {};
+        if (cond.horizon !== undefined) override.horizon = cond.horizon as never;
+        if (cond.status !== undefined) override.status = cond.status as never;
+        if (Object.keys(override).length > 0) entry.override = override;
+        out.push(entry);
+        return;
+      }
+
+      // v1 coded: run the SAME adapter evaluation runs, so preflight rejects
+      // exactly what the runtime would (round 7 P1-22). Skipping an unknown
+      // field here while `toFactSelectionCondition` throws on it is a
+      // preflight/evaluation divergence in the other direction — the pathway
+      // imports, passes preflight, and dies mid-traversal. Errors propagate.
+      if (typeof cond.field === 'string') {
+        const adapted = adaptCodedCondition(cond as unknown as CodedCondition, label);
+        const entry: SweepableCondition = { label, field: adapted.selection.field };
+        if (adapted.override !== undefined) entry.override = adapted.override;
+        out.push(entry);
+        return;
+      }
+
+      // v1 attribute: run the SAME adapter evaluation runs, exactly as the
+      // coded branch above runs `adaptCodedCondition`.
       //
-      // NOTE — this is NOT because attribute conditions are timeless. The
-      // registry's namespaces are lab / vitals / allergy / patient
-      // (attribute-registry.ts:27), so only `patient.*` is genuinely
-      // encounter-derived; a `lab.a1c > 9` attribute gate reads the same
-      // clinical data a coded labs gate does, with no temporal filtering at
-      // all. Tracked as a known gap, parked on Plan 04.
-      if (typeof field !== 'string') return;
-      if (!Object.prototype.hasOwnProperty.call(FIELD_TO_KIND, field)) return;
+      // **R11-2 claimed this was structurally impossible and was WRONG.** It
+      // reasoned that the sweep has no `codeMap` in scope. It does:
+      // `ResolutionContext.codeMap` is loaded by `buildResolutionContext` for
+      // every resolution, and `assertEncounterAnchor` already receives the whole
+      // `rctx` — the map was one field away. Deriving the cascade key from the
+      // NAMESPACE alone made preflight decide something evaluation does not:
+      // `adaptAttributeCondition` returns `null` for an attribute with no
+      // `codeMap` row, the evaluator falls back to `resolveAttribute`, and no
+      // temporal policy is resolved at all. So `lab.unmapped` with
+      // `horizon: ENCOUNTER` threw MISSING_ENCOUNTER_ANCHOR here and evaluated as
+      // an ordinary unsatisfied gate — one condition, two answers, which is
+      // locked decision #7.
+      //
+      // A `null` adaptation is therefore NOT the P1-8 hole reopening: it is the
+      // sweep agreeing with the evaluator that this condition is not routable
+      // through the kernel. A MAPPED `lab.*` still sweeps, which is the case
+      // P1-8 was about. And P1-18 survives because the adapter parses the NODE
+      // override BEFORE its code lookup, so a malformed override on an unmapped
+      // attribute still rejects here — pinned by test, not assumed.
+      const attribute = cond.attribute;
+      if (typeof attribute !== 'string') return;
+      const adaptedAttr = adaptAttributeCondition(
+        cond as unknown as AttributeCondition,
+        codeMap,
+        label,
+      );
+      if (adaptedAttr === null) return;
 
-      const override: ConditionTemporalOverride = {};
-      if (cond.horizon !== undefined) override.horizon = cond.horizon as never;
-      if (cond.status !== undefined) override.status = cond.status as never;
-
-      const entry: SweepableCondition = {
-        label: `${node.nodeIdentifier} / condition ${i}`,
-        field: field as GateField,
-      };
-      if (Object.keys(override).length > 0) entry.override = override;
+      const entry: SweepableCondition = { label, field: adaptedAttr.selection.field };
+      if (adaptedAttr.override !== undefined) entry.override = adaptedAttr.override;
       out.push(entry);
     });
   }
@@ -635,13 +752,59 @@ export function assertEncounterAnchor(
   // to be present.
   getTemporalPolicy(temporalCtx.temporalPolicyVersion);
 
-  if (temporalCtx.encounterStart) return;
+  const version = temporalCtx.temporalPolicyVersion;
 
+  // Capability, not identity against the deployment default — the same
+  // correction as in `sweepableConditions`, and it MUST agree with it: a version
+  // whose sweep and preflight disagreed would parse conditions one way and
+  // resolve anchors the other.
+  if (!usesKernelEvaluation(version)) {
+    // EXACTLY today's flow. The early return must stay AHEAD of the sweep: the
+    // sweep's raw override copy is validated downstream by the cascade, so
+    // moving it earlier would start rejecting malformed overrides on sessions
+    // that succeed today (P1-15).
+    if (temporalCtx.encounterStart) return;
+    throwIfAnchorsMissing(
+      collectEncounterAnchorRequirements(
+        sweepableConditions(rctx.graphContext.allNodes, version, rctx.codeMap),
+        version,
+        rctx.temporalDefaults,
+      ),
+    );
+    return;
+  }
+
+  // v1: validate every condition regardless of the anchor (P1-18), and RESOLVE
+  // every swept policy (round 7 P1-21). Both steps must run unconditionally.
+  //
+  // Parsing alone is not enough: it proves the horizon grammar is well formed,
+  // not that the policy resolves. Rules like "labs have no clinical state, so a
+  // status is meaningless" live in `resolveEffectivePolicy`, which only
+  // `collectEncounterAnchorRequirements` reaches — so returning before that
+  // call left them unenforced whenever an anchor happened to be present, and
+  // the throw landed mid-traversal instead. Errors propagate from here.
   const required = collectEncounterAnchorRequirements(
-    sweepableConditions(rctx.graphContext.allNodes),
-    temporalCtx.temporalPolicyVersion,
+    sweepableConditions(rctx.graphContext.allNodes, version, rctx.codeMap),
+    version,
     rctx.temporalDefaults,
   );
+
+  // ONLY the missing-anchor error is suppressed by an anchor — that is the one
+  // thing an anchor actually satisfies.
+  if (temporalCtx.encounterStart) return;
+  throwIfAnchorsMissing(required);
+}
+
+/**
+ * Raise the missing-anchor error, if any requirement went unsatisfied.
+ *
+ * Takes the ALREADY-RESOLVED requirements rather than resolving them itself:
+ * resolution enforces cascade rules beyond the anchor (round 7 P1-21), so it
+ * must happen before the caller decides whether an anchor lets it skip the
+ * throw. A helper that both resolved and threw could only be called in the
+ * position where its side effect is skippable.
+ */
+function throwIfAnchorsMissing(required: EncounterAnchorRequirement[]): void {
   if (required.length === 0) return;
 
   const detail = required.map((r) => `${r.label} (${r.field}, from ${r.level})`).join('; ');

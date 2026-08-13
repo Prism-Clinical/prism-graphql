@@ -15,7 +15,10 @@ import {
   AnswerType,
   AttributeCodeMap,
 } from './types';
-import { evaluateGate, LlmGateEvaluator } from './gate-evaluator';
+import { assertEngineCodeMap, evaluateGate, LlmGateEvaluator } from './gate-evaluator';
+import type { GateEvaluationDeps } from './gate-evaluator';
+import type { PathwayTemporalDefaults } from './temporal/cascade';
+import type { FactStore } from './temporal/fact-model';
 import { EvaluationTemporalContext } from './temporal/evaluation-context';
 
 // ─── Helpers ──────────────────────────────────────────────────────────
@@ -80,13 +83,57 @@ export class RetraversalEngine {
     private thresholds: { autoResolveThreshold: number; suggestThreshold: number },
     /** The pinned clock read back off the session — never re-stamped here. */
     private temporalContext: EvaluationTemporalContext,
+    /**
+     * The PATHWAY tier of the horizon/status cascade (`rctx.temporalDefaults`).
+     * Required, and fourth for the same reason `temporalContext` is third.
+     *
+     * A retraversal that fell back to system defaults would re-decide gates
+     * the original traversal resolved against pathway defaults — the same
+     * preflight/evaluation divergence P1-10 describes, only across time.
+     */
+    private pathwayDefaults: PathwayTemporalDefaults,
+    /**
+     * The normalized facts the `v1` kernel selects from, RE-ASSEMBLED by the
+     * resolver from `buildEffectivePatientContext` under this session's stored
+     * clock (plan 04 Task 9, locked decision #5). `[]` under `legacy-v0`.
+     *
+     * Facts are not persisted (plan 05b), so this store is rebuilt on every
+     * entry point; plan 05 decision 5 — identical input yields identical
+     * `factId`s — is what makes that sound. Required, and positioned before the
+     * optionals, for the same reason as on `TraversalEngine`.
+     */
+    private factStore: FactStore,
+    /**
+     * The attribute namespace/system/code registry (`rctx.codeMap`). REQUIRED
+     * and positioned before the optionals, for the same reason as on
+     * `TraversalEngine` — see there (R11-4). A retraversal that lost the map
+     * would re-decide every attribute gate as a quiet `false` against the same
+     * facts its creating traversal satisfied them on.
+     */
+    private codeMap: AttributeCodeMap,
     private llmGateEvaluator?: LlmGateEvaluator,
-    private codeMap: AttributeCodeMap = new Map(),
-  ) {}
+  ) {
+    assertEngineCodeMap(codeMap, 'RetraversalEngine');
+  }
 
-  /** The pinned clock as epoch ms, for the operator implementations. */
-  private evaluationNowMs(): number {
-    return Date.parse(this.temporalContext.evaluationAsOf);
+  /** The dependencies every gate in this retraversal is evaluated with. */
+  private gateDeps(
+    patientContext: PatientContext,
+    resolutionState: Map<string, NodeResult>,
+    gateAnswers: Map<string, GateAnswer>,
+    gateId: string,
+  ): GateEvaluationDeps {
+    return {
+      temporalContext: this.temporalContext,
+      pathwayDefaults: this.pathwayDefaults,
+      factStore: this.factStore,
+      patientContext,
+      resolutionState,
+      gateAnswers,
+      gateId,
+      llmEvaluator: this.llmGateEvaluator,
+      codeMap: this.codeMap,
+    };
   }
 
   async retraverse(
@@ -158,13 +205,7 @@ export class RetraversalEngine {
         if (gateProps) {
           const gateResult = await evaluateGate(
             gateProps,
-            patientContext,
-            resolutionState,
-            gateAnswers,
-            nodeId,
-            this.llmGateEvaluator,
-            this.evaluationNowMs(),
-            this.codeMap,
+            this.gateDeps(patientContext, resolutionState, gateAnswers, nodeId),
           );
           if (gateResult.tentative && !gateAnswers.has(nodeId)) {
             // LLM gate fell below threshold: route safe-default, but surface

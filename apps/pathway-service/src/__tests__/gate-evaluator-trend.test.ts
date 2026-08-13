@@ -6,9 +6,11 @@
 
 import { evaluateGate } from '../services/resolution/gate-evaluator';
 import { GateType } from '../services/resolution/types';
+import { makeEvaluationTemporalContext } from '../services/resolution/temporal/evaluation-context';
 import type { PatientContext } from '../services/confidence/types';
 
-const NOW = Date.parse('2026-06-27T00:00:00Z');
+const AS_OF = '2026-06-27T00:00:00.000Z';
+const NOW = Date.parse(AS_OF);
 
 function daysAgo(n: number): string {
   return new Date(NOW - n * 86_400_000).toISOString();
@@ -25,6 +27,11 @@ function ctx(overrides: Partial<PatientContext> = {}): PatientContext {
   };
 }
 
+/**
+ * Plan 04 Task 3 replaced the positional parameter list with one deps object
+ * (D6); the pinned clock now travels in `temporalContext`. Only the call shape
+ * changed — every assertion below is unchanged.
+ */
 async function run(condition: Record<string, unknown>, c: PatientContext) {
   return evaluateGate(
     {
@@ -33,12 +40,17 @@ async function run(condition: Record<string, unknown>, c: PatientContext) {
       default_behavior: 'skip',
       condition: condition as never,
     },
-    c,
-    new Map(),
-    new Map(),
-    undefined,
-    undefined,
-    NOW,
+    {
+      temporalContext: makeEvaluationTemporalContext({ evaluationAsOf: AS_OF }),
+      pathwayDefaults: {},
+      factStore: [],
+      // Required from review finding 3 on (R11-4). Empty: these gates evaluate no
+      // attribute condition, and an empty registry is a legitimate deployment.
+      codeMap: new Map(),
+      patientContext: c,
+      resolutionState: new Map(),
+      gateAnswers: new Map(),
+    },
   );
 }
 
