@@ -154,11 +154,34 @@ export type EvaluationMode = (typeof EVALUATION_MODES)[number];
  * Kernel evaluation reads an assembled fact store; legacy evaluation must NOT
  * have one assembled, because assembling it validates (P1-9).
  *
- * One function, so the two halves of a version's routing cannot be stated
- * separately and therefore cannot disagree.
+ * A TABLE, not `mode === 'kernel'`. The predicate form answered `false` for
+ * every mode it had never heard of, so adding a third mode forced an evaluator
+ * entry — the coverage check sees to that — but **silently granted it an empty
+ * fact store**. A kernel-like third mode would have evaluated against no facts
+ * and every gate would have quietly answered `false`, which is the failure this
+ * whole capability layer exists to make impossible.
+ *
+ * `Record<EvaluationMode, boolean>` makes the omission a COMPILE error: add a
+ * mode to `EVALUATION_MODES` and this object stops type-checking until the new
+ * mode declares what it needs. The runtime throw below covers a mode arriving
+ * from outside the type, which `tsconfig` cannot police (it is not full strict
+ * and excludes `src/__tests__`).
  */
+const MODE_REQUIRES_FACT_STORE: Record<EvaluationMode, boolean> = {
+  legacy: false,
+  kernel: true,
+};
+
 export function modeRequiresFactStore(mode: EvaluationMode): boolean {
-  return mode === 'kernel';
+  const required = MODE_REQUIRES_FACT_STORE[mode];
+  if (typeof required !== 'boolean') {
+    throw new TemporalContextError(
+      `evaluation mode "${mode}" declares no fact-store requirement ` +
+        `(known: ${EVALUATION_MODES.join(', ')})`,
+      'UNKNOWN_POLICY_VERSION',
+    );
+  }
+  return required;
 }
 
 /** The full capability row implied by a mode. A version declares only the mode. */
@@ -190,6 +213,16 @@ export const TEMPORAL_POLICY_CAPABILITIES: Readonly<
 // authors; this binds the module load. A version that reaches production
 // without capabilities must never be resolvable, and a mode outside the
 // vocabulary must never reach the evaluator table's keys.
+for (const mode of EVALUATION_MODES) {
+  if (typeof MODE_REQUIRES_FACT_STORE[mode] !== 'boolean') {
+    throw new TemporalContextError(
+      `evaluation mode "${mode}" is in the vocabulary but declares no fact-store ` +
+        `requirement — every mode must state what it needs`,
+      'UNKNOWN_POLICY_VERSION',
+    );
+  }
+}
+
 for (const version of KNOWN_TEMPORAL_POLICY_VERSIONS) {
   if (!Object.prototype.hasOwnProperty.call(TEMPORAL_POLICY_CAPABILITIES, version)) {
     throw new TemporalContextError(

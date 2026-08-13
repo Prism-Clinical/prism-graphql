@@ -984,8 +984,9 @@ function evaluateAttributeKernel(
   // therefore reach `compareScalar` as `undefined` for `exists` alone; every
   // other operator still gets the boolean, because `equals false` genuinely
   // needs it. Keyed on the AUTHOR's operator, not on the selection operator:
-  // the selection operator is `includes_code` for every membership attribute
-  // and carries no trace of what the author asked.
+  // the selection operator is `equals` for every membership attribute
+  // (`condition-adapter.ts`, `ATTRIBUTE_SELECTION_OPERATOR.membership`) and
+  // carries no trace of what the author asked.
   const klass = operatorClass(adapted.selection.operator);
   const value =
     klass === 'membership'

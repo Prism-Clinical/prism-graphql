@@ -486,6 +486,7 @@ that separately from whether it matches.*
   | R14-1 — absent allergy vs attribute `exists` | 1314 | 9 | 1323 | 100 / 102 |
   | R14-2 — evaluator selected from the capability | 1331 | 9 | 1340 | 101 / 103 |
   | R14 queue (R14-3…8) — docs only, must not move | 1331 | 9 | 1340 | 101 / 103 |
+  | Round-15 fix (`modeRequiresFactStore` table) | 1335 | 9 | 1344 | 101 / 103 |
 
   R14-2's delta is +17 passed / +17 total / +1 suite: **16 added** in the new
   `evaluator-selected-by-capability.test.ts` and **1 added** to the seam suite

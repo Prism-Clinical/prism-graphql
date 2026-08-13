@@ -35,10 +35,13 @@ jest.mock('../../resolvers/Query', () => ({
 import {
   KNOWN_TEMPORAL_POLICY_VERSIONS,
   TEMPORAL_POLICY_CAPABILITIES,
+  EVALUATION_MODES,
+  modeRequiresFactStore,
   policyCapabilities,
   usesKernelEvaluation,
   requiresFactStore,
 } from '../../services/resolution/temporal/policy-registry';
+import { TemporalContextError } from '../../services/resolution/temporal/evaluation-context';
 import {
   CONDITION_EVALUATORS,
   assertConditionEvaluatorCoverage,
@@ -287,5 +290,55 @@ describe.each([
     // legacy-v0 returns early on the supplied anchor and never parses it —
     // today's behavior, frozen by locked decision #1.
     expect(results.legacy).toBeNull();
+  });
+});
+
+/**
+ * Round 15 — a new evaluation mode silently defaulted to NO fact store.
+ *
+ * `modeRequiresFactStore` was `return mode === 'kernel'`. The evaluator table's
+ * coverage check forces a new mode to register an evaluator, so a third mode
+ * could not route nowhere — but nothing forced it to state what it NEEDS, and
+ * the predicate answered `false` for every mode it had never heard of. A
+ * kernel-like third mode would therefore have evaluated against an empty fact
+ * store and answered `false` for every gate, silently: exactly the failure the
+ * capability layer exists to prevent, arriving through the one door it left open.
+ *
+ * The real fix is the `Record<EvaluationMode, boolean>` — adding a mode to
+ * `EVALUATION_MODES` now stops the table type-checking until it declares its
+ * requirement. That is a COMPILE-time guarantee and cannot be asserted from
+ * here: `tsconfig` excludes `src/__tests__` with `diagnostics: false`, so a
+ * test file proves nothing about types. What IS testable is the runtime half —
+ * the load-time coverage loop and the throw — so that is what these pin.
+ */
+describe('every evaluation mode must declare its fact-store requirement (round 15)', () => {
+  it('covers every mode in the vocabulary — no mode falls through to a default', () => {
+    for (const mode of EVALUATION_MODES) {
+      expect(typeof modeRequiresFactStore(mode)).toBe('boolean');
+    }
+  });
+
+  it('states the two current modes explicitly, and in opposite directions', () => {
+    // Opposite directions matter: a table that answered the same for both would
+    // pass a coverage check while meaning nothing.
+    expect(modeRequiresFactStore('kernel')).toBe(true);
+    expect(modeRequiresFactStore('legacy')).toBe(false);
+  });
+
+  it('throws for a mode outside the vocabulary rather than answering false', () => {
+    // The old predicate answered `false` here — an unknown mode got the legacy
+    // treatment silently. `tsconfig` cannot police a value arriving from
+    // outside the type, so this must be a runtime throw.
+    expect(() => modeRequiresFactStore('quantum' as never)).toThrow(TemporalContextError);
+    expect(() => modeRequiresFactStore('quantum' as never)).toThrow(/fact-store requirement/i);
+  });
+
+  it('agrees with every registered version capability row', () => {
+    // The derivation and the published rows cannot drift: one is computed from
+    // the other, and this asserts they actually are.
+    for (const version of KNOWN_TEMPORAL_POLICY_VERSIONS) {
+      const caps = policyCapabilities(version);
+      expect(caps.requiresFactStore).toBe(modeRequiresFactStore(caps.evaluationMode));
+    }
   });
 });
