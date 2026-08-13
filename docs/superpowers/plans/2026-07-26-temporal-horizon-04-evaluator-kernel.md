@@ -415,6 +415,29 @@ and gets the matching fact store **with no evaluator registered for it
 anywhere**. Built as a fixture module under `isolateModules`; the real tables are
 frozen and are never mutated.
 
+**The other six findings are recorded, not fixed.**
+
+- **R14-3** (answering an opening question deletes its guarded subtree) and
+  **R14-4** (retraversal ignores `default_behavior`) join
+  `2026-08-12-gate-subtree-retraversal.md`, retitled **Retraversal fidelity** —
+  they are the same family as the stale-subtree defect it already described:
+  retraversal producing a different or less complete result than initial
+  traversal. Verifying them turned up two further divergences between the two
+  engines, recorded there.
+- **R14-5** (question-gate answer contracts unenforced), **R14-6** (retraversal
+  red flags never reconciled — the highest-severity item, a live
+  clinical-workflow bug with no workaround) and **R14-7** (multi-pathway creation
+  can leave orphan child sessions) get a new home:
+  `2026-08-12-resolution-subsystem-gaps.md`.
+- **R14-8** (attribute mappings required but not session-pinned) is recorded in
+  "What later plans now owe" at the end of this file, because plan 04 is what
+  raised its stakes.
+
+All six are pre-existing and were **verified against the code, not accepted from
+the review**. Plan 04's diff touches some of the same files, but only to thread
+temporal deps — every decisive line is byte-identical on `main`. Several of the
+findings were subtly wrong as filed; the corrections are recorded beside each.
+
 **Class note.** R14-1 is a new class: **a derived value that is faithful to the
 legacy path and wrong at the boundary that consumes it.** Every previous round
 asked whether `v1` matched `legacy-v0`; none asked whether the thing both agreed
@@ -462,6 +485,7 @@ that separately from whether it matches.*
   | `CONDITION_EVALUATORS` frozen | 1306 | 9 | 1315 | 100 / 102 |
   | R14-1 — absent allergy vs attribute `exists` | 1314 | 9 | 1323 | 100 / 102 |
   | R14-2 — evaluator selected from the capability | 1331 | 9 | 1340 | 101 / 103 |
+  | R14 queue (R14-3…8) — docs only, must not move | 1331 | 9 | 1340 | 101 / 103 |
 
   R14-2's delta is +17 passed / +17 total / +1 suite: **16 added** in the new
   `evaluator-selected-by-capability.test.ts` and **1 added** to the seam suite
@@ -1521,3 +1545,38 @@ Carried forward explicitly so none of it is lost when this branch merges:
 - **`window_days` has no authoring-time domain (→ plan 06).** `-5` imports cleanly. `v1` rejects it at session creation via `parseConditionOverride` → `parseHorizonValue`; `legacy-v0` never validates it at all, because the legacy sweep does not put `window_days` in the override. Deliberately **not** added to `conditionControlDomainError`: `parseHorizonValue` owns that rule, and a second copy at the import boundary is the two-places-to-disagree shape locked decision #7 forbids. The canonicalizer can warn and migrate instead of throwing.
 - **Plan 04b** — `satisfaction_check.lookback_days` (`prerequisites.ts`), the second
   temporal filter no cascade level governs. Out of scope here (D4), still unowned.
+- **Attribute mappings are required but NOT session-pinned (R14-8).** *(Round 14.
+  Verified, not reasoned about.)* A session pins its clock and its policy version
+  and nothing else: `EvaluationTemporalContext` is exactly `evaluationAsOf`,
+  `encounterStart?`, `snapshotId?`, `snapshotCapturedAt?`, `timezone`,
+  `temporalPolicyVersion` (`temporal/evaluation-context.ts:72-84`, and migration
+  063 documents that column as precisely that list). The attribute code map is
+  none of those: `attribute-code-map.ts:4-13` is a **process-wide `let cache`
+  with no TTL, no version and no invalidation** beyond a test hook, and migration
+  062 gives `pathway_attribute_code_map` a bare `attribute_name` primary key with
+  no version or `updated_at` to refresh against. `buildResolutionContext`
+  (`resolution-context.ts:311-321`) reads that cache afresh on every traversal
+  **and every retraversal** (`resolution.ts:180/368/500/773`), so a retraversal
+  binds whatever its pod happens to hold rather than what the original traversal
+  used. During a rolling deploy or a mapping migration, two pods evaluate the
+  same attribute against different mappings, and one session can be retraversed
+  against a mapping it was never resolved under.
+
+  **The cache is pre-existing; this plan raised the stakes.** Plan 04 made
+  `codeMap` a required, asserted engine input (R11-4) — but the assert is
+  `codeMap instanceof Map` (`gate-evaluator.ts:1635`), so an **empty** map passes
+  deliberately, and a *stale or divergent* one passes for the same reason. The
+  plan hardened against a MISSING map, not a WRONG one, and the failure mode it
+  documents for the missing case is exactly the one a changed mapping produces:
+  "a quiet false, which is indistinguishable at the audit row from a patient who
+  has no such fact" (`gate-evaluator.ts:38-41`). Under `v1`, `codeMap` decides
+  which fact every `lab.*` / `allergy.*` attribute gate selects, so this is a
+  clinical-decision input that is neither pinned nor versioned.
+
+  **Fix direction:** version the registry (an `updated_at` or a content hash on
+  the mapping table) and pin the version/hash on the session beside
+  `temporalPolicyVersion`, refusing or flagging a retraversal against a different
+  one — or snapshot the mappings a session actually used, the way `snapshotId`
+  already handles clinical data. **Do NOT** simply add a TTL: a shorter window of
+  disagreement is still disagreement, and it would make the divergence
+  intermittent instead of correlated with deploys.
