@@ -1023,6 +1023,21 @@ type RedFlagType {
   type: String!
   description: String!
   branches: [RedFlagBranchType!]
+  """
+  True once a clinician has considered this flag, judged it still true, and
+  accepted it. Care-plan generation stops blocking on it. Set through
+  acknowledgeRedFlag / cleared through unacknowledgeRedFlag.
+  """
+  acknowledged: Boolean!
+  """
+  The actor the acknowledging request ASSERTED (AD-1: caller-supplied
+  x-user-id, not an authenticated identity). Audit signal, never authorization.
+  """
+  acknowledgedBy: String
+  """ISO-8601 instant the acknowledgment was recorded."""
+  acknowledgedAt: String
+  """The clinical justification given for accepting the flag."""
+  acknowledgementReason: String
 }
 
 type RedFlagBranchType {
@@ -1662,6 +1677,22 @@ type Mutation {
   overrideNode(sessionId: ID!, nodeId: ID!, action: OverrideAction!, reason: String): ResolutionSession!
   answerGateQuestion(sessionId: ID!, gateId: ID!, answer: GateAnswerInput!): ResolutionSession!
   addPatientContext(sessionId: ID!, additionalContext: AdditionalContextInput!): ResolutionSession!
+  """
+  Accept a red flag that is genuinely still true, so it stops blocking
+  care-plan generation. A clinical override: a non-blank `reason` is required
+  and every call writes a `red_flag_acknowledged` resolution event.
+
+  `nodeId` + `flagType` identify the flag — one node can carry more than one.
+
+  NOT role-gated. Under AD-1 the caller's role and id come from unverified
+  headers, so the asserted actor is recorded and enforced nowhere.
+  """
+  acknowledgeRedFlag(sessionId: ID!, nodeId: ID!, flagType: String!, reason: String!): ResolutionSession!
+  """
+  Reverse an acknowledgment, restoring the generation blocker. Same required
+  reason; writes a `red_flag_unacknowledged` resolution event.
+  """
+  unacknowledgeRedFlag(sessionId: ID!, nodeId: ID!, flagType: String!, reason: String!): ResolutionSession!
   generateCarePlanFromResolution(sessionId: ID!): CarePlanGenerationResult!
   abandonSession(sessionId: ID!, reason: String): ResolutionSession!
 

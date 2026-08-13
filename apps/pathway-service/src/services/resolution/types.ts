@@ -300,7 +300,26 @@ export interface RedFlag {
   type: RedFlagType;
   description: string;
   branches?: RedFlagBranch[];
+  /**
+   * A clinician has considered this flag, judged it still true, and accepted
+   * it. `care-plan-generator.ts` stops blocking generation on it.
+   *
+   * A CLINICAL OVERRIDE, not a UI dismissal — hence the three fields below and
+   * an audited mutation on each side of the transition. Carried across
+   * re-derivation by `reconcileRedFlags`, so a retraversal that re-emits the
+   * same flag does not resurrect it unacknowledged.
+   */
   acknowledged?: boolean;
+  /**
+   * The actor the request ASSERTED. Under AD-1 `userId` comes from an
+   * unverified `x-user-id` header, so this is a record of a claim, never
+   * proof of one, and nothing downstream may treat it as authorization.
+   */
+  acknowledgedBy?: string;
+  /** ISO-8601 instant the acknowledgment was recorded. */
+  acknowledgedAt?: string;
+  /** The clinical justification. Required by the mutation, non-blank. */
+  acknowledgementReason?: string;
 }
 
 // ─── Resolution Event ───────────────────────────────────────────────

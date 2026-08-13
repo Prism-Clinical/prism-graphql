@@ -32,6 +32,7 @@ import type { ResolutionSession, RetraversalResult } from '../../services/resolu
 import {
   reconcileRedFlags,
   reconcilePendingQuestions,
+  isRedFlagType,
   RED_FLAG_TYPES,
 } from '../../services/resolution/red-flags';
 import type { EvaluationTemporalContext } from '../../services/resolution/temporal/evaluation-context';
@@ -93,6 +94,111 @@ function requireSessionTemporalContext(session: ResolutionSession): EvaluationTe
     );
   }
   return session.temporalContext;
+}
+
+/**
+ * The shared body of `acknowledgeRedFlag` / `unacknowledgeRedFlag`.
+ *
+ * A red flag is identified by (nodeId, flagType) — the same key
+ * `reconcileRedFlags` uses, and for the same reason: it is what stays stable
+ * when the flag is re-derived. Node ID alone is not enough, because
+ * `TraversalEngine` can raise both `all_branches_excluded` and
+ * `missing_critical_data`, and one acknowledgment must not silence the other.
+ *
+ * Every guard here is a runtime throw rather than a type: `src/__tests__` is
+ * excluded from `tsconfig`, so a type constrains no caller that matters.
+ */
+async function setRedFlagAcknowledgement(
+  args: { sessionId: string; nodeId: string; flagType: string; reason: string },
+  context: DataSourceContext,
+  acknowledged: boolean,
+) {
+  const { pool } = context;
+
+  if (!isRedFlagType(args.flagType)) {
+    throw new GraphQLError(
+      `"${args.flagType}" is not a known red flag type (expected one of: ${RED_FLAG_TYPES.join(', ')})`,
+      { extensions: { code: 'BAD_USER_INPUT' } },
+    );
+  }
+  const reason = (args.reason ?? '').trim();
+  if (reason.length === 0) {
+    throw new GraphQLError(
+      'A reason is required: acknowledging a red flag is a clinical override, not a UI dismissal',
+      { extensions: { code: 'BAD_USER_INPUT' } },
+    );
+  }
+
+  const session = await getSession(pool, args.sessionId);
+  if (!session) {
+    throw new GraphQLError('Session not found', { extensions: { code: 'NOT_FOUND' } });
+  }
+  if (session.status !== SessionStatus.ACTIVE && session.status !== SessionStatus.DEGRADED) {
+    throw new GraphQLError(`Cannot modify session with status "${session.status}"`, {
+      extensions: { code: 'BAD_USER_INPUT' },
+    });
+  }
+
+  const target = session.redFlags.find(
+    f => f.nodeId === args.nodeId && f.type === args.flagType,
+  );
+  if (!target) {
+    throw new GraphQLError(
+      `No red flag of type "${args.flagType}" on node "${args.nodeId}" in this session`,
+      { extensions: { code: 'NOT_FOUND' } },
+    );
+  }
+
+  const previouslyAcknowledgedBy = target.acknowledgedBy;
+  const previouslyAcknowledged = target.acknowledged === true;
+
+  session.redFlags = session.redFlags.map(f => {
+    if (f !== target) return f;
+    if (!acknowledged) {
+      // Clear the metadata with the mark. A stale `acknowledgedBy` on an
+      // un-acknowledged flag reads as an acceptance that is still in force.
+      const { acknowledgedBy, acknowledgedAt, acknowledgementReason, ...rest } = f;
+      void acknowledgedBy; void acknowledgedAt; void acknowledgementReason;
+      return { ...rest, acknowledged: false };
+    }
+    return {
+      ...f,
+      acknowledged: true,
+      // Asserted, not verified — see the mutation comment (AD-1).
+      acknowledgedBy: context.userId,
+      acknowledgedAt: new Date().toISOString(),
+      acknowledgementReason: reason,
+    };
+  });
+
+  await updateSession(pool, args.sessionId, { redFlags: session.redFlags }, session.updatedAt);
+
+  // Audited through the same `pathway_resolution_events` mechanism every other
+  // resolution mutation uses, so the override lands in one trail, not a new one.
+  await logEvent(pool, args.sessionId, {
+    eventType: acknowledged ? 'red_flag_acknowledged' : 'red_flag_unacknowledged',
+    triggerData: {
+      nodeId: args.nodeId,
+      flagType: args.flagType,
+      reason,
+      // Prefixed `asserted` so no later reader mistakes either for an
+      // authenticated identity: both come from unverified headers (AD-1).
+      assertedActorId: context.userId,
+      assertedActorRole: context.userRole,
+      previouslyAcknowledged,
+      previouslyAcknowledgedBy,
+    },
+    nodesRecomputed: 0,
+    statusChanges: [],
+  });
+
+  const updated = await getSession(pool, args.sessionId);
+  if (!updated) {
+    throw new GraphQLError('Failed to retrieve updated session', {
+      extensions: { code: 'INTERNAL_SERVER_ERROR' },
+    });
+  }
+  return formatSessionForGraphQL(updated);
 }
 
 /**
@@ -919,6 +1025,50 @@ export const resolutionMutations = {
       });
     }
     return formatSessionForGraphQL(updated);
+  },
+
+  /**
+   * Accept a red flag that is genuinely still true.
+   *
+   * Reconciliation removes STALE flags; this is the other half. A flag that
+   * still holds and that the clinician has considered and accepted otherwise
+   * blocks care-plan generation forever (`care-plan-generator.ts` blocks on
+   * every unacknowledged flag), which was the dead end §1 of the gaps document
+   * describes.
+   *
+   * NOT ROLE-GATED, DELIBERATELY, AND THIS IS NOT A SECURITY BOUNDARY.
+   * Under AD-1 (`docs/AUTHORIZATION_DEBT.md`) `userRole` is read straight off
+   * an unverified `x-user-role` header that defaults to `PROVIDER`, and
+   * `userId` off `x-user-id` with a dev default. A role check here would
+   * secure nothing — any client satisfies it by sending one header — and would
+   * break the encounter simulator, which sends neither. So the asserted actor
+   * is RECORDED on the flag and in the audit row, and enforced nowhere. When
+   * AD-1 lands and the identity is derived from a verified token, this is
+   * where the check goes.
+   */
+  async acknowledgeRedFlag(
+    _parent: unknown,
+    args: { sessionId: string; nodeId: string; flagType: string; reason: string },
+    context: DataSourceContext,
+  ) {
+    return setRedFlagAcknowledgement(args, context, true);
+  },
+
+  /**
+   * Reverse an acknowledgment.
+   *
+   * Present because acknowledging is one-way otherwise: an acknowledgment
+   * entered against the wrong flag would permanently unblock a live safety
+   * finding with no API-level remedy — the same shape of dead end as the bug
+   * this whole change fixes, only pointing the other way. Same required
+   * reason, same audit row, distinct event type.
+   */
+  async unacknowledgeRedFlag(
+    _parent: unknown,
+    args: { sessionId: string; nodeId: string; flagType: string; reason: string },
+    context: DataSourceContext,
+  ) {
+    return setRedFlagAcknowledgement(args, context, false);
   },
 
   async generateCarePlanFromResolution(

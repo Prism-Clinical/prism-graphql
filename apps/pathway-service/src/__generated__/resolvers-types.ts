@@ -820,6 +820,17 @@ export type Mutation = {
   /** Mark a multi-pathway session ABANDONED. */
   abandonMultiPathwaySession: MultiPathwayResolutionSession;
   abandonSession: ResolutionSession;
+  /**
+   * Accept a red flag that is genuinely still true, so it stops blocking
+   * care-plan generation. A clinical override: a non-blank `reason` is required
+   * and every call writes a `red_flag_acknowledged` resolution event.
+   *
+   * `nodeId` + `flagType` identify the flag — one node can carry more than one.
+   *
+   * NOT role-gated. Under AD-1 the caller's role and id come from unverified
+   * headers, so the asserted actor is recorded and enforced nowhere.
+   */
+  acknowledgeRedFlag: ResolutionSession;
   /** Activate a DRAFT pathway, making it available for patient matching. */
   activatePathway: PathwayStatusResult;
   addAdminEvidence: AdminEvidenceEntry;
@@ -908,6 +919,11 @@ export type Mutation = {
    */
   startMultiPathwayResolution: MultiPathwayResolutionSession;
   startResolution: ResolutionSession;
+  /**
+   * Reverse an acknowledgment, restoring the generation blocker. Same required
+   * reason; writes a `red_flag_unacknowledged` resolution event.
+   */
+  unacknowledgeRedFlag: ResolutionSession;
   updateSignalDefinition: SignalDefinitionType;
 };
 
@@ -920,6 +936,14 @@ export type MutationAbandonMultiPathwaySessionArgs = {
 
 export type MutationAbandonSessionArgs = {
   reason?: InputMaybe<Scalars['String']['input']>;
+  sessionId: Scalars['ID']['input'];
+};
+
+
+export type MutationAcknowledgeRedFlagArgs = {
+  flagType: Scalars['String']['input'];
+  nodeId: Scalars['ID']['input'];
+  reason: Scalars['String']['input'];
   sessionId: Scalars['ID']['input'];
 };
 
@@ -1083,6 +1107,14 @@ export type MutationStartResolutionArgs = {
   resolutionMode?: InputMaybe<ResolutionModeInput>;
   sessionId?: InputMaybe<Scalars['ID']['input']>;
   snapshotId?: InputMaybe<Scalars['ID']['input']>;
+};
+
+
+export type MutationUnacknowledgeRedFlagArgs = {
+  flagType: Scalars['String']['input'];
+  nodeId: Scalars['ID']['input'];
+  reason: Scalars['String']['input'];
+  sessionId: Scalars['ID']['input'];
 };
 
 
@@ -1500,6 +1532,21 @@ export type RedFlagBranchType = {
 
 export type RedFlagType = {
   __typename?: 'RedFlagType';
+  /**
+   * True once a clinician has considered this flag, judged it still true, and
+   * accepted it. Care-plan generation stops blocking on it. Set through
+   * acknowledgeRedFlag / cleared through unacknowledgeRedFlag.
+   */
+  acknowledged: Scalars['Boolean']['output'];
+  /** ISO-8601 instant the acknowledgment was recorded. */
+  acknowledgedAt?: Maybe<Scalars['String']['output']>;
+  /**
+   * The actor the acknowledging request ASSERTED (AD-1: caller-supplied
+   * x-user-id, not an authenticated identity). Audit signal, never authorization.
+   */
+  acknowledgedBy?: Maybe<Scalars['String']['output']>;
+  /** The clinical justification given for accepting the flag. */
+  acknowledgementReason?: Maybe<Scalars['String']['output']>;
   branches?: Maybe<Array<RedFlagBranchType>>;
   description: Scalars['String']['output'];
   nodeId: Scalars['ID']['output'];
@@ -2751,6 +2798,7 @@ export type MultiPathwayResolutionSessionSummaryResolvers<ContextType = DataSour
 export type MutationResolvers<ContextType = DataSourceContext, ParentType extends ResolversParentTypes['Mutation'] = ResolversParentTypes['Mutation']> = ResolversObject<{
   abandonMultiPathwaySession?: Resolver<ResolversTypes['MultiPathwayResolutionSession'], ParentType, ContextType, RequireFields<MutationAbandonMultiPathwaySessionArgs, 'sessionId'>>;
   abandonSession?: Resolver<ResolversTypes['ResolutionSession'], ParentType, ContextType, RequireFields<MutationAbandonSessionArgs, 'sessionId'>>;
+  acknowledgeRedFlag?: Resolver<ResolversTypes['ResolutionSession'], ParentType, ContextType, RequireFields<MutationAcknowledgeRedFlagArgs, 'flagType' | 'nodeId' | 'reason' | 'sessionId'>>;
   activatePathway?: Resolver<ResolversTypes['PathwayStatusResult'], ParentType, ContextType, RequireFields<MutationActivatePathwayArgs, 'id'>>;
   addAdminEvidence?: Resolver<ResolversTypes['AdminEvidenceEntry'], ParentType, ContextType, RequireFields<MutationAddAdminEvidenceArgs, 'input'>>;
   addPatientContext?: Resolver<ResolversTypes['ResolutionSession'], ParentType, ContextType, RequireFields<MutationAddPatientContextArgs, 'additionalContext' | 'sessionId'>>;
@@ -2778,6 +2826,7 @@ export type MutationResolvers<ContextType = DataSourceContext, ParentType extend
   setSignalWeight?: Resolver<ResolversTypes['SignalWeight'], ParentType, ContextType, RequireFields<MutationSetSignalWeightArgs, 'input'>>;
   startMultiPathwayResolution?: Resolver<ResolversTypes['MultiPathwayResolutionSession'], ParentType, ContextType, RequireFields<MutationStartMultiPathwayResolutionArgs, 'patientId'>>;
   startResolution?: Resolver<ResolversTypes['ResolutionSession'], ParentType, ContextType, RequireFields<MutationStartResolutionArgs, 'pathwayId' | 'patientId'>>;
+  unacknowledgeRedFlag?: Resolver<ResolversTypes['ResolutionSession'], ParentType, ContextType, RequireFields<MutationUnacknowledgeRedFlagArgs, 'flagType' | 'nodeId' | 'reason' | 'sessionId'>>;
   updateSignalDefinition?: Resolver<ResolversTypes['SignalDefinitionType'], ParentType, ContextType, RequireFields<MutationUpdateSignalDefinitionArgs, 'id' | 'input'>>;
 }>;
 
@@ -2945,6 +2994,10 @@ export type RedFlagBranchTypeResolvers<ContextType = DataSourceContext, ParentTy
 }>;
 
 export type RedFlagTypeResolvers<ContextType = DataSourceContext, ParentType extends ResolversParentTypes['RedFlagType'] = ResolversParentTypes['RedFlagType']> = ResolversObject<{
+  acknowledged?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType>;
+  acknowledgedAt?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  acknowledgedBy?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  acknowledgementReason?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   branches?: Resolver<Maybe<Array<ResolversTypes['RedFlagBranchType']>>, ParentType, ContextType>;
   description?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   nodeId?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;

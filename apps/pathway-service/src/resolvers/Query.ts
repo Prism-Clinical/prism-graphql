@@ -132,6 +132,13 @@ export function formatSessionForGraphQL(session: ResolutionSession) {
         confidence: b.confidence,
         topExcludeReason: b.topExcludeReason ?? null,
       })) ?? null,
+      // Was projected nowhere, so a client could not see the acknowledgment
+      // state, could not act on it, and generation stayed blocked with no
+      // visible cause.
+      acknowledged: f.acknowledged === true,
+      acknowledgedBy: f.acknowledgedBy ?? null,
+      acknowledgedAt: f.acknowledgedAt ?? null,
+      acknowledgementReason: f.acknowledgementReason ?? null,
     })),
     resolutionEvents: (session.resolutionEvents ?? []).map(formatEventForGraphQL),
     ddiWarnings: ((session.ddiWarnings ?? []) as Array<Record<string, unknown>>).map(formatDdiWarningForGraphQL),
@@ -744,6 +751,12 @@ export const Query = {
           confidence: b.confidence,
           topExcludeReason: b.topExcludeReason ?? null,
         })) ?? null,
+        // See `formatSessionForGraphQL` — the state must be readable for the
+        // acknowledge mutation to be usable.
+        acknowledged: f.acknowledged === true,
+        acknowledgedBy: f.acknowledgedBy ?? null,
+        acknowledgedAt: f.acknowledgedAt ?? null,
+        acknowledgementReason: f.acknowledgementReason ?? null,
       }));
     },
 
