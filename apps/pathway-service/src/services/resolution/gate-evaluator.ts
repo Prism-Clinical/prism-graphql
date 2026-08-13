@@ -969,14 +969,29 @@ function evaluateAttributeKernel(
     };
   }
 
-  // Membership derives a BOOLEAN — always one, never `undefined`, exactly as
-  // `allergies.some(...)` does today, so `exists` on an allergy stays satisfied
-  // whether or not the allergy is present. Scalar derives the numeric value of
-  // the single definitely-latest fact, or `undefined` when nothing matched.
+  // Membership derives a BOOLEAN — exactly as `allergies.some(...)` does today,
+  // so `allergy.penicillin == false` keeps meaning "the patient does NOT have
+  // this allergy". Scalar derives the numeric value of the single
+  // definitely-latest fact, or `undefined` when nothing matched.
+  //
+  // **`exists` is the one operator that cannot read the boolean.**
+  // `compareScalar` defines `exists` as `resolved !== undefined`
+  // (`scalar-compare.ts:11-13`), so a derived `false` reads as PRESENT and
+  // `allergy.peanut exists` fires for a patient with no peanut allergy — a
+  // false positive on an allergy, and a violation of D3's own contract that an
+  // attribute `exists` is "satisfied by a non-empty `selected`". Absence must
+  // therefore reach `compareScalar` as `undefined` for `exists` alone; every
+  // other operator still gets the boolean, because `equals false` genuinely
+  // needs it. Keyed on the AUTHOR's operator, not on the selection operator:
+  // the selection operator is `includes_code` for every membership attribute
+  // and carries no trace of what the author asked.
   const klass = operatorClass(adapted.selection.operator);
   const value =
     klass === 'membership'
-      ? outcome.status === 'READY'
+      ? // `undefined` ONLY for `exists`, and only when nothing matched.
+        outcome.status !== 'READY' && condition.operator === 'exists'
+        ? undefined
+        : outcome.status === 'READY'
       : outcome.status === 'READY'
         ? scalarValueOf(outcome.selected[0])
         : undefined;

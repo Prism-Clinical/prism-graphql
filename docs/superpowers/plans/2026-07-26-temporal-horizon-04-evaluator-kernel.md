@@ -331,6 +331,69 @@ protocols — the D9 shape. Four things the decision text did not settle:
 
 ---
 
+## Round 14 — external review
+
+Eight findings. Two land in this plan's own code and are fixed below; five are
+**pre-existing defects in the resolution subsystem that this branch never
+touched** and are queued rather than fixed (two into
+`2026-08-12-gate-subtree-retraversal.md`, three into
+`2026-08-12-resolution-subsystem-gaps.md`); one is a carry-forward recorded at
+the end of this file.
+
+**[R14-1] P1 — an ABSENT allergy satisfied an attribute `exists` gate. FIXED.**
+D3 routes `allergy.*` as exact-code **membership**, and `evaluateAttributeKernel`
+derived a boolean from the selection before handing it to `compareScalar`.
+`compareScalar` defines `exists` as `resolved !== undefined`
+(`scalar-compare.ts:11-13`), so a derived `false` read as PRESENT:
+`allergy.peanut exists` fired for a patient with no peanut allergy — a false
+positive on an allergy, and a violation of D3's own text, which says an attribute
+`exists` is "satisfied by a **non-empty** `selected`".
+
+The fix is **operator-aware at the derivation site**, not in `compareScalar` and
+not a blanket `undefined`: a membership `NO_MATCH` becomes `undefined` for
+`exists` and stays `false` for every other operator, because
+`allergy.peanut equals false` means "the patient does NOT have this allergy" and
+legitimately needs the boolean. It keys on the AUTHOR's operator — the selection
+operator is `includes_code` for every membership attribute and carries no trace
+of what the author asked.
+
+`lab.*` and `vitals.*` were **checked rather than assumed**: both derive a
+number, `undefined` already flows on `NO_MATCH`, and both directions are now
+pinned so the shape cannot regress into them.
+
+**Two things the review's framing got wrong, both verified against the code:**
+
+1. **It is not confined to this branch.** `resolveAttribute`'s allergy resolver
+   returns `ctx.allergies.some(...)` — a boolean, never `undefined`
+   (`attribute-registry.ts:39-46`) — and `attribute-registry.ts` and
+   `scalar-compare.ts` are **unmodified by this branch**. So `legacy-v0`, and
+   `main`, satisfy `allergy.X exists` for a patient with no such allergy today.
+   The kernel route reproduced a pre-existing defect; it did not introduce one.
+2. **The fix therefore CREATES a `v1` delta**, and the live behaviour is the
+   unfixed one, because nothing routes to `v1` yet. Fixing
+   `attribute-registry.ts` was rejected: it would change `legacy-v0`, which this
+   plan preserves byte-for-byte and whose preservation is the branch's headline
+   evidence. The legacy half is queued in
+   `2026-08-12-resolution-subsystem-gaps.md` and pinned here in both directions
+   (`is a DISCLOSED v1 delta: legacy-v0 still reports the absent allergy as
+   present`), so the divergence is deliberate and visible rather than discovered
+   at the flip. **Task 10's delta list gains it.**
+
+**[R14-2] P2 — the evaluator was still selected from a parallel version-keyed
+table. FIXED.** See the `CONDITION_EVALUATORS` note at Task 3.
+
+**Class note.** R14-1 is a new class: **a derived value that is faithful to the
+legacy path and wrong at the boundary that consumes it.** Every previous round
+asked whether `v1` matched `legacy-v0`; none asked whether the thing both agreed
+on was correct. The plan's own comment at the derivation site *stated* the defect
+as an intended property ("so `exists` on an allergy stays satisfied whether or
+not the allergy is present") and no round read it as a bug, because parity was
+the only test being applied. *Before round 15: for every place `v1` deliberately
+reproduces a `legacy-v0` answer, state what the answer MEANS clinically and check
+that separately from whether it matches.*
+
+---
+
 ## Global Constraints
 
 - **Branch:** `feat/temporal-horizon-evaluator-kernel`, worktree `/home/claude/workspace/features/feat-temporal-horizon-evaluator-kernel/prism-graphql`, from `origin/main` at `d6f51fd`.
@@ -364,6 +427,16 @@ protocols — the D9 shape. Four things the decision text did not settle:
   | Review finding 5 — AttributeCondition temporal fields | 1302 | 9 | 1311 | 100 / 102 |
   | P1-A pinned (stale subtree) — assertions only, must not move | 1302 | 9 | 1311 | 100 / 102 |
   | `CONDITION_EVALUATORS` frozen | 1306 | 9 | 1315 | 100 / 102 |
+  | R14-1 — absent allergy vs attribute `exists` | 1314 | 9 | 1323 | 100 / 102 |
+
+  R14-1's delta is +8 passed / +8 total / no suite change: **8 added**, all in
+  the new `an absent membership attribute does not satisfy exists` block of
+  `attribute-condition-kernel.test.ts` — the reproduction, its `equals
+  false`/`equals true` companions, the present-allergy direction, the
+  `legacy-v0` divergence pin, and the three `lab.*`/`vitals.*` pins that show
+  the numeric namespaces never had the defect. **No `expect(` removed and no
+  test modified** — one COMMENT was corrected in an adjacent test, whose
+  assertions are untouched.
 
   The freeze delta is +4 passed / +4 total, all in the new "the condition
   evaluator table cannot be mutated after load" block. No suite added. The
@@ -1296,7 +1369,7 @@ describe('the pathway-default cascade, proven behaviorally (moved from Task 3, P
 **Files:** `docs/superpowers/plans/2026-07-26-temporal-horizon-00-overview.md`, `docs/superpowers/specs/2026-07-21-pathway-temporal-horizon-design.md` (§6, §10, Compatibility), `temporal/select-facts.ts` (comment)
 
 - [ ] **Step 1: Prove `legacy-v0` is untouched.** The evidence is that **every pre-existing gate-evaluator and traversal test passes with unmodified assertions** — only call shapes changed. Run the full suite, diff against the last row of the baseline table. Any assertion that had to be weakened is a seam bug; fix the seam, not the test.
-- [ ] **Step 2: Enumerate the `v1` deltas** in Compatibility, from the tests that pin them: validity filtering, latest-vs-first scalar selection, equal-time ambiguity, future-date exclusion, horizon filtering of membership, vitals membership becoming satisfiable — **but NOT vitals `count_in_window`, which D8 makes a permanent zero under `v1` because every vital is undated and the vitals horizon is always bounded; disclose that instead, pinned by `makes a VITALS count always zero under v1`** — **and the attribute-specific deltas** — `lab.*`/`vitals.*`/`allergy.*` gaining horizon and validity filtering, and attribute `exists` becoming exact-code rather than any-fact. **Record R12-1/R12-2 — the signals this plan produces have no reader.** `indeterminate` and `uncertainty` are produced on every `v1` gate result and dropped whole by both engines, so after Task 9 the only persisted trace of an indeterminate gate is `excludeReason` prose — and that carrier is asymmetric: AND joins the condition reasons, OR emits the literal `'No compound conditions satisfied'`. **An OR compound refused for uncertainty is recorded byte-identically to one where the patient had none of the codes.** Disposition: **both** halves apply — Task 10 discloses it here, AND plan 08 must read the flag rather than the prose, which is why it is produced. Plan 08 owns `GateEvaluationEvidence`; this is the evidence it exists to carry. Do NOT fix by changing the OR prose — reason strings stay byte-identical to legacy's. **Record the undated-observation delta (D7)**: a scalar or series gate over an undated fact plus any other candidate is `AMBIGUOUS_LATEST` and fails closed, where `legacy-v0` picked the first array element and decided. This is the delta most likely to surprise, because the simulator's lab `date` is optional. **Record coded `exists` explicitly as a NON-delta** — it keeps bucket semantics under `v1`, ignoring `value` and `system` exactly as today, with authoring-time rejection deferred to plan 06 (round 6, P1). An audit that lists only deltas hides the operator where a delta was proposed and deliberately rejected, which is how it would get reintroduced.
+- [ ] **Step 2: Enumerate the `v1` deltas** in Compatibility, from the tests that pin them: validity filtering, latest-vs-first scalar selection, equal-time ambiguity, future-date exclusion, horizon filtering of membership, vitals membership becoming satisfiable — **but NOT vitals `count_in_window`, which D8 makes a permanent zero under `v1` because every vital is undated and the vitals horizon is always bounded; disclose that instead, pinned by `makes a VITALS count always zero under v1`** — **and the attribute-specific deltas** — `lab.*`/`vitals.*`/`allergy.*` gaining horizon and validity filtering, and attribute `exists` becoming exact-code rather than any-fact. **Add R14-1's delta:** an attribute `exists` on a MEMBERSHIP namespace (`allergy.*`) is now unsatisfied when the mapped allergy is absent, where `legacy-v0` reports it PRESENT — `resolveAttribute` returns `allergies.some(...)`, a boolean that is never `undefined`, and `compareScalar` reads `exists` as `resolved !== undefined`. The legacy half is a pre-existing defect, queued in `2026-08-12-resolution-subsystem-gaps.md` and deliberately not fixed here; `lab.*`/`vitals.*` are unaffected because they derive a number. **Record R12-1/R12-2 — the signals this plan produces have no reader.** `indeterminate` and `uncertainty` are produced on every `v1` gate result and dropped whole by both engines, so after Task 9 the only persisted trace of an indeterminate gate is `excludeReason` prose — and that carrier is asymmetric: AND joins the condition reasons, OR emits the literal `'No compound conditions satisfied'`. **An OR compound refused for uncertainty is recorded byte-identically to one where the patient had none of the codes.** Disposition: **both** halves apply — Task 10 discloses it here, AND plan 08 must read the flag rather than the prose, which is why it is produced. Plan 08 owns `GateEvaluationEvidence`; this is the evidence it exists to carry. Do NOT fix by changing the OR prose — reason strings stay byte-identical to legacy's. **Record the undated-observation delta (D7)**: a scalar or series gate over an undated fact plus any other candidate is `AMBIGUOUS_LATEST` and fails closed, where `legacy-v0` picked the first array element and decided. This is the delta most likely to surprise, because the simulator's lab `date` is optional. **Record coded `exists` explicitly as a NON-delta** — it keeps bucket semantics under `v1`, ignoring `value` and `system` exactly as today, with authoring-time rejection deferred to plan 06 (round 6, P1). An audit that lists only deltas hides the operator where a delta was proposed and deliberately rejected, which is how it would get reintroduced.
 - [ ] **Step 3: Revise design §10 (P2-13).** §589 says "Attribute conditions get no horizon control (encounter-derived, no timeline)." That is now false for the three clinical namespaces and true only for `patient.*`. Update it, and note that §590's fixed-Encounter vitals control is what makes the attribute anchor sweep (P1-8) mandatory.
 - [ ] **Step 4: Correct `select-facts.ts:58`.** Its comment claims the candidate rules make `legacy-v0` "genuinely behavior-preserving." They mirror the current evaluator's *candidate* rules only; validity, ordering, and vitals bucketing still differ. Rewrite it to say what it actually guarantees.
 - [ ] **Step 5: State the shadow boundary (P2-13).** Retaining `evaluateConditionLegacy` is a *precondition* for shadow evaluation, not shadow evaluation. Nothing in this plan runs both paths or diffs them; the rollout change owns that, along with retiring the legacy path.

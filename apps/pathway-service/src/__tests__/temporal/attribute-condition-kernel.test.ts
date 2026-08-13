@@ -404,7 +404,9 @@ describe('absent target with an unrelated fact present', () => {
     );
     expect(r.satisfied).toBe(false);
     // Membership derivation yields a BOOLEAN even when nothing matched, exactly
-    // as legacy's `allergies.some(...)` does — never `undefined`.
+    // as legacy's `allergies.some(...)` does. That holds for every operator
+    // EXCEPT `exists`, which reads presence rather than the boolean — see the
+    // `exists` suite below.
     expect(r.reason).toBe('false != true');
   });
 
@@ -435,6 +437,122 @@ describe('absent target with an unrelated fact present', () => {
     const gate = gateFor({ attribute: 'astrology.rising_sign', operator: 'exists', value: '' });
     const r = await evaluateGate(gate, deps('v1'));
     expect(r.satisfied).toBe(false);
+  });
+});
+
+// ─── `exists` on a membership attribute (D3's exact-code contract) ─────
+
+/**
+ * D3 says an attribute `exists` "becomes an exact-code membership selection
+ * **satisfied by a non-empty `selected`**". The membership derivation produced a
+ * boolean for every operator, and `compareScalar` reads `exists` as
+ * `resolved !== undefined` (`scalar-compare.ts:11-13`) — so a derived `false`
+ * read as PRESENT and `allergy.peanut exists` fired for a patient with no such
+ * allergy. A false positive on an allergy, in the worst direction.
+ *
+ * The derivation is therefore operator-aware, and the boundary is narrow: only
+ * `exists` distinguishes "absent" from "false". `equals false` means "the
+ * patient does NOT have this allergy" and legitimately needs the boolean, so
+ * both sides are pinned against one store.
+ *
+ * `lab.*` and `vitals.*` derive a NUMBER and were checked rather than assumed —
+ * `undefined` already flows on NO_MATCH there, and the two pins below keep it so.
+ */
+describe('an absent membership attribute does not satisfy exists', () => {
+  const existsGate = gateFor({ attribute: 'allergy.penicillin', operator: 'exists', value: '' });
+  // Nothing matching the mapped code: one unrelated allergy, expressed for both
+  // versions of the same clinical reality.
+  const noPenicillin = {
+    patientContext: patient({ allergies: [{ code: '1191', system: 'RXNORM' }] }),
+    factStore: [allergyFact('a1', '1191')],
+  };
+  const hasPenicillin = {
+    patientContext: patient({ allergies: [{ code: PENICILLIN_CODE, system: 'RXNORM' }] }),
+    factStore: [allergyFact('a1', PENICILLIN_CODE)],
+  };
+
+  it('is unsatisfied when the mapped allergy is absent', async () => {
+    const r = await evaluateGate(existsGate, deps('v1', noPenicillin));
+    expect(r.satisfied).toBe(false);
+    expect(r.reason).toBe('attribute is absent');
+    expect(r.indeterminate).toBe(false);
+  });
+
+  it('is satisfied when the mapped allergy is present', async () => {
+    const r = await evaluateGate(existsGate, deps('v1', hasPenicillin));
+    expect(r.satisfied).toBe(true);
+    expect(r.reason).toBe('attribute is present');
+  });
+
+  it('still lets `equals false` mean "does NOT have this allergy"', async () => {
+    // The constraint that makes the fix operator-aware rather than a blanket
+    // `undefined`: this author asked for absence and must get `false`, not the
+    // "attribute has no value" that `undefined` produces.
+    const gate = gateFor({ attribute: 'allergy.penicillin', operator: 'equals', value: false });
+    const r = await evaluateGate(gate, deps('v1', noPenicillin));
+    expect(r.satisfied).toBe(true);
+    expect(r.reason).toBe('false == false');
+  });
+
+  it('still lets `equals true` mean "has this allergy"', async () => {
+    const gate = gateFor({ attribute: 'allergy.penicillin', operator: 'equals', value: true });
+    const r = await evaluateGate(gate, deps('v1', hasPenicillin));
+    expect(r.satisfied).toBe(true);
+    expect(r.reason).toBe('true == true');
+  });
+
+  it('is a DISCLOSED v1 delta: legacy-v0 still reports the absent allergy as present', async () => {
+    // `resolveAttribute`'s allergy resolver returns `allergies.some(...)` — a
+    // boolean, never `undefined` — so `legacy-v0` (and `main`) satisfy this
+    // gate for a patient with no penicillin allergy. That is the SAME defect,
+    // pre-existing and untouched here: fixing `attribute-registry.ts` would
+    // change `legacy-v0`, which this plan preserves byte-for-byte. Queued in
+    // `2026-08-12-resolution-subsystem-gaps.md`, pinned here so the divergence
+    // is deliberate and visible rather than discovered at the v1 flip.
+    const legacy = await evaluateGate(existsGate, deps('legacy-v0', noPenicillin));
+    expect(legacy.satisfied).toBe(true);
+    expect(legacy.reason).toBe('attribute is present');
+  });
+
+  it('derives undefined for an absent lab, so exists is unsatisfied there too', async () => {
+    const gate = gateFor({ attribute: 'lab.a1c', operator: 'exists', value: '' });
+    const shared = {
+      patientContext: patient({
+        labResults: [{ code: '718-7', system: 'LOINC', value: 12, date: NEWER_IN_QUARTER }],
+      }),
+      factStore: [labFact('l1', '718-7', NEWER_IN_QUARTER, 12)],
+    };
+    const v1 = await evaluateGate(gate, deps('v1', shared));
+    const legacy = await evaluateGate(gate, deps('legacy-v0', shared));
+    expect(v1.satisfied).toBe(false);
+    expect(v1.reason).toBe('attribute is absent');
+    // Scalar namespaces never had the defect: both versions agree.
+    expect(legacy.satisfied).toBe(false);
+    expect(legacy.reason).toBe('attribute is absent');
+  });
+
+  it('derives undefined for an absent vital, so exists is unsatisfied there too', async () => {
+    const gate = gateFor({ attribute: 'vitals.systolic_bp', operator: 'exists', value: '' });
+    const shared = {
+      patientContext: patient({ vitalSigns: { heart_rate: 190 } }),
+      factStore: [undatedVital('v1f', 'heart_rate', 190)],
+    };
+    const v1 = await evaluateGate(gate, deps('v1', shared));
+    const legacy = await evaluateGate(gate, deps('legacy-v0', shared));
+    expect(v1.satisfied).toBe(false);
+    expect(v1.reason).toBe('attribute is absent');
+    expect(legacy.satisfied).toBe(false);
+    expect(legacy.reason).toBe('attribute is absent');
+  });
+
+  it('is satisfied for a present vital, so the fix did not invert the operator', async () => {
+    const gate = gateFor({ attribute: 'vitals.systolic_bp', operator: 'exists', value: '' });
+    const r = await evaluateGate(
+      gate,
+      deps('v1', { factStore: [undatedVital('v1f', 'systolic_bp', 148)] }),
+    );
+    expect(r.satisfied).toBe(true);
+    expect(r.reason).toBe('attribute is present');
   });
 });
 
