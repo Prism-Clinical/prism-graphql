@@ -166,7 +166,14 @@ const CLOCK_V1 = makeEvaluationTemporalContext({
   evaluationAsOf: PINNED,
   temporalPolicyVersion: 'v1',
 });
-const CLOCK_LEGACY = makeEvaluationTemporalContext({ evaluationAsOf: PINNED });
+// Pinned, not inherited. This used to get legacy-v0 from
+// DEFAULT_TEMPORAL_POLICY_VERSION; when that default moved to v1 the constant
+// kept its name and silently changed meaning, so every "under legacy-v0"
+// assertion built on it was really running the kernel.
+const CLOCK_LEGACY = makeEvaluationTemporalContext({
+  evaluationAsOf: PINNED,
+  temporalPolicyVersion: 'legacy-v0',
+});
 
 /**
  * The constructor position `factStore` occupies on both engines: after the
@@ -369,7 +376,7 @@ describe('legacy-v0 never invokes the assembler (P1-9)', () => {
           resolutionMode: 'SYNTHETIC',
           patientContext: INVERTED,
         } as never,
-        gqlContext(undefined, 'ADMIN'),
+        gqlContext('legacy-v0', 'ADMIN'),
       ),
     ).resolves.toBeDefined();
 
@@ -381,7 +388,7 @@ describe('legacy-v0 never invokes the assembler (P1-9)', () => {
       resolutionMutations.startResolution(
         null as never,
         { pathwayId: 'pw-1', patientId: 'pt-1', patientContext: MALFORMED_DATE } as never,
-        gqlContext(),
+        gqlContext('legacy-v0'),
       ),
     ).resolves.toBeDefined();
 
@@ -419,7 +426,7 @@ describe('legacy-v0 never invokes the assembler (P1-9)', () => {
     await resolutionMutations.startResolution(
       null as never,
       { pathwayId: 'pw-1', patientId: 'pt-1', patientContext: PAYLOAD } as never,
-      gqlContext(),
+      gqlContext('legacy-v0'),
     );
 
     expect(traversalCtor).toHaveBeenCalledTimes(1);
@@ -431,7 +438,7 @@ describe('legacy-v0 never invokes the assembler (P1-9)', () => {
     await resolutionMutations.overrideNode(
       undefined,
       { sessionId: 'session-1', nodeId: 'node-1', action: OverrideAction.EXCLUDE, reason: 'r' },
-      gqlContext(),
+      gqlContext('legacy-v0'),
     );
     expect(storeAt(retraversalCtor)).toEqual([]);
 
@@ -446,7 +453,7 @@ describe('legacy-v0 never invokes the assembler (P1-9)', () => {
     await resolutionMutations.answerGateQuestion(
       undefined,
       { sessionId: 'session-1', gateId: 'gate-1', answer: { booleanValue: true } },
-      gqlContext(),
+      gqlContext('legacy-v0'),
     );
     expect(storeAt(retraversalCtor)).toEqual([]);
 
@@ -458,7 +465,7 @@ describe('legacy-v0 never invokes the assembler (P1-9)', () => {
         sessionId: 'session-1',
         additionalContext: { labResults: [{ code: '718-7', system: 'LOINC', value: 9.1 }] },
       },
-      gqlContext(),
+      gqlContext('legacy-v0'),
     );
     expect(storeAt(retraversalCtor)).toEqual([]);
 
@@ -471,7 +478,7 @@ describe('legacy-v0 never invokes the assembler (P1-9)', () => {
     await multiPathwayResolutionMutations.startMultiPathwayResolution(
       null as never,
       { patientId: 'pt-1', patientContext: PAYLOAD } as never,
-      gqlContext(),
+      gqlContext('legacy-v0'),
     );
 
     expect(traversalCtor).toHaveBeenCalledTimes(1);
@@ -835,13 +842,13 @@ describe('retraversal reuses the stored clock', () => {
 // ─────────────────────────────────────────────────────────────────────
 
 describe('the policy selector is request-scoped and server-side (P2-12, P1-14, P1-19)', () => {
-  it('defaults to legacy-v0 when the deployment sets nothing', async () => {
+  it('defaults to v1 when the deployment sets nothing', async () => {
     await resolutionMutations.startResolution(
       null as never,
       { pathwayId: 'pw-1', patientId: 'pt-1', patientContext: PAYLOAD } as never,
       gqlContext(),
     );
-    expect(persistedVersionOf(mockedCreateSession as unknown as jest.Mock)).toBe('legacy-v0');
+    expect(persistedVersionOf(mockedCreateSession as unknown as jest.Mock)).toBe('v1');
   });
 
   it('stamps the INJECTED version on the zero-match path', async () => {
@@ -850,13 +857,15 @@ describe('the policy selector is request-scoped and server-side (P2-12, P1-14, P
     await multiPathwayResolutionMutations.startMultiPathwayResolution(
       null as never,
       { patientId: 'pt-1', patientContext: PAYLOAD } as never,
-      gqlContext('v1'),
+      gqlContext('legacy-v0'),
     );
 
-    // Asserting v1, not legacy-v0: makeEvaluationTemporalContext already
-    // defaults to legacy-v0, so a test asserting the default would pass whether
-    // or not the selector ran at all.
-    expect(persistedVersionOf(mockedCreateMp as unknown as jest.Mock)).toBe('v1');
+    // Asserting legacy-v0, not v1: the injected version must DIFFER from
+    // DEFAULT_TEMPORAL_POLICY_VERSION or this test passes whether or not the
+    // selector ran at all. That constant used to be legacy-v0 and this test
+    // injected v1 for exactly this reason; the default is now v1, so the roles
+    // swap. The property being guarded is unchanged — injection beats default.
+    expect(persistedVersionOf(mockedCreateMp as unknown as jest.Mock)).toBe('legacy-v0');
   });
 
   it('gives every child session the injected version, not merely equal ones', async () => {
@@ -918,13 +927,20 @@ describe('the policy selector is request-scoped and server-side (P2-12, P1-14, P
         pathwayId: 'pw-1',
         patientId: 'pt-1',
         patientContext: PAYLOAD,
-        temporalPolicyVersion: 'v1',
+        // Must differ from DEFAULT_TEMPORAL_POLICY_VERSION, or "the request was
+        // ignored" and "the request was honoured" produce the same result. The
+        // default moved from legacy-v0 to v1, so the request now asks for
+        // legacy-v0; the property under test — server-owned beats
+        // client-supplied — is unchanged.
+        temporalPolicyVersion: 'legacy-v0',
       } as never,
       gqlContext(),
     );
 
-    expect(persistedVersionOf(mockedCreateSession as unknown as jest.Mock)).toBe('legacy-v0');
-    expect(mockedAssemble).not.toHaveBeenCalled();
+    expect(persistedVersionOf(mockedCreateSession as unknown as jest.Mock)).toBe('v1');
+    // Corollary: the server's v1 really took effect, so the assembler ran —
+    // it would not have under the legacy-v0 the request asked for.
+    expect(mockedAssemble).toHaveBeenCalled();
   });
 
   it('ignores a temporalPolicyVersion supplied on the multi-pathway request', async () => {
@@ -932,11 +948,13 @@ describe('the policy selector is request-scoped and server-side (P2-12, P1-14, P
 
     await multiPathwayResolutionMutations.startMultiPathwayResolution(
       null as never,
-      { patientId: 'pt-1', patientContext: PAYLOAD, temporalPolicyVersion: 'v1' } as never,
+      // Same inversion as the single-pathway sibling above: the request asks
+      // for the NON-default so that being ignored is observable.
+      { patientId: 'pt-1', patientContext: PAYLOAD, temporalPolicyVersion: 'legacy-v0' } as never,
       gqlContext(),
     );
 
-    expect(persistedVersionOf(mockedCreateMp as unknown as jest.Mock)).toBe('legacy-v0');
+    expect(persistedVersionOf(mockedCreateMp as unknown as jest.Mock)).toBe('v1');
   });
 
   it('refuses a deployment configured with an unknown version', async () => {

@@ -132,6 +132,10 @@ describe('evaluateGate requires an explicit clock', () => {
         patientContext: pc,
         temporalContext: makeEvaluationTemporalContext({
           evaluationAsOf: '2027-06-27T00:00:00.000Z',
+          // Must match the deps('legacy-v0') above. This override replaces the
+          // whole context, so an unpinned version here silently overrode the
+          // pinned one and ran the kernel under a legacy-v0 test name.
+          temporalPolicyVersion: 'legacy-v0',
         }),
       }),
     );

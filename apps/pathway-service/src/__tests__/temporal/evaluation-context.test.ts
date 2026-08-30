@@ -170,8 +170,12 @@ describe('makeEvaluationTemporalContext', () => {
     const c = makeEvaluationTemporalContext();
     expect(c.evaluationAsOf).toBe('2026-07-30T12:00:00.000Z');
     expect(c.timezone).toBe('UTC');
+    // The property under test is that the context INHERITS the default, which
+    // is what the line above asserts. What the default happens to be is owned
+    // by temporal/policy-default.test.ts, which pins it by evaluation-mode
+    // capability rather than by string — a stronger guard, and one that does
+    // not have to be edited every time the default moves.
     expect(c.temporalPolicyVersion).toBe(DEFAULT_TEMPORAL_POLICY_VERSION);
-    expect(DEFAULT_TEMPORAL_POLICY_VERSION).toBe('legacy-v0');
   });
 
   it('honors a caller-supplied evaluationAsOf verbatim and ignores the wall clock', () => {

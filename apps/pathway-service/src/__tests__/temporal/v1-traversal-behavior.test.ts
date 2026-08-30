@@ -217,12 +217,17 @@ describe('the pathway-default cascade, proven behaviorally (moved from Task 3, P
   it('is a v1-only delta — legacy-v0 admits the old lab with or without the default', async () => {
     // The Task 3 note, pinned: under `legacy-v0` the pathway default is not
     // consulted at all, which is exactly why this test could not live there.
-    await start(OLD_LAB, {}, undefined);
+    //
+    // legacy-v0 is passed EXPLICITLY, not left undefined. It used to arrive via
+    // DEFAULT_TEMPORAL_POLICY_VERSION; once that default moved to v1, omitting
+    // it ran the comparison arm on the kernel too and the "v1-only delta" this
+    // test names stopped being a delta at all.
+    await start(OLD_LAB, {}, 'legacy-v0');
     expect(persistedState().get('gate-1')!.status).toBe(NodeStatus.INCLUDED);
 
     jest.clearAllMocks();
     mockedCreateSession.mockResolvedValue('session-1');
-    await start(OLD_LAB, { horizons: { labs: 'YEAR' } }, undefined);
+    await start(OLD_LAB, { horizons: { labs: 'YEAR' } }, 'legacy-v0');
     expect(persistedState().get('gate-1')!.status).toBe(NodeStatus.INCLUDED);
   });
 
