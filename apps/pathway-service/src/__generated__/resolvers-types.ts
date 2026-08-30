@@ -310,10 +310,23 @@ export type DdiWarning = {
  */
 export type DataGapHint = {
   __typename?: 'DataGapHint';
+  /**
+   * True when a scalar comparison had no usable value at all — the common half
+   * of "the gate did not answer", and the only half that is honestly an
+   * "add this data" prompt. Neither flag set on a non-firing gate means the
+   * gate ANSWERED "no", which is not a data gap.
+   */
+  dataUnavailable?: Maybe<Scalars['Boolean']['output']>;
   fieldsRead: Array<Scalars['String']['output']>;
   /** Gate node id. */
   gateNodeId: Scalars['ID']['output'];
   gateTitle: Scalars['String']['output'];
+  /**
+   * True when candidate facts existed but could not be ordered or trusted, so
+   * the gate refused to decide. Null when the resolution ran under a policy
+   * version that does not compute it.
+   */
+  indeterminate?: Maybe<Scalars['Boolean']['output']>;
   /** Same kind vocabulary as GateEvidence.kind. */
   kind: Scalars['String']['output'];
   reason?: Maybe<Scalars['String']['output']>;
@@ -321,6 +334,8 @@ export type DataGapHint = {
   sourcePathwayId: Scalars['ID']['output'];
   /** GATED_OUT / PENDING_QUESTION / UNKNOWN. */
   status: Scalars['String']['output'];
+  /** Why the gate could not decide, when `indeterminate` is true. */
+  uncertaintyReason?: Maybe<Scalars['String']['output']>;
   /** Action-node recommendations downstream of this gate. */
   unlockedRecommendations: Array<UnlockedRecommendation>;
 };
@@ -366,11 +381,24 @@ export enum GateClassification {
 export type GateEvidence = {
   __typename?: 'GateEvidence';
   /**
+   * True when a scalar comparison had no usable value at all — the common half
+   * of "the gate did not answer", and the only half that is honestly an
+   * "add this data" prompt. Neither flag set on a non-firing gate means the
+   * gate ANSWERED "no", which is not a data gap.
+   */
+  dataUnavailable?: Maybe<Scalars['Boolean']['output']>;
+  /**
    * Patient-context field paths the gate read (e.g. "labs",
    * "conditions", "vitals.systolic_bp"). Lets the dashboard render
    * which signals drove the gate.
    */
   fieldsRead: Array<Scalars['String']['output']>;
+  /**
+   * True when candidate facts existed but could not be ordered or trusted, so
+   * the gate refused to decide. Null when the resolution ran under a policy
+   * version that does not compute it.
+   */
+  indeterminate?: Maybe<Scalars['Boolean']['output']>;
   /**
    * Source kind: 'patient_attribute' | 'compound' | 'question' |
    * 'llm_text_analysis' | 'prior_node_result' | 'decision_point'.
@@ -386,6 +414,8 @@ export type GateEvidence = {
   status: Scalars['String']['output'];
   /** Display title (e.g. "BP > 130", "HbA1c trending up over 6mo"). */
   title: Scalars['String']['output'];
+  /** Why the gate could not decide, when `indeterminate` is true. */
+  uncertaintyReason?: Maybe<Scalars['String']['output']>;
 };
 
 /**
@@ -2472,13 +2502,16 @@ export type DdiWarningResolvers<ContextType = DataSourceContext, ParentType exte
 }>;
 
 export type DataGapHintResolvers<ContextType = DataSourceContext, ParentType extends ResolversParentTypes['DataGapHint'] = ResolversParentTypes['DataGapHint']> = ResolversObject<{
+  dataUnavailable?: Resolver<Maybe<ResolversTypes['Boolean']>, ParentType, ContextType>;
   fieldsRead?: Resolver<Array<ResolversTypes['String']>, ParentType, ContextType>;
   gateNodeId?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
   gateTitle?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  indeterminate?: Resolver<Maybe<ResolversTypes['Boolean']>, ParentType, ContextType>;
   kind?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   reason?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   sourcePathwayId?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
   status?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  uncertaintyReason?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   unlockedRecommendations?: Resolver<Array<ResolversTypes['UnlockedRecommendation']>, ParentType, ContextType>;
   __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
 }>;
@@ -2498,13 +2531,16 @@ export type DiffDetailResolvers<ContextType = DataSourceContext, ParentType exte
 }>;
 
 export type GateEvidenceResolvers<ContextType = DataSourceContext, ParentType extends ResolversParentTypes['GateEvidence'] = ResolversParentTypes['GateEvidence']> = ResolversObject<{
+  dataUnavailable?: Resolver<Maybe<ResolversTypes['Boolean']>, ParentType, ContextType>;
   fieldsRead?: Resolver<Array<ResolversTypes['String']>, ParentType, ContextType>;
+  indeterminate?: Resolver<Maybe<ResolversTypes['Boolean']>, ParentType, ContextType>;
   kind?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   nodeId?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
   reason?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   sourcePathwayId?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
   status?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   title?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  uncertaintyReason?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
 }>;
 

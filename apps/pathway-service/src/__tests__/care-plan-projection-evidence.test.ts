@@ -15,7 +15,14 @@ import {
 function gateNode(
   id: string,
   status: NodeStatus,
-  overrides: { gate_type?: string; title?: string; reason?: string } = {},
+  overrides: {
+    gate_type?: string;
+    title?: string;
+    reason?: string;
+    indeterminate?: boolean;
+    uncertaintyReason?: string;
+    dataUnavailable?: boolean;
+  } = {},
 ) {
   return [
     id,
@@ -28,6 +35,9 @@ function gateNode(
       confidenceBreakdown: [],
       depth: 1,
       excludeReason: overrides.reason,
+      indeterminate: overrides.indeterminate,
+      uncertaintyReason: overrides.uncertaintyReason,
+      dataUnavailable: overrides.dataUnavailable,
       properties: { gate_type: overrides.gate_type ?? 'patient_attribute' },
     },
   ] as const;
@@ -174,5 +184,63 @@ describe('evidence trail in projectResolutionToCarePlan', () => {
       // dependencyMap omitted
     );
     expect(plan.evidenceTrail[0].fieldsRead).toEqual([]);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────
+
+describe('evidence trail carries the two "did not answer" channels', () => {
+  function trailFor(...gates: Array<readonly [string, unknown]>) {
+    return projectResolutionToCarePlan(
+      makeState(...gates),
+      { pathwayId: 'p1', pathwayLogicalId: 'p-1', pathwayTitle: 'Anemia' },
+      [],
+      createEmptyDependencyMap(),
+    ).evidenceTrail;
+  }
+
+  it('marks an indeterminate gate and preserves its reason', () => {
+    const trail = trailFor(
+      gateNode('gate-hb', NodeStatus.GATED_OUT, {
+        title: 'Anemic?',
+        reason: 'Indeterminate numeric value for labs:718-7',
+        indeterminate: true,
+        uncertaintyReason: 'AMBIGUOUS_LATEST',
+      }),
+    );
+    const row = trail.find((e) => e.nodeId === 'gate-hb')!;
+    expect(row.indeterminate).toBe(true);
+    expect(row.uncertaintyReason).toBe('AMBIGUOUS_LATEST');
+    expect(row.dataUnavailable).toBeFalsy();
+  });
+
+  it('marks a gate whose scalar datum was never available', () => {
+    const trail = trailFor(
+      gateNode('gate-ferritin', NodeStatus.GATED_OUT, {
+        title: 'Iron deficient?',
+        reason: 'No numeric value found for labs:2276-4',
+        indeterminate: false,
+        dataUnavailable: true,
+      }),
+    );
+    const row = trail.find((e) => e.nodeId === 'gate-ferritin')!;
+    expect(row.dataUnavailable).toBe(true);
+    expect(row.indeterminate).toBe(false);
+  });
+
+  // The distinction the whole channel exists for: this gate ANSWERED "no".
+  // It is not a data gap and must not read as one.
+  it('leaves a definitely-false gate unmarked on both channels', () => {
+    const trail = trailFor(
+      gateNode('gate-severe', NodeStatus.GATED_OUT, {
+        title: 'Severe?',
+        reason: 'labs value 10 not < 7',
+        indeterminate: false,
+        dataUnavailable: false,
+      }),
+    );
+    const row = trail.find((e) => e.nodeId === 'gate-severe')!;
+    expect(row.indeterminate).toBe(false);
+    expect(row.dataUnavailable).toBe(false);
   });
 });

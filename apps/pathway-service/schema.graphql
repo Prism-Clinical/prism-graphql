@@ -375,6 +375,21 @@ type DataGapHint {
   status: String!
   reason: String
   fieldsRead: [String!]!
+  """
+  True when candidate facts existed but could not be ordered or trusted, so
+  the gate refused to decide. Null when the resolution ran under a policy
+  version that does not compute it.
+  """
+  indeterminate: Boolean
+  """Why the gate could not decide, when `indeterminate` is true."""
+  uncertaintyReason: String
+  """
+  True when a scalar comparison had no usable value at all — the common half
+  of "the gate did not answer", and the only half that is honestly an
+  "add this data" prompt. Neither flag set on a non-firing gate means the
+  gate ANSWERED "no", which is not a data gap.
+  """
+  dataUnavailable: Boolean
   """Action-node recommendations downstream of this gate."""
   unlockedRecommendations: [UnlockedRecommendation!]!
   """Pathway that produced this hint (set in the merged plan)."""
@@ -412,6 +427,21 @@ type GateEvidence {
   which signals drove the gate.
   """
   fieldsRead: [String!]!
+  """
+  True when candidate facts existed but could not be ordered or trusted, so
+  the gate refused to decide. Null when the resolution ran under a policy
+  version that does not compute it.
+  """
+  indeterminate: Boolean
+  """Why the gate could not decide, when `indeterminate` is true."""
+  uncertaintyReason: String
+  """
+  True when a scalar comparison had no usable value at all — the common half
+  of "the gate did not answer", and the only half that is honestly an
+  "add this data" prompt. Neither flag set on a non-firing gate means the
+  gate ANSWERED "no", which is not a data gap.
+  """
+  dataUnavailable: Boolean
   """Pathway that produced this evidence (set in the merged plan)."""
   sourcePathwayId: ID!
 }

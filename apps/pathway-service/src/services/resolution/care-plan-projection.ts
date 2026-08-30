@@ -250,6 +250,15 @@ function collectDataGapHints(
       status: node.status,
       reason: node.excludeReason ?? undefined,
       fieldsRead: Array.from(fieldsByGate.get(node.nodeId) ?? []),
+      // Omitted rather than set to undefined when the evaluator did not report
+      // them, so a legacy-v0 resolution projects exactly the shape it always did.
+      ...(node.indeterminate !== undefined ? { indeterminate: node.indeterminate } : {}),
+      ...(node.uncertaintyReason !== undefined
+        ? { uncertaintyReason: node.uncertaintyReason }
+        : {}),
+      ...(node.dataUnavailable !== undefined
+        ? { dataUnavailable: node.dataUnavailable }
+        : {}),
       unlockedRecommendations: downstream,
     });
   }
@@ -294,6 +303,15 @@ function collectEvidenceTrail(
       status: node.status,
       reason: node.excludeReason ?? undefined,
       fieldsRead: Array.from(fieldsByGate.get(node.nodeId) ?? []),
+      // Omitted rather than set to undefined when the evaluator did not report
+      // them, so a legacy-v0 resolution projects exactly the shape it always did.
+      ...(node.indeterminate !== undefined ? { indeterminate: node.indeterminate } : {}),
+      ...(node.uncertaintyReason !== undefined
+        ? { uncertaintyReason: node.uncertaintyReason }
+        : {}),
+      ...(node.dataUnavailable !== undefined
+        ? { dataUnavailable: node.dataUnavailable }
+        : {}),
     });
   }
   return out;
