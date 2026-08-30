@@ -350,6 +350,111 @@ export class TraversalEngine {
   }
 
   /**
+   * Re-resolve part of an existing session in place, seeded from the nodes
+   * whose inputs changed.
+   *
+   * This is the entry point that replaces `RetraversalEngine`. It shares
+   * `disposeNode` with `traverse`, which is the whole point: the retraversal
+   * defect family existed because a second implementation decided nodes
+   * differently from the first. There is no second implementation to drift.
+   *
+   * The mechanism is deliberately simple. Clear the region the seeds can
+   * reach, then walk it exactly as a full traversal walks the graph from the
+   * root. Every defect falls out of that rather than being handled:
+   *
+   *   - a gate that now opens re-resolves its subtree, because the walk
+   *     follows GRAPH edges and never consulted `dependencyMap.influences`,
+   *     which is the map that never recorded gate -> subtree;
+   *   - nothing is lost, because clearing is immediately followed by
+   *     re-resolution through the unit that MATERIALISES nodes — the old
+   *     engine could only skip ids that were missing, so deletions were
+   *     permanent;
+   *   - `default_behavior` applies, because `disposeNode` consults it and
+   *     there is no second rule left to forget.
+   */
+  async resolveIncrementally(
+    seedNodeIds: Set<string>,
+    resolutionState: ResolutionState,
+    dependencyMap: DependencyMap,
+    graphContext: GraphContext,
+    patientContext: PatientContext,
+    gateAnswers: Map<string, GateAnswer>,
+  ): Promise<TraversalResult> {
+    const startTime = Date.now();
+    const pendingQuestions: PendingQuestion[] = [];
+    const redFlags: RedFlag[] = [];
+    const evaluationStack = new Set<string>();
+    const queue: BfsEntry[] = [];
+
+    // The region a seed can reach. Bounded by the graph, so it is finite and
+    // needs no visited-set of its own beyond `region`.
+    const region = new Set<string>();
+    const frontier = [...seedNodeIds];
+    while (frontier.length > 0) {
+      const id = frontier.shift()!;
+      if (region.has(id)) continue;
+      region.add(id);
+      for (const edge of graphContext.outgoingEdges(id)) {
+        if (!region.has(edge.targetId)) frontier.push(edge.targetId);
+      }
+    }
+
+    // Clear the region so `disposeNode` sees it as unresolved and rebuilds it.
+    // A node the provider overrode is KEPT: that decision was made about that
+    // node and stands. It is not, however, a decision about the node's
+    // descendants, so the walk continues past it — the old engine's `continue`
+    // skipped the override AND everything below it, freezing a whole branch
+    // behind one manual inclusion.
+    for (const id of region) {
+      const existing = resolutionState.get(id);
+      if (!existing) continue;
+      if (existing.providerOverride) {
+        for (const edge of graphContext.outgoingEdges(id)) {
+          queue.push({
+            nodeIdentifier: edge.targetId,
+            parentNodeId: id,
+            depth: existing.depth + 1,
+          });
+        }
+        continue;
+      }
+      resolutionState.delete(id);
+    }
+
+    for (const id of seedNodeIds) {
+      if (!resolutionState.has(id)) {
+        queue.push({ nodeIdentifier: id, parentNodeId: undefined, depth: 0 });
+      }
+    }
+
+    while (queue.length > 0) {
+      if (Date.now() - startTime > TRAVERSAL_TIMEOUT_MS) break;
+
+      const { nodeIdentifier, parentNodeId, depth } = queue.shift()!;
+      if (resolutionState.has(nodeIdentifier)) continue;
+
+      const node = graphContext.getNode(nodeIdentifier);
+      if (!node) continue;
+
+      await this.disposeNode(node, nodeIdentifier, parentNodeId, depth, {
+        graphContext, patientContext, gateAnswers,
+        resolutionState, dependencyMap, queue,
+        pendingQuestions, redFlags, evaluationStack, startTime,
+      });
+    }
+
+    return {
+      resolutionState,
+      dependencyMap,
+      pendingQuestions,
+      redFlags,
+      totalNodesEvaluated: region.size,
+      traversalDurationMs: Date.now() - startTime,
+      isDegraded: false,
+    };
+  }
+
+  /**
    * Resolve ONE node: decide its status, write it into `w.resolutionState`,
    * and enqueue whatever its decision opens up.
    *
