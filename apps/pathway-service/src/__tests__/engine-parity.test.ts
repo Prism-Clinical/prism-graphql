@@ -1,12 +1,13 @@
 /**
- * The two engines are one semantics with two implementations. This suite runs
- * the SAME scenario through both and compares the resolution state they
- * produce.
+ * Full traversal and incremental resolve must produce the same result from the
+ * same facts. That is the invariant the whole retraversal defect family
+ * violated, and it is now the property under test.
  *
- * Written BEFORE the unification, so it pins today's behaviour — divergences
- * included. Cases that currently diverge assert the DIVERGENCE, so the refactor
- * closing them is visible as those assertions flipping rather than as a test
- * quietly starting to pass.
+ * This suite was written BEFORE the unification, when it compared two engines
+ * and asserted their DIVERGENCE. Those assertions are INVERTED here: the cases
+ * are the same, the expectations are agreement. Written to be flipped, not
+ * rewritten — a case that still asserted divergence would be evidence the fix
+ * did not take.
  *
  * Scenario shape throughout: root -> gate-1 -> step-1 -> med-1. A gate WITH a
  * subtree is the minimum that exposes the defect family; a bare gate hides
@@ -14,7 +15,6 @@
  */
 
 import { TraversalEngine } from '../services/resolution/traversal-engine';
-import { RetraversalEngine } from '../services/resolution/retraversal-engine';
 import { makeEvaluationTemporalContext } from '../services/resolution/temporal/evaluation-context';
 import {
   NodeStatus,
@@ -54,17 +54,6 @@ function clock() {
 
 function traversalEngine(): TraversalEngine {
   return new TraversalEngine(
-    mockConfidenceEngine as never,
-    THRESHOLDS,
-    clock(),
-    {},
-    [],
-    new Map(),
-  );
-}
-
-function retraversalEngine(): RetraversalEngine {
-  return new RetraversalEngine(
     mockConfidenceEngine as never,
     THRESHOLDS,
     clock(),
@@ -142,7 +131,7 @@ describe('engine parity: the same scenario through both engines', () => {
     // move anything. This is the control: if THIS diverges, the harness is
     // wrong rather than the engines.
     const state = full.resolutionState;
-    await retraversalEngine().retraverse(
+    await traversalEngine().resolveIncrementally(
       new Set(['gate-1']),
       state,
       full.dependencyMap,
@@ -157,15 +146,15 @@ describe('engine parity: the same scenario through both engines', () => {
     });
   });
 
-  // ─── DEFECT 1 ────────────────────────────────────────────────────────
+  // ─── DEFECT 1, now fixed ─────────────────────────────────────────────
   //
   // A session starts without the condition (gate shut, subtree gated out),
-  // then the condition arrives. Full traversal against the new facts opens
-  // the whole branch. Retraversal opens the gate ROW and stops: the cascade
-  // reads dependencyMap.influences, which never recorded gate -> subtree.
-  //
-  // These assertions INVERT in Task 3.
-  it('DIVERGES today: a gate flipping shut->open does not re-resolve its subtree', async () => {
+  // then the condition arrives. Both paths now open the whole branch. The old
+  // engine opened the gate ROW and stopped, because its cascade read
+  // dependencyMap.influences — the map that never recorded gate -> subtree.
+  // The incremental walk follows graph edges instead, so the relationship it
+  // needs is one it can always see.
+  it('a gate flipping shut->open re-resolves its subtree, matching a full traversal', async () => {
     const graph = graphFor(CODE_GATE);
 
     // Reference: what a full traversal against the FINAL facts produces.
@@ -179,7 +168,7 @@ describe('engine parity: the same scenario through both engines', () => {
     });
 
     const state = initial.resolutionState;
-    await retraversalEngine().retraverse(
+    await traversalEngine().resolveIncrementally(
       new Set(['gate-1']),
       state,
       initial.dependencyMap,
@@ -188,29 +177,26 @@ describe('engine parity: the same scenario through both engines', () => {
       new Map(),
     );
 
-    // The gate itself flips.
+    // The gate flips, and so does everything it guards.
     expect(state.get('gate-1')!.status).toBe(NodeStatus.INCLUDED);
+    expect(state.get('step-1')!.status).toBe(NodeStatus.INCLUDED);
+    expect(state.get('med-1')!.status).toBe(NodeStatus.INCLUDED);
 
-    // ...but the subtree does not, and the reference says it should have.
-    expect(reference.resolutionState.get('step-1')!.status).toBe(NodeStatus.INCLUDED);
-    expect(state.get('step-1')!.status).toBe(NodeStatus.GATED_OUT);
-    expect(state.get('med-1')!.status).toBe(NodeStatus.GATED_OUT);
+    // No reason survives naming a decision no longer in force.
+    expect(state.get('step-1')!.excludeReason).toBeUndefined();
 
-    // And the reason still names a gate decision no longer in force.
-    expect(state.get('step-1')!.excludeReason).toContain('Gated out by');
-
-    // The one relationship the cascade needed is the one never recorded.
-    expect(initial.dependencyMap.influences.size).toBe(0);
+    // And the incremental result equals the full traversal's, which is the
+    // invariant the defect family broke.
+    expect(statuses(state)).toEqual(statuses(reference.resolutionState));
   });
 
-  // ─── DEFECT 3 ────────────────────────────────────────────────────────
+  // ─── DEFECT 3, now fixed ─────────────────────────────────────────────
   //
-  // Traversal consults default_behavior; retraversal sets
-  // `satisfied ? INCLUDED : GATED_OUT` unconditionally. The same gate on the
-  // same facts means different things depending on WHEN it was evaluated.
-  //
-  // These assertions INVERT in Task 3.
-  it('DIVERGES today: retraversal ignores default_behavior TRAVERSE', async () => {
+  // The old engine set `satisfied ? INCLUDED : GATED_OUT` unconditionally, so
+  // the same gate on the same facts meant different things depending on WHEN
+  // it was evaluated. default_behavior now lives in the one disposition unit
+  // both entry points call, so there is no second rule to forget.
+  it('honours default_behavior TRAVERSE on both paths', async () => {
     const graph = graphFor({ ...CODE_GATE, default_behavior: DefaultBehavior.TRAVERSE });
 
     // Full traversal: unsatisfied, but default_behavior says traverse anyway.
@@ -219,7 +205,7 @@ describe('engine parity: the same scenario through both engines', () => {
 
     // Retraversal over the same unsatisfied gate gates it out instead.
     const state = full.resolutionState;
-    await retraversalEngine().retraverse(
+    await traversalEngine().resolveIncrementally(
       new Set(['gate-1']),
       state,
       full.dependencyMap,
@@ -227,6 +213,6 @@ describe('engine parity: the same scenario through both engines', () => {
       NO_CONDITIONS,
       new Map(),
     );
-    expect(state.get('gate-1')!.status).toBe(NodeStatus.GATED_OUT);
+    expect(state.get('gate-1')!.status).toBe(NodeStatus.INCLUDED);
   });
 });

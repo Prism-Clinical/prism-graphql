@@ -12,7 +12,7 @@
  * by `multi-pathway-resolution.test.ts` (mock session-store, the
  * resolution-context helpers, and the traversal engine) so the resolvers run
  * with no real Postgres/AGE connection. The re-evaluation seam under test is
- * the `patientContext` argument `RetraversalEngine.retraverse(...)` is
+ * the `patientContext` argument `resolveIncrementally(...)` is
  * invoked with — that's the value that determines what retraversal actually
  * sees.
  */
@@ -55,8 +55,11 @@ jest.mock('../resolvers/helpers/resolution-context', () => ({
 
 const mockRetraverse = jest.fn();
 
-jest.mock('../services/resolution/retraversal-engine', () => ({
-  RetraversalEngine: jest.fn().mockImplementation(() => ({ retraverse: mockRetraverse })),
+jest.mock('../services/resolution/traversal-engine', () => ({
+  TraversalEngine: jest.fn().mockImplementation(() => ({
+    traverse: jest.fn(),
+    resolveIncrementally: mockRetraverse,
+  })),
 }));
 
 import { resolutionMutations } from '../resolvers/mutations/resolution';
@@ -126,8 +129,8 @@ describe('resolution retraversal context reconstruction (Task 3)', () => {
     mockRetraverse.mockResolvedValue({
       statusChanges: [],
       nodesRecomputed: 0,
-      newPendingQuestions: [],
-      newRedFlags: [],
+      pendingQuestions: [],
+      redFlags: [],
     });
   });
 

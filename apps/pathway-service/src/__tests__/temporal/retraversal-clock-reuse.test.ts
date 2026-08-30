@@ -14,7 +14,7 @@
  */
 
 const mockRetraverse = jest.fn().mockResolvedValue({
-  statusChanges: [], newPendingQuestions: [], newRedFlags: [],
+  statusChanges: [], pendingQuestions: [], redFlags: [],
   nodesRecomputed: 0, isIncomplete: false,
 });
 const retraversalCtor = jest.fn();
@@ -29,10 +29,14 @@ jest.mock('../../services/resolution/session-store', () => ({
   logGateAnswer: jest.fn().mockResolvedValue(undefined),
 }));
 
-jest.mock('../../services/resolution/retraversal-engine', () => ({
-  RetraversalEngine: class {
+// Retraversal is now TraversalEngine re-entered incrementally, so the spy
+// moves to that module. In these mutations only ONE engine is constructed —
+// the incremental one — so a single constructor spy is unambiguous.
+jest.mock('../../services/resolution/traversal-engine', () => ({
+  TraversalEngine: class {
     constructor(...args: unknown[]) { retraversalCtor(...args); }
-    retraverse = mockRetraverse;
+    traverse = jest.fn();
+    resolveIncrementally = mockRetraverse;
   },
 }));
 
@@ -92,7 +96,7 @@ function sessionWith(temporalContext: unknown) {
 describe('retraversal reuses the session clock', () => {
   beforeEach(() => { retraversalCtor.mockClear(); });
 
-  it('constructs RetraversalEngine with the clock persisted on the session', async () => {
+  it('constructs the incremental engine with the clock persisted on the session', async () => {
     mockedGetSession.mockResolvedValue(
       sessionWith(makeEvaluationTemporalContext({ evaluationAsOf: PINNED, temporalPolicyVersion: 'legacy-v0' })) as never,
     );

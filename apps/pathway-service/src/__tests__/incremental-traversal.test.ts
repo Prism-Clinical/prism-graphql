@@ -235,3 +235,66 @@ describe('resolveIncrementally — provider overrides', () => {
     expect(initial.resolutionState.get('med-1')!.status).toBe(NodeStatus.INCLUDED);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────
+//
+// Ported from the deleted retraversal-engine.test.ts. These assert real
+// behaviour that has to survive the engine merge, not defects.
+
+describe('resolveIncrementally — ported retraversal behaviour', () => {
+  it('reports the status changes it made', async () => {
+    const graph = graphFor(CODE_GATE);
+    const e = engine();
+    const initial = await e.traverse(graph, HAS_NOT, new Map());
+
+    const result = await e.resolveIncrementally(
+      new Set(['gate-1']),
+      initial.resolutionState,
+      initial.dependencyMap,
+      graph,
+      HAS,
+      new Map(),
+    );
+
+    const changed = Object.fromEntries(result.statusChanges.map((c) => [c.nodeId, c.to]));
+    expect(changed['gate-1']).toBe(NodeStatus.INCLUDED);
+    expect(changed['step-1']).toBe(NodeStatus.INCLUDED);
+    for (const c of result.statusChanges) {
+      expect(c.from).not.toBe(c.to);
+    }
+  });
+
+  it('reports no status changes when nothing actually moved', async () => {
+    const graph = graphFor(CODE_GATE);
+    const e = engine();
+    const initial = await e.traverse(graph, HAS, new Map());
+
+    const result = await e.resolveIncrementally(
+      new Set(['gate-1']),
+      initial.resolutionState,
+      initial.dependencyMap,
+      graph,
+      HAS,
+      new Map(),
+    );
+
+    expect(result.statusChanges).toEqual([]);
+  });
+
+  it('is a no-op for an empty seed set', async () => {
+    const graph = graphFor(CODE_GATE);
+    const result = await engine().resolveIncrementally(
+      new Set(),
+      new Map(),
+      { influences: new Map(), influencedBy: new Map(), gateContextFields: new Map(), scorerInputs: new Map() },
+      graph,
+      HAS,
+      new Map(),
+    );
+
+    expect(result.nodesRecomputed).toBe(0);
+    expect(result.statusChanges).toEqual([]);
+    expect(result.pendingQuestions).toEqual([]);
+    expect(result.redFlags).toEqual([]);
+  });
+});

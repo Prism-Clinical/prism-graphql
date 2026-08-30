@@ -21,7 +21,10 @@
  */
 
 const traversalCtor = jest.fn();
-const retraversalCtor = jest.fn();
+// One engine now, so one constructor spy. The alias is kept where assertions
+// read as "the incremental construction" — in these mutations only the
+// incremental engine is built, so the two names observe the same single call.
+const retraversalCtor = traversalCtor;
 const mockTraverse = jest.fn();
 const mockRetraverse = jest.fn();
 
@@ -37,15 +40,7 @@ jest.mock('../../services/resolution/traversal-engine', () => ({
       traversalCtor(...args);
     }
     traverse = mockTraverse;
-  },
-}));
-
-jest.mock('../../services/resolution/retraversal-engine', () => ({
-  RetraversalEngine: class {
-    constructor(...args: unknown[]) {
-      retraversalCtor(...args);
-    }
-    retraverse = mockRetraverse;
+    resolveIncrementally = mockRetraverse;
   },
 }));
 
@@ -352,8 +347,8 @@ beforeEach(() => {
   mockTraverse.mockResolvedValue(traversalResult());
   mockRetraverse.mockResolvedValue({
     statusChanges: [],
-    newPendingQuestions: [],
-    newRedFlags: [],
+    pendingQuestions: [],
+    redFlags: [],
     nodesRecomputed: 0,
     isIncomplete: false,
   });

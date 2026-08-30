@@ -191,6 +191,18 @@ interface WalkContext {
   startTime: number;
 }
 
+/**
+ * What an incremental resolve produced, on top of a traversal's result.
+ *
+ * `statusChanges` is the incremental path's alone: only a walk that starts
+ * from an existing state knows what a node's status USED to be, and callers
+ * record it as the session's audit trail.
+ */
+export interface IncrementalResult extends TraversalResult {
+  statusChanges: Array<{ nodeId: string; from: string; to: string }>;
+  nodesRecomputed: number;
+}
+
 // ─── Traversal Engine ─────────────────────────────────────────────────
 
 export class TraversalEngine {
@@ -379,12 +391,16 @@ export class TraversalEngine {
     graphContext: GraphContext,
     patientContext: PatientContext,
     gateAnswers: Map<string, GateAnswer>,
-  ): Promise<TraversalResult> {
+  ): Promise<IncrementalResult> {
     const startTime = Date.now();
     const pendingQuestions: PendingQuestion[] = [];
     const redFlags: RedFlag[] = [];
     const evaluationStack = new Set<string>();
     const queue: BfsEntry[] = [];
+
+    // Captured before anything is cleared — the only moment the previous
+    // status of each node in the region is still known.
+    const statusBefore = new Map<string, NodeStatus>();
 
     // The region a seed can reach. Bounded by the graph, so it is finite and
     // needs no visited-set of its own beyond `region`.
@@ -408,6 +424,7 @@ export class TraversalEngine {
     for (const id of region) {
       const existing = resolutionState.get(id);
       if (!existing) continue;
+      statusBefore.set(id, existing.status);
       if (existing.providerOverride) {
         for (const edge of graphContext.outgoingEdges(id)) {
           queue.push({
@@ -443,6 +460,12 @@ export class TraversalEngine {
       });
     }
 
+    const statusChanges: Array<{ nodeId: string; from: string; to: string }> = [];
+    for (const [id, from] of statusBefore) {
+      const to = resolutionState.get(id)?.status;
+      if (to !== undefined && to !== from) statusChanges.push({ nodeId: id, from, to });
+    }
+
     return {
       resolutionState,
       dependencyMap,
@@ -451,6 +474,8 @@ export class TraversalEngine {
       totalNodesEvaluated: region.size,
       traversalDurationMs: Date.now() - startTime,
       isDegraded: false,
+      statusChanges,
+      nodesRecomputed: region.size,
     };
   }
 

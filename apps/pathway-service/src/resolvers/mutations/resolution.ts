@@ -14,7 +14,6 @@ import type { TemporalContextInput } from '../../services/resolution/temporal/ev
 import { PATHWAY_COLUMNS, formatSessionForGraphQL } from '../Query';
 import { TraversalEngine } from '../../services/resolution/traversal-engine';
 import { makeEvaluationTemporalContext } from '../../services/resolution/temporal/evaluation-context';
-import { RetraversalEngine } from '../../services/resolution/retraversal-engine';
 import {
   createSession,
   getSession,
@@ -33,7 +32,6 @@ import type { EvaluationTemporalContext } from '../../services/resolution/tempor
 import {
   buildResolutionContext,
   makeTraversalAdapter,
-  makeRetraversalAdapter,
   makeLlmGateEvaluator,
   assertEncounterAnchor,
   resolveTemporalPolicyVersion,
@@ -372,8 +370,8 @@ export const resolutionMutations = {
       );
 
       const llmBundle = makeLlmGateEvaluator(pool, session.pathwayId, args.sessionId);
-      const retraversalEngine = new RetraversalEngine(
-        makeRetraversalAdapter(rctx, pool, session.pathwayId, patientCtx),
+      const incrementalEngine = new TraversalEngine(
+        makeTraversalAdapter(rctx, pool, session.pathwayId, patientCtx),
         rctx.thresholds,
         sessionClock,
         rctx.temporalDefaults,
@@ -387,7 +385,7 @@ export const resolutionMutations = {
         llmBundle?.evaluator,
       );
 
-      const reResult = await retraversalEngine.retraverse(
+      const reResult = await incrementalEngine.resolveIncrementally(
         affectedNodes,
         session.resolutionState,
         session.dependencyMap,
@@ -531,19 +529,18 @@ export const resolutionMutations = {
         gateResult.excludeReason = undefined;
         statusChanges.push({ nodeId: args.gateId, from: previousGateStatus, to: NodeStatus.INCLUDED });
 
-        // Remove stale subtree nodes so RetraversalEngine re-evaluates them
-        for (const nodeId of affectedNodes) {
-          if (nodeId !== args.gateId && session.resolutionState.has(nodeId)) {
-            const existing = session.resolutionState.get(nodeId)!;
-            if (existing.status === NodeStatus.PENDING_QUESTION || existing.status === NodeStatus.GATED_OUT) {
-              session.resolutionState.delete(nodeId);
-            }
-          }
-        }
+        // NOTE: there used to be a loop here deleting every PENDING_QUESTION /
+        // GATED_OUT node under the answered gate, because `retraverse` could
+        // only re-evaluate rows that already existed and had no way to
+        // re-resolve one in place. It also had no way to RECREATE what it
+        // deleted, so answering a question permanently removed nodes from the
+        // session. `resolveIncrementally` clears and rebuilds its own region
+        // through the same unit that materialises nodes on a full traversal,
+        // so deleting here would destroy exactly what it is about to rebuild.
 
         const llmBundle = makeLlmGateEvaluator(pool, session.pathwayId, args.sessionId);
-        const retraversalEngine = new RetraversalEngine(
-          makeRetraversalAdapter(rctx, pool, session.pathwayId, patientCtx),
+        const incrementalEngine = new TraversalEngine(
+          makeTraversalAdapter(rctx, pool, session.pathwayId, patientCtx),
           rctx.thresholds,
           sessionClock,
           rctx.temporalDefaults,
@@ -556,7 +553,7 @@ export const resolutionMutations = {
           llmBundle?.evaluator,
         );
 
-        const reResult = await retraversalEngine.retraverse(
+        const reResult = await incrementalEngine.resolveIncrementally(
           affectedNodes,
           session.resolutionState,
           session.dependencyMap,
@@ -574,9 +571,9 @@ export const resolutionMutations = {
         // Remove the answered gate from pending, add any new ones
         session.pendingQuestions = session.pendingQuestions
           .filter(q => q.gateId !== args.gateId)
-          .concat(reResult.newPendingQuestions);
-        if (reResult.newRedFlags.length > 0) {
-          session.redFlags = [...session.redFlags, ...reResult.newRedFlags];
+          .concat(reResult.pendingQuestions);
+        if (reResult.redFlags.length > 0) {
+          session.redFlags = [...session.redFlags, ...reResult.redFlags];
         }
       } else {
         // 5b. Gate closes: mark subtree as GATED_OUT
@@ -773,8 +770,8 @@ export const resolutionMutations = {
       const rctx = await buildResolutionContext(pool, session.pathwayId);
 
       const llmBundle = makeLlmGateEvaluator(pool, session.pathwayId, args.sessionId);
-      const retraversalEngine = new RetraversalEngine(
-        makeRetraversalAdapter(rctx, pool, session.pathwayId, updatedPc),
+      const incrementalEngine = new TraversalEngine(
+        makeTraversalAdapter(rctx, pool, session.pathwayId, updatedPc),
         rctx.thresholds,
         sessionClock,
         rctx.temporalDefaults,
@@ -787,7 +784,7 @@ export const resolutionMutations = {
         llmBundle?.evaluator,
       );
 
-      const reResult = await retraversalEngine.retraverse(
+      const reResult = await incrementalEngine.resolveIncrementally(
         affectedNodes,
         session.resolutionState,
         session.dependencyMap,
@@ -802,11 +799,11 @@ export const resolutionMutations = {
       nodesRecomputed = reResult.nodesRecomputed;
 
       // Update pending questions and red flags
-      if (reResult.newPendingQuestions.length > 0) {
-        session.pendingQuestions = [...session.pendingQuestions, ...reResult.newPendingQuestions];
+      if (reResult.pendingQuestions.length > 0) {
+        session.pendingQuestions = [...session.pendingQuestions, ...reResult.pendingQuestions];
       }
-      if (reResult.newRedFlags.length > 0) {
-        session.redFlags = [...session.redFlags, ...reResult.newRedFlags];
+      if (reResult.redFlags.length > 0) {
+        session.redFlags = [...session.redFlags, ...reResult.redFlags];
       }
     }
 

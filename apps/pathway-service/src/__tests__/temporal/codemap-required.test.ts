@@ -1,8 +1,14 @@
 /**
+ * NOTE: this file used to assert the same codeMap guard on RetraversalEngine
+ * as well. That engine is gone — retraversal is TraversalEngine re-entered
+ * incrementally — so the guard has one construction site and one pair of tests.
+ */
+
+/**
  * Review finding 3 (R11-4) — `codeMap` was optional at every load-bearing seam.
  *
  * `GateEvaluationDeps.codeMap`, `TraversalEngine`'s constructor and
- * `RetraversalEngine`'s constructor all defaulted it to an empty `Map`. Every
+ * the engine constructors all defaulted it to an empty `Map`. Every
  * production site passes `rctx.codeMap`, so nothing was broken — but the FAILURE
  * MODE of omitting it at one site is silent: `adaptAttributeCondition` returns
  * `null` for every `lab.*` and `allergy.*`, the evaluator falls back to
@@ -25,7 +31,6 @@
 import { evaluateGate } from '../../services/resolution/gate-evaluator';
 import type { GateEvaluationDeps } from '../../services/resolution/gate-evaluator';
 import { TraversalEngine } from '../../services/resolution/traversal-engine';
-import { RetraversalEngine } from '../../services/resolution/retraversal-engine';
 import {
   GateProperties,
   GateAnswer,
@@ -147,7 +152,7 @@ describe('an omitted codeMap must be loud, not a quiet false', () => {
   });
 });
 
-describe('both engines require it at construction', () => {
+describe('the engine requires it at construction', () => {
   const thresholds = { autoResolveThreshold: 0.8, suggestThreshold: 0.5 };
   const clock = makeEvaluationTemporalContext({
     evaluationAsOf: AS_OF,
@@ -161,11 +166,6 @@ describe('both engines require it at construction', () => {
     ).toThrow(/codeMap/);
   });
 
-  it('RetraversalEngine throws when codeMap is omitted', () => {
-    expect(
-      () => new RetraversalEngine(conf, thresholds, clock, {}, [], undefined as never),
-    ).toThrow(/codeMap/);
-  });
 
   it('TraversalEngine throws when codeMap is not a Map', () => {
     expect(
@@ -174,16 +174,9 @@ describe('both engines require it at construction', () => {
     ).toThrow(/codeMap/);
   });
 
-  it('RetraversalEngine throws when codeMap is not a Map', () => {
-    expect(
-      () =>
-        new RetraversalEngine(conf, thresholds, clock, {}, [], {} as unknown as AttributeCodeMap),
-    ).toThrow(/codeMap/);
-  });
 
   it('both accept an empty Map', () => {
     expect(() => new TraversalEngine(conf, thresholds, clock, {}, [], new Map())).not.toThrow();
-    expect(() => new RetraversalEngine(conf, thresholds, clock, {}, [], new Map())).not.toThrow();
   });
 
   it('keeps llmGateEvaluator optional AFTER the required codeMap', () => {
