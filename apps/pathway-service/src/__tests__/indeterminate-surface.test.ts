@@ -72,6 +72,50 @@ function patientWith(labResults: PatientContext['labResults']): PatientContext {
   };
 }
 
+// Same shape, but a membership condition — the operator class that must NOT
+// report dataUnavailable when it finds nothing.
+const MEMBERSHIP_NODES: GraphNode[] = [
+  node('root', 'Pathway'),
+  node('gate-dm', 'Gate', {
+    title: 'Diabetic?',
+    gate_type: GateType.PATIENT_ATTRIBUTE,
+    default_behavior: DefaultBehavior.SKIP,
+    condition: {
+      field: 'conditions',
+      value: 'E11.9',
+      system: 'ICD-10',
+      operator: 'includes_code',
+    },
+  }),
+  node('step-treat', 'Step', { title: 'Treat' }),
+];
+
+const MEMBERSHIP_EDGES: GraphEdge[] = [
+  edge('root', 'gate-dm', 'HAS_GATE'),
+  edge('gate-dm', 'step-treat', 'BRANCHES_TO'),
+];
+
+async function resolveWith(nodes: GraphNode[], patientContext: PatientContext) {
+  const temporalContext = makeEvaluationTemporalContext({
+    evaluationAsOf: AS_OF,
+    temporalPolicyVersion: 'v1',
+  });
+  const factStore = assembleContext(
+    { mode: 'SYNTHETIC', patientContext } as never,
+    temporalContext,
+  );
+  const engine = new TraversalEngine(
+    mockConfidenceEngine,
+    { autoResolveThreshold: 0.85, suggestThreshold: 0.6 },
+    temporalContext,
+    {},
+    factStore,
+    new Map(),
+  );
+  const edges = nodes === MEMBERSHIP_NODES ? MEMBERSHIP_EDGES : EDGES;
+  return engine.traverse(makeGraphContext(nodes, edges), patientContext, new Map());
+}
+
 async function resolve(patientContext: PatientContext) {
   const temporalContext = makeEvaluationTemporalContext({
     evaluationAsOf: AS_OF,
@@ -133,6 +177,40 @@ describe('indeterminate reaches resolution state', () => {
     expect(gate.indeterminate).toBe(false);
     expect(gate.status).toBe(NodeStatus.GATED_OUT);
     expect(gate.excludeReason).toContain('No numeric value found');
+  });
+
+  // ...which is why "no data" needs its OWN signal. This is the common case in
+  // practice and the one the silent-defaults complaint is about; `indeterminate`
+  // is the rarer one. Escalation keys on either.
+  it('marks a scalar gate dataUnavailable when it had no usable value', async () => {
+    const result = await resolve(patientWith([]));
+    const gate = result.resolutionState.get('gate-hb')!;
+
+    expect(gate.dataUnavailable).toBe(true);
+    expect(gate.indeterminate).toBe(false);
+  });
+
+  it('does not mark dataUnavailable when a real value was read', async () => {
+    const result = await resolve(
+      patientWith([{ code: '718-7', system: 'LOINC', value: 13.2, date: RECENT } as never]),
+    );
+    const gate = result.resolutionState.get('gate-hb')!;
+
+    // 13.2 is a genuine measurement that genuinely fails `< 11`. The gate
+    // answered; there is nothing to ask anyone for.
+    expect(gate.dataUnavailable).toBeFalsy();
+    expect(gate.status).toBe(NodeStatus.GATED_OUT);
+  });
+
+  // The clinical reason dataUnavailable is scalar-only: absence of a code on a
+  // problem list is real evidence of absence, so a membership gate finding
+  // nothing has ANSWERED and must not prompt anyone.
+  it('does not mark dataUnavailable for a membership gate that found no code', async () => {
+    const result = await resolveWith(MEMBERSHIP_NODES, patientWith([]));
+    const gate = result.resolutionState.get('gate-dm')!;
+
+    expect(gate.dataUnavailable).toBeFalsy();
+    expect(gate.status).toBe(NodeStatus.GATED_OUT);
   });
 
   it('does NOT mark a gate indeterminate when the condition is definitely false', async () => {

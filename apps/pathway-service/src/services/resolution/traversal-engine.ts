@@ -50,13 +50,17 @@ function isGateNode(node: GraphNode): boolean {
 function uncertaintyOf(gateResult: {
   indeterminate?: boolean;
   uncertainty?: unknown;
-}): { indeterminate?: boolean; uncertaintyReason?: string } {
+  dataUnavailable?: boolean;
+}): { indeterminate?: boolean; uncertaintyReason?: string; dataUnavailable?: boolean } {
   return {
     ...(gateResult.indeterminate !== undefined
       ? { indeterminate: gateResult.indeterminate }
       : {}),
     ...(gateResult.uncertainty !== undefined
       ? { uncertaintyReason: String(gateResult.uncertainty) }
+      : {}),
+    ...(gateResult.dataUnavailable !== undefined
+      ? { dataUnavailable: gateResult.dataUnavailable }
       : {}),
   };
 }

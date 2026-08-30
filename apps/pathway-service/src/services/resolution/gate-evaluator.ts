@@ -484,6 +484,25 @@ export interface ConditionOutcome {
    * evidence; both facts are true and plan 08 has to show the second.
    */
   uncertainty?: UncertaintyReason[];
+  /**
+   * A **scalar** comparison had no usable value: either no candidate fact at
+   * all, or candidates that all failed selection. Distinct from
+   * `indeterminate`, which means candidates exist but cannot be ordered.
+   *
+   * SCALAR ONLY, and that restriction is the clinical point. For a membership
+   * operator, no match is real evidence — no diabetes code on the problem list
+   * really does mean no diabetes — so a membership gate finding nothing has
+   * ANSWERED and must not prompt anyone. Aggregates are excluded for the same
+   * reason: `count_in_window` over zero facts is a genuine count of zero. But
+   * "no haemoglobin on file" is not "haemoglobin is not below 11".
+   *
+   * This is the signal an escalate-when-unresolved rule needs. Keying such a
+   * rule on `indeterminate` alone would never fire for a missing measurement,
+   * which is the common case and the one silent defaults are complained about.
+   *
+   * Like the two keys above, absent on the `legacy-v0` path.
+   */
+  dataUnavailable?: boolean;
 }
 
 export type ConditionEvaluator = (
@@ -684,6 +703,15 @@ function evaluateScalarKernel(
       fieldsRead,
       indeterminate: false,
       uncertainty,
+      // The distinction this branch's own comment above asked for: an outcome
+      // saying only `satisfied: false` cannot be told apart later from a real
+      // negative. A scalar comparison that produced no value has not answered
+      // "no" — it has failed to answer, and that is what makes it askable.
+      //
+      // Covers zero candidates AND candidates that all failed selection: a
+      // provider being asked for a value has to supply one either way, whether
+      // the lab was never drawn or the only result was out of window.
+      dataUnavailable: true,
     };
   }
 
@@ -1181,6 +1209,7 @@ function evaluatePatientAttribute(
   // its boundary; widening it needs the truth table, which is Task 8.
   if (result.indeterminate !== undefined) out.indeterminate = result.indeterminate;
   if (result.uncertainty !== undefined) out.uncertainty = result.uncertainty;
+  if (result.dataUnavailable !== undefined) out.dataUnavailable = result.dataUnavailable;
   return out;
 }
 

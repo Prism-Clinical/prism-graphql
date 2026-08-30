@@ -78,12 +78,45 @@ normative truth table for compound gates (`compoundIndeterminate`). `traversal-e
 reads `gateResult.satisfied` only. The signal reaches the API solely as an aggregate count
 on `ReachabilityScore.indeterminateGates` — never per-gate on an actual resolution.
 
+**Correction (2026-08-30, found during execution).** `indeterminate` does **not** mean
+"the data is missing". `selectFacts` returns a three-way outcome, and a fact only reaches
+`INDETERMINATE` if it survives candidate matching and then has an uncertain
+validity/state/temporal axis under a *scalar* operator. **Zero candidate facts returns
+`NO_MATCH`, a definite decision**, so `indeterminate` is `false`. It is narrower still:
+an undated lab is asserted current, so one undated fact is `READY` and answers definitely —
+it takes an undated fact plus another candidate to be `AMBIGUOUS_LATEST`.
+
+The case that motivated this entire workstream — a missing haemoglobin silently
+vanishing the severe-anemia arm — is therefore **not** indeterminate, and an escalation
+keyed only on `indeterminate` would never fire for it.
+
+So W1 carries **two** signals, not one:
+
+| Signal | Means | Clinical reading |
+|---|---|---|
+| `indeterminate` | candidate facts exist but cannot be ordered or trusted | "I have values and can't tell which applies" |
+| `dataUnavailable` | a **scalar** comparison had no usable value at all | "I was never given this measurement" |
+
+`dataUnavailable` is **scalar-only**, and that restriction is the clinical point. For a
+membership operator, no match is legitimate evidence — no diabetes code on the problem
+list really does mean no diabetes. For a scalar comparison it is not: "no haemoglobin on
+file" is not "haemoglobin is not below 11". Aggregates are excluded too: `count_in_window`
+over zero facts is a genuine count of zero.
+
+It is set in the one branch of `evaluateScalarKernel` that returns "No numeric value
+found" — deliberately covering both zero candidates and candidates that all failed
+selection, because a provider being asked for a value needs to supply one either way.
+
 **Change.**
 
-- Add `indeterminate?: boolean` and `uncertaintyReason?: string` to `NodeResult`.
+- Add `dataUnavailable?: boolean` to `ConditionOutcome` and `GateEvaluationResult`,
+  set by the scalar kernel. Like `indeterminate`, absent on the `legacy-v0` path so that
+  result object stays byte-identical to today's.
+- Add `indeterminate?: boolean`, `uncertaintyReason?: string` and `dataUnavailable?: boolean`
+  to `NodeResult`.
 - Populate them in `traversal-engine.ts` from the `GateEvaluationResult`.
 - Propagate onto `GateEvidence` and `DataGapHint`.
-- Expose both on the corresponding GraphQL types.
+- Expose all three on the corresponding GraphQL types.
 
 **Deliberately not a new `NodeStatus`.** Status is an *outcome* channel and W2 decides the
 outcome. `indeterminate` is a *reason* channel that travels alongside whatever status W2
@@ -107,8 +140,14 @@ knows exactly which datum it needed and never asks. (Memo §3a, §3b.)
 | `'ask'` (default) | Emit a pending question; mark the gate and its subtree `PENDING_QUESTION`, exactly as an unanswered question gate does today |
 | `'default'` | Apply `default_behavior` — today's behaviour |
 
-A definite `false` never escalates. Only genuine indeterminacy does. This distinction is
-the entire reason W1 must land first.
+**Escalation keys on `indeterminate` OR `dataUnavailable`** (see W1's correction). Keying
+on `indeterminate` alone would never fire for a missing measurement, which is the case
+this workstream exists to fix; `dataUnavailable` is the common one in practice and
+`indeterminate` the rarer.
+
+A definite `false` never escalates — a scalar gate that read a real value and found it
+above threshold has answered, and a membership gate that found no code has also answered.
+This distinction is the entire reason W1 must land first.
 
 **Prompt generation.** Auto-generated from the condition, overridden by an authored
 `prompt` when present. Generated text is strictly descriptive of the datum required —

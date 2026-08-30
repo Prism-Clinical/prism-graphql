@@ -66,6 +66,16 @@ export interface NodeResult {
   indeterminate?: boolean;
   /** Human-readable why, when `indeterminate` is true. */
   uncertaintyReason?: string;
+  /**
+   * A scalar comparison on this gate had no usable value to read. The OTHER
+   * half of "the gate did not answer", and in practice the common half:
+   * `indeterminate` needs conflicting facts, this needs none at all.
+   *
+   * Kept separate from `indeterminate` rather than merged into one "unresolved"
+   * flag because the two want different prompts — "which of these results
+   * applies?" versus "what is this patient's haemoglobin?".
+   */
+  dataUnavailable?: boolean;
   providerOverride?: ProviderOverride;
   parentNodeId?: string;
   depth: number;
@@ -276,6 +286,17 @@ export interface GateEvaluationResult {
    * a `true`/`false` dominating the logic does not make the doubt untrue.
    */
   uncertainty?: UncertaintyReason[];
+  /**
+   * A **scalar** comparison had no usable value — no candidate fact, or
+   * candidates that all failed selection. Distinct from `indeterminate`, which
+   * means candidates exist but cannot be ordered.
+   *
+   * Scalar only: a membership gate finding no code has ANSWERED (absence of a
+   * problem-list code is evidence of absence), and an aggregate over zero facts
+   * is a genuine count of zero. Only a scalar comparison with nothing to read
+   * has failed to answer rather than answered "no".
+   */
+  dataUnavailable?: boolean;
 }
 
 // ─── Pending Questions ──────────────────────────────────────────────
