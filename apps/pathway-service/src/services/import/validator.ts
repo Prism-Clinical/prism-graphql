@@ -23,6 +23,7 @@ import {
   codedVitalsSystemError,
   conditionControlDomainError,
 } from '../resolution/temporal/condition-adapter';
+import { parseDependsOn } from './normalize-gates';
 
 const VALID_NODE_TYPES = new Set<string>(Object.keys(REQUIRED_NODE_PROPERTIES));
 const VALID_EDGE_TYPES = new Set<string>(Object.keys(VALID_EDGE_ENDPOINTS));
@@ -239,14 +240,29 @@ function validateGateNodes(
       softTarget.push(`Gate "${gate.id}": must have at least one outbound edge`);
     }
 
-    // depends_on node IDs must exist in the pathway
+    // depends_on must be readable, and its node IDs must exist in the pathway.
+    //
+    // This used to cast the property to string[] and compare whole elements
+    // against the id set — which admitted the legacy bare string the engine
+    // cannot read, and rejected the canonical `[{node_id, status}]` as
+    // 'references nonexistent node "[object Object]"'. The only importable
+    // shape was the broken one. parseDependsOn is now the single reader, so
+    // the authoring boundary and evaluation agree on what the property is.
     if (props.depends_on) {
-      const dependsOn = Array.isArray(props.depends_on)
-        ? props.depends_on as string[]
-        : [props.depends_on as string];
-      for (const depId of dependsOn) {
-        if (!nodeIds.has(depId)) {
-          errors.push(`Gate "${gate.id}": depends_on references nonexistent node "${depId}"`);
+      const dependsOn = parseDependsOn(props.depends_on);
+      if (dependsOn === null) {
+        // Hard even in draft: this is not work-in-progress, it is a value that
+        // will never evaluate.
+        errors.push(
+          `Gate "${gate.id}": depends_on must be a node id, or an array of ` +
+            `node ids / { node_id, status } objects with a valid NodeStatus. ` +
+            `Got ${JSON.stringify(props.depends_on)}`,
+        );
+      } else {
+        for (const dep of dependsOn) {
+          if (!nodeIds.has(dep.node_id)) {
+            errors.push(`Gate "${gate.id}": depends_on references nonexistent node "${dep.node_id}"`);
+          }
         }
       }
     }

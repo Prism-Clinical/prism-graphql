@@ -429,6 +429,93 @@ describe('validatePathwayJson', () => {
       expect(result.errors).toContainEqual(expect.stringContaining('depends_on'));
     });
 
+    // The inverse of the case below, and the one that bit hardest: the old
+    // check compared whole `{node_id, status}` OBJECTS against the id set, so
+    // a correctly-shaped gate pointing at a node that plainly exists was
+    // rejected as "references nonexistent node [object Object]". The canonical
+    // shape was unimportable.
+    it('should accept a canonical depends_on pointing at an existing node', () => {
+      const pw = clonePathway();
+      pw.nodes.push({
+        id: 'gate-good-dep',
+        type: 'Gate' as any,
+        properties: {
+          title: 'Good dep gate',
+          gate_type: 'prior_node_result',
+          default_behavior: 'skip',
+          depends_on: [{ node_id: 'step-1-1', status: 'INCLUDED' }],
+        },
+      });
+      pw.edges.push({ from: 'step-1-1', to: 'gate-good-dep', type: 'HAS_GATE' as any });
+      pw.edges.push({ from: 'gate-good-dep', to: 'step-1-2', type: 'BRANCHES_TO' as any });
+      const result = validatePathwayJson(pw);
+      expect(result.errors).not.toContainEqual(expect.stringContaining('depends_on'));
+      expect(result.valid).toBe(true);
+    });
+
+    // The existence check above reads node ids through parseDependsOn, so it
+    // has to keep working for the canonical object shape too — that is the
+    // shape import now writes.
+    it('should reject nonexistent depends_on references in the canonical shape', () => {
+      const pw = clonePathway();
+      pw.nodes.push({
+        id: 'gate-bad-dep-obj',
+        type: 'Gate' as any,
+        properties: {
+          title: 'Bad dep gate',
+          gate_type: 'prior_node_result',
+          default_behavior: 'skip',
+          depends_on: [{ node_id: 'nonexistent-node', status: 'INCLUDED' }],
+        },
+      });
+      pw.edges.push({ from: 'step-1-1', to: 'gate-bad-dep-obj', type: 'HAS_GATE' as any });
+      pw.edges.push({ from: 'gate-bad-dep-obj', to: 'step-1-2', type: 'BRANCHES_TO' as any });
+      const result = validatePathwayJson(pw);
+      expect(result.valid).toBe(false);
+      expect(result.errors).toContainEqual(expect.stringContaining('nonexistent-node'));
+    });
+
+    // A depends_on the engine cannot read is a hard error even in draft: it is
+    // not "work in progress", it is a value that will never evaluate. The old
+    // validator cast it to string[] and waved it through.
+    it('should reject an uninterpretable depends_on shape, even in draft mode', () => {
+      const pw = clonePathway();
+      pw.nodes.push({
+        id: 'gate-bad-shape',
+        type: 'Gate' as any,
+        properties: {
+          title: 'Bad shape gate',
+          gate_type: 'prior_node_result',
+          default_behavior: 'skip',
+          depends_on: { node: 'step-1-1' },
+        },
+      });
+      pw.edges.push({ from: 'step-1-1', to: 'gate-bad-shape', type: 'HAS_GATE' as any });
+      pw.edges.push({ from: 'gate-bad-shape', to: 'step-1-2', type: 'BRANCHES_TO' as any });
+      const result = validatePathwayJson(pw, { draftMode: true });
+      expect(result.valid).toBe(false);
+      expect(result.errors).toContainEqual(expect.stringContaining('depends_on'));
+    });
+
+    it('should reject a depends_on status outside the NodeStatus vocabulary', () => {
+      const pw = clonePathway();
+      pw.nodes.push({
+        id: 'gate-bad-status',
+        type: 'Gate' as any,
+        properties: {
+          title: 'Bad status gate',
+          gate_type: 'prior_node_result',
+          default_behavior: 'skip',
+          depends_on: [{ node_id: 'step-1-1', status: 'MAYBE' }],
+        },
+      });
+      pw.edges.push({ from: 'step-1-1', to: 'gate-bad-status', type: 'HAS_GATE' as any });
+      pw.edges.push({ from: 'gate-bad-status', to: 'step-1-2', type: 'BRANCHES_TO' as any });
+      const result = validatePathwayJson(pw);
+      expect(result.valid).toBe(false);
+      expect(result.errors).toContainEqual(expect.stringContaining('depends_on'));
+    });
+
     it('should reject select Gate without options', () => {
       const pw = clonePathway();
       pw.nodes.push({

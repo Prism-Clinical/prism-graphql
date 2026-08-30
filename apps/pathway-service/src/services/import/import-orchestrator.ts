@@ -1,6 +1,7 @@
 import { Pool, PoolClient } from 'pg';
 import { PathwayJson, ImportMode, ImportResult, ImportDiffSummary, DiffDetail, CodeSetScope } from './types';
 import { validatePathwayJson } from './validator';
+import { normalizeGateDependsOn } from './normalize-gates';
 import { buildGraphCommands, buildBatchedGraphCommands } from './graph-builder';
 import { buildCypherQuery } from '../age-client';
 import { computeDiff } from './diff-engine';
@@ -88,10 +89,17 @@ function parseAgtype(val: unknown): any {
  */
 export async function importPathway(
   pool: Pool,
-  pathwayJson: PathwayJson,
+  rawPathwayJson: PathwayJson,
   importMode: ImportMode,
   userId: string
 ): Promise<ImportResult> {
+  // Step 0: Canonicalize Gate `depends_on` before anything else reads the JSON,
+  // so validation, the diff and the graph writer all see one shape. Legacy
+  // authored forms (`"step-1-3"`, `["step-1-3"]`) become
+  // `[{ node_id, status }]` — the only shape evaluation accepts. Values that
+  // cannot be interpreted pass through untouched for the validator to report.
+  const pathwayJson = normalizeGateDependsOn(rawPathwayJson);
+
   // Step 1: Validate (draft mode is lenient on missing properties)
   const validation = validatePathwayJson(pathwayJson, { draftMode: importMode === 'DRAFT_UPDATE' });
   if (!validation.valid) {

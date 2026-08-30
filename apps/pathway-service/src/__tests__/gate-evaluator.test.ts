@@ -328,6 +328,60 @@ describe('evaluateGate — prior_node_result', () => {
     expect(result.satisfied).toBe(false);
     expect(result.reason).toContain('NOT_FOUND');
   });
+
+  // The engine declares `depends_on: GateDependsOn[]`, but the import
+  // validator used to admit a bare string / string[] and the graph writer
+  // stored it verbatim. `for (const dep of "step-1-3")` then iterated
+  // CHARACTERS: eight phantom dependencies, `dependedOnNodes: [null × 8]`,
+  // and a gate that could never fire — the whole treatment half of
+  // vaginitis-in-pregnancy-v1 was gated out on every resolution.
+  //
+  // The engine stays strict: it does NOT coerce these shapes (import
+  // normalizes them now). It only has to refuse them legibly instead of
+  // silently manufacturing dependencies that were never authored.
+  describe('malformed depends_on is refused, not coerced', () => {
+    const malformed: Array<[string, unknown]> = [
+      ['a bare string (the shape stored live)', 'step-3-1'],
+      ['an array of bare strings', ['step-3-1']],
+      ['an array of objects missing node_id', [{ status: 'INCLUDED' }]],
+      ['a number', 42],
+    ];
+
+    it.each(malformed)('refuses %s', async (_label, dependsOn) => {
+      const gate = {
+        title: 'Depends on step-3-1',
+        gate_type: GateType.PRIOR_NODE_RESULT,
+        default_behavior: DefaultBehavior.SKIP,
+        depends_on: dependsOn,
+      } as unknown as GateProperties;
+
+      const state = new Map<string, NodeResult>();
+      state.set('step-3-1', makeNodeResult('step-3-1', NodeStatus.INCLUDED));
+
+      const result = await evaluateGate(gate, deps({ resolutionState: state }));
+
+      expect(result.satisfied).toBe(false);
+      expect(result.reason).toContain('depends_on');
+      // The tell for the character-iteration bug: phantom entries.
+      expect(result.dependedOnNodes).toEqual([]);
+    });
+
+    it('still fires for the canonical shape it does accept', async () => {
+      const gate: GateProperties = {
+        title: 'Depends on step-3-1',
+        gate_type: GateType.PRIOR_NODE_RESULT,
+        default_behavior: DefaultBehavior.SKIP,
+        depends_on: [{ node_id: 'step-3-1', status: 'INCLUDED' }],
+      };
+
+      const state = new Map<string, NodeResult>();
+      state.set('step-3-1', makeNodeResult('step-3-1', NodeStatus.INCLUDED));
+
+      const result = await evaluateGate(gate, deps({ resolutionState: state }));
+      expect(result.satisfied).toBe(true);
+      expect(result.dependedOnNodes).toEqual(['step-3-1']);
+    });
+  });
 });
 
 // ─── question ─────────────────────────────────────────────────────────

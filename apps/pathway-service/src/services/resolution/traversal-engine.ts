@@ -283,8 +283,21 @@ export class TraversalEngine {
         const gateProps = node.properties as unknown as GateProperties;
 
         // Lazy evaluation: if prior_node_result gate depends on un-evaluated nodes,
-        // evaluate them first (with cycle detection)
-        if (gateProps.gate_type === GateType.PRIOR_NODE_RESULT && gateProps.depends_on) {
+        // evaluate them first (with cycle detection).
+        //
+        // Same strictness as evaluatePriorNodeResult: only the canonical
+        // `[{ node_id, status }]` is walked. A legacy bare string is iterable,
+        // so this loop used to run once per CHARACTER and call
+        // evaluateNodeEagerly(undefined) each time. Skipping the prefetch for a
+        // malformed value is safe — the evaluator refuses the gate anyway, and
+        // its reason string is the one that reaches the author.
+        if (
+          gateProps.gate_type === GateType.PRIOR_NODE_RESULT &&
+          Array.isArray(gateProps.depends_on) &&
+          gateProps.depends_on.every(
+            (dep) => typeof dep === 'object' && dep !== null && typeof dep.node_id === 'string',
+          )
+        ) {
           let hasCycle = false;
           for (const dep of gateProps.depends_on) {
             if (!resolutionState.has(dep.node_id)) {

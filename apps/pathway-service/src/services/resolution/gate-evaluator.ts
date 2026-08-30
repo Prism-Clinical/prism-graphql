@@ -1252,7 +1252,43 @@ function evaluatePriorNodeResult(
   gate: GateProperties,
   resolutionState: Map<string, NodeResult>,
 ): GateEvaluationResult {
-  if (!gate.depends_on || gate.depends_on.length === 0) {
+  if (!gate.depends_on) {
+    return {
+      satisfied: false,
+      reason: 'Gate has no depends_on entries',
+      contextFieldsRead: [],
+      dependedOnNodes: [],
+    };
+  }
+
+  // Strict: the canonical `[{ node_id, status }]` is the ONLY shape evaluated.
+  // Import normalizes the legacy string / string[] forms (see
+  // import/normalize-gates.ts); nothing coerces here.
+  //
+  // The array check has to come BEFORE any length or element access. A bare
+  // string passes an emptiness test (`"step-1-3".length === 8`) and is
+  // iterable, so the loop below used to walk its CHARACTERS — eight phantom
+  // dependencies with `node_id: undefined`, a gate that could never fire, and
+  // `dependedOnNodes: [null × 8]` in the audit row. A gate whose dependencies
+  // cannot be read has not "failed its dependencies"; say so, because this
+  // reason string is what the author sees in the evidence trail.
+  const isCanonical =
+    Array.isArray(gate.depends_on) &&
+    gate.depends_on.every(
+      (dep) => typeof dep === 'object' && dep !== null && typeof dep.node_id === 'string',
+    );
+  if (!isCanonical) {
+    return {
+      satisfied: false,
+      reason:
+        'Gate depends_on must be an array of { node_id, status } objects; ' +
+        `got ${JSON.stringify(gate.depends_on)}. Re-import the pathway to normalize it.`,
+      contextFieldsRead: [],
+      dependedOnNodes: [],
+    };
+  }
+
+  if (gate.depends_on.length === 0) {
     return {
       satisfied: false,
       reason: 'Gate has no depends_on entries',
