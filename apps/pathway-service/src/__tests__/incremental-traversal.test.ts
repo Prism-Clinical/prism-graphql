@@ -298,3 +298,72 @@ describe('resolveIncrementally — ported retraversal behaviour', () => {
     expect(result.redFlags).toEqual([]);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────
+
+describe('resolveIncrementally — the mirror direction (open question 1)', () => {
+  // The stub argues this is the MORE dangerous direction. A subtree that
+  // should now be excluded staying included is a clinical
+  // over-recommendation; the open direction only under-recommends.
+  it('gates out a previously-included subtree when the gate flips shut', async () => {
+    const graph = graphFor(CODE_GATE);
+    const e = engine();
+    const initial = await e.traverse(graph, HAS, new Map());
+    expect(initial.resolutionState.get('med-1')!.status).toBe(NodeStatus.INCLUDED);
+
+    // The condition is retracted — a miscoded problem list, corrected.
+    await e.resolveIncrementally(
+      new Set(['gate-1']),
+      initial.resolutionState,
+      initial.dependencyMap,
+      graph,
+      HAS_NOT,
+      new Map(),
+    );
+
+    expect(initial.resolutionState.get('gate-1')!.status).toBe(NodeStatus.GATED_OUT);
+    expect(initial.resolutionState.get('step-1')!.status).toBe(NodeStatus.GATED_OUT);
+    expect(initial.resolutionState.get('med-1')!.status).toBe(NodeStatus.GATED_OUT);
+  });
+
+  it('matches a full traversal in the closing direction too', async () => {
+    const graph = graphFor(CODE_GATE);
+    const e = engine();
+    const reference = await e.traverse(graph, HAS_NOT, new Map());
+    const initial = await e.traverse(graph, HAS, new Map());
+
+    await e.resolveIncrementally(
+      new Set(['gate-1']),
+      initial.resolutionState,
+      initial.dependencyMap,
+      graph,
+      HAS_NOT,
+      new Map(),
+    );
+
+    const statusesOf = (m: Map<string, NodeResult>) =>
+      Object.fromEntries([...m].map(([id, r]) => [id, r.status]));
+    expect(statusesOf(initial.resolutionState)).toEqual(statusesOf(reference.resolutionState));
+  });
+
+  it('a medication under a now-shut gate is no longer projected into the plan', async () => {
+    const graph = graphFor(CODE_GATE);
+    const e = engine();
+    const initial = await e.traverse(graph, HAS, new Map());
+
+    await e.resolveIncrementally(
+      new Set(['gate-1']),
+      initial.resolutionState,
+      initial.dependencyMap,
+      graph,
+      HAS_NOT,
+      new Map(),
+    );
+
+    // The projection only carries INCLUDED action nodes, so a subtree left
+    // wrongly included is exactly how an over-recommendation reaches a plan.
+    const med = initial.resolutionState.get('med-1')!;
+    expect(med.status).not.toBe(NodeStatus.INCLUDED);
+    expect(med.excludeReason).toContain('Gated out by');
+  });
+});
