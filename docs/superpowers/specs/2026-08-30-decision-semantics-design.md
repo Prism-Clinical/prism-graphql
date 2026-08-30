@@ -128,6 +128,34 @@ because data missing" the same value again, which is the bug being fixed.
 
 ---
 
+## W1b — Retraversal fidelity (added 2026-08-30, discovered during execution)
+
+**Not in the original scope, and a prerequisite for W2.** Planning W2 surfaced
+`docs/superpowers/plans/2026-08-12-gate-subtree-retraversal.md`, an existing spec-stub
+describing three defects in one family: retraversal produces a different result than
+initial traversal would have from the same facts.
+
+| # | Defect | Status |
+|---|---|---|
+| 1 | A gate flipping `GATED_OUT → INCLUDED` does not re-resolve its subtree | blocks the v1 rollout flip (W0) |
+| 2 | Answering an opening question **deletes** its guarded subtree | live in production today, destructive |
+| 3 | Retraversal ignores `default_behavior` | live today |
+
+W2 is entirely "provider answers → gate flips → subtree re-resolves", so all three sit in
+its path. Escalation built on today's retraversal would ship and visibly do nothing: the
+gate would open and the subtree would stay gated out behind it.
+
+Fixed by unifying the two engines rather than patching the second — decided 2026-08-30,
+because defect 2's honest fix needs node materialization only `TraversalEngine` has, and
+W2 is about to add `on_unresolved` as a fourth rule both would otherwise have to agree on.
+
+**This also constrains W0's deployment:** plan 01 flipped the default to `v1`, and defect 1
+blocks that flip. Plan 01 must not deploy before W1b lands.
+
+Plan: `docs/superpowers/plans/2026-08-30-decision-semantics-03-retraversal-unification.md`
+
+---
+
 ## W2 — Escalate on indeterminate
 
 **Problem.** A gate that cannot evaluate silently takes `default_behavior`. The system
