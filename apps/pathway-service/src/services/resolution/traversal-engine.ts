@@ -37,6 +37,30 @@ function isGateNode(node: GraphNode): boolean {
   return node.nodeType === 'Gate';
 }
 
+/**
+ * The evaluator's uncertainty signal, in the shape `NodeResult` carries it.
+ *
+ * Two deliberate choices. The fields are omitted rather than set to
+ * `undefined` when the evaluator did not report them, so a `legacy-v0` result
+ * — which reports neither — produces exactly the NodeResult shape it always
+ * did. And `uncertainty` is stringified into `uncertaintyReason` because
+ * resolution state is projected to GraphQL, which must not carry an internal
+ * union type.
+ */
+function uncertaintyOf(gateResult: {
+  indeterminate?: boolean;
+  uncertainty?: unknown;
+}): { indeterminate?: boolean; uncertaintyReason?: string } {
+  return {
+    ...(gateResult.indeterminate !== undefined
+      ? { indeterminate: gateResult.indeterminate }
+      : {}),
+    ...(gateResult.uncertainty !== undefined
+      ? { uncertaintyReason: String(gateResult.uncertainty) }
+      : {}),
+  };
+}
+
 function isDecisionPoint(node: GraphNode): boolean {
   return node.nodeType === 'DecisionPoint';
 }
@@ -341,6 +365,12 @@ export class TraversalEngine {
           this.gateDeps(patientContext, resolutionState, gateAnswers, nodeIdentifier),
         );
 
+        // Reason channel — carried onto EVERY outcome the gate can take, so
+        // "couldn't tell" survives regardless of what default_behavior did with
+        // it. Spread rather than assigned so `legacy-v0` results, which report
+        // neither field, leave the NodeResult shape untouched.
+        const uncertaintyFields = uncertaintyOf(gateResult);
+
         // Record dependencies
         recordGateContextFields(dependencyMap, nodeIdentifier, gateResult.contextFieldsRead);
         for (const depNodeId of gateResult.dependedOnNodes) {
@@ -359,6 +389,7 @@ export class TraversalEngine {
             parentNodeId,
             depth,
             properties: node.properties,
+            ...uncertaintyFields,
           });
           // Tentative LLM-resolved gate: include + traverse, but ALSO surface
           // as a pending question so the provider can confirm the safe-default
@@ -403,6 +434,7 @@ export class TraversalEngine {
               parentNodeId,
               depth,
               properties: node.properties,
+            ...uncertaintyFields,
             });
 
             // Mark subtree as PENDING_QUESTION
@@ -432,6 +464,7 @@ export class TraversalEngine {
               parentNodeId,
               depth,
               properties: node.properties,
+            ...uncertaintyFields,
             });
             const childIds = graphContext.outgoingEdges(nodeIdentifier).map(e => e.targetId);
             markSubtree(childIds, graphContext, resolutionState, NodeStatus.GATED_OUT,
@@ -448,6 +481,7 @@ export class TraversalEngine {
               parentNodeId,
               depth,
               properties: node.properties,
+            ...uncertaintyFields,
             });
             for (const edge of graphContext.outgoingEdges(nodeIdentifier)) {
               if (!resolutionState.has(edge.targetId)) {
@@ -744,6 +778,12 @@ export class TraversalEngine {
         parentNodeId,
         depth,
         properties: node.properties,
+        // Eager path: a prior_node_result gate can force its dependency to be
+        // evaluated here rather than in the main BFS. That gate is just as
+        // capable of being indeterminate, and a reason channel that only works
+        // on one of two evaluation paths is worse than none — the same gate
+        // would report differently depending on the order it was reached.
+        ...uncertaintyOf(gateResult),
       });
     } else if (node.nodeType === 'DecisionPoint') {
       // DecisionPoint: include it, branches will be evaluated during main BFS

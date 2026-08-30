@@ -50,6 +50,22 @@ export interface NodeResult {
   confidence: number;
   confidenceBreakdown: SignalBreakdown[];
   excludeReason?: string;
+  /**
+   * True when the gate could not reach a definite answer — the datum was
+   * absent, undated where a horizon required a date, or otherwise unorderable.
+   * Distinct from a condition that evaluated definitely false.
+   *
+   * A REASON channel, not an outcome channel: `status` still says what the
+   * traversal did with the gate. Collapsing the two would make "pending
+   * because nobody answered" and "pending because the chart is silent" the
+   * same value again, which is the bug this field exists to fix.
+   *
+   * Only the `kernel` evaluation mode (`v1`) computes this; under `legacy-v0`
+   * it is always undefined.
+   */
+  indeterminate?: boolean;
+  /** Human-readable why, when `indeterminate` is true. */
+  uncertaintyReason?: string;
   providerOverride?: ProviderOverride;
   parentNodeId?: string;
   depth: number;
