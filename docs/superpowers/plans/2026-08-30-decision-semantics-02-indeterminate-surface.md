@@ -10,6 +10,13 @@
 
 **Spec:** `docs/superpowers/specs/2026-08-30-decision-semantics-design.md` (W1)
 
+**Correction applied during execution (2026-08-30).** This plan was written assuming
+`indeterminate` meant "the data is missing". It does not — it means "candidate facts exist
+but cannot be ordered". Zero candidates returns `NO_MATCH`, a definite decision. A second
+signal, `dataUnavailable` (scalar-only), was added to carry the missing-data case, and all
+three fields are threaded through instead of two. See the spec's W1 correction and commit
+b0055bd. Task titles below still say "indeterminate"; read them as "both channels".
+
 **Depends on:** Plan 01 (`v1` default). Under `legacy-v0` the evaluator never sets these fields and every test here would assert `undefined`.
 
 ## Global Constraints
