@@ -91,7 +91,7 @@ import type { PatientContext } from '../../services/confidence/types';
 const mockedGetSession = getSession as jest.MockedFunction<typeof getSession>;
 
 const PINNED = '2026-01-15T08:30:00.000Z';
-const CLOCK = makeEvaluationTemporalContext({ evaluationAsOf: PINNED });
+const CLOCK = makeEvaluationTemporalContext({ evaluationAsOf: PINNED, temporalPolicyVersion: 'legacy-v0' });
 
 /**
  * A distinctive defaults object. Identity (`toBe`) is what is asserted, not

@@ -26,7 +26,7 @@ import { makeEvaluationTemporalContext } from '../services/resolution/temporal/e
  * rejects one without it, since a NULL clock on a fresh row means a session
  * that can never be retraversed.
  */
-const TEST_TCTX = makeEvaluationTemporalContext({ evaluationAsOf: '2026-07-30T12:00:00.000Z' });
+const TEST_TCTX = makeEvaluationTemporalContext({ evaluationAsOf: '2026-07-30T12:00:00.000Z', temporalPolicyVersion: 'legacy-v0' });
 
 function makeSpyPool(canned: Array<{ rows: unknown[]; rowCount?: number }>) {
   const calls: Array<{ sql: string; params: unknown[] }> = [];

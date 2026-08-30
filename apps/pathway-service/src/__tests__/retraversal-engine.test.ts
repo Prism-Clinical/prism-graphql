@@ -30,7 +30,7 @@ describe('RetraversalEngine', () => {
     engine = new RetraversalEngine(
       mockConfidenceEngine as any,
       mockThresholds,
-      makeEvaluationTemporalContext({ evaluationAsOf: '2026-07-30T12:00:00.000Z' }),
+      makeEvaluationTemporalContext({ evaluationAsOf: '2026-07-30T12:00:00.000Z', temporalPolicyVersion: 'legacy-v0' }),
       {},
       // Required from plan 04 Task 9 on; empty because this is `legacy-v0`.
       [],

@@ -9,6 +9,10 @@ import { createEmptyDependencyMap } from '../../services/resolution/types';
 const TCTX = makeEvaluationTemporalContext({
   evaluationAsOf: '2026-07-30T12:00:00.000Z',
   encounterStart: '2026-07-30T09:00:00.000Z',
+  // Pinned rather than inherited from DEFAULT_TEMPORAL_POLICY_VERSION: this
+  // suite asserts pre-kernel behaviour and must keep doing so now that the
+  // default is `v1`.
+  temporalPolicyVersion: 'legacy-v0',
 });
 
 function fakePool(rows: Array<Record<string, unknown>>) {

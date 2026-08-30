@@ -94,7 +94,7 @@ describe('retraversal reuses the session clock', () => {
 
   it('constructs RetraversalEngine with the clock persisted on the session', async () => {
     mockedGetSession.mockResolvedValue(
-      sessionWith(makeEvaluationTemporalContext({ evaluationAsOf: PINNED })) as never,
+      sessionWith(makeEvaluationTemporalContext({ evaluationAsOf: PINNED, temporalPolicyVersion: 'legacy-v0' })) as never,
     );
 
     await resolutionMutations.overrideNode(

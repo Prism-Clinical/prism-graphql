@@ -41,7 +41,7 @@ async function run(condition: Record<string, unknown>, c: PatientContext) {
       condition: condition as never,
     },
     {
-      temporalContext: makeEvaluationTemporalContext({ evaluationAsOf: AS_OF }),
+      temporalContext: makeEvaluationTemporalContext({ evaluationAsOf: AS_OF, temporalPolicyVersion: 'legacy-v0' }),
       pathwayDefaults: {},
       factStore: [],
       // Required from review finding 3 on (R11-4). Empty: these gates evaluate no

@@ -32,6 +32,12 @@ jest.mock('../resolvers/helpers/resolution-context', () => ({
   // through this from plan 04 Task 9 on. Kept REAL — a `jest.fn()` returning
   // undefined would hand `makeEvaluationTemporalContext` an undefined version
   // and silently re-enable the legacy default the selector exists to control.
+  //
+  // Deliberately NOT pinned to a version, unlike the sibling suites: this one
+  // exists to prove the real selector is consulted, so it must follow
+  // DEFAULT_TEMPORAL_POLICY_VERSION wherever that points. It mocks
+  // TraversalEngine outright, so no gate is evaluated and the version only
+  // flows through — which is why following the default is safe here.
   resolveTemporalPolicyVersion: jest.requireActual(
     '../resolvers/helpers/resolution-context',
   ).resolveTemporalPolicyVersion,

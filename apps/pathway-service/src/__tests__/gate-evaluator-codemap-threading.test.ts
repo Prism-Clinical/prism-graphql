@@ -18,7 +18,7 @@ function ctx(o: Partial<PatientContext> = {}): PatientContext {
  */
 function deps(patientContext: PatientContext, codeMap: AttributeCodeMap): GateEvaluationDeps {
   return {
-    temporalContext: makeEvaluationTemporalContext({ evaluationAsOf: AS_OF }),
+    temporalContext: makeEvaluationTemporalContext({ evaluationAsOf: AS_OF, temporalPolicyVersion: 'legacy-v0' }),
     pathwayDefaults: {},
     factStore: [],
     patientContext,
