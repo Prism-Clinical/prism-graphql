@@ -166,6 +166,31 @@ function recordGateContextFields(depMap: DependencyMap, gateId: string, fields: 
   for (const f of fields) depMap.gateContextFields.get(gateId)!.add(f);
 }
 
+/**
+ * Everything resolving one node reads or appends to during a walk.
+ *
+ * Bundled rather than passed as eleven parameters so `disposeNode`'s body could
+ * move out of the BFS loop verbatim: the fields destructure under exactly the
+ * names the loop used.
+ *
+ * `queue` is the walk's own queue, which is what lets one disposition unit
+ * serve both entry points — a full traversal seeds it from the Pathway root, an
+ * incremental resolve seeds it from an affected set, and neither needs to know
+ * how a node decides.
+ */
+interface WalkContext {
+  graphContext: GraphContext;
+  patientContext: PatientContext;
+  gateAnswers: Map<string, GateAnswer>;
+  resolutionState: ResolutionState;
+  dependencyMap: DependencyMap;
+  queue: BfsEntry[];
+  pendingQuestions: PendingQuestion[];
+  redFlags: RedFlag[];
+  evaluationStack: Set<string>;
+  startTime: number;
+}
+
 // ─── Traversal Engine ─────────────────────────────────────────────────
 
 export class TraversalEngine {
@@ -306,399 +331,11 @@ export class TraversalEngine {
       const node = graphContext.getNode(nodeIdentifier);
       if (!node) continue;
 
-      // ── Gate node ──────────────────────────────────────────────────
-      if (isGateNode(node)) {
-        const gateProps = node.properties as unknown as GateProperties;
-
-        // Lazy evaluation: if prior_node_result gate depends on un-evaluated nodes,
-        // evaluate them first (with cycle detection)
-        if (gateProps.gate_type === GateType.PRIOR_NODE_RESULT && gateProps.depends_on) {
-          let hasCycle = false;
-          for (const dep of gateProps.depends_on) {
-            if (!resolutionState.has(dep.node_id)) {
-              if (evaluationStack.has(dep.node_id)) {
-                // Cycle detected
-                hasCycle = true;
-                break;
-              }
-              // Evaluate the referenced node first
-              evaluationStack.add(nodeIdentifier);
-              await this.evaluateNodeEagerly(
-                dep.node_id, graphContext, patientContext, gateAnswers,
-                resolutionState, dependencyMap, pendingQuestions, redFlags,
-                evaluationStack, startTime, parentNodeId, depth,
-              );
-              evaluationStack.delete(nodeIdentifier);
-            }
-          }
-
-          if (hasCycle) {
-            // Mark gate as UNKNOWN with default_behavior
-            const defaultStatus = gateProps.default_behavior === DefaultBehavior.TRAVERSE
-              ? NodeStatus.INCLUDED : NodeStatus.GATED_OUT;
-            resolutionState.set(nodeIdentifier, {
-              nodeId: nodeIdentifier,
-              nodeType: node.nodeType,
-              title: nodeTitle(node),
-              status: defaultStatus === NodeStatus.INCLUDED ? NodeStatus.UNKNOWN : NodeStatus.GATED_OUT,
-              confidence: 0,
-              confidenceBreakdown: [],
-              excludeReason: 'Cycle detected in gate dependencies',
-              parentNodeId,
-              depth,
-              properties: node.properties,
-            });
-            if (defaultStatus === NodeStatus.GATED_OUT) {
-              const childIds = graphContext.outgoingEdges(nodeIdentifier).map(e => e.targetId);
-              markSubtree(childIds, graphContext, resolutionState, NodeStatus.GATED_OUT,
-                'Parent gate has cycle — default skip', nodeIdentifier, depth);
-            } else {
-              // Traverse children
-              for (const edge of graphContext.outgoingEdges(nodeIdentifier)) {
-                if (!resolutionState.has(edge.targetId)) {
-                  queue.push({ nodeIdentifier: edge.targetId, parentNodeId: nodeIdentifier, depth: depth + 1 });
-                }
-              }
-            }
-            continue;
-          }
-        }
-
-        const gateResult = await evaluateGate(
-          gateProps,
-          this.gateDeps(patientContext, resolutionState, gateAnswers, nodeIdentifier),
-        );
-
-        // Reason channel — carried onto EVERY outcome the gate can take, so
-        // "couldn't tell" survives regardless of what default_behavior did with
-        // it. Spread rather than assigned so `legacy-v0` results, which report
-        // neither field, leave the NodeResult shape untouched.
-        const uncertaintyFields = uncertaintyOf(gateResult);
-
-        // Record dependencies
-        recordGateContextFields(dependencyMap, nodeIdentifier, gateResult.contextFieldsRead);
-        for (const depNodeId of gateResult.dependedOnNodes) {
-          recordInfluence(dependencyMap, depNodeId, nodeIdentifier);
-        }
-
-        if (gateResult.satisfied) {
-          // Gate satisfied — include gate and traverse children
-          resolutionState.set(nodeIdentifier, {
-            nodeId: nodeIdentifier,
-            nodeType: node.nodeType,
-            title: nodeTitle(node),
-            status: NodeStatus.INCLUDED,
-            confidence: 1,
-            confidenceBreakdown: [],
-            parentNodeId,
-            depth,
-            properties: node.properties,
-            ...uncertaintyFields,
-          });
-          // Tentative LLM-resolved gate: include + traverse, but ALSO surface
-          // as a pending question so the provider can confirm the safe-default
-          // branch the LLM picked or flip to a different branch.
-          if (gateResult.tentative && !gateAnswers.has(nodeIdentifier)) {
-            const childIds = graphContext.outgoingEdges(nodeIdentifier).map(e => e.targetId);
-            const subtreeSize = countSubtree(childIds, graphContext);
-            pendingQuestions.push({
-              gateId: nodeIdentifier,
-              prompt: gateProps.prompt ?? gateProps.title,
-              answerType: AnswerType.SELECT,
-              options: (gateProps.branches ?? []).map((b) => b.name),
-              affectedSubtreeSize: subtreeSize,
-              estimatedImpact: subtreeSize > 3 ? 'high' : subtreeSize > 1 ? 'medium' : 'low',
-              tentative: true,
-              tentativeBranch: gateResult.chosenBranch,
-              tentativeConfidence: gateResult.llmConfidence,
-              tentativeReasoning: gateResult.llmReasoning,
-            });
-          }
-          for (const edge of graphContext.outgoingEdges(nodeIdentifier)) {
-            if (!resolutionState.has(edge.targetId)) {
-              queue.push({ nodeIdentifier: edge.targetId, parentNodeId: nodeIdentifier, depth: depth + 1 });
-            }
-          }
-        } else {
-          // Gate not satisfied
-          const isQuestion = gateProps.gate_type === GateType.QUESTION;
-          const answer = gateAnswers.get(nodeIdentifier);
-          const isUnansweredQuestion = isQuestion && !answer;
-
-          if (isUnansweredQuestion) {
-            // Pending question
-            resolutionState.set(nodeIdentifier, {
-              nodeId: nodeIdentifier,
-              nodeType: node.nodeType,
-              title: nodeTitle(node),
-              status: NodeStatus.PENDING_QUESTION,
-              confidence: 0,
-              confidenceBreakdown: [],
-              excludeReason: 'Question has not been answered',
-              parentNodeId,
-              depth,
-              properties: node.properties,
-            ...uncertaintyFields,
-            });
-
-            // Mark subtree as PENDING_QUESTION
-            const childIds = graphContext.outgoingEdges(nodeIdentifier).map(e => e.targetId);
-            const subtreeSize = countSubtree(childIds, graphContext);
-            markSubtree(childIds, graphContext, resolutionState, NodeStatus.PENDING_QUESTION,
-              `Awaiting answer to: ${gateProps.prompt ?? gateProps.title}`, nodeIdentifier, depth);
-
-            pendingQuestions.push({
-              gateId: nodeIdentifier,
-              prompt: gateProps.prompt ?? gateProps.title,
-              answerType: gateProps.answer_type ?? AnswerType.BOOLEAN,
-              options: gateProps.options,
-              affectedSubtreeSize: subtreeSize,
-              estimatedImpact: subtreeSize > 3 ? 'high' : subtreeSize > 1 ? 'medium' : 'low',
-            });
-          } else if (gateProps.default_behavior === DefaultBehavior.SKIP) {
-            // Default skip — gate out entire subtree
-            resolutionState.set(nodeIdentifier, {
-              nodeId: nodeIdentifier,
-              nodeType: node.nodeType,
-              title: nodeTitle(node),
-              status: NodeStatus.GATED_OUT,
-              confidence: 0,
-              confidenceBreakdown: [],
-              excludeReason: gateResult.reason,
-              parentNodeId,
-              depth,
-              properties: node.properties,
-            ...uncertaintyFields,
-            });
-            const childIds = graphContext.outgoingEdges(nodeIdentifier).map(e => e.targetId);
-            markSubtree(childIds, graphContext, resolutionState, NodeStatus.GATED_OUT,
-              `Gated out by ${nodeTitle(node)}: ${gateResult.reason}`, nodeIdentifier, depth);
-          } else {
-            // Default traverse — include anyway
-            resolutionState.set(nodeIdentifier, {
-              nodeId: nodeIdentifier,
-              nodeType: node.nodeType,
-              title: nodeTitle(node),
-              status: NodeStatus.INCLUDED,
-              confidence: 0,
-              confidenceBreakdown: [],
-              parentNodeId,
-              depth,
-              properties: node.properties,
-            ...uncertaintyFields,
-            });
-            for (const edge of graphContext.outgoingEdges(nodeIdentifier)) {
-              if (!resolutionState.has(edge.targetId)) {
-                queue.push({ nodeIdentifier: edge.targetId, parentNodeId: nodeIdentifier, depth: depth + 1 });
-              }
-            }
-          }
-        }
-        continue;
-      }
-
-      // ── DecisionPoint ──────────────────────────────────────────────
-      if (isDecisionPoint(node)) {
-        const branches = graphContext.outgoingEdges(nodeIdentifier)
-          .filter(e => e.edgeType === 'BRANCHES_TO');
-
-        const branchResults: Array<{ targetId: string; confidence: number; title: string; excludeReason: string }> = [];
-        const includedBranches: string[] = [];
-
-        for (const branch of branches) {
-          const targetNode = graphContext.getNode(branch.targetId);
-          if (!targetNode) continue;
-
-          const confResult = await this.confidenceEngine.computeNodeConfidence(
-            targetNode, graphContext, patientContext,
-          );
-
-          const conf = confResult.confidence;
-          const reason = conf < this.thresholds.suggestThreshold
-            ? `Confidence ${conf} below suggest threshold ${this.thresholds.suggestThreshold}`
-            : '';
-
-          branchResults.push({
-            targetId: branch.targetId,
-            confidence: conf,
-            title: nodeTitle(targetNode),
-            excludeReason: reason,
-          });
-
-          if (conf >= this.thresholds.suggestThreshold) {
-            includedBranches.push(branch.targetId);
-          }
-        }
-
-        // Decision point itself is always included
-        resolutionState.set(nodeIdentifier, {
-          nodeId: nodeIdentifier,
-          nodeType: node.nodeType,
-          title: nodeTitle(node),
-          status: NodeStatus.INCLUDED,
-          confidence: 1,
-          confidenceBreakdown: [],
-          parentNodeId,
-          depth,
-          properties: node.properties,
-        });
-
-        // Record branch results
-        for (const br of branchResults) {
-          if (includedBranches.includes(br.targetId)) {
-            // Enqueue included branches for further traversal
-            if (!resolutionState.has(br.targetId)) {
-              queue.push({ nodeIdentifier: br.targetId, parentNodeId: nodeIdentifier, depth: depth + 1 });
-            }
-          } else {
-            // Exclude branch
-            const targetNode = graphContext.getNode(br.targetId);
-            if (targetNode && !resolutionState.has(br.targetId)) {
-              resolutionState.set(br.targetId, {
-                nodeId: br.targetId,
-                nodeType: targetNode.nodeType,
-                title: br.title,
-                status: NodeStatus.EXCLUDED,
-                confidence: br.confidence,
-                confidenceBreakdown: [],
-                excludeReason: br.excludeReason,
-                parentNodeId: nodeIdentifier,
-                depth: depth + 1,
-                properties: targetNode.properties,
-              });
-              // Mark the excluded branch's subtree too
-              const childIds = graphContext.outgoingEdges(br.targetId).map(e => e.targetId);
-              markSubtree(childIds, graphContext, resolutionState, NodeStatus.EXCLUDED,
-                `Excluded by decision point: ${br.excludeReason}`, br.targetId, depth + 1);
-            }
-          }
-          recordInfluence(dependencyMap, nodeIdentifier, br.targetId);
-        }
-
-        // Red flag: all branches excluded
-        if (branches.length > 0 && includedBranches.length === 0) {
-          redFlags.push({
-            nodeId: nodeIdentifier,
-            nodeTitle: nodeTitle(node),
-            type: 'all_branches_excluded',
-            description: `All ${branches.length} branches of decision point "${nodeTitle(node)}" scored below suggest threshold`,
-            branches: branchResults.map(br => ({
-              nodeId: br.targetId,
-              title: br.title,
-              confidence: br.confidence,
-              topExcludeReason: br.excludeReason,
-            })),
-          });
-        }
-
-        // Also traverse non-BRANCHES_TO children (structural edges)
-        const nonBranchEdges = graphContext.outgoingEdges(nodeIdentifier)
-          .filter(e => e.edgeType !== 'BRANCHES_TO');
-        for (const edge of nonBranchEdges) {
-          if (!resolutionState.has(edge.targetId)) {
-            queue.push({ nodeIdentifier: edge.targetId, parentNodeId: nodeIdentifier, depth: depth + 1 });
-          }
-        }
-        continue;
-      }
-
-      // ── Structural nodes (Stage, Step) ─────────────────────────────
-      if (isStructuralNode(node) || node.nodeType === 'Pathway') {
-        // Always traverse children, compute aggregate confidence later if needed
-        const confResult = await this.confidenceEngine.computeNodeConfidence(
-          node, graphContext, patientContext,
-        );
-
-        resolutionState.set(nodeIdentifier, {
-          nodeId: nodeIdentifier,
-          nodeType: node.nodeType,
-          title: nodeTitle(node),
-          status: NodeStatus.INCLUDED,
-          confidence: confResult.confidence,
-          confidenceBreakdown: confResult.breakdown,
-          parentNodeId,
-          depth,
-          properties: node.properties,
-        });
-
-        for (const edge of graphContext.outgoingEdges(nodeIdentifier)) {
-          if (!resolutionState.has(edge.targetId)) {
-            queue.push({ nodeIdentifier: edge.targetId, parentNodeId: nodeIdentifier, depth: depth + 1 });
-          }
-        }
-        continue;
-      }
-
-      // ── Action nodes (Medication, LabTest, etc.) ───────────────────
-      if (isActionNode(node)) {
-        const confResult = await this.confidenceEngine.computeNodeConfidence(
-          node, graphContext, patientContext,
-        );
-
-        const status = confResult.confidence >= this.thresholds.suggestThreshold
-          ? NodeStatus.INCLUDED
-          : NodeStatus.EXCLUDED;
-
-        const excludeReason = status === NodeStatus.EXCLUDED
-          ? `Confidence ${confResult.confidence} below suggest threshold ${this.thresholds.suggestThreshold}`
-          : undefined;
-
-        resolutionState.set(nodeIdentifier, {
-          nodeId: nodeIdentifier,
-          nodeType: node.nodeType,
-          title: nodeTitle(node),
-          status,
-          confidence: confResult.confidence,
-          confidenceBreakdown: confResult.breakdown,
-          excludeReason,
-          parentNodeId,
-          depth,
-          properties: node.properties,
-        });
-
-        // Check for missing critical data
-        const isCritical = node.properties.critical === true;
-        if (isCritical) {
-          const dataCompleteness = confResult.breakdown.find(
-            (b: { signalName: string; score: number }) => b.signalName === 'data_completeness',
-          );
-          if (dataCompleteness && dataCompleteness.score === 0) {
-            redFlags.push({
-              nodeId: nodeIdentifier,
-              nodeTitle: nodeTitle(node),
-              type: 'missing_critical_data',
-              description: `Critical node "${nodeTitle(node)}" has data_completeness score of 0`,
-            });
-          }
-        }
-
-        // Action nodes can still have children (e.g., CodeEntry)
-        for (const edge of graphContext.outgoingEdges(nodeIdentifier)) {
-          if (!resolutionState.has(edge.targetId)) {
-            queue.push({ nodeIdentifier: edge.targetId, parentNodeId: nodeIdentifier, depth: depth + 1 });
-          }
-        }
-        continue;
-      }
-
-      // ── Other nodes (Criterion, CodeEntry, Evidence, etc.) ─────────
-      resolutionState.set(nodeIdentifier, {
-        nodeId: nodeIdentifier,
-        nodeType: node.nodeType,
-        title: nodeTitle(node),
-        status: NodeStatus.INCLUDED,
-        confidence: 1,
-        confidenceBreakdown: [],
-        parentNodeId,
-        depth,
-        properties: node.properties,
+      await this.disposeNode(node, nodeIdentifier, parentNodeId, depth, {
+        graphContext, patientContext, gateAnswers,
+        resolutionState, dependencyMap, queue,
+        pendingQuestions, redFlags, evaluationStack, startTime,
       });
-
-      for (const edge of graphContext.outgoingEdges(nodeIdentifier)) {
-        if (!resolutionState.has(edge.targetId)) {
-          queue.push({ nodeIdentifier: edge.targetId, parentNodeId: nodeIdentifier, depth: depth + 1 });
-        }
-      }
     }
 
     return {
@@ -712,6 +349,428 @@ export class TraversalEngine {
     };
   }
 
+  /**
+   * Resolve ONE node: decide its status, write it into `w.resolutionState`,
+   * and enqueue whatever its decision opens up.
+   *
+   * Extracted verbatim from `traverse`'s BFS body so the incremental entry
+   * point resolves a node the same way a full traversal does. The retraversal
+   * defect family came from a second implementation drifting from this one;
+   * there is now only this one.
+   *
+   * `w` is destructured immediately so the body below is byte-identical to
+   * what ran inside the loop. The only edits are five outer-loop `continue`
+   * statements becoming `return`, which mean the same thing here: this node is
+   * done, move on. The `continue` and `break` that remain are inner-loop
+   * control flow and were deliberately left alone.
+   */
+  private async disposeNode(
+    node: GraphNode,
+    nodeIdentifier: string,
+    parentNodeId: string | undefined,
+    depth: number,
+    w: WalkContext,
+  ): Promise<void> {
+    const {
+      graphContext, patientContext, gateAnswers,
+      resolutionState, dependencyMap, queue,
+      pendingQuestions, redFlags, evaluationStack, startTime,
+    } = w;
+
+    // ── Gate node ──────────────────────────────────────────────────
+    if (isGateNode(node)) {
+      const gateProps = node.properties as unknown as GateProperties;
+
+      // Lazy evaluation: if prior_node_result gate depends on un-evaluated nodes,
+      // evaluate them first (with cycle detection)
+      if (gateProps.gate_type === GateType.PRIOR_NODE_RESULT && gateProps.depends_on) {
+        let hasCycle = false;
+        for (const dep of gateProps.depends_on) {
+          if (!resolutionState.has(dep.node_id)) {
+            if (evaluationStack.has(dep.node_id)) {
+              // Cycle detected
+              hasCycle = true;
+              break;
+            }
+            // Evaluate the referenced node first
+            evaluationStack.add(nodeIdentifier);
+            await this.evaluateNodeEagerly(
+              dep.node_id, graphContext, patientContext, gateAnswers,
+              resolutionState, dependencyMap, pendingQuestions, redFlags,
+              evaluationStack, startTime, parentNodeId, depth,
+            );
+            evaluationStack.delete(nodeIdentifier);
+          }
+        }
+
+        if (hasCycle) {
+          // Mark gate as UNKNOWN with default_behavior
+          const defaultStatus = gateProps.default_behavior === DefaultBehavior.TRAVERSE
+            ? NodeStatus.INCLUDED : NodeStatus.GATED_OUT;
+          resolutionState.set(nodeIdentifier, {
+            nodeId: nodeIdentifier,
+            nodeType: node.nodeType,
+            title: nodeTitle(node),
+            status: defaultStatus === NodeStatus.INCLUDED ? NodeStatus.UNKNOWN : NodeStatus.GATED_OUT,
+            confidence: 0,
+            confidenceBreakdown: [],
+            excludeReason: 'Cycle detected in gate dependencies',
+            parentNodeId,
+            depth,
+            properties: node.properties,
+          });
+          if (defaultStatus === NodeStatus.GATED_OUT) {
+            const childIds = graphContext.outgoingEdges(nodeIdentifier).map(e => e.targetId);
+            markSubtree(childIds, graphContext, resolutionState, NodeStatus.GATED_OUT,
+              'Parent gate has cycle — default skip', nodeIdentifier, depth);
+          } else {
+            // Traverse children
+            for (const edge of graphContext.outgoingEdges(nodeIdentifier)) {
+              if (!resolutionState.has(edge.targetId)) {
+                queue.push({ nodeIdentifier: edge.targetId, parentNodeId: nodeIdentifier, depth: depth + 1 });
+              }
+            }
+          }
+          return;
+        }
+      }
+
+      const gateResult = await evaluateGate(
+        gateProps,
+        this.gateDeps(patientContext, resolutionState, gateAnswers, nodeIdentifier),
+      );
+
+      // Reason channel — carried onto EVERY outcome the gate can take, so
+      // "couldn't tell" survives regardless of what default_behavior did with
+      // it. Spread rather than assigned so `legacy-v0` results, which report
+      // neither field, leave the NodeResult shape untouched.
+      const uncertaintyFields = uncertaintyOf(gateResult);
+
+      // Record dependencies
+      recordGateContextFields(dependencyMap, nodeIdentifier, gateResult.contextFieldsRead);
+      for (const depNodeId of gateResult.dependedOnNodes) {
+        recordInfluence(dependencyMap, depNodeId, nodeIdentifier);
+      }
+
+      if (gateResult.satisfied) {
+        // Gate satisfied — include gate and traverse children
+        resolutionState.set(nodeIdentifier, {
+          nodeId: nodeIdentifier,
+          nodeType: node.nodeType,
+          title: nodeTitle(node),
+          status: NodeStatus.INCLUDED,
+          confidence: 1,
+          confidenceBreakdown: [],
+          parentNodeId,
+          depth,
+          properties: node.properties,
+          ...uncertaintyFields,
+        });
+        // Tentative LLM-resolved gate: include + traverse, but ALSO surface
+        // as a pending question so the provider can confirm the safe-default
+        // branch the LLM picked or flip to a different branch.
+        if (gateResult.tentative && !gateAnswers.has(nodeIdentifier)) {
+          const childIds = graphContext.outgoingEdges(nodeIdentifier).map(e => e.targetId);
+          const subtreeSize = countSubtree(childIds, graphContext);
+          pendingQuestions.push({
+            gateId: nodeIdentifier,
+            prompt: gateProps.prompt ?? gateProps.title,
+            answerType: AnswerType.SELECT,
+            options: (gateProps.branches ?? []).map((b) => b.name),
+            affectedSubtreeSize: subtreeSize,
+            estimatedImpact: subtreeSize > 3 ? 'high' : subtreeSize > 1 ? 'medium' : 'low',
+            tentative: true,
+            tentativeBranch: gateResult.chosenBranch,
+            tentativeConfidence: gateResult.llmConfidence,
+            tentativeReasoning: gateResult.llmReasoning,
+          });
+        }
+        for (const edge of graphContext.outgoingEdges(nodeIdentifier)) {
+          if (!resolutionState.has(edge.targetId)) {
+            queue.push({ nodeIdentifier: edge.targetId, parentNodeId: nodeIdentifier, depth: depth + 1 });
+          }
+        }
+      } else {
+        // Gate not satisfied
+        const isQuestion = gateProps.gate_type === GateType.QUESTION;
+        const answer = gateAnswers.get(nodeIdentifier);
+        const isUnansweredQuestion = isQuestion && !answer;
+
+        if (isUnansweredQuestion) {
+          // Pending question
+          resolutionState.set(nodeIdentifier, {
+            nodeId: nodeIdentifier,
+            nodeType: node.nodeType,
+            title: nodeTitle(node),
+            status: NodeStatus.PENDING_QUESTION,
+            confidence: 0,
+            confidenceBreakdown: [],
+            excludeReason: 'Question has not been answered',
+            parentNodeId,
+            depth,
+            properties: node.properties,
+          ...uncertaintyFields,
+          });
+
+          // Mark subtree as PENDING_QUESTION
+          const childIds = graphContext.outgoingEdges(nodeIdentifier).map(e => e.targetId);
+          const subtreeSize = countSubtree(childIds, graphContext);
+          markSubtree(childIds, graphContext, resolutionState, NodeStatus.PENDING_QUESTION,
+            `Awaiting answer to: ${gateProps.prompt ?? gateProps.title}`, nodeIdentifier, depth);
+
+          pendingQuestions.push({
+            gateId: nodeIdentifier,
+            prompt: gateProps.prompt ?? gateProps.title,
+            answerType: gateProps.answer_type ?? AnswerType.BOOLEAN,
+            options: gateProps.options,
+            affectedSubtreeSize: subtreeSize,
+            estimatedImpact: subtreeSize > 3 ? 'high' : subtreeSize > 1 ? 'medium' : 'low',
+          });
+        } else if (gateProps.default_behavior === DefaultBehavior.SKIP) {
+          // Default skip — gate out entire subtree
+          resolutionState.set(nodeIdentifier, {
+            nodeId: nodeIdentifier,
+            nodeType: node.nodeType,
+            title: nodeTitle(node),
+            status: NodeStatus.GATED_OUT,
+            confidence: 0,
+            confidenceBreakdown: [],
+            excludeReason: gateResult.reason,
+            parentNodeId,
+            depth,
+            properties: node.properties,
+          ...uncertaintyFields,
+          });
+          const childIds = graphContext.outgoingEdges(nodeIdentifier).map(e => e.targetId);
+          markSubtree(childIds, graphContext, resolutionState, NodeStatus.GATED_OUT,
+            `Gated out by ${nodeTitle(node)}: ${gateResult.reason}`, nodeIdentifier, depth);
+        } else {
+          // Default traverse — include anyway
+          resolutionState.set(nodeIdentifier, {
+            nodeId: nodeIdentifier,
+            nodeType: node.nodeType,
+            title: nodeTitle(node),
+            status: NodeStatus.INCLUDED,
+            confidence: 0,
+            confidenceBreakdown: [],
+            parentNodeId,
+            depth,
+            properties: node.properties,
+          ...uncertaintyFields,
+          });
+          for (const edge of graphContext.outgoingEdges(nodeIdentifier)) {
+            if (!resolutionState.has(edge.targetId)) {
+              queue.push({ nodeIdentifier: edge.targetId, parentNodeId: nodeIdentifier, depth: depth + 1 });
+            }
+          }
+        }
+      }
+      return;
+    }
+
+    // ── DecisionPoint ──────────────────────────────────────────────
+    if (isDecisionPoint(node)) {
+      const branches = graphContext.outgoingEdges(nodeIdentifier)
+        .filter(e => e.edgeType === 'BRANCHES_TO');
+
+      const branchResults: Array<{ targetId: string; confidence: number; title: string; excludeReason: string }> = [];
+      const includedBranches: string[] = [];
+
+      for (const branch of branches) {
+        const targetNode = graphContext.getNode(branch.targetId);
+        if (!targetNode) continue;
+
+        const confResult = await this.confidenceEngine.computeNodeConfidence(
+          targetNode, graphContext, patientContext,
+        );
+
+        const conf = confResult.confidence;
+        const reason = conf < this.thresholds.suggestThreshold
+          ? `Confidence ${conf} below suggest threshold ${this.thresholds.suggestThreshold}`
+          : '';
+
+        branchResults.push({
+          targetId: branch.targetId,
+          confidence: conf,
+          title: nodeTitle(targetNode),
+          excludeReason: reason,
+        });
+
+        if (conf >= this.thresholds.suggestThreshold) {
+          includedBranches.push(branch.targetId);
+        }
+      }
+
+      // Decision point itself is always included
+      resolutionState.set(nodeIdentifier, {
+        nodeId: nodeIdentifier,
+        nodeType: node.nodeType,
+        title: nodeTitle(node),
+        status: NodeStatus.INCLUDED,
+        confidence: 1,
+        confidenceBreakdown: [],
+        parentNodeId,
+        depth,
+        properties: node.properties,
+      });
+
+      // Record branch results
+      for (const br of branchResults) {
+        if (includedBranches.includes(br.targetId)) {
+          // Enqueue included branches for further traversal
+          if (!resolutionState.has(br.targetId)) {
+            queue.push({ nodeIdentifier: br.targetId, parentNodeId: nodeIdentifier, depth: depth + 1 });
+          }
+        } else {
+          // Exclude branch
+          const targetNode = graphContext.getNode(br.targetId);
+          if (targetNode && !resolutionState.has(br.targetId)) {
+            resolutionState.set(br.targetId, {
+              nodeId: br.targetId,
+              nodeType: targetNode.nodeType,
+              title: br.title,
+              status: NodeStatus.EXCLUDED,
+              confidence: br.confidence,
+              confidenceBreakdown: [],
+              excludeReason: br.excludeReason,
+              parentNodeId: nodeIdentifier,
+              depth: depth + 1,
+              properties: targetNode.properties,
+            });
+            // Mark the excluded branch's subtree too
+            const childIds = graphContext.outgoingEdges(br.targetId).map(e => e.targetId);
+            markSubtree(childIds, graphContext, resolutionState, NodeStatus.EXCLUDED,
+              `Excluded by decision point: ${br.excludeReason}`, br.targetId, depth + 1);
+          }
+        }
+        recordInfluence(dependencyMap, nodeIdentifier, br.targetId);
+      }
+
+      // Red flag: all branches excluded
+      if (branches.length > 0 && includedBranches.length === 0) {
+        redFlags.push({
+          nodeId: nodeIdentifier,
+          nodeTitle: nodeTitle(node),
+          type: 'all_branches_excluded',
+          description: `All ${branches.length} branches of decision point "${nodeTitle(node)}" scored below suggest threshold`,
+          branches: branchResults.map(br => ({
+            nodeId: br.targetId,
+            title: br.title,
+            confidence: br.confidence,
+            topExcludeReason: br.excludeReason,
+          })),
+        });
+      }
+
+      // Also traverse non-BRANCHES_TO children (structural edges)
+      const nonBranchEdges = graphContext.outgoingEdges(nodeIdentifier)
+        .filter(e => e.edgeType !== 'BRANCHES_TO');
+      for (const edge of nonBranchEdges) {
+        if (!resolutionState.has(edge.targetId)) {
+          queue.push({ nodeIdentifier: edge.targetId, parentNodeId: nodeIdentifier, depth: depth + 1 });
+        }
+      }
+      return;
+    }
+
+    // ── Structural nodes (Stage, Step) ─────────────────────────────
+    if (isStructuralNode(node) || node.nodeType === 'Pathway') {
+      // Always traverse children, compute aggregate confidence later if needed
+      const confResult = await this.confidenceEngine.computeNodeConfidence(
+        node, graphContext, patientContext,
+      );
+
+      resolutionState.set(nodeIdentifier, {
+        nodeId: nodeIdentifier,
+        nodeType: node.nodeType,
+        title: nodeTitle(node),
+        status: NodeStatus.INCLUDED,
+        confidence: confResult.confidence,
+        confidenceBreakdown: confResult.breakdown,
+        parentNodeId,
+        depth,
+        properties: node.properties,
+      });
+
+      for (const edge of graphContext.outgoingEdges(nodeIdentifier)) {
+        if (!resolutionState.has(edge.targetId)) {
+          queue.push({ nodeIdentifier: edge.targetId, parentNodeId: nodeIdentifier, depth: depth + 1 });
+        }
+      }
+      return;
+    }
+
+    // ── Action nodes (Medication, LabTest, etc.) ───────────────────
+    if (isActionNode(node)) {
+      const confResult = await this.confidenceEngine.computeNodeConfidence(
+        node, graphContext, patientContext,
+      );
+
+      const status = confResult.confidence >= this.thresholds.suggestThreshold
+        ? NodeStatus.INCLUDED
+        : NodeStatus.EXCLUDED;
+
+      const excludeReason = status === NodeStatus.EXCLUDED
+        ? `Confidence ${confResult.confidence} below suggest threshold ${this.thresholds.suggestThreshold}`
+        : undefined;
+
+      resolutionState.set(nodeIdentifier, {
+        nodeId: nodeIdentifier,
+        nodeType: node.nodeType,
+        title: nodeTitle(node),
+        status,
+        confidence: confResult.confidence,
+        confidenceBreakdown: confResult.breakdown,
+        excludeReason,
+        parentNodeId,
+        depth,
+        properties: node.properties,
+      });
+
+      // Check for missing critical data
+      const isCritical = node.properties.critical === true;
+      if (isCritical) {
+        const dataCompleteness = confResult.breakdown.find(
+          (b: { signalName: string; score: number }) => b.signalName === 'data_completeness',
+        );
+        if (dataCompleteness && dataCompleteness.score === 0) {
+          redFlags.push({
+            nodeId: nodeIdentifier,
+            nodeTitle: nodeTitle(node),
+            type: 'missing_critical_data',
+            description: `Critical node "${nodeTitle(node)}" has data_completeness score of 0`,
+          });
+        }
+      }
+
+      // Action nodes can still have children (e.g., CodeEntry)
+      for (const edge of graphContext.outgoingEdges(nodeIdentifier)) {
+        if (!resolutionState.has(edge.targetId)) {
+          queue.push({ nodeIdentifier: edge.targetId, parentNodeId: nodeIdentifier, depth: depth + 1 });
+        }
+      }
+      return;
+    }
+
+    // ── Other nodes (Criterion, CodeEntry, Evidence, etc.) ─────────
+    resolutionState.set(nodeIdentifier, {
+      nodeId: nodeIdentifier,
+      nodeType: node.nodeType,
+      title: nodeTitle(node),
+      status: NodeStatus.INCLUDED,
+      confidence: 1,
+      confidenceBreakdown: [],
+      parentNodeId,
+      depth,
+      properties: node.properties,
+    });
+
+    for (const edge of graphContext.outgoingEdges(nodeIdentifier)) {
+      if (!resolutionState.has(edge.targetId)) {
+        queue.push({ nodeIdentifier: edge.targetId, parentNodeId: nodeIdentifier, depth: depth + 1 });
+      }
+    }
+  }
   /**
    * Eagerly evaluate a single node during lazy gate evaluation.
    * This handles the case where a prior_node_result gate depends on a node
