@@ -360,7 +360,17 @@ export interface RedFlagBranch {
   topExcludeReason: string;
 }
 
-export type RedFlagType = 'all_branches_excluded' | 'contradiction' | 'missing_critical_data';
+export type RedFlagType =
+  | 'all_branches_excluded'
+  | 'contradiction'
+  | 'missing_critical_data'
+  /**
+   * An `all_of` DecisionPoint mandates every branch, but the patient data does
+   * not support one of them. The branch is still traversed — the author said
+   * it happens — so this reports the disagreement rather than resolving it by
+   * dropping a step the pathway requires.
+   */
+  | 'all_of_branch_unsupported';
 
 export interface RedFlag {
   nodeId: string;

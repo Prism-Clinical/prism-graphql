@@ -815,6 +815,36 @@ export class TraversalEngine {
 
       const branchMode = (node.properties.branch_mode as string | undefined) ?? 'one_of';
 
+      // all_of takes every branch by declaration — migration 060's example is
+      // "after assessment, start workup AND prophylaxis". A branch the data
+      // does not support is INCLUDED and red-flagged rather than dropped: the
+      // author said these all happen, and silently excluding one contradicts
+      // the pathway instead of reporting a disagreement with it.
+      if (branchMode === 'all_of') {
+        const weak = branchResults.filter(
+          b => b.confidence < this.thresholds.suggestThreshold,
+        );
+        includedBranches.length = 0;
+        includedBranches.push(...branchResults.map(b => b.targetId));
+
+        if (weak.length > 0) {
+          redFlags.push({
+            nodeId: nodeIdentifier,
+            nodeTitle: nodeTitle(node),
+            type: 'all_of_branch_unsupported',
+            description:
+              `${weak.length} of ${branchResults.length} mandated branches at ` +
+              `"${nodeTitle(node)}" are not supported by the patient data`,
+            branches: weak.map(b => ({
+              nodeId: b.targetId,
+              title: b.title,
+              confidence: b.confidence,
+              topExcludeReason: b.excludeReason,
+            })),
+          });
+        }
+      }
+
       // An exclusive fork with more than one qualifying branch has NOT been
       // decided by the data. Ranking the candidates and taking the top one
       // would be the same silent routing this work exists to remove, with

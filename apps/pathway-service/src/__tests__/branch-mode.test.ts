@@ -132,3 +132,47 @@ describe('branch_mode: one_of', () => {
     expect(r.resolutionState.get('dp-1')!.status).toBe(NodeStatus.PENDING_QUESTION);
   });
 });
+
+describe('branch_mode: all_of', () => {
+  // "After assessment, start workup AND prophylaxis" — migration 060's own
+  // example. The author said these all happen, so a branch the data does not
+  // support is a disagreement to REPORT, not a step to silently drop.
+  it('traverses every branch, including one below threshold', async () => {
+    const r = await resolve('all_of', { 'step-b': 0.2 });
+
+    expect(r.resolutionState.get('step-a')!.status).toBe(NodeStatus.INCLUDED);
+    expect(r.resolutionState.get('step-b')!.status).toBe(NodeStatus.INCLUDED);
+    expect(r.resolutionState.get('step-c')!.status).toBe(NodeStatus.INCLUDED);
+  });
+
+  it('red-flags the branch the data does not support', async () => {
+    const r = await resolve('all_of', { 'step-b': 0.2 });
+
+    const flag = r.redFlags.find(f => f.type === 'all_of_branch_unsupported');
+    expect(flag).toBeDefined();
+    expect(flag!.branches!.map(b => b.nodeId)).toEqual(['step-b']);
+  });
+
+  it('never pends, however many branches qualify', async () => {
+    const r = await resolve('all_of', {});
+    expect(r.resolutionState.get('dp-1')!.status).toBe(NodeStatus.INCLUDED);
+    expect(r.pendingQuestions).toHaveLength(0);
+  });
+
+  it('raises no flag when every branch is supported', async () => {
+    const r = await resolve('all_of', {});
+    expect(r.redFlags.some(f => f.type === 'all_of_branch_unsupported')).toBe(false);
+  });
+});
+
+describe('branch_mode: any_of', () => {
+  // Today's behaviour, pinned so Task 1's change cannot leak into it.
+  it('includes every qualifying branch and excludes the rest', async () => {
+    const r = await resolve('any_of', { 'step-c': 0.2 });
+
+    expect(r.resolutionState.get('step-a')!.status).toBe(NodeStatus.INCLUDED);
+    expect(r.resolutionState.get('step-b')!.status).toBe(NodeStatus.INCLUDED);
+    expect(r.resolutionState.get('step-c')!.status).toBe(NodeStatus.EXCLUDED);
+    expect(r.pendingQuestions).toHaveLength(0);
+  });
+});
