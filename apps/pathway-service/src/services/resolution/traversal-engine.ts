@@ -4,6 +4,8 @@ import type { GateEvaluationDeps } from './gate-evaluator';
 import type { PathwayTemporalDefaults } from './temporal/cascade';
 import type { FactStore } from './temporal/fact-model';
 import { EvaluationTemporalContext } from './temporal/evaluation-context';
+import { askFor } from './unresolved-prompt';
+import type { UnresolvedAsk } from './unresolved-prompt';
 import {
   NodeResult,
   NodeStatus,
@@ -63,6 +65,37 @@ function uncertaintyOf(gateResult: {
       ? { dataUnavailable: gateResult.dataUnavailable }
       : {}),
   };
+}
+
+/**
+ * The datum an unresolvable gate should ask for, or `null` when it should not
+ * ask at all.
+ *
+ * Three things have to be true. The gate must have failed to DECIDE — a gate
+ * that answered "no" has answered, and prompting for more data there sends a
+ * clinician after something that would not change the plan. The author must
+ * not have opted out via `on_unresolved: 'default'`. And the condition must be
+ * one there is an honest question for, which `askFor` decides.
+ *
+ * For a compound gate the first askable condition wins: a compound that could
+ * not decide needs at least that datum, and asking one at a time is honest
+ * about what the next answer unlocks.
+ */
+function unresolvedAsk(
+  gateProps: GateProperties,
+  gateResult: { indeterminate?: boolean; dataUnavailable?: boolean },
+): UnresolvedAsk | null {
+  const couldNotDecide =
+    gateResult.indeterminate === true || gateResult.dataUnavailable === true;
+  if (!couldNotDecide) return null;
+  if (gateProps.on_unresolved === 'default') return null;
+
+  const conditions = gateProps.conditions ?? (gateProps.condition ? [gateProps.condition] : []);
+  for (const condition of conditions) {
+    const ask = askFor(condition);
+    if (ask) return ask;
+  }
+  return null;
 }
 
 function isDecisionPoint(node: GraphNode): boolean {
@@ -656,6 +689,55 @@ export class TraversalEngine {
             affectedSubtreeSize: subtreeSize,
             estimatedImpact: subtreeSize > 3 ? 'high' : subtreeSize > 1 ? 'medium' : 'low',
           });
+        } else if (unresolvedAsk(gateProps, gateResult)) {
+          // The gate could not DECIDE — as opposed to deciding "no". Ask for
+          // the datum it needed rather than silently taking default_behavior,
+          // which is what made a missing haemoglobin indistinguishable from a
+          // normal one.
+          //
+          // `unresolvedAsk` returns null for every class with no honest
+          // question (membership, aggregate) and whenever the author set
+          // on_unresolved: 'default', so this arm cannot fire on them.
+          const ask = unresolvedAsk(gateProps, gateResult)!;
+
+          resolutionState.set(nodeIdentifier, {
+            nodeId: nodeIdentifier,
+            nodeType: node.nodeType,
+            title: nodeTitle(node),
+            status: NodeStatus.PENDING_QUESTION,
+            confidence: 0,
+            confidenceBreakdown: [],
+            excludeReason: gateResult.reason,
+            parentNodeId,
+            depth,
+            properties: node.properties,
+            ...uncertaintyFields,
+          });
+
+          // HELD, not gated out: the pathway has not decided against this
+          // subtree, it cannot decide yet.
+          const childIds = graphContext.outgoingEdges(nodeIdentifier).map(e => e.targetId);
+          const subtreeSize = countSubtree(childIds, graphContext);
+          markSubtree(childIds, graphContext, resolutionState, NodeStatus.PENDING_QUESTION,
+            `Awaiting ${ask.datumKey}`, nodeIdentifier, depth);
+
+          // Dedup on the DATUM, not the gate. Both gates still hold their
+          // subtrees; the provider is asked once, and the one injected fact
+          // resolves every gate reading it.
+          if (!pendingQuestions.some(q => q.datumKey === ask.datumKey)) {
+            pendingQuestions.push({
+              gateId: nodeIdentifier,
+              // An authored prompt beats the generated one. The generated text
+              // is a fallback so every escalatable gate CAN ask without extra
+              // authoring — not a preference for machine wording.
+              prompt: gateProps.prompt ?? ask.prompt,
+              answerType: ask.answerType,
+              affectedSubtreeSize: subtreeSize,
+              estimatedImpact: subtreeSize > 3 ? 'high' : subtreeSize > 1 ? 'medium' : 'low',
+              datumKey: ask.datumKey,
+              askTarget: ask.target,
+            });
+          }
         } else if (gateProps.default_behavior === DefaultBehavior.SKIP) {
           // Default skip — gate out entire subtree
           resolutionState.set(nodeIdentifier, {

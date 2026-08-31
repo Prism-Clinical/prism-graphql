@@ -112,6 +112,11 @@ const NODES = [
   node('gate-1', 'Gate', {
     gate_type: GateType.PATIENT_ATTRIBUTE,
     default_behavior: DefaultBehavior.SKIP,
+    // Opted OUT of escalation. This suite proves horizon behaviour and the
+    // mid-session flip; with escalation on (the default) an unresolvable gate
+    // would PEND rather than gate out, and every horizon assertion below would
+    // be measuring the wrong thing.
+    on_unresolved: 'default',
     condition: { field: 'labs', operator: 'greater_than', value: '718-7', threshold: 9 },
   }),
   node('step-1', 'Step'),

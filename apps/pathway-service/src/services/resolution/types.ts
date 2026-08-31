@@ -333,6 +333,22 @@ export interface PendingQuestion {
   tentativeConfidence?: number;
   /** LLM reasoning shown to the provider so they can decide whether to override. */
   tentativeReasoning?: string;
+
+  // ─── Escalated-datum metadata ─────────────────────────────────────
+  /**
+   * Set when this question was raised because a gate could not DECIDE, rather
+   * than because a provider was asked something. It identifies the DATUM
+   * requested, so several gates reading it produce one question.
+   *
+   * Its presence is also what tells the answer path that the reply is a fact
+   * to inject, not a verdict to record.
+   */
+  datumKey?: string;
+  /** Where an answer to this question gets injected as a fact. */
+  askTarget?:
+    | { kind: 'lab'; code: string; system: string }
+    | { kind: 'vital'; path: string }
+    | { kind: 'attribute'; path: string };
 }
 
 // ─── Red Flags ──────────────────────────────────────────────────────

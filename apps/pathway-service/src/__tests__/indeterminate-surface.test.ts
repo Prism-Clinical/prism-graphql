@@ -38,6 +38,13 @@ const NODES: GraphNode[] = [
     title: 'Anemic?',
     gate_type: GateType.PATIENT_ATTRIBUTE,
     default_behavior: DefaultBehavior.SKIP,
+    // Opted OUT of escalation on purpose. This suite is about the reason
+    // channel — is the gate marked indeterminate / dataUnavailable — not about
+    // what routing does with it. Escalation (which now defaults to 'ask')
+    // would turn every case here into PENDING_QUESTION and the assertions
+    // would stop being about the thing they were written for. Escalation has
+    // its own suite.
+    on_unresolved: 'default',
     condition: {
       field: 'labs',
       value: '718-7',
@@ -80,6 +87,7 @@ const MEMBERSHIP_NODES: GraphNode[] = [
     title: 'Diabetic?',
     gate_type: GateType.PATIENT_ATTRIBUTE,
     default_behavior: DefaultBehavior.SKIP,
+    on_unresolved: 'default',
     condition: {
       field: 'conditions',
       value: 'E11.9',
@@ -156,8 +164,8 @@ describe('indeterminate reaches resolution state', () => {
 
     expect(gate.indeterminate).toBe(true);
     expect(gate.uncertaintyReason).toBeTruthy();
-    // Routing is UNCHANGED by this plan: default_behavior 'skip' still gates
-    // it out. Escalation is a later workstream.
+    // GATED_OUT because this gate opted out of escalation above. With the
+    // default ('ask') it would PEND — see escalate-on-unresolved.test.ts.
     expect(gate.status).toBe(NodeStatus.GATED_OUT);
   });
 
