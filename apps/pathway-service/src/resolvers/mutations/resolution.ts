@@ -480,6 +480,63 @@ export const resolutionMutations = {
         });
       }
 
+      // ─── Escalated datum request ──────────────────────────────────
+      //
+      // A gate that could not DECIDE asks for the datum it needed, and the
+      // pending entry carries where the answer belongs. Such an answer is a
+      // FACT, not a verdict: it goes into the session's patient context and
+      // the gate re-evaluates from it, which is what makes one answer resolve
+      // every gate reading that datum rather than only the one asked.
+      //
+      // Delegated to addPatientContext rather than reimplemented — one way for
+      // a fact to enter a session. Two ways is how the traversal engines
+      // diverged, and this is the same shape of mistake.
+      const escalated = session.pendingQuestions.find(
+        q => q.gateId === args.gateId && q.askTarget,
+      );
+      if (escalated?.askTarget) {
+        const value = args.answer.numericValue;
+        if (value === undefined || value === null) {
+          throw new GraphQLError(
+            `Gate "${args.gateId}" is a request for ${escalated.datumKey}; supply numericValue`,
+            { extensions: { code: 'BAD_USER_INPUT' } },
+          );
+        }
+
+        const target = escalated.askTarget;
+        const fragment: AdditionalContextInput =
+          target.kind === 'lab'
+            ? { labResults: [{ code: target.code, system: target.system, value }] }
+            : target.kind === 'vital'
+              ? { vitalSigns: { [target.path]: value } }
+              // `patient.trimester` addresses patientAttributes.trimester —
+              // resolveAttribute reads a FLAT key, not a nested namespace.
+              : { patientAttributes: { [target.path.split('.').slice(1).join('.')]: value } };
+
+        // NOTE: deliberately no `sourceId` on the fragment. It is in
+        // LAB_ASSERTION_FIELDS, so the trust guard would reject it — and
+        // rightly: that guard stops CALLERS asserting clinical provenance.
+        // The fact that a clinician supplied this rather than the chart is
+        // recorded below as an audit event, which is where "who said what"
+        // belongs. It must not be dressed up as an observation.
+        await logEvent(pool, args.sessionId, {
+          eventType: 'PROVIDER_ASSERTED_DATUM',
+          triggerData: { gateId: args.gateId, datumKey: escalated.datumKey, target, value },
+          nodesRecomputed: 0,
+          statusChanges: [],
+        });
+
+        // Deliberately NOT written to session.gateAnswers. That map is what
+        // evaluateQuestion reads; an entry there would make this data gate
+        // look like an answered QUESTION gate and be consulted instead of the
+        // fact on every later retraversal.
+        return resolutionMutations.addPatientContext(
+          _parent,
+          { sessionId: args.sessionId, additionalContext: fragment },
+          context,
+        );
+      }
+
       const newAnswer: GateAnswer = {
         booleanValue: args.answer.booleanValue,
         numericValue: args.answer.numericValue,
@@ -798,10 +855,23 @@ export const resolutionMutations = {
       statusChanges.push(...reResult.statusChanges);
       nodesRecomputed = reResult.nodesRecomputed;
 
-      // Update pending questions and red flags
-      if (reResult.pendingQuestions.length > 0) {
-        session.pendingQuestions = [...session.pendingQuestions, ...reResult.pendingQuestions];
-      }
+      // Update pending questions and red flags.
+      //
+      // Drop any question whose gate is no longer PENDING_QUESTION before
+      // appending. A datum request that has been answered is resolved — the
+      // gate decided on the value — and leaving it in the list would ask the
+      // provider again for something they already supplied. This also clears
+      // the SIBLING requests deduped onto one datum, since they resolve from
+      // the same injected fact.
+      const stillPending = session.pendingQuestions.filter(q => {
+        const n = session.resolutionState.get(q.gateId);
+        return n === undefined || n.status === NodeStatus.PENDING_QUESTION;
+      });
+      const known = new Set(stillPending.map(q => q.gateId));
+      session.pendingQuestions = [
+        ...stillPending,
+        ...reResult.pendingQuestions.filter(q => !known.has(q.gateId)),
+      ];
       if (reResult.redFlags.length > 0) {
         session.redFlags = [...session.redFlags, ...reResult.redFlags];
       }
