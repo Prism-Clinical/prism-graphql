@@ -1,7 +1,7 @@
 /**
  * Plan 04 Task 9 — the assembler is wired at every entry point, under `v1` only.
  *
- * Five sites: `startResolution`, `overrideNode`, `answerGateQuestion`,
+ * Five sites: `startResolution`, `overrideNode`, `answerPendingDecision`,
  * `addPatientContext`, and the multi-pathway `resolveAndPersistAll`. Until this
  * task `assembleContext` had no callers at all and `deps.factStore` was `[]` in
  * production, so every `v1` proof so far was a unit test.
@@ -445,9 +445,9 @@ describe('legacy-v0 never invokes the assembler (P1-9)', () => {
         ]),
       }) as never,
     );
-    await resolutionMutations.answerGateQuestion(
+    await resolutionMutations.answerPendingDecision(
       undefined,
-      { sessionId: 'session-1', gateId: 'gate-1', answer: { booleanValue: true } },
+      { sessionId: 'session-1', nodeId: 'gate-1', answer: { booleanValue: true } },
       gqlContext('legacy-v0'),
     );
     expect(storeAt(retraversalCtor)).toEqual([]);
@@ -535,7 +535,7 @@ describe('every engine entry point assembles under v1', () => {
     expect(storeAt(retraversalCtor)[0]).toMatchObject({ kind: 'condition', code: 'E11.9' });
   });
 
-  it('answerGateQuestion re-assembles rather than passing an empty store', async () => {
+  it('answerPendingDecision re-assembles rather than passing an empty store', async () => {
     mockedGetSession.mockResolvedValue(
       sessionWith({
         temporalContext: CLOCK_V1,
@@ -545,9 +545,9 @@ describe('every engine entry point assembles under v1', () => {
       }) as never,
     );
 
-    await resolutionMutations.answerGateQuestion(
+    await resolutionMutations.answerPendingDecision(
       undefined,
-      { sessionId: 'session-1', gateId: 'gate-1', answer: { booleanValue: true } },
+      { sessionId: 'session-1', nodeId: 'gate-1', answer: { booleanValue: true } },
       gqlContext('v1'),
     );
 

@@ -228,7 +228,7 @@ describe('every engine construction site is handed rctx.temporalDefaults (P1-10)
     expect(retraversalCtor.mock.calls[0][PATHWAY_DEFAULTS_ARG]).toBe(rctx.temporalDefaults);
   });
 
-  it('answerGateQuestion — incremental resolve', async () => {
+  it('answerPendingDecision — incremental resolve', async () => {
     const rctx = rctxWith(defaults());
     mockBuildResolutionContext.mockResolvedValue(rctx);
     mockedGetSession.mockResolvedValue(
@@ -239,9 +239,9 @@ describe('every engine construction site is handed rctx.temporalDefaults (P1-10)
       }) as never,
     );
 
-    await resolutionMutations.answerGateQuestion(
+    await resolutionMutations.answerPendingDecision(
       undefined,
-      { sessionId: 'session-1', gateId: 'gate-1', answer: { booleanValue: true } },
+      { sessionId: 'session-1', nodeId: 'gate-1', answer: { booleanValue: true } },
       gqlContext(),
     );
 

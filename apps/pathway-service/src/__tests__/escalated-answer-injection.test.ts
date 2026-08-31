@@ -181,9 +181,9 @@ describe('an escalated answer becomes a fact', () => {
     // Hb 9.1: anaemic (< 11) but not severe (< 7). If the answer were treated
     // as a verdict — "any value opens the gate" — BOTH would open, and the
     // patient would be queued for a transfusion.
-    await resolutionMutations.answerGateQuestion(
+    await resolutionMutations.answerPendingDecision(
       undefined as never,
-      { sessionId: 'session-1', gateId: created.pendingQuestions[0].gateId, answer: { numericValue: 9.1 } },
+      { sessionId: 'session-1', nodeId: created.pendingQuestions[0].gateId, answer: { numericValue: 9.1 } },
       ctx(),
     );
 
@@ -197,9 +197,9 @@ describe('an escalated answer becomes a fact', () => {
     mockedGetSession.mockResolvedValue(session as never);
     mockBuildResolutionContext.mockResolvedValue(rctx());
 
-    await resolutionMutations.answerGateQuestion(
+    await resolutionMutations.answerPendingDecision(
       undefined as never,
-      { sessionId: 'session-1', gateId: created.pendingQuestions[0].gateId, answer: { numericValue: 9.1 } },
+      { sessionId: 'session-1', nodeId: created.pendingQuestions[0].gateId, answer: { numericValue: 9.1 } },
       ctx(),
     );
 
@@ -214,9 +214,9 @@ describe('an escalated answer becomes a fact', () => {
     mockedGetSession.mockResolvedValue(sessionFrom(created));
     mockBuildResolutionContext.mockResolvedValue(rctx());
 
-    await resolutionMutations.answerGateQuestion(
+    await resolutionMutations.answerPendingDecision(
       undefined as never,
-      { sessionId: 'session-1', gateId: created.pendingQuestions[0].gateId, answer: { numericValue: 9.1 } },
+      { sessionId: 'session-1', nodeId: created.pendingQuestions[0].gateId, answer: { numericValue: 9.1 } },
       ctx(),
     );
 
@@ -234,9 +234,9 @@ describe('an escalated answer becomes a fact', () => {
     mockBuildResolutionContext.mockResolvedValue(rctx());
 
     await expect(
-      resolutionMutations.answerGateQuestion(
+      resolutionMutations.answerPendingDecision(
         undefined as never,
-        { sessionId: 'session-1', gateId: created.pendingQuestions[0].gateId, answer: { booleanValue: true } },
+        { sessionId: 'session-1', nodeId: created.pendingQuestions[0].gateId, answer: { booleanValue: true } },
         ctx(),
       ),
     ).rejects.toThrow(/numericValue/);

@@ -438,9 +438,16 @@ export const resolutionMutations = {
     return formatSessionForGraphQL(updated);
   },
 
-  async answerGateQuestion(
+  /**
+   * Answer whatever the session is waiting on at a node: a question gate, an
+   * escalated request for a datum, or a branch choice at a DecisionPoint.
+   *
+   * Renamed from `answerGateQuestion` — it answers three different things now,
+   * and `gateId` was wrong for the third.
+   */
+  async answerPendingDecision(
     _parent: unknown,
-    args: { sessionId: string; gateId: string; answer: GateAnswerInput },
+    args: { sessionId: string; nodeId: string; answer: GateAnswerInput },
     context: DataSourceContext
   ) {
     const { pool } = context;
@@ -473,11 +480,85 @@ export const resolutionMutations = {
       pathwayIdForLog = session.pathwayId;
 
       // 2. Find gate in resolution state
-      const gateResult = session.resolutionState.get(args.gateId);
+      const gateResult = session.resolutionState.get(args.nodeId);
       if (!gateResult) {
-        throw new GraphQLError(`Gate "${args.gateId}" not found in session`, {
+        throw new GraphQLError(`Gate "${args.nodeId}" not found in session`, {
           extensions: { code: 'NOT_FOUND' },
         });
+      }
+
+      // ─── Branch choice at a DecisionPoint ─────────────────────────
+      //
+      // A one_of fork with several qualifying branches pends rather than
+      // taking them all (plan 05 task 1). The answer names which branch
+      // applies; taking it must CLOSE the others, or the pend bought nothing.
+      if (gateResult.nodeType === 'DecisionPoint') {
+        const pendingDecision = session.pendingQuestions.find(q => q.gateId === args.nodeId);
+        const candidates = pendingDecision?.options ?? [];
+        const chosen = args.answer.selectedOption;
+
+        if (!chosen || !candidates.includes(chosen)) {
+          throw new GraphQLError(
+            `"${chosen}" is not among the candidate branches at "${args.nodeId}": ` +
+              `${candidates.join(', ')}`,
+            { extensions: { code: 'BAD_USER_INPUT' } },
+          );
+        }
+
+        const rctxDp = await buildResolutionContext(pool, session.pathwayId);
+        const dpClock = requireSessionTemporalContext(session);
+
+        gateResult.status = NodeStatus.INCLUDED;
+        gateResult.confidence = 1;
+        gateResult.excludeReason = undefined;
+
+        // Close every branch that was not chosen, naming the choice. An
+        // unexplained missing arm reads as an oversight rather than a decision.
+        const chosenTitle =
+          rctxDp.graphContext.getNode(chosen)?.properties?.title ?? chosen;
+        for (const candidate of candidates) {
+          if (candidate === chosen) continue;
+          const n = session.resolutionState.get(candidate);
+          if (!n) continue;
+          n.status = NodeStatus.EXCLUDED;
+          n.excludeReason = `Not selected at "${gateResult.title}" — chose "${chosenTitle}"`;
+        }
+
+        // Re-resolve from the chosen branch. The unchosen ones keep the status
+        // just written: resolveIncrementally clears the region it is seeded
+        // from, and seeding it from the chosen branch alone leaves them be.
+        const dpEngine = new TraversalEngine(
+          makeTraversalAdapter(rctxDp, pool, session.pathwayId, session.initialPatientContext as PatientContext),
+          rctxDp.thresholds,
+          dpClock,
+          rctxDp.temporalDefaults,
+          factStoreForSession(session, session.additionalContext as Partial<AdditionalContextInput>),
+          rctxDp.codeMap,
+        );
+        const dpResult = await dpEngine.resolveIncrementally(
+          new Set([chosen]),
+          session.resolutionState,
+          session.dependencyMap,
+          rctxDp.graphContext,
+          session.initialPatientContext as PatientContext,
+          session.gateAnswers,
+        );
+
+        statusChanges.push(...dpResult.statusChanges);
+        nodesRecomputed = dpResult.nodesRecomputed;
+        session.pendingQuestions = session.pendingQuestions.filter(
+          q => q.gateId !== args.nodeId,
+        );
+
+        await updateSession(pool, args.sessionId, session);
+        await logEvent(pool, args.sessionId, {
+          eventType: 'BRANCH_CHOSEN',
+          triggerData: { nodeId: args.nodeId, chosen, candidates },
+          nodesRecomputed,
+          statusChanges,
+        });
+        const refreshed = await getSession(pool, args.sessionId);
+        return formatSessionForGraphQL(refreshed ?? session);
       }
 
       // ─── Escalated datum request ──────────────────────────────────
@@ -492,13 +573,13 @@ export const resolutionMutations = {
       // a fact to enter a session. Two ways is how the traversal engines
       // diverged, and this is the same shape of mistake.
       const escalated = session.pendingQuestions.find(
-        q => q.gateId === args.gateId && q.askTarget,
+        q => q.gateId === args.nodeId && q.askTarget,
       );
       if (escalated?.askTarget) {
         const value = args.answer.numericValue;
         if (value === undefined || value === null) {
           throw new GraphQLError(
-            `Gate "${args.gateId}" is a request for ${escalated.datumKey}; supply numericValue`,
+            `Gate "${args.nodeId}" is a request for ${escalated.datumKey}; supply numericValue`,
             { extensions: { code: 'BAD_USER_INPUT' } },
           );
         }
@@ -521,7 +602,7 @@ export const resolutionMutations = {
         // belongs. It must not be dressed up as an observation.
         await logEvent(pool, args.sessionId, {
           eventType: 'PROVIDER_ASSERTED_DATUM',
-          triggerData: { gateId: args.gateId, datumKey: escalated.datumKey, target, value },
+          triggerData: { gateId: args.nodeId, datumKey: escalated.datumKey, target, value },
           nodesRecomputed: 0,
           statusChanges: [],
         });
@@ -542,7 +623,7 @@ export const resolutionMutations = {
         numericValue: args.answer.numericValue,
         selectedOption: args.answer.selectedOption,
       };
-      session.gateAnswers.set(args.gateId, newAnswer);
+      session.gateAnswers.set(args.nodeId, newAnswer);
 
       // Determine if gate opens: delegate to gate evaluator after building context.
       // For now, any non-null answer value is treated as opening the gate.
@@ -559,8 +640,8 @@ export const resolutionMutations = {
       const sessionClock = requireSessionTemporalContext(session);
 
       const affectedNodes = new Set<string>();
-      affectedNodes.add(args.gateId);
-      const subtreeQueue = [args.gateId];
+      affectedNodes.add(args.nodeId);
+      const subtreeQueue = [args.nodeId];
       while (subtreeQueue.length > 0) {
         const id = subtreeQueue.shift()!;
         for (const edge of rctx.graphContext.outgoingEdges(id)) {
@@ -584,7 +665,7 @@ export const resolutionMutations = {
         gateResult.status = NodeStatus.INCLUDED;
         gateResult.confidence = 1;
         gateResult.excludeReason = undefined;
-        statusChanges.push({ nodeId: args.gateId, from: previousGateStatus, to: NodeStatus.INCLUDED });
+        statusChanges.push({ nodeId: args.nodeId, from: previousGateStatus, to: NodeStatus.INCLUDED });
 
         // NOTE: there used to be a loop here deleting every PENDING_QUESTION /
         // GATED_OUT node under the answered gate, because `retraverse` could
@@ -627,7 +708,7 @@ export const resolutionMutations = {
         // Update pending questions and red flags
         // Remove the answered gate from pending, add any new ones
         session.pendingQuestions = session.pendingQuestions
-          .filter(q => q.gateId !== args.gateId)
+          .filter(q => q.gateId !== args.nodeId)
           .concat(reResult.pendingQuestions);
         if (reResult.redFlags.length > 0) {
           session.redFlags = [...session.redFlags, ...reResult.redFlags];
@@ -637,10 +718,10 @@ export const resolutionMutations = {
         const previousGateStatus = gateResult.status;
         gateResult.status = NodeStatus.GATED_OUT;
         gateResult.excludeReason = 'Gate answer: condition not met';
-        statusChanges.push({ nodeId: args.gateId, from: previousGateStatus, to: NodeStatus.GATED_OUT });
+        statusChanges.push({ nodeId: args.nodeId, from: previousGateStatus, to: NodeStatus.GATED_OUT });
 
         for (const nodeId of affectedNodes) {
-          if (nodeId === args.gateId) continue;
+          if (nodeId === args.nodeId) continue;
           const existing = session.resolutionState.get(nodeId);
           if (existing) {
             const oldStatus = existing.status;
@@ -654,7 +735,7 @@ export const resolutionMutations = {
         }
 
         // Remove the answered question from pending
-        session.pendingQuestions = session.pendingQuestions.filter(q => q.gateId !== args.gateId);
+        session.pendingQuestions = session.pendingQuestions.filter(q => q.gateId !== args.nodeId);
       }
 
       // 7. Update session (optimistic lock)
@@ -682,7 +763,7 @@ export const resolutionMutations = {
     await logEvent(pool, args.sessionId, {
       eventType: 'gate_answer',
       triggerData: {
-        gateId: args.gateId,
+        gateId: args.nodeId,
         answer: args.answer,
         gateOpened,
       },
@@ -693,7 +774,7 @@ export const resolutionMutations = {
     // 9. Log to pathway_gate_answers
     await logGateAnswer(pool, {
       sessionId: args.sessionId,
-      gateId: args.gateId,
+      gateId: args.nodeId,
       pathwayId: pathwayIdForLog,
       answer: args.answer,
       gateOpened,

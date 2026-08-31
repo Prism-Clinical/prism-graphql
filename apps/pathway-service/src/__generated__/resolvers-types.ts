@@ -741,7 +741,7 @@ export type MissingData = {
  * A pending Gate question surfaced from one of the contributing per-pathway
  * sessions of a multi-pathway resolution. Carries enough metadata for the FE
  * to route the answer to the correct per-pathway session via
- * `answerGateQuestion(sessionId, gateId, answer)`.
+ * `answerPendingDecision(sessionId, nodeId, answer)`.
  */
 export type MultiPathwayPendingGate = {
   __typename?: 'MultiPathwayPendingGate';
@@ -824,7 +824,7 @@ export type MultiPathwayResolutionSession = {
    * Aggregated pending Gate questions across every contributing per-pathway
    * session. Empty when every gate has been auto-resolved from patient data or
    * hand-answered. Each entry carries `sessionId` so the FE can call
-   * `answerGateQuestion` against the correct per-pathway session. Until a
+   * `answerPendingDecision` against the correct per-pathway session. Until a
    * re-merge surface exists, answering a gate updates the per-pathway state
    * but NOT the merged plan — re-run resolution to see merge changes.
    */
@@ -865,7 +865,14 @@ export type Mutation = {
   activatePathway: PathwayStatusResult;
   addAdminEvidence: AdminEvidenceEntry;
   addPatientContext: ResolutionSession;
-  answerGateQuestion: ResolutionSession;
+  /**
+   * Answer whatever the session is waiting on at a node: a question gate, an
+   * escalated request for a datum the pathway needed, or a branch choice at a
+   * DecisionPoint whose branches could not be told apart by the data.
+   *
+   * Renamed from `answerGateQuestion`, which named only the first of the three.
+   */
+  answerPendingDecision: ResolutionSession;
   /** Archive an ACTIVE pathway, removing it from patient matching. */
   archivePathway: PathwayStatusResult;
   createSignalDefinition: SignalDefinitionType;
@@ -981,9 +988,9 @@ export type MutationAddPatientContextArgs = {
 };
 
 
-export type MutationAnswerGateQuestionArgs = {
+export type MutationAnswerPendingDecisionArgs = {
   answer: GateAnswerInput;
-  gateId: Scalars['ID']['input'];
+  nodeId: Scalars['ID']['input'];
   sessionId: Scalars['ID']['input'];
 };
 
@@ -2802,7 +2809,7 @@ export type MutationResolvers<ContextType = DataSourceContext, ParentType extend
   activatePathway?: Resolver<ResolversTypes['PathwayStatusResult'], ParentType, ContextType, RequireFields<MutationActivatePathwayArgs, 'id'>>;
   addAdminEvidence?: Resolver<ResolversTypes['AdminEvidenceEntry'], ParentType, ContextType, RequireFields<MutationAddAdminEvidenceArgs, 'input'>>;
   addPatientContext?: Resolver<ResolversTypes['ResolutionSession'], ParentType, ContextType, RequireFields<MutationAddPatientContextArgs, 'additionalContext' | 'sessionId'>>;
-  answerGateQuestion?: Resolver<ResolversTypes['ResolutionSession'], ParentType, ContextType, RequireFields<MutationAnswerGateQuestionArgs, 'answer' | 'gateId' | 'sessionId'>>;
+  answerPendingDecision?: Resolver<ResolversTypes['ResolutionSession'], ParentType, ContextType, RequireFields<MutationAnswerPendingDecisionArgs, 'answer' | 'nodeId' | 'sessionId'>>;
   archivePathway?: Resolver<ResolversTypes['PathwayStatusResult'], ParentType, ContextType, RequireFields<MutationArchivePathwayArgs, 'id'>>;
   createSignalDefinition?: Resolver<ResolversTypes['SignalDefinitionType'], ParentType, ContextType, RequireFields<MutationCreateSignalDefinitionArgs, 'input'>>;
   deletePreviewSession?: Resolver<ResolversTypes['DeletePreviewSessionResult'], ParentType, ContextType, RequireFields<MutationDeletePreviewSessionArgs, 'sessionId'>>;

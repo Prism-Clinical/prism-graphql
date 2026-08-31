@@ -1,12 +1,12 @@
 /**
- * Task 3 — proves `overrideNode` and `answerGateQuestion` reconstruct the
+ * Task 3 — proves `overrideNode` and `answerPendingDecision` reconstruct the
  * retraversal `PatientContext` from BOTH `session.initialPatientContext` AND
  * `session.additionalContext` (via `buildEffectivePatientContext`), instead
  * of discarding everything added mid-session.
  *
  * No resolver-level test harness for `apps/pathway-service/src/resolvers/
  * mutations/resolution.ts` existed prior to this file (grep for
- * "answerGateQuestion|addPatientContext|overrideNode" under __tests__/tests
+ * "answerPendingDecision|addPatientContext|overrideNode" under __tests__/tests
  * only matched the production source + this new test + the effective-context
  * helper). This test builds one, mirroring the mocking pattern already used
  * by `multi-pathway-resolution.test.ts` (mock session-store, the
@@ -134,7 +134,7 @@ describe('resolution retraversal context reconstruction (Task 3)', () => {
     });
   });
 
-  describe('answerGateQuestion', () => {
+  describe('answerPendingDecision', () => {
     it('includes a mid-session attribute addition (patientAttributes.trimester) in the retraversal context', async () => {
       const gateNode: NodeResult = {
         nodeId: 'gate-1',
@@ -151,9 +151,9 @@ describe('resolution retraversal context reconstruction (Task 3)', () => {
       session.resolutionState.set('gate-1', gateNode);
       mockedGetSession.mockResolvedValue(session);
 
-      await resolutionMutations.answerGateQuestion(
+      await resolutionMutations.answerPendingDecision(
         undefined,
-        { sessionId: 'session-1', gateId: 'gate-1', answer: { booleanValue: true } },
+        { sessionId: 'session-1', nodeId: 'gate-1', answer: { booleanValue: true } },
         fakeContext,
       );
 
@@ -179,9 +179,9 @@ describe('resolution retraversal context reconstruction (Task 3)', () => {
       session.resolutionState.set('gate-1', gateNode);
       mockedGetSession.mockResolvedValue(session);
 
-      await resolutionMutations.answerGateQuestion(
+      await resolutionMutations.answerPendingDecision(
         undefined,
-        { sessionId: 'session-1', gateId: 'gate-1', answer: { booleanValue: true } },
+        { sessionId: 'session-1', nodeId: 'gate-1', answer: { booleanValue: true } },
         fakeContext,
       );
 
