@@ -581,6 +581,7 @@ export const multiPathwayResolutionTypeResolvers = {
         tentativeBranch: string | null;
         tentativeConfidence: number | null;
         tentativeReasoning: string | null;
+        datumKey: string | null;
       }> = [];
       for (const row of result.rows) {
         const questions = (row.pending_questions ?? []) as Array<Record<string, unknown>>;
@@ -606,6 +607,11 @@ export const multiPathwayResolutionTypeResolvers = {
             tentativeReasoning: q.tentativeReasoning == null && q.tentative_reasoning == null
               ? null
               : String(q.tentativeReasoning ?? q.tentative_reasoning),
+            // Both spellings, like the fields above: these rows come off
+            // persisted JSON that has been written by more than one shape.
+            datumKey: q.datumKey == null && q.datum_key == null
+              ? null
+              : String(q.datumKey ?? q.datum_key),
           });
         }
       }

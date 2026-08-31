@@ -895,6 +895,17 @@ type MultiPathwayPendingGate {
   tentativeConfidence: Float
   """LLM reasoning shown to the provider so they can decide whether to override."""
   tentativeReasoning: String
+  """
+  Set when this question is a request for a DATUM — a gate that could not
+  decide because the value it needed was missing or unorderable — rather
+  than a clinical question put to the provider. Identifies the datum, so
+  several gates reading it surface as one request.
+
+  Its presence is what tells a client this is answerable from a chart:
+  "what is this patient's haemoglobin?" rather than "is the patient
+  symptomatic?". Null for ordinary question gates.
+  """
+  datumKey: String
 }
 
 """Lightweight summary for list views (no embedded merged plan)."""

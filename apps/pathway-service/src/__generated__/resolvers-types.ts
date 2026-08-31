@@ -747,6 +747,17 @@ export type MultiPathwayPendingGate = {
   __typename?: 'MultiPathwayPendingGate';
   affectedSubtreeSize: Scalars['Int']['output'];
   answerType: AnswerType;
+  /**
+   * Set when this question is a request for a DATUM — a gate that could not
+   * decide because the value it needed was missing or unorderable — rather
+   * than a clinical question put to the provider. Identifies the datum, so
+   * several gates reading it surface as one request.
+   *
+   * Its presence is what tells a client this is answerable from a chart:
+   * "what is this patient's haemoglobin?" rather than "is the patient
+   * symptomatic?". Null for ordinary question gates.
+   */
+  datumKey?: Maybe<Scalars['String']['output']>;
   estimatedImpact: Scalars['String']['output'];
   gateId: Scalars['ID']['output'];
   options?: Maybe<Array<Scalars['String']['output']>>;
@@ -2738,6 +2749,7 @@ export type MissingDataResolvers<ContextType = DataSourceContext, ParentType ext
 export type MultiPathwayPendingGateResolvers<ContextType = DataSourceContext, ParentType extends ResolversParentTypes['MultiPathwayPendingGate'] = ResolversParentTypes['MultiPathwayPendingGate']> = ResolversObject<{
   affectedSubtreeSize?: Resolver<ResolversTypes['Int'], ParentType, ContextType>;
   answerType?: Resolver<ResolversTypes['AnswerType'], ParentType, ContextType>;
+  datumKey?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   estimatedImpact?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   gateId?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
   options?: Resolver<Maybe<Array<ResolversTypes['String']>>, ParentType, ContextType>;

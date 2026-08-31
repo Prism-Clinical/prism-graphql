@@ -120,6 +120,7 @@ export function formatSessionForGraphQL(session: ResolutionSession) {
       tentativeBranch: q.tentativeBranch ?? null,
       tentativeConfidence: q.tentativeConfidence ?? null,
       tentativeReasoning: q.tentativeReasoning ?? null,
+      datumKey: q.datumKey ?? null,
     })),
     redFlags: session.redFlags.map(f => ({
       nodeId: f.nodeId,
@@ -723,6 +724,7 @@ export const Query = {
         tentativeBranch: q.tentativeBranch ?? null,
         tentativeConfidence: q.tentativeConfidence ?? null,
         tentativeReasoning: q.tentativeReasoning ?? null,
+      datumKey: q.datumKey ?? null,
       }));
     },
 
