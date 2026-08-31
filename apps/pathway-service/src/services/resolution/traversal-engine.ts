@@ -813,6 +813,63 @@ export class TraversalEngine {
         }
       }
 
+      const branchMode = (node.properties.branch_mode as string | undefined) ?? 'one_of';
+
+      // An exclusive fork with more than one qualifying branch has NOT been
+      // decided by the data. Ranking the candidates and taking the top one
+      // would be the same silent routing this work exists to remove, with
+      // better arithmetic — and on a one_of fork the branches are typically
+      // mutually exclusive treatments.
+      if (branchMode === 'one_of' && includedBranches.length > 1) {
+        resolutionState.set(nodeIdentifier, {
+          nodeId: nodeIdentifier,
+          nodeType: node.nodeType,
+          title: nodeTitle(node),
+          status: NodeStatus.PENDING_QUESTION,
+          confidence: 0,
+          confidenceBreakdown: [],
+          excludeReason:
+            `${includedBranches.length} branches qualify on an exclusive decision`,
+          parentNodeId,
+          depth,
+          properties: node.properties,
+        });
+
+        // NOTHING is traversed. Marking the candidates and their subtrees
+        // PENDING_QUESTION rather than leaving them absent keeps the session's
+        // node set complete, which plan 03 made an invariant.
+        for (const br of branchResults) {
+          if (resolutionState.has(br.targetId)) continue;
+          const targetNode = graphContext.getNode(br.targetId);
+          if (!targetNode) continue;
+          resolutionState.set(br.targetId, {
+            nodeId: br.targetId,
+            nodeType: targetNode.nodeType,
+            title: br.title,
+            status: NodeStatus.PENDING_QUESTION,
+            confidence: br.confidence,
+            confidenceBreakdown: [],
+            excludeReason: `Awaiting branch choice at ${nodeTitle(node)}`,
+            parentNodeId: nodeIdentifier,
+            depth: depth + 1,
+            properties: targetNode.properties,
+          });
+          const kids = graphContext.outgoingEdges(br.targetId).map(e => e.targetId);
+          markSubtree(kids, graphContext, resolutionState, NodeStatus.PENDING_QUESTION,
+            `Awaiting branch choice at ${nodeTitle(node)}`, br.targetId, depth + 1);
+        }
+
+        pendingQuestions.push({
+          gateId: nodeIdentifier,
+          prompt: `${nodeTitle(node)} — which branch applies?`,
+          answerType: AnswerType.SELECT,
+          options: includedBranches,
+          affectedSubtreeSize: countSubtree(includedBranches, graphContext),
+          estimatedImpact: 'high',
+        });
+        return;
+      }
+
       // Decision point itself is always included
       resolutionState.set(nodeIdentifier, {
         nodeId: nodeIdentifier,
