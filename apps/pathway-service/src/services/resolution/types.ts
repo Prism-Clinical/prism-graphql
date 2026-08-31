@@ -321,6 +321,15 @@ export interface PendingQuestion {
   prompt: string;
   answerType: AnswerType;
   options?: string[];
+  /**
+   * Display text for `options`, index-aligned, when the option VALUES are not
+   * themselves readable. A branch choice answers with a node id — `step-2-1` —
+   * and no clinician can pick between those, but the client has no way to
+   * resolve a title from an id on its own.
+   *
+   * Absent for a question gate, whose options are the author's own words.
+   */
+  optionLabels?: string[];
   affectedSubtreeSize: number;
   estimatedImpact: string;
 

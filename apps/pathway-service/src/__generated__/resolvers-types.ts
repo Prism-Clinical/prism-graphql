@@ -760,6 +760,13 @@ export type MultiPathwayPendingGate = {
   datumKey?: Maybe<Scalars['String']['output']>;
   estimatedImpact: Scalars['String']['output'];
   gateId: Scalars['ID']['output'];
+  /**
+   * Display text for `options`, index-aligned, when the option values are not
+   * readable on their own. A branch choice answers with a node id; this carries
+   * the branch titles so a client can render them. Null for question gates,
+   * whose options are already the author's words.
+   */
+  optionLabels?: Maybe<Array<Scalars['String']['output']>>;
   options?: Maybe<Array<Scalars['String']['output']>>;
   pathwayId: Scalars['ID']['output'];
   pathwayTitle: Scalars['String']['output'];
@@ -2759,6 +2766,7 @@ export type MultiPathwayPendingGateResolvers<ContextType = DataSourceContext, Pa
   datumKey?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   estimatedImpact?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   gateId?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
+  optionLabels?: Resolver<Maybe<Array<ResolversTypes['String']>>, ParentType, ContextType>;
   options?: Resolver<Maybe<Array<ResolversTypes['String']>>, ParentType, ContextType>;
   pathwayId?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
   pathwayTitle?: Resolver<ResolversTypes['String'], ParentType, ContextType>;

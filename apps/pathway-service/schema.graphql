@@ -880,6 +880,13 @@ type MultiPathwayPendingGate {
   prompt: String!
   answerType: AnswerType!
   options: [String!]
+  """
+  Display text for `options`, index-aligned, when the option values are not
+  readable on their own. A branch choice answers with a node id; this carries
+  the branch titles so a client can render them. Null for question gates,
+  whose options are already the author's words.
+  """
+  optionLabels: [String!]
   affectedSubtreeSize: Int!
   estimatedImpact: String!
   """

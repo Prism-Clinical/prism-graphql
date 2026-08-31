@@ -121,6 +121,7 @@ export function formatSessionForGraphQL(session: ResolutionSession) {
       tentativeConfidence: q.tentativeConfidence ?? null,
       tentativeReasoning: q.tentativeReasoning ?? null,
       datumKey: q.datumKey ?? null,
+      optionLabels: q.optionLabels ?? null,
     })),
     redFlags: session.redFlags.map(f => ({
       nodeId: f.nodeId,
@@ -725,6 +726,7 @@ export const Query = {
         tentativeConfidence: q.tentativeConfidence ?? null,
         tentativeReasoning: q.tentativeReasoning ?? null,
       datumKey: q.datumKey ?? null,
+      optionLabels: q.optionLabels ?? null,
       }));
     },
 

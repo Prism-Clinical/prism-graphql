@@ -582,6 +582,7 @@ export const multiPathwayResolutionTypeResolvers = {
         tentativeConfidence: number | null;
         tentativeReasoning: string | null;
         datumKey: string | null;
+        optionLabels: string[] | null;
       }> = [];
       for (const row of result.rows) {
         const questions = (row.pending_questions ?? []) as Array<Record<string, unknown>>;
@@ -612,6 +613,9 @@ export const multiPathwayResolutionTypeResolvers = {
             datumKey: q.datumKey == null && q.datum_key == null
               ? null
               : String(q.datumKey ?? q.datum_key),
+            optionLabels: Array.isArray(q.optionLabels ?? q.option_labels)
+              ? ((q.optionLabels ?? q.option_labels) as string[])
+              : null,
           });
         }
       }

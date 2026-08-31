@@ -920,6 +920,9 @@ export class TraversalEngine {
           prompt: `${nodeTitle(node)} — which branch applies?`,
           answerType: AnswerType.SELECT,
           options: includedBranches,
+          optionLabels: includedBranches.map(
+            id => branchResults.find(b => b.targetId === id)?.title ?? id,
+          ),
           affectedSubtreeSize: countSubtree(includedBranches, graphContext),
           estimatedImpact: 'high',
         });
