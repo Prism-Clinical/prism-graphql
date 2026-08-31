@@ -429,6 +429,36 @@ describe('validatePathwayJson', () => {
       expect(result.errors).toContainEqual(expect.stringContaining('depends_on'));
     });
 
+    it('should reject a DecisionPoint with no branch_mode', () => {
+      const pw = clonePathway();
+      pw.nodes.push({
+        id: 'dp-no-mode',
+        type: 'DecisionPoint' as any,
+        properties: { title: 'Which treatment?' },
+      });
+      pw.edges.push({ from: 'step-1-1', to: 'dp-no-mode', type: 'HAS_DECISION_POINT' as any });
+      pw.edges.push({ from: 'dp-no-mode', to: 'step-1-2', type: 'BRANCHES_TO' as any });
+      const result = validatePathwayJson(pw);
+      expect(result.valid).toBe(false);
+      expect(result.errors).toContainEqual(expect.stringContaining('branch_mode'));
+    });
+
+    // Hard even in draft: a fork whose exclusivity is undefined is not
+    // work-in-progress, it is a fork the engine has to guess about.
+    it('should reject a DecisionPoint with no branch_mode in draft mode too', () => {
+      const pw = clonePathway();
+      pw.nodes.push({
+        id: 'dp-no-mode-draft',
+        type: 'DecisionPoint' as any,
+        properties: { title: 'Which treatment?' },
+      });
+      pw.edges.push({ from: 'step-1-1', to: 'dp-no-mode-draft', type: 'HAS_DECISION_POINT' as any });
+      pw.edges.push({ from: 'dp-no-mode-draft', to: 'step-1-2', type: 'BRANCHES_TO' as any });
+      const result = validatePathwayJson(pw, { draftMode: true });
+      expect(result.valid).toBe(false);
+      expect(result.errors).toContainEqual(expect.stringContaining('branch_mode'));
+    });
+
     it('should accept a Gate with on_unresolved "ask"', () => {
       const pw = clonePathway();
       pw.nodes.push({

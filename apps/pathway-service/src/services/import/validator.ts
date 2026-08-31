@@ -450,6 +450,17 @@ function validateNodeProperties(
 
   if (nodeType === 'DecisionPoint') {
     const mode = properties.branch_mode as string | undefined;
+    // REQUIRED, and hard even in draft mode. The engine reads this now: an
+    // absent mode means a fork whose exclusivity is undefined, and the safe
+    // reading (one_of) and the permissive one (any_of) differ by whether
+    // mutually exclusive treatments can land in the same plan. That is not
+    // work-in-progress, it is a question only the author can answer.
+    if (!mode) {
+      errors.push(
+        `node[${index}] (${nodeId}): DecisionPoint requires branch_mode. ` +
+          `Must be one of: ${VALID_BRANCH_MODES.join(', ')}`,
+      );
+    }
     if (mode && !VALID_BRANCH_MODES.includes(mode as any)) {
       errors.push(
         `node[${index}] (${nodeId}): invalid branch_mode "${mode}". Must be one of: ${VALID_BRANCH_MODES.join(', ')}`,
