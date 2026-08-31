@@ -251,8 +251,24 @@ remove. `prism-admin-dashboard` call sites move with it.
 gate. A question can gate a subtree but cannot route between branches, so authors express
 multi-way clinical questions as chains of boolean gates.
 
-**Change.** Question gates adopt the LLM gate's existing `branches: [{name, target}]`
-vocabulary plus an answer→branch map:
+**Change.** **Correction (2026-08-31, found while planning).** The LLM gate's `branches` shape
+does not exist as described and does not route. `LlmGateBranchSpec` is
+`{name, description, is_safe_default}` — **no target**; `chosenBranch` has one consumer
+in traversal, populating `tentativeBranch` on a pending question, and never routes; and
+there are **zero `llm_text_analysis` gates in the graph**, so the shape has never run
+against real data. Reusing it would have given question gates a `branches` array that
+names outcomes without routing them — the presence-only bug in a new costume.
+
+The routing table already exists: the gate's `BRANCHES_TO` edges. What is missing is the
+mapping from answer to edge, so that goes on the edge as a `when` property — the same
+shape `SELECTS_BRANCH` uses in W3. See
+`docs/superpowers/plans/2026-08-31-decision-semantics-06-answer-routing.md`.
+
+The live case is `gate-etiology` on `vaginal-discharge-pregnancy-v1`: five SELECT options,
+five treatment branches, and answering any one of them opens all five.
+
+~~Question gates adopt the LLM gate's existing `branches: [{name, target}]`
+vocabulary plus an answer→branch map:~~
 
 - BOOLEAN — two branches, mapped by true/false.
 - SELECT — option→branch.
