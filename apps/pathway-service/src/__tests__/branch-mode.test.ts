@@ -176,3 +176,79 @@ describe('branch_mode: any_of', () => {
     expect(r.pendingQuestions).toHaveLength(0);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────
+
+describe('SELECTS_BRANCH — exclusions explained in the author\'s words', () => {
+  /** dp-1 with criteria mapped onto branches. */
+  function graphWithCriteria(mapping: Array<[string, string, string]>) {
+    const critNodes = mapping.map(([id, desc]) => node(id, 'Criterion', { description: desc }));
+    const critEdges = mapping.flatMap(([id, , target]) => [
+      edge('dp-1', id, 'HAS_CRITERION'),
+      edge(id, target, 'SELECTS_BRANCH'),
+    ]);
+    return makeGraphContext(
+      [
+        node('root', 'Pathway'),
+        node('dp-1', 'DecisionPoint', { title: 'Which treatment?', branch_mode: 'one_of' }),
+        node('step-a', 'Step', { title: 'Treat A' }),
+        node('step-b', 'Step', { title: 'Treat B' }),
+        ...critNodes,
+      ],
+      [
+        edge('root', 'dp-1', 'HAS_DECISION_POINT'),
+        edge('dp-1', 'step-a', 'BRANCHES_TO'),
+        edge('dp-1', 'step-b', 'BRANCHES_TO'),
+        ...critEdges,
+      ],
+    );
+  }
+
+  async function resolveGraph(graph: ReturnType<typeof graphWithCriteria>, s: Record<string, number>) {
+    scoreAs(s);
+    const engine = new TraversalEngine(
+      mockConfidenceEngine as never,
+      { autoResolveThreshold: 0.85, suggestThreshold: SUGGEST },
+      makeEvaluationTemporalContext({
+        evaluationAsOf: AS_OF, temporalPolicyVersion: 'legacy-v0',
+      }),
+      {}, [], new Map(),
+    );
+    return engine.traverse(graph, PATIENT, new Map());
+  }
+
+  it('names the criterion that did not apply, instead of a confidence score', async () => {
+    const g = graphWithCriteria([
+      ['crit-a', 'Iron-deficiency picture', 'step-a'],
+      ['crit-b', 'Iron studies normal or mixed aetiology', 'step-b'],
+    ]);
+    const r = await resolveGraph(g, { 'step-b': 0.2 });
+
+    const reason = r.resolutionState.get('step-b')!.excludeReason ?? '';
+    expect(reason).toContain('Iron studies normal or mixed aetiology');
+    expect(reason).not.toContain('threshold');
+  });
+
+  // Empty is the NORMAL case: there are zero SELECTS_BRANCH edges in the
+  // graph today. A branch with no mapped criterion must keep its old reason.
+  it('falls back to the confidence reason when no criterion maps to the branch', async () => {
+    const g = graphWithCriteria([['crit-a', 'Iron-deficiency picture', 'step-a']]);
+    const r = await resolveGraph(g, { 'step-b': 0.2 });
+
+    const reason = r.resolutionState.get('step-b')!.excludeReason ?? '';
+    expect(reason).toContain('threshold');
+  });
+
+  it('names both when two criteria map to one branch', async () => {
+    const g = graphWithCriteria([
+      ['crit-a', 'Iron-deficiency picture', 'step-a'],
+      ['crit-b1', 'Iron studies normal', 'step-b'],
+      ['crit-b2', 'Mixed aetiology', 'step-b'],
+    ]);
+    const r = await resolveGraph(g, { 'step-b': 0.2 });
+
+    const reason = r.resolutionState.get('step-b')!.excludeReason ?? '';
+    expect(reason).toContain('Iron studies normal');
+    expect(reason).toContain('Mixed aetiology');
+  });
+});

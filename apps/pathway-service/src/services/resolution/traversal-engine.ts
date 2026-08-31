@@ -788,6 +788,26 @@ export class TraversalEngine {
       const branchResults: Array<{ targetId: string; confidence: number; title: string; excludeReason: string }> = [];
       const includedBranches: string[] = [];
 
+      // branch target id -> the criteria an author mapped onto it via
+      // SELECTS_BRANCH. Empty for every pathway today; this is a capability,
+      // not a migration. The mapping does NOT decide anything — which branch
+      // is taken still comes from confidence or a provider's answer. It only
+      // supplies wording for a decision already made, so an excluded arm can
+      // name the criterion that did not apply instead of citing a number.
+      const criteriaByBranch = new Map<string, string[]>();
+      for (const critEdge of graphContext.outgoingEdges(nodeIdentifier)) {
+        if (critEdge.edgeType !== 'HAS_CRITERION') continue;
+        const crit = graphContext.getNode(critEdge.targetId);
+        const description = crit?.properties.description as string | undefined;
+        if (!description) continue;
+        for (const sel of graphContext.outgoingEdges(critEdge.targetId)) {
+          if (sel.edgeType !== 'SELECTS_BRANCH') continue;
+          const list = criteriaByBranch.get(sel.targetId) ?? [];
+          list.push(description);
+          criteriaByBranch.set(sel.targetId, list);
+        }
+      }
+
       for (const branch of branches) {
         const targetNode = graphContext.getNode(branch.targetId);
         if (!targetNode) continue;
@@ -797,8 +817,14 @@ export class TraversalEngine {
         );
 
         const conf = confResult.confidence;
+        // The author's own words beat a confidence number. Both criteria are
+        // named when two map to one branch — picking one would be arbitrary,
+        // and the reader needs to know what else did not apply.
+        const mappedCriteria = criteriaByBranch.get(branch.targetId);
         const reason = conf < this.thresholds.suggestThreshold
-          ? `Confidence ${conf} below suggest threshold ${this.thresholds.suggestThreshold}`
+          ? mappedCriteria?.length
+            ? `Criterion did not apply: ${mappedCriteria.join('; ')}`
+            : `Confidence ${conf} below suggest threshold ${this.thresholds.suggestThreshold}`
           : '';
 
         branchResults.push({
