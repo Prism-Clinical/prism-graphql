@@ -231,6 +231,18 @@ export type MedicationRole = typeof VALID_MEDICATION_ROLES[number];
  * branches are filtered out by exclusivity logic.
  */
 export const VALID_BRANCH_MODES = ['one_of', 'all_of', 'any_of'] as const;
+
+/**
+ * What a Gate does when it CANNOT ANSWER — `indeterminate` (candidate facts
+ * exist but cannot be ordered) or `dataUnavailable` (a scalar comparison had
+ * no usable value). Absent means `'ask'`.
+ *
+ * Distinct from `default_behavior`, which governs a gate that answered "no".
+ * A gate that decided and a gate that could not decide are different events,
+ * and conflating them is what made missing data invisible.
+ */
+export const VALID_ON_UNRESOLVED = ['ask', 'default'] as const;
+export type OnUnresolved = typeof VALID_ON_UNRESOLVED[number];
 export type BranchMode = typeof VALID_BRANCH_MODES[number];
 
 // Valid evidence levels

@@ -213,6 +213,21 @@ export interface GateProperties {
   title: string;
   gate_type: GateType;
   default_behavior: DefaultBehavior;
+  /**
+   * What to do when the gate CANNOT ANSWER — `indeterminate` (candidate facts
+   * exist but cannot be ordered) or `dataUnavailable` (a scalar comparison had
+   * no usable value). Absent means `'ask'`.
+   *
+   *   `'ask'`     — surface a pending question for the datum and hold the
+   *                 subtree, exactly as an unanswered question gate does.
+   *   `'default'` — apply `default_behavior`, which is what every gate did
+   *                 before this existed.
+   *
+   * A gate that ANSWERED never consults this, including one that answered
+   * "no". Only genuine inability to decide does — that distinction is the
+   * whole point, and `default_behavior` is not a substitute for it.
+   */
+  on_unresolved?: 'ask' | 'default';
   condition?: GateCondition;
   prompt?: string;
   answer_type?: AnswerType;

@@ -429,6 +429,44 @@ describe('validatePathwayJson', () => {
       expect(result.errors).toContainEqual(expect.stringContaining('depends_on'));
     });
 
+    it('should accept a Gate with on_unresolved "ask"', () => {
+      const pw = clonePathway();
+      pw.nodes.push({
+        id: 'gate-ask',
+        type: 'Gate' as any,
+        properties: {
+          title: 'Anaemic?',
+          gate_type: 'patient_attribute',
+          default_behavior: 'skip',
+          on_unresolved: 'ask',
+          condition: { field: 'labs', operator: 'less_than', value: '718-7', system: 'LOINC', threshold: 11 },
+        },
+      });
+      pw.edges.push({ from: 'step-1-1', to: 'gate-ask', type: 'HAS_GATE' as any });
+      pw.edges.push({ from: 'gate-ask', to: 'step-1-2', type: 'BRANCHES_TO' as any });
+      expect(validatePathwayJson(pw).valid).toBe(true);
+    });
+
+    it('should reject an invalid on_unresolved value', () => {
+      const pw = clonePathway();
+      pw.nodes.push({
+        id: 'gate-bad-unresolved',
+        type: 'Gate' as any,
+        properties: {
+          title: 'Anaemic?',
+          gate_type: 'patient_attribute',
+          default_behavior: 'skip',
+          on_unresolved: 'escalate',
+          condition: { field: 'labs', operator: 'less_than', value: '718-7', system: 'LOINC', threshold: 11 },
+        },
+      });
+      pw.edges.push({ from: 'step-1-1', to: 'gate-bad-unresolved', type: 'HAS_GATE' as any });
+      pw.edges.push({ from: 'gate-bad-unresolved', to: 'step-1-2', type: 'BRANCHES_TO' as any });
+      const result = validatePathwayJson(pw);
+      expect(result.valid).toBe(false);
+      expect(result.errors).toContainEqual(expect.stringContaining('on_unresolved'));
+    });
+
     it('should reject select Gate without options', () => {
       const pw = clonePathway();
       pw.nodes.push({

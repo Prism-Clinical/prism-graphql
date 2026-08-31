@@ -10,6 +10,7 @@ import {
   VALID_MEDICATION_ROLES,
   VALID_EVIDENCE_LEVELS,
   VALID_BRANCH_MODES,
+  VALID_ON_UNRESOLVED,
   MAX_GRAPH_NODES,
   MAX_GRAPH_EDGES,
   MAX_GRAPH_DEPTH,
@@ -249,6 +250,17 @@ function validateGateNodes(
           errors.push(`Gate "${gate.id}": depends_on references nonexistent node "${depId}"`);
         }
       }
+    }
+
+    // on_unresolved vocabulary. Hard even in draft: an unrecognised value
+    // would silently fall back to the default, which is the opposite of what
+    // an author writing it intended.
+    const onUnresolved = props.on_unresolved as string | undefined;
+    if (onUnresolved && !(VALID_ON_UNRESOLVED as readonly string[]).includes(onUnresolved)) {
+      errors.push(
+        `Gate "${gate.id}": invalid on_unresolved "${onUnresolved}". ` +
+          `Must be one of: ${VALID_ON_UNRESOLVED.join(', ')}`,
+      );
     }
 
     // select answer_type requires non-empty options array — also soft in
