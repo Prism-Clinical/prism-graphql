@@ -5,6 +5,8 @@ import type { PathwayTemporalDefaults } from './temporal/cascade';
 import type { FactStore } from './temporal/fact-model';
 import { EvaluationTemporalContext } from './temporal/evaluation-context';
 import { askFor } from './unresolved-prompt';
+import { parseBranchWhen, isEqualsWhen } from '../import/branch-when';
+import type { BranchWhen } from '../import/branch-when';
 import type { UnresolvedAsk } from './unresolved-prompt';
 import {
   NodeResult,
@@ -96,6 +98,63 @@ function unresolvedAsk(
     if (ask) return ask;
   }
   return null;
+}
+
+/**
+ * Does this answer select the branch carrying `when`?
+ *
+ * Ranges are half-open `[gte, lt)`, so a value on a boundary belongs to the
+ * range that STARTS there — the property that lets adjacent ranges tile the
+ * line without a value landing in two of them.
+ */
+function answerSelects(when: BranchWhen, answer: GateAnswer | undefined): boolean {
+  if (!answer) return false;
+  if (isEqualsWhen(when)) {
+    if (typeof when.equals === 'boolean') return answer.booleanValue === when.equals;
+    return answer.selectedOption === when.equals;
+  }
+  const v = answer.numericValue;
+  if (typeof v !== 'number') return false;
+  if (when.gte !== undefined && v < when.gte) return false;
+  if (when.lt !== undefined && v >= when.lt) return false;
+  return true;
+}
+
+/**
+ * Close a branch the answer did not select, and everything under it.
+ *
+ * EXCLUDED rather than absent: a node missing from the session reads as an
+ * oversight, where an excluded one with a reason reads as a decision. The
+ * reason names the gate so a reader can see what chose otherwise.
+ */
+function markBranchNotSelected(
+  targetId: string,
+  gateId: string,
+  gateTitle: string,
+  depth: number,
+  graphContext: GraphContext,
+  resolutionState: ResolutionState,
+): void {
+  if (resolutionState.has(targetId)) return;
+  const target = graphContext.getNode(targetId);
+  if (!target) return;
+
+  resolutionState.set(targetId, {
+    nodeId: targetId,
+    nodeType: target.nodeType,
+    title: nodeTitle(target),
+    status: NodeStatus.EXCLUDED,
+    confidence: 0,
+    confidenceBreakdown: [],
+    excludeReason: `Not selected by the answer at "${gateTitle}"`,
+    parentNodeId: gateId,
+    depth: depth + 1,
+    properties: target.properties,
+  });
+
+  const kids = graphContext.outgoingEdges(targetId).map(e => e.targetId);
+  markSubtree(kids, graphContext, resolutionState, NodeStatus.EXCLUDED,
+    `Excluded with ${nodeTitle(target)}`, targetId, depth + 1);
 }
 
 function isDecisionPoint(node: GraphNode): boolean {
@@ -648,11 +707,31 @@ export class TraversalEngine {
             tentativeReasoning: gateResult.llmReasoning,
           });
         }
-        for (const edge of graphContext.outgoingEdges(nodeIdentifier)) {
-          if (!resolutionState.has(edge.targetId)) {
-            queue.push({ nodeIdentifier: edge.targetId, parentNodeId: nodeIdentifier, depth: depth + 1 });
+const answer = gateAnswers.get(nodeIdentifier);
+          const outgoing = graphContext.outgoingEdges(nodeIdentifier);
+          const branchEdges = outgoing.filter(e => e.edgeType === 'BRANCHES_TO');
+          // Only a MULTI-target gate routes. One target means traversing it IS
+          // the routing, and demanding a mapping there would break every
+          // single-branch gate in every existing pathway.
+          const routes = branchEdges.length > 1;
+
+          for (const edge of outgoing) {
+            if (routes && edge.edgeType === 'BRANCHES_TO') {
+              const when = parseBranchWhen(edge.properties?.when);
+              if (!when || !answerSelects(when, answer)) {
+                // Say WHY the other treatments are absent. An unexplained
+                // missing branch reads as an oversight rather than a decision.
+                markBranchNotSelected(
+                  edge.targetId, nodeIdentifier, nodeTitle(node), depth,
+                  graphContext, resolutionState,
+                );
+                continue;
+              }
+            }
+            if (!resolutionState.has(edge.targetId)) {
+              queue.push({ nodeIdentifier: edge.targetId, parentNodeId: nodeIdentifier, depth: depth + 1 });
+            }
           }
-        }
       } else {
         // Gate not satisfied
         const isQuestion = gateProps.gate_type === GateType.QUESTION;
