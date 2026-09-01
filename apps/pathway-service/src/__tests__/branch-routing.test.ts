@@ -224,3 +224,79 @@ describe('single-target gates are untouched', () => {
     expect(r.resolutionState.get('step-1')!.status).toBe(NodeStatus.INCLUDED);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────
+
+describe('one routing mechanism — an LLM gate routes like any other', () => {
+  /**
+   * `chosenBranch` was computed, persisted to the audit table, shown to the
+   * provider — and never used to route. `LlmGateBranchSpec` carries no target,
+   * so there was nothing to route TO. With `when` on the edge there now is: a
+   * branch declares `when: { equals: '<branch name>' }` and the model's choice
+   * selects it exactly as a provider's selection does.
+   *
+   * This is the defensible core of the "one decision construct" argument. The
+   * SOURCE of an answer varies — provider, model, chart — while how a branch
+   * is chosen should not.
+   */
+  function llmGraph() {
+    return makeGraphContext(
+      [
+        node('root', 'Pathway'),
+        node('gate-llm', 'Gate', {
+          title: 'Aetiology from the narrative?',
+          gate_type: GateType.LLM_TEXT_ANALYSIS,
+          default_behavior: DefaultBehavior.SKIP,
+          input_attribute: 'freeformData.narrative.chief_complaint',
+          confidence_threshold: 0.75,
+          branches: [
+            { name: 'bacterial', description: 'Bacterial picture', is_safe_default: true },
+            { name: 'fungal', description: 'Fungal picture' },
+          ],
+        }),
+        node('step-bacterial', 'Step', { title: 'Treat bacterial' }),
+        node('step-fungal', 'Step', { title: 'Treat fungal' }),
+      ],
+      [
+        edge('root', 'gate-llm', 'HAS_GATE'),
+        edge('gate-llm', 'step-bacterial', 'BRANCHES_TO', { when: { equals: 'bacterial' } }),
+        edge('gate-llm', 'step-fungal', 'BRANCHES_TO', { when: { equals: 'fungal' } }),
+      ],
+    );
+  }
+
+  function engineWithLlm(verdict: { chosenBranch: string; confidence: number; reasoning: string }) {
+    return new TraversalEngine(
+      mockConfidenceEngine as never,
+      { autoResolveThreshold: 0.85, suggestThreshold: 0.6 },
+      makeEvaluationTemporalContext({
+        evaluationAsOf: AS_OF, temporalPolicyVersion: 'legacy-v0',
+      }),
+      {}, [], new Map(),
+      async () => verdict,
+    );
+  }
+
+  it('routes to the branch the model chose', async () => {
+    const r = await engineWithLlm({
+      chosenBranch: 'fungal', confidence: 0.9, reasoning: 'itch, discharge',
+    }).traverse(llmGraph(), PATIENT, new Map());
+
+    expect(r.resolutionState.get('step-fungal')!.status).toBe(NodeStatus.INCLUDED);
+    expect(r.resolutionState.get('step-bacterial')!.status).not.toBe(NodeStatus.INCLUDED);
+  });
+
+  it('routes the safe default when the model is below threshold, and still asks', async () => {
+    const r = await engineWithLlm({
+      chosenBranch: 'fungal', confidence: 0.4, reasoning: 'unclear',
+    }).traverse(llmGraph(), PATIENT, new Map());
+
+    // Below threshold the evaluator falls back to the declared safe default...
+    expect(r.resolutionState.get('step-bacterial')!.status).toBe(NodeStatus.INCLUDED);
+    expect(r.resolutionState.get('step-fungal')!.status).not.toBe(NodeStatus.INCLUDED);
+    // ...and the existing tentative behaviour survives: the provider is still
+    // asked to confirm or flip.
+    expect(r.pendingQuestions).toHaveLength(1);
+    expect(r.pendingQuestions[0].tentative).toBe(true);
+  });
+});

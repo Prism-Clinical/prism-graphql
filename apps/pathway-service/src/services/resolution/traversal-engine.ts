@@ -107,13 +107,26 @@ function unresolvedAsk(
  * range that STARTS there — the property that lets adjacent ranges tile the
  * line without a value landing in two of them.
  */
-function answerSelects(when: BranchWhen, answer: GateAnswer | undefined): boolean {
-  if (!answer) return false;
+function answerSelects(
+  when: BranchWhen,
+  answer: GateAnswer | undefined,
+  /**
+   * The branch an LLM gate picked. Threaded as a peer of the provider's
+   * selection, not as a special case: the SOURCE of an answer varies —
+   * provider, model, chart — while how a branch is chosen should not. That is
+   * the part of the "one decision construct" argument that is actually earned.
+   */
+  chosenBranch?: string,
+): boolean {
+  if (!answer && chosenBranch === undefined) return false;
   if (isEqualsWhen(when)) {
-    if (typeof when.equals === 'boolean') return answer.booleanValue === when.equals;
-    return answer.selectedOption === when.equals;
+    if (typeof when.equals === 'boolean') return answer?.booleanValue === when.equals;
+    // A provider's selection wins over the model's when both are present —
+    // confirming a tentative branch has to be able to override it.
+    const selected = answer?.selectedOption ?? chosenBranch;
+    return selected === when.equals;
   }
-  const v = answer.numericValue;
+  const v = answer?.numericValue;
   if (typeof v !== 'number') return false;
   if (when.gte !== undefined && v < when.gte) return false;
   if (when.lt !== undefined && v >= when.lt) return false;
@@ -718,7 +731,7 @@ const answer = gateAnswers.get(nodeIdentifier);
           for (const edge of outgoing) {
             if (routes && edge.edgeType === 'BRANCHES_TO') {
               const when = parseBranchWhen(edge.properties?.when);
-              if (!when || !answerSelects(when, answer)) {
+              if (!when || !answerSelects(when, answer, gateResult.chosenBranch)) {
                 // Say WHY the other treatments are absent. An unexplained
                 // missing branch reads as an oversight rather than a decision.
                 markBranchNotSelected(
