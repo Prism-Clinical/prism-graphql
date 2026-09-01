@@ -24,6 +24,7 @@ import {
   codedVitalsSystemError,
   conditionControlDomainError,
 } from '../resolution/temporal/condition-adapter';
+import { parseBranchWhen, isEqualsWhen, checkNumericCover } from './branch-when';
 
 const VALID_NODE_TYPES = new Set<string>(Object.keys(REQUIRED_NODE_PROPERTIES));
 const VALID_EDGE_TYPES = new Set<string>(Object.keys(VALID_EDGE_ENDPOINTS));
@@ -248,6 +249,84 @@ function validateGateNodes(
       for (const depId of dependsOn) {
         if (!nodeIds.has(depId)) {
           errors.push(`Gate "${gate.id}": depends_on references nonexistent node "${depId}"`);
+        }
+      }
+    }
+
+    // ─── Answer -> branch routing ─────────────────────────────────
+    //
+    // A gate with SEVERAL branch targets must map every possible answer to
+    // exactly one of them. One target needs nothing: traversing it IS the
+    // routing, which is why every existing single-branch gate is unaffected.
+    //
+    // Both failure modes are hard errors, and they are different authoring
+    // mistakes: an answer matching no branch routes nowhere, an answer
+    // matching two opens both arms.
+    const branchEdges = edges.filter(e => e.from === gate.id && e.type === 'BRANCHES_TO');
+    if (branchEdges.length > 1) {
+      const whens = branchEdges.map(e => ({
+        to: e.to,
+        when: parseBranchWhen((e.properties as Record<string, unknown> | undefined)?.when),
+      }));
+      const unmapped = whens.filter(w => w.when === null);
+
+      if (unmapped.length > 0) {
+        errors.push(
+          `Gate "${gate.id}": has ${branchEdges.length} branch targets, so every ` +
+            `BRANCHES_TO edge needs a valid \`when\`. Missing or unreadable on: ` +
+            `${unmapped.map(w => w.to).join(', ')}`,
+        );
+      } else {
+        const answerType = String(props.answer_type ?? '').toLowerCase();
+
+        if (answerType === 'numeric') {
+          const ranges = whens
+            .map(w => w.when!)
+            .filter((w): w is { gte?: number; lt?: number } => !isEqualsWhen(w));
+          if (ranges.length !== whens.length) {
+            errors.push(`Gate "${gate.id}": a numeric gate's branches must use ranges, not equals`);
+          } else {
+            const coverError = checkNumericCover(ranges);
+            if (coverError) {
+              errors.push(`Gate "${gate.id}": branch ranges are not total — ${coverError}`);
+            }
+          }
+        } else {
+          const values = whens.map(w => (isEqualsWhen(w.when!) ? w.when!.equals : undefined));
+          if (values.some(v => v === undefined)) {
+            errors.push(`Gate "${gate.id}": a non-numeric gate's branches must use \`equals\``);
+          } else {
+            // Claimed twice — the multi-arm case.
+            const seen = new Set<string>();
+            for (const v of values) {
+              const key = String(v);
+              if (seen.has(key)) {
+                errors.push(`Gate "${gate.id}": two branches both claim the answer "${key}"`);
+              }
+              seen.add(key);
+            }
+
+            if (answerType === 'boolean') {
+              if (!seen.has('true') || !seen.has('false')) {
+                errors.push(
+                  `Gate "${gate.id}": a boolean gate needs a branch for true and one for false`,
+                );
+              }
+            } else {
+              const options = Array.isArray(props.options) ? (props.options as unknown[]).map(String) : [];
+              // Claimed by nobody — the fall-through case.
+              for (const opt of options) {
+                if (!seen.has(opt)) {
+                  errors.push(`Gate "${gate.id}": no branch claims the option "${opt}"`);
+                }
+              }
+              for (const v of seen) {
+                if (options.length > 0 && !options.includes(v)) {
+                  errors.push(`Gate "${gate.id}": a branch claims "${v}", which is not one of the gate's options`);
+                }
+              }
+            }
+          }
         }
       }
     }
