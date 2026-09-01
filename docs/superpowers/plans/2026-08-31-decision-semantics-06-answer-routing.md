@@ -290,7 +290,29 @@ This is decision 4, and it is the defensible core of the "one decision construct
 
 ---
 
-### Task 5: Author `gate-etiology`'s mapping
+### Task 5: Author `gate-etiology`'s mapping — NOT DONE, and deliberately
+
+**Status (2026-08-31): blocked on clinical sign-off, by design.**
+
+Tasks 1–4 are implemented. This one is not, for the reason the task itself
+gives: the option→step mapping is a clinical assertion. The five options and
+five steps happen to be in matching order, and encoding that assumption is
+exactly the inference this plan's global constraints forbid. Applying it needs
+a clinician to confirm that "Trichomoniasis" means `step-3-3`, and it should be
+applied through the editor (Task 4's surface), not by direct Cypher.
+
+**Consequence, measured after Task 1 landed:** `gate-etiology` is the ONLY
+multi-branch gate in the entire graph, and it now fails import validation for
+having no mapping. Its pathway is ARCHIVED, so nothing resolves against it
+today, but it is now non-importable and non-reactivatable until the mapping is
+authored. That is the correct outcome — the pathway is genuinely mis-authored,
+and answering it opens five treatments — but it should be a known state rather
+than a surprise. No ACTIVE or DRAFT pathway is affected: every other gate in
+the graph is single-target.
+
+---
+
+### Task 5 (original): Author `gate-etiology`'s mapping
 
 **Not a migration.** The option→step mapping is a clinical assertion. The order happens to align, and encoding that assumption in SQL is exactly the inference the global constraints forbid.
 
