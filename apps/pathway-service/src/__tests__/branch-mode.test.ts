@@ -133,6 +133,85 @@ describe('branch_mode: one_of', () => {
   });
 });
 
+/**
+ * A branch choice is an ANSWER, and answers survive re-evaluation.
+ *
+ * The handler used to close only the ROOTS of the unchosen qualifying
+ * candidates. Their descendants — and every non-qualifying branch — stayed
+ * PENDING_QUESTION while the DecisionPoint's own question was removed, which
+ * is a session no answer can finish: care-plan generation blocks on any
+ * PENDING_QUESTION and none of the survivors had a question left to answer.
+ */
+describe('a chosen branch at a one_of fork', () => {
+  function engineWith(scores: Record<string, number>) {
+    scoreAs(scores);
+    return new TraversalEngine(
+      mockConfidenceEngine as never,
+      { autoResolveThreshold: 0.85, suggestThreshold: SUGGEST },
+      makeEvaluationTemporalContext({ evaluationAsOf: AS_OF, temporalPolicyVersion: 'legacy-v0' }),
+      {}, [], new Map(),
+    );
+  }
+  const chose = (id: string) =>
+    new Map([['dp-1', { selectedOption: id } as never]]);
+
+  it('closes the unchosen branches AND their subtrees, leaving nothing pending', async () => {
+    // step-a and step-b both qualify, so undecided this fork pends.
+    const r = await engineWith({ 'step-c': 0.2 })
+      .traverse(graphFor('one_of'), PATIENT, chose('step-a'));
+
+    expect(r.resolutionState.get('dp-1')!.status).toBe(NodeStatus.INCLUDED);
+    expect(r.resolutionState.get('step-a')!.status).toBe(NodeStatus.INCLUDED);
+    expect(r.resolutionState.get('med-a')!.status).toBe(NodeStatus.INCLUDED);
+
+    // The other qualifying branch, closed.
+    expect(r.resolutionState.get('step-b')!.status).toBe(NodeStatus.EXCLUDED);
+    // The non-qualifying one too — it was never a candidate, but it must not
+    // be left pending either.
+    expect(r.resolutionState.get('step-c')!.status).toBe(NodeStatus.EXCLUDED);
+
+    // The whole point: nothing is left waiting on a question nobody can ask.
+    const stillPending = [...r.resolutionState.values()]
+      .filter(n => n.status === NodeStatus.PENDING_QUESTION);
+    expect(stillPending).toEqual([]);
+    expect(r.pendingQuestions.map(q => q.gateId)).not.toContain('dp-1');
+  });
+
+  it('says whose decision closed the others', async () => {
+    const r = await engineWith({ 'step-c': 0.2 })
+      .traverse(graphFor('one_of'), PATIENT, chose('step-a'));
+    expect(r.resolutionState.get('step-b')!.excludeReason).toContain('Treat A');
+  });
+
+  // The choice must outlive an ancestor retraversal that re-disposes the fork.
+  it('survives re-disposition instead of re-asking', async () => {
+    const engine = engineWith({ 'step-c': 0.2 });
+    const graph = graphFor('one_of');
+    const answers = chose('step-a');
+    const first = await engine.traverse(graph, PATIENT, answers);
+
+    await engineWith({ 'step-c': 0.2 }).resolveIncrementally(
+      new Set(['dp-1']),
+      first.resolutionState,
+      first.dependencyMap,
+      graph,
+      PATIENT,
+      answers,
+    );
+
+    expect(first.resolutionState.get('step-a')!.status).toBe(NodeStatus.INCLUDED);
+    expect(first.resolutionState.get('step-b')!.status).toBe(NodeStatus.EXCLUDED);
+    expect(first.resolutionState.get('dp-1')!.status).toBe(NodeStatus.INCLUDED);
+  });
+
+  // A choice naming a branch that does not qualify is not honoured silently.
+  it('still pends when the stored choice is not a qualifying branch', async () => {
+    const r = await engineWith({ 'step-c': 0.2 })
+      .traverse(graphFor('one_of'), PATIENT, chose('step-c'));
+    expect(r.resolutionState.get('dp-1')!.status).toBe(NodeStatus.PENDING_QUESTION);
+  });
+});
+
 describe('branch_mode: all_of', () => {
   // "After assessment, start workup AND prophylaxis" — migration 060's own
   // example. The author said these all happen, so a branch the data does not

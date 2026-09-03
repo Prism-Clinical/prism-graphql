@@ -508,25 +508,17 @@ export const resolutionMutations = {
         const rctxDp = await buildResolutionContext(pool, session.pathwayId);
         const dpClock = requireSessionTemporalContext(session);
 
-        gateResult.status = NodeStatus.INCLUDED;
-        gateResult.confidence = 1;
-        gateResult.excludeReason = undefined;
+        // Record the choice as an ANSWER before re-resolving.
+        //
+        // Two things follow from that. It SURVIVES: an ancestor retraversal
+        // that re-disposes this DecisionPoint reads the answer and keeps the
+        // branch, instead of finding several qualifying branches again and
+        // re-asking a question the provider already answered. And it is what
+        // the engine routes on, so the choice takes effect through the same
+        // disposition path a full traversal uses rather than through a second
+        // implementation here.
+        session.gateAnswers.set(args.nodeId, { selectedOption: chosen } as GateAnswer);
 
-        // Close every branch that was not chosen, naming the choice. An
-        // unexplained missing arm reads as an oversight rather than a decision.
-        const chosenTitle =
-          rctxDp.graphContext.getNode(chosen)?.properties?.title ?? chosen;
-        for (const candidate of candidates) {
-          if (candidate === chosen) continue;
-          const n = session.resolutionState.get(candidate);
-          if (!n) continue;
-          n.status = NodeStatus.EXCLUDED;
-          n.excludeReason = `Not selected at "${gateResult.title}" — chose "${chosenTitle}"`;
-        }
-
-        // Re-resolve from the chosen branch. The unchosen ones keep the status
-        // just written: resolveIncrementally clears the region it is seeded
-        // from, and seeding it from the chosen branch alone leaves them be.
         const dpEngine = new TraversalEngine(
           makeTraversalAdapter(rctxDp, pool, session.pathwayId, session.initialPatientContext as PatientContext),
           rctxDp.thresholds,
@@ -535,8 +527,20 @@ export const resolutionMutations = {
           factStoreForSession(session, session.additionalContext as Partial<AdditionalContextInput>),
           rctxDp.codeMap,
         );
+
+        // Seeded at the DECISION POINT, not at the chosen branch.
+        //
+        // Disposing the DecisionPoint is what closes the branches nobody
+        // chose — roots AND their subtrees — because that is what the normal
+        // traversal path already does. Seeding at the chosen branch alone
+        // closed only the roots of the other QUALIFYING candidates: their
+        // descendants, and every non-qualifying branch, stayed
+        // PENDING_QUESTION while the DecisionPoint's own question was removed.
+        // That is a session no answer can finish, because care-plan generation
+        // blocks on any PENDING_QUESTION and none of the remaining ones had a
+        // question left to answer.
         const dpResult = await dpEngine.resolveIncrementally(
-          new Set([chosen]),
+          new Set([args.nodeId]),
           session.resolutionState,
           session.dependencyMap,
           rctxDp.graphContext,
@@ -546,11 +550,35 @@ export const resolutionMutations = {
 
         statusChanges.push(...dpResult.statusChanges);
         nodesRecomputed = dpResult.nodesRecomputed;
-        session.pendingQuestions = session.pendingQuestions.filter(
-          q => q.gateId !== args.nodeId,
-        );
 
-        await updateSession(pool, args.sessionId, session);
+        // Findings from the chosen subtree are KEPT. Discarding them lost every
+        // question and red flag the chosen branch raised, so a branch leading
+        // to further questions looked resolved.
+        session.pendingQuestions = session.pendingQuestions
+          .filter(q => q.gateId !== args.nodeId)
+          .concat(dpResult.pendingQuestions);
+        if (dpResult.redFlags.length > 0) {
+          session.redFlags = [...session.redFlags, ...dpResult.redFlags];
+        }
+
+        try {
+          await updateSession(pool, args.sessionId, {
+            resolutionState: session.resolutionState,
+            dependencyMap: session.dependencyMap,
+            pendingQuestions: session.pendingQuestions,
+            redFlags: session.redFlags,
+            gateAnswers: session.gateAnswers,
+            totalNodesEvaluated: session.resolutionState.size,
+          }, session.updatedAt);
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          if (message.includes('optimistic lock') && attempt < MAX_ATTEMPTS) {
+            await new Promise((r) => setTimeout(r, 10 + Math.random() * 30));
+            continue;
+          }
+          throw err;
+        }
+
         await logEvent(pool, args.sessionId, {
           eventType: 'BRANCH_CHOSEN',
           triggerData: { nodeId: args.nodeId, chosen, candidates },

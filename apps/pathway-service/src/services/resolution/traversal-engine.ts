@@ -178,7 +178,7 @@ function countSubtree(startIds: string[], graphContext: GraphContext): number {
  * Mark an entire subtree (from the children of a node) with the given status.
  * Returns the set of marked node identifiers.
  */
-function markSubtree(
+export function markSubtree(
   startIds: string[],
   graphContext: GraphContext,
   resolutionState: ResolutionState,
@@ -953,6 +953,32 @@ export class TraversalEngine {
             })),
           });
         }
+      }
+
+      // A choice already made must SURVIVE re-disposition. Without this, an
+      // ancestor retraversal re-disposes the DecisionPoint, finds several
+      // qualifying branches again and re-pends — silently discarding the
+      // provider's decision and re-asking a question they already answered.
+      //
+      // Narrowing `includedBranches` rather than routing here on purpose: the
+      // normal path below already excludes the other branches AND their
+      // subtrees. Re-implementing that closing logic for this case is exactly
+      // the duplication plan 03 removed.
+      const storedChoice = gateAnswers.get(nodeIdentifier)?.selectedOption;
+      if (
+        branchMode === 'one_of' &&
+        storedChoice !== undefined &&
+        includedBranches.includes(storedChoice)
+      ) {
+        const chosenTitle =
+          branchResults.find(b => b.targetId === storedChoice)?.title ?? storedChoice;
+        for (const br of branchResults) {
+          if (br.targetId !== storedChoice) {
+            br.excludeReason = `Not selected at "${nodeTitle(node)}" — chose "${chosenTitle}"`;
+          }
+        }
+        includedBranches.length = 0;
+        includedBranches.push(storedChoice);
       }
 
       // An exclusive fork with more than one qualifying branch has NOT been
