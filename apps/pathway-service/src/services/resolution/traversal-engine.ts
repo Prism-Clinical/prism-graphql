@@ -10,7 +10,7 @@ import { decisionValueOf, decisionSelects } from './decision-value';
 import {
   reconcilePendingQuestions,
   reconcileRedFlags,
-  RED_FLAG_TYPES,
+  RECONCILABLE_RED_FLAG_TYPES,
 } from './findings-reconciliation';
 import type { UnresolvedAsk } from './unresolved-prompt';
 import {
@@ -136,10 +136,12 @@ function markBranchNotSelected(
   depth: number,
   graphContext: GraphContext,
   resolutionState: ResolutionState,
+  rewritten: Set<string>,
 ): void {
   if (resolutionState.has(targetId)) return;
   const target = graphContext.getNode(targetId);
   if (!target) return;
+  rewritten.add(targetId);
 
   resolutionState.set(targetId, {
     nodeId: targetId,
@@ -155,8 +157,8 @@ function markBranchNotSelected(
   });
 
   const kids = graphContext.outgoingEdges(targetId).map(e => e.targetId);
-  markSubtree(kids, graphContext, resolutionState, NodeStatus.EXCLUDED,
-    `Excluded with ${nodeTitle(target)}`, targetId, depth + 1);
+  addAll(rewritten, markSubtree(kids, graphContext, resolutionState, NodeStatus.EXCLUDED,
+    `Excluded with ${nodeTitle(target)}`, targetId, depth + 1));
 }
 
 function isDecisionPoint(node: GraphNode): boolean {
@@ -199,6 +201,11 @@ function countSubtree(startIds: string[], graphContext: GraphContext): number {
  * Mark an entire subtree (from the children of a node) with the given status.
  * Returns the set of marked node identifiers.
  */
+/** Union `from` into `into`, for accumulating what a pass rewrote. */
+function addAll(into: Set<string>, from: Iterable<string>): void {
+  for (const id of from) into.add(id);
+}
+
 export function markSubtree(
   startIds: string[],
   graphContext: GraphContext,
@@ -298,6 +305,16 @@ interface WalkContext {
   redFlags: RedFlag[];
   evaluationStack: Set<string>;
   startTime: number;
+  /**
+   * Every node this pass REWROTE, not just the ones it disposed directly.
+   *
+   * `disposeNode` also rewrites descendants wholesale through `markSubtree` —
+   * a gate closing takes its whole subtree GATED_OUT, an unchosen branch takes
+   * its subtree EXCLUDED. Those nodes were outside the reconciliation scope,
+   * so their old questions and red flags survived a pass that had just
+   * overwritten the nodes they were about, and went on blocking generation.
+   */
+  rewritten: Set<string>;
 }
 
 /**
@@ -397,6 +414,8 @@ export class TraversalEngine {
     const pendingQuestions: PendingQuestion[] = [];
     const redFlags: RedFlag[] = [];
     const evaluationStack = new Set<string>();
+    /** Every node this pass rewrote — its reconciliation authority. */
+    const rewritten = new Set<string>();
     let isDegraded = false;
 
     // 1. Find root node (type 'Pathway')
@@ -455,7 +474,7 @@ export class TraversalEngine {
       await this.disposeNode(node, nodeIdentifier, parentNodeId, depth, {
         graphContext, patientContext, gateAnswers,
         resolutionState, dependencyMap, queue,
-        pendingQuestions, redFlags, evaluationStack, startTime,
+        pendingQuestions, redFlags, evaluationStack, startTime, rewritten,
       });
     }
 
@@ -516,6 +535,8 @@ export class TraversalEngine {
     const pendingQuestions: PendingQuestion[] = [];
     const redFlags: RedFlag[] = [];
     const evaluationStack = new Set<string>();
+    /** Every node this pass rewrote — its reconciliation authority. */
+    const rewritten = new Set<string>();
     const queue: BfsEntry[] = [];
 
     // Captured before anything is cleared — the only moment the previous
@@ -569,13 +590,6 @@ export class TraversalEngine {
 
     let isDegraded = false;
     let disposed = 0;
-    /**
-     * Nodes this pass actually re-disposed, and therefore the only ones whose
-     * findings it may rewrite. Deliberately not `region`: a node the walk
-     * timed out before reaching was NOT re-derived, and treating its absence
-     * from the derived set as "settled" would silently drop a live question.
-     */
-    const disposedIds = new Set<string>();
 
     while (queue.length > 0) {
       if (Date.now() - startTime > TRAVERSAL_TIMEOUT_MS) {
@@ -592,10 +606,9 @@ export class TraversalEngine {
       await this.disposeNode(node, nodeIdentifier, parentNodeId, depth, {
         graphContext, patientContext, gateAnswers,
         resolutionState, dependencyMap, queue,
-        pendingQuestions, redFlags, evaluationStack, startTime,
+        pendingQuestions, redFlags, evaluationStack, startTime, rewritten,
       });
       disposed++;
-      disposedIds.add(nodeIdentifier);
     }
 
     // A timeout here is worse than in a full traversal, which has simply not
@@ -634,6 +647,15 @@ export class TraversalEngine {
       if (to !== undefined && to !== from) statusChanges.push({ nodeId: id, from, to });
     }
 
+    // Scope is `rewritten` — every node this pass CHANGED, not only the ones
+    // it disposed directly. `disposeNode` also rewrites descendants wholesale
+    // through `markSubtree`, and those nodes' old findings survived a pass that
+    // had just overwritten the nodes they were about.
+    //
+    // Still not the whole `region`: a node the walk timed out before reaching
+    // was never rewritten at all, and reading its absence from the derived set
+    // as "settled" would silently drop a live question.
+    //
     // Reconcile against what the session already holds, rather than handing
     // back a raw derived set for the caller to CONCAT. Appending re-emitted an
     // identical finding on every pass and never removed one whose condition had
@@ -645,12 +667,12 @@ export class TraversalEngine {
     const reconciledQuestions = reconcilePendingQuestions(
       existing?.pendingQuestions ?? [],
       pendingQuestions,
-      { gateIds: disposedIds, alsoDropGateIds: existing?.alsoDropGateIds },
+      { gateIds: rewritten, alsoDropGateIds: existing?.alsoDropGateIds },
     );
     const reconciledFlags = reconcileRedFlags(
       existing?.redFlags ?? [],
       redFlags,
-      { nodeIds: disposedIds, types: RED_FLAG_TYPES },
+      { nodeIds: rewritten, types: RECONCILABLE_RED_FLAG_TYPES },
     );
 
     return {
@@ -694,8 +716,11 @@ export class TraversalEngine {
     const {
       graphContext, patientContext, gateAnswers,
       resolutionState, dependencyMap, queue,
-      pendingQuestions, redFlags, evaluationStack, startTime,
+      pendingQuestions, redFlags, evaluationStack, startTime, rewritten,
     } = w;
+
+    // Everything below rewrites this node; the subtree helpers add theirs.
+    rewritten.add(nodeIdentifier);
 
     // ── Gate node ──────────────────────────────────────────────────
     if (isGateNode(node)) {
@@ -714,11 +739,7 @@ export class TraversalEngine {
             }
             // Evaluate the referenced node first
             evaluationStack.add(nodeIdentifier);
-            await this.evaluateNodeEagerly(
-              dep.node_id, graphContext, patientContext, gateAnswers,
-              resolutionState, dependencyMap, pendingQuestions, redFlags,
-              evaluationStack, startTime, parentNodeId, depth,
-            );
+            await this.evaluateNodeEagerly(dep.node_id, parentNodeId, depth, w);
             evaluationStack.delete(nodeIdentifier);
           }
         }
@@ -741,8 +762,8 @@ export class TraversalEngine {
           });
           if (defaultStatus === NodeStatus.GATED_OUT) {
             const childIds = graphContext.outgoingEdges(nodeIdentifier).map(e => e.targetId);
-            markSubtree(childIds, graphContext, resolutionState, NodeStatus.GATED_OUT,
-              'Parent gate has cycle — default skip', nodeIdentifier, depth);
+            addAll(rewritten, markSubtree(childIds, graphContext, resolutionState, NodeStatus.GATED_OUT,
+              'Parent gate has cycle — default skip', nodeIdentifier, depth));
           } else {
             // Traverse children
             for (const edge of graphContext.outgoingEdges(nodeIdentifier)) {
@@ -846,7 +867,7 @@ export class TraversalEngine {
                 // missing branch reads as an oversight rather than a decision.
                 markBranchNotSelected(
                   edge.targetId, nodeIdentifier, nodeTitle(node), depth,
-                  graphContext, resolutionState,
+                  graphContext, resolutionState, rewritten,
                 );
                 continue;
               }
@@ -879,8 +900,8 @@ export class TraversalEngine {
           // Mark subtree as PENDING_QUESTION
           const childIds = graphContext.outgoingEdges(nodeIdentifier).map(e => e.targetId);
           const subtreeSize = countSubtree(childIds, graphContext);
-          markSubtree(childIds, graphContext, resolutionState, NodeStatus.PENDING_QUESTION,
-            `Awaiting answer to: ${gateProps.prompt ?? gateProps.title}`, nodeIdentifier, depth);
+          addAll(rewritten, markSubtree(childIds, graphContext, resolutionState, NodeStatus.PENDING_QUESTION,
+            `Awaiting answer to: ${gateProps.prompt ?? gateProps.title}`, nodeIdentifier, depth));
 
           pendingQuestions.push({
             gateId: nodeIdentifier,
@@ -919,8 +940,8 @@ export class TraversalEngine {
           // subtree, it cannot decide yet.
           const childIds = graphContext.outgoingEdges(nodeIdentifier).map(e => e.targetId);
           const subtreeSize = countSubtree(childIds, graphContext);
-          markSubtree(childIds, graphContext, resolutionState, NodeStatus.PENDING_QUESTION,
-            `Awaiting ${ask.datumKey}`, nodeIdentifier, depth);
+          addAll(rewritten, markSubtree(childIds, graphContext, resolutionState, NodeStatus.PENDING_QUESTION,
+            `Awaiting ${ask.datumKey}`, nodeIdentifier, depth));
 
           // Dedup on the DATUM, not the gate. Both gates still hold their
           // subtrees; the provider is asked once, and the one injected fact
@@ -955,8 +976,8 @@ export class TraversalEngine {
           ...uncertaintyFields,
           });
           const childIds = graphContext.outgoingEdges(nodeIdentifier).map(e => e.targetId);
-          markSubtree(childIds, graphContext, resolutionState, NodeStatus.GATED_OUT,
-            `Gated out by ${nodeTitle(node)}: ${gateResult.reason}`, nodeIdentifier, depth);
+          addAll(rewritten, markSubtree(childIds, graphContext, resolutionState, NodeStatus.GATED_OUT,
+            `Gated out by ${nodeTitle(node)}: ${gateResult.reason}`, nodeIdentifier, depth));
         } else {
           // Default traverse — include anyway
           resolutionState.set(nodeIdentifier, {
@@ -1139,8 +1160,8 @@ export class TraversalEngine {
             properties: targetNode.properties,
           });
           const kids = graphContext.outgoingEdges(br.targetId).map(e => e.targetId);
-          markSubtree(kids, graphContext, resolutionState, NodeStatus.PENDING_QUESTION,
-            `Awaiting branch choice at ${nodeTitle(node)}`, br.targetId, depth + 1);
+          addAll(rewritten, markSubtree(kids, graphContext, resolutionState, NodeStatus.PENDING_QUESTION,
+            `Awaiting branch choice at ${nodeTitle(node)}`, br.targetId, depth + 1));
         }
 
         pendingQuestions.push({
@@ -1195,8 +1216,8 @@ export class TraversalEngine {
             });
             // Mark the excluded branch's subtree too
             const childIds = graphContext.outgoingEdges(br.targetId).map(e => e.targetId);
-            markSubtree(childIds, graphContext, resolutionState, NodeStatus.EXCLUDED,
-              `Excluded by decision point: ${br.excludeReason}`, br.targetId, depth + 1);
+            addAll(rewritten, markSubtree(childIds, graphContext, resolutionState, NodeStatus.EXCLUDED,
+              `Excluded by decision point: ${br.excludeReason}`, br.targetId, depth + 1));
           }
         }
         recordInfluence(dependencyMap, nodeIdentifier, br.targetId);
@@ -1330,111 +1351,43 @@ export class TraversalEngine {
     }
   }
   /**
-   * Eagerly evaluate a single node during lazy gate evaluation.
-   * This handles the case where a prior_node_result gate depends on a node
-   * that hasn't been evaluated yet.
+   * Resolve a node OUT OF BFS ORDER, because a `prior_node_result` gate
+   * depends on it and cannot decide until it has a status.
+   *
+   * This used to be a SECOND disposition implementation, and it disagreed with
+   * the first on nearly everything that matters: an unsatisfied gate became
+   * GATED_OUT regardless of `default_behavior`, an unanswered question never
+   * pended, an unresolved gate never escalated, a decided gate never routed,
+   * and a DecisionPoint was blindly INCLUDED whatever its `branch_mode` said.
+   * So a gate could observe a different dependency status for no reason but
+   * the order traversal happened to reach it — the exact defect family plan 03
+   * unified the engines to remove, surviving in the one path that had not been
+   * looked at.
+   *
+   * It now calls `disposeNode`, so a node means the same thing however it was
+   * reached. The cycle guard and timeout check stay: they are about eager
+   * ENTRY, not about how a node is disposed.
+   *
+   * Passing the real `w.queue` also fixes a quieter bug. Eager evaluation
+   * writes the node into `resolutionState`, and the main BFS skips anything
+   * already there — so whatever this node opened up was never enqueued by
+   * anyone, and its subtree silently vanished from the session. Disposing it
+   * through the shared walk context enqueues its children like any other node.
    */
   private async evaluateNodeEagerly(
     nodeIdentifier: string,
-    graphContext: GraphContext,
-    patientContext: PatientContext,
-    gateAnswers: Map<string, GateAnswer>,
-    resolutionState: ResolutionState,
-    dependencyMap: DependencyMap,
-    pendingQuestions: PendingQuestion[],
-    redFlags: RedFlag[],
-    evaluationStack: Set<string>,
-    startTime: number,
     parentNodeId: string | undefined,
     depth: number,
+    w: WalkContext,
   ): Promise<void> {
-    if (resolutionState.has(nodeIdentifier)) return;
-    if (Date.now() - startTime > TRAVERSAL_TIMEOUT_MS) return;
+    if (w.resolutionState.has(nodeIdentifier)) return;
+    if (Date.now() - w.startTime > TRAVERSAL_TIMEOUT_MS) return;
 
-    const node = graphContext.getNode(nodeIdentifier);
+    const node = w.graphContext.getNode(nodeIdentifier);
     if (!node) return;
 
-    evaluationStack.add(nodeIdentifier);
-
-    if (isActionNode(node) || isStructuralNode(node)) {
-      const confResult = await this.confidenceEngine.computeNodeConfidence(
-        node, graphContext, patientContext,
-      );
-      recordScorerInputs(dependencyMap, nodeIdentifier, confResult.contextInputs);
-
-      const status = isStructuralNode(node)
-        ? NodeStatus.INCLUDED
-        : (confResult.confidence >= this.thresholds.suggestThreshold
-          ? NodeStatus.INCLUDED
-          : NodeStatus.EXCLUDED);
-
-      resolutionState.set(nodeIdentifier, {
-        nodeId: nodeIdentifier,
-        nodeType: node.nodeType,
-        title: nodeTitle(node),
-        status,
-        confidence: confResult.confidence,
-        confidenceBreakdown: confResult.breakdown,
-        excludeReason: status === NodeStatus.EXCLUDED
-          ? `Confidence ${confResult.confidence} below suggest threshold ${this.thresholds.suggestThreshold}`
-          : undefined,
-        parentNodeId,
-        depth,
-        properties: node.properties,
-      });
-    } else if (node.nodeType === 'Gate') {
-      // For gate nodes, evaluate the gate properly
-      const gateProps = node.properties as unknown as GateProperties;
-      const gateResult = await evaluateGate(
-        gateProps,
-        this.gateDeps(patientContext, resolutionState, gateAnswers, nodeIdentifier),
-      );
-      resolutionState.set(nodeIdentifier, {
-        nodeId: nodeIdentifier,
-        nodeType: node.nodeType,
-        title: nodeTitle(node),
-        status: gateResult.satisfied ? NodeStatus.INCLUDED : NodeStatus.GATED_OUT,
-        confidence: gateResult.satisfied ? 1 : 0,
-        confidenceBreakdown: [],
-        excludeReason: gateResult.satisfied ? undefined : gateResult.reason,
-        parentNodeId,
-        depth,
-        properties: node.properties,
-        // Eager path: a prior_node_result gate can force its dependency to be
-        // evaluated here rather than in the main BFS. That gate is just as
-        // capable of being indeterminate, and a reason channel that only works
-        // on one of two evaluation paths is worse than none — the same gate
-        // would report differently depending on the order it was reached.
-        ...uncertaintyOf(gateResult),
-      });
-    } else if (node.nodeType === 'DecisionPoint') {
-      // DecisionPoint: include it, branches will be evaluated during main BFS
-      resolutionState.set(nodeIdentifier, {
-        nodeId: nodeIdentifier,
-        nodeType: node.nodeType,
-        title: nodeTitle(node),
-        status: NodeStatus.INCLUDED,
-        confidence: 1,
-        confidenceBreakdown: [],
-        parentNodeId,
-        depth,
-        properties: node.properties,
-      });
-    } else {
-      // For other node types (Criterion, Evidence, CodeEntry), just include
-      resolutionState.set(nodeIdentifier, {
-        nodeId: nodeIdentifier,
-        nodeType: node.nodeType,
-        title: nodeTitle(node),
-        status: NodeStatus.INCLUDED,
-        confidence: 1,
-        confidenceBreakdown: [],
-        parentNodeId,
-        depth,
-        properties: node.properties,
-      });
-    }
-
-    evaluationStack.delete(nodeIdentifier);
+    w.evaluationStack.add(nodeIdentifier);
+    await this.disposeNode(node, nodeIdentifier, parentNodeId, depth, w);
+    w.evaluationStack.delete(nodeIdentifier);
   }
 }

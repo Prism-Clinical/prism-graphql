@@ -141,6 +141,45 @@ describe('findings returned by an incremental resolve', () => {
  * written, so a context change that moved a confidence without touching a
  * gate seeded no recomputation at all.
  */
+/**
+ * A pass owns the findings of every node it REWROTE, not just the ones it
+ * disposed directly.
+ *
+ * `disposeNode` rewrites descendants wholesale through `markSubtree` — a gate
+ * closing takes its whole subtree GATED_OUT. Those nodes were outside the
+ * reconciliation scope, so a red flag about one of them survived a pass that
+ * had just overwritten the node it was about, and went on blocking generation.
+ */
+describe('reconciliation scope covers rewritten descendants', () => {
+  it('drops a stale flag about a descendant the pass rewrote', async () => {
+    const g = graph();
+    const first = await engine().traverse(g, PATIENT, new Map());
+
+    // step-1 is not disposed directly when the gate closes — it is swept by
+    // markSubtree — so this flag used to survive.
+    const r = await engine().resolveIncrementally(
+      new Set(['gate-1']), first.resolutionState, first.dependencyMap, g, PATIENT, new Map(),
+      { redFlags: [staleFlag('step-1')], pendingQuestions: [] },
+    );
+
+    expect(r.redFlags.find(f => f.nodeId === 'step-1')).toBeUndefined();
+  });
+
+  // Authority is bounded by what the pass raised, not by what it touched.
+  it('keeps a contradiction flag, which traversal cannot derive', async () => {
+    const g = graph();
+    const first = await engine().traverse(g, PATIENT, new Map());
+    const contradiction = { ...staleFlag('gate-1'), type: 'contradiction' as const };
+
+    const r = await engine().resolveIncrementally(
+      new Set(['gate-1']), first.resolutionState, first.dependencyMap, g, PATIENT, new Map(),
+      { redFlags: [contradiction], pendingQuestions: [] },
+    );
+
+    expect(r.redFlags.find(f => f.type === 'contradiction')).toBeDefined();
+  });
+});
+
 describe('scorerInputs is actually populated', () => {
   /**
    * The confidence engine reports the context keys it read; this proves

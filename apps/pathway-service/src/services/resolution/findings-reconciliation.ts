@@ -30,6 +30,25 @@ export const RED_FLAG_TYPES: readonly RedFlagType[] = [
   'unroutable_decision',
 ];
 
+/**
+ * The types a TRAVERSAL PASS may reconcile — the ones `disposeNode` derives.
+ *
+ * Narrower than `RED_FLAG_TYPES` on purpose. Reconciliation DELETES an
+ * in-scope flag the pass did not re-derive, so claiming a type traversal
+ * cannot produce means quietly deleting another subsystem's finding on any
+ * node the pass happens to touch. `contradiction` has no producer anywhere in
+ * the service; a pass must not be able to erase one.
+ *
+ * `reconcilable-red-flag-types.test.ts` reads the engine source and asserts
+ * this list matches the flags it actually raises, in both directions.
+ */
+export const RECONCILABLE_RED_FLAG_TYPES: readonly RedFlagType[] = [
+  'all_branches_excluded',
+  'missing_critical_data',
+  'all_of_branch_unsupported',
+  'unroutable_decision',
+];
+
 export function isRedFlagType(value: string): value is RedFlagType {
   return (RED_FLAG_TYPES as readonly string[]).includes(value);
 }
