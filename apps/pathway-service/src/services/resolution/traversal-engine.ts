@@ -246,6 +246,21 @@ export function markSubtree(
 
 // ─── Record dependency helpers ────────────────────────────────────────
 
+/**
+ * Which slices of added patient context can move this node's confidence.
+ *
+ * `addPatientContext` reads `scorerInputs` to decide which action nodes need
+ * re-scoring. Nothing ever wrote it, so a context change that moved a score
+ * without touching a gate seeded no recomputation — the node kept a
+ * confidence derived from data the session no longer held.
+ */
+function recordScorerInputs(depMap: DependencyMap, nodeId: string, inputs?: string[]): void {
+  if (!inputs || inputs.length === 0) return;
+  if (!depMap.scorerInputs.has(nodeId)) depMap.scorerInputs.set(nodeId, new Set());
+  const set = depMap.scorerInputs.get(nodeId)!;
+  for (const i of inputs) set.add(i);
+}
+
 function recordInfluence(depMap: DependencyMap, from: string, to: string): void {
   if (!depMap.influences.has(from)) depMap.influences.set(from, new Set());
   depMap.influences.get(from)!.add(to);
@@ -1001,6 +1016,7 @@ export class TraversalEngine {
         const confResult = await this.confidenceEngine.computeNodeConfidence(
           targetNode, graphContext, patientContext,
         );
+        recordScorerInputs(dependencyMap, targetNode.nodeIdentifier, confResult.contextInputs);
 
         const conf = confResult.confidence;
         // The author's own words beat a confidence number. Both criteria are
@@ -1219,6 +1235,7 @@ export class TraversalEngine {
       const confResult = await this.confidenceEngine.computeNodeConfidence(
         node, graphContext, patientContext,
       );
+      recordScorerInputs(dependencyMap, nodeIdentifier, confResult.contextInputs);
 
       resolutionState.set(nodeIdentifier, {
         nodeId: nodeIdentifier,
@@ -1245,6 +1262,7 @@ export class TraversalEngine {
       const confResult = await this.confidenceEngine.computeNodeConfidence(
         node, graphContext, patientContext,
       );
+      recordScorerInputs(dependencyMap, nodeIdentifier, confResult.contextInputs);
 
       const status = confResult.confidence >= this.thresholds.suggestThreshold
         ? NodeStatus.INCLUDED
@@ -1342,6 +1360,7 @@ export class TraversalEngine {
       const confResult = await this.confidenceEngine.computeNodeConfidence(
         node, graphContext, patientContext,
       );
+      recordScorerInputs(dependencyMap, nodeIdentifier, confResult.contextInputs);
 
       const status = isStructuralNode(node)
         ? NodeStatus.INCLUDED

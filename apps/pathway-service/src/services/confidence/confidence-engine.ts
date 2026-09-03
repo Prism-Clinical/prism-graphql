@@ -18,7 +18,9 @@ import {
   ResolutionType,
   WeightMatrix,
   AdminEvidenceEntry,
+  RequiredInput,
 } from './types';
+import { contextKeysForInputs } from './scorer-context-inputs';
 
 export class ConfidenceEngine {
   constructor(
@@ -86,9 +88,15 @@ export class ConfidenceEngine {
     // Score each (node, signal) pair
     type NodeScoreEntry = { score: number; missingInputs: string[]; skipped: boolean };
     const rawScores = new Map<string, Map<string, NodeScoreEntry>>();
+    const contextInputsByNode = new Map<string, Set<string>>();
 
     for (const node of nodes) {
       const nodeScores = new Map<string, NodeScoreEntry>();
+      // Which slices of patient context this node's scorers actually read.
+      // `declareRequiredInputs` has been implemented by every scorer and
+      // called by nothing; this is its first consumer, and it is what lets
+      // `addPatientContext` know an action node needs re-scoring.
+      const nodeInputs: RequiredInput[] = [];
 
       for (const signal of signalDefinitions) {
         const scorer = this.registry.get(signal.scoringType);
@@ -96,6 +104,7 @@ export class ConfidenceEngine {
           nodeScores.set(signal.name, { score: 0.5, missingInputs: ['scorer_not_found'], skipped: false });
           continue;
         }
+        nodeInputs.push(...scorer.declareRequiredInputs(node, signal));
 
         const result = scorer.score({
           node,
@@ -113,6 +122,7 @@ export class ConfidenceEngine {
       }
 
       rawScores.set(node.nodeIdentifier, nodeScores);
+      contextInputsByNode.set(node.nodeIdentifier, contextKeysForInputs(nodeInputs));
     }
 
     // Propagation: topological sort then walk
@@ -204,6 +214,7 @@ export class ConfidenceEngine {
         resolutionType,
         breakdown,
         propagationInfluences: nodePropInfluences,
+        contextInputs: [...(contextInputsByNode.get(node.nodeIdentifier) ?? [])],
       });
     }
 

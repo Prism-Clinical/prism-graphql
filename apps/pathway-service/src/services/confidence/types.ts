@@ -299,6 +299,13 @@ export interface NodeConfidenceResult {
   resolutionType?: ResolutionType;
   breakdown: SignalBreakdown[];
   propagationInfluences: PropagationInfluence[];
+  /**
+   * The added-patient-context keys this node's scorers read, derived from
+   * their `declareRequiredInputs`. Recorded on `dependencyMap.scorerInputs` so
+   * a later context change knows to re-score this node — which nothing could
+   * do while that map was never written.
+   */
+  contextInputs?: string[];
 }
 
 export interface SignalBreakdown {

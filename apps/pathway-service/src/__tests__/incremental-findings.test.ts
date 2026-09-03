@@ -133,3 +133,41 @@ describe('findings returned by an incremental resolve', () => {
     expect(r.pendingQuestions.map(q => q.gateId)).toContain('gate-1');
   });
 });
+
+/**
+ * The dependency map records which context slices can move a node's score.
+ *
+ * It was declared, serialized, read by `addPatientContext` — and never
+ * written, so a context change that moved a confidence without touching a
+ * gate seeded no recomputation at all.
+ */
+describe('scorerInputs is actually populated', () => {
+  /**
+   * The confidence engine reports the context keys it read; this proves
+   * TRAVERSAL writes them down. That the real engine reports them at all is
+   * `confidence-engine.test.ts`'s business, and what the keys mean is
+   * `scorer-context-inputs.test.ts`'s.
+   */
+  beforeEach(() => {
+    mockConfidenceEngine.computeNodeConfidence.mockResolvedValue({
+      confidence: 0.9, breakdown: [], resolutionType: 'AUTO_RESOLVED',
+      contextInputs: ['labs'],
+    });
+  });
+
+  it('records the context a scored node depends on', async () => {
+    const g = graph();
+    const r = await engine().traverse(g, PATIENT, new Map());
+    expect(r.dependencyMap.scorerInputs.size).toBeGreaterThan(0);
+    expect([...r.dependencyMap.scorerInputs.values()][0].has('labs')).toBe(true);
+  });
+
+  it('survives an incremental resolve', async () => {
+    const g = graph();
+    const first = await engine().traverse(g, PATIENT, new Map());
+    await engine().resolveIncrementally(
+      new Set(['gate-1']), first.resolutionState, first.dependencyMap, g, PATIENT, new Map(),
+    );
+    expect(first.dependencyMap.scorerInputs.size).toBeGreaterThan(0);
+  });
+});
