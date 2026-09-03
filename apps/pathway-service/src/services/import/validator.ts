@@ -264,6 +264,19 @@ function validateGateNodes(
     // matching two opens both arms.
     const branchEdges = edges.filter(e => e.from === gate.id && e.type === 'BRANCHES_TO');
     if (branchEdges.length > 1) {
+      // Only a gate that yields a DECISION VALUE can route. A
+      // patient_attribute, compound or prior_node_result gate is evaluated
+      // from the chart: it has no answer and no chosen branch, so there is
+      // nothing to match a `when` against and the engine can only fail closed.
+      // Refuse it at authoring time rather than let it become an empty plan.
+      const gateType = String(props.gate_type ?? '').toLowerCase();
+      if (gateType !== 'question' && gateType !== 'llm_text_analysis') {
+        errors.push(
+          `Gate "${gate.id}": only question and llm_text_analysis gates can route to ` +
+            `several branches; "${gateType || 'unknown'}" is evaluated from the chart and ` +
+            `yields no answer to route on`,
+        );
+      }
       const whens = branchEdges.map(e => ({
         to: e.to,
         when: parseBranchWhen((e.properties as Record<string, unknown> | undefined)?.when),
@@ -296,6 +309,25 @@ function validateGateNodes(
           if (values.some(v => v === undefined)) {
             errors.push(`Gate "${gate.id}": a non-numeric gate's branches must use \`equals\``);
           } else {
+            if (answerType === 'boolean') {
+              const wrong = values.filter(v => typeof v !== 'boolean');
+              if (wrong.length > 0) {
+                errors.push(
+                  `Gate "${gate.id}": a boolean gate's branches must use real booleans, not ` +
+                    `${wrong.map(v => JSON.stringify(v)).join(', ')} — the engine matches by ` +
+                    `type, so a quoted "true" can never be selected`,
+                );
+              }
+            } else {
+              const wrong = values.filter(v => typeof v !== 'string');
+              if (wrong.length > 0) {
+                errors.push(
+                  `Gate "${gate.id}": a select gate's branches must claim option strings, not ` +
+                    `${wrong.map(v => JSON.stringify(v)).join(', ')}`,
+                );
+              }
+            }
+
             // Claimed twice — the multi-arm case.
             const seen = new Set<string>();
             for (const v of values) {

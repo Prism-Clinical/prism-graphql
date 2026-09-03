@@ -5,8 +5,8 @@ import type { PathwayTemporalDefaults } from './temporal/cascade';
 import type { FactStore } from './temporal/fact-model';
 import { EvaluationTemporalContext } from './temporal/evaluation-context';
 import { askFor } from './unresolved-prompt';
-import { parseBranchWhen, isEqualsWhen } from '../import/branch-when';
-import type { BranchWhen } from '../import/branch-when';
+import { parseBranchWhen } from '../import/branch-when';
+import { decisionValueOf, decisionSelects } from './decision-value';
 import type { UnresolvedAsk } from './unresolved-prompt';
 import {
   NodeResult,
@@ -100,38 +100,6 @@ function unresolvedAsk(
   return null;
 }
 
-/**
- * Does this answer select the branch carrying `when`?
- *
- * Ranges are half-open `[gte, lt)`, so a value on a boundary belongs to the
- * range that STARTS there — the property that lets adjacent ranges tile the
- * line without a value landing in two of them.
- */
-function answerSelects(
-  when: BranchWhen,
-  answer: GateAnswer | undefined,
-  /**
-   * The branch an LLM gate picked. Threaded as a peer of the provider's
-   * selection, not as a special case: the SOURCE of an answer varies —
-   * provider, model, chart — while how a branch is chosen should not. That is
-   * the part of the "one decision construct" argument that is actually earned.
-   */
-  chosenBranch?: string,
-): boolean {
-  if (!answer && chosenBranch === undefined) return false;
-  if (isEqualsWhen(when)) {
-    if (typeof when.equals === 'boolean') return answer?.booleanValue === when.equals;
-    // A provider's selection wins over the model's when both are present —
-    // confirming a tentative branch has to be able to override it.
-    const selected = answer?.selectedOption ?? chosenBranch;
-    return selected === when.equals;
-  }
-  const v = answer?.numericValue;
-  if (typeof v !== 'number') return false;
-  if (when.gte !== undefined && v < when.gte) return false;
-  if (when.lt !== undefined && v >= when.lt) return false;
-  return true;
-}
 
 /**
  * Close a branch the answer did not select, and everything under it.
@@ -687,8 +655,22 @@ export class TraversalEngine {
         recordInfluence(dependencyMap, depNodeId, nodeIdentifier);
       }
 
-      if (gateResult.satisfied) {
-        // Gate satisfied — include gate and traverse children
+      // What the gate DECIDED, separate from whether it is SATISFIED. A
+      // multi-branch gate answered "no" is decided, not undecided: routing has
+      // to run for it, and `satisfied` is false. See decision-value.ts.
+      const answer = gateAnswers.get(nodeIdentifier);
+      const decision = decisionValueOf(answer, gateResult.chosenBranch);
+      const branchTargets = graphContext
+        .outgoingEdges(nodeIdentifier)
+        .filter((e) => e.edgeType === 'BRANCHES_TO');
+      // Only a MULTI-target gate routes. One target means traversing it IS the
+      // routing, and demanding a mapping there would break every single-branch
+      // gate in every existing pathway.
+      const routes = branchTargets.length > 1;
+      const decided = routes && decision !== null;
+
+      if (gateResult.satisfied || decided) {
+        // Gate satisfied, or decided by an answer that routes.
         resolutionState.set(nodeIdentifier, {
           nodeId: nodeIdentifier,
           nodeType: node.nodeType,
@@ -720,18 +702,29 @@ export class TraversalEngine {
             tentativeReasoning: gateResult.llmReasoning,
           });
         }
-const answer = gateAnswers.get(nodeIdentifier);
-          const outgoing = graphContext.outgoingEdges(nodeIdentifier);
-          const branchEdges = outgoing.filter(e => e.edgeType === 'BRANCHES_TO');
-          // Only a MULTI-target gate routes. One target means traversing it IS
-          // the routing, and demanding a mapping there would break every
-          // single-branch gate in every existing pathway.
-          const routes = branchEdges.length > 1;
+        const outgoing = graphContext.outgoingEdges(nodeIdentifier);
 
-          for (const edge of outgoing) {
+        // A multi-target gate the engine cannot derive a decision for — a
+        // chart-evaluated patient_attribute gate, say. Import validation
+        // refuses these, so reaching here means a graph stored before that
+        // rule. Traversing every branch would emit mutually exclusive
+        // treatments together, so close them all and SAY SO: silence here
+        // would read as "the pathway had nothing to add".
+        if (routes && decision === null) {
+          redFlags.push({
+            nodeId: nodeIdentifier,
+            nodeTitle: nodeTitle(node),
+            type: 'unroutable_decision',
+            description:
+              `"${nodeTitle(node)}" has ${branchTargets.length} branches but produced no ` +
+              `answer to route on, so none were taken. This gate type cannot be routed yet.`,
+          });
+        }
+
+        for (const edge of outgoing) {
             if (routes && edge.edgeType === 'BRANCHES_TO') {
               const when = parseBranchWhen(edge.properties?.when);
-              if (!when || !answerSelects(when, answer, gateResult.chosenBranch)) {
+              if (!when || !decision || !decisionSelects(when, decision)) {
                 // Say WHY the other treatments are absent. An unexplained
                 // missing branch reads as an oversight rather than a decision.
                 markBranchNotSelected(
@@ -748,7 +741,6 @@ const answer = gateAnswers.get(nodeIdentifier);
       } else {
         // Gate not satisfied
         const isQuestion = gateProps.gate_type === GateType.QUESTION;
-        const answer = gateAnswers.get(nodeIdentifier);
         const isUnansweredQuestion = isQuestion && !answer;
 
         if (isUnansweredQuestion) {

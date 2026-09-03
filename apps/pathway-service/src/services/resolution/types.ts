@@ -379,7 +379,15 @@ export type RedFlagType =
    * it happens — so this reports the disagreement rather than resolving it by
    * dropping a step the pathway requires.
    */
-  | 'all_of_branch_unsupported';
+  | 'all_of_branch_unsupported'
+  /**
+   * A gate has several branches but the engine could derive no decision value
+   * to route on. Import validation refuses this, so it means a graph stored
+   * before that rule. Reported rather than resolved: taking every branch would
+   * emit mutually exclusive treatments together, and taking none silently
+   * would look like the pathway simply had nothing to say.
+   */
+  | 'unroutable_decision';
 
 export interface RedFlag {
   nodeId: string;

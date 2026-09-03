@@ -184,6 +184,36 @@ describe('branch routing validation', () => {
     expect(validatePathwayJson(pw).errors.filter(e => e.includes('gate-r'))).toEqual([]);
   });
 
+  // Chart-evaluated gates yield no answer, so the engine can only fail closed.
+  it('rejects multi-branch routing on a gate type the engine cannot route', () => {
+    const pw = withGate(
+      { title: 'Anaemic?', gate_type: 'patient_attribute', default_behavior: 'skip',
+        condition: { field: 'conditions', operator: 'includes_code', value: 'D50.9' } },
+      [
+        { to: 'step-1-2', when: { equals: 'A' } },
+        { to: 'step-1-3', when: { equals: 'B' } },
+      ],
+    );
+    const r = validatePathwayJson(pw);
+    expect(r.valid).toBe(false);
+    expect(r.errors.join(' ')).toMatch(/patient_attribute/);
+  });
+
+  // The engine matches by TYPE, so a quoted "true" could pass validation and
+  // then never select its branch at runtime.
+  it('rejects a boolean gate mapped with quoted strings', () => {
+    const pw = withGate(
+      { ...SELECT_GATE, answer_type: 'boolean', options: undefined },
+      [
+        { to: 'step-1-2', when: { equals: 'true' } },
+        { to: 'step-1-3', when: { equals: 'false' } },
+      ],
+    );
+    const r = validatePathwayJson(pw);
+    expect(r.valid).toBe(false);
+    expect(r.errors.join(' ')).toMatch(/real booleans/);
+  });
+
   it('rejects a multi-target gate with no when anywhere', () => {
     const pw = withGate(SELECT_GATE, [{ to: 'step-1-2' }, { to: 'step-1-3' }]);
     const r = validatePathwayJson(pw);

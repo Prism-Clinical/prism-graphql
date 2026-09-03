@@ -152,10 +152,84 @@ describe('routing a BOOLEAN answer', () => {
     );
   }
 
-  it('routes true and false to different branches', async () => {
+  it('routes true to the true branch', async () => {
     const yes = await engine().traverse(boolGraph(), PATIENT, answers('gate-b', { booleanValue: true }));
     expect(yes.resolutionState.get('step-yes')!.status).toBe(NodeStatus.INCLUDED);
-    expect(yes.resolutionState.get('step-no')!.status).not.toBe(NodeStatus.INCLUDED);
+    expect(yes.resolutionState.get('step-no')!.status).toBe(NodeStatus.EXCLUDED);
+  });
+
+  /**
+   * The case the old test CLAIMED to cover and did not.
+   *
+   * `evaluateQuestion` reports `satisfied: answer.booleanValue === true`, and
+   * routing used to run only on the satisfied path — so answering "no" was
+   * indistinguishable from not answering, and this branch was unreachable.
+   * The old test asserted `step-no` was not INCLUDED, which passed for the
+   * wrong reason: the gate had shut, taking the whole subtree with it.
+   *
+   * So this asserts the POSITIVE — step-no is INCLUDED — because that is the
+   * only assertion the broken engine cannot satisfy.
+   */
+  it('routes false to the false branch', async () => {
+    const no = await engine().traverse(boolGraph(), PATIENT, answers('gate-b', { booleanValue: false }));
+    expect(no.resolutionState.get('step-no')!.status).toBe(NodeStatus.INCLUDED);
+    expect(no.resolutionState.get('step-yes')!.status).toBe(NodeStatus.EXCLUDED);
+    // And the gate itself is INCLUDED: it was decided, not left hanging.
+    expect(no.resolutionState.get('gate-b')!.status).toBe(NodeStatus.INCLUDED);
+  });
+
+  it('leaves an UNANSWERED boolean gate pending, taking neither branch', async () => {
+    const none = await engine().traverse(boolGraph(), PATIENT, new Map());
+    expect(none.resolutionState.get('gate-b')!.status).toBe(NodeStatus.PENDING_QUESTION);
+    expect(none.resolutionState.get('step-yes')!.status).not.toBe(NodeStatus.INCLUDED);
+    expect(none.resolutionState.get('step-no')!.status).not.toBe(NodeStatus.INCLUDED);
+  });
+});
+
+/**
+ * A multi-branch gate the engine cannot derive a decision for.
+ *
+ * A patient_attribute gate is evaluated from the chart, so it has no
+ * GateAnswer and no LLM chosenBranch — nothing to match a `when` against. It
+ * can still be SATISFIED, and under the old code that meant "traverse
+ * everything", which is the multi-arm defect. Failing closed is right; failing
+ * closed SILENTLY is not, because an empty plan reads as "nothing applied".
+ */
+describe('a multi-target gate with no derivable decision', () => {
+  function chartGraph() {
+    return makeGraphContext(
+      [
+        node('root', 'Pathway'),
+        node('gate-c', 'Gate', {
+          title: 'Anaemic?',
+          gate_type: GateType.PATIENT_ATTRIBUTE,
+          default_behavior: DefaultBehavior.SKIP,
+          condition: { field: 'conditions', operator: 'includes_code', value: 'D50.9', system: 'ICD-10' },
+        }),
+        node('step-a', 'Step', { title: 'Arm A' }),
+        node('step-b', 'Step', { title: 'Arm B' }),
+      ],
+      [
+        edge('root', 'gate-c', 'HAS_GATE'),
+        edge('gate-c', 'step-a', 'BRANCHES_TO', { when: { equals: 'A' } }),
+        edge('gate-c', 'step-b', 'BRANCHES_TO', { when: { equals: 'B' } }),
+      ],
+    );
+  }
+
+  const ANAEMIC = {
+    patientId: 'pt-1',
+    conditionCodes: [{ code: 'D50.9', system: 'ICD-10' }],
+    medications: [], allergies: [], labResults: [],
+  } as unknown as PatientContext;
+
+  it('takes no branch and raises a red flag rather than taking both', async () => {
+    const r = await engine().traverse(chartGraph(), ANAEMIC, new Map());
+    expect(r.resolutionState.get('step-a')!.status).not.toBe(NodeStatus.INCLUDED);
+    expect(r.resolutionState.get('step-b')!.status).not.toBe(NodeStatus.INCLUDED);
+    const flag = r.redFlags.find((f) => f.type === 'unroutable_decision');
+    expect(flag).toBeDefined();
+    expect(flag!.nodeId).toBe('gate-c');
   });
 });
 
