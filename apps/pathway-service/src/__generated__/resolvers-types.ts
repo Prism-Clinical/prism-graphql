@@ -1281,8 +1281,26 @@ export type PendingQuestionType = {
   __typename?: 'PendingQuestionType';
   affectedSubtreeSize: Scalars['Int']['output'];
   answerType: AnswerType;
+  /**
+   * Set when this question is a request for a DATUM — a gate that could not
+   * decide because the value it needed was missing or unorderable — rather
+   * than a clinical question put to the provider. Identifies the datum, so
+   * several gates reading it surface as one request.
+   *
+   * Its presence is what tells a client this is answerable from a chart:
+   * "what is this patient's haemoglobin?" rather than "is the patient
+   * symptomatic?". Null for ordinary question gates.
+   */
+  datumKey?: Maybe<Scalars['String']['output']>;
   estimatedImpact: Scalars['String']['output'];
   gateId: Scalars['ID']['output'];
+  /**
+   * Display text for `options`, index-aligned, when the option values are not
+   * readable on their own. A branch choice answers with a node id; this carries
+   * the branch titles so a client can render them. Null for question gates,
+   * whose options are already the author's words.
+   */
+  optionLabels?: Maybe<Array<Scalars['String']['output']>>;
   options?: Maybe<Array<Scalars['String']['output']>>;
   prompt: Scalars['String']['output'];
   /** True when this question was surfaced by a low-confidence LLM gate. */
@@ -2922,8 +2940,10 @@ export type PathwayStatusResultResolvers<ContextType = DataSourceContext, Parent
 export type PendingQuestionTypeResolvers<ContextType = DataSourceContext, ParentType extends ResolversParentTypes['PendingQuestionType'] = ResolversParentTypes['PendingQuestionType']> = ResolversObject<{
   affectedSubtreeSize?: Resolver<ResolversTypes['Int'], ParentType, ContextType>;
   answerType?: Resolver<ResolversTypes['AnswerType'], ParentType, ContextType>;
+  datumKey?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   estimatedImpact?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   gateId?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
+  optionLabels?: Resolver<Maybe<Array<ResolversTypes['String']>>, ParentType, ContextType>;
   options?: Resolver<Maybe<Array<ResolversTypes['String']>>, ParentType, ContextType>;
   prompt?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   tentative?: Resolver<Maybe<ResolversTypes['Boolean']>, ParentType, ContextType>;

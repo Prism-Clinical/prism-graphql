@@ -725,8 +725,8 @@ export const Query = {
         tentativeBranch: q.tentativeBranch ?? null,
         tentativeConfidence: q.tentativeConfidence ?? null,
         tentativeReasoning: q.tentativeReasoning ?? null,
-      datumKey: q.datumKey ?? null,
-      optionLabels: q.optionLabels ?? null,
+        datumKey: q.datumKey ?? null,
+        optionLabels: q.optionLabels ?? null,
       }));
     },
 
