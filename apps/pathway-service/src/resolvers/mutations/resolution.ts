@@ -737,12 +737,6 @@ export const resolutionMutations = {
       };
       session.gateAnswers.set(args.nodeId, newAnswer);
 
-      // Determine if gate opens: delegate to gate evaluator after building context.
-      // For now, any non-null answer value is treated as opening the gate.
-      // The retraversal will use the proper gate evaluator for final status.
-      gateOpened = args.answer.booleanValue === true ||
-        (args.answer.selectedOption != null) ||
-        (args.answer.numericValue != null);
 
       // 4. Build resolution context and find affected subtree
       const rctx = await buildResolutionContext(pool, session.pathwayId);
@@ -771,89 +765,78 @@ export const resolutionMutations = {
         session.additionalContext as Partial<AdditionalContextInput>,
       );
 
-      if (gateOpened) {
-        // 5a. Gate opens: mark gate as INCLUDED and re-evaluate subtree
-        const previousGateStatus = gateResult.status;
-        gateResult.status = NodeStatus.INCLUDED;
-        gateResult.confidence = 1;
-        gateResult.excludeReason = undefined;
-        statusChanges.push({ nodeId: args.nodeId, from: previousGateStatus, to: NodeStatus.INCLUDED });
+      // EVERY valid answer goes through the engine.
+      //
+      // This used to branch on a truthiness test — `booleanValue === true ||
+      // selectedOption != null || numericValue != null` — and hand-marked the
+      // whole subtree GATED_OUT when it failed. Answering "no" is a DECISION,
+      // not the absence of one: it can select a `{ equals: false }` branch. The
+      // hand-rolled path never called the engine, so a false answer never
+      // routed, never reconciled findings and never re-ran DDI, however
+      // correctly the engine handled it.
+      //
+      // It was also a second disposition implementation living in the resolver,
+      // the same duplication plan 03 removed from the engine. `disposeNode`
+      // decides what an answer means — INCLUDING when the answer closes the
+      // gate, where it applies `default_behavior` that the hand-rolled
+      // GATED_OUT ignored. The gate is in `affectedNodes`, so it is re-disposed
+      // like anything else and its own status change is computed, not asserted.
 
-        // NOTE: there used to be a loop here deleting every PENDING_QUESTION /
-        // GATED_OUT node under the answered gate, because `retraverse` could
-        // only re-evaluate rows that already existed and had no way to
-        // re-resolve one in place. It also had no way to RECREATE what it
-        // deleted, so answering a question permanently removed nodes from the
-        // session. `resolveIncrementally` clears and rebuilds its own region
-        // through the same unit that materialises nodes on a full traversal,
-        // so deleting here would destroy exactly what it is about to rebuild.
+      // NOTE: there used to be a loop here deleting every PENDING_QUESTION /
+      // GATED_OUT node under the answered gate, because `retraverse` could
+      // only re-evaluate rows that already existed and had no way to
+      // re-resolve one in place. It also had no way to RECREATE what it
+      // deleted, so answering a question permanently removed nodes from the
+      // session. `resolveIncrementally` clears and rebuilds its own region
+      // through the same unit that materialises nodes on a full traversal,
+      // so deleting here would destroy exactly what it is about to rebuild.
 
-        const llmBundle = makeLlmGateEvaluator(pool, session.pathwayId, args.sessionId);
-        const incrementalEngine = new TraversalEngine(
-          makeTraversalAdapter(rctx, pool, session.pathwayId, patientCtx),
-          rctx.thresholds,
-          sessionClock,
-          rctx.temporalDefaults,
-          // Same inputs as `patientCtx`, under the session's stored clock.
-          factStoreForSession(
-            session,
-            session.additionalContext as Partial<AdditionalContextInput>,
-          ),
-          rctx.codeMap,
-          llmBundle?.evaluator,
-        );
+      const llmBundle = makeLlmGateEvaluator(pool, session.pathwayId, args.sessionId);
+      const incrementalEngine = new TraversalEngine(
+        makeTraversalAdapter(rctx, pool, session.pathwayId, patientCtx),
+        rctx.thresholds,
+        sessionClock,
+        rctx.temporalDefaults,
+        // Same inputs as `patientCtx`, under the session's stored clock.
+        factStoreForSession(
+          session,
+          session.additionalContext as Partial<AdditionalContextInput>,
+        ),
+        rctx.codeMap,
+        llmBundle?.evaluator,
+      );
 
-        const reResult = await incrementalEngine.resolveIncrementally(
-          affectedNodes,
-          session.resolutionState,
-          session.dependencyMap,
-          rctx.graphContext,
-          patientCtx,
-          session.gateAnswers,
-          {
-            pendingQuestions: session.pendingQuestions,
-            redFlags: session.redFlags,
-            alsoDropGateIds: [args.nodeId],
-          },
-        );
-      degraded = degraded || reResult.isDegraded;
+      const reResult = await incrementalEngine.resolveIncrementally(
+        affectedNodes,
+        session.resolutionState,
+        session.dependencyMap,
+        rctx.graphContext,
+        patientCtx,
+        session.gateAnswers,
+        {
+          pendingQuestions: session.pendingQuestions,
+          redFlags: session.redFlags,
+          alsoDropGateIds: [args.nodeId],
+        },
+      );
+    degraded = degraded || reResult.isDegraded;
 
-        if (llmBundle) await llmBundle.flushAudits(args.sessionId);
+      if (llmBundle) await llmBundle.flushAudits(args.sessionId);
 
-        statusChanges.push(...reResult.statusChanges);
-        nodesRecomputed = reResult.nodesRecomputed;
+      statusChanges.push(...reResult.statusChanges);
+      nodesRecomputed = reResult.nodesRecomputed;
 
-        // Update pending questions and red flags
-        // Remove the answered gate from pending, add any new ones
-        session.pendingQuestions = reResult.pendingQuestions;
-        session.redFlags = reResult.redFlags;
+      // Update pending questions and red flags
+      // Remove the answered gate from pending, add any new ones
+      session.pendingQuestions = reResult.pendingQuestions;
+      session.redFlags = reResult.redFlags;
 
-        // An answer that opens a gate opens whatever it prescribes.
-        await refreshSessionDdi(pool, session, patientCtx);
-      } else {
-        // 5b. Gate closes: mark subtree as GATED_OUT
-        const previousGateStatus = gateResult.status;
-        gateResult.status = NodeStatus.GATED_OUT;
-        gateResult.excludeReason = 'Gate answer: condition not met';
-        statusChanges.push({ nodeId: args.nodeId, from: previousGateStatus, to: NodeStatus.GATED_OUT });
+      // An answer that opens a gate opens whatever it prescribes.
+      await refreshSessionDdi(pool, session, patientCtx);
 
-        for (const nodeId of affectedNodes) {
-          if (nodeId === args.nodeId) continue;
-          const existing = session.resolutionState.get(nodeId);
-          if (existing) {
-            const oldStatus = existing.status;
-            existing.status = NodeStatus.GATED_OUT;
-            existing.excludeReason = `Gated out by answer to ${gateResult.title}`;
-            if (oldStatus !== NodeStatus.GATED_OUT) {
-              statusChanges.push({ nodeId, from: oldStatus, to: NodeStatus.GATED_OUT });
-            }
-            nodesRecomputed++;
-          }
-        }
-
-        // Remove the answered question from pending
-        session.pendingQuestions = session.pendingQuestions.filter(q => q.gateId !== args.nodeId);
-      }
+      // Reported from what the engine decided, not predicted from the answer's
+      // shape. Only the audit event reads it.
+      gateOpened = session.resolutionState.get(args.nodeId)?.status === NodeStatus.INCLUDED;
 
       // 7. Update session (optimistic lock)
       try {
