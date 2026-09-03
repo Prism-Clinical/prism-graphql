@@ -474,6 +474,8 @@ export class TraversalEngine {
     // Captured before anything is cleared — the only moment the previous
     // status of each node in the region is still known.
     const statusBefore = new Map<string, NodeStatus>();
+    /** Where each region node sat, so a timed-out rebuild can be put back. */
+    const priorPlacement = new Map<string, { depth: number; parentNodeId?: string }>();
 
     // The region a seed can reach. Bounded by the graph, so it is finite and
     // needs no visited-set of its own beyond `region`.
@@ -498,6 +500,7 @@ export class TraversalEngine {
       const existing = resolutionState.get(id);
       if (!existing) continue;
       statusBefore.set(id, existing.status);
+      priorPlacement.set(id, { depth: existing.depth, parentNodeId: existing.parentNodeId });
       if (existing.providerOverride) {
         for (const edge of graphContext.outgoingEdges(id)) {
           queue.push({
@@ -517,8 +520,14 @@ export class TraversalEngine {
       }
     }
 
+    let isDegraded = false;
+    let disposed = 0;
+
     while (queue.length > 0) {
-      if (Date.now() - startTime > TRAVERSAL_TIMEOUT_MS) break;
+      if (Date.now() - startTime > TRAVERSAL_TIMEOUT_MS) {
+        isDegraded = true;
+        break;
+      }
 
       const { nodeIdentifier, parentNodeId, depth } = queue.shift()!;
       if (resolutionState.has(nodeIdentifier)) continue;
@@ -531,6 +540,37 @@ export class TraversalEngine {
         resolutionState, dependencyMap, queue,
         pendingQuestions, redFlags, evaluationStack, startTime,
       });
+      disposed++;
+    }
+
+    // A timeout here is worse than in a full traversal, which has simply not
+    // reached a node yet. This walk DELETED the region up front, so anything
+    // not rebuilt has been erased from a session that had it — and the caller
+    // then persists that map. Materialise every region member still missing,
+    // so the node set stays complete (plan 03's invariant) and the gap reads
+    // as TIMEOUT rather than as absence.
+    //
+    // Every region member, not just what is left in the queue: a node whose
+    // parent timed out before enqueuing it is missing from both.
+    if (isDegraded) {
+      for (const id of region) {
+        if (resolutionState.has(id)) continue;
+        const n = graphContext.getNode(id);
+        if (!n) continue;
+        const placement = priorPlacement.get(id);
+        resolutionState.set(id, {
+          nodeId: id,
+          nodeType: n.nodeType,
+          title: nodeTitle(n),
+          status: NodeStatus.TIMEOUT,
+          confidence: 0,
+          confidenceBreakdown: [],
+          excludeReason: 'Traversal timeout exceeded before this node was re-resolved',
+          parentNodeId: placement?.parentNodeId,
+          depth: placement?.depth ?? 0,
+          properties: n.properties,
+        });
+      }
     }
 
     const statusChanges: Array<{ nodeId: string; from: string; to: string }> = [];
@@ -546,9 +586,12 @@ export class TraversalEngine {
       redFlags,
       totalNodesEvaluated: region.size,
       traversalDurationMs: Date.now() - startTime,
-      isDegraded: false,
+      isDegraded,
       statusChanges,
-      nodesRecomputed: region.size,
+      // What was actually disposed, not the size of the region we intended to
+      // dispose. On a timeout those differ, and reporting the intent made a
+      // partial rebuild indistinguishable from a complete one.
+      nodesRecomputed: disposed,
     };
   }
 

@@ -358,6 +358,7 @@ export const resolutionMutations = {
     }
 
     // 6. Run re-traversal on affected nodes if any
+    let degraded = false;
     const statusChanges: Array<{ nodeId: string; from: string; to: string }> = [
       { nodeId: args.nodeId, from: originalStatus, to: nodeResult.status },
     ];
@@ -393,6 +394,7 @@ export const resolutionMutations = {
         patientCtx,
         session.gateAnswers,
       );
+      degraded = degraded || reResult.isDegraded;
 
       if (llmBundle) await llmBundle.flushAudits(args.sessionId);
 
@@ -403,6 +405,10 @@ export const resolutionMutations = {
     await updateSession(pool, args.sessionId, {
       resolutionState: session.resolutionState,
       totalNodesEvaluated: session.resolutionState.size,
+      // A degraded incremental resolve timed out midway. The region it was
+      // rebuilding is only partly rebuilt, so the session must SAY so rather
+      // than look complete — nothing downstream can tell otherwise.
+      ...(degraded ? { status: SessionStatus.DEGRADED } : {}),
     }, session.updatedAt);
 
     // 8. Log event
@@ -462,6 +468,7 @@ export const resolutionMutations = {
     // providers editing) still surfaces after we've done our best.
     const MAX_ATTEMPTS = 4;
     let statusChanges: Array<{ nodeId: string; from: string; to: string }> = [];
+    let degraded = false;
     let nodesRecomputed = 0;
     let gateOpened = false;
     let pathwayIdForLog = '';
@@ -508,6 +515,17 @@ export const resolutionMutations = {
         const rctxDp = await buildResolutionContext(pool, session.pathwayId);
         const dpClock = requireSessionTemporalContext(session);
 
+        // Everything the session has learned since it was created, not just
+        // the context it was created with. Conditions, medications and
+        // allergies added later live here — the fact store carries labs and
+        // vitals, but not these — and every other re-resolution path in this
+        // resolver already builds context this way. This one did not, so a
+        // branch choice re-resolved against a stale picture of the patient.
+        const dpPatientCtx = buildEffectivePatientContext(
+          session.initialPatientContext as PatientContext,
+          session.additionalContext as Partial<AdditionalContextInput>,
+        );
+
         // Record the choice as an ANSWER before re-resolving.
         //
         // Two things follow from that. It SURVIVES: an ancestor retraversal
@@ -520,7 +538,7 @@ export const resolutionMutations = {
         session.gateAnswers.set(args.nodeId, { selectedOption: chosen } as GateAnswer);
 
         const dpEngine = new TraversalEngine(
-          makeTraversalAdapter(rctxDp, pool, session.pathwayId, session.initialPatientContext as PatientContext),
+          makeTraversalAdapter(rctxDp, pool, session.pathwayId, dpPatientCtx),
           rctxDp.thresholds,
           dpClock,
           rctxDp.temporalDefaults,
@@ -544,9 +562,10 @@ export const resolutionMutations = {
           session.resolutionState,
           session.dependencyMap,
           rctxDp.graphContext,
-          session.initialPatientContext as PatientContext,
+          dpPatientCtx,
           session.gateAnswers,
         );
+      degraded = degraded || dpResult.isDegraded;
 
         statusChanges.push(...dpResult.statusChanges);
         nodesRecomputed = dpResult.nodesRecomputed;
@@ -569,6 +588,10 @@ export const resolutionMutations = {
             redFlags: session.redFlags,
             gateAnswers: session.gateAnswers,
             totalNodesEvaluated: session.resolutionState.size,
+          // A degraded incremental resolve timed out midway. The region it was
+      // rebuilding is only partly rebuilt, so the session must SAY so rather
+      // than look complete — nothing downstream can tell otherwise.
+      ...(degraded ? { status: SessionStatus.DEGRADED } : {}),
           }, session.updatedAt);
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
@@ -727,6 +750,7 @@ export const resolutionMutations = {
           patientCtx,
           session.gateAnswers,
         );
+      degraded = degraded || reResult.isDegraded;
 
         if (llmBundle) await llmBundle.flushAudits(args.sessionId);
 
@@ -774,6 +798,10 @@ export const resolutionMutations = {
           redFlags: session.redFlags,
           gateAnswers: session.gateAnswers,
           totalNodesEvaluated: session.resolutionState.size,
+        // A degraded incremental resolve timed out midway. The region it was
+      // rebuilding is only partly rebuilt, so the session must SAY so rather
+      // than look complete — nothing downstream can tell otherwise.
+      ...(degraded ? { status: SessionStatus.DEGRADED } : {}),
         }, session.updatedAt);
         break; // committed
       } catch (err) {
@@ -930,6 +958,7 @@ export const resolutionMutations = {
 
     // 5. Run re-traversal
     const statusChanges: Array<{ nodeId: string; from: string; to: string }> = [];
+    let degraded = false;
     let nodesRecomputed = 0;
 
     if (affectedNodes.size > 0) {
@@ -958,6 +987,7 @@ export const resolutionMutations = {
         updatedPc,
         session.gateAnswers,
       );
+      degraded = degraded || reResult.isDegraded;
 
       if (llmBundle) await llmBundle.flushAudits(args.sessionId);
 
@@ -993,6 +1023,10 @@ export const resolutionMutations = {
       pendingQuestions: session.pendingQuestions,
       redFlags: session.redFlags,
       totalNodesEvaluated: session.resolutionState.size,
+      // A degraded incremental resolve timed out midway. The region it was
+      // rebuilding is only partly rebuilt, so the session must SAY so rather
+      // than look complete — nothing downstream can tell otherwise.
+      ...(degraded ? { status: SessionStatus.DEGRADED } : {}),
     }, session.updatedAt);
 
     // 7. Log event
