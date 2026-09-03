@@ -42,6 +42,8 @@ import {
 } from '../../services/resolution/temporal/fact-store';
 import { assertKnownPolicyVersion } from '../../services/resolution/temporal/policy-registry';
 import { applyDdiToResolutionState } from '../../services/medications/ddi-pass-single-pathway';
+import type { Pool } from 'pg';
+import type { ResolutionState } from '../../services/resolution/types';
 import { normalizePatientAttributes } from '../../services/resolution/patient-attributes';
 import {
   buildEffectivePatientContext,
@@ -146,6 +148,33 @@ export function temporalInputFrom(args: TemporalAnchorArgs): TemporalContextInpu
   if (args.evaluationAsOf != null) input.evaluationAsOf = args.evaluationAsOf;
   if (args.encounterStart != null) input.encounterStart = args.encounterStart;
   return input;
+}
+
+/**
+ * Re-run DDI over a session whose resolution state has just changed.
+ *
+ * DDI used to run ONCE, at session creation. Every mutation that re-resolves
+ * can bring a medication INTO the plan — a branch chosen at a DecisionPoint, a
+ * gate opened by an answer, a node included by an override — and adding
+ * medications to the patient context changes the other side of the check. So a
+ * care plan could be generated from medication state that never passed DDI.
+ *
+ * Centralised rather than repeated at each call site: five paths mutate the
+ * plan, and a check that must be remembered five times is a check that will be
+ * forgotten once.
+ *
+ * `applyDdiToResolutionState` only ever moves a node INCLUDED -> EXCLUDED, so
+ * re-running it cannot resurrect a suppression that no longer applies; that
+ * happens when the region is re-disposed, which is what put the node back to
+ * INCLUDED in the first place.
+ */
+async function refreshSessionDdi(
+  pool: Pool,
+  session: { resolutionState: ResolutionState; ddiWarnings?: unknown[] },
+  patientContext: PatientContext,
+): Promise<void> {
+  const result = await applyDdiToResolutionState(pool, session.resolutionState, patientContext);
+  session.ddiWarnings = result.findings.filter((f) => f.action === 'WARN');
 }
 
 export const resolutionMutations = {
@@ -408,6 +437,19 @@ export const resolutionMutations = {
       session.redFlags = reResult.redFlags;
     }
 
+    // Outside the re-resolution guard on purpose. An INCLUDE override puts THAT
+    // node into the plan whether or not anything downstream was affected, and
+    // if it is a Medication it has never been checked against the patient's
+    // other drugs.
+    await refreshSessionDdi(
+      pool,
+      session,
+      buildEffectivePatientContext(
+        session.initialPatientContext as PatientContext,
+        session.additionalContext as Partial<AdditionalContextInput>,
+      ),
+    );
+
     // 7. Update session (with optimistic lock)
     await updateSession(pool, args.sessionId, {
       resolutionState: session.resolutionState,
@@ -420,6 +462,7 @@ export const resolutionMutations = {
       // rebuilding is only partly rebuilt, so the session must SAY so rather
       // than look complete — nothing downstream can tell otherwise.
       ...(degraded ? { status: SessionStatus.DEGRADED } : {}),
+      ddiWarnings: session.ddiWarnings,
     }, session.updatedAt);
 
     // 8. Log event
@@ -594,6 +637,9 @@ export const resolutionMutations = {
         session.pendingQuestions = dpResult.pendingQuestions;
         session.redFlags = dpResult.redFlags;
 
+        // The chosen branch is exactly where new medications come from.
+        await refreshSessionDdi(pool, session, dpPatientCtx);
+
         try {
           await updateSession(pool, args.sessionId, {
             resolutionState: session.resolutionState,
@@ -606,6 +652,7 @@ export const resolutionMutations = {
       // rebuilding is only partly rebuilt, so the session must SAY so rather
       // than look complete — nothing downstream can tell otherwise.
       ...(degraded ? { status: SessionStatus.DEGRADED } : {}),
+            ddiWarnings: session.ddiWarnings,
           }, session.updatedAt);
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
@@ -780,6 +827,9 @@ export const resolutionMutations = {
         // Remove the answered gate from pending, add any new ones
         session.pendingQuestions = reResult.pendingQuestions;
         session.redFlags = reResult.redFlags;
+
+        // An answer that opens a gate opens whatever it prescribes.
+        await refreshSessionDdi(pool, session, patientCtx);
       } else {
         // 5b. Gate closes: mark subtree as GATED_OUT
         const previousGateStatus = gateResult.status;
@@ -817,6 +867,7 @@ export const resolutionMutations = {
       // rebuilding is only partly rebuilt, so the session must SAY so rather
       // than look complete — nothing downstream can tell otherwise.
       ...(degraded ? { status: SessionStatus.DEGRADED } : {}),
+          ddiWarnings: session.ddiWarnings,
         }, session.updatedAt);
         break; // committed
       } catch (err) {
@@ -1022,6 +1073,11 @@ export const resolutionMutations = {
       session.redFlags = reResult.redFlags;
     }
 
+    // Outside the re-resolution guard on purpose. Adding medications changes
+    // the OTHER side of the check — the patient's own list — so DDI must run
+    // even when no gate depended on the new context and nothing was re-resolved.
+    await refreshSessionDdi(pool, session, updatedPc);
+
     // 6. Update session (with optimistic lock)
     await updateSession(pool, args.sessionId, {
       resolutionState: session.resolutionState,
@@ -1033,6 +1089,7 @@ export const resolutionMutations = {
       // rebuilding is only partly rebuilt, so the session must SAY so rather
       // than look complete — nothing downstream can tell otherwise.
       ...(degraded ? { status: SessionStatus.DEGRADED } : {}),
+      ddiWarnings: session.ddiWarnings,
     }, session.updatedAt);
 
     // 7. Log event
@@ -1079,6 +1136,23 @@ export const resolutionMutations = {
         extensions: { code: 'BAD_REQUEST' },
       });
     }
+
+    // 1b. DDI, immediately before the plan is built.
+    //
+    // The four resolution mutations each refresh DDI, so this should be a
+    // no-op. It runs anyway because this is the last moment before a plan
+    // becomes a clinical artefact, and "some other path already checked" is
+    // the assumption that let a plan be generated from medication state that
+    // never passed DDI at all. A suppression here still excludes the node, so
+    // it changes the plan rather than merely reporting on it.
+    await refreshSessionDdi(
+      pool,
+      session,
+      buildEffectivePatientContext(
+        session.initialPatientContext as PatientContext,
+        session.additionalContext as Partial<AdditionalContextInput>,
+      ),
+    );
 
     // 2. Validate
     const blockers = validateForGeneration(session.resolutionState, session.redFlags);
