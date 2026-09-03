@@ -12,6 +12,7 @@ import {
   NodeResult,
   NodeStatus,
   GateAnswer,
+  GateCondition,
   GateProperties,
   GateType,
   DefaultBehavior,
@@ -85,14 +86,29 @@ function uncertaintyOf(gateResult: {
  */
 function unresolvedAsk(
   gateProps: GateProperties,
-  gateResult: { indeterminate?: boolean; dataUnavailable?: boolean },
+  gateResult: {
+    indeterminate?: boolean;
+    dataUnavailable?: boolean;
+    unresolvedConditions?: GateCondition[];
+  },
 ): UnresolvedAsk | null {
   const couldNotDecide =
     gateResult.indeterminate === true || gateResult.dataUnavailable === true;
   if (!couldNotDecide) return null;
   if (gateProps.on_unresolved === 'default') return null;
 
-  const conditions = gateProps.conditions ?? (gateProps.condition ? [gateProps.condition] : []);
+  // Ask for the condition that was actually UNRESOLVED, when the evaluator
+  // said which. Falling straight to the gate's condition list asked for the
+  // first askable one, which on a compound can be a condition the engine
+  // already has a value for: the provider answers, the blocking condition is
+  // still blocked, and the gate pends again — for ever.
+  //
+  // The full list stays the fallback for a single-condition gate, where the
+  // only condition is necessarily the unresolved one.
+  const conditions =
+    gateResult.unresolvedConditions && gateResult.unresolvedConditions.length > 0
+      ? gateResult.unresolvedConditions
+      : (gateProps.conditions ?? (gateProps.condition ? [gateProps.condition] : []));
   for (const condition of conditions) {
     const ask = askFor(condition);
     if (ask) return ask;

@@ -209,3 +209,66 @@ describe('escalation — a gate that could not decide asks for the datum', () =>
     expect(result.pendingQuestions[0].datumKey).toBe('LOINC:718-7');
   });
 });
+
+/**
+ * A COMPOUND gate escalates too — and asks for the right datum.
+ *
+ * This is the case the workstream exists for and the one it used to miss.
+ * `evaluateCompound` propagated `indeterminate` and `uncertainty` but dropped
+ * `dataUnavailable`, so a compound with one missing measurement reported
+ * nothing unresolved and silently took its default. And when it did escalate,
+ * the prompt asked for the FIRST askable condition, which can be one the
+ * engine already has — leaving the blocking condition unasked for ever.
+ */
+describe('escalation from a compound gate', () => {
+  /** Condition 1 HAS a value; condition 2 does not. */
+  const COMPOUND_ONE_MISSING = {
+    title: 'Anaemic and thrombocytopenic?',
+    gate_type: GateType.COMPOUND,
+    default_behavior: DefaultBehavior.SKIP,
+    operator: 'AND',
+    conditions: [
+      { field: 'labs', operator: 'less_than', value: '718-7', system: 'LOINC', threshold: 11 },
+      { field: 'labs', operator: 'less_than', value: '777-3', system: 'LOINC', threshold: 150 },
+    ],
+  };
+
+  const HAS_HAEMOGLOBIN_ONLY = patientWith([
+    { code: '718-7', system: 'LOINC', value: 9, effectiveDateTime: '2026-08-20' },
+  ]);
+
+  it('escalates instead of silently taking its default', async () => {
+    const { nodes, edges } = oneGate(COMPOUND_ONE_MISSING);
+    const r = await resolve(nodes, edges, HAS_HAEMOGLOBIN_ONLY);
+    expect(r.pendingQuestions.map(q => q.gateId)).toContain('gate-1');
+  });
+
+  // The point of naming the unresolved condition: the provider is asked for
+  // the platelet count, not for the haemoglobin already on file.
+  it('asks for the datum that is MISSING, not the first one it could ask for', async () => {
+    const { nodes, edges } = oneGate(COMPOUND_ONE_MISSING);
+    const r = await resolve(nodes, edges, HAS_HAEMOGLOBIN_ONLY);
+    const q = r.pendingQuestions.find(p => p.gateId === 'gate-1');
+    expect(q).toBeDefined();
+    expect(q!.datumKey).toContain('777-3');
+    expect(q!.datumKey).not.toContain('718-7');
+  });
+
+  // A compound the data already settles must not interrupt anyone.
+  it('does not escalate when a definite false already settles the AND', async () => {
+    const settled = {
+      ...COMPOUND_ONE_MISSING,
+      conditions: [
+        // Definitely false: haemoglobin is 14, well above the threshold.
+        { field: 'labs', operator: 'less_than', value: '718-7', system: 'LOINC', threshold: 11 },
+        { field: 'labs', operator: 'less_than', value: '777-3', system: 'LOINC', threshold: 150 },
+      ],
+    };
+    const notAnaemic = patientWith([
+      { code: '718-7', system: 'LOINC', value: 14, effectiveDateTime: '2026-08-20' },
+    ]);
+    const { nodes, edges } = oneGate(settled);
+    const r = await resolve(nodes, edges, notAnaemic);
+    expect(r.pendingQuestions.map(q => q.gateId)).not.toContain('gate-1');
+  });
+});

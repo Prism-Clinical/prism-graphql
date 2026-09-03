@@ -312,6 +312,16 @@ export interface GateEvaluationResult {
    * has failed to answer rather than answered "no".
    */
   dataUnavailable?: boolean;
+  /**
+   * On a compound gate, the conditions that could not be answered — the ones
+   * that made `indeterminate` or `dataUnavailable` true.
+   *
+   * Without this the escalation prompt asked for the FIRST askable condition,
+   * which can be one the engine already has a value for. The provider answers,
+   * the genuinely unresolved condition is still unresolved, and the gate pends
+   * again — indefinitely.
+   */
+  unresolvedConditions?: GateCondition[];
 }
 
 // ─── Pending Questions ──────────────────────────────────────────────

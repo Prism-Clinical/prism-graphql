@@ -1345,15 +1345,42 @@ function evaluatePriorNodeResult(
  * it is the reason the predicates below are written positively rather than as
  * `!indeterminate` shorthands.
  */
+/** Either way a condition can fail to answer. */
+function conditionUnresolved(r: ConditionOutcome): boolean {
+  return r.indeterminate === true || r.dataUnavailable === true;
+}
+
+/**
+ * Does an unresolved condition actually PREVENT the compound from deciding?
+ *
+ * Only if nothing else settles it. A definitely-false condition settles an
+ * AND and a definitely-true one settles an OR, whatever their siblings did —
+ * so an unanswerable sibling there is irrelevant and must not make the gate
+ * ask for a datum that cannot change the outcome.
+ *
+ * "Definitely" excludes BOTH unresolved signals. An unavailable condition is
+ * not a false one, so it cannot dominate an AND: reading `satisfied: false`
+ * as a real negative is the same conflation that made a missing measurement
+ * indistinguishable from a measured absence.
+ */
+function compoundUnresolved(
+  op: 'AND' | 'OR',
+  results: readonly ConditionOutcome[],
+  flagged: (r: ConditionOutcome) => boolean,
+): boolean {
+  const dominates = (r: ConditionOutcome) =>
+    op === 'AND'
+      ? !r.satisfied && !conditionUnresolved(r)
+      : r.satisfied && !conditionUnresolved(r);
+  if (results.some(dominates)) return false;
+  return results.some(flagged);
+}
+
 function compoundIndeterminate(
   op: 'AND' | 'OR',
   results: readonly ConditionOutcome[],
 ): boolean {
-  const isIndeterminate = (r: ConditionOutcome) => r.indeterminate === true;
-  const dominates = (r: ConditionOutcome) =>
-    op === 'AND' ? !r.satisfied && !isIndeterminate(r) : r.satisfied && !isIndeterminate(r);
-  if (results.some(dominates)) return false;
-  return results.some(isIndeterminate);
+  return compoundUnresolved(op, results, (r) => r.indeterminate === true);
 }
 
 function evaluateCompound(
@@ -1442,6 +1469,29 @@ function evaluateCompound(
   // only on the outcome), so this needs no second source.
   if (results.some((r) => r.uncertainty !== undefined)) {
     out.uncertainty = [...new Set(results.flatMap((r) => r.uncertainty ?? []))];
+  }
+
+  // `dataUnavailable` crosses the boundary too. It did not, so the COMMON case
+  // — one scalar condition of a compound has no measurement on file — reported
+  // nothing and the gate silently took its default. That is precisely the case
+  // escalation exists for: keying it on `indeterminate` alone never fires for a
+  // missing measurement, because `indeterminate` means candidates exist but
+  // cannot be ordered.
+  if (results.some((r) => r.dataUnavailable !== undefined)) {
+    out.dataUnavailable = compoundUnresolved(op, results, (r) => r.dataUnavailable === true);
+  }
+
+  // WHICH conditions could not be answered, so the prompt asks for the datum
+  // that is actually missing. Asking for the first askable condition instead
+  // can re-request a value the engine already has, while the one that blocked
+  // the decision stays unasked — and the gate never resolves however many
+  // times the provider answers.
+  //
+  // Index-aligned with `gate.conditions` by construction: `results` is pushed
+  // one per condition, in order, in the loop above.
+  if (out.indeterminate === true || out.dataUnavailable === true) {
+    const unresolved = gate.conditions.filter((_, i) => conditionUnresolved(results[i]));
+    if (unresolved.length > 0) out.unresolvedConditions = unresolved;
   }
   return out;
 }
