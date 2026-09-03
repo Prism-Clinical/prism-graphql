@@ -393,17 +393,28 @@ export const resolutionMutations = {
         rctx.graphContext,
         patientCtx,
         session.gateAnswers,
+        { pendingQuestions: session.pendingQuestions, redFlags: session.redFlags },
       );
       degraded = degraded || reResult.isDegraded;
 
       if (llmBundle) await llmBundle.flushAudits(args.sessionId);
 
       statusChanges.push(...reResult.statusChanges);
+      // An override RE-DISPOSES a region, so it can settle a question and
+      // clear a flag as surely as an answer can. Both were discarded here, so
+      // overriding a node out of the plan left the questions and red flags of
+      // everything beneath it standing for ever.
+      session.pendingQuestions = reResult.pendingQuestions;
+      session.redFlags = reResult.redFlags;
     }
 
     // 7. Update session (with optimistic lock)
     await updateSession(pool, args.sessionId, {
       resolutionState: session.resolutionState,
+      // Persisted now that an override reconciles them. It did not touch
+      // either before, so there was nothing here to write.
+      pendingQuestions: session.pendingQuestions,
+      redFlags: session.redFlags,
       totalNodesEvaluated: session.resolutionState.size,
       // A degraded incremental resolve timed out midway. The region it was
       // rebuilding is only partly rebuilt, so the session must SAY so rather
@@ -564,6 +575,11 @@ export const resolutionMutations = {
           rctxDp.graphContext,
           dpPatientCtx,
           session.gateAnswers,
+          {
+            pendingQuestions: session.pendingQuestions,
+            redFlags: session.redFlags,
+            alsoDropGateIds: [args.nodeId],
+          },
         );
       degraded = degraded || dpResult.isDegraded;
 
@@ -573,12 +589,10 @@ export const resolutionMutations = {
         // Findings from the chosen subtree are KEPT. Discarding them lost every
         // question and red flag the chosen branch raised, so a branch leading
         // to further questions looked resolved.
-        session.pendingQuestions = session.pendingQuestions
-          .filter(q => q.gateId !== args.nodeId)
-          .concat(dpResult.pendingQuestions);
-        if (dpResult.redFlags.length > 0) {
-          session.redFlags = [...session.redFlags, ...dpResult.redFlags];
-        }
+        // Reconciled wholes, not additions — the engine already merged them
+        // against what the session held.
+        session.pendingQuestions = dpResult.pendingQuestions;
+        session.redFlags = dpResult.redFlags;
 
         try {
           await updateSession(pool, args.sessionId, {
@@ -749,6 +763,11 @@ export const resolutionMutations = {
           rctx.graphContext,
           patientCtx,
           session.gateAnswers,
+          {
+            pendingQuestions: session.pendingQuestions,
+            redFlags: session.redFlags,
+            alsoDropGateIds: [args.nodeId],
+          },
         );
       degraded = degraded || reResult.isDegraded;
 
@@ -759,12 +778,8 @@ export const resolutionMutations = {
 
         // Update pending questions and red flags
         // Remove the answered gate from pending, add any new ones
-        session.pendingQuestions = session.pendingQuestions
-          .filter(q => q.gateId !== args.nodeId)
-          .concat(reResult.pendingQuestions);
-        if (reResult.redFlags.length > 0) {
-          session.redFlags = [...session.redFlags, ...reResult.redFlags];
-        }
+        session.pendingQuestions = reResult.pendingQuestions;
+        session.redFlags = reResult.redFlags;
       } else {
         // 5b. Gate closes: mark subtree as GATED_OUT
         const previousGateStatus = gateResult.status;
@@ -986,6 +1001,7 @@ export const resolutionMutations = {
         rctx.graphContext,
         updatedPc,
         session.gateAnswers,
+        { pendingQuestions: session.pendingQuestions, redFlags: session.redFlags },
       );
       degraded = degraded || reResult.isDegraded;
 
@@ -994,26 +1010,16 @@ export const resolutionMutations = {
       statusChanges.push(...reResult.statusChanges);
       nodesRecomputed = reResult.nodesRecomputed;
 
-      // Update pending questions and red flags.
+      // Reconciled wholes. This replaces a hand-rolled prune-then-append that
+      // deduped on `gateId`, which could not see that two gates share ONE
+      // escalated datum prompt — the shared key is the datum. The engine now
+      // does the merge, keyed the same way for questions and flags.
       //
-      // Drop any question whose gate is no longer PENDING_QUESTION before
-      // appending. A datum request that has been answered is resolved — the
-      // gate decided on the value — and leaving it in the list would ask the
-      // provider again for something they already supplied. This also clears
-      // the SIBLING requests deduped onto one datum, since they resolve from
-      // the same injected fact.
-      const stillPending = session.pendingQuestions.filter(q => {
-        const n = session.resolutionState.get(q.gateId);
-        return n === undefined || n.status === NodeStatus.PENDING_QUESTION;
-      });
-      const known = new Set(stillPending.map(q => q.gateId));
-      session.pendingQuestions = [
-        ...stillPending,
-        ...reResult.pendingQuestions.filter(q => !known.has(q.gateId)),
-      ];
-      if (reResult.redFlags.length > 0) {
-        session.redFlags = [...session.redFlags, ...reResult.redFlags];
-      }
+      // Dropping a question whose gate is no longer PENDING_QUESTION is what
+      // the reconcile already does: the gate was re-disposed, it no longer
+      // asks, so the question is settled.
+      session.pendingQuestions = reResult.pendingQuestions;
+      session.redFlags = reResult.redFlags;
     }
 
     // 6. Update session (with optimistic lock)

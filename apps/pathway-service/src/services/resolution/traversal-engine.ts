@@ -7,6 +7,11 @@ import { EvaluationTemporalContext } from './temporal/evaluation-context';
 import { askFor } from './unresolved-prompt';
 import { parseBranchWhen } from '../import/branch-when';
 import { decisionValueOf, decisionSelects } from './decision-value';
+import {
+  reconcilePendingQuestions,
+  reconcileRedFlags,
+  RED_FLAG_TYPES,
+} from './findings-reconciliation';
 import type { UnresolvedAsk } from './unresolved-prompt';
 import {
   NodeResult,
@@ -480,6 +485,17 @@ export class TraversalEngine {
     graphContext: GraphContext,
     patientContext: PatientContext,
     gateAnswers: Map<string, GateAnswer>,
+    /**
+     * The session's stored findings. Given, the returned lists are the
+     * RECONCILED whole — assign them, do not concat. Omitted, the derived set
+     * comes back as-is, which is what a fresh session wants.
+     */
+    existing?: {
+      pendingQuestions?: readonly PendingQuestion[];
+      redFlags?: readonly RedFlag[];
+      /** Gates settled by this very mutation, dropped whether re-derived or not. */
+      alsoDropGateIds?: Iterable<string>;
+    },
   ): Promise<IncrementalResult> {
     const startTime = Date.now();
     const pendingQuestions: PendingQuestion[] = [];
@@ -538,6 +554,13 @@ export class TraversalEngine {
 
     let isDegraded = false;
     let disposed = 0;
+    /**
+     * Nodes this pass actually re-disposed, and therefore the only ones whose
+     * findings it may rewrite. Deliberately not `region`: a node the walk
+     * timed out before reaching was NOT re-derived, and treating its absence
+     * from the derived set as "settled" would silently drop a live question.
+     */
+    const disposedIds = new Set<string>();
 
     while (queue.length > 0) {
       if (Date.now() - startTime > TRAVERSAL_TIMEOUT_MS) {
@@ -557,6 +580,7 @@ export class TraversalEngine {
         pendingQuestions, redFlags, evaluationStack, startTime,
       });
       disposed++;
+      disposedIds.add(nodeIdentifier);
     }
 
     // A timeout here is worse than in a full traversal, which has simply not
@@ -595,11 +619,30 @@ export class TraversalEngine {
       if (to !== undefined && to !== from) statusChanges.push({ nodeId: id, from, to });
     }
 
+    // Reconcile against what the session already holds, rather than handing
+    // back a raw derived set for the caller to CONCAT. Appending re-emitted an
+    // identical finding on every pass and never removed one whose condition had
+    // resolved — and since generation blocks on unacknowledged red flags, a
+    // flag true for one instant blocked that session for ever.
+    //
+    // Findings about nodes this pass never disposed are outside its authority
+    // and pass through untouched.
+    const reconciledQuestions = reconcilePendingQuestions(
+      existing?.pendingQuestions ?? [],
+      pendingQuestions,
+      { gateIds: disposedIds, alsoDropGateIds: existing?.alsoDropGateIds },
+    );
+    const reconciledFlags = reconcileRedFlags(
+      existing?.redFlags ?? [],
+      redFlags,
+      { nodeIds: disposedIds, types: RED_FLAG_TYPES },
+    );
+
     return {
       resolutionState,
       dependencyMap,
-      pendingQuestions,
-      redFlags,
+      pendingQuestions: reconciledQuestions,
+      redFlags: reconciledFlags,
       totalNodesEvaluated: region.size,
       traversalDurationMs: Date.now() - startTime,
       isDegraded,
