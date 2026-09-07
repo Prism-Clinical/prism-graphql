@@ -1,5 +1,5 @@
 import { GraphQLError } from 'graphql';
-import { DataSourceContext, NodeStatus, OverrideAction, SessionStatus } from '../../types';
+import { BlockerType, DataSourceContext, NodeStatus, OverrideAction, SessionStatus } from '../../types';
 import { PatientContext, CodeEntry, LabResult } from '../../services/confidence/types';
 import {
   parseResolutionInput,
@@ -44,6 +44,7 @@ import { assertKnownPolicyVersion } from '../../services/resolution/temporal/pol
 import { applyDdiToResolutionState } from '../../services/medications/ddi-pass-single-pathway';
 import type { Pool } from 'pg';
 import type { ResolutionState } from '../../services/resolution/types';
+import { serializeResolutionState } from '../../services/resolution/session-store';
 import { normalizePatientAttributes } from '../../services/resolution/patient-attributes';
 import {
   buildEffectivePatientContext,
@@ -1138,7 +1139,22 @@ export const resolutionMutations = {
     );
 
     // 2. Validate
+    //
+    // A DEGRADED session is one whose traversal timed out. Its node set is
+    // complete — the timeout path materialises the remainder — but as TIMEOUT
+    // rather than as verdicts, so `validateForGeneration` catches it below.
+    // Named as its own blocker anyway: "the resolve did not finish" is a
+    // clearer thing to be told than a list of individual unresolved nodes.
     const blockers = validateForGeneration(session.resolutionState, session.redFlags);
+    if (session.status === SessionStatus.DEGRADED) {
+      blockers.unshift({
+        type: BlockerType.INCOMPLETE_RESOLUTION,
+        description:
+          'This session is degraded — a traversal did not finish, so the pathway was ' +
+          'not fully evaluated. Re-resolve before generating a plan.',
+        relatedNodeIds: [],
+      });
+    }
     if (blockers.length > 0) {
       return {
         success: false as const,
@@ -1245,16 +1261,47 @@ export const resolutionMutations = {
       }
 
       // 7. Update session with carePlanId and COMPLETED status (within transaction)
-      await client.query(
+      //
+      // The resolution state and DDI warnings go too. The pre-generation DDI
+      // pass MUTATES the state — a suppression excludes a Medication node — and
+      // none of that was written, so the completed session disagreed with the
+      // plan generated from it, and the response's warnings were always empty.
+      //
+      // `updated_at` is the optimistic-lock predicate: a concurrent answer or
+      // context update between the load and this write moves it, and zero rows
+      // match. Without that, the plan could be built from state another
+      // mutation had already superseded, and that mutation's write silently
+      // lost. The transaction rolls back and the caller retries against fresh
+      // state rather than committing a plan for a patient picture that no
+      // longer holds.
+      const completed = await client.query(
         `UPDATE pathway_resolution_sessions
-         SET care_plan_id = $1, status = $2, updated_at = NOW()
-         WHERE id = $3`,
-        [carePlanId, SessionStatus.COMPLETED, args.sessionId]
+         SET care_plan_id = $1, status = $2, resolution_state = $3, ddi_warnings = $4,
+             updated_at = NOW()
+         WHERE id = $5 AND updated_at = $6`,
+        [
+          carePlanId,
+          SessionStatus.COMPLETED,
+          JSON.stringify(serializeResolutionState(session.resolutionState)),
+          JSON.stringify(session.ddiWarnings ?? []),
+          args.sessionId,
+          session.updatedAt,
+        ]
       );
+      if (completed.rowCount === 0) {
+        throw new GraphQLError(
+          'Session changed while the care plan was being generated — nothing was saved. ' +
+            'Retry to generate from the current state.',
+          { extensions: { code: 'CONFLICT' } },
+        );
+      }
 
       await client.query('COMMIT');
     } catch (err) {
       await client.query('ROLLBACK');
+      // A lost-update conflict is not an internal error: the caller can act on
+      // it, and flattening it would tell them to report a bug instead of retry.
+      if (err instanceof GraphQLError) throw err;
       console.error('Care plan generation failed:', err);
       throw new GraphQLError('Failed to generate care plan: transaction rolled back', {
         extensions: { code: 'INTERNAL_SERVER_ERROR' },
@@ -1278,7 +1325,11 @@ export const resolutionMutations = {
     return {
       success: true as const,
       carePlanId,
-      warnings: [] as string[],
+      // The DDI warnings this plan was generated under. Hardcoded empty before,
+      // so a plan carrying a moderate-interaction warning reported none.
+      warnings: (session.ddiWarnings ?? []).map(w =>
+        typeof w === 'string' ? w : ((w as { description?: string }).description ?? String(w)),
+      ),
       blockers: [] as Array<{ type: string; description: string; relatedNodeIds: string[] }>,
     };
   },

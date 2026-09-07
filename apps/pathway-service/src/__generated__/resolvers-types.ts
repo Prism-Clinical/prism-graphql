@@ -89,6 +89,7 @@ export type AttributeVocabularyEntry = {
 export enum BlockerType {
   Contradiction = 'CONTRADICTION',
   EmptyPlan = 'EMPTY_PLAN',
+  IncompleteResolution = 'INCOMPLETE_RESOLUTION',
   PendingGate = 'PENDING_GATE',
   UnresolvedRedFlag = 'UNRESOLVED_RED_FLAG'
 }

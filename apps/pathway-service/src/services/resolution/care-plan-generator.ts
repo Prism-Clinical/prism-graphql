@@ -144,6 +144,29 @@ export function validateForGeneration(
     }
   }
 
+  // 4. Nodes that never reached a verdict.
+  //
+  // A traversal cut short leaves TIMEOUT, CASCADE_LIMIT or UNKNOWN nodes, and
+  // only PENDING_QUESTION was blocking — so a partial resolve could produce a
+  // clinical artefact as long as SOME other action survived. What those nodes
+  // would have recommended is unknown, and a care plan silently missing an arm
+  // is indistinguishable from one that considered and rejected it.
+  //
+  // Separate from PENDING_GATE because the remedy differs: nothing a provider
+  // answers clears this, only re-resolving does.
+  const INCOMPLETE = [NodeStatus.TIMEOUT, NodeStatus.CASCADE_LIMIT, NodeStatus.UNKNOWN];
+  for (const node of state.values()) {
+    if (INCOMPLETE.includes(node.status)) {
+      blockers.push({
+        type: BlockerType.INCOMPLETE_RESOLUTION,
+        description:
+          `"${node.title}" was never resolved (${node.status}) — the pathway was not ` +
+          `fully evaluated, so the plan may be missing recommendations`,
+        relatedNodeIds: [node.nodeId],
+      });
+    }
+  }
+
   return blockers;
 }
 
