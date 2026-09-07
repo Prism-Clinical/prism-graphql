@@ -79,6 +79,12 @@ function normally(subjectProps: Record<string, unknown>) {
 /**
  * Reached EAGERLY: the walk meets `dependent` first, which depends on
  * `subject`, forcing it to be resolved out of order.
+ *
+ * `subject` hangs off the ROOT, not off `dependent`. That matters: a
+ * dependency that is also its depender's child is genuinely unreachable when
+ * that gate closes, so sweeping it would be correct and the comparison with
+ * the direct path would be meaningless. Here `subject` is reachable on its own
+ * account and eager evaluation merely arrives first.
  */
 function eagerly(subjectProps: Record<string, unknown>) {
   return makeGraphContext(
@@ -95,7 +101,7 @@ function eagerly(subjectProps: Record<string, unknown>) {
     ],
     [
       edge('root', 'dependent', 'HAS_GATE'),
-      edge('dependent', 'subject', 'BRANCHES_TO'),
+      edge('root', 'subject', 'HAS_GATE'),
       edge('subject', 'step-1', 'BRANCHES_TO'),
     ],
   );

@@ -137,8 +137,10 @@ function markBranchNotSelected(
   graphContext: GraphContext,
   resolutionState: ResolutionState,
   rewritten: Set<string>,
+  provisional?: Set<string>,
 ): void {
-  if (resolutionState.has(targetId)) return;
+  if (resolutionState.has(targetId) && !provisional?.has(targetId)) return;
+  provisional?.delete(targetId);
   const target = graphContext.getNode(targetId);
   if (!target) return;
   rewritten.add(targetId);
@@ -158,7 +160,7 @@ function markBranchNotSelected(
 
   const kids = graphContext.outgoingEdges(targetId).map(e => e.targetId);
   addAll(rewritten, markSubtree(kids, graphContext, resolutionState, NodeStatus.EXCLUDED,
-    `Excluded with ${nodeTitle(target)}`, targetId, depth + 1));
+    `Excluded with ${nodeTitle(target)}`, targetId, depth + 1, provisional));
 }
 
 function isDecisionPoint(node: GraphNode): boolean {
@@ -214,6 +216,12 @@ export function markSubtree(
   excludeReason: string,
   parentNodeId: string,
   baseDepth: number,
+  /**
+   * Nodes eager evaluation wrote. A sweeping gate MAY overwrite one: it was
+   * resolved so a gate could read it, not because the walk reached it, and a
+   * closing branch is precisely the walk saying it cannot be reached.
+   */
+  provisional?: Set<string>,
 ): Set<string> {
   const marked = new Set<string>();
   const queue: Array<{ id: string; depth: number }> = startIds.map(id => ({ id, depth: baseDepth + 1 }));
@@ -223,7 +231,9 @@ export function markSubtree(
     // Design: first-writer-wins for diamond-shaped graphs. If a node is
     // reachable via multiple paths, the first path to evaluate it determines
     // its status. BFS ordering is deterministic for a given graph structure.
-    if (marked.has(id) || resolutionState.has(id)) continue;
+    if (marked.has(id)) continue;
+    if (resolutionState.has(id) && !provisional?.has(id)) continue;
+    provisional?.delete(id);
     marked.add(id);
 
     const node = graphContext.getNode(id);
@@ -243,7 +253,8 @@ export function markSubtree(
     });
 
     for (const edge of graphContext.outgoingEdges(id)) {
-      if (!marked.has(edge.targetId) && !resolutionState.has(edge.targetId)) {
+      if (!marked.has(edge.targetId)
+          && (!resolutionState.has(edge.targetId) || provisional?.has(edge.targetId))) {
         queue.push({ id: edge.targetId, depth: depth + 1 });
       }
     }
@@ -315,6 +326,18 @@ interface WalkContext {
    * overwritten the nodes they were about, and went on blocking generation.
    */
   rewritten: Set<string>;
+  /**
+   * Nodes written by EAGER evaluation — resolved so a `prior_node_result` gate
+   * could read them, not because the walk reached them.
+   *
+   * Eager evaluation writes into the same state the walk uses for
+   * reachability, so without this a dependency inside a DIFFERENT, gated
+   * branch got committed: when its real guard closed a moment later,
+   * `markSubtree` skipped it as already-present and a treatment nobody could
+   * reach stayed INCLUDED. A provisional node is re-disposed if the walk
+   * legitimately arrives, and overwritable if a closing gate sweeps it.
+   */
+  provisional: Set<string>;
 }
 
 /**
@@ -416,6 +439,8 @@ export class TraversalEngine {
     const evaluationStack = new Set<string>();
     /** Every node this pass rewrote — its reconciliation authority. */
     const rewritten = new Set<string>();
+    /** Nodes written out of order by eager evaluation. See WalkContext. */
+    const provisional = new Set<string>();
     let isDegraded = false;
 
     // 1. Find root node (type 'Pathway')
@@ -439,6 +464,15 @@ export class TraversalEngine {
     while (queue.length > 0) {
       const entry = queue.shift()!;
       const { nodeIdentifier, parentNodeId, depth } = entry;
+
+      // A node written by eager evaluation was resolved so a gate could read
+      // it, not because the walk reached it. Now the walk HAS reached it, so
+      // dispose it properly — which also enqueues the subtree eager
+      // deliberately did not claim.
+      if (provisional.has(nodeIdentifier)) {
+        provisional.delete(nodeIdentifier);
+        resolutionState.delete(nodeIdentifier);
+      }
 
       // Timeout check
       if (Date.now() - startTime > TRAVERSAL_TIMEOUT_MS) {
@@ -475,6 +509,7 @@ export class TraversalEngine {
         graphContext, patientContext, gateAnswers,
         resolutionState, dependencyMap, queue,
         pendingQuestions, redFlags, evaluationStack, startTime, rewritten,
+        provisional,
       });
     }
 
@@ -537,6 +572,8 @@ export class TraversalEngine {
     const evaluationStack = new Set<string>();
     /** Every node this pass rewrote — its reconciliation authority. */
     const rewritten = new Set<string>();
+    /** Nodes written out of order by eager evaluation. See WalkContext. */
+    const provisional = new Set<string>();
     const queue: BfsEntry[] = [];
 
     // Captured before anything is cleared — the only moment the previous
@@ -582,7 +619,40 @@ export class TraversalEngine {
       resolutionState.delete(id);
     }
 
-    for (const id of seedNodeIds) {
+    // Seed only the HIGHEST affected ancestors.
+    //
+    // A seed that another seed can reach is redundant — the walk gets there
+    // anyway — and seeding it is actively wrong, because disposition is
+    // first-writer-wins. A branch target seeded before its DecisionPoint
+    // resolves first, and when the fork is disposed a moment later and decides
+    // to pend, the loop marking its branches PENDING_QUESTION skips anything
+    // already written. The branch stays INCLUDED while the fork governing it is
+    // unanswered: one arm of a mutually exclusive decision taken by nobody.
+    //
+    // `addPatientContext` produces exactly that order — branch confidences are
+    // recorded against the target and then the DecisionPoint, and a Map keeps
+    // insertion order — so this was reachable, not theoretical.
+    const reachableFromASeed = new Set<string>();
+    for (const seed of seedNodeIds) {
+      const frontier = graphContext.outgoingEdges(seed).map(e => e.targetId);
+      const seen = new Set<string>();
+      while (frontier.length > 0) {
+        const id = frontier.shift()!;
+        if (seen.has(id)) continue;
+        seen.add(id);
+        reachableFromASeed.add(id);
+        for (const e of graphContext.outgoingEdges(id)) {
+          if (!seen.has(e.targetId)) frontier.push(e.targetId);
+        }
+      }
+    }
+    let rootSeeds = [...seedNodeIds].filter(id => !reachableFromASeed.has(id));
+    // Every seed inside one cycle reaches every other, so the filter can empty
+    // the list. Falling back to the full set keeps a cyclic region resolvable;
+    // ordering within a cycle has no correct answer anyway.
+    if (rootSeeds.length === 0) rootSeeds = [...seedNodeIds];
+
+    for (const id of rootSeeds) {
       if (!resolutionState.has(id)) {
         queue.push({ nodeIdentifier: id, parentNodeId: undefined, depth: 0 });
       }
@@ -598,6 +668,10 @@ export class TraversalEngine {
       }
 
       const { nodeIdentifier, parentNodeId, depth } = queue.shift()!;
+      if (provisional.has(nodeIdentifier)) {
+        provisional.delete(nodeIdentifier);
+        resolutionState.delete(nodeIdentifier);
+      }
       if (resolutionState.has(nodeIdentifier)) continue;
 
       const node = graphContext.getNode(nodeIdentifier);
@@ -607,6 +681,7 @@ export class TraversalEngine {
         graphContext, patientContext, gateAnswers,
         resolutionState, dependencyMap, queue,
         pendingQuestions, redFlags, evaluationStack, startTime, rewritten,
+        provisional,
       });
       disposed++;
     }
@@ -724,6 +799,7 @@ export class TraversalEngine {
       graphContext, patientContext, gateAnswers,
       resolutionState, dependencyMap, queue,
       pendingQuestions, redFlags, evaluationStack, startTime, rewritten,
+      provisional,
     } = w;
 
     // Everything below rewrites this node; the subtree helpers add theirs.
@@ -770,7 +846,7 @@ export class TraversalEngine {
           if (defaultStatus === NodeStatus.GATED_OUT) {
             const childIds = graphContext.outgoingEdges(nodeIdentifier).map(e => e.targetId);
             addAll(rewritten, markSubtree(childIds, graphContext, resolutionState, NodeStatus.GATED_OUT,
-              'Parent gate has cycle — default skip', nodeIdentifier, depth));
+              'Parent gate has cycle — default skip', nodeIdentifier, depth, provisional));
           } else {
             // Traverse children
             for (const edge of graphContext.outgoingEdges(nodeIdentifier)) {
@@ -874,7 +950,7 @@ export class TraversalEngine {
                 // missing branch reads as an oversight rather than a decision.
                 markBranchNotSelected(
                   edge.targetId, nodeIdentifier, nodeTitle(node), depth,
-                  graphContext, resolutionState, rewritten,
+                  graphContext, resolutionState, rewritten, provisional,
                 );
                 continue;
               }
@@ -908,7 +984,7 @@ export class TraversalEngine {
           const childIds = graphContext.outgoingEdges(nodeIdentifier).map(e => e.targetId);
           const subtreeSize = countSubtree(childIds, graphContext);
           addAll(rewritten, markSubtree(childIds, graphContext, resolutionState, NodeStatus.PENDING_QUESTION,
-            `Awaiting answer to: ${gateProps.prompt ?? gateProps.title}`, nodeIdentifier, depth));
+            `Awaiting answer to: ${gateProps.prompt ?? gateProps.title}`, nodeIdentifier, depth, provisional));
 
           pendingQuestions.push({
             gateId: nodeIdentifier,
@@ -948,7 +1024,7 @@ export class TraversalEngine {
           const childIds = graphContext.outgoingEdges(nodeIdentifier).map(e => e.targetId);
           const subtreeSize = countSubtree(childIds, graphContext);
           addAll(rewritten, markSubtree(childIds, graphContext, resolutionState, NodeStatus.PENDING_QUESTION,
-            `Awaiting ${ask.datumKey}`, nodeIdentifier, depth));
+            `Awaiting ${ask.datumKey}`, nodeIdentifier, depth, provisional));
 
           // Dedup on the DATUM, not the gate. Both gates still hold their
           // subtrees; the provider is asked once, and the one injected fact
@@ -992,7 +1068,7 @@ export class TraversalEngine {
           });
           const childIds = graphContext.outgoingEdges(nodeIdentifier).map(e => e.targetId);
           addAll(rewritten, markSubtree(childIds, graphContext, resolutionState, NodeStatus.GATED_OUT,
-            `Gated out by ${nodeTitle(node)}: ${gateResult.reason}`, nodeIdentifier, depth));
+            `Gated out by ${nodeTitle(node)}: ${gateResult.reason}`, nodeIdentifier, depth, provisional));
         } else {
           // Default traverse — include anyway
           resolutionState.set(nodeIdentifier, {
@@ -1202,7 +1278,7 @@ export class TraversalEngine {
           });
           const kids = graphContext.outgoingEdges(br.targetId).map(e => e.targetId);
           addAll(rewritten, markSubtree(kids, graphContext, resolutionState, NodeStatus.PENDING_QUESTION,
-            `Awaiting branch choice at ${nodeTitle(node)}`, br.targetId, depth + 1));
+            `Awaiting branch choice at ${nodeTitle(node)}`, br.targetId, depth + 1, provisional));
         }
 
         pendingQuestions.push({
@@ -1260,7 +1336,7 @@ export class TraversalEngine {
             // Mark the excluded branch's subtree too
             const childIds = graphContext.outgoingEdges(br.targetId).map(e => e.targetId);
             addAll(rewritten, markSubtree(childIds, graphContext, resolutionState, NodeStatus.EXCLUDED,
-              `Excluded by decision point: ${br.excludeReason}`, br.targetId, depth + 1));
+              `Excluded by decision point: ${br.excludeReason}`, br.targetId, depth + 1, provisional));
           }
         }
         recordInfluence(dependencyMap, nodeIdentifier, br.targetId);
@@ -1430,7 +1506,14 @@ export class TraversalEngine {
     if (!node) return;
 
     w.evaluationStack.add(nodeIdentifier);
-    await this.disposeNode(node, nodeIdentifier, parentNodeId, depth, w);
+    // A THROWAWAY queue: this node is being resolved so a gate can read its
+    // status, not because the walk reached it. Enqueuing its children here
+    // would claim reachability the graph has not granted — that is how a
+    // treatment under a branch that shuts ended up in the plan. If the walk
+    // legitimately arrives, it re-disposes the node with the real queue and
+    // the subtree opens then.
+    await this.disposeNode(node, nodeIdentifier, parentNodeId, depth, { ...w, queue: [] });
+    w.provisional.add(nodeIdentifier);
     w.evaluationStack.delete(nodeIdentifier);
   }
 }
