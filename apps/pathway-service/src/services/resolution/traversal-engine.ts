@@ -1038,6 +1038,16 @@ export class TraversalEngine {
           targetNode, graphContext, patientContext,
         );
         recordScorerInputs(dependencyMap, targetNode.nodeIdentifier, confResult.contextInputs);
+        // AND onto the DecisionPoint itself. The branch scores are computed
+        // here, but the DECISION they feed — which branches qualify, and
+        // whether an exclusive fork must pend — belongs to this node.
+        //
+        // Recording only against the targets left that decision unreachable:
+        // `addPatientContext` seeds the affected targets, and an incremental
+        // resolve walks DOWNSTREAM, so it never revisits the parent that
+        // decides. New context could move a branch above or below the
+        // threshold and the fork would keep its old answer.
+        recordScorerInputs(dependencyMap, nodeIdentifier, confResult.contextInputs);
 
         const conf = confResult.confidence;
         // The author's own words beat a confidence number. Both criteria are
