@@ -210,6 +210,34 @@ describe('a chosen branch at a one_of fork', () => {
       .traverse(graphFor('one_of'), PATIENT, chose('step-c'));
     expect(r.resolutionState.get('dp-1')!.status).toBe(NodeStatus.PENDING_QUESTION);
   });
+
+  /**
+   * The case the earlier test missed: the stored choice stops qualifying and
+   * exactly ONE other branch does.
+   *
+   * With two alternatives the fork pends anyway, so the old test passed
+   * without exercising the guard. With one, `includedBranches.length === 1`
+   * and the fork auto-selected it — the provider chose A, new data made A
+   * unsupportable and B supportable, and the session silently moved to B while
+   * still storing the answer "A". A branch switch nobody was told about.
+   */
+  it('re-pends rather than switching when the choice stops qualifying and one alternative remains', async () => {
+    // step-a (the stored choice) and step-c both fail; only step-b qualifies.
+    const r = await engineWith({ 'step-a': 0.2, 'step-c': 0.2 })
+      .traverse(graphFor('one_of'), PATIENT, chose('step-a'));
+
+    expect(r.resolutionState.get('dp-1')!.status).toBe(NodeStatus.PENDING_QUESTION);
+    // Emphatically NOT auto-selected.
+    expect(r.resolutionState.get('step-b')!.status).not.toBe(NodeStatus.INCLUDED);
+  });
+
+  it('says the earlier choice no longer applies, so the re-ask is not a mystery', async () => {
+    const r = await engineWith({ 'step-a': 0.2, 'step-c': 0.2 })
+      .traverse(graphFor('one_of'), PATIENT, chose('step-a'));
+    expect(r.resolutionState.get('dp-1')!.excludeReason).toMatch(/no longer qualifies/i);
+    expect(r.pendingQuestions.find(q => q.gateId === 'dp-1')!.prompt)
+      .toMatch(/no longer applies/i);
+  });
 });
 
 describe('branch_mode: all_of', () => {

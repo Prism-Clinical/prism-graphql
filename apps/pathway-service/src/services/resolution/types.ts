@@ -363,6 +363,19 @@ export interface PendingQuestion {
    * to inject, not a verdict to record.
    */
   datumKey?: string;
+  /**
+   * Every gate this pass saw asking for this datum.
+   *
+   * A shared datum prompt is deduped — two gates needing one haemoglobin ask
+   * ONCE — and the dedup used to discard the second gate's claim on it
+   * entirely. So when the first gate resolved, the prompt was dropped while
+   * the second still needed it, and the session pended with no question able
+   * to clear it. Reconciliation keeps the prompt while any owner is still
+   * PENDING_QUESTION, which it reads from the resolution state rather than
+   * from this list — the list says who MIGHT need it, the state says who
+   * still does.
+   */
+  askedByNodeIds?: string[];
   /** Where an answer to this question gets injected as a fact. */
   askTarget?:
     | { kind: 'lab'; code: string; system: string }

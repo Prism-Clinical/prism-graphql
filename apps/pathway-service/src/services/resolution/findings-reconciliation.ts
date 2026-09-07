@@ -181,6 +181,17 @@ export interface PendingQuestionScope {
    * is settled whether or not the pass looked at it again.
    */
   alsoDropGateIds?: Iterable<string>;
+  /**
+   * Is this node still waiting on an answer, per the POST-PASS resolution
+   * state? Supplied, a shared datum prompt survives while any gate that asked
+   * for it is still pending, even one this pass never re-disposed.
+   *
+   * The state is the authority, not `askedByNodeIds`. That list says who might
+   * need the datum; only the state says who still does — so an owner that
+   * resolved, was excluded, or was gated out stops counting without anyone
+   * having to remember to remove it.
+   */
+  stillPending?: (nodeId: string) => boolean;
 }
 
 /**
@@ -189,11 +200,9 @@ export interface PendingQuestionScope {
  * The context path appended these too, so a gate that stayed
  * PENDING_QUESTION accumulated one duplicate prompt per context addition.
  *
- * KNOWN LIMIT: an escalated datum prompt raised by a gate inside the region
- * but ALSO needed by a gate outside it is dropped when the inside gate stops
- * needing it, because the outside gate is not re-disposed and cannot re-emit.
- * Bounded — it needs a shared datum straddling the region boundary — and the
- * failure is a missing prompt, which the next full resolve restores.
+ * A shared datum prompt is the exception to "in scope and not re-derived means
+ * settled": see `stillPending`. The gate that raised it resolving does not mean
+ * the value is no longer needed.
  */
 export function reconcilePendingQuestions(
   existing: readonly PendingQuestion[],
@@ -211,7 +220,15 @@ export function reconcilePendingQuestions(
       );
     }
     const key = pendingQuestionKey(q);
-    if (!derivedByKey.has(key)) derivedByKey.set(key, q);
+    const seen = derivedByKey.get(key);
+    if (!seen) {
+      derivedByKey.set(key, q);
+    } else if (q.askedByNodeIds || seen.askedByNodeIds) {
+      // Two gates in one pass asking for one datum: keep both claims.
+      seen.askedByNodeIds = [
+        ...new Set([...(seen.askedByNodeIds ?? [seen.gateId]), ...(q.askedByNodeIds ?? [q.gateId])]),
+      ];
+    }
   }
 
   const result: PendingQuestion[] = [];
@@ -227,7 +244,23 @@ export function reconcilePendingQuestions(
       continue;
     }
     const next = derivedByKey.get(key);
-    if (!next) continue; // in scope and no longer asked => settled, drop it
+    if (!next) {
+      // In scope and no longer derived. For an ordinary question that means
+      // settled. For a SHARED DATUM prompt it may only mean the gate that
+      // happened to raise it resolved — another gate outside this pass can
+      // still need the value, and it had no opportunity to re-derive.
+      if (q.datumKey && scope.stillPending) {
+        const owners = q.askedByNodeIds ?? [q.gateId];
+        const stillNeeded = owners.filter(id => scope.stillPending!(id));
+        if (stillNeeded.length > 0) {
+          emitted.add(key);
+          // Re-homed onto an owner that still needs it, so the prompt does not
+          // keep pointing at a gate that has already resolved.
+          result.push({ ...q, gateId: stillNeeded[0], askedByNodeIds: stillNeeded });
+        }
+      }
+      continue;
+    }
     emitted.add(key);
     result.push(next);
   }

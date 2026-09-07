@@ -128,3 +128,66 @@ describe('reconcilePendingQuestions', () => {
     expect(() => reconcilePendingQuestions([], [q('g9')], { gateIds: ['g1'] })).toThrow(/scope/);
   });
 });
+
+/**
+ * A shared datum prompt outlives the gate that raised it.
+ *
+ * Two gates needing one haemoglobin ask ONCE. When the gate that happened to
+ * raise it resolves, the prompt used to go with it — while the other gate,
+ * outside the re-resolved region and so unable to re-derive anything, still
+ * needed the value. The session pended with no question able to clear it.
+ *
+ * Demand is read from the resolution STATE, not from the owner list: the list
+ * says who might need the datum, the state says who still does.
+ */
+describe('shared datum prompts', () => {
+  const shared = q('g1', { datumKey: 'lab:718-7', askedByNodeIds: ['g1', 'g2'] });
+
+  it('survives when another owner is still pending', () => {
+    const out = reconcilePendingQuestions([shared], [], {
+      gateIds: ['g1'],                       // only g1 was re-disposed
+      stillPending: (id) => id === 'g2',     // g2 still waits on the value
+    });
+    expect(out).toHaveLength(1);
+    // Re-homed, so it no longer points at a gate that has resolved.
+    expect(out[0].gateId).toBe('g2');
+  });
+
+  it('is dropped once no owner needs it', () => {
+    const out = reconcilePendingQuestions([shared], [], {
+      gateIds: ['g1'],
+      stillPending: () => false,
+    });
+    expect(out).toEqual([]);
+  });
+
+  // The state is the authority: an owner that resolved stops counting without
+  // anyone having to remember to remove it from the list.
+  it('ignores an owner the state says is no longer pending', () => {
+    const out = reconcilePendingQuestions([shared], [], {
+      gateIds: ['g1'],
+      stillPending: (id) => id === 'g1',   // only the resolved gate
+    });
+    expect(out).toHaveLength(1);
+    expect(out[0].gateId).toBe('g1');
+  });
+
+  // Without the predicate the old rule stands, so existing callers are unchanged.
+  it('drops an unre-derived prompt when no predicate is supplied', () => {
+    const out = reconcilePendingQuestions([shared], [], { gateIds: ['g1'] });
+    expect(out).toEqual([]);
+  });
+
+  it('merges owner claims when two gates derive one datum in a pass', () => {
+    const out = reconcilePendingQuestions(
+      [],
+      [
+        q('g1', { datumKey: 'lab:718-7', askedByNodeIds: ['g1'] }),
+        q('g2', { datumKey: 'lab:718-7', askedByNodeIds: ['g2'] }),
+      ],
+      { gateIds: ['g1', 'g2'] },
+    );
+    expect(out).toHaveLength(1);
+    expect(out[0].askedByNodeIds).toEqual(['g1', 'g2']);
+  });
+});

@@ -667,7 +667,14 @@ export class TraversalEngine {
     const reconciledQuestions = reconcilePendingQuestions(
       existing?.pendingQuestions ?? [],
       pendingQuestions,
-      { gateIds: rewritten, alsoDropGateIds: existing?.alsoDropGateIds },
+      {
+        gateIds: rewritten,
+        alsoDropGateIds: existing?.alsoDropGateIds,
+        // Read from the state this pass just produced, so a shared datum
+        // prompt outlives the gate that raised it exactly as long as some
+        // other gate still waits on the value.
+        stillPending: (id) => resolutionState.get(id)?.status === NodeStatus.PENDING_QUESTION,
+      },
     );
     const reconciledFlags = reconcileRedFlags(
       existing?.redFlags ?? [],
@@ -946,9 +953,17 @@ export class TraversalEngine {
           // Dedup on the DATUM, not the gate. Both gates still hold their
           // subtrees; the provider is asked once, and the one injected fact
           // resolves every gate reading it.
-          if (!pendingQuestions.some(q => q.datumKey === ask.datumKey)) {
+          // Deduped, but the second gate's claim is RECORDED rather than
+          // discarded. Dropping it meant that when the first gate resolved,
+          // the shared prompt went with it while the second still needed the
+          // value — a session pending on a question nobody could answer.
+          const already = pendingQuestions.find(q => q.datumKey === ask.datumKey);
+          if (already) {
+            already.askedByNodeIds = [...(already.askedByNodeIds ?? []), nodeIdentifier];
+          } else {
             pendingQuestions.push({
               gateId: nodeIdentifier,
+              askedByNodeIds: [nodeIdentifier],
               // An authored prompt beats the generated one. The generated text
               // is a fallback so every escalatable gate CAN ask without extra
               // authoring — not a preference for machine wording.
@@ -1114,6 +1129,21 @@ export class TraversalEngine {
       // subtrees. Re-implementing that closing logic for this case is exactly
       // the duplication plan 03 removed.
       const storedChoice = gateAnswers.get(nodeIdentifier)?.selectedOption;
+
+      // A stored choice that no longer QUALIFIES is a decision the data has
+      // overtaken, and it must be re-decided rather than quietly replaced.
+      //
+      // Falling through here used to let the fork auto-select whenever exactly
+      // one OTHER branch qualified: the provider chose A, new data made A
+      // unsupportable and B supportable, and the session silently moved to B
+      // while still storing the answer "A". A branch switch nobody was told
+      // about is the multi-arm defect's quieter cousin — one arm, just not the
+      // one anyone picked.
+      const staleChoice =
+        branchMode === 'one_of' &&
+        storedChoice !== undefined &&
+        !includedBranches.includes(storedChoice);
+
       if (
         branchMode === 'one_of' &&
         storedChoice !== undefined &&
@@ -1135,7 +1165,7 @@ export class TraversalEngine {
       // would be the same silent routing this work exists to remove, with
       // better arithmetic — and on a one_of fork the branches are typically
       // mutually exclusive treatments.
-      if (branchMode === 'one_of' && includedBranches.length > 1) {
+      if (branchMode === 'one_of' && (includedBranches.length > 1 || staleChoice)) {
         resolutionState.set(nodeIdentifier, {
           nodeId: nodeIdentifier,
           nodeType: node.nodeType,
@@ -1143,8 +1173,9 @@ export class TraversalEngine {
           status: NodeStatus.PENDING_QUESTION,
           confidence: 0,
           confidenceBreakdown: [],
-          excludeReason:
-            `${includedBranches.length} branches qualify on an exclusive decision`,
+          excludeReason: staleChoice
+            ? `The chosen branch no longer qualifies on the current data — re-decide`
+            : `${includedBranches.length} branches qualify on an exclusive decision`,
           parentNodeId,
           depth,
           properties: node.properties,
@@ -1176,7 +1207,9 @@ export class TraversalEngine {
 
         pendingQuestions.push({
           gateId: nodeIdentifier,
-          prompt: `${nodeTitle(node)} — which branch applies?`,
+          prompt: staleChoice
+            ? `${nodeTitle(node)} — the branch chosen earlier no longer applies; which now?`
+            : `${nodeTitle(node)} — which branch applies?`,
           answerType: AnswerType.SELECT,
           options: includedBranches,
           optionLabels: includedBranches.map(
