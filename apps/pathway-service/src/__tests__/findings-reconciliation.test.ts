@@ -178,6 +178,31 @@ describe('shared datum prompts', () => {
     expect(out).toEqual([]);
   });
 
+  /**
+   * A pass only re-derives the gates it disposed. A prompt owned by [g1, g2]
+   * where only g1 was in the region came back claiming [g1] alone — so when
+   * g1 later resolved the prompt vanished, while g2, never re-disposed and so
+   * never able to re-assert itself, still needed the value.
+   */
+  it('keeps a still-pending owner the pass could not re-derive', () => {
+    const out = reconcilePendingQuestions(
+      [shared],                                              // owned by g1 and g2
+      [q('g1', { datumKey: 'lab:718-7', askedByNodeIds: ['g1'] })],
+      { gateIds: ['g1'], stillPending: (id) => id === 'g2' },  // only g1 re-disposed
+    );
+    expect(out).toHaveLength(1);
+    expect(out[0].askedByNodeIds).toEqual(expect.arrayContaining(['g1', 'g2']));
+  });
+
+  it('does not resurrect an owner the state says has resolved', () => {
+    const out = reconcilePendingQuestions(
+      [shared],
+      [q('g1', { datumKey: 'lab:718-7', askedByNodeIds: ['g1'] })],
+      { gateIds: ['g1'], stillPending: () => false },
+    );
+    expect(out[0].askedByNodeIds).toEqual(['g1']);
+  });
+
   it('merges owner claims when two gates derive one datum in a pass', () => {
     const out = reconcilePendingQuestions(
       [],

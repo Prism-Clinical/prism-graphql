@@ -147,3 +147,42 @@ describe('eager evaluation disposes a node the same way the walk does', () => {
     expect(eager.resolutionState.has('step-1')).toBe(true);
   });
 });
+
+/**
+ * An unreadable `default_behavior` must fail CLOSED.
+ *
+ * The check compared against SKIP, so ANY other value — a typo, a casing
+ * difference, an absent field — fell to the else branch and TRAVERSED the
+ * subtree. An instruction nobody can read opening a treatment arm is the
+ * wrong direction to be wrong in.
+ */
+describe('a gate whose default_behavior cannot be read', () => {
+  const unsatisfied = {
+    title: 'Anaemic?',
+    gate_type: GateType.PATIENT_ATTRIBUTE,
+    condition: { field: 'conditions', operator: 'includes_code', value: 'D50.9', system: 'ICD-10' },
+  };
+
+  it.each([['Skip'], ['SKIP'], ['nonsense'], [undefined]])(
+    'gates out rather than traversing when default_behavior is %s',
+    async (default_behavior) => {
+      const props = { ...unsatisfied, ...(default_behavior ? { default_behavior } : {}) };
+      const r = await engine().traverse(normally(props), PATIENT, new Map());
+      expect(r.resolutionState.get('subject')!.status).toBe(NodeStatus.GATED_OUT);
+      expect(r.resolutionState.get('step-1')?.status).not.toBe(NodeStatus.INCLUDED);
+    },
+  );
+
+  // Traverse still traverses — in any casing the import validator accepts.
+  // Reading it strictly while the validator lowercased meant an author writing
+  // "TRAVERSE" imported cleanly and then got the opposite behaviour.
+  it.each([['traverse'], ['TRAVERSE'], ['Traverse']])(
+    'traverses when default_behavior is %s',
+    async (default_behavior) => {
+      const r = await engine().traverse(
+        normally({ ...unsatisfied, default_behavior }), PATIENT, new Map(),
+      );
+      expect(r.resolutionState.get('subject')!.status).toBe(NodeStatus.INCLUDED);
+    },
+  );
+});

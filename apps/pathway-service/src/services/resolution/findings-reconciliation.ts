@@ -262,6 +262,18 @@ export function reconcilePendingQuestions(
       continue;
     }
     emitted.add(key);
+    // A re-derived datum prompt inherits the OWNERS that are still pending.
+    //
+    // The pass only re-derives the gates it disposed, so a prompt owned by
+    // [g1, g2] where only g1 was in the region came back claiming [g1] alone.
+    // When g1 later resolved the prompt vanished, while g2 — never re-disposed,
+    // and so never able to re-assert itself — still needed the value.
+    if (next.datumKey && scope.stillPending) {
+      const survivors = (q.askedByNodeIds ?? [q.gateId]).filter(scope.stillPending);
+      const merged = [...new Set([...(next.askedByNodeIds ?? [next.gateId]), ...survivors])];
+      result.push({ ...next, askedByNodeIds: merged });
+      continue;
+    }
     result.push(next);
   }
 

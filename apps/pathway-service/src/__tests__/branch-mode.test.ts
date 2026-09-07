@@ -231,6 +231,28 @@ describe('a chosen branch at a one_of fork', () => {
     expect(r.resolutionState.get('step-b')!.status).not.toBe(NodeStatus.INCLUDED);
   });
 
+  /**
+   * A stale choice with NOTHING left to choose is not a question.
+   *
+   * Forcing the pending path produced `options: []`, and
+   * answerPendingDecision rejects every answer because nothing is a
+   * candidate — a session that could be neither finished nor answered.
+   */
+  it('does not ask an unanswerable question when no branch qualifies', async () => {
+    const r = await engineWith({ 'step-a': 0.2, 'step-b': 0.2, 'step-c': 0.2 })
+      .traverse(graphFor('one_of'), PATIENT, chose('step-a'));
+
+    const q = r.pendingQuestions.find(p => p.gateId === 'dp-1');
+    expect(q).toBeUndefined();
+    expect(r.resolutionState.get('dp-1')!.status).not.toBe(NodeStatus.PENDING_QUESTION);
+  });
+
+  it('reports all_branches_excluded instead, which is what actually happened', async () => {
+    const r = await engineWith({ 'step-a': 0.2, 'step-b': 0.2, 'step-c': 0.2 })
+      .traverse(graphFor('one_of'), PATIENT, chose('step-a'));
+    expect(r.redFlags.some(f => f.type === 'all_branches_excluded')).toBe(true);
+  });
+
   it('says the earlier choice no longer applies, so the re-ask is not a mystery', async () => {
     const r = await engineWith({ 'step-a': 0.2, 'step-c': 0.2 })
       .traverse(graphFor('one_of'), PATIENT, chose('step-a'));

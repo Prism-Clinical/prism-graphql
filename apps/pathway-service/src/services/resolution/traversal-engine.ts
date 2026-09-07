@@ -925,27 +925,48 @@ export class TraversalEngine {
         }
         const outgoing = graphContext.outgoingEdges(nodeIdentifier);
 
-        // A multi-target gate the engine cannot derive a decision for — a
-        // chart-evaluated patient_attribute gate, say. Import validation
-        // refuses these, so reaching here means a graph stored before that
-        // rule. Traversing every branch would emit mutually exclusive
-        // treatments together, so close them all and SAY SO: silence here
-        // would read as "the pathway had nothing to add".
-        if (routes && decision === null) {
+        // Which branches this decision selects — computed FIRST, so the
+        // cardinality can be checked rather than discovered one edge at a time.
+        //
+        // Exactly one is the only safe answer. ZERO means the decision matches
+        // no mapping and no branch is taken, which reads as "the pathway had
+        // nothing to add". SEVERAL means mutually exclusive treatments open
+        // together, which is the multi-arm defect this whole workstream exists
+        // to remove. Import validation refuses both for new graphs, but it
+        // cannot vouch for graphs stored before that rule, for corrupted data,
+        // or for any future producer — and the engine is the last thing
+        // standing between a bad mapping and a care plan.
+        const matched = routes && decision !== null
+          ? branchTargets.filter((e) => {
+              const w = parseBranchWhen(e.properties?.when);
+              return w !== null && decisionSelects(w, decision);
+            })
+          : [];
+        const routable = !routes || matched.length === 1;
+
+        if (routes && !routable) {
           redFlags.push({
             nodeId: nodeIdentifier,
             nodeTitle: nodeTitle(node),
             type: 'unroutable_decision',
             description:
-              `"${nodeTitle(node)}" has ${branchTargets.length} branches but produced no ` +
-              `answer to route on, so none were taken. This gate type cannot be routed yet.`,
+              decision === null
+                ? `"${nodeTitle(node)}" has ${branchTargets.length} branches but produced no ` +
+                  `answer to route on, so none were taken.`
+                : matched.length === 0
+                  ? `"${nodeTitle(node)}" has ${branchTargets.length} branches and the answer ` +
+                    `given matches none of them, so none were taken.`
+                  : `"${nodeTitle(node)}" has ${matched.length} branches all claiming the same ` +
+                    `answer. None were taken: opening them together could combine treatments ` +
+                    `meant to be alternatives.`,
           });
         }
 
+        const selected = routable ? new Set(matched.map(e => e.targetId)) : new Set<string>();
+
         for (const edge of outgoing) {
             if (routes && edge.edgeType === 'BRANCHES_TO') {
-              const when = parseBranchWhen(edge.properties?.when);
-              if (!when || !decision || !decisionSelects(when, decision)) {
+              if (!selected.has(edge.targetId)) {
                 // Say WHY the other treatments are absent. An unexplained
                 // missing branch reads as an oversight rather than a decision.
                 markBranchNotSelected(
@@ -1051,7 +1072,16 @@ export class TraversalEngine {
               askTarget: ask.target,
             });
           }
-        } else if (gateProps.default_behavior === DefaultBehavior.SKIP) {
+          // Fail CLOSED on anything that is not an explicit traverse.
+          //
+          // This compared against SKIP, so any other value — a typo, a casing
+          // difference, an absent field — fell to the else and TRAVERSED the
+          // subtree. An unreadable instruction opening a treatment arm is the
+          // wrong direction to be wrong in; skipping is recoverable, and the
+          // import validator now refuses the value outright.
+        } else if (
+          String(gateProps.default_behavior).toLowerCase() !== DefaultBehavior.TRAVERSE
+        ) {
           // Default skip — gate out entire subtree
           resolutionState.set(nodeIdentifier, {
             nodeId: nodeIdentifier,
@@ -1241,7 +1271,17 @@ export class TraversalEngine {
       // would be the same silent routing this work exists to remove, with
       // better arithmetic — and on a one_of fork the branches are typically
       // mutually exclusive treatments.
-      if (branchMode === 'one_of' && (includedBranches.length > 1 || staleChoice)) {
+      // A stale choice with nothing left to choose is not a question — it is a
+      // fork the data has closed. Pending it produced `options: []`, and
+      // answerPendingDecision rejects every answer because nothing is a
+      // candidate: a session that cannot be finished or abandoned.
+      const staleWithNoAlternative = staleChoice && includedBranches.length === 0;
+
+      if (
+        branchMode === 'one_of' &&
+        !staleWithNoAlternative &&
+        (includedBranches.length > 1 || staleChoice)
+      ) {
         resolutionState.set(nodeIdentifier, {
           nodeId: nodeIdentifier,
           nodeType: node.nodeType,

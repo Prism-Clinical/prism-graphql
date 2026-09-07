@@ -153,6 +153,27 @@ export function temporalInputFrom(args: TemporalAnchorArgs): TemporalContextInpu
 }
 
 /**
+ * A session's status, DERIVED from its state rather than latched.
+ *
+ * The four resolution mutations set DEGRADED when their own traversal timed
+ * out, and nothing ever set it back. So a session that timed out once and was
+ * then fully repaired stayed DEGRADED for ever — and generation blocks a
+ * DEGRADED session unconditionally, leaving it permanently unable to produce a
+ * plan however complete its state had become.
+ *
+ * Reading the state each time makes the flag self-correcting in both
+ * directions: it goes up when nodes are left unresolved and comes down when
+ * they are not, without anyone having to remember to clear it.
+ */
+function derivedSessionStatus(state: ResolutionState): SessionStatus {
+  const INCOMPLETE = [NodeStatus.TIMEOUT, NodeStatus.CASCADE_LIMIT, NodeStatus.UNKNOWN];
+  for (const node of state.values()) {
+    if (INCOMPLETE.includes(node.status)) return SessionStatus.DEGRADED;
+  }
+  return SessionStatus.ACTIVE;
+}
+
+/**
  * Re-run DDI over a session whose resolution state has just changed.
  *
  * DDI used to run ONCE, at session creation. Every mutation that re-resolves
@@ -389,7 +410,6 @@ export const resolutionMutations = {
     }
 
     // 6. Run re-traversal on affected nodes if any
-    let degraded = false;
     const statusChanges: Array<{ nodeId: string; from: string; to: string }> = [
       { nodeId: args.nodeId, from: originalStatus, to: nodeResult.status },
     ];
@@ -426,7 +446,6 @@ export const resolutionMutations = {
         session.gateAnswers,
         { pendingQuestions: session.pendingQuestions, redFlags: session.redFlags },
       );
-      degraded = degraded || reResult.isDegraded;
 
       if (llmBundle) await llmBundle.flushAudits(args.sessionId);
 
@@ -460,10 +479,10 @@ export const resolutionMutations = {
       pendingQuestions: session.pendingQuestions,
       redFlags: session.redFlags,
       totalNodesEvaluated: session.resolutionState.size,
-      // A degraded incremental resolve timed out midway. The region it was
-      // rebuilding is only partly rebuilt, so the session must SAY so rather
-      // than look complete — nothing downstream can tell otherwise.
-      ...(degraded ? { status: SessionStatus.DEGRADED } : {}),
+      // Derived from the state this mutation just produced, so a session
+      // repaired by it stops being degraded. `degraded` alone only ever went
+      // one way.
+      status: derivedSessionStatus(session.resolutionState),
       ddiWarnings: session.ddiWarnings,
     }, session.updatedAt);
 
@@ -524,7 +543,6 @@ export const resolutionMutations = {
     // providers editing) still surfaces after we've done our best.
     const MAX_ATTEMPTS = 4;
     let statusChanges: Array<{ nodeId: string; from: string; to: string }> = [];
-    let degraded = false;
     let nodesRecomputed = 0;
     let gateOpened = false;
     let pathwayIdForLog = '';
@@ -626,7 +644,6 @@ export const resolutionMutations = {
             alsoDropGateIds: [args.nodeId],
           },
         );
-      degraded = degraded || dpResult.isDegraded;
 
         statusChanges.push(...dpResult.statusChanges);
         nodesRecomputed = dpResult.nodesRecomputed;
@@ -650,10 +667,10 @@ export const resolutionMutations = {
             redFlags: session.redFlags,
             gateAnswers: session.gateAnswers,
             totalNodesEvaluated: session.resolutionState.size,
-          // A degraded incremental resolve timed out midway. The region it was
-      // rebuilding is only partly rebuilt, so the session must SAY so rather
-      // than look complete — nothing downstream can tell otherwise.
-      ...(degraded ? { status: SessionStatus.DEGRADED } : {}),
+          // Derived from the state this mutation just produced, so a session
+      // repaired by it stops being degraded. `degraded` alone only ever went
+      // one way.
+      status: derivedSessionStatus(session.resolutionState),
             ddiWarnings: session.ddiWarnings,
           }, session.updatedAt);
         } catch (err) {
@@ -841,7 +858,6 @@ export const resolutionMutations = {
           alsoDropGateIds: [args.nodeId],
         },
       );
-    degraded = degraded || reResult.isDegraded;
 
       if (llmBundle) await llmBundle.flushAudits(args.sessionId);
 
@@ -868,10 +884,10 @@ export const resolutionMutations = {
           redFlags: session.redFlags,
           gateAnswers: session.gateAnswers,
           totalNodesEvaluated: session.resolutionState.size,
-        // A degraded incremental resolve timed out midway. The region it was
-      // rebuilding is only partly rebuilt, so the session must SAY so rather
-      // than look complete — nothing downstream can tell otherwise.
-      ...(degraded ? { status: SessionStatus.DEGRADED } : {}),
+        // Derived from the state this mutation just produced, so a session
+      // repaired by it stops being degraded. `degraded` alone only ever went
+      // one way.
+      status: derivedSessionStatus(session.resolutionState),
           ddiWarnings: session.ddiWarnings,
         }, session.updatedAt);
         break; // committed
@@ -1029,7 +1045,6 @@ export const resolutionMutations = {
 
     // 5. Run re-traversal
     const statusChanges: Array<{ nodeId: string; from: string; to: string }> = [];
-    let degraded = false;
     let nodesRecomputed = 0;
 
     if (affectedNodes.size > 0) {
@@ -1059,7 +1074,6 @@ export const resolutionMutations = {
         session.gateAnswers,
         { pendingQuestions: session.pendingQuestions, redFlags: session.redFlags },
       );
-      degraded = degraded || reResult.isDegraded;
 
       if (llmBundle) await llmBundle.flushAudits(args.sessionId);
 
@@ -1090,10 +1104,10 @@ export const resolutionMutations = {
       pendingQuestions: session.pendingQuestions,
       redFlags: session.redFlags,
       totalNodesEvaluated: session.resolutionState.size,
-      // A degraded incremental resolve timed out midway. The region it was
-      // rebuilding is only partly rebuilt, so the session must SAY so rather
-      // than look complete — nothing downstream can tell otherwise.
-      ...(degraded ? { status: SessionStatus.DEGRADED } : {}),
+      // Derived from the state this mutation just produced, so a session
+      // repaired by it stops being degraded. `degraded` alone only ever went
+      // one way.
+      status: derivedSessionStatus(session.resolutionState),
       ddiWarnings: session.ddiWarnings,
     }, session.updatedAt);
 

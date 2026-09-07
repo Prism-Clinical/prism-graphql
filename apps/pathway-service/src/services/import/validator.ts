@@ -410,6 +410,24 @@ function validateGateNodes(
 
     // select answer_type requires non-empty options array — also soft in
     // draft mode (author may still be filling in the options list).
+    // Gate enum vocabularies. `default_behavior` was REQUIRED but its value
+    // never checked, so anything other than an exact "traverse" now skips at
+    // runtime — safe, but silently not what the author wrote. `answer_type`
+    // was checked only for multi-target routing. Compared case-insensitively
+    // because the stored data is not consistently cased.
+    const enumField = (field: string, legal: string[]): void => {
+      const raw = props[field as keyof typeof props];
+      if (raw === undefined || raw === null) return;
+      if (!legal.includes(String(raw).toLowerCase())) {
+        errors.push(
+          `Gate "${gate.id}": ${field} "${String(raw)}" is not one of ${legal.join(', ')}`,
+        );
+      }
+    };
+    enumField('default_behavior', ['skip', 'traverse']);
+    enumField('answer_type', ['boolean', 'numeric', 'select']);
+    if (String(props.gate_type) === 'compound') enumField('operator', ['and', 'or']);
+
     // `gate_type` was never checked against its vocabulary, which is how a gate
     // declaring `gate_type: "select"` — not a gate type at all — got as far as
     // being rejected by an unrelated typo. An unknown gate_type reaches

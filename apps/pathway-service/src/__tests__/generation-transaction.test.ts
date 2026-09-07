@@ -198,3 +198,32 @@ describe('care plan generation transaction', () => {
     expect(result.blockers.map(b => b.type)).toContain('INCOMPLETE_RESOLUTION');
   });
 });
+
+/**
+ * A repaired session must stop being degraded.
+ *
+ * The mutations set DEGRADED when their own traversal timed out and nothing
+ * ever set it back, so a session that timed out once and was then fully
+ * repaired stayed DEGRADED for ever — and generation blocks a DEGRADED
+ * session unconditionally, leaving it permanently unable to produce a plan
+ * however complete its state had become.
+ */
+describe('generation blocks on unresolved node state', () => {
+  it('blocks a session that genuinely still has an unresolved node', async () => {
+    const { pool } = makePool();
+    mockedGetSession.mockResolvedValue(session({
+      resolutionState: new Map([
+        ['med-1', med()],
+        ['step-9', { ...med(), nodeId: 'step-9', nodeType: 'Step',
+                     title: 'Unreached', status: NodeStatus.TIMEOUT }],
+      ]),
+    }));
+
+    const result = await resolutionMutations.generateCarePlanFromResolution(
+      null as never, { sessionId: 'session-1' } as never, ctxWith(pool),
+    ) as { success: boolean; blockers: Array<{ type: string }> };
+
+    expect(result.success).toBe(false);
+    expect(result.blockers.map(b => b.type)).toContain('INCOMPLETE_RESOLUTION');
+  });
+});

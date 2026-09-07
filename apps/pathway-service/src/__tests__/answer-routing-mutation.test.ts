@@ -260,3 +260,32 @@ describe('the mutation validates the answer against the gate', () => {
     await expect(send({ booleanValue: true })).resolves.toBeDefined();
   });
 });
+
+/**
+ * A session's persisted status is DERIVED from its state, not latched.
+ *
+ * The mutations set DEGRADED when their own traversal timed out and nothing
+ * ever set it back, so a session that timed out once and was then fully
+ * repaired stayed DEGRADED for ever — and generation blocks a DEGRADED
+ * session unconditionally, leaving it permanently unable to produce a plan
+ * however complete its state had become.
+ */
+describe('answering a gate re-derives the session status', () => {
+  it('writes ACTIVE when the resolved state has no unresolved node', async () => {
+    const created = await start();
+    // Arrive DEGRADED from some earlier timeout.
+    mockedGetSession.mockResolvedValue({
+      ...(sessionFrom(created) as unknown as Record<string, unknown>),
+      status: 'DEGRADED',
+    } as never);
+
+    await resolutionMutations.answerPendingDecision(
+      null as never,
+      { sessionId: 'session-1', nodeId: 'gate-b', answer: { booleanValue: true } } as never,
+      ctx(),
+    );
+
+    const saved = mockedUpdate.mock.calls.at(-1)![2] as { status?: string };
+    expect(saved.status).toBe('ACTIVE');
+  });
+});

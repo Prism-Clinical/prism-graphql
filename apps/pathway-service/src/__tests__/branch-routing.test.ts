@@ -374,3 +374,64 @@ describe('one routing mechanism — an LLM gate routes like any other', () => {
     expect(r.pendingQuestions[0].tentative).toBe(true);
   });
 });
+
+/**
+ * Routing requires EXACTLY ONE matching edge.
+ *
+ * Import validation refuses zero-match and duplicate-match mappings for new
+ * graphs, but it cannot vouch for graphs stored before that rule, corrupted
+ * data, or any future producer. The engine is the last thing between a bad
+ * mapping and a care plan, so it checks cardinality itself rather than
+ * discovering it one edge at a time.
+ */
+describe('routing cardinality', () => {
+  function twoBranch(whenA: unknown, whenB: unknown) {
+    return makeGraphContext(
+      [
+        node('root', 'Pathway'),
+        node('gate-s', 'Gate', {
+          title: 'Which?', gate_type: GateType.QUESTION,
+          default_behavior: DefaultBehavior.SKIP, answer_type: AnswerType.SELECT,
+          options: ['A', 'B'],
+        }),
+        node('step-a', 'Step', { title: 'Arm A' }),
+        node('step-b', 'Step', { title: 'Arm B' }),
+      ],
+      [
+        edge('root', 'gate-s', 'HAS_GATE'),
+        edge('gate-s', 'step-a', 'BRANCHES_TO', { when: whenA }),
+        edge('gate-s', 'step-b', 'BRANCHES_TO', { when: whenB }),
+      ],
+    );
+  }
+
+  // Two edges claiming one answer opens mutually exclusive treatments
+  // together — the multi-arm defect, arriving through stored data instead of
+  // through the engine.
+  it('takes NEITHER branch when two edges claim the same answer', async () => {
+    const r = await engine().traverse(
+      twoBranch({ equals: 'A' }, { equals: 'A' }), PATIENT, answers('gate-s', { selectedOption: 'A' }),
+    );
+    expect(r.resolutionState.get('step-a')!.status).not.toBe(NodeStatus.INCLUDED);
+    expect(r.resolutionState.get('step-b')!.status).not.toBe(NodeStatus.INCLUDED);
+    expect(r.redFlags.some(f => f.type === 'unroutable_decision')).toBe(true);
+  });
+
+  it('says so when an answer matches no branch at all', async () => {
+    const r = await engine().traverse(
+      twoBranch({ equals: 'A' }, { equals: 'B' }), PATIENT, answers('gate-s', { selectedOption: 'C' }),
+    );
+    expect(r.resolutionState.get('step-a')!.status).not.toBe(NodeStatus.INCLUDED);
+    const flag = r.redFlags.find(f => f.type === 'unroutable_decision');
+    expect(flag?.description).toMatch(/matches none/i);
+  });
+
+  it('still routes normally when exactly one edge matches', async () => {
+    const r = await engine().traverse(
+      twoBranch({ equals: 'A' }, { equals: 'B' }), PATIENT, answers('gate-s', { selectedOption: 'B' }),
+    );
+    expect(r.resolutionState.get('step-b')!.status).toBe(NodeStatus.INCLUDED);
+    expect(r.resolutionState.get('step-a')!.status).toBe(NodeStatus.EXCLUDED);
+    expect(r.redFlags.some(f => f.type === 'unroutable_decision')).toBe(false);
+  });
+});

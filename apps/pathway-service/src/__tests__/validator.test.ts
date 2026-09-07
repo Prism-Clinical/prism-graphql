@@ -497,6 +497,44 @@ describe('validatePathwayJson', () => {
       expect(result.errors).toContainEqual(expect.stringContaining('on_unresolved'));
     });
 
+    // These were REQUIRED but their values never checked, so a typo reached
+    // the engine and behaved as something the author did not write.
+    it.each([
+      ['default_behavior', 'maybe'],
+      ['answer_type', 'yes_no'],
+    ])('should reject an unknown %s', (field, value) => {
+      const pw = clonePathway();
+      pw.nodes.push({
+        id: 'gate-enum',
+        type: 'Gate' as any,
+        properties: {
+          title: 'Enum gate', gate_type: 'question', default_behavior: 'skip',
+          [field]: value,
+        },
+      });
+      pw.edges.push({ from: 'step-1-1', to: 'gate-enum', type: 'HAS_GATE' as any });
+      const result = validatePathwayJson(pw);
+      expect(result.valid).toBe(false);
+      expect(result.errors.join(' ')).toContain(value);
+    });
+
+    it('should reject an unknown compound operator', () => {
+      const pw = clonePathway();
+      pw.nodes.push({
+        id: 'gate-cmp',
+        type: 'Gate' as any,
+        properties: {
+          title: 'Compound', gate_type: 'compound', default_behavior: 'skip',
+          operator: 'XOR',
+          conditions: [{ field: 'conditions', operator: 'includes_code', value: 'D50.9' }],
+        },
+      });
+      pw.edges.push({ from: 'step-1-1', to: 'gate-cmp', type: 'HAS_GATE' as any });
+      const result = validatePathwayJson(pw);
+      expect(result.valid).toBe(false);
+      expect(result.errors.join(' ')).toContain('XOR');
+    });
+
     it('should reject a gate whose gate_type is not a gate type', () => {
       const pw = clonePathway();
       pw.nodes.push({
