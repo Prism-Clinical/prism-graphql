@@ -37,13 +37,14 @@ jest.mock('../services/medications/ddi-pass-single-pathway', () => ({
   applyDdiToResolutionState: jest.fn(),
 }));
 
-import { getSession } from '../services/resolution/session-store';
+import { getSession, updateSession } from '../services/resolution/session-store';
 import { applyDdiToResolutionState } from '../services/medications/ddi-pass-single-pathway';
 import { resolutionMutations } from '../resolvers/mutations/resolution';
 import { NodeStatus, SessionStatus } from '../services/resolution/types';
 import type { NodeResult } from '../services/resolution/types';
 
 const mockedGetSession = getSession as jest.MockedFunction<typeof getSession>;
+const mockedUpdate = updateSession as jest.MockedFunction<typeof updateSession>;
 const mockedDdi = applyDdiToResolutionState as jest.MockedFunction<
   typeof applyDdiToResolutionState
 >;
@@ -225,5 +226,73 @@ describe('generation blocks on unresolved node state', () => {
 
     expect(result.success).toBe(false);
     expect(result.blockers.map(b => b.type)).toContain('INCOMPLETE_RESOLUTION');
+  });
+});
+
+/**
+ * A blocked generation still has to keep what the DDI pass found.
+ *
+ * The pre-generation pass MUTATES the state — a suppression excludes a
+ * Medication node — and persistence was added for the SUCCESS path only. So a
+ * suppression that emptied the plan produced blockers, discarded the very
+ * suppression that caused them, and left the session showing the medication
+ * as included; the next attempt re-derived the same suppression and reported
+ * the same blockers, for ever.
+ */
+describe('generation blocked by a DDI suppression', () => {
+  /** DDI removes the only action, so EMPTY_PLAN blocks. */
+  function suppressEverything() {
+    mockedDdi.mockImplementation(async (_p, state) => {
+      state.get('med-1')!.status = NodeStatus.EXCLUDED;
+      state.get('med-1')!.excludeReason = 'DDI: contraindicated';
+      return {
+        findings: [{ action: 'WARN', description: 'Contraindicated with warfarin' }],
+        suppressedNodeCount: 1,
+      } as never;
+    });
+  }
+
+  it('persists the suppression that caused the blockers', async () => {
+    const { pool } = makePool();
+    mockedGetSession.mockResolvedValue(session());
+    suppressEverything();
+
+    const r = await resolutionMutations.generateCarePlanFromResolution(
+      null as never, { sessionId: 'session-1' } as never, ctxWith(pool),
+    ) as { success: boolean };
+    expect(r.success).toBe(false);
+
+    // updateSession is mocked, so it receives the live Map — assert on that
+    // rather than on JSON, which renders a Map as `{}`.
+    const saved = mockedUpdate.mock.calls.at(-1);
+    expect(saved).toBeDefined();
+    const persisted = (saved![2] as { resolutionState?: Map<string, { status: string }> })
+      .resolutionState;
+    expect(persisted?.get('med-1')?.status).toBe(NodeStatus.EXCLUDED);
+  });
+
+  it('guards that write with the session it read', async () => {
+    const { pool } = makePool();
+    mockedGetSession.mockResolvedValue(session());
+    suppressEverything();
+
+    await resolutionMutations.generateCarePlanFromResolution(
+      null as never, { sessionId: 'session-1' } as never, ctxWith(pool),
+    );
+
+    // A concurrent answer must not be lost to a call that generated nothing.
+    expect(mockedUpdate.mock.calls.at(-1)![3]).toBe(STORED_AT);
+  });
+
+  it('returns the warnings that accompany the blockers', async () => {
+    const { pool } = makePool();
+    mockedGetSession.mockResolvedValue(session());
+    suppressEverything();
+
+    const r = await resolutionMutations.generateCarePlanFromResolution(
+      null as never, { sessionId: 'session-1' } as never, ctxWith(pool),
+    ) as { warnings: string[] };
+
+    expect(r.warnings.join(' ')).toContain('warfarin');
   });
 });

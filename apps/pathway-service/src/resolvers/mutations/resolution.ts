@@ -1191,10 +1191,38 @@ export const resolutionMutations = {
       });
     }
     if (blockers.length > 0) {
+      // The DDI pass above already MUTATED the state — a suppression excludes
+      // a Medication node — and those changes were thrown away on this path.
+      // Persistence was added for the success path only, so a suppression that
+      // emptied the plan produced blockers, discarded the very suppression that
+      // caused them, and left the session showing the medication as included.
+      // The next attempt then re-derived the same suppression from scratch and
+      // reported the same blockers, for ever.
+      //
+      // Guarded by the same optimistic lock as the completing write: a
+      // concurrent answer must not be lost to a call that generated nothing.
+      // A conflict here is not worth failing the request — the caller asked
+      // for blockers and blockers are what they get — so it is reported and
+      // the blockers still returned.
+      try {
+        await updateSession(pool, args.sessionId, {
+          resolutionState: session.resolutionState,
+          ddiWarnings: session.ddiWarnings,
+        }, session.updatedAt);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        if (!message.includes('optimistic lock')) throw err;
+      }
+
       return {
         success: false as const,
         carePlanId: null as string | null,
-        warnings: [] as string[],
+        // The warnings that accompany this outcome, and may be part of why it
+        // is blocked. Hardcoded empty, they were invisible exactly when a
+        // provider most needed to know what the check had found.
+        warnings: (session.ddiWarnings ?? []).map(w =>
+          typeof w === 'string' ? w : ((w as { description?: string }).description ?? String(w)),
+        ),
         blockers: blockers.map(b => ({
           type: b.type,
           description: b.description,
