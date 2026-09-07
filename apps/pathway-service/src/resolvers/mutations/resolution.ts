@@ -43,8 +43,9 @@ import {
 import { assertKnownPolicyVersion } from '../../services/resolution/temporal/policy-registry';
 import { applyDdiToResolutionState } from '../../services/medications/ddi-pass-single-pathway';
 import type { Pool } from 'pg';
-import type { ResolutionState } from '../../services/resolution/types';
+import type { ResolutionState, GateProperties } from '../../services/resolution/types';
 import { serializeResolutionState } from '../../services/resolution/session-store';
+import { validateAnswerAgainstGate } from '../../services/resolution/answer-validation';
 import { normalizePatientAttributes } from '../../services/resolution/patient-attributes';
 import {
   buildEffectivePatientContext,
@@ -674,6 +675,10 @@ export const resolutionMutations = {
         return formatSessionForGraphQL(refreshed ?? session);
       }
 
+      // Loaded here so both the schema check below and the retraversal that
+      // follows share one read of the graph.
+      const rctxForAnswer = await buildResolutionContext(pool, session.pathwayId);
+
       // ─── Escalated datum request ──────────────────────────────────
       //
       // A gate that could not DECIDE asks for the datum it needed, and the
@@ -731,6 +736,22 @@ export const resolutionMutations = {
         );
       }
 
+      // Check the answer against the gate's own schema before storing it.
+      // Nothing did, so a boolean gate could be sent `selectedOption: "true"`
+      // or a select gate an option it does not offer — the engine then derives
+      // a decision the routing table has no entry for, takes no branch, and
+      // raises nothing, because the gate DID decide.
+      const answeredGate = rctxForAnswer.graphContext.getNode(args.nodeId);
+      const answeredProps = answeredGate?.properties as unknown as GateProperties | undefined;
+      if (answeredProps) {
+        const problem = validateAnswerAgainstGate(args.answer, answeredProps);
+        if (problem) {
+          throw new GraphQLError(`Gate "${args.nodeId}": ${problem}`, {
+            extensions: { code: 'BAD_USER_INPUT' },
+          });
+        }
+      }
+
       const newAnswer: GateAnswer = {
         booleanValue: args.answer.booleanValue,
         numericValue: args.answer.numericValue,
@@ -739,8 +760,8 @@ export const resolutionMutations = {
       session.gateAnswers.set(args.nodeId, newAnswer);
 
 
-      // 4. Build resolution context and find affected subtree
-      const rctx = await buildResolutionContext(pool, session.pathwayId);
+      // 4. Find the affected subtree (context already loaded for validation).
+      const rctx = rctxForAnswer;
 
       // Reject a clock-less session up front, not only when a retraversal
       // happens to be triggered — the session is un-retraversable either way.

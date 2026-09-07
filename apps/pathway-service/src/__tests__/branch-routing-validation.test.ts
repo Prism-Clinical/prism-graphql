@@ -221,3 +221,79 @@ describe('branch routing validation', () => {
     expect(r.errors.join(' ')).toMatch(/when/i);
   });
 });
+
+/**
+ * An LLM gate's legal answers come from `branches[].name`, not `options`.
+ *
+ * The routing check read `props.options` for every non-boolean, non-numeric
+ * gate. An LLM gate has none, so the list was empty: no option was reported
+ * unmapped, no branch value was reported unknown, and the totality rule
+ * silently passed on a gate whose mapping could be anything at all.
+ */
+describe('LLM gate branch vocabulary', () => {
+  const LLM_GATE = {
+    title: 'Aetiology from the note?',
+    gate_type: 'llm_text_analysis',
+    default_behavior: 'skip',
+    branches: [
+      { name: 'infectious', description: '', is_safe_default: true },
+      { name: 'inflammatory', description: '', is_safe_default: false },
+    ],
+  };
+
+  it('accepts branches mapped to the declared names', () => {
+    const pw = withGate(LLM_GATE, [
+      { to: 'step-1-2', when: { equals: 'infectious' } },
+      { to: 'step-1-3', when: { equals: 'inflammatory' } },
+    ]);
+    expect(validatePathwayJson(pw).errors.filter(e => e.includes('gate-r'))).toEqual([]);
+  });
+
+  it('rejects a declared branch no edge claims', () => {
+    const pw = withGate(LLM_GATE, [
+      { to: 'step-1-2', when: { equals: 'infectious' } },
+      { to: 'step-1-3', when: { equals: 'infectious' } },
+    ]);
+    const r = validatePathwayJson(pw);
+    expect(r.valid).toBe(false);
+    expect(r.errors.join(' ')).toContain('inflammatory');
+  });
+
+  it('rejects an edge claiming a name the gate does not declare', () => {
+    const pw = withGate(LLM_GATE, [
+      { to: 'step-1-2', when: { equals: 'infectious' } },
+      { to: 'step-1-3', when: { equals: 'neoplastic' } },
+    ]);
+    const r = validatePathwayJson(pw);
+    expect(r.valid).toBe(false);
+    expect(r.errors.join(' ')).toContain('neoplastic');
+  });
+
+  it('rejects a multi-branch LLM gate that declares no vocabulary', () => {
+    const pw = withGate(
+      { ...LLM_GATE, branches: undefined },
+      [
+        { to: 'step-1-2', when: { equals: 'a' } },
+        { to: 'step-1-3', when: { equals: 'b' } },
+      ],
+    );
+    const r = validatePathwayJson(pw);
+    expect(r.valid).toBe(false);
+    expect(r.errors.join(' ')).toMatch(/branches\[\]\.name/);
+  });
+
+  // Absent answer_type used to fall into the select path and validate
+  // arbitrary mappings against an empty option list.
+  it('rejects a routing question gate with no answer_type', () => {
+    const pw = withGate(
+      { title: 'Which?', gate_type: 'question', default_behavior: 'skip' },
+      [
+        { to: 'step-1-2', when: { equals: 'a' } },
+        { to: 'step-1-3', when: { equals: 'b' } },
+      ],
+    );
+    const r = validatePathwayJson(pw);
+    expect(r.valid).toBe(false);
+    expect(r.errors.join(' ')).toMatch(/answer_type/);
+  });
+});

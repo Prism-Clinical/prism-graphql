@@ -497,6 +497,21 @@ describe('validatePathwayJson', () => {
       expect(result.errors).toContainEqual(expect.stringContaining('on_unresolved'));
     });
 
+    it('should reject a gate whose gate_type is not a gate type', () => {
+      const pw = clonePathway();
+      pw.nodes.push({
+        id: 'gate-bogus',
+        type: 'Gate' as any,
+        properties: { title: 'Bogus', gate_type: 'select', default_behavior: 'skip' },
+      });
+      pw.edges.push({ from: 'step-1-1', to: 'gate-bogus', type: 'HAS_GATE' as any });
+      const result = validatePathwayJson(pw);
+      // Unchecked, an unknown gate_type reaches evaluateGate, matches no arm,
+      // and the gate silently does nothing.
+      expect(result.valid).toBe(false);
+      expect(result.errors.join(' ')).toContain('unknown gate_type');
+    });
+
     it('should reject select Gate without options', () => {
       const pw = clonePathway();
       pw.nodes.push({
@@ -504,7 +519,12 @@ describe('validatePathwayJson', () => {
         type: 'Gate' as any,
         properties: {
           title: 'Select gate',
-          gate_type: 'select',
+          // `gate_type` was 'select' here, which is not a gate type at all —
+          // the check it tripped read gate_type where it meant answer_type, so
+          // this fixture passed for the wrong reason. A select answer belongs
+          // to a QUESTION gate.
+          gate_type: 'question',
+          answer_type: 'select',
           default_behavior: 'skip',
           // missing options array
         },

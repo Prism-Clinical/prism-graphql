@@ -225,3 +225,38 @@ describe('answering a boolean gate through the mutation', () => {
     expect((saved.pendingQuestions ?? []).map(q => q.gateId)).not.toContain('gate-b');
   });
 });
+
+/**
+ * The mutation REJECTS an answer that does not fit its gate.
+ *
+ * `answer-validation.test.ts` proves the rule; this proves it is wired. The
+ * unit test passes whether or not the resolver calls it, which is exactly the
+ * gap that let the boolean-false P0 survive an engine-level fix.
+ */
+describe('the mutation validates the answer against the gate', () => {
+  const send = async (answer: Record<string, unknown>) => {
+    const created = await start();
+    mockedGetSession.mockResolvedValue(sessionFrom(created));
+    return resolutionMutations.answerPendingDecision(
+      null as never,
+      { sessionId: 'session-1', nodeId: 'gate-b', answer } as never,
+      ctx(),
+    );
+  };
+
+  it('rejects a quoted "true" sent to a boolean gate', async () => {
+    await expect(send({ selectedOption: 'true' })).rejects.toThrow(/booleanValue/);
+  });
+
+  it('rejects an answer carrying no value', async () => {
+    await expect(send({})).rejects.toThrow(/no value/i);
+  });
+
+  it('rejects an answer carrying several values', async () => {
+    await expect(send({ booleanValue: true, numericValue: 1 })).rejects.toThrow(/exactly one/i);
+  });
+
+  it('still accepts a well-formed answer', async () => {
+    await expect(send({ booleanValue: true })).resolves.toBeDefined();
+  });
+});

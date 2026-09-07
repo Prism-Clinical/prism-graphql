@@ -292,6 +292,40 @@ function validateGateNodes(
       } else {
         const answerType = String(props.answer_type ?? '').toLowerCase();
 
+        // Where this gate's legal answer values come from.
+        //
+        // An llm_text_analysis gate has no `answer_type` and no `options`: the
+        // model picks from `branches[].name`. Reading `options` for it — which
+        // is what every non-boolean, non-numeric gate used to do — found an
+        // empty list, so nothing was checked as unmapped and no branch value
+        // was checked as unknown. The whole totality rule silently passed.
+        const isLlmGate = gateType === 'llm_text_analysis';
+        const legalValues: string[] = isLlmGate
+          ? (Array.isArray(props.branches)
+              ? (props.branches as Array<{ name?: unknown }>)
+                  .map(b => (typeof b?.name === 'string' ? b.name : ''))
+                  .filter(Boolean)
+              : [])
+          : (Array.isArray(props.options) ? (props.options as unknown[]).map(String) : []);
+
+        if (isLlmGate && legalValues.length === 0) {
+          errors.push(
+            `Gate "${gate.id}": an llm_text_analysis gate with several branches must ` +
+              `declare its branches[].name vocabulary, or no answer can be routed`,
+          );
+        }
+
+        // A question gate that routes must say what shape its answers take.
+        // Absent, this fell through to the select path and validated arbitrary
+        // mappings against an empty option list.
+        if (!isLlmGate && answerType !== 'boolean' && answerType !== 'numeric'
+            && answerType !== 'select') {
+          errors.push(
+            `Gate "${gate.id}": has several branches but no usable answer_type ` +
+              `("${answerType || 'absent'}"), so its answers cannot be checked against them`,
+          );
+        }
+
         if (answerType === 'numeric') {
           const ranges = whens
             .map(w => w.when!)
@@ -345,7 +379,7 @@ function validateGateNodes(
                 );
               }
             } else {
-              const options = Array.isArray(props.options) ? (props.options as unknown[]).map(String) : [];
+              const options = legalValues;
               // Claimed by nobody — the fall-through case.
               for (const opt of options) {
                 if (!seen.has(opt)) {
@@ -376,10 +410,27 @@ function validateGateNodes(
 
     // select answer_type requires non-empty options array — also soft in
     // draft mode (author may still be filling in the options list).
-    if (props.gate_type === 'select') {
+    // `gate_type` was never checked against its vocabulary, which is how a gate
+    // declaring `gate_type: "select"` — not a gate type at all — got as far as
+    // being rejected by an unrelated typo. An unknown gate_type reaches
+    // `evaluateGate`, matches no arm, and the gate silently does nothing.
+    const LEGAL_GATE_TYPES = [
+      'patient_attribute', 'question', 'prior_node_result', 'compound', 'llm_text_analysis',
+    ];
+    if (props.gate_type !== undefined && !LEGAL_GATE_TYPES.includes(String(props.gate_type))) {
+      errors.push(
+        `Gate "${gate.id}": unknown gate_type "${String(props.gate_type)}" — must be one of ` +
+          `${LEGAL_GATE_TYPES.join(', ')}`,
+      );
+    }
+
+    // `answer_type`, not `gate_type` — `gate_type` is never "select" (it is
+    // patient_attribute / question / prior_node_result / compound /
+    // llm_text_analysis), so this check had never once fired.
+    if (props.answer_type === 'select') {
       const options = props.options;
       if (!options || !Array.isArray(options) || options.length === 0) {
-        softTarget.push(`Gate "${gate.id}": gate_type "select" requires a non-empty "options" array`);
+        softTarget.push(`Gate "${gate.id}": answer_type "select" requires a non-empty "options" array`);
       }
     }
 
