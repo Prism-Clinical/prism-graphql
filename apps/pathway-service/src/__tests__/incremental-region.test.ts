@@ -337,3 +337,57 @@ describe('seed placement', () => {
     expect(after.depth).toBe(before.depth);
   });
 });
+
+/**
+ * Derived from the invariant, not from a bug report.
+ *
+ * `mandated` is a per-walk set: an `all_of` DecisionPoint fills it when IT is
+ * disposed. Seed a mandated branch target on its own and the set is empty, so
+ * the action arm re-scores it and excludes it below threshold — losing a
+ * mandate that only the fork can restate.
+ *
+ * Same shape as every other case: the DecisionPoint decided, and the pass
+ * re-entered below it.
+ */
+describe('a mandated branch target seeded alone', () => {
+  function mandating() {
+    return makeGraphContext(
+      [
+        node('root', 'Pathway'),
+        node('dp-1', 'DecisionPoint', { title: 'Start both', branch_mode: 'all_of' }),
+        node('med-weak', 'Medication', { name: 'Prophylaxis', role: 'adjunct' }),
+        node('step-x', 'Step', { title: 'Workup' }),
+      ],
+      [
+        edge('root', 'dp-1', 'HAS_DECISION_POINT'),
+        edge('dp-1', 'med-weak', 'BRANCHES_TO'),
+        edge('dp-1', 'step-x', 'BRANCHES_TO'),
+      ],
+    );
+  }
+
+  it('keeps the mandate when only the target is re-resolved', async () => {
+    const weak = {
+      computeNodeConfidence: jest.fn().mockResolvedValue({
+        confidence: 0.2, breakdown: [], resolutionType: 'SYSTEM_SUGGESTED',
+      }),
+    };
+    const e = () => new TraversalEngine(
+      weak as never,
+      { autoResolveThreshold: 0.85, suggestThreshold: 0.6 },
+      makeEvaluationTemporalContext({ evaluationAsOf: AS_OF, temporalPolicyVersion: 'legacy-v0' }),
+      {}, [], new Map(),
+    );
+
+    const g = mandating();
+    const first = await e().traverse(g, NO_CONDITIONS, new Map());
+    expect(first.resolutionState.get('med-weak')!.status).toBe(NodeStatus.INCLUDED);
+
+    // A context change rescores just this medication.
+    await e().resolveIncrementally(
+      new Set(['med-weak']), first.resolutionState, first.dependencyMap, g, NO_CONDITIONS, new Map(),
+    );
+
+    expect(first.resolutionState.get('med-weak')!.status).toBe(NodeStatus.INCLUDED);
+  });
+});

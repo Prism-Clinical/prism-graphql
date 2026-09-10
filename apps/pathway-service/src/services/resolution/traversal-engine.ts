@@ -661,30 +661,57 @@ export class TraversalEngine {
     // pass, so it either opens the branch honestly or sweeps the subtree. The
     // walk is bounded by the graph and stops at the first ancestor that is
     // still open, so this is not a full traversal in disguise.
-    const CLOSED = [NodeStatus.GATED_OUT, NodeStatus.EXCLUDED, NodeStatus.PENDING_QUESTION];
-    const isClosed = (id: string) =>
-      CLOSED.includes(resolutionState.get(id)?.status as NodeStatus);
+    // ── Where an incremental pass may re-enter ────────────────────────
+    //
+    // THE INVARIANT: a node's status is written either by disposing that node,
+    // or by an ancestor that DECIDED it. So a pass must re-enter at the
+    // decider of every seed — disposing a node whose status was somebody
+    // else's decision makes that decision up again from nothing.
+    //
+    // The deciders are exactly two, and the list is derived rather than
+    // assumed: every write of a node OTHER than the one being disposed comes
+    // from `markBranchNotSelected`, `markSubtree`, or the DecisionPoint branch
+    // arms — and all three are a Gate or a DecisionPoint ruling on its
+    // BRANCHES_TO targets and their subtrees. (The timeout sweep also writes
+    // foreign nodes, but that is the PASS deciding, not a graph node, and it
+    // has no ancestor to re-enter at.)
+    //
+    // This replaced four accumulated special cases — closed ancestors,
+    // rejected branches, held overrides, `all_of` mandates — each added after
+    // a separate bug report. They were four faces of this one rule, and the
+    // rule catches a fifth the reports had not reached: a mandated branch
+    // target seeded alone lost its mandate, because `mandated` is filled by
+    // the fork and the pass never re-entered there.
+    const CLOSED_FROM_ABOVE = [
+      NodeStatus.GATED_OUT, NodeStatus.EXCLUDED, NodeStatus.PENDING_QUESTION,
+    ];
+    const isDecider = (id: string): boolean => {
+      const n = graphContext.getNode(id);
+      return n !== undefined && (isGateNode(n) || isDecisionPoint(n));
+    };
     const promote = (id: string): string => {
       const seen = new Set<string>([id]);
+      const parentsOf = (x: string) =>
+        graphContext.incomingEdges(x).map(e => e.sourceId).filter(p => !seen.has(p));
+
       let current = id;
-      for (;;) {
-        const parents = graphContext.incomingEdges(current).map(e => e.sourceId);
-        // Climb past a closing ANCESTOR — and also past the node's own closure.
-        //
-        // Checking ancestors alone missed the commonest case: an ANSWERED
-        // routing gate stays INCLUDED while rejecting particular branches, so
-        // a rejected arm has an open parent and was re-disposed as a root —
-        // re-including a treatment the provider had switched away from,
-        // alongside the one they chose. A node that is closed was closed by
-        // something above it, and only that thing can re-open it.
-        const next = isClosed(current)
-          ? parents.find(pid => !seen.has(pid))
-          : parents.find(pid => !seen.has(pid) && isClosed(pid));
-        if (!next) return current;
-        seen.add(next);
-        current = next;
+      // 1. A closed node was closed FROM ABOVE, so its own status is not its
+      //    own to restate — climb past it. A decider is the exception: a gate
+      //    that shut because its condition failed, or pended because nobody
+      //    answered, decided that itself.
+      while (CLOSED_FROM_ABOVE.includes(resolutionState.get(current)?.status as NodeStatus)
+             && !isDecider(current)) {
+        const up = parentsOf(current)[0];
+        if (up === undefined) break;
+        seen.add(up);
+        current = up;
       }
+      // 2. Re-enter at whatever decides this node. One level: re-disposing the
+      //    decider re-decides everything below it, so climbing further would
+      //    only widen the region without changing an outcome.
+      return parentsOf(current).find(isDecider) ?? current;
     };
+
     const effectiveSeeds = new Set([...seedNodeIds].map(promote));
 
     // The region a seed can reach. Bounded by the graph, so it is finite and

@@ -83,28 +83,41 @@ describe('findings returned by an incremental resolve', () => {
   });
 
   /**
-   * The gate is ANSWERED here, so it is open and step-1 is genuinely reachable
-   * on its own account.
+   * "Outside the region" means an UNRELATED SUBTREE.
    *
-   * It used to be unanswered, and the test passed because seeding step-1
-   * walked only downward. Seeds are now promoted past any ancestor that
-   * currently closes them — otherwise a lab change under a shut gate re-opened
-   * the treatment beneath it — so with a shut gate the region legitimately
-   * includes gate-1 and re-disposing it is correct. An open gate is what makes
-   * "outside the region" mean anything.
+   * This has been narrowed twice as the re-entry rule tightened. It first
+   * seeded a branch target of the very gate whose flag it expected to survive
+   * — which the rule now correctly re-enters at, because that gate DECIDED
+   * that target. What the test is really about is that a pass does not claim
+   * authority over findings it learned nothing about, so it now seeds a node
+   * in a branch that has nothing to do with gate-1.
    */
   it('keeps a flag about a node outside the region it re-disposed', async () => {
-    const g = graph();
-    const answers = new Map([['gate-1', { booleanValue: true } as never]]);
-    const first = await engine().traverse(g, PATIENT, answers);
-    expect(first.resolutionState.get('gate-1')!.status).toBe(NodeStatus.INCLUDED);
+    const g = makeGraphContext(
+      [
+        node('root', 'Pathway'),
+        node('gate-1', 'Gate', {
+          title: 'Anaemic?', gate_type: GateType.QUESTION,
+          default_behavior: DefaultBehavior.SKIP, answer_type: AnswerType.BOOLEAN,
+        }),
+        node('step-1', 'Step', { title: 'Treat' }),
+        node('step-elsewhere', 'Step', { title: 'Unrelated' }),
+      ],
+      [
+        edge('root', 'gate-1', 'HAS_GATE'),
+        edge('gate-1', 'step-1', 'BRANCHES_TO'),
+        edge('root', 'step-elsewhere'),
+      ],
+    );
+    const first = await engine().traverse(g, PATIENT, new Map());
 
     const r = await engine().resolveIncrementally(
-      new Set(['step-1']), first.resolutionState, first.dependencyMap, g, PATIENT, answers,
+      new Set(['step-elsewhere']), first.resolutionState, first.dependencyMap,
+      g, PATIENT, new Map(),
       { redFlags: [staleFlag('gate-1')], pendingQuestions: [] },
     );
 
-    // step-1's region does not include gate-1, so nothing was learned about it.
+    // Nothing on that branch decides gate-1, so nothing was learned about it.
     expect(r.redFlags.find(f => f.nodeId === 'gate-1')).toBeDefined();
   });
 
