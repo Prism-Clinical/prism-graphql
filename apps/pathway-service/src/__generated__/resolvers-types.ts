@@ -89,6 +89,7 @@ export type AttributeVocabularyEntry = {
 export enum BlockerType {
   Contradiction = 'CONTRADICTION',
   EmptyPlan = 'EMPTY_PLAN',
+  IncompleteResolution = 'INCOMPLETE_RESOLUTION',
   PendingGate = 'PENDING_GATE',
   UnresolvedRedFlag = 'UNRESOLVED_RED_FLAG'
 }
@@ -310,10 +311,23 @@ export type DdiWarning = {
  */
 export type DataGapHint = {
   __typename?: 'DataGapHint';
+  /**
+   * True when a scalar comparison had no usable value at all — the common half
+   * of "the gate did not answer", and the only half that is honestly an
+   * "add this data" prompt. Neither flag set on a non-firing gate means the
+   * gate ANSWERED "no", which is not a data gap.
+   */
+  dataUnavailable?: Maybe<Scalars['Boolean']['output']>;
   fieldsRead: Array<Scalars['String']['output']>;
   /** Gate node id. */
   gateNodeId: Scalars['ID']['output'];
   gateTitle: Scalars['String']['output'];
+  /**
+   * True when candidate facts existed but could not be ordered or trusted, so
+   * the gate refused to decide. Null when the resolution ran under a policy
+   * version that does not compute it.
+   */
+  indeterminate?: Maybe<Scalars['Boolean']['output']>;
   /** Same kind vocabulary as GateEvidence.kind. */
   kind: Scalars['String']['output'];
   reason?: Maybe<Scalars['String']['output']>;
@@ -321,6 +335,8 @@ export type DataGapHint = {
   sourcePathwayId: Scalars['ID']['output'];
   /** GATED_OUT / PENDING_QUESTION / UNKNOWN. */
   status: Scalars['String']['output'];
+  /** Why the gate could not decide, when `indeterminate` is true. */
+  uncertaintyReason?: Maybe<Scalars['String']['output']>;
   /** Action-node recommendations downstream of this gate. */
   unlockedRecommendations: Array<UnlockedRecommendation>;
 };
@@ -366,11 +382,24 @@ export enum GateClassification {
 export type GateEvidence = {
   __typename?: 'GateEvidence';
   /**
+   * True when a scalar comparison had no usable value at all — the common half
+   * of "the gate did not answer", and the only half that is honestly an
+   * "add this data" prompt. Neither flag set on a non-firing gate means the
+   * gate ANSWERED "no", which is not a data gap.
+   */
+  dataUnavailable?: Maybe<Scalars['Boolean']['output']>;
+  /**
    * Patient-context field paths the gate read (e.g. "labs",
    * "conditions", "vitals.systolic_bp"). Lets the dashboard render
    * which signals drove the gate.
    */
   fieldsRead: Array<Scalars['String']['output']>;
+  /**
+   * True when candidate facts existed but could not be ordered or trusted, so
+   * the gate refused to decide. Null when the resolution ran under a policy
+   * version that does not compute it.
+   */
+  indeterminate?: Maybe<Scalars['Boolean']['output']>;
   /**
    * Source kind: 'patient_attribute' | 'compound' | 'question' |
    * 'llm_text_analysis' | 'prior_node_result' | 'decision_point'.
@@ -386,6 +415,8 @@ export type GateEvidence = {
   status: Scalars['String']['output'];
   /** Display title (e.g. "BP > 130", "HbA1c trending up over 6mo"). */
   title: Scalars['String']['output'];
+  /** Why the gate could not decide, when `indeterminate` is true. */
+  uncertaintyReason?: Maybe<Scalars['String']['output']>;
 };
 
 /**
@@ -711,14 +742,32 @@ export type MissingData = {
  * A pending Gate question surfaced from one of the contributing per-pathway
  * sessions of a multi-pathway resolution. Carries enough metadata for the FE
  * to route the answer to the correct per-pathway session via
- * `answerGateQuestion(sessionId, gateId, answer)`.
+ * `answerPendingDecision(sessionId, nodeId, answer)`.
  */
 export type MultiPathwayPendingGate = {
   __typename?: 'MultiPathwayPendingGate';
   affectedSubtreeSize: Scalars['Int']['output'];
   answerType: AnswerType;
+  /**
+   * Set when this question is a request for a DATUM — a gate that could not
+   * decide because the value it needed was missing or unorderable — rather
+   * than a clinical question put to the provider. Identifies the datum, so
+   * several gates reading it surface as one request.
+   *
+   * Its presence is what tells a client this is answerable from a chart:
+   * "what is this patient's haemoglobin?" rather than "is the patient
+   * symptomatic?". Null for ordinary question gates.
+   */
+  datumKey?: Maybe<Scalars['String']['output']>;
   estimatedImpact: Scalars['String']['output'];
   gateId: Scalars['ID']['output'];
+  /**
+   * Display text for `options`, index-aligned, when the option values are not
+   * readable on their own. A branch choice answers with a node id; this carries
+   * the branch titles so a client can render them. Null for question gates,
+   * whose options are already the author's words.
+   */
+  optionLabels?: Maybe<Array<Scalars['String']['output']>>;
   options?: Maybe<Array<Scalars['String']['output']>>;
   pathwayId: Scalars['ID']['output'];
   pathwayTitle: Scalars['String']['output'];
@@ -783,7 +832,7 @@ export type MultiPathwayResolutionSession = {
    * Aggregated pending Gate questions across every contributing per-pathway
    * session. Empty when every gate has been auto-resolved from patient data or
    * hand-answered. Each entry carries `sessionId` so the FE can call
-   * `answerGateQuestion` against the correct per-pathway session. Until a
+   * `answerPendingDecision` against the correct per-pathway session. Until a
    * re-merge surface exists, answering a gate updates the per-pathway state
    * but NOT the merged plan — re-run resolution to see merge changes.
    */
@@ -824,7 +873,29 @@ export type Mutation = {
   activatePathway: PathwayStatusResult;
   addAdminEvidence: AdminEvidenceEntry;
   addPatientContext: ResolutionSession;
+  /**
+   * The former name, kept so this subgraph can deploy WITHOUT the dashboard.
+   *
+   * The two live in separate repositories, are merged separately, and are
+   * restarted separately — pathway-service first, so the gateway can recompose
+   * against it. Removing the field outright made the graphql deploy a one-way
+   * door: between its restart and the dashboard's, every gate answer in the
+   * running UI would fail GraphQL validation.
+   *
+   * `gateId` rather than `nodeId` because that was the old signature; a
+   * DecisionPoint or an escalated datum request is not a gate, which is why the
+   * name changed. Delete once no client calls it.
+   * @deprecated Renamed to answerPendingDecision; a DecisionPoint branch choice and an escalated datum request are not gate questions.
+   */
   answerGateQuestion: ResolutionSession;
+  /**
+   * Answer whatever the session is waiting on at a node: a question gate, an
+   * escalated request for a datum the pathway needed, or a branch choice at a
+   * DecisionPoint whose branches could not be told apart by the data.
+   *
+   * Renamed from `answerGateQuestion`, which named only the first of the three.
+   */
+  answerPendingDecision: ResolutionSession;
   /** Archive an ACTIVE pathway, removing it from patient matching. */
   archivePathway: PathwayStatusResult;
   createSignalDefinition: SignalDefinitionType;
@@ -943,6 +1014,13 @@ export type MutationAddPatientContextArgs = {
 export type MutationAnswerGateQuestionArgs = {
   answer: GateAnswerInput;
   gateId: Scalars['ID']['input'];
+  sessionId: Scalars['ID']['input'];
+};
+
+
+export type MutationAnswerPendingDecisionArgs = {
+  answer: GateAnswerInput;
+  nodeId: Scalars['ID']['input'];
   sessionId: Scalars['ID']['input'];
 };
 
@@ -1226,8 +1304,26 @@ export type PendingQuestionType = {
   __typename?: 'PendingQuestionType';
   affectedSubtreeSize: Scalars['Int']['output'];
   answerType: AnswerType;
+  /**
+   * Set when this question is a request for a DATUM — a gate that could not
+   * decide because the value it needed was missing or unorderable — rather
+   * than a clinical question put to the provider. Identifies the datum, so
+   * several gates reading it surface as one request.
+   *
+   * Its presence is what tells a client this is answerable from a chart:
+   * "what is this patient's haemoglobin?" rather than "is the patient
+   * symptomatic?". Null for ordinary question gates.
+   */
+  datumKey?: Maybe<Scalars['String']['output']>;
   estimatedImpact: Scalars['String']['output'];
   gateId: Scalars['ID']['output'];
+  /**
+   * Display text for `options`, index-aligned, when the option values are not
+   * readable on their own. A branch choice answers with a node id; this carries
+   * the branch titles so a client can render them. Null for question gates,
+   * whose options are already the author's words.
+   */
+  optionLabels?: Maybe<Array<Scalars['String']['output']>>;
   options?: Maybe<Array<Scalars['String']['output']>>;
   prompt: Scalars['String']['output'];
   /** True when this question was surfaced by a low-confidence LLM gate. */
@@ -2472,13 +2568,16 @@ export type DdiWarningResolvers<ContextType = DataSourceContext, ParentType exte
 }>;
 
 export type DataGapHintResolvers<ContextType = DataSourceContext, ParentType extends ResolversParentTypes['DataGapHint'] = ResolversParentTypes['DataGapHint']> = ResolversObject<{
+  dataUnavailable?: Resolver<Maybe<ResolversTypes['Boolean']>, ParentType, ContextType>;
   fieldsRead?: Resolver<Array<ResolversTypes['String']>, ParentType, ContextType>;
   gateNodeId?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
   gateTitle?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  indeterminate?: Resolver<Maybe<ResolversTypes['Boolean']>, ParentType, ContextType>;
   kind?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   reason?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   sourcePathwayId?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
   status?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  uncertaintyReason?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   unlockedRecommendations?: Resolver<Array<ResolversTypes['UnlockedRecommendation']>, ParentType, ContextType>;
   __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
 }>;
@@ -2498,13 +2597,16 @@ export type DiffDetailResolvers<ContextType = DataSourceContext, ParentType exte
 }>;
 
 export type GateEvidenceResolvers<ContextType = DataSourceContext, ParentType extends ResolversParentTypes['GateEvidence'] = ResolversParentTypes['GateEvidence']> = ResolversObject<{
+  dataUnavailable?: Resolver<Maybe<ResolversTypes['Boolean']>, ParentType, ContextType>;
   fieldsRead?: Resolver<Array<ResolversTypes['String']>, ParentType, ContextType>;
+  indeterminate?: Resolver<Maybe<ResolversTypes['Boolean']>, ParentType, ContextType>;
   kind?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   nodeId?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
   reason?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   sourcePathwayId?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
   status?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   title?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  uncertaintyReason?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
 }>;
 
@@ -2702,8 +2804,10 @@ export type MissingDataResolvers<ContextType = DataSourceContext, ParentType ext
 export type MultiPathwayPendingGateResolvers<ContextType = DataSourceContext, ParentType extends ResolversParentTypes['MultiPathwayPendingGate'] = ResolversParentTypes['MultiPathwayPendingGate']> = ResolversObject<{
   affectedSubtreeSize?: Resolver<ResolversTypes['Int'], ParentType, ContextType>;
   answerType?: Resolver<ResolversTypes['AnswerType'], ParentType, ContextType>;
+  datumKey?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   estimatedImpact?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   gateId?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
+  optionLabels?: Resolver<Maybe<Array<ResolversTypes['String']>>, ParentType, ContextType>;
   options?: Resolver<Maybe<Array<ResolversTypes['String']>>, ParentType, ContextType>;
   pathwayId?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
   pathwayTitle?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
@@ -2755,6 +2859,7 @@ export type MutationResolvers<ContextType = DataSourceContext, ParentType extend
   addAdminEvidence?: Resolver<ResolversTypes['AdminEvidenceEntry'], ParentType, ContextType, RequireFields<MutationAddAdminEvidenceArgs, 'input'>>;
   addPatientContext?: Resolver<ResolversTypes['ResolutionSession'], ParentType, ContextType, RequireFields<MutationAddPatientContextArgs, 'additionalContext' | 'sessionId'>>;
   answerGateQuestion?: Resolver<ResolversTypes['ResolutionSession'], ParentType, ContextType, RequireFields<MutationAnswerGateQuestionArgs, 'answer' | 'gateId' | 'sessionId'>>;
+  answerPendingDecision?: Resolver<ResolversTypes['ResolutionSession'], ParentType, ContextType, RequireFields<MutationAnswerPendingDecisionArgs, 'answer' | 'nodeId' | 'sessionId'>>;
   archivePathway?: Resolver<ResolversTypes['PathwayStatusResult'], ParentType, ContextType, RequireFields<MutationArchivePathwayArgs, 'id'>>;
   createSignalDefinition?: Resolver<ResolversTypes['SignalDefinitionType'], ParentType, ContextType, RequireFields<MutationCreateSignalDefinitionArgs, 'input'>>;
   deletePreviewSession?: Resolver<ResolversTypes['DeletePreviewSessionResult'], ParentType, ContextType, RequireFields<MutationDeletePreviewSessionArgs, 'sessionId'>>;
@@ -2859,8 +2964,10 @@ export type PathwayStatusResultResolvers<ContextType = DataSourceContext, Parent
 export type PendingQuestionTypeResolvers<ContextType = DataSourceContext, ParentType extends ResolversParentTypes['PendingQuestionType'] = ResolversParentTypes['PendingQuestionType']> = ResolversObject<{
   affectedSubtreeSize?: Resolver<ResolversTypes['Int'], ParentType, ContextType>;
   answerType?: Resolver<ResolversTypes['AnswerType'], ParentType, ContextType>;
+  datumKey?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   estimatedImpact?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   gateId?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
+  optionLabels?: Resolver<Maybe<Array<ResolversTypes['String']>>, ParentType, ContextType>;
   options?: Resolver<Maybe<Array<ResolversTypes['String']>>, ParentType, ContextType>;
   prompt?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   tentative?: Resolver<Maybe<ResolversTypes['Boolean']>, ParentType, ContextType>;

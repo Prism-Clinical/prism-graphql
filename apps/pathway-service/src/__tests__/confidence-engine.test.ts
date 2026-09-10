@@ -1,6 +1,7 @@
 // apps/pathway-service/src/__tests__/confidence-engine.test.ts
 
 import { ConfidenceEngine } from '../services/confidence/confidence-engine';
+import { DataCompletenessScorer } from '../services/confidence/scorers/data-completeness';
 import { ScorerRegistry } from '../services/confidence/scorer-registry';
 import { WeightCascadeResolver } from '../services/confidence/weight-cascade-resolver';
 import {
@@ -67,6 +68,73 @@ describe('ConfidenceEngine', () => {
     mockPool = { query: jest.fn().mockResolvedValue({ rows: [] }) };
 
     engine = new ConfidenceEngine(registry, cascadeResolver);
+  });
+
+  /**
+   * The engine reports which slices of patient context each node's scorers
+   * read, so `dependencyMap.scorerInputs` can be written. Every scorer has
+   * always implemented `declareRequiredInputs`; until now nothing called it.
+   */
+  describe('contextInputs', () => {
+    it('reports the context a LabTest node depends on', async () => {
+      const nodes: GraphNode[] = [
+        { id: 'lab-1', nodeIdentifier: 'lab-1', nodeType: 'LabTest',
+          properties: { title: 'Haemoglobin' } },
+      ];
+      registry.register(new DataCompletenessScorer());
+      jest.spyOn(cascadeResolver, 'resolveAllWeights').mockResolvedValue({
+        'lab-1': {
+          data_completeness: { weight: 1, source: WeightSource.SYSTEM_DEFAULT },
+        },
+      });
+      jest.spyOn(cascadeResolver, 'resolveThresholds').mockResolvedValue({
+        autoResolveThreshold: 0.85, suggestThreshold: 0.6,
+        scope: ThresholdScope.SYSTEM_DEFAULT,
+      });
+
+      const result = await engine.computePathwayConfidence({
+        pool: mockPool,
+        pathwayId: 'pathway-1',
+        nodes,
+        edges: [],
+        signalDefinitions: makeSignalDefs(),
+        patientContext: REFERENCE_PATIENT,
+      });
+
+      // A LabTest's completeness is scored from lab results, so a later
+      // addition of lab context must re-score it.
+      expect(result.nodes[0].contextInputs).toContain('labs');
+    });
+
+    it('reports nothing for a node with no patient-data dependency', async () => {
+      const nodes: GraphNode[] = [
+        { id: 'stage-1', nodeIdentifier: 'stage-1', nodeType: 'Stage',
+          properties: { stage_number: 1, title: 'Assessment' } },
+      ];
+      registry.register(new DataCompletenessScorer());
+      jest.spyOn(cascadeResolver, 'resolveAllWeights').mockResolvedValue({
+        'stage-1': {
+          data_completeness: { weight: 1, source: WeightSource.SYSTEM_DEFAULT },
+        },
+      });
+      jest.spyOn(cascadeResolver, 'resolveThresholds').mockResolvedValue({
+        autoResolveThreshold: 0.85, suggestThreshold: 0.6,
+        scope: ThresholdScope.SYSTEM_DEFAULT,
+      });
+
+      const result = await engine.computePathwayConfidence({
+        pool: mockPool,
+        pathwayId: 'pathway-1',
+        nodes,
+        edges: [],
+        signalDefinitions: makeSignalDefs(),
+        patientContext: REFERENCE_PATIENT,
+      });
+
+      // Structural nodes declare no patient_context inputs — recording one
+      // would re-score the whole pathway on every context addition.
+      expect(result.nodes[0].contextInputs).toEqual([]);
+    });
   });
 
   describe('computePathwayConfidence', () => {

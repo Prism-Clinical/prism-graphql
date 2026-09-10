@@ -1,5 +1,5 @@
 import { GraphQLError } from 'graphql';
-import { DataSourceContext, NodeStatus, OverrideAction, SessionStatus } from '../../types';
+import { BlockerType, DataSourceContext, NodeStatus, OverrideAction, SessionStatus } from '../../types';
 import { PatientContext, CodeEntry, LabResult } from '../../services/confidence/types';
 import {
   parseResolutionInput,
@@ -14,7 +14,6 @@ import type { TemporalContextInput } from '../../services/resolution/temporal/ev
 import { PATHWAY_COLUMNS, formatSessionForGraphQL } from '../Query';
 import { TraversalEngine } from '../../services/resolution/traversal-engine';
 import { makeEvaluationTemporalContext } from '../../services/resolution/temporal/evaluation-context';
-import { RetraversalEngine } from '../../services/resolution/retraversal-engine';
 import {
   createSession,
   getSession,
@@ -33,7 +32,6 @@ import type { EvaluationTemporalContext } from '../../services/resolution/tempor
 import {
   buildResolutionContext,
   makeTraversalAdapter,
-  makeRetraversalAdapter,
   makeLlmGateEvaluator,
   assertEncounterAnchor,
   resolveTemporalPolicyVersion,
@@ -44,6 +42,10 @@ import {
 } from '../../services/resolution/temporal/fact-store';
 import { assertKnownPolicyVersion } from '../../services/resolution/temporal/policy-registry';
 import { applyDdiToResolutionState } from '../../services/medications/ddi-pass-single-pathway';
+import type { Pool } from 'pg';
+import type { ResolutionState, GateProperties } from '../../services/resolution/types';
+import { serializeResolutionState } from '../../services/resolution/session-store';
+import { validateAnswerAgainstGate } from '../../services/resolution/answer-validation';
 import { normalizePatientAttributes } from '../../services/resolution/patient-attributes';
 import {
   buildEffectivePatientContext,
@@ -148,6 +150,54 @@ export function temporalInputFrom(args: TemporalAnchorArgs): TemporalContextInpu
   if (args.evaluationAsOf != null) input.evaluationAsOf = args.evaluationAsOf;
   if (args.encounterStart != null) input.encounterStart = args.encounterStart;
   return input;
+}
+
+/**
+ * A session's status, DERIVED from its state rather than latched.
+ *
+ * The four resolution mutations set DEGRADED when their own traversal timed
+ * out, and nothing ever set it back. So a session that timed out once and was
+ * then fully repaired stayed DEGRADED for ever — and generation blocks a
+ * DEGRADED session unconditionally, leaving it permanently unable to produce a
+ * plan however complete its state had become.
+ *
+ * Reading the state each time makes the flag self-correcting in both
+ * directions: it goes up when nodes are left unresolved and comes down when
+ * they are not, without anyone having to remember to clear it.
+ */
+function derivedSessionStatus(state: ResolutionState): SessionStatus {
+  const INCOMPLETE = [NodeStatus.TIMEOUT, NodeStatus.CASCADE_LIMIT, NodeStatus.UNKNOWN];
+  for (const node of state.values()) {
+    if (INCOMPLETE.includes(node.status)) return SessionStatus.DEGRADED;
+  }
+  return SessionStatus.ACTIVE;
+}
+
+/**
+ * Re-run DDI over a session whose resolution state has just changed.
+ *
+ * DDI used to run ONCE, at session creation. Every mutation that re-resolves
+ * can bring a medication INTO the plan — a branch chosen at a DecisionPoint, a
+ * gate opened by an answer, a node included by an override — and adding
+ * medications to the patient context changes the other side of the check. So a
+ * care plan could be generated from medication state that never passed DDI.
+ *
+ * Centralised rather than repeated at each call site: five paths mutate the
+ * plan, and a check that must be remembered five times is a check that will be
+ * forgotten once.
+ *
+ * `applyDdiToResolutionState` only ever moves a node INCLUDED -> EXCLUDED, so
+ * re-running it cannot resurrect a suppression that no longer applies; that
+ * happens when the region is re-disposed, which is what put the node back to
+ * INCLUDED in the first place.
+ */
+async function refreshSessionDdi(
+  pool: Pool,
+  session: { resolutionState: ResolutionState; ddiWarnings?: unknown[] },
+  patientContext: PatientContext,
+): Promise<void> {
+  const result = await applyDdiToResolutionState(pool, session.resolutionState, patientContext);
+  session.ddiWarnings = result.findings.filter((f) => f.action === 'WARN');
 }
 
 export const resolutionMutations = {
@@ -372,8 +422,8 @@ export const resolutionMutations = {
       );
 
       const llmBundle = makeLlmGateEvaluator(pool, session.pathwayId, args.sessionId);
-      const retraversalEngine = new RetraversalEngine(
-        makeRetraversalAdapter(rctx, pool, session.pathwayId, patientCtx),
+      const incrementalEngine = new TraversalEngine(
+        makeTraversalAdapter(rctx, pool, session.pathwayId, patientCtx),
         rctx.thresholds,
         sessionClock,
         rctx.temporalDefaults,
@@ -387,24 +437,60 @@ export const resolutionMutations = {
         llmBundle?.evaluator,
       );
 
-      const reResult = await retraversalEngine.retraverse(
+      const reResult = await incrementalEngine.resolveIncrementally(
         affectedNodes,
         session.resolutionState,
         session.dependencyMap,
         rctx.graphContext,
         patientCtx,
         session.gateAnswers,
+        { pendingQuestions: session.pendingQuestions, redFlags: session.redFlags },
       );
 
       if (llmBundle) await llmBundle.flushAudits(args.sessionId);
 
       statusChanges.push(...reResult.statusChanges);
+      // An override RE-DISPOSES a region, so it can settle a question and
+      // clear a flag as surely as an answer can. Both were discarded here, so
+      // overriding a node out of the plan left the questions and red flags of
+      // everything beneath it standing for ever.
+      session.pendingQuestions = reResult.pendingQuestions;
+      session.redFlags = reResult.redFlags;
     }
+
+    // Outside the re-resolution guard on purpose. An INCLUDE override puts THAT
+    // node into the plan whether or not anything downstream was affected, and
+    // if it is a Medication it has never been checked against the patient's
+    // other drugs.
+    await refreshSessionDdi(
+      pool,
+      session,
+      buildEffectivePatientContext(
+        session.initialPatientContext as PatientContext,
+        session.additionalContext as Partial<AdditionalContextInput>,
+      ),
+    );
 
     // 7. Update session (with optimistic lock)
     await updateSession(pool, args.sessionId, {
       resolutionState: session.resolutionState,
+      // The map, not just the state. `resolveIncrementally` RECORDS new
+      // dependencies as it walks — answering an outer question can expose an
+      // inner data gate and register what it reads — and only the
+      // DecisionPoint path saved them. After a reload the session had the new
+      // nodes but not what they depend on, so supplying the very datum the
+      // gate asked for seeded nothing and its question never cleared.
+      dependencyMap: session.dependencyMap,
+      // Persisted now that an override reconciles them. It did not touch
+      // either before, so there was nothing here to write.
+      pendingQuestions: session.pendingQuestions,
+      redFlags: session.redFlags,
       totalNodesEvaluated: session.resolutionState.size,
+      // Derived from the state this mutation just produced, so a session
+      // repaired by it stops being degraded. `degraded` alone only ever went
+      // one way.
+      status: derivedSessionStatus(session.resolutionState),
+      ddiWarnings: session.ddiWarnings,
     }, session.updatedAt);
 
     // 8. Log event
@@ -440,9 +526,16 @@ export const resolutionMutations = {
     return formatSessionForGraphQL(updated);
   },
 
-  async answerGateQuestion(
+  /**
+   * Answer whatever the session is waiting on at a node: a question gate, an
+   * escalated request for a datum, or a branch choice at a DecisionPoint.
+   *
+   * Renamed from `answerGateQuestion` — it answers three different things now,
+   * and `gateId` was wrong for the third.
+   */
+  async answerPendingDecision(
     _parent: unknown,
-    args: { sessionId: string; gateId: string; answer: GateAnswerInput },
+    args: { sessionId: string; nodeId: string; answer: GateAnswerInput },
     context: DataSourceContext
   ) {
     const { pool } = context;
@@ -475,11 +568,212 @@ export const resolutionMutations = {
       pathwayIdForLog = session.pathwayId;
 
       // 2. Find gate in resolution state
-      const gateResult = session.resolutionState.get(args.gateId);
+      const gateResult = session.resolutionState.get(args.nodeId);
       if (!gateResult) {
-        throw new GraphQLError(`Gate "${args.gateId}" not found in session`, {
+        throw new GraphQLError(`Gate "${args.nodeId}" not found in session`, {
           extensions: { code: 'NOT_FOUND' },
         });
+      }
+
+      // ─── Branch choice at a DecisionPoint ─────────────────────────
+      //
+      // A one_of fork with several qualifying branches pends rather than
+      // taking them all (plan 05 task 1). The answer names which branch
+      // applies; taking it must CLOSE the others, or the pend bought nothing.
+      if (gateResult.nodeType === 'DecisionPoint') {
+        const pendingDecision = session.pendingQuestions.find(q => q.gateId === args.nodeId);
+        const candidates = pendingDecision?.options ?? [];
+        const chosen = args.answer.selectedOption;
+
+        if (!chosen || !candidates.includes(chosen)) {
+          throw new GraphQLError(
+            `"${chosen}" is not among the candidate branches at "${args.nodeId}": ` +
+              `${candidates.join(', ')}`,
+            { extensions: { code: 'BAD_USER_INPUT' } },
+          );
+        }
+
+        const rctxDp = await buildResolutionContext(pool, session.pathwayId);
+        const dpClock = requireSessionTemporalContext(session);
+
+        // Everything the session has learned since it was created, not just
+        // the context it was created with. Conditions, medications and
+        // allergies added later live here — the fact store carries labs and
+        // vitals, but not these — and every other re-resolution path in this
+        // resolver already builds context this way. This one did not, so a
+        // branch choice re-resolved against a stale picture of the patient.
+        const dpPatientCtx = buildEffectivePatientContext(
+          session.initialPatientContext as PatientContext,
+          session.additionalContext as Partial<AdditionalContextInput>,
+        );
+
+        // Record the choice as an ANSWER before re-resolving.
+        //
+        // Two things follow from that. It SURVIVES: an ancestor retraversal
+        // that re-disposes this DecisionPoint reads the answer and keeps the
+        // branch, instead of finding several qualifying branches again and
+        // re-asking a question the provider already answered. And it is what
+        // the engine routes on, so the choice takes effect through the same
+        // disposition path a full traversal uses rather than through a second
+        // implementation here.
+        session.gateAnswers.set(args.nodeId, { selectedOption: chosen } as GateAnswer);
+
+        const dpEngine = new TraversalEngine(
+          makeTraversalAdapter(rctxDp, pool, session.pathwayId, dpPatientCtx),
+          rctxDp.thresholds,
+          dpClock,
+          rctxDp.temporalDefaults,
+          factStoreForSession(session, session.additionalContext as Partial<AdditionalContextInput>),
+          rctxDp.codeMap,
+        );
+
+        // Seeded at the DECISION POINT, not at the chosen branch.
+        //
+        // Disposing the DecisionPoint is what closes the branches nobody
+        // chose — roots AND their subtrees — because that is what the normal
+        // traversal path already does. Seeding at the chosen branch alone
+        // closed only the roots of the other QUALIFYING candidates: their
+        // descendants, and every non-qualifying branch, stayed
+        // PENDING_QUESTION while the DecisionPoint's own question was removed.
+        // That is a session no answer can finish, because care-plan generation
+        // blocks on any PENDING_QUESTION and none of the remaining ones had a
+        // question left to answer.
+        const dpResult = await dpEngine.resolveIncrementally(
+          new Set([args.nodeId]),
+          session.resolutionState,
+          session.dependencyMap,
+          rctxDp.graphContext,
+          dpPatientCtx,
+          session.gateAnswers,
+          {
+            pendingQuestions: session.pendingQuestions,
+            redFlags: session.redFlags,
+            alsoDropGateIds: [args.nodeId],
+          },
+        );
+
+        statusChanges.push(...dpResult.statusChanges);
+        nodesRecomputed = dpResult.nodesRecomputed;
+
+        // Findings from the chosen subtree are KEPT. Discarding them lost every
+        // question and red flag the chosen branch raised, so a branch leading
+        // to further questions looked resolved.
+        // Reconciled wholes, not additions — the engine already merged them
+        // against what the session held.
+        session.pendingQuestions = dpResult.pendingQuestions;
+        session.redFlags = dpResult.redFlags;
+
+        // The chosen branch is exactly where new medications come from.
+        await refreshSessionDdi(pool, session, dpPatientCtx);
+
+        try {
+          await updateSession(pool, args.sessionId, {
+            resolutionState: session.resolutionState,
+            dependencyMap: session.dependencyMap,
+            pendingQuestions: session.pendingQuestions,
+            redFlags: session.redFlags,
+            gateAnswers: session.gateAnswers,
+            totalNodesEvaluated: session.resolutionState.size,
+          // Derived from the state this mutation just produced, so a session
+      // repaired by it stops being degraded. `degraded` alone only ever went
+      // one way.
+      status: derivedSessionStatus(session.resolutionState),
+            ddiWarnings: session.ddiWarnings,
+          }, session.updatedAt);
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          if (message.includes('optimistic lock') && attempt < MAX_ATTEMPTS) {
+            await new Promise((r) => setTimeout(r, 10 + Math.random() * 30));
+            continue;
+          }
+          throw err;
+        }
+
+        await logEvent(pool, args.sessionId, {
+          eventType: 'BRANCH_CHOSEN',
+          triggerData: { nodeId: args.nodeId, chosen, candidates },
+          nodesRecomputed,
+          statusChanges,
+        });
+        const refreshed = await getSession(pool, args.sessionId);
+        return formatSessionForGraphQL(refreshed ?? session);
+      }
+
+      // Loaded here so both the schema check below and the retraversal that
+      // follows share one read of the graph.
+      const rctxForAnswer = await buildResolutionContext(pool, session.pathwayId);
+
+      // ─── Escalated datum request ──────────────────────────────────
+      //
+      // A gate that could not DECIDE asks for the datum it needed, and the
+      // pending entry carries where the answer belongs. Such an answer is a
+      // FACT, not a verdict: it goes into the session's patient context and
+      // the gate re-evaluates from it, which is what makes one answer resolve
+      // every gate reading that datum rather than only the one asked.
+      //
+      // Delegated to addPatientContext rather than reimplemented — one way for
+      // a fact to enter a session. Two ways is how the traversal engines
+      // diverged, and this is the same shape of mistake.
+      const escalated = session.pendingQuestions.find(
+        q => q.gateId === args.nodeId && q.askTarget,
+      );
+      if (escalated?.askTarget) {
+        const value = args.answer.numericValue;
+        if (value === undefined || value === null) {
+          throw new GraphQLError(
+            `Gate "${args.nodeId}" is a request for ${escalated.datumKey}; supply numericValue`,
+            { extensions: { code: 'BAD_USER_INPUT' } },
+          );
+        }
+
+        const target = escalated.askTarget;
+        const fragment: AdditionalContextInput =
+          target.kind === 'lab'
+            ? { labResults: [{ code: target.code, system: target.system, value }] }
+            : target.kind === 'vital'
+              ? { vitalSigns: { [target.path]: value } }
+              // `patient.trimester` addresses patientAttributes.trimester —
+              // resolveAttribute reads a FLAT key, not a nested namespace.
+              : { patientAttributes: { [target.path.split('.').slice(1).join('.')]: value } };
+
+        // NOTE: deliberately no `sourceId` on the fragment. It is in
+        // LAB_ASSERTION_FIELDS, so the trust guard would reject it — and
+        // rightly: that guard stops CALLERS asserting clinical provenance.
+        // The fact that a clinician supplied this rather than the chart is
+        // recorded below as an audit event, which is where "who said what"
+        // belongs. It must not be dressed up as an observation.
+        await logEvent(pool, args.sessionId, {
+          eventType: 'PROVIDER_ASSERTED_DATUM',
+          triggerData: { gateId: args.nodeId, datumKey: escalated.datumKey, target, value },
+          nodesRecomputed: 0,
+          statusChanges: [],
+        });
+
+        // Deliberately NOT written to session.gateAnswers. That map is what
+        // evaluateQuestion reads; an entry there would make this data gate
+        // look like an answered QUESTION gate and be consulted instead of the
+        // fact on every later retraversal.
+        return resolutionMutations.addPatientContext(
+          _parent,
+          { sessionId: args.sessionId, additionalContext: fragment },
+          context,
+        );
+      }
+
+      // Check the answer against the gate's own schema before storing it.
+      // Nothing did, so a boolean gate could be sent `selectedOption: "true"`
+      // or a select gate an option it does not offer — the engine then derives
+      // a decision the routing table has no entry for, takes no branch, and
+      // raises nothing, because the gate DID decide.
+      const answeredGate = rctxForAnswer.graphContext.getNode(args.nodeId);
+      const answeredProps = answeredGate?.properties as unknown as GateProperties | undefined;
+      if (answeredProps) {
+        const problem = validateAnswerAgainstGate(args.answer, answeredProps);
+        if (problem) {
+          throw new GraphQLError(`Gate "${args.nodeId}": ${problem}`, {
+            extensions: { code: 'BAD_USER_INPUT' },
+          });
+        }
       }
 
       const newAnswer: GateAnswer = {
@@ -487,25 +781,19 @@ export const resolutionMutations = {
         numericValue: args.answer.numericValue,
         selectedOption: args.answer.selectedOption,
       };
-      session.gateAnswers.set(args.gateId, newAnswer);
+      session.gateAnswers.set(args.nodeId, newAnswer);
 
-      // Determine if gate opens: delegate to gate evaluator after building context.
-      // For now, any non-null answer value is treated as opening the gate.
-      // The retraversal will use the proper gate evaluator for final status.
-      gateOpened = args.answer.booleanValue === true ||
-        (args.answer.selectedOption != null) ||
-        (args.answer.numericValue != null);
 
-      // 4. Build resolution context and find affected subtree
-      const rctx = await buildResolutionContext(pool, session.pathwayId);
+      // 4. Find the affected subtree (context already loaded for validation).
+      const rctx = rctxForAnswer;
 
       // Reject a clock-less session up front, not only when a retraversal
       // happens to be triggered — the session is un-retraversable either way.
       const sessionClock = requireSessionTemporalContext(session);
 
       const affectedNodes = new Set<string>();
-      affectedNodes.add(args.gateId);
-      const subtreeQueue = [args.gateId];
+      affectedNodes.add(args.nodeId);
+      const subtreeQueue = [args.nodeId];
       while (subtreeQueue.length > 0) {
         const id = subtreeQueue.shift()!;
         for (const edge of rctx.graphContext.outgoingEdges(id)) {
@@ -523,94 +811,98 @@ export const resolutionMutations = {
         session.additionalContext as Partial<AdditionalContextInput>,
       );
 
-      if (gateOpened) {
-        // 5a. Gate opens: mark gate as INCLUDED and re-evaluate subtree
-        const previousGateStatus = gateResult.status;
-        gateResult.status = NodeStatus.INCLUDED;
-        gateResult.confidence = 1;
-        gateResult.excludeReason = undefined;
-        statusChanges.push({ nodeId: args.gateId, from: previousGateStatus, to: NodeStatus.INCLUDED });
+      // EVERY valid answer goes through the engine.
+      //
+      // This used to branch on a truthiness test — `booleanValue === true ||
+      // selectedOption != null || numericValue != null` — and hand-marked the
+      // whole subtree GATED_OUT when it failed. Answering "no" is a DECISION,
+      // not the absence of one: it can select a `{ equals: false }` branch. The
+      // hand-rolled path never called the engine, so a false answer never
+      // routed, never reconciled findings and never re-ran DDI, however
+      // correctly the engine handled it.
+      //
+      // It was also a second disposition implementation living in the resolver,
+      // the same duplication plan 03 removed from the engine. `disposeNode`
+      // decides what an answer means — INCLUDING when the answer closes the
+      // gate, where it applies `default_behavior` that the hand-rolled
+      // GATED_OUT ignored. The gate is in `affectedNodes`, so it is re-disposed
+      // like anything else and its own status change is computed, not asserted.
 
-        // Remove stale subtree nodes so RetraversalEngine re-evaluates them
-        for (const nodeId of affectedNodes) {
-          if (nodeId !== args.gateId && session.resolutionState.has(nodeId)) {
-            const existing = session.resolutionState.get(nodeId)!;
-            if (existing.status === NodeStatus.PENDING_QUESTION || existing.status === NodeStatus.GATED_OUT) {
-              session.resolutionState.delete(nodeId);
-            }
-          }
-        }
+      // NOTE: there used to be a loop here deleting every PENDING_QUESTION /
+      // GATED_OUT node under the answered gate, because `retraverse` could
+      // only re-evaluate rows that already existed and had no way to
+      // re-resolve one in place. It also had no way to RECREATE what it
+      // deleted, so answering a question permanently removed nodes from the
+      // session. `resolveIncrementally` clears and rebuilds its own region
+      // through the same unit that materialises nodes on a full traversal,
+      // so deleting here would destroy exactly what it is about to rebuild.
 
-        const llmBundle = makeLlmGateEvaluator(pool, session.pathwayId, args.sessionId);
-        const retraversalEngine = new RetraversalEngine(
-          makeRetraversalAdapter(rctx, pool, session.pathwayId, patientCtx),
-          rctx.thresholds,
-          sessionClock,
-          rctx.temporalDefaults,
-          // Same inputs as `patientCtx`, under the session's stored clock.
-          factStoreForSession(
-            session,
-            session.additionalContext as Partial<AdditionalContextInput>,
-          ),
-          rctx.codeMap,
-          llmBundle?.evaluator,
-        );
+      const llmBundle = makeLlmGateEvaluator(pool, session.pathwayId, args.sessionId);
+      const incrementalEngine = new TraversalEngine(
+        makeTraversalAdapter(rctx, pool, session.pathwayId, patientCtx),
+        rctx.thresholds,
+        sessionClock,
+        rctx.temporalDefaults,
+        // Same inputs as `patientCtx`, under the session's stored clock.
+        factStoreForSession(
+          session,
+          session.additionalContext as Partial<AdditionalContextInput>,
+        ),
+        rctx.codeMap,
+        llmBundle?.evaluator,
+      );
 
-        const reResult = await retraversalEngine.retraverse(
-          affectedNodes,
-          session.resolutionState,
-          session.dependencyMap,
-          rctx.graphContext,
-          patientCtx,
-          session.gateAnswers,
-        );
+      const reResult = await incrementalEngine.resolveIncrementally(
+        affectedNodes,
+        session.resolutionState,
+        session.dependencyMap,
+        rctx.graphContext,
+        patientCtx,
+        session.gateAnswers,
+        {
+          pendingQuestions: session.pendingQuestions,
+          redFlags: session.redFlags,
+          alsoDropGateIds: [args.nodeId],
+        },
+      );
 
-        if (llmBundle) await llmBundle.flushAudits(args.sessionId);
+      if (llmBundle) await llmBundle.flushAudits(args.sessionId);
 
-        statusChanges.push(...reResult.statusChanges);
-        nodesRecomputed = reResult.nodesRecomputed;
+      statusChanges.push(...reResult.statusChanges);
+      nodesRecomputed = reResult.nodesRecomputed;
 
-        // Update pending questions and red flags
-        // Remove the answered gate from pending, add any new ones
-        session.pendingQuestions = session.pendingQuestions
-          .filter(q => q.gateId !== args.gateId)
-          .concat(reResult.newPendingQuestions);
-        if (reResult.newRedFlags.length > 0) {
-          session.redFlags = [...session.redFlags, ...reResult.newRedFlags];
-        }
-      } else {
-        // 5b. Gate closes: mark subtree as GATED_OUT
-        const previousGateStatus = gateResult.status;
-        gateResult.status = NodeStatus.GATED_OUT;
-        gateResult.excludeReason = 'Gate answer: condition not met';
-        statusChanges.push({ nodeId: args.gateId, from: previousGateStatus, to: NodeStatus.GATED_OUT });
+      // Update pending questions and red flags
+      // Remove the answered gate from pending, add any new ones
+      session.pendingQuestions = reResult.pendingQuestions;
+      session.redFlags = reResult.redFlags;
 
-        for (const nodeId of affectedNodes) {
-          if (nodeId === args.gateId) continue;
-          const existing = session.resolutionState.get(nodeId);
-          if (existing) {
-            const oldStatus = existing.status;
-            existing.status = NodeStatus.GATED_OUT;
-            existing.excludeReason = `Gated out by answer to ${gateResult.title}`;
-            if (oldStatus !== NodeStatus.GATED_OUT) {
-              statusChanges.push({ nodeId, from: oldStatus, to: NodeStatus.GATED_OUT });
-            }
-            nodesRecomputed++;
-          }
-        }
+      // An answer that opens a gate opens whatever it prescribes.
+      await refreshSessionDdi(pool, session, patientCtx);
 
-        // Remove the answered question from pending
-        session.pendingQuestions = session.pendingQuestions.filter(q => q.gateId !== args.gateId);
-      }
+      // Reported from what the engine decided, not predicted from the answer's
+      // shape. Only the audit event reads it.
+      gateOpened = session.resolutionState.get(args.nodeId)?.status === NodeStatus.INCLUDED;
 
       // 7. Update session (optimistic lock)
       try {
         await updateSession(pool, args.sessionId, {
           resolutionState: session.resolutionState,
+          // The map, not just the state. `resolveIncrementally` RECORDS new
+          // dependencies as it walks — answering an outer question can expose an
+          // inner data gate and register what it reads — and only the
+          // DecisionPoint path saved them. After a reload the session had the new
+          // nodes but not what they depend on, so supplying the very datum the
+          // gate asked for seeded nothing and its question never cleared.
+          dependencyMap: session.dependencyMap,
           pendingQuestions: session.pendingQuestions,
           redFlags: session.redFlags,
           gateAnswers: session.gateAnswers,
           totalNodesEvaluated: session.resolutionState.size,
+        // Derived from the state this mutation just produced, so a session
+      // repaired by it stops being degraded. `degraded` alone only ever went
+      // one way.
+      status: derivedSessionStatus(session.resolutionState),
+          ddiWarnings: session.ddiWarnings,
         }, session.updatedAt);
         break; // committed
       } catch (err) {
@@ -628,7 +920,7 @@ export const resolutionMutations = {
     await logEvent(pool, args.sessionId, {
       eventType: 'gate_answer',
       triggerData: {
-        gateId: args.gateId,
+        gateId: args.nodeId,
         answer: args.answer,
         gateOpened,
       },
@@ -639,7 +931,7 @@ export const resolutionMutations = {
     // 9. Log to pathway_gate_answers
     await logGateAnswer(pool, {
       sessionId: args.sessionId,
-      gateId: args.gateId,
+      gateId: args.nodeId,
       pathwayId: pathwayIdForLog,
       answer: args.answer,
       gateOpened,
@@ -653,6 +945,30 @@ export const resolutionMutations = {
       });
     }
     return formatSessionForGraphQL(updated);
+  },
+
+  /**
+   * The former name of `answerPendingDecision`, delegating to it.
+   *
+   * Kept so this subgraph can deploy independently of the dashboard: they are
+   * separate repositories, merged and restarted separately, and pathway-service
+   * restarts FIRST. Without this, every gate answer in the running UI fails
+   * validation between the two restarts.
+   *
+   * Deliberately a delegation and not a copy — two implementations of one
+   * mutation is how the traversal engines drifted, and this file has spent a
+   * long time removing the last of those.
+   */
+  async answerGateQuestion(
+    parent: unknown,
+    args: { sessionId: string; gateId: string; answer: GateAnswerInput },
+    context: DataSourceContext,
+  ) {
+    return resolutionMutations.answerPendingDecision(
+      parent,
+      { sessionId: args.sessionId, nodeId: args.gateId, answer: args.answer },
+      context,
+    );
   },
 
   async addPatientContext(
@@ -773,8 +1089,8 @@ export const resolutionMutations = {
       const rctx = await buildResolutionContext(pool, session.pathwayId);
 
       const llmBundle = makeLlmGateEvaluator(pool, session.pathwayId, args.sessionId);
-      const retraversalEngine = new RetraversalEngine(
-        makeRetraversalAdapter(rctx, pool, session.pathwayId, updatedPc),
+      const incrementalEngine = new TraversalEngine(
+        makeTraversalAdapter(rctx, pool, session.pathwayId, updatedPc),
         rctx.thresholds,
         sessionClock,
         rctx.temporalDefaults,
@@ -787,13 +1103,14 @@ export const resolutionMutations = {
         llmBundle?.evaluator,
       );
 
-      const reResult = await retraversalEngine.retraverse(
+      const reResult = await incrementalEngine.resolveIncrementally(
         affectedNodes,
         session.resolutionState,
         session.dependencyMap,
         rctx.graphContext,
         updatedPc,
         session.gateAnswers,
+        { pendingQuestions: session.pendingQuestions, redFlags: session.redFlags },
       );
 
       if (llmBundle) await llmBundle.flushAudits(args.sessionId);
@@ -801,22 +1118,38 @@ export const resolutionMutations = {
       statusChanges.push(...reResult.statusChanges);
       nodesRecomputed = reResult.nodesRecomputed;
 
-      // Update pending questions and red flags
-      if (reResult.newPendingQuestions.length > 0) {
-        session.pendingQuestions = [...session.pendingQuestions, ...reResult.newPendingQuestions];
-      }
-      if (reResult.newRedFlags.length > 0) {
-        session.redFlags = [...session.redFlags, ...reResult.newRedFlags];
-      }
+      // Reconciled wholes. This replaces a hand-rolled prune-then-append that
+      // deduped on `gateId`, which could not see that two gates share ONE
+      // escalated datum prompt — the shared key is the datum. The engine now
+      // does the merge, keyed the same way for questions and flags.
+      //
+      // Dropping a question whose gate is no longer PENDING_QUESTION is what
+      // the reconcile already does: the gate was re-disposed, it no longer
+      // asks, so the question is settled.
+      session.pendingQuestions = reResult.pendingQuestions;
+      session.redFlags = reResult.redFlags;
     }
+
+    // Outside the re-resolution guard on purpose. Adding medications changes
+    // the OTHER side of the check — the patient's own list — so DDI must run
+    // even when no gate depended on the new context and nothing was re-resolved.
+    await refreshSessionDdi(pool, session, updatedPc);
 
     // 6. Update session (with optimistic lock)
     await updateSession(pool, args.sessionId, {
       resolutionState: session.resolutionState,
+      // Saved because `resolveIncrementally` RECORDS new dependencies as it
+      // walks — see overrideNode for why losing them stuck a session.
+      dependencyMap: session.dependencyMap,
       additionalContext: merged,
       pendingQuestions: session.pendingQuestions,
       redFlags: session.redFlags,
       totalNodesEvaluated: session.resolutionState.size,
+      // Derived from the state this mutation just produced, so a session
+      // repaired by it stops being degraded. `degraded` alone only ever went
+      // one way.
+      status: derivedSessionStatus(session.resolutionState),
+      ddiWarnings: session.ddiWarnings,
     }, session.updatedAt);
 
     // 7. Log event
@@ -864,13 +1197,73 @@ export const resolutionMutations = {
       });
     }
 
+    // 1b. DDI, immediately before the plan is built.
+    //
+    // The four resolution mutations each refresh DDI, so this should be a
+    // no-op. It runs anyway because this is the last moment before a plan
+    // becomes a clinical artefact, and "some other path already checked" is
+    // the assumption that let a plan be generated from medication state that
+    // never passed DDI at all. A suppression here still excludes the node, so
+    // it changes the plan rather than merely reporting on it.
+    await refreshSessionDdi(
+      pool,
+      session,
+      buildEffectivePatientContext(
+        session.initialPatientContext as PatientContext,
+        session.additionalContext as Partial<AdditionalContextInput>,
+      ),
+    );
+
     // 2. Validate
+    //
+    // A DEGRADED session is one whose traversal timed out. Its node set is
+    // complete — the timeout path materialises the remainder — but as TIMEOUT
+    // rather than as verdicts, so `validateForGeneration` catches it below.
+    // Named as its own blocker anyway: "the resolve did not finish" is a
+    // clearer thing to be told than a list of individual unresolved nodes.
     const blockers = validateForGeneration(session.resolutionState, session.redFlags);
+    if (session.status === SessionStatus.DEGRADED) {
+      blockers.unshift({
+        type: BlockerType.INCOMPLETE_RESOLUTION,
+        description:
+          'This session is degraded — a traversal did not finish, so the pathway was ' +
+          'not fully evaluated. Re-resolve before generating a plan.',
+        relatedNodeIds: [],
+      });
+    }
     if (blockers.length > 0) {
+      // The DDI pass above already MUTATED the state — a suppression excludes
+      // a Medication node — and those changes were thrown away on this path.
+      // Persistence was added for the success path only, so a suppression that
+      // emptied the plan produced blockers, discarded the very suppression that
+      // caused them, and left the session showing the medication as included.
+      // The next attempt then re-derived the same suppression from scratch and
+      // reported the same blockers, for ever.
+      //
+      // Guarded by the same optimistic lock as the completing write: a
+      // concurrent answer must not be lost to a call that generated nothing.
+      // A conflict here is not worth failing the request — the caller asked
+      // for blockers and blockers are what they get — so it is reported and
+      // the blockers still returned.
+      try {
+        await updateSession(pool, args.sessionId, {
+          resolutionState: session.resolutionState,
+          ddiWarnings: session.ddiWarnings,
+        }, session.updatedAt);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        if (!message.includes('optimistic lock')) throw err;
+      }
+
       return {
         success: false as const,
         carePlanId: null as string | null,
-        warnings: [] as string[],
+        // The warnings that accompany this outcome, and may be part of why it
+        // is blocked. Hardcoded empty, they were invisible exactly when a
+        // provider most needed to know what the check had found.
+        warnings: (session.ddiWarnings ?? []).map(w =>
+          typeof w === 'string' ? w : ((w as { description?: string }).description ?? String(w)),
+        ),
         blockers: blockers.map(b => ({
           type: b.type,
           description: b.description,
@@ -972,16 +1365,47 @@ export const resolutionMutations = {
       }
 
       // 7. Update session with carePlanId and COMPLETED status (within transaction)
-      await client.query(
+      //
+      // The resolution state and DDI warnings go too. The pre-generation DDI
+      // pass MUTATES the state — a suppression excludes a Medication node — and
+      // none of that was written, so the completed session disagreed with the
+      // plan generated from it, and the response's warnings were always empty.
+      //
+      // `updated_at` is the optimistic-lock predicate: a concurrent answer or
+      // context update between the load and this write moves it, and zero rows
+      // match. Without that, the plan could be built from state another
+      // mutation had already superseded, and that mutation's write silently
+      // lost. The transaction rolls back and the caller retries against fresh
+      // state rather than committing a plan for a patient picture that no
+      // longer holds.
+      const completed = await client.query(
         `UPDATE pathway_resolution_sessions
-         SET care_plan_id = $1, status = $2, updated_at = NOW()
-         WHERE id = $3`,
-        [carePlanId, SessionStatus.COMPLETED, args.sessionId]
+         SET care_plan_id = $1, status = $2, resolution_state = $3, ddi_warnings = $4,
+             updated_at = NOW()
+         WHERE id = $5 AND updated_at = $6`,
+        [
+          carePlanId,
+          SessionStatus.COMPLETED,
+          JSON.stringify(serializeResolutionState(session.resolutionState)),
+          JSON.stringify(session.ddiWarnings ?? []),
+          args.sessionId,
+          session.updatedAt,
+        ]
       );
+      if (completed.rowCount === 0) {
+        throw new GraphQLError(
+          'Session changed while the care plan was being generated — nothing was saved. ' +
+            'Retry to generate from the current state.',
+          { extensions: { code: 'CONFLICT' } },
+        );
+      }
 
       await client.query('COMMIT');
     } catch (err) {
       await client.query('ROLLBACK');
+      // A lost-update conflict is not an internal error: the caller can act on
+      // it, and flattening it would tell them to report a bug instead of retry.
+      if (err instanceof GraphQLError) throw err;
       console.error('Care plan generation failed:', err);
       throw new GraphQLError('Failed to generate care plan: transaction rolled back', {
         extensions: { code: 'INTERNAL_SERVER_ERROR' },
@@ -1005,7 +1429,11 @@ export const resolutionMutations = {
     return {
       success: true as const,
       carePlanId,
-      warnings: [] as string[],
+      // The DDI warnings this plan was generated under. Hardcoded empty before,
+      // so a plan carrying a moderate-interaction warning reported none.
+      warnings: (session.ddiWarnings ?? []).map(w =>
+        typeof w === 'string' ? w : ((w as { description?: string }).description ?? String(w)),
+      ),
       blockers: [] as Array<{ type: string; description: string; relatedNodeIds: string[] }>,
     };
   },

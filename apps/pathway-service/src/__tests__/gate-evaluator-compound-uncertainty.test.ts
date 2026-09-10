@@ -164,6 +164,19 @@ const FALSE_UNCERTAIN: GateCondition = {
   count_threshold: 2,
 };
 
+/**
+ * A scalar comparison with NO fact on file at all — the missing-measurement
+ * case, and the common one. Distinct from INDET, where candidates exist but
+ * cannot be ordered.
+ */
+const NO_DATUM: GateCondition = {
+  field: 'labs',
+  operator: 'less_than',
+  value: '30313-1',
+  system: 'LOINC',
+  threshold: 11,
+};
+
 function patient(overrides: Partial<PatientContext> = {}): PatientContext {
   return {
     patientId: 'p',
@@ -526,5 +539,88 @@ describe('reason strings are unchanged by propagation', () => {
   it('keeps contextFieldsRead deduplicated across conditions, as before', async () => {
     const r = await evaluateGate(compound('AND', [TRUE_CLEAN, TRUE_CLEAN_2, INDET]), deps('v1'));
     expect(r.contextFieldsRead).toEqual(['conditions', 'labs']);
+  });
+});
+
+/**
+ * `dataUnavailable` crosses the compound boundary.
+ *
+ * It did not, and that made the whole escalation workstream miss its main
+ * case: one scalar condition of a compound with no measurement on file
+ * reported nothing, so the gate silently took its default. Keying escalation
+ * on `indeterminate` alone never fires there — `indeterminate` means
+ * candidates EXIST but cannot be ordered, and a missing haemoglobin has no
+ * candidates at all.
+ *
+ * The truth table is the same shape as `indeterminate`'s: an unanswerable
+ * condition matters only when nothing else settles the compound.
+ */
+describe('compound dataUnavailable', () => {
+  it('is true when an AND has no other verdict to go on', async () => {
+    const r = await evaluateGate(compound('AND', [TRUE_CLEAN, NO_DATUM]), deps('v1'));
+    expect(r.dataUnavailable).toBe(true);
+  });
+
+  // A real `false` settles an AND whatever its siblings did, so asking for the
+  // missing datum could not change the outcome.
+  it('is false when a definite false already settles the AND', async () => {
+    const r = await evaluateGate(compound('AND', [FALSE_CLEAN, NO_DATUM]), deps('v1'));
+    expect(r.dataUnavailable).toBe(false);
+  });
+
+  it('is false when a definite true already settles the OR', async () => {
+    const r = await evaluateGate(compound('OR', [TRUE_CLEAN, NO_DATUM]), deps('v1'));
+    expect(r.dataUnavailable).toBe(false);
+  });
+
+  it('is true when an OR has nothing satisfied to settle it', async () => {
+    const r = await evaluateGate(compound('OR', [FALSE_CLEAN, NO_DATUM]), deps('v1'));
+    expect(r.dataUnavailable).toBe(true);
+  });
+
+  // An unavailable condition is not a false one, so it must not dominate an
+  // AND — reading `satisfied: false` as a real negative is the conflation this
+  // whole signal exists to remove.
+  it('does not let an unavailable condition settle the AND for indeterminate', async () => {
+    const r = await evaluateGate(compound('AND', [NO_DATUM, INDET]), deps('v1'));
+    expect(r.dataUnavailable).toBe(true);
+    expect(r.indeterminate).toBe(true);
+  });
+
+  it('stays absent on legacy-v0, like the other kernel signals', async () => {
+    const r = await evaluateGate(compound('AND', [TRUE_CLEAN, NO_DATUM]), deps('legacy-v0'));
+    expect(r.dataUnavailable).toBeUndefined();
+    expect(r.indeterminate).toBeUndefined();
+  });
+});
+
+/**
+ * Which condition could not be answered.
+ *
+ * The prompt used to ask for the first ASKABLE condition, which on a compound
+ * can be one the engine already has a value for. The provider answers it, the
+ * condition that actually blocked the decision is still blocked, and the gate
+ * pends again — however many times they answer.
+ */
+describe('compound unresolvedConditions', () => {
+  it('names the condition that could not be answered, not the first one', async () => {
+    const r = await evaluateGate(compound('AND', [TRUE_CLEAN, NO_DATUM]), deps('v1'));
+    expect(r.unresolvedConditions).toEqual([NO_DATUM]);
+  });
+
+  it('names every unresolved condition when several are', async () => {
+    const r = await evaluateGate(compound('AND', [NO_DATUM, INDET]), deps('v1'));
+    expect(r.unresolvedConditions).toHaveLength(2);
+  });
+
+  it('names nothing when the compound decided', async () => {
+    const r = await evaluateGate(compound('AND', [TRUE_CLEAN, TRUE_CLEAN_2]), deps('v1'));
+    expect(r.unresolvedConditions).toBeUndefined();
+  });
+
+  // Nothing to ask for: a settled compound must not prompt.
+  it('names nothing when a definite false settles the AND', async () => {
+    const r = await evaluateGate(compound('AND', [FALSE_CLEAN, NO_DATUM]), deps('v1'));
+    expect(r.unresolvedConditions).toBeUndefined();
   });
 });

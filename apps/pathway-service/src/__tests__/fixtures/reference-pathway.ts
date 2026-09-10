@@ -32,7 +32,10 @@ export const REFERENCE_PATHWAY: PathwayJson = {
     { id: 'step-2-1', type: 'Step', properties: { stage_number: 2, step_number: 1, display_number: '2.1', title: 'Assess TOLAC Candidacy', description: 'Evaluate trial of labor after cesarean eligibility' } },
 
     // Decision Point: TOLAC vs Repeat Cesarean
-    { id: 'dp-1', type: 'DecisionPoint', properties: { title: 'Delivery Method Decision', auto_resolve_eligible: true } },
+    // branch_mode is REQUIRED from plan 05 on. one_of because a delivery
+    // method decision is exclusive — the patient takes one of these branches,
+    // not several.
+    { id: 'dp-1', type: 'DecisionPoint', properties: { title: 'Delivery Method Decision', auto_resolve_eligible: true, branch_mode: 'one_of' } },
     { id: 'crit-1', type: 'Criterion', properties: { description: 'Single prior low-transverse cesarean', code_system: 'ICD-10', code_value: 'O34.211', base_rate: 0.006, is_critical: true } },
     { id: 'crit-2', type: 'Criterion', properties: { description: 'Prior classical or T-incision', code_system: 'ICD-10', code_value: 'O34.29', base_rate: 0.04, is_critical: true } },
 

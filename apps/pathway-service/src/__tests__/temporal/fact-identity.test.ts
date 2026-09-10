@@ -13,7 +13,7 @@ import type { PatientContext } from '../../services/confidence/types';
 
 const AS_OF = '2026-06-01T12:00:00.000Z';
 const ctx = (): EvaluationTemporalContext =>
-  makeEvaluationTemporalContext({ evaluationAsOf: AS_OF });
+  makeEvaluationTemporalContext({ evaluationAsOf: AS_OF, temporalPolicyVersion: 'legacy-v0' });
 
 const synthetic = (over: Partial<SyntheticPatientContext> = {}): ResolutionInput => ({
   mode: 'SYNTHETIC',

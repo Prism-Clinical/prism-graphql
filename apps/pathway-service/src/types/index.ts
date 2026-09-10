@@ -159,6 +159,12 @@ export enum BlockerType {
   UNRESOLVED_RED_FLAG = 'UNRESOLVED_RED_FLAG',
   CONTRADICTION = 'CONTRADICTION',
   PENDING_GATE = 'PENDING_GATE',
+  /**
+   * A node was never resolved to a verdict — TIMEOUT, CASCADE_LIMIT or
+   * UNKNOWN. Distinct from PENDING_GATE, which is waiting on a person;
+   * nothing anyone answers clears this, only re-resolving does.
+   */
+  INCOMPLETE_RESOLUTION = 'INCOMPLETE_RESOLUTION',
 }
 
 export enum GateType {

@@ -18,7 +18,13 @@ type Entry = readonly [string, unknown];
 function gate(
   id: string,
   status: NodeStatus,
-  overrides: { gate_type?: string; title?: string; reason?: string } = {},
+  overrides: {
+    gate_type?: string;
+    title?: string;
+    reason?: string;
+    indeterminate?: boolean;
+    dataUnavailable?: boolean;
+  } = {},
 ): Entry {
   return [
     id,
@@ -31,6 +37,8 @@ function gate(
       confidenceBreakdown: [],
       depth: 1,
       excludeReason: overrides.reason,
+      indeterminate: overrides.indeterminate,
+      dataUnavailable: overrides.dataUnavailable,
       properties: { gate_type: overrides.gate_type ?? 'patient_attribute' },
     },
   ];
@@ -162,5 +170,53 @@ describe('data-gap hints in projectResolutionToCarePlan', () => {
     );
     const plan = projectResolutionToCarePlan(s, META);
     expect(plan.dataGapHints[0].fieldsRead).toEqual([]);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────
+
+describe('data-gap hints separate real gaps from real answers', () => {
+  // "Add this data → unlocks N recommendations" is only honest for a gate that
+  // LACKED data. A gate the patient definitely failed is an answer, not a gap,
+  // and prompting for more data there sends a clinician after something that
+  // would not change the plan.
+  it('flags which gaps are missing data, unorderable data, or neither', () => {
+    const s = state(
+      gate('gate-missing', NodeStatus.GATED_OUT, {
+        title: 'Ferritin low?',
+        reason: 'No numeric value found for labs:2276-4',
+        indeterminate: false,
+        dataUnavailable: true,
+      }),
+      action('med-iron', 'Medication', NodeStatus.GATED_OUT, 'gate-missing', 'Ferrous sulfate'),
+      gate('gate-ambiguous', NodeStatus.GATED_OUT, {
+        title: 'Anemic?',
+        reason: 'Indeterminate numeric value for labs:718-7',
+        indeterminate: true,
+        dataUnavailable: false,
+      }),
+      action('lab-cbc', 'LabTest', NodeStatus.GATED_OUT, 'gate-ambiguous', 'CBC'),
+      gate('gate-failed', NodeStatus.GATED_OUT, {
+        title: 'Severe?',
+        reason: 'labs value 10 not < 7',
+        indeterminate: false,
+        dataUnavailable: false,
+      }),
+      action('med-iv', 'Medication', NodeStatus.GATED_OUT, 'gate-failed', 'IV iron'),
+    );
+
+    const plan = projectResolutionToCarePlan(s, META, [], createEmptyDependencyMap());
+    const byId = (id: string) => plan.dataGapHints.find((h) => h.gateNodeId === id)!;
+
+    expect(byId('gate-missing').dataUnavailable).toBe(true);
+    expect(byId('gate-missing').indeterminate).toBe(false);
+
+    expect(byId('gate-ambiguous').indeterminate).toBe(true);
+    expect(byId('gate-ambiguous').dataUnavailable).toBe(false);
+
+    // Still emitted — the provider may want to know why a path was blocked —
+    // but flagged as neither kind of gap.
+    expect(byId('gate-failed').indeterminate).toBe(false);
+    expect(byId('gate-failed').dataUnavailable).toBe(false);
   });
 });

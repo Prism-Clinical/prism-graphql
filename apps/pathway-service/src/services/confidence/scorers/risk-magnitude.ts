@@ -35,7 +35,18 @@ export class RiskMagnitudeScorer implements SignalScorer {
   readonly scoringType = ScoringType.RISK_INVERSE;
 
   declareRequiredInputs(node: GraphNode, _signalConfig: SignalDefinition): RequiredInput[] {
-    if (node.nodeType === 'Criterion' || node.nodeType === 'Medication' || node.nodeType === 'Procedure') {
+    if (node.nodeType === 'Medication') {
+      return [
+        { name: 'risk_value', source: 'graph_node', required: false },
+        // `score` falls back to matching this medication against the patient's
+        // allergies, so a new allergy CHANGES this node's score. Declaring only
+        // the graph-local risk_value meant an added allergy re-scored nothing —
+        // the declaration has to match what the scorer actually reads, not just
+        // what it primarily uses.
+        { name: 'allergies_checked', source: 'patient_context', required: false },
+      ];
+    }
+    if (node.nodeType === 'Criterion' || node.nodeType === 'Procedure') {
       return [
         { name: 'risk_value', source: 'graph_node', required: false },
       ];

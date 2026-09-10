@@ -346,6 +346,10 @@ export function makeTraversalAdapter(
         pool,
         pathwayId,
         nodes: [node as GraphNode],
+        // The whole pathway as CONTEXT. Scoring one node at a time meant a
+        // node's linked CodeEntry children could never be resolved, so every
+        // coded medication, lab and procedure scored as if it had no codes.
+        contextNodes: ctx.graphContext.allNodes,
         edges: ctx.edges,
         signalDefinitions: ctx.signals,
         patientContext,
@@ -377,6 +381,7 @@ export function makeRetraversalAdapter(
         pool,
         pathwayId,
         nodes: [graphNode],
+        contextNodes: ctx.graphContext.allNodes,
         edges: ctx.edges,
         signalDefinitions: ctx.signals,
         patientContext,

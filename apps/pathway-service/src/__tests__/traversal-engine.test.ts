@@ -47,7 +47,7 @@ function createEngine(): TraversalEngine {
   return new TraversalEngine(
     mockConfidenceEngine,
     mockThresholds,
-    makeEvaluationTemporalContext({ evaluationAsOf: '2026-07-30T12:00:00.000Z' }),
+    makeEvaluationTemporalContext({ evaluationAsOf: '2026-07-30T12:00:00.000Z', temporalPolicyVersion: 'legacy-v0' }),
     {},
     // `factStore` is a required constructor argument from plan 04 Task 9 on.
     // Empty here: these are `legacy-v0` traversals, which never read it.

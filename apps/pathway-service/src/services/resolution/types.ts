@@ -50,6 +50,32 @@ export interface NodeResult {
   confidence: number;
   confidenceBreakdown: SignalBreakdown[];
   excludeReason?: string;
+  /**
+   * True when the gate could not reach a definite answer — the datum was
+   * absent, undated where a horizon required a date, or otherwise unorderable.
+   * Distinct from a condition that evaluated definitely false.
+   *
+   * A REASON channel, not an outcome channel: `status` still says what the
+   * traversal did with the gate. Collapsing the two would make "pending
+   * because nobody answered" and "pending because the chart is silent" the
+   * same value again, which is the bug this field exists to fix.
+   *
+   * Only the `kernel` evaluation mode (`v1`) computes this; under `legacy-v0`
+   * it is always undefined.
+   */
+  indeterminate?: boolean;
+  /** Human-readable why, when `indeterminate` is true. */
+  uncertaintyReason?: string;
+  /**
+   * A scalar comparison on this gate had no usable value to read. The OTHER
+   * half of "the gate did not answer", and in practice the common half:
+   * `indeterminate` needs conflicting facts, this needs none at all.
+   *
+   * Kept separate from `indeterminate` rather than merged into one "unresolved"
+   * flag because the two want different prompts — "which of these results
+   * applies?" versus "what is this patient's haemoglobin?".
+   */
+  dataUnavailable?: boolean;
   providerOverride?: ProviderOverride;
   parentNodeId?: string;
   depth: number;
@@ -187,6 +213,21 @@ export interface GateProperties {
   title: string;
   gate_type: GateType;
   default_behavior: DefaultBehavior;
+  /**
+   * What to do when the gate CANNOT ANSWER — `indeterminate` (candidate facts
+   * exist but cannot be ordered) or `dataUnavailable` (a scalar comparison had
+   * no usable value). Absent means `'ask'`.
+   *
+   *   `'ask'`     — surface a pending question for the datum and hold the
+   *                 subtree, exactly as an unanswered question gate does.
+   *   `'default'` — apply `default_behavior`, which is what every gate did
+   *                 before this existed.
+   *
+   * A gate that ANSWERED never consults this, including one that answered
+   * "no". Only genuine inability to decide does — that distinction is the
+   * whole point, and `default_behavior` is not a substitute for it.
+   */
+  on_unresolved?: 'ask' | 'default';
   condition?: GateCondition;
   prompt?: string;
   answer_type?: AnswerType;
@@ -260,6 +301,27 @@ export interface GateEvaluationResult {
    * a `true`/`false` dominating the logic does not make the doubt untrue.
    */
   uncertainty?: UncertaintyReason[];
+  /**
+   * A **scalar** comparison had no usable value — no candidate fact, or
+   * candidates that all failed selection. Distinct from `indeterminate`, which
+   * means candidates exist but cannot be ordered.
+   *
+   * Scalar only: a membership gate finding no code has ANSWERED (absence of a
+   * problem-list code is evidence of absence), and an aggregate over zero facts
+   * is a genuine count of zero. Only a scalar comparison with nothing to read
+   * has failed to answer rather than answered "no".
+   */
+  dataUnavailable?: boolean;
+  /**
+   * On a compound gate, the conditions that could not be answered — the ones
+   * that made `indeterminate` or `dataUnavailable` true.
+   *
+   * Without this the escalation prompt asked for the FIRST askable condition,
+   * which can be one the engine already has a value for. The provider answers,
+   * the genuinely unresolved condition is still unresolved, and the gate pends
+   * again — indefinitely.
+   */
+  unresolvedConditions?: GateCondition[];
 }
 
 // ─── Pending Questions ──────────────────────────────────────────────
@@ -269,6 +331,15 @@ export interface PendingQuestion {
   prompt: string;
   answerType: AnswerType;
   options?: string[];
+  /**
+   * Display text for `options`, index-aligned, when the option VALUES are not
+   * themselves readable. A branch choice answers with a node id — `step-2-1` —
+   * and no clinician can pick between those, but the client has no way to
+   * resolve a title from an id on its own.
+   *
+   * Absent for a question gate, whose options are the author's own words.
+   */
+  optionLabels?: string[];
   affectedSubtreeSize: number;
   estimatedImpact: string;
 
@@ -281,6 +352,35 @@ export interface PendingQuestion {
   tentativeConfidence?: number;
   /** LLM reasoning shown to the provider so they can decide whether to override. */
   tentativeReasoning?: string;
+
+  // ─── Escalated-datum metadata ─────────────────────────────────────
+  /**
+   * Set when this question was raised because a gate could not DECIDE, rather
+   * than because a provider was asked something. It identifies the DATUM
+   * requested, so several gates reading it produce one question.
+   *
+   * Its presence is also what tells the answer path that the reply is a fact
+   * to inject, not a verdict to record.
+   */
+  datumKey?: string;
+  /**
+   * Every gate this pass saw asking for this datum.
+   *
+   * A shared datum prompt is deduped — two gates needing one haemoglobin ask
+   * ONCE — and the dedup used to discard the second gate's claim on it
+   * entirely. So when the first gate resolved, the prompt was dropped while
+   * the second still needed it, and the session pended with no question able
+   * to clear it. Reconciliation keeps the prompt while any owner is still
+   * PENDING_QUESTION, which it reads from the resolution state rather than
+   * from this list — the list says who MIGHT need it, the state says who
+   * still does.
+   */
+  askedByNodeIds?: string[];
+  /** Where an answer to this question gets injected as a fact. */
+  askTarget?:
+    | { kind: 'lab'; code: string; system: string }
+    | { kind: 'vital'; path: string }
+    | { kind: 'attribute'; path: string };
 }
 
 // ─── Red Flags ──────────────────────────────────────────────────────
@@ -292,7 +392,25 @@ export interface RedFlagBranch {
   topExcludeReason: string;
 }
 
-export type RedFlagType = 'all_branches_excluded' | 'contradiction' | 'missing_critical_data';
+export type RedFlagType =
+  | 'all_branches_excluded'
+  | 'contradiction'
+  | 'missing_critical_data'
+  /**
+   * An `all_of` DecisionPoint mandates every branch, but the patient data does
+   * not support one of them. The branch is still traversed — the author said
+   * it happens — so this reports the disagreement rather than resolving it by
+   * dropping a step the pathway requires.
+   */
+  | 'all_of_branch_unsupported'
+  /**
+   * A gate has several branches but the engine could derive no decision value
+   * to route on. Import validation refuses this, so it means a graph stored
+   * before that rule. Reported rather than resolved: taking every branch would
+   * emit mutually exclusive treatments together, and taking none silently
+   * would look like the pathway simply had nothing to say.
+   */
+  | 'unroutable_decision';
 
 export interface RedFlag {
   nodeId: string;

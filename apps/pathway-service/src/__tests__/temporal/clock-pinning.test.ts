@@ -71,7 +71,7 @@ async function traverseAtSystemTime(systemTime: string): Promise<NodeStatus | un
     const engine = new TraversalEngine(
       mockConfidenceEngine as never,
       thresholds,
-      makeEvaluationTemporalContext({ evaluationAsOf: PINNED }),
+      makeEvaluationTemporalContext({ evaluationAsOf: PINNED, temporalPolicyVersion: 'legacy-v0' }),
       {},
       // Required from plan 04 Task 9 on; empty because this is `legacy-v0`.
       [],

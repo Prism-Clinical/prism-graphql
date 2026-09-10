@@ -47,7 +47,7 @@ function createEngine(): TraversalEngine {
   return new TraversalEngine(
     mockConfidenceEngine,
     mockThresholds,
-    makeEvaluationTemporalContext({ evaluationAsOf: PINNED_AS_OF }),
+    makeEvaluationTemporalContext({ evaluationAsOf: PINNED_AS_OF, temporalPolicyVersion: 'legacy-v0' }),
     {},
     // Required from plan 04 Task 9 on; empty because this is `legacy-v0`.
     [],

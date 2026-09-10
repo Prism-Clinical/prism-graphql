@@ -484,6 +484,25 @@ export interface ConditionOutcome {
    * evidence; both facts are true and plan 08 has to show the second.
    */
   uncertainty?: UncertaintyReason[];
+  /**
+   * A **scalar** comparison had no usable value: either no candidate fact at
+   * all, or candidates that all failed selection. Distinct from
+   * `indeterminate`, which means candidates exist but cannot be ordered.
+   *
+   * SCALAR ONLY, and that restriction is the clinical point. For a membership
+   * operator, no match is real evidence — no diabetes code on the problem list
+   * really does mean no diabetes — so a membership gate finding nothing has
+   * ANSWERED and must not prompt anyone. Aggregates are excluded for the same
+   * reason: `count_in_window` over zero facts is a genuine count of zero. But
+   * "no haemoglobin on file" is not "haemoglobin is not below 11".
+   *
+   * This is the signal an escalate-when-unresolved rule needs. Keying such a
+   * rule on `indeterminate` alone would never fire for a missing measurement,
+   * which is the common case and the one silent defaults are complained about.
+   *
+   * Like the two keys above, absent on the `legacy-v0` path.
+   */
+  dataUnavailable?: boolean;
 }
 
 export type ConditionEvaluator = (
@@ -684,6 +703,15 @@ function evaluateScalarKernel(
       fieldsRead,
       indeterminate: false,
       uncertainty,
+      // The distinction this branch's own comment above asked for: an outcome
+      // saying only `satisfied: false` cannot be told apart later from a real
+      // negative. A scalar comparison that produced no value has not answered
+      // "no" — it has failed to answer, and that is what makes it askable.
+      //
+      // Covers zero candidates AND candidates that all failed selection: a
+      // provider being asked for a value has to supply one either way, whether
+      // the lab was never drawn or the only result was out of window.
+      dataUnavailable: true,
     };
   }
 
@@ -1006,6 +1034,17 @@ function evaluateAttributeKernel(
     // Derived, never hard-coded: a READY or NO_MATCH selection is by definition
     // a decision the kernel was able to make.
     indeterminate: false,
+    // The same signal the CODED scalar evaluator reports, on the same terms.
+    //
+    // Without it, `lab.hemoglobin < 7` with no result on file GATED OUT in
+    // silence while the coded spelling of the identical question escalated and
+    // asked. Whether a provider is asked for a missing haemoglobin should not
+    // depend on which notation the author happened to use.
+    //
+    // SCALAR only, as there: a membership attribute finding no match has
+    // ANSWERED — no penicillin allergy on file really does mean no allergy —
+    // and an aggregate over zero facts is a genuine count of zero.
+    ...(klass === 'scalar' && value === undefined ? { dataUnavailable: true } : {}),
     uncertainty,
   };
 }
@@ -1181,6 +1220,7 @@ function evaluatePatientAttribute(
   // its boundary; widening it needs the truth table, which is Task 8.
   if (result.indeterminate !== undefined) out.indeterminate = result.indeterminate;
   if (result.uncertainty !== undefined) out.uncertainty = result.uncertainty;
+  if (result.dataUnavailable !== undefined) out.dataUnavailable = result.dataUnavailable;
   return out;
 }
 
@@ -1316,15 +1356,42 @@ function evaluatePriorNodeResult(
  * it is the reason the predicates below are written positively rather than as
  * `!indeterminate` shorthands.
  */
+/** Either way a condition can fail to answer. */
+function conditionUnresolved(r: ConditionOutcome): boolean {
+  return r.indeterminate === true || r.dataUnavailable === true;
+}
+
+/**
+ * Does an unresolved condition actually PREVENT the compound from deciding?
+ *
+ * Only if nothing else settles it. A definitely-false condition settles an
+ * AND and a definitely-true one settles an OR, whatever their siblings did —
+ * so an unanswerable sibling there is irrelevant and must not make the gate
+ * ask for a datum that cannot change the outcome.
+ *
+ * "Definitely" excludes BOTH unresolved signals. An unavailable condition is
+ * not a false one, so it cannot dominate an AND: reading `satisfied: false`
+ * as a real negative is the same conflation that made a missing measurement
+ * indistinguishable from a measured absence.
+ */
+function compoundUnresolved(
+  op: 'AND' | 'OR',
+  results: readonly ConditionOutcome[],
+  flagged: (r: ConditionOutcome) => boolean,
+): boolean {
+  const dominates = (r: ConditionOutcome) =>
+    op === 'AND'
+      ? !r.satisfied && !conditionUnresolved(r)
+      : r.satisfied && !conditionUnresolved(r);
+  if (results.some(dominates)) return false;
+  return results.some(flagged);
+}
+
 function compoundIndeterminate(
   op: 'AND' | 'OR',
   results: readonly ConditionOutcome[],
 ): boolean {
-  const isIndeterminate = (r: ConditionOutcome) => r.indeterminate === true;
-  const dominates = (r: ConditionOutcome) =>
-    op === 'AND' ? !r.satisfied && !isIndeterminate(r) : r.satisfied && !isIndeterminate(r);
-  if (results.some(dominates)) return false;
-  return results.some(isIndeterminate);
+  return compoundUnresolved(op, results, (r) => r.indeterminate === true);
 }
 
 function evaluateCompound(
@@ -1413,6 +1480,29 @@ function evaluateCompound(
   // only on the outcome), so this needs no second source.
   if (results.some((r) => r.uncertainty !== undefined)) {
     out.uncertainty = [...new Set(results.flatMap((r) => r.uncertainty ?? []))];
+  }
+
+  // `dataUnavailable` crosses the boundary too. It did not, so the COMMON case
+  // — one scalar condition of a compound has no measurement on file — reported
+  // nothing and the gate silently took its default. That is precisely the case
+  // escalation exists for: keying it on `indeterminate` alone never fires for a
+  // missing measurement, because `indeterminate` means candidates exist but
+  // cannot be ordered.
+  if (results.some((r) => r.dataUnavailable !== undefined)) {
+    out.dataUnavailable = compoundUnresolved(op, results, (r) => r.dataUnavailable === true);
+  }
+
+  // WHICH conditions could not be answered, so the prompt asks for the datum
+  // that is actually missing. Asking for the first askable condition instead
+  // can re-request a value the engine already has, while the one that blocked
+  // the decision stays unasked — and the gate never resolves however many
+  // times the provider answers.
+  //
+  // Index-aligned with `gate.conditions` by construction: `results` is pushed
+  // one per condition, in order, in the loop above.
+  if (out.indeterminate === true || out.dataUnavailable === true) {
+    const unresolved = gate.conditions.filter((_, i) => conditionUnresolved(results[i]));
+    if (unresolved.length > 0) out.unresolvedConditions = unresolved;
   }
   return out;
 }

@@ -179,6 +179,23 @@ export interface DataGapHint {
   reason?: string;
   /** Patient-context field paths the gate would have read. */
   fieldsRead: string[];
+  /**
+   * True when candidate facts existed but could not be ordered or trusted, so
+   * the gate refused to decide. Distinct from `dataUnavailable`.
+   */
+  indeterminate?: boolean;
+  /** Why it could not decide, when `indeterminate` is true. */
+  uncertaintyReason?: string;
+  /**
+   * True when a scalar comparison had no usable value at all. The common half
+   * of "the gate did not answer" — and the only half that is honestly an "add
+   * this data" prompt.
+   *
+   * Neither flag set on a non-firing gate means the gate ANSWERED "no". That
+   * is not a gap, and rendering it as one tells a clinician to go find data
+   * that would not change anything.
+   */
+  dataUnavailable?: boolean;
   /** Action-node recommendations downstream of this gate. */
   unlockedRecommendations: UnlockedRecommendation[];
 }
@@ -219,6 +236,23 @@ export interface GateEvidence {
    * which signals drove the gate.
    */
   fieldsRead: string[];
+  /**
+   * True when candidate facts existed but could not be ordered or trusted, so
+   * the gate refused to decide. Distinct from `dataUnavailable`.
+   */
+  indeterminate?: boolean;
+  /** Why it could not decide, when `indeterminate` is true. */
+  uncertaintyReason?: string;
+  /**
+   * True when a scalar comparison had no usable value at all. The common half
+   * of "the gate did not answer" — and the only half that is honestly an "add
+   * this data" prompt.
+   *
+   * Neither flag set on a non-firing gate means the gate ANSWERED "no". That
+   * is not a gap, and rendering it as one tells a clinician to go find data
+   * that would not change anything.
+   */
+  dataUnavailable?: boolean;
 }
 
 /** REQUIRES backtracking — see services/resolution/prerequisites.ts. */

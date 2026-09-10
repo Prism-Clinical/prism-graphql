@@ -25,7 +25,7 @@ const NOW = Date.parse(AS_OF);
  */
 function deps(patientContext: PatientContext): GateEvaluationDeps {
   return {
-    temporalContext: makeEvaluationTemporalContext({ evaluationAsOf: AS_OF }),
+    temporalContext: makeEvaluationTemporalContext({ evaluationAsOf: AS_OF, temporalPolicyVersion: 'legacy-v0' }),
     pathwayDefaults: {},
     factStore: [],
     // Required from review finding 3 on (R11-4). Empty: these gates evaluate no

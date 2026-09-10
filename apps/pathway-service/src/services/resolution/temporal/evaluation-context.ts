@@ -213,10 +213,17 @@ export function resolveHorizon(h: Horizon, ctx: EvaluationTemporalContext): Reso
 // ─── Context construction — the ONLY wall-clock read ──────────────────
 
 /**
- * Baseline policy version: reproduces today's effective semantics (§5).
- * Plan 03 introduces the registry and makes an unknown version a hard error.
+ * Default policy version. `v1` is the kernel path: it is the only mode that
+ * computes `indeterminate` / `uncertainty`, which the escalation semantics in
+ * the decision-semantics work are built on. Under `legacy-v0` those fields are
+ * never set, so everything downstream of them is inert.
+ *
+ * `legacy-v0` remains in the registry as a differential-test fixture and is
+ * still pinnable per deployment via TEMPORAL_POLICY_VERSION, or per call via
+ * `TemporalContextInput.temporalPolicyVersion`. Suites asserting pre-kernel
+ * behaviour pin it explicitly rather than inheriting it from here.
  */
-export const DEFAULT_TEMPORAL_POLICY_VERSION = 'legacy-v0';
+export const DEFAULT_TEMPORAL_POLICY_VERSION = 'v1';
 
 export interface TemporalContextInput {
   evaluationAsOf?: string;

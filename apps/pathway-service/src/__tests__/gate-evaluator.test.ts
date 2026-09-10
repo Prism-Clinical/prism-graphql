@@ -43,7 +43,7 @@ const AS_OF = '2026-06-27T00:00:00.000Z';
 
 function deps(overrides: Partial<GateEvaluationDeps> = {}): GateEvaluationDeps {
   return {
-    temporalContext: makeEvaluationTemporalContext({ evaluationAsOf: AS_OF }),
+    temporalContext: makeEvaluationTemporalContext({ evaluationAsOf: AS_OF, temporalPolicyVersion: 'legacy-v0' }),
     pathwayDefaults: {},
     factStore: [],
     // Required from review finding 3 on (R11-4). Empty: these gates evaluate no

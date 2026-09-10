@@ -1,0 +1,329 @@
+/**
+ * Answering a gate through GraphQL, not just through the engine.
+ *
+ * The engine routes `{ equals: false }` correctly. The RESOLVER decided
+ * whether to call it with `booleanValue === true || selectedOption != null ||
+ * numericValue != null`, so a "no" answer never reached it: it took a
+ * hand-rolled path that marked the whole subtree GATED_OUT, routed nothing,
+ * reconciled no findings and re-ran no DDI.
+ *
+ * The engine-level tests could not see this, because they call the engine.
+ * These go through the mutation.
+ */
+
+jest.mock('../resolvers/Query', () => ({
+  PATHWAY_COLUMNS: 'id, version, status',
+  formatSessionForGraphQL: (s: unknown) => s,
+  hydrateSignalDefinition: (row: unknown) => row,
+}));
+
+jest.mock('../services/resolution/session-store', () => ({
+  createSession: jest.fn().mockResolvedValue('session-1'),
+  getSession: jest.fn(),
+  updateSession: jest.fn().mockResolvedValue(undefined),
+  logEvent: jest.fn().mockResolvedValue(undefined),
+  logNodeOverride: jest.fn().mockResolvedValue(undefined),
+  logGateAnswer: jest.fn().mockResolvedValue(undefined),
+  getMatchedPathways: jest.fn().mockResolvedValue([]),
+}));
+
+jest.mock('../services/medications/ddi-pass-single-pathway', () => ({
+  applyDdiToResolutionState: jest.fn().mockResolvedValue({ findings: [] }),
+}));
+
+const mockBuild = jest.fn();
+const scores: Record<string, number> = {};
+jest.mock('../resolvers/helpers/resolution-context', () => ({
+  ...jest.requireActual('../resolvers/helpers/resolution-context'),
+  buildResolutionContext: (...a: unknown[]) => mockBuild(...a),
+  makeTraversalAdapter: jest.fn(() => ({
+    computeNodeConfidence: jest.fn(async (n: { nodeIdentifier: string }) => ({
+      nodeIdentifier: n.nodeIdentifier,
+      nodeType: 'Step',
+      confidence: scores[n.nodeIdentifier] ?? 0.9,
+      breakdown: [],
+      propagationInfluences: [],
+      resolutionType: 'AUTO_RESOLVED',
+    })),
+  })),
+  makeLlmGateEvaluator: jest.fn(() => null),
+}));
+
+import { createSession, getSession } from '../services/resolution/session-store';
+import { resolutionMutations } from '../resolvers/mutations/resolution';
+import { makeGraphContext } from './fixtures/reference-patient-context';
+import { NodeStatus, SessionStatus } from '../services/resolution/types';
+import type { NodeResult, PendingQuestion } from '../services/resolution/types';
+import type { GraphEdge, GraphNode } from '../services/confidence/types';
+
+const mockedCreateSession = createSession as jest.MockedFunction<typeof createSession>;
+const mockedGetSession = getSession as jest.MockedFunction<typeof getSession>;
+
+const PINNED = '2026-08-31T12:00:00.000Z';
+
+function node(id: string, nodeType: string, properties: Record<string, unknown> = {}): GraphNode {
+  return { id, nodeIdentifier: id, nodeType, properties: { title: id, ...properties } } as GraphNode;
+}
+function edge(sourceId: string, targetId: string, edgeType = 'HAS_CHILD'): GraphEdge {
+  return { id: `${sourceId}->${targetId}`, edgeType, sourceId, targetId, properties: {} } as GraphEdge;
+}
+
+const NODES = [
+  node('root', 'Pathway'),
+  node('gate-b', 'Gate', {
+    title: 'Symptomatic?', gate_type: 'question',
+    default_behavior: 'skip', answer_type: 'boolean',
+  }),
+  node('step-yes', 'Step', { title: 'Treat' }),
+  node('step-no', 'Step', { title: 'Reassure' }),
+];
+const EDGES = [
+  edge('root', 'gate-b', 'HAS_GATE'),
+  { ...edge('gate-b', 'step-yes', 'BRANCHES_TO'), properties: { when: { equals: true } } },
+  { ...edge('gate-b', 'step-no', 'BRANCHES_TO'), properties: { when: { equals: false } } },
+];
+
+function rctx() {
+  return {
+    graphContext: makeGraphContext(NODES, EDGES),
+    edges: EDGES,
+    signals: [],
+    thresholds: { autoResolveThreshold: 0.85, suggestThreshold: 0.6 },
+    confidenceEngine: {},
+    codeMap: new Map(),
+    temporalDefaults: {},
+  };
+}
+
+const poolStub = {
+  query: jest.fn().mockResolvedValue({ rows: [{ id: 'pw-1', version: 1, status: 'ACTIVE' }] }),
+};
+const ctx = () => ({ pool: poolStub, redis: {}, userId: 'u-1', userRole: 'ADMIN' }) as never;
+
+/** Start a session where BOTH branches qualify, so the fork pends. */
+async function startAmbiguous() {
+  mockBuild.mockResolvedValue(rctx());
+  await resolutionMutations.startResolution(
+    null as never,
+    {
+      pathwayId: 'pw-1', patientId: 'pt-1', resolutionMode: 'SYNTHETIC',
+      evaluationAsOf: PINNED,
+      patientContext: {
+        patientId: 'pt-1', conditionCodes: [], medications: [], allergies: [], labResults: [],
+      },
+    } as never,
+    ctx(),
+  );
+  return mockedCreateSession.mock.calls[0][1] as unknown as {
+    resolutionState: Map<string, NodeResult>;
+    dependencyMap: unknown;
+    pendingQuestions: PendingQuestion[];
+    initialPatientContext: unknown;
+    temporalContext: unknown;
+  };
+}
+
+function sessionFrom(created: Awaited<ReturnType<typeof startAmbiguous>>) {
+  return {
+    id: 'session-1', pathwayId: 'pw-1', pathwayVersion: '1',
+    patientId: 'pt-1', providerId: 'u-1', status: SessionStatus.ACTIVE,
+    resolutionState: created.resolutionState,
+    dependencyMap: created.dependencyMap,
+    initialPatientContext: created.initialPatientContext,
+    additionalContext: {},
+    pendingQuestions: created.pendingQuestions,
+    redFlags: [], resolutionEvents: [],
+    gateAnswers: new Map(),
+    totalNodesEvaluated: created.resolutionState.size,
+    traversalDurationMs: 1, ddiWarnings: [],
+    temporalContext: created.temporalContext,
+    createdAt: new Date(), updatedAt: new Date(),
+  } as never;
+}
+
+
+
+import { NodeStatus as NS } from '../services/resolution/types';
+import { applyDdiToResolutionState } from '../services/medications/ddi-pass-single-pathway';
+import { updateSession } from '../services/resolution/session-store';
+
+const mockedDdi = applyDdiToResolutionState as jest.MockedFunction<
+  typeof applyDdiToResolutionState
+>;
+const mockedUpdate = updateSession as jest.MockedFunction<typeof updateSession>;
+
+beforeEach(() => {
+  jest.clearAllMocks();
+  for (const k of Object.keys(scores)) delete scores[k];
+  poolStub.query.mockResolvedValue({ rows: [{ id: 'pw-1', version: 1, status: 'ACTIVE' }] });
+  mockedCreateSession.mockResolvedValue('session-1');
+  mockedGetSession.mockResolvedValue({ id: 'session-1' } as never);
+  mockedDdi.mockResolvedValue({ findings: [], suppressedNodeCount: 0 } as never);
+});
+
+async function start() {
+  mockBuild.mockResolvedValue(rctx());
+  await resolutionMutations.startResolution(
+    null as never,
+    {
+      pathwayId: 'pw-1', patientId: 'pt-1', resolutionMode: 'SYNTHETIC',
+      evaluationAsOf: PINNED,
+      patientContext: {
+        patientId: 'pt-1', conditionCodes: [], medications: [], allergies: [], labResults: [],
+      },
+    } as never,
+    ctx(),
+  );
+  return mockedCreateSession.mock.calls[0][1] as never as {
+    resolutionState: Map<string, NodeResult>;
+    dependencyMap: unknown;
+    pendingQuestions: PendingQuestion[];
+    initialPatientContext: unknown;
+    temporalContext: unknown;
+  };
+}
+
+async function answer(created: Awaited<ReturnType<typeof start>>, booleanValue: boolean) {
+  mockedGetSession.mockResolvedValue(sessionFrom(created));
+  await resolutionMutations.answerPendingDecision(
+    null as never,
+    { sessionId: 'session-1', nodeId: 'gate-b', answer: { booleanValue } } as never,
+    ctx(),
+  );
+  return created.resolutionState;
+}
+
+describe('answering a boolean gate through the mutation', () => {
+  it('routes true to the true branch', async () => {
+    const state = await answer(await start(), true);
+    expect(state.get('step-yes')!.status).toBe(NS.INCLUDED);
+    expect(state.get('step-no')!.status).not.toBe(NS.INCLUDED);
+  });
+
+  /**
+   * The P0. Asserting the POSITIVE — step-no INCLUDED — because that is the
+   * only thing the old resolver cannot produce: it marked the whole subtree
+   * GATED_OUT without ever calling the engine.
+   */
+  it('routes false to the false branch', async () => {
+    const state = await answer(await start(), false);
+    expect(state.get('step-no')!.status).toBe(NS.INCLUDED);
+    expect(state.get('step-yes')!.status).not.toBe(NS.INCLUDED);
+  });
+
+  it('re-runs DDI for a false answer, not only a true one', async () => {
+    const created = await start();
+    mockedDdi.mockClear();
+    await answer(created, false);
+    expect(mockedDdi).toHaveBeenCalled();
+  });
+
+  it('clears the answered question for a false answer', async () => {
+    const created = await start();
+    await answer(created, false);
+    const saved = mockedUpdate.mock.calls.at(-1)![2] as { pendingQuestions?: PendingQuestion[] };
+    expect((saved.pendingQuestions ?? []).map(q => q.gateId)).not.toContain('gate-b');
+  });
+});
+
+/**
+ * The mutation REJECTS an answer that does not fit its gate.
+ *
+ * `answer-validation.test.ts` proves the rule; this proves it is wired. The
+ * unit test passes whether or not the resolver calls it, which is exactly the
+ * gap that let the boolean-false P0 survive an engine-level fix.
+ */
+describe('the mutation validates the answer against the gate', () => {
+  const send = async (answer: Record<string, unknown>) => {
+    const created = await start();
+    mockedGetSession.mockResolvedValue(sessionFrom(created));
+    return resolutionMutations.answerPendingDecision(
+      null as never,
+      { sessionId: 'session-1', nodeId: 'gate-b', answer } as never,
+      ctx(),
+    );
+  };
+
+  it('rejects a quoted "true" sent to a boolean gate', async () => {
+    await expect(send({ selectedOption: 'true' })).rejects.toThrow(/booleanValue/);
+  });
+
+  it('rejects an answer carrying no value', async () => {
+    await expect(send({})).rejects.toThrow(/no value/i);
+  });
+
+  it('rejects an answer carrying several values', async () => {
+    await expect(send({ booleanValue: true, numericValue: 1 })).rejects.toThrow(/exactly one/i);
+  });
+
+  it('still accepts a well-formed answer', async () => {
+    await expect(send({ booleanValue: true })).resolves.toBeDefined();
+  });
+});
+
+/**
+ * A session's persisted status is DERIVED from its state, not latched.
+ *
+ * The mutations set DEGRADED when their own traversal timed out and nothing
+ * ever set it back, so a session that timed out once and was then fully
+ * repaired stayed DEGRADED for ever — and generation blocks a DEGRADED
+ * session unconditionally, leaving it permanently unable to produce a plan
+ * however complete its state had become.
+ */
+describe('answering a gate re-derives the session status', () => {
+  it('writes ACTIVE when the resolved state has no unresolved node', async () => {
+    const created = await start();
+    // Arrive DEGRADED from some earlier timeout.
+    mockedGetSession.mockResolvedValue({
+      ...(sessionFrom(created) as unknown as Record<string, unknown>),
+      status: 'DEGRADED',
+    } as never);
+
+    await resolutionMutations.answerPendingDecision(
+      null as never,
+      { sessionId: 'session-1', nodeId: 'gate-b', answer: { booleanValue: true } } as never,
+      ctx(),
+    );
+
+    const saved = mockedUpdate.mock.calls.at(-1)![2] as { status?: string };
+    expect(saved.status).toBe('ACTIVE');
+  });
+});
+
+/**
+ * The old mutation name still works.
+ *
+ * pathway-service and the dashboard are separate repositories, merged and
+ * restarted separately — and pathway-service restarts FIRST, so the gateway
+ * can recompose against it. Removing `answerGateQuestion` outright made this
+ * deploy a one-way door: between the two restarts, every gate answer in the
+ * running UI would fail GraphQL validation.
+ */
+describe('the deprecated answerGateQuestion alias', () => {
+  it('routes an answer exactly as answerPendingDecision does', async () => {
+    const created = await start();
+    mockedGetSession.mockResolvedValue(sessionFrom(created));
+
+    await resolutionMutations.answerGateQuestion(
+      null as never,
+      { sessionId: 'session-1', gateId: 'gate-b', answer: { booleanValue: false } } as never,
+      ctx(),
+    );
+
+    // Same routing, including the false branch the engine-level fix restored.
+    expect(created.resolutionState.get('step-no')!.status).toBe(NS.INCLUDED);
+    expect(created.resolutionState.get('step-yes')!.status).not.toBe(NS.INCLUDED);
+  });
+
+  it('enforces the same answer validation', async () => {
+    const created = await start();
+    mockedGetSession.mockResolvedValue(sessionFrom(created));
+    await expect(
+      resolutionMutations.answerGateQuestion(
+        null as never,
+        { sessionId: 'session-1', gateId: 'gate-b', answer: { selectedOption: 'true' } } as never,
+        ctx(),
+      ),
+    ).rejects.toThrow(/booleanValue/);
+  });
+});

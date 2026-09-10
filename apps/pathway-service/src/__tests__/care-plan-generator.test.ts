@@ -17,6 +17,53 @@ function makeNode(overrides: Partial<NodeResult> & Pick<NodeResult, 'nodeId' | '
 // ─── Tests ─────────────────────────────────────────────────────────
 
 describe('CarePlanGenerator', () => {
+  /**
+   * A plan must not be built from a resolve that never finished.
+   *
+   * Only PENDING_QUESTION blocked, so a traversal cut short — leaving TIMEOUT,
+   * CASCADE_LIMIT or UNKNOWN nodes — still produced a clinical artefact as long
+   * as SOME other action survived. What those nodes would have recommended is
+   * unknown, and a plan silently missing an arm is indistinguishable from one
+   * that considered and rejected it.
+   */
+  describe('validateForGeneration — unresolved state', () => {
+    const withStatus = (status: NodeStatus) => new Map<string, NodeResult>([
+      ['med-1', makeNode({ nodeId: 'med-1', nodeType: 'Medication', title: 'Med' })],
+      ['step-9', makeNode({ nodeId: 'step-9', nodeType: 'Step', title: 'Unreached', status })],
+    ]);
+
+    it.each([NodeStatus.TIMEOUT, NodeStatus.CASCADE_LIMIT, NodeStatus.UNKNOWN])(
+      'blocks on a %s node',
+      (status) => {
+        const blockers = validateForGeneration(withStatus(status), []);
+        expect(blockers.some(b => b.type === BlockerType.INCOMPLETE_RESOLUTION)).toBe(true);
+      },
+    );
+
+    it('names the node so it can be found', () => {
+      const blockers = validateForGeneration(withStatus(NodeStatus.TIMEOUT), []);
+      const b = blockers.find(x => x.type === BlockerType.INCOMPLETE_RESOLUTION)!;
+      expect(b.relatedNodeIds).toContain('step-9');
+    });
+
+    // A decided exclusion is not an unresolved one — blocking on those would
+    // stop every plan, since most pathways exclude most branches.
+    it.each([NodeStatus.EXCLUDED, NodeStatus.GATED_OUT])(
+      'does NOT block on a %s node',
+      (status) => {
+        const blockers = validateForGeneration(withStatus(status), []);
+        expect(blockers.some(b => b.type === BlockerType.INCOMPLETE_RESOLUTION)).toBe(false);
+      },
+    );
+
+    it('lets a fully resolved plan through', () => {
+      const state = new Map<string, NodeResult>([
+        ['med-1', makeNode({ nodeId: 'med-1', nodeType: 'Medication', title: 'Med' })],
+      ]);
+      expect(validateForGeneration(state, [])).toEqual([]);
+    });
+  });
+
   describe('validateForGeneration', () => {
     it('should block on empty plan (no included action nodes)', () => {
       const state = new Map<string, NodeResult>([

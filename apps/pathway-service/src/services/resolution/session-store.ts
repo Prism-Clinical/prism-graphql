@@ -218,6 +218,12 @@ export async function updateSession(
     additionalContext?: unknown;
     pendingQuestions?: unknown[];
     redFlags?: unknown[];
+    /**
+     * DDI warnings. Writable now that DDI re-runs after every state-changing
+     * resolution — it used to run only at session creation, so there was
+     * nothing to update.
+     */
+    ddiWarnings?: unknown[];
     gateAnswers?: Map<string, GateAnswer>;
     totalNodesEvaluated?: number;
     carePlanId?: string;
@@ -251,6 +257,10 @@ export async function updateSession(
   if (updates.redFlags) {
     sets.push(`red_flags = $${idx++}`);
     values.push(JSON.stringify(updates.redFlags));
+  }
+  if (updates.ddiWarnings) {
+    sets.push(`ddi_warnings = $${idx++}`);
+    values.push(JSON.stringify(updates.ddiWarnings));
   }
   if (updates.gateAnswers) {
     sets.push(`gate_answers = $${idx++}`);

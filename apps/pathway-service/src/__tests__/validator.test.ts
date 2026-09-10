@@ -429,6 +429,127 @@ describe('validatePathwayJson', () => {
       expect(result.errors).toContainEqual(expect.stringContaining('depends_on'));
     });
 
+    it('should reject a DecisionPoint with no branch_mode', () => {
+      const pw = clonePathway();
+      pw.nodes.push({
+        id: 'dp-no-mode',
+        type: 'DecisionPoint' as any,
+        properties: { title: 'Which treatment?' },
+      });
+      pw.edges.push({ from: 'step-1-1', to: 'dp-no-mode', type: 'HAS_DECISION_POINT' as any });
+      pw.edges.push({ from: 'dp-no-mode', to: 'step-1-2', type: 'BRANCHES_TO' as any });
+      const result = validatePathwayJson(pw);
+      expect(result.valid).toBe(false);
+      expect(result.errors).toContainEqual(expect.stringContaining('branch_mode'));
+    });
+
+    // Hard even in draft: a fork whose exclusivity is undefined is not
+    // work-in-progress, it is a fork the engine has to guess about.
+    it('should reject a DecisionPoint with no branch_mode in draft mode too', () => {
+      const pw = clonePathway();
+      pw.nodes.push({
+        id: 'dp-no-mode-draft',
+        type: 'DecisionPoint' as any,
+        properties: { title: 'Which treatment?' },
+      });
+      pw.edges.push({ from: 'step-1-1', to: 'dp-no-mode-draft', type: 'HAS_DECISION_POINT' as any });
+      pw.edges.push({ from: 'dp-no-mode-draft', to: 'step-1-2', type: 'BRANCHES_TO' as any });
+      const result = validatePathwayJson(pw, { draftMode: true });
+      expect(result.valid).toBe(false);
+      expect(result.errors).toContainEqual(expect.stringContaining('branch_mode'));
+    });
+
+    it('should accept a Gate with on_unresolved "ask"', () => {
+      const pw = clonePathway();
+      pw.nodes.push({
+        id: 'gate-ask',
+        type: 'Gate' as any,
+        properties: {
+          title: 'Anaemic?',
+          gate_type: 'patient_attribute',
+          default_behavior: 'skip',
+          on_unresolved: 'ask',
+          condition: { field: 'labs', operator: 'less_than', value: '718-7', system: 'LOINC', threshold: 11 },
+        },
+      });
+      pw.edges.push({ from: 'step-1-1', to: 'gate-ask', type: 'HAS_GATE' as any });
+      pw.edges.push({ from: 'gate-ask', to: 'step-1-2', type: 'BRANCHES_TO' as any });
+      expect(validatePathwayJson(pw).valid).toBe(true);
+    });
+
+    it('should reject an invalid on_unresolved value', () => {
+      const pw = clonePathway();
+      pw.nodes.push({
+        id: 'gate-bad-unresolved',
+        type: 'Gate' as any,
+        properties: {
+          title: 'Anaemic?',
+          gate_type: 'patient_attribute',
+          default_behavior: 'skip',
+          on_unresolved: 'escalate',
+          condition: { field: 'labs', operator: 'less_than', value: '718-7', system: 'LOINC', threshold: 11 },
+        },
+      });
+      pw.edges.push({ from: 'step-1-1', to: 'gate-bad-unresolved', type: 'HAS_GATE' as any });
+      pw.edges.push({ from: 'gate-bad-unresolved', to: 'step-1-2', type: 'BRANCHES_TO' as any });
+      const result = validatePathwayJson(pw);
+      expect(result.valid).toBe(false);
+      expect(result.errors).toContainEqual(expect.stringContaining('on_unresolved'));
+    });
+
+    // These were REQUIRED but their values never checked, so a typo reached
+    // the engine and behaved as something the author did not write.
+    it.each([
+      ['default_behavior', 'maybe'],
+      ['answer_type', 'yes_no'],
+    ])('should reject an unknown %s', (field, value) => {
+      const pw = clonePathway();
+      pw.nodes.push({
+        id: 'gate-enum',
+        type: 'Gate' as any,
+        properties: {
+          title: 'Enum gate', gate_type: 'question', default_behavior: 'skip',
+          [field]: value,
+        },
+      });
+      pw.edges.push({ from: 'step-1-1', to: 'gate-enum', type: 'HAS_GATE' as any });
+      const result = validatePathwayJson(pw);
+      expect(result.valid).toBe(false);
+      expect(result.errors.join(' ')).toContain(value);
+    });
+
+    it('should reject an unknown compound operator', () => {
+      const pw = clonePathway();
+      pw.nodes.push({
+        id: 'gate-cmp',
+        type: 'Gate' as any,
+        properties: {
+          title: 'Compound', gate_type: 'compound', default_behavior: 'skip',
+          operator: 'XOR',
+          conditions: [{ field: 'conditions', operator: 'includes_code', value: 'D50.9' }],
+        },
+      });
+      pw.edges.push({ from: 'step-1-1', to: 'gate-cmp', type: 'HAS_GATE' as any });
+      const result = validatePathwayJson(pw);
+      expect(result.valid).toBe(false);
+      expect(result.errors.join(' ')).toContain('XOR');
+    });
+
+    it('should reject a gate whose gate_type is not a gate type', () => {
+      const pw = clonePathway();
+      pw.nodes.push({
+        id: 'gate-bogus',
+        type: 'Gate' as any,
+        properties: { title: 'Bogus', gate_type: 'select', default_behavior: 'skip' },
+      });
+      pw.edges.push({ from: 'step-1-1', to: 'gate-bogus', type: 'HAS_GATE' as any });
+      const result = validatePathwayJson(pw);
+      // Unchecked, an unknown gate_type reaches evaluateGate, matches no arm,
+      // and the gate silently does nothing.
+      expect(result.valid).toBe(false);
+      expect(result.errors.join(' ')).toContain('unknown gate_type');
+    });
+
     it('should reject select Gate without options', () => {
       const pw = clonePathway();
       pw.nodes.push({
@@ -436,7 +557,12 @@ describe('validatePathwayJson', () => {
         type: 'Gate' as any,
         properties: {
           title: 'Select gate',
-          gate_type: 'select',
+          // `gate_type` was 'select' here, which is not a gate type at all —
+          // the check it tripped read gate_type where it meant answer_type, so
+          // this fixture passed for the wrong reason. A select answer belongs
+          // to a QUESTION gate.
+          gate_type: 'question',
+          answer_type: 'select',
           default_behavior: 'skip',
           // missing options array
         },

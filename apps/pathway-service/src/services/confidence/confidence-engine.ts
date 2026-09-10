@@ -18,7 +18,9 @@ import {
   ResolutionType,
   WeightMatrix,
   AdminEvidenceEntry,
+  RequiredInput,
 } from './types';
+import { contextKeysForInputs } from './scorer-context-inputs';
 
 export class ConfidenceEngine {
   constructor(
@@ -36,6 +38,22 @@ export class ConfidenceEngine {
     institutionId?: string;
     organizationId?: string;
     adminEvidenceEntries?: AdminEvidenceEntry[];
+    /**
+     * The graph the scorers may LOOK AT, when it is wider than the set being
+     * scored.
+     *
+     * Several scorers read a node's codes from its linked `CodeEntry`
+     * children, reached through `graphContext.linkedNodes`. That lookup
+     * resolves target ids through a map built from `nodes` — so scoring a
+     * single node, as traversal does for every node it disposes, made every
+     * linked child unresolvable and every coded node score as if it had no
+     * codes at all. 76 nodes in the live graph carry codes this way.
+     *
+     * Only the graph widens: `nodes` still decides what is scored and what
+     * weights are resolved, so this costs no extra scoring and no extra
+     * queries.
+     */
+    contextNodes?: GraphNode[];
   }): Promise<PathwayConfidenceResult> {
     const { pool, pathwayId, nodes, edges, signalDefinitions, patientContext, institutionId, organizationId } = params;
 
@@ -59,8 +77,9 @@ export class ConfidenceEngine {
       }));
     }
 
-    // Build graph context with convenience lookups
-    const graphContext = this.buildGraphContext(nodes, edges);
+    // Built from the WIDER set when one is given, so linked CodeEntry
+    // children resolve even when a single node is being scored.
+    const graphContext = this.buildGraphContext(params.contextNodes ?? nodes, edges);
 
     // Resolve weight matrix (all signals × all nodes)
     const weightMatrix = await this.cascadeResolver.resolveAllWeights({
@@ -86,9 +105,15 @@ export class ConfidenceEngine {
     // Score each (node, signal) pair
     type NodeScoreEntry = { score: number; missingInputs: string[]; skipped: boolean };
     const rawScores = new Map<string, Map<string, NodeScoreEntry>>();
+    const contextInputsByNode = new Map<string, Set<string>>();
 
     for (const node of nodes) {
       const nodeScores = new Map<string, NodeScoreEntry>();
+      // Which slices of patient context this node's scorers actually read.
+      // `declareRequiredInputs` has been implemented by every scorer and
+      // called by nothing; this is its first consumer, and it is what lets
+      // `addPatientContext` know an action node needs re-scoring.
+      const nodeInputs: RequiredInput[] = [];
 
       for (const signal of signalDefinitions) {
         const scorer = this.registry.get(signal.scoringType);
@@ -96,6 +121,7 @@ export class ConfidenceEngine {
           nodeScores.set(signal.name, { score: 0.5, missingInputs: ['scorer_not_found'], skipped: false });
           continue;
         }
+        nodeInputs.push(...scorer.declareRequiredInputs(node, signal));
 
         const result = scorer.score({
           node,
@@ -113,6 +139,7 @@ export class ConfidenceEngine {
       }
 
       rawScores.set(node.nodeIdentifier, nodeScores);
+      contextInputsByNode.set(node.nodeIdentifier, contextKeysForInputs(nodeInputs));
     }
 
     // Propagation: topological sort then walk
@@ -204,6 +231,7 @@ export class ConfidenceEngine {
         resolutionType,
         breakdown,
         propagationInfluences: nodePropInfluences,
+        contextInputs: [...(contextInputsByNode.get(node.nodeIdentifier) ?? [])],
       });
     }
 

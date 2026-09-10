@@ -1,9 +1,8 @@
 export * from './types';
 export { evaluateGate } from './gate-evaluator';
 export { TraversalEngine } from './traversal-engine';
+export type { IncrementalResult } from './traversal-engine';
 export { detectCycle, enforceTimeout, checkMissingCriticalData, isCascadeLimitReached, TraversalTimeoutError } from './safety';
-export { RetraversalEngine } from './retraversal-engine';
-export type { RetraversalConfidenceAdapter } from './retraversal-engine';
 export type { TraversalConfidenceAdapter } from './types';
 export {
   serializeResolutionState,
