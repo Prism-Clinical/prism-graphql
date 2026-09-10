@@ -874,6 +874,21 @@ export type Mutation = {
   addAdminEvidence: AdminEvidenceEntry;
   addPatientContext: ResolutionSession;
   /**
+   * The former name, kept so this subgraph can deploy WITHOUT the dashboard.
+   *
+   * The two live in separate repositories, are merged separately, and are
+   * restarted separately — pathway-service first, so the gateway can recompose
+   * against it. Removing the field outright made the graphql deploy a one-way
+   * door: between its restart and the dashboard's, every gate answer in the
+   * running UI would fail GraphQL validation.
+   *
+   * `gateId` rather than `nodeId` because that was the old signature; a
+   * DecisionPoint or an escalated datum request is not a gate, which is why the
+   * name changed. Delete once no client calls it.
+   * @deprecated Renamed to answerPendingDecision; a DecisionPoint branch choice and an escalated datum request are not gate questions.
+   */
+  answerGateQuestion: ResolutionSession;
+  /**
    * Answer whatever the session is waiting on at a node: a question gate, an
    * escalated request for a datum the pathway needed, or a branch choice at a
    * DecisionPoint whose branches could not be told apart by the data.
@@ -992,6 +1007,13 @@ export type MutationAddAdminEvidenceArgs = {
 
 export type MutationAddPatientContextArgs = {
   additionalContext: AdditionalContextInput;
+  sessionId: Scalars['ID']['input'];
+};
+
+
+export type MutationAnswerGateQuestionArgs = {
+  answer: GateAnswerInput;
+  gateId: Scalars['ID']['input'];
   sessionId: Scalars['ID']['input'];
 };
 
@@ -2836,6 +2858,7 @@ export type MutationResolvers<ContextType = DataSourceContext, ParentType extend
   activatePathway?: Resolver<ResolversTypes['PathwayStatusResult'], ParentType, ContextType, RequireFields<MutationActivatePathwayArgs, 'id'>>;
   addAdminEvidence?: Resolver<ResolversTypes['AdminEvidenceEntry'], ParentType, ContextType, RequireFields<MutationAddAdminEvidenceArgs, 'input'>>;
   addPatientContext?: Resolver<ResolversTypes['ResolutionSession'], ParentType, ContextType, RequireFields<MutationAddPatientContextArgs, 'additionalContext' | 'sessionId'>>;
+  answerGateQuestion?: Resolver<ResolversTypes['ResolutionSession'], ParentType, ContextType, RequireFields<MutationAnswerGateQuestionArgs, 'answer' | 'gateId' | 'sessionId'>>;
   answerPendingDecision?: Resolver<ResolversTypes['ResolutionSession'], ParentType, ContextType, RequireFields<MutationAnswerPendingDecisionArgs, 'answer' | 'nodeId' | 'sessionId'>>;
   archivePathway?: Resolver<ResolversTypes['PathwayStatusResult'], ParentType, ContextType, RequireFields<MutationArchivePathwayArgs, 'id'>>;
   createSignalDefinition?: Resolver<ResolversTypes['SignalDefinitionType'], ParentType, ContextType, RequireFields<MutationCreateSignalDefinitionArgs, 'input'>>;

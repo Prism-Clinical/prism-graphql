@@ -199,9 +199,20 @@ describe('answerPendingDecision — branch choice at a DecisionPoint', () => {
     ).rejects.toThrow(/step-zzz|not a candidate|not among/i);
   });
 
-  it('no longer exposes the old mutation name', () => {
-    expect(
-      (resolutionMutations as Record<string, unknown>).answerGateQuestion,
-    ).toBeUndefined();
+  /**
+   * REVERSED from "no longer exposes the old mutation name".
+   *
+   * Removing `answerGateQuestion` outright made the graphql deploy a one-way
+   * door. pathway-service and the dashboard are separate repositories, merged
+   * and restarted separately, and pathway-service restarts FIRST so the
+   * gateway can recompose against it — so between the two restarts every gate
+   * answer in the running UI would fail GraphQL validation.
+   *
+   * It is kept as a deprecated DELEGATION, not a second implementation: two
+   * implementations of one mutation is how the traversal engines drifted.
+   */
+  it('still exposes the old mutation name, delegating to the new one', () => {
+    const alias = (resolutionMutations as Record<string, unknown>).answerGateQuestion;
+    expect(typeof alias).toBe('function');
   });
 });

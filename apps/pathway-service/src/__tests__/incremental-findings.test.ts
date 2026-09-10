@@ -82,12 +82,25 @@ describe('findings returned by an incremental resolve', () => {
     expect(r.redFlags.find(f => f.nodeId === 'gate-1')).toBeUndefined();
   });
 
+  /**
+   * The gate is ANSWERED here, so it is open and step-1 is genuinely reachable
+   * on its own account.
+   *
+   * It used to be unanswered, and the test passed because seeding step-1
+   * walked only downward. Seeds are now promoted past any ancestor that
+   * currently closes them — otherwise a lab change under a shut gate re-opened
+   * the treatment beneath it — so with a shut gate the region legitimately
+   * includes gate-1 and re-disposing it is correct. An open gate is what makes
+   * "outside the region" mean anything.
+   */
   it('keeps a flag about a node outside the region it re-disposed', async () => {
     const g = graph();
-    const first = await engine().traverse(g, PATIENT, new Map());
+    const answers = new Map([['gate-1', { booleanValue: true } as never]]);
+    const first = await engine().traverse(g, PATIENT, answers);
+    expect(first.resolutionState.get('gate-1')!.status).toBe(NodeStatus.INCLUDED);
 
     const r = await engine().resolveIncrementally(
-      new Set(['step-1']), first.resolutionState, first.dependencyMap, g, PATIENT, new Map(),
+      new Set(['step-1']), first.resolutionState, first.dependencyMap, g, PATIENT, answers,
       { redFlags: [staleFlag('gate-1')], pendingQuestions: [] },
     );
 

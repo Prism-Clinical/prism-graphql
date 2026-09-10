@@ -138,8 +138,10 @@ function markBranchNotSelected(
   resolutionState: ResolutionState,
   rewritten: Set<string>,
   provisional?: Set<string>,
+  held?: Set<string>,
 ): void {
-  if (resolutionState.has(targetId) && !provisional?.has(targetId)) return;
+  if (resolutionState.has(targetId) && !provisional?.has(targetId) && !held?.has(targetId)) return;
+  if (held?.has(targetId)) return;  // the override stands on this node
   provisional?.delete(targetId);
   const target = graphContext.getNode(targetId);
   if (!target) return;
@@ -160,7 +162,7 @@ function markBranchNotSelected(
 
   const kids = graphContext.outgoingEdges(targetId).map(e => e.targetId);
   addAll(rewritten, markSubtree(kids, graphContext, resolutionState, NodeStatus.EXCLUDED,
-    `Excluded with ${nodeTitle(target)}`, targetId, depth + 1, provisional));
+    `Excluded with ${nodeTitle(target)}`, targetId, depth + 1, provisional, held));
 }
 
 function isDecisionPoint(node: GraphNode): boolean {
@@ -222,6 +224,13 @@ export function markSubtree(
    * closing branch is precisely the walk saying it cannot be reached.
    */
   provisional?: Set<string>,
+  /**
+   * Overridden nodes. A sweep does NOT rewrite one — the provider's decision
+   * about that node stands — but it must still descend PAST it. The override
+   * was never a decision about the subtree, and skipping both left a
+   * medication included under a gate that had just closed.
+   */
+  held?: Set<string>,
 ): Set<string> {
   const marked = new Set<string>();
   const queue: Array<{ id: string; depth: number }> = startIds.map(id => ({ id, depth: baseDepth + 1 }));
@@ -232,12 +241,23 @@ export function markSubtree(
     // reachable via multiple paths, the first path to evaluate it determines
     // its status. BFS ordering is deterministic for a given graph structure.
     if (marked.has(id)) continue;
-    if (resolutionState.has(id) && !provisional?.has(id)) continue;
-    provisional?.delete(id);
-    marked.add(id);
+    const isHeld = held?.has(id) === true;
+    if (resolutionState.has(id) && !provisional?.has(id) && !isHeld) continue;
 
     const node = graphContext.getNode(id);
     if (!node) continue;
+
+    // A held node keeps its status and is NOT counted as rewritten — but the
+    // loop below still descends through it.
+    if (isHeld) {
+      for (const edge of graphContext.outgoingEdges(id)) {
+        if (!marked.has(edge.targetId)) queue.push({ id: edge.targetId, depth: depth + 1 });
+      }
+      continue;
+    }
+
+    provisional?.delete(id);
+    marked.add(id);
 
     resolutionState.set(id, {
       nodeId: id,
@@ -254,7 +274,9 @@ export function markSubtree(
 
     for (const edge of graphContext.outgoingEdges(id)) {
       if (!marked.has(edge.targetId)
-          && (!resolutionState.has(edge.targetId) || provisional?.has(edge.targetId))) {
+          && (!resolutionState.has(edge.targetId)
+              || provisional?.has(edge.targetId)
+              || held?.has(edge.targetId))) {
         queue.push({ id: edge.targetId, depth: depth + 1 });
       }
     }
@@ -338,6 +360,15 @@ interface WalkContext {
    * legitimately arrives, and overwritable if a closing gate sweeps it.
    */
   provisional: Set<string>;
+  /**
+   * Nodes kept as-is because a provider overrode them.
+   *
+   * The override is a decision about THAT node, never about its descendants,
+   * so the walk must still arrive and open the subtree below it. A plain
+   * `resolutionState.has` guard skips a held node — it IS in the state — and
+   * the branch beneath it silently froze.
+   */
+  overrideHeld: Set<string>;
 }
 
 /**
@@ -441,6 +472,8 @@ export class TraversalEngine {
     const rewritten = new Set<string>();
     /** Nodes written out of order by eager evaluation. See WalkContext. */
     const provisional = new Set<string>();
+    /** Overridden nodes kept as-is; the walk opens their children on arrival. */
+    const overrideHeld = new Set<string>();
     let isDegraded = false;
 
     // 1. Find root node (type 'Pathway')
@@ -509,7 +542,7 @@ export class TraversalEngine {
         graphContext, patientContext, gateAnswers,
         resolutionState, dependencyMap, queue,
         pendingQuestions, redFlags, evaluationStack, startTime, rewritten,
-        provisional,
+        provisional, overrideHeld,
       });
     }
 
@@ -574,6 +607,8 @@ export class TraversalEngine {
     const rewritten = new Set<string>();
     /** Nodes written out of order by eager evaluation. See WalkContext. */
     const provisional = new Set<string>();
+    /** Overridden nodes kept as-is; the walk opens their children on arrival. */
+    const overrideHeld = new Set<string>();
     const queue: BfsEntry[] = [];
 
     // Captured before anything is cleared — the only moment the previous
@@ -582,16 +617,61 @@ export class TraversalEngine {
     /** Where each region node sat, so a timed-out rebuild can be put back. */
     const priorPlacement = new Map<string, { depth: number; parentNodeId?: string }>();
 
+    // PROMOTE each seed past any ancestor that currently closes it.
+    //
+    // A seed is otherwise walked as a ROOT — disposed on its own account, with
+    // nothing above it consulted. So a lab change touching a medication deep
+    // under a gate the provider had already shut re-opened that medication:
+    // the gate was never re-disposed, stayed GATED_OUT, and the treatment
+    // beneath it came back INCLUDED.
+    //
+    // Promoting to the closing ancestor makes its disposition part of this
+    // pass, so it either opens the branch honestly or sweeps the subtree. The
+    // walk is bounded by the graph and stops at the first ancestor that is
+    // still open, so this is not a full traversal in disguise.
+    const CLOSED = [NodeStatus.GATED_OUT, NodeStatus.EXCLUDED, NodeStatus.PENDING_QUESTION];
+    const promote = (id: string): string => {
+      const seen = new Set<string>([id]);
+      let current = id;
+      for (;;) {
+        const closingParent = graphContext
+          .incomingEdges(current)
+          .map(e => e.sourceId)
+          .find(pid => !seen.has(pid) && CLOSED.includes(
+            resolutionState.get(pid)?.status as NodeStatus,
+          ));
+        if (!closingParent) return current;
+        seen.add(closingParent);
+        current = closingParent;
+      }
+    };
+    const effectiveSeeds = new Set([...seedNodeIds].map(promote));
+
     // The region a seed can reach. Bounded by the graph, so it is finite and
     // needs no visited-set of its own beyond `region`.
+    //
+    // Structural descendants AND logical consumers. Following outgoing edges
+    // alone left a sibling `prior_node_result` gate holding its previous
+    // decision after the node it depends on changed — `dependencyMap.influences`
+    // is exactly the record of who reads whom, and it was not consulted.
     const region = new Set<string>();
-    const frontier = [...seedNodeIds];
+    const frontier = [...effectiveSeeds];
     while (frontier.length > 0) {
       const id = frontier.shift()!;
       if (region.has(id)) continue;
       region.add(id);
       for (const edge of graphContext.outgoingEdges(id)) {
         if (!region.has(edge.targetId)) frontier.push(edge.targetId);
+      }
+      for (const consumer of dependencyMap.influences.get(id) ?? []) {
+        if (region.has(consumer)) continue;
+        // A consumer is not BELOW us — a `prior_node_result` gate that reads
+        // this node is typically a sibling. So it needs its own seed: adding
+        // it to the region alone would clear it and then leave it unreachable,
+        // deleting it and its subtree from the session outright.
+        const consumerSeed = promote(consumer);
+        effectiveSeeds.add(consumerSeed);
+        frontier.push(consumerSeed);
       }
     }
 
@@ -607,13 +687,14 @@ export class TraversalEngine {
       statusBefore.set(id, existing.status);
       priorPlacement.set(id, { depth: existing.depth, parentNodeId: existing.parentNodeId });
       if (existing.providerOverride) {
-        for (const edge of graphContext.outgoingEdges(id)) {
-          queue.push({
-            nodeIdentifier: edge.targetId,
-            parentNodeId: id,
-            depth: existing.depth + 1,
-          });
-        }
+        // HELD, not queued-through. Pushing its children here put them ahead
+        // of the ancestor seeds, so they disposed before the gate governing
+        // them — and a later sweep skipped them as already-written, leaving a
+        // medication included beneath a gate that had closed.
+        //
+        // The walk enqueues them when it ARRIVES at this node, by which point
+        // everything above it has been disposed and reachability is settled.
+        overrideHeld.add(id);
         continue;
       }
       resolutionState.delete(id);
@@ -633,7 +714,7 @@ export class TraversalEngine {
     // recorded against the target and then the DecisionPoint, and a Map keeps
     // insertion order — so this was reachable, not theoretical.
     const reachableFromASeed = new Set<string>();
-    for (const seed of seedNodeIds) {
+    for (const seed of effectiveSeeds) {
       const frontier = graphContext.outgoingEdges(seed).map(e => e.targetId);
       const seen = new Set<string>();
       while (frontier.length > 0) {
@@ -646,14 +727,17 @@ export class TraversalEngine {
         }
       }
     }
-    let rootSeeds = [...seedNodeIds].filter(id => !reachableFromASeed.has(id));
+    let rootSeeds = [...effectiveSeeds].filter(id => !reachableFromASeed.has(id));
     // Every seed inside one cycle reaches every other, so the filter can empty
     // the list. Falling back to the full set keeps a cyclic region resolvable;
     // ordering within a cycle has no correct answer anyway.
-    if (rootSeeds.length === 0) rootSeeds = [...seedNodeIds];
+    if (rootSeeds.length === 0) rootSeeds = [...effectiveSeeds];
 
     for (const id of rootSeeds) {
-      if (!resolutionState.has(id)) {
+      // A HELD override is still in the state, so the plain has-check skipped
+      // it — and the walk then never arrived to open its descendants. It has
+      // to be enqueued precisely because it is held.
+      if (!resolutionState.has(id) || overrideHeld.has(id) || provisional.has(id)) {
         queue.push({ nodeIdentifier: id, parentNodeId: undefined, depth: 0 });
       }
     }
@@ -668,6 +752,23 @@ export class TraversalEngine {
       }
 
       const { nodeIdentifier, parentNodeId, depth } = queue.shift()!;
+      if (overrideHeld.has(nodeIdentifier)) {
+        // The provider's decision about THIS node stands; it was never a
+        // decision about its descendants, so they are re-disposed now that the
+        // walk has established this node is reachable.
+        overrideHeld.delete(nodeIdentifier);
+        const held = resolutionState.get(nodeIdentifier);
+        for (const edge of graphContext.outgoingEdges(nodeIdentifier)) {
+          if (!resolutionState.has(edge.targetId) || provisional.has(edge.targetId)) {
+            queue.push({
+              nodeIdentifier: edge.targetId,
+              parentNodeId: nodeIdentifier,
+              depth: (held?.depth ?? depth) + 1,
+            });
+          }
+        }
+        continue;
+      }
       if (provisional.has(nodeIdentifier)) {
         provisional.delete(nodeIdentifier);
         resolutionState.delete(nodeIdentifier);
@@ -681,7 +782,7 @@ export class TraversalEngine {
         graphContext, patientContext, gateAnswers,
         resolutionState, dependencyMap, queue,
         pendingQuestions, redFlags, evaluationStack, startTime, rewritten,
-        provisional,
+        provisional, overrideHeld,
       });
       disposed++;
     }
@@ -799,8 +900,19 @@ export class TraversalEngine {
       graphContext, patientContext, gateAnswers,
       resolutionState, dependencyMap, queue,
       pendingQuestions, redFlags, evaluationStack, startTime, rewritten,
-      provisional,
+      provisional, overrideHeld,
     } = w;
+
+    /**
+     * May this child be enqueued?
+     *
+     * Not simply "absent from the state": a PROVISIONAL node was written by
+     * eager evaluation rather than reached, and a HELD node is a provider
+     * override whose descendants still need disposing. Both are present and
+     * both must still be walked.
+     */
+    const enqueueable = (id: string): boolean =>
+      !resolutionState.has(id) || provisional.has(id) || overrideHeld.has(id);
 
     // Everything below rewrites this node; the subtree helpers add theirs.
     rewritten.add(nodeIdentifier);
@@ -846,11 +958,11 @@ export class TraversalEngine {
           if (defaultStatus === NodeStatus.GATED_OUT) {
             const childIds = graphContext.outgoingEdges(nodeIdentifier).map(e => e.targetId);
             addAll(rewritten, markSubtree(childIds, graphContext, resolutionState, NodeStatus.GATED_OUT,
-              'Parent gate has cycle — default skip', nodeIdentifier, depth, provisional));
+              'Parent gate has cycle — default skip', nodeIdentifier, depth, provisional, overrideHeld));
           } else {
             // Traverse children
             for (const edge of graphContext.outgoingEdges(nodeIdentifier)) {
-              if (!resolutionState.has(edge.targetId)) {
+              if (enqueueable(edge.targetId)) {
                 queue.push({ nodeIdentifier: edge.targetId, parentNodeId: nodeIdentifier, depth: depth + 1 });
               }
             }
@@ -971,12 +1083,12 @@ export class TraversalEngine {
                 // missing branch reads as an oversight rather than a decision.
                 markBranchNotSelected(
                   edge.targetId, nodeIdentifier, nodeTitle(node), depth,
-                  graphContext, resolutionState, rewritten, provisional,
+                  graphContext, resolutionState, rewritten, provisional, overrideHeld,
                 );
                 continue;
               }
             }
-            if (!resolutionState.has(edge.targetId)) {
+            if (enqueueable(edge.targetId)) {
               queue.push({ nodeIdentifier: edge.targetId, parentNodeId: nodeIdentifier, depth: depth + 1 });
             }
           }
@@ -1005,7 +1117,7 @@ export class TraversalEngine {
           const childIds = graphContext.outgoingEdges(nodeIdentifier).map(e => e.targetId);
           const subtreeSize = countSubtree(childIds, graphContext);
           addAll(rewritten, markSubtree(childIds, graphContext, resolutionState, NodeStatus.PENDING_QUESTION,
-            `Awaiting answer to: ${gateProps.prompt ?? gateProps.title}`, nodeIdentifier, depth, provisional));
+            `Awaiting answer to: ${gateProps.prompt ?? gateProps.title}`, nodeIdentifier, depth, provisional, overrideHeld));
 
           pendingQuestions.push({
             gateId: nodeIdentifier,
@@ -1045,7 +1157,7 @@ export class TraversalEngine {
           const childIds = graphContext.outgoingEdges(nodeIdentifier).map(e => e.targetId);
           const subtreeSize = countSubtree(childIds, graphContext);
           addAll(rewritten, markSubtree(childIds, graphContext, resolutionState, NodeStatus.PENDING_QUESTION,
-            `Awaiting ${ask.datumKey}`, nodeIdentifier, depth, provisional));
+            `Awaiting ${ask.datumKey}`, nodeIdentifier, depth, provisional, overrideHeld));
 
           // Dedup on the DATUM, not the gate. Both gates still hold their
           // subtrees; the provider is asked once, and the one injected fact
@@ -1098,7 +1210,7 @@ export class TraversalEngine {
           });
           const childIds = graphContext.outgoingEdges(nodeIdentifier).map(e => e.targetId);
           addAll(rewritten, markSubtree(childIds, graphContext, resolutionState, NodeStatus.GATED_OUT,
-            `Gated out by ${nodeTitle(node)}: ${gateResult.reason}`, nodeIdentifier, depth, provisional));
+            `Gated out by ${nodeTitle(node)}: ${gateResult.reason}`, nodeIdentifier, depth, provisional, overrideHeld));
         } else {
           // Default traverse — include anyway
           resolutionState.set(nodeIdentifier, {
@@ -1114,7 +1226,7 @@ export class TraversalEngine {
           ...uncertaintyFields,
           });
           for (const edge of graphContext.outgoingEdges(nodeIdentifier)) {
-            if (!resolutionState.has(edge.targetId)) {
+            if (enqueueable(edge.targetId)) {
               queue.push({ nodeIdentifier: edge.targetId, parentNodeId: nodeIdentifier, depth: depth + 1 });
             }
           }
@@ -1318,7 +1430,7 @@ export class TraversalEngine {
           });
           const kids = graphContext.outgoingEdges(br.targetId).map(e => e.targetId);
           addAll(rewritten, markSubtree(kids, graphContext, resolutionState, NodeStatus.PENDING_QUESTION,
-            `Awaiting branch choice at ${nodeTitle(node)}`, br.targetId, depth + 1, provisional));
+            `Awaiting branch choice at ${nodeTitle(node)}`, br.targetId, depth + 1, provisional, overrideHeld));
         }
 
         pendingQuestions.push({
@@ -1354,13 +1466,13 @@ export class TraversalEngine {
       for (const br of branchResults) {
         if (includedBranches.includes(br.targetId)) {
           // Enqueue included branches for further traversal
-          if (!resolutionState.has(br.targetId)) {
+          if (enqueueable(br.targetId)) {
             queue.push({ nodeIdentifier: br.targetId, parentNodeId: nodeIdentifier, depth: depth + 1 });
           }
         } else {
           // Exclude branch
           const targetNode = graphContext.getNode(br.targetId);
-          if (targetNode && !resolutionState.has(br.targetId)) {
+          if (targetNode && enqueueable(br.targetId)) {
             resolutionState.set(br.targetId, {
               nodeId: br.targetId,
               nodeType: targetNode.nodeType,
@@ -1376,7 +1488,7 @@ export class TraversalEngine {
             // Mark the excluded branch's subtree too
             const childIds = graphContext.outgoingEdges(br.targetId).map(e => e.targetId);
             addAll(rewritten, markSubtree(childIds, graphContext, resolutionState, NodeStatus.EXCLUDED,
-              `Excluded by decision point: ${br.excludeReason}`, br.targetId, depth + 1, provisional));
+              `Excluded by decision point: ${br.excludeReason}`, br.targetId, depth + 1, provisional, overrideHeld));
           }
         }
         recordInfluence(dependencyMap, nodeIdentifier, br.targetId);
@@ -1402,7 +1514,7 @@ export class TraversalEngine {
       const nonBranchEdges = graphContext.outgoingEdges(nodeIdentifier)
         .filter(e => e.edgeType !== 'BRANCHES_TO');
       for (const edge of nonBranchEdges) {
-        if (!resolutionState.has(edge.targetId)) {
+        if (enqueueable(edge.targetId)) {
           queue.push({ nodeIdentifier: edge.targetId, parentNodeId: nodeIdentifier, depth: depth + 1 });
         }
       }
@@ -1430,7 +1542,7 @@ export class TraversalEngine {
       });
 
       for (const edge of graphContext.outgoingEdges(nodeIdentifier)) {
-        if (!resolutionState.has(edge.targetId)) {
+        if (enqueueable(edge.targetId)) {
           queue.push({ nodeIdentifier: edge.targetId, parentNodeId: nodeIdentifier, depth: depth + 1 });
         }
       }
@@ -1483,7 +1595,7 @@ export class TraversalEngine {
 
       // Action nodes can still have children (e.g., CodeEntry)
       for (const edge of graphContext.outgoingEdges(nodeIdentifier)) {
-        if (!resolutionState.has(edge.targetId)) {
+        if (enqueueable(edge.targetId)) {
           queue.push({ nodeIdentifier: edge.targetId, parentNodeId: nodeIdentifier, depth: depth + 1 });
         }
       }
@@ -1504,7 +1616,7 @@ export class TraversalEngine {
     });
 
     for (const edge of graphContext.outgoingEdges(nodeIdentifier)) {
-      if (!resolutionState.has(edge.targetId)) {
+      if (enqueueable(edge.targetId)) {
         queue.push({ nodeIdentifier: edge.targetId, parentNodeId: nodeIdentifier, depth: depth + 1 });
       }
     }

@@ -474,6 +474,13 @@ export const resolutionMutations = {
     // 7. Update session (with optimistic lock)
     await updateSession(pool, args.sessionId, {
       resolutionState: session.resolutionState,
+      // The map, not just the state. `resolveIncrementally` RECORDS new
+      // dependencies as it walks — answering an outer question can expose an
+      // inner data gate and register what it reads — and only the
+      // DecisionPoint path saved them. After a reload the session had the new
+      // nodes but not what they depend on, so supplying the very datum the
+      // gate asked for seeded nothing and its question never cleared.
+      dependencyMap: session.dependencyMap,
       // Persisted now that an override reconciles them. It did not touch
       // either before, so there was nothing here to write.
       pendingQuestions: session.pendingQuestions,
@@ -880,6 +887,13 @@ export const resolutionMutations = {
       try {
         await updateSession(pool, args.sessionId, {
           resolutionState: session.resolutionState,
+          // The map, not just the state. `resolveIncrementally` RECORDS new
+          // dependencies as it walks — answering an outer question can expose an
+          // inner data gate and register what it reads — and only the
+          // DecisionPoint path saved them. After a reload the session had the new
+          // nodes but not what they depend on, so supplying the very datum the
+          // gate asked for seeded nothing and its question never cleared.
+          dependencyMap: session.dependencyMap,
           pendingQuestions: session.pendingQuestions,
           redFlags: session.redFlags,
           gateAnswers: session.gateAnswers,
@@ -931,6 +945,30 @@ export const resolutionMutations = {
       });
     }
     return formatSessionForGraphQL(updated);
+  },
+
+  /**
+   * The former name of `answerPendingDecision`, delegating to it.
+   *
+   * Kept so this subgraph can deploy independently of the dashboard: they are
+   * separate repositories, merged and restarted separately, and pathway-service
+   * restarts FIRST. Without this, every gate answer in the running UI fails
+   * validation between the two restarts.
+   *
+   * Deliberately a delegation and not a copy — two implementations of one
+   * mutation is how the traversal engines drifted, and this file has spent a
+   * long time removing the last of those.
+   */
+  async answerGateQuestion(
+    parent: unknown,
+    args: { sessionId: string; gateId: string; answer: GateAnswerInput },
+    context: DataSourceContext,
+  ) {
+    return resolutionMutations.answerPendingDecision(
+      parent,
+      { sessionId: args.sessionId, nodeId: args.gateId, answer: args.answer },
+      context,
+    );
   },
 
   async addPatientContext(
@@ -1100,6 +1138,9 @@ export const resolutionMutations = {
     // 6. Update session (with optimistic lock)
     await updateSession(pool, args.sessionId, {
       resolutionState: session.resolutionState,
+      // Saved because `resolveIncrementally` RECORDS new dependencies as it
+      // walks — see overrideNode for why losing them stuck a session.
+      dependencyMap: session.dependencyMap,
       additionalContext: merged,
       pendingQuestions: session.pendingQuestions,
       redFlags: session.redFlags,

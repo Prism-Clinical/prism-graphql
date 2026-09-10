@@ -289,3 +289,41 @@ describe('answering a gate re-derives the session status', () => {
     expect(saved.status).toBe('ACTIVE');
   });
 });
+
+/**
+ * The old mutation name still works.
+ *
+ * pathway-service and the dashboard are separate repositories, merged and
+ * restarted separately — and pathway-service restarts FIRST, so the gateway
+ * can recompose against it. Removing `answerGateQuestion` outright made this
+ * deploy a one-way door: between the two restarts, every gate answer in the
+ * running UI would fail GraphQL validation.
+ */
+describe('the deprecated answerGateQuestion alias', () => {
+  it('routes an answer exactly as answerPendingDecision does', async () => {
+    const created = await start();
+    mockedGetSession.mockResolvedValue(sessionFrom(created));
+
+    await resolutionMutations.answerGateQuestion(
+      null as never,
+      { sessionId: 'session-1', gateId: 'gate-b', answer: { booleanValue: false } } as never,
+      ctx(),
+    );
+
+    // Same routing, including the false branch the engine-level fix restored.
+    expect(created.resolutionState.get('step-no')!.status).toBe(NS.INCLUDED);
+    expect(created.resolutionState.get('step-yes')!.status).not.toBe(NS.INCLUDED);
+  });
+
+  it('enforces the same answer validation', async () => {
+    const created = await start();
+    mockedGetSession.mockResolvedValue(sessionFrom(created));
+    await expect(
+      resolutionMutations.answerGateQuestion(
+        null as never,
+        { sessionId: 'session-1', gateId: 'gate-b', answer: { selectedOption: 'true' } } as never,
+        ctx(),
+      ),
+    ).rejects.toThrow(/booleanValue/);
+  });
+});
