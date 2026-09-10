@@ -294,6 +294,98 @@ describe('branch_mode: all_of', () => {
   });
 });
 
+/**
+ * `all_of` means every branch, whatever kind of node the branch points at.
+ *
+ * The fork included them all — and then an ACTION target was re-scored on its
+ * own account and EXCLUDED below the suggest threshold, quietly undoing the
+ * mandate. A structural Step target survived the same treatment, so the
+ * meaning of `all_of` depended on the branch target's node type.
+ *
+ * The mandate wins and the disagreement is REPORTED. Excluding the branch
+ * would resolve a disagreement with the author by dropping a step the pathway
+ * says always happens; the red flag says so instead.
+ */
+describe('branch_mode: all_of with an action-node target', () => {
+  function graphWithMedBranch() {
+    return makeGraphContext(
+      [
+        node('root', 'Pathway'),
+        node('dp-1', 'DecisionPoint', { title: 'Start both', branch_mode: 'all_of' }),
+        node('med-weak', 'Medication', { name: 'Prophylaxis', role: 'adjunct' }),
+        node('step-weak', 'Step', { title: 'Workup' }),
+      ],
+      [
+        edge('root', 'dp-1', 'HAS_DECISION_POINT'),
+        edge('dp-1', 'med-weak', 'BRANCHES_TO'),
+        edge('dp-1', 'step-weak', 'BRANCHES_TO'),
+      ],
+    );
+  }
+
+  async function resolveWeak() {
+    scoreAs({ 'med-weak': 0.2, 'step-weak': 0.2 });
+    const engine = new TraversalEngine(
+      mockConfidenceEngine as never,
+      { autoResolveThreshold: 0.85, suggestThreshold: SUGGEST },
+      makeEvaluationTemporalContext({ evaluationAsOf: AS_OF, temporalPolicyVersion: 'legacy-v0' }),
+      {}, [], new Map(),
+    );
+    return engine.traverse(graphWithMedBranch(), PATIENT, new Map());
+  }
+
+  it('keeps a weak MEDICATION branch, as it already kept a weak Step', async () => {
+    const r = await resolveWeak();
+    expect(r.resolutionState.get('step-weak')!.status).toBe(NodeStatus.INCLUDED);
+    // The one that used to be dropped by ordinary action scoring.
+    expect(r.resolutionState.get('med-weak')!.status).toBe(NodeStatus.INCLUDED);
+  });
+
+  it('reports the disagreement rather than resolving it', async () => {
+    const r = await resolveWeak();
+    const flag = r.redFlags.find(f => f.type === 'all_of_branch_unsupported');
+    expect(flag).toBeDefined();
+    expect(flag!.branches?.map(b => b.nodeId)).toEqual(
+      expect.arrayContaining(['med-weak', 'step-weak']),
+    );
+  });
+
+  /**
+   * The mandate covers the fork's own BRANCH TARGETS, not everything beneath
+   * them. `all_of` says these branches all happen; it does not say every
+   * action inside them is supported.
+   */
+  it('does not extend the mandate to a grandchild of a branch', async () => {
+    scoreAs({ 'med-weak': 0.2, 'step-weak': 0.2, 'med-deep': 0.2 });
+    const g = makeGraphContext(
+      [
+        node('root', 'Pathway'),
+        node('dp-1', 'DecisionPoint', { title: 'Start both', branch_mode: 'all_of' }),
+        node('med-weak', 'Medication', { name: 'Prophylaxis', role: 'adjunct' }),
+        node('step-weak', 'Step', { title: 'Workup' }),
+        node('med-deep', 'Medication', { name: 'Inside the workup', role: 'adjunct' }),
+      ],
+      [
+        edge('root', 'dp-1', 'HAS_DECISION_POINT'),
+        edge('dp-1', 'med-weak', 'BRANCHES_TO'),
+        edge('dp-1', 'step-weak', 'BRANCHES_TO'),
+        edge('step-weak', 'med-deep', 'USES_MEDICATION'),
+      ],
+    );
+    const engine = new TraversalEngine(
+      mockConfidenceEngine as never,
+      { autoResolveThreshold: 0.85, suggestThreshold: SUGGEST },
+      makeEvaluationTemporalContext({ evaluationAsOf: AS_OF, temporalPolicyVersion: 'legacy-v0' }),
+      {}, [], new Map(),
+    );
+    const r = await engine.traverse(g, PATIENT, new Map());
+
+    expect(r.resolutionState.get('med-weak')!.status).toBe(NodeStatus.INCLUDED);
+    // Not a branch target, so ordinary scoring still governs it.
+    expect(r.resolutionState.get('med-deep')!.status).toBe(NodeStatus.EXCLUDED);
+  });
+});
+
 describe('branch_mode: any_of', () => {
   // Today's behaviour, pinned so Task 1's change cannot leak into it.
   it('includes every qualifying branch and excludes the rest', async () => {

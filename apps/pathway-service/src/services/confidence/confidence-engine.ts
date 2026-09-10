@@ -38,6 +38,22 @@ export class ConfidenceEngine {
     institutionId?: string;
     organizationId?: string;
     adminEvidenceEntries?: AdminEvidenceEntry[];
+    /**
+     * The graph the scorers may LOOK AT, when it is wider than the set being
+     * scored.
+     *
+     * Several scorers read a node's codes from its linked `CodeEntry`
+     * children, reached through `graphContext.linkedNodes`. That lookup
+     * resolves target ids through a map built from `nodes` — so scoring a
+     * single node, as traversal does for every node it disposes, made every
+     * linked child unresolvable and every coded node score as if it had no
+     * codes at all. 76 nodes in the live graph carry codes this way.
+     *
+     * Only the graph widens: `nodes` still decides what is scored and what
+     * weights are resolved, so this costs no extra scoring and no extra
+     * queries.
+     */
+    contextNodes?: GraphNode[];
   }): Promise<PathwayConfidenceResult> {
     const { pool, pathwayId, nodes, edges, signalDefinitions, patientContext, institutionId, organizationId } = params;
 
@@ -61,8 +77,9 @@ export class ConfidenceEngine {
       }));
     }
 
-    // Build graph context with convenience lookups
-    const graphContext = this.buildGraphContext(nodes, edges);
+    // Built from the WIDER set when one is given, so linked CodeEntry
+    // children resolve even when a single node is being scored.
+    const graphContext = this.buildGraphContext(params.contextNodes ?? nodes, edges);
 
     // Resolve weight matrix (all signals × all nodes)
     const weightMatrix = await this.cascadeResolver.resolveAllWeights({

@@ -369,6 +369,20 @@ interface WalkContext {
    * the branch beneath it silently froze.
    */
   overrideHeld: Set<string>;
+  /**
+   * Branch targets an `all_of` DecisionPoint MANDATED.
+   *
+   * "After assessment, start workup AND prophylaxis" — the author said these
+   * all happen, so the fork includes every branch and red-flags any the data
+   * does not support. But a target that is itself an ACTION node was then
+   * re-scored on its own account and EXCLUDED below the suggest threshold,
+   * quietly undoing the mandate. A structural Step target survived, so the
+   * meaning of `all_of` depended on what kind of node the branch pointed at.
+   *
+   * The mandate wins, and the disagreement is reported rather than resolved:
+   * that is what `all_of_branch_unsupported` is for.
+   */
+  mandated: Set<string>;
 }
 
 /**
@@ -474,6 +488,8 @@ export class TraversalEngine {
     const provisional = new Set<string>();
     /** Overridden nodes kept as-is; the walk opens their children on arrival. */
     const overrideHeld = new Set<string>();
+    /** Branch targets an `all_of` DecisionPoint mandated. See WalkContext. */
+    const mandated = new Set<string>();
     let isDegraded = false;
 
     // 1. Find root node (type 'Pathway')
@@ -542,7 +558,7 @@ export class TraversalEngine {
         graphContext, patientContext, gateAnswers,
         resolutionState, dependencyMap, queue,
         pendingQuestions, redFlags, evaluationStack, startTime, rewritten,
-        provisional, overrideHeld,
+        provisional, overrideHeld, mandated,
       });
     }
 
@@ -609,6 +625,8 @@ export class TraversalEngine {
     const provisional = new Set<string>();
     /** Overridden nodes kept as-is; the walk opens their children on arrival. */
     const overrideHeld = new Set<string>();
+    /** Branch targets an `all_of` DecisionPoint mandated. See WalkContext. */
+    const mandated = new Set<string>();
     const queue: BfsEntry[] = [];
 
     // Captured before anything is cleared — the only moment the previous
@@ -782,7 +800,7 @@ export class TraversalEngine {
         graphContext, patientContext, gateAnswers,
         resolutionState, dependencyMap, queue,
         pendingQuestions, redFlags, evaluationStack, startTime, rewritten,
-        provisional, overrideHeld,
+        provisional, overrideHeld, mandated,
       });
       disposed++;
     }
@@ -900,7 +918,7 @@ export class TraversalEngine {
       graphContext, patientContext, gateAnswers,
       resolutionState, dependencyMap, queue,
       pendingQuestions, redFlags, evaluationStack, startTime, rewritten,
-      provisional, overrideHeld,
+      provisional, overrideHeld, mandated,
     } = w;
 
     /**
@@ -1318,6 +1336,9 @@ export class TraversalEngine {
         );
         includedBranches.length = 0;
         includedBranches.push(...branchResults.map(b => b.targetId));
+        // Recorded so an ACTION target is not silently re-excluded when it is
+        // disposed on its own account a moment later.
+        for (const br of branchResults) mandated.add(br.targetId);
 
         if (weak.length > 0) {
           redFlags.push({
@@ -1556,7 +1577,12 @@ export class TraversalEngine {
       );
       recordScorerInputs(dependencyMap, nodeIdentifier, confResult.contextInputs);
 
-      const status = confResult.confidence >= this.thresholds.suggestThreshold
+      // An `all_of` mandate outranks the threshold. The fork already
+      // red-flagged this branch as unsupported, which reports the
+      // disagreement; excluding it here would resolve the disagreement by
+      // dropping a step the pathway says always happens.
+      const isMandated = mandated.has(nodeIdentifier);
+      const status = isMandated || confResult.confidence >= this.thresholds.suggestThreshold
         ? NodeStatus.INCLUDED
         : NodeStatus.EXCLUDED;
 
