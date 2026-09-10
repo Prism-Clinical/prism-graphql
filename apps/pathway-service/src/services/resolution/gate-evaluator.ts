@@ -1034,6 +1034,17 @@ function evaluateAttributeKernel(
     // Derived, never hard-coded: a READY or NO_MATCH selection is by definition
     // a decision the kernel was able to make.
     indeterminate: false,
+    // The same signal the CODED scalar evaluator reports, on the same terms.
+    //
+    // Without it, `lab.hemoglobin < 7` with no result on file GATED OUT in
+    // silence while the coded spelling of the identical question escalated and
+    // asked. Whether a provider is asked for a missing haemoglobin should not
+    // depend on which notation the author happened to use.
+    //
+    // SCALAR only, as there: a membership attribute finding no match has
+    // ANSWERED — no penicillin allergy on file really does mean no allergy —
+    // and an aggregate over zero facts is a genuine count of zero.
+    ...(klass === 'scalar' && value === undefined ? { dataUnavailable: true } : {}),
     uncertainty,
   };
 }

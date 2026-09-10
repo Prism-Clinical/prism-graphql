@@ -192,3 +192,148 @@ describe('an overridden node inside the region', () => {
     expect(first.resolutionState.get('med-1')!.status).not.toBe(NodeStatus.INCLUDED);
   });
 });
+
+/**
+ * A REJECTED branch is the routing gate's decision to revisit, not its own.
+ *
+ * The ancestor check recognised only CLOSED ancestors. An answered routing
+ * gate stays INCLUDED while rejecting particular branches — so a rejected arm
+ * had an open parent, was seeded as a root, and came back INCLUDED alongside
+ * the branch the provider had switched to. Two mutually exclusive treatments,
+ * from a change to something else entirely.
+ */
+describe('a branch the answer rejected', () => {
+  function routed() {
+    return makeGraphContext(
+      [
+        node('root', 'Pathway'),
+        node('gate-r', 'Gate', {
+          title: 'Which arm?', gate_type: GateType.QUESTION,
+          default_behavior: DefaultBehavior.SKIP, answer_type: 'SELECT',
+          options: ['A', 'B'],
+        }),
+        node('step-a', 'Step', { title: 'Arm A' }),
+        node('step-b', 'Step', { title: 'Arm B' }),
+      ],
+      [
+        edge('root', 'gate-r', 'HAS_GATE'),
+        { ...edge('gate-r', 'step-a', 'BRANCHES_TO'), properties: { when: { equals: 'A' } } },
+        { ...edge('gate-r', 'step-b', 'BRANCHES_TO'), properties: { when: { equals: 'B' } } },
+      ],
+    );
+  }
+
+  it('stays rejected when a context change rescores it', async () => {
+    const g = routed();
+    const chooseB = new Map([['gate-r', { selectedOption: 'B' } as never]]);
+    const first = await engine().traverse(g, NO_CONDITIONS, chooseB);
+    expect(first.resolutionState.get('step-b')!.status).toBe(NodeStatus.INCLUDED);
+    expect(first.resolutionState.get('step-a')!.status).toBe(NodeStatus.EXCLUDED);
+
+    // Something rescored the rejected arm — a lab change, say.
+    await engine().resolveIncrementally(
+      new Set(['step-a']), first.resolutionState, first.dependencyMap, g, NO_CONDITIONS, chooseB,
+    );
+
+    expect(first.resolutionState.get('step-a')!.status).not.toBe(NodeStatus.INCLUDED);
+    expect(first.resolutionState.get('step-b')!.status).toBe(NodeStatus.INCLUDED);
+  });
+});
+
+/**
+ * Switching away from an OVERRIDDEN branch must exclude its subtree, not
+ * delete it.
+ *
+ * The incremental pass clears descendant rows first. `markBranchNotSelected`
+ * then returned immediately on a held branch root — preserving the override,
+ * but abandoning everything below it. Nothing rebuilt those rows, so a
+ * medication vanished from the session entirely.
+ */
+describe('switching away from an overridden branch', () => {
+  function routed() {
+    return makeGraphContext(
+      [
+        node('root', 'Pathway'),
+        node('gate-r', 'Gate', {
+          title: 'Which arm?', gate_type: GateType.QUESTION,
+          default_behavior: DefaultBehavior.SKIP, answer_type: 'SELECT',
+          options: ['A', 'B'],
+        }),
+        node('step-a', 'Step', { title: 'Arm A' }),
+        node('med-a', 'Medication', { name: 'Drug A', role: 'first_line' }),
+        node('step-b', 'Step', { title: 'Arm B' }),
+      ],
+      [
+        edge('root', 'gate-r', 'HAS_GATE'),
+        { ...edge('gate-r', 'step-a', 'BRANCHES_TO'), properties: { when: { equals: 'A' } } },
+        { ...edge('gate-r', 'step-b', 'BRANCHES_TO'), properties: { when: { equals: 'B' } } },
+        edge('step-a', 'med-a', 'USES_MEDICATION'),
+      ],
+    );
+  }
+
+  it('keeps the medication in the session, excluded rather than gone', async () => {
+    const g = routed();
+    const chooseA = new Map([['gate-r', { selectedOption: 'A' } as never]]);
+    const first = await engine().traverse(g, NO_CONDITIONS, chooseA);
+
+    first.resolutionState.get('step-a')!.providerOverride = {
+      action: OverrideAction.INCLUDE,
+      reason: 'clinical judgement',
+      originalStatus: NodeStatus.EXCLUDED,
+      originalConfidence: 0,
+    };
+
+    const chooseB = new Map([['gate-r', { selectedOption: 'B' } as never]]);
+    await engine().resolveIncrementally(
+      new Set(['gate-r']), first.resolutionState, first.dependencyMap, g, NO_CONDITIONS, chooseB,
+    );
+
+    // Present, and out of the plan — a node that simply disappears reads as an
+    // oversight rather than a decision.
+    expect(first.resolutionState.has('med-a')).toBe(true);
+    expect(first.resolutionState.get('med-a')!.status).not.toBe(NodeStatus.INCLUDED);
+  });
+});
+
+/**
+ * A seed keeps the place it had.
+ *
+ * Every incremental root was re-parented to `undefined` at depth 0. Care-plan
+ * generation walks the ancestry chain, so re-answering a gate beneath a Stage
+ * severed that Stage from its subtree — and an UNCHANGED answer silently
+ * dropped the Stage's goals from the generated plan.
+ */
+describe('seed placement', () => {
+  function nested() {
+    return makeGraphContext(
+      [
+        node('root', 'Pathway'),
+        node('stage-1', 'Stage', { title: 'Assessment', stage_number: 1 }),
+        node('gate-1', 'Gate', SHUT_QUESTION),
+        node('step-1', 'Step', { title: 'Treat' }),
+      ],
+      [
+        edge('root', 'stage-1', 'HAS_STAGE'),
+        edge('stage-1', 'gate-1', 'HAS_GATE'),
+        edge('gate-1', 'step-1', 'BRANCHES_TO'),
+      ],
+    );
+  }
+
+  it('keeps the seed parented where it was, not at the root', async () => {
+    const g = nested();
+    const answers = new Map([['gate-1', { booleanValue: true } as never]]);
+    const first = await engine().traverse(g, NO_CONDITIONS, answers);
+    const before = first.resolutionState.get('gate-1')!;
+    expect(before.parentNodeId).toBe('stage-1');
+
+    await engine().resolveIncrementally(
+      new Set(['gate-1']), first.resolutionState, first.dependencyMap, g, NO_CONDITIONS, answers,
+    );
+
+    const after = first.resolutionState.get('gate-1')!;
+    expect(after.parentNodeId).toBe('stage-1');
+    expect(after.depth).toBe(before.depth);
+  });
+});

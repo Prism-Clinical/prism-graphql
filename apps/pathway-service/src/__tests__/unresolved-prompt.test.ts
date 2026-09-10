@@ -88,3 +88,60 @@ describe('askFor', () => {
     expect(hb.datumKey).not.toBe(ft.datumKey);
   });
 });
+
+/**
+ * An answer must land where the gate will READ it.
+ *
+ * Every attribute answer went to `patientAttributes`. But `lab.hemoglobin` is
+ * a LAB — the gate resolves it through the attribute vocabulary to a LOINC
+ * code and reads the lab series — so the injected fact went somewhere the gate
+ * never looks, and the question stayed pending however many times it was
+ * answered.
+ */
+describe('askFor resolves the attribute namespace', () => {
+  const codeMap = new Map([
+    ['lab.hemoglobin', {
+      attributeName: 'lab.hemoglobin', namespace: 'lab',
+      system: 'LOINC', code: '718-7', valueType: 'number' as const,
+    }],
+  ]);
+
+  const labCondition = {
+    attribute: 'lab.hemoglobin', operator: 'less_than', value: '11',
+  } as never;
+
+  it('sends a lab attribute to the LAB context, with its code', () => {
+    const ask = askFor(labCondition, codeMap)!;
+    expect(ask.target).toEqual({ kind: 'lab', code: '718-7', system: 'LOINC' });
+  });
+
+  // Without the vocabulary there is no code to inject against, so the honest
+  // fallback is the old behaviour rather than a guess.
+  it('falls back to an attribute target when the vocabulary has no row', () => {
+    const ask = askFor(labCondition, new Map())!;
+    expect(ask.target).toEqual({ kind: 'attribute', path: 'lab.hemoglobin' });
+  });
+
+  it('sends a vitals attribute to the vitals context', () => {
+    const ask = askFor(
+      { attribute: 'vitals.systolic', operator: 'greater_than', value: '140' } as never,
+      codeMap,
+    )!;
+    expect(ask.target).toEqual({ kind: 'vital', path: 'vitals.systolic' });
+  });
+
+  // Demographics genuinely live in patientAttributes.
+  it('leaves a patient attribute where it was', () => {
+    const ask = askFor(
+      { attribute: 'patient.trimester', operator: 'equals', value: '2' } as never,
+      codeMap,
+    )!;
+    expect(ask.target).toEqual({ kind: 'attribute', path: 'patient.trimester' });
+  });
+
+  // The datum key is the gate's own wording either way, so two gates reading
+  // one haemoglobin still share a prompt.
+  it('keys the datum by the attribute path regardless of target', () => {
+    expect(askFor(labCondition, codeMap)!.datumKey).toBe('lab.hemoglobin');
+  });
+});

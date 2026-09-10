@@ -96,6 +96,8 @@ function unresolvedAsk(
     dataUnavailable?: boolean;
     unresolvedConditions?: GateCondition[];
   },
+  /** The attribute vocabulary, so a lab attribute asks for a LAB. */
+  codeMap?: AttributeCodeMap,
 ): UnresolvedAsk | null {
   const couldNotDecide =
     gateResult.indeterminate === true || gateResult.dataUnavailable === true;
@@ -115,7 +117,7 @@ function unresolvedAsk(
       ? gateResult.unresolvedConditions
       : (gateProps.conditions ?? (gateProps.condition ? [gateProps.condition] : []));
   for (const condition of conditions) {
-    const ask = askFor(condition);
+    const ask = askFor(condition, codeMap);
     if (ask) return ask;
   }
   return null;
@@ -141,10 +143,22 @@ function markBranchNotSelected(
   held?: Set<string>,
 ): void {
   if (resolutionState.has(targetId) && !provisional?.has(targetId) && !held?.has(targetId)) return;
-  if (held?.has(targetId)) return;  // the override stands on this node
-  provisional?.delete(targetId);
   const target = graphContext.getNode(targetId);
   if (!target) return;
+
+  // A HELD branch root keeps its override — but the sweep must go on beneath
+  // it. Returning here abandoned the descendants, and since the incremental
+  // pass had already cleared them, they were not excluded but DELETED: a
+  // medication vanished from the session outright when the provider switched
+  // away from an overridden branch.
+  if (held?.has(targetId)) {
+    const heldKids = graphContext.outgoingEdges(targetId).map(e => e.targetId);
+    addAll(rewritten, markSubtree(heldKids, graphContext, resolutionState, NodeStatus.EXCLUDED,
+      `Excluded with ${nodeTitle(target)}`, targetId, depth + 1, provisional, held));
+    return;
+  }
+
+  provisional?.delete(targetId);
   rewritten.add(targetId);
 
   resolutionState.set(targetId, {
@@ -648,19 +662,27 @@ export class TraversalEngine {
     // walk is bounded by the graph and stops at the first ancestor that is
     // still open, so this is not a full traversal in disguise.
     const CLOSED = [NodeStatus.GATED_OUT, NodeStatus.EXCLUDED, NodeStatus.PENDING_QUESTION];
+    const isClosed = (id: string) =>
+      CLOSED.includes(resolutionState.get(id)?.status as NodeStatus);
     const promote = (id: string): string => {
       const seen = new Set<string>([id]);
       let current = id;
       for (;;) {
-        const closingParent = graphContext
-          .incomingEdges(current)
-          .map(e => e.sourceId)
-          .find(pid => !seen.has(pid) && CLOSED.includes(
-            resolutionState.get(pid)?.status as NodeStatus,
-          ));
-        if (!closingParent) return current;
-        seen.add(closingParent);
-        current = closingParent;
+        const parents = graphContext.incomingEdges(current).map(e => e.sourceId);
+        // Climb past a closing ANCESTOR — and also past the node's own closure.
+        //
+        // Checking ancestors alone missed the commonest case: an ANSWERED
+        // routing gate stays INCLUDED while rejecting particular branches, so
+        // a rejected arm has an open parent and was re-disposed as a root —
+        // re-including a treatment the provider had switched away from,
+        // alongside the one they chose. A node that is closed was closed by
+        // something above it, and only that thing can re-open it.
+        const next = isClosed(current)
+          ? parents.find(pid => !seen.has(pid))
+          : parents.find(pid => !seen.has(pid) && isClosed(pid));
+        if (!next) return current;
+        seen.add(next);
+        current = next;
       }
     };
     const effectiveSeeds = new Set([...seedNodeIds].map(promote));
@@ -756,7 +778,16 @@ export class TraversalEngine {
       // it — and the walk then never arrived to open its descendants. It has
       // to be enqueued precisely because it is held.
       if (!resolutionState.has(id) || overrideHeld.has(id) || provisional.has(id)) {
-        queue.push({ nodeIdentifier: id, parentNodeId: undefined, depth: 0 });
+        // Its PREVIOUS placement, not root-level. Every incremental root used
+        // to be re-parented to `undefined` at depth 0, which broke the
+        // ancestry chain care-plan generation walks — re-answering a gate
+        // beneath a Stage silently dropped that Stage's goals from the plan.
+        const was = priorPlacement.get(id);
+        queue.push({
+          nodeIdentifier: id,
+          parentNodeId: was?.parentNodeId,
+          depth: was?.depth ?? 0,
+        });
       }
     }
 
@@ -1145,7 +1176,7 @@ export class TraversalEngine {
             affectedSubtreeSize: subtreeSize,
             estimatedImpact: subtreeSize > 3 ? 'high' : subtreeSize > 1 ? 'medium' : 'low',
           });
-        } else if (unresolvedAsk(gateProps, gateResult)) {
+        } else if (unresolvedAsk(gateProps, gateResult, this.codeMap)) {
           // The gate could not DECIDE — as opposed to deciding "no". Ask for
           // the datum it needed rather than silently taking default_behavior,
           // which is what made a missing haemoglobin indistinguishable from a
@@ -1154,7 +1185,7 @@ export class TraversalEngine {
           // `unresolvedAsk` returns null for every class with no honest
           // question (membership, aggregate) and whenever the author set
           // on_unresolved: 'default', so this arm cannot fire on them.
-          const ask = unresolvedAsk(gateProps, gateResult)!;
+          const ask = unresolvedAsk(gateProps, gateResult, this.codeMap)!;
 
           resolutionState.set(nodeIdentifier, {
             nodeId: nodeIdentifier,

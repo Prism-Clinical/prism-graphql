@@ -1,3 +1,4 @@
+import type { AttributeCodeMap } from './types';
 import { AnswerType, GateCondition, isAttributeCondition } from './types';
 import { isTemporalOperator, operatorClass } from './temporal/contract';
 
@@ -46,10 +47,34 @@ export interface UnresolvedAsk {
  *   - anything whose operator the kernel does not recognise, because a guess
  *     here becomes a clinician-facing question.
  */
-export function askFor(condition: GateCondition): UnresolvedAsk | null {
+export function askFor(
+  condition: GateCondition,
+  /**
+   * The attribute vocabulary, so an answer lands where the gate will READ it.
+   *
+   * Every attribute answer used to be written to `patientAttributes`. But
+   * `lab.hemoglobin` is a LAB — the gate resolves it through this map to a
+   * LOINC code and reads the lab series — so the injected fact went somewhere
+   * the gate never looks and the question stayed pending however many times
+   * it was answered. Same lookup the evaluator uses, so the two cannot
+   * disagree about where a datum lives.
+   */
+  codeMap?: AttributeCodeMap,
+): UnresolvedAsk | null {
   if (isAttributeCondition(condition)) {
     const path = condition.attribute;
     if (!path) return null;
+
+    const namespace = path.slice(0, path.indexOf('.'));
+    const entry = codeMap?.get(path);
+
+    const target: UnresolvedAsk['target'] =
+      namespace === 'vitals'
+        ? { kind: 'vital', path }
+        : entry && (namespace === 'lab' || namespace === 'allergy')
+          ? { kind: 'lab', code: entry.code, system: entry.system }
+          : { kind: 'attribute', path };
+
     return {
       datumKey: path,
       prompt: `${path} — current value?`,
@@ -58,7 +83,7 @@ export function askFor(condition: GateCondition): UnresolvedAsk | null {
       // only scalar-comparable attributes reach `indeterminate` at all, since
       // membership never does.
       answerType: AnswerType.NUMERIC,
-      target: { kind: 'attribute', path },
+      target,
     };
   }
 

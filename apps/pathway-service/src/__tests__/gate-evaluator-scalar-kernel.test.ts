@@ -489,3 +489,51 @@ describe('the cascade’s errors propagate rather than becoming a quiet false', 
     await expect(evaluateGate(gate, deps('v1'))).rejects.toThrow(/horoscopes/);
   });
 });
+
+/**
+ * The two spellings of one clinical question must behave the same.
+ *
+ * With no haemoglobin on file, the CODED condition reported `dataUnavailable`
+ * and the gate escalated — asking the provider for the value. The equivalent
+ * ATTRIBUTE condition (`lab.hemoglobin < 7`) omitted the signal, so the gate
+ * quietly took its default and asked nobody.
+ *
+ * Whether a provider is asked for a missing haemoglobin should not depend on
+ * which notation the author happened to use.
+ */
+describe('coded and attribute spellings agree on missing data', () => {
+  const CODE_MAP = new Map([
+    ['lab.hemoglobin', {
+      attributeName: 'lab.hemoglobin', namespace: 'lab',
+      system: 'LOINC', code: '4548-4', valueType: 'number' as const,
+    }],
+  ]);
+
+  const ATTR_LT_7 = {
+    attribute: 'lab.hemoglobin', operator: 'less_than', value: '7',
+  } as unknown as GateCondition;
+
+  const CODED_LT_7: GateCondition = {
+    field: 'labs', operator: 'less_than', value: '4548-4', system: 'LOINC', threshold: 7,
+  };
+
+  // No facts at all, so neither spelling has a value to compare.
+  const noData = () => deps('v1', { factStore: [], codeMap: CODE_MAP });
+
+  it('reports dataUnavailable for the coded spelling', async () => {
+    const r = await evaluateGate(gateFor(CODED_LT_7), noData());
+    expect(r.dataUnavailable).toBe(true);
+  });
+
+  it('reports dataUnavailable for the attribute spelling too', async () => {
+    const r = await evaluateGate(gateFor(ATTR_LT_7), noData());
+    expect(r.dataUnavailable).toBe(true);
+  });
+
+  it('agrees on both signals', async () => {
+    const coded = await evaluateGate(gateFor(CODED_LT_7), noData());
+    const attr = await evaluateGate(gateFor(ATTR_LT_7), noData());
+    expect(attr.dataUnavailable).toBe(coded.dataUnavailable);
+    expect(attr.indeterminate).toBe(coded.indeterminate);
+  });
+});
