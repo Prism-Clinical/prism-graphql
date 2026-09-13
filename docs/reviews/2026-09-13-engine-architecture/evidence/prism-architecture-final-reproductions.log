@@ -1,0 +1,184 @@
+FAIL apps/pathway-service/src/__tests__/architecture-review.test.ts
+  ● architecture: nested gate cannot reopen underneath a closed ancestor
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: "GATED_OUT"
+    Received: "INCLUDED"
+
+      114 |  await e.resolveIncrementally(new Set(['inner']),r.resolutionState,r.dependencyMap,g,patient,answers);
+      115 |  expect(r.resolutionState.get('outer')!.status).toBe(NodeStatus.GATED_OUT);
+    > 116 |  expect(r.resolutionState.get('med')!.status).toBe(NodeStatus.GATED_OUT);
+          |                                               ^
+      117 | });
+      118 |
+      119 | test('architecture: a shared downstream action is reachable through the selected arm', async () => {
+
+      at Object.<anonymous> (src/__tests__/architecture-review.test.ts:116:47)
+
+  ● architecture: a shared downstream action is reachable through the selected arm
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: "INCLUDED"
+    Received: "EXCLUDED"
+
+      121 |  const r=await engine().traverse(g,pc,new Map([['q',{selectedOption:'a'}]]));
+      122 |  expect(r.resolutionState.get('a')!.status).toBe(NodeStatus.INCLUDED);
+    > 123 |  expect(r.resolutionState.get('shared')!.status).toBe(NodeStatus.INCLUDED);
+          |                                                  ^
+      124 | });
+      125 |
+
+      at Object.<anonymous> (src/__tests__/architecture-review.test.ts:123:50)
+
+FAIL apps/pathway-service/src/__tests__/multi-pathway-resolution.test.ts
+  ● resolveConflict › CUSTOM_OVERRIDE attaches a write-in medication and marks state PROVIDER_OVERRIDE
+
+    expect(jest.fn()).toHaveBeenCalled()
+
+    Expected number of calls: >= 1
+    Received number of calls:    0
+
+      521 |     expect(updatedPlan.medications[0].state).toBe('provider-override');
+      522 |     const {runPatientContextDdi}=await import('../services/medications/ddi-pass');
+    > 523 |     expect(runPatientContextDdi).toHaveBeenCalled();
+          |                                  ^
+      524 |   });
+      525 |
+      526 |   it('rejects when conflictId does not exist in the session', async () => {
+
+      at Object.<anonymous> (src/__tests__/multi-pathway-resolution.test.ts:523:34)
+
+  ● applyResolution — pure conflict application › CONFIRM_PATHWAY surfaces only the chosen candidate
+
+    expect(received).toEqual(expected) // deep equality
+
+    - Expected  - 0
+    + Received  + 1
+
+      Array [
+    +   "A",
+        "B",
+      ]
+
+      661 |     expect(updated.medications.map((m) => m.recommendation.name)).toEqual(['A']);
+      662 |     const changed = applyResolution(updated,updated.conflicts[0],{kind:'CONFIRM_PATHWAY',chosenPathwayId:'p2',...meta});
+    > 663 |     expect(changed.medications.map(m=>m.recommendation.name)).toEqual(['B']);
+          |                                                               ^
+      664 |   });
+      665 | });
+      666 |
+
+      at Object.<anonymous> (src/__tests__/multi-pathway-resolution.test.ts:663:63)
+
+  ● architecture: merged generation must refuse a pending child session
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: false
+    Received: true
+
+      801 |  const ctx={pool:{connect:jest.fn().mockResolvedValue(client)},userId:'provider-1'} as never;
+      802 |  const result=await multiPathwayResolutionMutations.generateMergedCarePlan({}, {sessionId:'sess-1'},ctx);
+    > 803 |  expect(result.success).toBe(false);
+          |                         ^
+      804 | });
+      805 |
+
+      at Object.<anonymous> (src/__tests__/multi-pathway-resolution.test.ts:803:25)
+
+FAIL apps/pathway-service/src/__tests__/architecture-ddi-identity.test.ts
+  ● pathway-local medication ids must not alias in a cross-pathway check
+
+    expect(received).toHaveLength(expected)
+
+    Expected length: 2
+    Received length: 0
+    Received array:  []
+
+       9 |  expect(scoped.findings).toHaveLength(2);
+      10 |  const actual=await runCrossRecommendationDdi({} as never,candidates);
+    > 11 |  expect(actual.findings).toHaveLength(2);
+         |                          ^
+      12 | });
+      13 |
+
+      at Object.<anonymous> (src/__tests__/architecture-ddi-identity.test.ts:11:26)
+
+FAIL apps/pathway-service/src/__tests__/escalated-answer-injection.test.ts
+  ● architecture: answering a vital attribute supplies the actual vital
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: "INCLUDED"
+    Received: "PENDING_QUESTION"
+
+      257 |  mockedGetSession.mockResolvedValue(session);
+      258 |  await resolutionMutations.answerPendingDecision(null,{sessionId:'session-1',nodeId:'bp',answer:{numericValue:180}},ctx());
+    > 259 |  expect(session.resolutionState.get('bp').status).toBe(NodeStatus.INCLUDED);
+          |                                                   ^
+      260 | });
+      261 |
+
+      at Object.<anonymous> (src/__tests__/escalated-answer-injection.test.ts:259:51)
+
+FAIL apps/pathway-service/src/__tests__/confidence-engine.test.ts
+  ● Console
+
+    console.warn
+      [ConfidenceEngine] Cycle detected in pathway graph — propagation skipped. 1 nodes, 1 edges. Raw scores used without propagation.
+
+      314 |     const sorted = this.topologicalSort(nodes, edges);
+      315 |     if (!sorted) {
+    > 316 |       console.warn(
+          |               ^
+      317 |         `[ConfidenceEngine] Cycle detected in pathway graph — propagation skipped. ` +
+      318 |         `${nodes.length} nodes, ${edges.length} edges. Raw scores used without propagation.`
+      319 |       );
+
+      at ConfidenceEngine.applyPropagation (src/services/confidence/confidence-engine.ts:316:15)
+      at ConfidenceEngine.computePathwayConfidence (src/services/confidence/confidence-engine.ts:146:40)
+      at Object.<anonymous> (src/__tests__/confidence-engine.test.ts:397:22)
+
+    console.warn
+      [ConfidenceEngine] Cycle detected in pathway graph — propagation skipped. 2 nodes, 2 edges. Raw scores used without propagation.
+
+      314 |     const sorted = this.topologicalSort(nodes, edges);
+      315 |     if (!sorted) {
+    > 316 |       console.warn(
+          |               ^
+      317 |         `[ConfidenceEngine] Cycle detected in pathway graph — propagation skipped. ` +
+      318 |         `${nodes.length} nodes, ${edges.length} edges. Raw scores used without propagation.`
+      319 |       );
+
+      at ConfidenceEngine.applyPropagation (src/services/confidence/confidence-engine.ts:316:15)
+      at ConfidenceEngine.computePathwayConfidence (src/services/confidence/confidence-engine.ts:146:40)
+      at Object.<anonymous> (src/__tests__/confidence-engine.test.ts:430:22)
+
+  ● ConfidenceEngine › computePathwayConfidence › should propagate low scores along edges and reduce downstream confidence
+
+    expect(received).toBeCloseTo(expected, precision)
+
+    Expected: 0.24
+    Received: 0.9
+
+    Expected precision:    2
+    Expected difference: < 0.005
+    Received difference:   0.66
+
+      396 |       // all nodes for lookup context, and the full edge list.
+      397 |       const single = await engine.computePathwayConfidence({pool:mockPool,pathwayId:'pathway-1',nodes:[nodes[1]],contextNodes:nodes,edges,signalDefinitions:signals,patientContext:REFERENCE_PATIENT});
+    > 398 |       expect(single.nodes[0].confidence).toBeCloseTo(stepResult.confidence,2);
+          |                                          ^
+      399 |
+      400 |     });
+      401 |
+
+      at Object.<anonymous> (src/__tests__/confidence-engine.test.ts:398:42)
+
+Test Suites: 5 failed, 5 total
+Tests:       8 failed, 41 passed, 49 total
+Snapshots:   0 total
+Time:        0.678 s, estimated 3 s
+Ran all test suites within paths "apps/pathway-service/src/__tests__/architecture-review.test.ts", "apps/pathway-service/src/__tests__/confidence-engine.test.ts", "apps/pathway-service/src/__tests__/multi-pathway-resolution.test.ts", "apps/pathway-service/src/__tests__/escalated-answer-injection.test.ts", "apps/pathway-service/src/__tests__/architecture-ddi-identity.test.ts".

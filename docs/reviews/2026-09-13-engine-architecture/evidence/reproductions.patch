@@ -1,0 +1,222 @@
+--- /dev/null
++++ b/apps/pathway-service/src/__tests__/architecture-ddi-identity.test.ts
+@@ -0,0 +1,12 @@
++
++jest.mock('../services/medications/normalizer',()=>({lookupNormalizedMedication:jest.fn(async (_pool:any,input:any)=>({ingredientRxcui:input.text==='Drug A'?'111':'222',ingredientName:input.text,atcClasses:[]}))}));
++jest.mock('../services/medications/ddi-engine',()=>({checkDrugDrugInteraction:jest.fn(async (_pool:any,a:any,b:any)=>a.rxcui===b.rxcui?null:{severity:'SEVERE',mechanism:'test interaction',clinicalAdvice:'test'}),fetchAllergyMappings:jest.fn(async()=>[]),matchDrugAllergyAgainstMappings:jest.fn(()=>[])}));
++import {runCrossRecommendationDdi} from '../services/medications/ddi-pass';
++
++test('pathway-local medication ids must not alias in a cross-pathway check',async()=>{
++ const candidates=[{recommendationId:'med-1',drugName:'Drug A',sourcePathwayId:'pw-a'},{recommendationId:'med-1',drugName:'Drug B',sourcePathwayId:'pw-b'}];
++ const scoped=await runCrossRecommendationDdi({} as never,candidates.map(c=>({...c,recommendationId:c.sourcePathwayId+'|'+c.recommendationId})));
++ expect(scoped.findings).toHaveLength(2);
++ const actual=await runCrossRecommendationDdi({} as never,candidates);
++ expect(actual.findings).toHaveLength(2);
++});
+--- /dev/null
++++ b/apps/pathway-service/src/__tests__/architecture-review.test.ts
+@@ -0,0 +1,124 @@
++import { TraversalEngine } from '../services/resolution/traversal-engine';
++import { makeEvaluationTemporalContext } from '../services/resolution/temporal/evaluation-context';
++import { NodeStatus, GateType, DefaultBehavior, AnswerType, OverrideAction } from '../services/resolution/types';
++import { GraphNode, GraphEdge, PatientContext } from '../services/confidence/types';
++import { makeGraphContext } from './fixtures/reference-patient-context';
++
++const node = (id: string, nodeType: string, properties = {}): GraphNode => ({ id, nodeIdentifier: id, nodeType, properties: { title: id, ...properties } });
++const edge = (sourceId: string, targetId: string, edgeType = 'HAS_CHILD', properties = {}): GraphEdge => ({ id: `${sourceId}-${targetId}`, sourceId, targetId, edgeType, properties });
++const pc = { patientId: 'p', conditionCodes: [], medications: [], allergies: [], labResults: [] } as PatientContext;
++const engine = (weak = '') => new TraversalEngine({ computeNodeConfidence: async (n: GraphNode) => ({ confidence: n.nodeIdentifier === weak ? 0.1 : 0.9, breakdown: [], contextInputs: ['labs'] }) } as never,
++  { autoResolveThreshold: 0.85, suggestThreshold: 0.6 }, makeEvaluationTemporalContext({ evaluationAsOf: '2026-09-03T12:00:00Z', temporalPolicyVersion: 'legacy-v0' }), {}, [], new Map());
++
++test('context rescoring cannot reopen a medication behind an answered-closed gate', async () => {
++  const g = makeGraphContext([node('root', 'Pathway'), node('q', 'Gate', { gate_type: GateType.QUESTION, answer_type: AnswerType.BOOLEAN, default_behavior: DefaultBehavior.SKIP }), node('med', 'Medication')], [edge('root', 'q'), edge('q', 'med')]);
++  const answers = new Map([['q', { booleanValue: true }]]);
++  const e = engine();
++  const r = await e.traverse(g, pc, answers);
++  answers.set('q', { booleanValue: false });
++  await e.resolveIncrementally(new Set(['q']), r.resolutionState, r.dependencyMap, g, pc, answers);
++  expect(r.resolutionState.get('med')!.status).toBe(NodeStatus.GATED_OUT);
++  expect(r.dependencyMap.scorerInputs.get('med')).toContain('labs');
++  // addPatientContext seeds med because its recorded scorer reads labs;
++  // the question gate itself does not depend on patient labs.
++  await e.resolveIncrementally(new Set(['med']), r.resolutionState, r.dependencyMap, g, pc, answers);
++  expect(r.resolutionState.get('q')!.status).toBe(NodeStatus.GATED_OUT);
++  expect(r.resolutionState.get('med')!.status).toBe(NodeStatus.GATED_OUT);
++});
++
++test('an included override below a closing gate must not pre-enqueue its medication', async () => {
++  const g = makeGraphContext([node('root', 'Pathway'), node('q', 'Gate', { gate_type: GateType.QUESTION, answer_type: AnswerType.BOOLEAN, default_behavior: DefaultBehavior.SKIP }), node('step', 'Step'), node('med', 'Medication')], [edge('root', 'q'), edge('q', 'step'), edge('step', 'med')]);
++  const answers = new Map([['q', { booleanValue: true }]]);
++  const e = engine();
++  const r = await e.traverse(g, pc, answers);
++  r.resolutionState.get('step')!.providerOverride = { action: OverrideAction.INCLUDE, originalStatus: NodeStatus.INCLUDED, originalConfidence: 0.9 };
++  answers.set('q', { booleanValue: false });
++  await e.resolveIncrementally(new Set(['q']), r.resolutionState, r.dependencyMap, g, pc, answers);
++  expect(r.resolutionState.get('q')!.status).toBe(NodeStatus.GATED_OUT);
++  expect(r.resolutionState.get('med')!.status).not.toBe(NodeStatus.INCLUDED);
++});
++
++test('all_of retains a weak action branch and reports it unsupported', async () => {
++  const g = makeGraphContext([node('root', 'Pathway'), node('dp', 'DecisionPoint', { branch_mode: 'all_of' }), node('med', 'Medication'), node('step', 'Step')], [edge('root', 'dp'), edge('dp', 'med', 'BRANCHES_TO'), edge('dp', 'step', 'BRANCHES_TO')]);
++  const r = await engine('med').traverse(g, pc, new Map());
++  expect(r.redFlags.some(f => f.type === 'all_of_branch_unsupported')).toBe(true);
++  expect(r.resolutionState.get('med')!.status).toBe(NodeStatus.INCLUDED);
++});
++
++
++test('changed gate status invalidates a sibling prior_node_result dependent', async () => {
++  const g = makeGraphContext([node('root', 'Pathway'), node('q', 'Gate', { gate_type: GateType.QUESTION, answer_type: AnswerType.BOOLEAN, default_behavior: DefaultBehavior.SKIP }), node('dependent', 'Gate', { gate_type: GateType.PRIOR_NODE_RESULT, default_behavior: DefaultBehavior.SKIP, depends_on: [{ node_id: 'q', status: NodeStatus.INCLUDED }] }), node('med', 'Medication')], [edge('root', 'q'), edge('root', 'dependent'), edge('dependent', 'med')]);
++  const answers = new Map([['q', { booleanValue: true }]]);
++  const e = engine();
++  const r = await e.traverse(g, pc, answers);
++  expect(r.dependencyMap.influences.get('q')).toContain('dependent');
++  answers.set('q', { booleanValue: false });
++  await e.resolveIncrementally(new Set(['q']), r.resolutionState, r.dependencyMap, g, pc, answers);
++  const fresh = await e.traverse(g, pc, answers);
++  expect(fresh.resolutionState.get('med')!.status).toBe(NodeStatus.GATED_OUT);
++  expect(r.resolutionState.get('med')!.status).toBe(fresh.resolutionState.get('med')!.status);
++});
++
++
++test('review2: rescoring rejected arm cannot bypass an INCLUDED routing gate', async () => {
++  const g = makeGraphContext([node('root', 'Pathway'), node('q', 'Gate', { gate_type: GateType.QUESTION, answer_type: AnswerType.SELECT, options: ['a', 'b'], default_behavior: DefaultBehavior.SKIP }), node('a', 'Medication'), node('b', 'Medication')], [edge('root', 'q'), edge('q', 'a', 'BRANCHES_TO', {when:{equals:'a'}}), edge('q', 'b', 'BRANCHES_TO', {when:{equals:'b'}})]);
++  const answers = new Map([['q', { selectedOption: 'a' }]]);
++  const e = engine(); const r = await e.traverse(g, pc, answers);
++  answers.set('q', {selectedOption:'b'});
++  await e.resolveIncrementally(new Set(['q']), r.resolutionState, r.dependencyMap, g, pc, answers);
++  expect(r.resolutionState.get('a')!.status).toBe(NodeStatus.EXCLUDED);
++  await e.resolveIncrementally(new Set(['a']), r.resolutionState, r.dependencyMap, g, pc, answers);
++  expect(r.resolutionState.get('a')!.status).toBe(NodeStatus.EXCLUDED);
++});
++
++test('review2: switching away from an overridden branch must retain its descendant rows', async () => {
++  const g = makeGraphContext([node('root', 'Pathway'), node('q', 'Gate', { gate_type: GateType.QUESTION, answer_type: AnswerType.SELECT, options: ['a', 'b'], default_behavior: DefaultBehavior.SKIP }), node('a', 'Step'), node('b', 'Step'), node('med', 'Medication')], [edge('root', 'q'), edge('q', 'a', 'BRANCHES_TO', {when:{equals:'a'}}), edge('q', 'b', 'BRANCHES_TO', {when:{equals:'b'}}), edge('a','med')]);
++  const answers = new Map([['q', { selectedOption: 'a' }]]);
++  const e = engine(); const r = await e.traverse(g, pc, answers);
++  r.resolutionState.get('a')!.providerOverride = {action:OverrideAction.INCLUDE, originalStatus:NodeStatus.INCLUDED, originalConfidence:0.9};
++  answers.set('q', {selectedOption:'b'});
++  await e.resolveIncrementally(new Set(['q']), r.resolutionState, r.dependencyMap, g, pc, answers);
++  expect(r.resolutionState.has('med')).toBe(true);
++  expect(r.resolutionState.get('med')!.status).toBe(NodeStatus.EXCLUDED);
++});
++
++test('review2: re-answer preserves stage ancestry', async () => {
++  const g = makeGraphContext([node('root', 'Pathway'),node('stage','Stage'), node('q', 'Gate', { gate_type: GateType.QUESTION, answer_type: AnswerType.BOOLEAN, default_behavior: DefaultBehavior.SKIP }), node('med', 'Medication')], [edge('root','stage'),edge('stage','q'),edge('q','med')]);
++  const answers = new Map([['q',{booleanValue:true}]]);
++  const e=engine(); const r=await e.traverse(g,pc,answers);
++  const {generateCarePlan}=await import('../services/resolution/care-plan-generator');
++  expect(generateCarePlan(r.resolutionState,'pw','s').goals).toHaveLength(1);
++  await e.resolveIncrementally(new Set(['q']),r.resolutionState,r.dependencyMap,g,pc,answers);
++  expect(generateCarePlan(r.resolutionState,'pw','s').goals).toHaveLength(1);
++});
++
++
++test('review2: absent lab escalates identically in coded and attribute notation', async () => {
++  const codeMap = new Map([['lab.hemoglobin',{attributeName:'lab.hemoglobin',namespace:'lab',system:'LOINC',code:'718-7',valueType:'number'}]]);
++  const e = new TraversalEngine({computeNodeConfidence:async()=>({confidence:0.9,breakdown:[]})} as never,{autoResolveThreshold:0.85,suggestThreshold:0.6},makeEvaluationTemporalContext({evaluationAsOf:'2026-09-03T12:00:00Z',temporalPolicyVersion:'v1'}),{},[],codeMap as never);
++  const g = makeGraphContext([node('root','Pathway'),node('coded','Gate',{gate_type:GateType.PATIENT_ATTRIBUTE,default_behavior:DefaultBehavior.SKIP,condition:{field:'labs',operator:'less_than',value:'718-7',system:'LOINC',threshold:7}}),node('attribute','Gate',{gate_type:GateType.PATIENT_ATTRIBUTE,default_behavior:DefaultBehavior.SKIP,condition:{attribute:'lab.hemoglobin',operator:'less_than',value:7}})],[edge('root','coded'),edge('root','attribute')]);
++  const r=await e.traverse(g,pc,new Map());
++  expect(r.resolutionState.get('coded')!.status).toBe(NodeStatus.PENDING_QUESTION);
++  expect(r.resolutionState.get('attribute')!.status).toBe(NodeStatus.PENDING_QUESTION);
++});
++
++
++test('architecture: nested gate cannot reopen underneath a closed ancestor', async () => {
++ const g=makeGraphContext([node('root','Pathway'),node('outer','Gate',{gate_type:GateType.QUESTION,answer_type:AnswerType.BOOLEAN,default_behavior:DefaultBehavior.SKIP}),node('step','Step'),node('inner','Gate',{gate_type:GateType.PATIENT_ATTRIBUTE,default_behavior:DefaultBehavior.SKIP,condition:{field:'labs',operator:'less_than',value:'718-7',system:'LOINC',threshold:7}}),node('med','Medication')],[edge('root','outer'),edge('outer','step'),edge('step','inner'),edge('inner','med')]);
++ const patient={...pc,labResults:[{code:'718-7',system:'LOINC',value:6}]};
++ const answers=new Map([['outer',{booleanValue:true}]]);
++ const e=engine();const r=await e.traverse(g,patient,answers);
++ answers.set('outer',{booleanValue:false});
++ await e.resolveIncrementally(new Set(['outer']),r.resolutionState,r.dependencyMap,g,patient,answers);
++ expect(r.resolutionState.get('inner')!.status).toBe(NodeStatus.GATED_OUT);
++ await e.resolveIncrementally(new Set(['inner']),r.resolutionState,r.dependencyMap,g,patient,answers);
++ expect(r.resolutionState.get('outer')!.status).toBe(NodeStatus.GATED_OUT);
++ expect(r.resolutionState.get('med')!.status).toBe(NodeStatus.GATED_OUT);
++});
++
++test('architecture: a shared downstream action is reachable through the selected arm', async () => {
++ const g=makeGraphContext([node('root','Pathway'),node('q','Gate',{gate_type:GateType.QUESTION,answer_type:AnswerType.SELECT,options:['a','b'],default_behavior:DefaultBehavior.SKIP}),node('a','Step'),node('b','Step'),node('shared','Medication')],[edge('root','q'),edge('q','a','BRANCHES_TO',{when:{equals:'a'}}),edge('q','b','BRANCHES_TO',{when:{equals:'b'}}),edge('a','shared'),edge('b','shared')]);
++ const r=await engine().traverse(g,pc,new Map([['q',{selectedOption:'a'}]]));
++ expect(r.resolutionState.get('a')!.status).toBe(NodeStatus.INCLUDED);
++ expect(r.resolutionState.get('shared')!.status).toBe(NodeStatus.INCLUDED);
++});
+--- a/apps/pathway-service/src/__tests__/confidence-engine.test.ts
++++ b/apps/pathway-service/src/__tests__/confidence-engine.test.ts
+@@ -392,6 +392,11 @@
+       expect(stepResult.confidence).toBeCloseTo(0.24, 2);
+       expect(stepResult.propagationInfluences).toHaveLength(1);
+       expect(stepResult.propagationInfluences[0].sourceNodeIdentifier).toBe('lab-1');
++      // Production traversal passes exactly this shape: one scored node,
++      // all nodes for lookup context, and the full edge list.
++      const single = await engine.computePathwayConfidence({pool:mockPool,pathwayId:'pathway-1',nodes:[nodes[1]],contextNodes:nodes,edges,signalDefinitions:signals,patientContext:REFERENCE_PATIENT});
++      expect(single.nodes[0].confidence).toBeCloseTo(stepResult.confidence,2);
++
+     });
+
+     it('should handle cycles gracefully (skip propagation)', async () => {
+--- a/apps/pathway-service/src/__tests__/escalated-answer-injection.test.ts
++++ b/apps/pathway-service/src/__tests__/escalated-answer-injection.test.ts
+@@ -242,3 +242,19 @@
+     ).rejects.toThrow(/numericValue/);
+   });
+ });
++
++
++test('architecture: answering a vital attribute supplies the actual vital', async () => {
++ const graph=makeGraphContext([node('root','Pathway'),node('bp','Gate',{gate_type:GateType.PATIENT_ATTRIBUTE,default_behavior:DefaultBehavior.SKIP,condition:{attribute:'vitals.systolic_bp',operator:'greater_than',value:160}}),node('step','Step')],[edge('root','bp'),edge('bp','step')]);
++ mockBuildResolutionContext.mockResolvedValue({...rctx(),graphContext:graph});
++ const {TraversalEngine}=await import('../services/resolution/traversal-engine');
++ const pc={patientId:'pt-1',conditionCodes:[],medications:[],allergies:[],labResults:[]};
++ const clock=makeEvaluationTemporalContext({evaluationAsOf:PINNED,encounterStart:'2026-08-30T08:00:00.000Z',temporalPolicyVersion:'v1'});
++ const e=new TraversalEngine({computeNodeConfidence:async()=>({confidence:0.95,breakdown:[]})} as never,rctx().thresholds,clock,{},[],new Map());
++ const initial=await e.traverse(graph,pc,new Map());
++ expect(initial.pendingQuestions[0].gateId).toBe('bp');
++ const session:any=sessionFrom({...initial,initialPatientContext:pc,temporalContext:clock} as never);
++ mockedGetSession.mockResolvedValue(session);
++ await resolutionMutations.answerPendingDecision(null,{sessionId:'session-1',nodeId:'bp',answer:{numericValue:180}},ctx());
++ expect(session.resolutionState.get('bp').status).toBe(NodeStatus.INCLUDED);
++});
+--- a/apps/pathway-service/src/__tests__/multi-pathway-resolution.test.ts
++++ b/apps/pathway-service/src/__tests__/multi-pathway-resolution.test.ts
+@@ -22,6 +22,7 @@
+
+ jest.mock('../services/resolution/session-store', () => ({
+   getMatchedPathways: jest.fn(),
++  getSession: jest.fn(),
+   createSession: jest.fn(),
+ }));
+
+@@ -518,6 +519,8 @@
+     expect(updatedPlan.medications).toHaveLength(1);
+     expect(updatedPlan.medications[0].recommendation.name).toBe('Bisoprolol');
+     expect(updatedPlan.medications[0].state).toBe('provider-override');
++    const {runPatientContextDdi}=await import('../services/medications/ddi-pass');
++    expect(runPatientContextDdi).toHaveBeenCalled();
+   });
+
+   it('rejects when conflictId does not exist in the session', async () => {
+@@ -656,6 +659,8 @@
+     const r: ConflictResolution = { kind: 'CONFIRM_PATHWAY', chosenPathwayId: 'p1', ...meta };
+     const updated = applyResolution(plan, plan.conflicts[0], r);
+     expect(updated.medications.map((m) => m.recommendation.name)).toEqual(['A']);
++    const changed = applyResolution(updated,updated.conflicts[0],{kind:'CONFIRM_PATHWAY',chosenPathwayId:'p2',...meta});
++    expect(changed.medications.map(m=>m.recommendation.name)).toEqual(['B']);
+   });
+ });
+
+@@ -785,3 +790,15 @@
+     expect(createMultiPathwaySession).not.toHaveBeenCalled();
+   });
+ });
++
++
++test('architecture: merged generation must refuse a pending child session', async () => {
++ const {getSession}=await import('../services/resolution/session-store');
++ (getSession as jest.Mock).mockResolvedValue({status:'DEGRADED',resolutionState:new Map([['q',{nodeId:'q',nodeType:'Gate',status:NodeStatus.PENDING_QUESTION}]]),pendingQuestions:[{gateId:'q'}],redFlags:[{nodeId:'q',type:'missing_critical_data'}]});
++ const mergedPlan={...emptyMergedPlan(),medications:[{recommendation:{name:'Drug A',sourcePathwayId:'pw'},sourcePathwayIds:['pw'],status:'auto-included'}]} as never;
++ (getMultiPathwaySession as jest.Mock).mockResolvedValue(fakeStoredSession({contributingSessionIds:['child'],contributingPathwayIds:['pw'],mergedPlan}));
++ const client={query:jest.fn().mockResolvedValue({rows:[{id:'careplan-1'}]}),release:jest.fn()};
++ const ctx={pool:{connect:jest.fn().mockResolvedValue(client)},userId:'provider-1'} as never;
++ const result=await multiPathwayResolutionMutations.generateMergedCarePlan({}, {sessionId:'sess-1'},ctx);
++ expect(result.success).toBe(false);
++});

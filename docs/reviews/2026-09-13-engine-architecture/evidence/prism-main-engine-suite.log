@@ -1,0 +1,445 @@
+PASS apps/pathway-service/src/__tests__/gate-evaluator-aggregate-kernel.test.ts
+PASS apps/pathway-service/src/__tests__/temporal/attribute-condition-kernel.test.ts
+PASS apps/pathway-service/src/__tests__/temporal/resolution-fact-store-wiring.test.ts
+PASS apps/pathway-service/src/__tests__/validator.test.ts
+PASS apps/pathway-service/src/__tests__/multi-pathway-resolution.test.ts
+PASS apps/pathway-service/src/__tests__/temporal/select-facts.test.ts
+PASS apps/pathway-service/src/__tests__/temporal/resolution-input-contract.test.ts
+PASS apps/pathway-service/src/__tests__/gate-evaluator-compound-uncertainty.test.ts
+PASS apps/pathway-service/src/__tests__/reachability.test.ts
+PASS apps/pathway-service/src/__tests__/gate-evaluator-scalar-kernel.test.ts
+PASS apps/pathway-service/src/__tests__/branch-mode.test.ts
+PASS apps/pathway-service/src/__tests__/care-plan-merge.test.ts
+PASS apps/pathway-service/src/__tests__/gate-evaluator.test.ts
+PASS apps/pathway-service/src/__tests__/branch-routing.test.ts
+PASS apps/pathway-service/src/__tests__/confidence-engine.test.ts
+PASS apps/pathway-service/src/__tests__/gate-evaluator-membership-kernel.test.ts
+PASS apps/pathway-service/src/__tests__/temporal/encounter-anchor-guard.test.ts
+PASS apps/pathway-service/src/__tests__/incremental-region.test.ts
+PASS apps/pathway-service/src/__tests__/temporal/v1-traversal-behavior.test.ts
+PASS apps/pathway-service/src/__tests__/temporal/sweep-attribute-codemap.test.ts
+PASS apps/pathway-service/src/__tests__/ddi-multi-pathway.test.ts
+PASS apps/pathway-service/src/__tests__/temporal/policy-capabilities.test.ts
+PASS apps/pathway-service/src/__tests__/traversal-engine.test.ts
+PASS apps/pathway-service/src/__tests__/icd10-hierarchy.test.ts
+PASS apps/pathway-service/src/__tests__/temporal/evaluator-selected-by-capability.test.ts
+PASS apps/pathway-service/src/__tests__/gate-evaluator-version-seam.test.ts
+PASS apps/pathway-service/src/__tests__/temporal/fact-identity.test.ts
+PASS apps/pathway-service/src/__tests__/temporal/condition-control-domains.test.ts
+PASS apps/pathway-service/src/__tests__/temporal/pathway-defaults-threading.test.ts
+PASS apps/pathway-service/src/__tests__/incremental-traversal.test.ts
+PASS apps/pathway-service/src/__tests__/answer-routing-mutation.test.ts
+PASS apps/pathway-service/src/__tests__/care-plan-generator.test.ts
+PASS apps/pathway-service/src/__tests__/care-plan-projection.test.ts
+PASS apps/pathway-service/src/__tests__/generation-transaction.test.ts
+PASS apps/pathway-service/src/__tests__/ddi-engine.test.ts
+PASS apps/pathway-service/src/__tests__/ddi-pass-single-pathway.test.ts
+PASS apps/pathway-service/src/__tests__/session-store.test.ts
+PASS apps/pathway-service/src/__tests__/lattice-collapse.test.ts
+PASS apps/pathway-service/src/__tests__/gate-evaluator-count-in-window.test.ts
+PASS apps/pathway-service/src/__tests__/branch-routing-validation.test.ts
+PASS apps/pathway-service/src/__tests__/escalate-on-unresolved.test.ts
+PASS apps/pathway-service/src/__tests__/anemia-pathway-e2e.test.ts
+PASS apps/pathway-service/src/__tests__/gate-evaluator-trend.test.ts
+PASS apps/pathway-service/src/__tests__/medication-normalizer.test.ts
+PASS apps/pathway-service/src/__tests__/temporal/context-assembler-observations.test.ts
+PASS apps/pathway-service/src/__tests__/escalated-answer-injection.test.ts
+PASS apps/pathway-service/src/__tests__/resolution-retraversal-context.test.ts
+PASS apps/pathway-service/src/__tests__/incremental-findings.test.ts
+PASS apps/pathway-service/src/__tests__/indeterminate-surface.test.ts
+PASS apps/pathway-service/src/__tests__/temporal/evaluation-context.test.ts
+PASS apps/pathway-service/src/__tests__/graph-builder.test.ts
+PASS apps/pathway-service/src/__tests__/multi-pathway-session-store-preview.test.ts
+PASS apps/pathway-service/src/__tests__/confidence-mutation-resolvers.test.ts
+PASS apps/pathway-service/src/__tests__/temporal/session-temporal-context.test.ts
+PASS apps/pathway-service/src/__tests__/findings-reconciliation.test.ts
+PASS apps/pathway-service/src/__tests__/answer-pending-decision.test.ts
+PASS apps/pathway-service/src/__tests__/temporal/condition-adapter.test.ts
+PASS apps/pathway-service/src/__tests__/care-plan-projection-data-gaps.test.ts
+PASS apps/pathway-service/src/__tests__/related-pathways-resolver.test.ts
+PASS apps/pathway-service/src/__tests__/temporal/context-assembler-stateful.test.ts
+PASS apps/pathway-service/src/__tests__/ddi-refresh.test.ts
+PASS apps/pathway-service/src/__tests__/engine-parity.test.ts
+PASS apps/pathway-service/src/__tests__/eager-disposition-parity.test.ts
+PASS apps/pathway-service/src/__tests__/weight-cascade-resolver.test.ts
+PASS apps/pathway-service/src/__tests__/care-plan-projection-evidence.test.ts
+PASS apps/pathway-service/src/__tests__/care-plan-projection-attribution.test.ts
+PASS apps/pathway-service/src/__tests__/temporal/codemap-required.test.ts
+PASS apps/pathway-service/src/__tests__/relational-writer.test.ts
+PASS apps/pathway-service/src/__tests__/decision-point-context-dependency.test.ts
+PASS apps/pathway-service/src/__tests__/prerequisites.test.ts
+FAIL apps/pathway-service/src/__tests__/patient-match-scorer.test.ts
+  ● PatientMatchQualityScorer › score › should score 1.0 for a Criterion with exact code match
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 1
+    Received: 0.5
+
+      42 |         graphContext: makeGraphContext(),
+      43 |       });
+    > 44 |       expect(result.score).toBe(1.0);
+         |                            ^
+      45 |     });
+      46 |
+      47 |     it('should score 1.0 when patient has more specific code than criterion (O34.211 matches O34.2)', () => {
+
+      at Object.<anonymous> (src/__tests__/patient-match-scorer.test.ts:44:28)
+
+  ● PatientMatchQualityScorer › score › should score 1.0 when patient has more specific code than criterion (O34.211 matches O34.2)
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 1
+    Received: 0.5
+
+      56 |         graphContext: makeGraphContext(),
+      57 |       });
+    > 58 |       expect(result.score).toBe(1.0);
+         |                            ^
+      59 |     });
+      60 |
+      61 |     it('should score 0.7 when patient has less specific code than criterion', () => {
+
+      at Object.<anonymous> (src/__tests__/patient-match-scorer.test.ts:58:28)
+
+  ● PatientMatchQualityScorer › score › should score 0.7 when patient has less specific code than criterion
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 0.7
+    Received: 0.5
+
+      71 |         graphContext: makeGraphContext(),
+      72 |       });
+    > 73 |       expect(result.score).toBe(0.7);
+         |                            ^
+      74 |     });
+      75 |
+      76 |     it('should score 0.0 for no match at all', () => {
+
+      at Object.<anonymous> (src/__tests__/patient-match-scorer.test.ts:73:28)
+
+  ● PatientMatchQualityScorer › score › should score 0.0 for no match at all
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 0
+    Received: 0.5
+
+      85 |         graphContext: makeGraphContext(),
+      86 |       });
+    > 87 |       expect(result.score).toBe(0.0);
+         |                            ^
+      88 |     });
+      89 |
+      90 |     it('should return 0.0 when a critical criterion is missing', () => {
+
+      at Object.<anonymous> (src/__tests__/patient-match-scorer.test.ts:87:28)
+
+  ● PatientMatchQualityScorer › score › should return 0.0 when a critical criterion is missing
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 0
+    Received: 0.5
+
+       99 |         graphContext: makeGraphContext(),
+      100 |       });
+    > 101 |       expect(result.score).toBe(0.0);
+          |                            ^
+      102 |       expect(result.metadata).toHaveProperty('critical', true);
+      103 |     });
+      104 |
+
+      at Object.<anonymous> (src/__tests__/patient-match-scorer.test.ts:101:28)
+
+  ● PatientMatchQualityScorer › score › should not match medications with undefined display
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 0.5
+    Received: 1
+
+      148 |         graphContext: makeGraphContext(),
+      149 |       });
+    > 150 |       expect(result.score).toBe(0.5);
+          |                            ^
+      151 |     });
+      152 |
+      153 |     it('should return 1.0 for nodes without matchable codes (e.g., Stage)', () => {
+
+      at Object.<anonymous> (src/__tests__/patient-match-scorer.test.ts:150:28)
+
+FAIL apps/pathway-service/src/__tests__/data-completeness-scorer.test.ts
+  ● DataCompletenessScorer › score › should score 1.0 when a LabTest has a matching lab result with value
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 1
+    Received: 0.5
+
+      79 |         graphContext: makeGraphContext([node]),
+      80 |       });
+    > 81 |       expect(result.score).toBe(1.0);
+         |                            ^
+      82 |       expect(result.missingInputs).toHaveLength(0);
+      83 |     });
+      84 |
+
+      at Object.<anonymous> (src/__tests__/data-completeness-scorer.test.ts:81:28)
+
+  ● DataCompletenessScorer › score › should score 0.5 when a LabTest has a matching result but no value
+
+    expect(received).toContain(expected) // indexOf
+
+    Expected value: "result_value"
+    Received array: ["lab_codes"]
+
+       99 |       });
+      100 |       expect(result.score).toBe(0.5);
+    > 101 |       expect(result.missingInputs).toContain('result_value');
+          |                                    ^
+      102 |     });
+      103 |
+      104 |     it('should score 0.0 when no matching lab result exists', () => {
+
+      at Object.<anonymous> (src/__tests__/data-completeness-scorer.test.ts:101:36)
+
+  ● DataCompletenessScorer › score › should score 0.0 when no matching lab result exists
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 0
+    Received: 0.5
+
+      113 |         graphContext: makeGraphContext([node]),
+      114 |       });
+    > 115 |       expect(result.score).toBe(0.0);
+          |                            ^
+      116 |       expect(result.missingInputs).toContain('result_value');
+      117 |       expect(result.missingInputs).toContain('result_date');
+      118 |     });
+
+      at Object.<anonymous> (src/__tests__/data-completeness-scorer.test.ts:115:28)
+
+PASS apps/pathway-service/src/__tests__/temporal/assembler-preserves-today.test.ts
+PASS apps/pathway-service/src/__tests__/answer-validation.test.ts
+PASS apps/pathway-service/src/__tests__/import-orchestrator.test.ts
+PASS apps/pathway-service/src/__tests__/unresolved-prompt.test.ts
+PASS apps/pathway-service/src/__tests__/medication-admin-queue.test.ts
+PASS apps/pathway-service/src/__tests__/preview-session-isolation.test.ts
+PASS apps/pathway-service/src/__tests__/mutation-resolvers.test.ts
+PASS apps/pathway-service/src/__tests__/active-context-filter.test.ts
+PASS apps/pathway-service/src/__tests__/temporal/retraversal-clock-reuse.test.ts
+PASS apps/pathway-service/src/__tests__/custom-rules-scorer.test.ts
+PASS apps/pathway-service/src/__tests__/temporal/cascade-resolve.test.ts
+PASS apps/pathway-service/src/__tests__/incremental-timeout.test.ts
+PASS apps/pathway-service/src/__tests__/temporal/policy-registry.test.ts
+PASS apps/pathway-service/src/__tests__/temporal/interval.test.ts
+PASS apps/pathway-service/src/__tests__/temporal/gate-policy.test.ts
+PASS apps/pathway-service/src/__tests__/snapshot-context-filter.test.ts
+PASS apps/pathway-service/src/__tests__/matched-pathway-reachability-resolver.test.ts
+PASS apps/pathway-service/src/__tests__/temporal/cascade-parse.test.ts
+PASS apps/pathway-service/src/__tests__/eager-reachability.test.ts
+PASS apps/pathway-service/src/__tests__/incremental-seed-order.test.ts
+PASS apps/pathway-service/src/__tests__/temporal/attribute-condition-temporal-fields.test.ts
+PASS apps/pathway-service/src/__tests__/code-set-types.test.ts
+PASS apps/pathway-service/src/__tests__/scorer-declaration-truthfulness.test.ts
+PASS apps/pathway-service/src/__tests__/temporal/trust-mode.test.ts
+PASS apps/pathway-service/src/__tests__/scorer-context-inputs.test.ts
+PASS apps/pathway-service/src/__tests__/evidence-strength-scorer.test.ts
+PASS apps/pathway-service/src/__tests__/risk-magnitude-scorer.test.ts
+PASS apps/pathway-service/src/__tests__/decision-value.test.ts
+PASS apps/pathway-service/src/__tests__/confidence-query-resolvers.test.ts
+PASS apps/pathway-service/src/__tests__/temporal/clock-pinning.test.ts
+PASS apps/pathway-service/src/__tests__/diff-engine.test.ts
+PASS apps/pathway-service/src/__tests__/pending-question-schema-parity.test.ts
+PASS apps/pathway-service/src/__tests__/safety.test.ts
+PASS apps/pathway-service/src/__tests__/temporal/resolution-context-defaults.test.ts
+PASS apps/pathway-service/src/__tests__/temporal/encounter-anchor-sweep.test.ts
+PASS apps/pathway-service/src/__tests__/contributing-pathways-resolver.test.ts
+PASS apps/pathway-service/src/__tests__/temporal/state-mapping.test.ts
+PASS apps/pathway-service/src/__tests__/age-client.test.ts
+PASS apps/pathway-service/src/__tests__/gate-evaluator-attribute.test.ts
+PASS apps/pathway-service/src/__tests__/reconcilable-red-flag-types.test.ts
+PASS apps/pathway-service/src/__tests__/temporal/overlap.test.ts
+PASS apps/pathway-service/src/__tests__/gate-evaluator-codemap-threading.test.ts
+PASS apps/pathway-service/src/__tests__/effective-context.test.ts
+PASS apps/pathway-service/src/__tests__/temporal/synthetic-values.test.ts
+PASS apps/pathway-service/src/__tests__/database.test.ts
+PASS apps/pathway-service/src/__tests__/attribute-registry.test.ts
+PASS apps/pathway-service/src/__tests__/scorer-registry.test.ts
+PASS apps/pathway-service/src/__tests__/temporal/fact-model.test.ts
+PASS apps/pathway-service/src/__tests__/temporal/policy-default.test.ts
+PASS apps/pathway-service/src/__tests__/patient-attributes.test.ts
+PASS apps/pathway-service/src/__tests__/temporal/contract.test.ts
+PASS apps/pathway-service/src/__tests__/scalar-compare.test.ts
+PASS apps/pathway-service/src/__tests__/dependency-context-key.test.ts
+PASS apps/pathway-service/src/__tests__/operator-constants.test.ts
+PASS apps/pathway-service/src/__tests__/attribute-vocabulary.test.ts
+PASS apps/pathway-service/src/__tests__/patient-attributes-mapping.test.ts
+PASS apps/pathway-service/src/__tests__/condition-schema-types.test.ts
+PASS apps/pathway-service/src/__tests__/attribute-code-map.test.ts
+
+Summary of all failing tests
+FAIL src/__tests__/patient-match-scorer.test.ts
+  ● PatientMatchQualityScorer › score › should score 1.0 for a Criterion with exact code match
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 1
+    Received: 0.5
+
+      42 |         graphContext: makeGraphContext(),
+      43 |       });
+    > 44 |       expect(result.score).toBe(1.0);
+         |                            ^
+      45 |     });
+      46 |
+      47 |     it('should score 1.0 when patient has more specific code than criterion (O34.211 matches O34.2)', () => {
+
+      at Object.<anonymous> (src/__tests__/patient-match-scorer.test.ts:44:28)
+
+  ● PatientMatchQualityScorer › score › should score 1.0 when patient has more specific code than criterion (O34.211 matches O34.2)
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 1
+    Received: 0.5
+
+      56 |         graphContext: makeGraphContext(),
+      57 |       });
+    > 58 |       expect(result.score).toBe(1.0);
+         |                            ^
+      59 |     });
+      60 |
+      61 |     it('should score 0.7 when patient has less specific code than criterion', () => {
+
+      at Object.<anonymous> (src/__tests__/patient-match-scorer.test.ts:58:28)
+
+  ● PatientMatchQualityScorer › score › should score 0.7 when patient has less specific code than criterion
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 0.7
+    Received: 0.5
+
+      71 |         graphContext: makeGraphContext(),
+      72 |       });
+    > 73 |       expect(result.score).toBe(0.7);
+         |                            ^
+      74 |     });
+      75 |
+      76 |     it('should score 0.0 for no match at all', () => {
+
+      at Object.<anonymous> (src/__tests__/patient-match-scorer.test.ts:73:28)
+
+  ● PatientMatchQualityScorer › score › should score 0.0 for no match at all
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 0
+    Received: 0.5
+
+      85 |         graphContext: makeGraphContext(),
+      86 |       });
+    > 87 |       expect(result.score).toBe(0.0);
+         |                            ^
+      88 |     });
+      89 |
+      90 |     it('should return 0.0 when a critical criterion is missing', () => {
+
+      at Object.<anonymous> (src/__tests__/patient-match-scorer.test.ts:87:28)
+
+  ● PatientMatchQualityScorer › score › should return 0.0 when a critical criterion is missing
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 0
+    Received: 0.5
+
+       99 |         graphContext: makeGraphContext(),
+      100 |       });
+    > 101 |       expect(result.score).toBe(0.0);
+          |                            ^
+      102 |       expect(result.metadata).toHaveProperty('critical', true);
+      103 |     });
+      104 |
+
+      at Object.<anonymous> (src/__tests__/patient-match-scorer.test.ts:101:28)
+
+  ● PatientMatchQualityScorer › score › should not match medications with undefined display
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 0.5
+    Received: 1
+
+      148 |         graphContext: makeGraphContext(),
+      149 |       });
+    > 150 |       expect(result.score).toBe(0.5);
+          |                            ^
+      151 |     });
+      152 |
+      153 |     it('should return 1.0 for nodes without matchable codes (e.g., Stage)', () => {
+
+      at Object.<anonymous> (src/__tests__/patient-match-scorer.test.ts:150:28)
+
+FAIL src/__tests__/data-completeness-scorer.test.ts
+  ● DataCompletenessScorer › score › should score 1.0 when a LabTest has a matching lab result with value
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 1
+    Received: 0.5
+
+      79 |         graphContext: makeGraphContext([node]),
+      80 |       });
+    > 81 |       expect(result.score).toBe(1.0);
+         |                            ^
+      82 |       expect(result.missingInputs).toHaveLength(0);
+      83 |     });
+      84 |
+
+      at Object.<anonymous> (src/__tests__/data-completeness-scorer.test.ts:81:28)
+
+  ● DataCompletenessScorer › score › should score 0.5 when a LabTest has a matching result but no value
+
+    expect(received).toContain(expected) // indexOf
+
+    Expected value: "result_value"
+    Received array: ["lab_codes"]
+
+       99 |       });
+      100 |       expect(result.score).toBe(0.5);
+    > 101 |       expect(result.missingInputs).toContain('result_value');
+          |                                    ^
+      102 |     });
+      103 |
+      104 |     it('should score 0.0 when no matching lab result exists', () => {
+
+      at Object.<anonymous> (src/__tests__/data-completeness-scorer.test.ts:101:36)
+
+  ● DataCompletenessScorer › score › should score 0.0 when no matching lab result exists
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 0
+    Received: 0.5
+
+      113 |         graphContext: makeGraphContext([node]),
+      114 |       });
+    > 115 |       expect(result.score).toBe(0.0);
+          |                            ^
+      116 |       expect(result.missingInputs).toContain('result_value');
+      117 |       expect(result.missingInputs).toContain('result_date');
+      118 |     });
+
+      at Object.<anonymous> (src/__tests__/data-completeness-scorer.test.ts:115:28)
+
+
+Test Suites: 2 failed, 1 skipped, 128 passed, 130 of 131 total
+Tests:       9 failed, 1 skipped, 1645 passed, 1655 total
+Snapshots:   0 total
+Time:        9.328 s
