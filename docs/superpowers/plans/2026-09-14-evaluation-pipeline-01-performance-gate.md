@@ -399,3 +399,41 @@ git -C $D push origin HEAD:refs/heads/docs/evaluation-pipeline-design
 
 Report the table and the decision to the user. **Do not start plan 02.** Plan 02 is written only
 after this gate passes and the user agrees.
+
+---
+
+## Gate result (2026-09-14)
+
+Run on the live host against `prism_db`, read-only. The write probe was refused, so the guard was
+proven. Benchmark branch `feat/evaluation-pipeline-01-performance-gate`, from `main` @ `2454130`.
+
+| Measurement | p50 | p95 | Budget | Pass |
+|---|---|---|---|---|
+| Single pathway total (chronic-htn-pregnancy-v1, 109 loaded nodes) | 11 ms | 14 ms | < 2000 ms | yes |
+| &nbsp;&nbsp;env load | 8 ms | 10 ms | — | — |
+| &nbsp;&nbsp;scores (one whole-graph call) | 3 ms | 3 ms | — | — |
+| &nbsp;&nbsp;traverse | 0 ms | 1 ms | — | — |
+| &nbsp;&nbsp;safety (DDI) | 0 ms | 0 ms | — | — |
+| 5-child run, sequential | 46 ms | 53 ms | < 5000 ms | yes |
+| Today: per-node scoring traverse, no DDI | 84 ms | 93 ms | — | — |
+
+**The walk was real.** A throwaway diagnostic, not committed, confirmed that every measured
+traversal resolved every node, without degrading:
+
+| Pathway | Nodes | Statuses |
+|---|---|---|
+| chronic-htn-pregnancy-v1 | 109 | 89 INCLUDED, 20 EXCLUDED; 1 red flag |
+| gestational-hypertension-preeclampsia | 106 | 12 INCLUDED, 92 PENDING_QUESTION, 2 EXCLUDED |
+| routine-prenatal-care-v1 | 74 | 54 INCLUDED, 3 PENDING_QUESTION, 17 EXCLUDED |
+| vaginal-discharge-pregnancy-v1 | 59 | 43 INCLUDED, 2 PENDING_QUESTION, 1 GATED_OUT, 13 EXCLUDED |
+| anemia-pregnancy-v1 | 57 | 44 INCLUDED, 2 PENDING_QUESTION, 1 GATED_OUT, 10 EXCLUDED |
+
+**DDI coverage:** 0/0. No Medication node was INCLUDED for the synthetic patient in the timed
+pathway, and the normalisation cache is empty (D14). No interaction queries ran, so the safety
+figure is a lower bound, to be re-measured after the backfill (plan 05).
+
+**Observation:** one whole-graph scoring call (3 ms) replaces per-node scoring (the bulk of
+today's 84 ms). The pipeline shape is about 7× faster than today's traversal on the same pathway.
+
+**Decision:** GO to plan 02. Both p95s are more than 100× under budget, which leaves room for the
+unmeasured DDI pair queries and the REPEATABLE READ snapshot.
