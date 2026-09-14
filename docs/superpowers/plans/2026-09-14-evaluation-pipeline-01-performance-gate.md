@@ -402,38 +402,48 @@ after this gate passes and the user agrees.
 
 ---
 
-## Gate result (2026-09-14)
+## Gate result (2026-09-14, revised after review)
 
-Run on the live host against `prism_db`, read-only. The write probe was refused, so the guard was
-proven. Benchmark branch `feat/evaluation-pipeline-01-performance-gate`, from `main` @ `2454130`.
+Run on the live host against `prism_db`, read-only; the write probe was refused before measuring.
+Benchmark: `apps/pathway-service/src/__tests__/evaluation-benchmark.test.ts` on
+`feat/evaluation-pipeline-01-performance-gate`. **That file is authoritative.** It supersedes the
+Step 2 listing above, which predates the review fixes.
 
-| Measurement | p50 | p95 | Budget | Pass |
-|---|---|---|---|---|
-| Single pathway total (chronic-htn-pregnancy-v1, 109 loaded nodes) | 11 ms | 14 ms | < 2000 ms | yes |
-| &nbsp;&nbsp;env load | 8 ms | 10 ms | — | — |
-| &nbsp;&nbsp;scores (one whole-graph call) | 3 ms | 3 ms | — | — |
-| &nbsp;&nbsp;traverse | 0 ms | 1 ms | — | — |
-| &nbsp;&nbsp;safety (DDI) | 0 ms | 0 ms | — | — |
-| 5-child run, sequential | 46 ms | 53 ms | < 5000 ms | yes |
-| Today: per-node scoring traverse, no DDI | 84 ms | 93 ms | — | — |
+**Review feedback addressed:**
+1. **Timing accounting.** Coverage lookups are no longer inside `evaluateOnce`. The run total is
+   the sum of each child's own timed total, the same accounting as the single case.
+2. **Safety label.** The patient now has one medication and one allergy. The safety stage treats
+   every Medication node as a candidate, because scoring excludes all of them for this patient
+   (see the confidence finding below). The label states what is measured: lookups and
+   orchestration, with no interaction queries while the normalisation cache is empty.
+3. **Workload validation.** Every sample asserts a minimum graph size (single ≥ 100 nodes,
+   run ≥ 400), that every node resolved, and a minimum number of safety candidates (single ≥ 9,
+   run ≥ 25).
+   - The assertion was falsified: a temporary copy with the candidate floor raised to 10 failed
+     with `Expected: >= 10, Received: 9`. The copy was deleted.
 
-**The walk was real.** A throwaway diagnostic, not committed, confirmed that every measured
-traversal resolved every node, without degrading:
+| Measurement | Workload | p50 | p95 | Budget | Pass |
+|---|---|---|---|---|---|
+| Single pathway total (chronic-htn-pregnancy-v1) | 109 nodes, 109 resolved, 9 candidates | 13 ms | 19 ms | < 2000 ms | yes |
+| &nbsp;&nbsp;env load | | 7 ms | 10 ms | — | — |
+| &nbsp;&nbsp;scores (one whole-graph call) | | 2 ms | 4 ms | — | — |
+| &nbsp;&nbsp;traverse | | 0 ms | 0 ms | — | — |
+| &nbsp;&nbsp;safety (DDI lookups, all meds as candidates) | | 3 ms | 4 ms | — | — |
+| 5-child run, summed child totals | 405 nodes, 29 candidates | 53 ms | 60 ms | < 5000 ms | yes |
+| Today: per-node scoring traverse, no DDI | 109 nodes | 76 ms | 87 ms | — | — |
 
-| Pathway | Nodes | Statuses |
-|---|---|---|
-| chronic-htn-pregnancy-v1 | 109 | 89 INCLUDED, 20 EXCLUDED; 1 red flag |
-| gestational-hypertension-preeclampsia | 106 | 12 INCLUDED, 92 PENDING_QUESTION, 2 EXCLUDED |
-| routine-prenatal-care-v1 | 74 | 54 INCLUDED, 3 PENDING_QUESTION, 17 EXCLUDED |
-| vaginal-discharge-pregnancy-v1 | 59 | 43 INCLUDED, 2 PENDING_QUESTION, 1 GATED_OUT, 13 EXCLUDED |
-| anemia-pregnancy-v1 | 57 | 44 INCLUDED, 2 PENDING_QUESTION, 1 GATED_OUT, 10 EXCLUDED |
+**Normalisation coverage:** 0/9 Medication nodes. No interaction queries ran, so the safety figure
+remains a lower bound, to re-measure after the backfill (plan 05).
 
-**DDI coverage:** 0/0. No Medication node was INCLUDED for the synthetic patient in the timed
-pathway, and the normalisation cache is empty (D14). No interaction queries ran, so the safety
-figure is a lower bound, to be re-measured after the backfill (plan 05).
+**Confidence finding** (throwaway read-only diagnostic, chronic-htn-pregnancy-v1, same patient):
+- **No medication is INCLUDED under either scoring shape.** Scores are identical per-node and
+  whole-graph (0.094 and 0.25). `data_completeness` and `match_quality` score 0.00 for Medication
+  nodes, so the exclusion is today's behaviour, not a consequence of propagation.
+- **Propagation is genuinely off today and on in the new shape.** Per-node scoring logged 30 false
+  "Cycle detected" warnings; whole-graph scoring logged none.
+- **Watch item for plan 02's before/after record (§5.8):** propagation lowers Stage confidence
+  0.781 → 0.706 and **Step confidence 0.781 → 0.598, just under the 0.6 suggest threshold**.
+  Whether Steps are threshold-gated determines whether this changes plan contents.
 
-**Observation:** one whole-graph scoring call (3 ms) replaces per-node scoring (the bulk of
-today's 84 ms). The pipeline shape is about 7× faster than today's traversal on the same pathway.
-
-**Decision:** GO to plan 02. Both p95s are more than 100× under budget, which leaves room for the
-unmeasured DDI pair queries and the REPEATABLE READ snapshot.
+**Decision:** GO to plan 02. Both p95s are more than 80× under budget with the workload
+asserted.
