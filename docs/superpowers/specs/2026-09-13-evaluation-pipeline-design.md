@@ -112,8 +112,9 @@ evaluate(inputs: SessionInputs, env: EvaluationEnv, observations: ObservationPro
 - **The result lists `observationsUsed`.** The commit persists exactly the successful observations
   the winning evaluation used (§4).
 - **Medication normalisation and DDI reference data are environment, not observations.**
-  - The candidate universe is known before traversal: every Medication node in the graph, plus
-    the patient's medications and allergies.
+  - The candidate universe is known before traversal: every Medication node in the graph, the
+    patient's medications and allergies, and every provider write-in (`CUSTOM_OVERRIDE`) recorded
+    in the run's `conflict_resolutions`. Write-ins are inputs, so they are known up front too.
   - Their normalisation and interaction rows are resolved and loaded into `env` before `evaluate`
     runs (C4).
   - A normalisation failure (RxNav unreachable on a cache miss) aborts the mutation. A plan is
@@ -416,8 +417,9 @@ for attempt in 1..3:
                  <cache>, result_hash, env_fingerprint, revision = revision + 1
       WHERE id = $id AND revision = $r          // 0 rows → ROLLBACK, next attempt
     child rows (runs); events (statusChanges = diff)
-  COMMIT → write LLM audit rows for every call this request made; return
-on exhaustion: write LLM audit rows for every call this request made; throw CONFLICT
+    LLM audit rows for every call this request made (all attempts)
+  COMMIT → return
+on exhaustion: BEGIN; LLM audit rows for every call this request made; COMMIT; throw CONFLICT
 ```
 
 - **Observations.** A retry reuses `requestObservations` whose keys still match after the reload.
@@ -425,7 +427,13 @@ on exhaustion: write LLM audit rows for every call this request made; throw CONF
   evaluation used are persisted to the session. The external normalisation cache is written
   independently (C4 step 1) and is never treated as a session observation.
 - **Audit.** Audit rows record every external call a request made, whether or not an attempt won.
-  They are written after the outcome is known, so failed attempts are auditable too.
+  - **Guaranteed:** every persisted observation has its audit row. Both are written in the same
+    transaction, so a crash cannot commit one without the other.
+  - **Best effort:** a request that exhausts its retries writes its audit rows in a separate
+    transaction before throwing `CONFLICT`. A crash before that write loses audit rows only for
+    calls whose results were never persisted or used in any plan.
+  - `llm_gate_evaluations.session_id` stays a NOT NULL foreign key. At start, the session and
+    child rows are inserted earlier in the same transaction.
 - **Kept unchanged at the boundary:**
   - `firstTrustAssertion` + `normalizeContextEntryNulls` (`resolution.ts:1017-1028`);
   - `validateAnswerAgainstGate`;
