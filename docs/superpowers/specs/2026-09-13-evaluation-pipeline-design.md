@@ -75,6 +75,7 @@ observations produce the same plan, however they were arrived at.*
 | D11 | **Eligibility and final disposition are separate. Graph dependencies read eligibility only. Import rejects `depends_on` targets of type Medication.** | A dependency on a medication's status is where suppression would leave a gate incorrectly satisfied, and reading eligibility there could withhold both A and its alternative. Live evidence (read-only query, 2026-09-13): the live graph holds 4 `depends_on` entries, **all targeting Step nodes, all in one ARCHIVED pathway** (`vaginitis-in-pregnancy-v1@1.0`). The rule invalidates nothing. |
 | D12 | **Blockers and safety findings are scoped.** Completeness blockers propagate from children. Output blockers (including `EMPTY_PLAN`) exist only at the root. Patient-scoped safety runs everywhere; pair-scoped safety runs only at the root, over the final set. | A resolved child with nothing to add must not block a useful combined plan. A pair suppression is only meaningful against the set in which both actions remain. |
 | D13 | **One environment snapshot per mutation. Every mutation on a run re-evaluates every child under it.** Each result records its `envFingerprint`. | The conservative invalidation policy: no composite can mix configuration versions. Fingerprint-based child reuse is a later optimisation (F5). |
+| D14 | **Fail closed on medications that cannot be normalised, and wire normalisation pre-warming.** An eligible medication, or a patient medication, with no normalised cache row adds the completeness blocker `SAFETY_DATA_UNAVAILABLE`. `prewarmMedications` runs at pathway import and activation. Evaluation never calls RxNav: misses are pre-warmed without blocking, after the snapshot. A one-off backfill covers existing pathways. | Verified 2026-09-14 (read-only): `medication_normalization_cache` holds **0 rows**. `prewarmMedication(s)` has no production caller, despite its doc claiming import- and snapshot-time use. `lookupNormalizedMedication` is a cache-only SELECT, and DDI silently skips misses (`ddi-pass.ts:221`). All 33 medications across the five largest live pathways are unmapped, so **live DDI has never checked a drug**. |
 
 ---
 
@@ -115,10 +116,13 @@ evaluate(inputs: SessionInputs, env: EvaluationEnv, observations: ObservationPro
   - The candidate universe is known before traversal: every Medication node in the graph, the
     patient's medications and allergies, and every provider write-in (`CUSTOM_OVERRIDE`) recorded
     in the run's `conflict_resolutions`. Write-ins are inputs, so they are known up front too.
-  - Their normalisation and interaction rows are resolved and loaded into `env` before `evaluate`
-    runs (C4).
-  - A normalisation failure (RxNav unreachable on a cache miss) aborts the mutation. A plan is
-    never evaluated without its safety data.
+  - Their normalisation rows and the interaction and allergy rows for normalised ingredients are
+    loaded into `env` in the snapshot (C4).
+  - Normalisation at evaluation time is **cache-only**: `lookupNormalizedMedication` never calls
+    RxNav.
+  - A candidate or patient medication with no normalised row is recorded in `env` as
+    `unnormalized`. Stage 5 turns it into a `SAFETY_DATA_UNAVAILABLE` finding, and readiness blocks
+    on it (D14). A plan is never generated with a drug that was not checked.
 
 **Guarantee:** frozen `inputs` + `env` + observations (`replay`) → identical `EvaluationResult`,
 including `resultHash`.
@@ -169,7 +173,7 @@ Every evaluation runs at a **scope**:
 
 | Scope | Blockers | Where computed |
 |---|---|---|
-| Completeness | `PENDING_GATE`, `INCOMPLETE_RESOLUTION`, `UNRESOLVED_RED_FLAG` | In each contribution and at the root; contributions' blockers propagate to the root, tagged with their pathway |
+| Completeness | `PENDING_GATE`, `INCOMPLETE_RESOLUTION`, `UNRESOLVED_RED_FLAG`, `SAFETY_DATA_UNAVAILABLE` | In each contribution and at the root; contributions' blockers propagate to the root, tagged with their pathway |
 | Output | `EMPTY_PLAN`, `UNRESOLVED_CONFLICT`, `STALE_CONFLICT_DECISION`, `PLAN_CHANGED_SINCE_REVIEW` | Root only |
 
 **Safety finding scope:**
@@ -184,14 +188,17 @@ suppressed by a pair that no longer exists: pair checks never run anywhere but t
 
 ### C4 — One environment snapshot per mutation
 
-- **`loadEvaluationEnv` runs in two steps:**
-  1. Resolve normalisation-cache misses for the candidate universe. This may call RxNav and write
-     `medication_normalization_cache`, outside any snapshot.
-  2. In one `BEGIN READ ONLY ISOLATION LEVEL REPEATABLE READ` transaction, read every graph the
-     mutation needs and all shared configuration: signals, thresholds, weight matrix, node weights,
-     admin evidence, code map, temporal defaults, normalisation rows and the DDI/allergy rows for
-     the candidate ingredients. The transaction is closed before evaluation begins, so no lock is
-     held across LLM calls.
+- **`loadEvaluationEnv` reads everything in one `BEGIN READ ONLY ISOLATION LEVEL REPEATABLE READ`
+  transaction:** every graph the mutation needs, and all shared configuration (signals,
+  thresholds, weight matrix, node weights, admin evidence, code map, temporal defaults,
+  normalisation rows for the candidate universe, and the DDI and allergy rows for the normalised
+  ingredients).
+  - The transaction is closed before evaluation begins, so no lock is held across LLM calls.
+  - It makes no external calls.
+- **After the snapshot,** the orchestration layer passes the snapshot's `unnormalized` names to
+  `prewarmMedications` **without awaiting it**. A later mutation sees the rows it writes. RxNav
+  failures follow `prewarmMedications`' existing behaviour: no-match is cached as a NULL row for
+  the admin queue; network errors are retried next time.
 - **`envFingerprint`** = sha256 over the canonical content of that snapshot's shared configuration
   plus each graph fingerprint. It is stored with every result.
 - **Run policy (D13):** a mutation on a run loads one snapshot and re-evaluates **every** child
@@ -296,9 +303,9 @@ services/resolution/pipeline/
 | 2 | **Scores** | **One** `computePathwayConfidence` over **all** nodes, using evidence and weights from `env`. Produces a `ScoreMap`. | `makeTraversalAdapter` (`resolution-context.ts:337`), the `contextNodes` parameter, about four queries per scored node |
 | 3 | **Traverse → eligibility** | `traverse(graph, context, { scores, gateAnswers, overrides, observations })`. Overrides pre-seed `held`. The held-arrival handling that exists only in the incremental path (`traversal-engine.ts:831-847`) moves into the main loop, otherwise the existing-state skip at `:566` would freeze a pre-seeded override's subtree. `prior_node_result` reads eligibility (C2). | `resolveIncrementally`, the adapter |
 | 4 | **Findings** | Pending questions and red flags from traversal. Catch-up items for every eligible Stage/Step via `findUnmetPrerequisites` (deduplicated). Emits `gateContextFields`. | `findings-reconciliation.ts`; catch-up computed only at multi start (`multi-pathway-resolution.ts:832-858`) |
-| 5 | **Patient safety → disposition** | Candidates: every eligible Medication, **including provider-overridden ones** (D4). Checked against patient medications and allergies. A SUPPRESS finding sets `disposition` to EXCLUDED, `withheldBy: 'safety'`. | `refreshSessionDdi` (six call sites), in-place `applyDdiToResolutionState` |
+| 5 | **Patient safety → disposition** | Candidates: every eligible Medication, **including provider-overridden ones** (D4). Checked against patient medications and allergies. A SUPPRESS finding sets `disposition` to EXCLUDED, `withheldBy: 'safety'`. Any candidate or patient medication that `env` marks `unnormalized` yields a `SAFETY_DATA_UNAVAILABLE` finding, patient-scoped and naming the drug (D14). | `refreshSessionDdi` (six call sites), in-place `applyDdiToResolutionState`, and the silent skip in `normalizeCandidates` |
 | 6 | **Set safety → disposition** (ROOT only) | Every pair of candidates still included after stage 5; for a run, after conflict selection (§3). | Cross-recommendation DDI with its same-pathway skip (`ddi-pass.ts:176`) |
-| 7 | **Readiness** | Scoped blockers per C3. Completeness: any PENDING_QUESTION node or `pendingQuestions` entry, tentative included; any red flag; any TIMEOUT/UNKNOWN node. Output (ROOT only): `EMPTY_PLAN` on disposition. Derives `status`. | Both `validateForGeneration`s (`care-plan-generator.ts:107`, `multi-pathway-resolution.ts:1040`); `derivedSessionStatus` (`resolution.ts:168`); the DEGRADED check (`resolution.ts:1225`) |
+| 7 | **Readiness** | Scoped blockers per C3. Completeness: any PENDING_QUESTION node or `pendingQuestions` entry, tentative included; any red flag; any TIMEOUT/UNKNOWN node; any `SAFETY_DATA_UNAVAILABLE` finding. Output (ROOT only): `EMPTY_PLAN` on disposition. Derives `status`. | Both `validateForGeneration`s (`care-plan-generator.ts:107`, `multi-pathway-resolution.ts:1040`); `derivedSessionStatus` (`resolution.ts:168`); the DEGRADED check (`resolution.ts:1225`) |
 
 A standalone session runs stages 1–7 at ROOT scope. A child in a run runs stages 1–5 and 7 at
 CONTRIBUTION scope; `composeRun` performs stage 6 and the root part of stage 7.
@@ -318,7 +325,8 @@ rejects a Medication target (C2).
 
 | Condition | Outcome |
 |---|---|
-| Normalisation failure; snapshot read failure; `SESSION_GRAPH_CHANGED` | Throw before evaluation; nothing persisted |
+| Snapshot read failure; `SESSION_GRAPH_CHANGED` | Throw before evaluation; nothing persisted |
+| Medication not normalised | `SAFETY_DATA_UNAVAILABLE` blocker, plus non-blocking pre-warm (C4); not an error |
 | Observation `UNAVAILABLE` | Tentative gate, not an error |
 | Timeout | DEGRADED cache |
 
@@ -502,7 +510,7 @@ No migration numbered 067 or above exists on any branch as of this spec.
 ### API changes (admin dashboard is the only client)
 
 - **`BlockerType`** gains `UNRESOLVED_CONFLICT`, `STALE_CONFLICT_DECISION`,
-  `PLAN_CHANGED_SINCE_REVIEW`. Blockers expose `scope: BlockerScope!`
+  `PLAN_CHANGED_SINCE_REVIEW`, `SAFETY_DATA_UNAVAILABLE`. Blockers expose `scope: BlockerScope!`
   (`COMPLETENESS | OUTPUT`) and `pathwayId: ID` for propagated ones.
 - **`ResolutionSession` and `MultiPathwayResolutionSession`** expose `revision: Int!`,
   `resultHash: String!`, `envFingerprint: String!`.
@@ -520,6 +528,14 @@ No migration numbered 067 or above exists on any branch as of this spec.
 - Breaking API change: the backend and admin dashboard deploy together.
 - Apply 067 through the documented manual psql workflow.
 - Preview sessions open at deploy time are lost.
+- **Before enabling generation on live, run the normalisation backfill** (D14):
+  `prewarmMedications` over every Medication node name in ACTIVE and DRAFT pathways. Every
+  unmapped drug blocks generation, and the live cache is empty, so without the backfill every
+  plan would block. Triage the resulting NULL rows through the existing admin queue: the
+  `unnormalizedMedications` query and the `manuallyResolveMedicationNormalization` mutation.
+- **Wire pre-warming into `importPathway` and `activatePathway`** (`resolvers/mutations/import.ts`)
+  as a best-effort call whose counts are logged. Import and activation never fail because RxNav is
+  unavailable.
 
 ---
 
@@ -570,7 +586,11 @@ No migration numbered 067 or above exists on any branch as of this spec.
      - an overridden medication can be suppressed;
      - same-pathway pairs are checked at root;
      - contributions run no pair checks;
-     - write-ins get patient checks.
+     - write-ins get patient checks;
+     - an unnormalised eligible medication, and an unnormalised patient medication, each yield
+       `SAFETY_DATA_UNAVAILABLE` and block readiness — assert the blocker, then delete the cache
+       row fixture and watch a previously passing plan block;
+     - `loadEvaluationEnv` makes no RxNav call (a spy on the RxNav client sees zero calls).
    - **Readiness:** tentative LLM, TIMEOUT and a stale conflict decision each block; blockers carry
      the correct scope.
    - **`composeRun`:**
@@ -596,6 +616,8 @@ No migration numbered 067 or above exists on any branch as of this spec.
      submission on a 5-child run. Both re-evaluate every child (D13).
    - **Measured separately:** the snapshot load.
    - **If the budget fails,** stop and revisit D1/D13 before further work.
+   - **The first run is a lower bound for DDI.** With an empty normalisation cache, no interaction
+     queries run. Re-run the gate after the backfill (D14), before merging to `main`.
 8. **Before/after record.** Extend `baseline-capture.test.ts` to record anemia-in-pregnancy v1.4
    before and after.
    - **Expected differences:** confidence propagation, the new readiness blockers, same-pathway
@@ -691,6 +713,8 @@ These are beyond the review's findings, found while verifying it.
 - **Suppression is read by later partial updates:** a `prior_node_result` gate can read a
   DDI-mutated status in a later incremental update, but not in the traversal that first decided
   it (C2).
+- **DDI silently checks nothing** when medications are not normalised, which on live today means
+  every medication (D14).
 
 ## Live defects not fixed by this design (separate small fixes)
 
@@ -712,7 +736,7 @@ These are beyond the review's findings, found while verifying it.
 | `depends_on` may no longer target a Medication | No live pathway is affected (D11 evidence); the rule extends with any future withholding stage |
 | Saved answers and overrides re-apply when their gate becomes reachable again, without re-asking | Follow-up F4 |
 | Providers must confirm every tentative LLM verdict before generating (D3); an LLM outage blocks generation until gates are answered by hand | A provider can always answer the gate |
-| An RxNav outage on a normalisation-cache miss blocks the mutation | Same as today; safety data is never skipped |
+| An unmapped medication blocks generation (`SAFETY_DATA_UNAVAILABLE`), including a patient's own medication. With today's empty cache, every plan blocks until the backfill runs. | Backfill before release; pre-warm at import, activation and after each snapshot; the admin queue for drugs RxNav cannot map. The alternative is today's silent skip. |
 | Editing a draft ends its preview sessions (`SESSION_GRAPH_CHANGED`) | Follow-up F3 |
 | A configuration change can alter the whole plan at the next mutation | D7 check at generation; `envFingerprint` recorded for diagnosis; historical pinning is review direction #4 |
 | About 85 retired tests; 15 files mock the traversal adapter | §5.5 mapping table; scenarios preserved as sequence-vs-fresh tests |
