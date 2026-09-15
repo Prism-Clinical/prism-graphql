@@ -75,7 +75,8 @@ git -C $R ls-remote --exit-code --heads origin feat/evaluation-pipeline \
   || git -C $R push origin origin/main:refs/heads/feat/evaluation-pipeline
 ```
 Expected: the branch exists on `origin`. It is created from `main` if it was missing. **Creating
-a remote branch is outward-facing: confirm with the user before running the push.**
+a remote branch is outward-facing. The user approved creating `feat/evaluation-pipeline` from
+`origin/main` on 2026-09-15, so no further confirmation is needed for this push.**
 
 - [ ] **Step 2: Create the plan worktree**
 
