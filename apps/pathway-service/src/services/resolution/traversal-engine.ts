@@ -22,6 +22,8 @@ import {
   GateType,
   DefaultBehavior,
   AnswerType,
+  OverrideAction,
+  ProviderOverride,
   TraversalResult,
   TraversalConfidenceAdapter,
   DependencyMap,
@@ -489,6 +491,7 @@ export class TraversalEngine {
     graphContext: GraphContext,
     patientContext: PatientContext,
     gateAnswers: Map<string, GateAnswer>,
+    overrides: Map<string, ProviderOverride> = new Map(),
   ): Promise<TraversalResult> {
     const startTime = Date.now();
     const resolutionState: ResolutionState = new Map();
@@ -522,6 +525,27 @@ export class TraversalEngine {
 
     // 2. Init BFS queue
     const queue: BfsEntry[] = [{ nodeIdentifier: rootNode.nodeIdentifier, depth: 0 }];
+
+    // Provider overrides are INPUTS (spec §1 rule 3). Each is pre-seeded HELD,
+    // exactly as the incremental path held a stored override: the decision
+    // about THIS node stands, a closing sweep descends past it without
+    // rewriting it, and the walk opens its children when it arrives.
+    for (const [id, override] of overrides) {
+      const n = graphContext.getNode(id);
+      if (!n) continue;
+      resolutionState.set(id, {
+        nodeId: id,
+        nodeType: n.nodeType,
+        title: nodeTitle(n),
+        status: override.action === OverrideAction.INCLUDE ? NodeStatus.INCLUDED : NodeStatus.EXCLUDED,
+        confidence: override.originalConfidence,
+        confidenceBreakdown: [],
+        providerOverride: override,
+        depth: 0,
+        properties: n.properties,
+      });
+      overrideHeld.add(id);
+    }
 
     // 3-4. BFS loop
     while (queue.length > 0) {
@@ -560,6 +584,21 @@ export class TraversalEngine {
           });
         }
         break;
+      }
+
+      // Arrival at a held override: record where the walk reached it, then open
+      // its children. Mirrors resolveIncrementally's held arrival.
+      if (overrideHeld.has(nodeIdentifier)) {
+        overrideHeld.delete(nodeIdentifier);
+        const held = resolutionState.get(nodeIdentifier)!;
+        held.parentNodeId = parentNodeId;
+        held.depth = depth;
+        for (const e of graphContext.outgoingEdges(nodeIdentifier)) {
+          if (!resolutionState.has(e.targetId) || provisional.has(e.targetId) || overrideHeld.has(e.targetId)) {
+            queue.push({ nodeIdentifier: e.targetId, parentNodeId: nodeIdentifier, depth: depth + 1 });
+          }
+        }
+        continue;
       }
 
       // Memoization: skip already-resolved nodes (first-writer-wins for diamond graphs)
