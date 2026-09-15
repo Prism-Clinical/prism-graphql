@@ -34,7 +34,8 @@ export interface SessionInputs {
 
 export type EvaluationScope = 'ROOT' | 'CONTRIBUTION';
 export type BlockerScope = 'COMPLETENESS' | 'OUTPUT';
-export type PipelineBlockerType = BlockerType | 'SAFETY_DATA_UNAVAILABLE';
+/** The enum's string values (a string enum rejects bare literals), plus the pipeline-only type. */
+export type PipelineBlockerType = `${BlockerType}` | 'SAFETY_DATA_UNAVAILABLE';
 
 export interface ScopedBlocker {
   scope: BlockerScope;

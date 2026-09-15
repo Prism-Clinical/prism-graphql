@@ -42,6 +42,21 @@ export interface ProviderOverride {
   originalConfidence: number;
 }
 
+/** What the pathway decided about a node (spec C2). Graph dependencies read this. */
+export interface NodeEligibility {
+  status: NodeStatus;
+  reason?: string;
+  decidedBy: 'traversal' | 'override';
+}
+
+/** Whether the node is in the final plan, after safety and composition (spec C2). */
+export interface NodeDisposition {
+  status: NodeStatus;
+  withheldBy?: 'safety' | 'conflict';
+  findingIds?: string[];
+  reason?: string;
+}
+
 export interface NodeResult {
   nodeId: string;
   nodeType: string;
@@ -77,6 +92,9 @@ export interface NodeResult {
    */
   dataUnavailable?: boolean;
   providerOverride?: ProviderOverride;
+  /** Pipeline only (spec C2). Absent on results from the resolver paths plan 03 replaces. */
+  eligibility?: NodeEligibility;
+  disposition?: NodeDisposition;
   parentNodeId?: string;
   depth: number;
   /** Carried from GraphNode.properties for care plan generation */
