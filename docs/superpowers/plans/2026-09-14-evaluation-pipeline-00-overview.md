@@ -14,8 +14,8 @@ the only failures*, not a pass count.
 | Plan | Deliverable | Consumes | Produces | Written |
 |---|---|---|---|---|
 | **01 Performance gate** | Opt-in read-only benchmark of the pipeline's cost on live pathways; pass/fail recorded against §5.7 budgets | Existing engine on `main` | Go / no-go for D1 + D13 | Yes |
-| **02 Pure core** | `services/resolution/pipeline/`: observation provider (C1), environment snapshot + fingerprint + candidate universe (C4), whole-graph scores, traversal with overrides and eligibility (C2), findings, scoped safety and readiness (C3), `SAFETY_DATA_UNAVAILABLE` for unnormalised medications (D14), `evaluate()`. Import rule: `depends_on` may not target Medication. Acceptance A1 (replay, keys, UNAVAILABLE) and A2. Property tests (a)–(c). **Not wired to any resolver.** | 01 passed | `evaluate(inputs, env, observations, scope)`, `loadEvaluationEnv`, `ObservationProvider`, `EvaluationResult` | After 01 executes |
-| **03 Single-pathway wiring** | Migration 067; `commitEvaluation`; lifecycle-only operations; single-pathway mutations and generation (`reviewedResultHash`) on the pipeline; SDL changes; delete the incremental engine; retired-test mapping table; review reproductions ported; A1 retry-once; opt-in Postgres tests for revision CAS and generation; `prewarmMedications` wired into `importPathway` and `activatePathway` plus non-blocking post-snapshot pre-warm, and a normalisation backfill script (D14) | 02 | Stored inputs; `commitEvaluation`; new session API | After 02 executes |
+| **02 Pure core** | `services/resolution/pipeline/`: observation provider (C1), environment snapshot + fingerprint + candidate universe (C4), whole-graph scores, traversal with overrides and eligibility (C2), findings, scoped safety and readiness (C3), `SAFETY_DATA_UNAVAILABLE` for unnormalised medications (D14), `evaluate()`. Import rule: `depends_on` may not target Medication. Acceptance A1 (replay, keys, UNAVAILABLE, request reuse) and A2. Property tests (b) order independence and (c) determinism. **Not wired to any resolver.** | 01 passed | `evaluate(inputs, env, observations, scope)`, `loadEvaluationEnv`, `ObservationProvider`, `EvaluationResult` | Yes |
+| **03 Single-pathway wiring** | Migration 067; `commitEvaluation`; lifecycle-only operations; single-pathway mutations and generation (`reviewedResultHash`) on the pipeline; SDL changes; delete the incremental engine; retired-test mapping table; review reproductions ported; A1 retry-once; property (a) sequence-vs-fresh; opt-in Postgres tests for revision CAS and generation; `prewarmMedications` wired into `importPathway` and `activatePathway` plus non-blocking post-snapshot pre-warm, and a normalisation backfill script (D14) | 02 | Stored inputs; `commitEvaluation`; new session API | After 02 executes |
 | **04 Multi-pathway composition** | `composeRun`; parent-owned facts; every run mutation re-evaluates all children; `reMergeMultiPathwaySession` removed; admin dashboard updated (hash on generate, no re-merge, eligibility/withheld display); A3, A4; run Postgres tests | 03 | Complete engine on the new model | After 03 executes |
 | **05 Release** | Run the normalisation backfill on live, then re-run the plan 01 gate with real DDI coverage; before/after record (§5.8); manual admin smoke test (§5.10); merge integration branch → `main`; deploy runbook | 04 | Deployed pipeline | After 04 executes |
 
@@ -45,11 +45,9 @@ These apply to every plan.
 - **Commands:** from the repo root, never `cd … && …`.
   - Tests: `npm test --prefix apps/pathway-service -- --runInBand <path>`
   - Typecheck: `./node_modules/.bin/tsc -p apps/pathway-service/tsconfig.json --noEmit`
-- **Commits:** conventional prefixes. End every message with:
-  ```
-  Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
-  Claude-Session: https://claude.ai/code/session_01XRNkZvQrxmRLNtJHxq71kH
-  ```
+- **Commits:** conventional prefixes. End every message with exactly this trailer:
+  `Claude-Session: https://claude.ai/code/session_01XRNkZvQrxmRLNtJHxq71kH`.
+  No `Co-Authored-By` line and no `@anthropic.com` address (`CLAUDE.md`).
 - **Live database:** read only, and only in opt-in tests that force `default_transaction_read_only`.
 - **Performance budgets (spec §5.7):** p95 **< 2 s** for a single-pathway evaluation; **< 5 s** for
   a 5-child run evaluation.
