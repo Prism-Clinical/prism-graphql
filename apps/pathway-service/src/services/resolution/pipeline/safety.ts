@@ -21,6 +21,10 @@ export function patientSafety(ref: SafetyReference, candidates: DdiCandidate[], 
   const suppressed = new Set<string>();
   const unavailable: SafetyUnavailable[] = [];
 
+  // This patient's allergies only, as ddi-pass does: the reference may cover a wider universe.
+  const allergyCodes = new Set((patient.allergies ?? []).filter((a) => a.system === 'SNOMED').map((a) => a.code));
+  const allergyMappings = ref.allergyMappings.filter((m) => allergyCodes.has(m.snomedCode));
+
   const patientMeds: NormalizedMedication[] = [];
   for (const m of patient.medications ?? []) {
     const drugName = m.display ?? m.code;
@@ -46,7 +50,7 @@ export function patientSafety(ref: SafetyReference, candidates: DdiCandidate[], 
       if (f.action === 'SUPPRESS') suppressed.add(c.recommendationId);
     }
 
-    for (const hit of matchDrugAllergyAgainstMappings(drug, ref.allergyMappings)) {
+    for (const hit of matchDrugAllergyAgainstMappings(drug, allergyMappings)) {
       findings.push({
         recommendationId: c.recommendationId,
         drugName: c.drugName,
