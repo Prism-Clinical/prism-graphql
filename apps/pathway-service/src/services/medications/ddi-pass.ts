@@ -240,7 +240,7 @@ async function normalizePatientMeds(
   return out;
 }
 
-function buildDrugDrugFinding(
+export function buildDrugDrugFinding(
   candidate: DdiCandidate,
   candidateNorm: NormalizedMedication,
   result: InteractionResult | null,
@@ -265,7 +265,7 @@ function buildDrugDrugFinding(
   };
 }
 
-function toEngineDrug(norm: NormalizedMedication): { rxcui: string; atcClasses: string[] } {
+export function toEngineDrug(norm: NormalizedMedication): { rxcui: string; atcClasses: string[] } {
   return { rxcui: norm.ingredientRxcui, atcClasses: norm.atcClasses };
 }
 
