@@ -34,12 +34,17 @@ export function readinessOf(input: {
     if (flag.acknowledged) continue;
     blockers.push({ scope: 'COMPLETENESS', type: 'UNRESOLVED_RED_FLAG', description: `Unresolved red flag: ${flag.description}`, relatedNodeIds: [flag.nodeId] });
   }
-  const seenUnavailable = new Set<string>();
+  // One blocker per drug naming EVERY node that carries it, sorted — keeping only the first
+  // node made the result depend on state insertion order (property (b)).
+  const unavailableByDrug = new Map<string, { drugName: string; nodeIds: Set<string> }>();
   for (const u of input.unavailable) {
     const k = `${u.source}|${u.drugName}`;
-    if (seenUnavailable.has(k)) continue;
-    seenUnavailable.add(k);
-    blockers.push({ scope: 'COMPLETENESS', type: 'SAFETY_DATA_UNAVAILABLE', description: `"${u.drugName}" cannot be safety-checked: no normalised medication`, relatedNodeIds: u.nodeId ? [u.nodeId] : [] });
+    const entry = unavailableByDrug.get(k) ?? { drugName: u.drugName, nodeIds: new Set<string>() };
+    if (u.nodeId) entry.nodeIds.add(u.nodeId);
+    unavailableByDrug.set(k, entry);
+  }
+  for (const { drugName, nodeIds } of unavailableByDrug.values()) {
+    blockers.push({ scope: 'COMPLETENESS', type: 'SAFETY_DATA_UNAVAILABLE', description: `"${drugName}" cannot be safety-checked: no normalised medication`, relatedNodeIds: [...nodeIds].sort() });
   }
 
   if (input.scope === 'ROOT') {
