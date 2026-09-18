@@ -184,24 +184,17 @@ describe('a chosen branch at a one_of fork', () => {
   });
 
   // The choice must outlive an ancestor retraversal that re-disposes the fork.
-  it('survives re-disposition instead of re-asking', async () => {
+  it('survives re-evaluation instead of re-asking', async () => {
     const engine = engineWith({ 'step-c': 0.2 });
     const graph = graphFor('one_of');
     const answers = chose('step-a');
     const first = await engine.traverse(graph, PATIENT, answers);
 
-    await engineWith({ 'step-c': 0.2 }).resolveIncrementally(
-      new Set(['dp-1']),
-      first.resolutionState,
-      first.dependencyMap,
-      graph,
-      PATIENT,
-      answers,
-    );
+    const again = await engineWith({ 'step-c': 0.2 }).traverse(graph, PATIENT, answers);
 
-    expect(first.resolutionState.get('step-a')!.status).toBe(NodeStatus.INCLUDED);
-    expect(first.resolutionState.get('step-b')!.status).toBe(NodeStatus.EXCLUDED);
-    expect(first.resolutionState.get('dp-1')!.status).toBe(NodeStatus.INCLUDED);
+    expect(again.resolutionState.get('step-a')!.status).toBe(NodeStatus.INCLUDED);
+    expect(again.resolutionState.get('step-b')!.status).toBe(NodeStatus.EXCLUDED);
+    expect(again.resolutionState.get('dp-1')!.status).toBe(NodeStatus.INCLUDED);
   });
 
   // A choice naming a branch that does not qualify is not honoured silently.

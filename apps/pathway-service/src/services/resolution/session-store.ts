@@ -10,7 +10,6 @@ import { EvaluationTemporalContext } from './temporal/evaluation-context';
 import {
   ResolutionState,
   NodeResult,
-  DependencyMap,
   ResolutionSession,
   MatchedPathway,
   MatchedCodeSet,
@@ -23,43 +22,6 @@ import type { AdditionalContextInput } from '../../resolvers/mutations/resolutio
 import type { EvaluationResult, LlmObservation, SessionInputs } from './pipeline/types';
 import { activeConditionPredicate } from '../snapshot/active-context-filter';
 import { findAncestors } from '../codes/icd10-hierarchy';
-
-// ─── Helpers ───────────────────────────────────────────────────────
-
-function mapOfSetsToObj(map: Map<string, Set<string>>): Record<string, string[]> {
-  const obj: Record<string, string[]> = {};
-  for (const [key, set] of map) {
-    obj[key] = [...set];
-  }
-  return obj;
-}
-
-function objToMapOfSets(obj: Record<string, string[]>): Map<string, Set<string>> {
-  const map = new Map<string, Set<string>>();
-  for (const [key, arr] of Object.entries(obj)) {
-    map.set(key, new Set(arr));
-  }
-  return map;
-}
-
-// ─── Gate Answer Serialization ─────────────────────────────────────
-
-function serializeGateAnswers(answers: Map<string, GateAnswer>): Record<string, GateAnswer> {
-  const obj: Record<string, GateAnswer> = {};
-  for (const [key, value] of answers) {
-    obj[key] = value;
-  }
-  return obj;
-}
-
-function deserializeGateAnswers(json: Record<string, GateAnswer> | null | undefined): Map<string, GateAnswer> {
-  const map = new Map<string, GateAnswer>();
-  if (!json) return map;
-  for (const [key, value] of Object.entries(json)) {
-    map.set(key, value as GateAnswer);
-  }
-  return map;
-}
 
 // ─── Serialization ─────────────────────────────────────────────────
 
@@ -77,25 +39,6 @@ export function deserializeResolutionState(json: Record<string, unknown>): Resol
     state.set(key, value as NodeResult);
   }
   return state;
-}
-
-export function serializeDependencyMap(depMap: DependencyMap): Record<string, unknown> {
-  return {
-    influencedBy: mapOfSetsToObj(depMap.influencedBy),
-    influences: mapOfSetsToObj(depMap.influences),
-    gateContextFields: mapOfSetsToObj(depMap.gateContextFields),
-    scorerInputs: mapOfSetsToObj(depMap.scorerInputs),
-  };
-}
-
-export function deserializeDependencyMap(json: Record<string, unknown>): DependencyMap {
-  const raw = json as Record<string, Record<string, string[]>>;
-  return {
-    influencedBy: objToMapOfSets(raw.influencedBy ?? {}),
-    influences: objToMapOfSets(raw.influences ?? {}),
-    gateContextFields: objToMapOfSets(raw.gateContextFields ?? {}),
-    scorerInputs: objToMapOfSets(raw.scorerInputs ?? {}),
-  };
 }
 
 // ─── Inputs + evaluation cache (evaluation pipeline, spec §1/§4) ─────
@@ -252,7 +195,6 @@ export function rowToSession(row: any, events: unknown[]): ResolutionSession {
     status: row.status,
     revision: row.revision ?? 0,
     resolutionState: deserializeResolutionState(row.resolution_state ?? {}),
-    dependencyMap: deserializeDependencyMap(row.dependency_map ?? {}),
     initialPatientContext: row.initial_patient_context,
     additionalContext: row.additional_context ?? {},
     pendingQuestions: row.pending_questions ?? [],
@@ -333,70 +275,6 @@ export async function writeLlmAudits(db: Db, sessionId: string, rows: LlmAuditRo
 
 // ─── DB: Sessions ──────────────────────────────────────────────────
 
-export async function createSession(
-  pool: Pool,
-  session: {
-    pathwayId: string;
-    pathwayVersion: string;
-    patientId: string;
-    providerId: string;
-    status: string;
-    initialPatientContext: unknown;
-    resolutionState: ResolutionState;
-    dependencyMap: DependencyMap;
-    pendingQuestions: unknown[];
-    redFlags: unknown[];
-    gateAnswers?: Map<string, GateAnswer>;
-    totalNodesEvaluated: number;
-    traversalDurationMs: number;
-    ddiWarnings?: unknown[];
-    // Required on the way IN, optional on the way OUT. Every session created
-    // from now on has a clock, and a required parameter is what lets the
-    // compiler prove it — a new call site that forgets one is a build error,
-    // not a session that silently cannot be retraversed. The column and
-    // ResolutionSession.temporalContext stay optional for pre-migration rows.
-    temporalContext: EvaluationTemporalContext;
-  },
-): Promise<string> {
-  // The declared type is not a runtime guard: tsconfig excludes src/__tests__
-  // and types are erased anyway, so an untyped caller can reach here without a
-  // clock. Serializing that to NULL would mint a session that is already
-  // non-retraversable — a silent, permanent defect in a brand new row. NULL is
-  // reserved for rows that predate migration 063; nothing may create one now.
-  if (!session.temporalContext) {
-    throw new Error(
-      'createSession requires temporalContext — a session with no pinned evaluation clock cannot be retraversed',
-    );
-  }
-
-  const result = await pool.query(
-    `INSERT INTO pathway_resolution_sessions
-     (pathway_id, pathway_version, patient_id, provider_id, status, initial_patient_context,
-      resolution_state, dependency_map, pending_questions, red_flags, gate_answers,
-      total_nodes_evaluated, traversal_duration_ms, ddi_warnings, temporal_context)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
-     RETURNING id`,
-    [
-      session.pathwayId,
-      session.pathwayVersion,
-      session.patientId,
-      session.providerId,
-      session.status,
-      JSON.stringify(session.initialPatientContext),
-      JSON.stringify(serializeResolutionState(session.resolutionState)),
-      JSON.stringify(serializeDependencyMap(session.dependencyMap)),
-      JSON.stringify(session.pendingQuestions),
-      JSON.stringify(session.redFlags),
-      JSON.stringify(serializeGateAnswers(session.gateAnswers ?? new Map())),
-      session.totalNodesEvaluated,
-      session.traversalDurationMs,
-      JSON.stringify(session.ddiWarnings ?? []),
-      JSON.stringify(session.temporalContext),
-    ],
-  );
-  return result.rows[0].id;
-}
-
 export async function getSession(
   pool: Pool,
   sessionId: string,
@@ -417,104 +295,6 @@ export async function getSession(
   );
 
   return rowToSession(row, events.rows);
-}
-
-export async function updateSession(
-  pool: Pool,
-  sessionId: string,
-  updates: {
-    status?: string;
-    resolutionState?: ResolutionState;
-    dependencyMap?: DependencyMap;
-    additionalContext?: unknown;
-    pendingQuestions?: unknown[];
-    redFlags?: unknown[];
-    /**
-     * DDI warnings. Writable now that DDI re-runs after every state-changing
-     * resolution — it used to run only at session creation, so there was
-     * nothing to update.
-     */
-    ddiWarnings?: unknown[];
-    gateAnswers?: Map<string, GateAnswer>;
-    totalNodesEvaluated?: number;
-    carePlanId?: string;
-  },
-  expectedUpdatedAt?: Date,
-): Promise<void> {
-  const sets: string[] = ['updated_at = NOW()'];
-  const values: unknown[] = [];
-  let idx = 1;
-
-  if (updates.status) {
-    sets.push(`status = $${idx++}`);
-    values.push(updates.status);
-  }
-  if (updates.resolutionState) {
-    sets.push(`resolution_state = $${idx++}`);
-    values.push(JSON.stringify(serializeResolutionState(updates.resolutionState)));
-  }
-  if (updates.dependencyMap) {
-    sets.push(`dependency_map = $${idx++}`);
-    values.push(JSON.stringify(serializeDependencyMap(updates.dependencyMap)));
-  }
-  if (updates.additionalContext) {
-    sets.push(`additional_context = $${idx++}`);
-    values.push(JSON.stringify(updates.additionalContext));
-  }
-  if (updates.pendingQuestions) {
-    sets.push(`pending_questions = $${idx++}`);
-    values.push(JSON.stringify(updates.pendingQuestions));
-  }
-  if (updates.redFlags) {
-    sets.push(`red_flags = $${idx++}`);
-    values.push(JSON.stringify(updates.redFlags));
-  }
-  if (updates.ddiWarnings) {
-    sets.push(`ddi_warnings = $${idx++}`);
-    values.push(JSON.stringify(updates.ddiWarnings));
-  }
-  if (updates.gateAnswers) {
-    sets.push(`gate_answers = $${idx++}`);
-    values.push(JSON.stringify(serializeGateAnswers(updates.gateAnswers)));
-  }
-  if (updates.totalNodesEvaluated !== undefined) {
-    sets.push(`total_nodes_evaluated = $${idx++}`);
-    values.push(updates.totalNodesEvaluated);
-  }
-  if (updates.carePlanId) {
-    sets.push(`care_plan_id = $${idx++}`);
-    values.push(updates.carePlanId);
-  }
-
-  // Optimistic locking: if expectedUpdatedAt is provided, only update if the row
-  // hasn't been modified by another request since we read it.
-  //
-  // Precision note: Postgres TIMESTAMPTZ has microsecond precision, but
-  // node-pg deserialises into a JS Date which only carries milliseconds.
-  // If we compared `updated_at = $expected` directly, every guard would
-  // fail whenever the row's timestamp has any sub-millisecond content
-  // (i.e. almost always), because the parameter round-trips as
-  // `.529000` while the row is stored as e.g. `.529591`. Truncating the
-  // row's timestamp to milliseconds before the comparison matches the
-  // precision of the JS Date we're comparing against.
-  let whereClause = `id = $${idx++}`;
-  values.push(sessionId);
-
-  if (expectedUpdatedAt) {
-    whereClause += ` AND date_trunc('milliseconds', updated_at) = date_trunc('milliseconds', $${idx++}::timestamptz)`;
-    values.push(expectedUpdatedAt);
-  }
-
-  const result = await pool.query(
-    `UPDATE pathway_resolution_sessions SET ${sets.join(', ')} WHERE ${whereClause}`,
-    values,
-  );
-
-  if (expectedUpdatedAt && result.rowCount === 0) {
-    throw new Error(
-      'Session was modified by another request (optimistic lock conflict). Please reload and retry.',
-    );
-  }
 }
 
 // ─── DB: Events & Analytics ────────────────────────────────────────

@@ -1,10 +1,9 @@
-import { createSession, getSession, insertSession } from '../../services/resolution/session-store';
+import { getSession, insertSession } from '../../services/resolution/session-store';
 import {
   createMultiPathwaySession,
   getMultiPathwaySession,
 } from '../../services/resolution/multi-pathway-session-store';
 import { makeEvaluationTemporalContext } from '../../services/resolution/temporal/evaluation-context';
-import { createEmptyDependencyMap } from '../../services/resolution/types';
 import { evaluate } from '../../services/resolution/pipeline/evaluate';
 import { replayObservations } from '../../services/resolution/pipeline/observations';
 import { SessionStatus } from '../../services/resolution/types';
@@ -31,24 +30,6 @@ function fakePool(rows: Array<Record<string, unknown>>) {
 }
 
 describe('session temporal_context persistence', () => {
-  it('createSession writes the temporal context as JSON', async () => {
-    const { pool, calls } = fakePool([]);
-    await createSession(pool as never, {
-      pathwayId: 'p', pathwayVersion: '1', patientId: 'pt', providerId: 'pr',
-      status: 'ACTIVE',
-      initialPatientContext: {},
-      resolutionState: new Map(),
-      dependencyMap: createEmptyDependencyMap(),
-      pendingQuestions: [], redFlags: [],
-      totalNodesEvaluated: 0, traversalDurationMs: 1,
-      temporalContext: TCTX,
-    } as never);
-
-    const insert = calls.find((c) => c.sql.includes('INSERT INTO pathway_resolution_sessions'))!;
-    expect(insert.sql).toContain('temporal_context');
-    expect(insert.params).toContain(JSON.stringify(TCTX));
-  });
-
   it('getSession hydrates the temporal context from the row', async () => {
     const pool = {
       query: jest.fn()
@@ -89,7 +70,7 @@ describe('session temporal_context persistence', () => {
 
   // ── multi-pathway store ────────────────────────────────────────────
   //
-  // These are NOT redundant with the createSession cases above: the two
+  // These are NOT redundant with the insertSession cases above: the two
   // stores are separate files with separate SQL. The multi-pathway INSERT
   // currently ends at $8 and gains a 9th placeholder, and its read path goes
   // through `rowToSession` rather than an inline literal. A mis-numbered
@@ -166,19 +147,17 @@ describe('session temporal_context persistence', () => {
   // instead: a clock-less NEW session is always a bug, and the only rows
   // legitimately holding NULL predate migration 063.
 
-  it('createSession refuses to persist a session with no clock', async () => {
+  it('insertSession refuses to persist a session with no clock', async () => {
     const { pool, calls } = fakePool([]);
+    const env = makeEnv([node('root', 'Pathway')], []);
+    const inputs = makeInputs(env);
+    const result = await evaluate(inputs, env, replayObservations(new Map(), 'test-model'), 'ROOT');
     await expect(
-      createSession(pool as never, {
-        pathwayId: 'p', pathwayVersion: '1', patientId: 'pt', providerId: 'pr',
-        status: 'ACTIVE',
-        initialPatientContext: {},
-        resolutionState: new Map(),
-        dependencyMap: createEmptyDependencyMap(),
-        pendingQuestions: [], redFlags: [],
-        totalNodesEvaluated: 0, traversalDurationMs: 1,
-        // temporalContext deliberately omitted
-      } as never),
+      insertSession(pool as never, {
+        pathwayVersion: '1', patientId: 'pt', providerId: 'pr', result,
+        inputs: { ...inputs, temporalContext: undefined as never }, // deliberately clock-less
+        status: SessionStatus.ACTIVE, durationMs: 1,
+      }),
     ).rejects.toThrow(/temporalContext|evaluation clock/i);
 
     // It must fail BEFORE writing, not roll back after.
