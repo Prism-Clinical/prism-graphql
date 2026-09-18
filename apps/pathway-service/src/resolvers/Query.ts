@@ -36,6 +36,8 @@ function formatNodeForGraphQL(node: NodeResult) {
     nodeType: node.nodeType,
     title: node.title,
     status: node.status,
+    eligibilityStatus: node.eligibility?.status ?? node.status,
+    withheldBy: node.disposition?.withheldBy ? node.disposition.withheldBy.toUpperCase() : null,
     confidence: node.confidence,
     confidenceBreakdown: node.confidenceBreakdown ?? [],
     providerOverride: node.providerOverride
@@ -106,6 +108,9 @@ export function formatSessionForGraphQL(session: ResolutionSession) {
     patientId: session.patientId,
     providerId: session.providerId,
     status: session.status,
+    revision: session.revision,
+    resultHash: session.resultHash,
+    envFingerprint: session.envFingerprint,
     includedNodes,
     excludedNodes,
     gatedOutNodes,

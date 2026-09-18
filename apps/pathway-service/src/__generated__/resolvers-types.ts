@@ -86,11 +86,21 @@ export type AttributeVocabularyEntry = {
   valueType: Scalars['String']['output'];
 };
 
+/** COMPLETENESS blockers come from every evaluation; OUTPUT blockers only from the root (spec C3). */
+export enum BlockerScope {
+  Completeness = 'COMPLETENESS',
+  Output = 'OUTPUT'
+}
+
 export enum BlockerType {
   Contradiction = 'CONTRADICTION',
   EmptyPlan = 'EMPTY_PLAN',
   IncompleteResolution = 'INCOMPLETE_RESOLUTION',
   PendingGate = 'PENDING_GATE',
+  PlanChangedSinceReview = 'PLAN_CHANGED_SINCE_REVIEW',
+  SafetyDataUnavailable = 'SAFETY_DATA_UNAVAILABLE',
+  StaleConflictDecision = 'STALE_CONFLICT_DECISION',
+  UnresolvedConflict = 'UNRESOLVED_CONFLICT',
   UnresolvedRedFlag = 'UNRESOLVED_RED_FLAG'
 }
 
@@ -1643,6 +1653,8 @@ export type ResolutionSession = {
   createdAt: Scalars['String']['output'];
   /** Phase 4: DDI MODERATE-severity findings. Suppressions (CONTRAINDICATED/SEVERE) appear in excludedNodes with a DDI excludeReason. */
   ddiWarnings: Array<DdiWarning>;
+  /** Fingerprint of the configuration snapshot the current result was evaluated under. */
+  envFingerprint: Scalars['String']['output'];
   excludedNodes: Array<ResolvedNode>;
   gatedOutNodes: Array<ResolvedNode>;
   id: Scalars['ID']['output'];
@@ -1654,6 +1666,10 @@ export type ResolutionSession = {
   providerId: Scalars['ID']['output'];
   redFlags: Array<RedFlagType>;
   resolutionEvents: Array<ResolutionEventType>;
+  /** Hash of exactly what a provider reviews (spec §1 rule 8). Pass it to generateCarePlanFromResolution. */
+  resultHash: Scalars['String']['output'];
+  /** Optimistic-lock counter; increments on every committed write. */
+  revision: Scalars['Int']['output'];
   status: SessionStatus;
   totalNodesEvaluated: Scalars['Int']['output'];
   traversalDurationMs: Scalars['Int']['output'];
@@ -1776,6 +1792,8 @@ export type ResolvedNode = {
   confidence: Scalars['Float']['output'];
   confidenceBreakdown: Array<SignalBreakdown>;
   depth: Scalars['Int']['output'];
+  /** What the pathway decided about this node. Differs from status only when the node is withheld. */
+  eligibilityStatus: NodeStatus;
   excludeReason?: Maybe<Scalars['String']['output']>;
   nodeId: Scalars['ID']['output'];
   nodeType: Scalars['String']['output'];
@@ -1783,6 +1801,8 @@ export type ResolvedNode = {
   providerOverride?: Maybe<ProviderOverrideType>;
   status: NodeStatus;
   title: Scalars['String']['output'];
+  /** Set when the node is eligible but withheld from the plan. */
+  withheldBy?: Maybe<WithheldBy>;
 };
 
 export type ResolvedProcedure = {
@@ -2086,7 +2106,10 @@ export type UpdateSignalDefinitionInput = {
 export type ValidationBlockerType = {
   __typename?: 'ValidationBlockerType';
   description: Scalars['String']['output'];
+  /** Set on a blocker a multi-pathway run propagates from one of its pathways. */
+  pathwayId?: Maybe<Scalars['ID']['output']>;
   relatedNodeIds: Array<Scalars['ID']['output']>;
+  scope: BlockerScope;
   type: BlockerType;
 };
 
@@ -2123,6 +2146,12 @@ export enum WeightSource {
   OrganizationGlobal = 'ORGANIZATION_GLOBAL',
   PathwayOverride = 'PATHWAY_OVERRIDE',
   SystemDefault = 'SYSTEM_DEFAULT'
+}
+
+/** Why an eligible node is not in the plan (spec C2). */
+export enum WithheldBy {
+  Conflict = 'CONFLICT',
+  Safety = 'SAFETY'
 }
 
 export type WithIndex<TObject> = TObject & Record<string, any>;
@@ -2218,6 +2247,7 @@ export type ResolversTypes = ResolversObject<{
   ArchiveResult: ResolverTypeWrapper<ArchiveResult>;
   Boolean: ResolverTypeWrapper<Scalars['Boolean']['output']>;
   AttributeVocabularyEntry: ResolverTypeWrapper<AttributeVocabularyEntry>;
+  BlockerScope: BlockerScope;
   BlockerType: BlockerType;
   CarePlanGenerationResult: ResolverTypeWrapper<CarePlanGenerationResult>;
   CatchUpItem: ResolverTypeWrapper<CatchUpItem>;
@@ -2340,6 +2370,7 @@ export type ResolversTypes = ResolversObject<{
   WeightMatrixEntry: ResolverTypeWrapper<WeightMatrixEntry>;
   WeightScope: WeightScope;
   WeightSource: WeightSource;
+  WithheldBy: WithheldBy;
 }>;
 
 /** Mapping between all available schema types and the resolvers parents */
@@ -3082,6 +3113,7 @@ export type ResolutionEventTypeResolvers<ContextType = DataSourceContext, Parent
 export type ResolutionSessionResolvers<ContextType = DataSourceContext, ParentType extends ResolversParentTypes['ResolutionSession'] = ResolversParentTypes['ResolutionSession']> = ResolversObject<{
   createdAt?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   ddiWarnings?: Resolver<Array<ResolversTypes['DDIWarning']>, ParentType, ContextType>;
+  envFingerprint?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   excludedNodes?: Resolver<Array<ResolversTypes['ResolvedNode']>, ParentType, ContextType>;
   gatedOutNodes?: Resolver<Array<ResolversTypes['ResolvedNode']>, ParentType, ContextType>;
   id?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
@@ -3093,6 +3125,8 @@ export type ResolutionSessionResolvers<ContextType = DataSourceContext, ParentTy
   providerId?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
   redFlags?: Resolver<Array<ResolversTypes['RedFlagType']>, ParentType, ContextType>;
   resolutionEvents?: Resolver<Array<ResolversTypes['ResolutionEventType']>, ParentType, ContextType>;
+  resultHash?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  revision?: Resolver<ResolversTypes['Int'], ParentType, ContextType>;
   status?: Resolver<ResolversTypes['SessionStatus'], ParentType, ContextType>;
   totalNodesEvaluated?: Resolver<ResolversTypes['Int'], ParentType, ContextType>;
   traversalDurationMs?: Resolver<ResolversTypes['Int'], ParentType, ContextType>;
@@ -3177,6 +3211,7 @@ export type ResolvedNodeResolvers<ContextType = DataSourceContext, ParentType ex
   confidence?: Resolver<ResolversTypes['Float'], ParentType, ContextType>;
   confidenceBreakdown?: Resolver<Array<ResolversTypes['SignalBreakdown']>, ParentType, ContextType>;
   depth?: Resolver<ResolversTypes['Int'], ParentType, ContextType>;
+  eligibilityStatus?: Resolver<ResolversTypes['NodeStatus'], ParentType, ContextType>;
   excludeReason?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   nodeId?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
   nodeType?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
@@ -3184,6 +3219,7 @@ export type ResolvedNodeResolvers<ContextType = DataSourceContext, ParentType ex
   providerOverride?: Resolver<Maybe<ResolversTypes['ProviderOverrideType']>, ParentType, ContextType>;
   status?: Resolver<ResolversTypes['NodeStatus'], ParentType, ContextType>;
   title?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  withheldBy?: Resolver<Maybe<ResolversTypes['WithheldBy']>, ParentType, ContextType>;
   __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
 }>;
 
@@ -3329,7 +3365,9 @@ export type UnnormalizedMedicationResolvers<ContextType = DataSourceContext, Par
 
 export type ValidationBlockerTypeResolvers<ContextType = DataSourceContext, ParentType extends ResolversParentTypes['ValidationBlockerType'] = ResolversParentTypes['ValidationBlockerType']> = ResolversObject<{
   description?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  pathwayId?: Resolver<Maybe<ResolversTypes['ID']>, ParentType, ContextType>;
   relatedNodeIds?: Resolver<Array<ResolversTypes['ID']>, ParentType, ContextType>;
+  scope?: Resolver<ResolversTypes['BlockerScope'], ParentType, ContextType>;
   type?: Resolver<ResolversTypes['BlockerType'], ParentType, ContextType>;
   __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
 }>;
