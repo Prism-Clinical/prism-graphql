@@ -22,6 +22,8 @@ import {
 import { EvaluationTemporalContext } from './temporal/evaluation-context';
 // contract.ts imports nothing at all, so this stays acyclic too.
 import type { UncertaintyReason } from './temporal/contract';
+import type { LlmObservation, ScopedBlocker } from './pipeline/types';
+import type { CatchUpItem } from './care-plan-merge';
 
 export {
   NodeStatus,
@@ -459,6 +461,20 @@ export interface ResolutionSession {
   patientId: string;
   providerId: string;
   status: SessionStatus;
+  /** Optimistic-lock counter. Every committed write increments it (spec §4). */
+  revision: number;
+  // ── Inputs (spec §1): what a person or the outside world told the session.
+  providerOverrides: Map<string, ProviderOverride>;
+  observations: Map<string, LlmObservation>;
+  graphFingerprint: string;
+  // ── Cache of the last committed evaluation. Never an input.
+  envFingerprint: string;
+  resultHash: string;
+  readiness: { ready: boolean; blockers: ScopedBlocker[] };
+  gateContextFields: Map<string, string[]>;
+  catchUpItems: CatchUpItem[];
+  /** Set by plan 04 for a child of a multi-pathway run. */
+  parentSessionId?: string;
   resolutionState: ResolutionState;
   dependencyMap: DependencyMap;
   initialPatientContext: PatientContext;

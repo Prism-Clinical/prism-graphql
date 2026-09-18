@@ -1,10 +1,14 @@
-import { createSession, getSession } from '../../services/resolution/session-store';
+import { createSession, getSession, insertSession } from '../../services/resolution/session-store';
 import {
   createMultiPathwaySession,
   getMultiPathwaySession,
 } from '../../services/resolution/multi-pathway-session-store';
 import { makeEvaluationTemporalContext } from '../../services/resolution/temporal/evaluation-context';
 import { createEmptyDependencyMap } from '../../services/resolution/types';
+import { evaluate } from '../../services/resolution/pipeline/evaluate';
+import { replayObservations } from '../../services/resolution/pipeline/observations';
+import { SessionStatus } from '../../services/resolution/types';
+import { makeEnv, makeInputs, node } from '../fixtures/pipeline-env';
 
 const TCTX = makeEvaluationTemporalContext({
   evaluationAsOf: '2026-07-30T12:00:00.000Z',
@@ -66,6 +70,21 @@ describe('session temporal_context persistence', () => {
     const session = await getSession(pool as never, 'session-1');
     expect(session!.temporalContext).toEqual(TCTX);
     expect(session!.temporalContext!.evaluationAsOf).toBe('2026-07-30T12:00:00.000Z');
+  });
+
+  it('insertSession writes the temporal context as JSON', async () => {
+    const { pool, calls } = fakePool([]);
+    const env = makeEnv([node('root', 'Pathway')], []);
+    const inputs = makeInputs(env, { temporalContext: TCTX });
+    const result = await evaluate(inputs, env, replayObservations(new Map(), 'test-model'), 'ROOT');
+    await insertSession(pool as never, {
+      pathwayVersion: '1', patientId: 'pt', providerId: 'pr', inputs, result,
+      status: SessionStatus.ACTIVE, durationMs: 1,
+    });
+
+    const insert = calls.find((c) => c.sql.includes('INSERT INTO pathway_resolution_sessions'))!;
+    expect(insert.sql).toContain('temporal_context');
+    expect(insert.params).toContain(JSON.stringify(TCTX));
   });
 
   // ── multi-pathway store ────────────────────────────────────────────
