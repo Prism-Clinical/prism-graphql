@@ -24,6 +24,11 @@ export function readinessOf(input: {
       blockers.push({ scope: 'COMPLETENESS', type: 'INCOMPLETE_RESOLUTION', description: `"${node.title}" was never resolved (${node.status})`, relatedNodeIds: [node.nodeId] });
     }
   }
+  // A degraded traversal stopped early. Held overrides are already in state, so the timeout
+  // sweep can leave no TIMEOUT node behind — the flag itself must block (spec §1 rule 5).
+  if (input.isDegraded && !blockers.some((b) => b.type === 'INCOMPLETE_RESOLUTION')) {
+    blockers.push({ scope: 'COMPLETENESS', type: 'INCOMPLETE_RESOLUTION', description: 'Evaluation did not complete (traversal degraded); re-evaluate to finish it', relatedNodeIds: [] });
+  }
   // Open questions whose node is not PENDING — e.g. a tentative LLM gate, INCLUDED on its safe default (D3).
   for (const q of input.pendingQuestions) {
     if (pendingGates.has(q.gateId)) continue;

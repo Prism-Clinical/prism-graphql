@@ -1,7 +1,11 @@
 import { applyDisposition, medicationCandidates } from '../services/resolution/pipeline/disposition';
 import { readinessOf } from '../services/resolution/pipeline/readiness';
+import { TraversalEngine } from '../services/resolution/traversal-engine';
+import { makeEvaluationTemporalContext } from '../services/resolution/temporal/evaluation-context';
 import { NodeResult, NodeStatus, OverrideAction, ResolutionState } from '../services/resolution/types';
+import type { GraphEdge, GraphNode } from '../services/confidence/types';
 import type { ScopedFinding } from '../services/resolution/pipeline/types';
+import { REFERENCE_PATIENT, makeGraphContext } from './fixtures/reference-patient-context';
 
 const n = (nodeId: string, nodeType: string, status: NodeStatus, extra: Partial<NodeResult> = {}): NodeResult =>
   ({ nodeId, nodeType, title: nodeId, status, confidence: 0.9, confidenceBreakdown: [], depth: 1, properties: { name: nodeId }, ...extra });
@@ -65,5 +69,57 @@ describe('readinessOf (C3)', () => {
     const withheld = applyDisposition(state(n('med', 'Medication', NodeStatus.INCLUDED)), [allergy]);
     expect(types(readinessOf({ ...base, state: withheld }))).toEqual(['OUTPUT:EMPTY_PLAN']);
     expect(types(readinessOf({ ...base, scope: 'CONTRIBUTION', state: withheld }))).toEqual([]);
+  });
+});
+
+describe('degraded traversal (spec §1 rule 5)', () => {
+  it('a degraded evaluation is never ready, even with no TIMEOUT node', () => {
+    const r = readinessOf({ ...base, isDegraded: true, state: state(n('med', 'Medication', NodeStatus.INCLUDED)) });
+    expect(r.ready).toBe(false);
+    expect(r.blockers).toEqual([expect.objectContaining({ scope: 'COMPLETENESS', type: 'INCOMPLETE_RESOLUTION' })]);
+    expect(r.status).toBe('DEGRADED');
+  });
+
+  it('reachable: a timeout with only a held override left queued marks no node TIMEOUT', async () => {
+    const gnode = (id: string, type: string): GraphNode => ({ id, nodeIdentifier: id, nodeType: type, properties: { title: id } });
+    const gedge = (s: string, t: string): GraphEdge => ({ id: `${s}->${t}`, edgeType: 'HAS_CHILD', sourceId: s, targetId: t, properties: {} });
+    // The clock jumps past the 10 s budget while `step` is being disposed, so
+    // the next dequeue — the held `med` — hits the timeout check.
+    let late = false;
+    const now = jest.spyOn(Date, 'now').mockImplementation(() => (late ? 1e12 : 1e9));
+    try {
+      const engine = new TraversalEngine(
+        {
+          computeNodeConfidence: async (x: GraphNode) => {
+            if (x.nodeIdentifier === 'step') late = true;
+            return { nodeIdentifier: x.nodeIdentifier, nodeType: x.nodeType, confidence: 0.9, breakdown: [], propagationInfluences: [] };
+          },
+        } as never,
+        { autoResolveThreshold: 0.85, suggestThreshold: 0.6 },
+        makeEvaluationTemporalContext({ evaluationAsOf: '2026-09-15T12:00:00.000Z', temporalPolicyVersion: 'legacy-v0' }),
+        {},
+        [],
+        new Map(),
+      );
+      const t = await engine.traverse(
+        makeGraphContext(
+          [gnode('root', 'Pathway'), gnode('step', 'Step'), gnode('med', 'Medication'), gnode('code', 'CodeEntry')],
+          [gedge('root', 'step'), gedge('step', 'med'), gedge('med', 'code')],
+        ),
+        REFERENCE_PATIENT,
+        new Map(),
+        new Map([['med', { action: OverrideAction.INCLUDE, originalStatus: NodeStatus.EXCLUDED, originalConfidence: 0.1 }]]),
+      );
+
+      // The shape the reviewer described: degraded, yet nothing is TIMEOUT and the held subtree is unvisited.
+      expect(t.isDegraded).toBe(true);
+      expect([...t.resolutionState.values()].map((x) => x.status)).not.toContain(NodeStatus.TIMEOUT);
+      expect(t.resolutionState.get('med')!.status).toBe(NodeStatus.INCLUDED);
+      expect(t.resolutionState.has('code')).toBe(false);
+
+      expect(readinessOf({ ...base, state: t.resolutionState, isDegraded: t.isDegraded }).ready).toBe(false);
+    } finally {
+      now.mockRestore();
+    }
   });
 });
