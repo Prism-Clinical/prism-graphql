@@ -22,12 +22,10 @@ import { GraphQLError } from 'graphql';
 import { Pool } from 'pg';
 import {
   DataSourceContext,
-  SessionStatus,
   BlockerType,
 } from '../../types';
 import { PatientContext } from '../../services/confidence/types';
 import { normalizePatientAttributes } from '../../services/resolution/patient-attributes';
-import { TraversalEngine } from '../../services/resolution/traversal-engine';
 import { makeEvaluationTemporalContext } from '../../services/resolution/temporal/evaluation-context';
 import type { EvaluationTemporalContext } from '../../services/resolution/temporal/evaluation-context';
 import {
@@ -41,16 +39,16 @@ import {
   temporalInputFrom,
   toPatientContext,
 } from './resolution';
+import { MatchedPathway } from '../../services/resolution/types';
+import { getMatchedPathways, getSession, insertSession, writeLlmAudits } from '../../services/resolution/session-store';
 import {
-  GateAnswer,
-  MatchedPathway,
-  NodeStatus,
-} from '../../services/resolution/types';
-import {
-  getMatchedPathways,
-  createSession,
-  getSession,
-} from '../../services/resolution/session-store';
+  evaluateSession,
+  inTransaction,
+  newRequest,
+  persistedObservations,
+} from '../../services/resolution/pipeline/request';
+import type { EvaluationRequest, SessionEvaluation } from '../../services/resolution/pipeline/request';
+import { statusOf } from '../../services/resolution/pipeline/commit';
 import { collapseLattice } from '../../services/resolution/lattice-collapse';
 import {
   mergeResolvedCarePlans,
@@ -71,18 +69,8 @@ import {
   DdiFinding,
 } from '../../services/medications/ddi-pass';
 import { projectResolutionToCarePlan } from '../../services/resolution/care-plan-projection';
-import { findUnmetPrerequisites } from '../../services/resolution/prerequisites';
-import { CatchUpItem } from '../../services/resolution/care-plan-merge';
-import {
-  buildResolutionContext,
-  makeTraversalAdapter,
-  makeLlmGateEvaluator,
-  assertEncounterAnchor,
-  resolveTemporalPolicyVersion,
-  ResolutionContext,
-} from '../helpers/resolution-context';
+import { resolveTemporalPolicyVersion } from '../helpers/resolution-context';
 import { factStoreForInput } from '../../services/resolution/temporal/fact-store';
-import type { FactStore } from '../../services/resolution/temporal/fact-model';
 import { assertKnownPolicyVersion } from '../../services/resolution/temporal/policy-registry';
 import {
   createMultiPathwaySession,
@@ -231,12 +219,12 @@ export const multiPathwayResolutionMutations = {
     // validated only during the sweep would never be checked at all.
     assertKnownPolicyVersion(temporalContext.temporalPolicyVersion);
 
-    // Assembled ONCE for the whole run, and — like the version check — before
-    // the zero-match branch: the assembler validates, and whether a malformed
-    // context is rejected must not depend on how many pathways happened to
-    // match. On the zero-match path the store is simply discarded. `[]` under
-    // `legacy-v0`, without entering the assembler at all (P1-9).
-    const factStore = factStoreForInput(resolutionInput, temporalContext);
+    // Validates the request — like the version check — before the zero-match
+    // branch: whether a malformed context is rejected must not depend on how
+    // many pathways happened to match. The store itself is discarded; each
+    // child's evaluation assembles its own from the same inputs. Under
+    // `legacy-v0` the assembler is never entered (P1-9).
+    factStoreForInput(resolutionInput, temporalContext);
 
     const matched = await getMatchedPathways(pool, args.patientId, matcherOptions);
     if (matched.length === 0) {
@@ -265,7 +253,6 @@ export const multiPathwayResolutionMutations = {
         patientContext,
         context.userId,
         temporalContext,
-        factStore,
       );
 
     const { mergedPlan: finalMerged, ddiWarnings } = await runMergePipeline(
@@ -725,6 +712,10 @@ export async function runMergePipeline(
   return { mergedPlan: finalMerged, ddiWarnings: [...preMergeWarnings, ...crossWarnings] };
 }
 
+/** The projection reads gateContextFields as sets; the pipeline stores sorted arrays. */
+const setsOf = (m: Map<string, string[]>): Map<string, Set<string>> =>
+  new Map([...m].map(([k, v]) => [k, new Set(v)] as [string, Set<string>]));
+
 /**
  * Rebuild `ResolvedCarePlan` array by re-projecting the current state of
  * each contributing per-pathway session. Used by `reMergeMultiPathwaySession`
@@ -756,7 +747,7 @@ export async function buildResolvedPlansFromSessions(
           pathwayTitle,
         },
         [],
-        session.dependencyMap,
+        { gateContextFields: setsOf(session.gateContextFields) },
       ),
     );
   }
@@ -783,14 +774,6 @@ export async function resolveAndPersistAll(
    * back out.
    */
   temporalContext: EvaluationTemporalContext,
-  /**
-   * Assembled by the caller for the same reason the clock is: one store for the
-   * whole run. Assembly is pathway-independent — it reads the patient payload
-   * and the clock, neither of which varies per pathway — so building it here,
-   * once per pathway, would do the same work N times and give sibling sessions
-   * distinct (though equal) fact objects.
-   */
-  factStore: FactStore,
 ): Promise<{
   resolvedPlans: ResolvedCarePlan[];
   contributingSessionIds: string[];
@@ -800,98 +783,53 @@ export async function resolveAndPersistAll(
   const contributingSessionIds: string[] = [];
   const contributingPathwayIds: string[] = [];
 
-  // Load every pathway's context and validate the whole set BEFORE any
-  // traversal. Nothing here writes: a rejection must leave no child sessions
-  // and no audit rows behind. Validating inside the traversal loop would mean
-  // pathway A is already persisted by the time pathway B is rejected.
-  const loaded: Array<{ m: MatchedPathway; rctx: ResolutionContext }> = [];
+  // Evaluate every pathway BEFORE writing anything. A rejection — a missing
+  // encounter anchor, say — must leave no child sessions and no audit rows
+  // behind; writing inside this loop would persist pathway A before B throws.
+  const evaluated: Array<{ m: MatchedPathway; request: EvaluationRequest; evaluation: SessionEvaluation }> = [];
   for (const m of pathways) {
-    const rctx = await buildResolutionContext(pool, m.pathway.id);
-    if (rctx.graphContext.allNodes.length === 0) continue;
-    assertEncounterAnchor(rctx, temporalContext);
-    loaded.push({ m, rctx });
+    const request = newRequest();
+    const evaluation = await evaluateSession(pool, request, {
+      pathwayId: m.pathway.id,
+      graphFingerprint: '',
+      temporalContext,
+      initialPatientContext: patientContext,
+      additionalContext: {},
+      gateAnswers: new Map(),
+      providerOverrides: new Map(),
+      observations: new Map(),
+      revision: 0,
+    }, 'ROOT', { pinGraph: true });
+    // An empty graph contributes no session, as before.
+    if (evaluation.env.resolution.graphContext.allNodes.length === 0) continue;
+    evaluated.push({ m, request, evaluation });
   }
 
-  for (const { m, rctx } of loaded) {
-    const llmBundle = makeLlmGateEvaluator(pool, m.pathway.id);
-    const engine = new TraversalEngine(
-      makeTraversalAdapter(rctx, pool, m.pathway.id, patientContext),
-      rctx.thresholds,
-      temporalContext,
-      rctx.temporalDefaults,
-      factStore,
-      rctx.codeMap,
-      llmBundle?.evaluator,
-    );
-    const traversalResult = await engine.traverse(
-      rctx.graphContext,
-      patientContext,
-      new Map<string, GateAnswer>(),
-    );
-
-    // REQUIRES backtracking pass — for every included Stage/Step node,
-    // walk outgoing REQUIRES edges and check each prereq's
-    // satisfaction_check against the patient snapshot. Deduplicate by
-    // prereq nodeId (one prereq can be reached from many dependents).
-    const catchUpItems: CatchUpItem[] = [];
-    const seenPrereqs = new Set<string>();
-    for (const node of traversalResult.resolutionState.values()) {
-      if (node.status !== NodeStatus.INCLUDED) continue;
-      if (node.nodeType !== 'Stage' && node.nodeType !== 'Step') continue;
-      const unmet = findUnmetPrerequisites(
-        node.nodeId,
-        patientContext,
-        rctx.graphContext,
-      );
-      for (const u of unmet) {
-        if (seenPrereqs.has(u.nodeId)) continue;
-        seenPrereqs.add(u.nodeId);
-        catchUpItems.push({
-          nodeId: u.nodeId,
-          nodeType: u.nodeType,
-          title: u.title,
-          dependentNodeId: u.dependentNodeId,
-          reason: u.reason,
-          sourcePathwayId: m.pathway.id,
-        });
-      }
-    }
-
-    const status = traversalResult.isDegraded
-      ? SessionStatus.DEGRADED
-      : SessionStatus.ACTIVE;
-
-    const sessionId = await createSession(pool, {
-      pathwayId: m.pathway.id,
-      pathwayVersion: m.pathway.version,
-      patientId: patientContext.patientId,
-      providerId,
-      status,
-      initialPatientContext: patientContext,
-      resolutionState: traversalResult.resolutionState,
-      dependencyMap: traversalResult.dependencyMap,
-      pendingQuestions: traversalResult.pendingQuestions,
-      redFlags: traversalResult.redFlags,
-      totalNodesEvaluated: traversalResult.totalNodesEvaluated,
-      traversalDurationMs: traversalResult.traversalDurationMs,
-      temporalContext,
+  for (const { m, request, evaluation: { inputs, result, durationMs } } of evaluated) {
+    // A child is a standalone session, answerable through the single-pathway
+    // mutations, evaluated at ROOT scope until plan 04 composes runs (P3-2).
+    const sessionId = await inTransaction(pool, async (db) => {
+      const id = await insertSession(db, {
+        pathwayVersion: m.pathway.version,
+        patientId: patientContext.patientId,
+        providerId,
+        inputs: { ...inputs, observations: persistedObservations(inputs, request, result) },
+        result,
+        status: statusOf(result),
+        durationMs,
+      });
+      await writeLlmAudits(db, id, request.audits);
+      return id;
     });
-
-    if (llmBundle) await llmBundle.flushAudits(sessionId);
 
     contributingSessionIds.push(sessionId);
     contributingPathwayIds.push(m.pathway.id);
-
     resolvedPlans.push(
       projectResolutionToCarePlan(
-        traversalResult.resolutionState,
-        {
-          pathwayId: m.pathway.id,
-          pathwayLogicalId: m.pathway.logicalId,
-          pathwayTitle: m.pathway.title,
-        },
-        catchUpItems,
-        traversalResult.dependencyMap,
+        result.resolutionState,
+        { pathwayId: m.pathway.id, pathwayLogicalId: m.pathway.logicalId, pathwayTitle: m.pathway.title },
+        result.catchUpItems,
+        { gateContextFields: setsOf(result.gateContextFields) },
       ),
     );
   }
