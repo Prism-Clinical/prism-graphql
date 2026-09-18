@@ -37,6 +37,11 @@ export function applyDisposition(state: ResolutionState, findings: ScopedFinding
     if (f.action !== 'SUPPRESS') continue;
     suppressing.set(f.recommendationId, [...(suppressing.get(f.recommendationId) ?? []), f]);
   }
+  // The reason is the top finding by category, ties broken by position — and findings arrive in
+  // state order. Sort by id so two same-category partners can't swap with input order.
+  for (const list of suppressing.values()) {
+    list.sort((a, b) => (findingId(a) < findingId(b) ? -1 : findingId(a) > findingId(b) ? 1 : 0));
+  }
 
   const out: ResolutionState = new Map();
   for (const [id, node] of state) {

@@ -7,9 +7,12 @@ import { DependencyMap, NodeStatus, ResolutionState } from '../types';
 export function catchUpItemsFor(state: ResolutionState, patient: PatientContext, graph: GraphContext, pathwayId: string): CatchUpItem[] {
   const items: CatchUpItem[] = [];
   const seen = new Set<string>();
-  for (const node of state.values()) {
-    if (node.status !== NodeStatus.INCLUDED) continue;
-    if (node.nodeType !== 'Stage' && node.nodeType !== 'Step') continue;
+  // A prerequisite shared by several dependents keeps the first one's provenance. Visit them in
+  // nodeId order, not state order: overrides are pre-seeded, so state order follows input order.
+  const starts = [...state.values()]
+    .filter((n) => n.status === NodeStatus.INCLUDED && (n.nodeType === 'Stage' || n.nodeType === 'Step'))
+    .sort((a, b) => (a.nodeId < b.nodeId ? -1 : a.nodeId > b.nodeId ? 1 : 0));
+  for (const node of starts) {
     for (const u of findUnmetPrerequisites(node.nodeId, patient, graph)) {
       if (seen.has(u.nodeId)) continue;
       seen.add(u.nodeId);
