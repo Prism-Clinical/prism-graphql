@@ -339,3 +339,26 @@ export interface ResolvedThresholds {
   suggestThreshold: number;
   scope: ThresholdScope;
 }
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function hydrateSignalDefinition(row: any): SignalDefinition {
+  const scoringRules = typeof row.scoring_rules === 'string'
+    ? JSON.parse(row.scoring_rules)
+    : row.scoring_rules;
+
+  return {
+    id: row.id,
+    name: row.name,
+    displayName: row.display_name,
+    description: row.description,
+    scoringType: row.scoring_type,
+    scoringRules,
+    propagationConfig: scoringRules.propagation
+      ? { ...scoringRules.propagation, mode: normalizePropagationMode(scoringRules.propagation.mode) }
+      : { mode: 'none' },
+    scope: row.scope,
+    institutionId: row.institution_id,
+    defaultWeight: parseFloat(row.default_weight),
+    isActive: row.is_active,
+  };
+}

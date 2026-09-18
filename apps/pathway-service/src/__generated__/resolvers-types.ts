@@ -884,21 +884,6 @@ export type Mutation = {
   addAdminEvidence: AdminEvidenceEntry;
   addPatientContext: ResolutionSession;
   /**
-   * The former name, kept so this subgraph can deploy WITHOUT the dashboard.
-   *
-   * The two live in separate repositories, are merged separately, and are
-   * restarted separately — pathway-service first, so the gateway can recompose
-   * against it. Removing the field outright made the graphql deploy a one-way
-   * door: between its restart and the dashboard's, every gate answer in the
-   * running UI would fail GraphQL validation.
-   *
-   * `gateId` rather than `nodeId` because that was the old signature; a
-   * DecisionPoint or an escalated datum request is not a gate, which is why the
-   * name changed. Delete once no client calls it.
-   * @deprecated Renamed to answerPendingDecision; a DecisionPoint branch choice and an escalated datum request are not gate questions.
-   */
-  answerGateQuestion: ResolutionSession;
-  /**
    * Answer whatever the session is waiting on at a node: a question gate, an
    * escalated request for a datum the pathway needed, or a branch choice at a
    * DecisionPoint whose branches could not be told apart by the data.
@@ -920,6 +905,13 @@ export type Mutation = {
   deleteSignalDefinition: Scalars['Boolean']['output'];
   /** Delete a saved simulator scenario. Returns true when a row was removed. */
   deleteSimulatorScenario: Scalars['Boolean']['output'];
+  /**
+   * Materialize the plan the provider reviewed. `reviewedResultHash` is the
+   * session's `resultHash` at review time; if re-evaluation now produces a
+   * different plan, nothing is generated and the only blocker is
+   * PLAN_CHANGED_SINCE_REVIEW (spec D7). A COMPLETED session returns its
+   * existing carePlanId.
+   */
   generateCarePlanFromResolution: CarePlanGenerationResult;
   /**
    * Materialize the merged plan into actual care_plans / care_plan_goals /
@@ -1021,13 +1013,6 @@ export type MutationAddPatientContextArgs = {
 };
 
 
-export type MutationAnswerGateQuestionArgs = {
-  answer: GateAnswerInput;
-  gateId: Scalars['ID']['input'];
-  sessionId: Scalars['ID']['input'];
-};
-
-
 export type MutationAnswerPendingDecisionArgs = {
   answer: GateAnswerInput;
   nodeId: Scalars['ID']['input'];
@@ -1061,6 +1046,7 @@ export type MutationDeleteSimulatorScenarioArgs = {
 
 
 export type MutationGenerateCarePlanFromResolutionArgs = {
+  reviewedResultHash: Scalars['String']['input'];
   sessionId: Scalars['ID']['input'];
 };
 
@@ -2889,14 +2875,13 @@ export type MutationResolvers<ContextType = DataSourceContext, ParentType extend
   activatePathway?: Resolver<ResolversTypes['PathwayStatusResult'], ParentType, ContextType, RequireFields<MutationActivatePathwayArgs, 'id'>>;
   addAdminEvidence?: Resolver<ResolversTypes['AdminEvidenceEntry'], ParentType, ContextType, RequireFields<MutationAddAdminEvidenceArgs, 'input'>>;
   addPatientContext?: Resolver<ResolversTypes['ResolutionSession'], ParentType, ContextType, RequireFields<MutationAddPatientContextArgs, 'additionalContext' | 'sessionId'>>;
-  answerGateQuestion?: Resolver<ResolversTypes['ResolutionSession'], ParentType, ContextType, RequireFields<MutationAnswerGateQuestionArgs, 'answer' | 'gateId' | 'sessionId'>>;
   answerPendingDecision?: Resolver<ResolversTypes['ResolutionSession'], ParentType, ContextType, RequireFields<MutationAnswerPendingDecisionArgs, 'answer' | 'nodeId' | 'sessionId'>>;
   archivePathway?: Resolver<ResolversTypes['PathwayStatusResult'], ParentType, ContextType, RequireFields<MutationArchivePathwayArgs, 'id'>>;
   createSignalDefinition?: Resolver<ResolversTypes['SignalDefinitionType'], ParentType, ContextType, RequireFields<MutationCreateSignalDefinitionArgs, 'input'>>;
   deletePreviewSession?: Resolver<ResolversTypes['DeletePreviewSessionResult'], ParentType, ContextType, RequireFields<MutationDeletePreviewSessionArgs, 'sessionId'>>;
   deleteSignalDefinition?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationDeleteSignalDefinitionArgs, 'id'>>;
   deleteSimulatorScenario?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationDeleteSimulatorScenarioArgs, 'id'>>;
-  generateCarePlanFromResolution?: Resolver<ResolversTypes['CarePlanGenerationResult'], ParentType, ContextType, RequireFields<MutationGenerateCarePlanFromResolutionArgs, 'sessionId'>>;
+  generateCarePlanFromResolution?: Resolver<ResolversTypes['CarePlanGenerationResult'], ParentType, ContextType, RequireFields<MutationGenerateCarePlanFromResolutionArgs, 'reviewedResultHash' | 'sessionId'>>;
   generateMergedCarePlan?: Resolver<ResolversTypes['CarePlanGenerationResult'], ParentType, ContextType, RequireFields<MutationGenerateMergedCarePlanArgs, 'sessionId'>>;
   importPathway?: Resolver<ResolversTypes['ImportPathwayResult'], ParentType, ContextType, RequireFields<MutationImportPathwayArgs, 'importMode' | 'pathwayJson'>>;
   manuallyResolveMedicationNormalization?: Resolver<ResolversTypes['ManuallyResolvedMedication'], ParentType, ContextType, RequireFields<MutationManuallyResolveMedicationNormalizationArgs, 'inputText' | 'rxcui'>>;

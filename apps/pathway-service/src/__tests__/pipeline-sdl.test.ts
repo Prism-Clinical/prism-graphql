@@ -60,4 +60,11 @@ describe('evaluation pipeline API surface (spec §4)', () => {
     expect(formatted.excludedNodes[0]).toMatchObject({ nodeId: 'withheld', status: 'EXCLUDED', eligibilityStatus: 'INCLUDED', withheldBy: 'SAFETY' });
     expect(formatted.includedNodes[0]).toMatchObject({ nodeId: 'plain', eligibilityStatus: 'INCLUDED', withheldBy: null });
   });
+
+  it('generation requires the reviewed hash, and the answerGateQuestion alias is gone', () => {
+    const mutation = objectType('Mutation');
+    const gen = mutation.fields!.find((f) => f.name.value === 'generateCarePlanFromResolution')!;
+    expect(gen.arguments!.map((a) => `${a.name.value}: ${print(a.type)}`)).toEqual(['sessionId: ID!', 'reviewedResultHash: String!']);
+    expect(mutation.fields!.map((f) => f.name.value)).not.toContain('answerGateQuestion');
+  });
 });

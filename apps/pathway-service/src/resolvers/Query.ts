@@ -1,7 +1,10 @@
 import { GraphQLError } from 'graphql';
 import { DataSourceContext } from '../types';
 import { ConfidenceEngine } from '../services/confidence/confidence-engine';
-import { SignalDefinition, ResolvedWeight, normalizePropagationMode, PatientContext, AdminEvidenceEntry } from '../services/confidence/types';
+import { SignalDefinition, ResolvedWeight, PatientContext, AdminEvidenceEntry, hydrateSignalDefinition } from '../services/confidence/types';
+// Lives beside SignalDefinition so resolution-context need not import this resolver module
+// (that import closed a load-env → … → resolution → pipeline/commit → load-env cycle).
+export { hydrateSignalDefinition };
 import { normalizePatientAttributes } from '../services/resolution/patient-attributes';
 import { loadAttributeCodeMap } from '../services/resolution/attribute-code-map';
 import { buildAttributeVocabulary } from '../services/resolution/attribute-vocabulary';
@@ -857,25 +860,3 @@ export const Query = {
     },
   },
 };
-
-export function hydrateSignalDefinition(row: any): SignalDefinition {
-  const scoringRules = typeof row.scoring_rules === 'string'
-    ? JSON.parse(row.scoring_rules)
-    : row.scoring_rules;
-
-  return {
-    id: row.id,
-    name: row.name,
-    displayName: row.display_name,
-    description: row.description,
-    scoringType: row.scoring_type,
-    scoringRules,
-    propagationConfig: scoringRules.propagation
-      ? { ...scoringRules.propagation, mode: normalizePropagationMode(scoringRules.propagation.mode) }
-      : { mode: 'none' },
-    scope: row.scope,
-    institutionId: row.institution_id,
-    defaultWeight: parseFloat(row.default_weight),
-    isActive: row.is_active,
-  };
-}

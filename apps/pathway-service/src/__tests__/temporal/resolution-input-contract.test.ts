@@ -3,52 +3,18 @@
  * reach the guard, and SDL fields that are all optional so today's callers
  * keep working.
  *
- * The mock set mirrors retraversal-clock-reuse.test.ts. `jest.mock` with a
- * factory replaces the WHOLE module, so any export the resolver imports and
- * the factory omits is `undefined` at call time. resolution-context is
- * deliberately spread from requireActual: `assertEncounterAnchor` must stay
- * REAL, or the anchor tests below would pass against a stub and prove nothing.
+ * The start tests run the REAL pipeline over fixtures/resolver-harness: only
+ * the session table and the snapshot loader are in memory, so
+ * `assertEncounterAnchor` is the real guard and the anchor tests prove it.
  */
-
-const mockTraverse = jest.fn();
-const traversalCtor = jest.fn();
 
 jest.mock('../../resolvers/Query', () => ({
   PATHWAY_COLUMNS: 'id, version, status',
   formatSessionForGraphQL: (s: unknown) => s,
   hydrateSignalDefinition: (row: unknown) => row,
 }));
-
-jest.mock('../../services/resolution/traversal-engine', () => ({
-  TraversalEngine: class {
-    constructor(...args: unknown[]) {
-      traversalCtor(...args);
-    }
-    traverse = mockTraverse;
-  },
-}));
-
-jest.mock('../../services/resolution/session-store', () => ({
-  createSession: jest.fn().mockResolvedValue('session-1'),
-  getSession: jest.fn().mockResolvedValue({ id: 'session-1' }),
-  updateSession: jest.fn().mockResolvedValue(undefined),
-  logEvent: jest.fn().mockResolvedValue(undefined),
-  logNodeOverride: jest.fn().mockResolvedValue(undefined),
-  logGateAnswer: jest.fn().mockResolvedValue(undefined),
-}));
-
-jest.mock('../../services/medications/ddi-pass-single-pathway', () => ({
-  applyDdiToResolutionState: jest.fn().mockResolvedValue({ findings: [] }),
-}));
-
-const mockBuildResolutionContext = jest.fn();
-jest.mock('../../resolvers/helpers/resolution-context', () => ({
-  ...jest.requireActual('../../resolvers/helpers/resolution-context'),
-  buildResolutionContext: (...a: unknown[]) => mockBuildResolutionContext(...a),
-  makeTraversalAdapter: jest.fn(() => ({ computeNodeConfidence: jest.fn() })),
-  makeRetraversalAdapter: jest.fn(() => ({ computeNodeConfidence: jest.fn() })),
-  makeLlmGateEvaluator: jest.fn(() => null),
-}));
+jest.mock('../../services/resolution/session-store', () => require('../fixtures/resolver-harness').sessionStoreMock());
+jest.mock('../../services/resolution/pipeline/load-env', () => require('../fixtures/resolver-harness').loadEnvMock());
 
 import * as fs from 'fs';
 import * as path from 'path';
@@ -61,6 +27,8 @@ import {
 import { TemporalContextError } from '../../services/resolution/temporal/evaluation-context';
 import { GraphNode } from '../../services/confidence/types';
 import { GateType } from '../../services/resolution/types';
+import { harness } from '../fixtures/resolver-harness';
+import { makeEnv } from '../fixtures/pipeline-env';
 
 // ─── SDL ──────────────────────────────────────────────────────────────
 
@@ -611,61 +579,25 @@ const PLAIN_NODE: GraphNode = {
   properties: { title: 's-1' },
 } as GraphNode;
 
-function rctxWith(nodes: GraphNode[]) {
-  return {
-    graphContext: {
-      allNodes: nodes,
-      allEdges: [],
-      incomingEdges: () => [],
-      outgoingEdges: () => [],
-      getNode: () => undefined,
-      linkedNodes: () => [],
-    },
-    edges: [],
-    signals: [],
-    thresholds: { autoResolveThreshold: 0.85, suggestThreshold: 0.6 },
-    confidenceEngine: {},
-    codeMap: new Map(),
-    temporalDefaults: {},
-  };
-}
-
-const poolStub = {
-  query: jest.fn().mockResolvedValue({ rows: [{ id: 'pw-1', version: 1, status: 'ACTIVE' }] }),
-};
-
-const gqlContext = (userRole = 'PROVIDER') =>
-  ({ pool: poolStub, redis: {}, userId: 'u-1', userRole }) as never;
+const useGraph = (nodes: GraphNode[]) => harness.addPathway('pw-1', makeEnv(nodes, []));
 
 const start = (args: Record<string, unknown>, userRole = 'PROVIDER') =>
   resolutionMutations.startResolution(
     null,
     { pathwayId: 'pw-1', patientId: 'pt-1', ...args } as never,
-    gqlContext(userRole),
+    harness.context({ userRole }),
   );
+
+const storedClock = () => harness.session(harness.sessionIds()[0]).temporalContext!;
 
 describe('startResolution — temporal anchors', () => {
   beforeEach(() => {
-    jest.clearAllMocks();
-    poolStub.query.mockResolvedValue({ rows: [{ id: 'pw-1', version: 1, status: 'ACTIVE' }] });
-    mockTraverse.mockResolvedValue({
-      resolutionState: {},
-      dependencyMap: {},
-      pendingQuestions: [],
-      redFlags: [],
-      totalNodesEvaluated: 1,
-      traversalDurationMs: 1,
-      isDegraded: false,
-    });
-    mockBuildResolutionContext.mockResolvedValue(rctxWith([ENCOUNTER_GATE]));
+    harness.reset();
+    useGraph([ENCOUNTER_GATE]);
   });
 
-  const capturedTemporalContext = () => traversalCtor.mock.calls[0][2];
-
   it('threads a supplied evaluationAsOf into the session clock', async () => {
-    // A pinned clock is an ADMIN-only assertion, so this goes through the
-    // explicit SYNTHETIC path.
-    mockBuildResolutionContext.mockResolvedValue(rctxWith([PLAIN_NODE]));
+    useGraph([PLAIN_NODE]);
     await start(
       {
         resolutionMode: 'SYNTHETIC',
@@ -674,11 +606,11 @@ describe('startResolution — temporal anchors', () => {
       },
       'ADMIN',
     );
-    expect(capturedTemporalContext().evaluationAsOf).toBe('2026-03-04T05:06:07.000Z');
+    expect(storedClock().evaluationAsOf).toBe('2026-03-04T05:06:07.000Z');
   });
 
   it('rejects an empty evaluationAsOf instead of silently using the wall clock', async () => {
-    mockBuildResolutionContext.mockResolvedValue(rctxWith([PLAIN_NODE]));
+    useGraph([PLAIN_NODE]);
     await expect(
       start(
         {
@@ -692,45 +624,39 @@ describe('startResolution — temporal anchors', () => {
   });
 
   it('still reads the wall clock when no evaluationAsOf is given', async () => {
-    mockBuildResolutionContext.mockResolvedValue(rctxWith([PLAIN_NODE]));
+    useGraph([PLAIN_NODE]);
     await start({});
-    expect(capturedTemporalContext().evaluationAsOf).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    expect(storedClock().evaluationAsOf).toMatch(/^\d{4}-\d{2}-\d{2}T/);
   });
 
   it('fails with MISSING_ENCOUNTER_ANCHOR when the pathway needs an anchor and none is given', async () => {
     await expect(start({})).rejects.toThrow(/encounterStart/);
-    expect(traversalCtor).not.toHaveBeenCalled();
+    expect(harness.rowCount()).toBe(0);
   });
 
   it('starts once encounterStart is supplied, and pins it on the clock', async () => {
-    // Deliberately a PROVIDER with no explicit mode: encounterStart is the one
-    // anchor an ordinary caller must be able to send, because without it a
-    // pathway with an ENCOUNTER horizon is unstartable.
     await start({ encounterStart: '2026-03-04T04:00:00.000Z' });
-    expect(capturedTemporalContext().encounterStart).toBe('2026-03-04T04:00:00.000Z');
+    expect(storedClock().encounterStart).toBe('2026-03-04T04:00:00.000Z');
   });
 
   it('rejects an explicit SYNTHETIC mode from a non-admin before doing any work', async () => {
-    mockBuildResolutionContext.mockResolvedValue(rctxWith([PLAIN_NODE]));
+    useGraph([PLAIN_NODE]);
     await expect(start({ resolutionMode: 'SYNTHETIC' }, 'PROVIDER')).rejects.toThrow(/ADMIN/);
+    expect(harness.rowCount()).toBe(0);
   });
 
   it('refuses LIVE, naming the plan that will implement it', async () => {
-    mockBuildResolutionContext.mockResolvedValue(rctxWith([PLAIN_NODE]));
-    await expect(
-      start({ resolutionMode: 'LIVE', snapshotId: 'snap-1' }, 'ADMIN'),
-    ).rejects.toThrow(/plan 07/);
+    useGraph([PLAIN_NODE]);
+    await expect(start({ resolutionMode: 'LIVE', snapshotId: 'snap-1' }, 'ADMIN')).rejects.toThrow(/plan 07/);
   });
 
   it('refuses REPLAY, naming the plan that will implement it', async () => {
-    mockBuildResolutionContext.mockResolvedValue(rctxWith([PLAIN_NODE]));
-    await expect(start({ resolutionMode: 'REPLAY', sessionId: 's-1' }, 'ADMIN')).rejects.toThrow(
-      /plan 05b/,
-    );
+    useGraph([PLAIN_NODE]);
+    await expect(start({ resolutionMode: 'REPLAY', sessionId: 's-1' }, 'ADMIN')).rejects.toThrow(/plan 05b/);
   });
 
   it('still serves a caller that sends no mode at all', async () => {
-    mockBuildResolutionContext.mockResolvedValue(rctxWith([PLAIN_NODE]));
+    useGraph([PLAIN_NODE]);
     await expect(start({})).resolves.toBeDefined();
   });
 });

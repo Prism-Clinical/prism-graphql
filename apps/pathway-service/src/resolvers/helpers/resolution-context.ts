@@ -7,6 +7,7 @@ import {
   GraphContext,
   PatientContext,
   SignalDefinition,
+  hydrateSignalDefinition,
 } from '../../services/confidence/types';
 import { GateProperties, AttributeCodeMap, AttributeCondition, CodedCondition } from '../../services/resolution/types';
 import { DataSourceContext, GateType } from '../../types';
@@ -29,7 +30,6 @@ import { DataCompletenessScorer } from '../../services/confidence/scorers/data-c
 import { EvidenceStrengthScorer } from '../../services/confidence/scorers/evidence-strength';
 import { PatientMatchQualityScorer } from '../../services/confidence/scorers/patient-match-quality';
 import { RiskMagnitudeScorer } from '../../services/confidence/scorers/risk-magnitude';
-import { hydrateSignalDefinition } from '../Query';
 import { executeCypher } from '../../services/age-client';
 import {
   PathwayTemporalDefaults,
