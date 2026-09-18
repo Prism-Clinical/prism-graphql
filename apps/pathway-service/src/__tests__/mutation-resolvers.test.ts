@@ -6,6 +6,13 @@ jest.mock('../services/import/import-orchestrator', () => ({
   importPathway: jest.fn(),
 }));
 
+// Import and activation start a background medication pre-warm (D14) whose graph
+// read would land on this suite's mocked pool; prewarm-pathway-medications.test.ts
+// covers that wiring, so here the resolvers' own queries are counted alone.
+jest.mock('../services/medications/prewarm-pathway', () => ({
+  prewarmPathwayInBackground: jest.fn(),
+}));
+
 import { importPathway as mockImportPathway } from '../services/import/import-orchestrator';
 
 function createMockContext() {
