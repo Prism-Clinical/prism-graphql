@@ -16,8 +16,12 @@ export interface EvaluationEnv {
   graphFingerprint: string;
   envFingerprint: string;
   llmModel: string | null;
-  /** Medication texts with no normalised row — for non-blocking pre-warm (plan 03). */
-  unnormalized: string[];
+  /**
+   * Medications with no normalised row — WHOLE inputs (text, system, code),
+   * one per cache key, for the non-blocking pre-warm. The cache is keyed on
+   * all three; a text alone would pre-warm a row evaluation never reads.
+   */
+  unnormalized: MedicationInput[];
 }
 
 export interface CandidateUniverse {
@@ -70,7 +74,11 @@ export async function loadEvaluationEnv(pool: Pool, pathwayId: string, universe:
 
     const graphFingerprint = graphFingerprintOf(resolution);
     const llmModel = loadLLMGateConfig()?.model ?? null;
-    const unnormalized = [...new Set(medications.filter((m) => !safety.normalized.has(normalizedKey(m))).map((m) => m.text))];
+    const unnormalized = [
+      ...new Map(
+        medications.filter((m) => !safety.normalized.has(normalizedKey(m))).map((m) => [normalizedKey(m), m]),
+      ).values(),
+    ];
     const envFingerprint = hashOf({
       graphFingerprint,
       signals: resolution.signals,

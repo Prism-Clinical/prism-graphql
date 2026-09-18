@@ -53,7 +53,10 @@ describe('loadEvaluationEnv', () => {
     }]);
     expect(client.release).toHaveBeenCalled();
     expect(env.llmModel).toBe('m1');
-    expect(env.unnormalized).toEqual(['Mysterydrug', 'Tinidazole']);
+    expect(env.unnormalized).toEqual([
+      { text: 'Mysterydrug', system: 'RxNorm', code: '999' },
+      { text: 'Tinidazole' },
+    ]);
   });
 
   it('rolls back and releases on failure', async () => {
