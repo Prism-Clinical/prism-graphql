@@ -79,6 +79,7 @@ fixes included.
 | P3-7 | **Generation on a COMPLETED session returns `{ success: true, carePlanId: <existing> }`** without evaluating, as spec §4 prescribes. Today it throws `BAD_REQUEST`. | Spec §4. It is also what makes two concurrent generations converge on one plan. |
 | P3-8 | **`PENDING_GATE` is raised for Gate and DecisionPoint nodes only** (plan 02, `readinessOf`). Today's `validateForGeneration` raised one per PENDING node of any type. The per-descendant noise is dropped. | Already decided in plan 02 (Task 6); this plan is where it reaches the API. Listed so the review sees it. |
 | P3-9 | **Generation warnings are rendered as text** (`"<category>: <drug> — <advice>"`). Today's code mapped a `DdiFinding` object to `"[object Object]"`. | The field is `[String!]!`. The old rendering was a latent defect. |
+| P3-10 | **LLM calls made before a session row exists are not audited.** This covers a start that fails after evaluating, or a multi-pathway run that fails partway. Every exit of a mutation on an existing session writes its audit rows (`withAudits`). | `llm_gate_evaluations.session_id` is a NOT NULL foreign key (migration 057, and spec §4 keeps it). A start writes its session and audit rows in one transaction, so a failed start persists neither. Its calls reached no plan. |
 
 ## Baseline
 
@@ -831,7 +832,9 @@ Claude-Session: https://claude.ai/code/session_01XRNkZvQrxmRLNtJHxq71kH"
 - Modify: `apps/pathway-service/src/services/resolution/pipeline/observations.ts` (`LlmClient` signature)
 - Create: `apps/pathway-service/src/services/resolution/pipeline/llm-audit.ts`
 - Create: `apps/pathway-service/src/services/resolution/pipeline/request.ts`
+- Modify: `apps/pathway-service/src/services/resolution/pipeline/load-env.ts` (`unnormalized` keeps the full key)
 - Test: `apps/pathway-service/src/__tests__/pipeline-request.test.ts`
+- Modify (test): `apps/pathway-service/src/__tests__/pipeline-load-env.test.ts` (one expectation)
 
 **Interfaces:**
 - Consumes:
@@ -849,7 +852,10 @@ Claude-Session: https://claude.ai/code/session_01XRNkZvQrxmRLNtJHxq71kH"
   - `interface SessionEvaluation { env: EvaluationEnv; inputs: SessionInputs; result: EvaluationResult; durationMs: number }`
   - `evaluateSession(pool: Pool, request: EvaluationRequest, inputs: SessionInputs, scope: EvaluationScope, opts?: { pinGraph?: boolean }): Promise<SessionEvaluation>`
   - `persistedObservations(inputs: SessionInputs, request: EvaluationRequest, result: EvaluationResult): Map<ObservationKey, LlmObservation>`
-  - `prewarmInBackground(pool: Pool, names: string[]): void`
+  - `prewarmInBackground(pool: Pool, inputs: MedicationInput[]): void`
+  - `EvaluationEnv.unnormalized` becomes `MedicationInput[]`, not `string[]`: text, system and code,
+    deduplicated by `normalizedKey`. The cache is keyed on all three, so pre-warming the text
+    alone writes a row that evaluation never reads for a coded medication (review P1).
   - `class RevisionConflict extends Error`
   - `inTransaction<T>(pool: Pool, fn: (db: PoolClient) => Promise<T>): Promise<T>`
 
@@ -874,6 +880,7 @@ jest.mock('../services/medications/normalizer', () => ({
 
 import { evaluateGateWithLLM } from '../services/llm/llm-gate-client';
 import { prewarmMedications } from '../services/medications/normalizer';
+import { normalizedKey } from '../services/medications/safety-reference';
 import { loadEvaluationEnv } from '../services/resolution/pipeline/load-env';
 import { auditingLlmClient } from '../services/resolution/pipeline/llm-audit';
 import { evaluateSession, newRequest, persistedObservations, prewarmInBackground } from '../services/resolution/pipeline/request';
@@ -959,14 +966,30 @@ describe('prewarmInBackground', () => {
   it('starts a pre-warm without awaiting it and swallows its failure', async () => {
     let settle!: (v: unknown) => void;
     (prewarmMedications as jest.Mock).mockReturnValueOnce(new Promise((r) => { settle = r; }));
-    expect(prewarmInBackground({} as never, ['Tinidazole'])).toBeUndefined();
+    expect(prewarmInBackground({} as never, [{ text: 'Tinidazole' }])).toBeUndefined();
     expect(prewarmMedications).toHaveBeenCalledWith({}, [{ text: 'Tinidazole' }]);
     settle({ succeeded: 1, failed: 0 });
 
     (prewarmMedications as jest.Mock).mockRejectedValueOnce(new Error('rxnav down'));
-    prewarmInBackground({} as never, ['X']);
+    prewarmInBackground({} as never, [{ text: 'X' }]);
     // An unhandled rejection here would fail the run.
     await new Promise((r) => setImmediate(r));
+  });
+
+  it('pre-warms a coded patient medication under the key evaluation looks it up by (review P1)', async () => {
+    const coded = { text: 'Warfarin', system: 'RxNorm', code: '11289' };
+    (prewarmMedications as jest.Mock).mockClear().mockResolvedValue({ succeeded: 1, failed: 0 });
+    (loadEvaluationEnv as jest.Mock).mockResolvedValue({
+      ...makeEnv([node('root', 'Pathway')], []), unnormalized: [coded],
+    });
+    const env = makeEnv([node('root', 'Pathway')], []);
+    await evaluateSession({} as never, newRequest(), makeInputs(env), 'ROOT');
+
+    const [[, sent]] = (prewarmMedications as jest.Mock).mock.calls;
+    expect(sent).toEqual([coded]);
+    // The key patientSafety reads for this medication (text = display, plus system and code).
+    expect(normalizedKey(sent[0])).toBe(normalizedKey({ text: 'Warfarin', system: 'RxNorm', code: '11289' }));
+    expect(normalizedKey(sent[0])).not.toBe(normalizedKey({ text: 'Warfarin' }));
   });
 
   it('does nothing when every name is normalised', () => {
@@ -1080,6 +1103,7 @@ import { GraphQLError } from 'graphql';
 import type { Pool, PoolClient } from 'pg';
 import { loadLLMGateConfig } from '../../llm/llm-gate-client';
 import { prewarmMedications } from '../../medications/normalizer';
+import type { MedicationInput } from '../../medications/types';
 import type { LlmAuditRow } from '../session-store';
 import { buildEffectivePatientContext } from '../effective-context';
 import { EvaluationError, evaluate } from './evaluate';
@@ -1158,10 +1182,14 @@ export function persistedObservations(
  * per drug; a later mutation sees the rows this writes. Failures are logged:
  * `prewarmMedications` already caches no-match as a NULL row for the admin
  * queue and leaves network errors for the next attempt.
+ *
+ * The inputs pass through WHOLE. The cache key is text + system + code, so a
+ * coded patient medication pre-warmed by its text alone would land in a row
+ * evaluation never reads, and its SAFETY_DATA_UNAVAILABLE would never clear.
  */
-export function prewarmInBackground(pool: Pool, names: string[]): void {
-  if (names.length === 0) return;
-  void prewarmMedications(pool, names.map((text) => ({ text })))
+export function prewarmInBackground(pool: Pool, inputs: MedicationInput[]): void {
+  if (inputs.length === 0) return;
+  void prewarmMedications(pool, inputs)
     .then(({ succeeded, failed }) => console.info(`[prewarm] ${succeeded} normalised, ${failed} not`))
     .catch((err) => console.warn('[prewarm] failed:', err instanceof Error ? err.message : err));
 }
@@ -1191,21 +1219,62 @@ export async function inTransaction<T>(pool: Pool, fn: (db: PoolClient) => Promi
 }
 ```
 
-- [ ] **Step 6: Run the tests (new + plan 02's observation and acceptance suites) and typecheck**
+- [ ] **Step 5b: Keep the whole cache key in `env.unnormalized` (review P1)**
+
+In `pipeline/load-env.ts` (plan 02):
+
+1. In `interface EvaluationEnv`, replace `unnormalized: string[];` and its comment with:
+
+```ts
+  /**
+   * Medications with no normalised row — WHOLE inputs (text, system, code),
+   * one per cache key, for the non-blocking pre-warm. The cache is keyed on
+   * all three; a text alone would pre-warm a row evaluation never reads.
+   */
+  unnormalized: MedicationInput[];
+```
+
+2. Replace the `const unnormalized = …` line with:
+
+```ts
+    const unnormalized = [
+      ...new Map(
+        medications.filter((m) => !safety.normalized.has(normalizedKey(m))).map((m) => [normalizedKey(m), m]),
+      ).values(),
+    ];
+```
+
+3. In `__tests__/pipeline-load-env.test.ts`, change
+   `expect(env.unnormalized).toEqual(['Mysterydrug', 'Tinidazole']);` to:
+
+```ts
+    expect(env.unnormalized).toEqual([
+      { text: 'Mysterydrug', system: 'RxNorm', code: '999' },
+      { text: 'Tinidazole' },
+    ]);
+```
+
+`EvaluationEnv.unnormalized` has no other reader. The fixture's `unnormalized: []` is
+unaffected.
+
+- [ ] **Step 6: Run the tests (new + plan 02's observation, load-env and acceptance suites) and typecheck**
 
 ```bash
-npm test --prefix $W/apps/pathway-service -- --runInBand src/__tests__/pipeline-request.test.ts src/__tests__/pipeline-observations.test.ts src/__tests__/pipeline-acceptance-a1.test.ts
+npm test --prefix $W/apps/pathway-service -- --runInBand src/__tests__/pipeline-request.test.ts src/__tests__/pipeline-load-env.test.ts src/__tests__/pipeline-observations.test.ts src/__tests__/pipeline-acceptance-a1.test.ts
 $W/node_modules/.bin/tsc -p $W/apps/pathway-service/tsconfig.json --noEmit
 ```
 Expected: PASS; typecheck clean.
 
-**Falsify:** in `persistedObservations`, drop the `for` loop. The `'used'` key disappears and
-the test must fail. Restore it.
+**Falsify, one at a time, restoring each:**
+1. In `persistedObservations`, drop the `for` loop. The `'used'` key disappears and the test
+   must fail.
+2. In `prewarmInBackground`, send `inputs.map((m) => ({ text: m.text }))`. The *coded patient
+   medication* test must fail.
 
 - [ ] **Step 7: Commit**
 
 ```bash
-git -C $W add apps/pathway-service/src/services/resolution/pipeline/observations.ts apps/pathway-service/src/services/resolution/pipeline/llm-audit.ts apps/pathway-service/src/services/resolution/pipeline/request.ts apps/pathway-service/src/__tests__/pipeline-request.test.ts
+git -C $W add apps/pathway-service/src/services/resolution/pipeline/observations.ts apps/pathway-service/src/services/resolution/pipeline/llm-audit.ts apps/pathway-service/src/services/resolution/pipeline/request.ts apps/pathway-service/src/services/resolution/pipeline/load-env.ts apps/pathway-service/src/__tests__/pipeline-request.test.ts apps/pathway-service/src/__tests__/pipeline-load-env.test.ts
 git -C $W commit -m "feat(pathway-service): one evaluation attempt with audited LLM calls
 
 evaluateSession loads the snapshot for the effective patient, fires the
@@ -1237,6 +1306,8 @@ Claude-Session: https://claude.ai/code/session_01XRNkZvQrxmRLNtJHxq71kH"
   - `assertMutable(session: ResolutionSession): void` (throws `BAD_USER_INPUT` unless ACTIVE/DEGRADED)
   - `statusOf(result: EvaluationResult): SessionStatus`
   - `flushAudits(pool: Pool, sessionId: string, request: EvaluationRequest): Promise<void>`
+  - `withAudits<T>(pool: Pool, sessionId: string, request: EvaluationRequest, body: () => Promise<T>): Promise<T>`:
+    every exit writes unwritten audit rows (review P2)
   - `conflictError(): GraphQLError` (code `CONFLICT`)
   - Harness: `harness`, `sessionStoreMock()`, `loadEnvMock()` (documented in the file header)
   - Fixture: `edge(s, t, type?, properties?)`; `makeEnv(nodes, edges, safety?, opts?: { signals?; registry?; temporalDefaults? })`
@@ -1653,6 +1724,34 @@ describe('commitEvaluation', () => {
     expect(harness.tables.audits).toEqual([{ sessionId: id, gateId: 'gate-llm', errorMessage: null }]);
   });
 
+  it('writes the audit rows of an earlier attempt when a later attempt finds the session completed (review P2)', async () => {
+    const id = await seed('mild cough');
+    harness.onBeforeWrite((row) => {
+      if (row.status !== 'ACTIVE') return;
+      row.revision += 1;
+      row.status = 'COMPLETED'; // a concurrent generation claimed it
+    });
+
+    await expect(commitEvaluation(harness.pool(), id, narrate('crushing chest pain')))
+      .rejects.toThrow('Cannot modify session with status "COMPLETED"');
+
+    expect(harness.tables.audits).toEqual([{ sessionId: id, gateId: 'gate-llm', errorMessage: null }]);
+  });
+
+  it('writes the audit rows of an earlier attempt when a later attempt is rejected at the boundary (review P2)', async () => {
+    const id = await seed('mild cough');
+    harness.loseNextRaces(1);
+    let attempts = 0;
+
+    await expect(commitEvaluation(harness.pool(), id, (s) => {
+      attempts += 1;
+      if (attempts === 2) throw new GraphQLError('the node is gone', { extensions: { code: 'NOT_FOUND' } });
+      return narrate('crushing chest pain')(s);
+    })).rejects.toThrow('the node is gone');
+
+    expect(harness.tables.audits).toEqual([{ sessionId: id, gateId: 'gate-llm', errorMessage: null }]);
+  });
+
   it('a boundary error is not retried and writes nothing', async () => {
     const id = await seed('mild cough');
     (loadEvaluationEnv as jest.Mock).mockClear();
@@ -1734,12 +1833,35 @@ export async function flushAudits(pool: Pool, sessionId: string, request: Evalua
 }
 
 /**
+ * Run a request's attempts. However they end — committed, out of retries, a
+ * later attempt rejected at the boundary, the session completed or abandoned
+ * underneath, an evaluation or database error — the audit rows of LLM calls
+ * no committed transaction wrote are written in their own (spec §4, Audit).
+ * After a winning commit there are none left, so this is a no-op. A failure to
+ * write them is logged and never masks the request's own outcome.
+ */
+export async function withAudits<T>(
+  pool: Pool,
+  sessionId: string,
+  request: EvaluationRequest,
+  body: () => Promise<T>,
+): Promise<T> {
+  try {
+    return await body();
+  } finally {
+    await flushAudits(pool, sessionId, request).catch((err) =>
+      console.error(`[audit] could not write ${request.audits.length} LLM audit rows for session ${sessionId}:`, err),
+    );
+  }
+}
+
+/**
  * The one write path (spec §4). Each attempt reloads the session, asks the
  * mutation for its change (boundary validation throws here and is never
  * retried), evaluates from scratch, and commits under the revision it read.
  * Observations acquired by an earlier attempt are reused while their keys
- * still match (D9). Audit rows for every LLM call go out with the winning
- * commit, or in their own transaction when every attempt loses.
+ * still match (D9). Audit rows go out with the winning commit; `withAudits`
+ * writes them on every other exit.
  */
 export async function commitEvaluation(
   pool: Pool,
@@ -1747,40 +1869,41 @@ export async function commitEvaluation(
   applyChange: (session: ResolutionSession) => Change | Promise<Change>,
 ): Promise<ResolutionSession> {
   const request = newRequest();
-  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-    const session = await loadSession(pool, sessionId);
-    assertMutable(session);
-    const change = await applyChange(session);
-    const { inputs, result, durationMs } = await evaluateSession(pool, request, change.inputs, 'ROOT');
+  return withAudits(pool, sessionId, request, async () => {
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+      const session = await loadSession(pool, sessionId);
+      assertMutable(session);
+      const change = await applyChange(session);
+      const { inputs, result, durationMs } = await evaluateSession(pool, request, change.inputs, 'ROOT');
 
-    try {
-      await inTransaction(pool, async (db) => {
-        const written = await writeEvaluation(db, {
-          sessionId,
-          expectedRevision: session.revision,
-          inputs: { ...inputs, observations: persistedObservations(inputs, request, result) },
-          result,
-          status: statusOf(result),
-          durationMs,
+      try {
+        await inTransaction(pool, async (db) => {
+          const written = await writeEvaluation(db, {
+            sessionId,
+            expectedRevision: session.revision,
+            inputs: { ...inputs, observations: persistedObservations(inputs, request, result) },
+            result,
+            status: statusOf(result),
+            durationMs,
+          });
+          if (!written) throw new RevisionConflict();
+          await logEvent(db, sessionId, {
+            ...change.event,
+            nodesRecomputed: result.resolutionState.size,
+            statusChanges: statusChangesBetween(session.resolutionState, result.resolutionState),
+          });
+          await change.record?.(db, result);
+          await writeLlmAudits(db, sessionId, request.audits);
         });
-        if (!written) throw new RevisionConflict();
-        await logEvent(db, sessionId, {
-          ...change.event,
-          nodesRecomputed: result.resolutionState.size,
-          statusChanges: statusChangesBetween(session.resolutionState, result.resolutionState),
-        });
-        await change.record?.(db, result);
-        await writeLlmAudits(db, sessionId, request.audits);
-      });
-    } catch (err) {
-      if (err instanceof RevisionConflict) continue;
-      throw err;
+      } catch (err) {
+        if (err instanceof RevisionConflict) continue;
+        throw err;
+      }
+      request.audits.length = 0;
+      return loadSession(pool, sessionId);
     }
-    request.audits.length = 0;
-    return loadSession(pool, sessionId);
-  }
-  await flushAudits(pool, sessionId, request);
-  throw conflictError();
+    throw conflictError();
+  });
 }
 ```
 
@@ -1796,8 +1919,8 @@ behaviour-preserving.
 **Falsify, one at a time, restoring each:**
 1. In `commitEvaluation`, move `const request = newRequest();` inside the `for` loop. The A1
    retry test must fail with 2 LLM calls.
-2. Delete `await flushAudits(pool, sessionId, request);`. The CONFLICT test's `audits`
-   assertion must fail.
+2. In `withAudits`, delete the `finally` block's `flushAudits` call. The CONFLICT test and both
+   *writes the audit rows … when a later attempt …* tests must fail.
 
 - [ ] **Step 7: Commit**
 
@@ -2058,7 +2181,7 @@ together: the suite is green only at the end of the task. Do the steps in order.
 **Interfaces:**
 - Consumes: Task 2 store; Task 3 `evaluateSession`, `newRequest`, `persistedObservations`,
   `inTransaction`, `RevisionConflict`; Task 4 `commitEvaluation`, `loadSession`,
-  `assertMutable`, `statusOf`, `flushAudits`, `conflictError`, `MAX_ATTEMPTS`, `Change`, and
+  `assertMutable`, `statusOf`, `withAudits`, `conflictError`, `MAX_ATTEMPTS`, `Change`, and
   the harness.
 - Produces (GraphQL):
   - `generateCarePlanFromResolution(sessionId: ID!, reviewedResultHash: String!)`;
@@ -2373,9 +2496,16 @@ Create `apps/pathway-service/src/__tests__/pipeline-resolver-generation.test.ts`
 ```ts
 jest.mock('../services/resolution/session-store', () => require('./fixtures/resolver-harness').sessionStoreMock());
 jest.mock('../services/resolution/pipeline/load-env', () => require('./fixtures/resolver-harness').loadEnvMock());
+jest.mock('../services/llm/llm-gate-client', () => ({
+  ...jest.requireActual('../services/llm/llm-gate-client'),
+  loadLLMGateConfig: jest.fn(),
+  evaluateGateWithLLM: jest.fn(),
+}));
 
 import { resolutionMutations } from '../resolvers/mutations/resolution';
+import { evaluateGateWithLLM, loadLLMGateConfig } from '../services/llm/llm-gate-client';
 import { loadEvaluationEnv } from '../services/resolution/pipeline/load-env';
+import { DefaultBehavior, GateType } from '../services/resolution/types';
 import { harness } from './fixtures/resolver-harness';
 import { edge, makeEnv, node } from './fixtures/pipeline-env';
 
@@ -2405,6 +2535,8 @@ const carePlanInsertCount = () => harness.tables.carePlanInserts.filter((sql) =>
 beforeEach(() => {
   harness.reset();
   harness.addPathway('pw-gen', makeEnv(nodes(), edges, SAFETY));
+  (loadLLMGateConfig as jest.Mock).mockReset().mockReturnValue(null);
+  (evaluateGateWithLLM as jest.Mock).mockReset();
 });
 
 describe('generateCarePlanFromResolution', () => {
@@ -2494,6 +2626,63 @@ describe('generateCarePlanFromResolution', () => {
 
     expect(r.success).toBe(true);
     expect(carePlanInsertCount()).toBe(1);
+  });
+
+  it('reloads and re-evaluates when its cache write loses a race, instead of returning stale blockers (review P2)', async () => {
+    harness.addPathway('pw-unmapped', makeEnv(nodes('Unobtainium'), edges, SAFETY));
+    const id = await start('pw-unmapped');
+    const reviewed = harness.session(id).resultHash;
+    let raced = false;
+    harness.onBeforeWrite((row) => {
+      if (raced) return;
+      raced = true;
+      row.revision += 1; // another writer added a fact first
+      row.additional_context = { medications: [{ code: '999', system: 'RxNorm', display: 'Mysterydrug' }] };
+    });
+    (loadEvaluationEnv as jest.Mock).mockClear();
+
+    const r = await generate(id, reviewed);
+
+    expect(loadEvaluationEnv).toHaveBeenCalledTimes(2);
+    // Stale would be attempt 1's SAFETY_DATA_UNAVAILABLE for `med` alone. The state that won
+    // has a new fact, so the plan the provider reviewed no longer exists.
+    expect(r.blockers).toEqual([expect.objectContaining({ type: 'PLAN_CHANGED_SINCE_REVIEW' })]);
+    expect(harness.row(id).result_hash).not.toBe(reviewed);
+    expect(harness.row(id).revision).toBe(2);
+  });
+
+  it('writes the audit rows of its LLM calls when a concurrent generation completes the session first (review P2)', async () => {
+    harness.addPathway('pw-llm', makeEnv(
+      [
+        node('root', 'Pathway'), node('stage', 'Stage'),
+        node('gate-llm', 'Gate', {
+          gate_type: GateType.LLM_TEXT_ANALYSIS, default_behavior: DefaultBehavior.SKIP, prompt: 'Urgent?',
+          input_attribute: 'freeformData.narrative', confidence_threshold: 0.75,
+          branches: [{ name: 'urgent', description: 'same day' }, { name: 'routine', description: 'can wait', is_safe_default: true }],
+        }),
+        node('step', 'Step'), node('med', 'Medication', { name: 'Amoxicillin' }),
+      ],
+      [edge('root', 'stage'), edge('stage', 'gate-llm'), edge('gate-llm', 'step'), edge('step', 'med')],
+      SAFETY,
+    ));
+    (loadLLMGateConfig as jest.Mock).mockReturnValue({ baseUrl: 'http://llm', apiKey: 'k', model: 'test-model', timeoutMs: 1000 });
+    (evaluateGateWithLLM as jest.Mock)
+      .mockRejectedValueOnce(new Error('timeout')) // at start: UNAVAILABLE, so nothing is stored to reuse
+      .mockResolvedValue({ chosenBranch: 'urgent', confidence: 0.95, reasoning: 'r', rawResponse: {}, model: 'test-model', latencyMs: 1 });
+    const id = await start('pw-llm');
+    const reviewed = harness.session(id).resultHash;
+    harness.onBeforeWrite((row) => {
+      if (row.status !== 'ACTIVE') return;
+      Object.assign(row, { status: 'COMPLETED', care_plan_id: 'care-plan-x', revision: row.revision + 1 });
+    });
+
+    const r = await generate(id, reviewed);
+
+    expect(r).toEqual({ success: true, carePlanId: 'care-plan-x', warnings: [], blockers: [] });
+    expect(harness.tables.audits).toEqual([
+      { sessionId: id, gateId: 'gate-llm', errorMessage: 'timeout' }, // written with the session at start
+      { sessionId: id, gateId: 'gate-llm', errorMessage: null },      // generation's call, written on the COMPLETED exit
+    ]);
   });
 
   it('refuses an ABANDONED session', async () => {
@@ -3028,10 +3217,10 @@ import {
   Change,
   commitEvaluation,
   conflictError,
-  flushAudits,
   loadSession,
   MAX_ATTEMPTS,
   statusOf,
+  withAudits,
 } from '../../services/resolution/pipeline/commit';
 import {
   evaluateSession,
@@ -3476,9 +3665,12 @@ export const resolutionMutations = {
    * A COMPLETED session returns its plan without evaluating. Otherwise the
    * session is re-evaluated: a changed resultHash returns
    * PLAN_CHANGED_SINCE_REVIEW (D7), and unready readiness returns its
-   * blockers. Either way the fresh cache is stored. Then the claim — status to
-   * COMPLETED under the revision read — happens BEFORE the inserts in one
-   * transaction, so a lost race inserts nothing and retries (#4, #8).
+   * blockers, after storing the fresh cache. If that store loses a revision
+   * race, the blockers describe a state that no longer exists, so generation
+   * reloads and evaluates again (review P2). The claim — status to COMPLETED
+   * under the revision read — happens BEFORE the inserts in one transaction,
+   * so a lost race inserts nothing and retries (#4, #8). Every exit writes the
+   * audit rows of LLM calls no committed transaction wrote (`withAudits`).
    */
   async generateCarePlanFromResolution(
     _parent: unknown,
@@ -3487,74 +3679,75 @@ export const resolutionMutations = {
   ) {
     const { pool } = context;
     const request = newRequest();
+    type Outcome = { success: boolean; carePlanId: string | null; warnings: string[]; blockers: ReturnType<typeof formatBlocker>[] };
 
-    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-      const session = await loadSession(pool, args.sessionId);
-      if (session.status === SessionStatus.COMPLETED) {
-        return { success: true as const, carePlanId: session.carePlanId ?? null, warnings: [] as string[], blockers: [] as ReturnType<typeof formatBlocker>[] };
-      }
-      if (session.status === SessionStatus.ABANDONED) {
-        throw new GraphQLError('Session was abandoned and cannot generate a care plan', {
-          extensions: { code: 'BAD_REQUEST' },
-        });
-      }
-      assertMutable(session);
-
-      const { inputs, result, durationMs } = await evaluateSession(pool, request, inputsOf(session), 'ROOT');
-      const toStore = { ...inputs, observations: persistedObservations(inputs, request, result) };
-      const warnings = warningsOf(result);
-
-      if (result.resultHash !== args.reviewedResultHash || !result.readiness.ready) {
-        // Store what generation just evaluated, so the provider re-reviews exactly
-        // this. A concurrent write wins; the caller is re-reviewing either way.
-        const cached = await inTransaction(pool, async (db) => {
-          const written = await writeEvaluation(db, {
-            sessionId: args.sessionId, expectedRevision: session.revision, inputs: toStore, result, status: statusOf(result), durationMs,
+    return withAudits(pool, args.sessionId, request, async (): Promise<Outcome> => {
+      for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+        const session = await loadSession(pool, args.sessionId);
+        if (session.status === SessionStatus.COMPLETED) {
+          return { success: true, carePlanId: session.carePlanId ?? null, warnings: [], blockers: [] };
+        }
+        if (session.status === SessionStatus.ABANDONED) {
+          throw new GraphQLError('Session was abandoned and cannot generate a care plan', {
+            extensions: { code: 'BAD_REQUEST' },
           });
-          if (written) await writeLlmAudits(db, args.sessionId, request.audits);
-          return written;
-        });
-        if (cached) request.audits.length = 0;
-        await flushAudits(pool, args.sessionId, request);
-        const blockers = result.resultHash !== args.reviewedResultHash ? [PLAN_CHANGED] : result.readiness.blockers;
-        return { success: false as const, carePlanId: null as string | null, warnings, blockers: blockers.map(formatBlocker) };
-      }
+        }
+        assertMutable(session);
 
-      const carePlanData = generateCarePlan(result.resolutionState, session.pathwayId, args.sessionId);
-      let carePlanId: string;
-      try {
-        carePlanId = await inTransaction(pool, async (db) => {
-          // Claim first (#8): only the request that moves the session to COMPLETED inserts.
-          const claimed = await writeEvaluation(db, {
-            sessionId: args.sessionId, expectedRevision: session.revision, inputs: toStore, result,
-            status: SessionStatus.COMPLETED, durationMs,
-          });
-          if (!claimed) throw new RevisionConflict();
-          const id = await insertCarePlanRows(db, session, carePlanData);
-          await setCarePlanId(db, args.sessionId, id);
-          await writeLlmAudits(db, args.sessionId, request.audits);
-          await logEvent(db, args.sessionId, {
-            eventType: 'care_plan_generated',
-            triggerData: { carePlanId: id, goalsCount: carePlanData.goals.length, interventionsCount: carePlanData.interventions.length },
-            nodesRecomputed: 0,
-            statusChanges: [{ nodeId: 'session', from: session.status, to: SessionStatus.COMPLETED }],
-          });
-          return id;
-        });
-      } catch (err) {
-        if (err instanceof RevisionConflict) continue;
-        if (err instanceof GraphQLError) throw err;
-        console.error('Care plan generation failed:', err);
-        throw new GraphQLError('Failed to generate care plan: transaction rolled back', {
-          extensions: { code: 'INTERNAL_SERVER_ERROR' },
-        });
-      }
-      request.audits.length = 0;
-      return { success: true as const, carePlanId, warnings, blockers: [] as ReturnType<typeof formatBlocker>[] };
-    }
+        const { inputs, result, durationMs } = await evaluateSession(pool, request, inputsOf(session), 'ROOT');
+        const toStore = { ...inputs, observations: persistedObservations(inputs, request, result) };
+        const warnings = warningsOf(result);
+        const planChanged = result.resultHash !== args.reviewedResultHash;
 
-    await flushAudits(pool, args.sessionId, request);
-    throw conflictError();
+        try {
+          if (planChanged || !result.readiness.ready) {
+            // Store what was just evaluated, so the provider re-reviews exactly this.
+            await inTransaction(pool, async (db) => {
+              const written = await writeEvaluation(db, {
+                sessionId: args.sessionId, expectedRevision: session.revision, inputs: toStore, result,
+                status: statusOf(result), durationMs,
+              });
+              if (!written) throw new RevisionConflict();
+              await writeLlmAudits(db, args.sessionId, request.audits);
+            });
+            request.audits.length = 0;
+            const blockers = planChanged ? [PLAN_CHANGED] : result.readiness.blockers;
+            return { success: false, carePlanId: null, warnings, blockers: blockers.map(formatBlocker) };
+          }
+
+          const carePlanData = generateCarePlan(result.resolutionState, session.pathwayId, args.sessionId);
+          const carePlanId = await inTransaction(pool, async (db) => {
+            // Claim first (#8): only the request that moves the session to COMPLETED inserts.
+            const claimed = await writeEvaluation(db, {
+              sessionId: args.sessionId, expectedRevision: session.revision, inputs: toStore, result,
+              status: SessionStatus.COMPLETED, durationMs,
+            });
+            if (!claimed) throw new RevisionConflict();
+            const id = await insertCarePlanRows(db, session, carePlanData);
+            await setCarePlanId(db, args.sessionId, id);
+            await writeLlmAudits(db, args.sessionId, request.audits);
+            await logEvent(db, args.sessionId, {
+              eventType: 'care_plan_generated',
+              triggerData: { carePlanId: id, goalsCount: carePlanData.goals.length, interventionsCount: carePlanData.interventions.length },
+              nodesRecomputed: 0,
+              statusChanges: [{ nodeId: 'session', from: session.status, to: SessionStatus.COMPLETED }],
+            });
+            return id;
+          });
+          request.audits.length = 0;
+          return { success: true, carePlanId, warnings, blockers: [] };
+        } catch (err) {
+          // Either write lost a race: reload, and evaluate the state that won.
+          if (err instanceof RevisionConflict) continue;
+          if (err instanceof GraphQLError) throw err;
+          console.error('Care plan generation failed:', err);
+          throw new GraphQLError('Failed to generate care plan: transaction rolled back', {
+            extensions: { code: 'INTERNAL_SERVER_ERROR' },
+          });
+        }
+      }
+      throw conflictError();
+    });
   },
 
   /** Lifecycle only (spec §4): no evaluation; ACTIVE or DEGRADED only; the revision check still applies. */
@@ -3615,6 +3808,9 @@ Expected:
 4. In `addPatientContext`, replace `mergeAdditionalContext(inputs.additionalContext,
    additionalContext)` with `additionalContext`. The *accumulates* test must fail: the second
    addition replaces the first.
+5. In the blocked path, replace `if (!written) throw new RevisionConflict();` with
+   `if (!written) return;`. The *reloads and re-evaluates…* test must fail: it returns the stale
+   SAFETY_DATA_UNAVAILABLE blocker.
 
 - [ ] **Step 11: Commit**
 
@@ -5093,7 +5289,7 @@ mutations equals a fresh evaluation of the final inputs.
 - **Retired:** 172 tests. That is 47 in the nine files deleted by Task 6, 19 removed from
   `resolution-fact-store-wiring`, 90 in the twelve files deleted by Task 8, and 16 removed from
   files that stay.
-- **Added:** 99 passing tests, plus 7 skipped (Task 11).
+- **Added:** 104 passing tests, plus 7 skipped (Task 11).
 - **Rewritten in place, same count:** 22, across `resolution-input-contract` (10),
   `v1-traversal-behavior` (6), `multi-pathway-resolution` (3), `ddi-multi-pathway` (setup only),
   `branch-mode` (1), `traversal-engine` (1) and the gate-evaluator suites (assertion lines only).
