@@ -8,11 +8,12 @@ import { EvaluationEnv, graphFingerprintOf } from '../../services/resolution/pip
 import type { SafetyReference } from '../../services/medications/safety-reference';
 import type { SessionInputs } from '../../services/resolution/pipeline/types';
 import { makeEvaluationTemporalContext } from '../../services/resolution/temporal/evaluation-context';
+import type { PathwayTemporalDefaults } from '../../services/resolution/temporal/cascade';
 
 export const node = (id: string, type: string, props: Record<string, unknown> = {}): GraphNode =>
   ({ id, nodeIdentifier: id, nodeType: type, properties: { title: id, ...props } });
-export const edge = (s: string, t: string, type = 'HAS_CHILD'): GraphEdge =>
-  ({ id: `${s}->${t}`, edgeType: type, sourceId: s, targetId: t, properties: {} });
+export const edge = (s: string, t: string, type = 'HAS_CHILD', properties: Record<string, unknown> = {}): GraphEdge =>
+  ({ id: `${s}->${t}`, edgeType: type, sourceId: s, targetId: t, properties });
 
 const SIGNAL: SignalDefinition = {
   id: '00000000-0000-4000-a000-0000000000a1', name: 'data_completeness', displayName: 'Data', description: '',
@@ -31,21 +32,31 @@ function registry(): ScorerRegistry {
   return r;
 }
 
-export function makeEnv(nodes: GraphNode[], edges: GraphEdge[], safety: Partial<SafetyReference> = {}): EvaluationEnv {
+export interface EnvOptions {
+  signals?: SignalDefinition[];
+  registry?: ScorerRegistry;
+  temporalDefaults?: PathwayTemporalDefaults;
+}
+
+export function makeEnv(nodes: GraphNode[], edges: GraphEdge[], safety: Partial<SafetyReference> = {}, opts: EnvOptions = {}): EvaluationEnv {
+  const signals = opts.signals ?? [SIGNAL];
   const resolution: ResolutionContext = {
     graphContext: buildGraphContext(nodes, edges),
     edges,
-    signals: [SIGNAL],
+    signals,
     thresholds: { autoResolveThreshold: 0.85, suggestThreshold: 0.6 },
-    confidenceEngine: new ConfidenceEngine(registry(), new WeightCascadeResolver()),
+    confidenceEngine: new ConfidenceEngine(opts.registry ?? registry(), new WeightCascadeResolver()),
     codeMap: new Map(),
-    temporalDefaults: {},
+    temporalDefaults: opts.temporalDefaults ?? {},
   };
   return {
     resolution,
     scoring: {
       adminEvidenceEntries: [],
-      weightMatrix: Object.fromEntries(nodes.map((n) => [n.nodeIdentifier, { data_completeness: { weight: 1, source: WeightSource.SYSTEM_DEFAULT } }])),
+      weightMatrix: Object.fromEntries(nodes.map((n) => [
+        n.nodeIdentifier,
+        Object.fromEntries(signals.map((s) => [s.name, { weight: 1, source: WeightSource.SYSTEM_DEFAULT }])),
+      ])),
       nodeWeightMap: new Map(),
       propagationOverrides: new Map(),
       thresholds: { autoResolveThreshold: 0.85, suggestThreshold: 0.6, scope: ThresholdScope.SYSTEM_DEFAULT },
