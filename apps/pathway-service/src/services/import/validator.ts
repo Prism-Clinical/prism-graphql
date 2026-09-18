@@ -206,7 +206,7 @@ export function validatePathwayJson(pw: PathwayJson, options: ValidateOptions = 
   }
 
   // ─── Gate-specific validation ───────────────────────────────────
-  validateGateNodes(pw, nodeIds, errors, warnings, draftMode);
+  validateGateNodes(pw, nodeIds, nodeTypeMap, errors, warnings, draftMode);
 
   // ─── Semantic validation ────────────────────────────────────────
   validateSemanticRules(pw, nodeIds, nodeTypeMap, errors, warnings, draftMode);
@@ -219,6 +219,7 @@ export function validatePathwayJson(pw: PathwayJson, options: ValidateOptions = 
 function validateGateNodes(
   pw: PathwayJson,
   nodeIds: Set<string>,
+  nodeTypeMap: Map<string, string>,
   errors: string[],
   warnings: string[],
   draftMode: boolean,
@@ -241,14 +242,21 @@ function validateGateNodes(
       softTarget.push(`Gate "${gate.id}": must have at least one outbound edge`);
     }
 
-    // depends_on node IDs must exist in the pathway
+    // depends_on targets must exist, and must not be a Medication. A
+    // medication's final status can be withheld after traversal (safety,
+    // conflict selection), so a dependency on it cannot be evaluated
+    // consistently (spec C2). Both the bare-string and the canonical
+    // `{ node_id, status }` shapes are read.
     if (props.depends_on) {
-      const dependsOn = Array.isArray(props.depends_on)
-        ? props.depends_on as string[]
-        : [props.depends_on as string];
-      for (const depId of dependsOn) {
+      const dependsOn = (Array.isArray(props.depends_on) ? props.depends_on : [props.depends_on]) as unknown[];
+      for (const dep of dependsOn) {
+        const depId = typeof dep === 'string' ? dep : String((dep as { node_id?: unknown })?.node_id ?? '');
         if (!nodeIds.has(depId)) {
           errors.push(`Gate "${gate.id}": depends_on references nonexistent node "${depId}"`);
+          continue;
+        }
+        if (nodeTypeMap.get(depId) === 'Medication') {
+          errors.push(`Gate "${gate.id}": depends_on may not target Medication node "${depId}" — a medication can be withheld after traversal, so the dependency cannot be evaluated consistently`);
         }
       }
     }

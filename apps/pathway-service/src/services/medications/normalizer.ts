@@ -36,13 +36,13 @@ import {
 
 // ─── Cache key canonicalization ───────────────────────────────────────
 
-interface CacheKey {
+export interface CacheKey {
   text: string;
   system: string;
   code: string;
 }
 
-function canonicalKey(input: MedicationInput): CacheKey {
+export function canonicalKey(input: MedicationInput): CacheKey {
   return {
     text: input.text.toLowerCase().trim(),
     system: input.system ?? '',

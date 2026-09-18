@@ -67,7 +67,7 @@ export async function applyDdiToResolutionState(
  * multiple findings suppress the same node, prefer ALLERGY > CONTRAINDICATED
  * > SEVERE since that's the order a clinician wants surfaced.
  */
-function ddiSuppressionReason(
+export function ddiSuppressionReason(
   findings: DdiFinding[],
   recommendationId: string,
 ): string | undefined {
