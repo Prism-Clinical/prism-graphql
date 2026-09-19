@@ -1,11 +1,9 @@
 import {
   serializeResolutionState,
   deserializeResolutionState,
-  serializeDependencyMap,
-  deserializeDependencyMap,
   getMatchedPathways,
 } from '../services/resolution/session-store';
-import { NodeStatus, NodeResult, createEmptyDependencyMap } from '../services/resolution/types';
+import { NodeStatus, NodeResult } from '../services/resolution/types';
 
 describe('SessionStore serialization', () => {
   it('should round-trip ResolutionState through JSON', () => {
@@ -30,39 +28,11 @@ describe('SessionStore serialization', () => {
     expect(restored.get('node-1')?.confidence).toBe(0.85);
   });
 
-  it('should round-trip DependencyMap through JSON', () => {
-    const depMap = createEmptyDependencyMap();
-    depMap.influences.set('a', new Set(['b', 'c']));
-    depMap.influencedBy.set('b', new Set(['a']));
-    depMap.gateContextFields.set('gate-1', new Set(['conditions']));
-    depMap.scorerInputs.set('med-1', new Set(['medications', 'allergies']));
-
-    const json = serializeDependencyMap(depMap);
-    const parsed = JSON.parse(JSON.stringify(json));
-    const restored = deserializeDependencyMap(parsed);
-
-    expect(restored.influences.get('a')?.has('b')).toBe(true);
-    expect(restored.influences.get('a')?.has('c')).toBe(true);
-    expect(restored.influencedBy.get('b')?.has('a')).toBe(true);
-    expect(restored.gateContextFields.get('gate-1')?.has('conditions')).toBe(true);
-    expect(restored.scorerInputs.get('med-1')?.has('medications')).toBe(true);
-  });
-
   it('should handle empty state', () => {
     const state = new Map<string, NodeResult>();
     const json = serializeResolutionState(state);
     const restored = deserializeResolutionState(JSON.parse(JSON.stringify(json)));
     expect(restored.size).toBe(0);
-  });
-
-  it('should handle empty dependency map', () => {
-    const depMap = createEmptyDependencyMap();
-    const json = serializeDependencyMap(depMap);
-    const restored = deserializeDependencyMap(JSON.parse(JSON.stringify(json)));
-    expect(restored.influences.size).toBe(0);
-    expect(restored.influencedBy.size).toBe(0);
-    expect(restored.gateContextFields.size).toBe(0);
-    expect(restored.scorerInputs.size).toBe(0);
   });
 
   it('should preserve multiple nodes in ResolutionState', () => {

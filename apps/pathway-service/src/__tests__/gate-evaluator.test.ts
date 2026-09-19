@@ -75,7 +75,6 @@ describe('evaluateGate — patient_attribute', () => {
     const result = await evaluateGate(gate, deps());
     expect(result.satisfied).toBe(true);
     expect(result.contextFieldsRead).toContain('conditions');
-    expect(result.dependedOnNodes).toEqual([]);
   });
 
   it('should NOT be satisfied when patient lacks matching wildcard code (Z94.*)', async () => {
@@ -292,7 +291,6 @@ describe('evaluateGate — prior_node_result', () => {
 
     const result = await evaluateGate(gate, deps({ resolutionState: state }));
     expect(result.satisfied).toBe(true);
-    expect(result.dependedOnNodes).toContain('step-3-1');
   });
 
   it('should NOT be satisfied when depended-on node has wrong status', async () => {
@@ -311,7 +309,6 @@ describe('evaluateGate — prior_node_result', () => {
     const result = await evaluateGate(gate, deps({ resolutionState: state }));
     expect(result.satisfied).toBe(false);
     expect(result.reason).toContain('step-3-1');
-    expect(result.dependedOnNodes).toContain('step-3-1');
   });
 
   it('should NOT be satisfied when depended-on node is not in state', async () => {

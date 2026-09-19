@@ -165,6 +165,14 @@ export enum BlockerType {
    * nothing anyone answers clears this, only re-resolving does.
    */
   INCOMPLETE_RESOLUTION = 'INCOMPLETE_RESOLUTION',
+  /** An eligible or patient medication could not be normalised, so it was never safety-checked (D14). */
+  SAFETY_DATA_UNAVAILABLE = 'SAFETY_DATA_UNAVAILABLE',
+  /** Multi-pathway: a clinical-role conflict with no decision (plan 04). */
+  UNRESOLVED_CONFLICT = 'UNRESOLVED_CONFLICT',
+  /** Multi-pathway: a decision whose chosen pathway is no longer a candidate (plan 04). */
+  STALE_CONFLICT_DECISION = 'STALE_CONFLICT_DECISION',
+  /** Generation: the plan changed after the provider reviewed it (D7). */
+  PLAN_CHANGED_SINCE_REVIEW = 'PLAN_CHANGED_SINCE_REVIEW',
 }
 
 export enum GateType {

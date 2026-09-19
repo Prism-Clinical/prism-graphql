@@ -12,7 +12,9 @@
 
 jest.mock('../services/resolution/session-store', () => ({
   getMatchedPathways: jest.fn(),
-  createSession: jest.fn(),
+  insertSession: jest.fn().mockResolvedValue('child-1'),
+  writeLlmAudits: jest.fn(),
+  getSession: jest.fn(),
 }));
 
 jest.mock('../services/resolution/lattice-collapse', () => ({
@@ -36,15 +38,18 @@ jest.mock('../resolvers/helpers/resolution-context', () => ({
   // Deliberately NOT pinned to a version, unlike the sibling suites: this one
   // exists to prove the real selector is consulted, so it must follow
   // DEFAULT_TEMPORAL_POLICY_VERSION wherever that points. It mocks
-  // TraversalEngine outright, so no gate is evaluated and the version only
+  // evaluateSession outright, so no gate is evaluated and the version only
   // flows through — which is why following the default is safe here.
   resolveTemporalPolicyVersion: jest.requireActual(
     '../resolvers/helpers/resolution-context',
   ).resolveTemporalPolicyVersion,
 }));
 
-jest.mock('../services/resolution/traversal-engine', () => ({
-  TraversalEngine: jest.fn().mockImplementation(() => ({ traverse: jest.fn() })),
+jest.mock('../services/resolution/pipeline/request', () => ({
+  newRequest: () => ({ requestObservations: new Map(), audits: [] }),
+  evaluateSession: jest.fn(),
+  persistedObservations: (inputs: { observations: unknown }) => inputs.observations,
+  inTransaction: (_pool: unknown, fn: (db: unknown) => unknown) => fn({}),
 }));
 
 jest.mock('../services/resolution/multi-pathway-session-store', () => ({
@@ -66,7 +71,7 @@ import {
 import { getMatchedPathways } from '../services/resolution/session-store';
 import { collapseLattice } from '../services/resolution/lattice-collapse';
 import { buildResolutionContext } from '../resolvers/helpers/resolution-context';
-import { TraversalEngine } from '../services/resolution/traversal-engine';
+import { evaluateSession } from '../services/resolution/pipeline/request';
 import {
   createMultiPathwaySession,
   getMultiPathwaySession,
@@ -124,20 +129,25 @@ function makeResolutionStateWith(meds: Array<{ id: string; name: string }>) {
   return state;
 }
 
-function setupTraverseSeq(states: Array<Map<string, unknown>>) {
+/**
+ * Each evaluateSession call resolves the next state. `graphSizes[i] === 0`
+ * makes call i an empty graph, which contributes no child session.
+ */
+function setupEvaluateSeq(states: Array<Map<string, unknown>>, graphSizes: number[] = []) {
   let idx = 0;
-  (TraversalEngine as unknown as jest.Mock).mockImplementation(() => ({
-    traverse: jest.fn().mockImplementation(() => {
-      const s = states[Math.min(idx, states.length - 1)];
-      idx++;
-      return Promise.resolve({
-        resolutionState: s,
-        dependencyMap: { influencedBy: new Map(), influences: new Map(), gateContextFields: new Map(), scorerInputs: new Map() },
-        pendingQuestions: [], redFlags: [],
-        totalNodesEvaluated: s.size, traversalDurationMs: 1, isDegraded: false,
-      });
-    }),
-  }));
+  (evaluateSession as jest.Mock).mockImplementation(async (_pool: unknown, _request: unknown, inputs: Record<string, unknown>) => {
+    const i = idx++;
+    const s = states[Math.min(i, states.length - 1)];
+    return {
+      env: { resolution: { graphContext: { allNodes: new Array(graphSizes[i] ?? 3).fill({}) } } },
+      inputs: { ...inputs, graphFingerprint: 'g' },
+      result: {
+        resolutionState: s, pendingQuestions: [], redFlags: [], safetyFindings: [], catchUpItems: [],
+        gateContextFields: new Map(), status: 'ACTIVE', observationsUsed: [],
+      },
+      durationMs: 1,
+    };
+  });
 }
 
 beforeEach(() => {
@@ -159,7 +169,7 @@ describe('startMultiPathwayResolution — pre-merge per-plan DDI', () => {
     (getMatchedPathways as jest.Mock).mockResolvedValue([a]);
     (collapseLattice as jest.Mock).mockResolvedValue([a]);
     (buildResolutionContext as jest.Mock).mockResolvedValue(fakeRctx());
-    setupTraverseSeq([makeResolutionStateWith([{ id: 'med-a-1', name: 'Amiodarone' }])]);
+    setupEvaluateSeq([makeResolutionStateWith([{ id: 'med-a-1', name: 'Amiodarone' }])]);
 
     (runPatientContextDdi as jest.Mock).mockResolvedValue({
       findings: [{
@@ -203,7 +213,7 @@ describe('startMultiPathwayResolution — pre-merge per-plan DDI', () => {
     (getMatchedPathways as jest.Mock).mockResolvedValue([a]);
     (collapseLattice as jest.Mock).mockResolvedValue([a]);
     (buildResolutionContext as jest.Mock).mockResolvedValue(fakeRctx());
-    setupTraverseSeq([makeResolutionStateWith([{ id: 'med-a-1', name: 'Drug1' }])]);
+    setupEvaluateSeq([makeResolutionStateWith([{ id: 'med-a-1', name: 'Drug1' }])]);
 
     (runPatientContextDdi as jest.Mock).mockResolvedValue({
       findings: [{
@@ -242,7 +252,7 @@ describe('startMultiPathwayResolution — pre-merge per-plan DDI', () => {
     (getMatchedPathways as jest.Mock).mockResolvedValue([a]);
     (collapseLattice as jest.Mock).mockResolvedValue([a]);
     (buildResolutionContext as jest.Mock).mockResolvedValue(fakeRctx());
-    setupTraverseSeq([makeResolutionStateWith([{ id: 'med-a-1', name: 'Amoxicillin' }])]);
+    setupEvaluateSeq([makeResolutionStateWith([{ id: 'med-a-1', name: 'Amoxicillin' }])]);
 
     (runPatientContextDdi as jest.Mock).mockResolvedValue({
       findings: [{
@@ -286,7 +296,7 @@ describe('startMultiPathwayResolution — post-merge cross-recommendation DDI', 
     (getMatchedPathways as jest.Mock).mockResolvedValue([a, b]);
     (collapseLattice as jest.Mock).mockResolvedValue([a, b]);
     (buildResolutionContext as jest.Mock).mockResolvedValue(fakeRctx());
-    setupTraverseSeq([
+    setupEvaluateSeq([
       makeResolutionStateWith([{ id: 'med-a-1', name: 'Amiodarone' }]),
       makeResolutionStateWith([{ id: 'med-b-1', name: 'Warfarin' }]),
     ]);

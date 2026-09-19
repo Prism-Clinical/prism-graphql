@@ -6,7 +6,11 @@ import { resolveDottedPath } from '../dotted-path';
 import { hashOf } from './canonical';
 import type { LlmObservation, ObservationKey } from './types';
 
-export type LlmClient = (input: LLMGateInput) => Promise<LLMGateOutput>;
+/** The gate rides along so the auditing client can record it (spec §4, Audit). */
+export type LlmClient = (
+  input: LLMGateInput,
+  call: { gateId: string; gate: GateProperties },
+) => Promise<LLMGateOutput>;
 
 export interface ObservationProvider {
   evaluator: LlmGateEvaluator;
@@ -79,11 +83,14 @@ export function liveObservations(
       }
       if (!client || failedThisAttempt.has(key)) return unavailable('UNAVAILABLE: no LLM client or call failed');
       try {
-        const out = await client({
-          prompt: gate.prompt ?? gate.title,
-          narrative,
-          branches: (gate.branches ?? []).map((b) => ({ name: b.name, description: b.description })),
-        });
+        const out = await client(
+          {
+            prompt: gate.prompt ?? gate.title,
+            narrative,
+            branches: (gate.branches ?? []).map((b) => ({ name: b.name, description: b.description })),
+          },
+          { gateId, gate },
+        );
         const obs: LlmObservation = {
           key, gateId, chosenBranch: out.chosenBranch, confidence: out.confidence,
           reasoning: out.reasoning, model: out.model, acquiredAt: now(),

@@ -43,7 +43,7 @@ export function projectResolutionToCarePlan(
   resolutionState: ResolutionState,
   meta: PathwayProjectionMetadata,
   catchUpItems: ResolvedCarePlan['catchUpItems'] = [],
-  dependencyMap?: DependencyMap,
+  dependencyMap?: Pick<DependencyMap, 'gateContextFields'>,
 ): ResolvedCarePlan {
   const medications: ResolvedMedication[] = [];
   const labs: ResolvedLab[] = [];
@@ -206,7 +206,7 @@ function computeAttribution(
  */
 function collectDataGapHints(
   resolutionState: ResolutionState,
-  dependencyMap: DependencyMap | undefined,
+  dependencyMap: Pick<DependencyMap, 'gateContextFields'> | undefined,
 ): DataGapHint[] {
   const fieldsByGate = dependencyMap?.gateContextFields ?? new Map<string, Set<string>>();
 
@@ -274,7 +274,7 @@ function collectDataGapHints(
  */
 function collectEvidenceTrail(
   resolutionState: ResolutionState,
-  dependencyMap: DependencyMap | undefined,
+  dependencyMap: Pick<DependencyMap, 'gateContextFields'> | undefined,
 ): GateEvidence[] {
   const out: GateEvidence[] = [];
   const fieldsByGate = dependencyMap?.gateContextFields ?? new Map<string, Set<string>>();

@@ -2,6 +2,7 @@ import { GraphQLError } from 'graphql';
 import { DataSourceContext } from '../../types';
 import { PATHWAY_COLUMNS } from '../Query';
 import { importPathway } from '../../services/import/import-orchestrator';
+import { prewarmPathwayInBackground } from '../../services/medications/prewarm-pathway';
 import { PathwayJson, ImportMode } from '../../services/import/types';
 
 export const importMutations = {
@@ -35,6 +36,9 @@ export const importMutations = {
         importType: result.importType,
       };
     }
+
+    // D14: normalise the new graph's medications, without blocking the import.
+    prewarmPathwayInBackground(context.pool, result.pathwayId, 'import');
 
     // Fetch the created/updated pathway for the response
     const pathway = await context.pool.query(
@@ -94,6 +98,8 @@ export const importMutations = {
       });
     }
 
+    // D14: an activated pathway's medications should be normalised before the first session.
+    prewarmPathwayInBackground(pool, args.id, 'activate');
     const { previousStatus, ...pathway } = result.rows[0];
     return { pathway, previousStatus };
   },

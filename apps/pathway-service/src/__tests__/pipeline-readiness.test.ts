@@ -70,6 +70,18 @@ describe('readinessOf (C3)', () => {
     expect(types(readinessOf({ ...base, state: withheld }))).toEqual(['OUTPUT:EMPTY_PLAN']);
     expect(types(readinessOf({ ...base, scope: 'CONTRIBUTION', state: withheld }))).toEqual([]);
   });
+
+  it.each([NodeStatus.TIMEOUT, NodeStatus.CASCADE_LIMIT, NodeStatus.UNKNOWN])(
+    'blocks on a %s node, naming it', (s) => {
+      const r = readinessOf({ ...base, state: state(n('med', 'Medication', NodeStatus.INCLUDED), n('step-9', 'Step', s)) });
+      expect(r.blockers).toContainEqual(expect.objectContaining({ scope: 'COMPLETENESS', type: 'INCOMPLETE_RESOLUTION', relatedNodeIds: ['step-9'] }));
+    },
+  );
+
+  it.each([NodeStatus.EXCLUDED, NodeStatus.GATED_OUT])('does not block on a decided %s node', (s) => {
+    const r = readinessOf({ ...base, state: state(n('med', 'Medication', NodeStatus.INCLUDED), n('step-9', 'Step', s)) });
+    expect(r).toMatchObject({ ready: true, blockers: [] });
+  });
 });
 
 describe('degraded traversal (spec §1 rule 5)', () => {

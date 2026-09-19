@@ -22,6 +22,8 @@ import {
 import { EvaluationTemporalContext } from './temporal/evaluation-context';
 // contract.ts imports nothing at all, so this stays acyclic too.
 import type { UncertaintyReason } from './temporal/contract';
+import type { LlmObservation, ScopedBlocker } from './pipeline/types';
+import type { CatchUpItem } from './care-plan-merge';
 
 export {
   NodeStatus,
@@ -106,19 +108,11 @@ export interface NodeResult {
 export type ResolutionState = Map<string, NodeResult>;
 
 export interface DependencyMap {
-  influencedBy: Map<string, Set<string>>;
-  influences: Map<string, Set<string>>;
   gateContextFields: Map<string, Set<string>>;
-  scorerInputs: Map<string, Set<string>>;
 }
 
 export function createEmptyDependencyMap(): DependencyMap {
-  return {
-    influencedBy: new Map(),
-    influences: new Map(),
-    gateContextFields: new Map(),
-    scorerInputs: new Map(),
-  };
+  return { gateContextFields: new Map() };
 }
 
 // ─── Gate Evaluation ────────────────────────────────────────────────
@@ -282,7 +276,6 @@ export interface GateEvaluationResult {
   satisfied: boolean;
   reason: string;
   contextFieldsRead: string[];
-  dependedOnNodes: string[];
 
   // ─── LLM gate annotations ─────────────────────────────────────────
   /**
@@ -459,8 +452,21 @@ export interface ResolutionSession {
   patientId: string;
   providerId: string;
   status: SessionStatus;
+  /** Optimistic-lock counter. Every committed write increments it (spec §4). */
+  revision: number;
+  // ── Inputs (spec §1): what a person or the outside world told the session.
+  providerOverrides: Map<string, ProviderOverride>;
+  observations: Map<string, LlmObservation>;
+  graphFingerprint: string;
+  // ── Cache of the last committed evaluation. Never an input.
+  envFingerprint: string;
+  resultHash: string;
+  readiness: { ready: boolean; blockers: ScopedBlocker[] };
+  gateContextFields: Map<string, string[]>;
+  catchUpItems: CatchUpItem[];
+  /** Set by plan 04 for a child of a multi-pathway run. */
+  parentSessionId?: string;
   resolutionState: ResolutionState;
-  dependencyMap: DependencyMap;
   initialPatientContext: PatientContext;
   additionalContext: Record<string, unknown>;
   pendingQuestions: PendingQuestion[];
@@ -472,12 +478,8 @@ export interface ResolutionSession {
   carePlanId?: string;
   /** Phase 4: DDI MODERATE-severity findings persisted with the session. */
   ddiWarnings: unknown[];
-  /**
-   * The pinned evaluation clock this session was created with (§1).
-   * Optional only for rows written before migration 063 — those sessions
-   * are not retraversable.
-   */
-  temporalContext?: EvaluationTemporalContext;
+  /** The pinned evaluation clock. Every session since migration 067 has one (NOT NULL). */
+  temporalContext: EvaluationTemporalContext;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -492,16 +494,6 @@ export interface TraversalResult {
   totalNodesEvaluated: number;
   traversalDurationMs: number;
   isDegraded: boolean;
-}
-
-// ─── Re-Traversal Result ────────────────────────────────────────────
-
-export interface RetraversalResult {
-  statusChanges: Array<{ nodeId: string; from: string; to: string }>;
-  nodesRecomputed: number;
-  newPendingQuestions: PendingQuestion[];
-  newRedFlags: RedFlag[];
-  isIncomplete?: boolean;
 }
 
 // ─── Care Plan Generation ───────────────────────────────────────────
@@ -568,7 +560,6 @@ export interface TraversalConfidenceAdapter {
 // ─── Constants ──────────────────────────────────────────────────────
 
 export const TRAVERSAL_TIMEOUT_MS = 10_000;
-export const RETRAVERSAL_TIMEOUT_MS = 5_000;
 export const MAX_CASCADE_DEPTH = 10;
 
 /** Node types that are structural (always traversed, confidence is aggregate) */

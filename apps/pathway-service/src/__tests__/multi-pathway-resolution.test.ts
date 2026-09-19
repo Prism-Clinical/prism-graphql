@@ -22,7 +22,9 @@ import { MultiPathwayResolutionSession } from '../services/resolution/multi-path
 
 jest.mock('../services/resolution/session-store', () => ({
   getMatchedPathways: jest.fn(),
-  createSession: jest.fn(),
+  insertSession: jest.fn().mockResolvedValue('child-1'),
+  writeLlmAudits: jest.fn(),
+  getSession: jest.fn(),
 }));
 
 jest.mock('../services/resolution/lattice-collapse', () => ({
@@ -41,11 +43,6 @@ jest.mock('../services/resolution/temporal/evaluation-context', () => {
 
 jest.mock('../resolvers/helpers/resolution-context', () => ({
   buildResolutionContext: jest.fn(),
-  makeTraversalAdapter: jest.fn(() => ({})),
-  // Was missing: resolveAndPersistAll calls this, and a factory mock replaces
-  // the whole module, so its absence made the export undefined and killed two
-  // tests with "makeLlmGateEvaluator is not a function".
-  makeLlmGateEvaluator: jest.fn(() => null),
   // Same reason: resolveAndPersistAll's preflight calls this on every run.
   assertEncounterAnchor: jest.fn(),
   // Same reason again: both start mutations read the server-owned policy
@@ -57,8 +54,11 @@ jest.mock('../resolvers/helpers/resolution-context', () => ({
   ).resolveTemporalPolicyVersion,
 }));
 
-jest.mock('../services/resolution/traversal-engine', () => ({
-  TraversalEngine: jest.fn().mockImplementation(() => ({ traverse: jest.fn() })),
+jest.mock('../services/resolution/pipeline/request', () => ({
+  newRequest: () => ({ requestObservations: new Map(), audits: [] }),
+  evaluateSession: jest.fn(),
+  persistedObservations: (inputs: { observations: unknown }) => inputs.observations,
+  inTransaction: (_pool: unknown, fn: (db: unknown) => unknown) => fn({}),
 }));
 
 jest.mock('../services/resolution/multi-pathway-session-store', () => ({
@@ -90,15 +90,15 @@ import {
 } from '../resolvers/mutations/multi-pathway-resolution';
 import {
   getMatchedPathways,
-  createSession,
+  insertSession,
+  writeLlmAudits,
 } from '../services/resolution/session-store';
 import { collapseLattice } from '../services/resolution/lattice-collapse';
 import {
   buildResolutionContext,
   assertEncounterAnchor,
-  makeLlmGateEvaluator,
 } from '../resolvers/helpers/resolution-context';
-import { TraversalEngine } from '../services/resolution/traversal-engine';
+import { evaluateSession } from '../services/resolution/pipeline/request';
 import { makeEvaluationTemporalContext } from '../services/resolution/temporal/evaluation-context';
 import {
   createMultiPathwaySession,
@@ -169,23 +169,25 @@ function makeResolutionStateWith(nodes: Array<{
   return state;
 }
 
-function setupTraverseSeq(states: Array<Map<string, unknown>>) {
+/**
+ * Each evaluateSession call resolves the next state. `graphSizes[i] === 0`
+ * makes call i an empty graph, which contributes no child session.
+ */
+function setupEvaluateSeq(states: Array<Map<string, unknown>>, graphSizes: number[] = []) {
   let idx = 0;
-  (TraversalEngine as unknown as jest.Mock).mockImplementation(() => ({
-    traverse: jest.fn().mockImplementation(() => {
-      const s = states[Math.min(idx, states.length - 1)];
-      idx++;
-      return Promise.resolve({
-        resolutionState: s,
-        dependencyMap: { influencedBy: new Map(), influences: new Map(), gateContextFields: new Map(), scorerInputs: new Map() },
-        pendingQuestions: [],
-        redFlags: [],
-        totalNodesEvaluated: s.size,
-        traversalDurationMs: 1,
-        isDegraded: false,
-      });
-    }),
-  }));
+  (evaluateSession as jest.Mock).mockImplementation(async (_pool: unknown, _request: unknown, inputs: Record<string, unknown>) => {
+    const i = idx++;
+    const s = states[Math.min(i, states.length - 1)];
+    return {
+      env: { resolution: { graphContext: { allNodes: new Array(graphSizes[i] ?? 3).fill({}) } } },
+      inputs: { ...inputs, graphFingerprint: 'g' },
+      result: {
+        resolutionState: s, pendingQuestions: [], redFlags: [], safetyFindings: [], catchUpItems: [],
+        gateContextFields: new Map(), status: 'ACTIVE', observationsUsed: [],
+      },
+      durationMs: 1,
+    };
+  });
 }
 
 function emptyMergedPlan(): MergedCarePlan {
@@ -255,7 +257,7 @@ describe('startMultiPathwayResolution', () => {
     (getMatchedPathways as jest.Mock).mockResolvedValue([a, b]);
     (collapseLattice as jest.Mock).mockResolvedValue([a, b]);
     (buildResolutionContext as jest.Mock).mockResolvedValue(fakeRctx());
-    (createSession as jest.Mock)
+    (insertSession as jest.Mock)
       .mockResolvedValueOnce('per-a')
       .mockResolvedValueOnce('per-b');
     (createMultiPathwaySession as jest.Mock).mockResolvedValue('mp-99');
@@ -267,7 +269,7 @@ describe('startMultiPathwayResolution', () => {
       }),
     );
 
-    setupTraverseSeq([
+    setupEvaluateSeq([
       makeResolutionStateWith([
         { nodeId: 'med-a', nodeType: 'Medication', properties: { name: 'Metoprolol', role: 'first_line' } },
       ]),
@@ -282,7 +284,7 @@ describe('startMultiPathwayResolution', () => {
       fakeContext(),
     );
 
-    expect(createSession).toHaveBeenCalledTimes(2);
+    expect(insertSession).toHaveBeenCalledTimes(2);
     expect(createMultiPathwaySession).toHaveBeenCalledTimes(1);
     const persisted = (createMultiPathwaySession as jest.Mock).mock.calls[0][1];
     expect(persisted.contributingSessionIds).toEqual(['per-a', 'per-b']);
@@ -290,16 +292,15 @@ describe('startMultiPathwayResolution', () => {
     expect(result.id).toBe('mp-99');
   });
 
-  it('stamps one clock instance across the parent, every child, and every engine', async () => {
+  it('stamps one clock instance across the parent, every child, and every evaluation', async () => {
     const a = fakeMatched('a', 'AF');
     const b = fakeMatched('b', 'HFrEF');
     (getMatchedPathways as jest.Mock).mockResolvedValue([a, b]);
     (collapseLattice as jest.Mock).mockResolvedValue([a, b]);
-    (buildResolutionContext as jest.Mock).mockResolvedValue(fakeRctx());
-    (createSession as jest.Mock).mockResolvedValueOnce('per-a').mockResolvedValueOnce('per-b');
+    (insertSession as jest.Mock).mockResolvedValueOnce('per-a').mockResolvedValueOnce('per-b');
     (createMultiPathwaySession as jest.Mock).mockResolvedValue('mp-99');
     (getMultiPathwaySession as jest.Mock).mockResolvedValue(fakeStoredSession({ id: 'mp-99' }));
-    setupTraverseSeq([
+    setupEvaluateSeq([
       makeResolutionStateWith([{ nodeId: 'med-a', nodeType: 'Medication', properties: { name: 'M', role: 'first_line' } }]),
       makeResolutionStateWith([{ nodeId: 'med-b', nodeType: 'Medication', properties: { name: 'C', role: 'first_line' } }]),
     ]);
@@ -307,30 +308,16 @@ describe('startMultiPathwayResolution', () => {
     await multiPathwayResolutionMutations.startMultiPathwayResolution({}, { patientId: 'pat-1' }, fakeContext());
 
     const parent = (createMultiPathwaySession as jest.Mock).mock.calls[0][1];
-    const children = (createSession as jest.Mock).mock.calls.map((c) => c[1]);
-
+    const children = (insertSession as jest.Mock).mock.calls.map((c) => c[1].inputs);
     expect(parent.temporalContext).toBeDefined();
-    expect(children.length).toBeGreaterThan(0);
-
-    // `toBe`, NOT `toEqual`. This test exists to prove ONE context object was
-    // created and passed down. Two separate makeEvaluationTemporalContext()
-    // calls in the same millisecond produce structurally equal objects, so
-    // toEqual passes against exactly the bug being guarded against — and it
-    // would pass non-deterministically, going green on a fast machine and red
-    // on a slow one. Reference equality is the only assertion that means
-    // "one clock".
-    for (const child of children) {
-      expect(child.temporalContext).toBe(parent.temporalContext);
-    }
-
-    // Persistence is only half of it: the engines that actually resolve the
-    // horizons must receive that same object as their 3rd constructor argument.
-    // A session could store the right clock while its traversal ran on another.
-    const engineCalls = (TraversalEngine as unknown as jest.Mock).mock.calls;
-    expect(engineCalls.length).toBe(children.length);
-    for (const call of engineCalls) {
-      expect(call[2]).toBe(parent.temporalContext);
-    }
+    expect(children).toHaveLength(2);
+    // `toBe`, NOT `toEqual`: this proves ONE clock object was created and handed
+    // down. Two clocks stamped in the same millisecond are structurally equal.
+    for (const child of children) expect(child.temporalContext).toBe(parent.temporalContext);
+    // …and the evaluations that resolve the horizons received that same object.
+    const evaluations = (evaluateSession as jest.Mock).mock.calls;
+    expect(evaluations).toHaveLength(2);
+    for (const call of evaluations) expect(call[2].temporalContext).toBe(parent.temporalContext);
   });
 
   it('stamps a clock on the zero-match parent session too', async () => {
@@ -352,18 +339,14 @@ describe('startMultiPathwayResolution', () => {
     const b = fakeMatched('b');
     (getMatchedPathways as jest.Mock).mockResolvedValue([a, b]);
     (collapseLattice as jest.Mock).mockResolvedValue([a, b]);
-    (buildResolutionContext as jest.Mock)
-      .mockResolvedValueOnce(fakeRctx(0))   // a empty
-      .mockResolvedValueOnce(fakeRctx(3));  // b ok
-    (createSession as jest.Mock).mockResolvedValueOnce('per-b');
+    (insertSession as jest.Mock).mockResolvedValueOnce('per-b');
     (createMultiPathwaySession as jest.Mock).mockResolvedValue('mp-1');
     (getMultiPathwaySession as jest.Mock).mockResolvedValue(fakeStoredSession({ id: 'mp-1' }));
 
-    setupTraverseSeq([
-      makeResolutionStateWith([
-        { nodeId: 'm', nodeType: 'Medication', properties: { name: 'Lisinopril', role: 'first_line' } },
-      ]),
-    ]);
+    setupEvaluateSeq(
+      [new Map(), makeResolutionStateWith([{ nodeId: 'm', nodeType: 'Medication', properties: { name: 'Lisinopril', role: 'first_line' } }])],
+      [0, 3],
+    );
 
     await multiPathwayResolutionMutations.startMultiPathwayResolution(
       {},
@@ -371,7 +354,7 @@ describe('startMultiPathwayResolution', () => {
       fakeContext(),
     );
 
-    expect(createSession).toHaveBeenCalledTimes(1);
+    expect(insertSession).toHaveBeenCalledTimes(1);
     const persisted = (createMultiPathwaySession as jest.Mock).mock.calls[0][1];
     expect(persisted.contributingPathwayIds).toEqual(['b']);
   });
@@ -701,43 +684,24 @@ describe('formatMergedForGraphQL — conflict formatting', () => {
 
 // ── Temporal preflight (plan 03) ────────────────────────────────────
 
-describe('resolveAndPersistAll — validation is a preflight', () => {
-  it('writes nothing when a LATER pathway fails validation', async () => {
-    // Two pathways, both with non-empty graphs. The FIRST passes validation,
-    // the SECOND throws. If validation still ran inside the traversal loop,
-    // pathway one would already have been traversed and persisted by the time
-    // pathway two was rejected — exactly the orphaned-session state the
-    // two-pass split exists to prevent. This test fails if the passes are
-    // merged back together.
+describe('resolveAndPersistAll — evaluation is a preflight', () => {
+  it('writes nothing when a LATER pathway fails evaluation', async () => {
     const a = fakeMatched('a', 'AF');
     const b = fakeMatched('b', 'HFrEF');
-    const flushAudits = jest.fn();
-
     (getMatchedPathways as jest.Mock).mockResolvedValue([a, b]);
     (collapseLattice as jest.Mock).mockResolvedValue([a, b]);
-    (buildResolutionContext as jest.Mock).mockResolvedValue(fakeRctx());
-    (makeLlmGateEvaluator as jest.Mock).mockReturnValue({
-      evaluator: jest.fn(),
-      flushAudits,
-    });
-    (assertEncounterAnchor as jest.Mock)
-      .mockImplementationOnce(() => undefined)
-      .mockImplementationOnce(() => {
-        throw new Error('MISSING_ENCOUNTER_ANCHOR');
-      });
+    setupEvaluateSeq([makeResolutionStateWith([{ nodeId: 'med-a', nodeType: 'Medication', properties: { name: 'M', role: 'first_line' } }])]);
+    const ok = (evaluateSession as jest.Mock).getMockImplementation()!;
+    (evaluateSession as jest.Mock)
+      .mockImplementationOnce(ok)
+      .mockImplementationOnce(async () => { throw new Error('MISSING_ENCOUNTER_ANCHOR'); });
 
     await expect(
-      multiPathwayResolutionMutations.startMultiPathwayResolution(
-        {},
-        { patientId: 'pat-1' },
-        fakeContext(),
-      ),
+      multiPathwayResolutionMutations.startMultiPathwayResolution({}, { patientId: 'pat-1' }, fakeContext()),
     ).rejects.toThrow('MISSING_ENCOUNTER_ANCHOR');
 
-    // The three things that must NOT have happened.
-    expect(TraversalEngine).not.toHaveBeenCalled();
-    expect(createSession).not.toHaveBeenCalled();
-    expect(flushAudits).not.toHaveBeenCalled();
+    expect(insertSession).not.toHaveBeenCalled();
+    expect(writeLlmAudits).not.toHaveBeenCalled();
   });
 });
 

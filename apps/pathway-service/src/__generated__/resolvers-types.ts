@@ -86,11 +86,21 @@ export type AttributeVocabularyEntry = {
   valueType: Scalars['String']['output'];
 };
 
+/** COMPLETENESS blockers come from every evaluation; OUTPUT blockers only from the root (spec C3). */
+export enum BlockerScope {
+  Completeness = 'COMPLETENESS',
+  Output = 'OUTPUT'
+}
+
 export enum BlockerType {
   Contradiction = 'CONTRADICTION',
   EmptyPlan = 'EMPTY_PLAN',
   IncompleteResolution = 'INCOMPLETE_RESOLUTION',
   PendingGate = 'PENDING_GATE',
+  PlanChangedSinceReview = 'PLAN_CHANGED_SINCE_REVIEW',
+  SafetyDataUnavailable = 'SAFETY_DATA_UNAVAILABLE',
+  StaleConflictDecision = 'STALE_CONFLICT_DECISION',
+  UnresolvedConflict = 'UNRESOLVED_CONFLICT',
   UnresolvedRedFlag = 'UNRESOLVED_RED_FLAG'
 }
 
@@ -874,21 +884,6 @@ export type Mutation = {
   addAdminEvidence: AdminEvidenceEntry;
   addPatientContext: ResolutionSession;
   /**
-   * The former name, kept so this subgraph can deploy WITHOUT the dashboard.
-   *
-   * The two live in separate repositories, are merged separately, and are
-   * restarted separately — pathway-service first, so the gateway can recompose
-   * against it. Removing the field outright made the graphql deploy a one-way
-   * door: between its restart and the dashboard's, every gate answer in the
-   * running UI would fail GraphQL validation.
-   *
-   * `gateId` rather than `nodeId` because that was the old signature; a
-   * DecisionPoint or an escalated datum request is not a gate, which is why the
-   * name changed. Delete once no client calls it.
-   * @deprecated Renamed to answerPendingDecision; a DecisionPoint branch choice and an escalated datum request are not gate questions.
-   */
-  answerGateQuestion: ResolutionSession;
-  /**
    * Answer whatever the session is waiting on at a node: a question gate, an
    * escalated request for a datum the pathway needed, or a branch choice at a
    * DecisionPoint whose branches could not be told apart by the data.
@@ -910,6 +905,13 @@ export type Mutation = {
   deleteSignalDefinition: Scalars['Boolean']['output'];
   /** Delete a saved simulator scenario. Returns true when a row was removed. */
   deleteSimulatorScenario: Scalars['Boolean']['output'];
+  /**
+   * Materialize the plan the provider reviewed. `reviewedResultHash` is the
+   * session's `resultHash` at review time; if re-evaluation now produces a
+   * different plan, nothing is generated and the only blocker is
+   * PLAN_CHANGED_SINCE_REVIEW (spec D7). A COMPLETED session returns its
+   * existing carePlanId.
+   */
   generateCarePlanFromResolution: CarePlanGenerationResult;
   /**
    * Materialize the merged plan into actual care_plans / care_plan_goals /
@@ -1011,13 +1013,6 @@ export type MutationAddPatientContextArgs = {
 };
 
 
-export type MutationAnswerGateQuestionArgs = {
-  answer: GateAnswerInput;
-  gateId: Scalars['ID']['input'];
-  sessionId: Scalars['ID']['input'];
-};
-
-
 export type MutationAnswerPendingDecisionArgs = {
   answer: GateAnswerInput;
   nodeId: Scalars['ID']['input'];
@@ -1051,6 +1046,7 @@ export type MutationDeleteSimulatorScenarioArgs = {
 
 
 export type MutationGenerateCarePlanFromResolutionArgs = {
+  reviewedResultHash: Scalars['String']['input'];
   sessionId: Scalars['ID']['input'];
 };
 
@@ -1643,6 +1639,8 @@ export type ResolutionSession = {
   createdAt: Scalars['String']['output'];
   /** Phase 4: DDI MODERATE-severity findings. Suppressions (CONTRAINDICATED/SEVERE) appear in excludedNodes with a DDI excludeReason. */
   ddiWarnings: Array<DdiWarning>;
+  /** Fingerprint of the configuration snapshot the current result was evaluated under. */
+  envFingerprint: Scalars['String']['output'];
   excludedNodes: Array<ResolvedNode>;
   gatedOutNodes: Array<ResolvedNode>;
   id: Scalars['ID']['output'];
@@ -1654,6 +1652,10 @@ export type ResolutionSession = {
   providerId: Scalars['ID']['output'];
   redFlags: Array<RedFlagType>;
   resolutionEvents: Array<ResolutionEventType>;
+  /** Hash of exactly what a provider reviews (spec §1 rule 8). Pass it to generateCarePlanFromResolution. */
+  resultHash: Scalars['String']['output'];
+  /** Optimistic-lock counter; increments on every committed write. */
+  revision: Scalars['Int']['output'];
   status: SessionStatus;
   totalNodesEvaluated: Scalars['Int']['output'];
   traversalDurationMs: Scalars['Int']['output'];
@@ -1776,6 +1778,8 @@ export type ResolvedNode = {
   confidence: Scalars['Float']['output'];
   confidenceBreakdown: Array<SignalBreakdown>;
   depth: Scalars['Int']['output'];
+  /** What the pathway decided about this node. Differs from status only when the node is withheld. */
+  eligibilityStatus: NodeStatus;
   excludeReason?: Maybe<Scalars['String']['output']>;
   nodeId: Scalars['ID']['output'];
   nodeType: Scalars['String']['output'];
@@ -1783,6 +1787,8 @@ export type ResolvedNode = {
   providerOverride?: Maybe<ProviderOverrideType>;
   status: NodeStatus;
   title: Scalars['String']['output'];
+  /** Set when the node is eligible but withheld from the plan. */
+  withheldBy?: Maybe<WithheldBy>;
 };
 
 export type ResolvedProcedure = {
@@ -2086,7 +2092,10 @@ export type UpdateSignalDefinitionInput = {
 export type ValidationBlockerType = {
   __typename?: 'ValidationBlockerType';
   description: Scalars['String']['output'];
+  /** Set on a blocker a multi-pathway run propagates from one of its pathways. */
+  pathwayId?: Maybe<Scalars['ID']['output']>;
   relatedNodeIds: Array<Scalars['ID']['output']>;
+  scope: BlockerScope;
   type: BlockerType;
 };
 
@@ -2123,6 +2132,12 @@ export enum WeightSource {
   OrganizationGlobal = 'ORGANIZATION_GLOBAL',
   PathwayOverride = 'PATHWAY_OVERRIDE',
   SystemDefault = 'SYSTEM_DEFAULT'
+}
+
+/** Why an eligible node is not in the plan (spec C2). */
+export enum WithheldBy {
+  Conflict = 'CONFLICT',
+  Safety = 'SAFETY'
 }
 
 export type WithIndex<TObject> = TObject & Record<string, any>;
@@ -2218,6 +2233,7 @@ export type ResolversTypes = ResolversObject<{
   ArchiveResult: ResolverTypeWrapper<ArchiveResult>;
   Boolean: ResolverTypeWrapper<Scalars['Boolean']['output']>;
   AttributeVocabularyEntry: ResolverTypeWrapper<AttributeVocabularyEntry>;
+  BlockerScope: BlockerScope;
   BlockerType: BlockerType;
   CarePlanGenerationResult: ResolverTypeWrapper<CarePlanGenerationResult>;
   CatchUpItem: ResolverTypeWrapper<CatchUpItem>;
@@ -2340,6 +2356,7 @@ export type ResolversTypes = ResolversObject<{
   WeightMatrixEntry: ResolverTypeWrapper<WeightMatrixEntry>;
   WeightScope: WeightScope;
   WeightSource: WeightSource;
+  WithheldBy: WithheldBy;
 }>;
 
 /** Mapping between all available schema types and the resolvers parents */
@@ -2858,14 +2875,13 @@ export type MutationResolvers<ContextType = DataSourceContext, ParentType extend
   activatePathway?: Resolver<ResolversTypes['PathwayStatusResult'], ParentType, ContextType, RequireFields<MutationActivatePathwayArgs, 'id'>>;
   addAdminEvidence?: Resolver<ResolversTypes['AdminEvidenceEntry'], ParentType, ContextType, RequireFields<MutationAddAdminEvidenceArgs, 'input'>>;
   addPatientContext?: Resolver<ResolversTypes['ResolutionSession'], ParentType, ContextType, RequireFields<MutationAddPatientContextArgs, 'additionalContext' | 'sessionId'>>;
-  answerGateQuestion?: Resolver<ResolversTypes['ResolutionSession'], ParentType, ContextType, RequireFields<MutationAnswerGateQuestionArgs, 'answer' | 'gateId' | 'sessionId'>>;
   answerPendingDecision?: Resolver<ResolversTypes['ResolutionSession'], ParentType, ContextType, RequireFields<MutationAnswerPendingDecisionArgs, 'answer' | 'nodeId' | 'sessionId'>>;
   archivePathway?: Resolver<ResolversTypes['PathwayStatusResult'], ParentType, ContextType, RequireFields<MutationArchivePathwayArgs, 'id'>>;
   createSignalDefinition?: Resolver<ResolversTypes['SignalDefinitionType'], ParentType, ContextType, RequireFields<MutationCreateSignalDefinitionArgs, 'input'>>;
   deletePreviewSession?: Resolver<ResolversTypes['DeletePreviewSessionResult'], ParentType, ContextType, RequireFields<MutationDeletePreviewSessionArgs, 'sessionId'>>;
   deleteSignalDefinition?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationDeleteSignalDefinitionArgs, 'id'>>;
   deleteSimulatorScenario?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationDeleteSimulatorScenarioArgs, 'id'>>;
-  generateCarePlanFromResolution?: Resolver<ResolversTypes['CarePlanGenerationResult'], ParentType, ContextType, RequireFields<MutationGenerateCarePlanFromResolutionArgs, 'sessionId'>>;
+  generateCarePlanFromResolution?: Resolver<ResolversTypes['CarePlanGenerationResult'], ParentType, ContextType, RequireFields<MutationGenerateCarePlanFromResolutionArgs, 'reviewedResultHash' | 'sessionId'>>;
   generateMergedCarePlan?: Resolver<ResolversTypes['CarePlanGenerationResult'], ParentType, ContextType, RequireFields<MutationGenerateMergedCarePlanArgs, 'sessionId'>>;
   importPathway?: Resolver<ResolversTypes['ImportPathwayResult'], ParentType, ContextType, RequireFields<MutationImportPathwayArgs, 'importMode' | 'pathwayJson'>>;
   manuallyResolveMedicationNormalization?: Resolver<ResolversTypes['ManuallyResolvedMedication'], ParentType, ContextType, RequireFields<MutationManuallyResolveMedicationNormalizationArgs, 'inputText' | 'rxcui'>>;
@@ -3082,6 +3098,7 @@ export type ResolutionEventTypeResolvers<ContextType = DataSourceContext, Parent
 export type ResolutionSessionResolvers<ContextType = DataSourceContext, ParentType extends ResolversParentTypes['ResolutionSession'] = ResolversParentTypes['ResolutionSession']> = ResolversObject<{
   createdAt?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   ddiWarnings?: Resolver<Array<ResolversTypes['DDIWarning']>, ParentType, ContextType>;
+  envFingerprint?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   excludedNodes?: Resolver<Array<ResolversTypes['ResolvedNode']>, ParentType, ContextType>;
   gatedOutNodes?: Resolver<Array<ResolversTypes['ResolvedNode']>, ParentType, ContextType>;
   id?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
@@ -3093,6 +3110,8 @@ export type ResolutionSessionResolvers<ContextType = DataSourceContext, ParentTy
   providerId?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
   redFlags?: Resolver<Array<ResolversTypes['RedFlagType']>, ParentType, ContextType>;
   resolutionEvents?: Resolver<Array<ResolversTypes['ResolutionEventType']>, ParentType, ContextType>;
+  resultHash?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  revision?: Resolver<ResolversTypes['Int'], ParentType, ContextType>;
   status?: Resolver<ResolversTypes['SessionStatus'], ParentType, ContextType>;
   totalNodesEvaluated?: Resolver<ResolversTypes['Int'], ParentType, ContextType>;
   traversalDurationMs?: Resolver<ResolversTypes['Int'], ParentType, ContextType>;
@@ -3177,6 +3196,7 @@ export type ResolvedNodeResolvers<ContextType = DataSourceContext, ParentType ex
   confidence?: Resolver<ResolversTypes['Float'], ParentType, ContextType>;
   confidenceBreakdown?: Resolver<Array<ResolversTypes['SignalBreakdown']>, ParentType, ContextType>;
   depth?: Resolver<ResolversTypes['Int'], ParentType, ContextType>;
+  eligibilityStatus?: Resolver<ResolversTypes['NodeStatus'], ParentType, ContextType>;
   excludeReason?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   nodeId?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
   nodeType?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
@@ -3184,6 +3204,7 @@ export type ResolvedNodeResolvers<ContextType = DataSourceContext, ParentType ex
   providerOverride?: Resolver<Maybe<ResolversTypes['ProviderOverrideType']>, ParentType, ContextType>;
   status?: Resolver<ResolversTypes['NodeStatus'], ParentType, ContextType>;
   title?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  withheldBy?: Resolver<Maybe<ResolversTypes['WithheldBy']>, ParentType, ContextType>;
   __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
 }>;
 
@@ -3329,7 +3350,9 @@ export type UnnormalizedMedicationResolvers<ContextType = DataSourceContext, Par
 
 export type ValidationBlockerTypeResolvers<ContextType = DataSourceContext, ParentType extends ResolversParentTypes['ValidationBlockerType'] = ResolversParentTypes['ValidationBlockerType']> = ResolversObject<{
   description?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  pathwayId?: Resolver<Maybe<ResolversTypes['ID']>, ParentType, ContextType>;
   relatedNodeIds?: Resolver<Array<ResolversTypes['ID']>, ParentType, ContextType>;
+  scope?: Resolver<ResolversTypes['BlockerScope'], ParentType, ContextType>;
   type?: Resolver<ResolversTypes['BlockerType'], ParentType, ContextType>;
   __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
 }>;
