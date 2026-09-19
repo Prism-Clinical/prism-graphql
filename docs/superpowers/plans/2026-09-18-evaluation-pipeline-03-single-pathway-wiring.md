@@ -85,8 +85,8 @@ fixes included.
 
 | Point | Passed | Failed | Skipped |
 |---|---|---|---|
-| Task 0 (base) | … | 9 | … |
-| Task 12 (end) | … | 9 | … |
+| Task 0 (base) | 1686 | 9 | 2 |
+| Task 12 (end) | 1618 | 9 | 9 |
 
 ## File map
 
