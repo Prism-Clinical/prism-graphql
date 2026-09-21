@@ -271,6 +271,14 @@ Rules:
    - `catchUpItems` sorted by `nodeId`;
    - `readiness.blockers` sorted by `(scope, type, relatedNodeIds)`.
 
+   **For a multi-pathway run** (plan 04, `runHashOf`): the merged plan with its dispositions and
+   suppressions; each conflict with its candidates and decision (not who decided or when); the
+   root's `safetyFindings` (pair findings, write-in patient findings) in canonical order; the
+   root's blockers sorted by `(scope, type, pathwayId, relatedNodeIds)`; and each child's
+   `resultHash` in contributing order. A contribution's own findings are inside its child hash, so
+   every warning a provider reviews is covered, including a root-only moderate warning that
+   changes nothing else.
+
    **Excluded:** confidence values, durations, timestamps, LLM reasoning text, `revision`,
    `envFingerprint`. A confidence change that alters a status is captured through that status.
 

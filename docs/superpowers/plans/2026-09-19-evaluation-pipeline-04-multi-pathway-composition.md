@@ -76,7 +76,7 @@ SDL + graphql-codegen, Next.js 16 / React 19 / Apollo Client 4 (admin dashboard)
 | # | Decision | Why |
 |---|---|---|
 | P4-1 | **A child row keeps `initial_patient_context` as an immutable copy of the parent's**, written at start. Run evaluation never reads it: `sessionInputsOf` splices in the parent's initial context, additional context and clock. | The column is NOT NULL, and `getSession` / the child drill-in read it. Evaluation reading only the parent is what D5 needs. |
-| P4-2 | **Root dispositions are written onto the children's cached nodes.** After `composeRun`, a conflict loser carries `disposition.withheldBy: 'conflict'` (`findingIds: [conflictId]`), and a pair suppression carries `withheldBy: 'safety'`. The child's `result_hash` stays the hash of its **contribution**. The run hash covers every child hash and the merged plan. | Spec §3 step 3 puts `withheldBy: 'conflict'` on the losing node, and a provider drilling into a child must see the node withheld. The contribution hash is what the child alone decided; the root's decisions are in the run hash. |
+| P4-2 | **Root dispositions are written onto the children's cached nodes.** After `composeRun`, a conflict loser carries `disposition.withheldBy: 'conflict'` (`findingIds: [conflictId]`), and a pair suppression carries `withheldBy: 'safety'`, and a drug another pathway marks `contraindicated`/`avoid` (the merge's `PATHWAY`-source suppression) carries `withheldBy: 'conflict'` with `findingIds: []` on every proposing node; the node stating the constraint keeps its status. `WithheldBy` stays `SAFETY | CONFLICT`: a constraint is one pathway overruling another, not a patient finding. The child's `result_hash` stays the hash of its **contribution**. The run hash covers every child hash and the merged plan. | Spec §3 step 3 puts `withheldBy: 'conflict'` on the losing node, and a provider drilling into a child must see the node withheld. The contribution hash is what the child alone decided; the root's decisions are in the run hash. |
 | P4-3 | **Recommendation identity inside `composeRun` is pathway-qualified** (`recommendationKey`: `pathwayId|nodeId`). It is used for the pair check, suppressions and withholding. Review #5 therefore **passes** here instead of being pinned. | The pair check is new code in this plan, and qualifying costs one function. F1 (a qualified identity everywhere a recommendation crosses a boundary: conflict candidates, `evidenceGateIds`, the materializer) stays a follow-up. |
 | P4-4 | **`composeRun` projects each child's state in nodeId order.** | `projectResolutionToCarePlan` and `mergeResolvedCarePlans` keep first-seen entries, and state order follows override input order. This is the plan 02 defect class; property (b) for runs is the check. |
 | P4-5 | **Run events are logged on children** (`pathway_resolution_events` has a foreign key to single sessions). An answer or override logs on its child. A fact logs `context_update` on every child. `resolveConflict` logs no event: the decision records `resolvedBy` and `resolvedAt` in `conflict_resolutions`. | There is no parent events table, and adding one is not in the spec. |
@@ -1182,7 +1182,8 @@ Finally, the root's dispositions are written back onto the children's nodes (P4-
 Create `apps/pathway-service/src/__tests__/pipeline-compose.test.ts`:
 
 ```ts
-import { composeRun } from '../services/resolution/pipeline/compose';
+import { normalizedKey } from '../services/medications/safety-reference';
+import { composeRun, runHashOf } from '../services/resolution/pipeline/compose';
 import { evaluate } from '../services/resolution/pipeline/evaluate';
 import { replayObservations } from '../services/resolution/pipeline/observations';
 import type { SessionInputs } from '../services/resolution/pipeline/types';
@@ -1199,12 +1200,19 @@ const SAFETY = {
     ['aspirin||', norm('1191', 'aspirin', 'B01AC06')],
     ['metoprolol||', norm('6918', 'metoprolol', 'C07AB02')],
     ['carvedilol||', norm('20352', 'carvedilol', 'C07AG02')],
+    [normalizedKey({ text: 'Warfarin', system: 'RxNorm', code: '11289' }), norm('11289', 'warfarin', 'B01AA03')],
   ]),
   pairs: new Map([['11289|1191', { severity: 'SEVERE' as const, mechanism: 'bleeding', clinicalAdvice: null, matchType: 'PAIR' as const, matchedClasses: null }]]),
   classRules: [],
   allergyMappings: [{ snomedCode: '91936005', snomedDisplay: 'Allergy to penicillin', atcClass: 'J01C' }],
 };
 const PENICILLIN = { code: '91936005', system: 'SNOMED', display: 'Allergy to penicillin' };
+const WARFARIN_RX = { code: '11289', system: 'RxNorm', display: 'Warfarin' };
+/** The run's reference with the Warfarin–Aspirin pair at another severity, or absent. */
+const pairAt = (severity: 'MODERATE' | null) => ({
+  ...SAFETY,
+  pairs: new Map(severity ? [['11289|1191', { ...SAFETY.pairs.get('11289|1191')!, severity }]] : []),
+});
 const PATIENT = (extra: Record<string, unknown> = {}) =>
   ({ patientId: 'pt', conditionCodes: [], medications: [], labResults: [], allergies: [], ...extra }) as never;
 
@@ -1230,11 +1238,11 @@ async function contribution(pathwayId: string, env: ReturnType<typeof makeEnv>, 
   return { pathwayId, sessionId: `s-${pathwayId}`, result };
 }
 type C = Awaited<ReturnType<typeof contribution>>;
-const compose = (cs: C[], decisions: Record<string, unknown> = {}, patient = PATIENT()) =>
+const compose = (cs: C[], decisions: Record<string, unknown> = {}, patient = PATIENT(), safety: unknown = SAFETY) =>
   composeRun(cs, {
     patient,
     conflictResolutions: decisions as never,
-    safety: SAFETY as never,
+    safety: safety as never,
     meta: new Map(cs.map((c) => [c.pathwayId, { logicalId: `lp-${c.pathwayId}`, title: `Pathway ${c.pathwayId}`, version: '1' }])),
     envFingerprint: 'env-run',
   });
@@ -1404,6 +1412,66 @@ describe('the run as a whole', () => {
     const before = await contribution('pw-g', GATED);
     const after = await contribution('pw-g', GATED, { gateAnswers: new Map([['q', { booleanValue: true }]]) });
     expect(compose([before]).resultHash).not.toBe(compose([after]).resultHash);
+  });
+
+  it('a pair warning only the root sees moves the run hash; the order findings are listed in does not', async () => {
+    const cs = [await contribution('pw-a', pathway([med('a', 'Warfarin')])), await contribution('pw-b', pathway([med('b', 'Aspirin')]))];
+    const quiet = compose(cs, {}, PATIENT(), pairAt(null));
+    const warned = compose(cs, {}, PATIENT(), pairAt('MODERATE'));
+    // Nothing else moves: same plan, no suppression, still ready, same child hashes.
+    expect(names(warned)).toEqual(['Aspirin', 'Warfarin']);
+    expect(names(quiet)).toEqual(names(warned));
+    expect(warned.mergedPlan.suppressed).toEqual(quiet.mergedPlan.suppressed);
+    expect(warned.readiness).toEqual({ ready: true, blockers: [] });
+    expect(warned.children.map((c) => c.result.resultHash)).toEqual(quiet.children.map((c) => c.result.resultHash));
+    expect(warned.ddiWarnings.map((f) => f.recommendationId).sort()).toEqual(['pw-a|a', 'pw-b|b']);
+    expect(warned.resultHash).not.toBe(quiet.resultHash);
+    const { resultHash, ...rest } = warned;
+    expect(runHashOf({ ...rest, safetyFindings: [...rest.safetyFindings].reverse() })).toBe(resultHash);
+  });
+
+  it('a write-in’s warning against a patient medication moves the run hash', async () => {
+    const patient = PATIENT({ medications: [WARFARIN_RX] });
+    const cs = [
+      await contribution('pw-a', pathway([med('a', 'Metoprolol', { clinical_role: 'beta_blocker' })]), {}, patient),
+      await contribution('pw-b', pathway([med('b', 'Carvedilol', { clinical_role: 'beta_blocker' })]), {}, patient),
+    ];
+    const d = { beta_blocker: decide('CUSTOM_OVERRIDE', { customMedication: { name: 'Aspirin' } }) };
+    const quiet = compose(cs, d, patient, pairAt(null));
+    const warned = compose(cs, d, patient, pairAt('MODERATE'));
+    expect(names(warned)).toEqual(['Aspirin']);
+    expect(warned.ddiWarnings).toEqual([expect.objectContaining({ scope: 'PATIENT', recommendationId: 'provider-override|Aspirin' })]);
+    expect(warned.readiness.ready).toBe(quiet.readiness.ready);
+    expect(warned.resultHash).not.toBe(quiet.resultHash);
+  });
+});
+
+describe('a pathway’s contraindicated/avoid constraint withholds every proposer (P4-2)', () => {
+  it.each(['contraindicated', 'avoid'] as const)('%s', async (role) => {
+    const a = await contribution('pw-a', pathway([med('a', 'Amoxicillin')]));
+    const b = await contribution('pw-b', pathway([med('b', 'Amoxicillin', { role })]));
+    const c = await contribution('pw-c', pathway([med('c', 'Amoxicillin')]));
+    const r = compose([a, b, c]);
+    expect(names(r)).toEqual([]);
+    expect(r.mergedPlan.suppressed).toContainEqual(expect.objectContaining({
+      name: 'Amoxicillin', reason: role, source: expect.objectContaining({ kind: 'PATHWAY', pathwayId: 'pw-b' }),
+    }));
+    // Both proposers: eligible by their own pathway, withheld by the root, with a reason naming the constraint.
+    for (const [child, id] of [[0, 'a'], [2, 'c']] as const) {
+      expect(node0(r, child, id).eligibility).toMatchObject({ status: NodeStatus.INCLUDED });
+      expect(node0(r, child, id).status).toBe(NodeStatus.EXCLUDED);
+      expect(node0(r, child, id).disposition).toMatchObject({
+        status: NodeStatus.EXCLUDED, withheldBy: 'conflict', reason: expect.stringContaining('"Pathway pw-b"'),
+      });
+    }
+    // The node that states the constraint is not a proposal.
+    expect(node0(r, 1, 'b').status).toBe(NodeStatus.INCLUDED);
+    // Without the constraint, a fresh composition of the SAME contributions restores the drug:
+    // withholding is derived every time, never written into the contribution.
+    const again = compose([a, c]);
+    expect(names(again)).toEqual(['Amoxicillin']);
+    expect(node0(again, 0, 'a').status).toBe(NodeStatus.INCLUDED);
+    expect(node0(again, 1, 'c').status).toBe(NodeStatus.INCLUDED);
   });
 });
 ```
@@ -1613,6 +1681,22 @@ export function composeRun(contributions: Contribution[], ctx: ComposeContext): 
     }
   }
 
+  // A pathway's contraindicated/avoid constraint removes the drug every other
+  // pathway proposes (the merge). Each proposer carries that withholding too,
+  // keyed by its own provenance; the node that states the constraint is not a
+  // proposal and keeps its status. 'conflict': one pathway overruling another
+  // at the root, not a patient finding — WithheldBy stays SAFETY | CONFLICT.
+  for (const sup of base.suppressed) {
+    if (sup.type !== 'medication' || sup.source.kind !== 'PATHWAY') continue;
+    const m = sup.original as ResolvedMedication;
+    if (m.role === 'contraindicated' || m.role === 'avoid' || !m.sourceNodeId) continue;
+    withheld.set(`${m.sourcePathwayId}|${m.sourceNodeId}`, {
+      withheldBy: 'conflict',
+      findingIds: [],
+      reason: `${sup.reason === 'avoid' ? 'Avoided' : 'Contraindicated'} by "${sup.source.pathwayTitle}"`,
+    });
+  }
+
   const children: RunChildResult[] = contributions.map((c) => ({
     pathwayId: c.pathwayId,
     sessionId: c.sessionId,
@@ -1697,8 +1781,11 @@ export function selectConflicts(base: MergedCarePlan, decisions: Record<string, 
 /**
  * Spec §1 rule 8, for a run: the merged plan with its dispositions, the
  * suppressions, the conflicts with their derived decisions, the root's
- * blockers and every child's hash in contributing order. Evidence, data-gap
- * hints and who decided when are not part of what a provider reviews.
+ * safety findings, the root's blockers and every child's hash in contributing
+ * order. A contribution's own findings are inside its child hash, so every
+ * warning a provider sees is covered. Evidence, data-gap hints, the
+ * environment fingerprint and who decided when are not part of what a
+ * provider reviews.
  */
 export function runHashOf(r: Omit<RunResult, 'resultHash'>): string {
   const blockerKey = (b: RunBlocker) => `${b.scope}|${b.type}|${b.pathwayId ?? ''}|${b.relatedNodeIds.join(',')}|${b.description}`;
@@ -1715,6 +1802,11 @@ export function runHashOf(r: Omit<RunResult, 'resultHash'>): string {
         }
         : null,
     })),
+    // A root-only warning (a moderate pair, a write-in against a patient
+    // medication) changes no medication, blocker or child hash — only this.
+    safetyFindings: r.safetyFindings
+      .map((f) => Object.fromEntries(Object.entries(f).filter(([k]) => k !== 'meta')))
+      .sort((a, b) => byString(canonicalJson(a), canonicalJson(b))),
     blockers: [...r.readiness.blockers].sort((a, b) => byString(blockerKey(a), blockerKey(b))),
     children: r.children.map((c) => c.result.resultHash),
   });
@@ -1762,7 +1854,7 @@ function suppressionOf(med: ResolvedMedication, f: DdiFinding): SuppressedRecomm
 npm test --prefix $W/apps/pathway-service -- --runInBand src/__tests__/pipeline-compose.test.ts src/__tests__/care-plan-merge.test.ts src/__tests__/pipeline-safety.test.ts
 $W/node_modules/.bin/tsc -p $W/apps/pathway-service/tsconfig.json --noEmit
 ```
-Expected: PASS (18 new tests); typecheck clean.
+Expected: PASS (22 new tests); typecheck clean.
 
 **Falsify, one at a time, restoring each:**
 1. `recommendationKey` returns `` `${r.sourceNodeId ?? r.name}` `` (no pathway). Review #5 must fail:
@@ -1770,6 +1862,10 @@ Expected: PASS (18 new tests); typecheck clean.
 2. `inNodeOrder` returns `s` unchanged. The override-order test must fail on the hash.
 3. In `composeRun`, set `afterPatient` to `selection.medications`, skipping the root's patient
    check. The *write-in is checked against the patient* test must fail.
+4. Delete the `safetyFindings:` entry from `runHashOf`. Both *…moves the run hash* warning tests
+   must fail on `not.toBe`; nothing else may.
+5. Delete the `for (const sup of base.suppressed)` loop. Both `contraindicated` and `avoid` cases
+   must fail on the proposers' `status`.
 
 - [ ] **Step 6: Commit**
 
@@ -3327,6 +3423,28 @@ describe('generateMergedCarePlan', () => {
     expect(carePlanInsertCount()).toBe(0);
   });
 
+  it('returns PLAN_CHANGED_SINCE_REVIEW when only a root warning appeared after review; generates once it is reviewed', async () => {
+    const quiet = (id: string, name: string) =>
+      makeEnv([node('root', 'Pathway'), node('step', 'Step'), med(id, name)], [edge('root', 'step'), edge('step', id)], { ...SAFETY, pairs: new Map() });
+    harness.addPathway('pw-warf', quiet('warf', 'Warfarin'));
+    harness.addPathway('pw-asa', quiet('asa', 'Aspirin'));
+    const runId = await startRun(['pw-warf', 'pw-asa']);
+    const hash = reviewed(runId);
+    // The reference gains the moderate pair: no medication, blocker or child hash moves.
+    harness.addPathway('pw-warf', plain([med('warf', 'Warfarin')]));
+    harness.addPathway('pw-asa', plain([med('asa', 'Aspirin')]));
+
+    const stale = await generate(runId, hash);
+    expect(stale).toMatchObject({ success: false, carePlanId: null });
+    expect(stale.blockers).toEqual([expect.objectContaining({ scope: 'OUTPUT', type: 'PLAN_CHANGED_SINCE_REVIEW' })]);
+    expect(carePlanInsertCount()).toBe(0);
+
+    const r = await generate(runId, reviewed(runId));
+    expect(r.success).toBe(true);
+    expect(r.warnings).toEqual(expect.arrayContaining([expect.stringMatching(/^DDI_MODERATE: /)]));
+    expect(carePlanInsertCount()).toBe(1);
+  });
+
   it('a child’s unanswered question blocks generation, tagged with its pathway (review #2)', async () => {
     const runId = await startRun(['pw-q', 'pw-amox']);
     const r = await generate(runId, reviewed(runId));
@@ -4722,7 +4840,7 @@ $W/node_modules/.bin/tsc -p $W/apps/pathway-service/tsconfig.json --noEmit
 npm test --prefix $W/apps/pathway-service -- --runInBand 2>&1 | grep -E "^(FAIL|Tests:)" | sort | uniq -c
 ```
 Expected:
-- Every listed suite passes (21 + 9 new tests, 2 added to the SDL suite).
+- Every listed suite passes (21 + 10 new tests, 2 added to the SDL suite).
 - The typecheck is clean.
 - In the full suite, the only `FAIL` lines are the two scorer suites.
 
@@ -6057,8 +6175,8 @@ a **written reason**. Abbreviations:
 - **Retired:** 42 tests: 22 + 4 + 1 + 1 deleted in Task 6, 4 moved out of
   `preview-session-isolation`, 1 moved out of `resolution-fact-store-wiring`, and 9 deleted in
   Task 7.
-- **Added:** 89 passing tests (T1 8, T2 8, T3 5, T4 18, T5 8, T6 32, T7 3, T8 7), plus 3 skipped
-  (T9). Expected end: **1618 − 42 + 89 = 1665 passed**, 9 failed, 12 skipped.
+- **Added:** 94 passing tests (T1 8, T2 8, T3 5, T4 22, T5 8, T6 33, T7 3, T8 7), plus 3 skipped
+  (T9). Expected end: **1618 − 42 + 94 = 1670 passed**, 9 failed, 12 skipped.
 - **Rewritten in place, same count:** 4 (`multi-pathway-session-store-preview` ×2,
   `session-temporal-context` ×2).
 
