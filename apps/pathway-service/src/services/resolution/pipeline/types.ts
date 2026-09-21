@@ -2,7 +2,7 @@ import type { PatientContext } from '../../confidence/types';
 import type { AdditionalContextInput } from '../../../resolvers/mutations/resolution';
 import type { EvaluationTemporalContext } from '../temporal/evaluation-context';
 import type { BlockerType } from '../../../types';
-import type { CatchUpItem } from '../care-plan-merge';
+import type { CatchUpItem, MergedCarePlan } from '../care-plan-merge';
 import type { DdiFinding } from '../../medications/ddi-pass';
 import type { GateAnswer, PendingQuestion, ProviderOverride, RedFlag, ResolutionState } from '../types';
 
@@ -67,6 +67,38 @@ export interface EvaluationResult {
   readiness: { ready: boolean; blockers: ScopedBlocker[] };
   status: 'ACTIVE' | 'DEGRADED';
   observationsUsed: ObservationKey[];
+  envFingerprint: string;
+  resultHash: string;
+}
+
+/** A blocker at the root of a run. A completeness blocker propagated from a child names its pathway (C3). */
+export interface RunBlocker extends ScopedBlocker {
+  pathwayId?: string;
+}
+
+/** One child of a run after composition. */
+export interface RunChildResult {
+  pathwayId: string;
+  /** '' before the child row exists (start). */
+  sessionId: string;
+  /**
+   * The contribution, with the root's dispositions — conflict losers and pair
+   * suppressions — applied to its nodes (P4-2). `resultHash` stays the
+   * contribution's own.
+   */
+  result: EvaluationResult;
+}
+
+/** A composed run (spec §3). */
+export interface RunResult {
+  mergedPlan: MergedCarePlan;
+  /** Findings the root raised: write-ins against the patient, and every pair (C3). */
+  safetyFindings: ScopedFinding[];
+  /** Every WARN finding in the run: the contributions' and the root's. */
+  ddiWarnings: ScopedFinding[];
+  readiness: { ready: boolean; blockers: RunBlocker[] };
+  /** In contributing order. */
+  children: RunChildResult[];
   envFingerprint: string;
   resultHash: string;
 }

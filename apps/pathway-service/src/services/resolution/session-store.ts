@@ -129,6 +129,11 @@ export async function insertSession(db: Db, s: NewSession): Promise<string> {
   if (!s.inputs.temporalContext) {
     throw new Error('insertSession requires temporalContext — a session with no pinned clock cannot be evaluated');
   }
+  // D5: the parent of a run owns every patient fact, and 067's CHECK
+  // rejects a child with any. Refuse it here, where the cause is readable.
+  if (s.parentSessionId && Object.keys(s.inputs.additionalContext ?? {}).length > 0) {
+    throw new Error('insertSession: a child of a run holds no patient facts — the parent owns them (D5)');
+  }
   const cols = insertColumns(s);
   const names = Object.keys(cols);
   const result = await db.query(
@@ -177,6 +182,39 @@ export async function writeLifecycleStatus(
 /** Inside generation's claimed transaction only. */
 export async function setCarePlanId(db: Db, sessionId: string, carePlanId: string): Promise<void> {
   await db.query('UPDATE pathway_resolution_sessions SET care_plan_id = $1 WHERE id = $2', [carePlanId, sessionId]);
+}
+
+/**
+ * A child of a run, written in the run's transaction. The PARENT's revision is
+ * the lock (D6): a child is never compare-and-set on its own. The row must be
+ * a child, so this can never bypass a standalone session's lock, and its facts
+ * are always written empty (D5).
+ */
+export async function writeChildEvaluation(
+  db: Db,
+  args: { sessionId: string; inputs: SessionInputs; result: EvaluationResult; status: SessionStatus; durationMs: number },
+): Promise<void> {
+  const cols = evaluationColumns({ ...args, inputs: { ...args.inputs, additionalContext: {} } });
+  const names = Object.keys(cols);
+  const result = await db.query(
+    `UPDATE pathway_resolution_sessions
+        SET ${names.map((n, i) => `${n} = $${i + 1}`).join(', ')}, revision = revision + 1, updated_at = NOW()
+      WHERE id = $${names.length + 1} AND parent_session_id IS NOT NULL`,
+    [...names.map((n) => param(cols[n])), args.sessionId],
+  );
+  if (result.rowCount !== 1) {
+    throw new Error(`writeChildEvaluation: session ${args.sessionId} is not the child of a run`);
+  }
+}
+
+/** Children follow the parent's lifecycle, in the parent's transaction (spec §3). */
+export async function writeChildrenLifecycle(db: Db, parentId: string, status: SessionStatus, carePlanId?: string): Promise<void> {
+  await db.query(
+    `UPDATE pathway_resolution_sessions
+        SET status = $2, care_plan_id = COALESCE($3, care_plan_id), revision = revision + 1, updated_at = NOW()
+      WHERE parent_session_id = $1`,
+    [parentId, status, carePlanId ?? null],
+  );
 }
 
 /**
