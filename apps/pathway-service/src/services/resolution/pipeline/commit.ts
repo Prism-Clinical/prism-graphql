@@ -39,6 +39,12 @@ export const conflictError = (): GraphQLError =>
     extensions: { code: 'CONFLICT' },
   });
 
+/** A child of a run changes only through its run (D6); alone, it would bypass the run's lock. */
+export const childOfRunError = (): GraphQLError =>
+  new GraphQLError('This session is part of a multi-pathway run; change, generate or abandon it through the run', {
+    extensions: { code: 'CHILD_OF_MULTI_PATHWAY_SESSION' },
+  });
+
 /** Audit rows of calls whose attempt did not commit (spec §4, best effort). */
 export async function flushAudits(pool: Pool, sessionId: string, request: EvaluationRequest): Promise<void> {
   if (request.audits.length === 0) return;
@@ -86,6 +92,7 @@ export async function commitEvaluation(
   return withAudits(pool, sessionId, request, async () => {
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
       const session = await loadSession(pool, sessionId);
+      if (session.parentSessionId) throw childOfRunError();
       assertMutable(session);
       const change = await applyChange(session);
       const { inputs, result, durationMs } = await evaluateSession(pool, request, change.inputs, 'ROOT');
