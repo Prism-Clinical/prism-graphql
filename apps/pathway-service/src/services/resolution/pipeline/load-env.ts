@@ -47,7 +47,7 @@ export interface RunEnv {
   unnormalized: MedicationInput[];
 }
 
-/** The drug name DDI reads for a Medication node — identical to applyDdiToResolutionState. */
+/** The drug name safety reads for a Medication node (`medicationCandidates` names candidates the same way). */
 export function medicationName(node: { nodeIdentifier: string; properties?: Record<string, unknown> }): string {
   return String(node.properties?.name ?? node.properties?.title ?? node.nodeIdentifier);
 }

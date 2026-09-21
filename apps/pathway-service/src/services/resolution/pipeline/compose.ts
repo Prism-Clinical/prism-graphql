@@ -1,6 +1,5 @@
 import type { PatientContext } from '../../confidence/types';
 import type { DdiCandidate, DdiFinding } from '../../medications/ddi-pass';
-import { ddiSuppressionReason } from '../../medications/ddi-pass-single-pathway';
 import type { SafetyReference } from '../../medications/safety-reference';
 import {
   ConflictCandidate,
@@ -17,7 +16,7 @@ import {
 import { projectMedication, projectResolutionToCarePlan } from '../care-plan-projection';
 import { NodeStatus, ResolutionState } from '../types';
 import { canonicalJson, hashOf } from './canonical';
-import { findingId } from './disposition';
+import { ddiSuppressionReason, findingId } from './disposition';
 import type { PathwayMeta } from './load-env';
 import { pairSafety, patientSafety } from './safety';
 import type { EvaluationResult, RunBlocker, RunChildResult, RunResult } from './types';

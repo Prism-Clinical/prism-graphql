@@ -94,10 +94,6 @@ jest.mock('../../services/resolution/multi-pathway-session-store', () => ({
   deletePreviewSession: jest.fn(),
 }));
 
-jest.mock('../../services/medications/ddi-pass-single-pathway', () => ({
-  applyDdiToResolutionState: jest.fn().mockResolvedValue({ findings: [] }),
-}));
-
 jest.mock('../../services/medications/ddi-pass', () => ({
   runPatientContextDdi: jest.fn().mockResolvedValue({
     findings: [],
