@@ -67,4 +67,19 @@ describe('evaluation pipeline API surface (spec §4)', () => {
     expect(gen.arguments!.map((a) => `${a.name.value}: ${print(a.type)}`)).toEqual(['sessionId: ID!', 'reviewedResultHash: String!']);
     expect(mutation.fields!.map((f) => f.name.value)).not.toContain('answerGateQuestion');
   });
+
+  it('runs expose revision, resultHash and envFingerprint; merged generation takes the reviewed hash; re-merge is gone', () => {
+    expect(fieldType('MultiPathwayResolutionSession', 'revision')).toBe('Int!');
+    expect(fieldType('MultiPathwayResolutionSession', 'resultHash')).toBe('String!');
+    expect(fieldType('MultiPathwayResolutionSession', 'envFingerprint')).toBe('String!');
+    const mutation = objectType('Mutation');
+    const gen = mutation.fields!.find((f) => f.name.value === 'generateMergedCarePlan')!;
+    expect(gen.arguments!.map((a) => `${a.name.value}: ${print(a.type)}`)).toEqual(['sessionId: ID!', 'reviewedResultHash: String!']);
+    expect(mutation.fields!.map((f) => f.name.value)).not.toContain('reMergeMultiPathwaySession');
+  });
+
+  it('a suppression names the pathway that proposed it and the recommendation it interacts with', () => {
+    expect(fieldType('SuppressedRecommendation', 'sourcePathwayId')).toBe('ID');
+    expect(fieldType('SuppressedRecommendation', 'suppressedByRecommendationName')).toBe('String');
+  });
 });

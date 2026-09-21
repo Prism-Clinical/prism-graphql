@@ -10,6 +10,7 @@ import { loadEvaluationEnv } from './load-env';
 import type { EvaluationEnv } from './load-env';
 import { auditingLlmClient } from './llm-audit';
 import { liveObservations } from './observations';
+import type { ObservationProvider } from './observations';
 import type { EvaluationResult, EvaluationScope, LlmObservation, ObservationKey, SessionInputs } from './types';
 
 /** What survives a request's retries (D9, C1): acquired observations, and every LLM call made. */
@@ -51,15 +52,8 @@ export async function evaluateSession(
   const provider = liveObservations(pinned.observations, request.requestObservations, client, env.llmModel ?? '');
 
   const started = Date.now();
-  try {
-    const result = await evaluate(pinned, env, provider, scope);
-    return { env, inputs: pinned, result, durationMs: Date.now() - started };
-  } catch (err) {
-    if (err instanceof EvaluationError) {
-      throw new GraphQLError(err.message, { extensions: { code: err.code } });
-    }
-    throw err;
-  }
+  const result = await evaluateAs(pinned, env, provider, scope);
+  return { env, inputs: pinned, result, durationMs: Date.now() - started };
 }
 
 /** The session's observations plus the request observations this result used — nothing else (spec §4). */
@@ -74,6 +68,23 @@ export function persistedObservations(
     if (obs && !out.has(key)) out.set(key, obs);
   }
   return out;
+}
+
+/** `evaluate`, with an EvaluationError surfaced under its GraphQL code. */
+export async function evaluateAs(
+  inputs: SessionInputs,
+  env: EvaluationEnv,
+  provider: ObservationProvider,
+  scope: EvaluationScope,
+): Promise<EvaluationResult> {
+  try {
+    return await evaluate(inputs, env, provider, scope);
+  } catch (err) {
+    if (err instanceof EvaluationError) {
+      throw new GraphQLError(err.message, { extensions: { code: err.code } });
+    }
+    throw err;
+  }
 }
 
 /**

@@ -722,6 +722,10 @@ type SuppressedRecommendation {
   suppressedByAllergyCode: String
   """Set when reason=ALLERGY."""
   suppressedByAllergyDisplay: String
+  """Set when a drug↔drug interaction with ANOTHER recommendation in the plan caused the suppression."""
+  suppressedByRecommendationName: String
+  """The pathway that proposed the suppressed recommendation; `provider-override` for a provider's write-in."""
+  sourcePathwayId: ID
 }
 
 # ─── Conflicts (Phase 3 commit 4) ─────────────────────────────────────
@@ -826,15 +830,24 @@ resolutions. Lifecycle:
   COMPLETED   — generateMergedCarePlan succeeded; care_plan_id populated
   ABANDONED   — provider abandoned without generating
 
-`mergedPlan.conflicts` is the source of truth for whether the session is
-ready to generate; while any conflict has `resolution: null`,
-generateMergedCarePlan will return `success: false` with a blocker.
+Every mutation on a run re-evaluates every contributing pathway under one
+configuration snapshot and recomposes the run, so `mergedPlan` is always
+current. `generateMergedCarePlan` evaluates again and returns blockers
+while anything is incomplete: an unanswered question in any pathway, an
+unresolved conflict, a medication that cannot be safety-checked, an empty
+plan.
 """
 type MultiPathwayResolutionSession {
   id: ID!
   patientId: ID!
   providerId: ID!
   status: MultiPathwayResolutionSessionStatus!
+  """Optimistic-lock counter for the whole run; increments on every committed write to it or any of its pathways."""
+  revision: Int!
+  """Hash of exactly what a provider reviews (spec §1 rule 8). Pass it to generateMergedCarePlan."""
+  resultHash: String!
+  """Fingerprint of the configuration snapshot the current run was evaluated under."""
+  envFingerprint: String!
   """
   True when this session was created by admin/QA/preview tooling
   (currently: `startMultiPathwayResolution` called with
@@ -861,9 +874,9 @@ type MultiPathwayResolutionSession {
   Aggregated pending Gate questions across every contributing per-pathway
   session. Empty when every gate has been auto-resolved from patient data or
   hand-answered. Each entry carries `sessionId` so the FE can call
-  `answerPendingDecision` against the correct per-pathway session. Until a
-  re-merge surface exists, answering a gate updates the per-pathway state
-  but NOT the merged plan — re-run resolution to see merge changes.
+  `answerPendingDecision` against the correct per-pathway session. Answering
+  one re-evaluates the whole run, so the merged plan is current when the
+  answer returns.
   """
   pendingGateQuestions: [MultiPathwayPendingGate!]!
   createdAt: String!
@@ -1695,21 +1708,25 @@ type Mutation {
   ): MultiPathwayResolutionSession!
 
   """
-  Record a provider's choice for one conflict. The session's mergedPlan is
-  rewritten to reflect the choice (chosen drug moves to PROVIDER_CONFIRMED,
-  losers move to PROVIDER_OVERRIDE; CUSTOM_OVERRIDE attaches a write-in
-  recommendation). Returns the updated session.
+  Record a provider's decision for one conflict. The decision is stored on
+  the run and the run is re-evaluated: the merged plan is re-derived from
+  every pathway's current result, so a changed decision replaces the
+  previous one, and the final medication set is safety-checked again.
+  Returns the run.
   """
   resolveConflict(sessionId: ID!, conflictId: String!, choice: ConflictChoiceInput!): MultiPathwayResolutionSession!
 
   """
-  Materialize the merged plan into actual care_plans / care_plan_goals /
-  care_plan_interventions rows. Returns `success=false` with blockers if
-  any conflict is unresolved or if validation fails.
+  Materialize the run the provider reviewed. `reviewedResultHash` is the
+  run's `resultHash` at review time; if re-evaluation now produces a
+  different run, nothing is generated and the only blocker is
+  PLAN_CHANGED_SINCE_REVIEW (spec D7). Otherwise blockers are returned while
+  any pathway or the merge is incomplete. A COMPLETED run returns its
+  existing carePlanId. Every contributing session completes with the run.
   """
-  generateMergedCarePlan(sessionId: ID!): CarePlanGenerationResult!
+  generateMergedCarePlan(sessionId: ID!, reviewedResultHash: String!): CarePlanGenerationResult!
 
-  """Mark a multi-pathway session ABANDONED."""
+  """Mark an ACTIVE multi-pathway run ABANDONED, and every contributing session with it."""
   abandonMultiPathwaySession(sessionId: ID!, reason: String): MultiPathwayResolutionSession!
 
   """
@@ -1720,16 +1737,6 @@ type Mutation {
   can clean up their own traffic instead of leaving rows behind.
   """
   deletePreviewSession(sessionId: ID!): DeletePreviewSessionResult!
-
-  """
-  Re-run the merge pipeline against the current state of every contributing
-  per-pathway session, then update this multi-pathway session's stored
-  `mergedPlan` and `ddiWarnings`. Use after a provider answers a Gate
-  question (which re-traverses the per-pathway session) so the merged view
-  picks up the new per-pathway state without forcing a full new resolution.
-  Existing conflict resolutions are preserved.
-  """
-  reMergeMultiPathwaySession(sessionId: ID!): MultiPathwayResolutionSession!
 
   """
   Phase 4: clinician-supplied resolution for a medication that failed to

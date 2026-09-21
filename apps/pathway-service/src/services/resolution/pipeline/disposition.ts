@@ -1,5 +1,4 @@
-import type { DdiCandidate } from '../../medications/ddi-pass';
-import { ddiSuppressionReason } from '../../medications/ddi-pass-single-pathway';
+import type { DdiCandidate, DdiFinding } from '../../medications/ddi-pass';
 import { NodeStatus, ResolutionState } from '../types';
 import { medicationName } from './load-env';
 import type { ScopedFinding } from './types';
@@ -19,7 +18,7 @@ export function medicationCandidates(state: ResolutionState): DdiCandidate[] {
     }));
 }
 
-const findingId = (f: ScopedFinding): string =>
+export const findingId = (f: ScopedFinding): string =>
   `${f.scope}|${f.category}|${f.source.kind}|${
     f.source.kind === 'PATIENT_MEDICATION' ? f.source.rxcui
       : f.source.kind === 'PATIENT_ALLERGY' ? f.source.snomedCode
@@ -53,4 +52,22 @@ export function applyDisposition(state: ResolutionState, findings: ScopedFinding
     out.set(id, { ...node, eligibility, disposition, status: disposition.status, excludeReason: disposition.reason ?? eligibility.reason });
   }
   return out;
+}
+
+/**
+ * The most informative suppression reason for a node. When several findings
+ * suppress it, an allergy is named before a contraindication before a severe
+ * interaction — the order a clinician wants.
+ */
+export function ddiSuppressionReason(findings: DdiFinding[], recommendationId: string): string | undefined {
+  const relevant = findings.filter((f) => f.recommendationId === recommendationId && f.action === 'SUPPRESS');
+  if (relevant.length === 0) return undefined;
+  const order = ['ALLERGY', 'DDI_CONTRAINDICATED', 'DDI_SEVERE'] as const;
+  relevant.sort((a, b) => order.indexOf(a.category as never) - order.indexOf(b.category as never));
+  const top = relevant[0];
+  const sourceLabel =
+    top.source.kind === 'PATIENT_MEDICATION' ? `patient med "${top.source.name}"`
+      : top.source.kind === 'PATIENT_ALLERGY' ? `patient allergy "${top.source.snomedDisplay}"`
+        : `recommendation "${top.source.drugName}"`;
+  return `${top.category}: ${sourceLabel}${top.mechanism ? ` — ${top.mechanism}` : ''}`;
 }

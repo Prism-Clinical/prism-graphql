@@ -21,7 +21,9 @@ import { buildResolutionContext, makeTraversalAdapter } from '../resolvers/helpe
 import { TraversalEngine } from '../services/resolution/traversal-engine';
 import { makeEvaluationTemporalContext } from '../services/resolution/temporal/evaluation-context';
 import { assembleContext } from '../services/resolution/temporal/context-assembler';
-import { applyDdiToResolutionState } from '../services/medications/ddi-pass-single-pathway';
+import { loadSafetyReference } from '../services/medications/safety-reference';
+import { medicationCandidates } from '../services/resolution/pipeline/disposition';
+import { patientSafety } from '../services/resolution/pipeline/safety';
 import { lookupNormalizedMedication } from '../services/medications/normalizer';
 import type { ResolutionState } from '../services/resolution/types';
 import type { GraphNode, NodeConfidenceResult, PatientContext } from '../services/confidence/types';
@@ -105,7 +107,18 @@ async function evaluateOnce(pool: Pool, pathwayId: string): Promise<Evaluation> 
   const t3 = performance.now();
 
   const safetyState = allMedicationsIncluded(result.resolutionState);
-  await applyDdiToResolutionState(pool, safetyState, PATIENT);
+  // Minimal port (plan 04, P4-9): the pipeline's patient-scope safety stage.
+  // Plan 05 rewrites this benchmark onto loadRunEnv + evaluateRun before
+  // re-running the gate against live data.
+  const candidates = medicationCandidates(safetyState);
+  const reference = await loadSafetyReference(pool, {
+    medications: [
+      ...candidates.map((c) => ({ text: c.drugName })),
+      ...(PATIENT.medications ?? []).map((m) => ({ text: m.display ?? m.code, system: m.system, code: m.code })),
+    ],
+    allergySnomedCodes: (PATIENT.allergies ?? []).filter((a) => a.system === 'SNOMED').map((a) => a.code),
+  });
+  patientSafety(reference, candidates, PATIENT);
   const t4 = performance.now();
 
   return {
