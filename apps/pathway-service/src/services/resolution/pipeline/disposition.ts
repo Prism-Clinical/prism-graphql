@@ -19,7 +19,7 @@ export function medicationCandidates(state: ResolutionState): DdiCandidate[] {
     }));
 }
 
-const findingId = (f: ScopedFinding): string =>
+export const findingId = (f: ScopedFinding): string =>
   `${f.scope}|${f.category}|${f.source.kind}|${
     f.source.kind === 'PATIENT_MEDICATION' ? f.source.rxcui
       : f.source.kind === 'PATIENT_ALLERGY' ? f.source.snomedCode

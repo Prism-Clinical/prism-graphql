@@ -324,7 +324,7 @@ function strProp(node: NodeResult, key: string): string | undefined {
   return typeof v === 'string' ? v : undefined;
 }
 
-function projectMedication(
+export function projectMedication(
   node: NodeResult,
   pathwayId: string,
 ): ResolvedMedication | null {
