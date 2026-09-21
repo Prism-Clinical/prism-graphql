@@ -1,11 +1,10 @@
 /**
  * Phase 3 commit 4: persistence layer for multi-pathway resolution sessions.
  *
- * One row in `multi_pathway_resolution_sessions` per merge run. The merged
- * plan + provider conflict resolutions live in two JSONB columns; the
- * contributing per-pathway session ids live in a UUID array. Pure CRUD —
- * conflict-application logic lives in the resolver layer so this module
- * stays storage-agnostic.
+ * One row per run. The parent's inputs (facts added after start, conflict
+ * decisions) and the cache of its last composition live in JSONB columns;
+ * the contributing child session ids live in a UUID array, written once at
+ * start.
  */
 
 import { Pool } from 'pg';
@@ -72,53 +71,6 @@ export interface MultiPathwayResolutionSessionSummary {
 
 // ─── CRUD ───────────────────────────────────────────────────────────
 
-export async function createMultiPathwaySession(
-  pool: Pool,
-  s: {
-    patientId: string;
-    providerId: string;
-    initialPatientContext: unknown;
-    contributingSessionIds: string[];
-    contributingPathwayIds: string[];
-    mergedPlan: MergedCarePlan;
-    ddiWarnings?: unknown[];
-    isPreview?: boolean;
-    // Required on the way in — same read-optional / write-required split as
-    // createSession, and for the same reason.
-    temporalContext: EvaluationTemporalContext;
-  },
-): Promise<string> {
-  // Same runtime guard as createSession — the declared type is erased and
-  // does not cover untyped callers, and a NULL clock on a new row means a
-  // session that can never be retraversed. See session-store.ts.
-  if (!s.temporalContext) {
-    throw new Error(
-      'createMultiPathwaySession requires temporalContext — a session with no pinned evaluation clock cannot be retraversed',
-    );
-  }
-
-  const result = await pool.query(
-    `INSERT INTO multi_pathway_resolution_sessions
-       (patient_id, provider_id, status, is_preview, initial_patient_context,
-        contributing_session_ids, contributing_pathway_ids,
-        merged_plan, conflict_resolutions, ddi_warnings, temporal_context)
-     VALUES ($1, $2, 'ACTIVE', $3, $4::jsonb, $5::uuid[], $6::uuid[], $7::jsonb, '{}'::jsonb, $8::jsonb, $9::jsonb)
-     RETURNING id`,
-    [
-      s.patientId,
-      s.providerId,
-      s.isPreview ?? false,
-      JSON.stringify(s.initialPatientContext),
-      s.contributingSessionIds,
-      s.contributingPathwayIds,
-      JSON.stringify(s.mergedPlan),
-      JSON.stringify(s.ddiWarnings ?? []),
-      JSON.stringify(s.temporalContext),
-    ],
-  );
-  return result.rows[0].id;
-}
-
 export async function getMultiPathwaySession(
   pool: Pool,
   sessionId: string,
@@ -175,51 +127,10 @@ export async function getPatientMultiPathwaySessions(
 }
 
 /**
- * Persist an updated merged plan + conflict resolutions atomically. Used by
- * `resolveConflict`. Optimistic-lock-free for v1 — the conflict-resolution
- * UX is single-provider, single-session, so concurrent edits aren't a real
- * threat. We can add `updated_at`-based optimistic locking later if needed.
- */
-export async function updateMergedPlanAndResolutions(
-  pool: Pool,
-  sessionId: string,
-  mergedPlan: MergedCarePlan,
-  conflictResolutions: Record<string, ConflictResolution>,
-  /** Optional: when re-merging after gate answers, ddi warnings also change. */
-  ddiWarnings?: unknown[],
-): Promise<void> {
-  if (ddiWarnings !== undefined) {
-    await pool.query(
-      `UPDATE multi_pathway_resolution_sessions
-         SET merged_plan = $2::jsonb,
-             conflict_resolutions = $3::jsonb,
-             ddi_warnings = $4::jsonb,
-             updated_at = NOW()
-       WHERE id = $1`,
-      [
-        sessionId,
-        JSON.stringify(mergedPlan),
-        JSON.stringify(conflictResolutions),
-        JSON.stringify(ddiWarnings),
-      ],
-    );
-    return;
-  }
-  await pool.query(
-    `UPDATE multi_pathway_resolution_sessions
-       SET merged_plan = $2::jsonb,
-           conflict_resolutions = $3::jsonb,
-           updated_at = NOW()
-     WHERE id = $1`,
-    [sessionId, JSON.stringify(mergedPlan), JSON.stringify(conflictResolutions)],
-  );
-}
-
-/**
  * Hard-delete a preview session and its contributing per-pathway sessions.
  * Real (non-preview) sessions are refused with a `NotPreviewError` — the
- * caller has to use `markMultiPathwaySessionStatus(..., 'ABANDONED')` for
- * those, which preserves the row for audit.
+ * caller has to use `abandonMultiPathwaySession` for those, which
+ * preserves the row for audit.
  *
  * Result kinds:
  *   - 'not-found'     — no row for this id
@@ -287,22 +198,6 @@ export async function deletePreviewSession(
   } finally {
     client.release();
   }
-}
-
-export async function markMultiPathwaySessionStatus(
-  pool: Pool,
-  sessionId: string,
-  status: MultiPathwaySessionStatus,
-  carePlanId?: string,
-): Promise<void> {
-  await pool.query(
-    `UPDATE multi_pathway_resolution_sessions
-       SET status = $2,
-           care_plan_id = COALESCE($3, care_plan_id),
-           updated_at = NOW()
-     WHERE id = $1`,
-    [sessionId, status, carePlanId ?? null],
-  );
 }
 
 // ─── Runs on the evaluation pipeline (plan 04) ──────────────────────

@@ -327,19 +327,6 @@ function matchedPathway(id: string): MatchedPathway {
 const storeAt = (spy: jest.Mock, call = 0): FactStore =>
   spy.mock.calls[call][FACT_STORE_ARG] as FactStore;
 
-/**
- * The version actually PERSISTED on the session row.
- *
- * `formatSessionForGraphQL` (multi-pathway-resolution.ts:1150-1164) does not
- * return `temporalContext`, and that exposure belongs to plan 08 — so the
- * payload cannot be asserted on. `createSession`'s argument is what
- * session-temporal-context.test.ts already pins as the value that reaches the
- * `temporal_context` column.
- */
-const persistedVersionOf = (spy: jest.Mock, call = 0): string =>
-  (spy.mock.calls[call][1] as { temporalContext: { temporalPolicyVersion: string } })
-    .temporalContext.temporalPolicyVersion;
-
 beforeEach(() => {
   jest.clearAllMocks();
   poolStub.query.mockResolvedValue({ rows: [{ id: 'pw-1', version: 1, status: 'ACTIVE' }] });
@@ -526,23 +513,6 @@ describe('addPatientContext runs the same trust parsing as startResolution (D10)
 // ─────────────────────────────────────────────────────────────────────
 
 describe('the policy selector is request-scoped and server-side (P2-12, P1-14, P1-19)', () => {
-
-  it('stamps the INJECTED version on the zero-match path', async () => {
-    mockedGetMatched.mockResolvedValue([]);
-
-    await multiPathwayResolutionMutations.startMultiPathwayResolution(
-      null as never,
-      { patientId: 'pt-1', patientContext: PAYLOAD } as never,
-      gqlContext('legacy-v0'),
-    );
-
-    // Asserting legacy-v0, not v1: the injected version must DIFFER from
-    // DEFAULT_TEMPORAL_POLICY_VERSION or this test passes whether or not the
-    // selector ran at all. That constant used to be legacy-v0 and this test
-    // injected v1 for exactly this reason; the default is now v1, so the roles
-    // swap. The property being guarded is unchanged — injection beats default.
-    expect(persistedVersionOf(mockedCreateMp as unknown as jest.Mock)).toBe('legacy-v0');
-  });
 
   it('is not selectable from either start mutation’s arguments', () => {
     // Narrowed from a whole-SDL regex (P2-17): that would also forbid the

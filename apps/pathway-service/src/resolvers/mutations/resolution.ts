@@ -1,4 +1,5 @@
 import { GraphQLError } from 'graphql';
+import type { Pool } from 'pg';
 import { DataSourceContext, NodeStatus, OverrideAction, SessionStatus } from '../../types';
 import { PatientContext, CodeEntry, LabResult } from '../../services/confidence/types';
 import {
@@ -27,6 +28,8 @@ import {
   writeLlmAudits,
 } from '../../services/resolution/session-store';
 import type { Db } from '../../services/resolution/session-store';
+import type { DdiFinding } from '../../services/medications/ddi-pass';
+import { childChange, commitRun } from '../../services/resolution/pipeline/run-commit';
 import { generateCarePlan } from '../../services/resolution/care-plan-generator';
 import type { CarePlanData } from '../../services/resolution/care-plan-generator';
 import type { GateAnswer, GateProperties, ProviderOverride, ResolutionSession } from '../../services/resolution/types';
@@ -37,6 +40,7 @@ import { mergeAdditionalContext } from '../../services/resolution/effective-cont
 import {
   assertMutable,
   Change,
+  childOfRunError,
   commitEvaluation,
   conflictError,
   loadSession,
@@ -51,7 +55,7 @@ import {
   persistedObservations,
   RevisionConflict,
 } from '../../services/resolution/pipeline/request';
-import type { EvaluationResult, ScopedBlocker } from '../../services/resolution/pipeline/types';
+import type { ScopedBlocker } from '../../services/resolution/pipeline/types';
 
 export interface GateAnswerInput {
   booleanValue?: boolean;
@@ -138,19 +142,19 @@ export function temporalInputFrom(args: TemporalAnchorArgs): TemporalContextInpu
 
 // ─── Evaluation pipeline helpers ──────────────────────────────────────
 
-/** A blocker as the API returns it. `pathwayId` is set only on blockers a run propagates (plan 04). */
-function formatBlocker(b: ScopedBlocker) {
-  return { scope: b.scope, type: b.type, description: b.description, relatedNodeIds: b.relatedNodeIds, pathwayId: null as string | null };
+/** A blocker as the API returns it. `pathwayId` is set on a blocker a run propagates from one of its pathways. */
+export function formatBlocker(b: ScopedBlocker & { pathwayId?: string }) {
+  return { scope: b.scope, type: b.type, description: b.description, relatedNodeIds: b.relatedNodeIds, pathwayId: b.pathwayId ?? null };
 }
 
 /** Moderate interactions accompany a plan without blocking it (P3-9). */
-function warningsOf(result: EvaluationResult): string[] {
-  return result.safetyFindings
+export function warningsOf(findings: DdiFinding[]): string[] {
+  return findings
     .filter((f) => f.action === 'WARN')
     .map((f) => `${f.category}: ${f.drugName}${f.clinicalAdvice ? ` — ${f.clinicalAdvice}` : ''}`);
 }
 
-const PLAN_CHANGED: ScopedBlocker = {
+export const PLAN_CHANGED: ScopedBlocker = {
   scope: 'OUTPUT',
   type: 'PLAN_CHANGED_SINCE_REVIEW',
   description: 'The plan changed after it was reviewed. Review the current plan and generate again.',
@@ -236,6 +240,71 @@ function answerChange(session: ResolutionSession, args: { sessionId: string; nod
       gateOpened: result.resolutionState.get(args.nodeId)?.status === NodeStatus.INCLUDED,
     }),
   };
+}
+
+/** An override, as a change to a session's inputs. The pathway's own decision survives re-overrides. */
+function overrideChange(
+  s: ResolutionSession,
+  args: { sessionId: string; nodeId: string; action: OverrideAction; reason?: string },
+): Change {
+  const node = s.resolutionState.get(args.nodeId);
+  if (!node) {
+    throw new GraphQLError(`Node "${args.nodeId}" not found in session`, { extensions: { code: 'NOT_FOUND' } });
+  }
+  // The pathway's own decision, kept across re-overrides: an override of an
+  // override still records what the pathway originally concluded.
+  const previous = s.providerOverrides.get(args.nodeId);
+  const override: ProviderOverride = {
+    action: args.action,
+    reason: args.reason,
+    originalStatus: previous?.originalStatus ?? node.status,
+    originalConfidence: previous?.originalConfidence ?? node.confidence,
+  };
+  const inputs = inputsOf(s);
+  inputs.providerOverrides.set(args.nodeId, override);
+  return {
+    inputs,
+    event: { eventType: 'override', triggerData: { nodeId: args.nodeId, action: args.action, reason: args.reason } },
+    record: (db) => logNodeOverride(db, {
+      sessionId: args.sessionId,
+      nodeId: args.nodeId,
+      pathwayId: s.pathwayId,
+      action: args.action,
+      reason: args.reason,
+      originalStatus: override.originalStatus,
+      originalConfidence: override.originalConfidence,
+    }),
+  };
+}
+
+/** New facts accumulate onto everything supplied before: adding A then B keeps both. */
+function contextChange(s: ResolutionSession, additionalContext: AdditionalContextInput): Change {
+  const inputs = inputsOf(s);
+  inputs.additionalContext = mergeAdditionalContext(inputs.additionalContext, additionalContext);
+  return {
+    inputs,
+    event: {
+      eventType: 'context_update',
+      triggerData: {
+        addedContext: Object.keys(additionalContext).filter(
+          (k) => (additionalContext as Record<string, unknown>)[k] !== undefined,
+        ),
+      },
+    },
+  };
+}
+
+/**
+ * Commit a change to one session. A child of a run changes through its run —
+ * facts to the parent, answers and overrides to the child, every child
+ * re-evaluated (D5, D6, D13); a standalone session through commitEvaluation.
+ * Returns the session as committed.
+ */
+async function commitSession(pool: Pool, sessionId: string, build: (s: ResolutionSession) => Change): Promise<ResolutionSession> {
+  const session = await loadSession(pool, sessionId);
+  if (!session.parentSessionId) return commitEvaluation(pool, sessionId, build);
+  const run = await commitRun(pool, session.parentSessionId, (r) => childChange(r, sessionId, build));
+  return run.children.find((c) => c.id === sessionId)!;
 }
 
 /** Insert the care plan, goals and interventions; returns the plan id. Runs inside generation's claimed transaction. */
@@ -398,37 +467,7 @@ export const resolutionMutations = {
     args: { sessionId: string; nodeId: string; action: OverrideAction; reason?: string },
     context: DataSourceContext
   ) {
-    const session = await commitEvaluation(context.pool, args.sessionId, (s) => {
-      const node = s.resolutionState.get(args.nodeId);
-      if (!node) {
-        throw new GraphQLError(`Node "${args.nodeId}" not found in session`, { extensions: { code: 'NOT_FOUND' } });
-      }
-      // The pathway's own decision, kept across re-overrides: an override of an
-      // override still records what the pathway originally concluded.
-      const previous = s.providerOverrides.get(args.nodeId);
-      const override: ProviderOverride = {
-        action: args.action,
-        reason: args.reason,
-        originalStatus: previous?.originalStatus ?? node.status,
-        originalConfidence: previous?.originalConfidence ?? node.confidence,
-      };
-      const inputs = inputsOf(s);
-      inputs.providerOverrides.set(args.nodeId, override);
-      return {
-        inputs,
-        event: { eventType: 'override', triggerData: { nodeId: args.nodeId, action: args.action, reason: args.reason } },
-        record: (db) => logNodeOverride(db, {
-          sessionId: args.sessionId,
-          nodeId: args.nodeId,
-          pathwayId: s.pathwayId,
-          action: args.action,
-          reason: args.reason,
-          originalStatus: override.originalStatus,
-          originalConfidence: override.originalConfidence,
-        }),
-      };
-    });
-    return formatSessionForGraphQL(session);
+    return formatSessionForGraphQL(await commitSession(context.pool, args.sessionId, (s) => overrideChange(s, args)));
   },
 
   /**
@@ -440,7 +479,7 @@ export const resolutionMutations = {
     args: { sessionId: string; nodeId: string; answer: GateAnswerInput },
     context: DataSourceContext
   ) {
-    const session = await commitEvaluation(context.pool, args.sessionId, (s) => answerChange(s, args));
+    const session = await commitSession(context.pool, args.sessionId, (s) => answerChange(s, args));
     return formatSessionForGraphQL(session);
   },
 
@@ -462,22 +501,7 @@ export const resolutionMutations = {
     // Explicit nulls become omissions, as at session start.
     const additionalContext = normalizeContextEntryNulls(args.additionalContext);
 
-    const session = await commitEvaluation(context.pool, args.sessionId, (s) => {
-      const inputs = inputsOf(s);
-      // Accumulate onto everything supplied before: adding A then B keeps both.
-      inputs.additionalContext = mergeAdditionalContext(inputs.additionalContext, additionalContext);
-      return {
-        inputs,
-        event: {
-          eventType: 'context_update',
-          triggerData: {
-            addedContext: Object.keys(additionalContext).filter(
-              (k) => (additionalContext as Record<string, unknown>)[k] !== undefined,
-            ),
-          },
-        },
-      };
-    });
+    const session = await commitSession(context.pool, args.sessionId, (s) => contextChange(s, additionalContext));
     return formatSessionForGraphQL(session);
   },
 
@@ -506,6 +530,7 @@ export const resolutionMutations = {
     return withAudits(pool, args.sessionId, request, async (): Promise<Outcome> => {
       for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
         const session = await loadSession(pool, args.sessionId);
+        if (session.parentSessionId) throw childOfRunError();
         if (session.status === SessionStatus.COMPLETED) {
           return { success: true, carePlanId: session.carePlanId ?? null, warnings: [], blockers: [] };
         }
@@ -518,7 +543,7 @@ export const resolutionMutations = {
 
         const { inputs, result, durationMs } = await evaluateSession(pool, request, inputsOf(session), 'ROOT');
         const toStore = { ...inputs, observations: persistedObservations(inputs, request, result) };
-        const warnings = warningsOf(result);
+        const warnings = warningsOf(result.safetyFindings);
         const planChanged = result.resultHash !== args.reviewedResultHash;
 
         try {
@@ -581,6 +606,7 @@ export const resolutionMutations = {
     const { pool } = context;
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
       const session = await loadSession(pool, args.sessionId);
+      if (session.parentSessionId) throw childOfRunError();
       assertMutable(session);
       try {
         await inTransaction(pool, async (db) => {

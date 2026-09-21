@@ -1,7 +1,7 @@
 import { getSession, insertSession } from '../../services/resolution/session-store';
 import {
-  createMultiPathwaySession,
   getMultiPathwaySession,
+  insertRun,
 } from '../../services/resolution/multi-pathway-session-store';
 import { makeEvaluationTemporalContext } from '../../services/resolution/temporal/evaluation-context';
 import { evaluate } from '../../services/resolution/pipeline/evaluate';
@@ -17,6 +17,11 @@ const TCTX = makeEvaluationTemporalContext({
   // default is `v1`.
   temporalPolicyVersion: 'legacy-v0',
 });
+const RUN_FIXTURE = {
+  patientId: 'pt', providerId: 'pr', isPreview: false, initialPatientContext: {},
+  additionalContext: {}, conflictResolutions: {},
+  result: { mergedPlan: {}, safetyFindings: [], ddiWarnings: [], readiness: { ready: false, blockers: [] }, children: [], envFingerprint: 'e', resultHash: 'h' },
+};
 
 function fakePool(rows: Array<Record<string, unknown>>) {
   const calls: Array<{ sql: string; params: unknown[] }> = [];
@@ -71,34 +76,23 @@ describe('session temporal_context persistence', () => {
   // ── multi-pathway store ────────────────────────────────────────────
   //
   // These are NOT redundant with the insertSession cases above: the two
-  // stores are separate files with separate SQL. The multi-pathway INSERT
-  // currently ends at $8 and gains a 9th placeholder, and its read path goes
-  // through `rowToSession` rather than an inline literal. A mis-numbered
-  // placeholder or a `rowToSession` that never maps the column would leave
+  // stores are separate files with separate SQL. The run INSERT is built
+  // from a column map, and its read path goes through `runRowToSession`
+  // rather than an inline literal. A mis-numbered placeholder or a
+  // `runRowToSession` that never maps the column would leave
   // every multi-pathway session silently clock-less — and nothing else in
   // this plan would catch it, because Task 6's resolver tests mock this
   // module out entirely.
 
-  it('createMultiPathwaySession writes the temporal context as JSON', async () => {
+  it('insertRun writes the temporal context as JSON', async () => {
     const { pool, calls } = fakePool([]);
-    await createMultiPathwaySession(pool as never, {
-      patientId: 'pt', providerId: 'pr',
-      initialPatientContext: {},
-      contributingSessionIds: [], contributingPathwayIds: [],
-      // `emptyMergedCarePlan()` is private to multi-pathway-resolution.ts —
-      // do not try to import it. The plan's contents are irrelevant here;
-      // only the SQL and the parameter array are under test.
-      mergedPlan: {} as never,
-      temporalContext: TCTX,
-    } as never);
+    await insertRun(pool as never, { ...RUN_FIXTURE, temporalContext: TCTX } as never);
 
     const insert = calls.find((c) => c.sql.includes('INSERT INTO multi_pathway_resolution_sessions'))!;
     expect(insert.sql).toContain('temporal_context');
-    // Placeholder count must match the parameter array, or pg throws at
-    // runtime — the defect a SQL-string-only assertion would miss.
-    expect(insert.sql).toContain('$9::jsonb');
-    expect(insert.params).toHaveLength(9);
-    expect(insert.params[8]).toBe(JSON.stringify(TCTX));
+    // Placeholder count must match the parameter array, or pg throws at runtime.
+    expect(insert.sql).toContain(`$${insert.params.length})`);
+    expect(insert.params).toContain(JSON.stringify(TCTX));
   });
 
   it('getMultiPathwaySession hydrates the temporal context via rowToSession', async () => {
@@ -164,18 +158,10 @@ describe('session temporal_context persistence', () => {
     expect(calls).toHaveLength(0);
   });
 
-  it('createMultiPathwaySession refuses to persist a session with no clock', async () => {
+  it('insertRun refuses to persist a run with no clock', async () => {
     const { pool, calls } = fakePool([]);
-    await expect(
-      createMultiPathwaySession(pool as never, {
-        patientId: 'pt', providerId: 'pr',
-        initialPatientContext: {},
-        contributingSessionIds: [], contributingPathwayIds: [],
-        mergedPlan: {} as never,
-        // temporalContext deliberately omitted
-      } as never),
-    ).rejects.toThrow(/temporalContext|evaluation clock/i);
-
+    await expect(insertRun(pool as never, { ...RUN_FIXTURE } as never)).rejects.toThrow(/temporalContext/);
+    // It must fail BEFORE writing, not roll back after.
     expect(calls).toHaveLength(0);
   });
 
