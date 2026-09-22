@@ -9,10 +9,10 @@ before/after behaviour and the admin smoke test.
 
 **Architecture:** Two phases, split by what they touch.
 - **Phase A** is code on a plan branch and writes nothing live except two capture sessions. It
-  covers the release tooling, the benchmark on the real pipeline, test residue, wider property
-  coverage and a full rehearsal on a copy of `prism_db`.
+  covers the release tooling, a per-mutation performance gate and a stage benchmark on the real
+  pipeline, test residue, wider property coverage and a full rehearsal on a copy of `prism_db`.
 - **Phase B** is operations on the live host, each step gated by approval. It covers the backfill,
-  the gate re-run, the merges to `main`/`master`, the deploy, the after-record and the smoke test.
+  the gate re-run, the merges to `main`/`master`, the deploy in a maintenance window, the after-record and the smoke test.
 
 **Tech Stack:** TypeScript 5, Jest + ts-jest, fast-check 3, PostgreSQL 15 + Apache AGE, pm2,
 nginx, Next.js 16 (admin), RxNav REST.
@@ -31,12 +31,12 @@ marked 🔒. Every other live access is read-only.
 - **🔒 steps.** A 🔒 step runs only if the execution prompt approves it by name. Otherwise
   **stop and ask**. The locks are:
   - 🔒A — two capture sessions on live (Task 1);
-  - 🔒B — the normalisation backfill on live (Task 6);
-  - 🔒C — the deploy: backup, migrations, builds, restarts (Task 8);
-  - 🔒D — capture sessions and the smoke-test sessions after the deploy (Tasks 9 and 10).
+  - 🔒B — the normalisation backfill on live (Task 7);
+  - 🔒C — the deploy: maintenance window (services stopped), backup, builds, migrations, start (Task 9);
+  - 🔒D — capture sessions and the smoke-test sessions after the deploy (Tasks 10 and 11).
 - **Merges into `main` / `master` are the user's.** Opening the PRs is approved only if the
   execution prompt says so, and `gh` has been unauthenticated all along, so expect to hand over
-  compare URLs. **Stop at each merge point** (end of Task 5 and end of Task 7). Resume only when
+  compare URLs. **Stop at each merge point** (end of Task 6 and end of Task 8). Resume only when
   the user says the merge is done.
 - **Scratch databases** are named `prism_*_scratch`. Never run a writing test or a rehearsal
   against `prism_db`.
@@ -86,7 +86,7 @@ marked 🔒. Every other live access is read-only.
 - **Network:** RxNav answers from the host (`GET /REST/rxcui.json?name=aspirin` → 200 in 0.85 s).
 - **Live checkouts:** both have a local, uncommitted `package-lock.json` modification, which is
   drift from earlier `npm install`s. It blocks `git pull --ff-only` if the incoming commits touch
-  the lockfile. Task 8 inspects it, then discards it.
+  the lockfile. Task 9 inspects it, then discards it.
 - **Size and tools:** `prism_db` is 26 MB, and the disk has 193 GB free. The `prism` role is a
   superuser, so `createdb` works even though `rolcreatedb` reads `f`. `pg_dump` is at
   `/usr/bin/pg_dump`.
@@ -105,11 +105,11 @@ marked 🔒. Every other live access is read-only.
 | # | Decision | Why |
 |---|---|---|
 | P5-1 | **The §5.8 before/after record is taken through the deployed GraphQL API, not by extending `baseline-capture.test.ts`.** *Before* is captured from live `main` before anything changes. *After* is captured from the deployed pipeline, with the same inputs and clock. `baseline-capture.test.ts` is deleted; its 2026-09-10 record stays in git history and is quoted in the record. | The integration branch holds no runnable copy of `main`'s engine: the traversal changed in plans 02–03, and `makeTraversalAdapter` is gone. An in-process "before" would run the new traversal and hide exactly the differences §5.8 exists to catch. The deployed API compares what production did with what it now does. |
-| P5-2 | **The benchmark measures the pipeline's own stages:** `loadEvaluationEnv` / `loadRunEnv`, then `evaluate` per pathway, then `composeRun`, with replay observations. It does not call `evaluateRun`. Every Medication node is included through a provider override, so every medication is a safety candidate. | `evaluateRun` starts a non-blocking pre-warm, which would write to live, and builds a live LLM client, which could call the model. Neither is on a mutation's latency path. An INCLUDE override is a real pipeline input, and it reproduces plan 01's worst case (every medication checked) without editing state behind the pipeline's back. |
+| P5-2 | **Two measurements, with different jobs.** (1) **The mutation gate** decides the release (spec §5.7 budgets *per mutation*). It runs the real resolvers end to end: load, evaluate, commit, reload. It covers a single-pathway mutation, an answer on a 5-child run and a fact on a 5-child run, each with its own p95. It runs on a migrated, backfilled **scratch copy** of live, with no LLM client and the pre-warm stubbed; setup is outside the timed interval (Task 5). (2) **The stage benchmark** is a read-only diagnostic on live: the snapshot, `evaluate` and `composeRun`, timed separately. It uses replay observations and INCLUDE overrides on every Medication node, and every conflict is ACCEPT_BOTH, so every medication reaches the root pair check. Its floors cover the set entering root pair safety, not only child eligibility (Task 2). | A mutation also loads the stored run, commits parent and children in a transaction, records events and reloads. None of that is in the evaluator, and it could push a mutation over budget while the stages pass. Mutations write, so they are timed only on a copy. Undecided conflicts drop their medications before `pairSafety`: a run can satisfy every child floor and still pass **zero** candidates to the root pair check (review, 2026-09-22). |
 | P5-3 | **The backfill runs from the plan branch's build, before the merge to `main`.** | Spec §5.7: re-run the gate *after the backfill, before merging to `main`*. The backfill only touches `medication_normalization_cache`, which exists on live today, and 067/068 do not change it. Side effect: until the deploy, live `main`'s old DDI pass also sees the normalised drugs. There are no users. |
 | P5-4 | **The backfill covers ACTIVE and DRAFT only,** as the script and the spec say. The gate reports coverage per pathway. | The run figure is partly covered: its three ARCHIVED children stay unnormalised. The single-pathway figure (chronic-htn, DRAFT) has full coverage of whatever RxNav can map. |
 | P5-5 | **Rehearse on a full copy.** Before any live write, `prism_db` is copied to `prism_release_scratch`. The exact live sequence runs there: backfill → 067 → 068 → history rows → pipeline smoke on the migrated schema. | Plan 03/04's Postgres tests start from a schema-only dump, so they never met live data or the live AGE graphs. At 26 MB the full copy costs seconds. |
-| P5-6 | **Take a `pg_dump -Fc` of `prism_db` immediately before the live migrations.** Rollback runs **only on the user's instruction**. | 067/068 drop columns and purge tables, and nothing reverses them. The dump is the undo. |
+| P5-6 | **Deploy in a maintenance window.** Both builds are first validated in a separate worktree at the exact merged commits. Then all three pm2 processes are **stopped**, and only then come the backup, the copies of the current build artifacts, the pull, the builds, the migrations and the start. Any failure keeps the services stopped. Rollback runs **only on the user's instruction**, with the services stopped: restore the database, the previous commits and the saved artifacts. | `next build` (Next 16.1.6, `cleanDistDir: true`) deletes `.next` before writing, and the running admin server reads from it, so building in the live directory can break a running process even when the build fails. Old backends must never serve the migrated schema, and a restore must not race live writers. There are no users, so a short outage costs nothing. |
 | P5-7 | **The generation probe in the after-record runs only when the session has a pending question.** | A session with a pending question cannot generate, so the probe returns its blockers and writes no care plan. On a ready session the probe would create a care plan on live, so it is skipped and the record says so. |
 | P5-8 | **Unmapped medications (NULL cache rows) are the user's to triage,** through the admin queue (`unnormalizedMedications` / `manuallyResolveMedicationNormalization`). The executor lists them and never picks a mapping. | A drug mapping is a clinical decision. |
 | P5-9 | **Property (a) gets a companion property whose sequences open with `answer qa = true` then a conflict decision.** A runtime check asserts that every generated sequence applied one. | Conflict decisions are the run feature most likely to be path-dependent (review #6). At about 8 in 100 they were barely exercised. |
@@ -120,14 +120,15 @@ marked 🔒. Every other live access is read-only.
 | Point | Passed | Failed | Skipped |
 |---|---|---|---|
 | Task 0 (base) | … | 9 | … |
-| Task 5 (end of phase A) | … | 9 | … |
+| Task 6 (end of phase A) | … | 9 | … |
 
 Expected at Task 0: **1670 / 9 / 12**, as plan 04 ended.
 
-Expected at Task 5: **1673 / 9 / 11**.
+Expected at Task 6: **1673 / 9 / 14**.
 - `baseline-capture` is deleted (−1 skipped).
 - `capture-resolution` adds 2 passing.
 - The companion property adds 1 passing.
+- The mutation gate adds 3 tests, skipped by default (+3 skipped).
 - Residue removal adds and removes nothing.
 
 Account for any difference.
@@ -273,7 +274,23 @@ const ENDPOINT = process.env.GRAPHQL_URL ?? 'http://localhost:4000/graphql';
 const PATHWAY_ID = process.env.CAPTURE_PATHWAY_ID ?? 'a1774566-42ce-43cc-b83c-1a5749b240e1'; // anemia-in-pregnancy-v1 @ 1.4
 const AS_OF = '2026-09-10T12:00:00.000Z'; // the 2026-09-10 baseline's clock
 
-const WITH_HB = {
+interface Coded { code: string; system: string; display?: string }
+/**
+ * The PatientContextInput fields this capture sends. Declared, not inferred:
+ * with noImplicitAny an inferred empty list is an implicit any[] (TS7018),
+ * and ts-jest's diagnostics are off, so only tsc would notice.
+ */
+interface CapturePatient {
+  patientId: string;
+  conditionCodes: Coded[];
+  medications: Coded[];
+  allergies: Coded[];
+  labResults: Array<{ code: string; system: string; value: number; effectiveDateTime: string }>;
+  vitalSigns: Record<string, number>;
+  patientAttributes: Record<string, unknown>;
+}
+
+const WITH_HB: CapturePatient = {
   patientId: '00000000-0000-4000-a000-0000000000ff',
   conditionCodes: [{ code: 'D50.9', system: 'ICD-10' }],
   medications: [],
@@ -283,7 +300,10 @@ const WITH_HB = {
   patientAttributes: {},
 };
 /** The two patients `baseline-capture.test.ts` recorded on 2026-09-10. */
-export const PATIENTS = { withHaemoglobin: WITH_HB, noHaemoglobin: { ...WITH_HB, labResults: [] } };
+export const PATIENTS: Record<'withHaemoglobin' | 'noHaemoglobin', CapturePatient> = {
+  withHaemoglobin: WITH_HB,
+  noHaemoglobin: { ...WITH_HB, labResults: [] },
+};
 
 interface Node {
   nodeId: string; nodeType: string; status: string; confidence: number; excludeReason: string | null;
@@ -391,10 +411,15 @@ $W/node_modules/.bin/tsc -p $W/apps/pathway-service/tsconfig.json --noEmit && ec
 npm run build --prefix $W/apps/pathway-service
 ls $W/apps/pathway-service/dist/scripts/capture-resolution.js
 ```
-Expected: 2 passed, `tsc-clean`, and the built file exists.
+Expected: 2 passed, `tsc-clean`, and the built file exists. `tsc` is the only check that the
+script compiles: ts-jest runs with `diagnostics: false`, so the formatter tests pass even when it
+does not.
 
-**Falsify:** remove the `.sort()` that closes `shared`. The first test must fail on the order of
-`a` and `b`. Restore it.
+**Falsify, one at a time, restoring each:**
+1. Remove the `.sort()` that closes `shared`. The first test must fail on the order of `a` and
+   `b`.
+2. Remove `: CapturePatient` from `const WITH_HB`. `tsc` must report `TS7018` for `medications`
+   and `allergies`, while the two formatter tests still pass.
 
 - [ ] **Step 5: Delete `baseline-capture.test.ts` (P5-1) and commit**
 
@@ -415,7 +440,7 @@ Claude-Session: https://claude.ai/code/session_01XRNkZvQrxmRLNtJHxq71kH"
 - [ ] **Step 6: 🔒A Capture *before* from live `main`**
 
 Live must still be `main` @ `2454130`, and the cache must still be empty. Capture before the
-backfill (Task 6), so *before* is what production ran:
+backfill (Task 7), so *before* is what production ran:
 
 ```bash
 git -C $L log --oneline -1
@@ -449,7 +474,7 @@ Claude-Session: https://claude.ai/code/session_01XRNkZvQrxmRLNtJHxq71kH"
 
 ---
 
-### Task 2: The performance gate on the real pipeline (P5-2)
+### Task 2: The stage benchmark on the real pipeline — diagnostic (P5-2)
 
 **Files:**
 - Modify (full replacement): `apps/pathway-service/src/__tests__/evaluation-benchmark.test.ts`
@@ -463,8 +488,9 @@ Claude-Session: https://claude.ai/code/session_01XRNkZvQrxmRLNtJHxq71kH"
   - `composeRun(contributions, ctx): RunResult`
   - `medicationName(node)`, `normalizedKey(input)`
   - `SessionInputs`, `ProviderOverride`
-- Produces: env flags `RUN_EVALUATION_BENCHMARK=1` (run it) and `EXPECT_DDI_COVERAGE=1` (after
-  the backfill: fail unless the single pathway has normalised candidates).
+- Produces: env flags `RUN_EVALUATION_BENCHMARK=1` (run it), `EXPECT_DDI_COVERAGE=1` (after the
+  backfill: fail unless the single pathway and the root pair set have normalised candidates) and
+  `MIN_ROOT_NORMALISED=<n>` (the root floor under coverage; default 2, i.e. at least one pair).
 
 - [ ] **Step 1: Confirm the current file cannot run**
 
@@ -480,14 +506,15 @@ Overwrite `apps/pathway-service/src/__tests__/evaluation-benchmark.test.ts` with
 
 ```ts
 /**
- * EVALUATION PERFORMANCE GATE — spec §5.7, on the pipeline itself (plan 05, P5-2).
+ * EVALUATION STAGE BENCHMARK — a diagnostic for spec §5.7 (plan 05, P5-2).
+ * The release decision is the MUTATION gate (evaluation-mutation-gate.test.ts),
+ * which adds load, commit and reload; this file times the stages inside it.
  *
- * Measures what every mutation evaluates: one environment snapshot
- * (loadEvaluationEnv / loadRunEnv, C4), `evaluate` per pathway, and for a run
- * `composeRun` (D13). Observations are replayed (no LLM call), and every
- * Medication node carries a provider INCLUDE override, so every medication is
- * a safety candidate: the pipeline's worst case, through a real input.
- * Not measured: the commit transaction, the non-blocking pre-warm, the LLM.
+ * Measures one environment snapshot (loadEvaluationEnv / loadRunEnv, C4),
+ * `evaluate` per pathway, and for a run `composeRun` (D13). Observations are
+ * replayed (no LLM call); every Medication node carries a provider INCLUDE
+ * override, and every run conflict is ACCEPT_BOTH, so every medication reaches
+ * the root pair check: the pipeline's worst case, through real inputs.
  *
  * Opt-in and read-only against the live database:
  *
@@ -505,12 +532,13 @@ import { Pool } from 'pg';
 import { performance } from 'perf_hooks';
 import type { GraphNode, PatientContext } from '../services/confidence/types';
 import { normalizedKey } from '../services/medications/safety-reference';
+import type { SafetyReference } from '../services/medications/safety-reference';
 import { composeRun } from '../services/resolution/pipeline/compose';
 import { evaluate } from '../services/resolution/pipeline/evaluate';
 import { loadEvaluationEnv, loadRunEnv, medicationName } from '../services/resolution/pipeline/load-env';
 import type { EvaluationEnv } from '../services/resolution/pipeline/load-env';
 import { replayObservations } from '../services/resolution/pipeline/observations';
-import type { EvaluationResult, SessionInputs } from '../services/resolution/pipeline/types';
+import type { EvaluationResult, RunResult, SessionInputs } from '../services/resolution/pipeline/types';
 import { makeEvaluationTemporalContext } from '../services/resolution/temporal/evaluation-context';
 import { NodeStatus, OverrideAction } from '../services/resolution/types';
 
@@ -527,6 +555,9 @@ const BUDGET_P95_MS = { single: 2000, run: 5000 }; // spec §5.7
 // A shrunken workload must fail here, not show up as a speed-up.
 const MIN_NODES = { single: 100, run: 400 };
 const MIN_CANDIDATES = { single: 9, run: 25 };
+// The set that reaches root pair safety. 2 is the hard minimum (one pair);
+// Task 2 Step 4 freezes the measured live value here.
+const MIN_ROOT_CANDIDATES = 2;
 const WARMUP = 3;
 const SAMPLES = 20;
 const TEMPORAL = makeEvaluationTemporalContext({ evaluationAsOf: '2026-09-14T12:00:00.000Z', temporalPolicyVersion: 'v1' });
@@ -592,6 +623,18 @@ async function single(pool: Pool) {
   return { env: t1 - t0, evaluate: t2 - t1, total: t2 - t0, workload: workloadOf(env, r), pairs: env.safety.pairs.size };
 }
 
+/**
+ * The set that reached root pair safety: the final medications plus those the
+ * pair check itself withheld. Undecided conflicts never get here, which is why
+ * the run is composed with every conflict ACCEPT_BOTH.
+ */
+function rootWorkloadOf(r: RunResult, safety: SafetyReference) {
+  const pairWithheld = r.mergedPlan.suppressed.filter((s) => s.source.kind === 'OTHER_RECOMMENDATION').map((s) => s.name);
+  const names = [...new Set([...r.mergedPlan.medications.map((m) => m.recommendation.name), ...pairWithheld])];
+  const normalised = names.filter((n) => Boolean(safety.normalized.get(normalizedKey({ text: n })))).length;
+  return { candidates: names.length, normalised, comparisons: (normalised * (normalised - 1)) / 2 };
+}
+
 async function run(pool: Pool) {
   const t0 = performance.now();
   const env = await loadRunEnv(pool, RUN, { patient: PATIENT });
@@ -605,11 +648,20 @@ async function run(pool: Pool) {
     workloads.push(workloadOf(childEnv, result));
   }
   const t2 = performance.now();
-  composeRun(contributions, {
-    patient: PATIENT, conflictResolutions: {}, safety: env.safety, meta: env.meta, envFingerprint: env.envFingerprint,
+  const ctxOf = (conflictResolutions: Record<string, unknown>) => ({
+    patient: PATIENT, conflictResolutions: conflictResolutions as never, safety: env.safety, meta: env.meta, envFingerprint: env.envFingerprint,
   });
+  // Untimed: discover the conflicts, then decide every one ACCEPT_BOTH.
+  const conflicts = composeRun(contributions, ctxOf({})).mergedPlan.conflicts;
+  const decisions = Object.fromEntries(conflicts.map((c) =>
+    [c.conflictId, { kind: 'ACCEPT_BOTH', resolvedBy: 'benchmark', resolvedAt: '2026-09-14T12:00:00.000Z' }]));
   const t3 = performance.now();
-  return { env: t1 - t0, evaluate: t2 - t1, compose: t3 - t2, total: t3 - t0, workloads };
+  const composed = composeRun(contributions, ctxOf(decisions));
+  const t4 = performance.now();
+  return {
+    env: t1 - t0, evaluate: t2 - t1, compose: t4 - t3, total: (t2 - t0) + (t4 - t3),
+    workloads, conflicts: conflicts.length, root: rootWorkloadOf(composed, env.safety),
+  };
 }
 
 async function sample<T>(n: number, fn: () => Promise<T>): Promise<T[]> {
@@ -664,8 +716,13 @@ describeBenchmark('evaluation performance gate on the pipeline (live DB, read-on
         expect(sum(r.workloads, 'nodes')).toBeGreaterThanOrEqual(MIN_NODES.run);
         expect(sum(r.workloads, 'candidates')).toBeGreaterThanOrEqual(MIN_CANDIDATES.run);
         for (const w of r.workloads) expect(w.resolved).toBe(w.nodes);
+        // The pair check must have had its intended set (review, 2026-09-22).
+        expect(r.root.candidates).toBeGreaterThanOrEqual(MIN_ROOT_CANDIDATES);
       }
-      if (process.env.EXPECT_DDI_COVERAGE === '1') expect(singles[0].workload.normalised).toBeGreaterThan(0);
+      if (process.env.EXPECT_DDI_COVERAGE === '1') {
+        expect(singles[0].workload.normalised).toBeGreaterThan(0);
+        for (const r of runs) expect(r.root.normalised).toBeGreaterThanOrEqual(Number(process.env.MIN_ROOT_NORMALISED ?? 2));
+      }
 
       const s0 = singles[0];
       const r0 = runs[0];
@@ -684,9 +741,11 @@ describeBenchmark('evaluation performance gate on the pipeline (live DB, read-on
         `  workload: ${sum(r0.workloads, 'nodes')} nodes, ${sum(r0.workloads, 'candidates')} safety candidates, ` +
           `${sum(r0.workloads, 'normalised')} normalised`,
         ...RUN.map((id, i) => `    ${id}: ${r0.workloads[i].candidates} candidates, ${r0.workloads[i].normalised} normalised`),
+        `  root pair set: ${r0.conflicts} conflicts, all ACCEPT_BOTH; ${r0.root.candidates} candidates, ` +
+          `${r0.root.normalised} normalised, ${r0.root.comparisons} pair comparisons`,
         row('  env snapshot', runs.map((r) => r.env)),
         row('  evaluate (5 children)', runs.map((r) => r.evaluate)),
-        row('  composeRun', runs.map((r) => r.compose)),
+        row('  composeRun (decided)', runs.map((r) => r.compose)),
         row('  total', runs.map((r) => r.total)),
         `  budget p95 < ${BUDGET_P95_MS.run}ms`,
         '',
@@ -728,15 +787,24 @@ RUN_EVALUATION_BENCHMARK=1 POSTGRES_PASSWORD=$PGPASSWORD \
   npm test --prefix $W/apps/pathway-service -- --runInBand src/__tests__/evaluation-benchmark.test.ts 2>&1 | tail -40
 ```
 Expected: PASS. The table prints `0 normalised` everywhere (the cache is empty). Keep the output:
-it is the *pre-backfill* row of Task 7's table.
+it is the *pre-backfill* row of Task 8's table.
 
 - **If a workload floor fails,** stop and report the count. That would mean INCLUDE overrides on
   unreachable Medication nodes do not make them candidates, which is a finding about the pipeline.
   **Never lower a floor.**
 - **If a budget fails,** stop: spec §5.7 says revisit D1/D13 before anything else.
 
-**Falsify:** raise `MIN_CANDIDATES.single` to `candidates + 1`, using the printed count. The run
-must fail with `Expected: >= …`. Restore it.
+**Freeze the root floor.** Set `MIN_ROOT_CANDIDATES` to the printed `root pair set … candidates`
+count, if that is above 2. It is the live graphs' workload, like the other floors. Re-run and
+expect PASS.
+
+**Falsify, one at a time, restoring each:**
+1. Raise `MIN_CANDIDATES.single` to `candidates + 1`, using the printed count. The run must fail
+   with `Expected: >= …`.
+2. Replace `ctxOf(decisions)` with `ctxOf({})`.
+   - If the printed conflict count is above 0, the run must fail on `r.root.candidates`.
+   - If it is 0, the live graphs have no cross-pathway conflict, and decisions cannot change the
+     workload. Record that instead.
 
 - [ ] **Step 5: Commit**
 
@@ -884,7 +952,257 @@ Claude-Session: https://claude.ai/code/session_01XRNkZvQrxmRLNtJHxq71kH"
 
 ---
 
-### Task 5: Pre-merge gate — suite, Postgres tests, full-copy rehearsal (P5-5), PR
+### Task 5: The mutation gate — the release decision (spec §5.7, P5-2)
+
+**Files:**
+- Create: `apps/pathway-service/src/__tests__/evaluation-mutation-gate.test.ts`
+
+**Interfaces:**
+- Consumes (plans 03–04):
+  - `resolutionMutations.startResolution | overrideNode | answerPendingDecision | addPatientContext`
+  - `evaluateRun(pool, request, inputs, { pinGraphs })`, `newRunRequest()`, `sessionInputsOf(run, child)`
+  - `insertRun(db, NewRun)`, `setContributingSessions(db, runId, sessionIds, pathwayIds)`,
+    `insertSession(db, NewSession)`
+  - `inTransaction(pool, fn)`
+- Produces: env flags `RUN_MUTATION_GATE=1` and `PIPELINE_PG_DATABASE=<*scratch*>`. Tasks 6 and 8
+  run it on a migrated, backfilled copy of live.
+
+**What it times.** Each timed interval is one resolver call, from the call to its return.
+- **Single:** `overrideNode` on a session started with `startResolution`. The call loads the
+  session, evaluates, commits under the revision CAS and reloads.
+- **Run answer:** `answerPendingDecision` on a child of a stored 5-child run. That call loads the
+  run, re-evaluates all five children, and commits the parent and children with the events.
+- **Run fact:** `addPatientContext` on a child of a stored 5-child run.
+
+Setup is untimed: starting the session, and storing the run exactly as
+`startMultiPathwayResolution` stores one (the plan 04 Postgres test's `newRun`, with the real
+environment). A run is built this way, not through the start mutation, because matching would
+need all five pathways to match the patient's conditions and survive lattice collapse, and three
+of them are ARCHIVED.
+
+**Controls:**
+- **No LLM:** `LLM_GATE_API_KEY` is deleted, so there is no client and LLM gates pend (C1).
+- **No normalisation traffic:** `prewarmMedications` is stubbed, so RxNav is never called and the
+  cache is never written.
+- The answer alternates between values, and each fact is new, so every timed call is a real
+  change.
+
+- [ ] **Step 1: Write the gate**
+
+Create `apps/pathway-service/src/__tests__/evaluation-mutation-gate.test.ts`:
+
+```ts
+/**
+ * MUTATION GATE — spec §5.7 budgets, per mutation (plan 05, P5-2). The release decision.
+ *
+ * Times the real resolvers end to end — load, evaluate, commit, reload — for a
+ * single-pathway mutation, an answer on a 5-child run and a fact on a 5-child
+ * run, each with its own p95. Setup (starting the session, storing the run)
+ * is outside the timed interval.
+ *
+ * WRITES: only to a database whose name contains "scratch" — a migrated,
+ * backfilled copy of live (plan 05 Tasks 6 and 8). No LLM client (C1: LLM
+ * gates pend); the pre-warm is stubbed (no RxNav, no cache writes).
+ *
+ *   RUN_MUTATION_GATE=1 PIPELINE_PG_DATABASE=prism_release_scratch POSTGRES_PASSWORD=$PGPASSWORD \
+ *     npm test --prefix apps/pathway-service -- --runInBand src/__tests__/evaluation-mutation-gate.test.ts
+ */
+jest.mock('../services/medications/normalizer', () => ({
+  ...jest.requireActual('../services/medications/normalizer'),
+  prewarmMedications: jest.fn(async () => ({ succeeded: 0, failed: 0 })),
+}));
+
+import { randomUUID } from 'crypto';
+import { Pool } from 'pg';
+import { performance } from 'perf_hooks';
+import { resolutionMutations } from '../resolvers/mutations/resolution';
+import type { PatientContext } from '../services/confidence/types';
+import { insertRun, setContributingSessions } from '../services/resolution/multi-pathway-session-store';
+import { inTransaction } from '../services/resolution/pipeline/request';
+import { evaluateRun, newRunRequest, sessionInputsOf } from '../services/resolution/pipeline/run';
+import { insertSession } from '../services/resolution/session-store';
+import { makeEvaluationTemporalContext } from '../services/resolution/temporal/evaluation-context';
+import { AnswerType, OverrideAction, SessionStatus } from '../services/resolution/types';
+import type { PendingQuestion } from '../services/resolution/types';
+
+const SINGLE = '8d7fbfc6-06cf-4caa-a4e7-2efe07e9ea6c'; // chronic-htn-pregnancy-v1@1.0
+const RUN = [
+  SINGLE,
+  '9ee949c9-625a-48ac-873b-c121e8fd24e2', // gestational-hypertension-preeclampsia@1
+  '40c06c6b-4699-47e3-bba5-c72ca72e9e7d', // routine-prenatal-care-v1@1.0
+  'ae6b0d51-3e89-4c0e-a062-d0a8eec01b69', // vaginal-discharge-pregnancy-v1@1.0
+  'a9600763-ba44-4481-9d0b-b66d63dd04dc', // anemia-pregnancy-v1@1.0
+];
+const BUDGET_P95_MS = { single: 2000, run: 5000 }; // spec §5.7
+const WARMUP = 3;
+const SAMPLES = 20;
+const AS_OF = '2026-09-14T12:00:00.000Z';
+const PATIENT = {
+  patientId: '00000000-0000-4000-a000-0000000000fe',
+  conditionCodes: [
+    { code: 'O10.01', system: 'ICD-10' },
+    { code: '8762007', system: 'SNOMED' },
+  ],
+  medications: [{ code: '6185', system: 'RxNorm', display: 'Labetalol' }],
+  allergies: [{ code: '91936005', system: 'SNOMED', display: 'Allergy to penicillin' }],
+  labResults: [{ code: '718-7', system: 'LOINC', value: 9.4, effectiveDateTime: '2026-09-01' }],
+  vitalSigns: { systolic_bp: 150, diastolic_bp: 95 },
+  patientAttributes: {},
+} as unknown as PatientContext;
+
+const pct = (values: number[], q: number): number => {
+  const sorted = [...values].sort((a, b) => a - b);
+  return sorted[Math.min(sorted.length - 1, Math.ceil(q * sorted.length) - 1)];
+};
+const line = (label: string, v: number[]) => `${label.padEnd(36)} p50 ${pct(v, 0.5).toFixed(0)}ms   p95 ${pct(v, 0.95).toFixed(0)}ms`;
+
+/** A value for the question that differs between consecutive calls. */
+const answerFor = (q: PendingQuestion, i: number) => {
+  if (q.answerType === AnswerType.BOOLEAN) return { booleanValue: i % 2 === 0 };
+  if (q.answerType === AnswerType.NUMERIC) return { numericValue: i };
+  if (!q.options?.length) throw new Error(`question ${q.gateId} has no options to answer with`);
+  return { selectedOption: q.options[i % q.options.length] };
+};
+
+const database = process.env.PIPELINE_PG_DATABASE ?? '';
+const describeGate = process.env.RUN_MUTATION_GATE === '1' ? describe : describe.skip;
+
+describeGate('mutation gate on a scratch copy of live (spec §5.7)', () => {
+  let pool: Pool;
+  const ctx = () => ({
+    pool, redis: null, userId: '00000000-0000-4000-a000-000000000002', userRole: 'PROVIDER', temporalPolicyVersion: 'v1',
+  }) as never;
+
+  beforeAll(() => {
+    if (!database.includes('scratch') || database === 'prism_db') {
+      throw new Error(`refusing database "${database}": set PIPELINE_PG_DATABASE to a scratch database`);
+    }
+    delete process.env.LLM_GATE_API_KEY; // no client: LLM gates pend (C1)
+    pool = new Pool({
+      host: process.env.POSTGRES_HOST ?? 'localhost',
+      user: process.env.POSTGRES_USER ?? 'prism',
+      password: process.env.POSTGRES_PASSWORD,
+      database,
+    });
+    pool.on('connect', (client) => {
+      client.query("LOAD 'age'; SET search_path = ag_catalog, \"$user\", public;").catch(() => { /* surfaced by the query that needs it */ });
+    });
+  });
+  afterAll(() => pool.end());
+
+  /** Warm up, then time each call alone. */
+  async function timed(mutate: (i: number) => Promise<unknown>): Promise<number[]> {
+    for (let i = 0; i < WARMUP; i++) await mutate(i);
+    const out: number[] = [];
+    for (let i = WARMUP; i < WARMUP + SAMPLES; i++) {
+      const t = performance.now();
+      await mutate(i);
+      out.push(performance.now() - t);
+    }
+    return out;
+  }
+
+  /** A 5-child run stored exactly as startMultiPathwayResolution stores one. Untimed. */
+  async function newRun() {
+    const temporalContext = makeEvaluationTemporalContext({ evaluationAsOf: AS_OF, temporalPolicyVersion: 'v1' });
+    const ev = await evaluateRun(pool, newRunRequest(), {
+      initialPatientContext: PATIENT, additionalContext: {}, temporalContext, conflictResolutions: {},
+      children: RUN.map((pathwayId) => ({
+        sessionId: '', pathwayId,
+        inputs: { pathwayId, graphFingerprint: '', gateAnswers: new Map(), providerOverrides: new Map(), observations: new Map(), revision: 0 },
+      })),
+    }, { pinGraphs: true });
+    if (ev.inputs.children.length !== RUN.length) throw new Error(`run has ${ev.inputs.children.length} children, expected ${RUN.length}`);
+    const providerId = randomUUID();
+    return inTransaction(pool, async (db) => {
+      const runId = await insertRun(db, {
+        patientId: PATIENT.patientId, providerId, isPreview: true, initialPatientContext: PATIENT,
+        temporalContext, additionalContext: {}, conflictResolutions: {}, result: ev.result,
+      });
+      const childIds: string[] = [];
+      for (const [i, child] of ev.inputs.children.entries()) {
+        childIds.push(await insertSession(db, {
+          pathwayVersion: ev.env.meta.get(child.pathwayId)?.version ?? '', patientId: PATIENT.patientId, providerId,
+          inputs: { ...sessionInputsOf(ev.inputs, child.inputs), additionalContext: {} },
+          result: ev.result.children[i].result, status: SessionStatus.ACTIVE, durationMs: 1, parentSessionId: runId,
+        }));
+      }
+      await setContributingSessions(db, runId, childIds, ev.inputs.children.map((c) => c.pathwayId));
+      return { childIds, pending: ev.result.children.map((c) => c.result.pendingQuestions) };
+    });
+  }
+
+  it('a single-pathway mutation: p95 < 2 s', async () => {
+    type Listed = { nodeId: string; nodeType: string };
+    const started = (await resolutionMutations.startResolution(null, {
+      pathwayId: SINGLE, patientId: PATIENT.patientId, patientContext: PATIENT, evaluationAsOf: AS_OF,
+    } as never, ctx())) as unknown as { id: string; includedNodes: Listed[]; excludedNodes: Listed[] };
+    const med = [...started.includedNodes, ...started.excludedNodes].find((n) => n.nodeType === 'Medication');
+    if (!med) throw new Error('no listed Medication node to override in the single pathway');
+
+    const times = await timed((i) => resolutionMutations.overrideNode(null, {
+      sessionId: started.id, nodeId: med.nodeId, action: i % 2 === 0 ? OverrideAction.INCLUDE : OverrideAction.EXCLUDE,
+    }, ctx()));
+    // eslint-disable-next-line no-console
+    console.log(line(`single: overrideNode (${SAMPLES} samples)`, times));
+    expect(pct(times, 0.95)).toBeLessThan(BUDGET_P95_MS.single);
+  }, 900_000);
+
+  it('an answer on a 5-child run: p95 < 5 s', async () => {
+    const run = await newRun();
+    const at = run.pending.findIndex((qs) => qs.length > 0);
+    if (at < 0) throw new Error('no child of the run has a pending question: an answer cannot be timed');
+    const q = run.pending[at][0];
+
+    const times = await timed((i) => resolutionMutations.answerPendingDecision(null, {
+      sessionId: run.childIds[at], nodeId: q.gateId, answer: answerFor(q, i) as never,
+    }, ctx()));
+    // eslint-disable-next-line no-console
+    console.log(line(`run: answer ${q.gateId} (${q.answerType}, child ${at})`, times));
+    expect(pct(times, 0.95)).toBeLessThan(BUDGET_P95_MS.run);
+  }, 900_000);
+
+  it('a fact on a 5-child run: p95 < 5 s', async () => {
+    const run = await newRun();
+    const times = await timed((i) => resolutionMutations.addPatientContext(null, {
+      sessionId: run.childIds[0], additionalContext: { vitalSigns: { heart_rate: 60 + i } },
+    }, ctx()));
+    // eslint-disable-next-line no-console
+    console.log(line('run: fact (vitalSigns.heart_rate)', times));
+    expect(pct(times, 0.95)).toBeLessThan(BUDGET_P95_MS.run);
+  }, 900_000);
+});
+```
+
+- [ ] **Step 2: Skipped by default; typecheck; imports resolve**
+
+```bash
+npm test --prefix $W/apps/pathway-service -- --runInBand src/__tests__/evaluation-mutation-gate.test.ts 2>&1 | grep -E "^Tests:"
+$W/node_modules/.bin/tsc -p $W/apps/pathway-service/tsconfig.json --noEmit && echo tsc-clean
+for sym in insertRun setContributingSessions inTransaction evaluateRun newRunRequest sessionInputsOf insertSession makeEvaluationTemporalContext prewarmMedications; do
+  grep -rqE "export (async )?(function|const) $sym\b" $W/apps/pathway-service/src/services || echo "MISSING $sym"
+done; echo imports-checked
+```
+Expected: `Tests: 3 skipped, 3 total`; `tsc-clean`; only `imports-checked`. The gate first runs
+for real in Task 6, on the rehearsal copy.
+
+- [ ] **Step 3: Commit**
+
+```bash
+git -C $W add apps/pathway-service/src/__tests__/evaluation-mutation-gate.test.ts
+git -C $W commit -q -m "test(pathway-service): per-mutation performance gate on a scratch copy
+
+Spec §5.7 budgets are per mutation. The gate times the real resolvers end
+to end — load, evaluate, commit, reload — for a single-pathway override,
+an answer and a fact on a 5-child run, each with its own p95. Scratch
+databases only; no LLM client; the pre-warm is stubbed.
+
+Claude-Session: https://claude.ai/code/session_01XRNkZvQrxmRLNtJHxq71kH"
+```
+
+---
+
+### Task 6: Pre-merge gate — suite, Postgres tests, full-copy rehearsal (P5-5), PR
 
 **Files:** none in the repo. Rehearsal notes go to `$REC/rehearsal.md` (docs branch).
 
@@ -895,7 +1213,7 @@ npm test --prefix $W/apps/pathway-service -- --runInBand 2>&1 | grep -E "^(FAIL|
 $W/node_modules/.bin/tsc -p $W/apps/pathway-service/tsconfig.json --noEmit && echo tsc-clean
 npm run build --prefix $W/apps/pathway-service && echo built
 ```
-Expected: only the two scorer `FAIL` lines; `Tests: 11 skipped, 9 failed, 1673 passed`;
+Expected: only the two scorer `FAIL` lines; `Tests: 14 skipped, 9 failed, 1673 passed`;
 `tsc-clean`; `built`. Fill in the *Baseline* row.
 
 - [ ] **Step 2: The opt-in Postgres tests (spec §5.6: required before merge)**
@@ -913,7 +1231,7 @@ Expected: `Tests: 10 passed`.
 
 - [ ] **Step 3: Rehearse the live sequence on a full copy (P5-5)**
 
-This is the exact order Tasks 6 and 8 use on live: backfill first, at 066, then 067 and 068 with
+This is the exact order Tasks 7 and 9 use on live: backfill first, at 066, then 067 and 068 with
 their history rows.
 
 ```bash
@@ -956,19 +1274,43 @@ for f in 067_evaluation_inputs.sql 068_run_inputs.sql; do
 done
 psql -h localhost -U prism -d prism_release_scratch -Atc "SELECT migration_id, checksum FROM migration_history WHERE migration_id >= '067' ORDER BY 1"
 ```
-Expected: both files apply without error, and two history rows. **Record both checksums.** Task 8
+Expected: both files apply without error, and two history rows. **Record both checksums.** Task 9
 must reproduce them exactly on live, which proves the files did not change between rehearsal and
 deploy.
 
-Smoke the migrated copy with the pipeline, read-only. The benchmark exercises `loadEvaluationEnv`,
+Run the stage benchmark on the migrated copy, read-only. It exercises `loadEvaluationEnv`,
 `loadRunEnv`, `evaluate` and `composeRun` on real graphs:
 
 ```bash
 RUN_EVALUATION_BENCHMARK=1 EXPECT_DDI_COVERAGE=1 POSTGRES_DB=prism_release_scratch POSTGRES_PASSWORD=$PGPASSWORD \
   npm test --prefix $W/apps/pathway-service -- --runInBand src/__tests__/evaluation-benchmark.test.ts 2>&1 | tail -30
 ```
-Expected: PASS, with `normalised` > 0 on the single pathway. This is also a first look at Task 7's
-numbers.
+Expected: PASS, with `normalised` > 0 on the single pathway and at least 2 on the root pair set.
+**Record the root pair set's `normalised` count.** Task 8 passes it as `MIN_ROOT_NORMALISED`, so
+live coverage below the rehearsal's fails the gate instead of shrinking it silently.
+
+Run the **mutation gate** (Task 5) on the migrated, backfilled copy. This is the first real
+measurement of the release decision:
+
+```bash
+RUN_MUTATION_GATE=1 PIPELINE_PG_DATABASE=prism_release_scratch POSTGRES_PASSWORD=$PGPASSWORD \
+  npm test --prefix $W/apps/pathway-service -- --runInBand src/__tests__/evaluation-mutation-gate.test.ts 2>&1 | grep -E "p95|Tests:|Error"
+```
+Expected: `Tests: 3 passed`, with one p95 line per operation.
+- **If a setup guard throws,** stop and report the message: no listed Medication node, no pending
+  question in the run, or a child count other than 5. It is a property of the live graphs that the
+  plan must answer; do not change the operation being timed.
+- **If a budget fails,** stop (spec §5.7).
+
+**Falsify:** make persistence slow. As the first statement of `writeEvaluation`
+(`session-store.ts`) and of `writeRunEvaluation` (`multi-pathway-session-store.ts`), add:
+
+```ts
+  await new Promise((r) => setTimeout(r, 5_100));
+```
+
+Re-run the gate. All three tests must fail on their p95 (about 6 minutes). Remove both lines, and
+confirm with `git -C $W diff --stat` that nothing else changed.
 
 Clean up:
 ```bash
@@ -982,7 +1324,8 @@ Write `$REC/rehearsal.md` with:
 - the backfill result (`N normalised, F not`);
 - the unmapped names;
 - the two checksums;
-- the benchmark table from the migrated copy.
+- the stage benchmark table from the migrated copy, and its root `normalised` count;
+- the mutation gate's three p95 lines, and the falsification outcome.
 
 Commit it on the docs branch (`docs: evaluation pipeline release — rehearsal record`, with the
 trailer).
@@ -1006,12 +1349,12 @@ Report:
 - the *Baseline* table;
 - each falsification outcome;
 - the Postgres test result;
-- the rehearsal record;
-- the pre-backfill benchmark table;
+- the rehearsal record, with the mutation gate's p95s;
+- the pre-backfill stage benchmark table;
 - the list of names RxNav could not map.
 
 **Wait until the user says the PR is merged into `feat/evaluation-pipeline`.** Then continue with
-Task 6.
+Task 7.
 
 ---
 
@@ -1024,7 +1367,7 @@ git -C $W fetch -q origin
 git -C $W merge-base --is-ancestor origin/feat/evaluation-pipeline-05-release origin/feat/evaluation-pipeline && echo merged
 ```
 
-### Task 6: 🔒B Normalisation backfill on live (P5-3, P5-4, P5-8)
+### Task 7: 🔒B Normalisation backfill on live (P5-3, P5-4, P5-8)
 
 **Files:** `$REC/backfill.md` (docs branch)
 
@@ -1063,25 +1406,54 @@ Tell the user:
 
 ---
 
-### Task 7: Gate re-run with real coverage (spec §5.7), and the PRs to `main` / `master`
+### Task 8: Gate re-run with real coverage (spec §5.7), and the PRs to `main` / `master`
 
 **Files:** plan 01's *Gate result* section, and this plan's *Gate re-run* section (docs branch).
 
-- [ ] **Step 1: Re-run the gate against live, read-only**
+- [ ] **Step 1: The mutation gate on a fresh, migrated copy of post-backfill live (the decision)**
+
+Live now holds the backfilled cache, and is still at 066. Copy it and migrate the copy exactly as
+in Task 6:
 
 ```bash
-RUN_EVALUATION_BENCHMARK=1 EXPECT_DDI_COVERAGE=1 POSTGRES_PASSWORD=$PGPASSWORD \
-  npm test --prefix $W/apps/pathway-service -- --runInBand src/__tests__/evaluation-benchmark.test.ts 2>&1 | tail -30
+export PGPASSWORD=$(pm2 env 0 | sed 's/\x1b\[[0-9;]*m//g' | awk -F': ' '/^POSTGRES_PASSWORD/{print $2}')
+dropdb -h localhost -U prism --if-exists prism_release_scratch
+createdb -h localhost -U prism prism_release_scratch
+pg_dump -h localhost -U prism -Fc prism_db > $SP/gate-copy.dump
+pg_restore -h localhost -U prism -d prism_release_scratch --no-owner $SP/gate-copy.dump 2>&1 | tail -3
+MIG=$W/shared/data-layer/migrations
+for f in 067_evaluation_inputs.sql 068_run_inputs.sql; do
+  psql -h localhost -U prism -d prism_release_scratch -v ON_ERROR_STOP=1 -f "${MIG}/${f}" || break
+done
+RUN_MUTATION_GATE=1 PIPELINE_PG_DATABASE=prism_release_scratch POSTGRES_PASSWORD=$PGPASSWORD \
+  npm test --prefix $W/apps/pathway-service -- --runInBand src/__tests__/evaluation-mutation-gate.test.ts 2>&1 | grep -E "p95|Tests:|Error"
+dropdb -h localhost -U prism prism_release_scratch; rm -f $SP/gate-copy.dump
 ```
-Expected: PASS, with `normalised` > 0 on the single pathway and on both DRAFT run children. The
-ARCHIVED children still show 0 (P5-4).
+Expected: `Tests: 3 passed`, with the single p95 < 2000 ms, and the run answer and run fact p95s
+each < 5000 ms. The copy needs no history rows, because it is dropped.
 
 **If a budget fails, stop. Do not open the PRs to `main`** (spec §5.7: revisit D1/D13).
 
-- [ ] **Step 2: Record the result**
+- [ ] **Step 2: The stage diagnostic on live, read-only**
 
-Fill in *Gate re-run* at the end of this plan, with Task 2 Step 4's pre-backfill numbers next to
-these. Under plan 01's *Gate result (2026-09-14, revised after review)*, add one line pointing to
+`MIN_ROOT_NORMALISED` is the root pair set's `normalised` count recorded in the rehearsal
+(Task 6):
+
+```bash
+RUN_EVALUATION_BENCHMARK=1 EXPECT_DDI_COVERAGE=1 MIN_ROOT_NORMALISED=<rehearsal count> POSTGRES_PASSWORD=$PGPASSWORD \
+  npm test --prefix $W/apps/pathway-service -- --runInBand src/__tests__/evaluation-benchmark.test.ts 2>&1 | tail -32
+```
+Expected: PASS.
+- `normalised` > 0 on the single pathway and on both DRAFT run children. The ARCHIVED children
+  still show 0 (P5-4).
+- The root pair set reaches the rehearsal's normalised count.
+- A shortfall means live coverage differs from the rehearsal's, for example because RxNav answered
+  differently. **Stop and report both counts.** Do not lower the floor.
+
+- [ ] **Step 3: Record the result**
+
+Fill in *Gate re-run* at the end of this plan: the mutation gate from Step 1, and the stage
+diagnostic from Step 2 next to Task 2 Step 4's pre-backfill numbers. Under plan 01's *Gate result (2026-09-14, revised after review)*, add one line pointing to
 it:
 
 ```markdown
@@ -1090,7 +1462,7 @@ it:
 
 Commit both on the docs branch and push.
 
-- [ ] **Step 3: Hand over the two merges**
+- [ ] **Step 4: Hand over the two merges**
 
 Both are fast-forwards (see *Live facts*):
 
@@ -1113,24 +1485,31 @@ Open, or hand over as compare URLs:
 Say in both bodies: *"Breaking API change: backend and admin deploy together (spec §4
 Deployment)."*
 
-- [ ] **Step 4: STOP — merge point 2**
+- [ ] **Step 5: STOP — merge point 2**
 
 Report:
-- the gate re-run table;
+- the gate re-run tables: the mutation gate, and the stages;
 - the backfill split;
 - the unmapped names still open;
 - the two compare URLs.
 
-**Wait until the user says both are merged.** Then continue with Task 8.
+**Wait until the user says both are merged.** Then continue with Task 9.
 
 ---
 
-### Task 8: 🔒C Deploy (spec §4 *Deployment*; `CLAUDE.md` *Redeploy Sequence*)
+### Task 9: 🔒C Deploy in a maintenance window (spec §4 *Deployment*; P5-6)
 
 **Files:** `$REC/deploy.md` (docs branch)
 
-Run every step in order. Between the migrations (Step 5) and the restart (Step 6) the old
-processes run against the new schema, so do those two steps back to back.
+**Shape.**
+1. Prove both builds outside the active release, at the exact merged commits (Step 2).
+2. Then **stop all three services**. Only after that change anything live: back up the database
+   and the current build artifacts, pull, build, migrate, start (Steps 3–8).
+3. On any failure from Step 3 on, **leave the services stopped** and ask. The public site returns
+   502 while they are stopped. There are no users.
+
+The reason: `next build` (Next 16.1.6, `cleanDistDir: true`) deletes `.next` before writing, and a
+running `next start` reads from it. And no old backend may serve the migrated schema.
 
 - [ ] **Step 1: Pre-flight (read-only)**
 
@@ -1140,61 +1519,84 @@ export PGPASSWORD=$(pm2 env 0 | sed 's/\x1b\[[0-9;]*m//g' | awk -F': ' '/^POSTGR
 git -C $G fetch -q origin; git -C $A fetch -q origin
 git -C $G merge-base --is-ancestor origin/feat/evaluation-pipeline origin/main && echo graphql-merged
 git -C $A merge-base --is-ancestor origin/feat/evaluation-pipeline origin/master && echo admin-merged
+git -C $G log --oneline -1; git -C $A log --oneline -1
 psql -h localhost -U prism -d prism_db -Atc "SELECT max(migration_id) FROM migration_history"
 psql -h localhost -U prism -d prism_db -Atc "SELECT (SELECT count(*) FROM pathway_resolution_sessions), (SELECT count(*) FROM multi_pathway_resolution_sessions)"
+git -C $G status --porcelain; git -C $A status --porcelain
 pm2 list
 ```
 Expected:
-- `graphql-merged`, `admin-merged`;
-- `066_backfill_remaining_branch_mode`;
-- session counts, which are **recorded**, not required to be 0. The two before-capture sessions
-  from Task 1 are expected. Anything beyond them is someone's session; 067 deletes it. **If there
-  are more than 2, stop and ask.**
-- all three pm2 processes `online`.
+- `graphql-merged`, `admin-merged`.
+- Live heads `2454130` and `3a32df8`. **Record them: they are the rollback targets.**
+- `066_backfill_remaining_branch_mode`.
+- Session counts: the two before-capture sessions from Task 1 are expected. **If there are more
+  than 2, stop and ask**, because 067 deletes them.
+- Porcelain: only ` M package-lock.json` in each checkout. **If anything else is modified, stop
+  and ask.**
+- All three pm2 processes `online`.
 
-- [ ] **Step 2: Clear the lockfile drift, then fast-forward the live checkouts**
+- [ ] **Step 2: Validate both builds outside the active release**
 
-Look before discarding:
+Run `/new-feature evaluation-pipeline-release-build` with **both** repos: prism-graphql from
+**`origin/main`** and prism-admin-dashboard from **`origin/master`**. This is a build-only
+worktree; nothing is committed in it. Then:
 
 ```bash
-git -C $G status --porcelain; git -C $A status --porcelain
-git -C $G diff --stat; git -C $A diff --stat
+RB=/home/claude/workspace/features/feat-evaluation-pipeline-release-build
+git -C $RB/prism-graphql log --oneline -1; git -C $G rev-parse --short origin/main
+git -C $RB/prism-admin-dashboard log --oneline -1; git -C $A rev-parse --short origin/master
+npm install --prefix $RB/prism-graphql
+npm install --prefix $RB/prism-admin-dashboard
+npm run build --prefix $RB/prism-graphql/apps/pathway-service && echo service-built
+npm run build --prefix $RB/prism-admin-dashboard && echo admin-built
 ```
-Expected: only ` M package-lock.json` in each. **If anything else is modified, stop and ask.**
-Then:
+Expected: each worktree head equals its `origin/main` / `origin/master`, then `service-built` and
+`admin-built`.
+
+**If either build fails, stop.** Nothing live has been touched. The admin build here needs no
+production environment beyond what `next build` reads at build time. If it fails only for a
+missing env var that pm2 supplies, copy that variable's name from `pm2 env 2`, not its value, and
+ask.
+
+- [ ] **Step 3: Enter the maintenance window: stop the services**
+
+```bash
+pm2 stop admin-dashboard gateway pathway-service
+pm2 list
+curl -sk -o /dev/null -w "%{http_code}\n" https://localhost/
+```
+Expected: all three `stopped`; `502`. From here to Step 8, a failure means **stay stopped, report,
+ask**.
+
+- [ ] **Step 4: Back up the database and the current build artifacts**
+
+```bash
+BK=/home/claude/backups/release-evaluation-pipeline-$(date +%Y%m%d-%H%M)
+mkdir -p $BK
+pg_dump -h localhost -U prism -Fc prism_db > $BK/prism_db.dump
+pg_restore --list $BK/prism_db.dump | grep -c "TABLE DATA"
+cp -a $G/apps/pathway-service/dist $BK/pathway-service-dist
+cp -a $A/.next $BK/admin-next
+cp $G/package-lock.json $BK/graphql-package-lock.json; cp $A/package-lock.json $BK/admin-package-lock.json
+du -sh $BK/*
+```
+Expected: a table-data count greater than 0, and non-empty copies. The lockfile copies preserve
+the drift that Step 5 discards.
+
+- [ ] **Step 5: Fast-forward the live checkouts, install, build**
 
 ```bash
 git -C $G checkout -- package-lock.json && git -C $G pull --ff-only
 git -C $A checkout -- package-lock.json && git -C $A pull --ff-only
 git -C $G log --oneline -1; git -C $A log --oneline -1
-```
-Expected: both heads equal their `origin/main` / `origin/master`.
-
-- [ ] **Step 3: Install and build**
-
-Neither step touches the running processes.
-
-```bash
 npm install --prefix $G
 npm install --prefix $A
-npm run build --prefix $G/apps/pathway-service
-npm run build --prefix $A
+npm run build --prefix $G/apps/pathway-service && echo service-built
+npm run build --prefix $A && echo admin-built
 ```
-Expected: both builds succeed. **If either fails, stop.** Nothing live has changed yet, and the
-old processes still serve the old build: `dist/` was overwritten, but pm2 holds the old code in
-memory until restart.
+Expected: the heads equal the commits Step 2 built, and both builds succeed, as they did in Step 2.
 
-- [ ] **Step 4: Backup (P5-6)**
-
-```bash
-mkdir -p /home/claude/backups
-pg_dump -h localhost -U prism -Fc prism_db > /home/claude/backups/prism_db-pre-evaluation-pipeline-$(date +%Y%m%d-%H%M).dump
-ls -la /home/claude/backups/ | tail -2
-pg_restore --list /home/claude/backups/prism_db-pre-evaluation-pipeline-*.dump | grep -c "TABLE DATA"
-```
-Expected: a non-empty dump, whose table-data count is greater than 0.
-
-- [ ] **Step 5: Apply 067 and 068**
+- [ ] **Step 6: Apply 067 and 068**
 
 ```bash
 MIG=$G/shared/data-layer/migrations
@@ -1207,18 +1609,18 @@ for f in 067_evaluation_inputs.sql 068_run_inputs.sql; do
 done
 psql -h localhost -U prism -d prism_db -Atc "SELECT migration_id, checksum FROM migration_history WHERE migration_id >= '067' ORDER BY 1"
 ```
-Expected: both apply, and **both checksums equal the rehearsal's**.
-- If 067 fails, it rolled itself back (`BEGIN … COMMIT`), so live is unchanged. **Stop and
-  report.**
-- If 068 fails after 067 succeeded, live is at 067 with the old code running. **Stop and ask**:
-  roll forward, or restore the backup.
+Expected: both apply, and **both checksums equal the rehearsal's** (Task 6).
+- A failing file rolls itself back (`BEGIN … COMMIT`).
+- If 067 fails, the database is unchanged.
+- If 068 fails, the database is at 067.
+- Either way the services stay stopped. **Stop and ask**: fix forward, or roll back.
 
-- [ ] **Step 6: Restart in order and verify**
+- [ ] **Step 7: Start in order and verify**
 
 ```bash
-pm2 restart pathway-service && sleep 2
-pm2 restart gateway && sleep 2
-pm2 restart admin-dashboard && sleep 3
+pm2 start pathway-service && sleep 3
+pm2 start gateway && sleep 3
+pm2 start admin-dashboard && sleep 5
 pm2 list
 pm2 logs pathway-service --nostream --lines 30
 curl -sk -o /dev/null -w "%{http_code}\n" https://localhost/
@@ -1227,32 +1629,46 @@ curl -s -X POST -H 'Content-Type: application/json' -d '{"query":"{ __type(name:
 sudo systemctl reload nginx
 ```
 Expected:
-- all three `online`, with fresh uptime;
+- all three `online`;
 - no startup error in the log;
 - `200`;
 - `{"data":{"__typename":"Query"}}`;
 - `"resultHash"`: the gateway composed the new subgraph.
 
-**Rollback, only if the user instructs it:**
-1. `pg_restore --clean --if-exists -h localhost -U prism -d prism_db <the dump>`.
-2. In both live checkouts, `git -C … checkout <2454130 | 3a32df8>`, which is detached.
-3. Rebuild both, restart all three.
-4. Report.
+If any check fails: `pm2 stop admin-dashboard gateway pathway-service`, then report and ask.
 
-- [ ] **Step 7: Record**
+- [ ] **Step 8: Rollback — only on the user's instruction, with the services stopped**
+
+```bash
+pm2 stop admin-dashboard gateway pathway-service
+pg_restore --clean --if-exists -h localhost -U prism -d prism_db $BK/prism_db.dump
+git -C $G checkout --detach 2454130; git -C $A checkout --detach 3a32df8
+npm install --prefix $G; npm install --prefix $A
+rm -rf $G/apps/pathway-service/dist && cp -a $BK/pathway-service-dist $G/apps/pathway-service/dist
+rm -rf $A/.next && cp -a $BK/admin-next $A/.next
+psql -h localhost -U prism -d prism_db -Atc "SELECT max(migration_id) FROM migration_history"
+pm2 start pathway-service && sleep 3; pm2 start gateway && sleep 3; pm2 start admin-dashboard
+```
+Expected: `066_backfill_remaining_branch_mode`, the old artifacts serving, and the Step 7 checks
+passing except `"resultHash"`, which the old schema lacks.
+- The checkouts are now detached at the old heads. Returning them to `main` / `master` is the
+  user's next decision.
+- The dump was taken after the backfill (Task 7), so the restore keeps the cache rows.
+
+- [ ] **Step 9: Record**
 
 Write `$REC/deploy.md` with:
-- the time;
-- the before and after heads of both checkouts;
-- the backup path;
+- the window's start and end times;
+- the old and new heads of both checkouts;
+- the backup directory;
 - the checksums;
 - the verification output.
 
-Commit it on the docs branch.
+Commit it on the docs branch. The build-only worktree is left for `/cleanup-feature` (Task 12).
 
 ---
 
-### Task 9: 🔒D After-record and the §5.8 comparison
+### Task 10: 🔒D After-record and the §5.8 comparison
 
 **Files:** `$REC/after.txt`, `$REC/before-after.md` (docs branch)
 
@@ -1294,7 +1710,7 @@ Commit `after.txt`, `before-after.diff` and `before-after.md` on the docs branch
 
 ---
 
-### Task 10: 🔒D Admin smoke test (spec §5.10)
+### Task 11: 🔒D Admin smoke test (spec §5.10)
 
 **Files:** `$REC/smoke-test.md` (docs branch)
 
@@ -1318,7 +1734,7 @@ Commit `smoke-test.md` on the docs branch.
 
 ---
 
-### Task 11: Close out
+### Task 12: Close out
 
 - [ ] **Step 1: Docs**
 
@@ -1336,20 +1752,31 @@ Report:
 - the smoke test;
 - the unmapped medications still open.
 
-Suggest `/cleanup-feature` for the merged plan branches 01–05 and `fix/preview-refresh-race`, but
+Suggest `/cleanup-feature` for the merged plan branches 01–05, `fix/preview-refresh-race` and the
+build-only `evaluation-pipeline-release-build` worktree, but
 **do not run it without the user's say-so**.
 
 ---
 
 ## Gate re-run (YYYY-MM-DD, after the backfill)
 
-| Measurement | Workload | Pre-backfill p95 (Task 2) | Post-backfill p95 | Budget | Pass |
-|---|---|---|---|---|---|
-| Single pathway, ROOT (chronic-htn-pregnancy-v1) | … nodes, … candidates, …/… normalised, … pairs loaded | … | … | < 2000 ms | … |
-| &nbsp;&nbsp;env snapshot | | … | … | — | — |
-| &nbsp;&nbsp;evaluate | | … | … | — | — |
-| 5-child run (one snapshot, 5 contributions, composeRun) | … nodes, … candidates, …/… normalised | … | … | < 5000 ms | … |
-| &nbsp;&nbsp;composeRun | | … | … | — | — |
+**The decision: the mutation gate** (Task 8 Step 1, a migrated copy of post-backfill live):
+
+| Mutation | p50 | p95 | Budget | Pass |
+|---|---|---|---|---|
+| Single pathway: `overrideNode` (chronic-htn-pregnancy-v1) | … | … | < 2000 ms | … |
+| 5-child run: answer (`answerPendingDecision`, gate …) | … | … | < 5000 ms | … |
+| 5-child run: fact (`addPatientContext`) | … | … | < 5000 ms | … |
+
+**Diagnostic: the stages** (Task 8 Step 2, live, read-only):
+
+| Measurement | Workload | Pre-backfill p95 (Task 2) | Post-backfill p95 |
+|---|---|---|---|
+| Single pathway, ROOT: total | … nodes, … candidates, …/… normalised, … pairs loaded | … | … |
+| &nbsp;&nbsp;env snapshot | | … | … |
+| &nbsp;&nbsp;evaluate | | … | … |
+| 5-child run: total | … nodes, … candidates; root pair set … candidates, … normalised, … comparisons (… conflicts, ACCEPT_BOTH) | … | … |
+| &nbsp;&nbsp;composeRun (decided) | | … | … |
 
 **Decision:** merge to `main` / STOP, and revisit D1/D13.
 
