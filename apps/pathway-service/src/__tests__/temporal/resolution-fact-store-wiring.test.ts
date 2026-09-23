@@ -55,7 +55,6 @@ jest.mock('../../services/resolution/session-store', () => ({
 }));
 
 jest.mock('../../services/resolution/multi-pathway-session-store', () => ({
-  createMultiPathwaySession: jest.fn().mockResolvedValue('mp-1'),
   getMultiPathwaySession: jest.fn().mockResolvedValue({
     id: 'mp-1',
     patientId: 'pt',
@@ -119,8 +118,6 @@ const mockBuildResolutionContext = jest.fn();
 jest.mock('../../resolvers/helpers/resolution-context', () => ({
   ...jest.requireActual('../../resolvers/helpers/resolution-context'),
   buildResolutionContext: (...a: unknown[]) => mockBuildResolutionContext(...a),
-  makeTraversalAdapter: jest.fn(() => ({ computeNodeConfidence: jest.fn() })),
-  makeRetraversalAdapter: jest.fn(() => ({ computeNodeConfidence: jest.fn() })),
   makeLlmGateEvaluator: jest.fn(() => null),
 }));
 
@@ -128,7 +125,6 @@ import { readFileSync } from 'fs';
 import { join } from 'path';
 import { parse, Kind } from 'graphql';
 import { getSession, createSession } from '../../services/resolution/session-store';
-import { createMultiPathwaySession } from '../../services/resolution/multi-pathway-session-store';
 import { assembleContext } from '../../services/resolution/temporal/context-assembler';
 import { resolutionMutations } from '../../resolvers/mutations/resolution';
 import {
@@ -146,9 +142,6 @@ import type { FactStore } from '../../services/resolution/temporal/fact-model';
 
 const mockedGetSession = getSession as jest.MockedFunction<typeof getSession>;
 const mockedCreateSession = createSession as jest.MockedFunction<typeof createSession>;
-const mockedCreateMp = createMultiPathwaySession as jest.MockedFunction<
-  typeof createMultiPathwaySession
->;
 const mockedGetMatched = getMatchedPathways as jest.MockedFunction<typeof getMatchedPathways>;
 const mockedAssemble = assembleContext as jest.MockedFunction<typeof assembleContext>;
 
@@ -336,7 +329,6 @@ beforeEach(() => {
     isIncomplete: false,
   });
   mockedCreateSession.mockResolvedValue('session-1');
-  mockedCreateMp.mockResolvedValue('mp-1');
   mockedGetMatched.mockResolvedValue([]);
   mockedGetSession.mockResolvedValue(sessionWith() as never);
 });
