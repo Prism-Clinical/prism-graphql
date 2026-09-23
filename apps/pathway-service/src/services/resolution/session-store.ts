@@ -381,7 +381,8 @@ export async function logNodeOverride(
       data.sessionId,
       data.nodeId,
       data.pathwayId,
-      data.action,
+      // The GraphQL enum is INCLUDE / EXCLUDE; 043's CHECK admits only lowercase.
+      data.action.toLowerCase(),
       data.reason,
       data.originalStatus,
       data.originalConfidence,
