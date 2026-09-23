@@ -167,6 +167,26 @@ describe('property (a) for runs: edits one at a time equal a fresh evaluation of
     }), { numRuns: 30 });
   });
 
+  it('holds when the conflict exists from the start and a decision is always applied (P5-9)', async () => {
+    const openWithConflict = fc.tuple(chooseArb, fc.array(fc.oneof(answerArb, overrideArb, factArb, chooseArb), { maxLength: 7 }))
+      .map(([decision, rest]): Edit[] => [{ kind: 'answer', gate: 'qa', value: true }, decision, ...rest]);
+    await fc.assert(fc.asyncProperty(openWithConflict, async (edits) => {
+      harness.reset();
+      register();
+      const runId = await startRun();
+      const start = runInputsOf(await loadRun(harness.pool(), runId));
+
+      const applied: Edit[] = [];
+      for (const e of edits) if (await applyEdit(runId, e)) applied.push(e);
+      // Runtime guard: this property exists to exercise decisions (P5-9).
+      if (!applied.some((e) => e.kind === 'choose')) throw new Error(`no decision applied: ${JSON.stringify(edits)}`);
+
+      const stored = harness.run(runId).resultHash;
+      expect(await freshHash(finalInputs(start, applied))).toBe(stored);
+      expect(await freshHash(runInputsOf(await loadRun(harness.pool(), runId)))).toBe(stored);
+    }), { numRuns: 30 });
+  });
+
   it('positive control: the edits change the run, so the property is not vacuous', async () => {
     const runId = await startRun();
     const before = harness.run(runId).resultHash;
