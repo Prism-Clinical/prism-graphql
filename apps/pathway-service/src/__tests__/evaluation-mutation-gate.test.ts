@@ -141,6 +141,10 @@ describeGate('mutation gate on a scratch copy of live (spec §5.7)', () => {
 
   it('a single-pathway mutation: p95 < 2 s', async () => {
     type Listed = { nodeId: string; nodeType: string };
+    // startResolution takes ACTIVE pathways only, and chronic-htn is DRAFT on
+    // live. Activate it on this scratch copy (beforeAll refused anything else)
+    // so the gate keeps the spec §5.7 workload. Untimed setup.
+    await pool.query(`UPDATE pathway_graph_index SET status = 'ACTIVE' WHERE id = $1`, [SINGLE]);
     const started = (await resolutionMutations.startResolution(null, {
       pathwayId: SINGLE, patientId: PATIENT.patientId, patientContext: PATIENT, resolutionMode: 'SYNTHETIC', evaluationAsOf: AS_OF,
     } as never, ctx())) as unknown as { id: string; includedNodes: Listed[]; excludedNodes: Listed[] };
