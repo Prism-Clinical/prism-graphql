@@ -295,6 +295,14 @@ Gated steps connect **only** via their gate's `BRANCHES_TO` — no `HAS_STEP` ed
     a rolling lookback. `window_days: 300` is the same pregnancy-length proxy the
     gestational-hypertension pathway uses. It will keep counting into the postpartum period
     unless the pregnancy episode closes.
+  - `[DECISION — Josh 2026-09-24]` **Ratified: `window_days: 300` stays.** (`horizon:
+    "LIFETIME"` would let the undated simulator entries count, but would also count every
+    O23 code from any earlier pregnancy.) **Simulator note:** the composer cannot exercise
+    this gate yet — it sends undated conditions, and a bounded window never counts an
+    undated entry, so the count is 0 and the gate answers "no". Occurrence dates are
+    landing: the backend already accepts `date` on `CodeInput`, and composer date fields
+    for conditions and labs are being added (dashboard `josh-dev` `6ea17a9`). Once they
+    ship, enter two O23 codes dated inside the last 300 days to fire it.
   - `[GAP — DE-DUPLICATION]` **ACOG never defines the countable unit**, and concedes in its own
     Further Research section that how to define recurrent UTI in pregnancy is unresolved. One
     infection can generate an index culture, a test-of-cure culture and multiple claims — all
@@ -611,7 +619,7 @@ referenced.
 | Gate | Condition on | horizon | status | window_days | Rationale |
 |---|---|---|---|---|---|
 | gate-culture-positive | labs 19090-0 | {days: 300} | — | — | This pregnancy only — a prior pregnancy's culture must not fire treatment now |
-| gate-recurrent-uti | conditions O23.* | — | — | **300** | Operator-windowed (XOR rule). ACOG's window is "during pregnancy"; 300 days is the proxy |
+| gate-recurrent-uti | conditions O23.* | — | — | **300** | Operator-windowed (XOR rule). ACOG's window is "during pregnancy"; 300 days is the proxy. `[DECISION — Josh 2026-09-24]` ratified |
 | gate-no-repeat-screening | conditions E10.*, E11.*, O24.*, G82.2.*, G82.5.*, N31.*, T91.3 | LIFETIME | any | — | Diabetes and spinal cord injury are standing conditions |
 | gate-penicillin-allergy (+ -gbs copy) | allergies SNOMED 91936005, 294505008, 294499007, 294497009; conditions Z88.0 | LIFETIME | any | — | Drug allergy does not expire. `[BUILD FIX]` codes moved to the field/system that carries them. `[DECISION — Josh 2026-09-24]` Z88.1 removed — Z88.0 only |
 | gate-pyelonephritis-suspected | vitals temperature_f | DAY | — | — | `[BUILD FIX 2026-09-24]` Vitals are one undated current value, so any bounded horizon admits them — but an omitted horizon inherits v1's ENCOUNTER default, which rejects every simulator session (no encounterStart) for this and every co-matched pathway |
@@ -711,3 +719,8 @@ window. The simulator dates nothing, so the count is always 0 and the gate alway
 "no" there (aggregates never ask). `horizon: "LIFETIME"` instead of `window_days` would
 admit undated entries — but would also count every O23 code the patient ever had, from
 any pregnancy. Left as authored; test with dated conditions, not the composer.
+
+`[DECISION — Josh 2026-09-24]` **`window_days: 300` ratified.** The simulator can exercise
+this gate once the composer's occurrence-date fields land (being added now — dashboard
+`josh-dev` `6ea17a9`; the backend already accepts `date` on `CodeInput`): two O23 entries
+dated within 300 days of the session clock should fire it.
