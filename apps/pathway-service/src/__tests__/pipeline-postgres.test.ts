@@ -191,6 +191,19 @@ describePg('the evaluation pipeline against Postgres (scratch database)', () => 
     expect(loadEvaluationEnv).not.toHaveBeenCalled();
   });
 
+  it('an override commits with its audit row: the enum value GraphQL delivers meets the 043 CHECK (plan 05)', async () => {
+    const { id } = await newSession();
+
+    // 'INCLUDE' is what the GraphQL enum hands the resolver.
+    await resolutionMutations.overrideNode(null, { sessionId: id, nodeId: 'med', action: 'INCLUDE' as never }, { pool, userId: randomUUID() } as never);
+
+    const session = await pool.query('SELECT revision, provider_overrides FROM pathway_resolution_sessions WHERE id = $1', [id]);
+    expect(session.rows[0].revision).toBe(1);
+    expect(Object.keys(session.rows[0].provider_overrides)).toEqual(['med']);
+    const audit = await pool.query('SELECT node_id, action FROM pathway_node_overrides WHERE session_id = $1', [id]);
+    expect(audit.rows).toEqual([{ node_id: 'med', action: 'include' }]);
+  });
+
   it('068 reshaped the run table', async () => {
     const { rows } = await pool.query(
       `SELECT column_name, is_nullable FROM information_schema.columns WHERE table_name = 'multi_pathway_resolution_sessions'`,
