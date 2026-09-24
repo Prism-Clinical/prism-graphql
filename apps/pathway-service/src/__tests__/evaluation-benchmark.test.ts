@@ -113,7 +113,10 @@ async function single(pool: Pool) {
   const t1 = performance.now();
   const r = await evaluateIn(SINGLE, env, 'ROOT');
   const t2 = performance.now();
-  return { env: t1 - t0, evaluate: t2 - t1, total: t2 - t0, workload: workloadOf(env, r), pairs: env.safety.pairs.size };
+  return {
+    env: t1 - t0, evaluate: t2 - t1, total: t2 - t0, workload: workloadOf(env, r), findings: r.safetyFindings.length,
+    reference: `${env.safety.pairs.size} pair rules, ${env.safety.classRules.length} class rules, ${env.safety.allergyMappings.length} allergy mappings`,
+  };
 }
 
 /**
@@ -212,6 +215,8 @@ describeBenchmark('evaluation performance gate on the pipeline (live DB, read-on
         // The pair check must have had its intended set (review, 2026-09-22).
         expect(r.root.candidates).toBeGreaterThanOrEqual(MIN_ROOT_CANDIDATES);
       }
+      // Normalisation coverage only: with empty reference tables these comparisons are empty
+      // lookups. Exercised safety rules are asserted by the mutation gate's fixture pass.
       if (process.env.EXPECT_DDI_COVERAGE === '1') {
         expect(singles[0].workload.normalised).toBeGreaterThan(0);
         for (const r of runs) expect(r.root.normalised).toBeGreaterThanOrEqual(Number(process.env.MIN_ROOT_NORMALISED ?? 2));
@@ -224,7 +229,8 @@ describeBenchmark('evaluation performance gate on the pipeline (live DB, read-on
         '',
         `single pathway ${SINGLE}, ROOT scope (${SAMPLES} samples)`,
         `  workload: ${s0.workload.nodes} nodes, ${s0.workload.resolved} resolved, ${s0.workload.candidates} safety candidates, ` +
-          `${s0.workload.normalised} normalised, ${s0.pairs} interaction pairs loaded`,
+          `${s0.workload.normalised} normalised`,
+        `  safety reference: ${s0.reference}; ${s0.findings} findings (0 rules or 0 findings = no DDI rule exercised)`,
         row('  env snapshot', singles.map((s) => s.env)),
         row('  evaluate', singles.map((s) => s.evaluate)),
         row('  total', singles.map((s) => s.total)),
