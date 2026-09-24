@@ -84,6 +84,7 @@ import {
 import { factStoreForInput } from '../../services/resolution/temporal/fact-store';
 import type { FactStore } from '../../services/resolution/temporal/fact-model';
 import { assertKnownPolicyVersion } from '../../services/resolution/temporal/policy-registry';
+import { normalizeAnswerType } from '../../services/resolution/answer-validation';
 import {
   createMultiPathwaySession,
   deletePreviewSession,
@@ -594,7 +595,7 @@ export const multiPathwayResolutionTypeResolvers = {
             pathwayTitle: String(row.pathway_title ?? '(untitled pathway)'),
             gateId: String(q.gateId ?? q.gate_id ?? ''),
             prompt: String(q.prompt ?? ''),
-            answerType: String(q.answerType ?? q.answer_type ?? 'BOOLEAN'),
+            answerType: normalizeAnswerType(q.answerType ?? q.answer_type),
             options: Array.isArray(q.options) ? (q.options as string[]) : null,
             affectedSubtreeSize: Number(q.affectedSubtreeSize ?? q.affected_subtree_size ?? 0),
             estimatedImpact: String(q.estimatedImpact ?? q.estimated_impact ?? 'unknown'),

@@ -7,6 +7,7 @@ import { EvaluationTemporalContext } from './temporal/evaluation-context';
 import { askFor } from './unresolved-prompt';
 import { parseBranchWhen } from '../import/branch-when';
 import { decisionValueOf, decisionSelects } from './decision-value';
+import { normalizeAnswerType } from './answer-validation';
 import {
   reconcilePendingQuestions,
   reconcileRedFlags,
@@ -1198,7 +1199,7 @@ export class TraversalEngine {
           pendingQuestions.push({
             gateId: nodeIdentifier,
             prompt: gateProps.prompt ?? gateProps.title,
-            answerType: gateProps.answer_type ?? AnswerType.BOOLEAN,
+            answerType: normalizeAnswerType(gateProps.answer_type),
             options: gateProps.options,
             affectedSubtreeSize: subtreeSize,
             estimatedImpact: subtreeSize > 3 ? 'high' : subtreeSize > 1 ? 'medium' : 'low',
