@@ -106,6 +106,11 @@ Plus type-specific fields:
 **patient_attribute / compound** — give each condition in exactly one of the two forms:
 - *Attribute form*: attribute `<lab|vitals|allergy|patient>.<name>`, operator (equals | not_equals | greater_than | greater_or_equal | less_than | less_or_equal | in | exists), value, unit.
   - Only namespaces `lab`, `vitals`, `allergy`, `patient` exist. Every `lab.*`/`allergy.*` attribute used must also appear in §14.
+- *Code system is fixed by field* (what the simulator and chart feed send): conditions →
+  ICD-10, medications → RXNORM, allergies → **SNOMED**, labs → LOINC, vitals → none. An
+  allergy documented both ways (SNOMED allergy finding; ICD-10 Z88.x status code) is an OR
+  of `allergies`/SNOMED and `conditions`/ICD-10 conditions. Blood pressure and temperature
+  are **vitals** (`systolic_bp`, `diastolic_bp`, `temperature_f` in °F), not LOINC labs.
 - *Coded form*: field (conditions | medications | allergies | labs | vitals), operator (includes_code | equals | exists | greater_than | less_than | count_in_window | trend_up | trend_down | delta_from_baseline), value (code, wildcard like `Z94.*` ok, or vitals dotted path), system (**never on vitals** — hard import error), and the operator's params:
   - greater_than/less_than → `threshold` (always explicit, finite number)
   - count_in_window → `count_threshold` (positive integer), `window_days` (omit = lifetime)

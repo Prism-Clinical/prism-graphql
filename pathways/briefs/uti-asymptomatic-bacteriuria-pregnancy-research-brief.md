@@ -257,8 +257,16 @@ Gated steps connect **only** via their gate's `BRANCHES_TO` — no `HAS_STEP` ed
     stage whether or not the GBS arm opened — as before.
   - Exclusively gated: yes
   - Type: **compound**, operator **OR** · Default behavior: **skip**
-  - Conditions (coded): field `allergies`, `includes_code`, values `Z88.0` (penicillin) and
-    `Z88.1` (other antibiotic agents), system ICD-10, horizon `LIFETIME`, status `any`
+  - Conditions (coded), all `includes_code`, horizon `LIFETIME`, status `any`
+    `[BUILD FIX 2026-09-24 — was Z88.0/Z88.1 under field allergies]`:
+    - field `allergies`, system SNOMED: `91936005` Allergy to penicillin, `294505008`
+      Allergy to amoxicillin, `294499007` Allergy to penicillin G, `294497009` Allergy to
+      penicillin V (verified active on tx.fhir.org, SNOMED International 2025-02-01; the
+      last three are children of 91936005 — the matcher does not expand hierarchies)
+    - field `conditions`, system ICD-10: `Z88.0`, `Z88.1`
+  - `[BUILD FIX]` Allergies arrive as SNOMED findings; Z88.x are ICD-10 allergy-*status*
+    diagnoses and arrive under conditions. An ICD-10 code under `allergies` could never
+    match, so the gate silently answered "no" for every penicillin-allergic patient.
   - `[DECISION]` This is the pathway's one genuine use of allergy conditions. Note the engine's
     `exists` semantics were changed so an **absent** allergy no longer satisfies an exists test
     — which is correct here: "no recorded allergy" must not read as "allergy documented absent".
@@ -331,8 +339,11 @@ Gated steps connect **only** via their gate's `BRANCHES_TO` — no `HAS_STEP` ed
   - Exclusively gated: yes — Stage 6 is branch-entry only.
   - Type: **compound**, operator **OR** · Default behavior: **skip**
   - Conditions:
-    - field `vitals`, `greater_than`, value `temperature_c`, threshold **37.9** *(no `system` —
-      illegal on vitals)*
+    - field `vitals`, `greater_than`, value `temperature_f`, threshold **100.3**, horizon `DAY`
+      *(no `system` — illegal on vitals)* `[BUILD FIX 2026-09-24 — was temperature_c > 37.9]`
+  - `[BUILD FIX — NEEDS CONFIRMATION]` The simulator sends `temperature_f` (°F); there is no
+    `temperature_c`, so the gate asked for a value no one could enter. `> 100.3 °F` at 0.1°
+    resolution is "≥ 100.4 °F" = 38.0 °C, the ACOG fever criterion this gate encodes.
     - field `conditions`, `includes_code`, value `N10`, system ICD-10, horizon `{days: 300}`
   - `[DECISION — OPERATOR]` ACOG's stated criterion is fever ≥38.0 °C **AND** urine studies,
     with flank pain *supporting*. But ACOG separately warns that partial presentations —
@@ -597,8 +608,8 @@ referenced.
 | gate-culture-positive | labs 19090-0 | {days: 300} | — | — | This pregnancy only — a prior pregnancy's culture must not fire treatment now |
 | gate-recurrent-uti | conditions O23.* | — | — | **300** | Operator-windowed (XOR rule). ACOG's window is "during pregnancy"; 300 days is the proxy |
 | gate-no-repeat-screening | conditions E10.*, E11.*, O24.*, G82.2*, G82.5*, N31.*, T91.3 | LIFETIME | any | — | Diabetes and spinal cord injury are standing conditions |
-| gate-penicillin-allergy | allergies Z88.0, Z88.1 | LIFETIME | any | — | Drug allergy does not expire |
-| gate-pyelonephritis-suspected | vitals temperature_c | DAY | — | — | `[BUILD FIX 2026-09-24]` Vitals are one undated current value, so any bounded horizon admits them — but an omitted horizon inherits v1's ENCOUNTER default, which rejects every simulator session (no encounterStart) for this and every co-matched pathway |
+| gate-penicillin-allergy (+ -gbs copy) | allergies SNOMED 91936005, 294505008, 294499007, 294497009; conditions Z88.0, Z88.1 | LIFETIME | any | — | Drug allergy does not expire. `[BUILD FIX]` codes moved to the field/system that carries them |
+| gate-pyelonephritis-suspected | vitals temperature_f | DAY | — | — | `[BUILD FIX 2026-09-24]` Vitals are one undated current value, so any bounded horizon admits them — but an omitted horizon inherits v1's ENCOUNTER default, which rejects every simulator session (no encounterStart) for this and every co-matched pathway |
 | gate-pyelonephritis-suspected | conditions N10 | {days: 300} | active | — | This pregnancy only |
 
 `[DECISION]` **300 days is again the "this pregnancy" proxy** — the horizon grammar has no

@@ -459,8 +459,8 @@
           {
             "field": "vitals",
             "operator": "greater_than",
-            "value": "temperature_c",
-            "threshold": 37.9,
+            "value": "temperature_f",
+            "threshold": 100.3,
             "horizon": "DAY"
           },
           {
@@ -500,16 +500,54 @@
           {
             "field": "allergies",
             "operator": "includes_code",
-            "value": "Z88.0",
-            "system": "ICD-10",
+            "value": "91936005",
+            "system": "SNOMED",
+            "display": "Allergy to penicillin",
             "horizon": "LIFETIME",
             "status": "any"
           },
           {
             "field": "allergies",
             "operator": "includes_code",
+            "value": "294505008",
+            "system": "SNOMED",
+            "display": "Allergy to amoxicillin",
+            "horizon": "LIFETIME",
+            "status": "any"
+          },
+          {
+            "field": "allergies",
+            "operator": "includes_code",
+            "value": "294499007",
+            "system": "SNOMED",
+            "display": "Allergy to penicillin G",
+            "horizon": "LIFETIME",
+            "status": "any"
+          },
+          {
+            "field": "allergies",
+            "operator": "includes_code",
+            "value": "294497009",
+            "system": "SNOMED",
+            "display": "Allergy to penicillin V",
+            "horizon": "LIFETIME",
+            "status": "any"
+          },
+          {
+            "field": "conditions",
+            "operator": "includes_code",
+            "value": "Z88.0",
+            "system": "ICD-10",
+            "display": "Allergy status to penicillin",
+            "horizon": "LIFETIME",
+            "status": "any"
+          },
+          {
+            "field": "conditions",
+            "operator": "includes_code",
             "value": "Z88.1",
             "system": "ICD-10",
+            "display": "Allergy status to other antibiotic agents",
             "horizon": "LIFETIME",
             "status": "any"
           }
@@ -529,16 +567,54 @@
           {
             "field": "allergies",
             "operator": "includes_code",
-            "value": "Z88.0",
-            "system": "ICD-10",
+            "value": "91936005",
+            "system": "SNOMED",
+            "display": "Allergy to penicillin",
             "horizon": "LIFETIME",
             "status": "any"
           },
           {
             "field": "allergies",
             "operator": "includes_code",
+            "value": "294505008",
+            "system": "SNOMED",
+            "display": "Allergy to amoxicillin",
+            "horizon": "LIFETIME",
+            "status": "any"
+          },
+          {
+            "field": "allergies",
+            "operator": "includes_code",
+            "value": "294499007",
+            "system": "SNOMED",
+            "display": "Allergy to penicillin G",
+            "horizon": "LIFETIME",
+            "status": "any"
+          },
+          {
+            "field": "allergies",
+            "operator": "includes_code",
+            "value": "294497009",
+            "system": "SNOMED",
+            "display": "Allergy to penicillin V",
+            "horizon": "LIFETIME",
+            "status": "any"
+          },
+          {
+            "field": "conditions",
+            "operator": "includes_code",
+            "value": "Z88.0",
+            "system": "ICD-10",
+            "display": "Allergy status to penicillin",
+            "horizon": "LIFETIME",
+            "status": "any"
+          },
+          {
+            "field": "conditions",
+            "operator": "includes_code",
             "value": "Z88.1",
             "system": "ICD-10",
+            "display": "Allergy status to other antibiotic agents",
             "horizon": "LIFETIME",
             "status": "any"
           }

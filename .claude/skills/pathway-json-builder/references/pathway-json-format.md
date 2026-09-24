@@ -278,12 +278,12 @@ Carries one `condition` object, which is either an **attribute condition** or a 
 > attributes list and code-map seeding exists.
 
 ```json
-{ "attribute": "vitals.temperature_c", "operator": "greater_than", "value": 38 }
+{ "attribute": "vitals.temperature_f", "operator": "greater_than", "value": 100.3, "horizon": "DAY" }
 ```
 
 - `attribute` = `<namespace>.<name>`. Registered namespaces (hard error otherwise): **`lab`**, **`vitals`**, **`allergy`**, **`patient`**.
   - `lab.*` / `allergy.*` resolve through the DB table `pathway_attribute_code_map` (attribute_name → system+code+value_type). **An unregistered attribute name imports fine but silently resolves to undefined at runtime** ⇒ the gate falls back to `default_behavior`. Every `lab.*`/`allergy.*` attribute you emit must be listed in the brief's "Attribute-map registrations" section so it gets seeded.
-  - `vitals.*` walks a dotted numeric path in the patient's vitalSigns bag (e.g. `vitals.systolic_bp`, `vitals.temperature_c`).
+  - `vitals.*` walks a dotted numeric path in the patient's vitalSigns bag (e.g. `vitals.systolic_bp`, `vitals.temperature_f`) — keys per **What the simulator sends**.
   - `patient.*` reads derived scalars with no terminology code (e.g. `patient.gestational_age_weeks`, `patient.trimester`, `patient.rh_factor`).
 - `operator` ∈ `equals`, `not_equals`, `greater_than`, `greater_or_equal`, `less_than`, `less_or_equal`, `in` (value = array), `exists`. Note: `exists` on an **absent** fact (e.g. an allergy the patient doesn't have) is unsatisfied — it no longer degrades to "attribute resolved" semantics (fixed post-kernel).
 - There is **no** `symptom.*`, `medication.*`, or `condition.*` namespace (older docs said otherwise — they now hard-fail import). Symptom presence/severity is elicited ⇒ use a `question` gate. Diagnosis/medication history ⇒ use a coded condition.
@@ -478,6 +478,40 @@ Runtime contract: `depends_on: [{ "node_id": "step-3-1", "status": "INCLUDED" }]
 Re-verified at `9880729`: the evaluator-kernel merge did **not** fix the `depends_on`
 validator/runtime shape mismatch (prior_node_result still unauthorable — see its section
 above) or the dead `gate_type === 'select'` options check. Both restrictions stand.
+
+## What the simulator sends (author gates against THIS)
+
+Derived from the admin dashboard's encounter simulator — `PatientComposer.tsx` (payload
+built in `handleResolve`) and `app/encounter/page.tsx` (the `patientAttributes` merge), in
+`prism-admin-dashboard`. A gate that reads a key, field or code system not in this table
+never fires in the simulator: it silently answers "no" (membership) or asks forever
+(scalar).
+
+| Payload | Gate field / namespace | What arrives | Code system | Dated? | Notes |
+|---|---|---|---|---|---|
+| `conditionCodes` | `conditions` | typeahead codes | **ICD-10** | no | No `clinicalState`, so `status: "active"` fails open to active. Z-codes such as `Z88.0` (allergy *status*) arrive here, not in allergies. |
+| `medications` | `medications` | typeahead codes | **RXNORM** | no | |
+| `allergies` | `allergies` | typeahead codes | **SNOMED** | no | SNOMED *findings* such as `91936005` Allergy to penicillin. **Never ICD-10** — an ICD-10 code under `allergies` can never match a simulator patient. |
+| `labResults` | `labs` | `{code, value, unit}` | **LOINC** | **no** | One value per LOINC: two undated results for one code are `AMBIGUOUS_LATEST` and the gate asks. |
+| `vitalSigns` | `vitals` (coded `value`, or `vitals.<key>`) | numbers | none (never set `system`) | no — asserted current | Keys exactly: `systolic_bp`, `diastolic_bp` (mmHg), `heart_rate` (bpm), `respiratory_rate` (/min), `spo2` (%), **`temperature_f` (°F)**, `weight_kg`, `height_cm`, `bmi` (auto from height+weight), `custom.<key>`. There is **no `temperature_c`**, and blood pressure is a vital, **not** LOINC `8480-6`/`8462-4` labs. |
+| `freeformData.narrative` | `llm_text_analysis` `input_attribute` | text | — | — | `chief_complaint`, `history_of_present_illness`, `social_history`, custom keys flattened alongside. |
+| `patientAttributes` | `patient.*` | `gestational_age_weeks`, `trimester` | — | — | Encounter page only (trimester derived from GA when only GA is given). The pathway-preview flow sends `{}`. |
+| `encounterStart` | — | **never sent** | — | — | Any condition resolving to an `ENCOUNTER` horizon rejects the session (temporal rule 0). |
+
+Consequences for authoring:
+- **Code system per field is fixed:** conditions ICD-10, medications RXNORM, allergies
+  SNOMED, labs LOINC. A clinical fact recorded in two systems (penicillin allergy: SNOMED
+  finding in `allergies`, ICD-10 `Z88.0` status code in `conditions`) is one `OR` across
+  both fields, never one system placed in the other's field.
+- **No hierarchy expansion:** `includes_code` matches the literal code (or a trailing
+  `.*` prefix for ICD-10-style codes). A SNOMED parent does not match its children — list
+  the common children explicitly.
+- **Blood pressure and temperature are vitals.** Author them as `field: "vitals"` with
+  `horizon: "DAY"`. Do **not** OR a lab form with the vitals form: with a normal vitals
+  BP and no lab, the vitals condition is a definite false and the lab condition is
+  unresolved, so the OR asks for the lab forever.
+- **Nothing is dated.** Trend, delta and `count_in_window` operators need dated facts and
+  cannot fire from the composer (see **What needs dated facts**).
 
 ## Edges
 

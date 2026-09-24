@@ -221,10 +221,17 @@ states what data gate it *would* have been and why that is not expressible.
   - Exclusively gated: yes — Step 2.2 leaves Stage 2's plain flow.
   - Type: **compound**, operator **OR** · Default behavior: **skip** — with no BP on record
     there is nothing to confirm; the surveillance step itself is unconditional.
-  - Conditions (coded):
-    - field `labs`, `greater_than`, value `8480-6`, system LOINC, threshold **139.9**, horizon `{days: 7}`
-    - field `labs`, `greater_than`, value `8462-4`, system LOINC, threshold **89.9**, horizon `{days: 7}`
-  - `[DECISION]` **Blood pressure is authored as a coded lab, not as a vital.** This
+  - Conditions (coded) `[BUILD FIX 2026-09-24 — was labs 8480-6 / 8462-4, horizon {days: 7}]`:
+    - field `vitals`, `greater_than`, value `systolic_bp`, threshold **139.9**, horizon `DAY`
+    - field `vitals`, `greater_than`, value `diastolic_bp`, threshold **89.9**, horizon `DAY`
+  - `[BUILD FIX — REVERSES THE DECISION BELOW; NEEDS RATIFICATION]` The simulator (and the
+    patient-context contract) delivers BP as `vitalSigns.systolic_bp` / `diastolic_bp`, never
+    as LOINC labs. Authored as labs, a BP of 150/95 entered in the simulator made this gate
+    ask for LOINC 8480-6 and held every later GHTN gate. OR-ing the lab and vitals forms
+    does not work either: with a normal vitals BP and no lab, the OR still asks for the lab.
+    The reasons below for labs (dates, repeats) do not hold in the simulator, whose labs
+    are undated too. Thresholds unchanged.
+  - `[DECISION — superseded]` **Blood pressure is authored as a coded lab, not as a vital.** This
     contradicts the format spec's guidance to use `field: vitals` for vital thresholds, and it
     is deliberate: `vitalSigns` is a flat undated bag holding **one** value per path, so a
     vitals-form BP gate can never see more than a single reading and can never be time-scoped.
@@ -296,8 +303,8 @@ states what data gate it *would* have been and why that is not expressible.
   - Exclusively gated: yes — Stage 5 is branch-entry only, and this is its sole route.
   - Type: **compound**, operator **OR** · Default behavior: **skip** — but see the safety note.
   - Conditions (coded):
-    - field `labs`, `greater_than`, value `8480-6`, system LOINC, threshold 159.9, horizon `{days: 1}` — severe-range systolic
-    - field `labs`, `greater_than`, value `8462-4`, system LOINC, threshold 109.9, horizon `{days: 1}` — severe-range diastolic
+    - field `vitals`, `greater_than`, value `systolic_bp`, threshold 159.9, horizon `DAY` — severe-range systolic `[BUILD FIX — was labs 8480-6, {days: 1}; see gate-bp-elevated]`
+    - field `vitals`, `greater_than`, value `diastolic_bp`, threshold 109.9, horizon `DAY` — severe-range diastolic `[BUILD FIX — was labs 8462-4, {days: 1}]`
     - field `labs`, `less_than`, value `777-3`, system LOINC, threshold **100** — platelets <100,000/µL. **Unit note: the threshold is in ×10⁹/L, matching how LOINC 777-3 is conventionally reported. If the feed reports raw cells/µL this is off by 1,000.** See §18 G7.
     - field `labs`, `greater_than`, value `2160-0`, system LOINC, threshold **1.1** — creatinine >1.1 mg/dL
     - field `conditions`, `includes_code`, value `O14.1.*`, system ICD-10, horizon `{days: 300}`, status `active` — severe preeclampsia already coded
@@ -671,9 +678,9 @@ Sched-2 → Step 4.1 [1]; Sched-3 → Step 4.3 [1]; Sched-4 → Step 5.2 [8][12]
 
 | Gate | Condition on | horizon | status | window_days | Rationale |
 |---|---|---|---|---|---|
-| gate-bp-elevated | labs 8480-6, 8462-4 | {days: 7} | — | — | A BP older than a week is not the current reading; the surveillance visit is weekly |
+| gate-bp-elevated | vitals systolic_bp, diastolic_bp | DAY | — | — | `[BUILD FIX]` Was labs 8480-6/8462-4 at {days: 7}. Vitals are one current value; DAY is the required bounded horizon |
 | gate-severe-bp *(folded into escalation)* | labs 8480-6, 8462-4 | {days: 1} | — | — | Severe-range BP is an acute finding; only a current value justifies escalation |
-| gate-escalation-required | labs 8480-6, 8462-4 | {days: 1} | — | — | As above |
+| gate-escalation-required | vitals systolic_bp, diastolic_bp | DAY | — | — | `[BUILD FIX]` Was labs 8480-6/8462-4 at {days: 1} |
 | gate-escalation-required | labs 777-3, 2160-0 | — | — | — | Surveillance labs are weekly; the latest value is the operative one. **No horizon set deliberately** — a stale platelet count should still escalate rather than silently vanish |
 | gate-escalation-required | conditions O14.1.* | {days: 300} | active | — | This pregnancy only; a prior pregnancy's severe preeclampsia must not fire escalation now |
 | gate-htn-diagnosed | conditions O13.*, O14.* | {days: 300} | active | — | This pregnancy only — the single most important scoping decision in the pathway |

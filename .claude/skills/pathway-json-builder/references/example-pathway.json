@@ -48,6 +48,7 @@
         "title": "Recurrent UTI?",
         "gate_type": "patient_attribute",
         "default_behavior": "skip",
+        "on_unresolved": "default",
         "condition": {
           "field": "conditions",
           "operator": "count_in_window",
@@ -66,13 +67,12 @@
         "title": "Fever present?",
         "gate_type": "patient_attribute",
         "default_behavior": "skip",
+        "on_unresolved": "ask",
         "condition": {
-          "attribute": "vitals.temperature_c",
+          "attribute": "vitals.temperature_f",
           "operator": "greater_than",
-          "value": 38,
-          "horizon": {
-            "days": 30
-          }
+          "value": 100.3,
+          "horizon": "DAY"
         }
       }
     }

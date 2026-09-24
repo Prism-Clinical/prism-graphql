@@ -66,8 +66,13 @@ mark anything unfindable as GAP rather than guessing.
 **Wave 2 — verification agents** (after synthesis below identifies the final entities; run
 both in one message):
 - **Code verifier:** every ICD-10/SNOMED/LOINC/CPT/RxNorm code the draft uses, verified
-  against authoritative lookups (CMS/CDC, LOINC search, RxNav). Returns confirmed code,
-  display name, and any corrections.
+  against authoritative lookups (CMS/CDC, LOINC search, RxNav; SNOMED via
+  `https://tx.fhir.org/r4/CodeSystem/$lookup?system=http://snomed.info/sct&code=<code>`).
+  Returns confirmed code, display name, and any corrections. **Also checks the system
+  against the gate field**: conditions ICD-10, medications RXNORM, allergies SNOMED, labs
+  LOINC, vitals none (keys `systolic_bp`, `diastolic_bp`, `temperature_f`, …). Never trust
+  a code's label from the repo's own seed tables — several are wrong (e.g. seed
+  `109081006` "Penicillin allergy" is actually "Metformin-containing product").
 - **Citation checker:** fetch every cited URL; confirm title/org/year match and that the
   cited claims (thresholds, doses) actually appear. Returns per-citation pass/fail + fixes.
 
@@ -110,7 +115,9 @@ design around:
 - Value already recorded as structured data → `patient_attribute`:
   - Diagnosis/med/allergy history → *coded condition* (`field` + `includes_code`/…).
   - Lab or vital threshold → **coded condition** (`field: labs` + LOINC + explicit
-    `threshold`, or `field: vitals` + dotted path; never `system` on vitals).
+    `threshold`, or `field: vitals` + a simulator vitals key such as `systolic_bp` or
+    `temperature_f` (°F) + `horizon: DAY`; never `system` on vitals). Blood pressure and
+    temperature are vitals, not labs — see the spec's "What the simulator sends" table.
     **Do not use attribute-form (`lab.*`) for these** until the platform catches up: the
     simulator's required-fields panel never renders attribute-form conditions, and their
     evaluation needs `pathway_attribute_code_map` rows that have no seeding path — coded

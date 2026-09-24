@@ -377,26 +377,20 @@
         "operator": "OR",
         "conditions": [
           {
-            "field": "labs",
+            "field": "vitals",
             "operator": "greater_than",
-            "value": "8480-6",
-            "system": "LOINC",
-            "display": "Systolic blood pressure (mmHg)",
+            "value": "systolic_bp",
             "threshold": 139.9,
-            "horizon": {
-              "days": 7
-            }
+            "display": "Systolic BP (mmHg)",
+            "horizon": "DAY"
           },
           {
-            "field": "labs",
+            "field": "vitals",
             "operator": "greater_than",
-            "value": "8462-4",
-            "system": "LOINC",
-            "display": "Diastolic blood pressure (mmHg)",
+            "value": "diastolic_bp",
             "threshold": 89.9,
-            "horizon": {
-              "days": 7
-            }
+            "display": "Diastolic BP (mmHg)",
+            "horizon": "DAY"
           }
         ]
       }
@@ -685,26 +679,20 @@
         "operator": "OR",
         "conditions": [
           {
-            "field": "labs",
+            "field": "vitals",
             "operator": "greater_than",
-            "value": "8480-6",
-            "system": "LOINC",
-            "display": "Systolic blood pressure (mmHg)",
+            "value": "systolic_bp",
             "threshold": 159.9,
-            "horizon": {
-              "days": 1
-            }
+            "display": "Systolic BP (mmHg)",
+            "horizon": "DAY"
           },
           {
-            "field": "labs",
+            "field": "vitals",
             "operator": "greater_than",
-            "value": "8462-4",
-            "system": "LOINC",
-            "display": "Diastolic blood pressure (mmHg)",
+            "value": "diastolic_bp",
             "threshold": 109.9,
-            "horizon": {
-              "days": 1
-            }
+            "display": "Diastolic BP (mmHg)",
+            "horizon": "DAY"
           },
           {
             "field": "labs",
