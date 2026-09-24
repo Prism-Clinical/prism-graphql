@@ -47,7 +47,11 @@ import { applyDdiToResolutionState } from '../../services/medications/ddi-pass-s
 import type { Pool } from 'pg';
 import type { ResolutionState, GateProperties } from '../../services/resolution/types';
 import { serializeResolutionState } from '../../services/resolution/session-store';
-import { validateAnswerAgainstGate } from '../../services/resolution/answer-validation';
+import {
+  datumAnswerType,
+  datumAnswerValue,
+  validateAnswerAgainstGate,
+} from '../../services/resolution/answer-validation';
 import { normalizePatientAttributes } from '../../services/resolution/patient-attributes';
 import {
   buildEffectivePatientContext,
@@ -949,15 +953,15 @@ export const resolutionMutations = {
         q => q.gateId === args.nodeId && q.askTarget,
       );
       if (escalated?.askTarget) {
-        const value = args.answer.numericValue;
-        if (value === undefined || value === null) {
+        const target = escalated.askTarget;
+        const value = datumAnswerValue(escalated, args.answer);
+        if (typeof value === 'object') {
           throw new GraphQLError(
-            `Gate "${args.nodeId}" is a request for ${escalated.datumKey}; supply numericValue`,
+            `Gate "${args.nodeId}" is a request for ${escalated.datumKey}; ${value.problem}`,
             { extensions: { code: 'BAD_USER_INPUT' } },
           );
         }
 
-        const target = escalated.askTarget;
         // DATED, at the session's evaluation instant, and marked as the
         // provider's. Undated, the answer was one more value the gate could
         // not order against the undated ones that made it ask — so it asked
@@ -968,11 +972,21 @@ export const resolutionMutations = {
         // horizon and is dropped. When the provider actually answered is
         // recorded on the audit event below.
         const assertedAsOf = requireSessionTemporalContext(session).evaluationAsOf;
+        //
+        // Only a lab is dated ON THE FACT. A `patient.*` attribute is a single
+        // flat value — `patientAttributes[key]`, read by `resolveAttribute`
+        // and compared by `compareScalar`, never through `selectFacts` — so a
+        // date there would order nothing, and a later answer already replaces
+        // an earlier one key-for-key (deepMerge). Its provenance (provider,
+        // `assertedAsOf`, `answeredAt`, answer type) is the audit row below.
+        //
+        // `datumAnswerValue` guarantees a number for lab and vital targets:
+        // only a `patient.*` datum is ever asked as BOOLEAN or SELECT.
         const fragment: AdditionalContextInput =
           target.kind === 'lab'
             ? {
                 labResults: [{
-                  code: target.code, system: target.system, value,
+                  code: target.code, system: target.system, value: value as number,
                   date: assertedAsOf, providerAsserted: true,
                 }],
               }
@@ -980,6 +994,8 @@ export const resolutionMutations = {
               ? { vitalSigns: { [target.path]: value } }
               // `patient.trimester` addresses patientAttributes.trimester —
               // resolveAttribute reads a FLAT key, not a nested namespace.
+              // Stored as the typed value (number, boolean or the selected
+              // option string), because compareScalar compares with `===`.
               : { patientAttributes: { [target.path.split('.').slice(1).join('.')]: value } };
 
         // NOTE: deliberately no `sourceId` on the fragment. It is in
@@ -1005,6 +1021,7 @@ export const resolutionMutations = {
             eventType: 'provider_asserted_datum',
             triggerData: {
               gateId: args.nodeId, datumKey: escalated.datumKey, target, value,
+              answerType: datumAnswerType(escalated),
               assertedAsOf, answeredAt: new Date().toISOString(),
             },
             nodesRecomputed: 0,

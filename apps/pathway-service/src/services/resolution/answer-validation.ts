@@ -1,4 +1,5 @@
 import { AnswerType, GateAnswer, GateProperties, GateType } from './types';
+import type { PendingQuestion } from './types';
 
 /**
  * The `AnswerType` enum value for whatever an `answer_type` was stored as.
@@ -105,4 +106,63 @@ export function validateAnswerAgainstGate(
   }
 
   return null;
+}
+
+/**
+ * The answer type a DATUM request takes.
+ *
+ * A lab or vital datum is a number whatever the stored question says: those
+ * targets are injected as a lab value or a vital, both numeric, and a session
+ * stored before `patient.*` questions were typed must not be reinterpreted.
+ * Only a `patient.*` (`kind: 'attribute'`) request is asked as BOOLEAN or
+ * SELECT — see `askFor`.
+ */
+export function datumAnswerType(q: Pick<PendingQuestion, 'answerType' | 'askTarget'>): AnswerType {
+  if (q.askTarget?.kind !== 'attribute') return AnswerType.NUMERIC;
+  return normalizeAnswerType(q.answerType);
+}
+
+/**
+ * The value to inject for an answer to a datum request, or why it cannot be.
+ *
+ * Dispatched on the QUESTION's answer type, not on whichever field the caller
+ * happened to fill: the value is stored where the gate reads it and compared
+ * there with `===`, so a `"true"` string for a boolean attribute, or an option
+ * the question does not offer, would decide the gate on a value nobody gave.
+ *
+ * Lab and vital requests keep their original contract exactly — `numericValue`
+ * required, the same message when it is missing.
+ */
+export function datumAnswerValue(
+  q: Pick<PendingQuestion, 'answerType' | 'askTarget' | 'options'>,
+  answer: Pick<GateAnswer, 'booleanValue' | 'numericValue' | 'selectedOption'>,
+): number | boolean | string | { problem: string } {
+  if (q.askTarget?.kind !== 'attribute') {
+    const n = answer.numericValue;
+    return n === undefined || n === null ? { problem: 'supply numericValue' } : n;
+  }
+
+  const type = datumAnswerType(q);
+  const field =
+    type === AnswerType.BOOLEAN ? 'booleanValue'
+      : type === AnswerType.SELECT ? 'selectedOption'
+        : 'numericValue';
+  const present = (['booleanValue', 'numericValue', 'selectedOption'] as const)
+    .filter(k => answer[k] !== undefined && answer[k] !== null);
+  if (!present.includes(field)) return { problem: `supply ${field}` };
+  if (present.length > 1) {
+    return { problem: `answer carries ${present.join(' and ')}; supply only ${field}` };
+  }
+
+  if (type === AnswerType.BOOLEAN) return answer.booleanValue as boolean;
+  if (type === AnswerType.SELECT) {
+    const chosen = answer.selectedOption as string;
+    const options = q.options ?? [];
+    if (!options.includes(chosen)) {
+      return { problem: `"${chosen}" is not one of the options: ${options.join(', ')}` };
+    }
+    return chosen;
+  }
+  const n = answer.numericValue as number;
+  return Number.isFinite(n) ? n : { problem: 'numericValue must be a finite number' };
 }
