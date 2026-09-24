@@ -53,7 +53,7 @@ jest.mock('../resolvers/helpers/resolution-context', () => ({
   makeLlmGateEvaluator: jest.fn(() => null),
 }));
 
-import { createSession, getSession, logEvent, updateSession } from '../services/resolution/session-store';
+import { createSession, getSession, logEvent, logGateAnswer, updateSession } from '../services/resolution/session-store';
 import { resolutionMutations } from '../resolvers/mutations/resolution';
 import { makeGraphContext } from './fixtures/reference-patient-context';
 import { DefaultBehavior, GateType, SessionStatus } from '../services/resolution/types';
@@ -109,6 +109,7 @@ const mockedCreateSession = createSession as jest.MockedFunction<typeof createSe
 const mockedGetSession = getSession as jest.MockedFunction<typeof getSession>;
 const mockedLogEvent = logEvent as jest.MockedFunction<typeof logEvent>;
 const mockedUpdateSession = updateSession as jest.MockedFunction<typeof updateSession>;
+const mockedLogGateAnswer = logGateAnswer as jest.MockedFunction<typeof logGateAnswer>;
 
 const PINNED = '2026-08-31T12:00:00.000Z';
 
@@ -131,6 +132,11 @@ const NODES = [
     condition: { field: 'labs', operator: 'less_than', value: '718-7', system: 'LOINC', threshold: 11 },
   }),
   node('step-iron', 'Step'),
+  node('gate-q', 'Gate', {
+    gate_type: GateType.QUESTION, default_behavior: DefaultBehavior.SKIP,
+    prompt: 'Symptomatic?', answer_type: 'boolean',
+  }),
+  node('step-q', 'Step'),
 ];
 const EDGES = [
   edge('root', 'dp-1', 'HAS_DECISION_POINT'),
@@ -138,6 +144,8 @@ const EDGES = [
   edge('dp-1', 'step-b', 'BRANCHES_TO'),
   edge('root', 'gate-anaemic', 'HAS_GATE'),
   edge('gate-anaemic', 'step-iron', 'BRANCHES_TO'),
+  edge('root', 'gate-q', 'HAS_GATE'),
+  edge('gate-q', 'step-q', 'BRANCHES_TO'),
 ];
 const rctx = () => ({
   graphContext: makeGraphContext(NODES, EDGES),
@@ -264,6 +272,35 @@ describe('a refused audit event does not half-commit', () => {
       { sessionId: 'session-1', nodeId: ask.gateId, answer: { numericValue: 9.1 } },
       ctx(),
     )).rejects.toThrow(/check constraint/);
+
+    expect(txQueries).toEqual(['BEGIN', 'ROLLBACK']);
+  });
+
+  it('question gate: session update, gate_answer and the pathway_gate_answers row share one transaction', async () => {
+    await start();
+
+    await resolutionMutations.answerPendingDecision(
+      undefined as never,
+      { sessionId: 'session-1', nodeId: 'gate-q', answer: { booleanValue: true } },
+      ctx(),
+    );
+
+    expect(mockedUpdateSession.mock.calls.at(-1)![0]).toBe(txClient);
+    const ev = mockedLogEvent.mock.calls.find(c => (c[2] as { eventType: string }).eventType === 'gate_answer');
+    expect(ev![0]).toBe(txClient);
+    expect(mockedLogGateAnswer.mock.calls[0][0]).toBe(txClient);
+    expect(txQueries).toEqual(['BEGIN', 'COMMIT']);
+  });
+
+  it('question gate: a refused pathway_gate_answers row rolls the answer back', async () => {
+    await start();
+    mockedLogGateAnswer.mockRejectedValueOnce(new Error('insert refused'));
+
+    await expect(resolutionMutations.answerPendingDecision(
+      undefined as never,
+      { sessionId: 'session-1', nodeId: 'gate-q', answer: { booleanValue: true } },
+      ctx(),
+    )).rejects.toThrow('insert refused');
 
     expect(txQueries).toEqual(['BEGIN', 'ROLLBACK']);
   });

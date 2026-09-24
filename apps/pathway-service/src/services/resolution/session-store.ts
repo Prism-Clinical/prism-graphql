@@ -396,7 +396,7 @@ export async function logNodeOverride(
 }
 
 export async function logGateAnswer(
-  pool: Pool,
+  pool: Queryable,
   data: {
     sessionId: string;
     gateId: string;

@@ -1138,27 +1138,51 @@ export const resolutionMutations = {
       // shape. Only the audit event reads it.
       gateOpened = session.resolutionState.get(args.nodeId)?.status === NodeStatus.INCLUDED;
 
-      // 7. Update session (optimistic lock)
+      // 7–9. Update the session (optimistic lock) and record the answer — the
+      // event and the pathway_gate_answers row — in ONE transaction. As three
+      // separate writes, a refused audit write reported failure for an answer
+      // that had already taken effect.
       try {
-        await updateSession(pool, args.sessionId, {
-          resolutionState: session.resolutionState,
-          // The map, not just the state. `resolveIncrementally` RECORDS new
-          // dependencies as it walks — answering an outer question can expose an
-          // inner data gate and register what it reads — and only the
-          // DecisionPoint path saved them. After a reload the session had the new
-          // nodes but not what they depend on, so supplying the very datum the
-          // gate asked for seeded nothing and its question never cleared.
-          dependencyMap: session.dependencyMap,
-          pendingQuestions: session.pendingQuestions,
-          redFlags: session.redFlags,
-          gateAnswers: session.gateAnswers,
-          totalNodesEvaluated: session.resolutionState.size,
-        // Derived from the state this mutation just produced, so a session
-      // repaired by it stops being degraded. `degraded` alone only ever went
-      // one way.
-      status: derivedSessionStatus(session.resolutionState),
-          ddiWarnings: session.ddiWarnings,
-        }, session.updatedAt);
+        await withTransaction(pool, async (tx) => {
+          await updateSession(tx, args.sessionId, {
+            resolutionState: session.resolutionState,
+            // The map, not just the state. `resolveIncrementally` RECORDS new
+            // dependencies as it walks — answering an outer question can expose
+            // an inner data gate and register what it reads — and only the
+            // DecisionPoint path saved them. After a reload the session had the
+            // new nodes but not what they depend on, so supplying the very datum
+            // the gate asked for seeded nothing and its question never cleared.
+            dependencyMap: session.dependencyMap,
+            pendingQuestions: session.pendingQuestions,
+            redFlags: session.redFlags,
+            gateAnswers: session.gateAnswers,
+            totalNodesEvaluated: session.resolutionState.size,
+            // Derived from the state this mutation just produced, so a session
+            // repaired by it stops being degraded. `degraded` alone only ever
+            // went one way.
+            status: derivedSessionStatus(session.resolutionState),
+            ddiWarnings: session.ddiWarnings,
+          }, session.updatedAt);
+
+          await logEvent(tx, args.sessionId, {
+            eventType: 'gate_answer',
+            triggerData: {
+              gateId: args.nodeId,
+              answer: args.answer,
+              gateOpened,
+            },
+            nodesRecomputed,
+            statusChanges,
+          });
+
+          await logGateAnswer(tx, {
+            sessionId: args.sessionId,
+            gateId: args.nodeId,
+            pathwayId: pathwayIdForLog,
+            answer: args.answer,
+            gateOpened,
+          });
+        });
         break; // committed
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
@@ -1170,27 +1194,6 @@ export const resolutionMutations = {
         throw err;
       }
     }
-
-    // 8. Log event
-    await logEvent(pool, args.sessionId, {
-      eventType: 'gate_answer',
-      triggerData: {
-        gateId: args.nodeId,
-        answer: args.answer,
-        gateOpened,
-      },
-      nodesRecomputed,
-      statusChanges,
-    });
-
-    // 9. Log to pathway_gate_answers
-    await logGateAnswer(pool, {
-      sessionId: args.sessionId,
-      gateId: args.nodeId,
-      pathwayId: pathwayIdForLog,
-      answer: args.answer,
-      gateOpened,
-    });
 
     // 10. Return formatted session
     const updated = await getSession(pool, args.sessionId);
