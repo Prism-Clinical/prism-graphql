@@ -23,7 +23,15 @@ import { FIELD_TO_KIND } from '../resolution/temporal/contract';
 import {
   codedVitalsSystemError,
   conditionControlDomainError,
+  parseConditionOverride,
+  attributeNamespaceToField,
 } from '../resolution/temporal/condition-adapter';
+import { resolveEffectivePolicy } from '../resolution/temporal/cascade';
+import {
+  DEFAULT_TEMPORAL_POLICY_VERSION,
+  TemporalContextError,
+} from '../resolution/temporal/evaluation-context';
+import type { GateField } from '../resolution/temporal/contract';
 import { parseBranchWhen, isEqualsWhen, checkNumericCover } from './branch-when';
 
 const VALID_NODE_TYPES = new Set<string>(Object.keys(REQUIRED_NODE_PROPERTIES));
@@ -31,13 +39,15 @@ const VALID_EDGE_TYPES = new Set<string>(Object.keys(VALID_EDGE_ENDPOINTS));
 const VALID_CATEGORIES = new Set<string>(Object.values(PathwayCategory));
 
 // ─── Gate condition schema ─────────────────────────────────────────────
-// `horizon`/`status` are the NODE tier of the temporal cascade (plan 04). They
-// are allowed as KEYS here; their VALUES are validated by
-// `parseConditionOverride` at session-creation preflight, which owns the
-// horizon grammar, the status vocabulary, and the window_days/horizon conflict
-// rule. Duplicating that grammar here would give authors two places to disagree
-// with. Without these entries a per-condition horizon fails import as an
-// unknown key and the NODE tier is unauthorable.
+// `horizon`/`status` are the NODE tier of the temporal cascade (plan 04). Their
+// VALUES are validated at import by CALLING the runtime's own parsers —
+// `parseConditionOverride` (horizon grammar, status vocabulary, the
+// window_days/horizon conflict) and `resolveEffectivePolicy` (no status on a
+// field without clinical state) — see `temporalOverrideError`. Calling them,
+// rather than restating the grammar, keeps one source of truth; session
+// preflight still runs them as the backstop. Without these entries a
+// per-condition horizon fails import as an unknown key and the NODE tier is
+// unauthorable.
 const CODED_KEYS = new Set([
   'field', 'operator', 'value', 'system', 'threshold',
   'window_days', 'count_threshold', 'min_points', 'slope_threshold', 'delta_threshold',
@@ -557,6 +567,13 @@ function validateGateConditions(
       if (!ATTR_OPS.has(op)) errors.push(`${where}: operator "${op}" is not a valid attribute operator.`);
       const ns = (c.attribute as string).split('.')[0];
       if (!NAMESPACES.has(ns)) errors.push(`${where}: attribute namespace "${ns}" is not registered.`);
+      // `patient.*` maps to no field and is not governed by temporal policy —
+      // the runtime ignores its override on both sides, so import does too.
+      const attrField = attributeNamespaceToField(ns);
+      if (attrField !== null) {
+        const temporal = temporalOverrideError(c, attrField);
+        if (temporal !== null) errors.push(`${where}: ${temporal}.`);
+      }
       for (const k of Object.keys(c)) if (!ATTRIBUTE_KEYS.has(k)) errors.push(`${where}: unknown key "${k}" on attribute condition.`);
     } else {
       if (!CODED_OPS.has(op)) errors.push(`${where}: operator "${op}" is not a valid coded operator.`);
@@ -583,11 +600,46 @@ function validateGateConditions(
       // covered by this predicate — `parseHorizonValue` owns that rule (D2).
       const controlDomain = conditionControlDomainError(c);
       if (controlDomain !== null) errors.push(`${where}: ${controlDomain}.`);
+      // Only for a known field: `resolveEffectivePolicy` throws on an unknown
+      // one, which would duplicate the field error above.
+      if (CODED_FIELDS.has(c.field as string)) {
+        const temporal = temporalOverrideError(c, c.field as GateField);
+        if (temporal !== null) errors.push(`${where}: ${temporal}.`);
+      }
       const wildcard = codeWildcardError(op, c.value);
       if (wildcard !== null) errors.push(`${where}: ${wildcard}.`);
       for (const k of Object.keys(c)) if (!CODED_KEYS.has(k)) errors.push(`${where}: unknown key "${k}" on coded condition.`);
     }
   });
+}
+
+/**
+ * The NODE-tier temporal rules, checked by the same two calls session
+ * preflight makes (`sweepableConditions` → `adaptCodedCondition` /
+ * `adaptAttributeCondition` → `parseConditionOverride`, then
+ * `collectEncounterAnchorRequirements` → `resolveEffectivePolicy`):
+ *
+ *  - `window_days` and `horizon` are mutually exclusive;
+ *  - `horizon` is a named tier or `{days}` within the cap, and `window_days`
+ *    is a day count within the same cap;
+ *  - `status` is `active | inactive | any`, and is refused on labs and vitals,
+ *    which have no clinical state.
+ *
+ * These were enforced only when a session started, so a pathway that could
+ * never start imported and published cleanly. Pathway-level defaults are
+ * passed as `{}`: the import JSON carries none, and the status rule does not
+ * depend on them. The ENCOUNTER-anchor check stays at session creation — it
+ * depends on the session's context, not on the pathway.
+ */
+function temporalOverrideError(c: Record<string, unknown>, field: GateField): string | null {
+  try {
+    const override = parseConditionOverride(c, 'condition');
+    resolveEffectivePolicy(field, DEFAULT_TEMPORAL_POLICY_VERSION, {}, override);
+    return null;
+  } catch (e) {
+    if (e instanceof TemporalContextError) return e.message;
+    throw e;
+  }
 }
 
 /**
