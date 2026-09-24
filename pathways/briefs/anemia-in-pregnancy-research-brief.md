@@ -58,7 +58,9 @@ None. (Single-condition pathway; O99.01x already encodes the pregnancy+anemia co
   and T3; <10.5 / <32% in T2 — CDC trimester definitions T1 0–13 wk, T2 14–26, T3 27–40);
   risk-factor review (parity >2, short interpregnancy interval, low-iron diet, pica);
   urgent-symptom safety-netting. [1][2][3][10]
-- **Step 1.2 — Microcytic workup** *(gated by gate-microcytic)*: ferritin (±iron/TIBC/
+- **Step 1.2 — Microcytic workup** *(reached only via DP-1 criterion 1b — the provider's
+  choice of confirmatory studies; was gated by gate-microcytic, removed 2026-09-24, see
+  §4b)*: indicated for microcytic anemia (MCV < 80 fL). Ferritin (±iron/TIBC/
   saturation). Ferritin <30 ng/mL confirms IDA; sat <18% + ↑TIBC + ↓ferritin = IDA;
   all-normal iron studies → suspect thalassemia → Step 1.5. [1][5]
 - **Step 1.3 — Normocytic workup** *(gated by gate-normocytic)*: ferritin (early iron
@@ -127,6 +129,30 @@ BRANCHES_TO (no HAS_STEP edge), per the reference-fixture pattern.
   - Criterion 1b: Atypical features, uncertain etiology, or confirmation preferred →
     ferritin/iron studies first → **Step 1.2** [1]
   - Judgment call by ACOG's own wording ("may be reasonable"); not machine-evaluable. [1]
+  - `[DECISION — Josh 2026-09-24]` **Criterion 1b → Step 1.2 restored.** The built JSON
+    had dropped it (DP-1 branched only to Step 2.1), so DP-1 was not a choice: a one_of
+    fork with one branch takes it, and every patient got empiric oral iron automatically —
+    ferritin 50 included. DP-1 now branches to both Step 2.1 and Step 1.2.
+    **What actually happens** (proved with `gate-proof.ts` on the real traversal engine,
+    both edge orders, through the incremental path the branch-choice mutation uses):
+    DP-1's branches are scored by confidence, and the two Steps score identically on
+    every signal (checked scorer by scorer), so both qualify and the fork **pends** —
+    "which branch applies?" — with Step 2.1, Step 1.2, Stage 2 and everything under them
+    held until the provider answers. Choosing **workup** with ferritin 50: Stage 2 and
+    Step 2.1 are GATED_OUT by `gate-ida-confirmed`. Choosing workup with ferritin 12:
+    Stage 2 opens. Choosing **empiric**: Step 2.1 is included and Step 1.2 excluded. Oral
+    iron is never automatic unless confidence scoring puts Step 1.2 below the 0.60
+    suggest threshold while Step 2.1 stays above it (only a per-node DB weight override
+    or admin evidence entry could do that).
+  - `[DECISION — Josh 2026-09-24]` [SECOND ROUTE — step-2-1 via dp-1] Step 2.1 sits in
+    Stage 2, which `gate-ida-confirmed` gates, but criterion 1a reaches it directly: empiric
+    oral iron without iron studies is ACOG-sanctioned, so this second route is deliberate.
+  - `[GAP — NEEDS JOSH]` **The empiric arm reaches Step 2.1 only.** Choosing empiric
+    EXCLUDES Step 2.2 (trial period), Step 2.3 (response assessment), DP-2 and Step 2.5
+    (IV iron): they hang from Stage 2, which only the ferritin gate opens. So an
+    empirically treated patient gets no response check and no escalation route. Fixing it
+    means routing criterion 1a to a container holding 2.1–2.3 rather than Step 2.1 alone
+    — a structural change to the brief's mapping, left for review.
 - **DP-2 — Nonresponse management** (after Step 2.3) — branch_mode: one_of
   - Criterion 2a: Intolerance or nonadherence despite coaching → **Step 2.5** (IV iron) [1][5]
   - Criterion 2b: Suspected malabsorption (enteric-coated tabs, antacids, bariatric,
@@ -151,10 +177,21 @@ evaluates with zero DB setup. Revisit when the dashboard renders the attributes 
 code-map seeding exists. Anemia *detection* gates were removed with the screening stage —
 the pathway presumes the coded diagnosis.
 
-- **Gate `gate-microcytic` — MCV < 80**
-  - Attached to: step-1-1 · Branches to: step-1-2 · patient_attribute · Default: skip
-  - Condition (coded): field `labs`, less_than, value `787-2` (MCV, LOINC), threshold 80,
-    horizon {days: 90} [1]
+- ~~**Gate `gate-microcytic` — MCV < 80**~~ **REMOVED 2026-09-24**
+  - ~~Attached to: step-1-1 · Branches to: step-1-2 · patient_attribute · Default: skip~~
+  - ~~Condition (coded): field `labs`, less_than, value `787-2` (MCV, LOINC), threshold 80,
+    horizon {days: 90} [1]~~
+  - `[DECISION — Josh 2026-09-24, consequence — NEEDS JOSH TO CONFIRM]` Removed because
+    restoring DP-1 criterion 1b made its only target, Step 1.2, a DecisionPoint branch.
+    The gate could no longer exclude Step 1.2 (Rule 1): on the live path — the branch
+    choice re-resolves incrementally from DP-1 — choosing workup includes Step 1.2 at any
+    MCV (proved: MCV 90 + workup → Step 1.2 INCLUDED), and choosing empiric excludes it at
+    any MCV. Running the proof with and without the gate gave identical outcomes in every
+    scenario after the choice; the gate only added an MCV question that could not change
+    Step 1.2 (and gate-normocytic/macrocytic still ask for a missing MCV). So Step 1.2 is
+    now the provider's call at DP-1. MCV < 80 still frames Step 1.2's indication (§3).
+    If MCV should instead **force** the microcytic workup, DP-1 cannot also branch to it —
+    that is a different design.
 - **Gate `gate-normocytic` — MCV 80–100**
   - Attached to: step-1-1 · Branches to: step-1-3 · compound (AND) · Default: skip
   - Conditions (coded): labs `787-2` greater_than threshold **79.9**; labs `787-2`
@@ -596,7 +633,7 @@ margin). **These day-counts are my proposal — review.**
 
 | Gate | Condition on | horizon | status | window_days | Rationale |
 |---|---|---|---|---|---|
-| gate-microcytic / normocytic / macrocytic | labs 787-2 (MCV) | {days: 90} | — | — | Classification must reflect the anemia being worked up, not an old chart value |
+| gate-normocytic / macrocytic (gate-microcytic removed 2026-09-24) | labs 787-2 (MCV) | {days: 90} | — | — | Classification must reflect the anemia being worked up, not an old chart value |
 | gate-ida-confirmed | labs 2276-4 (ferritin) | {days: 90} | — | — | Confirmatory ferritin from this workup |
 | gate-hgb-response | labs 718-7 (delta) | — | — | 42 | Operator-windowed (XOR rule); ideal anchor is Step 2.1 med-start — anchor-to-event is not in the kernel grammar yet, note stands |
 | gate-severe-anemia | labs 718-7 (Hgb) | {days: 7} | — | — | Hgb <6 is an acute finding; only a current value justifies transfusion routing |

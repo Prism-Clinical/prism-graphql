@@ -169,6 +169,11 @@ correctly in the canvas, and quietly recommend every gated treatment to every pa
 Fix by deleting the competing edge or merging the gates; if the brief's intent is genuinely
 ambiguous, ask rather than guess.
 
+To prove what a gate or DecisionPoint actually does for a patient, run the real engine with
+`npx ts-node --transpile-only .claude/skills/pathway-json-builder/scripts/gate-proof.ts
+[proof]` (no DB; replays branch choices the way the live mutation does). Add a proof there
+when a brief decision hinges on runtime behaviour.
+
 ## Step 5 — Deliver
 
 Save to `pathways/json/<logical_id>.json` and send the file. Delivery message: pathway title

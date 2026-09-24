@@ -1,6 +1,26 @@
 #!/usr/bin/env python3
-"""Build anemia-in-pregnancy pathway JSON from brief v2 (deterministic §-by-§ walk)."""
-import json
+"""RETIRED (2026-09-24) — do not run. Kept only as a record of the v2 build.
+
+This generated anemia-in-pregnancy from brief v2, but the committed
+pathways/json/anemia-in-pregnancy.json has since been edited directly and has
+moved well past it: a "v1"-prefixed version, `traverse` on
+gate-ida-confirmed (the defect that let ferritin 50 open iron therapy), a
+single delta gate where the JSON layers trends, no on_unresolved, no lab
+`display`, and gate-microcytic, which the JSON has dropped.
+Running it would silently overwrite the real file with that older pathway.
+
+The JSON is now the source of truth, edited directly and checked with
+validate-pathway.ts, check-gate-control.ts and gate-proof.ts.
+"""
+import sys
+
+sys.exit(
+    "build-anemia-json.py is RETIRED: it no longer reproduces "
+    "pathways/json/anemia-in-pregnancy.json and would overwrite it with an older "
+    "pathway. Edit the JSON directly. See this file's docstring."
+)
+
+import json  # noqa: E402 — unreachable; the builder below is historical
 
 nodes, edges = [], []
 def N(id, type, **props): nodes.append({"id": id, "type": type, "properties": props})

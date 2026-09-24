@@ -145,8 +145,16 @@ for (const [target, gates] of gatesByTarget) {
 // ── Advisory — Rule 1 one level down: a gated STAGE whose step has another way in.
 // The gate still excludes the Stage, but that step (and its subtree) is reached
 // anyway. Sometimes intended — anemia's DP-1 "empiric oral iron" deliberately
-// reaches Step 2.1 without ferritin — so this warns rather than fails; the brief
-// should say it is deliberate.
+// reaches Step 2.1 without ferritin — so this warns rather than fails. When the
+// brief records it as deliberate with `[SECOND ROUTE — <step> via <source>]` for
+// every other source (a Criterion counts as its DecisionPoint), the warning
+// becomes an info line: still printed, so the route stays visible, but no
+// longer a review item.
+const infos: string[] = [];
+const typeOf = new Map(nodes.map((n) => [n.id, n.type]));
+const dpOfCriterion = new Map(
+  edges.filter((e) => e.type === 'HAS_CRITERION').map((e) => [e.to, e.from]),
+);
 for (const [target, gates] of gatesByTarget) {
   const gateRoutes = new Set(
     walkable.filter((e) => e.type === 'BRANCHES_TO' && e.to === target && gateIds.has(e.from)),
@@ -155,12 +163,22 @@ for (const [target, gates] of gatesByTarget) {
   if (reach.has(target)) continue; // already a Rule 1 error
   for (const e of walkable.filter((x) => x.from === target && x.type === 'HAS_STEP')) {
     if (!reach.has(e.to)) continue;
-    const via = walkable.filter((x) => x.to === e.to && x.from !== target).map((x) => `${x.from} -${x.type}->`);
-    warnings.push(
+    const others = walkable.filter((x) => x.to === e.to && x.from !== target);
+    const via = others.map((x) => `${x.from} -${x.type}->`);
+    const sources = [...new Set(others.map((x) =>
+      typeOf.get(x.from) === 'Criterion' ? dpOfCriterion.get(x.from) ?? x.from : x.from))];
+    const msg =
       `Gate ${gates.map((g) => `"${g}"`).join(', ')} excludes "${target}", but its step "${e.to}" ` +
-      `(${titleOf.get(e.to)}) is also reached via ${via.join(', ')} — that step survives a "no". ` +
-      `Confirm the brief intends it.`,
-    );
+      `(${titleOf.get(e.to)}) is also reached via ${via.join(', ')} — that step survives a "no".`;
+    const missing = sources.filter((s) => !briefHasMarker('SECOND ROUTE', e.to, s));
+    if (missing.length === 0) {
+      infos.push(`${msg} Deliberate per the brief ([SECOND ROUTE — ${e.to} via ${sources.join(' / ')}]).`);
+    } else {
+      warnings.push(
+        `${msg} Confirm the brief intends it, and record it there as ` +
+        `${missing.map((s) => `"[SECOND ROUTE — ${e.to} via ${s}]"`).join(', ')} (brief: ${briefName()}).`,
+      );
+    }
   }
 }
 
@@ -462,10 +480,14 @@ for (const base of gateNodes) {
   }
 }
 
+for (const i of infos) console.log(`ℹ ${i}`);
 for (const w of warnings) console.log(`⚠ ${w}`);
 
 if (errors.length === 0) {
-  console.log(`✓ GATE CONTROL OK — ${gateIds.size} gate(s), ${gatesByTarget.size} gated target(s), no violations (rules 1-3)`);
+  console.log(
+    `✓ GATE CONTROL OK — ${gateIds.size} gate(s), ${gatesByTarget.size} gated target(s), no violations ` +
+    `(rules 1-3), ${warnings.length} warning(s)`,
+  );
   process.exit(0);
 }
 console.log(`✗ GATE CONTROL — ${errors.length} violation(s):`);
