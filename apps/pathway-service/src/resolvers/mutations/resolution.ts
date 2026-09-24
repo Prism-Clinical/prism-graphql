@@ -958,9 +958,24 @@ export const resolutionMutations = {
         }
 
         const target = escalated.askTarget;
+        // DATED, at the session's evaluation instant, and marked as the
+        // provider's. Undated, the answer was one more value the gate could
+        // not order against the undated ones that made it ask — so it asked
+        // again, forever.
+        //
+        // The session clock, not the wall clock: the session evaluates as of
+        // `evaluationAsOf`, and a fact dated after it lies outside every
+        // horizon and is dropped. When the provider actually answered is
+        // recorded on the audit event below.
+        const assertedAsOf = requireSessionTemporalContext(session).evaluationAsOf;
         const fragment: AdditionalContextInput =
           target.kind === 'lab'
-            ? { labResults: [{ code: target.code, system: target.system, value }] }
+            ? {
+                labResults: [{
+                  code: target.code, system: target.system, value,
+                  date: assertedAsOf, providerAsserted: true,
+                }],
+              }
             : target.kind === 'vital'
               ? { vitalSigns: { [target.path]: value } }
               // `patient.trimester` addresses patientAttributes.trimester —
@@ -988,7 +1003,10 @@ export const resolutionMutations = {
           context,
           [{
             eventType: 'provider_asserted_datum',
-            triggerData: { gateId: args.nodeId, datumKey: escalated.datumKey, target, value },
+            triggerData: {
+              gateId: args.nodeId, datumKey: escalated.datumKey, target, value,
+              assertedAsOf, answeredAt: new Date().toISOString(),
+            },
             nodesRecomputed: 0,
             statusChanges: [],
           }],

@@ -242,6 +242,14 @@ export interface LabResult {
   /** Opaque source identifier — see CodeEntry.sourceId. */
   sourceId?: string;
   /**
+   * Set ONLY by the service, on the value a provider supplies in answer to an
+   * escalated datum request. Not in the GraphQL `LabResultInput`, so no caller
+   * can assert it. Such a value is dated, supersedes an earlier provider
+   * answer for the same code, and is ordered against dated values only — see
+   * `selectFacts`.
+   */
+  providerAsserted?: boolean;
+  /**
    * Observations carry no clinical state. Declared so the assembler can detect
    * and REJECT a supplied one rather than silently ignoring it.
    */

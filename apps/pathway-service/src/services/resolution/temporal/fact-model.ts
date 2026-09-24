@@ -18,7 +18,15 @@ export interface FactBase {
   interval: { start?: TemporalBound; end: TemporalEnd };
   recordValidity: 'VALID' | 'INVALID' | 'UNKNOWN'; // tri-state: see state-mapping
   validityBasis: string;
-  provenance: { sourceType: 'FHIR' | 'SYNTHETIC'; sourceId?: string; snapshotId?: string };
+  /**
+   * PROVIDER_ASSERTED: a clinician's answer to an escalated datum request,
+   * not a chart value. See `LabResult.providerAsserted`.
+   */
+  provenance: {
+    sourceType: 'FHIR' | 'SYNTHETIC' | 'PROVIDER_ASSERTED';
+    sourceId?: string;
+    snapshotId?: string;
+  };
 }
 
 export type ClinicalState = 'ACTIVE' | 'INACTIVE' | 'ON_HOLD' | 'UNKNOWN' | 'CONFLICT';

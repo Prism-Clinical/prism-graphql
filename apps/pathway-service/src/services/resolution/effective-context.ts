@@ -108,6 +108,25 @@ function concatOccurrences<T extends { code: string; system: string; date?: stri
 }
 
 /**
+ * A provider's new answer for a lab code REPLACES their earlier one.
+ *
+ * Both are dated at the same session instant, so kept together they would tie
+ * and the gate would be ambiguous again; and occurrence dedup keys on the date,
+ * so the correction would otherwise be the one discarded. Only provider
+ * answers are replaced — chart values are never touched.
+ */
+function supersededProviderAnswersRemoved<
+  T extends { code: string; system: string; providerAsserted?: boolean },
+>(base: T[] | undefined, next: T[] | undefined): T[] | undefined {
+  if (!base || !next) return base;
+  const replaced = new Set(
+    next.filter((l) => l.providerAsserted === true).map((l) => `${l.code}|${l.system}`),
+  );
+  if (replaced.size === 0) return base;
+  return base.filter((l) => !(l.providerAsserted === true && replaced.has(`${l.code}|${l.system}`)));
+}
+
+/**
  * Accumulate one `addPatientContext` call onto everything supplied before it.
  *
  * This bag IS the session's memory of mid-session additions: it is persisted
@@ -127,7 +146,10 @@ export function mergeAdditionalContext(
 
   out.conditionCodes = concatOccurrences(base.conditionCodes, next.conditionCodes);
   out.medications = concatOccurrences(base.medications, next.medications);
-  out.labResults = concatOccurrences(base.labResults, next.labResults);
+  out.labResults = concatOccurrences(
+    supersededProviderAnswersRemoved(base.labResults, next.labResults),
+    next.labResults,
+  );
   out.allergies = concatOccurrences(base.allergies, next.allergies);
 
   for (const key of ['vitalSigns', 'freeformData', 'patientAttributes'] as const) {
