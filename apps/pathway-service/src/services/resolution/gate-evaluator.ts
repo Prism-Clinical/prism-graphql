@@ -1407,7 +1407,10 @@ function evaluateCompound(
     };
   }
 
-  const op = gate.operator ?? 'AND';
+  // Normalized: the import validator accepts `and`/`or` in any case, and the
+  // branches below test `op === 'AND'` — so a stored lowercase `and` used to
+  // evaluate as OR. Anything that is not OR stays AND, the stricter reading.
+  const op: 'AND' | 'OR' = String(gate.operator ?? 'AND').toUpperCase() === 'OR' ? 'OR' : 'AND';
   const allFieldsRead: string[] = [];
   // Typed as the full outcome, not `{satisfied, reason}`: the D5 signals died at
   // this boundary because the narrowed type made dropping them invisible.
