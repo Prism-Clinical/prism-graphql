@@ -1,0 +1,1772 @@
+{
+  "schema_version": "1.0",
+  "pathway": {
+    "logical_id": "uti-asymptomatic-bacteriuria-pregnancy",
+    "title": "Urinary Tract Infection and Asymptomatic Bacteriuria in Pregnancy \u2014 Outpatient Screening, Treatment and Surveillance",
+    "version": "1",
+    "category": "OBSTETRIC",
+    "scope": "US outpatient prenatal care. Universal early-pregnancy screening for asymptomatic bacteriuria; treatment of asymptomatic bacteriuria and acute cystitis; the group B streptococcus bacteriuria arm; test of cure; recurrence and suppressive prophylaxis. Ends at the trigger for admission with pyelonephritis.",
+    "target_population": "All pregnant patients receiving prenatal care. Screening applies universally; treatment and surveillance arms apply to those with a positive culture.",
+    "condition_codes": [
+      {
+        "code": "R82.71",
+        "system": "ICD-10",
+        "description": "Bacteriuria",
+        "usage": "primary trigger \u2014 the only ASB code that exists",
+        "grouping": "bacteriuria"
+      },
+      {
+        "code": "O23.10",
+        "system": "ICD-10",
+        "description": "Infections of bladder in pregnancy, unspecified trimester",
+        "usage": "cystitis in pregnancy",
+        "grouping": "uti-pregnancy"
+      },
+      {
+        "code": "O23.12",
+        "system": "ICD-10",
+        "description": "Infections of bladder in pregnancy, second trimester",
+        "usage": "cystitis in pregnancy",
+        "grouping": "uti-pregnancy"
+      },
+      {
+        "code": "O23.13",
+        "system": "ICD-10",
+        "description": "Infections of bladder in pregnancy, third trimester",
+        "usage": "cystitis in pregnancy",
+        "grouping": "uti-pregnancy"
+      },
+      {
+        "code": "O23.40",
+        "system": "ICD-10",
+        "description": "Unspecified infection of urinary tract in pregnancy, unspecified trimester",
+        "usage": "undifferentiated UTI",
+        "grouping": "uti-pregnancy"
+      },
+      {
+        "code": "O23.42",
+        "system": "ICD-10",
+        "description": "Unspecified infection of urinary tract in pregnancy, second trimester",
+        "usage": "undifferentiated UTI",
+        "grouping": "uti-pregnancy"
+      },
+      {
+        "code": "O23.43",
+        "system": "ICD-10",
+        "description": "Unspecified infection of urinary tract in pregnancy, third trimester",
+        "usage": "undifferentiated UTI",
+        "grouping": "uti-pregnancy"
+      },
+      {
+        "code": "O99.820",
+        "system": "ICD-10",
+        "description": "Streptococcus B carrier state complicating pregnancy",
+        "usage": "GBS arm trigger",
+        "grouping": "gbs"
+      },
+      {
+        "code": "Z13.89",
+        "system": "ICD-10",
+        "description": "Encounter for screening for other disorder",
+        "usage": "the ASB screening encounter",
+        "grouping": "screening"
+      }
+    ]
+  },
+  "nodes": [
+    {
+      "id": "stage-1",
+      "type": "Stage",
+      "properties": {
+        "stage_number": 1,
+        "title": "Universal Screening"
+      }
+    },
+    {
+      "id": "stage-2",
+      "type": "Stage",
+      "properties": {
+        "stage_number": 2,
+        "title": "Culture Interpretation"
+      }
+    },
+    {
+      "id": "stage-3",
+      "type": "Stage",
+      "properties": {
+        "stage_number": 3,
+        "title": "Treatment"
+      }
+    },
+    {
+      "id": "stage-4",
+      "type": "Stage",
+      "properties": {
+        "stage_number": 4,
+        "title": "Group B Streptococcus Arm"
+      }
+    },
+    {
+      "id": "stage-5",
+      "type": "Stage",
+      "properties": {
+        "stage_number": 5,
+        "title": "Follow-up and Recurrence"
+      }
+    },
+    {
+      "id": "stage-6",
+      "type": "Stage",
+      "properties": {
+        "stage_number": 6,
+        "title": "Escalation"
+      }
+    },
+    {
+      "id": "step-1-1",
+      "type": "Step",
+      "properties": {
+        "stage_number": 1,
+        "step_number": 1,
+        "display_number": "1.1",
+        "title": "Screen for asymptomatic bacteriuria"
+      }
+    },
+    {
+      "id": "step-1-2",
+      "type": "Step",
+      "properties": {
+        "stage_number": 1,
+        "step_number": 2,
+        "display_number": "1.2",
+        "title": "Suppress additional screening (diabetes or spinal cord injury)"
+      }
+    },
+    {
+      "id": "step-2-1",
+      "type": "Step",
+      "properties": {
+        "stage_number": 2,
+        "step_number": 1,
+        "display_number": "2.1",
+        "title": "Interpret the urine culture"
+      }
+    },
+    {
+      "id": "step-2-2",
+      "type": "Step",
+      "properties": {
+        "stage_number": 2,
+        "step_number": 2,
+        "display_number": "2.2",
+        "title": "Classify as asymptomatic bacteriuria or acute cystitis"
+      }
+    },
+    {
+      "id": "step-3-1",
+      "type": "Step",
+      "properties": {
+        "stage_number": 3,
+        "step_number": 1,
+        "display_number": "3.1",
+        "title": "Treat with a targeted antibiotic for 5-7 days"
+      }
+    },
+    {
+      "id": "step-3-2",
+      "type": "Step",
+      "properties": {
+        "stage_number": 3,
+        "step_number": 2,
+        "display_number": "3.2",
+        "title": "Select a cephalosporin or non-beta-lactam regimen"
+      }
+    },
+    {
+      "id": "step-3-3",
+      "type": "Step",
+      "properties": {
+        "stage_number": 3,
+        "step_number": 3,
+        "display_number": "3.3",
+        "title": "Apply the first-trimester drug constraint"
+      }
+    },
+    {
+      "id": "step-4-1",
+      "type": "Step",
+      "properties": {
+        "stage_number": 4,
+        "step_number": 1,
+        "display_number": "4.1",
+        "title": "Record and notify group B streptococcus status"
+      }
+    },
+    {
+      "id": "step-4-2",
+      "type": "Step",
+      "properties": {
+        "stage_number": 4,
+        "step_number": 2,
+        "display_number": "4.2",
+        "title": "Flag intrapartum antibiotic prophylaxis"
+      }
+    },
+    {
+      "id": "step-4-3",
+      "type": "Step",
+      "properties": {
+        "stage_number": 4,
+        "step_number": 3,
+        "display_number": "4.3",
+        "title": "Cancel the 36 0/7-37 6/7 week rectovaginal screening culture"
+      }
+    },
+    {
+      "id": "step-4-4",
+      "type": "Step",
+      "properties": {
+        "stage_number": 4,
+        "step_number": 4,
+        "display_number": "4.4",
+        "title": "Treat group B streptococcus bacteriuria antepartum"
+      }
+    },
+    {
+      "id": "step-4-5",
+      "type": "Step",
+      "properties": {
+        "stage_number": 4,
+        "step_number": 5,
+        "display_number": "4.5",
+        "title": "Mark the requisition for clindamycin susceptibility"
+      }
+    },
+    {
+      "id": "step-5-1",
+      "type": "Step",
+      "properties": {
+        "stage_number": 5,
+        "step_number": 1,
+        "display_number": "5.1",
+        "title": "Assess for recurrence and ongoing risk"
+      }
+    },
+    {
+      "id": "step-5-2",
+      "type": "Step",
+      "properties": {
+        "stage_number": 5,
+        "step_number": 2,
+        "display_number": "5.2",
+        "title": "Test of cure"
+      }
+    },
+    {
+      "id": "step-5-2a",
+      "type": "Step",
+      "properties": {
+        "stage_number": 5,
+        "step_number": 3,
+        "display_number": "5.3",
+        "title": "Repeat urine culture 1-2 weeks after completing treatment"
+      }
+    },
+    {
+      "id": "step-5-2b",
+      "type": "Step",
+      "properties": {
+        "stage_number": 5,
+        "step_number": 4,
+        "display_number": "5.4",
+        "title": "Monitor symptoms; culture only if symptoms recur"
+      }
+    },
+    {
+      "id": "step-5-3",
+      "type": "Step",
+      "properties": {
+        "stage_number": 5,
+        "step_number": 5,
+        "display_number": "5.5",
+        "title": "Initiate suppressive prophylaxis"
+      }
+    },
+    {
+      "id": "step-6-1",
+      "type": "Step",
+      "properties": {
+        "stage_number": 6,
+        "step_number": 1,
+        "display_number": "6.1",
+        "title": "Escalate for inpatient management of pyelonephritis"
+      }
+    },
+    {
+      "id": "dp-1",
+      "type": "DecisionPoint",
+      "properties": {
+        "title": "Test-of-cure strategy after acute cystitis",
+        "branch_mode": "one_of"
+      }
+    },
+    {
+      "id": "crit-1a",
+      "type": "Criterion",
+      "properties": {
+        "description": "Repeat urine culture 1-2 weeks after completing treatment"
+      }
+    },
+    {
+      "id": "crit-1b",
+      "type": "Criterion",
+      "properties": {
+        "description": "Monitor symptoms; obtain a culture only if symptoms recur"
+      }
+    },
+    {
+      "id": "gate-no-repeat-screening",
+      "type": "Gate",
+      "properties": {
+        "title": "Diabetes or spinal cord injury?",
+        "gate_type": "compound",
+        "default_behavior": "skip",
+        "operator": "OR",
+        "conditions": [
+          {
+            "field": "conditions",
+            "operator": "includes_code",
+            "value": "E10.*",
+            "system": "ICD-10",
+            "horizon": "LIFETIME",
+            "status": "any"
+          },
+          {
+            "field": "conditions",
+            "operator": "includes_code",
+            "value": "E11.*",
+            "system": "ICD-10",
+            "horizon": "LIFETIME",
+            "status": "any"
+          },
+          {
+            "field": "conditions",
+            "operator": "includes_code",
+            "value": "O24.*",
+            "system": "ICD-10",
+            "horizon": "LIFETIME",
+            "status": "any"
+          },
+          {
+            "field": "conditions",
+            "operator": "includes_code",
+            "value": "G82.2*",
+            "system": "ICD-10",
+            "horizon": "LIFETIME",
+            "status": "any"
+          },
+          {
+            "field": "conditions",
+            "operator": "includes_code",
+            "value": "G82.5*",
+            "system": "ICD-10",
+            "horizon": "LIFETIME",
+            "status": "any"
+          },
+          {
+            "field": "conditions",
+            "operator": "includes_code",
+            "value": "N31.*",
+            "system": "ICD-10",
+            "horizon": "LIFETIME",
+            "status": "any"
+          },
+          {
+            "field": "conditions",
+            "operator": "includes_code",
+            "value": "T91.3",
+            "system": "ICD-10",
+            "horizon": "LIFETIME",
+            "status": "any"
+          }
+        ]
+      }
+    },
+    {
+      "id": "gate-culture-positive",
+      "type": "Gate",
+      "properties": {
+        "title": "Urine culture at or above 100,000 CFU/mL?",
+        "gate_type": "patient_attribute",
+        "default_behavior": "skip",
+        "condition": {
+          "field": "labs",
+          "operator": "greater_than",
+          "value": "19090-0",
+          "system": "LOINC",
+          "threshold": 99999.9,
+          "horizon": {
+            "days": 300
+          }
+        }
+      }
+    },
+    {
+      "id": "gate-gbs-identified",
+      "type": "Gate",
+      "properties": {
+        "title": "Did the urine culture grow group B streptococcus?",
+        "gate_type": "question",
+        "default_behavior": "skip",
+        "prompt": "Did this urine culture grow group B streptococcus (Streptococcus agalactiae), at any colony count? A positive result at any count obliges intrapartum antibiotic prophylaxis and removes the need for the 36 0/7-37 6/7 week rectovaginal screening culture.",
+        "answer_type": "BOOLEAN"
+      }
+    },
+    {
+      "id": "gate-pyelonephritis-suspected",
+      "type": "Gate",
+      "properties": {
+        "title": "Fever, or acute pyelonephritis coded, with urine studies suggesting UTI?",
+        "gate_type": "compound",
+        "default_behavior": "skip",
+        "operator": "OR",
+        "conditions": [
+          {
+            "field": "vitals",
+            "operator": "greater_than",
+            "value": "temperature_c",
+            "threshold": 37.9
+          },
+          {
+            "field": "conditions",
+            "operator": "includes_code",
+            "value": "N10",
+            "system": "ICD-10",
+            "horizon": {
+              "days": 300
+            },
+            "status": "active"
+          }
+        ]
+      }
+    },
+    {
+      "id": "gate-symptomatic",
+      "type": "Gate",
+      "properties": {
+        "title": "Does the patient have urinary symptoms?",
+        "gate_type": "question",
+        "default_behavior": "skip",
+        "prompt": "Does the patient have urinary symptoms - new or worsening dysuria, haematuria, urinary frequency, or nocturia? Frequency, urgency and nocturia overlap with ordinary pregnancy symptoms; dysuria and haematuria carry the signal. Symptoms distinguish acute cystitis from asymptomatic bacteriuria, and test of cure is offered for cystitis only.",
+        "answer_type": "BOOLEAN"
+      }
+    },
+    {
+      "id": "gate-penicillin-allergy",
+      "type": "Gate",
+      "properties": {
+        "title": "Documented penicillin or beta-lactam allergy?",
+        "gate_type": "compound",
+        "default_behavior": "skip",
+        "operator": "OR",
+        "conditions": [
+          {
+            "field": "allergies",
+            "operator": "includes_code",
+            "value": "Z88.0",
+            "system": "ICD-10",
+            "horizon": "LIFETIME",
+            "status": "any"
+          },
+          {
+            "field": "allergies",
+            "operator": "includes_code",
+            "value": "Z88.1",
+            "system": "ICD-10",
+            "horizon": "LIFETIME",
+            "status": "any"
+          }
+        ]
+      }
+    },
+    {
+      "id": "gate-first-trimester",
+      "type": "Gate",
+      "properties": {
+        "title": "Is the patient in the first trimester?",
+        "gate_type": "question",
+        "default_behavior": "skip",
+        "prompt": "Is the patient in the first trimester (less than 14 0/7 weeks)? Nitrofurantoin and sulfonamides remain REASONABLE in the first trimester if no appropriate alternative is available - this is a preference, not a prohibition. Alternatives: cephalexin, fosfomycin, amoxicillin-clavulanate.",
+        "answer_type": "BOOLEAN"
+      }
+    },
+    {
+      "id": "gate-gbs-treat-threshold",
+      "type": "Gate",
+      "properties": {
+        "title": "Group B streptococcus at or above 100,000 CFU/mL, or symptomatic?",
+        "gate_type": "question",
+        "default_behavior": "skip",
+        "prompt": "Is the group B streptococcus colony count 100,000 CFU/mL or greater, OR is the patient symptomatic? Either warrants antepartum treatment. A lower count in an asymptomatic patient requires no antepartum antibiotic - but still obliges intrapartum prophylaxis.",
+        "answer_type": "BOOLEAN"
+      }
+    },
+    {
+      "id": "gate-treatment-completed",
+      "type": "Gate",
+      "properties": {
+        "title": "Has the antibiotic course been completed?",
+        "gate_type": "question",
+        "default_behavior": "skip",
+        "prompt": "Has the patient completed her antibiotic course? Follow-up, test of cure and recurrence assessment all key off completion, not off the prescription date.",
+        "answer_type": "BOOLEAN"
+      }
+    },
+    {
+      "id": "gate-recurrent-uti",
+      "type": "Gate",
+      "properties": {
+        "title": "Two or more UTI episodes this pregnancy?",
+        "gate_type": "patient_attribute",
+        "default_behavior": "skip",
+        "condition": {
+          "field": "conditions",
+          "operator": "count_in_window",
+          "value": "O23.*",
+          "system": "ICD-10",
+          "count_threshold": 2,
+          "window_days": 300
+        }
+      }
+    },
+    {
+      "id": "med-1",
+      "type": "Medication",
+      "properties": {
+        "name": "Nitrofurantoin monohydrate/macrocrystals 100 mg",
+        "role": "first_line",
+        "route": "oral",
+        "instructions": "ACOG's closest thing to a preferred agent - low resistance, concentrates in the bladder. NOT for pyelonephritis: cannot reach therapeutic renal levels, and must be avoided when cystitis versus pyelonephritis is uncertain. Avoid in G6PD deficiency (haemolytic anaemia). Contraindicated at CrCl below 60 mL/min. FDA LABEL NOTE, retained for the prescriber and deliberately not gated per physician direction: label-contraindicated at 38-42 weeks, during labour, and when labour is imminent, because of neonatal haemolytic anaemia risk.",
+        "clinical_role": "uti-antibiotic-first-line",
+        "dose": "100 mg",
+        "frequency": "every 12 hours",
+        "duration": "5-7 days"
+      }
+    },
+    {
+      "id": "med-2",
+      "type": "Medication",
+      "properties": {
+        "name": "Cephalexin 250-500 mg",
+        "role": "first_line",
+        "route": "oral",
+        "instructions": "Appropriate for penicillin allergy at LOW anaphylaxis risk. Reaches therapeutic renal levels, unlike nitrofurantoin and fosfomycin.",
+        "clinical_role": "uti-antibiotic-first-line",
+        "dose": "250-500 mg",
+        "frequency": "every 6 hours",
+        "duration": "5-7 days"
+      }
+    },
+    {
+      "id": "med-3",
+      "type": "Medication",
+      "properties": {
+        "name": "Fosfomycin 3 g",
+        "role": "first_line",
+        "route": "oral",
+        "instructions": "The only single-dose option - ACOG calls it a reasonable choice for 1-day treatment of asymptomatic bacteriuria. NOT for pyelonephritis, same renal-penetration limit as nitrofurantoin.",
+        "clinical_role": "uti-antibiotic-first-line",
+        "dose": "3 g",
+        "frequency": "single dose",
+        "duration": "one day"
+      }
+    },
+    {
+      "id": "med-4",
+      "type": "Medication",
+      "properties": {
+        "name": "Sulfamethoxazole-trimethoprim 800/160 mg",
+        "role": "alternative",
+        "route": "oral",
+        "instructions": "Avoid empirically where local trimethoprim resistance exceeds 20%. First-trimester use is reasonable if no appropriate alternative is available. CROSS-PATHWAY CONTRAINDICATION: contraindicated in documented folate-deficiency megaloblastic anaemia and interferes with folate metabolism - conflicts with the anemia pathway's folate-repletion lane, and the lane mechanism cannot detect this.",
+        "clinical_role": "uti-antibiotic-first-line",
+        "dose": "800/160 mg",
+        "frequency": "every 12 hours",
+        "duration": "5-7 days"
+      }
+    },
+    {
+      "id": "med-5",
+      "type": "Medication",
+      "properties": {
+        "name": "Amoxicillin-clavulanate 500/125 or 875/125 mg",
+        "role": "alternative",
+        "route": "oral",
+        "instructions": "AVOID EMPIRICALLY - high E. coli resistance (39-48% to ampicillin). Reasonable once susceptibility is known.",
+        "clinical_role": "uti-antibiotic-first-line",
+        "dose": "500 mg every 8 hours or 875 mg every 12 hours",
+        "frequency": "every 8-12 hours",
+        "duration": "5-7 days"
+      }
+    },
+    {
+      "id": "med-6",
+      "type": "Medication",
+      "properties": {
+        "name": "Nitrofurantoin 100 mg, suppressive",
+        "role": "first_line",
+        "route": "oral",
+        "instructions": "Per ACOG, suppression continues for the remainder of the pregnancy. FDA LABEL NOTE, retained for the prescriber and deliberately not gated per physician direction: label-contraindicated at 38-42 weeks, during labour, and when labour is imminent, because of neonatal haemolytic anaemia risk. Cephalexin is the label-safe alternative if a switch is preferred. Match to the isolate's susceptibility.",
+        "clinical_role": "uti-suppressive-prophylaxis",
+        "dose": "100 mg",
+        "frequency": "once daily",
+        "duration": "remainder of pregnancy"
+      }
+    },
+    {
+      "id": "med-7",
+      "type": "Medication",
+      "properties": {
+        "name": "Cephalexin 250-500 mg, suppressive",
+        "role": "first_line",
+        "route": "oral",
+        "instructions": "Co-equal with nitrofurantoin for suppression. Match to the isolate's susceptibility. Continuous or postcoital dosing are both acceptable strategies.",
+        "clinical_role": "uti-suppressive-prophylaxis",
+        "dose": "250-500 mg",
+        "frequency": "once daily",
+        "duration": "remainder of pregnancy"
+      }
+    },
+    {
+      "id": "med-8",
+      "type": "Medication",
+      "properties": {
+        "name": "Clindamycin",
+        "role": "contraindicated",
+        "route": "oral",
+        "instructions": "MUST NOT be used to treat group B streptococcus bacteriuria or any urinary tract infection, even in penicillin allergy - it concentrates poorly in urine and is metabolised primarily by the liver. A clindamycin susceptibility result on an antepartum GBS urine culture exists ONLY to guide intrapartum prophylaxis.",
+        "clinical_role": "uti-antibiotic-first-line"
+      }
+    },
+    {
+      "id": "lab-1",
+      "type": "LabTest",
+      "properties": {
+        "name": "Urine culture with colony count",
+        "specimen": "Midstream urine",
+        "code": "19090-0",
+        "system": "LOINC"
+      }
+    },
+    {
+      "id": "lab-2",
+      "type": "LabTest",
+      "properties": {
+        "name": "Bacteria identified in urine by culture",
+        "specimen": "Midstream urine",
+        "code": "630-4",
+        "system": "LOINC"
+      }
+    },
+    {
+      "id": "lab-3",
+      "type": "LabTest",
+      "properties": {
+        "name": "Antimicrobial susceptibility, urine isolate",
+        "specimen": "Urine isolate"
+      }
+    },
+    {
+      "id": "lab-4",
+      "type": "LabTest",
+      "properties": {
+        "name": "Urinalysis complete panel",
+        "specimen": "Urine",
+        "code": "24356-8",
+        "system": "LOINC"
+      }
+    },
+    {
+      "id": "lab-5",
+      "type": "LabTest",
+      "properties": {
+        "name": "Nitrite and leukocyte esterase, test strip",
+        "specimen": "Urine",
+        "code": "32782-5",
+        "system": "LOINC"
+      }
+    },
+    {
+      "id": "lab-6",
+      "type": "LabTest",
+      "properties": {
+        "name": "Streptococcus agalactiae susceptibility in urine",
+        "specimen": "Urine isolate"
+      }
+    },
+    {
+      "id": "guid-1",
+      "type": "Guidance",
+      "properties": {
+        "topic": "When to call us right away",
+        "category": "safety-netting",
+        "instructions": "You are being treated for a bladder infection. Most people feel better within a day or two. But a bladder infection can move up to the kidneys, and a kidney infection in pregnancy is serious. Call right away - do not wait for your next appointment - if you get any of these: a fever of 100.4F (38C) or higher; pain in your back or your side, usually just below the ribs; shaking chills; feeling sick to your stomach or throwing up; your bladder symptoms not improving after 1-2 days of antibiotics, or getting worse; blood in your urine. You do not need all of these - fever on its own, or back or side pain on its own, is enough of a reason to call. If you cannot reach us, go to urgent care or the emergency room; do not wait for treatment. Always say that you are pregnant and how many weeks. IMPLEMENTER NOTE: this text is authored from ACOG Clinical Consensus No. 4 and ACOG patient FAQ050. It is NOT derived from the ACOG/AIM Urgent Maternal Warning Signs card, which is licensed for distribution only in its entirety and without modification. That card may be linked whole."
+      }
+    },
+    {
+      "id": "guid-2",
+      "type": "Guidance",
+      "properties": {
+        "topic": "Finish the whole course",
+        "category": "adherence",
+        "instructions": "Most symptoms go away in 1 to 2 days. It is very important to finish the medication prescribed for a urinary tract infection, even after your symptoms go away - because each untreated infection risks moving up to the kidneys. NOTE: no guideline source addresses what to do about a specific missed dose; that is pharmacy labelling advice and must not be attributed to ACOG. The claim that stopping early causes antibiotic resistance is also not supported by these sources - the sourced reason to finish the course is progression to pyelonephritis."
+      }
+    },
+    {
+      "id": "guid-3",
+      "type": "Guidance",
+      "properties": {
+        "topic": "What we are not recommending, and why",
+        "category": "education",
+        "instructions": "Cranberry products, probiotics, D-mannose, extra hydration, voiding after intercourse and front-to-back wiping are NOT recommended for preventing urinary infections in pregnancy. This is not an oversight: the one US guideline that covers them explicitly excludes pregnant women, and its evidence review excluded them from study selection. For non-pregnant women, post-coital voiding and wiping direction are described as myths, and a large trial found D-mannose no better than placebo. Front-to-back wiping remains a urine SPECIMEN COLLECTION instruction, which is a different thing. The only prevention measure with a basis in pregnancy is antibiotic suppression, and only after a recurrence."
+      }
+    },
+    {
+      "id": "guid-4",
+      "type": "Guidance",
+      "properties": {
+        "topic": "What group B strep in your urine means",
+        "category": "education",
+        "instructions": "Your urine test grew a bacterium called group B strep. Two things follow, and both are good to know now. First, you will be given antibiotics through a drip during labour to protect your baby - this happens regardless of the amount grown. Second, you will NOT need the usual group B strep swab at 36-37 weeks, because this result already tells us what that swab would. If the amount grown was high, or you have symptoms, you will also be treated now."
+      }
+    },
+    {
+      "id": "qm-1",
+      "type": "QualityMetric",
+      "properties": {
+        "name": "Asymptomatic bacteriuria screening completion",
+        "measure": "Of pregnant patients, the proportion with at least one urine CULTURE (not dipstick) resulted during pregnancy, ideally at or before the first-trimester visit. Steward: local - no national measure exists for prenatal asymptomatic bacteriuria screening, UTI treatment in pregnancy, or outpatient antibiotic stewardship covering urinary infection."
+      }
+    },
+    {
+      "id": "sched-1",
+      "type": "Schedule",
+      "properties": {
+        "interval": "Once, early in prenatal care",
+        "description": "Screening urine culture. ACOG declines to specify a gestational age; USPSTF says first prenatal visit or 12-16 weeks, whichever is earlier."
+      }
+    },
+    {
+      "id": "sched-2",
+      "type": "Schedule",
+      "properties": {
+        "interval": "5-7 days",
+        "description": "Antibiotic course for asymptomatic bacteriuria or acute cystitis. Fosfomycin is a single dose."
+      }
+    },
+    {
+      "id": "sched-3",
+      "type": "Schedule",
+      "properties": {
+        "interval": "1-2 weeks after completing treatment",
+        "description": "Optional test of cure after acute cystitis only. ACOG makes no recommendation either way after asymptomatic bacteriuria."
+      }
+    },
+    {
+      "id": "sched-4",
+      "type": "Schedule",
+      "properties": {
+        "interval": "Daily, for the remainder of pregnancy",
+        "description": "Suppressive prophylaxis, continuing to delivery per ACOG."
+      }
+    },
+    {
+      "id": "code-loinc-19090-0",
+      "type": "CodeEntry",
+      "properties": {
+        "code": "19090-0",
+        "system": "LOINC",
+        "description": "Colony count [#/volume] in Urine"
+      }
+    },
+    {
+      "id": "code-loinc-630-4",
+      "type": "CodeEntry",
+      "properties": {
+        "code": "630-4",
+        "system": "LOINC",
+        "description": "Bacteria identified in Urine by Culture"
+      }
+    },
+    {
+      "id": "code-loinc-24356-8",
+      "type": "CodeEntry",
+      "properties": {
+        "code": "24356-8",
+        "system": "LOINC",
+        "description": "Urinalysis complete panel - Urine"
+      }
+    },
+    {
+      "id": "code-loinc-32782-5",
+      "type": "CodeEntry",
+      "properties": {
+        "code": "32782-5",
+        "system": "LOINC",
+        "description": "Leukocyte esterase+Nitrite [Presence] in Urine by Test strip"
+      }
+    },
+    {
+      "id": "code-cpt-87086",
+      "type": "CodeEntry",
+      "properties": {
+        "code": "87086",
+        "system": "CPT",
+        "description": "Culture, bacterial; quantitative colony count, urine"
+      }
+    },
+    {
+      "id": "code-cpt-87088",
+      "type": "CodeEntry",
+      "properties": {
+        "code": "87088",
+        "system": "CPT",
+        "description": "Culture, bacterial; with isolation and presumptive identification of each isolate, urine"
+      }
+    },
+    {
+      "id": "code-cpt-87186",
+      "type": "CodeEntry",
+      "properties": {
+        "code": "87186",
+        "system": "CPT",
+        "description": "Susceptibility studies, antimicrobial agent; microdilution or agar dilution"
+      }
+    },
+    {
+      "id": "code-rxnorm-1648755",
+      "type": "CodeEntry",
+      "properties": {
+        "code": "1648755",
+        "system": "RXNORM",
+        "description": "nitrofurantoin, macrocrystals 25 MG / nitrofurantoin, monohydrate 75 MG Oral Capsule"
+      }
+    },
+    {
+      "id": "code-rxnorm-309114",
+      "type": "CodeEntry",
+      "properties": {
+        "code": "309114",
+        "system": "RXNORM",
+        "description": "cephalexin 500 MG Oral Capsule"
+      }
+    },
+    {
+      "id": "code-rxnorm-808917",
+      "type": "CodeEntry",
+      "properties": {
+        "code": "808917",
+        "system": "RXNORM",
+        "description": "fosfomycin 3000 MG Granules for Oral Solution"
+      }
+    },
+    {
+      "id": "code-rxnorm-198335",
+      "type": "CodeEntry",
+      "properties": {
+        "code": "198335",
+        "system": "RXNORM",
+        "description": "sulfamethoxazole 800 MG / trimethoprim 160 MG Oral Tablet"
+      }
+    },
+    {
+      "id": "code-rxnorm-562508",
+      "type": "CodeEntry",
+      "properties": {
+        "code": "562508",
+        "system": "RXNORM",
+        "description": "amoxicillin 875 MG / clavulanate 125 MG Oral Tablet"
+      }
+    },
+    {
+      "id": "code-icd10-o23-13",
+      "type": "CodeEntry",
+      "properties": {
+        "code": "O23.13",
+        "system": "ICD-10",
+        "description": "Infections of bladder in pregnancy, third trimester"
+      }
+    },
+    {
+      "id": "code-icd10-o23-43",
+      "type": "CodeEntry",
+      "properties": {
+        "code": "O23.43",
+        "system": "ICD-10",
+        "description": "Unspecified infection of urinary tract in pregnancy, third trimester"
+      }
+    },
+    {
+      "id": "code-icd10-r82-71",
+      "type": "CodeEntry",
+      "properties": {
+        "code": "R82.71",
+        "system": "ICD-10",
+        "description": "Bacteriuria"
+      }
+    },
+    {
+      "id": "code-icd10-b95-1",
+      "type": "CodeEntry",
+      "properties": {
+        "code": "B95.1",
+        "system": "ICD-10",
+        "description": "Streptococcus, group B, as the cause of diseases classified elsewhere"
+      }
+    },
+    {
+      "id": "code-icd10-b96-20",
+      "type": "CodeEntry",
+      "properties": {
+        "code": "B96.20",
+        "system": "ICD-10",
+        "description": "Unspecified Escherichia coli as the cause of diseases classified elsewhere"
+      }
+    },
+    {
+      "id": "code-icd10-o99-820",
+      "type": "CodeEntry",
+      "properties": {
+        "code": "O99.820",
+        "system": "ICD-10",
+        "description": "Streptococcus B carrier state complicating pregnancy"
+      }
+    },
+    {
+      "id": "code-icd10-z13-89",
+      "type": "CodeEntry",
+      "properties": {
+        "code": "Z13.89",
+        "system": "ICD-10",
+        "description": "Encounter for screening for other disorder"
+      }
+    },
+    {
+      "id": "code-icd10-n10",
+      "type": "CodeEntry",
+      "properties": {
+        "code": "N10",
+        "system": "ICD-10",
+        "description": "Acute pyelonephritis"
+      }
+    },
+    {
+      "id": "ev-1",
+      "type": "EvidenceCitation",
+      "properties": {
+        "reference_number": 1,
+        "title": "Urinary Tract Infections in Pregnant Individuals: ACOG Clinical Consensus No. 4",
+        "evidence_level": "Expert Consensus",
+        "authors": "ACOG",
+        "source": "Obstetrics & Gynecology 142(2):435-445 (Reaffirmed 2026)",
+        "year": 2023,
+        "url": "https://www.acog.org/clinical/clinical-guidance/clinical-consensus/articles/2023/08/urinary-tract-infections-in-pregnant-individuals"
+      }
+    },
+    {
+      "id": "ev-2",
+      "type": "EvidenceCitation",
+      "properties": {
+        "reference_number": 2,
+        "title": "Prevention of Group B Streptococcal Early-Onset Disease in Newborns: ACOG Committee Opinion No. 797",
+        "evidence_level": "Expert Consensus",
+        "authors": "ACOG",
+        "source": "Obstetrics & Gynecology 135(2):e51-e72 (Reaffirmed 2025)",
+        "year": 2020,
+        "url": "https://www.acog.org/clinical/clinical-guidance/committee-opinion/articles/2020/02/prevention-of-group-b-streptococcal-early-onset-disease-in-newborns"
+      }
+    },
+    {
+      "id": "ev-3",
+      "type": "EvidenceCitation",
+      "properties": {
+        "reference_number": 3,
+        "title": "Screening for Asymptomatic Bacteriuria in Adults: USPSTF Recommendation Statement",
+        "evidence_level": "Level B",
+        "authors": "USPSTF",
+        "source": "JAMA 322(12):1188-1194",
+        "year": 2019,
+        "url": "https://www.uspreventiveservicestaskforce.org/uspstf/recommendation/asymptomatic-bacteriuria-in-adults-screening"
+      }
+    },
+    {
+      "id": "ev-4",
+      "type": "EvidenceCitation",
+      "properties": {
+        "reference_number": 4,
+        "title": "Clinical Practice Guideline for the Management of Asymptomatic Bacteriuria: 2019 Update",
+        "evidence_level": "Expert Consensus",
+        "authors": "Nicolle LE et al., IDSA",
+        "source": "Clinical Infectious Diseases 68(10):e83-e110",
+        "year": 2019,
+        "url": "https://academic.oup.com/cid/article/68/10/e83/5354895"
+      }
+    },
+    {
+      "id": "ev-6",
+      "type": "EvidenceCitation",
+      "properties": {
+        "reference_number": 6,
+        "title": "FDA prescribing information via DailyMed: nitrofurantoin, sulfamethoxazole-trimethoprim, cephalexin",
+        "evidence_level": "Expert Consensus",
+        "authors": "FDA/NLM",
+        "source": "DailyMed",
+        "year": 2026,
+        "url": "https://dailymed.nlm.nih.gov/dailymed/"
+      }
+    },
+    {
+      "id": "ev-8",
+      "type": "EvidenceCitation",
+      "properties": {
+        "reference_number": 8,
+        "title": "Urinary Tract Infections (UTIs) - ACOG patient FAQ050",
+        "evidence_level": "Expert Consensus",
+        "authors": "ACOG",
+        "source": "ACOG patient education (reviewed October 2025)",
+        "year": 2024,
+        "url": "https://www.acog.org/womens-health/faqs/urinary-tract-infections"
+      }
+    },
+    {
+      "id": "ev-9",
+      "type": "EvidenceCitation",
+      "properties": {
+        "reference_number": 9,
+        "title": "Recurrent Uncomplicated Urinary Tract Infections in Women: AUA/CUA/SUFU Guideline",
+        "evidence_level": "Level B",
+        "authors": "American Urological Association",
+        "source": "AUA guideline (amended 2025) - EXCLUDES pregnant women from scope",
+        "year": 2019,
+        "url": "https://www.auanet.org/guidelines-and-quality/guidelines/recurrent-uti"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "from": "root",
+      "to": "stage-1",
+      "type": "HAS_STAGE"
+    },
+    {
+      "from": "root",
+      "to": "stage-2",
+      "type": "HAS_STAGE"
+    },
+    {
+      "from": "stage-1",
+      "to": "step-1-1",
+      "type": "HAS_STEP"
+    },
+    {
+      "from": "stage-2",
+      "to": "step-2-1",
+      "type": "HAS_STEP"
+    },
+    {
+      "from": "stage-3",
+      "to": "step-3-1",
+      "type": "HAS_STEP"
+    },
+    {
+      "from": "stage-4",
+      "to": "step-4-1",
+      "type": "HAS_STEP"
+    },
+    {
+      "from": "stage-4",
+      "to": "step-4-2",
+      "type": "HAS_STEP"
+    },
+    {
+      "from": "stage-4",
+      "to": "step-4-3",
+      "type": "HAS_STEP"
+    },
+    {
+      "from": "stage-5",
+      "to": "step-5-1",
+      "type": "HAS_STEP"
+    },
+    {
+      "from": "stage-6",
+      "to": "step-6-1",
+      "type": "HAS_STEP"
+    },
+    {
+      "from": "step-5-2",
+      "to": "dp-1",
+      "type": "HAS_DECISION_POINT"
+    },
+    {
+      "from": "dp-1",
+      "to": "crit-1a",
+      "type": "HAS_CRITERION"
+    },
+    {
+      "from": "dp-1",
+      "to": "crit-1b",
+      "type": "HAS_CRITERION"
+    },
+    {
+      "from": "dp-1",
+      "to": "step-5-2a",
+      "type": "BRANCHES_TO"
+    },
+    {
+      "from": "crit-1a",
+      "to": "step-5-2a",
+      "type": "SELECTS_BRANCH"
+    },
+    {
+      "from": "dp-1",
+      "to": "step-5-2b",
+      "type": "BRANCHES_TO"
+    },
+    {
+      "from": "crit-1b",
+      "to": "step-5-2b",
+      "type": "SELECTS_BRANCH"
+    },
+    {
+      "from": "stage-1",
+      "to": "gate-no-repeat-screening",
+      "type": "HAS_GATE"
+    },
+    {
+      "from": "gate-no-repeat-screening",
+      "to": "step-1-2",
+      "type": "BRANCHES_TO"
+    },
+    {
+      "from": "step-2-1",
+      "to": "gate-culture-positive",
+      "type": "HAS_GATE"
+    },
+    {
+      "from": "gate-culture-positive",
+      "to": "step-2-2",
+      "type": "BRANCHES_TO"
+    },
+    {
+      "from": "gate-culture-positive",
+      "to": "stage-3",
+      "type": "BRANCHES_TO"
+    },
+    {
+      "from": "step-2-1",
+      "to": "gate-gbs-identified",
+      "type": "HAS_GATE"
+    },
+    {
+      "from": "gate-gbs-identified",
+      "to": "stage-4",
+      "type": "BRANCHES_TO"
+    },
+    {
+      "from": "step-2-1",
+      "to": "gate-pyelonephritis-suspected",
+      "type": "HAS_GATE"
+    },
+    {
+      "from": "gate-pyelonephritis-suspected",
+      "to": "stage-6",
+      "type": "BRANCHES_TO"
+    },
+    {
+      "from": "step-2-2",
+      "to": "gate-symptomatic",
+      "type": "HAS_GATE"
+    },
+    {
+      "from": "gate-symptomatic",
+      "to": "step-5-2",
+      "type": "BRANCHES_TO"
+    },
+    {
+      "from": "step-3-1",
+      "to": "gate-penicillin-allergy",
+      "type": "HAS_GATE"
+    },
+    {
+      "from": "gate-penicillin-allergy",
+      "to": "step-3-2",
+      "type": "BRANCHES_TO"
+    },
+    {
+      "from": "gate-penicillin-allergy",
+      "to": "step-4-5",
+      "type": "BRANCHES_TO"
+    },
+    {
+      "from": "step-3-1",
+      "to": "gate-first-trimester",
+      "type": "HAS_GATE"
+    },
+    {
+      "from": "gate-first-trimester",
+      "to": "step-3-3",
+      "type": "BRANCHES_TO"
+    },
+    {
+      "from": "stage-4",
+      "to": "gate-gbs-treat-threshold",
+      "type": "HAS_GATE"
+    },
+    {
+      "from": "gate-gbs-treat-threshold",
+      "to": "step-4-4",
+      "type": "BRANCHES_TO"
+    },
+    {
+      "from": "stage-3",
+      "to": "gate-treatment-completed",
+      "type": "HAS_GATE"
+    },
+    {
+      "from": "gate-treatment-completed",
+      "to": "stage-5",
+      "type": "BRANCHES_TO"
+    },
+    {
+      "from": "stage-5",
+      "to": "gate-recurrent-uti",
+      "type": "HAS_GATE"
+    },
+    {
+      "from": "gate-recurrent-uti",
+      "to": "step-5-3",
+      "type": "BRANCHES_TO"
+    },
+    {
+      "from": "step-3-1",
+      "to": "med-1",
+      "type": "USES_MEDICATION"
+    },
+    {
+      "from": "step-3-1",
+      "to": "med-2",
+      "type": "USES_MEDICATION"
+    },
+    {
+      "from": "step-3-1",
+      "to": "med-3",
+      "type": "USES_MEDICATION"
+    },
+    {
+      "from": "step-3-1",
+      "to": "med-4",
+      "type": "USES_MEDICATION"
+    },
+    {
+      "from": "step-3-1",
+      "to": "med-5",
+      "type": "USES_MEDICATION"
+    },
+    {
+      "from": "step-5-3",
+      "to": "med-6",
+      "type": "USES_MEDICATION"
+    },
+    {
+      "from": "step-5-3",
+      "to": "med-7",
+      "type": "USES_MEDICATION"
+    },
+    {
+      "from": "step-4-4",
+      "to": "med-8",
+      "type": "USES_MEDICATION"
+    },
+    {
+      "from": "step-1-1",
+      "to": "lab-1",
+      "type": "HAS_LAB_TEST"
+    },
+    {
+      "from": "step-2-1",
+      "to": "lab-1",
+      "type": "HAS_LAB_TEST"
+    },
+    {
+      "from": "step-5-2a",
+      "to": "lab-1",
+      "type": "HAS_LAB_TEST"
+    },
+    {
+      "from": "step-2-1",
+      "to": "lab-2",
+      "type": "HAS_LAB_TEST"
+    },
+    {
+      "from": "step-4-1",
+      "to": "lab-2",
+      "type": "HAS_LAB_TEST"
+    },
+    {
+      "from": "step-3-1",
+      "to": "lab-3",
+      "type": "HAS_LAB_TEST"
+    },
+    {
+      "from": "step-5-3",
+      "to": "lab-3",
+      "type": "HAS_LAB_TEST"
+    },
+    {
+      "from": "step-2-1",
+      "to": "lab-4",
+      "type": "HAS_LAB_TEST"
+    },
+    {
+      "from": "step-2-1",
+      "to": "lab-5",
+      "type": "HAS_LAB_TEST"
+    },
+    {
+      "from": "step-4-5",
+      "to": "lab-6",
+      "type": "HAS_LAB_TEST"
+    },
+    {
+      "from": "step-3-1",
+      "to": "guid-1",
+      "type": "HAS_GUIDANCE"
+    },
+    {
+      "from": "step-3-1",
+      "to": "guid-2",
+      "type": "HAS_GUIDANCE"
+    },
+    {
+      "from": "step-3-1",
+      "to": "guid-3",
+      "type": "HAS_GUIDANCE"
+    },
+    {
+      "from": "step-4-1",
+      "to": "guid-4",
+      "type": "HAS_GUIDANCE"
+    },
+    {
+      "from": "step-1-1",
+      "to": "qm-1",
+      "type": "HAS_QUALITY_METRIC"
+    },
+    {
+      "from": "step-1-1",
+      "to": "sched-1",
+      "type": "HAS_SCHEDULE"
+    },
+    {
+      "from": "step-3-1",
+      "to": "sched-2",
+      "type": "HAS_SCHEDULE"
+    },
+    {
+      "from": "step-5-2",
+      "to": "sched-3",
+      "type": "HAS_SCHEDULE"
+    },
+    {
+      "from": "step-5-3",
+      "to": "sched-4",
+      "type": "HAS_SCHEDULE"
+    },
+    {
+      "from": "lab-1",
+      "to": "code-loinc-19090-0",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "lab-2",
+      "to": "code-loinc-630-4",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "lab-4",
+      "to": "code-loinc-24356-8",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "lab-5",
+      "to": "code-loinc-32782-5",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "lab-1",
+      "to": "code-cpt-87086",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "lab-2",
+      "to": "code-cpt-87088",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "lab-3",
+      "to": "code-cpt-87186",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "lab-6",
+      "to": "code-cpt-87186",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "med-1",
+      "to": "code-rxnorm-1648755",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "med-2",
+      "to": "code-rxnorm-309114",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "med-3",
+      "to": "code-rxnorm-808917",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "med-4",
+      "to": "code-rxnorm-198335",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "med-5",
+      "to": "code-rxnorm-562508",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "step-2-2",
+      "to": "code-icd10-o23-13",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "step-2-2",
+      "to": "code-icd10-o23-43",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "step-2-2",
+      "to": "code-icd10-r82-71",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "step-4-1",
+      "to": "code-icd10-b95-1",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "step-2-2",
+      "to": "code-icd10-b96-20",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "step-4-1",
+      "to": "code-icd10-o99-820",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "step-1-1",
+      "to": "code-icd10-z13-89",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "step-6-1",
+      "to": "code-icd10-n10",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "stage-1",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "stage-1",
+      "to": "ev-3",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "stage-2",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "stage-3",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "stage-3",
+      "to": "ev-6",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "stage-4",
+      "to": "ev-2",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "stage-5",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "stage-5",
+      "to": "ev-6",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "stage-6",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-1-1",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-1-1",
+      "to": "ev-3",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-1-2",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-2-1",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-2-2",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-3-1",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-3-1",
+      "to": "ev-6",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-3-2",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-3-3",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-4-1",
+      "to": "ev-2",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-4-2",
+      "to": "ev-2",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-4-3",
+      "to": "ev-2",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-4-4",
+      "to": "ev-2",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-4-5",
+      "to": "ev-2",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-5-1",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-5-2",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-5-2",
+      "to": "ev-4",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-5-2a",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-5-2b",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-5-3",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-6-1",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "dp-1",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "crit-1a",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "crit-1b",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "med-1",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "med-1",
+      "to": "ev-6",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "med-2",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "med-3",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "med-4",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "med-4",
+      "to": "ev-6",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "med-5",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "med-6",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "med-6",
+      "to": "ev-6",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "med-7",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "med-8",
+      "to": "ev-2",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "lab-1",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "lab-2",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "lab-3",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "lab-4",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "lab-5",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "lab-6",
+      "to": "ev-2",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "guid-1",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "guid-1",
+      "to": "ev-8",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "guid-2",
+      "to": "ev-8",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "guid-3",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "guid-3",
+      "to": "ev-9",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "guid-4",
+      "to": "ev-2",
+      "type": "CITES_EVIDENCE"
+    }
+  ]
+}

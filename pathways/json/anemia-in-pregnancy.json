@@ -1,0 +1,3114 @@
+{
+  "schema_version": "1.0",
+  "pathway": {
+    "logical_id": "anemia-in-pregnancy",
+    "title": "Anemia in Pregnancy \u2014 Classification and Treatment",
+    "version": "2",
+    "category": "OBSTETRIC",
+    "scope": "Outpatient prenatal care, from diagnosed anemia through postpartum handoff. Screening is upstream of this pathway.",
+    "target_population": "Adult pregnant patients with diagnosed anemia; hemoglobinopathy disease, thalassemia syndromes, and CKD-associated anemia are detected and routed out.",
+    "condition_codes": [
+      {
+        "code": "O99.011",
+        "system": "ICD-10",
+        "description": "Anemia complicating pregnancy, first trimester",
+        "usage": "primary trigger",
+        "grouping": "anemia-pregnancy"
+      },
+      {
+        "code": "O99.012",
+        "system": "ICD-10",
+        "description": "Anemia complicating pregnancy, second trimester",
+        "usage": "primary trigger",
+        "grouping": "anemia-pregnancy"
+      },
+      {
+        "code": "O99.013",
+        "system": "ICD-10",
+        "description": "Anemia complicating pregnancy, third trimester",
+        "usage": "primary trigger",
+        "grouping": "anemia-pregnancy"
+      },
+      {
+        "code": "O99.019",
+        "system": "ICD-10",
+        "description": "Anemia complicating pregnancy, unspecified trimester",
+        "usage": "primary trigger",
+        "grouping": "anemia-pregnancy"
+      },
+      {
+        "code": "D50.9",
+        "system": "ICD-10",
+        "description": "Iron deficiency anemia, unspecified",
+        "usage": "secondary trigger \u2014 often coded alongside O99.01x",
+        "grouping": "anemia-etiology"
+      }
+    ]
+  },
+  "nodes": [
+    {
+      "id": "stage-1",
+      "type": "Stage",
+      "properties": {
+        "stage_number": 1,
+        "title": "Diagnosis Confirmation & Classification"
+      }
+    },
+    {
+      "id": "stage-2",
+      "type": "Stage",
+      "properties": {
+        "stage_number": 2,
+        "title": "Iron Deficiency Treatment"
+      }
+    },
+    {
+      "id": "stage-3",
+      "type": "Stage",
+      "properties": {
+        "stage_number": 3,
+        "title": "Special Populations & Escalations"
+      }
+    },
+    {
+      "id": "stage-4",
+      "type": "Stage",
+      "properties": {
+        "stage_number": 4,
+        "title": "Late-Pregnancy Optimization & Handoff"
+      }
+    },
+    {
+      "id": "step-1-1",
+      "type": "Step",
+      "properties": {
+        "stage_number": 1,
+        "step_number": 1,
+        "display_number": "1.1",
+        "title": "Diagnosis confirmation & evaluation"
+      }
+    },
+    {
+      "id": "step-1-2",
+      "type": "Step",
+      "properties": {
+        "stage_number": 1,
+        "step_number": 2,
+        "display_number": "1.2",
+        "title": "Microcytic workup"
+      }
+    },
+    {
+      "id": "step-1-3",
+      "type": "Step",
+      "properties": {
+        "stage_number": 1,
+        "step_number": 3,
+        "display_number": "1.3",
+        "title": "Normocytic workup"
+      }
+    },
+    {
+      "id": "step-1-4",
+      "type": "Step",
+      "properties": {
+        "stage_number": 1,
+        "step_number": 4,
+        "display_number": "1.4",
+        "title": "Macrocytic workup & repletion"
+      }
+    },
+    {
+      "id": "step-1-5",
+      "type": "Step",
+      "properties": {
+        "stage_number": 1,
+        "step_number": 5,
+        "display_number": "1.5",
+        "title": "Expanded / nonresponse workup"
+      }
+    },
+    {
+      "id": "step-1-6",
+      "type": "Step",
+      "properties": {
+        "stage_number": 1,
+        "step_number": 6,
+        "display_number": "1.6",
+        "title": "Hemoglobinopathy testing"
+      }
+    },
+    {
+      "id": "step-2-1",
+      "type": "Step",
+      "properties": {
+        "stage_number": 2,
+        "step_number": 1,
+        "display_number": "2.1",
+        "title": "Initiate oral iron + counseling"
+      }
+    },
+    {
+      "id": "step-2-2",
+      "type": "Step",
+      "properties": {
+        "stage_number": 2,
+        "step_number": 2,
+        "display_number": "2.2",
+        "title": "Oral iron trial period"
+      }
+    },
+    {
+      "id": "step-2-3",
+      "type": "Step",
+      "properties": {
+        "stage_number": 2,
+        "step_number": 3,
+        "display_number": "2.3",
+        "title": "Response assessment"
+      }
+    },
+    {
+      "id": "step-2-4",
+      "type": "Step",
+      "properties": {
+        "stage_number": 2,
+        "step_number": 4,
+        "display_number": "2.4",
+        "title": "Maintenance & surveillance"
+      }
+    },
+    {
+      "id": "step-2-5",
+      "type": "Step",
+      "properties": {
+        "stage_number": 2,
+        "step_number": 5,
+        "display_number": "2.5",
+        "title": "IV iron therapy"
+      }
+    },
+    {
+      "id": "step-3-1",
+      "type": "Step",
+      "properties": {
+        "stage_number": 3,
+        "step_number": 1,
+        "display_number": "3.1",
+        "title": "Sickle cell disease: route out"
+      }
+    },
+    {
+      "id": "step-3-2",
+      "type": "Step",
+      "properties": {
+        "stage_number": 3,
+        "step_number": 2,
+        "display_number": "3.2",
+        "title": "Thalassemia syndrome: route out"
+      }
+    },
+    {
+      "id": "step-3-3",
+      "type": "Step",
+      "properties": {
+        "stage_number": 3,
+        "step_number": 3,
+        "display_number": "3.3",
+        "title": "Trait carriers (SCT / thalassemia minor)"
+      }
+    },
+    {
+      "id": "step-3-4",
+      "type": "Step",
+      "properties": {
+        "stage_number": 3,
+        "step_number": 4,
+        "display_number": "3.4",
+        "title": "Bariatric surgery history"
+      }
+    },
+    {
+      "id": "step-3-5",
+      "type": "Step",
+      "properties": {
+        "stage_number": 3,
+        "step_number": 5,
+        "display_number": "3.5",
+        "title": "Inflammatory bowel disease"
+      }
+    },
+    {
+      "id": "step-3-6",
+      "type": "Step",
+      "properties": {
+        "stage_number": 3,
+        "step_number": 6,
+        "display_number": "3.6",
+        "title": "Transfusion consideration"
+      }
+    },
+    {
+      "id": "step-3-7",
+      "type": "Step",
+      "properties": {
+        "stage_number": 3,
+        "step_number": 7,
+        "display_number": "3.7",
+        "title": "Specialist referral"
+      }
+    },
+    {
+      "id": "step-3-8",
+      "type": "Step",
+      "properties": {
+        "stage_number": 3,
+        "step_number": 8,
+        "display_number": "3.8",
+        "title": "Multifetal gestation surveillance"
+      }
+    },
+    {
+      "id": "step-3-9",
+      "type": "Step",
+      "properties": {
+        "stage_number": 3,
+        "step_number": 9,
+        "display_number": "3.9",
+        "title": "CKD co-management: route out"
+      }
+    },
+    {
+      "id": "step-3-10",
+      "type": "Step",
+      "properties": {
+        "stage_number": 3,
+        "step_number": 10,
+        "display_number": "3.10",
+        "title": "Transfusion-decliner optimization"
+      }
+    },
+    {
+      "id": "step-4-1",
+      "type": "Step",
+      "properties": {
+        "stage_number": 4,
+        "step_number": 1,
+        "display_number": "4.1",
+        "title": "Predelivery optimization"
+      }
+    },
+    {
+      "id": "step-4-2",
+      "type": "Step",
+      "properties": {
+        "stage_number": 4,
+        "step_number": 2,
+        "display_number": "4.2",
+        "title": "Delivery planning route selection"
+      }
+    },
+    {
+      "id": "step-4-3",
+      "type": "Step",
+      "properties": {
+        "stage_number": 4,
+        "step_number": 3,
+        "display_number": "4.3",
+        "title": "Postpartum handoff"
+      }
+    },
+    {
+      "id": "dp-1",
+      "type": "DecisionPoint",
+      "properties": {
+        "title": "Empiric iron vs confirmatory studies first",
+        "branch_mode": "one_of"
+      }
+    },
+    {
+      "id": "crit-1a",
+      "type": "Criterion",
+      "properties": {
+        "description": "No evidence of causes other than iron deficiency \u2014 empiric oral iron reasonable without iron studies"
+      }
+    },
+    {
+      "id": "crit-1b",
+      "type": "Criterion",
+      "properties": {
+        "description": "Atypical features, uncertain etiology, or confirmation preferred \u2014 ferritin/iron studies first"
+      }
+    },
+    {
+      "id": "dp-2",
+      "type": "DecisionPoint",
+      "properties": {
+        "title": "Nonresponse management",
+        "branch_mode": "one_of"
+      }
+    },
+    {
+      "id": "crit-2a",
+      "type": "Criterion",
+      "properties": {
+        "description": "Intolerance or nonadherence despite coaching \u2014 consider IV iron"
+      }
+    },
+    {
+      "id": "crit-2b",
+      "type": "Criterion",
+      "properties": {
+        "description": "Suspected malabsorption (enteric-coated tablets, antacids, bariatric surgery, IBD) \u2014 consider IV iron"
+      }
+    },
+    {
+      "id": "crit-2c",
+      "type": "Criterion",
+      "properties": {
+        "description": "Suspected incorrect diagnosis or blood loss \u2014 expanded workup"
+      }
+    },
+    {
+      "id": "crit-2d",
+      "type": "Criterion",
+      "properties": {
+        "description": "Moderate\u2013severe iron deficiency anemia within ~4\u20136 weeks of anticipated delivery, or oral failure near term \u2014 IV iron"
+      }
+    },
+    {
+      "id": "gate-microcytic",
+      "type": "Gate",
+      "properties": {
+        "title": "MCV < 80 fL (microcytic)",
+        "gate_type": "patient_attribute",
+        "default_behavior": "skip",
+        "condition": {
+          "field": "labs",
+          "operator": "less_than",
+          "value": "787-2",
+          "system": "LOINC",
+          "threshold": 80,
+          "horizon": {
+            "days": 90
+          }
+        }
+      }
+    },
+    {
+      "id": "gate-normocytic",
+      "type": "Gate",
+      "properties": {
+        "title": "MCV 80\u2013100 fL (normocytic)",
+        "gate_type": "compound",
+        "default_behavior": "skip",
+        "operator": "AND",
+        "conditions": [
+          {
+            "field": "labs",
+            "operator": "greater_than",
+            "value": "787-2",
+            "system": "LOINC",
+            "threshold": 79.9,
+            "horizon": {
+              "days": 90
+            }
+          },
+          {
+            "field": "labs",
+            "operator": "less_than",
+            "value": "787-2",
+            "system": "LOINC",
+            "threshold": 100.1,
+            "horizon": {
+              "days": 90
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "gate-macrocytic",
+      "type": "Gate",
+      "properties": {
+        "title": "MCV > 100 fL (macrocytic)",
+        "gate_type": "patient_attribute",
+        "default_behavior": "skip",
+        "condition": {
+          "field": "labs",
+          "operator": "greater_than",
+          "value": "787-2",
+          "system": "LOINC",
+          "threshold": 100,
+          "horizon": {
+            "days": 90
+          }
+        }
+      }
+    },
+    {
+      "id": "gate-hgbpathy-needed",
+      "type": "Gate",
+      "properties": {
+        "title": "Hemoglobinopathy testing needed?",
+        "gate_type": "question",
+        "default_behavior": "skip",
+        "prompt": "Is hemoglobinopathy testing needed \u2014 i.e., no prior hemoglobinopathy test results are available for interpretation?",
+        "answer_type": "BOOLEAN"
+      }
+    },
+    {
+      "id": "gate-ida-confirmed",
+      "type": "Gate",
+      "properties": {
+        "title": "Ferritin confirms iron deficiency (< 30 ng/mL)",
+        "gate_type": "patient_attribute",
+        "default_behavior": "traverse",
+        "condition": {
+          "field": "labs",
+          "operator": "less_than",
+          "value": "2276-4",
+          "system": "LOINC",
+          "threshold": 30,
+          "horizon": {
+            "days": 90
+          }
+        }
+      }
+    },
+    {
+      "id": "gate-hgb-response",
+      "type": "Gate",
+      "properties": {
+        "title": "Hemoglobin at target, or still climbing toward it",
+        "gate_type": "compound",
+        "default_behavior": "skip",
+        "operator": "OR",
+        "conditions": [
+          {
+            "field": "labs",
+            "operator": "greater_than",
+            "value": "718-7",
+            "system": "LOINC",
+            "threshold": 10.9,
+            "horizon": {
+              "days": 90
+            }
+          },
+          {
+            "field": "labs",
+            "operator": "trend_up",
+            "value": "718-7",
+            "system": "LOINC",
+            "slope_threshold": 0.03,
+            "min_points": 2,
+            "window_days": 42
+          },
+          {
+            "field": "labs",
+            "operator": "trend_up",
+            "value": "718-7",
+            "system": "LOINC",
+            "slope_threshold": 0.015,
+            "min_points": 2,
+            "window_days": 120
+          },
+          {
+            "field": "labs",
+            "operator": "trend_up",
+            "value": "718-7",
+            "system": "LOINC",
+            "slope_threshold": 0.015,
+            "min_points": 2,
+            "window_days": 300
+          }
+        ]
+      }
+    },
+    {
+      "id": "gate-iv-iron-ga",
+      "type": "Gate",
+      "properties": {
+        "title": "Beyond first trimester (\u2265 14 0/7 weeks)?",
+        "gate_type": "question",
+        "default_behavior": "skip",
+        "prompt": "Is the patient beyond the first trimester (\u226514 0/7 weeks gestation)?",
+        "answer_type": "BOOLEAN"
+      }
+    },
+    {
+      "id": "gate-severe-anemia",
+      "type": "Gate",
+      "properties": {
+        "title": "Severe anemia (Hgb < 6 g/dL) \u2014 transfusion consideration",
+        "gate_type": "patient_attribute",
+        "default_behavior": "skip",
+        "condition": {
+          "field": "labs",
+          "operator": "less_than",
+          "value": "718-7",
+          "system": "LOINC",
+          "threshold": 6,
+          "horizon": {
+            "days": 7
+          }
+        }
+      }
+    },
+    {
+      "id": "gate-referral-threshold",
+      "type": "Gate",
+      "properties": {
+        "title": "Referral-level anemia (Hgb < 9 or Hct < 27%)",
+        "gate_type": "compound",
+        "default_behavior": "skip",
+        "operator": "OR",
+        "conditions": [
+          {
+            "field": "labs",
+            "operator": "less_than",
+            "value": "718-7",
+            "system": "LOINC",
+            "threshold": 9,
+            "horizon": {
+              "days": 90
+            }
+          },
+          {
+            "field": "labs",
+            "operator": "less_than",
+            "value": "4544-3",
+            "system": "LOINC",
+            "threshold": 27,
+            "horizon": {
+              "days": 90
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "gate-scd",
+      "type": "Gate",
+      "properties": {
+        "title": "Sickle cell disease (route out)",
+        "gate_type": "compound",
+        "default_behavior": "skip",
+        "operator": "OR",
+        "conditions": [
+          {
+            "field": "conditions",
+            "operator": "includes_code",
+            "value": "D57.0.*",
+            "system": "ICD-10",
+            "horizon": "LIFETIME",
+            "status": "any"
+          },
+          {
+            "field": "conditions",
+            "operator": "includes_code",
+            "value": "D57.1",
+            "system": "ICD-10",
+            "horizon": "LIFETIME",
+            "status": "any"
+          },
+          {
+            "field": "conditions",
+            "operator": "includes_code",
+            "value": "D57.2.*",
+            "system": "ICD-10",
+            "horizon": "LIFETIME",
+            "status": "any"
+          },
+          {
+            "field": "conditions",
+            "operator": "includes_code",
+            "value": "D57.4.*",
+            "system": "ICD-10",
+            "horizon": "LIFETIME",
+            "status": "any"
+          },
+          {
+            "field": "conditions",
+            "operator": "includes_code",
+            "value": "D57.8.*",
+            "system": "ICD-10",
+            "horizon": "LIFETIME",
+            "status": "any"
+          }
+        ]
+      }
+    },
+    {
+      "id": "gate-thal-major",
+      "type": "Gate",
+      "properties": {
+        "title": "Thalassemia syndrome (route out)",
+        "gate_type": "compound",
+        "default_behavior": "skip",
+        "operator": "OR",
+        "conditions": [
+          {
+            "field": "conditions",
+            "operator": "includes_code",
+            "value": "D56.0",
+            "system": "ICD-10",
+            "horizon": "LIFETIME",
+            "status": "any"
+          },
+          {
+            "field": "conditions",
+            "operator": "includes_code",
+            "value": "D56.1",
+            "system": "ICD-10",
+            "horizon": "LIFETIME",
+            "status": "any"
+          },
+          {
+            "field": "conditions",
+            "operator": "includes_code",
+            "value": "D56.2",
+            "system": "ICD-10",
+            "horizon": "LIFETIME",
+            "status": "any"
+          },
+          {
+            "field": "conditions",
+            "operator": "includes_code",
+            "value": "D56.5",
+            "system": "ICD-10",
+            "horizon": "LIFETIME",
+            "status": "any"
+          },
+          {
+            "field": "conditions",
+            "operator": "includes_code",
+            "value": "D56.8",
+            "system": "ICD-10",
+            "horizon": "LIFETIME",
+            "status": "any"
+          },
+          {
+            "field": "conditions",
+            "operator": "includes_code",
+            "value": "D56.9",
+            "system": "ICD-10",
+            "horizon": "LIFETIME",
+            "status": "any"
+          }
+        ]
+      }
+    },
+    {
+      "id": "gate-trait",
+      "type": "Gate",
+      "properties": {
+        "title": "Trait carrier (in-pathway modifications)",
+        "gate_type": "compound",
+        "default_behavior": "skip",
+        "operator": "OR",
+        "conditions": [
+          {
+            "field": "conditions",
+            "operator": "includes_code",
+            "value": "D57.3",
+            "system": "ICD-10",
+            "horizon": "LIFETIME",
+            "status": "any"
+          },
+          {
+            "field": "conditions",
+            "operator": "includes_code",
+            "value": "D56.3",
+            "system": "ICD-10",
+            "horizon": "LIFETIME",
+            "status": "any"
+          }
+        ]
+      }
+    },
+    {
+      "id": "gate-bariatric",
+      "type": "Gate",
+      "properties": {
+        "title": "Bariatric surgery history",
+        "gate_type": "compound",
+        "default_behavior": "skip",
+        "operator": "OR",
+        "conditions": [
+          {
+            "field": "conditions",
+            "operator": "includes_code",
+            "value": "Z98.84",
+            "system": "ICD-10",
+            "horizon": "LIFETIME",
+            "status": "any"
+          },
+          {
+            "field": "conditions",
+            "operator": "includes_code",
+            "value": "O99.84.*",
+            "system": "ICD-10",
+            "horizon": "LIFETIME",
+            "status": "any"
+          }
+        ]
+      }
+    },
+    {
+      "id": "gate-ibd",
+      "type": "Gate",
+      "properties": {
+        "title": "Inflammatory bowel disease",
+        "gate_type": "compound",
+        "default_behavior": "skip",
+        "operator": "OR",
+        "conditions": [
+          {
+            "field": "conditions",
+            "operator": "includes_code",
+            "value": "K50.*",
+            "system": "ICD-10",
+            "horizon": "LIFETIME",
+            "status": "any"
+          },
+          {
+            "field": "conditions",
+            "operator": "includes_code",
+            "value": "K51.*",
+            "system": "ICD-10",
+            "horizon": "LIFETIME",
+            "status": "any"
+          }
+        ]
+      }
+    },
+    {
+      "id": "gate-multi-gestation",
+      "type": "Gate",
+      "properties": {
+        "title": "Multiple gestation",
+        "gate_type": "patient_attribute",
+        "default_behavior": "skip",
+        "condition": {
+          "field": "conditions",
+          "operator": "includes_code",
+          "value": "O30.*",
+          "system": "ICD-10",
+          "horizon": {
+            "days": 300
+          },
+          "status": "active"
+        }
+      }
+    },
+    {
+      "id": "gate-ckd",
+      "type": "Gate",
+      "properties": {
+        "title": "Chronic kidney disease (route out)",
+        "gate_type": "compound",
+        "default_behavior": "skip",
+        "operator": "OR",
+        "conditions": [
+          {
+            "field": "conditions",
+            "operator": "includes_code",
+            "value": "N18.3.*",
+            "system": "ICD-10",
+            "horizon": "LIFETIME",
+            "status": "active"
+          },
+          {
+            "field": "conditions",
+            "operator": "includes_code",
+            "value": "N18.4",
+            "system": "ICD-10",
+            "horizon": "LIFETIME",
+            "status": "active"
+          },
+          {
+            "field": "conditions",
+            "operator": "includes_code",
+            "value": "N18.5",
+            "system": "ICD-10",
+            "horizon": "LIFETIME",
+            "status": "active"
+          },
+          {
+            "field": "conditions",
+            "operator": "includes_code",
+            "value": "N18.6",
+            "system": "ICD-10",
+            "horizon": "LIFETIME",
+            "status": "active"
+          },
+          {
+            "field": "conditions",
+            "operator": "includes_code",
+            "value": "O26.83.*",
+            "system": "ICD-10",
+            "horizon": "LIFETIME",
+            "status": "active"
+          }
+        ]
+      }
+    },
+    {
+      "id": "gate-transfusion-refusal",
+      "type": "Gate",
+      "properties": {
+        "title": "Transfusion decliner",
+        "gate_type": "question",
+        "default_behavior": "skip",
+        "prompt": "Does the patient decline blood transfusion or specific blood products (e.g., for religious reasons)?",
+        "answer_type": "BOOLEAN"
+      }
+    },
+    {
+      "id": "med-1",
+      "type": "Medication",
+      "properties": {
+        "name": "Ferrous sulfate 325 mg (65 mg elemental iron)",
+        "role": "first_line",
+        "route": "oral",
+        "instructions": "Avoid enteric-coated/sustained-release forms. Empty stomach preferred; small snack if GI upset. Separate from calcium/antacids/tea/coffee by \u22652 h. Vitamin C co-administration optional. Alternate-day dosing is an evidence-based tolerability option (non-pregnant trials; not a US pregnancy recommendation).",
+        "clinical_role": "oral-iron-repletion",
+        "dose": "325 mg (65 mg elemental)",
+        "frequency": "once daily (to BID per clinician)",
+        "duration": "until repleted"
+      }
+    },
+    {
+      "id": "med-2",
+      "type": "Medication",
+      "properties": {
+        "name": "Ferrous gluconate 300\u2013324 mg (34\u201338 mg elemental)",
+        "role": "alternative",
+        "route": "oral",
+        "instructions": "Lower elemental dose; gentler GI profile.",
+        "clinical_role": "oral-iron-repletion",
+        "dose": "300\u2013324 mg (34\u201338 mg elemental)",
+        "frequency": "once daily",
+        "duration": "until repleted"
+      }
+    },
+    {
+      "id": "med-3",
+      "type": "Medication",
+      "properties": {
+        "name": "Ferrous fumarate 324\u2013325 mg (106 mg elemental)",
+        "role": "alternative",
+        "route": "oral",
+        "instructions": "Highest elemental content per tablet.",
+        "clinical_role": "oral-iron-repletion",
+        "dose": "324\u2013325 mg (106 mg elemental)",
+        "frequency": "once daily",
+        "duration": "until repleted"
+      }
+    },
+    {
+      "id": "med-4",
+      "type": "Medication",
+      "properties": {
+        "name": "Iron sucrose (Venofer)",
+        "role": "second_line",
+        "route": "IV",
+        "instructions": "Label indication is CKD \u2014 pregnancy use off-label. Multiple visits; historically most-used in pregnancy.",
+        "clinical_role": "iv-iron-repletion",
+        "dose": "200 mg IV per session \u00d7 5 within 14 days (~1,000 mg total)",
+        "frequency": "per protocol",
+        "duration": "until repleted"
+      }
+    },
+    {
+      "id": "med-5",
+      "type": "Medication",
+      "properties": {
+        "name": "Ferric derisomaltose (Monoferric)",
+        "role": "second_line",
+        "route": "IV",
+        "instructions": "Single-visit total replacement preferred. Hypophosphatemia 3.5%.",
+        "clinical_role": "iv-iron-repletion",
+        "dose": "1,000 mg IV single dose over \u226520 min (\u226550 kg; 20 mg/kg if <50 kg)",
+        "frequency": "single dose",
+        "duration": "single course"
+      }
+    },
+    {
+      "id": "med-6",
+      "type": "Medication",
+      "properties": {
+        "name": "Ferric carboxymaltose (Injectafer)",
+        "role": "second_line",
+        "route": "IV",
+        "instructions": "Symptomatic hypophosphatemia 2.1%; osteomalacia postmarketing \u2014 check phosphate on repeat courses.",
+        "clinical_role": "iv-iron-repletion",
+        "dose": "750 mg \u00d7 2 \u22657 days apart (total 1,500 mg), or single 15 mg/kg \u22641,000 mg",
+        "frequency": "per protocol",
+        "duration": "single course"
+      }
+    },
+    {
+      "id": "med-7",
+      "type": "Medication",
+      "properties": {
+        "name": "Low-molecular-weight iron dextran (INFeD)",
+        "role": "acceptable",
+        "route": "IV",
+        "instructions": "BOXED WARNING: anaphylaxis. Mandatory 25 mg test dose. Single-visit total-dose infusion exceeds the 100 mg/day label \u2014 flag for local policy.",
+        "clinical_role": "iv-iron-repletion",
+        "dose": "Total-dose by formula",
+        "frequency": "per protocol",
+        "duration": "single course"
+      }
+    },
+    {
+      "id": "med-8",
+      "type": "Medication",
+      "properties": {
+        "name": "Folic acid 1 mg",
+        "role": "first_line",
+        "route": "oral",
+        "instructions": "For folate-deficiency macrocytic anemia (dominant macrocytic cause in US pregnancy).",
+        "clinical_role": "folate-repletion",
+        "dose": "1 mg",
+        "frequency": "daily",
+        "duration": "per deficiency"
+      }
+    },
+    {
+      "id": "med-9",
+      "type": "Medication",
+      "properties": {
+        "name": "Cyanocobalamin (vitamin B12) 1,000 mcg",
+        "role": "first_line",
+        "route": "IM",
+        "instructions": "ACOG's regimen is specified for total gastrectomy; no general oral high-dose regimen in fetched sources.",
+        "clinical_role": "b12-repletion",
+        "dose": "1,000 mcg",
+        "frequency": "monthly",
+        "duration": "per deficiency"
+      }
+    },
+    {
+      "id": "med-10",
+      "type": "Medication",
+      "properties": {
+        "name": "Docusate sodium 100 mg",
+        "role": "acceptable",
+        "route": "oral",
+        "instructions": "Non-conflicting adjunct \u2014 stool softener for iron-induced constipation.",
+        "dose": "100 mg",
+        "frequency": "as needed",
+        "duration": "as needed"
+      }
+    },
+    {
+      "id": "med-11",
+      "type": "Medication",
+      "properties": {
+        "name": "Enteric-coated / sustained-release iron preparations",
+        "role": "avoid",
+        "route": "oral",
+        "instructions": "Dissolve poorly and may be less effective \u2014 do not use for repletion.",
+        "clinical_role": "oral-iron-repletion"
+      }
+    },
+    {
+      "id": "med-12",
+      "type": "Medication",
+      "properties": {
+        "name": "Epoetin alfa",
+        "role": "acceptable",
+        "route": "subcutaneous/IV",
+        "instructions": "Restricted context: transfusion-decliner optimization with parenteral iron. Not recommended for routine anemia.",
+        "clinical_role": "esa-erythropoiesis",
+        "dose": "per protocol",
+        "frequency": "per protocol",
+        "duration": "per protocol"
+      }
+    },
+    {
+      "id": "lab-1",
+      "type": "LabTest",
+      "properties": {
+        "name": "CBC with indices",
+        "code": "58410-2",
+        "system": "LOINC",
+        "specimen": "Venous blood"
+      }
+    },
+    {
+      "id": "lab-2",
+      "type": "LabTest",
+      "properties": {
+        "name": "Ferritin, serum",
+        "code": "2276-4",
+        "system": "LOINC",
+        "specimen": "Serum"
+      }
+    },
+    {
+      "id": "lab-3",
+      "type": "LabTest",
+      "properties": {
+        "name": "Iron, TIBC and transferrin saturation",
+        "code": "2498-4",
+        "system": "LOINC",
+        "specimen": "Serum"
+      }
+    },
+    {
+      "id": "lab-4",
+      "type": "LabTest",
+      "properties": {
+        "name": "Reticulocyte count",
+        "code": "4679-7",
+        "system": "LOINC",
+        "specimen": "Whole blood"
+      }
+    },
+    {
+      "id": "lab-5",
+      "type": "LabTest",
+      "properties": {
+        "name": "Vitamin B12, serum",
+        "code": "2132-9",
+        "system": "LOINC",
+        "specimen": "Serum"
+      }
+    },
+    {
+      "id": "lab-6",
+      "type": "LabTest",
+      "properties": {
+        "name": "Folate, serum",
+        "code": "2284-8",
+        "system": "LOINC",
+        "specimen": "Serum"
+      }
+    },
+    {
+      "id": "lab-7",
+      "type": "LabTest",
+      "properties": {
+        "name": "Hemoglobin electrophoresis",
+        "code": "43113-0",
+        "system": "LOINC",
+        "specimen": "Whole blood"
+      }
+    },
+    {
+      "id": "lab-8",
+      "type": "LabTest",
+      "properties": {
+        "name": "Peripheral blood smear",
+        "code": "34994-4",
+        "system": "LOINC",
+        "specimen": "Whole blood"
+      }
+    },
+    {
+      "id": "lab-9",
+      "type": "LabTest",
+      "properties": {
+        "name": "Type and antibody screen",
+        "code": "882-1",
+        "system": "LOINC",
+        "specimen": "Serum"
+      }
+    },
+    {
+      "id": "proc-1",
+      "type": "Procedure",
+      "properties": {
+        "name": "Red blood cell transfusion",
+        "code": "36430",
+        "system": "CPT"
+      }
+    },
+    {
+      "id": "guid-1",
+      "type": "Guidance",
+      "properties": {
+        "topic": "Eating for iron",
+        "category": "education",
+        "instructions": "27 mg/day iron requirement in pregnancy. Heme sources: lean beef, turkey, chicken, shrimp, clams, oysters; liver occasionally. Non-heme sources: fortified cereals, white and kidney beans, lentils, peas, spinach, nuts, raisins. Pair plant iron with vitamin C (orange juice, grapefruit, strawberries, tomatoes, peppers, broccoli) or with meat in the same meal."
+      }
+    },
+    {
+      "id": "guid-2",
+      "type": "Guidance",
+      "properties": {
+        "topic": "What blocks iron",
+        "category": "education",
+        "instructions": "Coffee, tea, dairy and calcium, soy, and antacids reduce iron absorption. Keep them about 2 hours away from iron-focused meals and from the iron tablet. Take calcium supplements at a different time of day."
+      }
+    },
+    {
+      "id": "guid-3",
+      "type": "Guidance",
+      "properties": {
+        "topic": "Plant-based iron plan",
+        "category": "education",
+        "instructions": "Plant iron is absorbed at roughly 5\u201312% versus 14\u201318% from a mixed diet. Build meals around an iron source paired with vitamin C. Take the prenatal vitamin daily. Tell the care team about a plant-based diet so lab surveillance can be closer."
+      }
+    },
+    {
+      "id": "guid-4",
+      "type": "Guidance",
+      "properties": {
+        "topic": "Making your iron pill work",
+        "category": "adherence",
+        "instructions": "Morning empty-stomach dosing with orange juice or another vitamin C source; add a small snack if GI upset. Keep the 2-hour separation rules. Dark stools are normal. Plan for constipation, including docusate if needed. Alternate-day dosing is an option to discuss. Expect the response to take weeks \u2014 keep the scheduled lab recheck."
+      }
+    },
+    {
+      "id": "guid-5",
+      "type": "Guidance",
+      "properties": {
+        "topic": "When to call us right away",
+        "category": "safety-netting",
+        "instructions": "Call immediately for: chest pain or pressure or pain radiating to the arm/jaw; a racing or irregular heartbeat; trouble breathing or breathlessness lying flat; fainting or repeated dizziness; unrelenting exhaustion. Always say you are pregnant. Also tell us if you crave or eat non-food items (ice, clay, dirt, starch, paper, paint chips) \u2014 this is common, and there is no judgement."
+      }
+    },
+    {
+      "id": "qm-1",
+      "type": "QualityMetric",
+      "properties": {
+        "name": "Timely treatment-response assessment",
+        "measure": "Numerator: patients started on iron therapy with a hemoglobin recheck resulted within 6 weeks of initiation. Denominator: patients started on iron therapy in this pathway."
+      }
+    },
+    {
+      "id": "qm-2",
+      "type": "QualityMetric",
+      "properties": {
+        "name": "Hemorrhage risk assessment with anemia input",
+        "measure": "Birth admissions with a completed hemorrhage risk assessment, in which anemia is a scored factor (AIM HEM P3)."
+      }
+    },
+    {
+      "id": "sched-1",
+      "type": "Schedule",
+      "properties": {
+        "interval": "7\u201310 days after starting iron (optional)",
+        "description": "Reticulocyte check; absent reticulocytosis raises early nonresponse suspicion."
+      }
+    },
+    {
+      "id": "sched-2",
+      "type": "Schedule",
+      "properties": {
+        "interval": "4 weeks after starting oral iron",
+        "description": "Hemoglobin/hematocrit recheck; rise \u22641 g/dL despite adherence routes to nonresponse management."
+      }
+    },
+    {
+      "id": "sched-3",
+      "type": "Schedule",
+      "properties": {
+        "interval": "~4 weeks after IV iron",
+        "description": "Hemoglobin recheck; persistent anemia prompts hematology referral or re-evaluation of the diagnosis."
+      }
+    },
+    {
+      "id": "sched-4",
+      "type": "Schedule",
+      "properties": {
+        "interval": "From diagnosis through delivery",
+        "description": "Predelivery optimization checks; oral failure near term routes to IV iron."
+      }
+    },
+    {
+      "id": "sched-5",
+      "type": "Schedule",
+      "properties": {
+        "interval": "Once, ~6 weeks postpartum",
+        "description": "Hemoglobin recheck and iron continuation; symptomatic or severe postpartum anemia routes to IV iron or transfusion."
+      }
+    },
+    {
+      "id": "code-loinc-58410-2",
+      "type": "CodeEntry",
+      "properties": {
+        "code": "58410-2",
+        "system": "LOINC",
+        "description": "CBC panel, automated"
+      }
+    },
+    {
+      "id": "code-loinc-718-7",
+      "type": "CodeEntry",
+      "properties": {
+        "code": "718-7",
+        "system": "LOINC",
+        "description": "Hemoglobin [Mass/volume] in blood"
+      }
+    },
+    {
+      "id": "code-loinc-4544-3",
+      "type": "CodeEntry",
+      "properties": {
+        "code": "4544-3",
+        "system": "LOINC",
+        "description": "Hematocrit, automated"
+      }
+    },
+    {
+      "id": "code-loinc-787-2",
+      "type": "CodeEntry",
+      "properties": {
+        "code": "787-2",
+        "system": "LOINC",
+        "description": "MCV, erythrocytes"
+      }
+    },
+    {
+      "id": "code-loinc-2276-4",
+      "type": "CodeEntry",
+      "properties": {
+        "code": "2276-4",
+        "system": "LOINC",
+        "description": "Ferritin, serum"
+      }
+    },
+    {
+      "id": "code-loinc-2498-4",
+      "type": "CodeEntry",
+      "properties": {
+        "code": "2498-4",
+        "system": "LOINC",
+        "description": "Iron, serum"
+      }
+    },
+    {
+      "id": "code-loinc-2500-7",
+      "type": "CodeEntry",
+      "properties": {
+        "code": "2500-7",
+        "system": "LOINC",
+        "description": "Iron binding capacity, total"
+      }
+    },
+    {
+      "id": "code-loinc-2502-3",
+      "type": "CodeEntry",
+      "properties": {
+        "code": "2502-3",
+        "system": "LOINC",
+        "description": "Iron saturation"
+      }
+    },
+    {
+      "id": "code-loinc-4679-7",
+      "type": "CodeEntry",
+      "properties": {
+        "code": "4679-7",
+        "system": "LOINC",
+        "description": "Reticulocytes per 100 erythrocytes"
+      }
+    },
+    {
+      "id": "code-loinc-2132-9",
+      "type": "CodeEntry",
+      "properties": {
+        "code": "2132-9",
+        "system": "LOINC",
+        "description": "Vitamin B12, serum"
+      }
+    },
+    {
+      "id": "code-loinc-2284-8",
+      "type": "CodeEntry",
+      "properties": {
+        "code": "2284-8",
+        "system": "LOINC",
+        "description": "Folate, serum"
+      }
+    },
+    {
+      "id": "code-loinc-43113-0",
+      "type": "CodeEntry",
+      "properties": {
+        "code": "43113-0",
+        "system": "LOINC",
+        "description": "Hemoglobinopathy electrophoresis panel"
+      }
+    },
+    {
+      "id": "code-loinc-34994-4",
+      "type": "CodeEntry",
+      "properties": {
+        "code": "34994-4",
+        "system": "LOINC",
+        "description": "Smear morphology panel, blood"
+      }
+    },
+    {
+      "id": "code-loinc-882-1",
+      "type": "CodeEntry",
+      "properties": {
+        "code": "882-1",
+        "system": "LOINC",
+        "description": "ABO and Rh group"
+      }
+    },
+    {
+      "id": "code-loinc-890-4",
+      "type": "CodeEntry",
+      "properties": {
+        "code": "890-4",
+        "system": "LOINC",
+        "description": "RBC antibody screen"
+      }
+    },
+    {
+      "id": "code-cpt-85025",
+      "type": "CodeEntry",
+      "properties": {
+        "code": "85025",
+        "system": "CPT",
+        "description": "CBC with automated differential"
+      }
+    },
+    {
+      "id": "code-cpt-82728",
+      "type": "CodeEntry",
+      "properties": {
+        "code": "82728",
+        "system": "CPT",
+        "description": "Ferritin"
+      }
+    },
+    {
+      "id": "code-cpt-83540",
+      "type": "CodeEntry",
+      "properties": {
+        "code": "83540",
+        "system": "CPT",
+        "description": "Iron"
+      }
+    },
+    {
+      "id": "code-cpt-83550",
+      "type": "CodeEntry",
+      "properties": {
+        "code": "83550",
+        "system": "CPT",
+        "description": "Iron binding capacity"
+      }
+    },
+    {
+      "id": "code-cpt-85045",
+      "type": "CodeEntry",
+      "properties": {
+        "code": "85045",
+        "system": "CPT",
+        "description": "Reticulocyte count, automated"
+      }
+    },
+    {
+      "id": "code-cpt-82607",
+      "type": "CodeEntry",
+      "properties": {
+        "code": "82607",
+        "system": "CPT",
+        "description": "Vitamin B12"
+      }
+    },
+    {
+      "id": "code-cpt-82746",
+      "type": "CodeEntry",
+      "properties": {
+        "code": "82746",
+        "system": "CPT",
+        "description": "Folate, serum"
+      }
+    },
+    {
+      "id": "code-cpt-83020",
+      "type": "CodeEntry",
+      "properties": {
+        "code": "83020",
+        "system": "CPT",
+        "description": "Hemoglobin electrophoresis"
+      }
+    },
+    {
+      "id": "code-cpt-36430",
+      "type": "CodeEntry",
+      "properties": {
+        "code": "36430",
+        "system": "CPT",
+        "description": "Transfusion, blood or blood components"
+      }
+    },
+    {
+      "id": "code-rxnorm-310325",
+      "type": "CodeEntry",
+      "properties": {
+        "code": "310325",
+        "system": "RXNORM",
+        "description": "ferrous sulfate 325 mg tablet"
+      }
+    },
+    {
+      "id": "code-rxnorm-198630",
+      "type": "CodeEntry",
+      "properties": {
+        "code": "198630",
+        "system": "RXNORM",
+        "description": "ferrous gluconate 324 mg tablet"
+      }
+    },
+    {
+      "id": "code-rxnorm-284202",
+      "type": "CodeEntry",
+      "properties": {
+        "code": "284202",
+        "system": "RXNORM",
+        "description": "ferrous fumarate 324 mg tablet"
+      }
+    },
+    {
+      "id": "code-rxnorm-1741261",
+      "type": "CodeEntry",
+      "properties": {
+        "code": "1741261",
+        "system": "RXNORM",
+        "description": "iron sucrose 20 mg/mL injection"
+      }
+    },
+    {
+      "id": "code-rxnorm-2274409",
+      "type": "CodeEntry",
+      "properties": {
+        "code": "2274409",
+        "system": "RXNORM",
+        "description": "ferric derisomaltose 1000 mg/10 mL"
+      }
+    },
+    {
+      "id": "code-rxnorm-1435169",
+      "type": "CodeEntry",
+      "properties": {
+        "code": "1435169",
+        "system": "RXNORM",
+        "description": "ferric carboxymaltose 750 mg/15 mL"
+      }
+    },
+    {
+      "id": "code-rxnorm-206216",
+      "type": "CodeEntry",
+      "properties": {
+        "code": "206216",
+        "system": "RXNORM",
+        "description": "iron dextran 50 mg/mL"
+      }
+    },
+    {
+      "id": "code-rxnorm-310410",
+      "type": "CodeEntry",
+      "properties": {
+        "code": "310410",
+        "system": "RXNORM",
+        "description": "folic acid 1 mg tablet"
+      }
+    },
+    {
+      "id": "code-rxnorm-309594",
+      "type": "CodeEntry",
+      "properties": {
+        "code": "309594",
+        "system": "RXNORM",
+        "description": "cyanocobalamin 1 mg/mL injection"
+      }
+    },
+    {
+      "id": "code-icd10-z98-84",
+      "type": "CodeEntry",
+      "properties": {
+        "code": "Z98.84",
+        "system": "ICD-10",
+        "description": "Bariatric surgery status"
+      }
+    },
+    {
+      "id": "code-icd10-d57-3",
+      "type": "CodeEntry",
+      "properties": {
+        "code": "D57.3",
+        "system": "ICD-10",
+        "description": "Sickle-cell trait"
+      }
+    },
+    {
+      "id": "code-icd10-d56-3",
+      "type": "CodeEntry",
+      "properties": {
+        "code": "D56.3",
+        "system": "ICD-10",
+        "description": "Thalassemia minor"
+      }
+    },
+    {
+      "id": "code-icd10-o09-40",
+      "type": "CodeEntry",
+      "properties": {
+        "code": "O09.40",
+        "system": "ICD-10",
+        "description": "Supervision of pregnancy with grand multiparity, unspecified trimester"
+      }
+    },
+    {
+      "id": "ev-1",
+      "type": "EvidenceCitation",
+      "properties": {
+        "reference_number": 1,
+        "title": "Anemia in Pregnancy: ACOG Practice Bulletin No. 233 (Interim Update)",
+        "evidence_level": "Level B",
+        "authors": "ACOG",
+        "source": "Obstetrics & Gynecology 138:e55\u201364",
+        "year": 2021,
+        "url": "https://pubmed.ncbi.nlm.nih.gov/34293770/"
+      }
+    },
+    {
+      "id": "ev-2",
+      "type": "EvidenceCitation",
+      "properties": {
+        "reference_number": 2,
+        "title": "Screening and Supplementation for Iron Deficiency and Iron Deficiency Anemia During Pregnancy: USPSTF Recommendation Statement",
+        "evidence_level": "Expert Consensus",
+        "authors": "USPSTF",
+        "source": "JAMA 332(11):906\u2013913",
+        "year": 2024,
+        "url": "https://www.uspreventiveservicestaskforce.org/uspstf/recommendation/iron-deficiency-anemia-in-pregnant-women-screening-and-supplementation"
+      }
+    },
+    {
+      "id": "ev-3",
+      "type": "EvidenceCitation",
+      "properties": {
+        "reference_number": 3,
+        "title": "Recommendations to Prevent and Control Iron Deficiency in the United States",
+        "evidence_level": "Expert Consensus",
+        "authors": "CDC",
+        "source": "MMWR 47(RR-3)",
+        "year": 1998,
+        "url": "https://www.aafp.org/pubs/afp/issues/1998/1015/p1475.html"
+      }
+    },
+    {
+      "id": "ev-4",
+      "type": "EvidenceCitation",
+      "properties": {
+        "reference_number": 4,
+        "title": "Hemoglobinopathies in Pregnancy \u2014 Practice Advisory",
+        "evidence_level": "Expert Consensus",
+        "authors": "ACOG",
+        "source": "ACOG Practice Advisory",
+        "year": 2022,
+        "url": "https://www.acog.org/clinical/clinical-guidance/practice-advisory/articles/2022/08/hemoglobinopathies-in-pregnancy"
+      }
+    },
+    {
+      "id": "ev-5",
+      "type": "EvidenceCitation",
+      "properties": {
+        "reference_number": 5,
+        "title": "Identifying and treating iron deficiency anemia in pregnancy",
+        "evidence_level": "Expert Consensus",
+        "authors": "Lewkowitz & Tuuli",
+        "source": "Hematology (ASH Education Program) 2023(1):223\u2013228",
+        "year": 2023,
+        "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC10727057/"
+      }
+    },
+    {
+      "id": "ev-6",
+      "type": "EvidenceCitation",
+      "properties": {
+        "reference_number": 6,
+        "title": "FIGO good practice recommendations on anemia in pregnancy",
+        "evidence_level": "Expert Consensus",
+        "authors": "Ubom et al.",
+        "source": "Int J Gynecol Obstet 171:993\u20131007",
+        "year": 2025,
+        "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC12640178/"
+      }
+    },
+    {
+      "id": "ev-7",
+      "type": "EvidenceCitation",
+      "properties": {
+        "reference_number": 7,
+        "title": "SMFM Consult Series #68: Sickle cell disease in pregnancy",
+        "evidence_level": "Level B",
+        "authors": "SMFM",
+        "source": "Am J Obstet Gynecol 230(2):B17\u2013B40",
+        "year": 2024,
+        "url": "https://publications.smfm.org/publications/547-society-for-maternal-fetal-medicine-consult-series-68/"
+      }
+    },
+    {
+      "id": "ev-8",
+      "type": "EvidenceCitation",
+      "properties": {
+        "reference_number": 8,
+        "title": "AGA Clinical Practice Update on Management of Iron Deficiency Anemia: Expert Review",
+        "evidence_level": "Expert Consensus",
+        "authors": "American Gastroenterological Association",
+        "source": "Gastroenterology",
+        "year": 2024,
+        "url": "https://pubmed.ncbi.nlm.nih.gov/38864796/"
+      }
+    },
+    {
+      "id": "ev-9",
+      "type": "EvidenceCitation",
+      "properties": {
+        "reference_number": 9,
+        "title": "Obstetric Hemorrhage Change Package",
+        "evidence_level": "Expert Consensus",
+        "authors": "IHI/AIM (\u00a9 ACOG)",
+        "source": "AIM Change Package",
+        "year": 2022,
+        "url": "https://saferbirth.org/wp-content/uploads/2025_HEM_Change-Package.pdf"
+      }
+    },
+    {
+      "id": "ev-10",
+      "type": "EvidenceCitation",
+      "properties": {
+        "reference_number": 10,
+        "title": "Urgent Maternal Warning Signs",
+        "evidence_level": "Expert Consensus",
+        "authors": "ACOG/AIM",
+        "source": "AIM patient-safety material",
+        "year": 2024,
+        "url": "https://saferbirth.org/wp-content/uploads/UrgentMaternalWarningSigns_expanded.pdf"
+      }
+    },
+    {
+      "id": "ev-11",
+      "type": "EvidenceCitation",
+      "properties": {
+        "reference_number": 11,
+        "title": "Obstetric Hemorrhage Care Guidelines: Checklist Format v1.4",
+        "evidence_level": "Expert Consensus",
+        "authors": "CMQCC",
+        "source": "CMQCC toolkit",
+        "year": 2009,
+        "url": "https://tuohytime.com/wp-content/uploads/2024/07/hemorrhageprotocolchecklist_cmqcc.pdf"
+      }
+    },
+    {
+      "id": "ev-12",
+      "type": "EvidenceCitation",
+      "properties": {
+        "reference_number": 12,
+        "title": "Iron \u2014 Fact Sheet for Health Professionals",
+        "evidence_level": "Expert Consensus",
+        "authors": "NIH Office of Dietary Supplements",
+        "source": "NIH ODS",
+        "year": 2024,
+        "url": "https://ods.od.nih.gov/factsheets/Iron-HealthProfessional/"
+      }
+    },
+    {
+      "id": "ev-13",
+      "type": "EvidenceCitation",
+      "properties": {
+        "reference_number": 13,
+        "title": "Taking iron supplements",
+        "evidence_level": "Expert Consensus",
+        "authors": "MedlinePlus/NLM",
+        "source": "MedlinePlus",
+        "year": 2024,
+        "url": "https://medlineplus.gov/ency/article/007478.htm"
+      }
+    },
+    {
+      "id": "ev-14",
+      "type": "EvidenceCitation",
+      "properties": {
+        "reference_number": 14,
+        "title": "Iron absorption from oral iron supplements given on consecutive versus alternate days",
+        "evidence_level": "Level B",
+        "authors": "Stoffel et al.",
+        "source": "Lancet Haematology 4(11):e524\u2013e533",
+        "year": 2017,
+        "url": "https://pubmed.ncbi.nlm.nih.gov/29032957/"
+      }
+    },
+    {
+      "id": "ev-15",
+      "type": "EvidenceCitation",
+      "properties": {
+        "reference_number": 15,
+        "title": "The Efficacy and Safety of Vitamin C for Iron Supplementation in Adult Patients With Iron Deficiency Anemia",
+        "evidence_level": "Level B",
+        "authors": "Li et al.",
+        "source": "JAMA Network Open",
+        "year": 2020,
+        "url": "https://pubmed.ncbi.nlm.nih.gov/33136134/"
+      }
+    },
+    {
+      "id": "ev-16",
+      "type": "EvidenceCitation",
+      "properties": {
+        "reference_number": 16,
+        "title": "Guideline for the management of conception and pregnancy in thalassaemia syndromes",
+        "evidence_level": "Level A",
+        "authors": "British Society for Haematology",
+        "source": "Br J Haematol 204(6):2194\u20132209",
+        "year": 2024,
+        "url": "https://onlinelibrary.wiley.com/doi/10.1111/bjh.19362"
+      }
+    },
+    {
+      "id": "ev-17",
+      "type": "EvidenceCitation",
+      "properties": {
+        "reference_number": 17,
+        "title": "Management of Anemia and/or Bleeding in Patients Who Will Not Accept Blood Products",
+        "evidence_level": "Expert Consensus",
+        "authors": "Michigan Medicine",
+        "source": "NCBI Bookshelf NBK614548",
+        "year": 2024,
+        "url": "https://www.ncbi.nlm.nih.gov/books/NBK614548/"
+      }
+    },
+    {
+      "id": "ev-18",
+      "type": "EvidenceCitation",
+      "properties": {
+        "reference_number": 18,
+        "title": "Pregnancy after bariatric surgery: Consensus recommendations",
+        "evidence_level": "Expert Consensus",
+        "authors": "Shawe et al.",
+        "source": "Obesity Reviews",
+        "year": 2019,
+        "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC6852078/"
+      }
+    },
+    {
+      "id": "ev-19",
+      "type": "EvidenceCitation",
+      "properties": {
+        "reference_number": 19,
+        "title": "Bariatric Surgery and Pregnancy: ACOG Practice Bulletin No. 105",
+        "evidence_level": "Level C",
+        "authors": "ACOG",
+        "source": "ACOG Practice Bulletin",
+        "year": 2009,
+        "url": "https://www.obgproject.com/2022/06/02/bariatric-surgery-and-pregnancy/"
+      }
+    },
+    {
+      "id": "ev-20",
+      "type": "EvidenceCitation",
+      "properties": {
+        "reference_number": 20,
+        "title": "Hepcidin, ferroportin, and hemoglobin as predictors of iron-deficiency-anemia risk in twin pregnancy",
+        "evidence_level": "Level C",
+        "authors": "\u2014",
+        "source": "PMC12682790",
+        "year": 2025,
+        "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC12682790/"
+      }
+    },
+    {
+      "id": "ev-21",
+      "type": "EvidenceCitation",
+      "properties": {
+        "reference_number": 21,
+        "title": "Ironing Out the Details: How to Manage Anemia in Pregnancy in Women Living With CKD",
+        "evidence_level": "Expert Consensus",
+        "authors": "\u2014",
+        "source": "Kidney International Reports",
+        "year": 2024,
+        "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC11069003/"
+      }
+    },
+    {
+      "id": "ev-22",
+      "type": "EvidenceCitation",
+      "properties": {
+        "reference_number": 22,
+        "title": "FDA Prescribing Information via DailyMed: Venofer, Injectafer, Monoferric, INFeD",
+        "evidence_level": "Expert Consensus",
+        "authors": "FDA/NLM",
+        "source": "DailyMed",
+        "year": 2025,
+        "url": "https://dailymed.nlm.nih.gov/dailymed/drugInfo.cfm?setid=55859d2d-0456-4fa9-b41f-f535accc97db"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "from": "root",
+      "to": "stage-1",
+      "type": "HAS_STAGE"
+    },
+    {
+      "from": "root",
+      "to": "stage-3",
+      "type": "HAS_STAGE"
+    },
+    {
+      "from": "root",
+      "to": "stage-4",
+      "type": "HAS_STAGE"
+    },
+    {
+      "from": "stage-1",
+      "to": "step-1-1",
+      "type": "HAS_STEP"
+    },
+    {
+      "from": "stage-2",
+      "to": "step-2-1",
+      "type": "HAS_STEP"
+    },
+    {
+      "from": "stage-2",
+      "to": "step-2-2",
+      "type": "HAS_STEP"
+    },
+    {
+      "from": "stage-2",
+      "to": "step-2-3",
+      "type": "HAS_STEP"
+    },
+    {
+      "from": "stage-4",
+      "to": "step-4-1",
+      "type": "HAS_STEP"
+    },
+    {
+      "from": "stage-4",
+      "to": "step-4-2",
+      "type": "HAS_STEP"
+    },
+    {
+      "from": "stage-4",
+      "to": "step-4-3",
+      "type": "HAS_STEP"
+    },
+    {
+      "from": "step-1-1",
+      "to": "dp-1",
+      "type": "HAS_DECISION_POINT"
+    },
+    {
+      "from": "dp-1",
+      "to": "crit-1a",
+      "type": "HAS_CRITERION"
+    },
+    {
+      "from": "dp-1",
+      "to": "crit-1b",
+      "type": "HAS_CRITERION"
+    },
+    {
+      "from": "dp-1",
+      "to": "step-2-1",
+      "type": "BRANCHES_TO"
+    },
+    {
+      "from": "crit-1a",
+      "to": "step-2-1",
+      "type": "SELECTS_BRANCH"
+    },
+    {
+      "from": "step-2-3",
+      "to": "dp-2",
+      "type": "HAS_DECISION_POINT"
+    },
+    {
+      "from": "dp-2",
+      "to": "crit-2a",
+      "type": "HAS_CRITERION"
+    },
+    {
+      "from": "dp-2",
+      "to": "crit-2b",
+      "type": "HAS_CRITERION"
+    },
+    {
+      "from": "dp-2",
+      "to": "crit-2c",
+      "type": "HAS_CRITERION"
+    },
+    {
+      "from": "dp-2",
+      "to": "crit-2d",
+      "type": "HAS_CRITERION"
+    },
+    {
+      "from": "dp-2",
+      "to": "step-1-5",
+      "type": "BRANCHES_TO"
+    },
+    {
+      "from": "crit-2c",
+      "to": "step-1-5",
+      "type": "SELECTS_BRANCH"
+    },
+    {
+      "from": "step-1-1",
+      "to": "gate-microcytic",
+      "type": "HAS_GATE"
+    },
+    {
+      "from": "gate-microcytic",
+      "to": "step-1-2",
+      "type": "BRANCHES_TO"
+    },
+    {
+      "from": "step-1-1",
+      "to": "gate-normocytic",
+      "type": "HAS_GATE"
+    },
+    {
+      "from": "gate-normocytic",
+      "to": "step-1-3",
+      "type": "BRANCHES_TO"
+    },
+    {
+      "from": "step-1-1",
+      "to": "gate-macrocytic",
+      "type": "HAS_GATE"
+    },
+    {
+      "from": "gate-macrocytic",
+      "to": "step-1-4",
+      "type": "BRANCHES_TO"
+    },
+    {
+      "from": "step-1-1",
+      "to": "gate-hgbpathy-needed",
+      "type": "HAS_GATE"
+    },
+    {
+      "from": "gate-hgbpathy-needed",
+      "to": "step-1-6",
+      "type": "BRANCHES_TO"
+    },
+    {
+      "from": "step-1-2",
+      "to": "gate-ida-confirmed",
+      "type": "HAS_GATE"
+    },
+    {
+      "from": "gate-ida-confirmed",
+      "to": "stage-2",
+      "type": "BRANCHES_TO"
+    },
+    {
+      "from": "step-2-3",
+      "to": "gate-hgb-response",
+      "type": "HAS_GATE"
+    },
+    {
+      "from": "gate-hgb-response",
+      "to": "step-2-4",
+      "type": "BRANCHES_TO"
+    },
+    {
+      "from": "dp-2",
+      "to": "gate-iv-iron-ga",
+      "type": "HAS_GATE"
+    },
+    {
+      "from": "gate-iv-iron-ga",
+      "to": "step-2-5",
+      "type": "BRANCHES_TO"
+    },
+    {
+      "from": "stage-3",
+      "to": "gate-severe-anemia",
+      "type": "HAS_GATE"
+    },
+    {
+      "from": "gate-severe-anemia",
+      "to": "step-3-6",
+      "type": "BRANCHES_TO"
+    },
+    {
+      "from": "stage-3",
+      "to": "gate-referral-threshold",
+      "type": "HAS_GATE"
+    },
+    {
+      "from": "gate-referral-threshold",
+      "to": "step-3-7",
+      "type": "BRANCHES_TO"
+    },
+    {
+      "from": "stage-3",
+      "to": "gate-scd",
+      "type": "HAS_GATE"
+    },
+    {
+      "from": "gate-scd",
+      "to": "step-3-1",
+      "type": "BRANCHES_TO"
+    },
+    {
+      "from": "stage-3",
+      "to": "gate-thal-major",
+      "type": "HAS_GATE"
+    },
+    {
+      "from": "gate-thal-major",
+      "to": "step-3-2",
+      "type": "BRANCHES_TO"
+    },
+    {
+      "from": "stage-3",
+      "to": "gate-trait",
+      "type": "HAS_GATE"
+    },
+    {
+      "from": "gate-trait",
+      "to": "step-3-3",
+      "type": "BRANCHES_TO"
+    },
+    {
+      "from": "stage-3",
+      "to": "gate-bariatric",
+      "type": "HAS_GATE"
+    },
+    {
+      "from": "gate-bariatric",
+      "to": "step-3-4",
+      "type": "BRANCHES_TO"
+    },
+    {
+      "from": "stage-3",
+      "to": "gate-ibd",
+      "type": "HAS_GATE"
+    },
+    {
+      "from": "gate-ibd",
+      "to": "step-3-5",
+      "type": "BRANCHES_TO"
+    },
+    {
+      "from": "stage-3",
+      "to": "gate-multi-gestation",
+      "type": "HAS_GATE"
+    },
+    {
+      "from": "gate-multi-gestation",
+      "to": "step-3-8",
+      "type": "BRANCHES_TO"
+    },
+    {
+      "from": "stage-3",
+      "to": "gate-ckd",
+      "type": "HAS_GATE"
+    },
+    {
+      "from": "gate-ckd",
+      "to": "step-3-9",
+      "type": "BRANCHES_TO"
+    },
+    {
+      "from": "stage-3",
+      "to": "gate-transfusion-refusal",
+      "type": "HAS_GATE"
+    },
+    {
+      "from": "gate-transfusion-refusal",
+      "to": "step-3-10",
+      "type": "BRANCHES_TO"
+    },
+    {
+      "from": "step-2-1",
+      "to": "med-1",
+      "type": "USES_MEDICATION"
+    },
+    {
+      "from": "step-2-1",
+      "to": "med-2",
+      "type": "USES_MEDICATION"
+    },
+    {
+      "from": "step-2-1",
+      "to": "med-3",
+      "type": "USES_MEDICATION"
+    },
+    {
+      "from": "step-2-5",
+      "to": "med-4",
+      "type": "USES_MEDICATION"
+    },
+    {
+      "from": "step-2-5",
+      "to": "med-5",
+      "type": "USES_MEDICATION"
+    },
+    {
+      "from": "step-2-5",
+      "to": "med-6",
+      "type": "USES_MEDICATION"
+    },
+    {
+      "from": "step-2-5",
+      "to": "med-7",
+      "type": "USES_MEDICATION"
+    },
+    {
+      "from": "step-1-4",
+      "to": "med-8",
+      "type": "USES_MEDICATION"
+    },
+    {
+      "from": "step-1-4",
+      "to": "med-9",
+      "type": "USES_MEDICATION"
+    },
+    {
+      "from": "step-2-1",
+      "to": "med-10",
+      "type": "USES_MEDICATION"
+    },
+    {
+      "from": "step-2-1",
+      "to": "med-11",
+      "type": "USES_MEDICATION"
+    },
+    {
+      "from": "step-3-10",
+      "to": "med-12",
+      "type": "USES_MEDICATION"
+    },
+    {
+      "from": "med-1",
+      "to": "med-5",
+      "type": "ESCALATES_TO"
+    },
+    {
+      "from": "step-1-1",
+      "to": "lab-1",
+      "type": "HAS_LAB_TEST"
+    },
+    {
+      "from": "step-2-3",
+      "to": "lab-1",
+      "type": "HAS_LAB_TEST"
+    },
+    {
+      "from": "step-1-2",
+      "to": "lab-2",
+      "type": "HAS_LAB_TEST"
+    },
+    {
+      "from": "step-1-3",
+      "to": "lab-2",
+      "type": "HAS_LAB_TEST"
+    },
+    {
+      "from": "step-1-2",
+      "to": "lab-3",
+      "type": "HAS_LAB_TEST"
+    },
+    {
+      "from": "step-1-3",
+      "to": "lab-4",
+      "type": "HAS_LAB_TEST"
+    },
+    {
+      "from": "step-2-2",
+      "to": "lab-4",
+      "type": "HAS_LAB_TEST"
+    },
+    {
+      "from": "step-1-4",
+      "to": "lab-5",
+      "type": "HAS_LAB_TEST"
+    },
+    {
+      "from": "step-1-4",
+      "to": "lab-6",
+      "type": "HAS_LAB_TEST"
+    },
+    {
+      "from": "step-1-5",
+      "to": "lab-7",
+      "type": "HAS_LAB_TEST"
+    },
+    {
+      "from": "step-1-6",
+      "to": "lab-7",
+      "type": "HAS_LAB_TEST"
+    },
+    {
+      "from": "step-1-3",
+      "to": "lab-8",
+      "type": "HAS_LAB_TEST"
+    },
+    {
+      "from": "step-1-5",
+      "to": "lab-8",
+      "type": "HAS_LAB_TEST"
+    },
+    {
+      "from": "step-4-1",
+      "to": "lab-9",
+      "type": "HAS_LAB_TEST"
+    },
+    {
+      "from": "step-3-6",
+      "to": "proc-1",
+      "type": "HAS_PROCEDURE"
+    },
+    {
+      "from": "step-2-1",
+      "to": "guid-1",
+      "type": "HAS_GUIDANCE"
+    },
+    {
+      "from": "step-2-1",
+      "to": "guid-2",
+      "type": "HAS_GUIDANCE"
+    },
+    {
+      "from": "step-2-1",
+      "to": "guid-3",
+      "type": "HAS_GUIDANCE"
+    },
+    {
+      "from": "step-2-1",
+      "to": "guid-4",
+      "type": "HAS_GUIDANCE"
+    },
+    {
+      "from": "step-1-1",
+      "to": "guid-5",
+      "type": "HAS_GUIDANCE"
+    },
+    {
+      "from": "step-2-3",
+      "to": "qm-1",
+      "type": "HAS_QUALITY_METRIC"
+    },
+    {
+      "from": "step-4-1",
+      "to": "qm-2",
+      "type": "HAS_QUALITY_METRIC"
+    },
+    {
+      "from": "step-2-2",
+      "to": "sched-1",
+      "type": "HAS_SCHEDULE"
+    },
+    {
+      "from": "step-2-3",
+      "to": "sched-2",
+      "type": "HAS_SCHEDULE"
+    },
+    {
+      "from": "step-2-5",
+      "to": "sched-3",
+      "type": "HAS_SCHEDULE"
+    },
+    {
+      "from": "step-4-1",
+      "to": "sched-4",
+      "type": "HAS_SCHEDULE"
+    },
+    {
+      "from": "step-4-3",
+      "to": "sched-5",
+      "type": "HAS_SCHEDULE"
+    },
+    {
+      "from": "step-2-1",
+      "to": "step-1-1",
+      "type": "REQUIRES"
+    },
+    {
+      "from": "step-2-3",
+      "to": "step-2-1",
+      "type": "REQUIRES"
+    },
+    {
+      "from": "step-2-5",
+      "to": "step-2-2",
+      "type": "REQUIRES"
+    },
+    {
+      "from": "step-3-6",
+      "to": "step-4-1",
+      "type": "REQUIRES"
+    },
+    {
+      "from": "step-4-3",
+      "to": "step-4-1",
+      "type": "REQUIRES"
+    },
+    {
+      "from": "lab-1",
+      "to": "code-loinc-58410-2",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "lab-1",
+      "to": "code-loinc-718-7",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "lab-1",
+      "to": "code-loinc-4544-3",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "lab-1",
+      "to": "code-loinc-787-2",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "lab-2",
+      "to": "code-loinc-2276-4",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "lab-3",
+      "to": "code-loinc-2498-4",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "lab-3",
+      "to": "code-loinc-2500-7",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "lab-3",
+      "to": "code-loinc-2502-3",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "lab-4",
+      "to": "code-loinc-4679-7",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "lab-5",
+      "to": "code-loinc-2132-9",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "lab-6",
+      "to": "code-loinc-2284-8",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "lab-7",
+      "to": "code-loinc-43113-0",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "lab-8",
+      "to": "code-loinc-34994-4",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "lab-9",
+      "to": "code-loinc-882-1",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "lab-9",
+      "to": "code-loinc-890-4",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "lab-1",
+      "to": "code-cpt-85025",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "lab-2",
+      "to": "code-cpt-82728",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "lab-3",
+      "to": "code-cpt-83540",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "lab-3",
+      "to": "code-cpt-83550",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "lab-4",
+      "to": "code-cpt-85045",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "lab-5",
+      "to": "code-cpt-82607",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "lab-6",
+      "to": "code-cpt-82746",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "lab-7",
+      "to": "code-cpt-83020",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "proc-1",
+      "to": "code-cpt-36430",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "med-1",
+      "to": "code-rxnorm-310325",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "med-2",
+      "to": "code-rxnorm-198630",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "med-3",
+      "to": "code-rxnorm-284202",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "med-4",
+      "to": "code-rxnorm-1741261",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "med-5",
+      "to": "code-rxnorm-2274409",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "med-6",
+      "to": "code-rxnorm-1435169",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "med-7",
+      "to": "code-rxnorm-206216",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "med-8",
+      "to": "code-rxnorm-310410",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "med-9",
+      "to": "code-rxnorm-309594",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "step-3-4",
+      "to": "code-icd10-z98-84",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "step-3-3",
+      "to": "code-icd10-d57-3",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "step-3-3",
+      "to": "code-icd10-d56-3",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "step-1-1",
+      "to": "code-icd10-o09-40",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "stage-1",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "stage-1",
+      "to": "ev-4",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "stage-2",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "stage-2",
+      "to": "ev-5",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "stage-3",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "stage-3",
+      "to": "ev-7",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "stage-3",
+      "to": "ev-8",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "stage-4",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "stage-4",
+      "to": "ev-9",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "stage-4",
+      "to": "ev-11",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-1-1",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-1-1",
+      "to": "ev-2",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-1-1",
+      "to": "ev-3",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-1-1",
+      "to": "ev-10",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-1-2",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-1-2",
+      "to": "ev-5",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-1-3",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-1-4",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-1-5",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-1-5",
+      "to": "ev-4",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-1-6",
+      "to": "ev-4",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-2-1",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-2-1",
+      "to": "ev-5",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-2-1",
+      "to": "ev-13",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-2-1",
+      "to": "ev-14",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-2-2",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-2-3",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-2-3",
+      "to": "ev-3",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-2-4",
+      "to": "ev-3",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-2-5",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-2-5",
+      "to": "ev-5",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-2-5",
+      "to": "ev-7",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-2-5",
+      "to": "ev-22",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-3-1",
+      "to": "ev-7",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-3-2",
+      "to": "ev-16",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-3-3",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-3-3",
+      "to": "ev-4",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-3-3",
+      "to": "ev-7",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-3-4",
+      "to": "ev-8",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-3-4",
+      "to": "ev-18",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-3-4",
+      "to": "ev-19",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-3-5",
+      "to": "ev-8",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-3-6",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-3-6",
+      "to": "ev-11",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-3-7",
+      "to": "ev-3",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-3-8",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-3-8",
+      "to": "ev-20",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-3-9",
+      "to": "ev-21",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-3-10",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-3-10",
+      "to": "ev-17",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-4-1",
+      "to": "ev-9",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-4-1",
+      "to": "ev-11",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-4-2",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-4-2",
+      "to": "ev-6",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-4-3",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-4-3",
+      "to": "ev-6",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-4-3",
+      "to": "ev-9",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "dp-1",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "crit-1a",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "crit-1b",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "dp-2",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "dp-2",
+      "to": "ev-6",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "crit-2a",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "crit-2a",
+      "to": "ev-5",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "crit-2b",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "crit-2b",
+      "to": "ev-8",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "crit-2c",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "crit-2d",
+      "to": "ev-6",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "crit-2d",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "med-1",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "med-1",
+      "to": "ev-5",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "med-1",
+      "to": "ev-13",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "med-1",
+      "to": "ev-14",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "med-1",
+      "to": "ev-15",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "med-2",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "med-3",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "med-4",
+      "to": "ev-5",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "med-4",
+      "to": "ev-22",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "med-5",
+      "to": "ev-5",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "med-5",
+      "to": "ev-22",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "med-6",
+      "to": "ev-5",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "med-6",
+      "to": "ev-22",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "med-7",
+      "to": "ev-5",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "med-7",
+      "to": "ev-22",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "med-8",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "med-9",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "med-10",
+      "to": "ev-13",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "med-11",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "med-12",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "med-12",
+      "to": "ev-17",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "lab-1",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "lab-2",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "lab-2",
+      "to": "ev-5",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "lab-3",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "lab-4",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "lab-5",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "lab-6",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "lab-7",
+      "to": "ev-4",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "lab-8",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "lab-9",
+      "to": "ev-11",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "proc-1",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "proc-1",
+      "to": "ev-11",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "guid-1",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "guid-1",
+      "to": "ev-12",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "guid-2",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "guid-2",
+      "to": "ev-12",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "guid-2",
+      "to": "ev-13",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "guid-3",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "guid-3",
+      "to": "ev-12",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "guid-4",
+      "to": "ev-5",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "guid-4",
+      "to": "ev-13",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "guid-4",
+      "to": "ev-14",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "guid-5",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "guid-5",
+      "to": "ev-10",
+      "type": "CITES_EVIDENCE"
+    }
+  ]
+}

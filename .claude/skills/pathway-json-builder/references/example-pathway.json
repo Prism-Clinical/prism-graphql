@@ -1,0 +1,117 @@
+{
+  "schema_version": "1.0",
+  "pathway": {
+    "logical_id": "test-mini",
+    "title": "Mini Test Pathway",
+    "version": "v1",
+    "category": "ACUTE_CARE",
+    "condition_codes": [
+      {
+        "code": "N39.0",
+        "system": "ICD-10"
+      }
+    ]
+  },
+  "nodes": [
+    {
+      "id": "stage-1",
+      "type": "Stage",
+      "properties": {
+        "stage_number": 1,
+        "title": "Assessment"
+      }
+    },
+    {
+      "id": "step-1-1",
+      "type": "Step",
+      "properties": {
+        "stage_number": 1,
+        "step_number": 1,
+        "display_number": "1.1",
+        "title": "Initial eval"
+      }
+    },
+    {
+      "id": "step-1-2",
+      "type": "Step",
+      "properties": {
+        "stage_number": 1,
+        "step_number": 2,
+        "display_number": "1.2",
+        "title": "Recurrence workup"
+      }
+    },
+    {
+      "id": "gate-recurrent",
+      "type": "Gate",
+      "properties": {
+        "title": "Recurrent UTI?",
+        "gate_type": "patient_attribute",
+        "default_behavior": "skip",
+        "condition": {
+          "field": "conditions",
+          "operator": "count_in_window",
+          "value": "N39.0",
+          "system": "ICD-10",
+          "window_days": 180,
+          "count_threshold": 2,
+          "status": "active"
+        }
+      }
+    },
+    {
+      "id": "gate-fever",
+      "type": "Gate",
+      "properties": {
+        "title": "Fever present?",
+        "gate_type": "patient_attribute",
+        "default_behavior": "skip",
+        "condition": {
+          "attribute": "vitals.temperature_c",
+          "operator": "greater_than",
+          "value": 38,
+          "horizon": {
+            "days": 30
+          }
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "from": "root",
+      "to": "stage-1",
+      "type": "HAS_STAGE"
+    },
+    {
+      "from": "stage-1",
+      "to": "step-1-1",
+      "type": "HAS_STEP"
+    },
+    {
+      "from": "stage-1",
+      "to": "step-1-2",
+      "type": "HAS_STEP"
+    },
+    {
+      "from": "step-1-1",
+      "to": "gate-recurrent",
+      "type": "HAS_GATE"
+    },
+    {
+      "from": "gate-recurrent",
+      "to": "step-1-2",
+      "type": "BRANCHES_TO"
+    },
+    {
+      "from": "step-1-1",
+      "to": "gate-fever",
+      "type": "HAS_GATE"
+    },
+    {
+      "from": "gate-fever",
+      "to": "step-1-2",
+      "type": "BRANCHES_TO"
+    }
+  ]
+}
