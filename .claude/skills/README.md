@@ -33,7 +33,9 @@ Design principles:
   `horizon`/`status` are now first-class authoring surface, with the builder enforcing the
   preflight-owned rules import doesn't check (window_days XOR horizon, value grammars).
   Briefs carry a temporal-audit table (§17) so time semantics get physician review in one
-  place. The same drift-check procedure absorbs whatever lands on main next.
+  place. PR #55's decision semantics (multi-target routing, `on_unresolved`, required
+  `branch_mode`) were absorbed as spec v5 on 2026-09-24. The same drift-check procedure
+  absorbs whatever lands on main next.
 
 Requirements: `npm ci` at the repo root once per checkout (for ts-node), and web access for
 the research skill.
@@ -41,4 +43,6 @@ the research skill.
 History: these skills supersede the claude.ai-hosted `pathway-research` /
 `pathway-json-builder` / `pathway-batch` skills (May–June 2026), which targeted a
 pre-time-shape schema and taught attribute namespaces that now hard-fail import. Remove
-those from claude.ai to avoid double-triggering.
+those from claude.ai to avoid double-triggering — as of 2026-09-24 they are still installed
+(`anthropic-skills:pathway-research` / `-json-builder` / `-batch`), and pathways stored on
+the local gateway still show their older shapes.

@@ -152,9 +152,12 @@ exactly one (Rule 3).
 > map every answer (see **Multi-target gates** below).
 >
 > Also note when designing:
-> - **There is no negative arm.** A gate expresses only its satisfied branch. "If NOT X,
->   do Y" cannot be authored as the negation of an existing gate — author a second gate
->   whose condition *is* the negative case, or leave Y unconditional.
+> - **Negative arms exist only on question and LLM gates.** A question gate can route
+>   "no" to its own target: two `BRANCHES_TO` edges with `when: {"equals": true}` and
+>   `when: {"equals": false}` (a router — the answer takes exactly one). A **chart** gate
+>   still expresses only its satisfied branch: "if NOT X, do Y" from chart data needs a
+>   second gate whose condition *is* the negative case (and note that a missing value then
+>   makes both gates unresolved, not one true and one false), or Y stays unconditional.
 > - **`SELECTS_BRANCH` is a live traversal edge**, not just UI metadata. A Criterion
 >   reaches its `SELECTS_BRANCH` target unconditionally, so it counts as a competing route
 >   under Rule 1.
@@ -272,10 +275,14 @@ Carries one `condition` object, which is either an **attribute condition** or a 
 > this pathway reads" panel (harvested into a list no component displays), (b) need
 > `pathway_attribute_code_map` rows that have no seeding path — unseeded, they resolve
 > "attribute has no value" and the gate silently takes its default; and (c) `patient.*`
-> attributes can't be set from the simulator at all (composer never sends
-> `patientAttributes` — author provider-derivable facts as question gates instead).
-> Proof harness: `scripts/gate-proof.ts`. Revisit when the dashboard renders the
-> attributes list and code-map seeding exists.
+> is only half-supplied: the encounter simulator page sends `gestational_age_weeks` and
+> `trimester` (since dashboard `8681821`, 2026-07-12; the backend derives trimester from
+> GA), but the pathway-preview flow sends none, and **a missing `patient.*` value is a
+> silent definite "no"** — it goes through the legacy `resolveAttribute` path, which never
+> reports `dataUnavailable`, so `on_unresolved: ask` cannot fire. Until the engine asks for
+> a missing `patient.*` value, keep provider-derivable facts (gestational age, trimester)
+> as question gates. Proof harness: `scripts/gate-proof.ts`. Revisit when the dashboard
+> renders the attributes list and code-map seeding exists.
 
 ```json
 { "attribute": "vitals.temperature_f", "operator": "greater_than", "value": 100.3, "horizon": "DAY" }
@@ -465,12 +472,16 @@ deliberately include them (`"any"`).
 ```
 
 - `answer_type` ∈ `BOOLEAN`, `NUMERIC`, `SELECT` — **uppercase** (fixture + runtime use uppercase; omitting defaults to BOOLEAN).
-- `SELECT` requires a non-empty `options` string array. (Import currently fails to enforce this due to a dead check on the nonexistent gate_type `'select'` — emit options anyway; a SELECT question without options renders broken.)
+- `SELECT` requires a non-empty `options` string array. Import checks it only when
+  `answer_type` is the exact lowercase string `"select"` (`validator.ts:448`); the
+  spec-compliant uppercase `"SELECT"` skips the check, so import will not catch missing
+  options — emit them anyway; a SELECT question without options renders broken. (The
+  vocabulary check on `answer_type` itself is case-insensitive.)
 - Use for symptom presence (`BOOLEAN`) and severity (`SELECT` with e.g. `["mild","moderate","severe"]`, or `NUMERIC` for validated scales). Never invent an ordinal attribute for severity.
 
-### prior_node_result — ⛔ do not emit (import-blocked; re-verified at 9880729)
+### prior_node_result — ⛔ do not emit (import-blocked; re-verified at a428da5)
 
-Runtime contract: `depends_on: [{ "node_id": "step-3-1", "status": "INCLUDED" }]` with `status` from `INCLUDED`, `EXCLUDED`, `GATED_OUT`, `PENDING_QUESTION`, `TIMEOUT`, `CASCADE_LIMIT`, `UNKNOWN`. But the import validator (`validator.ts:222`) checks entries as plain strings, so the runtime-correct object form fails import with `references nonexistent node "[object Object]"`, and string form imports but breaks evaluation. **Until the validator fix lands, do not emit this gate type.** Model the dependency as a `REQUIRES` edge (prerequisite semantics), a `compound`/`patient_attribute` gate on the underlying data, or keep it as a DecisionPoint. Record the intent in the brief so it can be upgraded when unblocked.
+Runtime contract: `depends_on: [{ "node_id": "step-3-1", "status": "INCLUDED" }]` with `status` from `INCLUDED`, `EXCLUDED`, `GATED_OUT`, `PENDING_QUESTION`, `TIMEOUT`, `CASCADE_LIMIT`, `UNKNOWN`. But the import validator (`validator.ts:245-254`) checks entries as plain strings, so the runtime-correct object form fails import with `references nonexistent node "[object Object]"`, and string form imports but breaks evaluation. **Until the validator fix lands, do not emit this gate type.** Model the dependency as a `REQUIRES` edge (prerequisite semantics), a `compound`/`patient_attribute` gate on the underlying data, or keep it as a DecisionPoint. Record the intent in the brief so it can be upgraded when unblocked.
 
 ### compound — AND/OR over multiple conditions
 
@@ -510,11 +521,14 @@ Runtime contract: `depends_on: [{ "node_id": "step-3-1", "status": "INCLUDED" }]
 - `confidence_threshold` — below it the gate routes the safe default but surfaces as a *tentative* pending question for provider confirmation. Default 0.75.
 - Use only where the decision genuinely lives in narrative (HPI character, mechanism of injury) — if a structured value can answer it, use `patient_attribute`.
 
-### Post-kernel bug recheck (2026-08-13)
+### Validator gaps recheck (a428da5)
 
-Re-verified at `9880729`: the evaluator-kernel merge did **not** fix the `depends_on`
-validator/runtime shape mismatch (prior_node_result still unauthorable — see its section
-above) or the dead `gate_type === 'select'` options check. Both restrictions stand.
+Re-verified at `a428da5` (PR #55): the `depends_on` validator/runtime shape mismatch is
+**not** fixed (prior_node_result still unauthorable — see its section above). The SELECT
+options check now exists but is case-sensitive, so it skips uppercase `SELECT` (see
+**question**). Still preflight-only, not import: `status` on labs/vitals, `window_days` +
+`horizon` together, horizon grammar. Import still accepts a wildcard anywhere in a code.
+The builder rules and `check-gate-control.ts` cover all of these.
 
 ## What the simulator sends (author gates against THIS)
 

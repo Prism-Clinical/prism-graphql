@@ -105,9 +105,11 @@ design around:
   target (main rejects more). "On yes, do A and B" is fan-out: put A and B in a
   branch-entry-only Stage and target that (always, for question gates — never duplicate a
   question), or, across stages, write one identical-condition gate per target.
-- **There is no negative arm.** A gate expresses only its satisfied branch. If the brief
-  needs "if NOT responding, escalate", author a second gate whose condition *is* the
-  negative case; do not assume the engine derives it. If the negative case isn't
+- **Negative arms: question gates yes, chart gates no.** A question gate can send "yes" to
+  A and "no" to B (name both targets and which answer takes which). A chart gate expresses
+  only its satisfied branch: if the brief needs "if NOT responding, escalate" from data,
+  author a second gate whose condition *is* the negative case; do not assume the engine
+  derives it. If the negative case isn't
   expressible from structured data (intolerance, non-adherence), make it a question gate or
   mark the step unconditional and say so.
 
@@ -124,8 +126,10 @@ design around:
     form is visible, quick-fillable, and evaluates with zero DB setup (see the Wyeth
     findings memo, P1b–P1d).
   - Provider-derivable scalars (`patient.gestational_age_weeks`, trimester) → author as
-    **question gates** for now: the simulator composer never sends `patientAttributes`,
-    so `patient.*` gates silently default in every simulation.
+    **question gates** for now. The encounter simulator page does send
+    `gestational_age_weeks`/`trimester`, but the preview flow does not, and a missing
+    `patient.*` value is a silent "no" that never asks (engine gap). Revisit when the
+    engine escalates a missing `patient.*` value.
   - **Trajectory/response gates: state the physiologic drift and the target.** If the
     measured value moves on its own irrespective of treatment (hemoglobin falls through
     pregnancy; weight, BP, creatinine all drift), say so in the gate's rationale, and give

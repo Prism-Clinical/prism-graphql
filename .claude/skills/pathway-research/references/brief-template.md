@@ -98,8 +98,9 @@ One block per machine-evaluable decision. Common fields for every gate:
 > **Two gates may never share a branch target.** Gates do not OR: the first to miss claims
 > the target and a later satisfied gate cannot rescue it. Mutually exclusive alternatives
 > (e.g. trimester-specific thresholds) must be one gate on a merged condition, or separate
-> targets. There is also no negative arm — "if NOT X" needs its own gate whose condition is
-> the negative case, or the step stays unconditional.
+> targets. A chart gate has no negative arm — "if NOT X" needs its own gate whose condition
+> is the negative case, or the step stays unconditional. A question gate may route "no" to
+> its own target: name both targets and which answer takes each.
 
 Plus type-specific fields:
 
