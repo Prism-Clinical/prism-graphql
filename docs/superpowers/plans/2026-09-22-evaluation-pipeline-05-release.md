@@ -1758,27 +1758,36 @@ build-only `evaluation-pipeline-release-build` worktree, but
 
 ---
 
-## Gate re-run (YYYY-MM-DD, after the backfill)
+## Gate re-run (2026-09-24, after the backfill)
 
-**The decision: the mutation gate** (Task 8 Step 1, a migrated copy of post-backfill live):
+**The decision: the mutation gate** (Task 8 Step 1, a migrated copy of post-backfill live, `7b8b1fe`).
+Two passes (review follow-up, `5e497fd`): *current* = live's references (empty); *fixture* = seeded
+pair/class/allergy rules, every Medication included, conflicts ACCEPT_BOTH; all four finding kinds
+stored after every timed mutation.
 
-| Mutation | p50 | p95 | Budget | Pass |
-|---|---|---|---|---|
-| Single pathway: `overrideNode` (chronic-htn-pregnancy-v1) | … | … | < 2000 ms | … |
-| 5-child run: answer (`answerPendingDecision`, gate …) | … | … | < 5000 ms | … |
-| 5-child run: fact (`addPatientContext`) | … | … | < 5000 ms | … |
+| Mutation | Pass | p50 | p95 | Budget | Pass |
+|---|---|---|---|---|---|
+| Single pathway: `overrideNode` (chronic-htn-pregnancy-v1) | current | 31 ms | 33 ms | < 2000 ms | ✓ |
+| | fixture | 28 ms | 32 ms | < 2000 ms | ✓ |
+| 5-child run: answer (`answerPendingDecision`, gate `gate-aspirin-indicated`, child 1) | current | 114 ms | 131 ms | < 5000 ms | ✓ |
+| | fixture | 106 ms | 111 ms | < 5000 ms | ✓ |
+| 5-child run: fact (`addPatientContext`) | current | 114 ms | 124 ms | < 5000 ms | ✓ |
+| | fixture | 117 ms | 124 ms | < 5000 ms | ✓ |
 
-**Diagnostic: the stages** (Task 8 Step 2, live, read-only):
+**Diagnostic: the stages** (Task 8 Step 2, live, read-only, `EXPECT_DDI_COVERAGE=1 MIN_ROOT_NORMALISED=8`: PASS):
 
 | Measurement | Workload | Pre-backfill p95 (Task 2) | Post-backfill p95 |
 |---|---|---|---|
-| Single pathway, ROOT: total | … nodes, … candidates, …/… normalised, … pairs loaded | … | … |
-| &nbsp;&nbsp;env snapshot | | … | … |
-| &nbsp;&nbsp;evaluate | | … | … |
-| 5-child run: total | … nodes, … candidates; root pair set … candidates, … normalised, … comparisons (… conflicts, ACCEPT_BOTH) | … | … |
-| &nbsp;&nbsp;composeRun (decided) | | … | … |
+| Single pathway, ROOT: total | 109 nodes, 9 candidates, 8/9 normalised, 0 pairs loaded (0 rules: normalisation coverage only) | 19 ms | 23 ms |
+| &nbsp;&nbsp;env snapshot | | 16 ms | 20 ms |
+| &nbsp;&nbsp;evaluate | | 4 ms | 4 ms |
+| 5-child run: total | 405 nodes, 29 candidates; root pair set 23 candidates, 8 normalised, 28 comparisons (2 conflicts, ACCEPT_BOTH) | 88 ms | 86 ms |
+| &nbsp;&nbsp;composeRun (decided) | | 3 ms | 2 ms |
 
-**Decision:** merge to `main` / STOP, and revisit D1/D13.
+Children normalised: 8, 3, 0, 0, 0 (the three ARCHIVED children, P5-4). Live's interaction,
+class and allergy tables are still empty: exercised-rule coverage comes from the gate's fixture pass only.
+
+**Decision:** merge to `main`.
 
 ---
 

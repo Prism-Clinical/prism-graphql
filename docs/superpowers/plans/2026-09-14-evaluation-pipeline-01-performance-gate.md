@@ -404,6 +404,8 @@ after this gate passes and the user agrees.
 
 ## Gate result (2026-09-14, revised after review)
 
+**Re-run after the backfill (plan 05, 2026-09-24):** see `2026-09-22-evaluation-pipeline-05-release.md`, *Gate re-run*.
+
 Run on the live host against `prism_db`, read-only; the write probe was refused before measuring.
 Benchmark: `apps/pathway-service/src/__tests__/evaluation-benchmark.test.ts` on
 `feat/evaluation-pipeline-01-performance-gate`. **That file is authoritative.** It supersedes the
