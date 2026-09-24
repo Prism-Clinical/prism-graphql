@@ -75,7 +75,10 @@ One block per machine-evaluable decision. Common fields for every gate:
     flow, or another gate/criterion also targets it, the gate excludes nothing. Say which
     step is being removed from the plain stage flow to make this gate real.
   - Type: patient_attribute | question | compound | llm_text_analysis
-  - Default behavior: skip | traverse — `<one-line safety rationale for the choice>`
+  - Default behavior: **skip** — what happens to the target when the gate is not satisfied,
+    **including a definite "no"**. `traverse` includes the target even on "no", so a
+    single-target gate with `traverse` excludes nothing and is rejected by the builder.
+    Missing-data behaviour is the next field, not this one.
   - On unresolved (chart gates with a lab/vital threshold): ask | default — what happens
     when the value is missing or ambiguous. `ask` = hold the subtree and ask the provider
     for the value; `default` = treat it like "no" and apply the default behavior.

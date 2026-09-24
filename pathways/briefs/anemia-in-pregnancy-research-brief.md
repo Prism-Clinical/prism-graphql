@@ -172,9 +172,18 @@ the pathway presumes the coded diagnosis.
   - Rationale: ACOG 2022 universal-offer recommendation; elicited because "results
     available for interpretation" is a records judgment. [4]
 - **Gate `gate-ida-confirmed` — Ferritin confirms iron deficiency**
-  - Attached to: step-1-2 · Branches to: stage-2 · patient_attribute · Default: **traverse**
-    (empiric iron is guideline-sanctioned when ferritin is missing, so absent data should
-    not block the treatment stage; DP-1 governs the judgment) [1]
+  - Attached to: step-1-2 · Branches to: stage-2 · patient_attribute · Default: **skip** ·
+    On unresolved: **ask** `[BUILD FIX 2026-09-24 — was traverse]`
+    (original intent: empiric iron is guideline-sanctioned when ferritin is missing, so
+    absent data should not block the treatment stage; DP-1 governs the judgment) [1]
+  - `[BUILD FIX]` **`traverse` never excluded anything.** On main `default_behavior` applies
+    to a definite "no" as well as to missing data, so ferritin 50 (not iron deficient) still
+    opened Stage 2. Now `skip`: ferritin ≥30 excludes iron therapy. Missing ferritin still
+    holds Stage 2 and asks for the value — the same as before this change, because
+    `on_unresolved` defaults to `ask`. "Include when ferritin is missing, exclude when it is
+    normal" is **not expressible** on main. **Needs a physician call:** keep `ask` (Stage 2
+    waits for a ferritin), or `default` (missing ferritin excludes Stage 2 — empiric iron
+    then only via the provider).
   - Condition (coded): field `labs`, less_than, value `2276-4` (ferritin, LOINC),
     threshold 30, horizon {days: 90}
   - Rationale: ACOG confirmatory cutoff (sens 92%/spec 98% per ASH); WHO uses <15,
@@ -600,8 +609,9 @@ bound**; undated labs can satisfy membership but never join trend/delta series; 
 temporal state propagates as uncertainty → the gate resolves per its default_behavior
 (all defaults in §4b were chosen with that in mind — every horizon-scoped gate defaults
 `skip`, so stale/missing data omits optional content rather than inventing it; the one
-`traverse` default, gate-ida-confirmed, deliberately keeps treatment reachable when
-ferritin is absent).
+`traverse` default, gate-ida-confirmed, was meant to keep treatment reachable when
+ferritin is absent — `[BUILD FIX]` it also kept it reachable when ferritin was normal, so it
+is now `skip` + `on_unresolved: ask`; see §4b).
 
 ## 18. Gaps & fallbacks
 

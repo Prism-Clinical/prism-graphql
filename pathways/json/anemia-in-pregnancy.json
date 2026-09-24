@@ -470,7 +470,7 @@
       "properties": {
         "title": "Ferritin confirms iron deficiency (< 30 ng/mL)",
         "gate_type": "patient_attribute",
-        "default_behavior": "traverse",
+        "default_behavior": "skip",
         "on_unresolved": "ask",
         "condition": {
           "field": "labs",

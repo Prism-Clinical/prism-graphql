@@ -361,7 +361,7 @@
       "properties": {
         "title": "Does this patient qualify for low-dose aspirin prophylaxis?",
         "gate_type": "question",
-        "default_behavior": "traverse",
+        "default_behavior": "skip",
         "prompt": "Does this patient qualify for low-dose aspirin prophylaxis? Qualifies with ANY ONE high-risk factor (prior preeclampsia, multifetal gestation, chronic hypertension, pregestational type 1 or 2 diabetes, kidney disease, autoimmune disease such as SLE or antiphospholipid syndrome); OR TWO OR MORE moderate-risk factors (nulliparity, BMI >30, family history of preeclampsia in mother or sister, Black race, lower income, age 35 or older, personal history factors, in vitro conception); OR, on its own, Black race or lower income.",
         "answer_type": "BOOLEAN"
       }

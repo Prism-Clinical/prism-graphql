@@ -69,7 +69,10 @@ Follow the spec exactly. Brief-section → JSON mapping:
   the gate in the delivery message as needing a clinical call; `default` on a gate with no
   scalar condition (the engine never asks there). Emit `display` on every lab condition
   (readable name + unit) — it is the missing-value prompt. Never emit `prompt` on a chart
-  gate. `[BLOCKED — prior_node_result]` gates: emit the brief's named fallback,
+  gate. **`default_behavior` is `skip` on every single-target gate**: `traverse` includes the
+  target on a definite "no" too, so the gate excludes nothing. If a brief asks for `traverse`
+  to keep content reachable when data is missing, emit `skip` + `on_unresolved: ask` and
+  flag it — "include on missing, exclude on normal" is not expressible on main. `[BLOCKED — prior_node_result]` gates: emit the brief's named fallback,
   never the prior_node_result gate itself; list the substitution in the delivery message.
   **Gate wiring (see the spec's Gate wiring box — the validator does NOT catch these):**
   (1) a Step behind a gate gets **no** `stage-N HAS_STEP` edge, and nothing else may

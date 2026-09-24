@@ -190,13 +190,11 @@ states what data gate it *would* have been and why that is not expressible.
     `[BUILD FIX — Rule 3]`
   - Exclusively gated: yes — Steps 1.2 and 1.3 are removed from Stage 1's plain flow.
   - Type: **question** · answer_type: BOOLEAN
-  - Default behavior: **traverse** — but see G12: **`default_behavior` is inert on question
-    gates.** Verified at build: an unanswered question gate resolves to PENDING_QUESTION and
-    marks its whole subtree the same, regardless of the declared default. Aspirin therefore
-    surfaces as a pending question with high estimated impact (26-node subtree) rather than
-    being included by default. That is arguably the better behaviour — it puts a Level A
-    recommendation in front of a clinician instead of deciding silently — but it is not what
-    the declared default says, and `traverse` is retained here only to express intent.
+  - Default behavior: **skip** `[BUILD FIX 2026-09-24 — was traverse]`. The original note
+    (G12) said `default_behavior` is inert on question gates. It is inert only while the
+    question is **unanswered** (that always pends). Once answered **"no"**, `traverse`
+    INCLUDED the target anyway — a "no" still opened aspirin and baseline labs. `skip` makes
+    "no" exclude them; an unanswered question still pends, unchanged.
   - Prompt: "Does this patient qualify for low-dose aspirin prophylaxis? Qualifies with ANY
     ONE high-risk factor (prior preeclampsia, multifetal gestation, chronic hypertension,
     pregestational type 1 or 2 diabetes, kidney disease, autoimmune disease such as SLE or
@@ -702,7 +700,7 @@ pregnancy. Please ratify, and see §18 G9.
 | **G7** | Unit-correct threshold comparison | **`unit` is not an allowed key on a coded condition, and no evaluation path compares units.** See the §13 warning — the protein/creatinine ratio has two codes in circulation whose thresholds differ 1000-fold | Pin the exact LOINC in §13 and warn prominently. No engine protection exists |
 | **G8** | Advisory drug interaction (low-dose aspirin with oral iron) | There is **no interaction edge in the pathway schema**. The lane mechanism only detects same-lane different-drug; the interaction engine is database-backed and not authorable from a pathway | Documented in §5 only |
 | **G9** | Scoping facts to **this pregnancy** | No pregnancy anchor exists in the horizon grammar | `{days: 300}` proxy |
-| **G12** | A question gate's `default_behavior` | An **unanswered** question gate always resolves to PENDING_QUESTION and marks its subtree PENDING_QUESTION — `default_behavior` is never consulted, and unanswered is the only case where it could matter. Confirmed at build against the real engine | Documented; the declared default expresses intent only |
+| **G12** | A question gate's `default_behavior` | `[CORRECTED 2026-09-24]` An **unanswered** question gate always resolves to PENDING_QUESTION and marks its subtree PENDING_QUESTION — but a question answered **"no"** takes `default_behavior`, so `traverse` included the target on "no". `gate-aspirin-indicated` is now `skip`. (Original text: "`default_behavior` is never consulted, and unanswered is the only case where it could matter.") Confirmed at build against the real engine | Documented; the declared default expresses intent only |
 | **G11** | **Co-equal therapeutic alternatives** ("labetalol OR nifedipine, either is correct") | Conflict detection groups by `clinical_role` with no pathway check; two distinct names in one lane conflict even within a single pathway, and **both are then withheld** from the active medication list. Equivalence and contradiction are the same signal | Same lane, conflict accepted — see the §5 decision box |
 | **G10** | Gestational-age gates (20 weeks; 12–28 weeks; 34 0/7; 37 0/7) | `patient.*` attributes are never populated by the simulator; Z3A codes would need one condition per week | Carried in step descriptions and question prompts |
 

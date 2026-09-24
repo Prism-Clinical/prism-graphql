@@ -167,7 +167,29 @@ exactly one (Rule 3).
 > errors and 0 warnings, and **not one of its 5 gates could exclude anything** — a patient
 > with Hb 12.0 g/dL resolved with PRBC transfusion, oral iron and IV iron all INCLUDED.
 
-`default_behavior` ∈ `skip` (unevaluable ⇒ gated subtree left out) or `traverse` (unevaluable ⇒ subtree included). Choose per clinical safety: `skip` for rare-population add-ons, `traverse` for safety-critical content that should stay unless ruled out.
+`default_behavior` ∈ `skip` | `traverse` decides what happens to the target when the gate is
+**not satisfied** — and that includes a definite **"no"**, not only missing data
+(`traversal-engine.ts:1263-1310`: every not-satisfied outcome that is not pending or asking
+takes `default_behavior`):
+
+| Gate outcome | `skip` | `traverse` |
+|---|---|---|
+| satisfied | target INCLUDED | target INCLUDED |
+| answered **no** (chart value on the wrong side; question answered false) | target GATED_OUT | target **INCLUDED** |
+| could not decide, `on_unresolved: default` | target GATED_OUT | target INCLUDED |
+| could not decide, `on_unresolved: ask` | held, asks | held, asks |
+| question not yet answered | held, asks | held, asks |
+
+So **a single-target gate with `traverse` can never exclude its target** — it is inert,
+exactly like a Rule 1 violation. Real failure: anemia `gate-ida-confirmed` was `traverse`
+"so missing ferritin keeps iron therapy reachable", and a ferritin of 50 (not iron
+deficient) still resolved Stage 2 iron therapy INCLUDED. **Use `skip` on every gate whose
+purpose is to exclude**, and control missing data with `on_unresolved` (`ask` = hold and
+ask; `default` = exclude). "Include when the value is missing but exclude when it is
+normal" is **not expressible** on main — `default_behavior` cannot tell the two apart; pick
+`ask` and say so in the brief. `check-gate-control.ts` fails a single-target gate set to
+`traverse`. (On a multi-target router the answer picks the edge, so `default_behavior`
+only matters if it cannot decide.)
 
 `gate_type` ∈ `patient_attribute`, `question`, `prior_node_result`, `compound`, `llm_text_analysis`.
 

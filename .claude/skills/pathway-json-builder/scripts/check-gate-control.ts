@@ -86,6 +86,7 @@ function reachableFromRoot(skip: Set<Edge>): Set<string> {
 }
 
 const errors: string[] = [];
+const warnings: string[] = [];
 
 // ── Rule 1 — a gated node must have its gate as the ONLY way in ──────
 // Ask: ignoring EVERY gate route into T, is T still reachable? If yes, some
@@ -103,6 +104,28 @@ for (const [target, gates] of gatesByTarget) {
       `RULE 1 — "${target}" (${titleOf.get(target)}) is gated by ${gates.map((g) => `"${g}"`).join(', ')}, ` +
       `but is ALSO reachable without them:\n      ${via.join('\n      ')}\n` +
       `      => the gate cannot exclude it. Delete the competing edge(s), or move the target behind the gate.`,
+    );
+  }
+}
+
+// ── Advisory — Rule 1 one level down: a gated STAGE whose step has another way in.
+// The gate still excludes the Stage, but that step (and its subtree) is reached
+// anyway. Sometimes intended — anemia's DP-1 "empiric oral iron" deliberately
+// reaches Step 2.1 without ferritin — so this warns rather than fails; the brief
+// should say it is deliberate.
+for (const [target, gates] of gatesByTarget) {
+  const gateRoutes = new Set(
+    walkable.filter((e) => e.type === 'BRANCHES_TO' && e.to === target && gateIds.has(e.from)),
+  );
+  const reach = reachableFromRoot(gateRoutes);
+  if (reach.has(target)) continue; // already a Rule 1 error
+  for (const e of walkable.filter((x) => x.from === target && x.type === 'HAS_STEP')) {
+    if (!reach.has(e.to)) continue;
+    const via = walkable.filter((x) => x.to === e.to && x.from !== target).map((x) => `${x.from} -${x.type}->`);
+    warnings.push(
+      `Gate ${gates.map((g) => `"${g}"`).join(', ')} excludes "${target}", but its step "${e.to}" ` +
+      `(${titleOf.get(e.to)}) is also reached via ${via.join(', ')} — that step survives a "no". ` +
+      `Confirm the brief intends it.`,
     );
   }
 }
@@ -165,9 +188,28 @@ for (const node of nodes) {
 
 // ── Advisory — a gate whose target has no other route is fine, but a gate
 // with no BRANCHES_TO at all guards nothing. ─────────────────────────
-const warnings = [...gateIds]
+warnings.push(...[...gateIds]
   .filter((g) => !walkable.some((e) => e.from === g && e.type === 'BRANCHES_TO'))
-  .map((g) => `Gate "${g}" (${titleOf.get(g)}) has no BRANCHES_TO edge — it guards nothing.`);
+  .map((g) => `Gate "${g}" (${titleOf.get(g)}) has no BRANCHES_TO edge — it guards nothing.`));
+
+// ── INERT (traverse) — default_behavior applies to a definite "no" as well as
+// to missing data (`traversal-engine.ts:1263-1310`), so a single-target gate set
+// to traverse includes its target whether the answer is yes or no: it cannot
+// exclude anything. Anemia gate-ida-confirmed did exactly this — ferritin 50 still
+// opened iron therapy. A multi-target router picks its edge by answer, so it is
+// exempt.
+for (const node of nodes) {
+  if (node.type !== 'Gate') continue;
+  const props = (node as any).properties ?? {};
+  const out = walkable.filter((e) => e.from === node.id && e.type === 'BRANCHES_TO');
+  if (out.length === 1 && String(props.default_behavior ?? '').toLowerCase() === 'traverse') {
+    errors.push(
+      `INERT GATE — "${node.id}" (${titleOf.get(node.id)}) has default_behavior "traverse" and one target.\n` +
+      `      => traverse applies to a definite "no" too, so "${out[0].to}" is included either way.\n` +
+      `      => use "skip"; control missing data with on_unresolved ("ask" holds and asks, "default" excludes).`,
+    );
+  }
+}
 
 // ── Condition lints (builder-enforced; import accepts all of these) ─────
 // Every evaluable condition of every chart gate, with a label for messages.
@@ -256,7 +298,7 @@ const isScalar = (c: any): boolean =>
       if (c.field === 'labs' && SCALAR_OPS.has(c.operator) && typeof c.display !== 'string') {
         warnings.push(
           `Gate "${gate}": lab condition on ${c.value} has no \`display\` — the escalation prompt ` +
-          `will read "${c.value} (LOINC ${c.value}) — most recent value?". Add e.g. "display": "Hemoglobin (g/dL)".`,
+          `will read "${c.value} (LOINC ${c.value}) — most recent value?". Add "display": "<name> (<unit the threshold assumes>)".`,
         );
       }
     }
