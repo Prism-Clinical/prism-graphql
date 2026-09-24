@@ -17,7 +17,9 @@ still current, `[BLOCKED — prior_node_result]` import-blocked gate design with
 
 - **Logical ID**: `anemia-in-pregnancy`
 - **Title**: Anemia in Pregnancy — Classification and Treatment
-- **Version**: v1
+- **Version**: 3 `[DECISION — Josh 2026-09-24]` (JSON `"3"`; was `"2"`). Bumped for the DP-1
+  restoration, gate-microcytic removal and the gestational-age data gate — imports as
+  NEW_VERSION.
 - **Category**: OBSTETRIC
 - **Scope**: Outpatient prenatal care, from diagnosed anemia through postpartum handoff.
   Screening is upstream of this pathway.
@@ -58,7 +60,9 @@ None. (Single-condition pathway; O99.01x already encodes the pregnancy+anemia co
   and T3; <10.5 / <32% in T2 — CDC trimester definitions T1 0–13 wk, T2 14–26, T3 27–40);
   risk-factor review (parity >2, short interpregnancy interval, low-iron diet, pica);
   urgent-symptom safety-netting. [1][2][3][10]
-- **Step 1.2 — Microcytic workup** *(gated by gate-microcytic)*: ferritin (±iron/TIBC/
+- **Step 1.2 — Microcytic workup** *(reached only via DP-1 criterion 1b — the provider's
+  choice of confirmatory studies; was gated by gate-microcytic, removed 2026-09-24, see
+  §4b)*: indicated for microcytic anemia (MCV < 80 fL). Ferritin (±iron/TIBC/
   saturation). Ferritin <30 ng/mL confirms IDA; sat <18% + ↑TIBC + ↓ferritin = IDA;
   all-normal iron studies → suspect thalassemia → Step 1.5. [1][5]
 - **Step 1.3 — Normocytic workup** *(gated by gate-normocytic)*: ferritin (early iron
@@ -127,6 +131,30 @@ BRANCHES_TO (no HAS_STEP edge), per the reference-fixture pattern.
   - Criterion 1b: Atypical features, uncertain etiology, or confirmation preferred →
     ferritin/iron studies first → **Step 1.2** [1]
   - Judgment call by ACOG's own wording ("may be reasonable"); not machine-evaluable. [1]
+  - `[DECISION — Josh 2026-09-24]` **Criterion 1b → Step 1.2 restored.** The built JSON
+    had dropped it (DP-1 branched only to Step 2.1), so DP-1 was not a choice: a one_of
+    fork with one branch takes it, and every patient got empiric oral iron automatically —
+    ferritin 50 included. DP-1 now branches to both Step 2.1 and Step 1.2.
+    **What actually happens** (proved with `gate-proof.ts` on the real traversal engine,
+    both edge orders, through the incremental path the branch-choice mutation uses):
+    DP-1's branches are scored by confidence, and the two Steps score identically on
+    every signal (checked scorer by scorer), so both qualify and the fork **pends** —
+    "which branch applies?" — with Step 2.1, Step 1.2, Stage 2 and everything under them
+    held until the provider answers. Choosing **workup** with ferritin 50: Stage 2 and
+    Step 2.1 are GATED_OUT by `gate-ida-confirmed`. Choosing workup with ferritin 12:
+    Stage 2 opens. Choosing **empiric**: Step 2.1 is included and Step 1.2 excluded. Oral
+    iron is never automatic unless confidence scoring puts Step 1.2 below the 0.60
+    suggest threshold while Step 2.1 stays above it (only a per-node DB weight override
+    or admin evidence entry could do that).
+  - `[DECISION — Josh 2026-09-24]` [SECOND ROUTE — step-2-1 via dp-1] Step 2.1 sits in
+    Stage 2, which `gate-ida-confirmed` gates, but criterion 1a reaches it directly: empiric
+    oral iron without iron studies is ACOG-sanctioned, so this second route is deliberate.
+  - `[GAP — NEEDS JOSH]` **The empiric arm reaches Step 2.1 only.** Choosing empiric
+    EXCLUDES Step 2.2 (trial period), Step 2.3 (response assessment), DP-2 and Step 2.5
+    (IV iron): they hang from Stage 2, which only the ferritin gate opens. So an
+    empirically treated patient gets no response check and no escalation route. Fixing it
+    means routing criterion 1a to a container holding 2.1–2.3 rather than Step 2.1 alone
+    — a structural change to the brief's mapping, left for review.
 - **DP-2 — Nonresponse management** (after Step 2.3) — branch_mode: one_of
   - Criterion 2a: Intolerance or nonadherence despite coaching → **Step 2.5** (IV iron) [1][5]
   - Criterion 2b: Suspected malabsorption (enteric-coated tabs, antacids, bariatric,
@@ -151,10 +179,24 @@ evaluates with zero DB setup. Revisit when the dashboard renders the attributes 
 code-map seeding exists. Anemia *detection* gates were removed with the screening stage —
 the pathway presumes the coded diagnosis.
 
-- **Gate `gate-microcytic` — MCV < 80**
-  - Attached to: step-1-1 · Branches to: step-1-2 · patient_attribute · Default: skip
-  - Condition (coded): field `labs`, less_than, value `787-2` (MCV, LOINC), threshold 80,
-    horizon {days: 90} [1]
+- ~~**Gate `gate-microcytic` — MCV < 80**~~ **REMOVED 2026-09-24**
+  - ~~Attached to: step-1-1 · Branches to: step-1-2 · patient_attribute · Default: skip~~
+  - ~~Condition (coded): field `labs`, less_than, value `787-2` (MCV, LOINC), threshold 80,
+    horizon {days: 90} [1]~~
+  - `[CONSEQUENCE OF DP-1 DECISION — NEEDS JOSH]` Not Josh's decision; a build consequence. Removed because
+    restoring DP-1 criterion 1b made its only target, Step 1.2, a DecisionPoint branch.
+    The gate could no longer exclude Step 1.2 (Rule 1): on the live path — the branch
+    choice re-resolves incrementally from DP-1 — choosing workup includes Step 1.2 at any
+    MCV (proved: MCV 90 + workup → Step 1.2 INCLUDED), and choosing empiric excludes it at
+    any MCV. Running the proof with and without the gate gave identical outcomes in every
+    scenario after the choice; the gate only added an MCV question that could not change
+    Step 1.2 (and gate-normocytic/macrocytic still ask for a missing MCV). So Step 1.2 is
+    now the provider's call at DP-1. MCV < 80 still frames Step 1.2's indication (§3).
+    If MCV should instead **force** the microcytic workup, DP-1 cannot also branch to it —
+    that is a different design. **Also note:** DP-1 now pends for *every* patient —
+    normocytic and macrocytic too — offering "Microcytic workup" as the confirmatory
+    branch; before, MCV ≥ 80 kept those patients out of Step 1.2 (they get Steps 1.3/1.4
+    from their own MCV gates either way).
 - **Gate `gate-normocytic` — MCV 80–100**
   - Attached to: step-1-1 · Branches to: step-1-3 · compound (AND) · Default: skip
   - Conditions (coded): labs `787-2` greater_than threshold **79.9**; labs `787-2`
@@ -181,9 +223,12 @@ the pathway presumes the coded diagnosis.
     opened Stage 2. Now `skip`: ferritin ≥30 excludes iron therapy. Missing ferritin still
     holds Stage 2 and asks for the value — the same as before this change, because
     `on_unresolved` defaults to `ask`. "Include when ferritin is missing, exclude when it is
-    normal" is **not expressible** on main. **Needs a physician call:** keep `ask` (Stage 2
+    normal" is **not expressible** on main. ~~Needs a physician call: keep `ask` (Stage 2
     waits for a ferritin), or `default` (missing ferritin excludes Stage 2 — empiric iron
-    then only via the provider).
+    then only via the provider).~~
+  - `[DECISION — Josh 2026-09-24]` **Resolved: `ask`** — numeric gates ask when the value
+    is missing (general rule; see §18 "On unresolved — RESOLVED"). A missing ferritin holds
+    Stage 2 and asks for the value; empiric iron without ferritin is DP-1's criterion 1a.
   - Condition (coded): field `labs`, less_than, value `2276-4` (ferritin, LOINC),
     threshold 30, horizon {days: 90}
   - Rationale: ACOG confirmatory cutoff (sens 92%/spec 98% per ASH); WHO uses <15,
@@ -195,16 +240,31 @@ the pathway presumes the coded diagnosis.
     system LOINC, delta_threshold 1.0, window_days 42, min_points 2
   - Rationale: ACOG response definition (>1 g/dL rise); 42-day window spans initiation →
     4-week recheck with margin. [1][3]
-- **Gate `gate-iv-iron-ga` — Beyond first trimester?**
-  - Attached to: dp-2 · Branches to: step-2-5 · Type: **question** · Default: skip
-    (unanswered ⇒ do not auto-open IV iron; provider can still route via DP-2 criteria)
-  - Prompt: "Is the patient beyond the first trimester (≥14 0/7 weeks gestation)?" ·
-    answer_type: BOOLEAN
+- **Gate `gate-iv-iron-ga` — Beyond first trimester (GA ≥ 14 0/7 weeks)**
+  - Attached to: dp-2 · Branches to: step-2-5 · Type: **patient_attribute** · Default: skip
+    · On unresolved: **ask**
+  - Condition (attribute): `patient.gestational_age_weeks` `greater_or_equal` **14**, unit
+    weeks (no horizon — `patient.*` has no temporal policy)
+  - `[DECISION — Josh 2026-09-24]` **Read gestational age directly.** Replaces the question
+    gate ("Is the patient beyond the first trimester (≥14 0/7 weeks gestation)?",
+    BOOLEAN). Same target. GA ≥ 14 opens IV iron, GA < 14 gates it out, and a **missing**
+    GA pends and asks for `patient.gestational_age_weeks` (NUMERIC) — since engine fix
+    `8f64fc1` a missing `patient.*` value is missing data, not a silent "no". Proved with
+    `gate-proof.ts ga` (GA 20 and 14 included, 12 GATED_OUT, missing pends with that
+    datum). The encounter simulator sends GA, so it decides there; the pathway-preview flow
+    sends no `patientAttributes`, so there it asks. The admin dashboard's "Fields this
+    pathway reads" panel does not list attribute conditions.
+  - `[BUILD NOTE]` The generated question reads **"patient.gestational_age_weeks — current
+    value?"** — the engine prints the raw path for attribute conditions and ignores
+    `display` there (`unresolved-prompt.ts`), where the old question gate had readable
+    text. A readable label needs an engine change, not a JSON one.
+  - ~~Question-gate form (v3): Type question, prompt "Is the patient beyond the first
+    trimester (≥14 0/7 weeks gestation)?", answer_type BOOLEAN.~~
   - Rationale: ACOG Level B — parenteral iron "after the first trimester"; ASH: no
-    1st-trimester safety data. **v3 conversion**: originally a `patient_attribute` gate on
-    `patient.gestational_age_weeks`, converted to a question gate because the simulator
-    can neither display nor set patient.* attributes today (composer never sends
-    `patientAttributes`). Revert to the data gate when the composer supports it. [1][5]
+    1st-trimester safety data. **v3 conversion** (now reverted): originally a
+    `patient_attribute` gate on `patient.gestational_age_weeks`, converted to a question
+    gate because the simulator could not set patient.* attributes and a missing one read as
+    "no". Both have since been fixed, so it is a data gate again (2026-09-24). [1][5]
   - `[BLOCKED — prior_node_result]` The ideal design adds "IV iron depends on Step 2.2
     (oral trial) having resolved INCLUDED" as a prior_node_result gate — import-blocked
     today. **Fallback the builder must emit:** the REQUIRES edge in §12 (step-2-5
@@ -468,10 +528,11 @@ All codes wave-2 verified — see §18 item 11.
 
 ## 14. Attribute-map registrations
 
-**None needed (v3).** All lab gates now use coded-form conditions that match `labResults`
-by LOINC directly, bypassing `pathway_attribute_code_map` entirely, and the gestational-age
-gate is a question gate. No `lab.*`/`allergy.*`/`patient.*` attributes are referenced
-anywhere in §4b.
+**None needed.** All lab gates use coded-form conditions that match `labResults` by LOINC
+directly, bypassing `pathway_attribute_code_map` entirely. The one attribute condition,
+`patient.gestational_age_weeks` (gate-iv-iron-ga, 2026-09-24), is a `patient.*` attribute,
+which reads `patientAttributes` directly and needs no code-map row. No `lab.*`/`allergy.*`
+attributes are referenced anywhere in §4b.
 
 ## 15. Evidence citations
 
@@ -593,7 +654,7 @@ margin). **These day-counts are my proposal — review.**
 
 | Gate | Condition on | horizon | status | window_days | Rationale |
 |---|---|---|---|---|---|
-| gate-microcytic / normocytic / macrocytic | labs 787-2 (MCV) | {days: 90} | — | — | Classification must reflect the anemia being worked up, not an old chart value |
+| gate-normocytic / macrocytic (gate-microcytic removed 2026-09-24) | labs 787-2 (MCV) | {days: 90} | — | — | Classification must reflect the anemia being worked up, not an old chart value |
 | gate-ida-confirmed | labs 2276-4 (ferritin) | {days: 90} | — | — | Confirmatory ferritin from this workup |
 | gate-hgb-response | labs 718-7 (delta) | — | — | 42 | Operator-windowed (XOR rule); ideal anchor is Step 2.1 med-start — anchor-to-event is not in the kernel grammar yet, note stands |
 | gate-severe-anemia | labs 718-7 (Hgb) | {days: 7} | — | — | Hgb <6 is an acute finding; only a current value justifies transfusion routing |
@@ -682,7 +743,14 @@ is now `skip` + `on_unresolved: ask`; see §4b).
     avoid all three. §14 is now empty. Normocytic band uses 79.9/100.1 strict boundaries
     (coded operators lack ≥/≤). Revert candidates when the dashboard/platform catch up.
 
-### `[BUILD FIX 2026-09-24]` On unresolved — needs a physician call
+### `[BUILD FIX 2026-09-24]` On unresolved — RESOLVED
+
+`[DECISION — Josh 2026-09-24]` **Resolved as a general rule: numeric gates ask when the
+value is missing.** Every gate listed below keeps `on_unresolved: ask`; no JSON change.
+This is no longer a per-gate question for review — the rule is in the format spec, the
+brief template and the builder's gate-control lint, and a numeric gate may take `default`
+only with an `[ON-UNRESOLVED DEFAULT — <gate-id>]` justification in this brief (there is
+none). The original note follows for the record.
 
 Main (PR #55) added a per-gate `on_unresolved` (ask | default) that this brief predates.
 It decides what a gate does when its lab/vital value is **missing or ambiguous**: `ask`

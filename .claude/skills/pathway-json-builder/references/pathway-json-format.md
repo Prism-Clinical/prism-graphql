@@ -85,7 +85,7 @@ Every node: `{ "id": "...", "type": "...", "properties": { ... } }`. IDs unique,
 
 | Type | Required properties | Recognized optional properties (read by care-plan projection / UI) |
 |---|---|---|
-| `Stage` | `stage_number`, `title` | `description` |
+| `Stage` | `stage_number` (**unique per pathway**; numeric, fractions allowed — the dashboard sorts stages by `Number(stage_number)` and labels them "Stage <n>"), `title` | `description` |
 | `Step` | `stage_number`, `step_number`, `display_number`, `title` | `description` |
 | `DecisionPoint` | `title`, **`branch_mode`** | `description`. `branch_mode` is **required** (hard import error when absent, even in draft) ∈ `one_of` (mutually exclusive: exactly one branch is taken — if more than one qualifies the DP pends and the provider picks), `all_of` (every branch is taken by declaration; a weakly-supported branch is still INCLUDED and red-flagged), `any_of` (optional add-ons) |
 | `Criterion` | `description` | `code_value` (cross-checked against `condition_codes`, warning if absent) |
@@ -140,7 +140,9 @@ exactly one (Rule 3).
 > "on yes, open A and B" (fan-out) is authored one of two ways:
 > - **same-stage fan-out** — ONE target: a branch-entry-only Stage that `HAS_STEP`s the
 >   several steps (the steps keep their `stage_number`/`display_number`; the new Stage takes
->   its parent's `stage_number` and `CITES_EVIDENCE`). Required for **question** gates:
+>   its parent's `CITES_EVIDENCE` and a **unique** `stage_number` just after its parent —
+>   parent + 0.5, e.g. `1.5` — never the parent's own number: the dashboard sorts and labels
+>   stages by it, and `check-gate-control.ts` fails duplicates). Required for **question** gates:
 >   duplicating a question asks the provider twice, and the two answers can disagree.
 > - **cross-stage fan-out** — one gate per target, **identical** conditions, ids
 >   `gate-x` + `gate-x-<suffix>`, all attached to the same host. Rule 2 forbids two gates on
@@ -161,10 +163,18 @@ exactly one (Rule 3).
 > - **`SELECTS_BRANCH` is a live traversal edge**, not just UI metadata. A Criterion
 >   reaches its `SELECTS_BRANCH` target unconditionally, so it counts as a competing route
 >   under Rule 1.
-> - **Missing data is `on_unresolved`'s job, not `default_behavior`'s.** A scalar lab or
->   vital with no usable value makes the gate *unresolved*; by default it then ASKS for the
->   value and holds its subtree (see **Missing data** below). A membership condition
->   (`includes_code`, `exists`) never is — "no code on file" is a definite no.
+> - **A DecisionPoint branch into a gate's target overrides the gate.** On the live path
+>   the provider's branch choice re-resolves incrementally from the DecisionPoint, and the
+>   chosen branch is walked whatever the gate said (proved on anemia: MCV 90 + "workup"
+>   includes the microcytic workup). So a step is either a DP branch or gated — not both.
+>   A `one_of` DP whose branches all score ≥ the suggest threshold (0.60) **pends** for the
+>   provider; if only one qualifies it is taken automatically. Two structural Steps score
+>   identically, so in practice such a fork pends (`scripts/gate-proof.ts dp-1-scoring`).
+> - **Missing data is `on_unresolved`'s job, not `default_behavior`'s.** A numeric lab,
+>   vital or `patient.*` value that is missing makes the gate *unresolved*; it then ASKS for
+>   the value and holds its subtree (see **Missing data** below — `ask` is the rule for
+>   numeric gates). A membership condition (`includes_code`, `exists`) never is — "no code
+>   on file" is a definite no.
 >
 > Real failure this prevents: anemia-in-pregnancy v1.4 passed the import validator with 0
 > errors and 0 warnings, and **not one of its 5 gates could exclude anything** — a patient
@@ -236,11 +246,18 @@ but cannot be ordered, e.g. two undated results for the same LOINC → `AMBIGUOU
 | `ask` (**the default when absent**) | Gate → PENDING_QUESTION, its whole subtree held ("Awaiting <datum>"), and a pending question asks the provider for the missing value. The answer is injected as a fact and the gate re-evaluates. |
 | `default` | `default_behavior` applies, exactly as for "answered no". |
 
-- **Which conditions can be unresolved:** only *scalar* ones — `greater_than`/`less_than`
-  on `labs` or `vitals`, and attribute conditions. Membership (`includes_code`, `equals`,
-  `exists`) never is: absence is a definite no. Aggregates (`count_in_window`, trends,
-  `delta_from_baseline`) never ask — "the count is 3" is not an observation — and fall to
-  `default_behavior`.
+- **Which conditions can be unresolved — the *numeric* conditions.** One definition,
+  used by this spec, the brief template and `check-gate-control.ts`:
+  - coded `labs` or `vitals` with `greater_than` / `less_than`;
+  - attribute conditions on `lab.*`, `vitals.*` or `patient.*` with any operator except
+    `exists` (absence *is* the answer to `exists`). `patient.*` asks too since engine
+    fix `8f64fc1` (josh-dev): a missing demographic reports `dataUnavailable` and asks for
+    the `patient.<attr>` datum. (An **unmapped** `lab.*`/`allergy.*` — no code-map row —
+    is a vocabulary gap, not a missing datum, and never asks.)
+
+  Membership (`includes_code`, `equals`, `exists` on coded fields) never is unresolved:
+  absence is a definite no. Aggregates (`count_in_window`, trends, `delta_from_baseline`)
+  never ask — "the count is 3" is not an observation — and fall to `default_behavior`.
 - **Compounds:** OR is satisfied by any definite true; if nothing is true and some
   condition is unresolved, the gate is unresolved (a definite false does not outweigh an
   unknown). AND is unsatisfied by any definite false. A compound asks for **one datum at a
@@ -252,14 +269,19 @@ but cannot be ordered, e.g. two undated results for the same LOINC → `AMBIGUOU
 - **Prompt text:** generated per datum. For labs it uses the condition's **`display`**:
   `"<display> (LOINC <code>) — most recent value?"` — so put a readable `display` (with the
   unit the threshold assumes, e.g. `"Platelets (x10^9/L)"`) on every lab condition. Vitals
-  prompts print the path (`display` is ignored). **Do not set `prompt` on a chart gate:** an
+  and attribute (`patient.*`, `vitals.*`, `lab.*`) prompts print the path —
+  `"patient.gestational_age_weeks — current value?"` — and ignore `display`. **Do not set `prompt` on a chart gate:** an
   authored prompt replaces the generated one for every datum the gate asks for.
 - **Question gates:** inert — an unanswered question always pends.
-- **Choosing:** `ask` when a missing value must not silently decide the branch (safety
-  gates, gates whose "no" excludes treatment). `default` when missing data may honestly
-  mean "not applicable" (optional add-ons) — then `default_behavior` decides. The choice is
-  clinical: the brief states it per gate (§4b "On unresolved"). A gate with no scalar
-  condition gets `default`, because that is what the engine does.
+- **Choosing — decided, not per-gate (Josh, 2026-09-24): numeric gates ask when the value
+  is missing.** Every gate with a numeric condition emits `on_unresolved: "ask"`. This is
+  no longer an open clinical question for each gate: a missing lab, vital or gestational
+  age must not silently decide a branch. `default` on a numeric gate is an **exception**,
+  allowed only when the brief justifies it with an `[ON-UNRESOLVED DEFAULT — <gate-id>]`
+  marker (see **Brief markers**) — e.g. an optional add-on where a missing value honestly
+  means "not applicable". `check-gate-control.ts` fails a numeric gate set to `default`
+  without that marker. A gate with **no** numeric condition gets `default`, because that
+  is what the engine does (an `ask` there is inert and warned).
 - **Simulator caveat:** composer labs are undated, so two results for one LOINC are
   `AMBIGUOUS_LATEST` and the gate asks; the injected answer is undated too, so it stays
   ambiguous (engine gap). Enter one value per LOINC when simulating.
@@ -274,15 +296,23 @@ Carries one `condition` object, which is either an **attribute condition** or a 
 > thresholds. Attribute-form conditions (a) never render in the admin dashboard's "Fields
 > this pathway reads" panel (harvested into a list no component displays), (b) need
 > `pathway_attribute_code_map` rows that have no seeding path — unseeded, they resolve
-> "attribute has no value" and the gate silently takes its default; and (c) `patient.*`
-> is only half-supplied: the encounter simulator page sends `gestational_age_weeks` and
-> `trimester` (since dashboard `8681821`, 2026-07-12; the backend derives trimester from
-> GA), but the pathway-preview flow sends none, and **a missing `patient.*` value is a
-> silent definite "no"** — it goes through the legacy `resolveAttribute` path, which never
-> reports `dataUnavailable`, so `on_unresolved: ask` cannot fire. Until the engine asks for
-> a missing `patient.*` value, keep provider-derivable facts (gestational age, trimester)
-> as question gates. Proof harness: `scripts/gate-proof.ts`. Revisit when the dashboard
-> renders the attributes list and code-map seeding exists.
+> "attribute has no value" and the gate silently takes its default. Revisit when the
+> dashboard renders the attributes list and code-map seeding exists.
+>
+> **`patient.*` is the exception — author gestational age and trimester as attribute
+> gates** (updated 2026-09-24). `patient.*` needs no code-map row, and since engine fix
+> `8f64fc1` (josh-dev) **a missing `patient.*` value is missing data, not a "no"**: under
+> `v1` the gate reports `dataUnavailable`, and with `on_unresolved: "ask"` (the rule for
+> numeric gates) it pends, holds its subtree and asks for the datum
+> `patient.<attr>` (NUMERIC); the answer is injected into `patientAttributes` and the gate
+> re-evaluates. `exists` is the one operator that still answers "no" on absence.
+> Supply: the encounter simulator page sends `gestational_age_weeks` and `trimester`
+> (since dashboard `8681821`; the backend derives trimester from GA), so those sessions
+> decide immediately; the pathway-preview flow sends `{}`, so there the gate **asks**
+> rather than silently gating out. `legacy-v0` still reads a missing value as "no". The
+> "Fields this pathway reads" panel does not list these conditions (caveat (a)). Proof:
+> `scripts/gate-proof.ts ga` (anemia `gate-iv-iron-ga`: GA 20 / 14 included, 12
+> GATED_OUT, missing pends asking for `patient.gestational_age_weeks`).
 
 ```json
 { "attribute": "vitals.temperature_f", "operator": "greater_than", "value": 100.3, "horizon": "DAY" }
@@ -291,7 +321,7 @@ Carries one `condition` object, which is either an **attribute condition** or a 
 - `attribute` = `<namespace>.<name>`. Registered namespaces (hard error otherwise): **`lab`**, **`vitals`**, **`allergy`**, **`patient`**.
   - `lab.*` / `allergy.*` resolve through the DB table `pathway_attribute_code_map` (attribute_name → system+code+value_type). **An unregistered attribute name imports fine but silently resolves to undefined at runtime** ⇒ the gate falls back to `default_behavior`. Every `lab.*`/`allergy.*` attribute you emit must be listed in the brief's "Attribute-map registrations" section so it gets seeded.
   - `vitals.*` walks a dotted numeric path in the patient's vitalSigns bag (e.g. `vitals.systolic_bp`, `vitals.temperature_f`) — keys per **What the simulator sends**.
-  - `patient.*` reads derived scalars with no terminology code (e.g. `patient.gestational_age_weeks`, `patient.trimester`, `patient.rh_factor`).
+  - `patient.*` reads derived scalars with no terminology code (e.g. `patient.gestational_age_weeks`, `patient.trimester`, `patient.rh_factor`). No code-map row, no temporal policy (emit no `horizon`). A missing value **asks** (`on_unresolved: "ask"`; datum `patient.<attr>`) since `8f64fc1` — see the box above.
 - `operator` ∈ `equals`, `not_equals`, `greater_than`, `greater_or_equal`, `less_than`, `less_or_equal`, `in` (value = array), `exists`. Note: `exists` on an **absent** fact (e.g. an allergy the patient doesn't have) is unsatisfied — it no longer degrades to "attribute resolved" semantics (fixed post-kernel).
 - There is **no** `symptom.*`, `medication.*`, or `condition.*` namespace (older docs said otherwise — they now hard-fail import). Symptom presence/severity is elicited ⇒ use a `question` gate. Diagnosis/medication history ⇒ use a coded condition.
 - `horizon` / `status` — see **Temporal horizon & status** below; both are legal here exactly as on coded conditions.
@@ -530,6 +560,19 @@ options check now exists but is case-sensitive, so it skips uppercase `SELECT` (
 `horizon` together, horizon grammar. Import still accepts a wildcard anywhere in a code.
 The builder rules and `check-gate-control.ts` cover all of these.
 
+### Brief markers (read by `check-gate-control.ts`)
+
+Some lints allow a documented exception. The exception is written in the research brief,
+not the JSON, as a bracketed marker on the line that gives the clinical reason. The check
+finds the brief at `pathways/briefs/<logical_id>-research-brief.md` (next to the JSON's
+`json/` directory), or wherever `--brief <path>` points, and reads it only when a marker is
+needed. An em dash or `-`/`--` separates tag and ids.
+
+| Marker | Allows | Without it |
+|---|---|---|
+| `[ON-UNRESOLVED DEFAULT — <gate-id>]` | a numeric gate with `on_unresolved: "default"` | error — numeric gates ask |
+| `[SECOND ROUTE — <step-id> via <source-id>]` | a step of a gated Stage that another route also reaches (a Criterion's route is named by its DecisionPoint) — e.g. anemia's empiric-iron arm `[SECOND ROUTE — step-2-1 via dp-1]` | warning; with it, an `ℹ` info line so the route stays visible |
+
 ## What the simulator sends (author gates against THIS)
 
 Derived from the admin dashboard's encounter simulator — `PatientComposer.tsx` (payload
@@ -546,7 +589,7 @@ never fires in the simulator: it silently answers "no" (membership) or asks fore
 | `labResults` | `labs` | `{code, value, unit}` | **LOINC** | **no** | One value per LOINC: two undated results for one code are `AMBIGUOUS_LATEST` and the gate asks. |
 | `vitalSigns` | `vitals` (coded `value`, or `vitals.<key>`) | numbers | none (never set `system`) | no — asserted current | Keys exactly: `systolic_bp`, `diastolic_bp` (mmHg), `heart_rate` (bpm), `respiratory_rate` (/min), `spo2` (%), **`temperature_f` (°F)**, `weight_kg`, `height_cm`, `bmi` (auto from height+weight), `custom.<key>`. There is **no `temperature_c`**, and blood pressure is a vital, **not** LOINC `8480-6`/`8462-4` labs. |
 | `freeformData.narrative` | `llm_text_analysis` `input_attribute` | text | — | — | `chief_complaint`, `history_of_present_illness`, `social_history`, custom keys flattened alongside. |
-| `patientAttributes` | `patient.*` | `gestational_age_weeks`, `trimester` | — | — | Encounter page only (trimester derived from GA when only GA is given). The pathway-preview flow sends `{}`. |
+| `patientAttributes` | `patient.*` | `gestational_age_weeks`, `trimester` | — | — | Encounter page only (trimester derived from GA when only GA is given). The pathway-preview flow sends `{}`, so a `patient.*` gate asks there (it does not silently answer "no"). |
 | `encounterStart` | — | **never sent** | — | — | Any condition resolving to an `ENCOUNTER` horizon rejects the session (temporal rule 0). |
 
 Consequences for authoring:

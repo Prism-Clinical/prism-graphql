@@ -40,7 +40,8 @@ Flags: `[GAP]` · `[NOT ENCODABLE]` · `[DECISION]` an authoring choice needing 
 
 - **Logical ID**: `uti-asymptomatic-bacteriuria-pregnancy`
 - **Title**: Urinary Tract Infection and Asymptomatic Bacteriuria in Pregnancy — Outpatient Screening, Treatment and Surveillance
-- **Version**: 1
+- **Version**: 1 `[DECISION — Josh 2026-09-24]` stays `"1"`: still a draft, so the Z88.1 removal
+  re-imports as DRAFT_UPDATE (same logical_id and version).
 - **Category**: OBSTETRIC
 - **Scope**: US outpatient prenatal care. Universal early-pregnancy screening for asymptomatic
   bacteriuria; treatment of asymptomatic bacteriuria and acute cystitis; the group B
@@ -263,7 +264,13 @@ Gated steps connect **only** via their gate's `BRANCHES_TO` — no `HAS_STEP` ed
       Allergy to amoxicillin, `294499007` Allergy to penicillin G, `294497009` Allergy to
       penicillin V (verified active on tx.fhir.org, SNOMED International 2025-02-01; the
       last three are children of 91936005 — the matcher does not expand hierarchies)
-    - field `conditions`, system ICD-10: `Z88.0`, `Z88.1`
+    - field `conditions`, system ICD-10: `Z88.0` (Allergy status to penicillin) only
+  - `[DECISION — Josh 2026-09-24]` **Z88.0 only; `Z88.1` removed** from both gates
+    (`gate-penicillin-allergy` and its `-gbs` copy, kept identical). The verified SNOMED
+    penicillin-allergy concepts above are unchanged.
+  - `[BUILD NOTE — not Josh's rationale]` Z88.1 is "Allergy status to *other* antibiotic
+    agents" (sulfonamides are Z88.2), so it would have routed, for example, a macrolide- or
+    cephalosporin-allergic patient to the penicillin-allergy regimen.
   - `[BUILD FIX]` Allergies arrive as SNOMED findings; Z88.x are ICD-10 allergy-*status*
     diagnoses and arrive under conditions. An ICD-10 code under `allergies` could never
     match, so the gate silently answered "no" for every penicillin-allergic patient.
@@ -290,6 +297,14 @@ Gated steps connect **only** via their gate's `BRANCHES_TO` — no `HAS_STEP` ed
     a rolling lookback. `window_days: 300` is the same pregnancy-length proxy the
     gestational-hypertension pathway uses. It will keep counting into the postpartum period
     unless the pregnancy episode closes.
+  - `[DECISION — Josh 2026-09-24]` **Ratified: `window_days: 300` stays.** (`horizon:
+    "LIFETIME"` would let the undated simulator entries count, but would also count every
+    O23 code from any earlier pregnancy.) **Simulator note:** the composer cannot exercise
+    this gate yet — it sends undated conditions, and a bounded window never counts an
+    undated entry, so the count is 0 and the gate answers "no". Occurrence dates are
+    landing: the backend already accepts `date` on `CodeInput`, and composer date fields
+    for conditions and labs are being added (dashboard `josh-dev` `6ea17a9`). Once they
+    ship, enter two O23 codes dated inside the last 300 days to fire it.
   - `[GAP — DE-DUPLICATION]` **ACOG never defines the countable unit**, and concedes in its own
     Further Research section that how to define recurrent UTI in pregnancy is unresolved. One
     infection can generate an index culture, a test-of-cure culture and multiple claims — all
@@ -606,9 +621,9 @@ referenced.
 | Gate | Condition on | horizon | status | window_days | Rationale |
 |---|---|---|---|---|---|
 | gate-culture-positive | labs 19090-0 | {days: 300} | — | — | This pregnancy only — a prior pregnancy's culture must not fire treatment now |
-| gate-recurrent-uti | conditions O23.* | — | — | **300** | Operator-windowed (XOR rule). ACOG's window is "during pregnancy"; 300 days is the proxy |
+| gate-recurrent-uti | conditions O23.* | — | — | **300** | Operator-windowed (XOR rule). ACOG's window is "during pregnancy"; 300 days is the proxy. `[DECISION — Josh 2026-09-24]` ratified |
 | gate-no-repeat-screening | conditions E10.*, E11.*, O24.*, G82.2.*, G82.5.*, N31.*, T91.3 | LIFETIME | any | — | Diabetes and spinal cord injury are standing conditions |
-| gate-penicillin-allergy (+ -gbs copy) | allergies SNOMED 91936005, 294505008, 294499007, 294497009; conditions Z88.0, Z88.1 | LIFETIME | any | — | Drug allergy does not expire. `[BUILD FIX]` codes moved to the field/system that carries them |
+| gate-penicillin-allergy (+ -gbs copy) | allergies SNOMED 91936005, 294505008, 294499007, 294497009; conditions Z88.0 | LIFETIME | any | — | Drug allergy does not expire. `[BUILD FIX]` codes moved to the field/system that carries them. `[DECISION — Josh 2026-09-24]` Z88.1 removed — Z88.0 only |
 | gate-pyelonephritis-suspected | vitals temperature_f | DAY | — | — | `[BUILD FIX 2026-09-24]` Vitals are one undated current value, so any bounded horizon admits them — but an omitted horizon inherits v1's ENCOUNTER default, which rejects every simulator session (no encounterStart) for this and every co-matched pathway |
 | gate-pyelonephritis-suspected | conditions N10 | {days: 300} | active | — | This pregnancy only |
 
@@ -628,7 +643,7 @@ closes.
 | **U2** | **GBS at ≥10⁵ CFU/mL** | Requires joining nominal identity to a separate quantitative count for the same isolate. Verified twice: **no GBS-specific colony-count LOINC exists**, and the generic count carries **no isolate number**, so in mixed growth it cannot be attributed to a named organism | `gate-gbs-treat-threshold` question gate |
 | **U3** | **Excluding normal vulvovaginal flora** | Same as U1 — a *Lactobacillus* culture at 10⁵ CFU/mL fires the positive gate | Clinician review at Step 2.1 |
 | **U4** | **Unit-correct colony-count comparison** | No unit checking anywhere; `unit` is not an allowed key on a coded condition. Banded and censored results ("&gt;100,000") are common in urine cultures and cannot be compared numerically | Pin LOINC 19090-0; warn prominently |
-| **U5** | **Gestational age** (first trimester) | `patient.*` attributes are never populated; Z3A would need one condition per week | Question gates |
+| **U5** | **Gestational age** (first trimester) | `patient.*` attributes are never populated; Z3A would need one condition per week. `[FOLLOW-UP 2026-09-24]` No longer true: the encounter simulator sends GA and a missing `patient.*` value now asks — `gate-first-trimester` could become `patient.gestational_age_weeks` `less_than` 14 (as anemia's gate-iv-iron-ga did). Not changed here; needs a decision | Question gates |
 | **U6** | **Antibiotic course completed** | Medication records carry a start date, not an adherence outcome | `gate-treatment-completed` question gate |
 | **U7** | **Flank pain / CVA tenderness** | Exam findings with no data route. The gate therefore fires on **fever alone** — the CVA-tenderness-without-fever presentation ACOG warns about is not detected | Carried in Step 6.1 instruction and Guid-1 |
 | **U8** | **Penicillin allergy risk stratification** (low vs high anaphylaxis risk) | The distinction turns on the nature of the reaction, which is a history judgment, not a coded fact | Clinician instruction in Steps 3.2 and 4.5 |
@@ -681,7 +696,14 @@ carries only table *captions*, so any term-count run against HTML alone silently
 tables. All ACOG citations here are primary text, and the zero-count verifications were run
 against the full PDF including Tables 1–3.
 
-### `[BUILD FIX 2026-09-24]` On unresolved — needs a physician call
+### `[BUILD FIX 2026-09-24]` On unresolved — RESOLVED
+
+`[DECISION — Josh 2026-09-24]` **Resolved as a general rule: numeric gates ask when the
+value is missing.** The three gates listed below keep `on_unresolved: ask`; no JSON
+change. This is no longer a per-gate question for review — the rule is in the format
+spec, the brief template and the builder's gate-control lint, and a numeric gate may take
+`default` only with an `[ON-UNRESOLVED DEFAULT — <gate-id>]` justification in this brief
+(there is none). The original note follows for the record.
 
 Main (PR #55) added a per-gate `on_unresolved` (ask | default) that this brief predates.
 It decides what a gate does when its lab/vital value is **missing or ambiguous**: `ask`
@@ -699,3 +721,8 @@ window. The simulator dates nothing, so the count is always 0 and the gate alway
 "no" there (aggregates never ask). `horizon: "LIFETIME"` instead of `window_days` would
 admit undated entries — but would also count every O23 code the patient ever had, from
 any pregnancy. Left as authored; test with dated conditions, not the composer.
+
+`[DECISION — Josh 2026-09-24]` **`window_days: 300` ratified.** The simulator can exercise
+this gate once the composer's occurrence-date fields land (being added now — dashboard
+`josh-dev` `6ea17a9`; the backend already accepts `date` on `CodeInput`): two O23 entries
+dated within 300 days of the session clock should fire it.

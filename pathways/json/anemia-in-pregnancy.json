@@ -3,7 +3,7 @@
   "pathway": {
     "logical_id": "anemia-in-pregnancy",
     "title": "Anemia in Pregnancy \u2014 Classification and Treatment",
-    "version": "2",
+    "version": "3",
     "category": "OBSTETRIC",
     "scope": "Outpatient prenatal care, from diagnosed anemia through postpartum handoff. Screening is upstream of this pathway.",
     "target_population": "Adult pregnant patients with diagnosed anemia; hemoglobinopathy disease, thalassemia syndromes, and CKD-associated anemia are detected and routed out.",
@@ -377,27 +377,6 @@
       }
     },
     {
-      "id": "gate-microcytic",
-      "type": "Gate",
-      "properties": {
-        "title": "MCV < 80 fL (microcytic)",
-        "gate_type": "patient_attribute",
-        "default_behavior": "skip",
-        "on_unresolved": "ask",
-        "condition": {
-          "field": "labs",
-          "operator": "less_than",
-          "value": "787-2",
-          "system": "LOINC",
-          "display": "MCV (fL)",
-          "threshold": 80,
-          "horizon": {
-            "days": 90
-          }
-        }
-      }
-    },
-    {
       "id": "gate-normocytic",
       "type": "Gate",
       "properties": {
@@ -543,11 +522,16 @@
       "id": "gate-iv-iron-ga",
       "type": "Gate",
       "properties": {
-        "title": "Beyond first trimester (\u2265 14 0/7 weeks)?",
-        "gate_type": "question",
+        "title": "Beyond first trimester (GA \u2265 14 0/7 weeks)",
+        "gate_type": "patient_attribute",
         "default_behavior": "skip",
-        "prompt": "Is the patient beyond the first trimester (\u226514 0/7 weeks gestation)?",
-        "answer_type": "BOOLEAN"
+        "on_unresolved": "ask",
+        "condition": {
+          "attribute": "patient.gestational_age_weeks",
+          "operator": "greater_or_equal",
+          "value": 14,
+          "unit": "weeks"
+        }
       }
     },
     {
@@ -1947,8 +1931,18 @@
       "type": "BRANCHES_TO"
     },
     {
+      "from": "dp-1",
+      "to": "step-1-2",
+      "type": "BRANCHES_TO"
+    },
+    {
       "from": "crit-1a",
       "to": "step-2-1",
+      "type": "SELECTS_BRANCH"
+    },
+    {
+      "from": "crit-1b",
+      "to": "step-1-2",
       "type": "SELECTS_BRANCH"
     },
     {
@@ -1985,16 +1979,6 @@
       "from": "crit-2c",
       "to": "step-1-5",
       "type": "SELECTS_BRANCH"
-    },
-    {
-      "from": "step-1-1",
-      "to": "gate-microcytic",
-      "type": "HAS_GATE"
-    },
-    {
-      "from": "gate-microcytic",
-      "to": "step-1-2",
-      "type": "BRANCHES_TO"
     },
     {
       "from": "step-1-1",

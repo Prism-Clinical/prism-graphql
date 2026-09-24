@@ -17,23 +17,32 @@
 //
 // Usage (from repo root) — no install needed, Node runs the TS directly
 // (Node >= 23 strips types; this file has no pathway-service imports):
-//   node .claude/skills/pathway-json-builder/scripts/check-gate-control.ts <file.json>
+//   node .claude/skills/pathway-json-builder/scripts/check-gate-control.ts <file.json> [--brief <brief.md>]
+//
+// Some lints accept a documented exception, and the exception lives in the
+// research brief as a marker (see "Brief markers" in the format spec). The brief
+// is found at `<json dir>/../briefs/<logical_id>-research-brief.md` unless
+// `--brief` names it. It is read only when a marker is actually needed, so a
+// pathway that needs no exception checks without one.
 //
 // Exit codes: 0 = no violations, 1 = violations, 2 = could not read/parse.
 
 // CommonJS require, not ESM import: this script has no pathway-service
 // imports, so it runs under plain `node` with no ts-node and no install.
 // `import` here would make Node reparse the file as ESM and warn.
-const { readFileSync } = require('fs');
-const { resolve } = require('path');
+const { readFileSync, existsSync } = require('fs');
+const { resolve, dirname, join } = require('path');
 
 interface Node { id: string; type: string }
 interface Edge { from: string; to: string; type: string; properties?: Record<string, unknown> }
-interface Pathway { nodes?: Node[]; edges?: Edge[] }
+interface Pathway { pathway?: { logical_id?: string }; nodes?: Node[]; edges?: Edge[] }
 
-const fileArg = process.argv[2];
+const argv = process.argv.slice(2);
+const briefFlag = argv.indexOf('--brief');
+const briefArg: string | undefined = briefFlag >= 0 ? argv[briefFlag + 1] : undefined;
+const fileArg = argv.find((a, i) => !a.startsWith('--') && (briefFlag < 0 || i !== briefFlag + 1));
 if (!fileArg) {
-  console.error('Usage: check-gate-control.ts <pathway.json>');
+  console.error('Usage: check-gate-control.ts <pathway.json> [--brief <brief.md>]');
   process.exit(2);
 }
 
@@ -44,6 +53,31 @@ try {
   console.error(`Could not read or parse ${fileArg}: ${(err as Error).message}`);
   process.exit(2);
 }
+
+// ── Brief markers ─────────────────────────────────────────────────────
+// Lazily loaded: `undefined` = not looked for yet, `null` = looked, not found.
+let briefCache: { path: string; text: string } | null | undefined;
+function brief(): { path: string; text: string } | null {
+  if (briefCache !== undefined) return briefCache;
+  const candidate = briefArg
+    ? resolve(briefArg)
+    : pw.pathway?.logical_id
+      ? join(dirname(resolve(fileArg)), '..', 'briefs', `${pw.pathway.logical_id}-research-brief.md`)
+      : null;
+  briefCache = candidate && existsSync(candidate)
+    ? { path: candidate, text: readFileSync(candidate, 'utf8') }
+    : null;
+  return briefCache;
+}
+/** True when the brief carries `[<tag> — <ids...>]` (em dash or hyphens). */
+function briefHasMarker(tag: string, ...ids: string[]): boolean {
+  const b = brief();
+  if (!b) return false;
+  const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const body = ids.map(esc).join('\\s+(?:via|→|->)\\s+');
+  return new RegExp(`\\[${esc(tag)}\\s*(?:—|-{1,2})\\s*${body}\\s*\\]`).test(b.text);
+}
+const briefName = (): string => brief()?.path ?? (briefArg ? resolve(briefArg) : '(no brief found — pass --brief)');
 
 const nodes = pw.nodes ?? [];
 const edges = pw.edges ?? [];
@@ -111,8 +145,16 @@ for (const [target, gates] of gatesByTarget) {
 // ── Advisory — Rule 1 one level down: a gated STAGE whose step has another way in.
 // The gate still excludes the Stage, but that step (and its subtree) is reached
 // anyway. Sometimes intended — anemia's DP-1 "empiric oral iron" deliberately
-// reaches Step 2.1 without ferritin — so this warns rather than fails; the brief
-// should say it is deliberate.
+// reaches Step 2.1 without ferritin — so this warns rather than fails. When the
+// brief records it as deliberate with `[SECOND ROUTE — <step> via <source>]` for
+// every other source (a Criterion counts as its DecisionPoint), the warning
+// becomes an info line: still printed, so the route stays visible, but no
+// longer a review item.
+const infos: string[] = [];
+const typeOf = new Map(nodes.map((n) => [n.id, n.type]));
+const dpOfCriterion = new Map(
+  edges.filter((e) => e.type === 'HAS_CRITERION').map((e) => [e.to, e.from]),
+);
 for (const [target, gates] of gatesByTarget) {
   const gateRoutes = new Set(
     walkable.filter((e) => e.type === 'BRANCHES_TO' && e.to === target && gateIds.has(e.from)),
@@ -121,12 +163,22 @@ for (const [target, gates] of gatesByTarget) {
   if (reach.has(target)) continue; // already a Rule 1 error
   for (const e of walkable.filter((x) => x.from === target && x.type === 'HAS_STEP')) {
     if (!reach.has(e.to)) continue;
-    const via = walkable.filter((x) => x.to === e.to && x.from !== target).map((x) => `${x.from} -${x.type}->`);
-    warnings.push(
+    const others = walkable.filter((x) => x.to === e.to && x.from !== target);
+    const via = others.map((x) => `${x.from} -${x.type}->`);
+    const sources = [...new Set(others.map((x) =>
+      typeOf.get(x.from) === 'Criterion' ? dpOfCriterion.get(x.from) ?? x.from : x.from))];
+    const msg =
       `Gate ${gates.map((g) => `"${g}"`).join(', ')} excludes "${target}", but its step "${e.to}" ` +
-      `(${titleOf.get(e.to)}) is also reached via ${via.join(', ')} — that step survives a "no". ` +
-      `Confirm the brief intends it.`,
-    );
+      `(${titleOf.get(e.to)}) is also reached via ${via.join(', ')} — that step survives a "no".`;
+    const missing = sources.filter((s) => !briefHasMarker('SECOND ROUTE', e.to, s));
+    if (missing.length === 0) {
+      infos.push(`${msg} Deliberate per the brief ([SECOND ROUTE — ${e.to} via ${sources.join(' / ')}]).`);
+    } else {
+      warnings.push(
+        `${msg} Confirm the brief intends it, and record it there as ` +
+        `${missing.map((s) => `"[SECOND ROUTE — ${e.to} via ${s}]"`).join(', ')} (brief: ${briefName()}).`,
+      );
+    }
   }
 }
 
@@ -304,18 +356,27 @@ for (const { gate, i, c } of chartConditions()) {
 // ON_UNRESOLVED — what a chart gate does when it cannot DECIDE (no usable value,
 // or values that cannot be ordered). Absent means 'ask' (resolution/types.ts):
 // the gate pends, its subtree is held, and the provider is asked for the datum.
-// Only SCALAR conditions (greater_than / less_than on labs or vitals, and
-// attribute conditions) can raise it: membership never does (absence is a
+// Only NUMERIC conditions can raise it: membership never does (absence is a
 // definite "no"), and aggregates never ask (they fall to default_behavior). So
-// the builder emits it explicitly on every chart gate: the brief's choice on a
-// gate with a scalar condition, and 'default' — which is what the engine does —
-// on a gate without one.
+// the builder emits it explicitly on every chart gate.
+//
+// DECIDED (Josh, 2026-09-24): a gate that reads a numeric value ASKS when the
+// value is missing. `ask` is the rule, not a per-gate choice; `default` on a
+// numeric gate is an exception that must be justified in the brief with an
+// `[ON-UNRESOLVED DEFAULT — <gate-id>]` marker, or this check fails. A gate with
+// no numeric condition gets 'default', which is what the engine does there.
+//
+// NUMERIC CONDITION — the one definition, shared with the spec:
+//   - coded `labs` / `vitals` with greater_than or less_than;
+//   - attribute `lab.*`, `vitals.*` or `patient.*` with any operator but
+//     `exists` (absence IS the answer to exists). `patient.*` counts since
+//     8f64fc1: a missing demographic now reports dataUnavailable and asks for
+//     the `patient.<attr>` datum instead of reading as a silent "no".
 const SCALAR_OPS = new Set(['greater_than', 'less_than']);
-// `patient.*` is excluded: it is read by the legacy resolveAttribute path, which
-// never reports dataUnavailable, so a gate on it can never ask.
-const isPatientAttr = (c: any): boolean => typeof c.attribute === 'string' && c.attribute.startsWith('patient.');
-const isScalar = (c: any): boolean =>
-  (typeof c.attribute === 'string' && !isPatientAttr(c)) ||
+const NUMERIC_NAMESPACES = ['lab.', 'vitals.', 'patient.'];
+const isNumeric = (c: any): boolean =>
+  (typeof c.attribute === 'string' && c.operator !== 'exists' &&
+    NUMERIC_NAMESPACES.some((ns) => c.attribute.startsWith(ns))) ||
   ((c.field === 'labs' || c.field === 'vitals') && SCALAR_OPS.has(c.operator));
 {
   const byGate = new Map<string, any[]>();
@@ -325,17 +386,25 @@ const isScalar = (c: any): boolean =>
   }
   for (const [gate, conds] of byGate) {
     const props = (nodes.find((n) => n.id === gate) as any).properties ?? {};
-    const askable = conds.some(isScalar);
+    const askable = conds.some(isNumeric);
     if (props.on_unresolved === undefined) {
       errors.push(
         `ON_UNRESOLVED — "${gate}" does not say what to do when it cannot decide.\n` +
         `      => emit "on_unresolved": ${askable
-          ? '"ask" or "default" per the brief (it has a scalar condition, so absent silently means ask)'
-          : '"default" (no scalar condition: the engine can never ask here)'}.`,
+          ? '"ask" (it reads a numeric value: numeric gates ask when the value is missing)'
+          : '"default" (no numeric condition: the engine can never ask here)'}.`,
+      );
+    } else if (props.on_unresolved === 'default' && askable &&
+               !briefHasMarker('ON-UNRESOLVED DEFAULT', gate)) {
+      errors.push(
+        `ON_UNRESOLVED DEFAULT — "${gate}" reads a numeric value but sets on_unresolved "default", so a\n` +
+        `      missing value silently takes default_behavior instead of asking. Numeric gates ask by rule.\n` +
+        `      => emit "ask", or justify the exception in the brief with a line containing\n` +
+        `         "[ON-UNRESOLVED DEFAULT — ${gate}]" and the clinical reason (brief: ${briefName()}).`,
       );
     } else if (props.on_unresolved === 'ask' && !askable) {
       warnings.push(
-        `Gate "${gate}": on_unresolved "ask" is inert — it has no scalar condition, so the engine ` +
+        `Gate "${gate}": on_unresolved "ask" is inert — it has no numeric condition, so the engine ` +
         `never asks and applies default_behavior. Emit "default" so the JSON says what happens.`,
       );
     }
@@ -353,6 +422,36 @@ const isScalar = (c: any): boolean =>
         );
       }
     }
+  }
+}
+
+// ── STAGE NUMBERS — every Stage has its own stage_number ─────────────
+// The admin dashboard orders stages by `Number(stage_number)` and labels each
+// "Stage <stage_number>" (PathwayDrillDown `stages()`, the pathway preview,
+// the editor navigator), and draws its dashed default-sequence arrows between
+// neighbours in that order. Two stages with one number show as two "Stage 1"s,
+// in whatever order the sort leaves them. A fan-out sub-stage takes a number
+// BETWEEN its parent and the next stage (parent + 0.5), never its parent's.
+{
+  const byNumber = new Map<string, string[]>();
+  for (const n of nodes.filter((x) => x.type === 'Stage')) {
+    const raw = (n as any).properties?.stage_number;
+    const num = typeof raw === 'number' ? raw : Number(raw);
+    if (raw === undefined || raw === null || raw === '' || !Number.isFinite(num)) {
+      errors.push(`STAGE NUMBER — "${n.id}" has no numeric stage_number (${JSON.stringify(raw)}); the dashboard sorts stages by it.`);
+      continue;
+    }
+    const key = String(num);
+    if (!byNumber.has(key)) byNumber.set(key, []);
+    byNumber.get(key)!.push(n.id);
+  }
+  for (const [num, ids] of byNumber) {
+    if (ids.length < 2) continue;
+    errors.push(
+      `DUPLICATE STAGE NUMBER — stage_number ${num} is used by ${ids.map((i) => `"${i}" (${titleOf.get(i)})`).join(', ')}.\n` +
+      `      => the drill-down shows ${ids.length} "Stage ${num}" cards in arbitrary order. Give each stage a unique\n` +
+      `         number; a fan-out sub-stage takes its parent's number + 0.5 (e.g. 1.5), and its steps keep theirs.`,
+    );
   }
 }
 
@@ -411,10 +510,14 @@ for (const base of gateNodes) {
   }
 }
 
+for (const i of infos) console.log(`ℹ ${i}`);
 for (const w of warnings) console.log(`⚠ ${w}`);
 
 if (errors.length === 0) {
-  console.log(`✓ GATE CONTROL OK — ${gateIds.size} gate(s), ${gatesByTarget.size} gated target(s), no violations (rules 1-3)`);
+  console.log(
+    `✓ GATE CONTROL OK — ${gateIds.size} gate(s), ${gatesByTarget.size} gated target(s), no violations ` +
+    `(rules 1-3), ${warnings.length} warning(s)`,
+  );
   process.exit(0);
 }
 console.log(`✗ GATE CONTROL — ${errors.length} violation(s):`);

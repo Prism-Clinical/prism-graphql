@@ -67,7 +67,8 @@ One block per machine-evaluable decision. Common fields for every gate:
 - **Gate `gate-<slug>` — `<title>`**
   - Attached to: `<Stage/Step/DP id>` · Branches to: `<ONE Step/Stage id>` — a chart gate
     (patient_attribute/compound) has exactly one target (Rule 3). To open several things on
-    "yes": same-stage → name a branch-entry-only Stage that holds them (list it in §2);
+    "yes": same-stage → name a branch-entry-only Stage that holds them (list it in §2,
+    with a unique stage number just after its parent's, e.g. 1.5);
     cross-stage → write one gate block per target with identical conditions. A question gate
     may route yes → A / no → B only if you say which answer takes which target.
   - Exclusively gated: yes | no — the branch target must be content the pathway should
@@ -79,11 +80,15 @@ One block per machine-evaluable decision. Common fields for every gate:
     **including a definite "no"**. `traverse` includes the target even on "no", so a
     single-target gate with `traverse` excludes nothing and is rejected by the builder.
     Missing-data behaviour is the next field, not this one.
-  - On unresolved (chart gates with a lab/vital threshold): ask | default — what happens
-    when the value is missing or ambiguous. `ask` = hold the subtree and ask the provider
-    for the value; `default` = treat it like "no" and apply the default behavior.
-    `<one-line clinical rationale>`. (Gates with only code/history conditions: write
-    "n/a — default".)
+  - On unresolved: **ask** for any gate with a numeric condition (a lab or vital
+    threshold, or a `lab.*`/`vitals.*`/`patient.*` attribute other than `exists`) — this
+    is **decided, not a per-gate question** (Josh, 2026-09-24): a missing value holds the
+    subtree and asks the provider for it. Do not list it as an open decision. Only if a
+    missing value must instead be treated as "no" (e.g. an optional add-on where missing
+    honestly means "not applicable"), write `default` **and** a line carrying
+    `[ON-UNRESOLVED DEFAULT — gate-<slug>]` with the clinical reason — the builder's lint
+    fails a numeric gate set to `default` without that marker. Gates with only
+    code/history conditions: write "n/a — default".
   - Trajectory gates only — Physiologic drift: `<does the value move on its own? e.g.
     "Hgb falls through pregnancy (hemodilution)" | "none">` · Absolute target:
     `<e.g. "normal 11; goal >10 at delivery" | "none">` · Expected response rate:
@@ -120,7 +125,8 @@ Plus type-specific fields:
 - *Temporal scoping (either form)*: optional `horizon` — LIFETIME | YEAR | QUARTER | MONTH | WEEK | DAY | ENCOUNTER or `{days: N}` (1..36525) — and `status` — active | inactive | any. **A condition takes `window_days` OR `horizon`, never both.** **Every `vitals` condition needs a horizon** (`DAY` unless there is a reason; never `ENCOUNTER`) — without one it inherits ENCOUNTER and the simulator session is rejected. Give every clinically-scoped condition an explicit horizon/status with a one-line rationale; summarize all assignments in §17.
 - compound only: operator AND | OR across the listed conditions. Note: a missing or
   unorderable value makes the gate *unresolved* (an OR with nothing true and one unknown
-  is unresolved) — it then follows "On unresolved", not the default behavior.
+  is unresolved) — it then follows "On unresolved" (ask, for numeric gates), not the
+  default behavior.
 - *Lab display*: give every lab condition a readable label with the unit the threshold
   assumes, e.g. `Platelets (x10^9/L)` — it is the text of the missing-value question.
 

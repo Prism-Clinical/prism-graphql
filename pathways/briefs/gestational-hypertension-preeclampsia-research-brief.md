@@ -44,7 +44,8 @@ claims confirmed. Flags: `[GAP]` unsourceable · `[FALLBACK SOURCE]` non-US basi
 
 - **Logical ID**: `gestational-hypertension-preeclampsia`
 - **Title**: Gestational Hypertension and Preeclampsia — Outpatient Screening, Diagnosis and Surveillance
-- **Version**: 1
+- **Version**: 1 `[DECISION — Josh 2026-09-24]` stays `"1"`: still a draft, so the stage renumbering
+  re-imports as DRAFT_UPDATE (same logical_id and version).
 - **Category**: OBSTETRIC
 - **Scope**: Outpatient prenatal care. Risk assessment and aspirin prophylaxis from the first
   prenatal visit; BP surveillance; diagnosis and severity classification after 20 weeks;
@@ -101,9 +102,9 @@ None. Single-condition pathway.
   must be scheduled before discharge. [1][8][12]
 
 - **Stage `stage-1-aspirin` — Low-Dose Aspirin Prophylaxis (if indicated)** *(branch-entry
-  only, via `gate-aspirin-indicated`; `stage_number` 1)*: holds Steps 1.2 and 1.3.
+  only, via `gate-aspirin-indicated`; `stage_number` **1.5**)*: holds Steps 1.2 and 1.3.
 - **Stage `stage-2-workup` — Hypertension Work-up (if confirmed)** *(branch-entry only, via
-  `gate-htn-confirmed`; `stage_number` 2)*: holds Steps 2.3 and 2.4.
+  `gate-htn-confirmed`; `stage_number` **2.5**)*: holds Steps 2.3 and 2.4.
 
 Stages 3, 4 and 5, and the two sub-stages above, are **branch-entry only** and get no root
 `HAS_STAGE` edge.
@@ -112,7 +113,17 @@ Stages 3, 4 and 5, and the two sub-stages above, are **branch-entry only** and g
 open two steps. Main's import (PR #55) treats a gate with several `BRANCHES_TO` edges as a
 router that takes exactly one edge by answer, so "on yes, open 1.2 and 1.3" must target a
 single container. Step ids and display numbers are unchanged; each sub-stage carries its
-parent stage's number and citations.
+parent stage's citations.
+
+`[DECISION — Josh 2026-09-24]` **Every stage gets a unique number.** The sub-stages had
+reused their parents' `stage_number` (1 and 2), so the admin dashboard's drill-down showed
+two "Stage 1" and two "Stage 2" cards (it sorts and labels stages by `stage_number`).
+Renumbered **`stage-1-aspirin` → 1.5** and **`stage-2-workup` → 2.5**. Decimals, not a
+1–7 renumbering, because each sub-stage holds its parent's steps (1.2/1.3, 2.3/2.4): the
+order is unchanged (1, 1.5, 2, 2.5, 3, 4, 5), every step id and display number stays, and
+"Stage 1.5" reads as part of Stage 1. Renumbering 1–7 would either leave Stage 3 holding
+steps "2.1–2.2" or force every later step, id and brief cross-reference to change. The
+gate-control check now fails duplicate stage numbers.
 
 ## 3. Steps
 
@@ -224,7 +235,11 @@ states what data gate it *would* have been and why that is not expressible.
   - Conditions (coded) `[BUILD FIX 2026-09-24 — was labs 8480-6 / 8462-4, horizon {days: 7}]`:
     - field `vitals`, `greater_than`, value `systolic_bp`, threshold **139.9**, horizon `DAY`
     - field `vitals`, `greater_than`, value `diastolic_bp`, threshold **89.9**, horizon `DAY`
-  - `[BUILD FIX — REVERSES THE DECISION BELOW; NEEDS RATIFICATION]` The simulator (and the
+  - `[DECISION — Josh 2026-09-24]` **Ratified: blood pressure stays as vitals**
+    (`vitalSigns.systolic_bp` / `diastolic_bp`, horizon `DAY`), here and in
+    `gate-escalation-required`. The build fix below stands; the lab-form decision under it
+    is superseded. No JSON change.
+  - `[BUILD FIX — REVERSES THE DECISION BELOW; RATIFIED 2026-09-24]` The simulator (and the
     patient-context contract) delivers BP as `vitalSigns.systolic_bp` / `diastolic_bp`, never
     as LOINC labs. Authored as labs, a BP of 150/95 entered in the simulator made this gate
     ask for LOINC 8480-6 and held every later GHTN gate. OR-ing the lab and vitals forms
@@ -235,7 +250,8 @@ states what data gate it *would* have been and why that is not expressible.
     contradicts the format spec's guidance to use `field: vitals` for vital thresholds, and it
     is deliberate: `vitalSigns` is a flat undated bag holding **one** value per path, so a
     vitals-form BP gate can never see more than a single reading and can never be time-scoped.
-    Coded labs carry dates and support multiple entries. Please ratify.
+    Coded labs carry dates and support multiple entries. ~~Please ratify.~~ Superseded by
+    the ratified vitals form above.
   - `[DECISION]` Thresholds are 139.9 and 89.9 because the coded operators have no ≥. At the
     1 mmHg reporting resolution of a BP measurement this is exactly "≥140" and "≥90" — the
     same device the brief for anemia used for MCV bands.
@@ -303,7 +319,7 @@ states what data gate it *would* have been and why that is not expressible.
   - Exclusively gated: yes — Stage 5 is branch-entry only, and this is its sole route.
   - Type: **compound**, operator **OR** · Default behavior: **skip** — but see the safety note.
   - Conditions (coded):
-    - field `vitals`, `greater_than`, value `systolic_bp`, threshold 159.9, horizon `DAY` — severe-range systolic `[BUILD FIX — was labs 8480-6, {days: 1}; see gate-bp-elevated]`
+    - field `vitals`, `greater_than`, value `systolic_bp`, threshold 159.9, horizon `DAY` — severe-range systolic `[BUILD FIX — was labs 8480-6, {days: 1}; see gate-bp-elevated]` `[DECISION — Josh 2026-09-24: vitals ratified]`
     - field `vitals`, `greater_than`, value `diastolic_bp`, threshold 109.9, horizon `DAY` — severe-range diastolic `[BUILD FIX — was labs 8462-4, {days: 1}]`
     - field `labs`, `less_than`, value `777-3`, system LOINC, threshold **100** — platelets <100,000/µL. **Unit note: the threshold is in ×10⁹/L, matching how LOINC 777-3 is conventionally reported. If the feed reports raw cells/µL this is off by 1,000.** See §18 G7.
     - field `labs`, `greater_than`, value `2160-0`, system LOINC, threshold **1.1** — creatinine >1.1 mg/dL
@@ -678,9 +694,9 @@ Sched-2 → Step 4.1 [1]; Sched-3 → Step 4.3 [1]; Sched-4 → Step 5.2 [8][12]
 
 | Gate | Condition on | horizon | status | window_days | Rationale |
 |---|---|---|---|---|---|
-| gate-bp-elevated | vitals systolic_bp, diastolic_bp | DAY | — | — | `[BUILD FIX]` Was labs 8480-6/8462-4 at {days: 7}. Vitals are one current value; DAY is the required bounded horizon |
+| gate-bp-elevated | vitals systolic_bp, diastolic_bp | DAY | — | — | `[BUILD FIX]` Was labs 8480-6/8462-4 at {days: 7}. Vitals are one current value; DAY is the required bounded horizon. `[DECISION — Josh 2026-09-24]` vitals ratified |
 | gate-severe-bp *(folded into escalation)* | labs 8480-6, 8462-4 | {days: 1} | — | — | Severe-range BP is an acute finding; only a current value justifies escalation |
-| gate-escalation-required | vitals systolic_bp, diastolic_bp | DAY | — | — | `[BUILD FIX]` Was labs 8480-6/8462-4 at {days: 1} |
+| gate-escalation-required | vitals systolic_bp, diastolic_bp | DAY | — | — | `[BUILD FIX]` Was labs 8480-6/8462-4 at {days: 1}. `[DECISION — Josh 2026-09-24]` vitals ratified |
 | gate-escalation-required | labs 777-3, 2160-0 | QUARTER | — | — | Surveillance labs are weekly; the latest value is the operative one. Original intent: "**No horizon set deliberately** — a stale platelet count should still escalate rather than silently vanish." `[BUILD FIX 2026-09-24 — NEEDS A PHYSICIAN CALL]` On main an omitted lab horizon is **not** lifetime: it is v1's QUARTER (90 days), so a platelet count older than 90 days was already ignored (and the gate then asks for a current one). QUARTER is now explicit — no behaviour change. `LIFETIME` would honour the original intent; choose. |
 | gate-escalation-required | conditions O14.1.* | {days: 300} | active | — | This pregnancy only; a prior pregnancy's severe preeclampsia must not fire escalation now |
 | gate-htn-diagnosed | conditions O13.*, O14.* | {days: 300} | active | — | This pregnancy only — the single most important scoping decision in the pathway |
@@ -745,7 +761,14 @@ browser user agent**. Three citations initially recovered from mirrors — [3], 
 were re-verified against ACOG primary sources this way. Future research rounds should fetch
 ACOG directly rather than depending on mirrors.
 
-### `[BUILD FIX 2026-09-24]` On unresolved — needs a physician call
+### `[BUILD FIX 2026-09-24]` On unresolved — RESOLVED
+
+`[DECISION — Josh 2026-09-24]` **Resolved as a general rule: numeric gates ask when the
+value is missing.** Both gates listed below keep `on_unresolved: ask`; no JSON change.
+This is no longer a per-gate question for review — the rule is in the format spec, the
+brief template and the builder's gate-control lint, and a numeric gate may take `default`
+only with an `[ON-UNRESOLVED DEFAULT — <gate-id>]` justification in this brief (there is
+none). The original note follows for the record.
 
 Main (PR #55) added a per-gate `on_unresolved` (ask | default) that this brief predates.
 It decides what a gate does when its lab/vital value is **missing or ambiguous**: `ask`
