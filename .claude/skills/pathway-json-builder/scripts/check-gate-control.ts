@@ -259,7 +259,9 @@ for (const { gate, i, c } of chartConditions()) {
 // STATUS ON OBSERVATIONS — labs and vitals have no clinical state; a `status`
 // there imports cleanly and then throws at session preflight.
 for (const { gate, i, c } of chartConditions()) {
-  if (c.horizon === undefined && c.window_days === undefined && !isVitals(c)) {
+  // patient.* has no temporal policy at all (the adapter returns null for it).
+  if (c.horizon === undefined && c.window_days === undefined && !isVitals(c) &&
+      !(typeof c.attribute === 'string' && c.attribute.startsWith('patient.'))) {
     errors.push(
       `EXPLICIT HORIZON — "${gate}" condition[${i}] (${c.field ?? c.attribute} ${c.value ?? ''}) has neither ` +
       `horizon nor window_days.\n      => it silently inherits the v1 field default ` +
@@ -309,8 +311,11 @@ for (const { gate, i, c } of chartConditions()) {
 // gate with a scalar condition, and 'default' — which is what the engine does —
 // on a gate without one.
 const SCALAR_OPS = new Set(['greater_than', 'less_than']);
+// `patient.*` is excluded: it is read by the legacy resolveAttribute path, which
+// never reports dataUnavailable, so a gate on it can never ask.
+const isPatientAttr = (c: any): boolean => typeof c.attribute === 'string' && c.attribute.startsWith('patient.');
 const isScalar = (c: any): boolean =>
-  typeof c.attribute === 'string' ||
+  (typeof c.attribute === 'string' && !isPatientAttr(c)) ||
   ((c.field === 'labs' || c.field === 'vitals') && SCALAR_OPS.has(c.operator));
 {
   const byGate = new Map<string, any[]>();
