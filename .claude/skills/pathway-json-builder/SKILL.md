@@ -88,7 +88,8 @@ Follow the spec exactly. Brief-section → JSON mapping:
   (`patient_attribute`/`compound`) gets exactly **one** `BRANCHES_TO` — main rejects more.
   If the brief names several targets for one gate, it means fan-out: same-stage → one
   branch-entry-only Stage holding the steps (mandatory for question gates, which must not be
-  duplicated); cross-stage → one identical-condition copy per target (`gate-x-<suffix>`).
+  duplicated; give it a unique `stage_number` = parent + 0.5, e.g. `1.5` — duplicate stage
+  numbers fail the gate-control check); cross-stage → one identical-condition copy per target (`gate-x-<suffix>`).
   Emit `properties.when` only when the brief gives a real per-answer routing table (yes → A,
   no → B), and then map every answer.
 - §5 Meds → Medication (+`clinical_role` only when the brief gives one; dose/frequency/

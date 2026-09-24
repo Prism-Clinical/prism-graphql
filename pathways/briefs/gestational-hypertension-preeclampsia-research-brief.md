@@ -101,9 +101,9 @@ None. Single-condition pathway.
   must be scheduled before discharge. [1][8][12]
 
 - **Stage `stage-1-aspirin` — Low-Dose Aspirin Prophylaxis (if indicated)** *(branch-entry
-  only, via `gate-aspirin-indicated`; `stage_number` 1)*: holds Steps 1.2 and 1.3.
+  only, via `gate-aspirin-indicated`; `stage_number` **1.5**)*: holds Steps 1.2 and 1.3.
 - **Stage `stage-2-workup` — Hypertension Work-up (if confirmed)** *(branch-entry only, via
-  `gate-htn-confirmed`; `stage_number` 2)*: holds Steps 2.3 and 2.4.
+  `gate-htn-confirmed`; `stage_number` **2.5**)*: holds Steps 2.3 and 2.4.
 
 Stages 3, 4 and 5, and the two sub-stages above, are **branch-entry only** and get no root
 `HAS_STAGE` edge.
@@ -112,7 +112,17 @@ Stages 3, 4 and 5, and the two sub-stages above, are **branch-entry only** and g
 open two steps. Main's import (PR #55) treats a gate with several `BRANCHES_TO` edges as a
 router that takes exactly one edge by answer, so "on yes, open 1.2 and 1.3" must target a
 single container. Step ids and display numbers are unchanged; each sub-stage carries its
-parent stage's number and citations.
+parent stage's citations.
+
+`[DECISION — Josh 2026-09-24]` **Every stage gets a unique number.** The sub-stages had
+reused their parents' `stage_number` (1 and 2), so the admin dashboard's drill-down showed
+two "Stage 1" and two "Stage 2" cards (it sorts and labels stages by `stage_number`).
+Renumbered **`stage-1-aspirin` → 1.5** and **`stage-2-workup` → 2.5**. Decimals, not a
+1–7 renumbering, because each sub-stage holds its parent's steps (1.2/1.3, 2.3/2.4): the
+order is unchanged (1, 1.5, 2, 2.5, 3, 4, 5), every step id and display number stays, and
+"Stage 1.5" reads as part of Stage 1. Renumbering 1–7 would either leave Stage 3 holding
+steps "2.1–2.2" or force every later step, id and brief cross-reference to change. The
+gate-control check now fails duplicate stage numbers.
 
 ## 3. Steps
 

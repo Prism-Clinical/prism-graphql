@@ -85,7 +85,7 @@ Every node: `{ "id": "...", "type": "...", "properties": { ... } }`. IDs unique,
 
 | Type | Required properties | Recognized optional properties (read by care-plan projection / UI) |
 |---|---|---|
-| `Stage` | `stage_number`, `title` | `description` |
+| `Stage` | `stage_number` (**unique per pathway**; numeric, fractions allowed — the dashboard sorts stages by `Number(stage_number)` and labels them "Stage <n>"), `title` | `description` |
 | `Step` | `stage_number`, `step_number`, `display_number`, `title` | `description` |
 | `DecisionPoint` | `title`, **`branch_mode`** | `description`. `branch_mode` is **required** (hard import error when absent, even in draft) ∈ `one_of` (mutually exclusive: exactly one branch is taken — if more than one qualifies the DP pends and the provider picks), `all_of` (every branch is taken by declaration; a weakly-supported branch is still INCLUDED and red-flagged), `any_of` (optional add-ons) |
 | `Criterion` | `description` | `code_value` (cross-checked against `condition_codes`, warning if absent) |
@@ -140,7 +140,9 @@ exactly one (Rule 3).
 > "on yes, open A and B" (fan-out) is authored one of two ways:
 > - **same-stage fan-out** — ONE target: a branch-entry-only Stage that `HAS_STEP`s the
 >   several steps (the steps keep their `stage_number`/`display_number`; the new Stage takes
->   its parent's `stage_number` and `CITES_EVIDENCE`). Required for **question** gates:
+>   its parent's `CITES_EVIDENCE` and a **unique** `stage_number` just after its parent —
+>   parent + 0.5, e.g. `1.5` — never the parent's own number: the dashboard sorts and labels
+>   stages by it, and `check-gate-control.ts` fails duplicates). Required for **question** gates:
 >   duplicating a question asks the provider twice, and the two answers can disagree.
 > - **cross-stage fan-out** — one gate per target, **identical** conditions, ids
 >   `gate-x` + `gate-x-<suffix>`, all attached to the same host. Rule 2 forbids two gates on

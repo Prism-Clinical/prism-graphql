@@ -425,6 +425,36 @@ const isNumeric = (c: any): boolean =>
   }
 }
 
+// ── STAGE NUMBERS — every Stage has its own stage_number ─────────────
+// The admin dashboard orders stages by `Number(stage_number)` and labels each
+// "Stage <stage_number>" (PathwayDrillDown `stages()`, the pathway preview,
+// the editor navigator), and draws its dashed default-sequence arrows between
+// neighbours in that order. Two stages with one number show as two "Stage 1"s,
+// in whatever order the sort leaves them. A fan-out sub-stage takes a number
+// BETWEEN its parent and the next stage (parent + 0.5), never its parent's.
+{
+  const byNumber = new Map<string, string[]>();
+  for (const n of nodes.filter((x) => x.type === 'Stage')) {
+    const raw = (n as any).properties?.stage_number;
+    const num = typeof raw === 'number' ? raw : Number(raw);
+    if (raw === undefined || raw === null || raw === '' || !Number.isFinite(num)) {
+      errors.push(`STAGE NUMBER — "${n.id}" has no numeric stage_number (${JSON.stringify(raw)}); the dashboard sorts stages by it.`);
+      continue;
+    }
+    const key = String(num);
+    if (!byNumber.has(key)) byNumber.set(key, []);
+    byNumber.get(key)!.push(n.id);
+  }
+  for (const [num, ids] of byNumber) {
+    if (ids.length < 2) continue;
+    errors.push(
+      `DUPLICATE STAGE NUMBER — stage_number ${num} is used by ${ids.map((i) => `"${i}" (${titleOf.get(i)})`).join(', ')}.\n` +
+      `      => the drill-down shows ${ids.length} "Stage ${num}" cards in arbitrary order. Give each stage a unique\n` +
+      `         number; a fan-out sub-stage takes its parent's number + 0.5 (e.g. 1.5), and its steps keep theirs.`,
+    );
+  }
+}
+
 // ── Advisory — baseline drift on trend gates ─────────────────────────
 // A lone long trend window fits every dated point in it, including pre-treatment
 // values from a different physiologic state, and can invert the verdict. See the

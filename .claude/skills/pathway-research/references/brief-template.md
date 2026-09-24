@@ -67,7 +67,8 @@ One block per machine-evaluable decision. Common fields for every gate:
 - **Gate `gate-<slug>` — `<title>`**
   - Attached to: `<Stage/Step/DP id>` · Branches to: `<ONE Step/Stage id>` — a chart gate
     (patient_attribute/compound) has exactly one target (Rule 3). To open several things on
-    "yes": same-stage → name a branch-entry-only Stage that holds them (list it in §2);
+    "yes": same-stage → name a branch-entry-only Stage that holds them (list it in §2,
+    with a unique stage number just after its parent's, e.g. 1.5);
     cross-stage → write one gate block per target with identical conditions. A question gate
     may route yes → A / no → B only if you say which answer takes which target.
   - Exclusively gated: yes | no — the branch target must be content the pathway should
