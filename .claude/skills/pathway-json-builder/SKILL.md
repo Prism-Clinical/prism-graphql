@@ -63,7 +63,13 @@ Follow the spec exactly. Brief-section → JSON mapping:
 - §4b Gates → Gate nodes, `HAS_GATE` from "Attached to", `BRANCHES_TO` to the target.
   Emit conditions exactly as the brief specifies (attribute vs coded form, operator params);
   don't silently "correct" attribute spellings — flag suspected drift in the delivery
-  message instead. `[BLOCKED — prior_node_result]` gates: emit the brief's named fallback,
+  message instead. **Emit `on_unresolved` on every chart gate**: the brief's §4b "On
+  unresolved" value on a gate with a scalar (lab/vital threshold) condition — if an older
+  brief has no such field, emit `ask` (main's own default, so no behaviour change) and list
+  the gate in the delivery message as needing a clinical call; `default` on a gate with no
+  scalar condition (the engine never asks there). Emit `display` on every lab condition
+  (readable name + unit) — it is the missing-value prompt. Never emit `prompt` on a chart
+  gate. `[BLOCKED — prior_node_result]` gates: emit the brief's named fallback,
   never the prior_node_result gate itself; list the substitution in the delivery message.
   **Gate wiring (see the spec's Gate wiring box — the validator does NOT catch these):**
   (1) a Step behind a gate gets **no** `stage-N HAS_STEP` edge, and nothing else may
@@ -156,7 +162,8 @@ Save to `pathways/json/<logical_id>.json` and send the file. Delivery message: p
 + version; node counts by type; validator result ("passed the real import validator, N
 warnings"); gate-control result ("passed check-gate-control.ts, N gates / N gated targets")
 plus any gate re-wiring done to satisfy Rules 1–3; code_sets emitted (how many); every substitution made (gate evidence → host
-step, blocked-gate fallbacks, code reattachments); the §14 attribute-map seeding checklist
+step, blocked-gate fallbacks, code reattachments); every gate given `on_unresolved: ask` by
+default for want of a brief decision; the §14 attribute-map seeding checklist
 (if any — these rows must exist in `pathway_attribute_code_map` before the gates evaluate);
 any drift-check findings; and a reminder to upload via the Prism Admin Dashboard
 (NEW_PATHWAY / NEW_VERSION / DRAFT_UPDATE per the spec's Upload section).

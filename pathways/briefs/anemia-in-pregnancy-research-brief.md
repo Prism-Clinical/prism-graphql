@@ -671,3 +671,14 @@ ferritin is absent).
     "attribute has no value" and silently fall back to `skip`. Coded-form conditions
     avoid all three. §14 is now empty. Normocytic band uses 79.9/100.1 strict boundaries
     (coded operators lack ≥/≤). Revert candidates when the dashboard/platform catch up.
+
+### `[BUILD FIX 2026-09-24]` On unresolved — needs a physician call
+
+Main (PR #55) added a per-gate `on_unresolved` (ask | default) that this brief predates.
+It decides what a gate does when its lab/vital value is **missing or ambiguous**: `ask`
+holds the gated subtree and asks the provider for the value; `default` treats it like
+"no" and applies the default behavior. Absent means `ask`, so the JSON now states `ask`
+explicitly on every gate with a threshold — **no behaviour change** — pending review:
+gate-microcytic, gate-normocytic, gate-macrocytic (MCV), gate-ida-confirmed (ferritin), gate-hgb-response (Hgb), gate-severe-anemia (Hgb), gate-referral-threshold (Hgb, Hct). Gates with only code/history conditions carry `default`, which is what the
+engine does for them anyway. Lab conditions also carry a `display` (name + unit) so the
+missing-value question is readable.

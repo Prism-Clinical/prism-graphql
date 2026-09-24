@@ -158,8 +158,10 @@ exactly one (Rule 3).
 > - **`SELECTS_BRANCH` is a live traversal edge**, not just UI metadata. A Criterion
 >   reaches its `SELECTS_BRANCH` target unconditionally, so it counts as a competing route
 >   under Rule 1.
-> - **`default_behavior: skip` makes missing data look like a negative finding.** An absent
->   lab and a normal lab both resolve to "not satisfied". Neither surfaces a data gap.
+> - **Missing data is `on_unresolved`'s job, not `default_behavior`'s.** A scalar lab or
+>   vital with no usable value makes the gate *unresolved*; by default it then ASKS for the
+>   value and holds its subtree (see **Missing data** below). A membership condition
+>   (`includes_code`, `exists`) never is — "no code on file" is a definite no.
 >
 > Real failure this prevents: anemia-in-pregnancy v1.4 passed the import validator with 0
 > errors and 0 warnings, and **not one of its 5 gates could exclude anything** — a patient
@@ -194,6 +196,48 @@ At runtime a router takes **exactly one** edge — the one whose `when` matches 
 and marks the others EXCLUDED; no answer, or an answer matching zero or several edges, takes
 none and raises an `unroutable_decision` red flag (`traversal-engine.ts:1078-1150`). So a
 router is "route yes vs no", never "fan out on yes".
+
+### Missing data — `on_unresolved` (emit on every chart gate)
+
+A chart gate ends in one of three states: **satisfied**, **answered no**, or **could not
+decide**. "Could not decide" means `dataUnavailable` (a scalar comparison had no usable
+value — no result, or none inside the horizon) or `indeterminate` (candidate values exist
+but cannot be ordered, e.g. two undated results for the same LOINC → `AMBIGUOUS_LATEST`).
+`on_unresolved` governs only that third state (`resolution/types.ts:217-230`,
+`traversal-engine.ts:1206-1265`):
+
+| `on_unresolved` | Could-not-decide outcome |
+|---|---|
+| `ask` (**the default when absent**) | Gate → PENDING_QUESTION, its whole subtree held ("Awaiting <datum>"), and a pending question asks the provider for the missing value. The answer is injected as a fact and the gate re-evaluates. |
+| `default` | `default_behavior` applies, exactly as for "answered no". |
+
+- **Which conditions can be unresolved:** only *scalar* ones — `greater_than`/`less_than`
+  on `labs` or `vitals`, and attribute conditions. Membership (`includes_code`, `equals`,
+  `exists`) never is: absence is a definite no. Aggregates (`count_in_window`, trends,
+  `delta_from_baseline`) never ask — "the count is 3" is not an observation — and fall to
+  `default_behavior`.
+- **Compounds:** OR is satisfied by any definite true; if nothing is true and some
+  condition is unresolved, the gate is unresolved (a definite false does not outweigh an
+  unknown). AND is unsatisfied by any definite false. A compound asks for **one datum at a
+  time** — the first unresolved askable condition — so a gate with four missing labs can
+  ask four times in sequence.
+- **Dedup:** the question is keyed on the datum (`LOINC:<code>`, `vitals.<path>`), so two
+  gates reading the same missing lab raise ONE question; both stay held until it is
+  answered.
+- **Prompt text:** generated per datum. For labs it uses the condition's **`display`**:
+  `"<display> (LOINC <code>) — most recent value?"` — so put a readable `display` (with the
+  unit the threshold assumes, e.g. `"Platelets (x10^9/L)"`) on every lab condition. Vitals
+  prompts print the path (`display` is ignored). **Do not set `prompt` on a chart gate:** an
+  authored prompt replaces the generated one for every datum the gate asks for.
+- **Question gates:** inert — an unanswered question always pends.
+- **Choosing:** `ask` when a missing value must not silently decide the branch (safety
+  gates, gates whose "no" excludes treatment). `default` when missing data may honestly
+  mean "not applicable" (optional add-ons) — then `default_behavior` decides. The choice is
+  clinical: the brief states it per gate (§4b "On unresolved"). A gate with no scalar
+  condition gets `default`, because that is what the engine does.
+- **Simulator caveat:** composer labs are undated, so two results for one LOINC are
+  `AMBIGUOUS_LATEST` and the gate asks; the injected answer is undated too, so it stays
+  ambiguous (engine gap). Enter one value per LOINC when simulating.
 
 ### patient_attribute — single condition on recorded data
 
@@ -241,7 +285,8 @@ Carries one `condition` object, which is either an **attribute condition** or a 
   integers; `slope_threshold` — finite **non-negative** number: it is a *magnitude*, the
   evaluator applies the sign (`trend_down` = slope < −slope_threshold), so a negative
   value would invert the clinical meaning.
-- `display` / `note` are UI decorators, ignored by the evaluator.
+- `display` / `note` are ignored by the evaluator. `display` on a **lab** condition is the
+  label in the missing-data prompt — emit it on every lab condition (with unit).
 
 Runtime semantics (from `gate-evaluator.ts`):
 
@@ -307,8 +352,7 @@ window selects on a fact's **start bound**, not interval overlap (D8); undated o
 are admitted as facts but are **not orderable** — they can satisfy membership operators but
 cannot join a trend/delta series (D7); and when a condition's temporal state can't be
 proven, the uncertainty propagates through `compound` gates rather than being coerced to
-false — the gate then resolves per `default_behavior`, so choose defaults with uncertain
-data in mind.
+false — the gate is then *unresolved* and follows `on_unresolved` (see **Missing data**).
 
 ### Temporal horizon & status (per-condition, NODE tier — merged, emit freely)
 

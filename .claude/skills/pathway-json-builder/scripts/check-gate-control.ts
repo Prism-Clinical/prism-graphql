@@ -211,6 +211,58 @@ for (const { gate, i, c } of chartConditions()) {
   }
 }
 
+// ON_UNRESOLVED — what a chart gate does when it cannot DECIDE (no usable value,
+// or values that cannot be ordered). Absent means 'ask' (resolution/types.ts):
+// the gate pends, its subtree is held, and the provider is asked for the datum.
+// Only SCALAR conditions (greater_than / less_than on labs or vitals, and
+// attribute conditions) can raise it: membership never does (absence is a
+// definite "no"), and aggregates never ask (they fall to default_behavior). So
+// the builder emits it explicitly on every chart gate: the brief's choice on a
+// gate with a scalar condition, and 'default' — which is what the engine does —
+// on a gate without one.
+const SCALAR_OPS = new Set(['greater_than', 'less_than']);
+const isScalar = (c: any): boolean =>
+  typeof c.attribute === 'string' ||
+  ((c.field === 'labs' || c.field === 'vitals') && SCALAR_OPS.has(c.operator));
+{
+  const byGate = new Map<string, any[]>();
+  for (const { gate, c } of chartConditions()) {
+    if (!byGate.has(gate)) byGate.set(gate, []);
+    byGate.get(gate)!.push(c);
+  }
+  for (const [gate, conds] of byGate) {
+    const props = (nodes.find((n) => n.id === gate) as any).properties ?? {};
+    const askable = conds.some(isScalar);
+    if (props.on_unresolved === undefined) {
+      errors.push(
+        `ON_UNRESOLVED — "${gate}" does not say what to do when it cannot decide.\n` +
+        `      => emit "on_unresolved": ${askable
+          ? '"ask" or "default" per the brief (it has a scalar condition, so absent silently means ask)'
+          : '"default" (no scalar condition: the engine can never ask here)'}.`,
+      );
+    } else if (props.on_unresolved === 'ask' && !askable) {
+      warnings.push(
+        `Gate "${gate}": on_unresolved "ask" is inert — it has no scalar condition, so the engine ` +
+        `never asks and applies default_behavior. Emit "default" so the JSON says what happens.`,
+      );
+    }
+    if (askable && typeof props.prompt === 'string') {
+      warnings.push(
+        `Gate "${gate}": an authored \`prompt\` on a chart gate replaces the generated per-datum ` +
+        `escalation prompt — a compound gate asking for several values would show the same text for each.`,
+      );
+    }
+    for (const c of conds) {
+      if (c.field === 'labs' && SCALAR_OPS.has(c.operator) && typeof c.display !== 'string') {
+        warnings.push(
+          `Gate "${gate}": lab condition on ${c.value} has no \`display\` — the escalation prompt ` +
+          `will read "${c.value} (LOINC ${c.value}) — most recent value?". Add e.g. "display": "Hemoglobin (g/dL)".`,
+        );
+      }
+    }
+  }
+}
+
 // ── Advisory — baseline drift on trend gates ─────────────────────────
 // A lone long trend window fits every dated point in it, including pre-treatment
 // values from a different physiologic state, and can invert the verdict. See the

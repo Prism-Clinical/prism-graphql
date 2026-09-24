@@ -373,6 +373,7 @@
         "title": "Latest blood pressure at or above 140/90?",
         "gate_type": "compound",
         "default_behavior": "skip",
+        "on_unresolved": "ask",
         "operator": "OR",
         "conditions": [
           {
@@ -380,6 +381,7 @@
             "operator": "greater_than",
             "value": "8480-6",
             "system": "LOINC",
+            "display": "Systolic blood pressure (mmHg)",
             "threshold": 139.9,
             "horizon": {
               "days": 7
@@ -390,6 +392,7 @@
             "operator": "greater_than",
             "value": "8462-4",
             "system": "LOINC",
+            "display": "Diastolic blood pressure (mmHg)",
             "threshold": 89.9,
             "horizon": {
               "days": 7
@@ -416,6 +419,7 @@
         "title": "Diagnosis of gestational hypertension or preeclampsia established?",
         "gate_type": "compound",
         "default_behavior": "skip",
+        "on_unresolved": "default",
         "operator": "OR",
         "conditions": [
           {
@@ -488,6 +492,7 @@
         "title": "Diagnosis of gestational hypertension or preeclampsia established? (postpartum BP follow-up)",
         "gate_type": "compound",
         "default_behavior": "skip",
+        "on_unresolved": "default",
         "operator": "OR",
         "conditions": [
           {
@@ -560,6 +565,7 @@
         "title": "Diagnosis of gestational hypertension or preeclampsia established? (long-term CV risk counselling)",
         "gate_type": "compound",
         "default_behavior": "skip",
+        "on_unresolved": "default",
         "operator": "OR",
         "conditions": [
           {
@@ -632,6 +638,7 @@
         "title": "Gestational hypertension rather than preeclampsia?",
         "gate_type": "compound",
         "default_behavior": "skip",
+        "on_unresolved": "default",
         "operator": "OR",
         "conditions": [
           {
@@ -674,6 +681,7 @@
         "title": "Does any objective finding preclude continued outpatient management?",
         "gate_type": "compound",
         "default_behavior": "skip",
+        "on_unresolved": "ask",
         "operator": "OR",
         "conditions": [
           {
@@ -681,6 +689,7 @@
             "operator": "greater_than",
             "value": "8480-6",
             "system": "LOINC",
+            "display": "Systolic blood pressure (mmHg)",
             "threshold": 159.9,
             "horizon": {
               "days": 1
@@ -691,6 +700,7 @@
             "operator": "greater_than",
             "value": "8462-4",
             "system": "LOINC",
+            "display": "Diastolic blood pressure (mmHg)",
             "threshold": 109.9,
             "horizon": {
               "days": 1
@@ -701,6 +711,7 @@
             "operator": "less_than",
             "value": "777-3",
             "system": "LOINC",
+            "display": "Platelets (x10^9/L)",
             "threshold": 100
           },
           {
@@ -708,6 +719,7 @@
             "operator": "greater_than",
             "value": "2160-0",
             "system": "LOINC",
+            "display": "Creatinine (mg/dL)",
             "threshold": 1.1
           },
           {

@@ -739,3 +739,14 @@ pregnancy. Please ratify, and see §18 G9.
 browser user agent**. Three citations initially recovered from mirrors — [3], [7] and [12] —
 were re-verified against ACOG primary sources this way. Future research rounds should fetch
 ACOG directly rather than depending on mirrors.
+
+### `[BUILD FIX 2026-09-24]` On unresolved — needs a physician call
+
+Main (PR #55) added a per-gate `on_unresolved` (ask | default) that this brief predates.
+It decides what a gate does when its lab/vital value is **missing or ambiguous**: `ask`
+holds the gated subtree and asks the provider for the value; `default` treats it like
+"no" and applies the default behavior. Absent means `ask`, so the JSON now states `ask`
+explicitly on every gate with a threshold — **no behaviour change** — pending review:
+gate-bp-elevated (BP), gate-escalation-required (severe-range BP, platelets, creatinine). Gates with only code/history conditions carry `default`, which is what the
+engine does for them anyway. Lab conditions also carry a `display` (name + unit) so the
+missing-value question is readable.

@@ -383,11 +383,13 @@
         "title": "MCV < 80 fL (microcytic)",
         "gate_type": "patient_attribute",
         "default_behavior": "skip",
+        "on_unresolved": "ask",
         "condition": {
           "field": "labs",
           "operator": "less_than",
           "value": "787-2",
           "system": "LOINC",
+          "display": "MCV (fL)",
           "threshold": 80,
           "horizon": {
             "days": 90
@@ -402,6 +404,7 @@
         "title": "MCV 80\u2013100 fL (normocytic)",
         "gate_type": "compound",
         "default_behavior": "skip",
+        "on_unresolved": "ask",
         "operator": "AND",
         "conditions": [
           {
@@ -409,6 +412,7 @@
             "operator": "greater_than",
             "value": "787-2",
             "system": "LOINC",
+            "display": "MCV (fL)",
             "threshold": 79.9,
             "horizon": {
               "days": 90
@@ -419,6 +423,7 @@
             "operator": "less_than",
             "value": "787-2",
             "system": "LOINC",
+            "display": "MCV (fL)",
             "threshold": 100.1,
             "horizon": {
               "days": 90
@@ -434,11 +439,13 @@
         "title": "MCV > 100 fL (macrocytic)",
         "gate_type": "patient_attribute",
         "default_behavior": "skip",
+        "on_unresolved": "ask",
         "condition": {
           "field": "labs",
           "operator": "greater_than",
           "value": "787-2",
           "system": "LOINC",
+          "display": "MCV (fL)",
           "threshold": 100,
           "horizon": {
             "days": 90
@@ -464,11 +471,13 @@
         "title": "Ferritin confirms iron deficiency (< 30 ng/mL)",
         "gate_type": "patient_attribute",
         "default_behavior": "traverse",
+        "on_unresolved": "ask",
         "condition": {
           "field": "labs",
           "operator": "less_than",
           "value": "2276-4",
           "system": "LOINC",
+          "display": "Ferritin (ng/mL)",
           "threshold": 30,
           "horizon": {
             "days": 90
@@ -483,6 +492,7 @@
         "title": "Hemoglobin at target, or still climbing toward it",
         "gate_type": "compound",
         "default_behavior": "skip",
+        "on_unresolved": "ask",
         "operator": "OR",
         "conditions": [
           {
@@ -490,6 +500,7 @@
             "operator": "greater_than",
             "value": "718-7",
             "system": "LOINC",
+            "display": "Hemoglobin (g/dL)",
             "threshold": 10.9,
             "horizon": {
               "days": 90
@@ -500,6 +511,7 @@
             "operator": "trend_up",
             "value": "718-7",
             "system": "LOINC",
+            "display": "Hemoglobin (g/dL)",
             "slope_threshold": 0.03,
             "min_points": 2,
             "window_days": 42
@@ -509,6 +521,7 @@
             "operator": "trend_up",
             "value": "718-7",
             "system": "LOINC",
+            "display": "Hemoglobin (g/dL)",
             "slope_threshold": 0.015,
             "min_points": 2,
             "window_days": 120
@@ -518,6 +531,7 @@
             "operator": "trend_up",
             "value": "718-7",
             "system": "LOINC",
+            "display": "Hemoglobin (g/dL)",
             "slope_threshold": 0.015,
             "min_points": 2,
             "window_days": 300
@@ -543,11 +557,13 @@
         "title": "Severe anemia (Hgb < 6 g/dL) \u2014 transfusion consideration",
         "gate_type": "patient_attribute",
         "default_behavior": "skip",
+        "on_unresolved": "ask",
         "condition": {
           "field": "labs",
           "operator": "less_than",
           "value": "718-7",
           "system": "LOINC",
+          "display": "Hemoglobin (g/dL)",
           "threshold": 6,
           "horizon": {
             "days": 7
@@ -562,6 +578,7 @@
         "title": "Referral-level anemia (Hgb < 9 or Hct < 27%)",
         "gate_type": "compound",
         "default_behavior": "skip",
+        "on_unresolved": "ask",
         "operator": "OR",
         "conditions": [
           {
@@ -569,6 +586,7 @@
             "operator": "less_than",
             "value": "718-7",
             "system": "LOINC",
+            "display": "Hemoglobin (g/dL)",
             "threshold": 9,
             "horizon": {
               "days": 90
@@ -579,6 +597,7 @@
             "operator": "less_than",
             "value": "4544-3",
             "system": "LOINC",
+            "display": "Hematocrit (%)",
             "threshold": 27,
             "horizon": {
               "days": 90
@@ -594,6 +613,7 @@
         "title": "Sickle cell disease (route out)",
         "gate_type": "compound",
         "default_behavior": "skip",
+        "on_unresolved": "default",
         "operator": "OR",
         "conditions": [
           {
@@ -646,6 +666,7 @@
         "title": "Thalassemia syndrome (route out)",
         "gate_type": "compound",
         "default_behavior": "skip",
+        "on_unresolved": "default",
         "operator": "OR",
         "conditions": [
           {
@@ -706,6 +727,7 @@
         "title": "Trait carrier (in-pathway modifications)",
         "gate_type": "compound",
         "default_behavior": "skip",
+        "on_unresolved": "default",
         "operator": "OR",
         "conditions": [
           {
@@ -734,6 +756,7 @@
         "title": "Bariatric surgery history",
         "gate_type": "compound",
         "default_behavior": "skip",
+        "on_unresolved": "default",
         "operator": "OR",
         "conditions": [
           {
@@ -762,6 +785,7 @@
         "title": "Inflammatory bowel disease",
         "gate_type": "compound",
         "default_behavior": "skip",
+        "on_unresolved": "default",
         "operator": "OR",
         "conditions": [
           {
@@ -790,6 +814,7 @@
         "title": "Multiple gestation",
         "gate_type": "patient_attribute",
         "default_behavior": "skip",
+        "on_unresolved": "default",
         "condition": {
           "field": "conditions",
           "operator": "includes_code",
@@ -809,6 +834,7 @@
         "title": "Chronic kidney disease (route out)",
         "gate_type": "compound",
         "default_behavior": "skip",
+        "on_unresolved": "default",
         "operator": "OR",
         "conditions": [
           {

@@ -331,6 +331,7 @@
         "title": "Diabetes or spinal cord injury?",
         "gate_type": "compound",
         "default_behavior": "skip",
+        "on_unresolved": "default",
         "operator": "OR",
         "conditions": [
           {
@@ -399,11 +400,13 @@
         "title": "Urine culture at or above 100,000 CFU/mL?",
         "gate_type": "patient_attribute",
         "default_behavior": "skip",
+        "on_unresolved": "ask",
         "condition": {
           "field": "labs",
           "operator": "greater_than",
           "value": "19090-0",
           "system": "LOINC",
+          "display": "Urine culture colony count (CFU/mL)",
           "threshold": 99999.9,
           "horizon": {
             "days": 300
@@ -418,11 +421,13 @@
         "title": "Urine culture at or above 100,000 CFU/mL? (classify ASB vs cystitis)",
         "gate_type": "patient_attribute",
         "default_behavior": "skip",
+        "on_unresolved": "ask",
         "condition": {
           "field": "labs",
           "operator": "greater_than",
           "value": "19090-0",
           "system": "LOINC",
+          "display": "Urine culture colony count (CFU/mL)",
           "threshold": 99999.9,
           "horizon": {
             "days": 300
@@ -448,6 +453,7 @@
         "title": "Fever, or acute pyelonephritis coded, with urine studies suggesting UTI?",
         "gate_type": "compound",
         "default_behavior": "skip",
+        "on_unresolved": "ask",
         "operator": "OR",
         "conditions": [
           {
@@ -488,6 +494,7 @@
         "title": "Documented penicillin or beta-lactam allergy?",
         "gate_type": "compound",
         "default_behavior": "skip",
+        "on_unresolved": "default",
         "operator": "OR",
         "conditions": [
           {
@@ -516,6 +523,7 @@
         "title": "Documented penicillin or beta-lactam allergy? (clindamycin susceptibility request)",
         "gate_type": "compound",
         "default_behavior": "skip",
+        "on_unresolved": "default",
         "operator": "OR",
         "conditions": [
           {
@@ -577,6 +585,7 @@
         "title": "Two or more UTI episodes this pregnancy?",
         "gate_type": "patient_attribute",
         "default_behavior": "skip",
+        "on_unresolved": "default",
         "condition": {
           "field": "conditions",
           "operator": "count_in_window",

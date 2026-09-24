@@ -76,6 +76,11 @@ One block per machine-evaluable decision. Common fields for every gate:
     step is being removed from the plain stage flow to make this gate real.
   - Type: patient_attribute | question | compound | llm_text_analysis
   - Default behavior: skip | traverse — `<one-line safety rationale for the choice>`
+  - On unresolved (chart gates with a lab/vital threshold): ask | default — what happens
+    when the value is missing or ambiguous. `ask` = hold the subtree and ask the provider
+    for the value; `default` = treat it like "no" and apply the default behavior.
+    `<one-line clinical rationale>`. (Gates with only code/history conditions: write
+    "n/a — default".)
   - Trajectory gates only — Physiologic drift: `<does the value move on its own? e.g.
     "Hgb falls through pregnancy (hemodilution)" | "none">` · Absolute target:
     `<e.g. "normal 11; goal >10 at delivery" | "none">` · Expected response rate:
@@ -104,9 +109,11 @@ Plus type-specific fields:
   - trend_up/trend_down (labs only) → `window_days`, `min_points` (positive integer), `slope_threshold` (units/day, **non-negative magnitude** — the engine applies the sign)
   - delta_from_baseline (labs only) → `window_days`, `min_points`, `delta_threshold` (signed)
 - *Temporal scoping (either form)*: optional `horizon` — LIFETIME | YEAR | QUARTER | MONTH | WEEK | DAY | ENCOUNTER or `{days: N}` (1..36525) — and `status` — active | inactive | any. **A condition takes `window_days` OR `horizon`, never both.** **Every `vitals` condition needs a horizon** (`DAY` unless there is a reason; never `ENCOUNTER`) — without one it inherits ENCOUNTER and the simulator session is rejected. Give every clinically-scoped condition an explicit horizon/status with a one-line rationale; summarize all assignments in §17.
-- compound only: operator AND | OR across the listed conditions. Note: unprovable temporal
-  state propagates as uncertainty through compound gates — the gate then falls back to its
-  default_behavior, so state the default's safety rationale with uncertain data in mind.
+- compound only: operator AND | OR across the listed conditions. Note: a missing or
+  unorderable value makes the gate *unresolved* (an OR with nothing true and one unknown
+  is unresolved) — it then follows "On unresolved", not the default behavior.
+- *Lab display*: give every lab condition a readable label with the unit the threshold
+  assumes, e.g. `Platelets (x10^9/L)` — it is the text of the missing-value question.
 
 **question** — prompt text; answer_type BOOLEAN | NUMERIC | SELECT (uppercase); options list
 if SELECT. Symptom presence → BOOLEAN; severity → SELECT (mild/moderate/severe) or NUMERIC
