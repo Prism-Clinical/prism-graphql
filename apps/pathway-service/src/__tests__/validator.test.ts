@@ -416,9 +416,9 @@ describe('validatePathwayJson', () => {
         type: 'Gate' as any,
         properties: {
           title: 'Bad dep gate',
-          gate_type: 'patient_attribute',
+          gate_type: 'prior_node_result',
           default_behavior: 'skip',
-          depends_on: ['nonexistent-node'],
+          depends_on: [{ node_id: 'nonexistent-node', status: 'INCLUDED' }],
         },
       });
       pw.edges.push({ from: 'step-1-1', to: 'gate-bad-dep', type: 'HAS_GATE' as any });

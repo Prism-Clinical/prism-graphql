@@ -16,7 +16,7 @@ import {
   MAX_GRAPH_DEPTH,
   ValidationResult,
 } from './types';
-import { PathwayCategory } from '../../types';
+import { PathwayCategory, NodeStatus } from '../../types';
 import { VALID_CODED_OPERATORS, VALID_ATTRIBUTE_OPERATORS } from '../resolution/types';
 import { VALID_ATTRIBUTE_NAMESPACES } from '../resolution/attribute-registry';
 import { FIELD_TO_KIND } from '../resolution/temporal/contract';
@@ -241,15 +241,26 @@ function validateGateNodes(
       softTarget.push(`Gate "${gate.id}": must have at least one outbound edge`);
     }
 
-    // depends_on node IDs must exist in the pathway
-    if (props.depends_on) {
-      const dependsOn = Array.isArray(props.depends_on)
-        ? props.depends_on as string[]
-        : [props.depends_on as string];
-      for (const depId of dependsOn) {
-        if (!nodeIds.has(depId)) {
-          errors.push(`Gate "${gate.id}": depends_on references nonexistent node "${depId}"`);
-        }
+    // depends_on — validated in the shape the runtime reads: an ARRAY of
+    // `{ node_id, status }` (`GateDependsOn`). `evaluatePriorNodeResult`
+    // iterates it and compares `nodeResult.status !== dep.status`.
+    //
+    // This used to check entries as bare node-id strings, so the runtime shape
+    // stringified to "[object Object]", matched no node, and was rejected —
+    // while the string shape it accepted is one the runtime cannot read
+    // (`dep.node_id` of a string is undefined). A prior_node_result gate was
+    // therefore unauthorable in any form that could ever be satisfied.
+    if (props.depends_on !== undefined && props.depends_on !== null) {
+      validateDependsOn(gate.id, props.depends_on, nodeIds, errors);
+    }
+    if (String(props.gate_type) === 'prior_node_result') {
+      const deps = props.depends_on;
+      if (!Array.isArray(deps) || deps.length === 0) {
+        // The evaluator answers a permanent `false` for an empty list. Soft in
+        // draft: the author may not have picked the dependency yet.
+        softTarget.push(
+          `Gate "${gate.id}": gate_type "prior_node_result" requires a non-empty "depends_on" array`,
+        );
       }
     }
 
@@ -468,6 +479,53 @@ function validateGateNodes(
     ];
     if (conds.length > 0) validateGateConditions(gate.id, conds, errors);
   }
+}
+
+const NODE_STATUSES: readonly string[] = Object.values(NodeStatus);
+
+/**
+ * `depends_on` entries, in the runtime's `GateDependsOn` shape. Status is
+ * compared EXACTLY (case-sensitive) because the evaluator compares it with
+ * `!==` against a `NodeStatus` enum value — a lowercase `"included"` would
+ * import cleanly and never match.
+ */
+function validateDependsOn(
+  gateId: string,
+  raw: unknown,
+  nodeIds: Set<string>,
+  errors: string[],
+): void {
+  const shape = `{ "node_id": "<node id>", "status": "${NodeStatus.INCLUDED}" }`;
+  if (!Array.isArray(raw)) {
+    errors.push(`Gate "${gateId}": depends_on must be an array of ${shape} entries`);
+    return;
+  }
+  raw.forEach((entry, i) => {
+    const where = `Gate "${gateId}" depends_on[${i}]`;
+    if (typeof entry === 'string') {
+      errors.push(
+        `${where}: a bare node id ("${entry}") is not a dependency the engine can read — ` +
+          `write ${shape.replace('<node id>', entry)}`,
+      );
+      return;
+    }
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
+      errors.push(`${where}: must be an object of the form ${shape}`);
+      return;
+    }
+    const { node_id: nodeId, status } = entry as Record<string, unknown>;
+    if (typeof nodeId !== 'string' || nodeId === '') {
+      errors.push(`${where}: missing "node_id"`);
+    } else if (!nodeIds.has(nodeId)) {
+      errors.push(`Gate "${gateId}": depends_on references nonexistent node "${nodeId}"`);
+    }
+    if (typeof status !== 'string' || !NODE_STATUSES.includes(status)) {
+      errors.push(
+        `${where}: status ${JSON.stringify(status)} is not one of ${NODE_STATUSES.join(', ')} ` +
+          `(compared exactly — case matters)`,
+      );
+    }
+  });
 }
 
 /**
