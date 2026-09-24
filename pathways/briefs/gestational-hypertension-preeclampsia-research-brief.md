@@ -44,7 +44,8 @@ claims confirmed. Flags: `[GAP]` unsourceable · `[FALLBACK SOURCE]` non-US basi
 
 - **Logical ID**: `gestational-hypertension-preeclampsia`
 - **Title**: Gestational Hypertension and Preeclampsia — Outpatient Screening, Diagnosis and Surveillance
-- **Version**: 1
+- **Version**: 1 `[DECISION — Josh 2026-09-24]` stays `"1"`: still a draft, so the stage renumbering
+  re-imports as DRAFT_UPDATE (same logical_id and version).
 - **Category**: OBSTETRIC
 - **Scope**: Outpatient prenatal care. Risk assessment and aspirin prophylaxis from the first
   prenatal visit; BP surveillance; diagnosis and severity classification after 20 weeks;

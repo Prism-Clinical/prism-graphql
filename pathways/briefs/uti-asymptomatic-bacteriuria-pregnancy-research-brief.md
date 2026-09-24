@@ -40,7 +40,8 @@ Flags: `[GAP]` · `[NOT ENCODABLE]` · `[DECISION]` an authoring choice needing 
 
 - **Logical ID**: `uti-asymptomatic-bacteriuria-pregnancy`
 - **Title**: Urinary Tract Infection and Asymptomatic Bacteriuria in Pregnancy — Outpatient Screening, Treatment and Surveillance
-- **Version**: 1
+- **Version**: 1 `[DECISION — Josh 2026-09-24]` stays `"1"`: still a draft, so the Z88.1 removal
+  re-imports as DRAFT_UPDATE (same logical_id and version).
 - **Category**: OBSTETRIC
 - **Scope**: US outpatient prenatal care. Universal early-pregnancy screening for asymptomatic
   bacteriuria; treatment of asymptomatic bacteriuria and acute cystitis; the group B

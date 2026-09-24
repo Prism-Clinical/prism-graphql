@@ -17,7 +17,9 @@ still current, `[BLOCKED — prior_node_result]` import-blocked gate design with
 
 - **Logical ID**: `anemia-in-pregnancy`
 - **Title**: Anemia in Pregnancy — Classification and Treatment
-- **Version**: v1
+- **Version**: 3 `[DECISION — Josh 2026-09-24]` (JSON `"3"`; was `"2"`). Bumped for the DP-1
+  restoration, gate-microcytic removal and the gestational-age data gate — imports as
+  NEW_VERSION.
 - **Category**: OBSTETRIC
 - **Scope**: Outpatient prenatal care, from diagnosed anemia through postpartum handoff.
   Screening is upstream of this pathway.
