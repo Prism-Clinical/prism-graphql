@@ -145,3 +145,81 @@ describe('askFor resolves the attribute namespace', () => {
     expect(askFor(labCondition, codeMap)!.datumKey).toBe('lab.hemoglobin');
   });
 });
+
+/**
+ * A `patient.*` datum is asked in the type its comparand is compared in —
+ * the answer is stored where the gate reads it and compared with `===`.
+ */
+describe('askFor — the answer type of a patient.* datum', () => {
+  const ask = (c: Record<string, unknown>, map?: Map<string, never>) => askFor(cond(c), map)!;
+
+  it('a numeric operator asks NUMERIC', () => {
+    const a = ask({ attribute: 'patient.gestational_age_weeks', operator: 'greater_or_equal', value: 18 });
+    expect(a.answerType).toBe(AnswerType.NUMERIC);
+    expect(a.options).toBeUndefined();
+  });
+
+  it('equality on a number asks NUMERIC', () => {
+    expect(ask({ attribute: 'patient.trimester', operator: 'equals', value: 2 }).answerType)
+      .toBe(AnswerType.NUMERIC);
+  });
+
+  it('a numeric `in` list asks NUMERIC, not SELECT — the value can lie outside the list', () => {
+    const a = ask({ attribute: 'patient.parity', operator: 'in', value: [0, 1] });
+    expect(a.answerType).toBe(AnswerType.NUMERIC);
+    expect(a.options).toBeUndefined();
+  });
+
+  it('a boolean comparand asks BOOLEAN', () => {
+    for (const operator of ['equals', 'not_equals']) {
+      const a = ask({ attribute: 'patient.prior_cesarean', operator, value: false });
+      expect(a.answerType).toBe(AnswerType.BOOLEAN);
+      expect(a.options).toBeUndefined();
+    }
+  });
+
+  it('string equality asks SELECT, the comparand as the option', () => {
+    const a = ask({ attribute: 'patient.rh_factor', operator: 'equals', value: 'negative' });
+    expect(a.answerType).toBe(AnswerType.SELECT);
+    expect(a.options).toEqual(['negative']);
+  });
+
+  it('a string `in` list asks SELECT with the list, deduplicated, in authored order', () => {
+    const a = ask({ attribute: 'patient.blood_type', operator: 'in', value: ['O-', 'A-', 'O-'] });
+    expect(a.answerType).toBe(AnswerType.SELECT);
+    expect(a.options).toEqual(['O-', 'A-']);
+  });
+
+  it('a string comparand under a NUMERIC operator still asks NUMERIC', () => {
+    expect(ask({ attribute: 'patient.gestational_age_weeks', operator: 'greater_than', value: '18' }).answerType)
+      .toBe(AnswerType.NUMERIC);
+  });
+
+  it('a mixed list falls back to NUMERIC rather than guessing', () => {
+    expect(ask({ attribute: 'patient.x', operator: 'in', value: ['a', 1] }).answerType)
+      .toBe(AnswerType.NUMERIC);
+  });
+
+  // Only a patient.* datum is typed. Everything else is injected as a lab or
+  // vital, which takes a number.
+  it('a mapped allergy.* with a boolean comparand stays NUMERIC (it is injected as a lab)', () => {
+    const map = new Map([[
+      'allergy.penicillin',
+      { attributeName: 'allergy.penicillin', namespace: 'allergy', system: 'RXNORM', code: '7980', valueType: 'boolean' },
+    ]]) as unknown as Map<string, never>;
+    const a = ask({ attribute: 'allergy.penicillin', operator: 'equals', value: true }, map);
+    expect(a.target.kind).toBe('lab');
+    expect(a.answerType).toBe(AnswerType.NUMERIC);
+  });
+
+  it('an UNMAPPED lab.* with a string comparand stays NUMERIC', () => {
+    const a = ask({ attribute: 'lab.hemoglobin', operator: 'equals', value: 'low' }, new Map());
+    expect(a.target.kind).toBe('attribute');
+    expect(a.answerType).toBe(AnswerType.NUMERIC);
+  });
+
+  it('a vitals.* attribute stays NUMERIC', () => {
+    expect(ask({ attribute: 'vitals.position', operator: 'equals', value: 'supine' }).answerType)
+      .toBe(AnswerType.NUMERIC);
+  });
+});

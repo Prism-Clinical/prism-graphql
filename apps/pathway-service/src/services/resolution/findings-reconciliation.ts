@@ -1,4 +1,5 @@
-import { PendingQuestion, RedFlag, RedFlagType } from './types';
+import { AnswerType, PendingQuestion, RedFlag, RedFlagType } from './types';
+import { unionOptions } from './unresolved-prompt';
 
 /**
  * Reconciling a session's red flags and pending questions after an
@@ -228,6 +229,9 @@ export function reconcilePendingQuestions(
       seen.askedByNodeIds = [
         ...new Set([...(seen.askedByNodeIds ?? [seen.gateId]), ...(q.askedByNodeIds ?? [q.gateId])]),
       ];
+      if (seen.answerType === AnswerType.SELECT && q.options) {
+        seen.options = unionOptions(seen.options, q.options);
+      }
     }
   }
 
@@ -270,8 +274,17 @@ export function reconcilePendingQuestions(
     // and so never able to re-assert itself — still needed the value.
     if (next.datumKey && scope.stillPending) {
       const survivors = (q.askedByNodeIds ?? [q.gateId]).filter(scope.stillPending);
-      const merged = [...new Set([...(next.askedByNodeIds ?? [next.gateId]), ...survivors])];
-      result.push({ ...next, askedByNodeIds: merged });
+      const own = next.askedByNodeIds ?? [next.gateId];
+      const merged = [...new Set([...own, ...survivors])];
+      // And their OPTIONS, for the same reason: a shared SELECT datum offers
+      // every asking gate's comparands, and a gate this pass did not
+      // re-derive contributed its values only to the prompt already held.
+      const inheritsOthers = merged.length > own.length;
+      const options =
+        inheritsOthers && next.answerType === AnswerType.SELECT && q.options
+          ? unionOptions(next.options, q.options)
+          : next.options;
+      result.push({ ...next, askedByNodeIds: merged, ...(options ? { options } : {}) });
       continue;
     }
     result.push(next);

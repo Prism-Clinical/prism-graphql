@@ -4,7 +4,7 @@ import type { GateEvaluationDeps } from './gate-evaluator';
 import type { PathwayTemporalDefaults } from './temporal/cascade';
 import type { FactStore } from './temporal/fact-model';
 import { EvaluationTemporalContext } from './temporal/evaluation-context';
-import { askFor } from './unresolved-prompt';
+import { askFor, unionOptions } from './unresolved-prompt';
 import { parseBranchWhen } from '../import/branch-when';
 import { decisionValueOf, decisionSelects } from './decision-value';
 import { normalizeAnswerType } from './answer-validation';
@@ -1261,6 +1261,12 @@ export class TraversalEngine {
           const already = pendingQuestions.find(q => q.datumKey === ask.datumKey);
           if (already) {
             already.askedByNodeIds = [...(already.askedByNodeIds ?? []), nodeIdentifier];
+            // A shared SELECT datum offers every gate's comparands. Keeping
+            // only the first gate's left `rh_factor equals "positive"`
+            // unanswerable whenever an `equals "negative"` gate asked first.
+            if (already.answerType === AnswerType.SELECT && ask.options) {
+              already.options = unionOptions(already.options, ask.options);
+            }
           } else {
             pendingQuestions.push({
               gateId: nodeIdentifier,
@@ -1270,6 +1276,7 @@ export class TraversalEngine {
               // authoring — not a preference for machine wording.
               prompt: gateProps.prompt ?? ask.prompt,
               answerType: ask.answerType,
+              ...(ask.options ? { options: ask.options } : {}),
               affectedSubtreeSize: subtreeSize,
               estimatedImpact: subtreeSize > 3 ? 'high' : subtreeSize > 1 ? 'medium' : 'low',
               datumKey: ask.datumKey,

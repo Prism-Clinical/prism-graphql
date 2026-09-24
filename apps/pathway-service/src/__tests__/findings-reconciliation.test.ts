@@ -215,4 +215,35 @@ describe('shared datum prompts', () => {
     expect(out).toHaveLength(1);
     expect(out[0].askedByNodeIds).toEqual(['g1', 'g2']);
   });
+
+  // A shared SELECT datum offers every asking gate's comparands. Keeping one
+  // gate's options left the other gate's value unanswerable.
+  const sel = (gateId: string, options: string[], owners = [gateId]) =>
+    q(gateId, { datumKey: 'patient.rh_factor', answerType: AnswerType.SELECT, options, askedByNodeIds: owners });
+
+  it('pools SELECT options when two gates derive one datum in a pass', () => {
+    const out = reconcilePendingQuestions(
+      [], [sel('g1', ['negative']), sel('g2', ['positive'])], { gateIds: ['g1', 'g2'] },
+    );
+    expect(out).toHaveLength(1);
+    expect(out[0].options).toEqual(['negative', 'positive']);
+  });
+
+  it('keeps a still-pending owner\'s options when the pass re-derived only the other gate', () => {
+    const out = reconcilePendingQuestions(
+      [sel('g1', ['negative', 'positive'], ['g1', 'g2'])],
+      [sel('g1', ['negative'])],
+      { gateIds: ['g1'], stillPending: (id) => id === 'g2' },
+    );
+    expect(out[0].options).toEqual(['negative', 'positive']);
+  });
+
+  it('does not keep a resolved owner\'s options', () => {
+    const out = reconcilePendingQuestions(
+      [sel('g1', ['negative', 'positive'], ['g1', 'g2'])],
+      [sel('g1', ['negative'])],
+      { gateIds: ['g1'], stillPending: () => false },
+    );
+    expect(out[0].options).toEqual(['negative']);
+  });
 });

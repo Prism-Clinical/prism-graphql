@@ -15,6 +15,59 @@ import { isTemporalOperator, operatorClass } from './temporal/contract';
  * one whose answer cannot be stored as a fact, is worse than staying quiet.
  */
 
+/**
+ * The answer a `patient.*` datum takes, read off the condition that needed it.
+ *
+ * Every attribute used to be asked as NUMERIC, and the answer path accepted
+ * only `numericValue` — so `patient.rh_factor equals "negative"` or
+ * `patient.prior_cesarean equals true` pended with a question no answer could
+ * clear. The comparand says what the gate will compare against, and the
+ * answer is stored where the gate reads it and compared with `===`
+ * (`compareScalar`), so its TYPE has to match the comparand's exactly:
+ *
+ *   - a numeric operator, or ANY numeric comparand → NUMERIC. Including an
+ *     all-numeric `in` list: the true value can lie outside the list, and a
+ *     selected "2" would never `===` the authored 2.
+ *   - a boolean comparand → BOOLEAN.
+ *   - string comparand(s) only → SELECT, the comparands as the options.
+ *
+ * Only for a `patient.*` path on the `kind: 'attribute'` target. A `lab.*` /
+ * `allergy.*` with a code-map row is injected as a LAB, and a vital as a
+ * vital, and both of those take a number; they stay NUMERIC. So does an
+ * UNMAPPED `lab.*`, which falls back to the attribute target but is a
+ * vocabulary gap, not a demographic.
+ *
+ * Known limitation: the options are drawn from the comparands alone, so
+ * `equals "negative"` offers one option and "positive" is not answerable.
+ * Deliberately no invented "other" sentinel: stored as the attribute's value
+ * it would falsely answer "no" to a sibling `equals "positive"` gate. Two
+ * gates asking for the same datum pool their options (see the dedup in the
+ * traversal engine), which covers the common authored pair.
+ */
+function attributeAnswerShape(
+  condition: GateCondition & { attribute: string },
+  target: UnresolvedAsk['target'],
+): Pick<UnresolvedAsk, 'answerType' | 'options'> {
+  if (target.kind !== 'attribute' || !condition.attribute.startsWith('patient.')) {
+    return { answerType: AnswerType.NUMERIC };
+  }
+
+  const comparands: unknown[] = Array.isArray(condition.value) ? condition.value : [condition.value];
+  const numericOperator = !['equals', 'not_equals', 'in', 'exists'].includes(condition.operator);
+  if (numericOperator || comparands.some(v => typeof v === 'number')) {
+    return { answerType: AnswerType.NUMERIC };
+  }
+  if (comparands.length > 0 && comparands.every(v => typeof v === 'boolean')) {
+    return { answerType: AnswerType.BOOLEAN };
+  }
+  if (comparands.length > 0 && comparands.every(v => typeof v === 'string')) {
+    return { answerType: AnswerType.SELECT, options: [...new Set(comparands as string[])] };
+  }
+  // A mixed or empty comparand the import validator should not have let
+  // through. NUMERIC is the pre-existing behaviour, not a new guess.
+  return { answerType: AnswerType.NUMERIC };
+}
+
 /** What to ask for, when a condition could not be evaluated. */
 export interface UnresolvedAsk {
   /**
@@ -25,6 +78,12 @@ export interface UnresolvedAsk {
   datumKey: string;
   prompt: string;
   answerType: AnswerType;
+  /**
+   * For a SELECT: the values the answer may take — the condition's own string
+   * comparands, so a chosen option is stored as exactly what the gate compares
+   * against. Absent otherwise.
+   */
+  options?: string[];
   /** Where an answer gets injected as a fact. */
   target:
     | { kind: 'lab'; code: string; system: string }
@@ -78,11 +137,7 @@ export function askFor(
     return {
       datumKey: path,
       prompt: `${path} — current value?`,
-      // The attribute vocabulary declares a valueType per attribute, but the
-      // condition alone does not carry it. NUMERIC is the honest default here:
-      // only scalar-comparable attributes reach `indeterminate` at all, since
-      // membership never does.
-      answerType: AnswerType.NUMERIC,
+      ...attributeAnswerShape(condition, target),
       target,
     };
   }
@@ -121,4 +176,17 @@ export function askFor(
   // A scalar operator on conditions / medications / allergies is not something
   // the fact model can take a value for.
   return null;
+}
+
+/**
+ * Two option lists for ONE shared datum, merged in first-seen order.
+ *
+ * A SELECT datum's options are the comparands of the gates asking for it, so
+ * when two gates share the datum the question must offer both gates' values.
+ */
+export function unionOptions(
+  a: readonly string[] | undefined,
+  b: readonly string[] | undefined,
+): string[] {
+  return [...new Set([...(a ?? []), ...(b ?? [])])];
 }
