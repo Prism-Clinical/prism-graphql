@@ -302,7 +302,7 @@ Gated steps connect **only** via their gate's `BRANCHES_TO` — no `HAS_STEP` ed
   - Exclusively gated: yes
   - Type: **compound**, operator **OR** · Default behavior: **skip**
   - Conditions (coded): field `conditions`, `includes_code`, system ICD-10, horizon `LIFETIME`,
-    status `any` — values `E10.*`, `E11.*`, `O24.*`, `G82.2*`, `G82.5*`, `N31.*`, `T91.3`
+    status `any` — values `E10.*`, `E11.*`, `O24.*`, `G82.2.*`, `G82.5.*`, `N31.*`, `T91.3`
   - `[DECISION]` A **negative** gate: it suppresses additional screening rather than adding it.
     ACOG restricts *repeat screening* only — treating a positive initial culture is unchanged.
     IDSA's recommendation against screening **or treating** in diabetes is its **non-pregnant**
@@ -607,7 +607,7 @@ referenced.
 |---|---|---|---|---|---|
 | gate-culture-positive | labs 19090-0 | {days: 300} | — | — | This pregnancy only — a prior pregnancy's culture must not fire treatment now |
 | gate-recurrent-uti | conditions O23.* | — | — | **300** | Operator-windowed (XOR rule). ACOG's window is "during pregnancy"; 300 days is the proxy |
-| gate-no-repeat-screening | conditions E10.*, E11.*, O24.*, G82.2*, G82.5*, N31.*, T91.3 | LIFETIME | any | — | Diabetes and spinal cord injury are standing conditions |
+| gate-no-repeat-screening | conditions E10.*, E11.*, O24.*, G82.2.*, G82.5.*, N31.*, T91.3 | LIFETIME | any | — | Diabetes and spinal cord injury are standing conditions |
 | gate-penicillin-allergy (+ -gbs copy) | allergies SNOMED 91936005, 294505008, 294499007, 294497009; conditions Z88.0, Z88.1 | LIFETIME | any | — | Drug allergy does not expire. `[BUILD FIX]` codes moved to the field/system that carries them |
 | gate-pyelonephritis-suspected | vitals temperature_f | DAY | — | — | `[BUILD FIX 2026-09-24]` Vitals are one undated current value, so any bounded horizon admits them — but an omitted horizon inherits v1's ENCOUNTER default, which rejects every simulator session (no encounterStart) for this and every co-matched pathway |
 | gate-pyelonephritis-suspected | conditions N10 | {days: 300} | active | — | This pregnancy only |

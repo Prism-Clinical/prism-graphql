@@ -111,7 +111,7 @@ Plus type-specific fields:
   allergy documented both ways (SNOMED allergy finding; ICD-10 Z88.x status code) is an OR
   of `allergies`/SNOMED and `conditions`/ICD-10 conditions. Blood pressure and temperature
   are **vitals** (`systolic_bp`, `diastolic_bp`, `temperature_f` in °F), not LOINC labs.
-- *Coded form*: field (conditions | medications | allergies | labs | vitals), operator (includes_code | equals | exists | greater_than | less_than | count_in_window | trend_up | trend_down | delta_from_baseline), value (code, wildcard like `Z94.*` ok, or vitals dotted path), system (**never on vitals** — hard import error), and the operator's params:
+- *Coded form*: field (conditions | medications | allergies | labs | vitals), operator (includes_code | equals | exists | greater_than | less_than | count_in_window | trend_up | trend_down | delta_from_baseline), value (code; wildcard **only** as a trailing `.*` — `G82.2.*`, never `G82.2*`, which is a literal that matches nothing; or vitals key), system (**never on vitals** — hard import error), and the operator's params:
   - greater_than/less_than → `threshold` (always explicit, finite number)
   - count_in_window → `count_threshold` (positive integer), `window_days` (omit = lifetime)
   - trend_up/trend_down (labs only) → `window_days`, `min_points` (positive integer), `slope_threshold` (units/day, **non-negative magnitude** — the engine applies the sign)

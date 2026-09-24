@@ -67,7 +67,9 @@ Follow the spec exactly. Brief-section → JSON mapping:
   unresolved" value on a gate with a scalar (lab/vital threshold) condition — if an older
   brief has no such field, emit `ask` (main's own default, so no behaviour change) and list
   the gate in the delivery message as needing a clinical call; `default` on a gate with no
-  scalar condition (the engine never asks there). Emit `display` on every lab condition
+  scalar condition (the engine never asks there). Wildcards: only a trailing `.*` (`G82.2.*`); rewrite a
+  brief's `G82.2*` to `G82.2.*` and note it — any other `*` is a literal that matches
+  nothing. Emit `display` on every lab condition
   (readable name + unit) — it is the missing-value prompt. Never emit `prompt` on a chart
   gate. **`default_behavior` is `skip` on every single-target gate**: `traverse` includes the
   target on a definite "no" too, so the gate excludes nothing. If a brief asks for `traverse`

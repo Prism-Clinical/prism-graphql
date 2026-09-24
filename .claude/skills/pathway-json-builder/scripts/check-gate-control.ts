@@ -253,6 +253,30 @@ for (const { gate, i, c } of chartConditions()) {
   }
 }
 
+// WILDCARD — the matcher (`select-facts.ts` codeMatches) supports exactly ONE
+// wildcard form: a trailing `.*`, meaning "starts with the part before it". Any
+// other `*` is compared as a literal character, so `G82.2*` matches no real code
+// and the condition silently answers "no". And only includes_code,
+// count_in_window, trend_* and delta_from_baseline use the matcher at all —
+// equals / greater_than / less_than compare the code exactly.
+const WILDCARD_OPS = new Set(['includes_code', 'count_in_window', 'trend_up', 'trend_down', 'delta_from_baseline']);
+for (const { gate, i, c } of chartConditions()) {
+  if (typeof c.value !== 'string' || !c.value.includes('*')) continue;
+  const wellFormed = /^[^*]+\.\*$/.test(c.value);
+  if (!wellFormed) {
+    const fix = c.value.replace(/\.?\*+$/, '.*');
+    errors.push(
+      `WILDCARD — "${gate}" condition[${i}] value "${c.value}": only a trailing ".*" is a wildcard; ` +
+      `any other "*" is a literal and matches nothing.\n      => write "${fix}".`,
+    );
+  } else if (!WILDCARD_OPS.has(c.operator)) {
+    errors.push(
+      `WILDCARD — "${gate}" condition[${i}] uses "${c.value}" with operator "${c.operator}", which compares ` +
+      `codes exactly — the ".*" is a literal. Use includes_code, or name the code.`,
+    );
+  }
+}
+
 // ON_UNRESOLVED — what a chart gate does when it cannot DECIDE (no usable value,
 // or values that cannot be ordered). Absent means 'ask' (resolution/types.ts):
 // the gate pends, its subtree is held, and the provider is asked for the datum.

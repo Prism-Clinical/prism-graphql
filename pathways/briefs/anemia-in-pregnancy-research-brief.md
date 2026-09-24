@@ -221,8 +221,8 @@ the pathway presumes the coded diagnosis.
   - Rationale: CDC/IOM referral rule; no ACOG numeric equivalent [GAP]. [3]
 - **Gate `gate-scd` — Sickle cell disease (route out)**
   - Attached to: stage-3 · Branches to: step-3-1 · compound (OR) · Default: skip
-  - Conditions (coded, field `conditions`, ICD-10): includes_code `D57.0*`; includes_code
-    `D57.1`; includes_code `D57.2*`; includes_code `D57.4*`; includes_code `D57.8*`
+  - Conditions (coded, field `conditions`, ICD-10): includes_code `D57.0.*`; includes_code
+    `D57.1`; includes_code `D57.2.*`; includes_code `D57.4.*`; includes_code `D57.8.*`
     (trait D57.3 deliberately excluded — see gate-trait) [7]
 - **Gate `gate-thal-major` — Thalassemia syndrome (route out)**
   - Attached to: stage-3 · Branches to: step-3-2 · compound (OR) · Default: skip
@@ -235,7 +235,7 @@ the pathway presumes the coded diagnosis.
   - Conditions (field `conditions`, ICD-10): includes_code `D57.3`; includes_code `D56.3` [4]
 - **Gate `gate-bariatric` — Bariatric surgery history**
   - Attached to: stage-3 · Branches to: step-3-4 · compound (OR) · Default: skip
-  - Conditions (field `conditions`, ICD-10): includes_code `Z98.84`; includes_code `O99.84*` [8][19]
+  - Conditions (field `conditions`, ICD-10): includes_code `Z98.84`; includes_code `O99.84.*` [8][19]
 - **Gate `gate-ibd` — Inflammatory bowel disease**
   - Attached to: stage-3 · Branches to: step-3-5 · compound (OR) · Default: skip
   - Conditions (field `conditions`, ICD-10): includes_code `K50.*`; includes_code `K51.*`
@@ -246,8 +246,8 @@ the pathway presumes the coded diagnosis.
   - Condition: field `conditions`, includes_code `O30.*`, system ICD-10 [20]
 - **Gate `gate-ckd` — Chronic kidney disease (route out)**
   - Attached to: stage-3 · Branches to: step-3-9 · compound (OR) · Default: skip
-  - Conditions (field `conditions`, ICD-10): includes_code `N18.3*`; `N18.4`; `N18.5`;
-    `N18.6`; `O26.83*` [21]
+  - Conditions (field `conditions`, ICD-10): includes_code `N18.3.*`; `N18.4`; `N18.5`;
+    `N18.6`; `O26.83.*` [21]
 - **Gate `gate-transfusion-refusal` — Transfusion decliner**
   - Attached to: stage-3 · Branches to: step-3-10 · Type: question · Default: skip
   - Prompt: "Does the patient decline blood transfusion or specific blood products (e.g.,
@@ -600,9 +600,9 @@ margin). **These day-counts are my proposal — review.**
 | gate-referral-threshold | labs 718-7, 4544-3 | {days: 90} | — | — | Referral on current-pregnancy values |
 | gate-multi-gestation | O30.* | {days: 300} | active | — | A *prior* pregnancy's twin code must not fire this pregnancy's surveillance branch |
 | gate-scd / gate-thal-major / gate-trait | D57.* / D56.* | LIFETIME | any | — | Genetic conditions never expire |
-| gate-bariatric | Z98.84, O99.84* | LIFETIME | any | — | Anatomy is permanent |
+| gate-bariatric | Z98.84, O99.84.* | LIFETIME | any | — | Anatomy is permanent |
 | gate-ibd | K50.*, K51.* | LIFETIME | any | — | Chronic relapsing disease stays gate-relevant |
-| gate-ckd | N18.*, O26.83* | LIFETIME | active | — | Route out only on standing CKD; a resolved/erroneous historical code shouldn't exile the patient from the pathway |
+| gate-ckd | N18.*, O26.83.* | LIFETIME | active | — | Route out only on standing CKD; a resolved/erroneous historical code shouldn't exile the patient from the pathway |
 
 Kernel semantics reviewers should know: windows/horizons select on a fact's **start
 bound**; undated labs can satisfy membership but never join trend/delta series; unprovable

@@ -314,11 +314,11 @@ Runtime semantics (from `gate-evaluator.ts`):
 
 | Operator | Works on | Semantics |
 |---|---|---|
-| `includes_code` | conditions/medications/allergies/labs | Any entry's code matches `value` (wildcards like `Z94.*` supported), `system` optional filter |
-| `equals` | same | Exact code match |
+| `includes_code` | conditions/medications/allergies/labs | Any entry's code matches `value`, `system` optional filter. **Wildcard: only a trailing `.*`** (`Z94.*`, `G82.2.*` = "starts with the part before `.*`"). Any other `*` — `G82.2*`, `D57.0*`, `O99.8*4` — is a literal character and matches nothing (`select-facts.ts` codeMatches). No hierarchy expansion. |
+| `equals` | same | Exact code match — no wildcard (a `.*` here is literal) |
 | `exists` | same | Field has ≥1 entry of any kind |
 | `greater_than` / `less_than` | labs, vitals | For `labs`: `value` = the lab code, compare that lab's numeric result to `threshold` (falls back to `parseFloat(value)` — so always set `threshold` explicitly). For `vitals`: `value` = dotted path into vitalSigns |
-| `count_in_window` | labs + code fields | Count entries matching `value` (+`system`) dated within `window_days` of the session clock; satisfied when count ≥ `count_threshold` (default 2). Omit `window_days` ⇒ lifetime count, undated entries count |
+| `count_in_window` | labs + code fields | Count entries matching `value` (+`system`; trailing `.*` wildcard allowed) dated within `window_days` of the session clock; satisfied when count ≥ `count_threshold` (default 2). Omit `window_days` ⇒ lifetime count, undated entries count |
 | `trend_up` / `trend_down` | **labs only** | Linear-regression slope over dated values of lab `value` within `window_days`; needs ≥ `min_points` (default 3, floor 2) dated points; satisfied when slope > `slope_threshold` (up) or < −`slope_threshold` (down); default threshold 0 |
 | `delta_from_baseline` | **labs only** | newest − oldest in-window value vs signed `delta_threshold` (positive = rose by ≥ that much; negative = fell by ≥ magnitude); needs ≥ `min_points` (default 2) |
 

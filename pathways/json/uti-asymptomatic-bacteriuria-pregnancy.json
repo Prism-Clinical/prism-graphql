@@ -361,7 +361,7 @@
           {
             "field": "conditions",
             "operator": "includes_code",
-            "value": "G82.2*",
+            "value": "G82.2.*",
             "system": "ICD-10",
             "horizon": "LIFETIME",
             "status": "any"
@@ -369,7 +369,7 @@
           {
             "field": "conditions",
             "operator": "includes_code",
-            "value": "G82.5*",
+            "value": "G82.5.*",
             "system": "ICD-10",
             "horizon": "LIFETIME",
             "status": "any"
