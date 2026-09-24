@@ -456,7 +456,12 @@ function validateGateNodes(
     // `answer_type`, not `gate_type` — `gate_type` is never "select" (it is
     // patient_attribute / question / prior_node_result / compound /
     // llm_text_analysis), so this check had never once fired.
-    if (props.answer_type === 'select') {
+    //
+    // Lowercased, like every other answer_type read here and in the runtime
+    // (`answer-validation.ts`): the enum spelling is `SELECT`, and comparing
+    // `=== 'select'` let exactly that spelling skip the options requirement.
+    // Option VALUES stay case-sensitive — the runtime compares them exactly.
+    if (String(props.answer_type ?? '').toLowerCase() === 'select') {
       const options = props.options;
       if (!options || !Array.isArray(options) || options.length === 0) {
         softTarget.push(`Gate "${gate.id}": answer_type "select" requires a non-empty "options" array`);

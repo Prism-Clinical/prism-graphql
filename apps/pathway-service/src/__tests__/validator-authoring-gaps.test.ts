@@ -62,3 +62,17 @@ describe('depends_on — the runtime shape is {node_id, status}', () => {
     expect(gate!.cypher).toContain(`depends_on: [{node_id: 'step-3-1', status: 'INCLUDED'}]`);
   });
 });
+
+describe('answer_type casing — the runtime reads it case-insensitively', () => {
+  it('requires options for answer_type "SELECT" (the enum spelling), not only "select"', () => {
+    const pw = withGate({ gate_type: 'question', prompt: 'Which?', answer_type: 'SELECT' });
+    const result = validatePathwayJson(pw);
+    expect(result.valid).toBe(false);
+    expect(result.errors).toContainEqual(expect.stringContaining('requires a non-empty "options" array'));
+  });
+
+  it('still accepts an uppercase SELECT that declares its options', () => {
+    const pw = withGate({ gate_type: 'question', prompt: 'Which?', answer_type: 'SELECT', options: ['a', 'b'] });
+    expect(validatePathwayJson(pw).errors).toEqual([]);
+  });
+});
