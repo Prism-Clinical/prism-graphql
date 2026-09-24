@@ -16,14 +16,22 @@ import {
   MAX_GRAPH_DEPTH,
   ValidationResult,
 } from './types';
-import { PathwayCategory } from '../../types';
+import { PathwayCategory, NodeStatus } from '../../types';
 import { VALID_CODED_OPERATORS, VALID_ATTRIBUTE_OPERATORS } from '../resolution/types';
 import { VALID_ATTRIBUTE_NAMESPACES } from '../resolution/attribute-registry';
 import { FIELD_TO_KIND } from '../resolution/temporal/contract';
 import {
   codedVitalsSystemError,
   conditionControlDomainError,
+  parseConditionOverride,
+  attributeNamespaceToField,
 } from '../resolution/temporal/condition-adapter';
+import { resolveEffectivePolicy } from '../resolution/temporal/cascade';
+import {
+  DEFAULT_TEMPORAL_POLICY_VERSION,
+  TemporalContextError,
+} from '../resolution/temporal/evaluation-context';
+import type { GateField } from '../resolution/temporal/contract';
 import { parseBranchWhen, isEqualsWhen, checkNumericCover } from './branch-when';
 
 const VALID_NODE_TYPES = new Set<string>(Object.keys(REQUIRED_NODE_PROPERTIES));
@@ -31,13 +39,15 @@ const VALID_EDGE_TYPES = new Set<string>(Object.keys(VALID_EDGE_ENDPOINTS));
 const VALID_CATEGORIES = new Set<string>(Object.values(PathwayCategory));
 
 // ─── Gate condition schema ─────────────────────────────────────────────
-// `horizon`/`status` are the NODE tier of the temporal cascade (plan 04). They
-// are allowed as KEYS here; their VALUES are validated by
-// `parseConditionOverride` at session-creation preflight, which owns the
-// horizon grammar, the status vocabulary, and the window_days/horizon conflict
-// rule. Duplicating that grammar here would give authors two places to disagree
-// with. Without these entries a per-condition horizon fails import as an
-// unknown key and the NODE tier is unauthorable.
+// `horizon`/`status` are the NODE tier of the temporal cascade (plan 04). Their
+// VALUES are validated at import by CALLING the runtime's own parsers —
+// `parseConditionOverride` (horizon grammar, status vocabulary, the
+// window_days/horizon conflict) and `resolveEffectivePolicy` (no status on a
+// field without clinical state) — see `temporalOverrideError`. Calling them,
+// rather than restating the grammar, keeps one source of truth; session
+// preflight still runs them as the backstop. Without these entries a
+// per-condition horizon fails import as an unknown key and the NODE tier is
+// unauthorable.
 const CODED_KEYS = new Set([
   'field', 'operator', 'value', 'system', 'threshold',
   'window_days', 'count_threshold', 'min_points', 'slope_threshold', 'delta_threshold',
@@ -241,15 +251,26 @@ function validateGateNodes(
       softTarget.push(`Gate "${gate.id}": must have at least one outbound edge`);
     }
 
-    // depends_on node IDs must exist in the pathway
-    if (props.depends_on) {
-      const dependsOn = Array.isArray(props.depends_on)
-        ? props.depends_on as string[]
-        : [props.depends_on as string];
-      for (const depId of dependsOn) {
-        if (!nodeIds.has(depId)) {
-          errors.push(`Gate "${gate.id}": depends_on references nonexistent node "${depId}"`);
-        }
+    // depends_on — validated in the shape the runtime reads: an ARRAY of
+    // `{ node_id, status }` (`GateDependsOn`). `evaluatePriorNodeResult`
+    // iterates it and compares `nodeResult.status !== dep.status`.
+    //
+    // This used to check entries as bare node-id strings, so the runtime shape
+    // stringified to "[object Object]", matched no node, and was rejected —
+    // while the string shape it accepted is one the runtime cannot read
+    // (`dep.node_id` of a string is undefined). A prior_node_result gate was
+    // therefore unauthorable in any form that could ever be satisfied.
+    if (props.depends_on !== undefined && props.depends_on !== null) {
+      validateDependsOn(gate.id, props.depends_on, nodeIds, errors);
+    }
+    if (String(props.gate_type) === 'prior_node_result') {
+      const deps = props.depends_on;
+      if (!Array.isArray(deps) || deps.length === 0) {
+        // The evaluator answers a permanent `false` for an empty list. Soft in
+        // draft: the author may not have picked the dependency yet.
+        softTarget.push(
+          `Gate "${gate.id}": gate_type "prior_node_result" requires a non-empty "depends_on" array`,
+        );
       }
     }
 
@@ -445,7 +466,12 @@ function validateGateNodes(
     // `answer_type`, not `gate_type` — `gate_type` is never "select" (it is
     // patient_attribute / question / prior_node_result / compound /
     // llm_text_analysis), so this check had never once fired.
-    if (props.answer_type === 'select') {
+    //
+    // Lowercased, like every other answer_type read here and in the runtime
+    // (`answer-validation.ts`): the enum spelling is `SELECT`, and comparing
+    // `=== 'select'` let exactly that spelling skip the options requirement.
+    // Option VALUES stay case-sensitive — the runtime compares them exactly.
+    if (String(props.answer_type ?? '').toLowerCase() === 'select') {
       const options = props.options;
       if (!options || !Array.isArray(options) || options.length === 0) {
         softTarget.push(`Gate "${gate.id}": answer_type "select" requires a non-empty "options" array`);
@@ -468,6 +494,53 @@ function validateGateNodes(
     ];
     if (conds.length > 0) validateGateConditions(gate.id, conds, errors);
   }
+}
+
+const NODE_STATUSES: readonly string[] = Object.values(NodeStatus);
+
+/**
+ * `depends_on` entries, in the runtime's `GateDependsOn` shape. Status is
+ * compared EXACTLY (case-sensitive) because the evaluator compares it with
+ * `!==` against a `NodeStatus` enum value — a lowercase `"included"` would
+ * import cleanly and never match.
+ */
+function validateDependsOn(
+  gateId: string,
+  raw: unknown,
+  nodeIds: Set<string>,
+  errors: string[],
+): void {
+  const shape = `{ "node_id": "<node id>", "status": "${NodeStatus.INCLUDED}" }`;
+  if (!Array.isArray(raw)) {
+    errors.push(`Gate "${gateId}": depends_on must be an array of ${shape} entries`);
+    return;
+  }
+  raw.forEach((entry, i) => {
+    const where = `Gate "${gateId}" depends_on[${i}]`;
+    if (typeof entry === 'string') {
+      errors.push(
+        `${where}: a bare node id ("${entry}") is not a dependency the engine can read — ` +
+          `write ${shape.replace('<node id>', entry)}`,
+      );
+      return;
+    }
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
+      errors.push(`${where}: must be an object of the form ${shape}`);
+      return;
+    }
+    const { node_id: nodeId, status } = entry as Record<string, unknown>;
+    if (typeof nodeId !== 'string' || nodeId === '') {
+      errors.push(`${where}: missing "node_id"`);
+    } else if (!nodeIds.has(nodeId)) {
+      errors.push(`Gate "${gateId}": depends_on references nonexistent node "${nodeId}"`);
+    }
+    if (typeof status !== 'string' || !NODE_STATUSES.includes(status)) {
+      errors.push(
+        `${where}: status ${JSON.stringify(status)} is not one of ${NODE_STATUSES.join(', ')} ` +
+          `(compared exactly — case matters)`,
+      );
+    }
+  });
 }
 
 /**
@@ -494,6 +567,13 @@ function validateGateConditions(
       if (!ATTR_OPS.has(op)) errors.push(`${where}: operator "${op}" is not a valid attribute operator.`);
       const ns = (c.attribute as string).split('.')[0];
       if (!NAMESPACES.has(ns)) errors.push(`${where}: attribute namespace "${ns}" is not registered.`);
+      // `patient.*` maps to no field and is not governed by temporal policy —
+      // the runtime ignores its override on both sides, so import does too.
+      const attrField = attributeNamespaceToField(ns);
+      if (attrField !== null) {
+        const temporal = temporalOverrideError(c, attrField);
+        if (temporal !== null) errors.push(`${where}: ${temporal}.`);
+      }
       for (const k of Object.keys(c)) if (!ATTRIBUTE_KEYS.has(k)) errors.push(`${where}: unknown key "${k}" on attribute condition.`);
     } else {
       if (!CODED_OPS.has(op)) errors.push(`${where}: operator "${op}" is not a valid coded operator.`);
@@ -520,9 +600,95 @@ function validateGateConditions(
       // covered by this predicate — `parseHorizonValue` owns that rule (D2).
       const controlDomain = conditionControlDomainError(c);
       if (controlDomain !== null) errors.push(`${where}: ${controlDomain}.`);
+      // Only for a known field: `resolveEffectivePolicy` throws on an unknown
+      // one, which would duplicate the field error above.
+      if (CODED_FIELDS.has(c.field as string)) {
+        const temporal = temporalOverrideError(c, c.field as GateField);
+        if (temporal !== null) errors.push(`${where}: ${temporal}.`);
+      }
+      const wildcard = codeWildcardError(op, c.value);
+      if (wildcard !== null) errors.push(`${where}: ${wildcard}.`);
       for (const k of Object.keys(c)) if (!CODED_KEYS.has(k)) errors.push(`${where}: unknown key "${k}" on coded condition.`);
     }
   });
+}
+
+/**
+ * The NODE-tier temporal rules, checked by the same two calls session
+ * preflight makes (`sweepableConditions` → `adaptCodedCondition` /
+ * `adaptAttributeCondition` → `parseConditionOverride`, then
+ * `collectEncounterAnchorRequirements` → `resolveEffectivePolicy`):
+ *
+ *  - `window_days` and `horizon` are mutually exclusive;
+ *  - `horizon` is a named tier or `{days}` within the cap, and `window_days`
+ *    is a day count within the same cap;
+ *  - `status` is `active | inactive | any`, and is refused on labs and vitals,
+ *    which have no clinical state.
+ *
+ * These were enforced only when a session started, so a pathway that could
+ * never start imported and published cleanly. Pathway-level defaults are
+ * passed as `{}`: the import JSON carries none, and the status rule does not
+ * depend on them. The ENCOUNTER-anchor check stays at session creation — it
+ * depends on the session's context, not on the pathway.
+ */
+function temporalOverrideError(c: Record<string, unknown>, field: GateField): string | null {
+  try {
+    const override = parseConditionOverride(c, 'condition');
+    resolveEffectivePolicy(field, DEFAULT_TEMPORAL_POLICY_VERSION, {}, override);
+    return null;
+  } catch (e) {
+    if (e instanceof TemporalContextError) return e.message;
+    throw e;
+  }
+}
+
+/**
+ * Operators whose code is matched as a PATTERN — `matchesCodePattern`
+ * (legacy-v0) and `codeMatches` (v1 `select-facts.ts`) are called for exactly
+ * these. The other value-reading coded operators (`equals`, `greater_than`,
+ * `less_than`) compare the code with `===` in both engines. `exists` ignores
+ * the value altogether.
+ */
+const PATTERN_CODE_OPS = new Set([
+  'includes_code', 'count_in_window', 'trend_up', 'trend_down', 'delta_from_baseline',
+]);
+const EXACT_CODE_OPS = new Set(['equals', 'greater_than', 'less_than']);
+
+/**
+ * The runtime's only wildcard is ONE trailing `.*` after a non-empty prefix
+ * (`pattern.endsWith('.*')` → `startsWith(prefix)`). Any other `*` is compared
+ * literally, and no real code contains one, so the condition silently matches
+ * nothing: `G82.2*` reads like "G82.2x" and is always false.
+ */
+function codeWildcardError(operator: string, value: unknown): string | null {
+  if (typeof value !== 'string' || !value.includes('*')) return null;
+  if (EXACT_CODE_OPS.has(operator)) {
+    return (
+      `code "${value}" contains "*", but ${operator} matches codes exactly, so it can never ` +
+      `match — use includes_code for a pattern, or give the full code`
+    );
+  }
+  if (!PATTERN_CODE_OPS.has(operator)) return null;
+  const prefix = value.endsWith('.*') ? value.slice(0, -2) : null;
+  if (prefix === '') {
+    return (
+      `code pattern ".*" has an empty prefix and matches every code — ` +
+      `use operator "exists" for "any entry"`
+    );
+  }
+  if (prefix !== null && !prefix.includes('*')) return null;
+  // Suggest a rewrite only for the unambiguous mistake — a code with one
+  // trailing "*" and no dot before it (`G82.2*` → `G82.2.*`). Anything else
+  // (`Z94.*.1`, `*.9`, `Z9*.*`) has no rewrite that means what the author
+  // meant, and a wrong suggestion is worse than none.
+  const hint = /^[^*]*[^*.]\*$/.test(value)
+    ? ` — for a prefix match write "${value.slice(0, -1)}.*"`
+    : '';
+  return (
+    `code pattern "${value}" is not a wildcard the engine understands: only a single ` +
+    `trailing ".*" after a code prefix (e.g. "Z94.*") matches by prefix, and any other "*" ` +
+    `is compared literally and never matches${hint}`
+  );
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────

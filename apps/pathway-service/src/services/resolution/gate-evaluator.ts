@@ -934,6 +934,41 @@ function evaluateAggregateKernel(
 }
 
 /**
+ * The `v1` path for an attribute condition the kernel does not route — the
+ * legacy comparison, plus the missing-data signal for `patient.*`.
+ *
+ * A `patient.*` condition whose attribute is ABSENT used to come back as a bare
+ * `satisfied: false`: a missing gestational age gated its subtree out exactly
+ * as a measured 12 weeks would, and `on_unresolved` was never consulted. It now
+ * reports `dataUnavailable`, the same signal a coded or `lab.*` scalar with no
+ * value reports, so the gate asks (`patient.<attr>` datum, injected back into
+ * `patientAttributes` by the escalated-answer path) or defaults as authored.
+ *
+ * Deliberately narrow:
+ *  - **`patient` namespace only.** The other way to reach this fallback is a
+ *    `lab.*` / `allergy.*` with no `codeMap` row — a vocabulary gap, not a
+ *    missing datum. An ask there would inject into `patientAttributes`, which
+ *    that gate never reads, and the question would stay pending for ever.
+ *  - **Not `exists`.** Absence is exactly what `exists` asks about; it answered.
+ *  - **No keys when the value is present**, so a resolved demographic keeps the
+ *    shape it always had and still reads as definite in a compound gate.
+ *
+ * `legacy-v0` is untouched: it reports no missing-data signal for ANY datum
+ * (a missing lab is a silent false there too), so a silent false for a missing
+ * demographic is already consistent with its own semantics.
+ */
+function evaluateDemographicFallback(
+  condition: AttributeCondition,
+  deps: GateEvaluationDeps,
+): ConditionOutcome {
+  const outcome = evaluateConditionLegacyAdapted(condition, deps);
+  const attribute = condition.attribute;
+  if (!attribute.startsWith('patient.') || condition.operator === 'exists') return outcome;
+  const { value } = resolveAttribute(deps.patientContext, attribute, deps.codeMap);
+  return value === undefined ? { ...outcome, dataUnavailable: true } : outcome;
+}
+
+/**
  * Clinical attribute conditions on the kernel (Task 7, D3).
  *
  * `lab.*`, `vitals.*` and `allergy.*` read the fact store; `patient.*` keeps
@@ -964,7 +999,7 @@ function evaluateAttributeKernel(
 ): ConditionOutcome {
   const where = `condition (${condition.attribute})`;
   const adapted = adaptAttributeCondition(condition, deps.codeMap, where);
-  if (adapted === null) return evaluateConditionLegacyAdapted(condition, deps);
+  if (adapted === null) return evaluateDemographicFallback(condition, deps);
 
   const policy = effectivePolicyFor(adapted, deps.temporalContext, deps.pathwayDefaults);
   const outcome = selectFacts(adapted.selection, deps.factStore, policy);
@@ -1407,7 +1442,10 @@ function evaluateCompound(
     };
   }
 
-  const op = gate.operator ?? 'AND';
+  // Normalized: the import validator accepts `and`/`or` in any case, and the
+  // branches below test `op === 'AND'` — so a stored lowercase `and` used to
+  // evaluate as OR. Anything that is not OR stays AND, the stricter reading.
+  const op: 'AND' | 'OR' = String(gate.operator ?? 'AND').toUpperCase() === 'OR' ? 'OR' : 'AND';
   const allFieldsRead: string[] = [];
   // Typed as the full outcome, not `{satisfied, reason}`: the D5 signals died at
   // this boundary because the narrowed type made dropping them invisible.
@@ -1464,11 +1502,12 @@ function evaluateCompound(
   // `legacy-v0` is a bug in the seam (locked decision #2). Same rule as the
   // single-condition path in `evaluatePatientAttribute`.
   //
-  // A condition that reported NEITHER key — `patient.*` under `v1`, which keeps
-  // `resolveAttribute` forever (D3) — reads as definite and doubt-free, which is
-  // what `indeterminate === true` and `?? []` below give it. Absent must not
-  // mean "unknown", or every demographic condition would make its gate
-  // indeterminate.
+  // A condition that reported NEITHER key — a RESOLVED `patient.*` under `v1`,
+  // which keeps `resolveAttribute` forever (D3) — reads as definite and
+  // doubt-free, which is what `indeterminate === true` and `?? []` below give
+  // it. Absent must not mean "unknown", or every demographic condition would
+  // make its gate indeterminate. (An ABSENT `patient.*` value does report
+  // `dataUnavailable` — see `evaluateDemographicFallback`.)
   if (results.some((r) => r.indeterminate !== undefined)) {
     out.indeterminate = compoundIndeterminate(op, results);
   }
