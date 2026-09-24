@@ -1502,11 +1502,12 @@ function evaluateCompound(
   // `legacy-v0` is a bug in the seam (locked decision #2). Same rule as the
   // single-condition path in `evaluatePatientAttribute`.
   //
-  // A condition that reported NEITHER key — `patient.*` under `v1`, which keeps
-  // `resolveAttribute` forever (D3) — reads as definite and doubt-free, which is
-  // what `indeterminate === true` and `?? []` below give it. Absent must not
-  // mean "unknown", or every demographic condition would make its gate
-  // indeterminate.
+  // A condition that reported NEITHER key — a RESOLVED `patient.*` under `v1`,
+  // which keeps `resolveAttribute` forever (D3) — reads as definite and
+  // doubt-free, which is what `indeterminate === true` and `?? []` below give
+  // it. Absent must not mean "unknown", or every demographic condition would
+  // make its gate indeterminate. (An ABSENT `patient.*` value does report
+  // `dataUnavailable` — see `evaluateDemographicFallback`.)
   if (results.some((r) => r.indeterminate !== undefined)) {
     out.indeterminate = compoundIndeterminate(op, results);
   }
