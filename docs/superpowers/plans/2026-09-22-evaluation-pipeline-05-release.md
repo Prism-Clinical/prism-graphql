@@ -1429,7 +1429,7 @@ RUN_MUTATION_GATE=1 PIPELINE_PG_DATABASE=prism_release_scratch POSTGRES_PASSWORD
   npm test --prefix $W/apps/pathway-service -- --runInBand src/__tests__/evaluation-mutation-gate.test.ts 2>&1 | grep -E "p95|Tests:|Error"
 dropdb -h localhost -U prism prism_release_scratch; rm -f $SP/gate-copy.dump
 ```
-Expected: `Tests: 3 passed`, with the single p95 < 2000 ms, and the run answer and run fact p95s
+Expected: `Tests: 6 passed` (current and fixture passes), each pass with the single p95 < 2000 ms, and the run answer and run fact p95s
 each < 5000 ms. The copy needs no history rows, because it is dropped.
 
 **If a budget fails, stop. Do not open the PRs to `main`** (spec §5.7: revisit D1/D13).

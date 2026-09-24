@@ -84,3 +84,24 @@ all three fail on p95 (5148 / 5231 / 5246 ms). Removed; `git diff` clean.
 - Suite: **1673 passed / 9 failed / 15 skipped** (plan expected 14 skipped; +1 is the new opt-in
   override Postgres test). Only the two scorer suites fail. `tsc` clean; build OK.
 - Opt-in Postgres tests: **11 passed** (10 + the override test).
+
+## Review follow-up (2026-09-24, `5e497fd`)
+
+Review finding [P2]: with the reference tables empty, the coverage step passed on empty lookups.
+The mutation gate now has two passes on the scratch copy (fresh copy of live, backfilled, 067/068):
+
+| Pass | single `overrideNode` p95 | run answer p95 | run fact p95 |
+|---|---|---|---|
+| current (live references: empty) | 36 ms | 119 ms | 120 ms |
+| fixture (seeded rules, every Medication included, conflicts ACCEPT_BOTH) | 33 ms | 131 ms | 130 ms |
+
+The fixture pass stores all four finding kinds after every timed mutation:
+`PATIENT|DDI_SEVERE|PATIENT_MEDICATION`, `PATIENT|ALLERGY|PATIENT_ALLERGY`,
+`SET|DDI_SEVERE|OTHER_RECOMMENDATION`, `SET|DDI_MODERATE|OTHER_RECOMMENDATION`.
+**Falsification:** seeding without the three rule tables leaves no findings, and all three fixture
+tests fail on the coverage assertion.
+
+Found while doing this: the current pass's chronic-htn session has **one** included Medication
+(Aspirin). The others fall below the suggest threshold, and the gate, unlike the benchmark,
+includes none by override. So the current pass times a small safety workload. The fixture pass
+times the benchmark's workload.
