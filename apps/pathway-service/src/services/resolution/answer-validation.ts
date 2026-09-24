@@ -1,4 +1,23 @@
-import { GateAnswer, GateProperties, GateType } from './types';
+import { AnswerType, GateAnswer, GateProperties, GateType } from './types';
+
+/**
+ * The `AnswerType` enum value for whatever an `answer_type` was stored as.
+ *
+ * Authored pathway JSON writes `answer_type` in lowercase (`"boolean"`), the
+ * import validator accepts either case, and the GraphQL enum is uppercase — so
+ * a lowercase value passed straight through made the whole resolution fail
+ * with `Enum "AnswerType" cannot represent value: "boolean"`. Stored sessions
+ * already hold lowercase values, so this runs on READ as well as on write.
+ *
+ * An absent or unrecognised value falls back to BOOLEAN, the default the
+ * engine always used for an untyped question.
+ */
+export function normalizeAnswerType(raw: unknown): AnswerType {
+  const upper = raw == null ? '' : String(raw).trim().toUpperCase();
+  return (Object.values(AnswerType) as string[]).includes(upper)
+    ? (upper as AnswerType)
+    : AnswerType.BOOLEAN;
+}
 
 /**
  * Check an answer against the schema of the gate it answers.

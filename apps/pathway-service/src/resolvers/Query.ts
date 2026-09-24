@@ -3,6 +3,7 @@ import { DataSourceContext } from '../types';
 import { ConfidenceEngine } from '../services/confidence/confidence-engine';
 import { SignalDefinition, ResolvedWeight, normalizePropagationMode, PatientContext, AdminEvidenceEntry } from '../services/confidence/types';
 import { normalizePatientAttributes } from '../services/resolution/patient-attributes';
+import { normalizeAnswerType } from '../services/resolution/answer-validation';
 import { loadAttributeCodeMap } from '../services/resolution/attribute-code-map';
 import { buildAttributeVocabulary } from '../services/resolution/attribute-vocabulary';
 import {
@@ -112,7 +113,7 @@ export function formatSessionForGraphQL(session: ResolutionSession) {
     pendingQuestions: session.pendingQuestions.map(q => ({
       gateId: q.gateId,
       prompt: q.prompt,
-      answerType: q.answerType,
+      answerType: normalizeAnswerType(q.answerType),
       options: q.options ?? null,
       affectedSubtreeSize: q.affectedSubtreeSize,
       estimatedImpact: q.estimatedImpact,
@@ -717,7 +718,7 @@ export const Query = {
       return session.pendingQuestions.map(q => ({
         gateId: q.gateId,
         prompt: q.prompt,
-        answerType: q.answerType,
+        answerType: normalizeAnswerType(q.answerType),
         options: q.options ?? null,
         affectedSubtreeSize: q.affectedSubtreeSize,
         estimatedImpact: q.estimatedImpact,

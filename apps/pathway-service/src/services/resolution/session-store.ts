@@ -5,7 +5,7 @@
  * DB functions handle CRUD on pathway_resolution_sessions and analytics tables.
  */
 
-import { Pool } from 'pg';
+import { Pool, PoolClient } from 'pg';
 import { EvaluationTemporalContext } from './temporal/evaluation-context';
 import {
   ResolutionState,
@@ -19,6 +19,41 @@ import {
 } from './types';
 import { activeConditionPredicate } from '../snapshot/active-context-filter';
 import { findAncestors } from '../codes/icd10-hierarchy';
+
+/**
+ * Anything a write can run on: the pool, or a client holding a transaction.
+ * `updateSession` and `logEvent` take this so a caller can commit a session
+ * change and its audit event together.
+ */
+export type Queryable = Pick<Pool, 'query'>;
+
+/**
+ * Run `fn` inside one transaction on one pooled client.
+ *
+ * A session write followed by a separate audit write is two commits: when the
+ * second fails, the caller sees an error for a change that already persisted.
+ * That is how a rejected event type made every branch choice report failure
+ * while silently taking effect.
+ */
+export async function withTransaction<T>(
+  pool: Pool,
+  fn: (tx: PoolClient) => Promise<T>,
+): Promise<T> {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const out = await fn(client);
+    await client.query('COMMIT');
+    return out;
+  } catch (err) {
+    // The original error is what the caller needs; a failed ROLLBACK on an
+    // already-broken connection must not replace it.
+    await client.query('ROLLBACK').catch((): void => undefined);
+    throw err;
+  } finally {
+    client.release();
+  }
+}
 
 // ─── Helpers ───────────────────────────────────────────────────────
 
@@ -209,7 +244,7 @@ export async function getSession(
 }
 
 export async function updateSession(
-  pool: Pool,
+  pool: Queryable,
   sessionId: string,
   updates: {
     status?: string;
@@ -309,7 +344,7 @@ export async function updateSession(
 // ─── DB: Events & Analytics ────────────────────────────────────────
 
 export async function logEvent(
-  pool: Pool,
+  pool: Queryable,
   sessionId: string,
   event: {
     eventType: string;
@@ -361,7 +396,7 @@ export async function logNodeOverride(
 }
 
 export async function logGateAnswer(
-  pool: Pool,
+  pool: Queryable,
   data: {
     sessionId: string;
     gateId: string;

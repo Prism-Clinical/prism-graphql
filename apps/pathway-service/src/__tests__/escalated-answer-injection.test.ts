@@ -19,6 +19,7 @@ jest.mock('../services/resolution/session-store', () => ({
   getSession: jest.fn(),
   updateSession: jest.fn().mockResolvedValue(undefined),
   logEvent: jest.fn().mockResolvedValue(undefined),
+  withTransaction: jest.fn((pool: unknown, fn: (tx: unknown) => unknown) => fn(pool)),
   logNodeOverride: jest.fn().mockResolvedValue(undefined),
   logGateAnswer: jest.fn().mockResolvedValue(undefined),
   getMatchedPathways: jest.fn().mockResolvedValue([]),
@@ -221,7 +222,7 @@ describe('an escalated answer becomes a fact', () => {
     );
 
     const asserted = mockedLogEvent.mock.calls.find(
-      c => (c[2] as { eventType: string }).eventType === 'PROVIDER_ASSERTED_DATUM',
+      c => (c[2] as { eventType: string }).eventType === 'provider_asserted_datum',
     );
     expect(asserted).toBeDefined();
     expect((asserted![2] as { triggerData: { datumKey: string; value: number } }).triggerData)

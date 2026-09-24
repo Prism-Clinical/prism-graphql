@@ -253,6 +253,27 @@ function definiteLatest(facts: NormalizedFact[]): NormalizedFact | null {
   return null;
 }
 
+/**
+ * The tie-break for a provider's answer, when `definiteLatest` found none.
+ *
+ * An undated fact spans (-Inf, +Inf), so no dated fact can be definitely later
+ * than it — which is right for chart values and is left alone. But when the
+ * ambiguity was escalated and a provider answered, their value is dated at the
+ * session clock and is the one thing on file known to be current. It is
+ * ordered against the DATED candidates only: it beats every undated value,
+ * and still loses to a dated chart value that is genuinely later.
+ *
+ * Without a dated provider assertion this returns null, so "several undated
+ * values" and "a dated value beside undated ones" stay AMBIGUOUS_LATEST
+ * exactly as before. Whether undated chart values should ever be ordered is a
+ * product decision, not this rule.
+ */
+function providerAssertedLatest(facts: NormalizedFact[]): NormalizedFact | null {
+  const dated = facts.filter((f) => f.interval.start !== undefined);
+  if (!dated.some((f) => f.provenance.sourceType === 'PROVIDER_ASSERTED')) return null;
+  return definiteLatest(dated);
+}
+
 export function selectFacts(
   condition: FactSelectionCondition,
   store: FactStore,
@@ -324,7 +345,8 @@ export function selectFacts(
       };
     }
     if (included.length === 0) return { status: 'NO_MATCH', decisions };
-    const winner = definiteLatest(included.map((d) => d.fact));
+    const winner =
+      definiteLatest(included.map((d) => d.fact)) ?? providerAssertedLatest(included.map((d) => d.fact));
     if (!winner) return { status: 'INDETERMINATE', reasons: ['AMBIGUOUS_LATEST'], decisions };
     return { status: 'READY', selected: [winner], decisions, ...flags(included) };
   }

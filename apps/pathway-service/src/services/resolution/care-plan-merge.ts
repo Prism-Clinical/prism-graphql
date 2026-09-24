@@ -371,6 +371,21 @@ export interface SuppressedRecommendation {
     | ResolvedQualityMetric;
 }
 
+/**
+ * A matched pathway that was left out of the merge because it could not be
+ * resolved for this session — today, only because it needs an encounter
+ * anchor the session does not have. Recorded so the omission is visible
+ * rather than looking like the pathway never matched.
+ */
+export interface SkippedPathway {
+  pathwayId: string;
+  logicalId: string;
+  pathwayTitle: string;
+  /** The error code that excluded it, e.g. MISSING_ENCOUNTER_ANCHOR. */
+  code: string;
+  reason: string;
+}
+
 export interface MergedCarePlan {
   sourcePathwayIds: string[];
   medications: MergedRecommendation<ResolvedMedication>[];
@@ -406,6 +421,11 @@ export interface MergedCarePlan {
    * would have recommended X if you had Y."
    */
   dataGapHints: (DataGapHint & { sourcePathwayId: string })[];
+  /**
+   * Matched pathways left out of this merge, and why. Optional because rows
+   * stored before it existed lack it; the GraphQL formatter reads it as [].
+   */
+  skippedPathways?: SkippedPathway[];
 }
 
 // ─── Public API ───────────────────────────────────────────────────────

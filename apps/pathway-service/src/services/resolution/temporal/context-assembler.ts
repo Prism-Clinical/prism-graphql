@@ -195,7 +195,7 @@ function assembleLabs(
       system: entry.system,
       interval: { start, end },
       ...validityOf(entry.recordValidity, where),
-      provenance: { sourceType: 'SYNTHETIC' },
+      provenance: { sourceType: entry.providerAsserted === true ? 'PROVIDER_ASSERTED' : 'SYNTHETIC' },
     };
     if (entry.display !== undefined) fact.display = entry.display;
     if (entry.value !== undefined) fact.value = entry.value;

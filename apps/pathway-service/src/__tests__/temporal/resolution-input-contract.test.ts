@@ -33,6 +33,7 @@ jest.mock('../../services/resolution/session-store', () => ({
   getSession: jest.fn().mockResolvedValue({ id: 'session-1' }),
   updateSession: jest.fn().mockResolvedValue(undefined),
   logEvent: jest.fn().mockResolvedValue(undefined),
+  withTransaction: jest.fn((pool: unknown, fn: (tx: unknown) => unknown) => fn(pool)),
   logNodeOverride: jest.fn().mockResolvedValue(undefined),
   logGateAnswer: jest.fn().mockResolvedValue(undefined),
 }));
