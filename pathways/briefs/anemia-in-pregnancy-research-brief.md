@@ -181,9 +181,12 @@ the pathway presumes the coded diagnosis.
     opened Stage 2. Now `skip`: ferritin ≥30 excludes iron therapy. Missing ferritin still
     holds Stage 2 and asks for the value — the same as before this change, because
     `on_unresolved` defaults to `ask`. "Include when ferritin is missing, exclude when it is
-    normal" is **not expressible** on main. **Needs a physician call:** keep `ask` (Stage 2
+    normal" is **not expressible** on main. ~~Needs a physician call: keep `ask` (Stage 2
     waits for a ferritin), or `default` (missing ferritin excludes Stage 2 — empiric iron
-    then only via the provider).
+    then only via the provider).~~
+  - `[DECISION — Josh 2026-09-24]` **Resolved: `ask`** — numeric gates ask when the value
+    is missing (general rule; see §18 "On unresolved — RESOLVED"). A missing ferritin holds
+    Stage 2 and asks for the value; empiric iron without ferritin is DP-1's criterion 1a.
   - Condition (coded): field `labs`, less_than, value `2276-4` (ferritin, LOINC),
     threshold 30, horizon {days: 90}
   - Rationale: ACOG confirmatory cutoff (sens 92%/spec 98% per ASH); WHO uses <15,
@@ -682,7 +685,14 @@ is now `skip` + `on_unresolved: ask`; see §4b).
     avoid all three. §14 is now empty. Normocytic band uses 79.9/100.1 strict boundaries
     (coded operators lack ≥/≤). Revert candidates when the dashboard/platform catch up.
 
-### `[BUILD FIX 2026-09-24]` On unresolved — needs a physician call
+### `[BUILD FIX 2026-09-24]` On unresolved — RESOLVED
+
+`[DECISION — Josh 2026-09-24]` **Resolved as a general rule: numeric gates ask when the
+value is missing.** Every gate listed below keeps `on_unresolved: ask`; no JSON change.
+This is no longer a per-gate question for review — the rule is in the format spec, the
+brief template and the builder's gate-control lint, and a numeric gate may take `default`
+only with an `[ON-UNRESOLVED DEFAULT — <gate-id>]` justification in this brief (there is
+none). The original note follows for the record.
 
 Main (PR #55) added a per-gate `on_unresolved` (ask | default) that this brief predates.
 It decides what a gate does when its lab/vital value is **missing or ambiguous**: `ask`

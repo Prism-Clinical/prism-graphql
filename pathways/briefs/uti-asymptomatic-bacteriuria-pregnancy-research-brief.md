@@ -681,7 +681,14 @@ carries only table *captions*, so any term-count run against HTML alone silently
 tables. All ACOG citations here are primary text, and the zero-count verifications were run
 against the full PDF including Tables 1–3.
 
-### `[BUILD FIX 2026-09-24]` On unresolved — needs a physician call
+### `[BUILD FIX 2026-09-24]` On unresolved — RESOLVED
+
+`[DECISION — Josh 2026-09-24]` **Resolved as a general rule: numeric gates ask when the
+value is missing.** The three gates listed below keep `on_unresolved: ask`; no JSON
+change. This is no longer a per-gate question for review — the rule is in the format
+spec, the brief template and the builder's gate-control lint, and a numeric gate may take
+`default` only with an `[ON-UNRESOLVED DEFAULT — <gate-id>]` justification in this brief
+(there is none). The original note follows for the record.
 
 Main (PR #55) added a per-gate `on_unresolved` (ask | default) that this brief predates.
 It decides what a gate does when its lab/vital value is **missing or ambiguous**: `ask`

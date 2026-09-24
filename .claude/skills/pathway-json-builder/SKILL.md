@@ -63,11 +63,13 @@ Follow the spec exactly. Brief-section → JSON mapping:
 - §4b Gates → Gate nodes, `HAS_GATE` from "Attached to", `BRANCHES_TO` to the target.
   Emit conditions exactly as the brief specifies (attribute vs coded form, operator params);
   don't silently "correct" attribute spellings — flag suspected drift in the delivery
-  message instead. **Emit `on_unresolved` on every chart gate**: the brief's §4b "On
-  unresolved" value on a gate with a scalar (lab/vital threshold) condition — if an older
-  brief has no such field, emit `ask` (main's own default, so no behaviour change) and list
-  the gate in the delivery message as needing a clinical call; `default` on a gate with no
-  scalar condition (the engine never asks there). Wildcards: only a trailing `.*` (`G82.2.*`); rewrite a
+  message instead. **Emit `on_unresolved` on every chart gate**: `ask` on every gate with a
+  numeric condition (coded labs/vitals `greater_than`/`less_than`, or a `lab.*`/`vitals.*`/
+  `patient.*` attribute other than `exists`) — **decided rule (Josh, 2026-09-24): numeric
+  gates ask when the value is missing**, so this is not a clinical call to list; emit
+  `default` on a numeric gate only when the brief carries `[ON-UNRESOLVED DEFAULT —
+  <gate-id>]` (the gate-control check fails it otherwise); `default` on a gate with no
+  numeric condition (the engine never asks there). Wildcards: only a trailing `.*` (`G82.2.*`); rewrite a
   brief's `G82.2*` to `G82.2.*` and note it — any other `*` is a literal that matches
   nothing. Emit `display` on every lab condition
   (readable name + unit) — it is the missing-value prompt. Never emit `prompt` on a chart
@@ -158,7 +160,10 @@ node .claude/skills/pathway-json-builder/scripts/check-gate-control.ts pathways/
 (No install needed; Node runs the TS directly.) It enforces the two gate-wiring rules
 statically: a gate target reachable by any competing route (Rule 1), two gates sharing
 a target (Rule 2), and a chart gate with several targets or a router edge without `when`
-(Rule 3). Exit 0 = clean; 1 = violations, each naming the offending edges. **Never
+(Rule 3), plus the condition lints (horizons, wildcards, `on_unresolved` — a numeric gate
+set to `default` fails unless the brief carries its marker). It finds the brief at
+`pathways/briefs/<logical_id>-research-brief.md`; pass `--brief <path>` if it lives
+elsewhere. Exit 0 = clean; 1 = violations, each naming the offending edges. **Never
 deliver a pathway with gate-control violations** — it will import cleanly, display
 correctly in the canvas, and quietly recommend every gated treatment to every patient.
 Fix by deleting the competing edge or merging the gates; if the brief's intent is genuinely
@@ -170,8 +175,8 @@ Save to `pathways/json/<logical_id>.json` and send the file. Delivery message: p
 + version; node counts by type; validator result ("passed the real import validator, N
 warnings"); gate-control result ("passed check-gate-control.ts, N gates / N gated targets")
 plus any gate re-wiring done to satisfy Rules 1–3; code_sets emitted (how many); every substitution made (gate evidence → host
-step, blocked-gate fallbacks, code reattachments); every gate given `on_unresolved: ask` by
-default for want of a brief decision; the §14 attribute-map seeding checklist
+step, blocked-gate fallbacks, code reattachments); every numeric gate the brief exempted
+from `ask` via an `[ON-UNRESOLVED DEFAULT]` marker; the §14 attribute-map seeding checklist
 (if any — these rows must exist in `pathway_attribute_code_map` before the gates evaluate);
 any drift-check findings; every horizon defaulted for want of a §17 row; every
 trend/delta/count gate flagged "simulator-untestable (needs dated facts)"; and a reminder to upload via the Prism Admin Dashboard

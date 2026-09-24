@@ -175,9 +175,11 @@ temporal-audit table — these are emitted into the JSON, not annotations).
 - [ ] Every Stage/Step/DP/Criterion/Med/Lab/Imaging/Procedure/Guidance node has a citation
       in §16; Gate/CodeEntry/QM/Schedule evidence is mapped to its host Step.
 - [ ] Every medication has a valid `role` and either a `clinical_role` or an explicit "n/a".
-- [ ] Every gate: valid type, default_behavior with rationale, "On unresolved" (ask |
-      default, with rationale) on every gate with a lab/vital threshold, type-specific fields complete,
-      attached-to + branches-to named; no `prior_node_result` without a fallback.
+- [ ] Every gate: valid type, default_behavior with rationale, "On unresolved" **ask** on
+      every gate with a numeric condition (decided rule — not an open question; `default`
+      only with an `[ON-UNRESOLVED DEFAULT — gate-<slug>]` marker and its clinical reason),
+      type-specific fields complete, attached-to + branches-to named; no
+      `prior_node_result` without a fallback.
 - [ ] Attribute conditions use only lab/vitals/allergy/patient; all lab.*/allergy.* in §14.
 - [ ] Every trend/response gate names its physiologic drift, its absolute target (if any),
       and the expected response rate.

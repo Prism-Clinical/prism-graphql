@@ -161,10 +161,11 @@ exactly one (Rule 3).
 > - **`SELECTS_BRANCH` is a live traversal edge**, not just UI metadata. A Criterion
 >   reaches its `SELECTS_BRANCH` target unconditionally, so it counts as a competing route
 >   under Rule 1.
-> - **Missing data is `on_unresolved`'s job, not `default_behavior`'s.** A scalar lab or
->   vital with no usable value makes the gate *unresolved*; by default it then ASKS for the
->   value and holds its subtree (see **Missing data** below). A membership condition
->   (`includes_code`, `exists`) never is — "no code on file" is a definite no.
+> - **Missing data is `on_unresolved`'s job, not `default_behavior`'s.** A numeric lab,
+>   vital or `patient.*` value that is missing makes the gate *unresolved*; it then ASKS for
+>   the value and holds its subtree (see **Missing data** below — `ask` is the rule for
+>   numeric gates). A membership condition (`includes_code`, `exists`) never is — "no code
+>   on file" is a definite no.
 >
 > Real failure this prevents: anemia-in-pregnancy v1.4 passed the import validator with 0
 > errors and 0 warnings, and **not one of its 5 gates could exclude anything** — a patient
@@ -236,11 +237,18 @@ but cannot be ordered, e.g. two undated results for the same LOINC → `AMBIGUOU
 | `ask` (**the default when absent**) | Gate → PENDING_QUESTION, its whole subtree held ("Awaiting <datum>"), and a pending question asks the provider for the missing value. The answer is injected as a fact and the gate re-evaluates. |
 | `default` | `default_behavior` applies, exactly as for "answered no". |
 
-- **Which conditions can be unresolved:** only *scalar* ones — `greater_than`/`less_than`
-  on `labs` or `vitals`, and attribute conditions. Membership (`includes_code`, `equals`,
-  `exists`) never is: absence is a definite no. Aggregates (`count_in_window`, trends,
-  `delta_from_baseline`) never ask — "the count is 3" is not an observation — and fall to
-  `default_behavior`.
+- **Which conditions can be unresolved — the *numeric* conditions.** One definition,
+  used by this spec, the brief template and `check-gate-control.ts`:
+  - coded `labs` or `vitals` with `greater_than` / `less_than`;
+  - attribute conditions on `lab.*`, `vitals.*` or `patient.*` with any operator except
+    `exists` (absence *is* the answer to `exists`). `patient.*` asks too since engine
+    fix `8f64fc1` (josh-dev): a missing demographic reports `dataUnavailable` and asks for
+    the `patient.<attr>` datum. (An **unmapped** `lab.*`/`allergy.*` — no code-map row —
+    is a vocabulary gap, not a missing datum, and never asks.)
+
+  Membership (`includes_code`, `equals`, `exists` on coded fields) never is unresolved:
+  absence is a definite no. Aggregates (`count_in_window`, trends, `delta_from_baseline`)
+  never ask — "the count is 3" is not an observation — and fall to `default_behavior`.
 - **Compounds:** OR is satisfied by any definite true; if nothing is true and some
   condition is unresolved, the gate is unresolved (a definite false does not outweigh an
   unknown). AND is unsatisfied by any definite false. A compound asks for **one datum at a
@@ -255,11 +263,15 @@ but cannot be ordered, e.g. two undated results for the same LOINC → `AMBIGUOU
   prompts print the path (`display` is ignored). **Do not set `prompt` on a chart gate:** an
   authored prompt replaces the generated one for every datum the gate asks for.
 - **Question gates:** inert — an unanswered question always pends.
-- **Choosing:** `ask` when a missing value must not silently decide the branch (safety
-  gates, gates whose "no" excludes treatment). `default` when missing data may honestly
-  mean "not applicable" (optional add-ons) — then `default_behavior` decides. The choice is
-  clinical: the brief states it per gate (§4b "On unresolved"). A gate with no scalar
-  condition gets `default`, because that is what the engine does.
+- **Choosing — decided, not per-gate (Josh, 2026-09-24): numeric gates ask when the value
+  is missing.** Every gate with a numeric condition emits `on_unresolved: "ask"`. This is
+  no longer an open clinical question for each gate: a missing lab, vital or gestational
+  age must not silently decide a branch. `default` on a numeric gate is an **exception**,
+  allowed only when the brief justifies it with an `[ON-UNRESOLVED DEFAULT — <gate-id>]`
+  marker (see **Brief markers**) — e.g. an optional add-on where a missing value honestly
+  means "not applicable". `check-gate-control.ts` fails a numeric gate set to `default`
+  without that marker. A gate with **no** numeric condition gets `default`, because that
+  is what the engine does (an `ask` there is inert and warned).
 - **Simulator caveat:** composer labs are undated, so two results for one LOINC are
   `AMBIGUOUS_LATEST` and the gate asks; the injected answer is undated too, so it stays
   ambiguous (engine gap). Enter one value per LOINC when simulating.
@@ -529,6 +541,18 @@ options check now exists but is case-sensitive, so it skips uppercase `SELECT` (
 **question**). Still preflight-only, not import: `status` on labs/vitals, `window_days` +
 `horizon` together, horizon grammar. Import still accepts a wildcard anywhere in a code.
 The builder rules and `check-gate-control.ts` cover all of these.
+
+### Brief markers (read by `check-gate-control.ts`)
+
+Some lints allow a documented exception. The exception is written in the research brief,
+not the JSON, as a bracketed marker on the line that gives the clinical reason. The check
+finds the brief at `pathways/briefs/<logical_id>-research-brief.md` (next to the JSON's
+`json/` directory), or wherever `--brief <path>` points, and reads it only when a marker is
+needed. An em dash or `-`/`--` separates tag and ids.
+
+| Marker | Allows | Without it |
+|---|---|---|
+| `[ON-UNRESOLVED DEFAULT — <gate-id>]` | a numeric gate with `on_unresolved: "default"` | error — numeric gates ask |
 
 ## What the simulator sends (author gates against THIS)
 
