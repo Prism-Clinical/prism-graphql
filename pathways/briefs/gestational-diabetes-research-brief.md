@@ -32,6 +32,14 @@ as seeded today.
 >    1-h ≥140 or 2-h ≥120 mg/dL; `on_unresolved: ask`). No stage holding insulin has a root
 >    or `HAS_STEP` edge. That structural edge is exactly what made the retired
 >    `gdm-management-v2` give insulin to a patient at target (§0.2).
+>    - Every antepartum medication node that recommends a drug (NPH, lispro/aspart,
+>      metformin, glucagon) sits behind one of the three SMBG gates.
+>    - The only other medication nodes are:
+>      - the `avoid` entries on Step 2.5 (glyburide; non-insulin agents), which recommend
+>        nothing and hard-suppress;
+>      - prevention metformin, which sits behind the postpartum and long-term A1C/OGTT gates.
+>    - Continuation of an existing regimen (Step 6.4, via the control-class question) carries
+>      no medication nodes.
 > 3. **Gestational age and screening status are asked, not read.** `patient.gestational_age_weeks`
 >    exists in the simulator, but a missing `patient.*` value is a silent "no" that can
 >    never ask (commit `10fc9c8`; spec §patient_attribute). That breaks Josh's rule that
@@ -175,7 +183,7 @@ Within Part B, lanes are split so complementary drugs never conflict:
 | D-9 | "Consistently above target": numeric gate alone vs numeric gate chained to a confirmation question | **Numeric gate alone** (Josh's rule). The chained question is offered, not built |
 | D-10 | SMBG gate horizon | **{days: 14}** (weekly review [3], with slack) |
 | D-11 | Glyburide role: `avoid` (hard-suppressed) vs `second_line` | **`avoid`** |
-| D-12 | Z86.32 as a Part B trigger (enables postpartum and long-term follow-up; a later pregnancy is routed away by question) | **Include** |
+| D-12 | Z86.32 as a Part B trigger (enables postpartum and long-term follow-up; a later pregnancy is routed away by question). **Cost:** Z86.32 is a permanent history code, so Part B matches **every future encounter for life**, including unrelated visits, and each one asks `gate-gdm-phase`. The alternative is to drop Z86.32 and leave long-term follow-up to a separate primary-care pathway | **Include** (ratify knowing the cost) |
 | D-13 | Postpartum OGTT gate `on_unresolved`: `ask` (Josh's rule) vs `default` (avoids a premature question during weeks 0–4) | **ask** |
 | D-14 | Postpartum OGTT horizon {days: 60}, which keeps antepartum OGTT values out of the postpartum read | **{days: 60}** |
 | D-15 | Basal insulin node: NPH only (glargine in notes) vs NPH + glargine as same-lane alternatives (forces a provider choice every time) | **NPH only** |
@@ -354,7 +362,10 @@ Only Stage 1 has a root `HAS_STAGE` edge.
   - One-step: 75-g fasting 2-h OGTT.
   - Screen as soon as possible if the patient is past 28 weeks and unscreened (USPSTF).
   - After bariatric surgery with dumping, a glucose load may not be tolerated; consider
-    alternatives such as a week of home glucose monitoring (Guid-A3). [2][4][7]
+    alternatives such as a week of home glucose monitoring. `[GAP]` Primary ACOG PB 105 text is
+    paywalled, and only a secondary summary was found. ADA 2026 has no pregnancy-specific
+    statement, so this is clinician text only: there is no Guidance node, because the node
+    would have no citable source. [2][4][7]
 - **Step 3.2 — Two-step, step 1: 50-g 1-hour glucose challenge test** *(Stage
   `stage-3-two-step`, unconditional; hosts `gate-gct-positive`)*: nonfasting 50-g oral glucose
   load; plasma glucose at 1 hour. Positive at ≥140 mg/dL (D-3). [2][4][7]
@@ -568,12 +579,6 @@ None.
   it. If you have risk factors, we check an A1C blood test at your first visit so that
   diabetes can be treated from the start. Even if this early test is normal, you will still
   have the standard glucose test at 24–28 weeks." [4][5]
-- **Guid-A3 — topic `GDM screening after bariatric surgery`** (on Step 3.1), category
-  safety-netting. Instructions: "If you have had weight-loss surgery and get dumping symptoms
-  (fast heartbeat, sweating, cramping or diarrhoea after sugary drinks), tell us before the
-  glucose drink. We may check your blood sugar at home for about a week instead."
-  - `[GAP]` Primary text of ACOG PB 105 (bariatric) is paywalled. Secondary summary only;
-    ADA 2026 has no pregnancy-specific statement.
 - **Guid-A4 — topic `GDM diagnosis: what happens next`** (on Step 3.4; **duplicate node Guid-A4b, same topic and text, on Step 3.6** — one parent per node, see §0.6 #10), category
   education. Instructions:
   - "Gestational diabetes means your body is not handling sugar as well as it needs to during
@@ -661,7 +666,7 @@ See **Shared §15** at the end of this file. Part A uses: [1], [2], [3], [4], [5
 - Gates `gate-screening-strategy` → Step 3.1; `gate-gct-positive` → Step 3.2;
   `gate-100g-diagnostic` → Step 3.3; `gate-75g-diagnostic` → Step 3.5
 - Lab-A1: [4] · Lab-A2: [4] · Lab-A3: [2], [4], [7] · Lab-A4: [2], [4], [7] · Lab-A5: [4], [7]
-- Guid-A1: [2], [4] · Guid-A2: [4], [5] · Guid-A3: none citable, `[GAP]` · Guid-A4: [2], [5] · Guid-A5: [4], [5]
+- Guid-A1: [2], [4] · Guid-A2: [4], [5] · Guid-A4: [2], [5] · Guid-A5: [4], [5]
 - Sched-A1 → Step 2.5 · Sched-A2 → Step 2.4 · CodeEntries → their host nodes
 
 ## A-17. Temporal horizon & status summary (EMITTED — review carefully)
@@ -761,7 +766,7 @@ Enterable today (seeded in `clinical_code_reference`): Z34.00, Z34.90, O09.40, O
 | O24.434 | ICD-10 | Gestational diabetes mellitus in the puerperium, insulin controlled | postpartum trigger | gdm-postpartum |
 | O24.435 | ICD-10 | Gestational diabetes mellitus in the puerperium, controlled by oral hypoglycemic drugs | postpartum trigger | gdm-postpartum |
 | O24.439 | ICD-10 | Gestational diabetes mellitus in the puerperium, unspecified control | postpartum trigger | gdm-postpartum |
-| Z86.32 | ICD-10 | Personal history of gestational diabetes | follow-up trigger — `[DECISION D-12]` | gdm-history |
+| Z86.32 | ICD-10 | Personal history of gestational diabetes | follow-up trigger — `[DECISION D-12]`. Permanent history code: fires on every later encounter and asks `gate-gdm-phase` each time | gdm-history |
 
 **Deliberately excluded:** O24.42x (GDM in childbirth). These are delivery-admission codes
 used inpatient; this is an outpatient pathway. Z79.4, Z79.84 and Z79.85 are not assigned with O24.4-
