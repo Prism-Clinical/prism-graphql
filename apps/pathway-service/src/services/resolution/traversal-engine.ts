@@ -8,6 +8,7 @@ import { askFor } from './unresolved-prompt';
 import { parseBranchWhen } from '../import/branch-when';
 import { decisionValueOf, decisionSelects } from './decision-value';
 import { normalizeAnswerType } from './answer-validation';
+import { containmentChildIds, containmentParentIds, containmentClosure } from './graph-containment';
 import {
   reconcilePendingQuestions,
   reconcileRedFlags,
@@ -142,7 +143,10 @@ function markBranchNotSelected(
   rewritten: Set<string>,
   provisional?: Set<string>,
   held?: Set<string>,
+  /** Live nodes the sweep must neither write nor pass through. See markSubtree. */
+  spare?: ReadonlySet<string>,
 ): void {
+  if (spare?.has(targetId)) return;
   if (resolutionState.has(targetId) && !provisional?.has(targetId) && !held?.has(targetId)) return;
   const target = graphContext.getNode(targetId);
   if (!target) return;
@@ -153,9 +157,9 @@ function markBranchNotSelected(
   // medication vanished from the session outright when the provider switched
   // away from an overridden branch.
   if (held?.has(targetId)) {
-    const heldKids = graphContext.outgoingEdges(targetId).map(e => e.targetId);
+    const heldKids = containmentChildIds(graphContext, targetId);
     addAll(rewritten, markSubtree(heldKids, graphContext, resolutionState, NodeStatus.EXCLUDED,
-      `Excluded with ${nodeTitle(target)}`, targetId, depth + 1, provisional, held));
+      `Excluded with ${nodeTitle(target)}`, targetId, depth + 1, provisional, held, spare));
     return;
   }
 
@@ -175,9 +179,9 @@ function markBranchNotSelected(
     properties: target.properties,
   });
 
-  const kids = graphContext.outgoingEdges(targetId).map(e => e.targetId);
+  const kids = containmentChildIds(graphContext, targetId);
   addAll(rewritten, markSubtree(kids, graphContext, resolutionState, NodeStatus.EXCLUDED,
-    `Excluded with ${nodeTitle(target)}`, targetId, depth + 1, provisional, held));
+    `Excluded with ${nodeTitle(target)}`, targetId, depth + 1, provisional, held, spare));
 }
 
 function isDecisionPoint(node: GraphNode): boolean {
@@ -207,9 +211,9 @@ function countSubtree(startIds: string[], graphContext: GraphContext): number {
     const id = queue.shift()!;
     if (visited.has(id)) continue;
     visited.add(id);
-    for (const edge of graphContext.outgoingEdges(id)) {
-      if (!visited.has(edge.targetId)) {
-        queue.push(edge.targetId);
+    for (const child of containmentChildIds(graphContext, id)) {
+      if (!visited.has(child)) {
+        queue.push(child);
       }
     }
   }
@@ -246,6 +250,12 @@ export function markSubtree(
    * medication included under a gate that had just closed.
    */
   held?: Set<string>,
+  /**
+   * Nodes that are live through another path — the branches a fork TAKES, and
+   * everything under them. Neither written nor descended through: whatever
+   * lies beyond them is theirs to dispose.
+   */
+  spare?: ReadonlySet<string>,
 ): Set<string> {
   const marked = new Set<string>();
   const queue: Array<{ id: string; depth: number }> = startIds.map(id => ({ id, depth: baseDepth + 1 }));
@@ -256,6 +266,7 @@ export function markSubtree(
     // reachable via multiple paths, the first path to evaluate it determines
     // its status. BFS ordering is deterministic for a given graph structure.
     if (marked.has(id)) continue;
+    if (spare?.has(id)) continue;
     const isHeld = held?.has(id) === true;
     if (resolutionState.has(id) && !provisional?.has(id) && !isHeld) continue;
 
@@ -265,8 +276,8 @@ export function markSubtree(
     // A held node keeps its status and is NOT counted as rewritten — but the
     // loop below still descends through it.
     if (isHeld) {
-      for (const edge of graphContext.outgoingEdges(id)) {
-        if (!marked.has(edge.targetId)) queue.push({ id: edge.targetId, depth: depth + 1 });
+      for (const child of containmentChildIds(graphContext, id)) {
+        if (!marked.has(child)) queue.push({ id: child, depth: depth + 1 });
       }
       continue;
     }
@@ -287,12 +298,12 @@ export function markSubtree(
       properties: node.properties,
     });
 
-    for (const edge of graphContext.outgoingEdges(id)) {
-      if (!marked.has(edge.targetId)
-          && (!resolutionState.has(edge.targetId)
-              || provisional?.has(edge.targetId)
-              || held?.has(edge.targetId))) {
-        queue.push({ id: edge.targetId, depth: depth + 1 });
+    for (const child of containmentChildIds(graphContext, id)) {
+      if (!marked.has(child)
+          && (!resolutionState.has(child)
+              || provisional?.has(child)
+              || held?.has(child))) {
+        queue.push({ id: child, depth: depth + 1 });
       }
     }
   }
@@ -693,7 +704,7 @@ export class TraversalEngine {
     const promote = (id: string): string => {
       const seen = new Set<string>([id]);
       const parentsOf = (x: string) =>
-        graphContext.incomingEdges(x).map(e => e.sourceId).filter(p => !seen.has(p));
+        containmentParentIds(graphContext, x).filter(p => !seen.has(p));
 
       let current = id;
       // 1. A closed node was closed FROM ABOVE, so its own status is not its
@@ -728,8 +739,8 @@ export class TraversalEngine {
       const id = frontier.shift()!;
       if (region.has(id)) continue;
       region.add(id);
-      for (const edge of graphContext.outgoingEdges(id)) {
-        if (!region.has(edge.targetId)) frontier.push(edge.targetId);
+      for (const child of containmentChildIds(graphContext, id)) {
+        if (!region.has(child)) frontier.push(child);
       }
       for (const consumer of dependencyMap.influences.get(id) ?? []) {
         if (region.has(consumer)) continue;
@@ -783,15 +794,15 @@ export class TraversalEngine {
     // insertion order — so this was reachable, not theoretical.
     const reachableFromASeed = new Set<string>();
     for (const seed of effectiveSeeds) {
-      const frontier = graphContext.outgoingEdges(seed).map(e => e.targetId);
+      const frontier = containmentChildIds(graphContext, seed);
       const seen = new Set<string>();
       while (frontier.length > 0) {
         const id = frontier.shift()!;
         if (seen.has(id)) continue;
         seen.add(id);
         reachableFromASeed.add(id);
-        for (const e of graphContext.outgoingEdges(id)) {
-          if (!seen.has(e.targetId)) frontier.push(e.targetId);
+        for (const c of containmentChildIds(graphContext, id)) {
+          if (!seen.has(c)) frontier.push(c);
         }
       }
     }
@@ -1033,7 +1044,7 @@ export class TraversalEngine {
             properties: node.properties,
           });
           if (defaultStatus === NodeStatus.GATED_OUT) {
-            const childIds = graphContext.outgoingEdges(nodeIdentifier).map(e => e.targetId);
+            const childIds = containmentChildIds(graphContext, nodeIdentifier);
             addAll(rewritten, markSubtree(childIds, graphContext, resolutionState, NodeStatus.GATED_OUT,
               'Parent gate has cycle — default skip', nodeIdentifier, depth, provisional, overrideHeld));
           } else {
@@ -1097,7 +1108,7 @@ export class TraversalEngine {
         // as a pending question so the provider can confirm the safe-default
         // branch the LLM picked or flip to a different branch.
         if (gateResult.tentative && !gateAnswers.has(nodeIdentifier)) {
-          const childIds = graphContext.outgoingEdges(nodeIdentifier).map(e => e.targetId);
+          const childIds = containmentChildIds(graphContext, nodeIdentifier);
           const subtreeSize = countSubtree(childIds, graphContext);
           pendingQuestions.push({
             gateId: nodeIdentifier,
@@ -1152,6 +1163,9 @@ export class TraversalEngine {
         }
 
         const selected = routable ? new Set(matched.map(e => e.targetId)) : new Set<string>();
+        // Everything the taken branch contains is live, even where an untaken
+        // branch also leads to it. See containmentClosure.
+        const liveUnderSelected = routes ? containmentClosure(graphContext, selected) : undefined;
 
         for (const edge of outgoing) {
             if (routes && edge.edgeType === 'BRANCHES_TO') {
@@ -1161,6 +1175,7 @@ export class TraversalEngine {
                 markBranchNotSelected(
                   edge.targetId, nodeIdentifier, nodeTitle(node), depth,
                   graphContext, resolutionState, rewritten, provisional, overrideHeld,
+                  liveUnderSelected,
                 );
                 continue;
               }
@@ -1191,7 +1206,7 @@ export class TraversalEngine {
           });
 
           // Mark subtree as PENDING_QUESTION
-          const childIds = graphContext.outgoingEdges(nodeIdentifier).map(e => e.targetId);
+          const childIds = containmentChildIds(graphContext, nodeIdentifier);
           const subtreeSize = countSubtree(childIds, graphContext);
           addAll(rewritten, markSubtree(childIds, graphContext, resolutionState, NodeStatus.PENDING_QUESTION,
             `Awaiting answer to: ${gateProps.prompt ?? gateProps.title}`, nodeIdentifier, depth, provisional, overrideHeld));
@@ -1231,7 +1246,7 @@ export class TraversalEngine {
 
           // HELD, not gated out: the pathway has not decided against this
           // subtree, it cannot decide yet.
-          const childIds = graphContext.outgoingEdges(nodeIdentifier).map(e => e.targetId);
+          const childIds = containmentChildIds(graphContext, nodeIdentifier);
           const subtreeSize = countSubtree(childIds, graphContext);
           addAll(rewritten, markSubtree(childIds, graphContext, resolutionState, NodeStatus.PENDING_QUESTION,
             `Awaiting ${ask.datumKey}`, nodeIdentifier, depth, provisional, overrideHeld));
@@ -1285,7 +1300,7 @@ export class TraversalEngine {
             properties: node.properties,
           ...uncertaintyFields,
           });
-          const childIds = graphContext.outgoingEdges(nodeIdentifier).map(e => e.targetId);
+          const childIds = containmentChildIds(graphContext, nodeIdentifier);
           addAll(rewritten, markSubtree(childIds, graphContext, resolutionState, NodeStatus.GATED_OUT,
             `Gated out by ${nodeTitle(node)}: ${gateResult.reason}`, nodeIdentifier, depth, provisional, overrideHeld));
         } else {
@@ -1508,7 +1523,7 @@ export class TraversalEngine {
             depth: depth + 1,
             properties: targetNode.properties,
           });
-          const kids = graphContext.outgoingEdges(br.targetId).map(e => e.targetId);
+          const kids = containmentChildIds(graphContext, br.targetId);
           addAll(rewritten, markSubtree(kids, graphContext, resolutionState, NodeStatus.PENDING_QUESTION,
             `Awaiting branch choice at ${nodeTitle(node)}`, br.targetId, depth + 1, provisional, overrideHeld));
         }
@@ -1543,6 +1558,13 @@ export class TraversalEngine {
       });
 
       // Record branch results
+      // Everything a TAKEN branch contains is live, even where an excluded
+      // branch also leads to it — the anemia pathway's workup reaches, through
+      // a gate, the very stage holding the empiric-iron step. The sweep below
+      // runs before the taken branches are walked, so without this it wrote
+      // EXCLUDED over the branch that had just been chosen.
+      const liveUnderIncluded = containmentClosure(graphContext, includedBranches);
+
       for (const br of branchResults) {
         if (includedBranches.includes(br.targetId)) {
           // Enqueue included branches for further traversal
@@ -1552,7 +1574,7 @@ export class TraversalEngine {
         } else {
           // Exclude branch
           const targetNode = graphContext.getNode(br.targetId);
-          if (targetNode && enqueueable(br.targetId)) {
+          if (targetNode && enqueueable(br.targetId) && !liveUnderIncluded.has(br.targetId)) {
             resolutionState.set(br.targetId, {
               nodeId: br.targetId,
               nodeType: targetNode.nodeType,
@@ -1566,9 +1588,10 @@ export class TraversalEngine {
               properties: targetNode.properties,
             });
             // Mark the excluded branch's subtree too
-            const childIds = graphContext.outgoingEdges(br.targetId).map(e => e.targetId);
+            const childIds = containmentChildIds(graphContext, br.targetId);
             addAll(rewritten, markSubtree(childIds, graphContext, resolutionState, NodeStatus.EXCLUDED,
-              `Excluded by decision point: ${br.excludeReason}`, br.targetId, depth + 1, provisional, overrideHeld));
+              `Excluded by decision point: ${br.excludeReason}`, br.targetId, depth + 1, provisional, overrideHeld,
+              liveUnderIncluded));
           }
         }
         recordInfluence(dependencyMap, nodeIdentifier, br.targetId);

@@ -13,6 +13,7 @@ import { assertAssemblableMode } from '../../services/resolution/temporal/contex
 import type { TemporalContextInput } from '../../services/resolution/temporal/evaluation-context';
 import { PATHWAY_COLUMNS, formatSessionForGraphQL } from '../Query';
 import { TraversalEngine } from '../../services/resolution/traversal-engine';
+import { containmentChildIds } from '../../services/resolution/graph-containment';
 import { makeEvaluationTemporalContext } from '../../services/resolution/temporal/evaluation-context';
 import {
   createSession,
@@ -1030,10 +1031,12 @@ export const resolutionMutations = {
       const subtreeQueue = [args.nodeId];
       while (subtreeQueue.length > 0) {
         const id = subtreeQueue.shift()!;
-        for (const edge of rctx.graphContext.outgoingEdges(id)) {
-          if (!affectedNodes.has(edge.targetId)) {
-            affectedNodes.add(edge.targetId);
-            subtreeQueue.push(edge.targetId);
+        // Containment only: a REQUIRES edge points at a prerequisite living
+        // elsewhere, not at something this answer governs.
+        for (const child of containmentChildIds(rctx.graphContext, id)) {
+          if (!affectedNodes.has(child)) {
+            affectedNodes.add(child);
+            subtreeQueue.push(child);
           }
         }
       }
