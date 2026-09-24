@@ -677,8 +677,13 @@ function codeWildcardError(operator: string, value: unknown): string | null {
     );
   }
   if (prefix !== null && !prefix.includes('*')) return null;
-  const stem = value.replace(/\*/g, '').replace(/\.+$/, '');
-  const hint = stem ? ` — for a prefix match write "${stem}.*"` : '';
+  // Suggest a rewrite only for the unambiguous mistake — a code with one
+  // trailing "*" and no dot before it (`G82.2*` → `G82.2.*`). Anything else
+  // (`Z94.*.1`, `*.9`, `Z9*.*`) has no rewrite that means what the author
+  // meant, and a wrong suggestion is worse than none.
+  const hint = /^[^*]*[^*.]\*$/.test(value)
+    ? ` — for a prefix match write "${value.slice(0, -1)}.*"`
+    : '';
   return (
     `code pattern "${value}" is not a wildcard the engine understands: only a single ` +
     `trailing ".*" after a code prefix (e.g. "Z94.*") matches by prefix, and any other "*" ` +

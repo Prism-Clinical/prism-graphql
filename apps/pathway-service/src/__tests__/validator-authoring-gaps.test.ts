@@ -73,9 +73,15 @@ describe('code wildcards — only a single trailing ".*" is a pattern at runtime
     expect(result.errors).toContainEqual(expect.stringContaining('"G82.2.*"'));
   });
 
-  it.each(['Z94.*.1', '*.9', 'Z9*.*', 'Z94.**'])('rejects the malformed pattern %s', (value) => {
-    expect(validatePathwayJson(coded('includes_code', value)).valid).toBe(false);
-  });
+  it.each(['Z94.*.1', '*.9', 'Z9*.*', 'Z94.**', 'Z94.*1'])(
+    'rejects the malformed pattern %s without guessing a rewrite',
+    (value) => {
+      const result = validatePathwayJson(coded('includes_code', value));
+      expect(result.valid).toBe(false);
+      expect(result.errors).toContainEqual(expect.stringContaining('not a wildcard'));
+      expect(result.errors.join('\n')).not.toContain('for a prefix match write');
+    },
+  );
 
   it('rejects a bare ".*", whose empty prefix matches every code', () => {
     const result = validatePathwayJson(coded('count_in_window', '.*'));
