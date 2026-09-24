@@ -7,6 +7,14 @@ parallel domain agents over fetched guideline text (diagnosis/screening, pharmac
 non-pharmacologic care & special populations, monitoring/delivery/quality), then two
 verification agents (codes; citations). The live and retired pathway graphs were read from
 the local pathway-service (`pathwayGraph`) to design against what is actually deployed.
+**Verification outcome:**
+- **Codes.** Every ICD-10-CM (FY2026 = FY2027), LOINC 2.82, RxNorm and CPT code in this brief
+  was verified live.
+- **Corrections found and folded in:**
+  - LOINC 1500-4 does not exist, and 1503-2 is a urine test (both used by the retired pathway).
+  - Several local seed labels are wrong (§B-18).
+- **Citations:** 22 checked, 14 PASS and 8 PARTIAL, with fixes applied. ACOG PB 190 and the
+  2024 ACOG CPU are paywalled; see `[GAP]`s.
 Flags: `[GAP]` unsourceable · `[OLDER SOURCE]` older but still the current recommendation ·
 `[NOT ENCODABLE]` clinically required but not expressible on main · `[DECISION]` an
 authoring choice Josh must ratify · `[SIM]` cannot be exercised in the encounter simulator
@@ -111,7 +119,7 @@ in anemia v1.4. Three further defects:
   carries Z34.
 - **O24.4 rules (I.C.15.i):** no other O24 code is used with O24.4-. Diet + insulin is coded
   insulin-controlled only (O24.414). Diet + oral agent is coded O24.415 only. **Z79.4 and
-  Z79.84 are not assigned with O24.4-.** So "on insulin" is visible from ICD as O24.414, and
+  Z79.84 (and Z79.85) are not assigned with O24.4-.** So "on insulin" is visible from ICD as O24.414, and
   the long-term-insulin Z-code is not a usable A2 signal.
 - **Z86.32** (personal history of GDM) carries Excludes1 against current-pregnancy GDM. It
   marks the post-pregnancy, long-term follow-up population.
@@ -204,7 +212,16 @@ Within Part B, lanes are split so complementary drugs never conflict:
    the load-specific codes, and real-chart mapping is a site concern.
 9. **Delivery-timing and fetal-surveillance rows need glycemic-control class**, which is
    judgment ("well controlled"). They become a SELECT router.
-10. **Merge dedupes Guidance by topic only.** Colliding topic strings across pathways silently
+10. **One parent per node (builder rule for this brief).** Node marking is first-writer-wins
+    (`traversal-engine.ts` `markSubtree`). A child shared by two differently-gated parents
+    takes whichever status reaches it first. If metformin is shared by Stages 3 and 4, and
+    Stage 3 is gated out, metformin can be marked GATED_OUT even though Stage 4 is included.
+    `spare` protects only the branches of the same fork.
+    - **Every node listed "on" several hosts is emitted as one node per host**, with the same
+      name, topic or code. The merge dedupes medications by name, labs/procedures by code, and
+      guidance by topic, so the care plan shows each once.
+    - This applies to CodeEntry rows with several hosts too: one CodeEntry node per host.
+11. **Merge dedupes Guidance by topic only.** Colliding topic strings across pathways silently
     drop text. Part B uses GDM-specific topics.
 
 ---
@@ -319,7 +336,8 @@ Only Stage 1 has a root `HAS_STAGE` edge.
   pregestational pathway (out of scope). [4]
 - **Step 2.4 — Early abnormal glucose metabolism: counseling and fasting-glucose monitoring**
   *(gated by `gate-early-abnormal-glucose`)*: ADA defines this as A1C 5.9–6.4% (or FPG
-  110–125 mg/dL) before 15 weeks.
+  110–125 mg/dL) before 15 weeks. It is a **higher-risk marker, not an early GDM diagnosis**
+  (Rec 2.31b, B). Do not code O24.4- on this basis.
   - ADA suggests nutrition counseling and periodic fasting glucose, e.g., 3–4 times a week.
     If fasting values are mostly ≥110 before 15 weeks, testing can go to daily and treatment is
     a shared decision.
@@ -556,7 +574,7 @@ None.
   glucose drink. We may check your blood sugar at home for about a week instead."
   - `[GAP]` Primary text of ACOG PB 105 (bariatric) is paywalled. Secondary summary only;
     ADA 2026 has no pregnancy-specific statement.
-- **Guid-A4 — topic `GDM diagnosis: what happens next`** (on Steps 3.4 and 3.6), category
+- **Guid-A4 — topic `GDM diagnosis: what happens next`** (on Step 3.4; **duplicate node Guid-A4b, same topic and text, on Step 3.6** — one parent per node, see §0.6 #10), category
   education. Instructions:
   - "Gestational diabetes means your body is not handling sugar as well as it needs to during
     pregnancy. Most patients (about 70–85%) control it with changes in eating and activity
@@ -746,7 +764,7 @@ Enterable today (seeded in `clinical_code_reference`): Z34.00, Z34.90, O09.40, O
 | Z86.32 | ICD-10 | Personal history of gestational diabetes | follow-up trigger — `[DECISION D-12]` | gdm-history |
 
 **Deliberately excluded:** O24.42x (GDM in childbirth). These are delivery-admission codes
-used inpatient; this is an outpatient pathway. Z79.4 and Z79.84 are not assigned with O24.4-
+used inpatient; this is an outpatient pathway. Z79.4, Z79.84 and Z79.85 are not assigned with O24.4-
 (ICD-10-CM I.C.15.i [17]).
 
 ## B-1b. Code sets
@@ -850,7 +868,7 @@ Only Stage 1 has a root `HAS_STAGE` edge.
   - Typical total starting dose if a multi-injection regimen is needed: 0.7–1.0 units/kg/day
     in divided doses.
   - Adjust to the monitored values at each time of day.
-  - Metformin is an alternative if insulin is declined, unsafe or unaffordable (not with
+  - Metformin is an alternative if insulin is declined, cannot be given safely, or is unaffordable (not with
     hypertension, preeclampsia or IUGR risk).
   - Glucagon for everyone on insulin.
   - Hypoglycemia education (Guid-B5).
@@ -868,7 +886,7 @@ Only Stage 1 has a root `HAS_STAGE` edge.
   - Metformin alternative and glucagon as in Step 3.1. Guid-B5.
   Sources: [2][3][5][6]
 - **Step 5.1 — Start or up-titrate prandial rapid-acting insulin (2-hour monitoring)** *(Stage
-  5, unconditional)*: identical content to Step 4.1. Separate nodes (Med-B2′, Med-B3′, Med-B4′)
+  5, unconditional)*: identical content to Step 4.1. Separate nodes (Med-B2′, Med-B3c, Med-B4c, Guid-B5c)
   carry the same drug names, so the merge dedupes them. [2][3][5][6]
 
 **Stage 6 — Surveillance and delivery by control class**
@@ -1087,6 +1105,7 @@ is a single-test gate, or an OR over values from **one** test, with `on_unresolv
 
 - **Gate `gate-longterm-diabetes` — Follow-up A1C in the diabetes range?**
   - Attached to: `step-8-1` · Branches to: `step-8-2`
+  - Exclusively gated: yes.
   - Type: **patient_attribute** (coded) · Default behavior: **skip**
   - Condition: field `labs`, `greater_than`, value `4548-4`, system `LOINC`, threshold
     **6.49**, display `"Hemoglobin A1c (%)"`, horizon `{days: 1095}`.
@@ -1098,6 +1117,7 @@ is a single-test gate, or an OR over values from **one** test, with `on_unresolv
 
 - **Gate `gate-longterm-prediabetes` — Follow-up A1C 5.7–6.4%?**
   - Attached to: `step-8-1` · Branches to: `step-8-3`
+  - Exclusively gated: yes.
   - Type: **compound**, **AND** · Default behavior: **skip**
   - Conditions (coded), field `labs`, value `4548-4`, system `LOINC`, display
     `"Hemoglobin A1c (%)"`, horizon `{days: 1095}`:
@@ -1136,7 +1156,7 @@ across Stages 3/4/5 carry **identical names**, so the merge dedupes them.
     between them. Regular human insulin is acceptable, but lispro/aspart are preferred. Both
     analogs are "widely considered safe and effective" in pregnancy (ADA).
   - Source: [3][5]
-- **Med-B3 — Metformin** (on Steps 3.1 and 4.1; duplicate Med-B3′ on Step 5.1)
+- **Med-B3 — Metformin** (one node per host, same name: Med-B3a on Step 3.1, Med-B3b on Step 4.1, Med-B3c on Step 5.1)
   - Role: alternative · Clinical role: `gdm-oral-agent`
   - Dose: 500 mg nightly for 1 week, then 500 mg twice daily with meals. Titrate. FDA label
     maximum 2,550 mg/day. (PB text states 2,500–3,000 mg/day; the label ceiling governs.) Oral.
@@ -1146,13 +1166,18 @@ across Stages 3/4/5 carry **identical names**, so the merge dedupes them.
     - **Not first-line** (ADA Rec 15.21, A/B). It crosses the placenta, with cord levels as
       high as or higher than maternal.
     - Offspring were heavier at 9 years (MiG TOFU).
-    - A reasonable alternative when insulin is declined, unsafe or unaffordable (PB 190,
-      Level B). SMFM calls it a reasonable first-line alternative [12]; the conflict is noted.
+    - A reasonable alternative when the patient declines insulin or cannot administer it
+      safely (ACOG PB 180 Level B wording [3]; PB 190's "reasonable alternative" framing is
+      secondary-confirmed only). ADA also names **cost**, comprehension and cultural factors
+      [5]. The "cannot afford" clause attributed to PB 190 is unverified, so it is not cited
+      to ACOG.
+    - SMFM calls metformin a reasonable, safe first-line alternative, noting that about half of
+      patients will still need insulin [12]. The conflict is noted.
     - **Do not use with hypertension, preeclampsia or IUGR risk** (ADA; see D-2).
     - Contraindicated at eGFR <30; do not initiate at eGFR 30–45 (label).
     - Counsel on the limited long-term safety data.
   - Source: [2][5][12][19]
-- **Med-B4 — Glucagon (emergency)** (on Steps 3.1 and 4.1; duplicate Med-B4′ on Step 5.1)
+- **Med-B4 — Glucagon (emergency)** (one node per host, same name: Med-B4a on Step 3.1, Med-B4b on Step 4.1, Med-B4c on Step 5.1)
   - Role: first_line · Clinical role: n/a (non-conflicting safety adjunct)
   - Dose: per product label, for severe hypoglycemia. Prescribe for everyone taking insulin
     (ADA Rec 6.16, A).
@@ -1179,7 +1204,7 @@ across Stages 3/4/5 carry **identical names**, so the merge dedupes them.
     GLP-1 RAs should be stopped before pregnancy. Name-based suppression will not catch
     specific product names in other pathways; this node is informational.
   - Source: [5]
-- **Med-B7 — Metformin (diabetes prevention)** (on Steps 7.5 and 8.3)
+- **Med-B7 — Metformin (diabetes prevention)** (one node per host, same name: Med-B7a on Step 7.5, Med-B7b on Step 8.3)
   - Role: acceptable · Clinical role: `diabetes-prevention-metformin`
   - Dose: `[GAP]` no dose given in ADA Section 15 for this indication. Titrate per label;
     clinician-directed. Oral.
@@ -1233,9 +1258,9 @@ across Stages 3/4/5 carry **identical names**, so the merge dedupes them.
 
 ## B-8. Procedures
 
-- **Proc-B1 — Fetal non-stress test** (on Steps 6.2 and 6.5): CPT **59025**. Antenatal
+- **Proc-B1 — Fetal non-stress test** (one node per host, same code: Proc-B1a on Step 6.2, Proc-B1b on Step 6.5): CPT **59025**. Antenatal
   surveillance from 32 0/7 weeks. [8]
-- **Proc-B2 — Fetal biophysical profile with non-stress testing** (on Steps 6.2 and 6.5): CPT
+- **Proc-B2 — Fetal biophysical profile with non-stress testing** (one node per host, same code: Proc-B2a on Step 6.2, Proc-B2b on Step 6.5): CPT
   **76818**. The alternative or complement to NST; includes amniotic fluid. [3][8]
 
 Both codes are identical to GHTN's, so they dedupe.
@@ -1275,9 +1300,9 @@ All topics are GDM-prefixed. The merge dedupes Guidance by topic across pathways
   - Losing weight during pregnancy is not recommended."
   - Note: ADA prints 10–20 lb for obesity; IOM/ACOG CO 548 give 11–20 lb, which is used here.
   Sources: [5][11]
-- **Guid-B5 — topic `GDM on insulin: low blood sugar`** (on Steps 3.1, 4.1, 5.1),
+- **Guid-B5 — topic `GDM on insulin: low blood sugar`** (one node per host, same topic and text: Guid-B5a on Step 3.1, Guid-B5b on Step 4.1, Guid-B5c on Step 5.1),
   safety-netting:
-  - "A blood sugar below 70 is low. Signs can include shakiness, sweating, a fast heartbeat,
+  - "A blood sugar below 70 on your meter (below 63 on a sensor) is low. Signs can include shakiness, sweating, a fast heartbeat,
     hunger or confusion.
   - Take 15 grams of fast sugar (4 oz juice or glucose tablets), recheck in 15 minutes, and
     repeat if still low.
@@ -1305,7 +1330,7 @@ All topics are GDM-prefixed. The merge dedupes Guidance by topic across pathways
   - If you are still on insulin, watch for lows while nursing.
   - We will plan birth control that fits you."
   Sources: [5]
-- **Guid-B10 — topic `GDM long-term health`** (on Steps 7.6 and 8.1), lifestyle:
+- **Guid-B10 — topic `GDM long-term health`** (one node per host, same topic and text: Guid-B10a on Step 7.6, Guid-B10b on Step 8.1), lifestyle:
   - "A history of gestational diabetes raises your risk of type 2 diabetes and heart disease.
   - Stay active, aim for a healthy weight (losing 5% or more before another pregnancy lowers
     the chance of GDM again), and get diabetes testing every 1–3 years and before planning
@@ -1369,15 +1394,15 @@ the A1 → A2 reclassification is carried by the `gate-control-class` router.
 | 82950 | CPT | Glucose; post glucose dose | Lab-B5 |
 | 83036 | CPT | Hemoglobin; glycosylated (A1c) | Lab-B4, Lab-B6 |
 | 76816 | CPT | Ultrasound, pregnant uterus, follow-up, per fetus | Img-B1 |
-| 59025 | CPT | Fetal non-stress test | Proc-B1 |
-| 76818 | CPT | Fetal biophysical profile; with non-stress testing | Proc-B2 |
+| 59025 | CPT | Fetal non-stress test | Proc-B1a, Proc-B1b |
+| 76818 | CPT | Fetal biophysical profile; with non-stress testing | Proc-B2a, Proc-B2b |
 | 97802 | CPT | Medical nutrition therapy; initial assessment and intervention, individual, each 15 min | Step 2.2 |
 | 97803 | CPT | Medical nutrition therapy; re-assessment and intervention, individual, each 15 min | Step 2.2 |
 | 1605101 | RXNORM | insulin isophane (IN; human NPH PIN 253181; vial SCD 311028) | Med-B1 |
 | 86009 | RXNORM | insulin lispro | Med-B2, Med-B2′ |
 | 51428 | RXNORM | insulin aspart, human | Med-B2, Med-B2′ |
-| 6809 | RXNORM | metformin | Med-B3, Med-B3′, Med-B7 |
-| 4832 | RXNORM | glucagon | Med-B4, Med-B4′ |
+| 6809 | RXNORM | metformin | Med-B3a, Med-B3b, Med-B3c, Med-B7a, Med-B7b |
+| 4832 | RXNORM | glucagon | Med-B4a, Med-B4b, Med-B4c |
 | 4815 | RXNORM | glyburide | Med-B5 |
 | O24.410 | ICD-10 | Gestational diabetes mellitus in pregnancy, diet controlled | Step 2.1 |
 | O24.414 | ICD-10 | Gestational diabetes mellitus in pregnancy, insulin controlled | Step 3.1, Step 4.1, Step 5.1 |
@@ -1416,7 +1441,7 @@ See **Shared §15**. Part B uses: [2], [3], [4], [5], [6], [8], [9], [10], [11],
 - Gates `gate-pp-ogtt-diabetes`, `gate-pp-ogtt-prediabetes` → Step 7.3
 - Stage 8: [4], [5], [15] · Step 8.1: [4], [5] · Step 8.2: [4] · Step 8.3: [4], [5]
 - Gates `gate-longterm-diabetes`, `gate-longterm-prediabetes` → Step 8.1
-- Med-B1: [2], [3], [5] · Med-B2: [3], [5] · Med-B3: [2], [5], [12], [19] · Med-B4: [6] ·
+- Med-B1: [2], [3], [5] · Med-B2: [3], [5] · Med-B3: [2], [3], [5], [12], [19] · Med-B4: [6] ·
   Med-B5: [2], [5], [18], [20], [21] · Med-B6: [5] · Med-B7: [5]
 - Lab-B1–B4: [5] · Lab-B5: [4], [5] · Lab-B6, B7: [4] · Img-B1: [2], [3] · Proc-B1: [8] · Proc-B2: [3], [8]
 - Guid-B1: [3], [5] · Guid-B2: [2], [5] · Guid-B3: [3], [10] · Guid-B4: [5], [11] · Guid-B5:
@@ -1530,11 +1555,19 @@ per recommendation in the text. ADA "E" (expert consensus) maps to `Expert Conse
   (Clinical Practice Update) — American College of Obstetricians and Gynecologists,
   *Obstetrics & Gynecology* 2024;144(1):e20–e23, doi:10.1097/AOG.0000000000005612, 2024,
   evidence level `Expert Consensus`,
-  https://www.acog.org/clinical/clinical-guidance/clinical-practice-update/articles/2024/07/screening-for-gestational-and-pregestational-diabetes-in-pregnancy-and-postpartum
-  — `[GAP]` full text paywalled. Abstract read; it updates PB 190 and PB 201.
+  PMID 42131962, https://pubmed.ncbi.nlm.nih.gov/42131962/ (full text:
+  https://journals.lww.com/greenjournal/fulltext/2024/07000/acog_clinical_practice_update__screening_for.34.aspx,
+  paywalled). The old acog.org CPU URL is dead; ACOG now attaches the CPU to the PB 190 page.
+  `[GAP]` Full text not read. From the abstract plus secondary sources (Heyborne & Barbour,
+  Obstet Gynecol 2025;145:31–38, PMID 39481113): it updates PB 190 and PB 201, keeps targeted
+  screening for pregestational diabetes before 24 weeks, no longer recommends early GDM
+  screening, and adds immediate-postpartum testing guidance. **Unverified:** its risk-factor
+  list, its BMI thresholds, HbA1c for early testing, and its exact postpartum wording.
 - **[2]** Gestational Diabetes Mellitus (Practice Bulletin No. 190) — ACOG, *Obstetrics &
   Gynecology* 2018;131(2):e49–e64, 2018 (reaffirmed 2026), evidence level `Level A`
-  (recommendations cited carry their own A/B/C level in text),
+  (recommendations cited carry their own A/B/C level in text). Claims attributed to [2] are
+  those corroborated by a readable source: PB 180 [3], CO 831 [9], or ADA's and USPSTF's
+  citations of PB 190. Operational wording comes from [3].
   https://www.acog.org/clinical/clinical-guidance/practice-bulletin/articles/2018/02/gestational-diabetes-mellitus
   — `[GAP]` member-only. Claims verified via PubMed 29370047, ADA/USPSTF citations of PB 190,
   and the PB 180 text [3].
@@ -1554,8 +1587,9 @@ per recommendation in the text. ADA "E" (expert consensus) maps to `Expert Conse
   doi:10.2337/dc26-S015, 2026, evidence level `A` (Recs 15.15, 15.16, 15.17, 15.32; others B/C/E
   as stated), https://pmc.ncbi.nlm.nih.gov/articles/PMC12690181/
 - **[6]** 6. Glycemic Goals, Hypoglycemia, and Hyperglycemic Crises: Standards of Care in
-  Diabetes—2026 — ADA Professional Practice Committee, *Diabetes Care* 2026;49(Suppl 1), 2026,
-  evidence level `A` (Rec 6.16; Rec 6.15 B), https://pmc.ncbi.nlm.nih.gov/articles/PMC12690178/
+  Diabetes—2026 — ADA Professional Practice Committee, *Diabetes Care* 2026;49(Suppl
+  1):S132–S149, doi:10.2337/dc26-S006, 2026, evidence level `A` (Rec 6.16 glucagon; Rec 6.15 B;
+  the 15-g figure is narrative text), https://pmc.ncbi.nlm.nih.gov/articles/PMC12690178/
 - **[7]** Screening for Gestational Diabetes: US Preventive Services Task Force Recommendation
   Statement — USPSTF, *JAMA* 2021;326(6):531–538, 2021, evidence level `B` (≥24 weeks; I
   statement <24 weeks),
@@ -1578,7 +1612,7 @@ per recommendation in the text. ADA "E" (expert consensus) maps to `Expert Conse
   — `[OLDER SOURCE — still current recommendation]` (IOM 2009 ranges).
 - **[12]** Society for Maternal-Fetal Medicine Statement: Pharmacological treatment of
   gestational diabetes — SMFM Publications Committee, *American Journal of Obstetrics &
-  Gynecology* 2018;218(5):B2–B4, 2018 (reaffirmed 2024), evidence level `Expert Consensus`,
+  Gynecology* 2018;218(5):B2–B4, PMID 29409848, 2018 (reaffirmed 2024), evidence level `Expert Consensus`,
   https://publications.smfm.org/publications/252-society-for-maternal-fetal-medicine-statement-pharmacological-treatment/
 - **[13]** Society for Maternal-Fetal Medicine Special Statement: Quality metric on the rate of
   postpartum diabetes screening after pregnancies with gestational diabetes — SMFM, *American
@@ -1591,8 +1625,8 @@ per recommendation in the text. ADA "E" (expert consensus) maps to `Expert Conse
 - **[15]** Optimizing Postpartum Care (Committee Opinion No. 736) — ACOG, *Obstetrics &
   Gynecology* 2018;131:e140–e150, 2018 (reaffirmed 2025), evidence level `Expert Consensus`,
   https://www.acog.org/clinical/clinical-guidance/committee-opinion/articles/2018/05/optimizing-postpartum-care
-- **[16]** Aspirin Use to Prevent Preeclampsia and Related Morbidity and Mortality: US
-  Preventive Services Task Force Recommendation Statement — USPSTF, *JAMA* 2021;326(12):1186–1191,
+- **[16]** Aspirin Use to Prevent Preeclampsia and Related Morbidity and Mortality: Preventive
+  Medication (US Preventive Services Task Force Recommendation Statement) — USPSTF, *JAMA* 2021;326(12):1186–1191,
   2021, evidence level `B`,
   https://www.uspreventiveservicestaskforce.org/uspstf/recommendation/low-dose-aspirin-use-for-the-prevention-of-morbidity-and-mortality-from-preeclampsia-preventive-medication
 - **[17]** ICD-10-CM Official Guidelines for Coding and Reporting FY2027 (effective October 1,
@@ -1602,12 +1636,14 @@ per recommendation in the text. ADA "E" (expert consensus) maps to `Expert Conse
   Clinical Trial (SUGAR-DIP) — Rademaker D, et al., *JAMA* 2025;333(6):470–478, 2025, evidence
   level `A`, https://pubmed.ncbi.nlm.nih.gov/39761054/
 - **[19]** Metformin versus Insulin for the Treatment of Gestational Diabetes (MiG) — Rowan JA,
-  et al., *New England Journal of Medicine* 2008;358:2003–2015, 2008, evidence level `A`,
+  et al., *New England Journal of Medicine* 2008;358:2003–2015 (erratum 2008;359:106), 2008, evidence level `A`,
   https://pubmed.ncbi.nlm.nih.gov/18463376/ — `[OLDER SOURCE — landmark trial cited by ADA 2026]`
 - **[20]** Effect of Glyburide vs Subcutaneous Insulin on Perinatal Complications Among Women
   With Gestational Diabetes (INDAO) — Sénat MV, et al., *JAMA* 2018;319(17):1773–1780, 2018,
   evidence level `A`, https://pubmed.ncbi.nlm.nih.gov/29715355/
 - **[21]** Glyburide (micronized) tablets — prescribing information (FDA-approved labeling),
   Teva, DailyMed, current label, evidence level `Expert Consensus`,
-  https://dailymed.nlm.nih.gov/dailymed/ (search "glyburide micronized", Teva) — "discontinued
-  at least two weeks before the expected delivery date".
+  published 2026-02-13,
+  https://dailymed.nlm.nih.gov/dailymed/drugInfo.cfm?setid=e84c0dfc-a4e9-4c89-b6ea-45732eb412f5.
+  The Pregnancy section says to discontinue at least two weeks before the expected delivery
+  date.
