@@ -169,6 +169,48 @@ const warnings = [...gateIds]
   .filter((g) => !walkable.some((e) => e.from === g && e.type === 'BRANCHES_TO'))
   .map((g) => `Gate "${g}" (${titleOf.get(g)}) has no BRANCHES_TO edge — it guards nothing.`);
 
+// ── Condition lints (builder-enforced; import accepts all of these) ─────
+// Every evaluable condition of every chart gate, with a label for messages.
+function chartConditions(): Array<{ gate: string; i: number; c: any }> {
+  const out: Array<{ gate: string; i: number; c: any }> = [];
+  for (const node of nodes) {
+    if (node.type !== 'Gate') continue;
+    const props = (node as any).properties ?? {};
+    const t = String(props.gate_type ?? '');
+    const conds: any[] =
+      t === 'patient_attribute' ? (props.condition ? [props.condition] : [])
+      : t === 'compound' && Array.isArray(props.conditions) ? props.conditions
+      : [];
+    conds.forEach((c, i) => { if (c && typeof c === 'object') out.push({ gate: node.id, i, c }); });
+  }
+  return out;
+}
+const isVitals = (c: any): boolean =>
+  c.field === 'vitals' || (typeof c.attribute === 'string' && c.attribute.startsWith('vitals.'));
+
+// VITALS HORIZON — a vitals condition with no horizon inherits the v1 system
+// default ENCOUNTER (`policy-registry.ts`), which needs an `encounterStart` on the
+// session. The encounter simulator never sends one, and session preflight
+// asserts EVERY matched pathway before traversing any
+// (`multi-pathway-resolution.ts`), so one such condition rejects the whole
+// simulator session — including every other pathway it co-matched. Vitals are
+// asserted current at evaluation time, so any bounded horizon admits them.
+for (const { gate, i, c } of chartConditions()) {
+  if (!isVitals(c)) continue;
+  if (c.horizon === undefined) {
+    errors.push(
+      `VITALS HORIZON — "${gate}" condition[${i}] reads vitals (${c.value ?? c.attribute}) with no \`horizon\`.\n` +
+      `      => it inherits ENCOUNTER, which rejects every session without an encounterStart (the simulator\n` +
+      `         never sends one) — and takes every co-matched pathway down with it. Emit "horizon": "DAY".`,
+    );
+  } else if (c.horizon === 'ENCOUNTER') {
+    errors.push(
+      `VITALS HORIZON — "${gate}" condition[${i}] sets horizon ENCOUNTER on a vitals read.\n` +
+      `      => sessions without an encounterStart (every simulator session) are rejected. Use "DAY".`,
+    );
+  }
+}
+
 // ── Advisory — baseline drift on trend gates ─────────────────────────
 // A lone long trend window fits every dated point in it, including pre-treatment
 // values from a different physiologic state, and can invert the verdict. See the

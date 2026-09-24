@@ -103,7 +103,7 @@ Plus type-specific fields:
   - count_in_window → `count_threshold` (positive integer), `window_days` (omit = lifetime)
   - trend_up/trend_down (labs only) → `window_days`, `min_points` (positive integer), `slope_threshold` (units/day, **non-negative magnitude** — the engine applies the sign)
   - delta_from_baseline (labs only) → `window_days`, `min_points`, `delta_threshold` (signed)
-- *Temporal scoping (either form)*: optional `horizon` — LIFETIME | YEAR | QUARTER | MONTH | WEEK | DAY | ENCOUNTER or `{days: N}` (1..36525) — and `status` — active | inactive | any. **A condition takes `window_days` OR `horizon`, never both.** Give every clinically-scoped condition an explicit horizon/status with a one-line rationale; summarize all assignments in §17.
+- *Temporal scoping (either form)*: optional `horizon` — LIFETIME | YEAR | QUARTER | MONTH | WEEK | DAY | ENCOUNTER or `{days: N}` (1..36525) — and `status` — active | inactive | any. **A condition takes `window_days` OR `horizon`, never both.** **Every `vitals` condition needs a horizon** (`DAY` unless there is a reason; never `ENCOUNTER`) — without one it inherits ENCOUNTER and the simulator session is rejected. Give every clinically-scoped condition an explicit horizon/status with a one-line rationale; summarize all assignments in §17.
 - compound only: operator AND | OR across the listed conditions. Note: unprovable temporal
   state propagates as uncertainty through compound gates — the gate then falls back to its
   default_behavior, so state the default's safety rationale with uncertain data in mind.

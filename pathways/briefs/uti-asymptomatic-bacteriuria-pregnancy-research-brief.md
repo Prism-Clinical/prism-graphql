@@ -598,7 +598,7 @@ referenced.
 | gate-recurrent-uti | conditions O23.* | — | — | **300** | Operator-windowed (XOR rule). ACOG's window is "during pregnancy"; 300 days is the proxy |
 | gate-no-repeat-screening | conditions E10.*, E11.*, O24.*, G82.2*, G82.5*, N31.*, T91.3 | LIFETIME | any | — | Diabetes and spinal cord injury are standing conditions |
 | gate-penicillin-allergy | allergies Z88.0, Z88.1 | LIFETIME | any | — | Drug allergy does not expire |
-| gate-pyelonephritis-suspected | vitals temperature_c | — | — | — | Vitals are a single current value with no dates; no scoping possible |
+| gate-pyelonephritis-suspected | vitals temperature_c | DAY | — | — | `[BUILD FIX 2026-09-24]` Vitals are one undated current value, so any bounded horizon admits them — but an omitted horizon inherits v1's ENCOUNTER default, which rejects every simulator session (no encounterStart) for this and every co-matched pathway |
 | gate-pyelonephritis-suspected | conditions N10 | {days: 300} | active | — | This pregnancy only |
 
 `[DECISION]` **300 days is again the "this pregnancy" proxy** — the horizon grammar has no

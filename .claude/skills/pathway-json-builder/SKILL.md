@@ -96,7 +96,10 @@ Follow the spec exactly. Brief-section → JSON mapping:
   value/conflict validation to session preflight, where a violation aborts session
   creation): (1) never emit both `window_days` and `horizon` on one condition; (2)
   `horizon` ∈ LIFETIME|YEAR|QUARTER|MONTH|WEEK|DAY|ENCOUNTER or `{days: 1..36525}`;
-  (3) `status` ∈ active|inactive|any; (4) `window_days` positive integer ≤ 36525. A §17
+  (3) `status` ∈ active|inactive|any; (4) `window_days` positive integer ≤ 36525; (5) every
+  `vitals` condition (coded or `vitals.*`) gets an explicit horizon — `"DAY"` when §17 gives
+  none, never `ENCOUNTER`: an omitted vitals horizon inherits ENCOUNTER and rejects every
+  simulator session (no `encounterStart`) for every pathway it co-matches. A §17
   row conflicting with the gate's §4b `window_days` is a brief ambiguity — stop and ask.
   **Baseline drift (see the spec's box):** never emit a `trend_up`/`trend_down` gate as a
   single long `window_days` when the brief's §4b names a physiologic drift for that value.

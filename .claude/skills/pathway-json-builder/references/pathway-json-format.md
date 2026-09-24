@@ -234,7 +234,8 @@ Carries one `condition` object, which is either an **attribute condition** or a 
   a silent runtime skip).
 - `operator` ∈ `includes_code`, `equals`, `exists`, `greater_than`, `less_than`, `count_in_window`, `trend_up`, `trend_down`, `delta_from_baseline`. `value` is required.
 - **`vitals` conditions may not set `system`** (hard import error, D9) — vitals carry no
-  terminology code; `value` is the vitals path (e.g. `temperature_c`).
+  terminology code; `value` is the vitals path (e.g. `systolic_bp`). They **must** set
+  `horizon` (temporal rule 0 below).
 - **Numeric control domains (hard import errors post-kernel):** `threshold` /
   `delta_threshold` — finite numbers; `count_threshold` / `min_points` — positive
   integers; `slope_threshold` — finite **non-negative** number: it is a *magnitude*, the
@@ -323,6 +324,18 @@ Any attribute or coded condition may carry:
 Rules the **builder must enforce** (import accepts the keys but defers value/conflict
 validation to session-creation preflight — a violation would import cleanly and then fail
 at runtime):
+
+0. **Every `vitals` condition carries an explicit, bounded horizon — `"DAY"` unless the
+   brief says otherwise; never `ENCOUNTER`, never omitted.** Applies to coded
+   `field: "vitals"` and attribute `vitals.*` conditions alike (attribute vitals reach the
+   kernel with no code-map row). An omitted horizon inherits the v1 system default
+   `ENCOUNTER` (`policy-registry.ts`), which needs an `encounterStart` on the session; the
+   encounter simulator never sends one, so session preflight rejects with
+   `MISSING_ENCOUNTER_ANCHOR` — and because preflight asserts **every matched pathway
+   before traversing any** (`multi-pathway-resolution.ts`), one such condition kills the
+   whole multi-pathway session, not just its own gate. Vitals are undated and asserted
+   current at evaluation time (`context-assembler.ts`), so `DAY` admits them.
+   `check-gate-control.ts` fails the build on a violation.
 
 1. **`window_days` XOR `horizon`** — never both on one condition ("horizon supersedes
    window_days"; both-set throws `INVALID_TEMPORAL_DEFAULTS` at preflight). Verified: the

@@ -454,7 +454,8 @@
             "field": "vitals",
             "operator": "greater_than",
             "value": "temperature_c",
-            "threshold": 37.9
+            "threshold": 37.9,
+            "horizon": "DAY"
           },
           {
             "field": "conditions",
