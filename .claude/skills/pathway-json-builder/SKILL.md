@@ -26,20 +26,29 @@ In order: the brief the conversation points at; else the most recent
 `pathways/briefs/*-research-brief.md`; else a brief pasted in chat. Read it fully. If none
 exists, offer to run `pathway-research`.
 
-## Step 2 — Read the format spec and check for schema drift
+## Step 2 — Read the format spec and check for schema drift against origin/main
+
+**Build and validate from a branch based on current `origin/main`.** The validator CLI
+imports pathway-service source from *this checkout*, so a branch that is behind main
+validates against a stale validator — which is exactly how two pathways once passed here
+with 0 errors and then failed main's import with 4 errors each. `validate-pathway.ts`
+refuses to run (exit 3) when HEAD does not contain `origin/main`; if it does, rebase, or
+create a throwaway worktree from `origin/main` and build there.
 
 Read `references/pathway-json-format.md` end-to-end — it is the authoritative spec and maps
-brief sections to JSON constructs. Then run its **drift check**:
+brief sections to JSON constructs. Then run its **drift check**, which compares the spec's
+stamp to **`origin/main`**, never to local HEAD (local HEAD is what goes stale):
 
 ```bash
-git log -1 --format=%h -- apps/pathway-service/src/services/import apps/pathway-service/src/services/resolution apps/pathway-service/src/types
+git fetch origin
+git log -1 --format=%h origin/main -- apps/pathway-service/src/services/import apps/pathway-service/src/services/resolution apps/pathway-service/src/types
 ```
 
-If the hash differs from the one in the spec's header, diff those paths against the recorded
-commit, fold any enum/rule changes into your generation, tell the user what changed, and
-update the spec (including its header hash). This is how the pipeline absorbed the
-temporal-horizon evaluator kernel (merged 2026-08-13, spec v4) — the same procedure covers
-whatever lands next.
+If the hash differs from the one in the spec's header, run
+`git diff <stamped-hash> origin/main -- <those paths>`, fold any enum/rule changes into your
+generation, tell the user what changed, and update the spec (including its header hash).
+This is how the pipeline absorbed the temporal-horizon evaluator kernel (spec v4) and PR #55's
+decision semantics (spec v5) — the same procedure covers whatever lands next.
 
 ## Step 3 — Generate the JSON
 
@@ -101,8 +110,9 @@ npx ts-node --transpile-only .claude/skills/pathway-json-builder/scripts/validat
 ```
 
 (One-time per checkout: `npm ci` at repo root if ts-node is missing.) The CLI imports
-`validatePathwayJson` from pathway-service source — this is the exact code the import
-endpoint runs. Exit 0 = valid; 1 = errors listed; fix and re-run until 0. Treat warnings as
+`validatePathwayJson` from pathway-service source — the exact code the import endpoint runs
+**on main, provided this checkout contains origin/main** (the CLI checks, and exits 3 if
+not). Exit 0 = valid; 1 = errors listed; fix and re-run until 0. Treat warnings as
 review items: resolve orphan-node and DP-without-branches warnings yourself (they're almost
 always missing edges); surface anything else in the delivery message.
 

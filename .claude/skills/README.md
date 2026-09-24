@@ -20,9 +20,11 @@ Design principles:
 
 - **The repo is the schema oracle.** The format spec
   (`pathway-json-builder/references/pathway-json-format.md`) is generated from
-  pathway-service source and stamps the commit it reflects; the builder runs a git drift
-  check on every build and updates the spec when the schema moves. Validation runs the
-  actual `validatePathwayJson` — no parallel reimplementation to drift.
+  pathway-service source and stamps the `origin/main` commit it reflects; the builder runs
+  a git drift check **against `origin/main`** (never local HEAD) on every build and updates
+  the spec when the schema moves. Validation runs the actual `validatePathwayJson` from the
+  checkout — so build from a branch based on current `origin/main`; the validator CLI
+  refuses to run (exit 3) on a checkout that does not contain it.
 - **Humans review prose, machines get JSON.** Research output is a markdown brief the
   physician reviews and edits; JSON is only generated from an approved brief and never
   invents content.

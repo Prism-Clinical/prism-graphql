@@ -1,20 +1,32 @@
-# Prism Pathway JSON Format — Authoritative Spec (v4)
+# Prism Pathway JSON Format — Authoritative Spec (v5)
 
-> **Generated from repo state:** commit `9880729` (2026-08-13) of
+> **Generated from `origin/main`:** commit `a428da5` (2026-09-10) of
 > `apps/pathway-service/src/services/import/`, `src/services/resolution/`, and `src/types/`
-> — includes the merged temporal-horizon evaluator kernel (PR #54).
+> — includes the temporal-horizon evaluator kernel (PR #54), the `v1` temporal policy as the
+> deployment default, and PR #55's decision semantics (multi-branch `when` routing,
+> `on_unresolved`, required `branch_mode`, gate enum validation).
+>
+> **Build from a branch based on current `origin/main`.** `scripts/validate-pathway.ts`
+> imports the validator from the checkout it runs in and refuses to run when HEAD does not
+> contain `origin/main`. A stale checkout is how two pathways once "passed" here and then
+> failed main's import.
 >
 > **Drift check (do this every time you build a JSON):** run
-> `git log -1 --format=%h -- apps/pathway-service/src/services/import apps/pathway-service/src/services/resolution apps/pathway-service/src/types`
-> — if the hash is not `9880729`, the schema may have moved. Diff those paths against
-> `9880729`, apply any changes to your output, and update this document.
+> `git fetch origin && git log -1 --format=%h origin/main -- apps/pathway-service/src/services/import apps/pathway-service/src/services/resolution apps/pathway-service/src/types`
+> — compare against **`origin/main`, never local HEAD**. If the hash is not `a428da5`, the
+> schema may have moved: `git diff a428da5 origin/main -- <those paths>`, apply any changes to
+> your output, and update this document.
 >
 > Source-of-truth files (verify against these, never against memory):
 > - `apps/pathway-service/src/services/import/types.ts` — node/edge types, required props, edge endpoints, limits, enums
 > - `apps/pathway-service/src/services/import/validator.ts` — every import-time rule
-> - `apps/pathway-service/src/services/resolution/types.ts` — gate condition shapes and operators
+> - `apps/pathway-service/src/services/import/branch-when.ts` — the `when` grammar on BRANCHES_TO edges
+> - `apps/pathway-service/src/services/resolution/types.ts` — gate condition shapes, operators, `on_unresolved`
 > - `apps/pathway-service/src/services/resolution/attribute-registry.ts` — attribute namespaces
 > - `apps/pathway-service/src/services/resolution/gate-evaluator.ts` — runtime operator semantics
+> - `apps/pathway-service/src/services/resolution/traversal-engine.ts` — how a gate verdict disposes its targets
+> - `apps/pathway-service/src/services/resolution/unresolved-prompt.ts` — what an unresolvable gate asks for
+> - `apps/pathway-service/src/services/resolution/temporal/policy-registry.ts` — system default horizons per field
 > - `apps/pathway-service/src/types/index.ts` — GateType, DefaultBehavior, AnswerType, NodeStatus, PathwayCategory, ImportMode
 
 ## Top level
@@ -75,7 +87,7 @@ Every node: `{ "id": "...", "type": "...", "properties": { ... } }`. IDs unique,
 |---|---|---|
 | `Stage` | `stage_number`, `title` | `description` |
 | `Step` | `stage_number`, `step_number`, `display_number`, `title` | `description` |
-| `DecisionPoint` | `title` | `description`, `branch_mode` ∈ `one_of` (default; mutually exclusive), `all_of` (concurrent — all branches happen), `any_of` (optional add-ons) |
+| `DecisionPoint` | `title`, **`branch_mode`** | `description`. `branch_mode` is **required** (hard import error when absent, even in draft) ∈ `one_of` (mutually exclusive: exactly one branch is taken — if more than one qualifies the DP pends and the provider picks), `all_of` (every branch is taken by declaration; a weakly-supported branch is still INCLUDED and red-flagged), `any_of` (optional add-ons) |
 | `Criterion` | `description` | `code_value` (cross-checked against `condition_codes`, warning if absent) |
 | `Gate` | `title`, `gate_type`, `default_behavior` | See Gate section |
 | `Medication` | `name`, `role` | `dose` (or `dosage`), `frequency`, `duration`, `route`, `clinical_role`, `instructions` |
@@ -103,7 +115,7 @@ routing to its `BRANCHES_TO` target(s). Every Gate must have ≥1 outbound edge.
 >
 > A gate guards its target **only if the gate is the sole route to that target.** The
 > traversal engine gates a gate's OWN outgoing edges, and node marking is
-> first-writer-wins (`traversal-engine.ts:97`). Any other route reaches the target first
+> first-writer-wins (`traversal-engine.ts:852`, `:990`). Any other route reaches the target first
 > and the gate's verdict is silently discarded. The import validator does **not** catch
 > this — run `scripts/check-gate-control.ts` (see below).
 >
@@ -113,8 +125,9 @@ routing to its `BRANCHES_TO` target(s). Every Gate must have ≥1 outbound edge.
 > applied to Steps.
 >
 > **Rule 2 — exactly one gate may point at a given target.** Two gates on one target is a
-> race and **the loser wins**: the first gate to MISS claims the node, and a later
-> satisfied gate cannot rescue it. **Gates do not OR.** Mutually exclusive alternatives
+> deterministic AND: **any gate that misses excludes the shared target**, in either
+> evaluation order, and a satisfied gate cannot rescue it (re-verified on `a428da5`).
+> **Gates do not OR.** Mutually exclusive alternatives
 > (e.g. trimester-specific thresholds) must be merged into one gate or given separate
 > targets. Compound gates cannot express this either — `conditions` is a flat list under a
 > single `operator`, so `(A AND B) OR (C AND D)` has no encoding.
@@ -136,6 +149,32 @@ routing to its `BRANCHES_TO` target(s). Every Gate must have ≥1 outbound edge.
 `default_behavior` ∈ `skip` (unevaluable ⇒ gated subtree left out) or `traverse` (unevaluable ⇒ subtree included). Choose per clinical safety: `skip` for rare-population add-ons, `traverse` for safety-critical content that should stay unless ruled out.
 
 `gate_type` ∈ `patient_attribute`, `question`, `prior_node_result`, `compound`, `llm_text_analysis`.
+
+**Gate enums are import-validated (since PR #55, `validator.ts:400-445`)** — a value outside
+the vocabulary is a hard error, even in draft mode:
+- `gate_type` — exact match against the list above (an unknown type used to import and then
+  silently do nothing).
+- `default_behavior` ∈ `skip`, `traverse`; `answer_type` ∈ `BOOLEAN`, `NUMERIC`, `SELECT`;
+  compound `operator` ∈ `AND`, `OR` — compared case-insensitively. At runtime anything other
+  than an explicit `traverse` fails closed to skip (`traversal-engine.ts:1263`).
+- `on_unresolved` ∈ `ask`, `default` (exact) — see **Missing data** below.
+
+**Multi-target gates (since PR #55, `validator.ts:265-398`).** A gate with **one**
+`BRANCHES_TO` edge needs nothing more: traversing it is the routing. A gate with **more than
+one** is a *router*, and the validator requires:
+- only `question` and `llm_text_analysis` gates may have several targets — a
+  `patient_attribute`/`compound`/`prior_node_result` gate "is evaluated from the chart and
+  yields no answer to route on" (hard error);
+- every one of its `BRANCHES_TO` edges carries `properties.when` (grammar under **Edges**);
+- the mapping is total and exclusive: BOOLEAN maps both `true` and `false` with real
+  booleans; SELECT maps every option exactly once with option strings; NUMERIC uses
+  half-open ranges that tile the whole line with no gap or overlap; an LLM gate maps its
+  `branches[].name` vocabulary; a multi-target question gate must declare `answer_type`.
+
+At runtime a router takes **exactly one** edge — the one whose `when` matches the answer —
+and marks the others EXCLUDED; no answer, or an answer matching zero or several edges, takes
+none and raises an `unroutable_decision` red flag (`traversal-engine.ts:1078-1150`). So a
+router is "route yes vs no", never "fan out on yes".
 
 ### patient_attribute — single condition on recorded data
 
@@ -234,8 +273,9 @@ Runtime semantics (from `gate-evaluator.ts`):
 >
 > **Pair with an absolute target where one exists.** A patient who has ARRIVED has a flat
 > slope and fails every trend condition. The `greater_than` condition above is what catches
-> her. Note it reads the latest value correctly only on the `v1` kernel — on `legacy-v0`,
-> `getNumericValue` takes whichever result is first in the array, not the most recent.
+> her. It reads the latest value correctly on the `v1` kernel, which is the deployment default
+> on main (`evaluation-context.ts:226`); a service still running `legacy-v0` takes whichever
+> result is first in the array, not the most recent.
 >
 > None of these windows is anchored to the day treatment started — the kernel has no
 > anchor-to-medication-event. Layering approximates it by covering several plausible
@@ -351,7 +391,7 @@ above) or the dead `gate_type === 'select'` options check. Both restrictions sta
 | `HAS_STEP` | Stage | Step | Step within stage |
 | `HAS_DECISION_POINT` | Step | DecisionPoint | Decision after a step |
 | `HAS_CRITERION` | DecisionPoint | Criterion | Branch criterion |
-| `BRANCHES_TO` | DecisionPoint, Gate | Step, Stage | Routing target |
+| `BRANCHES_TO` | DecisionPoint, Gate | Step, Stage | Routing target. On a multi-target (router) gate every edge carries `properties.when`: `{"equals": true}` / `{"equals": false}` (BOOLEAN), `{"equals": "<option>"}` (SELECT / LLM branch name), or `{"gte": a, "lt": b}` half-open ranges, either bound omissible (NUMERIC) — `import/branch-when.ts` |
 | `SELECTS_BRANCH` | Criterion | Step, Stage | "If this criterion, then that branch" — pins each criterion to its BRANCHES_TO target so the engine can compute exclusion lineage and the UI can show the mapping. Emit one per criterion whenever the brief maps criteria to targets |
 | `USES_MEDICATION` | Step | Medication | |
 | `ESCALATES_TO` | Medication | Medication | Escalation chain |
