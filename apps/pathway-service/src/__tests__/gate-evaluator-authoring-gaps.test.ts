@@ -99,6 +99,67 @@ describe('the wildcard the import validator suggests actually matches', () => {
   });
 });
 
+describe('a missing patient.* value is missing data, not a "no" (v1)', () => {
+  const single = (condition: GateCondition): GateProperties => ({
+    title: 's',
+    gate_type: GateType.PATIENT_ATTRIBUTE,
+    default_behavior: DefaultBehavior.SKIP,
+    condition,
+  });
+  const GA = { attribute: 'patient.gestational_age_weeks', operator: 'greater_or_equal', value: 18 } as GateCondition;
+  const TRIM = { attribute: 'patient.trimester', operator: 'equals', value: 2 } as GateCondition;
+  const noAttrs = patient({ patientAttributes: {} } as Partial<PatientContext>);
+
+  it.each([GA, TRIM])('reports dataUnavailable for an absent attribute (%o)', async (cond) => {
+    const r = await evaluateGate(single(cond), deps('v1', { patientContext: noAttrs }));
+    expect(r.satisfied).toBe(false);
+    expect(r.dataUnavailable).toBe(true);
+  });
+
+  it('adds no keys when the attribute is present — the pre-existing shape', async () => {
+    const ctx = patient({ patientAttributes: { gestational_age_weeks: 12 } } as Partial<PatientContext>);
+    const r = await evaluateGate(single(GA), deps('v1', { patientContext: ctx }));
+    expect(r.satisfied).toBe(false);
+    expect('dataUnavailable' in r).toBe(false);
+    expect('indeterminate' in r).toBe(false);
+  });
+
+  it('does not flag "exists": absence IS its answer', async () => {
+    const cond = { attribute: 'patient.trimester', operator: 'exists', value: true } as GateCondition;
+    const r = await evaluateGate(single(cond), deps('v1', { patientContext: noAttrs }));
+    expect(r.satisfied).toBe(false);
+    expect('dataUnavailable' in r).toBe(false);
+  });
+
+  it('does not flag an UNMAPPED lab.* — a vocabulary gap, not a missing datum', async () => {
+    // An ask here would inject into patientAttributes, which a lab.* gate
+    // never reads: the question would stay pending for ever.
+    const cond = { attribute: 'lab.unmapped', operator: 'less_than', value: 11 } as GateCondition;
+    const r = await evaluateGate(single(cond), deps('v1', { patientContext: noAttrs }));
+    expect('dataUnavailable' in r).toBe(false);
+  });
+
+  it('is unchanged under legacy-v0, which reports no missing-data signal for any datum', async () => {
+    const r = await evaluateGate(single(GA), deps('legacy-v0', { patientContext: noAttrs }));
+    expect(r.satisfied).toBe(false);
+    expect('dataUnavailable' in r).toBe(false);
+  });
+
+  it('names the missing condition in a compound gate’s unresolvedConditions', async () => {
+    const ctx = patient({ patientAttributes: { age: 30 } } as Partial<PatientContext>);
+    const r = await evaluateGate(compound('AND', [TRUE_C, GA]), deps('v1', { patientContext: ctx }));
+    expect(r.satisfied).toBe(false);
+    expect(r.dataUnavailable).toBe(true);
+    expect(r.unresolvedConditions).toEqual([GA]);
+  });
+
+  it('a definite false sibling still settles an AND — nothing to ask', async () => {
+    const ctx = patient({ patientAttributes: { age: 30 } } as Partial<PatientContext>);
+    const r = await evaluateGate(compound('AND', [FALSE_C, GA]), deps('v1', { patientContext: ctx }));
+    expect(r.dataUnavailable).toBe(false);
+  });
+});
+
 describe('compound operator casing', () => {
   // The validator accepts `and`/`or` in any case; the evaluator compared
   // `op === 'AND'` and treated everything else as OR.
