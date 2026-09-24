@@ -583,9 +583,55 @@ function validateGateConditions(
       // covered by this predicate — `parseHorizonValue` owns that rule (D2).
       const controlDomain = conditionControlDomainError(c);
       if (controlDomain !== null) errors.push(`${where}: ${controlDomain}.`);
+      const wildcard = codeWildcardError(op, c.value);
+      if (wildcard !== null) errors.push(`${where}: ${wildcard}.`);
       for (const k of Object.keys(c)) if (!CODED_KEYS.has(k)) errors.push(`${where}: unknown key "${k}" on coded condition.`);
     }
   });
+}
+
+/**
+ * Operators whose code is matched as a PATTERN — `matchesCodePattern`
+ * (legacy-v0) and `codeMatches` (v1 `select-facts.ts`) are called for exactly
+ * these. The other value-reading coded operators (`equals`, `greater_than`,
+ * `less_than`) compare the code with `===` in both engines. `exists` ignores
+ * the value altogether.
+ */
+const PATTERN_CODE_OPS = new Set([
+  'includes_code', 'count_in_window', 'trend_up', 'trend_down', 'delta_from_baseline',
+]);
+const EXACT_CODE_OPS = new Set(['equals', 'greater_than', 'less_than']);
+
+/**
+ * The runtime's only wildcard is ONE trailing `.*` after a non-empty prefix
+ * (`pattern.endsWith('.*')` → `startsWith(prefix)`). Any other `*` is compared
+ * literally, and no real code contains one, so the condition silently matches
+ * nothing: `G82.2*` reads like "G82.2x" and is always false.
+ */
+function codeWildcardError(operator: string, value: unknown): string | null {
+  if (typeof value !== 'string' || !value.includes('*')) return null;
+  if (EXACT_CODE_OPS.has(operator)) {
+    return (
+      `code "${value}" contains "*", but ${operator} matches codes exactly, so it can never ` +
+      `match — use includes_code for a pattern, or give the full code`
+    );
+  }
+  if (!PATTERN_CODE_OPS.has(operator)) return null;
+  const prefix = value.endsWith('.*') ? value.slice(0, -2) : null;
+  if (prefix === '') {
+    return (
+      `code pattern ".*" has an empty prefix and matches every code — ` +
+      `use operator "exists" for "any entry"`
+    );
+  }
+  if (prefix !== null && !prefix.includes('*')) return null;
+  const stem = value.replace(/\*/g, '').replace(/\.+$/, '');
+  const hint = stem ? ` — for a prefix match write "${stem}.*"` : '';
+  return (
+    `code pattern "${value}" is not a wildcard the engine understands: only a single ` +
+    `trailing ".*" after a code prefix (e.g. "Z94.*") matches by prefix, and any other "*" ` +
+    `is compared literally and never matches${hint}`
+  );
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────

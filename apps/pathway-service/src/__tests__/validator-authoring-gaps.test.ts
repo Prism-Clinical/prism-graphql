@@ -63,6 +63,47 @@ describe('depends_on — the runtime shape is {node_id, status}', () => {
   });
 });
 
+describe('code wildcards — only a single trailing ".*" is a pattern at runtime', () => {
+  const coded = (operator: string, value: string, field = 'conditions') =>
+    withGate({ gate_type: 'patient_attribute', condition: { field, operator, value } });
+
+  it('rejects "G82.2*" (silently a literal at runtime) and suggests "G82.2.*"', () => {
+    const result = validatePathwayJson(coded('includes_code', 'G82.2*'));
+    expect(result.valid).toBe(false);
+    expect(result.errors).toContainEqual(expect.stringContaining('"G82.2.*"'));
+  });
+
+  it.each(['Z94.*.1', '*.9', 'Z9*.*', 'Z94.**'])('rejects the malformed pattern %s', (value) => {
+    expect(validatePathwayJson(coded('includes_code', value)).valid).toBe(false);
+  });
+
+  it('rejects a bare ".*", whose empty prefix matches every code', () => {
+    const result = validatePathwayJson(coded('count_in_window', '.*'));
+    expect(result.valid).toBe(false);
+    expect(result.errors).toContainEqual(expect.stringContaining('exists'));
+  });
+
+  it.each(['equals', 'greater_than', 'less_than'])(
+    'rejects any "*" on %s, which matches codes exactly',
+    (operator) => {
+      const result = validatePathwayJson(coded(operator, 'Z94.*', 'labs'));
+      expect(result.valid).toBe(false);
+      expect(result.errors).toContainEqual(expect.stringContaining('exactly'));
+    },
+  );
+
+  it.each(['includes_code', 'count_in_window', 'trend_up', 'trend_down', 'delta_from_baseline'])(
+    'accepts a well-formed trailing ".*" on %s',
+    (operator) => {
+      expect(validatePathwayJson(coded(operator, 'Z94.*')).errors).toEqual([]);
+    },
+  );
+
+  it('ignores the value of an exists condition (the runtime does too)', () => {
+    expect(validatePathwayJson(coded('exists', '*')).errors).toEqual([]);
+  });
+});
+
 describe('answer_type casing — the runtime reads it case-insensitively', () => {
   it('requires options for answer_type "SELECT" (the enum spelling), not only "select"', () => {
     const pw = withGate({ gate_type: 'question', prompt: 'Which?', answer_type: 'SELECT' });

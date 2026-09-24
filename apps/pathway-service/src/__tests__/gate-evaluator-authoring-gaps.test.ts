@@ -14,6 +14,7 @@ import {
 } from '../services/resolution/types';
 import { makeEvaluationTemporalContext } from '../services/resolution/temporal/evaluation-context';
 import type { PatientContext } from '../services/confidence/types';
+import type { NormalizedFact } from '../services/resolution/temporal/fact-model';
 
 const AS_OF = '2026-08-11T00:00:00.000Z';
 
@@ -60,6 +61,43 @@ function compound(operator: string, conditions: GateCondition[]): GateProperties
     conditions,
   };
 }
+
+describe('the wildcard the import validator suggests actually matches', () => {
+  // The validator rejects "G82.2*" and tells the author to write "G82.2.*".
+  // That advice is only honest if both engines match G82.21 with it.
+  const gate: GateProperties = {
+    title: 'w',
+    gate_type: GateType.PATIENT_ATTRIBUTE,
+    default_behavior: DefaultBehavior.SKIP,
+    condition: { field: 'conditions', operator: 'includes_code', value: 'G82.2.*' },
+  };
+
+  it('matches under legacy-v0 (matchesCodePattern)', async () => {
+    const ctx = patient({ conditionCodes: [{ code: 'G82.21', system: 'ICD-10' }] } as Partial<PatientContext>);
+    const r = await evaluateGate(gate, deps('legacy-v0', { patientContext: ctx }));
+    expect(r.satisfied).toBe(true);
+  });
+
+  it('matches under v1 (select-facts codeMatches)', async () => {
+    const fact = {
+      kind: 'condition',
+      factId: 'f1',
+      code: 'G82.21',
+      system: 'ICD-10',
+      interval: {
+        start: { value: '2020', precision: 'year' },
+        end: { kind: 'OPEN', assertedCurrentAt: AS_OF },
+      },
+      recordValidity: 'VALID',
+      validityBasis: 'verification:confirmed',
+      provenance: { sourceType: 'SYNTHETIC' },
+      clinicalState: 'ACTIVE',
+      stateBasis: 'FHIR_STATUS',
+    } as unknown as NormalizedFact;
+    const r = await evaluateGate(gate, deps('v1', { factStore: [fact] }));
+    expect(r.satisfied).toBe(true);
+  });
+});
 
 describe('compound operator casing', () => {
   // The validator accepts `and`/`or` in any case; the evaluator compared
