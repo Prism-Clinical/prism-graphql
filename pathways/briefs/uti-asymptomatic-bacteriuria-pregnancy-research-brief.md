@@ -691,3 +691,11 @@ explicitly on every gate with a threshold — **no behaviour change** — pendin
 gate-culture-positive and gate-culture-positive-classify (urine colony count), gate-pyelonephritis-suspected (temperature). Gates with only code/history conditions carry `default`, which is what the
 engine does for them anyway. Lab conditions also carry a `display` (name + unit) so the
 missing-value question is readable.
+
+### `[BUILD FIX 2026-09-24]` Simulator-untestable: `gate-recurrent-uti`
+
+`count_in_window` with `window_days: 300` counts only O23 entries whose **date** falls in the
+window. The simulator dates nothing, so the count is always 0 and the gate always answers
+"no" there (aggregates never ask). `horizon: "LIFETIME"` instead of `window_days` would
+admit undated entries — but would also count every O23 code the patient ever had, from
+any pregnancy. Left as authored; test with dated conditions, not the composer.

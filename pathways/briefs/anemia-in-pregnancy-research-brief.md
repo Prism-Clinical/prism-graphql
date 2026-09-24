@@ -692,3 +692,11 @@ explicitly on every gate with a threshold — **no behaviour change** — pendin
 gate-microcytic, gate-normocytic, gate-macrocytic (MCV), gate-ida-confirmed (ferritin), gate-hgb-response (Hgb), gate-severe-anemia (Hgb), gate-referral-threshold (Hgb, Hct). Gates with only code/history conditions carry `default`, which is what the
 engine does for them anyway. Lab conditions also carry a `display` (name + unit) so the
 missing-value question is readable.
+
+### `[BUILD FIX 2026-09-24]` Simulator-untestable: `gate-hgb-response` trend arms
+
+The encounter simulator sends no dates. The three `trend_up` arms need at least two
+**dated** hemoglobin values, so they never fire from the simulator (one undated value: not
+met; two or more: unorderable, and the gate asks for a hemoglobin instead). Only the
+absolute-target arm (Hgb > 10.9 within 90 days) is exercisable there. Test the trend arms
+with dated labs (API or seeded data), not the composer.

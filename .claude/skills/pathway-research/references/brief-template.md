@@ -113,7 +113,7 @@ Plus type-specific fields:
   are **vitals** (`systolic_bp`, `diastolic_bp`, `temperature_f` in °F), not LOINC labs.
 - *Coded form*: field (conditions | medications | allergies | labs | vitals), operator (includes_code | equals | exists | greater_than | less_than | count_in_window | trend_up | trend_down | delta_from_baseline), value (code; wildcard **only** as a trailing `.*` — `G82.2.*`, never `G82.2*`, which is a literal that matches nothing; or vitals key), system (**never on vitals** — hard import error), and the operator's params:
   - greater_than/less_than → `threshold` (always explicit, finite number)
-  - count_in_window → `count_threshold` (positive integer), `window_days` (omit = lifetime)
+  - count_in_window → `count_threshold` (positive integer), `window_days` (always give it: omitted means the field's default — LIFETIME for conditions/meds/allergies, but 90 days for labs — and a bounded window never counts undated entries, which is every simulator entry)
   - trend_up/trend_down (labs only) → `window_days`, `min_points` (positive integer), `slope_threshold` (units/day, **non-negative magnitude** — the engine applies the sign)
   - delta_from_baseline (labs only) → `window_days`, `min_points`, `delta_threshold` (signed)
 - *Temporal scoping (either form)*: optional `horizon` — LIFETIME | YEAR | QUARTER | MONTH | WEEK | DAY | ENCOUNTER or `{days: N}` (1..36525) — and `status` — active | inactive | any. **A condition takes `window_days` OR `horizon`, never both.** **Every `vitals` condition needs a horizon** (`DAY` unless there is a reason; never `ENCOUNTER`) — without one it inherits ENCOUNTER and the simulator session is rejected. Give every clinically-scoped condition an explicit horizon/status with a one-line rationale; summarize all assignments in §17.
@@ -232,8 +232,12 @@ gate conditions, so this table is the reviewer's single place to audit time sema
 | gate-`<slug>` | `<code/attribute>` | YEAR / {days: N} / — | active / inactive / any / — | — or N | `<why this scoping>` |
 
 Rules: horizon XOR window_days per condition; named horizons are fixed day-widths
-(YEAR=365, QUARTER=90, MONTH=30, WEEK=7, DAY=1) back from the session clock; omitted
-status behaves as "any". "None." if no condition needs temporal scoping.
+(YEAR=365, QUARTER=90, MONTH=30, WEEK=7, DAY=1) back from the session clock. **Give every
+condition a row** — an omitted horizon is not "lifetime": it is LIFETIME for conditions/
+medications/allergies, QUARTER (90 d) for labs, and ENCOUNTER for vitals (which rejects
+simulator sessions — use DAY). Omitted status on conditions/medications/allergies means
+**"active"** (not "any"); never give labs or vitals a status. Mark any trend/delta/count
+gate "simulator-untestable" — the simulator sends no dates.
 
 ## 18. Gaps & fallbacks
 

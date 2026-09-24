@@ -318,7 +318,7 @@ Runtime semantics (from `gate-evaluator.ts`):
 | `equals` | same | Exact code match — no wildcard (a `.*` here is literal) |
 | `exists` | same | Field has ≥1 entry of any kind |
 | `greater_than` / `less_than` | labs, vitals | For `labs`: `value` = the lab code, compare that lab's numeric result to `threshold` (falls back to `parseFloat(value)` — so always set `threshold` explicitly). For `vitals`: `value` = dotted path into vitalSigns |
-| `count_in_window` | labs + code fields | Count entries matching `value` (+`system`; trailing `.*` wildcard allowed) dated within `window_days` of the session clock; satisfied when count ≥ `count_threshold` (default 2). Omit `window_days` ⇒ lifetime count, undated entries count |
+| `count_in_window` | labs + code fields | Count entries matching `value` (+`system`; trailing `.*` wildcard allowed) whose **start** falls within `window_days` of the session clock; satisfied when count ≥ `count_threshold` (default 2). Omit `window_days` ⇒ the field's v1 default horizon (below): LIFETIME for conditions/medications/allergies (undated entries count), but **QUARTER for labs** (90 days; undated entries never count). A bounded window never counts an undated entry. A vitals count is always 0. |
 | `trend_up` / `trend_down` | **labs only** | Linear-regression slope over dated values of lab `value` within `window_days`; needs ≥ `min_points` (default 3, floor 2) dated points; satisfied when slope > `slope_threshold` (up) or < −`slope_threshold` (down); default threshold 0 |
 | `delta_from_baseline` | **labs only** | newest − oldest in-window value vs signed `delta_threshold` (positive = rose by ≥ that much; negative = fell by ≥ magnitude); needs ≥ `min_points` (default 2) |
 
@@ -368,13 +368,50 @@ Runtime semantics (from `gate-evaluator.ts`):
 > anchor-to-medication-event. Layering approximates it by covering several plausible
 > treatment durations at once.
 
-Time-shape notes: with `window_days` set, undated and future-dated entries never count. The
-clock is the session's pinned `evaluationAsOf`, not wall time. Kernel semantics (v1): the
+Time-shape notes: with `window_days` (or any bounded horizon) set, undated and future-dated
+entries never count toward an aggregate. The clock is the session's pinned
+`evaluationAsOf`, not wall time. Kernel semantics (v1): the
 window selects on a fact's **start bound**, not interval overlap (D8); undated observations
 are admitted as facts but are **not orderable** — they can satisfy membership operators but
 cannot join a trend/delta series (D7); and when a condition's temporal state can't be
 proven, the uncertainty propagates through `compound` gates rather than being coerced to
 false — the gate is then *unresolved* and follows `on_unresolved` (see **Missing data**).
+
+### System defaults (v1) — what an omitted `horizon` / `status` means
+
+`v1` is the deployment default on main (`evaluation-context.ts:226`). A condition with no
+`horizon` and no `window_days` inherits its field's system default
+(`policy-registry.ts:70-84`; a pathway-level `temporal_defaults` row can override, but it
+is not authorable from the JSON):
+
+| Field | Default horizon | Default `status` |
+|---|---|---|
+| `conditions`, `medications`, `allergies` | `LIFETIME` | `active` (a fact with no clinical state — every simulator entry — counts as active) |
+| `labs` | **`QUARTER`** (90 days) | n/a — `status` on labs is a preflight error |
+| `vitals` | **`ENCOUNTER`** — rejects every session without `encounterStart` (rule 0) | n/a — `status` on vitals is a preflight error |
+
+So "no horizon" never means "lifetime" for a lab: a platelet count 120 days old is outside
+the default window. **The builder emits an explicit `horizon` (or `window_days`) on every
+condition** — the brief's §17 value, or, when the brief gives none, the field's default
+above, listed in the delivery message — and never emits `status` on labs or vitals.
+`check-gate-control.ts` fails a condition with neither.
+
+### What needs dated facts (and so cannot fire from the simulator)
+
+The simulator dates nothing (see **What the simulator sends**). Undated facts are asserted
+current (`OPEN(evaluationAsOf)`): they satisfy membership and scalar reads inside any
+horizon, but they have no start, so:
+
+| Operator | With undated facts |
+|---|---|
+| `includes_code`, `equals`, `exists` | Work. |
+| `greater_than`, `less_than` | One value per code works. Two or more undated values for one code cannot be ordered → `AMBIGUOUS_LATEST` → the gate is unresolved and asks; the injected answer is undated too, so it stays ambiguous (engine gap). |
+| `count_in_window` | Counts undated entries **only** under `LIFETIME` (conditions/meds/allergies default). Any bounded window → count 0 → a silent **"no"** (aggregates never ask). |
+| `trend_up`, `trend_down`, `delta_from_baseline` | Need `min_points` **dated** values. One undated value → not met; two or more → unorderable series (`indeterminate`, never asks → `default_behavior`, or the compound asks for a sibling scalar). |
+
+Gates built on the last two rows are **untestable in the simulator** — say so in the brief
+(§18) and the delivery message. In the current pathways: anemia `gate-hgb-response` (its
+three trend arms; the absolute-target arm works) and UTI `gate-recurrent-uti`.
 
 ### Temporal horizon & status (per-condition, NODE tier — merged, emit freely)
 
@@ -412,8 +449,8 @@ at runtime):
 Authoring guidance: use `window_days` when the *operator* is inherently windowed
 (`count_in_window`, trends, deltas — "2 UTIs in 180 days"); use `horizon` to scope which
 facts are relevant at all ("only conditions active within the last year"); use `status`
-to exclude resolved/historical diagnoses (`"active"`) or deliberately include them
-(`"any"` — the default behavior when omitted).
+to exclude resolved/historical diagnoses (`"active"` — the v1 default when omitted) or
+deliberately include them (`"any"`).
 
 ### question — elicited from the provider at the encounter
 

@@ -253,6 +253,28 @@ for (const { gate, i, c } of chartConditions()) {
   }
 }
 
+// EXPLICIT HORIZON — an omitted horizon is not "lifetime": it is the field's v1
+// default (LIFETIME for conditions/meds/allergies, QUARTER for labs, ENCOUNTER for
+// vitals). Emitting it makes the time scope reviewable in the JSON and the brief.
+// STATUS ON OBSERVATIONS — labs and vitals have no clinical state; a `status`
+// there imports cleanly and then throws at session preflight.
+for (const { gate, i, c } of chartConditions()) {
+  if (c.horizon === undefined && c.window_days === undefined && !isVitals(c)) {
+    errors.push(
+      `EXPLICIT HORIZON — "${gate}" condition[${i}] (${c.field ?? c.attribute} ${c.value ?? ''}) has neither ` +
+      `horizon nor window_days.\n      => it silently inherits the v1 field default ` +
+      `(${c.field === 'labs' ? 'QUARTER = 90 days, not lifetime' : 'LIFETIME'}); emit it explicitly.`,
+    );
+  }
+  if (c.status !== undefined && (c.field === 'labs' || isVitals(c) ||
+      (typeof c.attribute === 'string' && c.attribute.startsWith('lab.')))) {
+    errors.push(
+      `STATUS ON OBSERVATION — "${gate}" condition[${i}] sets status on ${c.field ?? c.attribute}: ` +
+      `labs and vitals have no clinical state; session preflight throws INVALID_TEMPORAL_DEFAULTS.`,
+    );
+  }
+}
+
 // WILDCARD — the matcher (`select-facts.ts` codeMatches) supports exactly ONE
 // wildcard form: a trailing `.*`, meaning "starts with the part before it". Any
 // other `*` is compared as a literal character, so `G82.2*` matches no real code

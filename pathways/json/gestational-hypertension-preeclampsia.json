@@ -700,7 +700,8 @@
             "value": "777-3",
             "system": "LOINC",
             "display": "Platelets (x10^9/L)",
-            "threshold": 100
+            "threshold": 100,
+            "horizon": "QUARTER"
           },
           {
             "field": "labs",
@@ -708,7 +709,8 @@
             "value": "2160-0",
             "system": "LOINC",
             "display": "Creatinine (mg/dL)",
-            "threshold": 1.1
+            "threshold": 1.1,
+            "horizon": "QUARTER"
           },
           {
             "field": "conditions",

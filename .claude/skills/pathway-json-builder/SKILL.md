@@ -107,7 +107,10 @@ Follow the spec exactly. Brief-section → JSON mapping:
   value/conflict validation to session preflight, where a violation aborts session
   creation): (1) never emit both `window_days` and `horizon` on one condition; (2)
   `horizon` ∈ LIFETIME|YEAR|QUARTER|MONTH|WEEK|DAY|ENCOUNTER or `{days: 1..36525}`;
-  (3) `status` ∈ active|inactive|any; (4) `window_days` positive integer ≤ 36525; (5) every
+  (3) `status` ∈ active|inactive|any, and never on labs/vitals (preflight error);
+  (4) `window_days` positive integer ≤ 36525; (6) every condition gets an explicit
+  `horizon` or `window_days` — when §17 is silent, emit the field's v1 default (LIFETIME
+  for conditions/meds/allergies, QUARTER for labs, DAY for vitals) and list it; (5) every
   `vitals` condition (coded or `vitals.*`) gets an explicit horizon — `"DAY"` when §17 gives
   none, never `ENCOUNTER`: an omitted vitals horizon inherits ENCOUNTER and rejects every
   simulator session (no `encounterStart`) for every pathway it co-matches. A §17
@@ -170,5 +173,6 @@ plus any gate re-wiring done to satisfy Rules 1–3; code_sets emitted (how many
 step, blocked-gate fallbacks, code reattachments); every gate given `on_unresolved: ask` by
 default for want of a brief decision; the §14 attribute-map seeding checklist
 (if any — these rows must exist in `pathway_attribute_code_map` before the gates evaluate);
-any drift-check findings; and a reminder to upload via the Prism Admin Dashboard
+any drift-check findings; every horizon defaulted for want of a §17 row; every
+trend/delta/count gate flagged "simulator-untestable (needs dated facts)"; and a reminder to upload via the Prism Admin Dashboard
 (NEW_PATHWAY / NEW_VERSION / DRAFT_UPDATE per the spec's Upload section).
