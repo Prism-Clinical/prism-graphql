@@ -266,10 +266,11 @@ Gated steps connect **only** via their gate's `BRANCHES_TO` — no `HAS_STEP` ed
       last three are children of 91936005 — the matcher does not expand hierarchies)
     - field `conditions`, system ICD-10: `Z88.0` (Allergy status to penicillin) only
   - `[DECISION — Josh 2026-09-24]` **Z88.0 only; `Z88.1` removed** from both gates
-    (`gate-penicillin-allergy` and its `-gbs` copy, kept identical). Z88.1 is "Allergy
-    status to *other* antibiotic agents" — not a penicillin allergy — so it would have
-    routed a sulfa- or macrolide-allergic patient to the penicillin-allergy regimen. The
-    verified SNOMED penicillin-allergy concepts above are unchanged.
+    (`gate-penicillin-allergy` and its `-gbs` copy, kept identical). The verified SNOMED
+    penicillin-allergy concepts above are unchanged.
+  - `[BUILD NOTE — not Josh's rationale]` Z88.1 is "Allergy status to *other* antibiotic
+    agents" (sulfonamides are Z88.2), so it would have routed, for example, a macrolide- or
+    cephalosporin-allergic patient to the penicillin-allergy regimen.
   - `[BUILD FIX]` Allergies arrive as SNOMED findings; Z88.x are ICD-10 allergy-*status*
     diagnoses and arrive under conditions. An ICD-10 code under `allergies` could never
     match, so the gate silently answered "no" for every penicillin-allergic patient.

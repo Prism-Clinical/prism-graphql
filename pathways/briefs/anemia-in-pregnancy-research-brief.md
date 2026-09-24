@@ -183,7 +183,7 @@ the pathway presumes the coded diagnosis.
   - ~~Attached to: step-1-1 · Branches to: step-1-2 · patient_attribute · Default: skip~~
   - ~~Condition (coded): field `labs`, less_than, value `787-2` (MCV, LOINC), threshold 80,
     horizon {days: 90} [1]~~
-  - `[DECISION — Josh 2026-09-24, consequence — NEEDS JOSH TO CONFIRM]` Removed because
+  - `[CONSEQUENCE OF DP-1 DECISION — NEEDS JOSH]` Not Josh's decision; a build consequence. Removed because
     restoring DP-1 criterion 1b made its only target, Step 1.2, a DecisionPoint branch.
     The gate could no longer exclude Step 1.2 (Rule 1): on the live path — the branch
     choice re-resolves incrementally from DP-1 — choosing workup includes Step 1.2 at any
@@ -193,7 +193,10 @@ the pathway presumes the coded diagnosis.
     Step 1.2 (and gate-normocytic/macrocytic still ask for a missing MCV). So Step 1.2 is
     now the provider's call at DP-1. MCV < 80 still frames Step 1.2's indication (§3).
     If MCV should instead **force** the microcytic workup, DP-1 cannot also branch to it —
-    that is a different design.
+    that is a different design. **Also note:** DP-1 now pends for *every* patient —
+    normocytic and macrocytic too — offering "Microcytic workup" as the confirmatory
+    branch; before, MCV ≥ 80 kept those patients out of Step 1.2 (they get Steps 1.3/1.4
+    from their own MCV gates either way).
 - **Gate `gate-normocytic` — MCV 80–100**
   - Attached to: step-1-1 · Branches to: step-1-3 · compound (AND) · Default: skip
   - Conditions (coded): labs `787-2` greater_than threshold **79.9**; labs `787-2`
@@ -251,6 +254,10 @@ the pathway presumes the coded diagnosis.
     datum). The encounter simulator sends GA, so it decides there; the pathway-preview flow
     sends no `patientAttributes`, so there it asks. The admin dashboard's "Fields this
     pathway reads" panel does not list attribute conditions.
+  - `[BUILD NOTE]` The generated question reads **"patient.gestational_age_weeks — current
+    value?"** — the engine prints the raw path for attribute conditions and ignores
+    `display` there (`unresolved-prompt.ts`), where the old question gate had readable
+    text. A readable label needs an engine change, not a JSON one.
   - ~~Question-gate form (v3): Type question, prompt "Is the patient beyond the first
     trimester (≥14 0/7 weeks gestation)?", answer_type BOOLEAN.~~
   - Rationale: ACOG Level B — parenteral iron "after the first trimester"; ASH: no

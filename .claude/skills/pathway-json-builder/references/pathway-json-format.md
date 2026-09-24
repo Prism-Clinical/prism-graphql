@@ -269,7 +269,8 @@ but cannot be ordered, e.g. two undated results for the same LOINC → `AMBIGUOU
 - **Prompt text:** generated per datum. For labs it uses the condition's **`display`**:
   `"<display> (LOINC <code>) — most recent value?"` — so put a readable `display` (with the
   unit the threshold assumes, e.g. `"Platelets (x10^9/L)"`) on every lab condition. Vitals
-  prompts print the path (`display` is ignored). **Do not set `prompt` on a chart gate:** an
+  and attribute (`patient.*`, `vitals.*`, `lab.*`) prompts print the path —
+  `"patient.gestational_age_weeks — current value?"` — and ignore `display`. **Do not set `prompt` on a chart gate:** an
   authored prompt replaces the generated one for every datum the gate asks for.
 - **Question gates:** inert — an unanswered question always pends.
 - **Choosing — decided, not per-gate (Josh, 2026-09-24): numeric gates ask when the value
