@@ -19,6 +19,7 @@ import {
   getSession,
   updateSession,
   logEvent,
+  withTransaction,
   logNodeOverride,
   logGateAnswer,
 } from '../../services/resolution/session-store';
@@ -198,6 +199,230 @@ async function refreshSessionDdi(
 ): Promise<void> {
   const result = await applyDdiToResolutionState(pool, session.resolutionState, patientContext);
   session.ddiWarnings = result.findings.filter((f) => f.action === 'WARN');
+}
+
+/** An audit row to commit alongside a context update. */
+interface AuditEvent {
+  eventType: string;
+  triggerData: unknown;
+  nodesRecomputed: number;
+  statusChanges: Array<{ nodeId: string; from: string; to: string }>;
+}
+
+/**
+ * The body of `addPatientContext`, callable with extra audit events that must
+ * commit in the same transaction as the context itself.
+ *
+ * Not a resolver argument: Apollo passes `info` as a resolver's fourth
+ * parameter, so an optional fourth parameter on the resolver would receive it.
+ */
+async function applyPatientContext(
+  args: { sessionId: string; additionalContext: AdditionalContextInput },
+  context: DataSourceContext,
+  alsoRecord: AuditEvent[] = [],
+) {
+  const { pool } = context;
+
+  // 1. Load session
+  const session = await getSession(pool, args.sessionId);
+  if (!session) {
+    throw new GraphQLError('Session not found', { extensions: { code: 'NOT_FOUND' } });
+  }
+  if (session.status !== SessionStatus.ACTIVE && session.status !== SessionStatus.DEGRADED) {
+    throw new GraphQLError(`Cannot modify session with status "${session.status}"`, {
+      extensions: { code: 'BAD_USER_INPUT' },
+    });
+  }
+
+  // 1b. The SAME trust parsing `startResolution` runs (D10).
+  //
+  //    `AdditionalContextInput` reuses the very same `CodeInput` /
+  //    `LabResultInput` SDL types as `PatientContextInput`, so it can carry
+  //    `endDate` / `clinicalState` / `recordValidity` / `sourceId` — the
+  //    fields `parseResolutionInput` treats as assertions about clinical
+  //    truth. Until this ran here, a request refused at session creation was
+  //    accepted mid-session, and under `v1` those fields govern selection:
+  //    `recordValidity: 'INVALID'` drops a fact from selection entirely and
+  //    `clinicalState: 'INACTIVE'` flips it out of every `status: 'active'`
+  //    gate.
+  //
+  //    NOT a security fix, and it must not be cited as one: under AD-1
+  //    `userRole` is caller-asserted, so a role check secures nothing. What
+  //    this buys is that one request gets one answer whichever mutation
+  //    carries it — locked decision #7's shape, one layer up.
+  //
+  //    Version-independent, exactly as at `startResolution`, where
+  //    `parseResolutionInput` runs before the policy version is even
+  //    resolved. A `v1`-only guard would leave the two doors disagreeing
+  //    under `legacy-v0`, which is the defect rather than a narrower fix.
+  //
+  //    Read from the NEWLY supplied payload, never from `merged`: a session
+  //    whose stored context already carries an assertion must not become
+  //    permanently un-addable-to, and the boundary is what arrives here.
+  const assertion = firstTrustAssertion(args.additionalContext);
+  if (assertion) {
+    throw new GraphQLError(
+      `additionalContext.${assertion} is a SYNTHETIC assertion about clinical truth and cannot be supplied through addPatientContext`,
+      { extensions: { code: 'INVALID_RESOLUTION_INPUT' } },
+    );
+  }
+  // Explicit nulls become omissions here too — otherwise `recordValidity:
+  // null`, which a client sends simply by binding an unset form field, starts
+  // a session cleanly and then throws out of `parseRecordValidity` on the
+  // first mid-session addition.
+  const additionalContext = normalizeContextEntryNulls(args.additionalContext);
+
+  // 2. Accumulate additional context onto everything supplied before it.
+  //    A shallow spread replaced each key instead of merging it, so adding
+  //    condition A and then condition B stored only B — and every later
+  //    retraversal lost evidence a gate had already counted.
+  const merged = mergeAdditionalContext(
+    session.additionalContext as Partial<AdditionalContextInput> | undefined,
+    additionalContext,
+  );
+
+  // 3. Build updated patient context for re-evaluation (rebuilt from the
+  // accumulated `merged` bag so retraversal context accumulates across calls)
+  const basePc = session.initialPatientContext as PatientContext;
+  const updatedPc = buildEffectivePatientContext(basePc, merged as Partial<AdditionalContextInput>);
+
+  // 4. Identify affected nodes via dependency maps
+  const changedFields = new Set<string>();
+  if (additionalContext.conditionCodes) changedFields.add('conditions');
+  if (additionalContext.medications) changedFields.add('medications');
+  if (additionalContext.labResults) changedFields.add('labs');
+  if (additionalContext.allergies) changedFields.add('allergies');
+  if (additionalContext.vitalSigns) changedFields.add('vitalSigns');
+  if (additionalContext.freeformData) changedFields.add('freeformData');
+  if (additionalContext.patientAttributes) changedFields.add('patientAttributes');
+
+  // Reject a clock-less session up front, not only when a retraversal
+  // happens to be triggered — the session is un-retraversable either way.
+  const sessionClock = requireSessionTemporalContext(session);
+
+  const affectedNodes = new Set<string>();
+
+  // Gates: mark if any context field they read was updated.
+  // Legacy coded deps use bucket names ('labs'); attribute-condition deps use
+  // dotted paths ('lab.hemoglobin'). dependencyContextKey maps both to the
+  // AdditionalContextInput key that supplies the data.
+  for (const [gateId, fields] of session.dependencyMap.gateContextFields) {
+    for (const field of fields) {
+      const contextKey = dependencyContextKey(field);
+      if (contextKey && additionalContext[contextKey] !== undefined) {
+        affectedNodes.add(gateId);
+        break;
+      }
+    }
+  }
+
+  // Action nodes: only re-score if their scorer inputs overlap with changed fields
+  for (const [nodeId, inputs] of session.dependencyMap.scorerInputs) {
+    for (const input of inputs) {
+      if (changedFields.has(input)) {
+        affectedNodes.add(nodeId);
+        break;
+      }
+    }
+  }
+
+  // 5. Run re-traversal
+  const statusChanges: Array<{ nodeId: string; from: string; to: string }> = [];
+  let nodesRecomputed = 0;
+
+  if (affectedNodes.size > 0) {
+    const rctx = await buildResolutionContext(pool, session.pathwayId);
+
+    const llmBundle = makeLlmGateEvaluator(pool, session.pathwayId, args.sessionId);
+    const incrementalEngine = new TraversalEngine(
+      makeTraversalAdapter(rctx, pool, session.pathwayId, updatedPc),
+      rctx.thresholds,
+      sessionClock,
+      rctx.temporalDefaults,
+      // `merged`, NOT `session.additionalContext` — the newly supplied facts
+      // must reach the very retraversal they triggered. Assembling from the
+      // stored bag is the stale-store half of P1-2: the gate would be marked
+      // affected, re-evaluated, and still see nothing new.
+      factStoreForSession(session, merged as Partial<AdditionalContextInput>),
+      rctx.codeMap,
+      llmBundle?.evaluator,
+    );
+
+    const reResult = await incrementalEngine.resolveIncrementally(
+      affectedNodes,
+      session.resolutionState,
+      session.dependencyMap,
+      rctx.graphContext,
+      updatedPc,
+      session.gateAnswers,
+      { pendingQuestions: session.pendingQuestions, redFlags: session.redFlags },
+    );
+
+    if (llmBundle) await llmBundle.flushAudits(args.sessionId);
+
+    statusChanges.push(...reResult.statusChanges);
+    nodesRecomputed = reResult.nodesRecomputed;
+
+    // Reconciled wholes. This replaces a hand-rolled prune-then-append that
+    // deduped on `gateId`, which could not see that two gates share ONE
+    // escalated datum prompt — the shared key is the datum. The engine now
+    // does the merge, keyed the same way for questions and flags.
+    //
+    // Dropping a question whose gate is no longer PENDING_QUESTION is what
+    // the reconcile already does: the gate was re-disposed, it no longer
+    // asks, so the question is settled.
+    session.pendingQuestions = reResult.pendingQuestions;
+    session.redFlags = reResult.redFlags;
+  }
+
+  // Outside the re-resolution guard on purpose. Adding medications changes
+  // the OTHER side of the check — the patient's own list — so DDI must run
+  // even when no gate depended on the new context and nothing was re-resolved.
+  await refreshSessionDdi(pool, session, updatedPc);
+
+  // 6-7. Update the session and record what happened in ONE transaction,
+  // together with any events the caller needs recorded alongside it (a
+  // provider-asserted datum). Separate commits let a refused audit write
+  // report failure for a change that had already persisted.
+  const addedContext = Object.keys(additionalContext).filter(
+    k => (additionalContext as Record<string, unknown>)[k] !== undefined
+  );
+  await withTransaction(pool, async (tx) => {
+    for (const ev of alsoRecord) {
+      await logEvent(tx, args.sessionId, ev);
+    }
+    await updateSession(tx, args.sessionId, {
+      resolutionState: session.resolutionState,
+      // Saved because `resolveIncrementally` RECORDS new dependencies as it
+      // walks — see overrideNode for why losing them stuck a session.
+      dependencyMap: session.dependencyMap,
+      additionalContext: merged,
+      pendingQuestions: session.pendingQuestions,
+      redFlags: session.redFlags,
+      totalNodesEvaluated: session.resolutionState.size,
+      // Derived from the state this mutation just produced, so a session
+      // repaired by it stops being degraded. `degraded` alone only ever went
+      // one way.
+      status: derivedSessionStatus(session.resolutionState),
+      ddiWarnings: session.ddiWarnings,
+    }, session.updatedAt);
+
+    await logEvent(tx, args.sessionId, {
+      eventType: 'context_update',
+      triggerData: { addedContext },
+      nodesRecomputed,
+      statusChanges,
+    });
+  });
+
+  // 8. Return formatted session
+  const updated = await getSession(pool, args.sessionId);
+  if (!updated) {
+    throw new GraphQLError('Failed to retrieve updated session', {
+      extensions: { code: 'INTERNAL_SERVER_ERROR' },
+    });
+  }
+  return formatSessionForGraphQL(updated);
 }
 
 export const resolutionMutations = {
@@ -666,20 +891,31 @@ export const resolutionMutations = {
         // The chosen branch is exactly where new medications come from.
         await refreshSessionDdi(pool, session, dpPatientCtx);
 
+        // The session change and its audit event commit TOGETHER. Written as
+        // two statements, an event the database refused left the choice
+        // persisted while the caller was told the answer failed.
         try {
-          await updateSession(pool, args.sessionId, {
-            resolutionState: session.resolutionState,
-            dependencyMap: session.dependencyMap,
-            pendingQuestions: session.pendingQuestions,
-            redFlags: session.redFlags,
-            gateAnswers: session.gateAnswers,
-            totalNodesEvaluated: session.resolutionState.size,
-          // Derived from the state this mutation just produced, so a session
-      // repaired by it stops being degraded. `degraded` alone only ever went
-      // one way.
-      status: derivedSessionStatus(session.resolutionState),
-            ddiWarnings: session.ddiWarnings,
-          }, session.updatedAt);
+          await withTransaction(pool, async (tx) => {
+            await updateSession(tx, args.sessionId, {
+              resolutionState: session.resolutionState,
+              dependencyMap: session.dependencyMap,
+              pendingQuestions: session.pendingQuestions,
+              redFlags: session.redFlags,
+              gateAnswers: session.gateAnswers,
+              totalNodesEvaluated: session.resolutionState.size,
+              // Derived from the state this mutation just produced, so a session
+              // repaired by it stops being degraded. `degraded` alone only ever
+              // went one way.
+              status: derivedSessionStatus(session.resolutionState),
+              ddiWarnings: session.ddiWarnings,
+            }, session.updatedAt);
+            await logEvent(tx, args.sessionId, {
+              eventType: 'branch_chosen',
+              triggerData: { nodeId: args.nodeId, chosen, candidates },
+              nodesRecomputed,
+              statusChanges,
+            });
+          });
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
           if (message.includes('optimistic lock') && attempt < MAX_ATTEMPTS) {
@@ -689,12 +925,6 @@ export const resolutionMutations = {
           throw err;
         }
 
-        await logEvent(pool, args.sessionId, {
-          eventType: 'BRANCH_CHOSEN',
-          triggerData: { nodeId: args.nodeId, chosen, candidates },
-          nodesRecomputed,
-          statusChanges,
-        });
         const refreshed = await getSession(pool, args.sessionId);
         return formatSessionForGraphQL(refreshed ?? session);
       }
@@ -740,23 +970,27 @@ export const resolutionMutations = {
         // LAB_ASSERTION_FIELDS, so the trust guard would reject it — and
         // rightly: that guard stops CALLERS asserting clinical provenance.
         // The fact that a clinician supplied this rather than the chart is
-        // recorded below as an audit event, which is where "who said what"
-        // belongs. It must not be dressed up as an observation.
-        await logEvent(pool, args.sessionId, {
-          eventType: 'PROVIDER_ASSERTED_DATUM',
-          triggerData: { gateId: args.nodeId, datumKey: escalated.datumKey, target, value },
-          nodesRecomputed: 0,
-          statusChanges: [],
-        });
-
+        // recorded as an audit event, which is where "who said what" belongs.
+        // It must not be dressed up as an observation.
+        //
+        // The event commits in the SAME transaction as the fact. Logged ahead
+        // of it as a separate write, a refused event failed the answer
+        // outright, and a failure after it would have left an audit row
+        // asserting a datum the session never received.
+        //
         // Deliberately NOT written to session.gateAnswers. That map is what
         // evaluateQuestion reads; an entry there would make this data gate
         // look like an answered QUESTION gate and be consulted instead of the
         // fact on every later retraversal.
-        return resolutionMutations.addPatientContext(
-          _parent,
+        return applyPatientContext(
           { sessionId: args.sessionId, additionalContext: fragment },
           context,
+          [{
+            eventType: 'provider_asserted_datum',
+            triggerData: { gateId: args.nodeId, datumKey: escalated.datumKey, target, value },
+            nodesRecomputed: 0,
+            statusChanges: [],
+          }],
         );
       }
 
@@ -976,202 +1210,7 @@ export const resolutionMutations = {
     args: { sessionId: string; additionalContext: AdditionalContextInput },
     context: DataSourceContext
   ) {
-    const { pool } = context;
-
-    // 1. Load session
-    const session = await getSession(pool, args.sessionId);
-    if (!session) {
-      throw new GraphQLError('Session not found', { extensions: { code: 'NOT_FOUND' } });
-    }
-    if (session.status !== SessionStatus.ACTIVE && session.status !== SessionStatus.DEGRADED) {
-      throw new GraphQLError(`Cannot modify session with status "${session.status}"`, {
-        extensions: { code: 'BAD_USER_INPUT' },
-      });
-    }
-
-    // 1b. The SAME trust parsing `startResolution` runs (D10).
-    //
-    //    `AdditionalContextInput` reuses the very same `CodeInput` /
-    //    `LabResultInput` SDL types as `PatientContextInput`, so it can carry
-    //    `endDate` / `clinicalState` / `recordValidity` / `sourceId` — the
-    //    fields `parseResolutionInput` treats as assertions about clinical
-    //    truth. Until this ran here, a request refused at session creation was
-    //    accepted mid-session, and under `v1` those fields govern selection:
-    //    `recordValidity: 'INVALID'` drops a fact from selection entirely and
-    //    `clinicalState: 'INACTIVE'` flips it out of every `status: 'active'`
-    //    gate.
-    //
-    //    NOT a security fix, and it must not be cited as one: under AD-1
-    //    `userRole` is caller-asserted, so a role check secures nothing. What
-    //    this buys is that one request gets one answer whichever mutation
-    //    carries it — locked decision #7's shape, one layer up.
-    //
-    //    Version-independent, exactly as at `startResolution`, where
-    //    `parseResolutionInput` runs before the policy version is even
-    //    resolved. A `v1`-only guard would leave the two doors disagreeing
-    //    under `legacy-v0`, which is the defect rather than a narrower fix.
-    //
-    //    Read from the NEWLY supplied payload, never from `merged`: a session
-    //    whose stored context already carries an assertion must not become
-    //    permanently un-addable-to, and the boundary is what arrives here.
-    const assertion = firstTrustAssertion(args.additionalContext);
-    if (assertion) {
-      throw new GraphQLError(
-        `additionalContext.${assertion} is a SYNTHETIC assertion about clinical truth and cannot be supplied through addPatientContext`,
-        { extensions: { code: 'INVALID_RESOLUTION_INPUT' } },
-      );
-    }
-    // Explicit nulls become omissions here too — otherwise `recordValidity:
-    // null`, which a client sends simply by binding an unset form field, starts
-    // a session cleanly and then throws out of `parseRecordValidity` on the
-    // first mid-session addition.
-    const additionalContext = normalizeContextEntryNulls(args.additionalContext);
-
-    // 2. Accumulate additional context onto everything supplied before it.
-    //    A shallow spread replaced each key instead of merging it, so adding
-    //    condition A and then condition B stored only B — and every later
-    //    retraversal lost evidence a gate had already counted.
-    const merged = mergeAdditionalContext(
-      session.additionalContext as Partial<AdditionalContextInput> | undefined,
-      additionalContext,
-    );
-
-    // 3. Build updated patient context for re-evaluation (rebuilt from the
-    // accumulated `merged` bag so retraversal context accumulates across calls)
-    const basePc = session.initialPatientContext as PatientContext;
-    const updatedPc = buildEffectivePatientContext(basePc, merged as Partial<AdditionalContextInput>);
-
-    // 4. Identify affected nodes via dependency maps
-    const changedFields = new Set<string>();
-    if (additionalContext.conditionCodes) changedFields.add('conditions');
-    if (additionalContext.medications) changedFields.add('medications');
-    if (additionalContext.labResults) changedFields.add('labs');
-    if (additionalContext.allergies) changedFields.add('allergies');
-    if (additionalContext.vitalSigns) changedFields.add('vitalSigns');
-    if (additionalContext.freeformData) changedFields.add('freeformData');
-    if (additionalContext.patientAttributes) changedFields.add('patientAttributes');
-
-    // Reject a clock-less session up front, not only when a retraversal
-    // happens to be triggered — the session is un-retraversable either way.
-    const sessionClock = requireSessionTemporalContext(session);
-
-    const affectedNodes = new Set<string>();
-
-    // Gates: mark if any context field they read was updated.
-    // Legacy coded deps use bucket names ('labs'); attribute-condition deps use
-    // dotted paths ('lab.hemoglobin'). dependencyContextKey maps both to the
-    // AdditionalContextInput key that supplies the data.
-    for (const [gateId, fields] of session.dependencyMap.gateContextFields) {
-      for (const field of fields) {
-        const contextKey = dependencyContextKey(field);
-        if (contextKey && additionalContext[contextKey] !== undefined) {
-          affectedNodes.add(gateId);
-          break;
-        }
-      }
-    }
-
-    // Action nodes: only re-score if their scorer inputs overlap with changed fields
-    for (const [nodeId, inputs] of session.dependencyMap.scorerInputs) {
-      for (const input of inputs) {
-        if (changedFields.has(input)) {
-          affectedNodes.add(nodeId);
-          break;
-        }
-      }
-    }
-
-    // 5. Run re-traversal
-    const statusChanges: Array<{ nodeId: string; from: string; to: string }> = [];
-    let nodesRecomputed = 0;
-
-    if (affectedNodes.size > 0) {
-      const rctx = await buildResolutionContext(pool, session.pathwayId);
-
-      const llmBundle = makeLlmGateEvaluator(pool, session.pathwayId, args.sessionId);
-      const incrementalEngine = new TraversalEngine(
-        makeTraversalAdapter(rctx, pool, session.pathwayId, updatedPc),
-        rctx.thresholds,
-        sessionClock,
-        rctx.temporalDefaults,
-        // `merged`, NOT `session.additionalContext` — the newly supplied facts
-        // must reach the very retraversal they triggered. Assembling from the
-        // stored bag is the stale-store half of P1-2: the gate would be marked
-        // affected, re-evaluated, and still see nothing new.
-        factStoreForSession(session, merged as Partial<AdditionalContextInput>),
-        rctx.codeMap,
-        llmBundle?.evaluator,
-      );
-
-      const reResult = await incrementalEngine.resolveIncrementally(
-        affectedNodes,
-        session.resolutionState,
-        session.dependencyMap,
-        rctx.graphContext,
-        updatedPc,
-        session.gateAnswers,
-        { pendingQuestions: session.pendingQuestions, redFlags: session.redFlags },
-      );
-
-      if (llmBundle) await llmBundle.flushAudits(args.sessionId);
-
-      statusChanges.push(...reResult.statusChanges);
-      nodesRecomputed = reResult.nodesRecomputed;
-
-      // Reconciled wholes. This replaces a hand-rolled prune-then-append that
-      // deduped on `gateId`, which could not see that two gates share ONE
-      // escalated datum prompt — the shared key is the datum. The engine now
-      // does the merge, keyed the same way for questions and flags.
-      //
-      // Dropping a question whose gate is no longer PENDING_QUESTION is what
-      // the reconcile already does: the gate was re-disposed, it no longer
-      // asks, so the question is settled.
-      session.pendingQuestions = reResult.pendingQuestions;
-      session.redFlags = reResult.redFlags;
-    }
-
-    // Outside the re-resolution guard on purpose. Adding medications changes
-    // the OTHER side of the check — the patient's own list — so DDI must run
-    // even when no gate depended on the new context and nothing was re-resolved.
-    await refreshSessionDdi(pool, session, updatedPc);
-
-    // 6. Update session (with optimistic lock)
-    await updateSession(pool, args.sessionId, {
-      resolutionState: session.resolutionState,
-      // Saved because `resolveIncrementally` RECORDS new dependencies as it
-      // walks — see overrideNode for why losing them stuck a session.
-      dependencyMap: session.dependencyMap,
-      additionalContext: merged,
-      pendingQuestions: session.pendingQuestions,
-      redFlags: session.redFlags,
-      totalNodesEvaluated: session.resolutionState.size,
-      // Derived from the state this mutation just produced, so a session
-      // repaired by it stops being degraded. `degraded` alone only ever went
-      // one way.
-      status: derivedSessionStatus(session.resolutionState),
-      ddiWarnings: session.ddiWarnings,
-    }, session.updatedAt);
-
-    // 7. Log event
-    await logEvent(pool, args.sessionId, {
-      eventType: 'context_update',
-      triggerData: {
-        addedContext: Object.keys(additionalContext).filter(
-          k => (additionalContext as Record<string, unknown>)[k] !== undefined
-        ),
-      },
-      nodesRecomputed,
-      statusChanges,
-    });
-
-    // 8. Return formatted session
-    const updated = await getSession(pool, args.sessionId);
-    if (!updated) {
-      throw new GraphQLError('Failed to retrieve updated session', {
-        extensions: { code: 'INTERNAL_SERVER_ERROR' },
-      });
-    }
-    return formatSessionForGraphQL(updated);
+    return applyPatientContext(args, context);
   },
 
   async generateCarePlanFromResolution(
