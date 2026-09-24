@@ -522,11 +522,16 @@
       "id": "gate-iv-iron-ga",
       "type": "Gate",
       "properties": {
-        "title": "Beyond first trimester (\u2265 14 0/7 weeks)?",
-        "gate_type": "question",
+        "title": "Beyond first trimester (GA \u2265 14 0/7 weeks)",
+        "gate_type": "patient_attribute",
         "default_behavior": "skip",
-        "prompt": "Is the patient beyond the first trimester (\u226514 0/7 weeks gestation)?",
-        "answer_type": "BOOLEAN"
+        "on_unresolved": "ask",
+        "condition": {
+          "attribute": "patient.gestational_age_weeks",
+          "operator": "greater_or_equal",
+          "value": 14,
+          "unit": "weeks"
+        }
       }
     },
     {

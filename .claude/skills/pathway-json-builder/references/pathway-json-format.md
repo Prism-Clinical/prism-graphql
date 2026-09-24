@@ -293,15 +293,23 @@ Carries one `condition` object, which is either an **attribute condition** or a 
 > thresholds. Attribute-form conditions (a) never render in the admin dashboard's "Fields
 > this pathway reads" panel (harvested into a list no component displays), (b) need
 > `pathway_attribute_code_map` rows that have no seeding path — unseeded, they resolve
-> "attribute has no value" and the gate silently takes its default; and (c) `patient.*`
-> is only half-supplied: the encounter simulator page sends `gestational_age_weeks` and
-> `trimester` (since dashboard `8681821`, 2026-07-12; the backend derives trimester from
-> GA), but the pathway-preview flow sends none, and **a missing `patient.*` value is a
-> silent definite "no"** — it goes through the legacy `resolveAttribute` path, which never
-> reports `dataUnavailable`, so `on_unresolved: ask` cannot fire. Until the engine asks for
-> a missing `patient.*` value, keep provider-derivable facts (gestational age, trimester)
-> as question gates. Proof harness: `scripts/gate-proof.ts`. Revisit when the dashboard
-> renders the attributes list and code-map seeding exists.
+> "attribute has no value" and the gate silently takes its default. Revisit when the
+> dashboard renders the attributes list and code-map seeding exists.
+>
+> **`patient.*` is the exception — author gestational age and trimester as attribute
+> gates** (updated 2026-09-24). `patient.*` needs no code-map row, and since engine fix
+> `8f64fc1` (josh-dev) **a missing `patient.*` value is missing data, not a "no"**: under
+> `v1` the gate reports `dataUnavailable`, and with `on_unresolved: "ask"` (the rule for
+> numeric gates) it pends, holds its subtree and asks for the datum
+> `patient.<attr>` (NUMERIC); the answer is injected into `patientAttributes` and the gate
+> re-evaluates. `exists` is the one operator that still answers "no" on absence.
+> Supply: the encounter simulator page sends `gestational_age_weeks` and `trimester`
+> (since dashboard `8681821`; the backend derives trimester from GA), so those sessions
+> decide immediately; the pathway-preview flow sends `{}`, so there the gate **asks**
+> rather than silently gating out. `legacy-v0` still reads a missing value as "no". The
+> "Fields this pathway reads" panel does not list these conditions (caveat (a)). Proof:
+> `scripts/gate-proof.ts ga` (anemia `gate-iv-iron-ga`: GA 20 / 14 included, 12
+> GATED_OUT, missing pends asking for `patient.gestational_age_weeks`).
 
 ```json
 { "attribute": "vitals.temperature_f", "operator": "greater_than", "value": 100.3, "horizon": "DAY" }
@@ -310,7 +318,7 @@ Carries one `condition` object, which is either an **attribute condition** or a 
 - `attribute` = `<namespace>.<name>`. Registered namespaces (hard error otherwise): **`lab`**, **`vitals`**, **`allergy`**, **`patient`**.
   - `lab.*` / `allergy.*` resolve through the DB table `pathway_attribute_code_map` (attribute_name → system+code+value_type). **An unregistered attribute name imports fine but silently resolves to undefined at runtime** ⇒ the gate falls back to `default_behavior`. Every `lab.*`/`allergy.*` attribute you emit must be listed in the brief's "Attribute-map registrations" section so it gets seeded.
   - `vitals.*` walks a dotted numeric path in the patient's vitalSigns bag (e.g. `vitals.systolic_bp`, `vitals.temperature_f`) — keys per **What the simulator sends**.
-  - `patient.*` reads derived scalars with no terminology code (e.g. `patient.gestational_age_weeks`, `patient.trimester`, `patient.rh_factor`).
+  - `patient.*` reads derived scalars with no terminology code (e.g. `patient.gestational_age_weeks`, `patient.trimester`, `patient.rh_factor`). No code-map row, no temporal policy (emit no `horizon`). A missing value **asks** (`on_unresolved: "ask"`; datum `patient.<attr>`) since `8f64fc1` — see the box above.
 - `operator` ∈ `equals`, `not_equals`, `greater_than`, `greater_or_equal`, `less_than`, `less_or_equal`, `in` (value = array), `exists`. Note: `exists` on an **absent** fact (e.g. an allergy the patient doesn't have) is unsatisfied — it no longer degrades to "attribute resolved" semantics (fixed post-kernel).
 - There is **no** `symptom.*`, `medication.*`, or `condition.*` namespace (older docs said otherwise — they now hard-fail import). Symptom presence/severity is elicited ⇒ use a `question` gate. Diagnosis/medication history ⇒ use a coded condition.
 - `horizon` / `status` — see **Temporal horizon & status** below; both are legal here exactly as on coded conditions.
@@ -578,7 +586,7 @@ never fires in the simulator: it silently answers "no" (membership) or asks fore
 | `labResults` | `labs` | `{code, value, unit}` | **LOINC** | **no** | One value per LOINC: two undated results for one code are `AMBIGUOUS_LATEST` and the gate asks. |
 | `vitalSigns` | `vitals` (coded `value`, or `vitals.<key>`) | numbers | none (never set `system`) | no — asserted current | Keys exactly: `systolic_bp`, `diastolic_bp` (mmHg), `heart_rate` (bpm), `respiratory_rate` (/min), `spo2` (%), **`temperature_f` (°F)**, `weight_kg`, `height_cm`, `bmi` (auto from height+weight), `custom.<key>`. There is **no `temperature_c`**, and blood pressure is a vital, **not** LOINC `8480-6`/`8462-4` labs. |
 | `freeformData.narrative` | `llm_text_analysis` `input_attribute` | text | — | — | `chief_complaint`, `history_of_present_illness`, `social_history`, custom keys flattened alongside. |
-| `patientAttributes` | `patient.*` | `gestational_age_weeks`, `trimester` | — | — | Encounter page only (trimester derived from GA when only GA is given). The pathway-preview flow sends `{}`. |
+| `patientAttributes` | `patient.*` | `gestational_age_weeks`, `trimester` | — | — | Encounter page only (trimester derived from GA when only GA is given). The pathway-preview flow sends `{}`, so a `patient.*` gate asks there (it does not silently answer "no"). |
 | `encounterStart` | — | **never sent** | — | — | Any condition resolving to an `ENCOUNTER` horizon rejects the session (temporal rule 0). |
 
 Consequences for authoring:

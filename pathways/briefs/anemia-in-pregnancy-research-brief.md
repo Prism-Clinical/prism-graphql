@@ -235,16 +235,27 @@ the pathway presumes the coded diagnosis.
     system LOINC, delta_threshold 1.0, window_days 42, min_points 2
   - Rationale: ACOG response definition (>1 g/dL rise); 42-day window spans initiation →
     4-week recheck with margin. [1][3]
-- **Gate `gate-iv-iron-ga` — Beyond first trimester?**
-  - Attached to: dp-2 · Branches to: step-2-5 · Type: **question** · Default: skip
-    (unanswered ⇒ do not auto-open IV iron; provider can still route via DP-2 criteria)
-  - Prompt: "Is the patient beyond the first trimester (≥14 0/7 weeks gestation)?" ·
-    answer_type: BOOLEAN
+- **Gate `gate-iv-iron-ga` — Beyond first trimester (GA ≥ 14 0/7 weeks)**
+  - Attached to: dp-2 · Branches to: step-2-5 · Type: **patient_attribute** · Default: skip
+    · On unresolved: **ask**
+  - Condition (attribute): `patient.gestational_age_weeks` `greater_or_equal` **14**, unit
+    weeks (no horizon — `patient.*` has no temporal policy)
+  - `[DECISION — Josh 2026-09-24]` **Read gestational age directly.** Replaces the question
+    gate ("Is the patient beyond the first trimester (≥14 0/7 weeks gestation)?",
+    BOOLEAN). Same target. GA ≥ 14 opens IV iron, GA < 14 gates it out, and a **missing**
+    GA pends and asks for `patient.gestational_age_weeks` (NUMERIC) — since engine fix
+    `8f64fc1` a missing `patient.*` value is missing data, not a silent "no". Proved with
+    `gate-proof.ts ga` (GA 20 and 14 included, 12 GATED_OUT, missing pends with that
+    datum). The encounter simulator sends GA, so it decides there; the pathway-preview flow
+    sends no `patientAttributes`, so there it asks. The admin dashboard's "Fields this
+    pathway reads" panel does not list attribute conditions.
+  - ~~Question-gate form (v3): Type question, prompt "Is the patient beyond the first
+    trimester (≥14 0/7 weeks gestation)?", answer_type BOOLEAN.~~
   - Rationale: ACOG Level B — parenteral iron "after the first trimester"; ASH: no
-    1st-trimester safety data. **v3 conversion**: originally a `patient_attribute` gate on
-    `patient.gestational_age_weeks`, converted to a question gate because the simulator
-    can neither display nor set patient.* attributes today (composer never sends
-    `patientAttributes`). Revert to the data gate when the composer supports it. [1][5]
+    1st-trimester safety data. **v3 conversion** (now reverted): originally a
+    `patient_attribute` gate on `patient.gestational_age_weeks`, converted to a question
+    gate because the simulator could not set patient.* attributes and a missing one read as
+    "no". Both have since been fixed, so it is a data gate again (2026-09-24). [1][5]
   - `[BLOCKED — prior_node_result]` The ideal design adds "IV iron depends on Step 2.2
     (oral trial) having resolved INCLUDED" as a prior_node_result gate — import-blocked
     today. **Fallback the builder must emit:** the REQUIRES edge in §12 (step-2-5
@@ -508,10 +519,11 @@ All codes wave-2 verified — see §18 item 11.
 
 ## 14. Attribute-map registrations
 
-**None needed (v3).** All lab gates now use coded-form conditions that match `labResults`
-by LOINC directly, bypassing `pathway_attribute_code_map` entirely, and the gestational-age
-gate is a question gate. No `lab.*`/`allergy.*`/`patient.*` attributes are referenced
-anywhere in §4b.
+**None needed.** All lab gates use coded-form conditions that match `labResults` by LOINC
+directly, bypassing `pathway_attribute_code_map` entirely. The one attribute condition,
+`patient.gestational_age_weeks` (gate-iv-iron-ga, 2026-09-24), is a `patient.*` attribute,
+which reads `patientAttributes` directly and needs no code-map row. No `lab.*`/`allergy.*`
+attributes are referenced anywhere in §4b.
 
 ## 15. Evidence citations
 

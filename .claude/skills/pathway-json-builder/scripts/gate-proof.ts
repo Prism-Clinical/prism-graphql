@@ -10,6 +10,8 @@
 //   dp-1             anemia DP-1: is empiric oral iron automatic for ferritin 50?
 //   dp-1-scoring     DP-1's two branches, scored signal by signal with the seeded
 //                    SYSTEM signals — can confidence alone pick one?
+//   ga               anemia gate-iv-iron-ga on patient.gestational_age_weeks: present
+//                    values decide, a missing one pends and asks for the datum
 //
 // The pathway proofs read pathways/json/anemia-in-pregnancy.json (override with
 // ANEMIA_JSON=<path>). They replay a branch choice the way the live mutation does
@@ -255,10 +257,45 @@ async function proveDp1Scoring(): Promise<void> {
   expect('both ≥ suggest threshold 0.60 (so a one_of fork pends)', String(confs.every((c) => c >= 0.6)), 'true');
 }
 
+// ── Proof: anemia gate-iv-iron-ga reads gestational age directly ──────
+// patient.gestational_age_weeks >= 14, on_unresolved ask. Since 8f64fc1 a
+// MISSING patient.* value is missing data (pends with a datum request), not a
+// silent "no". Reached through the workup with ferritin 12 so Stage 2 and
+// DP-2 (the gate's host) are open.
+async function proveGa(): Promise<void> {
+  console.log(`\n=== ga: anemia gate-iv-iron-ga — patient.gestational_age_weeks >= 14 (${ANEMIA}) ===`);
+  const labs: Array<[string, number]> = [['787-2', 72], ['2276-4', 12], ['718-7', 9.5]];
+  for (const reverse of [false, true]) {
+    console.log(`  -- edge order: ${reverse ? 'reversed' : 'file'}`);
+    for (const [label, attrs, gate, step] of [
+      ['GA 20 weeks', { gestational_age_weeks: 20 }, 'INCLUDED', 'INCLUDED'],
+      ['GA 14 weeks (boundary)', { gestational_age_weeks: 14 }, 'INCLUDED', 'INCLUDED'],
+      ['GA 12 weeks', { gestational_age_weeks: 12 }, 'GATED_OUT', 'GATED_OUT'],
+      ['GA missing', {}, 'PENDING_QUESTION', 'PENDING_QUESTION'],
+    ] as const) {
+      const r = await resolveSession({
+        file: ANEMIA, reverse, patient: patientWith(labs, attrs as Record<string, number>),
+        choose: { dp: 'dp-1', option: 'step-1-2' },
+      });
+      console.log(`  ${label}:`);
+      expect('gate-iv-iron-ga', status(r.state, 'gate-iv-iron-ga'), gate);
+      expect('step-2-5 IV iron', status(r.state, 'step-2-5'), step);
+      const q = r.pending.find((p: any) => p.gateId === 'gate-iv-iron-ga') as any;
+      if (label === 'GA missing') {
+        expect('asks for datum', String(q?.datumKey), 'patient.gestational_age_weeks');
+        expect('answer type', String(q?.answerType), 'NUMERIC');
+      } else {
+        expect('no GA question', String(q === undefined), 'true');
+      }
+    }
+  }
+}
+
 const PROOFS: Record<string, () => Promise<void>> = {
   'attribute-form': proveAttributeForm,
   'dp-1': proveDp1,
   'dp-1-scoring': proveDp1Scoring,
+  'ga': proveGa,
 };
 
 async function main() {
