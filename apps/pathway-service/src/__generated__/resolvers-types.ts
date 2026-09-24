@@ -656,6 +656,14 @@ export type MergedCarePlan = {
   procedures: Array<MergedProcedureRecommendation>;
   qualityMetrics: Array<MergedQualityMetricRecommendation>;
   schedules: Array<MergedScheduleRecommendation>;
+  /**
+   * Matched pathways left OUT of this merge, and why. Today the only cause is a
+   * pathway that resolves an ENCOUNTER horizon on a session with no
+   * `encounterStart`: it is dropped so the other pathways still resolve, instead
+   * of the whole session being rejected. Empty when every matched pathway fed
+   * the merge.
+   */
+  skippedPathways: Array<SkippedPathway>;
   /** Pathways whose resolution fed this merge (post-lattice-collapse). */
   sourcePathwayIds: Array<Scalars['ID']['output']>;
   suppressed: Array<SuppressedRecommendation>;
@@ -2004,6 +2012,17 @@ export type SimulatorScenarioLabResult = {
   value?: Maybe<Scalars['Float']['output']>;
 };
 
+/** A matched pathway that could not be resolved for this session. */
+export type SkippedPathway = {
+  __typename?: 'SkippedPathway';
+  /** The error code that excluded it, e.g. MISSING_ENCOUNTER_ANCHOR. */
+  code: Scalars['String']['output'];
+  logicalId: Scalars['String']['output'];
+  pathwayId: Scalars['ID']['output'];
+  pathwayTitle: Scalars['String']['output'];
+  reason: Scalars['String']['output'];
+};
+
 /**
  * Suppressed recommendation. Source can be a pathway (Phase 3
  * contraindicated/avoid), a patient med (Phase 4 drug↔drug), an allergy
@@ -2327,6 +2346,7 @@ export type ResolversTypes = ResolversObject<{
   SimulatorScenario: ResolverTypeWrapper<SimulatorScenario>;
   SimulatorScenarioCode: ResolverTypeWrapper<SimulatorScenarioCode>;
   SimulatorScenarioLabResult: ResolverTypeWrapper<SimulatorScenarioLabResult>;
+  SkippedPathway: ResolverTypeWrapper<SkippedPathway>;
   SuppressedRecommendation: ResolverTypeWrapper<SuppressedRecommendation>;
   SuppressedRecommendationType: SuppressedRecommendationType;
   SuppressionReason: SuppressionReason;
@@ -2440,6 +2460,7 @@ export type ResolversParentTypes = ResolversObject<{
   SimulatorScenario: SimulatorScenario;
   SimulatorScenarioCode: SimulatorScenarioCode;
   SimulatorScenarioLabResult: SimulatorScenarioLabResult;
+  SkippedPathway: SkippedPathway;
   SuppressedRecommendation: SuppressedRecommendation;
   UnlockedRecommendation: UnlockedRecommendation;
   UnnormalizedMedication: UnnormalizedMedication;
@@ -2727,6 +2748,7 @@ export type MergedCarePlanResolvers<ContextType = DataSourceContext, ParentType 
   procedures?: Resolver<Array<ResolversTypes['MergedProcedureRecommendation']>, ParentType, ContextType>;
   qualityMetrics?: Resolver<Array<ResolversTypes['MergedQualityMetricRecommendation']>, ParentType, ContextType>;
   schedules?: Resolver<Array<ResolversTypes['MergedScheduleRecommendation']>, ParentType, ContextType>;
+  skippedPathways?: Resolver<Array<ResolversTypes['SkippedPathway']>, ParentType, ContextType>;
   sourcePathwayIds?: Resolver<Array<ResolversTypes['ID']>, ParentType, ContextType>;
   suppressed?: Resolver<Array<ResolversTypes['SuppressedRecommendation']>, ParentType, ContextType>;
   __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
@@ -3299,6 +3321,15 @@ export type SimulatorScenarioLabResultResolvers<ContextType = DataSourceContext,
   __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
 }>;
 
+export type SkippedPathwayResolvers<ContextType = DataSourceContext, ParentType extends ResolversParentTypes['SkippedPathway'] = ResolversParentTypes['SkippedPathway']> = ResolversObject<{
+  code?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  logicalId?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  pathwayId?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
+  pathwayTitle?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  reason?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
+}>;
+
 export type SuppressedRecommendationResolvers<ContextType = DataSourceContext, ParentType extends ResolversParentTypes['SuppressedRecommendation'] = ResolversParentTypes['SuppressedRecommendation']> = ResolversObject<{
   name?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   reason?: Resolver<ResolversTypes['SuppressionReason'], ParentType, ContextType>;
@@ -3432,6 +3463,7 @@ export type Resolvers<ContextType = DataSourceContext> = ResolversObject<{
   SimulatorScenario?: SimulatorScenarioResolvers<ContextType>;
   SimulatorScenarioCode?: SimulatorScenarioCodeResolvers<ContextType>;
   SimulatorScenarioLabResult?: SimulatorScenarioLabResultResolvers<ContextType>;
+  SkippedPathway?: SkippedPathwayResolvers<ContextType>;
   SuppressedRecommendation?: SuppressedRecommendationResolvers<ContextType>;
   UnlockedRecommendation?: UnlockedRecommendationResolvers<ContextType>;
   UnnormalizedMedication?: UnnormalizedMedicationResolvers<ContextType>;

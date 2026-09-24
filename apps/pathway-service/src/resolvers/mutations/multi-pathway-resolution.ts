@@ -72,7 +72,8 @@ import {
 } from '../../services/medications/ddi-pass';
 import { projectResolutionToCarePlan } from '../../services/resolution/care-plan-projection';
 import { findUnmetPrerequisites } from '../../services/resolution/prerequisites';
-import { CatchUpItem } from '../../services/resolution/care-plan-merge';
+import { CatchUpItem, SkippedPathway } from '../../services/resolution/care-plan-merge';
+import { TemporalContextError } from '../../services/resolution/temporal/evaluation-context';
 import {
   buildResolutionContext,
   makeTraversalAdapter,
@@ -222,10 +223,17 @@ export const multiPathwayResolutionMutations = {
     // One clock for the entire multi-pathway run (§1) — the parent session and
     // every contributing session resolve horizons against the same instant.
     // Created here, before the zero-match branch, so BOTH exits stamp it.
-    const temporalContext = makeEvaluationTemporalContext({
-      ...temporalInputFrom(args),
-      temporalPolicyVersion,
-    });
+    const temporalInput = { ...temporalInputFrom(args), temporalPolicyVersion };
+    // A synthetic (simulator / preview) run has no real encounter, so an
+    // ENCOUNTER horizon had nothing to anchor to and the pathway using it
+    // could not resolve at all. Anchor it at the session's own evaluation
+    // instant — ONE stamp for both, not two reads of the wall clock, so the
+    // encounter can never start after the evaluation it belongs to.
+    if (isPreview && temporalInput.encounterStart === undefined) {
+      temporalInput.evaluationAsOf ??= new Date(Date.now()).toISOString();
+      temporalInput.encounterStart = temporalInput.evaluationAsOf;
+    }
+    const temporalContext = makeEvaluationTemporalContext(temporalInput);
 
     // Before the zero-match branch: that path creates a parent session and
     // returns without ever entering resolveAndPersistAll, so a version
@@ -259,7 +267,7 @@ export const multiPathwayResolutionMutations = {
 
     const surviving = await collapseLattice(pool, matched);
 
-    const { resolvedPlans, contributingSessionIds, contributingPathwayIds } =
+    const { resolvedPlans, contributingSessionIds, contributingPathwayIds, skippedPathways } =
       await resolveAndPersistAll(
         pool,
         surviving,
@@ -269,11 +277,12 @@ export const multiPathwayResolutionMutations = {
         factStore,
       );
 
-    const { mergedPlan: finalMerged, ddiWarnings } = await runMergePipeline(
+    const { mergedPlan: merged, ddiWarnings } = await runMergePipeline(
       pool,
       resolvedPlans,
       patientContext,
     );
+    const finalMerged: MergedCarePlan = { ...merged, skippedPathways };
 
     const sessionId = await createMultiPathwaySession(pool, {
       patientId: args.patientId,
@@ -445,7 +454,12 @@ export const multiPathwayResolutionMutations = {
     // provider doesn't have to re-pick them. Conflicts whose clinical_role
     // disappeared from the new merge are simply dropped (their resolution
     // becomes moot); conflicts that show up newly will surface unresolved.
-    let replayedPlan = mergedPlan;
+    // Which pathways were dropped is decided once, at creation; a re-merge
+    // re-projects the survivors and must not forget the others.
+    let replayedPlan: MergedCarePlan = {
+      ...mergedPlan,
+      skippedPathways: session.mergedPlan.skippedPathways ?? [],
+    };
     for (const conflict of replayedPlan.conflicts) {
       const prior = session.conflictResolutions[conflict.conflictId];
       if (!prior) continue;
@@ -796,7 +810,10 @@ export async function resolveAndPersistAll(
   resolvedPlans: ResolvedCarePlan[];
   contributingSessionIds: string[];
   contributingPathwayIds: string[];
+  /** Matched pathways left out, with the reason. See the preflight below. */
+  skippedPathways: SkippedPathway[];
 }> {
+  const skippedPathways: SkippedPathway[] = [];
   const resolvedPlans: ResolvedCarePlan[] = [];
   const contributingSessionIds: string[] = [];
   const contributingPathwayIds: string[] = [];
@@ -809,7 +826,30 @@ export async function resolveAndPersistAll(
   for (const m of pathways) {
     const rctx = await buildResolutionContext(pool, m.pathway.id);
     if (rctx.graphContext.allNodes.length === 0) continue;
-    assertEncounterAnchor(rctx, temporalContext);
+    try {
+      assertEncounterAnchor(rctx, temporalContext);
+    } catch (err) {
+      // A missing encounter anchor is a fact about THIS pathway and this
+      // session, not about the request: the other pathways resolve without
+      // one. Rejecting the whole session over it withheld every other
+      // pathway's plan. It is dropped, with the reason recorded on the
+      // merged plan so the omission is visible.
+      //
+      // Only this code. Anything else the preflight raises — an unknown
+      // policy version, a malformed horizon — is a defect in the request or
+      // the pathway, and still rejects the run before anything is written.
+      if (err instanceof TemporalContextError && err.code === 'MISSING_ENCOUNTER_ANCHOR') {
+        skippedPathways.push({
+          pathwayId: m.pathway.id,
+          logicalId: m.pathway.logicalId,
+          pathwayTitle: m.pathway.title,
+          code: err.code,
+          reason: err.message,
+        });
+        continue;
+      }
+      throw err;
+    }
     loaded.push({ m, rctx });
   }
 
@@ -897,7 +937,7 @@ export async function resolveAndPersistAll(
     );
   }
 
-  return { resolvedPlans, contributingSessionIds, contributingPathwayIds };
+  return { resolvedPlans, contributingSessionIds, contributingPathwayIds, skippedPathways };
 }
 
 async function loadActiveSession(
@@ -1291,6 +1331,7 @@ export function formatMergedForGraphQL(merged: MergedCarePlan) {
     catchUpItems: merged.catchUpItems ?? [],
     evidenceTrail: merged.evidenceTrail ?? [],
     dataGapHints: merged.dataGapHints ?? [],
+    skippedPathways: merged.skippedPathways ?? [],
   };
 }
 
@@ -1403,5 +1444,6 @@ function emptyMergedCarePlan(): MergedCarePlan {
     catchUpItems: [],
     evidenceTrail: [],
     dataGapHints: [],
+    skippedPathways: [],
   };
 }

@@ -358,6 +358,24 @@ type MergedCarePlan {
   more recommendations" prompts.
   """
   dataGapHints: [DataGapHint!]!
+  """
+  Matched pathways left OUT of this merge, and why. Today the only cause is a
+  pathway that resolves an ENCOUNTER horizon on a session with no
+  `encounterStart`: it is dropped so the other pathways still resolve, instead
+  of the whole session being rejected. Empty when every matched pathway fed
+  the merge.
+  """
+  skippedPathways: [SkippedPathway!]!
+}
+
+"""A matched pathway that could not be resolved for this session."""
+type SkippedPathway {
+  pathwayId: ID!
+  logicalId: String!
+  pathwayTitle: String!
+  """The error code that excluded it, e.g. MISSING_ENCOUNTER_ANCHOR."""
+  code: String!
+  reason: String!
 }
 
 """

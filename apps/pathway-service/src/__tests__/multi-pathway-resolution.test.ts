@@ -785,3 +785,113 @@ describe('startMultiPathwayResolution — policy version guard', () => {
     expect(createMultiPathwaySession).not.toHaveBeenCalled();
   });
 });
+
+// ── One pathway's missing encounter anchor (bug report) ─────────────
+
+describe('startMultiPathwayResolution — a pathway that cannot be anchored is dropped, not fatal', () => {
+  const { TemporalContextError } = jest.requireActual(
+    '../services/resolution/temporal/evaluation-context',
+  );
+
+  function twoPathwaysBFailsAnchor() {
+    const a = fakeMatched('a', 'Anemia');
+    const b = fakeMatched('b', 'Vitals-driven');
+    (getMatchedPathways as jest.Mock).mockResolvedValue([a, b]);
+    (collapseLattice as jest.Mock).mockResolvedValue([a, b]);
+    (buildResolutionContext as jest.Mock).mockResolvedValue(fakeRctx());
+    (createSession as jest.Mock).mockReset().mockResolvedValueOnce('per-a').mockResolvedValueOnce('per-b');
+    (createMultiPathwaySession as jest.Mock).mockResolvedValue('mp-1');
+    (getMultiPathwaySession as jest.Mock).mockResolvedValue(fakeStoredSession({ id: 'mp-1' }));
+    (assertEncounterAnchor as jest.Mock).mockImplementation((_rctx: unknown, clock: { encounterStart?: string }) => {
+      // Only pathway b (the second context built) resolves an ENCOUNTER horizon.
+      if ((buildResolutionContext as jest.Mock).mock.calls.length === 2 && !clock.encounterStart) {
+        throw new TemporalContextError(
+          'this pathway resolves an ENCOUNTER horizon but the session has no encounterStart: BP (vitals, from system)',
+          'MISSING_ENCOUNTER_ANCHOR',
+        );
+      }
+    });
+    setupTraverseSeq([
+      makeResolutionStateWith([
+        { nodeId: 'med-a', nodeType: 'Medication', properties: { name: 'Ferrous sulfate', role: 'first_line' } },
+      ]),
+    ]);
+  }
+
+  afterEach(() => {
+    (assertEncounterAnchor as jest.Mock).mockReset();
+  });
+
+  it('resolves the other pathways and records why the failing one was left out', async () => {
+    twoPathwaysBFailsAnchor();
+
+    await multiPathwayResolutionMutations.startMultiPathwayResolution(
+      {}, { patientId: 'pat-1' }, fakeContext(),
+    );
+
+    expect(createSession).toHaveBeenCalledTimes(1);
+    const persisted = (createMultiPathwaySession as jest.Mock).mock.calls[0][1];
+    expect(persisted.contributingPathwayIds).toEqual(['a']);
+    expect(persisted.mergedPlan.skippedPathways).toEqual([
+      expect.objectContaining({
+        pathwayId: 'b',
+        pathwayTitle: 'Vitals-driven',
+        code: 'MISSING_ENCOUNTER_ANCHOR',
+        reason: expect.stringMatching(/no encounterStart/),
+      }),
+    ]);
+  });
+
+  it('surfaces skippedPathways through the GraphQL formatter, [] for rows stored before it existed', () => {
+    const skipped = [{ pathwayId: 'b', logicalId: 'lp-b', pathwayTitle: 'B', code: 'MISSING_ENCOUNTER_ANCHOR', reason: 'r' }];
+    expect(formatMergedForGraphQL({ ...emptyMergedPlan(), skippedPathways: skipped } as MergedCarePlan).skippedPathways)
+      .toEqual(skipped);
+    expect(formatMergedForGraphQL(emptyMergedPlan()).skippedPathways).toEqual([]);
+  });
+
+  it('a synthetic (preview) session with no encounterStart is anchored at its own evaluation instant', async () => {
+    twoPathwaysBFailsAnchor();
+
+    await multiPathwayResolutionMutations.startMultiPathwayResolution(
+      {},
+      {
+        patientId: 'pat-1', syntheticPatient: true,
+        patientContext: { patientId: 'pat-1', conditionCodes: [{ code: 'O99.01', system: 'ICD-10' }] },
+      } as never,
+      fakeContext(),
+    );
+
+    const clock = (makeEvaluationTemporalContext as jest.Mock).mock.results[0].value;
+    expect(clock.encounterStart).toBeDefined();
+    // ONE stamp, not two reads of the wall clock.
+    expect(clock.encounterStart).toBe(clock.evaluationAsOf);
+    // So nothing is dropped.
+    expect(createSession).toHaveBeenCalledTimes(2);
+    expect((createMultiPathwaySession as jest.Mock).mock.calls[0][1].mergedPlan.skippedPathways).toEqual([]);
+  });
+
+  it('a non-synthetic session is NOT given an anchor it did not supply', async () => {
+    twoPathwaysBFailsAnchor();
+    await multiPathwayResolutionMutations.startMultiPathwayResolution(
+      {}, { patientId: 'pat-1' }, fakeContext(),
+    );
+    const clock = (makeEvaluationTemporalContext as jest.Mock).mock.results[0].value;
+    expect(clock.encounterStart).toBeUndefined();
+  });
+
+  it('any OTHER preflight error still rejects the whole run with nothing written', async () => {
+    const a = fakeMatched('a');
+    (getMatchedPathways as jest.Mock).mockResolvedValue([a]);
+    (collapseLattice as jest.Mock).mockResolvedValue([a]);
+    (buildResolutionContext as jest.Mock).mockResolvedValue(fakeRctx());
+    (assertEncounterAnchor as jest.Mock).mockImplementation(() => {
+      throw new TemporalContextError('bad horizon', 'INVALID_HORIZON');
+    });
+
+    await expect(multiPathwayResolutionMutations.startMultiPathwayResolution(
+      {}, { patientId: 'pat-1' }, fakeContext(),
+    )).rejects.toThrow('bad horizon');
+    expect(createSession).not.toHaveBeenCalled();
+    expect(createMultiPathwaySession).not.toHaveBeenCalled();
+  });
+});
