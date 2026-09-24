@@ -263,7 +263,12 @@ Gated steps connect **only** via their gate's `BRANCHES_TO` — no `HAS_STEP` ed
       Allergy to amoxicillin, `294499007` Allergy to penicillin G, `294497009` Allergy to
       penicillin V (verified active on tx.fhir.org, SNOMED International 2025-02-01; the
       last three are children of 91936005 — the matcher does not expand hierarchies)
-    - field `conditions`, system ICD-10: `Z88.0`, `Z88.1`
+    - field `conditions`, system ICD-10: `Z88.0` (Allergy status to penicillin) only
+  - `[DECISION — Josh 2026-09-24]` **Z88.0 only; `Z88.1` removed** from both gates
+    (`gate-penicillin-allergy` and its `-gbs` copy, kept identical). Z88.1 is "Allergy
+    status to *other* antibiotic agents" — not a penicillin allergy — so it would have
+    routed a sulfa- or macrolide-allergic patient to the penicillin-allergy regimen. The
+    verified SNOMED penicillin-allergy concepts above are unchanged.
   - `[BUILD FIX]` Allergies arrive as SNOMED findings; Z88.x are ICD-10 allergy-*status*
     diagnoses and arrive under conditions. An ICD-10 code under `allergies` could never
     match, so the gate silently answered "no" for every penicillin-allergic patient.
@@ -608,7 +613,7 @@ referenced.
 | gate-culture-positive | labs 19090-0 | {days: 300} | — | — | This pregnancy only — a prior pregnancy's culture must not fire treatment now |
 | gate-recurrent-uti | conditions O23.* | — | — | **300** | Operator-windowed (XOR rule). ACOG's window is "during pregnancy"; 300 days is the proxy |
 | gate-no-repeat-screening | conditions E10.*, E11.*, O24.*, G82.2.*, G82.5.*, N31.*, T91.3 | LIFETIME | any | — | Diabetes and spinal cord injury are standing conditions |
-| gate-penicillin-allergy (+ -gbs copy) | allergies SNOMED 91936005, 294505008, 294499007, 294497009; conditions Z88.0, Z88.1 | LIFETIME | any | — | Drug allergy does not expire. `[BUILD FIX]` codes moved to the field/system that carries them |
+| gate-penicillin-allergy (+ -gbs copy) | allergies SNOMED 91936005, 294505008, 294499007, 294497009; conditions Z88.0 | LIFETIME | any | — | Drug allergy does not expire. `[BUILD FIX]` codes moved to the field/system that carries them. `[DECISION — Josh 2026-09-24]` Z88.1 removed — Z88.0 only |
 | gate-pyelonephritis-suspected | vitals temperature_f | DAY | — | — | `[BUILD FIX 2026-09-24]` Vitals are one undated current value, so any bounded horizon admits them — but an omitted horizon inherits v1's ENCOUNTER default, which rejects every simulator session (no encounterStart) for this and every co-matched pathway |
 | gate-pyelonephritis-suspected | conditions N10 | {days: 300} | active | — | This pregnancy only |
 
