@@ -104,11 +104,29 @@
       }
     },
     {
+      "id": "stage-1-aspirin",
+      "type": "Stage",
+      "properties": {
+        "stage_number": 1,
+        "title": "Low-Dose Aspirin Prophylaxis (if indicated)",
+        "description": "Branch-entry only, via gate-aspirin-indicated: baseline laboratory assessment and low-dose aspirin for patients who qualify. Numbered with Stage 1 because its steps are Stage 1 steps; it exists so one gate can guard both."
+      }
+    },
+    {
       "id": "stage-2",
       "type": "Stage",
       "properties": {
         "stage_number": 2,
         "title": "Detection & Diagnosis"
+      }
+    },
+    {
+      "id": "stage-2-workup",
+      "type": "Stage",
+      "properties": {
+        "stage_number": 2,
+        "title": "Hypertension Work-up (if confirmed)",
+        "description": "Branch-entry only, via gate-htn-confirmed: proteinuria quantification and classification as gestational hypertension or preeclampsia. Numbered with Stage 2 because its steps are Stage 2 steps; it exists so one gate can guard both."
       }
     },
     {
@@ -396,6 +414,150 @@
       "type": "Gate",
       "properties": {
         "title": "Diagnosis of gestational hypertension or preeclampsia established?",
+        "gate_type": "compound",
+        "default_behavior": "skip",
+        "operator": "OR",
+        "conditions": [
+          {
+            "field": "conditions",
+            "operator": "includes_code",
+            "value": "O13.2",
+            "system": "ICD-10",
+            "horizon": {
+              "days": 300
+            },
+            "status": "active"
+          },
+          {
+            "field": "conditions",
+            "operator": "includes_code",
+            "value": "O13.3",
+            "system": "ICD-10",
+            "horizon": {
+              "days": 300
+            },
+            "status": "active"
+          },
+          {
+            "field": "conditions",
+            "operator": "includes_code",
+            "value": "O13.9",
+            "system": "ICD-10",
+            "horizon": {
+              "days": 300
+            },
+            "status": "active"
+          },
+          {
+            "field": "conditions",
+            "operator": "includes_code",
+            "value": "O14.0.*",
+            "system": "ICD-10",
+            "horizon": {
+              "days": 300
+            },
+            "status": "active"
+          },
+          {
+            "field": "conditions",
+            "operator": "includes_code",
+            "value": "O14.1.*",
+            "system": "ICD-10",
+            "horizon": {
+              "days": 300
+            },
+            "status": "active"
+          },
+          {
+            "field": "conditions",
+            "operator": "includes_code",
+            "value": "O14.9.*",
+            "system": "ICD-10",
+            "horizon": {
+              "days": 300
+            },
+            "status": "active"
+          }
+        ]
+      }
+    },
+    {
+      "id": "gate-htn-diagnosed-pp-followup",
+      "type": "Gate",
+      "properties": {
+        "title": "Diagnosis of gestational hypertension or preeclampsia established? (postpartum BP follow-up)",
+        "gate_type": "compound",
+        "default_behavior": "skip",
+        "operator": "OR",
+        "conditions": [
+          {
+            "field": "conditions",
+            "operator": "includes_code",
+            "value": "O13.2",
+            "system": "ICD-10",
+            "horizon": {
+              "days": 300
+            },
+            "status": "active"
+          },
+          {
+            "field": "conditions",
+            "operator": "includes_code",
+            "value": "O13.3",
+            "system": "ICD-10",
+            "horizon": {
+              "days": 300
+            },
+            "status": "active"
+          },
+          {
+            "field": "conditions",
+            "operator": "includes_code",
+            "value": "O13.9",
+            "system": "ICD-10",
+            "horizon": {
+              "days": 300
+            },
+            "status": "active"
+          },
+          {
+            "field": "conditions",
+            "operator": "includes_code",
+            "value": "O14.0.*",
+            "system": "ICD-10",
+            "horizon": {
+              "days": 300
+            },
+            "status": "active"
+          },
+          {
+            "field": "conditions",
+            "operator": "includes_code",
+            "value": "O14.1.*",
+            "system": "ICD-10",
+            "horizon": {
+              "days": 300
+            },
+            "status": "active"
+          },
+          {
+            "field": "conditions",
+            "operator": "includes_code",
+            "value": "O14.9.*",
+            "system": "ICD-10",
+            "horizon": {
+              "days": 300
+            },
+            "status": "active"
+          }
+        ]
+      }
+    },
+    {
+      "id": "gate-htn-diagnosed-cv-counsel",
+      "type": "Gate",
+      "properties": {
+        "title": "Diagnosis of gestational hypertension or preeclampsia established? (long-term CV risk counselling)",
         "gate_type": "compound",
         "default_behavior": "skip",
         "operator": "OR",
@@ -1404,13 +1566,18 @@
     },
     {
       "from": "gate-aspirin-indicated",
-      "to": "step-1-2",
+      "to": "stage-1-aspirin",
       "type": "BRANCHES_TO"
     },
     {
-      "from": "gate-aspirin-indicated",
+      "from": "stage-1-aspirin",
+      "to": "step-1-2",
+      "type": "HAS_STEP"
+    },
+    {
+      "from": "stage-1-aspirin",
       "to": "step-1-3",
-      "type": "BRANCHES_TO"
+      "type": "HAS_STEP"
     },
     {
       "from": "step-2-1",
@@ -1429,13 +1596,18 @@
     },
     {
       "from": "gate-htn-confirmed",
-      "to": "step-2-3",
+      "to": "stage-2-workup",
       "type": "BRANCHES_TO"
     },
     {
-      "from": "gate-htn-confirmed",
+      "from": "stage-2-workup",
+      "to": "step-2-3",
+      "type": "HAS_STEP"
+    },
+    {
+      "from": "stage-2-workup",
       "to": "step-2-4",
-      "type": "BRANCHES_TO"
+      "type": "HAS_STEP"
     },
     {
       "from": "step-2-4",
@@ -1448,12 +1620,22 @@
       "type": "BRANCHES_TO"
     },
     {
-      "from": "gate-htn-diagnosed",
+      "from": "step-2-4",
+      "to": "gate-htn-diagnosed-pp-followup",
+      "type": "HAS_GATE"
+    },
+    {
+      "from": "gate-htn-diagnosed-pp-followup",
       "to": "step-5-2",
       "type": "BRANCHES_TO"
     },
     {
-      "from": "gate-htn-diagnosed",
+      "from": "step-2-4",
+      "to": "gate-htn-diagnosed-cv-counsel",
+      "type": "HAS_GATE"
+    },
+    {
+      "from": "gate-htn-diagnosed-cv-counsel",
       "to": "step-5-3",
       "type": "BRANCHES_TO"
     },
@@ -1913,12 +2095,37 @@
       "type": "CITES_EVIDENCE"
     },
     {
+      "from": "stage-1-aspirin",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "stage-1-aspirin",
+      "to": "ev-2",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "stage-1-aspirin",
+      "to": "ev-3",
+      "type": "CITES_EVIDENCE"
+    },
+    {
       "from": "stage-2",
       "to": "ev-1",
       "type": "CITES_EVIDENCE"
     },
     {
       "from": "stage-2",
+      "to": "ev-7",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "stage-2-workup",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "stage-2-workup",
       "to": "ev-7",
       "type": "CITES_EVIDENCE"
     },

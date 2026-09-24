@@ -100,7 +100,19 @@ None. Single-condition pathway.
   the exit boundary — what triggers admission or delivery, and the postpartum follow-up that
   must be scheduled before discharge. [1][8][12]
 
-Stages 3, 4 and 5 are **branch-entry only** and get no root `HAS_STAGE` edge.
+- **Stage `stage-1-aspirin` — Low-Dose Aspirin Prophylaxis (if indicated)** *(branch-entry
+  only, via `gate-aspirin-indicated`; `stage_number` 1)*: holds Steps 1.2 and 1.3.
+- **Stage `stage-2-workup` — Hypertension Work-up (if confirmed)** *(branch-entry only, via
+  `gate-htn-confirmed`; `stage_number` 2)*: holds Steps 2.3 and 2.4.
+
+Stages 3, 4 and 5, and the two sub-stages above, are **branch-entry only** and get no root
+`HAS_STAGE` edge.
+
+`[BUILD FIX 2026-09-24 — Rule 3]` The two sub-stages exist only so one question gate can
+open two steps. Main's import (PR #55) treats a gate with several `BRANCHES_TO` edges as a
+router that takes exactly one edge by answer, so "on yes, open 1.2 and 1.3" must target a
+single container. Step ids and display numbers are unchanged; each sub-stage carries its
+parent stage's number and citations.
 
 ## 3. Steps
 
@@ -174,7 +186,8 @@ shortcut — it is what the engine's grammar leaves available for these criteria
 states what data gate it *would* have been and why that is not expressible.
 
 - **Gate `gate-aspirin-indicated` — Does this patient qualify for low-dose aspirin prophylaxis?**
-  - Attached to: `step-1-1` · Branches to: `step-1-2`, `step-1-3`
+  - Attached to: `step-1-1` · Branches to: `stage-1-aspirin` (holds `step-1-2`, `step-1-3`)
+    `[BUILD FIX — Rule 3]`
   - Exclusively gated: yes — Steps 1.2 and 1.3 are removed from Stage 1's plain flow.
   - Type: **question** · answer_type: BOOLEAN
   - Default behavior: **traverse** — but see G12: **`default_behavior` is inert on question
@@ -224,7 +237,8 @@ states what data gate it *would* have been and why that is not expressible.
   - Rationale & source: [1] Box 2
 
 - **Gate `gate-htn-confirmed` — Has hypertension been confirmed per ACOG criteria?**
-  - Attached to: `step-2-2` · Branches to: `step-2-3`, `step-2-4`
+  - Attached to: `step-2-2` · Branches to: `stage-2-workup` (holds `step-2-3`, `step-2-4`)
+    `[BUILD FIX — Rule 3]`
   - Exclusively gated: yes
   - Type: **question** · answer_type: BOOLEAN · Default behavior: **skip** — an unconfirmed
     elevated reading must not open the diagnostic arm; R03.0 is the correct interim state.
@@ -238,7 +252,11 @@ states what data gate it *would* have been and why that is not expressible.
   - Rationale & source: [1] Box 2; gestational hypertension definition
 
 - **Gate `gate-htn-diagnosed` — Diagnosis of gestational hypertension or preeclampsia established?**
-  - Attached to: `step-2-4` · Branches to: `stage-3`, `step-5-2`, `step-5-3`
+  - Attached to: `step-2-4` · Branches to: `stage-3`
+  - `[BUILD FIX — Rule 3]` Emitted as three identical-condition gates, one per target:
+    `gate-htn-diagnosed` → `stage-3`, `gate-htn-diagnosed-pp-followup` → `step-5-2`,
+    `gate-htn-diagnosed-cv-counsel` → `step-5-3`. A compound gate may have only one target
+    on main; the targets sit in different stages, so a container stage does not fit.
   - Exclusively gated: yes — Stage 3 is branch-entry only.
   - Type: **compound**, operator **OR** · Default behavior: **skip**
   - Conditions (coded), each `includes_code`, field `conditions`, system ICD-10, horizon `{days: 300}`, status `active`:

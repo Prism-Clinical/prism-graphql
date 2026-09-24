@@ -60,7 +60,7 @@ Follow the spec exactly. Brief-section → JSON mapping:
 - §4 DPs → DecisionPoint (+`branch_mode`) + `HAS_DECISION_POINT` from the named step;
   criteria → Criterion + `HAS_CRITERION`; each criterion's target → `SELECTS_BRANCH`; the
   DP's distinct targets → `BRANCHES_TO`.
-- §4b Gates → Gate nodes, `HAS_GATE` from "Attached to", `BRANCHES_TO` to each target.
+- §4b Gates → Gate nodes, `HAS_GATE` from "Attached to", `BRANCHES_TO` to the target.
   Emit conditions exactly as the brief specifies (attribute vs coded form, operator params);
   don't silently "correct" attribute spellings — flag suspected drift in the delivery
   message instead. `[BLOCKED — prior_node_result]` gates: emit the brief's named fallback,
@@ -71,7 +71,13 @@ Follow the spec exactly. Brief-section → JSON mapping:
   nothing; (2) never point two gates at the same target — that is a race the *losing*
   gate wins, and gates do not OR. If the brief maps two mutually exclusive gates onto one
   target (e.g. trimester-specific thresholds), that is a brief ambiguity — stop and ask
-  whether to merge them into one gate or split the target.
+  whether to merge them into one gate or split the target; (3) a chart gate
+  (`patient_attribute`/`compound`) gets exactly **one** `BRANCHES_TO` — main rejects more.
+  If the brief names several targets for one gate, it means fan-out: same-stage → one
+  branch-entry-only Stage holding the steps (mandatory for question gates, which must not be
+  duplicated); cross-stage → one identical-condition copy per target (`gate-x-<suffix>`).
+  Emit `properties.when` only when the brief gives a real per-answer routing table (yes → A,
+  no → B), and then map every answer.
 - §5 Meds → Medication (+`clinical_role` only when the brief gives one; dose/frequency/
   duration/route as given) + `USES_MEDICATION` from the named step; escalations →
   `ESCALATES_TO`.
@@ -133,8 +139,9 @@ node .claude/skills/pathway-json-builder/scripts/check-gate-control.ts pathways/
 ```
 
 (No install needed; Node runs the TS directly.) It enforces the two gate-wiring rules
-statically: a gate target reachable by any competing route (Rule 1), and two gates sharing
-a target (Rule 2). Exit 0 = clean; 1 = violations, each naming the offending edges. **Never
+statically: a gate target reachable by any competing route (Rule 1), two gates sharing
+a target (Rule 2), and a chart gate with several targets or a router edge without `when`
+(Rule 3). Exit 0 = clean; 1 = violations, each naming the offending edges. **Never
 deliver a pathway with gate-control violations** — it will import cleanly, display
 correctly in the canvas, and quietly recommend every gated treatment to every patient.
 Fix by deleting the competing edge or merging the gates; if the brief's intent is genuinely
@@ -145,7 +152,7 @@ ambiguous, ask rather than guess.
 Save to `pathways/json/<logical_id>.json` and send the file. Delivery message: pathway title
 + version; node counts by type; validator result ("passed the real import validator, N
 warnings"); gate-control result ("passed check-gate-control.ts, N gates / N gated targets")
-plus any gate re-wiring done to satisfy Rules 1 & 2; code_sets emitted (how many); every substitution made (gate evidence → host
+plus any gate re-wiring done to satisfy Rules 1–3; code_sets emitted (how many); every substitution made (gate evidence → host
 step, blocked-gate fallbacks, code reattachments); the §14 attribute-map seeding checklist
 (if any — these rows must exist in `pathway_attribute_code_map` before the gates evaluate);
 any drift-check findings; and a reminder to upload via the Prism Admin Dashboard

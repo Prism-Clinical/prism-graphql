@@ -183,7 +183,11 @@ Gated steps connect **only** via their gate's `BRANCHES_TO` — no `HAS_STEP` ed
 ## 4b. Gates
 
 - **Gate `gate-culture-positive` — Urine culture at or above 100,000 CFU/mL?**
-  - Attached to: `step-2-1` · Branches to: `step-2-2`, `stage-3`
+  - Attached to: `step-2-1` · Branches to: `stage-3`
+  - `[BUILD FIX 2026-09-24 — Rule 3]` Emitted as two identical-condition gates:
+    `gate-culture-positive` → `stage-3` and `gate-culture-positive-classify` → `step-2-2`.
+    A chart gate may have only one target on main. Both read the same culture, so a
+    missing culture raises one question, not two.
   - Exclusively gated: yes — Stage 3 is branch-entry only.
   - Type: **patient_attribute** · Default behavior: **skip** — no culture means nothing to treat.
   - Condition (coded): field `labs`, `greater_than`, value `19090-0`, system LOINC,
@@ -246,7 +250,11 @@ Gated steps connect **only** via their gate's `BRANCHES_TO` — no `HAS_STEP` ed
   - Rationale & source: [2]; [1]; [3]
 
 - **Gate `gate-penicillin-allergy` — Documented penicillin or β-lactam allergy?**
-  - Attached to: `step-3-1` · Branches to: `step-3-2`, `step-4-5`
+  - Attached to: `step-3-1` · Branches to: `step-3-2`
+  - `[BUILD FIX 2026-09-24 — Rule 3]` Emitted as two identical-condition gates, both on
+    `step-3-1`: `gate-penicillin-allergy` → `step-3-2` and `gate-penicillin-allergy-gbs` →
+    `step-4-5`. Attachment is unchanged, so Step 4.5 is still reachable from the treatment
+    stage whether or not the GBS arm opened — as before.
   - Exclusively gated: yes
   - Type: **compound**, operator **OR** · Default behavior: **skip**
   - Conditions (coded): field `allergies`, `includes_code`, values `Z88.0` (penicillin) and

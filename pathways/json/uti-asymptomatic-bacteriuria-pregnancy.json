@@ -412,6 +412,25 @@
       }
     },
     {
+      "id": "gate-culture-positive-classify",
+      "type": "Gate",
+      "properties": {
+        "title": "Urine culture at or above 100,000 CFU/mL? (classify ASB vs cystitis)",
+        "gate_type": "patient_attribute",
+        "default_behavior": "skip",
+        "condition": {
+          "field": "labs",
+          "operator": "greater_than",
+          "value": "19090-0",
+          "system": "LOINC",
+          "threshold": 99999.9,
+          "horizon": {
+            "days": 300
+          }
+        }
+      }
+    },
+    {
       "id": "gate-gbs-identified",
       "type": "Gate",
       "properties": {
@@ -466,6 +485,34 @@
       "type": "Gate",
       "properties": {
         "title": "Documented penicillin or beta-lactam allergy?",
+        "gate_type": "compound",
+        "default_behavior": "skip",
+        "operator": "OR",
+        "conditions": [
+          {
+            "field": "allergies",
+            "operator": "includes_code",
+            "value": "Z88.0",
+            "system": "ICD-10",
+            "horizon": "LIFETIME",
+            "status": "any"
+          },
+          {
+            "field": "allergies",
+            "operator": "includes_code",
+            "value": "Z88.1",
+            "system": "ICD-10",
+            "horizon": "LIFETIME",
+            "status": "any"
+          }
+        ]
+      }
+    },
+    {
+      "id": "gate-penicillin-allergy-gbs",
+      "type": "Gate",
+      "properties": {
+        "title": "Documented penicillin or beta-lactam allergy? (clindamycin susceptibility request)",
         "gate_type": "compound",
         "default_behavior": "skip",
         "operator": "OR",
@@ -1155,12 +1202,17 @@
     },
     {
       "from": "gate-culture-positive",
-      "to": "step-2-2",
+      "to": "stage-3",
       "type": "BRANCHES_TO"
     },
     {
-      "from": "gate-culture-positive",
-      "to": "stage-3",
+      "from": "step-2-1",
+      "to": "gate-culture-positive-classify",
+      "type": "HAS_GATE"
+    },
+    {
+      "from": "gate-culture-positive-classify",
+      "to": "step-2-2",
       "type": "BRANCHES_TO"
     },
     {
@@ -1204,7 +1256,12 @@
       "type": "BRANCHES_TO"
     },
     {
-      "from": "gate-penicillin-allergy",
+      "from": "step-3-1",
+      "to": "gate-penicillin-allergy-gbs",
+      "type": "HAS_GATE"
+    },
+    {
+      "from": "gate-penicillin-allergy-gbs",
       "to": "step-4-5",
       "type": "BRANCHES_TO"
     },

@@ -109,7 +109,8 @@ Enums:
 ## Gates
 
 A Gate is a machine-evaluable decision attached to a Stage/Step/DecisionPoint via `HAS_GATE`,
-routing to its `BRANCHES_TO` target(s). Every Gate must have ≥1 outbound edge.
+guarding its `BRANCHES_TO` target. Every Gate must have ≥1 outbound edge; a chart gate has
+exactly one (Rule 3).
 
 > ### ⚠ Gate wiring — read this before wiring any gate (builder-enforced)
 >
@@ -131,6 +132,24 @@ routing to its `BRANCHES_TO` target(s). Every Gate must have ≥1 outbound edge.
 > (e.g. trimester-specific thresholds) must be merged into one gate or given separate
 > targets. Compound gates cannot express this either — `conditions` is a flat list under a
 > single `operator`, so `(A AND B) OR (C AND D)` has no encoding.
+>
+> **Rule 3 — a chart gate has exactly ONE `BRANCHES_TO` target.** A `patient_attribute`,
+> `compound` or `prior_node_result` gate with several targets is an import error on main
+> (it has no answer to route on), and a `question`/`llm_text_analysis` gate with several
+> targets is a *router* that takes exactly one edge by its `when` — never all of them. So
+> "on yes, open A and B" (fan-out) is authored one of two ways:
+> - **same-stage fan-out** — ONE target: a branch-entry-only Stage that `HAS_STEP`s the
+>   several steps (the steps keep their `stage_number`/`display_number`; the new Stage takes
+>   its parent's `stage_number` and `CITES_EVIDENCE`). Required for **question** gates:
+>   duplicating a question asks the provider twice, and the two answers can disagree.
+> - **cross-stage fan-out** — one gate per target, **identical** conditions, ids
+>   `gate-x` + `gate-x-<suffix>`, all attached to the same host. Rule 2 forbids two gates on
+>   one target, not one condition on several gates. Chart gates only: two gates reading the
+>   same missing lab share ONE escalation question (deduped on the datum). Keep the copies
+>   in sync — `check-gate-control.ts` warns when a `gate-x-*` copy drifts from `gate-x`.
+>
+> Use `when` only for genuine routing — "yes → A, no → B" on a question/LLM gate — and then
+> map every answer (see **Multi-target gates** below).
 >
 > Also note when designing:
 > - **There is no negative arm.** A gate expresses only its satisfied branch. "If NOT X,
@@ -419,7 +438,9 @@ structural edge in place is what makes a gate inert — see the Gate wiring box 
 - ≥1 Stage node; ≥1 `root → HAS_STAGE` edge.
 - Every Gate: ≥1 outbound edge. DecisionPoint without `BRANCHES_TO`: warning. Orphan nodes: warning.
 - **Not import-enforced:** gate control (Rules 1 & 2 in the Gate wiring box). The validator
-  accepts an inert gate silently — `scripts/check-gate-control.ts` is the only check.
+  accepts an inert gate silently — `scripts/check-gate-control.ts` is the only check. Rule 3
+  IS import-enforced on main; `check-gate-control.ts` repeats it so a stale checkout cannot
+  hide it.
 - Duplicate node ids, unknown node/edge types, dangling edge refs: errors.
 
 ## Code format patterns (import-enforced)

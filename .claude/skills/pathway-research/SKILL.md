@@ -96,6 +96,10 @@ design around:
   (e.g. trimester-specific hemoglobin thresholds) must be **one gate** on a merged
   condition, or **separate targets**. Compound gates cannot express `(A AND B) OR (C AND D)`
   either: `conditions` is a flat list under a single operator.
+- **One target per chart gate.** A patient_attribute/compound gate names exactly one
+  target (main rejects more). "On yes, do A and B" is fan-out: put A and B in a
+  branch-entry-only Stage and target that (always, for question gates — never duplicate a
+  question), or, across stages, write one identical-condition gate per target.
 - **There is no negative arm.** A gate expresses only its satisfied branch. If the brief
   needs "if NOT responding, escalate", author a second gate whose condition *is* the
   negative case; do not assume the engine derives it. If the negative case isn't
@@ -170,8 +174,9 @@ temporal-audit table — these are emitted into the JSON, not annotations).
       from the legal grammar; §17 table covers every temporally-scoped condition.
 - [ ] Every criterion has an explicit branch target; every DP has a branch_mode.
 - [ ] Every gate names a target reached **only** through that gate (not also a plain step in
-      its stage's flow); no two gates share a target; any "if not X" arm is authored as its
-      own gate or explicitly left unconditional.
+      its stage's flow); no two gates share a target; every chart gate has exactly one
+      target (fan-out via branch-entry Stage or identical copies); any "if not X" arm is
+      authored as its own gate or explicitly left unconditional.
 - [ ] Codes verified by the wave-2 agent; formats plausible per system.
 - [ ] code_sets (if any): ≥1 required code each, valid scopes.
 - [ ] Citations: real title/org/year/URL, all fetched, evidence levels from the allowed set.

@@ -65,7 +65,11 @@ together become its BRANCHES_TO set. `all_of` = sequencing fan-out (all branches
 One block per machine-evaluable decision. Common fields for every gate:
 
 - **Gate `gate-<slug>` — `<title>`**
-  - Attached to: `<Stage/Step/DP id>` · Branches to: `<Step/Stage id(s)>`
+  - Attached to: `<Stage/Step/DP id>` · Branches to: `<ONE Step/Stage id>` — a chart gate
+    (patient_attribute/compound) has exactly one target (Rule 3). To open several things on
+    "yes": same-stage → name a branch-entry-only Stage that holds them (list it in §2);
+    cross-stage → write one gate block per target with identical conditions. A question gate
+    may route yes → A / no → B only if you say which answer takes which target.
   - Exclusively gated: yes | no — the branch target must be content the pathway should
     NOT reach when this gate misses. If the target is also a normal step in its stage's
     flow, or another gate/criterion also targets it, the gate excludes nothing. Say which
@@ -78,6 +82,11 @@ One block per machine-evaluable decision. Common fields for every gate:
     `<e.g. "~1 g/dL per 4 weeks">`
   - Rationale & source: `<why this threshold/logic, cite ref #>`
 
+> **One target per chart gate; fan out with a branch-entry Stage or identical copies.**
+> A patient_attribute/compound gate with two targets is rejected by main's import, and a
+> question gate with two targets routes to exactly one of them by answer — it never opens
+> both. Never duplicate a question gate to fan out: the provider would be asked twice.
+>
 > **Two gates may never share a branch target.** Gates do not OR: the first to miss claims
 > the target and a later satisfied gate cannot rescue it. Mutually exclusive alternatives
 > (e.g. trimester-specific thresholds) must be one gate on a merged condition, or separate
