@@ -1,4 +1,4 @@
-import { GateProperties, GateCondition, isAttributeCondition, AttributeCodeMap } from './types';
+import { GateProperties, GateCondition, isAttributeCondition, AttributeCodeMap, conditionLeaves } from './types';
 import { resolveAttribute } from './attribute-registry';
 import { PatientContext, GraphNode } from '../confidence/types';
 import { GateType } from '../../types';
@@ -150,8 +150,9 @@ function classifyGate(
     return 'INDETERMINATE';
   }
 
-  const conditions: GateCondition[] =
-    gate.conditions ?? (gate.condition ? [gate.condition] : []);
+  const conditions: GateCondition[] = gate.conditions
+    ? (conditionLeaves(gate.conditions) as GateCondition[])
+    : (gate.condition ? [gate.condition] : []);
 
   if (conditions.length === 0) {
     return 'INDETERMINATE';
@@ -174,8 +175,9 @@ function buildExplanation(
   patient: PatientContext,
   codeMap: AttributeCodeMap,
 ): GateExplanation {
-  const conditions: GateCondition[] =
-    gate.conditions ?? (gate.condition ? [gate.condition] : []);
+  const conditions: GateCondition[] = gate.conditions
+    ? (conditionLeaves(gate.conditions) as GateCondition[])
+    : (gate.condition ? [gate.condition] : []);
 
   const base = {
     gateNodeIdentifier: node.nodeIdentifier,

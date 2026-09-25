@@ -1,5 +1,6 @@
 import type { Pool } from 'pg';
 import type { GraphContext } from '../../services/confidence/types';
+import { gateConditionLeaves } from '../../services/resolution/types';
 import {
   parseWindowFrom,
   TherapyStartEvent,
@@ -27,11 +28,10 @@ export function windowFromRoles(graphContext: GraphContext): Set<string> {
     if (node.nodeType !== 'Gate') continue;
     const props = node.properties as Record<string, unknown> | undefined;
     if (!props) continue;
-    const conditions: unknown[] = [
-      ...(props.condition ? [props.condition] : []),
-      ...(Array.isArray(props.conditions) ? props.conditions : []),
-    ];
-    for (const c of conditions) {
+    // Nested condition groups included: a `window_from` two levels down still
+    // needs its care-plan anchor loaded, or production asks for a date the
+    // stored plan already holds.
+    for (const c of gateConditionLeaves(props)) {
       const raw = (c as { window_from?: unknown } | null)?.window_from;
       if (raw === undefined) continue;
       try {

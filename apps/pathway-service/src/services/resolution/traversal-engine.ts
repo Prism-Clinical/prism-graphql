@@ -37,6 +37,7 @@ import {
   ACTION_NODE_TYPES,
   AttributeCodeMap,
   WindowAnchorEvidence,
+  conditionLeaves,
 } from './types';
 
 // ─── Helpers ──────────────────────────────────────────────────────────
@@ -133,7 +134,9 @@ function unresolvedAsk(
   const conditions =
     gateResult.unresolvedConditions && gateResult.unresolvedConditions.length > 0
       ? gateResult.unresolvedConditions
-      : (gateProps.conditions ?? (gateProps.condition ? [gateProps.condition] : []));
+      : gateProps.conditions
+        ? (conditionLeaves(gateProps.conditions) as GateCondition[])
+        : (gateProps.condition ? [gateProps.condition] : []);
   for (const condition of conditions) {
     // An unresolved `window_from` anchor asks for its start DATE; a series one
     // value short asks for the newest result; every other condition asks for

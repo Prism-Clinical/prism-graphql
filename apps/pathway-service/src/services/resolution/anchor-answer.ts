@@ -1,5 +1,6 @@
 import type { GraphContext } from '../confidence/types';
 import type { DependencyMap, GateAnswer, PendingQuestion } from './types';
+import { gateConditionLeaves } from './types';
 import {
   anchorDateProblem,
   anchorKeyFor,
@@ -38,12 +39,8 @@ export type AnchorAnswerPlan =
 
 function windowFromKeysOf(properties: Record<string, unknown> | undefined): string[] {
   if (!properties) return [];
-  const conditions: unknown[] = [
-    ...(properties.condition ? [properties.condition] : []),
-    ...(Array.isArray(properties.conditions) ? properties.conditions : []),
-  ];
   const keys = new Set<string>();
-  for (const c of conditions) {
+  for (const c of gateConditionLeaves(properties)) {
     const raw = (c as { window_from?: unknown } | null)?.window_from;
     if (raw === undefined) continue;
     // Imported, preflighted and evaluated already, so it parses; a throw here
