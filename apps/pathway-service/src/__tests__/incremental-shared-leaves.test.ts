@@ -206,6 +206,61 @@ describe('a shared leaf beneath the gate that closes', () => {
   }
 });
 
+describe('a leaf beneath a provider-overridden step, when the gate above closes', () => {
+  /**
+   * root ─ gate-shut ─ step-over (overridden INCLUDED) ─ med-1
+   *                                                   └─ sched-1 (Schedule)
+   *                                                   └─ ev-1 ─ also cited by step-open (not overridden)
+   *
+   * The override is a decision about step-over alone, so the gate's sweep
+   * closes what lies beneath it. An overridden host is INCLUDED, but it is not
+   * a live host for its leaves: a Schedule it held must not come back
+   * INCLUDED — an INCLUDED Schedule is projected into the care plan.
+   */
+  const nodes = [
+    node('root', 'Pathway'),
+    node('gate-shut', 'Gate', question('Symptomatic?')),
+    node('step-over', 'Step'),
+    node('med-1', 'Medication'),
+    node('sched-1', 'Schedule'),
+    node('ev-1', 'EvidenceCitation'),
+    node('step-open', 'Step'),
+  ];
+  const edges = [
+    edge('root', 'gate-shut', 'HAS_GATE'),
+    edge('gate-shut', 'step-over', 'BRANCHES_TO'),
+    edge('step-over', 'med-1', 'USES_MEDICATION'),
+    edge('step-over', 'sched-1', 'HAS_SCHEDULE'),
+    edge('step-over', 'ev-1', 'CITES_EVIDENCE'),
+    edge('root', 'step-open', 'HAS_STAGE'),
+    edge('step-open', 'ev-1', 'CITES_EVIDENCE'),
+  ];
+
+  for (const [order, reverse] of ORDERS) {
+    it(`closes the leaves the override does not cover [${order} order]`, async () => {
+      const g = graphOf(nodes, edges, reverse);
+      const answers = new Map<string, GateAnswer>([['gate-shut', YES]]);
+      const eng = engine();
+      const first = await eng.traverse(g, PATIENT, answers);
+      first.resolutionState.get('step-over')!.providerOverride = {
+        action: 'INCLUDE', reason: 'clinical judgement',
+        originalStatus: NodeStatus.INCLUDED, originalConfidence: 0.9,
+      } as never;
+
+      // The answer is withdrawn: the gate shuts.
+      await eng.resolveIncrementally(
+        new Set(['gate-shut']), first.resolutionState, first.dependencyMap, g, PATIENT, new Map(),
+      );
+
+      expect(first.resolutionState.get('step-over')!.providerOverride).toBeDefined();
+      expect(first.resolutionState.get('med-1')!.status).not.toBe(NodeStatus.INCLUDED);
+      expect(first.resolutionState.get('sched-1')!.status).not.toBe(NodeStatus.INCLUDED);
+      // Still cited by a step nobody overrode, which is open.
+      expect(first.resolutionState.get('ev-1')!.status).toBe(NodeStatus.INCLUDED);
+    });
+  }
+});
+
 describe('a DecisionPoint gated out from above, seeded on its own', () => {
   /**
    * root ─ gate-workup ─ step-workup ─ dp ─ step-x / step-y

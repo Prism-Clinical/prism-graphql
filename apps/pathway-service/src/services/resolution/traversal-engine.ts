@@ -1105,17 +1105,30 @@ export class TraversalEngine {
     // first, and a shared leaf is reached from hosts on both sides of the
     // answer: answering "no GBS" wrote GATED_OUT over a citation the
     // still-open culture step cites. Only leaves, because rewriting a node
-    // with a subtree would owe that subtree a walk.
+    // with a subtree would owe that subtree a walk; and only SHARED ones,
+    // since a leaf with one host already has that host's verdict.
+    //
+    // A live host is one the walk DISPOSED as included. An overridden host is
+    // INCLUDED by a provider's decision about that node alone — the sweep
+    // closes what lies beneath it on purpose — and a node eager evaluation
+    // wrote but no walk reached is not settled. Counting either would put a
+    // Schedule the closing gate had just removed back into the care plan.
+    const isLiveHost = (id: string): boolean => {
+      const h = resolutionState.get(id);
+      return h !== undefined && h.status === NodeStatus.INCLUDED
+        && !h.providerOverride && !provisional.has(id);
+    };
     if (!isDegraded) {
       for (const id of region) {
         const r = resolutionState.get(id);
         if (!r || !CLOSED.includes(r.status) || r.providerOverride) continue;
         const n = graphContext.getNode(id);
         if (!n || !isReferenceLeaf(n, graphContext)) continue;
+        if (containmentParentIds(graphContext, id).length < 2) continue;
         const host = graphContext.incomingEdges(id).find(e =>
           !NON_CONTAINMENT_EDGES.has(e.edgeType)
           && e.edgeType !== 'BRANCHES_TO'
-          && resolutionState.get(e.sourceId)?.status === NodeStatus.INCLUDED);
+          && isLiveHost(e.sourceId));
         if (!host) continue;
         const hostResult = resolutionState.get(host.sourceId)!;
         resolutionState.set(id, {
