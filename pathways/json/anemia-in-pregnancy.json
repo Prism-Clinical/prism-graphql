@@ -1130,6 +1130,56 @@
       }
     },
     {
+      "id": "lab-10",
+      "type": "LabTest",
+      "properties": {
+        "name": "CBC with indices",
+        "code": "58410-2",
+        "system": "LOINC",
+        "specimen": "Venous blood"
+      }
+    },
+    {
+      "id": "lab-11",
+      "type": "LabTest",
+      "properties": {
+        "name": "Ferritin, serum",
+        "code": "2276-4",
+        "system": "LOINC",
+        "specimen": "Serum"
+      }
+    },
+    {
+      "id": "lab-12",
+      "type": "LabTest",
+      "properties": {
+        "name": "Reticulocyte count",
+        "code": "4679-7",
+        "system": "LOINC",
+        "specimen": "Whole blood"
+      }
+    },
+    {
+      "id": "lab-13",
+      "type": "LabTest",
+      "properties": {
+        "name": "Peripheral blood smear",
+        "code": "34994-4",
+        "system": "LOINC",
+        "specimen": "Whole blood"
+      }
+    },
+    {
+      "id": "lab-14",
+      "type": "LabTest",
+      "properties": {
+        "name": "Hemoglobin electrophoresis",
+        "code": "43113-0",
+        "system": "LOINC",
+        "specimen": "Whole blood"
+      }
+    },
+    {
       "id": "proc-1",
       "type": "Procedure",
       "properties": {
@@ -2212,7 +2262,7 @@
     },
     {
       "from": "step-2-3",
-      "to": "lab-1",
+      "to": "lab-10",
       "type": "HAS_LAB_TEST"
     },
     {
@@ -2222,7 +2272,7 @@
     },
     {
       "from": "step-1-3",
-      "to": "lab-2",
+      "to": "lab-11",
       "type": "HAS_LAB_TEST"
     },
     {
@@ -2232,7 +2282,7 @@
     },
     {
       "from": "step-1-3",
-      "to": "lab-4",
+      "to": "lab-12",
       "type": "HAS_LAB_TEST"
     },
     {
@@ -2252,7 +2302,7 @@
     },
     {
       "from": "step-1-5",
-      "to": "lab-7",
+      "to": "lab-14",
       "type": "HAS_LAB_TEST"
     },
     {
@@ -2262,7 +2312,7 @@
     },
     {
       "from": "step-1-3",
-      "to": "lab-8",
+      "to": "lab-13",
       "type": "HAS_LAB_TEST"
     },
     {
@@ -2431,6 +2481,11 @@
       "type": "HAS_CODE"
     },
     {
+      "from": "lab-13",
+      "to": "code-loinc-34994-4",
+      "type": "HAS_CODE"
+    },
+    {
       "from": "lab-9",
       "to": "code-loinc-882-1",
       "type": "HAS_CODE"
@@ -2446,7 +2501,42 @@
       "type": "HAS_CODE"
     },
     {
+      "from": "lab-10",
+      "to": "code-loinc-58410-2",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "lab-10",
+      "to": "code-loinc-718-7",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "lab-10",
+      "to": "code-loinc-4544-3",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "lab-10",
+      "to": "code-loinc-787-2",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "lab-10",
+      "to": "code-cpt-85025",
+      "type": "HAS_CODE"
+    },
+    {
       "from": "lab-2",
+      "to": "code-cpt-82728",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "lab-11",
+      "to": "code-loinc-2276-4",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "lab-11",
       "to": "code-cpt-82728",
       "type": "HAS_CODE"
     },
@@ -2466,6 +2556,16 @@
       "type": "HAS_CODE"
     },
     {
+      "from": "lab-12",
+      "to": "code-loinc-4679-7",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "lab-12",
+      "to": "code-cpt-85045",
+      "type": "HAS_CODE"
+    },
+    {
       "from": "lab-5",
       "to": "code-cpt-82607",
       "type": "HAS_CODE"
@@ -2477,6 +2577,16 @@
     },
     {
       "from": "lab-7",
+      "to": "code-cpt-83020",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "lab-14",
+      "to": "code-loinc-43113-0",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "lab-14",
       "to": "code-cpt-83020",
       "type": "HAS_CODE"
     },
@@ -3006,6 +3116,11 @@
       "type": "CITES_EVIDENCE"
     },
     {
+      "from": "lab-10",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
       "from": "lab-2",
       "to": "ev-1",
       "type": "CITES_EVIDENCE"
@@ -3016,12 +3131,27 @@
       "type": "CITES_EVIDENCE"
     },
     {
+      "from": "lab-11",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "lab-11",
+      "to": "ev-5",
+      "type": "CITES_EVIDENCE"
+    },
+    {
       "from": "lab-3",
       "to": "ev-1",
       "type": "CITES_EVIDENCE"
     },
     {
       "from": "lab-4",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "lab-12",
       "to": "ev-1",
       "type": "CITES_EVIDENCE"
     },
@@ -3041,7 +3171,17 @@
       "type": "CITES_EVIDENCE"
     },
     {
+      "from": "lab-14",
+      "to": "ev-4",
+      "type": "CITES_EVIDENCE"
+    },
+    {
       "from": "lab-8",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "lab-13",
       "to": "ev-1",
       "type": "CITES_EVIDENCE"
     },

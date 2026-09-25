@@ -397,6 +397,30 @@ narrative. Recorded so reviewers know the omission is deliberate.
 - **Lab-9 — Type and antibody screen** (on Step 4.1): ABO/Rh LOINC 882-1 + antibody screen
   890-4; hemorrhage-bundle tie-in for anemic patients approaching delivery. [11]
 
+`[BUILD FIX 2026-09-24]` **One host step per lab node (v4).** Lab-1, 2, 4, 7 and 8 were each
+one node ordered by two steps on opposite sides of a gate or DecisionPoint. The engine
+marks a node once (first-writer-wins), and a gate that closes sweeps its whole subtree at
+once, so the shared lab took the status of whichever host was decided first. The care plan
+lists only INCLUDED labs, so the test disappeared from the step that still ordered it. Seen
+on the real engine: ferritin 50 + workup marked the Step 1.1 CBC GATED_OUT (via Step 2.3's
+recheck), and a normocytic patient's ferritin, reticulocytes and smear were held with
+DP-1's subtree — and with v4's gate-microcytic they would have been GATED_OUT outright.
+Each crossing lab is now split, same test and codes, one node per host; the original keeps
+its other host:
+
+| Original | Stays on | New node | Moves to |
+|---|---|---|---|
+| Lab-1 CBC | Step 1.1 | **Lab-10** | Step 2.3 (Hgb/Hct recheck) |
+| Lab-2 Ferritin | Step 1.2 | **Lab-11** | Step 1.3 |
+| Lab-4 Reticulocytes | Step 2.2 | **Lab-12** | Step 1.3 |
+| Lab-8 Smear | Step 1.5 | **Lab-13** | Step 1.3 |
+| Lab-7 Hgb electrophoresis | Step 1.6 | **Lab-14** | Step 1.5 |
+
+The new nodes share the originals' CodeEntries (HAS_CODE) and citations; CodeEntries are
+not projected into the care plan, so sharing them is harmless. Proof: `gate-proof.ts
+shared-leaves` (both edge orders). The step lists above still read "on Steps X, Y" — each
+step orders its own copy.
+
 ## 7. Imaging
 
 None — no imaging is part of guideline-directed anemia-in-pregnancy workup. (Section
@@ -486,29 +510,29 @@ All pairs acyclic; REQUIRES points dependent → prerequisite:
 
 | Code | System | Description | Attached to |
 |---|---|---|---|
-| 58410-2 | LOINC | CBC panel, automated | Lab-1 |
-| 718-7 | LOINC | Hemoglobin [Mass/Vol] blood | Lab-1 |
-| 4544-3 | LOINC | Hematocrit, automated | Lab-1 |
-| 787-2 | LOINC | MCV, RBC | Lab-1 |
-| 2276-4 | LOINC | Ferritin, serum | Lab-2 |
+| 58410-2 | LOINC | CBC panel, automated | Lab-1, Lab-10 |
+| 718-7 | LOINC | Hemoglobin [Mass/Vol] blood | Lab-1, Lab-10 |
+| 4544-3 | LOINC | Hematocrit, automated | Lab-1, Lab-10 |
+| 787-2 | LOINC | MCV, RBC | Lab-1, Lab-10 |
+| 2276-4 | LOINC | Ferritin, serum | Lab-2, Lab-11 |
 | 2498-4 | LOINC | Iron, serum | Lab-3 |
 | 2500-7 | LOINC | TIBC | Lab-3 |
 | 2502-3 | LOINC | Iron saturation | Lab-3 |
-| 4679-7 | LOINC | Reticulocytes/100 RBC | Lab-4 |
+| 4679-7 | LOINC | Reticulocytes/100 RBC | Lab-4, Lab-12 |
 | 2132-9 | LOINC | Vitamin B12, serum | Lab-5 |
 | 2284-8 | LOINC | Folate, serum | Lab-6 |
-| 43113-0 | LOINC | Hemoglobinopathy electrophoresis panel | Lab-7 |
-| 34994-4 | LOINC | Smear morphology panel, blood | Lab-8 |
+| 43113-0 | LOINC | Hemoglobinopathy electrophoresis panel | Lab-7, Lab-14 |
+| 34994-4 | LOINC | Smear morphology panel, blood | Lab-8, Lab-13 |
 | 882-1 | LOINC | ABO+Rh type | Lab-9 |
 | 890-4 | LOINC | RBC antibody screen | Lab-9 |
-| 85025 | CPT | CBC with automated differential | Lab-1 |
-| 82728 | CPT | Ferritin | Lab-2 |
+| 85025 | CPT | CBC with automated differential | Lab-1, Lab-10 |
+| 82728 | CPT | Ferritin | Lab-2, Lab-11 |
 | 83540 | CPT | Iron | Lab-3 |
 | 83550 | CPT | TIBC | Lab-3 |
-| 85045 | CPT | Reticulocytes, automated | Lab-4 |
+| 85045 | CPT | Reticulocytes, automated | Lab-4, Lab-12 |
 | 82607 | CPT | B12 | Lab-5 |
 | 82746 | CPT | Folate, serum | Lab-6 |
-| 83020 | CPT | Hgb electrophoresis (83021 if lab uses HPLC method) | Lab-7 |
+| 83020 | CPT | Hgb electrophoresis (83021 if lab uses HPLC method) | Lab-7, Lab-14 |
 | 36430 | CPT | Transfusion, blood or components | Proc-1 |
 | 310325 | RXNORM | ferrous sulfate 325 mg tablet | Med-1 |
 | 198630 | RXNORM | ferrous gluconate 324 mg tablet | Med-2 |
@@ -635,8 +659,8 @@ Nodes that can carry CITES_EVIDENCE:
   · DP-3: [1][6] · Criteria 3a: [1], 3b: [6][1]
 - Meds: Med-1: [1][5][13][14][15] · Med-2, Med-3: [1] · Med-4–Med-7: [5][22] · Med-8,
   Med-9: [1] · Med-10: [13] · Med-11: [1] · Med-12: [1][17]
-- Labs: Lab-1: [1] · Lab-2: [1][5] · Lab-3: [1] · Lab-4: [1] · Lab-5, Lab-6: [1]
-  · Lab-7: [4] · Lab-8: [1] · Lab-9: [11]
+- Labs: Lab-1, Lab-10: [1] · Lab-2, Lab-11: [1][5] · Lab-3: [1] · Lab-4, Lab-12: [1] · Lab-5, Lab-6: [1]
+  · Lab-7, Lab-14: [4] · Lab-8, Lab-13: [1] · Lab-9: [11]
 - Proc-1: [1][11] · Guid-1: [1][12] · Guid-2: [1][12][13] · Guid-3: [1][12]
   · Guid-4: [5][13][14] · Guid-5: [1][10]
 

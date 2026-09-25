@@ -12,6 +12,8 @@
 //                    SYSTEM signals — can confidence alone pick one?
 //   ga               anemia gate-iv-iron-ga on patient.gestational_age_weeks: present
 //                    values decide, a missing one pends and asks for the datum
+//   shared-leaves    anemia labs split per host step: a gate closing one step no
+//                    longer takes a lab another (open) step also orders
 //
 // The pathway proofs read pathways/json/anemia-in-pregnancy.json (override with
 // ANEMIA_JSON=<path>). They replay a branch choice the way the live mutation does
@@ -291,11 +293,45 @@ async function proveGa(): Promise<void> {
   }
 }
 
+// ── Proof: a LabTest leaf takes its status from ONE host step ──────────
+// Marking is first-writer-wins, and a closing gate or fork sweeps its whole
+// subtree synchronously. A lab shared by a step inside that subtree and a
+// step outside it was decided by whichever wrote first — v3's entry-step CBC
+// (lab-1, also Step 2.3's recheck) went GATED_OUT with ferritin 50, and the
+// normocytic workup's ferritin / reticulocytes / smear were held behind DP-1.
+// The care-plan projection keeps only INCLUDED labs, so those tests vanished.
+// Each such lab is now split, one node per host step.
+async function proveSharedLeaves(): Promise<void> {
+  console.log(`\n=== shared-leaves: each lab follows its own step, not a neighbour's gate (${ANEMIA}) ===`);
+  for (const reverse of [false, true]) {
+    console.log(`  -- edge order: ${reverse ? 'reversed' : 'file'}`);
+    const base = { file: ANEMIA, reverse };
+
+    console.log('  MCV 90 (normocytic), no branch chosen:');
+    let r = await resolveSession({ ...base, patient: patientWith([['787-2', 90], ['2276-4', 50], ['718-7', 9.5]]) });
+    expect('lab-1 entry CBC (Step 1.1)', status(r.state, 'lab-1'), 'INCLUDED');
+    expect('step-1-3 normocytic workup', status(r.state, 'step-1-3'), 'INCLUDED');
+    for (const [id, name] of [['lab-11', 'ferritin'], ['lab-12', 'reticulocytes'], ['lab-13', 'smear']]) {
+      expect(`${id} ${name} (Step 1.3)`, status(r.state, id), 'INCLUDED');
+    }
+
+    console.log('  MCV 72, ferritin 50, provider chooses the workup (Stage 2 gated out):');
+    r = await resolveSession({
+      ...base, patient: patientWith([['787-2', 72], ['2276-4', 50], ['718-7', 9.5]]),
+      choose: { dp: 'dp-1', option: 'step-1-2' },
+    });
+    expect('lab-1 entry CBC (Step 1.1)', status(r.state, 'lab-1'), 'INCLUDED');
+    expect('lab-10 Hgb recheck CBC (Step 2.3)', status(r.state, 'lab-10'), 'GATED_OUT');
+    expect('lab-2 ferritin (Step 1.2)', status(r.state, 'lab-2'), 'INCLUDED');
+  }
+}
+
 const PROOFS: Record<string, () => Promise<void>> = {
   'attribute-form': proveAttributeForm,
   'dp-1': proveDp1,
   'dp-1-scoring': proveDp1Scoring,
   'ga': proveGa,
+  'shared-leaves': proveSharedLeaves,
 };
 
 async function main() {
