@@ -17,9 +17,12 @@ still current, `[BLOCKED — prior_node_result]` import-blocked gate design with
 
 - **Logical ID**: `anemia-in-pregnancy`
 - **Title**: Anemia in Pregnancy — Classification and Treatment
-- **Version**: 3 `[DECISION — Josh 2026-09-24]` (JSON `"3"`; was `"2"`). Bumped for the DP-1
-  restoration, gate-microcytic removal and the gestational-age data gate — imports as
-  NEW_VERSION.
+- **Version**: 4 `[DECISION — Josh 2026-09-24]` (JSON `"4"`; was `"3"`). Bumped for
+  gate-microcytic in front of DP-1 (Step 1.7), the empiric arm's follow-up through Stage
+  1.5, and one host step per lab node — imports as NEW_VERSION. DP-1's empiric answer
+  value changes from `step-2-1` to `stage-2-empiric`; v3 sessions keep v3's graph.
+  (v3 was bumped from 2 for the DP-1 restoration, the since-reversed gate-microcytic
+  removal and the gestational-age data gate.)
 - **Category**: OBSTETRIC
 - **Scope**: Outpatient prenatal care, from diagnosed anemia through postpartum handoff.
   Screening is upstream of this pathway.
@@ -45,8 +48,14 @@ None. (Single-condition pathway; O99.01x already encodes the pregnancy+anemia co
 - **Stage 1 — Diagnosis Confirmation & Classification** *(entry stage, root-connected)*:
   confirm the diagnosis against trimester criteria, MCV-based classification, ferritin
   confirmation, hemoglobinopathy testing, expanded workup for nonresponders. [1][4]
-- **Stage 2 — Iron Deficiency Treatment** *(branch-entry only, via gate-ida-confirmed and
-  DP-1)*: oral iron first line with counseling, response assessment, IV iron escalation. [1][5][7]
+- **Stage 1.5 — Empiric Oral Iron Trial (if chosen at DP-1)** *(branch-entry only, via
+  DP-1 criterion 1a)* `[DECISION — Josh 2026-09-24]`: holds Stage 2's Steps 2.1–2.3, so
+  the empiric arm gets the same response assessment and IV-iron escalation route as
+  ferritin-confirmed IDA (§4, DP-1). Numbered 1.5 so it sorts after Stage 1 with a
+  number of its own; its steps keep their 2.x numbers. [1][5]
+- **Stage 2 — Iron Deficiency Treatment** *(branch-entry only, via gate-ida-confirmed;
+  its Steps 2.1–2.3 are shared with Stage 1.5)*: oral iron first line with counseling,
+  response assessment, IV iron escalation. [1][5][7]
 - **Stage 3 — Special Populations & Escalations** *(root-connected container; every step
   individually gated)*: hemoglobinopathy/thalassemia/CKD routing-out, trait carriers,
   bariatric, IBD, multifetal, transfusion-decliners, severe anemia, referral. [4][7][8][17]
@@ -61,8 +70,9 @@ None. (Single-condition pathway; O99.01x already encodes the pregnancy+anemia co
   risk-factor review (parity >2, short interpregnancy interval, low-iron diet, pica);
   urgent-symptom safety-netting. [1][2][3][10]
 - **Step 1.2 — Microcytic workup** *(reached only via DP-1 criterion 1b — the provider's
-  choice of confirmatory studies; was gated by gate-microcytic, removed 2026-09-24, see
-  §4b)*: indicated for microcytic anemia (MCV < 80 fL). Ferritin (±iron/TIBC/
+  choice of confirmatory studies; DP-1 itself sits behind gate-microcytic since v4, so
+  only MCV < 80 fL reaches this choice — see Step 1.7 and §4b)*: indicated for microcytic
+  anemia (MCV < 80 fL). Ferritin (±iron/TIBC/
   saturation). Ferritin <30 ng/mL confirms IDA; sat <18% + ↑TIBC + ↓ferritin = IDA;
   all-normal iron studies → suspect thalassemia → Step 1.5. [1][5]
 - **Step 1.3 — Normocytic workup** *(gated by gate-normocytic)*: ferritin (early iron
@@ -74,6 +84,11 @@ None. (Single-condition pathway; O99.01x already encodes the pregnancy+anemia co
 - **Step 1.6 — Hemoglobinopathy testing** *(gated by gate-hgbpathy-needed)*: hemoglobin
   electrophoresis or molecular testing when no prior results are available; carrier →
   partner testing → both carriers → genetic counseling. [4]
+- **Step 1.7 — Microcytic anemia: iron strategy** *(gated by gate-microcytic — its only
+  way in)* `[DECISION — Josh 2026-09-24]`: hosts DP-1 (empiric oral iron vs confirmatory
+  iron studies first). Exists because a gate can only guard a Step or Stage, and DP-1
+  must hang from a Step. Numbered 1.7 to keep existing step ids stable, although it
+  follows Step 1.1 logically. [1]
 - **Step 2.1 — Initiate oral iron + counseling**: therapeutic oral iron in addition to
   the prenatal vitamin (ACOG Level B; the PNV's 27 mg prophylactic iron is not treatment
   dosing); avoid enteric-coated/sustained-release; dietary and adherence Guidance
@@ -118,16 +133,28 @@ None. (Single-condition pathway; O99.01x already encodes the pregnancy+anemia co
   wording, checker-verified); IV iron option postpartum; risk communication on
   transition. [1][6][9]
 
-Branch-entry-only stage: Stage 2 (entered via gate-ida-confirmed and DP-1). Stage 1 is
+Branch-entry-only stages: Stage 2 (entered via gate-ida-confirmed) and Stage 1.5 (entered
+via DP-1 criterion 1a; shares Stage 2's Steps 2.1–2.3). Stage 1 is
 the root entry stage; Stage 3 is a root-connected container whose steps all hang from
 gates; Stage 4 is root-connected. Gated steps connect **only** via their gate/DP
 BRANCHES_TO (no HAS_STEP edge), per the reference-fixture pattern.
 
 ## 4. Decision points
 
-- **DP-1 — Empiric iron vs confirmatory studies first** (after Step 1.1) — branch_mode: one_of
+- **DP-1 — Empiric iron vs confirmatory studies first** (on Step 1.7, behind
+  gate-microcytic; was on Step 1.1 through v3) — branch_mode: one_of
+  - `[DECISION — Josh 2026-09-24]` **Offered only for microcytic anemia (MCV < 80 fL).**
+    In v3, DP-1 hung from Step 1.1 and pended for every patient, normocytic and
+    macrocytic included. It now hangs from Step 1.7, whose only way in is
+    gate-microcytic (§4b). MCV ≥ 80 closes Step 1.7 and DP-1 with it — no iron-strategy
+    question, no iron arm — and the patient gets Step 1.3 or 1.4 from their own MCV gate.
+    A missing MCV asks for it once (the question is shared with gate-normocytic and
+    gate-macrocytic) and holds DP-1 until answered. Proved with `gate-proof.ts mcv`, both
+    edge orders: MCV 72 and 79.9 → DP-1 asks; 80 and 90 → no DP-1, Step 1.3 INCLUDED;
+    105 → no DP-1, Step 1.4 INCLUDED; missing → one LOINC 787-2 question, DP-1 held.
   - Criterion 1a: No evidence of causes other than iron deficiency → empiric oral iron
-    reasonable without iron studies (ACOG) → **Step 2.1** [1]
+    reasonable without iron studies (ACOG) → **Stage 1.5** (Steps 2.1–2.3; was Step 2.1
+    alone through v3) [1]
   - Criterion 1b: Atypical features, uncertain etiology, or confirmation preferred →
     ferritin/iron studies first → **Step 1.2** [1]
   - Judgment call by ACOG's own wording ("may be reasonable"); not machine-evaluable. [1]
@@ -142,19 +169,50 @@ BRANCHES_TO (no HAS_STEP edge), per the reference-fixture pattern.
     "which branch applies?" — with Step 2.1, Step 1.2, Stage 2 and everything under them
     held until the provider answers. Choosing **workup** with ferritin 50: Stage 2 and
     Step 2.1 are GATED_OUT by `gate-ida-confirmed`. Choosing workup with ferritin 12:
-    Stage 2 opens. Choosing **empiric**: Step 2.1 is included and Step 1.2 excluded. Oral
+    Stage 2 opens. Choosing **empiric**: Step 2.1 is included and Step 1.2 excluded (since
+    v4 the empiric branch is Stage 1.5, which also includes Steps 2.2–2.3 — below). Oral
     iron is never automatic unless confidence scoring puts Step 1.2 below the 0.60
     suggest threshold while Step 2.1 stays above it (only a per-node DB weight override
     or admin evidence entry could do that).
-  - `[DECISION — Josh 2026-09-24]` [SECOND ROUTE — step-2-1 via dp-1] Step 2.1 sits in
-    Stage 2, which `gate-ida-confirmed` gates, but criterion 1a reaches it directly: empiric
-    oral iron without iron studies is ACOG-sanctioned, so this second route is deliberate.
-  - `[GAP — NEEDS JOSH]` **The empiric arm reaches Step 2.1 only.** Choosing empiric
-    EXCLUDES Step 2.2 (trial period), Step 2.3 (response assessment), DP-2 and Step 2.5
-    (IV iron): they hang from Stage 2, which only the ferritin gate opens. So an
-    empirically treated patient gets no response check and no escalation route. Fixing it
-    means routing criterion 1a to a container holding 2.1–2.3 rather than Step 2.1 alone
-    — a structural change to the brief's mapping, left for review.
+  - `[DECISION — Josh 2026-09-24]` **Second routes into Stage 2's steps (v4).**
+    [SECOND ROUTE — step-2-1 via stage-2-empiric]
+    [SECOND ROUTE — step-2-2 via stage-2-empiric]
+    [SECOND ROUTE — step-2-3 via stage-2-empiric]
+    Steps 2.1–2.3 sit in Stage 2, which `gate-ida-confirmed` gates, and are also held by
+    Stage 1.5, which criterion 1a enters directly: empiric oral iron without iron studies
+    is ACOG-sanctioned, so these routes are deliberate. (Through v3 the one second route
+    was Step 2.1 reached directly from DP-1; that marker is retired — written without
+    its brackets here so the gate-control check cannot read it as a live waiver — and
+    DP-1 now branches to Stage 1.5 instead.)
+  - ~~`[GAP — NEEDS JOSH]` **The empiric arm reaches Step 2.1 only.**~~ **Resolved:**
+    `[DECISION — Josh 2026-09-24]` **The empiric arm gets the same follow-up as confirmed
+    IDA.** Through v3, choosing empiric EXCLUDED Step 2.2 (trial period), Step 2.3
+    (response assessment), DP-2 and Step 2.5 (IV iron), because they hung only from
+    Stage 2, which only the ferritin gate opens — no response check, no escalation.
+    Criterion 1a now routes to **Stage 1.5 — Empiric Oral Iron Trial**, a branch-entry
+    Stage that HAS_STEPs the **same** Steps 2.1, 2.2 and 2.3 (not copies). Through Step
+    2.3 the empiric arm reaches the same Hgb recheck (Lab-10, Sched-2), the same
+    `gate-hgb-response` → Step 2.4, and the same DP-2 → `gate-iv-iron-ga` → Step 2.5 IV
+    iron route as the confirmed arm.
+    **Why sharing is safe here** (and why DP-1 does not simply branch to Stage 2): the
+    steps have two parents, Stage 2 and Stage 1.5, but DP-1 is `one_of`, so at most one
+    parent is ever open. When a branch is chosen, the engine spares everything the
+    chosen branch contains from the sweep that excludes the other branch
+    (`containmentClosure`), so the unchosen parent never writes the shared steps. Proved,
+    both edge orders: empiric → Stage 1.5 INCLUDED, Stage 2 EXCLUDED, Steps 2.1–2.3
+    INCLUDED; workup + ferritin 50 → Stage 1.5 EXCLUDED, Steps 2.1–2.3 GATED_OUT by
+    `gate-ida-confirmed` (the gate decides, not the unchosen branch); workup + ferritin
+    12 → Stage 2 INCLUDED. Branching DP-1 straight into Stage 2 behaves the same, but
+    puts a DP branch on the gate's own target, which `check-gate-control` rejects as
+    Rule 1 because it cannot tell the two routes are exclusive.
+    **Consequences for review:** (1) with empiric chosen, `gate-ida-confirmed` is not
+    evaluated, so no ferritin is asked for or needed — same as v3. (2) DP-1's answer
+    value for the empiric branch is now `stage-2-empiric` (was `step-2-1`). (3) The empiric
+    arm inherits DP-2 as it stands: DP-2 has one BRANCHES_TO (Step 1.5), so it is taken
+    automatically, and `gate-iv-iron-ga` is the only condition on Step 2.5 — so Step 1.5
+    (expanded workup) and Step 2.5 (IV iron, GA ≥ 14) are INCLUDED as soon as Step 2.3 is
+    reached, on either arm, before any nonresponse is shown. `gate-hgb-response` opens only
+    Step 2.4 (maintenance). See §18 "v4 open item".
 - **DP-2 — Nonresponse management** (after Step 2.3) — branch_mode: one_of
   - Criterion 2a: Intolerance or nonadherence despite coaching → **Step 2.5** (IV iron) [1][5]
   - Criterion 2b: Suspected malabsorption (enteric-coated tabs, antacids, bariatric,
@@ -179,11 +237,21 @@ evaluates with zero DB setup. Revisit when the dashboard renders the attributes 
 code-map seeding exists. Anemia *detection* gates were removed with the screening stage —
 the pathway presumes the coded diagnosis.
 
-- ~~**Gate `gate-microcytic` — MCV < 80**~~ **REMOVED 2026-09-24**
-  - ~~Attached to: step-1-1 · Branches to: step-1-2 · patient_attribute · Default: skip~~
-  - ~~Condition (coded): field `labs`, less_than, value `787-2` (MCV, LOINC), threshold 80,
-    horizon {days: 90} [1]~~
-  - `[CONSEQUENCE OF DP-1 DECISION — NEEDS JOSH]` Not Josh's decision; a build consequence. Removed because
+- **Gate `gate-microcytic` — MCV < 80** `[DECISION — Josh 2026-09-24]` *(restored in v4,
+  rewired)*
+  - Attached to: step-1-1 · Branches to: **step-1-7** (DP-1's host — was step-1-2 through
+    v2) · patient_attribute · Default: **skip** · On unresolved: **ask**
+  - Condition (coded): field `labs`, less_than, value `787-2` (MCV, LOINC), threshold 80,
+    display "MCV (fL)", horizon {days: 90} (same as gate-normocytic / gate-macrocytic) [1]
+  - Boundaries: < 80 here, > 79.9 in gate-normocytic, so at the 0.1 fL reporting
+    resolution 79.9 is microcytic and 80.0 normocytic — no gap, no overlap (proved at 79.9
+    and 80).
+  - Guards DP-1, not Step 1.2: the gate is the only way into Step 1.7, and Step 1.7 is the
+    only way into DP-1, so the old Rule 1 conflict below (a gate and a DP branch on the
+    same step) does not arise. The provider's DP-1 choice still decides Step 1.2 — but the
+    choice is only offered when MCV < 80. Every numeric gate asks, so a missing MCV asks.
+  - ~~`[CONSEQUENCE OF DP-1 DECISION — NEEDS JOSH]`~~ *Superseded by the v4 decision above
+    — kept for the record:* Not Josh's decision; a build consequence. Removed because
     restoring DP-1 criterion 1b made its only target, Step 1.2, a DecisionPoint branch.
     The gate could no longer exclude Step 1.2 (Rule 1): on the live path — the branch
     choice re-resolves incrementally from DP-1 — choosing workup includes Step 1.2 at any
@@ -397,6 +465,30 @@ narrative. Recorded so reviewers know the omission is deliberate.
 - **Lab-9 — Type and antibody screen** (on Step 4.1): ABO/Rh LOINC 882-1 + antibody screen
   890-4; hemorrhage-bundle tie-in for anemic patients approaching delivery. [11]
 
+`[BUILD FIX 2026-09-24]` **One host step per lab node (v4).** Lab-1, 2, 4, 7 and 8 were each
+one node ordered by two steps on opposite sides of a gate or DecisionPoint. The engine
+marks a node once (first-writer-wins), and a gate that closes sweeps its whole subtree at
+once, so the shared lab took the status of whichever host was decided first. The care plan
+lists only INCLUDED labs, so the test disappeared from the step that still ordered it. Seen
+on the real engine: ferritin 50 + workup marked the Step 1.1 CBC GATED_OUT (via Step 2.3's
+recheck), and a normocytic patient's ferritin, reticulocytes and smear were held with
+DP-1's subtree — and with v4's gate-microcytic they would have been GATED_OUT outright.
+Each crossing lab is now split, same test and codes, one node per host; the original keeps
+its other host:
+
+| Original | Stays on | New node | Moves to |
+|---|---|---|---|
+| Lab-1 CBC | Step 1.1 | **Lab-10** | Step 2.3 (Hgb/Hct recheck) |
+| Lab-2 Ferritin | Step 1.2 | **Lab-11** | Step 1.3 |
+| Lab-4 Reticulocytes | Step 2.2 | **Lab-12** | Step 1.3 |
+| Lab-8 Smear | Step 1.5 | **Lab-13** | Step 1.3 |
+| Lab-7 Hgb electrophoresis | Step 1.6 | **Lab-14** | Step 1.5 |
+
+The new nodes share the originals' CodeEntries (HAS_CODE) and citations; CodeEntries are
+not projected into the care plan, so sharing them is harmless. Proof: `gate-proof.ts
+shared-leaves` (both edge orders). The step lists above still read "on Steps X, Y" — each
+step orders its own copy.
+
 ## 7. Imaging
 
 None — no imaging is part of guideline-directed anemia-in-pregnancy workup. (Section
@@ -486,29 +578,29 @@ All pairs acyclic; REQUIRES points dependent → prerequisite:
 
 | Code | System | Description | Attached to |
 |---|---|---|---|
-| 58410-2 | LOINC | CBC panel, automated | Lab-1 |
-| 718-7 | LOINC | Hemoglobin [Mass/Vol] blood | Lab-1 |
-| 4544-3 | LOINC | Hematocrit, automated | Lab-1 |
-| 787-2 | LOINC | MCV, RBC | Lab-1 |
-| 2276-4 | LOINC | Ferritin, serum | Lab-2 |
+| 58410-2 | LOINC | CBC panel, automated | Lab-1, Lab-10 |
+| 718-7 | LOINC | Hemoglobin [Mass/Vol] blood | Lab-1, Lab-10 |
+| 4544-3 | LOINC | Hematocrit, automated | Lab-1, Lab-10 |
+| 787-2 | LOINC | MCV, RBC | Lab-1, Lab-10 |
+| 2276-4 | LOINC | Ferritin, serum | Lab-2, Lab-11 |
 | 2498-4 | LOINC | Iron, serum | Lab-3 |
 | 2500-7 | LOINC | TIBC | Lab-3 |
 | 2502-3 | LOINC | Iron saturation | Lab-3 |
-| 4679-7 | LOINC | Reticulocytes/100 RBC | Lab-4 |
+| 4679-7 | LOINC | Reticulocytes/100 RBC | Lab-4, Lab-12 |
 | 2132-9 | LOINC | Vitamin B12, serum | Lab-5 |
 | 2284-8 | LOINC | Folate, serum | Lab-6 |
-| 43113-0 | LOINC | Hemoglobinopathy electrophoresis panel | Lab-7 |
-| 34994-4 | LOINC | Smear morphology panel, blood | Lab-8 |
+| 43113-0 | LOINC | Hemoglobinopathy electrophoresis panel | Lab-7, Lab-14 |
+| 34994-4 | LOINC | Smear morphology panel, blood | Lab-8, Lab-13 |
 | 882-1 | LOINC | ABO+Rh type | Lab-9 |
 | 890-4 | LOINC | RBC antibody screen | Lab-9 |
-| 85025 | CPT | CBC with automated differential | Lab-1 |
-| 82728 | CPT | Ferritin | Lab-2 |
+| 85025 | CPT | CBC with automated differential | Lab-1, Lab-10 |
+| 82728 | CPT | Ferritin | Lab-2, Lab-11 |
 | 83540 | CPT | Iron | Lab-3 |
 | 83550 | CPT | TIBC | Lab-3 |
-| 85045 | CPT | Reticulocytes, automated | Lab-4 |
+| 85045 | CPT | Reticulocytes, automated | Lab-4, Lab-12 |
 | 82607 | CPT | B12 | Lab-5 |
 | 82746 | CPT | Folate, serum | Lab-6 |
-| 83020 | CPT | Hgb electrophoresis (83021 if lab uses HPLC method) | Lab-7 |
+| 83020 | CPT | Hgb electrophoresis (83021 if lab uses HPLC method) | Lab-7, Lab-14 |
 | 36430 | CPT | Transfusion, blood or components | Proc-1 |
 | 310325 | RXNORM | ferrous sulfate 325 mg tablet | Med-1 |
 | 198630 | RXNORM | ferrous gluconate 324 mg tablet | Med-2 |
@@ -622,9 +714,9 @@ attributes are referenced anywhere in §4b.
 
 Nodes that can carry CITES_EVIDENCE:
 
-- Stage 1: [1][4] · Stage 2: [1][5] · Stage 3: [1][7][8] · Stage 4: [1][9][11]
+- Stage 1: [1][4] · Stage 1.5: [1][5] · Stage 2: [1][5] · Stage 3: [1][7][8] · Stage 4: [1][9][11]
 - Step 1.1: [1][2][3][10] · Step 1.2: [1][5] · Step 1.3: [1] · Step 1.4: [1]
-  · Step 1.5: [1][4] · Step 1.6: [4]
+  · Step 1.5: [1][4] · Step 1.6: [4] · Step 1.7: [1]
 - Step 2.1: [1][5][13][14] · Step 2.2: [1] · Step 2.3: [1][3] · Step 2.4: [3]
   · Step 2.5: [1][5][7][22]
 - Step 3.1: [7] · Step 3.2: [16] · Step 3.3: [1][4][7] · Step 3.4: [8][18][19]
@@ -635,8 +727,8 @@ Nodes that can carry CITES_EVIDENCE:
   · DP-3: [1][6] · Criteria 3a: [1], 3b: [6][1]
 - Meds: Med-1: [1][5][13][14][15] · Med-2, Med-3: [1] · Med-4–Med-7: [5][22] · Med-8,
   Med-9: [1] · Med-10: [13] · Med-11: [1] · Med-12: [1][17]
-- Labs: Lab-1: [1] · Lab-2: [1][5] · Lab-3: [1] · Lab-4: [1] · Lab-5, Lab-6: [1]
-  · Lab-7: [4] · Lab-8: [1] · Lab-9: [11]
+- Labs: Lab-1, Lab-10: [1] · Lab-2, Lab-11: [1][5] · Lab-3: [1] · Lab-4, Lab-12: [1] · Lab-5, Lab-6: [1]
+  · Lab-7, Lab-14: [4] · Lab-8, Lab-13: [1] · Lab-9: [11]
 - Proc-1: [1][11] · Guid-1: [1][12] · Guid-2: [1][12][13] · Guid-3: [1][12]
   · Guid-4: [5][13][14] · Guid-5: [1][10]
 
@@ -654,7 +746,7 @@ margin). **These day-counts are my proposal — review.**
 
 | Gate | Condition on | horizon | status | window_days | Rationale |
 |---|---|---|---|---|---|
-| gate-normocytic / macrocytic (gate-microcytic removed 2026-09-24) | labs 787-2 (MCV) | {days: 90} | — | — | Classification must reflect the anemia being worked up, not an old chart value |
+| gate-microcytic / normocytic / macrocytic (gate-microcytic restored in v4) | labs 787-2 (MCV) | {days: 90} | — | — | Classification must reflect the anemia being worked up, not an old chart value |
 | gate-ida-confirmed | labs 2276-4 (ferritin) | {days: 90} | — | — | Confirmatory ferritin from this workup |
 | gate-hgb-response | labs 718-7 (delta) | — | — | 42 | Operator-windowed (XOR rule); ideal anchor is Step 2.1 med-start — anchor-to-event is not in the kernel grammar yet, note stands |
 | gate-severe-anemia | labs 718-7 (Hgb) | {days: 7} | — | — | Hgb <6 is an acute finding; only a current value justifies transfusion routing |
@@ -742,6 +834,30 @@ is now `skip` + `on_unresolved: ask`; see §4b).
     "attribute has no value" and silently fall back to `skip`. Coded-form conditions
     avoid all three. §14 is now empty. Normocytic band uses 79.9/100.1 strict boundaries
     (coded operators lack ≥/≤). Revert candidates when the dashboard/platform catch up.
+
+### `[GAP — NEEDS JOSH]` v4 open item — escalation is not conditioned on nonresponse
+
+Found while proving the empiric arm's follow-up (v4); pre-existing on the confirmed arm,
+and now shared by both. DP-2 ("Nonresponse management") has a single BRANCHES_TO, to Step
+1.5 (expanded workup) — criteria 2a, 2b and 2d have no branch of their own — so the
+one_of fork takes it automatically whenever Step 2.3 is reached. Step 2.5 (IV iron)
+hangs from DP-2 through `gate-iv-iron-ga` alone. So at the moment oral iron starts, the
+session already INCLUDES the expanded workup and, at GA ≥ 14, IV iron — before any
+recheck. `gate-hgb-response` decides only Step 2.4 (maintenance); a responder and a
+nonresponder differ only there. The §4 design (criteria 2a/2b → Step 2.5 as DP-2
+branches) would make DP-2 a real choice and put IV iron behind it; that is a structural
+change for review, not made here. Related: Sched-2 times the recheck at **4 weeks** after
+starting oral iron (CDC; ACOG gives no interval); FIGO's 2-week variant (§18 item 9) is
+not encoded. Left as-is.
+
+`[GAP — NEEDS JOSH]` **Hemoglobinopathy patients reach the empiric arm.** Thalassemia
+minor and microcytic SCD variants (e.g. HbS-β-thalassemia) have MCV < 80, so
+gate-microcytic offers them DP-1, and nothing in Stage 3 closes DP-1 or Stage 1.5 when
+gate-scd or gate-trait fires. Step 3.1 calls the iron arm "affirmatively wrong for SCD",
+and Step 3.3 allows iron only with ferritin-confirmed deficiency. v3 exposed these
+patients to Step 2.1 alone; v4's empiric arm also includes the trial period, recheck and
+IV-iron route. Should a hemoglobinopathy code suppress the empiric option (e.g. a gate on
+Stage 1.5)? Not changed here.
 
 ### `[BUILD FIX 2026-09-24]` On unresolved — RESOLVED
 
