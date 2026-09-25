@@ -3,7 +3,7 @@
   "pathway": {
     "logical_id": "gestational-hypertension-preeclampsia",
     "title": "Gestational Hypertension and Preeclampsia \u2014 Outpatient Screening, Diagnosis and Surveillance",
-    "version": "4",
+    "version": "5",
     "category": "OBSTETRIC",
     "scope": "Outpatient prenatal care. Risk assessment and aspirin prophylaxis from the first prenatal visit; blood pressure surveillance; diagnosis and severity classification after 20 weeks; outpatient expectant management. Ends at the trigger for admission or delivery.",
     "target_population": "Pregnant patients receiving prenatal care. The prophylaxis arm applies to all; diagnostic and surveillance arms apply after 20 0/7 weeks.",
@@ -1901,6 +1901,11 @@
       "type": "HAS_LAB_TEST"
     },
     {
+      "from": "step-2-1",
+      "to": "guid-5",
+      "type": "HAS_GUIDANCE"
+    },
+    {
       "from": "step-2-2",
       "to": "lab-13",
       "type": "HAS_LAB_TEST"
@@ -2043,11 +2048,6 @@
     {
       "from": "step-4-4",
       "to": "guid-1",
-      "type": "HAS_GUIDANCE"
-    },
-    {
-      "from": "step-4-4",
-      "to": "guid-5",
       "type": "HAS_GUIDANCE"
     },
     {

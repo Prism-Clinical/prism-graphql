@@ -3,7 +3,7 @@
   "pathway": {
     "logical_id": "anemia-in-pregnancy",
     "title": "Anemia in Pregnancy \u2014 Classification and Treatment",
-    "version": "7",
+    "version": "8",
     "category": "OBSTETRIC",
     "scope": "Outpatient prenatal care, from diagnosed anemia through postpartum handoff. Screening is upstream of this pathway.",
     "target_population": "Adult pregnant patients with diagnosed anemia; hemoglobinopathy disease, thalassemia syndromes, and CKD-associated anemia are detected and routed out.",
@@ -59,8 +59,8 @@
       "type": "Stage",
       "properties": {
         "stage_number": 1.5,
-        "title": "Empiric Oral Iron Trial (if chosen at DP-1)",
-        "description": "Branch-entry only, via DP-1 criterion 1a (empiric oral iron without iron studies). Holds Stage 2's Steps 2.1\u20132.3, so the empiric arm gets the same response check (gate-hgb-response / gate-hgb-nonresponse) and IV-iron escalation route (DP-2, gate-iv-iron-ga) as ferritin-confirmed IDA. Numbered 1.5 so it sorts directly after Stage 1 with a number of its own; its steps keep theirs."
+        "title": "Empiric Oral Iron Trial (if chosen at DP-1; not with hemoglobinopathy disease)",
+        "description": "Branch-entry only, via DP-1 criterion 1a (empiric oral iron without iron studies). With no hemoglobinopathy disease on file (gate-empiric-no-hgbpathy) it opens Step 2.8, the iron-route choice (DP-3), so the empiric arm chooses between the oral trial and IV iron without an oral trial exactly as ferritin-confirmed IDA does. With sickle cell disease, a thalassemia syndrome or HbC/HbE disease on file, empiric iron is not given: gate-hgbpathy-microcytic opens Step 1.8 (iron studies) instead \u2014 choose confirmatory studies at DP-1 for the iron path. Numbered 1.5 so it sorts directly after Stage 1 with a number of its own."
       }
     },
     {
@@ -77,7 +77,16 @@
       "properties": {
         "stage_number": 2.5,
         "title": "Oral Iron Trial (if chosen at DP-3)",
-        "description": "Branch-entry only, via DP-3 criterion 3a (no reason to skip the oral trial). Holds Steps 2.1\u20132.3 \u2014 the same steps Stage 1.5 holds for the empiric arm \u2014 so confirmed IDA gets the same oral iron, response check and escalation route. Numbered 2.5 so it has a number of its own; its steps keep theirs."
+        "description": "Branch-entry only, via DP-3 criterion 3a (no reason to skip the oral trial). Holds Steps 2.1\u20132.3 \u2014 oral iron, the trial period and the 2\u20134-week response check \u2014 on both arms (ferritin-confirmed IDA and empiric iron), since DP-3 is reached from both. Numbered 2.5 so it has a number of its own; its steps keep theirs."
+      }
+    },
+    {
+      "id": "stage-2-oral-bridge",
+      "type": "Stage",
+      "properties": {
+        "stage_number": 2.6,
+        "title": "Oral Iron Until 14 Weeks (IV iron chosen before 14 weeks)",
+        "description": "Branch-entry only, via gate-oral-bridge-ga on Step 2.9: IV iron without an oral trial was chosen at DP-3 before 14 0/7 weeks, when IV iron is not given. Holds the oral trial's Steps 2.1\u20132.3 \u2014 oral iron, the trial period and the 2\u20134-week response check \u2014 so iron starts now; from 14 weeks gate-iv-iron-ga-direct opens IV iron instead (DP-3 is asked again at each visit). Numbered 2.6 so it has a number of its own; its steps keep theirs."
       }
     },
     {
@@ -164,7 +173,7 @@
         "step_number": 7,
         "display_number": "1.7",
         "title": "Microcytic anemia: iron strategy",
-        "description": "Entered only via gate-microcytic (MCV < 80 fL, and no hemoglobinopathy disease on file). Hosts DP-1: empiric oral iron vs confirmatory iron studies first. Normocytic and macrocytic anemia never reach this step; they go to Steps 1.3 / 1.4 through their own MCV gates. Microcytic anemia with hemoglobinopathy disease goes to Step 1.8 instead (no empiric option)."
+        "description": "Entered only via gate-microcytic (MCV < 80 fL). Hosts DP-1: empiric oral iron vs confirmatory iron studies first. Normocytic and macrocytic anemia never reach this step; they go to Steps 1.3 / 1.4 through their own MCV gates. With hemoglobinopathy disease on file the empiric branch opens iron studies only (Step 1.8); the confirmatory branch leads to the same iron treatment as any confirmed iron deficiency."
       }
     },
     {
@@ -174,8 +183,8 @@
         "stage_number": 1,
         "step_number": 8,
         "display_number": "1.8",
-        "title": "Microcytic anemia with hemoglobinopathy disease: iron studies first",
-        "description": "Entered only via gate-hgbpathy-microcytic (MCV < 80 fL with sickle cell disease, a thalassemia syndrome, or HbC/HbE disease on file). Empiric iron is not offered: DP-1 is closed for these patients. Confirm iron deficiency before any iron: ferritin < 30 ng/mL confirms it; iron, TIBC and transferrin saturation help separate it from the hemoglobinopathy's own microcytosis. Iron for confirmed deficiency is directed with hematology/MFM (Steps 3.1 / 3.2); this step does not open the Stage 2 iron arm."
+        "title": "Hemoglobinopathy disease, empiric iron chosen: iron studies instead",
+        "description": "Entered only via gate-hgbpathy-microcytic on Stage 1.5: empiric oral iron was chosen at DP-1 for a patient with sickle cell disease, a thalassemia syndrome or HbC/HbE disease on file. Empiric iron is not given (gate-empiric-no-hgbpathy closes it). Confirm iron deficiency first: ferritin < 30 ng/mL confirms it; iron, TIBC and transferrin saturation help separate it from the hemoglobinopathy's own microcytosis. Iron for confirmed deficiency follows DP-1's confirmatory-studies branch (Step 1.2 \u2192 Stage 2), directed with hematology/MFM (Steps 3.1 / 3.2)."
       }
     },
     {
@@ -248,7 +257,7 @@
         "step_number": 8,
         "display_number": "2.8",
         "title": "Iron treatment route: oral trial or IV iron first",
-        "description": "Ferritin-confirmed iron deficiency anemia. Hosts DP-3: an oral iron trial (the default), or IV iron without an oral trial for documented oral-iron intolerance, suspected malabsorption, or iron deficiency anemia diagnosed at 34 weeks or later."
+        "description": "Reached on both iron arms: ferritin-confirmed iron deficiency anemia (Stage 2) and empiric oral iron chosen at DP-1 (Stage 1.5). Hosts DP-3: an oral iron trial (the default), or IV iron without an oral trial for documented oral-iron intolerance, suspected malabsorption, or anemia diagnosed at 34 weeks or later."
       }
     },
     {
@@ -259,7 +268,7 @@
         "step_number": 9,
         "display_number": "2.9",
         "title": "IV iron without an oral trial",
-        "description": "Chosen at DP-3. IV iron is given after the first trimester only (gestational age 14 0/7 weeks or later, gate-iv-iron-ga-direct \u2192 Step 2.10). Before 14 weeks nothing opens here: IV iron is deferred to 14 weeks and no oral iron is started on this branch \u2014 re-decide DP-3 if an oral trial is wanted meanwhile."
+        "description": "Chosen at DP-3. IV iron is given after the first trimester only (gestational age 14 0/7 weeks or later, gate-iv-iron-ga-direct \u2192 Step 2.10). Before 14 weeks the oral trial starts instead (gate-oral-bridge-ga \u2192 Stage 2.6: oral iron, trial period, response check), and IV iron is offered again from 14 weeks."
       }
     },
     {
@@ -270,6 +279,17 @@
         "step_number": 10,
         "display_number": "2.10",
         "title": "IV iron therapy (no oral trial)"
+      }
+    },
+    {
+      "id": "step-2-11",
+      "type": "Step",
+      "properties": {
+        "stage_number": 2,
+        "step_number": 11,
+        "display_number": "2.11",
+        "title": "Malabsorption on the chart: IV iron without an oral trial favoured (DP-3 criterion 3c)",
+        "description": "Entered only via gate-malabsorption-chart on Step 2.8 (both iron arms). The chart carries a condition that impairs oral iron absorption, which supports DP-3 criterion 3c. A recommendation shown next to the DP-3 question, not a decision: the route is still chosen at DP-3."
       }
     },
     {
@@ -414,7 +434,7 @@
       "id": "crit-1a",
       "type": "Criterion",
       "properties": {
-        "description": "No evidence of causes other than iron deficiency \u2014 empiric oral iron reasonable without iron studies"
+        "description": "No evidence of causes other than iron deficiency \u2014 empiric oral iron reasonable without iron studies. Not with hemoglobinopathy disease (sickle cell disease, thalassemia syndrome, HbC/HbE disease): with one on file this branch gives iron studies only; choose confirmatory studies first."
       }
     },
     {
@@ -486,37 +506,156 @@
       "id": "crit-3c",
       "type": "Criterion",
       "properties": {
-        "description": "Suspected malabsorption (bariatric surgery, inflammatory bowel disease, chronic antacid use) \u2014 IV iron without an oral trial"
+        "description": "Suspected malabsorption (bariatric surgery, inflammatory bowel disease, celiac disease, chronic antacid use) \u2014 IV iron without an oral trial. A malabsorption code on the chart opens Step 2.11 to recommend this criterion; the choice stays with the provider."
       }
     },
     {
       "id": "crit-3d",
       "type": "Criterion",
       "properties": {
-        "description": "Iron deficiency anemia diagnosed at 34 weeks or later \u2014 too little time for an oral trial; IV iron"
+        "description": "Anemia diagnosed at 34 weeks or later (iron deficiency confirmed, or presumed on the empiric arm) \u2014 too little time for an oral trial; IV iron"
       }
     },
     {
       "id": "gate-microcytic",
       "type": "Gate",
       "properties": {
-        "title": "MCV < 80 fL (microcytic), no hemoglobinopathy disease on file",
-        "gate_type": "compound",
+        "title": "MCV < 80 fL (microcytic)",
+        "gate_type": "patient_attribute",
         "default_behavior": "skip",
         "on_unresolved": "ask",
-        "operator": "AND",
+        "condition": {
+          "field": "labs",
+          "operator": "less_than",
+          "value": "787-2",
+          "system": "LOINC",
+          "display": "MCV (fL)",
+          "threshold": 80,
+          "horizon": {
+            "days": 90
+          }
+        }
+      }
+    },
+    {
+      "id": "gate-hgbpathy-microcytic",
+      "type": "Gate",
+      "properties": {
+        "title": "Hemoglobinopathy disease on file (empiric iron chosen) \u2014 iron studies instead",
+        "gate_type": "compound",
+        "default_behavior": "skip",
+        "on_unresolved": "default",
+        "operator": "OR",
         "conditions": [
           {
-            "field": "labs",
-            "operator": "less_than",
-            "value": "787-2",
-            "system": "LOINC",
-            "display": "MCV (fL)",
-            "threshold": 80,
-            "horizon": {
-              "days": 90
-            }
+            "field": "conditions",
+            "operator": "includes_code",
+            "value": "D57.0.*",
+            "system": "ICD-10",
+            "horizon": "LIFETIME",
+            "status": "any"
           },
+          {
+            "field": "conditions",
+            "operator": "includes_code",
+            "value": "D57.1",
+            "system": "ICD-10",
+            "horizon": "LIFETIME",
+            "status": "any"
+          },
+          {
+            "field": "conditions",
+            "operator": "includes_code",
+            "value": "D57.2.*",
+            "system": "ICD-10",
+            "horizon": "LIFETIME",
+            "status": "any"
+          },
+          {
+            "field": "conditions",
+            "operator": "includes_code",
+            "value": "D57.4.*",
+            "system": "ICD-10",
+            "horizon": "LIFETIME",
+            "status": "any"
+          },
+          {
+            "field": "conditions",
+            "operator": "includes_code",
+            "value": "D57.8.*",
+            "system": "ICD-10",
+            "horizon": "LIFETIME",
+            "status": "any"
+          },
+          {
+            "field": "conditions",
+            "operator": "includes_code",
+            "value": "D56.0",
+            "system": "ICD-10",
+            "horizon": "LIFETIME",
+            "status": "any"
+          },
+          {
+            "field": "conditions",
+            "operator": "includes_code",
+            "value": "D56.1",
+            "system": "ICD-10",
+            "horizon": "LIFETIME",
+            "status": "any"
+          },
+          {
+            "field": "conditions",
+            "operator": "includes_code",
+            "value": "D56.2",
+            "system": "ICD-10",
+            "horizon": "LIFETIME",
+            "status": "any"
+          },
+          {
+            "field": "conditions",
+            "operator": "includes_code",
+            "value": "D56.5",
+            "system": "ICD-10",
+            "horizon": "LIFETIME",
+            "status": "any"
+          },
+          {
+            "field": "conditions",
+            "operator": "includes_code",
+            "value": "D56.8",
+            "system": "ICD-10",
+            "horizon": "LIFETIME",
+            "status": "any"
+          },
+          {
+            "field": "conditions",
+            "operator": "includes_code",
+            "value": "D56.9",
+            "system": "ICD-10",
+            "horizon": "LIFETIME",
+            "status": "any"
+          },
+          {
+            "field": "conditions",
+            "operator": "includes_code",
+            "value": "D58.2",
+            "system": "ICD-10",
+            "horizon": "LIFETIME",
+            "status": "any"
+          }
+        ]
+      }
+    },
+    {
+      "id": "gate-empiric-no-hgbpathy",
+      "type": "Gate",
+      "properties": {
+        "title": "No hemoglobinopathy disease on file \u2014 empiric iron may proceed",
+        "gate_type": "compound",
+        "default_behavior": "skip",
+        "on_unresolved": "default",
+        "operator": "AND",
+        "conditions": [
           {
             "field": "conditions",
             "operator": "not_includes_code",
@@ -612,132 +751,6 @@
             "system": "ICD-10",
             "horizon": "LIFETIME",
             "status": "any"
-          }
-        ]
-      }
-    },
-    {
-      "id": "gate-hgbpathy-microcytic",
-      "type": "Gate",
-      "properties": {
-        "title": "MCV < 80 fL with hemoglobinopathy disease on file",
-        "gate_type": "compound",
-        "default_behavior": "skip",
-        "on_unresolved": "ask",
-        "operator": "AND",
-        "conditions": [
-          {
-            "field": "labs",
-            "operator": "less_than",
-            "value": "787-2",
-            "system": "LOINC",
-            "display": "MCV (fL)",
-            "threshold": 80,
-            "horizon": {
-              "days": 90
-            }
-          },
-          {
-            "operator": "OR",
-            "display": "Hemoglobinopathy disease (SCD, thalassemia syndrome, HbC/HbE disease)",
-            "conditions": [
-              {
-                "field": "conditions",
-                "operator": "includes_code",
-                "value": "D57.0.*",
-                "system": "ICD-10",
-                "horizon": "LIFETIME",
-                "status": "any"
-              },
-              {
-                "field": "conditions",
-                "operator": "includes_code",
-                "value": "D57.1",
-                "system": "ICD-10",
-                "horizon": "LIFETIME",
-                "status": "any"
-              },
-              {
-                "field": "conditions",
-                "operator": "includes_code",
-                "value": "D57.2.*",
-                "system": "ICD-10",
-                "horizon": "LIFETIME",
-                "status": "any"
-              },
-              {
-                "field": "conditions",
-                "operator": "includes_code",
-                "value": "D57.4.*",
-                "system": "ICD-10",
-                "horizon": "LIFETIME",
-                "status": "any"
-              },
-              {
-                "field": "conditions",
-                "operator": "includes_code",
-                "value": "D57.8.*",
-                "system": "ICD-10",
-                "horizon": "LIFETIME",
-                "status": "any"
-              },
-              {
-                "field": "conditions",
-                "operator": "includes_code",
-                "value": "D56.0",
-                "system": "ICD-10",
-                "horizon": "LIFETIME",
-                "status": "any"
-              },
-              {
-                "field": "conditions",
-                "operator": "includes_code",
-                "value": "D56.1",
-                "system": "ICD-10",
-                "horizon": "LIFETIME",
-                "status": "any"
-              },
-              {
-                "field": "conditions",
-                "operator": "includes_code",
-                "value": "D56.2",
-                "system": "ICD-10",
-                "horizon": "LIFETIME",
-                "status": "any"
-              },
-              {
-                "field": "conditions",
-                "operator": "includes_code",
-                "value": "D56.5",
-                "system": "ICD-10",
-                "horizon": "LIFETIME",
-                "status": "any"
-              },
-              {
-                "field": "conditions",
-                "operator": "includes_code",
-                "value": "D56.8",
-                "system": "ICD-10",
-                "horizon": "LIFETIME",
-                "status": "any"
-              },
-              {
-                "field": "conditions",
-                "operator": "includes_code",
-                "value": "D56.9",
-                "system": "ICD-10",
-                "horizon": "LIFETIME",
-                "status": "any"
-              },
-              {
-                "field": "conditions",
-                "operator": "includes_code",
-                "value": "D58.2",
-                "system": "ICD-10",
-                "horizon": "LIFETIME",
-                "status": "any"
-              }
-            ]
           }
         ]
       }
@@ -1026,6 +1039,170 @@
           "value": 14,
           "unit": "weeks"
         }
+      }
+    },
+    {
+      "id": "gate-oral-bridge-ga",
+      "type": "Gate",
+      "properties": {
+        "title": "Before 14 0/7 weeks (IV iron not yet given) \u2014 oral iron until then",
+        "gate_type": "patient_attribute",
+        "default_behavior": "skip",
+        "on_unresolved": "ask",
+        "condition": {
+          "attribute": "patient.gestational_age_weeks",
+          "operator": "less_than",
+          "value": 14,
+          "unit": "weeks"
+        }
+      }
+    },
+    {
+      "id": "gate-malabsorption-chart",
+      "type": "Gate",
+      "properties": {
+        "title": "Malabsorption condition on the chart (bariatric surgery, IBD, celiac disease, short bowel, gastrectomy)",
+        "gate_type": "compound",
+        "default_behavior": "skip",
+        "on_unresolved": "default",
+        "operator": "OR",
+        "conditions": [
+          {
+            "field": "conditions",
+            "operator": "includes_code",
+            "value": "Z98.84",
+            "system": "ICD-10",
+            "horizon": "LIFETIME",
+            "status": "any",
+            "display": "Bariatric surgery status"
+          },
+          {
+            "field": "conditions",
+            "operator": "includes_code",
+            "value": "O99.84.*",
+            "system": "ICD-10",
+            "horizon": "LIFETIME",
+            "status": "any",
+            "display": "Bariatric surgery status complicating pregnancy, childbirth or the puerperium (O99.840-O99.845)"
+          },
+          {
+            "field": "conditions",
+            "operator": "includes_code",
+            "value": "K50.*",
+            "system": "ICD-10",
+            "horizon": "LIFETIME",
+            "status": "any",
+            "display": "Crohn's disease"
+          },
+          {
+            "field": "conditions",
+            "operator": "includes_code",
+            "value": "K51.0.*",
+            "system": "ICD-10",
+            "horizon": "LIFETIME",
+            "status": "any",
+            "display": "Ulcerative (chronic) pancolitis"
+          },
+          {
+            "field": "conditions",
+            "operator": "includes_code",
+            "value": "K51.2.*",
+            "system": "ICD-10",
+            "horizon": "LIFETIME",
+            "status": "any",
+            "display": "Ulcerative (chronic) proctitis"
+          },
+          {
+            "field": "conditions",
+            "operator": "includes_code",
+            "value": "K51.3.*",
+            "system": "ICD-10",
+            "horizon": "LIFETIME",
+            "status": "any",
+            "display": "Ulcerative (chronic) rectosigmoiditis"
+          },
+          {
+            "field": "conditions",
+            "operator": "includes_code",
+            "value": "K51.5.*",
+            "system": "ICD-10",
+            "horizon": "LIFETIME",
+            "status": "any",
+            "display": "Left sided colitis"
+          },
+          {
+            "field": "conditions",
+            "operator": "includes_code",
+            "value": "K51.8.*",
+            "system": "ICD-10",
+            "horizon": "LIFETIME",
+            "status": "any",
+            "display": "Other ulcerative colitis"
+          },
+          {
+            "field": "conditions",
+            "operator": "includes_code",
+            "value": "K51.9.*",
+            "system": "ICD-10",
+            "horizon": "LIFETIME",
+            "status": "any",
+            "display": "Ulcerative colitis, unspecified"
+          },
+          {
+            "field": "conditions",
+            "operator": "includes_code",
+            "value": "K90.0",
+            "system": "ICD-10",
+            "horizon": "LIFETIME",
+            "status": "any",
+            "display": "Celiac disease"
+          },
+          {
+            "field": "conditions",
+            "operator": "includes_code",
+            "value": "K90.82.*",
+            "system": "ICD-10",
+            "horizon": "LIFETIME",
+            "status": "any",
+            "display": "Short bowel syndrome (K90.821, K90.822, K90.829)"
+          },
+          {
+            "field": "conditions",
+            "operator": "includes_code",
+            "value": "K90.83",
+            "system": "ICD-10",
+            "horizon": "LIFETIME",
+            "status": "any",
+            "display": "Intestinal failure"
+          },
+          {
+            "field": "conditions",
+            "operator": "includes_code",
+            "value": "K90.9",
+            "system": "ICD-10",
+            "horizon": "LIFETIME",
+            "status": "any",
+            "display": "Intestinal malabsorption, unspecified"
+          },
+          {
+            "field": "conditions",
+            "operator": "includes_code",
+            "value": "K91.2",
+            "system": "ICD-10",
+            "horizon": "LIFETIME",
+            "status": "any",
+            "display": "Postsurgical malabsorption, not elsewhere classified"
+          },
+          {
+            "field": "conditions",
+            "operator": "includes_code",
+            "value": "Z90.3",
+            "system": "ICD-10",
+            "horizon": "LIFETIME",
+            "status": "any",
+            "display": "Acquired absence of stomach [part of]"
+          }
+        ]
       }
     },
     {
@@ -1804,6 +1981,15 @@
       }
     },
     {
+      "id": "guid-6",
+      "type": "Guidance",
+      "properties": {
+        "topic": "Malabsorption on the chart: consider IV iron first",
+        "category": "treatment-planning",
+        "instructions": "The problem list carries a condition that reduces oral iron absorption (bariatric surgery, Crohn's disease or ulcerative colitis, celiac disease, short bowel syndrome or intestinal failure, postsurgical or unspecified intestinal malabsorption, or gastrectomy). This supports choosing IV iron without an oral trial at DP-3 (criterion 3c), most strongly after a malabsorptive bariatric procedure (e.g. Roux-en-Y gastric bypass) or with active inflammatory bowel disease; with quiescent IBD or a restrictive procedure an oral trial remains reasonable. IV iron is given from 14 0/7 weeks; before then, choosing IV first starts oral iron until 14 weeks."
+      }
+    },
+    {
       "id": "qm-1",
       "type": "QualityMetric",
       "properties": {
@@ -2509,24 +2695,29 @@
       "type": "HAS_STEP"
     },
     {
-      "from": "stage-2-empiric",
-      "to": "step-2-1",
-      "type": "HAS_STEP"
-    },
-    {
-      "from": "stage-2-empiric",
-      "to": "step-2-2",
-      "type": "HAS_STEP"
-    },
-    {
-      "from": "stage-2-empiric",
-      "to": "step-2-3",
-      "type": "HAS_STEP"
-    },
-    {
       "from": "stage-2",
       "to": "step-2-8",
       "type": "HAS_STEP"
+    },
+    {
+      "from": "stage-2-empiric",
+      "to": "gate-empiric-no-hgbpathy",
+      "type": "HAS_GATE"
+    },
+    {
+      "from": "gate-empiric-no-hgbpathy",
+      "to": "step-2-8",
+      "type": "BRANCHES_TO"
+    },
+    {
+      "from": "stage-2-empiric",
+      "to": "gate-hgbpathy-microcytic",
+      "type": "HAS_GATE"
+    },
+    {
+      "from": "gate-hgbpathy-microcytic",
+      "to": "step-1-8",
+      "type": "BRANCHES_TO"
     },
     {
       "from": "stage-2-oral",
@@ -2636,16 +2827,6 @@
     {
       "from": "gate-microcytic",
       "to": "step-1-7",
-      "type": "BRANCHES_TO"
-    },
-    {
-      "from": "step-1-1",
-      "to": "gate-hgbpathy-microcytic",
-      "type": "HAS_GATE"
-    },
-    {
-      "from": "gate-hgbpathy-microcytic",
-      "to": "step-1-8",
       "type": "BRANCHES_TO"
     },
     {
@@ -2782,6 +2963,41 @@
       "from": "gate-iv-iron-ga-direct",
       "to": "step-2-10",
       "type": "BRANCHES_TO"
+    },
+    {
+      "from": "step-2-9",
+      "to": "gate-oral-bridge-ga",
+      "type": "HAS_GATE"
+    },
+    {
+      "from": "gate-oral-bridge-ga",
+      "to": "stage-2-oral-bridge",
+      "type": "BRANCHES_TO"
+    },
+    {
+      "from": "step-2-8",
+      "to": "gate-malabsorption-chart",
+      "type": "HAS_GATE"
+    },
+    {
+      "from": "gate-malabsorption-chart",
+      "to": "step-2-11",
+      "type": "BRANCHES_TO"
+    },
+    {
+      "from": "stage-2-oral-bridge",
+      "to": "step-2-1",
+      "type": "HAS_STEP"
+    },
+    {
+      "from": "stage-2-oral-bridge",
+      "to": "step-2-2",
+      "type": "HAS_STEP"
+    },
+    {
+      "from": "stage-2-oral-bridge",
+      "to": "step-2-3",
+      "type": "HAS_STEP"
     },
     {
       "from": "stage-3",
@@ -3041,6 +3257,11 @@
     {
       "from": "step-1-1",
       "to": "guid-5",
+      "type": "HAS_GUIDANCE"
+    },
+    {
+      "from": "step-2-11",
+      "to": "guid-6",
       "type": "HAS_GUIDANCE"
     },
     {
@@ -3979,6 +4200,16 @@
       "type": "CITES_EVIDENCE"
     },
     {
+      "from": "guid-6",
+      "to": "ev-8",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "guid-6",
+      "to": "ev-18",
+      "type": "CITES_EVIDENCE"
+    },
+    {
       "from": "step-1-8",
       "to": "lab-15",
       "type": "HAS_LAB_TEST"
@@ -4149,6 +4380,16 @@
       "type": "CITES_EVIDENCE"
     },
     {
+      "from": "stage-2-oral-bridge",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "stage-2-oral-bridge",
+      "to": "ev-5",
+      "type": "CITES_EVIDENCE"
+    },
+    {
       "from": "step-2-8",
       "to": "ev-1",
       "type": "CITES_EVIDENCE"
@@ -4201,6 +4442,26 @@
     {
       "from": "step-2-10",
       "to": "ev-22",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-2-11",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-2-11",
+      "to": "ev-8",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-2-11",
+      "to": "ev-18",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-2-11",
+      "to": "ev-19",
       "type": "CITES_EVIDENCE"
     },
     {

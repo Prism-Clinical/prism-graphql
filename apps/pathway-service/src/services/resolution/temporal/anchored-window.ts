@@ -1,7 +1,9 @@
 import { MAX_CUSTOM_HORIZON_DAYS, TemporalContextError } from './evaluation-context';
 import type { EvaluationTemporalContext } from './evaluation-context';
+import type { FactSelectionCondition } from './contract';
 import type { FactStore, NormalizedFact } from './fact-model';
 import { boundEpochRange, instantEpoch, parseFhirDate } from './interval';
+import { candidateMatches } from './select-facts';
 
 /**
  * Anchored trend windows — `window_from` (decision 2026-09-07, re-confirmed
@@ -42,11 +44,35 @@ import { boundEpochRange, instantEpoch, parseFhirDate } from './interval';
  *      on recommending the drug at every recheck, so a session source ranked
  *      higher would re-anchor on "today" at every visit and the response
  *      check would never come due — the latest-wins slide the care-plan rule
- *      exists to prevent. The cost: a recheck visit with no care plan, no
- *      order and no clinician date reads as a start visit (NOT YET DUE); the
- *      reason says so, and the clinician's date (editable on the gate at any
- *      time) fixes it. A Medication inside the gate's OWN subtree never
+ *      exists to prevent. A Medication inside the gate's OWN subtree never
  *      counts — a gate cannot be anchored by what it opens.
+ *
+ *      **Only when nothing says the course is already under way** (decision
+ *      2026-09-24: at a recheck, a nonresponder must not be silently missed).
+ *      The pathway recommends the drug at EVERY visit that reaches the recheck
+ *      step, so on its own this source cannot tell a start visit from a
+ *      recheck that has no care plan, no dated order and no clinician date —
+ *      and read as a start visit, the recheck closes NOT YET DUE and asks
+ *      nothing. So the session source is refused — the anchor is UNRESOLVED
+ *      and the gate asks for the date — when the chart holds either of:
+ *
+ *        a. an order of the class (`codes`) whose start cannot be read as a
+ *           day (missing, or month/year precision): the patient is on the
+ *           drug, we just do not know since when; or
+ *        b. with `min_days_since_anchor: N`, a result of the condition's OWN
+ *           series (the delta's lab) dated at least N days before the session
+ *           clock — had the drug started as early as that result, the check
+ *           would be due now. The due rule's own arithmetic (`anchorDueOn`),
+ *           so "old enough" and "due" cannot disagree at the boundary.
+ *
+ *      The cost is at the other end: a start visit whose chart already holds
+ *      an older result (a routine early-pregnancy CBC) is asked the date too.
+ *      One answer — today's date — anchors it (CLINICIAN, NOT YET DUE) and
+ *      unblocks the plan. No upper age limit on the result, deliberately: a
+ *      cap would bring the silent miss back for the late and lost-to-follow-up
+ *      recheck, which is the nonresponder that matters most. Without
+ *      `min_days_since_anchor` (b) does not apply — "due any day after the
+ *      start" would make every start visit's diagnostic value evidence.
  *   5. **UNRESOLVED** — the condition is INDETERMINATE and the gate asks for the
  *      date (or takes its default, per `on_unresolved`). A window anchored on a
  *      guess would decide a treatment response on values nobody chose.
@@ -415,6 +441,12 @@ export interface AnchorInputs {
    * there), which reads as "not recommended".
    */
   sessionRecommendation?: SessionRecommendationLookup;
+  /**
+   * The anchored condition's own selection — whose dated results are the
+   * evidence that a course is already under way (source 4, rule b). Absent
+   * outside the evaluator, which reads as "no such evidence".
+   */
+  series?: FactSelectionCondition;
 }
 
 function codeInClass(fact: NormalizedFact, codes: readonly WindowFromCode[]): boolean {
@@ -457,6 +489,53 @@ function earliestOrderStart(
     if (!best || loMs < best.ms) best = { ms: loMs, fact };
   }
   return best ? { date: utcDay(best.ms), fact: best.fact } : null;
+}
+
+/**
+ * Why the chart says a course of the class is ALREADY under way, or null.
+ *
+ * Consulted only when source 4 would answer — this visit recommends the class
+ * and no clinician date, care plan or dated order resolved it — to tell a
+ * recheck from the visit that starts the drug. See the header, source 4.
+ */
+function courseUnderWayEvidence(
+  sel: WindowFromSelector,
+  inputs: AnchorInputs,
+  asOfMs: number,
+): string | null {
+  // a. The patient is on the drug; the chart does not say since when. (A
+  //    day-dated order would have resolved as source 3 already.)
+  if (sel.codes.length > 0) {
+    for (const fact of inputs.factStore) {
+      if (fact.kind !== 'medication_order' || !codeInClass(fact, sel.codes)) continue;
+      if (fact.recordValidity === 'INVALID') continue;
+      const start = fact.interval.start;
+      if (start && (start.precision === 'day' || start.precision === 'instant')) continue;
+      const what = fact.display ?? `${fact.system} ${fact.code}`;
+      return `the chart holds an order for ${what} with ${start ? `only a ${start.precision}-precision start (${start.value})` : 'no start date'}`;
+    }
+  }
+
+  // b. A result of the condition's own series old enough that, had the drug
+  //    started that day, the check would be due now.
+  const minDays = sel.minDaysSinceAnchor;
+  if (minDays === undefined || inputs.series === undefined) return null;
+  let newest: { day: string; fact: NormalizedFact } | null = null;
+  for (const fact of inputs.factStore) {
+    if (!candidateMatches(fact, inputs.series)) continue;
+    if (fact.recordValidity === 'INVALID') continue;
+    const start = fact.interval.start;
+    if (!start) continue;
+    // Its LATEST possible time: a coarse date counts as old only if all of it is.
+    const { hiMs } = boundEpochRange(start);
+    if (hiMs > asOfMs) continue;
+    const day = utcDay(hiMs);
+    if (!isDue(addDays(day, minDays), inputs.temporalContext.evaluationAsOf)) continue;
+    if (!newest || day > newest.day) newest = { day, fact };
+  }
+  if (!newest) return null;
+  const what = newest.fact.display ?? `${newest.fact.system} ${newest.fact.code}`;
+  return `the chart holds a ${what} result from ${newest.day}, at least ${minDays} days before this visit`;
 }
 
 /**
@@ -516,6 +595,22 @@ export function resolveWindowAnchor(
     return { status: 'AWAITING_SESSION', key, sessionNodeIds: session.nodeIds };
   }
   if (session?.status === 'RECOMMENDED') {
+    // …unless the chart says the course is already under way: then this may
+    // be a recheck, and "starts today" would close it unasked. Ask instead.
+    const underWay = courseUnderWayEvidence(sel, inputs, asOfMs);
+    if (underWay !== null) {
+      return {
+        status: 'UNRESOLVED',
+        key,
+        reason:
+          `${anchorLabelFor(sel)} is recommended at this visit, but ${underWay} — this may be ` +
+          `a recheck, not the start. No clinician date, care-plan recommendation for ` +
+          `"${sel.clinicalRole}" or dated order says when it started; enter the start date ` +
+          `(today's date if it starts at this visit)`,
+        // Still read: a change to the medication re-decides the gate.
+        sessionNodeIds: session.nodeIds,
+      };
+    }
     return {
       ...(resolved(
         utcDay(asOfMs),
