@@ -1,0 +1,29 @@
+# Pathway pipeline — TODO
+
+## Formalize research → decisions → care plan (Josh, 2026-09-24)
+
+Applies to future pathways. The current OB pathways were test cases, built with decisions
+gathered informally.
+
+Every pathway should go through these steps, in order:
+
+1. **Research** (`pathway-research`) writes the brief, including a **conflict register**: every
+   point where guidelines disagree (source A vs source B, publication/reaffirmation dates,
+   evidence strength, exact recommendation), and every open clinical choice the evidence
+   leaves to the author.
+2. **Conflict review / translation.** Each register entry goes to the reviewing clinician as a
+   structured question: multiple choice, the recommended option first, a one-line tradeoff per
+   option, and room for a free-text answer. This is the step that translates evidence into care.
+3. **Write the answers into the brief** as `[DECISION — <reviewer> <date>]` with the rationale
+   and the sources weighed. The brief is the durable, plain-text record; chat is not.
+4. **Build only after that.** `pathway-json-builder` should refuse to build while any register
+   entry is unresolved. An example marker is `[DECISION PENDING — …]`, and a lint alongside
+   `check-brief-sync.ts` would enforce it.
+
+Open design questions:
+- Should the conflict register be one table in the brief template, and what are its columns?
+- Should the review step be a skill of its own (e.g. `pathway-review`) that reads the register
+  and drives the Q&A, or part of `pathway-research`?
+- How are re-reviews handled when a guideline changes? Re-open the register entry, bump the
+  version, and rebuild.
+- Should each decision record the reviewer (e.g. Josh vs Wyeth)?
