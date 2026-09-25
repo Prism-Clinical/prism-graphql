@@ -1099,6 +1099,14 @@ type ResolvedNode {
   Correct one by answering this gate with `dateValue`.
   """
   windowAnchors: [WindowAnchor!]
+  """
+  True on a gate closed because an anchored condition is NOT YET DUE
+  (`window_from.min_days_since_anchor`, or the visit that starts the drug) —
+  GATED_OUT without a question, not a "no". The due date is on
+  `windowAnchors[].dueOn`; `excludeReason` reads `NOT_YET_DUE: due on/after …`.
+  Null otherwise.
+  """
+  notYetDue: Boolean
 }
 
 """
@@ -1112,9 +1120,11 @@ type WindowAnchor {
   label: String!
   "`YYYY-MM-DD`."
   date: String!
-  "CLINICIAN, CARE_PLAN or MEDICATION_ORDER — the first that resolved, in that order."
+  "CLINICIAN, CARE_PLAN, MEDICATION_ORDER or SESSION_RECOMMENDATION (this visit recommends the class) — the first that resolved, in that order."
   source: String!
   detail: String!
+  "`YYYY-MM-DD` — the first day the condition may be read (`min_days_since_anchor` after `date`; a SESSION_RECOMMENDATION start is never due at that visit). Null when due as soon as it anchors."
+  dueOn: String
 }
 
 type ProviderOverrideType {

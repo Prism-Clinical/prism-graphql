@@ -61,4 +61,10 @@ export type UncertaintyReason =
    * A trend/delta series with fewer dated values in its window than
    * `min_points`. Not an answer: "no recheck yet" is not "no response".
    */
-  | 'INSUFFICIENT_SERIES';
+  | 'INSUFFICIENT_SERIES'
+  /**
+   * A `window_from` condition read before `min_days_since_anchor` days have
+   * passed since its anchor (or on the visit that starts the drug). Not an
+   * answer either way: the gate closes without asking until it is due.
+   */
+  | 'NOT_YET_DUE';

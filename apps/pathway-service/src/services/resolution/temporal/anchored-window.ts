@@ -35,9 +35,28 @@ import { boundEpochRange, instantEpoch, parseFhirDate } from './interval';
  *      code is one of the selector's `codes`. Orders are chart data with an
  *      interval start; this is what makes a synthetic (simulator) patient, who
  *      has no stored care plans, anchorable at all.
- *   4. **UNRESOLVED** — the condition is INDETERMINATE and the gate asks for the
+ *   4. **SESSION_RECOMMENDATION** — none of the above, but THIS traversal
+ *      includes the pathway's own Medication node(s) of the class: the visit
+ *      is starting the drug, so it starts on the session clock's day. Last,
+ *      deliberately, and below the care plan and the order: the pathway goes
+ *      on recommending the drug at every recheck, so a session source ranked
+ *      higher would re-anchor on "today" at every visit and the response
+ *      check would never come due — the latest-wins slide the care-plan rule
+ *      exists to prevent. The cost: a recheck visit with no care plan, no
+ *      order and no clinician date reads as a start visit (NOT YET DUE); the
+ *      reason says so, and the clinician's date (editable on the gate at any
+ *      time) fixes it. A Medication inside the gate's OWN subtree never
+ *      counts — a gate cannot be anchored by what it opens.
+ *   5. **UNRESOLVED** — the condition is INDETERMINATE and the gate asks for the
  *      date (or takes its default, per `on_unresolved`). A window anchored on a
  *      guess would decide a treatment response on values nobody chose.
+ *
+ * **NOT YET DUE.** `min_days_since_anchor: N` says the condition cannot be read
+ * until N days after the anchor ("nonresponse = rise < 1 g/dL after 2–4 weeks").
+ * Before then the condition is NOT YET DUE — neither true nor false — and the
+ * gate closes without asking. A SESSION_RECOMMENDATION anchor is never due at
+ * that visit, with or without N: a treatment starting now has had no time to
+ * act.
  */
 
 // ─── Grammar ──────────────────────────────────────────────────────────
@@ -85,9 +104,18 @@ export interface WindowFromSelector {
    * re-admit the baseline drift the anchor exists to exclude.
    */
   baselineDays?: number;
+  /**
+   * The condition is NOT YET DUE until this many days after the anchor day:
+   * before then it is neither true nor false, and the gate closes without
+   * asking. "Nonresponse is a rise < 1 g/dL after 2–4 weeks" — without it, a
+   * day-5 recheck decides.
+   */
+  minDaysSinceAnchor?: number;
 }
 
-const SELECTOR_KEYS = new Set(['event', 'clinical_role', 'codes', 'label', 'baseline_days']);
+const SELECTOR_KEYS = new Set([
+  'event', 'clinical_role', 'codes', 'label', 'baseline_days', 'min_days_since_anchor',
+]);
 
 function invalid(where: string, message: string): never {
   throw new TemporalContextError(`${where}: ${message}`, 'INVALID_TEMPORAL_DEFAULTS');
@@ -178,6 +206,17 @@ export function parseWindowFrom(raw: unknown, where: string): WindowFromSelector
     }
     out.baselineDays = d as number;
   }
+  if (r.min_days_since_anchor !== undefined) {
+    const d = r.min_days_since_anchor;
+    if (typeof d !== 'number' || !Number.isInteger(d) || d < 1 || d > MAX_CUSTOM_HORIZON_DAYS) {
+      invalid(
+        where,
+        `"min_days_since_anchor" must be an integer in 1..${MAX_CUSTOM_HORIZON_DAYS} ` +
+          `(got ${JSON.stringify(d)})`,
+      );
+    }
+    out.minDaysSinceAnchor = d as number;
+  }
   return out;
 }
 
@@ -216,6 +255,11 @@ export function dayStartInstant(date: string): string {
 /** The UTC calendar day an epoch falls on. */
 function utcDay(ms: number): string {
   return new Date(Math.floor(ms / MS_PER_DAY) * MS_PER_DAY).toISOString().slice(0, 10);
+}
+
+/** `YYYY-MM-DD` plus `days` calendar days. */
+function addDays(date: string, days: number): string {
+  return utcDay(instantEpoch(dayStartInstant(date)) + days * MS_PER_DAY);
 }
 
 /**
@@ -295,7 +339,27 @@ export function withTherapyStarts(
 
 // ─── Resolution ───────────────────────────────────────────────────────
 
-export type AnchorSource = 'CLINICIAN' | 'CARE_PLAN' | 'MEDICATION_ORDER';
+export type AnchorSource = 'CLINICIAN' | 'CARE_PLAN' | 'MEDICATION_ORDER' | 'SESSION_RECOMMENDATION';
+
+/**
+ * Whether THIS traversal recommends the class — the fourth anchor source.
+ *
+ * `nodeIds` are the Medication nodes of the class that were consulted, in
+ * every case, so the caller can record that the gate READ them: a later change
+ * to one of them must re-decide the gate.
+ *
+ * `UNSETTLED` — none is included YET, and some have not been disposed in this
+ * pass. Gate evaluation can precede the medication's disposition within one
+ * traversal, so the anchor cannot be decided now; the traversal defers the
+ * gate until the rest of the walk has settled and asks again, with UNSETTLED
+ * no longer possible.
+ */
+export type SessionRecommendation =
+  | { status: 'RECOMMENDED'; nodeIds: string[] }
+  | { status: 'NOT_RECOMMENDED'; nodeIds: string[] }
+  | { status: 'UNSETTLED'; nodeIds: string[] };
+
+export type SessionRecommendationLookup = (clinicalRole: string) => SessionRecommendation;
 
 export type AnchorResolution =
   | {
@@ -308,8 +372,34 @@ export type AnchorResolution =
       source: AnchorSource;
       /** Where the date came from, for the reason string and audit. */
       detail: string;
+      /** The session's Medication nodes consulted, when that source was reached. */
+      sessionNodeIds?: string[];
     }
-  | { status: 'UNRESOLVED'; key: string; reason: string };
+  | { status: 'UNRESOLVED'; key: string; reason: string; sessionNodeIds?: string[] }
+  /** The session source must be consulted and cannot answer yet — see SessionRecommendation. */
+  | { status: 'AWAITING_SESSION'; key: string; sessionNodeIds: string[] };
+
+/**
+ * The first day an anchored condition may be read, or null when it is due as
+ * soon as the anchor resolves.
+ *
+ * `min_days_since_anchor` days after the anchor day. An anchor from THIS
+ * visit's own recommendation is never due at this visit — at least one day
+ * after it — whether or not a minimum was authored.
+ */
+export function anchorDueOn(
+  sel: Pick<WindowFromSelector, 'minDaysSinceAnchor'>,
+  anchor: { date: string; source: AnchorSource },
+): string | null {
+  const min = sel.minDaysSinceAnchor;
+  const days = anchor.source === 'SESSION_RECOMMENDATION' ? Math.max(min ?? 0, 1) : min;
+  return days === undefined ? null : addDays(anchor.date, days);
+}
+
+/** Has the session clock reached the start of `dueOn` (UTC)? */
+export function isDue(dueOn: string, evaluationAsOf: string): boolean {
+  return instantEpoch(evaluationAsOf) >= instantEpoch(dayStartInstant(dueOn));
+}
 
 export interface AnchorInputs {
   /**
@@ -320,6 +410,11 @@ export interface AnchorInputs {
   gateAnswers: ReadonlyMap<string, { dateValue?: string | null }>;
   factStore: FactStore;
   temporalContext: EvaluationTemporalContext;
+  /**
+   * The fourth source. Absent outside a traversal (nothing is "this visit"
+   * there), which reads as "not recommended".
+   */
+  sessionRecommendation?: SessionRecommendationLookup;
 }
 
 function codeInClass(fact: NormalizedFact, codes: readonly WindowFromCode[]): boolean {
@@ -415,13 +510,32 @@ export function resolveWindowAnchor(
     return resolved(order.date, 'MEDICATION_ORDER', `order for ${what}`);
   }
 
-  // 4. Nothing to anchor on.
+  // 4. This visit's own recommendation of the class — the drug starts today.
+  const session = inputs.sessionRecommendation?.(sel.clinicalRole);
+  if (session?.status === 'UNSETTLED') {
+    return { status: 'AWAITING_SESSION', key, sessionNodeIds: session.nodeIds };
+  }
+  if (session?.status === 'RECOMMENDED') {
+    return {
+      ...(resolved(
+        utcDay(asOfMs),
+        'SESSION_RECOMMENDATION',
+        `recommended at this visit (${session.nodeIds.join(', ')}); if it was started ` +
+          `earlier, enter the start date on this gate`,
+      ) as Extract<AnchorResolution, { status: 'RESOLVED' }>),
+      sessionNodeIds: session.nodeIds,
+    };
+  }
+
+  // 5. Nothing to anchor on.
   return {
     status: 'UNRESOLVED',
     key,
     reason:
       `no start date for ${anchorLabelFor(sel)} — no clinician date, no care-plan ` +
       `recommendation for "${sel.clinicalRole}"` +
-      (sel.codes.length > 0 ? ', and no dated order of the class' : ', and no order codes to match'),
+      (sel.codes.length > 0 ? ', no dated order of the class' : ', no order codes to match') +
+      ', and not recommended at this visit',
+    ...(session ? { sessionNodeIds: session.nodeIds } : {}),
   };
 }

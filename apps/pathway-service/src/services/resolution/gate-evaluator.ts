@@ -34,7 +34,13 @@ import { adaptAttributeCondition, adaptCodedCondition } from './temporal/conditi
 import { effectivePolicyFor } from './temporal/gate-policy';
 import { selectFacts } from './temporal/select-facts';
 import type { FactDecision } from './temporal/select-facts';
-import { anchorLabelFor, resolveWindowAnchor } from './temporal/anchored-window';
+import {
+  anchorDueOn,
+  anchorLabelFor,
+  isDue,
+  resolveWindowAnchor,
+} from './temporal/anchored-window';
+import type { SessionRecommendationLookup } from './temporal/anchored-window';
 import type { WindowAnchorEvidence } from './types';
 
 // ─── Helpers ──────────────────────────────────────────────────────────
@@ -523,6 +529,16 @@ export interface ConditionOutcome {
   seriesShortBy?: number;
   /** `YYYY-MM-DD` of the latest value the short series does have. */
   seriesLatestDate?: string;
+  /**
+   * The anchored condition cannot be read before `dueOn` (`YYYY-MM-DD`).
+   * Paired with `indeterminate: true` and `NOT_YET_DUE`: it has not answered
+   * either way, and it must not be asked anything.
+   */
+  notYetDue?: { dueOn: string };
+  /** The anchor must consult this visit's recommendation, which is not settled yet. */
+  awaitingSession?: boolean;
+  /** Medication nodes the session anchor source read — recorded as influences. */
+  sessionNodeIds?: string[];
 }
 
 export type ConditionEvaluator = (
@@ -966,8 +982,15 @@ function evaluateAggregateKernel(
         gateAnswers: deps.gateAnswers,
         factStore: deps.factStore,
         temporalContext: deps.temporalContext,
+        sessionRecommendation: deps.sessionRecommendation,
       })
     : undefined;
+  // The session's Medication nodes the anchor read, whatever it concluded — so
+  // a change to one of them re-decides this gate.
+  const sessionRead: Pick<ConditionOutcome, 'sessionNodeIds'> =
+    anchor && anchor.status !== 'AWAITING_SESSION' && anchor.sessionNodeIds
+      ? { sessionNodeIds: anchor.sessionNodeIds }
+      : {};
   // An anchored condition also READS medication orders (the third source) and
   // its own override key, so a newly added order or a clinician date
   // re-evaluates it. `dependencyContextKey` maps `medications` to the
@@ -976,6 +999,18 @@ function evaluateAggregateKernel(
     ...(field ? [field] : []),
     ...(anchor ? [...(field === 'medications' ? [] : ['medications']), anchor.key] : []),
   ];
+  if (anchor && anchor.status === 'AWAITING_SESSION') {
+    // Never persisted: the traversal defers the gate and evaluates it again
+    // once the medications have been disposed (and never defers twice).
+    return {
+      satisfied: false,
+      reason: `Awaiting this visit's ${anchorLabelFor(windowFrom!)} recommendation to anchor ${operator}`,
+      fieldsRead,
+      indeterminate: true,
+      awaitingSession: true,
+      sessionNodeIds: anchor.sessionNodeIds,
+    };
+  }
   if (anchor && anchor.status === 'UNRESOLVED') {
     return {
       satisfied: false,
@@ -984,9 +1019,11 @@ function evaluateAggregateKernel(
       indeterminate: true,
       uncertainty: ['ANCHOR_UNRESOLVED'],
       anchorUnresolved: true,
+      ...sessionRead,
     };
   }
   const resolvedAnchor = anchor && anchor.status === 'RESOLVED' ? anchor : undefined;
+  const dueOn = resolvedAnchor ? anchorDueOn(windowFrom!, resolvedAnchor) : null;
 
   // With `baseline_days`, the selection window opens that many days BEFORE the
   // anchor so the pre-treatment baseline can be found; everything before the
@@ -1022,11 +1059,35 @@ function evaluateAggregateKernel(
           date: resolvedAnchor.date,
           source: resolvedAnchor.source,
           detail: resolvedAnchor.detail,
+          ...(dueOn !== null ? { dueOn } : {}),
         },
       }
     : {};
   const finish = (o: ConditionOutcome): ConditionOutcome =>
-    resolvedAnchor ? { ...o, reason: o.reason + anchorNote, ...anchorFields } : o;
+    resolvedAnchor ? { ...o, reason: o.reason + anchorNote, ...anchorFields, ...sessionRead } : o;
+
+  // ─── NOT YET DUE — before anything is selected ─────────────────────
+  //
+  // Too soon after the anchor to read a response. Not "no" (a day-5 recheck
+  // with +0.3 is not a nonresponder), and not "missing" either (no recheck is
+  // owed yet, so there is nothing to ask for): the gate closes without a
+  // question. Checked BEFORE the series rule, so a start visit — whose
+  // recheck cannot exist — is never asked for one.
+  if (resolvedAnchor && dueOn !== null && !isDue(dueOn, deps.temporalContext.evaluationAsOf)) {
+    const why =
+      resolvedAnchor.source === 'SESSION_RECOMMENDATION'
+        ? `${anchorLabelFor(windowFrom!)} starts at this visit`
+        : `${windowFrom!.minDaysSinceAnchor} days after ${anchorLabelFor(windowFrom!)} start ` +
+          `${resolvedAnchor.date}`;
+    return finish({
+      satisfied: false,
+      reason: `NOT_YET_DUE: due on/after ${dueOn} (${why}) — ${operator} for ${field}:${value}`,
+      fieldsRead,
+      indeterminate: true,
+      uncertainty: ['NOT_YET_DUE'],
+      notYetDue: { dueOn },
+    });
+  }
 
   // Per-fact doubt plus, when the kernel refused to order the series, the
   // reason it refused for. `AMBIGUOUS_SERIES_ORDER` exists ONLY on the outcome —
@@ -1483,8 +1544,10 @@ function evaluatePatientAttribute(
     satisfied: result.satisfied,
     reason: result.reason,
     contextFieldsRead: result.fieldsRead,
-    dependedOnNodes: [],
+    dependedOnNodes: result.sessionNodeIds ?? [],
   };
+  if (result.awaitingSession === true) out.awaitingSessionRecommendation = true;
+  if (result.notYetDue !== undefined) out.notYetDue = result.notYetDue;
   // Copied only when the evaluator reported them, which is `v1` alone. Setting
   // them unconditionally would put `indeterminate: undefined` on every
   // `legacy-v0` result and break `toEqual` against today's shape — a behavior
@@ -1820,6 +1883,25 @@ function evaluateCompound(
   }
   const anchors = windowAnchorsOf(results);
   if (anchors.length > 0) out.windowAnchors = anchors;
+
+  out.dependedOnNodes = [...new Set(results.flatMap((r) => r.sessionNodeIds ?? []))];
+  if (results.some((r) => r.awaitingSession === true)) out.awaitingSessionRecommendation = true;
+
+  // NOT YET DUE crosses the boundary on the truth table's terms: it is not a
+  // definite value, so it never dominates — a definite false still settles an
+  // AND and a definite true an OR. With nothing dominating, it OUTRANKS every
+  // other unresolved condition: a gate that cannot be read until the recheck
+  // is due has nothing to ask for today, and asking for (say) a missing
+  // trimester on the start visit would block that visit's care plan for a
+  // datum that cannot decide anything yet.
+  const notDue = results.filter((r) => r.notYetDue !== undefined);
+  if (notDue.length > 0 && compoundUnresolved(op, results, (r) => r.notYetDue !== undefined)) {
+    const dueOn = notDue.map((r) => r.notYetDue!.dueOn).sort().at(-1)!;
+    out.notYetDue = { dueOn };
+    out.reason =
+      `NOT_YET_DUE: due on/after ${dueOn} — ` +
+      notDue.map((r) => r.reason.replace(/^NOT_YET_DUE: /, '')).join('; ');
+  }
   return out;
 }
 
@@ -1969,6 +2051,13 @@ export interface GateEvaluationDeps {
    * to the safe-default branch with `tentative: true`.
    */
   llmEvaluator?: LlmGateEvaluator;
+  /**
+   * Does THIS traversal recommend a therapeutic class? The fourth
+   * `window_from` anchor source (SESSION_RECOMMENDATION), supplied by the
+   * traversal per gate. Absent — every caller outside a traversal — reads as
+   * "not recommended".
+   */
+  sessionRecommendation?: SessionRecommendationLookup;
   /**
    * Namespace/system/code lookup table for attribute conditions (e.g.
    * `lab.hemoglobin` → LOINC 718-7).

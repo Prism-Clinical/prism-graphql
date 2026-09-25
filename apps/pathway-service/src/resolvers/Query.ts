@@ -51,6 +51,7 @@ function formatNodeForGraphQL(node: NodeResult) {
     parentNodeId: node.parentNodeId ?? null,
     depth: node.depth,
     windowAnchors: node.windowAnchors ?? null,
+    notYetDue: node.notYetDue ?? null,
   };
 }
 

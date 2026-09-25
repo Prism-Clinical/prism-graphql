@@ -1823,6 +1823,14 @@ export type ResolvedNode = {
   excludeReason?: Maybe<Scalars['String']['output']>;
   nodeId: Scalars['ID']['output'];
   nodeType: Scalars['String']['output'];
+  /**
+   * True on a gate closed because an anchored condition is NOT YET DUE
+   * (`window_from.min_days_since_anchor`, or the visit that starts the drug) —
+   * GATED_OUT without a question, not a "no". The due date is on
+   * `windowAnchors[].dueOn`; `excludeReason` reads `NOT_YET_DUE: due on/after …`.
+   * Null otherwise.
+   */
+  notYetDue?: Maybe<Scalars['Boolean']['output']>;
   parentNodeId?: Maybe<Scalars['ID']['output']>;
   providerOverride?: Maybe<ProviderOverrideType>;
   status: NodeStatus;
@@ -2193,11 +2201,13 @@ export type WindowAnchor = {
   /** `YYYY-MM-DD`. */
   date: Scalars['String']['output'];
   detail: Scalars['String']['output'];
+  /** `YYYY-MM-DD` — the first day the condition may be read (`min_days_since_anchor` after `date`; a SESSION_RECOMMENDATION start is never due at that visit). Null when due as soon as it anchors. */
+  dueOn?: Maybe<Scalars['String']['output']>;
   /** `anchor:<event>:<clinical_role>` — one per treatment class, shared by every gate on it. */
   key: Scalars['String']['output'];
   /** The class in words, as the start-date question names it. */
   label: Scalars['String']['output'];
-  /** CLINICIAN, CARE_PLAN or MEDICATION_ORDER — the first that resolved, in that order. */
+  /** CLINICIAN, CARE_PLAN, MEDICATION_ORDER or SESSION_RECOMMENDATION (this visit recommends the class) — the first that resolved, in that order. */
   source: Scalars['String']['output'];
 };
 
@@ -3262,6 +3272,7 @@ export type ResolvedNodeResolvers<ContextType = DataSourceContext, ParentType ex
   excludeReason?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   nodeId?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
   nodeType?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  notYetDue?: Resolver<Maybe<ResolversTypes['Boolean']>, ParentType, ContextType>;
   parentNodeId?: Resolver<Maybe<ResolversTypes['ID']>, ParentType, ContextType>;
   providerOverride?: Resolver<Maybe<ResolversTypes['ProviderOverrideType']>, ParentType, ContextType>;
   status?: Resolver<ResolversTypes['NodeStatus'], ParentType, ContextType>;
@@ -3450,6 +3461,7 @@ export type WindowAnchorResolvers<ContextType = DataSourceContext, ParentType ex
   clinicalRole?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   date?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   detail?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  dueOn?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   key?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   label?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   source?: Resolver<ResolversTypes['String'], ParentType, ContextType>;

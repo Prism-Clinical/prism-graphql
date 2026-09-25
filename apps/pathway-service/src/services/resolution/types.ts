@@ -83,6 +83,14 @@ export interface NodeResult {
    * is not started). Absent on gates with no anchored condition.
    */
   windowAnchors?: WindowAnchorEvidence[];
+  /**
+   * The gate closed because an anchored condition is NOT YET DUE
+   * (`window_from.min_days_since_anchor`, or the visit that starts the drug) —
+   * not because it answered "no". GATED_OUT without a question, so the care
+   * plan can be generated; the due date is on `windowAnchors[].dueOn` and the
+   * `excludeReason` reads `NOT_YET_DUE: due on/after <date> …`.
+   */
+  notYetDue?: boolean;
   providerOverride?: ProviderOverride;
   parentNodeId?: string;
   depth: number;
@@ -297,8 +305,14 @@ export interface WindowAnchorEvidence {
   label: string;
   /** `YYYY-MM-DD`. */
   date: string;
-  source: 'CLINICIAN' | 'CARE_PLAN' | 'MEDICATION_ORDER';
+  source: 'CLINICIAN' | 'CARE_PLAN' | 'MEDICATION_ORDER' | 'SESSION_RECOMMENDATION';
   detail: string;
+  /**
+   * `YYYY-MM-DD` — the first day the condition may be read
+   * (`min_days_since_anchor` after `date`; a session-recommended start is
+   * never due at that visit). Absent when it is due as soon as it anchors.
+   */
+  dueOn?: string;
 }
 
 export interface GateEvaluationResult {
@@ -379,6 +393,20 @@ export interface GateEvaluationResult {
   unresolvedSeries?: Array<{ condition: GateCondition; latestDate: string }>;
   /** The resolved anchors, deduplicated by key, in condition order. */
   windowAnchors?: WindowAnchorEvidence[];
+  /**
+   * An anchored condition is NOT YET DUE and nothing else decided the gate.
+   * The gate closes WITHOUT asking — whatever `default_behavior` and
+   * `on_unresolved` say — with `reason` beginning `NOT_YET_DUE:`. `dueOn` is
+   * the latest due date among the conditions that were not due.
+   */
+  notYetDue?: { dueOn: string };
+  /**
+   * A `window_from` anchor needs to know whether THIS traversal recommends the
+   * class, and the Medication nodes that say so have not been disposed yet.
+   * The traversal defers the gate and evaluates it again once the walk has
+   * settled; a gate evaluated in that final position never reports this.
+   */
+  awaitingSessionRecommendation?: boolean;
 }
 
 // ─── Pending Questions ──────────────────────────────────────────────
