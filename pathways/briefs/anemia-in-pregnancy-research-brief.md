@@ -714,17 +714,27 @@ the pathway presumes the coded diagnosis.
     - **Where the start date comes from at a recheck** (first hit wins): a clinician-entered
       date → the earliest stored care plan of this pathway recommending oral iron → the
       earliest dated chart order of 310325/198630/284202 (proved: a dated ferrous sulfate
-      order anchors a day-21 nonresponder with no care plan) → this session. Oral iron
-      (Step 2.1) is recommended at every visit that reaches Step 2.3, so the date question
-      ("When did oral iron start?") never arises in this pathway: with no care plan, no
-      dated order and no clinician date, a recheck **reads as a start visit** and closes NOT
-      YET DUE (proved). The committed start-visit plan, a dated order, or the clinician's
-      date fixes it — the engine's documented cost of ranking the session source last.
-      `[CLINICAL AMBIGUITY — for Josh]` **This fails quietly:** such a recheck never
-      escalates and asks nothing (the NOT_YET_DUE reason is the only trace), so a
-      nonresponder seen without a committed start-visit plan or dated order is not flagged
-      unless the clinician enters the start date. Acceptable, or should the pathway prompt
-      for the start date at Step 2.3 (e.g. a Guidance line on the recheck step)?
+      order anchors a day-21 nonresponder with no care plan) → this session — **unless the
+      chart shows the course already under way** → otherwise the date is asked.
+      `[BUILD NOTE]` (engine behaviour, merged from `engine-recheck-anchor`, reflecting
+      `[DECISION — Josh 2026-09-24]` "ask for the start date"): oral iron (Step 2.1) is
+      recommended at every visit that reaches Step 2.3, so through v7 a recheck with no care
+      plan, no dated order and no clinician date **read as a start visit** and closed NOT YET
+      DUE — a nonresponder was silently missed (former `[CLINICAL AMBIGUITY]`, now resolved).
+      The engine now refuses the session source when the chart holds an Hgb (the delta's own
+      lab, LOINC 718-7) dated ≥ 14 days before the visit (`min_days_since_anchor`), or an
+      oral-iron order with no or partial start date: both response gates hold and **one**
+      DATE question is asked, "When did oral iron start?" (shared by both gates). Proved
+      with `gate-proof.ts response`, both arms, both edge orders: day 21, baseline 24 days
+      old, +0.4, nothing stored → the date question once, no anchor, Steps 2.4/2.6 held;
+      answered 2026-06-01 → anchored CLINICIAN, non-responding, Step 2.6 INCLUDED; answered
+      with today's date → NOT YET DUE, nothing else asked. Genuine start visits are
+      unchanged (baseline 3 days old → NOT YET DUE, nothing asked).
+      **Known cost:** a *start* visit whose chart already holds an older Hgb (e.g. a routine
+      early-pregnancy CBC ≥ 14 days old) is also asked the start date; answering today's
+      date closes both response gates NOT YET DUE with nothing else asked, and does not
+      block the care plan once answered (an unanswered date question does, like any pending
+      question).
   - **Why this replaces the interim question.** v5/v6 asked the provider ("responding / not
     responding / recheck not yet done") because the kernel could not anchor a rise to the
     treatment start, had no "rose by less than" encoding, and read a missing recheck as a
@@ -1495,7 +1505,10 @@ simulator, whatever Hgb values are entered. Only the at-target arm (an undated H
 DP-2, IV iron after non-response) cannot be reached from the simulator.** Exercise it
 through the API with a dated Hgb series and a stored care plan or dated oral-iron order —
 `gate-proof.ts response` does exactly that. (A clinician-entered start date would also
-anchor it, but an undated series still has no points.)
+anchor it, but an undated series still has no points.) Since `engine-recheck-anchor` (v8
+branch): a synthetic patient whose medication list already holds an oral iron of the class
+(undated — "on it since an unknown date") is asked "When did oral iron start?" instead; an
+undated Hgb never counts as ≥ 14 days old, so it does not trigger the question.
 
 *v5/v6:* `gate-hgb-response` was a question gate with no trend arms. The v4 note follows.
 

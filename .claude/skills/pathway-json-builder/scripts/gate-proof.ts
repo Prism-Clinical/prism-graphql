@@ -236,7 +236,8 @@ function engineFor(
 /** A provider answer, replayed in order after the first traversal. */
 type Replay =
   | { dp: string; option: string }            // answerPendingDecision (a DecisionPoint branch)
-  | { gate: string; answer: GateAnswer };     // answerGateQuestion (a question gate)
+  | { gate: string; answer: GateAnswer }      // answerGateQuestion (a question gate)
+  | { anchor: string; answer: GateAnswer };   // a window_from start date (DATE), keyed on the anchor
 
 /**
  * Traverse; then give each answer the way the live app does — one at a time,
@@ -264,15 +265,18 @@ async function resolveSession(opts: {
   const r = await engine.traverse(graph, opts.patient, answers);
   let pending = r.pendingQuestions;
   let redFlags = r.redFlags;
-  const idOf = (step: Replay) => ('dp' in step ? step.dp : step.gate);
+  const idOf = (step: Replay) => ('dp' in step ? step.dp : 'gate' in step ? step.gate : step.anchor);
   const asked = (id: string) =>
-    pending.some((q: any) => q.gateId === id || (q.askedByNodeIds ?? []).includes(id));
+    pending.some((q: any) => q.gateId === id || (q.askedByNodeIds ?? []).includes(id) || q.datumKey === id);
   const give = async (step: Replay) => {
     const nodeId = idOf(step);
     answers.set(nodeId, 'dp' in step ? ({ selectedOption: step.option } as GateAnswer) : step.answer);
+    // An anchor answer re-disposes every gate that asked for it (anchor-answer.ts).
+    const q = 'anchor' in step ? pending.find((p: any) => p.datumKey === nodeId) as any : undefined;
+    const seeds = q ? [q.gateId, ...(q.askedByNodeIds ?? [])] : [nodeId];
     const rr = await engine.resolveIncrementally(
-      new Set([nodeId]), r.resolutionState, r.dependencyMap!, graph, opts.patient, answers,
-      { pendingQuestions: pending, redFlags, alsoDropGateIds: [nodeId] } as never,
+      new Set(seeds), r.resolutionState, r.dependencyMap!, graph, opts.patient, answers,
+      { pendingQuestions: pending, redFlags, alsoDropGateIds: seeds } as never,
     );
     pending = rr.pendingQuestions;
     redFlags = rr.redFlags;
@@ -438,6 +442,8 @@ const DAY21 = '2026-06-22T15:00:00.000Z';
 const IRON_START = '2026-06-01';
 const BASELINE_DATE = '2026-05-29';
 const RECHECK_DATE = '2026-06-20';
+/** The oral-iron anchor's question key (anchored-window.ts anchorKeyFor): one DATE question per class. */
+const ORAL_IRON_ANCHOR = 'anchor:medication_start:oral-iron-repletion';
 async function proveResponse(): Promise<void> {
   console.log(`\n=== response: oral-iron response check on chart data (${ANEMIA}) ===`);
   const RESPONSE_GATES = ['gate-hgb-response', 'gate-hgb-nonresponse'];
@@ -463,9 +469,9 @@ async function proveResponse(): Promise<void> {
       /** One visit. `hgb`: [value, date] pairs; `start`: the stored oral-iron start (absent at the start visit). */
       const visit = (o: {
         asOf: string; hgb: Array<[number, string]>; attrs?: Record<string, number>; start?: string;
-        meds?: Array<[string, string]>;
+        meds?: Array<[string, string]>; ask?: Replay[];
       }) => resolveSession({
-        file: ANEMIA, reverse, replay: choice, asOf: o.asOf, oralIronStart: o.start,
+        file: ANEMIA, reverse, replay: choice, asOf: o.asOf, oralIronStart: o.start, ask: o.ask,
         patient: patientWith([...base, ...o.hgb.map(([v, date]) => ['718-7', v, date] as Lab)], o.attrs ?? {}, [], o.meds ?? []),
       });
       const notYetDue = (r: { state: any }) => {
@@ -572,9 +578,35 @@ async function proveResponse(): Promise<void> {
       r = await visit({ asOf: DAY21, meds: [['310325', IRON_START]], hgb: [[9.5, BASELINE_DATE], [9.9, RECHECK_DATE]], attrs: { gestational_age_weeks: 20 } });
       expect('anchor source', String(r.state.get('gate-hgb-nonresponse')?.windowAnchors?.[0]?.source), 'MEDICATION_ORDER');
       expect('step-2-6 nonresponse', status(r.state, 'step-2-6'), 'INCLUDED');
-      console.log('    day 21, +0.4, no care plan, no order, no clinician date — reads as a start visit (NOT YET DUE):');
+      // engine-recheck-anchor: the session source is refused when the chart shows
+      // the course under way — here the baseline Hgb is ≥ 14 days old — so the
+      // visit asks the start date instead of closing NOT YET DUE (the v7 silent
+      // miss). Answering it anchors on the clinician's date.
+      console.log('    day 21, +0.4, no care plan, no order, no clinician date — asks "When did oral iron start?" once:');
       r = await visit({ asOf: DAY21, hgb: [[9.5, BASELINE_DATE], [9.9, RECHECK_DATE]], attrs: { gestational_age_weeks: 20 } });
-      expect('anchor source', String(r.state.get('gate-hgb-nonresponse')?.windowAnchors?.[0]?.source), 'SESSION_RECOMMENDATION');
+      const dq = r.pending.filter((p: any) => p.datumKey === ORAL_IRON_ANCHOR) as any[];
+      expect('start-date questions', String(dq.length), '1');
+      expect('answer type', String(dq[0]?.answerType), 'DATE');
+      expect('prompt', String(dq[0]?.prompt), 'When did oral iron start?');
+      expect('asked by both response gates', JSON.stringify([dq[0]?.gateId, ...(dq[0]?.askedByNodeIds ?? [])].filter((x, i, a) => a.indexOf(x) === i).sort()),
+        JSON.stringify(RESPONSE_GATES_SORTED));
+      expect('no anchor resolved', String(r.state.get('gate-hgb-nonresponse')?.windowAnchors?.[0]?.source), 'undefined');
+      for (const g of RESPONSE_GATES) {
+        expect(g, status(r.state, g), 'PENDING_QUESTION');
+        expect(`${g} not yet due`, String(r.state.get(g)?.notYetDue === true), 'false');
+      }
+      for (const id of ['step-2-4', 'step-2-6']) expect(id, status(r.state, id), 'PENDING_QUESTION');
+      console.log('      answered 2026-06-01 (21 days ago) — anchored on the clinician\'s date: nonresponder:');
+      r = await visit({ asOf: DAY21, hgb: [[9.5, BASELINE_DATE], [9.9, RECHECK_DATE]], attrs: { gestational_age_weeks: 20 },
+        ask: [{ anchor: ORAL_IRON_ANCHOR, answer: { dateValue: IRON_START } as GateAnswer }] });
+      expect('anchor source', String(r.state.get('gate-hgb-nonresponse')?.windowAnchors?.[0]?.source), 'CLINICIAN');
+      expect('gate-hgb-nonresponse', status(r.state, 'gate-hgb-nonresponse'), 'INCLUDED');
+      expect('step-2-6 nonresponse', status(r.state, 'step-2-6'), 'INCLUDED');
+      expect('step-2-4 maintenance', status(r.state, 'step-2-4'), 'GATED_OUT');
+      expect('response questions', String(regionQuestions(r.pending).length), '0');
+      console.log('      answered today (a start visit with an older Hgb on file) — NOT YET DUE, nothing else asked:');
+      r = await visit({ asOf: DAY21, hgb: [[9.5, BASELINE_DATE], [9.9, RECHECK_DATE]], attrs: { gestational_age_weeks: 20 },
+        ask: [{ anchor: ORAL_IRON_ANCHOR, answer: { dateValue: '2026-06-22' } as GateAnswer }] });
       for (const g of RESPONSE_GATES) expect(`${g} not yet due`, String(r.state.get(g)?.notYetDue === true), 'true');
       expect('step-2-6 nonresponse', status(r.state, 'step-2-6'), 'GATED_OUT');
       expect('response questions', String(regionQuestions(r.pending).length), '0');
