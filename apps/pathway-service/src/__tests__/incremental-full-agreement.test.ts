@@ -520,6 +520,8 @@ const SCENARIOS: Scenario[] = [
         'step-2-9': 'INCLUDED', 'gate-iv-iron-ga-direct': 'INCLUDED', 'step-2-10': 'INCLUDED',
         'stage-2-oral': 'EXCLUDED', 'gate-oral-bridge-ga': 'GATED_OUT', 'stage-2-oral-bridge': 'GATED_OUT',
         'gate-hgb-response': 'GATED_OUT', 'gate-hgb-nonresponse': 'GATED_OUT',
+        // v9: the ferritin that opened Stage 2 satisfies IV iron's ferritin check; none is ordered.
+        'gate-ida-confirmed-iv': 'INCLUDED', 'step-2-12': 'GATED_OUT',
       }),
       ...responseQuestions(pending),
     ],
@@ -534,8 +536,64 @@ const SCENARIOS: Scenario[] = [
         'step-2-9': 'INCLUDED', 'gate-iv-iron-ga-direct': 'GATED_OUT', 'step-2-10': 'GATED_OUT',
         'gate-oral-bridge-ga': 'INCLUDED', 'stage-2-oral-bridge': 'INCLUDED', 'step-2-1': 'INCLUDED', 'step-2-3': 'INCLUDED',
         'stage-2-oral': 'EXCLUDED',
+        // v9: no ferritin on file — one is ordered; IV iron is closed by GA first, so it is not asked for.
+        'step-2-12': 'INCLUDED', 'lab-17': 'INCLUDED', 'gate-ida-confirmed-iv': 'GATED_OUT',
       }),
       ...RESPONSE_GATES.filter((g) => r.resolutionState.get(g)?.notYetDue !== true).map((g) => `${g} is not NOT_YET_DUE`),
+      ...responseQuestions(pending),
+      ...pending.filter((q) => q.datumKey === 'LOINC:2276-4').map(() => 'ferritin asked at GA 12'),
+    ],
+  },
+  // Anemia v9: IV iron first needs a ferritin < 30 on file (gate-ida-confirmed's
+  // condition, copied as gate-ida-confirmed-iv behind the GA gate). The empiric
+  // arm has none, so IV iron first orders one (Step 2.12), starts oral iron
+  // meanwhile (gate-oral-bridge-ga: no ferritin on file, OR GA < 14 with iron
+  // deficiency confirmed) and holds IV iron on a ferritin question. At the next
+  // visit the ferritin is on the chart and decides.
+  {
+    name: 'anemia v9: empiric, IV iron first, no ferritin, GA 20 — ferritin ordered, oral iron meanwhile, IV iron waits',
+    file: ANEMIA, patient: patientOf({ codes: ['O99.012'], labs: empiricLabs(START_HGB), attrs: { gestational_age_weeks: 20 } }),
+    visit: { asOf: DAY0 },
+    answers: [['dp-1', pick(EMPIRIC)], ['dp-3', pick('step-2-9')]], mustAnswer: ['dp-1', 'dp-3'],
+    outcome: (r, pending) => [
+      ...expectStatus(r, {
+        'step-2-12': 'INCLUDED', 'lab-17': 'INCLUDED',
+        'gate-oral-bridge-ga': 'INCLUDED', 'stage-2-oral-bridge': 'INCLUDED', 'step-2-1': 'INCLUDED', 'med-1': 'INCLUDED',
+        'gate-iv-iron-ga-direct': 'INCLUDED', 'step-2-13': 'INCLUDED',
+        'gate-ida-confirmed-iv': 'PENDING_QUESTION', 'step-2-10': 'PENDING_QUESTION', 'med-13': 'PENDING_QUESTION',
+      }),
+      ...RESPONSE_GATES.filter((g) => r.resolutionState.get(g)?.notYetDue !== true).map((g) => `${g} is not NOT_YET_DUE`),
+      ...(pending.filter((q) => q.datumKey === 'LOINC:2276-4' && asks(q, 'gate-ida-confirmed-iv')).length === 1
+        ? [] : ['no single ferritin question from gate-ida-confirmed-iv']),
+    ],
+  },
+  {
+    name: 'anemia v9: empiric, IV iron first, ferritin 12 on the chart, GA 20 — IV iron; oral iron and the ferritin order close',
+    file: ANEMIA,
+    patient: patientOf({ codes: ['O99.012'], labs: [...empiricLabs(START_HGB), ['2276-4', 12]], attrs: { gestational_age_weeks: 20 } }),
+    visit: { asOf: DAY0 },
+    answers: [['dp-1', pick(EMPIRIC)], ['dp-3', pick('step-2-9')]], mustAnswer: ['dp-1', 'dp-3'],
+    outcome: (r, pending) => [
+      ...expectStatus(r, {
+        'gate-ida-confirmed-iv': 'INCLUDED', 'step-2-10': 'INCLUDED', 'med-13': 'INCLUDED',
+        'gate-oral-bridge-ga': 'GATED_OUT', 'stage-2-oral-bridge': 'GATED_OUT', 'step-2-1': 'GATED_OUT', 'med-1': 'GATED_OUT',
+        'step-2-12': 'GATED_OUT', 'lab-17': 'GATED_OUT',
+      }),
+      ...responseQuestions(pending),
+    ],
+  },
+  {
+    name: 'anemia v9: empiric, IV iron first, ferritin 50 on the chart, GA 20 — no IV iron, no oral iron',
+    file: ANEMIA,
+    patient: patientOf({ codes: ['O99.012'], labs: [...empiricLabs(START_HGB), ['2276-4', 50]], attrs: { gestational_age_weeks: 20 } }),
+    visit: { asOf: DAY0 },
+    answers: [['dp-1', pick(EMPIRIC)], ['dp-3', pick('step-2-9')]], mustAnswer: ['dp-1', 'dp-3'],
+    outcome: (r, pending) => [
+      ...expectStatus(r, {
+        'gate-ida-confirmed-iv': 'GATED_OUT', 'step-2-10': 'GATED_OUT', 'med-13': 'GATED_OUT',
+        'gate-oral-bridge-ga': 'GATED_OUT', 'step-2-1': 'GATED_OUT', 'med-1': 'GATED_OUT',
+        'step-2-12': 'GATED_OUT', 'lab-17': 'GATED_OUT',
+      }),
       ...responseQuestions(pending),
     ],
   },
