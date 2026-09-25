@@ -41,8 +41,9 @@
 //                    path, ferritin 50 → no iron; traits / uncoded unchanged
 //   ghtn-shared-labs gestational hypertension v2: BP, severity-panel and urine-protein
 //                    labs split per host step — each follows its own step's gate
-//   ghtn-seizure     gestational hypertension v4: Guid-5 "Seizure: call 911" follows
-//                    Step 4.4 (outpatient, no severe features) in both edge orders
+//   ghtn-seizure     gestational hypertension v5: Guid-5 "Seizure: call 911" sits on
+//                    Step 2.1 (unconditional) — INCLUDED for outpatient, severe-
+//                    feature, postpartum and non-hypertensive patients alike
 //   uti-shared-labs  UTI in pregnancy v3: organism ID, susceptibility and test-of-cure
 //                    culture labs split per host step — each follows its own step's
 //                    gate; the one Step 1.1/2.1 culture (both unconditional) is
@@ -1221,12 +1222,13 @@ async function proveGhtnSharedLabs(): Promise<void> {
 // gated by gate-no-severe-features, so Guid-5 reaches the patients managed as
 // outpatients and follows that gate — never a severe-feature patient's plan.
 async function proveGhtnSeizure(): Promise<void> {
-  console.log(`\n=== ghtn-seizure: Guid-5 "Seizure: call 911" follows Step 4.4 (${GHTN}) ===`);
+  console.log(`\n=== ghtn-seizure: Guid-5 "Seizure: call 911" on Step 2.1 — every patient (${GHTN}) ===`);
   const pw = JSON.parse(readFileSync(resolve(GHTN), 'utf8'));
   const g5 = pw.nodes.find((n: any) => n.id === 'guid-5');
   const g1 = pw.nodes.find((n: any) => n.id === 'guid-1');
   expect('guid-5 topic', String(g5?.properties?.topic), 'Seizure: call 911');
   expect('guid-5 is its own node (guid-1 text has no seizure line)', String(/seizure/i.test(g1?.properties?.instructions ?? '')), 'false');
+  expect('guid-5 has one host', JSON.stringify(pw.edges.filter((e: any) => e.to === 'guid-5' && e.type === 'HAS_GUIDANCE').map((e: any) => e.from)), '["step-2-1"]');
   const q = (gate: string, answer: GateAnswer): Replay => ({ gate, answer });
   const diagnosed = (severe: boolean): Replay[] => [
     q('gate-aspirin-indicated', NO),
@@ -1237,29 +1239,48 @@ async function proveGhtnSeizure(): Promise<void> {
   ];
   const HIGH_BP = { systolic_bp: 150, diastolic_bp: 95 };
   const LABS: Array<[string, number]> = [['777-3', 220], ['2160-0', 0.7]];
+  const seizureLine = (r: { state: any }) => {
+    expect('guid-5 seizure line', status(r.state, 'guid-5'), 'INCLUDED');
+    expect('guid-5 sits under', String(r.state.get('guid-5')?.parentNodeId), 'step-2-1');
+  };
   for (const reverse of [false, true]) {
     console.log(`  -- edge order: ${reverse ? 'reversed' : 'file'}`);
     const run = (codes: string[], vitals: Record<string, number>, ask: Replay[]) =>
       resolveSession({ file: GHTN, reverse, patient: patientOf({ codes, labs: LABS, vitals }), ask });
 
-    console.log('  gestational HTN (O13.3), no severe features — outpatient: seizure line with the warning signs:');
+    console.log('  gestational HTN (O13.3), no severe features — outpatient: seizure line + the warning signs:');
     let r = await run(['O13.3'], HIGH_BP, diagnosed(false));
+    seizureLine(r);
     expect('step-4-4 safety-netting', status(r.state, 'step-4-4'), 'INCLUDED');
-    expectAll('(Step 4.4 guidance)', r.state, ['guid-1', 'guid-5'], 'INCLUDED');
-    expect('guid-5 sits under', String(r.state.get('guid-5')?.parentNodeId), 'step-4-4');
+    expect('guid-1 warning signs (Step 4.4)', status(r.state, 'guid-1'), 'INCLUDED');
 
     console.log('  preeclampsia (O14.03), no severe features — same:');
     r = await run(['O14.03'], HIGH_BP, diagnosed(false));
-    expectAll('(Step 4.4 guidance)', r.state, ['guid-1', 'guid-5'], 'INCLUDED');
+    seizureLine(r);
+    expect('guid-1 warning signs (Step 4.4)', status(r.state, 'guid-1'), 'INCLUDED');
 
-    console.log('  gestational HTN, severe feature on assessment — Stage 4 closed, escalated (flagged):');
+    console.log('  gestational HTN, severe feature on assessment — Stage 4 closed, escalated; seizure line still shown (v5):');
     r = await run(['O13.3'], HIGH_BP, diagnosed(true));
     expect('stage-4', status(r.state, 'stage-4'), 'GATED_OUT');
-    expectAll('(Step 4.4 guidance)', r.state, ['guid-1', 'guid-5'], 'GATED_OUT');
+    expect('guid-1 warning signs (Step 4.4, closed with Stage 4)', status(r.state, 'guid-1'), 'GATED_OUT');
+    expect('step-3-2 severe feature — immediate evaluation', status(r.state, 'step-3-2'), 'INCLUDED');
+    seizureLine(r);
 
-    console.log('  BP 120/75, aspirin indicated — no hypertensive disorder: no seizure line:');
+    console.log('  postpartum — preeclampsia complicating the puerperium (O14.05), diagnosed: postpartum BP follow-up + seizure line (v5):');
+    r = await run(['O14.05'], HIGH_BP, diagnosed(false));
+    expect('step-5-2 postpartum BP follow-up', status(r.state, 'step-5-2'), 'INCLUDED');
+    seizureLine(r);
+
+    console.log('  postpartum, severe feature — escalated, postpartum follow-up; seizure line still shown:');
+    r = await run(['O14.05'], HIGH_BP, diagnosed(true));
+    expect('step-5-2 postpartum BP follow-up', status(r.state, 'step-5-2'), 'INCLUDED');
+    expect('stage-4', status(r.state, 'stage-4'), 'GATED_OUT');
+    seizureLine(r);
+
+    console.log('  BP 120/75, aspirin indicated — no hypertensive disorder: the seizure line is shown too (every patient, v5):');
     r = await run([], { systolic_bp: 120, diastolic_bp: 75 }, [q('gate-aspirin-indicated', YES)]);
-    expect('guid-5', status(r.state, 'guid-5'), 'GATED_OUT');
+    seizureLine(r);
+    expect('guid-1 warning signs (Step 4.4)', status(r.state, 'guid-1'), 'GATED_OUT');
   }
 }
 

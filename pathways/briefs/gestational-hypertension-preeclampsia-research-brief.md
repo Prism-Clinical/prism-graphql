@@ -1,6 +1,6 @@
 # Pathway Research Brief — Gestational Hypertension & Preeclampsia
 
-JSON: pathways/json/gestational-hypertension-preeclampsia.json @ version 4
+JSON: pathways/json/gestational-hypertension-preeclampsia.json @ version 5
 
 **Status: DRAFT v1 for physician review — not yet approved for JSON build.**
 
@@ -46,7 +46,12 @@ claims confirmed. Flags: `[GAP]` unsourceable · `[FALLBACK SOURCE]` non-US basi
 
 - **Logical ID**: `gestational-hypertension-preeclampsia`
 - **Title**: Gestational Hypertension and Preeclampsia — Outpatient Screening, Diagnosis and Surveillance
-- **Version**: 4 (JSON `"4"`; was `"3"`). `[DECISION — Josh 2026-09-24]` A separate
+- **Version**: 5 (JSON `"5"`; was `"4"`). `[DECISION — Josh 2026-09-24]` Guid-5 "Seizure:
+  call 911" moves from Step 4.4 to Step 2.1 (BP at every prenatal visit — unconditional), so
+  every patient on the pathway sees it, including patients with severe features and
+  postpartum patients, whom Step 4.4 never reached (§9). Still its own node, separate from
+  Guid-1's warning-signs reference. Imports as **NEW_VERSION**; no gate change.
+  v4 history: `[DECISION — Josh 2026-09-24]` A separate
   GHTN-only Guidance node, Guid-5 "Seizure: call 911" (PB 222), on Step 4.4 next to Guid-1
   (§9). Closes the v3 seizure gap (§18). Imports as **NEW_VERSION**; no gate change.
   v3 history: `[DECISION — Josh 2026-09-24]` Guid-1 (urgent
@@ -153,7 +158,8 @@ gate-control check now fails duplicate stage numbers.
 - **Step 2.1 — Blood pressure measurement at every prenatal visit** *(unconditional)*:
   measure with a correctly sized cuff (length 1.5× upper-arm circumference, or a bladder
   encircling ≥80% of the arm), patient upright after ≥10 minutes' rest, no tobacco or
-  caffeine for 30 minutes beforehand. [1][7]
+  caffeine for 30 minutes beforehand. Hosts Guid-5, "Seizure: call 911" (v5 — every patient;
+  §9). [1][7]
 - **Step 2.2 — Confirm hypertension** *(gated by `gate-bp-elevated`)*: repeat the measurement
   to establish whether BP ≥140/90 is persistent — two occasions at least four hours apart —
   after 20 weeks in a previously normotensive patient. Severe-range values are confirmed over
@@ -179,8 +185,8 @@ gate-control check now fails duplicate stage numbers.
   one to two times per week. [1]
 - **Step 4.4 — Patient safety-netting and warning signs** *(gated by
   `gate-no-severe-features`)*: deliver the urgent maternal warning signs and confirm the
-  patient knows how and when to report them; tell her that a seizure means 911 (Guid-5,
-  v4). [1][10][11]
+  patient knows how and when to report them (Guid-1). The seizure line (Guid-5) was hosted
+  here in v4 and moved to Step 2.1 in v5 (§9). [1][10][11]
 - **Step 5.1 — Escalate to inpatient evaluation** *(gated by `gate-escalation-required`)*:
   any severe feature, any condition precluding expectant management, or severe-range BP not
   responding to therapy. [1]
@@ -592,27 +598,34 @@ so the proof pre-loads its gate answers (see the comment in `gate-proof.ts`).
   - v2 `[DECISION — LICENSING]` history: the official ACOG/AIM card is licensed for
     distribution only in its entirety and without modification, so the v2 paraphrase was
     clinician-facing scaffolding only. v3 supersedes it. [1][10][11]
-- **Guid-5 — topic "Seizure: call 911"** (on Step 4.4; v4): category safety-netting.
-  Instructions (exact JSON text): "Tell the patient and her family that a seizure is an
-  emergency: call 911 right away. Source: ACOG Practice Bulletin No. 222." [1]
+- **Guid-5 — topic "Seizure: call 911"** (on **Step 2.1** since v5; Step 4.4 in v4):
+  category safety-netting. Instructions (exact JSON text, unchanged): "Tell the patient and her
+  family that a seizure is an emergency: call 911 right away. Source: ACOG Practice Bulletin
+  No. 222." [1]
   `[DECISION — Josh 2026-09-24]` **Restore the seizure instruction as its own GHTN-only node,
-  outside the shared warning-signs block.** It is sourced to PB 222 [1] (eclampsia), not to the
-  AIM card, so the no-list-items rule for Guid-1 does not reach it; it carries one instruction,
-  not a list. A separate node (own topic) leaves Guid-1 byte-identical to routine-prenatal-care's
-  Guid-1, so a co-matched patient still sees one warning-signs block, plus this line.
-  - `[BUILD NOTE]` **Host: Step 4.4** (the builder's choice, for review), where the v2
-    seizure line lived (inside Guid-1). It restores exactly the
-    v2 audience: patients with a hypertensive disorder managed as **outpatients** — the ones
-    sent home, for whom "who do I call" is the question. Step 4.4 is gated by
-    `gate-no-severe-features`, not always open. The always-open steps (1.1 risk screening, 2.1
-    BP at every visit) reach every pregnant patient matched to this pathway, most of whom have
-    no hypertensive disorder; the instruction is framed for the patient being managed for one.
-    Proved with `gate-proof.ts ghtn-seizure`: Guid-5 follows Step 4.4 in both edge orders.
-  - `[CLINICAL AMBIGUITY — for Josh]` Not reached: (a) patients with **severe features** —
-    `gate-no-severe-features` closes Stage 4, so Step 4.4 and Guid-5 are GATED_OUT (they are
-    escalated to inpatient evaluation, Step 5.1); (b) **postpartum** — eclampsia can occur after
-    birth, and Step 5.2 (postpartum BP follow-up, open for every diagnosed patient) carries no
-    seizure line. Adding one there would be a second node (one node per host step).
+  outside the shared warning-signs block** (v4). It is sourced to PB 222 [1] (eclampsia), not to
+  the AIM card, so the no-list-items rule for Guid-1 does not reach it; it carries one
+  instruction, not a list. A separate node (own topic) leaves Guid-1 byte-identical to
+  routine-prenatal-care's Guid-1, so a co-matched patient still sees one warning-signs block,
+  plus this line.
+  - `[DECISION — Josh 2026-09-24]` **Every patient on the pathway sees it (v5).** Host: **Step
+    2.1** "Blood pressure measurement at every prenatal visit" — root-connected, unconditional,
+    so INCLUDED in every session; Guid-5 has that one host (moved, not shared: a Guidance node
+    hosted both inside and outside a gate takes whichever host is decided first). Chosen over
+    Step 1.1 (risk screening) because Step 2.1 is the per-visit BP step, where hypertension —
+    and so eclampsia risk — is found; `[BUILD NOTE]` the host is the builder's pick. Guid-1
+    (warning signs) stays on Step 4.4. Proved with `gate-proof.ts ghtn-seizure`, both edge
+    orders: Guid-5 INCLUDED under Step 2.1 for gestational HTN and preeclampsia managed as
+    outpatients, a **severe-feature** patient (Stage 4 and Guid-1 GATED_OUT, Step 3.2
+    INCLUDED), a **postpartum** patient (O14.05 — preeclampsia complicating the puerperium —
+    with Step 5.2 postpartum BP follow-up INCLUDED, with and without a severe feature), and a
+    patient with no hypertensive disorder (BP 120/75).
+  - ~~`[CLINICAL AMBIGUITY — for Josh]` Not reached: (a) patients with **severe features**; (b)
+    **postpartum**~~ — **resolved in v5** by the move above. v4's `[BUILD NOTE]` for the record:
+    Step 4.4 restored exactly v2's audience (outpatients with a hypertensive disorder), and the
+    always-open steps were passed over because they also reach pregnant patients with no
+    hypertensive disorder. Josh's v5 decision accepts that: the instruction is general enough
+    for any pregnant patient ("a seizure is an emergency: call 911").
 - **Guid-2 — topic "Measuring your blood pressure at home"** (on Step 4.1): category education.
   Instructions: use an upper-arm cuff, correctly sized — the cuff length should be about one
   and a half times around your upper arm. Sit upright and rest for at least ten minutes first.
@@ -764,7 +777,7 @@ directly. No `lab.*`, `allergy.*` or `patient.*` attribute is referenced anywher
 - Med-1: [1][2][3] · Med-2: [1][5][6] · Med-3: [5][6] · Med-4: [1] · Med-5: [5][6] · Med-6: [5][6]
 - Lab-1 to Lab-6: [1] · Lab-7 to Lab-11: [1] · Lab-12 to Lab-27 (per-host copies, §6): [1]
 - Img-1, Img-2, Img-3: [1] · Proc-1, Proc-2: [1]
-- Guid-1: [1][10][11] · Guid-2: [1][13] · Guid-3: [1] · Guid-4: [1] · Guid-5 (v4): [1]
+- Guid-1: [1][10][11] · Guid-2: [1][13] · Guid-3: [1] · Guid-4: [1] · Guid-5 (v4; on Step 2.1 since v5): [1]
 
 **Cannot cite — evidence attaches to the host Step:** all Gates → their attached Step per the
 §4b rationale references; QM-1 → Step 5.2 [8]; QM-2 → Step 1.3 [1][2]; Sched-1 → Step 1.3 [1];
@@ -823,8 +836,9 @@ pregnancy. Please ratify, and see §18 G9.
 ### ~~Open after v3 — the seizure instruction~~ — RESOLVED (v4)
 
 `[DECISION — Josh 2026-09-24]` Restored as **Guid-5, "Seizure: call 911"**, a separate
-GHTN-only Guidance node sourced to PB 222 [1]. `[BUILD NOTE]` Hosted on Step 4.4 (§9 — why,
-and the two patient groups it does not reach). Guid-1 is unchanged and stays byte-identical to
+GHTN-only Guidance node sourced to PB 222 [1]. Hosted on Step 4.4 in v4; **moved to Step 2.1
+in v5** `[DECISION — Josh 2026-09-24]` so every patient sees it, including the severe-feature
+and postpartum patients Step 4.4 never reached (§9). Guid-1 is unchanged and stays byte-identical to
 routine-prenatal-care's. The original note follows.
 
 - ~~`[GAP]`~~ **No node tells the patient that a seizure means 911.** v2's Guid-1 carried a
