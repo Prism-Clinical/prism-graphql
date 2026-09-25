@@ -765,6 +765,19 @@ describe('validatePathwayJson', () => {
         addGateWithCondition(pw, { attribute: 'patient.trimester', operator: 'in', value: [1, 3] });
         expect(validatePathwayJson(pw).valid).toBe(true);
       });
+
+      // The pending-datum prompt reads `display` off an attribute condition,
+      // so the authoring boundary has to admit it there too.
+      it('accepts a valid attribute condition with a display decorator', () => {
+        const pw = clonePathway(REFERENCE_PATHWAY);
+        addGateWithCondition(pw, {
+          attribute: 'patient.gestational_age_weeks', operator: 'greater_or_equal', value: 20,
+          display: 'Gestational age (weeks)',
+        });
+        const result = validatePathwayJson(pw);
+        expect(result.errors).not.toContainEqual(expect.stringContaining('unknown key'));
+        expect(result.valid).toBe(true);
+      });
     });
   });
 

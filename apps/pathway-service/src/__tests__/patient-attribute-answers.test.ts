@@ -160,6 +160,8 @@ describe('a pending patient.* datum can be answered, whatever its type', () => {
     const q = created.pendingQuestions[0];
     expect(q.datumKey).toBe('patient.gestational_age_weeks');
     expect(q.answerType).toBe(AnswerType.NUMERIC);
+    // The built-in label, not the machine key.
+    expect(q.prompt).toBe('Gestational age (weeks) — current value?');
 
     const session = storedFrom(created);
     await answer(q.gateId, { numericValue: 20 });
@@ -172,6 +174,17 @@ describe('a pending patient.* datum can be answered, whatever its type', () => {
       datumKey: 'patient.gestational_age_weeks', value: 20, answerType: AnswerType.NUMERIC,
       assertedAsOf: PINNED, answeredAt: expect.any(String),
     });
+  });
+
+  it('an authored display on the condition reaches the pending prompt; the key stays the path', async () => {
+    const graph = oneGate({
+      attribute: 'patient.gestational_age_weeks', operator: 'greater_or_equal', value: 18,
+      display: 'Gestational age by dating ultrasound (weeks)',
+    });
+    const created = await start(graph);
+    const q = created.pendingQuestions[0];
+    expect(q.prompt).toBe('Gestational age by dating ultrasound (weeks) — current value?');
+    expect(q.datumKey).toBe('patient.gestational_age_weeks');
   });
 
   it('BOOLEAN: patient.prior_cesarean equals true — pend, answer false, gate decided "no", question gone', async () => {

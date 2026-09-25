@@ -1,6 +1,7 @@
 import type { AttributeCodeMap } from './types';
 import { AnswerType, GateCondition, isAttributeCondition } from './types';
 import { isTemporalOperator, operatorClass } from './temporal/contract';
+import { patientAttributeLabel } from './attribute-vocabulary';
 
 /**
  * What to ask a provider for, when a gate could not evaluate its condition.
@@ -134,9 +135,15 @@ export function askFor(
           ? { kind: 'lab', code: entry.code, system: entry.system }
           : { kind: 'attribute', path };
 
+    // What the clinician reads: the authored `display` when there is one, else
+    // the built-in label for a known `patient.*` attribute, else the path
+    // itself. The KEY stays the path whatever the label, so two gates that
+    // label one datum differently still ask once.
+    const label = authoredDisplay(condition.display) ?? patientAttributeLabel(path) ?? path;
+
     return {
       datumKey: path,
-      prompt: `${path} — current value?`,
+      prompt: `${label} — current value?`,
       ...attributeAnswerShape(condition, target),
       target,
     };
@@ -164,7 +171,7 @@ export function askFor(
     // The authored display when there is one — a clinician reads "Haemoglobin"
     // faster than "718-7" — but the KEY is always code+system, so a pathway
     // that labels the same lab differently in two gates still asks once.
-    const label = condition.display ?? value;
+    const label = authoredDisplay(condition.display) ?? value;
     return {
       datumKey: `${system}:${value}`,
       prompt: `${label} (${system} ${value}) — most recent value?`,
@@ -176,6 +183,17 @@ export function askFor(
   // A scalar operator on conditions / medications / allergies is not something
   // the fact model can take a value for.
   return null;
+}
+
+/**
+ * An authored `display`, or `undefined` when there is none worth showing.
+ * Blank text is treated as absent: a prompt that reads " — current value?"
+ * names nothing.
+ */
+function authoredDisplay(display: unknown): string | undefined {
+  if (typeof display !== 'string') return undefined;
+  const trimmed = display.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
 }
 
 /**

@@ -17,6 +17,22 @@ export const KNOWN_PATIENT_ATTRIBUTES = [
   { name: 'gestational_age_weeks', display: 'Gestational age (weeks)', valueType: 'number' as const, unit: 'weeks' },
 ] as const;
 
+/**
+ * The human label for a `patient.*` attribute path, or `undefined` when the
+ * path is not one of `KNOWN_PATIENT_ATTRIBUTES`.
+ *
+ * Read by the pending-datum prompt so a clinician is asked for "Gestational
+ * age (weeks)" rather than the machine key `patient.gestational_age_weeks`.
+ * Deliberately `patient.*` only: the other namespaces have no label source
+ * here (the code map has no display column), and a guessed label on a lab is
+ * worse than its key.
+ */
+export function patientAttributeLabel(path: string): string | undefined {
+  if (!path.startsWith('patient.')) return undefined;
+  const name = path.slice('patient.'.length);
+  return KNOWN_PATIENT_ATTRIBUTES.find((p) => p.name === name)?.display;
+}
+
 export function buildAttributeVocabulary(codeMapRows: AttributeCodeEntry[]): AttributeVocabularyEntry[] {
   const fromCodeMap: AttributeVocabularyEntry[] = codeMapRows.map((r) => ({
     attribute: r.attributeName,

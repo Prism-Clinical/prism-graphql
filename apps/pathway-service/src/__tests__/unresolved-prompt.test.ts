@@ -223,3 +223,67 @@ describe('askFor — the answer type of a patient.* datum', () => {
       .toBe(AnswerType.NUMERIC);
   });
 });
+
+/**
+ * What an attribute datum's prompt READS as. It used to be the machine key —
+ * "patient.gestational_age_weeks — current value?" — even when the author had
+ * written a `display`, which lab conditions already honoured. The label falls
+ * back authored display → built-in patient label → path; the KEY and TARGET
+ * never move with it.
+ */
+describe('askFor — the readable label on an attribute prompt', () => {
+  it('uses the authored display when the condition has one', () => {
+    const ask = askFor(cond({
+      attribute: 'patient.gestational_age_weeks', operator: 'greater_or_equal', value: 18,
+      display: 'Gestational age at booking (weeks)',
+    }))!;
+    expect(ask.prompt).toBe('Gestational age at booking (weeks) — current value?');
+    expect(ask.datumKey).toBe('patient.gestational_age_weeks');
+    expect(ask.target).toEqual({ kind: 'attribute', path: 'patient.gestational_age_weeks' });
+  });
+
+  it('an authored display wins on a non-patient attribute too', () => {
+    const codeMap = new Map([
+      ['lab.hematocrit', {
+        attributeName: 'lab.hematocrit', namespace: 'lab',
+        system: 'LOINC', code: '4544-3', valueType: 'number' as const,
+      }],
+    ]);
+    const ask = askFor(cond({
+      attribute: 'lab.hematocrit', operator: 'less_than', value: 33, display: 'Hematocrit (%)',
+    }), codeMap)!;
+    expect(ask.prompt).toBe('Hematocrit (%) — current value?');
+    expect(ask.datumKey).toBe('lab.hematocrit');
+    expect(ask.target).toEqual({ kind: 'lab', code: '4544-3', system: 'LOINC' });
+  });
+
+  it.each([
+    ['patient.gestational_age_weeks', 18, 'Gestational age (weeks)'],
+    ['patient.trimester', 2, 'Trimester'],
+    ['patient.rh_factor', 'negative', 'Rh factor'],
+  ])('falls back to the built-in label for a known %s', (attribute, value, label) => {
+    const ask = askFor(cond({ attribute, operator: 'equals', value }))!;
+    expect(ask.prompt).toBe(`${label} — current value?`);
+    expect(ask.datumKey).toBe(attribute);
+    expect(ask.target).toEqual({ kind: 'attribute', path: attribute });
+  });
+
+  it('treats a blank display as absent', () => {
+    const ask = askFor(cond({
+      attribute: 'patient.trimester', operator: 'equals', value: 2, display: '   ',
+    }))!;
+    expect(ask.prompt).toBe('Trimester — current value?');
+  });
+
+  it('falls back to the path for an attribute with no display and no built-in label', () => {
+    const ask = askFor(cond({ attribute: 'patient.prior_cesarean', operator: 'equals', value: true }))!;
+    expect(ask.prompt).toBe('patient.prior_cesarean — current value?');
+    expect(ask.datumKey).toBe('patient.prior_cesarean');
+    expect(ask.target).toEqual({ kind: 'attribute', path: 'patient.prior_cesarean' });
+  });
+
+  it('does not borrow a patient label for the same name in another namespace', () => {
+    const ask = askFor(cond({ attribute: 'vitals.trimester', operator: 'equals', value: 2 }))!;
+    expect(ask.prompt).toBe('vitals.trimester — current value?');
+  });
+});
