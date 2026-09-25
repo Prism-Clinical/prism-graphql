@@ -218,12 +218,13 @@ The GDM brief notes that Josh may drop its duplicates.
 | ID | Decision | Default | Tradeoff |
 |---|---|---|---|
 | D-21 | Trigger set once complications replace Z34: (a) Z34/O09 only; (b) + O24.41x leaves + O99.810; (c) + every co-matched pathway's O-codes; (d) + Z3A leaves (D-17) | **(b)**: the minimum that D-1 itself requires | (a) drops routine care (GBS, Tdap, Rh) the moment GDM is coded without O09. (c)/(d) cover anemia/GHTN/UTI-coded pregnancies too, but widen co-matching. Every O-coded patient then answers the ≥24-week status router |
-| D-22 | ≥24-week **GDM status router**: one SELECT per visit from 24 weeks (not yet screened two-step / one-step / screened negative / already diagnosed) | **Router** (it also carries D-5) | Without it, a diagnosed or screened-negative patient is re-offered screening and asked for a 50-g value. One question per ≥24-week visit is the cost |
+| D-22 | ≥24-week **GDM status router**: one SELECT per visit from 24 weeks (not yet screened two-step / one-step / screened negative / already diagnosed) | **Router** (it also carries D-5) | Without it, a diagnosed or screened-negative patient is re-offered screening and asked for a 50-g value. The cost is one question per ≥24-week visit. Until it is answered it pends, which blocks single-pathway plan generation (§0.6 #10) |
 | D-23 | Scope: include O09.x (high-risk supervision) for **routine elements only**; condition-specific high-risk care is out of scope | **Include O09.x** | v2 excluded greater-than-average risk entirely. O09 patients still need every routine element. Risk-specific add-ons (age ≥40 testing, obesity testing, prior-preterm cervical length, TOLAC) are listed as text, not gated (§3 Step 1.2, §18) |
 | D-24 | Rh encoding: `patient.rh_factor` paired gates (`equals "negative"` → RhIG; `equals "positive"` → no RhIG) vs one BOOLEAN question router | **`patient.rh_factor` pair** | Chart-native, and asks only when absent. The SELECT offers both comparands (the two gates pool options). The attribute's string vocabulary ("negative"/"positive") must match the chart feed; the simulator does not send it, so it asks. A question is simpler but always asks |
 | D-25 | BP ≥140/90 hand-off gate (every visit) → "confirm; record R03.0, or O13/O14 once confirmed" → GHTN pathway | **Include** | It mirrors the D-1 GDM hand-off for USPSTF 2023's every-visit BP screen. It duplicates GHTN's gate for co-matched patients, which share one datum per vital |
 | D-26 | COVID-19 vaccine in pregnancy: ACOG CS 26 (2026) "all pregnant individuals should receive" vs the CDC adult schedule (Jul 2 2025): pregnancy cell "no guidance", with CDC interim considerations (Sep 2026) urging a risk review | **Include per ACOG** (owning society, source hierarchy #1). Role `first_line`, with the conflict stated in the node | Federal and society guidance conflict. Alternatively role `acceptable` with shared-decision text, or omit |
 | D-27 | Import housekeeping: archive `routine-prenatal-care-v1` and `-v2` when this imports | **Archive both** | Leaving them ACTIVE co-matches every Z34.00/Z34.90 patient with two broken graphs (v1 crashes; both duplicate every item) |
+| D-29 | Result gates at the **ordering visit** (GCT, early A1C, 75-g OGTT): a missing value asks, and single-pathway care-plan generation is refused until it is answered (§0.6 #10). Options: (a) split D-22's router into "not yet screened: order the test" vs "resulted: interpret", so the result gate is reached only once a value exists (anemia v5's "recheck not yet done" pattern); (b) `on_unresolved: default` with an `[ON-UNRESOLVED DEFAULT — gate-x]` marker, where a missing value means "not drawn yet" and the next step stays closed; (c) accept it | **(c) keep `ask`** (Josh's numeric rule). Multi-pathway generation, the usual path for pregnancy co-matching, does not block on pending questions | (c) stalls single-pathway plans at ordering visits. (a) costs one more router option but is the cleanest. (b) departs from the rule and would silently close the next step if a result is simply missing from the chart |
 | D-28 | Warning-signs Guidance text: CDC Hear Her list verbatim (the CDC page credits AIM as its developer) vs topic + link only vs a clinician-written list | **CDC text verbatim, pending licensing review** | Word-for-word CDC reuse is the lowest-risk text. If AIM's rights reach the CDC reproduction, fall back to the topic plus a link to cdc.gov/hearher. GHTN's AIM paraphrase has the same question |
 
 ### 0.6 Spec and engine limitations hit
@@ -258,12 +259,26 @@ The GDM brief notes that Josh may drop its duplicates.
    - Not seeded: most Z34/O09 leaves, O99.810, the timed OGTT LOINCs.
 9. **GA is "completed weeks".** Windows "A 0/7–B 6/7" become `≥ A` and `< B+1` (half-open).
    This is correct whether the attribute is an integer or fractional.
-10. **Gated regions (josh-dev spec, Rule 1).** No edge points into a gated stage or step from
+10. **A held gate blocks single-pathway care-plan generation (D-29).**
+    - **Single-pathway generation** refuses a session with **any** `PENDING_QUESTION` node:
+      `care-plan-generator.ts` `validateForGeneration`, blocker `PENDING_GATE`. That covers
+      unanswered question gates and chart gates asking for a missing value.
+    - **Multi-pathway generation** blocks only on unresolved `clinical_role` conflicts and an
+      empty plan: `multi-pathway-resolution.ts` `validateForGeneration`.
+    - The consequence is on the single-pathway path. At the visit that **orders** a test, the
+      result gate asks for a value that cannot exist yet, and the plan cannot be generated
+      until the value is entered. Affected gates:
+      - `gate-gct-positive` (24-week visit);
+      - `gate-overt-diabetes` and `gate-early-abnormal-glucose` (A1C ordering visit);
+      - `gate-75g-diagnostic` (one-step ordering visit).
+    - The question gates behave the same way until they are answered: D-22's router at every
+      visit from 24 weeks, aspirin, early testing and Carpenter–Coustan.
+11. **Gated regions (josh-dev spec, Rule 1).** No edge points into a gated stage or step from
     outside it:
     - no `ESCALATES_TO` anywhere;
     - every node on several hosts is one node per host (for example, CBC Lab-1/Lab-19,
       antibody screen Lab-3/Lab-23, Guid-A4/A4b).
-11. **Negation (`not_includes_code`) is being built on josh-dev, not yet available.** When it
+12. **Negation (`not_includes_code`) is being built on josh-dev, not yet available.** When it
     lands, part of D-22's router could become chart-read:
     - "already diagnosed" = O24.4* present;
     - "not yet diagnosed" = NOT O24.4* AND NOT O24.1*.
@@ -1014,7 +1029,10 @@ Common to all eight:
 - **Condition:** field `labs`, `greater_than`, value `1504-0`, system `LOINC`, threshold
   **139.9**, display `"Glucose 1 h post 50 g glucose (mg/dL)"`, horizon `QUARTER`.
 - **On unresolved: ask.** The OGTT step is held ("Awaiting LOINC:1504-0") until the GCT is
-  resulted. That is the screening prompt.
+  resulted.
+  - At the visit that orders the GCT, a single-pathway session cannot generate its plan until
+    the value is entered (D-29).
+  - The GCT order itself (Step 7.1) is unconditional in Stage 7.
 - **Horizon note:** a GCT drawn early (~12 weeks) for risk factors is still inside QUARTER at
   24 weeks.
   - If it was **positive**, the gate opens the 100-g OGTT. That matches PB 180: go straight to
