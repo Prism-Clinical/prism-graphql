@@ -1270,8 +1270,8 @@
       "id": "sched-2",
       "type": "Schedule",
       "properties": {
-        "interval": "4 weeks after starting oral iron",
-        "description": "Hemoglobin/hematocrit recheck; rise \u22641 g/dL despite adherence routes to nonresponse management."
+        "interval": "2\u20134 weeks after starting oral iron",
+        "description": "Hemoglobin/hematocrit recheck; a rise < 1 g/dL despite adherence is nonresponse and routes to nonresponse management (Step 2.3 response question)."
       }
     },
     {

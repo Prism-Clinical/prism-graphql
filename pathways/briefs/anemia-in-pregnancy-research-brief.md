@@ -96,8 +96,10 @@ None. (Single-condition pathway; O99.01x already encodes the pregnancy+anemia co
   attached here. [1][5][12][13][14]
 - **Step 2.2 — Oral iron trial period**: expected reticulocytosis 7–10 days; optional
   retic check. [1]
-- **Step 2.3 — Response assessment**: Hgb recheck ~4 weeks after initiation (CDC; ACOG
-  gives no numeric interval [GAP]); adequate = rise >1 g/dL. [1][3]
+- **Step 2.3 — Response assessment**: Hgb recheck **2–4 weeks** after initiation
+  `[DECISION — Josh 2026-09-24]` (was "~4 weeks": FIGO [6] reads the response at 2 weeks,
+  CDC [3] at 4; ACOG gives no numeric interval [GAP]); response = rise ≥1 g/dL, asked
+  by gate-hgb-response (§4b) — "no" routes to Step 2.6. [1][3][6]
 - **Step 2.4 — Maintenance & surveillance** *(gate-hgb-response "yes" arm — responding)*:
   continue iron, reduce to prophylactic dosing when normalized for gestational stage
   (CDC). [3]
@@ -622,8 +624,12 @@ risk-adjustment variable in ePC-07/CMS1028.] Local process measures encoded inst
 
 - **Sched-1** (on Step 2.2): interval "7–10 days after starting iron (optional)";
   reticulocyte check; absent reticulocytosis raises early nonresponse suspicion. [1]
-- **Sched-2** (on Step 2.3): interval "4 weeks after starting oral iron"; Hgb/Hct recheck;
-  rise ≤1 g/dL despite adherence → DP-2 (CDC interval; FIGO 2-week variant noted). [1][3][6]
+- **Sched-2** (on Step 2.3): interval **"2–4 weeks after starting oral iron"**
+  `[DECISION — Josh 2026-09-24]` (was "4 weeks", the CDC interval; 2 weeks is FIGO's
+  response timepoint [6] — both ends are now encoded); Hgb/Hct recheck; a rise < 1 g/dL
+  despite adherence is nonresponse → Step 2.6 / DP-2 via gate-hgb-response. Sched-3
+  (post-IV-iron recheck, ~4 weeks) is deliberately unchanged — it is not the oral-iron
+  response check. [1][3][6]
 - **Sched-3** (on Step 2.5): interval "~4 weeks after IV iron"; Hgb recheck; persistent
   anemia → hematology referral / re-evaluate diagnosis. [1] [GAP: no formal US interval —
   evidence timepoint]
@@ -862,8 +868,9 @@ is now `skip` + `on_unresolved: ask`; see §4b).
 7. **Severity-band conflict**: ACOG's only numeric severe threshold is <6 g/dL
    (transfusion/fetal); FIGO uses <7.0 for "severe." Encoded ACOG.
 8. **Ferritin-cutoff conflict**: ACOG <30 vs WHO <15 vs USPSTF "no consensus." Encoded 30.
-9. `[FALLBACK SOURCE]` FIGO 2025 (predelivery time-math, 2-week response variant,
-   postpartum durations); BSH 2024 thalassemia (no US equivalent); KI Reports 2024 (CKD
+9. `[FALLBACK SOURCE]` FIGO 2025 (predelivery time-math, 2-week response variant — now
+   the lower end of the 2–4-week recheck, `[DECISION — Josh 2026-09-24]` — postpartum
+   durations); BSH 2024 thalassemia (no US equivalent); KI Reports 2024 (CKD
    scope-out rationale).
 10. `[BLOCKED — prior_node_result]` gate-iv-iron-ga's oral-trial dependency → fallback:
     REQUIRES edge (§12) + DP-2 routing. Upgrade when validator fix lands.
