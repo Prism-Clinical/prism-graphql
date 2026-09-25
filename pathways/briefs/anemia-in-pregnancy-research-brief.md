@@ -1,5 +1,7 @@
 # Pathway Research Brief — Anemia in Pregnancy
 
+JSON: pathways/json/anemia-in-pregnancy.json @ version 5
+
 **Status: DRAFT v2 for physician review — not yet approved for JSON build.**
 Scope assumed from request: outpatient prenatal care, adult pregnant patients, US practice,
 single-condition pathway, new v1. **Design decision (reviewer-directed): this pathway

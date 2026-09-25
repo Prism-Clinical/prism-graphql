@@ -20,6 +20,31 @@ rules, validate with the real import validator, fix, deliver. **Never invent cli
 content** — only restructure what the reviewed brief contains. If the brief is ambiguous in
 a way that changes the output, stop and ask.
 
+> ## ⚠ The brief is the source of truth — never change a pathway JSON without its brief
+>
+> **Josh's rule: "We shouldn't change a pathway without updating the doc."** The research
+> brief (`pathways/briefs/<logical_id>-research-brief.md`) is the source of truth; the JSON
+> (`pathways/json/<logical_id>.json`) is derived from it. So:
+>
+> 1. **Every change to a pathway JSON — a fix, a re-wire, a version bump, a one-edge
+>    deletion — updates its brief in the SAME commit**, saying what changed and why. Never
+>    edit the JSON first and "catch the brief up later".
+> 2. **Decisions are marked `[DECISION — Josh <YYYY-MM-DD>]`** in the brief, on the line
+>    that states them, whenever Josh (or the reviewing physician) makes an authoring call.
+> 3. **Every brief carries a stamp line** in its header (after the `# ` title, before the
+>    first `## `), exactly one of:
+>    ```
+>    JSON: pathways/json/<logical_id>.json @ version <version>
+>    JSON: (not built)
+>    ```
+>    `<version>` is the JSON's `pathway.version` verbatim (`"5"` → `5`), and §1's
+>    `- **Version**:` must agree. Building or re-versioning the JSON updates the stamp.
+>
+> `scripts/check-brief-sync.ts` enforces this mechanically (every JSON has a brief, the
+> stamp names it at its exact version, no stamp points at a missing JSON); it runs inside
+> `validate-pathway.ts` (exit 4) and in the **pre-commit hook**, which also refuses a commit
+> that stages `pathways/json/*.json` without its brief. See Step 4c.
+
 ## Step 1 — Locate and read the brief
 
 In order: the brief the conversation points at; else the most recent
@@ -142,7 +167,9 @@ npx ts-node --transpile-only .claude/skills/pathway-json-builder/scripts/validat
 (One-time per checkout: `npm ci` at repo root if ts-node is missing.) The CLI imports
 `validatePathwayJson` from pathway-service source — the exact code the import endpoint runs
 **on main, provided this checkout contains origin/main** (the CLI checks, and exits 3 if
-not). Exit 0 = valid; 1 = errors listed; fix and re-run until 0. Treat warnings as
+not). It then runs `check-brief-sync.ts` on the same file (Step 4c). Exit 0 = valid and
+in sync with the brief; 1 = errors listed; 4 = valid but the brief's stamp does not
+describe this JSON (update the brief, then its stamp); fix and re-run until 0. Treat warnings as
 review items: resolve orphan-node and DP-without-branches warnings yourself (they're almost
 always missing edges); surface anything else in the delivery message.
 
@@ -183,9 +210,32 @@ To prove what a gate or DecisionPoint actually does for a patient, run the real 
 [proof]` (no DB; replays branch choices the way the live mutation does). Add a proof there
 when a brief decision hinges on runtime behaviour.
 
+After changing `check-gate-control.ts` or `check-brief-sync.ts`, run their regression
+cases: `node .claude/skills/pathway-json-builder/scripts/test-pipeline-checks.ts`
+(fixtures in `scripts/fixtures/`, including the anemia ESCALATES_TO leak).
+
+### Step 4c — Brief sync (builder-enforced)
+
+```bash
+node .claude/skills/pathway-json-builder/scripts/check-brief-sync.ts            # whole repo
+node .claude/skills/pathway-json-builder/scripts/check-brief-sync.ts --json pathways/json/<logical_id>.json
+```
+
+(`validate-pathway.ts` already runs the `--json` form.) It fails when a JSON has no brief,
+the brief has no stamp / a malformed or duplicate one / `(not built)`, the stamp names
+another JSON or version, §1's `**Version**` disagrees with the stamp, a stamp names a
+JSON that does not exist, or a JSON's `logical_id` differs from its filename. An unstamped
+brief with no JSON only warns (a draft; stamp it `JSON: (not built)`). A brief is found by
+the JSON path in its stamp, else by name (`<logical_id>-research-brief.md`).
+
+When you build a new version: bump §1's Version, record why in the brief (with
+`[DECISION — Josh <date>]` where he decided it), set the stamp to the new version, set the
+JSON's `pathway.version` — then commit the brief and the JSON **together**.
+
 ## Step 5 — Deliver
 
-Save to `pathways/json/<logical_id>.json` and send the file. Delivery message: pathway title
+Save to `pathways/json/<logical_id>.json` **and update the brief's stamp line in the same
+change**, and send the file. Delivery message: pathway title
 + version; node counts by type; validator result ("passed the real import validator, N
 warnings"); gate-control result ("passed check-gate-control.ts, N gates / N gated targets")
 plus any gate re-wiring done to satisfy Rules 1–3; code_sets emitted (how many); every substitution made (gate evidence → host

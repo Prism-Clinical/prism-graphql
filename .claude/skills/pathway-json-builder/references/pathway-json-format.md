@@ -599,6 +599,26 @@ needed. An em dash or `-`/`--` separates tag and ids.
 | `[ON-UNRESOLVED DEFAULT — <gate-id>]` | a numeric gate with `on_unresolved: "default"` | error — numeric gates ask |
 | `[SECOND ROUTE — <node-id> via <source-id>]` | a node inside a gated region that a route from outside the gate also reaches (the source is the edge's `from`; a Criterion's route is named by its DecisionPoint) — e.g. anemia's empiric-iron Stage 1.5 sharing Stage 2's steps, `[SECOND ROUTE — step-2-3 via stage-2-empiric]` (one marker per node and source) | **error** (Rule 1); with it, an `ℹ` info line so the route stays visible |
 
+### Brief stamp (read by `check-brief-sync.ts`)
+
+The brief is the source of truth and the JSON is derived from it, so every brief names the
+JSON it describes in **one** stamp line in its header — after the `# ` title, before the
+first `## ` heading:
+
+```
+JSON: pathways/json/<logical_id>.json @ version <version>
+JSON: (not built)
+```
+
+`<version>` is `pathway.version` verbatim, compared as a trimmed string (`"version": "5"`
+↔ `@ version 5`); §1's `- **Version**:` must say the same. Nothing else goes on the line.
+`scripts/check-brief-sync.ts` fails when a JSON under `pathways/json/` has no brief, the
+brief has no stamp (or two, or a malformed one, or `(not built)`), the stamp names another
+JSON or version, a stamp names a JSON that does not exist, or a JSON's `logical_id` is not
+its filename. It runs inside `validate-pathway.ts` (exit 4) and in the pre-commit hook
+(`--staged`, which also fails when a JSON is staged without its brief). **Never change a
+pathway JSON without updating its brief in the same commit** — see the builder SKILL.md.
+
 ## What the simulator sends (author gates against THIS)
 
 Derived from the admin dashboard's encounter simulator — `PatientComposer.tsx` (payload

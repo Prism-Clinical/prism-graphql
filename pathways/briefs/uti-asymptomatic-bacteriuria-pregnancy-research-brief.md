@@ -1,5 +1,7 @@
 # Pathway Research Brief — UTI and Asymptomatic Bacteriuria in Pregnancy
 
+JSON: pathways/json/uti-asymptomatic-bacteriuria-pregnancy.json @ version 1
+
 **Status: DRAFT v1 for physician review — not yet approved for JSON build.**
 
 Scope confirmed with the requester: **US outpatient prenatal care**. Screening for asymptomatic

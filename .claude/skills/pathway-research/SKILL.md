@@ -196,6 +196,9 @@ temporal-audit table — these are emitted into the JSON, not annotations).
 - [ ] code_sets (if any): ≥1 required code each, valid scopes.
 - [ ] Citations: real title/org/year/URL, all fetched, evidence levels from the allowed set.
 - [ ] Category is a valid enum value; version incremented if a revision.
+- [ ] Header carries exactly one stamp line: `JSON: (not built)` for a new brief, or
+      `JSON: pathways/json/<logical_id>.json @ version <v>` (= §1 Version) for a revision of
+      a built pathway — the builder and pre-commit hook check it (`check-brief-sync.ts`).
 - [ ] REQUIRES pairs acyclic; §17 and §18 present (or "None.").
 
 ## Step 5 — Save and deliver
