@@ -1,0 +1,141 @@
+--- /home/claude/workspace/features/docs-evaluation-pipeline-design/prism-graphql/docs/superpowers/records/evaluation-pipeline-05/before.txt	2026-09-23 13:01:52.143707450 +0000
++++ /home/claude/workspace/features/docs-evaluation-pipeline-design/prism-graphql/docs/superpowers/records/evaluation-pipeline-05/after.txt	2026-09-25 11:52:18.140652957 +0000
+@@ -1,4 +1,4 @@
+-# before — pathway a1774566-42ce-43cc-b83c-1a5749b240e1, evaluationAsOf 2026-09-10T12:00:00.000Z, http://localhost:4016/graphql
++# after — pathway a1774566-42ce-43cc-b83c-1a5749b240e1, evaluationAsOf 2026-09-10T12:00:00.000Z, http://localhost:4016/graphql
+ 
+ == withHaemoglobin
+ node code-cpt-82728 CodeEntry INCLUDED conf=1.000 reason=-
+@@ -16,17 +16,17 @@
+ node gate-anemia-t2 Gate GATED_OUT conf=0.000 reason=Unsatisfied conditions: attribute has no value
+ node gate-oral-iron-response Gate INCLUDED conf=0.000 reason=-
+ node gate-severe-anemia Gate GATED_OUT conf=0.000 reason=labs value 9.4 >= 7
+-node lab-1 LabTest INCLUDED conf=0.984 reason=-
+-node lab-2 LabTest INCLUDED conf=0.641 reason=-
+-node lab-3 LabTest INCLUDED conf=0.641 reason=-
+-node lab-4 LabTest INCLUDED conf=0.641 reason=-
+-node lab-5 LabTest INCLUDED conf=0.641 reason=-
+-node lab-6 LabTest INCLUDED conf=0.641 reason=-
++node lab-1 LabTest INCLUDED conf=0.708 reason=-
++node lab-2 LabTest EXCLUDED conf=0.551 reason=Confidence 0.551 below suggest threshold 0.6
++node lab-3 LabTest EXCLUDED conf=0.551 reason=Confidence 0.551 below suggest threshold 0.6
++node lab-4 LabTest EXCLUDED conf=0.551 reason=Confidence 0.551 below suggest threshold 0.6
++node lab-5 LabTest EXCLUDED conf=0.551 reason=Confidence 0.551 below suggest threshold 0.6
++node lab-6 LabTest EXCLUDED conf=0.551 reason=Confidence 0.551 below suggest threshold 0.6
+ node med-1 Medication EXCLUDED conf=0.297 reason=Confidence 0.297 below suggest threshold 0.6
+ node med-2 Medication EXCLUDED conf=0.453 reason=Confidence 0.453 below suggest threshold 0.6
+ node med-3 Medication EXCLUDED conf=0.453 reason=Confidence 0.453 below suggest threshold 0.6
+ node med-4 Medication EXCLUDED conf=0.453 reason=Confidence 0.453 below suggest threshold 0.6
+-node proc-1 Procedure INCLUDED conf=0.984 reason=-
++node proc-1 Procedure INCLUDED conf=0.708 reason=-
+ node qm-1 QualityMetric INCLUDED conf=1.000 reason=-
+ node qm-2 QualityMetric INCLUDED conf=1.000 reason=-
+ node qm-3 QualityMetric INCLUDED conf=1.000 reason=-
+@@ -34,23 +34,26 @@
+ node sched-1 Schedule INCLUDED conf=1.000 reason=-
+ node sched-2 Schedule INCLUDED conf=1.000 reason=-
+ node sched-3 Schedule INCLUDED conf=1.000 reason=-
+-node stage-1 Stage INCLUDED conf=0.984 reason=-
+-node stage-2 Stage INCLUDED conf=0.984 reason=-
+-node stage-3 Stage INCLUDED conf=0.984 reason=-
+-node stage-4 Stage INCLUDED conf=0.984 reason=-
+-node step-1-1 Step INCLUDED conf=0.984 reason=-
+-node step-1-2 Step INCLUDED conf=0.984 reason=-
+-node step-2-1 Step INCLUDED conf=0.984 reason=-
+-node step-2-2 Step INCLUDED conf=0.984 reason=-
+-node step-2-3 Step INCLUDED conf=0.984 reason=-
+-node step-3-1 Step INCLUDED conf=0.984 reason=-
+-node step-3-2 Step INCLUDED conf=0.984 reason=-
+-node step-3-3 Step INCLUDED conf=0.984 reason=-
+-node step-3-4 Step INCLUDED conf=0.984 reason=-
+-node step-4-1 Step INCLUDED conf=0.984 reason=-
+-node step-4-2 Step INCLUDED conf=0.984 reason=-
+-node step-4-3 Step INCLUDED conf=0.984 reason=-
++node stage-1 Stage INCLUDED conf=0.909 reason=-
++node stage-2 Stage INCLUDED conf=0.909 reason=-
++node stage-3 Stage INCLUDED conf=0.909 reason=-
++node stage-4 Stage INCLUDED conf=0.909 reason=-
++node step-1-1 Step INCLUDED conf=0.801 reason=-
++node step-1-2 Step INCLUDED conf=0.801 reason=-
++node step-2-1 Step INCLUDED conf=0.801 reason=-
++node step-2-2 Step INCLUDED conf=0.801 reason=-
++node step-2-3 Step INCLUDED conf=0.801 reason=-
++node step-3-1 Step INCLUDED conf=0.801 reason=-
++node step-3-2 Step INCLUDED conf=0.801 reason=-
++node step-3-3 Step INCLUDED conf=0.708 reason=-
++node step-3-4 Step INCLUDED conf=0.801 reason=-
++node step-4-1 Step INCLUDED conf=0.801 reason=-
++node step-4-2 Step INCLUDED conf=0.801 reason=-
++node step-4-3 Step INCLUDED conf=0.801 reason=-
+ question dp-1 datum=- tentative=- branch=-
++-- after only
++probe success=false carePlan=-
++blocker COMPLETENESS PENDING_GATE nodes=dp-1
+ 
+ == noHaemoglobin
+ node code-cpt-82728 CodeEntry INCLUDED conf=1.000 reason=-
+@@ -69,16 +72,16 @@
+ node gate-oral-iron-response Gate INCLUDED conf=0.000 reason=-
+ node gate-severe-anemia Gate PENDING_QUESTION conf=0.000 reason=No numeric value found for labs:718-7
+ node lab-1 LabTest EXCLUDED conf=0.297 reason=Confidence 0.297 below suggest threshold 0.6
+-node lab-2 LabTest INCLUDED conf=0.641 reason=-
+-node lab-3 LabTest INCLUDED conf=0.641 reason=-
+-node lab-4 LabTest INCLUDED conf=0.641 reason=-
+-node lab-5 LabTest INCLUDED conf=0.641 reason=-
+-node lab-6 LabTest INCLUDED conf=0.641 reason=-
++node lab-2 LabTest EXCLUDED conf=0.551 reason=Confidence 0.551 below suggest threshold 0.6
++node lab-3 LabTest EXCLUDED conf=0.551 reason=Confidence 0.551 below suggest threshold 0.6
++node lab-4 LabTest EXCLUDED conf=0.551 reason=Confidence 0.551 below suggest threshold 0.6
++node lab-5 LabTest EXCLUDED conf=0.551 reason=Confidence 0.551 below suggest threshold 0.6
++node lab-6 LabTest EXCLUDED conf=0.551 reason=Confidence 0.551 below suggest threshold 0.6
+ node med-1 Medication EXCLUDED conf=0.297 reason=Confidence 0.297 below suggest threshold 0.6
+ node med-2 Medication EXCLUDED conf=0.453 reason=Confidence 0.453 below suggest threshold 0.6
+ node med-3 Medication EXCLUDED conf=0.453 reason=Confidence 0.453 below suggest threshold 0.6
+ node med-4 Medication EXCLUDED conf=0.453 reason=Confidence 0.453 below suggest threshold 0.6
+-node proc-1 Procedure INCLUDED conf=0.984 reason=-
++node proc-1 Procedure INCLUDED conf=0.708 reason=-
+ node qm-1 QualityMetric INCLUDED conf=1.000 reason=-
+ node qm-2 QualityMetric INCLUDED conf=1.000 reason=-
+ node qm-3 QualityMetric INCLUDED conf=1.000 reason=-
+@@ -86,21 +89,25 @@
+ node sched-1 Schedule INCLUDED conf=1.000 reason=-
+ node sched-2 Schedule INCLUDED conf=1.000 reason=-
+ node sched-3 Schedule INCLUDED conf=1.000 reason=-
+-node stage-1 Stage INCLUDED conf=0.984 reason=-
+-node stage-2 Stage INCLUDED conf=0.984 reason=-
+-node stage-3 Stage INCLUDED conf=0.984 reason=-
+-node stage-4 Stage INCLUDED conf=0.984 reason=-
+-node step-1-1 Step INCLUDED conf=0.984 reason=-
+-node step-1-2 Step INCLUDED conf=0.984 reason=-
+-node step-2-1 Step INCLUDED conf=0.984 reason=-
+-node step-2-2 Step INCLUDED conf=0.984 reason=-
+-node step-2-3 Step INCLUDED conf=0.984 reason=-
+-node step-3-1 Step INCLUDED conf=0.984 reason=-
+-node step-3-2 Step INCLUDED conf=0.984 reason=-
+-node step-3-3 Step INCLUDED conf=0.984 reason=-
+-node step-3-4 Step INCLUDED conf=0.984 reason=-
+-node step-4-1 Step INCLUDED conf=0.984 reason=-
+-node step-4-2 Step INCLUDED conf=0.984 reason=-
+-node step-4-3 Step INCLUDED conf=0.984 reason=-
++node stage-1 Stage INCLUDED conf=0.909 reason=-
++node stage-2 Stage INCLUDED conf=0.909 reason=-
++node stage-3 Stage INCLUDED conf=0.909 reason=-
++node stage-4 Stage INCLUDED conf=0.909 reason=-
++node step-1-1 Step INCLUDED conf=0.801 reason=-
++node step-1-2 Step INCLUDED conf=0.801 reason=-
++node step-2-1 Step INCLUDED conf=0.801 reason=-
++node step-2-2 Step INCLUDED conf=0.801 reason=-
++node step-2-3 Step INCLUDED conf=0.801 reason=-
++node step-3-1 Step INCLUDED conf=0.801 reason=-
++node step-3-2 Step INCLUDED conf=0.801 reason=-
++node step-3-3 Step INCLUDED conf=0.708 reason=-
++node step-3-4 Step INCLUDED conf=0.801 reason=-
++node step-4-1 Step INCLUDED conf=0.801 reason=-
++node step-4-2 Step INCLUDED conf=0.801 reason=-
++node step-4-3 Step INCLUDED conf=0.801 reason=-
+ question dp-1 datum=- tentative=- branch=-
+ question gate-severe-anemia datum=LOINC:718-7 tentative=- branch=-
++-- after only
++probe success=false carePlan=-
++blocker COMPLETENESS PENDING_GATE nodes=dp-1
++blocker COMPLETENESS PENDING_GATE nodes=gate-severe-anemia
