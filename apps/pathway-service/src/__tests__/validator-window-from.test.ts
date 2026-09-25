@@ -105,7 +105,30 @@ describe('window_from at import', () => {
       { ...TREND, window_from: { ...ORAL_IRON, codes: [{ code: '310325' }] } },
       'codes[0] must be',
     ],
+    [
+      'a zero min_days_since_anchor',
+      { ...TREND, window_from: { ...ORAL_IRON, min_days_since_anchor: 0 } },
+      '"min_days_since_anchor" must be an integer',
+    ],
+    [
+      'a fractional min_days_since_anchor',
+      { ...TREND, window_from: { ...ORAL_IRON, min_days_since_anchor: 13.5 } },
+      '"min_days_since_anchor" must be an integer',
+    ],
   ];
+
+  it.each(['count_in_window', 'trend_up', 'delta_from_baseline'])(
+    'accepts min_days_since_anchor on %s',
+    (operator) => {
+      const result = validatePathwayJson(
+        withCondition(
+          { ...TREND, operator, window_from: { ...ORAL_IRON, min_days_since_anchor: 14 } },
+          'oral-iron-repletion',
+        ),
+      );
+      expect(result.errors).toEqual([]);
+    },
+  );
 
   it.each(REJECTED)('rejects %s', (_label, condition, fragment) => {
     const result = validatePathwayJson(withCondition(condition, 'oral-iron-repletion'));

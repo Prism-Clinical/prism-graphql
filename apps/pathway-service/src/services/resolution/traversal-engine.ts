@@ -9,6 +9,7 @@ import { parseBranchWhen } from '../import/branch-when';
 import { decisionValueOf, decisionSelects } from './decision-value';
 import { normalizeAnswerType } from './answer-validation';
 import { containmentChildIds, containmentParentIds, containmentClosure } from './graph-containment';
+import type { SessionRecommendationLookup } from './temporal/anchored-window';
 import {
   reconcilePendingQuestions,
   reconcileRedFlags,
@@ -432,6 +433,38 @@ interface WalkContext {
    * that is what `all_of_branch_unsupported` is for.
    */
   mandated: Set<string>;
+  /**
+   * Gates set aside until the walk has settled, because a `window_from` anchor
+   * needs to know whether THIS visit recommends a drug class and the
+   * Medication nodes that say so had not been disposed yet
+   * (SESSION_RECOMMENDATION). BFS order decides which comes first — the
+   * anemia recheck step can precede the oral-iron step — and a gate must not
+   * decide differently because of it.
+   *
+   * Drained only when the main queue is EMPTY, one gate at a time, and each is
+   * then evaluated in its final position (`finalizing`), where "not disposed"
+   * means "not reached in this pass" and reads as not recommended. `undefined`
+   * where deferral is impossible — eager evaluation, whose caller needs a
+   * status NOW.
+   */
+  deferred?: BfsEntry[];
+  /** Gates taken off `deferred`: evaluated once more, and never deferred again. */
+  finalizing: Set<string>;
+}
+
+/**
+ * Take the next entry: the main queue first; a deferred gate only once the
+ * queue is empty, marked final so it cannot defer again.
+ */
+function nextEntry(
+  queue: BfsEntry[],
+  deferred: BfsEntry[],
+  finalizing: Set<string>,
+): BfsEntry | undefined {
+  if (queue.length > 0) return queue.shift();
+  const entry = deferred.shift();
+  if (entry) finalizing.add(entry.nodeIdentifier);
+  return entry;
 }
 
 /**
@@ -506,6 +539,7 @@ export class TraversalEngine {
     resolutionState: ResolutionState,
     gateAnswers: Map<string, GateAnswer>,
     gateId: string,
+    sessionRecommendation?: SessionRecommendationLookup,
   ): GateEvaluationDeps {
     return {
       temporalContext: this.temporalContext,
@@ -517,6 +551,46 @@ export class TraversalEngine {
       gateId,
       llmEvaluator: this.llmGateEvaluator,
       codeMap: this.codeMap,
+      ...(sessionRecommendation ? { sessionRecommendation } : {}),
+    };
+  }
+
+  /**
+   * Does THIS traversal recommend a class — the SESSION_RECOMMENDATION anchor
+   * source, as seen from one gate.
+   *
+   * Recommended = some Medication node carrying the `clinical_role` is
+   * INCLUDED in the resolution state. Three rules:
+   *
+   *  - **Not the gate's own subtree.** A gate cannot be anchored by what it
+   *    opens: "continue oral iron" under the responding branch would otherwise
+   *    anchor the very gate deciding whether that branch opens.
+   *  - **Unsettled is not "no".** A medication not yet disposed in this pass
+   *    (absent, or written only provisionally by eager evaluation) may still be
+   *    included, so the answer is UNSETTLED and the gate is deferred — unless it
+   *    is already in its final position, where anything still undisposed was
+   *    not reached by this pass and cannot be recommending anything.
+   *  - **Every medication of the class is reported**, whatever the answer, so
+   *    the gate records that it read them.
+   */
+  private sessionRecommendationFor(gateId: string, w: WalkContext): SessionRecommendationLookup {
+    const final = w.deferred === undefined || w.finalizing.has(gateId);
+    let own: Set<string> | undefined;
+    return (clinicalRole) => {
+      own ??= containmentClosure(w.graphContext, [gateId]);
+      const nodeIds = w.graphContext.allNodes
+        .filter((n) =>
+          n.nodeType === 'Medication' &&
+          (n.properties as Record<string, unknown> | undefined)?.clinical_role === clinicalRole &&
+          !own!.has(n.nodeIdentifier))
+        .map((n) => n.nodeIdentifier);
+      const settled = (id: string) => w.resolutionState.has(id) && !w.provisional.has(id);
+      const included = nodeIds.filter(
+        (id) => settled(id) && w.resolutionState.get(id)!.status === NodeStatus.INCLUDED,
+      );
+      if (included.length > 0) return { status: 'RECOMMENDED', nodeIds: included };
+      if (!final && nodeIds.some((id) => !settled(id))) return { status: 'UNSETTLED', nodeIds };
+      return { status: 'NOT_RECOMMENDED', nodeIds };
     };
   }
 
@@ -539,6 +613,9 @@ export class TraversalEngine {
     const overrideHeld = new Set<string>();
     /** Branch targets an `all_of` DecisionPoint mandated. See WalkContext. */
     const mandated = new Set<string>();
+    /** Gates waiting for the walk to settle. See WalkContext.deferred. */
+    const deferred: BfsEntry[] = [];
+    const finalizing = new Set<string>();
     let isDegraded = false;
 
     // 1. Find root node (type 'Pathway')
@@ -558,9 +635,9 @@ export class TraversalEngine {
     // 2. Init BFS queue
     const queue: BfsEntry[] = [{ nodeIdentifier: rootNode.nodeIdentifier, depth: 0 }];
 
-    // 3-4. BFS loop
-    while (queue.length > 0) {
-      const entry = queue.shift()!;
+    // 3-4. BFS loop — deferred gates last, once everything else has settled.
+    while (queue.length > 0 || deferred.length > 0) {
+      const entry = nextEntry(queue, deferred, finalizing)!;
       const { nodeIdentifier, parentNodeId, depth } = entry;
 
       // A node written by eager evaluation was resolved so a gate could read
@@ -576,7 +653,13 @@ export class TraversalEngine {
       if (Date.now() - startTime > TRAVERSAL_TIMEOUT_MS) {
         isDegraded = true;
         // Mark this and all remaining queued nodes as TIMEOUT
-        const remaining = [nodeIdentifier, ...queue.map(e => e.nodeIdentifier)];
+        // Deferred gates too: one set aside and never re-taken would otherwise
+        // be missing from the state outright, which does not read as TIMEOUT.
+        const remaining = [
+          nodeIdentifier,
+          ...queue.map(e => e.nodeIdentifier),
+          ...deferred.map(e => e.nodeIdentifier),
+        ];
         for (const id of remaining) {
           if (resolutionState.has(id)) continue;
           const n = graphContext.getNode(id);
@@ -607,7 +690,7 @@ export class TraversalEngine {
         graphContext, patientContext, gateAnswers,
         resolutionState, dependencyMap, queue,
         pendingQuestions, redFlags, evaluationStack, startTime, rewritten,
-        provisional, overrideHeld, mandated,
+        provisional, overrideHeld, mandated, deferred, finalizing,
       });
     }
 
@@ -677,6 +760,9 @@ export class TraversalEngine {
     /** Branch targets an `all_of` DecisionPoint mandated. See WalkContext. */
     const mandated = new Set<string>();
     const queue: BfsEntry[] = [];
+    /** Gates waiting for the walk to settle. See WalkContext.deferred. */
+    const deferred: BfsEntry[] = [];
+    const finalizing = new Set<string>();
 
     // Captured before anything is cleared — the only moment the previous
     // status of each node in the region is still known.
@@ -856,13 +942,17 @@ export class TraversalEngine {
     let isDegraded = false;
     let disposed = 0;
 
-    while (queue.length > 0) {
+    // Deferred gates last, once everything else in the region has settled —
+    // meds and gates are cleared and re-disposed together here, in whatever
+    // order the region's BFS gives. A timeout leaves any still deferred for
+    // the TIMEOUT sweep below, which covers every region member.
+    while (queue.length > 0 || deferred.length > 0) {
       if (Date.now() - startTime > TRAVERSAL_TIMEOUT_MS) {
         isDegraded = true;
         break;
       }
 
-      const { nodeIdentifier, parentNodeId, depth } = queue.shift()!;
+      const { nodeIdentifier, parentNodeId, depth } = nextEntry(queue, deferred, finalizing)!;
       if (overrideHeld.has(nodeIdentifier)) {
         // The provider's decision about THIS node stands; it was never a
         // decision about its descendants, so they are re-disposed now that the
@@ -893,7 +983,7 @@ export class TraversalEngine {
         graphContext, patientContext, gateAnswers,
         resolutionState, dependencyMap, queue,
         pendingQuestions, redFlags, evaluationStack, startTime, rewritten,
-        provisional, overrideHeld, mandated,
+        provisional, overrideHeld, mandated, deferred, finalizing,
       });
       disposed++;
     }
@@ -1084,8 +1174,23 @@ export class TraversalEngine {
 
       const gateResult = await evaluateGate(
         gateProps,
-        this.gateDeps(patientContext, resolutionState, gateAnswers, nodeIdentifier),
+        this.gateDeps(
+          patientContext, resolutionState, gateAnswers, nodeIdentifier,
+          this.sessionRecommendationFor(nodeIdentifier, w),
+        ),
       );
+
+      // The anchor needs this visit's recommendation of a drug class that has
+      // not been disposed yet: set the gate aside until the walk settles.
+      // Nothing is written — the gate is disposed for real when it comes back.
+      if (
+        gateResult.awaitingSessionRecommendation === true &&
+        w.deferred !== undefined &&
+        !w.finalizing.has(nodeIdentifier)
+      ) {
+        w.deferred.push({ nodeIdentifier, parentNodeId, depth });
+        return;
+      }
 
       // Reason channel — carried onto EVERY outcome the gate can take, so
       // "couldn't tell" survives regardless of what default_behavior did with
@@ -1212,7 +1317,31 @@ export class TraversalEngine {
         const isQuestion = gateProps.gate_type === GateType.QUESTION;
         const isUnansweredQuestion = isQuestion && !answer;
 
-        if (isUnansweredQuestion) {
+        if (gateResult.notYetDue !== undefined) {
+          // NOT YET DUE — closed WITHOUT a question, whatever default_behavior
+          // or on_unresolved say. Neither the responding nor the non-responding
+          // branch opens, nothing blocks care-plan generation, and the step
+          // hosting the gate (the recheck and its schedule) carries the plan
+          // forward. Recorded as its own thing — `notYetDue` and a
+          // `NOT_YET_DUE:` reason — never as a definite "no".
+          resolutionState.set(nodeIdentifier, {
+            nodeId: nodeIdentifier,
+            nodeType: node.nodeType,
+            title: nodeTitle(node),
+            status: NodeStatus.GATED_OUT,
+            confidence: 0,
+            confidenceBreakdown: [],
+            excludeReason: gateResult.reason,
+            parentNodeId,
+            depth,
+            properties: node.properties,
+            ...uncertaintyFields,
+            notYetDue: true,
+          });
+          const childIds = containmentChildIds(graphContext, nodeIdentifier);
+          addAll(rewritten, markSubtree(childIds, graphContext, resolutionState, NodeStatus.GATED_OUT,
+            `Gated out by ${nodeTitle(node)}: ${gateResult.reason}`, nodeIdentifier, depth, provisional, overrideHeld));
+        } else if (isUnansweredQuestion) {
           // Pending question
           resolutionState.set(nodeIdentifier, {
             nodeId: nodeIdentifier,
@@ -1802,7 +1931,9 @@ export class TraversalEngine {
     // treatment under a branch that shuts ended up in the plan. If the walk
     // legitimately arrives, it re-disposes the node with the real queue and
     // the subtree opens then.
-    await this.disposeNode(node, nodeIdentifier, parentNodeId, depth, { ...w, queue: [] });
+    // Never deferred either: the gate that asked for this node needs its
+    // status now, so an eagerly evaluated gate is final on arrival.
+    await this.disposeNode(node, nodeIdentifier, parentNodeId, depth, { ...w, queue: [], deferred: undefined });
     w.provisional.add(nodeIdentifier);
     w.evaluationStack.delete(nodeIdentifier);
   }

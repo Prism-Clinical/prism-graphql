@@ -41,6 +41,7 @@ export interface ReachabilityScore {
 
 const ALWAYS_EVALUABLE_OPERATORS: ReadonlySet<string> = new Set([
   'includes_code',
+  'not_includes_code',
   'equals',
   'exists',
 ]);

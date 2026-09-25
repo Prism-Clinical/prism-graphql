@@ -1,9 +1,12 @@
 export type TemporalOperator =
-  | 'includes_code' | 'equals' | 'exists'
+  | 'includes_code' | 'not_includes_code' | 'equals' | 'exists'
   | 'greater_than' | 'less_than'
   | 'count_in_window' | 'trend_up' | 'trend_down' | 'delta_from_baseline';
 
-const MEMBERSHIP = new Set<TemporalOperator>(['includes_code', 'equals', 'exists']);
+// `not_includes_code` is membership: it SELECTS exactly as `includes_code` does
+// and negates the verdict in the evaluator, so the two can never disagree about
+// which facts count.
+const MEMBERSHIP = new Set<TemporalOperator>(['includes_code', 'not_includes_code', 'equals', 'exists']);
 const SCALAR = new Set<TemporalOperator>(['greater_than', 'less_than']);
 const AGGREGATE = new Set<TemporalOperator>(['count_in_window', 'trend_up', 'trend_down', 'delta_from_baseline']);
 const ALL_OPS = new Set<string>([...MEMBERSHIP, ...SCALAR, ...AGGREGATE]);
@@ -58,4 +61,10 @@ export type UncertaintyReason =
    * A trend/delta series with fewer dated values in its window than
    * `min_points`. Not an answer: "no recheck yet" is not "no response".
    */
-  | 'INSUFFICIENT_SERIES';
+  | 'INSUFFICIENT_SERIES'
+  /**
+   * A `window_from` condition read before `min_days_since_anchor` days have
+   * passed since its anchor (or on the visit that starts the drug). Not an
+   * answer either way: the gate closes without asking until it is due.
+   */
+  | 'NOT_YET_DUE';

@@ -4,7 +4,7 @@ import { VALID_ATTRIBUTE_NAMESPACES } from '../services/resolution/attribute-reg
 describe('runtime operator/namespace constants', () => {
   it('coded operators match the union members', () => {
     expect([...VALID_CODED_OPERATORS].sort()).toEqual(
-      ['count_in_window','delta_from_baseline','equals','exists','greater_than','includes_code','less_than','trend_down','trend_up'].sort(),
+      ['count_in_window','delta_from_baseline','equals','exists','greater_than','includes_code','less_than','not_includes_code','trend_down','trend_up'].sort(),
     );
   });
   it('attribute operators match the union members', () => {
