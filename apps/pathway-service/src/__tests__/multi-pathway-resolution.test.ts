@@ -1092,6 +1092,26 @@ describe('medication regimen conflicts — resolve, re-merge, materialise', () =
       expect(resolutions).toEqual({});
     });
 
+    it('drops a CONFIRM_PATHWAY choice when the same regimens are now asked for by different pathways', () => {
+      const before = threeWayMerge(); // 500 mg ← T2DM, PCOS; 1000 mg ← Obesity
+      const choice: ConflictResolution = { kind: 'CONFIRM_PATHWAY', chosenPathwayId: 'obesity', ...meta };
+      const stored = applyResolution(before, before.conflicts[0], choice);
+
+      // Same two regimens on offer, but Obesity and PCOS swapped asks. Replaying
+      // "use Obesity's" would now order 500 mg — not what the provider chose.
+      const swapped = mergeResolvedCarePlans([
+        plan('t2dm', 'T2DM', [{ dose: '500 mg' }]),
+        plan('pcos', 'PCOS', [{ dose: '1000 mg' }]),
+        plan('obesity', 'Obesity', [{ dose: '500 mg' }]),
+      ]);
+      const { plan: replayed, resolutions } = replayConflictResolutions(
+        stored, swapped, { 'regimen:metformin': choice },
+      );
+      expect(replayed.conflicts[0].resolution).toBeNull();
+      expect(replayed.medications).toEqual([]);
+      expect(resolutions).toEqual({});
+    });
+
     it('forgets a choice for a conflict that is gone, so it cannot resurrect on a later re-merge', () => {
       const before = threeWayMerge();
       const choice: ConflictResolution = { kind: 'ACCEPT_BOTH', ...meta };
