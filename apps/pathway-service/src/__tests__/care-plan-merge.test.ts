@@ -6,6 +6,8 @@ import {
   ResolvedProcedure,
   ResolvedSchedule,
   ResolvedQualityMetric,
+  ResolvedGuidance,
+  ResolvedImaging,
 } from '../services/resolution/care-plan-merge';
 
 // ─── Fixture helpers ──────────────────────────────────────────────────
@@ -19,6 +21,8 @@ function makePathway(opts: {
   procedures?: Partial<ResolvedProcedure>[];
   schedules?: Partial<ResolvedSchedule>[];
   qualityMetrics?: Partial<ResolvedQualityMetric>[];
+  guidance?: Partial<ResolvedGuidance>[];
+  imaging?: Partial<ResolvedImaging>[];
 }): ResolvedCarePlan {
   const id = `path-${++pathwayCounter}`;
   return {
@@ -36,13 +40,23 @@ function makePathway(opts: {
       sourcePathwayId: id,
       ...l,
     })) as ResolvedLab[],
-    imaging: [],
+    imaging: (opts.imaging ?? []).map((i) => ({
+      name: 'Imaging',
+      modality: 'MRI',
+      sourcePathwayId: id,
+      ...i,
+    })) as ResolvedImaging[],
     procedures: (opts.procedures ?? []).map((p) => ({
       name: 'Proc',
       sourcePathwayId: id,
       ...p,
     })) as ResolvedProcedure[],
-    guidance: [],
+    guidance: (opts.guidance ?? []).map((g) => ({
+      topic: 'Topic',
+      instructions: 'Instructions',
+      sourcePathwayId: id,
+      ...g,
+    })) as ResolvedGuidance[],
     schedules: (opts.schedules ?? []).map((s) => ({
       interval: '3 months',
       description: 'Follow up',
@@ -305,6 +319,113 @@ describe('mergeResolvedCarePlans — non-medication dedup', () => {
     });
     const merged = mergeResolvedCarePlans([a, b]);
     expect(merged.qualityMetrics).toHaveLength(1);
+  });
+
+  it('keeps two quality metrics that share a name but define different measures', () => {
+    const a = makePathway({
+      title: 'A',
+      qualityMetrics: [{ name: 'BP control rate', measure: '% < 140/90' }],
+    });
+    const b = makePathway({
+      title: 'B',
+      qualityMetrics: [{ name: 'BP control rate', measure: '% < 130/80' }],
+    });
+    const merged = mergeResolvedCarePlans([a, b]);
+    expect(merged.qualityMetrics.map((m) => m.recommendation.measure))
+      .toEqual(['% < 140/90', '% < 130/80']);
+    expect(merged.qualityMetrics.map((m) => m.sourcePathwayIds)).toEqual([[a.pathwayId], [b.pathwayId]]);
+  });
+
+  it('keeps uncoded imaging with and without contrast as separate orders', () => {
+    const a = makePathway({
+      title: 'A',
+      imaging: [{ name: 'MRI head', modality: 'MRI', bodyRegion: 'Head', contrast: true }],
+    });
+    const b = makePathway({
+      title: 'B',
+      imaging: [{ name: 'MRI head', modality: 'MRI', bodyRegion: 'Head', contrast: false }],
+    });
+    const merged = mergeResolvedCarePlans([a, b]);
+    expect(merged.imaging.map((m) => m.recommendation.contrast)).toEqual([true, false]);
+  });
+
+  it('still dedupes identical uncoded imaging and unions provenance', () => {
+    const a = makePathway({
+      title: 'A',
+      imaging: [{ name: 'MRI head', modality: 'MRI', bodyRegion: 'Head', contrast: false }],
+    });
+    const b = makePathway({
+      title: 'B',
+      imaging: [{ name: 'mri  head', modality: 'mri', bodyRegion: 'head', contrast: false }],
+    });
+    const merged = mergeResolvedCarePlans([a, b]);
+    expect(merged.imaging).toHaveLength(1);
+    expect(merged.imaging[0].sourcePathwayIds).toEqual([a.pathwayId, b.pathwayId]);
+  });
+});
+
+// ─── Guidance ─────────────────────────────────────────────────────────
+
+/**
+ * Guidance used to be keyed by topic alone, so two pathways' different
+ * instructions under one heading collapsed to the first pathway's text. Real
+ * case: anaemia-in-pregnancy and asymptomatic-bacteriuria-in-pregnancy both
+ * ship "When to call us right away", and the second pathway's safety-netting
+ * advice silently disappeared from the merged plan.
+ */
+describe('mergeResolvedCarePlans — guidance', () => {
+  const TOPIC = 'When to call us right away';
+
+  it('keeps both pathways\' instructions when they share a topic but differ in text', () => {
+    const anaemia = makePathway({
+      title: 'Anemia in pregnancy',
+      guidance: [{ topic: TOPIC, instructions: 'Call if you feel faint, short of breath, or your heart races.' }],
+    });
+    const asb = makePathway({
+      title: 'Asymptomatic bacteriuria in pregnancy',
+      guidance: [{ topic: TOPIC, instructions: 'Call if you have fever, flank pain, or burning when you pee.' }],
+    });
+    const merged = mergeResolvedCarePlans([anaemia, asb]);
+    expect(merged.guidance).toHaveLength(2);
+    expect(merged.guidance.map((g) => g.recommendation.instructions)).toEqual([
+      'Call if you feel faint, short of breath, or your heart races.',
+      'Call if you have fever, flank pain, or burning when you pee.',
+    ]);
+    expect(merged.guidance.map((g) => g.sourcePathwayIds)).toEqual([[anaemia.pathwayId], [asb.pathwayId]]);
+  });
+
+  it('dedupes identical topic + instructions and unions sourcePathwayIds', () => {
+    const text = 'Call if you have vaginal bleeding or leaking fluid.';
+    const a = makePathway({ title: 'A', guidance: [{ topic: TOPIC, instructions: text }] });
+    const b = makePathway({ title: 'B', guidance: [{ topic: TOPIC, instructions: text }] });
+    const merged = mergeResolvedCarePlans([a, b]);
+    expect(merged.guidance).toHaveLength(1);
+    expect(merged.guidance[0].sourcePathwayIds).toEqual([a.pathwayId, b.pathwayId]);
+  });
+
+  it('treats case and whitespace differences alone as identical', () => {
+    const a = makePathway({
+      title: 'A', guidance: [{ topic: TOPIC, instructions: 'Call if you have a fever.' }],
+    });
+    const b = makePathway({
+      title: 'B', guidance: [{ topic: `  ${TOPIC.toLowerCase()} `, instructions: 'call if  you have a fever.' }],
+    });
+    const merged = mergeResolvedCarePlans([a, b]);
+    expect(merged.guidance).toHaveLength(1);
+    expect(merged.guidance[0].sourcePathwayIds).toEqual([a.pathwayId, b.pathwayId]);
+  });
+
+  it('keeps two same-topic Guidance nodes within ONE pathway', () => {
+    const one = makePathway({
+      title: 'A',
+      guidance: [
+        { topic: TOPIC, instructions: 'Call if you feel faint.' },
+        { topic: TOPIC, instructions: 'Call if you have a fever.' },
+      ],
+    });
+    const merged = mergeResolvedCarePlans([one]);
+    expect(merged.guidance.map((g) => g.recommendation.instructions))
+      .toEqual(['Call if you feel faint.', 'Call if you have a fever.']);
   });
 });
 

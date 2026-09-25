@@ -14,7 +14,10 @@
  *     recommendations across all pathways. Suppressed entries are kept in a
  *     side list for transparency.
  *   - Same-name dedup for medications; same-code dedup for labs/procedures;
- *     same-interval dedup for schedules; same-name dedup for quality metrics.
+ *     same-(interval, description) dedup for schedules; same-(name, measure)
+ *     dedup for quality metrics; same-(topic, instructions) dedup for
+ *     guidance. A key must cover every field a reader acts on, or the merge
+ *     silently keeps the first pathway's text and drops the rest.
  *   - Provenance: every merged recommendation carries the IDs of all pathways
  *     that contributed it.
  *   - Soft conflict detection (different drugs, same indication) is OUT of
@@ -532,11 +535,7 @@ export function mergeResolvedCarePlans(
   const procedures = mergeByKey(plans, (p) => p.procedures, procedureKey);
   const guidance = mergeByKey(plans, (p) => p.guidance, guidanceKey);
   const schedules = mergeByKey(plans, (p) => p.schedules, scheduleKey);
-  const qualityMetrics = mergeByKey(
-    plans,
-    (p) => p.qualityMetrics,
-    (q) => q.name.toLowerCase().trim(),
-  );
+  const qualityMetrics = mergeByKey(plans, (p) => p.qualityMetrics, qualityMetricKey);
 
   // Aggregate catch-up items across pathways. Dedup by (nodeId,
   // sourcePathwayId) so the same prereq surfaced by two siblings within
@@ -695,16 +694,34 @@ function procedureKey(p: ResolvedProcedure): string {
 
 function imagingKey(i: ResolvedImaging): string {
   if (i.code && i.system) return `${i.system}|${i.code}`;
-  // Modality + name + body region uniquely identifies an order in the
-  // absence of a code (e.g. "MRI head without contrast").
-  return `${i.modality.toLowerCase().trim()}|${i.name.toLowerCase().trim()}|${(i.bodyRegion ?? '').toLowerCase().trim()}`;
+  // Modality + name + body region + contrast identifies an order in the
+  // absence of a code. Contrast is part of it: "MRI head" with and without
+  // contrast are different orders, and keying without it kept only the first
+  // pathway's. An unstated contrast stays distinct from an explicit `false` —
+  // two entries is recoverable, a silently dropped order is not.
+  const contrast = i.contrast === undefined ? '' : String(i.contrast);
+  return `${norm(i.modality)}|${norm(i.name)}|${norm(i.bodyRegion ?? '')}|${contrast}`;
 }
 
 function guidanceKey(g: ResolvedGuidance): string {
-  // Topic alone — two pathways shipping the same counseling topic should
-  // dedupe even if the instruction text differs slightly. The first plan's
-  // text wins (mergeByKey takes the first occurrence).
-  return g.topic.toLowerCase().trim();
+  // Topic AND instructions. Topic alone collapsed two pathways' different
+  // instructions under a shared heading — anaemia-in-pregnancy and
+  // asymptomatic-bacteriuria-in-pregnancy both ship "When to call us right
+  // away", and the second pathway's safety-netting text vanished. Only an
+  // identical instruction is a duplicate; distinct text under one topic is
+  // kept, each entry with its own provenance.
+  return `${norm(g.topic)}|${norm(g.instructions)}`;
+}
+
+function qualityMetricKey(q: ResolvedQualityMetric): string {
+  // Name AND measure, for the same reason as guidance: name alone kept the
+  // first pathway's measure definition and dropped any other.
+  return `${norm(q.name)}|${norm(q.measure)}`;
+}
+
+/** Case-folded, trimmed, internal whitespace collapsed — for key equality only. */
+function norm(s: string): string {
+  return s.toLowerCase().trim().replace(/\s+/g, ' ');
 }
 
 function scheduleKey(s: ResolvedSchedule): string {
