@@ -89,6 +89,8 @@ import { factStoreForInput } from '../../services/resolution/temporal/fact-store
 import type { FactStore } from '../../services/resolution/temporal/fact-model';
 import { assertKnownPolicyVersion } from '../../services/resolution/temporal/policy-registry';
 import { normalizeAnswerType } from '../../services/resolution/answer-validation';
+import { withTherapyStarts } from '../../services/resolution/temporal/anchored-window';
+import { loadCarePlanTherapyStarts } from '../helpers/therapy-starts';
 import {
   createMultiPathwaySession,
   deletePreviewSession,
@@ -868,11 +870,23 @@ export async function resolveAndPersistAll(
   }
 
   for (const { m, rctx } of loaded) {
+    // The run's clock, plus THIS pathway's care-plan therapy starts for its
+    // `window_from` anchors (none, and no query, for a pathway without one).
+    // Per pathway because the starts are matched against this pathway's own
+    // recommendations; the clock itself is identical across the run.
+    const pathwayClock = withTherapyStarts(
+      temporalContext,
+      await loadCarePlanTherapyStarts(pool, {
+        patientId: patientContext.patientId,
+        pathwayId: m.pathway.id,
+        graphContext: rctx.graphContext,
+      }),
+    );
     const llmBundle = makeLlmGateEvaluator(pool, m.pathway.id);
     const engine = new TraversalEngine(
       makeTraversalAdapter(rctx, pool, m.pathway.id, patientContext),
       rctx.thresholds,
-      temporalContext,
+      pathwayClock,
       rctx.temporalDefaults,
       factStore,
       rctx.codeMap,
@@ -929,7 +943,7 @@ export async function resolveAndPersistAll(
       redFlags: traversalResult.redFlags,
       totalNodesEvaluated: traversalResult.totalNodesEvaluated,
       traversalDurationMs: traversalResult.traversalDurationMs,
-      temporalContext,
+      temporalContext: pathwayClock,
     });
 
     if (llmBundle) await llmBundle.flushAudits(sessionId);

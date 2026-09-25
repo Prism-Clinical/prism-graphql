@@ -54,6 +54,8 @@ import {
 } from '../../services/resolution/answer-validation';
 import { normalizePatientAttributes } from '../../services/resolution/patient-attributes';
 import { planAnchorAnswer } from '../../services/resolution/anchor-answer';
+import { withTherapyStarts } from '../../services/resolution/temporal/anchored-window';
+import { loadCarePlanTherapyStarts } from '../helpers/therapy-starts';
 import {
   buildEffectivePatientContext,
   dependencyContextKey,
@@ -489,10 +491,23 @@ export const resolutionMutations = {
     // once, here — every gate evaluation, retraversal and replay of this
     // session uses this instant. A caller may pin it instead, and must supply
     // encounterStart when the pathway resolves an ENCOUNTER horizon.
-    const temporalContext = makeEvaluationTemporalContext({
+    const clock = makeEvaluationTemporalContext({
       ...temporalInputFrom(args),
       temporalPolicyVersion,
     });
+
+    // Care-plan therapy starts for `window_from` anchors, pinned to the
+    // session like the clock: its retraversals then anchor on the plans that
+    // existed when it began. No query at all unless the pathway anchors a
+    // window, so every other pathway's context is unchanged.
+    const temporalContext = withTherapyStarts(
+      clock,
+      await loadCarePlanTherapyStarts(pool, {
+        patientId: args.patientId,
+        pathwayId: args.pathwayId,
+        graphContext: rctx.graphContext,
+      }),
+    );
 
     // The version gates everything downstream, so it is checked at the
     // boundary — not left to the sweep, which never runs on a pathway with
@@ -1224,7 +1239,9 @@ export const resolutionMutations = {
           }, session.updatedAt);
 
           await logEvent(tx, args.sessionId, {
-            eventType: anchorAnswer ? 'anchor_date_set' : 'gate_answer',
+            // `gate_answer` for a start date too: event_type is CHECK-constrained
+            // (migration 067), and the anchorKey below is what tells them apart.
+            eventType: 'gate_answer',
             triggerData: {
               gateId: args.nodeId,
               answer: args.answer,
