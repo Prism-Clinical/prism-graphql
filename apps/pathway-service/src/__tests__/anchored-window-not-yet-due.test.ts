@@ -476,3 +476,239 @@ describe('NOT YET DUE crosses the GraphQL boundary', () => {
     expect(SDL.match(/type WindowAnchor \{[\s\S]*?\n\}/)![0]).toMatch(/\n  dueOn: String\n/);
   });
 });
+
+// ─── A recheck with nothing stored: ask, never assume a start ───────
+
+/**
+ * Decision 2026-09-24: a nonresponder must not be silently missed. The pathway
+ * recommends oral iron at every visit that reaches the recheck step, so a
+ * recheck with no care plan, no dated order and no clinician date used to
+ * anchor on "this visit" and close NOT_YET_DUE — asking nothing. Now, when the
+ * chart says the course is already under way (an Hgb old enough that the
+ * check would be due had iron started that day, or an order of the class with
+ * no usable date), the anchor is UNRESOLVED and the gate asks for the date.
+ */
+describe('a recheck with no stored start asks for the date instead of closing NOT_YET_DUE', () => {
+  function patient(opts: {
+    labs?: Array<[string, number]>;
+    medications?: Array<Record<string, unknown>>;
+  }): PatientContext {
+    return { ...hgb(opts.labs ?? []), medications: opts.medications ?? [] } as PatientContext;
+  }
+  const RESPONSE_GATES = ['gate-hgb-response', 'gate-hgb-nonresponse'];
+
+  function expectDateQuestion(r: Awaited<ReturnType<TraversalEngine['traverse']>>) {
+    expect(r.pendingQuestions).toHaveLength(1);
+    expect(r.pendingQuestions[0]).toMatchObject({
+      datumKey: KEY, answerType: AnswerType.DATE, prompt: 'When did oral iron start?',
+    });
+    for (const id of RESPONSE_GATES) {
+      const g = r.resolutionState.get(id)!;
+      expect(g.status).toBe(NodeStatus.PENDING_QUESTION);
+      expect(g.notYetDue).toBeUndefined();
+    }
+    // The drug is still recommended at this visit.
+    expect(r.resolutionState.get('med-1')!.status).toBe(NodeStatus.INCLUDED);
+  }
+
+  it('start visit with no prior Hgb: NOT_YET_DUE, nothing asked, generation not blocked', async () => {
+    const pc = patient({});
+    const r = await engineAt(DAY0, pc).traverse(anemiaShape(), pc, new Map());
+    expect(r.pendingQuestions).toEqual([]);
+    for (const id of RESPONSE_GATES) {
+      const g = r.resolutionState.get(id)!;
+      expect(g.status).toBe(NodeStatus.GATED_OUT);
+      expect(g.notYetDue).toBe(true);
+      expect(g.windowAnchors?.[0]).toMatchObject({ source: 'SESSION_RECOMMENDATION', date: '2026-06-01' });
+    }
+    expect(validateForGeneration(r.resolutionState, r.redFlags)).toEqual([]);
+  });
+
+  it('start visit whose diagnostic Hgb is 3 days old: still a start visit, nothing asked', async () => {
+    const pc = patient({ labs: [BASELINE] });
+    const r = await engineAt(DAY0, pc).traverse(anemiaShape(), pc, new Map());
+    expect(r.pendingQuestions).toEqual([]);
+    expect(r.resolutionState.get('gate-hgb-nonresponse')!.notYetDue).toBe(true);
+  });
+
+  it('day-21 recheck, Hgb dated 21 days earlier, no anchor source: asks "When did oral iron start?"', async () => {
+    const pc = patient({ labs: [['2026-06-01', 8.2], ['2026-06-20', 8.6]] });
+    const r = await engineAt(DAY21, pc).traverse(anemiaShape(), pc, new Map());
+    expectDateQuestion(r);
+    const g = r.resolutionState.get('gate-hgb-nonresponse')!;
+    expect(g.windowAnchors ?? []).toEqual([]);
+    expect(g.uncertaintyReason).toBe('ANCHOR_UNRESOLVED');
+    // Neither response branch is opened on a guess.
+    expect(r.resolutionState.get('step-2-4')!.status).not.toBe(NodeStatus.INCLUDED);
+    expect(r.resolutionState.get('step-2-6')!.status).not.toBe(NodeStatus.INCLUDED);
+    // The medication → gate influence is kept: a change to the drug re-decides the gate.
+    expect([...(r.dependencyMap.influences.get('med-1') ?? [])].sort()).toEqual([...RESPONSE_GATES].sort());
+    // The audit trail says why this visit was not read as the start.
+    expect(g.excludeReason).toMatch(/oral iron is recommended at this visit, but the chart holds a LOINC 718-7 result from 2026-06-01, at least 14 days before this visit/);
+  });
+
+  it('the same recheck with the old Hgb alone (not yet rechecked) asks for the date first', async () => {
+    const pc = patient({ labs: [['2026-06-01', 8.2]] });
+    const r = await engineAt(DAY21, pc).traverse(anemiaShape(), pc, new Map());
+    expectDateQuestion(r);
+  });
+
+  it('…answered with a clinician date 21 days ago and +0.4 g/dL: not responding', async () => {
+    const pc = patient({ labs: [['2026-06-01', 8.2], ['2026-06-20', 8.6]] });
+    const answers = new Map<string, GateAnswer>([[KEY, { dateValue: '2026-06-01' }]]);
+    const r = await engineAt(DAY21, pc).traverse(anemiaShape(), pc, answers);
+    expect(r.pendingQuestions).toEqual([]);
+    expect(r.resolutionState.get('gate-hgb-nonresponse')!.status).toBe(NodeStatus.INCLUDED);
+    expect(r.resolutionState.get('step-2-6')!.status).toBe(NodeStatus.INCLUDED);
+    expect(r.resolutionState.get('step-2-4')!.status).toBe(NodeStatus.GATED_OUT);
+    expect(r.resolutionState.get('gate-hgb-nonresponse')!.windowAnchors?.[0])
+      .toMatchObject({ source: 'CLINICIAN', date: '2026-06-01', dueOn: '2026-06-15' });
+    expect(validateForGeneration(r.resolutionState, r.redFlags)).toEqual([]);
+  });
+
+  it('…answered incrementally, lands where a full traversal with the date lands', async () => {
+    const pc = patient({ labs: [['2026-06-01', 8.2], ['2026-06-20', 8.6]] });
+    const graph = anemiaShape();
+    const engine = engineAt(DAY21, pc);
+    const first = await engine.traverse(graph, pc, new Map());
+    expectDateQuestion(first);
+
+    // As `answerPendingDecision` does for an anchor answer: stored under the
+    // ANCHOR key, the asking gates re-disposed.
+    const q = first.pendingQuestions[0];
+    const answers = new Map<string, GateAnswer>([[KEY, { dateValue: '2026-06-01' }]]);
+    const roots = new Set([q.gateId, ...(q.askedByNodeIds ?? [])]);
+    const second = await engine.resolveIncrementally(
+      roots, first.resolutionState, first.dependencyMap, graph, pc, answers,
+      { pendingQuestions: first.pendingQuestions, redFlags: first.redFlags, alsoDropGateIds: [...roots] },
+    );
+    const full = await engineAt(DAY21, pc).traverse(graph, pc, new Map(answers));
+    expect(second.pendingQuestions).toEqual([]);
+    for (const id of new Set([...first.resolutionState.keys(), ...full.resolutionState.keys()])) {
+      expect([id, first.resolutionState.get(id)?.status]).toEqual([id, full.resolutionState.get(id)?.status]);
+    }
+    expect(first.resolutionState.get('step-2-6')!.status).toBe(NodeStatus.INCLUDED);
+  });
+
+  it('with a stored care plan: anchored on it, nothing asked', async () => {
+    const pc = patient({ labs: [['2026-06-01', 8.2], ['2026-06-20', 8.6]] });
+    const r = await engineAt(DAY21, pc, { carePlan: true }).traverse(anemiaShape(), pc, new Map());
+    expect(r.pendingQuestions).toEqual([]);
+    expect(r.resolutionState.get('step-2-6')!.status).toBe(NodeStatus.INCLUDED);
+    expect(r.resolutionState.get('gate-hgb-nonresponse')!.windowAnchors?.[0])
+      .toMatchObject({ source: 'CARE_PLAN' });
+  });
+
+  it('with a dated order of the class: anchored on it, nothing asked', async () => {
+    const pc = patient({
+      labs: [['2026-06-01', 8.2], ['2026-06-20', 8.6]],
+      medications: [{ system: 'RXNORM', code: 'RX-FE-SULFATE', date: '2026-06-01' }],
+    });
+    const r = await engineAt(DAY21, pc).traverse(anemiaShape(), pc, new Map());
+    expect(r.pendingQuestions).toEqual([]);
+    expect(r.resolutionState.get('gate-hgb-nonresponse')!.windowAnchors?.[0])
+      .toMatchObject({ source: 'MEDICATION_ORDER', date: '2026-06-01' });
+  });
+
+  it.each([
+    ['undated', {}],
+    ['month-precision', { date: '2026-05' }],
+  ])('an order of the class with an %s start: on it since an unknown date — asks', async (_, extra) => {
+    const pc = patient({
+      labs: [BASELINE],
+      medications: [{ system: 'RXNORM', code: 'RX-FE-SULFATE', ...extra }],
+    });
+    // Day 0 and a 3-day-old Hgb: only the order says the course is under way.
+    const r = await engineAt(DAY0, pc).traverse(anemiaShape(), pc, new Map());
+    expectDateQuestion(r);
+  });
+
+  it('boundary is the due rule: an Hgb exactly min_days old asks, one day younger does not', async () => {
+    // DAY14 is 2026-06-15; 2026-06-01 + 14 days is due on 2026-06-15.
+    const due = patient({ labs: [['2026-06-01', 8.2]] });
+    expectDateQuestion(await engineAt(DAY14, due).traverse(anemiaShape(), due, new Map()));
+
+    const young = patient({ labs: [['2026-06-02', 8.2]] });
+    const r = await engineAt(DAY14, young).traverse(anemiaShape(), young, new Map());
+    expect(r.pendingQuestions).toEqual([]);
+    expect(r.resolutionState.get('gate-hgb-nonresponse')!.notYetDue).toBe(true);
+    expect(r.resolutionState.get('gate-hgb-nonresponse')!.windowAnchors?.[0])
+      .toMatchObject({ source: 'SESSION_RECOMMENDATION' });
+  });
+
+  it('the known cost: a start visit with an older routine Hgb is asked; today\'s date closes it NOT_YET_DUE', async () => {
+    const pc = patient({ labs: [['2026-02-10', 12.4], BASELINE] });
+    const first = await engineAt(DAY0, pc).traverse(anemiaShape(), pc, new Map());
+    expectDateQuestion(first);
+
+    const answers = new Map<string, GateAnswer>([[KEY, { dateValue: '2026-06-01' }]]);
+    const r = await engineAt(DAY0, pc).traverse(anemiaShape(), pc, answers);
+    expect(r.pendingQuestions).toEqual([]);
+    for (const id of RESPONSE_GATES) {
+      const g = r.resolutionState.get(id)!;
+      expect(g.status).toBe(NodeStatus.GATED_OUT);
+      expect(g.notYetDue).toBe(true);
+      expect(g.windowAnchors?.[0]).toMatchObject({ source: 'CLINICIAN', date: '2026-06-01', dueOn: '2026-06-15' });
+    }
+    expect(validateForGeneration(r.resolutionState, r.redFlags)).toEqual([]);
+  });
+
+  it('without min_days_since_anchor an old Hgb is not evidence — the start-visit reading stands', async () => {
+    const noMin = { ...ORAL_IRON, min_days_since_anchor: undefined };
+    const pc = patient({ labs: [['2026-03-01', 11.9], BASELINE] });
+    const r = await engineAt(DAY0, pc).traverse(
+      anemiaShape({ respCondition: DELTA('at_least', noMin), nonrespCondition: DELTA('less_than', noMin) }),
+      pc,
+      new Map(),
+    );
+    expect(r.pendingQuestions).toEqual([]);
+    expect(r.resolutionState.get('gate-hgb-nonresponse')!.notYetDue).toBe(true);
+  });
+
+  it('on_unresolved: default takes default_behavior instead of asking', async () => {
+    const pc = patient({ labs: [['2026-06-01', 8.2], ['2026-06-20', 8.6]] });
+    const r = await engineAt(DAY21, pc).traverse(
+      anemiaShape({ gateExtra: { on_unresolved: 'default' } }), pc, new Map(),
+    );
+    expect(r.pendingQuestions).toEqual([]);
+    for (const id of RESPONSE_GATES) {
+      expect(r.resolutionState.get(id)!.notYetDue).toBeUndefined();
+      expect(r.resolutionState.get(id)!.status).not.toBe(NodeStatus.PENDING_QUESTION);
+    }
+  });
+
+  describe('inside a compound gate', () => {
+    const TARGET = {
+      field: 'labs', operator: 'greater_than', value: '718-7', system: 'LOINC', threshold: 10.95,
+      horizon: { days: 7 }, display: 'Hemoglobin (g/dL)',
+    };
+    function compound(graph: ReturnType<typeof anemiaShape>, id: string, op: 'AND' | 'OR', conditions: unknown[]) {
+      Object.assign(graph.getNode(id)!.properties, {
+        gate_type: GateType.COMPOUND, operator: op, condition: undefined, conditions,
+      });
+    }
+
+    it('OR: Hgb at target settles "responding" — the unresolved anchor is not asked', async () => {
+      const pc = patient({ labs: [['2026-06-01', 8.2], ['2026-06-20', 11.2]] });
+      const graph = anemiaShape();
+      compound(graph, 'gate-hgb-response', 'OR', [DELTA('at_least'), TARGET]);
+      compound(graph, 'gate-hgb-nonresponse', 'AND', [DELTA('less_than'), { ...TARGET, operator: 'less_than', threshold: 11 }]);
+      const r = await engineAt(DAY21, pc).traverse(graph, pc, new Map());
+      expect(r.resolutionState.get('gate-hgb-response')!.status).toBe(NodeStatus.INCLUDED);
+      expect(r.resolutionState.get('gate-hgb-nonresponse')!.status).toBe(NodeStatus.GATED_OUT);
+      expect(r.pendingQuestions).toEqual([]);
+    });
+
+    it('nested groups: below target and no anchor — ONE date question for both gates', async () => {
+      const pc = patient({ labs: [['2026-06-01', 8.2], ['2026-06-20', 8.6]] });
+      const graph = anemiaShape();
+      compound(graph, 'gate-hgb-response', 'OR', [{ operator: 'AND', conditions: [DELTA('at_least')] }, TARGET]);
+      compound(graph, 'gate-hgb-nonresponse', 'AND', [
+        { operator: 'OR', conditions: [DELTA('less_than')] },
+        { ...TARGET, operator: 'less_than', threshold: 11 },
+      ]);
+      const r = await engineAt(DAY21, pc).traverse(graph, pc, new Map());
+      expectDateQuestion(r);
+    });
+  });
+});

@@ -987,6 +987,8 @@ function evaluateAggregateKernel(
         factStore: deps.factStore,
         temporalContext: deps.temporalContext,
         sessionRecommendation: deps.sessionRecommendation,
+        // Its own results tell a recheck from a start visit (source 4).
+        series: adapted.selection,
       })
     : undefined;
   // The session's Medication nodes the anchor read, whatever it concluded — so

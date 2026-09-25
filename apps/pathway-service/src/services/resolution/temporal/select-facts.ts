@@ -105,8 +105,12 @@ function hasFiniteValue(fact: NormalizedFact): boolean {
  *    instead of quietly shrinking it. Disclosed as a `v1` delta, not a slip.
  *  - `greater_than` / `less_than` read one numeric observation by EXACT code
  *    (getNumericValue uses `===`, never a pattern).
+ *
+ * Exported for `window_from` (anchored-window.ts): whether a condition's own
+ * series already holds an old result is read with THIS rule, so "a result of
+ * this lab" means the same there as in the selection.
  */
-function candidateMatches(fact: NormalizedFact, cond: FactSelectionCondition): boolean {
+export function candidateMatches(fact: NormalizedFact, cond: FactSelectionCondition): boolean {
   if (fact.kind !== fieldToKind(cond.field)) return false;
 
   // `exists` is bucket existence and nothing else — it ignores both value and
