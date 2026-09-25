@@ -30,14 +30,15 @@
 //   dp-3             anemia DP-3 (v7; both arms since v8): confirmed IDA and the
 //                    empiric arm choose the oral trial (Stage 2.5) or IV iron
 //                    without a trial (Step 2.9 → gate-iv-iron-ga-direct → Step
-//                    2.10); GA 12 gates IV out, GA missing asks; ferritin 50 and
-//                    hemoglobinopathy disease never see DP-3
+//                    2.10); GA 12 gates IV out, GA missing asks; ferritin 50
+//                    never sees DP-3
 //   malabsorption    anemia v8: DP-3 criterion 3c from chart codes — a malabsorption
 //                    code opens Step 2.11 (recommend IV first) next to the still-
 //                    pending DP-3 question; never forces the route; both arms
-//   hgbpathy         anemia v7: hemoglobinopathy disease + MCV < 80 → no DP-1 (no
-//                    empiric iron) and its own confirmatory iron studies (Step
-//                    1.8); traits and uncoded patients keep DP-1; MCV ≥ 80 neither
+//   hgbpathy         anemia v8: hemoglobinopathy disease + MCV < 80 → the empiric
+//                    arm is closed (iron studies, Step 1.8, if chosen anyway);
+//                    confirmatory studies + ferritin 12 → the normal Stage 2 iron
+//                    path, ferritin 50 → no iron; traits / uncoded unchanged
 //   ghtn-shared-labs gestational hypertension v2: BP, severity-panel and urine-protein
 //                    labs split per host step — each follows its own step's gate
 //   ghtn-seizure     gestational hypertension v4: Guid-5 "Seizure: call 911" follows
@@ -825,7 +826,8 @@ async function proveDp3(): Promise<void> {
       WORKUP, 'stage-2'],
     ['empiric arm (no ferritin drawn; v8)',
       (ga) => patientWith([['787-2', 72], ['718-7', 9.5]], ga === null ? {} : { gestational_age_weeks: ga }),
-      EMPIRIC_CHOICE, EMPIRIC],
+      // v8: Stage 1.5 reaches Step 2.8 through gate-empiric-no-hgbpathy (no hemoglobinopathy disease).
+      EMPIRIC_CHOICE, 'gate-empiric-no-hgbpathy'],
   ];
   for (const reverse of [false, true]) {
     console.log(`  -- edge order: ${reverse ? 'reversed' : 'file'}`);
@@ -909,11 +911,11 @@ async function proveDp3(): Promise<void> {
     expect('no dp-3 question', dp3Asked(r.pending), 'false');
     expectAll('(IV without a trial)', r.state, IV_DIRECT, 'GATED_OUT');
 
-    console.log('  D57.1 sickle-cell disease, MCV 72 — no DP-1, so no DP-3:');
+    console.log('  D57.1 sickle-cell disease, MCV 72, ferritin 12, workup — DP-3 asks, as for any confirmed IDA (v8):');
     const d = await resolveSession({ ...base, patient: patientWith([['787-2', 72], ['2276-4', 12], ['718-7', 9.5]],
-      { gestational_age_weeks: 20 }, ['D57.1']) });
-    expect('dp-3', status(d.state, 'dp-3'), 'GATED_OUT');
-    expect('no dp-3 question', dp3Asked(d.pending), 'false');
+      { gestational_age_weeks: 20 }, ['D57.1']), choose: WORKUP });
+    expect('dp-3', status(d.state, 'dp-3'), 'PENDING_QUESTION');
+    expect('dp-3 question', dp3Asked(d.pending), 'true');
   }
 }
 
@@ -981,43 +983,57 @@ async function proveMalabsorption(): Promise<void> {
   }
 }
 
-// ── Proof: hemoglobinopathy disease keeps microcytic patients off empiric iron (v7) ──
-// [DECISION — Josh 2026-09-24] gate-microcytic (DP-1's only way in, via Step
-// 1.7) is AND(MCV < 80, not_includes_code × 12 disease codes: D57.0.*, D57.1,
-// D57.2.*, D57.4.*, D57.8.*, D56.0/.1/.2/.5/.8/.9, D58.2 — LIFETIME, status
-// any). Traits (D57.3, D56.3) are NOT listed: carriers keep DP-1 (and
-// gate-trait). gate-hgbpathy-microcytic = AND(MCV < 80, OR(includes_code × the
-// same 12)) → Step 1.8, the disease patients' own confirmatory iron studies
-// (lab-15 ferritin, lab-16 iron/TIBC/sat — one node per host). Step 1.8 has no
-// route into DP-1's region: a closing gate sweeps its whole closure and spares
-// nothing, so a second route into Step 1.2 / Stage 2 loses the race (tried:
-// Step 1.2 and Stage 2 GATED_OUT in both edge orders, for coded AND uncoded
-// patients). Consequence, recorded: a ferritin-confirmed disease patient gets
-// the workup plus her route-out step, not the Stage 2 iron arm.
+// ── Proof: hemoglobinopathy disease — no empiric iron, the normal iron path once confirmed (v8) ──
+// [DECISION — Josh 2026-09-24] v7: hemoglobinopathy disease (D57.0.*, D57.1,
+// D57.2.*, D57.4.*, D57.8.*, D56.0/.1/.2/.5/.8/.9, D58.2 — LIFETIME, status any;
+// traits D57.3 / D56.3 NOT listed) keeps a microcytic patient off empiric iron.
+// v8: a ferritin-confirmed disease patient gets the SAME iron path as any
+// confirmed IDA — only the empiric arm is skipped.
+//
+// Why the split moved. v7 split disease / no disease with two chart gates in
+// front of DP-1 (gate-microcytic with not_includes_code ×12 → DP-1;
+// gate-hgbpathy-microcytic → Step 1.8). A closing gate sweeps its whole
+// containment closure at once and spares nothing, and both gates' closures
+// would contain Stage 2 if either route led there — so a second route into
+// Step 1.2 / Stage 2 always lost Stage 2, in both edge orders. A DecisionPoint's
+// sweep DOES spare what its chosen branch contains, so the split now sits behind
+// DP-1's empiric branch: gate-microcytic is MCV < 80 alone (v6's gate), and
+// Stage 1.5 hosts gate-empiric-no-hgbpathy (not_includes_code ×12 → Step 2.8) and
+// gate-hgbpathy-microcytic (includes_code ×12 → Step 1.8, iron studies). The
+// workup branch (Step 1.2 → ferritin → Stage 2) is shared by everyone.
+// Cost (flagged in the brief): DP-1 is asked again for disease patients, and its
+// empiric option only opens iron studies for them.
 async function proveHgbpathy(): Promise<void> {
-  console.log(`\n=== hgbpathy: hemoglobinopathy disease + MCV 72 vs DP-1 (${ANEMIA}) ===`);
-  const labs = (mcv: number | null): Lab[] => [...(mcv === null ? [] : [['787-2', mcv] as Lab]), ['718-7', 9.5]];
+  console.log(`\n=== hgbpathy: hemoglobinopathy disease — empiric arm closed, confirmed iron path open (${ANEMIA}) ===`);
+  const labs = (mcv: number | null, fer: number | null = null): Lab[] => [
+    ...(mcv === null ? [] : [['787-2', mcv] as Lab]), ...(fer === null ? [] : [['2276-4', fer] as Lab]), ['718-7', 9.5]];
+  const GA20 = { gestational_age_weeks: 20 };
   const options = (pending: unknown[]) =>
     JSON.stringify([...((pending.find((p: any) => p.gateId === 'dp-1') as any)?.options ?? [])].sort());
-  const HG_WORKUP = ['step-1-8', 'lab-15', 'lab-16'];
-  const EMPIRIC_ARM = [EMPIRIC, 'step-2-1', 'med-1', 'step-2-3'];
+  const HG_WORKUP = ['gate-hgbpathy-microcytic', 'step-1-8', 'lab-15', 'lab-16'];
+  const EMPIRIC_ARM = [EMPIRIC, 'gate-empiric-no-hgbpathy'];
+  const ORAL_PATH = ['stage-2', 'step-2-8', 'dp-3', ORAL_TRIAL, 'step-2-1', 'med-1', 'step-2-2', 'step-2-3', 'lab-10'];
+  const EMPIRIC_ONLY: Replay = { dp: 'dp-1', option: EMPIRIC };
   for (const reverse of [false, true]) {
     console.log(`  -- edge order: ${reverse ? 'reversed' : 'file'}`);
     const base = { file: ANEMIA, reverse };
-    const offered = async (codes: string[], label: string, stage3?: [string, string]) => {
-      console.log(`  ${label}, MCV 72 — DP-1 offered with both branches:`);
-      const r = await resolveSession({ ...base, patient: patientWith(labs(72), {}, codes) });
-      expect('gate-microcytic', status(r.state, 'gate-microcytic'), 'INCLUDED');
+
+    for (const [codes, label, stage3] of [
+      [[], 'no hemoglobinopathy code', null],
+      [['D57.3'], 'D57.3 sickle-cell trait', ['gate-trait', 'step-3-3']],
+      [['D56.3'], 'D56.3 thalassemia minor', ['gate-trait', 'step-3-3']],
+    ] as const) {
+      console.log(`  ${label}, MCV 72 — DP-1 offered; empiric proceeds to DP-3 as before:`);
+      let r = await resolveSession({ ...base, patient: patientWith(labs(72), GA20, [...codes]) });
       expect('dp-1', status(r.state, 'dp-1'), 'PENDING_QUESTION');
       expect('dp-1 options', options(r.pending), JSON.stringify(DP1_OPTIONS));
-      expect('gate-hgbpathy-microcytic', status(r.state, 'gate-hgbpathy-microcytic'), 'GATED_OUT');
+      r = await resolveSession({ ...base, patient: patientWith(labs(72), GA20, [...codes]), replay: [EMPIRIC_ONLY] });
+      expectAll('(empiric arm open)', r.state, [...EMPIRIC_ARM, 'step-2-8'], 'INCLUDED');
+      expect('dp-3 asks the route', status(r.state, 'dp-3'), 'PENDING_QUESTION');
       expectAll('(Step 1.8, not this patient)', r.state, HG_WORKUP, 'GATED_OUT');
       if (stage3) expect(`${stage3[0]} fires`, status(r.state, stage3[0]), 'INCLUDED');
       if (stage3) expect(stage3[1], status(r.state, stage3[1]), 'INCLUDED');
-    };
-    await offered([], 'no hemoglobinopathy code');
-    await offered(['D57.3'], 'D57.3 sickle-cell trait', ['gate-trait', 'step-3-3']);
-    await offered(['D56.3'], 'D56.3 thalassemia minor', ['gate-trait', 'step-3-3']);
+    }
 
     for (const [code, label, gate, step] of [
       ['D57.1', 'sickle-cell disease without crisis', 'gate-scd', 'step-3-1'],
@@ -1026,39 +1042,61 @@ async function proveHgbpathy(): Promise<void> {
       ['D56.1', 'beta thalassemia', 'gate-thal-major', 'step-3-2'],
       ['D58.2', 'other hemoglobinopathy (HbC / HbE disease)', null, null],
     ] as const) {
-      console.log(`  ${code} ${label}, MCV 72 — no empiric option, confirmatory iron studies (Step 1.8):`);
-      let r = await resolveSession({ ...base, patient: patientWith(labs(72), {}, [code]) });
-      expect('gate-microcytic', status(r.state, 'gate-microcytic'), 'GATED_OUT');
-      expect('dp-1', status(r.state, 'dp-1'), 'GATED_OUT');
-      expect('no dp-1 question', String(r.pending.some((p: any) => p.gateId === 'dp-1')), 'false');
-      expectAll('(empiric arm)', r.state, EMPIRIC_ARM, 'GATED_OUT');
-      expect('gate-hgbpathy-microcytic', status(r.state, 'gate-hgbpathy-microcytic'), 'INCLUDED');
-      expectAll('(Step 1.8 workup)', r.state, HG_WORKUP, 'INCLUDED');
-      expect('lab-15 sits under', String(r.state.get('lab-15')?.parentNodeId), 'step-1-8');
-      // Recorded consequence: DP-1's region (Step 1.2, Stage 2) is closed for her.
-      expect('CONSEQUENCE — stage-2 iron arm', status(r.state, 'stage-2'), 'GATED_OUT');
+      console.log(`  ${code} ${label}, MCV 72 — DP-1 is asked (v8 cost):`);
+      let r = await resolveSession({ ...base, patient: patientWith(labs(72, 12), GA20, [code]) });
+      expect('dp-1', status(r.state, 'dp-1'), 'PENDING_QUESTION');
+      expect('dp-1 options', options(r.pending), JSON.stringify(DP1_OPTIONS));
+
+      console.log(`  ${code}, MCV 72, ferritin 12 — confirmatory studies, oral trial: the normal iron path:`);
+      r = await resolveSession({ ...base, patient: patientWith(labs(72, 12), GA20, [code]), replay: [WORKUP, ORAL] });
+      expect('gate-ida-confirmed', status(r.state, 'gate-ida-confirmed'), 'INCLUDED');
+      expectAll('(oral iron path)', r.state, ORAL_PATH, 'INCLUDED');
+      expect('step-2-3 sits under', String(r.state.get('step-2-3')?.parentNodeId), ORAL_TRIAL);
+      expectAll('(empiric arm, unchosen)', r.state, [...EMPIRIC_ARM, ...HG_WORKUP], 'EXCLUDED');
+      for (const g of ['gate-hgb-response', 'gate-hgb-nonresponse']) {
+        expect(`${g} not yet due (start visit)`, String(r.state.get(g)?.notYetDue === true), 'true');
+      }
       if (gate && step) {
         expect(`${gate} fires`, status(r.state, gate), 'INCLUDED');
-        expect(`${step} route-out`, status(r.state, step), 'INCLUDED');
+        expect(`${step} route-out (alongside the iron path)`, status(r.state, step), 'INCLUDED');
       }
-      if (code === 'D57.1') {
-        console.log(`  ${code}, MCV 90 — neither microcytic gate opens; normocytic workup:`);
-        r = await resolveSession({ ...base, patient: patientWith(labs(90), {}, [code]) });
-        expect('gate-hgbpathy-microcytic', status(r.state, 'gate-hgbpathy-microcytic'), 'GATED_OUT');
-        expect('dp-1', status(r.state, 'dp-1'), 'GATED_OUT');
-        expectAll('(Step 1.8)', r.state, HG_WORKUP, 'GATED_OUT');
-        expect('step-1-3 normocytic workup', status(r.state, 'step-1-3'), 'INCLUDED');
 
-        console.log(`  ${code}, MCV missing — one MCV question; the code settles gate-microcytic (not an asker):`);
-        r = await resolveSession({ ...base, patient: patientWith(labs(null), {}, [code]) });
-        const q = r.pending.filter((p: any) => p.datumKey === 'LOINC:787-2') as any[];
-        expect('one MCV question', String(q.length), '1');
-        expect('asked by', JSON.stringify([...(q[0]?.askedByNodeIds ?? [])].sort()),
-          JSON.stringify(['gate-hgbpathy-microcytic', 'gate-macrocytic', 'gate-normocytic']));
-        expect('gate-microcytic (settled by the code)', status(r.state, 'gate-microcytic'), 'GATED_OUT');
-        expect('step-1-8', status(r.state, 'step-1-8'), 'PENDING_QUESTION');
-      }
+      console.log(`  ${code}, MCV 72, ferritin 50 — confirmatory studies: no iron:`);
+      r = await resolveSession({ ...base, patient: patientWith(labs(72, 50), GA20, [code]), choose: WORKUP });
+      expect('gate-ida-confirmed', status(r.state, 'gate-ida-confirmed'), 'GATED_OUT');
+      expectAll('(no iron)', r.state, ['stage-2', 'step-2-8', 'dp-3', 'step-2-1', 'med-1', 'step-2-10', 'med-13'], 'GATED_OUT');
+      expect('no dp-3 question', String(r.pending.some((p: any) => p.gateId === 'dp-3')), 'false');
+
+      console.log(`  ${code}, MCV 72 — empiric chosen anyway: no empiric iron, iron studies instead (Step 1.8):`);
+      r = await resolveSession({ ...base, patient: patientWith(labs(72), GA20, [code]), replay: [EMPIRIC_ONLY] });
+      expect(EMPIRIC, status(r.state, EMPIRIC), 'INCLUDED');
+      expect('gate-empiric-no-hgbpathy', status(r.state, 'gate-empiric-no-hgbpathy'), 'GATED_OUT');
+      expectAll('(no empiric iron)', r.state, ['step-2-8', 'dp-3', 'step-2-1', 'med-1', 'step-2-10', 'med-13'], 'GATED_OUT');
+      expect('no dp-3 question', String(r.pending.some((p: any) => p.gateId === 'dp-3')), 'false');
+      expectAll('(Step 1.8 iron studies)', r.state, HG_WORKUP, 'INCLUDED');
+      expect('lab-15 sits under', String(r.state.get('lab-15')?.parentNodeId), 'step-1-8');
+      expect('stage-2 (unchosen DP-1 branch)', status(r.state, 'stage-2'), 'EXCLUDED');
     }
+
+    console.log('  D58.2, MCV 72, ferritin 12 — confirmatory studies, then IV iron first at GA 20:');
+    let r = await resolveSession({ ...base, patient: patientWith(labs(72, 12), GA20, ['D58.2']),
+      replay: [WORKUP, { dp: 'dp-3', option: IV_FIRST }] });
+    expectAll('(IV iron without a trial)', r.state, ['step-2-9', 'step-2-10', 'med-13', 'med-14'], 'INCLUDED');
+
+    console.log('  D57.1, MCV 90 — gate-microcytic closes; no DP-1, no Step 1.8; normocytic workup:');
+    r = await resolveSession({ ...base, patient: patientWith(labs(90), GA20, ['D57.1']) });
+    expect('gate-microcytic', status(r.state, 'gate-microcytic'), 'GATED_OUT');
+    expect('dp-1', status(r.state, 'dp-1'), 'GATED_OUT');
+    expectAll('(Step 1.8)', r.state, HG_WORKUP, 'GATED_OUT');
+    expect('step-1-3 normocytic workup', status(r.state, 'step-1-3'), 'INCLUDED');
+
+    console.log('  D57.1, MCV missing — one MCV question from the three MCV gates, as for any patient:');
+    r = await resolveSession({ ...base, patient: patientWith(labs(null), GA20, ['D57.1']) });
+    const q = r.pending.filter((p: any) => p.datumKey === 'LOINC:787-2') as any[];
+    expect('one MCV question', String(q.length), '1');
+    expect('asked by', JSON.stringify([...(q[0]?.askedByNodeIds ?? [])].sort()),
+      JSON.stringify(['gate-macrocytic', 'gate-microcytic', 'gate-normocytic']));
+    expect('dp-1 held', status(r.state, 'dp-1'), 'PENDING_QUESTION');
   }
 }
 
