@@ -23,6 +23,10 @@ import {
 } from '../services/resolution/types';
 import { GraphNode, GraphEdge, PatientContext } from '../services/confidence/types';
 import { makeGraphContext } from './fixtures/reference-patient-context';
+import { readFileSync } from 'fs';
+import { join } from 'path';
+import { buildSchema, graphql } from 'graphql';
+import { normalizeAnswerType } from '../services/resolution/answer-validation';
 
 const AS_OF = '2026-09-01T12:00:00.000Z';
 const KEY = 'anchor:medication_start:oral-iron-repletion';
@@ -300,5 +304,24 @@ describe('planAnchorAnswer', () => {
     );
     const untyped = { gate_type: 'question' } as unknown as GateProperties;
     expect(validateAnswerAgainstGate({ dateValue: '2026-06-01' }, untyped)).not.toBeNull();
+  });
+});
+
+describe('the DATE answer type crosses the GraphQL boundary', () => {
+  const SDL = readFileSync(join(__dirname, '../../schema.graphql'), 'utf-8');
+
+  it('the AnswerType enum serializes DATE, and a stored DATE survives normalisation', async () => {
+    const enumSdl = SDL.match(/enum AnswerType \{[^}]*\}/)![0];
+    const probe = buildSchema(`${enumSdl}\ntype Query { answerType: AnswerType }`);
+    const result = await graphql({ schema: probe, source: '{ answerType }', rootValue: { answerType: 'DATE' } });
+    expect(result.errors).toBeUndefined();
+    expect(normalizeAnswerType('DATE')).toBe(AnswerType.DATE);
+    // Not the BOOLEAN fallback an unknown value gets — which would render a
+    // start-date question as a yes/no.
+    expect(normalizeAnswerType('date')).toBe(AnswerType.DATE);
+  });
+
+  it('GateAnswerInput accepts dateValue', () => {
+    expect(SDL.match(/input GateAnswerInput \{[\s\S]*?\n\}/)![0]).toMatch(/\n  dateValue: String\n/);
   });
 });

@@ -59,8 +59,14 @@ export type AdminEvidenceEntry = {
   year?: Maybe<Scalars['Int']['output']>;
 };
 
+/**
+ * How a pending question is answered. DATE is a calendar date (`YYYY-MM-DD`,
+ * sent as `GateAnswerInput.dateValue`) — asked only for a `window_from`
+ * treatment start date ("When did oral iron start?").
+ */
 export enum AnswerType {
   Boolean = 'BOOLEAN',
+  Date = 'DATE',
   Numeric = 'NUMERIC',
   Select = 'SELECT'
 }
@@ -376,6 +382,13 @@ export type DiffDetail = {
 
 export type GateAnswerInput = {
   booleanValue?: InputMaybe<Scalars['Boolean']['input']>;
+  /**
+   * A treatment start date, `YYYY-MM-DD`, on or before the session's evaluation
+   * date. Answers a DATE question, or — sent to a gate that has a `window_from`
+   * condition and nothing pending — corrects the start date the window was
+   * anchored on (`ResolvedNode.windowAnchors`). Supply it alone.
+   */
+  dateValue?: InputMaybe<Scalars['String']['input']>;
   numericValue?: InputMaybe<Scalars['Float']['input']>;
   selectedOption?: InputMaybe<Scalars['String']['input']>;
 };
@@ -1814,6 +1827,12 @@ export type ResolvedNode = {
   providerOverride?: Maybe<ProviderOverrideType>;
   status: NodeStatus;
   title: Scalars['String']['output'];
+  /**
+   * On a gate with `window_from` conditions: the treatment start date each
+   * anchored window opened on, and where it came from. Null on every other node.
+   * Correct one by answering this gate with `dateValue`.
+   */
+  windowAnchors?: Maybe<Array<WindowAnchor>>;
 };
 
 export type ResolvedProcedure = {
@@ -2167,6 +2186,21 @@ export enum WeightSource {
   SystemDefault = 'SYSTEM_DEFAULT'
 }
 
+/** Where an anchored trend window (`window_from`) opened. */
+export type WindowAnchor = {
+  __typename?: 'WindowAnchor';
+  clinicalRole: Scalars['String']['output'];
+  /** `YYYY-MM-DD`. */
+  date: Scalars['String']['output'];
+  detail: Scalars['String']['output'];
+  /** `anchor:<event>:<clinical_role>` — one per treatment class, shared by every gate on it. */
+  key: Scalars['String']['output'];
+  /** The class in words, as the start-date question names it. */
+  label: Scalars['String']['output'];
+  /** CLINICIAN, CARE_PLAN or MEDICATION_ORDER — the first that resolved, in that order. */
+  source: Scalars['String']['output'];
+};
+
 export type WithIndex<TObject> = TObject & Record<string, any>;
 export type ResolversObject<TObject> = WithIndex<TObject>;
 
@@ -2383,6 +2417,7 @@ export type ResolversTypes = ResolversObject<{
   WeightMatrixEntry: ResolverTypeWrapper<WeightMatrixEntry>;
   WeightScope: WeightScope;
   WeightSource: WeightSource;
+  WindowAnchor: ResolverTypeWrapper<WindowAnchor>;
 }>;
 
 /** Mapping between all available schema types and the resolvers parents */
@@ -2492,6 +2527,7 @@ export type ResolversParentTypes = ResolversObject<{
   ValidationResult: ValidationResult;
   WeightMatrix: WeightMatrix;
   WeightMatrixEntry: WeightMatrixEntry;
+  WindowAnchor: WindowAnchor;
 }>;
 
 export type AdminEvidenceEntryResolvers<ContextType = DataSourceContext, ParentType extends ResolversParentTypes['AdminEvidenceEntry'] = ResolversParentTypes['AdminEvidenceEntry']> = ResolversObject<{
@@ -3230,6 +3266,7 @@ export type ResolvedNodeResolvers<ContextType = DataSourceContext, ParentType ex
   providerOverride?: Resolver<Maybe<ResolversTypes['ProviderOverrideType']>, ParentType, ContextType>;
   status?: Resolver<ResolversTypes['NodeStatus'], ParentType, ContextType>;
   title?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  windowAnchors?: Resolver<Maybe<Array<ResolversTypes['WindowAnchor']>>, ParentType, ContextType>;
   __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
 }>;
 
@@ -3409,6 +3446,16 @@ export type WeightMatrixEntryResolvers<ContextType = DataSourceContext, ParentTy
   __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
 }>;
 
+export type WindowAnchorResolvers<ContextType = DataSourceContext, ParentType extends ResolversParentTypes['WindowAnchor'] = ResolversParentTypes['WindowAnchor']> = ResolversObject<{
+  clinicalRole?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  date?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  detail?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  key?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  label?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  source?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
+}>;
+
 export type Resolvers<ContextType = DataSourceContext> = ResolversObject<{
   AdminEvidenceEntry?: AdminEvidenceEntryResolvers<ContextType>;
   ArchiveResult?: ArchiveResultResolvers<ContextType>;
@@ -3495,5 +3542,6 @@ export type Resolvers<ContextType = DataSourceContext> = ResolversObject<{
   ValidationResult?: ValidationResultResolvers<ContextType>;
   WeightMatrix?: WeightMatrixResolvers<ContextType>;
   WeightMatrixEntry?: WeightMatrixEntryResolvers<ContextType>;
+  WindowAnchor?: WindowAnchorResolvers<ContextType>;
 }>;
 

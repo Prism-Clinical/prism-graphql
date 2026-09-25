@@ -46,7 +46,12 @@ enum ResolutionType { AUTO_RESOLVED SYSTEM_SUGGESTED PROVIDER_DECIDED FORCED_MAN
 enum SessionStatus { ACTIVE COMPLETED ABANDONED DEGRADED }
 enum NodeStatus { INCLUDED EXCLUDED GATED_OUT PENDING_QUESTION TIMEOUT CASCADE_LIMIT UNKNOWN }
 enum OverrideAction { INCLUDE EXCLUDE }
-enum AnswerType { BOOLEAN NUMERIC SELECT }
+"""
+How a pending question is answered. DATE is a calendar date (`YYYY-MM-DD`,
+sent as `GateAnswerInput.dateValue`) — asked only for a `window_from`
+treatment start date ("When did oral iron start?").
+"""
+enum AnswerType { BOOLEAN NUMERIC SELECT DATE }
 enum BlockerType { EMPTY_PLAN UNRESOLVED_RED_FLAG CONTRADICTION PENDING_GATE INCOMPLETE_RESOLUTION }
 
 # ─── Core Types ────────────────────────────────────────────────────────
@@ -1088,6 +1093,28 @@ type ResolvedNode {
   excludeReason: String
   parentNodeId: ID
   depth: Int!
+  """
+  On a gate with `window_from` conditions: the treatment start date each
+  anchored window opened on, and where it came from. Null on every other node.
+  Correct one by answering this gate with `dateValue`.
+  """
+  windowAnchors: [WindowAnchor!]
+}
+
+"""
+Where an anchored trend window (`window_from`) opened.
+"""
+type WindowAnchor {
+  "`anchor:<event>:<clinical_role>` — one per treatment class, shared by every gate on it."
+  key: String!
+  clinicalRole: String!
+  "The class in words, as the start-date question names it."
+  label: String!
+  "`YYYY-MM-DD`."
+  date: String!
+  "CLINICIAN, CARE_PLAN or MEDICATION_ORDER — the first that resolved, in that order."
+  source: String!
+  detail: String!
 }
 
 type ProviderOverrideType {
@@ -1209,6 +1236,13 @@ input GateAnswerInput {
   booleanValue: Boolean
   numericValue: Float
   selectedOption: String
+  """
+  A treatment start date, `YYYY-MM-DD`, on or before the session's evaluation
+  date. Answers a DATE question, or — sent to a gate that has a `window_from`
+  condition and nothing pending — corrects the start date the window was
+  anchored on (`ResolvedNode.windowAnchors`). Supply it alone.
+  """
+  dateValue: String
 }
 
 input AdditionalContextInput {
