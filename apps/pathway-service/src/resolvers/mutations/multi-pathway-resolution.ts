@@ -65,6 +65,7 @@ import {
   SuppressedRecommendation,
   SuppressionSource,
   candidatePathwayIds,
+  drugKey,
   medicationRegimenKey,
 } from '../../services/resolution/care-plan-merge';
 import {
@@ -700,36 +701,52 @@ export async function runMergePipeline(
   const merged = mergeResolvedCarePlans(ddiCleanedPlans);
 
   // ── DDI stage 2: post-merge, cross-recommendation pairs ──
-  const crossCandidates = merged.medications.map((m) => ({
-    recommendationId:
-      m.recommendation.sourceNodeId ??
-      `${m.recommendation.sourcePathwayId}|${m.recommendation.name}`,
-    drugName: m.recommendation.name,
-    sourcePathwayId: m.recommendation.sourcePathwayId,
+  // Checked: every auto-included medication AND every regimen of a drug held
+  // in a MEDICATION_REGIMEN conflict. Those regimens are one drug the plan
+  // will contain in some form, and before regimens were kept apart they
+  // name-merged into `medications` and were checked here; parking them in a
+  // conflict must not exempt them. (clinical_role conflict candidates are
+  // alternatives, not co-prescriptions, and were never checked here — a known
+  // gap, unchanged.) Suppression then removes the DRUG, every regimen of it,
+  // matching the drug-identity rule the pathway flags follow.
+  const recId = (r: ResolvedMedication) => r.sourceNodeId ?? `${r.sourcePathwayId}|${r.name}`;
+  const crossMeds: ResolvedMedication[] = [
+    ...merged.medications.map((m) => m.recommendation),
+    ...merged.conflicts
+      .filter((c) => c.type === 'medication_regimen')
+      .flatMap((c) => c.candidates.map((cand) => cand.recommendation)),
+  ];
+  const crossCandidates = crossMeds.map((r) => ({
+    recommendationId: recId(r),
+    drugName: r.name,
+    sourcePathwayId: r.sourcePathwayId,
   }));
   const cross = await runCrossRecommendationDdi(pool, crossCandidates);
   const crossWarnings = cross.findings.filter((f) => f.action === 'WARN');
-  const crossSuppressedIds = cross.suppressedRecommendationIds;
   const crossSuppressions: SuppressedRecommendation[] = [];
   for (const finding of cross.findings) {
     if (finding.action !== 'SUPPRESS') continue;
-    const med = merged.medications.find(
-      (m) =>
-        (m.recommendation.sourceNodeId ??
-          `${m.recommendation.sourcePathwayId}|${m.recommendation.name}`) === finding.recommendationId,
-    );
+    const med = crossMeds.find((r) => recId(r) === finding.recommendationId);
     if (!med) continue;
-    crossSuppressions.push(buildDdiSuppression(med.recommendation, finding));
+    crossSuppressions.push(buildDdiSuppression(med, finding));
   }
+  const suppressedDrugs = new Set(
+    crossMeds
+      .filter((r) => cross.suppressedRecommendationIds.has(recId(r)))
+      .map((r) => drugKey(r.name)),
+  );
 
   const finalMerged: MergedCarePlan = {
     ...merged,
     medications: merged.medications.filter(
-      (m) =>
-        !crossSuppressedIds.has(
-          m.recommendation.sourceNodeId ??
-            `${m.recommendation.sourcePathwayId}|${m.recommendation.name}`,
-        ),
+      (m) => !suppressedDrugs.has(drugKey(m.recommendation.name)),
+    ),
+    // A regimen conflict is one drug; if that drug is suppressed the choice
+    // is gone. clinical_role conflicts never contain a drug checked above.
+    conflicts: merged.conflicts.filter(
+      (c) =>
+        c.type !== 'medication_regimen' ||
+        !c.candidates.some((cand) => suppressedDrugs.has(drugKey(cand.recommendation.name))),
     ),
     suppressed: [...merged.suppressed, ...preMergeSuppressions, ...crossSuppressions],
   };

@@ -763,7 +763,8 @@ function emptyMergedPlan(): MergedCarePlan {
   };
 }
 
-function drugKey(name: string): string {
+/** A drug's identity for suppression and clustering — its name, case-folded and trimmed. */
+export function drugKey(name: string): string {
   return name.toLowerCase().trim();
 }
 

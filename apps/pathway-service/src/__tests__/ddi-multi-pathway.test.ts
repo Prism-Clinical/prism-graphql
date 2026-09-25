@@ -327,4 +327,82 @@ describe('startMultiPathwayResolution — post-merge cross-recommendation DDI', 
     const sup = createdPlan!.suppressed[0] as { source: Record<string, unknown> };
     expect(sup.source.kind).toBe('OTHER_RECOMMENDATION');
   });
+
+  it('still suppresses a drug two pathways ask for at DIFFERENT regimens — the regimen conflict does not hide it', async () => {
+    // Before regimens were kept apart, the two simvastatin asks name-merged
+    // into one medication and stage 2 checked it against clarithromycin.
+    // Now they form a regimen conflict — which must not take the drug out of
+    // the cross-recommendation check.
+    const a = fakeMatched('a', 'Hyperlipidaemia');
+    const b = fakeMatched('b', 'ASCVD');
+    const c = fakeMatched('c', 'CAP');
+    (getMatchedPathways as jest.Mock).mockResolvedValue([a, b, c]);
+    (collapseLattice as jest.Mock).mockResolvedValue([a, b, c]);
+    (buildResolutionContext as jest.Mock).mockResolvedValue(fakeRctx());
+    const medState = (id: string, name: string, dose: string) => {
+      const s = makeResolutionStateWith([{ id, name }]);
+      (s.get(id) as { properties: Record<string, unknown> }).properties.dose = dose;
+      return s;
+    };
+    setupTraverseSeq([
+      medState('med-a-1', 'Simvastatin', '20 mg'),
+      medState('med-b-1', 'Simvastatin', '40 mg'),
+      medState('med-c-1', 'Clarithromycin', '500 mg'),
+    ]);
+
+    // A stand-in interaction table: simvastatin + clarithromycin is SEVERE,
+    // both sides suppressed, as the real pass does.
+    type Cand = { recommendationId: string; drugName: string; sourcePathwayId: string };
+    (runCrossRecommendationDdi as jest.Mock).mockImplementation(async (_pool, cands: Cand[]) => {
+      const findings: unknown[] = [];
+      const suppressed = new Set<string>();
+      for (const x of cands) {
+        for (const y of cands) {
+          if (x.sourcePathwayId === y.sourcePathwayId) continue;
+          if (x.drugName === 'Simvastatin' && y.drugName === 'Clarithromycin') {
+            for (const [self, other] of [[x, y], [y, x]]) {
+              findings.push({
+                recommendationId: self.recommendationId, drugName: self.drugName,
+                action: 'SUPPRESS', severity: 'SEVERE', category: 'DDI_SEVERE',
+                mechanism: 'CYP3A4', clinicalAdvice: null,
+                source: { kind: 'OTHER_RECOMMENDATION', recommendationId: other.recommendationId, drugName: other.drugName },
+              });
+              suppressed.add(self.recommendationId);
+            }
+          }
+        }
+      }
+      return { findings, suppressedRecommendationIds: suppressed };
+    });
+
+    let createdPlan: {
+      medications: Array<{ recommendation: { name: string } }>;
+      conflicts: Array<{ candidates: Array<{ recommendation: { name: string } }> }>;
+      suppressed: Array<{ name: string; reason: string; original: { dose?: string } }>;
+    } | undefined;
+    (createMultiPathwaySession as jest.Mock).mockImplementation(async (_pool, args) => {
+      createdPlan = args.mergedPlan;
+      return 'mp-1';
+    });
+    (getMultiPathwaySession as jest.Mock).mockImplementation(async () => ({
+      id: 'mp-1', patientId: 'pat-1', providerId: 'provider-1', status: 'ACTIVE',
+      initialPatientContext: {}, contributingSessionIds: [], contributingPathwayIds: ['a', 'b', 'c'],
+      mergedPlan: createdPlan, conflictResolutions: {}, carePlanId: null,
+      ddiWarnings: [], createdAt: new Date(), updatedAt: new Date(),
+    }));
+
+    await multiPathwayResolutionMutations.startMultiPathwayResolution(
+      {}, { patientId: 'pat-1' }, fakeContext(),
+    );
+
+    const names = [
+      ...createdPlan!.medications.map((m) => m.recommendation.name),
+      ...createdPlan!.conflicts.flatMap((k) => k.candidates.map((x) => x.recommendation.name)),
+    ];
+    expect(names).not.toContain('Simvastatin');
+    expect(createdPlan!.conflicts).toEqual([]);
+    const simva = createdPlan!.suppressed.filter((s) => s.name === 'Simvastatin');
+    expect(simva.map((s) => s.original.dose).sort()).toEqual(['20 mg', '40 mg']);
+    expect(simva.every((s) => s.reason === 'ddi_severe')).toBe(true);
+  });
 });
