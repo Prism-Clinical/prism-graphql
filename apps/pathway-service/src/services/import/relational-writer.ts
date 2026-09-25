@@ -11,19 +11,28 @@ import {
 
 /**
  * Insert a row into pathway_graph_index. Returns the inserted row.
+ *
+ * `temporalDefaults` is a stored `pathway_graph_index.temporal_defaults`
+ * value to carry onto the new row. The pathway JSON cannot author it (the
+ * header has no temporal keys, and unknown `pathway.*` keys are dropped), so
+ * the only source is a previous version's row: a NEW_VERSION must inherit it,
+ * or the new version silently resolves every gate against the system
+ * defaults instead of the pathway's own. NEW_PATHWAY passes null.
  */
 export async function writePathwayIndex(
   client: PoolClient,
   meta: PathwayMetadata,
   ageNodeId: string | null,
-  userId: string
+  userId: string,
+  temporalDefaults: unknown = null
 ): Promise<{ id: string }> {
   const conditionCodesArray = meta.condition_codes.map(cc => cc.code);
 
   const result = await client.query(
     `INSERT INTO pathway_graph_index
-      (age_node_id, logical_id, title, version, category, condition_codes, scope, target_population, created_by)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      (age_node_id, logical_id, title, version, category, condition_codes, scope, target_population, created_by,
+       temporal_defaults)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb)
      RETURNING *`,
     [
       ageNodeId,
@@ -35,10 +44,21 @@ export async function writePathwayIndex(
       meta.scope || null,
       meta.target_population || null,
       userId,
+      serializeJsonb(temporalDefaults),
     ]
   );
 
   return result.rows[0];
+}
+
+/**
+ * node-postgres hands JSONB back already parsed; serialize it explicitly so an
+ * object is not sent through pg's array/object parameter conversion. A string
+ * is already JSON text (parsePathwayTemporalDefaults accepts that form too).
+ */
+function serializeJsonb(value: unknown): string | null {
+  if (value === null || value === undefined) return null;
+  return typeof value === 'string' ? value : JSON.stringify(value);
 }
 
 // writeConditionCodes / deleteConditionCodes were removed in Phase 1b commit 4
@@ -173,6 +193,8 @@ export async function deleteCodeSets(
  * Update a pathway_graph_index row (for DRAFT_UPDATE mode).
  * Note: logical_id and version are NOT updated — DRAFT_UPDATE is version-preserving
  * by design. The orchestrator already verified (logical_id, version) match before calling.
+ * `temporal_defaults` is deliberately absent from the SET list: the JSON
+ * cannot carry it, so a draft save must leave the stored value alone.
  */
 export async function updatePathwayIndex(
   client: PoolClient,

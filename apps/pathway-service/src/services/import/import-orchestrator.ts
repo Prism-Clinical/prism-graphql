@@ -347,8 +347,15 @@ export async function importPathway(
         };
       }
     } else {
-      // NEW_PATHWAY or NEW_VERSION — insert new rows
-      const indexRow = await writePathwayIndex(client, pathwayJson.pathway, rootAgeNodeId, userId);
+      // NEW_PATHWAY or NEW_VERSION — insert new rows. A new version inherits
+      // the pathway-level temporal defaults from the row the audit records as
+      // previous_pathway_id, because the JSON cannot carry them.
+      const inheritedTemporalDefaults = importMode === 'NEW_VERSION'
+        ? latestExistingByLogicalId?.temporal_defaults ?? null
+        : null;
+      const indexRow = await writePathwayIndex(
+        client, pathwayJson.pathway, rootAgeNodeId, userId, inheritedTemporalDefaults,
+      );
       pathwayId = indexRow.id;
       await ensureIcd10Codes(client, pathwayJson.pathway.condition_codes);
       await ensureClinicalCodeReference(client, collectAllPathwayCodes(pathwayJson));
@@ -449,9 +456,9 @@ async function findExistingPathway(
 async function findExistingPathwayByLogicalId(
   client: PoolClient,
   logicalId: string
-): Promise<{ id: string; status: string } | null> {
+): Promise<{ id: string; status: string; temporal_defaults: unknown } | null> {
   const result = await client.query(
-    'SELECT id, status FROM pathway_graph_index WHERE logical_id = $1 ORDER BY created_at DESC LIMIT 1',
+    'SELECT id, status, temporal_defaults FROM pathway_graph_index WHERE logical_id = $1 ORDER BY created_at DESC LIMIT 1',
     [logicalId]
   );
   return result.rows[0] || null;
