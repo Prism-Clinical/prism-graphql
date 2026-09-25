@@ -3,7 +3,7 @@
   "pathway": {
     "logical_id": "anemia-in-pregnancy",
     "title": "Anemia in Pregnancy \u2014 Classification and Treatment",
-    "version": "6",
+    "version": "7",
     "category": "OBSTETRIC",
     "scope": "Outpatient prenatal care, from diagnosed anemia through postpartum handoff. Screening is upstream of this pathway.",
     "target_population": "Adult pregnant patients with diagnosed anemia; hemoglobinopathy disease, thalassemia syndromes, and CKD-associated anemia are detected and routed out.",
@@ -60,7 +60,7 @@
       "properties": {
         "stage_number": 1.5,
         "title": "Empiric Oral Iron Trial (if chosen at DP-1)",
-        "description": "Branch-entry only, via DP-1 criterion 1a (empiric oral iron without iron studies). Holds Stage 2's Steps 2.1\u20132.3, so the empiric arm gets the same response assessment (gate-hgb-response) and IV-iron escalation route (DP-2, gate-iv-iron-ga) as ferritin-confirmed IDA. Numbered 1.5 so it sorts directly after Stage 1 with a number of its own; its steps keep theirs."
+        "description": "Branch-entry only, via DP-1 criterion 1a (empiric oral iron without iron studies). Holds Stage 2's Steps 2.1\u20132.3, so the empiric arm gets the same response check (gate-hgb-response / gate-hgb-nonresponse) and IV-iron escalation route (DP-2, gate-iv-iron-ga) as ferritin-confirmed IDA. Numbered 1.5 so it sorts directly after Stage 1 with a number of its own; its steps keep theirs."
       }
     },
     {
@@ -185,7 +185,8 @@
         "stage_number": 2,
         "step_number": 3,
         "display_number": "2.3",
-        "title": "Response assessment"
+        "title": "Response assessment",
+        "description": "Hemoglobin recheck 2\u20134 weeks after starting oral iron. Read from the chart: responding = Hgb risen \u2265 1 g/dL since oral iron started, or Hgb at target (\u2265 11 g/dL; \u2265 10.5 in the second trimester) \u2192 Step 2.4; not responding = risen < 1 g/dL and below target \u2192 Step 2.6. The rise is not judged before day 14 of oral iron: until then (and at the visit that starts it) neither branch opens and nothing is asked, unless Hgb is already at target."
       }
     },
     {
@@ -216,18 +217,7 @@
         "step_number": 6,
         "display_number": "2.6",
         "title": "Nonresponse management",
-        "description": "Reached only when the Step 2.3 recheck shows no response to oral iron (hemoglobin rise < 1 g/dL after 2\u20134 weeks). Hosts DP-2: expanded workup, and IV iron after the first trimester."
-      }
-    },
-    {
-      "id": "step-2-7",
-      "type": "Step",
-      "properties": {
-        "stage_number": 2,
-        "step_number": 7,
-        "display_number": "2.7",
-        "title": "Awaiting response recheck",
-        "description": "Oral iron started; the hemoglobin recheck (2\u20134 weeks, Sched-2) is not yet resulted. Neither maintenance nor escalation applies yet. Answer the Step 2.3 response question again once the recheck is back."
+        "description": "Reached only when the Step 2.3 recheck shows no response to oral iron (hemoglobin rise < 1 g/dL at least 14 days after starting it, and below the trimester target). Hosts DP-2: expanded workup, and IV iron after the first trimester."
       }
     },
     {
@@ -531,15 +521,165 @@
       "id": "gate-hgb-response",
       "type": "Gate",
       "properties": {
-        "title": "Response to oral iron at the 2\u20134-week Hgb recheck",
-        "gate_type": "question",
+        "title": "Responding to oral iron (Hgb +\u22651 g/dL since start, or at trimester target)",
+        "gate_type": "compound",
         "default_behavior": "skip",
-        "prompt": "Hemoglobin recheck 2\u20134 weeks after starting oral iron. \"responding\" = hemoglobin has risen by at least 1 g/dL since iron was started (continue iron, maintenance). \"not responding\" = risen by less than 1 g/dL (expanded workup; IV iron after the first trimester). \"recheck not yet done\" = oral iron just started or recheck not resulted (nothing is escalated; answer again at the recheck).",
-        "answer_type": "SELECT",
-        "options": [
-          "responding",
-          "not responding",
-          "recheck not yet done"
+        "on_unresolved": "ask",
+        "operator": "OR",
+        "conditions": [
+          {
+            "field": "labs",
+            "operator": "delta_from_baseline",
+            "value": "718-7",
+            "system": "LOINC",
+            "display": "Hemoglobin (g/dL)",
+            "delta_threshold": 1.0,
+            "delta_comparison": "at_least",
+            "min_points": 2,
+            "window_from": {
+              "event": "medication_start",
+              "clinical_role": "oral-iron-repletion",
+              "label": "oral iron",
+              "codes": [
+                {
+                  "system": "RXNORM",
+                  "code": "310325"
+                },
+                {
+                  "system": "RXNORM",
+                  "code": "198630"
+                },
+                {
+                  "system": "RXNORM",
+                  "code": "284202"
+                }
+              ],
+              "baseline_days": 28,
+              "min_days_since_anchor": 14
+            }
+          },
+          {
+            "operator": "OR",
+            "display": "At target (Hgb \u2265 11, or \u2265 10.5 in trimester 2)",
+            "conditions": [
+              {
+                "field": "labs",
+                "operator": "greater_than",
+                "value": "718-7",
+                "system": "LOINC",
+                "display": "Hemoglobin (g/dL)",
+                "threshold": 10.95,
+                "horizon": {
+                  "days": 28
+                }
+              },
+              {
+                "operator": "AND",
+                "display": "Trimester 2 and Hgb \u2265 10.5",
+                "conditions": [
+                  {
+                    "attribute": "patient.trimester",
+                    "operator": "equals",
+                    "value": 2
+                  },
+                  {
+                    "field": "labs",
+                    "operator": "greater_than",
+                    "value": "718-7",
+                    "system": "LOINC",
+                    "display": "Hemoglobin (g/dL)",
+                    "threshold": 10.45,
+                    "horizon": {
+                      "days": 28
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "gate-hgb-nonresponse",
+      "type": "Gate",
+      "properties": {
+        "title": "Not responding to oral iron (Hgb +<1 g/dL since start, and below trimester target)",
+        "gate_type": "compound",
+        "default_behavior": "skip",
+        "on_unresolved": "ask",
+        "operator": "AND",
+        "conditions": [
+          {
+            "field": "labs",
+            "operator": "delta_from_baseline",
+            "value": "718-7",
+            "system": "LOINC",
+            "display": "Hemoglobin (g/dL)",
+            "delta_threshold": 1.0,
+            "delta_comparison": "less_than",
+            "min_points": 2,
+            "window_from": {
+              "event": "medication_start",
+              "clinical_role": "oral-iron-repletion",
+              "label": "oral iron",
+              "codes": [
+                {
+                  "system": "RXNORM",
+                  "code": "310325"
+                },
+                {
+                  "system": "RXNORM",
+                  "code": "198630"
+                },
+                {
+                  "system": "RXNORM",
+                  "code": "284202"
+                }
+              ],
+              "baseline_days": 28,
+              "min_days_since_anchor": 14
+            }
+          },
+          {
+            "operator": "AND",
+            "display": "Below target (Hgb < 11, and < 10.5 unless trimester 2)",
+            "conditions": [
+              {
+                "field": "labs",
+                "operator": "less_than",
+                "value": "718-7",
+                "system": "LOINC",
+                "display": "Hemoglobin (g/dL)",
+                "threshold": 10.95,
+                "horizon": {
+                  "days": 28
+                }
+              },
+              {
+                "operator": "OR",
+                "display": "Not trimester 2, or Hgb < 10.5",
+                "conditions": [
+                  {
+                    "attribute": "patient.trimester",
+                    "operator": "not_equals",
+                    "value": 2
+                  },
+                  {
+                    "field": "labs",
+                    "operator": "less_than",
+                    "value": "718-7",
+                    "system": "LOINC",
+                    "display": "Hemoglobin (g/dL)",
+                    "threshold": 10.45,
+                    "horizon": {
+                      "days": 28
+                    }
+                  }
+                ]
+              }
+            ]
+          }
         ]
       }
     },
@@ -1287,7 +1427,7 @@
       "type": "Schedule",
       "properties": {
         "interval": "2\u20134 weeks after starting oral iron",
-        "description": "Hemoglobin/hematocrit recheck; a rise < 1 g/dL despite adherence is nonresponse and routes to nonresponse management (Step 2.3 response question)."
+        "description": "Hemoglobin/hematocrit recheck; a rise < 1 g/dL with Hgb still below target is nonresponse and routes to nonresponse management (Step 2.3 response check)."
       }
     },
     {
@@ -2128,32 +2268,17 @@
     {
       "from": "gate-hgb-response",
       "to": "step-2-4",
-      "type": "BRANCHES_TO",
-      "properties": {
-        "when": {
-          "equals": "responding"
-        }
-      }
+      "type": "BRANCHES_TO"
     },
     {
-      "from": "gate-hgb-response",
+      "from": "step-2-3",
+      "to": "gate-hgb-nonresponse",
+      "type": "HAS_GATE"
+    },
+    {
+      "from": "gate-hgb-nonresponse",
       "to": "step-2-6",
-      "type": "BRANCHES_TO",
-      "properties": {
-        "when": {
-          "equals": "not responding"
-        }
-      }
-    },
-    {
-      "from": "gate-hgb-response",
-      "to": "step-2-7",
-      "type": "BRANCHES_TO",
-      "properties": {
-        "when": {
-          "equals": "recheck not yet done"
-        }
-      }
+      "type": "BRANCHES_TO"
     },
     {
       "from": "dp-2",
@@ -2902,21 +3027,6 @@
     },
     {
       "from": "step-2-6",
-      "to": "ev-6",
-      "type": "CITES_EVIDENCE"
-    },
-    {
-      "from": "step-2-7",
-      "to": "ev-1",
-      "type": "CITES_EVIDENCE"
-    },
-    {
-      "from": "step-2-7",
-      "to": "ev-3",
-      "type": "CITES_EVIDENCE"
-    },
-    {
-      "from": "step-2-7",
       "to": "ev-6",
       "type": "CITES_EVIDENCE"
     },
