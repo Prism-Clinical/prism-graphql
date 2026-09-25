@@ -36,6 +36,51 @@ expect('gate-control: ESCALATES_TO into a gated step is a Rule 1 violation',
 expect('gate-control: same pathway without the escalation edge passes',
   run(GATE, [join(FIX, 'escalates-to-leak-fixed.json')]), 0);
 
+// Condition lints on NESTED groups: the fixed fixture with its one gate swapped
+// for a compound whose leaves sit inside `{ operator, conditions }` groups.
+const gateRoots: string[] = [];
+function withGate(props: Record<string, unknown>): string {
+  const pwj = JSON.parse(require('fs').readFileSync(join(FIX, 'escalates-to-leak-fixed.json'), 'utf8'));
+  const gate = pwj.nodes.find((n: any) => n.type === 'Gate');
+  gate.properties = { title: 'nested', default_behavior: 'skip', gate_type: 'compound', ...props };
+  const dir = mkdtempSync(join(tmpdir(), 'gate-control-'));
+  gateRoots.push(dir);
+  const file = join(dir, 'nested.json');
+  writeFileSync(file, JSON.stringify(pwj));
+  return file;
+}
+const HGB = { field: 'labs', operator: 'greater_than', value: '718-7', system: 'LOINC', threshold: 10.95, horizon: { days: 28 }, display: 'Hemoglobin (g/dL)' };
+const TRI = { attribute: 'patient.trimester', operator: 'in', value: [1, 3] };
+expect('gate-control: a nested anemia-style compound passes',
+  run(GATE, [withGate({ on_unresolved: 'ask', operator: 'OR', conditions: [
+    { field: 'conditions', operator: 'includes_code', value: 'D50.*', system: 'ICD-10', horizon: 'LIFETIME' },
+    { operator: 'AND', conditions: [TRI, HGB] },
+  ] })]), 0, 'GATE CONTROL OK');
+expect('gate-control: a nested vitals leaf with no horizon is named by its path',
+  run(GATE, [withGate({ on_unresolved: 'ask', operator: 'OR', conditions: [
+    TRI, { operator: 'AND', conditions: [{ field: 'vitals', operator: 'greater_than', value: 'systolic_bp', threshold: 140 }, TRI] },
+  ] })]), 1, '"gate-iv-iron-ga" condition[1].conditions[0] reads vitals');
+expect('gate-control: a numeric leaf two groups down makes the gate numeric (default needs a marker)',
+  run(GATE, [withGate({ on_unresolved: 'default', operator: 'OR', conditions: [
+    { field: 'conditions', operator: 'includes_code', value: 'D50.9', system: 'ICD-10', horizon: 'LIFETIME' },
+    { operator: 'AND', conditions: [{ operator: 'OR', conditions: [TRI] }] },
+  ] })]), 1, 'ON_UNRESOLVED DEFAULT');
+expect('gate-control: not_includes_code uses the pattern matcher — "Z94.*" is a real wildcard',
+  run(GATE, [withGate({ on_unresolved: 'default', operator: 'AND', conditions: [
+    { operator: 'OR', conditions: [
+      { field: 'conditions', operator: 'not_includes_code', value: 'Z94.*', system: 'ICD-10', horizon: 'LIFETIME' },
+      { field: 'conditions', operator: 'includes_code', value: 'D50.9', system: 'ICD-10', horizon: 'LIFETIME' },
+    ] },
+  ] })]), 0, 'GATE CONTROL OK');
+expect('gate-control: a malformed nested wildcard is named by its path',
+  run(GATE, [withGate({ on_unresolved: 'default', operator: 'AND', conditions: [
+    { operator: 'OR', conditions: [
+      { field: 'conditions', operator: 'includes_code', value: 'D50.9', system: 'ICD-10', horizon: 'LIFETIME' },
+      { field: 'conditions', operator: 'not_includes_code', value: 'G82.2*', system: 'ICD-10', horizon: 'LIFETIME' },
+    ] },
+  ] })]), 1, '"gate-iv-iron-ga" condition[0].conditions[1] value "G82.2*"');
+for (const r of gateRoots) rmSync(r, { recursive: true, force: true });
+
 // ── check-brief-sync ──────────────────────────────────────────────────
 function pathwayJson(id: string, version: string): string {
   return JSON.stringify({ schema_version: '1.0', pathway: { logical_id: id, title: id, version }, nodes: [], edges: [] });

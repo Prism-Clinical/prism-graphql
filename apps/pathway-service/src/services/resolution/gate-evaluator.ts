@@ -10,6 +10,10 @@ import {
   GateType,
   isAttributeCondition,
   AttributeCodeMap,
+  ConditionEntry,
+  ConditionGroup,
+  isConditionGroup,
+  normalizeGroupOperator,
 } from './types';
 import { resolveAttribute } from './attribute-registry';
 import { compareScalar } from './scalar-compare';
@@ -1579,12 +1583,10 @@ function seriesAskableOf(
   return { condition, latestDate: result.seriesLatestDate };
 }
 
-/** The distinct anchors a set of condition outcomes resolved, in order. */
-function windowAnchorsOf(results: readonly ConditionOutcome[]): WindowAnchorEvidence[] {
+/** The distinct anchors, by key, in the order they were first resolved. */
+function distinctAnchors(anchors: readonly WindowAnchorEvidence[]): WindowAnchorEvidence[] {
   const byKey = new Map<string, WindowAnchorEvidence>();
-  for (const r of results) {
-    if (r.windowAnchor && !byKey.has(r.windowAnchor.key)) byKey.set(r.windowAnchor.key, r.windowAnchor);
-  }
+  for (const a of anchors) if (!byKey.has(a.key)) byKey.set(a.key, a);
   return [...byKey.values()];
 }
 
@@ -1758,6 +1760,181 @@ function compoundIndeterminate(
   return compoundUnresolved(op, results, (r) => r.indeterminate === true);
 }
 
+// ─── Nested condition groups ──────────────────────────────────────────
+//
+// A compound's `conditions` may hold GROUPS — `{ operator, conditions }`, the
+// gate's own shape — nested to `MAX_CONDITION_NESTING` (validator-enforced).
+// A group is evaluated into an ordinary `ConditionOutcome` by EXACTLY the
+// truth table above, so to its parent it is indistinguishable from a leaf:
+//
+//  - a definite `false` settles an AND and a definite `true` an OR;
+//  - otherwise any unresolved child (indeterminate, dataUnavailable, NOT YET
+//    DUE) leaves the group unresolved — Kleene three-valued logic, where the
+//    third value keeps its flavour;
+//  - NOT YET DUE crosses a group boundary on the same terms it crosses the
+//    gate's: never a dominator, and outranking other unresolved children when
+//    nothing settles the group.
+//
+// What cannot ride on a `ConditionOutcome` travels beside it: WHICH leaves are
+// still worth asking about. A leaf inside a settled group can change nothing,
+// so a settled group contributes none — the same rule the flat gate applies to
+// its own list, applied at every level. Leaves are carried BY REFERENCE: the
+// traversal matches `unresolvedAnchorConditions` / `unresolvedSeries` back to
+// `unresolvedConditions` by identity.
+
+/** One entry's contribution to its parent: its outcome plus its askable leaves. */
+interface EntryResult {
+  outcome: ConditionOutcome;
+  /** Unresolved leaves whose answer could still change this entry's value. */
+  unresolved: GateCondition[];
+  /** Of those, the ones whose trouble is an unresolved `window_from` anchor. */
+  anchorless: GateCondition[];
+  /** Of those, the trend/delta series exactly one dated value short. */
+  shortSeries: Array<{ condition: GateCondition; latestDate: string }>;
+  /** Every anchor any leaf resolved, settled or not — evidence, not a question. */
+  anchors: WindowAnchorEvidence[];
+}
+
+/** The signals a list of entries combines to under one operator. */
+interface CombinedEntries {
+  results: ConditionOutcome[];
+  fieldsRead: string[];
+  indeterminate?: boolean;
+  dataUnavailable?: boolean;
+  uncertainty?: UncertaintyReason[];
+  unresolved: GateCondition[];
+  anchorless: GateCondition[];
+  shortSeries: Array<{ condition: GateCondition; latestDate: string }>;
+  anchors: WindowAnchorEvidence[];
+  sessionNodeIds: string[];
+  awaitingSession: boolean;
+  notYetDue?: { dueOn: string };
+  /** `NOT_YET_DUE: due on/after <dueOn> — <each not-due child's reason>`. */
+  notYetDueReason?: string;
+}
+
+function evaluateEntry(
+  entry: ConditionEntry,
+  evaluateOneCondition: ConditionEvaluator,
+  deps: GateEvaluationDeps,
+): EntryResult {
+  if (isConditionGroup(entry)) return evaluateGroup(entry, evaluateOneCondition, deps);
+  const outcome = evaluateOneCondition(entry, deps);
+  const short = seriesAskableOf(entry, outcome);
+  return {
+    outcome,
+    unresolved: conditionUnresolved(outcome) ? [entry] : [],
+    anchorless: outcome.anchorUnresolved === true ? [entry] : [],
+    shortSeries: short ? [short] : [],
+    anchors: outcome.windowAnchor ? [outcome.windowAnchor] : [],
+  };
+}
+
+/**
+ * Combine a list's entry results under `op`. The gate's own list and every
+ * nested group go through this one function, so a group cannot drift from the
+ * gate's truth table.
+ *
+ * Each D5 key is set only when some entry REPORTED it — the `v1` kernel alone
+ * does — so a `legacy-v0` list, flat or nested, composes as plain booleans and
+ * carries no new keys (locked decision #2).
+ */
+function combineEntries(op: 'AND' | 'OR', parts: readonly EntryResult[]): CombinedEntries {
+  const results = parts.map((p) => p.outcome);
+  // Nothing settles the list and something in it is unresolved. Only then can
+  // an unresolved leaf below change the answer, so only then is it askable.
+  const open = compoundUnresolved(op, results, conditionUnresolved);
+  const combined: CombinedEntries = {
+    results,
+    fieldsRead: [...new Set(results.flatMap((r) => r.fieldsRead))],
+    unresolved: open ? [...new Set(parts.flatMap((p) => p.unresolved))] : [],
+    anchorless: open ? [...new Set(parts.flatMap((p) => p.anchorless))] : [],
+    shortSeries: open ? parts.flatMap((p) => p.shortSeries) : [],
+    anchors: parts.flatMap((p) => p.anchors),
+    sessionNodeIds: [...new Set(results.flatMap((r) => r.sessionNodeIds ?? []))],
+    awaitingSession: results.some((r) => r.awaitingSession === true),
+  };
+  if (results.some((r) => r.indeterminate !== undefined)) {
+    combined.indeterminate = compoundIndeterminate(op, results);
+  }
+  if (results.some((r) => r.uncertainty !== undefined)) {
+    combined.uncertainty = [...new Set(results.flatMap((r) => r.uncertainty ?? []))];
+  }
+  if (results.some((r) => r.dataUnavailable !== undefined)) {
+    combined.dataUnavailable = compoundUnresolved(op, results, (r) => r.dataUnavailable === true);
+  }
+  const notDue = results.filter((r) => r.notYetDue !== undefined);
+  if (notDue.length > 0 && compoundUnresolved(op, results, (r) => r.notYetDue !== undefined)) {
+    const dueOn = notDue.map((r) => r.notYetDue!.dueOn).sort().at(-1)!;
+    combined.notYetDue = { dueOn };
+    combined.notYetDueReason =
+      `NOT_YET_DUE: due on/after ${dueOn} — ` +
+      // A nested group's reason already carries its own `due on/after <date> — `
+      // header; drop it so the date is not repeated. A leaf's reason continues
+      // `due on/after <date> (why)` and keeps it.
+      notDue
+        .map((r) => r.reason.replace(/^NOT_YET_DUE: (?:due on\/after \d{4}-\d{2}-\d{2} — )?/, ''))
+        .join('; ');
+  }
+  return combined;
+}
+
+/**
+ * A nested group, folded into a `ConditionOutcome` its parent reads like a
+ * leaf's. `satisfied` is legacy's `every`/`some`, exactly as at the gate; the
+ * reason names every child's reason, so the evidence trail reaches the leaves.
+ */
+function evaluateGroup(
+  group: ConditionGroup,
+  evaluateOneCondition: ConditionEvaluator,
+  deps: GateEvaluationDeps,
+): EntryResult {
+  const op = normalizeGroupOperator(group.operator);
+  if (group.conditions.length === 0) {
+    // Refused at import; fails closed like a compound gate with no conditions.
+    return {
+      outcome: { satisfied: false, reason: `${op} group has no conditions`, fieldsRead: [] },
+      unresolved: [], anchorless: [], shortSeries: [], anchors: [],
+    };
+  }
+  const parts = group.conditions.map((e) => evaluateEntry(e, evaluateOneCondition, deps));
+  const c = combineEntries(op, parts);
+  const { results } = c;
+  const reasons = (rs: ConditionOutcome[]) => rs.map((r) => r.reason).join('; ');
+
+  let satisfied: boolean;
+  let reason: string;
+  if (op === 'AND') {
+    satisfied = results.every((r) => r.satisfied);
+    reason = satisfied
+      ? `all of (${reasons(results)})`
+      : `not all of (unsatisfied: ${reasons(results.filter((r) => !r.satisfied))})`;
+  } else {
+    satisfied = results.some((r) => r.satisfied);
+    reason = satisfied
+      ? `any of (satisfied: ${reasons(results.filter((r) => r.satisfied))})`
+      : `none of (${reasons(results)})`;
+  }
+
+  const outcome: ConditionOutcome = { satisfied, reason, fieldsRead: c.fieldsRead };
+  if (c.indeterminate !== undefined) outcome.indeterminate = c.indeterminate;
+  if (c.uncertainty !== undefined) outcome.uncertainty = c.uncertainty;
+  if (c.dataUnavailable !== undefined) outcome.dataUnavailable = c.dataUnavailable;
+  if (c.notYetDue !== undefined) {
+    outcome.notYetDue = c.notYetDue;
+    outcome.reason = c.notYetDueReason!;
+  }
+  if (c.awaitingSession) outcome.awaitingSession = true;
+  if (c.sessionNodeIds.length > 0) outcome.sessionNodeIds = c.sessionNodeIds;
+  return {
+    outcome,
+    unresolved: c.unresolved,
+    anchorless: c.anchorless,
+    shortSeries: c.shortSeries,
+    anchors: c.anchors,
+  };
+}
+
 function evaluateCompound(
   gate: GateProperties,
   deps: GateEvaluationDeps,
@@ -1774,23 +1951,17 @@ function evaluateCompound(
   // Normalized: the import validator accepts `and`/`or` in any case, and the
   // branches below test `op === 'AND'` — so a stored lowercase `and` used to
   // evaluate as OR. Anything that is not OR stays AND, the stricter reading.
-  const op: 'AND' | 'OR' = String(gate.operator ?? 'AND').toUpperCase() === 'OR' ? 'OR' : 'AND';
-  const allFieldsRead: string[] = [];
-  // Typed as the full outcome, not `{satisfied, reason}`: the D5 signals died at
-  // this boundary because the narrowed type made dropping them invisible.
-  const results: ConditionOutcome[] = [];
+  const op = normalizeGroupOperator(gate.operator);
 
-  // Resolved once for the whole gate: sibling conditions must never evaluate
-  // against different policy versions.
+  // Resolved once for the whole gate: sibling conditions — at every nesting
+  // level — must never evaluate against different policy versions.
   const evaluateOneCondition = conditionEvaluatorFor(deps);
 
-  for (const condition of gate.conditions) {
-    const result = evaluateOneCondition(condition, deps);
-    results.push(result);
-    allFieldsRead.push(...result.fieldsRead);
-  }
-
-  const uniqueFields = [...new Set(allFieldsRead)];
+  // Typed as the full outcome, not `{satisfied, reason}`: the D5 signals died at
+  // this boundary because the narrowed type made dropping them invisible.
+  const parts = gate.conditions.map((e) => evaluateEntry(e, evaluateOneCondition, deps));
+  const c = combineEntries(op, parts);
+  const { results } = c;
 
   let out: GateEvaluationResult;
   if (op === 'AND') {
@@ -1803,7 +1974,7 @@ function evaluateCompound(
       reason: allSatisfied
         ? 'All compound conditions satisfied'
         : `Unsatisfied conditions: ${failedReasons.join('; ')}`,
-      contextFieldsRead: uniqueFields,
+      contextFieldsRead: c.fieldsRead,
       dependedOnNodes: [],
     };
   } else {
@@ -1817,7 +1988,7 @@ function evaluateCompound(
       reason: anySatisfied
         ? `Satisfied conditions: ${satisfiedReasons.join('; ')}`
         : 'No compound conditions satisfied',
-      contextFieldsRead: uniqueFields,
+      contextFieldsRead: c.fieldsRead,
       dependedOnNodes: [],
     };
   }
@@ -1833,59 +2004,43 @@ function evaluateCompound(
   //
   // A condition that reported NEITHER key — a RESOLVED `patient.*` under `v1`,
   // which keeps `resolveAttribute` forever (D3) — reads as definite and
-  // doubt-free, which is what `indeterminate === true` and `?? []` below give
-  // it. Absent must not mean "unknown", or every demographic condition would
-  // make its gate indeterminate. (An ABSENT `patient.*` value does report
+  // doubt-free. Absent must not mean "unknown", or every demographic condition
+  // would make its gate indeterminate. (An ABSENT `patient.*` value does report
   // `dataUnavailable` — see `evaluateDemographicFallback`.)
-  if (results.some((r) => r.indeterminate !== undefined)) {
-    out.indeterminate = compoundIndeterminate(op, results);
-  }
-  // The DEDUPLICATED UNION, retained regardless of `indeterminate` (D5, P1-11).
-  // The two signals are independent: a definite `true` dominating an OR does not
-  // make the excluded uncertain facts imaginary, and plan 08's evidence has to
-  // show them. Each condition's array already unions its per-fact reasons with
-  // the outcome-level ones (`AMBIGUOUS_LATEST` / `AMBIGUOUS_SERIES_ORDER` exist
-  // only on the outcome), so this needs no second source.
-  if (results.some((r) => r.uncertainty !== undefined)) {
-    out.uncertainty = [...new Set(results.flatMap((r) => r.uncertainty ?? []))];
-  }
-
-  // `dataUnavailable` crosses the boundary too. It did not, so the COMMON case
-  // — one scalar condition of a compound has no measurement on file — reported
-  // nothing and the gate silently took its default. That is precisely the case
-  // escalation exists for: keying it on `indeterminate` alone never fires for a
-  // missing measurement, because `indeterminate` means candidates exist but
-  // cannot be ordered.
-  if (results.some((r) => r.dataUnavailable !== undefined)) {
-    out.dataUnavailable = compoundUnresolved(op, results, (r) => r.dataUnavailable === true);
-  }
-
-  // WHICH conditions could not be answered, so the prompt asks for the datum
-  // that is actually missing. Asking for the first askable condition instead
-  // can re-request a value the engine already has, while the one that blocked
-  // the decision stays unasked — and the gate never resolves however many
-  // times the provider answers.
   //
-  // Index-aligned with `gate.conditions` by construction: `results` is pushed
-  // one per condition, in order, in the loop above.
+  // `uncertainty` is the DEDUPLICATED UNION, retained regardless of
+  // `indeterminate` (D5, P1-11): a definite `true` dominating an OR does not
+  // make the excluded uncertain facts imaginary, and plan 08's evidence has to
+  // show them.
+  //
+  // `dataUnavailable` crosses too. It did not, so the COMMON case — one scalar
+  // condition of a compound has no measurement on file — reported nothing and
+  // the gate silently took its default. Keying escalation on `indeterminate`
+  // alone never fires for a missing measurement.
+  if (c.indeterminate !== undefined) out.indeterminate = c.indeterminate;
+  if (c.uncertainty !== undefined) out.uncertainty = c.uncertainty;
+  if (c.dataUnavailable !== undefined) out.dataUnavailable = c.dataUnavailable;
+
+  // WHICH leaf conditions could not be answered, so the prompt asks for the
+  // datum that is actually missing. Asking for the first askable condition
+  // instead can re-request a value the engine already has, while the one that
+  // blocked the decision stays unasked — and the gate never resolves however
+  // many times the provider answers. Nested groups contribute their leaves,
+  // depth first, except a group that settled on its own: nothing inside it can
+  // change the answer.
   if (out.indeterminate === true || out.dataUnavailable === true) {
-    const unresolved = gate.conditions.filter((_, i) => conditionUnresolved(results[i]));
-    if (unresolved.length > 0) out.unresolvedConditions = unresolved;
+    if (c.unresolved.length > 0) out.unresolvedConditions = c.unresolved;
     // Which of those need a start DATE. Only an unresolved condition can be
     // here — an anchored condition that resolved and was then indeterminate on
     // series order is asked nothing, since a date would not unblock it.
-    const anchorless = gate.conditions.filter((_, i) => results[i].anchorUnresolved === true);
-    if (anchorless.length > 0) out.unresolvedAnchorConditions = anchorless;
-    const shortSeries = gate.conditions
-      .map((c, i) => seriesAskableOf(c, results[i]))
-      .filter((x): x is { condition: GateCondition; latestDate: string } => x !== null);
-    if (shortSeries.length > 0) out.unresolvedSeries = shortSeries;
+    if (c.anchorless.length > 0) out.unresolvedAnchorConditions = c.anchorless;
+    if (c.shortSeries.length > 0) out.unresolvedSeries = c.shortSeries;
   }
-  const anchors = windowAnchorsOf(results);
+  const anchors = distinctAnchors(c.anchors);
   if (anchors.length > 0) out.windowAnchors = anchors;
 
-  out.dependedOnNodes = [...new Set(results.flatMap((r) => r.sessionNodeIds ?? []))];
-  if (results.some((r) => r.awaitingSession === true)) out.awaitingSessionRecommendation = true;
+  out.dependedOnNodes = c.sessionNodeIds;
+  if (c.awaitingSession) out.awaitingSessionRecommendation = true;
 
   // NOT YET DUE crosses the boundary on the truth table's terms: it is not a
   // definite value, so it never dominates — a definite false still settles an
@@ -1893,14 +2048,11 @@ function evaluateCompound(
   // other unresolved condition: a gate that cannot be read until the recheck
   // is due has nothing to ask for today, and asking for (say) a missing
   // trimester on the start visit would block that visit's care plan for a
-  // datum that cannot decide anything yet.
-  const notDue = results.filter((r) => r.notYetDue !== undefined);
-  if (notDue.length > 0 && compoundUnresolved(op, results, (r) => r.notYetDue !== undefined)) {
-    const dueOn = notDue.map((r) => r.notYetDue!.dueOn).sort().at(-1)!;
-    out.notYetDue = { dueOn };
-    out.reason =
-      `NOT_YET_DUE: due on/after ${dueOn} — ` +
-      notDue.map((r) => r.reason.replace(/^NOT_YET_DUE: /, '')).join('; ');
+  // datum that cannot decide anything yet. A nested group reports it upward on
+  // the same terms (`combineEntries`), so this holds at every level.
+  if (c.notYetDue !== undefined) {
+    out.notYetDue = c.notYetDue;
+    out.reason = c.notYetDueReason!;
   }
   return out;
 }

@@ -209,6 +209,94 @@ export function isAttributeCondition(c: GateCondition): c is AttributeCondition 
   return typeof (c as AttributeCondition).attribute === 'string';
 }
 
+/**
+ * A nested AND/OR over conditions, legal only inside a compound gate's
+ * `conditions` list. The shape is the compound gate's OWN `(operator,
+ * conditions)` pair, so a whole compound body lifts into a group unchanged —
+ * `{ "operator": "OR", "conditions": [ … ] }`.
+ *
+ * Told apart from a leaf by `conditions` being an array: a leaf never carries
+ * that key (the import validator's key allowlists reject it), and a group never
+ * carries `field` / `attribute` (rejected too). `operator` is required on a
+ * group — compared case-insensitively, like the gate's; an implicit AND three
+ * levels down is not something a reviewer can see.
+ */
+export interface ConditionGroup {
+  operator: 'AND' | 'OR';
+  conditions: ConditionEntry[];
+  display?: string; // UI decorator — ignored by the evaluator
+  note?: string;    // UI decorator — ignored by the evaluator
+}
+
+/** One entry of a compound gate's `conditions`: a leaf condition or a group. */
+export type ConditionEntry = GateCondition | ConditionGroup;
+
+/**
+ * Levels of AND/OR a compound gate may carry, COUNTING THE GATE'S OWN
+ * `operator` as level 1 — so a group directly in `conditions` is level 2, and
+ * groups may nest to level 4. Validator-enforced; the evaluator itself recurses
+ * over whatever it is given.
+ */
+export const MAX_CONDITION_NESTING = 4;
+
+export function isConditionGroup(entry: unknown): entry is ConditionGroup {
+  return (
+    entry !== null &&
+    typeof entry === 'object' &&
+    !Array.isArray(entry) &&
+    Array.isArray((entry as { conditions?: unknown }).conditions)
+  );
+}
+
+/**
+ * Every LEAF of a condition list, depth first, in authored order, BY REFERENCE
+ * — never cloned. The gate evaluator reports unresolved leaves by identity and
+ * the traversal matches them back (`unresolvedAnchorConditions.includes(c)`),
+ * so a copy here would silently stop a nested anchor being asked for.
+ *
+ * Takes `unknown` because most callers read straight off untyped AGE JSON.
+ * Non-array input yields nothing; non-object entries are passed through as
+ * leaves so a caller's own malformed-entry handling still sees them.
+ */
+export function conditionLeaves(entries: unknown): unknown[] {
+  return conditionLeavesWithPath(entries).map((l) => l.condition);
+}
+
+/**
+ * `conditionLeaves`, with each leaf's position: `"1"` for a top-level entry
+ * (so a flat list labels exactly as it always did) and `"1.0"` for the first
+ * entry of the group at index 1.
+ */
+export function conditionLeavesWithPath(
+  entries: unknown,
+  prefix = '',
+): Array<{ condition: unknown; path: string }> {
+  if (!Array.isArray(entries)) return [];
+  const out: Array<{ condition: unknown; path: string }> = [];
+  entries.forEach((entry, i) => {
+    const path = prefix === '' ? String(i) : `${prefix}.${i}`;
+    if (isConditionGroup(entry)) out.push(...conditionLeavesWithPath(entry.conditions, path));
+    else out.push({ condition: entry, path });
+  });
+  return out;
+}
+
+/**
+ * The leaf conditions a gate evaluates, whatever its shape: its `condition`,
+ * then every leaf of its `conditions` (groups flattened). Untyped on purpose —
+ * see `conditionLeaves`.
+ */
+export function gateConditionLeaves(props: unknown): unknown[] {
+  if (!props || typeof props !== 'object') return [];
+  const p = props as { condition?: unknown; conditions?: unknown };
+  return [...(p.condition ? [p.condition] : []), ...conditionLeaves(p.conditions)];
+}
+
+/** A group's or gate's operator: `OR` in any case is OR; anything else is AND, the stricter reading. */
+export function normalizeGroupOperator(raw: unknown): 'AND' | 'OR' {
+  return String(raw ?? 'AND').toUpperCase() === 'OR' ? 'OR' : 'AND';
+}
+
 export interface AttributeCodeEntry {
   attributeName: string;
   namespace: string;
@@ -262,7 +350,8 @@ export interface GateProperties {
   options?: string[];
   depends_on?: GateDependsOn[];
   operator?: 'AND' | 'OR';
-  conditions?: GateCondition[];
+  /** Leaves and nested groups (`ConditionGroup`) — see `MAX_CONDITION_NESTING`. */
+  conditions?: ConditionEntry[];
 
   // ─── llm_text_analysis-specific ───────────────────────────────────
   /**

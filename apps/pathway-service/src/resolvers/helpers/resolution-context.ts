@@ -8,7 +8,13 @@ import {
   PatientContext,
   SignalDefinition,
 } from '../../services/confidence/types';
-import { GateProperties, AttributeCodeMap, AttributeCondition, CodedCondition } from '../../services/resolution/types';
+import {
+  GateProperties,
+  AttributeCodeMap,
+  AttributeCondition,
+  CodedCondition,
+  conditionLeavesWithPath,
+} from '../../services/resolution/types';
 import { DataSourceContext, GateType } from '../../types';
 import { loadAttributeCodeMap } from '../../services/resolution/attribute-code-map';
 import {
@@ -647,15 +653,21 @@ export function sweepableConditions(
     // left on one by an earlier edit is dead weight — the validator does not
     // currently forbid the combination, and rejecting a session over a
     // condition that is never evaluated would be a false positive.
-    const raw: unknown[] = [];
+    //
+    // Each condition is labelled by its position: `condition 1` at the top
+    // level (exactly as before nesting existed), `condition 1.0` for the first
+    // leaf of the group at index 1.
+    const raw: Array<{ condition: unknown; path: string }> = [];
     switch (props.gate_type) {
       case GateType.PATIENT_ATTRIBUTE:
         // evaluatePatientAttribute reads `condition` only.
-        if (props.condition) raw.push(props.condition);
+        if (props.condition) raw.push({ condition: props.condition, path: '0' });
         break;
       case GateType.COMPOUND:
-        // evaluateCompound reads `conditions` only.
-        if (Array.isArray(props.conditions)) raw.push(...props.conditions);
+        // evaluateCompound reads `conditions` only — every leaf of it, nested
+        // groups included, so a leaf two levels down is preflighted exactly
+        // as a top-level one.
+        raw.push(...conditionLeavesWithPath(props.conditions));
         break;
       default:
         // question / prior_node_result / llm_text_analysis / unknown — no
@@ -663,10 +675,10 @@ export function sweepableConditions(
         continue;
     }
 
-    raw.forEach((c, i) => {
+    raw.forEach(({ condition: c, path }) => {
       if (!c || typeof c !== 'object') return;
       const cond = c as Record<string, unknown>;
-      const label = `${node.nodeIdentifier} / condition ${i}`;
+      const label = `${node.nodeIdentifier} / condition ${path}`;
 
       if (!isV1) {
         // legacy-v0: byte-for-byte today's extraction. Coded conditions only,

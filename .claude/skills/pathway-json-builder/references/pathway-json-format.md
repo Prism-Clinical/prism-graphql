@@ -149,8 +149,9 @@ exactly one (Rule 3).
 > evaluation order, and a satisfied gate cannot rescue it (re-verified on `a428da5`).
 > **Gates do not OR.** Mutually exclusive alternatives
 > (e.g. trimester-specific thresholds) must be merged into one gate or given separate
-> targets. Compound gates cannot express this either — `conditions` is a flat list under a
-> single `operator`, so `(A AND B) OR (C AND D)` has no encoding.
+> targets. Merge them with a **nested condition group** in one compound gate —
+> `(A AND B) OR (C AND D)` is `"operator": "OR", "conditions": [{ "operator": "AND",
+> "conditions": [A, B] }, { "operator": "AND", "conditions": [C, D] }]` (see **compound**).
 >
 > **Rule 3 — a chart gate has exactly ONE `BRANCHES_TO` target.** A `patient_attribute`,
 > `compound` or `prior_node_result` gate with several targets is an import error on main
@@ -272,7 +273,8 @@ but cannot be ordered, e.g. two undated results for the same LOINC → `AMBIGUOU
 | `default` | `default_behavior` applies, exactly as for "answered no". |
 
 - **Which conditions can be unresolved — the *numeric* conditions.** One definition,
-  used by this spec, the brief template and `check-gate-control.ts`:
+  used by this spec, the brief template and `check-gate-control.ts` (which applies it, and
+  every other condition lint, to leaves at any nesting depth):
   - coded `labs` or `vitals` with `greater_than` / `less_than`;
   - attribute conditions on `lab.*`, `vitals.*` or `patient.*` with any operator except
     `exists` (absence *is* the answer to `exists`). `patient.*` asks too since engine
@@ -297,7 +299,10 @@ but cannot be ordered, e.g. two undated results for the same LOINC → `AMBIGUOU
   condition is unresolved, the gate is unresolved (a definite false does not outweigh an
   unknown). AND is unsatisfied by any definite false. A compound asks for **one datum at a
   time** — the first unresolved askable condition — so a gate with four missing labs can
-  ask four times in sequence.
+  ask four times in sequence. **Nested groups** follow the same table at every level, and
+  the asks come from nested leaves too (depth first) — except a leaf inside a group that
+  settled on its own (an AND group with a definite false, an OR group with a definite
+  true), which can change nothing and is never asked for.
 - **Dedup:** the question is keyed on the datum (`LOINC:<code>`, `vitals.<path>`), so two
   gates reading the same missing lab raise ONE question; both stay held until it is
   answered.
@@ -532,7 +537,8 @@ recorded as its own outcome — `excludeReason` `NOT_YET_DUE: due on/after <date
 `notYetDue: true` on the node, `dueOn` on the node's `windowAnchors` — never as a definite
 no. In a compound it is not a definite value: a definite false still settles an `AND` and
 a definite true an `OR`; with nothing settling the gate, NOT YET DUE outranks every other
-unresolved condition (so a missing trimester is not asked for on the start visit). Once
+unresolved condition (so a missing trimester is not asked for on the start visit). A nested
+group passes NOT YET DUE up on the same terms, so this holds at every level. Once
 due, normal evaluation applies (incl. `INSUFFICIENT_SERIES` → ask for the newest result).
 
 **Pattern — a response check with three outcomes from chart data.** Two single-target
@@ -705,7 +711,133 @@ Runtime contract: `depends_on: [{ "node_id": "step-3-1", "status": "INCLUDED" }]
 }
 ```
 
-`operator` ∈ `"AND"` / `"OR"`; `conditions` non-empty, each an attribute or coded condition (mixing kinds is fine). No nesting.
+`operator` ∈ `"AND"` / `"OR"`; `conditions` non-empty, each an attribute or coded condition (mixing kinds is fine) **or a nested condition group**.
+
+#### Nested condition groups (branch `engine-nested-groups` off josh-dev — not on main yet)
+
+A `conditions` entry may itself be a **group**: `{ "operator": "AND" | "OR", "conditions": [ … ] }`
+— the compound gate's own `(operator, conditions)` pair, so a whole compound body lifts into
+a group unchanged. Optional `display` / `note` (UI decorators, ignored by the evaluator); no
+other keys. An entry is a group exactly when it has a `conditions` array.
+
+Import rules (hard errors, even in draft — `validator.ts` `validateGateConditions`):
+- `operator` is **required** on a group (`AND`/`OR`, case-insensitive). No implicit AND.
+- A group must be **non-empty**.
+- At most **4 levels of AND/OR, counting the gate's own `operator`** — a group directly in
+  the gate's `conditions` is level 2, so groups nest three deep (`MAX_CONDITION_NESTING`).
+- A group may not also carry `field`/`attribute`, and may appear only in a **compound**
+  gate's `conditions` — never as a `patient_attribute` gate's single `condition`.
+- Every leaf, at any depth, is validated by exactly the top-level rules (the same runtime
+  parsers: key allowlists, operators, horizon/status, `window_from`, wildcard grammar).
+  Errors name the path: `Gate "g" condition[1].conditions[0]: …`.
+
+Semantics — the flat truth table, applied at every level (three-valued):
+
+| Group | Children | Group value |
+|---|---|---|
+| AND | any definite false | **definite false** — settles it, whatever else is unknown |
+| AND | all definite true | definite true |
+| OR | any definite true | **definite true** — settles it |
+| OR | all definite false | definite false |
+| either | otherwise (nothing settles, ≥1 child unresolved) | **unresolved**, keeping its kind(s): missing data (`dataUnavailable`), indeterminate, or NOT YET DUE |
+
+- An unresolved group reads to its parent exactly like an unresolved leaf; a settled one
+  exactly like a definite leaf.
+- **NOT YET DUE** never settles anything, and when nothing settles a group it outranks the
+  group's other unresolved children, at every level. If a not-due leaf reaches the top
+  unsettled, the gate closes NOT_YET_DUE without asking.
+- **What is asked** (`on_unresolved: "ask"`): the gate's unresolved leaves, depth first, in
+  authored order — skipping every leaf under a group that settled on its own. One datum per
+  pending question, deduplicated by datum key as always.
+- The evidence trail (`contextFieldsRead`, `uncertainty`, `windowAnchors`) includes nested
+  leaves; a nested group's reason reads `all of (…)`, `not all of (unsatisfied: …)`,
+  `any of (satisfied: …)` or `none of (…)`.
+- `legacy-v0` sessions compose groups as plain booleans (and still refuse `window_from`).
+
+**Worked example — anemia's oral-iron response check.** "Responding = Hgb rise ≥ 1 g/dL
+since oral iron started, OR Hgb at target (≥ 11 g/dL in trimesters 1/3, ≥ 10.5 in
+trimester 2)"; not responding is the exact complement. Two single-target gates:
+
+```json
+{
+  "title": "Responding to oral iron (Hgb +≥1 g/dL since start, or at trimester target)",
+  "gate_type": "compound", "default_behavior": "skip", "on_unresolved": "ask",
+  "operator": "OR",
+  "conditions": [
+    { "field": "labs", "operator": "delta_from_baseline", "value": "718-7", "system": "LOINC",
+      "display": "Hemoglobin (g/dL)", "delta_threshold": 1.0, "delta_comparison": "at_least", "min_points": 2,
+      "window_from": { "event": "medication_start", "clinical_role": "oral-iron-repletion", "label": "oral iron",
+        "codes": [ { "system": "RXNORM", "code": "310325" }, { "system": "RXNORM", "code": "198630" },
+                   { "system": "RXNORM", "code": "284202" } ],
+        "baseline_days": 28, "min_days_since_anchor": 14 } },
+    { "operator": "AND", "display": "At target, trimester 1 or 3 (Hgb ≥ 11)", "conditions": [
+      { "attribute": "patient.trimester", "operator": "in", "value": [1, 3] },
+      { "field": "labs", "operator": "greater_than", "value": "718-7", "system": "LOINC",
+        "display": "Hemoglobin (g/dL)", "threshold": 10.95, "horizon": { "days": 28 } } ] },
+    { "operator": "AND", "display": "At target, trimester 2 (Hgb ≥ 10.5)", "conditions": [
+      { "attribute": "patient.trimester", "operator": "equals", "value": 2 },
+      { "field": "labs", "operator": "greater_than", "value": "718-7", "system": "LOINC",
+        "display": "Hemoglobin (g/dL)", "threshold": 10.45, "horizon": { "days": 28 } } ] }
+  ]
+}
+```
+
+The non-response gate is its **leaf-wise De Morgan negation**: swap AND ↔ OR and replace
+each leaf with its exact complement (`at_least` ↔ `less_than` on the same
+`delta_threshold`, `greater_than` ↔ `less_than` on the same `threshold`, trimester
+`in [1, 3]` ↔ `equals 2`):
+
+```json
+{
+  "title": "Not responding to oral iron (Hgb +<1 g/dL since start, and below trimester target)",
+  "gate_type": "compound", "default_behavior": "skip", "on_unresolved": "ask",
+  "operator": "AND",
+  "conditions": [
+    { "field": "labs", "operator": "delta_from_baseline", "value": "718-7", "system": "LOINC",
+      "display": "Hemoglobin (g/dL)", "delta_threshold": 1.0, "delta_comparison": "less_than", "min_points": 2,
+      "window_from": { "event": "medication_start", "clinical_role": "oral-iron-repletion", "label": "oral iron",
+        "codes": [ { "system": "RXNORM", "code": "310325" }, { "system": "RXNORM", "code": "198630" },
+                   { "system": "RXNORM", "code": "284202" } ],
+        "baseline_days": 28, "min_days_since_anchor": 14 } },
+    { "operator": "OR", "display": "Not at target unless trimester 2 (Hgb < 11)", "conditions": [
+      { "attribute": "patient.trimester", "operator": "equals", "value": 2 },
+      { "field": "labs", "operator": "less_than", "value": "718-7", "system": "LOINC",
+        "display": "Hemoglobin (g/dL)", "threshold": 10.95, "horizon": { "days": 28 } } ] },
+    { "operator": "OR", "display": "Not at target unless trimester 1/3 (Hgb < 10.5)", "conditions": [
+      { "attribute": "patient.trimester", "operator": "in", "value": [1, 3] },
+      { "field": "labs", "operator": "less_than", "value": "718-7", "system": "LOINC",
+        "display": "Hemoglobin (g/dL)", "threshold": 10.45, "horizon": { "days": 28 } } ] }
+  ]
+}
+```
+
+Authoring rules this example carries:
+- **Write the complement by De Morgan, never by re-deriving the rule.** Negation commutes
+  with the three-valued connectives, so the pair are complements in every state *whose
+  leaves are exact complements*: with all data present exactly one opens; with the
+  trimester unknown both decide together or both hold together, never one open and one
+  held. The trimester leaves `in [1, 3]` / `equals 2` complement each other only on
+  {1, 2, 3} — an out-of-domain value (4, or the string `"2"`) makes both false, and a rise
+  < 1 with Hgb ≥ 10.5 then opens neither gate. (`not_equals 2` in place of `in [1, 3]`
+  closes that gap, reading any non-2 value as trimester 1/3 — an open choice.) A re-derived complement (e.g.
+  `OR(AND(T1/3, < 11), AND(T2, < 10.5))`) is the same rule on complete data but not once a
+  value is unknown. (Proven for every Hgb 9.0–13.0 × rise −0.5…+1.5 at 0.1 g/dL, in every
+  trimester and with the trimester unknown: `anemia-nested-response-gates.test.ts`.)
+- **"≥ x" on a coded lab is `greater_than` the half-step below x; "< x" is `less_than` the
+  same number** (`10.95` for 11 at 0.1 g/dL precision). Coded lab operators are strict, and
+  one shared threshold makes the two leaves exact complements.
+- `patient.trimester` (derived from `gestational_age_weeks` at 14/28 weeks when only GA is
+  known) keeps each arm one leaf; a GA range would need a nested group per arm.
+- Outcomes: at the **start visit** (oral iron recommended this session) both close
+  NOT_YET_DUE unless Hgb is already at target, which opens *responding* at once (accepted);
+  with the trimester unknown at the start visit both close NOT_YET_DUE and nothing is asked.
+  At a due recheck, an unknown trimester is asked for (one question) whenever the rise is
+  < 1 and Hgb ≥ 10.5 — **including Hgb ≥ 11, which is at target in every trimester**, and
+  at the start visit an unknown trimester keeps an Hgb ≥ 11 from opening *responding*.
+- **Open choice (Josh):** the reordered at-target arm `OR(Hgb ≥ 11, AND(trimester 2,
+  Hgb ≥ 10.5))`, complement `AND(Hgb < 11, OR(trimester 1/3, Hgb < 10.5))`, is the same
+  rule whenever the trimester is known, and with it unknown asks for it only for Hgb in
+  [10.5, 11). Until chosen, the shape above is the reference.
 
 ### llm_text_analysis — narrative-driven branching
 

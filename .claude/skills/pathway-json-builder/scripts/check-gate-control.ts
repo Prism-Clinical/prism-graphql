@@ -354,9 +354,24 @@ for (const node of nodes) {
 }
 
 // ── Condition lints (builder-enforced; import accepts all of these) ─────
+// A compound's `conditions` may nest `{ operator, conditions }` groups (the
+// gate's own shape; the import validator caps it at 4 levels). Every lint below
+// runs on the LEAVES, depth first, labelled with the validator's path:
+// `condition[1]` at the top level, `condition[1].conditions[0]` inside a group.
+const isGroup = (c: any): boolean => !!c && typeof c === 'object' && Array.isArray(c.conditions);
+function conditionLeaves(entries: any[], parent = ''): Array<{ at: string; c: any }> {
+  const out: Array<{ at: string; c: any }> = [];
+  entries.forEach((c, i) => {
+    const at = parent === '' ? `condition[${i}]` : `${parent}.conditions[${i}]`;
+    if (isGroup(c)) out.push(...conditionLeaves(c.conditions, at));
+    else if (c && typeof c === 'object') out.push({ at, c });
+  });
+  return out;
+}
+
 // Every evaluable condition of every chart gate, with a label for messages.
-function chartConditions(): Array<{ gate: string; i: number; c: any }> {
-  const out: Array<{ gate: string; i: number; c: any }> = [];
+function chartConditions(): Array<{ gate: string; at: string; c: any }> {
+  const out: Array<{ gate: string; at: string; c: any }> = [];
   for (const node of nodes) {
     if (node.type !== 'Gate') continue;
     const props = (node as any).properties ?? {};
@@ -365,7 +380,7 @@ function chartConditions(): Array<{ gate: string; i: number; c: any }> {
       t === 'patient_attribute' ? (props.condition ? [props.condition] : [])
       : t === 'compound' && Array.isArray(props.conditions) ? props.conditions
       : [];
-    conds.forEach((c, i) => { if (c && typeof c === 'object') out.push({ gate: node.id, i, c }); });
+    for (const { at, c } of conditionLeaves(conds)) out.push({ gate: node.id, at, c });
   }
   return out;
 }
@@ -379,17 +394,17 @@ const isVitals = (c: any): boolean =>
 // (`multi-pathway-resolution.ts`), so one such condition rejects the whole
 // simulator session — including every other pathway it co-matched. Vitals are
 // asserted current at evaluation time, so any bounded horizon admits them.
-for (const { gate, i, c } of chartConditions()) {
+for (const { gate, at, c } of chartConditions()) {
   if (!isVitals(c)) continue;
   if (c.horizon === undefined) {
     errors.push(
-      `VITALS HORIZON — "${gate}" condition[${i}] reads vitals (${c.value ?? c.attribute}) with no \`horizon\`.\n` +
+      `VITALS HORIZON — "${gate}" ${at} reads vitals (${c.value ?? c.attribute}) with no \`horizon\`.\n` +
       `      => it inherits ENCOUNTER, which rejects every session without an encounterStart (the simulator\n` +
       `         never sends one) — and takes every co-matched pathway down with it. Emit "horizon": "DAY".`,
     );
   } else if (c.horizon === 'ENCOUNTER') {
     errors.push(
-      `VITALS HORIZON — "${gate}" condition[${i}] sets horizon ENCOUNTER on a vitals read.\n` +
+      `VITALS HORIZON — "${gate}" ${at} sets horizon ENCOUNTER on a vitals read.\n` +
       `      => sessions without an encounterStart (every simulator session) are rejected. Use "DAY".`,
     );
   }
@@ -400,12 +415,12 @@ for (const { gate, i, c } of chartConditions()) {
 // vitals). Emitting it makes the time scope reviewable in the JSON and the brief.
 // STATUS ON OBSERVATIONS — labs and vitals have no clinical state; a `status`
 // there imports cleanly and then throws at session preflight.
-for (const { gate, i, c } of chartConditions()) {
+for (const { gate, at, c } of chartConditions()) {
   // patient.* has no temporal policy at all (the adapter returns null for it).
   if (c.horizon === undefined && c.window_days === undefined && c.window_from === undefined && !isVitals(c) &&
       !(typeof c.attribute === 'string' && c.attribute.startsWith('patient.'))) {
     errors.push(
-      `EXPLICIT HORIZON — "${gate}" condition[${i}] (${c.field ?? c.attribute} ${c.value ?? ''}) has neither ` +
+      `EXPLICIT HORIZON — "${gate}" ${at} (${c.field ?? c.attribute} ${c.value ?? ''}) has neither ` +
       `horizon, window_days nor window_from.\n      => it silently inherits the v1 field default ` +
       `(${c.field === 'labs' ? 'QUARTER = 90 days, not lifetime' : 'LIFETIME'}); emit it explicitly.`,
     );
@@ -413,7 +428,7 @@ for (const { gate, i, c } of chartConditions()) {
   if (c.status !== undefined && (c.field === 'labs' || isVitals(c) ||
       (typeof c.attribute === 'string' && c.attribute.startsWith('lab.')))) {
     errors.push(
-      `STATUS ON OBSERVATION — "${gate}" condition[${i}] sets status on ${c.field ?? c.attribute}: ` +
+      `STATUS ON OBSERVATION — "${gate}" ${at} sets status on ${c.field ?? c.attribute}: ` +
       `labs and vitals have no clinical state; session preflight throws INVALID_TEMPORAL_DEFAULTS.`,
     );
   }
@@ -423,21 +438,24 @@ for (const { gate, i, c } of chartConditions()) {
 // wildcard form: a trailing `.*`, meaning "starts with the part before it". Any
 // other `*` is compared as a literal character, so `G82.2*` matches no real code
 // and the condition silently answers "no". And only includes_code,
-// count_in_window, trend_* and delta_from_baseline use the matcher at all —
+// not_includes_code, count_in_window, trend_* and delta_from_baseline use the
+// matcher at all (the import validator's PATTERN_CODE_OPS) —
 // equals / greater_than / less_than compare the code exactly.
-const WILDCARD_OPS = new Set(['includes_code', 'count_in_window', 'trend_up', 'trend_down', 'delta_from_baseline']);
-for (const { gate, i, c } of chartConditions()) {
+const WILDCARD_OPS = new Set([
+  'includes_code', 'not_includes_code', 'count_in_window', 'trend_up', 'trend_down', 'delta_from_baseline',
+]);
+for (const { gate, at, c } of chartConditions()) {
   if (typeof c.value !== 'string' || !c.value.includes('*')) continue;
   const wellFormed = /^[^*]+\.\*$/.test(c.value);
   if (!wellFormed) {
     const fix = c.value.replace(/\.?\*+$/, '.*');
     errors.push(
-      `WILDCARD — "${gate}" condition[${i}] value "${c.value}": only a trailing ".*" is a wildcard; ` +
+      `WILDCARD — "${gate}" ${at} value "${c.value}": only a trailing ".*" is a wildcard; ` +
       `any other "*" is a literal and matches nothing.\n      => write "${fix}".`,
     );
   } else if (!WILDCARD_OPS.has(c.operator)) {
     errors.push(
-      `WILDCARD — "${gate}" condition[${i}] uses "${c.value}" with operator "${c.operator}", which compares ` +
+      `WILDCARD — "${gate}" ${at} uses "${c.value}" with operator "${c.operator}", which compares ` +
       `codes exactly — the ".*" is a literal. Use includes_code, or name the code.`,
     );
   }
@@ -562,7 +580,7 @@ for (const node of nodes) {
   const props = (node as any).properties ?? {};
   const conds: any[] = [
     ...(props.condition ? [props.condition] : []),
-    ...(Array.isArray(props.conditions) ? props.conditions : []),
+    ...conditionLeaves(Array.isArray(props.conditions) ? props.conditions : []).map((l) => l.c),
   ];
   const trends = conds.filter(
     (c) => (c?.operator === 'trend_up' || c?.operator === 'trend_down') && typeof c.window_days === 'number',
