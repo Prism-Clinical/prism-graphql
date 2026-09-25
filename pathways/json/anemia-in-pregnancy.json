@@ -155,7 +155,18 @@
         "step_number": 7,
         "display_number": "1.7",
         "title": "Microcytic anemia: iron strategy",
-        "description": "Entered only via gate-microcytic (MCV < 80 fL). Hosts DP-1: empiric oral iron vs confirmatory iron studies first. Normocytic and macrocytic anemia never reach this step; they go to Steps 1.3 / 1.4 through their own MCV gates."
+        "description": "Entered only via gate-microcytic (MCV < 80 fL, and no hemoglobinopathy disease on file). Hosts DP-1: empiric oral iron vs confirmatory iron studies first. Normocytic and macrocytic anemia never reach this step; they go to Steps 1.3 / 1.4 through their own MCV gates. Microcytic anemia with hemoglobinopathy disease goes to Step 1.8 instead (no empiric option)."
+      }
+    },
+    {
+      "id": "step-1-8",
+      "type": "Step",
+      "properties": {
+        "stage_number": 1,
+        "step_number": 8,
+        "display_number": "1.8",
+        "title": "Microcytic anemia with hemoglobinopathy disease: iron studies first",
+        "description": "Entered only via gate-hgbpathy-microcytic (MCV < 80 fL with sickle cell disease, a thalassemia syndrome, or HbC/HbE disease on file). Empiric iron is not offered: DP-1 is closed for these patients. Confirm iron deficiency before any iron: ferritin < 30 ng/mL confirms it; iron, TIBC and transferrin saturation help separate it from the hemoglobinopathy's own microcytosis. Iron for confirmed deficiency is directed with hematology/MFM (Steps 3.1 / 3.2); this step does not open the Stage 2 iron arm."
       }
     },
     {
@@ -412,21 +423,246 @@
       "id": "gate-microcytic",
       "type": "Gate",
       "properties": {
-        "title": "MCV < 80 fL (microcytic)",
-        "gate_type": "patient_attribute",
+        "title": "MCV < 80 fL (microcytic), no hemoglobinopathy disease on file",
+        "gate_type": "compound",
         "default_behavior": "skip",
         "on_unresolved": "ask",
-        "condition": {
-          "field": "labs",
-          "operator": "less_than",
-          "value": "787-2",
-          "system": "LOINC",
-          "display": "MCV (fL)",
-          "threshold": 80,
-          "horizon": {
-            "days": 90
+        "operator": "AND",
+        "conditions": [
+          {
+            "field": "labs",
+            "operator": "less_than",
+            "value": "787-2",
+            "system": "LOINC",
+            "display": "MCV (fL)",
+            "threshold": 80,
+            "horizon": {
+              "days": 90
+            }
+          },
+          {
+            "field": "conditions",
+            "operator": "not_includes_code",
+            "value": "D57.0.*",
+            "system": "ICD-10",
+            "horizon": "LIFETIME",
+            "status": "any"
+          },
+          {
+            "field": "conditions",
+            "operator": "not_includes_code",
+            "value": "D57.1",
+            "system": "ICD-10",
+            "horizon": "LIFETIME",
+            "status": "any"
+          },
+          {
+            "field": "conditions",
+            "operator": "not_includes_code",
+            "value": "D57.2.*",
+            "system": "ICD-10",
+            "horizon": "LIFETIME",
+            "status": "any"
+          },
+          {
+            "field": "conditions",
+            "operator": "not_includes_code",
+            "value": "D57.4.*",
+            "system": "ICD-10",
+            "horizon": "LIFETIME",
+            "status": "any"
+          },
+          {
+            "field": "conditions",
+            "operator": "not_includes_code",
+            "value": "D57.8.*",
+            "system": "ICD-10",
+            "horizon": "LIFETIME",
+            "status": "any"
+          },
+          {
+            "field": "conditions",
+            "operator": "not_includes_code",
+            "value": "D56.0",
+            "system": "ICD-10",
+            "horizon": "LIFETIME",
+            "status": "any"
+          },
+          {
+            "field": "conditions",
+            "operator": "not_includes_code",
+            "value": "D56.1",
+            "system": "ICD-10",
+            "horizon": "LIFETIME",
+            "status": "any"
+          },
+          {
+            "field": "conditions",
+            "operator": "not_includes_code",
+            "value": "D56.2",
+            "system": "ICD-10",
+            "horizon": "LIFETIME",
+            "status": "any"
+          },
+          {
+            "field": "conditions",
+            "operator": "not_includes_code",
+            "value": "D56.5",
+            "system": "ICD-10",
+            "horizon": "LIFETIME",
+            "status": "any"
+          },
+          {
+            "field": "conditions",
+            "operator": "not_includes_code",
+            "value": "D56.8",
+            "system": "ICD-10",
+            "horizon": "LIFETIME",
+            "status": "any"
+          },
+          {
+            "field": "conditions",
+            "operator": "not_includes_code",
+            "value": "D56.9",
+            "system": "ICD-10",
+            "horizon": "LIFETIME",
+            "status": "any"
+          },
+          {
+            "field": "conditions",
+            "operator": "not_includes_code",
+            "value": "D58.2",
+            "system": "ICD-10",
+            "horizon": "LIFETIME",
+            "status": "any"
           }
-        }
+        ]
+      }
+    },
+    {
+      "id": "gate-hgbpathy-microcytic",
+      "type": "Gate",
+      "properties": {
+        "title": "MCV < 80 fL with hemoglobinopathy disease on file",
+        "gate_type": "compound",
+        "default_behavior": "skip",
+        "on_unresolved": "ask",
+        "operator": "AND",
+        "conditions": [
+          {
+            "field": "labs",
+            "operator": "less_than",
+            "value": "787-2",
+            "system": "LOINC",
+            "display": "MCV (fL)",
+            "threshold": 80,
+            "horizon": {
+              "days": 90
+            }
+          },
+          {
+            "operator": "OR",
+            "display": "Hemoglobinopathy disease (SCD, thalassemia syndrome, HbC/HbE disease)",
+            "conditions": [
+              {
+                "field": "conditions",
+                "operator": "includes_code",
+                "value": "D57.0.*",
+                "system": "ICD-10",
+                "horizon": "LIFETIME",
+                "status": "any"
+              },
+              {
+                "field": "conditions",
+                "operator": "includes_code",
+                "value": "D57.1",
+                "system": "ICD-10",
+                "horizon": "LIFETIME",
+                "status": "any"
+              },
+              {
+                "field": "conditions",
+                "operator": "includes_code",
+                "value": "D57.2.*",
+                "system": "ICD-10",
+                "horizon": "LIFETIME",
+                "status": "any"
+              },
+              {
+                "field": "conditions",
+                "operator": "includes_code",
+                "value": "D57.4.*",
+                "system": "ICD-10",
+                "horizon": "LIFETIME",
+                "status": "any"
+              },
+              {
+                "field": "conditions",
+                "operator": "includes_code",
+                "value": "D57.8.*",
+                "system": "ICD-10",
+                "horizon": "LIFETIME",
+                "status": "any"
+              },
+              {
+                "field": "conditions",
+                "operator": "includes_code",
+                "value": "D56.0",
+                "system": "ICD-10",
+                "horizon": "LIFETIME",
+                "status": "any"
+              },
+              {
+                "field": "conditions",
+                "operator": "includes_code",
+                "value": "D56.1",
+                "system": "ICD-10",
+                "horizon": "LIFETIME",
+                "status": "any"
+              },
+              {
+                "field": "conditions",
+                "operator": "includes_code",
+                "value": "D56.2",
+                "system": "ICD-10",
+                "horizon": "LIFETIME",
+                "status": "any"
+              },
+              {
+                "field": "conditions",
+                "operator": "includes_code",
+                "value": "D56.5",
+                "system": "ICD-10",
+                "horizon": "LIFETIME",
+                "status": "any"
+              },
+              {
+                "field": "conditions",
+                "operator": "includes_code",
+                "value": "D56.8",
+                "system": "ICD-10",
+                "horizon": "LIFETIME",
+                "status": "any"
+              },
+              {
+                "field": "conditions",
+                "operator": "includes_code",
+                "value": "D56.9",
+                "system": "ICD-10",
+                "horizon": "LIFETIME",
+                "status": "any"
+              },
+              {
+                "field": "conditions",
+                "operator": "includes_code",
+                "value": "D58.2",
+                "system": "ICD-10",
+                "horizon": "LIFETIME",
+                "status": "any"
+              }
+            ]
+          }
+        ]
       }
     },
     {
@@ -1345,6 +1581,26 @@
       }
     },
     {
+      "id": "lab-15",
+      "type": "LabTest",
+      "properties": {
+        "name": "Ferritin, serum",
+        "code": "2276-4",
+        "system": "LOINC",
+        "specimen": "Serum"
+      }
+    },
+    {
+      "id": "lab-16",
+      "type": "LabTest",
+      "properties": {
+        "name": "Iron, TIBC and transferrin saturation",
+        "code": "2498-4",
+        "system": "LOINC",
+        "specimen": "Serum"
+      }
+    },
+    {
       "id": "proc-1",
       "type": "Procedure",
       "properties": {
@@ -2218,6 +2474,16 @@
     {
       "from": "gate-microcytic",
       "to": "step-1-7",
+      "type": "BRANCHES_TO"
+    },
+    {
+      "from": "step-1-1",
+      "to": "gate-hgbpathy-microcytic",
+      "type": "HAS_GATE"
+    },
+    {
+      "from": "gate-hgbpathy-microcytic",
+      "to": "step-1-8",
       "type": "BRANCHES_TO"
     },
     {
@@ -3483,6 +3749,81 @@
     {
       "from": "guid-5",
       "to": "ev-10",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-1-8",
+      "to": "lab-15",
+      "type": "HAS_LAB_TEST"
+    },
+    {
+      "from": "step-1-8",
+      "to": "lab-16",
+      "type": "HAS_LAB_TEST"
+    },
+    {
+      "from": "lab-15",
+      "to": "code-loinc-2276-4",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "lab-15",
+      "to": "code-cpt-82728",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "lab-15",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "lab-15",
+      "to": "ev-5",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "lab-16",
+      "to": "code-loinc-2498-4",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "lab-16",
+      "to": "code-loinc-2500-7",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "lab-16",
+      "to": "code-loinc-2502-3",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "lab-16",
+      "to": "code-cpt-83540",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "lab-16",
+      "to": "code-cpt-83550",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "lab-16",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-1-8",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-1-8",
+      "to": "ev-4",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-1-8",
+      "to": "ev-7",
       "type": "CITES_EVIDENCE"
     }
   ]
