@@ -1,5 +1,7 @@
 # Pathway Research Brief — Gestational Diabetes Mellitus: Management, Delivery Planning and Postpartum Follow-up
 
+JSON: (not built)
+
 **Status: DRAFT v2 for physician review — not yet approved for JSON build.**
 
 **Revision v2 (2026-09-24), from Josh's decisions on v1:**
@@ -137,7 +139,7 @@ Three further defects:
 Local registry on 2026-09-24:
 - `routine-prenatal-care-v2` — ACTIVE (Z34.00, Z34.90). To be superseded by
   `routine-prenatal-care`.
-- `anemia-in-pregnancy` v3 — ACTIVE/draft on josh-dev (O99.011–.019, D50.9).
+- `anemia-in-pregnancy` v5 — built on josh-dev (O99.011–.019, D50.9).
 - `gestational-hypertension-preeclampsia` — DRAFT.
 - `uti-asymptomatic-bacteriuria-pregnancy` — DRAFT.
 
@@ -221,6 +223,25 @@ D-7 (early abnormal glucose branch), D-17 (Z3A triggers).
    rows follow the same rule.
 7. **Two-of-N and band exclusivity.** `(A AND B) OR (C AND D)` has no encoding, so the
    postpartum prediabetes band is not exclusive of the diabetes band (§4b).
+8. **Newer josh-dev capabilities were checked, and none replaces the D-9 question.**
+   - The anchored trend windows (`window_from` a medication start, `baseline_days`,
+     `delta_comparison`, INSUFFICIENT_SERIES → ask) and DATE answers were considered.
+   - They measure a slope or a delta of **one** lab since therapy started. They do not
+     measure the **proportion** of values above a threshold.
+   - SMBG also arrives untimed (D-18) and undated in the simulator.
+   - So ">50% above target" stays a provider question.
+   - Where they would fit later: a response-to-insulin check anchored on `gdm-basal-insulin` /
+     `gdm-prandial-insulin` starts, once timed SMBG feeds exist. Not designed here.
+   - Caveat carried from the spec: a held anchored gate blocks care-plan generation on the
+     visit that starts the drug.
+9. **Negation (`not_includes_code`) is being built on josh-dev, not yet available.** When it
+   lands:
+   - D-19's antepartum gate can become "O24.41.* AND NOT O24.43.*", which removes the
+     both-codes overlap.
+   - Routine care's "already diagnosed" option could become chart-read.
+10. **Gated region (josh-dev spec, Rule 1).** No edge may point into a gated stage from
+    outside it. So Med-B3 metformin carries no `ESCALATES_TO` into the insulin stages, and
+    every multi-host node is one node per host.
 
 ---
 
@@ -741,11 +762,13 @@ None. Every decision is a gate (§4b).
   - Role: alternative · Clinical role: `gdm-oral-agent`
   - Dose: 500 mg nightly for 1 week, then 500 mg twice daily with meals. Titrate. FDA label
     maximum 2,550 mg/day. Oral.
-  - Escalates to: Med-B1 / Med-B2. Supplemental insulin is needed in 26–46% of patients (46% in
-    MiG).
-    - Two caveats on this edge: an `ESCALATES_TO` to a node in a differently gated stage is
-      documentation only.
-    - The escalation happens when the door question is answered "yes" again.
+  - Escalates to: **none as an edge** (changed on the josh-dev spec, Rule 1 "gated region").
+    - An `ESCALATES_TO` from metformin (Stage 3) into NPH (Stage 4) or lispro/aspart (Stage 5)
+      would walk past `gate-fasting-pattern` / `gate-postmeal-pattern`. It would give insulin
+      to a patient whose pattern question said "no". Anemia v5 shipped exactly this leak with
+      oral → IV iron.
+    - Supplemental insulin, needed in 26–46% of patients (46% in MiG), is reached through the
+      pattern gates at the next review. That is stated here as text only.
   - Notes:
     - **Not first-line** (ADA Rec 15.21, A/B). It crosses the placenta, and offspring were
       heavier at 9 years (MiG TOFU).

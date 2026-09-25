@@ -1,5 +1,7 @@
 # Pathway Research Brief — Routine Prenatal Care (with universal GDM screening)
 
+JSON: (not built)
+
 **Status: DRAFT v1 for physician review — not yet approved for JSON build.**
 
 **What this is.** A new pathway, `routine-prenatal-care`. It **supersedes** the stored
@@ -7,7 +9,7 @@
 It also supersedes the older `routine-prenatal-care-v1` (ACTIVE; it crashes on resolve).
 
 Both stored versions trigger on Z34.00/Z34.90 and would co-match this pathway, so **archive
-both at import** (D-28). Per Josh's D-1, this pathway also **owns gestational diabetes screening
+both at import** (D-27). Per Josh's D-1, this pathway also **owns gestational diabetes screening
 and diagnosis**. That content was folded in from Part A of the GDM brief, which is now
 management-only (`pathways/briefs/gestational-diabetes-management-research-brief.md`).
 
@@ -111,8 +113,8 @@ Reconstructed from the stored graph (pathway id `0c12db5b`, ACTIVE):
 | Step 4.1 GDM GCT (uncoded `lab-10` in the merge key) | Duplicate/uncoded | Stages 6–8, coded LOINC 1504-0 |
 | Steps 4.2–4.6 (RhIG, Tdap, CBC, GBS, presentation) | Sound; GBS window right (36 0/7–37 6/7) | Stages 6, 9, 11 |
 | Steps 5.1–5.5 (per-visit) | Sound | Stage 2, plus a BP hand-off gate (D-25) |
-| med-1 prenatal vitamin (RxNorm 310488), med-2 RhIG (RxNorm 5641), med-3 Tdap | RxNorm 5641 and 310488 are unverified (§0.7). Lane names are snake_case | Re-coded, with kebab-case lanes |
-| Lab codes (58410-2, 34530-6, 25514-1, 20507-0, **5195-3 as "HBsAg"**, 75622-1, **16128-1 as "HCV"**, 630-4, 43304-5, 1504-0, 11475-1) | Several mislabeled (§0.7) | Re-verified |
+| med-1 prenatal vitamin (RxNorm 310488), med-2 RhIG (RxNorm 5641), med-3 Tdap | **310488 is glipizide 10 mg**, and 5641 is a retired identifier (§0.7). Lane names are snake_case | Re-coded (folic acid 4511, RhIG 35465), with kebab-case lanes |
+| Lab codes (58410-2, 34530-6, 25514-1, 20507-0, 5195-3, 75622-1, 16128-1, 630-4, 43304-5, 1504-0, 11475-1) | **75622-1** (HIV panel grouper), **43304-5** (CT only) and **11475-1** (generic culture) are wrong for their purpose. 5195-3, 16128-1 and 25514-1 are right; the seed table mislabels them (§0.7) | Re-verified |
 | ev-1…ev-8 | ev-6 cites withdrawn PB 226; ev-4 is a generic "USPSTF recommendations" entry | Replaced by §15 |
 
 ### 0.3 Coding facts that shape the triggers (ICD-10-CM FY2027 Official Guidelines [58])
@@ -151,7 +153,7 @@ Triggers, from the built JSONs on josh-dev:
 
 | Pathway | Triggers |
 |---|---|
-| `anemia-in-pregnancy` v3 | O99.011–.019, D50.9 |
+| `anemia-in-pregnancy` v5 | O99.011–.019, D50.9 |
 | `gestational-hypertension-preeclampsia` v1 | O13.x, O14.x, O16.x, R03.0 |
 | `uti-asymptomatic-bacteriuria-pregnancy` v1 | R82.71, O23.1x/.4x, O99.820, **Z13.89** |
 | `gestational-diabetes-management` | O24.41x, O24.43x |
@@ -173,7 +175,7 @@ Co-matching therefore happens:
 |---|---|---|
 | **Aspirin 81 mg** (`preeclampsia-prophylaxis`) | GHTN `med-1` | **Same name, same lane**, so the merge shows one. The eligibility **question is duplicated**: an O09 + O13/O14 patient is asked by both pathways. Question gates do not dedupe across pathways. This pathway's prompt is **verbatim** GHTN's `gate-aspirin-indicated` prompt, so the two answers can't diverge in meaning. |
 | **BP ≥140/90** | GHTN `gate-bp-elevated` (same two vitals conditions) | Identical conditions; ONE datum per vital. Whether the multi-pathway session dedupes a vitals question *across* pathways is unverified (§18). This pathway's target is a hand-off step, not management. |
-| **Urgent maternal warning signs** (Guidance) | GHTN `guid-1`, same topic | **Licensing problem found.** GHTN's text paraphrases the ACOG/AIM Urgent Maternal Warning Signs card. The 2026 card is "© 2026 ACOG Foundation. All rights reserved" and **prohibits any use as part of an LLM to generate text** (agent C). This brief therefore uses the **CDC Hear Her** list verbatim, which is public domain with attribution, under the same topic. **Recommend GHTN adopt the identical text**; the merge then shows one block. Until then an O09 + O13 patient sees two blocks under one topic. |
+| **Urgent maternal warning signs** (Guidance) | GHTN `guid-1`, same topic | **Licensing problem found (D-28).**<br>• GHTN's text paraphrases the ACOG/AIM Urgent Maternal Warning Signs card. The 2026 card is "© 2026 ACOG Foundation. All rights reserved" and **prohibits any use of the content as part of a generative AI / LLM to generate text** (agent C).<br>• This brief uses the **CDC Hear Her** list word for word, with CDC's attribution and non-endorsement terms, under the same topic.<br>• The CDC page itself says the list "was developed by the Alliance for Innovation on Maternal Health". So even the CDC version is AIM-origin, and licensing review is needed before shipping either text.<br>• Once cleared, **recommend GHTN adopt the identical text**; the merge then shows one block. Until then an O09 + O13 patient sees two blocks under one topic. |
 | **"When to call us right away"** | anemia `guid-5` and UTI `guid-1` (same topic, different text) | Pre-existing collision; not this pathway's. Recommend renaming them to "Anemia: when to call us" and "Bladder infection: when to call us". This pathway does **not** use that topic. |
 | **CBC** 58410-2 | anemia `lab-1` | Same LOINC, so it dedupes |
 | **Type and screen** 882-1 / 890-4 | anemia `lab-9` (882-1) | Same LOINCs, so it dedupes |
@@ -220,8 +222,9 @@ The GDM brief notes that Josh may drop its duplicates.
 | D-23 | Scope: include O09.x (high-risk supervision) for **routine elements only**; condition-specific high-risk care is out of scope | **Include O09.x** | v2 excluded greater-than-average risk entirely. O09 patients still need every routine element. Risk-specific add-ons (age ≥40 testing, obesity testing, prior-preterm cervical length, TOLAC) are listed as text, not gated (§3 Step 1.2, §18) |
 | D-24 | Rh encoding: `patient.rh_factor` paired gates (`equals "negative"` → RhIG; `equals "positive"` → no RhIG) vs one BOOLEAN question router | **`patient.rh_factor` pair** | Chart-native, and asks only when absent. The SELECT offers both comparands (the two gates pool options). The attribute's string vocabulary ("negative"/"positive") must match the chart feed; the simulator does not send it, so it asks. A question is simpler but always asks |
 | D-25 | BP ≥140/90 hand-off gate (every visit) → "confirm; record R03.0, or O13/O14 once confirmed" → GHTN pathway | **Include** | It mirrors the D-1 GDM hand-off for USPSTF 2023's every-visit BP screen. It duplicates GHTN's gate for co-matched patients, which share one datum per vital |
-| D-26 | COVID-19 vaccine in pregnancy: ACOG CS 26 (2026) "all pregnant individuals should receive" vs CDC schedule (Jul 2025, current under court order): pregnancy cell "no guidance", with CDC interim considerations urging a risk review | **Include per ACOG** (owning society, source hierarchy #1). Role `first_line`, with the conflict stated in the node | Federal and society guidance conflict. Alternatively role `acceptable` with shared-decision text, or omit |
-| D-28 | Import housekeeping: archive `routine-prenatal-care-v1` and `-v2` when this imports | **Archive both** | Leaving them ACTIVE co-matches every Z34.00/Z34.90 patient with two broken graphs (v1 crashes; both duplicate every item) |
+| D-26 | COVID-19 vaccine in pregnancy: ACOG CS 26 (2026) "all pregnant individuals should receive" vs the CDC adult schedule (Jul 2 2025): pregnancy cell "no guidance", with CDC interim considerations (Sep 2026) urging a risk review | **Include per ACOG** (owning society, source hierarchy #1). Role `first_line`, with the conflict stated in the node | Federal and society guidance conflict. Alternatively role `acceptable` with shared-decision text, or omit |
+| D-27 | Import housekeeping: archive `routine-prenatal-care-v1` and `-v2` when this imports | **Archive both** | Leaving them ACTIVE co-matches every Z34.00/Z34.90 patient with two broken graphs (v1 crashes; both duplicate every item) |
+| D-28 | Warning-signs Guidance text: CDC Hear Her list verbatim (the CDC page credits AIM as its developer) vs topic + link only vs a clinician-written list | **CDC text verbatim, pending licensing review** | Word-for-word CDC reuse is the lowest-risk text. If AIM's rights reach the CDC reproduction, fall back to the topic plus a link to cdc.gov/hearher. GHTN's AIM paraphrase has the same question |
 
 ### 0.6 Spec and engine limitations hit
 
@@ -255,17 +258,83 @@ The GDM brief notes that Josh may drop its duplicates.
    - Not seeded: most Z34/O09 leaves, O99.810, the timed OGTT LOINCs.
 9. **GA is "completed weeks".** Windows "A 0/7–B 6/7" become `≥ A` and `< B+1` (half-open).
    This is correct whether the attribute is an integer or fractional.
+10. **Gated regions (josh-dev spec, Rule 1).** No edge points into a gated stage or step from
+    outside it:
+    - no `ESCALATES_TO` anywhere;
+    - every node on several hosts is one node per host (for example, CBC Lab-1/Lab-19,
+      antibody screen Lab-3/Lab-23, Guid-A4/A4b).
+11. **Negation (`not_includes_code`) is being built on josh-dev, not yet available.** When it
+    lands, part of D-22's router could become chart-read:
+    - "already diagnosed" = O24.4* present;
+    - "not yet diagnosed" = NOT O24.4* AND NOT O24.1*.
+
+    "Screened negative" would still need a question or a lab-value gate. The anchored trend
+    windows and DATE answers now on josh-dev are not needed by this pathway (no response-to-
+    treatment gate).
 
 ### 0.7 Wave-2 verification outcome
 
-`[PENDING — folded in below when the verifiers return]`
+Three wave-2 agents ran on 2026-09-24.
+
+- **Codes.** Sources: LOINC 2.82 via tx.fhir.org, cross-checked against NLM Clinical Tables;
+  ICD-10-CM from NLM; CPT 2023 descriptors via tx.fhir.org, spot-checked on AAPC; RxNorm from
+  RxNav; HCPCS from NLM.
+- **Citations [1]–[62].** Part 1 found 17 PASS, 3 PARTIAL and 11 fixes. Part 2 found mostly
+  PASS, 1 FAIL ([41]) and several claim-sourcing fixes.
+
+All corrections are applied below. Five of them matter clinically.
+
+**1. Five of v2's codes were wrong, and would have matched nothing or the wrong thing.**
+
+| v2 code | v2 purpose | What it really is | Now |
+|---|---|---|---|
+| RxNorm **310488** | prenatal vitamin | **glipizide 10 MG Oral Tablet** | folic acid IN 4511 |
+| RxNorm **5641** | RhIG | a retired 2005 identifier | 35465 |
+| LOINC **75622-1** | HIV | a Meaningful Use *panel grouper*, not a result code | 56888-1 |
+| LOINC **11475-1** | GBS culture | generic "Microorganism identified by culture" | 72607-5 |
+| LOINC **43304-5** | CT + GC | CT rRNA **only** | 21613-5 + 21416-3 |
+
+v2's **5195-3** (HBsAg), **16128-1** (HCV Ab) and **25514-1** (rubella IgG) are **correct**.
+The local seed table mislabels them: it calls 5195-3 an HBs antibody and 16128-1 an HBc
+antibody. The "suspect" notes in §0.2 were raised by those seed labels and are withdrawn.
+
+**2. Candidate codes that did not exist:**
+- 25514-4 (rubella) → 25514-1.
+- 47236-8 (treponemal) → **22587-0**.
+- 19162-0 (varicella) → **19162-7**.
+
+**3. Other code results:**
+- The O24.111–.119 leaves exist.
+- The O09 leaf list is confirmed exactly: 64 leaves, and there is no O09.290.
+- All 39 CPT codes and HCPCS **J2790** (RhIG 300 mcg) exist and fit.
+
+**4. Citation fixes.**
+- **Claims pulled from references that did not contain them.** Each claim is now re-sourced to
+  a new reference ([63]–[71]), or reworded or dropped:
+  - diagnostic-testing windows ([4] → [63]);
+  - the FDA aspirin carve-out ([64]);
+  - the 4 mg folic acid, iron and iodine figures ([28] → [65][66][67]);
+  - alcohol wording ([68]);
+  - calorie figures ([69]);
+  - car-belt guidance ([70]);
+  - the Core Set status ([71]);
+  - the trimester definitions (now attributed to the Tabular List).
+- **[41] was FAIL.** The Hear Her text was not verbatim. It is now corrected word for word.
+- **New licensing question:** the CDC page states the list "was developed by the Alliance for
+  Innovation on Maternal Health". So the list is AIM-origin even on CDC's site (D-28).
+- **[25]:** agent B reported a court-order banner on the CDC schedule, but the checker could not
+  find it on the cited pages. That claim is dropped and the schedule is cited by its Jul 2 2025
+  date only.
+
+**5. HEDIS detail not on the NCQA pages** (PRS-E windows, PND-E cut-points) is marked `[GAP]`
+instead of stated.
 
 ---
 
 ## 1. Pathway metadata
 
 - **Logical ID**: `routine-prenatal-care` (new; supersedes `routine-prenatal-care-v1` and `-v2`,
-  which are archived at import, D-28)
+  which are archived at import, D-27)
 - **Title**: Routine Prenatal Care
 - **Version**: 1
 - **Category**: OBSTETRIC
@@ -440,9 +509,13 @@ and 9. Stage 5 is gated out, so a missed anatomy survey surfaces only through RE
     - rubella immunity;
     - syphilis (treponemal and nontreponemal);
     - hepatitis B: **HBsAg every pregnancy**, plus the **triple panel** (HBsAg, anti-HBs, total
-      anti-HBc) if no documented negative triple panel after age 18 or incomplete vaccination;
+      anti-HBc) if any of:
+      - no documented negative triple panel after age 18;
+      - an incomplete vaccine series;
+      - ongoing known risk, whatever the vaccination or testing history;
     - HIV (opt-out, Ag/Ab combination);
-    - hepatitis C antibody (reflex RNA) every pregnancy;
+    - hepatitis C antibody (reflex RNA) every pregnancy, except where HCV prevalence is below
+      0.1%;
     - urine culture for asymptomatic bacteriuria at the first visit or 12–16 weeks, whichever
       is earlier. Treatment belongs to the UTI pathway;
     - hemoglobinopathy testing if no prior result (universal since 2022).
@@ -474,20 +547,23 @@ and 9. Stage 5 is gated out, so a missed anatomy survey surfaces only through RE
   - **Aneuploidy screening.** Make **cfDNA screening for trisomies 21, 18 and 13 routinely
     available to all** (any GA from 9–10 weeks). Every patient may pursue or decline.
   - **Serum screening** is for patient preference or when cfDNA cannot be used. The
-    first-trimester combined screen (Stage 3) and quad screen (Stage 5) have fixed windows. Do
-    not run multiple unlinked serum screens.
-  - **Diagnostic testing** (CVS 10–13 weeks; amniocentesis usually 15–20 weeks) is offered to
-    all regardless of age or risk. A positive or nonreportable cfDNA → genetic counseling,
-    detailed ultrasound and diagnostic testing.
-  - **Carrier screening.** Offer everyone CF and SMA carrier screening plus hemoglobinopathy
-    evaluation (CBC ± electrophoresis). Ethnic-specific, panethnic or expanded panels are all
-    acceptable.
-    - Fragile X only with a family history or ovarian insufficiency.
+    first-trimester combined screen (Stage 3) and quad screen (Stage 5) have fixed windows.
+  - **Diagnostic testing** is available: CVS at 10–13 weeks; amniocentesis usually at
+    15–20 weeks [63].
+    - A positive or nonreportable cfDNA → genetic counseling, detailed ultrasound and
+      diagnostic testing [4].
+    - `[PAYWALL]` PB 162's clinician-level windows, and its offer-to-all wording, are not
+      readable. The windows come from ACOG's patient FAQ.
+  - **Carrier screening.** Offer everyone CF and SMA carrier screening, and universal
+    hemoglobinopathy testing (hemoglobin electrophoresis or molecular testing) if no prior
+    result. Ethnic-specific, panethnic or expanded panels are all acceptable (CO 690).
+    - Fragile X only with a family history of fragile X or intellectual disability, or
+      unexplained ovarian insufficiency / elevated FSH before 40.
     - Screening is done once per lifetime.
     - A carrier → offer partner testing.
   - **Every patient is offered the anatomy survey** regardless of screening method (Stage 5).
 
-  [4][5][6]
+  [4][5][6][63]
 - **Step 1.6 — Preeclampsia risk assessment** *(unconditional; hosts
   `gate-aspirin-indicated`)*:
   - **High-risk factors** (any one): prior preeclampsia, multifetal gestation, chronic
@@ -500,16 +576,19 @@ and 9. Stage 5 is gated out, so a missed anatomy survey surfaces only through RE
 - **Step 1.7 — Start low-dose aspirin** *(gated by `gate-aspirin-indicated`)*:
   - 81 mg daily, started between 12 and 28 weeks (optimally before 16 weeks), continued daily
     until delivery.
-  - Exempt from the FDA "avoid NSAIDs ≥20 weeks" advice.
+  - Exempt from the FDA "avoid NSAIDs ≥20 weeks" advice [64].
 
-  [17][18][19]
+  [17][18][19][64]
 - **Step 1.8 — Supplements and healthy-pregnancy counseling** *(unconditional)*:
-  - **Prenatal vitamin** with folic acid 0.4–0.8 mg daily, iron (27 mg/day requirement) and
-    iodine. Choose one containing iodine.
-    - **After a prior NTD-affected pregnancy: folic acid 4 mg daily** as a separate supplement.
-      CDC says from 1 month before conception; ACOG FAQ says ≥3 months before. Continue through
-      the first 3 months.
-    - Do not exceed the recommended dose (vitamin A).
+  - **Prenatal vitamin:**
+    - folic acid 0.4–0.8 mg daily [28];
+    - iron (27 mg/day requirement) [66];
+    - iodine: choose a vitamin containing it (ATA: 150 mcg/day as potassium iodide, via NIH
+      ODS) [67].
+    - **After a prior NTD-affected pregnancy: folic acid 4 mg daily** as a separate supplement
+      through the first 3 months. CDC says start 1 month before conception [65]; ACOG FAQ says
+      ≥3 months before [66].
+    - Do not exceed the recommended dose (vitamin A) [66].
   - **Nutrition and food safety:** avoid listeria sources; 2–3 servings a week of low-mercury
     fish; caffeine <200 mg/day.
   - **No alcohol; stop tobacco and cannabis.**
@@ -517,11 +596,10 @@ and 9. Stage 5 is gated out, so a missed anatomy survey surfaces only through RE
   - **Activity:** ≥150 min/week moderate.
   - **Oral health:** dental care is safe; refer if the last exam was >6 months ago.
   - **Travel and seat belts.**
-  - **Medications:** NSAIDs to be avoided from 20 weeks (except aspirin 81 mg). Acetaminophen
-    remains the analgesic of choice.
+  - **Medications:** avoid NSAIDs from 20 weeks, except aspirin 81 mg [64].
   - **Urgent maternal warning signs**, from the first visit onward.
 
-  [28][36][37][38][39][40][41][45][51]
+  [28][36][37][38][39][40][41][45][51][64][65][66][67][68]
 - **Step 1.9 — Immunizations at any gestational age** *(unconditional)*:
   - **Inactivated or recombinant influenza vaccine** in any trimester during the season
     (third-trimester patients as soon as vaccine is available; LAIV is contraindicated).
@@ -551,8 +629,9 @@ and 9. Stage 5 is gated out, so a missed anatomy survey surfaces only through RE
   - weight;
   - fetal heart activity at appropriate GA. It adds nothing when the patient confirms fetal
     movement, but may reassure;
-  - fundal height at in-person visits from 24 weeks. If it lags GA by more than 3 cm
-    (a "proposed" threshold), order a growth ultrasound;
+  - fundal height at in-person visits from 24 weeks [1]. If it differs from GA by more than
+    3 cm, order a growth ultrasound. PB 227 calls this a "proposed" threshold [50]
+    (`[PAYWALL]`, read via a mirror);
   - fetal movement after quickening;
   - symptoms: contractions, fluid leakage, bleeding.
   Home BP and weight self-monitoring is acceptable when the patient is trained and equipped.
@@ -600,8 +679,9 @@ and 9. Stage 5 is gated out, so a missed anatomy survey surfaces only through RE
   `gate-overt-diabetes`)*:
   - Confirm with a second abnormal test unless unequivocal.
   - Classify as diabetes complicating pregnancy, not GDM.
-  - Record the pre-existing diabetes code (e.g. **O24.11-**, pre-existing type 2 diabetes in
-    pregnancy, by trimester; `[PENDING wave-2]`).
+  - Record the pre-existing diabetes code: **O24.111/.112/.113/.119** (pre-existing type 2
+    diabetes in pregnancy, 1st/2nd/3rd/unspecified trimester), or O24.911–.919 if the type is
+    unspecified. Both verified.
   - Manage as pregestational diabetes (no Prism pathway yet, §18).
   [55]
 - **Step 4.4 — Early abnormal glucose metabolism: counseling and fasting-glucose monitoring**
@@ -626,8 +706,8 @@ and 9. Stage 5 is gated out, so a missed anatomy survey surfaces only through RE
   *(unconditional)*:
   - **Quad screen** 15–22 weeks for patients choosing serum screening without a
     first-trimester screen.
-  - **Open-NTD assessment** by ultrasound ± maternal serum AFP for all. First-trimester AFP
-    does not replace it.
+  - **Open neural tube defects:** assess by second-trimester ultrasound ± maternal serum AFP.
+    First-trimester AFP does not replace second-trimester AFP.
   [4]
 
 ### Stage 6 — From 24 0/7 weeks: 24–28-week labs and GDM screening status
@@ -692,8 +772,8 @@ and 9. Stage 5 is gated out, so a missed anatomy survey surfaces only through RE
 - **Step 9.1 — Tdap vaccine** *(unconditional)*:
   - One dose each pregnancy, as early in the **27–36-week** window as possible, whatever the
     prior Tdap history.
-  - May be co-administered with influenza, COVID-19 and RSV vaccines.
-  [24][25]
+  - May be co-administered with influenza, COVID-19 and RSV vaccines [26][27].
+  [24][25][26][27]
 - **Step 9.2 — Review Rh(D) status** *(unconditional; hosts `gate-rh-negative` and
   `gate-rh-positive`)*: from the initial type (Step 1.3). [21][22]
 - **Step 9.3 — Rh(D)-negative: repeat antibody screen, then Rh(D) immune globulin 300 µg at
@@ -1023,9 +1103,10 @@ No `ESCALATES_TO` chains; none apply.
       Step 1.8; no second node, because it would conflict in the lane for every patient).
     - Do not exceed the labelled dose (vitamin A).
     - Iron supplementation is ACOG-universal low-dose; USPSTF gives an I statement.
-  - **Code:** RxNorm folic acid IN 4511 (verified). No RxNorm ingredient exists for "prenatal
-    vitamins" (product-level only).
-  - **Source:** [28]
+  - **Code:** RxNorm folic acid IN **4511** (verified). No RxNorm ingredient exists for
+    "prenatal vitamins" (product-level only). An SCD is 198640 (folic acid 0.4 MG Oral Tablet).
+    v2's 310488 is **glipizide** (§0.7).
+  - **Source:** [28][65][66][67]
 - **Med-2 — Aspirin 81 mg** (on Step 1.7)
   - **Role:** first_line · **clinical role:** `preeclampsia-prophylaxis`, the **same name and
     lane as GHTN `med-1`**, so the merge shows one.
@@ -1034,7 +1115,7 @@ No `ESCALATES_TO` chains; none apply.
   - **Notes:** exempt from FDA's NSAID ≥20-week advice. Not for GDM alone, unexplained
     stillbirth, FGR or preterm-birth prevention without preeclampsia risk.
   - **Code:** RxNorm aspirin IN 1191; SCD 243670 (81 mg oral tablet).
-  - **Source:** [17][18][19]
+  - **Source:** [17][18][19][64]
 - **Med-3 — Influenza vaccine, inactivated or recombinant** (on Step 1.9)
   - **Role:** first_line · **clinical role:** `influenza-immunization`
   - **Dose:** one dose IM per season, any trimester.
@@ -1049,8 +1130,7 @@ No `ESCALATES_TO` chains; none apply.
   - **Notes:** **conflict.**
     - ACOG CS 26 (Feb 2026): "All pregnant and lactating individuals should receive an updated
       COVID-19 vaccine… any trimester."
-    - CDC adult schedule (Jul 2025; current under the Mar 2026 court order): pregnancy cell "No
-      Guidance/Not Applicable".
+    - CDC adult schedule (Jul 2 2025), Table 2: pregnancy cell "No Guidance/Not Applicable".
     - CDC interim considerations (Sep 2026) urge a review of risks and benefits.
     - State both to the patient; shared decision.
   - **Code:** `[GAP]` 2026–27 product CPTs are not in the CDC crosswalk.
@@ -1074,8 +1154,13 @@ No `ESCALATES_TO` chains; none apply.
     - Contraindicated if Rh-positive.
     - Give where anaphylaxis can be managed.
     - Protects only the pregnancy in which it is given.
-  - **Code:** RxNorm Rho(D) immune globulin IN **35465** (verified). v2's RxNorm 5641 is
-    withdrawn pending wave-2 (§0.7). `[GAP]` HCPCS/CPT (J2790) is not verified.
+  - **Label conflict:** the RhoGAM label still lists termination and loss up to and including
+    12 weeks. The ACOG CPU (Dec 2024) forgoes routine RhIG before 12 0/7 weeks.
+  - **Codes:**
+    - RxNorm Rho(D) immune globulin IN **35465** (verified). v2's 5641 is a retired
+      identifier.
+    - The 300 mcg product SCD is 731381.
+    - HCPCS **J2790** (verified). It is not a CodeEntry system, so it is noted only.
   - **Source:** [21][22][23]
 - **Med-7 — RSV vaccine, RSVpreF (Abrysvo)** (on Step 10.1)
   - **Role:** first_line (one of two alternatives; the other is the infant's monoclonal, a
@@ -1106,16 +1191,16 @@ merge dedupes it.
 | Lab-1 | CBC with indices | 58410-2 | 85025 | blood | [1][2] |
 | Lab-2 | ABO/Rh(D) type | 882-1 | 86900, 86901 | blood | [2][22] |
 | Lab-3 | RBC antibody screen | 890-4 | 86850 | blood | [2][22] |
-| Lab-4 | Rubella IgG | `[PENDING wave-2]` (25514-4 candidate) | 86762 | serum | [2] |
-| Lab-5 | Syphilis, treponemal and nontreponemal | RPR 20507-0; treponemal `[PENDING]` | 86592, 86780 | serum | [7][8] |
-| Lab-6 | Hepatitis B surface antigen | `[PENDING wave-2]` (5196-1 candidate; v2's 5195-3 is suspect) | 87340 | serum | [9] |
-| Lab-7 | Hepatitis B triple panel (anti-HBs, total anti-HBc) | `[PENDING]` (16935-9, 16933-4 candidates) | 86706, 86704 | serum; if no documented negative triple panel after age 18 | [9] |
-| Lab-8 | HIV-1/2 Ag/Ab | `[PENDING]` (56888-1 candidate; v2 75622-1) | 87389 | serum/plasma | [10][11] |
-| Lab-9 | Hepatitis C antibody (reflex RNA) | `[PENDING]` (13955-0 candidate; v2's 16128-1 is suspect) | 86803 | serum | [12] |
+| Lab-4 | Rubella IgG | 25514-1 | 86762 | serum | [2] |
+| Lab-5 | Syphilis, treponemal and nontreponemal | RPR 20507-0; treponemal Ab 22587-0 | 86592, 86780 | serum | [7][8] |
+| Lab-6 | Hepatitis B surface antigen | 5196-1 (5195-3 is also HBsAg presence) | 87340 | serum | [9] |
+| Lab-7 | Hepatitis B triple panel (anti-HBs, total anti-HBc) | anti-HBs 16935-9; anti-HBc total 16933-4 | 86706, 86704 | serum; if no documented negative triple panel after age 18, incomplete vaccination, or ongoing risk | [9] |
+| Lab-8 | HIV-1/2 Ag/Ab | 56888-1 | 87389 | serum/plasma | [10][11] |
+| Lab-9 | Hepatitis C antibody (reflex RNA) | 13955-0 | 86803 | serum | [12] |
 | Lab-10 | Urine culture (asymptomatic bacteriuria) | 630-4; colony count 19090-0 | 87086 | clean-catch; aligned with the UTI pathway | [13][14] |
-| Lab-11 | Chlamydia and gonorrhea NAAT | `[PENDING]` (21613-5 / 21416-3 seeded; v2 43304-5) | 87491, 87591 | urine or vaginal; age <25 or at risk | [15] |
+| Lab-11 | Chlamydia and gonorrhea NAAT | CT 21613-5; GC 21416-3 (both seeded). rRNA assays: 43304-5 (CT), 43305-2 (GC) | 87491, 87591 | urine or vaginal; age <25 or at risk | [15] |
 | Lab-12 | Hemoglobinopathy evaluation | 43113-0 | 83020 | if no prior result; aligned with anemia | [6] |
-| Lab-13 | Varicella IgG | `[PENDING]` (19162-0 candidate) | 86787 | if no history or vaccination | [2] |
+| Lab-13 | Varicella IgG | 19162-7 | 86787 | if no history or vaccination | [2] |
 
 **Other steps:**
 
@@ -1134,7 +1219,7 @@ merge dedupes it.
 | Lab-24 | Step 9.5 | Syphilis rescreen | as Lab-5 | — | [8] |
 | Lab-25 | Step 9.5 | HIV rescreen | as Lab-8 | if at risk | [10][11] |
 | Lab-26 | Step 9.5 | Chlamydia/gonorrhea rescreen | as Lab-11 | if <25 or at risk | [15] |
-| Lab-27 | Step 11.1 | GBS vaginal–rectal culture | LOINC `[PENDING]` (72607-5 candidate; v2 11475-1 is generic "culture"); CPT 87081 (or NAAT 87653) | — | [20] |
+| Lab-27 | Step 11.1 | GBS vaginal–rectal culture | LOINC 72607-5 (NAAT: 91875-5); CPT 87081 (NAAT: 87653). v2's 11475-1 is a generic culture code | — | [20] |
 
 ## 7. Imaging
 
@@ -1142,9 +1227,9 @@ All three are modality US, body_region pregnant uterus.
 
 | Img | Host step | Name | CPT | Indication | Source |
 |---|---|---|---|---|---|
-| Img-1 | Step 3.1 | Obstetric ultrasound, first trimester (dating/viability) | 76801 (transabdominal) or 76817 (transvaginal), `[PENDING]` | dating; CRL | [3] |
-| Img-2 | Step 3.2 | Nuchal translucency ultrasound | 76813 `[PENDING]` | NT for serum screening | [4] |
-| Img-3 | Step 5.1 | Fetal anatomy ultrasound | 76805 `[PENDING]`; 76811 is detailed/high-risk only | anatomy survey 18–22 weeks | [1][4] |
+| Img-1 | Step 3.1 | Obstetric ultrasound, first trimester (dating/viability) | 76801 (transabdominal) or 76817 (transvaginal) | dating; CRL | [3] |
+| Img-2 | Step 3.2 | Nuchal translucency ultrasound | 76813 | NT for serum screening | [4] |
+| Img-3 | Step 5.1 | Fetal anatomy ultrasound | 76805; 76811 is detailed/high-risk only | anatomy survey 18–22 weeks | [1][4] |
 
 v2 carried these as `Procedure` nodes, which is the wrong node type.
 
@@ -1154,7 +1239,7 @@ v2 carried these as `Procedure` nodes, which is the wrong node type.
 |---|---|---|---|---|---|
 | Proc-1 | Step 12.1 | Fetal non-stress test | 59025 | same as GDM/GHTN, so it dedupes | [46] |
 | Proc-2 | Step 12.1 | Fetal biophysical profile with non-stress testing | 76818 | same as GDM/GHTN, so it dedupes | [46] |
-| Proc-3 | Step 11.2 | External cephalic version | 59412 `[PENDING]` | — | [48] |
+| Proc-3 | Step 11.2 | External cephalic version | 59412 | — | [48] |
 
 ## 9. Guidance
 
@@ -1162,22 +1247,30 @@ The text is plain-language paraphrase of the cited source, except Guid-1, which 
 CDC. Topics are chosen against §0.4.
 
 - **Guid-1 — topic `Urgent maternal warning signs`** (on Step 1.8), category safety-netting.
-  - **Instructions, verbatim CDC Hear Her list (public domain):**
-    > "During pregnancy and in the year after birth, seek medical care immediately if you
-    > experience any of these urgent maternal warning signs: headache that won't go away or
-    > gets worse over time; dizziness or fainting; changes in your vision; fever of 100.4°F or
-    > higher; extreme swelling of your hands or face; thoughts about harming yourself or your
-    > baby; trouble breathing; chest pain or fast-beating heart; severe nausea and throwing up;
-    > severe belly pain that doesn't go away; baby's movement stopping or slowing during
-    > pregnancy; vaginal bleeding or fluid leaking during pregnancy; vaginal bleeding or
-    > discharge after pregnancy; severe swelling, redness, or pain of your leg or arm;
-    > overwhelming tiredness. If you feel like something just isn't right, talk to your health
-    > care provider. Always say you are pregnant or were pregnant within the last year.
+  - **Instructions, word for word from the CDC Hear Her page** (wave-2 checked; the list items
+    keep the page's order):
+    > "Be aware of urgent maternal warning signs and symptoms during pregnancy and in the year
+    > after delivery. Seek medical care immediately if you experience any signs or symptoms
+    > that are listed below. Headache that won't go away or gets worse over time; Dizziness or
+    > fainting; Changes in your vision; Fever of 100.4°F or higher; Extreme swelling of your
+    > hands or face; Thoughts about harming yourself or your baby; Trouble breathing; Chest
+    > pain or fast-beating heart; Severe nausea and throwing up; Severe belly pain that doesn't
+    > go away; Baby's movement stopping or slowing during pregnancy; Vaginal bleeding or fluid
+    > leaking during pregnancy; Vaginal bleeding or discharge after pregnancy; Severe swelling,
+    > redness, or pain of your leg or arm; Overwhelming tiredness. If you feel like something
+    > just isn't right, or you aren't sure if it's serious, talk to your health care provider.
+    > Be sure to tell them if you are pregnant or were pregnant within the last year.
     > (Source: CDC Hear Her campaign, available free at cdc.gov/hearher. Use does not imply
-    > endorsement by CDC or HHS.)"
-  - **Licensing:** this is CDC content, reused with attribution, the required non-endorsement
-    disclaimer, and no change to substance. Do **not** substitute the ACOG/AIM card text: it
-    prohibits LLM-generated use.
+    > endorsement by CDC, ATSDR, HHS or the US Government.)"
+  - **Licensing `[DECISION D-28]`:**
+    - Reused with CDC's attribution, its non-endorsement disclaimer, and no change to the
+      substance.
+    - The CDC page states the list "was developed by the Alliance for Innovation on Maternal
+      Health". AIM's own 2026 card is all-rights-reserved and **prohibits use as part of an
+      LLM to generate text**.
+    - Needs licensing review before shipping. Fallback: the topic plus a link to
+      cdc.gov/hearher.
+    - Do **not** substitute or paraphrase the AIM card text.
   - **Co-match:** recommend GHTN `guid-1` adopt this identical text, so the merge shows one
     block (§0.4).
   - **Source:** [41]
@@ -1191,7 +1284,7 @@ CDC. Topics are chosen against §0.4.
     calories a day in the second trimester and about 450 in the third.
   - We will check your weight at visits and can connect you with a nutrition or activity
     program."
-  - **Source:** [36][37]
+  - **Source:** [36][37][69]. The calorie figures are from [69].
 - **Guid-3 — topic `Eating well and food safety in pregnancy`** (on Step 1.8), lifestyle.
   - "Take a daily prenatal vitamin with folic acid and iodine, and don't take more than the
     label says.
@@ -1207,37 +1300,41 @@ CDC. Topics are chosen against §0.4.
 - **Guid-4 — topic `Alcohol, tobacco and cannabis in pregnancy`** (on Step 1.8), education.
   - "No amount or type of alcohol is known to be safe at any time in pregnancy. If you drank
     before you knew you were pregnant, the most important thing is to stop now.
-  - Quitting smoking and vaping at any point helps you and your baby, and we can help you quit.
+  - Quitting smoking and other tobacco at any point helps you and your baby, and we can help
+    you quit.
   - There is no medical reason to use cannabis in pregnancy, and we advise stopping."
-  - **Source:** [33][34][35]
+  - **Source:** [33][34][35][68]. The alcohol wording follows CDC [68]. USPSTF rates
+    e-cigarettes for cessation as insufficient evidence, hence "other tobacco", not "vaping".
 - **Guid-5 — topic `Staying active in pregnancy`** (on Step 1.8), lifestyle.
   - "Aim for at least 150 minutes a week of moderate activity, such as brisk walking, swimming
     or stationary cycling. You should be able to talk while exercising.
   - Avoid contact sports, activities where you might fall, scuba diving, and lying flat on your
     back for long periods later in pregnancy.
-  - Stop and call us if you have vaginal bleeding, fluid leaking, painful regular contractions,
-    chest pain, dizziness, headache, shortness of breath before exercising, calf pain or
-    swelling, or weakness that affects your balance."
+  - Stop and call us if you have vaginal bleeding, belly pain, fluid leaking, painful regular
+    contractions, chest pain, dizziness, headache, shortness of breath before exercising, calf
+    pain or swelling, or weakness that affects your balance."
   - **Source:** [38]
 - **Guid-6 — topic `Dental care and travel in pregnancy`** (on Step 1.8), education.
   - "Dental checkups, cleanings, X-rays with a shield and numbing medicine are all safe in
     pregnancy, and needed fillings or root canals can be done at any time.
   - Always wear your seat belt, with the lap belt below your belly and the shoulder belt
     between your breasts.
-  - Occasional flights are usually fine in a healthy pregnancy. On trips of 4 hours or more,
-    get up and walk around to lower the risk of blood clots."
-  - **Source:** [45][51]
+  - Occasional flights are usually fine in a healthy pregnancy. On long flights, get up and
+    walk around from time to time, drink fluids, and consider support stockings."
+  - **Source:** [45][51][70]. The car-belt guidance is from [70].
 - **Guid-7 — topic `Your baby's movements`** (on Step 9.6), safety-netting.
   - "Get to know your baby's usual pattern of movement. If your baby is moving less than usual
     or has stopped moving, call us the same day. Don't wait until the next day."
   - The "same day" instruction is a safety-netting choice consistent with CDC's warning signs,
-    not a quoted threshold. ACOG does not recommend routine formal kick counts.
+    not a quoted threshold.
+  - CC No. 8 [1] says no routine antenatal measure of fetal well-being (e.g., formal kick
+    counts) has shown benefit, so none is prescribed.
   - **Source:** [1][41][46]
 - **Guid-8 — topic `Breastfeeding and planning birth control`** (on Step 9.6), education.
   - "Breastfeeding has health benefits for you and your baby. The choice is yours, and if you
     would like to breastfeed we can connect you with lactation support before and after birth.
-  - Let's also plan birth control for after delivery. Waiting at least 18 months before your
-    next pregnancy is healthiest, and some methods can be started before you leave the
+  - Let's also plan birth control for after delivery. Waiting 18 months or more before your
+    next pregnancy lowers risks, and some methods can be started before you leave the
     hospital."
   - **Source:** [42][43][44]
 - **Guid-9 — topic `Signs of labor and timing of birth`** (on Step 11.3), education.
@@ -1286,7 +1383,7 @@ CDC. Topics are chosen against §0.4.
 ## 10. Quality metrics
 
 - **QM-1 — HEDIS Prenatal and Postpartum Care (PPC): Timeliness of Prenatal Care** (on Step
-  1.1). NCQA; also CMS Core Set PPC2-CH (mandatory) / PPC2-AD (voluntary).
+  1.1). NCQA; also CMS Maternity Core Set PPC2-CH (mandatory) / PPC2-AD (voluntary) [71].
   - Denominator: deliveries of live births between Oct 8 of the prior year and Oct 7 of the
     measurement year.
   - Numerator: a prenatal visit in the first trimester, on or before the enrollment start date,
@@ -1294,17 +1391,16 @@ CDC. Topics are chosen against §0.4.
   - Source: [59]
 - **QM-2 — HEDIS Prenatal Immunization Status (PRS-E)** (on Step 9.1). NCQA, ECDS.
   - Denominator: deliveries in the measurement year.
-  - Numerator:
-    - influenza vaccine between July 1 of the prior year and delivery;
-    - **and** ≥1 Tdap during the pregnancy.
-    The combination rate is used for accreditation.
-  - Removed from the 2026 CMS Core Sets (voluntary reporting only).
+  - Numerator: influenza **and** Tdap vaccination for the pregnancy.
+  - `[GAP]` The exact influenza lookback, the combination-rate details and the 2026 Core Set
+    status come from secondary sources. They were not read on NCQA or CMS pages; confirm them
+    against the HEDIS MY2026 Vol 2 specification.
   - Source: [60]
 - **QM-3 — HEDIS Prenatal Depression Screening and Follow-up (PND-E)** (on Step 1.4). NCQA,
   ECDS.
   - Screening: a standardized instrument between pregnancy start and delivery.
-  - Follow-up: within 30 days of a positive screen (PHQ-9 ≥10, PHQ-2 ≥3, EPDS ≥10, among
-    others).
+  - Follow-up: within 30 days of a positive screen.
+  - `[GAP]` The positive-screen cut-points are in the HEDIS specification, which was not read.
   - Source: [61]
 - **QM-4 — HEDIS PPC: Postpartum Care** (on Step 9.6). NCQA.
   - Numerator: a postpartum visit on or between 7 and 84 days after delivery.
@@ -1344,7 +1440,7 @@ Acyclic. No `prior_node_result` gates.
 
 ## 13. Code entries
 
-`[PENDING wave-2]` rows are candidates that the code verifier confirms or corrects (§0.7).
+Every code was verified by the wave-2 code agent (§0.7).
 
 **Condition codes on steps:**
 
@@ -1352,7 +1448,7 @@ Acyclic. No `prior_node_result` gates.
 |---|---|---|---|
 | Z34.00 | ICD-10 | Supervision of normal first pregnancy, unspecified trimester | Step 1.1 |
 | R03.0 | ICD-10 | Elevated blood-pressure reading, without diagnosis of hypertension | Step 2.2 |
-| O24.11- `[PENDING]` | ICD-10 | Pre-existing type 2 diabetes mellitus, in pregnancy | Step 4.3 |
+| O24.111, O24.112, O24.113, O24.119 | ICD-10 | Pre-existing type 2 diabetes mellitus, in pregnancy, 1st/2nd/3rd/unspecified trimester | Step 4.3 |
 | O99.810 | ICD-10 | Abnormal glucose complicating pregnancy | Step 7.2 |
 | O24.410 | ICD-10 | Gestational diabetes mellitus in pregnancy, diet controlled | Step 7.3, Step 8.2 (one CodeEntry node per host) |
 
@@ -1366,7 +1462,7 @@ Acyclic. No `prior_node_result` gates.
 | 86900 / 86901 | CPT | Blood typing; ABO / Rh (D) | Lab-2 |
 | 890-4 | LOINC | Blood group antibody screen [Presence] in Serum or Plasma | Lab-3, Lab-23 |
 | 86850 | CPT | Antibody screen, RBC, each serum technique | Lab-3, Lab-23 |
-| 20507-0 | LOINC | Reagin Ab [Presence] in Serum by RPR `[PENDING]` | Lab-5, Lab-24 |
+| 20507-0 | LOINC | Reagin Ab [Presence] in Serum by RPR | Lab-5, Lab-24 |
 | 630-4 | LOINC | Bacteria identified in Urine by Culture | Lab-10 |
 | 19090-0 | LOINC | Colony count [#/volume] in Urine | Lab-10 |
 | 87086 | CPT | Culture, bacterial; quantitative colony count, urine | Lab-10 |
@@ -1383,9 +1479,9 @@ Acyclic. No `prior_node_result` gates.
 | 82951, 82952 | CPT | GTT, 3 specimens; each additional | Lab-21 (82951 also Lab-22) |
 | 1552-9, 1507-3, 1518-0 | LOINC | 75-g OGTT fasting/1 h/2 h | Lab-22 |
 | 87081 | CPT | Culture, presumptive pathogenic organisms, screening only | Lab-27 |
-| 76801, 76817, 76813, 76805 | CPT | OB ultrasound codes `[PENDING]` | Img-1, Img-1, Img-2, Img-3 |
+| 76801, 76817, 76813, 76805 | CPT | OB ultrasound: <14 wk transabdominal; transvaginal; nuchal translucency; ≥14 wk | Img-1, Img-1, Img-2, Img-3 |
 | 59025 / 76818 | CPT | NST / BPP with NST | Proc-1 / Proc-2 |
-| 59412 | CPT | External cephalic version `[PENDING]` | Proc-3 |
+| 59412 | CPT | External cephalic version | Proc-3 |
 
 **Medication codes:**
 
@@ -1399,7 +1495,32 @@ Acyclic. No `prior_node_result` gates.
 | 35465 | RXNORM | Rho(D) immune globulin (IN) | Med-6 |
 | 90678 | CPT | RSV vaccine, preF, subunit, bivalent, IM (Abrysvo) | Med-7 |
 
-Lab-4 and Lab-6 through Lab-9, Lab-11, Lab-13 and Lab-27 LOINCs follow wave-2 (§0.7).
+**Initial-panel and GBS codes (verified in wave 2):**
+
+| Code | System | Description | Attached to |
+|---|---|---|---|
+| 25514-1 | LOINC | Rubella virus IgG Ab [Presence] in Serum | Lab-4 |
+| 86762 | CPT | Antibody; rubella | Lab-4 |
+| 22587-0 | LOINC | Treponema pallidum Ab [Presence] in Serum | Lab-5, Lab-24 |
+| 86592, 86780 | CPT | Syphilis test, non-treponemal; Treponema pallidum antibody | Lab-5, Lab-24 |
+| 5196-1 | LOINC | Hepatitis B virus surface Ag [Presence] in Serum or Plasma by Immunoassay | Lab-6 |
+| 87340 | CPT | Hepatitis B surface antigen (HBsAg) | Lab-6 |
+| 16935-9 | LOINC | Hepatitis B virus surface Ab [Units/volume] in Serum | Lab-7 |
+| 16933-4 | LOINC | Hepatitis B virus core Ab [Presence] in Serum | Lab-7 |
+| 86706, 86704 | CPT | HBsAb; HBcAb total | Lab-7 |
+| 56888-1 | LOINC | HIV 1+2 Ab+HIV1 p24 Ag [Presence] in Serum or Plasma by Immunoassay | Lab-8, Lab-25 |
+| 87389 | CPT | HIV-1 Ag with HIV-1 and HIV-2 antibodies, single result | Lab-8, Lab-25 |
+| 13955-0 | LOINC | Hepatitis C virus Ab [Presence] in Serum or Plasma by Immunoassay | Lab-9 |
+| 86803 | CPT | Hepatitis C antibody | Lab-9 |
+| 21613-5 | LOINC | Chlamydia trachomatis DNA [Presence] in Specimen by NAA with probe detection | Lab-11, Lab-26 |
+| 21416-3 | LOINC | Neisseria gonorrhoeae DNA [Presence] in Urine by NAA with probe detection | Lab-11, Lab-26 |
+| 87491, 87591 | CPT | Infectious agent detection by NAAT; C. trachomatis / N. gonorrhoeae, amplified | Lab-11, Lab-26 |
+| 83020 | CPT | Hemoglobin fractionation and quantitation; electrophoresis | Lab-12 |
+| 19162-7 | LOINC | Varicella zoster virus IgG Ab [Presence] in Serum | Lab-13 |
+| 86787 | CPT | Antibody; varicella-zoster | Lab-13 |
+| 72607-5 | LOINC | Streptococcus agalactiae [Presence] in Vaginal fluid+Rectum by Organism specific culture | Lab-27 |
+
+One CodeEntry node is emitted per host (spec: one parent per node).
 
 ## 14. Attribute-map registrations
 
@@ -1409,8 +1530,8 @@ and `patient.*` needs no code-map row. Both are in `KNOWN_PATIENT_ATTRIBUTES`
 
 ## 15. Evidence citations
 
-`[PENDING wave-2 citation check]`. Every entry below was fetched by a wave-1 agent on
-2026-09-24. PASS/FIX status is folded in from wave-2.
+Every entry below was fetched by a wave-1 or wave-2 agent on 2026-09-24. Wave-2 fixes are
+folded in (§0.7).
 
 - **[1]** Tailored Prenatal Care Delivery for Pregnant Individuals (Clinical Consensus No. 8) —
   ACOG, *Obstet Gynecol* 2025;145(5):565–577, 2025, `Expert Consensus`,
@@ -1428,9 +1549,10 @@ and `patient.*` needs no code-map row. Both are in `KNOWN_PATIENT_ATTRIBUTES`
   Consult Series #74; replaces PB 226) — ACOG, Jan 2026, `Level B` (GRADE 1B mapped to B),
   https://www.acog.org/clinical/clinical-guidance/practice-advisory/articles/2026/01/screening-for-fetal-chromosomal-abnormalities
 - **[5]** Carrier Screening in the Age of Genomic Medicine (CO 690) and Carrier Screening for
-  Genetic Conditions (CO 691) — ACOG, 2017 (both reaffirmed 2025), `Expert Consensus`,
-  https://www.acog.org/clinical/clinical-guidance/committee-opinion/articles/2017/03/carrier-screening-for-genetic-conditions
-- **[6]** Hemoglobinopathies in Pregnancy (Practice Advisory) — ACOG, Aug 2022 (reaffirmed 2024),
+  Genetic Conditions (CO 691) — ACOG, 2017 (both reaffirmed 2025), `Expert Consensus`:
+  - CO 691: https://www.acog.org/clinical/clinical-guidance/committee-opinion/articles/2017/03/carrier-screening-for-genetic-conditions
+  - CO 690: https://www.acog.org/clinical/clinical-guidance/committee-opinion/articles/2017/03/carrier-screening-in-the-age-of-genomic-medicine
+- **[6]** Hemoglobinopathies in Pregnancy (Practice Advisory) — ACOG, Aug 2022 (reaffirmed Sep 2025),
   `Expert Consensus`,
   https://www.acog.org/clinical/clinical-guidance/practice-advisory/articles/2022/08/hemoglobinopathies-in-pregnancy
 - **[7]** Syphilis Infection During Pregnancy: Screening — USPSTF, *JAMA* 2025, `A`,
@@ -1440,7 +1562,8 @@ and `patient.*` needs no code-map row. Both are in `KNOWN_PATIENT_ATTRIBUTES`
   https://www.acog.org/clinical/clinical-guidance/practice-advisory/articles/2024/04/screening-for-syphilis-in-pregnancy
 - **[9]** Hepatitis B Virus Infection in Pregnant Women: Screening — USPSTF, 2019, `A`,
   https://www.uspreventiveservicestaskforce.org/uspstf/recommendation/hepatitis-b-virus-infection-in-pregnant-women-screening
-  - Triple panel: ACOG CPG No. 6 (2023) `[PAYWALL]`, via ACOG news release
+  - Triple panel: ACOG Clinical Practice Guideline No. 6, Viral Hepatitis in Pregnancy,
+    *Obstet Gynecol* 2023;142:745–59 `[PAYWALL]`, via ACOG news release
     https://www.acog.org/news/news-releases/2023/08/acog-releases-new-guidance-on-viral-hepatitis-in-pregnancy
 - **[10]** Human Immunodeficiency Virus (HIV) Infection: Screening — USPSTF, 2019, `A`,
   https://www.uspreventiveservicestaskforce.org/uspstf/recommendation/human-immunodeficiency-virus-hiv-infection-screening
@@ -1448,7 +1571,7 @@ and `patient.*` needs no code-map row. Both are in `KNOWN_PATIENT_ATTRIBUTES`
   (reaffirmed 2024), `Expert Consensus`,
   https://www.acog.org/clinical/clinical-guidance/committee-opinion/articles/2018/09/prenatal-and-perinatal-human-immunodeficiency-virus-testing
 - **[12]** CDC Recommendations for Hepatitis C Screening Among Adults — United States, 2020 —
-  Schillie S, et al., *MMWR Recomm Rep* 2020;69(2):1–17, `Expert Consensus`,
+  Schillie S, et al., *MMWR Recomm Rep* 2020;69(RR-2):1–17, `Expert Consensus`,
   https://www.cdc.gov/mmwr/volumes/69/rr/rr6902a1.htm
 - **[13]** Asymptomatic Bacteriuria in Adults: Screening — USPSTF, *JAMA* 2019, `B`,
   https://www.uspreventiveservicestaskforce.org/uspstf/recommendation/asymptomatic-bacteriuria-in-adults-screening
@@ -1475,8 +1598,12 @@ and `patient.*` needs no code-map row. Both are in `KNOWN_PATIENT_ATTRIBUTES`
   (reaffirmed 2026), `Level A`,
   https://www.acog.org/clinical/clinical-guidance/practice-bulletin/articles/2017/08/prevention-of-rh-d-alloimmunization
   - `[PAYWALL]` Text read from a manufacturer-hosted mirror.
-  - Also: ACOG CPU Dec 2024, RhIG after abortion or loss <12 weeks (abstract), and the ACOG
-    Practice Advisory on RhIG shortages, Mar 2024.
+  - Also: ACOG Clinical Practice Update, Rh D Immune Globulin Administration After Abortion
+    or Pregnancy Loss at Less Than 12 Weeks of Gestation, *Obstet Gynecol*
+    2024;144(6):e140–e143, PMID 39255498 (abstract).
+  - Also: ACOG Practice Advisory, Rho(D) Immune Globulin Shortages, Mar 2024 (reaffirmed Mar
+    2025),
+    https://www.acog.org/clinical/clinical-guidance/practice-advisory/articles/2024/03/rhod-immune-globulin-shortages
 - **[22]** Rh(D) Incompatibility: Screening — USPSTF, 2004, `A` (initial typing) / `B` (repeat
   antibody at 24–28 weeks),
   https://www.uspreventiveservicestaskforce.org/uspstf/recommendation/rh-d-incompatibility-screening
@@ -1484,13 +1611,19 @@ and `patient.*` needs no code-map row. Both are in `KNOWN_PATIENT_ATTRIBUTES`
 - **[23]** RhoGAM Ultra-Filtered PLUS [Rho(D) Immune Globulin (Human)] prescribing information —
   Kedrion, DailyMed, 2025, `Expert Consensus`,
   https://dailymed.nlm.nih.gov/dailymed/drugInfo.cfm?setid=d87e4d0b-2442-4135-b3f9-5c4f74845b87
-- **[24]** Maternal Immunizations (Committee Statement No. 26; replaces CO 741) — ACOG, Feb 2026,
+- **[24]** Maternal Immunizations (Committee Statement No. 26; replaces CO 741 and the Oct 2022
+  Maternal Immunization Practice Advisory) — ACOG, *Obstet Gynecol* 2026;147:e123–e128, Feb 2026,
   `Expert Consensus`,
   https://www.acog.org/clinical/clinical-guidance/committee-statement/articles/2026/02/maternal-immunizations
   - Also: ACOG 2026 Maternal Immunization Schedule (Jun 2026, addendum Sep 2026).
-- **[25]** Adult Immunization Schedule, Notes and Table 2 — CDC, Jul 2 2025 schedule (current per
-  the Mar 16 2026 court order; amended Apr 27 2026), `Expert Consensus`,
-  https://www.cdc.gov/vaccines/hcp/imz-schedules/adult-notes.html
+- **[25]** Adult Immunization Schedule, Notes and Table 2 (by medical condition) — CDC, Jul 2
+  2025, `Expert Consensus`:
+  - Notes: https://www.cdc.gov/vaccines/hcp/imz-schedules/adult-notes.html
+  - Table 2: https://www.cdc.gov/vaccines/hcp/imz-schedules/adult-medical-condition.html
+  - Agent B reported a court-order banner, which the citation check could not find on these
+    pages; it is not relied on.
+  - Also: CDC Interim Clinical Considerations for Use of COVID-19 Vaccines (updated Sep 23
+    2026), https://www.cdc.gov/covid/hcp/vaccine-considerations/index.html
 - **[26]** Maternal Respiratory Syncytial Virus Vaccination (Practice Advisory) — ACOG, updated
   Aug 2026, `Expert Consensus`,
   https://www.acog.org/clinical/clinical-guidance/practice-advisory/articles/2023/09/maternal-respiratory-syncytial-virus-vaccination
@@ -1502,6 +1635,7 @@ and `patient.*` needs no code-map row. Both are in `KNOWN_PATIENT_ATTRIBUTES`
   https://www.uspreventiveservicestaskforce.org/uspstf/recommendation/folic-acid-for-the-prevention-of-neural-tube-defects-preventive-medication
 - **[29]** Screening and Diagnosis of Mental Health Conditions During Pregnancy and Postpartum
   (Clinical Practice Guideline No. 4) — ACOG, 2023, `Expert Consensus`
+  - https://www.acog.org/clinical/clinical-guidance/clinical-practice-guideline/articles/2023/06/screening-and-diagnosis-of-mental-health-conditions-during-pregnancy-and-postpartum
   - `[PAYWALL]` Content via the ACOG program page:
     https://www.acog.org/programs/perinatal-mental-health/patient-screening
 - **[30]** Perinatal Depression: Preventive Interventions — USPSTF, 2019, `B`,
@@ -1589,8 +1723,12 @@ and `patient.*` needs no code-map row. Both are in `KNOWN_PATIENT_ATTRIBUTES`
 - **[57]** Screening for Gestational Diabetes — USPSTF, *JAMA* 2021;326(6):531–538, `B`,
   https://www.uspreventiveservicestaskforce.org/uspstf/recommendation/gestational-diabetes-screening
   (GDM brief [7])
-- **[58]** ICD-10-CM Official Guidelines for Coding and Reporting FY2027 — CMS/NCHS, 2026, `Expert
-  Consensus`, https://www.cms.gov/files/document/fy-2027-icd-10-cm-coding-guidelines.pdf
+- **[58]** ICD-10-CM Official Guidelines for Coding and Reporting FY2027, and the ICD-10-CM
+  Tabular List FY2027 — CMS/NCHS, 2026, `Expert Consensus`:
+  - Guidelines: https://www.cms.gov/files/document/fy-2027-icd-10-cm-coding-guidelines.pdf
+  - Code files: https://www.cms.gov/files/zip/2027-code-descriptions-tabular-order.zip
+  - The trimester definitions come from the Tabular List's chapter 15 note, not the
+    Guidelines PDF.
 - **[59]** Prenatal and Postpartum Care (PPC) — NCQA HEDIS, 2026, `Expert Consensus`,
   https://www.ncqa.org/report-cards/health-plans/state-of-health-care-quality-report/prenatal-and-postpartum-care-ppc/
 - **[60]** Prenatal Immunization Status (PRS-E) — NCQA HEDIS, 2026, `Expert Consensus`,
@@ -1601,7 +1739,33 @@ and `patient.*` needs no code-map row. Both are in `KNOWN_PATIENT_ATTRIBUTES`
 - **[62]** Management of Full-Term Nulliparous Individuals Without a Medical Indication for
   Delivery (Clinical Practice Update; updates PB 146) — ACOG, *Obstet Gynecol* 2025;145(1):e45–e50,
   `Expert Consensus`, https://doi.org/10.1097/AOG.0000000000005783
+  - PMID 39513607. It also replaces the 2018 ARRIVE Practice Advisory.
   - `[PAYWALL]` Abstract only.
+- **[63]** Prenatal Diagnostic Testing for Genetic Disorders (Practice Bulletin No. 162) — ACOG,
+  2016 (reaffirmed 2024), `Level A`,
+  https://www.acog.org/clinical/clinical-guidance/practice-bulletin/articles/2016/05/prenatal-diagnostic-testing-for-genetic-disorders
+  - `[PAYWALL]` The windows are from the ACOG patient FAQ "Prenatal Genetic Diagnostic Tests"
+    (reviewed Apr 2026): https://www.acog.org/womens-health/faqs/prenatal-genetic-diagnostic-tests
+- **[64]** FDA recommends avoiding use of NSAIDs in pregnancy at 20 weeks or later (Drug Safety
+  Communication) — US FDA, Oct 15 2020, `Expert Consensus`,
+  https://www.fda.gov/drugs/drug-safety-and-availability/fda-recommends-avoiding-use-nsaids-pregnancy-20-weeks-or-later-because-they-can-result-low-amniotic
+- **[65]** Folic Acid: Facts for Clinicians — CDC, updated May 2025, `Expert Consensus`,
+  https://www.cdc.gov/folic-acid/hcp/clinical-overview/index.html
+- **[66]** Healthy Eating During Pregnancy (FAQ001; patient education) — ACOG, updated Mar 2026,
+  `Expert Consensus`, https://www.acog.org/womens-health/faqs/healthy-eating-during-pregnancy
+- **[67]** Iodine: Fact Sheet for Health Professionals — NIH Office of Dietary Supplements,
+  updated Nov 2024 (cites the ATA 2017 guideline), `Expert Consensus`,
+  https://ods.od.nih.gov/factsheets/Iodine-HealthProfessional/
+- **[68]** About Alcohol Use During Pregnancy — CDC, reviewed Aug 2026, `Expert Consensus`,
+  https://www.cdc.gov/alcohol-pregnancy/about/index.html
+- **[69]** Weight Gain During Pregnancy — CDC, updated May 2024, `Expert Consensus`,
+  https://www.cdc.gov/maternal-infant-health/pregnancy-weight/index.html
+- **[70]** Car Safety for Pregnant Women, Babies, and Children (FAQ018; patient education) — ACOG,
+  reviewed Feb 2026, `Expert Consensus`,
+  https://www.acog.org/womens-health/faqs/car-safety-for-pregnant-women-babies-and-children
+- **[71]** 2026 Core Set of Maternal and Perinatal Health Measures for Medicaid and CHIP — CMS,
+  Dec 2025, `Expert Consensus`,
+  https://www.medicaid.gov/medicaid/quality-of-care/downloads/2026-maternity-core-set.pdf
 
 ## 16. Citation map
 
@@ -1615,10 +1779,10 @@ listed.
   - 1.2: [1], [2], [46], [49]
   - 1.3: [1], [2], [6], [7], [9], [10], [11], [12], [13], [14], [15]
   - 1.4: [1], [29], [30], [31], [32], [33], [34], [35]
-  - 1.5: [4], [5], [6]
+  - 1.5: [4], [5], [6], [63]
   - 1.6: [17], [18], [19]
-  - 1.7: [17], [18], [19]
-  - 1.8: [28], [36], [37], [38], [39], [40], [41], [45], [51]
+  - 1.7: [17], [18], [19], [64]
+  - 1.8: [28], [36], [37], [38], [39], [40], [41], [45], [51], [64], [65], [66], [67], [68]
   - 1.9: [24], [25], [27]
 - Evidence for gates on host steps: all eight GA gates → Step 1.1; `gate-aspirin-indicated` →
   Step 1.6.
@@ -1657,7 +1821,7 @@ listed.
 
 **Stages 9–12**
 - Stage 9: [1], [8], [21], [24], [44] · Steps:
-  - 9.1: [24], [25]
+  - 9.1: [24], [25], [26], [27]
   - 9.2: [21], [22]
   - 9.3: [21], [22], [23]
   - 9.4: [2], [21]
@@ -1670,7 +1834,7 @@ listed.
 - Stage 12: [46], [47] · Step 12.1: [46], [47]
 
 **Medications**
-- Med-1: [28] · Med-2: [17], [18], [19] · Med-3: [24], [25], [27] · Med-4: [24], [25] · Med-5:
+- Med-1: [28], [65], [66], [67] · Med-2: [17], [18], [19], [64] · Med-3: [24], [25], [27] · Med-4: [24], [25] · Med-5:
   [24], [25] · Med-6: [21], [22], [23] · Med-7: [25], [26]
 
 **Labs**
@@ -1684,13 +1848,13 @@ listed.
 - Proc-1, Proc-2: [46] · Proc-3: [48]
 
 **Guidance**
-- Guid-1: [41] · Guid-2: [36], [37] · Guid-3: [28], [39], [40] · Guid-4: [33], [34], [35] ·
-  Guid-5: [38] · Guid-6: [45], [51] · Guid-7: [1], [41], [46] · Guid-8: [42], [43], [44] ·
+- Guid-1: [41] · Guid-2: [36], [37], [69] · Guid-3: [28], [39], [40] · Guid-4: [33], [34], [35], [68] ·
+  Guid-5: [38] · Guid-6: [45], [51], [70] · Guid-7: [1], [41], [46] · Guid-8: [42], [43], [44] ·
   Guid-9: [46], [47], [62]
 - Guid-A1: [53], [55] · Guid-A2: [55], [56] · Guid-A4: [53], [56] · Guid-A5: [55], [56]
 
 **Host steps for non-citing nodes**
-- QM-1 → Step 1.1 ([59]) · QM-2 → Step 9.1 ([60]) · QM-3 → Step 1.4 ([61]) · QM-4 → Step 9.6
+- QM-1 → Step 1.1 ([59], [71]) · QM-2 → Step 9.1 ([60]) · QM-3 → Step 1.4 ([61]) · QM-4 → Step 9.6
   ([59], [44])
 - Schedules and CodeEntries → their host steps (§11, §13)
 
@@ -1753,7 +1917,10 @@ listed.
   - PB 190 and the 2024 CPU (GDM);
   - CPU 2025 (39-week).
 - `[GAP]` Doppler FHT audibility (~10–12 weeks); numeric quickening GA.
-- `[GAP]` COVID-19 and Tdap product dose volumes; 2026–27 COVID CPT codes; RhIG HCPCS.
+- `[GAP]` COVID-19 and Tdap product dose volumes; 2026–27 COVID CPT codes.
+- `[GAP]` HEDIS MY2026 specification detail: PRS-E windows, PND-E cut-points (§10).
+- `[GAP]` Licensing of the urgent-maternal-warning-signs text (D-28): it is AIM-origin even on
+  CDC's page.
 - `[GAP]` No current ACOG documents on adolescent prenatal care, employment, or a late-entry
   protocol. Late entry is handled by the GA gates plus REQUIRES.
 - `[GAP]` GCT ≥200 as diagnostic; bariatric-surgery alternative screening (PB 105).
@@ -1776,6 +1943,7 @@ listed.
 | C10 | Early abnormal glucose: ADA 2.31b vs ACOG (no early GDM screening) | D-7 |
 | C11 | Early test: ADA Rec 2.4 plasma glucose vs A1C | D-6 |
 | C12 | Strategy: ADA prefers one-step vs ACOG two-step | D-5 (both) |
+| C13 | RhIG before 12 weeks: RhoGAM label lists loss or termination up to and including 12 weeks vs ACOG CPU 2024 (forgo routine RhIG before 12 0/7) | ACOG CPU (Step 9.3 text); label conflict noted on Med-6 |
 
 ### Simulator coverage `[SIM]`
 
