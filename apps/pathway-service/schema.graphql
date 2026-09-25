@@ -1413,6 +1413,13 @@ type PathwayGraphEdge {
   properties: JSON
 }
 
+"""
+Legacy flattening of the stored code sets: one row per (set, member).
+Carries no set identity, scope, entry node or per-member scope override, so
+it cannot be turned back into `code_sets` — use `PathwayGraph.codeSets`.
+`description` is the set's, `usage` the member's; `grouping` is never stored
+and is always null.
+"""
 type ConditionCodeDetail {
   code: String!
   system: String!
@@ -1421,11 +1428,48 @@ type ConditionCodeDetail {
   grouping: String
 }
 
+"""
+One stored code set, in the pathway-JSON import vocabulary
+(`pathway.code_sets[]`, camelCased). The set matches when ALL its
+`requiredCodes` are present in the patient's codes. Map back to import JSON
+as { description, scope, entry_node_id, required_codes: [{ code, system,
+scope_override, description }] }, omitting null fields (the validator
+rejects `scope_override: null`) and `id`.
+"""
+type PathwayCodeSet {
+  "Storage id. Not part of the import JSON; a re-import assigns new ids."
+  id: ID!
+  description: String
+  "EXACT | EXACT_AND_DESCENDANTS | DESCENDANTS_OK"
+  scope: String!
+  "node_id resolution routes to when this set matches; null when undeclared."
+  entryNodeId: String
+  "Sorted by (code, system)."
+  requiredCodes: [PathwayCodeSetMember!]!
+}
+
+type PathwayCodeSetMember {
+  code: String!
+  system: String!
+  "Per-code scope; null = inherit the set's scope."
+  scopeOverride: String
+  description: String
+}
+
 type PathwayGraph {
   pathway: Pathway!
   nodes: [PathwayGraphNode!]!
   edges: [PathwayGraphEdge!]!
+  "Legacy flattened rows, in the same order as codeSets. Prefer codeSets."
   conditionCodeDetails: [ConditionCodeDetail!]!
+  """
+  Every stored code set of the pathway, in a deterministic content-based
+  order (sets by their sorted members, then scope, entry node, description).
+  A pathway imported without `code_sets` has one single-code EXACT set per
+  condition code (description = the code's description, member description
+  = its usage); sending these back as `code_sets` stores the same sets.
+  """
+  codeSets: [PathwayCodeSet!]!
 }
 
 scalar JSON

@@ -179,6 +179,13 @@ export type CodeInput = {
   system: Scalars['String']['input'];
 };
 
+/**
+ * Legacy flattening of the stored code sets: one row per (set, member).
+ * Carries no set identity, scope, entry node or per-member scope override, so
+ * it cannot be turned back into `code_sets` — use `PathwayGraph.codeSets`.
+ * `description` is the set's, `usage` the member's; `grouping` is never stored
+ * and is always null.
+ */
 export type ConditionCodeDetail = {
   __typename?: 'ConditionCodeDetail';
   code: Scalars['String']['output'];
@@ -1279,6 +1286,36 @@ export enum PathwayCategory {
   PreventiveCare = 'PREVENTIVE_CARE'
 }
 
+/**
+ * One stored code set, in the pathway-JSON import vocabulary
+ * (`pathway.code_sets[]`, camelCased). The set matches when ALL its
+ * `requiredCodes` are present in the patient's codes. Map back to import JSON
+ * as { description, scope, entry_node_id, required_codes: [{ code, system,
+ * scope_override, description }] }, omitting null fields (the validator
+ * rejects `scope_override: null`) and `id`.
+ */
+export type PathwayCodeSet = {
+  __typename?: 'PathwayCodeSet';
+  description?: Maybe<Scalars['String']['output']>;
+  /** node_id resolution routes to when this set matches; null when undeclared. */
+  entryNodeId?: Maybe<Scalars['String']['output']>;
+  /** Storage id. Not part of the import JSON; a re-import assigns new ids. */
+  id: Scalars['ID']['output'];
+  /** Sorted by (code, system). */
+  requiredCodes: Array<PathwayCodeSetMember>;
+  /** EXACT | EXACT_AND_DESCENDANTS | DESCENDANTS_OK */
+  scope: Scalars['String']['output'];
+};
+
+export type PathwayCodeSetMember = {
+  __typename?: 'PathwayCodeSetMember';
+  code: Scalars['String']['output'];
+  description?: Maybe<Scalars['String']['output']>;
+  /** Per-code scope; null = inherit the set's scope. */
+  scopeOverride?: Maybe<Scalars['String']['output']>;
+  system: Scalars['String']['output'];
+};
+
 export type PathwayConfidenceResult = {
   __typename?: 'PathwayConfidenceResult';
   nodes: Array<NodeConfidenceResult>;
@@ -1288,6 +1325,15 @@ export type PathwayConfidenceResult = {
 
 export type PathwayGraph = {
   __typename?: 'PathwayGraph';
+  /**
+   * Every stored code set of the pathway, in a deterministic content-based
+   * order (sets by their sorted members, then scope, entry node, description).
+   * A pathway imported without `code_sets` has one single-code EXACT set per
+   * condition code (description = the code's description, member description
+   * = its usage); sending these back as `code_sets` stores the same sets.
+   */
+  codeSets: Array<PathwayCodeSet>;
+  /** Legacy flattened rows, in the same order as codeSets. Prefer codeSets. */
   conditionCodeDetails: Array<ConditionCodeDetail>;
   edges: Array<PathwayGraphEdge>;
   nodes: Array<PathwayGraphNode>;
@@ -2364,6 +2410,8 @@ export type ResolversTypes = ResolversObject<{
   OverrideAction: OverrideAction;
   Pathway: ResolverTypeWrapper<Pathway>;
   PathwayCategory: PathwayCategory;
+  PathwayCodeSet: ResolverTypeWrapper<PathwayCodeSet>;
+  PathwayCodeSetMember: ResolverTypeWrapper<PathwayCodeSetMember>;
   PathwayConfidenceResult: ResolverTypeWrapper<PathwayConfidenceResult>;
   PathwayGraph: ResolverTypeWrapper<PathwayGraph>;
   PathwayGraphEdge: ResolverTypeWrapper<PathwayGraphEdge>;
@@ -2489,6 +2537,8 @@ export type ResolversParentTypes = ResolversObject<{
   NodeConfidenceResult: NodeConfidenceResult;
   NodeWeight: NodeWeight;
   Pathway: Pathway;
+  PathwayCodeSet: PathwayCodeSet;
+  PathwayCodeSetMember: PathwayCodeSetMember;
   PathwayConfidenceResult: PathwayConfidenceResult;
   PathwayGraph: PathwayGraph;
   PathwayGraphEdge: PathwayGraphEdge;
@@ -3017,6 +3067,23 @@ export type PathwayResolvers<ContextType = DataSourceContext, ParentType extends
   __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
 }>;
 
+export type PathwayCodeSetResolvers<ContextType = DataSourceContext, ParentType extends ResolversParentTypes['PathwayCodeSet'] = ResolversParentTypes['PathwayCodeSet']> = ResolversObject<{
+  description?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  entryNodeId?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  id?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
+  requiredCodes?: Resolver<Array<ResolversTypes['PathwayCodeSetMember']>, ParentType, ContextType>;
+  scope?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
+}>;
+
+export type PathwayCodeSetMemberResolvers<ContextType = DataSourceContext, ParentType extends ResolversParentTypes['PathwayCodeSetMember'] = ResolversParentTypes['PathwayCodeSetMember']> = ResolversObject<{
+  code?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  description?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  scopeOverride?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  system?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
+}>;
+
 export type PathwayConfidenceResultResolvers<ContextType = DataSourceContext, ParentType extends ResolversParentTypes['PathwayConfidenceResult'] = ResolversParentTypes['PathwayConfidenceResult']> = ResolversObject<{
   nodes?: Resolver<Array<ResolversTypes['NodeConfidenceResult']>, ParentType, ContextType>;
   overallConfidence?: Resolver<ResolversTypes['Float'], ParentType, ContextType>;
@@ -3025,6 +3092,7 @@ export type PathwayConfidenceResultResolvers<ContextType = DataSourceContext, Pa
 }>;
 
 export type PathwayGraphResolvers<ContextType = DataSourceContext, ParentType extends ResolversParentTypes['PathwayGraph'] = ResolversParentTypes['PathwayGraph']> = ResolversObject<{
+  codeSets?: Resolver<Array<ResolversTypes['PathwayCodeSet']>, ParentType, ContextType>;
   conditionCodeDetails?: Resolver<Array<ResolversTypes['ConditionCodeDetail']>, ParentType, ContextType>;
   edges?: Resolver<Array<ResolversTypes['PathwayGraphEdge']>, ParentType, ContextType>;
   nodes?: Resolver<Array<ResolversTypes['PathwayGraphNode']>, ParentType, ContextType>;
@@ -3513,6 +3581,8 @@ export type Resolvers<ContextType = DataSourceContext> = ResolversObject<{
   NodeConfidenceResult?: NodeConfidenceResultResolvers<ContextType>;
   NodeWeight?: NodeWeightResolvers<ContextType>;
   Pathway?: PathwayResolvers<ContextType>;
+  PathwayCodeSet?: PathwayCodeSetResolvers<ContextType>;
+  PathwayCodeSetMember?: PathwayCodeSetMemberResolvers<ContextType>;
   PathwayConfidenceResult?: PathwayConfidenceResultResolvers<ContextType>;
   PathwayGraph?: PathwayGraphResolvers<ContextType>;
   PathwayGraphEdge?: PathwayGraphEdgeResolvers<ContextType>;
