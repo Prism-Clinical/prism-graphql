@@ -55,6 +55,15 @@
       }
     },
     {
+      "id": "stage-2-empiric",
+      "type": "Stage",
+      "properties": {
+        "stage_number": 1.5,
+        "title": "Empiric Oral Iron Trial (if chosen at DP-1)",
+        "description": "Branch-entry only, via DP-1 criterion 1a (empiric oral iron without iron studies). Holds Stage 2's Steps 2.1\u20132.3, so the empiric arm gets the same response assessment (gate-hgb-response) and IV-iron escalation route (DP-2, gate-iv-iron-ga) as ferritin-confirmed IDA. Numbered 1.5 so it sorts directly after Stage 1 with a number of its own; its steps keep theirs."
+      }
+    },
+    {
       "id": "stage-2",
       "type": "Stage",
       "properties": {
@@ -1963,6 +1972,21 @@
       "type": "HAS_STEP"
     },
     {
+      "from": "stage-2-empiric",
+      "to": "step-2-1",
+      "type": "HAS_STEP"
+    },
+    {
+      "from": "stage-2-empiric",
+      "to": "step-2-2",
+      "type": "HAS_STEP"
+    },
+    {
+      "from": "stage-2-empiric",
+      "to": "step-2-3",
+      "type": "HAS_STEP"
+    },
+    {
       "from": "stage-2",
       "to": "step-2-1",
       "type": "HAS_STEP"
@@ -2009,7 +2033,7 @@
     },
     {
       "from": "dp-1",
-      "to": "step-2-1",
+      "to": "stage-2-empiric",
       "type": "BRANCHES_TO"
     },
     {
@@ -2019,7 +2043,7 @@
     },
     {
       "from": "crit-1a",
-      "to": "step-2-1",
+      "to": "stage-2-empiric",
       "type": "SELECTS_BRANCH"
     },
     {
@@ -2710,6 +2734,16 @@
     {
       "from": "stage-1",
       "to": "ev-4",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "stage-2-empiric",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "stage-2-empiric",
+      "to": "ev-5",
       "type": "CITES_EVIDENCE"
     },
     {

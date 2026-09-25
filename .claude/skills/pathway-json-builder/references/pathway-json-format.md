@@ -165,11 +165,15 @@ exactly one (Rule 3).
 >   under Rule 1.
 > - **A DecisionPoint branch into a gate's target overrides the gate.** On the live path
 >   the provider's branch choice re-resolves incrementally from the DecisionPoint, and the
->   chosen branch is walked whatever the gate said (proved on anemia: MCV 90 + "workup"
->   includes the microcytic workup). So a step is either a DP branch or gated — not both.
+>   chosen branch is walked whatever the gate said (proved on anemia v3: MCV 90 + "workup"
+>   included the microcytic workup). So a step is either a DP branch or gated — not both.
+>   To make the *decision itself* conditional, gate the Step that hosts the DP and give
+>   the DP no other host (anemia v4: `gate-microcytic` → Step 1.7 → DP-1;
+>   `scripts/gate-proof.ts mcv`).
 >   A `one_of` DP whose branches all score ≥ the suggest threshold (0.60) **pends** for the
->   provider; if only one qualifies it is taken automatically. Two structural Steps score
->   identically, so in practice such a fork pends (`scripts/gate-proof.ts dp-1-scoring`).
+>   provider; if only one qualifies it is taken automatically. Structural targets (Steps,
+>   or a Step and a Stage) score identically, so in practice such a fork pends
+>   (`scripts/gate-proof.ts dp-1-scoring`).
 > - **Missing data is `on_unresolved`'s job, not `default_behavior`'s.** A numeric lab,
 >   vital or `patient.*` value that is missing makes the gate *unresolved*; it then ASKS for
 >   the value and holds its subtree (see **Missing data** below — `ask` is the rule for
@@ -571,7 +575,7 @@ needed. An em dash or `-`/`--` separates tag and ids.
 | Marker | Allows | Without it |
 |---|---|---|
 | `[ON-UNRESOLVED DEFAULT — <gate-id>]` | a numeric gate with `on_unresolved: "default"` | error — numeric gates ask |
-| `[SECOND ROUTE — <step-id> via <source-id>]` | a step of a gated Stage that another route also reaches (a Criterion's route is named by its DecisionPoint) — e.g. anemia's empiric-iron arm `[SECOND ROUTE — step-2-1 via dp-1]` | warning; with it, an `ℹ` info line so the route stays visible |
+| `[SECOND ROUTE — <step-id> via <source-id>]` | a step of a gated Stage that another route also reaches (a Criterion's route is named by its DecisionPoint) — e.g. anemia's empiric-iron Stage 1.5 sharing Stage 2's steps, `[SECOND ROUTE — step-2-3 via stage-2-empiric]` (one marker per step) | warning; with it, an `ℹ` info line so the route stays visible |
 
 ## What the simulator sends (author gates against THIS)
 

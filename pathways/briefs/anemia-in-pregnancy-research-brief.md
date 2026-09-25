@@ -45,8 +45,14 @@ None. (Single-condition pathway; O99.01x already encodes the pregnancy+anemia co
 - **Stage 1 — Diagnosis Confirmation & Classification** *(entry stage, root-connected)*:
   confirm the diagnosis against trimester criteria, MCV-based classification, ferritin
   confirmation, hemoglobinopathy testing, expanded workup for nonresponders. [1][4]
-- **Stage 2 — Iron Deficiency Treatment** *(branch-entry only, via gate-ida-confirmed and
-  DP-1)*: oral iron first line with counseling, response assessment, IV iron escalation. [1][5][7]
+- **Stage 1.5 — Empiric Oral Iron Trial (if chosen at DP-1)** *(branch-entry only, via
+  DP-1 criterion 1a)* `[DECISION — Josh 2026-09-24]`: holds Stage 2's Steps 2.1–2.3, so
+  the empiric arm gets the same response assessment and IV-iron escalation route as
+  ferritin-confirmed IDA (§4, DP-1). Numbered 1.5 so it sorts after Stage 1 with a
+  number of its own; its steps keep their 2.x numbers. [1][5]
+- **Stage 2 — Iron Deficiency Treatment** *(branch-entry only, via gate-ida-confirmed;
+  its Steps 2.1–2.3 are shared with Stage 1.5)*: oral iron first line with counseling,
+  response assessment, IV iron escalation. [1][5][7]
 - **Stage 3 — Special Populations & Escalations** *(root-connected container; every step
   individually gated)*: hemoglobinopathy/thalassemia/CKD routing-out, trait carriers,
   bariatric, IBD, multifetal, transfusion-decliners, severe anemia, referral. [4][7][8][17]
@@ -124,7 +130,8 @@ None. (Single-condition pathway; O99.01x already encodes the pregnancy+anemia co
   wording, checker-verified); IV iron option postpartum; risk communication on
   transition. [1][6][9]
 
-Branch-entry-only stage: Stage 2 (entered via gate-ida-confirmed and DP-1). Stage 1 is
+Branch-entry-only stages: Stage 2 (entered via gate-ida-confirmed) and Stage 1.5 (entered
+via DP-1 criterion 1a; shares Stage 2's Steps 2.1–2.3). Stage 1 is
 the root entry stage; Stage 3 is a root-connected container whose steps all hang from
 gates; Stage 4 is root-connected. Gated steps connect **only** via their gate/DP
 BRANCHES_TO (no HAS_STEP edge), per the reference-fixture pattern.
@@ -143,7 +150,8 @@ BRANCHES_TO (no HAS_STEP edge), per the reference-fixture pattern.
     edge orders: MCV 72 and 79.9 → DP-1 asks; 80 and 90 → no DP-1, Step 1.3 INCLUDED;
     105 → no DP-1, Step 1.4 INCLUDED; missing → one LOINC 787-2 question, DP-1 held.
   - Criterion 1a: No evidence of causes other than iron deficiency → empiric oral iron
-    reasonable without iron studies (ACOG) → **Step 2.1** [1]
+    reasonable without iron studies (ACOG) → **Stage 1.5** (Steps 2.1–2.3; was Step 2.1
+    alone through v3) [1]
   - Criterion 1b: Atypical features, uncertain etiology, or confirmation preferred →
     ferritin/iron studies first → **Step 1.2** [1]
   - Judgment call by ACOG's own wording ("may be reasonable"); not machine-evaluable. [1]
@@ -158,19 +166,48 @@ BRANCHES_TO (no HAS_STEP edge), per the reference-fixture pattern.
     "which branch applies?" — with Step 2.1, Step 1.2, Stage 2 and everything under them
     held until the provider answers. Choosing **workup** with ferritin 50: Stage 2 and
     Step 2.1 are GATED_OUT by `gate-ida-confirmed`. Choosing workup with ferritin 12:
-    Stage 2 opens. Choosing **empiric**: Step 2.1 is included and Step 1.2 excluded. Oral
+    Stage 2 opens. Choosing **empiric**: Step 2.1 is included and Step 1.2 excluded (since
+    v4 the empiric branch is Stage 1.5, which also includes Steps 2.2–2.3 — below). Oral
     iron is never automatic unless confidence scoring puts Step 1.2 below the 0.60
     suggest threshold while Step 2.1 stays above it (only a per-node DB weight override
     or admin evidence entry could do that).
-  - `[DECISION — Josh 2026-09-24]` [SECOND ROUTE — step-2-1 via dp-1] Step 2.1 sits in
-    Stage 2, which `gate-ida-confirmed` gates, but criterion 1a reaches it directly: empiric
-    oral iron without iron studies is ACOG-sanctioned, so this second route is deliberate.
-  - `[GAP — NEEDS JOSH]` **The empiric arm reaches Step 2.1 only.** Choosing empiric
-    EXCLUDES Step 2.2 (trial period), Step 2.3 (response assessment), DP-2 and Step 2.5
-    (IV iron): they hang from Stage 2, which only the ferritin gate opens. So an
-    empirically treated patient gets no response check and no escalation route. Fixing it
-    means routing criterion 1a to a container holding 2.1–2.3 rather than Step 2.1 alone
-    — a structural change to the brief's mapping, left for review.
+  - `[DECISION — Josh 2026-09-24]` **Second routes into Stage 2's steps (v4).**
+    [SECOND ROUTE — step-2-1 via stage-2-empiric]
+    [SECOND ROUTE — step-2-2 via stage-2-empiric]
+    [SECOND ROUTE — step-2-3 via stage-2-empiric]
+    Steps 2.1–2.3 sit in Stage 2, which `gate-ida-confirmed` gates, and are also held by
+    Stage 1.5, which criterion 1a enters directly: empiric oral iron without iron studies
+    is ACOG-sanctioned, so these routes are deliberate. (Through v3 the one second route
+    was `[SECOND ROUTE — step-2-1 via dp-1]`; DP-1 now branches to Stage 1.5 instead.)
+  - ~~`[GAP — NEEDS JOSH]` **The empiric arm reaches Step 2.1 only.**~~ **Resolved:**
+    `[DECISION — Josh 2026-09-24]` **The empiric arm gets the same follow-up as confirmed
+    IDA.** Through v3, choosing empiric EXCLUDED Step 2.2 (trial period), Step 2.3
+    (response assessment), DP-2 and Step 2.5 (IV iron), because they hung only from
+    Stage 2, which only the ferritin gate opens — no response check, no escalation.
+    Criterion 1a now routes to **Stage 1.5 — Empiric Oral Iron Trial**, a branch-entry
+    Stage that HAS_STEPs the **same** Steps 2.1, 2.2 and 2.3 (not copies). Through Step
+    2.3 the empiric arm reaches the same Hgb recheck (Lab-10, Sched-2), the same
+    `gate-hgb-response` → Step 2.4, and the same DP-2 → `gate-iv-iron-ga` → Step 2.5 IV
+    iron route as the confirmed arm.
+    **Why sharing is safe here** (and why DP-1 does not simply branch to Stage 2): the
+    steps have two parents, Stage 2 and Stage 1.5, but DP-1 is `one_of`, so at most one
+    parent is ever open. When a branch is chosen, the engine spares everything the
+    chosen branch contains from the sweep that excludes the other branch
+    (`containmentClosure`), so the unchosen parent never writes the shared steps. Proved,
+    both edge orders: empiric → Stage 1.5 INCLUDED, Stage 2 EXCLUDED, Steps 2.1–2.3
+    INCLUDED; workup + ferritin 50 → Stage 1.5 EXCLUDED, Steps 2.1–2.3 GATED_OUT by
+    `gate-ida-confirmed` (the gate decides, not the unchosen branch); workup + ferritin
+    12 → Stage 2 INCLUDED. Branching DP-1 straight into Stage 2 behaves the same, but
+    puts a DP branch on the gate's own target, which `check-gate-control` rejects as
+    Rule 1 because it cannot tell the two routes are exclusive.
+    **Consequences for review:** (1) with empiric chosen, `gate-ida-confirmed` is not
+    evaluated, so no ferritin is asked for or needed — same as v3. (2) DP-1's answer
+    value for the empiric branch is now `stage-2-empiric` (was `step-2-1`). (3) The empiric
+    arm inherits DP-2 as it stands: DP-2 has one BRANCHES_TO (Step 1.5), so it is taken
+    automatically, and `gate-iv-iron-ga` is the only condition on Step 2.5 — so Step 1.5
+    (expanded workup) and Step 2.5 (IV iron, GA ≥ 14) are INCLUDED as soon as Step 2.3 is
+    reached, on either arm, before any nonresponse is shown. `gate-hgb-response` opens only
+    Step 2.4 (maintenance). See §18 "v4 open item".
 - **DP-2 — Nonresponse management** (after Step 2.3) — branch_mode: one_of
   - Criterion 2a: Intolerance or nonadherence despite coaching → **Step 2.5** (IV iron) [1][5]
   - Criterion 2b: Suspected malabsorption (enteric-coated tabs, antacids, bariatric,
@@ -672,7 +709,7 @@ attributes are referenced anywhere in §4b.
 
 Nodes that can carry CITES_EVIDENCE:
 
-- Stage 1: [1][4] · Stage 2: [1][5] · Stage 3: [1][7][8] · Stage 4: [1][9][11]
+- Stage 1: [1][4] · Stage 1.5: [1][5] · Stage 2: [1][5] · Stage 3: [1][7][8] · Stage 4: [1][9][11]
 - Step 1.1: [1][2][3][10] · Step 1.2: [1][5] · Step 1.3: [1] · Step 1.4: [1]
   · Step 1.5: [1][4] · Step 1.6: [4] · Step 1.7: [1]
 - Step 2.1: [1][5][13][14] · Step 2.2: [1] · Step 2.3: [1][3] · Step 2.4: [3]
@@ -792,6 +829,21 @@ is now `skip` + `on_unresolved: ask`; see §4b).
     "attribute has no value" and silently fall back to `skip`. Coded-form conditions
     avoid all three. §14 is now empty. Normocytic band uses 79.9/100.1 strict boundaries
     (coded operators lack ≥/≤). Revert candidates when the dashboard/platform catch up.
+
+### `[GAP — NEEDS JOSH]` v4 open item — escalation is not conditioned on nonresponse
+
+Found while proving the empiric arm's follow-up (v4); pre-existing on the confirmed arm,
+and now shared by both. DP-2 ("Nonresponse management") has a single BRANCHES_TO, to Step
+1.5 (expanded workup) — criteria 2a, 2b and 2d have no branch of their own — so the
+one_of fork takes it automatically whenever Step 2.3 is reached. Step 2.5 (IV iron)
+hangs from DP-2 through `gate-iv-iron-ga` alone. So at the moment oral iron starts, the
+session already INCLUDES the expanded workup and, at GA ≥ 14, IV iron — before any
+recheck. `gate-hgb-response` decides only Step 2.4 (maintenance); a responder and a
+nonresponder differ only there. The §4 design (criteria 2a/2b → Step 2.5 as DP-2
+branches) would make DP-2 a real choice and put IV iron behind it; that is a structural
+change for review, not made here. Related: Sched-2 times the recheck at **4 weeks** after
+starting oral iron (CDC; ACOG gives no interval); FIGO's 2-week variant (§18 item 9) is
+not encoded. Left as-is.
 
 ### `[BUILD FIX 2026-09-24]` On unresolved — RESOLVED
 

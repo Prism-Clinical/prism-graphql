@@ -16,6 +16,8 @@
 //                    longer takes a lab another (open) step also orders
 //   mcv              anemia gate-microcytic: DP-1 is offered only for MCV < 80;
 //                    normocytic / macrocytic skip it, a missing MCV asks
+//   empiric          anemia DP-1 empiric arm (Stage 1.5): same response check and
+//                    IV-iron escalation as confirmed IDA; no ferritin needed
 //
 // The pathway proofs read pathways/json/anemia-in-pregnancy.json (override with
 // ANEMIA_JSON=<path>). They replay a branch choice the way the live mutation does
@@ -40,8 +42,10 @@ import { RiskMagnitudeScorer } from '../../../../apps/pathway-service/src/servic
 const AS_OF = '2026-09-24T12:00:00.000Z';
 const ANEMIA = process.env.ANEMIA_JSON ?? 'pathways/json/anemia-in-pregnancy.json';
 const THRESHOLDS = { autoResolveThreshold: 0.85, suggestThreshold: 0.6 }; // migration 039 system defaults
+/** DP-1's empiric branch (criterion 1a): Stage 1.5, holding Steps 2.1–2.3 (was step-2-1 through v3). */
+const EMPIRIC = 'stage-2-empiric';
 /** DP-1's branch targets, sorted — the option ids its pending question offers. */
-const DP1_OPTIONS = ['step-1-2', 'step-2-1'];
+const DP1_OPTIONS = [EMPIRIC, 'step-1-2'].sort();
 
 // ── Proof: attribute-form vs coded-form lab gates ─────────────────────
 async function proveAttributeForm(): Promise<void> {
@@ -188,24 +192,25 @@ async function proveDp1(): Promise<void> {
     console.log('  ferritin 50, provider chooses the workup (criterion 1b):');
     r = await resolveSession({ ...base, patient: patientWith(MCV72_FER50), choose: { dp: 'dp-1', option: 'step-1-2' } });
     expect('step-1-2 workup', status(r.state, 'step-1-2'), 'INCLUDED');
+    expect(`${EMPIRIC} (unchosen branch)`, status(r.state, EMPIRIC), 'EXCLUDED');
     expect('stage-2', status(r.state, 'stage-2'), 'GATED_OUT');
-    expect('step-2-1 oral iron', status(r.state, 'step-2-1'), 'GATED_OUT');
-    expect('med-1 ferrous sulfate', status(r.state, 'med-1'), 'GATED_OUT');
+    // The shared steps are the GATE's to decide, not the unchosen branch's:
+    // GATED_OUT (gate-ida-confirmed), never EXCLUDED (the Stage 1.5 sweep).
+    for (const id of ['step-2-1', 'step-2-2', 'step-2-3', 'step-2-5', 'med-1']) {
+      expect(id, status(r.state, id), 'GATED_OUT');
+    }
 
     console.log('  ferritin 12, provider chooses the workup:');
     r = await resolveSession({
       ...base, patient: patientWith([['787-2', 72], ['2276-4', 12], ['718-7', 9.5]]),
       choose: { dp: 'dp-1', option: 'step-1-2' },
     });
+    expect(`${EMPIRIC} (unchosen branch)`, status(r.state, EMPIRIC), 'EXCLUDED');
     expect('stage-2', status(r.state, 'stage-2'), 'INCLUDED');
-    expect('step-2-1 oral iron', status(r.state, 'step-2-1'), 'INCLUDED');
+    for (const id of ['step-2-1', 'step-2-2', 'step-2-3']) expect(id, status(r.state, id), 'INCLUDED');
+    expect('step-2-3 sits under', String(r.state.get('step-2-3')?.parentNodeId), 'stage-2');
 
-    console.log('  ferritin 50, provider chooses empiric iron (criterion 1a) — iron by explicit choice:');
-    r = await resolveSession({ ...base, patient: patientWith(MCV72_FER50), choose: { dp: 'dp-1', option: 'step-2-1' } });
-    expect('step-2-1 oral iron', status(r.state, 'step-2-1'), 'INCLUDED');
-    expect('step-1-2 workup', status(r.state, 'step-1-2'), 'EXCLUDED');
-    // [GAP — NEEDS JOSH] the empiric arm reaches Step 2.1 only:
-    expect('step-2-3 response assessment (empiric-arm gap)', status(r.state, 'step-2-3'), 'EXCLUDED');
+    // The empiric branch (criterion 1a) is proved in `empiric`.
 
     // (v3 proved "MCV 90 + workup → Step 1.2 included". Since v4, MCV 90 never
     // reaches DP-1 — gate-microcytic closes it — so that answer cannot be given;
@@ -216,7 +221,79 @@ async function proveDp1(): Promise<void> {
       ...base, patient: patientWith(MCV72_FER50), conf: (id) => (id === 'step-1-2' ? 0.5 : 0.9),
     });
     expect('dp-1 auto-selects', status(r.state, 'dp-1'), 'INCLUDED');
+    expect(`${EMPIRIC} (automatic again)`, status(r.state, EMPIRIC), 'INCLUDED');
     expect('step-2-1 oral iron (automatic again)', status(r.state, 'step-2-1'), 'INCLUDED');
+  }
+}
+
+// ── Proof: the empiric arm gets the confirmed arm's follow-up ─────────
+// [DECISION — Josh 2026-09-24] Through v3, choosing empiric oral iron at DP-1
+// reached Step 2.1 only: Steps 2.2/2.3, DP-2 and IV iron hung from Stage 2,
+// which only gate-ida-confirmed opens. DP-1's empiric branch is now Stage 1.5
+// (`stage-2-empiric`), which HAS_STEPs the SAME Steps 2.1–2.3 — so the same
+// Hgb recheck, gate-hgb-response and DP-2 → gate-iv-iron-ga → IV iron apply.
+// Shared, not copied: DP-1 is one_of, so only one of the two parent stages is
+// ever open, and the engine spares a chosen branch's contents from the sweep
+// that excludes the other (containmentClosure) — checked here in both orders.
+async function proveEmpiric(): Promise<void> {
+  console.log(`\n=== empiric: DP-1 empiric arm → response check + IV-iron escalation (${ANEMIA}) ===`);
+  const choose = { dp: 'dp-1', option: EMPIRIC };
+  const labs = (ferritin: number | null, hgb: number | null): Array<[string, number]> => [
+    ['787-2', 72],
+    ...(ferritin === null ? [] : [['2276-4', ferritin] as [string, number]]),
+    ...(hgb === null ? [] : [['718-7', hgb] as [string, number]]),
+  ];
+  for (const reverse of [false, true]) {
+    console.log(`  -- edge order: ${reverse ? 'reversed' : 'file'}`);
+    const base = { file: ANEMIA, reverse, choose };
+
+    console.log('  ferritin 50, Hgb 9.5, GA 20 — empiric chosen:');
+    let r = await resolveSession({ ...base, patient: patientWith(labs(50, 9.5), { gestational_age_weeks: 20 }) });
+    expect(EMPIRIC, status(r.state, EMPIRIC), 'INCLUDED');
+    expect('step-1-2 workup (unchosen)', status(r.state, 'step-1-2'), 'EXCLUDED');
+    expect('gate-ida-confirmed (not evaluated)', status(r.state, 'gate-ida-confirmed'), 'EXCLUDED');
+    expect('stage-2', status(r.state, 'stage-2'), 'EXCLUDED');
+    for (const id of ['step-2-1', 'med-1', 'step-2-2', 'step-2-3', 'lab-10', 'sched-2', 'qm-1']) {
+      expect(id, status(r.state, id), 'INCLUDED');
+    }
+    expect('step-2-3 sits under', String(r.state.get('step-2-3')?.parentNodeId), EMPIRIC);
+    expect('gate-hgb-response (Hgb 9.5: not at target)', status(r.state, 'gate-hgb-response'), 'GATED_OUT');
+    expect('step-2-4 maintenance', status(r.state, 'step-2-4'), 'GATED_OUT');
+    expect('dp-2 nonresponse management', status(r.state, 'dp-2'), 'INCLUDED');
+    expect('gate-iv-iron-ga', status(r.state, 'gate-iv-iron-ga'), 'INCLUDED');
+    expect('step-2-5 IV iron', status(r.state, 'step-2-5'), 'INCLUDED');
+    expect('med-5 ferric derisomaltose', status(r.state, 'med-5'), 'INCLUDED');
+    expect('no ferritin question', String(r.pending.some((p: any) => p.datumKey === 'LOINC:2276-4')), 'false');
+
+    console.log('  ferritin never drawn — empiric needs none:');
+    r = await resolveSession({ ...base, patient: patientWith(labs(null, 9.5), { gestational_age_weeks: 20 }) });
+    expect('no ferritin question', String(r.pending.some((p: any) => p.datumKey === 'LOINC:2276-4')), 'false');
+    expect('step-2-3 response assessment', status(r.state, 'step-2-3'), 'INCLUDED');
+    expect('step-2-5 IV iron', status(r.state, 'step-2-5'), 'INCLUDED');
+
+    console.log('  Hgb 11.5 on recheck — responding:');
+    r = await resolveSession({ ...base, patient: patientWith(labs(50, 11.5), { gestational_age_weeks: 20 }) });
+    expect('gate-hgb-response', status(r.state, 'gate-hgb-response'), 'INCLUDED');
+    expect('step-2-4 maintenance', status(r.state, 'step-2-4'), 'INCLUDED');
+
+    console.log('  Hgb missing — the response gate asks for it:');
+    r = await resolveSession({ ...base, patient: patientWith(labs(50, null), { gestational_age_weeks: 20 }) });
+    // ONE Hgb question: Stage 3's gate-severe-anemia / gate-referral-threshold
+    // raised it in the first pass, and the branch-choice pass's claim from
+    // gate-hgb-response dedups into it. (Engine note: reconciliation keeps the
+    // earlier prompt as-is when its owner is outside the pass, so its
+    // askedByNodeIds does not list gate-hgb-response — the one answer still
+    // resolves all three gates.)
+    const hgbQs = r.pending.filter((p: any) => p.datumKey === 'LOINC:718-7');
+    expect('one Hgb (LOINC 718-7) question', String(hgbQs.length), '1');
+    expect('gate-hgb-response', status(r.state, 'gate-hgb-response'), 'PENDING_QUESTION');
+    expect('step-2-4 maintenance', status(r.state, 'step-2-4'), 'PENDING_QUESTION');
+
+    console.log('  GA 12 — IV iron gated exactly as on the confirmed arm:');
+    r = await resolveSession({ ...base, patient: patientWith(labs(50, 9.5), { gestational_age_weeks: 12 }) });
+    expect('step-2-3 response assessment', status(r.state, 'step-2-3'), 'INCLUDED');
+    expect('gate-iv-iron-ga', status(r.state, 'gate-iv-iron-ga'), 'GATED_OUT');
+    expect('step-2-5 IV iron', status(r.state, 'step-2-5'), 'GATED_OUT');
   }
 }
 
@@ -244,7 +321,9 @@ async function proveDp1Scoring(): Promise<void> {
   const patient = patientWith([['787-2', 72], ['2276-4', 50], ['718-7', 9.5]]);
   const confs: number[] = [];
   const perSignal: string[] = [];
-  for (const id of ['step-2-1', 'step-1-2']) {
+  // A Stage (the empiric branch) and a Step (the workup) — the node type must
+  // not move the score, or the fork would auto-select instead of pending.
+  for (const id of [EMPIRIC, 'step-1-2']) {
     const node = graph.getNode(id)!;
     let sum = 0; let wsum = 0; const parts: string[] = [];
     for (const [def, scorer] of signals) {
@@ -403,6 +482,7 @@ const PROOFS: Record<string, () => Promise<void>> = {
   'ga': proveGa,
   'shared-leaves': proveSharedLeaves,
   'mcv': proveMcv,
+  'empiric': proveEmpiric,
 };
 
 async function main() {
