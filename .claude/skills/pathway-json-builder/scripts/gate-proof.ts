@@ -26,9 +26,12 @@
 //   hgbpathy         BLOCKED (needs not_includes_code): hemoglobinopathy code +
 //                    MCV 72 is still offered empiric iron at DP-1 — records today's
 //                    exposure; flips when the engine can negate a code
+//   ghtn-shared-labs gestational hypertension v2: BP, severity-panel and urine-protein
+//                    labs split per host step — each follows its own step's gate
 //
-// The pathway proofs read pathways/json/anemia-in-pregnancy.json (override with
-// ANEMIA_JSON=<path>). They replay a branch choice the way the live mutation does
+// The anemia proofs read pathways/json/anemia-in-pregnancy.json (override with
+// ANEMIA_JSON=<path>); ghtn-* reads gestational-hypertension-preeclampsia.json
+// (GHTN_JSON=<path>). They replay a branch choice the way the live mutation does
 // (answerPendingDecision → resolveIncrementally seeded at the DecisionPoint), not
 // by pre-loading the answer into a fresh traversal — the two can disagree.
 import { readFileSync } from 'fs';
@@ -51,6 +54,7 @@ import { RiskMagnitudeScorer } from '../../../../apps/pathway-service/src/servic
 
 const AS_OF = '2026-09-24T12:00:00.000Z';
 const ANEMIA = process.env.ANEMIA_JSON ?? 'pathways/json/anemia-in-pregnancy.json';
+const GHTN = process.env.GHTN_JSON ?? 'pathways/json/gestational-hypertension-preeclampsia.json';
 const THRESHOLDS = { autoResolveThreshold: 0.85, suggestThreshold: 0.6 }; // migration 039 system defaults
 /** DP-1's empiric branch (criterion 1a): Stage 1.5, holding Steps 2.1–2.3 (was step-2-1 through v3). */
 const EMPIRIC = 'stage-2-empiric';
@@ -138,6 +142,24 @@ function patientWith(
     medications: [], allergies: [], vitalSigns: {}, patientAttributes: attrs,
     labResults: labs.map(([code, value]) => ({ code, system: 'LOINC', value })),
   } as unknown as PatientContext;
+}
+
+/** A patient for the non-anemia pathways: no anemia code, and a vitals bag. */
+function patientOf(opts: {
+  codes?: string[]; labs?: Array<[string, number]>; vitals?: Record<string, number>;
+}): PatientContext {
+  return {
+    patientId: 'proof',
+    conditionCodes: (opts.codes ?? []).map((code) => ({ code, system: 'ICD-10' })),
+    medications: [], allergies: [], vitalSigns: opts.vitals ?? {}, patientAttributes: {},
+    labResults: (opts.labs ?? []).map(([code, value]) => ({ code, system: 'LOINC', value })),
+  } as unknown as PatientContext;
+}
+const YES = { booleanValue: true } as GateAnswer;
+const NO = { booleanValue: false } as GateAnswer;
+/** Expect every id in `ids` to hold `want`. */
+function expectAll(label: string, state: Map<string, { status: string }>, ids: string[], want: string): void {
+  for (const id of ids) expect(`${id} ${label}`, status(state, id), want);
 }
 
 /** Stub scorer: `conf(nodeId)` is the confidence the engine sees for that node. */
@@ -637,6 +659,113 @@ async function proveHgbpathy(): Promise<void> {
   }
 }
 
+// ── Proof: gestational hypertension labs, one node per host step (v2) ──
+// v1 had eight LabTest nodes each ordered by three steps on different sides of
+// the pathway's gates: BP (lab-1/2) by Steps 2.1, 2.2 and 4.1; platelets,
+// creatinine, AST, ALT (lab-3..6) by Steps 1.2, 3.1 and 4.1; 24-hour urine
+// protein and protein/creatinine ratio (lab-7/8) by Steps 1.2, 2.3a and 4.2.
+// Marking is first-writer-wins and a closing gate sweeps its region at once, so
+// each lab took the status of whichever host was decided first: an open step
+// could lose its lab to a closed neighbour's gate, and a closed step's lab
+// could leak INCLUDED through an open neighbour. Each is now split, one node
+// per host; the original stays on its first host (Step 2.1 / Step 1.2).
+//
+// Question-gate answers are PRE-LOADED here (one traversal that knows them),
+// not replayed; the DP-1 choice is replayed. For these gates the two disagree
+// for a reason that is not this pathway's: answerGateQuestion seeds the answered
+// gate's whole containment closure, which includes CodeEntry / EvidenceCitation
+// leaves shared across the graph, and resolveIncrementally's promote() climbs
+// from such a leaf to a decider that does not govern it and re-disposes it as a
+// root. Answering aspirin "yes" with BP 120/75 re-opens DP-1 (and, in reversed
+// order, gate-no-severe-features) as PENDING_QUESTION inside the GATED_OUT
+// work-up — identically on v1 and v2. With those leaves stripped from the seed,
+// replay agrees with every expectation below. Engine defect, reported separately.
+const GHTN_LABS = {
+  bp21: ['lab-1', 'lab-2'],                                        // Step 2.1 (unconditional)
+  base12: ['lab-3', 'lab-4', 'lab-5', 'lab-6', 'lab-7', 'lab-8'],  // Step 1.2 (gate-aspirin-indicated)
+  bp22: ['lab-12', 'lab-13'],                                      // Step 2.2 (gate-bp-elevated)
+  urine23a: ['lab-14', 'lab-15'],                                  // Step 2.3a (gate-htn-confirmed, DP-1)
+  sev31: ['lab-16', 'lab-17', 'lab-18', 'lab-19'],                 // Step 3.1 (gate-htn-diagnosed)
+  surv41: ['lab-20', 'lab-21', 'lab-22', 'lab-23', 'lab-24', 'lab-25'], // Step 4.1 (gate-no-severe-features)
+  urine42: ['lab-26', 'lab-27'],                                   // Step 4.2 (gate-gestational-htn)
+};
+async function proveGhtnSharedLabs(): Promise<void> {
+  console.log(`\n=== ghtn-shared-labs: each lab follows its own step's gate (${GHTN}) ===`);
+  const L = GHTN_LABS;
+  const NORMAL_BP = { systolic_bp: 120, diastolic_bp: 75 };
+  const HIGH_BP = { systolic_bp: 150, diastolic_bp: 95 };   // ≥140/90, below the 160/110 severe range
+  const LABS: Array<[string, number]> = [['777-3', 220], ['2160-0', 0.7]]; // no objective severe feature
+  /** Diagnosed and confirmed, aspirin not indicated; severe feature on assessment or not. */
+  const diagnosed = (severe: boolean): Record<string, GateAnswer> => ({
+    'gate-aspirin-indicated': NO,
+    'gate-htn-confirmed': YES,
+    'gate-severe-feature-symptoms': severe ? YES : NO,
+    'gate-no-severe-features': severe ? NO : YES,
+  });
+  const QUANTITATIVE = { dp: 'dp-1', option: 'step-2-3a' };
+  for (const reverse of [false, true]) {
+    console.log(`  -- edge order: ${reverse ? 'reversed' : 'file'}`);
+    const run = (codes: string[], vitals: Record<string, number>, answers: Record<string, GateAnswer>,
+      choose?: { dp: string; option: string }) =>
+      resolveSession({ file: GHTN, reverse, patient: patientOf({ codes, labs: LABS, vitals }), answers, choose });
+
+    // gate-bp-elevated closes Step 2.2 and everything downstream of it. v1: the
+    // Step 1.2 baseline panel and the Step 2.1 BP readings were also in that
+    // region (via 3.1 / 4.1 / 2.3a / 4.2 and 2.2), so they could go GATED_OUT.
+    console.log('  aspirin indicated, BP 120/75 — baseline labs ordered, nothing downstream:');
+    let r = await run([], NORMAL_BP, { 'gate-aspirin-indicated': YES });
+    expect('step-1-2 baseline labs', status(r.state, 'step-1-2'), 'INCLUDED');
+    expectAll('(Step 1.2)', r.state, L.base12, 'INCLUDED');
+    expectAll('(Step 2.1)', r.state, L.bp21, 'INCLUDED');
+    expect('step-2-2 confirm HTN', status(r.state, 'step-2-2'), 'GATED_OUT');
+    expectAll('(Step 2.2)', r.state, L.bp22, 'GATED_OUT');
+    for (const k of ['urine23a', 'sev31', 'surv41', 'urine42'] as const) expectAll(`(${k})`, r.state, L[k], 'GATED_OUT');
+
+    // gate-htn-confirmed "no" closes the work-up. v1: the Step 2.1/2.2 BP
+    // readings were also Step 4.1's, inside that region.
+    console.log('  aspirin not indicated, BP 150/95, hypertension NOT confirmed:');
+    r = await run([], HIGH_BP, { 'gate-aspirin-indicated': NO, 'gate-htn-confirmed': NO });
+    expect('step-2-2 confirm HTN', status(r.state, 'step-2-2'), 'INCLUDED');
+    expectAll('(Step 2.1)', r.state, L.bp21, 'INCLUDED');
+    expectAll('(Step 2.2)', r.state, L.bp22, 'INCLUDED');
+    expect('stage-2-workup', status(r.state, 'stage-2-workup'), 'GATED_OUT');
+    expectAll('(Step 1.2, aspirin gate is its only route)', r.state, L.base12, 'GATED_OUT');
+    for (const k of ['urine23a', 'sev31', 'surv41', 'urine42'] as const) expectAll(`(${k})`, r.state, L[k], 'GATED_OUT');
+
+    // Aspirin "no" is now the only route to the Step 1.2 panel. v1: Steps 3.1,
+    // 4.1, 2.3a and 4.2 ordered the same nodes, so they leaked INCLUDED.
+    console.log('  aspirin not indicated, gestational HTN (O13.3), quantitative proteinuria, no severe features:');
+    r = await run(['O13.3'], HIGH_BP, diagnosed(false), QUANTITATIVE);
+    expect('gate-htn-diagnosed', status(r.state, 'gate-htn-diagnosed'), 'INCLUDED');
+    expect('step-1-2 baseline labs', status(r.state, 'step-1-2'), 'GATED_OUT');
+    expectAll('(Step 1.2, aspirin gate is its only route)', r.state, L.base12, 'GATED_OUT');
+    for (const k of ['bp21', 'bp22', 'urine23a', 'sev31', 'surv41', 'urine42'] as const) {
+      expectAll(`(${k})`, r.state, L[k], 'INCLUDED');
+    }
+    expect('step-4-2 weekly proteinuria', status(r.state, 'step-4-2'), 'INCLUDED');
+
+    // gate-gestational-htn closes Step 4.2 for preeclampsia. v1: its urine
+    // protein labs were also Step 2.3a's (open) — a race.
+    console.log('  preeclampsia (O14.03), no severe features — weekly proteinuria stops, diagnostic one stays:');
+    r = await run(['O14.03'], HIGH_BP, diagnosed(false), QUANTITATIVE);
+    expect('gate-gestational-htn', status(r.state, 'gate-gestational-htn'), 'GATED_OUT');
+    expectAll('(Step 4.2)', r.state, L.urine42, 'GATED_OUT');
+    expectAll('(Step 2.3a)', r.state, L.urine23a, 'INCLUDED');
+    expectAll('(Step 4.1)', r.state, L.surv41, 'INCLUDED');
+
+    // gate-no-severe-features closes Stage 4. v1: the Step 4.1 surveillance
+    // labs were the Step 3.1 severity panel and the Step 2.1/2.2 BP readings.
+    console.log('  gestational HTN (O13.3), severe feature on assessment — no outpatient surveillance:');
+    r = await run(['O13.3'], HIGH_BP, diagnosed(true), QUANTITATIVE);
+    expect('stage-4 outpatient surveillance', status(r.state, 'stage-4'), 'GATED_OUT');
+    expectAll('(Step 4.1)', r.state, L.surv41, 'GATED_OUT');
+    expectAll('(Step 4.2)', r.state, L.urine42, 'GATED_OUT');
+    expectAll('(Step 3.1)', r.state, L.sev31, 'INCLUDED');
+    expectAll('(Step 2.1)', r.state, L.bp21, 'INCLUDED');
+    expectAll('(Step 2.2)', r.state, L.bp22, 'INCLUDED');
+  }
+}
+
 const PROOFS: Record<string, () => Promise<void>> = {
   'attribute-form': proveAttributeForm,
   'dp-1': proveDp1,
@@ -647,6 +776,7 @@ const PROOFS: Record<string, () => Promise<void>> = {
   'empiric': proveEmpiric,
   'response': proveResponse,
   'hgbpathy': proveHgbpathy,
+  'ghtn-shared-labs': proveGhtnSharedLabs,
 };
 
 async function main() {

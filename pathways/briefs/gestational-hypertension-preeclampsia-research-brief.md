@@ -1,6 +1,6 @@
 # Pathway Research Brief — Gestational Hypertension & Preeclampsia
 
-JSON: pathways/json/gestational-hypertension-preeclampsia.json @ version 1
+JSON: pathways/json/gestational-hypertension-preeclampsia.json @ version 2
 
 **Status: DRAFT v1 for physician review — not yet approved for JSON build.**
 
@@ -46,8 +46,13 @@ claims confirmed. Flags: `[GAP]` unsourceable · `[FALLBACK SOURCE]` non-US basi
 
 - **Logical ID**: `gestational-hypertension-preeclampsia`
 - **Title**: Gestational Hypertension and Preeclampsia — Outpatient Screening, Diagnosis and Surveillance
-- **Version**: 1 `[DECISION — Josh 2026-09-24]` stays `"1"`: still a draft, so the stage renumbering
-  re-imports as DRAFT_UPDATE (same logical_id and version).
+- **Version**: 2 (JSON `"2"`; was `"1"`). Bumped with the shared-lab build fix (§6
+  `[BUILD FIX 2026-09-24]`): every LabTest node now has exactly one host step. Imports as
+  **NEW_VERSION** — same logical_id, bumped version. DRAFT_UPDATE cannot carry it: the importer
+  matches a DRAFT_UPDATE on logical_id *and* version, and no `"2"` exists yet (if v1 was never
+  imported at all, it is NEW_PATHWAY). The v1 draft edits below (the stage renumbering) ship
+  inside v2. History: `[DECISION — Josh 2026-09-24]` v1 had stayed `"1"` while a draft, so the
+  stage renumbering could re-import as DRAFT_UPDATE.
 - **Category**: OBSTETRIC
 - **Scope**: Outpatient prenatal care. Risk assessment and aspirin prophylaxis from the first
   prenatal visit; BP surveillance; diagnosis and severity classification after 20 weeks;
@@ -493,17 +498,53 @@ any case inconclusive, with no demonstrated effect on haemoglobin. Recorded in �
 
 ## 6. Lab tests
 
-- **Lab-1 — Blood pressure, systolic** (on Steps 2.1, 2.2, 4.1): code `8480-6` LOINC, purpose diagnosis and surveillance. [1]
-- **Lab-2 — Blood pressure, diastolic** (on Steps 2.1, 2.2, 4.1): code `8462-4` LOINC. [1]
-- **Lab-3 — Platelet count** (on Steps 1.2, 3.1, 4.1): code `777-3` LOINC, whole blood, severe-feature threshold <100,000/µL. [1]
-- **Lab-4 — Serum creatinine** (on Steps 1.2, 3.1, 4.1): code `2160-0` LOINC, serum, severe-feature threshold >1.1 mg/dL or doubling. [1]
-- **Lab-5 — Aspartate aminotransferase** (on Steps 1.2, 3.1, 4.1): code `1920-8` LOINC, serum. [1]
-- **Lab-6 — Alanine aminotransferase** (on Steps 1.2, 3.1, 4.1): code `1742-6` LOINC, serum. [1]
-- **Lab-7 — Protein, 24-hour urine** (on Steps 1.2, 2.3): code `2889-4` LOINC, 24-hour urine, threshold ≥300 mg/24 h. **Mass-per-time — see the warning in §13.** [1]
-- **Lab-8 — Protein/creatinine ratio, urine** (on Steps 1.2, 2.3): code `34366-5` LOINC, urine, threshold ≥0.30 dimensionless. **See the warning in §13.** [1]
+- **Lab-1 — Blood pressure, systolic** (on Step 2.1; same test as Lab-12 on Step 2.2, Lab-20 on Step 4.1): code `8480-6` LOINC, purpose diagnosis and surveillance. [1]
+- **Lab-2 — Blood pressure, diastolic** (on Step 2.1; same test as Lab-13 on Step 2.2, Lab-21 on Step 4.1): code `8462-4` LOINC. [1]
+- **Lab-3 — Platelet count** (on Step 1.2; same test as Lab-16 on Step 3.1, Lab-22 on Step 4.1): code `777-3` LOINC, whole blood, severe-feature threshold <100,000/µL. [1]
+- **Lab-4 — Serum creatinine** (on Step 1.2; same test as Lab-17 on Step 3.1, Lab-23 on Step 4.1): code `2160-0` LOINC, serum, severe-feature threshold >1.1 mg/dL or doubling. [1]
+- **Lab-5 — Aspartate aminotransferase** (on Step 1.2; same test as Lab-18 on Step 3.1, Lab-24 on Step 4.1): code `1920-8` LOINC, serum. [1]
+- **Lab-6 — Alanine aminotransferase** (on Step 1.2; same test as Lab-19 on Step 3.1, Lab-25 on Step 4.1): code `1742-6` LOINC, serum. [1]
+- **Lab-7 — Protein, 24-hour urine** (on Step 1.2; same test as Lab-14 on Step 2.3a — DP-1's quantitative branch — and Lab-26 on Step 4.2): code `2889-4` LOINC, 24-hour urine, threshold ≥300 mg/24 h. **Mass-per-time — see the warning in §13.** [1]
+- **Lab-8 — Protein/creatinine ratio, urine** (on Step 1.2; same test as Lab-15 on Step 2.3a and Lab-27 on Step 4.2): code `34366-5` LOINC, urine, threshold ≥0.30 dimensionless. **See the warning in §13.** [1]
 - **Lab-9 — Protein, urine dipstick** (on Step 2.3): code `20454-5` LOINC, urine, 2+ discriminant, fallback only. [1]
 - **Lab-10 — Lactate dehydrogenase** (on Step 3.1): code `2532-0` LOINC, serum, HELLP component ≥600 IU/L. [1]
 - **Lab-11 — Uric acid** (on Step 3.1): code `3084-1` LOINC, serum. **Conditional only** — "may be considered" for diagnostic dilemmas such as suspected superimposed preeclampsia; not routine. [1]
+
+`[BUILD FIX 2026-09-24]` **One host step per lab node (v2).** In v1, Lab-1 to Lab-8 were each
+one node ordered by three steps on different sides of the pathway's gates. The engine marks a
+node once (first writer wins), and a gate that closes sweeps its whole region at once, so each
+shared lab took the status of whichever host was decided first. The care plan lists only
+INCLUDED labs. Seen on the real engine (`gate-proof.ts ghtn-shared-labs` against v1):
+- aspirin indicated with BP 120/75: `gate-bp-elevated` closed Step 2.2, and the Step 1.2
+  baseline panel and the Step 2.1 BP readings went GATED_OUT with it;
+- hypertension not confirmed: the Step 2.1 BP readings went GATED_OUT with the work-up;
+- aspirin not indicated but gestational hypertension diagnosed: the Step 1.2 baseline panel
+  leaked INCLUDED through Steps 3.1 / 4.1 / 2.3a / 4.2.
+
+Each shared lab is now split into one node per host step: same test, codes and citation. The
+original stays on its first host.
+
+| Original | Stays on | New node → host |
+|---|---|---|
+| Lab-1 BP systolic | Step 2.1 | **Lab-12** → Step 2.2 · **Lab-20** → Step 4.1 |
+| Lab-2 BP diastolic | Step 2.1 | **Lab-13** → Step 2.2 · **Lab-21** → Step 4.1 |
+| Lab-3 Platelets | Step 1.2 | **Lab-16** → Step 3.1 · **Lab-22** → Step 4.1 |
+| Lab-4 Creatinine | Step 1.2 | **Lab-17** → Step 3.1 · **Lab-23** → Step 4.1 |
+| Lab-5 AST | Step 1.2 | **Lab-18** → Step 3.1 · **Lab-24** → Step 4.1 |
+| Lab-6 ALT | Step 1.2 | **Lab-19** → Step 3.1 · **Lab-25** → Step 4.1 |
+| Lab-7 24-hour urine protein | Step 1.2 | **Lab-14** → Step 2.3a · **Lab-26** → Step 4.2 |
+| Lab-8 Protein/creatinine ratio | Step 1.2 | **Lab-15** → Step 2.3a · **Lab-27** → Step 4.2 |
+
+The new nodes share the originals' CodeEntries (HAS_CODE) and citation [1]. CodeEntries are not
+projected into the care plan, so sharing them does not bring the defect back. Checks:
+`check-gate-control.ts` is clean (v1: 6 Rule-1 violations). `gate-proof.ts ghtn-shared-labs`
+passes in both edge orders; v1 fails it on the original ids. No clinical content changed.
+
+Engine caveat, not fixed here: when a question gate is answered incrementally
+(`answerGateQuestion`), the pass is seeded with shared CodeEntry and EvidenceCitation leaves. It
+can then re-open a decider those leaves are not governed by. Example: aspirin "yes" with BP
+120/75 leaves DP-1 PENDING_QUESTION inside the GATED_OUT work-up. v1 and v2 behave the same,
+so the proof pre-loads its gate answers (see the comment in `gate-proof.ts`).
 
 ## 7. Imaging
 
@@ -610,14 +651,14 @@ never feeding it.
 
 | Code | System | Description | Attached to |
 |---|---|---|---|
-| 8480-6 | LOINC | Systolic blood pressure | Lab-1 |
-| 8462-4 | LOINC | Diastolic blood pressure | Lab-2 |
-| 777-3 | LOINC | Platelets [#/volume] in Blood by Automated count | Lab-3 |
-| 2160-0 | LOINC | Creatinine [Mass/volume] in Serum or Plasma | Lab-4 |
-| 1920-8 | LOINC | Aspartate aminotransferase [Enzymatic activity/volume] in Serum or Plasma | Lab-5 |
-| 1742-6 | LOINC | Alanine aminotransferase [Enzymatic activity/volume] in Serum or Plasma | Lab-6 |
-| 2889-4 | LOINC | Protein [Mass/time] in 24 hour Urine | Lab-7 |
-| 34366-5 | LOINC | Protein/Creatinine [Ratio] in Urine | Lab-8 |
+| 8480-6 | LOINC | Systolic blood pressure | Lab-1, Lab-12, Lab-20 |
+| 8462-4 | LOINC | Diastolic blood pressure | Lab-2, Lab-13, Lab-21 |
+| 777-3 | LOINC | Platelets [#/volume] in Blood by Automated count | Lab-3, Lab-16, Lab-22 |
+| 2160-0 | LOINC | Creatinine [Mass/volume] in Serum or Plasma | Lab-4, Lab-17, Lab-23 |
+| 1920-8 | LOINC | Aspartate aminotransferase [Enzymatic activity/volume] in Serum or Plasma | Lab-5, Lab-18, Lab-24 |
+| 1742-6 | LOINC | Alanine aminotransferase [Enzymatic activity/volume] in Serum or Plasma | Lab-6, Lab-19, Lab-25 |
+| 2889-4 | LOINC | Protein [Mass/time] in 24 hour Urine | Lab-7, Lab-14, Lab-26 |
+| 34366-5 | LOINC | Protein/Creatinine [Ratio] in Urine | Lab-8, Lab-15, Lab-27 |
 | 20454-5 | LOINC | Protein [Presence] in Urine by Test strip | Lab-9 |
 | 2532-0 | LOINC | Lactate dehydrogenase [Enzymatic activity/volume] in Serum or Plasma | Lab-10 |
 | 3084-1 | LOINC | Urate [Mass/volume] in Serum or Plasma | Lab-11 |
@@ -684,7 +725,7 @@ directly. No `lab.*`, `allergy.*` or `patient.*` attribute is referenced anywher
 - Step 5.1: [1] · Step 5.2: [8][12] · Step 5.3: [1]
 - DP-1: [1] · Criteria 1a, 1b: [1]
 - Med-1: [1][2][3] · Med-2: [1][5][6] · Med-3: [5][6] · Med-4: [1] · Med-5: [5][6] · Med-6: [5][6]
-- Lab-1 to Lab-6: [1] · Lab-7 to Lab-11: [1]
+- Lab-1 to Lab-6: [1] · Lab-7 to Lab-11: [1] · Lab-12 to Lab-27 (per-host copies, §6): [1]
 - Img-1, Img-2, Img-3: [1] · Proc-1, Proc-2: [1]
 - Guid-1: [1][10][11] · Guid-2: [1][13] · Guid-3: [1] · Guid-4: [1]
 
