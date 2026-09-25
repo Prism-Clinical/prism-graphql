@@ -4,7 +4,7 @@ import type { GateEvaluationDeps } from './gate-evaluator';
 import type { PathwayTemporalDefaults } from './temporal/cascade';
 import type { FactStore } from './temporal/fact-model';
 import { EvaluationTemporalContext } from './temporal/evaluation-context';
-import { anchorAskFor, askFor, unionOptions } from './unresolved-prompt';
+import { anchorAskFor, askFor, seriesAskFor, unionOptions } from './unresolved-prompt';
 import { parseBranchWhen } from '../import/branch-when';
 import { decisionValueOf, decisionSelects } from './decision-value';
 import { normalizeAnswerType } from './answer-validation';
@@ -111,6 +111,7 @@ function unresolvedAsk(
     dataUnavailable?: boolean;
     unresolvedConditions?: GateCondition[];
     unresolvedAnchorConditions?: GateCondition[];
+    unresolvedSeries?: Array<{ condition: GateCondition; latestDate: string }>;
   },
   /** The attribute vocabulary, so a lab attribute asks for a LAB. */
   codeMap?: AttributeCodeMap,
@@ -133,11 +134,15 @@ function unresolvedAsk(
       ? gateResult.unresolvedConditions
       : (gateProps.conditions ?? (gateProps.condition ? [gateProps.condition] : []));
   for (const condition of conditions) {
-    // An unresolved `window_from` anchor asks for its start DATE; every other
-    // condition asks for its datum, or nothing (`askFor` refuses aggregates).
+    // An unresolved `window_from` anchor asks for its start DATE; a series one
+    // value short asks for the newest result; every other condition asks for
+    // its datum, or nothing (`askFor` refuses aggregates).
+    const shortSeries = gateResult.unresolvedSeries?.find((s) => s.condition === condition);
     const ask = gateResult.unresolvedAnchorConditions?.includes(condition)
       ? anchorAskFor(condition)
-      : askFor(condition, codeMap);
+      : shortSeries
+        ? seriesAskFor(condition, shortSeries.latestDate)
+        : askFor(condition, codeMap);
     if (ask) return ask;
   }
   return null;

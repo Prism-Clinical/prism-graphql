@@ -372,12 +372,18 @@ for (const { gate, i, c } of chartConditions()) {
 //     `exists` (absence IS the answer to exists). `patient.*` counts since
 //     8f64fc1: a missing demographic now reports dataUnavailable and asks for
 //     the `patient.<attr>` datum instead of reading as a silent "no".
+//   - coded `labs` trend_up / trend_down / delta_from_baseline (engine-anchored-
+//     window): a series one dated value short asks for the newest result;
+//   - any condition with `window_from`: an unknown start date asks a DATE.
 const SCALAR_OPS = new Set(['greater_than', 'less_than']);
+const SERIES_OPS = new Set(['trend_up', 'trend_down', 'delta_from_baseline']);
 const NUMERIC_NAMESPACES = ['lab.', 'vitals.', 'patient.'];
 const isNumeric = (c: any): boolean =>
   (typeof c.attribute === 'string' && c.operator !== 'exists' &&
     NUMERIC_NAMESPACES.some((ns) => c.attribute.startsWith(ns))) ||
-  ((c.field === 'labs' || c.field === 'vitals') && SCALAR_OPS.has(c.operator));
+  ((c.field === 'labs' || c.field === 'vitals') && SCALAR_OPS.has(c.operator)) ||
+  (c.field === 'labs' && SERIES_OPS.has(c.operator)) ||
+  c.window_from !== undefined;
 {
   const byGate = new Map<string, any[]>();
   for (const { gate, c } of chartConditions()) {

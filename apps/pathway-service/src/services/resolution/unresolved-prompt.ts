@@ -211,6 +211,37 @@ export function askFor(
 }
 
 /**
+ * The question for a trend/delta series ONE dated lab value short: the newest
+ * result, drawn after the latest one on file. `null` for anything else.
+ *
+ * Only for a condition the evaluator flagged as one short — `askFor` still
+ * refuses aggregates in general, because a COUNT or a slope is a derived
+ * quantity, and a series short by more than one cannot be completed by one
+ * answer. What is asked for here is an observation, not a derivation: a lab
+ * value, injected as a provider-asserted lab at the session clock, exactly as
+ * a scalar lab ask is — same datum key, so a gate comparing the same lab asks
+ * once.
+ *
+ * The prompt names the latest date on file. Asking "most recent value?" invites
+ * re-entering the value the series already has; injected at the session clock
+ * it would read as a second, unchanged result — a delta of zero, a
+ * non-responder who responded.
+ */
+export function seriesAskFor(condition: GateCondition, latestDate: string): UnresolvedAsk | null {
+  if (isAttributeCondition(condition)) return null;
+  const { field, value } = condition;
+  if (field !== 'labs' || typeof value !== 'string' || value === '' || value.includes('*')) return null;
+  const system = condition.system ?? 'LOINC';
+  const label = authoredDisplay(condition.display) ?? value;
+  return {
+    datumKey: `${system}:${value}`,
+    prompt: `${label} (${system} ${value}) — newest result, drawn after ${latestDate}?`,
+    answerType: AnswerType.NUMERIC,
+    target: { kind: 'lab', code: value, system },
+  };
+}
+
+/**
  * An authored `display`, or `undefined` when there is none worth showing.
  * Blank text is treated as absent: a prompt that reads " — current value?"
  * names nothing.

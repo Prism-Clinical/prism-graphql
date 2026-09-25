@@ -159,6 +159,13 @@ export interface CodedCondition {
   min_points?: number;
   slope_threshold?: number;
   delta_threshold?: number;
+  /**
+   * `delta_from_baseline` only: compare `current − baseline` to
+   * `delta_threshold` as `>=` (`at_least`) or `<` (`less_than`). Absent, the
+   * threshold's SIGN picks the direction (legacy semantics). Validated by
+   * `conditionControlDomainError`.
+   */
+  delta_comparison?: 'at_least' | 'less_than';
   display?: string; // UI decorator — ignored by the evaluator
   note?: string;    // UI decorator — ignored by the evaluator
 }
@@ -363,6 +370,13 @@ export interface GateEvaluationResult {
    * condition.
    */
   unresolvedAnchorConditions?: GateCondition[];
+  /**
+   * The unresolved conditions whose trouble is a trend/delta series ONE dated
+   * value short — askable as "the newest result", injected as a lab. With the
+   * date of the latest value on file, so the question can ask for a NEWER draw
+   * rather than re-collecting the one the series already has.
+   */
+  unresolvedSeries?: Array<{ condition: GateCondition; latestDate: string }>;
   /** The resolved anchors, deduplicated by key, in condition order. */
   windowAnchors?: WindowAnchorEvidence[];
 }

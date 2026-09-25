@@ -172,6 +172,47 @@ describe('window_from at import', () => {
     expect(omissions).toEqual([expect.stringContaining('RXNORM 198630 (Medication "med-gluconate"')]);
   });
 
+  it('accepts delta_comparison and baseline_days on an anchored delta', () => {
+    const result = validatePathwayJson(
+      withCondition(
+        {
+          field: 'labs', operator: 'delta_from_baseline', value: '718-7', system: 'LOINC',
+          delta_threshold: 1.0, delta_comparison: 'less_than', min_points: 2,
+          window_from: { ...ORAL_IRON, baseline_days: 28 },
+        },
+        'oral-iron-repletion',
+      ),
+    );
+    expect(result.errors).toEqual([]);
+  });
+
+  it.each<[string, Record<string, unknown>, string]>([
+    [
+      'delta_comparison on a trend',
+      { ...TREND, delta_comparison: 'less_than' },
+      '"delta_comparison" applies only to delta_from_baseline',
+    ],
+    [
+      'an unknown delta_comparison',
+      { ...TREND, operator: 'delta_from_baseline', delta_comparison: 'below' },
+      '"delta_comparison" must be "at_least" or "less_than"',
+    ],
+    [
+      'baseline_days on a count',
+      { ...TREND, operator: 'count_in_window', window_from: { ...ORAL_IRON, baseline_days: 14 } },
+      'a count has no baseline',
+    ],
+    [
+      'a fractional baseline_days',
+      { ...TREND, window_from: { ...ORAL_IRON, baseline_days: 1.5 } },
+      '"baseline_days" must be an integer',
+    ],
+  ])('rejects %s (import and runtime alike)', (_label, condition, fragment) => {
+    const result = validatePathwayJson(withCondition(condition, 'oral-iron-repletion'));
+    expect(result.valid).toBe(false);
+    expect(result.errors).toContainEqual(expect.stringContaining(fragment));
+  });
+
   it('parses the selector into the NODE tier', () => {
     expect(parseConditionOverride({ ...TREND, window_from: ORAL_IRON }, 'c')).toEqual({
       windowFrom: {

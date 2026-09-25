@@ -262,8 +262,16 @@ but cannot be ordered, e.g. two undated results for the same LOINC → `AMBIGUOU
     is a vocabulary gap, not a missing datum, and never asks.)
 
   Membership (`includes_code`, `equals`, `exists` on coded fields) never is unresolved:
-  absence is a definite no. Aggregates (`count_in_window`, trends, `delta_from_baseline`)
-  never ask — "the count is 3" is not an observation — and fall to `default_behavior`.
+  absence is a definite no. `count_in_window` never is either — a count of zero is a real
+  answer. **Trends and `delta_from_baseline` with fewer than `min_points` dated values in
+  their window ARE unresolved** (`INSUFFICIENT_SERIES`, `engine-anchored-window`): "no
+  recheck yet" is not "no response". When the series is exactly **one** value short (and
+  the condition is on `labs` with an exact code) the gate asks for the newest result —
+  *"Hemoglobin (g/dL) (LOINC 718-7) — newest result, drawn after 2026-05-29?"* — injected
+  as a lab like any lab datum (same `LOINC:<code>` key). Short by more, no single answer
+  can complete it: unresolved, no question, `default_behavior`. An unorderable series
+  (`AMBIGUOUS_SERIES_ORDER`) is never asked anything. A `window_from` condition whose start
+  date is unknown asks a DATE question (below).
 - **Compounds:** OR is satisfied by any definite true; if nothing is true and some
   condition is unresolved, the gate is unresolved (a definite false does not outweigh an
   unknown). AND is unsatisfied by any definite false. A compound asks for **one datum at a
@@ -332,7 +340,7 @@ Carries one `condition` object, which is either an **attribute condition** or a 
 - There is **no** `symptom.*`, `medication.*`, or `condition.*` namespace (older docs said otherwise — they now hard-fail import). Symptom presence/severity is elicited ⇒ use a `question` gate. Diagnosis/medication history ⇒ use a coded condition.
 - `horizon` / `status` — see **Temporal horizon & status** below; both are legal here exactly as on coded conditions.
 
-**Coded condition** — allowed keys exactly: `field`, `operator`, `value`, `system`, `threshold`, `window_days`, `count_threshold`, `min_points`, `slope_threshold`, `delta_threshold`, `horizon`, `status`, `window_from`, `display`, `note`. (`window_from` is coded-only — see **Anchored trend windows** below; on an attribute condition it is an unknown key.)
+**Coded condition** — allowed keys exactly: `field`, `operator`, `value`, `system`, `threshold`, `window_days`, `count_threshold`, `min_points`, `slope_threshold`, `delta_threshold`, `delta_comparison`, `horizon`, `status`, `window_from`, `display`, `note`. (`window_from` is coded-only — see **Anchored trend windows** below; on an attribute condition it is an unknown key.)
 
 ```json
 { "field": "conditions", "operator": "includes_code", "value": "Z94.*", "system": "ICD-10" }
@@ -350,6 +358,14 @@ Carries one `condition` object, which is either an **attribute condition** or a 
   integers; `slope_threshold` — finite **non-negative** number: it is a *magnitude*, the
   evaluator applies the sign (`trend_down` = slope < −slope_threshold), so a negative
   value would invert the clinical meaning.
+- **`delta_comparison`** ∈ `at_least`, `less_than` — **`delta_from_baseline` only** (an
+  error on any other operator, where it would be silently ignored). Makes the direction
+  explicit: `at_least` ⇒ `current − baseline ≥ delta_threshold`; `less_than` ⇒
+  `current − baseline < delta_threshold`. The two are exact complements on one threshold —
+  write "responding" and "not responding" from the same number and no patient is both or
+  neither. Compared at 1e-9, so an exact decimal rise (7.2 → 8.2) is exactly 1.0. Absent,
+  the threshold's **sign** picks the direction (below) and "rose by less than t" has no
+  encoding. `legacy-v0` refuses it.
 - `display` / `note` are ignored by the evaluator. `display` on a **lab** condition is the
   label in the missing-data prompt — emit it on every lab condition (with unit).
 
@@ -363,7 +379,10 @@ Runtime semantics (from `gate-evaluator.ts`):
 | `greater_than` / `less_than` | labs, vitals | For `labs`: `value` = the lab code, compare that lab's numeric result to `threshold` (falls back to `parseFloat(value)` — so always set `threshold` explicitly). For `vitals`: `value` = dotted path into vitalSigns |
 | `count_in_window` | labs + code fields | Count entries matching `value` (+`system`; trailing `.*` wildcard allowed) whose **start** falls within `window_days` of the session clock; satisfied when count ≥ `count_threshold` (default 2). Omit `window_days` ⇒ the field's v1 default horizon (below): LIFETIME for conditions/medications/allergies (undated entries count), but **QUARTER for labs** (90 days; undated entries never count). A bounded window never counts an undated entry. A vitals count is always 0. |
 | `trend_up` / `trend_down` | **labs only** | Linear-regression slope over dated values of lab `value` within `window_days`; needs ≥ `min_points` (default 3, floor 2) dated points; satisfied when slope > `slope_threshold` (up) or < −`slope_threshold` (down); default threshold 0 |
-| `delta_from_baseline` | **labs only** | newest − oldest in-window value vs signed `delta_threshold` (positive = rose by ≥ that much; negative = fell by ≥ magnitude); needs ≥ `min_points` (default 2) |
+| `delta_from_baseline` | **labs only** | newest − oldest in-window value vs `delta_threshold`: with `delta_comparison`, `≥` (`at_least`) or `<` (`less_than`); without it, signed (positive = rose by ≥ that much; negative = fell by ≥ magnitude; 0 = changed at all); needs ≥ `min_points` (default 2) |
+
+Fewer than `min_points` dated values in the window makes a trend/delta condition
+**unresolved**, not false (see **Missing data**) — `on_unresolved` decides.
 
 > ### ⚠ Baseline drift — a single long trend window is usually wrong
 >
@@ -425,7 +444,9 @@ patient responding to treatment?" gates.
     "event": "medication_start",
     "clinical_role": "oral-iron-repletion",
     "label": "oral iron",
-    "codes": [ { "system": "RXNORM", "code": "<author-supplied RxCUI>" } ]
+    "baseline_days": 28,
+    "codes": [ { "system": "RXNORM", "code": "310325" }, { "system": "RXNORM", "code": "198630" },
+               { "system": "RXNORM", "code": "284202" } ]
   } }
 ```
 
@@ -445,8 +466,17 @@ Rules (hard import errors unless marked; the validator calls the runtime parser
   of the class (list every member product you want recognised; system compared
   case-insensitively, code exactly, no wildcard). *Warning* when absent: medication orders
   cannot anchor the window, so a patient with no stored care plan is always asked.
+  *Warning* for every code a Medication node of the class carries (HAS_CODE → CodeEntry)
+  that `codes` omits — copy the class's CodeEntry codes.
 - `label` — optional, the class in words for the prompt: `"When did oral iron start?"`
   (default: the `clinical_role` with dashes as spaces).
+- `baseline_days` — optional integer (1..36525), **trends/deltas only** (an error on
+  `count_in_window`). Admits ONE pre-treatment baseline: the **latest** value dated within
+  that many days *before* the anchor day. Use it for every "rise since treatment" delta:
+  the diagnostic value is usually drawn before the prescription, and without it the window
+  excludes the very value the rise is measured from — the patient then looks one value
+  short, is asked for a result, and a clinician re-entering the value on file makes a
+  responder read as "no change".
 - No other keys.
 
 **How the start date is resolved** — first hit wins, and there is **no silent fallback**:
@@ -459,8 +489,28 @@ Rules (hard import errors unless marked; the validator calls the runtime parser
 | 4 | **Unresolved** | The condition is *indeterminate*. With `on_unresolved: "ask"` the gate holds and asks one DATE question per anchor — "When did oral iron start?" — shared by every gate anchored on the same class; with `"default"` it takes `default_behavior`. |
 
 The window is `[start of the anchor day (UTC), session clock]` — a lab drawn on the day the
-drug was started is the baseline and **is** in the series. Everything else (`min_points`,
-`slope_threshold`, `delta_threshold`, `count_threshold`, start-bound selection) is unchanged.
+drug was started **is** in the series — plus, with `baseline_days`, the latest value before
+it. Everything else (`min_points`, `slope_threshold`, `delta_threshold`,
+`delta_comparison`, `count_threshold`, start-bound selection) is unchanged.
+
+**Pattern — a response check with three outcomes from chart data.** Two single-target
+gates on the SAME anchored delta, `at_least` and `less_than` the same threshold, both
+`on_unresolved: "ask"` (a condition gate cannot route several ways — chart-derived branch
+routing does not exist; a multi-target condition gate raises `unroutable_decision`):
+
+| Chart | Response gate (`at_least 1.0`) → maintenance | Non-response gate (`less_than 1.0`) → escalation |
+|---|---|---|
+| baseline + recheck, rise ≥ 1 | opens | closed |
+| baseline + recheck, rise < 1 | closed | opens |
+| baseline only (not rechecked) | held — ONE question: newest Hgb after the baseline date | held (same question) |
+| no start date | held — ONE question: "When did oral iron start?" | held (same question) |
+
+⚠ A held gate is a PENDING question, and **care-plan generation refuses a session with a
+pending question** (`care-plan-generator.ts` `validateForGeneration`). On the visit that
+STARTS the drug the recheck cannot exist yet, so this pattern blocks that visit's plan —
+the reason anemia v5 uses a three-option question with "recheck not yet done". Use the
+chart form where the response check is not reached in the starting visit, or keep the
+question until the engine can route "unresolved" to an *awaiting* step.
 
 Authoring notes:
 
@@ -517,7 +567,7 @@ horizon, but they have no start, so:
 | `includes_code`, `equals`, `exists` | Work. |
 | `greater_than`, `less_than` | One value per code works. Two or more undated values for one code cannot be ordered → `AMBIGUOUS_LATEST` → the gate is unresolved and asks; the injected answer is undated too, so it stays ambiguous (engine gap). |
 | `count_in_window` | Counts undated entries **only** under `LIFETIME` (conditions/meds/allergies default). Any bounded window → count 0 → a silent **"no"** (aggregates never ask). |
-| `trend_up`, `trend_down`, `delta_from_baseline` | Need `min_points` **dated** values. One undated value → not met; two or more → unorderable series (`indeterminate`, never asks → `default_behavior`, or the compound asks for a sibling scalar). |
+| `trend_up`, `trend_down`, `delta_from_baseline` | Need `min_points` **dated** values. Undated values contribute no point: one → zero points, short by ≥ 2 → *unresolved* with nothing to ask → `default_behavior`; two or more → unorderable series (`indeterminate`, never asks → `default_behavior`, or the compound asks for a sibling scalar). |
 | any aggregate with `window_from` | The anchor itself needs a date: no care plan and undated orders → the gate **asks** "When did … start?" (DATE). The series still needs dated lab values. |
 
 Gates built on the last two rows are **untestable in the simulator** — say so in the brief

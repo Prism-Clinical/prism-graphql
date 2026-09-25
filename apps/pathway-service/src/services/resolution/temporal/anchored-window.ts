@@ -1,4 +1,4 @@
-import { TemporalContextError } from './evaluation-context';
+import { MAX_CUSTOM_HORIZON_DAYS, TemporalContextError } from './evaluation-context';
 import type { EvaluationTemporalContext } from './evaluation-context';
 import type { FactStore, NormalizedFact } from './fact-model';
 import { boundEpochRange, instantEpoch, parseFhirDate } from './interval';
@@ -74,9 +74,20 @@ export interface WindowFromSelector {
   codes: WindowFromCode[];
   /** Human name of the class for the prompt: "When did {label} start?". */
   label?: string;
+  /**
+   * Admit ONE pre-treatment baseline: the latest value dated within this many
+   * days BEFORE the anchor day. Series operators only.
+   *
+   * The pre-treatment value is usually drawn before the prescription — the
+   * diagnostic CBC a few days earlier — so a window opening on the start day
+   * excludes exactly the value a "rise since treatment" is measured from. Only
+   * the latest one is kept: a trend over several pre-treatment values would
+   * re-admit the baseline drift the anchor exists to exclude.
+   */
+  baselineDays?: number;
 }
 
-const SELECTOR_KEYS = new Set(['event', 'clinical_role', 'codes', 'label']);
+const SELECTOR_KEYS = new Set(['event', 'clinical_role', 'codes', 'label', 'baseline_days']);
 
 function invalid(where: string, message: string): never {
   throw new TemporalContextError(`${where}: ${message}`, 'INVALID_TEMPORAL_DEFAULTS');
@@ -156,6 +167,16 @@ export function parseWindowFrom(raw: unknown, where: string): WindowFromSelector
   if (r.label !== undefined) {
     if (!nonEmptyString(r.label)) invalid(where, `"label" must be a non-empty string`);
     out.label = r.label as string;
+  }
+  if (r.baseline_days !== undefined) {
+    const d = r.baseline_days;
+    if (typeof d !== 'number' || !Number.isInteger(d) || d < 1 || d > MAX_CUSTOM_HORIZON_DAYS) {
+      invalid(
+        where,
+        `"baseline_days" must be an integer in 1..${MAX_CUSTOM_HORIZON_DAYS} (got ${JSON.stringify(d)})`,
+      );
+    }
+    out.baselineDays = d as number;
   }
   return out;
 }

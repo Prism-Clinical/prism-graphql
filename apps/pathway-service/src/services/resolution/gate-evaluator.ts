@@ -515,6 +515,13 @@ export interface ConditionOutcome {
   anchorUnresolved?: boolean;
   /** The anchor a `window_from` condition was evaluated from, when it resolved. */
   windowAnchor?: WindowAnchorEvidence;
+  /**
+   * A trend/delta series with too few dated values in its window: how many
+   * more it needs. Paired with `indeterminate: true` (INSUFFICIENT_SERIES).
+   */
+  seriesShortBy?: number;
+  /** `YYYY-MM-DD` of the latest value the short series does have. */
+  seriesLatestDate?: string;
 }
 
 export type ConditionEvaluator = (
@@ -532,16 +539,20 @@ function evaluateConditionLegacyAdapted(
   condition: GateCondition,
   deps: GateEvaluationDeps,
 ): ConditionOutcome {
-  // `legacy-v0` has no anchor resolution: its trend reads `window_days` alone,
-  // so a `window_from` condition would silently evaluate over the patient's
-  // whole history. Refused, not approximated. (A new key, so no legacy
-  // behaviour exists to preserve.)
-  if ((condition as { window_from?: unknown }).window_from !== undefined) {
-    return {
-      satisfied: false,
-      reason: 'window_from requires the v1 temporal kernel; legacy-v0 cannot anchor a window',
-      fieldsRead: isAttributeCondition(condition) ? [condition.attribute] : [condition.field],
-    };
+  // Two keys `legacy-v0` would silently misread, refused rather than
+  // approximated (both new, so no legacy behaviour exists to preserve):
+  //  - `window_from`: legacy has no anchor resolution and reads `window_days`
+  //    alone, so the window would silently become the whole history;
+  //  - `delta_comparison`: legacy picks the direction from the threshold's
+  //    sign, so `less_than 1.0` would run as `>= 1.0` — the exact inverse.
+  for (const key of ['window_from', 'delta_comparison'] as const) {
+    if ((condition as unknown as Record<string, unknown>)[key] !== undefined) {
+      return {
+        satisfied: false,
+        reason: `${key} requires the v1 temporal kernel; legacy-v0 cannot evaluate it`,
+        fieldsRead: isAttributeCondition(condition) ? [condition.attribute] : [condition.field],
+      };
+    }
   }
   return evaluateConditionLegacy(
     condition,
@@ -798,6 +809,23 @@ function windowDescription(horizon: ResolvedHorizon): string {
  * only as a single-candidate selection, since an undated fact alongside any
  * other candidate is `AMBIGUOUS_SERIES_ORDER` and never reaches here.
  */
+/**
+ * The anchored series with ONE pre-treatment baseline: every fact from the
+ * anchor day on, plus the latest fact before it (`window_from.baseline_days`).
+ *
+ * `facts` is the kernel's selection, already in proven order, so the latest
+ * pre-anchor fact is the last one that starts before the anchor. A fact is
+ * "before" when its EARLIEST possible time is — a coarse bound straddling the
+ * anchor day counts as pre-treatment, the conservative reading for a baseline.
+ */
+function withLatestBaseline(facts: readonly NormalizedFact[], anchorMs: number): NormalizedFact[] {
+  const isPre = (f: NormalizedFact) =>
+    f.interval.start !== undefined && boundEpochRange(f.interval.start).loMs < anchorMs;
+  const pre = facts.filter(isPre);
+  const post = facts.filter((f) => !isPre(f));
+  return pre.length > 0 ? [pre[pre.length - 1], ...post] : post;
+}
+
 function seriesPoints(facts: readonly NormalizedFact[]): Array<{ ts: number; value: number }> {
   const points: Array<{ ts: number; value: number }> = [];
   for (const fact of facts) {
@@ -880,11 +908,19 @@ function evaluateAggregateKernel(
   }
   const resolvedAnchor = anchor && anchor.status === 'RESOLVED' ? anchor : undefined;
 
+  // With `baseline_days`, the selection window opens that many days BEFORE the
+  // anchor so the pre-treatment baseline can be found; everything before the
+  // anchor except the latest value is dropped once the series is ordered.
+  const baselineDays = windowFrom?.baselineDays;
+  const selectionLowerBound =
+    resolvedAnchor && baselineDays !== undefined
+      ? new Date(Date.parse(resolvedAnchor.lowerBound) - baselineDays * 86_400_000).toISOString()
+      : resolvedAnchor?.lowerBound;
   const policy = effectivePolicyFor(
     adapted,
     deps.temporalContext,
     deps.pathwayDefaults,
-    resolvedAnchor?.lowerBound,
+    selectionLowerBound,
   );
   const outcome = selectFacts(adapted.selection, deps.factStore, policy);
 
@@ -892,7 +928,9 @@ function evaluateAggregateKernel(
   // opened on — and where it came from — is on the audit row whatever the
   // verdict. Empty for an unanchored condition, keeping its prose unchanged.
   const anchorNote = resolvedAnchor
-    ? ` [window from ${resolvedAnchor.date}: ${anchorLabelFor(windowFrom!)} start, ` +
+    ? ` [window from ${resolvedAnchor.date}` +
+      (baselineDays !== undefined ? ` (+ latest baseline up to ${baselineDays} d before)` : '') +
+      `: ${anchorLabelFor(windowFrom!)} start, ` +
       `${resolvedAnchor.source.toLowerCase().replace('_', ' ')} — ${resolvedAnchor.detail}]`
     : '';
   const anchorFields: Pick<ConditionOutcome, 'windowAnchor'> = resolvedAnchor
@@ -972,14 +1010,32 @@ function evaluateAggregateKernel(
 
   const isDelta = operator === 'delta_from_baseline';
   const minPoints = Math.max(2, condition.min_points ?? (isDelta ? 2 : 3));
-  const points = seriesPoints(selected);
+  const points = seriesPoints(
+    resolvedAnchor && baselineDays !== undefined
+      ? withLatestBaseline(selected, Date.parse(resolvedAnchor.lowerBound))
+      : selected,
+  );
   if (points.length < minPoints) {
+    // UNRESOLVED, not "no". Too few dated values is "not measured yet" — no
+    // recheck resulted — and answering `false` there made a missing recheck
+    // indistinguishable from a measured non-response, deciding silently instead
+    // of consulting `on_unresolved`. `count_in_window` is NOT here: a count of
+    // zero is a real answer.
+    //
+    // `seriesShortBy` lets escalation ask for the one missing value when one
+    // value WOULD complete the series; short by more, no single answer can, so
+    // the gate stays unresolved without a question (and takes its default).
+    const latest = points.length > 0 ? points[points.length - 1].ts : undefined;
     return finish({
       satisfied: false,
       reason: `Need ≥${minPoints} dated values for ${value}; found ${points.length}`,
       fieldsRead,
-      indeterminate: false,
-      uncertainty,
+      indeterminate: true,
+      uncertainty: [...new Set<UncertaintyReason>([...uncertainty, 'INSUFFICIENT_SERIES'])],
+      seriesShortBy: minPoints - points.length,
+      ...(latest !== undefined
+        ? { seriesLatestDate: new Date(latest).toISOString().slice(0, 10) }
+        : {}),
     });
   }
 
@@ -988,8 +1044,29 @@ function evaluateAggregateKernel(
     const current = points[points.length - 1].value;
     const observed = current - baseline;
     const delta = condition.delta_threshold ?? 0;
-    const ok = delta === 0 ? observed !== 0 : delta > 0 ? observed >= delta : observed <= delta;
     const decoration = `(baseline ${baseline}, current ${current})`;
+    const comparison = condition.delta_comparison;
+    if (comparison !== undefined) {
+      // Explicit direction: `at_least` and `less_than` on one threshold are
+      // exact complements, so a "responding" gate and a "not responding" gate
+      // written from the same number can neither both fire nor both miss.
+      // Compared at 1e-9: results are decimals, and binary subtraction is not —
+      // 8.2 − 7.2 is 0.9999999999999991, which would read an exact 1.0 g/dL
+      // rise (a response, by the rule this key was built for) as "less than 1".
+      const settled = Math.round(observed * 1e9) / 1e9;
+      const met = comparison === 'at_least' ? settled >= delta : settled < delta;
+      const rel = comparison === 'at_least' ? '≥' : '<';
+      return finish({
+        satisfied: met,
+        reason:
+          `${value} delta ${observed.toFixed(4)} ${decoration} ` +
+          `${met ? 'satisfies' : 'does not satisfy'} ${rel} ${delta}`,
+        fieldsRead,
+        indeterminate: false,
+        uncertainty,
+      });
+    }
+    const ok = delta === 0 ? observed !== 0 : delta > 0 ? observed >= delta : observed <= delta;
     return finish({
       satisfied: ok,
       reason: ok
@@ -1339,8 +1416,24 @@ function evaluatePatientAttribute(
   if (result.uncertainty !== undefined) out.uncertainty = result.uncertainty;
   if (result.dataUnavailable !== undefined) out.dataUnavailable = result.dataUnavailable;
   if (result.anchorUnresolved === true) out.unresolvedAnchorConditions = [gate.condition];
+  const shortSeries = seriesAskableOf(gate.condition, result);
+  if (shortSeries) out.unresolvedSeries = [shortSeries];
   if (result.windowAnchor !== undefined) out.windowAnchors = [result.windowAnchor];
   return out;
+}
+
+/**
+ * A series ONE dated value short can be completed by asking for the newest
+ * result; short by more, no single answer completes it (a second answer would
+ * land at the same session instant and make the series unorderable). The
+ * latest date on file goes with it, so the question asks for a NEWER draw.
+ */
+function seriesAskableOf(
+  condition: GateCondition,
+  result: ConditionOutcome,
+): { condition: GateCondition; latestDate: string } | null {
+  if (result.seriesShortBy !== 1 || result.seriesLatestDate === undefined) return null;
+  return { condition, latestDate: result.seriesLatestDate };
 }
 
 /** The distinct anchors a set of condition outcomes resolved, in order. */
@@ -1640,6 +1733,10 @@ function evaluateCompound(
     // series order is asked nothing, since a date would not unblock it.
     const anchorless = gate.conditions.filter((_, i) => results[i].anchorUnresolved === true);
     if (anchorless.length > 0) out.unresolvedAnchorConditions = anchorless;
+    const shortSeries = gate.conditions
+      .map((c, i) => seriesAskableOf(c, results[i]))
+      .filter((x): x is { condition: GateCondition; latestDate: string } => x !== null);
+    if (shortSeries.length > 0) out.unresolvedSeries = shortSeries;
   }
   const anchors = windowAnchorsOf(results);
   if (anchors.length > 0) out.windowAnchors = anchors;

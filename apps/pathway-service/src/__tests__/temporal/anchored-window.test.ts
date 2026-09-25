@@ -339,14 +339,18 @@ describe('window_from on the v1 kernel', () => {
     expect(r.windowAnchors?.[0]).toMatchObject({ date: '2026-07-01', source: 'CLINICIAN' });
   });
 
-  it('a later anchor excludes the values before it — too few points is a definite no', async () => {
+  it('a later anchor excludes the values before it — too few points is UNRESOLVED, one short', async () => {
     const r = await evaluateGate(
       trendGate(),
       deps(patient({ labs: RESPONDER_LABS }), { answers: new Map([[KEY, { dateValue: '2026-08-01' }]]) }),
     );
     expect(r.satisfied).toBe(false);
-    expect(r.indeterminate).toBe(false);
+    expect(r.indeterminate).toBe(true);
+    expect(r.uncertainty).toEqual(['INSUFFICIENT_SERIES']);
     expect(r.reason).toContain('Need ≥2 dated values for 718-7; found 1');
+    // One value short: askable, as "a result newer than" the one on file.
+    expect(r.unresolvedSeries).toEqual([{ condition: expect.anything(), latestDate: '2026-08-15' }]);
+    expect(r.unresolvedAnchorConditions).toBeUndefined();
   });
 
   it('is indeterminate — flagged as an unresolved anchor — when nothing anchors it', async () => {
@@ -411,5 +415,144 @@ describe('window_from on the v1 kernel', () => {
     const r = await evaluateGate(trendGate(), deps(patient({ labs: RESPONDER_LABS }), { version: 'legacy-v0' }));
     expect(r.satisfied).toBe(false);
     expect(r.reason).toContain('window_from requires the v1 temporal kernel');
+  });
+});
+
+// ─── "rose by less than t", and the pre-treatment baseline ───────────
+
+const DELTA = (comparison: 'at_least' | 'less_than', windowFrom: Record<string, unknown> = ORAL_IRON_RAW) => ({
+  field: 'labs' as const,
+  operator: 'delta_from_baseline' as const,
+  value: HGB,
+  system: 'LOINC',
+  display: 'Hemoglobin (g/dL)',
+  delta_threshold: 1.0,
+  delta_comparison: comparison,
+  min_points: 2,
+  window_from: windowFrom,
+});
+
+describe('delta_comparison', () => {
+  const started = { answers: new Map([[KEY, { dateValue: '2026-06-01' }]]) };
+
+  it.each<[string, number, boolean, boolean]>([
+    ['a rise of exactly 1.0 is a response (Josh: "exactly 1.0 counts")', 9.2, true, false],
+    ['a rise of 0.6 is not', 8.8, false, true],
+    ['a fall is not', 7.9, false, true],
+    ['a rise of 1.5 is', 9.7, true, false],
+  ])('%s — at_least and less_than are exact complements', async (_label, recheck, atLeast, lessThan) => {
+    const pc = patient({ labs: [{ date: '2026-06-01', value: 8.2 }, { date: '2026-06-29', value: recheck }] });
+    const up = await evaluateGate(trendGate(DELTA('at_least')), deps(pc, started));
+    const under = await evaluateGate(trendGate(DELTA('less_than')), deps(pc, started));
+    expect(up.satisfied).toBe(atLeast);
+    expect(under.satisfied).toBe(lessThan);
+    expect(up.indeterminate).toBe(false);
+    expect(under.indeterminate).toBe(false);
+    expect(under.reason).toContain(lessThan ? 'satisfies < 1' : 'does not satisfy < 1');
+  });
+
+  it('an exact 1.0 rise is not lost to binary subtraction (8.2 − 7.2 = 0.9999999999999991)', async () => {
+    const pc = patient({ labs: [{ date: '2026-06-01', value: 7.2 }, { date: '2026-06-29', value: 8.2 }] });
+    expect((await evaluateGate(trendGate(DELTA('at_least')), deps(pc, started))).satisfied).toBe(true);
+    expect((await evaluateGate(trendGate(DELTA('less_than')), deps(pc, started))).satisfied).toBe(false);
+  });
+
+  it('works without window_from too (a fixed lookback)', async () => {
+    const { window_from: _wf, ...unanchored } = DELTA('less_than');
+    const r = await evaluateGate(
+      trendGate({ ...unanchored, window_days: 42 }),
+      deps(patient({ labs: [{ date: '2026-08-01', value: 8.2 }, { date: '2026-08-29', value: 8.9 }] })),
+    );
+    expect(r.satisfied).toBe(true);
+  });
+
+  it('legacy-v0 refuses it — the sign rule would run "< 1.0" as ">= 1.0"', async () => {
+    const r = await evaluateGate(
+      trendGate({ ...DELTA('less_than'), window_from: undefined }),
+      deps(patient({ labs: RESPONDER_LABS }), { version: 'legacy-v0' }),
+    );
+    expect(r.satisfied).toBe(false);
+    expect(r.reason).toContain('delta_comparison requires the v1 temporal kernel');
+  });
+
+  it.each<[string, Record<string, unknown>, string]>([
+    ['on a trend', { ...TREND_UP, delta_comparison: 'less_than' }, 'applies only to delta_from_baseline'],
+    ['with an unknown comparison', { ...DELTA('at_least'), delta_comparison: 'at_most' }, 'must be "at_least" or "less_than"'],
+  ])('is refused %s', async (_label, condition, fragment) => {
+    await expect(evaluateGate(trendGate(condition), deps(patient({})))).rejects.toThrow(fragment);
+  });
+});
+
+describe('insufficient series is UNRESOLVED, not "no"', () => {
+  it('one value short records the latest date so the question can ask for a newer draw', async () => {
+    const r = await evaluateGate(
+      trendGate(DELTA('less_than')),
+      deps(patient({ labs: [{ date: '2026-06-03', value: 8.4 }] }), {
+        answers: new Map([[KEY, { dateValue: '2026-06-01' }]]),
+      }),
+    );
+    expect(r).toMatchObject({ satisfied: false, indeterminate: true, uncertainty: ['INSUFFICIENT_SERIES'] });
+    expect(r.unresolvedSeries).toEqual([{ condition: expect.anything(), latestDate: '2026-06-03' }]);
+  });
+
+  it('two or more short asks nothing (no single answer completes it)', async () => {
+    const r = await evaluateGate(
+      trendGate({ ...DELTA('less_than'), min_points: 3 }),
+      deps(patient({ labs: [{ date: '2026-06-03', value: 8.4 }] }), {
+        answers: new Map([[KEY, { dateValue: '2026-06-01' }]]),
+      }),
+    );
+    expect(r.indeterminate).toBe(true);
+    expect(r.unresolvedSeries).toBeUndefined();
+  });
+
+  it('count_in_window is unchanged: a count of zero is an answer', async () => {
+    const r = await evaluateGate(
+      trendGate({ field: 'labs', operator: 'count_in_window', value: HGB, system: 'LOINC', window_days: 30 }),
+      deps(patient({})),
+    );
+    expect(r).toMatchObject({ satisfied: false, indeterminate: false });
+  });
+});
+
+describe('window_from.baseline_days — the pre-treatment baseline', () => {
+  // The diagnostic CBC is drawn BEFORE the prescription. Iron starts 06-01.
+  const LABS = [
+    { date: '2026-05-01', value: 9.6 }, // an older pre-treatment value — not the baseline
+    { date: '2026-05-29', value: 8.2 }, // the diagnostic Hgb, 3 days before iron
+    { date: '2026-06-26', value: 9.3 }, // the recheck
+  ];
+  const started = { answers: new Map([[KEY, { dateValue: '2026-06-01' }]]) };
+
+  it('uses the LATEST value within baseline_days before the anchor as the baseline', async () => {
+    const r = await evaluateGate(
+      trendGate(DELTA('at_least', { ...ORAL_IRON_RAW, baseline_days: 28 })),
+      deps(patient({ labs: LABS }), started),
+    );
+    expect(r.satisfied).toBe(true);
+    expect(r.reason).toContain('(baseline 8.2, current 9.3)');
+    expect(r.reason).toContain('latest baseline up to 28 d before');
+  });
+
+  it('without it, the pre-treatment value is outside the window — one value short, asked, not decided', async () => {
+    // The false-nonresponder trap: asked "most recent value?", a clinician
+    // re-enters the 9.3 on file; injected at the session clock it reads as a
+    // second, unchanged result — delta 0, "not responding". The question
+    // therefore names the date the new draw must follow.
+    const r = await evaluateGate(trendGate(DELTA('less_than')), deps(patient({ labs: LABS }), started));
+    expect(r.indeterminate).toBe(true);
+    expect(r.unresolvedSeries?.[0].latestDate).toBe('2026-06-26');
+  });
+
+  it('is refused on a count, and must be a positive whole number of days', () => {
+    expect(() =>
+      parseConditionOverride(
+        { field: 'labs', operator: 'count_in_window', value: HGB, window_from: { ...ORAL_IRON_RAW, baseline_days: 14 } },
+        'c',
+      ),
+    ).toThrow('a count has no baseline');
+    expect(() =>
+      parseConditionOverride({ ...DELTA('at_least', { ...ORAL_IRON_RAW, baseline_days: 0 }) }, 'c'),
+    ).toThrow('"baseline_days" must be an integer');
   });
 });

@@ -159,6 +159,26 @@ export function conditionControlDomainError(condition: unknown): string | null {
     }
   }
 
+  // `delta_comparison` makes the direction of a delta EXPLICIT, so both halves
+  // of "rose by at least t" / "rose by less than t" are expressible on the same
+  // threshold. Without it the sign of `delta_threshold` picks the direction and
+  // "less than" has no encoding. Keyed on the operator here — unlike the numeric
+  // rules — because on any other operator it would be silently ignored, and an
+  // ignored "less_than" reads as its exact inverse. One predicate, so import and
+  // runtime refuse the same conditions.
+  const comparison = c.delta_comparison;
+  if (comparison !== undefined) {
+    if (c.operator !== 'delta_from_baseline') {
+      return (
+        `"delta_comparison" applies only to delta_from_baseline ` +
+        `(got operator ${JSON.stringify(c.operator)})`
+      );
+    }
+    if (comparison !== 'at_least' && comparison !== 'less_than') {
+      return `"delta_comparison" must be "at_least" or "less_than" (got ${JSON.stringify(comparison)})`;
+    }
+  }
+
   const slope = c.slope_threshold;
   if (slope !== undefined) {
     if (typeof slope !== 'number' || !Number.isFinite(slope)) {
@@ -295,6 +315,14 @@ export function parseConditionOverride(
       );
     }
     override.windowFrom = parseWindowFrom(cond.window_from, `${where}.window_from`);
+    // A pre-anchor BASELINE is a series concept; a count has no baseline.
+    if (override.windowFrom.baselineDays !== undefined && op === 'count_in_window') {
+      throw new TemporalContextError(
+        `${where}.window_from: "baseline_days" applies only to trend_up / trend_down / ` +
+          `delta_from_baseline — a count has no baseline`,
+        'INVALID_TEMPORAL_DEFAULTS',
+      );
+    }
   }
 
   if (hasWindowDays) {

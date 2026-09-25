@@ -238,6 +238,110 @@ describe('the clinician date resolves it', () => {
   });
 });
 
+// ─── Three outcomes from chart data (the anemia response check) ──────
+
+const DELTA_COND = (comparison: 'at_least' | 'less_than') => ({
+  field: 'labs', operator: 'delta_from_baseline', value: '718-7', system: 'LOINC',
+  display: 'Hemoglobin (g/dL)', delta_threshold: 1.0, delta_comparison: comparison, min_points: 2,
+  window_from: { ...ORAL_IRON, baseline_days: 28 },
+});
+
+/** step-2-3 → gate-hgb-response → step-2-4; step-2-3 → gate-hgb-nonresponse → step-2-6. */
+function responseAndNonresponse() {
+  return makeGraphContext(
+    [
+      node('root', 'Pathway'),
+      node('step-2-3', 'Step', { title: 'Response assessment' }),
+      node('gate-hgb-response', 'Gate', {
+        title: 'Responding to oral iron', gate_type: GateType.PATIENT_ATTRIBUTE,
+        default_behavior: DefaultBehavior.SKIP, on_unresolved: 'ask', condition: DELTA_COND('at_least'),
+      }),
+      node('step-2-4', 'Step', { title: 'Maintenance & surveillance' }),
+      node('gate-hgb-nonresponse', 'Gate', {
+        title: 'Not responding to oral iron', gate_type: GateType.PATIENT_ATTRIBUTE,
+        default_behavior: DefaultBehavior.SKIP, on_unresolved: 'ask', condition: DELTA_COND('less_than'),
+      }),
+      node('step-2-6', 'Step', { title: 'Nonresponse management' }),
+    ],
+    [
+      edge('root', 'step-2-3', 'HAS_STEP'),
+      edge('step-2-3', 'gate-hgb-response', 'HAS_GATE'),
+      edge('gate-hgb-response', 'step-2-4', 'BRANCHES_TO'),
+      edge('step-2-3', 'gate-hgb-nonresponse', 'HAS_GATE'),
+      edge('gate-hgb-nonresponse', 'step-2-6', 'BRANCHES_TO'),
+    ],
+  );
+}
+
+function hgbPatient(labs: Array<[string, number]>): PatientContext {
+  return {
+    patientId: 'pt-1', conditionCodes: [], medications: [], allergies: [],
+    labResults: labs.map(([date, value]) => ({ code: '718-7', system: 'LOINC', value, date })),
+  } as unknown as PatientContext;
+}
+
+describe('response check: responding / not responding / not yet rechecked', () => {
+  const started = new Map<string, GateAnswer>([[KEY, { dateValue: '2026-06-01' }]]);
+
+  it('responding: rise ≥ 1 since the start (from the pre-treatment baseline) → maintenance only', async () => {
+    const pc = hgbPatient([['2026-05-29', 8.2], ['2026-06-26', 9.3]]);
+    const r = await engineFor(pc).traverse(responseAndNonresponse(), pc, started);
+    expect(r.resolutionState.get('step-2-4')!.status).toBe(NodeStatus.INCLUDED);
+    expect(r.resolutionState.get('step-2-6')!.status).toBe(NodeStatus.GATED_OUT);
+    expect(r.pendingQuestions).toEqual([]);
+  });
+
+  it('not responding: rise < 1 with enough data → nonresponse management only', async () => {
+    const pc = hgbPatient([['2026-05-29', 8.2], ['2026-06-26', 8.6]]);
+    const r = await engineFor(pc).traverse(responseAndNonresponse(), pc, started);
+    expect(r.resolutionState.get('step-2-4')!.status).toBe(NodeStatus.GATED_OUT);
+    expect(r.resolutionState.get('step-2-6')!.status).toBe(NodeStatus.INCLUDED);
+    expect(r.pendingQuestions).toEqual([]);
+  });
+
+  it('not yet rechecked: only the baseline → BOTH held, ONE question for a newer Hgb', async () => {
+    const pc = hgbPatient([['2026-05-29', 8.2]]);
+    const r = await engineFor(pc).traverse(responseAndNonresponse(), pc, started);
+    for (const id of ['gate-hgb-response', 'step-2-4', 'gate-hgb-nonresponse', 'step-2-6']) {
+      expect(r.resolutionState.get(id)!.status).toBe(NodeStatus.PENDING_QUESTION);
+    }
+    expect(r.pendingQuestions).toHaveLength(1);
+    expect(r.pendingQuestions[0]).toMatchObject({
+      datumKey: 'LOINC:718-7',
+      answerType: AnswerType.NUMERIC,
+      prompt: 'Hemoglobin (g/dL) (LOINC 718-7) — newest result, drawn after 2026-05-29?',
+      askTarget: { kind: 'lab', code: '718-7', system: 'LOINC' },
+      askedByNodeIds: ['gate-hgb-response', 'gate-hgb-nonresponse'],
+    });
+  });
+
+  it('no start date yet: both held on ONE date question', async () => {
+    const pc = hgbPatient([['2026-05-29', 8.2], ['2026-06-26', 9.3]]);
+    const r = await engineFor(pc).traverse(responseAndNonresponse(), pc, new Map());
+    expect(r.pendingQuestions).toHaveLength(1);
+    expect(r.pendingQuestions[0]).toMatchObject({ datumKey: KEY, answerType: AnswerType.DATE });
+  });
+
+  it('on_unresolved: default keeps the pre-change outcome — the gate takes default_behavior, nothing is asked', async () => {
+    const pc = hgbPatient([['2026-05-29', 8.2]]);
+    const graph = makeGraphContext(
+      [
+        node('root', 'Pathway'),
+        node('g', 'Gate', {
+          gate_type: GateType.PATIENT_ATTRIBUTE, default_behavior: DefaultBehavior.SKIP,
+          on_unresolved: 'default', condition: DELTA_COND('at_least'),
+        }),
+        node('s', 'Step'),
+      ],
+      [edge('root', 'g', 'HAS_GATE'), edge('g', 's', 'BRANCHES_TO')],
+    );
+    const r = await engineFor(pc).traverse(graph, pc, started);
+    expect(r.pendingQuestions).toEqual([]);
+    expect(r.resolutionState.get('g')!.status).toBe(NodeStatus.GATED_OUT);
+    expect(r.resolutionState.get('s')!.status).toBe(NodeStatus.GATED_OUT);
+  });
+});
+
 describe('planAnchorAnswer', () => {
   async function pendingSession() {
     const graph = twoGates();

@@ -630,7 +630,12 @@ describe('trend_up and trend_down operate on the kernel-selected series', () => 
     expect(legacy.reason).toBe(`Need ≥3 dated values for ${HGB}; found 2`);
     expect(v1.satisfied).toBe(false);
     expect(v1.reason).toBe(legacy.reason);
-    expect(v1.indeterminate).toBe(false);
+    // Too few points is UNRESOLVED on v1 (anchored-windows change): "no recheck
+    // yet" is not "no response", so on_unresolved governs it. legacy-v0 keeps
+    // its plain "not met".
+    expect(v1.indeterminate).toBe(true);
+    expect(v1.uncertainty).toContain('INSUFFICIENT_SERIES');
+    expect(legacy.indeterminate).toBeUndefined();
   });
 
   it('honours an explicit min_points', async () => {
@@ -904,7 +909,10 @@ describe('D7 — an undated observation is admitted but not orderable', () => {
     const v1 = await evaluateGate(gate, deps('v1', shared));
     expect(legacy.reason).toBe(`Need ≥3 dated values for ${HGB}; found 0`);
     expect(v1.satisfied).toBe(false);
-    expect(v1.indeterminate).toBe(false);
+    // A shortfall, not an ordering failure: INSUFFICIENT_SERIES, never
+    // AMBIGUOUS_SERIES_ORDER (which only a second candidate can produce).
+    expect(v1.indeterminate).toBe(true);
+    expect(v1.uncertainty).toEqual(['INSUFFICIENT_SERIES']);
     expect(v1.reason).toBe(legacy.reason);
   });
 });
