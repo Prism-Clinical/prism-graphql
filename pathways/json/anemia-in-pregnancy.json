@@ -139,6 +139,17 @@
       }
     },
     {
+      "id": "step-1-7",
+      "type": "Step",
+      "properties": {
+        "stage_number": 1,
+        "step_number": 7,
+        "display_number": "1.7",
+        "title": "Microcytic anemia: iron strategy",
+        "description": "Entered only via gate-microcytic (MCV < 80 fL). Hosts DP-1: empiric oral iron vs confirmatory iron studies first. Normocytic and macrocytic anemia never reach this step; they go to Steps 1.3 / 1.4 through their own MCV gates."
+      }
+    },
+    {
       "id": "step-2-1",
       "type": "Step",
       "properties": {
@@ -374,6 +385,27 @@
       "type": "Criterion",
       "properties": {
         "description": "Moderate\u2013severe iron deficiency anemia within ~4\u20136 weeks of anticipated delivery, or oral failure near term \u2014 IV iron"
+      }
+    },
+    {
+      "id": "gate-microcytic",
+      "type": "Gate",
+      "properties": {
+        "title": "MCV < 80 fL (microcytic)",
+        "gate_type": "patient_attribute",
+        "default_behavior": "skip",
+        "on_unresolved": "ask",
+        "condition": {
+          "field": "labs",
+          "operator": "less_than",
+          "value": "787-2",
+          "system": "LOINC",
+          "display": "MCV (fL)",
+          "threshold": 80,
+          "horizon": {
+            "days": 90
+          }
+        }
       }
     },
     {
@@ -1961,7 +1993,7 @@
       "type": "HAS_STEP"
     },
     {
-      "from": "step-1-1",
+      "from": "step-1-7",
       "to": "dp-1",
       "type": "HAS_DECISION_POINT"
     },
@@ -2029,6 +2061,16 @@
       "from": "crit-2c",
       "to": "step-1-5",
       "type": "SELECTS_BRANCH"
+    },
+    {
+      "from": "step-1-1",
+      "to": "gate-microcytic",
+      "type": "HAS_GATE"
+    },
+    {
+      "from": "gate-microcytic",
+      "to": "step-1-7",
+      "type": "BRANCHES_TO"
     },
     {
       "from": "step-1-1",
@@ -2763,6 +2805,11 @@
     {
       "from": "step-1-6",
       "to": "ev-4",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-1-7",
+      "to": "ev-1",
       "type": "CITES_EVIDENCE"
     },
     {

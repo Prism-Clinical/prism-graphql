@@ -14,6 +14,8 @@
 //                    values decide, a missing one pends and asks for the datum
 //   shared-leaves    anemia labs split per host step: a gate closing one step no
 //                    longer takes a lab another (open) step also orders
+//   mcv              anemia gate-microcytic: DP-1 is offered only for MCV < 80;
+//                    normocytic / macrocytic skip it, a missing MCV asks
 //
 // The pathway proofs read pathways/json/anemia-in-pregnancy.json (override with
 // ANEMIA_JSON=<path>). They replay a branch choice the way the live mutation does
@@ -38,6 +40,8 @@ import { RiskMagnitudeScorer } from '../../../../apps/pathway-service/src/servic
 const AS_OF = '2026-09-24T12:00:00.000Z';
 const ANEMIA = process.env.ANEMIA_JSON ?? 'pathways/json/anemia-in-pregnancy.json';
 const THRESHOLDS = { autoResolveThreshold: 0.85, suggestThreshold: 0.6 }; // migration 039 system defaults
+/** DP-1's branch targets, sorted — the option ids its pending question offers. */
+const DP1_OPTIONS = ['step-1-2', 'step-2-1'];
 
 // ── Proof: attribute-form vs coded-form lab gates ─────────────────────
 async function proveAttributeForm(): Promise<void> {
@@ -179,7 +183,7 @@ async function proveDp1(): Promise<void> {
     expect('step-2-1 oral iron', status(r.state, 'step-2-1'), 'PENDING_QUESTION');
     expect('med-1 ferrous sulfate', status(r.state, 'med-1'), 'PENDING_QUESTION');
     const q = r.pending.find((p: any) => p.gateId === 'dp-1') as any;
-    expect('dp-1 asks with options', JSON.stringify([...(q?.options ?? [])].sort()), JSON.stringify(['step-1-2', 'step-2-1']));
+    expect('dp-1 asks with options', JSON.stringify([...(q?.options ?? [])].sort()), JSON.stringify(DP1_OPTIONS));
 
     console.log('  ferritin 50, provider chooses the workup (criterion 1b):');
     r = await resolveSession({ ...base, patient: patientWith(MCV72_FER50), choose: { dp: 'dp-1', option: 'step-1-2' } });
@@ -203,12 +207,9 @@ async function proveDp1(): Promise<void> {
     // [GAP — NEEDS JOSH] the empiric arm reaches Step 2.1 only:
     expect('step-2-3 response assessment (empiric-arm gap)', status(r.state, 'step-2-3'), 'EXCLUDED');
 
-    console.log('  MCV 90, provider chooses the workup — the choice, not MCV, decides Step 1.2:');
-    r = await resolveSession({
-      ...base, patient: patientWith([['787-2', 90], ['2276-4', 50], ['718-7', 9.5]]),
-      choose: { dp: 'dp-1', option: 'step-1-2' },
-    });
-    expect('step-1-2 workup', status(r.state, 'step-1-2'), 'INCLUDED');
+    // (v3 proved "MCV 90 + workup → Step 1.2 included". Since v4, MCV 90 never
+    // reaches DP-1 — gate-microcytic closes it — so that answer cannot be given;
+    // replaying it here would re-open a fork the live path never offers. See `mcv`.)
 
     console.log('  COUNTERFACTUAL — scoring puts step-1-2 below the 0.60 suggest threshold:');
     r = await resolveSession({
@@ -326,12 +327,82 @@ async function proveSharedLeaves(): Promise<void> {
   }
 }
 
+// ── Proof: gate-microcytic — DP-1 is offered only for MCV < 80 ─────────
+// [DECISION — Josh 2026-09-24] gate-microcytic (LOINC 787-2 < 80, 90 days,
+// skip, ask) on Step 1.1 is the only way into Step 1.7, the sole host of DP-1.
+// Normocytic and macrocytic patients never see the iron-strategy question and
+// get their own workups through gate-normocytic / gate-macrocytic.
+async function proveMcv(): Promise<void> {
+  console.log(`\n=== mcv: gate-microcytic in front of DP-1 (${ANEMIA}) ===`);
+  const labs = (mcv: number | null): Array<[string, number]> =>
+    [...(mcv === null ? [] : [['787-2', mcv] as [string, number]]), ['2276-4', 50], ['718-7', 9.5]];
+  const dp1Asked = (pending: unknown[]) => String(pending.some((p: any) => p.gateId === 'dp-1'));
+  for (const reverse of [false, true]) {
+    console.log(`  -- edge order: ${reverse ? 'reversed' : 'file'}`);
+    const base = { file: ANEMIA, reverse };
+
+    for (const mcv of [72, 79.9]) {
+      console.log(`  MCV ${mcv} (microcytic) — DP-1 offered:`);
+      const r = await resolveSession({ ...base, patient: patientWith(labs(mcv)) });
+      expect('gate-microcytic', status(r.state, 'gate-microcytic'), 'INCLUDED');
+      expect('step-1-7 iron strategy (DP-1 host)', status(r.state, 'step-1-7'), 'INCLUDED');
+      expect('dp-1', status(r.state, 'dp-1'), 'PENDING_QUESTION');
+      const q = r.pending.find((p: any) => p.gateId === 'dp-1') as any;
+      expect('dp-1 asks with options', JSON.stringify([...(q?.options ?? [])].sort()), JSON.stringify(DP1_OPTIONS));
+      expect('step-1-3 normocytic workup', status(r.state, 'step-1-3'), 'GATED_OUT');
+      expect('step-1-4 macrocytic workup', status(r.state, 'step-1-4'), 'GATED_OUT');
+    }
+
+    for (const mcv of [80, 90]) {
+      console.log(`  MCV ${mcv} (normocytic) — no DP-1, normocytic workup:`);
+      const r = await resolveSession({ ...base, patient: patientWith(labs(mcv)) });
+      expect('gate-microcytic', status(r.state, 'gate-microcytic'), 'GATED_OUT');
+      expect('dp-1', status(r.state, 'dp-1'), 'GATED_OUT');
+      expect('no dp-1 question', dp1Asked(r.pending), 'false');
+      expect('step-1-2 microcytic workup', status(r.state, 'step-1-2'), 'GATED_OUT');
+      expect('step-2-1 oral iron', status(r.state, 'step-2-1'), 'GATED_OUT');
+      expect('med-1 ferrous sulfate', status(r.state, 'med-1'), 'GATED_OUT');
+      expect('step-1-3 normocytic workup', status(r.state, 'step-1-3'), 'INCLUDED');
+      expect('lab-11 ferritin (Step 1.3)', status(r.state, 'lab-11'), 'INCLUDED');
+      expect('lab-1 entry CBC', status(r.state, 'lab-1'), 'INCLUDED');
+      expect('step-1-4 macrocytic workup', status(r.state, 'step-1-4'), 'GATED_OUT');
+    }
+
+    console.log('  MCV 105 (macrocytic) — no DP-1, macrocytic workup:');
+    let r = await resolveSession({ ...base, patient: patientWith(labs(105)) });
+    expect('gate-microcytic', status(r.state, 'gate-microcytic'), 'GATED_OUT');
+    expect('dp-1', status(r.state, 'dp-1'), 'GATED_OUT');
+    expect('no dp-1 question', dp1Asked(r.pending), 'false');
+    expect('step-1-4 macrocytic workup', status(r.state, 'step-1-4'), 'INCLUDED');
+    expect('lab-5 B12', status(r.state, 'lab-5'), 'INCLUDED');
+    expect('lab-6 folate', status(r.state, 'lab-6'), 'INCLUDED');
+    expect('med-8 folic acid', status(r.state, 'med-8'), 'INCLUDED');
+    expect('step-1-3 normocytic workup', status(r.state, 'step-1-3'), 'GATED_OUT');
+    expect('step-2-1 oral iron', status(r.state, 'step-2-1'), 'GATED_OUT');
+    expect('lab-1 entry CBC', status(r.state, 'lab-1'), 'INCLUDED');
+
+    console.log('  MCV missing — asks for MCV once, holds DP-1 and every workup:');
+    r = await resolveSession({ ...base, patient: patientWith(labs(null)) });
+    const mcvQs = r.pending.filter((p: any) => p.datumKey === 'LOINC:787-2') as any[];
+    expect('one MCV question', String(mcvQs.length), '1');
+    expect('asked by the three MCV gates', JSON.stringify([...(mcvQs[0]?.askedByNodeIds ?? [])].sort()),
+      JSON.stringify(['gate-macrocytic', 'gate-microcytic', 'gate-normocytic']));
+    expect('gate-microcytic', status(r.state, 'gate-microcytic'), 'PENDING_QUESTION');
+    expect('dp-1', status(r.state, 'dp-1'), 'PENDING_QUESTION');
+    expect('no dp-1 question yet', dp1Asked(r.pending), 'false');
+    for (const id of ['step-1-2', 'step-1-3', 'step-1-4', 'step-2-1']) {
+      expect(id, status(r.state, id), 'PENDING_QUESTION');
+    }
+  }
+}
+
 const PROOFS: Record<string, () => Promise<void>> = {
   'attribute-form': proveAttributeForm,
   'dp-1': proveDp1,
   'dp-1-scoring': proveDp1Scoring,
   'ga': proveGa,
   'shared-leaves': proveSharedLeaves,
+  'mcv': proveMcv,
 };
 
 async function main() {
