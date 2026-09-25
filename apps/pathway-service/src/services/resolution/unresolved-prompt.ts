@@ -160,7 +160,7 @@ export function askFor(
   if (field === 'vitals') {
     return {
       datumKey: `vitals.${value}`,
-      prompt: `${value} — current value?`,
+      prompt: `${authoredDisplay(condition.display) ?? value} — current value?`,
       answerType: AnswerType.NUMERIC,
       target: { kind: 'vital', path: value },
     };

@@ -282,6 +282,15 @@ describe('askFor — the readable label on an attribute prompt', () => {
     expect(ask.target).toEqual({ kind: 'attribute', path: 'patient.prior_cesarean' });
   });
 
+  it('a coded vitals condition uses its authored display too; the key stays the path', () => {
+    const ask = askFor(cond({
+      field: 'vitals', operator: 'greater_than', value: 'systolic_bp', threshold: 140, display: 'Systolic BP',
+    }))!;
+    expect(ask.prompt).toBe('Systolic BP — current value?');
+    expect(ask.datumKey).toBe('vitals.systolic_bp');
+    expect(ask.target).toEqual({ kind: 'vital', path: 'systolic_bp' });
+  });
+
   it('does not borrow a patient label for the same name in another namespace', () => {
     const ask = askFor(cond({ attribute: 'vitals.trimester', operator: 'equals', value: 2 }))!;
     expect(ask.prompt).toBe('vitals.trimester — current value?');
