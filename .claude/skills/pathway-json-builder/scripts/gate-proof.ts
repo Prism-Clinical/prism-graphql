@@ -35,6 +35,8 @@
 //                    1.8); traits and uncoded patients keep DP-1; MCV ≥ 80 neither
 //   ghtn-shared-labs gestational hypertension v2: BP, severity-panel and urine-protein
 //                    labs split per host step — each follows its own step's gate
+//   ghtn-seizure     gestational hypertension v4: Guid-5 "Seizure: call 911" follows
+//                    Step 4.4 (outpatient, no severe features) in both edge orders
 //   uti-shared-labs  UTI in pregnancy v3: organism ID, susceptibility and test-of-cure
 //                    culture labs split per host step — each follows its own step's
 //                    gate; the one Step 1.1/2.1 culture (both unconditional) is
@@ -1058,6 +1060,55 @@ async function proveGhtnSharedLabs(): Promise<void> {
   }
 }
 
+// ── Proof: GHTN v4 seizure instruction follows Step 4.4 ──────────────
+// [DECISION — Josh 2026-09-24] Guid-5 "Seizure: call 911" (PB 222) is its own
+// GHTN-only Guidance node on Step 4.4, next to Guid-1 (the shared warning-signs
+// reference, left byte-identical to routine-prenatal-care's). Step 4.4 is
+// gated by gate-no-severe-features, so Guid-5 reaches the patients managed as
+// outpatients and follows that gate — never a severe-feature patient's plan.
+async function proveGhtnSeizure(): Promise<void> {
+  console.log(`\n=== ghtn-seizure: Guid-5 "Seizure: call 911" follows Step 4.4 (${GHTN}) ===`);
+  const pw = JSON.parse(readFileSync(resolve(GHTN), 'utf8'));
+  const g5 = pw.nodes.find((n: any) => n.id === 'guid-5');
+  const g1 = pw.nodes.find((n: any) => n.id === 'guid-1');
+  expect('guid-5 topic', String(g5?.properties?.topic), 'Seizure: call 911');
+  expect('guid-5 is its own node (guid-1 text has no seizure line)', String(/seizure/i.test(g1?.properties?.instructions ?? '')), 'false');
+  const q = (gate: string, answer: GateAnswer): Replay => ({ gate, answer });
+  const diagnosed = (severe: boolean): Replay[] => [
+    q('gate-aspirin-indicated', NO),
+    q('gate-htn-confirmed', YES),
+    q('gate-severe-feature-symptoms', severe ? YES : NO),
+    q('gate-no-severe-features', severe ? NO : YES),
+    { dp: 'dp-1', option: 'step-2-3a' },
+  ];
+  const HIGH_BP = { systolic_bp: 150, diastolic_bp: 95 };
+  const LABS: Array<[string, number]> = [['777-3', 220], ['2160-0', 0.7]];
+  for (const reverse of [false, true]) {
+    console.log(`  -- edge order: ${reverse ? 'reversed' : 'file'}`);
+    const run = (codes: string[], vitals: Record<string, number>, ask: Replay[]) =>
+      resolveSession({ file: GHTN, reverse, patient: patientOf({ codes, labs: LABS, vitals }), ask });
+
+    console.log('  gestational HTN (O13.3), no severe features — outpatient: seizure line with the warning signs:');
+    let r = await run(['O13.3'], HIGH_BP, diagnosed(false));
+    expect('step-4-4 safety-netting', status(r.state, 'step-4-4'), 'INCLUDED');
+    expectAll('(Step 4.4 guidance)', r.state, ['guid-1', 'guid-5'], 'INCLUDED');
+    expect('guid-5 sits under', String(r.state.get('guid-5')?.parentNodeId), 'step-4-4');
+
+    console.log('  preeclampsia (O14.03), no severe features — same:');
+    r = await run(['O14.03'], HIGH_BP, diagnosed(false));
+    expectAll('(Step 4.4 guidance)', r.state, ['guid-1', 'guid-5'], 'INCLUDED');
+
+    console.log('  gestational HTN, severe feature on assessment — Stage 4 closed, escalated (flagged):');
+    r = await run(['O13.3'], HIGH_BP, diagnosed(true));
+    expect('stage-4', status(r.state, 'stage-4'), 'GATED_OUT');
+    expectAll('(Step 4.4 guidance)', r.state, ['guid-1', 'guid-5'], 'GATED_OUT');
+
+    console.log('  BP 120/75, aspirin indicated — no hypertensive disorder: no seizure line:');
+    r = await run([], { systolic_bp: 120, diastolic_bp: 75 }, [q('gate-aspirin-indicated', YES)]);
+    expect('guid-5', status(r.state, 'guid-5'), 'GATED_OUT');
+  }
+}
+
 // ── Proof: UTI in pregnancy labs, one node per host step (v2) ─────────
 // v1 shared three LabTest nodes across hosts: the urine culture (lab-1) on
 // Steps 1.1, 2.1 and the test-of-cure repeat culture (step-5-2a); organism
@@ -1200,6 +1251,7 @@ const PROOFS: Record<string, () => Promise<void>> = {
   'dp-3': proveDp3,
   'hgbpathy': proveHgbpathy,
   'ghtn-shared-labs': proveGhtnSharedLabs,
+  'ghtn-seizure': proveGhtnSeizure,
   'uti-shared-labs': proveUtiSharedLabs,
 };
 
