@@ -16,8 +16,9 @@
 //                    longer takes a lab another (open) step also orders
 //   mcv              anemia gate-microcytic: DP-1 is offered only for MCV < 80;
 //                    normocytic / macrocytic skip it, a missing MCV asks
-//   empiric          anemia DP-1 empiric arm (Stage 1.5): reaches the same response
-//                    check as confirmed IDA; no ferritin needed
+//   empiric          anemia DP-1 empiric arm (Stage 1.5): reaches DP-3 (v8) and,
+//                    through its oral trial, the same response check as
+//                    confirmed IDA; no ferritin needed
 //   response         anemia v7 response check on chart data: gate-hgb-response /
 //                    gate-hgb-nonresponse, an anchored Hgb delta (window_from on
 //                    oral iron, due at day 14) OR/AND the trimester target in
@@ -26,10 +27,11 @@
 //                    at target → maintenance at once, trimester asked only for
 //                    Hgb 10.5–11, a missing recheck asks for the newest Hgb;
 //                    both arms
-//   dp-3             anemia v7 DP-3: confirmed IDA chooses the oral trial (Stage
-//                    2.5) or IV iron without a trial (Step 2.9 → gate-iv-iron-ga-direct
-//                    → Step 2.10); GA 12 gates IV out, GA missing asks; ferritin 50,
-//                    the empiric arm and hemoglobinopathy disease never see DP-3
+//   dp-3             anemia DP-3 (v7; both arms since v8): confirmed IDA and the
+//                    empiric arm choose the oral trial (Stage 2.5) or IV iron
+//                    without a trial (Step 2.9 → gate-iv-iron-ga-direct → Step
+//                    2.10); GA 12 gates IV out, GA missing asks; ferritin 50 and
+//                    hemoglobinopathy disease never see DP-3
 //   hgbpathy         anemia v7: hemoglobinopathy disease + MCV < 80 → no DP-1 (no
 //                    empiric iron) and its own confirmatory iron studies (Step
 //                    1.8); traits and uncoded patients keep DP-1; MCV ≥ 80 neither
@@ -83,6 +85,8 @@ const DP3_OPTIONS = [ORAL_TRIAL, IV_FIRST].sort();
 /** The confirmed arm, as the provider gives it: workup at DP-1, then the oral trial at DP-3. */
 const WORKUP: Replay = { dp: 'dp-1', option: 'step-1-2' };
 const ORAL: Replay = { dp: 'dp-3', option: ORAL_TRIAL };
+/** v8: the empiric arm reaches DP-3 too, so its oral iron is chosen there as well. */
+const EMPIRIC_CHOICE: Replay = { dp: 'dp-1', option: EMPIRIC };
 
 // ── Proof: attribute-form vs coded-form lab gates ─────────────────────
 async function proveAttributeForm(): Promise<void> {
@@ -343,22 +347,26 @@ async function proveDp1(): Promise<void> {
     });
     expect('dp-1 auto-selects', status(r.state, 'dp-1'), 'INCLUDED');
     expect(`${EMPIRIC} (automatic again)`, status(r.state, EMPIRIC), 'INCLUDED');
-    expect('step-2-1 oral iron (automatic again)', status(r.state, 'step-2-1'), 'INCLUDED');
+    // v8: the empiric arm reaches DP-3, so oral iron still waits for the route choice.
+    expect('step-2-8 route choice (automatic again)', status(r.state, 'step-2-8'), 'INCLUDED');
+    expect('dp-3 asks the route', status(r.state, 'dp-3'), 'PENDING_QUESTION');
+    expect('step-2-1 oral iron (waits for DP-3)', status(r.state, 'step-2-1'), 'PENDING_QUESTION');
   }
 }
 
 // ── Proof: the empiric arm gets the confirmed arm's follow-up ─────────
 // [DECISION — Josh 2026-09-24] Through v3, choosing empiric oral iron at DP-1
-// reached Step 2.1 only: Steps 2.2/2.3, DP-2 and IV iron hung from Stage 2,
-// which only gate-ida-confirmed opens. DP-1's empiric branch is now Stage 1.5
-// (`stage-2-empiric`), which HAS_STEPs the SAME Steps 2.1–2.3 — so the same
-// Hgb recheck, gate-hgb-response and DP-2 → gate-iv-iron-ga → IV iron apply.
-// Shared, not copied: DP-1 is one_of, so only one of the two parent stages is
-// ever open, and the engine spares a chosen branch's contents from the sweep
-// that excludes the other (containmentClosure) — checked here in both orders.
+// reached Step 2.1 only. v4–v7: DP-1's empiric branch is Stage 1.5
+// (`stage-2-empiric`), which held the SAME Steps 2.1–2.3 as Stage 2. v8: Stage
+// 1.5 holds Step 2.8 — DP-3, the oral-trial / IV-first route choice — so the
+// empiric arm chooses its route exactly as confirmed IDA does, and its oral
+// trial (Stage 2.5, Steps 2.1–2.3) brings the same Hgb recheck, response gates
+// and DP-2 → gate-iv-iron-ga → IV iron. Shared, not copied: DP-1 is one_of, so
+// only one of Stage 1.5 / Stage 2 is ever open, and the engine spares a chosen
+// branch's contents from the sweep that excludes the other (containmentClosure)
+// — checked here in both orders.
 async function proveEmpiric(): Promise<void> {
-  console.log(`\n=== empiric: DP-1 empiric arm → the same response check (${ANEMIA}) ===`);
-  const choose = { dp: 'dp-1', option: EMPIRIC };
+  console.log(`\n=== empiric: DP-1 empiric arm → DP-3 → the same response check (${ANEMIA}) ===`);
   const labs = (ferritin: number | null, hgb: number | null): Array<[string, number]> => [
     ['787-2', 72],
     ...(ferritin === null ? [] : [['2276-4', ferritin] as [string, number]]),
@@ -366,21 +374,31 @@ async function proveEmpiric(): Promise<void> {
   ];
   for (const reverse of [false, true]) {
     console.log(`  -- edge order: ${reverse ? 'reversed' : 'file'}`);
-    const base = { file: ANEMIA, reverse, choose };
+    const base = { file: ANEMIA, reverse };
+
+    console.log('  ferritin 50, Hgb 9.5, GA 20 — empiric chosen, route not chosen yet: DP-3 asks (v8):');
+    let r = await resolveSession({ ...base, patient: patientWith(labs(50, 9.5), { gestational_age_weeks: 20 }), replay: [EMPIRIC_CHOICE] });
+    expect(EMPIRIC, status(r.state, EMPIRIC), 'INCLUDED');
+    expect('step-2-8 route choice', status(r.state, 'step-2-8'), 'INCLUDED');
+    expect('dp-3', status(r.state, 'dp-3'), 'PENDING_QUESTION');
+    const q = r.pending.find((p: any) => p.gateId === 'dp-3') as any;
+    expect('dp-3 asks with options', JSON.stringify([...(q?.options ?? [])].sort()), JSON.stringify(DP3_OPTIONS));
+    for (const id of ['step-2-1', 'med-1', IV_FIRST]) expect(id, status(r.state, id), 'PENDING_QUESTION');
+    expect('stage-2 (unchosen DP-1 branch)', status(r.state, 'stage-2'), 'EXCLUDED');
 
     // The empiric arm reaches Step 2.3 and its response check; this visit starts
     // oral iron, so the check is NOT YET DUE and asks nothing (v7). What it
     // decides at the recheck is proved per arm in `response`.
-    console.log('  ferritin 50, Hgb 9.5, GA 20 — empiric chosen:');
-    let r = await resolveSession({ ...base, patient: patientWith(labs(50, 9.5), { gestational_age_weeks: 20 }) });
+    console.log('  ferritin 50, Hgb 9.5, GA 20 — empiric chosen, then the oral trial at DP-3:');
+    r = await resolveSession({ ...base, patient: patientWith(labs(50, 9.5), { gestational_age_weeks: 20 }), replay: [EMPIRIC_CHOICE, ORAL] });
     expect(EMPIRIC, status(r.state, EMPIRIC), 'INCLUDED');
     expect('step-1-2 workup (unchosen)', status(r.state, 'step-1-2'), 'EXCLUDED');
     expect('gate-ida-confirmed (not evaluated)', status(r.state, 'gate-ida-confirmed'), 'EXCLUDED');
     expect('stage-2', status(r.state, 'stage-2'), 'EXCLUDED');
-    for (const id of ['step-2-1', 'med-1', 'step-2-2', 'step-2-3', 'lab-10', 'sched-2', 'qm-1']) {
+    for (const id of [ORAL_TRIAL, 'step-2-1', 'med-1', 'step-2-2', 'step-2-3', 'lab-10', 'sched-2', 'qm-1']) {
       expect(id, status(r.state, id), 'INCLUDED');
     }
-    expect('step-2-3 sits under', String(r.state.get('step-2-3')?.parentNodeId), EMPIRIC);
+    expect('step-2-3 sits under', String(r.state.get('step-2-3')?.parentNodeId), ORAL_TRIAL);
     expect('gate-hgb-response (not yet due)', String(r.state.get('gate-hgb-response')?.notYetDue === true), 'true');
     expect('gate-hgb-nonresponse (not yet due)', String(r.state.get('gate-hgb-nonresponse')?.notYetDue === true), 'true');
     expect('no response question', String(r.pending.some((p: any) =>
@@ -389,7 +407,7 @@ async function proveEmpiric(): Promise<void> {
     expect('no ferritin question', String(r.pending.some((p: any) => p.datumKey === 'LOINC:2276-4')), 'false');
 
     console.log('  ferritin never drawn — empiric needs none:');
-    r = await resolveSession({ ...base, patient: patientWith(labs(null, 9.5), { gestational_age_weeks: 20 }) });
+    r = await resolveSession({ ...base, patient: patientWith(labs(null, 9.5), { gestational_age_weeks: 20 }), replay: [EMPIRIC_CHOICE, ORAL] });
     expect('no ferritin question', String(r.pending.some((p: any) => p.datumKey === 'LOINC:2276-4')), 'false');
     expect('step-2-3 response assessment', status(r.state, 'step-2-3'), 'INCLUDED');
     expect('gate-hgb-response (not yet due)', String(r.state.get('gate-hgb-response')?.notYetDue === true), 'true');
@@ -430,7 +448,7 @@ async function proveResponse(): Promise<void> {
   const regionQuestions = (pending: any[]) => pending.filter((p) =>
     RESPONSE_GATES.includes(p.gateId) || (p.askedByNodeIds ?? []).some((id: string) => RESPONSE_GATES.includes(id)));
   const arms: Array<[string, Lab[], Replay[]]> = [
-    ['empiric arm (ferritin never drawn)', [['787-2', 72]], [{ dp: 'dp-1', option: EMPIRIC }]],
+    ['empiric arm (ferritin never drawn; oral trial at DP-3, v8)', [['787-2', 72]], [EMPIRIC_CHOICE, ORAL]],
     ['confirmed arm (workup, ferritin 12, oral trial at DP-3)', [['787-2', 72], ['2276-4', 12]], [WORKUP, ORAL]],
   ];
   for (const reverse of [false, true]) {
@@ -776,92 +794,93 @@ async function proveMcv(): Promise<void> {
   }
 }
 
-// ── Proof: DP-3 — IV iron without an oral trial (v7) ──────────────────
-// [DECISION — Josh 2026-09-24] Ferritin-confirmed IDA reaches Step 2.8, the
-// host of DP-3 (one_of): criterion 3a → Stage 2.5 (the oral trial: Steps
-// 2.1–2.3, shared with Stage 1.5); criteria 3b intolerance / 3c malabsorption /
-// 3d IDA diagnosed at ≥ 34 weeks → Step 2.9, whose gate-iv-iron-ga-direct (GA
-// ≥ 14, gate-iv-iron-ga's condition) opens Step 2.10: IV iron with its own
-// medication and schedule copies. All three criteria are provider-judged.
+// ── Proof: DP-3 — IV iron without an oral trial (v7; both arms since v8) ──
+// [DECISION — Josh 2026-09-24] Step 2.8, the host of DP-3 (one_of), is reached
+// on BOTH iron arms since v8: ferritin-confirmed IDA (Stage 2) and empiric iron
+// chosen at DP-1 (Stage 1.5). Criterion 3a → Stage 2.5 (the oral trial: Steps
+// 2.1–2.3); criteria 3b intolerance / 3c malabsorption / 3d anemia diagnosed at
+// ≥ 34 weeks → Step 2.9, whose gate-iv-iron-ga-direct (GA ≥ 14, gate-iv-iron-ga's
+// condition) opens Step 2.10: IV iron with its own medication and schedule
+// copies. All three criteria are provider-judged.
 async function proveDp3(): Promise<void> {
-  console.log(`\n=== dp-3: oral iron trial vs IV iron without an oral trial (${ANEMIA}) ===`);
+  console.log(`\n=== dp-3: oral iron trial vs IV iron without an oral trial, both arms (${ANEMIA}) ===`);
   const IV_DIRECT = ['step-2-10', 'med-13', 'med-14', 'med-15', 'med-16', 'sched-6'];
   const ORAL_ARM = [ORAL_TRIAL, 'step-2-1', 'med-1', 'med-2', 'med-3', 'step-2-2', 'step-2-3', 'lab-10',
     'gate-hgb-response', 'gate-hgb-nonresponse'];
   const NONRESPONSE_IV = ['step-2-6', 'dp-2', 'step-2-5', 'med-4', 'med-5', 'med-6', 'med-7'];
   const IV_FIRST_CHOICE: Replay = { dp: 'dp-3', option: IV_FIRST };
   const dp3Asked = (pending: unknown[]) => String(pending.some((p: any) => p.gateId === 'dp-3'));
-  const confirmed = (ga: number | null, fer = 12): PatientContext =>
-    patientWith([['787-2', 72], ['2276-4', fer], ['718-7', 9.5]], ga === null ? {} : { gestational_age_weeks: ga });
+  const arms: Array<[string, (ga: number | null) => PatientContext, Replay, string]> = [
+    ['confirmed arm (workup, ferritin 12)',
+      (ga) => patientWith([['787-2', 72], ['2276-4', 12], ['718-7', 9.5]], ga === null ? {} : { gestational_age_weeks: ga }),
+      WORKUP, 'stage-2'],
+    ['empiric arm (no ferritin drawn; v8)',
+      (ga) => patientWith([['787-2', 72], ['718-7', 9.5]], ga === null ? {} : { gestational_age_weeks: ga }),
+      EMPIRIC_CHOICE, EMPIRIC],
+  ];
   for (const reverse of [false, true]) {
     console.log(`  -- edge order: ${reverse ? 'reversed' : 'file'}`);
     const base = { file: ANEMIA, reverse };
+    for (const [arm, patient, dp1, host] of arms) {
+      console.log(`  ${arm}:`);
+      console.log('    GA 20, route not chosen yet — DP-3 asks, both routes held:');
+      let r = await resolveSession({ ...base, patient: patient(20), replay: [dp1] });
+      expect('step-2-8 route selection', status(r.state, 'step-2-8'), 'INCLUDED');
+      expect('step-2-8 sits under', String(r.state.get('step-2-8')?.parentNodeId), host);
+      expect('dp-3', status(r.state, 'dp-3'), 'PENDING_QUESTION');
+      const q = r.pending.find((p: any) => p.gateId === 'dp-3') as any;
+      expect('dp-3 asks with options', JSON.stringify([...(q?.options ?? [])].sort()), JSON.stringify(DP3_OPTIONS));
+      for (const id of ['step-2-1', 'med-1', IV_FIRST, 'step-2-10', 'med-13']) expect(id, status(r.state, id), 'PENDING_QUESTION');
 
-    console.log('  confirmed IDA (ferritin 12), GA 20, route not chosen yet — DP-3 asks, both routes held:');
-    let r = await resolveSession({ ...base, patient: confirmed(20), choose: WORKUP });
-    expect('step-2-8 route selection', status(r.state, 'step-2-8'), 'INCLUDED');
-    expect('dp-3', status(r.state, 'dp-3'), 'PENDING_QUESTION');
-    const q = r.pending.find((p: any) => p.gateId === 'dp-3') as any;
-    expect('dp-3 asks with options', JSON.stringify([...(q?.options ?? [])].sort()), JSON.stringify(DP3_OPTIONS));
-    for (const id of ['step-2-1', 'med-1', IV_FIRST, 'step-2-10', 'med-13']) expect(id, status(r.state, id), 'PENDING_QUESTION');
+      console.log('    oral trial chosen (3a) — oral iron and the response check; no IV-first route:');
+      r = await resolveSession({ ...base, patient: patient(20), replay: [dp1, ORAL] });
+      expectAll('(oral arm)', r.state, ORAL_ARM.filter((id) => !id.startsWith('gate-hgb')), 'INCLUDED');
+      for (const g of ['gate-hgb-response', 'gate-hgb-nonresponse']) {
+        expect(`${g} not yet due (start visit)`, String(r.state.get(g)?.notYetDue === true), 'true');
+      }
+      expect(`${IV_FIRST} (unchosen)`, status(r.state, IV_FIRST), 'EXCLUDED');
+      expectAll('(IV without a trial)', r.state, ['gate-iv-iron-ga-direct', ...IV_DIRECT], 'EXCLUDED');
 
-    console.log('  oral trial chosen (3a) — oral iron and the response check; no IV-first route:');
-    r = await resolveSession({ ...base, patient: confirmed(20), choose: WORKUP, replay: [ORAL] });
-    expectAll('(oral arm)', r.state, ORAL_ARM.filter((id) => !id.startsWith('gate-hgb')), 'INCLUDED');
-    for (const g of ['gate-hgb-response', 'gate-hgb-nonresponse']) {
-      expect(`${g} not yet due (start visit)`, String(r.state.get(g)?.notYetDue === true), 'true');
-    }
-    expect(`${IV_FIRST} (unchosen)`, status(r.state, IV_FIRST), 'EXCLUDED');
-    expectAll('(IV without a trial)', r.state, ['gate-iv-iron-ga-direct', ...IV_DIRECT], 'EXCLUDED');
+      for (const [ga, label] of [[20, 'intolerance or malabsorption (3b/3c), GA 20'], [36, 'anemia diagnosed at ≥ 34 weeks (3d), GA 36']] as const) {
+        console.log(`    IV iron first chosen — ${label}: IV iron, no oral trial, no response check:`);
+        r = await resolveSession({ ...base, patient: patient(ga), replay: [dp1, IV_FIRST_CHOICE] });
+        expect(`${IV_FIRST}`, status(r.state, IV_FIRST), 'INCLUDED');
+        expect('gate-iv-iron-ga-direct', status(r.state, 'gate-iv-iron-ga-direct'), 'INCLUDED');
+        expectAll('(IV without a trial)', r.state, IV_DIRECT, 'INCLUDED');
+        expect('med-14 sits under', String(r.state.get('med-14')?.parentNodeId), 'step-2-10');
+        expectAll('(oral arm, unchosen)', r.state, ORAL_ARM, 'EXCLUDED');
+        expectAll('(post-nonresponse IV route)', r.state, NONRESPONSE_IV, 'EXCLUDED');
+        expect('questions from the response check', String(r.pending.some((p: any) =>
+          ['gate-hgb-response', 'gate-hgb-nonresponse'].includes(p.gateId)
+          || (p.askedByNodeIds ?? []).some((id: string) => id.startsWith('gate-hgb-')))), 'false');
+      }
 
-    for (const [ga, label] of [[20, 'intolerance or malabsorption (3b/3c), GA 20'], [36, 'IDA diagnosed at ≥ 34 weeks (3d), GA 36']] as const) {
-      console.log(`  IV iron first chosen — ${label}: IV iron, no oral trial, no response check:`);
-      r = await resolveSession({ ...base, patient: confirmed(ga), choose: WORKUP, replay: [IV_FIRST_CHOICE] });
+      console.log('    IV iron first chosen, GA 12 — IV iron gated out; nothing started (flagged):');
+      r = await resolveSession({ ...base, patient: patient(12), replay: [dp1, IV_FIRST_CHOICE] });
       expect(`${IV_FIRST}`, status(r.state, IV_FIRST), 'INCLUDED');
-      expect('gate-iv-iron-ga-direct', status(r.state, 'gate-iv-iron-ga-direct'), 'INCLUDED');
-      expectAll('(IV without a trial)', r.state, IV_DIRECT, 'INCLUDED');
-      expect('med-14 sits under', String(r.state.get('med-14')?.parentNodeId), 'step-2-10');
-      expectAll('(oral arm, unchosen)', r.state, ORAL_ARM, 'EXCLUDED');
-      expectAll('(post-nonresponse IV route)', r.state, NONRESPONSE_IV, 'EXCLUDED');
-      expect('questions from the response check', String(r.pending.some((p: any) =>
-        ['gate-hgb-response', 'gate-hgb-nonresponse'].includes(p.gateId)
-        || (p.askedByNodeIds ?? []).some((id: string) => id.startsWith('gate-hgb-')))), 'false');
+      expect('gate-iv-iron-ga-direct', status(r.state, 'gate-iv-iron-ga-direct'), 'GATED_OUT');
+      expectAll('(IV without a trial)', r.state, IV_DIRECT, 'GATED_OUT');
+      expectAll('(oral arm, unchosen)', r.state, ['step-2-1', 'med-1'], 'EXCLUDED');
+
+      console.log('    IV iron first chosen, GA missing — asks for GA, holds IV iron:');
+      r = await resolveSession({ ...base, patient: patient(null), replay: [dp1, IV_FIRST_CHOICE] });
+      expect('gate-iv-iron-ga-direct', status(r.state, 'gate-iv-iron-ga-direct'), 'PENDING_QUESTION');
+      expect('step-2-10', status(r.state, 'step-2-10'), 'PENDING_QUESTION');
+      expect('asks for datum', String((r.pending.find((p: any) => p.gateId === 'gate-iv-iron-ga-direct') as any)?.datumKey),
+        'patient.gestational_age_weeks');
     }
-
-    console.log('  IV iron first chosen, GA 12 — IV iron gated out; nothing started (flagged):');
-    r = await resolveSession({ ...base, patient: confirmed(12), choose: WORKUP, replay: [IV_FIRST_CHOICE] });
-    expect(`${IV_FIRST}`, status(r.state, IV_FIRST), 'INCLUDED');
-    expect('gate-iv-iron-ga-direct', status(r.state, 'gate-iv-iron-ga-direct'), 'GATED_OUT');
-    expectAll('(IV without a trial)', r.state, IV_DIRECT, 'GATED_OUT');
-    expectAll('(oral arm, unchosen)', r.state, ['step-2-1', 'med-1'], 'EXCLUDED');
-
-    console.log('  IV iron first chosen, GA missing — asks for GA, holds IV iron:');
-    r = await resolveSession({ ...base, patient: confirmed(null), choose: WORKUP, replay: [IV_FIRST_CHOICE] });
-    expect('gate-iv-iron-ga-direct', status(r.state, 'gate-iv-iron-ga-direct'), 'PENDING_QUESTION');
-    expect('step-2-10', status(r.state, 'step-2-10'), 'PENDING_QUESTION');
-    expect('asks for datum', String((r.pending.find((p: any) => p.gateId === 'gate-iv-iron-ga-direct') as any)?.datumKey),
-      'patient.gestational_age_weeks');
 
     console.log('  ferritin 50 (not iron deficient), workup — Stage 2 closed, DP-3 never asked:');
-    r = await resolveSession({ ...base, patient: confirmed(20, 50), choose: WORKUP });
+    const r = await resolveSession({ ...base, patient: patientWith([['787-2', 72], ['2276-4', 50], ['718-7', 9.5]], { gestational_age_weeks: 20 }), choose: WORKUP });
     expect('dp-3', status(r.state, 'dp-3'), 'GATED_OUT');
     expect('no dp-3 question', dp3Asked(r.pending), 'false');
     expectAll('(IV without a trial)', r.state, IV_DIRECT, 'GATED_OUT');
 
-    console.log('  empiric arm — DP-3 is the confirmed arm\'s; oral trial as before:');
-    r = await resolveSession({ ...base, patient: patientWith([['787-2', 72], ['718-7', 9.5]], { gestational_age_weeks: 36 }),
-      choose: { dp: 'dp-1', option: EMPIRIC } });
-    expect('dp-3', status(r.state, 'dp-3'), 'EXCLUDED');
-    expect('no dp-3 question', dp3Asked(r.pending), 'false');
-    expect('step-2-1 oral iron', status(r.state, 'step-2-1'), 'INCLUDED');
-    expect('step-2-3 sits under', String(r.state.get('step-2-3')?.parentNodeId), EMPIRIC);
-    expectAll('(IV without a trial)', r.state, IV_DIRECT, 'EXCLUDED');
-
     console.log('  D57.1 sickle-cell disease, MCV 72 — no DP-1, so no DP-3:');
-    r = await resolveSession({ ...base, patient: patientWith([['787-2', 72], ['2276-4', 12], ['718-7', 9.5]],
+    const d = await resolveSession({ ...base, patient: patientWith([['787-2', 72], ['2276-4', 12], ['718-7', 9.5]],
       { gestational_age_weeks: 20 }, ['D57.1']) });
-    expect('dp-3', status(r.state, 'dp-3'), 'GATED_OUT');
-    expect('no dp-3 question', dp3Asked(r.pending), 'false');
+    expect('dp-3', status(d.state, 'dp-3'), 'GATED_OUT');
+    expect('no dp-3 question', dp3Asked(d.pending), 'false');
   }
 }
 

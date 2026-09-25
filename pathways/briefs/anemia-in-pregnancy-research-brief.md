@@ -1,6 +1,6 @@
 # Pathway Research Brief — Anemia in Pregnancy
 
-JSON: pathways/json/anemia-in-pregnancy.json @ version 7
+JSON: pathways/json/anemia-in-pregnancy.json @ version 8
 
 **Status: DRAFT v2 for physician review — not yet approved for JSON build.**
 Scope assumed from request: outpatient prenatal care, adult pregnant patients, US practice,
@@ -29,8 +29,13 @@ still current, `[BLOCKED — prior_node_result]` import-blocked gate design with
 
 - **Logical ID**: `anemia-in-pregnancy`
 - **Title**: Anemia in Pregnancy — Classification and Treatment
-- **Version**: 7 `[DECISION — Josh 2026-09-24]` (JSON `"7"`; was `"6"`). Imports as
-  NEW_VERSION; v6 sessions keep v6's graph. Bumped for:
+- **Version**: 8 `[DECISION — Josh 2026-09-24]` (JSON `"8"`; was `"7"`). Imports as
+  NEW_VERSION; v7 sessions keep v7's graph. Bumped for:
+  - **The empiric arm reaches DP-3** (§2 Stage 1.5, §4 DP-3): Stage 1.5 now holds Step 2.8
+    (DP-3's host) instead of Steps 2.1–2.3, so a patient on empiric iron can also go to IV
+    iron without an oral trial; the oral trial (Stage 2.5, Steps 2.1–2.3) is reached through
+    DP-3 on both arms.
+  (v7 `[DECISION — Josh 2026-09-24]`, was `"6"`; v6 sessions keep v6's graph. Bumped for:)
   - **The oral-iron response check reads chart data** (§4b `gate-hgb-response` /
     `gate-hgb-nonresponse`): an Hgb rise anchored to the oral-iron start (`window_from`, due
     at day 14) OR the trimester target, in nested condition groups. Replaces v5/v6's interim
@@ -86,18 +91,21 @@ None. (Single-condition pathway; O99.01x already encodes the pregnancy+anemia co
   confirm the diagnosis against trimester criteria, MCV-based classification, ferritin
   confirmation, hemoglobinopathy testing, expanded workup for nonresponders. [1][4]
 - **Stage 1.5 — Empiric Oral Iron Trial (if chosen at DP-1)** *(branch-entry only, via
-  DP-1 criterion 1a)* `[DECISION — Josh 2026-09-24]`: holds Stage 2's Steps 2.1–2.3, so
-  the empiric arm gets the same response assessment and IV-iron escalation route as
-  ferritin-confirmed IDA (§4, DP-1). Numbered 1.5 so it sorts after Stage 1 with a
-  number of its own; its steps keep their 2.x numbers. [1][5]
+  DP-1 criterion 1a)* `[DECISION — Josh 2026-09-24]`: v8 — holds Step 2.8, the iron-route
+  choice (DP-3), so the empiric arm chooses the oral trial or IV iron without an oral trial
+  exactly as ferritin-confirmed IDA does, and its oral trial brings the same response
+  assessment and IV-iron escalation route (§4, DP-1 and DP-3). (v4–v7: held Steps 2.1–2.3
+  directly.) Numbered 1.5 so it sorts after Stage 1 with a number of its own; its step
+  keeps its 2.x number. [1][5]
 - **Stage 2 — Iron Deficiency Treatment** *(branch-entry only, via gate-ida-confirmed)*:
   v7 — holds Step 2.8, the route choice (DP-3): the oral trial (Stage 2.5) or IV iron
   without an oral trial (Steps 2.9–2.10). Oral iron first line with counseling, response
   assessment, IV iron escalation. [1][5][7]
 - **Stage 2.5 — Oral Iron Trial (if chosen at DP-3)** *(branch-entry only, via DP-3
-  criterion 3a; v7)* `[BUILD NOTE]` (how DP-3's oral branch is built): holds Steps 2.1–2.3 — the same steps
-  Stage 1.5 holds — so confirmed IDA keeps the oral iron, response check and escalation
-  route it had. Carries Stage 2's citations, so DP-3's two targets score alike and the fork
+  criterion 3a; v7)* `[BUILD NOTE]` (how DP-3's oral branch is built): holds Steps 2.1–2.3 —
+  oral iron, the trial period and the response check — on both arms since v8 (DP-3 is
+  reached from Stage 2 and from Stage 1.5; through v7 Stage 1.5 held these steps itself).
+  Carries Stage 2's citations, so DP-3's two targets score alike and the fork
   pends for the provider (`gate-proof.ts dp-1-scoring`). [1][5]
 - **Stage 3 — Special Populations & Escalations** *(root-connected container; every step
   individually gated)*: hemoglobinopathy/thalassemia/CKD routing-out, trait carriers,
@@ -176,9 +184,10 @@ None. (Single-condition pathway; O99.01x already encodes the pregnancy+anemia co
   2026-09-24]`. It was v5/v6's "recheck not yet done" arm, there so the start visit could
   finish while the response check was a question. The chart-data gates close NOT YET DUE at
   the start visit and before day 14 without asking anything, which does the same job (§4b).
-- **Step 2.8 — Iron treatment route: oral trial or IV iron first** *(in Stage 2 — so
-  ferritin-confirmed IDA only; v7)* `[BUILD NOTE]`: hosts DP-3 (DP-3 itself is `[DECISION —
-  Josh 2026-09-24]`; placing it in Stage 2 is the builder's — see DP-3 ambiguity (b)). [1][5][6]
+- **Step 2.8 — Iron treatment route: oral trial or IV iron first** *(in Stage 2 and, since
+  v8, Stage 1.5 — so both iron arms; v7)* `[BUILD NOTE]`: hosts DP-3 (DP-3 itself is
+  `[DECISION — Josh 2026-09-24]`; v7 placed it in Stage 2 only, and v8 adds Stage 1.5 as a
+  second parent per Josh's decision that the empiric arm gets DP-3 too — §4 DP-3). [1][5][6]
 - **Step 2.9 — IV iron without an oral trial** *(DP-3 criteria 3b/3c/3d; v7)*
   `[BUILD NOTE]`: hosts gate-iv-iron-ga-direct → Step 2.10, keeping IV iron's GA ≥ 14 rule
   (`[DECISION — Josh 2026-09-24]`: IV iron at GA ≥ 14 on this route too). Exists for the same reason as Steps 1.7/2.6 (a gate guards a Step,
@@ -222,9 +231,9 @@ None. (Single-condition pathway; O99.01x already encodes the pregnancy+anemia co
   transition. [1][6][9]
 
 Branch-entry-only stages: Stage 2 (entered via gate-ida-confirmed), Stage 1.5 (entered
-via DP-1 criterion 1a) and Stage 2.5 (entered via DP-3 criterion 3a, inside Stage 2); Stages
-1.5 and 2.5 hold the same Steps 2.1–2.3, and DP-1 being one_of means at most one of them is
-ever open. Stage 1 is
+via DP-1 criterion 1a) and Stage 2.5 (entered via DP-3 criterion 3a); since v8 Stages 2 and
+1.5 hold the same Step 2.8 (DP-3), and DP-1 being one_of means at most one of them is ever
+open; Stage 2.5 holds Steps 2.1–2.3. Stage 1 is
 the root entry stage; Stage 3 is a root-connected container whose steps all hang from
 gates; Stage 4 is root-connected. Gated steps connect **only** via their gate/DP
 BRANCHES_TO (no HAS_STEP edge), per the reference-fixture pattern.
@@ -257,8 +266,8 @@ BRANCHES_TO (no HAS_STEP edge), per the reference-fixture pattern.
     ask). **What it costs** — see §18: a ferritin-confirmed disease patient does not
     reach the Stage 2 iron arm.
   - Criterion 1a: No evidence of causes other than iron deficiency → empiric oral iron
-    reasonable without iron studies (ACOG) → **Stage 1.5** (Steps 2.1–2.3; was Step 2.1
-    alone through v3) [1]
+    reasonable without iron studies (ACOG) → **Stage 1.5** (v8: Step 2.8 → DP-3; v4–v7:
+    Steps 2.1–2.3; Step 2.1 alone through v3) [1]
   - Criterion 1b: Atypical features, uncertain etiology, or confirmation preferred →
     ferritin/iron studies first → **Step 1.2** [1]
   - Judgment call by ACOG's own wording ("may be reasonable"); not machine-evaluable. [1]
@@ -278,19 +287,22 @@ BRANCHES_TO (no HAS_STEP edge), per the reference-fixture pattern.
     iron is never automatic unless confidence scoring puts Step 1.2 below the 0.60
     suggest threshold while Step 2.1 stays above it (only a per-node DB weight override
     or admin evidence entry could do that).
-  - `[DECISION — Josh 2026-09-24]` **Second routes into Stage 2's steps (v4).**
-    [SECOND ROUTE — step-2-1 via stage-2-empiric]
-    [SECOND ROUTE — step-2-2 via stage-2-empiric]
-    [SECOND ROUTE — step-2-3 via stage-2-empiric]
-    Steps 2.1–2.3 sit in Stage 2, which `gate-ida-confirmed` gates, and are also held by
+  - `[DECISION — Josh 2026-09-24]` **Second route into Stage 2's contents (v8; v4–v7: into
+    Steps 2.1–2.3).**
+    [SECOND ROUTE — step-2-8 via stage-2-empiric]
+    Step 2.8 (DP-3) sits in Stage 2, which `gate-ida-confirmed` gates, and is also held by
     Stage 1.5, which criterion 1a enters directly: empiric oral iron without iron studies
-    is ACOG-sanctioned, so these routes are deliberate. (Through v3 the one second route
-    was Step 2.1 reached directly from DP-1; that marker is retired — written without
-    its brackets here so the gate-control check cannot read it as a live waiver — and
-    DP-1 now branches to Stage 1.5 instead.)
+    is ACOG-sanctioned, and Josh's v8 decision gives the empiric arm DP-3 too, so this
+    route is deliberate. v4–v7's three markers — SECOND ROUTE step-2-1 / step-2-2 /
+    step-2-3 via stage-2-empiric — are retired (Stage 1.5 no longer holds those steps;
+    they are reached through DP-3's oral branch, Stage 2.5, on both arms); they and v3's
+    Step 2.1-via-DP-1 marker are written without brackets here so the gate-control check
+    cannot read them as live waivers.
   - ~~`[GAP — NEEDS JOSH]` **The empiric arm reaches Step 2.1 only.**~~ **Resolved:**
     `[DECISION — Josh 2026-09-24]` **The empiric arm gets the same follow-up as confirmed
-    IDA.** Through v3, choosing empiric EXCLUDED Step 2.2 (trial period), Step 2.3
+    IDA.** *(v8: Stage 1.5 now holds Step 2.8, DP-3, and reaches Steps 2.1–2.3 through
+    DP-3's oral branch, Stage 2.5 — see DP-3. The v4 design below is kept for the record;
+    the sharing argument is unchanged, with Step 2.8 as the shared step.)* Through v3, choosing empiric EXCLUDED Step 2.2 (trial period), Step 2.3
     (response assessment), DP-2 and Step 2.5 (IV iron), because they hung only from
     Stage 2, which only the ferritin gate opens — no response check, no escalation.
     Criterion 1a now routes to **Stage 1.5 — Empiric Oral Iron Trial**, a branch-entry
@@ -354,16 +366,39 @@ BRANCHES_TO (no HAS_STEP edge), per the reference-fixture pattern.
     IBD) → **Step 2.5** (IV iron) [1][8]
   - Criterion 2c: Suspected incorrect diagnosis or blood loss → **Step 1.5** (expanded
     workup) [1]
-- **DP-3 — Oral iron trial vs IV iron without an oral trial** (on Step 2.8, in Stage 2 —
-  ferritin-confirmed IDA; v7) — branch_mode: one_of `[DECISION — Josh 2026-09-24]`
+- **DP-3 — Oral iron trial vs IV iron without an oral trial** (on Step 2.8 — in Stage 2,
+  ferritin-confirmed IDA, and since v8 Stage 1.5, the empiric arm; v7) — branch_mode:
+  one_of `[DECISION — Josh 2026-09-24]`
+  - `[DECISION — Josh 2026-09-24]` **Both iron arms get DP-3 (v8).** v7 put DP-3 in Stage 2
+    only, so a patient on empiric iron always had the oral trial. Stage 1.5 now holds Step
+    2.8 (the same node Stage 2 holds, not a copy): DP-1 is one_of, so only one of the two
+    parents is ever open, and DP-1's sweep of the unchosen branch spares everything the
+    chosen branch contains — the same sharing v4–v7 used for Steps 2.1–2.3 (§4 DP-1). A
+    DP-3 copy on Stage 1.5 would instead have put two DecisionPoints over the shared oral
+    steps. Proved with `gate-proof.ts dp-3` and `empiric`, both edge orders, on both arms:
+    route not chosen → DP-3 asks with both options; oral trial → Steps 2.1–2.3 and the
+    response check (NOT YET DUE at the start visit), Step 2.8 recorded under Stage 1.5 on
+    the empiric arm; IV first at GA 20 / 36 → Step 2.10 IV iron, oral arm EXCLUDED; GA
+    missing → asks for GA.
+    **Consequences for review:** (1) DP-3 now pends for **every** empiric patient too (the
+    two targets score identically — `dp-1-scoring`), so choosing empiric iron at DP-1 no
+    longer starts oral iron by itself: the provider answers DP-1 and then DP-3.
+    `[CLINICAL AMBIGUITY — for Josh]` (2) **IV iron first on the empiric arm is IV iron with
+    no ferritin on file** — the empiric arm never draws iron studies, and ACOG describes IV
+    iron for iron deficiency. Should IV-first on the empiric arm require a ferritin (e.g.
+    route the provider to the workup), or is the provider's choice enough? Not gated here.
+    (3) Criterion 3d reads "anemia diagnosed at ≥ 34 weeks (iron deficiency confirmed, or
+    presumed on the empiric arm)". (4) The DP-1 answer value for the empiric branch is
+    unchanged (`stage-2-empiric`). Former ambiguity (b) below is resolved by this decision.
   - Criterion 3a: No reason to skip the oral trial → **Stage 2.5** (Steps 2.1–2.3: oral
     iron, 2–4-week recheck, response check) [1]
   - Criterion 3b: Documented intolerance of oral iron (e.g. on a prior course) → **Step
     2.9** (IV iron, no trial) [1][5] — the brief's criterion 2a at treatment start
   - Criterion 3c: Suspected malabsorption (bariatric surgery, IBD, chronic antacid use) →
     **Step 2.9** [1][8] — criterion 2b
-  - Criterion 3d: IDA diagnosed at ≥ 34 weeks — too little time for an oral trial → **Step
-    2.9** [6][1] — criterion 2d / the former DP-3's 3b `[FALLBACK SOURCE — FIGO time-math;
+  - Criterion 3d: IDA diagnosed at ≥ 34 weeks (v8 wording: anemia diagnosed at ≥ 34 weeks,
+    iron deficiency confirmed or presumed on the empiric arm) — too little time for an oral
+    trial → **Step 2.9** [6][1] — criterion 2d / the former DP-3's 3b `[FALLBACK SOURCE — FIGO time-math;
     ACOG says only "severe iron deficiency later in pregnancy"]`
   - Step 2.9 → **gate-iv-iron-ga-direct** (GA ≥ 14) → **Step 2.10** (IV iron). IV iron's
     first-trimester rule is kept on this route too.
@@ -387,17 +422,16 @@ BRANCHES_TO (no HAS_STEP edge), per the reference-fixture pattern.
     start visit); Step 2.9/2.10 EXCLUDED. **IV first**, GA 20 or 36 → Step 2.10 with
     Med-13–16 and Sched-6 INCLUDED; oral iron, the response check and the post-non-response
     IV route (Steps 2.6, 2.5, DP-2) EXCLUDED; no response question. GA 12 → IV iron
-    GATED_OUT; GA missing → asks for GA, IV iron held. Ferritin 50, the empiric arm and
-    hemoglobinopathy disease never see DP-3.
+    GATED_OUT; GA missing → asks for GA, IV iron held. Ferritin 50 and hemoglobinopathy
+    disease never see DP-3. (v8: the empiric arm does — same outcomes, proved on both arms.)
   - `[CLINICAL AMBIGUITY — for Josh]` (a) **IV first before 14 weeks gives no iron at all**:
     Step 2.9 opens only the GA-gated IV step, and the oral arm is the unchosen branch —
     should a first-trimester patient with intolerance/malabsorption be steered to the oral
     trial until 14 weeks (the provider can re-decide DP-3), or should Step 2.9 carry an
-    interim plan? (b) **The empiric arm has no DP-3**: DP-3 sits in Stage 2 because
-    criterion 3d says "IDA diagnosed" and IV iron without confirmed deficiency is not what
-    ACOG describes; an empiric patient at ≥ 34 weeks gets the oral trial unless the
-    provider chooses the workup at DP-1. (c) DP-3 adds one provider question at every
-    confirmed-IDA visit (like DP-1), since each visit is a new session.
+    interim plan? ~~(b) **The empiric arm has no DP-3**~~ — **resolved in v8**
+    `[DECISION — Josh 2026-09-24]`: both arms get DP-3 (above). (c) DP-3 adds one provider
+    question at every visit that reaches it (like DP-1) — since v8 on both arms — since each
+    visit is a new session.
   - Retired: the brief's former **DP-3 — Predelivery route selection** (after Step 4.2;
     never built): 3a "adequate time for oral repletion and responding → continue oral
     (Step 2.4)" is what the response check now does; 3b "moderate–severe IDA within ~4–6
