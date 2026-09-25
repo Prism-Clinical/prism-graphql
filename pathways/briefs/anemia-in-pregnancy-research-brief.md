@@ -17,10 +17,16 @@ still current, `[BLOCKED — prior_node_result]` import-blocked gate design with
 
 - **Logical ID**: `anemia-in-pregnancy`
 - **Title**: Anemia in Pregnancy — Classification and Treatment
-- **Version**: 4 `[DECISION — Josh 2026-09-24]` (JSON `"4"`; was `"3"`). Bumped for
+- **Version**: 5 `[DECISION — Josh 2026-09-24]` (JSON `"5"`; was `"4"`). Bumped for
+  escalation after non-response (gate-hgb-response is a question router; new Step 2.6
+  hosts DP-2), the 2–4-week recheck, and dropping the live `med-1 → med-5` ESCALATES_TO
+  route — imports as NEW_VERSION. `gate-hgb-response` changes type (chart → question), so
+  v4 sessions keep v4's graph. Hemoglobinopathy suppression of the empiric arm is
+  decided but blocked on the engine (§18).
+  (v4 was bumped from 3 for
   gate-microcytic in front of DP-1 (Step 1.7), the empiric arm's follow-up through Stage
   1.5, and one host step per lab node — imports as NEW_VERSION. DP-1's empiric answer
-  value changes from `step-2-1` to `stage-2-empiric`; v3 sessions keep v3's graph.
+  value changes from `step-2-1` to `stage-2-empiric`; v3 sessions keep v3's graph.)
   (v3 was bumped from 2 for the DP-1 restoration, the since-reversed gate-microcytic
   removal and the gestational-age data gate.)
 - **Category**: OBSTETRIC
