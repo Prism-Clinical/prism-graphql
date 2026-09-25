@@ -795,6 +795,17 @@ pregnancy. Please ratify, and see §18 G9.
 | **C7** | Aspirin moderate tier: "2 or more" vs "more than one" across four documents | Same number. Encode as **≥2**, never as a `>1` on something a reader might mistake for a boolean |
 | **C8** | Treatment threshold: 140/90 (post-CHAP) vs 160/110 (PB 222) | **160/110.** CHAP enrolled before 23 weeks and required hypertension documented before 20 weeks, so its population is chronic hypertension by construction. Applying 140/90 here would be a clinical error. Whether mild-range disease should be treated is genuinely unresolved — a trial is recruiting to answer it |
 
+### Open after v3 — the seizure instruction
+
+- `[GAP]` **No node tells the patient that a seizure means 911.** v2's Guid-1 carried a
+  PB 222-sourced line, "a seizure is an emergency — call 911". It was removed in v3 with the
+  warning-signs list under `[DECISION — Josh 2026-09-24]` (no list items, whatever their
+  source; §9 Guid-1). Eclampsia appears in this pathway only as an escalation trigger, and no
+  gate asks about it. **To close:** Josh decides whether a one-line seizure instruction,
+  sourced to [1] and kept outside the warning-signs reference, belongs back. Adding it to
+  Guid-1 would break the byte-identity with routine-prenatal-care's Guid-1, so the two would
+  show as two blocks for a co-matched patient; a separate Guidance node would not.
+
 ### Data-quality gaps in the source itself
 
 - **PB 222 contains no discussion of racial disparities**, and lists "African American race" in Table 1 with no framing. The marker-not-cause framing comes from USPSTF 2021 and ACOG's own December 2021 advisory — cited here as [2] and [3] rather than [1].
