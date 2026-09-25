@@ -2317,11 +2317,6 @@
       "type": "USES_MEDICATION"
     },
     {
-      "from": "med-1",
-      "to": "med-5",
-      "type": "ESCALATES_TO"
-    },
-    {
       "from": "step-1-1",
       "to": "lab-1",
       "type": "HAS_LAB_TEST"

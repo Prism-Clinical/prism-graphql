@@ -400,7 +400,14 @@ narrative. Recorded so reviewers know the omission is deliberate.
     evidence-based tolerability option (Stoffel trials, non-pregnant; ASH: "not yet
     recommended during pregnancy in the US") — **not an ACOG mandate; PB 233 is silent on
     it and gives no numeric therapeutic dose [GAP]** · Route: oral
-  - Escalates to: Med-5 (ferric derisomaltose) · Notes: avoid enteric-coated/SR forms;
+  - ~~Escalates to: Med-5 (ferric derisomaltose)~~ `[BUILD FIX 2026-09-24]` **No
+    ESCALATES_TO edge.** The traversal follows every outgoing edge of an included
+    Medication, so `med-1 → med-5` was a second, live route to the IV iron: with oral iron
+    included, ferric derisomaltose was INCLUDED even when Step 2.5 was GATED_OUT (GA 12) or
+    held (GA missing) — edge-order dependent, the same first-writer-wins leak as v3's
+    shared labs. Proved with `gate-proof.ts ga` (med-5 now follows Step 2.5). Escalation
+    to IV iron is expressed by Step 2.5's own route (DP-2 → `gate-iv-iron-ga`).
+  - Notes: avoid enteric-coated/SR forms;
     empty stomach preferred, small snack if GI upset; separate from calcium/antacids/
     tea/coffee by ≥2 h; vitamin C co-administration optional (RCT equivalence). [1][5][13][14][15]
 - **Med-2 — Ferrous gluconate 300–324 mg (34–38 mg elemental)** (on Step 2.1)

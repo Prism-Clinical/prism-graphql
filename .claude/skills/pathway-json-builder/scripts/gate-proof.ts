@@ -362,6 +362,10 @@ async function proveGa(): Promise<void> {
       console.log(`  ${label}:`);
       expect('gate-iv-iron-ga', status(r.state, 'gate-iv-iron-ga'), gate);
       expect('step-2-5 IV iron', status(r.state, 'step-2-5'), step);
+      // The IV iron itself follows Step 2.5. Through v4, med-1 ESCALATES_TO
+      // med-5 was a second, live route (the constructive walk follows every
+      // edge), so ferric derisomaltose was INCLUDED at GA 12 in file order.
+      expect('med-5 ferric derisomaltose (IV)', status(r.state, 'med-5'), step);
       const q = r.pending.find((p: any) => p.gateId === 'gate-iv-iron-ga') as any;
       if (label === 'GA missing') {
         expect('asks for datum', String(q?.datumKey), 'patient.gestational_age_weeks');
