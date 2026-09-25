@@ -590,7 +590,15 @@ BRANCHES_TO (no HAS_STEP edge), per the reference-fixture pattern.
     a one-off diff of the two JSONs on the real engine at build time, not a committed proof;
     the committed ones are `gate-proof.ts dp-3` / `iv-ferritin` and the agreement test.) New nodes there: Step 2.13 and
     gate-ida-confirmed-iv INCLUDED at GA ≥ 14; Step 2.12 / Lab-17 GATED_OUT.
-    `[CLINICAL AMBIGUITY — for Josh]` (a) **The ferritin question holds the visit's care
+    `[DECISION — Josh 2026-09-25]` All three open points below are **kept as built**, with no
+    JSON change: (a) keep asking. The ferritin question holds the empiric IV-first visit's
+    care plan until a value is entered, consistent with "numeric gates ask" and "keep
+    blocking". (b) The oral trial continues. A ferritin ≥ 30 stops only the IV-first route;
+    the empiric oral trial is a trial whatever the ferritin. (d) Always wait for ferritin, the
+    late diagnosis (3d) included; the mitigations below (confirmatory studies at DP-1, or
+    entering the ferritin at the same visit) are the intended path. The original ambiguity
+    text follows for the record.
+    ~~`[CLINICAL AMBIGUITY — for Josh]`~~ (a) **The ferritin question holds the visit's care
     plan.** Care-plan generation refuses a pending question, so the visit that orders the
     ferritin (empiric arm, IV iron first, GA ≥ 14) cannot generate its plan until a ferritin
     value is entered — which is the same "numeric gates ask" rule as gate-ida-confirmed, and
