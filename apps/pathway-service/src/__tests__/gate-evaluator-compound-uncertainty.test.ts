@@ -438,7 +438,6 @@ describe('legacy-v0 compound gates are untouched', () => {
         'Unsatisfied conditions: No matching code Z99.9 found in patient conditions; ' +
         'No exact code Q00.0 found in patient conditions',
       contextFieldsRead: ['conditions'],
-      dependedOnNodes: [],
     });
   });
 
@@ -448,7 +447,6 @@ describe('legacy-v0 compound gates are untouched', () => {
       satisfied: false,
       reason: 'No compound conditions satisfied',
       contextFieldsRead: ['conditions'],
-      dependedOnNodes: [],
     });
   });
 
@@ -459,7 +457,6 @@ describe('legacy-v0 compound gates are untouched', () => {
         satisfied: false,
         reason: 'Compound gate has no conditions',
         contextFieldsRead: [],
-        dependedOnNodes: [],
       });
     }
   });

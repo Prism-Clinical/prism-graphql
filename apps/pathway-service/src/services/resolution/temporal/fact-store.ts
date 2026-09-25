@@ -77,6 +77,12 @@ export function factStoreForInput(
   return assembleUnderClock(input.patientContext, temporalCtx);
 }
 
+/** The store for an already-effective context under a clock — the pipeline's stage 1. */
+export function factStoreFor(effective: PatientContext, temporalCtx: EvaluationTemporalContext): FactStore {
+  if (!needsFactStore(temporalCtx)) return [];
+  return assembleUnderClock(toSyntheticContext(effective), temporalCtx);
+}
+
 /**
  * Coerce a persisted `PatientContext` back to the SYNTHETIC shape it was
  * assembled from.

@@ -10,52 +10,18 @@ import { EvaluationTemporalContext } from './temporal/evaluation-context';
 import {
   ResolutionState,
   NodeResult,
-  DependencyMap,
   ResolutionSession,
   MatchedPathway,
   MatchedCodeSet,
   MatchedCodeSetMember,
   GateAnswer,
+  ProviderOverride,
+  SessionStatus,
 } from './types';
+import type { AdditionalContextInput } from '../../resolvers/mutations/resolution';
+import type { EvaluationResult, LlmObservation, SessionInputs } from './pipeline/types';
 import { activeConditionPredicate } from '../snapshot/active-context-filter';
 import { findAncestors } from '../codes/icd10-hierarchy';
-
-// ─── Helpers ───────────────────────────────────────────────────────
-
-function mapOfSetsToObj(map: Map<string, Set<string>>): Record<string, string[]> {
-  const obj: Record<string, string[]> = {};
-  for (const [key, set] of map) {
-    obj[key] = [...set];
-  }
-  return obj;
-}
-
-function objToMapOfSets(obj: Record<string, string[]>): Map<string, Set<string>> {
-  const map = new Map<string, Set<string>>();
-  for (const [key, arr] of Object.entries(obj)) {
-    map.set(key, new Set(arr));
-  }
-  return map;
-}
-
-// ─── Gate Answer Serialization ─────────────────────────────────────
-
-function serializeGateAnswers(answers: Map<string, GateAnswer>): Record<string, GateAnswer> {
-  const obj: Record<string, GateAnswer> = {};
-  for (const [key, value] of answers) {
-    obj[key] = value;
-  }
-  return obj;
-}
-
-function deserializeGateAnswers(json: Record<string, GateAnswer> | null | undefined): Map<string, GateAnswer> {
-  const map = new Map<string, GateAnswer>();
-  if (!json) return map;
-  for (const [key, value] of Object.entries(json)) {
-    map.set(key, value as GateAnswer);
-  }
-  return map;
-}
 
 // ─── Serialization ─────────────────────────────────────────────────
 
@@ -75,90 +41,277 @@ export function deserializeResolutionState(json: Record<string, unknown>): Resol
   return state;
 }
 
-export function serializeDependencyMap(depMap: DependencyMap): Record<string, unknown> {
+// ─── Inputs + evaluation cache (evaluation pipeline, spec §1/§4) ─────
+
+/** Anything that can run a query: the pool, or a client inside a transaction. */
+export type Db = Pick<Pool, 'query'>;
+
+/** An LLM gate call, recorded whether or not it succeeded (spec §4, Audit). */
+export interface LlmAuditRow {
+  gateId: string;
+  pathwayId: string;
+  inputAttribute: string | null;
+  inputText: string;
+  prompt: string;
+  branches: unknown;
+  model: string;
+  chosenBranch: string | null;
+  confidence: number | null;
+  reasoning: string | null;
+  fullResponse: unknown;
+  tentative: boolean;
+  errorMessage: string | null;
+  latencyMs: number | null;
+}
+
+export interface NewSession {
+  pathwayVersion: string;
+  patientId: string;
+  providerId: string;
+  inputs: SessionInputs;
+  result: EvaluationResult;
+  status: SessionStatus;
+  durationMs: number;
+  parentSessionId?: string;
+}
+
+const objOf = <V>(m: Map<string, V>): Record<string, V> => Object.fromEntries(m);
+const mapOf = <V>(o: Record<string, V> | null | undefined): Map<string, V> => new Map(Object.entries(o ?? {}));
+/** JSONB parameters are sent as JSON text; scalars pass through. */
+const param = (v: unknown): unknown => (v !== null && typeof v === 'object' ? JSON.stringify(v) : v);
+
+/** The columns an evaluation writes: the session's mutable inputs and the cache of its result. */
+export function evaluationColumns(args: {
+  inputs: SessionInputs;
+  result: EvaluationResult;
+  status: SessionStatus;
+  durationMs: number;
+}): Record<string, unknown> {
+  const { inputs, result } = args;
   return {
-    influencedBy: mapOfSetsToObj(depMap.influencedBy),
-    influences: mapOfSetsToObj(depMap.influences),
-    gateContextFields: mapOfSetsToObj(depMap.gateContextFields),
-    scorerInputs: mapOfSetsToObj(depMap.scorerInputs),
+    status: args.status,
+    additional_context: inputs.additionalContext,
+    gate_answers: objOf(inputs.gateAnswers),
+    provider_overrides: objOf(inputs.providerOverrides),
+    observations: objOf(inputs.observations),
+    resolution_state: serializeResolutionState(result.resolutionState),
+    pending_questions: result.pendingQuestions,
+    red_flags: result.redFlags,
+    ddi_warnings: result.safetyFindings.filter((f) => f.action === 'WARN'),
+    readiness: result.readiness,
+    gate_context_fields: objOf(result.gateContextFields),
+    catch_up_items: result.catchUpItems,
+    env_fingerprint: result.envFingerprint,
+    result_hash: result.resultHash,
+    total_nodes_evaluated: result.resolutionState.size,
+    traversal_duration_ms: Math.round(args.durationMs),
   };
 }
 
-export function deserializeDependencyMap(json: Record<string, unknown>): DependencyMap {
-  const raw = json as Record<string, Record<string, string[]>>;
+/** Every column of a new row: identity, the immutable inputs, then `evaluationColumns`. */
+export function insertColumns(s: NewSession): Record<string, unknown> {
   return {
-    influencedBy: objToMapOfSets(raw.influencedBy ?? {}),
-    influences: objToMapOfSets(raw.influences ?? {}),
-    gateContextFields: objToMapOfSets(raw.gateContextFields ?? {}),
-    scorerInputs: objToMapOfSets(raw.scorerInputs ?? {}),
+    pathway_id: s.inputs.pathwayId,
+    pathway_version: s.pathwayVersion,
+    patient_id: s.patientId,
+    provider_id: s.providerId,
+    initial_patient_context: s.inputs.initialPatientContext,
+    temporal_context: s.inputs.temporalContext,
+    graph_fingerprint: s.inputs.graphFingerprint,
+    parent_session_id: s.parentSessionId ?? null,
+    ...evaluationColumns(s),
   };
 }
 
-// ─── DB: Sessions ──────────────────────────────────────────────────
-
-export async function createSession(
-  pool: Pool,
-  session: {
-    pathwayId: string;
-    pathwayVersion: string;
-    patientId: string;
-    providerId: string;
-    status: string;
-    initialPatientContext: unknown;
-    resolutionState: ResolutionState;
-    dependencyMap: DependencyMap;
-    pendingQuestions: unknown[];
-    redFlags: unknown[];
-    gateAnswers?: Map<string, GateAnswer>;
-    totalNodesEvaluated: number;
-    traversalDurationMs: number;
-    ddiWarnings?: unknown[];
-    // Required on the way IN, optional on the way OUT. Every session created
-    // from now on has a clock, and a required parameter is what lets the
-    // compiler prove it — a new call site that forgets one is a build error,
-    // not a session that silently cannot be retraversed. The column and
-    // ResolutionSession.temporalContext stay optional for pre-migration rows.
-    temporalContext: EvaluationTemporalContext;
-  },
-): Promise<string> {
-  // The declared type is not a runtime guard: tsconfig excludes src/__tests__
-  // and types are erased anyway, so an untyped caller can reach here without a
-  // clock. Serializing that to NULL would mint a session that is already
-  // non-retraversable — a silent, permanent defect in a brand new row. NULL is
-  // reserved for rows that predate migration 063; nothing may create one now.
-  if (!session.temporalContext) {
-    throw new Error(
-      'createSession requires temporalContext — a session with no pinned evaluation clock cannot be retraversed',
-    );
+export async function insertSession(db: Db, s: NewSession): Promise<string> {
+  // Types are erased and tests are not typechecked: a clock-less row would be
+  // unevaluable forever, so refuse it here rather than at the NOT NULL.
+  if (!s.inputs.temporalContext) {
+    throw new Error('insertSession requires temporalContext — a session with no pinned clock cannot be evaluated');
   }
-
-  const result = await pool.query(
-    `INSERT INTO pathway_resolution_sessions
-     (pathway_id, pathway_version, patient_id, provider_id, status, initial_patient_context,
-      resolution_state, dependency_map, pending_questions, red_flags, gate_answers,
-      total_nodes_evaluated, traversal_duration_ms, ddi_warnings, temporal_context)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+  // D5: the parent of a run owns every patient fact, and 067's CHECK
+  // rejects a child with any. Refuse it here, where the cause is readable.
+  if (s.parentSessionId && Object.keys(s.inputs.additionalContext ?? {}).length > 0) {
+    throw new Error('insertSession: a child of a run holds no patient facts — the parent owns them (D5)');
+  }
+  const cols = insertColumns(s);
+  const names = Object.keys(cols);
+  const result = await db.query(
+    `INSERT INTO pathway_resolution_sessions (${names.join(', ')})
+     VALUES (${names.map((_, i) => `$${i + 1}`).join(', ')})
      RETURNING id`,
-    [
-      session.pathwayId,
-      session.pathwayVersion,
-      session.patientId,
-      session.providerId,
-      session.status,
-      JSON.stringify(session.initialPatientContext),
-      JSON.stringify(serializeResolutionState(session.resolutionState)),
-      JSON.stringify(serializeDependencyMap(session.dependencyMap)),
-      JSON.stringify(session.pendingQuestions),
-      JSON.stringify(session.redFlags),
-      JSON.stringify(serializeGateAnswers(session.gateAnswers ?? new Map())),
-      session.totalNodesEvaluated,
-      session.traversalDurationMs,
-      JSON.stringify(session.ddiWarnings ?? []),
-      JSON.stringify(session.temporalContext),
-    ],
+    names.map((n) => param(cols[n])),
   );
   return result.rows[0].id;
 }
+
+/**
+ * Commit an evaluation as a compare-and-set on `revision` (spec §4). Returns
+ * false when another write moved the row or it left ACTIVE/DEGRADED; the caller
+ * rolls back and retries. `status: COMPLETED` is generation's claim.
+ */
+export async function writeEvaluation(
+  db: Db,
+  args: { sessionId: string; expectedRevision: number; inputs: SessionInputs; result: EvaluationResult; status: SessionStatus; durationMs: number },
+): Promise<boolean> {
+  const cols = evaluationColumns(args);
+  const names = Object.keys(cols);
+  const result = await db.query(
+    `UPDATE pathway_resolution_sessions
+        SET ${names.map((n, i) => `${n} = $${i + 1}`).join(', ')}, revision = revision + 1, updated_at = NOW()
+      WHERE id = $${names.length + 1} AND revision = $${names.length + 2} AND status IN ('ACTIVE', 'DEGRADED')`,
+    [...names.map((n) => param(cols[n])), args.sessionId, args.expectedRevision],
+  );
+  return result.rowCount === 1;
+}
+
+/** Lifecycle-only change (abandon): no evaluation, same revision check (spec §4). */
+export async function writeLifecycleStatus(
+  db: Db,
+  args: { sessionId: string; expectedRevision: number; status: SessionStatus },
+): Promise<boolean> {
+  const result = await db.query(
+    `UPDATE pathway_resolution_sessions
+        SET status = $1, revision = revision + 1, updated_at = NOW()
+      WHERE id = $2 AND revision = $3 AND status IN ('ACTIVE', 'DEGRADED')`,
+    [args.status, args.sessionId, args.expectedRevision],
+  );
+  return result.rowCount === 1;
+}
+
+/** Inside generation's claimed transaction only. */
+export async function setCarePlanId(db: Db, sessionId: string, carePlanId: string): Promise<void> {
+  await db.query('UPDATE pathway_resolution_sessions SET care_plan_id = $1 WHERE id = $2', [carePlanId, sessionId]);
+}
+
+/**
+ * A child of a run, written in the run's transaction. The PARENT's revision is
+ * the lock (D6): a child is never compare-and-set on its own. The row must be
+ * a child, so this can never bypass a standalone session's lock, and its facts
+ * are always written empty (D5).
+ */
+export async function writeChildEvaluation(
+  db: Db,
+  args: { sessionId: string; inputs: SessionInputs; result: EvaluationResult; status: SessionStatus; durationMs: number },
+): Promise<void> {
+  const cols = evaluationColumns({ ...args, inputs: { ...args.inputs, additionalContext: {} } });
+  const names = Object.keys(cols);
+  const result = await db.query(
+    `UPDATE pathway_resolution_sessions
+        SET ${names.map((n, i) => `${n} = $${i + 1}`).join(', ')}, revision = revision + 1, updated_at = NOW()
+      WHERE id = $${names.length + 1} AND parent_session_id IS NOT NULL`,
+    [...names.map((n) => param(cols[n])), args.sessionId],
+  );
+  if (result.rowCount !== 1) {
+    throw new Error(`writeChildEvaluation: session ${args.sessionId} is not the child of a run`);
+  }
+}
+
+/** Children follow the parent's lifecycle, in the parent's transaction (spec §3). */
+export async function writeChildrenLifecycle(db: Db, parentId: string, status: SessionStatus, carePlanId?: string): Promise<void> {
+  await db.query(
+    `UPDATE pathway_resolution_sessions
+        SET status = $2, care_plan_id = COALESCE($3, care_plan_id), revision = revision + 1, updated_at = NOW()
+      WHERE parent_session_id = $1`,
+    [parentId, status, carePlanId ?? null],
+  );
+}
+
+/**
+ * A stored row as a session. Missing JSON columns read as empty rather than
+ * crashing: every row written after migration 067 has them, and test fixtures
+ * that predate them keep working.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function rowToSession(row: any, events: unknown[]): ResolutionSession {
+  return {
+    id: row.id,
+    pathwayId: row.pathway_id,
+    pathwayVersion: row.pathway_version,
+    patientId: row.patient_id,
+    providerId: row.provider_id,
+    status: row.status,
+    revision: row.revision ?? 0,
+    resolutionState: deserializeResolutionState(row.resolution_state ?? {}),
+    initialPatientContext: row.initial_patient_context,
+    additionalContext: row.additional_context ?? {},
+    pendingQuestions: row.pending_questions ?? [],
+    redFlags: row.red_flags ?? [],
+    resolutionEvents: events as ResolutionSession['resolutionEvents'],
+    gateAnswers: mapOf<GateAnswer>(row.gate_answers),
+    providerOverrides: mapOf<ProviderOverride>(row.provider_overrides),
+    observations: mapOf<LlmObservation>(row.observations),
+    graphFingerprint: row.graph_fingerprint ?? '',
+    envFingerprint: row.env_fingerprint ?? '',
+    resultHash: row.result_hash ?? '',
+    readiness: row.readiness ?? { ready: false, blockers: [] },
+    gateContextFields: mapOf<string[]>(row.gate_context_fields),
+    catchUpItems: row.catch_up_items ?? [],
+    totalNodesEvaluated: row.total_nodes_evaluated,
+    traversalDurationMs: row.traversal_duration_ms,
+    carePlanId: row.care_plan_id,
+    ddiWarnings: row.ddi_warnings ?? [],
+    // pg parses JSONB; `?? undefined` turns SQL NULL into undefined.
+    temporalContext: (row.temporal_context ?? undefined) as EvaluationTemporalContext | undefined,
+    parentSessionId: row.parent_session_id ?? undefined,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+/** The inputs a mutation starts from: fresh copies, so changing them cannot edit the loaded session. */
+export function inputsOf(session: ResolutionSession): SessionInputs {
+  if (!session.temporalContext) {
+    throw new Error(`session ${session.id} has no pinned clock and cannot be evaluated`);
+  }
+  return {
+    pathwayId: session.pathwayId,
+    graphFingerprint: session.graphFingerprint,
+    temporalContext: session.temporalContext,
+    initialPatientContext: session.initialPatientContext,
+    additionalContext: { ...(session.additionalContext as Partial<AdditionalContextInput>) },
+    gateAnswers: new Map(session.gateAnswers),
+    providerOverrides: new Map(session.providerOverrides),
+    observations: new Map(session.observations),
+    revision: session.revision,
+  };
+}
+
+/** The event log's statusChanges: the previous cache against the new result, in nodeId order (spec §1 rule 2). */
+export function statusChangesBetween(
+  prev: ResolutionState,
+  next: ResolutionState,
+): Array<{ nodeId: string; from: string; to: string }> {
+  const ids = [...new Set([...prev.keys(), ...next.keys()])].sort();
+  const changes: Array<{ nodeId: string; from: string; to: string }> = [];
+  for (const nodeId of ids) {
+    const from = prev.get(nodeId)?.status ?? 'ABSENT';
+    const to = next.get(nodeId)?.status ?? 'ABSENT';
+    if (from !== to) changes.push({ nodeId, from, to });
+  }
+  return changes;
+}
+
+/** Moved from resolution-context's flushAudits; runs inside the caller's transaction. */
+export async function writeLlmAudits(db: Db, sessionId: string, rows: LlmAuditRow[]): Promise<void> {
+  for (const row of rows) {
+    await db.query(
+      `INSERT INTO llm_gate_evaluations (
+         session_id, gate_id, pathway_id, input_attribute, input_text,
+         prompt, branches, model, chosen_branch, confidence, reasoning,
+         full_response, tentative, error_message, latency_ms
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
+      [
+        sessionId, row.gateId, row.pathwayId, row.inputAttribute, row.inputText,
+        row.prompt, JSON.stringify(row.branches), row.model, row.chosenBranch, row.confidence,
+        row.reasoning, row.fullResponse ? JSON.stringify(row.fullResponse) : null,
+        row.tentative, row.errorMessage, row.latencyMs,
+      ],
+    );
+  }
+}
+
+// ─── DB: Sessions ──────────────────────────────────────────────────
 
 export async function getSession(
   pool: Pool,
@@ -179,137 +332,13 @@ export async function getSession(
     [sessionId],
   );
 
-  return {
-    id: row.id,
-    pathwayId: row.pathway_id,
-    pathwayVersion: row.pathway_version,
-    patientId: row.patient_id,
-    providerId: row.provider_id,
-    status: row.status,
-    resolutionState: deserializeResolutionState(row.resolution_state),
-    dependencyMap: deserializeDependencyMap(row.dependency_map),
-    initialPatientContext: row.initial_patient_context,
-    additionalContext: row.additional_context ?? {},
-    pendingQuestions: row.pending_questions ?? [],
-    redFlags: row.red_flags ?? [],
-    resolutionEvents: events.rows,
-    gateAnswers: deserializeGateAnswers(row.gate_answers),
-    totalNodesEvaluated: row.total_nodes_evaluated,
-    traversalDurationMs: row.traversal_duration_ms,
-    carePlanId: row.care_plan_id,
-    ddiWarnings: row.ddi_warnings ?? [],
-    // pg already parses JSONB into an object — do NOT JSON.parse this. The
-    // `?? undefined` turns a SQL NULL into undefined rather than null; the
-    // type says optional and strictNullChecks is off, so nothing else would
-    // catch a stray null.
-    temporalContext: (row.temporal_context ?? undefined) as EvaluationTemporalContext | undefined,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
-  };
-}
-
-export async function updateSession(
-  pool: Pool,
-  sessionId: string,
-  updates: {
-    status?: string;
-    resolutionState?: ResolutionState;
-    dependencyMap?: DependencyMap;
-    additionalContext?: unknown;
-    pendingQuestions?: unknown[];
-    redFlags?: unknown[];
-    /**
-     * DDI warnings. Writable now that DDI re-runs after every state-changing
-     * resolution — it used to run only at session creation, so there was
-     * nothing to update.
-     */
-    ddiWarnings?: unknown[];
-    gateAnswers?: Map<string, GateAnswer>;
-    totalNodesEvaluated?: number;
-    carePlanId?: string;
-  },
-  expectedUpdatedAt?: Date,
-): Promise<void> {
-  const sets: string[] = ['updated_at = NOW()'];
-  const values: unknown[] = [];
-  let idx = 1;
-
-  if (updates.status) {
-    sets.push(`status = $${idx++}`);
-    values.push(updates.status);
-  }
-  if (updates.resolutionState) {
-    sets.push(`resolution_state = $${idx++}`);
-    values.push(JSON.stringify(serializeResolutionState(updates.resolutionState)));
-  }
-  if (updates.dependencyMap) {
-    sets.push(`dependency_map = $${idx++}`);
-    values.push(JSON.stringify(serializeDependencyMap(updates.dependencyMap)));
-  }
-  if (updates.additionalContext) {
-    sets.push(`additional_context = $${idx++}`);
-    values.push(JSON.stringify(updates.additionalContext));
-  }
-  if (updates.pendingQuestions) {
-    sets.push(`pending_questions = $${idx++}`);
-    values.push(JSON.stringify(updates.pendingQuestions));
-  }
-  if (updates.redFlags) {
-    sets.push(`red_flags = $${idx++}`);
-    values.push(JSON.stringify(updates.redFlags));
-  }
-  if (updates.ddiWarnings) {
-    sets.push(`ddi_warnings = $${idx++}`);
-    values.push(JSON.stringify(updates.ddiWarnings));
-  }
-  if (updates.gateAnswers) {
-    sets.push(`gate_answers = $${idx++}`);
-    values.push(JSON.stringify(serializeGateAnswers(updates.gateAnswers)));
-  }
-  if (updates.totalNodesEvaluated !== undefined) {
-    sets.push(`total_nodes_evaluated = $${idx++}`);
-    values.push(updates.totalNodesEvaluated);
-  }
-  if (updates.carePlanId) {
-    sets.push(`care_plan_id = $${idx++}`);
-    values.push(updates.carePlanId);
-  }
-
-  // Optimistic locking: if expectedUpdatedAt is provided, only update if the row
-  // hasn't been modified by another request since we read it.
-  //
-  // Precision note: Postgres TIMESTAMPTZ has microsecond precision, but
-  // node-pg deserialises into a JS Date which only carries milliseconds.
-  // If we compared `updated_at = $expected` directly, every guard would
-  // fail whenever the row's timestamp has any sub-millisecond content
-  // (i.e. almost always), because the parameter round-trips as
-  // `.529000` while the row is stored as e.g. `.529591`. Truncating the
-  // row's timestamp to milliseconds before the comparison matches the
-  // precision of the JS Date we're comparing against.
-  let whereClause = `id = $${idx++}`;
-  values.push(sessionId);
-
-  if (expectedUpdatedAt) {
-    whereClause += ` AND date_trunc('milliseconds', updated_at) = date_trunc('milliseconds', $${idx++}::timestamptz)`;
-    values.push(expectedUpdatedAt);
-  }
-
-  const result = await pool.query(
-    `UPDATE pathway_resolution_sessions SET ${sets.join(', ')} WHERE ${whereClause}`,
-    values,
-  );
-
-  if (expectedUpdatedAt && result.rowCount === 0) {
-    throw new Error(
-      'Session was modified by another request (optimistic lock conflict). Please reload and retry.',
-    );
-  }
+  return rowToSession(row, events.rows);
 }
 
 // ─── DB: Events & Analytics ────────────────────────────────────────
 
 export async function logEvent(
-  pool: Pool,
+  db: Db,
   sessionId: string,
   event: {
     eventType: string;
@@ -318,7 +347,7 @@ export async function logEvent(
     statusChanges: Array<{ nodeId: string; from: string; to: string }>;
   },
 ): Promise<void> {
-  await pool.query(
+  await db.query(
     `INSERT INTO pathway_resolution_events
      (session_id, event_type, trigger_data, nodes_recomputed, status_changes)
      VALUES ($1, $2, $3, $4, $5)`,
@@ -333,7 +362,7 @@ export async function logEvent(
 }
 
 export async function logNodeOverride(
-  pool: Pool,
+  db: Db,
   data: {
     sessionId: string;
     nodeId: string;
@@ -344,7 +373,7 @@ export async function logNodeOverride(
     originalConfidence: number;
   },
 ): Promise<void> {
-  await pool.query(
+  await db.query(
     `INSERT INTO pathway_node_overrides
      (session_id, node_id, pathway_id, action, reason, original_status, original_confidence)
      VALUES ($1, $2, $3, $4, $5, $6, $7)`,
@@ -352,7 +381,8 @@ export async function logNodeOverride(
       data.sessionId,
       data.nodeId,
       data.pathwayId,
-      data.action,
+      // The GraphQL enum is INCLUDE / EXCLUDE; 043's CHECK admits only lowercase.
+      data.action.toLowerCase(),
       data.reason,
       data.originalStatus,
       data.originalConfidence,
@@ -361,7 +391,7 @@ export async function logNodeOverride(
 }
 
 export async function logGateAnswer(
-  pool: Pool,
+  db: Db,
   data: {
     sessionId: string;
     gateId: string;
@@ -370,7 +400,7 @@ export async function logGateAnswer(
     gateOpened: boolean;
   },
 ): Promise<void> {
-  await pool.query(
+  await db.query(
     `INSERT INTO pathway_gate_answers
      (session_id, gate_id, pathway_id, answer, gate_opened)
      VALUES ($1, $2, $3, $4, $5)`,

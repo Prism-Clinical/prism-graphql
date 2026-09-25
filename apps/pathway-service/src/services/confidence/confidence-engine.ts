@@ -18,9 +18,26 @@ import {
   ResolutionType,
   WeightMatrix,
   AdminEvidenceEntry,
-  RequiredInput,
 } from './types';
-import { contextKeysForInputs } from './scorer-context-inputs';
+
+/** Everything scoring reads from the database, loaded once (spec C4). */
+export interface ScoringConfig {
+  adminEvidenceEntries: AdminEvidenceEntry[];
+  weightMatrix: WeightMatrix;
+  nodeWeightMap: Map<string, number>;
+  propagationOverrides: Map<string, Record<string, PropagationConfig>>;
+  thresholds: ResolvedThresholds;
+}
+
+export interface ScoringParams {
+  pathwayId: string;
+  nodes: GraphNode[];
+  edges: GraphEdge[];
+  signalDefinitions: SignalDefinition[];
+  patientContext: PatientContext;
+  /** See `computePathwayConfidence`. */
+  contextNodes?: GraphNode[];
+}
 
 export class ConfidenceEngine {
   constructor(
@@ -55,9 +72,21 @@ export class ConfidenceEngine {
      */
     contextNodes?: GraphNode[];
   }): Promise<PathwayConfidenceResult> {
-    const { pool, pathwayId, nodes, edges, signalDefinitions, patientContext, institutionId, organizationId } = params;
+    const config = await this.loadScoringConfig(params);
+    return this.scorePathway(config, params);
+  }
 
-    // Load admin evidence entries (from params or DB)
+  async loadScoringConfig(params: {
+    pool: Pool;
+    pathwayId: string;
+    nodes: GraphNode[];
+    signalDefinitions: SignalDefinition[];
+    institutionId?: string;
+    organizationId?: string;
+    adminEvidenceEntries?: AdminEvidenceEntry[];
+  }): Promise<ScoringConfig> {
+    const { pool, pathwayId, nodes, signalDefinitions, institutionId, organizationId } = params;
+
     let adminEvidenceEntries = params.adminEvidenceEntries;
     if (!adminEvidenceEntries) {
       const adminEvResult = await pool.query(
@@ -77,11 +106,6 @@ export class ConfidenceEngine {
       }));
     }
 
-    // Built from the WIDER set when one is given, so linked CodeEntry
-    // children resolve even when a single node is being scored.
-    const graphContext = this.buildGraphContext(params.contextNodes ?? nodes, edges);
-
-    // Resolve weight matrix (all signals × all nodes)
     const weightMatrix = await this.cascadeResolver.resolveAllWeights({
       pool,
       pathwayId,
@@ -91,10 +115,8 @@ export class ConfidenceEngine {
       organizationId,
     });
 
-    // Load node weights and propagation overrides in a single query
     const { nodeWeightMap, propagationOverrides } = await this.loadNodeWeightsAndOverrides(pool, pathwayId);
 
-    // Resolve thresholds
     const thresholds = await this.cascadeResolver.resolveThresholds({
       pool,
       pathwayId,
@@ -102,18 +124,24 @@ export class ConfidenceEngine {
       organizationId,
     });
 
+    return { adminEvidenceEntries, weightMatrix, nodeWeightMap, propagationOverrides, thresholds };
+  }
+
+  /** Pure scoring over preloaded configuration. Makes no queries. */
+  scorePathway(config: ScoringConfig, params: ScoringParams): PathwayConfidenceResult {
+    const { adminEvidenceEntries, weightMatrix, nodeWeightMap, propagationOverrides, thresholds } = config;
+    const { pathwayId, nodes, edges, signalDefinitions, patientContext } = params;
+
+    // Built from the WIDER set when one is given, so linked CodeEntry
+    // children resolve even when a single node is being scored.
+    const graphContext = this.buildGraphContext(params.contextNodes ?? nodes, edges);
+
     // Score each (node, signal) pair
     type NodeScoreEntry = { score: number; missingInputs: string[]; skipped: boolean };
     const rawScores = new Map<string, Map<string, NodeScoreEntry>>();
-    const contextInputsByNode = new Map<string, Set<string>>();
 
     for (const node of nodes) {
       const nodeScores = new Map<string, NodeScoreEntry>();
-      // Which slices of patient context this node's scorers actually read.
-      // `declareRequiredInputs` has been implemented by every scorer and
-      // called by nothing; this is its first consumer, and it is what lets
-      // `addPatientContext` know an action node needs re-scoring.
-      const nodeInputs: RequiredInput[] = [];
 
       for (const signal of signalDefinitions) {
         const scorer = this.registry.get(signal.scoringType);
@@ -121,7 +149,6 @@ export class ConfidenceEngine {
           nodeScores.set(signal.name, { score: 0.5, missingInputs: ['scorer_not_found'], skipped: false });
           continue;
         }
-        nodeInputs.push(...scorer.declareRequiredInputs(node, signal));
 
         const result = scorer.score({
           node,
@@ -139,7 +166,6 @@ export class ConfidenceEngine {
       }
 
       rawScores.set(node.nodeIdentifier, nodeScores);
-      contextInputsByNode.set(node.nodeIdentifier, contextKeysForInputs(nodeInputs));
     }
 
     // Propagation: topological sort then walk
@@ -231,7 +257,6 @@ export class ConfidenceEngine {
         resolutionType,
         breakdown,
         propagationInfluences: nodePropInfluences,
-        contextInputs: [...(contextInputsByNode.get(node.nodeIdentifier) ?? [])],
       });
     }
 

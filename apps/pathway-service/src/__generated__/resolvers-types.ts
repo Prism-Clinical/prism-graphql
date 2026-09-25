@@ -86,11 +86,21 @@ export type AttributeVocabularyEntry = {
   valueType: Scalars['String']['output'];
 };
 
+/** COMPLETENESS blockers come from every evaluation; OUTPUT blockers only from the root (spec C3). */
+export enum BlockerScope {
+  Completeness = 'COMPLETENESS',
+  Output = 'OUTPUT'
+}
+
 export enum BlockerType {
   Contradiction = 'CONTRADICTION',
   EmptyPlan = 'EMPTY_PLAN',
   IncompleteResolution = 'INCOMPLETE_RESOLUTION',
   PendingGate = 'PENDING_GATE',
+  PlanChangedSinceReview = 'PLAN_CHANGED_SINCE_REVIEW',
+  SafetyDataUnavailable = 'SAFETY_DATA_UNAVAILABLE',
+  StaleConflictDecision = 'STALE_CONFLICT_DECISION',
+  UnresolvedConflict = 'UNRESOLVED_CONFLICT',
   UnresolvedRedFlag = 'UNRESOLVED_RED_FLAG'
 }
 
@@ -797,9 +807,12 @@ export type MultiPathwayPendingGate = {
  *   COMPLETED   — generateMergedCarePlan succeeded; care_plan_id populated
  *   ABANDONED   — provider abandoned without generating
  *
- * `mergedPlan.conflicts` is the source of truth for whether the session is
- * ready to generate; while any conflict has `resolution: null`,
- * generateMergedCarePlan will return `success: false` with a blocker.
+ * Every mutation on a run re-evaluates every contributing pathway under one
+ * configuration snapshot and recomposes the run, so `mergedPlan` is always
+ * current. `generateMergedCarePlan` evaluates again and returns blockers
+ * while anything is incomplete: an unanswered question in any pathway, an
+ * unresolved conflict, a medication that cannot be safety-checked, an empty
+ * plan.
  */
 export type MultiPathwayResolutionSession = {
   __typename?: 'MultiPathwayResolutionSession';
@@ -816,6 +829,8 @@ export type MultiPathwayResolutionSession = {
   createdAt: Scalars['String']['output'];
   /** Phase 4: DDI MODERATE-severity findings — pre-merge + cross-recommendation. */
   ddiWarnings: Array<DdiWarning>;
+  /** Fingerprint of the configuration snapshot the current run was evaluated under. */
+  envFingerprint: Scalars['String']['output'];
   id: Scalars['ID']['output'];
   /**
    * True when this session was created by admin/QA/preview tooling
@@ -832,12 +847,16 @@ export type MultiPathwayResolutionSession = {
    * Aggregated pending Gate questions across every contributing per-pathway
    * session. Empty when every gate has been auto-resolved from patient data or
    * hand-answered. Each entry carries `sessionId` so the FE can call
-   * `answerPendingDecision` against the correct per-pathway session. Until a
-   * re-merge surface exists, answering a gate updates the per-pathway state
-   * but NOT the merged plan — re-run resolution to see merge changes.
+   * `answerPendingDecision` against the correct per-pathway session. Answering
+   * one re-evaluates the whole run, so the merged plan is current when the
+   * answer returns.
    */
   pendingGateQuestions: Array<MultiPathwayPendingGate>;
   providerId: Scalars['ID']['output'];
+  /** Hash of exactly what a provider reviews (spec §1 rule 8). Pass it to generateMergedCarePlan. */
+  resultHash: Scalars['String']['output'];
+  /** Optimistic-lock counter for the whole run; increments on every committed write to it or any of its pathways. */
+  revision: Scalars['Int']['output'];
   status: MultiPathwayResolutionSessionStatus;
   updatedAt: Scalars['String']['output'];
 };
@@ -866,28 +885,13 @@ export type MultiPathwayResolutionSessionSummary = {
 
 export type Mutation = {
   __typename?: 'Mutation';
-  /** Mark a multi-pathway session ABANDONED. */
+  /** Mark an ACTIVE multi-pathway run ABANDONED, and every contributing session with it. */
   abandonMultiPathwaySession: MultiPathwayResolutionSession;
   abandonSession: ResolutionSession;
   /** Activate a DRAFT pathway, making it available for patient matching. */
   activatePathway: PathwayStatusResult;
   addAdminEvidence: AdminEvidenceEntry;
   addPatientContext: ResolutionSession;
-  /**
-   * The former name, kept so this subgraph can deploy WITHOUT the dashboard.
-   *
-   * The two live in separate repositories, are merged separately, and are
-   * restarted separately — pathway-service first, so the gateway can recompose
-   * against it. Removing the field outright made the graphql deploy a one-way
-   * door: between its restart and the dashboard's, every gate answer in the
-   * running UI would fail GraphQL validation.
-   *
-   * `gateId` rather than `nodeId` because that was the old signature; a
-   * DecisionPoint or an escalated datum request is not a gate, which is why the
-   * name changed. Delete once no client calls it.
-   * @deprecated Renamed to answerPendingDecision; a DecisionPoint branch choice and an escalated datum request are not gate questions.
-   */
-  answerGateQuestion: ResolutionSession;
   /**
    * Answer whatever the session is waiting on at a node: a question gate, an
    * escalated request for a datum the pathway needed, or a branch choice at a
@@ -910,11 +914,21 @@ export type Mutation = {
   deleteSignalDefinition: Scalars['Boolean']['output'];
   /** Delete a saved simulator scenario. Returns true when a row was removed. */
   deleteSimulatorScenario: Scalars['Boolean']['output'];
+  /**
+   * Materialize the plan the provider reviewed. `reviewedResultHash` is the
+   * session's `resultHash` at review time; if re-evaluation now produces a
+   * different plan, nothing is generated and the only blocker is
+   * PLAN_CHANGED_SINCE_REVIEW (spec D7). A COMPLETED session returns its
+   * existing carePlanId.
+   */
   generateCarePlanFromResolution: CarePlanGenerationResult;
   /**
-   * Materialize the merged plan into actual care_plans / care_plan_goals /
-   * care_plan_interventions rows. Returns `success=false` with blockers if
-   * any conflict is unresolved or if validation fails.
+   * Materialize the run the provider reviewed. `reviewedResultHash` is the
+   * run's `resultHash` at review time; if re-evaluation now produces a
+   * different run, nothing is generated and the only blocker is
+   * PLAN_CHANGED_SINCE_REVIEW (spec D7). Otherwise blockers are returned while
+   * any pathway or the merge is incomplete. A COMPLETED run returns its
+   * existing carePlanId. Every contributing session completes with the run.
    */
   generateMergedCarePlan: CarePlanGenerationResult;
   /**
@@ -936,15 +950,6 @@ export type Mutation = {
    */
   manuallyResolveMedicationNormalization: ManuallyResolvedMedication;
   overrideNode: ResolutionSession;
-  /**
-   * Re-run the merge pipeline against the current state of every contributing
-   * per-pathway session, then update this multi-pathway session's stored
-   * `mergedPlan` and `ddiWarnings`. Use after a provider answers a Gate
-   * question (which re-traverses the per-pathway session) so the merged view
-   * picks up the new per-pathway state without forcing a full new resolution.
-   * Existing conflict resolutions are preserved.
-   */
-  reMergeMultiPathwaySession: MultiPathwayResolutionSession;
   /** Reactivate a SUPERSEDED or ARCHIVED pathway. */
   reactivatePathway: PathwayStatusResult;
   removeAdminEvidence: Scalars['Boolean']['output'];
@@ -952,10 +957,11 @@ export type Mutation = {
   removeResolutionThresholds: Scalars['Boolean']['output'];
   removeSignalWeight: Scalars['Boolean']['output'];
   /**
-   * Record a provider's choice for one conflict. The session's mergedPlan is
-   * rewritten to reflect the choice (chosen drug moves to PROVIDER_CONFIRMED,
-   * losers move to PROVIDER_OVERRIDE; CUSTOM_OVERRIDE attaches a write-in
-   * recommendation). Returns the updated session.
+   * Record a provider's decision for one conflict. The decision is stored on
+   * the run and the run is re-evaluated: the merged plan is re-derived from
+   * every pathway's current result, so a changed decision replaces the
+   * previous one, and the final medication set is safety-checked again.
+   * Returns the run.
    */
   resolveConflict: MultiPathwayResolutionSession;
   /**
@@ -1011,13 +1017,6 @@ export type MutationAddPatientContextArgs = {
 };
 
 
-export type MutationAnswerGateQuestionArgs = {
-  answer: GateAnswerInput;
-  gateId: Scalars['ID']['input'];
-  sessionId: Scalars['ID']['input'];
-};
-
-
 export type MutationAnswerPendingDecisionArgs = {
   answer: GateAnswerInput;
   nodeId: Scalars['ID']['input'];
@@ -1051,11 +1050,13 @@ export type MutationDeleteSimulatorScenarioArgs = {
 
 
 export type MutationGenerateCarePlanFromResolutionArgs = {
+  reviewedResultHash: Scalars['String']['input'];
   sessionId: Scalars['ID']['input'];
 };
 
 
 export type MutationGenerateMergedCarePlanArgs = {
+  reviewedResultHash: Scalars['String']['input'];
   sessionId: Scalars['ID']['input'];
 };
 
@@ -1078,11 +1079,6 @@ export type MutationOverrideNodeArgs = {
   action: OverrideAction;
   nodeId: Scalars['ID']['input'];
   reason?: InputMaybe<Scalars['String']['input']>;
-  sessionId: Scalars['ID']['input'];
-};
-
-
-export type MutationReMergeMultiPathwaySessionArgs = {
   sessionId: Scalars['ID']['input'];
 };
 
@@ -1643,6 +1639,8 @@ export type ResolutionSession = {
   createdAt: Scalars['String']['output'];
   /** Phase 4: DDI MODERATE-severity findings. Suppressions (CONTRAINDICATED/SEVERE) appear in excludedNodes with a DDI excludeReason. */
   ddiWarnings: Array<DdiWarning>;
+  /** Fingerprint of the configuration snapshot the current result was evaluated under. */
+  envFingerprint: Scalars['String']['output'];
   excludedNodes: Array<ResolvedNode>;
   gatedOutNodes: Array<ResolvedNode>;
   id: Scalars['ID']['output'];
@@ -1654,6 +1652,10 @@ export type ResolutionSession = {
   providerId: Scalars['ID']['output'];
   redFlags: Array<RedFlagType>;
   resolutionEvents: Array<ResolutionEventType>;
+  /** Hash of exactly what a provider reviews (spec §1 rule 8). Pass it to generateCarePlanFromResolution. */
+  resultHash: Scalars['String']['output'];
+  /** Optimistic-lock counter; increments on every committed write. */
+  revision: Scalars['Int']['output'];
   status: SessionStatus;
   totalNodesEvaluated: Scalars['Int']['output'];
   traversalDurationMs: Scalars['Int']['output'];
@@ -1776,6 +1778,8 @@ export type ResolvedNode = {
   confidence: Scalars['Float']['output'];
   confidenceBreakdown: Array<SignalBreakdown>;
   depth: Scalars['Int']['output'];
+  /** What the pathway decided about this node. Differs from status only when the node is withheld. */
+  eligibilityStatus: NodeStatus;
   excludeReason?: Maybe<Scalars['String']['output']>;
   nodeId: Scalars['ID']['output'];
   nodeType: Scalars['String']['output'];
@@ -1783,6 +1787,8 @@ export type ResolvedNode = {
   providerOverride?: Maybe<ProviderOverrideType>;
   status: NodeStatus;
   title: Scalars['String']['output'];
+  /** Set when the node is eligible but withheld from the plan. */
+  withheldBy?: Maybe<WithheldBy>;
 };
 
 export type ResolvedProcedure = {
@@ -2015,6 +2021,8 @@ export type SuppressedRecommendation = {
   __typename?: 'SuppressedRecommendation';
   name: Scalars['String']['output'];
   reason: SuppressionReason;
+  /** The pathway that proposed the suppressed recommendation; `provider-override` for a provider's write-in. */
+  sourcePathwayId?: Maybe<Scalars['ID']['output']>;
   /** Set when reason=ALLERGY. */
   suppressedByAllergyCode?: Maybe<Scalars['String']['output']>;
   /** Set when reason=ALLERGY. */
@@ -2027,6 +2035,8 @@ export type SuppressedRecommendation = {
   suppressedByPatientMedName?: Maybe<Scalars['String']['output']>;
   /** Set when reason=DDI_CONTRAINDICATED or DDI_SEVERE (drug↔drug source). */
   suppressedByPatientMedRxcui?: Maybe<Scalars['String']['output']>;
+  /** Set when a drug↔drug interaction with ANOTHER recommendation in the plan caused the suppression. */
+  suppressedByRecommendationName?: Maybe<Scalars['String']['output']>;
   type: SuppressedRecommendationType;
 };
 
@@ -2086,7 +2096,10 @@ export type UpdateSignalDefinitionInput = {
 export type ValidationBlockerType = {
   __typename?: 'ValidationBlockerType';
   description: Scalars['String']['output'];
+  /** Set on a blocker a multi-pathway run propagates from one of its pathways. */
+  pathwayId?: Maybe<Scalars['ID']['output']>;
   relatedNodeIds: Array<Scalars['ID']['output']>;
+  scope: BlockerScope;
   type: BlockerType;
 };
 
@@ -2123,6 +2136,12 @@ export enum WeightSource {
   OrganizationGlobal = 'ORGANIZATION_GLOBAL',
   PathwayOverride = 'PATHWAY_OVERRIDE',
   SystemDefault = 'SYSTEM_DEFAULT'
+}
+
+/** Why an eligible node is not in the plan (spec C2). */
+export enum WithheldBy {
+  Conflict = 'CONFLICT',
+  Safety = 'SAFETY'
 }
 
 export type WithIndex<TObject> = TObject & Record<string, any>;
@@ -2218,6 +2237,7 @@ export type ResolversTypes = ResolversObject<{
   ArchiveResult: ResolverTypeWrapper<ArchiveResult>;
   Boolean: ResolverTypeWrapper<Scalars['Boolean']['output']>;
   AttributeVocabularyEntry: ResolverTypeWrapper<AttributeVocabularyEntry>;
+  BlockerScope: BlockerScope;
   BlockerType: BlockerType;
   CarePlanGenerationResult: ResolverTypeWrapper<CarePlanGenerationResult>;
   CatchUpItem: ResolverTypeWrapper<CatchUpItem>;
@@ -2340,6 +2360,7 @@ export type ResolversTypes = ResolversObject<{
   WeightMatrixEntry: ResolverTypeWrapper<WeightMatrixEntry>;
   WeightScope: WeightScope;
   WeightSource: WeightSource;
+  WithheldBy: WithheldBy;
 }>;
 
 /** Mapping between all available schema types and the resolvers parents */
@@ -2827,12 +2848,15 @@ export type MultiPathwayResolutionSessionResolvers<ContextType = DataSourceConte
   contributingSessionIds?: Resolver<Array<ResolversTypes['ID']>, ParentType, ContextType>;
   createdAt?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   ddiWarnings?: Resolver<Array<ResolversTypes['DDIWarning']>, ParentType, ContextType>;
+  envFingerprint?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   id?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
   isPreview?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType>;
   mergedPlan?: Resolver<ResolversTypes['MergedCarePlan'], ParentType, ContextType>;
   patientId?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
   pendingGateQuestions?: Resolver<Array<ResolversTypes['MultiPathwayPendingGate']>, ParentType, ContextType>;
   providerId?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
+  resultHash?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  revision?: Resolver<ResolversTypes['Int'], ParentType, ContextType>;
   status?: Resolver<ResolversTypes['MultiPathwayResolutionSessionStatus'], ParentType, ContextType>;
   updatedAt?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
@@ -2858,19 +2882,17 @@ export type MutationResolvers<ContextType = DataSourceContext, ParentType extend
   activatePathway?: Resolver<ResolversTypes['PathwayStatusResult'], ParentType, ContextType, RequireFields<MutationActivatePathwayArgs, 'id'>>;
   addAdminEvidence?: Resolver<ResolversTypes['AdminEvidenceEntry'], ParentType, ContextType, RequireFields<MutationAddAdminEvidenceArgs, 'input'>>;
   addPatientContext?: Resolver<ResolversTypes['ResolutionSession'], ParentType, ContextType, RequireFields<MutationAddPatientContextArgs, 'additionalContext' | 'sessionId'>>;
-  answerGateQuestion?: Resolver<ResolversTypes['ResolutionSession'], ParentType, ContextType, RequireFields<MutationAnswerGateQuestionArgs, 'answer' | 'gateId' | 'sessionId'>>;
   answerPendingDecision?: Resolver<ResolversTypes['ResolutionSession'], ParentType, ContextType, RequireFields<MutationAnswerPendingDecisionArgs, 'answer' | 'nodeId' | 'sessionId'>>;
   archivePathway?: Resolver<ResolversTypes['PathwayStatusResult'], ParentType, ContextType, RequireFields<MutationArchivePathwayArgs, 'id'>>;
   createSignalDefinition?: Resolver<ResolversTypes['SignalDefinitionType'], ParentType, ContextType, RequireFields<MutationCreateSignalDefinitionArgs, 'input'>>;
   deletePreviewSession?: Resolver<ResolversTypes['DeletePreviewSessionResult'], ParentType, ContextType, RequireFields<MutationDeletePreviewSessionArgs, 'sessionId'>>;
   deleteSignalDefinition?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationDeleteSignalDefinitionArgs, 'id'>>;
   deleteSimulatorScenario?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationDeleteSimulatorScenarioArgs, 'id'>>;
-  generateCarePlanFromResolution?: Resolver<ResolversTypes['CarePlanGenerationResult'], ParentType, ContextType, RequireFields<MutationGenerateCarePlanFromResolutionArgs, 'sessionId'>>;
-  generateMergedCarePlan?: Resolver<ResolversTypes['CarePlanGenerationResult'], ParentType, ContextType, RequireFields<MutationGenerateMergedCarePlanArgs, 'sessionId'>>;
+  generateCarePlanFromResolution?: Resolver<ResolversTypes['CarePlanGenerationResult'], ParentType, ContextType, RequireFields<MutationGenerateCarePlanFromResolutionArgs, 'reviewedResultHash' | 'sessionId'>>;
+  generateMergedCarePlan?: Resolver<ResolversTypes['CarePlanGenerationResult'], ParentType, ContextType, RequireFields<MutationGenerateMergedCarePlanArgs, 'reviewedResultHash' | 'sessionId'>>;
   importPathway?: Resolver<ResolversTypes['ImportPathwayResult'], ParentType, ContextType, RequireFields<MutationImportPathwayArgs, 'importMode' | 'pathwayJson'>>;
   manuallyResolveMedicationNormalization?: Resolver<ResolversTypes['ManuallyResolvedMedication'], ParentType, ContextType, RequireFields<MutationManuallyResolveMedicationNormalizationArgs, 'inputText' | 'rxcui'>>;
   overrideNode?: Resolver<ResolversTypes['ResolutionSession'], ParentType, ContextType, RequireFields<MutationOverrideNodeArgs, 'action' | 'nodeId' | 'sessionId'>>;
-  reMergeMultiPathwaySession?: Resolver<ResolversTypes['MultiPathwayResolutionSession'], ParentType, ContextType, RequireFields<MutationReMergeMultiPathwaySessionArgs, 'sessionId'>>;
   reactivatePathway?: Resolver<ResolversTypes['PathwayStatusResult'], ParentType, ContextType, RequireFields<MutationReactivatePathwayArgs, 'id'>>;
   removeAdminEvidence?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationRemoveAdminEvidenceArgs, 'id'>>;
   removeNodeWeight?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationRemoveNodeWeightArgs, 'id'>>;
@@ -3082,6 +3104,7 @@ export type ResolutionEventTypeResolvers<ContextType = DataSourceContext, Parent
 export type ResolutionSessionResolvers<ContextType = DataSourceContext, ParentType extends ResolversParentTypes['ResolutionSession'] = ResolversParentTypes['ResolutionSession']> = ResolversObject<{
   createdAt?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   ddiWarnings?: Resolver<Array<ResolversTypes['DDIWarning']>, ParentType, ContextType>;
+  envFingerprint?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   excludedNodes?: Resolver<Array<ResolversTypes['ResolvedNode']>, ParentType, ContextType>;
   gatedOutNodes?: Resolver<Array<ResolversTypes['ResolvedNode']>, ParentType, ContextType>;
   id?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
@@ -3093,6 +3116,8 @@ export type ResolutionSessionResolvers<ContextType = DataSourceContext, ParentTy
   providerId?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
   redFlags?: Resolver<Array<ResolversTypes['RedFlagType']>, ParentType, ContextType>;
   resolutionEvents?: Resolver<Array<ResolversTypes['ResolutionEventType']>, ParentType, ContextType>;
+  resultHash?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  revision?: Resolver<ResolversTypes['Int'], ParentType, ContextType>;
   status?: Resolver<ResolversTypes['SessionStatus'], ParentType, ContextType>;
   totalNodesEvaluated?: Resolver<ResolversTypes['Int'], ParentType, ContextType>;
   traversalDurationMs?: Resolver<ResolversTypes['Int'], ParentType, ContextType>;
@@ -3177,6 +3202,7 @@ export type ResolvedNodeResolvers<ContextType = DataSourceContext, ParentType ex
   confidence?: Resolver<ResolversTypes['Float'], ParentType, ContextType>;
   confidenceBreakdown?: Resolver<Array<ResolversTypes['SignalBreakdown']>, ParentType, ContextType>;
   depth?: Resolver<ResolversTypes['Int'], ParentType, ContextType>;
+  eligibilityStatus?: Resolver<ResolversTypes['NodeStatus'], ParentType, ContextType>;
   excludeReason?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   nodeId?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
   nodeType?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
@@ -3184,6 +3210,7 @@ export type ResolvedNodeResolvers<ContextType = DataSourceContext, ParentType ex
   providerOverride?: Resolver<Maybe<ResolversTypes['ProviderOverrideType']>, ParentType, ContextType>;
   status?: Resolver<ResolversTypes['NodeStatus'], ParentType, ContextType>;
   title?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  withheldBy?: Resolver<Maybe<ResolversTypes['WithheldBy']>, ParentType, ContextType>;
   __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
 }>;
 
@@ -3302,12 +3329,14 @@ export type SimulatorScenarioLabResultResolvers<ContextType = DataSourceContext,
 export type SuppressedRecommendationResolvers<ContextType = DataSourceContext, ParentType extends ResolversParentTypes['SuppressedRecommendation'] = ResolversParentTypes['SuppressedRecommendation']> = ResolversObject<{
   name?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   reason?: Resolver<ResolversTypes['SuppressionReason'], ParentType, ContextType>;
+  sourcePathwayId?: Resolver<Maybe<ResolversTypes['ID']>, ParentType, ContextType>;
   suppressedByAllergyCode?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   suppressedByAllergyDisplay?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   suppressedByPathwayId?: Resolver<Maybe<ResolversTypes['ID']>, ParentType, ContextType>;
   suppressedByPathwayTitle?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   suppressedByPatientMedName?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   suppressedByPatientMedRxcui?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  suppressedByRecommendationName?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   type?: Resolver<ResolversTypes['SuppressedRecommendationType'], ParentType, ContextType>;
   __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
 }>;
@@ -3329,7 +3358,9 @@ export type UnnormalizedMedicationResolvers<ContextType = DataSourceContext, Par
 
 export type ValidationBlockerTypeResolvers<ContextType = DataSourceContext, ParentType extends ResolversParentTypes['ValidationBlockerType'] = ResolversParentTypes['ValidationBlockerType']> = ResolversObject<{
   description?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  pathwayId?: Resolver<Maybe<ResolversTypes['ID']>, ParentType, ContextType>;
   relatedNodeIds?: Resolver<Array<ResolversTypes['ID']>, ParentType, ContextType>;
+  scope?: Resolver<ResolversTypes['BlockerScope'], ParentType, ContextType>;
   type?: Resolver<ResolversTypes['BlockerType'], ParentType, ContextType>;
   __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
 }>;
