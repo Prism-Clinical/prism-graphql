@@ -11,6 +11,7 @@ import { TemporalContextError } from './evaluation-context';
 // stamps every vital with this system and the adapter must select on the same
 // one; a second spelling here would silently match nothing.
 import { VITALS_SYSTEM } from './context-assembler';
+import { parseWindowFrom, WINDOW_FROM_OPERATORS } from './anchored-window';
 import { AttributeCodeMap, AttributeCondition, CodedCondition } from '../types';
 
 /**
@@ -158,6 +159,26 @@ export function conditionControlDomainError(condition: unknown): string | null {
     }
   }
 
+  // `delta_comparison` makes the direction of a delta EXPLICIT, so both halves
+  // of "rose by at least t" / "rose by less than t" are expressible on the same
+  // threshold. Without it the sign of `delta_threshold` picks the direction and
+  // "less than" has no encoding. Keyed on the operator here — unlike the numeric
+  // rules — because on any other operator it would be silently ignored, and an
+  // ignored "less_than" reads as its exact inverse. One predicate, so import and
+  // runtime refuse the same conditions.
+  const comparison = c.delta_comparison;
+  if (comparison !== undefined) {
+    if (c.operator !== 'delta_from_baseline') {
+      return (
+        `"delta_comparison" applies only to delta_from_baseline ` +
+        `(got operator ${JSON.stringify(c.operator)})`
+      );
+    }
+    if (comparison !== 'at_least' && comparison !== 'less_than') {
+      return `"delta_comparison" must be "at_least" or "less_than" (got ${JSON.stringify(comparison)})`;
+    }
+  }
+
   const slope = c.slope_threshold;
   if (slope !== undefined) {
     if (typeof slope !== 'number' || !Number.isFinite(slope)) {
@@ -266,7 +287,43 @@ export function parseConditionOverride(
     );
   }
 
+  // `window_from` replaces the window's lower bound with an event, so it is
+  // exclusive with BOTH ways of stating a fixed lookback — the same "no
+  // defensible winner" reasoning as the check above.
+  const hasWindowFrom = cond.window_from !== undefined;
+  if (hasWindowFrom && (hasWindowDays || hasHorizon)) {
+    throw new TemporalContextError(
+      `${where}: a condition may set window_from or ${hasWindowDays ? 'window_days' : 'horizon'}, ` +
+        `not both — window_from anchors the window on an event, a lookback anchors it on the clock`,
+      'INVALID_TEMPORAL_DEFAULTS',
+    );
+  }
+
   const override: ConditionTemporalOverride = {};
+
+  if (hasWindowFrom) {
+    // Keyed on the author's operator. An attribute condition's operators are
+    // never time-series ones, so this refuses `window_from` on every
+    // attribute condition as well — reached by the sweep, the adapter and the
+    // import validator alike.
+    const op = cond.operator;
+    if (typeof op !== 'string' || !WINDOW_FROM_OPERATORS.has(op)) {
+      throw new TemporalContextError(
+        `${where}: window_from applies only to ${[...WINDOW_FROM_OPERATORS].join(' / ')} ` +
+          `(got operator ${JSON.stringify(op)})`,
+        'INVALID_TEMPORAL_DEFAULTS',
+      );
+    }
+    override.windowFrom = parseWindowFrom(cond.window_from, `${where}.window_from`);
+    // A pre-anchor BASELINE is a series concept; a count has no baseline.
+    if (override.windowFrom.baselineDays !== undefined && op === 'count_in_window') {
+      throw new TemporalContextError(
+        `${where}.window_from: "baseline_days" applies only to trend_up / trend_down / ` +
+          `delta_from_baseline — a count has no baseline`,
+        'INVALID_TEMPORAL_DEFAULTS',
+      );
+    }
+  }
 
   if (hasWindowDays) {
     // Routed through parseHorizonValue rather than validated here, so the

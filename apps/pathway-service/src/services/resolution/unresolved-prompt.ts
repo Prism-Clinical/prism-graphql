@@ -2,6 +2,7 @@ import type { AttributeCodeMap } from './types';
 import { AnswerType, GateCondition, isAttributeCondition } from './types';
 import { isTemporalOperator, operatorClass } from './temporal/contract';
 import { patientAttributeLabel } from './attribute-vocabulary';
+import { anchorKeyFor, anchorPromptFor, parseWindowFrom } from './temporal/anchored-window';
 
 /**
  * What to ask a provider for, when a gate could not evaluate its condition.
@@ -89,7 +90,31 @@ export interface UnresolvedAsk {
   target:
     | { kind: 'lab'; code: string; system: string }
     | { kind: 'vital'; path: string }
-    | { kind: 'attribute'; path: string };
+    | { kind: 'attribute'; path: string }
+    | { kind: 'anchor'; key: string };
+}
+
+/**
+ * The question for a `window_from` condition whose anchor did not resolve:
+ * the class's start DATE. `null` for any other condition.
+ *
+ * Only for a condition the evaluator flagged `anchorUnresolved` — an anchored
+ * condition can also be indeterminate on series ORDER, and a date would not
+ * unblock that. The datum key is the ANCHOR key, so every gate anchored on the
+ * same class asks one question and one answer re-anchors them all.
+ */
+export function anchorAskFor(condition: GateCondition): UnresolvedAsk | null {
+  const raw = (condition as { window_from?: unknown }).window_from;
+  if (raw === undefined) return null;
+  // Already accepted by the adapter on this very evaluation, so it parses.
+  const sel = parseWindowFrom(raw, 'window_from');
+  const key = anchorKeyFor(sel);
+  return {
+    datumKey: key,
+    prompt: anchorPromptFor(sel),
+    answerType: AnswerType.DATE,
+    target: { kind: 'anchor', key },
+  };
 }
 
 /**
@@ -183,6 +208,37 @@ export function askFor(
   // A scalar operator on conditions / medications / allergies is not something
   // the fact model can take a value for.
   return null;
+}
+
+/**
+ * The question for a trend/delta series ONE dated lab value short: the newest
+ * result, drawn after the latest one on file. `null` for anything else.
+ *
+ * Only for a condition the evaluator flagged as one short — `askFor` still
+ * refuses aggregates in general, because a COUNT or a slope is a derived
+ * quantity, and a series short by more than one cannot be completed by one
+ * answer. What is asked for here is an observation, not a derivation: a lab
+ * value, injected as a provider-asserted lab at the session clock, exactly as
+ * a scalar lab ask is — same datum key, so a gate comparing the same lab asks
+ * once.
+ *
+ * The prompt names the latest date on file. Asking "most recent value?" invites
+ * re-entering the value the series already has; injected at the session clock
+ * it would read as a second, unchanged result — a delta of zero, a
+ * non-responder who responded.
+ */
+export function seriesAskFor(condition: GateCondition, latestDate: string): UnresolvedAsk | null {
+  if (isAttributeCondition(condition)) return null;
+  const { field, value } = condition;
+  if (field !== 'labs' || typeof value !== 'string' || value === '' || value.includes('*')) return null;
+  const system = condition.system ?? 'LOINC';
+  const label = authoredDisplay(condition.display) ?? value;
+  return {
+    datumKey: `${system}:${value}`,
+    prompt: `${label} (${system} ${value}) — newest result, drawn after ${latestDate}?`,
+    answerType: AnswerType.NUMERIC,
+    target: { kind: 'lab', code: value, system },
+  };
 }
 
 /**

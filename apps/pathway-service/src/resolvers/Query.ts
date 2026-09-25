@@ -50,6 +50,7 @@ function formatNodeForGraphQL(node: NodeResult) {
     excludeReason: node.excludeReason ?? null,
     parentNodeId: node.parentNodeId ?? null,
     depth: node.depth,
+    windowAnchors: node.windowAnchors ?? null,
   };
 }
 

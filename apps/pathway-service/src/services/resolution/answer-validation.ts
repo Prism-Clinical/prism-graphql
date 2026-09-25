@@ -38,9 +38,16 @@ export function normalizeAnswerType(raw: unknown): AnswerType {
  * Returns a human-readable reason, or null when the answer is well-formed.
  */
 export function validateAnswerAgainstGate(
-  answer: Pick<GateAnswer, 'booleanValue' | 'numericValue' | 'selectedOption'>,
+  answer: Pick<GateAnswer, 'booleanValue' | 'numericValue' | 'selectedOption' | 'dateValue'>,
   gate: GateProperties,
 ): string | null {
+  // A date answers exactly one thing — a `window_from` treatment start — and
+  // that is routed away before this check (anchor-answer.ts). Reaching here
+  // with one means the gate asked no such question; left uncounted, an untyped
+  // gate would accept it and store an answer carrying no value at all.
+  if (answer.dateValue !== undefined && answer.dateValue !== null) {
+    return 'dateValue answers only a treatment start-date question, and this gate asks none';
+  }
   const present: string[] = [];
   if (answer.booleanValue !== undefined && answer.booleanValue !== null) present.push('booleanValue');
   if (answer.numericValue !== undefined && answer.numericValue !== null) present.push('numericValue');
@@ -118,6 +125,7 @@ export function validateAnswerAgainstGate(
  * SELECT — see `askFor`.
  */
 export function datumAnswerType(q: Pick<PendingQuestion, 'answerType' | 'askTarget'>): AnswerType {
+  if (q.askTarget?.kind === 'anchor') return AnswerType.DATE;
   if (q.askTarget?.kind !== 'attribute') return AnswerType.NUMERIC;
   return normalizeAnswerType(q.answerType);
 }

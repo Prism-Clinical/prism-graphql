@@ -666,3 +666,220 @@ describe('mergeResolvedCarePlans — clinical_role soft conflicts', () => {
     expect(titles).toEqual(['Atrial Fibrillation', 'Heart Failure']);
   });
 });
+
+// ─── Same drug, different regimens ────────────────────────────────────
+//
+// Medications used to be merged by drug NAME alone: when two pathways asked
+// for the same drug at a different dose / frequency / route / duration, the
+// second pathway's regimen vanished and only its pathway id survived, in the
+// provenance of a regimen it never asked for. A regimen is now part of what
+// identifies a recommendation; the drug NAME still identifies the drug for
+// suppression and for clinical_role lanes.
+
+describe('mergeResolvedCarePlans — same drug, different regimens', () => {
+  const metformin = (over: Partial<ResolvedMedication> = {}): Partial<ResolvedMedication> => ({
+    name: 'Metformin',
+    role: 'first_line',
+    dose: '500 mg',
+    frequency: 'BID',
+    route: 'PO',
+    duration: '90 days',
+    ...over,
+  });
+
+  it('merges an identical regimen from two pathways and unions provenance', () => {
+    const a = makePathway({ title: 'T2DM', medications: [metformin()] });
+    const b = makePathway({ title: 'PCOS', medications: [metformin()] });
+    const merged = mergeResolvedCarePlans([a, b]);
+
+    expect(merged.conflicts).toEqual([]);
+    expect(merged.medications).toHaveLength(1);
+    expect(merged.medications[0].sourcePathwayIds).toEqual([a.pathwayId, b.pathwayId]);
+  });
+
+  it('treats case and whitespace differences in the regimen as identical', () => {
+    const a = makePathway({ title: 'T2DM', medications: [metformin()] });
+    const b = makePathway({
+      title: 'PCOS',
+      medications: [metformin({ name: ' metformin ', dose: '500  MG', frequency: 'bid', route: 'po' })],
+    });
+    const merged = mergeResolvedCarePlans([a, b]);
+
+    expect(merged.conflicts).toEqual([]);
+    expect(merged.medications).toHaveLength(1);
+  });
+
+  it('does not let the recommendation role split an otherwise identical regimen', () => {
+    const a = makePathway({ title: 'T2DM', medications: [metformin({ role: 'first_line' })] });
+    const b = makePathway({ title: 'Prediabetes', medications: [metformin({ role: 'preferred' })] });
+    const merged = mergeResolvedCarePlans([a, b]);
+
+    expect(merged.conflicts).toEqual([]);
+    expect(merged.medications).toHaveLength(1);
+  });
+
+  it.each([
+    ['dose', { dose: '1000 mg' }],
+    ['frequency', { frequency: 'daily' }],
+    ['route', { route: 'IV' }],
+    ['duration', { duration: '14 days' }],
+    ['a stated vs unstated duration', { duration: undefined }],
+  ])('never drops a second pathway\'s regimen that differs by %s — surfaces a conflict', (_label, diff) => {
+    const a = makePathway({ title: 'T2DM', medications: [metformin()] });
+    const b = makePathway({ title: 'PCOS', medications: [metformin(diff as Partial<ResolvedMedication>)] });
+    const merged = mergeResolvedCarePlans([a, b]);
+
+    // Neither regimen is auto-included — the provider has to choose.
+    expect(merged.medications).toEqual([]);
+    expect(merged.conflicts).toHaveLength(1);
+
+    const c = merged.conflicts[0];
+    expect(c.type).toBe('medication_regimen');
+    expect(c.conflictId).toBe('regimen:metformin');
+    // Untagged drug: the conflict's subject is the drug itself.
+    expect(c.clinicalRole).toBe('Metformin');
+    expect(c.resolution).toBeNull();
+    expect(c.candidates).toHaveLength(2);
+
+    const [ca, cb] = c.candidates;
+    expect(ca.sourcePathwayId).toBe(a.pathwayId);
+    expect(ca.sourcePathwayTitle).toBe('T2DM');
+    expect(ca.recommendation).toMatchObject(metformin());
+    expect(cb.sourcePathwayId).toBe(b.pathwayId);
+    expect(cb.sourcePathwayTitle).toBe('PCOS');
+    expect(cb.recommendation).toMatchObject({ ...metformin(), ...diff });
+  });
+
+  it('labels a regimen conflict with the shared clinical_role when the drug carries one', () => {
+    const a = makePathway({ title: 'T2DM', medications: [metformin({ clinicalRole: 'first_line_t2dm' })] });
+    const b = makePathway({
+      title: 'PCOS',
+      medications: [metformin({ dose: '1000 mg', clinicalRole: 'first_line_t2dm' })],
+    });
+    const merged = mergeResolvedCarePlans([a, b]);
+
+    expect(merged.conflicts).toHaveLength(1);
+    expect(merged.conflicts[0].type).toBe('medication_regimen');
+    expect(merged.conflicts[0].conflictId).toBe('regimen:metformin');
+    expect(merged.conflicts[0].clinicalRole).toBe('first_line_t2dm');
+  });
+
+  it('groups pathways that agree into ONE candidate carrying all of their ids', () => {
+    const a = makePathway({ title: 'T2DM', medications: [metformin()] });
+    const b = makePathway({ title: 'PCOS', medications: [metformin()] });
+    const c = makePathway({ title: 'Obesity', medications: [metformin({ dose: '1000 mg' })] });
+    const merged = mergeResolvedCarePlans([a, b, c]);
+
+    expect(merged.medications).toEqual([]);
+    expect(merged.conflicts).toHaveLength(1);
+    const cands = merged.conflicts[0].candidates;
+    expect(cands).toHaveLength(2);
+    expect(cands[0].recommendation.dose).toBe('500 mg');
+    expect(cands[0].sourcePathwayIds).toEqual([a.pathwayId, b.pathwayId]);
+    expect(cands[1].recommendation.dose).toBe('1000 mg');
+    expect(cands[1].sourcePathwayIds).toEqual([c.pathwayId]);
+  });
+
+  it('keeps two regimens authored by ONE pathway as two entries, not a conflict', () => {
+    // No cross-pathway disagreement to decide — and CONFIRM_PATHWAY could not
+    // tell the two apart. Keeping both is the only answer that loses nothing.
+    const a = makePathway({
+      title: 'T2DM',
+      medications: [metformin(), metformin({ dose: '1000 mg' })],
+    });
+    const merged = mergeResolvedCarePlans([a]);
+
+    expect(merged.conflicts).toEqual([]);
+    expect(merged.medications.map((m) => m.recommendation.dose)).toEqual(['500 mg', '1000 mg']);
+  });
+
+  it('leaves unrelated drugs alone when one drug has a regimen conflict', () => {
+    const a = makePathway({
+      title: 'T2DM',
+      medications: [metformin(), { name: 'Atorvastatin', role: 'first_line', dose: '20 mg' }],
+    });
+    const b = makePathway({ title: 'PCOS', medications: [metformin({ dose: '1000 mg' })] });
+    const merged = mergeResolvedCarePlans([a, b]);
+
+    expect(merged.medications.map((m) => m.recommendation.name)).toEqual(['Atorvastatin']);
+    expect(merged.conflicts.map((c) => c.conflictId)).toEqual(['regimen:metformin']);
+  });
+
+  it('suppresses every regimen of a drug another pathway marks AVOID — by drug, not by regimen', () => {
+    const a = makePathway({ title: 'CKD 4', medications: [{ name: 'Metformin', role: 'avoid' }] });
+    const b = makePathway({ title: 'T2DM', medications: [metformin()] });
+    const c = makePathway({ title: 'PCOS', medications: [metformin({ dose: '1000 mg', route: 'PO ER' })] });
+    const merged = mergeResolvedCarePlans([a, b, c]);
+
+    expect(merged.medications).toEqual([]);
+    expect(merged.conflicts).toEqual([]);
+    expect(merged.suppressed).toHaveLength(3);
+    const active = merged.suppressed.filter((s) => (s.original as ResolvedMedication).role !== 'avoid');
+    expect(active.map((s) => (s.original as ResolvedMedication).dose)).toEqual(['500 mg', '1000 mg']);
+    for (const s of active) {
+      expect(s.reason).toBe('avoid');
+      expect(s.suppressedBy).toEqual({ pathwayId: a.pathwayId, pathwayTitle: 'CKD 4' });
+    }
+  });
+
+  it('suppresses a CONTRAINDICATED drug even when the flag carries a different regimen', () => {
+    const a = makePathway({
+      title: 'Pregnancy',
+      medications: [{ name: 'Lisinopril', role: 'contraindicated', dose: '10 mg' }],
+    });
+    const b = makePathway({
+      title: 'HTN',
+      medications: [{ name: 'lisinopril', role: 'first_line', dose: '40 mg', frequency: 'daily' }],
+    });
+    const merged = mergeResolvedCarePlans([a, b]);
+
+    expect(merged.medications).toEqual([]);
+    expect(merged.conflicts).toEqual([]);
+    expect(merged.suppressed.map((s) => s.reason)).toEqual(['contraindicated', 'contraindicated']);
+  });
+
+  it('a clinical_role conflict takes EVERY regimen of each drug in the lane — none escapes as auto-included', () => {
+    const a = makePathway({ title: 'T2DM', medications: [metformin({ clinicalRole: 'first_line_t2dm' })] });
+    const b = makePathway({ title: 'PCOS', medications: [metformin({ dose: '1000 mg' })] }); // untagged
+    const c = makePathway({
+      title: 'T2DM + ASCVD',
+      medications: [{ name: 'Empagliflozin', role: 'first_line', dose: '10 mg', clinicalRole: 'first_line_t2dm' }],
+    });
+    const merged = mergeResolvedCarePlans([a, b, c]);
+
+    expect(merged.medications).toEqual([]);
+    expect(merged.conflicts).toHaveLength(1);
+    const conflict = merged.conflicts[0];
+    expect(conflict.type).toBe('medication');
+    expect(conflict.conflictId).toBe('first_line_t2dm');
+    expect(conflict.clinicalRole).toBe('first_line_t2dm');
+    expect(
+      conflict.candidates.map((x) => `${x.recommendation.name} ${x.recommendation.dose}`),
+    ).toEqual(['Metformin 500 mg', 'Metformin 1000 mg', 'Empagliflozin 10 mg']);
+  });
+
+  it('two different drugs sharing a clinical_role still conflict exactly as before', () => {
+    const a = makePathway({
+      title: 'AF',
+      medications: [{ name: 'Metoprolol', role: 'first_line', dose: '25 mg', clinicalRole: 'bb' }],
+    });
+    const b = makePathway({
+      title: 'HFrEF',
+      medications: [{ name: 'Carvedilol', role: 'first_line', dose: '3.125 mg', clinicalRole: 'bb' }],
+    });
+    const merged = mergeResolvedCarePlans([a, b]);
+
+    expect(merged.medications).toEqual([]);
+    expect(merged.conflicts).toHaveLength(1);
+    expect(merged.conflicts[0]).toMatchObject({
+      conflictId: 'bb',
+      type: 'medication',
+      clinicalRole: 'bb',
+      resolution: null,
+    });
+    expect(merged.conflicts[0].candidates.map((c) => [c.recommendation.name, c.sourcePathwayId])).toEqual([
+      ['Metoprolol', a.pathwayId],
+      ['Carvedilol', b.pathwayId],
+    ]);
+  });
+});

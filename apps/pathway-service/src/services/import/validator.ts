@@ -48,10 +48,16 @@ const VALID_CATEGORIES = new Set<string>(Object.values(PathwayCategory));
 // preflight still runs them as the backstop. Without these entries a
 // per-condition horizon fails import as an unknown key and the NODE tier is
 // unauthorable.
+// `window_from` (anchored trend windows) is coded-only: its operators are the
+// time-series ones, which no attribute condition has. Its grammar, the XOR
+// against `window_days`/`horizon` and the operator restriction all live in
+// `parseConditionOverride` → `parseWindowFrom`, reached below exactly as for
+// `horizon`.
 const CODED_KEYS = new Set([
   'field', 'operator', 'value', 'system', 'threshold',
   'window_days', 'count_threshold', 'min_points', 'slope_threshold', 'delta_threshold',
-  'horizon', 'status',
+  'delta_comparison',
+  'horizon', 'status', 'window_from',
   'display', 'note',
 ]);
 const ATTRIBUTE_KEYS = new Set([
@@ -235,6 +241,27 @@ function validateGateNodes(
 ): void {
   const edges = pw.edges && Array.isArray(pw.edges) ? pw.edges : [];
   const gateNodes = pw.nodes.filter(n => n.type === 'Gate');
+  // The classes this pathway itself prescribes — what a `window_from`
+  // selector's care-plan source can match.
+  // With each class, the codes its Medication nodes carry (HAS_CODE →
+  // CodeEntry), so a selector's `codes` can be checked for a missing member.
+  const medicationRoles = new Map<string, Array<{ nodeId: string; system: string; code: string }>>();
+  const nodeById = new Map(pw.nodes.map(n => [n.id, n]));
+  for (const n of pw.nodes) {
+    if (n.type !== 'Medication') continue;
+    const role = (n.properties as Record<string, unknown> | undefined)?.clinical_role;
+    if (typeof role !== 'string' || role === '') continue;
+    const members = medicationRoles.get(role) ?? [];
+    for (const e of edges) {
+      if (e.type !== 'HAS_CODE' || e.from !== n.id) continue;
+      const entry = nodeById.get(e.to);
+      const props = entry?.properties as Record<string, unknown> | undefined;
+      if (entry?.type === 'CodeEntry' && typeof props?.system === 'string' && typeof props?.code === 'string') {
+        members.push({ nodeId: n.id, system: props.system, code: props.code });
+      }
+    }
+    medicationRoles.set(role, members);
+  }
 
   // Structural completeness checks fall into `warnings` in draft mode so a
   // gate that's mid-authoring (just dropped on the canvas, not yet wired or
@@ -492,8 +519,66 @@ function validateGateNodes(
       ...(props.condition && typeof props.condition === 'object' ? [props.condition as Record<string, unknown>] : []),
       ...(Array.isArray(props.conditions) ? (props.conditions as Array<Record<string, unknown>>) : []),
     ];
-    if (conds.length > 0) validateGateConditions(gate.id, conds, errors);
+    if (conds.length > 0) {
+      validateGateConditions(gate.id, conds, errors);
+      windowFromWarnings(gate.id, conds, medicationRoles, warnings);
+    }
   }
+}
+
+/**
+ * Advice for a `window_from` whose grammar is valid but which may never
+ * resolve from the chart. Warnings, not errors: a clinician-entered date always
+ * resolves it, and anchoring on a drug another pathway prescribes is legitimate.
+ *
+ *  - no Medication node here carries the `clinical_role` → the care-plan
+ *    source (this pathway's own recommendation) can never match;
+ *  - no `codes` → the medication-order source can never match, so a patient
+ *    with no stored care plan (every simulator patient) is always asked.
+ */
+function windowFromWarnings(
+  gateId: string,
+  conditions: Array<Record<string, unknown>>,
+  medicationRoles: ReadonlyMap<string, ReadonlyArray<{ nodeId: string; system: string; code: string }>>,
+  warnings: string[],
+): void {
+  conditions.forEach((c, i) => {
+    const wf = c?.window_from;
+    if (!wf || typeof wf !== 'object' || Array.isArray(wf)) return;
+    const where = `Gate "${gateId}" condition[${i}].window_from`;
+    const selector = wf as Record<string, unknown>;
+    const role = selector.clinical_role;
+    if (typeof role === 'string' && role !== '' && !medicationRoles.has(role)) {
+      warnings.push(
+        `${where}: no Medication node in this pathway has clinical_role "${role}" — the ` +
+          `anchor can resolve only from a medication order or a clinician-entered date`,
+      );
+    }
+    if (selector.codes === undefined) {
+      warnings.push(
+        `${where}: no "codes" — medication orders cannot anchor the window, so a patient ` +
+          `with no stored care plan is always asked for the start date`,
+      );
+      return;
+    }
+    // A class member the order source would not recognise: the patient on
+    // THAT product is asked for a date the chart already holds. The runtime
+    // compares system case-insensitively, so this does too.
+    if (typeof role !== 'string' || !Array.isArray(selector.codes)) return;
+    const listed = new Set(
+      (selector.codes as Array<Record<string, unknown>>).map(
+        k => `${String(k?.system).toUpperCase()}|${String(k?.code)}`,
+      ),
+    );
+    for (const m of medicationRoles.get(role) ?? []) {
+      if (!listed.has(`${m.system.toUpperCase()}|${m.code}`)) {
+        warnings.push(
+          `${where}: "codes" omits ${m.system} ${m.code} (Medication "${m.nodeId}", class ` +
+            `"${role}") — an order for it will not anchor the window`,
+        );
+      }
+    }
+  });
 }
 
 const NODE_STATUSES: readonly string[] = Object.values(NodeStatus);

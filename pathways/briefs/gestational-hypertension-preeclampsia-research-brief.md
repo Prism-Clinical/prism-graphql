@@ -1,5 +1,7 @@
 # Pathway Research Brief — Gestational Hypertension & Preeclampsia
 
+JSON: pathways/json/gestational-hypertension-preeclampsia.json @ version 1
+
 **Status: DRAFT v1 for physician review — not yet approved for JSON build.**
 
 Scope confirmed with the requester: **outpatient prenatal care**, running from risk

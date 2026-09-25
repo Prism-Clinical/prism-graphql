@@ -59,8 +59,14 @@ export type AdminEvidenceEntry = {
   year?: Maybe<Scalars['Int']['output']>;
 };
 
+/**
+ * How a pending question is answered. DATE is a calendar date (`YYYY-MM-DD`,
+ * sent as `GateAnswerInput.dateValue`) — asked only for a `window_from`
+ * treatment start date ("When did oral iron start?").
+ */
 export enum AnswerType {
   Boolean = 'BOOLEAN',
+  Date = 'DATE',
   Numeric = 'NUMERIC',
   Select = 'SELECT'
 }
@@ -185,7 +191,14 @@ export type ConditionCodeDetail = {
 export type ConflictCandidate = {
   __typename?: 'ConflictCandidate';
   recommendation: ResolvedMedication;
+  /** The first pathway that asked for this exact drug and regimen. */
   sourcePathwayId: Scalars['ID']['output'];
+  /**
+   * Every pathway that asked for this exact drug and regimen, first-seen order.
+   * Any of them is a valid CONFIRM_PATHWAY choice.
+   */
+  sourcePathwayIds: Array<Scalars['ID']['output']>;
+  /** Title of `sourcePathwayId`. */
   sourcePathwayTitle: Scalars['String']['output'];
 };
 
@@ -225,7 +238,14 @@ export enum ConflictResolutionKind {
 }
 
 export enum ConflictType {
-  Medication = 'MEDICATION'
+  /** Two or more DIFFERENT drugs share a clinical_role lane. */
+  Medication = 'MEDICATION',
+  /**
+   * ONE drug asked for at different regimens (dose, frequency, route or
+   * duration) by different pathways. Every candidate names the same drug;
+   * tell them apart by their regimen, not their name.
+   */
+  MedicationRegimen = 'MEDICATION_REGIMEN'
 }
 
 export type CreateSignalDefinitionInput = {
@@ -362,6 +382,13 @@ export type DiffDetail = {
 
 export type GateAnswerInput = {
   booleanValue?: InputMaybe<Scalars['Boolean']['input']>;
+  /**
+   * A treatment start date, `YYYY-MM-DD`, on or before the session's evaluation
+   * date. Answers a DATE question, or — sent to a gate that has a `window_from`
+   * condition and nothing pending — corrects the start date the window was
+   * anchored on (`ResolvedNode.windowAnchors`). Supply it alone.
+   */
+  dateValue?: InputMaybe<Scalars['String']['input']>;
   numericValue?: InputMaybe<Scalars['Float']['input']>;
   selectedOption?: InputMaybe<Scalars['String']['input']>;
 };
@@ -671,15 +698,24 @@ export type MergedCarePlan = {
 
 /**
  * A cross-pathway soft conflict (medications-only in v1). Triggered when ≥2
- * pathways tag different drugs with the same `clinical_role`. The provider
- * must resolve every conflict before the merged plan can be turned into a
- * real care plan via `generateMergedCarePlan`.
+ * pathways tag different drugs with the same `clinical_role` (MEDICATION), or
+ * ask for the same drug at different regimens (MEDICATION_REGIMEN). The
+ * provider must resolve every conflict before the merged plan can be turned
+ * into a real care plan via `generateMergedCarePlan`.
  */
 export type MergedConflict = {
   __typename?: 'MergedConflict';
   candidates: Array<ConflictCandidate>;
+  /**
+   * What the conflict is about, for display. MEDICATION: the shared
+   * clinical_role. MEDICATION_REGIMEN: the drug's clinical_role when it carries
+   * one, else the drug's name.
+   */
   clinicalRole: Scalars['String']['output'];
-  /** Stable id within the session — equals the clinical_role tag value. */
+  /**
+   * Stable id within the session. MEDICATION: the clinical_role tag value.
+   * MEDICATION_REGIMEN: `regimen:<normalised drug name>`.
+   */
   conflictId: Scalars['String']['output'];
   /** Null while the conflict is unresolved. */
   resolution?: Maybe<ConflictResolution>;
@@ -1791,6 +1827,12 @@ export type ResolvedNode = {
   providerOverride?: Maybe<ProviderOverrideType>;
   status: NodeStatus;
   title: Scalars['String']['output'];
+  /**
+   * On a gate with `window_from` conditions: the treatment start date each
+   * anchored window opened on, and where it came from. Null on every other node.
+   * Correct one by answering this gate with `dateValue`.
+   */
+  windowAnchors?: Maybe<Array<WindowAnchor>>;
 };
 
 export type ResolvedProcedure = {
@@ -2144,6 +2186,21 @@ export enum WeightSource {
   SystemDefault = 'SYSTEM_DEFAULT'
 }
 
+/** Where an anchored trend window (`window_from`) opened. */
+export type WindowAnchor = {
+  __typename?: 'WindowAnchor';
+  clinicalRole: Scalars['String']['output'];
+  /** `YYYY-MM-DD`. */
+  date: Scalars['String']['output'];
+  detail: Scalars['String']['output'];
+  /** `anchor:<event>:<clinical_role>` — one per treatment class, shared by every gate on it. */
+  key: Scalars['String']['output'];
+  /** The class in words, as the start-date question names it. */
+  label: Scalars['String']['output'];
+  /** CLINICIAN, CARE_PLAN or MEDICATION_ORDER — the first that resolved, in that order. */
+  source: Scalars['String']['output'];
+};
+
 export type WithIndex<TObject> = TObject & Record<string, any>;
 export type ResolversObject<TObject> = WithIndex<TObject>;
 
@@ -2360,6 +2417,7 @@ export type ResolversTypes = ResolversObject<{
   WeightMatrixEntry: ResolverTypeWrapper<WeightMatrixEntry>;
   WeightScope: WeightScope;
   WeightSource: WeightSource;
+  WindowAnchor: ResolverTypeWrapper<WindowAnchor>;
 }>;
 
 /** Mapping between all available schema types and the resolvers parents */
@@ -2469,6 +2527,7 @@ export type ResolversParentTypes = ResolversObject<{
   ValidationResult: ValidationResult;
   WeightMatrix: WeightMatrix;
   WeightMatrixEntry: WeightMatrixEntry;
+  WindowAnchor: WindowAnchor;
 }>;
 
 export type AdminEvidenceEntryResolvers<ContextType = DataSourceContext, ParentType extends ResolversParentTypes['AdminEvidenceEntry'] = ResolversParentTypes['AdminEvidenceEntry']> = ResolversObject<{
@@ -2543,6 +2602,7 @@ export type ConditionCodeDetailResolvers<ContextType = DataSourceContext, Parent
 export type ConflictCandidateResolvers<ContextType = DataSourceContext, ParentType extends ResolversParentTypes['ConflictCandidate'] = ResolversParentTypes['ConflictCandidate']> = ResolversObject<{
   recommendation?: Resolver<ResolversTypes['ResolvedMedication'], ParentType, ContextType>;
   sourcePathwayId?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
+  sourcePathwayIds?: Resolver<Array<ResolversTypes['ID']>, ParentType, ContextType>;
   sourcePathwayTitle?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
 }>;
@@ -3206,6 +3266,7 @@ export type ResolvedNodeResolvers<ContextType = DataSourceContext, ParentType ex
   providerOverride?: Resolver<Maybe<ResolversTypes['ProviderOverrideType']>, ParentType, ContextType>;
   status?: Resolver<ResolversTypes['NodeStatus'], ParentType, ContextType>;
   title?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  windowAnchors?: Resolver<Maybe<Array<ResolversTypes['WindowAnchor']>>, ParentType, ContextType>;
   __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
 }>;
 
@@ -3385,6 +3446,16 @@ export type WeightMatrixEntryResolvers<ContextType = DataSourceContext, ParentTy
   __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
 }>;
 
+export type WindowAnchorResolvers<ContextType = DataSourceContext, ParentType extends ResolversParentTypes['WindowAnchor'] = ResolversParentTypes['WindowAnchor']> = ResolversObject<{
+  clinicalRole?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  date?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  detail?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  key?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  label?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  source?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
+}>;
+
 export type Resolvers<ContextType = DataSourceContext> = ResolversObject<{
   AdminEvidenceEntry?: AdminEvidenceEntryResolvers<ContextType>;
   ArchiveResult?: ArchiveResultResolvers<ContextType>;
@@ -3471,5 +3542,6 @@ export type Resolvers<ContextType = DataSourceContext> = ResolversObject<{
   ValidationResult?: ValidationResultResolvers<ContextType>;
   WeightMatrix?: WeightMatrixResolvers<ContextType>;
   WeightMatrixEntry?: WeightMatrixEntryResolvers<ContextType>;
+  WindowAnchor?: WindowAnchorResolvers<ContextType>;
 }>;
 

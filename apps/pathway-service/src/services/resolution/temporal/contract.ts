@@ -48,4 +48,14 @@ export type UncertaintyReason =
   | 'TEMPORAL_UNKNOWN' | 'STATE_UNKNOWN' | 'VALIDITY_UNKNOWN'
   | 'AMBIGUOUS_LATEST'
   /** A trend/delta series whose facts cannot be put in a proven total order. */
-  | 'AMBIGUOUS_SERIES_ORDER';
+  | 'AMBIGUOUS_SERIES_ORDER'
+  /**
+   * A `window_from` condition whose anchor (the therapy start date) could not
+   * be resolved from a clinician date, the care plan, or a dated order.
+   */
+  | 'ANCHOR_UNRESOLVED'
+  /**
+   * A trend/delta series with fewer dated values in its window than
+   * `min_points`. Not an answer: "no recheck yet" is not "no response".
+   */
+  | 'INSUFFICIENT_SERIES';

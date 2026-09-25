@@ -3,7 +3,7 @@
   "pathway": {
     "logical_id": "anemia-in-pregnancy",
     "title": "Anemia in Pregnancy \u2014 Classification and Treatment",
-    "version": "3",
+    "version": "5",
     "category": "OBSTETRIC",
     "scope": "Outpatient prenatal care, from diagnosed anemia through postpartum handoff. Screening is upstream of this pathway.",
     "target_population": "Adult pregnant patients with diagnosed anemia; hemoglobinopathy disease, thalassemia syndromes, and CKD-associated anemia are detected and routed out.",
@@ -52,6 +52,15 @@
       "properties": {
         "stage_number": 1,
         "title": "Diagnosis Confirmation & Classification"
+      }
+    },
+    {
+      "id": "stage-2-empiric",
+      "type": "Stage",
+      "properties": {
+        "stage_number": 1.5,
+        "title": "Empiric Oral Iron Trial (if chosen at DP-1)",
+        "description": "Branch-entry only, via DP-1 criterion 1a (empiric oral iron without iron studies). Holds Stage 2's Steps 2.1\u20132.3, so the empiric arm gets the same response assessment (gate-hgb-response) and IV-iron escalation route (DP-2, gate-iv-iron-ga) as ferritin-confirmed IDA. Numbered 1.5 so it sorts directly after Stage 1 with a number of its own; its steps keep theirs."
       }
     },
     {
@@ -139,6 +148,17 @@
       }
     },
     {
+      "id": "step-1-7",
+      "type": "Step",
+      "properties": {
+        "stage_number": 1,
+        "step_number": 7,
+        "display_number": "1.7",
+        "title": "Microcytic anemia: iron strategy",
+        "description": "Entered only via gate-microcytic (MCV < 80 fL). Hosts DP-1: empiric oral iron vs confirmatory iron studies first. Normocytic and macrocytic anemia never reach this step; they go to Steps 1.3 / 1.4 through their own MCV gates."
+      }
+    },
+    {
       "id": "step-2-1",
       "type": "Step",
       "properties": {
@@ -186,6 +206,28 @@
         "step_number": 5,
         "display_number": "2.5",
         "title": "IV iron therapy"
+      }
+    },
+    {
+      "id": "step-2-6",
+      "type": "Step",
+      "properties": {
+        "stage_number": 2,
+        "step_number": 6,
+        "display_number": "2.6",
+        "title": "Nonresponse management",
+        "description": "Reached only when the Step 2.3 recheck shows no response to oral iron (hemoglobin rise < 1 g/dL after 2\u20134 weeks). Hosts DP-2: expanded workup, and IV iron after the first trimester."
+      }
+    },
+    {
+      "id": "step-2-7",
+      "type": "Step",
+      "properties": {
+        "stage_number": 2,
+        "step_number": 7,
+        "display_number": "2.7",
+        "title": "Awaiting response recheck",
+        "description": "Oral iron started; the hemoglobin recheck (2\u20134 weeks, Sched-2) is not yet resulted. Neither maintenance nor escalation applies yet. Answer the Step 2.3 response question again once the recheck is back."
       }
     },
     {
@@ -377,6 +419,27 @@
       }
     },
     {
+      "id": "gate-microcytic",
+      "type": "Gate",
+      "properties": {
+        "title": "MCV < 80 fL (microcytic)",
+        "gate_type": "patient_attribute",
+        "default_behavior": "skip",
+        "on_unresolved": "ask",
+        "condition": {
+          "field": "labs",
+          "operator": "less_than",
+          "value": "787-2",
+          "system": "LOINC",
+          "display": "MCV (fL)",
+          "threshold": 80,
+          "horizon": {
+            "days": 90
+          }
+        }
+      }
+    },
+    {
       "id": "gate-normocytic",
       "type": "Gate",
       "properties": {
@@ -468,53 +531,15 @@
       "id": "gate-hgb-response",
       "type": "Gate",
       "properties": {
-        "title": "Hemoglobin at target, or still climbing toward it",
-        "gate_type": "compound",
+        "title": "Response to oral iron at the 2\u20134-week Hgb recheck",
+        "gate_type": "question",
         "default_behavior": "skip",
-        "on_unresolved": "ask",
-        "operator": "OR",
-        "conditions": [
-          {
-            "field": "labs",
-            "operator": "greater_than",
-            "value": "718-7",
-            "system": "LOINC",
-            "display": "Hemoglobin (g/dL)",
-            "threshold": 10.9,
-            "horizon": {
-              "days": 90
-            }
-          },
-          {
-            "field": "labs",
-            "operator": "trend_up",
-            "value": "718-7",
-            "system": "LOINC",
-            "display": "Hemoglobin (g/dL)",
-            "slope_threshold": 0.03,
-            "min_points": 2,
-            "window_days": 42
-          },
-          {
-            "field": "labs",
-            "operator": "trend_up",
-            "value": "718-7",
-            "system": "LOINC",
-            "display": "Hemoglobin (g/dL)",
-            "slope_threshold": 0.015,
-            "min_points": 2,
-            "window_days": 120
-          },
-          {
-            "field": "labs",
-            "operator": "trend_up",
-            "value": "718-7",
-            "system": "LOINC",
-            "display": "Hemoglobin (g/dL)",
-            "slope_threshold": 0.015,
-            "min_points": 2,
-            "window_days": 300
-          }
+        "prompt": "Hemoglobin recheck 2\u20134 weeks after starting oral iron. \"responding\" = hemoglobin has risen by at least 1 g/dL since iron was started (continue iron, maintenance). \"not responding\" = risen by less than 1 g/dL (expanded workup; IV iron after the first trimester). \"recheck not yet done\" = oral iron just started or recheck not resulted (nothing is escalated; answer again at the recheck).",
+        "answer_type": "SELECT",
+        "options": [
+          "responding",
+          "not responding",
+          "recheck not yet done"
         ]
       }
     },
@@ -1130,6 +1155,56 @@
       }
     },
     {
+      "id": "lab-10",
+      "type": "LabTest",
+      "properties": {
+        "name": "CBC with indices",
+        "code": "58410-2",
+        "system": "LOINC",
+        "specimen": "Venous blood"
+      }
+    },
+    {
+      "id": "lab-11",
+      "type": "LabTest",
+      "properties": {
+        "name": "Ferritin, serum",
+        "code": "2276-4",
+        "system": "LOINC",
+        "specimen": "Serum"
+      }
+    },
+    {
+      "id": "lab-12",
+      "type": "LabTest",
+      "properties": {
+        "name": "Reticulocyte count",
+        "code": "4679-7",
+        "system": "LOINC",
+        "specimen": "Whole blood"
+      }
+    },
+    {
+      "id": "lab-13",
+      "type": "LabTest",
+      "properties": {
+        "name": "Peripheral blood smear",
+        "code": "34994-4",
+        "system": "LOINC",
+        "specimen": "Whole blood"
+      }
+    },
+    {
+      "id": "lab-14",
+      "type": "LabTest",
+      "properties": {
+        "name": "Hemoglobin electrophoresis",
+        "code": "43113-0",
+        "system": "LOINC",
+        "specimen": "Whole blood"
+      }
+    },
+    {
       "id": "proc-1",
       "type": "Procedure",
       "properties": {
@@ -1211,8 +1286,8 @@
       "id": "sched-2",
       "type": "Schedule",
       "properties": {
-        "interval": "4 weeks after starting oral iron",
-        "description": "Hemoglobin/hematocrit recheck; rise \u22641 g/dL despite adherence routes to nonresponse management."
+        "interval": "2\u20134 weeks after starting oral iron",
+        "description": "Hemoglobin/hematocrit recheck; a rise < 1 g/dL despite adherence is nonresponse and routes to nonresponse management (Step 2.3 response question)."
       }
     },
     {
@@ -1881,6 +1956,21 @@
       "type": "HAS_STEP"
     },
     {
+      "from": "stage-2-empiric",
+      "to": "step-2-1",
+      "type": "HAS_STEP"
+    },
+    {
+      "from": "stage-2-empiric",
+      "to": "step-2-2",
+      "type": "HAS_STEP"
+    },
+    {
+      "from": "stage-2-empiric",
+      "to": "step-2-3",
+      "type": "HAS_STEP"
+    },
+    {
       "from": "stage-2",
       "to": "step-2-1",
       "type": "HAS_STEP"
@@ -1911,7 +2001,7 @@
       "type": "HAS_STEP"
     },
     {
-      "from": "step-1-1",
+      "from": "step-1-7",
       "to": "dp-1",
       "type": "HAS_DECISION_POINT"
     },
@@ -1927,7 +2017,7 @@
     },
     {
       "from": "dp-1",
-      "to": "step-2-1",
+      "to": "stage-2-empiric",
       "type": "BRANCHES_TO"
     },
     {
@@ -1937,7 +2027,7 @@
     },
     {
       "from": "crit-1a",
-      "to": "step-2-1",
+      "to": "stage-2-empiric",
       "type": "SELECTS_BRANCH"
     },
     {
@@ -1946,7 +2036,7 @@
       "type": "SELECTS_BRANCH"
     },
     {
-      "from": "step-2-3",
+      "from": "step-2-6",
       "to": "dp-2",
       "type": "HAS_DECISION_POINT"
     },
@@ -1979,6 +2069,16 @@
       "from": "crit-2c",
       "to": "step-1-5",
       "type": "SELECTS_BRANCH"
+    },
+    {
+      "from": "step-1-1",
+      "to": "gate-microcytic",
+      "type": "HAS_GATE"
+    },
+    {
+      "from": "gate-microcytic",
+      "to": "step-1-7",
+      "type": "BRANCHES_TO"
     },
     {
       "from": "step-1-1",
@@ -2028,7 +2128,32 @@
     {
       "from": "gate-hgb-response",
       "to": "step-2-4",
-      "type": "BRANCHES_TO"
+      "type": "BRANCHES_TO",
+      "properties": {
+        "when": {
+          "equals": "responding"
+        }
+      }
+    },
+    {
+      "from": "gate-hgb-response",
+      "to": "step-2-6",
+      "type": "BRANCHES_TO",
+      "properties": {
+        "when": {
+          "equals": "not responding"
+        }
+      }
+    },
+    {
+      "from": "gate-hgb-response",
+      "to": "step-2-7",
+      "type": "BRANCHES_TO",
+      "properties": {
+        "when": {
+          "equals": "recheck not yet done"
+        }
+      }
     },
     {
       "from": "dp-2",
@@ -2201,18 +2326,13 @@
       "type": "USES_MEDICATION"
     },
     {
-      "from": "med-1",
-      "to": "med-5",
-      "type": "ESCALATES_TO"
-    },
-    {
       "from": "step-1-1",
       "to": "lab-1",
       "type": "HAS_LAB_TEST"
     },
     {
       "from": "step-2-3",
-      "to": "lab-1",
+      "to": "lab-10",
       "type": "HAS_LAB_TEST"
     },
     {
@@ -2222,7 +2342,7 @@
     },
     {
       "from": "step-1-3",
-      "to": "lab-2",
+      "to": "lab-11",
       "type": "HAS_LAB_TEST"
     },
     {
@@ -2232,7 +2352,7 @@
     },
     {
       "from": "step-1-3",
-      "to": "lab-4",
+      "to": "lab-12",
       "type": "HAS_LAB_TEST"
     },
     {
@@ -2252,7 +2372,7 @@
     },
     {
       "from": "step-1-5",
-      "to": "lab-7",
+      "to": "lab-14",
       "type": "HAS_LAB_TEST"
     },
     {
@@ -2262,7 +2382,7 @@
     },
     {
       "from": "step-1-3",
-      "to": "lab-8",
+      "to": "lab-13",
       "type": "HAS_LAB_TEST"
     },
     {
@@ -2431,6 +2551,11 @@
       "type": "HAS_CODE"
     },
     {
+      "from": "lab-13",
+      "to": "code-loinc-34994-4",
+      "type": "HAS_CODE"
+    },
+    {
       "from": "lab-9",
       "to": "code-loinc-882-1",
       "type": "HAS_CODE"
@@ -2446,7 +2571,42 @@
       "type": "HAS_CODE"
     },
     {
+      "from": "lab-10",
+      "to": "code-loinc-58410-2",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "lab-10",
+      "to": "code-loinc-718-7",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "lab-10",
+      "to": "code-loinc-4544-3",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "lab-10",
+      "to": "code-loinc-787-2",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "lab-10",
+      "to": "code-cpt-85025",
+      "type": "HAS_CODE"
+    },
+    {
       "from": "lab-2",
+      "to": "code-cpt-82728",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "lab-11",
+      "to": "code-loinc-2276-4",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "lab-11",
       "to": "code-cpt-82728",
       "type": "HAS_CODE"
     },
@@ -2466,6 +2626,16 @@
       "type": "HAS_CODE"
     },
     {
+      "from": "lab-12",
+      "to": "code-loinc-4679-7",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "lab-12",
+      "to": "code-cpt-85045",
+      "type": "HAS_CODE"
+    },
+    {
       "from": "lab-5",
       "to": "code-cpt-82607",
       "type": "HAS_CODE"
@@ -2477,6 +2647,16 @@
     },
     {
       "from": "lab-7",
+      "to": "code-cpt-83020",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "lab-14",
+      "to": "code-loinc-43113-0",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "lab-14",
       "to": "code-cpt-83020",
       "type": "HAS_CODE"
     },
@@ -2558,6 +2738,16 @@
     {
       "from": "stage-1",
       "to": "ev-4",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "stage-2-empiric",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "stage-2-empiric",
+      "to": "ev-5",
       "type": "CITES_EVIDENCE"
     },
     {
@@ -2656,6 +2846,11 @@
       "type": "CITES_EVIDENCE"
     },
     {
+      "from": "step-1-7",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
       "from": "step-2-1",
       "to": "ev-1",
       "type": "CITES_EVIDENCE"
@@ -2693,6 +2888,36 @@
     {
       "from": "step-2-4",
       "to": "ev-3",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-2-6",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-2-6",
+      "to": "ev-3",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-2-6",
+      "to": "ev-6",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-2-7",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-2-7",
+      "to": "ev-3",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-2-7",
+      "to": "ev-6",
       "type": "CITES_EVIDENCE"
     },
     {
@@ -3006,6 +3231,11 @@
       "type": "CITES_EVIDENCE"
     },
     {
+      "from": "lab-10",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
       "from": "lab-2",
       "to": "ev-1",
       "type": "CITES_EVIDENCE"
@@ -3016,12 +3246,27 @@
       "type": "CITES_EVIDENCE"
     },
     {
+      "from": "lab-11",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "lab-11",
+      "to": "ev-5",
+      "type": "CITES_EVIDENCE"
+    },
+    {
       "from": "lab-3",
       "to": "ev-1",
       "type": "CITES_EVIDENCE"
     },
     {
       "from": "lab-4",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "lab-12",
       "to": "ev-1",
       "type": "CITES_EVIDENCE"
     },
@@ -3041,7 +3286,17 @@
       "type": "CITES_EVIDENCE"
     },
     {
+      "from": "lab-14",
+      "to": "ev-4",
+      "type": "CITES_EVIDENCE"
+    },
+    {
       "from": "lab-8",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "lab-13",
       "to": "ev-1",
       "type": "CITES_EVIDENCE"
     },

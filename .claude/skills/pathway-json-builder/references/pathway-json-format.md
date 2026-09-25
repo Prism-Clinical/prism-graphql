@@ -120,10 +120,29 @@ exactly one (Rule 3).
 > and the gate's verdict is silently discarded. The import validator does **not** catch
 > this — run `scripts/check-gate-control.ts` (see below).
 >
-> **Rule 1 — a gated node must have its gate as the only way in.** If a Step is behind a
+> **Rule 1 — a gated region must have its gate as the only way in.** If a Step is behind a
 > gate, it gets **no** `stage-N HAS_STEP` edge, and nothing else may `BRANCHES_TO` /
 > `SELECTS_BRANCH` into it. This is the same rule stated for Stages under the edge table,
-> applied to Steps.
+> applied to Steps. **And it holds for everything the target contains**, not just the
+> target: a closing gate sweeps its target's whole containment subtree (every outgoing
+> edge except `REQUIRES` — `graph-containment.ts`), but the constructive walk follows
+> **every** outgoing edge of every included node, action nodes included. So none of these
+> may point into a gated region from outside it:
+> - an **action-to-action** edge such as `ESCALATES_TO` — anemia v5's
+>   `med-1 -ESCALATES_TO-> med-5` gave IV iron to a GA-12 patient while `gate-iv-iron-ga`
+>   had Step 2.5 GATED_OUT (fixed in d6ab163). Escalation into gated content is the gated
+>   step's own route; drop the edge.
+> - a **shared action node** — one LabTest/Medication/… hosted both inside and outside the
+>   gate. First writer wins: either the gate's sweep drops the lab the outside host
+>   ordered, or the outside host includes it past the gate (anemia 2a6b602). Emit one node
+>   per host, same codes and citations.
+>
+> `CodeEntry` and `EvidenceCitation` nodes are exempt — they are read through their host,
+> never by their own status. A route that exists only through `REQUIRES` warns (the engine
+> follows it, but it leaks only when the dependent resolves before the gate). Nodes shared
+> between the branches of one router, or between Rule 3 fan-out copies of one gate, are not
+> second routes. A second route the brief intends is recorded with a `[SECOND ROUTE]`
+> marker (see **Brief markers**).
 >
 > **Rule 2 — exactly one gate may point at a given target.** Two gates on one target is a
 > deterministic AND: **any gate that misses excludes the shared target**, in either
@@ -165,11 +184,17 @@ exactly one (Rule 3).
 >   under Rule 1.
 > - **A DecisionPoint branch into a gate's target overrides the gate.** On the live path
 >   the provider's branch choice re-resolves incrementally from the DecisionPoint, and the
->   chosen branch is walked whatever the gate said (proved on anemia: MCV 90 + "workup"
->   includes the microcytic workup). So a step is either a DP branch or gated — not both.
+>   chosen branch is walked whatever the gate said (proved on anemia v3: MCV 90 + "workup"
+>   included the microcytic workup). So a step is either a DP branch or gated — not both.
+>   To make the *decision itself* conditional, gate the Step that hosts the DP and give
+>   the DP no other host (anemia v4: `gate-microcytic` → Step 1.7 → DP-1;
+>   `scripts/gate-proof.ts mcv`).
 >   A `one_of` DP whose branches all score ≥ the suggest threshold (0.60) **pends** for the
->   provider; if only one qualifies it is taken automatically. Two structural Steps score
->   identically, so in practice such a fork pends (`scripts/gate-proof.ts dp-1-scoring`).
+>   provider; if only one qualifies it is taken automatically. Structural targets (Steps,
+>   or a Step and a Stage) score identically **when they cite evidence of the same
+>   level** — `evidence_strength` reads each target's own `CITES_EVIDENCE`, so give a
+>   branch-entry Stage its parent's citations — and in practice such a fork pends
+>   (`scripts/gate-proof.ts dp-1-scoring`).
 > - **Missing data is `on_unresolved`'s job, not `default_behavior`'s.** A numeric lab,
 >   vital or `patient.*` value that is missing makes the gate *unresolved*; it then ASKS for
 >   the value and holds its subtree (see **Missing data** below — `ask` is the rule for
@@ -256,8 +281,16 @@ but cannot be ordered, e.g. two undated results for the same LOINC → `AMBIGUOU
     is a vocabulary gap, not a missing datum, and never asks.)
 
   Membership (`includes_code`, `equals`, `exists` on coded fields) never is unresolved:
-  absence is a definite no. Aggregates (`count_in_window`, trends, `delta_from_baseline`)
-  never ask — "the count is 3" is not an observation — and fall to `default_behavior`.
+  absence is a definite no. `count_in_window` never is either — a count of zero is a real
+  answer. **Trends and `delta_from_baseline` with fewer than `min_points` dated values in
+  their window ARE unresolved** (`INSUFFICIENT_SERIES`, `engine-anchored-window`): "no
+  recheck yet" is not "no response". When the series is exactly **one** value short (and
+  the condition is on `labs` with an exact code) the gate asks for the newest result —
+  *"Hemoglobin (g/dL) (LOINC 718-7) — newest result, drawn after 2026-05-29?"* — injected
+  as a lab like any lab datum (same `LOINC:<code>` key). Short by more, no single answer
+  can complete it: unresolved, no question, `default_behavior`. An unorderable series
+  (`AMBIGUOUS_SERIES_ORDER`) is never asked anything. A `window_from` condition whose start
+  date is unknown asks a DATE question (below).
 - **Compounds:** OR is satisfied by any definite true; if nothing is true and some
   condition is unresolved, the gate is unresolved (a definite false does not outweigh an
   unknown). AND is unsatisfied by any definite false. A compound asks for **one datum at a
@@ -326,7 +359,7 @@ Carries one `condition` object, which is either an **attribute condition** or a 
 - There is **no** `symptom.*`, `medication.*`, or `condition.*` namespace (older docs said otherwise — they now hard-fail import). Symptom presence/severity is elicited ⇒ use a `question` gate. Diagnosis/medication history ⇒ use a coded condition.
 - `horizon` / `status` — see **Temporal horizon & status** below; both are legal here exactly as on coded conditions.
 
-**Coded condition** — allowed keys exactly: `field`, `operator`, `value`, `system`, `threshold`, `window_days`, `count_threshold`, `min_points`, `slope_threshold`, `delta_threshold`, `horizon`, `status`, `display`, `note`.
+**Coded condition** — allowed keys exactly: `field`, `operator`, `value`, `system`, `threshold`, `window_days`, `count_threshold`, `min_points`, `slope_threshold`, `delta_threshold`, `delta_comparison`, `horizon`, `status`, `window_from`, `display`, `note`. (`window_from` is coded-only — see **Anchored trend windows** below; on an attribute condition it is an unknown key.)
 
 ```json
 { "field": "conditions", "operator": "includes_code", "value": "Z94.*", "system": "ICD-10" }
@@ -344,6 +377,14 @@ Carries one `condition` object, which is either an **attribute condition** or a 
   integers; `slope_threshold` — finite **non-negative** number: it is a *magnitude*, the
   evaluator applies the sign (`trend_down` = slope < −slope_threshold), so a negative
   value would invert the clinical meaning.
+- **`delta_comparison`** ∈ `at_least`, `less_than` — **`delta_from_baseline` only** (an
+  error on any other operator, where it would be silently ignored). Makes the direction
+  explicit: `at_least` ⇒ `current − baseline ≥ delta_threshold`; `less_than` ⇒
+  `current − baseline < delta_threshold`. The two are exact complements on one threshold —
+  write "responding" and "not responding" from the same number and no patient is both or
+  neither. Compared at 1e-9, so an exact decimal rise (7.2 → 8.2) is exactly 1.0. Absent,
+  the threshold's **sign** picks the direction (below) and "rose by less than t" has no
+  encoding. `legacy-v0` refuses it.
 - `display` / `note` are ignored by the evaluator. `display` on a **lab** condition is the
   label in the missing-data prompt — emit it on every lab condition (with unit).
 
@@ -357,7 +398,10 @@ Runtime semantics (from `gate-evaluator.ts`):
 | `greater_than` / `less_than` | labs, vitals | For `labs`: `value` = the lab code, compare that lab's numeric result to `threshold` (falls back to `parseFloat(value)` — so always set `threshold` explicitly). For `vitals`: `value` = dotted path into vitalSigns |
 | `count_in_window` | labs + code fields | Count entries matching `value` (+`system`; trailing `.*` wildcard allowed) whose **start** falls within `window_days` of the session clock; satisfied when count ≥ `count_threshold` (default 2). Omit `window_days` ⇒ the field's v1 default horizon (below): LIFETIME for conditions/medications/allergies (undated entries count), but **QUARTER for labs** (90 days; undated entries never count). A bounded window never counts an undated entry. A vitals count is always 0. |
 | `trend_up` / `trend_down` | **labs only** | Linear-regression slope over dated values of lab `value` within `window_days`; needs ≥ `min_points` (default 3, floor 2) dated points; satisfied when slope > `slope_threshold` (up) or < −`slope_threshold` (down); default threshold 0 |
-| `delta_from_baseline` | **labs only** | newest − oldest in-window value vs signed `delta_threshold` (positive = rose by ≥ that much; negative = fell by ≥ magnitude); needs ≥ `min_points` (default 2) |
+| `delta_from_baseline` | **labs only** | newest − oldest in-window value vs `delta_threshold`: with `delta_comparison`, `≥` (`at_least`) or `<` (`less_than`); without it, signed (positive = rose by ≥ that much; negative = fell by ≥ magnitude; 0 = changed at all); needs ≥ `min_points` (default 2) |
+
+Fewer than `min_points` dated values in the window makes a trend/delta condition
+**unresolved**, not false (see **Missing data**) — `on_unresolved` decides.
 
 > ### ⚠ Baseline drift — a single long trend window is usually wrong
 >
@@ -401,9 +445,111 @@ Runtime semantics (from `gate-evaluator.ts`):
 > on main (`evaluation-context.ts:226`); a service still running `legacy-v0` takes whichever
 > result is first in the array, not the most recent.
 >
-> None of these windows is anchored to the day treatment started — the kernel has no
-> anchor-to-medication-event. Layering approximates it by covering several plausible
-> treatment durations at once.
+> None of these windows is anchored to the day treatment started. Layering approximates
+> that by covering several plausible treatment durations at once. For a **response to
+> treatment** gate, prefer `window_from` (below): it opens the window on the day the drug
+> class was prescribed, so the pre-treatment state is excluded by construction.
+
+### Anchored trend windows — `window_from` (response-to-treatment gates)
+
+`window_from` replaces a condition's fixed lookback with an EVENT: the window opens on the
+day a therapeutic **class** was started and closes at the session clock. Use it for "is the
+patient responding to treatment?" gates.
+
+```json
+{ "field": "labs", "operator": "trend_up", "value": "718-7", "system": "LOINC",
+  "display": "Hemoglobin (g/dL)", "slope_threshold": 0.015, "min_points": 2,
+  "window_from": {
+    "event": "medication_start",
+    "clinical_role": "oral-iron-repletion",
+    "label": "oral iron",
+    "baseline_days": 28,
+    "codes": [ { "system": "RXNORM", "code": "310325" }, { "system": "RXNORM", "code": "198630" },
+               { "system": "RXNORM", "code": "284202" } ]
+  } }
+```
+
+Rules (hard import errors unless marked; the validator calls the runtime parser
+`parseConditionOverride` → `parseWindowFrom`, so import and runtime agree):
+
+- **Operators:** only `count_in_window`, `trend_up`, `trend_down`, `delta_from_baseline`.
+  On any other operator it is an error.
+- **Mutually exclusive** with `window_days` and with `horizon`. It *is* the window.
+- `event` — required; `"medication_start"` is the only event.
+- `clinical_role` — required, the **class** tag the pathway's Medication nodes carry
+  (`oral-iron-repletion`), never one product. Anemia offers three interchangeable oral
+  irons; anchoring on ferrous sulfate alone would gate every gluconate or fumarate patient
+  out. *Warning* when no Medication node in the pathway has that role: the care-plan
+  source (below) can then never match.
+- `codes` — optional `[{system, code}]`: the chart medication codes that count as an order
+  of the class (list every member product you want recognised; system compared
+  case-insensitively, code exactly, no wildcard). *Warning* when absent: medication orders
+  cannot anchor the window, so a patient with no stored care plan is always asked.
+  *Warning* for every code a Medication node of the class carries (HAS_CODE → CodeEntry)
+  that `codes` omits — copy the class's CodeEntry codes.
+- `label` — optional, the class in words for the prompt: `"When did oral iron start?"`
+  (default: the `clinical_role` with dashes as spaces).
+- `baseline_days` — optional integer (1..36525), **trends/deltas only** (an error on
+  `count_in_window`). Admits ONE pre-treatment baseline: the **latest** value dated within
+  that many days *before* the anchor day. Use it for every "rise since treatment" delta:
+  the diagnostic value is usually drawn before the prescription, and without it the window
+  excludes the very value the rise is measured from — the patient then looks one value
+  short, is asked for a result, and a clinician re-entering the value on file makes a
+  responder read as "no change".
+- No other keys.
+
+**How the start date is resolved** — first hit wins, and there is **no silent fallback**:
+
+| # | Source | Where it is read |
+|---|---|---|
+| 1 | **Clinician-entered date** | The session's answer for this anchor (a DATE answer). Outranks every record: prescribed ≠ started, and a patient already on the drug before the pathway has no in-episode order. Editable at any time, not only when asked. |
+| 2 | **Earliest care-plan recommendation** | `patient_care_plan_interventions` (type MEDICATION) under the patient's `patient_care_plans`, whose `guideline_reference` names **this** pathway (any version) and a node whose `clinical_role` matches. **Earliest** plan `start_date` wins — each commit writes a new plan, so latest-wins would slide the window forward every visit. Read once at session start and pinned to the session. |
+| 3 | **Earliest dated medication order** | Chart medication orders whose code is in `codes`, not INVALID, with a day- or instant-precision start on/before the clock. Earliest wins (so a refill cannot shrink the window; a *prior course* of the same drug would anchor too early — the clinician date fixes that). |
+| 4 | **Unresolved** | The condition is *indeterminate*. With `on_unresolved: "ask"` the gate holds and asks one DATE question per anchor — "When did oral iron start?" — shared by every gate anchored on the same class; with `"default"` it takes `default_behavior`. |
+
+The window is `[start of the anchor day (UTC), session clock]` — a lab drawn on the day the
+drug was started **is** in the series — plus, with `baseline_days`, the latest value before
+it. Everything else (`min_points`, `slope_threshold`, `delta_threshold`,
+`delta_comparison`, `count_threshold`, start-bound selection) is unchanged.
+
+**Pattern — a response check with three outcomes from chart data.** Two single-target
+gates on the SAME anchored delta, `at_least` and `less_than` the same threshold, both
+`on_unresolved: "ask"` (a condition gate cannot route several ways — chart-derived branch
+routing does not exist; a multi-target condition gate raises `unroutable_decision`):
+
+| Chart | Response gate (`at_least 1.0`) → maintenance | Non-response gate (`less_than 1.0`) → escalation |
+|---|---|---|
+| baseline + recheck, rise ≥ 1 | opens | closed |
+| baseline + recheck, rise < 1 | closed | opens |
+| baseline only (not rechecked) | held — ONE question: newest Hgb after the baseline date | held (same question) |
+| no start date | held — ONE question: "When did oral iron start?" | held (same question) |
+| no Hgb since `baseline_days` before the start, no recheck (0 points) | closed — nothing to ask | closed — nothing to ask |
+
+⚠ A held gate is a PENDING question, and **care-plan generation refuses a session with a
+pending question** (`care-plan-generator.ts` `validateForGeneration`). On the visit that
+STARTS the drug the recheck cannot exist yet, so this pattern blocks that visit's plan —
+the reason anemia v5 uses a three-option question with "recheck not yet done". Use the
+chart form where the response check is not reached in the starting visit, or keep the
+question until the engine can route "unresolved" to an *awaiting* step.
+
+Authoring notes:
+
+- **One anchored trend replaces the layered lookbacks.** The pre-treatment value that the
+  layering works around is outside the window by construction. Keep the absolute-target
+  `greater_than` arm (a patient who has arrived has a flat slope), and keep its own
+  `horizon`.
+- **Tier the slope to the expected response rate across the whole course**, not to the
+  shortest lookback: the window can be one week or four months long depending on the patient.
+- **Emit `on_unresolved: "ask"`** on every gate with a `window_from` condition, or an
+  unresolved start date silently takes `default_behavior`.
+- **Simulator:** a synthetic patient has no stored care plans, and the simulator dates
+  nothing — medications or labs — so the anchor resolves only from the clinician's date:
+  the gate asks "When did … start?", the tester answers. **The series then still has no
+  dated value**: zero points is short by ≥ 2, so nothing more is asked and the gate takes
+  `default_behavior` (both response-check gates close). A dated trend/delta arm is only
+  exercisable through the API with dated labs (`labResults[].date`), not from the
+  simulator UI.
+- `legacy-v0` sessions refuse `window_from` conditions (they cannot anchor); `v1` is the default.
 
 Time-shape notes: with `window_days` (or any bounded horizon) set, undated and future-dated
 entries never count toward an aggregate. The clock is the session's pinned
@@ -444,11 +590,13 @@ horizon, but they have no start, so:
 | `includes_code`, `equals`, `exists` | Work. |
 | `greater_than`, `less_than` | One value per code works. Two or more undated values for one code cannot be ordered → `AMBIGUOUS_LATEST` → the gate is unresolved and asks; the injected answer is undated too, so it stays ambiguous (engine gap). |
 | `count_in_window` | Counts undated entries **only** under `LIFETIME` (conditions/meds/allergies default). Any bounded window → count 0 → a silent **"no"** (aggregates never ask). |
-| `trend_up`, `trend_down`, `delta_from_baseline` | Need `min_points` **dated** values. One undated value → not met; two or more → unorderable series (`indeterminate`, never asks → `default_behavior`, or the compound asks for a sibling scalar). |
+| `trend_up`, `trend_down`, `delta_from_baseline` | Need `min_points` **dated** values. Undated values contribute no point: one → zero points, short by ≥ 2 → *unresolved* with nothing to ask → `default_behavior`; two or more → unorderable series (`indeterminate`, never asks → `default_behavior`, or the compound asks for a sibling scalar). |
+| any aggregate with `window_from` | The anchor itself needs a date: no care plan and undated orders → the gate **asks** "When did … start?" (DATE). The series still needs dated lab values. |
 
 Gates built on the last two rows are **untestable in the simulator** — say so in the brief
-(§18) and the delivery message. In the current pathways: anemia `gate-hgb-response` (its
-three trend arms; the absolute-target arm works) and UTI `gate-recurrent-uti`.
+(§18) and the delivery message. In the current pathways: UTI `gate-recurrent-uti`. (Anemia
+`gate-hgb-response` had three trend arms through v4; since v5 it is a question router —
+"rose by **less than** 1 g/dL" has no delta encoding, see the anemia brief §4b.)
 
 ### Temporal horizon & status (per-condition, NODE tier — merged, emit freely)
 
@@ -571,7 +719,27 @@ needed. An em dash or `-`/`--` separates tag and ids.
 | Marker | Allows | Without it |
 |---|---|---|
 | `[ON-UNRESOLVED DEFAULT — <gate-id>]` | a numeric gate with `on_unresolved: "default"` | error — numeric gates ask |
-| `[SECOND ROUTE — <step-id> via <source-id>]` | a step of a gated Stage that another route also reaches (a Criterion's route is named by its DecisionPoint) — e.g. anemia's empiric-iron arm `[SECOND ROUTE — step-2-1 via dp-1]` | warning; with it, an `ℹ` info line so the route stays visible |
+| `[SECOND ROUTE — <node-id> via <source-id>]` | a node inside a gated region that a route from outside the gate also reaches (the source is the edge's `from`; a Criterion's route is named by its DecisionPoint) — e.g. anemia's empiric-iron Stage 1.5 sharing Stage 2's steps, `[SECOND ROUTE — step-2-3 via stage-2-empiric]` (one marker per node and source) | **error** (Rule 1); with it, an `ℹ` info line so the route stays visible |
+
+### Brief stamp (read by `check-brief-sync.ts`)
+
+The brief is the source of truth and the JSON is derived from it, so every brief names the
+JSON it describes in **one** stamp line in its header — after the `# ` title, before the
+first `## ` heading:
+
+```
+JSON: pathways/json/<logical_id>.json @ version <version>
+JSON: (not built)
+```
+
+`<version>` is `pathway.version` verbatim, compared as a trimmed string (`"version": "5"`
+↔ `@ version 5`); §1's `- **Version**:` must say the same. Nothing else goes on the line.
+`scripts/check-brief-sync.ts` fails when a JSON under `pathways/json/` has no brief, the
+brief has no stamp (or two, or a malformed one, or `(not built)`), the stamp names another
+JSON or version, a stamp names a JSON that does not exist, or a JSON's `logical_id` is not
+its filename. It runs inside `validate-pathway.ts` (exit 4) and in the pre-commit hook
+(`--staged`, which also fails when a JSON is staged without its brief). **Never change a
+pathway JSON without updating its brief in the same commit** — see the builder SKILL.md.
 
 ## What the simulator sends (author gates against THIS)
 

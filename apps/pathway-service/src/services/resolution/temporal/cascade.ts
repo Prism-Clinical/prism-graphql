@@ -17,6 +17,8 @@ import {
   getTemporalPolicy,
 } from './policy-registry';
 import { EffectivePolicy } from './select-facts';
+import type { WindowFromSelector } from './anchored-window';
+import { instantEpoch } from './interval';
 
 /** The PATHWAY level of the cascade, as loaded from `temporal_defaults`. */
 export interface PathwayTemporalDefaults {
@@ -178,6 +180,13 @@ export type PolicyLevel = 'SYSTEM_DEFAULT' | 'PATHWAY' | 'NODE';
 export interface ConditionTemporalOverride {
   horizon?: Horizon;
   status?: TemporalStatus;
+  /**
+   * An event-anchored lower bound (`window_from`). Mutually exclusive with
+   * `horizon` — `parseConditionOverride` refuses both together — and resolved
+   * per evaluation, not here: the date depends on the session's answers and
+   * facts, which the cascade never sees.
+   */
+  windowFrom?: WindowFromSelector;
 }
 
 /**
@@ -192,6 +201,14 @@ export interface PolicyTier {
   status?: TemporalStatus;
   horizonLevel: PolicyLevel;
   statusLevel?: PolicyLevel;
+  /**
+   * Set when the NODE tier anchors the window on an event. `horizon` is then
+   * `LIFETIME` — a placeholder that needs no encounter anchor at preflight —
+   * and `toEffectivePolicy` REFUSES the tier unless the caller supplies the
+   * resolved anchor: falling through to the placeholder would evaluate a
+   * response gate over the patient's whole history.
+   */
+  windowFrom?: WindowFromSelector;
 }
 
 /**
@@ -224,6 +241,19 @@ export function resolveEffectivePolicy(
     horizon = parseHorizonValue(condition.horizon, `condition.horizon (${field})`);
     horizonLevel = 'NODE';
   }
+  // Checked here as well as in the parser: a hand-built override reaching the
+  // cascade with both would otherwise have its horizon silently ignored.
+  if (condition?.windowFrom !== undefined) {
+    if (condition.horizon !== undefined) {
+      throw new TemporalContextError(
+        `condition (${field}): window_from and horizon are mutually exclusive`,
+        'INVALID_TEMPORAL_DEFAULTS',
+      );
+    }
+    horizon = 'LIFETIME';
+    horizonLevel = 'NODE';
+  }
+  const anchored = condition?.windowFrom !== undefined ? { windowFrom: condition.windowFrom } : {};
 
   if (!fieldHasClinicalState(field)) {
     if (condition?.status !== undefined) {
@@ -232,7 +262,7 @@ export function resolveEffectivePolicy(
         'INVALID_TEMPORAL_DEFAULTS',
       );
     }
-    return { horizon, horizonLevel };
+    return { horizon, horizonLevel, ...anchored };
   }
 
   let status: TemporalStatus | undefined = system.status;
@@ -248,7 +278,7 @@ export function resolveEffectivePolicy(
     statusLevel = 'NODE';
   }
 
-  const tier: PolicyTier = { horizon, horizonLevel };
+  const tier: PolicyTier = { horizon, horizonLevel, ...anchored };
   if (status !== undefined) {
     tier.status = status;
     tier.statusLevel = statusLevel;
@@ -269,7 +299,38 @@ export function resolveEffectivePolicy(
 export function toEffectivePolicy(
   tier: PolicyTier,
   ctx: EvaluationTemporalContext,
+  /**
+   * The resolved `window_from` lower bound (an ISO instant), REQUIRED when the
+   * tier is anchored and refused when it is not. See `resolveWindowAnchor`.
+   */
+  anchorLowerBound?: string,
 ): EffectivePolicy {
+  if (tier.windowFrom !== undefined || anchorLowerBound !== undefined) {
+    if (tier.windowFrom === undefined) {
+      throw new TemporalContextError(
+        'an anchor lower bound was supplied for a condition without window_from',
+        'INVALID_TEMPORAL_DEFAULTS',
+      );
+    }
+    if (anchorLowerBound === undefined) {
+      throw new TemporalContextError(
+        'a window_from condition reached policy resolution without a resolved anchor — ' +
+          'evaluating it over the LIFETIME placeholder would read the whole history',
+        'INVALID_TEMPORAL_DEFAULTS',
+      );
+    }
+    if (instantEpoch(anchorLowerBound) > instantEpoch(ctx.evaluationAsOf)) {
+      throw new TemporalContextError(
+        `window_from anchor (${anchorLowerBound}) is after evaluationAsOf (${ctx.evaluationAsOf})`,
+        'INVALID_CLOCK',
+      );
+    }
+    const policy: EffectivePolicy = {
+      horizon: { lowerBound: anchorLowerBound, upperBound: ctx.evaluationAsOf },
+    };
+    if (tier.status !== undefined) policy.status = tier.status;
+    return policy;
+  }
   const policy: EffectivePolicy = { horizon: resolveHorizon(tier.horizon, ctx) };
   if (tier.status !== undefined) policy.status = tier.status;
   return policy;

@@ -46,7 +46,12 @@ enum ResolutionType { AUTO_RESOLVED SYSTEM_SUGGESTED PROVIDER_DECIDED FORCED_MAN
 enum SessionStatus { ACTIVE COMPLETED ABANDONED DEGRADED }
 enum NodeStatus { INCLUDED EXCLUDED GATED_OUT PENDING_QUESTION TIMEOUT CASCADE_LIMIT UNKNOWN }
 enum OverrideAction { INCLUDE EXCLUDE }
-enum AnswerType { BOOLEAN NUMERIC SELECT }
+"""
+How a pending question is answered. DATE is a calendar date (`YYYY-MM-DD`,
+sent as `GateAnswerInput.dateValue`) — asked only for a `window_from`
+treatment start date ("When did oral iron start?").
+"""
+enum AnswerType { BOOLEAN NUMERIC SELECT DATE }
 enum BlockerType { EMPTY_PLAN UNRESOLVED_RED_FLAG CONTRADICTION PENDING_GATE INCOMPLETE_RESOLUTION }
 
 # ─── Core Types ────────────────────────────────────────────────────────
@@ -741,7 +746,14 @@ type SuppressedRecommendation {
 # ─── Conflicts (Phase 3 commit 4) ─────────────────────────────────────
 
 enum ConflictType {
+  """Two or more DIFFERENT drugs share a clinical_role lane."""
   MEDICATION
+  """
+  ONE drug asked for at different regimens (dose, frequency, route or
+  duration) by different pathways. Every candidate names the same drug;
+  tell them apart by their regimen, not their name.
+  """
+  MEDICATION_REGIMEN
 }
 
 enum ConflictResolutionKind {
@@ -776,7 +788,14 @@ input CustomMedicationOverrideInput {
 
 type ConflictCandidate {
   recommendation: ResolvedMedication!
+  """The first pathway that asked for this exact drug and regimen."""
   sourcePathwayId: ID!
+  """
+  Every pathway that asked for this exact drug and regimen, first-seen order.
+  Any of them is a valid CONFIRM_PATHWAY choice.
+  """
+  sourcePathwayIds: [ID!]!
+  """Title of `sourcePathwayId`."""
   sourcePathwayTitle: String!
 }
 
@@ -793,14 +812,23 @@ type ConflictResolution {
 
 """
 A cross-pathway soft conflict (medications-only in v1). Triggered when ≥2
-pathways tag different drugs with the same `clinical_role`. The provider
-must resolve every conflict before the merged plan can be turned into a
-real care plan via `generateMergedCarePlan`.
+pathways tag different drugs with the same `clinical_role` (MEDICATION), or
+ask for the same drug at different regimens (MEDICATION_REGIMEN). The
+provider must resolve every conflict before the merged plan can be turned
+into a real care plan via `generateMergedCarePlan`.
 """
 type MergedConflict {
-  """Stable id within the session — equals the clinical_role tag value."""
+  """
+  Stable id within the session. MEDICATION: the clinical_role tag value.
+  MEDICATION_REGIMEN: `regimen:<normalised drug name>`.
+  """
   conflictId: String!
   type: ConflictType!
+  """
+  What the conflict is about, for display. MEDICATION: the shared
+  clinical_role. MEDICATION_REGIMEN: the drug's clinical_role when it carries
+  one, else the drug's name.
+  """
   clinicalRole: String!
   candidates: [ConflictCandidate!]!
   """Null while the conflict is unresolved."""
@@ -1065,6 +1093,28 @@ type ResolvedNode {
   excludeReason: String
   parentNodeId: ID
   depth: Int!
+  """
+  On a gate with `window_from` conditions: the treatment start date each
+  anchored window opened on, and where it came from. Null on every other node.
+  Correct one by answering this gate with `dateValue`.
+  """
+  windowAnchors: [WindowAnchor!]
+}
+
+"""
+Where an anchored trend window (`window_from`) opened.
+"""
+type WindowAnchor {
+  "`anchor:<event>:<clinical_role>` — one per treatment class, shared by every gate on it."
+  key: String!
+  clinicalRole: String!
+  "The class in words, as the start-date question names it."
+  label: String!
+  "`YYYY-MM-DD`."
+  date: String!
+  "CLINICIAN, CARE_PLAN or MEDICATION_ORDER — the first that resolved, in that order."
+  source: String!
+  detail: String!
 }
 
 type ProviderOverrideType {
@@ -1186,6 +1236,13 @@ input GateAnswerInput {
   booleanValue: Boolean
   numericValue: Float
   selectedOption: String
+  """
+  A treatment start date, `YYYY-MM-DD`, on or before the session's evaluation
+  date. Answers a DATE question, or — sent to a gate that has a `window_from`
+  condition and nothing pending — corrects the start date the window was
+  anchored on (`ResolvedNode.windowAnchors`). Supply it alone.
+  """
+  dateValue: String
 }
 
 input AdditionalContextInput {

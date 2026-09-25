@@ -22,12 +22,20 @@
 //   PATHWAY_VALIDATE_ALLOW_STALE=1 npx ts-node --transpile-only ...
 // downgrades the staleness refusal to a warning. Never use it for a delivery.
 //
-// Exit codes: 0 = valid, 1 = invalid, 2 = could not read/parse the file,
-//             3 = checkout does not contain origin/main (stale validator).
+// After the validator it runs check-brief-sync.ts on the same file: a pathway
+// JSON under pathways/json/ must be described by its research brief, whose
+// stamp line names this JSON at exactly this `pathway.version` (see
+// SKILL.md "Brief is the source of truth"). A JSON outside pathways/json/
+// (e.g. a test fixture) skips that step.
+//
+// Exit codes: 0 = valid and in sync with its brief, 1 = invalid,
+//             2 = could not read/parse the file,
+//             3 = checkout does not contain origin/main (stale validator),
+//             4 = valid, but out of sync with its brief (check-brief-sync failed).
 
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
-import { execFileSync } from 'child_process';
+import { execFileSync, spawnSync } from 'child_process';
 import { validatePathwayJson } from '../../../../apps/pathway-service/src/services/import/validator';
 import type { PathwayJson } from '../../../../apps/pathway-service/src/services/import/types';
 
@@ -107,11 +115,20 @@ if (result.warnings.length > 0) {
   for (const w of result.warnings) console.log(`  - ${w}`);
 }
 
-if (result.valid) {
-  console.log(`✓ VALID — ${parsed.nodes?.length ?? 0} nodes, ${parsed.edges?.length ?? 0} edges (${result.warnings.length} warnings)`);
-  process.exit(0);
-} else {
+if (!result.valid) {
   console.log(`✗ INVALID — ${result.errors.length} error(s):`);
   for (const e of result.errors) console.log(`  - ${e}`);
   process.exit(1);
 }
+console.log(`✓ VALID — ${parsed.nodes?.length ?? 0} nodes, ${parsed.edges?.length ?? 0} edges (${result.warnings.length} warnings)`);
+
+// The brief is the source of truth: a valid JSON its brief does not describe
+// is not deliverable. Plain node runs the check (it needs no ts-node).
+const sync = spawnSync(process.execPath, [resolve(__dirname, 'check-brief-sync.ts'), '--json', filePath], {
+  stdio: 'inherit',
+});
+if (sync.status !== 0) {
+  console.log('✗ BRIEF OUT OF SYNC — the JSON is valid, but its research brief does not describe it (see above).');
+  process.exit(sync.status === 2 ? 2 : 4);
+}
+process.exit(0);

@@ -1,5 +1,13 @@
 # Pathway Research Brief — Template
 
+<!-- The stamp line below is machine-read (check-brief-sync.ts). The brief is the source of
+     truth and the JSON is derived from it: keep exactly one stamp in the header, above the
+     first "## ". A new brief says "(not built)"; once pathway-json-builder builds the JSON
+     it becomes "JSON: pathways/json/<logical_id>.json @ version <version>", with <version>
+     equal to the JSON's pathway.version and to §1's Version. Any later change to the JSON
+     updates this brief (and the stamp, if the version moves) in the same commit. -->
+JSON: (not built)
+
 Fill every numbered section. The brief maps 1:1 onto the Prism pathway JSON (see
 `.claude/skills/pathway-json-builder/references/pathway-json-format.md`) so the builder can
 convert it deterministically. Write for the reviewing physician first: rationale in prose,
@@ -12,7 +20,7 @@ machine-facing details in the labeled fields. Mark anything uncertain `[GAP]`,
 
 - **Logical ID**: `<kebab-case-slug>` (stable across versions)
 - **Title**:
-- **Version**: 1.0 (plain numerals — the dashboard prepends "v"; increment if a revision)
+- **Version**: 1 (plain numerals — the dashboard prepends "v"; increment if a revision; must equal the header stamp once built)
 - **Category**: one of CHRONIC_DISEASE | ACUTE_CARE | PREVENTIVE_CARE | POST_PROCEDURE | MEDICATION_MANAGEMENT | LIFESTYLE_MODIFICATION | MENTAL_HEALTH | PEDIATRIC | GERIATRIC | OBSTETRIC
 - **Scope** (care setting):
 - **Target population**:
@@ -74,7 +82,10 @@ One block per machine-evaluable decision. Common fields for every gate:
   - Exclusively gated: yes | no — the branch target must be content the pathway should
     NOT reach when this gate misses. If the target is also a normal step in its stage's
     flow, or another gate/criterion also targets it, the gate excludes nothing. Say which
-    step is being removed from the plain stage flow to make this gate real.
+    step is being removed from the plain stage flow to make this gate real. The same holds
+    for everything under the target: a med escalated to from an ungated med, or a lab also
+    ordered by a step outside the gate, walks past the gate — list such a lab under each
+    host separately, and route escalation into gated content through the gated step.
   - Type: patient_attribute | question | compound | llm_text_analysis
   - Default behavior: **skip** — what happens to the target when the gate is not satisfied,
     **including a definite "no"**. `traverse` includes the target even on "no", so a

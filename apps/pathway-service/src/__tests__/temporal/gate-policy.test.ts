@@ -68,7 +68,9 @@ describe('effectivePolicyFor', () => {
     const modern = effectivePolicyFor(adaptLab(), v1, {});
     expect(legacy.horizon.lowerBound).toBeNull(); // LIFETIME
     expect(modern.horizon.lowerBound).toBe('2026-05-13T00:00:00.000Z'); // QUARTER
-    expect(effectivePolicyFor).toHaveLength(3); // (adapted, ctx, pathwayDefaults)
+    // (adapted, ctx, pathwayDefaults, anchorLowerBound?) — the fourth is a resolved
+    // window_from anchor, never a version.
+    expect(effectivePolicyFor).toHaveLength(4);
   });
 
   it('propagates MISSING_ENCOUNTER_ANCHOR rather than swallowing it', () => {
