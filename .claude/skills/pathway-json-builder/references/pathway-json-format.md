@@ -332,7 +332,7 @@ Carries one `condition` object, which is either an **attribute condition** or a 
 - There is **no** `symptom.*`, `medication.*`, or `condition.*` namespace (older docs said otherwise — they now hard-fail import). Symptom presence/severity is elicited ⇒ use a `question` gate. Diagnosis/medication history ⇒ use a coded condition.
 - `horizon` / `status` — see **Temporal horizon & status** below; both are legal here exactly as on coded conditions.
 
-**Coded condition** — allowed keys exactly: `field`, `operator`, `value`, `system`, `threshold`, `window_days`, `count_threshold`, `min_points`, `slope_threshold`, `delta_threshold`, `horizon`, `status`, `display`, `note`.
+**Coded condition** — allowed keys exactly: `field`, `operator`, `value`, `system`, `threshold`, `window_days`, `count_threshold`, `min_points`, `slope_threshold`, `delta_threshold`, `horizon`, `status`, `window_from`, `display`, `note`. (`window_from` is coded-only — see **Anchored trend windows** below; on an attribute condition it is an unknown key.)
 
 ```json
 { "field": "conditions", "operator": "includes_code", "value": "Z94.*", "system": "ICD-10" }
@@ -407,9 +407,76 @@ Runtime semantics (from `gate-evaluator.ts`):
 > on main (`evaluation-context.ts:226`); a service still running `legacy-v0` takes whichever
 > result is first in the array, not the most recent.
 >
-> None of these windows is anchored to the day treatment started — the kernel has no
-> anchor-to-medication-event. Layering approximates it by covering several plausible
-> treatment durations at once.
+> None of these windows is anchored to the day treatment started. Layering approximates
+> that by covering several plausible treatment durations at once. For a **response to
+> treatment** gate, prefer `window_from` (below): it opens the window on the day the drug
+> class was prescribed, so the pre-treatment state is excluded by construction.
+
+### Anchored trend windows — `window_from` (response-to-treatment gates)
+
+`window_from` replaces a condition's fixed lookback with an EVENT: the window opens on the
+day a therapeutic **class** was started and closes at the session clock. Use it for "is the
+patient responding to treatment?" gates.
+
+```json
+{ "field": "labs", "operator": "trend_up", "value": "718-7", "system": "LOINC",
+  "display": "Hemoglobin (g/dL)", "slope_threshold": 0.015, "min_points": 2,
+  "window_from": {
+    "event": "medication_start",
+    "clinical_role": "oral-iron-repletion",
+    "label": "oral iron",
+    "codes": [ { "system": "RXNORM", "code": "<author-supplied RxCUI>" } ]
+  } }
+```
+
+Rules (hard import errors unless marked; the validator calls the runtime parser
+`parseConditionOverride` → `parseWindowFrom`, so import and runtime agree):
+
+- **Operators:** only `count_in_window`, `trend_up`, `trend_down`, `delta_from_baseline`.
+  On any other operator it is an error.
+- **Mutually exclusive** with `window_days` and with `horizon`. It *is* the window.
+- `event` — required; `"medication_start"` is the only event.
+- `clinical_role` — required, the **class** tag the pathway's Medication nodes carry
+  (`oral-iron-repletion`), never one product. Anemia offers three interchangeable oral
+  irons; anchoring on ferrous sulfate alone would gate every gluconate or fumarate patient
+  out. *Warning* when no Medication node in the pathway has that role: the care-plan
+  source (below) can then never match.
+- `codes` — optional `[{system, code}]`: the chart medication codes that count as an order
+  of the class (list every member product you want recognised; system compared
+  case-insensitively, code exactly, no wildcard). *Warning* when absent: medication orders
+  cannot anchor the window, so a patient with no stored care plan is always asked.
+- `label` — optional, the class in words for the prompt: `"When did oral iron start?"`
+  (default: the `clinical_role` with dashes as spaces).
+- No other keys.
+
+**How the start date is resolved** — first hit wins, and there is **no silent fallback**:
+
+| # | Source | Where it is read |
+|---|---|---|
+| 1 | **Clinician-entered date** | The session's answer for this anchor (a DATE answer). Outranks every record: prescribed ≠ started, and a patient already on the drug before the pathway has no in-episode order. Editable at any time, not only when asked. |
+| 2 | **Earliest care-plan recommendation** | `patient_care_plan_interventions` (type MEDICATION) under the patient's `patient_care_plans`, whose `guideline_reference` names **this** pathway (any version) and a node whose `clinical_role` matches. **Earliest** plan `start_date` wins — each commit writes a new plan, so latest-wins would slide the window forward every visit. Read once at session start and pinned to the session. |
+| 3 | **Earliest dated medication order** | Chart medication orders whose code is in `codes`, not INVALID, with a day- or instant-precision start on/before the clock. Earliest wins (so a refill cannot shrink the window; a *prior course* of the same drug would anchor too early — the clinician date fixes that). |
+| 4 | **Unresolved** | The condition is *indeterminate*. With `on_unresolved: "ask"` the gate holds and asks one DATE question per anchor — "When did oral iron start?" — shared by every gate anchored on the same class; with `"default"` it takes `default_behavior`. |
+
+The window is `[start of the anchor day (UTC), session clock]` — a lab drawn on the day the
+drug was started is the baseline and **is** in the series. Everything else (`min_points`,
+`slope_threshold`, `delta_threshold`, `count_threshold`, start-bound selection) is unchanged.
+
+Authoring notes:
+
+- **One anchored trend replaces the layered lookbacks.** The pre-treatment value that the
+  layering works around is outside the window by construction. Keep the absolute-target
+  `greater_than` arm (a patient who has arrived has a flat slope), and keep its own
+  `horizon`.
+- **Tier the slope to the expected response rate across the whole course**, not to the
+  shortest lookback: the window can be one week or four months long depending on the patient.
+- **Emit `on_unresolved: "ask"`** on every gate with a `window_from` condition, or an
+  unresolved start date silently takes `default_behavior`.
+- **Simulator:** a synthetic patient has no stored care plans, and simulator medications are
+  undated, so the anchor resolves only from the clinician's date — the gate asks, the tester
+  answers with a date, the trend evaluates. (A dated synthetic order with a listed code also
+  anchors it.)
+- `legacy-v0` sessions refuse `window_from` conditions (they cannot anchor); `v1` is the default.
 
 Time-shape notes: with `window_days` (or any bounded horizon) set, undated and future-dated
 entries never count toward an aggregate. The clock is the session's pinned
@@ -451,6 +518,7 @@ horizon, but they have no start, so:
 | `greater_than`, `less_than` | One value per code works. Two or more undated values for one code cannot be ordered → `AMBIGUOUS_LATEST` → the gate is unresolved and asks; the injected answer is undated too, so it stays ambiguous (engine gap). |
 | `count_in_window` | Counts undated entries **only** under `LIFETIME` (conditions/meds/allergies default). Any bounded window → count 0 → a silent **"no"** (aggregates never ask). |
 | `trend_up`, `trend_down`, `delta_from_baseline` | Need `min_points` **dated** values. One undated value → not met; two or more → unorderable series (`indeterminate`, never asks → `default_behavior`, or the compound asks for a sibling scalar). |
+| any aggregate with `window_from` | The anchor itself needs a date: no care plan and undated orders → the gate **asks** "When did … start?" (DATE). The series still needs dated lab values. |
 
 Gates built on the last two rows are **untestable in the simulator** — say so in the brief
 (§18) and the delivery message. In the current pathways: UTI `gate-recurrent-uti`. (Anemia

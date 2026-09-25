@@ -312,11 +312,11 @@ for (const { gate, i, c } of chartConditions()) {
 // there imports cleanly and then throws at session preflight.
 for (const { gate, i, c } of chartConditions()) {
   // patient.* has no temporal policy at all (the adapter returns null for it).
-  if (c.horizon === undefined && c.window_days === undefined && !isVitals(c) &&
+  if (c.horizon === undefined && c.window_days === undefined && c.window_from === undefined && !isVitals(c) &&
       !(typeof c.attribute === 'string' && c.attribute.startsWith('patient.'))) {
     errors.push(
       `EXPLICIT HORIZON — "${gate}" condition[${i}] (${c.field ?? c.attribute} ${c.value ?? ''}) has neither ` +
-      `horizon nor window_days.\n      => it silently inherits the v1 field default ` +
+      `horizon, window_days nor window_from.\n      => it silently inherits the v1 field default ` +
       `(${c.field === 'labs' ? 'QUARTER = 90 days, not lifetime' : 'LIFETIME'}); emit it explicitly.`,
     );
   }

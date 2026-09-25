@@ -34,6 +34,8 @@ export function effectivePolicyFor(
   adapted: AdaptedCondition,
   ctx: EvaluationTemporalContext,
   pathwayDefaults: PathwayTemporalDefaults,
+  /** The resolved `window_from` lower bound; see `toEffectivePolicy`. */
+  anchorLowerBound?: string,
 ): EffectivePolicy {
   const tier = resolveEffectivePolicy(
     adapted.selection.field,
@@ -41,5 +43,5 @@ export function effectivePolicyFor(
     pathwayDefaults,
     adapted.override,
   );
-  return toEffectivePolicy(tier, ctx);
+  return toEffectivePolicy(tier, ctx, anchorLowerBound);
 }

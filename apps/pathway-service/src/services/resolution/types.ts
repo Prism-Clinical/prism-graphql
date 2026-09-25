@@ -142,6 +142,12 @@ export interface CodedCondition {
   status?: unknown;
   threshold?: number;
   window_days?: number;
+  /**
+   * Anchored trend window (`anchored-window.ts`): the window opens on the date
+   * a therapeutic class was started instead of a fixed lookback. `unknown` for
+   * the reason `horizon` is — validated at runtime by `parseConditionOverride`.
+   */
+  window_from?: unknown;
   count_threshold?: number;
   min_points?: number;
   slope_threshold?: number;

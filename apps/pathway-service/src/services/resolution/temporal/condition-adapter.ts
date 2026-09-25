@@ -11,6 +11,7 @@ import { TemporalContextError } from './evaluation-context';
 // stamps every vital with this system and the adapter must select on the same
 // one; a second spelling here would silently match nothing.
 import { VITALS_SYSTEM } from './context-assembler';
+import { parseWindowFrom, WINDOW_FROM_OPERATORS } from './anchored-window';
 import { AttributeCodeMap, AttributeCondition, CodedCondition } from '../types';
 
 /**
@@ -266,7 +267,35 @@ export function parseConditionOverride(
     );
   }
 
+  // `window_from` replaces the window's lower bound with an event, so it is
+  // exclusive with BOTH ways of stating a fixed lookback — the same "no
+  // defensible winner" reasoning as the check above.
+  const hasWindowFrom = cond.window_from !== undefined;
+  if (hasWindowFrom && (hasWindowDays || hasHorizon)) {
+    throw new TemporalContextError(
+      `${where}: a condition may set window_from or ${hasWindowDays ? 'window_days' : 'horizon'}, ` +
+        `not both — window_from anchors the window on an event, a lookback anchors it on the clock`,
+      'INVALID_TEMPORAL_DEFAULTS',
+    );
+  }
+
   const override: ConditionTemporalOverride = {};
+
+  if (hasWindowFrom) {
+    // Keyed on the author's operator. An attribute condition's operators are
+    // never time-series ones, so this refuses `window_from` on every
+    // attribute condition as well — reached by the sweep, the adapter and the
+    // import validator alike.
+    const op = cond.operator;
+    if (typeof op !== 'string' || !WINDOW_FROM_OPERATORS.has(op)) {
+      throw new TemporalContextError(
+        `${where}: window_from applies only to ${[...WINDOW_FROM_OPERATORS].join(' / ')} ` +
+          `(got operator ${JSON.stringify(op)})`,
+        'INVALID_TEMPORAL_DEFAULTS',
+      );
+    }
+    override.windowFrom = parseWindowFrom(cond.window_from, `${where}.window_from`);
+  }
 
   if (hasWindowDays) {
     // Routed through parseHorizonValue rather than validated here, so the

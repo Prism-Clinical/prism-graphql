@@ -1,5 +1,7 @@
 import { ResolvedHorizon } from './overlap';
 import { instantEpoch } from './interval';
+// Type-only: anchored-window imports this module's values, not the reverse.
+import type { TherapyStartEvent } from './anchored-window';
 
 // ─── Horizon ──────────────────────────────────────────────────────────
 
@@ -81,6 +83,14 @@ export interface EvaluationTemporalContext {
   timezone: 'UTC';
   /** Selects the immutable policy constants (§5). Plan 03 validates it. */
   temporalPolicyVersion: string;
+  /**
+   * Care-plan therapy starts — the anchors a `window_from` condition resolves
+   * from its second source (see `anchored-window.ts`). Pinned at session
+   * creation, like `encounterStart`, so a retraversal or replay anchors on the
+   * set the session was created with rather than on whatever plans exist by
+   * then. Set only through `withTherapyStarts`; absent when there are none.
+   */
+  therapyStarts?: TherapyStartEvent[];
 }
 
 export type TemporalContextErrorCode =
