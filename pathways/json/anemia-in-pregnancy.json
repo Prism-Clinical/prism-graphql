@@ -60,7 +60,7 @@
       "properties": {
         "stage_number": 1.5,
         "title": "Empiric Oral Iron Trial (if chosen at DP-1; not with hemoglobinopathy disease)",
-        "description": "Branch-entry only, via DP-1 criterion 1a (empiric oral iron without iron studies). With no hemoglobinopathy disease on file (gate-empiric-no-hgbpathy) it opens Step 2.8, the iron-route choice (DP-3), so the empiric arm chooses between the oral trial and IV iron without an oral trial exactly as ferritin-confirmed IDA does. With sickle cell disease, a thalassemia syndrome or HbC/HbE disease on file, empiric iron is not given: gate-hgbpathy-microcytic opens Step 1.8 (iron studies) instead \u2014 choose confirmatory studies at DP-1 for the iron path. Numbered 1.5 so it sorts directly after Stage 1 with a number of its own."
+        "description": "Branch-entry only, via DP-1 criterion 1a (empiric oral iron without iron studies). With no hemoglobinopathy disease on file (gate-empiric-no-hgbpathy) it opens Step 2.8, the iron-route choice (DP-3), so the empiric arm chooses between the oral trial and IV iron without an oral trial as ferritin-confirmed IDA does \u2014 except that IV iron first, with no ferritin on file, orders a ferritin, starts oral iron meanwhile and gives IV iron only once a ferritin < 30 ng/mL confirms iron deficiency. With sickle cell disease, a thalassemia syndrome or HbC/HbE disease on file, empiric iron is not given: gate-hgbpathy-microcytic opens Step 1.8 (iron studies) instead \u2014 choose confirmatory studies at DP-1 for the iron path. Numbered 1.5 so it sorts directly after Stage 1 with a number of its own."
       }
     },
     {
@@ -535,7 +535,7 @@
       "id": "crit-3d",
       "type": "Criterion",
       "properties": {
-        "description": "Anemia diagnosed at 34 weeks or later (iron deficiency confirmed, or presumed on the empiric arm) \u2014 too little time for an oral trial; IV iron"
+        "description": "Anemia diagnosed at 34 weeks or later (iron deficiency confirmed, or presumed on the empiric arm) \u2014 too little time for an oral trial; IV iron (on the empiric arm, once a ferritin < 30 ng/mL confirms iron deficiency; oral iron meanwhile)"
       }
     },
     {
@@ -2089,7 +2089,7 @@
       "properties": {
         "topic": "Malabsorption on the chart: consider IV iron first",
         "category": "treatment-planning",
-        "instructions": "The problem list carries a condition that reduces oral iron absorption (bariatric surgery, Crohn's disease or ulcerative colitis, celiac disease, short bowel syndrome or intestinal failure, postsurgical or unspecified intestinal malabsorption, or gastrectomy). This supports choosing IV iron without an oral trial at DP-3 (criterion 3c), most strongly after a malabsorptive bariatric procedure (e.g. Roux-en-Y gastric bypass) or with active inflammatory bowel disease; with quiescent IBD or a restrictive procedure an oral trial remains reasonable. IV iron is given from 14 0/7 weeks; before then, choosing IV first starts oral iron until 14 weeks."
+        "instructions": "The problem list carries a condition that reduces oral iron absorption (bariatric surgery, Crohn's disease or ulcerative colitis, celiac disease, short bowel syndrome or intestinal failure, postsurgical or unspecified intestinal malabsorption, or gastrectomy). This supports choosing IV iron without an oral trial at DP-3 (criterion 3c), most strongly after a malabsorptive bariatric procedure (e.g. Roux-en-Y gastric bypass) or with active inflammatory bowel disease; with quiescent IBD or a restrictive procedure an oral trial remains reasonable. IV iron is given from 14 0/7 weeks, and only once a ferritin < 30 ng/mL confirms iron deficiency; until then (before 14 weeks, or on the empiric arm while its ferritin is outstanding), choosing IV first starts oral iron."
       }
     },
     {

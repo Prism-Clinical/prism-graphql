@@ -13,16 +13,17 @@ agents (codes, citations); every claim carries a reference number resolving in �
 `[GAP]` unsourceable, `[FALLBACK SOURCE]` non-US-guideline basis, `[OLDER SOURCE]` >5y but
 still current, `[BLOCKED — prior_node_result]` import-blocked gate design with fallback.
 
-> ### ⚠ For Josh (v9) — IV iron first now waits for a ferritin; three new open points
+> ### ⚠ For Josh (v9) — IV iron first now waits for a ferritin; four new open points
 >
 > IV iron first (DP-3) gives IV iron only with a ferritin < 30 ng/mL on file, still from 14
 > weeks. On the empiric arm, which has no ferritin, choosing IV iron first orders one, starts
 > oral iron meanwhile and asks for the ferritin value; the confirmed arm is unchanged (§4
-> DP-3, "IV iron first needs a confirmed ferritin"). Three consequences are yours to accept
-> or change (§4 DP-3, `[CLINICAL AMBIGUITY — for Josh]` (a)–(c)): the ferritin question
+> DP-3, "IV iron first needs a confirmed ferritin"). Four consequences are yours to accept
+> or change (§4 DP-3, `[CLINICAL AMBIGUITY — for Josh]` (a)–(d)): the ferritin question
 > **holds that visit's care plan** until a value is entered; a ferritin ≥ 30 stops **all**
-> iron on the IV-first route, while the empiric oral trial still gives oral iron; and oral
-> iron stops once IV iron opens.
+> iron on the IV-first route, while the empiric oral trial still gives oral iron; oral iron
+> stops once IV iron opens; and a late diagnosis (criterion 3d) on the empiric arm now waits
+> for the ferritin.
 >
 > v8's open point — DP-1 is asked again for hemoglobinopathy-disease patients — is accepted
 > as is (§4 DP-1, §18).
@@ -117,9 +118,11 @@ None. (Single-condition pathway; O99.01x already encodes the pregnancy+anemia co
   disease)** *(branch-entry only, via DP-1 criterion 1a)* `[DECISION — Josh 2026-09-24]`: v8 —
   opens Step 2.8, the iron-route choice (DP-3), through `gate-empiric-no-hgbpathy` (no
   hemoglobinopathy disease on file); with disease on file it opens Step 1.8's iron studies
-  instead (`gate-hgbpathy-microcytic`) — §4 DP-1. With Step 2.8, the empiric arm chooses the empiric arm chooses the oral trial or IV iron without an oral trial
-  the oral trial or IV iron without an oral trial exactly as ferritin-confirmed IDA does,
-  and its oral trial brings the same response assessment and IV-iron escalation route (§4,
+  instead (`gate-hgbpathy-microcytic`) — §4 DP-1. With Step 2.8, the empiric arm chooses
+  the oral trial or IV iron without an oral trial as ferritin-confirmed IDA does — except
+  that since v9 IV iron first, with no ferritin on file, orders a ferritin, starts oral iron
+  meanwhile and gives IV iron only once ferritin < 30 confirms iron deficiency `[DECISION —
+  Josh 2026-09-25]` (§4 DP-3) — and its oral trial brings the same response assessment and IV-iron escalation route (§4,
   DP-1 and DP-3). (v4–v7: held Steps 2.1–2.3 directly.) Numbered 1.5 so it sorts after Stage 1 with a number of its own; its step
   keeps its 2.x number. [1][5]
 - **Stage 2 — Iron Deficiency Treatment** *(branch-entry only, via gate-ida-confirmed)*:
@@ -489,7 +492,8 @@ BRANCHES_TO (no HAS_STEP edge), per the reference-fixture pattern.
     with no ferritin on file** — **resolved in v9** `[DECISION — Josh 2026-09-25]`: IV iron
     first requires a confirmed ferritin (below, "IV iron first needs a confirmed
     ferritin"). (3) Criterion 3d reads "anemia diagnosed at ≥ 34 weeks (iron deficiency confirmed, or
-    presumed on the empiric arm)". (4) The DP-1 answer value for the empiric branch is
+    presumed on the empiric arm)" — v9 adds "IV iron (on the empiric arm, once a ferritin <
+    30 ng/mL confirms iron deficiency; oral iron meanwhile)". (4) The DP-1 answer value for the empiric branch is
     unchanged (`stage-2-empiric`). Former ambiguity (b) below is resolved by this decision.
   - Criterion 3a: No reason to skip the oral trial → **Stage 2.5** (Steps 2.1–2.3: oral
     iron, 2–4-week recheck, response check) [1]
@@ -498,7 +502,8 @@ BRANCHES_TO (no HAS_STEP edge), per the reference-fixture pattern.
   - Criterion 3c: Suspected malabsorption (bariatric surgery, IBD, chronic antacid use) →
     **Step 2.9** [1][8] — criterion 2b
   - Criterion 3d: IDA diagnosed at ≥ 34 weeks (v8 wording: anemia diagnosed at ≥ 34 weeks,
-    iron deficiency confirmed or presumed on the empiric arm) — too little time for an oral
+    iron deficiency confirmed or presumed on the empiric arm; v9 adds that on the empiric arm
+    IV iron waits for a ferritin < 30, with oral iron meanwhile) — too little time for an oral
     trial → **Step 2.9** [6][1] — criterion 2d / the former DP-3's 3b `[FALLBACK SOURCE — FIGO time-math;
     ACOG says only "severe iron deficiency later in pregnancy"]`
   - Step 2.9 → **gate-iv-iron-ga-direct** (GA ≥ 14) → **Step 2.10** (IV iron). IV iron's
@@ -581,7 +586,9 @@ BRANCHES_TO (no HAS_STEP edge), per the reference-fixture pattern.
     question asked by both GA gates — every v8 node's status identical to v8 in 29 sessions ×
     both edge orders (confirmed IV first / oral trial / route pending at GA missing, 12, 13.9,
     14, 20, 36; malabsorption and D58.2 IV first; ferritin 50; empiric oral trial; empiric
-    D57.1), the only differences being shared CodeEntry leaves. New nodes there: Step 2.13 and
+    D57.1), the only differences being shared CodeEntry leaves. (That v8-vs-v9 comparison was
+    a one-off diff of the two JSONs on the real engine at build time, not a committed proof;
+    the committed ones are `gate-proof.ts dp-3` / `iv-ferritin` and the agreement test.) New nodes there: Step 2.13 and
     gate-ida-confirmed-iv INCLUDED at GA ≥ 14; Step 2.12 / Lab-17 GATED_OUT.
     `[CLINICAL AMBIGUITY — for Josh]` (a) **The ferritin question holds the visit's care
     plan.** Care-plan generation refuses a pending question, so the visit that orders the
@@ -595,8 +602,15 @@ BRANCHES_TO (no HAS_STEP edge), per the reference-fixture pattern.
     ferritin, keeps giving oral iron with the same ferritin 50 on the chart (unchanged since
     v8). Should the oral trial also close on a ferritin ≥ 30? (c) **Oral iron stops once IV
     iron opens** (ferritin < 30 on file, GA ≥ 14), as on the confirmed arm — oral iron is not
-    continued alongside IV iron. Also by construction: an empiric-arm patient who already has
-    a ferritin on file is treated exactly like the confirmed arm (no second ferritin order).
+    continued alongside IV iron. (d) **Late diagnosis (criterion 3d) now waits for a
+    ferritin on the empiric arm.** 3d exists because at ≥ 34 weeks there is too little time
+    for an oral trial, and on the empiric arm IV iron first now waits at least one ferritin
+    round-trip — the most time-critical case is the one slowed down. Mitigations within the
+    current build: choose **confirmatory studies** at DP-1 for a late diagnosis (ferritin
+    first, then IV iron first on the confirmed arm), or enter the resulted ferritin into the
+    held question at the same visit (the in-session path re-decides IV iron at once). Also by
+    construction: an empiric-arm patient who already has a ferritin on file is treated
+    exactly like the confirmed arm (no second ferritin order).
   - **How each criterion is read** — v8 `[DECISION — Josh 2026-09-24]`: malabsorption (3c)
     is also read from the chart; intolerance (3b) and anemia diagnosed at ≥ 34 weeks (3d)
     stay provider answers.
@@ -1210,8 +1224,11 @@ prevention step left with the screening stage):
   choosing IV iron without an oral trial at DP-3 (criterion 3c), most strongly after a
   malabsorptive bariatric procedure (e.g. Roux-en-Y gastric bypass) or with active
   inflammatory bowel disease; with quiescent IBD or a restrictive procedure an oral trial
-  remains reasonable. IV iron is given from 14 0/7 weeks; before then, choosing IV first
-  starts oral iron until 14 weeks." [8][18]
+  remains reasonable. IV iron is given from 14 0/7 weeks, and only once a ferritin < 30 ng/mL
+  confirms iron deficiency; until then (before 14 weeks, or on the empiric arm while its
+  ferritin is outstanding), choosing IV first starts oral iron." [8][18] (v9 `[DECISION — Josh
+  2026-09-25]`: the last sentence adds the ferritin wait; v8 read "IV iron is given from 14 0/7
+  weeks; before then, choosing IV first starts oral iron until 14 weeks.")
 
 ## 10. Quality metrics
 
@@ -1641,9 +1658,9 @@ Stage 1.5)? Not changed here.
 
 IV iron without an oral trial (DP-3) is given only with a ferritin < 30 ng/mL on file, at GA ≥
 14; with no ferritin on file (the empiric arm) choosing it orders a ferritin and starts oral
-iron meanwhile. Design, proofs and the three open consequences — the ferritin question holding
+iron meanwhile. Design, proofs and the four open consequences — the ferritin question holding
 the visit's care plan, a ferritin ≥ 30 read two ways on the empiric arm, oral iron stopping
-once IV iron opens — are in §4 DP-3 ("IV iron first needs a confirmed ferritin"). The
+once IV iron opens, a late diagnosis (3d) waiting for the ferritin — are in §4 DP-3 ("IV iron first needs a confirmed ferritin"). The
 ferritin leaf inside gate-oral-bridge-ga is a hand copy of gate-ida-confirmed's condition that
 no lint checks (§4b).
 
