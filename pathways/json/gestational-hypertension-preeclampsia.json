@@ -3,7 +3,7 @@
   "pathway": {
     "logical_id": "gestational-hypertension-preeclampsia",
     "title": "Gestational Hypertension and Preeclampsia \u2014 Outpatient Screening, Diagnosis and Surveillance",
-    "version": "1",
+    "version": "2",
     "category": "OBSTETRIC",
     "scope": "Outpatient prenatal care. Risk assessment and aspirin prophylaxis from the first prenatal visit; blood pressure surveillance; diagnosis and severity classification after 20 weeks; outpatient expectant management. Ends at the trigger for admission or delivery.",
     "target_population": "Pregnant patients receiving prenatal care. The prophylaxis arm applies to all; diagnostic and surveillance arms apply after 20 0/7 weeks.",
@@ -939,6 +939,166 @@
       }
     },
     {
+      "id": "lab-12",
+      "type": "LabTest",
+      "properties": {
+        "name": "Blood pressure, systolic",
+        "code": "8480-6",
+        "system": "LOINC",
+        "specimen": "Non-invasive measurement"
+      }
+    },
+    {
+      "id": "lab-13",
+      "type": "LabTest",
+      "properties": {
+        "name": "Blood pressure, diastolic",
+        "code": "8462-4",
+        "system": "LOINC",
+        "specimen": "Non-invasive measurement"
+      }
+    },
+    {
+      "id": "lab-14",
+      "type": "LabTest",
+      "properties": {
+        "name": "Protein, 24-hour urine",
+        "code": "2889-4",
+        "system": "LOINC",
+        "specimen": "24-hour urine"
+      }
+    },
+    {
+      "id": "lab-15",
+      "type": "LabTest",
+      "properties": {
+        "name": "Protein/creatinine ratio, urine",
+        "code": "34366-5",
+        "system": "LOINC",
+        "specimen": "Urine"
+      }
+    },
+    {
+      "id": "lab-16",
+      "type": "LabTest",
+      "properties": {
+        "name": "Platelet count",
+        "code": "777-3",
+        "system": "LOINC",
+        "specimen": "Whole blood"
+      }
+    },
+    {
+      "id": "lab-17",
+      "type": "LabTest",
+      "properties": {
+        "name": "Serum creatinine",
+        "code": "2160-0",
+        "system": "LOINC",
+        "specimen": "Serum"
+      }
+    },
+    {
+      "id": "lab-18",
+      "type": "LabTest",
+      "properties": {
+        "name": "Aspartate aminotransferase",
+        "code": "1920-8",
+        "system": "LOINC",
+        "specimen": "Serum"
+      }
+    },
+    {
+      "id": "lab-19",
+      "type": "LabTest",
+      "properties": {
+        "name": "Alanine aminotransferase",
+        "code": "1742-6",
+        "system": "LOINC",
+        "specimen": "Serum"
+      }
+    },
+    {
+      "id": "lab-20",
+      "type": "LabTest",
+      "properties": {
+        "name": "Blood pressure, systolic",
+        "code": "8480-6",
+        "system": "LOINC",
+        "specimen": "Non-invasive measurement"
+      }
+    },
+    {
+      "id": "lab-21",
+      "type": "LabTest",
+      "properties": {
+        "name": "Blood pressure, diastolic",
+        "code": "8462-4",
+        "system": "LOINC",
+        "specimen": "Non-invasive measurement"
+      }
+    },
+    {
+      "id": "lab-22",
+      "type": "LabTest",
+      "properties": {
+        "name": "Platelet count",
+        "code": "777-3",
+        "system": "LOINC",
+        "specimen": "Whole blood"
+      }
+    },
+    {
+      "id": "lab-23",
+      "type": "LabTest",
+      "properties": {
+        "name": "Serum creatinine",
+        "code": "2160-0",
+        "system": "LOINC",
+        "specimen": "Serum"
+      }
+    },
+    {
+      "id": "lab-24",
+      "type": "LabTest",
+      "properties": {
+        "name": "Aspartate aminotransferase",
+        "code": "1920-8",
+        "system": "LOINC",
+        "specimen": "Serum"
+      }
+    },
+    {
+      "id": "lab-25",
+      "type": "LabTest",
+      "properties": {
+        "name": "Alanine aminotransferase",
+        "code": "1742-6",
+        "system": "LOINC",
+        "specimen": "Serum"
+      }
+    },
+    {
+      "id": "lab-26",
+      "type": "LabTest",
+      "properties": {
+        "name": "Protein, 24-hour urine",
+        "code": "2889-4",
+        "system": "LOINC",
+        "specimen": "24-hour urine"
+      }
+    },
+    {
+      "id": "lab-27",
+      "type": "LabTest",
+      "properties": {
+        "name": "Protein/creatinine ratio, urine",
+        "code": "34366-5",
+        "system": "LOINC",
+        "specimen": "Urine"
+      }
+    },
+    {
       "id": "img-1",
       "type": "Imaging",
       "properties": {
@@ -1718,12 +1878,12 @@
     },
     {
       "from": "step-2-2",
-      "to": "lab-1",
+      "to": "lab-12",
       "type": "HAS_LAB_TEST"
     },
     {
       "from": "step-4-1",
-      "to": "lab-1",
+      "to": "lab-20",
       "type": "HAS_LAB_TEST"
     },
     {
@@ -1733,12 +1893,12 @@
     },
     {
       "from": "step-2-2",
-      "to": "lab-2",
+      "to": "lab-13",
       "type": "HAS_LAB_TEST"
     },
     {
       "from": "step-4-1",
-      "to": "lab-2",
+      "to": "lab-21",
       "type": "HAS_LAB_TEST"
     },
     {
@@ -1748,12 +1908,12 @@
     },
     {
       "from": "step-3-1",
-      "to": "lab-3",
+      "to": "lab-16",
       "type": "HAS_LAB_TEST"
     },
     {
       "from": "step-4-1",
-      "to": "lab-3",
+      "to": "lab-22",
       "type": "HAS_LAB_TEST"
     },
     {
@@ -1763,12 +1923,12 @@
     },
     {
       "from": "step-3-1",
-      "to": "lab-4",
+      "to": "lab-17",
       "type": "HAS_LAB_TEST"
     },
     {
       "from": "step-4-1",
-      "to": "lab-4",
+      "to": "lab-23",
       "type": "HAS_LAB_TEST"
     },
     {
@@ -1778,12 +1938,12 @@
     },
     {
       "from": "step-3-1",
-      "to": "lab-5",
+      "to": "lab-18",
       "type": "HAS_LAB_TEST"
     },
     {
       "from": "step-4-1",
-      "to": "lab-5",
+      "to": "lab-24",
       "type": "HAS_LAB_TEST"
     },
     {
@@ -1793,12 +1953,12 @@
     },
     {
       "from": "step-3-1",
-      "to": "lab-6",
+      "to": "lab-19",
       "type": "HAS_LAB_TEST"
     },
     {
       "from": "step-4-1",
-      "to": "lab-6",
+      "to": "lab-25",
       "type": "HAS_LAB_TEST"
     },
     {
@@ -1808,12 +1968,12 @@
     },
     {
       "from": "step-2-3a",
-      "to": "lab-7",
+      "to": "lab-14",
       "type": "HAS_LAB_TEST"
     },
     {
       "from": "step-4-2",
-      "to": "lab-7",
+      "to": "lab-26",
       "type": "HAS_LAB_TEST"
     },
     {
@@ -1823,12 +1983,12 @@
     },
     {
       "from": "step-2-3a",
-      "to": "lab-8",
+      "to": "lab-15",
       "type": "HAS_LAB_TEST"
     },
     {
       "from": "step-4-2",
-      "to": "lab-8",
+      "to": "lab-27",
       "type": "HAS_LAB_TEST"
     },
     {
@@ -1957,7 +2117,27 @@
       "type": "HAS_CODE"
     },
     {
+      "from": "lab-12",
+      "to": "code-loinc-8480-6",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "lab-20",
+      "to": "code-loinc-8480-6",
+      "type": "HAS_CODE"
+    },
+    {
       "from": "lab-2",
+      "to": "code-loinc-8462-4",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "lab-13",
+      "to": "code-loinc-8462-4",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "lab-21",
       "to": "code-loinc-8462-4",
       "type": "HAS_CODE"
     },
@@ -1967,7 +2147,27 @@
       "type": "HAS_CODE"
     },
     {
+      "from": "lab-16",
+      "to": "code-loinc-777-3",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "lab-22",
+      "to": "code-loinc-777-3",
+      "type": "HAS_CODE"
+    },
+    {
       "from": "lab-4",
+      "to": "code-loinc-2160-0",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "lab-17",
+      "to": "code-loinc-2160-0",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "lab-23",
       "to": "code-loinc-2160-0",
       "type": "HAS_CODE"
     },
@@ -1977,7 +2177,27 @@
       "type": "HAS_CODE"
     },
     {
+      "from": "lab-18",
+      "to": "code-loinc-1920-8",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "lab-24",
+      "to": "code-loinc-1920-8",
+      "type": "HAS_CODE"
+    },
+    {
       "from": "lab-6",
+      "to": "code-loinc-1742-6",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "lab-19",
+      "to": "code-loinc-1742-6",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "lab-25",
       "to": "code-loinc-1742-6",
       "type": "HAS_CODE"
     },
@@ -1987,7 +2207,27 @@
       "type": "HAS_CODE"
     },
     {
+      "from": "lab-14",
+      "to": "code-loinc-2889-4",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "lab-26",
+      "to": "code-loinc-2889-4",
+      "type": "HAS_CODE"
+    },
+    {
       "from": "lab-8",
+      "to": "code-loinc-34366-5",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "lab-15",
+      "to": "code-loinc-34366-5",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "lab-27",
       "to": "code-loinc-34366-5",
       "type": "HAS_CODE"
     },
@@ -2387,7 +2627,27 @@
       "type": "CITES_EVIDENCE"
     },
     {
+      "from": "lab-12",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "lab-20",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
       "from": "lab-2",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "lab-13",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "lab-21",
       "to": "ev-1",
       "type": "CITES_EVIDENCE"
     },
@@ -2397,7 +2657,27 @@
       "type": "CITES_EVIDENCE"
     },
     {
+      "from": "lab-16",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "lab-22",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
       "from": "lab-4",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "lab-17",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "lab-23",
       "to": "ev-1",
       "type": "CITES_EVIDENCE"
     },
@@ -2407,7 +2687,27 @@
       "type": "CITES_EVIDENCE"
     },
     {
+      "from": "lab-18",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "lab-24",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
       "from": "lab-6",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "lab-19",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "lab-25",
       "to": "ev-1",
       "type": "CITES_EVIDENCE"
     },
@@ -2417,7 +2717,27 @@
       "type": "CITES_EVIDENCE"
     },
     {
+      "from": "lab-14",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "lab-26",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
       "from": "lab-8",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "lab-15",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "lab-27",
       "to": "ev-1",
       "type": "CITES_EVIDENCE"
     },

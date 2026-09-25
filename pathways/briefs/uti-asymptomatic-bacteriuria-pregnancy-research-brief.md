@@ -1,6 +1,6 @@
 # Pathway Research Brief — UTI and Asymptomatic Bacteriuria in Pregnancy
 
-JSON: pathways/json/uti-asymptomatic-bacteriuria-pregnancy.json @ version 1
+JSON: pathways/json/uti-asymptomatic-bacteriuria-pregnancy.json @ version 2
 
 **Status: DRAFT v1 for physician review — not yet approved for JSON build.**
 
@@ -42,8 +42,13 @@ Flags: `[GAP]` · `[NOT ENCODABLE]` · `[DECISION]` an authoring choice needing 
 
 - **Logical ID**: `uti-asymptomatic-bacteriuria-pregnancy`
 - **Title**: Urinary Tract Infection and Asymptomatic Bacteriuria in Pregnancy — Outpatient Screening, Treatment and Surveillance
-- **Version**: 1 `[DECISION — Josh 2026-09-24]` stays `"1"`: still a draft, so the Z88.1 removal
-  re-imports as DRAFT_UPDATE (same logical_id and version).
+- **Version**: 2 (JSON `"2"`; was `"1"`). Bumped with the shared-lab build fix (§6
+  `[BUILD FIX 2026-09-24]`): every LabTest node now has exactly one host step. Imports as
+  **NEW_VERSION** — same logical_id, bumped version. DRAFT_UPDATE cannot carry it: the importer
+  matches a DRAFT_UPDATE on logical_id *and* version, and no `"2"` exists yet (if v1 was never
+  imported at all, it is NEW_PATHWAY). The v1 draft edits (the Z88.1 removal) ship inside v2.
+  History: `[DECISION — Josh 2026-09-24]` v1 had stayed `"1"` while a draft, so the Z88.1
+  removal could re-import as DRAFT_UPDATE.
 - **Category**: OBSTETRIC
 - **Scope**: US outpatient prenatal care. Universal early-pregnancy screening for asymptomatic
   bacteriuria; treatment of asymptomatic bacteriuria and acute cystitis; the group B
@@ -446,19 +451,55 @@ latent here, since quinolones are not ACOG-listed agents for this indication.
 
 ## 6. Lab tests
 
-- **Lab-1 — Urine culture with colony count** (on Steps 1.1, 2.1, 5.1): code `19090-0` LOINC,
-  midstream urine. `NCnc`/`Qn`, CFU/mL. The quantitative gate target. [1]
-- **Lab-2 — Bacteria identified in urine by culture** (on Steps 2.1, 4.1): code `630-4` LOINC,
-  midstream urine. **`Prid`/`Nom` — nominal.** The organism identity, which the model cannot
-  hold. [1]
-- **Lab-3 — Antimicrobial susceptibility** (on Steps 3.1, 5.2): code `87186` CPT (MIC method),
-  urine isolate. Drives targeted therapy and suppressive agent selection. [1]
+- **Lab-1 — Urine culture with colony count** (on Step 1.1; same test as Lab-7 on Step 2.1 and
+  Lab-8 on the test-of-cure repeat culture, DP-1 criterion 1a, JSON `step-5-2a`): code `19090-0`
+  LOINC, midstream urine. `NCnc`/`Qn`, CFU/mL. The quantitative gate target. [1]
+- **Lab-2 — Bacteria identified in urine by culture** (on Step 2.1; same test as Lab-9 on Step
+  4.1): code `630-4` LOINC, midstream urine. **`Prid`/`Nom` — nominal.** The organism identity,
+  which the model cannot hold. [1]
+- **Lab-3 — Antimicrobial susceptibility** (on Step 3.1; same test as Lab-10 on suppressive
+  prophylaxis, JSON `step-5-3`): code `87186` CPT (MIC method), urine isolate. Drives targeted
+  therapy and suppressive agent selection. [1]
 - **Lab-4 — Urinalysis with microscopy** (on Step 2.1): code `24356-8` LOINC, urine. Supportive
   only — **must not be used for ASB screening**. [1]
 - **Lab-5 — Nitrite and leukocyte esterase, test strip** (on Step 2.1): code `32782-5` LOINC,
   urine. If neither is present, UTI is unlikely (NPV 78–98%). [1]
 - **Lab-6 — *S. agalactiae* susceptibility in urine** (on Step 4.5): code `102104-7` LOINC.
   Ordered **only** to guide intrapartum prophylaxis in penicillin-allergic patients. [2]
+
+`[BUILD FIX 2026-09-24]` **One host step per lab node (v2).** In v1, three LabTest nodes had
+several host steps on different sides of the pathway's gates. The engine marks a node once (first
+writer wins), and a gate that closes sweeps its whole region at once, so each shared lab took the
+status and placement of whichever host was decided first. The care plan lists only INCLUDED labs
+and places each one by its parent chain. Seen on the real engine (`gate-proof.ts
+uti-shared-labs` against v1):
+- no GBS: `gate-gbs-identified` closed Step 4.1, and the Step 2.1 organism identification
+  (Lab-2) went GATED_OUT with it;
+- course not yet completed: `gate-treatment-completed` closed Stage 5, and the Step 3.1
+  susceptibility test (Lab-3) went GATED_OUT with suppressive prophylaxis;
+- after the test-of-cure choice, the one culture node (Lab-1) was placed under `step-5-2a`, and
+  the Step 1.1 screening culture moved into Stage 5.
+
+Each shared lab is now split into one node per host step: same test, codes and citation. The
+original stays on its first host.
+
+| Original | Stays on | New node → host |
+|---|---|---|
+| Lab-1 Urine culture with colony count | Step 1.1 | **Lab-7** → Step 2.1 · **Lab-8** → `step-5-2a` (repeat culture) |
+| Lab-2 Bacteria identified by culture | Step 2.1 | **Lab-9** → Step 4.1 |
+| Lab-3 Antimicrobial susceptibility | Step 3.1 | **Lab-10** → `step-5-3` (suppressive prophylaxis) |
+
+The new nodes share the originals' CodeEntries (HAS_CODE) and citation [1]. Checks:
+`check-gate-control.ts` is clean (v1: 5 Rule-1 violations). `gate-proof.ts uti-shared-labs`
+passes in both edge orders; v1 fails it on the original ids. No clinical content changed.
+- **Care-plan consequence.** Steps 1.1 and 2.1 are both unconditional, so every patient now has
+  two INCLUDED urine-culture nodes: Lab-1 (screen) and Lab-7 (interpretation). The care-plan
+  generator does not deduplicate by code, so the plan lists "Urine culture with colony count"
+  twice.
+- **Engine caveat, not fixed here.** When a question gate is answered incrementally, the pass is
+  seeded with shared CodeEntry and EvidenceCitation leaves. It can then re-open DP-1 as
+  PENDING_QUESTION after "no GBS" on a negative culture (reversed edge order). v1 and v2 behave
+  the same; the proof pre-loads its gate answers.
 
 ## 7. Imaging
 
@@ -553,14 +594,14 @@ Clinical dependencies, carried in the step descriptions instead:
 
 | Code | System | Description | Attached to |
 |---|---|---|---|
-| 19090-0 | LOINC | Colony count [#/volume] in Urine | Lab-1 |
-| 630-4 | LOINC | Bacteria identified in Urine by Culture | Lab-2 |
+| 19090-0 | LOINC | Colony count [#/volume] in Urine | Lab-1, Lab-7, Lab-8 |
+| 630-4 | LOINC | Bacteria identified in Urine by Culture | Lab-2, Lab-9 |
 | 24356-8 | LOINC | Urinalysis complete panel - Urine | Lab-4 |
 | 32782-5 | LOINC | Leukocyte esterase+Nitrite [Presence] in Urine by Test strip | Lab-5 |
 | 102104-7 | LOINC | Streptococcus agalactiae [Susceptibility] in Urine by Culture | Lab-6 |
-| 87086 | CPT | Culture, bacterial; quantitative colony count, urine | Lab-1 |
-| 87088 | CPT | Culture, bacterial; with isolation and presumptive identification of each isolate, urine | Lab-2 |
-| 87186 | CPT | Susceptibility studies, antimicrobial agent; microdilution or agar dilution | Lab-3 |
+| 87086 | CPT | Culture, bacterial; quantitative colony count, urine | Lab-1, Lab-7, Lab-8 |
+| 87088 | CPT | Culture, bacterial; with isolation and presumptive identification of each isolate, urine | Lab-2, Lab-9 |
+| 87186 | CPT | Susceptibility studies, antimicrobial agent; microdilution or agar dilution | Lab-3, Lab-10 |
 | 1648755 | RXNORM | nitrofurantoin, macrocrystals 25 MG / nitrofurantoin, monohydrate 75 MG Oral Capsule | Med-1 |
 | 309114 | RXNORM | cephalexin 500 MG Oral Capsule | Med-2 |
 | 808917 | RXNORM | fosfomycin 3000 MG Granules for Oral Solution | Med-3 |
@@ -611,7 +652,7 @@ referenced.
 - Step 6.1: [1]
 - DP-1: [1] · Criteria 1a, 1b: [1]
 - Med-1: [1][6] · Med-2: [1] · Med-3: [1] · Med-4: [1][6] · Med-5: [1] · Med-6: [1][6] · Med-7: [1] · Med-8: [2]
-- Lab-1 to Lab-5: [1] · Lab-6: [2]
+- Lab-1 to Lab-5: [1] · Lab-6: [2] · Lab-7 to Lab-10 (per-host copies, §6): [1]
 - Guid-1: [1][8] · Guid-2: [8] · Guid-3: [1][9] · Guid-4: [2]
 
 **Cannot cite — evidence attaches to the host Step:** all Gates → their attached Step per the
