@@ -18,8 +18,8 @@ still current, `[BLOCKED — prior_node_result]` import-blocked gate design with
 - **Logical ID**: `anemia-in-pregnancy`
 - **Title**: Anemia in Pregnancy — Classification and Treatment
 - **Version**: 5 `[DECISION — Josh 2026-09-24]` (JSON `"5"`; was `"4"`). Bumped for
-  escalation after non-response (gate-hgb-response is a question router; new Step 2.6
-  hosts DP-2), the 2–4-week recheck, and dropping the live `med-1 → med-5` ESCALATES_TO
+  escalation after non-response (gate-hgb-response is a SELECT question router; new Step
+  2.6 hosts DP-2, new Step 2.7 holds a not-yet-rechecked patient), the 2–4-week recheck, and dropping the live `med-1 → med-5` ESCALATES_TO
   route — imports as NEW_VERSION. `gate-hgb-response` changes type (chart → question), so
   v4 sessions keep v4's graph. Hemoglobinopathy suppression of the empiric arm is
   decided but blocked on the engine (§18).
@@ -105,19 +105,27 @@ None. (Single-condition pathway; O99.01x already encodes the pregnancy+anemia co
 - **Step 2.3 — Response assessment**: Hgb recheck **2–4 weeks** after initiation
   `[DECISION — Josh 2026-09-24]` (was "~4 weeks": FIGO [6] reads the response at 2 weeks,
   CDC [3] at 4; ACOG gives no numeric interval [GAP]); response = rise ≥1 g/dL, asked
-  by gate-hgb-response (§4b) — "no" routes to Step 2.6. [1][3][6]
-- **Step 2.4 — Maintenance & surveillance** *(gate-hgb-response "yes" arm — responding)*:
+  by gate-hgb-response (§4b) — "not responding" routes to Step 2.6. [1][3][6]
+- **Step 2.4 — Maintenance & surveillance** *(gate-hgb-response "responding" arm)*:
   continue iron, reduce to prophylactic dosing when normalized for gestational stage
   (CDC). [3]
 - **Step 2.5 — IV iron therapy** *(gated: Step 2.6 → DP-2 + gate-iv-iron-ga)*: for
   intolerance/nonresponse/severe iron deficiency later in pregnancy; after the first
   trimester; single-total-dose formulations preferred. [1][5][7]
-- **Step 2.6 — Nonresponse management** *(gate-hgb-response "no" arm — its only way in)*
+- **Step 2.6 — Nonresponse management** *(gate-hgb-response "not responding" arm — its
+  only way in)*
   `[DECISION — Josh 2026-09-24]`: reached only when the Step 2.3 recheck shows no
   response to oral iron (Hgb rise < 1 g/dL after 2–4 weeks). Hosts DP-2, so the expanded
   workup (Step 1.5) and IV iron at GA ≥ 14 (Step 2.5) follow non-response instead of
   starting with oral iron. Exists for the same reason as Step 1.7: a gate can only guard
   a Step or Stage, and a DecisionPoint must hang from a Step. [1][3][6]
+- **Step 2.7 — Awaiting response recheck** *(gate-hgb-response "recheck not yet done"
+  arm; no children)* `[DECISION — Josh 2026-09-24]` `[BUILD NOTE]`: oral iron has just
+  started and the 2–4-week recheck is not back. Exists so the **start visit can finish**:
+  care-plan generation blocks on any unanswered question (`validateForGeneration`,
+  PENDING_GATE), and "has Hgb risen since starting iron?" cannot be answered honestly on
+  the day iron starts. Choosing it EXCLUDES maintenance and all escalation; the provider
+  answers again at the recheck. [1][3][6]
 - **Step 3.1 — Sickle cell disease: route out** *(gated)*: MFM + hematology
   multidisciplinary track; PNV **without** iron unless deficiency confirmed + folic acid
   4 mg (SMFM GRADE 1B). This pathway's iron arm is affirmatively wrong for SCD. [7]
@@ -234,26 +242,32 @@ BRANCHES_TO (no HAS_STEP edge), per the reference-fixture pattern.
     (expanded workup) and Step 2.5 (IV iron, GA ≥ 14) are INCLUDED as soon as Step 2.3 is
     reached, on either arm, before any nonresponse is shown. `gate-hgb-response` opens only
     Step 2.4 (maintenance). See §18 "v4 open item". **Resolved in v5** — DP-2 now waits
-    for a "no response" answer (below, and §4b `gate-hgb-response`).
+    for a "not responding" answer (below, and §4b `gate-hgb-response`).
 - **DP-2 — Nonresponse management** (on Step 2.6, reached only via gate-hgb-response's
-  "no" arm; was on Step 2.3 through v4) — branch_mode: one_of
+  "not responding" arm; was on Step 2.3 through v4) — branch_mode: one_of
   - `[DECISION — Josh 2026-09-24]` **Escalation only after non-response.** Through v4 DP-2
     hung from Step 2.3 with a single branch, so the expanded workup and (GA ≥ 14) IV iron
     were INCLUDED the moment oral iron started. DP-2 is unchanged inside — one branch to
     Step 1.5, taken automatically once DP-2 is reached, and `gate-iv-iron-ga` on DP-2 →
     Step 2.5 — but it is now reached only through Step 2.6. Proved with
     `gate-proof.ts response`, both edge orders, on both arms (empiric; workup + ferritin
-    12): no answer yet → maintenance, Step 2.6, DP-2, Step 1.5 and Step 2.5 (with every
-    IV iron) all held pending the question; "yes" → Step 2.4 INCLUDED, all escalation
-    EXCLUDED; "no" + GA 20 → Steps 2.6, 1.5, 2.5 and the IV irons INCLUDED, Step 2.4
-    EXCLUDED; "no" + GA 12 → Step 1.5 INCLUDED, Step 2.5 and the IV irons GATED_OUT;
-    "no" + GA missing → asks for `patient.gestational_age_weeks`, Step 2.5 held.
-  - `[CLINICAL AMBIGUITY — for Josh]` Criteria 2a (intolerance/nonadherence) and 2b
-    (suspected malabsorption) name reasons to go to IV iron that are not "no rise": an
-    intolerant patient who has not taken her iron reaches IV iron only by the provider
-    answering "no" at Step 2.3. Bariatric/IBD patients still get their own IV-first
-    guidance in Steps 3.4/3.5. DP-2's single branch (criteria 2a/2b/2d have no branch of
-    their own) is unchanged.
+    12): unanswered → maintenance, Steps 2.6/2.7, DP-2, Step 1.5 and Step 2.5 (with
+    every IV iron) all held pending the question; "recheck not yet done" → Step 2.7
+    INCLUDED, maintenance and all escalation EXCLUDED, no care-plan blocker left in that
+    region; "responding" → Step 2.4 INCLUDED, all escalation EXCLUDED; "not responding" +
+    GA 20 → Steps 2.6, 1.5, 2.5 and the IV irons INCLUDED, Step 2.4 EXCLUDED; + GA 12 →
+    Step 1.5 INCLUDED, Step 2.5 and the IV irons GATED_OUT; + GA missing → asks for
+    `patient.gestational_age_weeks`, Step 2.5 held; "not yet" then "not responding" /
+    "responding" (re-answer at the recheck) → escalation / maintenance respectively.
+  - `[CLINICAL AMBIGUITY — for Josh]` Criteria 2a (intolerance/nonadherence), 2b
+    (suspected malabsorption) and **2d (moderate–severe IDA within ~4–6 weeks of
+    delivery, or oral failure near term)** name reasons to go to IV iron that are not "no
+    rise after a trial". Under v5 they reach IV iron only by the provider answering "not
+    responding" at Step 2.3 — for 2d, a patient diagnosed late in pregnancy must go
+    through a 2–4-week oral trial first, and DP-3 (predelivery route selection), which
+    would be her other route, exists in this brief but not in the JSON. Bariatric/IBD
+    patients still get their own IV-first guidance in Steps 3.4/3.5. DP-2's single branch
+    (criteria 2a/2b/2d have no branch of their own) is unchanged.
   - Criterion 2a: Intolerance or nonadherence despite coaching → **Step 2.5** (IV iron) [1][5]
   - Criterion 2b: Suspected malabsorption (enteric-coated tabs, antacids, bariatric,
     IBD) → **Step 2.5** (IV iron) [1][8]
@@ -341,19 +355,31 @@ the pathway presumes the coded diagnosis.
     threshold 30, horizon {days: 90}
   - Rationale: ACOG confirmatory cutoff (sens 92%/spec 98% per ASH); WHO uses <15,
     USPSTF notes no consensus — encoded 30 with provenance. [1][2][5]
-- **Gate `gate-hgb-response` — Hgb risen ≥1 g/dL since starting oral iron?**
+- **Gate `gate-hgb-response` — Response to oral iron at the 2–4-week Hgb recheck**
   `[DECISION — Josh 2026-09-24]` `[INTERIM — switch to window_from]` *(v5: a question
   router; was a chart gate)*
-  - Attached to: step-2-3 · Type: **question**, answer_type BOOLEAN · Default: skip ·
-    Branches to (router — every edge carries `when`): **step-2-4** (maintenance) when
-    `{equals: true}`; **step-2-6** (Nonresponse management → DP-2) when `{equals: false}`
-  - Prompt: "Hemoglobin recheck 2–4 weeks after starting oral iron: has hemoglobin risen
-    by at least 1 g/dL since iron was started? Yes = responding (continue iron,
-    maintenance). No = nonresponse (expanded workup; IV iron after the first trimester)."
-  - One answer decides both arms, exclusively: the router takes exactly one edge and
-    EXCLUDES the other. Unanswered, it pends and holds maintenance and every escalation
-    step — which is what makes escalation wait for the recheck. No `on_unresolved` (a
-    question gate has no chart datum; unanswered always pends).
+  - Attached to: step-2-3 · Type: **question**, answer_type **SELECT**, options
+    `responding` / `not responding` / `recheck not yet done` · Default: skip · Branches to
+    (router — every edge carries `when`): **step-2-4** (maintenance) when
+    `{equals: "responding"}`; **step-2-6** (Nonresponse management → DP-2) when
+    `{equals: "not responding"}`; **step-2-7** (Awaiting response recheck) when
+    `{equals: "recheck not yet done"}`
+  - Prompt: "Hemoglobin recheck 2–4 weeks after starting oral iron. "responding" =
+    hemoglobin has risen by at least 1 g/dL since iron was started (continue iron,
+    maintenance). "not responding" = risen by less than 1 g/dL (expanded workup; IV iron
+    after the first trimester). "recheck not yet done" = oral iron just started or
+    recheck not resulted (nothing is escalated; answer again at the recheck)."
+  - One answer decides every arm, exclusively: the router takes exactly one edge and
+    EXCLUDES the others. Unanswered, it pends and holds maintenance and every escalation
+    step — the "missing recheck asks" behaviour. No `on_unresolved` (a question gate has
+    no chart datum; unanswered always pends).
+  - `[BUILD NOTE]` **Why three options, not yes/no.** A first cut was BOOLEAN ("risen
+    ≥1 g/dL?"). But care-plan generation blocks on any PENDING_QUESTION
+    (`care-plan-generator.ts` `validateForGeneration`), and on the day oral iron starts
+    the question has no honest answer: the provider could only leave the plan
+    ungeneratable, or answer early — an early "no" re-creates escalation at initiation
+    (the v4 defect), an early "yes" starts maintenance before any response. The third
+    option lets the start visit finish with nothing escalated.
   - **Response definition and source.** Josh's rule: non-response = Hgb rise < 1 g/dL
     after 2–4 weeks of oral iron, so exactly 1.0 g/dL counts as a response. Sources
     (re-checked 2026-09-24): FIGO [6] — a rise of "at least 1 g/dL after 2 weeks" is a
@@ -365,7 +391,7 @@ the pathway presumes the coded diagnosis.
     own text was not re-verified for it. `[CLINICAL AMBIGUITY — for Josh]` (a) at a
     **4-week** recheck FIGO expects ≥2 g/dL, so "≥1 g/dL at 4 weeks" is more lenient than
     FIGO; (b) a patient already at target without a 1 g/dL rise (e.g. 10.6 → 11.3) reads
-    as a nonresponder unless the provider answers "yes"; (c) no Hct-based equivalent is
+    as a nonresponder unless the provider answers "responding"; (c) no Hct-based equivalent is
     offered.
   - **Why a question and not chart data (the interim).** The rule needs "rise since
     treatment started", which the kernel cannot anchor (`window_from` is being built on
@@ -808,7 +834,7 @@ Nodes that can carry CITES_EVIDENCE:
 - Step 1.1: [1][2][3][10] · Step 1.2: [1][5] · Step 1.3: [1] · Step 1.4: [1]
   · Step 1.5: [1][4] · Step 1.6: [4] · Step 1.7: [1]
 - Step 2.1: [1][5][13][14] · Step 2.2: [1] · Step 2.3: [1][3] · Step 2.4: [3]
-  · Step 2.5: [1][5][7][22] · Step 2.6: [1][3][6]
+  · Step 2.5: [1][5][7][22] · Step 2.6: [1][3][6] · Step 2.7: [1][3][6]
 - Step 3.1: [7] · Step 3.2: [16] · Step 3.3: [1][4][7] · Step 3.4: [8][18][19]
   · Step 3.5: [8] · Step 3.6: [1][11] · Step 3.7: [3] · Step 3.8: [1][20] · Step 3.9: [21]
   · Step 3.10: [1][17]
@@ -929,9 +955,11 @@ is now `skip` + `on_unresolved: ask`; see §4b).
 ### ~~`[GAP — NEEDS JOSH]` v4 open item — escalation is not conditioned on nonresponse~~ — RESOLVED (v5)
 
 `[DECISION — Josh 2026-09-24]` **Escalation only after non-response.** `gate-hgb-response`
-is now a BOOLEAN question router on Step 2.3 ("Hgb risen ≥1 g/dL since starting oral
-iron?"): yes → Step 2.4 (maintenance); no → Step 2.6 (Nonresponse management), the only
-host of DP-2, so the expanded workup and IV iron (GA ≥ 14) wait for a "no". DP-2's
+is now a SELECT question router on Step 2.3 (the 2–4-week recheck: "responding" = Hgb
+risen ≥1 g/dL since starting oral iron → Step 2.4 maintenance; "not responding" → Step
+2.6 Nonresponse management, the only host of DP-2; "recheck not yet done" → Step 2.7, so
+the start visit can finish), so the expanded workup and IV iron (GA ≥ 14) wait for "not
+responding". DP-2's
 single-branch shape is unchanged. `[INTERIM — switch to window_from]` — a question until
 the kernel can measure a rise anchored to the oral-iron start **and** express "rose by
 less than 1 g/dL" with an insufficient-data case that asks (§4b `gate-hgb-response`).

@@ -18,9 +18,11 @@
 //                    normocytic / macrocytic skip it, a missing MCV asks
 //   empiric          anemia DP-1 empiric arm (Stage 1.5): reaches the same response
 //                    check as confirmed IDA; no ferritin needed
-//   response         anemia gate-hgb-response router (v5): escalation (expanded
-//                    workup, IV iron at GA ≥ 14) only after a "no response"
-//                    answer; responders get maintenance; both arms
+//   response         anemia gate-hgb-response SELECT router (v5): escalation
+//                    (expanded workup, IV iron at GA ≥ 14) only after "not
+//                    responding"; "responding" → maintenance; "recheck not yet
+//                    done" lets the start visit finish with nothing escalated;
+//                    both arms, re-answer at the recheck
 //   hgbpathy         BLOCKED (needs not_includes_code): hemoglobinopathy code +
 //                    MCV 72 is still offered empiric iron at DP-1 — records today's
 //                    exposure; flips when the engine can negate a code
@@ -36,6 +38,7 @@ import { makeEvaluationTemporalContext } from '../../../../apps/pathway-service/
 import { assembleContext } from '../../../../apps/pathway-service/src/services/resolution/temporal/context-assembler';
 import { TraversalEngine } from '../../../../apps/pathway-service/src/services/resolution/traversal-engine';
 import { containmentClosure } from '../../../../apps/pathway-service/src/services/resolution/graph-containment';
+import { validateForGeneration } from '../../../../apps/pathway-service/src/services/resolution/care-plan-generator';
 import { GateType, DefaultBehavior, ScoringType } from '../../../../apps/pathway-service/src/types';
 import type { GateAnswer, GateProperties } from '../../../../apps/pathway-service/src/services/resolution/types';
 import type {
@@ -194,7 +197,7 @@ async function resolveSession(opts: {
     pending = rr.pendingQuestions;
     redFlags = rr.redFlags;
   }
-  return { state: r.resolutionState, pending };
+  return { state: r.resolutionState, pending, redFlags };
 }
 
 const status = (s: Map<string, { status: string }>, id: string) => s.get(id)?.status ?? '(absent)';
@@ -268,7 +271,7 @@ async function proveDp1(): Promise<void> {
 // ever open, and the engine spares a chosen branch's contents from the sweep
 // that excludes the other (containmentClosure) — checked here in both orders.
 async function proveEmpiric(): Promise<void> {
-  console.log(`\n=== empiric: DP-1 empiric arm → response check + IV-iron escalation (${ANEMIA}) ===`);
+  console.log(`\n=== empiric: DP-1 empiric arm → the same response check (${ANEMIA}) ===`);
   const choose = { dp: 'dp-1', option: EMPIRIC };
   const labs = (ferritin: number | null, hgb: number | null): Array<[string, number]> => [
     ['787-2', 72],
@@ -304,19 +307,31 @@ async function proveEmpiric(): Promise<void> {
 }
 
 // ── Proof: escalation waits for non-response (v5) ─────────────────────
-// [DECISION — Josh 2026-09-24] gate-hgb-response is a BOOLEAN question router on
-// Step 2.3 — "Hgb risen ≥1 g/dL since starting oral iron? (recheck at 2–4
-// weeks)": true → Step 2.4 (maintenance); false → Step 2.6 (Nonresponse
+// [DECISION — Josh 2026-09-24] gate-hgb-response is a SELECT question router on
+// Step 2.3 — the 2–4-week Hgb recheck: "responding" (risen ≥1 g/dL) → Step 2.4
+// (maintenance); "not responding" (< 1 g/dL) → Step 2.6 (Nonresponse
 // management), the sole host of DP-2 → Step 1.5 (expanded workup) and
-// gate-iv-iron-ga → Step 2.5 (IV iron, GA ≥ 14). Through v4, DP-2 hung from
-// Step 2.3, so expanded workup and IV iron were INCLUDED the moment oral iron
-// started. Run on BOTH arms (the steps are shared by Stage 1.5 and Stage 2):
-// empiric, and workup + ferritin 12. [INTERIM — switch to window_from]
+// gate-iv-iron-ga → Step 2.5 (IV iron, GA ≥ 14); "recheck not yet done" →
+// Step 2.7 (Awaiting response recheck, childless), so the oral-iron START
+// visit can finish (care-plan generation blocks on any PENDING_QUESTION) with
+// nothing escalated. Through v4, DP-2 hung from Step 2.3, so expanded workup
+// and IV iron were INCLUDED the moment oral iron started. Run on BOTH arms (the
+// steps are shared by Stage 1.5 and Stage 2): empiric, and workup + ferritin
+// 12. [INTERIM — switch to window_from]
+const RESPONDING = 'responding';
+const NOT_RESPONDING = 'not responding';
+const RECHECK_PENDING = 'recheck not yet done';
 async function proveResponse(): Promise<void> {
   console.log(`\n=== response: escalation only after non-response (${ANEMIA}) ===`);
   const ESCALATION = ['step-2-6', 'dp-2', 'step-1-5', 'lab-8', 'lab-14', 'step-2-5', 'med-4', 'med-5', 'med-6', 'med-7'];
   const IV = ['step-2-5', 'med-4', 'med-5', 'med-6', 'med-7', 'sched-3'];
-  const answer = (b: boolean): Replay => ({ gate: 'gate-hgb-response', answer: { booleanValue: b } as GateAnswer });
+  const REGION = ['gate-hgb-response', 'step-2-4', 'step-2-7', ...ESCALATION, 'gate-iv-iron-ga'];
+  const answer = (o: string): Replay => ({ gate: 'gate-hgb-response', answer: { selectedOption: o } as GateAnswer });
+  /** Care-plan blockers that point into the response region (Stage 3 questions etc. excluded). */
+  const regionBlockers = (r: { state: any; redFlags: any[] }) => String(
+    validateForGeneration(r.state, r.redFlags)
+      .filter((b) => b.relatedNodeIds.some((id) => REGION.includes(id))).length,
+  );
   const arms: Array<[string, Array<[string, number]>, Replay]> = [
     ['empiric arm (ferritin never drawn)', [['787-2', 72], ['718-7', 9.5]], { dp: 'dp-1', option: EMPIRIC }],
     ['confirmed arm (workup, ferritin 12)', [['787-2', 72], ['2276-4', 12], ['718-7', 9.5]], { dp: 'dp-1', option: 'step-1-2' }],
@@ -330,37 +345,60 @@ async function proveResponse(): Promise<void> {
         patient: patientWith(labs, ga === null ? {} : { gestational_age_weeks: ga }),
       });
 
-      console.log('    recheck not answered yet (oral iron just started) — nothing escalates:');
+      console.log('    question not answered — asks, holds maintenance and every escalation step:');
       let r = await run(20, []);
       expect('step-2-3 response assessment', status(r.state, 'step-2-3'), 'INCLUDED');
       expect('gate-hgb-response', status(r.state, 'gate-hgb-response'), 'PENDING_QUESTION');
       const q = r.pending.find((p: any) => p.gateId === 'gate-hgb-response') as any;
-      expect('asks the response question (BOOLEAN)', String(q?.answerType), 'BOOLEAN');
-      expect('step-2-4 maintenance', status(r.state, 'step-2-4'), 'PENDING_QUESTION');
-      for (const id of ESCALATION) expect(id, status(r.state, id), 'PENDING_QUESTION');
+      expect('asks the response question (SELECT)', String(q?.answerType), 'SELECT');
+      expect('options', JSON.stringify(q?.options), JSON.stringify([RESPONDING, NOT_RESPONDING, RECHECK_PENDING]));
+      for (const id of ['step-2-4', 'step-2-7', ...ESCALATION]) expect(id, status(r.state, id), 'PENDING_QUESTION');
 
-      console.log('    responder (risen ≥1 g/dL) — maintenance, no IV iron, no expanded workup:');
-      r = await run(20, [answer(true)]);
-      expect('gate-hgb-response', status(r.state, 'gate-hgb-response'), 'INCLUDED');
-      expect('step-2-4 maintenance', status(r.state, 'step-2-4'), 'INCLUDED');
+      console.log('    "recheck not yet done" (oral iron just started) — visit can finish, nothing escalates:');
+      r = await run(20, [answer(RECHECK_PENDING)]);
+      expect('step-2-7 awaiting recheck', status(r.state, 'step-2-7'), 'INCLUDED');
+      expect('step-2-4 maintenance', status(r.state, 'step-2-4'), 'EXCLUDED');
       for (const id of ESCALATION) expect(id, status(r.state, id), 'EXCLUDED');
       expect('response question settled', String(r.pending.some((p: any) => p.gateId === 'gate-hgb-response')), 'false');
+      expect('care-plan blockers in the response region', regionBlockers(r), '0');
+
+      console.log('    responder — maintenance, no IV iron, no expanded workup:');
+      r = await run(20, [answer(RESPONDING)]);
+      expect('gate-hgb-response', status(r.state, 'gate-hgb-response'), 'INCLUDED');
+      expect('step-2-4 maintenance', status(r.state, 'step-2-4'), 'INCLUDED');
+      expect('step-2-7 awaiting recheck', status(r.state, 'step-2-7'), 'EXCLUDED');
+      for (const id of ESCALATION) expect(id, status(r.state, id), 'EXCLUDED');
+      expect('response question settled', String(r.pending.some((p: any) => p.gateId === 'gate-hgb-response')), 'false');
+      expect('care-plan blockers in the response region', regionBlockers(r), '0');
 
       console.log('    non-responder, GA 20 — expanded workup + IV iron:');
-      r = await run(20, [answer(false)]);
+      r = await run(20, [answer(NOT_RESPONDING)]);
       expect('step-2-4 maintenance', status(r.state, 'step-2-4'), 'EXCLUDED');
+      expect('step-2-7 awaiting recheck', status(r.state, 'step-2-7'), 'EXCLUDED');
       for (const id of ['step-2-6', 'dp-2', 'step-1-5', 'lab-8', 'lab-14', 'gate-iv-iron-ga', ...IV]) {
         expect(id, status(r.state, id), 'INCLUDED');
       }
 
+      console.log('    "not yet" at the start visit, then "not responding" at the recheck (re-answer):');
+      r = await run(20, [answer(RECHECK_PENDING), answer(NOT_RESPONDING)]);
+      expect('step-2-7 awaiting recheck', status(r.state, 'step-2-7'), 'EXCLUDED');
+      expect('step-2-4 maintenance', status(r.state, 'step-2-4'), 'EXCLUDED');
+      for (const id of ['step-2-6', 'dp-2', 'step-1-5', ...IV]) expect(id, status(r.state, id), 'INCLUDED');
+
+      console.log('    "not yet", then "responding" at the recheck (re-answer):');
+      r = await run(20, [answer(RECHECK_PENDING), answer(RESPONDING)]);
+      expect('step-2-7 awaiting recheck', status(r.state, 'step-2-7'), 'EXCLUDED');
+      expect('step-2-4 maintenance', status(r.state, 'step-2-4'), 'INCLUDED');
+      for (const id of ESCALATION) expect(id, status(r.state, id), 'EXCLUDED');
+
       console.log('    non-responder, GA 12 — expanded workup, IV iron gated out:');
-      r = await run(12, [answer(false)]);
+      r = await run(12, [answer(NOT_RESPONDING)]);
       for (const id of ['step-2-6', 'dp-2', 'step-1-5']) expect(id, status(r.state, id), 'INCLUDED');
       expect('gate-iv-iron-ga', status(r.state, 'gate-iv-iron-ga'), 'GATED_OUT');
       for (const id of IV) expect(id, status(r.state, id), 'GATED_OUT');
 
       console.log('    non-responder, GA missing — asks for GA, holds IV iron:');
-      r = await run(null, [answer(false)]);
+      r = await run(null, [answer(NOT_RESPONDING)]);
       expect('step-1-5 expanded workup', status(r.state, 'step-1-5'), 'INCLUDED');
       expect('gate-iv-iron-ga', status(r.state, 'gate-iv-iron-ga'), 'PENDING_QUESTION');
       expect('step-2-5 IV iron', status(r.state, 'step-2-5'), 'PENDING_QUESTION');
@@ -432,7 +470,7 @@ async function proveGa(): Promise<void> {
       const r = await resolveSession({
         file: ANEMIA, reverse, patient: patientWith(labs, attrs as Record<string, number>),
         choose: { dp: 'dp-1', option: 'step-1-2' },
-        replay: [{ gate: 'gate-hgb-response', answer: { booleanValue: false } as GateAnswer }],
+        replay: [{ gate: 'gate-hgb-response', answer: { selectedOption: NOT_RESPONDING } as GateAnswer }],
       });
       console.log(`  ${label}:`);
       expect('gate-iv-iron-ga', status(r.state, 'gate-iv-iron-ga'), gate);

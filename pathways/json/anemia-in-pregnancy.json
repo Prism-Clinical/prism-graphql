@@ -220,6 +220,17 @@
       }
     },
     {
+      "id": "step-2-7",
+      "type": "Step",
+      "properties": {
+        "stage_number": 2,
+        "step_number": 7,
+        "display_number": "2.7",
+        "title": "Awaiting response recheck",
+        "description": "Oral iron started; the hemoglobin recheck (2\u20134 weeks, Sched-2) is not yet resulted. Neither maintenance nor escalation applies yet. Answer the Step 2.3 response question again once the recheck is back."
+      }
+    },
+    {
       "id": "step-3-1",
       "type": "Step",
       "properties": {
@@ -520,11 +531,16 @@
       "id": "gate-hgb-response",
       "type": "Gate",
       "properties": {
-        "title": "Hgb risen \u22651 g/dL since starting oral iron? (recheck at 2\u20134 weeks)",
+        "title": "Response to oral iron at the 2\u20134-week Hgb recheck",
         "gate_type": "question",
         "default_behavior": "skip",
-        "prompt": "Hemoglobin recheck 2\u20134 weeks after starting oral iron: has hemoglobin risen by at least 1 g/dL since iron was started? Yes = responding (continue iron, maintenance). No = nonresponse (expanded workup; IV iron after the first trimester).",
-        "answer_type": "BOOLEAN"
+        "prompt": "Hemoglobin recheck 2\u20134 weeks after starting oral iron. \"responding\" = hemoglobin has risen by at least 1 g/dL since iron was started (continue iron, maintenance). \"not responding\" = risen by less than 1 g/dL (expanded workup; IV iron after the first trimester). \"recheck not yet done\" = oral iron just started or recheck not resulted (nothing is escalated; answer again at the recheck).",
+        "answer_type": "SELECT",
+        "options": [
+          "responding",
+          "not responding",
+          "recheck not yet done"
+        ]
       }
     },
     {
@@ -2115,7 +2131,7 @@
       "type": "BRANCHES_TO",
       "properties": {
         "when": {
-          "equals": true
+          "equals": "responding"
         }
       }
     },
@@ -2125,7 +2141,17 @@
       "type": "BRANCHES_TO",
       "properties": {
         "when": {
-          "equals": false
+          "equals": "not responding"
+        }
+      }
+    },
+    {
+      "from": "gate-hgb-response",
+      "to": "step-2-7",
+      "type": "BRANCHES_TO",
+      "properties": {
+        "when": {
+          "equals": "recheck not yet done"
         }
       }
     },
@@ -2876,6 +2902,21 @@
     },
     {
       "from": "step-2-6",
+      "to": "ev-6",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-2-7",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-2-7",
+      "to": "ev-3",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-2-7",
       "to": "ev-6",
       "type": "CITES_EVIDENCE"
     },
