@@ -52,13 +52,15 @@ export async function writePathwayIndex(
 }
 
 /**
- * node-postgres hands JSONB back already parsed; serialize it explicitly so an
- * object is not sent through pg's array/object parameter conversion. A string
- * is already JSON text (parsePathwayTemporalDefaults accepts that form too).
+ * node-postgres hands JSONB back already parsed (nothing here overrides its
+ * type parser), so the value read from the previous row is the JSON value
+ * itself. Always stringify: that is an exact copy for every JSON value,
+ * including a string scalar, and keeps an object out of pg's array/object
+ * parameter conversion.
  */
 function serializeJsonb(value: unknown): string | null {
   if (value === null || value === undefined) return null;
-  return typeof value === 'string' ? value : JSON.stringify(value);
+  return JSON.stringify(value);
 }
 
 // writeConditionCodes / deleteConditionCodes were removed in Phase 1b commit 4
