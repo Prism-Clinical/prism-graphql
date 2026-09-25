@@ -3,7 +3,7 @@
   "pathway": {
     "logical_id": "anemia-in-pregnancy",
     "title": "Anemia in Pregnancy \u2014 Classification and Treatment",
-    "version": "4",
+    "version": "5",
     "category": "OBSTETRIC",
     "scope": "Outpatient prenatal care, from diagnosed anemia through postpartum handoff. Screening is upstream of this pathway.",
     "target_population": "Adult pregnant patients with diagnosed anemia; hemoglobinopathy disease, thalassemia syndromes, and CKD-associated anemia are detected and routed out.",
@@ -206,6 +206,28 @@
         "step_number": 5,
         "display_number": "2.5",
         "title": "IV iron therapy"
+      }
+    },
+    {
+      "id": "step-2-6",
+      "type": "Step",
+      "properties": {
+        "stage_number": 2,
+        "step_number": 6,
+        "display_number": "2.6",
+        "title": "Nonresponse management",
+        "description": "Reached only when the Step 2.3 recheck shows no response to oral iron (hemoglobin rise < 1 g/dL after 2\u20134 weeks). Hosts DP-2: expanded workup, and IV iron after the first trimester."
+      }
+    },
+    {
+      "id": "step-2-7",
+      "type": "Step",
+      "properties": {
+        "stage_number": 2,
+        "step_number": 7,
+        "display_number": "2.7",
+        "title": "Awaiting response recheck",
+        "description": "Oral iron started; the hemoglobin recheck (2\u20134 weeks, Sched-2) is not yet resulted. Neither maintenance nor escalation applies yet. Answer the Step 2.3 response question again once the recheck is back."
       }
     },
     {
@@ -509,53 +531,15 @@
       "id": "gate-hgb-response",
       "type": "Gate",
       "properties": {
-        "title": "Hemoglobin at target, or still climbing toward it",
-        "gate_type": "compound",
+        "title": "Response to oral iron at the 2\u20134-week Hgb recheck",
+        "gate_type": "question",
         "default_behavior": "skip",
-        "on_unresolved": "ask",
-        "operator": "OR",
-        "conditions": [
-          {
-            "field": "labs",
-            "operator": "greater_than",
-            "value": "718-7",
-            "system": "LOINC",
-            "display": "Hemoglobin (g/dL)",
-            "threshold": 10.9,
-            "horizon": {
-              "days": 90
-            }
-          },
-          {
-            "field": "labs",
-            "operator": "trend_up",
-            "value": "718-7",
-            "system": "LOINC",
-            "display": "Hemoglobin (g/dL)",
-            "slope_threshold": 0.03,
-            "min_points": 2,
-            "window_days": 42
-          },
-          {
-            "field": "labs",
-            "operator": "trend_up",
-            "value": "718-7",
-            "system": "LOINC",
-            "display": "Hemoglobin (g/dL)",
-            "slope_threshold": 0.015,
-            "min_points": 2,
-            "window_days": 120
-          },
-          {
-            "field": "labs",
-            "operator": "trend_up",
-            "value": "718-7",
-            "system": "LOINC",
-            "display": "Hemoglobin (g/dL)",
-            "slope_threshold": 0.015,
-            "min_points": 2,
-            "window_days": 300
-          }
+        "prompt": "Hemoglobin recheck 2\u20134 weeks after starting oral iron. \"responding\" = hemoglobin has risen by at least 1 g/dL since iron was started (continue iron, maintenance). \"not responding\" = risen by less than 1 g/dL (expanded workup; IV iron after the first trimester). \"recheck not yet done\" = oral iron just started or recheck not resulted (nothing is escalated; answer again at the recheck).",
+        "answer_type": "SELECT",
+        "options": [
+          "responding",
+          "not responding",
+          "recheck not yet done"
         ]
       }
     },
@@ -1302,8 +1286,8 @@
       "id": "sched-2",
       "type": "Schedule",
       "properties": {
-        "interval": "4 weeks after starting oral iron",
-        "description": "Hemoglobin/hematocrit recheck; rise \u22641 g/dL despite adherence routes to nonresponse management."
+        "interval": "2\u20134 weeks after starting oral iron",
+        "description": "Hemoglobin/hematocrit recheck; a rise < 1 g/dL despite adherence is nonresponse and routes to nonresponse management (Step 2.3 response question)."
       }
     },
     {
@@ -2052,7 +2036,7 @@
       "type": "SELECTS_BRANCH"
     },
     {
-      "from": "step-2-3",
+      "from": "step-2-6",
       "to": "dp-2",
       "type": "HAS_DECISION_POINT"
     },
@@ -2144,7 +2128,32 @@
     {
       "from": "gate-hgb-response",
       "to": "step-2-4",
-      "type": "BRANCHES_TO"
+      "type": "BRANCHES_TO",
+      "properties": {
+        "when": {
+          "equals": "responding"
+        }
+      }
+    },
+    {
+      "from": "gate-hgb-response",
+      "to": "step-2-6",
+      "type": "BRANCHES_TO",
+      "properties": {
+        "when": {
+          "equals": "not responding"
+        }
+      }
+    },
+    {
+      "from": "gate-hgb-response",
+      "to": "step-2-7",
+      "type": "BRANCHES_TO",
+      "properties": {
+        "when": {
+          "equals": "recheck not yet done"
+        }
+      }
     },
     {
       "from": "dp-2",
@@ -2315,11 +2324,6 @@
       "from": "step-3-10",
       "to": "med-12",
       "type": "USES_MEDICATION"
-    },
-    {
-      "from": "med-1",
-      "to": "med-5",
-      "type": "ESCALATES_TO"
     },
     {
       "from": "step-1-1",
@@ -2884,6 +2888,36 @@
     {
       "from": "step-2-4",
       "to": "ev-3",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-2-6",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-2-6",
+      "to": "ev-3",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-2-6",
+      "to": "ev-6",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-2-7",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-2-7",
+      "to": "ev-3",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-2-7",
+      "to": "ev-6",
       "type": "CITES_EVIDENCE"
     },
     {

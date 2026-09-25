@@ -453,8 +453,9 @@ horizon, but they have no start, so:
 | `trend_up`, `trend_down`, `delta_from_baseline` | Need `min_points` **dated** values. One undated value → not met; two or more → unorderable series (`indeterminate`, never asks → `default_behavior`, or the compound asks for a sibling scalar). |
 
 Gates built on the last two rows are **untestable in the simulator** — say so in the brief
-(§18) and the delivery message. In the current pathways: anemia `gate-hgb-response` (its
-three trend arms; the absolute-target arm works) and UTI `gate-recurrent-uti`.
+(§18) and the delivery message. In the current pathways: UTI `gate-recurrent-uti`. (Anemia
+`gate-hgb-response` had three trend arms through v4; since v5 it is a question router —
+"rose by **less than** 1 g/dL" has no delta encoding, see the anemia brief §4b.)
 
 ### Temporal horizon & status (per-condition, NODE tier — merged, emit freely)
 
