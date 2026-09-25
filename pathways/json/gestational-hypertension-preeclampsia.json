@@ -3,7 +3,7 @@
   "pathway": {
     "logical_id": "gestational-hypertension-preeclampsia",
     "title": "Gestational Hypertension and Preeclampsia \u2014 Outpatient Screening, Diagnosis and Surveillance",
-    "version": "2",
+    "version": "3",
     "category": "OBSTETRIC",
     "scope": "Outpatient prenatal care. Risk assessment and aspirin prophylaxis from the first prenatal visit; blood pressure surveillance; diagnosis and severity classification after 20 weeks; outpatient expectant management. Ends at the trigger for admission or delivery.",
     "target_population": "Pregnant patients receiving prenatal care. The prophylaxis arm applies to all; diagnostic and surveillance arms apply after 20 0/7 weeks.",
@@ -1158,7 +1158,7 @@
       "properties": {
         "topic": "Urgent maternal warning signs",
         "category": "safety-netting",
-        "instructions": "Get help right away for: a headache that will not go away or gets worse; changes in vision such as flashing lights, spots, blurring, or losing your sight for a short time; severe belly pain that does not go away, especially high on the right side or in the pit of your stomach; extreme swelling of your hands or face; trouble breathing, including breathlessness when lying flat; chest pain or a fast-beating heart; dizziness or fainting; your baby's movements stopping or slowing; severe nausea and vomiting unlike morning sickness; overwhelming tiredness. Always say that you are pregnant, or have been pregnant within the past year. A seizure is an emergency \u2014 call 911. These warning signs continue to apply for a full year after birth. NOTE FOR IMPLEMENTERS: the patient-facing artifact must be the official unmodified ACOG/AIM Urgent Maternal Warning Signs card \u2014 its licence permits distribution only in its entirety and without modification. This text is clinician-facing scaffolding."
+        "instructions": "Review the urgent maternal warning signs (CDC Hear Her / AIM) with the patient and give her the handout; she should seek care immediately for any of them. The warning signs apply during pregnancy and for a year after birth. Source: https://www.cdc.gov/hearher/maternal-warning-signs/index.html"
       }
     },
     {
