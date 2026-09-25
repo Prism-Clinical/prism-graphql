@@ -600,7 +600,8 @@ so the proof pre-loads its gate answers (see the comment in `gate-proof.ts`).
   AIM card, so the no-list-items rule for Guid-1 does not reach it; it carries one instruction,
   not a list. A separate node (own topic) leaves Guid-1 byte-identical to routine-prenatal-care's
   Guid-1, so a co-matched patient still sees one warning-signs block, plus this line.
-  - **Host: Step 4.4**, where the v2 seizure line lived (inside Guid-1). It restores exactly the
+  - `[BUILD NOTE]` **Host: Step 4.4** (the builder's choice, for review), where the v2
+    seizure line lived (inside Guid-1). It restores exactly the
     v2 audience: patients with a hypertensive disorder managed as **outpatients** — the ones
     sent home, for whom "who do I call" is the question. Step 4.4 is gated by
     `gate-no-severe-features`, not always open. The always-open steps (1.1 risk screening, 2.1
@@ -822,8 +823,8 @@ pregnancy. Please ratify, and see §18 G9.
 ### ~~Open after v3 — the seizure instruction~~ — RESOLVED (v4)
 
 `[DECISION — Josh 2026-09-24]` Restored as **Guid-5, "Seizure: call 911"**, a separate
-GHTN-only Guidance node sourced to PB 222 [1], on Step 4.4 (§9 — host, audience, and the two
-patient groups it does not reach). Guid-1 is unchanged and stays byte-identical to
+GHTN-only Guidance node sourced to PB 222 [1]. `[BUILD NOTE]` Hosted on Step 4.4 (§9 — why,
+and the two patient groups it does not reach). Guid-1 is unchanged and stays byte-identical to
 routine-prenatal-care's. The original note follows.
 
 - ~~`[GAP]`~~ **No node tells the patient that a seizure means 911.** v2's Guid-1 carried a

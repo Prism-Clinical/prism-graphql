@@ -95,7 +95,7 @@ None. (Single-condition pathway; O99.01x already encodes the pregnancy+anemia co
   without an oral trial (Steps 2.9–2.10). Oral iron first line with counseling, response
   assessment, IV iron escalation. [1][5][7]
 - **Stage 2.5 — Oral Iron Trial (if chosen at DP-3)** *(branch-entry only, via DP-3
-  criterion 3a; v7)* `[DECISION — Josh 2026-09-24]`: holds Steps 2.1–2.3 — the same steps
+  criterion 3a; v7)* `[BUILD NOTE]` (how DP-3's oral branch is built): holds Steps 2.1–2.3 — the same steps
   Stage 1.5 holds — so confirmed IDA keeps the oral iron, response check and escalation
   route it had. Carries Stage 2's citations, so DP-3's two targets score alike and the fork
   pends for the provider (`gate-proof.ts dp-1-scoring`). [1][5]
@@ -136,9 +136,10 @@ None. (Single-condition pathway; O99.01x already encodes the pregnancy+anemia co
   follows Step 1.1 logically. v7: gate-microcytic also requires no hemoglobinopathy disease
   code, so disease patients never see the empiric option (Step 1.8). [1]
 - **Step 1.8 — Microcytic anemia with hemoglobinopathy disease: iron studies first**
-  *(gated by gate-hgbpathy-microcytic — its only way in; v7)* `[DECISION — Josh
-  2026-09-24]`: MCV < 80 fL with sickle cell disease, a thalassemia syndrome or HbC/HbE
-  disease on file. **No empiric iron** — DP-1 is closed for these patients. Confirm iron
+  *(gated by gate-hgbpathy-microcytic — its only way in; v7)* `[BUILD NOTE]` (the route
+  Josh's decision requires — no empiric iron, still a workup — as built): MCV < 80 fL with
+  sickle cell disease, a thalassemia syndrome or HbC/HbE disease on file. **No empiric
+  iron** `[DECISION — Josh 2026-09-24]` — DP-1 is closed for these patients. Confirm iron
   deficiency before any iron: ferritin (Lab-15; < 30 ng/mL confirms it) and iron/TIBC/
   saturation (Lab-16), the same tests as Step 1.2 (one node per host). Iron for confirmed
   deficiency is directed with hematology/MFM (Steps 3.1/3.2); **this step does not open
@@ -176,10 +177,11 @@ None. (Single-condition pathway; O99.01x already encodes the pregnancy+anemia co
   finish while the response check was a question. The chart-data gates close NOT YET DUE at
   the start visit and before day 14 without asking anything, which does the same job (§4b).
 - **Step 2.8 — Iron treatment route: oral trial or IV iron first** *(in Stage 2 — so
-  ferritin-confirmed IDA only; v7)* `[DECISION — Josh 2026-09-24]`: hosts DP-3. [1][5][6]
+  ferritin-confirmed IDA only; v7)* `[BUILD NOTE]`: hosts DP-3 (DP-3 itself is `[DECISION —
+  Josh 2026-09-24]`; placing it in Stage 2 is the builder's — see DP-3 ambiguity (b)). [1][5][6]
 - **Step 2.9 — IV iron without an oral trial** *(DP-3 criteria 3b/3c/3d; v7)*
-  `[DECISION — Josh 2026-09-24]`: hosts gate-iv-iron-ga-direct → Step 2.10, keeping IV
-  iron's GA ≥ 14 rule. Exists for the same reason as Steps 1.7/2.6 (a gate guards a Step,
+  `[BUILD NOTE]`: hosts gate-iv-iron-ga-direct → Step 2.10, keeping IV iron's GA ≥ 14 rule
+  (`[DECISION — Josh 2026-09-24]`: IV iron at GA ≥ 14 on this route too). Exists for the same reason as Steps 1.7/2.6 (a gate guards a Step,
   and a DP branch into a gate's target would override the gate). Before 14 weeks nothing
   opens: IV iron waits for 14 weeks and no oral iron is started on this branch
   (`[CLINICAL AMBIGUITY — for Josh]`, §4 DP-3). [1][5][6][8]
@@ -365,8 +367,9 @@ BRANCHES_TO (no HAS_STEP edge), per the reference-fixture pattern.
     ACOG says only "severe iron deficiency later in pregnancy"]`
   - Step 2.9 → **gate-iv-iron-ga-direct** (GA ≥ 14) → **Step 2.10** (IV iron). IV iron's
     first-trimester rule is kept on this route too.
-  - **How each criterion is read — all three by the provider, at DP-3.** `[DECISION — Josh
-    2026-09-24]` (builder's reading, for review)
+  - **How each criterion is read — all three by the provider, at DP-3.** `[BUILD NOTE]`
+    (the builder's reading; `[CLINICAL AMBIGUITY — for Josh]` — confirm, or say which
+    criterion should be read from the chart)
     - *Intolerance (3b)* is history the chart does not carry as a code the simulator or a
       problem list reliably has; it is elicited, like DP-2's 2a.
     - *Malabsorption (3c)* is a judgment: bariatric (Z98.84/O99.84.*) and IBD (K50/K51)
@@ -430,7 +433,7 @@ the pathway presumes the coded diagnosis.
     a definite false and gate-hgbpathy-microcytic asks for the MCV instead (same shared
     question).
 - **Gate `gate-hgbpathy-microcytic` — MCV < 80 with hemoglobinopathy disease** (v7)
-  `[DECISION — Josh 2026-09-24]`
+  `[BUILD NOTE]` (Josh's requirement that these patients still get a workup, as wired)
   - Attached to: step-1-1 · Branches to: **step-1-8** · compound AND · Default: **skip** ·
     On unresolved: **ask**
   - Conditions: the same MCV condition; and a nested **OR** group of `includes_code` on the
@@ -575,6 +578,11 @@ the pathway presumes the coded diagnosis.
       dated order and no clinician date, a recheck **reads as a start visit** and closes NOT
       YET DUE (proved). The committed start-visit plan, a dated order, or the clinician's
       date fixes it — the engine's documented cost of ranking the session source last.
+      `[CLINICAL AMBIGUITY — for Josh]` **This fails quietly:** such a recheck never
+      escalates and asks nothing (the NOT_YET_DUE reason is the only trace), so a
+      nonresponder seen without a committed start-visit plan or dated order is not flagged
+      unless the clinician enters the start date. Acceptable, or should the pathway prompt
+      for the start date at Step 2.3 (e.g. a Guidance line on the recheck step)?
   - **Why this replaces the interim question.** v5/v6 asked the provider ("responding / not
     responding / recheck not yet done") because the kernel could not anchor a rise to the
     treatment start, had no "rose by less than" encoding, and read a missing recheck as a
@@ -627,7 +635,8 @@ the pathway presumes the coded diagnosis.
     today. **Fallback the builder must emit:** the REQUIRES edge in §12 (step-2-5
     REQUIRES step-2-2) + DP-2 criteria routing. Upgrade when the validator fix lands.
 - **Gate `gate-iv-iron-ga-direct` — Beyond first trimester (GA ≥ 14 0/7 weeks), IV iron
-  without an oral trial** (v7) `[DECISION — Josh 2026-09-24]`
+  without an oral trial** (v7) `[BUILD NOTE]` (the GA ≥ 14 rule is `[DECISION — Josh
+  2026-09-24]`; this copy is how it is wired)
   - Attached to: step-2-9 · Branches to: step-2-10 · patient_attribute · Default: skip ·
     On unresolved: **ask**
   - Condition: identical to gate-iv-iron-ga (`patient.gestational_age_weeks`
