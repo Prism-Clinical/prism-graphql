@@ -81,7 +81,9 @@ Follow the spec exactly. Brief-section → JSON mapping:
   **Gate wiring (see the spec's Gate wiring box — the validator does NOT catch these):**
   (1) a Step behind a gate gets **no** `stage-N HAS_STEP` edge, and nothing else may
   `BRANCHES_TO`/`SELECTS_BRANCH` into it — otherwise the gate is inert and excludes
-  nothing; (2) never point two gates at the same target — that is a race the *losing*
+  nothing; the same holds for everything *under* the gated node: no `ESCALATES_TO` (or any
+  other edge) from an ungated node into it, and no LabTest/Medication/… node shared with a
+  host outside the gate — emit one node per host; (2) never point two gates at the same target — that is a race the *losing*
   gate wins, and gates do not OR. If the brief maps two mutually exclusive gates onto one
   target (e.g. trimester-specific thresholds), that is a brief ambiguity — stop and ask
   whether to merge them into one gate or split the target; (3) a chart gate
@@ -94,7 +96,9 @@ Follow the spec exactly. Brief-section → JSON mapping:
   no → B), and then map every answer.
 - §5 Meds → Medication (+`clinical_role` only when the brief gives one; dose/frequency/
   duration/route as given) + `USES_MEDICATION` from the named step; escalations →
-  `ESCALATES_TO`.
+  `ESCALATES_TO` — **except into a gated region**: an `ESCALATES_TO` from an ungated med
+  into a med behind a gate walks past the gate (anemia's IV-iron leak). There the gated
+  step is the escalation route; omit the edge and say so in the delivery message.
 - §6/§7/§8/§9 → LabTest/`HAS_LAB_TEST`, Imaging/`HAS_IMAGING` (modality required),
   Procedure/`HAS_PROCEDURE`, Guidance/`HAS_GUIDANCE`.
 - §10/§11 → QualityMetric/`HAS_QUALITY_METRIC`, Schedule/`HAS_SCHEDULE`.
@@ -159,7 +163,11 @@ node .claude/skills/pathway-json-builder/scripts/check-gate-control.ts pathways/
 ```
 
 (No install needed; Node runs the TS directly.) It enforces the two gate-wiring rules
-statically: a gate target reachable by any competing route (Rule 1), two gates sharing
+statically: a gated target — **or anything it contains** — reachable by any competing
+route (Rule 1: the engine walks every outgoing edge of an included node, so an action
+edge like `ESCALATES_TO` or a LabTest shared with a host outside the gate is a second
+route; `REQUIRES`-only routes warn; `[SECOND ROUTE — <node> via <source>]` in the brief
+turns an intended one into an info line), two gates sharing
 a target (Rule 2), and a chart gate with several targets or a router edge without `when`
 (Rule 3), plus the condition lints (horizons, wildcards, `on_unresolved` — a numeric gate
 set to `default` fails unless the brief carries its marker). It finds the brief at

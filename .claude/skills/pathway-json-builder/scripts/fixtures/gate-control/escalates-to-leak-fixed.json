@@ -1,0 +1,121 @@
+{
+  "schema_version": "1.0",
+  "pathway": {
+    "logical_id": "fixture-escalates-to-leak-fixed",
+    "title": "FIXTURE — IV iron behind its gate only (escalation edge dropped)",
+    "version": "1",
+    "category": "OBSTETRIC",
+    "scope": "Regression fixture for check-gate-control.ts: escalates-to-leak.json with the med-1 ESCALATES_TO med-5 edge dropped, as d6ab163 did. Escalation to IV iron is Step 1.2 own route. check-gate-control MUST pass this file.",
+    "target_population": "Fixture only — not a clinical pathway.",
+    "condition_codes": [
+      {
+        "code": "O99.011",
+        "system": "ICD-10",
+        "description": "Anemia complicating pregnancy, first trimester",
+        "usage": "primary trigger"
+      }
+    ]
+  },
+  "nodes": [
+    {
+      "id": "stage-1",
+      "type": "Stage",
+      "properties": {
+        "stage_number": 1,
+        "title": "Iron Deficiency Treatment"
+      }
+    },
+    {
+      "id": "step-1-1",
+      "type": "Step",
+      "properties": {
+        "stage_number": 1,
+        "step_number": 1,
+        "display_number": "1.1",
+        "title": "Initiate oral iron"
+      }
+    },
+    {
+      "id": "med-1",
+      "type": "Medication",
+      "properties": {
+        "name": "Ferrous sulfate 325 mg",
+        "role": "first_line",
+        "route": "oral",
+        "dose": "325 mg",
+        "frequency": "once daily",
+        "duration": "until repleted"
+      }
+    },
+    {
+      "id": "gate-iv-iron-ga",
+      "type": "Gate",
+      "properties": {
+        "title": "Beyond first trimester (GA >= 14 0/7 weeks)",
+        "gate_type": "patient_attribute",
+        "default_behavior": "skip",
+        "on_unresolved": "ask",
+        "condition": {
+          "attribute": "patient.gestational_age_weeks",
+          "operator": "greater_or_equal",
+          "value": 14,
+          "unit": "weeks"
+        }
+      }
+    },
+    {
+      "id": "step-1-2",
+      "type": "Step",
+      "properties": {
+        "stage_number": 1,
+        "step_number": 2,
+        "display_number": "1.2",
+        "title": "IV iron therapy"
+      }
+    },
+    {
+      "id": "med-5",
+      "type": "Medication",
+      "properties": {
+        "name": "Ferric derisomaltose",
+        "role": "second_line",
+        "route": "IV",
+        "dose": "1,000 mg IV",
+        "frequency": "single dose",
+        "duration": "single course"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "from": "root",
+      "to": "stage-1",
+      "type": "HAS_STAGE"
+    },
+    {
+      "from": "stage-1",
+      "to": "step-1-1",
+      "type": "HAS_STEP"
+    },
+    {
+      "from": "step-1-1",
+      "to": "med-1",
+      "type": "USES_MEDICATION"
+    },
+    {
+      "from": "step-1-1",
+      "to": "gate-iv-iron-ga",
+      "type": "HAS_GATE"
+    },
+    {
+      "from": "gate-iv-iron-ga",
+      "to": "step-1-2",
+      "type": "BRANCHES_TO"
+    },
+    {
+      "from": "step-1-2",
+      "to": "med-5",
+      "type": "USES_MEDICATION"
+    }
+  ]
+}
