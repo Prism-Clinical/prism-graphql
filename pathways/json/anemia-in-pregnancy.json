@@ -3,7 +3,7 @@
   "pathway": {
     "logical_id": "anemia-in-pregnancy",
     "title": "Anemia in Pregnancy \u2014 Classification and Treatment",
-    "version": "5",
+    "version": "6",
     "category": "OBSTETRIC",
     "scope": "Outpatient prenatal care, from diagnosed anemia through postpartum handoff. Screening is upstream of this pathway.",
     "target_population": "Adult pregnant patients with diagnosed anemia; hemoglobinopathy disease, thalassemia syndromes, and CKD-associated anemia are detected and routed out.",
@@ -1255,7 +1255,7 @@
       "properties": {
         "topic": "When to call us right away",
         "category": "safety-netting",
-        "instructions": "Call immediately for: chest pain or pressure or pain radiating to the arm/jaw; a racing or irregular heartbeat; trouble breathing or breathlessness lying flat; fainting or repeated dizziness; unrelenting exhaustion. Always say you are pregnant. Also tell us if you crave or eat non-food items (ice, clay, dirt, starch, paper, paint chips) \u2014 this is common, and there is no judgement."
+        "instructions": "Review the urgent maternal warning signs (CDC Hear Her / AIM) with the patient and give her the handout; she should seek care immediately for any of them, and always say that she is pregnant (source: https://www.cdc.gov/hearher/maternal-warning-signs/index.html). Also ask whether she craves or eats non-food items (ice, clay, dirt, starch, paper, paint chips); this is common, so ask without judgement."
       }
     },
     {
