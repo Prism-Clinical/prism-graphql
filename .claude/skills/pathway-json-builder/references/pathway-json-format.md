@@ -262,7 +262,9 @@ but cannot be ordered, e.g. two undated results for the same LOINC → `AMBIGUOU
     is a vocabulary gap, not a missing datum, and never asks.)
 
   Membership (`includes_code`, `equals`, `exists` on coded fields) never is unresolved:
-  absence is a definite no. `count_in_window` never is either — a count of zero is a real
+  absence is a definite no. (`not_includes_code` is the one membership operator that can
+  be: a matching code whose record validity or status cannot be decided makes it
+  *indeterminate* — never asked, so the gate takes `default_behavior`.) `count_in_window` never is either — a count of zero is a real
   answer. **Trends and `delta_from_baseline` with fewer than `min_points` dated values in
   their window ARE unresolved** (`INSUFFICIENT_SERIES`, `engine-anchored-window`): "no
   recheck yet" is not "no response". When the series is exactly **one** value short (and
@@ -349,7 +351,7 @@ Carries one `condition` object, which is either an **attribute condition** or a 
 - `field` ∈ `conditions`, `medications`, `allergies`, `labs`, `vitals` — now **enforced at
   import** against the kernel's `FIELD_TO_KIND` map (an unknown field is a hard error, not
   a silent runtime skip).
-- `operator` ∈ `includes_code`, `equals`, `exists`, `greater_than`, `less_than`, `count_in_window`, `trend_up`, `trend_down`, `delta_from_baseline`. `value` is required.
+- `operator` ∈ `includes_code`, `not_includes_code`, `equals`, `exists`, `greater_than`, `less_than`, `count_in_window`, `trend_up`, `trend_down`, `delta_from_baseline`. `value` is required.
 - **`vitals` conditions may not set `system`** (hard import error, D9) — vitals carry no
   terminology code; `value` is the vitals path (e.g. `systolic_bp`). They **must** set
   `horizon` (temporal rule 0 below).
@@ -374,6 +376,7 @@ Runtime semantics (from `gate-evaluator.ts`):
 | Operator | Works on | Semantics |
 |---|---|---|
 | `includes_code` | conditions/medications/allergies/labs | Any entry's code matches `value`, `system` optional filter. **Wildcard: only a trailing `.*`** (`Z94.*`, `G82.2.*` = "starts with the part before `.*`"). Any other `*` — `G82.2*`, `D57.0*`, `O99.8*4` — is a literal character and matches nothing (`select-facts.ts` codeMatches). No hierarchy expansion. |
+| `not_includes_code` | same | **No** entry's code matches `value` — the exact negation of `includes_code`: same `system` filter, same trailing-`.*` wildcard (import applies the same wildcard error), same `horizon`/`status` selection. **No code on file is a definite TRUE** (absence of a diagnosis is the answer; it never asks). A matching code whose record validity or clinical status can't be decided (e.g. `status: "active"` on a fact with unknown state, or a validity-unknown record) makes it **indeterminate, not true** — nothing is asked (there is no question for a problem-list code), so the gate takes `default_behavior`; with `status: "any"` every state counts and such a match is a definite false. Per condition, so it mixes with labs in one flat `AND`: `MCV < 80 AND not_includes_code D57.0.* AND not_includes_code D56.1 …` (one condition per code or prefix — `value` is a single code). `legacy-v0` negates its own `includes_code`. |
 | `equals` | same | Exact code match — no wildcard (a `.*` here is literal) |
 | `exists` | same | Field has ≥1 entry of any kind |
 | `greater_than` / `less_than` | labs, vitals | For `labs`: `value` = the lab code, compare that lab's numeric result to `threshold` (falls back to `parseFloat(value)` — so always set `threshold` explicitly). For `vitals`: `value` = dotted path into vitalSigns |
@@ -568,7 +571,7 @@ horizon, but they have no start, so:
 
 | Operator | With undated facts |
 |---|---|
-| `includes_code`, `equals`, `exists` | Work. |
+| `includes_code`, `not_includes_code`, `equals`, `exists` | Work. |
 | `greater_than`, `less_than` | One value per code works. Two or more undated values for one code cannot be ordered → `AMBIGUOUS_LATEST` → the gate is unresolved and asks; the injected answer is undated too, so it stays ambiguous (engine gap). |
 | `count_in_window` | Counts undated entries **only** under `LIFETIME` (conditions/meds/allergies default). Any bounded window → count 0 → a silent **"no"** (aggregates never ask). |
 | `trend_up`, `trend_down`, `delta_from_baseline` | Need `min_points` **dated** values. Undated values contribute no point: one → zero points, short by ≥ 2 → *unresolved* with nothing to ask → `default_behavior`; two or more → unorderable series (`indeterminate`, never asks → `default_behavior`, or the compound asks for a sibling scalar). |

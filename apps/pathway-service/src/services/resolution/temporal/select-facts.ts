@@ -126,6 +126,9 @@ function candidateMatches(fact: NormalizedFact, cond: FactSelectionCondition): b
 
   switch (cond.operator) {
     case 'includes_code':
+    case 'not_includes_code':
+      // One candidate rule for both: the negation is the evaluator's, never
+      // the selection's, so "has X" and "does not have X" read the same facts.
       return codeMatches(fact.code, cond.value);
     case 'equals':
       return fact.code === cond.value;

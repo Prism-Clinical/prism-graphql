@@ -33,6 +33,7 @@ import type { UncertaintyReason } from './temporal/contract';
 import { adaptAttributeCondition, adaptCodedCondition } from './temporal/condition-adapter';
 import { effectivePolicyFor } from './temporal/gate-policy';
 import { selectFacts } from './temporal/select-facts';
+import type { FactDecision } from './temporal/select-facts';
 import { anchorLabelFor, resolveWindowAnchor } from './temporal/anchored-window';
 import type { WindowAnchorEvidence } from './types';
 
@@ -554,6 +555,21 @@ function evaluateConditionLegacyAdapted(
       };
     }
   }
+  // `not_includes_code` is new, so no legacy behaviour exists to preserve —
+  // but falling into the legacy body's "Unknown operator" would answer a quiet
+  // `false`, and a negated exclusion read as "no" silently admits the very
+  // patient it exists to keep out. It is the exact negation of legacy
+  // `includes_code` (legacy has no status or validity to be unsure of), run
+  // through the untouched body with only the operator swapped.
+  if (!isAttributeCondition(condition) && condition.operator === 'not_includes_code') {
+    const positive = evaluateConditionLegacy(
+      { ...condition, operator: 'includes_code' },
+      deps.patientContext,
+      evaluationNowMs(deps),
+      deps.codeMap,
+    );
+    return { ...positive, satisfied: !positive.satisfied };
+  }
   return evaluateConditionLegacy(
     condition,
     deps.patientContext,
@@ -620,6 +636,10 @@ function evaluateMembershipKernel(
   // axis and carries an empty `uncertainty` by construction.
   const uncertainty = [...new Set(outcome.decisions.flatMap((d) => d.uncertainty))];
 
+  if (condition.operator === 'not_includes_code') {
+    return notIncludesOutcome(condition, outcome.decisions, uncertainty);
+  }
+
   const satisfied = outcome.status === 'READY';
   return {
     satisfied,
@@ -629,6 +649,66 @@ function evaluateMembershipKernel(
     // INDETERMINATE today, and if that ever changes this reports the truth
     // instead of asserting a stale one.
     indeterminate: outcome.status === 'INDETERMINATE',
+    uncertainty,
+  };
+}
+
+/**
+ * `not_includes_code` — "the patient does NOT have code X".
+ *
+ * Selected exactly as `includes_code` (same candidate rule, horizon, status and
+ * validity), and decided from the same per-fact decisions:
+ *
+ *  - **no fact included** → a definite TRUE. No code on file is the answer; it
+ *    never asks, for the reason membership never does.
+ *  - **a DEFINITE match** (a fact included with no doubt on any axis) → a
+ *    definite FALSE.
+ *  - **only UNCERTAIN matches** → INDETERMINATE, not true. `includes_code` fails
+ *    OPEN on such a fact ("may have had X") and answers true; the negation of
+ *    "may have had X" is "may not have had X", which is not a "does not have X".
+ *    Reporting it true would admit exactly the patient the author wrote this to
+ *    keep out; reporting it a definite false would hide the doubt. So it is
+ *    unresolved, and `on_unresolved` decides — though with no honest question
+ *    for a problem-list code (`askFor` refuses membership), an `ask` gate takes
+ *    `default_behavior`.
+ *
+ * `status: any` admits every clinical state, so a state-UNKNOWN fact under
+ * `any` carries no `uncertainty` (only `stateUnverified` evidence) and is a
+ * definite match — the author asked for every state.
+ */
+function notIncludesOutcome(
+  condition: CodedCondition,
+  decisions: readonly FactDecision[],
+  uncertainty: UncertaintyReason[],
+): ConditionOutcome {
+  const fieldsRead = condition.field ? [condition.field] : [];
+  const included = decisions.filter((d) => d.operatorDecision === 'INCLUDE');
+  const definite = included.some((d) => d.uncertainty.length === 0);
+  if (definite) {
+    return {
+      satisfied: false,
+      reason: membershipReason(condition, true),
+      fieldsRead,
+      indeterminate: false,
+      uncertainty,
+    };
+  }
+  if (included.length > 0) {
+    return {
+      satisfied: false,
+      reason:
+        `Indeterminate absence of ${condition.value} in ${condition.field}: ` +
+        `a matching code could not be confirmed (${uncertainty.join(', ')})`,
+      fieldsRead,
+      indeterminate: true,
+      uncertainty,
+    };
+  }
+  return {
+    satisfied: true,
+    reason: membershipReason(condition, false),
+    fieldsRead,
+    indeterminate: false,
     uncertainty,
   };
 }

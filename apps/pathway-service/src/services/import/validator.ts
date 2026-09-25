@@ -735,7 +735,7 @@ function temporalOverrideError(c: Record<string, unknown>, field: GateField): st
  * the value altogether.
  */
 const PATTERN_CODE_OPS = new Set([
-  'includes_code', 'count_in_window', 'trend_up', 'trend_down', 'delta_from_baseline',
+  'includes_code', 'not_includes_code', 'count_in_window', 'trend_up', 'trend_down', 'delta_from_baseline',
 ]);
 const EXACT_CODE_OPS = new Set(['equals', 'greater_than', 'less_than']);
 

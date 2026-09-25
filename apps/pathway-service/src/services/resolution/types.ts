@@ -113,7 +113,7 @@ export function createEmptyDependencyMap(): DependencyMap {
 // ─── Gate Evaluation ────────────────────────────────────────────────
 
 export type CodedOperator =
-  | 'includes_code' | 'equals' | 'exists'
+  | 'includes_code' | 'not_includes_code' | 'equals' | 'exists'
   | 'greater_than' | 'less_than'
   | 'count_in_window' | 'trend_up' | 'trend_down' | 'delta_from_baseline';
 
@@ -123,7 +123,7 @@ export type AttributeOperator =
   | 'in' | 'exists';
 
 export const VALID_CODED_OPERATORS = [
-  'includes_code', 'equals', 'exists',
+  'includes_code', 'not_includes_code', 'equals', 'exists',
   'greater_than', 'less_than',
   'count_in_window', 'trend_up', 'trend_down', 'delta_from_baseline',
 ] as const satisfies readonly CodedOperator[];
