@@ -72,6 +72,15 @@
       }
     },
     {
+      "id": "stage-2-oral",
+      "type": "Stage",
+      "properties": {
+        "stage_number": 2.5,
+        "title": "Oral Iron Trial (if chosen at DP-3)",
+        "description": "Branch-entry only, via DP-3 criterion 3a (no reason to skip the oral trial). Holds Steps 2.1\u20132.3 \u2014 the same steps Stage 1.5 holds for the empiric arm \u2014 so confirmed IDA gets the same oral iron, response check and escalation route. Numbered 2.5 so it has a number of its own; its steps keep theirs."
+      }
+    },
+    {
       "id": "stage-3",
       "type": "Stage",
       "properties": {
@@ -229,6 +238,38 @@
         "display_number": "2.6",
         "title": "Nonresponse management",
         "description": "Reached only when the Step 2.3 recheck shows no response to oral iron (hemoglobin rise < 1 g/dL at least 14 days after starting it, and below the trimester target). Hosts DP-2: expanded workup, and IV iron after the first trimester."
+      }
+    },
+    {
+      "id": "step-2-8",
+      "type": "Step",
+      "properties": {
+        "stage_number": 2,
+        "step_number": 8,
+        "display_number": "2.8",
+        "title": "Iron treatment route: oral trial or IV iron first",
+        "description": "Ferritin-confirmed iron deficiency anemia. Hosts DP-3: an oral iron trial (the default), or IV iron without an oral trial for documented oral-iron intolerance, suspected malabsorption, or iron deficiency anemia diagnosed at 34 weeks or later."
+      }
+    },
+    {
+      "id": "step-2-9",
+      "type": "Step",
+      "properties": {
+        "stage_number": 2,
+        "step_number": 9,
+        "display_number": "2.9",
+        "title": "IV iron without an oral trial",
+        "description": "Chosen at DP-3. IV iron is given after the first trimester only (gestational age 14 0/7 weeks or later, gate-iv-iron-ga-direct \u2192 Step 2.10). Before 14 weeks nothing opens here: IV iron is deferred to 14 weeks and no oral iron is started on this branch \u2014 re-decide DP-3 if an oral trial is wanted meanwhile."
+      }
+    },
+    {
+      "id": "step-2-10",
+      "type": "Step",
+      "properties": {
+        "stage_number": 2,
+        "step_number": 10,
+        "display_number": "2.10",
+        "title": "IV iron therapy (no oral trial)"
       }
     },
     {
@@ -417,6 +458,42 @@
       "type": "Criterion",
       "properties": {
         "description": "Moderate\u2013severe iron deficiency anemia within ~4\u20136 weeks of anticipated delivery, or oral failure near term \u2014 IV iron"
+      }
+    },
+    {
+      "id": "dp-3",
+      "type": "DecisionPoint",
+      "properties": {
+        "title": "Oral iron trial vs IV iron without an oral trial",
+        "branch_mode": "one_of"
+      }
+    },
+    {
+      "id": "crit-3a",
+      "type": "Criterion",
+      "properties": {
+        "description": "No reason to skip the oral trial \u2014 start oral iron and recheck hemoglobin in 2\u20134 weeks"
+      }
+    },
+    {
+      "id": "crit-3b",
+      "type": "Criterion",
+      "properties": {
+        "description": "Documented intolerance of oral iron (e.g. on a prior course) \u2014 IV iron without an oral trial"
+      }
+    },
+    {
+      "id": "crit-3c",
+      "type": "Criterion",
+      "properties": {
+        "description": "Suspected malabsorption (bariatric surgery, inflammatory bowel disease, chronic antacid use) \u2014 IV iron without an oral trial"
+      }
+    },
+    {
+      "id": "crit-3d",
+      "type": "Criterion",
+      "properties": {
+        "description": "Iron deficiency anemia diagnosed at 34 weeks or later \u2014 too little time for an oral trial; IV iron"
       }
     },
     {
@@ -921,6 +998,22 @@
     },
     {
       "id": "gate-iv-iron-ga",
+      "type": "Gate",
+      "properties": {
+        "title": "Beyond first trimester (GA \u2265 14 0/7 weeks)",
+        "gate_type": "patient_attribute",
+        "default_behavior": "skip",
+        "on_unresolved": "ask",
+        "condition": {
+          "attribute": "patient.gestational_age_weeks",
+          "operator": "greater_or_equal",
+          "value": 14,
+          "unit": "weeks"
+        }
+      }
+    },
+    {
+      "id": "gate-iv-iron-ga-direct",
       "type": "Gate",
       "properties": {
         "title": "Beyond first trimester (GA \u2265 14 0/7 weeks)",
@@ -1441,6 +1534,62 @@
       }
     },
     {
+      "id": "med-13",
+      "type": "Medication",
+      "properties": {
+        "name": "Iron sucrose (Venofer)",
+        "role": "second_line",
+        "route": "IV",
+        "instructions": "Label indication is CKD \u2014 pregnancy use off-label. Multiple visits; historically most-used in pregnancy.",
+        "clinical_role": "iv-iron-repletion",
+        "dose": "200 mg IV per session \u00d7 5 within 14 days (~1,000 mg total)",
+        "frequency": "per protocol",
+        "duration": "until repleted"
+      }
+    },
+    {
+      "id": "med-14",
+      "type": "Medication",
+      "properties": {
+        "name": "Ferric derisomaltose (Monoferric)",
+        "role": "second_line",
+        "route": "IV",
+        "instructions": "Single-visit total replacement preferred. Hypophosphatemia 3.5%.",
+        "clinical_role": "iv-iron-repletion",
+        "dose": "1,000 mg IV single dose over \u226520 min (\u226550 kg; 20 mg/kg if <50 kg)",
+        "frequency": "single dose",
+        "duration": "single course"
+      }
+    },
+    {
+      "id": "med-15",
+      "type": "Medication",
+      "properties": {
+        "name": "Ferric carboxymaltose (Injectafer)",
+        "role": "second_line",
+        "route": "IV",
+        "instructions": "Symptomatic hypophosphatemia 2.1%; osteomalacia postmarketing \u2014 check phosphate on repeat courses.",
+        "clinical_role": "iv-iron-repletion",
+        "dose": "750 mg \u00d7 2 \u22657 days apart (total 1,500 mg), or single 15 mg/kg \u22641,000 mg",
+        "frequency": "per protocol",
+        "duration": "single course"
+      }
+    },
+    {
+      "id": "med-16",
+      "type": "Medication",
+      "properties": {
+        "name": "Low-molecular-weight iron dextran (INFeD)",
+        "role": "acceptable",
+        "route": "IV",
+        "instructions": "BOXED WARNING: anaphylaxis. Mandatory 25 mg test dose. Single-visit total-dose infusion exceeds the 100 mg/day label \u2014 flag for local policy.",
+        "clinical_role": "iv-iron-repletion",
+        "dose": "Total-dose by formula",
+        "frequency": "per protocol",
+        "duration": "single course"
+      }
+    },
+    {
       "id": "lab-1",
       "type": "LabTest",
       "properties": {
@@ -1708,6 +1857,14 @@
       "properties": {
         "interval": "Once, ~6 weeks postpartum",
         "description": "Hemoglobin recheck and iron continuation; symptomatic or severe postpartum anemia routes to IV iron or transfusion."
+      }
+    },
+    {
+      "id": "sched-6",
+      "type": "Schedule",
+      "properties": {
+        "interval": "~4 weeks after IV iron",
+        "description": "Hemoglobin recheck; persistent anemia prompts hematology referral or re-evaluation of the diagnosis."
       }
     },
     {
@@ -2368,16 +2525,21 @@
     },
     {
       "from": "stage-2",
+      "to": "step-2-8",
+      "type": "HAS_STEP"
+    },
+    {
+      "from": "stage-2-oral",
       "to": "step-2-1",
       "type": "HAS_STEP"
     },
     {
-      "from": "stage-2",
+      "from": "stage-2-oral",
       "to": "step-2-2",
       "type": "HAS_STEP"
     },
     {
-      "from": "stage-2",
+      "from": "stage-2-oral",
       "to": "step-2-3",
       "type": "HAS_STEP"
     },
@@ -2554,6 +2716,71 @@
     {
       "from": "gate-iv-iron-ga",
       "to": "step-2-5",
+      "type": "BRANCHES_TO"
+    },
+    {
+      "from": "step-2-8",
+      "to": "dp-3",
+      "type": "HAS_DECISION_POINT"
+    },
+    {
+      "from": "dp-3",
+      "to": "crit-3a",
+      "type": "HAS_CRITERION"
+    },
+    {
+      "from": "dp-3",
+      "to": "crit-3b",
+      "type": "HAS_CRITERION"
+    },
+    {
+      "from": "dp-3",
+      "to": "crit-3c",
+      "type": "HAS_CRITERION"
+    },
+    {
+      "from": "dp-3",
+      "to": "crit-3d",
+      "type": "HAS_CRITERION"
+    },
+    {
+      "from": "dp-3",
+      "to": "stage-2-oral",
+      "type": "BRANCHES_TO"
+    },
+    {
+      "from": "dp-3",
+      "to": "step-2-9",
+      "type": "BRANCHES_TO"
+    },
+    {
+      "from": "crit-3a",
+      "to": "stage-2-oral",
+      "type": "SELECTS_BRANCH"
+    },
+    {
+      "from": "crit-3b",
+      "to": "step-2-9",
+      "type": "SELECTS_BRANCH"
+    },
+    {
+      "from": "crit-3c",
+      "to": "step-2-9",
+      "type": "SELECTS_BRANCH"
+    },
+    {
+      "from": "crit-3d",
+      "to": "step-2-9",
+      "type": "SELECTS_BRANCH"
+    },
+    {
+      "from": "step-2-9",
+      "to": "gate-iv-iron-ga-direct",
+      "type": "HAS_GATE"
+    },
+    {
+      "from": "gate-iv-iron-ga-direct",
+      "to": "step-2-10",
       "type": "BRANCHES_TO"
     },
     {
@@ -3824,6 +4051,201 @@
     {
       "from": "step-1-8",
       "to": "ev-7",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-2-10",
+      "to": "med-13",
+      "type": "USES_MEDICATION"
+    },
+    {
+      "from": "step-2-10",
+      "to": "med-14",
+      "type": "USES_MEDICATION"
+    },
+    {
+      "from": "step-2-10",
+      "to": "med-15",
+      "type": "USES_MEDICATION"
+    },
+    {
+      "from": "step-2-10",
+      "to": "med-16",
+      "type": "USES_MEDICATION"
+    },
+    {
+      "from": "step-2-10",
+      "to": "sched-6",
+      "type": "HAS_SCHEDULE"
+    },
+    {
+      "from": "med-13",
+      "to": "code-rxnorm-1741261",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "med-13",
+      "to": "ev-5",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "med-13",
+      "to": "ev-22",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "med-14",
+      "to": "code-rxnorm-2274409",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "med-14",
+      "to": "ev-5",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "med-14",
+      "to": "ev-22",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "med-15",
+      "to": "code-rxnorm-1435169",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "med-15",
+      "to": "ev-5",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "med-15",
+      "to": "ev-22",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "med-16",
+      "to": "code-rxnorm-206216",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "med-16",
+      "to": "ev-5",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "med-16",
+      "to": "ev-22",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "stage-2-oral",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "stage-2-oral",
+      "to": "ev-5",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-2-8",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-2-8",
+      "to": "ev-5",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-2-8",
+      "to": "ev-6",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-2-9",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-2-9",
+      "to": "ev-5",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-2-9",
+      "to": "ev-6",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-2-9",
+      "to": "ev-8",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-2-10",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-2-10",
+      "to": "ev-5",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-2-10",
+      "to": "ev-7",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-2-10",
+      "to": "ev-22",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "dp-3",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "dp-3",
+      "to": "ev-6",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "crit-3a",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "crit-3b",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "crit-3b",
+      "to": "ev-5",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "crit-3c",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "crit-3c",
+      "to": "ev-8",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "crit-3d",
+      "to": "ev-6",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "crit-3d",
+      "to": "ev-1",
       "type": "CITES_EVIDENCE"
     }
   ]

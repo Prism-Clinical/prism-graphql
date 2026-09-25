@@ -39,6 +39,11 @@ still current, `[BLOCKED — prior_node_result]` import-blocked gate design with
     `gate-microcytic` / `gate-hgbpathy-microcytic`, §18): DP-1 is not offered with SCD, a
     thalassemia syndrome or HbC/HbE disease on file (traits still are); new Step 1.8 gives
     those patients their own confirmatory iron studies (Lab-15, Lab-16).
+  - **DP-3 — IV iron without an oral trial** (§3 Steps 2.8–2.10, §4 DP-3): ferritin-confirmed
+    IDA now chooses the route first — the oral trial (Stage 2.5, Steps 2.1–2.3) or IV iron
+    at GA ≥ 14 for oral-iron intolerance, malabsorption or IDA diagnosed at ≥ 34 weeks. The
+    brief's former DP-3 (predelivery route selection on Step 4.2, never built) is retired
+    into it.
   (v6 `[DECISION — Josh 2026-09-24]`, was `"5"`: bumped because
   Guid-5 ("When to call us right away") now references the CDC Hear Her / AIM urgent maternal
   warning signs instead of reproducing an AIM-derived subset of them (§9). Imports as
@@ -85,9 +90,15 @@ None. (Single-condition pathway; O99.01x already encodes the pregnancy+anemia co
   the empiric arm gets the same response assessment and IV-iron escalation route as
   ferritin-confirmed IDA (§4, DP-1). Numbered 1.5 so it sorts after Stage 1 with a
   number of its own; its steps keep their 2.x numbers. [1][5]
-- **Stage 2 — Iron Deficiency Treatment** *(branch-entry only, via gate-ida-confirmed;
-  its Steps 2.1–2.3 are shared with Stage 1.5)*: oral iron first line with counseling,
-  response assessment, IV iron escalation. [1][5][7]
+- **Stage 2 — Iron Deficiency Treatment** *(branch-entry only, via gate-ida-confirmed)*:
+  v7 — holds Step 2.8, the route choice (DP-3): the oral trial (Stage 2.5) or IV iron
+  without an oral trial (Steps 2.9–2.10). Oral iron first line with counseling, response
+  assessment, IV iron escalation. [1][5][7]
+- **Stage 2.5 — Oral Iron Trial (if chosen at DP-3)** *(branch-entry only, via DP-3
+  criterion 3a; v7)* `[DECISION — Josh 2026-09-24]`: holds Steps 2.1–2.3 — the same steps
+  Stage 1.5 holds — so confirmed IDA keeps the oral iron, response check and escalation
+  route it had. Carries Stage 2's citations, so DP-3's two targets score alike and the fork
+  pends for the provider (`gate-proof.ts dp-1-scoring`). [1][5]
 - **Stage 3 — Special Populations & Escalations** *(root-connected container; every step
   individually gated)*: hemoglobinopathy/thalassemia/CKD routing-out, trait carriers,
   bariatric, IBD, multifetal, transfusion-decliners, severe anemia, referral. [4][7][8][17]
@@ -150,7 +161,8 @@ None. (Single-condition pathway; O99.01x already encodes the pregnancy+anemia co
   (CDC). [3]
 - **Step 2.5 — IV iron therapy** *(gated: Step 2.6 → DP-2 + gate-iv-iron-ga)*: for
   intolerance/nonresponse/severe iron deficiency later in pregnancy; after the first
-  trimester; single-total-dose formulations preferred. [1][5][7]
+  trimester; single-total-dose formulations preferred. v7: this is IV iron **after** a
+  failed oral trial; IV iron **instead of** one is Step 2.10. [1][5][7]
 - **Step 2.6 — Nonresponse management** *(gate-hgb-nonresponse — its only way in; was
   gate-hgb-response's "not responding" arm in v5/v6)*
   `[DECISION — Josh 2026-09-24]`: reached only when the Step 2.3 recheck shows no
@@ -163,7 +175,18 @@ None. (Single-condition pathway; O99.01x already encodes the pregnancy+anemia co
   2026-09-24]`. It was v5/v6's "recheck not yet done" arm, there so the start visit could
   finish while the response check was a question. The chart-data gates close NOT YET DUE at
   the start visit and before day 14 without asking anything, which does the same job (§4b).
-- **Step 3.1 — Sickle cell disease: route out** *(gated)*: MFM + hematology
+- **Step 2.8 — Iron treatment route: oral trial or IV iron first** *(in Stage 2 — so
+  ferritin-confirmed IDA only; v7)* `[DECISION — Josh 2026-09-24]`: hosts DP-3. [1][5][6]
+- **Step 2.9 — IV iron without an oral trial** *(DP-3 criteria 3b/3c/3d; v7)*
+  `[DECISION — Josh 2026-09-24]`: hosts gate-iv-iron-ga-direct → Step 2.10, keeping IV
+  iron's GA ≥ 14 rule. Exists for the same reason as Steps 1.7/2.6 (a gate guards a Step,
+  and a DP branch into a gate's target would override the gate). Before 14 weeks nothing
+  opens: IV iron waits for 14 weeks and no oral iron is started on this branch
+  (`[CLINICAL AMBIGUITY — for Josh]`, §4 DP-3). [1][5][6][8]
+- **Step 2.10 — IV iron therapy (no oral trial)** *(gated by gate-iv-iron-ga-direct — its
+  only way in; v7)*: Med-13–16 and Sched-6, copies of Step 2.5's Med-4–7 and Sched-3 (one
+  node per host step; Step 2.5 stays the post-non-response IV iron). Deliberately **no**
+  `REQUIRES Step 2.2`: that is the oral trial this branch skips. [1][5][7][22]- **Step 3.1 — Sickle cell disease: route out** *(gated)*: MFM + hematology
   multidisciplinary track; PNV **without** iron unless deficiency confirmed + folic acid
   4 mg (SMFM GRADE 1B). This pathway's iron arm is affirmatively wrong for SCD. [7]
 - **Step 3.2 — Thalassemia syndrome: route out** *(gated)*: hematology/MFM track. [16] [FALLBACK SOURCE]
@@ -188,14 +211,18 @@ None. (Single-condition pathway; O99.01x already encodes the pregnancy+anemia co
 - **Step 4.1 — Predelivery optimization**: aggressive treatment of severe anemia; verify
   prenatal type & antibody screen documented; Hct <30 + other risk factor ⇒ high
   hemorrhage-risk tier (type & crossmatch 2 u). [9][11]
-- **Step 4.2 — Delivery planning route selection**: hosts DP-3. [1][6]
+- **Step 4.2 — Delivery planning route selection**: predelivery route review. [1][6] (Until v7
+  this step "hosted DP-3", a predelivery route selection that was never built; its
+  late-pregnancy criterion now lives in DP-3 at treatment start — §4.)
 - **Step 4.3 — Postpartum handoff**: postpartum Hgb recheck (6-week evidence timepoint);
   continue iron "at least 3 months or 6 weeks postpartum, whichever is longer" (FIGO
   wording, checker-verified); IV iron option postpartum; risk communication on
   transition. [1][6][9]
 
-Branch-entry-only stages: Stage 2 (entered via gate-ida-confirmed) and Stage 1.5 (entered
-via DP-1 criterion 1a; shares Stage 2's Steps 2.1–2.3). Stage 1 is
+Branch-entry-only stages: Stage 2 (entered via gate-ida-confirmed), Stage 1.5 (entered
+via DP-1 criterion 1a) and Stage 2.5 (entered via DP-3 criterion 3a, inside Stage 2); Stages
+1.5 and 2.5 hold the same Steps 2.1–2.3, and DP-1 being one_of means at most one of them is
+ever open. Stage 1 is
 the root entry stage; Stage 3 is a root-connected container whose steps all hang from
 gates; Stage 4 is root-connected. Gated steps connect **only** via their gate/DP
 BRANCHES_TO (no HAS_STEP edge), per the reference-fixture pattern.
@@ -308,7 +335,10 @@ BRANCHES_TO (no HAS_STEP edge), per the reference-fixture pattern.
     Step 1.5 INCLUDED, Step 2.5 and the IV irons GATED_OUT; + GA missing → asks for
     `patient.gestational_age_weeks`, Step 2.5 held; "not yet" then "not responding" /
     "responding" (re-answer at the recheck) → escalation / maintenance respectively.
-  - `[CLINICAL AMBIGUITY — for Josh]` Criteria 2a (intolerance/nonadherence), 2b
+  - ~~`[CLINICAL AMBIGUITY — for Josh]`~~ **Resolved in v7 by DP-3** `[DECISION — Josh
+    2026-09-24]`: intolerance, malabsorption and IDA diagnosed at ≥ 34 weeks now reach IV
+    iron **without** an oral trial through DP-3 (below); DP-2 keeps its criteria for a patient
+    who meets them after the trial. The original note: Criteria 2a (intolerance/nonadherence), 2b
     (suspected malabsorption) and **2d (moderate–severe IDA within ~4–6 weeks of
     delivery, or oral failure near term)** name reasons to go to IV iron that are not "no
     rise after a trial". Under v5 they reach IV iron only by the provider answering "not
@@ -322,12 +352,54 @@ BRANCHES_TO (no HAS_STEP edge), per the reference-fixture pattern.
     IBD) → **Step 2.5** (IV iron) [1][8]
   - Criterion 2c: Suspected incorrect diagnosis or blood loss → **Step 1.5** (expanded
     workup) [1]
-- **DP-3 — Predelivery route selection** (after Step 4.2) — branch_mode: one_of
-  - Criterion 3a: Adequate time for oral repletion and responding → continue oral →
-    **Step 2.4** [1]
-  - Criterion 3b: Moderate–severe IDA within ~4–6 weeks of anticipated delivery, or oral
-    failure near term → **Step 2.5** (IV iron) [6] [FALLBACK SOURCE — FIGO time-math; ACOG
-    says only "severe iron deficiency later in pregnancy"] [1]
+- **DP-3 — Oral iron trial vs IV iron without an oral trial** (on Step 2.8, in Stage 2 —
+  ferritin-confirmed IDA; v7) — branch_mode: one_of `[DECISION — Josh 2026-09-24]`
+  - Criterion 3a: No reason to skip the oral trial → **Stage 2.5** (Steps 2.1–2.3: oral
+    iron, 2–4-week recheck, response check) [1]
+  - Criterion 3b: Documented intolerance of oral iron (e.g. on a prior course) → **Step
+    2.9** (IV iron, no trial) [1][5] — the brief's criterion 2a at treatment start
+  - Criterion 3c: Suspected malabsorption (bariatric surgery, IBD, chronic antacid use) →
+    **Step 2.9** [1][8] — criterion 2b
+  - Criterion 3d: IDA diagnosed at ≥ 34 weeks — too little time for an oral trial → **Step
+    2.9** [6][1] — criterion 2d / the former DP-3's 3b `[FALLBACK SOURCE — FIGO time-math;
+    ACOG says only "severe iron deficiency later in pregnancy"]`
+  - Step 2.9 → **gate-iv-iron-ga-direct** (GA ≥ 14) → **Step 2.10** (IV iron). IV iron's
+    first-trimester rule is kept on this route too.
+  - **How each criterion is read — all three by the provider, at DP-3.** `[DECISION — Josh
+    2026-09-24]` (builder's reading, for review)
+    - *Intolerance (3b)* is history the chart does not carry as a code the simulator or a
+      problem list reliably has; it is elicited, like DP-2's 2a.
+    - *Malabsorption (3c)* is a judgment: bariatric (Z98.84/O99.84.*) and IBD (K50/K51)
+      codes suggest it, but Step 3.4 says "low threshold" and Step 3.5 IV-first only with
+      **active** inflammation, so a code alone must not force IV iron. Those codes still
+      open Steps 3.4/3.5, whose guidance points the provider at 3c.
+    - *IDA diagnosed at ≥ 34 weeks (3d)* is gestational age **at diagnosis**, which the
+      chart cannot give: a gate on current GA would switch a patient responding to oral
+      iron to IV at her 34-week recheck (DP-3 is asked again at every visit that reaches
+      Stage 2). The provider reads it; GA ≥ 14 stays a chart gate.
+  - **What happens** (proved with `gate-proof.ts dp-3`, both edge orders): confirmed IDA,
+    route not chosen → DP-3 asks (options Stage 2.5 / Step 2.9; with the seeded scorers the
+    two targets score identically, 0.938, so the fork pends — `dp-1-scoring`), oral and IV
+    both held. **Oral trial** → Steps 2.1–2.3 and the response check (NOT YET DUE at the
+    start visit); Step 2.9/2.10 EXCLUDED. **IV first**, GA 20 or 36 → Step 2.10 with
+    Med-13–16 and Sched-6 INCLUDED; oral iron, the response check and the post-non-response
+    IV route (Steps 2.6, 2.5, DP-2) EXCLUDED; no response question. GA 12 → IV iron
+    GATED_OUT; GA missing → asks for GA, IV iron held. Ferritin 50, the empiric arm and
+    hemoglobinopathy disease never see DP-3.
+  - `[CLINICAL AMBIGUITY — for Josh]` (a) **IV first before 14 weeks gives no iron at all**:
+    Step 2.9 opens only the GA-gated IV step, and the oral arm is the unchosen branch —
+    should a first-trimester patient with intolerance/malabsorption be steered to the oral
+    trial until 14 weeks (the provider can re-decide DP-3), or should Step 2.9 carry an
+    interim plan? (b) **The empiric arm has no DP-3**: DP-3 sits in Stage 2 because
+    criterion 3d says "IDA diagnosed" and IV iron without confirmed deficiency is not what
+    ACOG describes; an empiric patient at ≥ 34 weeks gets the oral trial unless the
+    provider chooses the workup at DP-1. (c) DP-3 adds one provider question at every
+    confirmed-IDA visit (like DP-1), since each visit is a new session.
+  - Retired: the brief's former **DP-3 — Predelivery route selection** (after Step 4.2;
+    never built): 3a "adequate time for oral repletion and responding → continue oral
+    (Step 2.4)" is what the response check now does; 3b "moderate–severe IDA within ~4–6
+    weeks of delivery, or oral failure near term → IV iron" is criterion 3d here (at
+    diagnosis) plus DP-2 (after a failed trial).
 
 ## 4b. Gates
 
@@ -554,6 +626,15 @@ the pathway presumes the coded diagnosis.
     (oral trial) having resolved INCLUDED" as a prior_node_result gate — import-blocked
     today. **Fallback the builder must emit:** the REQUIRES edge in §12 (step-2-5
     REQUIRES step-2-2) + DP-2 criteria routing. Upgrade when the validator fix lands.
+- **Gate `gate-iv-iron-ga-direct` — Beyond first trimester (GA ≥ 14 0/7 weeks), IV iron
+  without an oral trial** (v7) `[DECISION — Josh 2026-09-24]`
+  - Attached to: step-2-9 · Branches to: step-2-10 · patient_attribute · Default: skip ·
+    On unresolved: **ask**
+  - Condition: identical to gate-iv-iron-ga (`patient.gestational_age_weeks`
+    `greater_or_equal` 14, unit weeks). A separate gate because Rule 2 forbids a second gate
+    on Step 2.5, and a DP-3 branch straight into Step 2.5 would override gate-iv-iron-ga;
+    the `-direct` suffix makes `check-gate-control` hold the two conditions in sync (a
+    Rule 3-style copy). [1][5]
 - **Gate `gate-severe-anemia` — Severe anemia (transfusion consideration)**
   - Attached to: stage-3 · Branches to: step-3-6 · patient_attribute · Default: skip
   - Condition (coded): field `labs`, less_than, value `718-7` (Hgb, LOINC), threshold 6,
@@ -664,6 +745,11 @@ narrative. Recorded so reviewers know the omission is deliberate.
 - **Med-11 — Enteric-coated / sustained-release iron preparations** (on Step 2.1)
   - Role: avoid · Clinical role: `oral-iron-repletion` (lane-tagged so the resolver flags
     cross-pathway substitution attempts) · "Dissolve poorly and may be less effective." [1]
+- **Med-13 – Med-16 — IV iron, no oral trial** (on Step 2.10; v7): copies of Med-4 (iron
+  sucrose), Med-5 (ferric derisomaltose), Med-6 (ferric carboxymaltose) and Med-7 (LMW iron
+  dextran) — same dose, role, `clinical_role` `iv-iron-repletion`, codes and citations; one
+  node per host step, so a gate closing Step 2.5 or Step 2.10 cannot take the other's
+  medication. No ESCALATES_TO edges. [5][22]
 - **Med-12 — Epoetin alfa** (on Step 3.10)
   - Role: acceptable · Clinical role: `esa-erythropoiesis`
   - Restricted context: transfusion-decliner optimization with parenteral iron (RCT:
@@ -794,7 +880,10 @@ risk-adjustment variable in ePC-07/CMS1028.] Local process measures encoded inst
   anemia → hematology referral / re-evaluate diagnosis. [1] [GAP: no formal US interval —
   evidence timepoint]
 - **Sched-4** (on Step 4.1): interval "from diagnosis through delivery"; predelivery
-  optimization checks; oral failure near term → IV iron (DP-3). [6][9][11]
+  optimization checks; oral failure near term → IV iron (DP-2 after the trial; IDA
+  diagnosed at ≥ 34 weeks goes straight to IV iron at DP-3, v7). [6][9][11]
+- **Sched-6** (on Step 2.10; v7): copy of Sched-3 — "~4 weeks after IV iron"; Hgb recheck
+  after IV iron given without an oral trial. [1]
 - **Sched-5** (on Step 4.3): interval "once, ~6 weeks postpartum"; Hgb recheck + iron
   continuation; symptomatic/severe postpartum anemia → IV iron or transfusion pathway. [1][6]
 
@@ -805,6 +894,8 @@ All pairs acyclic; REQUIRES points dependent → prerequisite:
 - **Step 2.1 REQUIRES Step 1.1** — treatment requires diagnosis confirmation and
   classification (the empiric path still passes through evaluation). [1]
 - **Step 2.3 REQUIRES Step 2.1** — response check requires initiation. [1][3]
+- *(v7)* **Step 2.10 has no REQUIRES Step 2.2** — deliberately: it is IV iron without the
+  oral trial (DP-3).
 - **Step 2.5 REQUIRES Step 2.2** — IV iron requires an oral trial period (this edge is the
   `[BLOCKED — prior_node_result]` fallback from gate-iv-iron-ga; qualifying conditions
   (bariatric/IBD/late severe IDA) route via DP-2/stage-3 branches instead). [1][5]
@@ -844,10 +935,10 @@ All pairs acyclic; REQUIRES points dependent → prerequisite:
 | 310325 | RXNORM | ferrous sulfate 325 mg tablet | Med-1 |
 | 198630 | RXNORM | ferrous gluconate 324 mg tablet | Med-2 |
 | 284202 | RXNORM | ferrous fumarate 324 mg tablet | Med-3 |
-| 1741261 | RXNORM | iron sucrose 20 mg/mL injection | Med-4 |
-| 2274409 | RXNORM | ferric derisomaltose 1,000 mg/10 mL [Monoferric] | Med-5 |
-| 1435169 | RXNORM | ferric carboxymaltose 750 mg/15 mL | Med-6 |
-| 206216 | RXNORM | iron-dextran 50 mg/mL [INFeD] | Med-7 |
+| 1741261 | RXNORM | iron sucrose 20 mg/mL injection | Med-4, Med-13 |
+| 2274409 | RXNORM | ferric derisomaltose 1,000 mg/10 mL [Monoferric] | Med-5, Med-14 |
+| 1435169 | RXNORM | ferric carboxymaltose 750 mg/15 mL | Med-6, Med-15 |
+| 206216 | RXNORM | iron-dextran 50 mg/mL [INFeD] | Med-7, Med-16 |
 | 310410 | RXNORM | folic acid 1 mg tablet | Med-8 |
 | 309594 | RXNORM | cyanocobalamin 1 mg/mL injection | Med-9 |
 | Z98.84 | ICD-10 | Bariatric surgery status | Step 3.4 (gate-captured — attaches to branch target) |
@@ -964,8 +1055,10 @@ Nodes that can carry CITES_EVIDENCE:
   · Step 3.10: [1][17]
 - Step 4.1: [9][11] · Step 4.2: [1][6] · Step 4.3: [1][6][9]
 - DP-1: [1] · Criteria 1a/1b: [1] · DP-2: [1] · Criteria 2a: [1][5], 2b: [1][8], 2c: [1]
-  · DP-3: [1][6] · Criteria 3a: [1], 3b: [6][1]
-- Meds: Med-1: [1][5][13][14][15] · Med-2, Med-3: [1] · Med-4–Med-7: [5][22] · Med-8,
+  · DP-3 (v7): [1][6] · Criteria 3a: [1], 3b: [1][5], 3c: [1][8], 3d: [6][1]
+- Stage 2.5 (v7): [1][5] · Step 2.8: [1][5][6] · Step 2.9: [1][5][6][8] · Step 2.10:
+  [1][5][7][22]
+- Meds: Med-1: [1][5][13][14][15] · Med-2, Med-3: [1] · Med-4–Med-7, Med-13–Med-16: [5][22] · Med-8,
   Med-9: [1] · Med-10: [13] · Med-11: [1] · Med-12: [1][17]
 - Labs: Lab-1, Lab-10: [1] · Lab-2, Lab-11, Lab-15: [1][5] · Lab-3, Lab-16: [1] · Lab-4, Lab-12: [1] · Lab-5, Lab-6: [1]
   · Lab-7, Lab-14: [4] · Lab-8, Lab-13: [1] · Lab-9: [11]
