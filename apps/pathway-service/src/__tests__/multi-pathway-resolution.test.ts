@@ -15,6 +15,9 @@
 import {
   ConflictResolution,
   MergedCarePlan,
+  ResolvedCarePlan,
+  ResolvedMedication,
+  mergeResolvedCarePlans,
 } from '../services/resolution/care-plan-merge';
 import { MultiPathwayResolutionSession } from '../services/resolution/multi-pathway-session-store';
 
@@ -87,6 +90,7 @@ import {
   multiPathwayResolutionMutations,
   applyResolution,
   formatMergedForGraphQL,
+  replayConflictResolutions,
 } from '../resolvers/mutations/multi-pathway-resolution';
 import {
   getMatchedPathways,
@@ -893,5 +897,249 @@ describe('startMultiPathwayResolution — a pathway that cannot be anchored is d
     )).rejects.toThrow('bad horizon');
     expect(createSession).not.toHaveBeenCalled();
     expect(createMultiPathwaySession).not.toHaveBeenCalled();
+  });
+});
+
+// ── Same drug, different regimens — resolution end to end ──────────
+
+describe('medication regimen conflicts — resolve, re-merge, materialise', () => {
+  const meta = { resolvedBy: 'u', resolvedAt: 't' };
+
+  function plan(pathwayId: string, title: string, meds: Array<Partial<ResolvedMedication>>): ResolvedCarePlan {
+    return {
+      pathwayId,
+      pathwayLogicalId: `lp-${pathwayId}`,
+      pathwayTitle: title,
+      medications: meds.map((m) => ({
+        name: 'Metformin',
+        role: 'first_line',
+        frequency: 'BID',
+        route: 'PO',
+        evidenceGateIds: [],
+        sourcePathwayId: pathwayId,
+        ...m,
+      })) as ResolvedMedication[],
+      labs: [],
+      imaging: [],
+      procedures: [],
+      guidance: [],
+      schedules: [],
+      qualityMetrics: [],
+      catchUpItems: [],
+      evidenceTrail: [],
+      dataGapHints: [],
+    };
+  }
+
+  /** T2DM and PCOS agree on 500 mg; Obesity asks for 1000 mg. */
+  function threeWayMerge(obesityDose = '1000 mg'): MergedCarePlan {
+    return mergeResolvedCarePlans([
+      plan('t2dm', 'T2DM', [{ dose: '500 mg' }]),
+      plan('pcos', 'PCOS', [{ dose: '500 mg' }]),
+      plan('obesity', 'Obesity', [{ dose: obesityDose }]),
+    ]);
+  }
+
+  it('CONFIRM_PATHWAY materialises the chosen pathway\'s regimen, not the first one seen', () => {
+    const merged = threeWayMerge();
+    const conflict = merged.conflicts[0];
+    const updated = applyResolution(merged, conflict, {
+      kind: 'CONFIRM_PATHWAY', chosenPathwayId: 'obesity', ...meta,
+    });
+
+    expect(updated.medications).toHaveLength(1);
+    expect(updated.medications[0].recommendation.dose).toBe('1000 mg');
+    expect(updated.medications[0].state).toBe('provider-confirmed');
+    expect(updated.conflicts[0].resolution?.kind).toBe('CONFIRM_PATHWAY');
+  });
+
+  it('CONFIRM_PATHWAY accepts ANY pathway that asked for a candidate, and keeps all their provenance', async () => {
+    const merged = threeWayMerge();
+    const session = fakeStoredSession({ mergedPlan: merged });
+    (getMultiPathwaySession as jest.Mock)
+      .mockResolvedValueOnce(session)
+      .mockResolvedValueOnce(session);
+
+    // PCOS is the SECOND pathway behind the 500 mg candidate. It used to be
+    // refused because only the first contributor's id was on the candidate.
+    await multiPathwayResolutionMutations.resolveConflict(
+      {},
+      {
+        sessionId: session.id,
+        conflictId: 'regimen:metformin',
+        choice: { kind: 'CONFIRM_PATHWAY', chosenPathwayId: 'pcos' },
+      },
+      fakeContext(),
+    );
+
+    const [, , updatedPlan, resolutions] = (updateMergedPlanAndResolutions as jest.Mock).mock.calls[0];
+    expect(updatedPlan.medications).toHaveLength(1);
+    expect(updatedPlan.medications[0].recommendation.dose).toBe('500 mg');
+    expect(updatedPlan.medications[0].sourcePathwayIds).toEqual(['t2dm', 'pcos']);
+    expect(resolutions['regimen:metformin'].chosenPathwayId).toBe('pcos');
+  });
+
+  it('CONFIRM_PATHWAY takes every regimen the chosen pathway asked for', () => {
+    const merged = mergeResolvedCarePlans([
+      plan('t2dm', 'T2DM', [{ dose: '500 mg' }, { dose: '1000 mg', route: 'PO ER' }]),
+      plan('pcos', 'PCOS', [{ dose: '750 mg' }]),
+    ]);
+    expect(merged.conflicts).toHaveLength(1);
+    expect(merged.conflicts[0].candidates).toHaveLength(3);
+
+    const updated = applyResolution(merged, merged.conflicts[0], {
+      kind: 'CONFIRM_PATHWAY', chosenPathwayId: 't2dm', ...meta,
+    });
+    expect(updated.medications.map((m) => m.recommendation.dose)).toEqual(['500 mg', '1000 mg']);
+  });
+
+  it('ACCEPT_BOTH keeps each regimen once with all of its pathways', () => {
+    const merged = threeWayMerge();
+    const updated = applyResolution(merged, merged.conflicts[0], { kind: 'ACCEPT_BOTH', ...meta });
+    expect(updated.medications.map((m) => [m.recommendation.dose, m.sourcePathwayIds])).toEqual([
+      ['500 mg', ['t2dm', 'pcos']],
+      ['1000 mg', ['obesity']],
+    ]);
+  });
+
+  it('REJECT_BOTH and CUSTOM_OVERRIDE work on a regimen conflict', () => {
+    const merged = threeWayMerge();
+    const rejected = applyResolution(merged, merged.conflicts[0], { kind: 'REJECT_BOTH', ...meta });
+    expect(rejected.medications).toEqual([]);
+    expect(rejected.conflicts[0].resolution?.kind).toBe('REJECT_BOTH');
+
+    const custom = applyResolution(merged, merged.conflicts[0], {
+      kind: 'CUSTOM_OVERRIDE',
+      customMedication: { name: 'Metformin', dose: '850 mg', frequency: 'BID', route: 'PO' },
+      ...meta,
+    });
+    expect(custom.medications.map((m) => [m.recommendation.dose, m.state])).toEqual([
+      ['850 mg', 'provider-override'],
+    ]);
+  });
+
+  it('formats a regimen conflict as MEDICATION_REGIMEN with every contributing pathway id', () => {
+    const out = formatMergedForGraphQL(threeWayMerge());
+    const c = out.conflicts[0];
+    expect(c.type).toBe('MEDICATION_REGIMEN');
+    expect(c.conflictId).toBe('regimen:metformin');
+    expect(c.clinicalRole).toBe('Metformin');
+    expect(c.candidates.map((x) => x.sourcePathwayIds)).toEqual([['t2dm', 'pcos'], ['obesity']]);
+  });
+
+  it('formats rows stored before regimen conflicts existed: type MEDICATION, ids from sourcePathwayId', () => {
+    const legacy = {
+      ...emptyMergedPlan(),
+      conflicts: [{
+        conflictId: 'bb',
+        clinicalRole: 'bb',
+        candidates: [{
+          recommendation: { name: 'Metoprolol', role: 'first_line', sourcePathwayId: 'a' },
+          sourcePathwayId: 'a',
+          sourcePathwayTitle: 'AF',
+        }],
+        resolution: null,
+      }],
+    } as unknown as MergedCarePlan;
+    const c = formatMergedForGraphQL(legacy).conflicts[0];
+    expect(c.type).toBe('MEDICATION');
+    expect(c.candidates[0].sourcePathwayIds).toEqual(['a']);
+  });
+
+  describe('re-merge replays prior choices only while they still mean the same thing', () => {
+    it('replays a choice onto an unchanged conflict', () => {
+      const before = threeWayMerge();
+      const choice: ConflictResolution = { kind: 'CONFIRM_PATHWAY', chosenPathwayId: 'obesity', ...meta };
+      const stored = applyResolution(before, before.conflicts[0], choice);
+
+      const { plan: replayed, resolutions } = replayConflictResolutions(
+        stored, threeWayMerge(), { 'regimen:metformin': choice },
+      );
+      expect(replayed.conflicts[0].resolution).toEqual(choice);
+      expect(replayed.medications.map((m) => m.recommendation.dose)).toEqual(['1000 mg']);
+      expect(resolutions).toEqual({ 'regimen:metformin': choice });
+    });
+
+    it('drops a choice whose candidate regimens changed — the provider picked a dose that is gone', () => {
+      const before = threeWayMerge('1000 mg');
+      const choice: ConflictResolution = { kind: 'CONFIRM_PATHWAY', chosenPathwayId: 'obesity', ...meta };
+      const stored = applyResolution(before, before.conflicts[0], choice);
+
+      // A gate answer moved Obesity's ask from 1000 mg to 2000 mg.
+      const { plan: replayed, resolutions } = replayConflictResolutions(
+        stored, threeWayMerge('2000 mg'), { 'regimen:metformin': choice },
+      );
+      expect(replayed.conflicts[0].resolution).toBeNull();
+      expect(replayed.medications).toEqual([]);
+      expect(resolutions).toEqual({});
+    });
+
+    it('drops, rather than throws on, a choice for a pathway no longer among the candidates', () => {
+      const before = threeWayMerge();
+      const choice: ConflictResolution = { kind: 'CONFIRM_PATHWAY', chosenPathwayId: 'obesity', ...meta };
+      const stored = applyResolution(before, before.conflicts[0], choice);
+
+      // Obesity now agrees with 500 mg, but PCOS moved to 850 mg: same drug,
+      // still a conflict — but not one Obesity has a distinct ask in.
+      const after = mergeResolvedCarePlans([
+        plan('t2dm', 'T2DM', [{ dose: '500 mg' }]),
+        plan('pcos', 'PCOS', [{ dose: '850 mg' }]),
+      ]);
+      const { plan: replayed, resolutions } = replayConflictResolutions(
+        stored, after, { 'regimen:metformin': choice },
+      );
+      expect(replayed.conflicts[0].resolution).toBeNull();
+      expect(resolutions).toEqual({});
+    });
+
+    it('forgets a choice for a conflict that is gone, so it cannot resurrect on a later re-merge', () => {
+      const before = threeWayMerge();
+      const choice: ConflictResolution = { kind: 'ACCEPT_BOTH', ...meta };
+      const stored = applyResolution(before, before.conflicts[0], choice);
+
+      const agreed = mergeResolvedCarePlans([
+        plan('t2dm', 'T2DM', [{ dose: '500 mg' }]),
+        plan('obesity', 'Obesity', [{ dose: '500 mg' }]),
+      ]);
+      const { plan: replayed, resolutions } = replayConflictResolutions(
+        stored, agreed, { 'regimen:metformin': choice },
+      );
+      expect(replayed.conflicts).toEqual([]);
+      expect(replayed.medications).toHaveLength(1);
+      expect(resolutions).toEqual({});
+    });
+  });
+
+  it('materialises route and duration, not just dose and frequency', async () => {
+    const queries: Array<{ sql: string; params: unknown[] }> = [];
+    const client = {
+      query: jest.fn(async (sql: string, params: unknown[] = []) => {
+        queries.push({ sql, params });
+        return { rows: [{ id: 'cp-1' }] };
+      }),
+      release: jest.fn(),
+    };
+    const merged = threeWayMerge();
+    const chosen = applyResolution(merged, merged.conflicts[0], {
+      kind: 'CONFIRM_PATHWAY', chosenPathwayId: 'obesity', ...meta,
+    });
+    chosen.medications[0].recommendation.route = 'PO ER';
+    chosen.medications[0].recommendation.duration = '90 days';
+    (getMultiPathwaySession as jest.Mock).mockResolvedValueOnce(
+      fakeStoredSession({ mergedPlan: chosen }),
+    );
+
+    const result = await multiPathwayResolutionMutations.generateMergedCarePlan(
+      {},
+      { sessionId: 'sess-1' },
+      { ...(fakeContext() as object), pool: { connect: jest.fn(async () => client) } } as never,
+    );
+
+    expect(result.success).toBe(true);
+    const medInsert = queries.find((q) => q.sql.includes("'MEDICATION'"));
+    expect(medInsert).toBeDefined();
+    const params = medInsert!.params.map(String);
+    expect(params).toEqual(expect.arrayContaining(['Metformin', '1000 mg', 'BID']));
+    expect(params.some((p) => p.includes('PO ER') && p.includes('90 days'))).toBe(true);
   });
 });
