@@ -284,6 +284,8 @@ const empiricLabs = (hgb: Lab[]): Lab[] => [['787-2', 72], ...hgb];
 const confirmedLabs = (hgb: Lab[]): Lab[] => [['787-2', 72], ['2276-4', 12], ...hgb];
 /** The confirmed arm: workup at DP-1, then the oral-iron trial at DP-3. */
 const CONFIRMED_ORAL: Array<[string, GateAnswer]> = [['dp-1', pick('step-1-2')], ['dp-3', pick('stage-2-oral')]];
+/** v8: the empiric arm reaches DP-3 too — empiric at DP-1, then the oral trial at DP-3. */
+const EMPIRIC_ORAL: Array<[string, GateAnswer]> = [['dp-1', pick(EMPIRIC)], ['dp-3', pick('stage-2-oral')]];
 const RESPONSE_GATES = ['gate-hgb-response', 'gate-hgb-nonresponse'];
 /** The start-date question's datum key: answered by date, stored under this key. */
 const ORAL_IRON_ANCHOR = 'anchor:medication_start:oral-iron-repletion';
@@ -407,7 +409,7 @@ const SCENARIOS: Scenario[] = [
     name: 'anemia: empiric chosen, start visit — response check not yet due, nothing asked',
     file: ANEMIA, patient: patientOf({ codes: ['O99.012'], labs: empiricLabs(START_HGB), attrs: { gestational_age_weeks: 20 } }),
     visit: { asOf: DAY0 },
-    answers: [['dp-1', pick(EMPIRIC)]], mustAnswer: ['dp-1'],
+    answers: EMPIRIC_ORAL, mustAnswer: ['dp-1', 'dp-3'],
     outcome: startVisit,
   },
   {
@@ -421,8 +423,8 @@ const SCENARIOS: Scenario[] = [
     name: 'anemia: empiric chosen, day-21 recheck 9.5 → 10.7 — responder',
     file: ANEMIA, patient: patientOf({ codes: ['O99.012'], labs: empiricLabs(RECHECK(10.7)), attrs: { gestational_age_weeks: 20 } }),
     visit: RECHECK_VISIT,
-    answers: [['dp-1', pick(EMPIRIC)], ['gate-hgbpathy-needed', NO], ['gate-transfusion-refusal', NO]],
-    mustAnswer: ['dp-1', 'gate-hgbpathy-needed', 'gate-transfusion-refusal'],
+    answers: [...EMPIRIC_ORAL, ['gate-hgbpathy-needed', NO], ['gate-transfusion-refusal', NO]],
+    mustAnswer: ['dp-1', 'dp-3', 'gate-hgbpathy-needed', 'gate-transfusion-refusal'],
     outcome: (r, pending) => [
       ...dueRecheck(r, pending),
       ...expectStatus(r, {
@@ -454,7 +456,7 @@ const SCENARIOS: Scenario[] = [
     name: 'anemia: empiric chosen, day-21 recheck 9.5 → 9.9, GA 12 — nonresponder, IV iron gated out',
     file: ANEMIA, patient: patientOf({ codes: ['O99.012'], labs: empiricLabs(RECHECK(9.9)), attrs: { gestational_age_weeks: 12 } }),
     visit: RECHECK_VISIT,
-    answers: [['dp-1', pick(EMPIRIC)]], mustAnswer: ['dp-1'],
+    answers: EMPIRIC_ORAL, mustAnswer: ['dp-1', 'dp-3'],
     outcome: (r, pending) => [
       ...dueRecheck(r, pending),
       ...expectStatus(r, {
@@ -472,8 +474,8 @@ const SCENARIOS: Scenario[] = [
     name: 'anemia: empiric chosen, day-21 recheck, no stored start — date asked, 9.5 → 9.9, GA 12 — nonresponder',
     file: ANEMIA, patient: patientOf({ codes: ['O99.012'], labs: empiricLabs(RECHECK(9.9)), attrs: { gestational_age_weeks: 12 } }),
     visit: { asOf: RECHECK_VISIT.asOf },
-    answers: [['dp-1', pick(EMPIRIC)], [ORAL_IRON_ANCHOR, { dateValue: '2026-06-01' } as GateAnswer]],
-    mustAnswer: ['dp-1', ORAL_IRON_ANCHOR],
+    answers: [...EMPIRIC_ORAL, [ORAL_IRON_ANCHOR, { dateValue: '2026-06-01' } as GateAnswer]],
+    mustAnswer: ['dp-1', 'dp-3', ORAL_IRON_ANCHOR],
     outcome: (r, pending) => [
       ...RESPONSE_GATES.filter((g) => r.resolutionState.get(g)?.notYetDue === true).map((g) => `${g} is not yet due`),
       ...anchoredOn(r, 'CLINICIAN'),
@@ -495,8 +497,8 @@ const SCENARIOS: Scenario[] = [
     name: 'anemia: empiric chosen, start visit with an older routine Hgb, trimester unknown — date asked once, today closes it',
     file: ANEMIA, patient: patientOf({ codes: ['O99.012'], labs: empiricLabs([['718-7', 12.4, '2026-02-10'], ...START_HGB]) }),
     visit: { asOf: DAY0 },
-    answers: [['dp-1', pick(EMPIRIC)], [ORAL_IRON_ANCHOR, { dateValue: '2026-06-01' } as GateAnswer]],
-    mustAnswer: ['dp-1', ORAL_IRON_ANCHOR],
+    answers: [...EMPIRIC_ORAL, [ORAL_IRON_ANCHOR, { dateValue: '2026-06-01' } as GateAnswer]],
+    mustAnswer: ['dp-1', 'dp-3', ORAL_IRON_ANCHOR],
     outcome: (r, pending) => [
       ...RESPONSE_GATES.filter((g) => r.resolutionState.get(g)?.notYetDue !== true).map((g) => `${g} is not NOT_YET_DUE`),
       ...expectStatus(r, { 'gate-hgb-response': 'GATED_OUT', 'gate-hgb-nonresponse': 'GATED_OUT' }),
@@ -516,10 +518,49 @@ const SCENARIOS: Scenario[] = [
     outcome: (r, pending) => [
       ...expectStatus(r, {
         'step-2-9': 'INCLUDED', 'gate-iv-iron-ga-direct': 'INCLUDED', 'step-2-10': 'INCLUDED',
-        'stage-2-oral': 'EXCLUDED', 'gate-hgb-response': 'EXCLUDED', 'gate-hgb-nonresponse': 'EXCLUDED',
+        'stage-2-oral': 'EXCLUDED', 'gate-oral-bridge-ga': 'GATED_OUT', 'stage-2-oral-bridge': 'GATED_OUT',
+        'gate-hgb-response': 'GATED_OUT', 'gate-hgb-nonresponse': 'GATED_OUT',
       }),
       ...responseQuestions(pending),
     ],
+  },
+  {
+    name: 'anemia v8: empiric, IV iron first at DP-3, GA 12 — oral trial until 14 weeks (Stage 2.6)',
+    file: ANEMIA, patient: patientOf({ codes: ['O99.012'], labs: empiricLabs(START_HGB), attrs: { gestational_age_weeks: 12 } }),
+    visit: { asOf: DAY0 },
+    answers: [['dp-1', pick(EMPIRIC)], ['dp-3', pick('step-2-9')]], mustAnswer: ['dp-1', 'dp-3'],
+    outcome: (r, pending) => [
+      ...expectStatus(r, {
+        'step-2-9': 'INCLUDED', 'gate-iv-iron-ga-direct': 'GATED_OUT', 'step-2-10': 'GATED_OUT',
+        'gate-oral-bridge-ga': 'INCLUDED', 'stage-2-oral-bridge': 'INCLUDED', 'step-2-1': 'INCLUDED', 'step-2-3': 'INCLUDED',
+        'stage-2-oral': 'EXCLUDED',
+      }),
+      ...RESPONSE_GATES.filter((g) => r.resolutionState.get(g)?.notYetDue !== true).map((g) => `${g} is not NOT_YET_DUE`),
+      ...responseQuestions(pending),
+    ],
+  },
+  {
+    name: 'anemia v8: D57.1 sickle-cell disease, ferritin 12, workup, oral trial — the normal iron path',
+    file: ANEMIA, patient: patientOf({ codes: ['O99.012', 'D57.1'], labs: confirmedLabs(START_HGB), attrs: { gestational_age_weeks: 20 } }),
+    visit: { asOf: DAY0 },
+    answers: CONFIRMED_ORAL, mustAnswer: ['dp-1', 'dp-3'],
+    outcome: (r, pending) => [
+      ...startVisit(r, pending),
+      ...expectStatus(r, {
+        'stage-2': 'INCLUDED', 'step-2-8': 'INCLUDED', 'stage-2-oral': 'INCLUDED', 'med-1': 'INCLUDED',
+        'stage-2-empiric': 'EXCLUDED', 'gate-empiric-no-hgbpathy': 'EXCLUDED', 'step-1-8': 'EXCLUDED',
+      }),
+    ],
+  },
+  {
+    name: 'anemia v8: D57.1 sickle-cell disease, empiric chosen — no empiric iron, iron studies (Step 1.8)',
+    file: ANEMIA, patient: patientOf({ codes: ['O99.012', 'D57.1'], labs: empiricLabs(START_HGB), attrs: { gestational_age_weeks: 20 } }),
+    visit: { asOf: DAY0 },
+    answers: [['dp-1', pick(EMPIRIC)]], mustAnswer: ['dp-1'],
+    outcome: (r) => expectStatus(r, {
+      'gate-empiric-no-hgbpathy': 'GATED_OUT', 'step-2-8': 'GATED_OUT', 'dp-3': 'GATED_OUT', 'med-1': 'GATED_OUT',
+      'gate-hgbpathy-microcytic': 'INCLUDED', 'step-1-8': 'INCLUDED', 'lab-15': 'INCLUDED', 'stage-2': 'EXCLUDED',
+    }),
   },
 ];
 
