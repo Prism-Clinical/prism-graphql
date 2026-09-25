@@ -1,6 +1,6 @@
 # Pathway Research Brief — Gestational Hypertension & Preeclampsia
 
-JSON: pathways/json/gestational-hypertension-preeclampsia.json @ version 3
+JSON: pathways/json/gestational-hypertension-preeclampsia.json @ version 4
 
 **Status: DRAFT v1 for physician review — not yet approved for JSON build.**
 
@@ -46,7 +46,10 @@ claims confirmed. Flags: `[GAP]` unsourceable · `[FALLBACK SOURCE]` non-US basi
 
 - **Logical ID**: `gestational-hypertension-preeclampsia`
 - **Title**: Gestational Hypertension and Preeclampsia — Outpatient Screening, Diagnosis and Surveillance
-- **Version**: 3 (JSON `"3"`; was `"2"`). `[DECISION — Josh 2026-09-24]` Guid-1 (urgent
+- **Version**: 4 (JSON `"4"`; was `"3"`). `[DECISION — Josh 2026-09-24]` A separate
+  GHTN-only Guidance node, Guid-5 "Seizure: call 911" (PB 222), on Step 4.4 next to Guid-1
+  (§9). Closes the v3 seizure gap (§18). Imports as **NEW_VERSION**; no gate change.
+  v3 history: `[DECISION — Josh 2026-09-24]` Guid-1 (urgent
   maternal warning signs) now references the CDC Hear Her / AIM list instead of paraphrasing it
   (§9). Imports as **NEW_VERSION** (same logical_id, bumped version).
   v2 history: bumped with the shared-lab build fix (§6
@@ -176,7 +179,8 @@ gate-control check now fails duplicate stage numbers.
   one to two times per week. [1]
 - **Step 4.4 — Patient safety-netting and warning signs** *(gated by
   `gate-no-severe-features`)*: deliver the urgent maternal warning signs and confirm the
-  patient knows how and when to report them. [1][10][11]
+  patient knows how and when to report them; tell her that a seizure means 911 (Guid-5,
+  v4). [1][10][11]
 - **Step 5.1 — Escalate to inpatient evaluation** *(gated by `gate-escalation-required`)*:
   any severe feature, any condition precluding expectant management, or severe-range BP not
   responding to therapy. [1]
@@ -579,15 +583,36 @@ so the proof pre-loads its gate answers (see the comment in `gate-proof.ts`).
     because the rule is no list items whatever their source. Right-upper-quadrant or epigastric
     pain is still asked of the clinician in `gate-severe-feature-symptoms` (→ Step 5.1). A
     seizure has no gate: eclampsia appears in this pathway's scope only as an escalation trigger,
-    so after v3 **no node tells the patient that a seizure means 911**. `[GAP]` open for Josh —
-    whether to restore that one line as a separate PB 222-sourced instruction outside the
-    warning-signs reference.
+    so after v3 no node told the patient that a seizure means 911. ~~`[GAP]` open for Josh~~ —
+    **resolved in v4** `[DECISION — Josh 2026-09-24]`: restored as Guid-5, a separate PB
+    222-sourced node outside the warning-signs reference (below).
   - **Co-match.** The text is byte-identical to routine-prenatal-care's Guid-1 (same topic), so
     a patient matched to both pathways sees one block (Guidance dedupes on topic +
-    instructions).
+    instructions). v4 keeps it that way: the seizure line is Guid-5, not an edit to Guid-1.
   - v2 `[DECISION — LICENSING]` history: the official ACOG/AIM card is licensed for
     distribution only in its entirety and without modification, so the v2 paraphrase was
     clinician-facing scaffolding only. v3 supersedes it. [1][10][11]
+- **Guid-5 — topic "Seizure: call 911"** (on Step 4.4; v4): category safety-netting.
+  Instructions (exact JSON text): "Tell the patient and her family that a seizure is an
+  emergency: call 911 right away. Source: ACOG Practice Bulletin No. 222." [1]
+  `[DECISION — Josh 2026-09-24]` **Restore the seizure instruction as its own GHTN-only node,
+  outside the shared warning-signs block.** It is sourced to PB 222 [1] (eclampsia), not to the
+  AIM card, so the no-list-items rule for Guid-1 does not reach it; it carries one instruction,
+  not a list. A separate node (own topic) leaves Guid-1 byte-identical to routine-prenatal-care's
+  Guid-1, so a co-matched patient still sees one warning-signs block, plus this line.
+  - `[BUILD NOTE]` **Host: Step 4.4** (the builder's choice, for review), where the v2
+    seizure line lived (inside Guid-1). It restores exactly the
+    v2 audience: patients with a hypertensive disorder managed as **outpatients** — the ones
+    sent home, for whom "who do I call" is the question. Step 4.4 is gated by
+    `gate-no-severe-features`, not always open. The always-open steps (1.1 risk screening, 2.1
+    BP at every visit) reach every pregnant patient matched to this pathway, most of whom have
+    no hypertensive disorder; the instruction is framed for the patient being managed for one.
+    Proved with `gate-proof.ts ghtn-seizure`: Guid-5 follows Step 4.4 in both edge orders.
+  - `[CLINICAL AMBIGUITY — for Josh]` Not reached: (a) patients with **severe features** —
+    `gate-no-severe-features` closes Stage 4, so Step 4.4 and Guid-5 are GATED_OUT (they are
+    escalated to inpatient evaluation, Step 5.1); (b) **postpartum** — eclampsia can occur after
+    birth, and Step 5.2 (postpartum BP follow-up, open for every diagnosed patient) carries no
+    seizure line. Adding one there would be a second node (one node per host step).
 - **Guid-2 — topic "Measuring your blood pressure at home"** (on Step 4.1): category education.
   Instructions: use an upper-arm cuff, correctly sized — the cuff length should be about one
   and a half times around your upper arm. Sit upright and rest for at least ten minutes first.
@@ -739,7 +764,7 @@ directly. No `lab.*`, `allergy.*` or `patient.*` attribute is referenced anywher
 - Med-1: [1][2][3] · Med-2: [1][5][6] · Med-3: [5][6] · Med-4: [1] · Med-5: [5][6] · Med-6: [5][6]
 - Lab-1 to Lab-6: [1] · Lab-7 to Lab-11: [1] · Lab-12 to Lab-27 (per-host copies, §6): [1]
 - Img-1, Img-2, Img-3: [1] · Proc-1, Proc-2: [1]
-- Guid-1: [1][10][11] · Guid-2: [1][13] · Guid-3: [1] · Guid-4: [1]
+- Guid-1: [1][10][11] · Guid-2: [1][13] · Guid-3: [1] · Guid-4: [1] · Guid-5 (v4): [1]
 
 **Cannot cite — evidence attaches to the host Step:** all Gates → their attached Step per the
 §4b rationale references; QM-1 → Step 5.2 [8]; QM-2 → Step 1.3 [1][2]; Sched-1 → Step 1.3 [1];
@@ -795,9 +820,14 @@ pregnancy. Please ratify, and see §18 G9.
 | **C7** | Aspirin moderate tier: "2 or more" vs "more than one" across four documents | Same number. Encode as **≥2**, never as a `>1` on something a reader might mistake for a boolean |
 | **C8** | Treatment threshold: 140/90 (post-CHAP) vs 160/110 (PB 222) | **160/110.** CHAP enrolled before 23 weeks and required hypertension documented before 20 weeks, so its population is chronic hypertension by construction. Applying 140/90 here would be a clinical error. Whether mild-range disease should be treated is genuinely unresolved — a trial is recruiting to answer it |
 
-### Open after v3 — the seizure instruction
+### ~~Open after v3 — the seizure instruction~~ — RESOLVED (v4)
 
-- `[GAP]` **No node tells the patient that a seizure means 911.** v2's Guid-1 carried a
+`[DECISION — Josh 2026-09-24]` Restored as **Guid-5, "Seizure: call 911"**, a separate
+GHTN-only Guidance node sourced to PB 222 [1]. `[BUILD NOTE]` Hosted on Step 4.4 (§9 — why,
+and the two patient groups it does not reach). Guid-1 is unchanged and stays byte-identical to
+routine-prenatal-care's. The original note follows.
+
+- ~~`[GAP]`~~ **No node tells the patient that a seizure means 911.** v2's Guid-1 carried a
   PB 222-sourced line, "a seizure is an emergency — call 911". It was removed in v3 with the
   warning-signs list under `[DECISION — Josh 2026-09-24]` (no list items, whatever their
   source; §9 Guid-1). Eclampsia appears in this pathway only as an escalation trigger, and no

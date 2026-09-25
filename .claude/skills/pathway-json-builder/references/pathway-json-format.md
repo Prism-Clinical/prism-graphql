@@ -629,9 +629,8 @@ horizon, but they have no start, so:
 | any aggregate with `window_from` | The anchor itself needs a date: no care plan and undated orders → the gate **asks** "When did … start?" (DATE) — unless this session recommends the class, which closes it NOT_YET_DUE. The series still needs dated lab values. |
 
 Gates built on the last two rows are **untestable in the simulator** — say so in the brief
-(§18) and the delivery message. In the current pathways: UTI `gate-recurrent-uti`. (Anemia
-`gate-hgb-response` had three trend arms through v4; since v5 it is a question router —
-"rose by **less than** 1 g/dL" has no delta encoding, see the anemia brief §4b.)
+(§18) and the delivery message. In the current pathways: UTI `gate-recurrent-uti`, and anemia v7's `gate-hgb-response` / `gate-hgb-nonresponse` rise
+arm (the simulator anchors oral iron on the session, so both close NOT YET DUE there).
 
 ### Temporal horizon & status (per-condition, NODE tier — merged, emit freely)
 
@@ -834,10 +833,12 @@ Authoring rules this example carries:
   At a due recheck, an unknown trimester is asked for (one question) whenever the rise is
   < 1 and Hgb ≥ 10.5 — **including Hgb ≥ 11, which is at target in every trimester**, and
   at the start visit an unknown trimester keeps an Hgb ≥ 11 from opening *responding*.
-- **Open choice (Josh):** the reordered at-target arm `OR(Hgb ≥ 11, AND(trimester 2,
-  Hgb ≥ 10.5))`, complement `AND(Hgb < 11, OR(trimester 1/3, Hgb < 10.5))`, is the same
-  rule whenever the trimester is known, and with it unknown asks for it only for Hgb in
-  [10.5, 11). Until chosen, the shape above is the reference.
+- **Chosen (Josh, 2026-09-24; anemia v7):** the reordered at-target arm `OR(Hgb ≥ 11,
+  AND(trimester 2, Hgb ≥ 10.5))`, complement `AND(Hgb < 11, OR(trimester ≠ 2, Hgb <
+  10.5))`, is the same rule whenever the trimester is known, and with it unknown asks for
+  it only for Hgb in [10.5, 11). Shipped with `not_equals 2` in place of `in [1, 3]`, so the
+  trimester leaves are complements for every value. The shape above stays the fixture's
+  reference form.
 
 ### llm_text_analysis — narrative-driven branching
 

@@ -3,7 +3,7 @@
   "pathway": {
     "logical_id": "gestational-hypertension-preeclampsia",
     "title": "Gestational Hypertension and Preeclampsia \u2014 Outpatient Screening, Diagnosis and Surveillance",
-    "version": "3",
+    "version": "4",
     "category": "OBSTETRIC",
     "scope": "Outpatient prenatal care. Risk assessment and aspirin prophylaxis from the first prenatal visit; blood pressure surveillance; diagnosis and severity classification after 20 weeks; outpatient expectant management. Ends at the trigger for admission or delivery.",
     "target_population": "Pregnant patients receiving prenatal care. The prophylaxis arm applies to all; diagnostic and surveillance arms apply after 20 0/7 weeks.",
@@ -1189,6 +1189,15 @@
       }
     },
     {
+      "id": "guid-5",
+      "type": "Guidance",
+      "properties": {
+        "topic": "Seizure: call 911",
+        "category": "safety-netting",
+        "instructions": "Tell the patient and her family that a seizure is an emergency: call 911 right away. Source: ACOG Practice Bulletin No. 222."
+      }
+    },
+    {
       "id": "qm-1",
       "type": "QualityMetric",
       "properties": {
@@ -2037,6 +2046,11 @@
       "type": "HAS_GUIDANCE"
     },
     {
+      "from": "step-4-4",
+      "to": "guid-5",
+      "type": "HAS_GUIDANCE"
+    },
+    {
       "from": "step-4-1",
       "to": "guid-2",
       "type": "HAS_GUIDANCE"
@@ -2813,6 +2827,11 @@
     },
     {
       "from": "guid-4",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "guid-5",
       "to": "ev-1",
       "type": "CITES_EVIDENCE"
     }

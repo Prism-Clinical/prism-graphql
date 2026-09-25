@@ -30,7 +30,9 @@ import { TraversalEngine } from '../services/resolution/traversal-engine';
 import { containmentClosure } from '../services/resolution/graph-containment';
 import { makeEvaluationTemporalContext } from '../services/resolution/temporal/evaluation-context';
 import { assembleContext } from '../services/resolution/temporal/context-assembler';
-import { GateAnswer, PendingQuestion } from '../services/resolution/types';
+import { withTherapyStarts } from '../services/resolution/temporal/anchored-window';
+import { normalizePatientAttributes } from '../services/resolution/patient-attributes';
+import { GateAnswer, PendingQuestion, TraversalResult } from '../services/resolution/types';
 import { GraphContext, GraphEdge, GraphNode, PatientContext } from '../services/confidence/types';
 
 const AS_OF = '2026-09-24T12:00:00.000Z';
@@ -68,22 +70,43 @@ function graphFrom(file: string, reverse: boolean): GraphContext {
   };
 }
 
+/** A LOINC result: `[code, value]` (undated, as the simulator sends it) or `[code, value, 'YYYY-MM-DD']`. */
+type Lab = [string, number] | [string, number, string];
+
 function patientOf(opts: {
   codes?: Array<string | { code: string; date: string }>;
-  labs?: Array<[string, number]>;
+  labs?: Lab[];
   vitals?: Record<string, number>;
   attrs?: Record<string, number>;
 }): PatientContext {
   return {
     patientId: 'agreement',
     conditionCodes: (opts.codes ?? []).map((c) => ({ ...(typeof c === 'string' ? { code: c } : c), system: 'ICD-10' })),
-    medications: [], allergies: [], vitalSigns: opts.vitals ?? {}, patientAttributes: opts.attrs ?? {},
-    labResults: (opts.labs ?? []).map(([code, value]) => ({ code, system: 'LOINC', value })),
+    medications: [], allergies: [], vitalSigns: opts.vitals ?? {},
+    // As the resolvers do: trimester is derived from gestational age when only GA is given.
+    patientAttributes: normalizePatientAttributes(opts.attrs ?? {}) ?? {},
+    labResults: (opts.labs ?? []).map(([code, value, date]) => ({ code, system: 'LOINC', value, ...(date ? { date } : {}) })),
   } as unknown as PatientContext;
 }
 
-function engineFor(patient: PatientContext): TraversalEngine {
-  const tc = makeEvaluationTemporalContext({ evaluationAsOf: AS_OF, temporalPolicyVersion: 'v1' });
+/**
+ * The session's clock and what it read at session start. `asOf` pins the
+ * clock (default AS_OF). `oralIronStart` (YYYY-MM-DD) is a stored care plan of
+ * the anemia pathway that recommended oral iron that day — what a start
+ * visit's committed plan gives every later visit, and what anchors the
+ * `window_from` response gates at a recheck. The resolver reads those rows at
+ * session start and pins them with withTherapyStarts; so does this.
+ */
+interface Visit { asOf?: string; oralIronStart?: string }
+
+function engineFor(patient: PatientContext, visit: Visit = {}): TraversalEngine {
+  let tc = makeEvaluationTemporalContext({ evaluationAsOf: visit.asOf ?? AS_OF, temporalPolicyVersion: 'v1' });
+  if (visit.oralIronStart) {
+    tc = withTherapyStarts(tc, [{
+      clinicalRole: 'oral-iron-repletion', date: visit.oralIronStart,
+      source: { carePlanId: 'cp-agreement', interventionId: 'i-agreement', pathwayId: 'anemia-in-pregnancy', nodeId: 'med-1' },
+    }]);
+  }
   const facts = assembleContext({ mode: 'SYNTHETIC', patientContext: patient } as never, tc);
   return new TraversalEngine(
     {
@@ -137,6 +160,14 @@ interface Scenario {
   answers: Array<[string, GateAnswer]>;
   /** Ids that MUST have been asked and answered, so a scenario cannot pass by doing nothing. */
   mustAnswer: string[];
+  /** The visit's clock and stored therapy starts; both walks get the same one. */
+  visit?: Visit;
+  /**
+   * What the final incremental state must show, so agreement cannot hold by
+   * both walks missing the point (an anchor that never landed reads every
+   * visit as a start visit, and the two would still agree).
+   */
+  outcome?: (r: TraversalResult, pending: PendingQuestion[]) => string[];
 }
 
 /**
@@ -146,7 +177,7 @@ interface Scenario {
  */
 async function replayAndCompare(s: Scenario, reverse: boolean, seeding: Seeding): Promise<string[]> {
   const graph = graphFrom(s.file, reverse);
-  const engine = engineFor(s.patient);
+  const engine = engineFor(s.patient, s.visit);
   const given = new Map<string, GateAnswer>();
   const r = await engine.traverse(graph, s.patient, given);
   let pending = r.pendingQuestions;
@@ -168,7 +199,7 @@ async function replayAndCompare(s: Scenario, reverse: boolean, seeding: Seeding)
     pending = rr.pendingQuestions;
     redFlags = rr.redFlags;
 
-    const full = await engineFor(s.patient).traverse(graph, s.patient, new Map(given));
+    const full = await engineFor(s.patient, s.visit).traverse(graph, s.patient, new Map(given));
     const ids = new Set([...r.resolutionState.keys(), ...full.resolutionState.keys()]);
     for (const n of ids) {
       const a = r.resolutionState.get(n)?.status ?? '(absent)';
@@ -193,6 +224,7 @@ async function replayAndCompare(s: Scenario, reverse: boolean, seeding: Seeding)
   }
   const answered = new Set(given.keys());
   for (const id of s.mustAnswer) if (!answered.has(id)) problems.push(`${id} was never asked`);
+  if (s.outcome) problems.push(...s.outcome(r, pending).map((p) => `outcome: ${p}`));
   return problems;
 }
 
@@ -222,8 +254,59 @@ const utiTreated = (a: { symptomatic: boolean; gbs: boolean; completed: boolean 
 ];
 
 const MCV72_FER50: Array<[string, number]> = [['787-2', 72], ['2276-4', 50], ['718-7', 9.5]];
-const MCV72_FER12: Array<[string, number]> = [['787-2', 72], ['2276-4', 12], ['718-7', 9.5]];
-const MCV72_NO_FERRITIN: Array<[string, number]> = [['787-2', 72], ['718-7', 9.5]];
+
+// The anemia response check's clock (as gate-proof's `response` proof): oral
+// iron starts on DAY0 and the check is due 14 days later. Hgb is dated only —
+// an undated value would compete with the dated baseline and recheck.
+const EMPIRIC = 'stage-2-empiric';
+const DAY0 = '2026-06-01T15:00:00.000Z';
+const RECHECK_VISIT: Visit = { asOf: '2026-06-22T15:00:00.000Z', oralIronStart: '2026-06-01' };
+const START_HGB: Lab[] = [['718-7', 9.5, '2026-05-29']];
+const RECHECK = (hgb: number): Lab[] => [...START_HGB, ['718-7', hgb, '2026-06-20']];
+const empiricLabs = (hgb: Lab[]): Lab[] => [['787-2', 72], ...hgb];
+const confirmedLabs = (hgb: Lab[]): Lab[] => [['787-2', 72], ['2276-4', 12], ...hgb];
+/** The confirmed arm: workup at DP-1, then the oral-iron trial at DP-3. */
+const CONFIRMED_ORAL: Array<[string, GateAnswer]> = [['dp-1', pick('step-1-2')], ['dp-3', pick('stage-2-oral')]];
+const RESPONSE_GATES = ['gate-hgb-response', 'gate-hgb-nonresponse'];
+
+function expectStatus(r: TraversalResult, want: Record<string, string>): string[] {
+  return Object.entries(want).flatMap(([id, status]) => {
+    const got = r.resolutionState.get(id)?.status ?? '(absent)';
+    return got === status ? [] : [`${id} is ${got}, expected ${status}`];
+  });
+}
+
+/** Nothing pending is asked by a response gate — no verdict, no datum. */
+function responseQuestions(pending: PendingQuestion[]): string[] {
+  return pending.filter((q) => RESPONSE_GATES.some((g) => asks(q, g)))
+    .map((q) => `response check asks ${q.gateId}${q.datumKey ? ` (${q.datumKey})` : ''}`);
+}
+
+function anchoredOn(r: TraversalResult, source: string): string[] {
+  return RESPONSE_GATES.flatMap((g) => {
+    const got = r.resolutionState.get(g)?.windowAnchors?.[0]?.source ?? '(none)';
+    return got === source ? [] : [`${g} anchored on ${got}, expected ${source}`];
+  });
+}
+
+/** The start visit: both response gates closed NOT YET DUE, nothing asked. */
+function startVisit(r: TraversalResult, pending: PendingQuestion[]): string[] {
+  return [
+    ...expectStatus(r, { 'step-2-3': 'INCLUDED', 'gate-hgb-response': 'GATED_OUT', 'gate-hgb-nonresponse': 'GATED_OUT' }),
+    ...RESPONSE_GATES.filter((g) => r.resolutionState.get(g)?.notYetDue !== true).map((g) => `${g} is not NOT_YET_DUE`),
+    ...anchoredOn(r, 'SESSION_RECOMMENDATION'),
+    ...responseQuestions(pending),
+  ];
+}
+
+/** A due recheck: anchored on the stored care plan, decided from chart data, nothing asked. */
+function dueRecheck(r: TraversalResult, pending: PendingQuestion[]): string[] {
+  return [
+    ...RESPONSE_GATES.filter((g) => r.resolutionState.get(g)?.notYetDue === true).map((g) => `${g} is still not yet due`),
+    ...anchoredOn(r, 'CARE_PLAN'),
+    ...responseQuestions(pending),
+  ];
+}
 
 const SCENARIOS: Scenario[] = [
   // The reported repro: aspirin "yes" with a normal BP re-opened DP-1 (and, in
@@ -296,32 +379,83 @@ const SCENARIOS: Scenario[] = [
     file: ANEMIA, patient: patientOf({ codes: ['O99.012'], labs: MCV72_FER50 }),
     answers: [['dp-1', pick('step-1-2')]], mustAnswer: ['dp-1'],
   },
+  // Anemia v7: the oral-iron response check reads chart data — an anchored
+  // Hgb delta since oral iron started (window_from, baseline 28 d, due 14 d
+  // after the start) or Hgb at target by trimester — and asks nothing. Each
+  // visit is its own session, so the provider re-chooses at DP-1 (and DP-3)
+  // every time; later visits read the start from the stored care plan.
   {
-    name: 'anemia: ferritin 12, workup chosen, then the response question',
-    file: ANEMIA, patient: patientOf({ codes: ['O99.012'], labs: MCV72_FER12, attrs: { gestational_age_weeks: 20 } }),
-    answers: [['dp-1', pick('step-1-2')], ['gate-hgb-response', pick('not responding')]],
-    mustAnswer: ['dp-1', 'gate-hgb-response'],
+    name: 'anemia: empiric chosen, start visit — response check not yet due, nothing asked',
+    file: ANEMIA, patient: patientOf({ codes: ['O99.012'], labs: empiricLabs(START_HGB), attrs: { gestational_age_weeks: 20 } }),
+    visit: { asOf: DAY0 },
+    answers: [['dp-1', pick(EMPIRIC)]], mustAnswer: ['dp-1'],
+    outcome: startVisit,
   },
   {
-    name: 'anemia: empiric chosen, "not yet" then "not responding"',
-    file: ANEMIA, patient: patientOf({ codes: ['O99.012'], labs: MCV72_NO_FERRITIN, attrs: { gestational_age_weeks: 20 } }),
-    answers: [
-      ['dp-1', pick('stage-2-empiric')],
-      ['gate-hgb-response', pick('recheck not yet done')],
+    name: 'anemia: ferritin 12, workup, oral trial at DP-3, start visit — response check not yet due',
+    file: ANEMIA, patient: patientOf({ codes: ['O99.012'], labs: confirmedLabs(START_HGB), attrs: { gestational_age_weeks: 20 } }),
+    visit: { asOf: DAY0 },
+    answers: CONFIRMED_ORAL, mustAnswer: ['dp-1', 'dp-3'],
+    outcome: (r, pending) => [...startVisit(r, pending), ...expectStatus(r, { 'stage-2-oral': 'INCLUDED', 'step-2-9': 'EXCLUDED' })],
+  },
+  {
+    name: 'anemia: empiric chosen, day-21 recheck 9.5 → 10.7 — responder',
+    file: ANEMIA, patient: patientOf({ codes: ['O99.012'], labs: empiricLabs(RECHECK(10.7)), attrs: { gestational_age_weeks: 20 } }),
+    visit: RECHECK_VISIT,
+    answers: [['dp-1', pick(EMPIRIC)], ['gate-hgbpathy-needed', NO], ['gate-transfusion-refusal', NO]],
+    mustAnswer: ['dp-1', 'gate-hgbpathy-needed', 'gate-transfusion-refusal'],
+    outcome: (r, pending) => [
+      ...dueRecheck(r, pending),
+      ...expectStatus(r, {
+        'step-1-6': 'GATED_OUT', 'step-3-10': 'GATED_OUT',
+        'gate-hgb-response': 'INCLUDED', 'step-2-4': 'INCLUDED',
+        'gate-hgb-nonresponse': 'GATED_OUT', 'step-2-6': 'GATED_OUT', 'dp-2': 'GATED_OUT',
+      }),
     ],
-    mustAnswer: ['dp-1', 'gate-hgb-response'],
   },
   {
-    name: 'anemia: empiric chosen, responding',
-    file: ANEMIA, patient: patientOf({ codes: ['O99.012'], labs: MCV72_FER50, attrs: { gestational_age_weeks: 20 } }),
-    answers: [['dp-1', pick('stage-2-empiric')], ['gate-hgb-response', pick('responding')]],
-    mustAnswer: ['dp-1', 'gate-hgb-response'],
+    name: 'anemia: ferritin 12, workup, oral trial at DP-3, day-21 recheck 9.5 → 9.9, GA 20 — nonresponder, IV iron',
+    file: ANEMIA, patient: patientOf({ codes: ['O99.012'], labs: confirmedLabs(RECHECK(9.9)), attrs: { gestational_age_weeks: 20 } }),
+    visit: RECHECK_VISIT,
+    // The two question gates still in the pathway, so the gate-seeded and
+    // closure-seeded answer paths are exercised here too, not only DP seeds.
+    answers: [...CONFIRMED_ORAL, ['gate-hgbpathy-needed', YES], ['gate-transfusion-refusal', YES]],
+    mustAnswer: ['dp-1', 'dp-3', 'gate-hgbpathy-needed', 'gate-transfusion-refusal'],
+    outcome: (r, pending) => [
+      ...dueRecheck(r, pending),
+      ...expectStatus(r, {
+        'step-1-6': 'INCLUDED', 'step-3-10': 'INCLUDED',
+        'gate-hgb-nonresponse': 'INCLUDED', 'step-2-6': 'INCLUDED', 'dp-2': 'INCLUDED',
+        'gate-iv-iron-ga': 'INCLUDED', 'step-2-5': 'INCLUDED',
+        'gate-hgb-response': 'GATED_OUT', 'step-2-4': 'GATED_OUT',
+      }),
+    ],
   },
   {
-    name: 'anemia: empiric chosen, not responding, GA 12',
-    file: ANEMIA, patient: patientOf({ codes: ['O99.012'], labs: MCV72_FER50, attrs: { gestational_age_weeks: 12 } }),
-    answers: [['dp-1', pick('stage-2-empiric')], ['gate-hgb-response', pick('not responding')]],
-    mustAnswer: ['dp-1', 'gate-hgb-response'],
+    name: 'anemia: empiric chosen, day-21 recheck 9.5 → 9.9, GA 12 — nonresponder, IV iron gated out',
+    file: ANEMIA, patient: patientOf({ codes: ['O99.012'], labs: empiricLabs(RECHECK(9.9)), attrs: { gestational_age_weeks: 12 } }),
+    visit: RECHECK_VISIT,
+    answers: [['dp-1', pick(EMPIRIC)]], mustAnswer: ['dp-1'],
+    outcome: (r, pending) => [
+      ...dueRecheck(r, pending),
+      ...expectStatus(r, {
+        'gate-hgb-nonresponse': 'INCLUDED', 'step-2-6': 'INCLUDED',
+        'gate-iv-iron-ga': 'GATED_OUT', 'step-2-5': 'GATED_OUT', 'step-2-4': 'GATED_OUT',
+      }),
+    ],
+  },
+  {
+    name: 'anemia: ferritin 12, workup, IV iron without an oral trial at DP-3 (3b), GA 20',
+    file: ANEMIA, patient: patientOf({ codes: ['O99.012'], labs: confirmedLabs(START_HGB), attrs: { gestational_age_weeks: 20 } }),
+    visit: { asOf: DAY0 },
+    answers: [['dp-1', pick('step-1-2')], ['dp-3', pick('step-2-9')]], mustAnswer: ['dp-1', 'dp-3'],
+    outcome: (r, pending) => [
+      ...expectStatus(r, {
+        'step-2-9': 'INCLUDED', 'gate-iv-iron-ga-direct': 'INCLUDED', 'step-2-10': 'INCLUDED',
+        'stage-2-oral': 'EXCLUDED', 'gate-hgb-response': 'EXCLUDED', 'gate-hgb-nonresponse': 'EXCLUDED',
+      }),
+      ...responseQuestions(pending),
+    ],
   },
 ];
 
