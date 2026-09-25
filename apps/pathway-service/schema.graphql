@@ -741,7 +741,14 @@ type SuppressedRecommendation {
 # ─── Conflicts (Phase 3 commit 4) ─────────────────────────────────────
 
 enum ConflictType {
+  """Two or more DIFFERENT drugs share a clinical_role lane."""
   MEDICATION
+  """
+  ONE drug asked for at different regimens (dose, frequency, route or
+  duration) by different pathways. Every candidate names the same drug;
+  tell them apart by their regimen, not their name.
+  """
+  MEDICATION_REGIMEN
 }
 
 enum ConflictResolutionKind {
@@ -776,7 +783,14 @@ input CustomMedicationOverrideInput {
 
 type ConflictCandidate {
   recommendation: ResolvedMedication!
+  """The first pathway that asked for this exact drug and regimen."""
   sourcePathwayId: ID!
+  """
+  Every pathway that asked for this exact drug and regimen, first-seen order.
+  Any of them is a valid CONFIRM_PATHWAY choice.
+  """
+  sourcePathwayIds: [ID!]!
+  """Title of `sourcePathwayId`."""
   sourcePathwayTitle: String!
 }
 
@@ -793,14 +807,23 @@ type ConflictResolution {
 
 """
 A cross-pathway soft conflict (medications-only in v1). Triggered when ≥2
-pathways tag different drugs with the same `clinical_role`. The provider
-must resolve every conflict before the merged plan can be turned into a
-real care plan via `generateMergedCarePlan`.
+pathways tag different drugs with the same `clinical_role` (MEDICATION), or
+ask for the same drug at different regimens (MEDICATION_REGIMEN). The
+provider must resolve every conflict before the merged plan can be turned
+into a real care plan via `generateMergedCarePlan`.
 """
 type MergedConflict {
-  """Stable id within the session — equals the clinical_role tag value."""
+  """
+  Stable id within the session. MEDICATION: the clinical_role tag value.
+  MEDICATION_REGIMEN: `regimen:<normalised drug name>`.
+  """
   conflictId: String!
   type: ConflictType!
+  """
+  What the conflict is about, for display. MEDICATION: the shared
+  clinical_role. MEDICATION_REGIMEN: the drug's clinical_role when it carries
+  one, else the drug's name.
+  """
   clinicalRole: String!
   candidates: [ConflictCandidate!]!
   """Null while the conflict is unresolved."""

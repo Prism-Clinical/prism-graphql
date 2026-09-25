@@ -185,7 +185,14 @@ export type ConditionCodeDetail = {
 export type ConflictCandidate = {
   __typename?: 'ConflictCandidate';
   recommendation: ResolvedMedication;
+  /** The first pathway that asked for this exact drug and regimen. */
   sourcePathwayId: Scalars['ID']['output'];
+  /**
+   * Every pathway that asked for this exact drug and regimen, first-seen order.
+   * Any of them is a valid CONFIRM_PATHWAY choice.
+   */
+  sourcePathwayIds: Array<Scalars['ID']['output']>;
+  /** Title of `sourcePathwayId`. */
   sourcePathwayTitle: Scalars['String']['output'];
 };
 
@@ -225,7 +232,14 @@ export enum ConflictResolutionKind {
 }
 
 export enum ConflictType {
-  Medication = 'MEDICATION'
+  /** Two or more DIFFERENT drugs share a clinical_role lane. */
+  Medication = 'MEDICATION',
+  /**
+   * ONE drug asked for at different regimens (dose, frequency, route or
+   * duration) by different pathways. Every candidate names the same drug;
+   * tell them apart by their regimen, not their name.
+   */
+  MedicationRegimen = 'MEDICATION_REGIMEN'
 }
 
 export type CreateSignalDefinitionInput = {
@@ -671,15 +685,24 @@ export type MergedCarePlan = {
 
 /**
  * A cross-pathway soft conflict (medications-only in v1). Triggered when ≥2
- * pathways tag different drugs with the same `clinical_role`. The provider
- * must resolve every conflict before the merged plan can be turned into a
- * real care plan via `generateMergedCarePlan`.
+ * pathways tag different drugs with the same `clinical_role` (MEDICATION), or
+ * ask for the same drug at different regimens (MEDICATION_REGIMEN). The
+ * provider must resolve every conflict before the merged plan can be turned
+ * into a real care plan via `generateMergedCarePlan`.
  */
 export type MergedConflict = {
   __typename?: 'MergedConflict';
   candidates: Array<ConflictCandidate>;
+  /**
+   * What the conflict is about, for display. MEDICATION: the shared
+   * clinical_role. MEDICATION_REGIMEN: the drug's clinical_role when it carries
+   * one, else the drug's name.
+   */
   clinicalRole: Scalars['String']['output'];
-  /** Stable id within the session — equals the clinical_role tag value. */
+  /**
+   * Stable id within the session. MEDICATION: the clinical_role tag value.
+   * MEDICATION_REGIMEN: `regimen:<normalised drug name>`.
+   */
   conflictId: Scalars['String']['output'];
   /** Null while the conflict is unresolved. */
   resolution?: Maybe<ConflictResolution>;
@@ -2543,6 +2566,7 @@ export type ConditionCodeDetailResolvers<ContextType = DataSourceContext, Parent
 export type ConflictCandidateResolvers<ContextType = DataSourceContext, ParentType extends ResolversParentTypes['ConflictCandidate'] = ResolversParentTypes['ConflictCandidate']> = ResolversObject<{
   recommendation?: Resolver<ResolversTypes['ResolvedMedication'], ParentType, ContextType>;
   sourcePathwayId?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
+  sourcePathwayIds?: Resolver<Array<ResolversTypes['ID']>, ParentType, ContextType>;
   sourcePathwayTitle?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
 }>;

@@ -64,6 +64,9 @@ import {
   CustomMedicationOverride,
   SuppressedRecommendation,
   SuppressionSource,
+  candidatePathwayIds,
+  drugKey,
+  medicationRegimenKey,
 } from '../../services/resolution/care-plan-merge';
 import {
   runPatientContextDdi,
@@ -451,26 +454,21 @@ export const multiPathwayResolutionMutations = {
     );
 
     // Replay prior conflict resolutions onto the freshly-merged plan so the
-    // provider doesn't have to re-pick them. Conflicts whose clinical_role
-    // disappeared from the new merge are simply dropped (their resolution
-    // becomes moot); conflicts that show up newly will surface unresolved.
+    // provider doesn't have to re-pick them — but only where the conflict
+    // still offers the same choices (see replayConflictResolutions).
     // Which pathways were dropped is decided once, at creation; a re-merge
     // re-projects the survivors and must not forget the others.
-    let replayedPlan: MergedCarePlan = {
-      ...mergedPlan,
-      skippedPathways: session.mergedPlan.skippedPathways ?? [],
-    };
-    for (const conflict of replayedPlan.conflicts) {
-      const prior = session.conflictResolutions[conflict.conflictId];
-      if (!prior) continue;
-      replayedPlan = applyResolution(replayedPlan, conflict, prior);
-    }
+    const { plan: replayedPlan, resolutions } = replayConflictResolutions(
+      session.mergedPlan,
+      { ...mergedPlan, skippedPathways: session.mergedPlan.skippedPathways ?? [] },
+      session.conflictResolutions,
+    );
 
     await updateMergedPlanAndResolutions(
       pool,
       args.sessionId,
       replayedPlan,
-      session.conflictResolutions,
+      resolutions,
       ddiWarnings,
     );
 
@@ -703,36 +701,52 @@ export async function runMergePipeline(
   const merged = mergeResolvedCarePlans(ddiCleanedPlans);
 
   // ── DDI stage 2: post-merge, cross-recommendation pairs ──
-  const crossCandidates = merged.medications.map((m) => ({
-    recommendationId:
-      m.recommendation.sourceNodeId ??
-      `${m.recommendation.sourcePathwayId}|${m.recommendation.name}`,
-    drugName: m.recommendation.name,
-    sourcePathwayId: m.recommendation.sourcePathwayId,
+  // Checked: every auto-included medication AND every regimen of a drug held
+  // in a MEDICATION_REGIMEN conflict. Those regimens are one drug the plan
+  // will contain in some form, and before regimens were kept apart they
+  // name-merged into `medications` and were checked here; parking them in a
+  // conflict must not exempt them. (clinical_role conflict candidates are
+  // alternatives, not co-prescriptions, and were never checked here — a known
+  // gap, unchanged.) Suppression then removes the DRUG, every regimen of it,
+  // matching the drug-identity rule the pathway flags follow.
+  const recId = (r: ResolvedMedication) => r.sourceNodeId ?? `${r.sourcePathwayId}|${r.name}`;
+  const crossMeds: ResolvedMedication[] = [
+    ...merged.medications.map((m) => m.recommendation),
+    ...merged.conflicts
+      .filter((c) => c.type === 'medication_regimen')
+      .flatMap((c) => c.candidates.map((cand) => cand.recommendation)),
+  ];
+  const crossCandidates = crossMeds.map((r) => ({
+    recommendationId: recId(r),
+    drugName: r.name,
+    sourcePathwayId: r.sourcePathwayId,
   }));
   const cross = await runCrossRecommendationDdi(pool, crossCandidates);
   const crossWarnings = cross.findings.filter((f) => f.action === 'WARN');
-  const crossSuppressedIds = cross.suppressedRecommendationIds;
   const crossSuppressions: SuppressedRecommendation[] = [];
   for (const finding of cross.findings) {
     if (finding.action !== 'SUPPRESS') continue;
-    const med = merged.medications.find(
-      (m) =>
-        (m.recommendation.sourceNodeId ??
-          `${m.recommendation.sourcePathwayId}|${m.recommendation.name}`) === finding.recommendationId,
-    );
+    const med = crossMeds.find((r) => recId(r) === finding.recommendationId);
     if (!med) continue;
-    crossSuppressions.push(buildDdiSuppression(med.recommendation, finding));
+    crossSuppressions.push(buildDdiSuppression(med, finding));
   }
+  const suppressedDrugs = new Set(
+    crossMeds
+      .filter((r) => cross.suppressedRecommendationIds.has(recId(r)))
+      .map((r) => drugKey(r.name)),
+  );
 
   const finalMerged: MergedCarePlan = {
     ...merged,
     medications: merged.medications.filter(
-      (m) =>
-        !crossSuppressedIds.has(
-          m.recommendation.sourceNodeId ??
-            `${m.recommendation.sourcePathwayId}|${m.recommendation.name}`,
-        ),
+      (m) => !suppressedDrugs.has(drugKey(m.recommendation.name)),
+    ),
+    // A regimen conflict is one drug; if that drug is suppressed the choice
+    // is gone. clinical_role conflicts never contain a drug checked above.
+    conflicts: merged.conflicts.filter(
+      (c) =>
+        c.type !== 'medication_regimen' ||
+        !c.candidates.some((cand) => suppressedDrugs.has(drugKey(cand.recommendation.name))),
     ),
     suppressed: [...merged.suppressed, ...preMergeSuppressions, ...crossSuppressions],
   };
@@ -996,16 +1010,79 @@ function validateResolutionAgainstConflict(
   resolution: ConflictResolution,
   conflict: MergedConflict,
 ): void {
-  if (resolution.kind !== 'CONFIRM_PATHWAY') return;
-  const candidatePathwayIds = new Set(
-    conflict.candidates.map((c) => c.sourcePathwayId),
-  );
-  if (!candidatePathwayIds.has(resolution.chosenPathwayId)) {
+  if (resolution.kind === 'CONFIRM_PATHWAY' && !resolutionFitsConflict(resolution, conflict)) {
     throw new GraphQLError(
       `chosenPathwayId "${resolution.chosenPathwayId}" is not among this conflict's candidates`,
       { extensions: { code: 'BAD_USER_INPUT' } },
     );
   }
+}
+
+/**
+ * A CONFIRM_PATHWAY choice fits a conflict when the chosen pathway asked for
+ * at least one of its candidates — any contributor, not only the first one
+ * recorded on the candidate. Other kinds fit any conflict.
+ */
+function resolutionFitsConflict(
+  resolution: ConflictResolution,
+  conflict: MergedConflict,
+): boolean {
+  if (resolution.kind !== 'CONFIRM_PATHWAY') return true;
+  return conflict.candidates.some((c) =>
+    candidatePathwayIds(c).includes(resolution.chosenPathwayId),
+  );
+}
+
+/**
+ * What a conflict offered the provider: each candidate's drug+regimen and the
+ * pathways behind it. Pathways are part of it because CONFIRM_PATHWAY names a
+ * pathway, not a regimen — if two pathways swapped regimens, replaying "use
+ * Obesity's" would silently hand the provider the other dose. Two conflicts
+ * with the same id and the same offer are the same decision; anything else is
+ * a new one.
+ */
+function conflictOffer(conflict: MergedConflict): string {
+  return conflict.candidates
+    .map((c) => `${medicationRegimenKey(c.recommendation)}@${[...candidatePathwayIds(c)].sort().join(',')}`)
+    .sort()
+    .join('\n');
+}
+
+/**
+ * Re-apply the provider's earlier choices to a freshly re-merged plan.
+ *
+ * A choice is replayed only when the same conflict existed in the previous
+ * plan offering exactly the same drug+regimen candidates, and (for
+ * CONFIRM_PATHWAY) the chosen pathway still asks for one of them. Otherwise
+ * the conflict surfaces unresolved: a provider who picked "Obesity's 1000 mg"
+ * did not pick whatever Obesity asks for after a gate answer moved it to
+ * 2000 mg. Replaying without that check also crashed outright when the chosen
+ * pathway had left the conflict.
+ *
+ * Returns the plan and the resolutions still in force; stale ones are dropped
+ * so a later re-merge cannot resurrect them against a conflict that happens
+ * to match again.
+ */
+export function replayConflictResolutions(
+  previousPlan: MergedCarePlan,
+  freshPlan: MergedCarePlan,
+  priorResolutions: Record<string, ConflictResolution>,
+): { plan: MergedCarePlan; resolutions: Record<string, ConflictResolution> } {
+  const previousById = new Map(
+    (previousPlan.conflicts ?? []).map((c) => [c.conflictId, c]),
+  );
+  let plan = freshPlan;
+  const resolutions: Record<string, ConflictResolution> = {};
+  for (const conflict of freshPlan.conflicts) {
+    const prior = priorResolutions[conflict.conflictId];
+    if (!prior) continue;
+    const previous = previousById.get(conflict.conflictId);
+    if (!previous || conflictOffer(previous) !== conflictOffer(conflict)) continue;
+    if (!resolutionFitsConflict(prior, conflict)) continue;
+    plan = applyResolution(plan, conflict, prior);
+    resolutions[conflict.conflictId] = prior;
+  }
+  return { plan, resolutions };
 }
 
 /**
@@ -1027,21 +1104,27 @@ export function applyResolution(
 
   switch (resolution.kind) {
     case 'CONFIRM_PATHWAY': {
-      const chosen = conflict.candidates.find(
-        (c) => c.sourcePathwayId === resolution.chosenPathwayId,
-      )!;
-      medications.push({
-        recommendation: chosen.recommendation,
-        sourcePathwayIds: [chosen.sourcePathwayId],
-        state: 'provider-confirmed',
-      });
+      // Everything the chosen pathway asked for in this conflict — one
+      // candidate normally; more when that pathway itself authored two
+      // regimens (or two lane drugs). Provenance keeps every pathway that
+      // asked for the same regimen, not just the one clicked.
+      const chosen = conflict.candidates.filter((c) =>
+        candidatePathwayIds(c).includes(resolution.chosenPathwayId),
+      );
+      for (const c of chosen) {
+        medications.push({
+          recommendation: c.recommendation,
+          sourcePathwayIds: candidatePathwayIds(c),
+          state: 'provider-confirmed',
+        });
+      }
       break;
     }
     case 'ACCEPT_BOTH': {
       for (const c of conflict.candidates) {
         medications.push({
           recommendation: c.recommendation,
-          sourcePathwayIds: [c.sourcePathwayId],
+          sourcePathwayIds: candidatePathwayIds(c),
           state: 'auto-included',
         });
       }
@@ -1164,17 +1247,22 @@ async function materializeCarePlan(
     // Interventions: one row per merged recommendation. Per the
     // check_constraint on patient_care_plan_interventions.type, labs map to
     // MONITORING (no LAB type exists).
+    // The table has dosage and frequency columns but none for route or
+    // duration, which used to be dropped here — so a conflict the provider
+    // settled on route (PO vs IV) or duration reached the care plan without
+    // the thing they chose. They ride in patient_instructions instead.
     for (const m of session.mergedPlan.medications) {
       const r = m.recommendation;
       await client.query(
         `INSERT INTO patient_care_plan_interventions
-           (patient_care_plan_id, type, description, dosage, frequency, guideline_reference)
-         VALUES ($1, 'MEDICATION', $2, $3, $4, $5)`,
+           (patient_care_plan_id, type, description, dosage, frequency, patient_instructions, guideline_reference)
+         VALUES ($1, 'MEDICATION', $2, $3, $4, $5, $6)`,
         [
           carePlanId,
           r.name,
           r.dose ?? null,
           r.frequency ?? null,
+          medicationInstructions(r),
           provenance(r.sourcePathwayId, r.sourceNodeId),
         ],
       );
@@ -1206,6 +1294,14 @@ async function materializeCarePlan(
   } finally {
     client.release();
   }
+}
+
+/** Route and duration for a medication intervention row, or null when neither is stated. */
+function medicationInstructions(r: ResolvedMedication): string | null {
+  const parts: string[] = [];
+  if (r.route?.trim()) parts.push(`Route: ${r.route.trim()}`);
+  if (r.duration?.trim()) parts.push(`Duration: ${r.duration.trim()}`);
+  return parts.length > 0 ? parts.join('; ') : null;
 }
 
 function provenance(pathwayId: string | undefined, nodeId: string | null | undefined): string | null {
@@ -1374,11 +1470,14 @@ function formatSuppressedForGraphQL(s: MergedCarePlan['suppressed'][number]) {
 function formatConflictForGraphQL(c: MergedConflict) {
   return {
     conflictId: c.conflictId,
-    type: 'MEDICATION',
+    // Rows stored before regimen conflicts existed carry no `type`; every one
+    // of them was a clinical_role conflict.
+    type: c.type === 'medication_regimen' ? 'MEDICATION_REGIMEN' : 'MEDICATION',
     clinicalRole: c.clinicalRole,
     candidates: c.candidates.map((cand) => ({
       recommendation: cand.recommendation,
       sourcePathwayId: cand.sourcePathwayId,
+      sourcePathwayIds: candidatePathwayIds(cand),
       sourcePathwayTitle: cand.sourcePathwayTitle,
     })),
     resolution: c.resolution ? formatResolutionForGraphQL(c.resolution) : null,

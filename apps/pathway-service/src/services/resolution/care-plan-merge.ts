@@ -13,15 +13,17 @@
  *   - Hard constraints (role=contraindicated|avoid) suppress same-drug
  *     recommendations across all pathways. Suppressed entries are kept in a
  *     side list for transparency.
- *   - Same-name dedup for medications; same-code dedup for labs/procedures;
+ *   - Same-regimen dedup for medications (drug + dose + frequency + route +
+ *     duration); same-code dedup for labs/procedures;
  *     same-(interval, description) dedup for schedules; same-(name, measure)
  *     dedup for quality metrics; same-(topic, instructions) dedup for
  *     guidance. A key must cover every field a reader acts on, or the merge
  *     silently keeps the first pathway's text and drops the rest.
  *   - Provenance: every merged recommendation carries the IDs of all pathways
  *     that contributed it.
- *   - Soft conflict detection (different drugs, same indication) is OUT of
- *     scope; that lands in commit 4 alongside the provider-resolution UX.
+ *   - Soft conflicts go to the provider rather than being decided here:
+ *     different drugs in one clinical_role lane, and one drug asked for at
+ *     different regimens by different pathways. See `detectConflicts`.
  */
 
 import { MedicationRole } from '../import/types';
@@ -318,17 +320,65 @@ export type ConflictResolution =
 
 export interface ConflictCandidate {
   recommendation: ResolvedMedication;
+  /** The first pathway that asked for this exact recommendation. */
   sourcePathwayId: string;
+  /**
+   * Every pathway that asked for this exact recommendation (same drug AND
+   * regimen), first-seen order. Optional only because conflicts stored before
+   * it existed lack it — read it through `candidatePathwayIds`.
+   */
+  sourcePathwayIds?: string[];
   sourcePathwayTitle: string;
 }
 
+/**
+ * - `medication`: two or more DIFFERENT drugs share a clinical_role lane.
+ * - `medication_regimen`: ONE drug is asked for at different regimens (dose,
+ *   frequency, route or duration) by different pathways.
+ */
+export type MergedConflictType = 'medication' | 'medication_regimen';
+
 export interface MergedConflict {
-  /** Stable id within the session — equals the clinical_role tag value. */
+  /**
+   * Stable id within the session. A `medication` conflict's id is its
+   * clinical_role tag; a `medication_regimen` conflict's is
+   * `regimen:<normalised drug name>`.
+   */
   conflictId: string;
-  type: 'medication';
+  type: MergedConflictType;
+  /**
+   * What the conflict is about, for display. For `medication` it is the
+   * shared clinical_role. For `medication_regimen` it is the drug's
+   * clinical_role when the drug carries one, else the drug's name.
+   */
   clinicalRole: string;
   candidates: ConflictCandidate[];
   resolution: ConflictResolution | null;
+}
+
+/** Every pathway behind a candidate, tolerating rows stored before the field existed. */
+export function candidatePathwayIds(c: ConflictCandidate): string[] {
+  return c.sourcePathwayIds && c.sourcePathwayIds.length > 0
+    ? c.sourcePathwayIds
+    : [c.sourcePathwayId];
+}
+
+/**
+ * What makes two medication recommendations the SAME recommendation: the drug
+ * and every field of the regimen a prescriber acts on. Case and whitespace are
+ * folded; an unstated field is distinct from any stated value, because two
+ * entries are recoverable and a silently dropped regimen is not. The
+ * recommendation `role` and `clinicalRole` are deliberately NOT part of it —
+ * they describe why a pathway wants the drug, not what gets ordered.
+ */
+export function medicationRegimenKey(m: ResolvedMedication): string {
+  return [
+    drugKey(m.name),
+    norm(m.dose ?? ''),
+    norm(m.frequency ?? ''),
+    norm(m.route ?? ''),
+    norm(m.duration ?? ''),
+  ].join('|');
 }
 
 export type SuppressedRecommendationType =
@@ -470,8 +520,9 @@ export function mergeResolvedCarePlans(
   }
 
   // Merge medications: drop hard-constrained ones into `suppressed`, dedup
-  // the rest by drug name.
-  const medsByKey = new Map<string, ResolvedMedication[]>();
+  // the rest by drug AND regimen. Suppression is keyed on the drug alone — an
+  // AVOID/CONTRAINDICATED flag covers every regimen of that drug.
+  const medsByRegimen = new Map<string, ResolvedMedication[]>();
   for (const plan of plans) {
     for (const med of plan.medications) {
       const key = drugKey(med.name);
@@ -508,22 +559,21 @@ export function mergeResolvedCarePlans(
         continue;
       }
 
-      if (!medsByKey.has(key)) medsByKey.set(key, []);
-      medsByKey.get(key)!.push(med);
+      const regimenKey = medicationRegimenKey(med);
+      if (!medsByRegimen.has(regimenKey)) medsByRegimen.set(regimenKey, []);
+      medsByRegimen.get(regimenKey)!.push(med);
     }
   }
 
-  const namedMedications = mapMergeBucket(medsByKey);
+  const regimenGroups = mapMergeBucket(medsByRegimen);
 
-  // Detect cross-pathway soft conflicts on clinical_role. A name-group's
-  // canonical recommendation contributes its role to the pool; if ≥2 distinct
-  // name-groups share a role, all of them migrate from `medications` into a
-  // single `MergedConflict` entry.
+  // Anything the pathways disagree on goes to the provider: different drugs
+  // in one clinical_role lane, and one drug at different regimens.
   const titleByPathwayId = new Map<string, string>();
   for (const p of plans) titleByPathwayId.set(p.pathwayId, p.pathwayTitle);
 
   const { medications, conflicts } = detectConflicts(
-    namedMedications,
+    regimenGroups,
     titleByPathwayId,
   );
 
@@ -602,59 +652,94 @@ export function mergeResolvedCarePlans(
 }
 
 /**
- * After name-grouping, look for cases where two distinct drug-groups share a
- * clinical_role. Those become a `MergedConflict`; non-conflicting groups pass
- * through as auto-included recommendations.
+ * Decide which merged medications the provider has to choose between.
  *
- * A drug-group's role is the first non-empty `clinicalRole` among its members
- * — name-groups are stable across pathways so the first canonical wins.
+ * Input is one entry per distinct (drug, regimen). Those are clustered by
+ * drug, then:
+ *
+ *   1. clinical_role lanes — if two or more DIFFERENT drugs share a role, one
+ *      `medication` conflict takes every regimen of every drug in the lane.
+ *      All regimens, not only the tagged one: otherwise an untagged second
+ *      regimen of a lane drug would be auto-included beside the open conflict.
+ *   2. regimens — a drug left over with two or more regimens that between
+ *      them come from two or more pathways becomes a `medication_regimen`
+ *      conflict. Before this, medications were keyed by name alone and the
+ *      second pathway's regimen was silently dropped.
+ *   3. everything else is auto-included. That includes ONE pathway asking for
+ *      one drug at two regimens (a titration step, a loading dose): there is
+ *      no cross-pathway disagreement to decide, and CONFIRM_PATHWAY could not
+ *      tell the two apart anyway.
+ *
+ * A drug's clinical_role is the first non-empty one among its regimens.
  */
 function detectConflicts(
-  namedMedications: MergedRecommendation<ResolvedMedication>[],
+  regimenGroups: MergedRecommendation<ResolvedMedication>[],
   titleByPathwayId: Map<string, string>,
 ): {
   medications: MergedRecommendation<ResolvedMedication>[];
   conflicts: MergedConflict[];
 } {
-  // role → list of (drug-group canonical recommendation + sourcePathwayIds)
-  const groupsByRole = new Map<string, MergedRecommendation<ResolvedMedication>[]>();
-  for (const group of namedMedications) {
-    const role = group.recommendation.clinicalRole;
-    if (!role) continue;
-    if (!groupsByRole.has(role)) groupsByRole.set(role, []);
-    groupsByRole.get(role)!.push(group);
+  // drug → its regimen groups, first-seen order.
+  const byDrug = new Map<string, MergedRecommendation<ResolvedMedication>[]>();
+  for (const group of regimenGroups) {
+    const key = drugKey(group.recommendation.name);
+    if (!byDrug.has(key)) byDrug.set(key, []);
+    byDrug.get(key)!.push(group);
   }
 
-  const conflictingGroupIds = new Set<MergedRecommendation<ResolvedMedication>>();
+  const roleOf = (groups: MergedRecommendation<ResolvedMedication>[]) =>
+    groups.map((g) => g.recommendation.clinicalRole).find((r) => !!r);
+
+  const toCandidate = (g: MergedRecommendation<ResolvedMedication>): ConflictCandidate => ({
+    recommendation: g.recommendation,
+    sourcePathwayId: g.sourcePathwayIds[0],
+    sourcePathwayIds: g.sourcePathwayIds,
+    sourcePathwayTitle:
+      titleByPathwayId.get(g.sourcePathwayIds[0]) ?? g.sourcePathwayIds[0],
+  });
+
+  const inConflict = new Set<MergedRecommendation<ResolvedMedication>>();
   const conflicts: MergedConflict[] = [];
 
-  for (const [role, groups] of groupsByRole) {
-    const distinctNames = new Set(groups.map((g) => drugKey(g.recommendation.name)));
-    if (distinctNames.size < 2) continue;
-
-    for (const g of groups) conflictingGroupIds.add(g);
-
-    const candidates: ConflictCandidate[] = groups.map((g) => ({
-      recommendation: g.recommendation,
-      sourcePathwayId: g.sourcePathwayIds[0],
-      sourcePathwayTitle:
-        titleByPathwayId.get(g.sourcePathwayIds[0]) ?? g.sourcePathwayIds[0],
-    }));
-
+  // 1. clinical_role lanes: two or more different drugs in one role.
+  const drugsByRole = new Map<string, string[]>();
+  for (const [drug, groups] of byDrug) {
+    const role = roleOf(groups);
+    if (!role) continue;
+    if (!drugsByRole.has(role)) drugsByRole.set(role, []);
+    drugsByRole.get(role)!.push(drug);
+  }
+  for (const [role, drugs] of drugsByRole) {
+    if (drugs.length < 2) continue;
+    const groups = drugs.flatMap((d) => byDrug.get(d)!);
+    for (const g of groups) inConflict.add(g);
     conflicts.push({
       conflictId: role,
       type: 'medication',
       clinicalRole: role,
-      candidates,
+      candidates: groups.map(toCandidate),
       resolution: null,
     });
   }
 
-  // Mark conflict-group entries with the pending state and surface them as
-  // both (a) absent from the active medications list (they're not auto-included)
-  // and (b) inside a MergedConflict entry. Non-conflict groups pass through
-  // unchanged.
-  const medications = namedMedications.filter((g) => !conflictingGroupIds.has(g));
+  // 2. one drug, several regimens, more than one pathway behind them.
+  for (const [drug, groups] of byDrug) {
+    if (groups.length < 2 || groups.some((g) => inConflict.has(g))) continue;
+    const pathways = new Set(groups.flatMap((g) => g.sourcePathwayIds));
+    if (pathways.size < 2) continue;
+    for (const g of groups) inConflict.add(g);
+    conflicts.push({
+      conflictId: `regimen:${drug}`,
+      type: 'medication_regimen',
+      clinicalRole: roleOf(groups) ?? groups[0].recommendation.name.trim(),
+      candidates: groups.map(toCandidate),
+      resolution: null,
+    });
+  }
+
+  // Conflicting entries are withheld from the active list; they reach it only
+  // through a provider resolution (see applyResolution in the resolver).
+  const medications = regimenGroups.filter((g) => !inConflict.has(g));
   return { medications, conflicts };
 }
 
@@ -678,7 +763,8 @@ function emptyMergedPlan(): MergedCarePlan {
   };
 }
 
-function drugKey(name: string): string {
+/** A drug's identity for suppression and clustering — its name, case-folded and trimmed. */
+export function drugKey(name: string): string {
   return name.toLowerCase().trim();
 }
 
