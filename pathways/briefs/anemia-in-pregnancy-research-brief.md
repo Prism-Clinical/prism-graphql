@@ -162,6 +162,11 @@ BRANCHES_TO (no HAS_STEP edge), per the reference-fixture pattern.
     gate-macrocytic) and holds DP-1 until answered. Proved with `gate-proof.ts mcv`, both
     edge orders: MCV 72 and 79.9 → DP-1 asks; 80 and 90 → no DP-1, Step 1.3 INCLUDED;
     105 → no DP-1, Step 1.4 INCLUDED; missing → one LOINC 787-2 question, DP-1 held.
+  - `[DECISION — Josh 2026-09-24]` **Hemoglobinopathy codes (SCD, thalassemia, traits)
+    must not reach the empiric arm** — `[BLOCKED — engine: not_includes_code]`; not
+    encoded in v5. Operator spec, code set and wiring plan in §18 ("Hemoglobinopathy
+    codes suppress the empiric-iron arm"); today's exposure recorded by
+    `gate-proof.ts hgbpathy`.
   - Criterion 1a: No evidence of causes other than iron deficiency → empiric oral iron
     reasonable without iron studies (ACOG) → **Stage 1.5** (Steps 2.1–2.3; was Step 2.1
     alone through v3) [1]
@@ -939,7 +944,62 @@ change for review, not made here. Related: Sched-2 times the recheck at **4 week
 starting oral iron (CDC; ACOG gives no interval); FIGO's 2-week variant (§18 item 9) is
 not encoded. Left as-is.
 
-`[GAP — NEEDS JOSH]` **Hemoglobinopathy patients reach the empiric arm.** Thalassemia
+`[DECISION — Josh 2026-09-24]` **Hemoglobinopathy codes suppress the empiric-iron arm** —
+these patients go to the confirmatory workup (Step 1.2; ferritin decides).
+`[BLOCKED — engine: not_includes_code]` **Not encoded — no faithful encoding exists on
+josh-dev.** What was checked:
+- **Coded operators** (`includes_code`, `equals`, `exists`, numeric, aggregates) have no
+  negation; a chart gate's only exclusion is its own positive condition failing.
+  `not_equals` exists only on attribute conditions, whose namespaces (`lab`, `vitals`,
+  `allergy`, `patient`) carry no diagnoses. Also absent on `engine-anchored-window`.
+- **Two gates on DP-1's host** AND together (Rule 2) — but the second would itself have to
+  be "no hemoglobinopathy code". **`delta`/`count` tricks** only test "≥".
+- **DP-1 scoring:** branch qualification is each target's confidence from DB-seeded
+  signals; `code_value` on a Criterion does not feed it, and nothing in the JSON can push
+  the empiric branch below 0.60 for a coded patient.
+- **Question-gate negative arm** ("Known hemoglobinopathy or trait?" yes → workup, no →
+  DP-1) *is* expressible, but it asks the provider instead of reading the codes — a coded
+  D56.3 patient answered "no" still gets empiric, and every microcytic patient gets an
+  extra question. Not the decision as made; not built. Available as a stopgap if wanted.
+
+**Engine operator needed — `not_includes_code`** (coded condition, membership fields
+`conditions`/`medications`/`allergies`/`labs`): same `value`, `system`, trailing-`.*`
+wildcard, `horizon` and `status` selection as `includes_code`; **satisfied iff zero
+selected facts match**. Missing data: absence is a definite **true** — never unresolved,
+never asks (no code on file = no known hemoglobinopathy); if `includes_code` over the same
+facts would be *indeterminate* (unprovable temporal state), the negation is indeterminate
+too and propagates — never coerced to true. Per-condition (not a compound `NOT`), so
+"MCV < 80 AND none of these codes" stays one flat AND. Touch points: operator lists in
+`resolution/types.ts`, the import allowlist, `gate-evaluator` (v1 and legacy-v0),
+`unresolved-prompt` (treat as membership), and `check-gate-control`'s numeric-condition
+definition + the format spec.
+
+**Code set to use** (all verified against the NLM ICD-10-CM table 2026-09-24): SCD —
+`D57.0.*` (Hb-SS with crisis), `D57.1`, `D57.2.*` (Hb-SC), `D57.4.*` (sickle-cell
+thalassemia incl. β0/β+), `D57.8.*`; **sickle-cell trait `D57.3`**; thalassemias —
+`D56.0`, `D56.1`, `D56.2`, `D56.5`, `D56.8`, `D56.9`; **thalassemia minor `D56.3`**. Traits
+belong: Step 3.3 already allows iron for carriers only with ferritin-confirmed deficiency,
+which is exactly the confirmatory route. **Excluded:** `D56.4` HPFH (benign, not
+microcytic — as in gate-thal-major). `[CLINICAL AMBIGUITY — for Josh]` **`D58.2` "Other
+hemoglobinopathies"** (Hb-C disease, Hb-E disease, hemoglobinopathy NOS) — HbE and HbC
+disease can be microcytic and no current gate catches D58.2; include or not?
+
+**Wiring once the operator exists (design work, prove then):** Step 1.2 is reachable only
+through DP-1, so a negated condition on DP-1's host (gate-microcytic → Step 1.7) would
+leave coded patients with **no** workup. They need their own route to the confirmatory
+workup — not into Step 1.2 itself (a DP branch target; Rule 1) and not a second gate into
+Stage 2 (it would AND with gate-ida-confirmed; Rule 2) — e.g. gate-microcytic becomes
+"MCV < 80 AND not_includes_code(…)" → Step 1.7/DP-1, plus a new gate "MCV < 80 AND
+includes_code(…)" → a new confirmatory-workup step with its own ferritin lab and its own
+ferritin gate into the confirmed arm.
+
+**Evidence of today's exposure:** `gate-proof.ts hgbpathy`, both edge orders — D56.3,
+D57.3, D56.1 and D57.40 with MCV 72 each fire their Stage 3 gate and are still offered
+`stage-2-empiric` at DP-1; D57.40 choosing empiric gets Stage 1.5 and ferrous sulfate
+INCLUDED alongside Step 3.1 (SCD route-out). The "BLOCKED" expectations flip when this
+is built. The original note follows.
+
+~~`[GAP — NEEDS JOSH]`~~ **Hemoglobinopathy patients reach the empiric arm.** Thalassemia
 minor and microcytic SCD variants (e.g. HbS-β-thalassemia) have MCV < 80, so
 gate-microcytic offers them DP-1, and nothing in Stage 3 closes DP-1 or Stage 1.5 when
 gate-scd or gate-trait fires. Step 3.1 calls the iron arm "affirmatively wrong for SCD",

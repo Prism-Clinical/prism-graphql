@@ -21,6 +21,9 @@
 //   response         anemia gate-hgb-response router (v5): escalation (expanded
 //                    workup, IV iron at GA ≥ 14) only after a "no response"
 //                    answer; responders get maintenance; both arms
+//   hgbpathy         BLOCKED (needs not_includes_code): hemoglobinopathy code +
+//                    MCV 72 is still offered empiric iron at DP-1 — records today's
+//                    exposure; flips when the engine can negate a code
 //
 // The pathway proofs read pathways/json/anemia-in-pregnancy.json (override with
 // ANEMIA_JSON=<path>). They replay a branch choice the way the live mutation does
@@ -551,6 +554,51 @@ async function proveMcv(): Promise<void> {
   }
 }
 
+// ── Proof: hemoglobinopathy codes vs the empiric arm — BLOCKED on the engine ──
+// [DECISION — Josh 2026-09-24] Hemoglobinopathy codes (SCD, thalassemia, and
+// their traits) must suppress DP-1's empiric-iron arm; those patients go to the
+// confirmatory workup. NOT ENCODABLE on josh-dev: no coded operator negates a
+// membership test (`includes_code` only), `not_equals` exists only on attribute
+// namespaces (lab/vitals/allergy/patient — none carries diagnoses), and DP-1's
+// branch qualification comes from DB-seeded confidence signals, not the JSON.
+// Needs `not_includes_code` (brief §4, DP-1). This proof records TODAY's
+// exposure so the gap stays visible; when the operator lands and the wiring
+// follows, the "BLOCKED" expectations flip (empiric no longer offered).
+async function proveHgbpathy(): Promise<void> {
+  console.log(`\n=== hgbpathy: hemoglobinopathy code + MCV 72 vs DP-1 (${ANEMIA}) ===`);
+  const labs: Array<[string, number]> = [['787-2', 72], ['718-7', 9.5]];
+  const options = (pending: unknown[]) =>
+    JSON.stringify([...((pending.find((p: any) => p.gateId === 'dp-1') as any)?.options ?? [])].sort());
+  for (const reverse of [false, true]) {
+    console.log(`  -- edge order: ${reverse ? 'reversed' : 'file'}`);
+    const base = { file: ANEMIA, reverse };
+
+    console.log('  control — no hemoglobinopathy code, MCV 72: DP-1 offered with both branches:');
+    let r = await resolveSession({ ...base, patient: patientWith(labs) });
+    expect('dp-1', status(r.state, 'dp-1'), 'PENDING_QUESTION');
+    expect('dp-1 options', options(r.pending), JSON.stringify(DP1_OPTIONS));
+
+    for (const [code, label, gate, step] of [
+      ['D56.3', 'thalassemia minor', 'gate-trait', 'step-3-3'],
+      ['D57.3', 'sickle-cell trait', 'gate-trait', 'step-3-3'],
+      ['D56.1', 'beta thalassemia', 'gate-thal-major', 'step-3-2'],
+      ['D57.40', 'sickle-cell thalassemia', 'gate-scd', 'step-3-1'],
+    ] as const) {
+      console.log(`  ${code} ${label}, MCV 72:`);
+      r = await resolveSession({ ...base, patient: patientWith(labs, {}, [code]) });
+      expect(`${gate} fires`, status(r.state, gate), 'INCLUDED');
+      expect(`${step}`, status(r.state, step), 'INCLUDED');
+      expect('BLOCKED — exposure today: dp-1 still offers empiric', options(r.pending), JSON.stringify(DP1_OPTIONS));
+    }
+
+    console.log('  D57.40 sickle-cell thalassemia, MCV 72, provider picks empiric:');
+    r = await resolveSession({ ...base, patient: patientWith(labs, {}, ['D57.40']), choose: { dp: 'dp-1', option: EMPIRIC } });
+    expect('step-3-1 SCD route-out', status(r.state, 'step-3-1'), 'INCLUDED');
+    expect(`BLOCKED — exposure today: ${EMPIRIC}`, status(r.state, EMPIRIC), 'INCLUDED');
+    expect('BLOCKED — exposure today: med-1 ferrous sulfate', status(r.state, 'med-1'), 'INCLUDED');
+  }
+}
+
 const PROOFS: Record<string, () => Promise<void>> = {
   'attribute-form': proveAttributeForm,
   'dp-1': proveDp1,
@@ -560,6 +608,7 @@ const PROOFS: Record<string, () => Promise<void>> = {
   'mcv': proveMcv,
   'empiric': proveEmpiric,
   'response': proveResponse,
+  'hgbpathy': proveHgbpathy,
 };
 
 async function main() {
