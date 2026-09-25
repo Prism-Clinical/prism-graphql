@@ -181,7 +181,9 @@ BRANCHES_TO (no HAS_STEP edge), per the reference-fixture pattern.
     Steps 2.1–2.3 sit in Stage 2, which `gate-ida-confirmed` gates, and are also held by
     Stage 1.5, which criterion 1a enters directly: empiric oral iron without iron studies
     is ACOG-sanctioned, so these routes are deliberate. (Through v3 the one second route
-    was `[SECOND ROUTE — step-2-1 via dp-1]`; DP-1 now branches to Stage 1.5 instead.)
+    was Step 2.1 reached directly from DP-1; that marker is retired — written without
+    its brackets here so the gate-control check cannot read it as a live waiver — and
+    DP-1 now branches to Stage 1.5 instead.)
   - ~~`[GAP — NEEDS JOSH]` **The empiric arm reaches Step 2.1 only.**~~ **Resolved:**
     `[DECISION — Josh 2026-09-24]` **The empiric arm gets the same follow-up as confirmed
     IDA.** Through v3, choosing empiric EXCLUDED Step 2.2 (trial period), Step 2.3
@@ -847,6 +849,15 @@ branches) would make DP-2 a real choice and put IV iron behind it; that is a str
 change for review, not made here. Related: Sched-2 times the recheck at **4 weeks** after
 starting oral iron (CDC; ACOG gives no interval); FIGO's 2-week variant (§18 item 9) is
 not encoded. Left as-is.
+
+`[GAP — NEEDS JOSH]` **Hemoglobinopathy patients reach the empiric arm.** Thalassemia
+minor and microcytic SCD variants (e.g. HbS-β-thalassemia) have MCV < 80, so
+gate-microcytic offers them DP-1, and nothing in Stage 3 closes DP-1 or Stage 1.5 when
+gate-scd or gate-trait fires. Step 3.1 calls the iron arm "affirmatively wrong for SCD",
+and Step 3.3 allows iron only with ferritin-confirmed deficiency. v3 exposed these
+patients to Step 2.1 alone; v4's empiric arm also includes the trial period, recheck and
+IV-iron route. Should a hemoglobinopathy code suppress the empiric option (e.g. a gate on
+Stage 1.5)? Not changed here.
 
 ### `[BUILD FIX 2026-09-24]` On unresolved — RESOLVED
 

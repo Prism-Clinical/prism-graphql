@@ -172,7 +172,9 @@ exactly one (Rule 3).
 >   `scripts/gate-proof.ts mcv`).
 >   A `one_of` DP whose branches all score ≥ the suggest threshold (0.60) **pends** for the
 >   provider; if only one qualifies it is taken automatically. Structural targets (Steps,
->   or a Step and a Stage) score identically, so in practice such a fork pends
+>   or a Step and a Stage) score identically **when they cite evidence of the same
+>   level** — `evidence_strength` reads each target's own `CITES_EVIDENCE`, so give a
+>   branch-entry Stage its parent's citations — and in practice such a fork pends
 >   (`scripts/gate-proof.ts dp-1-scoring`).
 > - **Missing data is `on_unresolved`'s job, not `default_behavior`'s.** A numeric lab,
 >   vital or `patient.*` value that is missing makes the gate *unresolved*; it then ASKS for
