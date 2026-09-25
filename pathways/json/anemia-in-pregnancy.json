@@ -209,6 +209,17 @@
       }
     },
     {
+      "id": "step-2-6",
+      "type": "Step",
+      "properties": {
+        "stage_number": 2,
+        "step_number": 6,
+        "display_number": "2.6",
+        "title": "Nonresponse management",
+        "description": "Reached only when the Step 2.3 recheck shows no response to oral iron (hemoglobin rise < 1 g/dL after 2\u20134 weeks). Hosts DP-2: expanded workup, and IV iron after the first trimester."
+      }
+    },
+    {
       "id": "step-3-1",
       "type": "Step",
       "properties": {
@@ -509,54 +520,11 @@
       "id": "gate-hgb-response",
       "type": "Gate",
       "properties": {
-        "title": "Hemoglobin at target, or still climbing toward it",
-        "gate_type": "compound",
+        "title": "Hgb risen \u22651 g/dL since starting oral iron? (recheck at 2\u20134 weeks)",
+        "gate_type": "question",
         "default_behavior": "skip",
-        "on_unresolved": "ask",
-        "operator": "OR",
-        "conditions": [
-          {
-            "field": "labs",
-            "operator": "greater_than",
-            "value": "718-7",
-            "system": "LOINC",
-            "display": "Hemoglobin (g/dL)",
-            "threshold": 10.9,
-            "horizon": {
-              "days": 90
-            }
-          },
-          {
-            "field": "labs",
-            "operator": "trend_up",
-            "value": "718-7",
-            "system": "LOINC",
-            "display": "Hemoglobin (g/dL)",
-            "slope_threshold": 0.03,
-            "min_points": 2,
-            "window_days": 42
-          },
-          {
-            "field": "labs",
-            "operator": "trend_up",
-            "value": "718-7",
-            "system": "LOINC",
-            "display": "Hemoglobin (g/dL)",
-            "slope_threshold": 0.015,
-            "min_points": 2,
-            "window_days": 120
-          },
-          {
-            "field": "labs",
-            "operator": "trend_up",
-            "value": "718-7",
-            "system": "LOINC",
-            "display": "Hemoglobin (g/dL)",
-            "slope_threshold": 0.015,
-            "min_points": 2,
-            "window_days": 300
-          }
-        ]
+        "prompt": "Hemoglobin recheck 2\u20134 weeks after starting oral iron: has hemoglobin risen by at least 1 g/dL since iron was started? Yes = responding (continue iron, maintenance). No = nonresponse (expanded workup; IV iron after the first trimester).",
+        "answer_type": "BOOLEAN"
       }
     },
     {
@@ -2052,7 +2020,7 @@
       "type": "SELECTS_BRANCH"
     },
     {
-      "from": "step-2-3",
+      "from": "step-2-6",
       "to": "dp-2",
       "type": "HAS_DECISION_POINT"
     },
@@ -2144,7 +2112,22 @@
     {
       "from": "gate-hgb-response",
       "to": "step-2-4",
-      "type": "BRANCHES_TO"
+      "type": "BRANCHES_TO",
+      "properties": {
+        "when": {
+          "equals": true
+        }
+      }
+    },
+    {
+      "from": "gate-hgb-response",
+      "to": "step-2-6",
+      "type": "BRANCHES_TO",
+      "properties": {
+        "when": {
+          "equals": false
+        }
+      }
     },
     {
       "from": "dp-2",
@@ -2879,6 +2862,21 @@
     {
       "from": "step-2-4",
       "to": "ev-3",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-2-6",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-2-6",
+      "to": "ev-3",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-2-6",
+      "to": "ev-6",
       "type": "CITES_EVIDENCE"
     },
     {

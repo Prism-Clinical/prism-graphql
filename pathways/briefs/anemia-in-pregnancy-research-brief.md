@@ -79,7 +79,8 @@ None. (Single-condition pathway; O99.01x already encodes the pregnancy+anemia co
   deficiency), reticulocytes, smear as directed. [1]
 - **Step 1.4 — Macrocytic workup & repletion** *(gated by gate-macrocytic)*: serum folate
   + B12 (MCV >115 fL almost exclusively folate/B12); treat per §5. [1]
-- **Step 1.5 — Expanded / nonresponse workup** *(gated via DP-2)*: smear, hemoglobin
+- **Step 1.5 — Expanded / nonresponse workup** *(DP-2's branch; DP-2 sits behind the
+  "no response" answer at Step 2.3 since v5 — see Step 2.6)*: smear, hemoglobin
   analysis + genetic testing per indices/history, malabsorption and blood-loss review. [1][4]
 - **Step 1.6 — Hemoglobinopathy testing** *(gated by gate-hgbpathy-needed)*: hemoglobin
   electrophoresis or molecular testing when no prior results are available; carrier →
@@ -97,11 +98,18 @@ None. (Single-condition pathway; O99.01x already encodes the pregnancy+anemia co
   retic check. [1]
 - **Step 2.3 — Response assessment**: Hgb recheck ~4 weeks after initiation (CDC; ACOG
   gives no numeric interval [GAP]); adequate = rise >1 g/dL. [1][3]
-- **Step 2.4 — Maintenance & surveillance** *(gated by gate-hgb-response)*: continue iron,
-  reduce to prophylactic dosing when normalized for gestational stage (CDC). [3]
-- **Step 2.5 — IV iron therapy** *(gated: DP-2 routing + gate-iv-iron-ga)*: for
+- **Step 2.4 — Maintenance & surveillance** *(gate-hgb-response "yes" arm — responding)*:
+  continue iron, reduce to prophylactic dosing when normalized for gestational stage
+  (CDC). [3]
+- **Step 2.5 — IV iron therapy** *(gated: Step 2.6 → DP-2 + gate-iv-iron-ga)*: for
   intolerance/nonresponse/severe iron deficiency later in pregnancy; after the first
   trimester; single-total-dose formulations preferred. [1][5][7]
+- **Step 2.6 — Nonresponse management** *(gate-hgb-response "no" arm — its only way in)*
+  `[DECISION — Josh 2026-09-24]`: reached only when the Step 2.3 recheck shows no
+  response to oral iron (Hgb rise < 1 g/dL after 2–4 weeks). Hosts DP-2, so the expanded
+  workup (Step 1.5) and IV iron at GA ≥ 14 (Step 2.5) follow non-response instead of
+  starting with oral iron. Exists for the same reason as Step 1.7: a gate can only guard
+  a Step or Stage, and a DecisionPoint must hang from a Step. [1][3][6]
 - **Step 3.1 — Sickle cell disease: route out** *(gated)*: MFM + hematology
   multidisciplinary track; PNV **without** iron unless deficiency confirmed + folic acid
   4 mg (SMFM GRADE 1B). This pathway's iron arm is affirmatively wrong for SCD. [7]
@@ -212,8 +220,27 @@ BRANCHES_TO (no HAS_STEP edge), per the reference-fixture pattern.
     automatically, and `gate-iv-iron-ga` is the only condition on Step 2.5 — so Step 1.5
     (expanded workup) and Step 2.5 (IV iron, GA ≥ 14) are INCLUDED as soon as Step 2.3 is
     reached, on either arm, before any nonresponse is shown. `gate-hgb-response` opens only
-    Step 2.4 (maintenance). See §18 "v4 open item".
-- **DP-2 — Nonresponse management** (after Step 2.3) — branch_mode: one_of
+    Step 2.4 (maintenance). See §18 "v4 open item". **Resolved in v5** — DP-2 now waits
+    for a "no response" answer (below, and §4b `gate-hgb-response`).
+- **DP-2 — Nonresponse management** (on Step 2.6, reached only via gate-hgb-response's
+  "no" arm; was on Step 2.3 through v4) — branch_mode: one_of
+  - `[DECISION — Josh 2026-09-24]` **Escalation only after non-response.** Through v4 DP-2
+    hung from Step 2.3 with a single branch, so the expanded workup and (GA ≥ 14) IV iron
+    were INCLUDED the moment oral iron started. DP-2 is unchanged inside — one branch to
+    Step 1.5, taken automatically once DP-2 is reached, and `gate-iv-iron-ga` on DP-2 →
+    Step 2.5 — but it is now reached only through Step 2.6. Proved with
+    `gate-proof.ts response`, both edge orders, on both arms (empiric; workup + ferritin
+    12): no answer yet → maintenance, Step 2.6, DP-2, Step 1.5 and Step 2.5 (with every
+    IV iron) all held pending the question; "yes" → Step 2.4 INCLUDED, all escalation
+    EXCLUDED; "no" + GA 20 → Steps 2.6, 1.5, 2.5 and the IV irons INCLUDED, Step 2.4
+    EXCLUDED; "no" + GA 12 → Step 1.5 INCLUDED, Step 2.5 and the IV irons GATED_OUT;
+    "no" + GA missing → asks for `patient.gestational_age_weeks`, Step 2.5 held.
+  - `[CLINICAL AMBIGUITY — for Josh]` Criteria 2a (intolerance/nonadherence) and 2b
+    (suspected malabsorption) name reasons to go to IV iron that are not "no rise": an
+    intolerant patient who has not taken her iron reaches IV iron only by the provider
+    answering "no" at Step 2.3. Bariatric/IBD patients still get their own IV-first
+    guidance in Steps 3.4/3.5. DP-2's single branch (criteria 2a/2b/2d have no branch of
+    their own) is unchanged.
   - Criterion 2a: Intolerance or nonadherence despite coaching → **Step 2.5** (IV iron) [1][5]
   - Criterion 2b: Suspected malabsorption (enteric-coated tabs, antacids, bariatric,
     IBD) → **Step 2.5** (IV iron) [1][8]
@@ -301,13 +328,52 @@ the pathway presumes the coded diagnosis.
     threshold 30, horizon {days: 90}
   - Rationale: ACOG confirmatory cutoff (sens 92%/spec 98% per ASH); WHO uses <15,
     USPSTF notes no consensus — encoded 30 with provenance. [1][2][5]
-- **Gate `gate-hgb-response` — Hgb rise ≥1 g/dL on therapy** *(time-shape)*
-  - Attached to: step-2-3 · Branches to: step-2-4 · patient_attribute (coded condition) ·
-    Default: skip (no response data ⇒ stay in assessment/DP-2 path)
-  - Condition: field `labs`, operator `delta_from_baseline`, value `718-7` (Hgb, LOINC),
-    system LOINC, delta_threshold 1.0, window_days 42, min_points 2
-  - Rationale: ACOG response definition (>1 g/dL rise); 42-day window spans initiation →
-    4-week recheck with margin. [1][3]
+- **Gate `gate-hgb-response` — Hgb risen ≥1 g/dL since starting oral iron?**
+  `[DECISION — Josh 2026-09-24]` `[INTERIM — switch to window_from]` *(v5: a question
+  router; was a chart gate)*
+  - Attached to: step-2-3 · Type: **question**, answer_type BOOLEAN · Default: skip ·
+    Branches to (router — every edge carries `when`): **step-2-4** (maintenance) when
+    `{equals: true}`; **step-2-6** (Nonresponse management → DP-2) when `{equals: false}`
+  - Prompt: "Hemoglobin recheck 2–4 weeks after starting oral iron: has hemoglobin risen
+    by at least 1 g/dL since iron was started? Yes = responding (continue iron,
+    maintenance). No = nonresponse (expanded workup; IV iron after the first trimester)."
+  - One answer decides both arms, exclusively: the router takes exactly one edge and
+    EXCLUDES the other. Unanswered, it pends and holds maintenance and every escalation
+    step — which is what makes escalation wait for the recheck. No `on_unresolved` (a
+    question gate has no chart datum; unanswered always pends).
+  - **Response definition and source.** Josh's rule: non-response = Hgb rise < 1 g/dL
+    after 2–4 weeks of oral iron, so exactly 1.0 g/dL counts as a response. Sources
+    (re-checked 2026-09-24): FIGO [6] — a rise of "at least 1 g/dL after 2 weeks" is a
+    positive response, and poor response is "<1 g/dL after 2 weeks … or <2 g/dL after 4
+    weeks"; CDC [3] (via the AAFP summary) rechecks at 4 weeks but defines the 1 g/dL /
+    3% Hct response only for infants and children, not pregnancy; the "rise >1 g/dL"
+    attributed to ACOG [1] in earlier drafts is a secondary restatement (ObG Project: "if
+    hemoglobin does not rise more than 1 g/dL consider IV iron", at 2 weeks) — PB 233's
+    own text was not re-verified for it. `[CLINICAL AMBIGUITY — for Josh]` (a) at a
+    **4-week** recheck FIGO expects ≥2 g/dL, so "≥1 g/dL at 4 weeks" is more lenient than
+    FIGO; (b) a patient already at target without a 1 g/dL rise (e.g. 10.6 → 11.3) reads
+    as a nonresponder unless the provider answers "yes"; (c) no Hct-based equivalent is
+    offered.
+  - **Why a question and not chart data (the interim).** The rule needs "rise since
+    treatment started", which the kernel cannot anchor (`window_from` is being built on
+    `engine-anchored-window`). The chart alternatives are not faithful today:
+    `delta_from_baseline` compares newest − oldest in a fixed lookback, and its threshold
+    has two directions only — positive means *rose by ≥ t*, negative means *fell by ≥ |t|*
+    — so "rose by **less than** 1" (the escalation arm) has no encoding. With fewer than
+    `min_points` dated values it returns a plain "not met" rather than unresolved, so a
+    missing recheck would silently decide instead of asking. And the simulator sends no
+    dates, so no trend/delta arm can fire there. The v4 chart gate (Hgb > 10.9 within 90
+    days OR `trend_up` over 42 / 120 / 300 days) only ever decided maintenance; it could
+    not close escalation.
+  - **What switching to `window_from` needs — not just the key swap.** `window_from`
+    fixes the *response* measurement (delta anchored to the oral-iron start). Returning
+    **escalation** to chart data also needs a "rose by less than" / negated delta
+    condition whose too-few-points case is *unresolved* (asks for the recheck) rather than
+    a negatable "no" — otherwise a generic negation would escalate every patient who has
+    no recheck yet. Until both exist, keep the question.
+  - Superseded (v4, chart): compound OR — labs 718-7 > 10.9 {days: 90}; `trend_up`
+    slope 0.030 over 42 days; 0.015 over 120 days; 0.015 over 300 days (min_points 2),
+    skip, ask. Kept for the record to restore once the engine can express both arms.
 - **Gate `gate-iv-iron-ga` — Beyond first trimester (GA ≥ 14 0/7 weeks)**
   - Attached to: dp-2 · Branches to: step-2-5 · Type: **patient_attribute** · Default: skip
     · On unresolved: **ask**
@@ -725,7 +791,7 @@ Nodes that can carry CITES_EVIDENCE:
 - Step 1.1: [1][2][3][10] · Step 1.2: [1][5] · Step 1.3: [1] · Step 1.4: [1]
   · Step 1.5: [1][4] · Step 1.6: [4] · Step 1.7: [1]
 - Step 2.1: [1][5][13][14] · Step 2.2: [1] · Step 2.3: [1][3] · Step 2.4: [3]
-  · Step 2.5: [1][5][7][22]
+  · Step 2.5: [1][5][7][22] · Step 2.6: [1][3][6]
 - Step 3.1: [7] · Step 3.2: [16] · Step 3.3: [1][4][7] · Step 3.4: [8][18][19]
   · Step 3.5: [8] · Step 3.6: [1][11] · Step 3.7: [3] · Step 3.8: [1][20] · Step 3.9: [21]
   · Step 3.10: [1][17]
@@ -755,7 +821,7 @@ margin). **These day-counts are my proposal — review.**
 |---|---|---|---|---|---|
 | gate-microcytic / normocytic / macrocytic (gate-microcytic restored in v4) | labs 787-2 (MCV) | {days: 90} | — | — | Classification must reflect the anemia being worked up, not an old chart value |
 | gate-ida-confirmed | labs 2276-4 (ferritin) | {days: 90} | — | — | Confirmatory ferritin from this workup |
-| gate-hgb-response | labs 718-7 (delta) | — | — | 42 | Operator-windowed (XOR rule); ideal anchor is Step 2.1 med-start — anchor-to-event is not in the kernel grammar yet, note stands |
+| gate-hgb-response | — (v5: question router, no chart condition) | — | — | — | `[INTERIM — switch to window_from]` — see §4b; the ideal anchor is the oral-iron start, which needs `window_from` plus a "rose by less than" condition |
 | gate-severe-anemia | labs 718-7 (Hgb) | {days: 7} | — | — | Hgb <6 is an acute finding; only a current value justifies transfusion routing |
 | gate-referral-threshold | labs 718-7, 4544-3 | {days: 90} | — | — | Referral on current-pregnancy values |
 | gate-multi-gestation | O30.* | {days: 300} | active | — | A *prior* pregnancy's twin code must not fire this pregnancy's surveillance branch |
@@ -842,7 +908,16 @@ is now `skip` + `on_unresolved: ask`; see §4b).
     avoid all three. §14 is now empty. Normocytic band uses 79.9/100.1 strict boundaries
     (coded operators lack ≥/≤). Revert candidates when the dashboard/platform catch up.
 
-### `[GAP — NEEDS JOSH]` v4 open item — escalation is not conditioned on nonresponse
+### ~~`[GAP — NEEDS JOSH]` v4 open item — escalation is not conditioned on nonresponse~~ — RESOLVED (v5)
+
+`[DECISION — Josh 2026-09-24]` **Escalation only after non-response.** `gate-hgb-response`
+is now a BOOLEAN question router on Step 2.3 ("Hgb risen ≥1 g/dL since starting oral
+iron?"): yes → Step 2.4 (maintenance); no → Step 2.6 (Nonresponse management), the only
+host of DP-2, so the expanded workup and IV iron (GA ≥ 14) wait for a "no". DP-2's
+single-branch shape is unchanged. `[INTERIM — switch to window_from]` — a question until
+the kernel can measure a rise anchored to the oral-iron start **and** express "rose by
+less than 1 g/dL" with an insufficient-data case that asks (§4b `gate-hgb-response`).
+Proved with `gate-proof.ts response`. The original note follows for the record.
 
 Found while proving the empiric arm's follow-up (v4); pre-existing on the confirmed arm,
 and now shared by both. DP-2 ("Nonresponse management") has a single BRANCHES_TO, to Step
@@ -880,11 +955,14 @@ It decides what a gate does when its lab/vital value is **missing or ambiguous**
 holds the gated subtree and asks the provider for the value; `default` treats it like
 "no" and applies the default behavior. Absent means `ask`, so the JSON now states `ask`
 explicitly on every gate with a threshold — **no behaviour change** — pending review:
-gate-microcytic, gate-normocytic, gate-macrocytic (MCV), gate-ida-confirmed (ferritin), gate-hgb-response (Hgb), gate-severe-anemia (Hgb), gate-referral-threshold (Hgb, Hct). Gates with only code/history conditions carry `default`, which is what the
+gate-microcytic, gate-normocytic, gate-macrocytic (MCV), gate-ida-confirmed (ferritin), gate-hgb-response (Hgb — v5: now a question gate, no `on_unresolved`), gate-severe-anemia (Hgb), gate-referral-threshold (Hgb, Hct). Gates with only code/history conditions carry `default`, which is what the
 engine does for them anyway. Lab conditions also carry a `display` (name + unit) so the
 missing-value question is readable.
 
 ### `[BUILD FIX 2026-09-24]` Simulator-untestable: `gate-hgb-response` trend arms
+
+*Superseded in v5:* `gate-hgb-response` is a question gate and has no trend arms; this
+applies again only if the chart form is restored (§4b). The original note follows.
 
 The encounter simulator sends no dates. The three `trend_up` arms need at least two
 **dated** hemoglobin values, so they never fire from the simulator (one undated value: not
