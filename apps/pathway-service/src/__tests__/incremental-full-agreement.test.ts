@@ -484,6 +484,30 @@ const SCENARIOS: Scenario[] = [
       }),
     ],
   },
+  // The known cost of that rule: a START visit whose chart already holds an
+  // older Hgb (a routine early-pregnancy CBC) is asked the date too. On the
+  // live compound gates, with the trimester unknown, ONE answer — today —
+  // must settle it: NOT_YET_DUE again, the trimester never asked, nothing in
+  // the response region left pending. (The pathway's other questions —
+  // referral threshold, transfusion refusal, hemoglobinopathy — pend at every
+  // visit and are not this rule's.)
+  {
+    name: 'anemia: empiric chosen, start visit with an older routine Hgb, trimester unknown — date asked once, today closes it',
+    file: ANEMIA, patient: patientOf({ codes: ['O99.012'], labs: empiricLabs([['718-7', 12.4, '2026-02-10'], ...START_HGB]) }),
+    visit: { asOf: DAY0 },
+    answers: [['dp-1', pick(EMPIRIC)], [ORAL_IRON_ANCHOR, { dateValue: '2026-06-01' } as GateAnswer]],
+    mustAnswer: ['dp-1', ORAL_IRON_ANCHOR],
+    outcome: (r, pending) => [
+      ...RESPONSE_GATES.filter((g) => r.resolutionState.get(g)?.notYetDue !== true).map((g) => `${g} is not NOT_YET_DUE`),
+      ...expectStatus(r, { 'gate-hgb-response': 'GATED_OUT', 'gate-hgb-nonresponse': 'GATED_OUT' }),
+      ...anchoredOn(r, 'CLINICIAN'),
+      ...responseQuestions(pending),
+      ...pending.filter((q) => q.datumKey === 'patient.trimester').map(() => 'trimester asked'),
+      ...[...RESPONSE_GATES, 'step-2-4', 'step-2-6']
+        .filter((id) => r.resolutionState.get(id)?.status === 'PENDING_QUESTION')
+        .map((id) => `${id} blocks generation`),
+    ],
+  },
   {
     name: 'anemia: ferritin 12, workup, IV iron without an oral trial at DP-3 (3b), GA 20',
     file: ANEMIA, patient: patientOf({ codes: ['O99.012'], labs: confirmedLabs(START_HGB), attrs: { gestational_age_weeks: 20 } }),

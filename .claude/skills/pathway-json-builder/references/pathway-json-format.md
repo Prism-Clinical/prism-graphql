@@ -579,7 +579,9 @@ Authoring notes:
 - **Simulator:** a synthetic patient has no stored care plans, and the simulator dates
   nothing — medications or labs — so the anchor resolves only from the clinician's date or
   this session's recommendation. If the session recommends the drug, the gates close
-  NOT_YET_DUE (nothing asked); otherwise the gate asks "When did … start?", the tester
+  NOT_YET_DUE (nothing asked) — unless the synthetic patient's medication list already
+  holds a drug of the class (undated, so "on it since an unknown date"), which asks;
+  otherwise the gate asks "When did … start?", the tester
   answers. **The series then still has no dated value**: zero points is short by ≥ 2, so
   nothing more is asked and the gate takes `default_behavior` (both response-check gates
   close). A dated trend/delta arm is only
