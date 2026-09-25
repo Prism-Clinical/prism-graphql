@@ -3,7 +3,7 @@
   "pathway": {
     "logical_id": "anemia-in-pregnancy",
     "title": "Anemia in Pregnancy \u2014 Classification and Treatment",
-    "version": "8",
+    "version": "9",
     "category": "OBSTETRIC",
     "scope": "Outpatient prenatal care, from diagnosed anemia through postpartum handoff. Screening is upstream of this pathway.",
     "target_population": "Adult pregnant patients with diagnosed anemia; hemoglobinopathy disease, thalassemia syndromes, and CKD-associated anemia are detected and routed out.",
@@ -60,7 +60,7 @@
       "properties": {
         "stage_number": 1.5,
         "title": "Empiric Oral Iron Trial (if chosen at DP-1; not with hemoglobinopathy disease)",
-        "description": "Branch-entry only, via DP-1 criterion 1a (empiric oral iron without iron studies). With no hemoglobinopathy disease on file (gate-empiric-no-hgbpathy) it opens Step 2.8, the iron-route choice (DP-3), so the empiric arm chooses between the oral trial and IV iron without an oral trial exactly as ferritin-confirmed IDA does. With sickle cell disease, a thalassemia syndrome or HbC/HbE disease on file, empiric iron is not given: gate-hgbpathy-microcytic opens Step 1.8 (iron studies) instead \u2014 choose confirmatory studies at DP-1 for the iron path. Numbered 1.5 so it sorts directly after Stage 1 with a number of its own."
+        "description": "Branch-entry only, via DP-1 criterion 1a (empiric oral iron without iron studies). With no hemoglobinopathy disease on file (gate-empiric-no-hgbpathy) it opens Step 2.8, the iron-route choice (DP-3), so the empiric arm chooses between the oral trial and IV iron without an oral trial as ferritin-confirmed IDA does \u2014 except that IV iron first, with no ferritin on file, orders a ferritin, starts oral iron meanwhile and gives IV iron only once a ferritin < 30 ng/mL confirms iron deficiency. With sickle cell disease, a thalassemia syndrome or HbC/HbE disease on file, empiric iron is not given: gate-hgbpathy-microcytic opens Step 1.8 (iron studies) instead \u2014 choose confirmatory studies at DP-1 for the iron path. Numbered 1.5 so it sorts directly after Stage 1 with a number of its own."
       }
     },
     {
@@ -85,8 +85,8 @@
       "type": "Stage",
       "properties": {
         "stage_number": 2.6,
-        "title": "Oral Iron Until 14 Weeks (IV iron chosen before 14 weeks)",
-        "description": "Branch-entry only, via gate-oral-bridge-ga on Step 2.9: IV iron without an oral trial was chosen at DP-3 before 14 0/7 weeks, when IV iron is not given. Holds the oral trial's Steps 2.1\u20132.3 \u2014 oral iron, the trial period and the 2\u20134-week response check \u2014 so iron starts now; from 14 weeks gate-iv-iron-ga-direct opens IV iron instead (DP-3 is asked again at each visit). Numbered 2.6 so it has a number of its own; its steps keep theirs."
+        "title": "Oral Iron While IV Iron Waits (before 14 weeks, or until ferritin confirms iron deficiency)",
+        "description": "Branch-entry only, via gate-oral-bridge-ga on Step 2.9: IV iron without an oral trial was chosen at DP-3, but IV iron cannot be given yet \u2014 either no ferritin is on file (the empiric arm skips iron studies; Step 2.12 orders one, and IV iron waits for ferritin < 30 ng/mL), or it is before 14 0/7 weeks with iron deficiency confirmed. Holds the oral trial\u2019s Steps 2.1\u20132.3 \u2014 oral iron, the trial period and the 2\u20134-week response check \u2014 so iron starts now. Once a ferritin < 30 is on file and the patient is 14 weeks or later, IV iron opens instead and this stage closes (DP-3 is asked again at each visit). With a ferritin of 30 or more on file it stays closed: no iron deficiency, no iron. Numbered 2.6 so it has a number of its own; its steps keep theirs."
       }
     },
     {
@@ -268,7 +268,7 @@
         "step_number": 9,
         "display_number": "2.9",
         "title": "IV iron without an oral trial",
-        "description": "Chosen at DP-3. IV iron is given after the first trimester only (gestational age 14 0/7 weeks or later, gate-iv-iron-ga-direct \u2192 Step 2.10). Before 14 weeks the oral trial starts instead (gate-oral-bridge-ga \u2192 Stage 2.6: oral iron, trial period, response check), and IV iron is offered again from 14 weeks."
+        "description": "Chosen at DP-3. IV iron is given only after the first trimester (gestational age 14 0/7 weeks or later, gate-iv-iron-ga-direct \u2192 Step 2.13) and only once a ferritin < 30 ng/mL confirms iron deficiency (gate-ida-confirmed-iv \u2192 Step 2.10). On the confirmed arm that ferritin is already on file. On the empiric arm, which skips iron studies, a ferritin is ordered (gate-no-ferritin-on-file \u2192 Step 2.12) and oral iron starts meanwhile (gate-oral-bridge-ga \u2192 Stage 2.6); before 14 weeks oral iron is given until IV iron can be. DP-3 is asked again at each visit."
       }
     },
     {
@@ -290,6 +290,28 @@
         "display_number": "2.11",
         "title": "Malabsorption on the chart: IV iron without an oral trial favoured (DP-3 criterion 3c)",
         "description": "Entered only via gate-malabsorption-chart on Step 2.8 (both iron arms). The chart carries a condition that impairs oral iron absorption, which supports DP-3 criterion 3c. A recommendation shown next to the DP-3 question, not a decision: the route is still chosen at DP-3."
+      }
+    },
+    {
+      "id": "step-2-12",
+      "type": "Step",
+      "properties": {
+        "stage_number": 2,
+        "step_number": 12,
+        "display_number": "2.12",
+        "title": "No ferritin on file: order ferritin before IV iron",
+        "description": "Entered only via gate-no-ferritin-on-file on Step 2.9: IV iron without an oral trial was chosen at DP-3 with no ferritin in the last 90 days \u2014 the empiric arm, which skips iron studies. IV iron is given only once a ferritin < 30 ng/mL confirms iron deficiency (Step 2.13); oral iron starts meanwhile (Stage 2.6)."
+      }
+    },
+    {
+      "id": "step-2-13",
+      "type": "Step",
+      "properties": {
+        "stage_number": 2,
+        "step_number": 13,
+        "display_number": "2.13",
+        "title": "IV iron first: ferritin must confirm iron deficiency",
+        "description": "Entered only via gate-iv-iron-ga-direct (gestational age 14 0/7 weeks or later) on Step 2.9. IV iron (Step 2.10) opens only through gate-ida-confirmed-iv \u2014 gate-ida-confirmed\u2019s own condition, ferritin < 30 ng/mL within 90 days. On the confirmed arm the ferritin that opened Stage 2 satisfies it. On the empiric arm a missing ferritin is asked for and IV iron waits for it; a ferritin of 30 or more closes IV iron."
       }
     },
     {
@@ -513,7 +535,7 @@
       "id": "crit-3d",
       "type": "Criterion",
       "properties": {
-        "description": "Anemia diagnosed at 34 weeks or later (iron deficiency confirmed, or presumed on the empiric arm) \u2014 too little time for an oral trial; IV iron"
+        "description": "Anemia diagnosed at 34 weeks or later (iron deficiency confirmed, or presumed on the empiric arm) \u2014 too little time for an oral trial; IV iron (on the empiric arm, once a ferritin < 30 ng/mL confirms iron deficiency; oral iron meanwhile)"
       }
     },
     {
@@ -1045,15 +1067,86 @@
       "id": "gate-oral-bridge-ga",
       "type": "Gate",
       "properties": {
-        "title": "Before 14 0/7 weeks (IV iron not yet given) \u2014 oral iron until then",
+        "title": "Oral iron while IV iron waits: no ferritin on file yet, or before 14 0/7 weeks with iron deficiency confirmed",
+        "gate_type": "compound",
+        "default_behavior": "skip",
+        "on_unresolved": "ask",
+        "operator": "OR",
+        "conditions": [
+          {
+            "field": "labs",
+            "operator": "not_includes_code",
+            "value": "2276-4",
+            "system": "LOINC",
+            "display": "Ferritin (ng/mL)",
+            "horizon": {
+              "days": 90
+            }
+          },
+          {
+            "operator": "AND",
+            "display": "Before 14 0/7 weeks, iron deficiency confirmed (ferritin < 30 ng/mL)",
+            "conditions": [
+              {
+                "attribute": "patient.gestational_age_weeks",
+                "operator": "less_than",
+                "value": 14,
+                "unit": "weeks"
+              },
+              {
+                "field": "labs",
+                "operator": "less_than",
+                "value": "2276-4",
+                "system": "LOINC",
+                "display": "Ferritin (ng/mL)",
+                "threshold": 30,
+                "horizon": {
+                  "days": 90
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "gate-ida-confirmed-iv",
+      "type": "Gate",
+      "properties": {
+        "title": "Ferritin confirms iron deficiency (< 30 ng/mL) \u2014 before IV iron first",
         "gate_type": "patient_attribute",
         "default_behavior": "skip",
         "on_unresolved": "ask",
         "condition": {
-          "attribute": "patient.gestational_age_weeks",
+          "field": "labs",
           "operator": "less_than",
-          "value": 14,
-          "unit": "weeks"
+          "value": "2276-4",
+          "system": "LOINC",
+          "display": "Ferritin (ng/mL)",
+          "threshold": 30,
+          "horizon": {
+            "days": 90
+          }
+        }
+      }
+    },
+    {
+      "id": "gate-no-ferritin-on-file",
+      "type": "Gate",
+      "properties": {
+        "title": "No ferritin on file (90 days) \u2014 order one before IV iron",
+        "gate_type": "patient_attribute",
+        "default_behavior": "skip",
+        "on_unresolved": "default",
+        "condition": {
+          "field": "labs",
+          "operator": "not_includes_code",
+          "value": "2276-4",
+          "system": "LOINC",
+          "display": "Ferritin (ng/mL)",
+          "horizon": {
+            "days": 90
+          }
         }
       }
     },
@@ -1927,6 +2020,16 @@
       }
     },
     {
+      "id": "lab-17",
+      "type": "LabTest",
+      "properties": {
+        "name": "Ferritin, serum",
+        "code": "2276-4",
+        "system": "LOINC",
+        "specimen": "Serum"
+      }
+    },
+    {
       "id": "proc-1",
       "type": "Procedure",
       "properties": {
@@ -1986,7 +2089,7 @@
       "properties": {
         "topic": "Malabsorption on the chart: consider IV iron first",
         "category": "treatment-planning",
-        "instructions": "The problem list carries a condition that reduces oral iron absorption (bariatric surgery, Crohn's disease or ulcerative colitis, celiac disease, short bowel syndrome or intestinal failure, postsurgical or unspecified intestinal malabsorption, or gastrectomy). This supports choosing IV iron without an oral trial at DP-3 (criterion 3c), most strongly after a malabsorptive bariatric procedure (e.g. Roux-en-Y gastric bypass) or with active inflammatory bowel disease; with quiescent IBD or a restrictive procedure an oral trial remains reasonable. IV iron is given from 14 0/7 weeks; before then, choosing IV first starts oral iron until 14 weeks."
+        "instructions": "The problem list carries a condition that reduces oral iron absorption (bariatric surgery, Crohn's disease or ulcerative colitis, celiac disease, short bowel syndrome or intestinal failure, postsurgical or unspecified intestinal malabsorption, or gastrectomy). This supports choosing IV iron without an oral trial at DP-3 (criterion 3c), most strongly after a malabsorptive bariatric procedure (e.g. Roux-en-Y gastric bypass) or with active inflammatory bowel disease; with quiescent IBD or a restrictive procedure an oral trial remains reasonable. IV iron is given from 14 0/7 weeks, and only once a ferritin < 30 ng/mL confirms iron deficiency; until then (before 14 weeks, or on the empiric arm while its ferritin is outstanding), choosing IV first starts oral iron."
       }
     },
     {
@@ -2961,7 +3064,7 @@
     },
     {
       "from": "gate-iv-iron-ga-direct",
-      "to": "step-2-10",
+      "to": "step-2-13",
       "type": "BRANCHES_TO"
     },
     {
@@ -2973,6 +3076,31 @@
       "from": "gate-oral-bridge-ga",
       "to": "stage-2-oral-bridge",
       "type": "BRANCHES_TO"
+    },
+    {
+      "from": "step-2-13",
+      "to": "gate-ida-confirmed-iv",
+      "type": "HAS_GATE"
+    },
+    {
+      "from": "gate-ida-confirmed-iv",
+      "to": "step-2-10",
+      "type": "BRANCHES_TO"
+    },
+    {
+      "from": "step-2-9",
+      "to": "gate-no-ferritin-on-file",
+      "type": "HAS_GATE"
+    },
+    {
+      "from": "gate-no-ferritin-on-file",
+      "to": "step-2-12",
+      "type": "BRANCHES_TO"
+    },
+    {
+      "from": "step-2-12",
+      "to": "lab-17",
+      "type": "HAS_LAB_TEST"
     },
     {
       "from": "step-2-8",
@@ -4240,6 +4368,26 @@
       "type": "CITES_EVIDENCE"
     },
     {
+      "from": "lab-17",
+      "to": "code-loinc-2276-4",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "lab-17",
+      "to": "code-cpt-82728",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "lab-17",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "lab-17",
+      "to": "ev-5",
+      "type": "CITES_EVIDENCE"
+    },
+    {
       "from": "lab-16",
       "to": "code-loinc-2498-4",
       "type": "HAS_CODE"
@@ -4442,6 +4590,26 @@
     {
       "from": "step-2-10",
       "to": "ev-22",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-2-12",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-2-12",
+      "to": "ev-5",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-2-13",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-2-13",
+      "to": "ev-5",
       "type": "CITES_EVIDENCE"
     },
     {
