@@ -232,6 +232,24 @@ When you build a new version: bump §1's Version, record why in the brief (with
 `[DECISION — Josh <date>]` where he decided it), set the stamp to the new version, set the
 JSON's `pathway.version` — then commit the brief and the JSON **together**.
 
+**Pre-commit hook.** `scripts/pre-commit-brief-sync.sh` blocks a commit that stages any
+`pathways/json/*.json` without its brief, or whose staged tree fails `check-brief-sync.ts
+--staged` (it checks the index, not the working tree, so a fix left unstaged does not
+count). It does nothing when no `pathways/` file is staged. Install once per clone — it
+goes in the common hooks directory, so every worktree shares it, and it is a no-op on any
+branch that does not carry the script:
+
+```bash
+sh .claude/skills/pathway-json-builder/scripts/install-pre-commit-hook.sh
+```
+
+The installer writes a small dispatcher to `$(git rev-parse --git-common-dir)/hooks/pre-commit`
+that runs `<worktree top>/.claude/skills/pathway-json-builder/scripts/pre-commit-brief-sync.sh`
+if that file exists (each branch runs its own copy). It refuses to overwrite a different
+pre-commit hook, and warns when `core.hooksPath` (shared or per-worktree) would bypass it.
+Check it is live with `cat "$(git rev-parse --git-common-dir)/hooks/pre-commit"`. Bypass
+once with `git commit --no-verify` only when Josh says so.
+
 ## Step 5 — Deliver
 
 Save to `pathways/json/<logical_id>.json` **and update the brief's stamp line in the same
