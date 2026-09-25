@@ -31,6 +31,7 @@ import { containmentClosure } from '../services/resolution/graph-containment';
 import { makeEvaluationTemporalContext } from '../services/resolution/temporal/evaluation-context';
 import { assembleContext } from '../services/resolution/temporal/context-assembler';
 import { withTherapyStarts } from '../services/resolution/temporal/anchored-window';
+import { planAnchorAnswer } from '../services/resolution/anchor-answer';
 import { normalizePatientAttributes } from '../services/resolution/patient-attributes';
 import { GateAnswer, PendingQuestion, TraversalResult } from '../services/resolution/types';
 import { GraphContext, GraphEdge, GraphNode, PatientContext } from '../services/confidence/types';
@@ -186,15 +187,31 @@ async function replayAndCompare(s: Scenario, reverse: boolean, seeding: Seeding)
   const remaining = [...s.answers];
 
   for (;;) {
-    const idx = remaining.findIndex(([id]) => pending.some((q) => asks(q, id)));
+    const idx = remaining.findIndex(([id]) => pending.some((q) => asks(q, id) || q.datumKey === id));
     if (idx === -1) break;
     const [id, answer] = remaining.splice(idx, 1)[0];
-    given.set(id, answer);
+    let roots = [id];
+    let alsoDropGateIds = [id];
+    const anchorQ = pending.find((q) => q.datumKey === id && q.askTarget?.kind === 'anchor');
+    if (anchorQ) {
+      // A start date: planned, stored and seeded exactly as `answerPendingDecision`
+      // does — under the ANCHOR key, re-disposing every gate that read it.
+      const plan = planAnchorAnswer({
+        nodeId: anchorQ.gateId, answer, pendingQuestions: pending, dependencyMap: r.dependencyMap,
+        graphContext: graph, evaluationAsOf: s.visit?.asOf ?? AS_OF,
+      });
+      if (plan.kind !== 'anchor') throw new Error(`anchor answer for ${id} planned as ${plan.kind}`);
+      given.set(plan.key, { dateValue: plan.dateValue } as GateAnswer);
+      roots = plan.rootGateIds;
+      alsoDropGateIds = [];
+    } else {
+      given.set(id, answer);
+    }
     const isDp = graph.getNode(id)?.nodeType === 'DecisionPoint';
-    const seed = isDp || seeding === 'gate' ? new Set([id]) : containmentClosure(graph, [id]);
+    const seed = isDp || seeding === 'gate' ? new Set(roots) : containmentClosure(graph, roots);
     const rr = await engine.resolveIncrementally(
       seed, r.resolutionState, r.dependencyMap, graph, s.patient, given,
-      { pendingQuestions: pending, redFlags, alsoDropGateIds: [id] },
+      { pendingQuestions: pending, redFlags, alsoDropGateIds },
     );
     pending = rr.pendingQuestions;
     redFlags = rr.redFlags;
@@ -268,6 +285,8 @@ const confirmedLabs = (hgb: Lab[]): Lab[] => [['787-2', 72], ['2276-4', 12], ...
 /** The confirmed arm: workup at DP-1, then the oral-iron trial at DP-3. */
 const CONFIRMED_ORAL: Array<[string, GateAnswer]> = [['dp-1', pick('step-1-2')], ['dp-3', pick('stage-2-oral')]];
 const RESPONSE_GATES = ['gate-hgb-response', 'gate-hgb-nonresponse'];
+/** The start-date question's datum key: answered by date, stored under this key. */
+const ORAL_IRON_ANCHOR = 'anchor:medication_start:oral-iron-repletion';
 
 function expectStatus(r: TraversalResult, want: Record<string, string>): string[] {
   return Object.entries(want).flatMap(([id, status]) => {
@@ -441,6 +460,27 @@ const SCENARIOS: Scenario[] = [
       ...expectStatus(r, {
         'gate-hgb-nonresponse': 'INCLUDED', 'step-2-6': 'INCLUDED',
         'gate-iv-iron-ga': 'GATED_OUT', 'step-2-5': 'GATED_OUT', 'step-2-4': 'GATED_OUT',
+      }),
+    ],
+  },
+  // A recheck with NOTHING stored — no care plan, no order, no clinician date
+  // yet. The visit still recommends oral iron, but the chart's 05-29 Hgb is
+  // older than the 14-day minimum, so this is not read as the start visit: the
+  // response gates ask "When did oral iron start?" (one question, anchor key)
+  // instead of closing NOT_YET_DUE, and the clinician's date decides.
+  {
+    name: 'anemia: empiric chosen, day-21 recheck, no stored start — date asked, 9.5 → 9.9, GA 12 — nonresponder',
+    file: ANEMIA, patient: patientOf({ codes: ['O99.012'], labs: empiricLabs(RECHECK(9.9)), attrs: { gestational_age_weeks: 12 } }),
+    visit: { asOf: RECHECK_VISIT.asOf },
+    answers: [['dp-1', pick(EMPIRIC)], [ORAL_IRON_ANCHOR, { dateValue: '2026-06-01' } as GateAnswer]],
+    mustAnswer: ['dp-1', ORAL_IRON_ANCHOR],
+    outcome: (r, pending) => [
+      ...RESPONSE_GATES.filter((g) => r.resolutionState.get(g)?.notYetDue === true).map((g) => `${g} is not yet due`),
+      ...anchoredOn(r, 'CLINICIAN'),
+      ...responseQuestions(pending),
+      ...expectStatus(r, {
+        'gate-hgb-nonresponse': 'INCLUDED', 'step-2-6': 'INCLUDED',
+        'gate-hgb-response': 'GATED_OUT', 'step-2-4': 'GATED_OUT',
       }),
     ],
   },
