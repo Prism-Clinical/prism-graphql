@@ -174,6 +174,16 @@ exactly one (Rule 3).
 > map every answer (see **Multi-target gates** below).
 >
 > Also note when designing:
+> - **Only a fork can share contents; a chart gate cannot.** A DecisionPoint or question
+>   router that takes one branch excludes the others **sparing everything the taken branch
+>   contains** (`containmentClosure`), so two branches may hold the same steps (anemia:
+>   Stage 1.5 / Stage 2 share Step 2.8; Stage 2.5 / Stage 2.6 share Steps 2.1–2.3). A
+>   closing chart gate sweeps its whole closure GATED_OUT **sparing nothing**, before any
+>   deeper route writes — so two complementary chart gates (A → X, not-A → Y) can never
+>   both lead into shared content: whichever closes takes it. Put a chart split **behind**
+>   the fork, on the branch it concerns, not in front of it (anemia v8:
+>   `gate-empiric-no-hgbpathy` / `gate-hgbpathy-microcytic` on DP-1's empiric branch, so
+>   the confirmatory branch into Stage 2 serves every patient; `gate-proof.ts hgbpathy`).
 > - **Negative arms exist only on question and LLM gates.** A question gate can route
 >   "no" to its own target: two `BRANCHES_TO` edges with `when: {"equals": true}` and
 >   `when: {"equals": false}` (a router — the answer takes exactly one). A **chart** gate
