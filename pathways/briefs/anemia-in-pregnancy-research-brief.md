@@ -1,6 +1,6 @@
 # Pathway Research Brief — Anemia in Pregnancy
 
-JSON: pathways/json/anemia-in-pregnancy.json @ version 8
+JSON: pathways/json/anemia-in-pregnancy.json @ version 9
 
 **Status: DRAFT v2 for physician review — not yet approved for JSON build.**
 Scope assumed from request: outpatient prenatal care, adult pregnant patients, US practice,
@@ -13,15 +13,19 @@ agents (codes, citations); every claim carries a reference number resolving in �
 `[GAP]` unsourceable, `[FALLBACK SOURCE]` non-US-guideline basis, `[OLDER SOURCE]` >5y but
 still current, `[BLOCKED — prior_node_result]` import-blocked gate design with fallback.
 
-> ### ⚠ For Josh (v8) — hemoglobinopathy disease reaches iron again, and DP-1 is asked again
+> ### ⚠ For Josh (v9) — IV iron first now waits for a ferritin; three new open points
 >
-> A ferritin-confirmed hemoglobinopathy-*disease* patient now gets the same Stage 2 iron path
-> (DP-3, oral trial and response check, or IV iron) as any confirmed IDA; only the empiric
-> arm is closed to her. The cost of doing it without an engine change: **DP-1 ("empiric
-> iron vs confirmatory studies first") is asked again for these patients** (v7 hid it), and
-> its empiric option opens iron studies only. Why, what the provider sees, and the engine
-> change that would hide the option again: §18, "Hemoglobinopathy disease suppresses the
-> empiric-iron arm".
+> IV iron first (DP-3) gives IV iron only with a ferritin < 30 ng/mL on file, still from 14
+> weeks. On the empiric arm, which has no ferritin, choosing IV iron first orders one, starts
+> oral iron meanwhile and asks for the ferritin value; the confirmed arm is unchanged (§4
+> DP-3, "IV iron first needs a confirmed ferritin"). Three consequences are yours to accept
+> or change (§4 DP-3, `[CLINICAL AMBIGUITY — for Josh]` (a)–(c)): the ferritin question
+> **holds that visit's care plan** until a value is entered; a ferritin ≥ 30 stops **all**
+> iron on the IV-first route, while the empiric oral trial still gives oral iron; and oral
+> iron stops once IV iron opens.
+>
+> v8's open point — DP-1 is asked again for hemoglobinopathy-disease patients — is accepted
+> as is (§4 DP-1, §18).
 
 ---
 
@@ -29,8 +33,17 @@ still current, `[BLOCKED — prior_node_result]` import-blocked gate design with
 
 - **Logical ID**: `anemia-in-pregnancy`
 - **Title**: Anemia in Pregnancy — Classification and Treatment
-- **Version**: 8 `[DECISION — Josh 2026-09-24]` (JSON `"8"`; was `"7"`). Imports as
-  NEW_VERSION; v7 sessions keep v7's graph. Bumped for:
+- **Version**: 9 `[DECISION — Josh 2026-09-25]` (JSON `"9"`; was `"8"`). Imports as
+  NEW_VERSION; v8 sessions keep v8's graph. Bumped for:
+  - **IV iron first needs a ferritin-confirmed iron deficiency** (§3 Steps 2.9, 2.12, 2.13,
+    §2 Stage 2.6, §4 DP-3, §4b `gate-oral-bridge-ga` / `gate-ida-confirmed-iv` /
+    `gate-no-ferritin-on-file`, §6 Lab-17): v8 gave IV iron first on the empiric arm with no
+    ferritin on file. v9 orders a ferritin when none is on file, starts oral iron meanwhile,
+    and gives IV iron (still at GA ≥ 14 only) once a ferritin < 30 ng/mL is on file. The
+    confirmed arm's IV iron first is unchanged.
+  - **DP-1 asked again for hemoglobinopathy-disease patients — accepted as is** `[DECISION —
+    Josh 2026-09-25]` (§4 DP-1, §18): no JSON change; recorded.
+  (v8 `[DECISION — Josh 2026-09-24]`, was `"7"`; v7 sessions keep v7's graph. Bumped for:)
   - **The empiric arm reaches DP-3** (§2 Stage 1.5, §4 DP-3): Stage 1.5 now holds Step 2.8
     (DP-3's host) instead of Steps 2.1–2.3, so a patient on empiric iron can also go to IV
     iron without an oral trial; the oral trial (Stage 2.5, Steps 2.1–2.3) is reached through
@@ -119,13 +132,16 @@ None. (Single-condition pathway; O99.01x already encodes the pregnancy+anemia co
   reached from Stage 2 and from Stage 1.5; through v7 Stage 1.5 held these steps itself).
   Carries Stage 2's citations, so DP-3's two targets score alike and the fork
   pends for the provider (`gate-proof.ts dp-1-scoring`). [1][5]
-- **Stage 2.6 — Oral Iron Until 14 Weeks (IV iron chosen before 14 weeks)** *(branch-entry
-  only, via gate-oral-bridge-ga on Step 2.9; v8)* `[DECISION — Josh 2026-09-24]` (oral until
-  14 weeks, then IV) with a `[BUILD NOTE]` structure: holds the same Steps 2.1–2.3 as Stage
-  2.5 — oral iron, the trial period, the response check — for a patient whose provider chose
-  IV iron without an oral trial at DP-3 before 14 0/7 weeks, when IV iron is not given.
-  Numbered 2.6: unique, just after Stage 2.5; its steps keep their numbers. Carries Stage
-  2's citations. [1][5]
+- **Stage 2.6 — Oral Iron While IV Iron Waits (before 14 weeks, or until ferritin confirms
+  iron deficiency)** *(branch-entry only, via gate-oral-bridge-ga on Step 2.9; v8, widened
+  v9)* `[DECISION — Josh 2026-09-24]` (oral until 14 weeks, then IV) and `[DECISION — Josh
+  2026-09-25]` (oral iron meanwhile while the empiric arm's ferritin is outstanding) with a
+  `[BUILD NOTE]` structure: holds the same Steps 2.1–2.3 as Stage 2.5 — oral iron, the trial
+  period, the response check — for a patient whose provider chose IV iron without an oral
+  trial at DP-3 when IV iron cannot be given yet: **no ferritin on file** (v9 — the empiric
+  arm; any GA), or **before 14 0/7 weeks with iron deficiency confirmed** (v8). (v8 title:
+  "Oral Iron Until 14 Weeks (IV iron chosen before 14 weeks)".) Numbered 2.6: unique, just
+  after Stage 2.5; its steps keep their numbers. Carries Stage 2's citations. [1][5]
 - **Stage 3 — Special Populations & Escalations** *(root-connected container; every step
   individually gated)*: hemoglobinopathy/thalassemia/CKD routing-out, trait carriers,
   bariatric, IBD, multifetal, transfusion-decliners, severe anemia, referral. [4][7][8][17]
@@ -219,16 +235,37 @@ None. (Single-condition pathway; O99.01x already encodes the pregnancy+anemia co
   2026-09-24]`: before 14 weeks the oral trial starts instead — Step 2.9 also hosts
   gate-oral-bridge-ga (GA < 14) → Stage 2.6 (Steps 2.1–2.3) — and IV iron is offered again
   from 14 weeks (DP-3 is asked at every visit that reaches it; the IV gate opens once GA ≥
-  14). v7 opened nothing here before 14 weeks. [1][5][6][8]
-- **Step 2.10 — IV iron therapy (no oral trial)** *(gated by gate-iv-iron-ga-direct — its
-  only way in; v7)*: Med-13–16 and Sched-6, copies of Step 2.5's Med-4–7 and Sched-3 (one
-  node per host step; Step 2.5 stays the post-non-response IV iron). Deliberately **no**
-  `REQUIRES Step 2.2`: that is the oral trial this branch skips. [1][5][7][22]
+  14). v7 opened nothing here before 14 weeks. **v9** `[DECISION — Josh 2026-09-25]`: IV
+  iron also needs a ferritin < 30 ng/mL on file. Step 2.9 now hosts three gates, each with
+  its own target: gate-iv-iron-ga-direct (GA ≥ 14) → **Step 2.13** (ferritin check) →
+  Step 2.10; gate-oral-bridge-ga (no ferritin on file, or GA < 14 with iron deficiency
+  confirmed) → Stage 2.6; gate-no-ferritin-on-file → **Step 2.12** (orders a ferritin). The
+  gates read the chart, not the arm: on the confirmed arm the ferritin that opened Stage 2 is
+  on file, so they behave exactly as v8's; on the empiric arm there is none (§4 DP-3).
+  [1][5][6][8]
+- **Step 2.10 — IV iron therapy (no oral trial)** *(gated by gate-ida-confirmed-iv on Step
+  2.13 — its only way in since v9; v7–v8: gate-iv-iron-ga-direct on Step 2.9)*: Med-13–16 and
+  Sched-6, copies of Step 2.5's Med-4–7 and Sched-3 (one node per host step; Step 2.5 stays
+  the post-non-response IV iron). Deliberately **no** `REQUIRES Step 2.2`: that is the oral
+  trial this branch skips. [1][5][7][22]
 - **Step 2.11 — Malabsorption on the chart: IV iron without an oral trial favoured (DP-3
   criterion 3c)** *(gated by gate-malabsorption-chart on Step 2.8 — its only way in; v8)*
   `[DECISION — Josh 2026-09-24]` (3c readable from the chart) as a `[BUILD NOTE]`
   recommendation step: hosts Guid-6. Opens next to the DP-3 question whenever the chart
   carries a malabsorption code (§4b), on either iron arm; it does not choose the route. [1][8][18][19]
+- **Step 2.12 — No ferritin on file: order ferritin before IV iron** *(gated by
+  gate-no-ferritin-on-file on Step 2.9 — its only way in; v9)* `[DECISION — Josh 2026-09-25]`
+  (IV iron first on the empiric arm orders a ferritin) as a `[BUILD NOTE]` step: IV iron
+  without an oral trial was chosen with no ferritin in the last 90 days — in practice the
+  empiric arm, which skips iron studies. Orders Lab-17 (ferritin, its own node). Closed
+  whenever a ferritin is on file, so the confirmed arm never orders a second one. [1][5]
+- **Step 2.13 — IV iron first: ferritin must confirm iron deficiency** *(gated by
+  gate-iv-iron-ga-direct on Step 2.9 — its only way in; v9)* `[BUILD NOTE]`: hosts
+  gate-ida-confirmed-iv → Step 2.10. Exists because a gate guards a Step, and the ferritin
+  check must sit **behind** the GA gate: GA < 14 closes IV iron before the ferritin gate is
+  reached, so a first-trimester patient is never asked for a ferritin value she cannot yet
+  use for IV iron. On the confirmed arm the ferritin that opened Stage 2 satisfies the gate.
+  [1][5]
 - **Step 3.1 — Sickle cell disease: route out** *(gated)*: MFM + hematology
   multidisciplinary track; PNV **without** iron unless deficiency confirmed + folic acid
   4 mg (SMFM GRADE 1B). This pathway's iron arm is affirmatively wrong for SCD. [7]
@@ -319,11 +356,13 @@ BRANCHES_TO (no HAS_STEP edge), per the reference-fixture pattern.
     Step 3.3 still fire). MCV 90 → no DP-1; MCV missing → one MCV question, as for anyone.
     Checked also against a full traversal with the answers preloaded: every non-reference
     node agrees with the live (incremental) path, both orders.
-    `[CLINICAL AMBIGUITY — for Josh]` **DP-1 is asked again for disease patients**, and its
-    empiric option does nothing for them but order iron studies — the price of doing this
-    in the JSON. v7 hid DP-1 from them. Hiding it again while keeping the confirmed route
-    needs an engine change (§18). Acceptable, or prefer v7's behaviour (no DP-1, no iron
-    arm)?
+    ~~`[CLINICAL AMBIGUITY — for Josh]`~~ **DP-1 is asked again for disease patients**, and
+    its empiric option does nothing for them but order iron studies — the price of doing
+    this in the JSON. v7 hid DP-1 from them. Hiding it again while keeping the confirmed
+    route needs an engine change (§18). **Resolved — accepted as is** `[DECISION — Josh
+    2026-09-25]`: DP-1 stays offered to hemoglobinopathy-disease patients, and
+    **"confirmatory studies" is the right pick for them** (it leads, with ferritin < 30, to
+    the normal Stage 2 iron path). No JSON change; the engine change in §18 is not needed.
   - Criterion 1a: No evidence of causes other than iron deficiency → empiric oral iron
     reasonable without iron studies (ACOG) → **Stage 1.5** (v8: Step 2.8 → DP-3; v4–v7:
     Steps 2.1–2.3; Step 2.1 alone through v3) [1]
@@ -446,11 +485,10 @@ BRANCHES_TO (no HAS_STEP edge), per the reference-fixture pattern.
     **Consequences for review:** (1) DP-3 now pends for **every** empiric patient too (the
     two targets score identically — `dp-1-scoring`), so choosing empiric iron at DP-1 no
     longer starts oral iron by itself: the provider answers DP-1 and then DP-3.
-    `[CLINICAL AMBIGUITY — for Josh]` (2) **IV iron first on the empiric arm is IV iron with
-    no ferritin on file** — the empiric arm never draws iron studies, and ACOG describes IV
-    iron for iron deficiency. Should IV-first on the empiric arm require a ferritin (e.g.
-    route the provider to the workup), or is the provider's choice enough? Not gated here.
-    (3) Criterion 3d reads "anemia diagnosed at ≥ 34 weeks (iron deficiency confirmed, or
+    ~~`[CLINICAL AMBIGUITY — for Josh]`~~ (2) **IV iron first on the empiric arm is IV iron
+    with no ferritin on file** — **resolved in v9** `[DECISION — Josh 2026-09-25]`: IV iron
+    first requires a confirmed ferritin (below, "IV iron first needs a confirmed
+    ferritin"). (3) Criterion 3d reads "anemia diagnosed at ≥ 34 weeks (iron deficiency confirmed, or
     presumed on the empiric arm)". (4) The DP-1 answer value for the empiric branch is
     unchanged (`stage-2-empiric`). Former ambiguity (b) below is resolved by this decision.
   - Criterion 3a: No reason to skip the oral trial → **Stage 2.5** (Steps 2.1–2.3: oral
@@ -464,10 +502,12 @@ BRANCHES_TO (no HAS_STEP edge), per the reference-fixture pattern.
     trial → **Step 2.9** [6][1] — criterion 2d / the former DP-3's 3b `[FALLBACK SOURCE — FIGO time-math;
     ACOG says only "severe iron deficiency later in pregnancy"]`
   - Step 2.9 → **gate-iv-iron-ga-direct** (GA ≥ 14) → **Step 2.10** (IV iron). IV iron's
-    first-trimester rule is kept on this route too.
+    first-trimester rule is kept on this route too. (v9: → Step 2.13 → gate-ida-confirmed-iv
+    (ferritin < 30) → Step 2.10 — below.)
   - `[DECISION — Josh 2026-09-24]` **IV iron first before 14 weeks → oral iron until 14
-    weeks, then IV (v8).** Step 2.9 → **gate-oral-bridge-ga** (GA < 14, the exact
-    complement of gate-iv-iron-ga-direct) → **Stage 2.6**, which holds the oral trial's Steps
+    weeks, then IV (v8).** Step 2.9 → **gate-oral-bridge-ga** (v8: GA < 14, the exact
+    complement of gate-iv-iron-ga-direct; v9: widened to "no ferritin on file, or GA < 14
+    with ferritin < 30" — below, and no longer that complement) → **Stage 2.6**, which holds the oral trial's Steps
     2.1–2.3. `[BUILD NOTE]` Shared, not copied, with Stage 2.5: DP-3 is one_of, and its
     sweep of the unchosen oral branch spares everything under the chosen Step 2.9 (the
     oral steps included), so the bridge's GA gate decides them.
@@ -490,7 +530,73 @@ BRANCHES_TO (no HAS_STEP edge), per the reference-fixture pattern.
     until 14 weeks (gate-iv-iron-ga) — as for any first-trimester nonresponder. (2) At the
     first visit ≥ 14 weeks, re-choosing IV first switches her from oral iron to IV; choosing
     the oral trial keeps oral iron and its response check (the provider's call, as at every
-    visit).
+    visit). (v9: the switch also needs a ferritin < 30 on file — below.)
+  - `[DECISION — Josh 2026-09-25]` **IV iron first needs a confirmed ferritin (v9).** In v8,
+    IV iron first chosen on the empiric arm gave IV iron with no ferritin on file (the
+    empiric arm skips confirmatory studies). Now, on the empiric arm, IV iron first **orders
+    a ferritin and gives IV iron only once iron deficiency is confirmed** — ferritin < 30
+    ng/mL, gate-ida-confirmed's own threshold and semantics — with **oral iron started
+    meanwhile** (Stage 2.6, the oral-bridge content). IV iron keeps its GA ≥ 14 rule and the
+    GA < 14 oral bridge stays. The confirmed arm's IV iron first is unchanged (its ferritin is
+    already confirmed).
+    `[BUILD NOTE]` **How it is built — DP-3 and Step 2.9 stay shared; Step 2.9's gates read
+    the chart, not the arm.** The engine cannot tell the arms apart at Step 2.9 (the DP-1
+    answer is not chart data), and copying DP-3 for the empiric arm would have meant copying
+    Step 2.8, DP-3's four criteria, gate-malabsorption-chart, Step 2.11 and Guid-6, and
+    changing DP-3's answer id on that arm. Instead every IV-first rule is written on the
+    ferritin itself — "a ferritin < 30 is on file" / "no ferritin is on file" — which on the
+    confirmed arm is always the first (gate-ida-confirmed passed on the identical condition
+    and horizon), so there the new gates reduce to v8's:
+    - **IV iron**: gate-iv-iron-ga-direct (GA ≥ 14, unchanged) → Step 2.13 →
+      **gate-ida-confirmed-iv** (an identical copy of gate-ida-confirmed: ferritin < 30,
+      `{days: 90}`, skip, ask) → Step 2.10. GA first, so GA < 14 closes IV iron without
+      asking for a ferritin; with GA ≥ 14 and no ferritin the gate asks for it and holds
+      IV iron. The `-iv` suffix makes `check-gate-control` hold the copy in sync with
+      gate-ida-confirmed. (Rule 2: a second gate on Step 2.10 would be an AND, so the ferritin
+      check gets its own host step.)
+    - **Oral iron meanwhile**: gate-oral-bridge-ga is widened, not joined by a second gate —
+      `OR( no ferritin on file , AND( GA < 14 , ferritin < 30 ) )` → Stage 2.6. It is the
+      **only** gate into Stage 2.6, so Steps 2.1–2.3 never have two differently-gated parents
+      (two chart gates leading into them would be decided by whichever wrote first — the
+      first-writer-wins sweep in the spec's Gate wiring box). No ferritin on file settles
+      the OR at once (membership never asks), so oral iron starts at any GA without waiting.
+    - **Ferritin order**: gate-no-ferritin-on-file (membership: labs `not_includes_code`
+      2276-4, `{days: 90}`, on_unresolved default) → Step 2.12 → Lab-17, its own node (one
+      node per host). Closed when any ferritin is on file.
+    **What the provider sees** (proved with `gate-proof.ts iv-ferritin` and `dp-3`, both edge
+    orders; `incremental-full-agreement.test.ts` v9 scenarios):
+    | Empiric arm, IV iron first | GA ≥ 14 | GA < 14 |
+    |---|---|---|
+    | **no ferritin** | ferritin ordered (Step 2.12); oral iron + response check (Stage 2.6); IV iron **held** — one question, "Ferritin (ng/mL) (LOINC 2276-4) — most recent value?" | ferritin ordered; oral iron; IV iron GATED_OUT; **no** ferritin question |
+    | **ferritin 12** (on the chart) | IV iron (Step 2.10); oral iron and the ferritin order closed — as on the confirmed arm | oral iron until 14 weeks; IV iron GATED_OUT |
+    | **ferritin 50** (on the chart) | **no iron at all** on this route: IV iron, oral iron and the ferritin order closed | **no iron at all** |
+    Ferritin answered **in the same visit** (the held question): the value enters the chart as
+    a dated fact and every gate reading labs is re-resolved (`addPatientContext`), so the
+    bridge and the ferritin order re-decide with it — 12 → IV iron, oral iron closed; 50 → no
+    iron; each identical, node for node, to a session that had the value on the chart from
+    the start (`gate-proof.ts iv-ferritin`, simulating the mutation's re-seeding; not run
+    against the live service). GA missing, no ferritin: oral iron and the ferritin order open,
+    IV iron held on one GA question. **Confirmed arm**: IV iron first at GA 20 / 36 → IV iron,
+    no oral iron, no ferritin order; GA 12 / 13.9 → the oral bridge; GA missing → one GA
+    question asked by both GA gates — every v8 node's status identical to v8 in 29 sessions ×
+    both edge orders (confirmed IV first / oral trial / route pending at GA missing, 12, 13.9,
+    14, 20, 36; malabsorption and D58.2 IV first; ferritin 50; empiric oral trial; empiric
+    D57.1), the only differences being shared CodeEntry leaves. New nodes there: Step 2.13 and
+    gate-ida-confirmed-iv INCLUDED at GA ≥ 14; Step 2.12 / Lab-17 GATED_OUT.
+    `[CLINICAL AMBIGUITY — for Josh]` (a) **The ferritin question holds the visit's care
+    plan.** Care-plan generation refuses a pending question, so the visit that orders the
+    ferritin (empiric arm, IV iron first, GA ≥ 14) cannot generate its plan until a ferritin
+    value is entered — which is the same "numeric gates ask" rule as gate-ida-confirmed, and
+    what "same semantics as the confirmed arm" gives. Alternative: IV iron GATED_OUT with no
+    question while no ferritin is on file (an `[ON-UNRESOLVED DEFAULT]` exception on a
+    separately named gate), decided at the next visit from the chart. (b) **A ferritin ≥ 30
+    is read two ways on the empiric arm.** IV iron first with ferritin 50 now stops all iron
+    (as the confirmed arm does), while the empiric **oral trial** (3a), which never reads
+    ferritin, keeps giving oral iron with the same ferritin 50 on the chart (unchanged since
+    v8). Should the oral trial also close on a ferritin ≥ 30? (c) **Oral iron stops once IV
+    iron opens** (ferritin < 30 on file, GA ≥ 14), as on the confirmed arm — oral iron is not
+    continued alongside IV iron. Also by construction: an empiric-arm patient who already has
+    a ferritin on file is treated exactly like the confirmed arm (no second ferritin order).
   - **How each criterion is read** — v8 `[DECISION — Josh 2026-09-24]`: malabsorption (3c)
     is also read from the chart; intolerance (3b) and anemia diagnosed at ≥ 34 weeks (3d)
     stay provider answers.
@@ -531,7 +637,8 @@ BRANCHES_TO (no HAS_STEP edge), per the reference-fixture pattern.
     IV route (Steps 2.6, 2.5, DP-2) EXCLUDED; no response question. GA 12 → IV iron
     GATED_OUT (v8: and the oral trial starts via Stage 2.6); GA missing → asks for GA, IV
     iron held. Ferritin 50 never sees DP-3. (v8: the empiric arm does — same outcomes,
-    proved on both arms — and so does a hemoglobinopathy-disease patient with ferritin < 30
+    proved on both arms, except IV iron first since v9, which on the empiric arm waits for a
+    ferritin — above — and so does a hemoglobinopathy-disease patient with ferritin < 30
     on the confirmatory branch; on the empiric branch she does not, §4 DP-1.)
   - ~~`[CLINICAL AMBIGUITY — for Josh]` (a) **IV first before 14 weeks gives no iron at
     all**~~ — **resolved in v8** `[DECISION — Josh 2026-09-24]`: oral iron until 14 weeks,
@@ -645,6 +752,9 @@ the pathway presumes the coded diagnosis.
     threshold 30, horizon {days: 90}
   - Rationale: ACOG confirmatory cutoff (sens 92%/spec 98% per ASH); WHO uses <15,
     USPSTF notes no consensus — encoded 30 with provenance. [1][2][5]
+  - v9: **copied** as gate-ida-confirmed-iv (Step 2.13 → Step 2.10, IV iron first) and
+    hand-copied as a leaf of gate-oral-bridge-ga — change all three together (§4b
+    gate-oral-bridge-ga).
 - **Gates `gate-hgb-response` / `gate-hgb-nonresponse` — Response to oral iron at the
   2–4-week Hgb recheck** `[DECISION — Josh 2026-09-24]` *(v7: chart data; v5/v6 were a
   SELECT question router, v4 and earlier a layered-trend chart gate)*
@@ -790,24 +900,59 @@ the pathway presumes the coded diagnosis.
 - **Gate `gate-iv-iron-ga-direct` — Beyond first trimester (GA ≥ 14 0/7 weeks), IV iron
   without an oral trial** (v7) `[BUILD NOTE]` (the GA ≥ 14 rule is `[DECISION — Josh
   2026-09-24]`; this copy is how it is wired)
-  - Attached to: step-2-9 · Branches to: step-2-10 · patient_attribute · Default: skip ·
-    On unresolved: **ask**
+  - Attached to: step-2-9 · Branches to: **step-2-13** (v9; v7–v8: step-2-10) ·
+    patient_attribute · Default: skip · On unresolved: **ask**
   - Condition: identical to gate-iv-iron-ga (`patient.gestational_age_weeks`
     `greater_or_equal` 14, unit weeks). A separate gate because Rule 2 forbids a second gate
     on Step 2.5, and a DP-3 branch straight into Step 2.5 would override gate-iv-iron-ga;
     the `-direct` suffix makes `check-gate-control` hold the two conditions in sync (a
-    Rule 3-style copy). [1][5]
-- **Gate `gate-oral-bridge-ga` — Before 14 0/7 weeks: oral iron until IV iron can be
-  given** (v8) `[DECISION — Josh 2026-09-24]` (oral until 14 weeks, then IV) ·
-  `[BUILD NOTE]` (wiring)
-  - Attached to: step-2-9 · Branches to: **stage-2-oral-bridge** (Stage 2.6) ·
-    patient_attribute · Default: **skip** · On unresolved: **ask**
-  - Condition: `patient.gestational_age_weeks` `less_than` **14**, unit weeks (no horizon —
-    `patient.*` has no temporal policy). The exact complement of gate-iv-iron-ga-direct
-    (`greater_or_equal` 14) on the same host, so for any known GA exactly one opens (proved
-    at 13.9 and 14); a missing GA makes both ask the same `patient.gestational_age_weeks`
-    question once. Not named `gate-iv-iron-ga-*`: `check-gate-control` reads that prefix as
-    a fan-out copy of gate-iv-iron-ga and would demand identical conditions. [1][5]
+    Rule 3-style copy). Unchanged in v9 except its target: IV iron now also passes the
+    ferritin check on Step 2.13 (gate-ida-confirmed-iv, below). [1][5]
+- **Gate `gate-ida-confirmed-iv` — Ferritin confirms iron deficiency (< 30 ng/mL) — before
+  IV iron first** (v9) `[DECISION — Josh 2026-09-25]` (IV iron first needs a confirmed
+  ferritin, same threshold and semantics as the confirmed arm) · `[BUILD NOTE]` (wiring)
+  - Attached to: **step-2-13** · Branches to: **step-2-10** · patient_attribute · Default:
+    **skip** · On unresolved: **ask**
+  - Condition: **identical to gate-ida-confirmed** — coded, field `labs`, less_than, value
+    `2276-4`, threshold 30, display "Ferritin (ng/mL)", horizon {days: 90}. The `-iv` suffix
+    makes it a fan-out copy, so `check-gate-control` fails the build if the two ever differ.
+    Ferritin 12 → IV iron; ferritin 50 → IV iron GATED_OUT; missing → asks "Ferritin (ng/mL)
+    (LOINC 2276-4) — most recent value?" and holds IV iron (reached only at GA ≥ 14, since it
+    sits behind gate-iv-iron-ga-direct). On the confirmed arm the ferritin that opened Stage 2
+    satisfies it. [1][2][5]
+- **Gate `gate-no-ferritin-on-file` — No ferritin on file (90 days) — order one before IV
+  iron** (v9) `[DECISION — Josh 2026-09-25]` (IV iron first on the empiric arm orders a
+  ferritin) · `[BUILD NOTE]` (wiring)
+  - Attached to: step-2-9 · Branches to: **step-2-12** · patient_attribute · Default:
+    **skip** · On unresolved: **default** (membership only — nothing is ever asked)
+  - Condition: coded, field `labs`, **`not_includes_code`**, value `2276-4`, system LOINC,
+    display "Ferritin (ng/mL)", horizon **{days: 90}** — the same window as every ferritin
+    condition, so "no ferritin on file" and "ferritin < 30 on file" never read different
+    results. No ferritin → true (Step 2.12 orders one); any ferritin → false.
+- **Gate `gate-oral-bridge-ga` — Oral iron while IV iron waits: no ferritin on file yet, or
+  before 14 0/7 weeks with iron deficiency confirmed** (v8; widened v9) `[DECISION — Josh
+  2026-09-24]` (oral until 14 weeks, then IV) · `[DECISION — Josh 2026-09-25]` (oral iron
+  meanwhile while the ferritin is outstanding) · `[BUILD NOTE]` (wiring)
+  - Attached to: step-2-9 · Branches to: **stage-2-oral-bridge** (Stage 2.6) · **compound
+    OR** (v9; v8: patient_attribute) · Default: **skip** · On unresolved: **ask**
+  - Conditions (v9): `OR(` labs `not_includes_code` `2276-4` (LOINC, display "Ferritin
+    (ng/mL)", horizon {days: 90}) `,` nested `AND(` `patient.gestational_age_weeks`
+    `less_than` **14**, unit weeks `,` labs `2276-4` `less_than` 30 (display "Ferritin
+    (ng/mL)", horizon {days: 90}) `) )`. Kept one gate on purpose: it is the only gate into
+    Stage 2.6 and its Steps 2.1–2.3, and a second chart gate into those steps would decide
+    them by whichever wrote first (§4 DP-3, v9). Keeps its v8 id (tests and proofs name it);
+    still not `gate-iv-iron-ga-*` (a fan-out-copy prefix).
+  - ⚠ **The ferritin leaf here is a hand copy of gate-ida-confirmed's condition** (and the
+    `not_includes_code` leaf shares its window). `check-gate-control` checks copies only
+    between whole gates (`gate-x` / `gate-x-*`), not leaves inside a compound: **any change to
+    gate-ida-confirmed's threshold or horizon must be made here, in gate-ida-confirmed-iv, and
+    in gate-no-ferritin-on-file's horizon too.**
+  - Outcomes: no ferritin → satisfied at any GA (nothing asked); ferritin < 30 → GA < 14 opens
+    it, GA ≥ 14 closes it, GA missing asks the same `patient.gestational_age_weeks` question
+    as gate-iv-iron-ga-direct (one question, both askers — so on the confirmed arm it is
+    exactly v8's gate, proved at 13.9 and 14); ferritin ≥ 30 → closed at any GA. v8's
+    condition was GA < 14 alone, the exact complement of gate-iv-iron-ga-direct; with a
+    ferritin < 30 on file it still is. [1][5]
 - **Gate `gate-malabsorption-chart` — Malabsorption condition on the chart** (v8)
   `[DECISION — Josh 2026-09-24]` (3c from chart codes); code list `[BUILD NOTE]` — for Josh
   - Attached to: step-2-8 · Branches to: **step-2-11** · compound **OR** · Default: **skip** ·
@@ -978,6 +1123,9 @@ narrative. Recorded so reviewers know the omission is deliberate.
   is the narrative-interpretation alternative if gating on a resulted read). [1]
 - **Lab-9 — Type and antibody screen** (on Step 4.1): ABO/Rh LOINC 882-1 + antibody screen
   890-4; hemorrhage-bundle tie-in for anemic patients approaching delivery. [11]
+- **Lab-17 — Ferritin, serum** (on Step 2.12; v9): LOINC 2276-4 / CPT 82728; ordered when IV
+  iron first is chosen with no ferritin on file (the empiric arm). A copy of Lab-2 — one node
+  per host step. [1][5]
 
 `[BUILD FIX 2026-09-24]` **One host step per lab node (v4).** Lab-1, 2, 4, 7 and 8 were each
 one node ordered by two steps on opposite sides of a gate or DecisionPoint. The engine
@@ -999,6 +1147,7 @@ its other host:
 | Lab-7 Hgb electrophoresis | Step 1.6 | **Lab-14** | Step 1.5 |
 | Lab-2 Ferritin | Step 1.2 | **Lab-15** (v7) | Step 1.8 |
 | Lab-3 Iron/TIBC/saturation | Step 1.2 | **Lab-16** (v7) | Step 1.8 |
+| Lab-2 Ferritin | Step 1.2 | **Lab-17** (v9) | Step 2.12 |
 
 The new nodes share the originals' CodeEntries (HAS_CODE) and citations; CodeEntries are
 not projected into the care plan, so sharing them is harmless. Proof: `gate-proof.ts
@@ -1126,7 +1275,7 @@ All pairs acyclic; REQUIRES points dependent → prerequisite:
 | 718-7 | LOINC | Hemoglobin [Mass/Vol] blood | Lab-1, Lab-10 |
 | 4544-3 | LOINC | Hematocrit, automated | Lab-1, Lab-10 |
 | 787-2 | LOINC | MCV, RBC | Lab-1, Lab-10 |
-| 2276-4 | LOINC | Ferritin, serum | Lab-2, Lab-11, Lab-15 |
+| 2276-4 | LOINC | Ferritin, serum | Lab-2, Lab-11, Lab-15, Lab-17 |
 | 2498-4 | LOINC | Iron, serum | Lab-3, Lab-16 |
 | 2500-7 | LOINC | TIBC | Lab-3, Lab-16 |
 | 2502-3 | LOINC | Iron saturation | Lab-3, Lab-16 |
@@ -1138,7 +1287,7 @@ All pairs acyclic; REQUIRES points dependent → prerequisite:
 | 882-1 | LOINC | ABO+Rh type | Lab-9 |
 | 890-4 | LOINC | RBC antibody screen | Lab-9 |
 | 85025 | CPT | CBC with automated differential | Lab-1, Lab-10 |
-| 82728 | CPT | Ferritin | Lab-2, Lab-11, Lab-15 |
+| 82728 | CPT | Ferritin | Lab-2, Lab-11, Lab-15, Lab-17 |
 | 83540 | CPT | Iron | Lab-3, Lab-16 |
 | 83550 | CPT | TIBC | Lab-3, Lab-16 |
 | 85045 | CPT | Reticulocytes, automated | Lab-4, Lab-12 |
@@ -1167,7 +1316,7 @@ All codes wave-2 verified — see §18 item 11.
 **None needed.** All lab gates use coded-form conditions that match `labResults` by LOINC
 directly, bypassing `pathway_attribute_code_map` entirely. The attribute conditions are all
 `patient.*` — `patient.gestational_age_weeks` (gate-iv-iron-ga, 2026-09-24; gate-iv-iron-ga-direct, v7;
-gate-oral-bridge-ga, v8) and, since v7,
+gate-oral-bridge-ga, v8, a nested leaf since v9) and, since v7,
 `patient.trimester` (gate-hgb-response / gate-hgb-nonresponse) — which read
 `patientAttributes` directly and need no code-map row. No `lab.*`/`allergy.*` attributes
 are referenced anywhere in §4b.
@@ -1275,11 +1424,12 @@ Nodes that can carry CITES_EVIDENCE:
   [1][5][7][22]
 - Meds: Med-1: [1][5][13][14][15] · Med-2, Med-3: [1] · Med-4–Med-7, Med-13–Med-16: [5][22] · Med-8,
   Med-9: [1] · Med-10: [13] · Med-11: [1] · Med-12: [1][17]
-- Labs: Lab-1, Lab-10: [1] · Lab-2, Lab-11, Lab-15: [1][5] · Lab-3, Lab-16: [1] · Lab-4, Lab-12: [1] · Lab-5, Lab-6: [1]
+- Labs: Lab-1, Lab-10: [1] · Lab-2, Lab-11, Lab-15, Lab-17: [1][5] · Lab-3, Lab-16: [1] · Lab-4, Lab-12: [1] · Lab-5, Lab-6: [1]
   · Lab-7, Lab-14: [4] · Lab-8, Lab-13: [1] · Lab-9: [11]
 - Proc-1: [1][11] · Guid-1: [1][12] · Guid-2: [1][12][13] · Guid-3: [1][12]
   · Guid-4: [5][13][14] · Guid-5: [1][10] · Guid-6 (v8): [8][18]
 - Step 2.11 (v8): [1][8][18][19]
+- Step 2.12, Step 2.13 (v9): [1][5] (Step 1.2's — the ferritin workup)
 
 Cannot cite (evidence attaches to host step — builder must reattach): all Gates → their
 attached Stage/Step per §4b rationale refs; QM-1 → Step 2.3 [1][3]; QM-2 → Step 4.1
@@ -1297,6 +1447,9 @@ margin). **These day-counts are my proposal — review.**
 |---|---|---|---|---|---|
 | gate-microcytic / normocytic / macrocytic (gate-microcytic restored in v4) | labs 787-2 (MCV) | {days: 90} | — | — | Classification must reflect the anemia being worked up, not an old chart value |
 | gate-ida-confirmed | labs 2276-4 (ferritin) | {days: 90} | — | — | Confirmatory ferritin from this workup |
+| gate-ida-confirmed-iv (v9) / gate-oral-bridge-ga's ferritin leaf (v9) | labs 2276-4 (ferritin) `less_than` 30 | {days: 90} | — | — | Identical to gate-ida-confirmed, so both arms read the same ferritin |
+| gate-no-ferritin-on-file (v9) / gate-oral-bridge-ga's "no ferritin" leaf (v9) | labs 2276-4 `not_includes_code` | {days: 90} | — | — | Same window as the threshold leaves: "no ferritin on file" and "ferritin < 30 on file" never read different results |
+| gate-oral-bridge-ga's GA leaf / gate-iv-iron-ga-direct | `patient.gestational_age_weeks` | — (`patient.*` has no temporal policy) | — | — | Current GA |
 | gate-hgb-response / gate-hgb-nonresponse | labs 718-7 Δ (`delta_from_baseline`) | — (`window_from` *is* the window: oral-iron start → clock, + latest Hgb ≤ 28 d before the start) | — | — | v7 — anchored to the treatment start, so the pre-treatment state is out by construction; due at day 14 |
 | gate-hgb-response / gate-hgb-nonresponse | labs 718-7 (at-target arm) | {days: 28} | — | — | The current Hgb, not last trimester's |
 | gate-hgb-response / gate-hgb-nonresponse | `patient.trimester` | — (`patient.*` has no temporal policy) | — | — | Derived from GA by the resolver |
@@ -1416,7 +1569,7 @@ change for review, not made here. Related: Sched-2 times the recheck at **4 week
 starting oral iron (CDC; ACOG gives no interval); FIGO's 2-week variant (§18 item 9) is
 not encoded. Left as-is.
 
-### `[DECISION — Josh 2026-09-24]` Hemoglobinopathy disease suppresses the empiric-iron arm — ENCODED (v7); confirmed deficiency reaches iron (v8)
+### `[DECISION — Josh 2026-09-24]` Hemoglobinopathy disease suppresses the empiric-iron arm — ENCODED (v7); confirmed deficiency reaches iron (v8); DP-1 shown again — ACCEPTED (v9)
 
 **Built (v7).** `not_includes_code` landed on josh-dev (3f29f2c). **Code set** (verified
 against the NLM ICD-10-CM table 2026-09-24): SCD — `D57.0.*` (Hb-SS with crisis), `D57.1`,
@@ -1442,15 +1595,21 @@ D58.2 + MCV 72 + ferritin 12 + confirmatory studies → Stage 2, DP-3 and the or
 INCLUDED, the empiric arm EXCLUDED; ferritin 50 → no iron; empiric chosen → no empiric iron,
 Step 1.8 iron studies; traits and uncoded patients unchanged.
 
-`[CLINICAL AMBIGUITY — for Josh]` **The cost: DP-1 is asked again for disease patients.** A
+~~`[CLINICAL AMBIGUITY — for Josh]`~~ **The cost: DP-1 is asked again for disease patients.** A
 patient with SCD, a thalassemia syndrome or HbC/HbE disease and MCV < 80 is asked "Empiric
 iron vs confirmatory studies first"; the empiric option (titled "… not with hemoglobinopathy
 disease", and criterion 1a says so) opens only iron studies (Step 1.8). A DecisionPoint's
 options are the branches that score ≥ 0.60, and branch scores do not read the patient, so no
 JSON can drop the empiric option for her.
 
-**Engine change that would hide DP-1 again for disease patients** (not made — `apps/` is out
-of scope for this build): give a closing gate's sweep a structural `spare`, as DecisionPoint
+**Accepted as is** `[DECISION — Josh 2026-09-25]`: DP-1 being shown again to
+hemoglobinopathy-disease patients is fine, and **"confirmatory studies" is the right pick
+for them** — it orders ferritin (Step 1.2) and, with ferritin < 30, leads to the normal Stage 2
+iron path. No JSON change (v9 records the decision only); the engine change below is not
+needed and is kept for the record.
+
+**Engine change that would hide DP-1 again for disease patients** (not made, and since v9 not
+wanted — see the decision above): give a closing gate's sweep a structural `spare`, as DecisionPoint
 and question-router sweeps already have. Precisely: when a gate closes, `markSubtree` must
 not write (or descend through) a node that has a containment parent **outside** the gate's
 own containment closure — such a node is reachable by another route, which is left to
@@ -1477,6 +1636,16 @@ and Step 3.3 allows iron only with ferritin-confirmed deficiency. v3 exposed the
 patients to Step 2.1 alone; v4's empiric arm also includes the trial period, recheck and
 IV-iron route. Should a hemoglobinopathy code suppress the empiric option (e.g. a gate on
 Stage 1.5)? Not changed here.
+
+### `[DECISION — Josh 2026-09-25]` IV iron first needs a confirmed ferritin — ENCODED (v9)
+
+IV iron without an oral trial (DP-3) is given only with a ferritin < 30 ng/mL on file, at GA ≥
+14; with no ferritin on file (the empiric arm) choosing it orders a ferritin and starts oral
+iron meanwhile. Design, proofs and the three open consequences — the ferritin question holding
+the visit's care plan, a ferritin ≥ 30 read two ways on the empiric arm, oral iron stopping
+once IV iron opens — are in §4 DP-3 ("IV iron first needs a confirmed ferritin"). The
+ferritin leaf inside gate-oral-bridge-ga is a hand copy of gate-ida-confirmed's condition that
+no lint checks (§4b).
 
 ### `[BUILD FIX 2026-09-24]` On unresolved — RESOLVED
 
