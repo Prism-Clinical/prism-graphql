@@ -504,6 +504,7 @@ routing does not exist; a multi-target condition gate raises `unroutable_decisio
 | baseline + recheck, rise < 1 | closed | opens |
 | baseline only (not rechecked) | held — ONE question: newest Hgb after the baseline date | held (same question) |
 | no start date | held — ONE question: "When did oral iron start?" | held (same question) |
+| no Hgb since `baseline_days` before the start, no recheck (0 points) | closed — nothing to ask | closed — nothing to ask |
 
 ⚠ A held gate is a PENDING question, and **care-plan generation refuses a session with a
 pending question** (`care-plan-generator.ts` `validateForGeneration`). On the visit that
@@ -522,10 +523,13 @@ Authoring notes:
   shortest lookback: the window can be one week or four months long depending on the patient.
 - **Emit `on_unresolved: "ask"`** on every gate with a `window_from` condition, or an
   unresolved start date silently takes `default_behavior`.
-- **Simulator:** a synthetic patient has no stored care plans, and simulator medications are
-  undated, so the anchor resolves only from the clinician's date — the gate asks, the tester
-  answers with a date, the trend evaluates. (A dated synthetic order with a listed code also
-  anchors it.)
+- **Simulator:** a synthetic patient has no stored care plans, and the simulator dates
+  nothing — medications or labs — so the anchor resolves only from the clinician's date:
+  the gate asks "When did … start?", the tester answers. **The series then still has no
+  dated value**: zero points is short by ≥ 2, so nothing more is asked and the gate takes
+  `default_behavior` (both response-check gates close). A dated trend/delta arm is only
+  exercisable through the API with dated labs (`labResults[].date`), not from the
+  simulator UI.
 - `legacy-v0` sessions refuse `window_from` conditions (they cannot anchor); `v1` is the default.
 
 Time-shape notes: with `window_days` (or any bounded horizon) set, undated and future-dated
