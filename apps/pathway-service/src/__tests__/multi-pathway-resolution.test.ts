@@ -580,6 +580,160 @@ describe('generateMergedCarePlan', () => {
     expect(markMultiPathwaySessionStatus).not.toHaveBeenCalled();
   });
 
+  /**
+   * [DECISION — Josh] generation is blocked while any question is unanswered.
+   * Single-pathway generation refused on a PENDING_QUESTION node; merged
+   * generation looked only at conflicts and emptiness, and materialised a plan
+   * with a contributing session's gate question still open.
+   */
+  describe('a question still open in a contributing pathway session', () => {
+    const med = {
+      recommendation: {
+        name: 'Ferrous sulfate', role: 'first_line', dose: '325 mg', frequency: 'daily',
+        sourcePathwayId: 'anemia', evidenceGateIds: [],
+      },
+      sourcePathwayIds: ['anemia'],
+      state: 'auto-included',
+    };
+    function contextWith(rows: unknown[]) {
+      const client = {
+        query: jest.fn(async () => ({ rows: [{ id: 'cp-1' }] })),
+        release: jest.fn(),
+      };
+      const pool = {
+        query: jest.fn(async () => ({ rows })),
+        connect: jest.fn(async () => client),
+      };
+      return { ctx: { ...(fakeContext() as object), pool } as never, pool, client };
+    }
+    function sessionWithOneMed() {
+      return fakeStoredSession({
+        contributingSessionIds: ['ps-anemia'],
+        contributingPathwayIds: ['anemia'],
+        mergedPlan: { ...emptyMergedPlan(), medications: [med] } as never,
+      });
+    }
+
+    it('blocks, naming the unanswered question', async () => {
+      (getMultiPathwaySession as jest.Mock).mockResolvedValueOnce(sessionWithOneMed());
+      const { ctx, client } = contextWith([{
+        session_id: 'ps-anemia',
+        pathway_title: 'Anemia in Pregnancy',
+        pending_questions: [{
+          gateId: 'gate-hgb-response', prompt: 'Has Hgb risen ≥1 g/dL since starting iron?',
+          answerType: 'SELECT', options: ['responding', 'not responding'],
+        }],
+        resolution_state: {
+          'step-2-3': { status: NodeStatus.INCLUDED },
+          'gate-hgb-response': { status: NodeStatus.PENDING_QUESTION },
+          'step-2-4': { status: NodeStatus.PENDING_QUESTION },
+        },
+      }]);
+
+      const result = await multiPathwayResolutionMutations.generateMergedCarePlan(
+        {}, { sessionId: 'sess-1' }, ctx,
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.carePlanId).toBeNull();
+      expect(result.blockers).toEqual([expect.objectContaining({
+        type: 'PENDING_GATE',
+        relatedNodeIds: ['gate-hgb-response'],
+        description: expect.stringContaining('Has Hgb risen ≥1 g/dL since starting iron?'),
+      })]);
+      expect(result.blockers[0].description).toContain('Anemia in Pregnancy');
+      expect(client.query).not.toHaveBeenCalled();
+      expect(markMultiPathwaySessionStatus).not.toHaveBeenCalled();
+    });
+
+    it('blocks on a pending DecisionPoint, and on a datum asked on behalf of several gates', async () => {
+      (getMultiPathwaySession as jest.Mock).mockResolvedValueOnce(sessionWithOneMed());
+      const { ctx } = contextWith([{
+        session_id: 'ps-anemia',
+        pathway_title: 'Anemia in Pregnancy',
+        pending_questions: [
+          { gateId: 'dp-1', prompt: 'DP-1 — which branch applies?', options: ['step-1-2', 'stage-2-empiric'] },
+          { gateId: 'gate-a', askedByNodeIds: ['gate-a', 'gate-b'], datumKey: 'patient.gestational_age_weeks', prompt: 'Gestational age?' },
+        ],
+        resolution_state: {
+          'dp-1': { status: NodeStatus.PENDING_QUESTION },
+          'gate-a': { status: NodeStatus.GATED_OUT },
+          'gate-b': { status: NodeStatus.PENDING_QUESTION },
+        },
+      }]);
+
+      const result = await multiPathwayResolutionMutations.generateMergedCarePlan(
+        {}, { sessionId: 'sess-1' }, ctx,
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.blockers.map((b) => b.relatedNodeIds)).toEqual([['dp-1'], ['gate-a', 'gate-b']]);
+    });
+
+    it('blocks on pending nodes no open question covers, and says only re-resolving clears them', async () => {
+      (getMultiPathwaySession as jest.Mock).mockResolvedValueOnce(sessionWithOneMed());
+      const { ctx } = contextWith([{
+        session_id: 'ps-anemia',
+        pathway_title: 'Anemia in Pregnancy',
+        pending_questions: [],
+        resolution_state: { 'step-2-4': { status: NodeStatus.PENDING_QUESTION } },
+      }]);
+
+      const result = await multiPathwayResolutionMutations.generateMergedCarePlan(
+        {}, { sessionId: 'sess-1' }, ctx,
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.blockers).toEqual([expect.objectContaining({
+        type: 'PENDING_GATE',
+        relatedNodeIds: ['step-2-4'],
+        description: expect.stringContaining('re-resolve'),
+      })]);
+    });
+
+    it('does not block on a NOT_YET_DUE gate — closed, nothing asked', async () => {
+      (getMultiPathwaySession as jest.Mock).mockResolvedValueOnce(sessionWithOneMed());
+      const { ctx, pool } = contextWith([{
+        session_id: 'ps-anemia',
+        pathway_title: 'Anemia in Pregnancy',
+        pending_questions: [],
+        resolution_state: {
+          'step-2-3': { status: NodeStatus.INCLUDED },
+          'gate-hgb-response': {
+            status: NodeStatus.GATED_OUT, notYetDue: true,
+            excludeReason: 'NOT_YET_DUE: recheck window opens 2026-10-08',
+          },
+          'step-2-4': { status: NodeStatus.GATED_OUT },
+        },
+      }]);
+
+      const result = await multiPathwayResolutionMutations.generateMergedCarePlan(
+        {}, { sessionId: 'sess-1' }, ctx,
+      );
+
+      expect(pool.query).toHaveBeenCalledWith(expect.any(String), [['ps-anemia']]);
+      expect(result.blockers).toEqual([]);
+      expect(result.success).toBe(true);
+    });
+
+    it('does not block on a tentative LLM gate awaiting confirmation (it is INCLUDED)', async () => {
+      (getMultiPathwaySession as jest.Mock).mockResolvedValueOnce(sessionWithOneMed());
+      const { ctx } = contextWith([{
+        session_id: 'ps-anemia',
+        pathway_title: 'Anemia in Pregnancy',
+        pending_questions: [{ gateId: 'gate-llm', prompt: 'Confirm?', tentative: true }],
+        resolution_state: { 'gate-llm': { status: NodeStatus.INCLUDED } },
+      }]);
+
+      const result = await multiPathwayResolutionMutations.generateMergedCarePlan(
+        {}, { sessionId: 'sess-1' }, ctx,
+      );
+
+      expect(result.blockers).toEqual([]);
+      expect(result.success).toBe(true);
+    });
+  });
+
   it('blocks when the merged plan has no recommendations', async () => {
     (getMultiPathwaySession as jest.Mock).mockResolvedValueOnce(fakeStoredSession());
     const result = await multiPathwayResolutionMutations.generateMergedCarePlan(
