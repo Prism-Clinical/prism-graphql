@@ -2,7 +2,7 @@ import { MAX_CUSTOM_HORIZON_DAYS, TemporalContextError } from './evaluation-cont
 import type { EvaluationTemporalContext } from './evaluation-context';
 import type { FactSelectionCondition } from './contract';
 import type { FactStore, NormalizedFact } from './fact-model';
-import { boundEpochRange, instantEpoch, parseFhirDate } from './interval';
+import { boundEpochRange, boundEpochRangeAsOf, instantEpoch, parseFhirDate } from './interval';
 import { candidateMatches } from './select-facts';
 
 /**
@@ -527,7 +527,9 @@ function courseUnderWayEvidence(
     const start = fact.interval.start;
     if (!start) continue;
     // Its LATEST possible time: a coarse date counts as old only if all of it is.
-    const { hiMs } = boundEpochRange(start);
+    // Read as of the clock, like selection: a date on the clock's day is on or
+    // before it (`boundEpochRangeAsOf`), never skipped as "future".
+    const { hiMs } = boundEpochRangeAsOf(start, asOfMs);
     if (hiMs > asOfMs) continue;
     const day = utcDay(hiMs);
     if (!isDue(addDays(day, minDays), inputs.temporalContext.evaluationAsOf)) continue;

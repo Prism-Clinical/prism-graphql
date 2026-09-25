@@ -109,3 +109,55 @@ export function boundEpochRange(b: TemporalBound): { loMs: number; hiMs: number 
   const d = Number(dS);
   return { loMs: utcEpoch(y, m, d, 0, 0, 0, 0), hiMs: utcEpoch(y, m, d, 23, 59, 59, 999) };
 }
+
+/**
+ * A bound's possible-time range AS KNOWN AT the evaluation clock.
+ *
+ * A calendar-precision bound (day, month, year) is a RANGE, and when that range
+ * CONTAINS the clock the raw range runs past it: a result dated "today" spans
+ * [today 00:00, today 23:59:59.999], so "is this on or before the clock?" came
+ * out indeterminate and a same-day, date-only lab read as TEMPORAL_UNKNOWN —
+ * the gate then asked for a value the chart already held. But the fact is in a
+ * chart read AT the clock: a result dated today is not a future result. The
+ * part of the range after the clock is not a possibility, so the upper edge is
+ * clamped to the clock: [today 00:00, clock].
+ *
+ * Only the UPPER edge moves, and only when the range contains the clock
+ * (`loMs <= clockMs < hiMs`):
+ *  - an `instant` is exact and never touched — one after the clock is
+ *    genuinely future;
+ *  - a range wholly after the clock (tomorrow's date) is genuinely future and
+ *    is returned unchanged, so it stays excluded;
+ *  - the LOWER edge never moves, so a date on the clock's day still cannot be
+ *    ordered against another fact on that day (two same-day results stay
+ *    unordered), and a range straddling a horizon's LOWER bound (the first day
+ *    of a 90-day window; an encounter that began mid-morning) stays UNKNOWN —
+ *    that ambiguity is real.
+ *
+ * Month and year precision follow the same rule: "2026-09" read on 2026-09-25
+ * is [Sep 1, clock], which a QUARTER horizon contains and a WEEK horizon still
+ * straddles.
+ *
+ * **Timezone.** A date-only value is a UTC calendar day, as everywhere else in
+ * the kernel (`boundEpochRange`, `EvaluationTemporalContext.timezone`,
+ * `anchorDateProblem`). No ±1-day tolerance: widening every day would make
+ * yesterday and today overlap and un-order every day-precision series. The
+ * admin simulator's date inputs cap at the UTC date, and a clinician west of
+ * UTC picking their local "today" is never ahead of the UTC day, so it reads
+ * as today or yesterday — never as future.
+ *
+ * Inside the selection kernel the clock is the horizon's `upperBound`, which is
+ * `evaluationAsOf` by construction (`resolveHorizon`, `toEffectivePolicy`).
+ * Structural checks (an inverted interval) must use the RAW range: clamping one
+ * end can manufacture an inversion the data does not contain.
+ */
+export function boundEpochRangeAsOf(
+  b: TemporalBound,
+  clockMs: number,
+): { loMs: number; hiMs: number } {
+  const r = boundEpochRange(b);
+  if (b.precision !== 'instant' && r.loMs <= clockMs && clockMs < r.hiMs) {
+    return { loMs: r.loMs, hiMs: clockMs };
+  }
+  return r;
+}

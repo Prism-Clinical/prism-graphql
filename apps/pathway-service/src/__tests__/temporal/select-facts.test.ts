@@ -528,13 +528,26 @@ describe('D8: aggregate selects on the start bound, not on interval overlap', ()
       if (out.status === 'READY') expect(out.selected.map((f) => f.factId)).toEqual(['c1']);
     });
 
-    it('a day-precision onset ON the upper bound straddles it and is UNKNOWN', () => {
-      // Q.upperBound is midnight on 2026-07-26; the day spans past it.
+    it('a day-precision onset ON the clock\'s day is on or before the clock and MATCHes', () => {
+      // DELIBERATELY FLIPPED (same-day dates fix). This asserted UNKNOWN: the
+      // day spans past Q.upperBound (midnight on 2026-07-26, the evaluation
+      // clock), so it "straddled" it. But a fact dated on the clock's day is in
+      // a chart read at the clock — it is not a future fact — so its range is
+      // read as [day start, clock] (`boundEpochRangeAsOf`), which the horizon
+      // contains. The LOWER-bound straddle above is unchanged and still UNKNOWN.
       const out = selectFacts(countN390, [ongoingCond('c1', '2026-07-26')], {
         horizon: Q, status: 'active',
       });
-      expect(out.decisions[0].temporalMatch).toBe('UNKNOWN');
-      if (out.status === 'READY') expect(out.selected).toHaveLength(0);
+      expect(out.decisions[0].temporalMatch).toBe('MATCH');
+      expect(out.status).toBe('READY');
+      if (out.status === 'READY') expect(out.selected.map((f) => f.factId)).toEqual(['c1']);
+    });
+
+    it('a day-precision onset the day AFTER the clock is still future — NO_MATCH', () => {
+      const out = selectFacts(countN390, [ongoingCond('c1', '2026-07-27')], {
+        horizon: Q, status: 'active',
+      });
+      expect(out.decisions[0].temporalMatch).toBe('NO_MATCH');
     });
 
     it('a year-precision onset wholly inside a LIFETIME horizon still MATCHes', () => {

@@ -1,7 +1,7 @@
 import { FactSelectionCondition, operatorClass, fieldToKind, UncertaintyReason } from './contract';
 import { NormalizedFact, FactStore, isObservationFact, isStatefulFact } from './fact-model';
 import { overlap, ResolvedHorizon, ThreeValued } from './overlap';
-import { boundEpochRange, instantEpoch } from './interval';
+import { boundEpochRange, boundEpochRangeAsOf, instantEpoch } from './interval';
 
 export interface EffectivePolicy {
   horizon: ResolvedHorizon;
@@ -222,11 +222,14 @@ function startsWithin(interval: NormalizedFact['interval'], horizon: ResolvedHor
 
   if (!interval.start) return horizon.lowerBound === null ? 'MATCH' : 'NO_MATCH';
 
-  const { loMs, hiMs } = boundEpochRange(interval.start);
-  // Carried explicitly: `overlap` rejects an inverted interval (overlap.ts:42)
+  // Read AS OF the clock (the horizon's upper bound): an onset dated on the
+  // clock's day is on or before the clock, not straddling it — see
+  // `boundEpochRangeAsOf`. Only the upper edge can move.
+  const { loMs, hiMs } = boundEpochRangeAsOf(interval.start, Hhi);
+  // Carried explicitly: `overlap` rejects an inverted interval (overlap.ts)
   // and a start-only predicate would never notice one. The assembler already
   // refuses these with a coded error, so this is the kernel's second line of
-  // defence against a hand-built store, not the first.
+  // defence against a hand-built store, not the first. Raw end, never clamped.
   if (interval.end.kind === 'KNOWN' && loMs > boundEpochRange(interval.end.bound).hiMs) {
     throw new Error('inverted interval: start after known end');
   }
@@ -235,8 +238,16 @@ function startsWithin(interval: NormalizedFact['interval'], horizon: ResolvedHor
   return 'UNKNOWN';
 }
 
-function effectiveRange(fact: NormalizedFact): { loMs: number; hiMs: number } {
-  if (fact.interval.start) return boundEpochRange(fact.interval.start);
+/**
+ * A fact's possible-time range for ORDERING, read as of the clock like every
+ * temporal predicate here, so selection and ordering never disagree about when
+ * a fact could have happened. Clamping moves only the upper edge of a range
+ * containing the clock, so two results dated on the clock's day are both
+ * [day start, clock] and remain unordered (AMBIGUOUS_LATEST /
+ * AMBIGUOUS_SERIES_ORDER), while yesterday's result still precedes today's.
+ */
+function effectiveRange(fact: NormalizedFact, clockMs: number): { loMs: number; hiMs: number } {
+  if (fact.interval.start) return boundEpochRangeAsOf(fact.interval.start, clockMs);
   return { loMs: -Infinity, hiMs: Infinity };
 }
 
@@ -252,10 +263,10 @@ function effectiveRange(fact: NormalizedFact): { loMs: number; hiMs: number } {
  * carries `issuedAt` for amended/corrected results) is deliberately not
  * invented here.
  */
-function definiteLatest(facts: NormalizedFact[]): NormalizedFact | null {
+function definiteLatest(facts: NormalizedFact[], clockMs: number): NormalizedFact | null {
   for (const f of facts) {
-    const fr = effectiveRange(f);
-    if (facts.every((g) => g === f || fr.loMs > effectiveRange(g).hiMs)) return f;
+    const fr = effectiveRange(f, clockMs);
+    if (facts.every((g) => g === f || fr.loMs > effectiveRange(g, clockMs).hiMs)) return f;
   }
   return null;
 }
@@ -275,10 +286,10 @@ function definiteLatest(facts: NormalizedFact[]): NormalizedFact | null {
  * exactly as before. Whether undated chart values should ever be ordered is a
  * product decision, not this rule.
  */
-function providerAssertedLatest(facts: NormalizedFact[]): NormalizedFact | null {
+function providerAssertedLatest(facts: NormalizedFact[], clockMs: number): NormalizedFact | null {
   const dated = facts.filter((f) => f.interval.start !== undefined);
   if (!dated.some((f) => f.provenance.sourceType === 'PROVIDER_ASSERTED')) return null;
-  return definiteLatest(dated);
+  return definiteLatest(dated, clockMs);
 }
 
 export function selectFacts(
@@ -292,6 +303,8 @@ export function selectFacts(
   // which asks "was this fact true at some point inside the window" — the right
   // question for membership and workable for scalar, but wrong for aggregate.
   const temporalPredicate = klass === 'aggregate' ? startsWithin : overlap;
+  // The evaluation clock, for ordering as well as selection (`effectiveRange`).
+  const clockMs = instantEpoch(policy.horizon.upperBound);
   const decisions: FactDecision[] = [];
 
   for (const fact of store) {
@@ -352,8 +365,8 @@ export function selectFacts(
       };
     }
     if (included.length === 0) return { status: 'NO_MATCH', decisions };
-    const winner =
-      definiteLatest(included.map((d) => d.fact)) ?? providerAssertedLatest(included.map((d) => d.fact));
+    const candidates = included.map((d) => d.fact);
+    const winner = definiteLatest(candidates, clockMs) ?? providerAssertedLatest(candidates, clockMs);
     if (!winner) return { status: 'INDETERMINATE', reasons: ['AMBIGUOUS_LATEST'], decisions };
     return { status: 'READY', selected: [winner], decisions, ...flags(included) };
   }
@@ -382,13 +395,13 @@ export function selectFacts(
   // overlapping ranges (two month-precision results in the same month) in
   // input order, which can invert baseline vs current in delta_from_baseline.
   const sorted = [...included].sort((a, b) => {
-    const ar = effectiveRange(a.fact);
-    const br = effectiveRange(b.fact);
+    const ar = effectiveRange(a.fact, clockMs);
+    const br = effectiveRange(b.fact, clockMs);
     return ar.loMs - br.loMs || ar.hiMs - br.hiMs;
   });
   for (let i = 1; i < sorted.length; i++) {
-    const prev = effectiveRange(sorted[i - 1].fact);
-    const next = effectiveRange(sorted[i].fact);
+    const prev = effectiveRange(sorted[i - 1].fact, clockMs);
+    const next = effectiveRange(sorted[i].fact, clockMs);
     if (!(prev.hiMs < next.loMs)) {
       return { status: 'INDETERMINATE', reasons: ['AMBIGUOUS_SERIES_ORDER'], decisions };
     }

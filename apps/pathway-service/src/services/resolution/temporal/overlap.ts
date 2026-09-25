@@ -1,5 +1,5 @@
 import { FactBase, TemporalBound } from './fact-model';
-import { boundEpochRange, instantEpoch } from './interval';
+import { boundEpochRange, boundEpochRangeAsOf, instantEpoch } from './interval';
 
 export type ThreeValued = 'MATCH' | 'NO_MATCH' | 'UNKNOWN';
 export interface ResolvedHorizon {
@@ -11,6 +11,12 @@ function sameBound(a: TemporalBound | undefined, b: TemporalBound): boolean {
   return !!a && a.value === b.value && a.precision === b.precision;
 }
 
+/**
+ * Every fact bound is read AS OF the clock (`boundEpochRangeAsOf`): a
+ * calendar-precision bound whose range contains the clock — a lab dated today —
+ * is on or before it, not straddling it. The clock is the horizon's upper
+ * bound, which is `evaluationAsOf` by construction.
+ */
 export function overlap(interval: FactBase['interval'], horizon: ResolvedHorizon): ThreeValued {
   const Hlo = horizon.lowerBound === null ? -Infinity : instantEpoch(horizon.lowerBound);
   const Hhi = instantEpoch(horizon.upperBound);
@@ -18,7 +24,7 @@ export function overlap(interval: FactBase['interval'], horizon: ResolvedHorizon
 
   // Point fact: a KNOWN end equal to the start bound (labs / instant observations).
   if (interval.start && end.kind === 'KNOWN' && sameBound(interval.start, end.bound)) {
-    const { loMs: pLo, hiMs: pHi } = boundEpochRange(interval.start);
+    const { loMs: pLo, hiMs: pHi } = boundEpochRangeAsOf(interval.start, Hhi);
     if (pLo >= Hlo && pHi <= Hhi) return 'MATCH';
     if (pHi < Hlo || pLo > Hhi) return 'NO_MATCH';
     return 'UNKNOWN';
@@ -28,7 +34,7 @@ export function overlap(interval: FactBase['interval'], horizon: ResolvedHorizon
   let sLo = -Infinity;
   let sHi = Infinity;
   if (interval.start) {
-    const r = boundEpochRange(interval.start);
+    const r = boundEpochRangeAsOf(interval.start, Hhi);
     sLo = r.loMs;
     sHi = r.hiMs;
   }
@@ -36,10 +42,11 @@ export function overlap(interval: FactBase['interval'], horizon: ResolvedHorizon
   let eLo: number;
   let eHi: number;
   if (end.kind === 'KNOWN') {
-    const r = boundEpochRange(end.bound);
+    // The inversion check reads the RAW end: clamping it could invent one.
+    if (sLo > boundEpochRange(end.bound).hiMs) throw new Error('inverted interval: start after known end');
+    const r = boundEpochRangeAsOf(end.bound, Hhi);
     eLo = r.loMs;
     eHi = r.hiMs;
-    if (sLo > eHi) throw new Error('inverted interval: start after known end');
   } else if (end.kind === 'OPEN') {
     const a = instantEpoch(end.assertedCurrentAt);
     eLo = a;

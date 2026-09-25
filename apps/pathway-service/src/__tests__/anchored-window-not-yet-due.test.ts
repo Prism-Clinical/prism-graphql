@@ -342,12 +342,23 @@ describe('recheck visits — anchored on the care plan the start visit wrote', (
   });
 
   it('day 14 exactly is due', async () => {
-    // Drawn the day before: a same-day, day-precision result straddles the
-    // morning clock and is (correctly) not provably inside the window.
     const pc = hgb([BASELINE, ['2026-06-14', 9.4]]);
     const r = await engineAt(DAY14, pc, { carePlan: true }).traverse(anemiaShape(), pc, new Map());
     expect(r.resolutionState.get('gate-hgb-response')!.notYetDue).toBeUndefined();
     expect(r.resolutionState.get('step-2-4')!.status).toBe(NodeStatus.INCLUDED);
+  });
+
+  it('day 14 with the recheck drawn THAT day (date-only) is due and decides', async () => {
+    // A same-day, day-precision result used to straddle the morning clock and
+    // read as TEMPORAL_UNKNOWN, so the recheck at the visit it was drawn went
+    // uncounted. Dated today, it is on or before the clock (boundEpochRangeAsOf).
+    const pc = hgb([BASELINE, ['2026-06-15', 9.4]]);
+    const r = await engineAt(DAY14, pc, { carePlan: true }).traverse(anemiaShape(), pc, new Map());
+    expect(r.resolutionState.get('gate-hgb-response')!.notYetDue).toBeUndefined();
+    expect(r.resolutionState.get('gate-hgb-response')!.status).toBe(NodeStatus.INCLUDED);
+    expect(r.resolutionState.get('step-2-4')!.status).toBe(NodeStatus.INCLUDED);
+    expect(r.resolutionState.get('gate-hgb-nonresponse')!.status).toBe(NodeStatus.GATED_OUT);
+    expect(r.pendingQuestions).toEqual([]);
   });
 
   it('day 21 with +1.2 g/dL: responding — maintenance opens, nonresponse closes as a definite no', async () => {
