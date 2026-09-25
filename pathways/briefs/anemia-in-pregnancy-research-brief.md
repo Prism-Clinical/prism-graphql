@@ -530,8 +530,9 @@ BRANCHES_TO (no HAS_STEP edge), per the reference-fixture pattern.
     Med-13–16 and Sched-6 INCLUDED; oral iron, the response check and the post-non-response
     IV route (Steps 2.6, 2.5, DP-2) EXCLUDED; no response question. GA 12 → IV iron
     GATED_OUT (v8: and the oral trial starts via Stage 2.6); GA missing → asks for GA, IV
-    iron held. Ferritin 50 and hemoglobinopathy
-    disease never see DP-3. (v8: the empiric arm does — same outcomes, proved on both arms.)
+    iron held. Ferritin 50 never sees DP-3. (v8: the empiric arm does — same outcomes,
+    proved on both arms — and so does a hemoglobinopathy-disease patient with ferritin < 30
+    on the confirmatory branch; on the empiric branch she does not, §4 DP-1.)
   - ~~`[CLINICAL AMBIGUITY — for Josh]` (a) **IV first before 14 weeks gives no iron at
     all**~~ — **resolved in v8** `[DECISION — Josh 2026-09-24]`: oral iron until 14 weeks,
     then IV (above). ~~(b) **The empiric arm has no DP-3**~~ — **resolved in v8**
