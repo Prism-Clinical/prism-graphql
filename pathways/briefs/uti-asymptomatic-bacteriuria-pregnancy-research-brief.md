@@ -1,6 +1,6 @@
 # Pathway Research Brief — UTI and Asymptomatic Bacteriuria in Pregnancy
 
-JSON: pathways/json/uti-asymptomatic-bacteriuria-pregnancy.json @ version 2
+JSON: pathways/json/uti-asymptomatic-bacteriuria-pregnancy.json @ version 3
 
 **Status: DRAFT v1 for physician review — not yet approved for JSON build.**
 
@@ -42,8 +42,12 @@ Flags: `[GAP]` · `[NOT ENCODABLE]` · `[DECISION]` an authoring choice needing 
 
 - **Logical ID**: `uti-asymptomatic-bacteriuria-pregnancy`
 - **Title**: Urinary Tract Infection and Asymptomatic Bacteriuria in Pregnancy — Outpatient Screening, Treatment and Surveillance
-- **Version**: 2 (JSON `"2"`; was `"1"`). Bumped with the shared-lab build fix (§6
-  `[BUILD FIX 2026-09-24]`): every LabTest node now has exactly one host step. Imports as
+- **Version**: 3 (JSON `"3"`; was `"2"`). `[DECISION — Josh 2026-09-24]` One urine-culture
+  node serves Steps 1.1 and 2.1: v2's Lab-7 (the Step 2.1 culture) is removed and Lab-1 is
+  hosted by both steps, so the care plan lists the culture once (§6). The test-of-cure culture
+  (Lab-8) stays separate. Imports as **NEW_VERSION** (same logical_id, bumped version).
+  v2 history: bumped with the shared-lab build fix (§6
+  `[BUILD FIX 2026-09-24]`): every LabTest node then had exactly one host step. Imports as
   **NEW_VERSION** — same logical_id, bumped version. DRAFT_UPDATE cannot carry it: the importer
   matches a DRAFT_UPDATE on logical_id *and* version, and no `"2"` exists yet (if v1 was never
   imported at all, it is NEW_PATHWAY). The v1 draft edits (the Z88.1 removal) ship inside v2.
@@ -451,9 +455,9 @@ latent here, since quinolones are not ACOG-listed agents for this indication.
 
 ## 6. Lab tests
 
-- **Lab-1 — Urine culture with colony count** (on Step 1.1; same test as Lab-7 on Step 2.1 and
-  Lab-8 on the test-of-cure repeat culture, DP-1 criterion 1a, JSON `step-5-2a`): code `19090-0`
-  LOINC, midstream urine. `NCnc`/`Qn`, CFU/mL. The quantitative gate target. [1]
+- **Lab-1 — Urine culture with colony count** (on Step 1.1 **and** Step 2.1 — one node, v3;
+  same test as Lab-8 on the test-of-cure repeat culture, DP-1 criterion 1a, JSON `step-5-2a`):
+  code `19090-0` LOINC, midstream urine. `NCnc`/`Qn`, CFU/mL. The quantitative gate target. [1]
 - **Lab-2 — Bacteria identified in urine by culture** (on Step 2.1; same test as Lab-9 on Step
   4.1): code `630-4` LOINC, midstream urine. **`Prid`/`Nom` — nominal.** The organism identity,
   which the model cannot hold. [1]
@@ -485,21 +489,38 @@ original stays on its first host.
 
 | Original | Stays on | New node → host |
 |---|---|---|
-| Lab-1 Urine culture with colony count | Step 1.1 | **Lab-7** → Step 2.1 · **Lab-8** → `step-5-2a` (repeat culture) |
+| Lab-1 Urine culture with colony count | Step 1.1 (and Step 2.1 from v3) | ~~**Lab-7** → Step 2.1~~ (removed in v3, see below) · **Lab-8** → `step-5-2a` (repeat culture) |
 | Lab-2 Bacteria identified by culture | Step 2.1 | **Lab-9** → Step 4.1 |
 | Lab-3 Antimicrobial susceptibility | Step 3.1 | **Lab-10** → `step-5-3` (suppressive prophylaxis) |
 
 The new nodes share the originals' CodeEntries (HAS_CODE) and citation [1]. Checks:
 `check-gate-control.ts` is clean (v1: 5 Rule-1 violations). `gate-proof.ts uti-shared-labs`
 passes in both edge orders; v1 fails it on the original ids. No clinical content changed.
-- **Care-plan consequence.** Steps 1.1 and 2.1 are both unconditional, so every patient now has
-  two INCLUDED urine-culture nodes: Lab-1 (screen) and Lab-7 (interpretation). The care-plan
-  generator does not deduplicate by code, so the plan lists "Urine culture with colony count"
-  twice.
+- **Care-plan consequence (v2) — resolved in v3.** Steps 1.1 and 2.1 are both unconditional, so
+  in v2 every patient had two INCLUDED urine-culture nodes: Lab-1 (screen) and Lab-7
+  (interpretation). The care-plan generator does not deduplicate by code, so the plan listed
+  "Urine culture with colony count" twice.
 - **Engine caveat, not fixed here.** When a question gate is answered incrementally, the pass is
   seeded with shared CodeEntry and EvidenceCitation leaves. It can then re-open DP-1 as
   PENDING_QUESTION after "no GBS" on a negative culture (reversed edge order). v1 and v2 behave
-  the same; the proof pre-loads its gate answers.
+  the same (not re-examined for v3); the proof pre-loads its gate answers.
+
+`[DECISION — Josh 2026-09-24]` **One urine-culture node serves Steps 1.1 and 2.1 (v3).** Lab-1
+and Lab-7 were the same culture of the same specimen: Step 1.1 orders it and Step 2.1 reads it.
+v3 removes Lab-7 (its node, its HAS_CODE and CITES_EVIDENCE edges); `step-2-1 → lab-1` takes
+the place of `step-2-1 → lab-7`. Lab-1 therefore has two host steps again, which the v2 rule
+above forbade. It is safe here, and only here, because **both hosts are unconditional**: no gate
+can close one of them and take the lab with it, so Lab-1 is INCLUDED for every patient. The
+test-of-cure culture (Lab-8 on `step-5-2a`) stays a separate node, because its host is gated
+(`gate-symptomatic`, DP-1 criterion 1a) and sharing it would reproduce the v1 defect.
+- **Placement depends on edge order.** The care plan places Lab-1 under whichever host the walk
+  reaches first: **Step 1.1 (Stage 1) in file order, Step 2.1 (Stage 2) in reversed order** —
+  and the live graph returns edges in storage order. Both placements are correct; the culture is
+  listed once either way.
+- **Checks.** `check-gate-control.ts` is clean (0 violations, 0 warnings). `gate-proof.ts
+  uti-shared-labs` passes in both edge orders. It now asserts that Lab-7 is absent, pins Lab-1's
+  host per edge order, and counts INCLUDED 19090-0 culture nodes: 1 without test of cure (v2: 2),
+  2 with the repeat culture chosen (v2: 3).
 
 ## 7. Imaging
 
@@ -527,6 +548,14 @@ None in the outpatient scope.
   distribution *"in its entirety and without modification, for solely noncommercial activities
   that are for educational, quality improvement, and patient safety purposes"* — so a trimmed,
   reordered UTI extract falls outside the grant. The card may still be linked whole. [1][8]
+  **Checked against Josh's warning-signs decision (2026-09-24: reference the AIM/CDC list,
+  never reproduce it) — left unchanged.** This is the pathway's own kidney-infection
+  safety-net, not a derivative of the AIM/CDC list: four of its six items (back or side pain,
+  shaking chills, no improvement after 1–2 days of antibiotics, blood in the urine) are not on
+  the CDC Hear Her list at all, and the two that overlap (fever ≥100.4°F, vomiting) are
+  kidney-infection signs taken from the ACOG sources this node cites (fever ≥38.0 °C is ACOG's
+  pyelonephritis criterion, §4b). The JSON node cites only ev-1 (ACOG CC No. 4) and ev-8 (FAQ050); the
+  JSON has no AIM or CDC evidence node, and [10] is linked here, never extracted.
 - **Guid-2 — topic "Finish the whole course"** (on Step 3.1): category adherence.
   Instructions: Most symptoms go away in 1 to 2 days. It is very important to finish the
   medication prescribed for a urinary tract infection, **even after your symptoms go away** —
@@ -594,12 +623,12 @@ Clinical dependencies, carried in the step descriptions instead:
 
 | Code | System | Description | Attached to |
 |---|---|---|---|
-| 19090-0 | LOINC | Colony count [#/volume] in Urine | Lab-1, Lab-7, Lab-8 |
+| 19090-0 | LOINC | Colony count [#/volume] in Urine | Lab-1, Lab-8 (Lab-7 removed in v3) |
 | 630-4 | LOINC | Bacteria identified in Urine by Culture | Lab-2, Lab-9 |
 | 24356-8 | LOINC | Urinalysis complete panel - Urine | Lab-4 |
 | 32782-5 | LOINC | Leukocyte esterase+Nitrite [Presence] in Urine by Test strip | Lab-5 |
 | 102104-7 | LOINC | Streptococcus agalactiae [Susceptibility] in Urine by Culture | Lab-6 |
-| 87086 | CPT | Culture, bacterial; quantitative colony count, urine | Lab-1, Lab-7, Lab-8 |
+| 87086 | CPT | Culture, bacterial; quantitative colony count, urine | Lab-1, Lab-8 (Lab-7 removed in v3) |
 | 87088 | CPT | Culture, bacterial; with isolation and presumptive identification of each isolate, urine | Lab-2, Lab-9 |
 | 87186 | CPT | Susceptibility studies, antimicrobial agent; microdilution or agar dilution | Lab-3, Lab-10 |
 | 1648755 | RXNORM | nitrofurantoin, macrocrystals 25 MG / nitrofurantoin, monohydrate 75 MG Oral Capsule | Med-1 |
@@ -652,7 +681,7 @@ referenced.
 - Step 6.1: [1]
 - DP-1: [1] · Criteria 1a, 1b: [1]
 - Med-1: [1][6] · Med-2: [1] · Med-3: [1] · Med-4: [1][6] · Med-5: [1] · Med-6: [1][6] · Med-7: [1] · Med-8: [2]
-- Lab-1 to Lab-5: [1] · Lab-6: [2] · Lab-7 to Lab-10 (per-host copies, §6): [1]
+- Lab-1 to Lab-5: [1] · Lab-6: [2] · Lab-8 to Lab-10 (per-host copies, §6; Lab-7 removed in v3): [1]
 - Guid-1: [1][8] · Guid-2: [8] · Guid-3: [1][9] · Guid-4: [2]
 
 **Cannot cite — evidence attaches to the host Step:** all Gates → their attached Step per the

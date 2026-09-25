@@ -3,7 +3,7 @@
   "pathway": {
     "logical_id": "uti-asymptomatic-bacteriuria-pregnancy",
     "title": "Urinary Tract Infection and Asymptomatic Bacteriuria in Pregnancy \u2014 Outpatient Screening, Treatment and Surveillance",
-    "version": "2",
+    "version": "3",
     "category": "OBSTETRIC",
     "scope": "US outpatient prenatal care. Universal early-pregnancy screening for asymptomatic bacteriuria; treatment of asymptomatic bacteriuria and acute cystitis; the group B streptococcus bacteriuria arm; test of cure; recurrence and suppressive prophylaxis. Ends at the trigger for admission with pyelonephritis.",
     "target_population": "All pregnant patients receiving prenatal care. Screening applies universally; treatment and surveillance arms apply to those with a positive culture.",
@@ -820,16 +820,6 @@
       }
     },
     {
-      "id": "lab-7",
-      "type": "LabTest",
-      "properties": {
-        "name": "Urine culture with colony count",
-        "specimen": "Midstream urine",
-        "code": "19090-0",
-        "system": "LOINC"
-      }
-    },
-    {
       "id": "lab-8",
       "type": "LabTest",
       "properties": {
@@ -1458,7 +1448,7 @@
     },
     {
       "from": "step-2-1",
-      "to": "lab-7",
+      "to": "lab-1",
       "type": "HAS_LAB_TEST"
     },
     {
@@ -1552,11 +1542,6 @@
       "type": "HAS_CODE"
     },
     {
-      "from": "lab-7",
-      "to": "code-loinc-19090-0",
-      "type": "HAS_CODE"
-    },
-    {
       "from": "lab-8",
       "to": "code-loinc-19090-0",
       "type": "HAS_CODE"
@@ -1583,11 +1568,6 @@
     },
     {
       "from": "lab-1",
-      "to": "code-cpt-87086",
-      "type": "HAS_CODE"
-    },
-    {
-      "from": "lab-7",
       "to": "code-cpt-87086",
       "type": "HAS_CODE"
     },
@@ -1908,11 +1888,6 @@
     },
     {
       "from": "lab-1",
-      "to": "ev-1",
-      "type": "CITES_EVIDENCE"
-    },
-    {
-      "from": "lab-7",
       "to": "ev-1",
       "type": "CITES_EVIDENCE"
     },
