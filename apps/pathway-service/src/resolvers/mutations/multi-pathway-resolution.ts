@@ -351,7 +351,10 @@ export const multiPathwayResolutionMutations = {
     const { pool } = context;
     const session = await loadActiveSession(pool, args.sessionId);
 
-    const blockers = validateForGeneration(session);
+    const blockers = [
+      ...validateForGeneration(session),
+      ...(await unansweredQuestionBlockers(pool, session)),
+    ];
     if (blockers.length > 0) {
       return {
         success: false as const,
@@ -1197,6 +1200,88 @@ function validateForGeneration(
       description: 'Merged plan has no recommendations — care plan would be empty',
       relatedNodeIds: [],
     });
+  }
+  return blockers;
+}
+
+/**
+ * One blocker per question a contributing pathway is still waiting on.
+ *
+ * [DECISION — Josh] Care-plan generation is blocked while any question is
+ * unanswered. Single-pathway generation already refuses on any
+ * PENDING_QUESTION node (care-plan-generator `validateForGeneration`); merged
+ * generation only looked at conflicts and emptiness, so a merged plan could be
+ * materialised with a gate question — a subtree the pathway had not decided —
+ * still open in a contributing session.
+ *
+ * The SAME predicate as single-pathway, applied to each contributing session:
+ * it blocks iff that session's state holds a PENDING_QUESTION node. The
+ * session's pending questions only NAME the blocker, so the provider sees
+ * what to answer rather than a node id. So, like single-pathway:
+ *   - a tentative LLM gate (INCLUDED, surfaced for confirmation) does not
+ *     block;
+ *   - a NOT_YET_DUE gate is GATED_OUT — closed, nothing asked — and does not
+ *     block.
+ * A session with pending nodes but no question covering them still blocks,
+ * with a blocker that says so: no answer can clear it, only re-resolving.
+ *
+ * The state is scanned here rather than in SQL on purpose: one malformed
+ * query would fail every merged generation, and nothing short of a database
+ * catches that.
+ */
+async function unansweredQuestionBlockers(
+  pool: Pool,
+  session: MultiPathwayResolutionSession,
+): Promise<Array<{ type: string; description: string; relatedNodeIds: string[] }>> {
+  const ids = session.contributingSessionIds ?? [];
+  if (ids.length === 0) return [];
+  const result = await pool.query(
+    `SELECT s.id AS session_id,
+            p.title AS pathway_title,
+            s.pending_questions AS pending_questions,
+            s.resolution_state AS resolution_state
+       FROM pathway_resolution_sessions s
+       LEFT JOIN pathway_graph_index p ON p.id = s.pathway_id
+      WHERE s.id = ANY($1::uuid[])`,
+    [ids],
+  );
+
+  const blockers: Array<{ type: string; description: string; relatedNodeIds: string[] }> = [];
+  for (const row of result.rows) {
+    const title = String(row.pathway_title ?? '(untitled pathway)');
+    const state = (row.resolution_state ?? {}) as Record<string, { status?: string } | null>;
+    const pendingNodes = new Set(
+      Object.entries(state)
+        .filter(([, n]) => n?.status === NodeStatus.PENDING_QUESTION)
+        .map(([id]) => id),
+    );
+    if (pendingNodes.size === 0) continue;
+
+    const questions = (row.pending_questions ?? []) as Array<Record<string, unknown>>;
+    let named = 0;
+    for (const q of questions) {
+      const gateId = String(q.gateId ?? q.gate_id ?? '');
+      const askedBy = ((q.askedByNodeIds ?? q.asked_by_node_ids ?? []) as unknown[]).map(String);
+      const related = [...new Set([gateId, ...askedBy].filter((id) => id !== ''))];
+      if (!related.some((id) => pendingNodes.has(id))) continue;
+      named++;
+      blockers.push({
+        type: BlockerType.PENDING_GATE,
+        description:
+          `${title}: "${String(q.prompt ?? gateId)}" has not been answered — ` +
+          `answer it before generating the care plan`,
+        relatedNodeIds: related,
+      });
+    }
+    if (named === 0) {
+      blockers.push({
+        type: BlockerType.PENDING_GATE,
+        description:
+          `${title}: ${pendingNodes.size} node(s) are awaiting an answer but no open ` +
+          `question covers them — re-resolve this pathway before generating the care plan`,
+        relatedNodeIds: [...pendingNodes],
+      });
+    }
   }
   return blockers;
 }

@@ -8,7 +8,9 @@ import { anchorAskFor, askFor, seriesAskFor, unionOptions } from './unresolved-p
 import { parseBranchWhen } from '../import/branch-when';
 import { decisionValueOf, decisionSelects } from './decision-value';
 import { normalizeAnswerType } from './answer-validation';
-import { containmentChildIds, containmentParentIds, containmentClosure } from './graph-containment';
+import {
+  containmentChildIds, containmentParentIds, containmentClosure, NON_CONTAINMENT_EDGES,
+} from './graph-containment';
 import type { SessionRecommendationLookup } from './temporal/anchored-window';
 import {
   reconcilePendingQuestions,
@@ -221,6 +223,17 @@ function isStructuralNode(node: GraphNode): boolean {
 
 function isActionNode(node: GraphNode): boolean {
   return ACTION_NODE_TYPES.has(node.nodeType);
+}
+
+/**
+ * A citation, code entry or similar: disposed INCLUDED whenever the walk
+ * reaches it, reading nothing, and with nothing beneath it. Its status says
+ * only whether some live node refers to it.
+ */
+function isReferenceLeaf(node: GraphNode, graphContext: GraphContext): boolean {
+  return !isGateNode(node) && !isDecisionPoint(node) && !isStructuralNode(node)
+    && !isActionNode(node) && node.nodeType !== 'Pathway'
+    && containmentChildIds(graphContext, node.nodeIdentifier).length === 0;
 }
 
 function nodeTitle(node: GraphNode): string {
@@ -806,26 +819,74 @@ export class TraversalEngine {
     // rule catches a fifth the reports had not reached: a mandated branch
     // target seeded alone lost its mandate, because `mandated` is filled by
     // the fork and the pass never re-entered there.
-    const CLOSED_FROM_ABOVE = [
+    const CLOSED = [
       NodeStatus.GATED_OUT, NodeStatus.EXCLUDED, NodeStatus.PENDING_QUESTION,
     ];
-    const isDecider = (id: string): boolean => {
+    const isClosed = (id: string | undefined): boolean =>
+      id !== undefined && CLOSED.includes(resolutionState.get(id)?.status as NodeStatus);
+    /**
+     * Was this node's closed status written by something ABOVE it?
+     *
+     * Almost always, for a closed node: sweeps are how closed statuses reach
+     * a subtree. The exception is a decider closing ITSELF — a gate that shut
+     * because its condition failed, or that pends for want of an answer; a
+     * DecisionPoint pending on an exclusive fork. A DecisionPoint never writes
+     * itself GATED_OUT or EXCLUDED, and a gate never writes itself EXCLUDED.
+     *
+     * And even an own-shaped status came from above when the node that placed
+     * it is itself closed: closed gates and forks enqueue nothing, so a gate
+     * whose recorded parent is shut was swept, not disposed. Treating every
+     * closed decider as self-closed is how a DecisionPoint gated out with the
+     * work-up it sits in was re-disposed as a root and re-opened, pending.
+     */
+    const closedFromAbove = (id: string): boolean => {
+      const r = resolutionState.get(id);
+      if (!r || !CLOSED.includes(r.status)) return false;
       const n = graphContext.getNode(id);
-      return n !== undefined && (isGateNode(n) || isDecisionPoint(n));
+      if (!n || !(isGateNode(n) || isDecisionPoint(n))) return true;
+      const ownClosures = isGateNode(n)
+        ? [NodeStatus.GATED_OUT, NodeStatus.PENDING_QUESTION]
+        : [NodeStatus.PENDING_QUESTION];
+      if (!ownClosures.includes(r.status)) return true;
+      return isClosed(r.parentNodeId);
     };
+    /**
+     * The deciders of `id`: parents that write its status on their own
+     * account. A Gate rules on every containment child (it enqueues them all,
+     * or sweeps them all). A DecisionPoint rules only on its BRANCHES_TO
+     * targets — its criteria, citations and nested gates dispose themselves
+     * when it opens, and nothing writes them while it pends. Counting a
+     * DecisionPoint that merely CITES a shared citation as that citation's
+     * decider is how answering one gate re-opened an unrelated fork.
+     */
+    const decidersOf = (id: string): string[] =>
+      graphContext.incomingEdges(id)
+        .filter(e => {
+          const p = graphContext.getNode(e.sourceId);
+          if (!p) return false;
+          if (isGateNode(p)) return !NON_CONTAINMENT_EDGES.has(e.edgeType);
+          return isDecisionPoint(p) && e.edgeType === 'BRANCHES_TO';
+        })
+        .map(e => e.sourceId);
     const promote = (id: string): string => {
       const seen = new Set<string>([id]);
-      const parentsOf = (x: string) =>
-        containmentParentIds(graphContext, x).filter(p => !seen.has(p));
 
       let current = id;
-      // 1. A closed node was closed FROM ABOVE, so its own status is not its
-      //    own to restate — climb past it. A decider is the exception: a gate
-      //    that shut because its condition failed, or pended because nobody
-      //    answered, decided that itself.
-      while (CLOSED_FROM_ABOVE.includes(resolutionState.get(current)?.status as NodeStatus)
-             && !isDecider(current)) {
-        const up = parentsOf(current)[0];
+      // 1. A node closed from above does not own its status — climb to what
+      //    closed it. The RECORDED parent first: a sweep records the node
+      //    that swept, so this goes straight to the closing decider. A graph
+      //    parent is only a fallback, because on a node with several parents
+      //    (a citation or code shared across the pathway) "the first parent"
+      //    is an arbitrary host, and climbing through it lands in a region
+      //    this seed has nothing to do with. The recorded parent must actually
+      //    CONTAIN the node: eager evaluation records the reading gate's
+      //    placement, not the node's own.
+      while (closedFromAbove(current)) {
+        const recorded = resolutionState.get(current)?.parentNodeId;
+        const up = recorded !== undefined && !seen.has(recorded)
+          && containmentClosure(graphContext, [recorded]).has(current)
+          ? recorded
+          : containmentParentIds(graphContext, current).find(p => !seen.has(p));
         if (up === undefined) break;
         seen.add(up);
         current = up;
@@ -833,10 +894,30 @@ export class TraversalEngine {
       // 2. Re-enter at whatever decides this node. One level: re-disposing the
       //    decider re-decides everything below it, so climbing further would
       //    only widen the region without changing an outcome.
-      return parentsOf(current).find(isDecider) ?? current;
+      return decidersOf(current).find(p => !seen.has(p)) ?? current;
     };
 
-    const effectiveSeeds = new Set([...seedNodeIds].map(promote));
+    // A seed inside another seed's containment closure is NOT promoted: the
+    // walk from that other seed — itself promoted to its decider — disposes
+    // it in place, in order, beneath everything that governs it. Promoting it
+    // separately can only find a SECOND entry point, and for a node with
+    // several parents that entry point is somewhere else in the graph.
+    //
+    // `answerGateQuestion` used to seed an answered gate's whole closure,
+    // shared leaves included, which is how one answer re-opened DP-1 in a
+    // gated-out branch. It now seeds the gate alone; this keeps the engine
+    // correct for any caller that still sends a closure.
+    //
+    // Only strictly: seeds on one cycle reach each other, and each is
+    // promoted as before.
+    const closureOf = new Map<string, Set<string>>();
+    for (const s of seedNodeIds) closureOf.set(s, containmentClosure(graphContext, [s]));
+    const coveredByAnotherSeed = (id: string): boolean =>
+      [...seedNodeIds].some(s => s !== id && closureOf.get(s)!.has(id) && !closureOf.get(id)!.has(s));
+
+    const effectiveSeeds = new Set(
+      [...seedNodeIds].map(id => (coveredByAnotherSeed(id) ? id : promote(id))),
+    );
 
     // The region a seed can reach. Bounded by the graph, so it is finite and
     // needs no visited-set of its own beyond `region`.
@@ -1018,6 +1099,53 @@ export class TraversalEngine {
           depth: placement?.depth ?? 0,
           properties: n.properties,
         });
+      }
+    }
+
+    // A shared REFERENCE leaf — a citation or code entry: childless, no
+    // inputs, INCLUDED whenever something live reaches it — is INCLUDED if any
+    // host still holding it is. The region's sweeps write whatever they reach
+    // first, and a shared leaf is reached from hosts on both sides of the
+    // answer: answering "no GBS" wrote GATED_OUT over a citation the
+    // still-open culture step cites. Only leaves, because rewriting a node
+    // with a subtree would owe that subtree a walk; and only SHARED ones,
+    // since a leaf with one host already has that host's verdict.
+    //
+    // A live host is one the walk DISPOSED as included. An overridden host is
+    // INCLUDED by a provider's decision about that node alone — the sweep
+    // closes what lies beneath it on purpose — and a node eager evaluation
+    // wrote but no walk reached is not settled. Counting either would put a
+    // Schedule the closing gate had just removed back into the care plan.
+    const isLiveHost = (id: string): boolean => {
+      const h = resolutionState.get(id);
+      return h !== undefined && h.status === NodeStatus.INCLUDED
+        && !h.providerOverride && !provisional.has(id);
+    };
+    if (!isDegraded) {
+      for (const id of region) {
+        const r = resolutionState.get(id);
+        if (!r || !CLOSED.includes(r.status) || r.providerOverride) continue;
+        const n = graphContext.getNode(id);
+        if (!n || !isReferenceLeaf(n, graphContext)) continue;
+        if (containmentParentIds(graphContext, id).length < 2) continue;
+        const host = graphContext.incomingEdges(id).find(e =>
+          !NON_CONTAINMENT_EDGES.has(e.edgeType)
+          && e.edgeType !== 'BRANCHES_TO'
+          && isLiveHost(e.sourceId));
+        if (!host) continue;
+        const hostResult = resolutionState.get(host.sourceId)!;
+        resolutionState.set(id, {
+          nodeId: id,
+          nodeType: n.nodeType,
+          title: nodeTitle(n),
+          status: NodeStatus.INCLUDED,
+          confidence: 1,
+          confidenceBreakdown: [],
+          parentNodeId: host.sourceId,
+          depth: hostResult.depth + 1,
+          properties: n.properties,
+        });
+        rewritten.add(id);
       }
     }
 

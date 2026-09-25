@@ -13,7 +13,6 @@ import { assertAssemblableMode } from '../../services/resolution/temporal/contex
 import type { TemporalContextInput } from '../../services/resolution/temporal/evaluation-context';
 import { PATHWAY_COLUMNS, formatSessionForGraphQL } from '../Query';
 import { TraversalEngine } from '../../services/resolution/traversal-engine';
-import { containmentChildIds } from '../../services/resolution/graph-containment';
 import { makeEvaluationTemporalContext } from '../../services/resolution/temporal/evaluation-context';
 import {
   createSession,
@@ -1106,7 +1105,7 @@ export const resolutionMutations = {
       }
 
 
-      // 4. Find the affected subtree (context already loaded for validation).
+      // 4. Seed the re-resolution (context already loaded for validation).
       const rctx = rctxForAnswer;
 
       // Reject a clock-less session up front, not only when a retraversal
@@ -1116,19 +1115,19 @@ export const resolutionMutations = {
       // An anchor date governs every gate that read it, not just the one the
       // answer was addressed to.
       const answerRoots = anchorAnswer ? anchorAnswer.rootGateIds : [args.nodeId];
+      // The answered gate(s) ALONE. The engine's region is already the seeds'
+      // containment closure, so the gate's subtree is re-resolved beneath it
+      // either way — and what an answer changes is the gate, not its
+      // descendants' inputs.
+      //
+      // This used to seed the whole closure. That made every CodeEntry and
+      // EvidenceCitation under the gate a seed in its own right, and those are
+      // SHARED across the pathway: the engine promoted each to a decider of
+      // its own, found a DecisionPoint elsewhere that cites the same
+      // guideline, and walked it as a root outside the gate that had closed
+      // it. Answering "aspirin indicated" re-opened DP-1 inside a gated-out
+      // work-up.
       const affectedNodes = new Set<string>(answerRoots);
-      const subtreeQueue = [...answerRoots];
-      while (subtreeQueue.length > 0) {
-        const id = subtreeQueue.shift()!;
-        // Containment only: a REQUIRES edge points at a prerequisite living
-        // elsewhere, not at something this answer governs.
-        for (const child of containmentChildIds(rctx.graphContext, id)) {
-          if (!affectedNodes.has(child)) {
-            affectedNodes.add(child);
-            subtreeQueue.push(child);
-          }
-        }
-      }
 
       statusChanges = [];
       nodesRecomputed = 0;

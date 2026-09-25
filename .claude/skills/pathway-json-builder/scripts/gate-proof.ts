@@ -43,7 +43,6 @@ import { evaluateGate, GateEvaluationDeps } from '../../../../apps/pathway-servi
 import { makeEvaluationTemporalContext } from '../../../../apps/pathway-service/src/services/resolution/temporal/evaluation-context';
 import { assembleContext } from '../../../../apps/pathway-service/src/services/resolution/temporal/context-assembler';
 import { TraversalEngine } from '../../../../apps/pathway-service/src/services/resolution/traversal-engine';
-import { containmentClosure } from '../../../../apps/pathway-service/src/services/resolution/graph-containment';
 import { validateForGeneration } from '../../../../apps/pathway-service/src/services/resolution/care-plan-generator';
 import { GateType, DefaultBehavior, ScoringType } from '../../../../apps/pathway-service/src/types';
 import type { GateAnswer, GateProperties } from '../../../../apps/pathway-service/src/services/resolution/types';
@@ -188,43 +187,57 @@ type Replay =
   | { gate: string; answer: GateAnswer };     // answerGateQuestion (a question gate)
 
 /**
- * Traverse; then replay each answer the way the live mutation does:
+ * Traverse; then give each answer the way the live app does — one at a time,
+ * and only once it is actually being asked:
  * - a DecisionPoint choice (answerPendingDecision) re-resolves incrementally
  *   seeded at the DecisionPoint;
  * - a question-gate answer (answerGateQuestion) re-resolves seeded at the gate
- *   AND its containment subtree (resolvers/mutations/resolution.ts).
- * `choose` is shorthand for a single leading DecisionPoint choice.
+ *   (resolvers/mutations/resolution.ts); its subtree is the engine's region.
+ * `choose` is shorthand for a single leading DecisionPoint choice. `replay`
+ * is given in order, and each step must be pending when it is given. `ask` is
+ * given AS ASKED — whichever listed question is pending next, until none is —
+ * and every entry must have been asked by the end, so list only what the
+ * scenario actually reaches. Nothing is pre-loaded into the first traversal:
+ * that is not a path the app has.
  */
 async function resolveSession(opts: {
   file: string; reverse: boolean; patient: PatientContext;
   conf?: (id: string) => number; choose?: { dp: string; option: string };
-  answers?: Record<string, GateAnswer>; replay?: Replay[];
+  replay?: Replay[]; ask?: Replay[];
 }) {
   const graph = graphFrom(opts.file, opts.reverse);
   const engine = engineFor(opts.patient, opts.conf ?? (() => 0.9));
-  const answers = new Map<string, GateAnswer>(Object.entries(opts.answers ?? {}));
+  const answers = new Map<string, GateAnswer>();
   const r = await engine.traverse(graph, opts.patient, answers);
   let pending = r.pendingQuestions;
   let redFlags = r.redFlags;
-  const steps: Replay[] = [...(opts.choose ? [opts.choose] : []), ...(opts.replay ?? [])];
-  for (const step of steps) {
-    let nodeId: string; let seed: Set<string>;
-    if ('dp' in step) {
-      nodeId = step.dp;
-      answers.set(nodeId, { selectedOption: step.option } as GateAnswer);
-      seed = new Set([nodeId]);
-    } else {
-      nodeId = step.gate;
-      answers.set(nodeId, step.answer);
-      seed = containmentClosure(graph, [nodeId]);
-    }
+  const idOf = (step: Replay) => ('dp' in step ? step.dp : step.gate);
+  const asked = (id: string) =>
+    pending.some((q: any) => q.gateId === id || (q.askedByNodeIds ?? []).includes(id));
+  const give = async (step: Replay) => {
+    const nodeId = idOf(step);
+    answers.set(nodeId, 'dp' in step ? ({ selectedOption: step.option } as GateAnswer) : step.answer);
     const rr = await engine.resolveIncrementally(
-      seed, r.resolutionState, r.dependencyMap!, graph, opts.patient, answers,
+      new Set([nodeId]), r.resolutionState, r.dependencyMap!, graph, opts.patient, answers,
       { pendingQuestions: pending, redFlags, alsoDropGateIds: [nodeId] } as never,
     );
     pending = rr.pendingQuestions;
     redFlags = rr.redFlags;
+  };
+  for (const step of [...(opts.choose ? [opts.choose] : []), ...(opts.replay ?? [])]) {
+    // Asked now, or answered before (a re-answer, e.g. at the recheck visit).
+    if (!asked(idOf(step)) && !answers.has(idOf(step))) {
+      expect(`${idOf(step)} is being asked when answered`, 'no', 'yes');
+    }
+    await give(step);
   }
+  const toAsk = [...(opts.ask ?? [])];
+  for (;;) {
+    const i = toAsk.findIndex((step) => asked(idOf(step)));
+    if (i === -1) break;
+    await give(toAsk.splice(i, 1)[0]);
+  }
+  for (const step of toAsk) expect(`${idOf(step)} was asked`, 'no', 'yes');
   return { state: r.resolutionState, pending, redFlags };
 }
 
@@ -676,16 +689,15 @@ async function proveHgbpathy(): Promise<void> {
 // could leak INCLUDED through an open neighbour. Each is now split, one node
 // per host; the original stays on its first host (Step 2.1 / Step 1.2).
 //
-// Question-gate answers are PRE-LOADED here (one traversal that knows them),
-// not replayed; the DP-1 choice is replayed. For these gates the two disagree
-// for a reason that is not this pathway's: answerGateQuestion seeds the answered
-// gate's whole containment closure, which includes CodeEntry / EvidenceCitation
-// leaves shared across the graph, and resolveIncrementally's promote() climbs
-// from such a leaf to a decider that does not govern it and re-disposes it as a
-// root. Answering aspirin "yes" with BP 120/75 re-opens DP-1 (and, in reversed
-// order, gate-no-severe-features) as PENDING_QUESTION inside the GATED_OUT
-// work-up — identically on v1 and v2. With those leaves stripped from the seed,
-// replay agrees with every expectation below. Engine defect, reported separately.
+// Every answer is REPLAYED one at a time, as it is asked, the way the live app
+// gives it. Until engine-incremental-fix these question-gate answers had to be
+// pre-loaded into one traversal: answerGateQuestion seeded the answered gate's
+// whole containment closure, CodeEntry / EvidenceCitation leaves shared across
+// the graph included, and promote() re-entered at a DecisionPoint that merely
+// cites such a leaf — aspirin "yes" at BP 120/75 re-opened DP-1 (and, in
+// reversed order, gate-no-severe-features) as PENDING_QUESTION inside the
+// GATED_OUT work-up. The resolver now seeds the gate alone and the engine no
+// longer treats a citing DecisionPoint as a leaf's decider.
 const GHTN_LABS = {
   bp21: ['lab-1', 'lab-2'],                                        // Step 2.1 (unconditional)
   base12: ['lab-3', 'lab-4', 'lab-5', 'lab-6', 'lab-7', 'lab-8'],  // Step 1.2 (gate-aspirin-indicated)
@@ -702,24 +714,32 @@ async function proveGhtnSharedLabs(): Promise<void> {
   const HIGH_BP = { systolic_bp: 150, diastolic_bp: 95 };   // ≥140/90, below the 160/110 severe range
   const LABS: Array<[string, number]> = [['777-3', 220], ['2160-0', 0.7]]; // no objective severe feature
   /** Diagnosed and confirmed, aspirin not indicated; severe feature on assessment or not. */
-  const diagnosed = (severe: boolean): Record<string, GateAnswer> => ({
-    'gate-aspirin-indicated': NO,
-    'gate-htn-confirmed': YES,
-    'gate-severe-feature-symptoms': severe ? YES : NO,
-    'gate-no-severe-features': severe ? NO : YES,
-  });
-  const QUANTITATIVE = { dp: 'dp-1', option: 'step-2-3a' };
+  /** A question gate's answer, given when it is asked. */
+  const q = (gate: string, answer: GateAnswer): Replay => ({ gate, answer });
+  /** Quantitative proteinuria chosen at DP-1, once DP-1 is asked. */
+  const QUANTITATIVE: Replay = { dp: 'dp-1', option: 'step-2-3a' };
+  /** Diagnosed and confirmed, aspirin not indicated; severe feature on assessment or not. */
+  const diagnosed = (severe: boolean): Replay[] => [
+    q('gate-aspirin-indicated', NO),
+    q('gate-htn-confirmed', YES),
+    q('gate-severe-feature-symptoms', severe ? YES : NO),
+    q('gate-no-severe-features', severe ? NO : YES),
+    QUANTITATIVE,
+  ];
   for (const reverse of [false, true]) {
     console.log(`  -- edge order: ${reverse ? 'reversed' : 'file'}`);
-    const run = (codes: string[], vitals: Record<string, number>, answers: Record<string, GateAnswer>,
-      choose?: { dp: string; option: string }) =>
-      resolveSession({ file: GHTN, reverse, patient: patientOf({ codes, labs: LABS, vitals }), answers, choose });
+    const run = (codes: string[], vitals: Record<string, number>, ask: Replay[]) =>
+      resolveSession({ file: GHTN, reverse, patient: patientOf({ codes, labs: LABS, vitals }), ask });
 
     // gate-bp-elevated closes Step 2.2 and everything downstream of it. v1: the
     // Step 1.2 baseline panel and the Step 2.1 BP readings were also in that
     // region (via 3.1 / 4.1 / 2.3a / 4.2 and 2.2), so they could go GATED_OUT.
     console.log('  aspirin indicated, BP 120/75 — baseline labs ordered, nothing downstream:');
-    let r = await run([], NORMAL_BP, { 'gate-aspirin-indicated': YES });
+    let r = await run([], NORMAL_BP, [q('gate-aspirin-indicated', YES)]);
+    // The reported replay defect: this answer re-opened DP-1 in the gated-out work-up.
+    expect('dp-1 (gated-out work-up)', status(r.state, 'dp-1'), 'GATED_OUT');
+    expect('gate-no-severe-features (gated-out Stage 4)', status(r.state, 'gate-no-severe-features'), 'GATED_OUT');
+    expect('questions left', JSON.stringify(r.pending.map((p: any) => p.gateId)), '[]');
     expect('step-1-2 baseline labs', status(r.state, 'step-1-2'), 'INCLUDED');
     expectAll('(Step 1.2)', r.state, L.base12, 'INCLUDED');
     expectAll('(Step 2.1)', r.state, L.bp21, 'INCLUDED');
@@ -730,7 +750,7 @@ async function proveGhtnSharedLabs(): Promise<void> {
     // gate-htn-confirmed "no" closes the work-up. v1: the Step 2.1/2.2 BP
     // readings were also Step 4.1's, inside that region.
     console.log('  aspirin not indicated, BP 150/95, hypertension NOT confirmed:');
-    r = await run([], HIGH_BP, { 'gate-aspirin-indicated': NO, 'gate-htn-confirmed': NO });
+    r = await run([], HIGH_BP, [q('gate-aspirin-indicated', NO), q('gate-htn-confirmed', NO)]);
     expect('step-2-2 confirm HTN', status(r.state, 'step-2-2'), 'INCLUDED');
     expectAll('(Step 2.1)', r.state, L.bp21, 'INCLUDED');
     expectAll('(Step 2.2)', r.state, L.bp22, 'INCLUDED');
@@ -741,7 +761,7 @@ async function proveGhtnSharedLabs(): Promise<void> {
     // Aspirin "no" is now the only route to the Step 1.2 panel. v1: Steps 3.1,
     // 4.1, 2.3a and 4.2 ordered the same nodes, so they leaked INCLUDED.
     console.log('  aspirin not indicated, gestational HTN (O13.3), quantitative proteinuria, no severe features:');
-    r = await run(['O13.3'], HIGH_BP, diagnosed(false), QUANTITATIVE);
+    r = await run(['O13.3'], HIGH_BP, diagnosed(false));
     expect('gate-htn-diagnosed', status(r.state, 'gate-htn-diagnosed'), 'INCLUDED');
     expect('step-1-2 baseline labs', status(r.state, 'step-1-2'), 'GATED_OUT');
     expectAll('(Step 1.2, aspirin gate is its only route)', r.state, L.base12, 'GATED_OUT');
@@ -753,7 +773,7 @@ async function proveGhtnSharedLabs(): Promise<void> {
     // gate-gestational-htn closes Step 4.2 for preeclampsia. v1: its urine
     // protein labs were also Step 2.3a's (open) — a race.
     console.log('  preeclampsia (O14.03), no severe features — weekly proteinuria stops, diagnostic one stays:');
-    r = await run(['O14.03'], HIGH_BP, diagnosed(false), QUANTITATIVE);
+    r = await run(['O14.03'], HIGH_BP, diagnosed(false));
     expect('gate-gestational-htn', status(r.state, 'gate-gestational-htn'), 'GATED_OUT');
     expectAll('(Step 4.2)', r.state, L.urine42, 'GATED_OUT');
     expectAll('(Step 2.3a)', r.state, L.urine23a, 'INCLUDED');
@@ -762,7 +782,7 @@ async function proveGhtnSharedLabs(): Promise<void> {
     // gate-no-severe-features closes Stage 4. v1: the Step 4.1 surveillance
     // labs were the Step 3.1 severity panel and the Step 2.1/2.2 BP readings.
     console.log('  gestational HTN (O13.3), severe feature on assessment — no outpatient surveillance:');
-    r = await run(['O13.3'], HIGH_BP, diagnosed(true), QUANTITATIVE);
+    r = await run(['O13.3'], HIGH_BP, diagnosed(true));
     expect('stage-4 outpatient surveillance', status(r.state, 'stage-4'), 'GATED_OUT');
     expectAll('(Step 4.1)', r.state, L.surv41, 'GATED_OUT');
     expectAll('(Step 4.2)', r.state, L.urine42, 'GATED_OUT');
@@ -777,8 +797,9 @@ async function proveGhtnSharedLabs(): Promise<void> {
 // Steps 1.1, 2.1 and the test-of-cure repeat culture (step-5-2a); organism
 // identification (lab-2) on Step 2.1 and Step 4.1 (GBS arm); susceptibility
 // (lab-3) on Step 3.1 and suppressive prophylaxis (step-5-3). Same defect as
-// ghtn-shared-labs, same split; question-gate answers pre-loaded for the same
-// engine reason (see the comment above GHTN_LABS).
+// ghtn-shared-labs, same split. Answers replayed as asked, like ghtn (see the
+// comment above GHTN_LABS): "no GBS" on a negative culture used to re-open
+// DP-1 in reversed edge order.
 const UTI_LABS = {
   culture11: ['lab-1'],   // Step 1.1 screening culture (unconditional)
   culture21: ['lab-7'],   // Step 2.1 culture interpretation (unconditional)
@@ -795,26 +816,28 @@ async function proveUtiSharedLabs(): Promise<void> {
   const NEGATIVE: Array<[string, number]> = [['19090-0', 1000]];    // < 10^5 CFU/mL
   const POSITIVE: Array<[string, number]> = [['19090-0', 150000]];  // ≥ 10^5 CFU/mL
   const TWO_UTIS = [{ code: 'O23.42', date: '2026-07-01' }, { code: 'O23.42', date: '2026-09-01' }];
-  const REPEAT_CULTURE = { dp: 'dp-1', option: 'step-5-2a' };
-  /** Culture positive, treated; the other questions as given. */
-  const treated = (a: { symptomatic: boolean; gbs: boolean; completed: boolean }): Record<string, GateAnswer> => ({
-    'gate-symptomatic': a.symptomatic ? YES : NO,
-    'gate-gbs-identified': a.gbs ? YES : NO,
-    'gate-gbs-treat-threshold': NO,
-    'gate-first-trimester': NO,
-    'gate-treatment-completed': a.completed ? YES : NO,
-  });
+  const q = (gate: string, answer: GateAnswer): Replay => ({ gate, answer });
+  const REPEAT_CULTURE: Replay = { dp: 'dp-1', option: 'step-5-2a' };
+  /** Culture positive, treated; the other questions as given, each when asked. */
+  const treated = (a: { symptomatic: boolean; gbs: boolean; completed: boolean }): Replay[] => [
+    q('gate-symptomatic', a.symptomatic ? YES : NO),
+    q('gate-gbs-identified', a.gbs ? YES : NO),
+    ...(a.gbs ? [q('gate-gbs-treat-threshold', NO)] : []),
+    q('gate-first-trimester', NO),
+    ...(a.symptomatic ? [REPEAT_CULTURE] : []),
+    q('gate-treatment-completed', a.completed ? YES : NO),
+  ];
   for (const reverse of [false, true]) {
     console.log(`  -- edge order: ${reverse ? 'reversed' : 'file'}`);
     const run = (codes: Array<string | { code: string; date: string }>, labs: Array<[string, number]>,
-      answers: Record<string, GateAnswer>, choose?: { dp: string; option: string }) =>
-      resolveSession({ file: UTI, reverse, patient: patientOf({ codes, labs, vitals: AFEBRILE }), answers, choose });
+      ask: Replay[]) =>
+      resolveSession({ file: UTI, reverse, patient: patientOf({ codes, labs, vitals: AFEBRILE }), ask });
 
     // Culture negative closes Stage 3 and Step 2.2 (and with it test of cure);
     // GBS "no" closes Stage 4. v1: the Step 1.1 / 2.1 culture was also
     // step-5-2a's, and the Step 2.1 organism ID was also Step 4.1's.
     console.log('  culture negative (1,000 CFU/mL), no GBS — screening and interpretation only:');
-    let r = await run([], NEGATIVE, { 'gate-gbs-identified': NO });
+    let r = await run([], NEGATIVE, [q('gate-gbs-identified', NO)]);
     expect('gate-culture-positive', status(r.state, 'gate-culture-positive'), 'GATED_OUT');
     expectAll('(Step 1.1)', r.state, L.culture11, 'INCLUDED');
     expectAll('(Step 2.1)', r.state, [...L.culture21, ...L.organism21], 'INCLUDED');
@@ -827,7 +850,7 @@ async function proveUtiSharedLabs(): Promise<void> {
     // gate-treatment-completed closes Stage 5. v1: the Step 3.1 susceptibility
     // test was also step-5-3's, inside that region.
     console.log('  culture positive, symptomatic, repeat culture chosen, course NOT completed:');
-    r = await run([], POSITIVE, treated({ symptomatic: true, gbs: false, completed: false }), REPEAT_CULTURE);
+    r = await run([], POSITIVE, treated({ symptomatic: true, gbs: false, completed: false }));
     expect('step-5-2a repeat culture', status(r.state, 'step-5-2a'), 'INCLUDED');
     expectAll('(Step 1.1)', r.state, L.culture11, 'INCLUDED');
     expectAll('(Step 2.1)', r.state, [...L.culture21, ...L.organism21], 'INCLUDED');
