@@ -44,6 +44,7 @@ import {
 import { GraphNode, GraphEdge, PatientContext } from '../services/confidence/types';
 import { makeGraphContext } from './fixtures/reference-patient-context';
 import { windowFromRoles } from '../resolvers/helpers/therapy-starts';
+import { planAnchorAnswer } from '../services/resolution/anchor-answer';
 import { sweepableConditions } from '../resolvers/helpers/resolution-context';
 import {
   RESPONDING_GATE,
@@ -223,6 +224,21 @@ describe('responding and nonresponding are complements (day 21, anchored on the 
       expect(unresolvedTogether).toBe(expected);
     },
   );
+
+  it('the complement holds only on trimester ∈ {1, 2, 3}: an out-of-domain value can open neither', async () => {
+    // `in [1, 3]` and `equals 2` are complements on {1, 2, 3} alone. With 4,
+    // 2.5 or the STRING "2" (patient attributes keep strings as given) both
+    // trimester leaves are definite-false: responding reduces to Δ ≥ 1 and
+    // nonresponding to Δ < 1 ∧ Hgb < 10.5, so Δ < 1 with Hgb ≥ 10.5 opens
+    // neither gate. Pinned so the scope of the guarantee is explicit.
+    for (const trimester of [4, 2.5, '2'] as unknown as number[]) {
+      const pc = patient([[BASELINE_DAY, 10.3], [RECHECK_DAY, 10.6]], trimester);
+      const r = await evalGate(resp, pc, DAY21);
+      const n = await evalGate(nonresp, pc, DAY21);
+      expect([trimester, r.satisfied, n.satisfied, r.dataUnavailable, n.dataUnavailable])
+        .toEqual([trimester, false, false, undefined, undefined]);
+    }
+  });
 
   it('the reordered at-target arm is the same rule, and asks for the trimester only in [10.5, 11)', async () => {
     const r2 = clone(RESPONDING_GATE_REORDERED);
@@ -455,6 +471,24 @@ describe('a window_from nested inside a group', () => {
     const r2 = await engineAt(DAY21, pc).traverse(graph(), pc, answers);
     expect(r2.resolutionState.get('gate-nested')!.status).toBe(NodeStatus.INCLUDED);
     expect(r2.resolutionState.get('gate-nested')!.windowAnchors?.[0]).toMatchObject({ source: 'CLINICIAN' });
+  });
+
+  it('a start date entered on the gate unprompted (a correction) finds the nested anchor', async () => {
+    // No pending question: planAnchorAnswer reads the gate's own window_from
+    // keys, which must reach inside the group.
+    const pc = patient([[BASELINE_DAY, 8.2], [RECHECK_DAY, 9.4]], 2);
+    const answers = new Map<string, GateAnswer>([[KEY, { dateValue: '2026-06-01' }]]);
+    const r = await engineAt(DAY21, pc).traverse(graph(), pc, answers);
+    const plan = planAnchorAnswer({
+      nodeId: 'gate-nested',
+      answer: { dateValue: '2026-06-03' },
+      pendingQuestions: [],
+      dependencyMap: r.dependencyMap,
+      graphContext: graph(),
+      evaluationAsOf: DAY21,
+    });
+    expect(plan).toMatchObject({ kind: 'anchor', key: KEY, dateValue: '2026-06-03' });
+    expect((plan as { rootGateIds: string[] }).rootGateIds).toContain('gate-nested');
   });
 
   it('the care-plan anchor loader and the anchor sweep both see it', () => {

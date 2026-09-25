@@ -1869,7 +1869,12 @@ function combineEntries(op: 'AND' | 'OR', parts: readonly EntryResult[]): Combin
     combined.notYetDue = { dueOn };
     combined.notYetDueReason =
       `NOT_YET_DUE: due on/after ${dueOn} — ` +
-      notDue.map((r) => r.reason.replace(/^NOT_YET_DUE: /, '')).join('; ');
+      // A nested group's reason already carries its own `due on/after <date> — `
+      // header; drop it so the date is not repeated. A leaf's reason continues
+      // `due on/after <date> (why)` and keeps it.
+      notDue
+        .map((r) => r.reason.replace(/^NOT_YET_DUE: (?:due on\/after \d{4}-\d{2}-\d{2} — )?/, ''))
+        .join('; ');
   }
   return combined;
 }

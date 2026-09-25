@@ -11,9 +11,13 @@
  * re-derivation: every leaf is replaced by its exact complement (`at_least` ↔
  * `less_than` on one delta threshold, `greater_than` ↔ `less_than` on one Hgb
  * threshold, trimester {1,3} ↔ {2}) and every AND ↔ OR. Negation commutes with
- * the three-valued (Kleene) connectives, so the two gates are complements in
- * every state, including an unknown trimester — both decided with exactly one
- * open, or both unresolved together.
+ * the three-valued (Kleene) connectives, so the two gates are complements
+ * whenever the trimester is absent or one of 1/2/3 — both decided with exactly
+ * one open, or both unresolved together. (`in [1, 3]` / `equals 2` complement
+ * each other only on {1, 2, 3}: an out-of-domain value such as 4 or the string
+ * "2" makes both trimester leaves false, and then Δ < 1 with Hgb ≥ 10.5 opens
+ * neither gate. `not_equals 2` in place of `in [1, 3]` would close that gap by
+ * reading any non-2 value as trimester 1/3 — offered, not chosen.)
  *
  * Coded lab conditions compare strictly, so "≥ 11" is `greater_than 10.95`
  * and "< 11" is `less_than 10.95` — the midpoint between two 0.1 g/dL steps,

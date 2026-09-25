@@ -271,7 +271,9 @@ describe('what a nested group reports upward', () => {
     const r = await evaluateGate(compound('AND', [missing, group('OR', [leaf('N'), leaf('F')])]), deps());
     expect(r.satisfied).toBe(false);
     expect(r.notYetDue).toEqual({ dueOn: '2026-08-20' });
-    expect(r.reason).toMatch(/^NOT_YET_DUE: due on\/after 2026-08-20 — due on\/after 2026-08-20/);
+    // The group's own `due on/after` header is not repeated; the leaf's is kept.
+    expect(r.reason).toMatch(/^NOT_YET_DUE: due on\/after 2026-08-20 — due on\/after 2026-08-20 \(14 days after/);
+    expect(r.reason.match(/due on\/after/g)).toHaveLength(2);
     // A definite false settles the AND whatever the nested NOT YET DUE says.
     const settled = await evaluateGate(compound('AND', [leaf('F'), group('OR', [leaf('N'), leaf('F')])]), deps());
     expect(settled.notYetDue).toBeUndefined();

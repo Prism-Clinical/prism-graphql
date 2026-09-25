@@ -813,9 +813,13 @@ each leaf with its exact complement (`at_least` ↔ `less_than` on the same
 
 Authoring rules this example carries:
 - **Write the complement by De Morgan, never by re-deriving the rule.** Negation commutes
-  with the three-valued connectives, so the pair are complements in *every* state: with all
-  data present exactly one opens; with the trimester unknown both decide together or both
-  hold together, never one open and one held. A re-derived complement (e.g.
+  with the three-valued connectives, so the pair are complements in every state *whose
+  leaves are exact complements*: with all data present exactly one opens; with the
+  trimester unknown both decide together or both hold together, never one open and one
+  held. The trimester leaves `in [1, 3]` / `equals 2` complement each other only on
+  {1, 2, 3} — an out-of-domain value (4, or the string `"2"`) makes both false, and a rise
+  < 1 with Hgb ≥ 10.5 then opens neither gate. (`not_equals 2` in place of `in [1, 3]`
+  closes that gap, reading any non-2 value as trimester 1/3 — an open choice.) A re-derived complement (e.g.
   `OR(AND(T1/3, < 11), AND(T2, < 10.5))`) is the same rule on complete data but not once a
   value is unknown. (Proven for every Hgb 9.0–13.0 × rise −0.5…+1.5 at 0.1 g/dL, in every
   trimester and with the trimester unknown: `anemia-nested-response-gates.test.ts`.)
