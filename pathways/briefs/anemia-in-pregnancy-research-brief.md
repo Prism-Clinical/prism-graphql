@@ -35,6 +35,8 @@ still current, `[BLOCKED — prior_node_result]` import-blocked gate design with
     (DP-3's host) instead of Steps 2.1–2.3, so a patient on empiric iron can also go to IV
     iron without an oral trial; the oral trial (Stage 2.5, Steps 2.1–2.3) is reached through
     DP-3 on both arms.
+  - **IV iron chosen first before 14 weeks starts the oral trial until then** (§2 Stage 2.6,
+    §3 Step 2.9, §4b `gate-oral-bridge-ga`): v7 started no iron at all on that choice.
   (v7 `[DECISION — Josh 2026-09-24]`, was `"6"`; v6 sessions keep v6's graph. Bumped for:)
   - **The oral-iron response check reads chart data** (§4b `gate-hgb-response` /
     `gate-hgb-nonresponse`): an Hgb rise anchored to the oral-iron start (`window_from`, due
@@ -107,6 +109,13 @@ None. (Single-condition pathway; O99.01x already encodes the pregnancy+anemia co
   reached from Stage 2 and from Stage 1.5; through v7 Stage 1.5 held these steps itself).
   Carries Stage 2's citations, so DP-3's two targets score alike and the fork
   pends for the provider (`gate-proof.ts dp-1-scoring`). [1][5]
+- **Stage 2.6 — Oral Iron Until 14 Weeks (IV iron chosen before 14 weeks)** *(branch-entry
+  only, via gate-oral-bridge-ga on Step 2.9; v8)* `[DECISION — Josh 2026-09-24]` (oral until
+  14 weeks, then IV) with a `[BUILD NOTE]` structure: holds the same Steps 2.1–2.3 as Stage
+  2.5 — oral iron, the trial period, the response check — for a patient whose provider chose
+  IV iron without an oral trial at DP-3 before 14 0/7 weeks, when IV iron is not given.
+  Numbered 2.6: unique, just after Stage 2.5; its steps keep their numbers. Carries Stage
+  2's citations. [1][5]
 - **Stage 3 — Special Populations & Escalations** *(root-connected container; every step
   individually gated)*: hemoglobinopathy/thalassemia/CKD routing-out, trait carriers,
   bariatric, IBD, multifetal, transfusion-decliners, severe anemia, referral. [4][7][8][17]
@@ -191,9 +200,11 @@ None. (Single-condition pathway; O99.01x already encodes the pregnancy+anemia co
 - **Step 2.9 — IV iron without an oral trial** *(DP-3 criteria 3b/3c/3d; v7)*
   `[BUILD NOTE]`: hosts gate-iv-iron-ga-direct → Step 2.10, keeping IV iron's GA ≥ 14 rule
   (`[DECISION — Josh 2026-09-24]`: IV iron at GA ≥ 14 on this route too). Exists for the same reason as Steps 1.7/2.6 (a gate guards a Step,
-  and a DP branch into a gate's target would override the gate). Before 14 weeks nothing
-  opens: IV iron waits for 14 weeks and no oral iron is started on this branch
-  (`[CLINICAL AMBIGUITY — for Josh]`, §4 DP-3). [1][5][6][8]
+  and a DP branch into a gate's target would override the gate). **v8** `[DECISION — Josh
+  2026-09-24]`: before 14 weeks the oral trial starts instead — Step 2.9 also hosts
+  gate-oral-bridge-ga (GA < 14) → Stage 2.6 (Steps 2.1–2.3) — and IV iron is offered again
+  from 14 weeks (DP-3 is asked at every visit that reaches it; the IV gate opens once GA ≥
+  14). v7 opened nothing here before 14 weeks. [1][5][6][8]
 - **Step 2.10 — IV iron therapy (no oral trial)** *(gated by gate-iv-iron-ga-direct — its
   only way in; v7)*: Med-13–16 and Sched-6, copies of Step 2.5's Med-4–7 and Sched-3 (one
   node per host step; Step 2.5 stays the post-non-response IV iron). Deliberately **no**
@@ -402,6 +413,32 @@ BRANCHES_TO (no HAS_STEP edge), per the reference-fixture pattern.
     ACOG says only "severe iron deficiency later in pregnancy"]`
   - Step 2.9 → **gate-iv-iron-ga-direct** (GA ≥ 14) → **Step 2.10** (IV iron). IV iron's
     first-trimester rule is kept on this route too.
+  - `[DECISION — Josh 2026-09-24]` **IV iron first before 14 weeks → oral iron until 14
+    weeks, then IV (v8).** Step 2.9 → **gate-oral-bridge-ga** (GA < 14, the exact
+    complement of gate-iv-iron-ga-direct) → **Stage 2.6**, which holds the oral trial's Steps
+    2.1–2.3. `[BUILD NOTE]` Shared, not copied, with Stage 2.5: DP-3 is one_of, and its
+    sweep of the unchosen oral branch spares everything under the chosen Step 2.9 (the
+    oral steps included), so the bridge's GA gate decides them.
+    [SECOND ROUTE — step-2-1 via stage-2-oral]
+    [SECOND ROUTE — step-2-2 via stage-2-oral]
+    [SECOND ROUTE — step-2-3 via stage-2-oral]
+    (Steps 2.1–2.3 sit behind gate-oral-bridge-ga and are also Stage 2.5's — DP-3's oral
+    branch — so these routes are deliberate; at most one of Stage 2.5 / Step 2.9 is ever
+    open.) **What the provider sees**: IV first at GA 12 → Step 2.9 INCLUDED, Step 2.10 (IV
+    iron) GATED_OUT, Stage 2.6 with oral iron, the trial period and the response check
+    INCLUDED (response check NOT YET DUE at this visit); at the next visit with GA ≥ 14 the
+    provider answers DP-3 again and IV first now opens Step 2.10 and closes the bridge. GA
+    missing → **one** GA question, asked by both GA gates; IV iron and the bridge both held.
+    Proved with `gate-proof.ts dp-3`, both edge orders, **both arms**: GA 12 and 13.9 →
+    oral trial via Stage 2.6, IV iron GATED_OUT; GA 14, 20 and 36 → IV iron, bridge and
+    oral steps GATED_OUT (and the post-non-response route with them); oral trial chosen →
+    Step 2.9, the bridge and its gate EXCLUDED.
+    **Consequences for review:** (1) a patient on the bridge who does not respond by the
+    recheck while still < 14 weeks gets DP-2's expanded workup, and IV iron stays gated
+    until 14 weeks (gate-iv-iron-ga) — as for any first-trimester nonresponder. (2) At the
+    first visit ≥ 14 weeks, re-choosing IV first switches her from oral iron to IV; choosing
+    the oral trial keeps oral iron and its response check (the provider's call, as at every
+    visit).
   - **How each criterion is read — all three by the provider, at DP-3.** `[BUILD NOTE]`
     (the builder's reading; `[CLINICAL AMBIGUITY — for Josh]` — confirm, or say which
     criterion should be read from the chart)
@@ -422,13 +459,12 @@ BRANCHES_TO (no HAS_STEP edge), per the reference-fixture pattern.
     start visit); Step 2.9/2.10 EXCLUDED. **IV first**, GA 20 or 36 → Step 2.10 with
     Med-13–16 and Sched-6 INCLUDED; oral iron, the response check and the post-non-response
     IV route (Steps 2.6, 2.5, DP-2) EXCLUDED; no response question. GA 12 → IV iron
-    GATED_OUT; GA missing → asks for GA, IV iron held. Ferritin 50 and hemoglobinopathy
+    GATED_OUT (v8: and the oral trial starts via Stage 2.6); GA missing → asks for GA, IV
+    iron held. Ferritin 50 and hemoglobinopathy
     disease never see DP-3. (v8: the empiric arm does — same outcomes, proved on both arms.)
-  - `[CLINICAL AMBIGUITY — for Josh]` (a) **IV first before 14 weeks gives no iron at all**:
-    Step 2.9 opens only the GA-gated IV step, and the oral arm is the unchosen branch —
-    should a first-trimester patient with intolerance/malabsorption be steered to the oral
-    trial until 14 weeks (the provider can re-decide DP-3), or should Step 2.9 carry an
-    interim plan? ~~(b) **The empiric arm has no DP-3**~~ — **resolved in v8**
+  - ~~`[CLINICAL AMBIGUITY — for Josh]` (a) **IV first before 14 weeks gives no iron at
+    all**~~ — **resolved in v8** `[DECISION — Josh 2026-09-24]`: oral iron until 14 weeks,
+    then IV (above). ~~(b) **The empiric arm has no DP-3**~~ — **resolved in v8**
     `[DECISION — Josh 2026-09-24]`: both arms get DP-3 (above). (c) DP-3 adds one provider
     question at every visit that reaches it (like DP-1) — since v8 on both arms — since each
     visit is a new session.
@@ -678,6 +714,17 @@ the pathway presumes the coded diagnosis.
     on Step 2.5, and a DP-3 branch straight into Step 2.5 would override gate-iv-iron-ga;
     the `-direct` suffix makes `check-gate-control` hold the two conditions in sync (a
     Rule 3-style copy). [1][5]
+- **Gate `gate-oral-bridge-ga` — Before 14 0/7 weeks: oral iron until IV iron can be
+  given** (v8) `[DECISION — Josh 2026-09-24]` (oral until 14 weeks, then IV) ·
+  `[BUILD NOTE]` (wiring)
+  - Attached to: step-2-9 · Branches to: **stage-2-oral-bridge** (Stage 2.6) ·
+    patient_attribute · Default: **skip** · On unresolved: **ask**
+  - Condition: `patient.gestational_age_weeks` `less_than` **14**, unit weeks (no horizon —
+    `patient.*` has no temporal policy). The exact complement of gate-iv-iron-ga-direct
+    (`greater_or_equal` 14) on the same host, so for any known GA exactly one opens (proved
+    at 13.9 and 14); a missing GA makes both ask the same `patient.gestational_age_weeks`
+    question once. Not named `gate-iv-iron-ga-*`: `check-gate-control` reads that prefix as
+    a fan-out copy of gate-iv-iron-ga and would demand identical conditions. [1][5]
 - **Gate `gate-severe-anemia` — Severe anemia (transfusion consideration)**
   - Attached to: stage-3 · Branches to: step-3-6 · patient_attribute · Default: skip
   - Condition (coded): field `labs`, less_than, value `718-7` (Hgb, LOINC), threshold 6,
@@ -995,7 +1042,8 @@ All codes wave-2 verified — see §18 item 11.
 
 **None needed.** All lab gates use coded-form conditions that match `labResults` by LOINC
 directly, bypassing `pathway_attribute_code_map` entirely. The attribute conditions are all
-`patient.*` — `patient.gestational_age_weeks` (gate-iv-iron-ga, 2026-09-24) and, since v7,
+`patient.*` — `patient.gestational_age_weeks` (gate-iv-iron-ga, 2026-09-24; gate-iv-iron-ga-direct, v7;
+gate-oral-bridge-ga, v8) and, since v7,
 `patient.trimester` (gate-hgb-response / gate-hgb-nonresponse) — which read
 `patientAttributes` directly and need no code-map row. No `lab.*`/`allergy.*` attributes
 are referenced anywhere in §4b.
@@ -1099,7 +1147,7 @@ Nodes that can carry CITES_EVIDENCE:
 - Step 4.1: [9][11] · Step 4.2: [1][6] · Step 4.3: [1][6][9]
 - DP-1: [1] · Criteria 1a/1b: [1] · DP-2: [1] · Criteria 2a: [1][5], 2b: [1][8], 2c: [1]
   · DP-3 (v7): [1][6] · Criteria 3a: [1], 3b: [1][5], 3c: [1][8], 3d: [6][1]
-- Stage 2.5 (v7): [1][5] · Step 2.8: [1][5][6] · Step 2.9: [1][5][6][8] · Step 2.10:
+- Stage 2.5 (v7): [1][5] · Stage 2.6 (v8): [1][5] · Step 2.8: [1][5][6] · Step 2.9: [1][5][6][8] · Step 2.10:
   [1][5][7][22]
 - Meds: Med-1: [1][5][13][14][15] · Med-2, Med-3: [1] · Med-4–Med-7, Med-13–Med-16: [5][22] · Med-8,
   Med-9: [1] · Med-10: [13] · Med-11: [1] · Med-12: [1][17]
