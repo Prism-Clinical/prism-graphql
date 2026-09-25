@@ -242,12 +242,25 @@ function validateGateNodes(
   const gateNodes = pw.nodes.filter(n => n.type === 'Gate');
   // The classes this pathway itself prescribes — what a `window_from`
   // selector's care-plan source can match.
-  const medicationRoles = new Set<string>(
-    pw.nodes
-      .filter(n => n.type === 'Medication')
-      .map(n => (n.properties as Record<string, unknown> | undefined)?.clinical_role)
-      .filter((r): r is string => typeof r === 'string' && r !== ''),
-  );
+  // With each class, the codes its Medication nodes carry (HAS_CODE →
+  // CodeEntry), so a selector's `codes` can be checked for a missing member.
+  const medicationRoles = new Map<string, Array<{ nodeId: string; system: string; code: string }>>();
+  const nodeById = new Map(pw.nodes.map(n => [n.id, n]));
+  for (const n of pw.nodes) {
+    if (n.type !== 'Medication') continue;
+    const role = (n.properties as Record<string, unknown> | undefined)?.clinical_role;
+    if (typeof role !== 'string' || role === '') continue;
+    const members = medicationRoles.get(role) ?? [];
+    for (const e of edges) {
+      if (e.type !== 'HAS_CODE' || e.from !== n.id) continue;
+      const entry = nodeById.get(e.to);
+      const props = entry?.properties as Record<string, unknown> | undefined;
+      if (entry?.type === 'CodeEntry' && typeof props?.system === 'string' && typeof props?.code === 'string') {
+        members.push({ nodeId: n.id, system: props.system, code: props.code });
+      }
+    }
+    medicationRoles.set(role, members);
+  }
 
   // Structural completeness checks fall into `warnings` in draft mode so a
   // gate that's mid-authoring (just dropped on the canvas, not yet wired or
@@ -525,25 +538,44 @@ function validateGateNodes(
 function windowFromWarnings(
   gateId: string,
   conditions: Array<Record<string, unknown>>,
-  medicationRoles: ReadonlySet<string>,
+  medicationRoles: ReadonlyMap<string, ReadonlyArray<{ nodeId: string; system: string; code: string }>>,
   warnings: string[],
 ): void {
   conditions.forEach((c, i) => {
     const wf = c?.window_from;
     if (!wf || typeof wf !== 'object' || Array.isArray(wf)) return;
     const where = `Gate "${gateId}" condition[${i}].window_from`;
-    const role = (wf as Record<string, unknown>).clinical_role;
+    const selector = wf as Record<string, unknown>;
+    const role = selector.clinical_role;
     if (typeof role === 'string' && role !== '' && !medicationRoles.has(role)) {
       warnings.push(
         `${where}: no Medication node in this pathway has clinical_role "${role}" — the ` +
           `anchor can resolve only from a medication order or a clinician-entered date`,
       );
     }
-    if ((wf as Record<string, unknown>).codes === undefined) {
+    if (selector.codes === undefined) {
       warnings.push(
         `${where}: no "codes" — medication orders cannot anchor the window, so a patient ` +
           `with no stored care plan is always asked for the start date`,
       );
+      return;
+    }
+    // A class member the order source would not recognise: the patient on
+    // THAT product is asked for a date the chart already holds. The runtime
+    // compares system case-insensitively, so this does too.
+    if (typeof role !== 'string' || !Array.isArray(selector.codes)) return;
+    const listed = new Set(
+      (selector.codes as Array<Record<string, unknown>>).map(
+        k => `${String(k?.system).toUpperCase()}|${String(k?.code)}`,
+      ),
+    );
+    for (const m of medicationRoles.get(role) ?? []) {
+      if (!listed.has(`${m.system.toUpperCase()}|${m.code}`)) {
+        warnings.push(
+          `${where}: "codes" omits ${m.system} ${m.code} (Medication "${m.nodeId}", class ` +
+            `"${role}") — an order for it will not anchor the window`,
+        );
+      }
     }
   });
 }

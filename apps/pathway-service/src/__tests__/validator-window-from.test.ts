@@ -150,6 +150,28 @@ describe('window_from at import', () => {
     expect(result.warnings).toContainEqual(expect.stringContaining('no "codes"'));
   });
 
+  it('warns when "codes" omits a code a Medication of the class carries', () => {
+    const pw = withCondition({ ...TREND, window_from: ORAL_IRON }, 'oral-iron-repletion');
+    pw.nodes.push(
+      { id: 'code-sulfate', type: 'CodeEntry' as any, properties: { system: 'RXNORM', code: '310325' } },
+      { id: 'code-gluconate', type: 'CodeEntry' as any, properties: { system: 'RXNORM', code: '198630' } },
+      {
+        id: 'med-gluconate',
+        type: 'Medication' as any,
+        properties: { name: 'Ferrous gluconate', role: 'first_line', clinical_role: 'oral-iron-repletion' },
+      },
+    );
+    pw.edges.push(
+      { from: 'med-iron', to: 'code-sulfate', type: 'HAS_CODE' as any },
+      { from: 'med-gluconate', to: 'code-gluconate', type: 'HAS_CODE' as any },
+      { from: 'step-1-1', to: 'med-gluconate', type: 'USES_MEDICATION' as any },
+    );
+    const result = validatePathwayJson(pw);
+    expect(result.errors).toEqual([]);
+    const omissions = result.warnings.filter(w => w.includes('"codes" omits'));
+    expect(omissions).toEqual([expect.stringContaining('RXNORM 198630 (Medication "med-gluconate"')]);
+  });
+
   it('parses the selector into the NODE tier', () => {
     expect(parseConditionOverride({ ...TREND, window_from: ORAL_IRON }, 'c')).toEqual({
       windowFrom: {
