@@ -2,6 +2,7 @@ import type { AttributeCodeMap } from './types';
 import { AnswerType, GateCondition, isAttributeCondition } from './types';
 import { isTemporalOperator, operatorClass } from './temporal/contract';
 import { patientAttributeLabel } from './attribute-vocabulary';
+import { anchorKeyFor, anchorPromptFor, parseWindowFrom } from './temporal/anchored-window';
 
 /**
  * What to ask a provider for, when a gate could not evaluate its condition.
@@ -89,7 +90,31 @@ export interface UnresolvedAsk {
   target:
     | { kind: 'lab'; code: string; system: string }
     | { kind: 'vital'; path: string }
-    | { kind: 'attribute'; path: string };
+    | { kind: 'attribute'; path: string }
+    | { kind: 'anchor'; key: string };
+}
+
+/**
+ * The question for a `window_from` condition whose anchor did not resolve:
+ * the class's start DATE. `null` for any other condition.
+ *
+ * Only for a condition the evaluator flagged `anchorUnresolved` — an anchored
+ * condition can also be indeterminate on series ORDER, and a date would not
+ * unblock that. The datum key is the ANCHOR key, so every gate anchored on the
+ * same class asks one question and one answer re-anchors them all.
+ */
+export function anchorAskFor(condition: GateCondition): UnresolvedAsk | null {
+  const raw = (condition as { window_from?: unknown }).window_from;
+  if (raw === undefined) return null;
+  // Already accepted by the adapter on this very evaluation, so it parses.
+  const sel = parseWindowFrom(raw, 'window_from');
+  const key = anchorKeyFor(sel);
+  return {
+    datumKey: key,
+    prompt: anchorPromptFor(sel),
+    answerType: AnswerType.DATE,
+    target: { kind: 'anchor', key },
+  };
 }
 
 /**

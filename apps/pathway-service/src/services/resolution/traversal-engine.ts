@@ -4,7 +4,7 @@ import type { GateEvaluationDeps } from './gate-evaluator';
 import type { PathwayTemporalDefaults } from './temporal/cascade';
 import type { FactStore } from './temporal/fact-model';
 import { EvaluationTemporalContext } from './temporal/evaluation-context';
-import { askFor, unionOptions } from './unresolved-prompt';
+import { anchorAskFor, askFor, unionOptions } from './unresolved-prompt';
 import { parseBranchWhen } from '../import/branch-when';
 import { decisionValueOf, decisionSelects } from './decision-value';
 import { normalizeAnswerType } from './answer-validation';
@@ -35,6 +35,7 @@ import {
   STRUCTURAL_NODE_TYPES,
   ACTION_NODE_TYPES,
   AttributeCodeMap,
+  WindowAnchorEvidence,
 } from './types';
 
 // ─── Helpers ──────────────────────────────────────────────────────────
@@ -63,8 +64,20 @@ function uncertaintyOf(gateResult: {
   indeterminate?: boolean;
   uncertainty?: unknown;
   dataUnavailable?: boolean;
-}): { indeterminate?: boolean; uncertaintyReason?: string; dataUnavailable?: boolean } {
+  windowAnchors?: WindowAnchorEvidence[];
+}): {
+  indeterminate?: boolean;
+  uncertaintyReason?: string;
+  dataUnavailable?: boolean;
+  windowAnchors?: WindowAnchorEvidence[];
+} {
   return {
+    // Where each anchored window opened, on EVERY outcome the gate takes: a
+    // clinician correcting the start date needs to see it whether the gate
+    // opened or closed.
+    ...(gateResult.windowAnchors !== undefined
+      ? { windowAnchors: gateResult.windowAnchors }
+      : {}),
     ...(gateResult.indeterminate !== undefined
       ? { indeterminate: gateResult.indeterminate }
       : {}),
@@ -97,6 +110,7 @@ function unresolvedAsk(
     indeterminate?: boolean;
     dataUnavailable?: boolean;
     unresolvedConditions?: GateCondition[];
+    unresolvedAnchorConditions?: GateCondition[];
   },
   /** The attribute vocabulary, so a lab attribute asks for a LAB. */
   codeMap?: AttributeCodeMap,
@@ -119,7 +133,11 @@ function unresolvedAsk(
       ? gateResult.unresolvedConditions
       : (gateProps.conditions ?? (gateProps.condition ? [gateProps.condition] : []));
   for (const condition of conditions) {
-    const ask = askFor(condition, codeMap);
+    // An unresolved `window_from` anchor asks for its start DATE; every other
+    // condition asks for its datum, or nothing (`askFor` refuses aggregates).
+    const ask = gateResult.unresolvedAnchorConditions?.includes(condition)
+      ? anchorAskFor(condition)
+      : askFor(condition, codeMap);
     if (ask) return ask;
   }
   return null;

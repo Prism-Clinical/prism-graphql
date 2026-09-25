@@ -53,6 +53,7 @@ import {
   validateAnswerAgainstGate,
 } from '../../services/resolution/answer-validation';
 import { normalizePatientAttributes } from '../../services/resolution/patient-attributes';
+import { planAnchorAnswer } from '../../services/resolution/anchor-answer';
 import {
   buildEffectivePatientContext,
   dependencyContextKey,
@@ -63,6 +64,8 @@ export interface GateAnswerInput {
   booleanValue?: boolean;
   numericValue?: number;
   selectedOption?: string;
+  /** `YYYY-MM-DD` — a `window_from` treatment start date. See anchor-answer.ts. */
+  dateValue?: string;
 }
 
 /**
@@ -949,11 +952,38 @@ export const resolutionMutations = {
       // Delegated to addPatientContext rather than reimplemented — one way for
       // a fact to enter a session. Two ways is how the traversal engines
       // diverged, and this is the same shape of mistake.
-      const escalated = session.pendingQuestions.find(
-        q => q.gateId === args.nodeId && q.askTarget,
-      );
+      // ─── A window_from treatment start date ──────────────────────
+      //
+      // Asked (the anchor could not be resolved) or edited (it resolved, and
+      // the clinician is correcting it). Decided BEFORE the datum branch: an
+      // anchor date is not a fact to inject, and before the gate-schema check,
+      // which would refuse a `dateValue` on the gate's own answer type.
+      const anchorPlan = planAnchorAnswer({
+        nodeId: args.nodeId,
+        answer: args.answer,
+        pendingQuestions: session.pendingQuestions,
+        dependencyMap: session.dependencyMap,
+        graphContext: rctxForAnswer.graphContext,
+        evaluationAsOf: requireSessionTemporalContext(session).evaluationAsOf,
+      });
+      if (anchorPlan.kind === 'problem') {
+        throw new GraphQLError(`Gate "${args.nodeId}": ${anchorPlan.message}`, {
+          extensions: { code: 'BAD_USER_INPUT' },
+        });
+      }
+      const anchorAnswer = anchorPlan.kind === 'anchor' ? anchorPlan : null;
+
+      const escalated = anchorAnswer
+        ? undefined
+        : session.pendingQuestions.find(
+            q => q.gateId === args.nodeId && q.askTarget && q.askTarget.kind !== 'anchor',
+          );
       if (escalated?.askTarget) {
         const target = escalated.askTarget;
+        if (target.kind === 'anchor') {
+          // Excluded by the find above; narrowing only.
+          throw new GraphQLError(`Gate "${args.nodeId}": unexpected anchor request`);
+        }
         const value = datumAnswerValue(escalated, args.answer);
         if (typeof value === 'object') {
           throw new GraphQLError(
@@ -1035,23 +1065,30 @@ export const resolutionMutations = {
       // or a select gate an option it does not offer — the engine then derives
       // a decision the routing table has no entry for, takes no branch, and
       // raises nothing, because the gate DID decide.
-      const answeredGate = rctxForAnswer.graphContext.getNode(args.nodeId);
-      const answeredProps = answeredGate?.properties as unknown as GateProperties | undefined;
-      if (answeredProps) {
-        const problem = validateAnswerAgainstGate(args.answer, answeredProps);
-        if (problem) {
-          throw new GraphQLError(`Gate "${args.nodeId}": ${problem}`, {
-            extensions: { code: 'BAD_USER_INPUT' },
-          });
+      if (anchorAnswer) {
+        // Under the ANCHOR key: one date re-anchors every gate on this class,
+        // and the gate's own entry — a question verdict or a branch choice —
+        // is left alone.
+        session.gateAnswers.set(anchorAnswer.key, { dateValue: anchorAnswer.dateValue });
+      } else {
+        const answeredGate = rctxForAnswer.graphContext.getNode(args.nodeId);
+        const answeredProps = answeredGate?.properties as unknown as GateProperties | undefined;
+        if (answeredProps) {
+          const problem = validateAnswerAgainstGate(args.answer, answeredProps);
+          if (problem) {
+            throw new GraphQLError(`Gate "${args.nodeId}": ${problem}`, {
+              extensions: { code: 'BAD_USER_INPUT' },
+            });
+          }
         }
-      }
 
-      const newAnswer: GateAnswer = {
-        booleanValue: args.answer.booleanValue,
-        numericValue: args.answer.numericValue,
-        selectedOption: args.answer.selectedOption,
-      };
-      session.gateAnswers.set(args.nodeId, newAnswer);
+        const newAnswer: GateAnswer = {
+          booleanValue: args.answer.booleanValue,
+          numericValue: args.answer.numericValue,
+          selectedOption: args.answer.selectedOption,
+        };
+        session.gateAnswers.set(args.nodeId, newAnswer);
+      }
 
 
       // 4. Find the affected subtree (context already loaded for validation).
@@ -1061,9 +1098,11 @@ export const resolutionMutations = {
       // happens to be triggered — the session is un-retraversable either way.
       const sessionClock = requireSessionTemporalContext(session);
 
-      const affectedNodes = new Set<string>();
-      affectedNodes.add(args.nodeId);
-      const subtreeQueue = [args.nodeId];
+      // An anchor date governs every gate that read it, not just the one the
+      // answer was addressed to.
+      const answerRoots = anchorAnswer ? anchorAnswer.rootGateIds : [args.nodeId];
+      const affectedNodes = new Set<string>(answerRoots);
+      const subtreeQueue = [...answerRoots];
       while (subtreeQueue.length > 0) {
         const id = subtreeQueue.shift()!;
         // Containment only: a REQUIRES edge points at a prerequisite living
@@ -1134,7 +1173,10 @@ export const resolutionMutations = {
         {
           pendingQuestions: session.pendingQuestions,
           redFlags: session.redFlags,
-          alsoDropGateIds: [args.nodeId],
+          // A verdict settles its gate's question outright. A start date does
+          // not settle the gate — it re-anchors it, and whatever the gate
+          // still needs (a series it cannot order) must be allowed to re-ask.
+          alsoDropGateIds: anchorAnswer ? [] : [args.nodeId],
         },
       );
 
@@ -1182,11 +1224,14 @@ export const resolutionMutations = {
           }, session.updatedAt);
 
           await logEvent(tx, args.sessionId, {
-            eventType: 'gate_answer',
+            eventType: anchorAnswer ? 'anchor_date_set' : 'gate_answer',
             triggerData: {
               gateId: args.nodeId,
               answer: args.answer,
               gateOpened,
+              ...(anchorAnswer
+                ? { anchorKey: anchorAnswer.key, recomputedGates: anchorAnswer.rootGateIds }
+                : {}),
             },
             nodesRecomputed,
             statusChanges,
@@ -1196,7 +1241,7 @@ export const resolutionMutations = {
             sessionId: args.sessionId,
             gateId: args.nodeId,
             pathwayId: pathwayIdForLog,
-            answer: args.answer,
+            answer: anchorAnswer ? { ...args.answer, anchorKey: anchorAnswer.key } : args.answer,
             gateOpened,
           });
         });

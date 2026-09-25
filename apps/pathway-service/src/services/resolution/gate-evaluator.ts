@@ -33,6 +33,8 @@ import type { UncertaintyReason } from './temporal/contract';
 import { adaptAttributeCondition, adaptCodedCondition } from './temporal/condition-adapter';
 import { effectivePolicyFor } from './temporal/gate-policy';
 import { selectFacts } from './temporal/select-facts';
+import { anchorLabelFor, resolveWindowAnchor } from './temporal/anchored-window';
+import type { WindowAnchorEvidence } from './types';
 
 // ─── Helpers ──────────────────────────────────────────────────────────
 
@@ -503,6 +505,16 @@ export interface ConditionOutcome {
    * Like the two keys above, absent on the `legacy-v0` path.
    */
   dataUnavailable?: boolean;
+  /**
+   * A `window_from` condition whose anchor could not be resolved (no clinician
+   * date, no care-plan recommendation, no dated order of the class). Always
+   * paired with `indeterminate: true`; kept as its own flag because it wants a
+   * DIFFERENT question from every other indeterminate — a start date, not a
+   * datum — and a series-order indeterminate must never be asked for a date.
+   */
+  anchorUnresolved?: boolean;
+  /** The anchor a `window_from` condition was evaluated from, when it resolved. */
+  windowAnchor?: WindowAnchorEvidence;
 }
 
 export type ConditionEvaluator = (
@@ -520,6 +532,17 @@ function evaluateConditionLegacyAdapted(
   condition: GateCondition,
   deps: GateEvaluationDeps,
 ): ConditionOutcome {
+  // `legacy-v0` has no anchor resolution: its trend reads `window_days` alone,
+  // so a `window_from` condition would silently evaluate over the patient's
+  // whole history. Refused, not approximated. (A new key, so no legacy
+  // behaviour exists to preserve.)
+  if ((condition as { window_from?: unknown }).window_from !== undefined) {
+    return {
+      satisfied: false,
+      reason: 'window_from requires the v1 temporal kernel; legacy-v0 cannot anchor a window',
+      fieldsRead: isAttributeCondition(condition) ? [condition.attribute] : [condition.field],
+    };
+  }
   return evaluateConditionLegacy(
     condition,
     deps.patientContext,
@@ -822,11 +845,70 @@ function evaluateAggregateKernel(
 ): ConditionOutcome {
   const where = `condition (${condition.field})`;
   const adapted = adaptCodedCondition(condition, where);
-  const policy = effectivePolicyFor(adapted, deps.temporalContext, deps.pathwayDefaults);
+  const { field, operator, value } = condition;
+
+  // ─── window_from: resolve the anchor BEFORE the policy ─────────────
+  //
+  // The anchor is the window's lower bound, so nothing can be selected until
+  // it is known. Unresolved is INDETERMINATE — never a fallback window — and
+  // carries its own flag so the escalation asks for a start DATE.
+  const windowFrom = adapted.override?.windowFrom;
+  const anchor = windowFrom
+    ? resolveWindowAnchor(windowFrom, {
+        gateAnswers: deps.gateAnswers,
+        factStore: deps.factStore,
+        temporalContext: deps.temporalContext,
+      })
+    : undefined;
+  // An anchored condition also READS medication orders (the third source) and
+  // its own override key, so a newly added order or a clinician date
+  // re-evaluates it. `dependencyContextKey` maps `medications` to the
+  // medications context key and ignores the `anchor:` key.
+  const fieldsRead = [
+    ...(field ? [field] : []),
+    ...(anchor ? [...(field === 'medications' ? [] : ['medications']), anchor.key] : []),
+  ];
+  if (anchor && anchor.status === 'UNRESOLVED') {
+    return {
+      satisfied: false,
+      reason: `Cannot anchor ${operator} window for ${field}:${value}: ${anchor.reason}`,
+      fieldsRead,
+      indeterminate: true,
+      uncertainty: ['ANCHOR_UNRESOLVED'],
+      anchorUnresolved: true,
+    };
+  }
+  const resolvedAnchor = anchor && anchor.status === 'RESOLVED' ? anchor : undefined;
+
+  const policy = effectivePolicyFor(
+    adapted,
+    deps.temporalContext,
+    deps.pathwayDefaults,
+    resolvedAnchor?.lowerBound,
+  );
   const outcome = selectFacts(adapted.selection, deps.factStore, policy);
 
-  const { field, operator, value } = condition;
-  const fieldsRead = field ? [field] : [];
+  // Appended to every reason this condition gives, so the date the window
+  // opened on — and where it came from — is on the audit row whatever the
+  // verdict. Empty for an unanchored condition, keeping its prose unchanged.
+  const anchorNote = resolvedAnchor
+    ? ` [window from ${resolvedAnchor.date}: ${anchorLabelFor(windowFrom!)} start, ` +
+      `${resolvedAnchor.source.toLowerCase().replace('_', ' ')} — ${resolvedAnchor.detail}]`
+    : '';
+  const anchorFields: Pick<ConditionOutcome, 'windowAnchor'> = resolvedAnchor
+    ? {
+        windowAnchor: {
+          key: resolvedAnchor.key,
+          clinicalRole: windowFrom!.clinicalRole,
+          label: anchorLabelFor(windowFrom!),
+          date: resolvedAnchor.date,
+          source: resolvedAnchor.source,
+          detail: resolvedAnchor.detail,
+        },
+      }
+    : {};
+  const finish = (o: ConditionOutcome): ConditionOutcome =>
+    resolvedAnchor ? { ...o, reason: o.reason + anchorNote, ...anchorFields } : o;
 
   // Per-fact doubt plus, when the kernel refused to order the series, the
   // reason it refused for. `AMBIGUOUS_SERIES_ORDER` exists ONLY on the outcome —
@@ -841,7 +923,7 @@ function evaluateAggregateKernel(
   ];
 
   if (outcome.status === 'INDETERMINATE') {
-    return {
+    return finish({
       satisfied: false,
       // Deliberately NOT legacy's "Need ≥N dated values" — a fail-closed refusal
       // must not read like an ordinary shortfall, or no audit row can tell
@@ -852,7 +934,7 @@ function evaluateAggregateKernel(
       fieldsRead,
       indeterminate: true,
       uncertainty,
-    };
+    });
   }
 
   const selected = outcome.status === 'READY' ? outcome.selected : [];
@@ -864,7 +946,7 @@ function evaluateAggregateKernel(
     const threshold = condition.count_threshold ?? 2;
     const satisfied = matches >= threshold;
     const bound = satisfied ? `≥${threshold}` : `<${threshold}`;
-    return {
+    return finish({
       satisfied,
       reason:
         `Found ${matches} matching ${value} in ${field} ` +
@@ -874,31 +956,31 @@ function evaluateAggregateKernel(
       // and `count_in_window` never builds one.
       indeterminate: false,
       uncertainty,
-    };
+    });
   }
 
   // trend_up / trend_down / delta_from_baseline — a numeric series over labs.
   if (field !== 'labs') {
-    return {
+    return finish({
       satisfied: false,
       reason: `${operator} only supports field=labs (got "${field}")`,
       fieldsRead,
       indeterminate: false,
       uncertainty,
-    };
+    });
   }
 
   const isDelta = operator === 'delta_from_baseline';
   const minPoints = Math.max(2, condition.min_points ?? (isDelta ? 2 : 3));
   const points = seriesPoints(selected);
   if (points.length < minPoints) {
-    return {
+    return finish({
       satisfied: false,
       reason: `Need ≥${minPoints} dated values for ${value}; found ${points.length}`,
       fieldsRead,
       indeterminate: false,
       uncertainty,
-    };
+    });
   }
 
   if (isDelta) {
@@ -908,7 +990,7 @@ function evaluateAggregateKernel(
     const delta = condition.delta_threshold ?? 0;
     const ok = delta === 0 ? observed !== 0 : delta > 0 ? observed >= delta : observed <= delta;
     const decoration = `(baseline ${baseline}, current ${current})`;
-    return {
+    return finish({
       satisfied: ok,
       reason: ok
         ? `${value} delta ${observed.toFixed(4)} ${decoration} satisfies threshold ${delta}`
@@ -916,13 +998,13 @@ function evaluateAggregateKernel(
       fieldsRead,
       indeterminate: false,
       uncertainty,
-    };
+    });
   }
 
   const slopeFloor = condition.slope_threshold ?? 0;
   const slope = linearSlope(points);
   const ok = operator === 'trend_up' ? slope > slopeFloor : slope < -slopeFloor;
-  return {
+  return finish({
     satisfied: ok,
     reason: ok
       ? `${value} slope ${slope.toFixed(4)} value/day satisfies ${operator}${slopeFloor !== 0 ? ` (|slope| > ${slopeFloor})` : ''}`
@@ -930,7 +1012,7 @@ function evaluateAggregateKernel(
     fieldsRead,
     indeterminate: false,
     uncertainty,
-  };
+  });
 }
 
 /**
@@ -1256,7 +1338,18 @@ function evaluatePatientAttribute(
   if (result.indeterminate !== undefined) out.indeterminate = result.indeterminate;
   if (result.uncertainty !== undefined) out.uncertainty = result.uncertainty;
   if (result.dataUnavailable !== undefined) out.dataUnavailable = result.dataUnavailable;
+  if (result.anchorUnresolved === true) out.unresolvedAnchorConditions = [gate.condition];
+  if (result.windowAnchor !== undefined) out.windowAnchors = [result.windowAnchor];
   return out;
+}
+
+/** The distinct anchors a set of condition outcomes resolved, in order. */
+function windowAnchorsOf(results: readonly ConditionOutcome[]): WindowAnchorEvidence[] {
+  const byKey = new Map<string, WindowAnchorEvidence>();
+  for (const r of results) {
+    if (r.windowAnchor && !byKey.has(r.windowAnchor.key)) byKey.set(r.windowAnchor.key, r.windowAnchor);
+  }
+  return [...byKey.values()];
 }
 
 function evaluateQuestion(
@@ -1542,7 +1635,14 @@ function evaluateCompound(
   if (out.indeterminate === true || out.dataUnavailable === true) {
     const unresolved = gate.conditions.filter((_, i) => conditionUnresolved(results[i]));
     if (unresolved.length > 0) out.unresolvedConditions = unresolved;
+    // Which of those need a start DATE. Only an unresolved condition can be
+    // here — an anchored condition that resolved and was then indeterminate on
+    // series order is asked nothing, since a date would not unblock it.
+    const anchorless = gate.conditions.filter((_, i) => results[i].anchorUnresolved === true);
+    if (anchorless.length > 0) out.unresolvedAnchorConditions = anchorless;
   }
+  const anchors = windowAnchorsOf(results);
+  if (anchors.length > 0) out.windowAnchors = anchors;
   return out;
 }
 

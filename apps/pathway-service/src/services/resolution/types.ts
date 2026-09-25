@@ -76,6 +76,13 @@ export interface NodeResult {
    * applies?" versus "what is this patient's haemoglobin?".
    */
   dataUnavailable?: boolean;
+  /**
+   * The anchors this gate's `window_from` conditions were evaluated from — the
+   * therapy start date each trend window opened on, and where it came from.
+   * Surfaced so the date is visible and a clinician can correct it (prescribed
+   * is not started). Absent on gates with no anchored condition.
+   */
+  windowAnchors?: WindowAnchorEvidence[];
   providerOverride?: ProviderOverride;
   parentNodeId?: string;
   depth: number;
@@ -264,6 +271,27 @@ export interface GateAnswer {
   booleanValue?: boolean;
   numericValue?: number;
   selectedOption?: string;
+  /**
+   * `YYYY-MM-DD`. Only a `window_from` anchor takes one: stored under the
+   * anchor's key (`anchor:<event>:<clinical_role>`), never a gate id, as the
+   * clinician's start date for the class. Persists inside the session's
+   * `gate_answers` JSONB and the `pathway_gate_answers.answer` JSONB, so it
+   * needed no migration.
+   */
+  dateValue?: string;
+}
+
+/** Where a `window_from` window opened, recorded on the gate (see NodeResult). */
+export interface WindowAnchorEvidence {
+  /** `anchor:<event>:<clinical_role>` — also the override's gateAnswers key. */
+  key: string;
+  clinicalRole: string;
+  /** The class in words, as the prompt names it. */
+  label: string;
+  /** `YYYY-MM-DD`. */
+  date: string;
+  source: 'CLINICIAN' | 'CARE_PLAN' | 'MEDICATION_ORDER';
+  detail: string;
 }
 
 export interface GateEvaluationResult {
@@ -328,6 +356,15 @@ export interface GateEvaluationResult {
    * again — indefinitely.
    */
   unresolvedConditions?: GateCondition[];
+  /**
+   * The unresolved conditions whose trouble is an unresolved `window_from`
+   * anchor — asked for as a start DATE rather than as a datum. A subset of the
+   * conditions that could not be answered; on a single-condition gate, that
+   * condition.
+   */
+  unresolvedAnchorConditions?: GateCondition[];
+  /** The resolved anchors, deduplicated by key, in condition order. */
+  windowAnchors?: WindowAnchorEvidence[];
 }
 
 // ─── Pending Questions ──────────────────────────────────────────────
@@ -386,7 +423,12 @@ export interface PendingQuestion {
   askTarget?:
     | { kind: 'lab'; code: string; system: string }
     | { kind: 'vital'; path: string }
-    | { kind: 'attribute'; path: string };
+    | { kind: 'attribute'; path: string }
+    /**
+     * A `window_from` start date. NOT a fact: the answer is the clinician's
+     * date for the anchor, stored in `gateAnswers` under `key`.
+     */
+    | { kind: 'anchor'; key: string };
 }
 
 // ─── Red Flags ──────────────────────────────────────────────────────

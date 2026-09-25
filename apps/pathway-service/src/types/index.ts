@@ -152,6 +152,8 @@ export enum AnswerType {
   BOOLEAN = 'BOOLEAN',
   NUMERIC = 'NUMERIC',
   SELECT = 'SELECT',
+  /** A calendar date, `YYYY-MM-DD` — the start date of a `window_from` anchor. */
+  DATE = 'DATE',
 }
 
 export enum BlockerType {
