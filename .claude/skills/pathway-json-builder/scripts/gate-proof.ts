@@ -31,7 +31,14 @@
 //                    empiric arm choose the oral trial (Stage 2.5) or IV iron
 //                    without a trial (Step 2.9 → gate-iv-iron-ga-direct → Step
 //                    2.10); GA 12 gates IV out, GA missing asks; ferritin 50
-//                    never sees DP-3
+//                    never sees DP-3. v9: IV first on the empiric arm (no
+//                    ferritin) comes out differently — split per arm here
+//   iv-ferritin      anemia v9: IV iron first needs a ferritin < 30 on file —
+//                    empiric + no ferritin → ferritin ordered, oral iron
+//                    meanwhile, IV held on a ferritin question; ferritin 12 → IV
+//                    iron, oral closes; ferritin 50 → no iron; the in-session
+//                    ferritin answer re-resolved as addPatientContext does,
+//                    matching the chart value; confirmed arm unchanged
 //   malabsorption    anemia v8: DP-3 criterion 3c from chart codes — a malabsorption
 //                    code opens Step 2.11 (recommend IV first) next to the still-
 //                    pending DP-3 question; never forces the route; both arms
@@ -64,6 +71,7 @@ import { withTherapyStarts } from '../../../../apps/pathway-service/src/services
 import { normalizePatientAttributes } from '../../../../apps/pathway-service/src/services/resolution/patient-attributes';
 import { TraversalEngine } from '../../../../apps/pathway-service/src/services/resolution/traversal-engine';
 import { validateForGeneration } from '../../../../apps/pathway-service/src/services/resolution/care-plan-generator';
+import { dependencyContextKey } from '../../../../apps/pathway-service/src/services/resolution/effective-context';
 import { GateType, DefaultBehavior, ScoringType } from '../../../../apps/pathway-service/src/types';
 import type { GateAnswer, GateProperties } from '../../../../apps/pathway-service/src/services/resolution/types';
 import type {
@@ -266,6 +274,8 @@ async function resolveSession(opts: {
   let pending = r.pendingQuestions;
   let redFlags = r.redFlags;
   const idOf = (step: Replay) => ('dp' in step ? step.dp : 'gate' in step ? step.gate : step.anchor);
+  // Exposed for `supplyLab`, which continues this session the way addPatientContext does.
+  const session = { graph, answers, dependencyMap: r.dependencyMap! };
   const asked = (id: string) =>
     pending.some((q: any) => q.gateId === id || (q.askedByNodeIds ?? []).includes(id) || q.datumKey === id);
   const give = async (step: Replay) => {
@@ -295,7 +305,38 @@ async function resolveSession(opts: {
     await give(toAsk.splice(i, 1)[0]);
   }
   for (const step of toAsk) expect(`${idOf(step)} was asked`, 'no', 'yes');
-  return { state: r.resolutionState, pending, redFlags };
+  return { state: r.resolutionState, pending, redFlags, session };
+}
+
+/**
+ * The provider supplies a lab mid-session — the answer to an escalated lab
+ * question — continued exactly as `addPatientContext` does it
+ * (resolvers/mutations/resolution.ts): the value becomes a DATED fact at the
+ * session clock (providerAsserted), a new engine is built over the enlarged
+ * fact store, and EVERY gate whose recorded context fields map to
+ * `labResults` (dependencyContextKey) is re-resolved — not only the gate that
+ * asked. The gate-answer replay in `resolveSession` cannot represent this: a
+ * lab answer is a fact, not a gate answer.
+ */
+async function supplyLab(
+  run: Awaited<ReturnType<typeof resolveSession>>, patient: PatientContext,
+  lab: { code: string; value: number }, asOf: string = AS_OF,
+) {
+  const patient2 = {
+    ...patient,
+    labResults: [...((patient as any).labResults ?? []),
+      { code: lab.code, system: 'LOINC', value: lab.value, date: asOf, providerAsserted: true }],
+  } as unknown as PatientContext;
+  const affected = new Set<string>();
+  for (const [gateId, fields] of run.session.dependencyMap.gateContextFields) {
+    if ([...fields].some((f) => dependencyContextKey(f) === 'labResults')) affected.add(gateId);
+  }
+  const engine = engineFor(patient2, () => 0.9, { asOf });
+  const rr = await engine.resolveIncrementally(
+    affected, run.state as never, run.session.dependencyMap, run.session.graph, patient2, run.session.answers,
+    { pendingQuestions: run.pending, redFlags: run.redFlags } as never,
+  );
+  return { state: run.state, pending: rr.pendingQuestions, redFlags: rr.redFlags, affected, patient: patient2 };
 }
 
 const status = (s: Map<string, { status: string }>, id: string) => s.get(id)?.status ?? '(absent)';
@@ -842,6 +883,9 @@ async function proveMcv(): Promise<void> {
 // 2026-09-24]: IV first chosen before 14 weeks starts the oral trial until then —
 // gate-oral-bridge-ga (GA < 14, the exact complement of gate-iv-iron-ga-direct)
 // on Step 2.9 → Stage 2.6, which holds the same Steps 2.1–2.3 as Stage 2.5.
+// v9 [DECISION — Josh 2026-09-25]: IV iron also needs a ferritin < 30 on file
+// (Step 2.13 → gate-ida-confirmed-iv → Step 2.10), and the bridge also opens
+// while no ferritin is on file — see `iv-ferritin`.
 async function proveDp3(): Promise<void> {
   console.log(`\n=== dp-3: oral iron trial vs IV iron without an oral trial, both arms (${ANEMIA}) ===`);
   const IV_DIRECT = ['step-2-10', 'med-13', 'med-14', 'med-15', 'med-16', 'sched-6'];
@@ -887,29 +931,54 @@ async function proveDp3(): Promise<void> {
       expectAll('(IV without a trial)', r.state, ['gate-iv-iron-ga-direct', ...IV_DIRECT], 'EXCLUDED');
       expectAll('(oral bridge, under the unchosen branch)', r.state, ['gate-oral-bridge-ga', BRIDGE], 'EXCLUDED');
 
+      // v9 [DECISION — Josh 2026-09-25]: IV iron first needs a ferritin < 30 on
+      // file. On the confirmed arm the ferritin that opened Stage 2 is that
+      // ferritin, so everything below reads exactly as in v8 there; the only new
+      // nodes it touches are Step 2.13 (INCLUDED at GA ≥ 14 — the ferritin gate's
+      // host) and the ferritin order (Step 2.12, lab-17), GATED_OUT. On the
+      // empiric arm no ferritin is on file, so the SAME choices come out
+      // differently — split here on purpose; the empiric arm's IV-first
+      // outcomes are proved in full in `iv-ferritin`.
+      const confirmed = dp1 === WORKUP;
+      const FERRITIN_ORDER = ['step-2-12', 'lab-17'];
       for (const [ga, label] of [[20, 'intolerance or malabsorption (3b/3c), GA 20'], [36, 'anemia diagnosed at ≥ 34 weeks (3d), GA 36']] as const) {
-        console.log(`    IV iron first chosen — ${label}: IV iron, no oral trial, no response check:`);
+        console.log(`    IV iron first chosen — ${label}: ${confirmed
+          ? 'IV iron, no oral trial, no response check'
+          : 'ferritin ordered, oral iron meanwhile, IV iron waits for the ferritin (v9)'}:`);
         r = await resolveSession({ ...base, patient: patient(ga), replay: [dp1, IV_FIRST_CHOICE] });
         expect(`${IV_FIRST}`, status(r.state, IV_FIRST), 'INCLUDED');
         expect('gate-iv-iron-ga-direct', status(r.state, 'gate-iv-iron-ga-direct'), 'INCLUDED');
-        expectAll('(IV without a trial)', r.state, IV_DIRECT, 'INCLUDED');
-        expect('med-14 sits under', String(r.state.get('med-14')?.parentNodeId), 'step-2-10');
+        expect('step-2-13 ferritin check before IV iron', status(r.state, 'step-2-13'), 'INCLUDED');
         expect(`${ORAL_TRIAL} (unchosen)`, status(r.state, ORAL_TRIAL), 'EXCLUDED');
-        // v8: the oral steps also sit under Step 2.9's bridge, so DP-3 spares them
-        // and the bridge's GA gate decides them: closed at GA ≥ 14.
-        expect('gate-oral-bridge-ga (GA ≥ 14)', status(r.state, 'gate-oral-bridge-ga'), 'GATED_OUT');
-        expectAll('(oral steps, bridge closed)', r.state, [BRIDGE, ...ORAL_STEPS], 'GATED_OUT');
-        expectAll('(post-nonresponse IV route)', r.state, NONRESPONSE_IV, 'GATED_OUT');
-        expect('questions from the response check', String(r.pending.some((p: any) =>
-          ['gate-hgb-response', 'gate-hgb-nonresponse'].includes(p.gateId)
-          || (p.askedByNodeIds ?? []).some((id: string) => id.startsWith('gate-hgb-')))), 'false');
+        if (confirmed) {
+          expect('gate-ida-confirmed-iv (the ferritin on file)', status(r.state, 'gate-ida-confirmed-iv'), 'INCLUDED');
+          expectAll('(IV without a trial)', r.state, IV_DIRECT, 'INCLUDED');
+          expect('med-14 sits under', String(r.state.get('med-14')?.parentNodeId), 'step-2-10');
+          // v8: the oral steps also sit under Step 2.9's bridge, so DP-3 spares them
+          // and the bridge's gate decides them: closed at GA ≥ 14 with a ferritin on file.
+          expect('gate-oral-bridge-ga (GA ≥ 14, ferritin on file)', status(r.state, 'gate-oral-bridge-ga'), 'GATED_OUT');
+          expectAll('(oral steps, bridge closed)', r.state, [BRIDGE, ...ORAL_STEPS], 'GATED_OUT');
+          expectAll('(no ferritin order — one is on file)', r.state, FERRITIN_ORDER, 'GATED_OUT');
+          expectAll('(post-nonresponse IV route)', r.state, NONRESPONSE_IV, 'GATED_OUT');
+          expect('questions from the response check', String(r.pending.some((p: any) =>
+            ['gate-hgb-response', 'gate-hgb-nonresponse'].includes(p.gateId)
+            || (p.askedByNodeIds ?? []).some((id: string) => id.startsWith('gate-hgb-')))), 'false');
+        } else {
+          expect('gate-ida-confirmed-iv (no ferritin: asks)', status(r.state, 'gate-ida-confirmed-iv'), 'PENDING_QUESTION');
+          expectAll('(IV without a trial, held for the ferritin)', r.state, IV_DIRECT, 'PENDING_QUESTION');
+          expectAll('(ferritin ordered)', r.state, FERRITIN_ORDER, 'INCLUDED');
+          expect('gate-oral-bridge-ga (no ferritin on file)', status(r.state, 'gate-oral-bridge-ga'), 'INCLUDED');
+          expectAll('(oral iron meanwhile, via the bridge)', r.state,
+            [BRIDGE, ...ORAL_STEPS.filter((id) => !id.startsWith('gate-hgb'))], 'INCLUDED');
+          expect('step-2-3 sits under', String(r.state.get('step-2-3')?.parentNodeId), BRIDGE);
+        }
       }
 
       console.log('    IV iron first chosen, GA 12 — IV iron gated out; oral trial until 14 weeks (v8):');
       r = await resolveSession({ ...base, patient: patient(12), replay: [dp1, IV_FIRST_CHOICE] });
       expect(`${IV_FIRST}`, status(r.state, IV_FIRST), 'INCLUDED');
       expect('gate-iv-iron-ga-direct', status(r.state, 'gate-iv-iron-ga-direct'), 'GATED_OUT');
-      expectAll('(IV without a trial)', r.state, IV_DIRECT, 'GATED_OUT');
+      expectAll('(IV without a trial, and its ferritin check)', r.state, ['step-2-13', 'gate-ida-confirmed-iv', ...IV_DIRECT], 'GATED_OUT');
       expect('gate-oral-bridge-ga', status(r.state, 'gate-oral-bridge-ga'), 'INCLUDED');
       expectAll('(oral trial via the bridge)', r.state,
         [BRIDGE, ...ORAL_STEPS.filter((id) => !id.startsWith('gate-hgb'))], 'INCLUDED');
@@ -919,19 +988,41 @@ async function proveDp3(): Promise<void> {
         expect(`${g} not yet due (start visit)`, String(r.state.get(g)?.notYetDue === true), 'true');
       }
       expect('GA questions', String(r.pending.filter((p: any) => p.datumKey === 'patient.gestational_age_weeks').length), '0');
+      // GA < 14 settles the IV chain before its ferritin gate is reached: nothing asked.
+      expect('ferritin questions', String(r.pending.filter((p: any) => p.datumKey === 'LOINC:2276-4').length), '0');
+      expectAll(confirmed ? '(no ferritin order)' : '(ferritin ordered)', r.state, FERRITIN_ORDER, confirmed ? 'GATED_OUT' : 'INCLUDED');
 
-      console.log('    IV iron first chosen, GA missing — asks for GA once, holds IV iron and the oral bridge:');
-      r = await resolveSession({ ...base, patient: patient(null), replay: [dp1, IV_FIRST_CHOICE] });
-      expect('gate-iv-iron-ga-direct', status(r.state, 'gate-iv-iron-ga-direct'), 'PENDING_QUESTION');
-      expect('gate-oral-bridge-ga', status(r.state, 'gate-oral-bridge-ga'), 'PENDING_QUESTION');
-      expectAll('(held)', r.state, ['step-2-10', BRIDGE, 'step-2-1', 'med-1'], 'PENDING_QUESTION');
-      const gaQs = r.pending.filter((p: any) => p.datumKey === 'patient.gestational_age_weeks') as any[];
-      expect('GA questions', String(gaQs.length), '1');
-      expect('asked by both GA gates', JSON.stringify([...(gaQs[0]?.askedByNodeIds ?? [])].sort()),
-        JSON.stringify(['gate-iv-iron-ga-direct', 'gate-oral-bridge-ga']));
-      // The boundary: exactly one of the two GA gates opens on either side of 14 0/7.
-      for (const [ga, iv, oral] of [[13.9, 'GATED_OUT', 'INCLUDED'], [14, 'INCLUDED', 'GATED_OUT']] as const) {
-        console.log(`    IV iron first chosen, GA ${ga} — exactly one of IV iron / the oral bridge:`);
+      if (confirmed) {
+        console.log('    IV iron first chosen, GA missing — asks for GA once, holds IV iron and the oral bridge:');
+        r = await resolveSession({ ...base, patient: patient(null), replay: [dp1, IV_FIRST_CHOICE] });
+        expect('gate-iv-iron-ga-direct', status(r.state, 'gate-iv-iron-ga-direct'), 'PENDING_QUESTION');
+        expect('gate-oral-bridge-ga', status(r.state, 'gate-oral-bridge-ga'), 'PENDING_QUESTION');
+        expectAll('(held)', r.state, ['step-2-10', BRIDGE, 'step-2-1', 'med-1'], 'PENDING_QUESTION');
+        const gaQs = r.pending.filter((p: any) => p.datumKey === 'patient.gestational_age_weeks') as any[];
+        expect('GA questions', String(gaQs.length), '1');
+        expect('asked by both GA gates', JSON.stringify([...(gaQs[0]?.askedByNodeIds ?? [])].sort()),
+          JSON.stringify(['gate-iv-iron-ga-direct', 'gate-oral-bridge-ga']));
+      } else {
+        // No ferritin on file settles the bridge's OR at once: oral iron starts
+        // whatever the GA; only the IV chain asks for it.
+        console.log('    IV iron first chosen, GA missing — asks for GA once (IV chain only); oral iron and the ferritin order not held:');
+        r = await resolveSession({ ...base, patient: patient(null), replay: [dp1, IV_FIRST_CHOICE] });
+        expect('gate-iv-iron-ga-direct', status(r.state, 'gate-iv-iron-ga-direct'), 'PENDING_QUESTION');
+        expect('gate-oral-bridge-ga', status(r.state, 'gate-oral-bridge-ga'), 'INCLUDED');
+        expectAll('(held)', r.state, ['step-2-13', 'step-2-10', 'med-13'], 'PENDING_QUESTION');
+        expectAll('(not held)', r.state, [BRIDGE, 'step-2-1', 'med-1', ...FERRITIN_ORDER], 'INCLUDED');
+        const gaQs = r.pending.filter((p: any) => p.datumKey === 'patient.gestational_age_weeks') as any[];
+        expect('GA questions', String(gaQs.length), '1');
+        expect('asked by the IV chain\'s GA gate only', JSON.stringify([gaQs[0]?.gateId, ...(gaQs[0]?.askedByNodeIds ?? [])]
+          .filter((x, i, a) => x && a.indexOf(x) === i).sort()), JSON.stringify(['gate-iv-iron-ga-direct']));
+      }
+      // The boundary: with a ferritin < 30 on file exactly one of IV iron / the
+      // oral bridge opens on either side of 14 0/7. Without one (empiric) oral
+      // iron starts on both sides, and at 14 IV iron waits for the ferritin.
+      for (const [ga, iv, oral] of (confirmed
+        ? [[13.9, 'GATED_OUT', 'INCLUDED'], [14, 'INCLUDED', 'GATED_OUT']]
+        : [[13.9, 'GATED_OUT', 'INCLUDED'], [14, 'PENDING_QUESTION', 'INCLUDED']]) as Array<[number, string, string]>) {
+        console.log(`    IV iron first chosen, GA ${ga}${confirmed ? ' — exactly one of IV iron / the oral bridge' : ''}:`);
         r = await resolveSession({ ...base, patient: patient(ga), replay: [dp1, IV_FIRST_CHOICE] });
         expect('step-2-10 IV iron', status(r.state, 'step-2-10'), iv);
         expect('step-2-1 oral iron (bridge)', status(r.state, 'step-2-1'), oral);
@@ -949,6 +1040,143 @@ async function proveDp3(): Promise<void> {
       { gestational_age_weeks: 20 }, ['D57.1']), choose: WORKUP });
     expect('dp-3', status(d.state, 'dp-3'), 'PENDING_QUESTION');
     expect('dp-3 question', dp3Asked(d.pending), 'true');
+  }
+}
+
+// ── Proof: IV iron first needs a ferritin-confirmed iron deficiency (v9) ──
+// [DECISION — Josh 2026-09-25] Through v8, IV iron first chosen at DP-3 on the
+// empiric arm (Stage 1.5, no iron studies) gave IV iron with no ferritin on
+// file. v9: IV iron first orders a ferritin when none is on file, starts oral
+// iron meanwhile, and gives IV iron only once ferritin < 30 ng/mL confirms iron
+// deficiency — gate-ida-confirmed's own condition — still at GA ≥ 14 only.
+// DP-3 and Step 2.9 stay SHARED by both arms, and Step 2.9's gates read the
+// chart instead of knowing the arm:
+//   gate-iv-iron-ga-direct (GA ≥ 14, unchanged) → Step 2.13 → gate-ida-confirmed-iv
+//     (an identical copy of gate-ida-confirmed: ferritin < 30, 90 days, ask) → Step 2.10;
+//   gate-oral-bridge-ga, now OR(no ferritin on file, AND(GA < 14, ferritin < 30))
+//     → Stage 2.6 — the ONLY gate into the oral steps it opens, so no oral step
+//     has two differently-gated parents;
+//   gate-no-ferritin-on-file (labs not_includes_code 2276-4, 90 days;
+//     membership, never asks) → Step 2.12 → lab-17 (its own ferritin node).
+// On the confirmed arm the ferritin that opened Stage 2 is on file (the same
+// condition and horizon), so these reduce to v8's GA gates; `dp-3` proves it.
+// Ferritin arrives two ways: on the chart at the next visit (a new session), or
+// supplied mid-session as the answer to the ferritin question — continued here
+// as addPatientContext does (`supplyLab`), and checked against a fresh session
+// with that ferritin on the chart.
+async function proveIvFerritin(): Promise<void> {
+  console.log(`\n=== iv-ferritin: IV iron first needs a confirmed ferritin; empiric arm orders one, oral iron meanwhile (${ANEMIA}) ===`);
+  const IV_FIRST_CHOICE: Replay = { dp: 'dp-3', option: IV_FIRST };
+  const BRIDGE = 'stage-2-oral-bridge';
+  const ORAL_IRON = ['step-2-1', 'med-1', 'med-2', 'med-3', 'step-2-2', 'step-2-3', 'lab-10'];
+  const IV = ['step-2-10', 'med-13', 'med-14', 'med-15', 'med-16', 'sched-6'];
+  const FERRITIN_ORDER = ['gate-no-ferritin-on-file', 'step-2-12', 'lab-17'];
+  const ALL_IRON = ['med-1', 'med-2', 'med-3', 'med-4', 'med-5', 'med-6', 'med-7', 'med-13', 'med-14', 'med-15', 'med-16'];
+  const ferritinQs = (pending: unknown[]) => pending.filter((p: any) => p.datumKey === 'LOINC:2276-4') as any[];
+  const empiric = (ferritin: number | null, ga: number | null) => patientWith(
+    [['787-2', 72], ['718-7', 9.5], ...(ferritin === null ? [] : [['2276-4', ferritin] as Lab])],
+    ga === null ? {} : { gestational_age_weeks: ga });
+  for (const reverse of [false, true]) {
+    console.log(`  -- edge order: ${reverse ? 'reversed' : 'file'}`);
+    const base = { file: ANEMIA, reverse };
+    const empiricIvFirst = (ferritin: number | null, ga: number | null) =>
+      resolveSession({ ...base, patient: empiric(ferritin, ga), replay: [EMPIRIC_CHOICE, IV_FIRST_CHOICE] });
+
+    console.log('  empiric + IV first + no ferritin, GA 20 — ferritin ordered, oral iron meanwhile, IV iron waits for the ferritin:');
+    let r = await empiricIvFirst(null, 20);
+    expect('step-2-8 sits under (empiric arm)', String(r.state.get('step-2-8')?.parentNodeId), 'gate-empiric-no-hgbpathy');
+    expectAll('(ferritin ordered)', r.state, FERRITIN_ORDER, 'INCLUDED');
+    expect('lab-17 sits under', String(r.state.get('lab-17')?.parentNodeId), 'step-2-12');
+    expect('gate-oral-bridge-ga (no ferritin on file)', status(r.state, 'gate-oral-bridge-ga'), 'INCLUDED');
+    expectAll('(oral iron meanwhile)', r.state, [BRIDGE, ...ORAL_IRON], 'INCLUDED');
+    expect('step-2-1 sits under', String(r.state.get('step-2-1')?.parentNodeId), BRIDGE);
+    for (const g of ['gate-hgb-response', 'gate-hgb-nonresponse']) {
+      expect(`${g} not yet due (oral iron starts this visit)`, String(r.state.get(g)?.notYetDue === true), 'true');
+    }
+    expect('gate-iv-iron-ga-direct', status(r.state, 'gate-iv-iron-ga-direct'), 'INCLUDED');
+    expect('step-2-13', status(r.state, 'step-2-13'), 'INCLUDED');
+    expect('gate-ida-confirmed-iv', status(r.state, 'gate-ida-confirmed-iv'), 'PENDING_QUESTION');
+    expectAll('(IV iron held for the ferritin)', r.state, IV, 'PENDING_QUESTION');
+    let fq = ferritinQs(r.pending);
+    expect('ferritin questions', String(fq.length), '1');
+    expect('asked by', JSON.stringify([fq[0]?.gateId, ...(fq[0]?.askedByNodeIds ?? [])].filter((x, i, a) => x && a.indexOf(x) === i)),
+      JSON.stringify(['gate-ida-confirmed-iv']));
+    expect('prompt', String(fq[0]?.prompt), 'Ferritin (ng/mL) (LOINC 2276-4) — most recent value?');
+    // Care-plan generation refuses a pending question: this visit's plan waits
+    // for a ferritin value (see the brief's §4 DP-3 — accepted cost of `ask`).
+    expect('care-plan blockers from the ferritin question', String(validateForGeneration(r.state as never, r.redFlags)
+      .filter((b) => b.relatedNodeIds.includes('gate-ida-confirmed-iv')).length > 0), 'true');
+    expect('gate-ida-confirmed (confirmed arm, unchosen)', status(r.state, 'gate-ida-confirmed'), 'EXCLUDED');
+
+    for (const [fer, label] of [[12, 'ferritin 12 — iron deficient: IV iron, oral iron stops'], [50, 'ferritin 50 — not iron deficient: no IV iron, and no oral iron from this route']] as const) {
+      const noSession = await empiricIvFirst(null, 20);
+      console.log(`    …the ferritin question answered in the same visit, ${label}:`);
+      const s = await supplyLab(noSession, empiric(null, 20), { code: '2276-4', value: fer });
+      expect('re-resolved every lab-reading gate (incl. the bridge and the ferritin order)',
+        String(['gate-ida-confirmed-iv', 'gate-oral-bridge-ga', 'gate-no-ferritin-on-file'].every((g) => s.affected.has(g))), 'true');
+      expect('ferritin questions', String(ferritinQs(s.pending).length), '0');
+      const ivWant = fer < 30 ? 'INCLUDED' : 'GATED_OUT';
+      expect('gate-ida-confirmed-iv', status(s.state, 'gate-ida-confirmed-iv'), ivWant);
+      expectAll('(IV iron)', s.state, IV, ivWant);
+      expect('gate-oral-bridge-ga (ferritin now on file, GA ≥ 14)', status(s.state, 'gate-oral-bridge-ga'), 'GATED_OUT');
+      expectAll('(oral iron)', s.state, [BRIDGE, ...ORAL_IRON], 'GATED_OUT');
+      expectAll('(ferritin order — one is on file now)', s.state, FERRITIN_ORDER.slice(1), 'GATED_OUT');
+      // The same visit with that ferritin on the chart from the start: every node agrees.
+      const fresh = await empiricIvFirst(fer, 20);
+      const diffs = [...new Set([...s.state.keys(), ...fresh.state.keys()])]
+        .filter((id) => status(s.state, id) !== status(fresh.state, id)
+          && !['CodeEntry', 'EvidenceCitation'].includes(String((graphFrom(ANEMIA).getNode(id) as any)?.nodeType)));
+      expect('mid-session answer agrees with the chart value (non-reference nodes)', JSON.stringify(diffs), '[]');
+    }
+
+    console.log('  empiric + IV first + no ferritin, GA 12 — oral iron until IV iron is possible; ferritin ordered, not asked:');
+    r = await empiricIvFirst(null, 12);
+    expectAll('(ferritin ordered)', r.state, FERRITIN_ORDER, 'INCLUDED');
+    expectAll('(oral iron)', r.state, [BRIDGE, ...ORAL_IRON], 'INCLUDED');
+    expect('gate-iv-iron-ga-direct', status(r.state, 'gate-iv-iron-ga-direct'), 'GATED_OUT');
+    expectAll('(IV iron and its ferritin check)', r.state, ['step-2-13', 'gate-ida-confirmed-iv', ...IV], 'GATED_OUT');
+    expect('ferritin questions (IV is not possible before 14 weeks)', String(ferritinQs(r.pending).length), '0');
+
+    for (const ga of [20, 12]) {
+      console.log(`  empiric + IV first + ferritin 12 on the chart (next visit), GA ${ga}:`);
+      r = await empiricIvFirst(12, ga);
+      expectAll('(no ferritin order — one is on file)', r.state, FERRITIN_ORDER, 'GATED_OUT');
+      expect('ferritin questions', String(ferritinQs(r.pending).length), '0');
+      if (ga >= 14) {
+        expect('gate-ida-confirmed-iv', status(r.state, 'gate-ida-confirmed-iv'), 'INCLUDED');
+        expectAll('(IV iron)', r.state, IV, 'INCLUDED');
+        expect('med-14 sits under', String(r.state.get('med-14')?.parentNodeId), 'step-2-10');
+        expectAll('(oral iron — IV replaces it, as on the confirmed arm)', r.state, [BRIDGE, ...ORAL_IRON], 'GATED_OUT');
+      } else {
+        expectAll('(IV iron — before 14 weeks)', r.state, ['gate-iv-iron-ga-direct', 'step-2-13', ...IV], 'GATED_OUT');
+        expectAll('(oral iron until 14 weeks)', r.state, [BRIDGE, ...ORAL_IRON], 'INCLUDED');
+      }
+    }
+
+    for (const ga of [20, 12]) {
+      console.log(`  empiric + IV first + ferritin 50 on the chart (next visit), GA ${ga} — no IV iron, no iron at all on this route:`);
+      r = await empiricIvFirst(50, ga);
+      expect('gate-oral-bridge-ga (ferritin ≥ 30)', status(r.state, 'gate-oral-bridge-ga'), 'GATED_OUT');
+      expectAll('(no ferritin order — one is on file)', r.state, FERRITIN_ORDER, 'GATED_OUT');
+      expectAll('(no IV iron)', r.state, IV, 'GATED_OUT');
+      expect('gate-ida-confirmed-iv', status(r.state, 'gate-ida-confirmed-iv'), 'GATED_OUT');
+      expectAll('(no iron of any kind)', r.state, [BRIDGE, ...ORAL_IRON, ...ALL_IRON], 'GATED_OUT');
+      expect('ferritin questions', String(ferritinQs(r.pending).length), '0');
+    }
+
+    // For contrast — the empiric arm's oral trial never reads ferritin (v8, unchanged).
+    console.log('  empiric + ORAL TRIAL + ferritin 50 on the chart — oral iron continues (unchanged; the oral branch reads no ferritin):');
+    r = await resolveSession({ ...base, patient: empiric(50, 20), replay: [EMPIRIC_CHOICE, ORAL] });
+    expectAll('(empiric oral trial)', r.state, [ORAL_TRIAL, 'step-2-1', 'med-1'], 'INCLUDED');
+    expectAll('(no ferritin order on the oral branch)', r.state, FERRITIN_ORDER, 'EXCLUDED');
+
+    console.log('  confirmed arm (workup, ferritin 12), IV first, GA 20 — unchanged: IV iron, no oral iron, no ferritin order:');
+    r = await resolveSession({ ...base, patient: patientWith([['787-2', 72], ['2276-4', 12], ['718-7', 9.5]], { gestational_age_weeks: 20 }),
+      replay: [WORKUP, IV_FIRST_CHOICE] });
+    expectAll('(IV iron)', r.state, IV, 'INCLUDED');
+    expectAll('(oral iron)', r.state, [BRIDGE, ...ORAL_IRON], 'GATED_OUT');
+    expectAll('(no ferritin order)', r.state, FERRITIN_ORDER, 'GATED_OUT');
+    expect('ferritin questions', String(ferritinQs(r.pending).length), '0');
   }
 }
 
@@ -1456,6 +1684,7 @@ const PROOFS: Record<string, () => Promise<void>> = {
   'empiric': proveEmpiric,
   'response': proveResponse,
   'dp-3': proveDp3,
+  'iv-ferritin': proveIvFerritin,
   'malabsorption': proveMalabsorption,
   'hgbpathy': proveHgbpathy,
   'ghtn-shared-labs': proveGhtnSharedLabs,
