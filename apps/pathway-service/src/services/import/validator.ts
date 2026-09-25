@@ -17,7 +17,13 @@ import {
   ValidationResult,
 } from './types';
 import { PathwayCategory, NodeStatus } from '../../types';
-import { VALID_CODED_OPERATORS, VALID_ATTRIBUTE_OPERATORS } from '../resolution/types';
+import {
+  VALID_CODED_OPERATORS,
+  VALID_ATTRIBUTE_OPERATORS,
+  MAX_CONDITION_NESTING,
+  isConditionGroup,
+} from '../resolution/types';
+import type { ConditionGroup } from '../resolution/types';
 import { VALID_ATTRIBUTE_NAMESPACES } from '../resolution/attribute-registry';
 import { FIELD_TO_KIND } from '../resolution/temporal/contract';
 import {
@@ -520,7 +526,10 @@ function validateGateNodes(
       ...(Array.isArray(props.conditions) ? (props.conditions as Array<Record<string, unknown>>) : []),
     ];
     if (conds.length > 0) {
-      validateGateConditions(gate.id, conds, errors);
+      // Entries from `conditions` may be nested groups; the one from
+      // `condition` may not — a single-condition gate has no operator to
+      // nest under, and the runtime would hand a group to the leaf evaluator.
+      validateGateConditions(gate.id, conds, errors, props.condition ? 1 : 0);
       windowFromWarnings(gate.id, conds, medicationRoles, warnings);
     }
   }
@@ -542,10 +551,10 @@ function windowFromWarnings(
   medicationRoles: ReadonlyMap<string, ReadonlyArray<{ nodeId: string; system: string; code: string }>>,
   warnings: string[],
 ): void {
-  conditions.forEach((c, i) => {
+  leavesWithPath(conditions).forEach(({ c, path }) => {
     const wf = c?.window_from;
     if (!wf || typeof wf !== 'object' || Array.isArray(wf)) return;
-    const where = `Gate "${gateId}" condition[${i}].window_from`;
+    const where = `Gate "${gateId}" ${path}.window_from`;
     const selector = wf as Record<string, unknown>;
     const role = selector.clinical_role;
     if (typeof role === 'string' && role !== '' && !medicationRoles.has(role)) {
@@ -629,18 +638,55 @@ function validateDependsOn(
 }
 
 /**
+ * A condition list's leaves with their validator paths — `condition[1]` at the
+ * top level (unchanged from before nesting), `condition[1].conditions[0]` for
+ * the first leaf of the group at index 1.
+ */
+function leavesWithPath(
+  entries: unknown[],
+  parent = '',
+): Array<{ c: Record<string, unknown>; path: string }> {
+  const out: Array<{ c: Record<string, unknown>; path: string }> = [];
+  entries.forEach((e, i) => {
+    const path = parent === '' ? `condition[${i}]` : `${parent}.conditions[${i}]`;
+    if (isConditionGroup(e)) out.push(...leavesWithPath(e.conditions, path));
+    else out.push({ c: e as Record<string, unknown>, path });
+  });
+  return out;
+}
+
+const GROUP_KEYS = new Set(['operator', 'conditions', 'display', 'note']);
+
+/**
  * Validates the schema of one or more gate conditions: exactly one of
  * field/attribute, a canonical operator for the condition kind, a
  * registered attribute namespace, and no unrecognized keys. Always pushes
  * to `errors` — a schema-invalid condition is not a WIP/draft concern.
+ *
+ * An entry with a `conditions` array is a nested GROUP
+ * (`{ operator, conditions }`, the compound gate's own shape): its operator
+ * must be AND/OR, it must be non-empty, it may carry only `display`/`note`
+ * besides, and it may not open a level beyond `MAX_CONDITION_NESTING`
+ * (counting the gate's own operator as level 1). Its leaves are checked by
+ * exactly the rules — the same runtime parsers — as a top-level condition.
+ * Entries before `groupsFrom` came from a single-condition `condition`, where
+ * a group is refused.
  */
 function validateGateConditions(
   gateId: string,
   conditions: Array<Record<string, unknown>>,
   errors: string[],
+  groupsFrom = 0,
+  parent = '',
+  level = 1,
 ): void {
   conditions.forEach((c, i) => {
-    const where = `Gate "${gateId}" condition[${i}]`;
+    const path = parent === '' ? `condition[${i}]` : `${parent}.conditions[${i}]`;
+    const where = `Gate "${gateId}" ${path}`;
+    if (isConditionGroup(c)) {
+      validateConditionGroup(gateId, c as unknown as ConditionGroup, where, path, level, i < groupsFrom, errors);
+      return;
+    }
     const hasField = typeof c.field === 'string';
     const hasAttr = typeof c.attribute === 'string';
     if (hasField === hasAttr) {
@@ -696,6 +742,62 @@ function validateGateConditions(
       for (const k of Object.keys(c)) if (!CODED_KEYS.has(k)) errors.push(`${where}: unknown key "${k}" on coded condition.`);
     }
   });
+}
+
+function validateConditionGroup(
+  gateId: string,
+  group: ConditionGroup,
+  where: string,
+  path: string,
+  parentLevel: number,
+  inSingleCondition: boolean,
+  errors: string[],
+): void {
+  if (inSingleCondition) {
+    errors.push(
+      `${where}: a condition group is only allowed inside a compound gate's "conditions" — ` +
+        `use gate_type "compound" with this group's operator and conditions.`,
+    );
+    return;
+  }
+  const level = parentLevel + 1;
+  if (level > MAX_CONDITION_NESTING) {
+    errors.push(
+      `${where}: condition groups nest at most ${MAX_CONDITION_NESTING} levels of AND/OR deep, ` +
+        `counting the gate's own operator — this group would be level ${level}.`,
+    );
+    return;
+  }
+  const raw = group as unknown as Record<string, unknown>;
+  if (typeof raw.field === 'string' || typeof raw.attribute === 'string') {
+    errors.push(
+      `${where}: a condition group ("conditions" array) cannot also be a condition — ` +
+        `it has "${typeof raw.field === 'string' ? 'field' : 'attribute'}". Move the condition into the group's "conditions".`,
+    );
+  }
+  const op = raw.operator;
+  if (op === undefined || op === null) {
+    errors.push(`${where}: condition group requires an "operator" (AND or OR).`);
+  } else if (!['and', 'or'].includes(String(op).toLowerCase())) {
+    errors.push(`${where}: condition group operator "${String(op)}" is not one of AND, OR.`);
+  }
+  for (const k of Object.keys(raw)) {
+    if (!GROUP_KEYS.has(k) && k !== 'field' && k !== 'attribute') {
+      errors.push(`${where}: unknown key "${k}" on condition group.`);
+    }
+  }
+  if (group.conditions.length === 0) {
+    errors.push(`${where}: condition group has no conditions — an empty group cannot be evaluated.`);
+    return;
+  }
+  validateGateConditions(
+    gateId,
+    group.conditions as unknown as Array<Record<string, unknown>>,
+    errors,
+    0,
+    path,
+    level,
+  );
 }
 
 /**
