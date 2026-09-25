@@ -37,6 +37,9 @@ still current, `[BLOCKED — prior_node_result]` import-blocked gate design with
     DP-3 on both arms.
   - **IV iron chosen first before 14 weeks starts the oral trial until then** (§2 Stage 2.6,
     §3 Step 2.9, §4b `gate-oral-bridge-ga`): v7 started no iron at all on that choice.
+  - **DP-3's malabsorption criterion (3c) is also read from the chart** (§3 Step 2.11, §4
+    DP-3, §4b `gate-malabsorption-chart`, §9 Guid-6): a malabsorption code shows a
+    recommendation for IV iron first next to the DP-3 question; the provider still chooses.
   (v7 `[DECISION — Josh 2026-09-24]`, was `"6"`; v6 sessions keep v6's graph. Bumped for:)
   - **The oral-iron response check reads chart data** (§4b `gate-hgb-response` /
     `gate-hgb-nonresponse`): an Hgb rise anchored to the oral-iron start (`window_from`, due
@@ -208,7 +211,13 @@ None. (Single-condition pathway; O99.01x already encodes the pregnancy+anemia co
 - **Step 2.10 — IV iron therapy (no oral trial)** *(gated by gate-iv-iron-ga-direct — its
   only way in; v7)*: Med-13–16 and Sched-6, copies of Step 2.5's Med-4–7 and Sched-3 (one
   node per host step; Step 2.5 stays the post-non-response IV iron). Deliberately **no**
-  `REQUIRES Step 2.2`: that is the oral trial this branch skips. [1][5][7][22]- **Step 3.1 — Sickle cell disease: route out** *(gated)*: MFM + hematology
+  `REQUIRES Step 2.2`: that is the oral trial this branch skips. [1][5][7][22]
+- **Step 2.11 — Malabsorption on the chart: IV iron without an oral trial favoured (DP-3
+  criterion 3c)** *(gated by gate-malabsorption-chart on Step 2.8 — its only way in; v8)*
+  `[DECISION — Josh 2026-09-24]` (3c readable from the chart) as a `[BUILD NOTE]`
+  recommendation step: hosts Guid-6. Opens next to the DP-3 question whenever the chart
+  carries a malabsorption code (§4b), on either iron arm; it does not choose the route. [1][8][18][19]
+- **Step 3.1 — Sickle cell disease: route out** *(gated)*: MFM + hematology
   multidisciplinary track; PNV **without** iron unless deficiency confirmed + folic acid
   4 mg (SMFM GRADE 1B). This pathway's iron arm is affirmatively wrong for SCD. [7]
 - **Step 3.2 — Thalassemia syndrome: route out** *(gated)*: hematology/MFM track. [16] [FALLBACK SOURCE]
@@ -439,19 +448,37 @@ BRANCHES_TO (no HAS_STEP edge), per the reference-fixture pattern.
     first visit ≥ 14 weeks, re-choosing IV first switches her from oral iron to IV; choosing
     the oral trial keeps oral iron and its response check (the provider's call, as at every
     visit).
-  - **How each criterion is read — all three by the provider, at DP-3.** `[BUILD NOTE]`
-    (the builder's reading; `[CLINICAL AMBIGUITY — for Josh]` — confirm, or say which
-    criterion should be read from the chart)
+  - **How each criterion is read** — v8 `[DECISION — Josh 2026-09-24]`: malabsorption (3c)
+    is also read from the chart; intolerance (3b) and anemia diagnosed at ≥ 34 weeks (3d)
+    stay provider answers.
     - *Intolerance (3b)* is history the chart does not carry as a code the simulator or a
       problem list reliably has; it is elicited, like DP-2's 2a.
-    - *Malabsorption (3c)* is a judgment: bariatric (Z98.84/O99.84.*) and IBD (K50/K51)
-      codes suggest it, but Step 3.4 says "low threshold" and Step 3.5 IV-first only with
-      **active** inflammation, so a code alone must not force IV iron. Those codes still
-      open Steps 3.4/3.5, whose guidance points the provider at 3c.
-    - *IDA diagnosed at ≥ 34 weeks (3d)* is gestational age **at diagnosis**, which the
+    - *Malabsorption (3c)* — **recommended from the chart, not forced** (v8). A
+      malabsorption code on file opens **Step 2.11** (gate-malabsorption-chart, §4b) with
+      Guid-6, "consider IV iron first", on either arm; DP-3 still asks, and the provider may
+      still choose the oral trial. **Why not pre-selected:** DP-3 is one_of and its branch
+      choice is confidence-scored on the branch *targets* (Stage 2.5, Step 2.9). Those are
+      structural nodes: data completeness, match quality and risk score them without
+      reading the patient, and evidence strength reads their own citations — so both score
+      0.938 for every patient and the fork always pends (`gate-proof.ts dp-1-scoring`). A
+      Criterion's codes score the Criterion itself, never the branch, so coding crit-3c
+      would change nothing the provider sees. Only a DB-side signal weight or admin
+      evidence entry could move a branch score, and no JSON can author that. **Why not
+      forced:** forcing would need a chart fork in front of DP-3 (the DP cannot be skipped
+      otherwise), and the clinical reading is a recommendation — Step 3.5: IV first with
+      **active** IBD; Step 3.4: a "low threshold" after bariatric surgery. **What the
+      provider sees:** with, e.g., Z98.84 on file and confirmed or empiric iron, the DP-3
+      question "which branch applies? — Oral Iron Trial / IV iron without an oral trial"
+      stands as before, and alongside it Step 2.11 "Malabsorption on the chart: IV iron
+      without an oral trial favoured (DP-3 criterion 3c)" is INCLUDED with Guid-6's text;
+      Steps 3.4/3.5 still open from gate-bariatric / gate-ibd as well. Choosing IV first then
+      proceeds as any 3c choice (IV iron at GA ≥ 14, the oral bridge before). Proved with
+      `gate-proof.ts malabsorption`, both edge orders, both arms (every listed family; a
+      K51.40 polyp code, K90.41 and no code → nothing opens; ferritin 50 → closed with Stage 2).
+    - *Anemia diagnosed at ≥ 34 weeks (3d)* is gestational age **at diagnosis**, which the
       chart cannot give: a gate on current GA would switch a patient responding to oral
       iron to IV at her 34-week recheck (DP-3 is asked again at every visit that reaches
-      Stage 2). The provider reads it; GA ≥ 14 stays a chart gate.
+      it). The provider reads it; GA ≥ 14 stays a chart gate.
   - **What happens** (proved with `gate-proof.ts dp-3`, both edge orders): confirmed IDA,
     route not chosen → DP-3 asks (options Stage 2.5 / Step 2.9; with the seeded scorers the
     two targets score identically, 0.938, so the fork pends — `dp-1-scoring`), oral and IV
@@ -725,6 +752,37 @@ the pathway presumes the coded diagnosis.
     at 13.9 and 14); a missing GA makes both ask the same `patient.gestational_age_weeks`
     question once. Not named `gate-iv-iron-ga-*`: `check-gate-control` reads that prefix as
     a fan-out copy of gate-iv-iron-ga and would demand identical conditions. [1][5]
+- **Gate `gate-malabsorption-chart` — Malabsorption condition on the chart** (v8)
+  `[DECISION — Josh 2026-09-24]` (3c from chart codes); code list `[BUILD NOTE]` — for Josh
+  - Attached to: step-2-8 · Branches to: **step-2-11** · compound **OR** · Default: **skip** ·
+    On unresolved: **default** (membership only — "no code on file" is a definite no; nothing
+    is ever asked)
+  - Conditions: field `conditions`, `includes_code`, ICD-10, horizon **LIFETIME**, status
+    **any**, each with a `display`: `Z98.84` bariatric surgery status; `O99.84.*` bariatric surgery status complicating
+    pregnancy / childbirth / the puerperium (O99.840–O99.845); `K50.*` Crohn's disease (all 28
+    codes); ulcerative colitis by subfamily — `K51.0.*` pancolitis, `K51.2.*` proctitis,
+    `K51.3.*` rectosigmoiditis, `K51.5.*` left-sided colitis, `K51.8.*` other UC, `K51.9.*` UC
+    unspecified; `K90.0` celiac disease; `K90.82.*` short bowel syndrome (K90.821/.822/.829);
+    `K90.83` intestinal failure; `K90.9` intestinal malabsorption, unspecified; `K91.2`
+    postsurgical malabsorption NEC; `Z90.3` acquired absence of stomach [part of].
+    Verified 2026-09-25 against the NLM ICD-10-CM table: `https://clinicaltables.nlm.nih.gov/api/icd10cm/v3/search?sf=code&terms=<prefix>`
+    for `K90`, `Z98.84`, `O99.84`, `K91.2`, `K50`, `K51`, `Z90.3` — Z98.84, K90.0, K90.83,
+    K90.9, K91.2 and Z90.3 are leaf codes (exact match); O99.84, K50, K51.x and K90.82 have
+    children, hence `.*`.
+  - **Inclusions decided by the builder — for Josh to confirm** `[CLINICAL AMBIGUITY — for
+    Josh]`: bariatric status and IBD mirror gate-bariatric / gate-ibd; celiac disease (named
+    in the request); short bowel / intestinal failure, unspecified intestinal malabsorption
+    and postsurgical malabsorption (malabsorption by definition); partial/total gastrectomy
+    (Z90.3 — reduced acid and duodenal transit impair non-heme iron absorption). **Left out:**
+    `K51.4.*` inflammatory polyps of colon (gate-ibd's `K51.*` sweeps them in; they are not a
+    malabsorption state); `K90.1` tropical sprue, `K90.2` blind loop, `K90.3` pancreatic
+    steatorrhea, `K90.41` non-celiac gluten sensitivity, `K90.49` malabsorption due to
+    intolerance, `K90.81` Whipple's disease, `K90.89` other intestinal malabsorption;
+    atrophic gastritis, *H. pylori*, and chronic antacid / PPI use (a medication class the
+    gate does not read — still the provider's 3c judgment).
+  - Status `any`: the conditions are chronic or anatomical, as in gate-bariatric / gate-ibd.
+    No CodeEntry nodes are added (the codes live in the gate; a Criterion code would not
+    move DP-3 — §4 DP-3). [1][8][18][19]
 - **Gate `gate-severe-anemia` — Severe anemia (transfusion consideration)**
   - Attached to: stage-3 · Branches to: step-3-6 · patient_attribute · Default: skip
   - Condition (coded): field `labs`, less_than, value `718-7` (Hgb, LOINC), threshold 6,
@@ -939,6 +997,16 @@ prevention step left with the screening stage):
   v6 names the list and its source and carries no list items. The pica disclosure prompt is not
   a warning sign and stays, reworded into the same clinician-facing voice. The existing
   citations ([1], [10]) are unchanged; the CDC URL is carried in the text.
+- **Guid-6 — topic "Malabsorption on the chart: consider IV iron first"** (on Step 2.11; v8):
+  category treatment-planning, clinician-facing. Instructions (exact JSON text): "The problem
+  list carries a condition that reduces oral iron absorption (bariatric surgery, Crohn's
+  disease or ulcerative colitis, celiac disease, short bowel syndrome or intestinal failure,
+  postsurgical or unspecified intestinal malabsorption, or gastrectomy). This supports
+  choosing IV iron without an oral trial at DP-3 (criterion 3c), most strongly after a
+  malabsorptive bariatric procedure (e.g. Roux-en-Y gastric bypass) or with active
+  inflammatory bowel disease; with quiescent IBD or a restrictive procedure an oral trial
+  remains reasonable. IV iron is given from 14 0/7 weeks; before then, choosing IV first
+  starts oral iron until 14 weeks." [8][18]
 
 ## 10. Quality metrics
 
@@ -1154,7 +1222,8 @@ Nodes that can carry CITES_EVIDENCE:
 - Labs: Lab-1, Lab-10: [1] · Lab-2, Lab-11, Lab-15: [1][5] · Lab-3, Lab-16: [1] · Lab-4, Lab-12: [1] · Lab-5, Lab-6: [1]
   · Lab-7, Lab-14: [4] · Lab-8, Lab-13: [1] · Lab-9: [11]
 - Proc-1: [1][11] · Guid-1: [1][12] · Guid-2: [1][12][13] · Guid-3: [1][12]
-  · Guid-4: [5][13][14] · Guid-5: [1][10]
+  · Guid-4: [5][13][14] · Guid-5: [1][10] · Guid-6 (v8): [8][18]
+- Step 2.11 (v8): [1][8][18][19]
 
 Cannot cite (evidence attaches to host step — builder must reattach): all Gates → their
 attached Stage/Step per §4b rationale refs; QM-1 → Step 2.3 [1][3]; QM-2 → Step 4.1
@@ -1182,6 +1251,7 @@ margin). **These day-counts are my proposal — review.**
 | gate-microcytic (`not_includes_code`) / gate-hgbpathy-microcytic (`includes_code`) — v7 | D57.0.*, D57.1, D57.2.*, D57.4.*, D57.8.*, D56.0/.1/.2/.5/.8/.9, D58.2 | LIFETIME | any | — | Genetic; `any` also makes `not_includes_code` never indeterminate (a code with an undecidable state is a definite match) |
 | gate-bariatric | Z98.84, O99.84.* | LIFETIME | any | — | Anatomy is permanent |
 | gate-ibd | K50.*, K51.* | LIFETIME | any | — | Chronic relapsing disease stays gate-relevant |
+| gate-malabsorption-chart (v8) | Z98.84, O99.84.*, K50.*, K51.0/.2/.3/.5/.8/.9.*, K90.0, K90.82.*, K90.83, K90.9, K91.2, Z90.3 | LIFETIME | any | — | Chronic or anatomical; same reading as gate-bariatric / gate-ibd |
 | gate-ckd | N18.*, O26.83.* | LIFETIME | active | — | Route out only on standing CKD; a resolved/erroneous historical code shouldn't exile the patient from the pathway |
 
 Kernel semantics reviewers should know: windows/horizons select on a fact's **start

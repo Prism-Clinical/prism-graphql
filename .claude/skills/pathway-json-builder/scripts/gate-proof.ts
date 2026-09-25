@@ -32,6 +32,9 @@
 //                    without a trial (Step 2.9 → gate-iv-iron-ga-direct → Step
 //                    2.10); GA 12 gates IV out, GA missing asks; ferritin 50 and
 //                    hemoglobinopathy disease never see DP-3
+//   malabsorption    anemia v8: DP-3 criterion 3c from chart codes — a malabsorption
+//                    code opens Step 2.11 (recommend IV first) next to the still-
+//                    pending DP-3 question; never forces the route; both arms
 //   hgbpathy         anemia v7: hemoglobinopathy disease + MCV < 80 → no DP-1 (no
 //                    empiric iron) and its own confirmatory iron studies (Step
 //                    1.8); traits and uncoded patients keep DP-1; MCV ≥ 80 neither
@@ -914,6 +917,70 @@ async function proveDp3(): Promise<void> {
   }
 }
 
+// ── Proof: DP-3 criterion 3c read from the chart, as a recommendation (v8) ──
+// [DECISION — Josh 2026-09-24] Malabsorption should also be satisfiable from
+// chart codes. DP-3's branch choice is confidence-scored on the branch TARGET
+// (Stage 2.5 vs Step 2.9 — structural nodes whose scores do not read the
+// patient), and a Criterion's codes do not feed that score, so no JSON can
+// pre-select IV first. Forcing it would take a chart fork in front of DP-3,
+// which the clinical reading rules out (IV first with ACTIVE IBD, "low
+// threshold" after bariatric surgery). Built as a recommendation:
+// gate-malabsorption-chart (OR of includes_code, membership only) on Step 2.8 →
+// Step 2.11 + Guid-6, INCLUDED next to the still-pending DP-3 question.
+async function proveMalabsorption(): Promise<void> {
+  console.log(`\n=== malabsorption: DP-3 criterion 3c from chart codes — recommended, not forced (${ANEMIA}) ===`);
+  const REC = ['gate-malabsorption-chart', 'step-2-11', 'guid-6'];
+  const confirmed = (codes: string[]) => patientWith([['787-2', 72], ['2276-4', 12], ['718-7', 9.5]], { gestational_age_weeks: 20 }, codes);
+  const empiric = (codes: string[]) => patientWith([['787-2', 72], ['718-7', 9.5]], { gestational_age_weeks: 20 }, codes);
+  for (const reverse of [false, true]) {
+    console.log(`  -- edge order: ${reverse ? 'reversed' : 'file'}`);
+    const base = { file: ANEMIA, reverse };
+    for (const [code, label] of [
+      ['Z98.84', 'bariatric surgery status'], ['O99.842', 'bariatric status complicating pregnancy, T2 (O99.84.*)'],
+      ['K50.90', 'Crohn\'s disease (K50.*)'], ['K51.011', 'ulcerative pancolitis with rectal bleeding (K51.0.*)'],
+      ['K51.90', 'ulcerative colitis, unspecified (K51.9.*)'], ['K90.0', 'celiac disease'],
+      ['K90.821', 'short bowel syndrome (K90.82.*)'], ['K90.83', 'intestinal failure'],
+      ['K90.9', 'intestinal malabsorption, unspecified'], ['K91.2', 'postsurgical malabsorption'],
+      ['Z90.3', 'acquired absence of stomach'],
+    ] as const) {
+      console.log(`  ${code} ${label}, confirmed arm — recommendation shown, DP-3 still asks:`);
+      const r = await resolveSession({ ...base, patient: confirmed([code]), choose: WORKUP });
+      expectAll('(recommendation)', r.state, REC, 'INCLUDED');
+      expect('dp-3 still asks (not forced)', status(r.state, 'dp-3'), 'PENDING_QUESTION');
+      const q = r.pending.find((p: any) => p.gateId === 'dp-3') as any;
+      expect('dp-3 options', JSON.stringify([...(q?.options ?? [])].sort()), JSON.stringify(DP3_OPTIONS));
+      expect('step-2-10 IV iron (held for DP-3)', status(r.state, 'step-2-10'), 'PENDING_QUESTION');
+    }
+    for (const [code, label] of [
+      [null, 'no malabsorption code'], ['K51.40', 'inflammatory polyps of colon (K51.4.* deliberately excluded)'],
+      ['K90.41', 'non-celiac gluten sensitivity (not listed)'],
+    ] as const) {
+      console.log(`  ${label}, confirmed arm — no recommendation; DP-3 asks as before:`);
+      const r = await resolveSession({ ...base, patient: confirmed(code ? [code] : []), choose: WORKUP });
+      expect('gate-malabsorption-chart', status(r.state, 'gate-malabsorption-chart'), 'GATED_OUT');
+      expectAll('(no recommendation)', r.state, ['step-2-11', 'guid-6'], 'GATED_OUT');
+      expect('dp-3', status(r.state, 'dp-3'), 'PENDING_QUESTION');
+      expect('nothing asked for the code gate', String(r.pending.some((p: any) =>
+        p.gateId === 'gate-malabsorption-chart' || (p.askedByNodeIds ?? []).includes('gate-malabsorption-chart'))), 'false');
+    }
+    console.log('  K50.90 Crohn\'s, empiric arm — the recommendation reaches the empiric arm\'s DP-3 too:');
+    let r = await resolveSession({ ...base, patient: empiric(['K50.90']), replay: [EMPIRIC_CHOICE] });
+    expectAll('(recommendation)', r.state, REC, 'INCLUDED');
+    expect('dp-3 still asks', status(r.state, 'dp-3'), 'PENDING_QUESTION');
+    console.log('  Z98.84, IV first chosen at GA 20 — IV iron; the recommendation stays on the plan:');
+    r = await resolveSession({ ...base, patient: confirmed(['Z98.84']), choose: WORKUP, replay: [{ dp: 'dp-3', option: IV_FIRST }] });
+    expectAll('(recommendation)', r.state, REC, 'INCLUDED');
+    expect('step-2-10 IV iron', status(r.state, 'step-2-10'), 'INCLUDED');
+    console.log('  Z98.84, oral trial chosen anyway — the provider\'s call stands:');
+    r = await resolveSession({ ...base, patient: confirmed(['Z98.84']), choose: WORKUP, replay: [ORAL] });
+    expect('step-2-1 oral iron', status(r.state, 'step-2-1'), 'INCLUDED');
+    expect('step-2-10 IV iron', status(r.state, 'step-2-10'), 'EXCLUDED');
+    console.log('  Z98.84, ferritin 50 (workup) — Stage 2 closed, no recommendation:');
+    r = await resolveSession({ ...base, patient: patientWith([['787-2', 72], ['2276-4', 50], ['718-7', 9.5]], {}, ['Z98.84']), choose: WORKUP });
+    expectAll('(closed with Stage 2)', r.state, REC, 'GATED_OUT');
+  }
+}
+
 // ── Proof: hemoglobinopathy disease keeps microcytic patients off empiric iron (v7) ──
 // [DECISION — Josh 2026-09-24] gate-microcytic (DP-1's only way in, via Step
 // 1.7) is AND(MCV < 80, not_includes_code × 12 disease codes: D57.0.*, D57.1,
@@ -1298,6 +1365,7 @@ const PROOFS: Record<string, () => Promise<void>> = {
   'empiric': proveEmpiric,
   'response': proveResponse,
   'dp-3': proveDp3,
+  'malabsorption': proveMalabsorption,
   'hgbpathy': proveHgbpathy,
   'ghtn-shared-labs': proveGhtnSharedLabs,
   'ghtn-seizure': proveGhtnSeizure,

@@ -282,6 +282,17 @@
       }
     },
     {
+      "id": "step-2-11",
+      "type": "Step",
+      "properties": {
+        "stage_number": 2,
+        "step_number": 11,
+        "display_number": "2.11",
+        "title": "Malabsorption on the chart: IV iron without an oral trial favoured (DP-3 criterion 3c)",
+        "description": "Entered only via gate-malabsorption-chart on Step 2.8 (both iron arms). The chart carries a condition that impairs oral iron absorption, which supports DP-3 criterion 3c. A recommendation shown next to the DP-3 question, not a decision: the route is still chosen at DP-3."
+      }
+    },
+    {
       "id": "step-3-1",
       "type": "Step",
       "properties": {
@@ -495,7 +506,7 @@
       "id": "crit-3c",
       "type": "Criterion",
       "properties": {
-        "description": "Suspected malabsorption (bariatric surgery, inflammatory bowel disease, chronic antacid use) \u2014 IV iron without an oral trial"
+        "description": "Suspected malabsorption (bariatric surgery, inflammatory bowel disease, celiac disease, chronic antacid use) \u2014 IV iron without an oral trial. A malabsorption code on the chart opens Step 2.11 to recommend this criterion; the choice stays with the provider."
       }
     },
     {
@@ -1051,6 +1062,154 @@
           "value": 14,
           "unit": "weeks"
         }
+      }
+    },
+    {
+      "id": "gate-malabsorption-chart",
+      "type": "Gate",
+      "properties": {
+        "title": "Malabsorption condition on the chart (bariatric surgery, IBD, celiac disease, short bowel, gastrectomy)",
+        "gate_type": "compound",
+        "default_behavior": "skip",
+        "on_unresolved": "default",
+        "operator": "OR",
+        "conditions": [
+          {
+            "field": "conditions",
+            "operator": "includes_code",
+            "value": "Z98.84",
+            "system": "ICD-10",
+            "horizon": "LIFETIME",
+            "status": "any",
+            "display": "Bariatric surgery status"
+          },
+          {
+            "field": "conditions",
+            "operator": "includes_code",
+            "value": "O99.84.*",
+            "system": "ICD-10",
+            "horizon": "LIFETIME",
+            "status": "any",
+            "display": "Bariatric surgery status complicating pregnancy, childbirth or the puerperium (O99.840-O99.845)"
+          },
+          {
+            "field": "conditions",
+            "operator": "includes_code",
+            "value": "K50.*",
+            "system": "ICD-10",
+            "horizon": "LIFETIME",
+            "status": "any",
+            "display": "Crohn's disease"
+          },
+          {
+            "field": "conditions",
+            "operator": "includes_code",
+            "value": "K51.0.*",
+            "system": "ICD-10",
+            "horizon": "LIFETIME",
+            "status": "any",
+            "display": "Ulcerative (chronic) pancolitis"
+          },
+          {
+            "field": "conditions",
+            "operator": "includes_code",
+            "value": "K51.2.*",
+            "system": "ICD-10",
+            "horizon": "LIFETIME",
+            "status": "any",
+            "display": "Ulcerative (chronic) proctitis"
+          },
+          {
+            "field": "conditions",
+            "operator": "includes_code",
+            "value": "K51.3.*",
+            "system": "ICD-10",
+            "horizon": "LIFETIME",
+            "status": "any",
+            "display": "Ulcerative (chronic) rectosigmoiditis"
+          },
+          {
+            "field": "conditions",
+            "operator": "includes_code",
+            "value": "K51.5.*",
+            "system": "ICD-10",
+            "horizon": "LIFETIME",
+            "status": "any",
+            "display": "Left sided colitis"
+          },
+          {
+            "field": "conditions",
+            "operator": "includes_code",
+            "value": "K51.8.*",
+            "system": "ICD-10",
+            "horizon": "LIFETIME",
+            "status": "any",
+            "display": "Other ulcerative colitis"
+          },
+          {
+            "field": "conditions",
+            "operator": "includes_code",
+            "value": "K51.9.*",
+            "system": "ICD-10",
+            "horizon": "LIFETIME",
+            "status": "any",
+            "display": "Ulcerative colitis, unspecified"
+          },
+          {
+            "field": "conditions",
+            "operator": "includes_code",
+            "value": "K90.0",
+            "system": "ICD-10",
+            "horizon": "LIFETIME",
+            "status": "any",
+            "display": "Celiac disease"
+          },
+          {
+            "field": "conditions",
+            "operator": "includes_code",
+            "value": "K90.82.*",
+            "system": "ICD-10",
+            "horizon": "LIFETIME",
+            "status": "any",
+            "display": "Short bowel syndrome (K90.821, K90.822, K90.829)"
+          },
+          {
+            "field": "conditions",
+            "operator": "includes_code",
+            "value": "K90.83",
+            "system": "ICD-10",
+            "horizon": "LIFETIME",
+            "status": "any",
+            "display": "Intestinal failure"
+          },
+          {
+            "field": "conditions",
+            "operator": "includes_code",
+            "value": "K90.9",
+            "system": "ICD-10",
+            "horizon": "LIFETIME",
+            "status": "any",
+            "display": "Intestinal malabsorption, unspecified"
+          },
+          {
+            "field": "conditions",
+            "operator": "includes_code",
+            "value": "K91.2",
+            "system": "ICD-10",
+            "horizon": "LIFETIME",
+            "status": "any",
+            "display": "Postsurgical malabsorption, not elsewhere classified"
+          },
+          {
+            "field": "conditions",
+            "operator": "includes_code",
+            "value": "Z90.3",
+            "system": "ICD-10",
+            "horizon": "LIFETIME",
+            "status": "any",
+            "display": "Acquired absence of stomach [part of]"
+          }
+        ]
       }
     },
     {
@@ -1826,6 +1985,15 @@
         "topic": "When to call us right away",
         "category": "safety-netting",
         "instructions": "Review the urgent maternal warning signs (CDC Hear Her / AIM) with the patient and give her the handout; she should seek care immediately for any of them, and always say that she is pregnant (source: https://www.cdc.gov/hearher/maternal-warning-signs/index.html). Also ask whether she craves or eats non-food items (ice, clay, dirt, starch, paper, paint chips); this is common, so ask without judgement."
+      }
+    },
+    {
+      "id": "guid-6",
+      "type": "Guidance",
+      "properties": {
+        "topic": "Malabsorption on the chart: consider IV iron first",
+        "category": "treatment-planning",
+        "instructions": "The problem list carries a condition that reduces oral iron absorption (bariatric surgery, Crohn's disease or ulcerative colitis, celiac disease, short bowel syndrome or intestinal failure, postsurgical or unspecified intestinal malabsorption, or gastrectomy). This supports choosing IV iron without an oral trial at DP-3 (criterion 3c), most strongly after a malabsorptive bariatric procedure (e.g. Roux-en-Y gastric bypass) or with active inflammatory bowel disease; with quiescent IBD or a restrictive procedure an oral trial remains reasonable. IV iron is given from 14 0/7 weeks; before then, choosing IV first starts oral iron until 14 weeks."
       }
     },
     {
@@ -2809,6 +2977,16 @@
       "type": "BRANCHES_TO"
     },
     {
+      "from": "step-2-8",
+      "to": "gate-malabsorption-chart",
+      "type": "HAS_GATE"
+    },
+    {
+      "from": "gate-malabsorption-chart",
+      "to": "step-2-11",
+      "type": "BRANCHES_TO"
+    },
+    {
       "from": "stage-2-oral-bridge",
       "to": "step-2-1",
       "type": "HAS_STEP"
@@ -3081,6 +3259,11 @@
     {
       "from": "step-1-1",
       "to": "guid-5",
+      "type": "HAS_GUIDANCE"
+    },
+    {
+      "from": "step-2-11",
+      "to": "guid-6",
       "type": "HAS_GUIDANCE"
     },
     {
@@ -4019,6 +4202,16 @@
       "type": "CITES_EVIDENCE"
     },
     {
+      "from": "guid-6",
+      "to": "ev-8",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "guid-6",
+      "to": "ev-18",
+      "type": "CITES_EVIDENCE"
+    },
+    {
       "from": "step-1-8",
       "to": "lab-15",
       "type": "HAS_LAB_TEST"
@@ -4251,6 +4444,26 @@
     {
       "from": "step-2-10",
       "to": "ev-22",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-2-11",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-2-11",
+      "to": "ev-8",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-2-11",
+      "to": "ev-18",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-2-11",
+      "to": "ev-19",
       "type": "CITES_EVIDENCE"
     },
     {
