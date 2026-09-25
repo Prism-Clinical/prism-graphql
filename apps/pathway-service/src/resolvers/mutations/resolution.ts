@@ -201,9 +201,12 @@ function answerChange(session: ResolutionSession, args: { sessionId: string; nod
     const target = pending.askTarget;
     // No `sourceId`: a clinician-supplied value is not a chart observation.
     // Who said what is recorded by the PROVIDER_ASSERTED_DATUM event.
+    // Dated at the evaluation clock: it is observed now. Undated, it merged as a
+    // duplicate of any undated entry for the same lab (effective-context.ts keys
+    // on code|system|date) — e.g. one selected without a value — and was dropped.
     const fragment: AdditionalContextInput =
       target.kind === 'lab'
-        ? { labResults: [{ code: target.code, system: target.system, value }] }
+        ? { labResults: [{ code: target.code, system: target.system, value, date: session.temporalContext.evaluationAsOf }] }
         : target.kind === 'vital'
           ? { vitalSigns: { [target.path]: value } }
           // `patient.trimester` addresses patientAttributes.trimester — a FLAT key.
