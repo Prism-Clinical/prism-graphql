@@ -17,9 +17,12 @@ still current, `[BLOCKED — prior_node_result]` import-blocked gate design with
 
 - **Logical ID**: `anemia-in-pregnancy`
 - **Title**: Anemia in Pregnancy — Classification and Treatment
-- **Version**: 3 `[DECISION — Josh 2026-09-24]` (JSON `"3"`; was `"2"`). Bumped for the DP-1
-  restoration, gate-microcytic removal and the gestational-age data gate — imports as
-  NEW_VERSION.
+- **Version**: 4 `[DECISION — Josh 2026-09-24]` (JSON `"4"`; was `"3"`). Bumped for
+  gate-microcytic in front of DP-1 (Step 1.7), the empiric arm's follow-up through Stage
+  1.5, and one host step per lab node — imports as NEW_VERSION. DP-1's empiric answer
+  value changes from `step-2-1` to `stage-2-empiric`; v3 sessions keep v3's graph.
+  (v3 was bumped from 2 for the DP-1 restoration, the since-reversed gate-microcytic
+  removal and the gestational-age data gate.)
 - **Category**: OBSTETRIC
 - **Scope**: Outpatient prenatal care, from diagnosed anemia through postpartum handoff.
   Screening is upstream of this pathway.
