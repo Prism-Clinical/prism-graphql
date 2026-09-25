@@ -28,8 +28,10 @@
 //                    exposure; flips when the engine can negate a code
 //   ghtn-shared-labs gestational hypertension v2: BP, severity-panel and urine-protein
 //                    labs split per host step — each follows its own step's gate
-//   uti-shared-labs  UTI in pregnancy v2: urine culture, organism ID and susceptibility
-//                    labs split per host step — each follows its own step's gate
+//   uti-shared-labs  UTI in pregnancy v3: organism ID, susceptibility and test-of-cure
+//                    culture labs split per host step — each follows its own step's
+//                    gate; the one Step 1.1/2.1 culture (both unconditional) is
+//                    listed once
 //
 // The anemia proofs read pathways/json/anemia-in-pregnancy.json (override with
 // ANEMIA_JSON=<path>); ghtn-* reads gestational-hypertension-preeclampsia.json
@@ -800,9 +802,17 @@ async function proveGhtnSharedLabs(): Promise<void> {
 // ghtn-shared-labs, same split. Answers replayed as asked, like ghtn (see the
 // comment above GHTN_LABS): "no GBS" on a negative culture used to re-open
 // DP-1 in reversed edge order.
+//
+// v3 [DECISION — Josh 2026-09-24]: v2's Step 2.1 culture (lab-7) was the same
+// test on the same specimen as the Step 1.1 screening culture (lab-1), and both
+// steps are unconditional, so every care plan listed the culture twice. v3
+// removes lab-7: lab-1 has two host steps, 1.1 and 2.1. That is safe only
+// because both hosts always apply — no gate can close one and take the other's
+// lab. Its parentNodeId then depends on edge order (whichever host the walk
+// reaches first), so the proof pins it per order. The test-of-cure culture
+// (lab-8, step-5-2a) stays separate: its host is gated.
 const UTI_LABS = {
-  culture11: ['lab-1'],   // Step 1.1 screening culture (unconditional)
-  culture21: ['lab-7'],   // Step 2.1 culture interpretation (unconditional)
+  culture: ['lab-1'],     // Steps 1.1 + 2.1 screening/interpreted culture (both unconditional; v3)
   culture52a: ['lab-8'],  // step-5-2a repeat culture (gate-symptomatic, DP-1 criterion 1a)
   organism21: ['lab-2'],  // Step 2.1 (unconditional)
   organism41: ['lab-9'],  // Step 4.1 (gate-gbs-identified)
@@ -827,8 +837,19 @@ async function proveUtiSharedLabs(): Promise<void> {
     ...(a.symptomatic ? [REPEAT_CULTURE] : []),
     q('gate-treatment-completed', a.completed ? YES : NO),
   ];
+  // Every urine-culture LabTest node in the file (LOINC 19090-0). The care plan
+  // lists each INCLUDED one, so this count is how many times it shows the culture.
+  const CULTURE_IDS: string[] = JSON.parse(readFileSync(resolve(UTI), 'utf8')).nodes
+    .filter((n: any) => n.type === 'LabTest' && n.properties?.code === '19090-0').map((n: any) => n.id);
+  const culturesListed = (s: Map<string, { status: string }>) =>
+    String(CULTURE_IDS.filter((id) => status(s, id) === 'INCLUDED').length);
+  console.log(`  urine-culture LabTest nodes: ${CULTURE_IDS.join(', ')}`);
+  expect('lab-7 (v2 Step 2.1 culture) removed', CULTURE_IDS.includes('lab-7') ? 'present' : 'absent', 'absent');
   for (const reverse of [false, true]) {
     console.log(`  -- edge order: ${reverse ? 'reversed' : 'file'}`);
+    /** The one Step 1.1/2.1 culture sits under whichever host the walk reaches
+     *  first: Step 1.1 (Stage 1) in file order, Step 2.1 (Stage 2) reversed. */
+    const CULTURE_HOST = reverse ? 'step-2-1' : 'step-1-1';
     const run = (codes: Array<string | { code: string; date: string }>, labs: Array<[string, number]>,
       ask: Replay[]) =>
       resolveSession({ file: UTI, reverse, patient: patientOf({ codes, labs, vitals: AFEBRILE }), ask });
@@ -839,8 +860,9 @@ async function proveUtiSharedLabs(): Promise<void> {
     console.log('  culture negative (1,000 CFU/mL), no GBS — screening and interpretation only:');
     let r = await run([], NEGATIVE, [q('gate-gbs-identified', NO)]);
     expect('gate-culture-positive', status(r.state, 'gate-culture-positive'), 'GATED_OUT');
-    expectAll('(Step 1.1)', r.state, L.culture11, 'INCLUDED');
-    expectAll('(Step 2.1)', r.state, [...L.culture21, ...L.organism21], 'INCLUDED');
+    expectAll('(Steps 1.1 + 2.1)', r.state, [...L.culture, ...L.organism21], 'INCLUDED');
+    expect('lab-1 sits under', String(r.state.get('lab-1')?.parentNodeId), CULTURE_HOST);
+    expect('urine cultures listed (v2: 2)', culturesListed(r.state), '1');
     expectAll('(step-5-2a)', r.state, L.culture52a, 'GATED_OUT');
     expectAll('(Step 4.1)', r.state, L.organism41, 'GATED_OUT');
     expectAll('(Step 3.1)', r.state, L.suscept31, 'GATED_OUT');
@@ -852,18 +874,20 @@ async function proveUtiSharedLabs(): Promise<void> {
     console.log('  culture positive, symptomatic, repeat culture chosen, course NOT completed:');
     r = await run([], POSITIVE, treated({ symptomatic: true, gbs: false, completed: false }));
     expect('step-5-2a repeat culture', status(r.state, 'step-5-2a'), 'INCLUDED');
-    expectAll('(Step 1.1)', r.state, L.culture11, 'INCLUDED');
-    expectAll('(Step 2.1)', r.state, [...L.culture21, ...L.organism21], 'INCLUDED');
+    expectAll('(Steps 1.1 + 2.1)', r.state, [...L.culture, ...L.organism21], 'INCLUDED');
     expectAll('(step-5-2a)', r.state, L.culture52a, 'INCLUDED');
+    expect('urine cultures listed (screen + test of cure; v2: 3)', culturesListed(r.state), '2');
     expectAll('(Step 3.1)', r.state, L.suscept31, 'INCLUDED');
     expect('stage-5 follow-up', status(r.state, 'stage-5'), 'GATED_OUT');
     expectAll('(step-5-3)', r.state, L.suscept53, 'GATED_OUT');
     expectAll('(Step 4.1)', r.state, L.organism41, 'GATED_OUT');
     // The care plan places an intervention by its parentNodeId chain. v1's one
-    // culture node sat under whichever host the walk reached first (Step 1.1
-    // or 2.1 by edge order), and test of cure never had a culture of its own.
-    for (const [id, host] of [['lab-1', 'step-1-1'], ['lab-7', 'step-2-1'], ['lab-8', 'step-5-2a'],
-      ['lab-2', 'step-2-1'], ['lab-3', 'step-3-1']]) {
+    // culture node could land under step-5-2a (the test-of-cure choice), which
+    // moved the screening culture into Stage 5; test of cure now has its own
+    // (lab-8). v3's lab-1 sits under Step 1.1 or 2.1 by edge order — both
+    // unconditional, so either placement is correct; the proof pins which.
+    for (const [id, host] of [['lab-1', CULTURE_HOST], ['lab-8', 'step-5-2a'],
+      ['lab-2', 'step-2-1'], ['lab-3', 'step-3-1']] as Array<[string, string | string[]]>) {
       expect(`${id} sits under`, String(r.state.get(id)?.parentNodeId), host);
     }
 
@@ -872,8 +896,8 @@ async function proveUtiSharedLabs(): Promise<void> {
     r = await run([], POSITIVE, treated({ symptomatic: false, gbs: false, completed: true }));
     expect('step-5-2 test of cure', status(r.state, 'step-5-2'), 'GATED_OUT');
     expectAll('(step-5-2a)', r.state, L.culture52a, 'GATED_OUT');
-    expectAll('(Step 1.1)', r.state, L.culture11, 'INCLUDED');
-    expectAll('(Step 2.1)', r.state, L.culture21, 'INCLUDED');
+    expectAll('(Steps 1.1 + 2.1)', r.state, L.culture, 'INCLUDED');
+    expect('urine cultures listed', culturesListed(r.state), '1');
 
     // GBS arm open: Step 4.1's own organism ID is included with Step 2.1's.
     console.log('  culture positive, GBS identified:');

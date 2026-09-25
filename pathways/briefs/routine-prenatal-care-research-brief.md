@@ -175,7 +175,7 @@ Co-matching therefore happens:
 |---|---|---|
 | **Aspirin 81 mg** (`preeclampsia-prophylaxis`) | GHTN `med-1` | **Same name, same lane**, so the merge shows one. The eligibility **question is duplicated**: an O09 + O13/O14 patient is asked by both pathways. Question gates do not dedupe across pathways. This pathway's prompt is **verbatim** GHTN's `gate-aspirin-indicated` prompt, so the two answers can't diverge in meaning. |
 | **BP ≥140/90** | GHTN `gate-bp-elevated` (same two vitals conditions) | Identical conditions; ONE datum per vital. Whether the multi-pathway session dedupes a vitals question *across* pathways is unverified (§18). This pathway's target is a hand-off step, not management. |
-| **Urgent maternal warning signs** (Guidance) | GHTN `guid-1`, same topic | **Licensing problem found (D-28).**<br>• GHTN's text paraphrases the ACOG/AIM Urgent Maternal Warning Signs card. The 2026 card is "© 2026 ACOG Foundation. All rights reserved" and **prohibits any use of the content as part of a generative AI / LLM to generate text** (agent C).<br>• This brief uses the **CDC Hear Her** list word for word, with CDC's attribution and non-endorsement terms, under the same topic.<br>• The CDC page itself says the list "was developed by the Alliance for Innovation on Maternal Health". So even the CDC version is AIM-origin, and licensing review is needed before shipping either text.<br>• Once cleared, **recommend GHTN adopt the identical text**; the merge then shows one block. Until then an O09 + O13 patient sees two blocks under one topic. |
+| **Urgent maternal warning signs** (Guidance) | GHTN `guid-1`, same topic | **Resolved by D-28 `[DECISION — Josh 2026-09-24]`: reference the list, never include it.**<br>• The 2026 ACOG/AIM card is "© 2026 ACOG Foundation. All rights reserved" and **prohibits any use of the content as part of a generative AI / LLM to generate text** (agent C). The CDC Hear Her page says its list "was developed by the Alliance for Innovation on Maternal Health", so the CDC version is AIM-origin too.<br>• Both nodes therefore carry the same short instruction that **references** the warning signs and cites the CDC page, with no list items (§9 Guid-1). GHTN v3 `guid-1` uses the **byte-identical text** under the same topic, so the merge shows one block. |
 | **"When to call us right away"** | anemia `guid-5` and UTI `guid-1` (same topic, different text) | Pre-existing collision; not this pathway's. Recommend renaming them to "Anemia: when to call us" and "Bladder infection: when to call us". This pathway does **not** use that topic. |
 | **CBC** 58410-2 | anemia `lab-1` | Same LOINC, so it dedupes |
 | **Type and screen** 882-1 / 890-4 | anemia `lab-9` (882-1) | Same LOINCs, so it dedupes |
@@ -203,6 +203,8 @@ The GDM brief notes that Josh may drop its duplicates.
 | D-3 | 50-g GCT cutoff **140 mg/dL** (threshold 139.9). |
 | D-4 | 100-g OGTT: **Carpenter–Coustan, ≥2 abnormal values**. Encoded as a question gate; no faithful compound encoding exists (§4b `gate-100g-diagnostic`). |
 | D-12 | Long-term post-GDM screening belongs to routine care. In pregnancy, "gestational diabetes in a prior pregnancy" is an early-testing criterion (Stage 4). Recurring screening between pregnancies belongs to adult preventive care, which has no pathway yet (§18). |
+| D-26 | `[DECISION — Josh 2026-09-24]` COVID-19 vaccine in pregnancy: **recommend per ACOG** (role `first_line`), **with shared decision-making and the discussion documented**. The node's text states CDC's current position alongside ACOG's (§5 Med-4). |
+| D-28 | `[DECISION — Josh 2026-09-24]` Urgent maternal warning signs: **reference the wording, do not include the actual text.** The CDC Hear Her list is credited to AIM, whose card forbids any LLM use. Guid-1 is a short instruction to review the warning signs with the patient and give her the handout, citing the CDC page, with no list items (§9). The same text is used in GHTN v3 `guid-1`, and anemia v6 `guid-5` references the list the same way. |
 
 **Moved here from the GDM brief, still open. Default kept; one-line tradeoff each:**
 
@@ -222,10 +224,8 @@ The GDM brief notes that Josh may drop its duplicates.
 | D-23 | Scope: include O09.x (high-risk supervision) for **routine elements only**; condition-specific high-risk care is out of scope | **Include O09.x** | v2 excluded greater-than-average risk entirely. O09 patients still need every routine element. Risk-specific add-ons (age ≥40 testing, obesity testing, prior-preterm cervical length, TOLAC) are listed as text, not gated (§3 Step 1.2, §18) |
 | D-24 | Rh encoding: `patient.rh_factor` paired gates (`equals "negative"` → RhIG; `equals "positive"` → no RhIG) vs one BOOLEAN question router | **`patient.rh_factor` pair** | Chart-native, and asks only when absent. The SELECT offers both comparands (the two gates pool options). The attribute's string vocabulary ("negative"/"positive") must match the chart feed; the simulator does not send it, so it asks. A question is simpler but always asks |
 | D-25 | BP ≥140/90 hand-off gate (every visit) → "confirm; record R03.0, or O13/O14 once confirmed" → GHTN pathway | **Include** | It mirrors the D-1 GDM hand-off for USPSTF 2023's every-visit BP screen. It duplicates GHTN's gate for co-matched patients, which share one datum per vital |
-| D-26 | COVID-19 vaccine in pregnancy: ACOG CS 26 (2026) "all pregnant individuals should receive" vs the CDC adult schedule (Jul 2 2025): pregnancy cell "no guidance", with CDC interim considerations (Sep 2026) urging a risk review | **Include per ACOG** (owning society, source hierarchy #1). Role `first_line`, with the conflict stated in the node | Federal and society guidance conflict. Alternatively role `acceptable` with shared-decision text, or omit |
 | D-27 | Import housekeeping: archive `routine-prenatal-care-v1` and `-v2` when this imports | **Archive both** | Leaving them ACTIVE co-matches every Z34.00/Z34.90 patient with two broken graphs (v1 crashes; both duplicate every item) |
 | D-29 | Result gates at the **ordering visit** (GCT, early A1C, 75-g OGTT): a missing value asks, and single-pathway care-plan generation is refused until it is answered (§0.6 #10). Options: (a) split D-22's router into "not yet screened: order the test" vs "resulted: interpret", so the result gate is reached only once a value exists (anemia v5's "recheck not yet done" pattern); (b) `on_unresolved: default` with an `[ON-UNRESOLVED DEFAULT — gate-x]` marker, where a missing value means "not drawn yet" and the next step stays closed; (c) accept it | **(c) keep `ask`** (Josh's numeric rule). Multi-pathway generation, the usual path for pregnancy co-matching, does not block on pending questions | (c) stalls single-pathway plans at ordering visits. (a) costs one more router option but is the cleanest. (b) departs from the rule and would silently close the next step if a result is simply missing from the chart |
-| D-28 | Warning-signs Guidance text: CDC Hear Her list verbatim (the CDC page credits AIM as its developer) vs topic + link only vs a clinician-written list | **CDC text verbatim, pending licensing review** | Word-for-word CDC reuse is the lowest-risk text. If AIM's rights reach the CDC reproduction, fall back to the topic plus a link to cdc.gov/hearher. GHTN's AIM paraphrase has the same question |
 
 ### 0.6 Spec and engine limitations hit
 
@@ -334,9 +334,11 @@ antibody. The "suspect" notes in §0.2 were raised by those seed labels and are 
   - car-belt guidance ([70]);
   - the Core Set status ([71]);
   - the trimester definitions (now attributed to the Tabular List).
-- **[41] was FAIL.** The Hear Her text was not verbatim. It is now corrected word for word.
+- **[41] was FAIL.** The Hear Her text was not verbatim. It was corrected word for word, and is
+  now **superseded**: under D-28 the brief no longer carries the list at all (§9 Guid-1).
 - **New licensing question:** the CDC page states the list "was developed by the Alliance for
-  Innovation on Maternal Health". So the list is AIM-origin even on CDC's site (D-28).
+  Innovation on Maternal Health". So the list is AIM-origin even on CDC's site. Resolved by
+  D-28 `[DECISION — Josh 2026-09-24]`: reference it, never include it.
 - **[25]:** agent B reported a court-order banner on the CDC schedule, but the checker could not
   find it on the cited pages. That claim is dropped and the schedule is cited by its Jul 2 2025
   date only.
@@ -618,7 +620,8 @@ and 9. Stage 5 is gated out, so a missed anatomy survey surfaces only through RE
 - **Step 1.9 — Immunizations at any gestational age** *(unconditional)*:
   - **Inactivated or recombinant influenza vaccine** in any trimester during the season
     (third-trimester patients as soon as vaccine is available; LAIV is contraindicated).
-  - **COVID-19 vaccine per ACOG** (D-26; conflict stated in Med-4).
+  - **COVID-19 vaccine per ACOG**, with shared decision-making and the discussion documented;
+    CDC's current position is stated in Med-4 (D-26 `[DECISION — Josh 2026-09-24]`).
   - **Hepatitis B vaccine** if susceptible on the triple panel (Engerix-B, Heplisav-B,
     Recombivax HB or Twinrix; PreHevbrio is not recommended in pregnancy).
   - **MMR and varicella are contraindicated in pregnancy.** Give postpartum if non-immune.
@@ -1141,16 +1144,25 @@ No `ESCALATES_TO` chains; none apply.
     with Tdap, RSV and COVID-19 vaccines.
   - **Code:** CPT 90656 (IIV3 PF 0.5 mL), 90673 (RIV3).
   - **Source:** [24][25][27]
-- **Med-4 — COVID-19 vaccine (current-season formulation)** (on Step 1.9) `[DECISION D-26]`
+- **Med-4 — COVID-19 vaccine (current-season formulation)** (on Step 1.9) `[DECISION D-26 —
+  Josh 2026-09-24]`
   - **Role:** first_line (per ACOG) · **clinical role:** `covid-immunization`
   - **Dose:** one dose IM of the current-season product, any trimester. `[GAP]` The
     product-specific dose was not fetched.
-  - **Notes:** **conflict.**
+  - **Ruling (D-26):** recommend per ACOG, **with shared decision-making and the discussion
+    documented**, and state CDC's current position in the node's text. There is no separate
+    vaccine Guidance node; the Med-4 notes below are that text.
+  - **Notes (node text):** "Recommended in any trimester per ACOG (Committee Statement No. 26, 2026:
+    all pregnant and lactating individuals should receive an updated COVID-19 vaccine). Offer
+    it through shared decision-making and document the discussion. CDC's current position
+    differs: the CDC adult immunization schedule (Jul 2 2025) gives no guidance for pregnancy,
+    and CDC's interim clinical considerations (updated Sep 23 2026) advise a review of the
+    risks and benefits."
+  - **Sources behind the notes (the conflict):**
     - ACOG CS 26 (Feb 2026): "All pregnant and lactating individuals should receive an updated
       COVID-19 vaccine… any trimester."
     - CDC adult schedule (Jul 2 2025), Table 2: pregnancy cell "No Guidance/Not Applicable".
     - CDC interim considerations (Sep 2026) urge a review of risks and benefits.
-    - State both to the patient; shared decision.
   - **Code:** `[GAP]` 2026–27 product CPTs are not in the CDC crosswalk.
   - **Source:** [24][25]
 - **Med-5 — Tdap vaccine** (on Step 9.1)
@@ -1261,36 +1273,26 @@ v2 carried these as `Procedure` nodes, which is the wrong node type.
 
 ## 9. Guidance
 
-The text is plain-language paraphrase of the cited source, except Guid-1, which is verbatim
-CDC. Topics are chosen against §0.4.
+The text is plain-language paraphrase of the cited source, except Guid-1, which references the
+CDC Hear Her warning signs without reproducing them (D-28). Topics are chosen against §0.4.
 
 - **Guid-1 — topic `Urgent maternal warning signs`** (on Step 1.8), category safety-netting.
-  - **Instructions, word for word from the CDC Hear Her page** (wave-2 checked; the list items
-    keep the page's order):
-    > "Be aware of urgent maternal warning signs and symptoms during pregnancy and in the year
-    > after delivery. Seek medical care immediately if you experience any signs or symptoms
-    > that are listed below. Headache that won't go away or gets worse over time; Dizziness or
-    > fainting; Changes in your vision; Fever of 100.4°F or higher; Extreme swelling of your
-    > hands or face; Thoughts about harming yourself or your baby; Trouble breathing; Chest
-    > pain or fast-beating heart; Severe nausea and throwing up; Severe belly pain that doesn't
-    > go away; Baby's movement stopping or slowing during pregnancy; Vaginal bleeding or fluid
-    > leaking during pregnancy; Vaginal bleeding or discharge after pregnancy; Severe swelling,
-    > redness, or pain of your leg or arm; Overwhelming tiredness. If you feel like something
-    > just isn't right, or you aren't sure if it's serious, talk to your health care provider.
-    > Be sure to tell them if you are pregnant or were pregnant within the last year.
-    > (Source: CDC Hear Her campaign, available free at cdc.gov/hearher. Use does not imply
-    > endorsement by CDC, ATSDR, HHS or the US Government.)"
-  - **Licensing `[DECISION D-28]`:**
-    - Reused with CDC's attribution, its non-endorsement disclaimer, and no change to the
-      substance.
+  - **Instructions (exact node text; byte-identical to GHTN v3 `guid-1`):**
+    > "Review the urgent maternal warning signs (CDC Hear Her / AIM) with the patient and give
+    > her the handout; she should seek care immediately for any of them. The warning signs
+    > apply during pregnancy and for a year after birth. Source:
+    > https://www.cdc.gov/hearher/maternal-warning-signs/index.html"
+  - **`[DECISION D-28 — Josh 2026-09-24]` Reference the wording; do not include the actual
+    text.**
     - The CDC page states the list "was developed by the Alliance for Innovation on Maternal
       Health". AIM's own 2026 card is all-rights-reserved and **prohibits use as part of an
       LLM to generate text**.
-    - Needs licensing review before shipping. Fallback: the topic plus a link to
-      cdc.gov/hearher.
-    - Do **not** substitute or paraphrase the AIM card text.
-  - **Co-match:** recommend GHTN `guid-1` adopt this identical text, so the merge shows one
-    block (§0.4).
+    - So the node carries **no list items**: not the CDC list, not the AIM card, not a
+      paraphrase of either. The patient gets the published handout, whole.
+    - This replaces the draft's word-for-word CDC reproduction (the D-28 default), which is
+      removed from this brief.
+  - **Co-match:** GHTN v3 `guid-1` uses this identical text under the same topic, so the merge
+    shows one block (§0.4).
   - **Source:** [41]
 - **Guid-2 — topic `Pregnancy weight gain`** (on Step 1.8), lifestyle.
   - "How much weight is healthy to gain depends on your weight before pregnancy.
@@ -1937,8 +1939,9 @@ listed.
 - `[GAP]` Doppler FHT audibility (~10–12 weeks); numeric quickening GA.
 - `[GAP]` COVID-19 and Tdap product dose volumes; 2026–27 COVID CPT codes.
 - `[GAP]` HEDIS MY2026 specification detail: PRS-E windows, PND-E cut-points (§10).
-- `[GAP]` Licensing of the urgent-maternal-warning-signs text (D-28): it is AIM-origin even on
-  CDC's page.
+- ~~`[GAP]` Licensing of the urgent-maternal-warning-signs text (D-28): it is AIM-origin even on
+  CDC's page.~~ **Resolved** by D-28 `[DECISION — Josh 2026-09-24]`: Guid-1 references the list
+  and carries none of its text, so no licence is needed for it.
 - `[GAP]` No current ACOG documents on adolescent prenatal care, employment, or a late-entry
   protocol. Late entry is handled by the GA gates plus REQUIRES.
 - `[GAP]` GCT ≥200 as diagnostic; bariatric-surgery alternative screening (PB 105).
@@ -1952,7 +1955,7 @@ listed.
 | C1 | Third-trimester syphilis: ACOG universal (2024) vs CDC STI 2021 risk-based | ACOG (owning society), universal |
 | C2 | Hepatitis B: USPSTF HBsAg alone vs ACOG CPG 6 / CDC 2023 triple panel | HBsAg every pregnancy, plus the triple panel if not previously documented |
 | C3 | RSV season: ACOG Sept 1–Mar 1 (Aug 2026) vs CDC Sept–Jan | Both stated; ACOG window in the schedule |
-| C4 | COVID-19 in pregnancy: ACOG "all should receive" vs CDC "no guidance" | D-26 (include per ACOG) |
+| C4 | COVID-19 in pregnancy: ACOG "all should receive" vs CDC "no guidance" | D-26 `[DECISION — Josh 2026-09-24]`: recommend per ACOG, with shared decision-making and the discussion documented; CDC's position stated in the node text (Med-4) |
 | C5 | RhIG timing: label 26–28 weeks vs USPSTF after the 24–28-week screen vs ACOG 28 weeks | "~28 weeks after repeat antibody screen" |
 | C6 | Fetal RhD cfDNA to skip RhIG: CC No. 8 accepts it vs the ACOG shortage advisory (routine use not recommended) | Text: acceptable; routine use reserved for shortages |
 | C7 | First-trimester combined window: 10–13 6/7 (2026 Advisory) vs 11–13 6/7 (older texts) | 10–13 6/7 |

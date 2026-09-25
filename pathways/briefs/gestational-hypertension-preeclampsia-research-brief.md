@@ -1,6 +1,6 @@
 # Pathway Research Brief — Gestational Hypertension & Preeclampsia
 
-JSON: pathways/json/gestational-hypertension-preeclampsia.json @ version 2
+JSON: pathways/json/gestational-hypertension-preeclampsia.json @ version 3
 
 **Status: DRAFT v1 for physician review — not yet approved for JSON build.**
 
@@ -46,8 +46,11 @@ claims confirmed. Flags: `[GAP]` unsourceable · `[FALLBACK SOURCE]` non-US basi
 
 - **Logical ID**: `gestational-hypertension-preeclampsia`
 - **Title**: Gestational Hypertension and Preeclampsia — Outpatient Screening, Diagnosis and Surveillance
-- **Version**: 2 (JSON `"2"`; was `"1"`). Bumped with the shared-lab build fix (§6
-  `[BUILD FIX 2026-09-24]`): every LabTest node now has exactly one host step. Imports as
+- **Version**: 3 (JSON `"3"`; was `"2"`). `[DECISION — Josh 2026-09-24]` Guid-1 (urgent
+  maternal warning signs) now references the CDC Hear Her / AIM list instead of paraphrasing it
+  (§9). Imports as **NEW_VERSION** (same logical_id, bumped version).
+  v2 history: bumped with the shared-lab build fix (§6
+  `[BUILD FIX 2026-09-24]`): every LabTest node then had exactly one host step. Imports as
   **NEW_VERSION** — same logical_id, bumped version. DRAFT_UPDATE cannot carry it: the importer
   matches a DRAFT_UPDATE on logical_id *and* version, and no `"2"` exists yet (if v1 was never
   imported at all, it is NEW_PATHWAY). The v1 draft edits below (the stage renumbering) ship
@@ -560,22 +563,31 @@ so the proof pre-loads its gate answers (see the comment in `gate-proof.ts`).
 ## 9. Guidance
 
 - **Guid-1 — topic "Urgent maternal warning signs"** (on Step 4.4): category safety-netting.
-  Instructions: get help right away for a headache that will not go away or worsens; changes
-  in vision such as flashing lights, spots, blurring or temporary loss; severe belly pain that
-  does not go away, especially high on the right side or in the pit of the stomach; extreme
-  swelling of hands or face; trouble breathing, including breathlessness lying flat; chest
-  pain or a fast-beating heart; dizziness or fainting; the baby's movements stopping or
-  slowing; severe nausea and vomiting unlike morning sickness; overwhelming tiredness. Always
-  say you are pregnant, or have been pregnant within the past year. A seizure is an emergency —
-  call 911. **These signs continue to apply for a full year after birth.**
-  `[DECISION — LICENSING]` The official ACOG/AIM card is licensed for duplication and
-  distribution "in its entirety and without modification, for solely non-commercial activities
-  that are for educational, quality improvement, and patient safety purposes. All other uses
-  require written permission from ACOG." The condition-filtered wording above therefore falls
-  **outside** that grant. **The patient-facing artifact must be the official unmodified card**;
-  this text is clinician-facing scaffolding only. Two items above are sourced from PB 222
-  rather than the card: the right-upper-quadrant framing and the seizure line. "Sudden weight
-  gain" is deliberately absent — it appears in none of the sources. [1][10][11]
+  Instructions (v3, exact JSON text): "Review the urgent maternal warning signs (CDC Hear Her /
+  AIM) with the patient and give her the handout; she should seek care immediately for any of
+  them. The warning signs apply during pregnancy and for a year after birth. Source:
+  https://www.cdc.gov/hearher/maternal-warning-signs/index.html"
+  `[DECISION — Josh 2026-09-24]` **Reference the warning signs; do not include the list.** The
+  CDC Hear Her list is credited to AIM, and AIM's current card prohibits any use of its content
+  with an LLM. The node therefore names the list and its source and carries **no list items** —
+  not the card's, not CDC's, not a paraphrase of either. The handout the patient receives is the
+  published one, whole and unmodified; nothing in this pathway re-creates it.
+  - **Removed in v3.** The v2 text was a condition-filtered paraphrase of the ACOG/AIM card
+    (ten items, a "tell them you are pregnant" line and the one-year reminder). It also carried
+    two items sourced from PB 222 rather than the card: a right-upper-quadrant framing of the
+    belly-pain item, and a "seizure is an emergency — call 911" line. Both went with the list,
+    because the rule is no list items whatever their source. Right-upper-quadrant or epigastric
+    pain is still asked of the clinician in `gate-severe-feature-symptoms` (→ Step 5.1). A
+    seizure has no gate: eclampsia appears in this pathway's scope only as an escalation trigger,
+    so after v3 **no node tells the patient that a seizure means 911**. `[GAP]` open for Josh —
+    whether to restore that one line as a separate PB 222-sourced instruction outside the
+    warning-signs reference.
+  - **Co-match.** The text is byte-identical to routine-prenatal-care's Guid-1 (same topic), so
+    a patient matched to both pathways sees one block (Guidance dedupes on topic +
+    instructions).
+  - v2 `[DECISION — LICENSING]` history: the official ACOG/AIM card is licensed for
+    distribution only in its entirety and without modification, so the v2 paraphrase was
+    clinician-facing scaffolding only. v3 supersedes it. [1][10][11]
 - **Guid-2 — topic "Measuring your blood pressure at home"** (on Step 4.1): category education.
   Instructions: use an upper-arm cuff, correctly sized — the cuff length should be about one
   and a half times around your upper arm. Sit upright and rest for at least ten minutes first.
@@ -782,6 +794,17 @@ pregnancy. Please ratify, and see §18 G9.
 | **C6** | Postpartum follow-up: ACOG 7–10 days (72 hours if severe) vs AIM 3 days (severe) / 7 days (other) | Use the **AIM 2024 split** — most recent and most operationally precise; ACOG's 7–10 days is the outer bound |
 | **C7** | Aspirin moderate tier: "2 or more" vs "more than one" across four documents | Same number. Encode as **≥2**, never as a `>1` on something a reader might mistake for a boolean |
 | **C8** | Treatment threshold: 140/90 (post-CHAP) vs 160/110 (PB 222) | **160/110.** CHAP enrolled before 23 weeks and required hypertension documented before 20 weeks, so its population is chronic hypertension by construction. Applying 140/90 here would be a clinical error. Whether mild-range disease should be treated is genuinely unresolved — a trial is recruiting to answer it |
+
+### Open after v3 — the seizure instruction
+
+- `[GAP]` **No node tells the patient that a seizure means 911.** v2's Guid-1 carried a
+  PB 222-sourced line, "a seizure is an emergency — call 911". It was removed in v3 with the
+  warning-signs list under `[DECISION — Josh 2026-09-24]` (no list items, whatever their
+  source; §9 Guid-1). Eclampsia appears in this pathway only as an escalation trigger, and no
+  gate asks about it. **To close:** Josh decides whether a one-line seizure instruction,
+  sourced to [1] and kept outside the warning-signs reference, belongs back. Adding it to
+  Guid-1 would break the byte-identity with routine-prenatal-care's Guid-1, so the two would
+  show as two blocks for a co-matched patient; a separate Guidance node would not.
 
 ### Data-quality gaps in the source itself
 

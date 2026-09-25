@@ -1,6 +1,6 @@
 # Pathway Research Brief — Anemia in Pregnancy
 
-JSON: pathways/json/anemia-in-pregnancy.json @ version 5
+JSON: pathways/json/anemia-in-pregnancy.json @ version 6
 
 **Status: DRAFT v2 for physician review — not yet approved for JSON build.**
 Scope assumed from request: outpatient prenatal care, adult pregnant patients, US practice,
@@ -19,12 +19,16 @@ still current, `[BLOCKED — prior_node_result]` import-blocked gate design with
 
 - **Logical ID**: `anemia-in-pregnancy`
 - **Title**: Anemia in Pregnancy — Classification and Treatment
-- **Version**: 5 `[DECISION — Josh 2026-09-24]` (JSON `"5"`; was `"4"`). Bumped for
+- **Version**: 6 `[DECISION — Josh 2026-09-24]` (JSON `"6"`; was `"5"`). Bumped because
+  Guid-5 ("When to call us right away") now references the CDC Hear Her / AIM urgent maternal
+  warning signs instead of reproducing an AIM-derived subset of them (§9). Imports as
+  NEW_VERSION; no graph or gate change.
+  (v5 `[DECISION — Josh 2026-09-24]`, was `"4"`: bumped for
   escalation after non-response (gate-hgb-response is a SELECT question router; new Step
   2.6 hosts DP-2, new Step 2.7 holds a not-yet-rechecked patient), the 2–4-week recheck, and dropping the live `med-1 → med-5` ESCALATES_TO
   route — imports as NEW_VERSION. `gate-hgb-response` changes type (chart → question), so
   v4 sessions keep v4's graph. Hemoglobinopathy suppression of the empiric arm is
-  decided but blocked on the engine (§18).
+  decided but blocked on the engine (§18).)
   (v4 was bumped from 3 for
   gate-microcytic in front of DP-1 (Step 1.7), the empiric arm's follow-up through Stage
   1.5, and one host step per lab node — imports as NEW_VERSION. DP-1's empiric answer
@@ -638,11 +642,19 @@ prevention step left with the screening stage):
   alternate-day schedule as planned option (hepcidin rationale, patient-level); response
   kinetics expectation-setting; keep the lab recheck. [5][13][14]
 - **Guid-5 — topic "When to call us right away"** (on Step 1.1): category safety-netting.
-  Instructions: Block 5 — AIM urgent maternal warning signs relevant to anemia (chest
-  pain/pressure or radiating pain, racing/irregular heartbeat, trouble breathing or
-  orthopnea, fainting or recurrent dizziness, unrelenting exhaustion); always state
-  pregnancy; pica disclosure prompt (ice, clay, dirt, starch, paper, paint chips) with
-  no-judgment framing. [1][10]
+  Instructions (v6, exact JSON text): "Review the urgent maternal warning signs (CDC Hear Her /
+  AIM) with the patient and give her the handout; she should seek care immediately for any of
+  them, and always say that she is pregnant (source:
+  https://www.cdc.gov/hearher/maternal-warning-signs/index.html). Also ask whether she craves
+  or eats non-food items (ice, clay, dirt, starch, paper, paint chips); this is common, so ask
+  without judgement." [1][10]
+  `[DECISION — Josh 2026-09-24]` **Reference the warning signs; do not include the list.** The
+  CDC Hear Her list is credited to AIM, and AIM's current card prohibits any use of its content
+  with an LLM. Through v5 this block reproduced an anemia-relevant subset of the AIM card's
+  warning signs (cited to [10]), so it was derived from that list and falls under the decision:
+  v6 names the list and its source and carries no list items. The pica disclosure prompt is not
+  a warning sign and stays, reworded into the same clinician-facing voice. The existing
+  citations ([1], [10]) are unchanged; the CDC URL is carried in the text.
 
 ## 10. Quality metrics
 
