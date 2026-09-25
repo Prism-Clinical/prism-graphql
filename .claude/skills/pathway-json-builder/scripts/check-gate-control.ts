@@ -15,6 +15,16 @@
 // resolved with PRBC transfusion, oral iron and IV iron all INCLUDED, and the
 // import validator reported 0 errors and 0 warnings.
 //
+// The same defect one level down: a gate that closes excludes its target AND
+// everything its target contains (`markSubtree` over `containmentChildIds`),
+// but the constructive walk follows EVERY outgoing edge of every included
+// node — including edges out of action nodes. So a node inside the gated
+// region that some other included node points at is reached first and stays
+// INCLUDED. That is how anemia v5 shipped IV iron to a GA-12 patient: Step 2.5
+// was GATED_OUT, and `med-1 -ESCALATES_TO-> med-5` walked straight past the
+// gate (fixed in d6ab163; `fixtures/gate-control/escalates-to-leak.json`).
+// Rule 1 therefore checks the whole gated REGION, not just the target.
+//
 // Usage (from repo root) — no install needed, Node runs the TS directly
 // (Node >= 23 strips types; this file has no pathway-service imports):
 //   node .claude/skills/pathway-json-builder/scripts/check-gate-control.ts <file.json> [--brief <brief.md>]
@@ -82,12 +92,26 @@ const briefName = (): string => brief()?.path ?? (briefArg ? resolve(briefArg) :
 const nodes = pw.nodes ?? [];
 const edges = pw.edges ?? [];
 const gateIds = new Set(nodes.filter((n) => n.type === 'Gate').map((n) => n.id));
-const titleOf = new Map(nodes.map((n) => [n.id, (n as any).properties?.title ?? n.id]));
+const titleOf = new Map(nodes.map((n) => [n.id, (n as any).properties?.title ?? (n as any).properties?.name ?? n.id]));
 
-// `REQUIRES` points backwards by design and is excluded from the depth calc;
-// walking it would manufacture phantom routes into gated steps and produce
-// false violations on correct pathways.
+// Edges for the Rule 2/3 and gate-shape checks, which only ever look at a
+// gate's own BRANCHES_TO edges. REQUIRES never is one; it is dropped here so
+// those checks read exactly as they always have.
 const walkable = edges.filter((e) => e.type !== 'REQUIRES');
+
+// ── The engine's two walks (apps/pathway-service/src/services/resolution) ──
+// CONTAINMENT — what a closing gate excludes. `markSubtree` sweeps the gate's
+// `containmentChildIds`, i.e. every outgoing edge EXCEPT REQUIRES
+// (`graph-containment.ts` NON_CONTAINMENT_EDGES): REQUIRES runs from a
+// dependent back to its prerequisite and says nothing about where the
+// prerequisite lives.
+// ROUTES — what includes a node. The constructive walk in `traversal-engine.ts`
+// enqueues EVERY outgoing edge of an included node, whatever its type: HAS_STEP,
+// USES_MEDICATION, ESCALATES_TO, HAS_LAB_TEST, … and REQUIRES too (the engine
+// calls that last one an open question: a prerequisite is normally resolved
+// before its dependent, so the walk usually finds it written and moves on).
+const containmentEdges = edges.filter((e) => e.type !== 'REQUIRES');
+const nonRequiresEdges = containmentEdges;
 
 /** Every gate BRANCHES_TO edge, grouped by target. */
 const gatesByTarget = new Map<string, string[]>();
@@ -98,19 +122,18 @@ for (const e of walkable) {
   }
 }
 
-/**
- * Reachable from the literal `root` source (never declared in `nodes` — the
- * validator allows it as a special edge source), over `walkable` minus `skip`.
- */
-function reachableFromRoot(skip: Set<Edge>): Set<string> {
+function adjacency(over: Edge[], skip: Set<Edge>): Map<string, string[]> {
   const adj = new Map<string, string[]>();
-  for (const e of walkable) {
+  for (const e of over) {
     if (skip.has(e)) continue;
     if (!adj.has(e.from)) adj.set(e.from, []);
     adj.get(e.from)!.push(e.to);
   }
-  const seen = new Set<string>(['root']);
-  const queue = ['root'];
+  return adj;
+}
+function closure(adj: Map<string, string[]>, roots: string[]): Set<string> {
+  const seen = new Set<string>(roots);
+  const queue = [...roots];
   while (queue.length > 0) {
     for (const next of adj.get(queue.shift()!) ?? []) {
       if (!seen.has(next)) { seen.add(next); queue.push(next); }
@@ -118,67 +141,134 @@ function reachableFromRoot(skip: Set<Edge>): Set<string> {
   }
   return seen;
 }
+/**
+ * Reachable from the literal `root` source (never declared in `nodes` — the
+ * validator allows it as a special edge source), over `over` minus `skip`.
+ */
+function reachableFromRoot(over: Edge[], skip: Set<Edge>): Set<string> {
+  return closure(adjacency(over, skip), ['root']);
+}
+/** What a closing gate on `target` excludes: target + its containment closure. */
+function gatedRegion(target: string): Set<string> {
+  return closure(adjacency(containmentEdges, new Set()), [target]);
+}
+
+/** The evaluable shape of a gate — equal shapes always give the same verdict. */
+function gateEvalShape(props: any): string {
+  return JSON.stringify({
+    gate_type: props.gate_type, default_behavior: props.default_behavior,
+    on_unresolved: props.on_unresolved, operator: props.operator,
+    condition: props.condition, conditions: props.conditions,
+    prompt: props.prompt, answer_type: props.answer_type,
+  });
+}
 
 const errors: string[] = [];
 const warnings: string[] = [];
-
-// ── Rule 1 — a gated node must have its gate as the ONLY way in ──────
-// Ask: ignoring EVERY gate route into T, is T still reachable? If yes, some
-// unconditional (or confidence-selected) route reaches it first and the gate
-// is inert.
-for (const [target, gates] of gatesByTarget) {
-  const gateRoutes = new Set(
-    walkable.filter((e) => e.type === 'BRANCHES_TO' && e.to === target && gateIds.has(e.from)),
-  );
-  if (reachableFromRoot(gateRoutes).has(target)) {
-    const via = walkable
-      .filter((e) => e.to === target && !gateRoutes.has(e))
-      .map((e) => `${e.from} -${e.type}-> ${e.to}`);
-    errors.push(
-      `RULE 1 — "${target}" (${titleOf.get(target)}) is gated by ${gates.map((g) => `"${g}"`).join(', ')}, ` +
-      `but is ALSO reachable without them:\n      ${via.join('\n      ')}\n` +
-      `      => the gate cannot exclude it. Delete the competing edge(s), or move the target behind the gate.`,
-    );
-  }
-}
-
-// ── Advisory — Rule 1 one level down: a gated STAGE whose step has another way in.
-// The gate still excludes the Stage, but that step (and its subtree) is reached
-// anyway. Sometimes intended — anemia's DP-1 "empiric oral iron" deliberately
-// reaches Step 2.1 without ferritin — so this warns rather than fails. When the
-// brief records it as deliberate with `[SECOND ROUTE — <step> via <source>]` for
-// every other source (a Criterion counts as its DecisionPoint), the warning
-// becomes an info line: still printed, so the route stays visible, but no
-// longer a review item.
 const infos: string[] = [];
 const typeOf = new Map(nodes.map((n) => [n.id, n.type]));
 const dpOfCriterion = new Map(
   edges.filter((e) => e.type === 'HAS_CRITERION').map((e) => [e.to, e.from]),
 );
-for (const [target, gates] of gatesByTarget) {
-  const gateRoutes = new Set(
-    walkable.filter((e) => e.type === 'BRANCHES_TO' && e.to === target && gateIds.has(e.from)),
-  );
-  const reach = reachableFromRoot(gateRoutes);
-  if (reach.has(target)) continue; // already a Rule 1 error
-  for (const e of walkable.filter((x) => x.from === target && x.type === 'HAS_STEP')) {
-    if (!reach.has(e.to)) continue;
-    const others = walkable.filter((x) => x.to === e.to && x.from !== target);
-    const via = others.map((x) => `${x.from} -${x.type}->`);
-    const sources = [...new Set(others.map((x) =>
-      typeOf.get(x.from) === 'Criterion' ? dpOfCriterion.get(x.from) ?? x.from : x.from))];
-    const msg =
-      `Gate ${gates.map((g) => `"${g}"`).join(', ')} excludes "${target}", but its step "${e.to}" ` +
-      `(${titleOf.get(e.to)}) is also reached via ${via.join(', ')} — that step survives a "no".`;
-    const missing = sources.filter((s) => !briefHasMarker('SECOND ROUTE', e.to, s));
-    if (missing.length === 0) {
-      infos.push(`${msg} Deliberate per the brief ([SECOND ROUTE — ${e.to} via ${sources.join(' / ')}]).`);
-    } else {
-      warnings.push(
-        `${msg} Confirm the brief intends it, and record it there as ` +
-        `${missing.map((s) => `"[SECOND ROUTE — ${e.to} via ${s}]"`).join(', ')} (brief: ${briefName()}).`,
-      );
+
+// Rule 3 fan-out copies (`gate-x`, `gate-x-<suffix>`, identical evaluable
+// shape) always agree, so for Rule 1 they are one gate: a node two copies'
+// targets share is not a second route around either.
+const gateFamily = new Map<string, string>([...gateIds].map((g) => [g, g]));
+{
+  const gateNodeList = nodes.filter((n) => n.type === 'Gate');
+  for (const base of gateNodeList) {
+    for (const copy of gateNodeList) {
+      if (copy.id === base.id || !copy.id.startsWith(`${base.id}-`)) continue;
+      if (gateEvalShape((copy as any).properties ?? {}) === gateEvalShape((base as any).properties ?? {})) {
+        gateFamily.set(copy.id, gateFamily.get(base.id)!);
+      }
     }
+  }
+}
+
+// CodeEntry and EvidenceCitation carry no recommendation of their own: scorers
+// and the care plan read them through their HOST (`graphContext.linkedNodes`,
+// `care-plan-projection.ts` projects only action nodes), so their own status is
+// never consulted. Pathways share them across hosts on purpose; a shared one is
+// not a leak.
+const REFERENCE_TYPES = new Set(['CodeEntry', 'EvidenceCitation']);
+
+// ── Rule 1 — a gated REGION has its gate as the ONLY way in ──────────
+// For each gated target T: the region is T plus everything T contains (what a
+// closing gate sweeps). With the gate's routes removed, any edge from a node
+// that is still reachable INTO that region is a second route: the engine walks
+// it, first writer wins, and the gate's "no" is discarded for that node — or,
+// the other way round, the gate's sweep drops a node another included host
+// ordered. Either way the verdict depends on BFS order, not on the patient.
+//
+// "The gate's routes" means EVERY BRANCHES_TO of the gate (and of its fan-out
+// copies), not only the one into T: a router spares everything under the branch
+// it takes (`liveUnderSelected`), so a node shared by two of its own branches
+// is not a leak.
+//
+// A second route the brief records as deliberate with
+// `[SECOND ROUTE — <node> via <source>]` (a Criterion counts as its
+// DecisionPoint) is printed as info instead — anemia's DP-1 "empiric oral iron"
+// reaches Steps 2.1-2.3 without the ferritin gate by design. A route that
+// exists only through REQUIRES is a warning: the engine's constructive walk
+// does follow REQUIRES, but only leaks when the dependent resolves before the
+// gate, and the engine itself leaves that open.
+for (const [target, gates] of gatesByTarget) {
+  const families = new Set(gates.map((g) => gateFamily.get(g)));
+  const gateRoutes = new Set(
+    edges.filter((e) => e.type === 'BRANCHES_TO' && gateIds.has(e.from) && families.has(gateFamily.get(e.from))),
+  );
+  const region = gatedRegion(target);
+  const reachStrict = reachableFromRoot(nonRequiresEdges, gateRoutes);
+  const reachAll = reachableFromRoot(edges, gateRoutes);
+  const gateList = gates.map((g) => `"${g}"`).join(', ');
+
+  const entries = edges.filter((e) =>
+    region.has(e.to) && !region.has(e.from) && !gateRoutes.has(e) && reachAll.has(e.from) &&
+    !REFERENCE_TYPES.has(typeOf.get(e.to) ?? ''));
+  const hard: string[] = [];
+  for (const e of entries) {
+    const route = `${e.from} -${e.type}-> ${e.to}`;
+    const where = e.to === target
+      ? `the gated node itself`
+      : `"${e.to}" (${titleOf.get(e.to)}), inside the gated region`;
+    if (e.type === 'REQUIRES' || !reachStrict.has(e.from)) {
+      warnings.push(
+        `RULE 1 (REQUIRES) — ${route} reaches ${where} of ${gateList} (target "${target}") ` +
+        `only through a REQUIRES edge.\n      The engine's constructive walk follows REQUIRES, so if ` +
+        `"${e.from}" resolves before the gate, "${e.to}" is INCLUDED past it. Confirm the order, or re-home the prerequisite.`,
+      );
+      continue;
+    }
+    const source = typeOf.get(e.from) === 'Criterion' ? dpOfCriterion.get(e.from) ?? e.from : e.from;
+    if (briefHasMarker('SECOND ROUTE', e.to, source)) {
+      infos.push(
+        `Gate ${gateList} excludes "${target}", but ${route} reaches ${where} anyway — ` +
+        `deliberate per the brief ([SECOND ROUTE — ${e.to} via ${source}]).`,
+      );
+      continue;
+    }
+    const toType = typeOf.get(e.to);
+    const fix =
+      e.to === target || e.type === 'HAS_STEP' || e.type === 'BRANCHES_TO' || e.type === 'SELECTS_BRANCH'
+        ? `delete the competing edge, or move "${e.from}" behind the gate`
+        : e.type === 'ESCALATES_TO'
+          ? `drop the escalation edge (escalation into gated content is the gated step's own route), or put "${e.from}" inside the gate too`
+          : toType && ['LabTest', 'Medication', 'Imaging', 'Procedure', 'Guidance', 'Schedule', 'QualityMetric'].includes(toType)
+            ? `"${e.to}" is shared by a host outside the gate — split it into one node per host (as anemia 2a6b602 did for its labs), and update the brief`
+            : `delete the edge, or move "${e.from}" inside the gate`;
+    hard.push(`${route}  (enters ${where})\n        => ${fix}`);
+  }
+  if (hard.length > 0) {
+    errors.push(
+      `RULE 1 — gate ${gateList} closes "${target}" (${titleOf.get(target)}) and everything it contains, ` +
+      `but ${hard.length} route(s) enter that region without the gate:\n      ${hard.join('\n      ')}\n` +
+      `      => the engine walks every outgoing edge of an included node, first writer wins: whatever these ` +
+      `routes reach does not obey the gate.\n` +
+      `      => a route the brief intends is recorded there as "[SECOND ROUTE — <node> via <source>]" ` +
+      `(brief: ${briefName()}).`,
+    );
   }
 }
 
@@ -496,13 +586,9 @@ for (const node of nodes) {
 
 // ── Advisory — Rule 3 fan-out copies must stay identical ────────────
 // A cross-stage fan-out is authored as `gate-x` plus `gate-x-<suffix>` copies with
-// identical conditions. Editing one and not the others silently splits the verdict.
-const evalShape = (props: any): string => JSON.stringify({
-  gate_type: props.gate_type, default_behavior: props.default_behavior,
-  on_unresolved: props.on_unresolved, operator: props.operator,
-  condition: props.condition, conditions: props.conditions,
-  prompt: props.prompt, answer_type: props.answer_type,
-});
+// identical conditions. Editing one and not the others silently splits the verdict
+// (and Rule 1 then stops treating them as one gate).
+const evalShape = gateEvalShape;
 const gateNodes = nodes.filter((n) => n.type === 'Gate');
 for (const base of gateNodes) {
   for (const copy of gateNodes) {

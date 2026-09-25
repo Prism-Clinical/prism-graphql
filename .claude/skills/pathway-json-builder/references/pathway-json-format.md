@@ -120,10 +120,29 @@ exactly one (Rule 3).
 > and the gate's verdict is silently discarded. The import validator does **not** catch
 > this — run `scripts/check-gate-control.ts` (see below).
 >
-> **Rule 1 — a gated node must have its gate as the only way in.** If a Step is behind a
+> **Rule 1 — a gated region must have its gate as the only way in.** If a Step is behind a
 > gate, it gets **no** `stage-N HAS_STEP` edge, and nothing else may `BRANCHES_TO` /
 > `SELECTS_BRANCH` into it. This is the same rule stated for Stages under the edge table,
-> applied to Steps.
+> applied to Steps. **And it holds for everything the target contains**, not just the
+> target: a closing gate sweeps its target's whole containment subtree (every outgoing
+> edge except `REQUIRES` — `graph-containment.ts`), but the constructive walk follows
+> **every** outgoing edge of every included node, action nodes included. So none of these
+> may point into a gated region from outside it:
+> - an **action-to-action** edge such as `ESCALATES_TO` — anemia v5's
+>   `med-1 -ESCALATES_TO-> med-5` gave IV iron to a GA-12 patient while `gate-iv-iron-ga`
+>   had Step 2.5 GATED_OUT (fixed in d6ab163). Escalation into gated content is the gated
+>   step's own route; drop the edge.
+> - a **shared action node** — one LabTest/Medication/… hosted both inside and outside the
+>   gate. First writer wins: either the gate's sweep drops the lab the outside host
+>   ordered, or the outside host includes it past the gate (anemia 2a6b602). Emit one node
+>   per host, same codes and citations.
+>
+> `CodeEntry` and `EvidenceCitation` nodes are exempt — they are read through their host,
+> never by their own status. A route that exists only through `REQUIRES` warns (the engine
+> follows it, but it leaks only when the dependent resolves before the gate). Nodes shared
+> between the branches of one router, or between Rule 3 fan-out copies of one gate, are not
+> second routes. A second route the brief intends is recorded with a `[SECOND ROUTE]`
+> marker (see **Brief markers**).
 >
 > **Rule 2 — exactly one gate may point at a given target.** Two gates on one target is a
 > deterministic AND: **any gate that misses excludes the shared target**, in either
@@ -700,7 +719,27 @@ needed. An em dash or `-`/`--` separates tag and ids.
 | Marker | Allows | Without it |
 |---|---|---|
 | `[ON-UNRESOLVED DEFAULT — <gate-id>]` | a numeric gate with `on_unresolved: "default"` | error — numeric gates ask |
-| `[SECOND ROUTE — <step-id> via <source-id>]` | a step of a gated Stage that another route also reaches (a Criterion's route is named by its DecisionPoint) — e.g. anemia's empiric-iron Stage 1.5 sharing Stage 2's steps, `[SECOND ROUTE — step-2-3 via stage-2-empiric]` (one marker per step) | warning; with it, an `ℹ` info line so the route stays visible |
+| `[SECOND ROUTE — <node-id> via <source-id>]` | a node inside a gated region that a route from outside the gate also reaches (the source is the edge's `from`; a Criterion's route is named by its DecisionPoint) — e.g. anemia's empiric-iron Stage 1.5 sharing Stage 2's steps, `[SECOND ROUTE — step-2-3 via stage-2-empiric]` (one marker per node and source) | **error** (Rule 1); with it, an `ℹ` info line so the route stays visible |
+
+### Brief stamp (read by `check-brief-sync.ts`)
+
+The brief is the source of truth and the JSON is derived from it, so every brief names the
+JSON it describes in **one** stamp line in its header — after the `# ` title, before the
+first `## ` heading:
+
+```
+JSON: pathways/json/<logical_id>.json @ version <version>
+JSON: (not built)
+```
+
+`<version>` is `pathway.version` verbatim, compared as a trimmed string (`"version": "5"`
+↔ `@ version 5`); §1's `- **Version**:` must say the same. Nothing else goes on the line.
+`scripts/check-brief-sync.ts` fails when a JSON under `pathways/json/` has no brief, the
+brief has no stamp (or two, or a malformed one, or `(not built)`), the stamp names another
+JSON or version, a stamp names a JSON that does not exist, or a JSON's `logical_id` is not
+its filename. It runs inside `validate-pathway.ts` (exit 4) and in the pre-commit hook
+(`--staged`, which also fails when a JSON is staged without its brief). **Never change a
+pathway JSON without updating its brief in the same commit** — see the builder SKILL.md.
 
 ## What the simulator sends (author gates against THIS)
 
