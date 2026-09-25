@@ -13,6 +13,7 @@ import {
 } from '../services/resolution/session-store';
 import { ResolutionSession, NodeResult, NodeStatus, MatchedPathway } from '../services/resolution/types';
 import { fetchGraphFromAGE, buildGraphContext, sharedScorerRegistry, sharedCascadeResolver } from './helpers/resolution-context';
+import { loadPathwayCodeSets, flattenCodeSets } from './helpers/pathway-code-sets';
 import { createPatientContextLoader } from '../services/resolution/snapshot-context';
 import { computePathwayReachability } from '../services/resolution/reachability-loader';
 import { multiPathwayResolutionQueries } from './mutations/multi-pathway-resolution';
@@ -237,18 +238,13 @@ export const Query = {
       const pathway = indexResult.rows[0];
       if (!pathway) return null;
 
-      // Phase 1b: condition codes are stored as code-set members. Flatten
-      // member rows into the legacy ConditionCodeDetail shape (one row per
-      // (set, member) pair). description = set-level; usage = per-member;
-      // grouping is no longer captured (always null).
-      const ccResult = await pool.query(
-        `SELECT m.code, m.system, cs.description, m.description AS usage, NULL AS grouping
-           FROM pathway_code_set_members m
-           JOIN pathway_code_sets cs ON cs.id = m.code_set_id
-          WHERE cs.pathway_id = $1
-          ORDER BY cs.id, m.code`,
-        [args.id]
-      );
+      // Phase 1b: condition codes are stored as code-set members. `codeSets`
+      // returns them as sets (import vocabulary, so an editor can send them
+      // back as `code_sets`); `conditionCodeDetails` keeps the legacy
+      // flattening (one row per (set, member): description = set-level,
+      // usage = per-member, grouping never stored so always null). Both are
+      // in the same deterministic, content-based order.
+      const codeSets = await loadPathwayCodeSets(pool, args.id);
 
       let nodes: Array<{ id: string; type: string; properties: Record<string, unknown> }> = [];
       let edges: Array<{ from: string; to: string; type: string; properties?: Record<string, unknown> }> = [];
@@ -266,7 +262,8 @@ export const Query = {
         pathway,
         nodes,
         edges,
-        conditionCodeDetails: ccResult.rows,
+        conditionCodeDetails: flattenCodeSets(codeSets),
+        codeSets,
       };
     },
 
