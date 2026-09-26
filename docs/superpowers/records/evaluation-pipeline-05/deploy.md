@@ -24,3 +24,13 @@ entries, taken after the Task 7 backfill), `pathway-service-dist`, `admin-next`,
 **Verification:** all three pm2 processes online, no new restarts after 30 s; pathway-service log clean
 (`Subgraph pathway ready`); `https://localhost/` → 200; `/graphql {__typename}` → `{"data":{"__typename":"Query"}}`;
 gateway schema exposes `ResolutionSession.resultHash`; nginx reloaded.
+
+## Follow-up redeploy: lab datum fix (2026-09-26)
+
+Smoke test found numeric answers to lab questions silently dropped: the answer was merged as a
+duplicate of an undated, valueless lab in the starting patient. Fixed in `44f071e` (PR #62).
+
+**Window:** 17:36:22Z → 17:37:47Z. prism-graphql `aa0b420` → `d377465`; admin unchanged (`bc6ba48`);
+no migrations. Backup: `/home/claude/backups/release-lab-datum-fix-20260926-1736/`.
+**Verification:** checks as above, all passed. On a fresh preview run with the smoke test's starting patient,
+answering `gate-severe-anemia` with 9.4 cleared it from every child (rev 0 → 1); run deleted afterwards.
