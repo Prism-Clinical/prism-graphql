@@ -1,0 +1,33 @@
+NODES 52 {"Pathway":1,"Stage":4,"Step":12,"LabTest":6,"DecisionPoint":1,"Criterion":2,"Procedure":1,"Medication":4,"Schedule":3,"EvidenceCitation":3,"QualityMetric":3,"CodeEntry":7,"Gate":5}
+EDGES 99 {"HAS_STEP":12,"HAS_LAB_TEST":7,"HAS_DECISION_POINT":1,"HAS_CRITERION":2,"HAS_PROCEDURE":1,"USES_MEDICATION":4,"HAS_SCHEDULE":3,"BRANCHES_TO":7,"ESCALATES_TO":1,"CITES_EVIDENCE":42,"HAS_QUALITY_METRIC":3,"HAS_CODE":7,"HAS_STAGE":4,"HAS_GATE":5}
+GATE gate-anemia-t1t3 {"title":"Anemic by 1st/3rd-trimester threshold (Hb < 11 g/dL)?","node_id":"gate-anemia-t1t3","operator":"AND","gate_type":"compound","node_type":"Gate","conditions":[{"value":"1,3","operator":"IN","attribute":"patient.trimester"},{"unit":"g/dL","value":11,"operator":"LT","attribute":"lab.hemoglobin"}],,"default_behavior":"skip","pathway_logical_id":"anemia-in-pregnancy-v1"}
+GATE gate-anemia-t2 {"title":"Anemic by 2nd-trimester threshold (Hb < 10.5 g/dL)?","node_id":"gate-anemia-t2","operator":"AND","gate_type":"compound","node_type":"Gate","conditions":[{"value":2,"operator":"EQUALS","attribute":"patient.trimester"},{"unit":"g/dL","value":10.5,"operator":"LT","attribute":"lab.hemoglobin"}],,"default_behavior":"skip","pathway_logical_id":"anemia-in-pregnancy-v1"}
+GATE gate-iron-deficient {"title":"Serum ferritin low (iron deficiency)?","node_id":"gate-iron-deficient","condition":{"unit":"ng/mL","value":30,"operator":"LT","attribute":"lab.ferritin"},"gate_type":"patient_attribute","node_type":"Gate",,"default_behavior":"skip","pathway_logical_id":"anemia-in-pregnancy-v1"}
+GATE gate-oral-iron-response {"title":"Adequate hemoglobin response to oral iron at ~2 weeks?","node_id":"gate-oral-iron-response","condition":{"unit":"g/dL","value":1,"operator":"GTE","attribute":"lab.hemoglobin_delta_2wk"},"gate_type":"patient_attribute","node_type":"Gate",,"default_behavior":"traverse","pathway_logical_id":"anemia-in-pregnancy-v1"}
+GATE gate-severe-anemia {"title":"Severe anemia (Hb < 7 g/dL) or significant/anticipated acute blood loss?","node_id":"gate-severe-anemia","condition":{"unit":"g/dL","value":7,"operator":"LT","attribute":"lab.hemoglobin"},"gate_type":"patient_attribute","node_type":"Gate",,"default_behavior":"skip","pathway_logical_id":"anemia-in-pregnancy-v1"}
+DP dp-1 {"title":"Overall etiologic impression when iron studies equivocal or mixed cause suspected","node_id":"dp-1","node_type":"DecisionPoint","branch_mode":"one_of",,"pathway_logical_id":"anemia-in-pregnancy-v1"}
+MULTIPARENT Step step-2-2 <= stage-2-[HAS_STEP] , gate-anemia-t1t3-[BRANCHES_TO] , gate-anemia-t2-[BRANCHES_TO]
+MULTIPARENT Step step-2-3 <= stage-2-[HAS_STEP] , dp-1-[BRANCHES_TO]
+MULTIPARENT Step step-3-1 <= stage-3-[HAS_STEP] , dp-1-[BRANCHES_TO] , gate-iron-deficient-[BRANCHES_TO]
+MULTIPARENT Step step-3-3 <= stage-3-[HAS_STEP] , gate-severe-anemia-[BRANCHES_TO]
+MULTIPARENT Step step-4-3 <= stage-4-[HAS_STEP] , gate-oral-iron-response-[BRANCHES_TO]
+MULTIPARENT LabTest lab-1 <= step-1-1-[HAS_LAB_TEST] , step-1-2-[HAS_LAB_TEST]
+MULTIPARENT Medication med-2 <= step-3-2-[USES_MEDICATION] , med-1-[ESCALATES_TO]
+MULTIPARENT EvidenceCitation ev-1 <= stage-1-[CITES_EVIDENCE] , stage-2-[CITES_EVIDENCE] , stage-3-[CITES_EVIDENCE] , stage-4-[CITES_EVIDENCE] , step-1-1-[CITES_EVIDENCE] , step-1-2-[CITES_EVIDENCE] , step-2-1-[CITES_EVIDENCE] , step-2-2-[CITES_EVIDENCE] , step-2-3-[CITES_EVIDENCE] , step-3-1-[CITES_EVIDENCE] , step-3-2-[CITES_EVIDENCE] , step-3-3-[CITES_EVIDENCE] , step-3-4-[CITES_EVIDENCE] , step-4-1-[CITES_EVIDENCE] , step-4-2-[CITES_EVIDENCE] , step-4-3-[CITES_EVIDENCE] , lab-1-[CITES_EVIDENCE] , lab-2-[CITES_EVIDENCE] , lab-3-[CITES_EVIDENCE] , lab-4-[CITES_EVIDENCE] , lab-5-[CITES_EVIDENCE] , lab-6-[CITES_EVIDENCE] , dp-1-[CITES_EVIDENCE] , proc-1-[CITES_EVIDENCE] , med-1-[CITES_EVIDENCE] , med-2-[CITES_EVIDENCE] , med-3-[CITES_EVIDENCE] , med-4-[CITES_EVIDENCE]
+MULTIPARENT EvidenceCitation ev-2 <= step-1-1-[CITES_EVIDENCE] , step-1-2-[CITES_EVIDENCE] , step-2-1-[CITES_EVIDENCE] , lab-1-[CITES_EVIDENCE]
+MULTIPARENT EvidenceCitation ev-3 <= step-2-2-[CITES_EVIDENCE] , step-3-1-[CITES_EVIDENCE] , step-3-2-[CITES_EVIDENCE] , step-4-1-[CITES_EVIDENCE] , lab-2-[CITES_EVIDENCE] , lab-3-[CITES_EVIDENCE] , lab-4-[CITES_EVIDENCE] , dp-1-[CITES_EVIDENCE] , med-1-[CITES_EVIDENCE] , med-2-[CITES_EVIDENCE]
+EDGE BRANCHES_TO dp-1 -> step-2-3 
+EDGE BRANCHES_TO dp-1 -> step-3-1 
+EDGE BRANCHES_TO gate-anemia-t1t3 -> step-2-2 
+EDGE BRANCHES_TO gate-anemia-t2 -> step-2-2 
+EDGE BRANCHES_TO gate-iron-deficient -> step-3-1 
+EDGE BRANCHES_TO gate-oral-iron-response -> step-4-3 
+EDGE BRANCHES_TO gate-severe-anemia -> step-3-3 
+EDGE ESCALATES_TO med-1 -> med-2 
+EDGE HAS_GATE stage-3 -> gate-severe-anemia 
+EDGE HAS_GATE step-2-1 -> gate-anemia-t1t3 
+EDGE HAS_GATE step-2-1 -> gate-anemia-t2 
+EDGE HAS_GATE step-4-1 -> gate-oral-iron-response 
+EDGE HAS_GATE dp-1 -> gate-iron-deficient 
+CYCLES none
+ROOTS Pathway:root

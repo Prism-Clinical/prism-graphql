@@ -1,0 +1,16 @@
+const run=require('./run');const G=__dirname+'/graphs/';
+const A=G+'a1774566-42ce-43cc-b83c-1a5749b240e1.json', H=G+'9ee949c9-625a-48ac-873b-c121e8fd24e2.json';
+const base={patientId:'p',conditionCodes:[],medications:[],allergies:[],vitalSigns:{},freeformData:{}};
+const bp=(d)=>[{code:'8480-6',system:'LOINC',value:150,date:d},{code:'8462-4',system:'LOINC',value:95,date:d}];
+const T=async(title,f,p,o,ids)=>{console.log('\n=== '+title);try{const t=await run(f,p,o);run.show(t,ids)}catch(e){console.log('THREW',e.message.slice(0,300))}};
+const ans=o=>new Map(Object.entries(o));
+(async()=>{
+await T('H2b aspirin=true, htn-confirmed=true (booleanValue)',H,{...base,labResults:bp('2026-09-23')},{answers:ans({'gate-aspirin-indicated':{booleanValue:true},'gate-htn-confirmed':{booleanValue:true}})},['gate','step-1','step-2','dp','stage','med-1']);
+await T('H2c aspirin=false',H,{...base,labResults:bp('2026-09-23')},{answers:ans({'gate-aspirin-indicated':{booleanValue:false}})},['gate-aspirin','step-1','med-1']);
+await T('H4 htn-confirmed=true + O13.9 active dx (nested gates deeper)',H,{...base,labResults:bp('2026-09-23'),conditionCodes:[{code:'O13.9',system:'ICD-10',status:'active',date:'2026-09-20'}]},{answers:ans({'gate-aspirin-indicated':{booleanValue:true},'gate-htn-confirmed':{booleanValue:true}})},['gate-htn','step-2-3','step-2-4','stage-3','step-5','step-3']);
+await T('H5 normal BP (120/70) + override INCLUDE gate-htn-confirmed (multi-target)',H,{...base,labResults:[{code:'8480-6',system:'LOINC',value:120,date:'2026-09-23'},{code:'8462-4',system:'LOINC',value:70,date:'2026-09-23'}]},{overrides:new Map([['gate-htn-confirmed',{action:'INCLUDE',originalStatus:'GATED_OUT',originalConfidence:0}]])},['gate-bp','gate-htn-confirmed','step-2-2','step-2-3','step-2-4','dp-1','gate-htn-diag','stage-3']);
+await T('H6 override INCLUDE step-2-4 only, normal BP (dependency on unreached step-2-2 REQUIRES)',H,{...base,labResults:[{code:'8480-6',system:'LOINC',value:120,date:'2026-09-23'},{code:'8462-4',system:'LOINC',value:70,date:'2026-09-23'}]},{overrides:new Map([['step-2-4',{action:'INCLUDE',originalStatus:'GATED_OUT',originalConfidence:0}]])},['gate-bp','step-2','gate-htn']);
+await T('A8 anemia dp-1 answered step-3-1, ferritin 80 (reconverge: dp arm vs closed gate-iron-deficient)',A,{...base,labResults:[{code:'718-7',system:'LOINC',value:9,date:'2026-09-20'},{code:'2276-4',system:'LOINC',value:80,date:'2026-09-20'}],patientAttributes:{trimester:1}},{answers:ans({'dp-1':{selectedOption:'step-3-1'}})},['step-2-3','step-3-1','dp','gate-iron','med-1','lab-5']);
+await T('A9 anemia override EXCLUDE step-3-1 (held) with Hb 9 ferr 12',A,{...base,labResults:[{code:'718-7',system:'LOINC',value:9,date:'2026-09-20'},{code:'2276-4',system:'LOINC',value:12,date:'2026-09-20'}],patientAttributes:{trimester:1}},{overrides:new Map([['step-3-1',{action:'EXCLUDE',originalStatus:'INCLUDED',originalConfidence:0.9}]])},['step-3','med-1','med-2']);
+await T('A10 anemia conf=0.3 (below suggest) Hb 9 ferr 12',A,{...base,labResults:[{code:'718-7',system:'LOINC',value:9,date:'2026-09-20'},{code:'2276-4',system:'LOINC',value:12,date:'2026-09-20'}],patientAttributes:{trimester:1}},{conf:0.3},['step','dp','med','gate','proc']);
+})();
