@@ -1,7 +1,7 @@
 # Evaluation Interpreter — Design
 
 **Date:** 2026-09-26
-**Status:** Revised after architecture review (2026-09-26, §12). The decisions in §11.2 need product/clinical sign-off before a plan is written.
+**Status:** Revised after two architecture reviews (2026-09-26, §12). The decisions in §11.2 need product/clinical sign-off before a plan is written.
 **Repos:** `prism-graphql` (`apps/pathway-service`); `prism-admin-dashboard` is read for client contracts only.
 **Baseline:** `main` @ `d377465` (live). Every `file:line` is relative to `apps/pathway-service/src/` at that commit.
 **Builds on:** `docs/superpowers/specs/2026-09-13-evaluation-pipeline-design.md` ("EP", on branch
@@ -259,7 +259,7 @@ Every authored edge type maps to exactly one compiled kind. An unknown type is a
 |---|---|---|
 | `HAS_STAGE`, `HAS_STEP`, `HAS_GATE`, `HAS_DECISION_POINT`, `USES_MEDICATION`, `HAS_LAB_TEST`, `HAS_IMAGING`, `HAS_PROCEDURE`, `HAS_GUIDANCE`, `HAS_SCHEDULE`, `HAS_QUALITY_METRIC` | `contains` | **Where** the child lives: it is in scope when its container is. |
 | `BRANCHES_TO` (from Gate or DecisionPoint) | `guards` (one *arm* per edge, carrying its `when`) | **When** the target applies: only if that arm is open. |
-| `HAS_CRITERION`, `CITES_EVIDENCE`, `HAS_CODE` | `owns` | The source owns the annotation for display. An annotation may have several owners (shared evidence). Never affects scope; not in the schedule (§4.8). |
+| `HAS_CRITERION`, `CITES_EVIDENCE`, `HAS_CODE` | `owns` | The source owns the annotation for display. An annotation may have several owners (shared evidence), and an owner may itself be an annotation (`Criterion → EvidenceCitation/CodeEntry`, allowed by `VALID_EDGE_ENDPOINTS` and present in GHTN). Never affects scope; ordered in the annotation pass (§4.8). |
 | `SELECTS_BRANCH` | `references` | A Criterion names an arm target for display/lineage (DS05 #5). Never affects scope and never makes the target an annotation. |
 | `REQUIRES` | `prerequisite` | Consumed by catch-up findings only (`pipeline/findings.ts`). Never affects scope. Fixes I-13. |
 | `ESCALATES_TO` | `alternative` | Recorded relation "use B if A is unsuitable". Never affects scope (§11.2 Q7). Fixes I-12. |
@@ -326,13 +326,13 @@ The compiler rejects (error) or normalizes (N). All errors name the node and fie
 | # | Rule | Fixes |
 |---|---|---|
 | V1 | Edge types and endpoints per `VALID_EDGE_ENDPOINTS` (`services/import/types.ts`) | — |
-| V2 | Exactly one root; every semantic node is reachable from it through `contains ∪ guards`; every annotation has at least one `owns` parent | orphans (I-11) |
+| V2 | Exactly one root; every semantic node is reachable from it through `contains ∪ guards`; every annotation has at least one `owns` parent; `owns` is acyclic | orphans (I-11) |
 | V3 | `contains ∪ guards ∪ data` is acyclic. `prerequisite` and `alternative` are excluded, so the GHTN "cycles" disappear | I-6, I-13 |
 | V4 | `gate_type`, `branch_mode ∈ {one_of, all_of, any_of}` exact; `default_behavior ∈ {skip, traverse}` (N: case-folded); `on_unresolved ∈ {ask, default}`; compound `operator` (N: upper-cased) | I-10, F-8 |
 | V5 | **Routing gates** (question, llm) with more than one arm need a total `when` mapping (DS06 rules, unchanged). **Choices** never carry `when`: they select by qualification and provider choice (§6.3). **Non-routing gates** (condition, prior_result) carry no `when`; with several arms they fan out (§6.2, Q13). | I-7 |
 | V6 | Conditions parse into the condition IR (§5.2). Only the canonical vocabularies (`VALID_CODED_OPERATORS`, `VALID_ATTRIBUTE_OPERATORS`) are accepted; the legacy dialect is an error | F-7 |
 | V7 | `lab.*`/`allergy.*` attributes need a code-map row; `patient.*` must be in `KNOWN_PATIENT_ATTRIBUTES`; each resolves to a `DatumRef` (§5.1) | F-1, F-6 |
-| V8 | `depends_on` is `[{node_id, status}]` with `status` in the `NodeStatus` vocabulary exactly; targets exist and are not Medication (EP D11) | bare-string `depends_on` |
+| V8 | `depends_on` is `[{node_id, status}]` with `status` in the `NodeStatus` vocabulary exactly; targets exist, are not Medication (EP D11) and are not annotations (an annotation's status only mirrors its owners; depend on the owner instead). All 4 stored `depends_on` entries target Steps [live], so this invalidates nothing | bare-string `depends_on` |
 | V9 | Temporal overrides (`horizon`, `status`, `window_days`) parse under the pathway's policy; the model records whether it needs `encounterStart` | today checked only at session start |
 | V10 | Medication `role` decides `action` vs `constraint` | §7.6 |
 
@@ -348,7 +348,7 @@ interface CompiledPathway {
   containers: ReadonlyMap<NodeId, NodeId[]>;   // C(n)
   guards: ReadonlyMap<NodeId, ArmRef[]>;       // G(n): {controller, armId}
   datums: ReadonlyMap<DatumKey, DatumSpec>;    // every datum any condition reads, with its value type
-  annotations: NodeId[];                       // derived after `order` (§4.8)
+  annotationOrder: NodeId[];                   // topological over `owns`, ties by nodeId (§4.8)
   requiresEncounterAnchor: boolean;            // checked against the pinned context at every evaluation (§4.9)
 }
 
@@ -394,7 +394,7 @@ function interpret(model: CompiledPathway, inputs: InterpreterInputs, facts: Fac
                                                                     // an action's override still applies (§6.5)
     results.set(id, resultOf(node, activation, outcome));          // the only write
   }
-  for (const id of model.annotations) results.set(id, annotationResult(id, model, results)); // §4.8, once each
+  for (const id of model.annotationOrder) results.set(id, annotationResult(id, model, results)); // §4.8, once each
   return collect(results);   // questions, red flags, observationsUsed — gathered from results
 }
 ```
@@ -455,10 +455,15 @@ One pass over ≤ 400 nodes (the largest live run) with map lookups. The EP gate
 
 ### 4.8 Annotations
 
-Annotations (Criterion, EvidenceCitation, CodeEntry) are not in `order`. After the semantic pass, each is
-written once: `activation = any(activation of its owners)`, so shared evidence shows as active if any
-owner is. Owners are always semantic nodes, so they are final by then, whatever the ids or input order.
-A `references` edge (`SELECTS_BRANCH`) never contributes to anything's activation.
+Annotations (Criterion, EvidenceCitation, CodeEntry) are not in `order`. After the semantic pass they are
+written once each, in `annotationOrder`: a topological order of the `owns` edges, with ties broken by
+nodeId. The rule is `activation = any(activation of its owners)`.
+- An owner is either a semantic node, final after the first pass, or an annotation earlier in
+  `annotationOrder`. So `DecisionPoint → Criterion → EvidenceCitation` chains and shared evidence always
+  read final owners, whatever the ids or input order.
+- No semantic node reads an annotation: V8 forbids `depends_on` on one. So deferring annotations never
+  breaks §4.4's final-input guarantee.
+- A `references` edge (`SELECTS_BRANCH`) never contributes to anything's activation.
 
 ### 4.9 Session temporal preflight
 
@@ -541,15 +546,17 @@ temporal defaults, and it performs no I/O.
 - `initialPatientContext` entries (source `chart`), then `additionalContext` entries (source `context`),
   in recorded order;
 - then **provider assertions**, appended with a strictly increasing `seq`. They are stored in the parent's
-  `additional_context` JSON as `providerAssertions: [{ datum, value, seq, assertedAt }]` (no migration:
-  the column is JSONB);
+  `additional_context` JSON as `providerAssertions: [{ datum, value, seq, clinicalTime, assertedAt }]`.
+  - `clinicalTime` is the session's pinned `evaluationAsOf`.
+  - `assertedAt` is the wall-clock time of entry, for audit only.
+  - No migration: the column is JSONB.
 - nothing is dropped. Two entries identical in every field collapse; any difference keeps both.
 
 ### 5.4 Selection rule for provider assertions (§11.2 Q6)
 
 For `scalar(datum)`:
 1. If there is a provider assertion for the datum, the one with the highest `seq` is the value
-   (provenance `provider`, `assertedAt = evaluationAsOf`).
+   (provenance `provider`, at `clinicalTime`).
 2. Otherwise the existing TH/TH04 selection applies unchanged: latest valid, dated, in-horizon; undated
    plus any other candidate is `ambiguous`; a day-precision fact straddling the clock is `temporal`.
 
@@ -558,8 +565,14 @@ For `scalar(datum)`:
   wall-clock time it was entered. The wall-clock time is kept separately as `assertedAt`, for audit only.
 - For `scalar` reads, the latest assertion wins under **every** horizon. A value at the evaluation clock
   is inside any horizon, which all end at the clock.
-- For `series` reads (aggregates), an assertion is one dated point at `clinicalTime`, subject to the
-  normal series rules. It never replaces the chart series.
+- For `series` reads (aggregates), the **effective assertion view** contributes one point per datum:
+  the highest-`seq` assertion, at `clinicalTime`.
+  - A correction, or a repeated identical answer, replaces the earlier assertion; it is not a second
+    measurement. Without this, a correction 7 → 17 at the same `clinicalTime` makes trend/delta
+    `AMBIGUOUS_SERIES_ORDER` (`select-facts.ts:351-364`), and count sees two readings.
+  - No later clinical timestamp is manufactured to order corrections.
+  - Chart observations are unaffected and keep TH04's tie policy.
+  - The full assertion history stays in the ledger for audit.
 - `member` reads are unaffected. Assertions are scalar or boolean values, not codes.
 
 A clinician answering "what is the current haemoglobin?" is asserting the current value. Rule 1 makes that
@@ -664,7 +677,7 @@ For an ACTIVE gate with arms `A` (one arm, or several with `when`):
 | condition | T | all arms OPEN (fan-out, Q13) | INCLUDED | — |
 | condition | F | all CLOSED | GATED_OUT | — |
 | condition | U, askable, `on_unresolved: ask` | all PENDING | PENDING_QUESTION | one per DatumRef |
-| condition | U, otherwise | `skip`: all CLOSED. `traverse` (single arm only, V5): OPEN, flagged `opened_by_default` | GATED_OUT / INCLUDED | — |
+| condition | U, otherwise | `skip`: all arms CLOSED. `traverse`: all arms OPEN (fan-out), flagged `opened_by_default` | GATED_OUT / INCLUDED | — |
 | question | no answer | all PENDING | PENDING_QUESTION | the gate's own |
 | question | answered | single: BOOLEAN true → OPEN, false → CLOSED; NUMERIC/SELECT any value → OPEN (DS06:347, unchanged). multi: route | INCLUDED / GATED_OUT | — |
 | prior_result | every dependency matches | all arms OPEN (fan-out, Q13) | INCLUDED | — |
@@ -713,8 +726,15 @@ selects the arm whose `when` matches. Exactly one match → that arm OPEN, the o
 plus red flag `unroutable_decision`. Because V5 requires a total `when` mapping on routing gates, zero or several matches cannot occur in a
 compiled model; the red flag stays as a defensive check.
 
-**Non-routing gates fan out** (Q13). A condition or prior_result gate yields no routing value, so all of
-its arms share its outcome: open together, closed together, or pending together.
+**Non-routing gates fan out** (Q13). A condition or prior_result gate yields no routing value, so every
+row of §6.2 applies to all of its arms together:
+- T → all OPEN;
+- F → all CLOSED;
+- askable U → all PENDING;
+- non-askable U → all CLOSED under `skip`, all OPEN under `traverse`.
+
+There is no case in which its arms differ. Routing gates (question, llm) keep their own rules and are never
+fanned out.
 - Today the importer rejects `when`-less multi-target condition gates (`validator.ts:273-299`), and it
   rejects multi-branch routing on `patient_attribute` (`branch-routing-validation.test.ts:188`).
 - The engine treats any gate with more than one `BRANCHES_TO` as routing, so such a gate takes no arm
@@ -754,6 +774,7 @@ interface NodeResult {
   activation: { state: 'ACTIVE' | 'PENDING' | 'INACTIVE'; causes?: Cause[] };   // new
   arms?: Record<ArmId, 'OPEN' | 'CLOSED' | 'PENDING'>;                           // new: gates and choices
   truth?: Truth;                                                                  // new: condition gates (§5.2)
+  provenance?: { supportingGuards: ArmRef[]; blockingGuards: ArmRef[] };          // new: §7.8 (stagesOf and displayParent come from the model)
   eligibility: { status: NodeStatus; reasonCode: ReasonCode; reason?: string; decidedBy: 'pathway' | 'override' };
   disposition: { status: NodeStatus; withheldBy?: 'safety' | 'conflict'; findingIds?: string[]; reason?: string }; // EP C2
   confidence?: number;
@@ -852,18 +873,55 @@ Today each uses its own node-type set (`care-plan-generator.ts:74-79`, `types.ts
 
 It is never a safety candidate and never withheld.
 
-**Two projections replace one.** They are in `care-plan-projection.ts`:
-- `projectInterventions(results)`: `isPlanAction` results only. The single-path generator
-  (`care-plan-generator.ts:180`) and `materializeCarePlan` consume it. A constraint can therefore never
-  become an order.
-- `projectConstraints(results)`: `constraint` results whose activation is ACTIVE, with their role
-  (`contraindicated` / `avoid`) and drug name. An inactive constraint vetoes nothing.
+**One complete projection, with typed outputs.** It replaces `projectResolutionToCarePlan`
+(`care-plan-projection.ts`):
 
-**`composeRun` adapter.** The merge's input contract is unchanged: `ResolvedCarePlan.medications` holds
-contraindicated/avoid entries, from which `care-plan-merge.ts:422-456` builds the hard-constraint set. The
-adapter is explicit: `toResolvedCarePlan(interventions, constraints)` emits
-`medications = interventions.medications ++ constraints.map(asRoleMedication)`. The merge algorithm is
-untouched.
+```ts
+interface PlanProjection {
+  interventions: { medications; labs; imaging; procedures; guidance };     // isPlanAction only
+  constraints:   { name; role: 'contraindicated' | 'avoid'; nodeId }[];    // ACTIVE constraint results
+  content:       { schedules; qualityMetrics };                            // ACTIVE item results
+  goals:         { stageId; title }[];                                     // §7.8
+  catchUpItems; evidenceTrail; dataGapHints;                               // as today, derived per §7.8
+}
+```
+
+- **Interventions.** The single-path generator (`care-plan-generator.ts:180`) consumes
+  `interventions` and `goals`. A constraint can therefore never become an order.
+- **Constraints.** An inactive constraint is absent from `constraints`, so it vetoes nothing.
+- **Content.** Schedules and quality metrics come from `item` results. Today's projection supplies them
+  (`care-plan-projection.ts:98-107`) and the run merge carries them. This keeps them; it does not add the
+  deferred exhaustive materialization.
+
+**`composeRun` adapter.** The merge's input contract is unchanged, and the adapter is explicit:
+`toResolvedCarePlan(projection)` emits a `ResolvedCarePlan` with
+`medications = interventions.medications ++ constraints.map(asRoleMedication)` (so
+`care-plan-merge.ts:422-456` still builds the hard-constraint set), and with labs, imaging, procedures,
+guidance, schedules, quality metrics, catch-up items, evidence trail and data-gap hints copied from the
+projection. The merge algorithm is untouched.
+
+**Run materialization is unchanged in source.** `materializeCarePlan` keeps consuming the final composed
+plan: selected conflicts, provider write-ins, safety withholding. It never regenerates from
+pre-composition action lists.
+
+### 7.8 Provenance (replaces traversal parents)
+
+`parentNodeId` today means "the node whose arrival wrote this one" (first writer). The generator uses it
+for stage goals (`care-plan-generator.ts:82-99`); projection uses it for evidence and data-gap attribution
+(`care-plan-projection.ts:163-213`). With several containers and guards there is no single such parent,
+and picking one would bring order dependence back.
+
+The compiler and interpreter provide explicit relations instead:
+
+| Relation | Defined by | Used for |
+|---|---|---|
+| `stagesOf(n)` | compile: every Stage reachable backwards from n along `contains` edges, sorted | **Goals.** A Stage gets a goal iff it is ACTIVE and some `isPlanAction` result has it in `stagesOf`. A normal Stage → Step → action keeps its goal |
+| `supportingGuards(n)` | result: the OPEN arms, on n or on its containers, that its ACTIVE activation actually used | **Evidence trail.** Only gates that opened the way are presented as supporting evidence; a sibling gate that merely shares a container is not |
+| `blockingGuards(n)` | result: the `causes` of an INACTIVE or PENDING activation (§3.4) | **Data-gap hints.** "This action would apply if gate G opened" |
+| `displayParent(n)` | compile: the first container by nodeId, else the first guard's controller | **UI layout only.** Documented as display-only; no clinical or projection code may read it |
+
+All four are functions of the compiled model plus results, so they are stable under node and edge
+permutation (P1).
 
 ---
 
@@ -904,7 +962,7 @@ Under EP's "no users" constraint (EP D8) they are purged at deploy. No compatibi
 - no duplicate questions;
 - a missing trimester is now asked for;
 - previewing a draft that does not compile shows the compile errors. Today that affects anemia 1.1–1.3
-  (legacy dialect) and GHTN (multi-arm gates without `when`).
+  (legacy dialect) and GHTN (multi-target question gates without `when`).
 
 **No clinical logic moves into resolvers or clients.** Resolvers keep boundary validation only (the answer is
 of the right type for the question), as EP §4 specifies.
@@ -1060,7 +1118,7 @@ fails the phase.
 | C7 | One datum identity for questions and answers | F-2, F-6 | none on live graphs (no vitals; one form per datum) |
 | C8 | `ESCALATES_TO` is not traversed (Q7) | I-12 | chronic-htn (DRAFT): methyldopa/hydralazine no longer auto-included; anemia `med-2` still reached via `step-3-2` |
 | C9 | `REQUIRES` is not traversed; scoring propagates over `contains ∪ guards` | I-13 | GHTN (DRAFT) confidences change |
-| C10 | Invalid graphs are refused at compile, not evaluated to a silent false | F-7, F-8, I-7, I-10 | anemia 1.1–1.3 and GHTN (DRAFTs) cannot be previewed until fixed |
+| C10 | Invalid graphs are refused at compile, not evaluated to a silent false | F-7, F-8, I-7, I-10 | anemia 1.1–1.3 (legacy dialect) and GHTN cannot be previewed until fixed. GHTN still fails on its multi-target **question** gates without `when` (`gate-aspirin-indicated`, `gate-htn-confirmed`); its compound `gate-htn-diagnosed` becomes valid under C18 |
 | C11 | A pending choice keeps its non-arm children | I-8 | `gate-iron-deficient`, `crit-1a/1b` appear while `dp-1` pends |
 | C12 | A pending dependency pends | discovery B D-15 | none (no live `depends_on`) |
 | C13 | No model call for an answered LLM gate; an observation budget replaces the traversal timeout | discovery C §5 | none (no live LLM gates) |
@@ -1068,6 +1126,8 @@ fails the phase.
 | C15 | `constraint` kind (§7.7): an ACTIVE contraindicated/avoid medication is never an order, a candidate or an `EMPTY_PLAN` satisfier, and still vetoes the same drug in other children; an inactive one vetoes nothing | discovery D #4 | GHTN (DRAFT) `med-6` |
 | C16 | `all_of` mandate removed (it only reached containers) | — | none |
 | C17 | `legacy-v0` removed (Q9) | — | none (all 16 live sessions are `v1`) |
+| C18 | A non-routing gate with several arms fans out (Q13) instead of opening none | discovery B §3.1 | GHTN (DRAFT) `gate-htn-diagnosed` opens `stage-3`, `step-5-2`, `step-5-3` together |
+| C19 | Stage goals, evidence and data-gap attribution come from compiled relations, not first-writer parents (§7.8) | review 2 #4 | goals/evidence stable under permutation; a sibling gate is no longer cited as evidence |
 
 ### 10.2 Differential harness
 
@@ -1118,9 +1178,16 @@ dependencies, choices of every mode) and generated patients.
   5. every compiled node has exactly one result;
   6. **round trip:** answering any askable question with a valid value removes that question on the next
      evaluation.
-- **P4 — hash relations.** A presentation-only change (reason text, confidence value without a status
-  change) leaves `resultHash` unchanged. Any change to a status, disposition, blocker, question, finding
-  or projection changes it.
+- **P4 — hash relations.** For a fixed compiled model:
+  - A presentation-only change leaves `resultHash` unchanged. That covers reason text, a confidence value
+    without a status change, and the fields §7.5 excludes (tentative reasoning and confidence, blocker
+    descriptions, finding `meta`).
+  - A change to any hashed field changes it: statuses, reason codes, disposition, `decidedBy`, blockers
+    (type and nodes), questions (without tentative fields), red flags, and safety findings (without `meta`).
+  - **The projection is not hashed separately.** It is a function of the hashed fields plus the compiled
+    model, so for a fixed model a projection change implies a hashed-field change. P4 checks that
+    implication. A model change is caught separately: it changes `graphFingerprint`, and today's
+    `SESSION_GRAPH_CHANGED` refuses the session.
 - **Generation contract tests.** An ACTIVE contraindicated Medication:
   - produces no single-path order;
   - does not satisfy `EMPTY_PLAN`;
@@ -1129,6 +1196,16 @@ dependencies, choices of every mode) and generated patients.
   An INACTIVE one vetoes nothing. A withheld action never becomes an intervention. The harness must fail
   if a constraint is dropped or a withheld action is generated, even when eligibility and questions are
   unchanged.
+- **Review-2 acceptance tests:**
+  - `DecisionPoint → Criterion → EvidenceCitation/CodeEntry` chains, shared evidence and adversarial ids:
+    every annotation reads final owners, and `depends_on` on an annotation is a compile error.
+  - Scalar, trend, delta and count reads treat a correction or a repeated assertion as one value.
+  - An included Schedule and QualityMetric survive child-to-run projection. Adding a constraint changes
+    only medication semantics.
+  - Goals and evidence are stable under permutation for reconverging actions, and sibling gates are not
+    cited.
+  - A multi-target non-routing gate gives one defined outcome for T, F, askable U, and non-askable U
+    under skip and under traverse.
 - **Rewritten pinned tests:** the tests that pin defects assert the corrected behaviour instead —
   `pipeline-sequence-vs-fresh.test.ts` #9/#10, `pipeline-traversal-overrides.test.ts:37-48`,
   `eager-reachability.test.ts:108`. New tests cover an override on a gate or choice (refused),
@@ -1150,9 +1227,9 @@ Each phase merges with the suite green (the 9 known scorer failures excepted, as
 | Phase | Scope | Acceptance |
 |---|---|---|
 | 1. Compiler | `CompiledPathway`, V1–V10, DatumRef resolution. Wired into import (report), activation/reactivation (enforce) and `loadEvaluationEnv` (compile + cache; code map read in the snapshot). The runtime still uses `TraversalEngine`. | Every stored graph compiles or has listed errors; activating a legacy-dialect draft is refused; code-map change visible without restart; compile time recorded |
-| 2. Facts and conditions | Fact ledger, `FactAccess`, condition IR, one evaluator; `legacy-v0` removed; questions keyed by DatumRef; `answerChange` writes assertions. Wired into the *existing* engine's gate evaluation. | F-1…F-9 tests RED→GREEN; differential shows only C5, C6, C7, C17 |
-| 3. Interpreter | Scheduler, activation join, annotation post-pass, gate/choice/action evaluators, temporal preflight; `TraversalEngine` deleted. | Differential shows only §10.1 classes; P1–P4 green; perf gate |
-| 4. Boundaries | Override restriction, `PATHWAY_NOT_EVALUABLE`, `assertPatientDatum` + admin panel change, hash change (C14), `isPlanAction` + split projections + `composeRun` adapter (C15), scoring graph (C9), observation budget (C13). | EP suites green with updated expectations; admin flows exercised against a local stack |
+| 2. Facts and conditions | Fact ledger, `FactAccess` (incl. the effective assertion view for series), condition IR, one evaluator; `legacy-v0` removed; questions keyed by DatumRef; **`assertPatientDatum` mutation and the admin panel switch** (§5.7), `answerPendingDecision` refusing data questions. Wired into the *existing* engine's gate evaluation. | F-1…F-9 tests RED→GREEN; differential shows only C5, C6, C7, C17 |
+| 3. Interpreter | Scheduler, activation join, annotation pass over `owns`, gate/choice/action evaluators (incl. fan-out), temporal preflight; `TraversalEngine` deleted. | Differential shows only §10.1 classes; P1–P4 green; perf gate |
+| 4. Boundaries | Override restriction, `PATHWAY_NOT_EVALUABLE`, hash change (C14), `isPlanAction` + `PlanProjection` + `composeRun` adapter (C15), provenance relations (C19), scoring graph (C9), observation budget (C13). | EP suites green with updated expectations; admin flows exercised against a local stack |
 | 5. Release | Rehearsal on a full copy of live; purge preview sessions; deploy per the runbook; before/after capture **plus P3 on the live result**; then delete the differential harness (its cases already kept as contract tests). | P3 holds on live; every before/after difference is in §10.1 |
 
 Phases 1 and 2 are independently useful. Phase 1 alone closes the activation gap and the code-map snapshot
@@ -1234,7 +1311,7 @@ clinical sign-off. "Product" means it changes what an author or provider can do.
 | **Q7** (clinical) | What does `ESCALATES_TO` mean? | **"Alternative if the first-line is unsuitable" — never auto-included.** Recorded on the result for display. Automatic substitution (for example when first-line is withheld by safety) is a follow-up. | Keep traversing: second-line drugs are proposed alongside first-line whenever first-line is reached. |
 | **Q8** (clinical, **outside this spec**) | Should confidence decide whether an action is included, and with which patient semantics? | Not changed here. But note: scorers rate a drug the patient is *not already taking* at 0 on match quality, so all four anemia medications are EXCLUDED at 0.30–0.45 in every live session. As scored, the active pathway can never recommend a new medication. | — (needs its own decision; blocks nothing here) |
 | **Q9** (product) | Remove `legacy-v0`? | **Yes** (§11.1 E). | Keep: the condition IR needs a legacy adapter and the two "missing" semantics survive for that version. |
-| **Q10** (product) | Drafts that do not compile (anemia 1.1–1.3 legacy dialect; GHTN multi-arm gates without `when`) | **Refuse preview and activation until re-authored**; archive 1.1–1.3 (1.4–1.7 supersede them). | Keep evaluating them: every legacy condition is a silent false. |
+| **Q10** (product) | Drafts that do not compile (anemia 1.1–1.3 legacy dialect; GHTN multi-target question gates without `when`) | **Refuse preview and activation until re-authored**; archive 1.1–1.3 (1.4–1.7 supersede them). | Keep evaluating them: every legacy condition is a silent false. |
 | **Q11** (clinical, confirm) | A tentative LLM verdict opens its safe-default arm while the question is pending | **Keep** (EP D3, DS06:266). Readiness blocks until confirmed. | Pend the whole gate instead: nothing downstream shows until confirmed. |
 | **Q13** (product, authoring) | A condition or prior_result gate with several `BRANCHES_TO` targets | **Fan out: all targets share the gate's outcome** (§6.4). Matches the only stored case (GHTN `gate-htn-diagnosed`). | Keep today's restriction: such gates are invalid, and authors must add a container for the targets or duplicate the gate. |
 | **Q12** (confirm) | `SELECTS_BRANCH` stays display-only | **Keep** (DS05 #5). The DS W3 text promising criterion routing was narrowed by DS05. | Criterion evaluation is a separate feature. |
@@ -1267,4 +1344,18 @@ implementation". All findings accepted and verified against code.
 | Effective-context projection | §5.6: superseded entries for an asserted datum are removed from the projection |
 | Assertion temporal scope | §5.4 and Q6a |
 | Discovery evidence | committed under `docs/superpowers/records/evaluation-interpreter/` |
+
+**Architecture review round 2, 2026-09-26** (of `0443da0`): "materially stronger; revise remaining
+contracts". All findings accepted; 1, 3, 4 verified against code and the committed graph exports.
+
+| Finding | Resolution |
+|---|---|
+| 1 (P2) Annotation owners can be annotations; dependencies on annotations | `annotationOrder` topological over `owns` (§4.8); V2 `owns` acyclic; V8 forbids `depends_on` on annotations (no stored graph affected) |
+| 2 (P2) Corrections become conflicting series points | §5.4 effective assertion view: one point per datum (highest `seq`); history kept for audit; no manufactured timestamps |
+| 3 (P2) Replacement projections dropped schedules/quality metrics | §7.7 `PlanProjection` with interventions, constraints, content, goals and metadata; adapter copies all sections; run materialization still consumes the composed plan |
+| 4 (P2) No replacement for traversal parents | §7.8 `stagesOf`, `supportingGuards`, `blockingGuards`, display-only `displayParent`; C19 |
+| 5 (P2) Fan-out contract incomplete | §6.2/§6.4: fan-out applies to every outcome row incl. default traverse; C18; C10/Q10/client text corrected (GHTN still blocked by question gates) |
+| Hash contract | P4 restated: projection covered by implication for a fixed model; model changes caught by `graphFingerprint`; excluded fields exempt |
+| Phase ordering | `assertPatientDatum` and the admin switch move to phase 2 |
+| Assertion timestamps | ledger records `clinicalTime` and `assertedAt` separately; rule 1 corrected |
 
