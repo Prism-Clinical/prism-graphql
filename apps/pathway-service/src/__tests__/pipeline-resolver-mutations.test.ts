@@ -226,6 +226,20 @@ describe('answerPendingDecision — an escalated datum request', () => {
     expect(harness.tables.events.at(-1)).toMatchObject({ eventType: 'PROVIDER_ASSERTED_DATUM', triggerData: expect.objectContaining({ datumKey: 'LOINC:718-7', value: 9.1 }) });
   });
 
+  it('is not dropped as a duplicate of a valueless, undated entry for the same lab (live smoke test, 2026-09-25)', async () => {
+    // The composer can send a lab selected without a value or a date.
+    const id = await start('pw-hb', { labResults: [{ code: '718-7', system: 'LOINC', display: 'Hemoglobin' }] }, 'v1');
+    const [asked] = harness.session(id).pendingQuestions;
+    expect(asked.datumKey).toBe('LOINC:718-7');
+
+    await answer(id, asked.gateId, { numericValue: 9.1 }, 'v1');
+
+    const s = harness.session(id);
+    expect(s.pendingQuestions).toHaveLength(0);
+    expect(s.resolutionState.get('gate-anaemic')!.status).toBe(NodeStatus.INCLUDED);
+    expect(s.resolutionState.get('gate-severe')!.status).toBe(NodeStatus.GATED_OUT);
+  });
+
   it('refuses a non-numeric answer', async () => {
     const id = await start('pw-hb', {}, 'v1');
     await expect(answer(id, harness.session(id).pendingQuestions[0].gateId, { booleanValue: true }, 'v1')).rejects.toThrow(/numericValue/);
