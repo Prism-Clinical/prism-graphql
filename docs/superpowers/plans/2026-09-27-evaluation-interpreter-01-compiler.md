@@ -24,6 +24,13 @@ It returns `{ ok: true, model }` or `{ ok: false, errors }`. Stored pathways are
 - a bounded, canonical-key cache (Task 7);
 - Q13 guidance names legal graph shapes (Task 3).
 
+**Second review (of `d8711e2`)** added:
+- conflicting code-map aliases are an error when read (Task 4);
+- operands are validated against operator and datum type (Task 4);
+- counting and bucket-existence keep their own semantics (Tasks 3–4);
+- the lock tests synchronize on observed lock state (Task 8);
+- the Q13 "all apply" guidance is legal for Step and Stage targets (Task 3).
+
 **Spec:** `docs/superpowers/specs/2026-09-26-evaluation-interpreter-design.md` (branch `docs/evaluation-interpreter-design` @ `5601bc4`) — §3 (execution model), §3.5 V1–V10, §4.8 (annotation order), §5.1 (DatumRef), §8, §10.5 phase 1, §11.2 Q3/Q9/Q10/Q13 (decided 2026-09-27).
 
 ## Global Constraints
@@ -551,7 +558,7 @@ describe('compileGate', () => {
     const { errors } = gate({ gate_type: 'patient_attribute', default_behavior: 'skip', condition: LAB }, [arm('g', 'step-a'), arm('g', 'step-b')]);
     expect(errors).toEqual([expect.objectContaining({
       code: 'MULTI_TARGET_NON_ROUTING_GATE',
-      message: expect.stringMatching(/guard one Step that contains them.*guard one Step that contains a DecisionPoint/),
+      message: expect.stringMatching(/use one gate per target, or put the target Steps under one Stage and guard that Stage.*guard one Step that contains a DecisionPoint/),
     })]);
   });
 
@@ -614,6 +621,7 @@ describe('conditionProblem', () => {
     [{ attribute: 'allergy.metronidazole', operator: 'exists' }],
     [LAB],
     [{ field: 'conditions', operator: 'includes_code', value: 'O99.0*', system: 'ICD-10' }],
+    [{ field: 'labs', operator: 'exists', value: '' }],
   ])('accepts %j', (c) => expect(conditionProblem(c)).toBeNull());
 });
 
@@ -664,6 +672,7 @@ export function conditionProblem(c: unknown): string | null {
   }
   if (typeof r.field === 'string') {
     if (typeof r.operator !== 'string') return `the condition on ${r.field} has no operator`;
+    if (r.operator === 'exists') return null; // bucket existence: the adapter ignores code and system (condition-adapter.ts)
     if (typeof r.value !== 'string' || r.value === '') return `the condition on ${r.field} (${r.operator}) needs a code value`;
     if (SCALAR_CODED.has(r.operator) && !(typeof r.threshold === 'number' && Number.isFinite(r.threshold))) {
       return `the condition on ${r.field} ${r.value} (${r.operator}) needs a numeric threshold`;
@@ -700,10 +709,10 @@ export function compileGate(
     for (const a of arms) if (a.when === undefined) err('MISSING_WHEN', `the branch to "${a.target}" needs a \`when\`, because the gate routes to ${arms.length} targets`);
   }
   if (!routing && arms.length > 1) {
-    // BRANCHES_TO may only target a Step or Stage (VALID_EDGE_ENDPOINTS), so both remedies are Step-shaped.
+    // BRANCHES_TO targets only Steps/Stages and only a Stage contains Steps (VALID_EDGE_ENDPOINTS), so these are the legal rewrites.
     err('MULTI_TARGET_NON_ROUTING_GATE',
       `a ${String(props.gate_type)} gate is evaluated from the chart and must guard exactly one target, but it has ${arms.length} ` +
-      `(${arms.map((a) => a.target).join(', ')}). If all of them apply, guard one Step that contains them. ` +
+      `(${arms.map((a) => a.target).join(', ')}). If all of them apply, use one gate per target, or put the target Steps under one Stage and guard that Stage. ` +
       `If they are alternatives, guard one Step that contains a DecisionPoint whose branches go to them.`);
   }
 
@@ -790,7 +799,7 @@ export function compileChoice(
 - [ ] **Step 4: Run the test, then typecheck**
 
 Run: `npm test --prefix $W/apps/pathway-service -- --runInBand src/__tests__/compiler-gates.test.ts`
-Expected: PASS (17 tests).
+Expected: PASS (18 tests).
 Run: `$W/node_modules/.bin/tsc -p $W/apps/pathway-service/tsconfig.json --noEmit && echo tsc-clean`
 Expected: `tsc-clean`.
 
@@ -819,7 +828,8 @@ git -C $W commit -m "feat(pathway-service): compile gates and decision points �
   - `collectEncounterAnchorRequirements`, `PathwayTemporalDefaults` (`services/resolution/temporal/cascade`);
   - `TemporalContextError` (`services/resolution/temporal/evaluation-context`).
 - Produces:
-  - `resolveDatums(gateId: string, conditions: Record<string, unknown>[], codeMap: AttributeCodeMap, datums: Map<DatumKey, DatumSpec>, errors: CompileError[]): void`;
+  - `buildDatumRegistry(codeMap: AttributeCodeMap): DatumRegistry`, where `DatumRegistry = { types: Map<DatumKey, 'number' | 'boolean' | 'string'>; conflicts: Map<DatumKey, string> }`. It is built once per compilation;
+  - `resolveDatums(gateId: string, conditions: Record<string, unknown>[], codeMap: AttributeCodeMap, registry: DatumRegistry, datums: Map<DatumKey, DatumSpec>, errors: CompileError[]): void`;
   - `checkTemporal(nodes: GraphNodeIn[], codeMap: AttributeCodeMap, temporalDefaults: PathwayTemporalDefaults, errors: CompileError[]): boolean`, which returns `requiresEncounterAnchor`.
 
 **Datum keys** (spec §5.1):
@@ -828,19 +838,39 @@ git -C $W commit -m "feat(pathway-service): compile gates and decision points �
 - `vital:<path>` for coded `vitals` and `vitals.*` attributes;
 - `attribute:<name>` for `patient.*`.
 
-**Which conditions read a datum.**
-- Only scalar and series reads create one: coded `greater_than`, `less_than`, `count_in_window`, `trend_up`, `trend_down` and `delta_from_baseline` on labs or vitals; and every attribute condition.
-- Coded `includes_code`, `equals` and `exists` are **membership** queries. They produce no datum, because a membership read does not prove the value type (review of `c7985ec`, finding 3). Coded `conditions`, `medications` and `allergies` never produce one.
+**Which conditions read a datum.** Only reads of a value create one:
+- coded `greater_than`, `less_than`, `trend_up`, `trend_down` and `delta_from_baseline` on labs or vitals. These **require a numeric value**;
+- every attribute condition.
 
-**A datum's value type comes from a registry, never from the first reader.** For a lab or allergy key, it is the code-map row with that `(system, code)`, whichever alias reads it. With no row, a lab is `number`. Vitals are `number`. Patient attributes come from `KNOWN_PATIENT_ATTRIBUTES`. Two cases are compile errors (`DATUM_TYPE`):
-- a numeric comparison (`greater_than`, `greater_or_equal`, `less_than`, `less_or_equal`, or any coded scalar/series operator) on a datum whose type is not `number`;
-- two readers declaring different types for one key. The registry makes this impossible today; the check is kept so a future alias cannot silently pick a winner.
+These create no datum:
+- coded `includes_code`, `equals` and `exists`, which are **membership** queries;
+- coded `count_in_window`, which counts dated occurrences and does not need a value of any type (review of `d8711e2`, finding 3). A count is never askable, so it needs no datum;
+- coded `conditions`, `medications` and `allergies`.
+
+**A datum's value type comes from a registry, never from the first reader.**
+- For a lab or allergy key, the type is the code-map row with that `(system, code)`, whichever alias reads it. With no row, a lab is `number`.
+- Vitals are `number`.
+- Patient attributes come from `KNOWN_PATIENT_ATTRIBUTES`.
+
+The registry is built once per compilation. Two attribute aliases mapping to one code with **different** types is recorded as a conflict, never resolved by picking one. The schema allows it: migration 062 makes only `attribute_name` unique.
+
+These are compile errors (`DATUM_TYPE`):
+- reading a conflicted key (the message names the aliases and their types);
+- a numeric read (an ordered attribute comparison, or a coded numeric operator) on a datum whose type is not `number`.
+
+**Operands are validated against the operator and the datum's type** (`PAYLOAD`):
+- `greater_than` / `greater_or_equal` / `less_than` / `less_or_equal` need a finite number;
+- `equals` / `not_equals` need a value of the datum's type;
+- `in` needs a non-empty list whose members are all of the datum's type;
+- `exists` needs no operand.
+
+Nothing is coerced: `"2"` does not equal `2`, matching `compareScalar`'s strict `===`.
 
 - [ ] **Step 1: Write the failing test**
 
 ```ts
 // apps/pathway-service/src/__tests__/compiler-datums-temporal.test.ts
-import { resolveDatums } from '../services/compiler/datums';
+import { buildDatumRegistry, resolveDatums } from '../services/compiler/datums';
 import { checkTemporal } from '../services/compiler/temporal';
 import type { CompileError, DatumKey, DatumSpec } from '../services/compiler/model';
 import { buildCodeMap } from '../services/resolution/attribute-code-map';
@@ -851,10 +881,11 @@ const codeMap = buildCodeMap([
   { attributeName: 'allergy.metronidazole', namespace: 'allergy', system: 'RXNORM', code: '6922', valueType: 'boolean' },
 ]);
 type Reader = [string, Record<string, unknown>[]];
-const resolve = (readers: Reader[]) => {
+const resolve = (readers: Reader[], map = codeMap) => {
   const datums = new Map<DatumKey, DatumSpec>();
   const errors: CompileError[] = [];
-  for (const [gate, conditions] of readers) resolveDatums(gate, conditions, codeMap, datums, errors);
+  const registry = buildDatumRegistry(map);
+  for (const [gate, conditions] of readers) resolveDatums(gate, conditions, map, registry, datums, errors);
   return { datums: [...datums.values()].sort((a, b) => (a.key < b.key ? -1 : 1)), errors };
 };
 
@@ -894,6 +925,50 @@ describe('resolveDatums', () => {
   it('rejects a numeric comparison on a non-numeric datum, whichever alias reads it', () => {
     expect(resolve([['g', [{ field: 'labs', operator: 'less_than', value: '10331-7', system: 'LOINC', threshold: 1 }]]]).errors.map((e) => e.code)).toEqual(['DATUM_TYPE']);
     expect(resolve([['g', [{ attribute: 'lab.rh_factor', operator: 'greater_than', value: 1 }]]]).errors.map((e) => e.code)).toEqual(['DATUM_TYPE']);
+  });
+
+  it('counting a string lab and bucket existence need no numeric value; trend on a string lab does', () => {
+    expect(resolve([['g', [{ field: 'labs', operator: 'count_in_window', value: '10331-7', system: 'LOINC', window_days: 30, count_threshold: 1 }]]])).toEqual({ datums: [], errors: [] });
+    expect(resolve([['g', [{ field: 'labs', operator: 'exists', value: '' }]]])).toEqual({ datums: [], errors: [] });
+    expect(resolve([['g', [{ field: 'labs', operator: 'trend_up', value: '10331-7', system: 'LOINC' }]]]).errors.map((e) => e.code)).toEqual(['DATUM_TYPE']);
+  });
+
+  it('conflicting alias declarations are an error when read, identically in either code-map order', () => {
+    const rows = [
+      { attributeName: 'lab.rh_factor', namespace: 'lab', system: 'LOINC', code: '10331-7', valueType: 'string' as const },
+      { attributeName: 'lab.rh_alias', namespace: 'lab', system: 'LOINC', code: '10331-7', valueType: 'number' as const },
+    ];
+    const read: Reader[] = [['g', [{ attribute: 'lab.rh_factor', operator: 'equals', value: 'negative' }]]];
+    const forward = resolve(read, buildCodeMap(rows));
+    expect(forward.errors).toEqual([expect.objectContaining({
+      code: 'DATUM_TYPE', message: expect.stringContaining('lab.rh_alias (number), lab.rh_factor (string)'),
+    })]);
+    expect(resolve(read, buildCodeMap([...rows].reverse()))).toEqual(forward);
+    // Agreeing aliases are fine.
+    expect(resolve(read, buildCodeMap(rows.map((r) => ({ ...r, valueType: 'string' as const })))).errors).toEqual([]);
+    // A conflict nobody reads is not an error.
+    expect(resolve([['g', [{ attribute: 'lab.hemoglobin', operator: 'less_than', value: 7 }]]], buildCodeMap([...rows, codeMap.get('lab.hemoglobin')!])).errors).toEqual([]);
+  });
+
+  it.each([
+    [{ attribute: 'patient.trimester', operator: 'less_than', value: 'oops' }],
+    [{ attribute: 'patient.trimester', operator: 'in', value: [{}] }],
+    [{ attribute: 'patient.trimester', operator: 'in', value: [1, '2'] }],
+    [{ attribute: 'patient.trimester', operator: 'equals', value: true }],
+    [{ attribute: 'lab.rh_factor', operator: 'equals', value: 1 }],
+    [{ attribute: 'allergy.metronidazole', operator: 'equals', value: 'yes' }],
+  ])('rejects an operand that does not match its operator and datum type: %j', (c) => {
+    expect(resolve([['g', [c]]]).errors.map((e) => e.code)).toEqual(['PAYLOAD']);
+  });
+
+  it.each([
+    [{ attribute: 'patient.trimester', operator: 'in', value: [1, 3] }],
+    [{ attribute: 'patient.trimester', operator: 'less_or_equal', value: 2 }],
+    [{ attribute: 'lab.rh_factor', operator: 'not_equals', value: 'positive' }],
+    [{ attribute: 'allergy.metronidazole', operator: 'equals', value: true }],
+    [{ attribute: 'allergy.metronidazole', operator: 'exists' }],
+  ])('accepts a correctly typed operand: %j', (c) => {
+    expect(resolve([['g', [c]]]).errors).toEqual([]);
   });
 
   it('rejects an unmapped lab attribute and an unknown patient attribute', () => {
@@ -936,28 +1011,64 @@ import type { AttributeCodeMap } from '../resolution/types';
 import type { CompileError, DatumKey, DatumSpec } from './model';
 
 type ValueType = DatumSpec['valueType'];
-const CODED_READS = new Set(['greater_than', 'less_than', 'count_in_window', 'trend_up', 'trend_down', 'delta_from_baseline']);
-const NUMERIC_ATTRIBUTE_OPS = new Set(['greater_than', 'greater_or_equal', 'less_than', 'less_or_equal']);
+export interface DatumRegistry { types: Map<DatumKey, ValueType>; conflicts: Map<DatumKey, string> }
+
+const NUMERIC_CODED = new Set(['greater_than', 'less_than', 'trend_up', 'trend_down', 'delta_from_baseline']);
+const ORDERED_ATTRIBUTE_OPS = new Set(['greater_than', 'greater_or_equal', 'less_than', 'less_or_equal']);
+const keyOfRow = (row: { namespace: string; system: string; code: string }): DatumKey =>
+  `${row.namespace === 'allergy' ? 'allergy' : 'lab'}:${row.system}:${row.code}`;
+
+/** Once per compilation. Aliases must agree on a code's type; a disagreement is kept as a conflict, never resolved by picking one. */
+export function buildDatumRegistry(codeMap: AttributeCodeMap): DatumRegistry {
+  const declared = new Map<DatumKey, Map<ValueType, string[]>>();
+  for (const row of codeMap.values()) {
+    const byType = declared.get(keyOfRow(row)) ?? new Map<ValueType, string[]>();
+    byType.set(row.valueType, [...(byType.get(row.valueType) ?? []), row.attributeName].sort());
+    declared.set(keyOfRow(row), byType);
+  }
+  const types = new Map<DatumKey, ValueType>();
+  const conflicts = new Map<DatumKey, string>();
+  for (const [key, byType] of declared) {
+    if (byType.size === 1) { types.set(key, [...byType.keys()][0]); continue; }
+    conflicts.set(key, [...byType].map(([t, names]) => names.map((n) => `${n} (${t})`)).flat().sort().join(', '));
+  }
+  return { types, conflicts };
+}
+
+const ofType = (v: unknown, t: ValueType) => (t === 'number' ? typeof v === 'number' && Number.isFinite(v) : typeof v === t);
+
+/** Why an attribute condition's operand cannot be compared with a `t` datum, or null. No coercion. */
+function operandProblem(op: string, value: unknown, t: ValueType): string | null {
+  if (op === 'exists') return null;
+  if (ORDERED_ATTRIBUTE_OPS.has(op)) return typeof value === 'number' && Number.isFinite(value) ? null : `${op} needs a finite number (got ${JSON.stringify(value)})`;
+  if (op === 'in') return Array.isArray(value) && value.length > 0 && value.every((v) => ofType(v, t)) ? null : `in needs a non-empty list of ${t} values (got ${JSON.stringify(value)})`;
+  return ofType(value, t) ? null : `${op} needs a ${t} value (got ${JSON.stringify(value)})`;
+}
 
 export function resolveDatums(
   gateId: string,
   conditions: Record<string, unknown>[],
   codeMap: AttributeCodeMap,
+  registry: DatumRegistry,
   datums: Map<DatumKey, DatumSpec>,
   errors: CompileError[],
 ): void {
-  // The registry: a lab/allergy key's type is its code-map row's, whichever alias reads it.
-  const registry = new Map<DatumKey, ValueType>();
-  for (const row of codeMap.values()) registry.set(`${row.namespace === 'allergy' ? 'allergy' : 'lab'}:${row.system}:${row.code}`, row.valueType);
-
-  const fail = (message: string) => errors.push({ code: 'DATUM_TYPE', nodeId: gateId, message: `Gate "${gateId}": ${message}` });
-  const add = (key: DatumKey, domain: DatumSpec['domain'], fallback: ValueType, numeric: boolean) => {
-    const valueType = registry.get(key) ?? fallback;
-    if (numeric && valueType !== 'number') { fail(`compares ${key} numerically, but it is a ${valueType} value`); return; }
+  const fail = (code: 'DATUM_TYPE' | 'PAYLOAD', message: string) => errors.push({ code, nodeId: gateId, message: `Gate "${gateId}": ${message}` });
+  /** Records the read; returns the datum's type, or null when the read is invalid. */
+  const add = (key: DatumKey, domain: DatumSpec['domain'], fallback: ValueType, numeric: boolean): ValueType | null => {
+    const conflict = registry.conflicts.get(key);
+    if (conflict) { fail('DATUM_TYPE', `${key} is declared with conflicting types by ${conflict}; fix pathway_attribute_code_map`); return null; }
+    const valueType = registry.types.get(key) ?? fallback;
+    if (numeric && valueType !== 'number') { fail('DATUM_TYPE', `compares ${key} numerically, but it is a ${valueType} value`); return null; }
     const d = datums.get(key);
-    if (!d) { datums.set(key, { key, domain, valueType, readBy: [gateId] }); return; }
-    if (d.valueType !== valueType) { fail(`${key} is read as ${valueType} here but as ${d.valueType} elsewhere`); return; }
-    if (!d.readBy.includes(gateId)) { d.readBy.push(gateId); d.readBy.sort(); }
+    if (!d) datums.set(key, { key, domain, valueType, readBy: [gateId] });
+    else if (!d.readBy.includes(gateId)) { d.readBy.push(gateId); d.readBy.sort(); }
+    return valueType;
+  };
+  const checkOperand = (c: Record<string, unknown>, t: ValueType | null) => {
+    if (t === null) return;
+    const p = operandProblem(String(c.operator ?? ''), c.value, t);
+    if (p) fail('PAYLOAD', `condition on "${String(c.attribute)}": ${p}`);
   };
 
   for (const c of conditions) {
@@ -965,31 +1076,31 @@ export function resolveDatums(
     if (typeof c.attribute === 'string') {
       const [ns, ...rest] = c.attribute.split('.');
       const name = rest.join('.');
-      const numeric = NUMERIC_ATTRIBUTE_OPS.has(op);
+      const numeric = ORDERED_ATTRIBUTE_OPS.has(op);
       if (ns === 'lab' || ns === 'allergy') {
         const row = codeMap.get(c.attribute);
         if (!row) {
           errors.push({ code: 'UNMAPPED_ATTRIBUTE', nodeId: gateId, message: `Gate "${gateId}": attribute "${c.attribute}" has no pathway_attribute_code_map row, so it cannot be read` });
           continue;
         }
-        add(`${ns}:${row.system}:${row.code}`, ns, row.valueType, numeric);
+        checkOperand(c, add(keyOfRow(row), ns, row.valueType, numeric));
       } else if (ns === 'vitals') {
-        add(`vital:${name}`, 'vital', 'number', numeric);
+        checkOperand(c, add(`vital:${name}`, 'vital', 'number', numeric));
       } else if (ns === 'patient') {
         const known = KNOWN_PATIENT_ATTRIBUTES.find((p) => p.name === name);
         if (!known) {
           errors.push({ code: 'UNKNOWN_PATIENT_ATTRIBUTE', nodeId: gateId, message: `Gate "${gateId}": "${c.attribute}" is not a known patient attribute (${KNOWN_PATIENT_ATTRIBUTES.map((p) => p.name).join(', ')})` });
           continue;
         }
-        add(`attribute:${name}`, 'attribute', known.valueType, numeric);
+        checkOperand(c, add(`attribute:${name}`, 'attribute', known.valueType, numeric));
       }
       // Other namespaces are rejected by validatePathwayJson (V6).
-    } else if (CODED_READS.has(op) && c.field === 'labs') {
+    } else if (NUMERIC_CODED.has(op) && c.field === 'labs') {
       add(`lab:${String(c.system ?? 'LOINC')}:${String(c.value)}`, 'lab', 'number', true);
-    } else if (CODED_READS.has(op) && c.field === 'vitals') {
+    } else if (NUMERIC_CODED.has(op) && c.field === 'vitals') {
       add(`vital:${String(c.value)}`, 'vital', 'number', true);
     }
-    // Membership (includes_code / equals / exists) and conditions/medications/allergies: no datum (spec §5.1).
+    // Membership, count_in_window, and conditions/medications/allergies: no datum (spec §5.1; review of d8711e2 #3).
   }
 }
 ```
@@ -1027,7 +1138,7 @@ export function checkTemporal(
 - [ ] **Step 4: Run the test, then typecheck**
 
 Run: `npm test --prefix $W/apps/pathway-service -- --runInBand src/__tests__/compiler-datums-temporal.test.ts`
-Expected: PASS (6 tests).
+Expected: PASS (19 tests).
 - If the `horizon` + `window_days` case does not throw, read `temporal/cascade.ts` for the exact rejection TH04 D2 implements, and use that rejected input instead.
 - Do not weaken `checkTemporal`.
 
@@ -1171,6 +1282,28 @@ describe('compilePathway', () => {
     expect(codes(compilePathway({ pathway: withGate(props), codeMap, temporalDefaults: {} }))).toEqual([]);
   });
 
+  it.each([
+    ['a trimester comparison against a string', { attribute: 'patient.trimester', operator: 'less_than', value: 'oops' }],
+    ['an `in` list with a non-scalar member', { attribute: 'patient.trimester', operator: 'in', value: [{}] }],
+  ])('refuses a malformed operand through the public compiler: %s', (_label, condition) => {
+    expect(codes(compilePathway({ pathway: withGate({ gate_type: 'patient_attribute', default_behavior: 'skip', condition }), codeMap, temporalDefaults: {} }))).toContain('PAYLOAD:gate-x');
+  });
+
+  it.each([
+    ['a count over a string-valued lab', { field: 'labs', operator: 'count_in_window', value: '10331-7', system: 'LOINC', window_days: 30, count_threshold: 1 }],
+    ['bucket existence with an empty code', { field: 'labs', operator: 'exists', value: '' }],
+  ])('compiles %s', (_label, condition) => {
+    expect(codes(compilePathway({ pathway: withGate({ gate_type: 'patient_attribute', default_behavior: 'skip', condition }), codeMap, temporalDefaults: {} }))).toEqual([]);
+  });
+
+  it('conflicting code-map aliases fail the same way in either row order', () => {
+    const rows = [...codeMap.values(), { attributeName: 'lab.rh_alias', namespace: 'lab', system: 'LOINC', code: '10331-7', valueType: 'number' as const }];
+    const pathway = withGate({ gate_type: 'patient_attribute', default_behavior: 'skip', condition: { attribute: 'lab.rh_factor', operator: 'equals', value: 'negative' } });
+    const a = compilePathway({ pathway, codeMap: buildCodeMap(rows), temporalDefaults: {} });
+    expect(codes(a)).toEqual(['DATUM_TYPE:gate-x']);
+    expect(compilePathway({ pathway, codeMap: buildCodeMap([...rows].reverse()), temporalDefaults: {} })).toEqual(a);
+  });
+
   it('owns its output: later input edits cannot change an earlier result, and the result cannot be mutated', () => {
     const input = structuredClone(MINIMAL_PATHWAY);
     const r = compilePathway({ pathway: input, codeMap, temporalDefaults: {} });
@@ -1233,7 +1366,7 @@ export function deepFreeze<T>(value: T): T {
 ```ts
 // apps/pathway-service/src/services/compiler/compile.ts
 import { validatePathwayJson } from '../import/validator';
-import { resolveDatums } from './datums';
+import { buildDatumRegistry, resolveDatums } from './datums';
 import { compileChoice, compileGate } from './gates';
 import { edgeKindOf, nodeKindOf } from './kinds';
 import {
@@ -1277,6 +1410,7 @@ export function compilePathway(input: CompileInput): CompileResult {
   const compiled = new Map<string, CompiledNode>();
   const dataDeps = new Map<string, string[]>();
   const datums = new Map<DatumKey, DatumSpec>();
+  const registry = buildDatumRegistry(codeMap);
   for (const n of [...nodes].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))) {
     const kind = kinds.get(n.id);
     if (!kind) continue;
@@ -1285,7 +1419,7 @@ export function compilePathway(input: CompileInput): CompileResult {
       if (!g) continue;
       compiled.set(n.id, { kind, id: n.id, nodeType: 'Gate', properties: n.properties, gate: g.gate, arms: g.arms });
       if (g.gate.type === 'prior_result') dataDeps.set(n.id, g.gate.dependsOn.map((d) => d.nodeId));
-      if (g.gate.type === 'condition') resolveDatums(n.id, g.gate.conditions, codeMap, datums, errors);
+      if (g.gate.type === 'condition') resolveDatums(n.id, g.gate.conditions, codeMap, registry, datums, errors);
     } else if (kind === 'choice') {
       const c = compileChoice(n.id, n.properties, armsOf(n.id), errors);
       compiled.set(n.id, { kind, id: n.id, nodeType: 'DecisionPoint', properties: n.properties, mode: c.mode, arms: c.arms });
@@ -1317,7 +1451,7 @@ export function compilePathway(input: CompileInput): CompileResult {
 - [ ] **Step 5: Run the test, then typecheck**
 
 Run: `npm test --prefix $W/apps/pathway-service -- --runInBand src/__tests__/compiler-compile.test.ts`
-Expected: PASS (11 tests).
+Expected: PASS (16 tests).
 
 **Falsification rules, not adjustments:**
 - If `MINIMAL_PATHWAY` or anemia 1.4 fails, **stop and report the errors to the user.** Anemia 1.4 is the live ACTIVE pathway. Do not relax a rule, and do not edit the fixture, to make it pass.
@@ -1447,6 +1581,7 @@ git -C $W commit -m "fix(pathway-service): read the attribute code map in each s
 // apps/pathway-service/src/__tests__/compiler-stored-input.test.ts
 import { COMPILE_CACHE_CAPACITY, compileCached, compileCacheSize } from '../services/compiler/cache';
 import { compileInputFrom } from '../services/compiler/stored-input';
+import { compilePathway } from '../services/compiler/compile';
 import { pathwayJsonFromStoredGraph } from '../services/import/stored-graph';
 
 const index = {
@@ -1480,6 +1615,17 @@ describe('compileCached', () => {
     expect(compileCached(compileInputFrom(index, nodes, edges, new Map()))).toBe(a);
     const other = compileCached(compileInputFrom(index, nodes, edges, new Map([['lab.x', { attributeName: 'lab.x', namespace: 'lab', system: 'LOINC', code: '1-1', valueType: 'number' }]])));
     expect(other).not.toBe(a);
+  });
+
+  it('a cache hit and a fresh compile agree even when the code map was built in another order', () => {
+    const rows = [
+      { attributeName: 'lab.a', namespace: 'lab', system: 'LOINC', code: '1-1', valueType: 'string' as const },
+      { attributeName: 'lab.b', namespace: 'lab', system: 'LOINC', code: '1-1', valueType: 'number' as const },
+    ];
+    const one = compileInputFrom(index, nodes, edges, new Map(rows.map((r) => [r.attributeName, r])));
+    const two = compileInputFrom(index, nodes, edges, new Map([...rows].reverse().map((r) => [r.attributeName, r])));
+    expect(compileCached(two)).toEqual(compilePathway(two));
+    expect(compileCached(one)).toEqual(compilePathway(one));
   });
 
   it('shares an entry for a reordered copy and stays within capacity', () => {
@@ -2026,6 +2172,15 @@ describePg('activation and draft saves serialize on the pathway row lock (scratc
   let activeId: string;
   let draftId: string;
   const statusOf = async (id: string) => (await pool.query('SELECT status FROM pathway_graph_index WHERE id = $1', [id])).rows[0].status;
+  /** Resolves once some session in this database is waiting on a row lock: observed state, not elapsed time. */
+  async function lockWaiterSeen(): Promise<void> {
+    for (let i = 0; i < 250; i += 1) {
+      const r = await pool.query(`SELECT count(*)::int AS n FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock'`);
+      if (r.rows[0].n > 0) return;
+      await new Promise((res) => setTimeout(res, 20));
+    }
+    throw new Error('no session ever waited on the pathway row lock');
+  }
 
   beforeAll(() => {
     if (!database.includes('scratch') || database === 'prism_db') throw new Error(`refusing database "${database}": set PIPELINE_PG_DATABASE to a scratch database`);
@@ -2050,7 +2205,7 @@ describePg('activation and draft saves serialize on the pathway row lock (scratc
     await saver.query('BEGIN');
     await saver.query('SELECT id, status FROM pathway_graph_index WHERE logical_id = $1 AND version = $2 FOR UPDATE', [logical, '2.0']);
     const activation = Mutation.Mutation.activatePathway({}, { id: draftId }, { pool } as never);
-    await new Promise((r) => setTimeout(r, 200));                       // activation is now waiting on the lock
+    await lockWaiterSeen();                                             // activation is blocked on the saver's lock
     await saver.query(`UPDATE pathway_graph_index SET title = 'broken' WHERE id = $1`, [draftId]);
     await saver.query('COMMIT');
     saver.release();
@@ -2061,13 +2216,17 @@ describePg('activation and draft saves serialize on the pathway row lock (scratc
 
   it('a draft save that arrives while activation holds the lock waits, then finds no DRAFT and is refused', async () => {
     let release!: () => void;
+    let entered!: () => void;
     const gate = new Promise<void>((r) => { release = r; });
-    (loadStoredCompileInput as jest.Mock).mockImplementation(async () => { await gate; return { pathway: MINIMAL_PATHWAY, codeMap: new Map(), temporalDefaults: {} }; });
+    const inCompile = new Promise<void>((r) => { entered = r; });
+    (loadStoredCompileInput as jest.Mock).mockImplementation(async () => { entered(); await gate; return { pathway: MINIMAL_PATHWAY, codeMap: new Map(), temporalDefaults: {} }; });
     const activation = Mutation.Mutation.activatePathway({}, { id: draftId }, { pool } as never);
-    await new Promise((r) => setTimeout(r, 200));                       // activation holds the lock, paused in compile
+    // Compile is entered only after the lock is held; fail fast if activation ends without getting there.
+    await Promise.race([inCompile, activation.then(() => { throw new Error('activation finished before compiling'); })]);
     const saver = await pool.connect();
     await saver.query('BEGIN');
     const save = saver.query('SELECT id, status FROM pathway_graph_index WHERE logical_id = $1 AND version = $2 FOR UPDATE', [logical, '2.0']);
+    await lockWaiterSeen();                                             // the save is queued behind activation's lock
     release();
     await activation;
     const seen = await save;
