@@ -439,8 +439,11 @@ async function findExistingPathway(
   logicalId: string,
   version: string
 ): Promise<{ id: string; status: string } | null> {
+  // The draft-save half of the activation lock protocol (resolvers/mutations/import.ts
+  // `transition`): runs inside the import transaction, so a save and an activation of
+  // this row never interleave.
   const result = await client.query(
-    'SELECT id, status FROM pathway_graph_index WHERE logical_id = $1 AND version = $2',
+    'SELECT id, status FROM pathway_graph_index WHERE logical_id = $1 AND version = $2 FOR UPDATE',
     [logicalId, version]
   );
   return result.rows[0] || null;
