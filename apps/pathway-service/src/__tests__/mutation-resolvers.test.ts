@@ -15,6 +15,7 @@ jest.mock('../services/medications/prewarm-pathway', () => ({
 
 import { importPathway as mockImportPathway } from '../services/import/import-orchestrator';
 import { loadStoredCompileInput } from '../services/compiler/stored-input';
+import { prewarmPathwayInBackground } from '../services/medications/prewarm-pathway';
 
 jest.mock('../services/compiler/stored-input', () => ({ loadStoredCompileInput: jest.fn() }));
 
@@ -202,6 +203,15 @@ describe('Mutation resolvers', () => {
 
   describe('reactivatePathway', () => {
     beforeEach(() => (loadStoredCompileInput as jest.Mock).mockReset());
+
+    it('pre-warms a reactivated pathway, which may be an archived draft that was never activated (D14)', async () => {
+      (loadStoredCompileInput as jest.Mock).mockResolvedValue(compileInput(MINIMAL_PATHWAY));
+      const { ctx } = txContext((sql) =>
+        sql.includes('FOR UPDATE') ? { rows: [{ id: 'test-id', status: 'ARCHIVED' }] }
+          : sql.startsWith('WITH') ? { rows: [{ ...row('ACTIVE'), previousStatus: 'ARCHIVED' }] } : undefined);
+      await Mutation.Mutation.reactivatePathway({}, { id: 'test-id' }, ctx);
+      expect(prewarmPathwayInBackground).toHaveBeenCalledWith((ctx as { pool: unknown }).pool, 'test-id', 'activate');
+    });
 
     it('refuses to reactivate an ARCHIVED pathway that does not compile', async () => {
       (loadStoredCompileInput as jest.Mock).mockResolvedValue(compileInput(LEGACY));

@@ -22,10 +22,15 @@ export function compilePathway(input: CompileInput): CompileResult {
   const errors: CompileError[] = validatePathwayJson(pathway, { draftMode: false }).errors
     .map((message) => ({ code: 'VALIDATION' as const, message }));
 
-  // Authored JSON addresses the root as "root" in edges and never lists it.
+  // Authored JSON addresses the root as "root" in edges and never lists it, so a
+  // listed node that claims to be the root would be silently merged with it.
+  const reserved = (n: { id: string; type: string }) => n.id === 'root' || n.type === 'Pathway';
+  for (const n of (pathway.nodes ?? []).filter(reserved)) {
+    errors.push({ code: 'RESERVED_ROOT', nodeId: n.id, message: `Node "${n.id}" (${n.type}): the id "root" and the type Pathway are reserved for the pathway root` });
+  }
   const nodes: GraphNodeIn[] = [
     { id: 'root', type: 'Pathway', properties: {} },
-    ...(pathway.nodes ?? []).filter((n) => n.id !== 'root').map((n) => ({ id: n.id, type: n.type as string, properties: n.properties ?? {} })),
+    ...(pathway.nodes ?? []).filter((n) => !reserved(n)).map((n) => ({ id: n.id, type: n.type as string, properties: n.properties ?? {} })),
   ];
   const edges: GraphEdgeIn[] = (pathway.edges ?? []).map((e) => ({ from: e.from, to: e.to, type: e.type as string, properties: e.properties ?? {} }));
 

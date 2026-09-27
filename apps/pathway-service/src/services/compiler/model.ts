@@ -56,7 +56,7 @@ export type CompileErrorCode =
   | 'VALIDATION' | 'UNKNOWN_NODE_TYPE' | 'UNKNOWN_EDGE_TYPE' | 'UNREACHABLE' | 'ORPHAN_ANNOTATION' | 'CYCLE'
   | 'GATE_TYPE' | 'DEFAULT_BEHAVIOR' | 'ON_UNRESOLVED' | 'COMPOUND_OPERATOR' | 'NO_TARGET'
   | 'MULTI_TARGET_NON_ROUTING_GATE' | 'MISSING_WHEN' | 'CHOICE_ARM_WHEN' | 'BRANCH_MODE' | 'DEPENDS_ON'
-  | 'UNMAPPED_ATTRIBUTE' | 'UNKNOWN_PATIENT_ATTRIBUTE' | 'TEMPORAL' | 'NOT_FOUND' | 'PAYLOAD' | 'DATUM_TYPE';
+  | 'UNMAPPED_ATTRIBUTE' | 'UNKNOWN_PATIENT_ATTRIBUTE' | 'TEMPORAL' | 'NOT_FOUND' | 'PAYLOAD' | 'DATUM_TYPE' | 'RESERVED_ROOT';
 
 export interface CompileError { code: CompileErrorCode; message: string; nodeId?: string }
 export type CompileResult = { ok: true; model: CompiledPathway } | { ok: false; errors: CompileError[] };

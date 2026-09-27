@@ -128,4 +128,12 @@ describe('compilePathway', () => {
     const reversed = { ...p, nodes: [...p.nodes].reverse(), edges: [...p.edges].reverse() };
     expect(compilePathway({ pathway: reversed, codeMap, temporalDefaults: {} })).toEqual(compilePathway({ pathway: p, codeMap, temporalDefaults: {} }));
   });
+
+  it.each([
+    ['a node with the reserved id "root"', { id: 'root', type: 'Stage', properties: { stage_number: 2, title: 'Shadow' } }],
+    ['an authored Pathway node', { id: 'pw-2', type: 'Pathway', properties: {} }],
+  ])('refuses %s instead of silently dropping it', (_label, node) => {
+    const pathway = { ...MINIMAL_PATHWAY, nodes: [...MINIMAL_PATHWAY.nodes, node] } as never;
+    expect(codes(compilePathway({ pathway, codeMap, temporalDefaults: {} }))).toContain(`RESERVED_ROOT:${node.id}`);
+  });
 });

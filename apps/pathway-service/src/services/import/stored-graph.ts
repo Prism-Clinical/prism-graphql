@@ -65,7 +65,7 @@ export function pathwayJsonFromStoredGraph(input: StoredGraphInput): PathwayJson
     // id "root" in edges and never lists it as a node. Edges are kept exactly
     // as stored, so root-anchored edges still read `from: "root"`.
     nodes: nodes
-      .filter((n) => n.type !== 'Pathway' && n.id !== 'root')
+      .filter((n) => n.type !== 'Pathway')
       .map((n) => ({
         id: n.id,
         type: n.type as PathwayNodeType,

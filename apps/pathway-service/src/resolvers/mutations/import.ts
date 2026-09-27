@@ -200,6 +200,8 @@ export const importMutations = {
   async reactivatePathway(_parent: unknown, args: { id: string }, context: DataSourceContext) {
     const row = await transition(context.pool, args.id, ['SUPERSEDED', 'ARCHIVED'], 'reactivate', REACTIVATE_SQL,
       (s) => `Cannot reactivate pathway with status "${s}". Only SUPERSEDED or ARCHIVED pathways can be reactivated.`);
+    // D14: an archived draft can come straight here without ever having been activated.
+    prewarmPathwayInBackground(context.pool, args.id, 'activate');
     const { previousStatus, ...pathway } = row;
     return { pathway, previousStatus };
   },

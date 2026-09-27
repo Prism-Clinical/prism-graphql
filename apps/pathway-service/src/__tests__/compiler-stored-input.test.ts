@@ -69,4 +69,14 @@ describe('pathwayJsonFromStoredGraph', () => {
     expect(pw.nodes.some((n) => n.id === 'root')).toBe(false);
     expect(pw.edges[0].from).toBe('root');
   });
+
+  it('keeps a stored non-Pathway node that uses the id "root", so the compiler can refuse it', () => {
+    const shadow = { id: 'root', type: 'Stage', properties: { stage_number: 2, title: 'Shadow' } };
+    const pw = pathwayJsonFromStoredGraph({
+      pathway: index.row, conditionCodes: index.conditionCodes,
+      nodes: [...nodes.map((n) => ({ id: n.nodeIdentifier, type: n.nodeType, properties: n.properties })), shadow],
+      edges: [],
+    });
+    expect(pw.nodes.filter((n) => n.id === 'root')).toEqual([shadow]);
+  });
 });
