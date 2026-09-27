@@ -1,7 +1,7 @@
 # Evaluation Interpreter — Design
 
 **Date:** 2026-09-26
-**Status:** Revised after two architecture reviews (2026-09-26, §12). The decisions in §11.2 need product/clinical sign-off before a plan is written.
+**Status:** Revised after two architecture reviews (2026-09-26, §12). Product decisions Q3, Q9, Q10 and Q13 made 2026-09-27; clinical decisions pending (§11.3). The decisions in §11.2 need product/clinical sign-off before a plan is written.
 **Repos:** `prism-graphql` (`apps/pathway-service`); `prism-admin-dashboard` is read for client contracts only.
 **Baseline:** `main` @ `d377465` (live). Every `file:line` is relative to `apps/pathway-service/src/` at that commit.
 **Builds on:** `docs/superpowers/specs/2026-09-13-evaluation-pipeline-design.md` ("EP", on branch
@@ -329,7 +329,7 @@ The compiler rejects (error) or normalizes (N). All errors name the node and fie
 | V2 | Exactly one root; every semantic node is reachable from it through `contains ∪ guards`; every annotation has at least one `owns` parent; `owns` is acyclic | orphans (I-11) |
 | V3 | `contains ∪ guards ∪ data` is acyclic. `prerequisite` and `alternative` are excluded, so the GHTN "cycles" disappear | I-6, I-13 |
 | V4 | `gate_type`, `branch_mode ∈ {one_of, all_of, any_of}` exact; `default_behavior ∈ {skip, traverse}` (N: case-folded); `on_unresolved ∈ {ask, default}`; compound `operator` (N: upper-cased) | I-10, F-8 |
-| V5 | **Routing gates** (question, llm) with more than one arm need a total `when` mapping (DS06 rules, unchanged). **Choices** never carry `when`: they select by qualification and provider choice (§6.3). **Non-routing gates** (condition, prior_result) carry no `when`; with several arms they fan out (§6.2, Q13). | I-7 |
+| V5 | **Routing gates** (question, llm) with more than one arm need a total `when` mapping (DS06 rules, unchanged). **Choices** never carry `when`: they select by qualification and provider choice (§6.3). **Non-routing gates** (condition, prior_result) have **exactly one arm** (Q13); more is a compile error that tells the author to point the gate at one container holding the targets (if all apply) or at a DecisionPoint (if they are alternatives). | I-7 |
 | V6 | Conditions parse into the condition IR (§5.2). Only the canonical vocabularies (`VALID_CODED_OPERATORS`, `VALID_ATTRIBUTE_OPERATORS`) are accepted; the legacy dialect is an error | F-7 |
 | V7 | `lab.*`/`allergy.*` attributes need a code-map row; `patient.*` must be in `KNOWN_PATIENT_ATTRIBUTES`; each resolves to a `DatumRef` (§5.1) | F-1, F-6 |
 | V8 | `depends_on` is `[{node_id, status}]` with `status` in the `NodeStatus` vocabulary exactly; targets exist, are not Medication (EP D11) and are not annotations (an annotation's status only mirrors its owners; depend on the owner instead). All 4 stored `depends_on` entries target Steps [live], so this invalidates nothing | bare-string `depends_on` |
@@ -674,13 +674,13 @@ For an ACTIVE gate with arms `A` (one arm, or several with `when`):
 
 | Gate type | Input state | Arms | Gate status | Question |
 |---|---|---|---|---|
-| condition | T | all arms OPEN (fan-out, Q13) | INCLUDED | — |
+| condition | T | OPEN | INCLUDED | — |
 | condition | F | all CLOSED | GATED_OUT | — |
 | condition | U, askable, `on_unresolved: ask` | all PENDING | PENDING_QUESTION | one per DatumRef |
-| condition | U, otherwise | `skip`: all arms CLOSED. `traverse`: all arms OPEN (fan-out), flagged `opened_by_default` | GATED_OUT / INCLUDED | — |
+| condition | U, otherwise | `skip`: CLOSED. `traverse`: OPEN, flagged `opened_by_default` | GATED_OUT / INCLUDED | — |
 | question | no answer | all PENDING | PENDING_QUESTION | the gate's own |
 | question | answered | single: BOOLEAN true → OPEN, false → CLOSED; NUMERIC/SELECT any value → OPEN (DS06:347, unchanged). multi: route | INCLUDED / GATED_OUT | — |
-| prior_result | every dependency matches | all arms OPEN (fan-out, Q13) | INCLUDED | — |
+| prior_result | every dependency matches | OPEN | INCLUDED | — |
 | prior_result | a dependency definitely mismatches | CLOSED (`default_behavior` does not apply to a definite mismatch) | GATED_OUT | — |
 | prior_result | no mismatch, some dependency PENDING | all PENDING | PENDING_QUESTION | none of its own (`awaiting`) |
 | llm | answered | route the answer | INCLUDED | — |
@@ -726,21 +726,17 @@ selects the arm whose `when` matches. Exactly one match → that arm OPEN, the o
 plus red flag `unroutable_decision`. Because V5 requires a total `when` mapping on routing gates, zero or several matches cannot occur in a
 compiled model; the red flag stays as a defensive check.
 
-**Non-routing gates fan out** (Q13). A condition or prior_result gate yields no routing value, so every
-row of §6.2 applies to all of its arms together:
-- T → all OPEN;
-- F → all CLOSED;
-- askable U → all PENDING;
-- non-askable U → all CLOSED under `skip`, all OPEN under `traverse`.
+**Non-routing gates have exactly one arm** (Q13, decided 2026-09-27). A condition or prior_result gate
+yields no routing value. Several targets are therefore ambiguous: they might all be meant to apply, or
+they might be alternatives needing more information or a provider's choice. The engine does not guess.
+The compiler rejects the gate and names the two explicit forms:
+- **all apply** → point the gate at one Step or Stage that contains the targets;
+- **alternatives** → point the gate at a DecisionPoint. Its arms are chosen by qualification/criteria, or
+  by the provider through the existing pending-choice question (§6.3).
 
-There is no case in which its arms differ. Routing gates (question, llm) keep their own rules and are never
-fanned out.
-- Today the importer rejects `when`-less multi-target condition gates (`validator.ts:273-299`), and it
-  rejects multi-branch routing on `patient_attribute` (`branch-routing-validation.test.ts:188`).
-- The engine treats any gate with more than one `BRANCHES_TO` as routing, so such a gate takes no arm
-  (discovery B §3.1).
-- The one stored case is GHTN `gate-htn-diagnosed` (compound OR → `stage-3`, `step-5-2`, `step-5-3`). It
-  reads as "if diagnosed, all of these apply".
+The one stored case is GHTN (DRAFT) `gate-htn-diagnosed` (compound OR → `stage-3`, `step-5-2`, `step-5-3`),
+which must be re-authored (C18). Today the engine takes no arm for it (discovery B §3.1), and the importer
+already rejects `when`-less multi-target gates (`validator.ts:273-299`).
 
 ### 6.5 Action outcome
 
@@ -1118,7 +1114,7 @@ fails the phase.
 | C7 | One datum identity for questions and answers | F-2, F-6 | none on live graphs (no vitals; one form per datum) |
 | C8 | `ESCALATES_TO` is not traversed (Q7) | I-12 | chronic-htn (DRAFT): methyldopa/hydralazine no longer auto-included; anemia `med-2` still reached via `step-3-2` |
 | C9 | `REQUIRES` is not traversed; scoring propagates over `contains ∪ guards` | I-13 | GHTN (DRAFT) confidences change |
-| C10 | Invalid graphs are refused at compile, not evaluated to a silent false | F-7, F-8, I-7, I-10 | anemia 1.1–1.3 (legacy dialect) and GHTN cannot be previewed until fixed. GHTN still fails on its multi-target **question** gates without `when` (`gate-aspirin-indicated`, `gate-htn-confirmed`); its compound `gate-htn-diagnosed` becomes valid under C18 |
+| C10 | Invalid graphs are refused at compile, not evaluated to a silent false | F-7, F-8, I-7, I-10 | anemia 1.1–1.3 (legacy dialect) and GHTN cannot be previewed until fixed. GHTN still fails on its multi-target **question** gates without `when` (`gate-aspirin-indicated`, `gate-htn-confirmed`); its compound `gate-htn-diagnosed` also needs re-authoring (C18) |
 | C11 | A pending choice keeps its non-arm children | I-8 | `gate-iron-deficient`, `crit-1a/1b` appear while `dp-1` pends |
 | C12 | A pending dependency pends | discovery B D-15 | none (no live `depends_on`) |
 | C13 | No model call for an answered LLM gate; an observation budget replaces the traversal timeout | discovery C §5 | none (no live LLM gates) |
@@ -1126,7 +1122,7 @@ fails the phase.
 | C15 | `constraint` kind (§7.7): an ACTIVE contraindicated/avoid medication is never an order, a candidate or an `EMPTY_PLAN` satisfier, and still vetoes the same drug in other children; an inactive one vetoes nothing | discovery D #4 | GHTN (DRAFT) `med-6` |
 | C16 | `all_of` mandate removed (it only reached containers) | — | none |
 | C17 | `legacy-v0` removed (Q9) | — | none (all 16 live sessions are `v1`) |
-| C18 | A non-routing gate with several arms fans out (Q13) instead of opening none | discovery B §3.1 | GHTN (DRAFT) `gate-htn-diagnosed` opens `stage-3`, `step-5-2`, `step-5-3` together |
+| C18 | A non-routing gate with several arms is a compile error with authoring guidance (Q13), instead of silently opening none | discovery B §3.1 | GHTN (DRAFT) `gate-htn-diagnosed` must be re-authored as one container or a DecisionPoint |
 | C19 | Stage goals, evidence and data-gap attribution come from compiled relations, not first-writer parents (§7.8) | review 2 #4 | goals/evidence stable under permutation; a sibling gate is no longer cited as evidence |
 
 ### 10.2 Differential harness
@@ -1204,8 +1200,8 @@ dependencies, choices of every mode) and generated patients.
     only medication semantics.
   - Goals and evidence are stable under permutation for reconverging actions, and sibling gates are not
     cited.
-  - A multi-target non-routing gate gives one defined outcome for T, F, askable U, and non-askable U
-    under skip and under traverse.
+  - A multi-target non-routing gate is a compile error whose message names both authoring fixes; the
+    single-arm gate gives one defined outcome for T, F, askable U, and non-askable U under skip and traverse.
 - **Rewritten pinned tests:** the tests that pin defects assert the corrected behaviour instead —
   `pipeline-sequence-vs-fresh.test.ts` #9/#10, `pipeline-traversal-overrides.test.ts:37-48`,
   `eager-reachability.test.ts:108`. New tests cover an override on a gate or choice (refused),
@@ -1228,7 +1224,7 @@ Each phase merges with the suite green (the 9 known scorer failures excepted, as
 |---|---|---|
 | 1. Compiler | `CompiledPathway`, V1–V10, DatumRef resolution. Wired into import (report), activation/reactivation (enforce) and `loadEvaluationEnv` (compile + cache; code map read in the snapshot). The runtime still uses `TraversalEngine`. | Every stored graph compiles or has listed errors; activating a legacy-dialect draft is refused; code-map change visible without restart; compile time recorded |
 | 2. Facts and conditions | Fact ledger, `FactAccess` (incl. the effective assertion view for series), condition IR, one evaluator; `legacy-v0` removed; questions keyed by DatumRef; **`assertPatientDatum` mutation and the admin panel switch** (§5.7), `answerPendingDecision` refusing data questions. Wired into the *existing* engine's gate evaluation. | F-1…F-9 tests RED→GREEN; differential shows only C5, C6, C7, C17 |
-| 3. Interpreter | Scheduler, activation join, annotation pass over `owns`, gate/choice/action evaluators (incl. fan-out), temporal preflight; `TraversalEngine` deleted. | Differential shows only §10.1 classes; P1–P4 green; perf gate |
+| 3. Interpreter | Scheduler, activation join, annotation pass over `owns`, gate/choice/action evaluators, temporal preflight; `TraversalEngine` deleted. | Differential shows only §10.1 classes; P1–P4 green; perf gate |
 | 4. Boundaries | Override restriction, `PATHWAY_NOT_EVALUABLE`, hash change (C14), `isPlanAction` + `PlanProjection` + `composeRun` adapter (C15), provenance relations (C19), scoring graph (C9), observation budget (C13). | EP suites green with updated expectations; admin flows exercised against a local stack |
 | 5. Release | Rehearsal on a full copy of live; purge preview sessions; deploy per the runbook; before/after capture **plus P3 on the live result**; then delete the differential harness (its cases already kept as contract tests). | P3 holds on live; every before/after difference is in §10.1 |
 
@@ -1303,24 +1299,24 @@ clinical sign-off. "Product" means it changes what an author or provider can do.
 |---|---|---|---|
 | **Q1** (clinical) | When a node has a container and a guard, which decides whether it applies? | **The guard** (§3.4). Every gated step in the only ACTIVE pathway is also stage-contained; the author evidently meant the gate to decide (why else draw it?). | Keep containment winning: gates on stage-contained steps are decorative, and the transfusion step stays in every plan. |
 | **Q2** (clinical) | Several guards on one node combine as… | **any** (one open guard suffices). `step-2-2` (trimester-specific Hb thresholds) needs `any`. `step-3-1` (dp-1 arm + iron-deficiency gate) is the case to confirm: under `any`, proven iron deficiency opens oral iron even if the provider chose "other causes" (§10.3 C). | `all`: `step-2-2` becomes unreachable for everyone. A per-node `guard_join` authoring property would be needed; not proposed unless `step-3-1` requires it. |
-| **Q3** (product) | Where can a provider override? | **Action nodes only.** To change a gate's outcome, answer it or add the fact. The admin never calls `overrideNode`; there are 0 live overrides. | Allow gate/choice overrides: they must then mean "force this arm" and need an arm parameter; override × `when` × `one_of` semantics would have to be specified. |
+| **Q3** (product) — **DECIDED 2026-09-27** | Where can a provider override? | **Action nodes only.** To change a gate's outcome, answer it or add the fact. The admin never calls `overrideNode`; there are 0 live overrides. | Allow gate/choice overrides: they must then mean "force this arm" and need an arm parameter; override × `when` × `one_of` semantics would have to be specified. |
 | **Q4** (clinical) | Does `default_behavior: traverse` apply to a definite "no"? | **No — only to unknown.** DS W2 defines `default_behavior` for the indeterminate case; a definite false is an answer. No live graph changes. | Keep: a question answered "No" on a `traverse` gate opens its subtree (review F10). |
 | **Q5** (clinical) | A missing `patient.*` attribute is… | **Unknown, and asked for** (numeric/boolean). Today it is a silent "no", which suppresses the haemoglobin question in the ACTIVE pathway's compound gates. | Keep silent false: sparse charts continue to skip the anemia work-up. |
 | **Q6** (clinical) | Does a provider's answer override chart values for that datum? | **Yes — the latest assertion is the value** (§5.4). The clinician is asserting the current value; otherwise some questions can never be resolved and corrections are dropped. | Treat answers as ordinary dated facts: F-3/F-4/F-5 remain, and those questions need another resolution path. |
 | **Q6a** (clinical, clarifies Q6) | Temporal scope of an assertion | **Decisive for every scalar read at the pinned clinical time; one dated point for series; no effect on membership** (§5.4). `assertedAt` is audit-only. | Horizon-bound assertions: an answer could fall outside a short horizon and the question would re-ask. |
 | **Q7** (clinical) | What does `ESCALATES_TO` mean? | **"Alternative if the first-line is unsuitable" — never auto-included.** Recorded on the result for display. Automatic substitution (for example when first-line is withheld by safety) is a follow-up. | Keep traversing: second-line drugs are proposed alongside first-line whenever first-line is reached. |
 | **Q8** (clinical, **outside this spec**) | Should confidence decide whether an action is included, and with which patient semantics? | Not changed here. But note: scorers rate a drug the patient is *not already taking* at 0 on match quality, so all four anemia medications are EXCLUDED at 0.30–0.45 in every live session. As scored, the active pathway can never recommend a new medication. | — (needs its own decision; blocks nothing here) |
-| **Q9** (product) | Remove `legacy-v0`? | **Yes** (§11.1 E). | Keep: the condition IR needs a legacy adapter and the two "missing" semantics survive for that version. |
-| **Q10** (product) | Drafts that do not compile (anemia 1.1–1.3 legacy dialect; GHTN multi-target question gates without `when`) | **Refuse preview and activation until re-authored**; archive 1.1–1.3 (1.4–1.7 supersede them). | Keep evaluating them: every legacy condition is a silent false. |
+| **Q9** (product) — **DECIDED 2026-09-27** | Remove `legacy-v0`? | **Yes** (§11.1 E). | Keep: the condition IR needs a legacy adapter and the two "missing" semantics survive for that version. |
+| **Q10** (product) — **DECIDED 2026-09-27** | Drafts that do not compile (anemia 1.1–1.3 legacy dialect; GHTN multi-target question gates without `when`) | **Refuse preview and activation until re-authored**; archive 1.1–1.3 (1.4–1.7 supersede them). | Keep evaluating them: every legacy condition is a silent false. |
 | **Q11** (clinical, confirm) | A tentative LLM verdict opens its safe-default arm while the question is pending | **Keep** (EP D3, DS06:266). Readiness blocks until confirmed. | Pend the whole gate instead: nothing downstream shows until confirmed. |
-| **Q13** (product, authoring) | A condition or prior_result gate with several `BRANCHES_TO` targets | **Fan out: all targets share the gate's outcome** (§6.4). Matches the only stored case (GHTN `gate-htn-diagnosed`). | Keep today's restriction: such gates are invalid, and authors must add a container for the targets or duplicate the gate. |
+| **Q13** (product, authoring) — **DECIDED 2026-09-27** | A condition or prior_result gate with several `BRANCHES_TO` targets | **Invalid: exactly one target** (§6.4). Several targets may be alternatives needing more data or a provider's choice, so the author must say which: one container (all apply) or a DecisionPoint (choose). The engine never guesses. | (Rejected) fan out: all targets share the gate's outcome. |
 | **Q12** (confirm) | `SELECTS_BRANCH` stays display-only | **Keep** (DS05 #5). The DS W3 text promising criterion routing was narrowed by DS05. | Criterion evaluation is a separate feature. |
 
 ### 11.3 Blockers to implementation
 
 - **Q1, Q2 (with the `step-3-1` confirmation), Q4, Q5, Q6, Q7** need clinical sign-off before phase 3
   (Q5/Q6 before phase 2).
-- **Q3, Q9, Q10, Q13** are product decisions and can be decided now. Q6a goes with Q6.
+- **Q3, Q9, Q10, Q13** were decided on 2026-09-27 (as recommended, except Q13: exactly one target). Q6a goes with Q6.
 - **Q8** does not block this design. But until it is decided, the corrected interpreter will still produce
   anemia plans without medications, so it should be scheduled next.
 - **Stopgap (§11.1 A):** decide whether the live transfusion/oral-iron inclusion is corrected before
@@ -1358,4 +1354,10 @@ contracts". All findings accepted; 1, 3, 4 verified against code and the committ
 | Hash contract | P4 restated: projection covered by implication for a fixed model; model changes caught by `graphFingerprint`; excluded fields exempt |
 | Phase ordering | `assertPatientDatum` and the admin switch move to phase 2 |
 | Assertion timestamps | ledger records `clinicalTime` and `assertedAt` separately; rule 1 corrected |
+
+**Product decisions, 2026-09-27.** Q3 (overrides on actions only), Q9 (remove `legacy-v0`) and Q10
+(refuse non-compiling drafts; archive anemia 1.1–1.3) as recommended. Q13 decided the other way from the
+recommendation: a non-routing gate with several targets may be alternatives rather than a bundle, so it is
+a compile error that names both explicit forms (one container; a DecisionPoint), not a fan-out. V5, §6.2,
+§6.4, C10, C18 and the acceptance tests were updated.
 
