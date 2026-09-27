@@ -16,9 +16,13 @@ but not `strict` or `strictNullChecks`. Without `strictNullChecks`:
   - `if (r.ok === false) r.errors` → compiles
 
 Interpreter phase 1 hit this with `CompileResult`. It uses `x.ok === false` at
-three sites as a workaround: `services/compiler/cache.ts`, `transition()` in
-`resolvers/mutations/import.ts`, and `scripts/compile-stored-pathways.ts`.
-Once the flag is on, those three can go back to the plain `!x.ok` form.
+four sites as a workaround:
+- `services/compiler/cache.ts`;
+- `services/compiler/report.ts`;
+- `transition()` in `resolvers/mutations/import.ts`;
+- `scripts/compile-stored-pathways.ts`.
+
+Once the flag is on, those four can go back to the plain `!x.ok` form.
 
 ## Size (measured 2026-09-27 on `feat/interpreter-01-compiler`)
 
@@ -45,5 +49,5 @@ a separate change, and it will surface its own errors.
 1. Resolve the 2 errors above.
 2. Add `"strictNullChecks": true` to `apps/pathway-service/tsconfig.json`
    (or `"strict": true`, after measuring what the other strict flags add).
-3. Revert the three `=== false` workarounds to `!x.ok`.
+3. Revert the four `=== false` workarounds to `!x.ok`.
 4. Keep `tsc --noEmit` clean.
