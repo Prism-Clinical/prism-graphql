@@ -329,7 +329,7 @@ The compiler rejects (error) or normalizes (N). All errors name the node and fie
 | V2 | Exactly one root; every semantic node is reachable from it through `contains ∪ guards`; every annotation has at least one `owns` parent; `owns` is acyclic | orphans (I-11) |
 | V3 | `contains ∪ guards ∪ data` is acyclic. `prerequisite` and `alternative` are excluded, so the GHTN "cycles" disappear | I-6, I-13 |
 | V4 | `gate_type`, `branch_mode ∈ {one_of, all_of, any_of}` exact; `default_behavior ∈ {skip, traverse}` (N: case-folded); `on_unresolved ∈ {ask, default}`; compound `operator` (N: upper-cased) | I-10, F-8 |
-| V5 | **Routing gates** (question, llm) with more than one arm need a total `when` mapping (DS06 rules, unchanged). **Choices** never carry `when`: they select by qualification and provider choice (§6.3). **Non-routing gates** (condition, prior_result) have **exactly one arm** (Q13); more is a compile error that tells the author to point the gate at one container holding the targets (if all apply) or at a DecisionPoint (if they are alternatives). | I-7 |
+| V5 | **Routing gates** (question, llm) with more than one arm need a total `when` mapping (DS06 rules, unchanged). **Choices** never carry `when`: they select by qualification and provider choice (§6.3). **Non-routing gates** (condition, prior_result) have **exactly one arm** (Q13); more is a compile error that tells the author to guard one Step containing the targets (if all apply), or one Step containing a DecisionPoint whose branches go to them (if they are alternatives). `BRANCHES_TO` may only target a Step or Stage. | I-7 |
 | V6 | Conditions parse into the condition IR (§5.2). Only the canonical vocabularies (`VALID_CODED_OPERATORS`, `VALID_ATTRIBUTE_OPERATORS`) are accepted; the legacy dialect is an error | F-7 |
 | V7 | `lab.*`/`allergy.*` attributes need a code-map row; `patient.*` must be in `KNOWN_PATIENT_ATTRIBUTES`; each resolves to a `DatumRef` (§5.1) | F-1, F-6 |
 | V8 | `depends_on` is `[{node_id, status}]` with `status` in the `NodeStatus` vocabulary exactly; targets exist, are not Medication (EP D11) and are not annotations (an annotation's status only mirrors its owners; depend on the owner instead). All 4 stored `depends_on` entries target Steps [live], so this invalidates nothing | bare-string `depends_on` |
@@ -730,9 +730,12 @@ compiled model; the red flag stays as a defensive check.
 yields no routing value. Several targets are therefore ambiguous: they might all be meant to apply, or
 they might be alternatives needing more information or a provider's choice. The engine does not guess.
 The compiler rejects the gate and names the two explicit forms:
-- **all apply** → point the gate at one Step or Stage that contains the targets;
-- **alternatives** → point the gate at a DecisionPoint. Its arms are chosen by qualification/criteria, or
-  by the provider through the existing pending-choice question (§6.3).
+- **all apply** → guard one Step that contains the targets;
+- **alternatives** → guard one Step that contains a DecisionPoint whose branches go to the targets. The
+  DecisionPoint's arms are chosen by qualification/criteria, or by the provider through the existing
+  pending-choice question (§6.3).
+
+`BRANCHES_TO` may only target a Step or Stage (`VALID_EDGE_ENDPOINTS`), so both remedies are Step-shaped.
 
 The one stored case is GHTN (DRAFT) `gate-htn-diagnosed` (compound OR → `stage-3`, `step-5-2`, `step-5-3`),
 which must be re-authored (C18). Today the engine takes no arm for it (discovery B §3.1), and the importer

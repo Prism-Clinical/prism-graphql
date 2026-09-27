@@ -16,12 +16,20 @@ It returns `{ ok: true, model }` or `{ ok: false, errors }`. Stored pathways are
 
 **Tech Stack:** TypeScript 5 (strict), Jest + ts-jest, PostgreSQL + Apache AGE (`pg`), no new dependencies.
 
+**Revision:** revised after review of `c7985ec`. Changes:
+- activation compiles and activates one locked graph version (Task 8);
+- complete gate-payload validation (Task 3);
+- registry-typed datums (Task 4);
+- the compiler owns and freezes its output (Task 5);
+- a bounded, canonical-key cache (Task 7);
+- Q13 guidance names legal graph shapes (Task 3).
+
 **Spec:** `docs/superpowers/specs/2026-09-26-evaluation-interpreter-design.md` (branch `docs/evaluation-interpreter-design` @ `5601bc4`) — §3 (execution model), §3.5 V1–V10, §4.8 (annotation order), §5.1 (DatumRef), §8, §10.5 phase 1, §11.2 Q3/Q9/Q10/Q13 (decided 2026-09-27).
 
 ## Global Constraints
 
 - **Worktree.** Branch `feat/interpreter-01-compiler` from `origin/main` (`d377465` or later), created with `/new-feature` (prism-graphql only). Never switch branches in `/home/claude/workspace/prism-graphql`.
-- **No runtime behaviour change** except activation/reactivation refusing non-compiling pathways and archive accepting DRAFT. `TraversalEngine`, `evaluate()`, hashes and the GraphQL schema are unchanged.
+- **No runtime behaviour change** except that activation/reactivation refuse non-compiling pathways, archive accepts DRAFT, and draft saves and activations serialize on the pathway row lock (Task 8). `TraversalEngine`, `evaluate()`, hashes and the GraphQL schema are unchanged.
 - **Do not pre-empt clinical decisions Q1, Q2, Q4, Q5, Q6, Q6a, Q7.** The compiler classifies edges and computes orders. It does not decide applicability, joins, defaults or answer precedence.
 - **Q13 (decided):** a condition (`patient_attribute`/`compound`) or `prior_node_result` gate must have exactly one `BRANCHES_TO` target. The error message names both fixes: one containing Step/Stage (all apply), or a DecisionPoint (alternatives).
 - **Q10 (decided):** non-compiling drafts cannot be activated; anemia 1.1–1.3 are archived (Task 10, approval-gated).
@@ -57,16 +65,17 @@ These are the inputs the spec implies but no task's main tests exercise, most li
 | Create `apps/pathway-service/src/services/compiler/gates.ts` | Gate and choice compilation: vocabularies, arms (V4, V5, Q13), strict `depends_on` (V8) |
 | Create `apps/pathway-service/src/services/compiler/datums.ts` | DatumRef resolution (V7) |
 | Create `apps/pathway-service/src/services/compiler/temporal.ts` | Temporal checks and `requiresEncounterAnchor` (V9) |
-| Create `apps/pathway-service/src/services/compiler/compile.ts` | `compilePathway`: validator + rules above |
-| Create `apps/pathway-service/src/services/compiler/cache.ts` | `compileCached` keyed on content |
+| Create `apps/pathway-service/src/services/compiler/compile.ts` | `compilePathway`: validator + rules above; owns and freezes its output |
+| Create `apps/pathway-service/src/services/compiler/immutable.ts` | `deepFreeze`, `FrozenMap` |
+| Create `apps/pathway-service/src/services/compiler/cache.ts` | `compileCached`: bounded LRU keyed on canonical content |
 | Create `apps/pathway-service/src/services/compiler/stored-input.ts` | Read index row + codes; build `CompileInput` from a stored graph |
 | Create `apps/pathway-service/src/services/compiler/report.ts` | Merge compile errors into an import `ValidationResult` as warnings |
 | Create `apps/pathway-service/src/services/import/stored-graph.ts` | Ported verbatim from `1340e1a` |
 | Create `apps/pathway-service/src/scripts/compile-stored-pathways.ts` | Read-only corpus report |
 | Modify `apps/pathway-service/src/services/resolution/attribute-code-map.ts` | Remove the process-wide cache |
 | Modify `apps/pathway-service/src/services/resolution/pipeline/load-env.ts` | Compile in the snapshot; `EvaluationEnv.compilation` |
-| Modify `apps/pathway-service/src/resolvers/mutations/import.ts` | Enforce compile on activate/reactivate; archive DRAFT |
-| Modify `apps/pathway-service/src/services/import/import-orchestrator.ts` | Report compile errors on import |
+| Modify `apps/pathway-service/src/resolvers/mutations/import.ts` | Activate/reactivate in one locked transaction that compiles what it activates; archive DRAFT |
+| Modify `apps/pathway-service/src/services/import/import-orchestrator.ts` | Draft saves take the pathway row lock; report compile errors on import |
 | Create tests under `apps/pathway-service/src/__tests__/compiler-*.test.ts` and fixtures under `__tests__/fixtures/compiler-corpus/` | — |
 
 All test commands below run from the worktree root `W=/home/claude/workspace/features/feat-interpreter-01-compiler/prism-graphql`:
@@ -145,7 +154,7 @@ export type CompileErrorCode =
   | 'VALIDATION' | 'UNKNOWN_NODE_TYPE' | 'UNKNOWN_EDGE_TYPE' | 'UNREACHABLE' | 'ORPHAN_ANNOTATION' | 'CYCLE'
   | 'GATE_TYPE' | 'DEFAULT_BEHAVIOR' | 'ON_UNRESOLVED' | 'COMPOUND_OPERATOR' | 'NO_TARGET'
   | 'MULTI_TARGET_NON_ROUTING_GATE' | 'MISSING_WHEN' | 'CHOICE_ARM_WHEN' | 'BRANCH_MODE' | 'DEPENDS_ON'
-  | 'UNMAPPED_ATTRIBUTE' | 'UNKNOWN_PATIENT_ATTRIBUTE' | 'TEMPORAL' | 'NOT_FOUND';
+  | 'UNMAPPED_ATTRIBUTE' | 'UNKNOWN_PATIENT_ATTRIBUTE' | 'TEMPORAL' | 'NOT_FOUND' | 'PAYLOAD' | 'DATUM_TYPE';
 
 export interface CompileError { code: CompileErrorCode; message: string; nodeId?: string }
 export type CompileResult = { ok: true; model: CompiledPathway } | { ok: false; errors: CompileError[] };
@@ -487,25 +496,34 @@ git -C $W commit -m "feat(pathway-service): compiler structure — containers, g
 
 ---
 
-### Task 3: Gate and choice compilation
+### Task 3: Gate and choice compilation (vocabulary, arms, payloads)
 
 **Files:**
 - Create: `apps/pathway-service/src/services/compiler/gates.ts`
 - Test: `apps/pathway-service/src/__tests__/compiler-gates.test.ts`
 
 **Interfaces:**
-- Consumes: `CompiledGate`, `GateArm`, `ChoiceArm`, `CompileError`, `GraphEdgeIn`, `NodeKind` (Task 1).
+- Consumes: `CompiledGate`, `GateArm`, `ChoiceArm`, `CompileError`, `CompileErrorCode`, `GraphEdgeIn`, `NodeKind` (Task 1).
 - Produces:
   - `compileGate(id: string, props: Record<string, unknown>, armEdges: GraphEdgeIn[], kinds: Map<string, NodeKind>, nodeTypes: Map<string, string>, errors: CompileError[]): { gate: CompiledGate; arms: GateArm[] } | null`;
-  - `compileChoice(id: string, props: Record<string, unknown>, armEdges: GraphEdgeIn[], errors: CompileError[]): { mode: 'one_of' | 'all_of' | 'any_of'; arms: ChoiceArm[] }`.
+  - `compileChoice(id: string, props: Record<string, unknown>, armEdges: GraphEdgeIn[], errors: CompileError[]): { mode: 'one_of' | 'all_of' | 'any_of'; arms: ChoiceArm[] }`;
+  - `conditionProblem(c: unknown): string | null`, also used by Task 5's tests.
 
   `armEdges` are the node's outgoing `BRANCHES_TO` edges.
+
+**Payload rules** (review of `c7985ec`, finding 2). A compiled gate must be usable, not just well-typed:
+- `patient_attribute`: exactly one valid `condition`.
+- `compound`: a non-empty array of valid `conditions`.
+- **An attribute condition** needs an `operator`. `exists` needs no value. `in` needs a non-empty array. Every other operator needs a scalar `value`.
+- **A coded condition** needs an `operator` and a non-empty code `value`. `greater_than` / `less_than` also need a finite numeric `threshold`. That removes the legacy fallback of comparing against `parseFloat(<code>)`, e.g. 718 for `718-7`.
+- `question`: `answer_type` (any case; absent means boolean) must be boolean, numeric or select. A select question needs a non-empty `options` list of strings.
+- `llm_text_analysis`: a non-empty `branches` list whose entries have a string `name`, with exactly one `is_safe_default: true`.
 
 - [ ] **Step 1: Write the failing test**
 
 ```ts
 // apps/pathway-service/src/__tests__/compiler-gates.test.ts
-import { compileChoice, compileGate } from '../services/compiler/gates';
+import { compileChoice, compileGate, conditionProblem } from '../services/compiler/gates';
 import type { CompileError, GraphEdgeIn, NodeKind } from '../services/compiler/model';
 
 const arm = (from: string, to: string, when?: unknown): GraphEdgeIn =>
@@ -529,11 +547,11 @@ describe('compileGate', () => {
     expect(out!.arms).toEqual([{ id: 'g->step-a', target: 'step-a' }]);
   });
 
-  it('Q13: a condition gate with several targets is an error naming both fixes', () => {
+  it('Q13: a condition gate with several targets is an error that describes the legal shapes', () => {
     const { errors } = gate({ gate_type: 'patient_attribute', default_behavior: 'skip', condition: LAB }, [arm('g', 'step-a'), arm('g', 'step-b')]);
     expect(errors).toEqual([expect.objectContaining({
       code: 'MULTI_TARGET_NON_ROUTING_GATE',
-      message: expect.stringMatching(/one Step or Stage that contains them.*DecisionPoint/),
+      message: expect.stringMatching(/guard one Step that contains them.*guard one Step that contains a DecisionPoint/),
     })]);
   });
 
@@ -548,6 +566,17 @@ describe('compileGate', () => {
   it('rejects unknown vocabularies and a gate with no target', () => {
     const { errors } = gate({ gate_type: 'patient_attribute', default_behavior: 'maybe', on_unresolved: 'never', condition: LAB }, []);
     expect(errors.map((e) => e.code)).toEqual(['DEFAULT_BEHAVIOR', 'NO_TARGET', 'ON_UNRESOLVED']);
+  });
+
+  it('payloads: a condition gate needs a usable condition; a SELECT question needs options (any case); an LLM gate needs one safe default', () => {
+    const codes = (p: Record<string, unknown>) => gate(p, [arm('g', 'step-a')]).errors.map((e) => e.code);
+    expect(codes({ gate_type: 'patient_attribute', default_behavior: 'skip' })).toEqual(['PAYLOAD']);
+    expect(codes({ gate_type: 'compound', default_behavior: 'skip', conditions: [] })).toEqual(['PAYLOAD']);
+    expect(codes({ gate_type: 'question', default_behavior: 'skip', answer_type: 'SELECT' })).toEqual(['PAYLOAD']);
+    expect(codes({ gate_type: 'question', default_behavior: 'skip', answer_type: 'SELECT', options: ['a', 'b'] })).toEqual([]);
+    expect(codes({ gate_type: 'question', default_behavior: 'skip', answer_type: 'text' })).toEqual(['PAYLOAD']);
+    expect(codes({ gate_type: 'llm_text_analysis', default_behavior: 'skip', branches: [{ name: 'a' }, { name: 'b' }] })).toEqual(['PAYLOAD']);
+    expect(codes({ gate_type: 'llm_text_analysis', default_behavior: 'skip', branches: [{ name: 'a', is_safe_default: true }] })).toEqual([]);
   });
 
   it('V8: depends_on must be canonical, with an exact status, on a non-annotation, non-Medication target', () => {
@@ -568,6 +597,24 @@ describe('compileGate', () => {
     expect(good.errors).toEqual([]);
     expect(good.out!.gate).toEqual({ type: 'prior_result', dependsOn: [{ nodeId: 'step-a', status: 'INCLUDED' }], defaultBehavior: 'skip' });
   });
+});
+
+describe('conditionProblem', () => {
+  it.each([
+    [{ attribute: 'patient.trimester', operator: 'less_than' }, 'needs a value'],
+    [{ attribute: 'patient.trimester', operator: 'in', value: [] }, 'non-empty array'],
+    [{ field: 'labs', operator: 'less_than', value: '718-7', system: 'LOINC' }, 'numeric threshold'],
+    [{ field: 'labs', operator: 'less_than', value: '', threshold: 7 }, 'code value'],
+    [{ operator: 'equals', value: 1 }, 'field or attribute'],
+  ])('rejects %j', (c, fragment) => expect(conditionProblem(c)).toContain(fragment));
+
+  it.each([
+    [{ attribute: 'patient.trimester', operator: 'less_than', value: 3 }],
+    [{ attribute: 'patient.trimester', operator: 'in', value: [1, 3] }],
+    [{ attribute: 'allergy.metronidazole', operator: 'exists' }],
+    [LAB],
+    [{ field: 'conditions', operator: 'includes_code', value: 'O99.0*', system: 'ICD-10' }],
+  ])('accepts %j', (c) => expect(conditionProblem(c)).toBeNull());
 });
 
 describe('compileChoice', () => {
@@ -600,8 +647,31 @@ const GATE_TYPES: Record<string, CompiledGate['type']> = {
   patient_attribute: 'condition', compound: 'condition', question: 'question',
   prior_node_result: 'prior_result', llm_text_analysis: 'llm',
 };
+const SCALAR_CODED = new Set(['greater_than', 'less_than']);
 const whenOf = (edge: GraphEdgeIn): unknown => (edge.properties ?? {}).when;
 const byId = <T extends { id: string }>(a: T, b: T) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+const isScalar = (v: unknown) => typeof v === 'number' || typeof v === 'string' || typeof v === 'boolean';
+
+/** Why a condition cannot be evaluated as written, or null. Operator vocabularies are checked by the import validator. */
+export function conditionProblem(c: unknown): string | null {
+  if (typeof c !== 'object' || c === null || Array.isArray(c)) return 'a condition must be an object';
+  const r = c as Record<string, unknown>;
+  if (typeof r.attribute === 'string') {
+    if (typeof r.operator !== 'string') return `the condition on "${r.attribute}" has no operator`;
+    if (r.operator === 'exists') return null;
+    if (r.operator === 'in') return Array.isArray(r.value) && r.value.length > 0 ? null : `the condition on "${r.attribute}" (in) needs a non-empty array value`;
+    return isScalar(r.value) ? null : `the condition on "${r.attribute}" (${r.operator}) needs a value to compare against`;
+  }
+  if (typeof r.field === 'string') {
+    if (typeof r.operator !== 'string') return `the condition on ${r.field} has no operator`;
+    if (typeof r.value !== 'string' || r.value === '') return `the condition on ${r.field} (${r.operator}) needs a code value`;
+    if (SCALAR_CODED.has(r.operator) && !(typeof r.threshold === 'number' && Number.isFinite(r.threshold))) {
+      return `the condition on ${r.field} ${r.value} (${r.operator}) needs a numeric threshold`;
+    }
+    return null;
+  }
+  return 'a condition needs either field or attribute';
+}
 
 export function compileGate(
   id: string,
@@ -630,10 +700,11 @@ export function compileGate(
     for (const a of arms) if (a.when === undefined) err('MISSING_WHEN', `the branch to "${a.target}" needs a \`when\`, because the gate routes to ${arms.length} targets`);
   }
   if (!routing && arms.length > 1) {
+    // BRANCHES_TO may only target a Step or Stage (VALID_EDGE_ENDPOINTS), so both remedies are Step-shaped.
     err('MULTI_TARGET_NON_ROUTING_GATE',
       `a ${String(props.gate_type)} gate is evaluated from the chart and must guard exactly one target, but it has ${arms.length} ` +
-      `(${arms.map((a) => a.target).join(', ')}). If all of them apply, point the gate at one Step or Stage that contains them; ` +
-      `if they are alternatives, point it at a DecisionPoint.`);
+      `(${arms.map((a) => a.target).join(', ')}). If all of them apply, guard one Step that contains them. ` +
+      `If they are alternatives, guard one Step that contains a DecisionPoint whose branches go to them.`);
   }
 
   switch (type) {
@@ -645,15 +716,24 @@ export function compileGate(
         const op = String(props.operator ?? 'AND').toUpperCase();
         if (op !== 'AND' && op !== 'OR') err('COMPOUND_OPERATOR', `compound operator must be AND or OR (got "${String(props.operator)}")`);
         const conditions = Array.isArray(props.conditions) ? (props.conditions as Record<string, unknown>[]) : [];
+        if (conditions.length === 0) err('PAYLOAD', 'a compound gate needs at least one condition');
+        conditions.forEach((c, i) => { const p = conditionProblem(c); if (p) err('PAYLOAD', `condition ${i + 1}: ${p}`); });
         return { gate: { type, conditions, operator: op === 'OR' ? 'OR' : 'AND', onUnresolved, defaultBehavior }, arms };
       }
-      const conditions = props.condition ? [props.condition as Record<string, unknown>] : [];
-      return { gate: { type, conditions, operator: null, onUnresolved, defaultBehavior }, arms };
+      if (props.condition === undefined || props.condition === null) {
+        err('PAYLOAD', 'a patient_attribute gate needs a condition');
+        return { gate: { type, conditions: [], operator: null, onUnresolved, defaultBehavior }, arms };
+      }
+      const p = conditionProblem(props.condition);
+      if (p) err('PAYLOAD', p);
+      return { gate: { type, conditions: [props.condition as Record<string, unknown>], operator: null, onUnresolved, defaultBehavior }, arms };
     }
     case 'question': {
       const at = String(props.answer_type ?? 'boolean').toLowerCase();
+      if (at !== 'boolean' && at !== 'numeric' && at !== 'select') err('PAYLOAD', `answer_type must be boolean, numeric or select (got "${String(props.answer_type)}")`);
       const answerType = at === 'numeric' ? 'numeric' : at === 'select' ? 'select' : 'boolean';
-      const options = Array.isArray(props.options) ? (props.options as unknown[]).map(String) : [];
+      const options = Array.isArray(props.options) ? (props.options as unknown[]).filter((o): o is string => typeof o === 'string') : [];
+      if (answerType === 'select' && options.length === 0) err('PAYLOAD', 'a select question needs a non-empty list of options');
       return { gate: { type, answerType, options, defaultBehavior }, arms };
     }
     case 'prior_result': {
@@ -680,8 +760,12 @@ export function compileGate(
       }
       return { gate: { type, dependsOn, defaultBehavior }, arms };
     }
-    case 'llm':
+    case 'llm': {
+      const branches = Array.isArray(props.branches) ? (props.branches as Array<Record<string, unknown>>) : [];
+      if (branches.length === 0 || branches.some((b) => typeof b?.name !== 'string')) err('PAYLOAD', 'an llm_text_analysis gate needs a non-empty list of named branches');
+      if (branches.filter((b) => b?.is_safe_default === true).length !== 1) err('PAYLOAD', 'an llm_text_analysis gate needs exactly one branch with is_safe_default: true');
       return { gate: { type, properties: props, defaultBehavior }, arms };
+    }
   }
 }
 
@@ -706,15 +790,15 @@ export function compileChoice(
 - [ ] **Step 4: Run the test, then typecheck**
 
 Run: `npm test --prefix $W/apps/pathway-service -- --runInBand src/__tests__/compiler-gates.test.ts`
-Expected: PASS (6 tests).
+Expected: PASS (17 tests).
 Run: `$W/node_modules/.bin/tsc -p $W/apps/pathway-service/tsconfig.json --noEmit && echo tsc-clean`
 Expected: `tsc-clean`.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git -C $W add apps/pathway-service/src/services/compiler/gates.ts apps/pathway-service/src/__tests__/compiler-gates.test.ts
-git -C $W commit -m "feat(pathway-service): compile gates and decision points (V4, V5, Q13, strict depends_on)"
+git -C $W add apps/pathway-service/src/services/compiler apps/pathway-service/src/__tests__/compiler-gates.test.ts
+git -C $W commit -m "feat(pathway-service): compile gates and decision points — vocabulary, arms (Q13), payloads, strict depends_on"
 ```
 
 ---
@@ -727,18 +811,30 @@ git -C $W commit -m "feat(pathway-service): compile gates and decision points (V
 - Test: `apps/pathway-service/src/__tests__/compiler-datums-temporal.test.ts`
 
 **Interfaces:**
-- Consumes: `DatumSpec`, `DatumKey`, `CompileError`, `GraphNodeIn` (Task 1); `AttributeCodeMap` (`services/resolution/types`); `KNOWN_PATIENT_ATTRIBUTES` (`services/resolution/attribute-vocabulary`); `sweepableConditions` (`resolvers/helpers/resolution-context`); `collectEncounterAnchorRequirements`, `PathwayTemporalDefaults` (`services/resolution/temporal/cascade`); `TemporalContextError` (`services/resolution/temporal/evaluation-context`).
+- Consumes: `DatumSpec`, `DatumKey`, `CompileError` (Task 1).
+  Also consumes:
+  - `AttributeCodeMap` (`services/resolution/types`);
+  - `KNOWN_PATIENT_ATTRIBUTES` (`services/resolution/attribute-vocabulary`);
+  - `sweepableConditions` (`resolvers/helpers/resolution-context`);
+  - `collectEncounterAnchorRequirements`, `PathwayTemporalDefaults` (`services/resolution/temporal/cascade`);
+  - `TemporalContextError` (`services/resolution/temporal/evaluation-context`).
 - Produces:
   - `resolveDatums(gateId: string, conditions: Record<string, unknown>[], codeMap: AttributeCodeMap, datums: Map<DatumKey, DatumSpec>, errors: CompileError[]): void`;
   - `checkTemporal(nodes: GraphNodeIn[], codeMap: AttributeCodeMap, temporalDefaults: PathwayTemporalDefaults, errors: CompileError[]): boolean`, which returns `requiresEncounterAnchor`.
 
-Datum keys (spec §5.1):
-- `lab:<system>:<code>` for coded `labs` (system default `LOINC`) and for `lab.*` attributes, via their code-map row;
+**Datum keys** (spec §5.1):
+- `lab:<system>:<code>` for coded `labs` and for `lab.*` attributes (via their code-map row);
 - `allergy:<system>:<code>` for `allergy.*` attributes;
-- `vital:<path>` for coded `vitals` and for `vitals.*` attributes;
+- `vital:<path>` for coded `vitals` and `vitals.*` attributes;
 - `attribute:<name>` for `patient.*`.
 
-Coded `conditions`, `medications` and `allergies` are membership queries and produce no datum.
+**Which conditions read a datum.**
+- Only scalar and series reads create one: coded `greater_than`, `less_than`, `count_in_window`, `trend_up`, `trend_down` and `delta_from_baseline` on labs or vitals; and every attribute condition.
+- Coded `includes_code`, `equals` and `exists` are **membership** queries. They produce no datum, because a membership read does not prove the value type (review of `c7985ec`, finding 3). Coded `conditions`, `medications` and `allergies` never produce one.
+
+**A datum's value type comes from a registry, never from the first reader.** For a lab or allergy key, it is the code-map row with that `(system, code)`, whichever alias reads it. With no row, a lab is `number`. Vitals are `number`. Patient attributes come from `KNOWN_PATIENT_ATTRIBUTES`. Two cases are compile errors (`DATUM_TYPE`):
+- a numeric comparison (`greater_than`, `greater_or_equal`, `less_than`, `less_or_equal`, or any coded scalar/series operator) on a datum whose type is not `number`;
+- two readers declaring different types for one key. The registry makes this impossible today; the check is kept so a future alias cannot silently pick a winner.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -751,38 +847,60 @@ import { buildCodeMap } from '../services/resolution/attribute-code-map';
 
 const codeMap = buildCodeMap([
   { attributeName: 'lab.hemoglobin', namespace: 'lab', system: 'LOINC', code: '718-7', valueType: 'number' },
+  { attributeName: 'lab.rh_factor', namespace: 'lab', system: 'LOINC', code: '10331-7', valueType: 'string' },
   { attributeName: 'allergy.metronidazole', namespace: 'allergy', system: 'RXNORM', code: '6922', valueType: 'boolean' },
 ]);
+type Reader = [string, Record<string, unknown>[]];
+const resolve = (readers: Reader[]) => {
+  const datums = new Map<DatumKey, DatumSpec>();
+  const errors: CompileError[] = [];
+  for (const [gate, conditions] of readers) resolveDatums(gate, conditions, codeMap, datums, errors);
+  return { datums: [...datums.values()].sort((a, b) => (a.key < b.key ? -1 : 1)), errors };
+};
+
+const READERS: Reader[] = [
+  ['g2', [{ attribute: 'lab.hemoglobin', operator: 'less_than', value: 7 }]],
+  ['g1', [{ field: 'labs', operator: 'less_than', value: '718-7', system: 'LOINC', threshold: 11 }]],
+  ['g3', [
+    { attribute: 'patient.trimester', operator: 'in', value: [1, 3] },
+    { attribute: 'vitals.systolic_bp', operator: 'greater_than', value: 140 },
+    { field: 'vitals', operator: 'greater_than', value: 'systolic_bp', threshold: 140 },
+    { attribute: 'allergy.metronidazole', operator: 'equals', value: true },
+    { field: 'conditions', operator: 'includes_code', value: 'O99.0*', system: 'ICD-10' },
+    { field: 'labs', operator: 'equals', value: '10331-7', system: 'LOINC' },
+    { attribute: 'lab.rh_factor', operator: 'equals', value: 'negative' },
+  ]],
+];
 
 describe('resolveDatums', () => {
-  it('gives coded and attribute spellings of one lab the same key, and records every reader', () => {
-    const datums = new Map<DatumKey, DatumSpec>();
-    const errors: CompileError[] = [];
-    resolveDatums('g2', [{ attribute: 'lab.hemoglobin', operator: 'less_than', value: 7 }], codeMap, datums, errors);
-    resolveDatums('g1', [{ field: 'labs', operator: 'less_than', value: '718-7', system: 'LOINC', threshold: 11 }], codeMap, datums, errors);
-    resolveDatums('g1', [
-      { attribute: 'patient.trimester', operator: 'in', value: [1, 3] },
-      { attribute: 'vitals.systolic_bp', operator: 'greater_than', value: 140 },
-      { field: 'vitals', operator: 'greater_than', value: 'systolic_bp', threshold: 140 },
-      { attribute: 'allergy.metronidazole', operator: 'equals', value: true },
-      { field: 'conditions', operator: 'includes_code', value: 'O99.0*', system: 'ICD-10' },
-    ], codeMap, datums, errors);
+  it('gives coded and attribute spellings one key and one registry type, and records every reader', () => {
+    const { datums, errors } = resolve(READERS);
     expect(errors).toEqual([]);
-    expect([...datums.values()].sort((a, b) => (a.key < b.key ? -1 : 1))).toEqual([
-      { key: 'allergy:RXNORM:6922', domain: 'allergy', valueType: 'boolean', readBy: ['g1'] },
-      { key: 'attribute:trimester', domain: 'attribute', valueType: 'number', readBy: ['g1'] },
+    expect(datums).toEqual([
+      { key: 'allergy:RXNORM:6922', domain: 'allergy', valueType: 'boolean', readBy: ['g3'] },
+      { key: 'attribute:trimester', domain: 'attribute', valueType: 'number', readBy: ['g3'] },
+      { key: 'lab:LOINC:10331-7', domain: 'lab', valueType: 'string', readBy: ['g3'] },   // membership read added nothing
       { key: 'lab:LOINC:718-7', domain: 'lab', valueType: 'number', readBy: ['g1', 'g2'] },
-      { key: 'vital:systolic_bp', domain: 'vital', valueType: 'number', readBy: ['g1'] },
+      { key: 'vital:systolic_bp', domain: 'vital', valueType: 'number', readBy: ['g3'] },
     ]);
   });
 
+  it('is independent of reader order', () => {
+    expect(resolve([...READERS].reverse())).toEqual(resolve(READERS));
+    const g3 = READERS[2];
+    expect(resolve([[g3[0], [...g3[1]].reverse()], READERS[0], READERS[1]])).toEqual(resolve(READERS));
+  });
+
+  it('rejects a numeric comparison on a non-numeric datum, whichever alias reads it', () => {
+    expect(resolve([['g', [{ field: 'labs', operator: 'less_than', value: '10331-7', system: 'LOINC', threshold: 1 }]]]).errors.map((e) => e.code)).toEqual(['DATUM_TYPE']);
+    expect(resolve([['g', [{ attribute: 'lab.rh_factor', operator: 'greater_than', value: 1 }]]]).errors.map((e) => e.code)).toEqual(['DATUM_TYPE']);
+  });
+
   it('rejects an unmapped lab attribute and an unknown patient attribute', () => {
-    const errors: CompileError[] = [];
-    resolveDatums('g', [
+    expect(resolve([['g', [
       { attribute: 'lab.MCV', operator: 'less_than', value: 80 },
       { attribute: 'patient.parity', operator: 'equals', value: 2 },
-    ], codeMap, new Map(), errors);
-    expect(errors.map((e) => e.code)).toEqual(['UNMAPPED_ATTRIBUTE', 'UNKNOWN_PATIENT_ATTRIBUTE']);
+    ]]]).errors.map((e) => e.code)).toEqual(['UNMAPPED_ATTRIBUTE', 'UNKNOWN_PATIENT_ATTRIBUTE']);
   });
 });
 
@@ -817,6 +935,10 @@ import { KNOWN_PATIENT_ATTRIBUTES } from '../resolution/attribute-vocabulary';
 import type { AttributeCodeMap } from '../resolution/types';
 import type { CompileError, DatumKey, DatumSpec } from './model';
 
+type ValueType = DatumSpec['valueType'];
+const CODED_READS = new Set(['greater_than', 'less_than', 'count_in_window', 'trend_up', 'trend_down', 'delta_from_baseline']);
+const NUMERIC_ATTRIBUTE_OPS = new Set(['greater_than', 'greater_or_equal', 'less_than', 'less_or_equal']);
+
 export function resolveDatums(
   gateId: string,
   conditions: Record<string, unknown>[],
@@ -824,40 +946,50 @@ export function resolveDatums(
   datums: Map<DatumKey, DatumSpec>,
   errors: CompileError[],
 ): void {
-  const add = (key: DatumKey, domain: DatumSpec['domain'], valueType: DatumSpec['valueType']) => {
+  // The registry: a lab/allergy key's type is its code-map row's, whichever alias reads it.
+  const registry = new Map<DatumKey, ValueType>();
+  for (const row of codeMap.values()) registry.set(`${row.namespace === 'allergy' ? 'allergy' : 'lab'}:${row.system}:${row.code}`, row.valueType);
+
+  const fail = (message: string) => errors.push({ code: 'DATUM_TYPE', nodeId: gateId, message: `Gate "${gateId}": ${message}` });
+  const add = (key: DatumKey, domain: DatumSpec['domain'], fallback: ValueType, numeric: boolean) => {
+    const valueType = registry.get(key) ?? fallback;
+    if (numeric && valueType !== 'number') { fail(`compares ${key} numerically, but it is a ${valueType} value`); return; }
     const d = datums.get(key);
     if (!d) { datums.set(key, { key, domain, valueType, readBy: [gateId] }); return; }
+    if (d.valueType !== valueType) { fail(`${key} is read as ${valueType} here but as ${d.valueType} elsewhere`); return; }
     if (!d.readBy.includes(gateId)) { d.readBy.push(gateId); d.readBy.sort(); }
   };
 
   for (const c of conditions) {
+    const op = String(c.operator ?? '');
     if (typeof c.attribute === 'string') {
       const [ns, ...rest] = c.attribute.split('.');
       const name = rest.join('.');
+      const numeric = NUMERIC_ATTRIBUTE_OPS.has(op);
       if (ns === 'lab' || ns === 'allergy') {
         const row = codeMap.get(c.attribute);
         if (!row) {
           errors.push({ code: 'UNMAPPED_ATTRIBUTE', nodeId: gateId, message: `Gate "${gateId}": attribute "${c.attribute}" has no pathway_attribute_code_map row, so it cannot be read` });
           continue;
         }
-        add(`${ns}:${row.system}:${row.code}`, ns, row.valueType);
+        add(`${ns}:${row.system}:${row.code}`, ns, row.valueType, numeric);
       } else if (ns === 'vitals') {
-        add(`vital:${name}`, 'vital', 'number');
+        add(`vital:${name}`, 'vital', 'number', numeric);
       } else if (ns === 'patient') {
         const known = KNOWN_PATIENT_ATTRIBUTES.find((p) => p.name === name);
         if (!known) {
           errors.push({ code: 'UNKNOWN_PATIENT_ATTRIBUTE', nodeId: gateId, message: `Gate "${gateId}": "${c.attribute}" is not a known patient attribute (${KNOWN_PATIENT_ATTRIBUTES.map((p) => p.name).join(', ')})` });
           continue;
         }
-        add(`attribute:${name}`, 'attribute', known.valueType);
+        add(`attribute:${name}`, 'attribute', known.valueType, numeric);
       }
       // Other namespaces are rejected by validatePathwayJson (V6).
-    } else if (c.field === 'labs') {
-      add(`lab:${String(c.system ?? 'LOINC')}:${String(c.value)}`, 'lab', 'number');
-    } else if (c.field === 'vitals') {
-      add(`vital:${String(c.value)}`, 'vital', 'number');
+    } else if (CODED_READS.has(op) && c.field === 'labs') {
+      add(`lab:${String(c.system ?? 'LOINC')}:${String(c.value)}`, 'lab', 'number', true);
+    } else if (CODED_READS.has(op) && c.field === 'vitals') {
+      add(`vital:${String(c.value)}`, 'vital', 'number', true);
     }
-    // conditions / medications / allergies are membership queries, not datums (spec §5.1).
+    // Membership (includes_code / equals / exists) and conditions/medications/allergies: no datum (spec §5.1).
   }
 }
 ```
@@ -895,7 +1027,7 @@ export function checkTemporal(
 - [ ] **Step 4: Run the test, then typecheck**
 
 Run: `npm test --prefix $W/apps/pathway-service -- --runInBand src/__tests__/compiler-datums-temporal.test.ts`
-Expected: PASS (4 tests).
+Expected: PASS (6 tests).
 - If the `horizon` + `window_days` case does not throw, read `temporal/cascade.ts` for the exact rejection TH04 D2 implements, and use that rejected input instead.
 - Do not weaken `checkTemporal`.
 
@@ -905,8 +1037,8 @@ Expected: `tsc-clean`.
 - [ ] **Step 5: Commit**
 
 ```bash
-git -C $W add apps/pathway-service/src/services/compiler/datums.ts apps/pathway-service/src/services/compiler/temporal.ts apps/pathway-service/src/__tests__/compiler-datums-temporal.test.ts
-git -C $W commit -m "feat(pathway-service): compile datum identities (V7) and temporal checks (V9)"
+git -C $W add apps/pathway-service/src/services/compiler apps/pathway-service/src/__tests__/compiler-datums-temporal.test.ts
+git -C $W commit -m "feat(pathway-service): compile datum identities with registry types (V7) and temporal checks (V9)"
 ```
 
 ---
@@ -915,6 +1047,7 @@ git -C $W commit -m "feat(pathway-service): compile datum identities (V7) and te
 
 **Files:**
 - Create: `apps/pathway-service/src/services/compiler/compile.ts`
+- Create: `apps/pathway-service/src/services/compiler/immutable.ts`
 - Create: `apps/pathway-service/src/services/import/stored-graph.ts` (ported, see Step 1)
 - Create fixtures: `apps/pathway-service/src/__tests__/fixtures/compiler-corpus/{anemia-1.4,anemia-1.1,ghtn-1,chronic-htn-1.0}.json`
 - Test: `apps/pathway-service/src/__tests__/compiler-compile.test.ts`
@@ -975,6 +1108,16 @@ function corpus(file: string) {
   });
 }
 const compile = (file: string) => compilePathway({ pathway: corpus(file), codeMap, temporalDefaults: {} });
+/** MINIMAL_PATHWAY plus one gate `gate-x` on stage-1 guarding a new step-1-2. */
+const withGate = (props: Record<string, unknown>) => ({
+  ...MINIMAL_PATHWAY,
+  nodes: [
+    ...MINIMAL_PATHWAY.nodes,
+    { id: 'gate-x', type: 'Gate', properties: { title: 'Gate X', ...props } },
+    { id: 'step-1-2', type: 'Step', properties: { stage_number: 1, step_number: 2, display_number: '1.2', title: 'Guarded' } },
+  ],
+  edges: [...MINIMAL_PATHWAY.edges, { from: 'stage-1', to: 'gate-x', type: 'HAS_GATE' }, { from: 'gate-x', to: 'step-1-2', type: 'BRANCHES_TO' }],
+}) as never;
 const codes = (r: CompileResult) => (r.ok ? [] : r.errors.map((e) => `${e.code}${e.nodeId ? `:${e.nodeId}` : ''}`));
 
 describe('compilePathway', () => {
@@ -1012,6 +1155,34 @@ describe('compilePathway', () => {
     ]));
   });
 
+  it.each([
+    ['patient_attribute with no condition', { gate_type: 'patient_attribute', default_behavior: 'skip' }],
+    ['SELECT question with no options (uppercase answer_type)', { gate_type: 'question', default_behavior: 'skip', answer_type: 'SELECT' }],
+    ['trimester comparison with no value', { gate_type: 'patient_attribute', default_behavior: 'skip', condition: { attribute: 'patient.trimester', operator: 'less_than' } }],
+  ])('refuses an unusable gate payload: %s', (_label, props) => {
+    const r = compilePathway({ pathway: withGate(props), codeMap, temporalDefaults: {} });
+    expect(codes(r)).toContain('PAYLOAD:gate-x');
+  });
+
+  it.each([
+    ['patient_attribute with a condition', { gate_type: 'patient_attribute', default_behavior: 'skip', condition: { attribute: 'patient.trimester', operator: 'less_than', value: 3 } }],
+    ['SELECT question with options', { gate_type: 'question', default_behavior: 'skip', answer_type: 'SELECT', options: ['yes', 'no'], prompt: 'Which?' }],
+  ])('compiles the well-formed equivalent: %s', (_label, props) => {
+    expect(codes(compilePathway({ pathway: withGate(props), codeMap, temporalDefaults: {} }))).toEqual([]);
+  });
+
+  it('owns its output: later input edits cannot change an earlier result, and the result cannot be mutated', () => {
+    const input = structuredClone(MINIMAL_PATHWAY);
+    const r = compilePathway({ pathway: input, codeMap, temporalDefaults: {} });
+    if (!r.ok) throw new Error('minimal pathway must compile');
+    (input.nodes[0].properties as Record<string, unknown>).title = 'Edited after compile';
+    expect(r.model.nodes.get('stage-1')!.properties.title).toBe('Assessment');
+    expect(() => { (r.model.nodes.get('stage-1')!.properties as Record<string, unknown>).title = 'x'; }).toThrow(TypeError);
+    expect(() => (r.model.nodes as Map<string, unknown>).set('x', {})).toThrow(TypeError);
+    expect(() => (r.model.order as string[]).push('x')).toThrow(TypeError);
+    expect(compilePathway({ pathway: structuredClone(MINIMAL_PATHWAY), codeMap, temporalDefaults: {} })).toEqual(r);
+  });
+
   it('is deterministic under node and edge order', () => {
     const p = corpus('anemia-1.4.json');
     const reversed = { ...p, nodes: [...p.nodes].reverse(), edges: [...p.edges].reverse() };
@@ -1025,7 +1196,39 @@ describe('compilePathway', () => {
 Run: `npm test --prefix $W/apps/pathway-service -- --runInBand src/__tests__/compiler-compile.test.ts`
 Expected: FAIL — `Cannot find module '../services/compiler/compile'`.
 
-- [ ] **Step 4: Write `compile.ts`**
+- [ ] **Step 4: Write `immutable.ts` and `compile.ts`**
+
+The compiler owns its output (review of `c7985ec`, finding 4). The input is cloned before anything reads it, and the result is deep-frozen. Maps are `FrozenMap`, which rejects writes, since `Object.freeze` does not stop `Map.set`. A cached result can therefore be shared safely.
+
+```ts
+// apps/pathway-service/src/services/compiler/immutable.ts
+const sealed = new WeakSet<object>();
+
+/** A Map that rejects writes once constructed. `Object.freeze` does not stop Map.set, so compiled Maps use this. */
+export class FrozenMap<K, V> extends Map<K, V> {
+  constructor(entries: Iterable<readonly [K, V]> = []) {
+    super();
+    for (const [k, v] of entries) super.set(k, v);
+    sealed.add(this);
+  }
+  set(key: K, value: V): this {
+    if (sealed.has(this)) throw new TypeError('a compiled pathway is immutable');
+    return super.set(key, value);
+  }
+  delete(_key: K): boolean { throw new TypeError('a compiled pathway is immutable'); }
+  clear(): void { throw new TypeError('a compiled pathway is immutable'); }
+}
+
+/** Freeze a value and everything reachable from it, including Map keys and values. */
+export function deepFreeze<T>(value: T): T {
+  if (value !== null && typeof value === 'object' && !Object.isFrozen(value)) {
+    Object.freeze(value);
+    if (value instanceof Map) for (const [k, v] of value) { deepFreeze(k); deepFreeze(v); }
+    else for (const v of Object.values(value)) deepFreeze(v);
+  }
+  return value;
+}
+```
 
 ```ts
 // apps/pathway-service/src/services/compiler/compile.ts
@@ -1038,6 +1241,7 @@ import {
 } from './model';
 import { buildStructure } from './structure';
 import { checkTemporal } from './temporal';
+import { deepFreeze, FrozenMap } from './immutable';
 
 /**
  * Authored or stored pathway → CompiledPathway (spec §3). Pure. Runs the strict
@@ -1045,7 +1249,9 @@ import { checkTemporal } from './temporal';
  * compiler's own rules (V2, V3, V5-Q13, V7, V8 strict, V9, V10) follow.
  */
 export function compilePathway(input: CompileInput): CompileResult {
-  const { pathway, codeMap, temporalDefaults } = input;
+  // Own the input: nothing in the result may alias the caller's objects.
+  const pathway = structuredClone(input.pathway);
+  const { codeMap, temporalDefaults } = input;
   const errors: CompileError[] = validatePathwayJson(pathway, { draftMode: false }).errors
     .map((message) => ({ code: 'VALIDATION' as const, message }));
 
@@ -1090,18 +1296,28 @@ export function compilePathway(input: CompileInput): CompileResult {
 
   const structure = buildStructure(kinds, edges, dataDeps, errors);
   const requiresEncounterAnchor = checkTemporal(nodes, codeMap, temporalDefaults, errors);
-  if (errors.length > 0) return { ok: false, errors };
-  return {
-    ok: true,
-    model: { compilerVersion: COMPILER_VERSION, nodes: compiled, datums, requiresEncounterAnchor, ...structure },
-  };
+  if (errors.length > 0) return deepFreeze({ ok: false as const, errors });
+  return deepFreeze({
+    ok: true as const,
+    model: {
+      compilerVersion: COMPILER_VERSION,
+      nodes: new FrozenMap(compiled),
+      datums: new FrozenMap(datums),
+      requiresEncounterAnchor,
+      order: structure.order,
+      annotationOrder: structure.annotationOrder,
+      containers: new FrozenMap(structure.containers),
+      guards: new FrozenMap(structure.guards),
+      owners: new FrozenMap(structure.owners),
+    },
+  });
 }
 ```
 
 - [ ] **Step 5: Run the test, then typecheck**
 
 Run: `npm test --prefix $W/apps/pathway-service -- --runInBand src/__tests__/compiler-compile.test.ts`
-Expected: PASS (5 tests).
+Expected: PASS (11 tests).
 
 **Falsification rules, not adjustments:**
 - If `MINIMAL_PATHWAY` or anemia 1.4 fails, **stop and report the errors to the user.** Anemia 1.4 is the live ACTIVE pathway. Do not relax a rule, and do not edit the fixture, to make it pass.
@@ -1113,7 +1329,7 @@ Expected: `tsc-clean`.
 - [ ] **Step 6: Commit**
 
 ```bash
-git -C $W add apps/pathway-service/src/services/compiler/compile.ts apps/pathway-service/src/services/import/stored-graph.ts apps/pathway-service/src/__tests__/compiler-compile.test.ts apps/pathway-service/src/__tests__/fixtures/compiler-corpus
+git -C $W add apps/pathway-service/src/services/compiler/compile.ts apps/pathway-service/src/services/compiler/immutable.ts apps/pathway-service/src/services/import/stored-graph.ts apps/pathway-service/src/__tests__/compiler-compile.test.ts apps/pathway-service/src/__tests__/fixtures/compiler-corpus
 git -C $W commit -m "feat(pathway-service): compilePathway over authored and stored pathways, with live corpus tests"
 ```
 
@@ -1217,8 +1433,9 @@ git -C $W commit -m "fix(pathway-service): read the attribute code map in each s
 - Consumes: `compilePathway` (Task 5); `pathwayJsonFromStoredGraph`, `StoredPathwayRow` (Task 5); `fetchGraphFromAGE` (`resolvers/helpers/resolution-context`); `loadAttributeCodeMap` (Task 6); `parsePathwayTemporalDefaults` (`services/resolution/temporal/cascade`); `hashOf` (`services/resolution/pipeline/canonical`); `GraphNode`, `GraphEdge` (`services/confidence/types`).
 - Produces:
   - `readStoredIndex(db: Pick<Pool, 'query'>, pathwayId: string): Promise<StoredIndex | null>`;
+  - `compileCached` is a bounded LRU (256 entries), keyed on canonical content (nodes sorted by id, edges by from|to|type), so re-exported or reordered copies share an entry;
   - `compileInputFrom(index: StoredIndex, nodes: GraphNode[], edges: GraphEdge[], codeMap: AttributeCodeMap): CompileInput`;
-  - `loadStoredCompileInput(db: Pool, pathwayId: string): Promise<CompileInput | null>` — `null` for a pathway with no index row or no graph;
+  - `loadStoredCompileInput(db: Pick<Pool, 'query'>, pathwayId: string): Promise<CompileInput | null>` — `null` for a pathway with no index row or no graph. It takes a pool **or a transaction client**, and Task 8 passes the locked client;
   - `compileCached(input: CompileInput): CompileResult`;
   - `EvaluationEnv.compilation: CompileResult`.
 
@@ -1228,7 +1445,7 @@ git -C $W commit -m "fix(pathway-service): read the attribute code map in each s
 
 ```ts
 // apps/pathway-service/src/__tests__/compiler-stored-input.test.ts
-import { compileCached } from '../services/compiler/cache';
+import { COMPILE_CACHE_CAPACITY, compileCached, compileCacheSize } from '../services/compiler/cache';
 import { compileInputFrom } from '../services/compiler/stored-input';
 import { pathwayJsonFromStoredGraph } from '../services/import/stored-graph';
 
@@ -1263,6 +1480,16 @@ describe('compileCached', () => {
     expect(compileCached(compileInputFrom(index, nodes, edges, new Map()))).toBe(a);
     const other = compileCached(compileInputFrom(index, nodes, edges, new Map([['lab.x', { attributeName: 'lab.x', namespace: 'lab', system: 'LOINC', code: '1-1', valueType: 'number' }]])));
     expect(other).not.toBe(a);
+  });
+
+  it('shares an entry for a reordered copy and stays within capacity', () => {
+    const input = compileInputFrom(index, nodes, edges, new Map());
+    const a = compileCached(input);
+    expect(compileCached({ ...input, pathway: { ...input.pathway, nodes: [...input.pathway.nodes].reverse(), edges: [...input.pathway.edges].reverse() } })).toBe(a);
+    for (let i = 0; i <= COMPILE_CACHE_CAPACITY; i += 1) {
+      compileCached({ ...input, pathway: { ...input.pathway, pathway: { ...input.pathway.pathway, title: `t${i}` } } });
+    }
+    expect(compileCacheSize()).toBe(COMPILE_CACHE_CAPACITY);
   });
 });
 
@@ -1362,10 +1589,12 @@ export function compileInputFrom(index: StoredIndex, nodes: GraphNode[], edges: 
 }
 
 /** Activation and the corpus script: read everything the compiler needs. `null` when there is nothing to compile. */
-export async function loadStoredCompileInput(db: Pool, pathwayId: string): Promise<CompileInput | null> {
+export async function loadStoredCompileInput(db: Pick<Pool, 'query'>, pathwayId: string): Promise<CompileInput | null> {
   const index = await readStoredIndex(db, pathwayId);
   if (!index || !index.row.ageNodeId) return null;
-  const [graph, codeMap] = await Promise.all([fetchGraphFromAGE(db, String(index.row.ageNodeId)), loadAttributeCodeMap(db)]);
+  // Sequential, not Promise.all: a single transaction client runs one query at a time.
+  const graph = await fetchGraphFromAGE(db as Pool, String(index.row.ageNodeId));
+  const codeMap = await loadAttributeCodeMap(db);
   return compileInputFrom(index, graph.nodes, graph.edges, codeMap);
 }
 ```
@@ -1376,22 +1605,44 @@ import { hashOf } from '../resolution/pipeline/canonical';
 import { compilePathway } from './compile';
 import { COMPILER_VERSION, CompileInput, CompileResult } from './model';
 
-// ponytail: unbounded, keyed by content; bounded in practice by the number of distinct stored graph versions (tens). Add LRU if that grows.
+/** Draft autosaves produce many content revisions, so the cache is bounded. Map insertion order is the recency order. */
+export const COMPILE_CACHE_CAPACITY = 256;
 const cache = new Map<string, CompileResult>();
 
-/** Compile once per distinct (compiler version, pathway, code map, temporal defaults). */
+const compare = (x: string, y: string) => (x < y ? -1 : x > y ? 1 : 0);
+
+/** Content key: order-insensitive for nodes and edges (compilation is order-independent too). */
+function keyOf(input: CompileInput): string {
+  const p = input.pathway;
+  return hashOf({
+    v: COMPILER_VERSION,
+    pathway: {
+      ...p,
+      nodes: [...(p.nodes ?? [])].sort((a, b) => compare(a.id, b.id)),
+      edges: [...(p.edges ?? [])].sort((a, b) => compare(`${a.from}|${a.to}|${a.type}`, `${b.from}|${b.to}|${b.type}`)),
+    },
+    codeMap: input.codeMap,
+    temporalDefaults: input.temporalDefaults,
+  });
+}
+
+/** Compile once per distinct content; results are frozen (Task 5), so sharing them is safe. */
 export function compileCached(input: CompileInput): CompileResult {
-  const key = hashOf({ v: COMPILER_VERSION, pathway: input.pathway, codeMap: input.codeMap, temporalDefaults: input.temporalDefaults });
+  const key = keyOf(input);
   const hit = cache.get(key);
-  if (hit) return hit;
+  if (hit) { cache.delete(key); cache.set(key, hit); return hit; }
   const result = compilePathway(input);
   if (!result.ok) {
     // eslint-disable-next-line no-console
     console.warn(`[compiler] ${input.pathway.pathway?.logical_id}@${input.pathway.pathway?.version} does not compile: ${result.errors.length} error(s)`);
   }
   cache.set(key, result);
+  if (cache.size > COMPILE_CACHE_CAPACITY) cache.delete(cache.keys().next().value as string);
   return result;
 }
+
+/** Test hook. */
+export const compileCacheSize = (): number => cache.size;
 ```
 
 - [ ] **Step 4: Wire into `load-env.ts`**
@@ -1479,141 +1730,378 @@ git -C $W commit -m "feat(pathway-service): compile each pathway inside the eval
 
 ---
 
-### Task 8: Refuse activation of pathways that do not compile; allow archiving drafts
+### Task 8: Activate only what was compiled — one locked transaction, shared with draft saves
 
 **Files:**
 - Modify: `apps/pathway-service/src/resolvers/mutations/import.ts` (`activatePathway`, `reactivatePathway`, `archivePathway`)
-- Test: `apps/pathway-service/src/__tests__/mutation-resolvers.test.ts`
+- Modify: `apps/pathway-service/src/services/import/import-orchestrator.ts:437-447` (`findExistingPathway`)
+- Test: `apps/pathway-service/src/__tests__/mutation-resolvers.test.ts` (rewrite the `activatePathway` / `reactivatePathway` blocks, lines 89-175)
+- Test: `apps/pathway-service/src/__tests__/activation-postgres.test.ts` (opt-in, real Postgres)
 
 **Interfaces:**
-- Consumes: `loadStoredCompileInput` (Task 7), `compilePathway` (Task 5).
-- Produces: `activatePathway` refuses a DRAFT that does not compile, and `reactivatePathway` refuses a SUPERSEDED/ARCHIVED one, both with `BAD_USER_INPUT` and `extensions.compileErrors: CompileError[]`. `archivePathway` accepts `ACTIVE` or `DRAFT` (Q10: needed to archive anemia 1.1–1.3, which can no longer be activated first).
+- Consumes: `loadStoredCompileInput(db: Pick<Pool, 'query'>, pathwayId)` (Task 7; it takes a client), and `compilePathway` (Task 5).
+- Produces:
+  - `activatePathway` refuses a DRAFT that does not compile, and `reactivatePathway` refuses a SUPERSEDED/ARCHIVED one, both with `BAD_USER_INPUT` and `extensions.compileErrors: CompileError[]`. The graph that was compiled is the graph that was activated.
+  - `archivePathway` accepts ACTIVE or DRAFT (Q10).
+  - `findExistingPathway` locks the row it returns.
 
-- [ ] **Step 1: Write the failing tests** (add to `mutation-resolvers.test.ts`)
+**Protocol** (review of `c7985ec`, finding 1). Everything happens in **one transaction**:
+1. Lock **every** `pathway_graph_index` row sharing the target's `logical_id`, in id order, with `FOR UPDATE`.
+2. Read the stored graph, code-set members and code map **after** acquiring the lock, on the same client.
+3. Compile.
+4. Run the existing status CTE.
+5. Commit, or roll back on any failure.
 
-At the top, with the other mocks:
+Draft saves take the same row lock. `DRAFT_UPDATE`'s `findExistingPathway` runs inside the import transaction, which already exists (`import-orchestrator.ts:113`), and becomes `SELECT … FOR UPDATE`. So:
+- **A save that holds the lock first:** activation waits, then reads and compiles the saved content (READ COMMITTED: statements after the lock see committed data).
+- **An activation that holds the lock first:** the save waits. When it resumes, Postgres re-reads the row. It is no longer `DRAFT`, so the existing check refuses the save (`import-orchestrator.ts:121-139`).
+- **Two activations of versions of one pathway:** both lock the logical pathway's rows in id order, so they serialize without deadlock and only one ACTIVE version results. This closes review F5 (two ACTIVE versions) as well.
+
+On refusal nothing is updated, so the previously ACTIVE version stays ACTIVE.
+
+- [ ] **Step 1: Rewrite the unit tests** (replace the two `describe` blocks for `activatePathway` and `reactivatePathway`; keep `importPathway` and `archivePathway`)
+
+At the top of `mutation-resolvers.test.ts`, with the other mocks:
 
 ```ts
 jest.mock('../services/compiler/stored-input', () => ({ loadStoredCompileInput: jest.fn() }));
 import { loadStoredCompileInput } from '../services/compiler/stored-input';
 ```
 
-Then a new `describe`:
+A context whose pool hands out a transaction client, with queries answered by SQL text instead of call order:
 
 ```ts
-describe('activation compiles the stored pathway (interpreter spec §8, Q10)', () => {
-  const legacy = {
-    ...MINIMAL_PATHWAY,
-    nodes: [
-      ...MINIMAL_PATHWAY.nodes,
-      { id: 'gate-legacy', type: 'Gate', properties: { title: 'Severe', gate_type: 'patient_attribute', default_behavior: 'skip', condition: { attribute: 'lab.hemoglobin', operator: 'LT', value: 7 } } },
-      { id: 'step-1-2', type: 'Step', properties: { stage_number: 1, step_number: 2, display_number: '1.2', title: 'Transfusion' } },
-    ],
-    edges: [
-      ...MINIMAL_PATHWAY.edges,
-      { from: 'stage-1', to: 'gate-legacy', type: 'HAS_GATE' },
-      { from: 'gate-legacy', to: 'step-1-2', type: 'BRANCHES_TO' },
-    ],
-  } as never;
-  const input = (pathway: unknown) => ({ pathway, codeMap: new Map(), temporalDefaults: {} });
-  const statusIs = (status: string) => {
-    const ctx = createMockContext();
-    (ctx.pool.query as jest.Mock).mockImplementation(async (sql: string) =>
-      sql.startsWith('SELECT status') ? { rows: [{ status }] } : { rows: [{ id: 'test-id', status, previousStatus: status }] });
-    return ctx;
-  };
-
-  beforeEach(() => (loadStoredCompileInput as jest.Mock).mockReset());
-
-  it('activates a DRAFT that compiles', async () => {
-    (loadStoredCompileInput as jest.Mock).mockResolvedValue(input(MINIMAL_PATHWAY));
-    const ctx = statusIs('DRAFT');
-    await Mutation.Mutation.activatePathway({}, { id: 'test-id' }, ctx as never);
-    expect((ctx.pool.query as jest.Mock).mock.calls.some(([sql]) => String(sql).includes("SET status = 'ACTIVE'"))).toBe(true);
-  });
-
-  it('refuses a DRAFT that does not compile, lists the errors, and changes nothing', async () => {
-    (loadStoredCompileInput as jest.Mock).mockResolvedValue(input(legacy));
-    const ctx = statusIs('DRAFT');
-    await expect(Mutation.Mutation.activatePathway({}, { id: 'test-id' }, ctx as never)).rejects.toMatchObject({
-      extensions: { code: 'BAD_USER_INPUT', compileErrors: expect.arrayContaining([expect.objectContaining({ code: 'VALIDATION' })]) },
-    });
-    expect((ctx.pool.query as jest.Mock).mock.calls.some(([sql]) => String(sql).includes('UPDATE'))).toBe(false);
-  });
-
-  it('refuses to reactivate an ARCHIVED pathway that does not compile', async () => {
-    (loadStoredCompileInput as jest.Mock).mockResolvedValue(input(legacy));
-    await expect(Mutation.Mutation.reactivatePathway({}, { id: 'test-id' }, statusIs('ARCHIVED') as never))
-      .rejects.toMatchObject({ extensions: { code: 'BAD_USER_INPUT' } });
-  });
-
-  it('does not block a metadata-only pathway (no stored graph to compile)', async () => {
-    (loadStoredCompileInput as jest.Mock).mockResolvedValue(null);
-    await expect(Mutation.Mutation.activatePathway({}, { id: 'test-id' }, statusIs('DRAFT') as never)).resolves.toBeDefined();
-  });
-
-  it('archives a DRAFT', async () => {
-    const ctx = statusIs('DRAFT');
-    await Mutation.Mutation.archivePathway({}, { id: 'test-id' }, ctx as never);
-    expect((ctx.pool.query as jest.Mock).mock.calls.some(([sql]) => /status IN \('ACTIVE', 'DRAFT'\)/.test(String(sql)))).toBe(true);
-  });
-});
+type Route = (sql: string) => { rows: unknown[] } | undefined;
+function txContext(route: Route) {
+  const query = jest.fn(async (sql: string) => route(String(sql)) ?? { rows: [] });
+  const client = { query, release: jest.fn() };
+  return { ctx: { pool: { query, connect: jest.fn(async () => client) }, redis: {}, userId: 'test-user', userRole: 'PROVIDER' } as never, query, client };
+}
+const sqlOf = (query: jest.Mock) => query.mock.calls.map(([s]) => String(s));
+const row = (status: string, extra: Record<string, unknown> = {}) => ({ id: 'test-id', status, logicalId: 'CP-Test', ageNodeId: '7', title: 'Test', version: '1.0', category: 'ACUTE_CARE', ...extra });
+const LEGACY = {
+  ...MINIMAL_PATHWAY,
+  nodes: [
+    ...MINIMAL_PATHWAY.nodes,
+    { id: 'gate-legacy', type: 'Gate', properties: { title: 'Severe', gate_type: 'patient_attribute', default_behavior: 'skip', condition: { attribute: 'lab.hemoglobin', operator: 'LT', value: 7 } } },
+    { id: 'step-1-2', type: 'Step', properties: { stage_number: 1, step_number: 2, display_number: '1.2', title: 'Transfusion' } },
+  ],
+  edges: [...MINIMAL_PATHWAY.edges, { from: 'stage-1', to: 'gate-legacy', type: 'HAS_GATE' }, { from: 'gate-legacy', to: 'step-1-2', type: 'BRANCHES_TO' }],
+} as never;
+const compileInput = (pathway: unknown) => ({ pathway, codeMap: new Map(), temporalDefaults: {} });
 ```
 
-The existing `activatePathway`/`reactivatePathway` tests in this file now also call `loadStoredCompileInput`. Its `jest.fn()` default returns `undefined`, and the guard treats that like `null` (no graph), so they keep passing unchanged. If an existing test asserts the exact number of `pool.query` calls, raise the expected count by one (the status read in `assertCompiles`). Do not delete the assertion.
+The tests:
+
+```ts
+  describe('activatePathway', () => {
+    beforeEach(() => (loadStoredCompileInput as jest.Mock).mockReset());
+
+    it('locks the logical pathway, compiles the stored graph under the lock, then activates, in one transaction', async () => {
+      (loadStoredCompileInput as jest.Mock).mockResolvedValue(compileInput(MINIMAL_PATHWAY));
+      const { ctx, query, client } = txContext((sql) =>
+        sql.includes('FOR UPDATE') ? { rows: [{ id: 'test-id', status: 'DRAFT' }] }
+          : sql.startsWith('WITH') ? { rows: [{ ...row('ACTIVE'), previousStatus: 'DRAFT' }] } : undefined);
+
+      const result = await Mutation.Mutation.activatePathway({}, { id: 'test-id' }, ctx);
+
+      expect(result.previousStatus).toBe('DRAFT');
+      const sqls = sqlOf(query);
+      const at = (p: (s: string) => boolean) => sqls.findIndex(p);
+      expect(sqls[0]).toBe('BEGIN');
+      expect(at((s) => s.includes('FOR UPDATE') && s.includes('ORDER BY id'))).toBeLessThan(at((s) => s.startsWith('WITH')));
+      expect(sqls.at(-1)).toBe('COMMIT');
+      expect((loadStoredCompileInput as jest.Mock).mock.calls[0][0]).toBe(client);   // read on the locked client
+      expect(client.release).toHaveBeenCalled();
+    });
+
+    it('refuses a DRAFT that does not compile, lists the errors, updates nothing, and rolls back', async () => {
+      (loadStoredCompileInput as jest.Mock).mockResolvedValue(compileInput(LEGACY));
+      const { ctx, query } = txContext((sql) => (sql.includes('FOR UPDATE') ? { rows: [{ id: 'test-id', status: 'DRAFT' }] } : undefined));
+
+      await expect(Mutation.Mutation.activatePathway({}, { id: 'test-id' }, ctx)).rejects.toMatchObject({
+        extensions: { code: 'BAD_USER_INPUT', compileErrors: expect.arrayContaining([expect.objectContaining({ code: 'VALIDATION' })]) },
+      });
+      const sqls = sqlOf(query);
+      expect(sqls.some((s) => s.startsWith('WITH') || /^\s*UPDATE/.test(s))).toBe(false);   // the lock query says FOR UPDATE; no status write may run
+      expect(sqls.at(-1)).toBe('ROLLBACK');
+    });
+
+    it.each([
+      ['patient_attribute with no condition', { gate_type: 'patient_attribute', default_behavior: 'skip' }],
+      ['SELECT question with no options', { gate_type: 'question', default_behavior: 'skip', answer_type: 'SELECT' }],
+      ['trimester comparison with no value', { gate_type: 'patient_attribute', default_behavior: 'skip', condition: { attribute: 'patient.trimester', operator: 'less_than' } }],
+    ])('refuses to activate an unusable gate payload: %s', async (_label, props) => {
+      const pathway = {
+        ...MINIMAL_PATHWAY,
+        nodes: [...MINIMAL_PATHWAY.nodes, { id: 'gate-x', type: 'Gate', properties: { title: 'X', ...props } }, { id: 'step-1-2', type: 'Step', properties: { stage_number: 1, step_number: 2, display_number: '1.2', title: 'Guarded' } }],
+        edges: [...MINIMAL_PATHWAY.edges, { from: 'stage-1', to: 'gate-x', type: 'HAS_GATE' }, { from: 'gate-x', to: 'step-1-2', type: 'BRANCHES_TO' }],
+      };
+      (loadStoredCompileInput as jest.Mock).mockResolvedValue(compileInput(pathway));
+      const { ctx } = txContext((sql) => (sql.includes('FOR UPDATE') ? { rows: [{ id: 'test-id', status: 'DRAFT' }] } : undefined));
+      await expect(Mutation.Mutation.activatePathway({}, { id: 'test-id' }, ctx)).rejects.toMatchObject({
+        extensions: { compileErrors: expect.arrayContaining([expect.objectContaining({ code: 'PAYLOAD' })]) },
+      });
+    });
+
+    it('does not block a metadata-only pathway (no stored graph to compile)', async () => {
+      (loadStoredCompileInput as jest.Mock).mockResolvedValue(null);
+      const { ctx } = txContext((sql) =>
+        sql.includes('FOR UPDATE') ? { rows: [{ id: 'test-id', status: 'DRAFT' }] }
+          : sql.startsWith('WITH') ? { rows: [{ ...row('ACTIVE'), previousStatus: 'DRAFT' }] } : undefined);
+      await expect(Mutation.Mutation.activatePathway({}, { id: 'test-id' }, ctx)).resolves.toMatchObject({ previousStatus: 'DRAFT' });
+    });
+
+    it('rejects activating a non-DRAFT pathway without compiling it', async () => {
+      const { ctx } = txContext((sql) =>
+        sql.includes('FOR UPDATE') ? { rows: [{ id: 'test-id', status: 'ACTIVE' }] }
+          : sql.startsWith('SELECT status') ? { rows: [{ status: 'ACTIVE' }] } : undefined);
+      await expect(Mutation.Mutation.activatePathway({}, { id: 'test-id' }, ctx)).rejects.toThrow('Cannot activate');
+      expect(loadStoredCompileInput).not.toHaveBeenCalled();
+    });
+
+    it('throws NOT_FOUND for a nonexistent pathway', async () => {
+      const { ctx } = txContext(() => undefined);
+      await expect(Mutation.Mutation.activatePathway({}, { id: 'nonexistent' }, ctx)).rejects.toThrow('not found');
+    });
+  });
+
+  describe('reactivatePathway', () => {
+    beforeEach(() => (loadStoredCompileInput as jest.Mock).mockReset());
+
+    it('refuses to reactivate an ARCHIVED pathway that does not compile', async () => {
+      (loadStoredCompileInput as jest.Mock).mockResolvedValue(compileInput(LEGACY));
+      const { ctx } = txContext((sql) => (sql.includes('FOR UPDATE') ? { rows: [{ id: 'test-id', status: 'ARCHIVED' }] } : undefined));
+      await expect(Mutation.Mutation.reactivatePathway({}, { id: 'test-id' }, ctx)).rejects.toMatchObject({ extensions: { code: 'BAD_USER_INPUT' } });
+    });
+
+    it.each(['DRAFT', 'ACTIVE'])('rejects reactivating a %s pathway', async (status) => {
+      const { ctx } = txContext((sql) =>
+        sql.includes('FOR UPDATE') ? { rows: [{ id: 'test-id', status }] }
+          : sql.startsWith('SELECT status') ? { rows: [{ status }] } : undefined);
+      await expect(Mutation.Mutation.reactivatePathway({}, { id: 'test-id' }, ctx)).rejects.toThrow('Cannot reactivate');
+    });
+  });
+```
+
+In the existing `archivePathway` test, change the mocked status `'DRAFT'` to `'SUPERSEDED'`, since a DRAFT can now be archived. Add:
+
+```ts
+    it('archives a DRAFT', async () => {
+      const ctx = createMockContext();
+      await Mutation.Mutation.archivePathway({}, { id: 'test-id' }, ctx);
+      expect((ctx.pool.query as jest.Mock).mock.calls.some(([sql]) => /status IN \('ACTIVE', 'DRAFT'\)/.test(String(sql)))).toBe(true);
+    });
+```
 
 - [ ] **Step 2: Run them to verify they fail**
 
 Run: `npm test --prefix $W/apps/pathway-service -- --runInBand src/__tests__/mutation-resolvers.test.ts`
-Expected: FAIL. The "refuses" tests resolve instead of rejecting, and the archive test finds `status = 'ACTIVE'` only.
+Expected: FAIL. `pool.connect` is never called (activation uses `pool.query`), so the transaction assertions fail, and the "refuses" tests resolve.
 
 - [ ] **Step 3: Implement**
 
-Add to `resolvers/mutations/import.ts`:
+In `resolvers/mutations/import.ts`:
 
 ```ts
 import { compilePathway } from '../../services/compiler/compile';
 import { loadStoredCompileInput } from '../../services/compiler/stored-input';
 
 /**
- * Refuse to put a pathway that cannot be evaluated into service. Import stays
- * lenient for drafts (autosave must not block an author); this is the gate on
- * the way out (interpreter spec §3.1, §8; Q10). Not-found and wrong-status are
- * left to the mutation's own CTE, so this only acts on the statuses it guards.
+ * A status transition that must only put a pathway into service if it can be
+ * evaluated (interpreter spec §3.1, §8; Q10). One transaction:
+ *   1. lock every version of the logical pathway (id order: two activations of
+ *      one pathway serialize and cannot deadlock);
+ *   2. read and compile the target as stored NOW, on the locked client;
+ *   3. run the status CTE.
+ * DRAFT_UPDATE locks its row with the same FOR UPDATE (import-orchestrator
+ * `findExistingPathway`), so a draft save and an activation never interleave.
  */
-async function assertCompiles(pool: DataSourceContext['pool'], id: string, guarded: string[], verb: string): Promise<void> {
-  const status = (await pool.query('SELECT status FROM pathway_graph_index WHERE id = $1', [id])).rows[0]?.status;
-  if (!status || !guarded.includes(status)) return;
-  const input = await loadStoredCompileInput(pool, id);
-  if (!input) return; // metadata-only pathway: no graph to evaluate
-  const result = compilePathway(input);
-  if (!result.ok) {
-    throw new GraphQLError(
-      `Cannot ${verb} pathway: ${result.errors.length} problem(s) would stop it from being evaluated. Fix them in the editor and try again.`,
-      { extensions: { code: 'BAD_USER_INPUT', compileErrors: result.errors } },
+async function transition(
+  pool: DataSourceContext['pool'],
+  id: string,
+  guarded: string[],
+  verb: string,
+  statusSql: string,
+  wrongStatus: (status: string) => string,
+): Promise<Record<string, unknown>> {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query("LOAD 'age'");
+    await client.query('SET search_path = ag_catalog, "$user", public');
+    const locked = await client.query(
+      `SELECT id, status FROM pathway_graph_index
+        WHERE logical_id = (SELECT logical_id FROM pathway_graph_index WHERE id = $1)
+        ORDER BY id FOR UPDATE`,
+      [id],
     );
+    const target = locked.rows.find((r: { id: string }) => r.id === id);
+    if (target && guarded.includes(target.status)) {
+      const input = await loadStoredCompileInput(client, id);
+      if (input) {
+        const compiled = compilePathway(input);
+        if (!compiled.ok) {
+          throw new GraphQLError(
+            `Cannot ${verb} pathway: ${compiled.errors.length} problem(s) would stop it from being evaluated. Fix them in the editor and try again.`,
+            { extensions: { code: 'BAD_USER_INPUT', compileErrors: compiled.errors } },
+          );
+        }
+      }
+    }
+    const result = await client.query(statusSql, [id]);
+    if (!result.rows[0]) {
+      const check = await client.query('SELECT status FROM pathway_graph_index WHERE id = $1', [id]);
+      if (!check.rows[0]) throw new GraphQLError('Pathway not found', { extensions: { code: 'NOT_FOUND' } });
+      throw new GraphQLError(wrongStatus(check.rows[0].status), { extensions: { code: 'BAD_USER_INPUT' } });
+    }
+    await client.query('COMMIT');
+    return result.rows[0];
+  } catch (err) {
+    await client.query('ROLLBACK').catch((): void => undefined);
+    throw err;
+  } finally {
+    client.release();
   }
 }
 ```
 
-- In `activatePathway`, first line after `const { pool } = context;`: `await assertCompiles(pool, args.id, ['DRAFT'], 'activate');`
-- In `reactivatePathway`, same position: `await assertCompiles(pool, args.id, ['SUPERSEDED', 'ARCHIVED'], 'reactivate');`
-- In `archivePathway`:
-  - change `WHERE id = $1 AND status = 'ACTIVE'` to `WHERE id = $1 AND status IN ('ACTIVE', 'DRAFT')`;
-  - change the error text to `` `Cannot archive pathway with status "${check.rows[0].status}". Only ACTIVE or DRAFT pathways can be archived.` ``.
+Rewrite the two resolvers to use it. Move each existing CTE string unchanged into a constant:
 
-- [ ] **Step 4: Run the tests, then typecheck**
+```ts
+const ACTIVATE_SQL = `WITH target AS ( … exactly the current activatePathway CTE … )`;
+const REACTIVATE_SQL = `WITH target AS ( … exactly the current reactivatePathway CTE … )`;
 
-Run: `npm test --prefix $W/apps/pathway-service -- --runInBand src/__tests__/mutation-resolvers.test.ts`
-Expected: PASS (existing + 5 new).
+  async activatePathway(_parent: unknown, args: { id: string }, context: DataSourceContext) {
+    const { pool } = context;
+    const row = await transition(pool, args.id, ['DRAFT'], 'activate', ACTIVATE_SQL,
+      (s) => `Cannot activate pathway with status "${s}". Only DRAFT pathways can be activated.`);
+    // D14: an activated pathway's medications should be normalised before the first session.
+    prewarmPathwayInBackground(pool, args.id, 'activate');
+    const { previousStatus, ...pathway } = row;
+    return { pathway, previousStatus };
+  },
+
+  async reactivatePathway(_parent: unknown, args: { id: string }, context: DataSourceContext) {
+    const row = await transition(context.pool, args.id, ['SUPERSEDED', 'ARCHIVED'], 'reactivate', REACTIVATE_SQL,
+      (s) => `Cannot reactivate pathway with status "${s}". Only SUPERSEDED or ARCHIVED pathways can be reactivated.`);
+    const { previousStatus, ...pathway } = row;
+    return { pathway, previousStatus };
+  },
+```
+
+In `archivePathway`:
+- change `WHERE id = $1 AND status = 'ACTIVE'` to `WHERE id = $1 AND status IN ('ACTIVE', 'DRAFT')`;
+- change the message to `` `Cannot archive pathway with status "${check.rows[0].status}". Only ACTIVE or DRAFT pathways can be archived.` ``.
+
+In `import-orchestrator.ts`, `findExistingPathway`: change the query to
+`'SELECT id, status FROM pathway_graph_index WHERE logical_id = $1 AND version = $2 FOR UPDATE'`.
+Add a comment that it is the draft-save half of the activation lock protocol. It already runs inside the import transaction.
+
+- [ ] **Step 4: Run the unit tests**
+
+Run: `npm test --prefix $W/apps/pathway-service -- --runInBand src/__tests__/mutation-resolvers.test.ts src/__tests__/import-orchestrator.test.ts`
+Expected: PASS. The orchestrator mock matches on `SELECT` + `pathway_graph_index`, so `FOR UPDATE` changes nothing there.
+
+- [ ] **Step 5: Write the interleaving test against real Postgres** (opt-in, scratch database, same guard as `pipeline-postgres.test.ts`)
+
+```ts
+// apps/pathway-service/src/__tests__/activation-postgres.test.ts
+jest.mock('../services/compiler/stored-input', () => ({ loadStoredCompileInput: jest.fn() }));
+jest.mock('../services/medications/prewarm-pathway', () => ({ prewarmPathwayInBackground: jest.fn() }));
+
+import { randomUUID } from 'crypto';
+import { Pool } from 'pg';
+import { Mutation } from '../resolvers/Mutation';
+import { loadStoredCompileInput } from '../services/compiler/stored-input';
+import { MINIMAL_PATHWAY } from './fixtures/reference-pathway';
+
+const describePg = process.env.RUN_PIPELINE_PG_TESTS === '1' ? describe : describe.skip;
+const BROKEN = { ...MINIMAL_PATHWAY, nodes: [...MINIMAL_PATHWAY.nodes, { id: 'orphan', type: 'Step', properties: { stage_number: 9, step_number: 9, display_number: '9.9', title: 'Unreachable' } }] };
+
+describePg('activation and draft saves serialize on the pathway row lock (scratch database)', () => {
+  const database = process.env.PIPELINE_PG_DATABASE ?? '';
+  let pool: Pool;
+  let logical: string;
+  let activeId: string;
+  let draftId: string;
+  const statusOf = async (id: string) => (await pool.query('SELECT status FROM pathway_graph_index WHERE id = $1', [id])).rows[0].status;
+
+  beforeAll(() => {
+    if (!database.includes('scratch') || database === 'prism_db') throw new Error(`refusing database "${database}": set PIPELINE_PG_DATABASE to a scratch database`);
+    pool = new Pool({ host: process.env.POSTGRES_HOST ?? 'localhost', user: process.env.POSTGRES_USER ?? 'prism', password: process.env.POSTGRES_PASSWORD, database });
+  });
+  afterAll(() => pool.end());
+  beforeEach(async () => {
+    logical = `lp-lock-${randomUUID().slice(0, 8)}`;
+    activeId = randomUUID();
+    draftId = randomUUID();
+    await pool.query(`INSERT INTO pathway_graph_index (id, logical_id, title, version, category, status, is_active) VALUES ($1, $2, 'v1', '1.0', 'ACUTE_CARE', 'ACTIVE', true)`, [activeId, logical]);
+    await pool.query(`INSERT INTO pathway_graph_index (id, logical_id, title, version, category, status, is_active) VALUES ($1, $2, 'v2', '2.0', 'ACUTE_CARE', 'DRAFT', false)`, [draftId, logical]);
+    // The mocked loader reads the title on the transaction's own client: 'broken' stands for a non-compiling graph.
+    (loadStoredCompileInput as jest.Mock).mockReset().mockImplementation(async (db: Pool, id: string) => {
+      const title = (await db.query('SELECT title FROM pathway_graph_index WHERE id = $1', [id])).rows[0].title;
+      return { pathway: title === 'broken' ? BROKEN : MINIMAL_PATHWAY, codeMap: new Map(), temporalDefaults: {} };
+    });
+  });
+
+  it('a draft save already holding the lock is what activation compiles, and a failure leaves v1 ACTIVE', async () => {
+    const saver = await pool.connect();
+    await saver.query('BEGIN');
+    await saver.query('SELECT id, status FROM pathway_graph_index WHERE logical_id = $1 AND version = $2 FOR UPDATE', [logical, '2.0']);
+    const activation = Mutation.Mutation.activatePathway({}, { id: draftId }, { pool } as never);
+    await new Promise((r) => setTimeout(r, 200));                       // activation is now waiting on the lock
+    await saver.query(`UPDATE pathway_graph_index SET title = 'broken' WHERE id = $1`, [draftId]);
+    await saver.query('COMMIT');
+    saver.release();
+    await expect(activation).rejects.toMatchObject({ extensions: { code: 'BAD_USER_INPUT' } });
+    expect(await statusOf(activeId)).toBe('ACTIVE');
+    expect(await statusOf(draftId)).toBe('DRAFT');
+  });
+
+  it('a draft save that arrives while activation holds the lock waits, then finds no DRAFT and is refused', async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((r) => { release = r; });
+    (loadStoredCompileInput as jest.Mock).mockImplementation(async () => { await gate; return { pathway: MINIMAL_PATHWAY, codeMap: new Map(), temporalDefaults: {} }; });
+    const activation = Mutation.Mutation.activatePathway({}, { id: draftId }, { pool } as never);
+    await new Promise((r) => setTimeout(r, 200));                       // activation holds the lock, paused in compile
+    const saver = await pool.connect();
+    await saver.query('BEGIN');
+    const save = saver.query('SELECT id, status FROM pathway_graph_index WHERE logical_id = $1 AND version = $2 FOR UPDATE', [logical, '2.0']);
+    release();
+    await activation;
+    const seen = await save;
+    await saver.query('ROLLBACK');
+    saver.release();
+    expect(seen.rows[0].status).toBe('ACTIVE');                         // DRAFT_UPDATE's existing check refuses this
+    expect(await statusOf(activeId)).toBe('SUPERSEDED');
+  });
+});
+```
+
+Run (scratch database; never `prism_db`):
+
+```bash
+export PGPASSWORD=$(pm2 env 0 | sed 's/\x1b\[[0-9;]*m//g' | awk -F': ' '/^POSTGRES_PASSWORD/{print $2}')
+dropdb -h localhost -U prism --if-exists prism_lock_scratch; createdb -h localhost -U prism prism_lock_scratch
+pg_dump -h localhost -U prism --schema-only --no-owner prism_db | psql -q -h localhost -U prism prism_lock_scratch 2>&1 | grep -vi "age\|ag_catalog" | head -5
+RUN_PIPELINE_PG_TESTS=1 PIPELINE_PG_DATABASE=prism_lock_scratch POSTGRES_PASSWORD=$PGPASSWORD \
+  npm test --prefix $W/apps/pathway-service -- --runInBand src/__tests__/activation-postgres.test.ts
+dropdb -h localhost -U prism prism_lock_scratch
+```
+
+Expected: PASS (2 tests).
+
+**Falsify the protocol:** temporarily remove `FOR UPDATE` from the lock query in `transition` and re-run. The first test must fail, because activation compiles v2's pre-save title and activates it. Restore, and confirm `git -C $W diff --stat` shows only the intended files.
+
+- [ ] **Step 6: Typecheck and commit**
+
 Run: `$W/node_modules/.bin/tsc -p $W/apps/pathway-service/tsconfig.json --noEmit && echo tsc-clean`
 Expected: `tsc-clean`.
 
-- [ ] **Step 5: Commit**
-
 ```bash
-git -C $W add apps/pathway-service/src/resolvers/mutations/import.ts apps/pathway-service/src/__tests__/mutation-resolvers.test.ts
-git -C $W commit -m "feat(pathway-service): refuse activation of pathways that do not compile; allow archiving drafts"
+git -C $W add apps/pathway-service/src/resolvers/mutations/import.ts apps/pathway-service/src/services/import/import-orchestrator.ts apps/pathway-service/src/__tests__/mutation-resolvers.test.ts apps/pathway-service/src/__tests__/activation-postgres.test.ts
+git -C $W commit -m "feat(pathway-service): activate only a compiled graph — one locked transaction shared with draft saves"
 ```
 
 ---
