@@ -66,6 +66,7 @@ export function makeEnv(nodes: GraphNode[], edges: GraphEdge[], safety: Partial<
     envFingerprint: 'env-test',
     llmModel: 'test-model',
     unnormalized: [],
+    compilation: { ok: false, errors: [] },
   };
 }
 

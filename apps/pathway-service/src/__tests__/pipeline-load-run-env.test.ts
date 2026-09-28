@@ -61,7 +61,9 @@ describe('loadRunEnv (C4, D13)', () => {
     const sql = client.query.mock.calls.map((c) => String(c[0]));
     expect(sql[0]).toBe('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
     expect(sql.at(-1)).toBe('COMMIT');
-    expect(sql.filter((s) => s.includes('FROM pathway_graph_index'))).toHaveLength(1);
+    expect(sql.filter((s) => s.includes('FROM pathway_graph_index WHERE id = ANY'))).toHaveLength(1);
+    // One index read per child, for compiling it inside the same snapshot.
+    expect(sql.filter((s) => s.includes('FROM pathway_graph_index WHERE id = $1'))).toHaveLength(2);
     expect(buildResolutionContext).toHaveBeenCalledTimes(2);
     expect(loadSafetyReference).toHaveBeenCalledTimes(1);
     const { medications, allergySnomedCodes } = (loadSafetyReference as jest.Mock).mock.calls[0][1];

@@ -7,6 +7,7 @@ jest.mock('../services/medications/normalizer', () => ({
   prewarmMedications: jest.fn(),
 }));
 jest.mock('../services/import/import-orchestrator', () => ({ importPathway: jest.fn() }));
+jest.mock('../services/compiler/stored-input', () => ({ loadStoredCompileInput: jest.fn().mockResolvedValue(null) }));
 
 import { buildGraphContext, buildResolutionContext } from '../resolvers/helpers/resolution-context';
 import { importMutations } from '../resolvers/mutations/import';
@@ -63,7 +64,9 @@ describe('pathway medication pre-warm (D14)', () => {
 
   it('activation pre-warms the activated pathway without waiting for it', async () => {
     (buildResolutionContext as jest.Mock).mockReturnValue(new Promise(() => undefined));
-    const pool = { query: jest.fn().mockResolvedValue({ rows: [{ id: 'pw-1', previousStatus: 'DRAFT' }] }) };
+    // Activation runs in its own transaction; the pre-warm still gets the pool, not that client.
+    const client = { query: jest.fn().mockResolvedValue({ rows: [{ id: 'pw-1', status: 'DRAFT', previousStatus: 'DRAFT' }] }), release: jest.fn() };
+    const pool = { query: jest.fn(), connect: jest.fn().mockResolvedValue(client) };
     const r = await importMutations.activatePathway(null, { id: 'pw-1' }, { pool } as never);
     expect(r.previousStatus).toBe('DRAFT');
     expect(buildResolutionContext).toHaveBeenCalledWith(pool, 'pw-1');

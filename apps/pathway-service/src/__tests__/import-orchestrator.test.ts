@@ -1,6 +1,11 @@
 import { importPathway } from '../services/import/import-orchestrator';
 import { MINIMAL_PATHWAY, clonePathway } from './fixtures/reference-pathway';
 
+jest.mock('../services/resolution/attribute-code-map', () => ({
+  ...jest.requireActual('../services/resolution/attribute-code-map'),
+  loadAttributeCodeMap: jest.fn(async () => new Map()),
+}));
+
 // Mock the pool and client
 function createMockPool(opts: { expectedEdgeCount?: number } = {}) {
   const expectedEdgeCount = opts.expectedEdgeCount ?? MINIMAL_PATHWAY.edges.length;
@@ -74,6 +79,26 @@ function createMockPool(opts: { expectedEdgeCount?: number } = {}) {
 }
 
 describe('importPathway', () => {
+  it('stores a draft that does not compile, and reports why as warnings', async () => {
+    const pw = {
+      ...MINIMAL_PATHWAY,
+      nodes: [
+        ...MINIMAL_PATHWAY.nodes,
+        { id: 'gate-hb', type: 'Gate', properties: { title: 'Hb', gate_type: 'patient_attribute', default_behavior: 'skip', condition: { attribute: 'lab.hemoglobin', operator: 'less_than', value: 7 } } },
+        { id: 'step-1-2', type: 'Step', properties: { stage_number: 1, step_number: 2, display_number: '1.2', title: 'Transfusion' } },
+      ],
+      edges: [
+        ...MINIMAL_PATHWAY.edges,
+        { from: 'stage-1', to: 'gate-hb', type: 'HAS_GATE' },
+        { from: 'gate-hb', to: 'step-1-2', type: 'BRANCHES_TO' },
+      ],
+    } as never;
+    const { pool } = createMockPool({ expectedEdgeCount: 4 }); // the post-write integrity check counts edges
+    const result = await importPathway(pool as never, pw, 'NEW_PATHWAY', 'user-1');
+    expect(result.validation.valid).toBe(true);
+    expect(result.validation.warnings).toEqual(expect.arrayContaining([expect.stringContaining('Not evaluable until fixed: Gate "gate-hb": attribute "lab.hemoglobin" has no pathway_attribute_code_map row')]));
+  });
+
   it('should succeed for a valid NEW_PATHWAY import', async () => {
     const { pool } = createMockPool();
     const result = await importPathway(pool as any, MINIMAL_PATHWAY, 'NEW_PATHWAY', 'user-1');

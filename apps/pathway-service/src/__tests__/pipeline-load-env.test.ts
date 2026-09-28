@@ -77,4 +77,38 @@ describe('loadEvaluationEnv', () => {
     expect(b.graphFingerprint).toBe(a.graphFingerprint);
     expect(b.envFingerprint).not.toBe(a.envFingerprint);
   });
+
+  it('compiles the pathway inside the same snapshot and attaches the result without refusing evaluation (phase 1)', async () => {
+    const { client, pool } = db();
+    client.query.mockImplementation(async (sql: string) => {
+      if (sql.includes('FROM pathway_graph_index')) {
+        return { rows: [{ id: 'pw', ageNodeId: '1', logicalId: 'L', title: 'T', version: '1', category: 'ACUTE_CARE', scope: null, targetPopulation: null, temporalDefaults: null }] };
+      }
+      return { rows: [] };
+    });
+    const env = await loadEvaluationEnv(pool as never, 'pw', { patient: patient as never });
+
+    const sqls = client.query.mock.calls.map((c: unknown[]) => String(c[0]));
+    const begin = sqls.indexOf('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
+    const commit = sqls.lastIndexOf('COMMIT');
+    const indexRead = sqls.findIndex((s) => s.includes('FROM pathway_graph_index'));
+    expect(begin).toBeLessThan(indexRead);
+    expect(indexRead).toBeLessThan(commit);
+    // This fixture's HAS_CHILD edge is not an authorable type: the result says so, and evaluation still gets its env.
+    expect(env.compilation.ok).toBe(false);
+    expect(env.compilation.ok ? [] : env.compilation.errors.map((e) => e.code)).toContain('UNKNOWN_EDGE_TYPE');
+    expect(env.graphFingerprint).toBeDefined();
+  });
+
+  it('compiles the loader\'s shadowed identities too, so a node stored as "root" is reported (phase 1: recorded, not enforced)', async () => {
+    const { client, pool } = db();
+    client.query.mockImplementation(async (sql: string) => (sql.includes('FROM pathway_graph_index')
+      ? { rows: [{ id: 'pw', ageNodeId: '1', logicalId: 'L', title: 'T', version: '1', category: 'ACUTE_CARE', scope: null, targetPopulation: null, temporalDefaults: null }] }
+      : { rows: [] }));
+    const shadow = { id: '9', nodeIdentifier: 'root', nodeType: 'Stage', properties: { stage_number: 2, title: 'Shadow' } };
+    (buildResolutionContext as jest.Mock).mockResolvedValue({ ...rctx(), shadowedNodes: [shadow] });
+    const env = await loadEvaluationEnv(pool as never, 'pw', { patient: patient as never });
+    expect(env.compilation.ok ? [] : env.compilation.errors.map((e) => e.code)).toContain('RESERVED_ROOT');
+    expect(env.resolution.graphContext.allNodes.some((n) => n.nodeType === 'Stage')).toBe(false);   // evaluation's graph is unchanged
+  });
 });

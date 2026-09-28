@@ -13,6 +13,9 @@ import {
 } from './relational-writer';
 import { ensureIcd10Codes } from '../codes/icd10-hierarchy';
 import { ensureClinicalCodeReference, type ClinicalCodeRef } from '../codes/clinical-code-reference';
+import { compilePathway } from '../compiler/compile';
+import { withCompileReport } from '../compiler/report';
+import { loadAttributeCodeMap } from '../resolution/attribute-code-map';
 
 /**
  * Collect every code referenced anywhere in the pathway JSON for indexing
@@ -106,6 +109,13 @@ export async function importPathway(
       importType: importMode,
     };
   }
+
+  // Report, don't block: a draft may be saved mid-authoring, but anything that
+  // would stop it being evaluated is shown now (interpreter spec §3.1).
+  const reported = withCompileReport(
+    validation,
+    compilePathway({ pathway: pathwayJson, codeMap: await loadAttributeCodeMap(pool), temporalDefaults: {} }),
+  );
 
   // Step 2: Acquire client + begin transaction
   const client = await pool.connect();
@@ -420,7 +430,7 @@ export async function importPathway(
       logicalId: pathwayJson.pathway.logical_id,
       version: pathwayJson.pathway.version,
       status: 'DRAFT',
-      validation,
+      validation: reported,
       diff: diffResult,
       importType: importMode,
     };
@@ -439,8 +449,11 @@ async function findExistingPathway(
   logicalId: string,
   version: string
 ): Promise<{ id: string; status: string } | null> {
+  // The draft-save half of the activation lock protocol (resolvers/mutations/import.ts
+  // `transition`): runs inside the import transaction, so a save and an activation of
+  // this row never interleave.
   const result = await client.query(
-    'SELECT id, status FROM pathway_graph_index WHERE logical_id = $1 AND version = $2',
+    'SELECT id, status FROM pathway_graph_index WHERE logical_id = $1 AND version = $2 FOR UPDATE',
     [logicalId, version]
   );
   return result.rows[0] || null;

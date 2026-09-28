@@ -6,6 +6,9 @@ import type { PatientContext } from '../../confidence/types';
 import { loadLLMGateConfig } from '../../llm/llm-gate-client';
 import { SafetyReference, loadSafetyReference, normalizedKey } from '../../medications/safety-reference';
 import type { MedicationInput } from '../../medications/types';
+import { compileCached } from '../../compiler/cache';
+import type { CompileResult } from '../../compiler/model';
+import { compileInputFrom, readStoredIndex } from '../../compiler/stored-input';
 import { hashOf } from './canonical';
 
 /** Everything evaluation reads, from one snapshot (spec C4). */
@@ -22,6 +25,11 @@ export interface EvaluationEnv {
    * all three; a text alone would pre-warm a row evaluation never reads.
    */
   unnormalized: MedicationInput[];
+  /**
+   * The pathway compiled inside this snapshot (interpreter spec §3.1). Phase 1
+   * attaches it without acting on it: evaluation still runs on TraversalEngine.
+   */
+  compilation: CompileResult;
 }
 
 export interface CandidateUniverse {
@@ -79,7 +87,7 @@ async function inSnapshot<T>(pool: Pool, read: (db: Pool) => Promise<T>): Promis
   }
 }
 
-async function readPathway(db: Pool, pathwayId: string): Promise<{ resolution: ResolutionContext; scoring: ScoringConfig }> {
+async function readPathway(db: Pool, pathwayId: string): Promise<{ resolution: ResolutionContext; scoring: ScoringConfig; compilation: CompileResult }> {
   const resolution = await buildResolutionContext(db, pathwayId);
   const scoring = await resolution.confidenceEngine.loadScoringConfig({
     pool: db,
@@ -87,7 +95,11 @@ async function readPathway(db: Pool, pathwayId: string): Promise<{ resolution: R
     nodes: resolution.graphContext.allNodes,
     signalDefinitions: resolution.signals,
   });
-  return { resolution, scoring };
+  const index = await readStoredIndex(db, pathwayId);
+  const compilation: CompileResult = index
+    ? compileCached(compileInputFrom(index, [...resolution.graphContext.allNodes, ...(resolution.shadowedNodes ?? [])], resolution.edges, resolution.codeMap))
+    : { ok: false, errors: [{ code: 'NOT_FOUND', message: `pathway ${pathwayId} has no index row` }] };
+  return { resolution, scoring, compilation };
 }
 
 /** The candidate universe (C1): every Medication node, the patient's medications, every write-in. */
@@ -108,7 +120,7 @@ const unnormalizedOf = (medications: MedicationInput[], safety: SafetyReference)
   ).values(),
 ];
 
-function envOf(resolution: ResolutionContext, scoring: ScoringConfig, safety: SafetyReference, unnormalized: MedicationInput[]): EvaluationEnv {
+function envOf(resolution: ResolutionContext, scoring: ScoringConfig, safety: SafetyReference, unnormalized: MedicationInput[], compilation: CompileResult): EvaluationEnv {
   const graphFingerprint = graphFingerprintOf(resolution);
   const llmModel = loadLLMGateConfig()?.model ?? null;
   const envFingerprint = hashOf({
@@ -121,17 +133,17 @@ function envOf(resolution: ResolutionContext, scoring: ScoringConfig, safety: Sa
     safety,
     llmModel,
   });
-  return { resolution, scoring, safety, graphFingerprint, envFingerprint, llmModel, unnormalized };
+  return { resolution, scoring, safety, graphFingerprint, envFingerprint, llmModel, unnormalized, compilation };
 }
 
 export async function loadEvaluationEnv(pool: Pool, pathwayId: string, universe: CandidateUniverse): Promise<EvaluationEnv> {
   const read = await inSnapshot(pool, async (db) => {
-    const { resolution, scoring } = await readPathway(db, pathwayId);
+    const { resolution, scoring, compilation } = await readPathway(db, pathwayId);
     const medications = candidateMedications([resolution], universe);
     const safety = await loadSafetyReference(db, { medications, allergySnomedCodes: allergyCodesOf(universe) });
-    return { resolution, scoring, medications, safety };
+    return { resolution, scoring, medications, safety, compilation };
   });
-  return envOf(read.resolution, read.scoring, read.safety, unnormalizedOf(read.medications, read.safety));
+  return envOf(read.resolution, read.scoring, read.safety, unnormalizedOf(read.medications, read.safety), read.compilation);
 }
 
 /**
@@ -141,7 +153,7 @@ export async function loadEvaluationEnv(pool: Pool, pathwayId: string, universe:
  */
 export async function loadRunEnv(pool: Pool, pathwayIds: string[], universe: CandidateUniverse): Promise<RunEnv> {
   const read = await inSnapshot(pool, async (db) => {
-    const graphs = new Map<string, { resolution: ResolutionContext; scoring: ScoringConfig }>();
+    const graphs = new Map<string, { resolution: ResolutionContext; scoring: ScoringConfig; compilation: CompileResult }>();
     for (const id of pathwayIds) graphs.set(id, await readPathway(db, id));
     const metaRows = pathwayIds.length === 0
       ? []
@@ -150,7 +162,7 @@ export async function loadRunEnv(pool: Pool, pathwayIds: string[], universe: Can
     const safety = await loadSafetyReference(db, { medications, allergySnomedCodes: allergyCodesOf(universe) });
     return { graphs, metaRows, medications, safety };
   });
-  const children = new Map([...read.graphs].map(([id, g]) => [id, envOf(g.resolution, g.scoring, read.safety, [])]));
+  const children = new Map([...read.graphs].map(([id, g]) => [id, envOf(g.resolution, g.scoring, read.safety, [], g.compilation)]));
   const meta = new Map<string, PathwayMeta>(
     read.metaRows.map((r: { id: string; logical_id: string; title: string; version: string }) =>
       [r.id, { logicalId: r.logical_id, title: r.title, version: r.version }]),
