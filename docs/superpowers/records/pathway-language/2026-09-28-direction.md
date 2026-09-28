@@ -1,7 +1,11 @@
 # Pathway language: design direction (2026-09-28)
 
-**Status:** direction agreed in conversation; **not a spec**. No design or implementation work has started.
-The next step (sub-project 1) waits for an explicit go-ahead.
+**Status:** historical direction record; **not a spec**. The subsequent
+[pathway language RFC](../../specs/2026-09-28-pathway-language-rfc.md) proposes a revised direction:
+one language with fixed semantics, drawing from CQL and restricted Datalog. In particular, it recommends
+replacing institution-specific semantics profiles with approved clinical content and bounded policy.
+The RFC is proposed for review; it does not record implementation approval. The original discussion below
+is preserved so the changes in direction are explicit.
 
 Supersedes phases 2–5 of `docs/superpowers/specs/2026-09-26-evaluation-interpreter-design.md` and its
 fixed-semantics answers to Q1–Q8. Phase 1 (the compiler, deployed to live 2026-09-28 at `main` 16a2ffd) keeps
