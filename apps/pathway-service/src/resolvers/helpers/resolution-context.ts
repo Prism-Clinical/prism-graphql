@@ -125,7 +125,7 @@ export function buildGraphContext(nodes: GraphNode[], edges: GraphEdge[]): Graph
 export async function fetchGraphFromAGE(
   pool: import('pg').Pool,
   ageNodeId: string,
-): Promise<{ nodes: GraphNode[]; edges: GraphEdge[] }> {
+): Promise<{ nodes: GraphNode[]; edges: GraphEdge[]; shadowedNodes: GraphNode[] }> {
   // Validate ageNodeId is a numeric AGE internal ID to prevent Cypher injection
   if (!/^\d+$/.test(String(ageNodeId))) {
     throw new GraphQLError(`Invalid AGE node ID: "${ageNodeId}"`, {
@@ -143,7 +143,7 @@ export async function fetchGraphFromAGE(
   const rootMetaResult = await executeCypher(pool, rootMetaCypher, '(lid agtype, ver agtype)');
   const rootRow = rootMetaResult.rows[0];
   if (!rootRow) {
-    return { nodes: [], edges: [] };
+    return { nodes: [], edges: [], shadowedNodes: [] };
   }
   const logicalId = String(JSON.parse(rootRow.lid));
   const version = String(JSON.parse(rootRow.ver));
@@ -175,7 +175,13 @@ export async function fetchGraphFromAGE(
     String(val).replace(/::(?:vertex|edge)$/, '');
 
   const nodes: GraphNode[] = [];
-  const seenNodeIds = new Set<string>();
+  // One logical node per node_id, first vertex wins — the rendering contract.
+  // A dropped vertex of a DIFFERENT type is an identity conflict, not drift
+  // (e.g. a Stage stored as node_id "root" beside the Pathway root), and which
+  // one wins depends on AGE's row order. Those are returned in `shadowedNodes`
+  // (one per node_id + type) so compilation sees every identity regardless.
+  const typesById = new Map<string, Set<string>>();
+  const shadowedNodes: GraphNode[] = [];
 
   for (const row of nodesResult.rows) {
     if (!row.v) continue;
@@ -184,16 +190,16 @@ export async function fetchGraphFromAGE(
       if (!parsed || !parsed.properties) continue;
       const props = parsed.properties;
       const nodeId = props.node_id ?? `age_${parsed.id}`;
-      if (seenNodeIds.has(nodeId)) continue;
-      seenNodeIds.add(nodeId);
-
       const nodeType = parsed.label ?? props.node_type ?? 'Unknown';
-      nodes.push({
-        id: String(parsed.id),
-        nodeIdentifier: nodeId,
-        nodeType,
-        properties: props,
-      });
+      const node = { id: String(parsed.id), nodeIdentifier: nodeId, nodeType, properties: props };
+      const seenTypes = typesById.get(nodeId);
+      if (!seenTypes) {
+        typesById.set(nodeId, new Set([nodeType]));
+        nodes.push(node);
+      } else if (!seenTypes.has(nodeType)) {
+        seenTypes.add(nodeType);
+        shadowedNodes.push(node);
+      }
     } catch {
       // Skip unparseable nodes
     }
@@ -243,7 +249,7 @@ export async function fetchGraphFromAGE(
     }
   }
 
-  return { nodes, edges };
+  return { nodes, edges, shadowedNodes };
 }
 
 // ─── Shared Engine Instances ────────────────────────────────────────
@@ -276,6 +282,8 @@ export interface ResolutionContext {
    * relational index. `{}` when the pathway states no opinion.
    */
   temporalDefaults: PathwayTemporalDefaults;
+  /** `fetchGraphFromAGE`'s identity conflicts, for compilation only. Absent = none. */
+  shadowedNodes?: GraphNode[];
 }
 
 export async function buildResolutionContext(
@@ -298,7 +306,7 @@ export async function buildResolutionContext(
   const temporalDefaults = parsePathwayTemporalDefaults(pathwayRow.rows[0]?.temporal_defaults);
 
   // These four operations are independent — run in parallel
-  const [{ nodes, edges }, signalResult, thresholds, codeMap] = await Promise.all([
+  const [{ nodes, edges, shadowedNodes }, signalResult, thresholds, codeMap] = await Promise.all([
     fetchGraphFromAGE(pool, ageNodeId),
     pool.query(
       `SELECT id, name, display_name, description, scoring_type, scoring_rules,
@@ -321,6 +329,7 @@ export async function buildResolutionContext(
     confidenceEngine,
     codeMap,
     temporalDefaults,
+    shadowedNodes,
   };
 }
 

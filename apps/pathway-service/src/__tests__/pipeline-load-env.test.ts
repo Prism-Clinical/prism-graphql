@@ -99,4 +99,16 @@ describe('loadEvaluationEnv', () => {
     expect(env.compilation.ok ? [] : env.compilation.errors.map((e) => e.code)).toContain('UNKNOWN_EDGE_TYPE');
     expect(env.graphFingerprint).toBeDefined();
   });
+
+  it('compiles the loader\'s shadowed identities too, so a node stored as "root" is reported (phase 1: recorded, not enforced)', async () => {
+    const { client, pool } = db();
+    client.query.mockImplementation(async (sql: string) => (sql.includes('FROM pathway_graph_index')
+      ? { rows: [{ id: 'pw', ageNodeId: '1', logicalId: 'L', title: 'T', version: '1', category: 'ACUTE_CARE', scope: null, targetPopulation: null, temporalDefaults: null }] }
+      : { rows: [] }));
+    const shadow = { id: '9', nodeIdentifier: 'root', nodeType: 'Stage', properties: { stage_number: 2, title: 'Shadow' } };
+    (buildResolutionContext as jest.Mock).mockResolvedValue({ ...rctx(), shadowedNodes: [shadow] });
+    const env = await loadEvaluationEnv(pool as never, 'pw', { patient: patient as never });
+    expect(env.compilation.ok ? [] : env.compilation.errors.map((e) => e.code)).toContain('RESERVED_ROOT');
+    expect(env.resolution.graphContext.allNodes.some((n) => n.nodeType === 'Stage')).toBe(false);   // evaluation's graph is unchanged
+  });
 });

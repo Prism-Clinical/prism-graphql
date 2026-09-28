@@ -32,7 +32,11 @@ export async function readStoredIndex(db: Pick<Pool, 'query'>, pathwayId: string
   return { row: r.rows[0], conditionCodes: codes.rows };
 }
 
-/** A stored graph (as the resolution loader reads it) → the compiler's input. Pure. */
+/**
+ * A stored graph (as the resolution loader reads it) → the compiler's input. Pure.
+ * `nodes` must include the loader's `shadowedNodes`: the loader collapses vertices
+ * sharing a node_id, and the compiler must see every identity to refuse conflicts.
+ */
 export function compileInputFrom(index: StoredIndex, nodes: GraphNode[], edges: GraphEdge[], codeMap: AttributeCodeMap): CompileInput {
   return {
     pathway: pathwayJsonFromStoredGraph({
@@ -53,5 +57,5 @@ export async function loadStoredCompileInput(db: Pick<Pool, 'query'>, pathwayId:
   // Sequential, not Promise.all: a single transaction client runs one query at a time.
   const graph = await fetchGraphFromAGE(db as Pool, String(index.row.ageNodeId));
   const codeMap = await loadAttributeCodeMap(db);
-  return compileInputFrom(index, graph.nodes, graph.edges, codeMap);
+  return compileInputFrom(index, [...graph.nodes, ...graph.shadowedNodes], graph.edges, codeMap);
 }

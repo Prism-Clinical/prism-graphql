@@ -97,7 +97,7 @@ async function readPathway(db: Pool, pathwayId: string): Promise<{ resolution: R
   });
   const index = await readStoredIndex(db, pathwayId);
   const compilation: CompileResult = index
-    ? compileCached(compileInputFrom(index, resolution.graphContext.allNodes, resolution.edges, resolution.codeMap))
+    ? compileCached(compileInputFrom(index, [...resolution.graphContext.allNodes, ...(resolution.shadowedNodes ?? [])], resolution.edges, resolution.codeMap))
     : { ok: false, errors: [{ code: 'NOT_FOUND', message: `pathway ${pathwayId} has no index row` }] };
   return { resolution, scoring, compilation };
 }
