@@ -4,7 +4,7 @@
 
 **Date:** 2026-09-28
 
-**Last revised:** 2026-09-29 — applicability, migration, disposition, safety ownership, assertion/policy resolution, longitudinal state, and an explicit v0 capability boundary.
+**Last revised:** 2026-09-30 — fresh-start deployment, optional existing-content design fixtures, and acceptance through the new ingestion process; no production continuity or legacy-data migration requirement.
 
 **Target branch:** `docs/pathway-language-direction`
 
@@ -45,17 +45,21 @@ The replacement need not wait for a broad cleanup of the evaluator it retires. K
 
 ### 2.1 What exists today
 
-The current [compiler](../../../apps/pathway-service/src/services/compiler/compile.ts) validates a pathway and builds an immutable model. Its [kind catalogue](../../../apps/pathway-service/src/services/compiler/kinds.ts) and [model](../../../apps/pathway-service/src/services/compiler/model.ts) are useful migration inputs, not a final language definition.
+The current [compiler](../../../apps/pathway-service/src/services/compiler/compile.ts) validates a pathway and builds an immutable model. Its [kind catalogue](../../../apps/pathway-service/src/services/compiler/kinds.ts) and [model](../../../apps/pathway-service/src/services/compiler/model.ts) are useful design references, not a final language definition.
 
-The [evaluation environment](../../../apps/pathway-service/src/services/resolution/pipeline/load-env.ts) attaches compilation while the [evaluation pipeline](../../../apps/pathway-service/src/services/resolution/pipeline/evaluate.ts) still executes `TraversalEngine`. The replacement must close that gap: the accepted compiled representation becomes the only executable meaning for a migrated pathway.
+The [evaluation environment](../../../apps/pathway-service/src/services/resolution/pipeline/load-env.ts) attaches compilation while the [evaluation pipeline](../../../apps/pathway-service/src/services/resolution/pipeline/evaluate.ts) still executes `TraversalEngine`. The replacement must close that gap: the accepted compiled representation becomes the only executable meaning for a newly published pathway.
 
 Preserve the useful boundaries already present: explicit uncertainty, a pinned clock, immutable inputs, recorded external observations, shared evaluation, eligibility versus disposition, reviewed-result checks, and revision-controlled plan materialization. Reuse implementation only where it satisfies the new contracts.
 
-The [recorded compiler corpus](../records/evaluation-interpreter/compiler-corpus.md) supplies migration fixtures. It is not proof that their clinical content is correct or that all active production content has been reviewed under this RFC.
+The [recorded compiler corpus](../records/evaluation-interpreter/compiler-corpus.md) supplies optional design fixtures. It is not proof that their clinical content is correct or that all active production content has been reviewed under this RFC.
 
 ### 2.2 Review incorporated on 2026-09-29
 
-This revision makes pathway applicability explicit; classifies Step content instead of converting every Step to guidance; corrects exclusion-first disposition labeling; separates clinical safety-policy ownership from interpreter enforcement; specifies query-level evidence precedence and setting-specific policy composition; defines progress across encounters; and bounds the initial implementation. It also names pinned migration fixtures and makes the internal package boundary enforceable. The RFC remains proposed, not an implementation or clinical approval.
+This revision makes pathway applicability explicit; classifies Step content instead of converting every Step to guidance; corrects exclusion-first disposition labeling; separates clinical safety-policy ownership from interpreter enforcement; specifies query-level evidence precedence and setting-specific policy composition; defines progress across encounters; and bounds the initial implementation. It also names pinned design fixtures and makes the internal package boundary enforceable. The RFC remains proposed, not an implementation or clinical approval.
+
+### 2.3 Fresh-start scope clarified on 2026-09-30
+
+The project is redesigning ingestion and will start from a reset database. Production continuity, legacy-data preservation, and compatibility with old JSON/evaluator behavior are outside scope. Existing pathways are optional design examples; the acceptance target is newly ingested, source-grounded clinical content. Correctness and lifecycle requirements apply to the new system from its launch onward.
 
 ## 3. Goals, non-goals, and invariants
 
@@ -76,7 +80,8 @@ This revision makes pathway applicability explicit; classifies Step content inst
 - Arbitrary institution-defined operators or interpreter plugins.
 - General recursion, mutable graph execution, autonomous ordering/prescribing, or arbitrary code embedded in pathways.
 - A universal theorem prover for clinical correctness or all conceivable patient states.
-- Replacing GraphQL, FHIR ingestion, the database, or the graph editor merely to introduce the language.
+- Replacing GraphQL or the graph editor merely to introduce the language. The ingestion redesign and database reset are accepted project assumptions; this RFC specifies their language boundary rather than their full implementation.
+- Preserving existing production records or sessions, uninterrupted service, backward compatibility with existing pathway JSON, or operating old and new evaluators together.
 - A generic distributed workflow platform or arbitrary third-party fulfiller marketplace.
 
 ### 3.3 Language invariants
@@ -210,7 +215,7 @@ Accept only approved dimension-preserving conversions. Do not infer equivalence 
 - Bounded filtering, existence, count bounds, and definite-latest selection.
 - Nonrecursive reusable expressions with declared signatures and reads.
 
-Defer generic regular expressions, arbitrary joins exposed to authors, unbounded collection generation, nonlinear numeric solvers, and trend/regression operators until a concrete pathway requires a separately specified contract. Migration must identify such unsupported constructs rather than approximate them.
+Defer generic regular expressions, arbitrary joins exposed to authors, unbounded collection generation, nonlinear numeric solvers, and trend/regression operators until a concrete pathway requires a separately specified contract. Authoring and ingestion must identify such unsupported constructs rather than approximate them.
 
 Time is an input. Distinguish a 24-hour duration from a calendar day in a specified timezone. Partial dates represent uncertainty; they do not acquire invented midnight timestamps. A latest selection succeeds only when the winner is established by the declared time and correction policy. A tie between distinct observations is unresolved unless an approved rule resolves it; input order is never the tie-breaker.
 
@@ -294,7 +299,7 @@ Each built-in contract defines typed ports, cardinality, required properties, ex
 
 Recommendation subclasses can carry medication, test, imaging, procedure, guidance, and follow-up payloads. Do not force all clinical actions into a medication-shaped schema. A follow-up proposal must carry its timing anchor, responsible role, and completion evidence requirement. Proposing an action does not prove that it was ordered, performed, or completed.
 
-Quality metrics are derived outputs or separately declared checks. They cannot silently feed clinical eligibility unless connected through an explicit typed predicate. A legacy Criterion is migrated according to its actual role; its label alone does not determine whether it is evidence, a predicate, or presentation.
+Quality metrics are derived outputs or separately declared checks. They cannot silently feed clinical eligibility unless connected through an explicit typed predicate. If an existing Criterion is used as a design example, classify it according to its actual role; its label alone does not determine whether it is evidence, a predicate, or presentation.
 
 ## 9. Relationship contracts and graph composition
 
@@ -615,7 +620,7 @@ Require named clinical ownership, intended population/use, evidence citations, a
 
 Provider exceptions require a defined authorized scope and, where applicable, reason/additional review. An acknowledgement is not evidence that a contraindication disappeared. Preview/synthetic capabilities must be distinguishable from clinical sessions and cannot confer authority through caller-asserted headers.
 
-Clinical correctness is established through evidence review and validation of encoded behavior, not by language design alone. Requirements must include omission hazards as well as inappropriate recommendations. Clinical reviewers should define expected outcomes independently of the implementation and adjudicate migration differences. Preserve the scenarios, expected rationale, reviewer identity, and reviewed artifact version.
+Clinical correctness is established through evidence review and validation of encoded behavior, not by language design alone. Requirements must include omission hazards as well as inappropriate recommendations. Clinical reviewers should define expected outcomes independently of the implementation and adjudicate differences between the source clinical intent and encoded behavior. Preserve the scenarios, expected rationale, reviewer identity, and reviewed artifact version.
 
 ## 17. Repository and application boundaries
 
@@ -625,7 +630,7 @@ Enforce this boundary with its own `package.json`, `tsconfig`, public exports, i
 
 `pathway-service` owns adapters between graph storage/canonical source, patient evidence, session events, and the language package. GraphQL exposes authoring, compilation diagnostics, evaluation results, needs, and review/finalization operations. Existing graph storage can remain an authoring persistence mechanism; a graph database query must not define runtime clinical semantics.
 
-The admin UI renders source-mapped errors on the canvas and shows before/after behavior for a proposed content change. Provider applications consume a stable result contract rather than recomputing readiness or eligibility from presentation fields. Legacy and new generation paths must converge on an authoritative finalization contract or be explicitly restricted before clinical rollout.
+The admin UI renders source-mapped errors on the canvas and shows before/after behavior for a proposed content change. Provider applications consume a stable result contract rather than recomputing readiness or eligibility from presentation fields. The new generation paths must use one authoritative finalization contract. Legacy generation paths can be removed without a coexistence period.
 
 Extract a new repository only after the package boundary is stable and a separate consumer, ownership model, or release requirement justifies it. If extracted, publish immutable versioned artifacts and conformance fixtures; do not create a remote interpreter service merely because the code moved repositories.
 
@@ -633,7 +638,7 @@ Extract a new repository only after the package boundary is stable and a separat
 
 | Alternative | Benefits | Costs / reason not selected initially |
 |---|---|---|
-| Keep extending current traversal | Least immediate migration work | Leaves meaning spread across traversal, confidence, gates and exceptions |
+| Keep extending current traversal | Least immediate implementation work | Leaves meaning spread across traversal, confidence, gates and exceptions |
 | Full CQL runtime plus separate pathway rule engine | Existing clinical expression tooling | Two semantic boundaries; pathway combination, needs, assertions and explanations still need a contract |
 | Compile PPL to Soufflé | Existing relational evaluation, analysis tooling, native compilation | Needs a clinical type/evidence layer, integration/toolchain, source-mapped diagnostics and constrained feature subset |
 | Fixed Soufflé interpreter with pathway definitions as facts | One reusable executable backend | Implements an interpreter inside another language; may add indirection without removing much code |
@@ -652,17 +657,17 @@ Soufflé is an evaluated alternative, not an initial dependency or a parallel im
 
 CQL is a source of expression semantics, not a declaration that PPL is standard CQL. [FHIR R4 PlanDefinition](https://hl7.org/fhir/R4/plandefinition.html) is an interoperability reference for action definitions and applicability, not a replacement for the full PPL contract. Explicit adapters may be added when required, with supported/lossy mappings documented. GraphQL remains the application interface and is not the clinical rule language.
 
-## 19. Migration from the existing pathway system
+## 19. Fresh-start ingestion and content acceptance
 
-### 19.1 Map meaning, not just labels
+### 19.1 Optional existing-content design exercises
 
-| Existing construct | Migration approach |
+| Existing construct, if used as an example | Candidate language representation |
 |---|---|
 | Pathway condition codes / scope | Discovery metadata plus an explicit reviewed applicability predicate; matching alone does not establish applicability |
 | Stage / Step used only as heading or container | Group/display; preserve content and ordering without inventing an action |
 | Step carrying a clinical instruction | Guidance Recommendation with reviewed local indication and inherited explicit applicability; recover branch/prerequisite conditions |
 | Step with both container and instruction roles | Split into Group plus Guidance Recommendation with source links to the original Step |
-| Ambiguous Step content / containment | Migration diagnostic requiring review; no automatic conversion of every Step to an action |
+| Ambiguous Step content / containment | Authoring diagnostic requiring review; no automatic conversion of every Step to an action |
 | Gate with patient condition | Predicate plus typed bindings and explicit affected target expression |
 | Question / gate answer | Evidence need or choice, based on whether the answer supplies a fact or selects an option |
 | Prior-node-result gate | Explicit typed dependency; distinguish proposed, selected, ordered and completed states |
@@ -675,21 +680,25 @@ CQL is a source of expression semantics, not a declaration that PPL is standard 
 | default_behavior skip/traverse | Replace with explicit unknown handling and approved workflow; never translate unknown to false silently |
 | LLM gate | Recorded proposed observation plus an approved evidence/review contract |
 
-The translator emits a migration report with exact conversions, unsupported constructs, semantic differences, and items requiring author/clinical review. It cannot silently invent a clinical rule from a score or display edge.
+A general JSON-to-language translator is not a deliverable or acceptance requirement. Optional manual translations or small fixture converters can expose gaps in expressiveness; document unsupported constructs, assumptions, and items requiring clinical review. Neither old JSON nor the old evaluator is the clinical oracle, and neither should constrain the new ingestion design. Do not invent a clinical rule from a score or display edge.
 
 The existing implementation marks reached structural Steps included during traversal but excludes structural nodes from action projection. That does not prove their authored content is nonclinical, nor does it justify converting them all to recommendations. Inspect each Step's actual content and graph context. Applicability alone is sufficient only for guidance explicitly intended for every applicable patient; conditional guidance retains its additional indication and prerequisite expressions.
 
 The fixed composition model removes traversal-order and containment-versus-guard precedence as sources of differing results. It does not make omission of a necessary clinical predicate impossible: authors can still encode the wrong rule, which independent clinical acceptance cases must detect.
 
-### 19.2 Runtime transition
+### 19.2 New ingestion acceptance path
 
-- Introduce a language-version discriminator and a separate compiled-artifact version.
-- Keep unmigrated pathways on the existing engine with clear version identity.
-- Initially require all pathways in one composed clinical run to use one engine family. Mixed-engine composition needs a later explicit equivalence contract; it is not an implicit fallback.
-- Shadow-evaluate migrated pathways on the same frozen cases. Differences are expected and must be classified: fixed defect, intended clinical/content change, or regression.
-- The old engine is a comparison baseline, not the clinical oracle.
-- Activate only reviewed packages with retrievable artifacts. Rollback selects a previously approved release; it does not reinterpret old sessions under new code.
-- Retire legacy evaluation paths after migration and historical replay requirements are satisfied. A failed new evaluation never silently retries under legacy semantics.
+The required vertical exercise is **source clinical content → new ingestion → canonical language artifact → compilation and clinical validation → evaluated scenarios**. Preserve source identity/version and links from generated declarations to the source passages and reviewed interpretations that justify them. Ingestion may produce draft proposals; ambiguous scope, conditions, timing, or action meaning must remain visible for review rather than becoming an approved executable rule by default.
+
+Define expected clinical scenarios independently of ingestion and evaluation. Check applicability, indicated and contraindicated actions, missing evidence, follow-up obligations, and omissions against those expectations. Optional comparisons with old exports may reveal questions but are not parity gates. The new system may intentionally represent different content and behavior where the source and clinical review support it.
+
+### 19.3 Fresh-start deployment and lifecycle boundary
+
+Assume the existing production database will be wiped and rebuilt through the new ingestion process. Downtime and an initially incomplete catalogue/data set are acceptable. There is no requirement to transfer old pathways, patient/session records, approvals, action instances, or historical replay bundles; keep an old evaluator available; or support mixed-engine runs. This RFC records the design assumption, not an instruction to execute a database deletion.
+
+Initialize the new schema and required configuration, ingest the selected content, and publish only packages that meet their declared intended-use acceptance criteria. An unavailable pathway or missing patient evidence stays explicitly unavailable/unresolved; an incomplete catalogue must not be presented as comprehensive coverage. Product availability may be reduced while this work proceeds.
+
+Versioning, frozen replay, review integrity, longitudinal continuity, and artifact retention apply to records created in the new system. They do not require reconstructing legacy history. Once the new system is in clinical use, release changes must preserve the interpretation of its established sessions and action instances. Recovery can suspend clinical use or select a retrievable previously approved new-system release when one exists; there is no fallback to legacy semantics.
 
 ## 20. Implementation sequence and acceptance gates
 
@@ -697,10 +706,10 @@ The fixed composition model removes traversal-order and containment-versus-guard
 |---|---|---|
 | A. Semantic nucleus | Catalogue, evidence model, truth tables, expression fragment, source schema and numeric/temporal capability decisions | Representative examples have unambiguous expected results; all remaining semantic choices identified |
 | B. Compiler + reference evaluator | Typed IR, pure execution, diagnostics, structured explanations, no I/O | Type/dependency rejection cases and semantic conformance corpus pass; results invariant under irrelevant input ordering |
-| C. Vertical pathway slice | Pinned anemia 1.4 fixture translated with applicability, needs, assertions, review and finalization | Independent clinical scenarios adjudicated; source-to-result trace complete; unsupported constructs resolved explicitly; transaction/revision contract verified |
+| C. Ingestion-to-evaluation slice | One source-grounded pathway produced through the new ingestion process, with applicability, needs, assertions, review and finalization; anemia is a candidate | Independent clinical scenarios adjudicated; clinical-source-to-language-to-result trace complete; unsupported constructs resolved explicitly; new-system transaction/revision contract verified |
 | D. Evidence and verification | Validated live adapter/replay bundle; targeted symbolic checks; acquisition policy | Adapter fidelity and coverage cases pass; replay reproduces artifacts; proof outcomes honestly distinguish inconclusive |
-| E. Broader composition | Pinned gestational-hypertension version 1 fixture and multi-pathway interactions; institutional content variation | No hidden semantic switches; conflict, choice and safety cases pass; unsupported cycles rejected/remodeled; authoring burden assessed |
-| F. Controlled rollout | Shadow comparison, approved migration, release/rollback/revocation procedure | Clinical owners approve intended use and risk-based acceptance criteria; required release controls and authority enforced |
+| E. Broader composition | A second substantially different source-grounded pathway and multi-pathway interactions; institutional content variation; gestational hypertension is a candidate | No hidden semantic switches; conflict, choice and safety cases pass; unsupported cycles rejected/remodeled; authoring burden assessed |
+| F. Fresh-start launch | Clean database initialization, approved newly ingested packages, and new-system release/revocation/recovery procedure | Clinical owners approve intended use and risk-based acceptance criteria; incomplete content is explicitly scoped or blocked; required release controls and authority enforced; no old-system parity gate |
 
 Stages can overlap where contracts are stable. Do not defer uncertainty, quantities, or assertions until after the evaluator; they are language semantics. Do not require broad repairs to the old traversal before beginning A/B. Do not expose unvalidated new behavior clinically merely because B is complete.
 
@@ -731,17 +740,17 @@ Unsupported *program operations* fail compilation. Unsupported or incomplete *pa
 
 “Snapshot complete within scope” must be attested by the adapter against a named source/query contract, including pagination and failures. A successful API response or a stored snapshot row does not establish completeness of the patient's clinical history. V0 can represent scoped absence only for the question that contract can actually answer.
 
-The full anemia migration is not automatically achievable within the v0 cut. Stage C inventories its requirements; unsupported operations either receive a separately specified capability extension or block that migration. It cannot remove clinical behavior merely to claim that v0 supports the pathway. A validated subset is labeled as such and is not substituted for the whole clinical package.
+A complete anemia pathway is not automatically achievable within the v0 cut. Stage C inventories the requirements of its selected source clinical content; unsupported operations either receive a separately specified capability extension or block publication for that intended use. A deliberately smaller validated scope is acceptable and must be labeled as such. Missing content cannot be presented as a complete clinical package; preserving every old pathway or JSON construct is not a requirement.
 
-### 20.2 Pinned migration and acceptance fixtures
+### 20.2 Optional pinned design fixtures
 
-Use the following stored exports at the inspected baseline, identified by file digest. These are engineering inputs, not assertions of present live status or clinically approved test oracles.
+The following stored exports, identified by file digest, are optional engineering examples for challenging the language. They are not required conversion targets, assertions of present live status, or clinically approved test oracles. Stages C/E may choose different source-grounded pathways with comparable complexity. Acceptance follows independently reviewed source clinical content and expected scenarios, not reproduction of these exports.
 
 | Role | Pathway / stored fixture | SHA-256 of fixture bytes |
 |---|---|---|
-| Stage C | `anemia-in-pregnancy-v1@1.4`: [anemia-1.4.json](../../../apps/pathway-service/src/__tests__/fixtures/compiler-corpus/anemia-1.4.json) | `0041ee3be1fde50763eb518101f94344abb7c07d36a02fbd8c2c95394c4f1f46` |
-| Stage E | `gestational-hypertension-preeclampsia@1`: [ghtn-1.json](../../../apps/pathway-service/src/__tests__/fixtures/compiler-corpus/ghtn-1.json) | `1e8026c9bf338e0896108ceb2fa062b0f227b511f40d1542a370bb2443e1e775` |
-| Additional escalation migration case | `chronic-htn-pregnancy-v1@1.0`: [chronic-htn-1.0.json](../../../apps/pathway-service/src/__tests__/fixtures/compiler-corpus/chronic-htn-1.0.json) | `3082e342c6bd36d60c710ef8c9a266b21a0301f683ca5b8ed5e664fda6856dec` |
+| Candidate for Stage C design exploration | `anemia-in-pregnancy-v1@1.4`: [anemia-1.4.json](../../../apps/pathway-service/src/__tests__/fixtures/compiler-corpus/anemia-1.4.json) | `0041ee3be1fde50763eb518101f94344abb7c07d36a02fbd8c2c95394c4f1f46` |
+| Candidate for Stage E design exploration | `gestational-hypertension-preeclampsia@1`: [ghtn-1.json](../../../apps/pathway-service/src/__tests__/fixtures/compiler-corpus/ghtn-1.json) | `1e8026c9bf338e0896108ceb2fa062b0f227b511f40d1542a370bb2443e1e775` |
+| Optional escalation design case | `chronic-htn-pregnancy-v1@1.0`: [chronic-htn-1.0.json](../../../apps/pathway-service/src/__tests__/fixtures/compiler-corpus/chronic-htn-1.0.json) | `3082e342c6bd36d60c710ef8c9a266b21a0301f683ca5b8ed5e664fda6856dec` |
 
 The recorded corpus lists anemia 1.4 as ACTIVE at that historical inspection and documents gestational-hypertension routing defects. It identifies the unreachable `ESCALATES_TO` medication case in the chronic-hypertension fixture. Do not conflate these findings or infer that a fixture requires runtime recursion. Add explicit synthetic cycle rejection cases, and remodel any clinically recurrent workflow through event/action instances. Changes to a fixture require a new digest and a reviewed description of the changed clinical assumptions.
 
@@ -825,18 +834,18 @@ Required tests/type checks must fail the release on failure. Run database-backed
 | Custom runtime becomes another large framework | Small acyclic fragment; no callbacks/recursion/plugins; expand only for demonstrated clinical requirements |
 | Authors cannot understand composition | Explicit all/any/choice displays, scenario previews, precise diagnostics and before/after review |
 | Formal checks create false confidence | Named obligations, assumptions and inconclusive results; clinical approval remains separate |
-| Migration silently changes care | Per-construct migration reports, independent clinical cases, shadow runs and reviewed release selection |
+| New ingestion omits or misrepresents clinical intent | Source-to-artifact provenance, explicit scope and unresolved diagnostics, independent clinical cases, and reviewed publication |
 | Pinned artifacts preserve obsolete recommendations | Separate replay from current use; revocation/freshness checks and explicit reviewed upgrades |
 | External data is incomplete or wrong | Coverage/provenance contracts, typed evidence diagnostics, validated adapters and visible unresolved needs |
 | Need acquisition never terminates | Attempt/deadline budgets and explicit unavailable outcomes |
 
 ## 23. Decisions resolved here and follow-up questions
 
-Recommended architectural decisions: one PPL; fixed semantics; CQL/Datalog inspiration rather than two embedded languages; typed node/relationship contracts; explicit evidence uncertainty; an acyclic executable port graph; one pure evaluator; no confidence-based implicit eligibility; targeted rather than universal proofs; internal package first; new language work begins without waiting for a broad legacy rewrite.
+Recommended architectural decisions: one PPL; fixed semantics; CQL/Datalog inspiration rather than two embedded languages; typed node/relationship contracts; explicit evidence uncertainty; an acyclic executable port graph; one pure evaluator; no confidence-based implicit eligibility; targeted rather than universal proofs; internal package first; fresh-start ingestion and deployment with a database reset; no legacy continuity requirement.
 
 Before implementing the semantic nucleus, resolve and document:
 
-1. Exact initial node/relationship vocabulary after walking the pinned fixtures in section 20.2, including applicability and Step-content classification.
+1. Exact initial node/relationship vocabulary after walking representative source clinical content and, optionally, the fixtures in section 20.2, including applicability and instruction-versus-container classification.
 2. Numeric capability limits and conversion implementation, with boundary fixtures.
 3. Exact operator signatures for the v0 capability cut in section 20.1 and an explicit CQL comparison ledger.
 4. Evidence completeness/negative-assertion requirements for each initial clinical query.
