@@ -10,6 +10,8 @@
 
 **Design inputs:** [Reviewable corpus and provenance](../records/pathway-language/corpus/README.md).
 
+**Implementation decomposition:** [Level 1 — behavioral outcomes](2026-10-01-pathway-language-level-1-behavioral-slices.md), [Level 2 — refined slices](2026-10-01-pathway-language-level-2-refined-slices.md), and [Level 3 — single-story components](2026-10-01-pathway-language-level-3-story-spec.md). These proposed delivery plans inherit this specification; story completion does not replace Stage A or clinical acceptance.
+
 ## 1. Ownership and acceptance rule
 
 This specification owns detailed source/IR contracts, the initial capability profile, conformance cases, clinical integration scenarios and implementation decisions. It extracts detail from RFC revision `c0b7f7c`; the accompanying revision narrows v0 and adds explicit traceability. The RFC owns architectural invariants. Detail can evolve here without reopening those invariants, but changes to truth semantics or clinical meaning require a versioned specification and review rather than an implementation-only reinterpretation.
