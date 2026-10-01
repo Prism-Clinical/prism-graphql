@@ -6,7 +6,7 @@
 
 **Date:** 2026-10-01
 
-**Authority:** [Accepted architecture](2026-09-28-pathway-language-rfc.md) and [Stage A contracts](2026-09-30-pathway-language-stage-a-spec.md). These documents organize delivery; they do not change language semantics or promote deferred capabilities.
+**Authority:** [Accepted architecture](2026-09-28-pathway-language-rfc.md) and [Stage A contracts](2026-09-30-pathway-language-stage-a-spec.md). These documents organize delivery under the Stage A capability contracts. They do not independently promote deferred capabilities.
 
 The first seven slices establish a narrow source-to-reviewed-result loop. Follow-on tracks add the clinically justified capabilities; they are not prerequisites for a literal-only foundation demo. Completed implementation slices contribute evidence toward stages B/C/E; no single early slice claims full `ppl-core-v0` support or permission for clinical launch.
 
@@ -19,8 +19,8 @@ No production database wipe, deployment, EHR transmission or new ingestion work 
 ## Story execution rules
 
 - Each story is a candidate for one independently reviewable PR: implementation, fixture and meaningful tests together. This is a scope target, not a duration promise. If a new operator, adapter or unresolved clinical policy is discovered, record it as a dependency or split a child story; do not silently expand the story.
-- Dependencies name completed behavior, not file-creation order. The graph below is acyclic. Full profile/scenario gates remain cumulative.
-- Proposed locations use `CORE` for the new `libs/pathway-language` package and `APP` for new-system seams in `apps/pathway-service`. Existing `services/resolution/session-store.ts`, `effective-context.ts` and `resolvers/mutations/resolution.ts` are reference points, not promises of legacy compatibility or instructions to reuse old semantics. Each story chooses the smallest appropriate files after inspection.
+- Start prerequisites require usable implementation outputs and their targeted boundary tests. They do not require every downstream integration check to finish before another story can begin. Integration/acceptance gates must pass before the affected story claims integrated capability or scenario acceptance; all prerequisite gates remain cumulative for publication. Both the start graph and the graph including acceptance gates are acyclic. A prototype cannot bypass a runtime or publication guard.
+- Proposed locations use `CORE` for the new `libs/pathway-language` package and `APP` for new-system seams in `apps/pathway-service`. Existing `services/resolution/session-store.ts`, `effective-context.ts` and `resolvers/mutations/resolution.ts` are reference points, not promises of legacy compatibility or instructions to reuse old semantics. UI refers to the separate `prism-admin-dashboard` repository: `src/components/graph/PathwayCanvas.tsx` and its PropertiesPanel are inspected reuse seams. Its current node-only validationErrors shape needs explicit relationship/field source mapping. The UI consumes the canonical AST and backend semantics. Each story chooses the smallest appropriate files after inspection.
 - Every compiler/evaluator story uses a minimal authored-source fixture through the supported public pipeline when its compiler path exists. Application stories consume compiled artifacts. Do not validate a story solely by invoking the function being implemented without checking its boundary.
 - Exact TypeScript names, error tokens and canonical schema shapes are fixed in Stage A/story contract review. Semantic outcomes below are normative acceptance expectations; example field labels are not permission to invent a second language model.
 - Run targeted unit/conformance tests for core behavior; use independent golden/metamorphic cases where appropriate. Transaction stories require isolated real database integration. No application implementation or test execution is claimed by this documentation.
@@ -37,6 +37,14 @@ No production database wipe, deployment, EHR transmission or new ingestion work 
 
 Technical prototypes can precede clinical adjudication only as nonclinical provisional evidence. They do not close a clinical story or fulfill a Stage A clinical packet. Assign responsible people in Stage A rather than fabricating owners here.
 
+## Dependency audit
+
+There are 16 outcomes, 40 refinements and 77 stories. The previous 65-story plan had a longest dependency chain of 34 stories. The revised start-prerequisite graph has depth 17; including integration/acceptance gates gives depth 23. Both have no dangling references or cycles. These are unit-weighted graph depths, not duration estimates or a promise of proportionate speedup; scope has also increased.
+
+47 stories have engineering readiness code E; 30 require clinical adjudication (C1: 4, C2: 8, E1: 11, E2: 7). E does not mean immediately ready: prerequisites and unresolved engineering contracts still apply. Clinical owners remain unassigned and are required before clinical acceptance.
+
+After F01.1.a, F01.1.b, F01.2.a, F01.2.b and U01.1.a can start independently once their contract decisions are fixed. The previous plan was not literally serial for its first fifteen stories: it already had two successors after F01.1.a. Read the exact leaf prerequisites rather than inferring order from document position.
+
 ## F01 — Accept one explicit source definition
 
 <a id="f01-1-a"></a>
@@ -47,7 +55,9 @@ Technical prototypes can precede clinical adjudication only as nonclinical provi
 
 **Parent:** [F01.1](2026-10-01-pathway-language-level-2-refined-slices.md#f01-1). **Stage A trace:** B-01, B-24, B-25; C-03.
 
-**Depends on:** No implementation predecessor. **Readiness:** E.
+**Start prerequisites:** No implementation predecessor.
+
+**Integration/acceptance gates:** No additional story-specific gates; inherited gates and profile/scenario requirements still apply. **Readiness:** E.
 
 **High-level implementation:** Create the isolated core package only as needed to run this fixture and its schema tests; document the public input/output contract.
 
@@ -65,7 +75,9 @@ Technical prototypes can precede clinical adjudication only as nonclinical provi
 
 **Parent:** [F01.1](2026-10-01-pathway-language-level-2-refined-slices.md#f01-1). **Stage A trace:** B-01, B-24, B-25; C-03.
 
-**Depends on:** [F01.1.a](2026-10-01-pathway-language-level-3-story-spec.md#f01-1-a). **Readiness:** E.
+**Start prerequisites:** [F01.1.a](2026-10-01-pathway-language-level-3-story-spec.md#f01-1-a).
+
+**Integration/acceptance gates:** No additional story-specific gates; inherited gates and profile/scenario requirements still apply. **Readiness:** E.
 
 **High-level implementation:** Validate the explicit compatibility pair from the Stage A contract; keep compiler build identity separate.
 
@@ -83,7 +95,9 @@ Technical prototypes can precede clinical adjudication only as nonclinical provi
 
 **Parent:** [F01.2](2026-10-01-pathway-language-level-2-refined-slices.md#f01-2). **Stage A trace:** B-01, B-24, B-25; C-03.
 
-**Depends on:** [F01.1.a](2026-10-01-pathway-language-level-3-story-spec.md#f01-1-a). **Readiness:** E.
+**Start prerequisites:** [F01.1.a](2026-10-01-pathway-language-level-3-story-spec.md#f01-1-a).
+
+**Integration/acceptance gates:** No additional story-specific gates; inherited gates and profile/scenario requirements still apply. **Readiness:** E.
 
 **High-level implementation:** Add source identity indexing and stable error ordering; retain diagnostic schema in fixture expectations.
 
@@ -101,7 +115,9 @@ Technical prototypes can precede clinical adjudication only as nonclinical provi
 
 **Parent:** [F01.2](2026-10-01-pathway-language-level-2-refined-slices.md#f01-2). **Stage A trace:** B-01, B-24, B-25; C-03.
 
-**Depends on:** [F01.1.b](2026-10-01-pathway-language-level-3-story-spec.md#f01-1-b), [F01.2.a](2026-10-01-pathway-language-level-3-story-spec.md#f01-2-a). **Readiness:** E.
+**Start prerequisites:** [F01.1.a](2026-10-01-pathway-language-level-3-story-spec.md#f01-1-a).
+
+**Integration/acceptance gates:** No additional story-specific gates; inherited gates and profile/scenario requirements still apply. **Readiness:** E.
 
 **High-level implementation:** Add the core package build/configuration and targeted direct/transitive import check; do not reorganize unrelated services.
 
@@ -121,7 +137,9 @@ Technical prototypes can precede clinical adjudication only as nonclinical provi
 
 **Parent:** [F02.1](2026-10-01-pathway-language-level-2-refined-slices.md#f02-1). **Stage A trace:** B-01, B-03, B-22, B-24; C-01, C-03.
 
-**Depends on:** [F01.2.b](2026-10-01-pathway-language-level-3-story-spec.md#f01-2-b). **Readiness:** E.
+**Start prerequisites:** [F01.1.a](2026-10-01-pathway-language-level-3-story-spec.md#f01-1-a), [F01.2.a](2026-10-01-pathway-language-level-3-story-spec.md#f01-2-a).
+
+**Integration/acceptance gates:** [F01.1.b](2026-10-01-pathway-language-level-3-story-spec.md#f01-1-b), [F01.2.b](2026-10-01-pathway-language-level-3-story-spec.md#f01-2-b). **Readiness:** E.
 
 **High-level implementation:** Implement direct lowering for the one supported action and freeze/copy immutable structures.
 
@@ -139,7 +157,9 @@ Technical prototypes can precede clinical adjudication only as nonclinical provi
 
 **Parent:** [F02.1](2026-10-01-pathway-language-level-2-refined-slices.md#f02-1). **Stage A trace:** B-01, B-03, B-22, B-24; C-01, C-03.
 
-**Depends on:** [F02.1.a](2026-10-01-pathway-language-level-3-story-spec.md#f02-1-a). **Readiness:** E.
+**Start prerequisites:** [F02.1.a](2026-10-01-pathway-language-level-3-story-spec.md#f02-1-a), [F01.1.b](2026-10-01-pathway-language-level-3-story-spec.md#f01-1-b).
+
+**Integration/acceptance gates:** No additional story-specific gates; inherited gates and profile/scenario requirements still apply. **Readiness:** E.
 
 **High-level implementation:** Add IR schema/opcode/version checks; production approval/digest authorization comes in F06/A01.
 
@@ -157,7 +177,9 @@ Technical prototypes can precede clinical adjudication only as nonclinical provi
 
 **Parent:** [F02.2](2026-10-01-pathway-language-level-2-refined-slices.md#f02-2). **Stage A trace:** B-01, B-03, B-22, B-24; C-01, C-03.
 
-**Depends on:** [F02.1.b](2026-10-01-pathway-language-level-3-story-spec.md#f02-1-b). **Readiness:** E.
+**Start prerequisites:** [F02.1.b](2026-10-01-pathway-language-level-3-story-spec.md#f02-1-b).
+
+**Integration/acceptance gates:** No additional story-specific gates; inherited gates and profile/scenario requirements still apply. **Readiness:** E.
 
 **High-level implementation:** Implement the boolean portion of the Stage A reducer and minimal structured trace.
 
@@ -175,7 +197,9 @@ Technical prototypes can precede clinical adjudication only as nonclinical provi
 
 **Parent:** [F02.2](2026-10-01-pathway-language-level-2-refined-slices.md#f02-2). **Stage A trace:** B-01, B-03, B-22, B-24; C-01, C-03.
 
-**Depends on:** [F02.2.a](2026-10-01-pathway-language-level-3-story-spec.md#f02-2-a). **Readiness:** E.
+**Start prerequisites:** [F02.2.a](2026-10-01-pathway-language-level-3-story-spec.md#f02-2-a).
+
+**Integration/acceptance gates:** No additional story-specific gates; inherited gates and profile/scenario requirements still apply. **Readiness:** E.
 
 **High-level implementation:** Add deterministic trace ordering and a small direct metamorphic fixture.
 
@@ -195,7 +219,9 @@ Technical prototypes can precede clinical adjudication only as nonclinical provi
 
 **Parent:** [F03.1](2026-10-01-pathway-language-level-2-refined-slices.md#f03-1). **Stage A trace:** B-01, B-03, B-04, B-13; C-01, E-01.
 
-**Depends on:** [F02.2.b](2026-10-01-pathway-language-level-3-story-spec.md#f02-2-b). **Readiness:** E.
+**Start prerequisites:** [F02.2.a](2026-10-01-pathway-language-level-3-story-spec.md#f02-2-a).
+
+**Integration/acceptance gates:** [F02.2.b](2026-10-01-pathway-language-level-3-story-spec.md#f02-2-b). **Readiness:** E.
 
 **High-level implementation:** Extend source/lowering with exactly one EvidenceQuery binding; reject incompatible port types.
 
@@ -213,7 +239,9 @@ Technical prototypes can precede clinical adjudication only as nonclinical provi
 
 **Parent:** [F03.1](2026-10-01-pathway-language-level-2-refined-slices.md#f03-1). **Stage A trace:** B-01, B-03, B-04, B-13; C-01, E-01.
 
-**Depends on:** [F03.1.a](2026-10-01-pathway-language-level-3-story-spec.md#f03-1-a). **Readiness:** E.
+**Start prerequisites:** [F03.1.a](2026-10-01-pathway-language-level-3-story-spec.md#f03-1-a).
+
+**Integration/acceptance gates:** No additional story-specific gates; inherited gates and profile/scenario requirements still apply. **Readiness:** E.
 
 **High-level implementation:** Add tagged evidence result and preserve relevant candidate diagnostics.
 
@@ -231,7 +259,9 @@ Technical prototypes can precede clinical adjudication only as nonclinical provi
 
 **Parent:** [F03.2](2026-10-01-pathway-language-level-2-refined-slices.md#f03-2). **Stage A trace:** B-01, B-03, B-04, B-13; C-01, E-01.
 
-**Depends on:** [F03.1.b](2026-10-01-pathway-language-level-3-story-spec.md#f03-1-b). **Readiness:** E.
+**Start prerequisites:** [F03.1.b](2026-10-01-pathway-language-level-3-story-spec.md#f03-1-b).
+
+**Integration/acceptance gates:** No additional story-specific gates; inherited gates and profile/scenario requirements still apply. **Readiness:** E.
 
 **High-level implementation:** Implement the operator truth tables through the same compiler/evaluator path.
 
@@ -249,7 +279,9 @@ Technical prototypes can precede clinical adjudication only as nonclinical provi
 
 **Parent:** [F03.2](2026-10-01-pathway-language-level-2-refined-slices.md#f03-2). **Stage A trace:** B-01, B-03, B-04, B-13; C-01, E-01.
 
-**Depends on:** [F03.2.a](2026-10-01-pathway-language-level-3-story-spec.md#f03-2-a). **Readiness:** E.
+**Start prerequisites:** [F03.1.a](2026-10-01-pathway-language-level-3-story-spec.md#f03-1-a).
+
+**Integration/acceptance gates:** No additional story-specific gates; inherited gates and profile/scenario requirements still apply. **Readiness:** E.
 
 **High-level implementation:** Extend graph validation for the new explicit reads and retain legal acyclic ordering.
 
@@ -269,7 +301,9 @@ Technical prototypes can precede clinical adjudication only as nonclinical provi
 
 **Parent:** [F04.1](2026-10-01-pathway-language-level-2-refined-slices.md#f04-1). **Stage A trace:** B-04, B-26, B-28; C-01.
 
-**Depends on:** [F03.2.b](2026-10-01-pathway-language-level-3-story-spec.md#f03-2-b). **Readiness:** E.
+**Start prerequisites:** [F03.1.b](2026-10-01-pathway-language-level-3-story-spec.md#f03-1-b).
+
+**Integration/acceptance gates:** [F03.2.b](2026-10-01-pathway-language-level-3-story-spec.md#f03-2-b). **Readiness:** E.
 
 **High-level implementation:** Implement the approved canonical key inputs and source link.
 
@@ -287,7 +321,9 @@ Technical prototypes can precede clinical adjudication only as nonclinical provi
 
 **Parent:** [F04.1](2026-10-01-pathway-language-level-2-refined-slices.md#f04-1). **Stage A trace:** B-04, B-26, B-28; C-01.
 
-**Depends on:** [F04.1.a](2026-10-01-pathway-language-level-3-story-spec.md#f04-1-a). **Readiness:** E.
+**Start prerequisites:** [F04.1.a](2026-10-01-pathway-language-level-3-story-spec.md#f04-1-a).
+
+**Integration/acceptance gates:** No additional story-specific gates; inherited gates and profile/scenario requirements still apply. **Readiness:** E.
 
 **High-level implementation:** Combine only identical requirement identities; preserve per-result links.
 
@@ -305,7 +341,9 @@ Technical prototypes can precede clinical adjudication only as nonclinical provi
 
 **Parent:** [F04.2](2026-10-01-pathway-language-level-2-refined-slices.md#f04-2). **Stage A trace:** B-04, B-26, B-28; C-01.
 
-**Depends on:** [F04.1.b](2026-10-01-pathway-language-level-3-story-spec.md#f04-1-b). **Readiness:** E.
+**Start prerequisites:** [F04.1.a](2026-10-01-pathway-language-level-3-story-spec.md#f04-1-a), [F03.2.a](2026-10-01-pathway-language-level-3-story-spec.md#f03-2-a).
+
+**Integration/acceptance gates:** No additional story-specific gates; inherited gates and profile/scenario requirements still apply. **Readiness:** E.
 
 **High-level implementation:** Implement reducer-aware materiality propagation for supported boolean operations.
 
@@ -323,7 +361,9 @@ Technical prototypes can precede clinical adjudication only as nonclinical provi
 
 **Parent:** [F04.2](2026-10-01-pathway-language-level-2-refined-slices.md#f04-2). **Stage A trace:** B-04, B-26, B-28; C-01.
 
-**Depends on:** [F04.2.a](2026-10-01-pathway-language-level-3-story-spec.md#f04-2-a). **Readiness:** E.
+**Start prerequisites:** [F04.2.a](2026-10-01-pathway-language-level-3-story-spec.md#f04-2-a).
+
+**Integration/acceptance gates:** No additional story-specific gates; inherited gates and profile/scenario requirements still apply. **Readiness:** E.
 
 **High-level implementation:** Attach declared independent findings/review obligations outside ordinary eligibility suppression.
 
@@ -343,7 +383,9 @@ Technical prototypes can precede clinical adjudication only as nonclinical provi
 
 **Parent:** [F05.1](2026-10-01-pathway-language-level-2-refined-slices.md#f05-1). **Stage A trace:** B-15, B-26; C-01; Stage D later.
 
-**Depends on:** [F04.2.b](2026-10-01-pathway-language-level-3-story-spec.md#f04-2-b). **Readiness:** E.
+**Start prerequisites:** [F04.1.a](2026-10-01-pathway-language-level-3-story-spec.md#f04-1-a).
+
+**Integration/acceptance gates:** [F04.2.a](2026-10-01-pathway-language-level-3-story-spec.md#f04-2-a), [F04.1.b](2026-10-01-pathway-language-level-3-story-spec.md#f04-1-b). **Readiness:** E.
 
 **High-level implementation:** Implement the fulfilled_by contract for this one response type; trust actor identity only from the boundary.
 
@@ -361,7 +403,9 @@ Technical prototypes can precede clinical adjudication only as nonclinical provi
 
 **Parent:** [F05.1](2026-10-01-pathway-language-level-2-refined-slices.md#f05-1). **Stage A trace:** B-15, B-26; C-01; Stage D later.
 
-**Depends on:** [F05.1.a](2026-10-01-pathway-language-level-3-story-spec.md#f05-1-a). **Readiness:** E.
+**Start prerequisites:** [F05.1.a](2026-10-01-pathway-language-level-3-story-spec.md#f05-1-a).
+
+**Integration/acceptance gates:** No additional story-specific gates; inherited gates and profile/scenario requirements still apply. **Readiness:** E.
 
 **High-level implementation:** Add contract mismatch diagnostics and event-identity checks.
 
@@ -379,7 +423,9 @@ Technical prototypes can precede clinical adjudication only as nonclinical provi
 
 **Parent:** [F05.2](2026-10-01-pathway-language-level-2-refined-slices.md#f05-2). **Stage A trace:** B-15, B-26; C-01; Stage D later.
 
-**Depends on:** [F05.1.b](2026-10-01-pathway-language-level-3-story-spec.md#f05-1-b). **Readiness:** E.
+**Start prerequisites:** [F05.1.b](2026-10-01-pathway-language-level-3-story-spec.md#f05-1-b).
+
+**Integration/acceptance gates:** [F03.2.b](2026-10-01-pathway-language-level-3-story-spec.md#f03-2-b). **Readiness:** E.
 
 **High-level implementation:** Add one adapter path into versioned session persistence and use optimistic revision checks.
 
@@ -397,7 +443,9 @@ Technical prototypes can precede clinical adjudication only as nonclinical provi
 
 **Parent:** [F05.2](2026-10-01-pathway-language-level-2-refined-slices.md#f05-2). **Stage A trace:** B-15, B-26; C-01; Stage D later.
 
-**Depends on:** [F05.2.a](2026-10-01-pathway-language-level-3-story-spec.md#f05-2-a). **Readiness:** E.
+**Start prerequisites:** [F05.2.a](2026-10-01-pathway-language-level-3-story-spec.md#f05-2-a).
+
+**Integration/acceptance gates:** No additional story-specific gates; inherited gates and profile/scenario requirements still apply. **Readiness:** E.
 
 **High-level implementation:** Implement idempotent dispatch identity and attempt/deadline state outside the core; use an injected clock.
 
@@ -417,7 +465,9 @@ Technical prototypes can precede clinical adjudication only as nonclinical provi
 
 **Parent:** [F06.1](2026-10-01-pathway-language-level-2-refined-slices.md#f06-1). **Stage A trace:** B-22, B-23, B-24; C-01, C-02, C-03.
 
-**Depends on:** [F05.2.a](2026-10-01-pathway-language-level-3-story-spec.md#f05-2-a). **Readiness:** E.
+**Start prerequisites:** [F02.1.b](2026-10-01-pathway-language-level-3-story-spec.md#f02-1-b).
+
+**Integration/acceptance gates:** [F01.2.b](2026-10-01-pathway-language-level-3-story-spec.md#f01-2-b). **Readiness:** E.
 
 **High-level implementation:** Specify deterministic serialization for current supported fields and keep operational logs excluded.
 
@@ -435,7 +485,9 @@ Technical prototypes can precede clinical adjudication only as nonclinical provi
 
 **Parent:** [F06.1](2026-10-01-pathway-language-level-2-refined-slices.md#f06-1). **Stage A trace:** B-22, B-23, B-24; C-01, C-02, C-03.
 
-**Depends on:** [F06.1.a](2026-10-01-pathway-language-level-3-story-spec.md#f06-1-a). **Readiness:** E.
+**Start prerequisites:** [F06.1.a](2026-10-01-pathway-language-level-3-story-spec.md#f06-1-a), [F02.2.a](2026-10-01-pathway-language-level-3-story-spec.md#f02-2-a).
+
+**Integration/acceptance gates:** No additional story-specific gates; inherited gates and profile/scenario requirements still apply. **Readiness:** E.
 
 **High-level implementation:** Implement a small artifact repository interface with local test storage and verified load.
 
@@ -453,7 +505,9 @@ Technical prototypes can precede clinical adjudication only as nonclinical provi
 
 **Parent:** [F06.2](2026-10-01-pathway-language-level-2-refined-slices.md#f06-2). **Stage A trace:** B-22, B-23, B-24; C-01, C-02, C-03.
 
-**Depends on:** [F06.1.b](2026-10-01-pathway-language-level-3-story-spec.md#f06-1-b), [F05.2.b](2026-10-01-pathway-language-level-3-story-spec.md#f05-2-b). **Readiness:** E.
+**Start prerequisites:** [F06.1.b](2026-10-01-pathway-language-level-3-story-spec.md#f06-1-b), [F05.2.a](2026-10-01-pathway-language-level-3-story-spec.md#f05-2-a).
+
+**Integration/acceptance gates:** No additional story-specific gates; inherited gates and profile/scenario requirements still apply. **Readiness:** E.
 
 **High-level implementation:** Persist review identity through the session API; do not let callers choose another institution context.
 
@@ -471,7 +525,9 @@ Technical prototypes can precede clinical adjudication only as nonclinical provi
 
 **Parent:** [F06.2](2026-10-01-pathway-language-level-2-refined-slices.md#f06-2). **Stage A trace:** B-22, B-23, B-24; C-01, C-02, C-03.
 
-**Depends on:** [F06.2.a](2026-10-01-pathway-language-level-3-story-spec.md#f06-2-a). **Readiness:** E.
+**Start prerequisites:** [F06.2.a](2026-10-01-pathway-language-level-3-story-spec.md#f06-2-a), [F03.1.b](2026-10-01-pathway-language-level-3-story-spec.md#f03-1-b).
+
+**Integration/acceptance gates:** No additional story-specific gates; inherited gates and profile/scenario requirements still apply. **Readiness:** E.
 
 **High-level implementation:** Compare approved material identities; reuse the same evaluation path.
 
@@ -491,7 +547,9 @@ Technical prototypes can precede clinical adjudication only as nonclinical provi
 
 **Parent:** [F07.1](2026-10-01-pathway-language-level-2-refined-slices.md#f07-1). **Stage A trace:** B-23, B-24, B-28 contracts; C-02, C-03 application evidence.
 
-**Depends on:** [F06.2.b](2026-10-01-pathway-language-level-3-story-spec.md#f06-2-b). **Readiness:** E.
+**Start prerequisites:** [F06.2.a](2026-10-01-pathway-language-level-3-story-spec.md#f06-2-a), [F04.2.a](2026-10-01-pathway-language-level-3-story-spec.md#f04-2-a).
+
+**Integration/acceptance gates:** [F06.2.b](2026-10-01-pathway-language-level-3-story-spec.md#f06-2-b), [A01.1.b](2026-10-01-pathway-language-level-3-story-spec.md#a01-1-b). **Readiness:** E.
 
 **High-level implementation:** Create the narrow finalization validator over pinned input/review identity; include nonclinical mode checks and reject clinical requests until the separate publication/approval contracts are implemented.
 
@@ -509,7 +567,9 @@ Technical prototypes can precede clinical adjudication only as nonclinical provi
 
 **Parent:** [F07.1](2026-10-01-pathway-language-level-2-refined-slices.md#f07-1). **Stage A trace:** B-23, B-24, B-28 contracts; C-02, C-03 application evidence.
 
-**Depends on:** [F07.1.a](2026-10-01-pathway-language-level-3-story-spec.md#f07-1-a). **Readiness:** E.
+**Start prerequisites:** [F07.1.a](2026-10-01-pathway-language-level-3-story-spec.md#f07-1-a).
+
+**Integration/acceptance gates:** No additional story-specific gates; inherited gates and profile/scenario requirements still apply. **Readiness:** E.
 
 **High-level implementation:** Add the minimal new-system persistence schema/migration and transaction for supported guidance; test store failure rollback.
 
@@ -527,7 +587,9 @@ Technical prototypes can precede clinical adjudication only as nonclinical provi
 
 **Parent:** [F07.2](2026-10-01-pathway-language-level-2-refined-slices.md#f07-2). **Stage A trace:** B-23, B-24, B-28 contracts; C-02, C-03 application evidence.
 
-**Depends on:** [F07.1.b](2026-10-01-pathway-language-level-3-story-spec.md#f07-1-b). **Readiness:** E.
+**Start prerequisites:** [F07.1.b](2026-10-01-pathway-language-level-3-story-spec.md#f07-1-b).
+
+**Integration/acceptance gates:** No additional story-specific gates; inherited gates and profile/scenario requirements still apply. **Readiness:** E.
 
 **High-level implementation:** Bind idempotency to actor/scope/request identity and reject inconsistent key reuse.
 
@@ -545,7 +607,9 @@ Technical prototypes can precede clinical adjudication only as nonclinical provi
 
 **Parent:** [F07.2](2026-10-01-pathway-language-level-2-refined-slices.md#f07-2). **Stage A trace:** B-23, B-24, B-28 contracts; C-02, C-03 application evidence.
 
-**Depends on:** [F07.2.a](2026-10-01-pathway-language-level-3-story-spec.md#f07-2-a). **Readiness:** E.
+**Start prerequisites:** [F07.2.a](2026-10-01-pathway-language-level-3-story-spec.md#f07-2-a), [F06.2.b](2026-10-01-pathway-language-level-3-story-spec.md#f06-2-b).
+
+**Integration/acceptance gates:** No additional story-specific gates; inherited gates and profile/scenario requirements still apply. **Readiness:** E.
 
 **High-level implementation:** Run barrier-controlled integration cases over real isolated persistence.
 
@@ -565,13 +629,15 @@ Technical prototypes can precede clinical adjudication only as nonclinical provi
 
 **Parent:** [A01.1](2026-10-01-pathway-language-level-2-refined-slices.md#a01-1). **Stage A trace:** B-02, B-14, B-18, B-24; C-03.
 
-**Depends on:** [F04.2.b](2026-10-01-pathway-language-level-3-story-spec.md#f04-2-b). **Readiness:** E.
+**Start prerequisites:** [F02.2.a](2026-10-01-pathway-language-level-3-story-spec.md#f02-2-a).
+
+**Integration/acceptance gates:** [F03.2.a](2026-10-01-pathway-language-level-3-story-spec.md#f03-2-a), [F04.1.a](2026-10-01-pathway-language-level-3-story-spec.md#f04-1-a). **Readiness:** E.
 
 **High-level implementation:** Add the smallest hole node and preview artifact mode; retain unaffected outputs.
 
 **Expected touch surface:** CORE/preview (proposed; inspect existing seams before editing).
 
-**Acceptance:** Dependent preview shows hole; a wrong-type hole rejects; no patient Need is emitted for the hole.
+**Acceptance:** Dependent preview shows a typed hole; a wrong-type hole rejects; integrated acceptance must distinguish the marker from patient Unknown and must not emit a patient Need for the hole.
 
 **Out of this story:** No substituting patient Unknown for authoring incompleteness. Stop when the stated behavior and its boundary tests pass; do not implement the rest of the parent track.
 
@@ -583,7 +649,9 @@ Technical prototypes can precede clinical adjudication only as nonclinical provi
 
 **Parent:** [A01.1](2026-10-01-pathway-language-level-2-refined-slices.md#a01-1). **Stage A trace:** B-02, B-14, B-18, B-24; C-03.
 
-**Depends on:** [A01.1.a](2026-10-01-pathway-language-level-3-story-spec.md#a01-1-a), [F07.1.a](2026-10-01-pathway-language-level-3-story-spec.md#f07-1-a). **Readiness:** E.
+**Start prerequisites:** [A01.1.a](2026-10-01-pathway-language-level-3-story-spec.md#a01-1-a), [F02.1.b](2026-10-01-pathway-language-level-3-story-spec.md#f02-1-b).
+
+**Integration/acceptance gates:** No additional story-specific gates; inherited gates and profile/scenario requirements still apply. **Readiness:** E.
 
 **High-level implementation:** Enforce whole-package completeness and trusted execution mode at publication/load boundaries.
 
@@ -601,7 +669,9 @@ Technical prototypes can precede clinical adjudication only as nonclinical provi
 
 **Parent:** [A01.2](2026-10-01-pathway-language-level-2-refined-slices.md#a01-2). **Stage A trace:** B-02, B-14, B-18, B-24; C-03.
 
-**Depends on:** [A01.1.b](2026-10-01-pathway-language-level-3-story-spec.md#a01-1-b), [F06.2.b](2026-10-01-pathway-language-level-3-story-spec.md#f06-2-b). **Readiness:** E.
+**Start prerequisites:** [A01.1.b](2026-10-01-pathway-language-level-3-story-spec.md#a01-1-b), [F06.1.a](2026-10-01-pathway-language-level-3-story-spec.md#f06-1-a).
+
+**Integration/acceptance gates:** [F06.2.b](2026-10-01-pathway-language-level-3-story-spec.md#f06-2-b). **Readiness:** E.
 
 **High-level implementation:** Store declaration rationale and bind it to content review identity separately from semantic result digest.
 
@@ -619,7 +689,9 @@ Technical prototypes can precede clinical adjudication only as nonclinical provi
 
 **Parent:** [A01.2](2026-10-01-pathway-language-level-2-refined-slices.md#a01-2). **Stage A trace:** B-02, B-14, B-18, B-24; C-03.
 
-**Depends on:** [A01.2.a](2026-10-01-pathway-language-level-3-story-spec.md#a01-2-a). **Readiness:** E.
+**Start prerequisites:** [F01.1.a](2026-10-01-pathway-language-level-3-story-spec.md#f01-1-a), [F06.1.a](2026-10-01-pathway-language-level-3-story-spec.md#f06-1-a).
+
+**Integration/acceptance gates:** [A01.1.b](2026-10-01-pathway-language-level-3-story-spec.md#a01-1-b). **Readiness:** E.
 
 **High-level implementation:** Implement typed specialization rules and authenticated config binding; register approved artifact in a test store.
 
@@ -639,7 +711,9 @@ Technical prototypes can precede clinical adjudication only as nonclinical provi
 
 **Parent:** [M01.1](2026-10-01-pathway-language-level-2-refined-slices.md#m01-1). **Stage A trace:** B-05, B-16, B-17, B-18, B-23; C-02.
 
-**Depends on:** [F07.2.b](2026-10-01-pathway-language-level-3-story-spec.md#f07-2-b), [A01.2.b](2026-10-01-pathway-language-level-3-story-spec.md#a01-2-b). **Readiness:** C2.
+**Start prerequisites:** [F02.2.a](2026-10-01-pathway-language-level-3-story-spec.md#f02-2-a).
+
+**Integration/acceptance gates:** [A01.2.b](2026-10-01-pathway-language-level-3-story-spec.md#a01-2-b), [F01.1.b](2026-10-01-pathway-language-level-3-story-spec.md#f01-1-b). **Readiness:** C2.
 
 **High-level implementation:** Support the exact reviewed payload contract and bounded decimal representation; reject absent required fields.
 
@@ -657,7 +731,9 @@ Technical prototypes can precede clinical adjudication only as nonclinical provi
 
 **Parent:** [M01.1](2026-10-01-pathway-language-level-2-refined-slices.md#m01-1). **Stage A trace:** B-05, B-16, B-17, B-18, B-23; C-02.
 
-**Depends on:** [M01.1.a](2026-10-01-pathway-language-level-3-story-spec.md#m01-1-a). **Readiness:** C2.
+**Start prerequisites:** [M01.1.a](2026-10-01-pathway-language-level-3-story-spec.md#m01-1-a).
+
+**Integration/acceptance gates:** No additional story-specific gates; inherited gates and profile/scenario requirements still apply. **Readiness:** C2.
 
 **High-level implementation:** Implement the allergy assessment result contract without a live lookup; include coverage identity in trace.
 
@@ -675,7 +751,9 @@ Technical prototypes can precede clinical adjudication only as nonclinical provi
 
 **Parent:** [M01.2](2026-10-01-pathway-language-level-2-refined-slices.md#m01-2). **Stage A trace:** B-05, B-16, B-17, B-18, B-23; C-02.
 
-**Depends on:** [M01.1.b](2026-10-01-pathway-language-level-3-story-spec.md#m01-1-b). **Readiness:** C2.
+**Start prerequisites:** [M01.1.b](2026-10-01-pathway-language-level-3-story-spec.md#m01-1-b).
+
+**Integration/acceptance gates:** No additional story-specific gates; inherited gates and profile/scenario requirements still apply. **Readiness:** C2.
 
 **High-level implementation:** Apply approved hold severity semantics and preserve required evidence references.
 
@@ -693,7 +771,9 @@ Technical prototypes can precede clinical adjudication only as nonclinical provi
 
 **Parent:** [M01.2](2026-10-01-pathway-language-level-2-refined-slices.md#m01-2). **Stage A trace:** B-05, B-16, B-17, B-18, B-23; C-02.
 
-**Depends on:** [M01.2.a](2026-10-01-pathway-language-level-3-story-spec.md#m01-2-a). **Readiness:** C2.
+**Start prerequisites:** [M01.1.b](2026-10-01-pathway-language-level-3-story-spec.md#m01-1-b).
+
+**Integration/acceptance gates:** No additional story-specific gates; inherited gates and profile/scenario requirements still apply. **Readiness:** C2.
 
 **High-level implementation:** Add typed interaction knowledge-version and coverage inputs; no external lookup in core.
 
@@ -711,7 +791,9 @@ Technical prototypes can precede clinical adjudication only as nonclinical provi
 
 **Parent:** [M01.3](2026-10-01-pathway-language-level-2-refined-slices.md#m01-3). **Stage A trace:** B-05, B-16, B-17, B-18, B-23; C-02.
 
-**Depends on:** [M01.2.b](2026-10-01-pathway-language-level-3-story-spec.md#m01-2-b). **Readiness:** C2.
+**Start prerequisites:** [M01.1.a](2026-10-01-pathway-language-level-3-story-spec.md#m01-1-a), [F04.1.a](2026-10-01-pathway-language-level-3-story-spec.md#f04-1-a).
+
+**Integration/acceptance gates:** No additional story-specific gates; inherited gates and profile/scenario requirements still apply. **Readiness:** C2.
 
 **High-level implementation:** Compile the supported one_of and selection ports through normal IR.
 
@@ -729,7 +811,9 @@ Technical prototypes can precede clinical adjudication only as nonclinical provi
 
 **Parent:** [M01.3](2026-10-01-pathway-language-level-2-refined-slices.md#m01-3). **Stage A trace:** B-05, B-16, B-17, B-18, B-23; C-02.
 
-**Depends on:** [M01.3.a](2026-10-01-pathway-language-level-3-story-spec.md#m01-3-a). **Readiness:** C2.
+**Start prerequisites:** [M01.3.a](2026-10-01-pathway-language-level-3-story-spec.md#m01-3-a), [F05.1.b](2026-10-01-pathway-language-level-3-story-spec.md#f05-1-b).
+
+**Integration/acceptance gates:** No additional story-specific gates; inherited gates and profile/scenario requirements still apply. **Readiness:** C2.
 
 **High-level implementation:** Implement scoped refusal/consent evidence validation under the clinical contract.
 
@@ -747,7 +831,9 @@ Technical prototypes can precede clinical adjudication only as nonclinical provi
 
 **Parent:** [M01.4](2026-10-01-pathway-language-level-2-refined-slices.md#m01-4). **Stage A trace:** B-05, B-16, B-17, B-18, B-23; C-02.
 
-**Depends on:** [M01.3.b](2026-10-01-pathway-language-level-3-story-spec.md#m01-3-b). **Readiness:** C2.
+**Start prerequisites:** [M01.3.a](2026-10-01-pathway-language-level-3-story-spec.md#m01-3-a), [M01.2.a](2026-10-01-pathway-language-level-3-story-spec.md#m01-2-a), [M01.2.b](2026-10-01-pathway-language-level-3-story-spec.md#m01-2-b).
+
+**Integration/acceptance gates:** No additional story-specific gates; inherited gates and profile/scenario requirements still apply. **Readiness:** C2.
 
 **High-level implementation:** Connect final safety disposition to choice obligations without feedback execution.
 
@@ -765,9 +851,11 @@ Technical prototypes can precede clinical adjudication only as nonclinical provi
 
 **Parent:** [M01.4](2026-10-01-pathway-language-level-2-refined-slices.md#m01-4). **Stage A trace:** B-05, B-16, B-17, B-18, B-23; C-02.
 
-**Depends on:** [M01.4.a](2026-10-01-pathway-language-level-3-story-spec.md#m01-4-a), [F07.2.b](2026-10-01-pathway-language-level-3-story-spec.md#f07-2-b). **Readiness:** C2.
+**Start prerequisites:** [M01.4.a](2026-10-01-pathway-language-level-3-story-spec.md#m01-4-a), [M01.3.b](2026-10-01-pathway-language-level-3-story-spec.md#m01-3-b), [F07.2.b](2026-10-01-pathway-language-level-3-story-spec.md#f07-2-b), [F06.2.b](2026-10-01-pathway-language-level-3-story-spec.md#f06-2-b), [A01.2.b](2026-10-01-pathway-language-level-3-story-spec.md#a01-2-b).
 
-**High-level implementation:** Reuse F07 transaction path; carry full medication payload, scope and review IDs.
+**Integration/acceptance gates:** [U01.2.b](2026-10-01-pathway-language-level-3-story-spec.md#u01-2-b), [V01.1.b](2026-10-01-pathway-language-level-3-story-spec.md#v01-1-b), [A01.1.b](2026-10-01-pathway-language-level-3-story-spec.md#a01-1-b). **Readiness:** C2.
+
+**High-level implementation:** Reuse F07 transaction path; carry full medication payload, scope and review IDs; own the full C-02 packet through the minimal authoring view once its acceptance gates pass, retaining independent clinical expectations.
 
 **Expected touch surface:** APP/C-02 integration (proposed; inspect existing seams before editing).
 
@@ -785,7 +873,9 @@ Technical prototypes can precede clinical adjudication only as nonclinical provi
 
 **Parent:** [T01.1](2026-10-01-pathway-language-level-2-refined-slices.md#t01-1). **Stage A trace:** B-06, B-10, B-12, B-13, B-19, B-20; C-01, E-01.
 
-**Depends on:** [F06.1.b](2026-10-01-pathway-language-level-3-story-spec.md#f06-1-b). **Readiness:** E.
+**Start prerequisites:** [F02.2.a](2026-10-01-pathway-language-level-3-story-spec.md#f02-2-a).
+
+**Integration/acceptance gates:** [F06.1.b](2026-10-01-pathway-language-level-3-story-spec.md#f06-1-b). **Readiness:** E.
 
 **High-level implementation:** Add supported instant parsing and duration comparison under a frozen clock.
 
@@ -803,7 +893,9 @@ Technical prototypes can precede clinical adjudication only as nonclinical provi
 
 **Parent:** [T01.1](2026-10-01-pathway-language-level-2-refined-slices.md#t01-1). **Stage A trace:** B-06, B-10, B-12, B-13, B-19, B-20; C-01, E-01.
 
-**Depends on:** [T01.1.a](2026-10-01-pathway-language-level-3-story-spec.md#t01-1-a), [F05.2.a](2026-10-01-pathway-language-level-3-story-spec.md#f05-2-a). **Readiness:** E.
+**Start prerequisites:** [T01.1.a](2026-10-01-pathway-language-level-3-story-spec.md#t01-1-a), [F05.1.b](2026-10-01-pathway-language-level-3-story-spec.md#f05-1-b).
+
+**Integration/acceptance gates:** No additional story-specific gates; inherited gates and profile/scenario requirements still apply. **Readiness:** E.
 
 **High-level implementation:** Reuse the time predicate in F05 validation; do not mutate old responses.
 
@@ -821,7 +913,9 @@ Technical prototypes can precede clinical adjudication only as nonclinical provi
 
 **Parent:** [T01.2](2026-10-01-pathway-language-level-2-refined-slices.md#t01-2). **Stage A trace:** B-06, B-10, B-12, B-13, B-19, B-20; C-01, E-01.
 
-**Depends on:** [T01.1.a](2026-10-01-pathway-language-level-3-story-spec.md#t01-1-a), [F05.2.a](2026-10-01-pathway-language-level-3-story-spec.md#f05-2-a). **Readiness:** E1.
+**Start prerequisites:** [T01.1.a](2026-10-01-pathway-language-level-3-story-spec.md#t01-1-a), [F03.1.a](2026-10-01-pathway-language-level-3-story-spec.md#f03-1-a).
+
+**Integration/acceptance gates:** No additional story-specific gates; inherited gates and profile/scenario requirements still apply. **Readiness:** E1.
 
 **High-level implementation:** Bind same-subject/episode/course completion to the authored fixed follow-up rule.
 
@@ -839,7 +933,9 @@ Technical prototypes can precede clinical adjudication only as nonclinical provi
 
 **Parent:** [T01.2](2026-10-01-pathway-language-level-2-refined-slices.md#t01-2). **Stage A trace:** B-06, B-10, B-12, B-13, B-19, B-20; C-01, E-01.
 
-**Depends on:** [T01.2.a](2026-10-01-pathway-language-level-3-story-spec.md#t01-2-a). **Readiness:** E1.
+**Start prerequisites:** [T01.2.a](2026-10-01-pathway-language-level-3-story-spec.md#t01-2-a).
+
+**Integration/acceptance gates:** No additional story-specific gates; inherited gates and profile/scenario requirements still apply. **Readiness:** E1.
 
 **High-level implementation:** Derive progress from recorded instance and clock; retain cancellation/completion separately.
 
@@ -857,7 +953,9 @@ Technical prototypes can precede clinical adjudication only as nonclinical provi
 
 **Parent:** [T01.3](2026-10-01-pathway-language-level-2-refined-slices.md#t01-3). **Stage A trace:** B-06, B-10, B-12, B-13, B-19, B-20; C-01, E-01.
 
-**Depends on:** [T01.2.b](2026-10-01-pathway-language-level-3-story-spec.md#t01-2-b), [F07.1.a](2026-10-01-pathway-language-level-3-story-spec.md#f07-1-a). **Readiness:** C1.
+**Start prerequisites:** [T01.2.b](2026-10-01-pathway-language-level-3-story-spec.md#t01-2-b), [F02.2.a](2026-10-01-pathway-language-level-3-story-spec.md#f02-2-a).
+
+**Integration/acceptance gates:** [F07.1.a](2026-10-01-pathway-language-level-3-story-spec.md#f07-1-a). **Readiness:** C1.
 
 **High-level implementation:** Add typed timing outputs without reusing disposition as a due flag.
 
@@ -875,7 +973,9 @@ Technical prototypes can precede clinical adjudication only as nonclinical provi
 
 **Parent:** [T01.3](2026-10-01-pathway-language-level-2-refined-slices.md#t01-3). **Stage A trace:** B-06, B-10, B-12, B-13, B-19, B-20; C-01, E-01.
 
-**Depends on:** [T01.3.a](2026-10-01-pathway-language-level-3-story-spec.md#t01-3-a). **Readiness:** C1.
+**Start prerequisites:** [T01.3.a](2026-10-01-pathway-language-level-3-story-spec.md#t01-3-a).
+
+**Integration/acceptance gates:** No additional story-specific gates; inherited gates and profile/scenario requirements still apply. **Readiness:** C1.
 
 **High-level implementation:** Map recorded external expiry into an adapter-facing field, preserving source contract.
 
@@ -893,7 +993,9 @@ Technical prototypes can precede clinical adjudication only as nonclinical provi
 
 **Parent:** [T01.4](2026-10-01-pathway-language-level-2-refined-slices.md#t01-4). **Stage A trace:** B-06, B-10, B-12, B-13, B-19, B-20; C-01, E-01.
 
-**Depends on:** [T01.1.a](2026-10-01-pathway-language-level-3-story-spec.md#t01-1-a), [F03.2.b](2026-10-01-pathway-language-level-3-story-spec.md#f03-2-b). **Readiness:** E1.
+**Start prerequisites:** [T01.1.a](2026-10-01-pathway-language-level-3-story-spec.md#t01-1-a), [F03.1.a](2026-10-01-pathway-language-level-3-story-spec.md#f03-1-a).
+
+**Integration/acceptance gates:** No additional story-specific gates; inherited gates and profile/scenario requirements still apply. **Readiness:** E1.
 
 **High-level implementation:** Name timestamp role and freshness policy; retain unknown timing and rejected reason.
 
@@ -911,7 +1013,9 @@ Technical prototypes can precede clinical adjudication only as nonclinical provi
 
 **Parent:** [T01.4](2026-10-01-pathway-language-level-2-refined-slices.md#t01-4). **Stage A trace:** B-06, B-10, B-12, B-13, B-19, B-20; C-01, E-01.
 
-**Depends on:** [T01.4.a](2026-10-01-pathway-language-level-3-story-spec.md#t01-4-a), [T01.2.b](2026-10-01-pathway-language-level-3-story-spec.md#t01-2-b), [T01.1.b](2026-10-01-pathway-language-level-3-story-spec.md#t01-1-b). **Readiness:** E1.
+**Start prerequisites:** [T01.4.a](2026-10-01-pathway-language-level-3-story-spec.md#t01-4-a), [T01.2.a](2026-10-01-pathway-language-level-3-story-spec.md#t01-2-a), [F05.2.a](2026-10-01-pathway-language-level-3-story-spec.md#f05-2-a).
+
+**Integration/acceptance gates:** No additional story-specific gates; inherited gates and profile/scenario requirements still apply. **Readiness:** E1.
 
 **High-level implementation:** Apply independent anchors through existing boolean/evidence semantics and run one authored integration fixture.
 
@@ -931,7 +1035,9 @@ Technical prototypes can precede clinical adjudication only as nonclinical provi
 
 **Parent:** [O01.1](2026-10-01-pathway-language-level-2-refined-slices.md#o01-1). **Stage A trace:** B-05, B-09, B-11, B-12, B-13, B-15; E-01, E-02.
 
-**Depends on:** [T01.4.a](2026-10-01-pathway-language-level-3-story-spec.md#t01-4-a). **Readiness:** E1.
+**Start prerequisites:** [F03.1.a](2026-10-01-pathway-language-level-3-story-spec.md#f03-1-a).
+
+**Integration/acceptance gates:** No additional story-specific gates; inherited gates and profile/scenario requirements still apply. **Readiness:** E1.
 
 **High-level implementation:** Implement declared identity/context predicates including optional culture/isolate link.
 
@@ -949,7 +1055,9 @@ Technical prototypes can precede clinical adjudication only as nonclinical provi
 
 **Parent:** [O01.1](2026-10-01-pathway-language-level-2-refined-slices.md#o01-1). **Stage A trace:** B-05, B-09, B-11, B-12, B-13, B-15; E-01, E-02.
 
-**Depends on:** [O01.1.a](2026-10-01-pathway-language-level-3-story-spec.md#o01-1-a). **Readiness:** E.
+**Start prerequisites:** [O01.1.a](2026-10-01-pathway-language-level-3-story-spec.md#o01-1-a), [T01.1.a](2026-10-01-pathway-language-level-3-story-spec.md#t01-1-a), [F05.1.b](2026-10-01-pathway-language-level-3-story-spec.md#f05-1-b).
+
+**Integration/acceptance gates:** No additional story-specific gates; inherited gates and profile/scenario requirements still apply. **Readiness:** E.
 
 **High-level implementation:** Apply authorized correction history before time selection; declare identity ordering only for serialization.
 
@@ -967,7 +1075,9 @@ Technical prototypes can precede clinical adjudication only as nonclinical provi
 
 **Parent:** [O01.2](2026-10-01-pathway-language-level-2-refined-slices.md#o01-2). **Stage A trace:** B-05, B-09, B-11, B-12, B-13, B-15; E-01, E-02.
 
-**Depends on:** [O01.1.b](2026-10-01-pathway-language-level-3-story-spec.md#o01-1-b). **Readiness:** E2.
+**Start prerequisites:** [F03.1.a](2026-10-01-pathway-language-level-3-story-spec.md#f03-1-a).
+
+**Integration/acceptance gates:** [F01.2.b](2026-10-01-pathway-language-level-3-story-spec.md#f01-2-b). **Readiness:** E2.
 
 **High-level implementation:** Implement only reviewed whitelist conversions and decimal bounds; keep assay comparability separate.
 
@@ -985,7 +1095,9 @@ Technical prototypes can precede clinical adjudication only as nonclinical provi
 
 **Parent:** [O01.2](2026-10-01-pathway-language-level-2-refined-slices.md#o01-2). **Stage A trace:** B-05, B-09, B-11, B-12, B-13, B-15; E-01, E-02.
 
-**Depends on:** [O01.2.a](2026-10-01-pathway-language-level-3-story-spec.md#o01-2-a), [T01.1.a](2026-10-01-pathway-language-level-3-story-spec.md#t01-1-a). **Readiness:** E2.
+**Start prerequisites:** [O01.1.b](2026-10-01-pathway-language-level-3-story-spec.md#o01-1-b), [O01.2.a](2026-10-01-pathway-language-level-3-story-spec.md#o01-2-a), [T01.1.a](2026-10-01-pathway-language-level-3-story-spec.md#t01-1-a).
+
+**Integration/acceptance gates:** No additional story-specific gates; inherited gates and profile/scenario requirements still apply. **Readiness:** E2.
 
 **High-level implementation:** Compile the bounded pairing contract and return selected evidence identities.
 
@@ -1003,7 +1115,9 @@ Technical prototypes can precede clinical adjudication only as nonclinical provi
 
 **Parent:** [O01.3](2026-10-01-pathway-language-level-2-refined-slices.md#o01-3). **Stage A trace:** B-05, B-09, B-11, B-12, B-13, B-15; E-01, E-02.
 
-**Depends on:** [O01.2.b](2026-10-01-pathway-language-level-3-story-spec.md#o01-2-b), [F03.2.a](2026-10-01-pathway-language-level-3-story-spec.md#f03-2-a). **Readiness:** E.
+**Start prerequisites:** [O01.2.b](2026-10-01-pathway-language-level-3-story-spec.md#o01-2-b), [F03.1.b](2026-10-01-pathway-language-level-3-story-spec.md#f03-1-b).
+
+**Integration/acceptance gates:** No additional story-specific gates; inherited gates and profile/scenario requirements still apply. **Readiness:** E.
 
 **High-level implementation:** Implement supported presence/absence coverage and pair adequacy; no generic counts.
 
@@ -1021,7 +1135,9 @@ Technical prototypes can precede clinical adjudication only as nonclinical provi
 
 **Parent:** [O01.3](2026-10-01-pathway-language-level-2-refined-slices.md#o01-3). **Stage A trace:** B-05, B-09, B-11, B-12, B-13, B-15; E-01, E-02.
 
-**Depends on:** [O01.3.a](2026-10-01-pathway-language-level-3-story-spec.md#o01-3-a), [T01.1.b](2026-10-01-pathway-language-level-3-story-spec.md#t01-1-b), [F06.2.b](2026-10-01-pathway-language-level-3-story-spec.md#f06-2-b). **Readiness:** E1.
+**Start prerequisites:** [O01.1.b](2026-10-01-pathway-language-level-3-story-spec.md#o01-1-b), [T01.1.b](2026-10-01-pathway-language-level-3-story-spec.md#t01-1-b), [F06.2.b](2026-10-01-pathway-language-level-3-story-spec.md#f06-2-b).
+
+**Integration/acceptance gates:** [O01.3.a](2026-10-01-pathway-language-level-3-story-spec.md#o01-3-a). **Readiness:** E1.
 
 **High-level implementation:** Apply declared strategy after scope/time/authority checks; use E-01 completion concept chosen by clinical reviewers.
 
@@ -1041,7 +1157,9 @@ Technical prototypes can precede clinical adjudication only as nonclinical provi
 
 **Parent:** [G01.1](2026-10-01-pathway-language-level-2-refined-slices.md#g01-1). **Stage A trace:** B-07, B-08, B-09, B-13, B-22; E-02.
 
-**Depends on:** [T01.1.a](2026-10-01-pathway-language-level-3-story-spec.md#t01-1-a). **Readiness:** E2.
+**Start prerequisites:** [T01.1.a](2026-10-01-pathway-language-level-3-story-spec.md#t01-1-a).
+
+**Integration/acceptance gates:** No additional story-specific gates; inherited gates and profile/scenario requirements still apply. **Readiness:** E2.
 
 **High-level implementation:** Implement the approved date basis and limits with independent boundary examples.
 
@@ -1059,7 +1177,9 @@ Technical prototypes can precede clinical adjudication only as nonclinical provi
 
 **Parent:** [G01.1](2026-10-01-pathway-language-level-2-refined-slices.md#g01-1). **Stage A trace:** B-07, B-08, B-09, B-13, B-22; E-02.
 
-**Depends on:** [G01.1.a](2026-10-01-pathway-language-level-3-story-spec.md#g01-1-a), [F06.2.b](2026-10-01-pathway-language-level-3-story-spec.md#f06-2-b). **Readiness:** E2.
+**Start prerequisites:** [G01.1.a](2026-10-01-pathway-language-level-3-story-spec.md#g01-1-a), [F06.2.b](2026-10-01-pathway-language-level-3-story-spec.md#f06-2-b).
+
+**Integration/acceptance gates:** No additional story-specific gates; inherited gates and profile/scenario requirements still apply. **Readiness:** E2.
 
 **High-level implementation:** Bind dating-reference version into evidence/result identity.
 
@@ -1077,7 +1197,9 @@ Technical prototypes can precede clinical adjudication only as nonclinical provi
 
 **Parent:** [G01.2](2026-10-01-pathway-language-level-2-refined-slices.md#g01-2). **Stage A trace:** B-07, B-08, B-09, B-13, B-22; E-02.
 
-**Depends on:** [G01.1.a](2026-10-01-pathway-language-level-3-story-spec.md#g01-1-a). **Readiness:** E2.
+**Start prerequisites:** [G01.1.a](2026-10-01-pathway-language-level-3-story-spec.md#g01-1-a).
+
+**Integration/acceptance gates:** No additional story-specific gates; inherited gates and profile/scenario requirements still apply. **Readiness:** E2.
 
 **High-level implementation:** Validate coverage/overlap rules and lookup boundary conventions.
 
@@ -1095,9 +1217,11 @@ Technical prototypes can precede clinical adjudication only as nonclinical provi
 
 **Parent:** [G01.2](2026-10-01-pathway-language-level-2-refined-slices.md#g01-2). **Stage A trace:** B-07, B-08, B-09, B-13, B-22; E-02.
 
-**Depends on:** [G01.2.a](2026-10-01-pathway-language-level-3-story-spec.md#g01-2-a), [G01.1.b](2026-10-01-pathway-language-level-3-story-spec.md#g01-1-b), [O01.2.b](2026-10-01-pathway-language-level-3-story-spec.md#o01-2-b), [F04.2.b](2026-10-01-pathway-language-level-3-story-spec.md#f04-2-b). **Readiness:** E2.
+**Start prerequisites:** [G01.2.a](2026-10-01-pathway-language-level-3-story-spec.md#g01-2-a), [G01.1.b](2026-10-01-pathway-language-level-3-story-spec.md#g01-1-b), [O01.2.b](2026-10-01-pathway-language-level-3-story-spec.md#o01-2-b), [F04.2.b](2026-10-01-pathway-language-level-3-story-spec.md#f04-2-b).
 
-**High-level implementation:** Compose O01 pairing with G01 date/table operations and scoped standing-condition fact.
+**Integration/acceptance gates:** [U01.2.b](2026-10-01-pathway-language-level-3-story-spec.md#u01-2-b), [X01.2.b](2026-10-01-pathway-language-level-3-story-spec.md#x01-2-b), [V01.1.b](2026-10-01-pathway-language-level-3-story-spec.md#v01-1-b). **Readiness:** E2.
+
+**High-level implementation:** Compose O01 pairing with G01 date/table operations and scoped standing-condition fact; own the full E-02 packet including composed hypertension scope once X01.2.b and the author-facing view pass their gates.
 
 **Expected touch surface:** APP/E-02 fixture and CORE/composition (proposed; inspect existing seams before editing).
 
@@ -1115,7 +1239,9 @@ Technical prototypes can precede clinical adjudication only as nonclinical provi
 
 **Parent:** [X01.1](2026-10-01-pathway-language-level-2-refined-slices.md#x01-1). **Stage A trace:** B-21, B-22, B-27, B-28; C-03, E-01, E-02.
 
-**Depends on:** [M01.1.a](2026-10-01-pathway-language-level-3-story-spec.md#m01-1-a), [T01.3.b](2026-10-01-pathway-language-level-3-story-spec.md#t01-3-b). **Readiness:** E.
+**Start prerequisites:** [F02.1.a](2026-10-01-pathway-language-level-3-story-spec.md#f02-1-a), [M01.1.a](2026-10-01-pathway-language-level-3-story-spec.md#m01-1-a).
+
+**Integration/acceptance gates:** [T01.3.b](2026-10-01-pathway-language-level-3-story-spec.md#t01-3-b). **Readiness:** E.
 
 **High-level implementation:** Define canonical fields per supported action type and explicit unknown-key failure.
 
@@ -1133,7 +1259,9 @@ Technical prototypes can precede clinical adjudication only as nonclinical provi
 
 **Parent:** [X01.1](2026-10-01-pathway-language-level-2-refined-slices.md#x01-1). **Stage A trace:** B-21, B-22, B-27, B-28; C-03, E-01, E-02.
 
-**Depends on:** [X01.1.a](2026-10-01-pathway-language-level-3-story-spec.md#x01-1-a), [A01.2.b](2026-10-01-pathway-language-level-3-story-spec.md#a01-2-b). **Readiness:** E1.
+**Start prerequisites:** [X01.1.a](2026-10-01-pathway-language-level-3-story-spec.md#x01-1-a), [A01.2.b](2026-10-01-pathway-language-level-3-story-spec.md#a01-2-b).
+
+**Integration/acceptance gates:** No additional story-specific gates; inherited gates and profile/scenario requirements still apply. **Readiness:** E1.
 
 **High-level implementation:** Merge only established equivalents; retain contributing disposition and evidence traces.
 
@@ -1151,7 +1279,9 @@ Technical prototypes can precede clinical adjudication only as nonclinical provi
 
 **Parent:** [X01.2](2026-10-01-pathway-language-level-2-refined-slices.md#x01-2). **Stage A trace:** B-21, B-22, B-27, B-28; C-03, E-01, E-02.
 
-**Depends on:** [X01.1.b](2026-10-01-pathway-language-level-3-story-spec.md#x01-1-b). **Readiness:** E1.
+**Start prerequisites:** [X01.1.b](2026-10-01-pathway-language-level-3-story-spec.md#x01-1-b).
+
+**Integration/acceptance gates:** No additional story-specific gates; inherited gates and profile/scenario requirements still apply. **Readiness:** E1.
 
 **High-level implementation:** Implement reviewed supported conflict predicates; retain all rationale.
 
@@ -1169,7 +1299,9 @@ Technical prototypes can precede clinical adjudication only as nonclinical provi
 
 **Parent:** [X01.2](2026-10-01-pathway-language-level-2-refined-slices.md#x01-2). **Stage A trace:** B-21, B-22, B-27, B-28; C-03, E-01, E-02.
 
-**Depends on:** [X01.2.a](2026-10-01-pathway-language-level-3-story-spec.md#x01-2-a), [F07.2.b](2026-10-01-pathway-language-level-3-story-spec.md#f07-2-b), [G01.2.b](2026-10-01-pathway-language-level-3-story-spec.md#g01-2-b). **Readiness:** E2.
+**Start prerequisites:** [X01.2.a](2026-10-01-pathway-language-level-3-story-spec.md#x01-2-a), [F07.2.b](2026-10-01-pathway-language-level-3-story-spec.md#f07-2-b), [F04.2.b](2026-10-01-pathway-language-level-3-story-spec.md#f04-2-b).
+
+**Integration/acceptance gates:** [V01.1.b](2026-10-01-pathway-language-level-3-story-spec.md#v01-1-b). **Readiness:** E2.
 
 **High-level implementation:** Feed combined canonical scope into F07 and reject tampering; test failure status separately.
 
@@ -1187,7 +1319,9 @@ Technical prototypes can precede clinical adjudication only as nonclinical provi
 
 **Parent:** [X01.3](2026-10-01-pathway-language-level-2-refined-slices.md#x01-3). **Stage A trace:** B-21, B-22, B-27, B-28; C-03, E-01, E-02.
 
-**Depends on:** [X01.1.a](2026-10-01-pathway-language-level-3-story-spec.md#x01-1-a), [F04.1.b](2026-10-01-pathway-language-level-3-story-spec.md#f04-1-b). **Readiness:** E1.
+**Start prerequisites:** [F02.2.a](2026-10-01-pathway-language-level-3-story-spec.md#f02-2-a), [F04.1.a](2026-10-01-pathway-language-level-3-story-spec.md#f04-1-a).
+
+**Integration/acceptance gates:** No additional story-specific gates; inherited gates and profile/scenario requirements still apply. **Readiness:** E1.
 
 **High-level implementation:** Add supported handoff payload and source trace; bind subject and recipient context explicitly.
 
@@ -1205,7 +1339,9 @@ Technical prototypes can precede clinical adjudication only as nonclinical provi
 
 **Parent:** [X01.3](2026-10-01-pathway-language-level-2-refined-slices.md#x01-3). **Stage A trace:** B-21, B-22, B-27, B-28; C-03, E-01, E-02.
 
-**Depends on:** [X01.3.a](2026-10-01-pathway-language-level-3-story-spec.md#x01-3-a), [F05.2.a](2026-10-01-pathway-language-level-3-story-spec.md#f05-2-a), [T01.1.b](2026-10-01-pathway-language-level-3-story-spec.md#t01-1-b). **Readiness:** E1.
+**Start prerequisites:** [X01.3.a](2026-10-01-pathway-language-level-3-story-spec.md#x01-3-a), [F05.2.a](2026-10-01-pathway-language-level-3-story-spec.md#f05-2-a), [T01.1.b](2026-10-01-pathway-language-level-3-story-spec.md#t01-1-b).
+
+**Integration/acceptance gates:** No additional story-specific gates; inherited gates and profile/scenario requirements still apply. **Readiness:** E1.
 
 **High-level implementation:** Reuse fulfillment identity/authority mechanism for the handoff event.
 
@@ -1223,7 +1359,9 @@ Technical prototypes can precede clinical adjudication only as nonclinical provi
 
 **Parent:** [X01.4](2026-10-01-pathway-language-level-2-refined-slices.md#x01-4). **Stage A trace:** B-21, B-22, B-27, B-28; C-03, E-01, E-02.
 
-**Depends on:** [A01.2.b](2026-10-01-pathway-language-level-3-story-spec.md#a01-2-b), [F05.2.a](2026-10-01-pathway-language-level-3-story-spec.md#f05-2-a), [T01.1.b](2026-10-01-pathway-language-level-3-story-spec.md#t01-1-b). **Readiness:** C1.
+**Start prerequisites:** [A01.2.b](2026-10-01-pathway-language-level-3-story-spec.md#a01-2-b), [F05.2.a](2026-10-01-pathway-language-level-3-story-spec.md#f05-2-a), [T01.1.b](2026-10-01-pathway-language-level-3-story-spec.md#t01-1-b).
+
+**Integration/acceptance gates:** No additional story-specific gates; inherited gates and profile/scenario requirements still apply. **Readiness:** C1.
 
 **High-level implementation:** Add one operational evidence subject and authority contract, reusing fulfillment/review machinery.
 
@@ -1232,6 +1370,252 @@ Technical prototypes can precede clinical adjudication only as nonclinical provi
 **Acceptance:** Institutional requirement alone is not availability; wrong-facility attestation rejects; valid evidence satisfies only readiness and does not mark referral delivered.
 
 **Out of this story:** No live scheduling, institution microservice or assumption that policy proves availability. Stop when the stated behavior and its boundary tests pass; do not implement the rest of the parent track.
+
+## V01 — Explain ineffective or inconsistent relationships before execution
+
+<a id="v01-1-a"></a>
+
+### V01.1.a — Locate unused predicates and evidence queries
+
+**Problem statement:** Given a graph containing used and disconnected query/predicate declarations, produce source-located unused-declaration diagnostics with traced output roots.
+
+**Parent:** [V01.1](2026-10-01-pathway-language-level-2-refined-slices.md#v01-1). **Stage A trace:** B-01, B-03, B-29; C-03.
+
+**Start prerequisites:** [F03.2.b](2026-10-01-pathway-language-level-3-story-spec.md#f03-2-b).
+
+**Integration/acceptance gates:** No additional story-specific gates; inherited gates and profile/scenario requirements still apply. **Readiness:** E.
+
+**High-level implementation:** Add backward dependency reachability from all declared meaningful outputs; account for public library exports and intentionally retained provenance.
+
+**Expected touch surface:** CORE/compiler structural analysis (proposed; inspect existing seams before editing).
+
+**Acceptance:** A query feeding a Need or independent finding is not falsely unused; an unreferenced local predicate is diagnosed; presentation-only roots do not invent eligibility.
+
+**Out of this story:** No inference that every node must change eligibility. Stop when the stated behavior and its boundary tests pass; do not implement the rest of the parent track.
+
+<a id="v01-1-b"></a>
+
+### V01.1.b — Diagnose constant-false indications and candidates
+
+**Problem statement:** Given supported boolean expressions with a provably false indication or impossible candidate, produce a proof-scoped diagnostic identifying the decisive source expressions.
+
+**Parent:** [V01.1](2026-10-01-pathway-language-level-2-refined-slices.md#v01-1). **Stage A trace:** B-01, B-03, B-29; C-03.
+
+**Start prerequisites:** [F03.2.a](2026-10-01-pathway-language-level-3-story-spec.md#f03-2-a), [F01.2.a](2026-10-01-pathway-language-level-3-story-spec.md#f01-2-a).
+
+**Integration/acceptance gates:** No additional story-specific gates; inherited gates and profile/scenario requirements still apply. **Readiness:** E.
+
+**High-level implementation:** Reuse defined all/any/not semantics for static constant propagation without evaluating patient evidence.
+
+**Expected touch surface:** CORE/compiler constant analysis (proposed; inspect existing seams before editing).
+
+**Acceptance:** A constant-false branch is identified; a patient-dependent Unknown is not declared unreachable; severity follows the declared publication policy.
+
+**Out of this story:** No inference that every node must change eligibility. Stop when the stated behavior and its boundary tests pass; do not implement the rest of the parent track.
+
+<a id="v01-2-a"></a>
+
+### V01.2.a — Report a statically ineffective guard
+
+**Problem statement:** Given a supported expression such as any(True, guard) and a control expression where guard matters, produce reviewable ineffective-guard diagnostic for the first only.
+
+**Parent:** [V01.2](2026-10-01-pathway-language-level-2-refined-slices.md#v01-2). **Stage A trace:** B-01, B-03, B-29; C-03.
+
+**Start prerequisites:** [V01.1.b](2026-10-01-pathway-language-level-3-story-spec.md#v01-1-b).
+
+**Integration/acceptance gates:** No additional story-specific gates; inherited gates and profile/scenario requirements still apply. **Readiness:** E.
+
+**High-level implementation:** Implement bounded simplification and source witnesses; preserve the authored AST rather than silently deleting the guard.
+
+**Expected touch surface:** CORE/compiler influence diagnostics (proposed; inspect existing seams before editing).
+
+**Acceptance:** Diagnostic points to the actual binding/expression; an independently useful finding/review output is retained; unsupported analysis is reported as not analyzed.
+
+**Out of this story:** No global assertion that redundant clinical constraints are invalid. Stop when the stated behavior and its boundary tests pass; do not implement the rest of the parent track.
+
+<a id="v01-3-a"></a>
+
+### V01.3.a — Compile and evaluate one typed finite-enum equality
+
+**Problem statement:** Given a declared finite enum, typed literal and same-type operand from source, produce known equality result or lifted Unknown, with type-domain rejection.
+
+**Parent:** [V01.3](2026-10-01-pathway-language-level-2-refined-slices.md#v01-3). **Stage A trace:** B-01, B-03, B-29; C-03.
+
+**Start prerequisites:** [F03.2.a](2026-10-01-pathway-language-level-3-story-spec.md#f03-2-a).
+
+**Integration/acceptance gates:** No additional story-specific gates; inherited gates and profile/scenario requirements still apply. **Readiness:** E.
+
+**High-level implementation:** Add only enum equality through the canonical AST/IR/operator ledger and independent conformance fixtures.
+
+**Expected touch surface:** CORE/finite-enum equality (proposed; inspect existing seams before editing).
+
+**Acceptance:** Equal/different literals give True/False; wrong enum type rejects; unknown evidence stays Unknown; no implicit string coercion.
+
+**Out of this story:** No solver dependency, numeric interval theory or ban on eligible alternatives in provider choices. Stop when the stated behavior and its boundary tests pass; do not implement the rest of the parent track.
+
+<a id="v01-3-b"></a>
+
+### V01.3.b — Check explicitly required branch disjointness
+
+**Problem statement:** Given two supported literal/enum branch conditions with a declared disjointness requirement, produce source-linked overlap witness or bounded disjointness diagnostic.
+
+**Parent:** [V01.3](2026-10-01-pathway-language-level-2-refined-slices.md#v01-3). **Stage A trace:** B-01, B-03, B-29; C-03.
+
+**Start prerequisites:** [V01.3.a](2026-10-01-pathway-language-level-3-story-spec.md#v01-3-a), [V01.1.b](2026-10-01-pathway-language-level-3-story-spec.md#v01-1-b).
+
+**Integration/acceptance gates:** No additional story-specific gates; inherited gates and profile/scenario requirements still apply. **Readiness:** E.
+
+**High-level implementation:** Analyze the finite declared domain and link both condition sources; unknown/unsupported expressions produce an explicit not-analyzed outcome.
+
+**Expected touch surface:** CORE/compiler disjointness checks (proposed; inspect existing seams before editing).
+
+**Acceptance:** Overlapping required-exclusive conditions trigger their declared publication obligation; ordinary provider one-of candidates may overlap without an error; findings never claim clinical completeness.
+
+**Out of this story:** No solver dependency, numeric interval theory or ban on eligible alternatives in provider choices. Stop when the stated behavior and its boundary tests pass; do not implement the rest of the parent track.
+
+## U01 — Author and inspect a supported pathway without reading raw JSON
+
+<a id="u01-1-a"></a>
+
+### U01.1.a — Render one canonical pathway on the authoring surface
+
+**Problem statement:** Given one supported AST with stable node/edge/field identities, produce readable graph and details showing indication, dependencies and action meaning.
+
+**Parent:** [U01.1](2026-10-01-pathway-language-level-2-refined-slices.md#u01-1). **Stage A trace:** B-01, B-02, B-22, B-29, B-30; C-03; supports C-01/C-02/E-01/E-02 review.
+
+**Start prerequisites:** [F01.1.a](2026-10-01-pathway-language-level-3-story-spec.md#f01-1-a).
+
+**Integration/acceptance gates:** No additional story-specific gates; inherited gates and profile/scenario requirements still apply. **Readiness:** E.
+
+**High-level implementation:** Inspect PathwayCanvas and PropertiesPanel in prism-admin-dashboard; implement a narrow AST projection or a small compatible view if the legacy model cannot preserve meaning.
+
+**Expected touch surface:** UI/canonical AST projection and graph/details view (proposed; inspect existing seams before editing).
+
+**Acceptance:** The displayed relationships round-trip to their source IDs; presentation layout changes no executable meaning; unsupported constructs are visible rather than silently dropped.
+
+**Out of this story:** No assumption that old canvas data or edge meaning equals the new language. Stop when the stated behavior and its boundary tests pass; do not implement the rest of the parent track.
+
+<a id="u01-1-b"></a>
+
+### U01.1.b — Navigate from compiler diagnostic to source
+
+**Problem statement:** Given a compiled diagnostic with node/relationship/field path, produce selected/highlighted source element and readable diagnostic reason/severity.
+
+**Parent:** [U01.1](2026-10-01-pathway-language-level-2-refined-slices.md#u01-1). **Stage A trace:** B-01, B-02, B-22, B-29, B-30; C-03; supports C-01/C-02/E-01/E-02 review.
+
+**Start prerequisites:** [U01.1.a](2026-10-01-pathway-language-level-3-story-spec.md#u01-1-a), [F01.2.a](2026-10-01-pathway-language-level-3-story-spec.md#f01-2-a), [F02.1.a](2026-10-01-pathway-language-level-3-story-spec.md#f02-1-a).
+
+**Integration/acceptance gates:** No additional story-specific gates; inherited gates and profile/scenario requirements still apply. **Readiness:** E.
+
+**High-level implementation:** Consume structured backend source maps; extend beyond the canvas current node-only validationErrors shape; retain source revision identity.
+
+**Expected touch surface:** UI/diagnostic navigation (proposed; inspect existing seams before editing).
+
+**Acceptance:** Node, edge and field diagnostics each locate their source; stale/missing source mappings are explicitly indicated, not attached to another revision.
+
+**Out of this story:** No assumption that old canvas data or edge meaning equals the new language. Stop when the stated behavior and its boundary tests pass; do not implement the rest of the parent track.
+
+<a id="u01-2-a"></a>
+
+### U01.2.a — Edit one supported property and recompile
+
+**Problem statement:** Given a loaded draft and changed boolean indication property, produce new draft revision, new diagnostics and reloadable canonical edit.
+
+**Parent:** [U01.2](2026-10-01-pathway-language-level-2-refined-slices.md#u01-2). **Stage A trace:** B-01, B-02, B-22, B-29, B-30; C-03; supports C-01/C-02/E-01/E-02 review.
+
+**Start prerequisites:** [U01.1.b](2026-10-01-pathway-language-level-3-story-spec.md#u01-1-b), [F02.1.b](2026-10-01-pathway-language-level-3-story-spec.md#f02-1-b).
+
+**Integration/acceptance gates:** No additional story-specific gates; inherited gates and profile/scenario requirements still apply. **Readiness:** E.
+
+**High-level implementation:** Implement the smallest draft-save/recompile boundary with revision checks; select one supported field, not a generic form framework.
+
+**Expected touch surface:** UI/property edit plus APP/draft API (proposed; inspect existing seams before editing).
+
+**Acceptance:** Editing the field changes the canonical source; a rejected/stale save cannot overwrite newer edits; saving/reloading preserves IDs and diagnostics map to the new revision.
+
+**Out of this story:** No alternate frontend truth rules or clinical publication from preview. Stop when the stated behavior and its boundary tests pass; do not implement the rest of the parent track.
+
+<a id="u01-2-b"></a>
+
+### U01.2.b — Preview one scenario with readable explanations
+
+**Problem statement:** Given an authored draft and frozen nonclinical scenario selected in the view, produce visible disposition, findings, material Needs, rationale and incomplete-authoring state.
+
+**Parent:** [U01.2](2026-10-01-pathway-language-level-2-refined-slices.md#u01-2). **Stage A trace:** B-01, B-02, B-22, B-29, B-30; C-03; supports C-01/C-02/E-01/E-02 review.
+
+**Start prerequisites:** [U01.2.a](2026-10-01-pathway-language-level-3-story-spec.md#u01-2-a), [A01.1.a](2026-10-01-pathway-language-level-3-story-spec.md#a01-1-a), [F04.2.b](2026-10-01-pathway-language-level-3-story-spec.md#f04-2-b).
+
+**Integration/acceptance gates:** [A01.1.b](2026-10-01-pathway-language-level-3-story-spec.md#a01-1-b). **Readiness:** E.
+
+**High-level implementation:** Call the shared preview entry point; render structured outputs with source links; discard stale asynchronous responses by revision/scenario identity.
+
+**Expected touch surface:** UI/preview and APP/preview API (proposed; inspect existing seams before editing).
+
+**Acceptance:** A reviewer can follow a diagnostic, change the field, recompile and inspect changed output without reading JSON; a hole remains visibly incomplete; preview cannot finalize or activate clinical artifacts.
+
+**Out of this story:** No alternate frontend truth rules or clinical publication from preview. Stop when the stated behavior and its boundary tests pass; do not implement the rest of the parent track.
+
+## I01 — Close named scenario acceptance through the assembled application
+
+<a id="i01-1-a"></a>
+
+### I01.1.a — Run the complete C-01 acceptance packet
+
+**Problem statement:** Given adjudicated C-01 source/scenarios and implemented assessment, Need, follow-up and operational-readiness components, produce a recorded C-01 scenario result covering the entire required packet.
+
+**Parent:** [I01.1](2026-10-01-pathway-language-level-2-refined-slices.md#i01-1). **Stage A trace:** B-01 through B-30 as applicable; C-01, C-03, E-01; ownership links for C-02/E-02.
+
+**Start prerequisites:** [U01.2.b](2026-10-01-pathway-language-level-3-story-spec.md#u01-2-b), [F05.2.b](2026-10-01-pathway-language-level-3-story-spec.md#f05-2-b), [F06.2.b](2026-10-01-pathway-language-level-3-story-spec.md#f06-2-b), [F07.2.b](2026-10-01-pathway-language-level-3-story-spec.md#f07-2-b), [T01.3.b](2026-10-01-pathway-language-level-3-story-spec.md#t01-3-b), [X01.4.a](2026-10-01-pathway-language-level-3-story-spec.md#x01-4-a).
+
+**Integration/acceptance gates:** [V01.1.a](2026-10-01-pathway-language-level-3-story-spec.md#v01-1-a), [V01.1.b](2026-10-01-pathway-language-level-3-story-spec.md#v01-1-b), [V01.2.a](2026-10-01-pathway-language-level-3-story-spec.md#v01-2-a). **Readiness:** C1.
+
+**High-level implementation:** Run load/edit/compile/preview, missing-attestation Need, authorized fulfillment, new revision, review and sandbox whole-scope finalization; include retry and rejection variants.
+
+**Expected touch surface:** APP and UI/C-01 integration harness (proposed; inspect existing seams before editing).
+
+**Acceptance:** All C-01 expected findings/omissions/Needs/timing and failure cases are checked with concrete case IDs; a missing primitive becomes a new dependency, not hidden implementation in this story.
+
+**Out of this story:** No replacing independent expected outcomes with evaluator-generated expectations. Stop when the stated behavior and its boundary tests pass; do not implement the rest of the parent track.
+
+<a id="i01-1-b"></a>
+
+### I01.1.b — Run the complete E-01 acceptance packet
+
+**Problem statement:** Given adjudicated E-01 package and implemented completion, admissibility, precedence, composition and handoff components, produce a recorded E-01 result covering follow-up through review/fulfillment/finalization boundaries.
+
+**Parent:** [I01.1](2026-10-01-pathway-language-level-2-refined-slices.md#i01-1). **Stage A trace:** B-01 through B-30 as applicable; C-01, C-03, E-01; ownership links for C-02/E-02.
+
+**Start prerequisites:** [U01.2.b](2026-10-01-pathway-language-level-3-story-spec.md#u01-2-b), [T01.4.b](2026-10-01-pathway-language-level-3-story-spec.md#t01-4-b), [O01.3.b](2026-10-01-pathway-language-level-3-story-spec.md#o01-3-b), [X01.2.a](2026-10-01-pathway-language-level-3-story-spec.md#x01-2-a), [X01.3.b](2026-10-01-pathway-language-level-3-story-spec.md#x01-3-b), [F05.2.b](2026-10-01-pathway-language-level-3-story-spec.md#f05-2-b), [F07.2.b](2026-10-01-pathway-language-level-3-story-spec.md#f07-2-b).
+
+**Integration/acceptance gates:** [O01.3.a](2026-10-01-pathway-language-level-3-story-spec.md#o01-3-a), [V01.1.a](2026-10-01-pathway-language-level-3-story-spec.md#v01-1-a), [V01.1.b](2026-10-01-pathway-language-level-3-story-spec.md#v01-1-b). **Readiness:** E1.
+
+**High-level implementation:** Run collection/completion/current-time cases, corrections, accepted/rejected precedence, UTI/GBS overlap and positive handoff through the same application path.
+
+**Expected touch surface:** APP and UI/E-01 integration harness (proposed; inspect existing seams before editing).
+
+**Acceptance:** Every E-01 acceptance case has independently expected output and concrete evidence; handoff acknowledgment is not neonatal treatment; unresolved scope cannot partially finalize.
+
+**Out of this story:** No replacing independent expected outcomes with evaluator-generated expectations. Stop when the stated behavior and its boundary tests pass; do not implement the rest of the parent track.
+
+<a id="i01-2-a"></a>
+
+### I01.2.a — Run the complete C-03 acceptance packet
+
+**Problem statement:** Given c-03 invalid bindings/cycles, holes, unsupported profiles, synthetic evidence and stale/tampered scope fixtures, produce a recorded rejection/publication-boundary result for every C-03 obligation.
+
+**Parent:** [I01.2](2026-10-01-pathway-language-level-2-refined-slices.md#i01-2). **Stage A trace:** B-01 through B-30 as applicable; C-01, C-03, E-01; ownership links for C-02/E-02.
+
+**Start prerequisites:** [U01.2.b](2026-10-01-pathway-language-level-3-story-spec.md#u01-2-b), [A01.1.b](2026-10-01-pathway-language-level-3-story-spec.md#a01-1-b), [A01.2.a](2026-10-01-pathway-language-level-3-story-spec.md#a01-2-a), [A01.2.b](2026-10-01-pathway-language-level-3-story-spec.md#a01-2-b), [F01.2.b](2026-10-01-pathway-language-level-3-story-spec.md#f01-2-b), [F03.2.b](2026-10-01-pathway-language-level-3-story-spec.md#f03-2-b), [F02.2.b](2026-10-01-pathway-language-level-3-story-spec.md#f02-2-b), [F07.1.a](2026-10-01-pathway-language-level-3-story-spec.md#f07-1-a), [V01.2.a](2026-10-01-pathway-language-level-3-story-spec.md#v01-2-a), [V01.3.b](2026-10-01-pathway-language-level-3-story-spec.md#v01-3-b).
+
+**Integration/acceptance gates:** [F06.2.b](2026-10-01-pathway-language-level-3-story-spec.md#f06-2-b). **Readiness:** E.
+
+**High-level implementation:** Drive source diagnostics through the authoring view and direct API rejection tests; exercise actual loader, policy and finalization checks in isolated infrastructure.
+
+**Expected touch surface:** UI, APP and CORE/C-03 acceptance harness (proposed; inspect existing seams before editing).
+
+**Acceptance:** Visible diagnostics agree with API failures; bypassing the UI cannot publish incomplete artifacts or finalize synthetic clinical inputs; import-boundary checks and supported relationship-analysis cases are recorded.
+
+**Out of this story:** No clinical adjudication bypass, rollout approval or new authorization subsystem. Stop when the stated behavior and its boundary tests pass; do not implement the rest of the parent track.
 
 ## Traceability and completion record
 

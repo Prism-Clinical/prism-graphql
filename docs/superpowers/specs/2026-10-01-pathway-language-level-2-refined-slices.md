@@ -6,7 +6,7 @@
 
 **Date:** 2026-10-01
 
-**Authority:** [Accepted architecture](2026-09-28-pathway-language-rfc.md) and [Stage A contracts](2026-09-30-pathway-language-stage-a-spec.md). These documents organize delivery; they do not change language semantics or promote deferred capabilities.
+**Authority:** [Accepted architecture](2026-09-28-pathway-language-rfc.md) and [Stage A contracts](2026-09-30-pathway-language-stage-a-spec.md). These documents organize delivery under the Stage A capability contracts. They do not independently promote deferred capabilities.
 
 See [Level 1](2026-10-01-pathway-language-level-1-behavioral-slices.md) for overall scope and [Level 3](2026-10-01-pathway-language-level-3-story-spec.md) for story dependencies/readiness. Child stories include implementation and its meaningful verification; source, compiler, runtime and test chores are not separate horizontal milestones.
 
@@ -22,7 +22,9 @@ Parent: [F01](2026-10-01-pathway-language-level-1-behavioral-slices.md#f01). Sta
 
 **High-level work:** Limit the grammar to version headers, one guidance action, four literal decisions and stable IDs.
 
-**Input prerequisites:** Approved minimal engineering source contract; no implementation predecessor.
+**External start prerequisites:** Approved minimal engineering source contract; no implementation predecessor.
+
+**External integration/acceptance gates:** No additional external gate beyond the child stories and profile/scenario requirements.
 
 **Boundary:** No general node catalogue or hidden default conditions.
 
@@ -38,7 +40,9 @@ Parent: [F01](2026-10-01-pathway-language-level-1-behavioral-slices.md#f01). Sta
 
 **High-level work:** Use structured diagnostic objects and one independent consumer fixture.
 
-**Input prerequisites:** [F01.1.a](2026-10-01-pathway-language-level-3-story-spec.md#f01-1-a), [F01.1.b](2026-10-01-pathway-language-level-3-story-spec.md#f01-1-b).
+**External start prerequisites:** [F01.1.a](2026-10-01-pathway-language-level-3-story-spec.md#f01-1-a).
+
+**External integration/acceptance gates:** No additional external gate beyond the child stories and profile/scenario requirements.
 
 **Boundary:** No broad developer tooling or application refactor.
 
@@ -58,7 +62,9 @@ Parent: [F02](2026-10-01-pathway-language-level-1-behavioral-slices.md#f02). Sta
 
 **High-level work:** Specify the literal opcode/action subset and source map, then reject unsupported artifacts.
 
-**Input prerequisites:** [F01.2.b](2026-10-01-pathway-language-level-3-story-spec.md#f01-2-b).
+**External start prerequisites:** [F01.1.a](2026-10-01-pathway-language-level-3-story-spec.md#f01-1-a), [F01.1.b](2026-10-01-pathway-language-level-3-story-spec.md#f01-1-b), [F01.2.a](2026-10-01-pathway-language-level-3-story-spec.md#f01-2-a).
+
+**External integration/acceptance gates:** [F01.1.b](2026-10-01-pathway-language-level-3-story-spec.md#f01-1-b), [F01.2.b](2026-10-01-pathway-language-level-3-story-spec.md#f01-2-b).
 
 **Boundary:** No generic virtual machine or remote compiler.
 
@@ -74,7 +80,9 @@ Parent: [F02](2026-10-01-pathway-language-level-1-behavioral-slices.md#f02). Sta
 
 **High-level work:** Implement explicit reducer semantics for the narrow action and permutation invariance.
 
-**Input prerequisites:** [F02.1.b](2026-10-01-pathway-language-level-3-story-spec.md#f02-1-b).
+**External start prerequisites:** [F02.1.b](2026-10-01-pathway-language-level-3-story-spec.md#f02-1-b).
+
+**External integration/acceptance gates:** No additional external gate beyond the child stories and profile/scenario requirements.
 
 **Boundary:** No clinical-ready medication or external side effects.
 
@@ -94,7 +102,9 @@ Parent: [F03](2026-10-01-pathway-language-level-1-behavioral-slices.md#f03). Sta
 
 **High-level work:** Use identity and exact scope before considering richer evidence selection.
 
-**Input prerequisites:** [F02.2.b](2026-10-01-pathway-language-level-3-story-spec.md#f02-2-b).
+**External start prerequisites:** [F02.2.a](2026-10-01-pathway-language-level-3-story-spec.md#f02-2-a).
+
+**External integration/acceptance gates:** [F02.2.b](2026-10-01-pathway-language-level-3-story-spec.md#f02-2-b).
 
 **Boundary:** No provenance ranking or query-completeness assertions.
 
@@ -110,7 +120,9 @@ Parent: [F03](2026-10-01-pathway-language-level-1-behavioral-slices.md#f03). Sta
 
 **High-level work:** Add lifted all/any/not with supported dependency validation.
 
-**Input prerequisites:** [F03.1.b](2026-10-01-pathway-language-level-3-story-spec.md#f03-1-b).
+**External start prerequisites:** [F03.1.a](2026-10-01-pathway-language-level-3-story-spec.md#f03-1-a), [F03.1.b](2026-10-01-pathway-language-level-3-story-spec.md#f03-1-b).
+
+**External integration/acceptance gates:** No additional external gate beyond the child stories and profile/scenario requirements.
 
 **Boundary:** No arbitrary expressions or confidence scoring.
 
@@ -130,7 +142,9 @@ Parent: [F04](2026-10-01-pathway-language-level-1-behavioral-slices.md#f04). Sta
 
 **High-level work:** Key by requirement/version, subject/episode and anchor scope, not evaluation revision.
 
-**Input prerequisites:** [F03.2.b](2026-10-01-pathway-language-level-3-story-spec.md#f03-2-b).
+**External start prerequisites:** [F03.1.b](2026-10-01-pathway-language-level-3-story-spec.md#f03-1-b).
+
+**External integration/acceptance gates:** [F03.2.b](2026-10-01-pathway-language-level-3-story-spec.md#f03-2-b).
 
 **Boundary:** No arbitrary string concatenation contract or automatic retry.
 
@@ -146,7 +160,9 @@ Parent: [F04](2026-10-01-pathway-language-level-1-behavioral-slices.md#f04). Sta
 
 **High-level work:** Use explicit dependency results, not short-circuit deletion of traces.
 
-**Input prerequisites:** [F04.1.b](2026-10-01-pathway-language-level-3-story-spec.md#f04-1-b).
+**External start prerequisites:** [F03.2.a](2026-10-01-pathway-language-level-3-story-spec.md#f03-2-a), [F04.1.a](2026-10-01-pathway-language-level-3-story-spec.md#f04-1-a).
+
+**External integration/acceptance gates:** No additional external gate beyond the child stories and profile/scenario requirements.
 
 **Boundary:** No claim of completed whole-scope readiness before all required obligations settle.
 
@@ -166,7 +182,9 @@ Parent: [F05](2026-10-01-pathway-language-level-1-behavioral-slices.md#f05). Sta
 
 **High-level work:** Validate exact type, subject, scope and authorized response kind first; temporal expiry is added by T01.
 
-**Input prerequisites:** [F04.2.b](2026-10-01-pathway-language-level-3-story-spec.md#f04-2-b).
+**External start prerequisites:** [F04.1.a](2026-10-01-pathway-language-level-3-story-spec.md#f04-1-a).
+
+**External integration/acceptance gates:** [F04.1.b](2026-10-01-pathway-language-level-3-story-spec.md#f04-1-b), [F04.2.a](2026-10-01-pathway-language-level-3-story-spec.md#f04-2-a).
 
 **Boundary:** No clinical truth manufactured from response receipt.
 
@@ -182,7 +200,9 @@ Parent: [F05](2026-10-01-pathway-language-level-1-behavioral-slices.md#f05). Sta
 
 **High-level work:** Build a narrow in-process/test adapter using the real session boundary and pure core.
 
-**Input prerequisites:** [F05.1.b](2026-10-01-pathway-language-level-3-story-spec.md#f05-1-b).
+**External start prerequisites:** [F05.1.b](2026-10-01-pathway-language-level-3-story-spec.md#f05-1-b).
+
+**External integration/acceptance gates:** [F03.2.b](2026-10-01-pathway-language-level-3-story-spec.md#f03-2-b).
 
 **Boundary:** No external EHR calls, broad UI redesign or endless retry.
 
@@ -202,7 +222,9 @@ Parent: [F06](2026-10-01-pathway-language-level-1-behavioral-slices.md#f06). Sta
 
 **High-level work:** Retain versioned content and inputs alongside the digest, not only a hash.
 
-**Input prerequisites:** [F05.2.a](2026-10-01-pathway-language-level-3-story-spec.md#f05-2-a).
+**External start prerequisites:** [F02.1.b](2026-10-01-pathway-language-level-3-story-spec.md#f02-1-b), [F02.2.a](2026-10-01-pathway-language-level-3-story-spec.md#f02-2-a).
+
+**External integration/acceptance gates:** [F01.2.b](2026-10-01-pathway-language-level-3-story-spec.md#f01-2-b).
 
 **Boundary:** No incremental evaluator or remote artifact service.
 
@@ -218,7 +240,9 @@ Parent: [F06](2026-10-01-pathway-language-level-1-behavioral-slices.md#f06). Sta
 
 **High-level work:** Keep clinical approval and runtime review separate.
 
-**Input prerequisites:** [F05.2.b](2026-10-01-pathway-language-level-3-story-spec.md#f05-2-b), [F06.1.b](2026-10-01-pathway-language-level-3-story-spec.md#f06-1-b).
+**External start prerequisites:** [F03.1.b](2026-10-01-pathway-language-level-3-story-spec.md#f03-1-b), [F05.2.a](2026-10-01-pathway-language-level-3-story-spec.md#f05-2-a), [F06.1.b](2026-10-01-pathway-language-level-3-story-spec.md#f06-1-b).
+
+**External integration/acceptance gates:** No additional external gate beyond the child stories and profile/scenario requirements.
 
 **Boundary:** No consent inference from clicking a generic acknowledgement.
 
@@ -238,7 +262,9 @@ Parent: [F07](2026-10-01-pathway-language-level-1-behavioral-slices.md#f07). Sta
 
 **High-level work:** Validate readiness, actor authority and current revision inside the transaction.
 
-**Input prerequisites:** [F06.2.b](2026-10-01-pathway-language-level-3-story-spec.md#f06-2-b).
+**External start prerequisites:** [F04.2.a](2026-10-01-pathway-language-level-3-story-spec.md#f04-2-a), [F06.2.a](2026-10-01-pathway-language-level-3-story-spec.md#f06-2-a).
+
+**External integration/acceptance gates:** [A01.1.b](2026-10-01-pathway-language-level-3-story-spec.md#a01-1-b), [F06.2.b](2026-10-01-pathway-language-level-3-story-spec.md#f06-2-b).
 
 **Boundary:** No silently dropping unresolved actions or bypassing publication.
 
@@ -254,7 +280,9 @@ Parent: [F07](2026-10-01-pathway-language-level-1-behavioral-slices.md#f07). Sta
 
 **High-level work:** Use database-enforced identity and optimistic concurrency in the same transaction.
 
-**Input prerequisites:** [F07.1.b](2026-10-01-pathway-language-level-3-story-spec.md#f07-1-b).
+**External start prerequisites:** [F06.2.b](2026-10-01-pathway-language-level-3-story-spec.md#f06-2-b), [F07.1.b](2026-10-01-pathway-language-level-3-story-spec.md#f07-1-b).
+
+**External integration/acceptance gates:** No additional external gate beyond the child stories and profile/scenario requirements.
 
 **Boundary:** No real clinical order side effects or distributed transaction platform.
 
@@ -274,11 +302,13 @@ Parent: [A01](2026-10-01-pathway-language-level-1-behavioral-slices.md#a01). Sta
 
 **High-level work:** Extend the AST/result domain and share the evaluator kernel.
 
-**Input prerequisites:** [F04.2.b](2026-10-01-pathway-language-level-3-story-spec.md#f04-2-b), [F07.1.a](2026-10-01-pathway-language-level-3-story-spec.md#f07-1-a).
+**External start prerequisites:** [F02.1.b](2026-10-01-pathway-language-level-3-story-spec.md#f02-1-b), [F02.2.a](2026-10-01-pathway-language-level-3-story-spec.md#f02-2-a).
+
+**External integration/acceptance gates:** [F03.2.a](2026-10-01-pathway-language-level-3-story-spec.md#f03-2-a), [F04.1.a](2026-10-01-pathway-language-level-3-story-spec.md#f04-1-a).
 
 **Boundary:** No substituting patient Unknown for authoring incompleteness.
 
-**Completion evidence:** Dependent preview shows hole; a wrong-type hole rejects; no patient Need is emitted for the hole. Unvisited hole still blocks publication; relabeling preview/synthetic context cannot authorize clinical finalization.
+**Completion evidence:** Dependent preview shows a typed hole; a wrong-type hole rejects; integrated acceptance must distinguish the marker from patient Unknown and must not emit a patient Need for the hole. Unvisited hole still blocks publication; relabeling preview/synthetic context cannot authorize clinical finalization.
 
 **Executable components:** [A01.1.a Propagate a well-typed hole](2026-10-01-pathway-language-level-3-story-spec.md#a01-1-a), [A01.1.b Reject promotion of incomplete preview](2026-10-01-pathway-language-level-3-story-spec.md#a01-1-b).
 
@@ -290,7 +320,9 @@ Parent: [A01](2026-10-01-pathway-language-level-1-behavioral-slices.md#a01). Sta
 
 **High-level work:** Implement one scalar bound and mandatory-check/permission composition with tests.
 
-**Input prerequisites:** [A01.1.b](2026-10-01-pathway-language-level-3-story-spec.md#a01-1-b), [F06.2.b](2026-10-01-pathway-language-level-3-story-spec.md#f06-2-b).
+**External start prerequisites:** [A01.1.b](2026-10-01-pathway-language-level-3-story-spec.md#a01-1-b), [F01.1.a](2026-10-01-pathway-language-level-3-story-spec.md#f01-1-a), [F06.1.a](2026-10-01-pathway-language-level-3-story-spec.md#f06-1-a).
+
+**External integration/acceptance gates:** [A01.1.b](2026-10-01-pathway-language-level-3-story-spec.md#a01-1-b), [F06.2.b](2026-10-01-pathway-language-level-3-story-spec.md#f06-2-b).
 
 **Boundary:** No policy scripting or full approval-management UI.
 
@@ -310,7 +342,9 @@ Parent: [M01](2026-10-01-pathway-language-level-1-behavioral-slices.md#m01). Sta
 
 **High-level work:** Use synthetic safety inputs until validated adapters exist.
 
-**Input prerequisites:** [A01.2.b](2026-10-01-pathway-language-level-3-story-spec.md#a01-2-b), [F07.2.b](2026-10-01-pathway-language-level-3-story-spec.md#f07-2-b).
+**External start prerequisites:** [F02.2.a](2026-10-01-pathway-language-level-3-story-spec.md#f02-2-a).
+
+**External integration/acceptance gates:** [A01.2.b](2026-10-01-pathway-language-level-3-story-spec.md#a01-2-b), [F01.1.b](2026-10-01-pathway-language-level-3-story-spec.md#f01-1-b).
 
 **Boundary:** No knowledge-base integration or dose calculation.
 
@@ -326,7 +360,9 @@ Parent: [M01](2026-10-01-pathway-language-level-1-behavioral-slices.md#m01). Sta
 
 **High-level work:** Add each required assessment independently, then compose required safety states.
 
-**Input prerequisites:** [M01.1.b](2026-10-01-pathway-language-level-3-story-spec.md#m01-1-b).
+**External start prerequisites:** [M01.1.b](2026-10-01-pathway-language-level-3-story-spec.md#m01-1-b).
+
+**External integration/acceptance gates:** No additional external gate beyond the child stories and profile/scenario requirements.
 
 **Boundary:** No inferred safety from a medication name or missing chart rows.
 
@@ -342,7 +378,9 @@ Parent: [M01](2026-10-01-pathway-language-level-1-behavioral-slices.md#m01). Sta
 
 **High-level work:** Use explicit recorded inputs and no default winner.
 
-**Input prerequisites:** [M01.2.b](2026-10-01-pathway-language-level-3-story-spec.md#m01-2-b).
+**External start prerequisites:** [F04.1.a](2026-10-01-pathway-language-level-3-story-spec.md#f04-1-a), [F05.1.b](2026-10-01-pathway-language-level-3-story-spec.md#f05-1-b), [M01.1.a](2026-10-01-pathway-language-level-3-story-spec.md#m01-1-a).
+
+**External integration/acceptance gates:** No additional external gate beyond the child stories and profile/scenario requirements.
 
 **Boundary:** No bundle choices or automatically selected alternative.
 
@@ -358,7 +396,9 @@ Parent: [M01](2026-10-01-pathway-language-level-1-behavioral-slices.md#m01). Sta
 
 **High-level work:** Integrate medication result into the existing finalization path.
 
-**Input prerequisites:** [F07.2.b](2026-10-01-pathway-language-level-3-story-spec.md#f07-2-b), [M01.3.b](2026-10-01-pathway-language-level-3-story-spec.md#m01-3-b).
+**External start prerequisites:** [A01.2.b](2026-10-01-pathway-language-level-3-story-spec.md#a01-2-b), [F06.2.b](2026-10-01-pathway-language-level-3-story-spec.md#f06-2-b), [F07.2.b](2026-10-01-pathway-language-level-3-story-spec.md#f07-2-b), [M01.2.a](2026-10-01-pathway-language-level-3-story-spec.md#m01-2-a), [M01.2.b](2026-10-01-pathway-language-level-3-story-spec.md#m01-2-b), [M01.3.a](2026-10-01-pathway-language-level-3-story-spec.md#m01-3-a), [M01.3.b](2026-10-01-pathway-language-level-3-story-spec.md#m01-3-b).
+
+**External integration/acceptance gates:** [A01.1.b](2026-10-01-pathway-language-level-3-story-spec.md#a01-1-b), [U01.2.b](2026-10-01-pathway-language-level-3-story-spec.md#u01-2-b), [V01.1.b](2026-10-01-pathway-language-level-3-story-spec.md#v01-1-b).
 
 **Boundary:** No automatic switch or second finalization mechanism.
 
@@ -378,7 +418,9 @@ Parent: [T01](2026-10-01-pathway-language-level-1-behavioral-slices.md#t01). Sta
 
 **High-level work:** Normalize supported instants and preserve timestamp roles.
 
-**Input prerequisites:** [F05.2.a](2026-10-01-pathway-language-level-3-story-spec.md#f05-2-a), [F06.1.b](2026-10-01-pathway-language-level-3-story-spec.md#f06-1-b).
+**External start prerequisites:** [F02.2.a](2026-10-01-pathway-language-level-3-story-spec.md#f02-2-a), [F05.1.b](2026-10-01-pathway-language-level-3-story-spec.md#f05-1-b).
+
+**External integration/acceptance gates:** [F06.1.b](2026-10-01-pathway-language-level-3-story-spec.md#f06-1-b).
 
 **Boundary:** No fabricated precision for partial dates.
 
@@ -394,7 +436,9 @@ Parent: [T01](2026-10-01-pathway-language-level-1-behavioral-slices.md#t01). Sta
 
 **High-level work:** Keep event identity, action identity and occurrence separate.
 
-**Input prerequisites:** [F05.2.a](2026-10-01-pathway-language-level-3-story-spec.md#f05-2-a), [T01.1.a](2026-10-01-pathway-language-level-3-story-spec.md#t01-1-a).
+**External start prerequisites:** [F03.1.a](2026-10-01-pathway-language-level-3-story-spec.md#f03-1-a), [T01.1.a](2026-10-01-pathway-language-level-3-story-spec.md#t01-1-a).
+
+**External integration/acceptance gates:** No additional external gate beyond the child stories and profile/scenario requirements.
 
 **Boundary:** No repeated schedules or rescheduling implementation.
 
@@ -410,7 +454,9 @@ Parent: [T01](2026-10-01-pathway-language-level-1-behavioral-slices.md#t01). Sta
 
 **High-level work:** Expose distinct fields in result/API and review materiality.
 
-**Input prerequisites:** [F07.1.a](2026-10-01-pathway-language-level-3-story-spec.md#f07-1-a), [T01.2.b](2026-10-01-pathway-language-level-3-story-spec.md#t01-2-b).
+**External start prerequisites:** [F02.2.a](2026-10-01-pathway-language-level-3-story-spec.md#f02-2-a), [T01.2.b](2026-10-01-pathway-language-level-3-story-spec.md#t01-2-b).
+
+**External integration/acceptance gates:** [F07.1.a](2026-10-01-pathway-language-level-3-story-spec.md#f07-1-a).
 
 **Boundary:** No automatic EHR renewal or indefinite clinical permission.
 
@@ -426,7 +472,9 @@ Parent: [T01](2026-10-01-pathway-language-level-1-behavioral-slices.md#t01). Sta
 
 **High-level work:** Compose two existing time predicates; do not introduce a special interpreter.
 
-**Input prerequisites:** [F03.2.b](2026-10-01-pathway-language-level-3-story-spec.md#f03-2-b), [T01.1.a](2026-10-01-pathway-language-level-3-story-spec.md#t01-1-a), [T01.1.b](2026-10-01-pathway-language-level-3-story-spec.md#t01-1-b), [T01.2.b](2026-10-01-pathway-language-level-3-story-spec.md#t01-2-b).
+**External start prerequisites:** [F03.1.a](2026-10-01-pathway-language-level-3-story-spec.md#f03-1-a), [F05.2.a](2026-10-01-pathway-language-level-3-story-spec.md#f05-2-a), [T01.1.a](2026-10-01-pathway-language-level-3-story-spec.md#t01-1-a), [T01.2.a](2026-10-01-pathway-language-level-3-story-spec.md#t01-2-a).
+
+**External integration/acceptance gates:** No additional external gate beyond the child stories and profile/scenario requirements.
 
 **Boundary:** No global expired flag or inferred negative result.
 
@@ -446,7 +494,9 @@ Parent: [O01](2026-10-01-pathway-language-level-1-behavioral-slices.md#o01). Sta
 
 **High-level work:** Retain correction history and ambiguous candidates.
 
-**Input prerequisites:** [T01.4.a](2026-10-01-pathway-language-level-3-story-spec.md#t01-4-a).
+**External start prerequisites:** [F03.1.a](2026-10-01-pathway-language-level-3-story-spec.md#f03-1-a), [F05.1.b](2026-10-01-pathway-language-level-3-story-spec.md#f05-1-b), [T01.1.a](2026-10-01-pathway-language-level-3-story-spec.md#t01-1-a).
+
+**External integration/acceptance gates:** No additional external gate beyond the child stories and profile/scenario requirements.
 
 **Boundary:** No source precedence inferred from ingestion order.
 
@@ -462,7 +512,9 @@ Parent: [O01](2026-10-01-pathway-language-level-1-behavioral-slices.md#o01). Sta
 
 **High-level work:** Reuse type/time operators with explicit pair identity.
 
-**Input prerequisites:** [O01.1.b](2026-10-01-pathway-language-level-3-story-spec.md#o01-1-b), [T01.1.a](2026-10-01-pathway-language-level-3-story-spec.md#t01-1-a).
+**External start prerequisites:** [F03.1.a](2026-10-01-pathway-language-level-3-story-spec.md#f03-1-a), [O01.1.b](2026-10-01-pathway-language-level-3-story-spec.md#o01-1-b), [T01.1.a](2026-10-01-pathway-language-level-3-story-spec.md#t01-1-a).
+
+**External integration/acceptance gates:** [F01.2.b](2026-10-01-pathway-language-level-3-story-spec.md#f01-2-b).
 
 **Boundary:** No inferencing that multiple duplicate rows establish persistence.
 
@@ -478,7 +530,9 @@ Parent: [O01](2026-10-01-pathway-language-level-1-behavioral-slices.md#o01). Sta
 
 **High-level work:** Keep source completeness, sampling sufficiency and authority separate.
 
-**Input prerequisites:** [F03.2.a](2026-10-01-pathway-language-level-3-story-spec.md#f03-2-a), [F06.2.b](2026-10-01-pathway-language-level-3-story-spec.md#f06-2-b), [O01.2.b](2026-10-01-pathway-language-level-3-story-spec.md#o01-2-b), [T01.1.b](2026-10-01-pathway-language-level-3-story-spec.md#t01-1-b).
+**External start prerequisites:** [F03.1.b](2026-10-01-pathway-language-level-3-story-spec.md#f03-1-b), [F06.2.b](2026-10-01-pathway-language-level-3-story-spec.md#f06-2-b), [O01.1.b](2026-10-01-pathway-language-level-3-story-spec.md#o01-1-b), [O01.2.b](2026-10-01-pathway-language-level-3-story-spec.md#o01-2-b), [T01.1.b](2026-10-01-pathway-language-level-3-story-spec.md#t01-1-b).
+
+**External integration/acceptance gates:** No additional external gate beyond the child stories and profile/scenario requirements.
 
 **Boundary:** No generic provider override or synthetic clinical coverage.
 
@@ -498,7 +552,9 @@ Parent: [G01](2026-10-01-pathway-language-level-1-behavioral-slices.md#g01). Sta
 
 **High-level work:** Implement date-domain arithmetic separately from elapsed UTC duration.
 
-**Input prerequisites:** [F06.2.b](2026-10-01-pathway-language-level-3-story-spec.md#f06-2-b), [T01.1.a](2026-10-01-pathway-language-level-3-story-spec.md#t01-1-a).
+**External start prerequisites:** [F06.2.b](2026-10-01-pathway-language-level-3-story-spec.md#f06-2-b), [T01.1.a](2026-10-01-pathway-language-level-3-story-spec.md#t01-1-a).
+
+**External integration/acceptance gates:** No additional external gate beyond the child stories and profile/scenario requirements.
 
 **Boundary:** No full calendar recurrence or implicit timezone conversion.
 
@@ -514,7 +570,9 @@ Parent: [G01](2026-10-01-pathway-language-level-1-behavioral-slices.md#g01). Sta
 
 **High-level work:** Represent table data as a pinned typed library, never a callback.
 
-**Input prerequisites:** [F04.2.b](2026-10-01-pathway-language-level-3-story-spec.md#f04-2-b), [G01.1.a](2026-10-01-pathway-language-level-3-story-spec.md#g01-1-a), [G01.1.b](2026-10-01-pathway-language-level-3-story-spec.md#g01-1-b), [O01.2.b](2026-10-01-pathway-language-level-3-story-spec.md#o01-2-b).
+**External start prerequisites:** [F04.2.b](2026-10-01-pathway-language-level-3-story-spec.md#f04-2-b), [G01.1.a](2026-10-01-pathway-language-level-3-story-spec.md#g01-1-a), [G01.1.b](2026-10-01-pathway-language-level-3-story-spec.md#g01-1-b), [O01.2.b](2026-10-01-pathway-language-level-3-story-spec.md#o01-2-b).
+
+**External integration/acceptance gates:** [U01.2.b](2026-10-01-pathway-language-level-3-story-spec.md#u01-2-b), [V01.1.b](2026-10-01-pathway-language-level-3-story-spec.md#v01-1-b), [X01.2.b](2026-10-01-pathway-language-level-3-story-spec.md#x01-2-b).
 
 **Boundary:** No unreviewed table values or forced clinical dependency for a demo.
 
@@ -534,7 +592,9 @@ Parent: [X01](2026-10-01-pathway-language-level-1-behavioral-slices.md#x01). Sta
 
 **High-level work:** Keep node identity and clinical action equivalence distinct.
 
-**Input prerequisites:** [A01.2.b](2026-10-01-pathway-language-level-3-story-spec.md#a01-2-b), [M01.1.a](2026-10-01-pathway-language-level-3-story-spec.md#m01-1-a), [T01.3.b](2026-10-01-pathway-language-level-3-story-spec.md#t01-3-b).
+**External start prerequisites:** [A01.2.b](2026-10-01-pathway-language-level-3-story-spec.md#a01-2-b), [F02.1.a](2026-10-01-pathway-language-level-3-story-spec.md#f02-1-a), [M01.1.a](2026-10-01-pathway-language-level-3-story-spec.md#m01-1-a).
+
+**External integration/acceptance gates:** [T01.3.b](2026-10-01-pathway-language-level-3-story-spec.md#t01-3-b).
 
 **Boundary:** No matching by display name or code alone.
 
@@ -550,7 +610,9 @@ Parent: [X01](2026-10-01-pathway-language-level-1-behavioral-slices.md#x01). Sta
 
 **High-level work:** Add supported conflict rules without choosing a winning pathway.
 
-**Input prerequisites:** [F07.2.b](2026-10-01-pathway-language-level-3-story-spec.md#f07-2-b), [G01.2.b](2026-10-01-pathway-language-level-3-story-spec.md#g01-2-b), [X01.1.b](2026-10-01-pathway-language-level-3-story-spec.md#x01-1-b).
+**External start prerequisites:** [F04.2.b](2026-10-01-pathway-language-level-3-story-spec.md#f04-2-b), [F07.2.b](2026-10-01-pathway-language-level-3-story-spec.md#f07-2-b), [X01.1.b](2026-10-01-pathway-language-level-3-story-spec.md#x01-1-b).
+
+**External integration/acceptance gates:** [V01.1.b](2026-10-01-pathway-language-level-3-story-spec.md#v01-1-b).
 
 **Boundary:** No universal medical interaction engine or partial finalization.
 
@@ -566,7 +628,9 @@ Parent: [X01](2026-10-01-pathway-language-level-1-behavioral-slices.md#x01). Sta
 
 **High-level work:** Treat role/service communication as an obligation with separate acknowledgment.
 
-**Input prerequisites:** [F04.1.b](2026-10-01-pathway-language-level-3-story-spec.md#f04-1-b), [F05.2.a](2026-10-01-pathway-language-level-3-story-spec.md#f05-2-a), [T01.1.b](2026-10-01-pathway-language-level-3-story-spec.md#t01-1-b), [X01.1.a](2026-10-01-pathway-language-level-3-story-spec.md#x01-1-a).
+**External start prerequisites:** [F02.2.a](2026-10-01-pathway-language-level-3-story-spec.md#f02-2-a), [F04.1.a](2026-10-01-pathway-language-level-3-story-spec.md#f04-1-a), [F05.2.a](2026-10-01-pathway-language-level-3-story-spec.md#f05-2-a), [T01.1.b](2026-10-01-pathway-language-level-3-story-spec.md#t01-1-b).
+
+**External integration/acceptance gates:** No additional external gate beyond the child stories and profile/scenario requirements.
 
 **Boundary:** No automated messaging, neonatal prescription or implicit completion.
 
@@ -582,10 +646,150 @@ Parent: [X01](2026-10-01-pathway-language-level-1-behavioral-slices.md#x01). Sta
 
 **High-level work:** Resolve a scoped facility attestation through the existing evidence/Need contracts.
 
-**Input prerequisites:** [A01.2.b](2026-10-01-pathway-language-level-3-story-spec.md#a01-2-b), [F05.2.a](2026-10-01-pathway-language-level-3-story-spec.md#f05-2-a), [T01.1.b](2026-10-01-pathway-language-level-3-story-spec.md#t01-1-b).
+**External start prerequisites:** [A01.2.b](2026-10-01-pathway-language-level-3-story-spec.md#a01-2-b), [F05.2.a](2026-10-01-pathway-language-level-3-story-spec.md#f05-2-a), [T01.1.b](2026-10-01-pathway-language-level-3-story-spec.md#t01-1-b).
+
+**External integration/acceptance gates:** No additional external gate beyond the child stories and profile/scenario requirements.
 
 **Boundary:** No live scheduling, institution microservice or assumption that policy proves availability.
 
 **Completion evidence:** Institutional requirement alone is not availability; wrong-facility attestation rejects; valid evidence satisfies only readiness and does not mark referral delivered.
 
 **Executable components:** [X01.4.a Evaluate and fulfill a facility-readiness requirement](2026-10-01-pathway-language-level-3-story-spec.md#x01-4-a).
+
+## V01 — Explain ineffective or inconsistent relationships before execution
+
+Parent: [V01](2026-10-01-pathway-language-level-1-behavioral-slices.md#v01). Stage A trace: B-01, B-03, B-29; C-03.
+
+<a id="v01-1"></a>
+
+### V01.1 — Unused dependencies and constant impossibility
+
+**Problem statement:** Given an authored graph and declared output roots, identify disconnected expressions and provably impossible conditions.
+
+**High-level work:** Trace executable, Need, explanation and explicitly declared output dependencies; analyze constants only.
+
+**External start prerequisites:** [F01.2.a](2026-10-01-pathway-language-level-3-story-spec.md#f01-2-a), [F03.2.a](2026-10-01-pathway-language-level-3-story-spec.md#f03-2-a), [F03.2.b](2026-10-01-pathway-language-level-3-story-spec.md#f03-2-b).
+
+**External integration/acceptance gates:** No additional external gate beyond the child stories and profile/scenario requirements.
+
+**Boundary:** No inference that every node must change eligibility.
+
+**Completion evidence:** A query feeding a Need or independent finding is not falsely unused; an unreferenced local predicate is diagnosed; presentation-only roots do not invent eligibility. A constant-false branch is identified; a patient-dependent Unknown is not declared unreachable; severity follows the declared publication policy.
+
+**Executable components:** [V01.1.a Locate unused predicates and evidence queries](2026-10-01-pathway-language-level-3-story-spec.md#v01-1-a), [V01.1.b Diagnose constant-false indications and candidates](2026-10-01-pathway-language-level-3-story-spec.md#v01-1-b).
+
+<a id="v01-2"></a>
+
+### V01.2 — Ineffective guards within an explicit fragment
+
+**Problem statement:** Given a constant/boolean expression fragment with a redundant guard, explain the guard that cannot affect the supported result.
+
+**High-level work:** Compare supported simplified expressions and report the analyzed assumptions.
+
+**External start prerequisites:** [V01.1.b](2026-10-01-pathway-language-level-3-story-spec.md#v01-1-b).
+
+**External integration/acceptance gates:** No additional external gate beyond the child stories and profile/scenario requirements.
+
+**Boundary:** No global assertion that redundant clinical constraints are invalid.
+
+**Completion evidence:** Diagnostic points to the actual binding/expression; an independently useful finding/review output is retained; unsupported analysis is reported as not analyzed.
+
+**Executable components:** [V01.2.a Report a statically ineffective guard](2026-10-01-pathway-language-level-3-story-spec.md#v01-2-a).
+
+<a id="v01-3"></a>
+
+### V01.3 — Finite-domain exclusive-condition checking
+
+**Problem statement:** Given literal or typed finite-enum comparisons under a declared disjointness obligation, produce a witness for overlap or a bounded disjointness result.
+
+**High-level work:** Implement the narrow equality primitive then its finite-domain analysis; do not enable automatic choice execution.
+
+**External start prerequisites:** [F03.2.a](2026-10-01-pathway-language-level-3-story-spec.md#f03-2-a), [V01.1.b](2026-10-01-pathway-language-level-3-story-spec.md#v01-1-b).
+
+**External integration/acceptance gates:** No additional external gate beyond the child stories and profile/scenario requirements.
+
+**Boundary:** No solver dependency, numeric interval theory or ban on eligible alternatives in provider choices.
+
+**Completion evidence:** Equal/different literals give True/False; wrong enum type rejects; unknown evidence stays Unknown; no implicit string coercion. Overlapping required-exclusive conditions trigger their declared publication obligation; ordinary provider one-of candidates may overlap without an error; findings never claim clinical completeness.
+
+**Executable components:** [V01.3.a Compile and evaluate one typed finite-enum equality](2026-10-01-pathway-language-level-3-story-spec.md#v01-3-a), [V01.3.b Check explicitly required branch disjointness](2026-10-01-pathway-language-level-3-story-spec.md#v01-3-b).
+
+## U01 — Author and inspect a supported pathway without reading raw JSON
+
+Parent: [U01](2026-10-01-pathway-language-level-1-behavioral-slices.md#u01). Stage A trace: B-01, B-02, B-22, B-29, B-30; C-03; supports C-01/C-02/E-01/E-02 review.
+
+<a id="u01-1"></a>
+
+### U01.1 — Canonical graph display and diagnostic navigation
+
+**Problem statement:** Given a canonical supported source definition and compiler diagnostics, render readable nodes/relationships and navigate to the exact authored source.
+
+**High-level work:** Adapt only the reviewed subset of the existing canvas and property panel.
+
+**External start prerequisites:** [F01.1.a](2026-10-01-pathway-language-level-3-story-spec.md#f01-1-a), [F01.2.a](2026-10-01-pathway-language-level-3-story-spec.md#f01-2-a), [F02.1.a](2026-10-01-pathway-language-level-3-story-spec.md#f02-1-a).
+
+**External integration/acceptance gates:** No additional external gate beyond the child stories and profile/scenario requirements.
+
+**Boundary:** No assumption that old canvas data or edge meaning equals the new language.
+
+**Completion evidence:** The displayed relationships round-trip to their source IDs; presentation layout changes no executable meaning; unsupported constructs are visible rather than silently dropped. Node, edge and field diagnostics each locate their source; stale/missing source mappings are explicitly indicated, not attached to another revision.
+
+**Executable components:** [U01.1.a Render one canonical pathway on the authoring surface](2026-10-01-pathway-language-level-3-story-spec.md#u01-1-a), [U01.1.b Navigate from compiler diagnostic to source](2026-10-01-pathway-language-level-3-story-spec.md#u01-1-b).
+
+<a id="u01-2"></a>
+
+### U01.2 — One property edit and scenario preview
+
+**Problem statement:** Given a loaded draft and a scoped test scenario, recompile the edited source and display its resulting findings and Needs.
+
+**High-level work:** Use one editable literal field and authoritative preview responses before broader authoring controls.
+
+**External start prerequisites:** [A01.1.a](2026-10-01-pathway-language-level-3-story-spec.md#a01-1-a), [F02.1.b](2026-10-01-pathway-language-level-3-story-spec.md#f02-1-b), [F04.2.b](2026-10-01-pathway-language-level-3-story-spec.md#f04-2-b), [U01.1.b](2026-10-01-pathway-language-level-3-story-spec.md#u01-1-b).
+
+**External integration/acceptance gates:** [A01.1.b](2026-10-01-pathway-language-level-3-story-spec.md#a01-1-b).
+
+**Boundary:** No alternate frontend truth rules or clinical publication from preview.
+
+**Completion evidence:** Editing the field changes the canonical source; a rejected/stale save cannot overwrite newer edits; saving/reloading preserves IDs and diagnostics map to the new revision. A reviewer can follow a diagnostic, change the field, recompile and inspect changed output without reading JSON; a hole remains visibly incomplete; preview cannot finalize or activate clinical artifacts.
+
+**Executable components:** [U01.2.a Edit one supported property and recompile](2026-10-01-pathway-language-level-3-story-spec.md#u01-2-a), [U01.2.b Preview one scenario with readable explanations](2026-10-01-pathway-language-level-3-story-spec.md#u01-2-b).
+
+## I01 — Close named scenario acceptance through the assembled application
+
+Parent: [I01](2026-10-01-pathway-language-level-1-behavioral-slices.md#i01). Stage A trace: B-01 through B-30 as applicable; C-01, C-03, E-01; ownership links for C-02/E-02.
+
+<a id="i01-1"></a>
+
+### I01.1 — Clinical scenario assembly
+
+**Problem statement:** Given completed story outputs for one named clinical slice, demonstrate its reviewed input/output packet through the real supported boundaries.
+
+**High-level work:** Assemble the authored package, frozen evidence, authoring preview and application lifecycle in isolated infrastructure.
+
+**External start prerequisites:** [F05.2.b](2026-10-01-pathway-language-level-3-story-spec.md#f05-2-b), [F06.2.b](2026-10-01-pathway-language-level-3-story-spec.md#f06-2-b), [F07.2.b](2026-10-01-pathway-language-level-3-story-spec.md#f07-2-b), [O01.3.b](2026-10-01-pathway-language-level-3-story-spec.md#o01-3-b), [T01.3.b](2026-10-01-pathway-language-level-3-story-spec.md#t01-3-b), [T01.4.b](2026-10-01-pathway-language-level-3-story-spec.md#t01-4-b), [U01.2.b](2026-10-01-pathway-language-level-3-story-spec.md#u01-2-b), [X01.2.a](2026-10-01-pathway-language-level-3-story-spec.md#x01-2-a), [X01.3.b](2026-10-01-pathway-language-level-3-story-spec.md#x01-3-b), [X01.4.a](2026-10-01-pathway-language-level-3-story-spec.md#x01-4-a).
+
+**External integration/acceptance gates:** [O01.3.a](2026-10-01-pathway-language-level-3-story-spec.md#o01-3-a), [V01.1.a](2026-10-01-pathway-language-level-3-story-spec.md#v01-1-a), [V01.1.b](2026-10-01-pathway-language-level-3-story-spec.md#v01-1-b), [V01.2.a](2026-10-01-pathway-language-level-3-story-spec.md#v01-2-a).
+
+**Boundary:** No replacing independent expected outcomes with evaluator-generated expectations.
+
+**Completion evidence:** All C-01 expected findings/omissions/Needs/timing and failure cases are checked with concrete case IDs; a missing primitive becomes a new dependency, not hidden implementation in this story. Every E-01 acceptance case has independently expected output and concrete evidence; handoff acknowledgment is not neonatal treatment; unresolved scope cannot partially finalize.
+
+**Executable components:** [I01.1.a Run the complete C-01 acceptance packet](2026-10-01-pathway-language-level-3-story-spec.md#i01-1-a), [I01.1.b Run the complete E-01 acceptance packet](2026-10-01-pathway-language-level-3-story-spec.md#i01-1-b).
+
+<a id="i01-2"></a>
+
+### I01.2 — Authoring and protective scenario closure
+
+**Problem statement:** Given implemented guardrails and malformed/incomplete/adversarial fixture requests, demonstrate C-03 rejection behavior through authoring/publication/execution boundaries.
+
+**High-level work:** Run a single acceptance packet rather than relying only on isolated component unit tests.
+
+**External start prerequisites:** [A01.1.b](2026-10-01-pathway-language-level-3-story-spec.md#a01-1-b), [A01.2.a](2026-10-01-pathway-language-level-3-story-spec.md#a01-2-a), [A01.2.b](2026-10-01-pathway-language-level-3-story-spec.md#a01-2-b), [F01.2.b](2026-10-01-pathway-language-level-3-story-spec.md#f01-2-b), [F02.2.b](2026-10-01-pathway-language-level-3-story-spec.md#f02-2-b), [F03.2.b](2026-10-01-pathway-language-level-3-story-spec.md#f03-2-b), [F07.1.a](2026-10-01-pathway-language-level-3-story-spec.md#f07-1-a), [U01.2.b](2026-10-01-pathway-language-level-3-story-spec.md#u01-2-b), [V01.2.a](2026-10-01-pathway-language-level-3-story-spec.md#v01-2-a), [V01.3.b](2026-10-01-pathway-language-level-3-story-spec.md#v01-3-b).
+
+**External integration/acceptance gates:** [F06.2.b](2026-10-01-pathway-language-level-3-story-spec.md#f06-2-b).
+
+**Boundary:** No clinical adjudication bypass, rollout approval or new authorization subsystem.
+
+**Completion evidence:** Visible diagnostics agree with API failures; bypassing the UI cannot publish incomplete artifacts or finalize synthetic clinical inputs; import-boundary checks and supported relationship-analysis cases are recorded.
+
+**Executable components:** [I01.2.a Run the complete C-03 acceptance packet](2026-10-01-pathway-language-level-3-story-spec.md#i01-2-a).

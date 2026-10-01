@@ -313,6 +313,10 @@ Every relationship must have a declared role. Not every relationship must change
 
 For executable dependencies, diagnose proven dead branches, ineffective guards, contradictory prerequisites, and unreachable actions where the supported analysis establishes them. A redundant constraint is initially a reviewable diagnostic, not a universal rejection. Required influence/coverage checks must be named obligations with defined scope and proof outcomes, not a blanket assertion that every edge matters for some clinically possible patient.
 
+V0 requires a bounded, solver-free fragment: backward dependency tracing from executable results, Needs, explanations and declared exports; boolean constant propagation; ineffective-guard diagnostics within that fragment; and overlap analysis for literal/typed finite-enum equality conditions under an explicitly declared disjointness obligation. Finite-enum equality is type checked, rejects cross-domain comparisons and implicit string coercion, and lifts unknown operands to Unknown. Unsupported analysis reports “not analyzed”; it cannot claim a proof.
+
+Unused local predicates/queries and provably constant-false candidates are reviewable diagnostics with source witnesses. Preserve legitimate provenance, exported definitions and independently meaningful findings as roots. Schema/type violations remain errors. Publication policy names any stronger required obligation and defines how counterexamples or inconclusive results block it. Overlap between eligible alternatives in a provider one-of choice is valid; v0 does not introduce automatic choice execution. No general patient-dependent reachability or clinical completeness claim follows from these checks.
+
 ## 7. Data acquisition, needs, and external models
 
 EvidenceQuery nodes declare the evidence contract. They do not contain HTTP, SQL, GraphQL, or arbitrary adapter code. GraphQL remains an application API; FHIR and other source adapters operate outside evaluation.
@@ -595,7 +599,7 @@ Stage A fixes only the contracts needed for the supported v0 column, including o
 
 | Capability | Stage B must implement and enforce | Declared but rejected or deferred |
 |---|---|---|
-| Source and graph | Canonical AST; typed bindings and draft holes; preview-only incomplete artifacts; rationale/citations; explicit applicability; all/any/not; acyclic dependencies; disposition reducer | Textual parser, executable recursion, custom opcodes/callbacks; publication of unresolved holes |
+| Source and graph | Canonical AST; typed bindings and draft holes; preview-only incomplete artifacts; rationale/citations; explicit applicability; all/any/not; typed finite-enum equality; acyclic dependencies; disposition reducer | Textual parser, executable recursion, custom opcodes/callbacks; publication of unresolved holes |
 | Decisions and evidence | Known true/false and unknown; missing/conflicting/unavailable/invalid/inadmissible/insufficient-evidence causes; traces; no implicit absence-as-false | No deferral of uncertainty semantics |
 | Clinical quantities | Published bounded decimal profile; exact comparisons; whitelisted conversions; no clinical difference/rate operator in v0 | Paired-value difference/two-point rate, general arithmetic, unsupported conversions, inferred assay equivalence and unqualified numeric coercion |
 | Temporal evaluation | Pinned clock; explicit timestamp roles and actual event anchors; fixed-duration windows; known-date pregnancy day-count calculation; versioned context lookup; context at assessment versus collection; observation-pair separation and definite-latest | General calendar-period arithmetic, timezone-local recurrence, full partial-date interval reasoning, opaque reference-range resolvers |
@@ -611,7 +615,7 @@ Stage A fixes only the contracts needed for the supported v0 column, including o
 | Follow-up | One fixed-duration action instance; immutable originating anchor; planning permission, performance window and soft deadline distinct; current stop/reassessment predicates; ordered/completed/cancelled events; due state and completion identity | Repeated/event-ended regimen scheduling, calendar recurrence, automatic rescheduling, transfers/deferrals beyond supported events |
 | Treatment and subjects | Initiation proposals; explicit subject/episode identity; authorized handoff recommendations; clinical versus operational readiness | Executable modify/hold/resume/discontinue/switch protocols, acute titration/cumulative-dose execution, automatic related-patient actions |
 | Review and replay | Canonical semantic/review digests and pure replay from a supplied frozen artifact/input bundle; material changes invalidate review | Production artifact retention, live acquisition and transactional finalization are integrated in C/D, not simulated as complete in B |
-| Verification | Schema, types, dimensions, binding/cardinality, required declarations, cycle rejection and deterministic-result conformance | Solver-based coverage/influence proofs and a universal clinical “verified” status |
+| Verification | Schema, types, dimensions, binding/cardinality, required declarations, cycle rejection and deterministic-result conformance; bounded unused-dependency, constant-impossibility, ineffective-guard and literal/finite-enum disjointness diagnostics (section 6.5) | General or solver-based coverage/influence proofs and a universal clinical “verified” status |
 
 Unsupported *program operations* fail compilation. Unsupported or incomplete *patient evidence* remains visible: a partial timestamp needed for selection, an unrecognized unit, missing mapping, or incomplete source coverage makes the affected query unresolved with a diagnostic/Need. Do not silently drop the evidence, claim full coverage, or reject all unrelated valid findings. Invalid/untrusted executable artifacts remain execution failures.
 
@@ -681,6 +685,10 @@ A row's B identifier names a required conformance family; it is not an existing 
 | Needs and fulfillment | Turn missing material evidence into a traceable obligation | B-26: stable keys, materiality/deduplication, `fulfilled_by` checks, idempotent outcomes and attempt-state reevaluation | C-01; C/D integration additionally verifies bounded acquisition and fulfiller policy |
 | Cross-pathway action composition | Preserve meaning and safety when packages overlap | B-27: canonical equivalence, order-invariant coalescing, retained source obligations, unestablished equivalence and conflicts | E-01, E-02 |
 | Independent urgency and requested-scope readiness | Expose urgent findings without falsely finalizing an incomplete plan | B-28: urgent findings with unrelated Unknown; whole-scope blockers; scope identity and failure status | C-01, E-02, C-03 |
+| Bounded relationship analysis | Expose structural mistakes without asserting universal clinical validity | B-29: meaningful output roots, unused declarations, constant-false candidates, ineffective guards, typed enum equality and lifted Unknown, explicit disjointness witnesses, unsupported-analysis status and provider-choice overlap | C-03 |
+| Minimal authoring surface | Review and change supported meaning without reading raw JSON | B-30: canonical graph/details projection, node/edge/field source navigation, revision-safe edit/recompile, structured preview and stale-response rejection | C-03; supports C-01/C-02/E-01/E-02 review |
+
+B-30 covers pure projection/source-map and preview-response contracts in Stage B; actual canvas navigation, persistence, asynchronous response handling and editing are application/UI integration evidence in C-03. The core never imports the UI.
 
 Transactional finalization and live acquisition are application integration obligations rather than pure Stage B operators: C-02 covers idempotency/concurrency/review, and Stage D covers the live adapters. Stage B supplies the pure result/review contracts those integrations consume. Every capability-profile row above has B and C/E coverage; finer operator signatures must inherit or add explicit case mappings before Stage A closes.
 
@@ -688,6 +696,8 @@ Transactional finalization and live acquisition are application integration obli
 
 
 ## 15. Required integration scenarios
+
+The [Level 3 story plan](2026-10-01-pathway-language-level-3-story-spec.md) assigns complete packet assembly to I01.1.a (C-01), M01.4.b (C-02), I01.2.a (C-03), I01.1.b (E-01) and G01.2.b (E-02, including X01.2.b composition). Each owner records every required case and inherited acceptance gate, not just a happy path. Missing primitives become explicit dependencies rather than hidden work inside integration stories. Clinical reviewers remain required and unassigned until named in section 17.
 
 All scenarios below are required, not completed tests. Stage A must select and record exact clinically reviewed content, source versions, parameters, candidate identities and expected outputs before exit. Symbolic labels such as Medication A/B are scenario requirements, not executable medication definitions or permission to invent treatment choices. Clinical owners may reject or narrow a proposed scenario; its capability mapping must then be revised or deferred. Use synthetic patients with explicit scoped coverage for C/E testing; Stage D must validate corresponding live-adapter behavior before clinical use.
 
@@ -764,6 +774,9 @@ Add a bounded hypertension assessment slice, not a full hypertension diagnosis/t
 
 Run through the authoring/API/compiler/publication and execution boundaries as appropriate:
 
+- Load a supported canonical pathway into a readable graph/details view, navigate node/edge/field diagnostics, edit one supported literal property, save a new revision and recompile. Layout cannot change executable meaning; unsupported constructs remain visible. Stale saves/responses cannot overwrite or mislabel a newer revision.
+- Preview a frozen nonclinical scenario through the shared backend and display disposition, findings, material Needs, rationale and incomplete-authoring state with source links. The frontend cannot supply its own clinical evaluator or promote preview to clinical execution.
+- Diagnose unused local predicates/queries, constant-false indications/candidates and ineffective guards within the declared analysis fragment. A query feeding a Need or independent finding is retained. Check typed enum equality and explicit finite-domain disjointness with a witness; reject wrong enum types, preserve Unknown, and report unsupported analysis honestly. Eligible provider-choice alternatives may overlap without an error. Apply the declared diagnostic/publication severity policy.
 - Well-typed holes yield preview-only incomplete artifacts, including when unreachable for the selected patient. They cannot publish, generate a patient-data Need for the hole, or finalize clinical actions.
 - Wrong types/dimensions, unsupported operators, cycles, invalid cardinality, ambiguous bindings and unauthorized policy specialization fail at their declared boundary.
 - Rationale-only changes alter reviewed artifact identity and trigger policy-required review. Safety requirements accumulate and permissions narrow; omission cannot disable an inherited requirement.

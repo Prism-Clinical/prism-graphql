@@ -6,7 +6,7 @@
 
 **Date:** 2026-10-01
 
-**Authority:** [Accepted architecture](2026-09-28-pathway-language-rfc.md) and [Stage A contracts](2026-09-30-pathway-language-stage-a-spec.md). These documents organize delivery; they do not change language semantics or promote deferred capabilities.
+**Authority:** [Accepted architecture](2026-09-28-pathway-language-rfc.md) and [Stage A contracts](2026-09-30-pathway-language-stage-a-spec.md). These documents organize delivery under the Stage A capability contracts. They do not independently promote deferred capabilities.
 
 The first seven slices establish a narrow source-to-reviewed-result loop. Follow-on tracks add the clinically justified capabilities; they are not prerequisites for a literal-only foundation demo. Completed implementation slices contribute evidence toward stages B/C/E; no single early slice claims full `ppl-core-v0` support or permission for clinical launch.
 
@@ -22,13 +22,29 @@ No production database wipe, deployment, EHR transmission or new ingestion work 
 - [Level 2](2026-10-01-pathway-language-level-2-refined-slices.md) refines each outcome into bounded behaviors.
 - [Level 3](2026-10-01-pathway-language-level-3-story-spec.md) specifies executable single-story units, exact dependencies and acceptance examples.
 
-The hierarchy is F/M/T/O/G/X/A outcome → numbered refinement → lettered story. IDs are stable references, not estimates or claims that tickets already exist. `F` denotes foundation; extension prefixes name tracks rather than runtime modules.
+The hierarchy is a foundation or extension outcome → numbered refinement → lettered story. IDs are stable references, not estimates or claims that tickets already exist. `F` denotes foundation; extension prefixes name tracks rather than runtime modules.
 
 ## Initial delivery sequence
 
-F01 → F02 → F03 → F04 → F05 → F06 → F07. A prerequisite on a leaf story is authoritative; unrelated tracks need not wait for an entire milestone. The first runnable increment is literal-only; the first evidence-driven loop arrives through F03–F06. F07 adds isolated persistence and transaction evidence.
+F01–F07 describe the foundation outcomes, not a serial implementation schedule. Leaf start prerequisites are authoritative. Once the compiled-artifact/evaluator contracts exist, evidence and Needs, fingerprint/review, preview holes, and timing can advance independently where their inputs permit. Medication work also needs its reviewed clinical content. Authoring display begins after the AST contract; structural analysis begins after the relevant typed dependencies.
 
-After that spine, authoring/policy, timing and observation work can advance on their leaf dependencies. Medication work depends on the approved content and publication/policy seam. Pregnancy context composes timing and observations. Cross-pathway finalization follows action identity and the existing transaction boundary.
+## Dependency audit
+
+There are 16 outcomes, 40 refinements and 77 stories. The previous 65-story plan had a longest dependency chain of 34 stories. The revised start-prerequisite graph has depth 17; including integration/acceptance gates gives depth 23. Both have no dangling references or cycles. These are unit-weighted graph depths, not duration estimates or a promise of proportionate speedup; scope has also increased.
+
+47 stories have engineering readiness code E; 30 require clinical adjudication (C1: 4, C2: 8, E1: 11, E2: 7). E does not mean immediately ready: prerequisites and unresolved engineering contracts still apply. Clinical owners remain unassigned and are required before clinical acceptance.
+
+After F01.1.a, F01.1.b, F01.2.a, F01.2.b and U01.1.a can start independently once their contract decisions are fixed. The previous plan was not literally serial for its first fifteen stories: it already had two successors after F01.1.a. Read the exact leaf prerequisites rather than inferring order from document position.
+
+## Scenario acceptance owners
+
+| Packet | Story owning complete assembly and recorded acceptance |
+|---|---|
+| C-01 | [I01.1.a](2026-10-01-pathway-language-level-3-story-spec.md#i01-1-a) |
+| C-02 | [M01.4.b](2026-10-01-pathway-language-level-3-story-spec.md#m01-4-b) |
+| C-03 | [I01.2.a](2026-10-01-pathway-language-level-3-story-spec.md#i01-2-a) |
+| E-01 | [I01.1.b](2026-10-01-pathway-language-level-3-story-spec.md#i01-1-b) |
+| E-02 | [G01.2.b](2026-10-01-pathway-language-level-3-story-spec.md#g01-2-b) (including composed scope through X01.2.b) |
 
 <a id="f01"></a>
 
@@ -237,6 +253,54 @@ After that spine, authoring/policy, timing and observation work can advance on t
 **Stage A trace:** B-21, B-22, B-27, B-28; C-03, E-01, E-02.
 
 **Refinement:** [X01.1 Action identity and equivalent proposals](2026-10-01-pathway-language-level-2-refined-slices.md#x01-1), [X01.2 Conflicts and whole-scope finalization](2026-10-01-pathway-language-level-2-refined-slices.md#x01-2), [X01.3 Positive authorized handoff](2026-10-01-pathway-language-level-2-refined-slices.md#x01-3), [X01.4 Operational readiness without changing clinical indication](2026-10-01-pathway-language-level-2-refined-slices.md#x01-4).
+
+<a id="v01"></a>
+
+## V01 — Explain ineffective or inconsistent relationships before execution
+
+**Problem statement:** Given a valid authored graph within a bounded analysis fragment, produce source-linked structural diagnostics with explicit severity and analysis limits.
+
+**High-level work:** Use dependency tracing, constant folding and finite-domain comparison before considering a solver.
+
+**Demonstrable completion:** All child behaviors have their declared positive/rejection acceptance evidence; the output is reachable through authored input, not a direct test-only call that skips compilation. Application-only boundaries are tested using compiled results.
+
+**Scope boundary:** No universal reachability proof, automatic clinical-rule repair or rejection of legitimate provider-choice overlap.
+
+**Stage A trace:** B-01, B-03, B-29; C-03.
+
+**Refinement:** [V01.1 Unused dependencies and constant impossibility](2026-10-01-pathway-language-level-2-refined-slices.md#v01-1), [V01.2 Ineffective guards within an explicit fragment](2026-10-01-pathway-language-level-2-refined-slices.md#v01-2), [V01.3 Finite-domain exclusive-condition checking](2026-10-01-pathway-language-level-2-refined-slices.md#v01-3).
+
+<a id="u01"></a>
+
+## U01 — Author and inspect a supported pathway without reading raw JSON
+
+**Problem statement:** Given a canonical pathway and supported scenario, show editable meaning, source-mapped diagnostics and preview outputs on a readable authoring surface.
+
+**High-level work:** Reuse a narrow existing canvas/details seam where suitable; keep the backend authoritative.
+
+**Demonstrable completion:** All child behaviors have their declared positive/rejection acceptance evidence; the output is reachable through authored input, not a direct test-only call that skips compilation. Application-only boundaries are tested using compiled results.
+
+**Scope boundary:** No full editor rewrite, ingestion, text parser, production activation UI or client-side clinical evaluator.
+
+**Stage A trace:** B-01, B-02, B-22, B-29, B-30; C-03; supports C-01/C-02/E-01/E-02 review.
+
+**Refinement:** [U01.1 Canonical graph display and diagnostic navigation](2026-10-01-pathway-language-level-2-refined-slices.md#u01-1), [U01.2 One property edit and scenario preview](2026-10-01-pathway-language-level-2-refined-slices.md#u01-2).
+
+<a id="i01"></a>
+
+## I01 — Close named scenario acceptance through the assembled application
+
+**Problem statement:** Given the adjudicated scenario packets and implemented component contracts, produce one recorded end-to-end acceptance result per owned scenario.
+
+**High-level work:** Assign a concrete integration story for C-01, E-01 and C-03 and explicit completion ownership for existing C-02/E-02 stories.
+
+**Demonstrable completion:** All child behaviors have their declared positive/rejection acceptance evidence; the output is reachable through authored input, not a direct test-only call that skips compilation. Application-only boundaries are tested using compiled results.
+
+**Scope boundary:** No new clinical rules, catch-all feature development, live EHR evidence or declaration of production readiness.
+
+**Stage A trace:** B-01 through B-30 as applicable; C-01, C-03, E-01; ownership links for C-02/E-02.
+
+**Refinement:** [I01.1 Clinical scenario assembly](2026-10-01-pathway-language-level-2-refined-slices.md#i01-1), [I01.2 Authoring and protective scenario closure](2026-10-01-pathway-language-level-2-refined-slices.md#i01-2).
 
 ## Foundation walkthrough
 
