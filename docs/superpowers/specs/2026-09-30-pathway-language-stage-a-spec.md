@@ -4,6 +4,8 @@
 
 **Date:** 2026-09-30
 
+**Last revised:** 2026-10-01 — Need/acquisition traceability, precedence, positive handoffs, composition/finalization scope, refusal/consent cases and version identities.
+
 **Architecture authority:** [Accepted pathway-language RFC](2026-09-28-pathway-language-rfc.md).
 
 **Design inputs:** [Reviewable corpus and provenance](../records/pathway-language/corpus/README.md).
@@ -51,7 +53,7 @@ A hole preserves an unresolved interpretation. Contradictory explicit numeric co
 The following is illustrative syntax, not an implemented grammar or a clinical recommendation. Parameters and codes belong to a separately reviewed protocol; no treatment threshold is prescribed here.
 
 ```text
-pathway ExampleAssessment version "1.0" language "ppl-1" {
+pathway ExampleAssessment version "1.0" language "ppl-1" capabilities "ppl-core-v0" {
   parameter threshold : Quantity<MassConcentration>
   parameter lookback  : Duration
   applicability Protocol.inScope(patient_evidence)
@@ -110,11 +112,11 @@ This section describes the intended language catalogue. Section 12 defines the s
 
 ### 3.1 Numeric and terminology requirements
 
-Use a deterministic decimal/rational implementation with a published numeric capability profile; do not evaluate clinical quantities as unqualified JavaScript `number`s. The first implementation specification must fix precision, range, division/rounding behavior, conversion tables, and overflow behavior before the kernel is accepted. This RFC fixes the policy: comparisons do not silently round across a threshold, unsupported conversion is unresolved with a diagnostic, and overflow is an explicit evaluation error. Numeric capability versions are part of the release bundle.
+Use a deterministic decimal/rational implementation with a published numeric capability profile; do not evaluate clinical quantities as unqualified JavaScript `number`s. The first implementation specification must fix precision, range, division/rounding behavior, conversion tables, and overflow behavior before the kernel is accepted. This specification fixes the policy: comparisons do not silently round across a threshold, unsupported conversion is unresolved with a diagnostic, and overflow is an explicit evaluation error. Numeric capability versions are part of the release bundle.
 
 Accept only approved dimension-preserving conversions. Do not infer equivalence from display strings or from identical code text in different systems. An unresolved terminology mapping is explicit. Code-set expansions are immutable inputs to evaluation; a live terminology lookup belongs to acquisition.
 
-### 3.2 Initial operations
+### 3.2 Broader operation catalogue
 
 - Typed equality/ordering, Boolean composition, explicit case expressions, and enum membership.
 - Quantity comparisons and a small approved arithmetic subset.
@@ -178,7 +180,7 @@ Comparisons lift known compatible values to `True`/`False`; insufficient evidenc
 
 Preserve diagnostics and source traces even where a decisive operand settles the result. Distinguish uncertainty that affects the result from uncertainty that is presently immaterial. Only material unresolved dependencies generate blocking needs for that result, unless an independently declared review requirement applies. An engine error cannot be hidden by Boolean short-circuiting.
 
-Distinct contradictory observations remain unresolved unless the evidence-selection contract legitimately resolves their precedence. PPL v1 does not attempt a general paraconsistent logic; it preserves the contradiction as evidence and gives the affected predicate an unknown result.
+Distinct contradictory observations remain unresolved unless the evidence-selection contract legitimately resolves their precedence. Language version `ppl-1` does not attempt a general paraconsistent logic; it preserves the contradiction as evidence and gives the affected predicate an unknown result.
 
 ### 4.4 Evidence selection and assertion precedence
 
@@ -313,7 +315,7 @@ For executable dependencies, diagnose proven dead branches, ineffective guards, 
 
 EvidenceQuery nodes declare the evidence contract. They do not contain HTTP, SQL, GraphQL, or arbitrary adapter code. GraphQL remains an application API; FHIR and other source adapters operate outside evaluation.
 
-A `Need` includes a stable key, subject/encounter scope, requested type, code/value-set requirements, compatible units, temporal window, provenance/authority constraints, urgency, and affected outputs. A fulfiller may query the chart, request a provider observation, or initiate an approved task. The workflow policy selects among permitted fulfillers; it cannot relax the evidence contract silently.
+A `Need` includes a stable key, subject/episode/encounter scope, requested type, code/value-set requirements, compatible units, temporal window, provenance/authority constraints, urgency, and affected outputs. Its key identifies the same unmet obligation across equivalent reevaluations, using the versioned requirement, scope and anchor identities rather than a random ID or evaluation revision. A materially changed requirement or scope gets a distinct identity. Deduplication preserves all affected outputs and reasons. Only material unresolved dependencies block their result, unless a separately declared review obligation applies. A fulfiller may query the chart, request a provider observation, or initiate an approved task. The workflow policy selects among permitted fulfillers; it cannot relax the evidence contract silently.
 
 The acquisition loop is:
 
@@ -323,7 +325,11 @@ The acquisition loop is:
 4. Normalize and validate returned evidence.
 5. Evaluate a new revision; invalidate review if material inputs or outputs changed.
 
+`fulfilled_by` validates subject, scope, type, units, time, provenance and authority against the requested evidence contract. Invalid, expired or wrongly scoped responses cannot close the Need. Accepted evidence triggers a new evaluation revision; acceptance of a response alone is not proof that every affected predicate is now known.
+
 Need fulfillment is idempotent by request identity and bounded by attempt/deadline policy. A failed request stays unavailable. Repeated acquisition must not form an unbounded evaluate/fetch loop. An EHR query cannot conjure a measurement that has never been taken. An actual clinical order requires its own authorization and workflow; emitting a Need is not that authorization.
+
+The core owns deterministic Need generation, materiality and fulfillment validation over recorded inputs. The orchestrator owns selecting ask-provider, EHR-query or a hybrid strategy under approved workflow policy, plus dispatch, retry/deadline enforcement and outcome persistence. Stage B tests the pure contracts; C-01 exercises a controlled fulfiller through the application loop, including failure and repeat requests; Stage D validates actual EHR/provider adapters and strategy selection. No Stage B test alone establishes a bounded real acquisition loop. Exhausted/refused attempts remain explicit and cannot restart endlessly merely because evaluation runs again.
 
 LLMs can produce proposed extractions, classifications, or summaries as recorded external observations. Record model identifier/version as available, prompt/template digest, source material identifiers, acquisition parameters, result, and review status. Model confidence is metadata, not clinical truth. A high-impact predicate may consume such an observation only through an approved evidence contract, including attestation where required. No LLM execution occurs inside the pure core, and no LLM invents a missing fact to make a pathway resolve.
 
@@ -401,11 +407,15 @@ Not every action requires every conceivable safety check. Required clinical chec
 
 Clinical neutrality of the interpreter does not imply that the deployed product has no minimum supported-use policy. Prism's clinical governance and the institution may establish required checks for a supported action class or clinical claim. Those requirements must be visible, approved, and pinned rather than hard-coded as unexplained interpreter behavior. An institution cannot silently disable an adopted mandatory check by omitting it. Unsupported policy/capability combinations cannot be published for that intended use.
 
-A required unknown check blocks finalization of its affected action. A known exclusion or required safety hold is preserved as a finding and, where relevant, a withholding reason; an unrelated score or acknowledgement cannot clear it. Omission of a requirement and an explicitly approved statement that a check is outside scope are different configurations.
+A required unknown check blocks finalization of its affected action and, in v0, the requested scope containing that required action; see section 8.3. A known exclusion or required safety hold is preserved as a finding and, where relevant, a withholding reason; an unrelated score or acknowledgement cannot clear it. Omission of a requirement and an explicitly approved statement that a check is outside scope are different configurations.
 
 ### 8.2 Composition across pathways
 
-Namespaced node identities prevent collisions. Evaluate contributing pathways against the same evidence revision and release-bundle manifest. Compose candidate actions using explicit action identity, dose/route/timing where applicable, evidence provenance, and conflict rules. Do not merge medications solely because their display names match.
+Namespaced node identities prevent collisions. Evaluate contributing pathways against the same evidence revision and release-bundle manifest. V0 action equivalence uses a versioned canonical key over subject/episode, action concept and intent, target/recipient, formulation/route/dose where applicable, timing/anchor/instance scope, and other decision-affecting payload fields. Stage A must enumerate those fields per supported action type. Display names and equal codes alone do not establish equivalent clinical intent.
+
+Coalesce only proposals whose supported equivalence contract establishes the same action. Retain every contributing source, indication/disposition trace, evidence link and review/safety obligation; requirements accumulate rather than being erased by deduplication. An unresolved required contribution cannot be hidden behind a ready equivalent proposal. Canonical output is invariant to pathway order. Distinct nonconflicting actions remain distinct. When equivalence cannot be established, preserve separate proposals and expose the potential duplication/conflict; do not guess a merge.
+
+Incompatible dose/timing/intent or conflicting supported constraints produce an explicit unresolved composition obligation, blocking finalization when required in the requested scope. V0 does not synthesize a compromise dose, choose a winning pathway or silently suppress one source. Known withheld/not-applicable outcomes remain distinguishable from unresolved composition; not every non-proposed action is itself a blocker. A resolved combined proposal remains subject to candidate-set safety and review.
 
 Run candidate-set safety and conflict analysis over the complete relevant universe, including current patient therapies and provider-added proposals. Preselection candidate eligibility, selection, and final safety disposition are ordered stages. Do not repeatedly suppress alternatives and reselect until a convenient stable plan emerges; if a selected option is withheld, return a new decision need unless a separately specified fallback rule establishes a result without feedback cycles.
 
@@ -413,7 +423,9 @@ An individually valid pathway is not proof that its combination with another is 
 
 ### 8.3 Partial results and clinical urgency
 
-An unresolved component must not erase independently established findings, urgent flags, or needs. Return them with explicit incomplete status. Partial finalization is allowed only if the release declares independently finalizable groups and the compiler/runtime can show their required dependencies are satisfied. The default is that required unresolved obligations block finalization of the requested plan scope.
+An unresolved component must not erase independently established findings, urgent flags, or needs. Return them with explicit incomplete status. Urgent findings cannot depend on completion of an unrelated routine branch. This guarantee applies to successfully evaluated findings, not to unexecuted work after an engine failure; a failed run cannot claim complete assessment or absence of urgency.
+
+V0 finalization is atomic over the whole explicitly requested scope, including its required dependencies and contributing safety context. Required unresolved obligations anywhere in that scope block finalization; independently established findings still remain visible. Partial finalization of subgroups is unsupported and belongs in section 13. Pin the requested scope in the reviewed artifact; neither the UI nor orchestrator may silently shrink it to bypass an unresolved dependency. A deliberately changed scope requires a new evaluation and review and cannot omit dependencies needed for the retained actions.
 
 Invariant violations and resource exhaustion block successful finalization. They do not return an empty list that could be mistaken for “nothing to do.” Engine failure is a workflow-visible failure; it is not a clinical recommendation to withhold care.
 
@@ -431,7 +443,7 @@ Invariant violations and resource exhaustion block successful finalization. They
 
 Do not collapse these into a generic “override” that forces node status. Each has a subject, scope, author, reason where required, recorded time, effective interval, expiry/retraction rules, and source references. Expiry is evaluated against the pinned clock; advancing time creates a new revision.
 
-A provider can request precedence only through the applicable EvidenceQuery's approved selection contract in section 4.4. The compiler checks the permitted strategy and binding; the orchestrator verifies actor authority and runtime verifies scope/time validity. Contradictory chart evidence remains visible. A clinical exception changes permitted disposition under a specific policy; it does not rewrite the original evidence or claim that the underlying predicate became true.
+A provider can request precedence only through the applicable EvidenceQuery's approved selection contract in section 4.4. This is an explicit authorized request to apply a permitted strategy, not a generic provider override of admissibility or the query contract. The compiler checks the permitted strategy and binding; the orchestrator verifies actor authority and runtime verifies scope/time validity. Contradictory chart evidence remains visible. A clinical exception changes permitted disposition under a specific policy; it does not rewrite the original evidence or claim that the underlying predicate became true.
 
 ### 9.2 Bounded institutional variation
 
@@ -505,7 +517,7 @@ witnessOrDiagnostic, resourceBudget
 
 Symbolic patients can be logically admissible but clinically implausible. Encode approved domain constraints and show them with the result. Feasibility of a relationship does not prove its benefit or clinical correctness. A contradictory or overrestrictive domain model must itself be tested for satisfiability.
 
-The solver is a development/publication tool, not a dependency for patient-time execution. Start with direct analyses and add a solver only for obligations that need it. Solver selection and its precise theory/encoding require a small follow-up specification; this RFC does not select one prematurely.
+The solver is a development/publication tool, not a dependency for patient-time execution. Start with direct analyses and add a solver only for obligations that need it. Solver selection and its precise theory/encoding require a small follow-up specification; this specification does not select one prematurely.
 
 ### 10.4 Diagnostics
 
@@ -586,6 +598,9 @@ Stage A fixes only the contracts needed for the supported v0 column, including o
 | Clinical quantities | Published bounded decimal profile; exact comparisons; whitelisted conversions; no clinical difference/rate operator in v0 | Paired-value difference/two-point rate, general arithmetic, unsupported conversions, inferred assay equivalence and unqualified numeric coercion |
 | Temporal evaluation | Pinned clock; explicit timestamp roles and actual event anchors; fixed-duration windows; known-date pregnancy day-count calculation; versioned context lookup; context at assessment versus collection; observation-pair separation and definite-latest | General calendar-period arithmetic, timezone-local recurrence, full partial-date interval reasoning, opaque reference-range resolvers |
 | Admissibility and sufficiency | Query-specific admissible/inadmissible/unresolved assessment using supported expressions and multiple event anchors; sampling/comparability requirements; scoped evidence-status predicates; E-01 completion and assessment anchors | TDM-specific treatment-change/administration anchor checks, baseline-relative calculations, arbitrary clinical validity inference, dropping material uncertain candidates, confidence-based substitution for insufficient evidence |
+| Needs and acquisition boundary | Stable Need identity/materiality; typed `fulfilled_by` checks; recorded attempt/outcome inputs and pure reevaluation contract | Core I/O or automatic ordering; live fulfiller selection/retries are orchestrator integration, validated in C/D |
+| Composition across pathways | Canonical action equivalence, retained contributing provenance/obligations, explicit duplicate/conflict outcomes | Heuristic merges, pathway-priority winners, automatic compromise plans |
+| Urgency and finalization scope | Preserve established urgent findings despite unrelated uncertainty; requested-scope readiness and atomic whole-scope finalization contract | Partial-group finalization, silent scope reduction, complete-assessment claims after engine failure |
 | Coverage | Scoped complete/incomplete/unavailable contract; explicit non-clinical synthetic snapshots for B/C; coverage distinct from sampling adequacy; negative conclusions require sufficient evidence | Federation of coverage domains, synthetic coverage in clinical runs, automatic reconciliation of completeness claims |
 | Collections | Bounded filtering, membership/existence, definite-latest and explicit identity-distinct observation pairing with declared selection contracts | Generic counts/percentages, regression/trends, arbitrary aggregation/joins; deducing persistence from duplicates |
 | Assertions | One query-declared, versioned admissibility/precedence strategy per query; typed observations/attestations and explicit authorized correction/supersession; scope, expiry and conflict handling | Arbitrary precedence programs, undeclared runtime strategy changes, general clinical-exception workflows and dedicated provider observation-reliability adjudication workflows |
@@ -602,6 +617,19 @@ Unsupported *program operations* fail compilation. Unsupported or incomplete *pa
 
 None of the eight clinical documents is claimed to be fully executable within v0, and a complete anemia pathway is not a v0 requirement. Stage C inventories the requirements of its selected source clinical content; unsupported operations either receive a separately specified capability extension or block publication for that intended use. A deliberately smaller validated scope is acceptable and must be labeled as such. Missing content cannot be presented as a complete clinical package; preserving every old pathway or JSON construct is not a requirement.
 
+### 12.1 Version identities and compatibility
+
+Use the following names consistently; these are distinct manifest fields, not competing names for one release:
+
+| Identity | Meaning and required pinning |
+|---|---|
+| `languageVersion: "ppl-1"` | The versioned semantic contract: types, operators, composition and uncertainty. The example spelling is the canonical identifier for the initial language under specification; it is not a claim of a shipped implementation. |
+| `capabilityProfileVersion: "ppl-core-v0"` | The initial supported subset and limits of `ppl-1`, plus its operator/numeric/temporal profile references. A profile cannot reinterpret its language version. |
+| Compiler and runtime versions | Exact implementation builds plus source-schema/IR-format versions and conformance compatibility declarations; a build number alone does not imply support. |
+| Clinical package version | The authored pathway/library content release, with immutable artifact digest and approvals; independent of engine versions. |
+
+Manifests record exact identities and artifact digests. The loader checks an explicit supported combination of language, capability/profile references, IR schema and implementation; no inference from names or matching major-version digits is sufficient. Unsupported combinations fail before clinical evaluation. Content, profile and implementation upgrades have separate review/conformance obligations. Any change to semantic meaning requires the applicable versioned contract review, not reuse of an old identifier with different behavior. Stage A finalizes the registry/compatibility schema before exit.
+
 ## 13. Deferred capabilities
 
 After the initial slices, specify and validate capabilities separately before enabling clinical packages that require them:
@@ -613,6 +641,7 @@ After the initial slices, specify and validate capabilities separately before en
 - Treatment changes, hold/resume/discontinue/switch, acute sequencing and cumulative-dose constraints, with actual administration evidence and human execution authority.
 - Dedicated provider reliability assertions with observation/query scope, reason, authority, effective time and correction/expiry; these never delete source observations or provide a generic bypass of mandatory evidence conditions.
 - Authorized related-patient workflows beyond explicit handoff obligations.
+- Independently finalizable partial groups: require explicit dependency/safety isolation, scope and review contracts before support; v0 finalizes the whole requested scope only.
 
 These gates are not promises that every feature will be implemented before a scoped launch. A package either declares supported capabilities and an honestly bounded intended use, or publication is blocked. Repeated evaluation over recorded events preserves the acyclic core; it does not justify arbitrary execution loops.
 
@@ -636,17 +665,20 @@ A row's B identifier names a required conformance family; it is not an existing 
 | Coverage, sampling adequacy, query-state contingencies | Empty, pending and insufficient data differ | B-12: scoped negative, retrieval versus sampling, explicit unavailable/pending branch | E-01, C-02 |
 | Method/specimen/reference context and episode binding | Similar-looking records can answer different questions | B-13: wrong context/episode/isolate, incompatible assay, missing metadata | E-01, E-02 |
 | Synthetic snapshot isolation | Test negatives without inventing clinical completeness | B-14: scope validation and trusted non-clinical provenance | C-03; C-01/C-02 use valid synthetic inputs |
-| Observations, attestations, corrections and precedence | Traceable authorized evidence updates | B-15: source authority, scope/expiry/retraction, equal-tier conflict | E-01, E-02 |
-| One-of selection over two alternatives | Provider choice is distinct from eligibility | B-16: none/one/multiple selections, ineligible/invalidated selection | C-02 |
+| Observations, attestations, corrections and precedence | Traceable authorized evidence updates | B-15: authorized precedence over chart evidence; refused expired/wrong-scope requests; retained conflict trace | E-01, E-02 |
+| One-of selection over two alternatives | Choice, refusal and consent obligations are distinct from eligibility | B-16: none/one/multiple selections, explicit refusal, outstanding consent and invalidated selection | C-02 |
 | Medication proposal and required allergy/interaction checks | Exercise the central safety/finalization path | B-17: mapped/unmapped findings, clear/incomplete coverage, hold/no auto-reselection | C-02 |
 | Parameter specialization, mandatory requirements and permissions | Institutions configure content within fixed rules | B-18: bounded values, accumulating checks, intersecting authorities, authenticated binding | C-02, C-03 |
 | Planning/performance/deadline/stop/expiration distinctions | Future work is not equivalent to active or indefinitely valid work | B-19: not-yet-due/due/overdue/reassessment and separate order expiry | C-01, E-01 |
 | Single-instance initiation, completion/cancellation, stable anchors | Reevaluate without moving deadlines or fabricating completion | B-20: event identity, order versus completion, late events, fixed originating anchor | C-01, E-01 |
-| Subject scope, operational readiness and handoff proposal | An indicated referral is not proof of recipient availability | B-21: authorized context, missing resource evidence, no implicit related-patient order | C-01, C-03 |
+| Subject scope, operational readiness and handoff proposal | Handoff intent is not communication completion or recipient treatment | B-21: positive typed handoff, subject/role/authority binding, fulfillment evidence, no implicit related-patient order | E-01, C-01, C-03 |
 | Pure deterministic results, explanations and frozen replay | Reproduce why an action was proposed or blocked | B-22: permutation/metamorphic cases, context versions, stable semantic traces | C-01, C-02, E-02 |
 | Review identity and material-change invalidation | Stale review cannot authorize changed action | B-23: dose/evidence/rationale/context changes and review digests | C-02, C-03, E-01 |
-| Artifact validation and failure boundaries | Invalid/unsupported execution cannot appear ready | B-24: capability mismatch, tamper, budget failure, missing dependencies | C-03 |
+| Artifact validation and failure boundaries | Invalid/unsupported execution cannot appear ready | B-24: unsupported language/profile/IR/build combination, tamper, budget failure, missing dependencies | C-03 |
 | Public core boundary | Keep clinical semantics independent of application infrastructure | B-25: isolated build/import enforcement and public API harness | C-03 |
+| Needs and fulfillment | Turn missing material evidence into a traceable obligation | B-26: stable keys, materiality/deduplication, `fulfilled_by` checks, idempotent outcomes and attempt-state reevaluation | C-01; C/D integration additionally verifies bounded acquisition and fulfiller policy |
+| Cross-pathway action composition | Preserve meaning and safety when packages overlap | B-27: canonical equivalence, order-invariant coalescing, retained source obligations, unestablished equivalence and conflicts | E-01, E-02 |
+| Independent urgency and requested-scope readiness | Expose urgent findings without falsely finalizing an incomplete plan | B-28: urgent findings with unrelated Unknown; whole-scope blockers; scope identity and failure status | C-01, E-02, C-03 |
 
 Transactional finalization and live acquisition are application integration obligations rather than pure Stage B operators: C-02 covers idempotency/concurrency/review, and Stage D covers the live adapters. Stage B supplies the pure result/review contracts those integrations consume. Every capability-profile row above has B and C/E coverage; finer operator signatures must inherit or add explicit case mappings before Stage A closes.
 
@@ -667,6 +699,9 @@ Acceptance variants:
 
 - Alarm finding remains visible and drives its independent assessment/referral even if ordinary symptom treatment is not applicable or another branch is unresolved.
 - Missing/refuted applicability and conditional counseling exercise the three-valued reducers; group layout cannot create eligibility.
+- A missing material alarm-symptom attestation emits a stable Need. Reevaluate unchanged evidence and confirm the same key without duplicated acquisition. A controlled provider fulfiller returns an authorized scoped attestation; `fulfilled_by` validates it, records a new revision, reevaluates and requires the resulting review. Wrong-subject, expired or wrong-type responses do not close the Need. Verify an immaterial unknown does not create a blocking Need unless independently required.
+- Exercise duplicate responses, refusal, unavailable acquisition, retry/deadline exhaustion and reevaluation after exhaustion through the orchestrator. No repeated evaluation restarts an unbounded acquisition loop. Stage D separately verifies ask-provider/EHR/hybrid strategy selection and real adapter behavior.
+- An established urgent finding remains visible while an unrelated required Need blocks finalization of the requested scope. Reject subgroup finalization and silent scope reduction; do not suppress urgency merely because the complete plan is not ready.
 - Follow-up planning permission can be established before its fixed performance window; soft deadline, clinical reassessment rule and external order expiration remain distinct. A later encounter does not move the originating anchor.
 - Referral clinical indication can be established while destination availability is unresolved; record a scoped operational attestation and reevaluate. A requirement in institutional policy is not proof of availability. No automatic recipient-patient order is created.
 - Cancellation/completion events have the supported identity and authority checks; proposal or order alone is not completion. Changed material evidence invalidates review; unchanged frozen input reproduces the result.
@@ -680,6 +715,9 @@ Required safety policy names allergy and interaction checks for the supported ca
 | Case | Expected acceptance outcome |
 |---|---|
 | Both candidates eligible, required safety checks complete, no choice recorded | Choice Need; no implicit first/default winner and no finalized medication |
+| Patient explicitly declines the proposed treatment | Record scoped refusal, distinct from no response and from ineligibility; preserve clinical eligibility and any counseling/review obligation; no medication initiation or automatic alternative selection |
+| Candidate selected but required documented consent is missing | Selection does not satisfy consent; consent/review obligation blocks initiation finalization |
+| Authorized consent evidence supplied for the selected action and current scope | Reevaluate and satisfy only that obligation; required safety and review remain enforced; refusal never counts as consent |
 | Provider selects A; required checks complete and clear | Only A proposed for medication initiation; explicit review still required |
 | Known relevant allergy or interaction finding applies to selected A | A withheld; retain the established finding; B is not silently selected |
 | Allergy is present but cannot be mapped | Safety assessment unresolved; affected medication finalization blocked, not treated as allergy-free |
@@ -702,8 +740,11 @@ Author a bounded follow-up slice anchored to recorded completion of an identifie
 - The same observation can be admissible for a historical query and inadmissible for a current-status query; retain both assessments and the original record. A material unresolved candidate cannot disappear from latest selection.
 - A pending result, no admissible measurement, incomplete retrieval or unavailable mapping remains explicit. A reviewed pending/unavailable-state contingency does not coerce the clinical result to negative.
 - Distinguish full retrieval from sufficient sampling. Corrected collection times, late results and scoped provider corrections/attestations produce new revisions and review effects.
+- For the clinically approved treatment-completion query, supply conflicting chart information and an explicit provider precedence request with an authorized attestation about the same course and interval. When the contract permits that evidence kind and strategy and all admissibility checks pass, the attestation governs selection; retain the chart candidate and exact reason it did not govern. Reevaluate dependent timing and invalidate material review.
+- Repeat with expired, wrong-subject, wrong-course/episode and unauthorized assertions. Reject their precedence/admissibility requests, retain rejection reasons, and evaluate admissible chart evidence or return unresolved if it is insufficient. A request cannot modify the query's contract or clear unrelated safety obligations.
 - If an overlap scenario reads susceptibility, it must bind to the identified culture/isolate; an unrelated historical result cannot satisfy it. A typed unsupported/missing binding produces a visible unresolved result.
-- Author only the reviewed UTI/GBS overlap needed to test preserved source-specific rationale and duplicate/conflicting recommendations. No intrapartum drug regimen or related-infant execution is implied.
+- Author only the reviewed UTI/GBS overlap needed to test preserved source-specific rationale and duplicate/conflicting recommendations. Equivalent canonical actions produce one combined proposal with both source traces and accumulated obligations, independent of package ordering. Unestablished equivalence preserves separate proposals with a visible duplication/conflict assessment; incompatible timing or intent blocks requested-scope finalization when unresolved. No intrapartum drug regimen is implied.
+- A reviewed maternal finding positively produces an authorized newborn-care handoff proposal with originating maternal subject/episode, reason and source references, intended receiving role/service, timing and required fulfillment/acknowledgement evidence. An unidentified newborn can be referenced only as a handoff context under the declared contract, never as an order recipient. Proposal creation is not successful communication. A subsequent authorized acknowledgement can fulfill the communication obligation; missing or wrong-context acknowledgement cannot. No infant order, clinical action or completed handoff is inferred.
 
 ### 15.4 E-02 — Separated observations and pregnancy-context interpretation
 
@@ -713,7 +754,8 @@ Add a bounded hypertension assessment slice, not a full hypertension diagnosis/t
 - Compute pregnancy day count from a sourced dated reference point under the approved date basis. Exercise dates immediately before/at/after a reviewed clinical context boundary and a dating correction. Old replay remains unchanged.
 - Invoke a pinned clinical context lookup table keyed by that derived day count and the declared clinical question. Exercise context at collection versus context at evaluation; use exact table content adjudicated in Stage A, not an invented universal trimester threshold.
 - Combine the observation result with a scoped standing-condition assertion. Retain the historical assertion while applying current episode/effective-time constraints. Exercise both permitted overlap and incompatible current classification outcomes across the two hypertension packages.
-- An independent urgent-assessment branch cannot be suppressed merely because the classification pair or standing-condition history is unresolved.
+- An independent urgent-assessment branch cannot be suppressed merely because the classification pair or standing-condition history is unresolved. Its finding is visible while any required unresolved dependency still blocks whole-requested-scope finalization.
+- Evaluate the two hypertension packages in reversed order with equivalent, distinct and conflicting action payloads. Verify canonical action identity, retained provenance/obligations, and explicit conflict outcomes; no last-pathway-wins or display-name merge. Clinical classification history alone is not a sufficient action-composition test.
 - No baseline-value difference, two-point rate, regression, acute dosing or automatic medication execution is part of this slice. If clinical adjudication finds the proposed lookup or pairing unnecessary, defer the unused capability rather than manufacture a clinical dependency.
 
 ### 15.5 C-03 — Authoring, publication and protective boundaries
@@ -724,7 +766,7 @@ Run through the authoring/API/compiler/publication and execution boundaries as a
 - Wrong types/dimensions, unsupported operators, cycles, invalid cardinality, ambiguous bindings and unauthorized policy specialization fail at their declared boundary.
 - Rationale-only changes alter reviewed artifact identity and trigger policy-required review. Safety requirements accumulate and permissions narrow; omission cannot disable an inherited requirement.
 - Synthetic snapshots establish only explicit non-clinical scoped coverage. Clinical execution rejects them and mixed/derived synthetic artifacts; relabeling or bypassing preview UI cannot confer authority.
-- Invalid/tampered/unsupported IR, exceeded resource budgets and missing replay dependencies produce explicit failures, not clinical-ready partial results.
+- Invalid/tampered/unsupported IR, exceeded resource budgets and missing replay dependencies produce explicit failures, not clinical-ready partial results. A failed run cannot claim that all urgent findings were assessed. Reject partial-group finalization and scope tampering even when a subset appears ready.
 - Core build/import rules reject application/infrastructure dependencies. A compiled slice executes through public language exports without database/network access in the kernel.
 
 Section 16 contains the fuller shared case catalogue. Deferred-feature cases are rejection/roadmap cases until the feature obtains a capability row, conformance IDs and a reviewed C/E scenario.
@@ -842,6 +884,18 @@ Required tests/type checks must fail the release on failure. Run database-backed
 
 ## 17. Stage A decisions and exit gate
 
+Assign a named accountable clinical owner early, before treating clinical scenario decisions as settled. That owner assigns appropriately qualified named reviewers for each scenario packet, including medication-safety review for C-02. Record their review scope, decision authority, artifact version and adjudication outcome. A role label or an engineering author is not a substitute for actual reviewer identity.
+
+**Current assignment status:** No clinical owner or reviewer identities have been supplied in this specification. Assignment is an open dependency, not approval implied by the accepted architecture. The project owner must populate this record; do not invent names.
+
+| Required responsibility | Named person | Scope / status |
+|---|---|---|
+| Accountable clinical owner | Unassigned | Own intended use and adjudication decisions across C/E; blocks Stage A exit |
+| C-01/C-02 clinical reviewers, including medication-safety expertise | Unassigned | Approve exact assessment, medication, refusal/consent and safety expectations |
+| E-01/E-02 clinical reviewers | Unassigned | Approve follow-up, precedence, handoff, temporal and composition expectations |
+
+One qualified person may cover multiple responsibilities under the project's governance. Schema design, operator contracts, harnesses and nonclinical conformance cases can proceed in parallel; unresolved clinical packets or missing reviewer identities prevent Stage A completion. This dependency is not a claim that all engineering must wait.
+
 Before Stage A exits, resolve and document all of the following. None is implicitly answered by accepting the architecture:
 
 1. Exact initial node/relationship vocabulary and bounded C-01/C-02/E-01/E-02 clinical slices after walking the design corpus in section 18.1 and optional fixtures in section 18.2, including applicability, instruction-versus-container classification and independent urgent assessment.
@@ -854,9 +908,9 @@ Before Stage A exits, resolve and document all of the following. None is implici
 8. Authenticated institution-configuration storage/resolution and the CI enforcement of the internal package boundary.
 9. Pregnancy date basis, context-time rules, event/observation pairing selection and correction behavior; no implicit use of current context for historical measurements.
 10. Preview-only artifact/hole schema, publication rejection and rationale review identity; planning versus performance/stop/expiration fields and stable schedule anchors.
-
 11. Exact C-02 medication identities, reviewed fixed actions, required allergy/interaction sources and cases; no placeholder medication definition is accepted at Stage A exit.
 12. Concrete operator-level case IDs beneath every B family, clinically adjudicated C/E input/expected-output packages, and a complete capability mapping; defer features whose scenarios are rejected or unnecessary.
+13. Canonical action-equivalence keys and conflict contracts, requested-scope identity, stable Need-key inputs, permitted provider precedence strategies, handoff fields/fulfillment and the version-compatibility registry in section 12.1.
 
 Record each decision with its owner, rationale and version. Required clinical scenario packets include intended use, cited source/version, exact source AST, scoped synthetic evidence, independently expected actions/omissions/needs, review/finalization outcomes and clinical reviewer identity. Stage A remains open while any required packet or contract is unresolved.
 
@@ -873,7 +927,7 @@ The [committed corpus](../records/pathway-language/corpus/README.md) contains al
 | GBS | Freshness, method/susceptibility, future stop events, related subjects | E-01 exercises scoped overlap; repeat regimens and related-patient execution deferred |
 | Gestational diabetes | Sampling adequacy, counts/percentages, surveillance bundles | Context motivates contract; aggregation and bundles deferred |
 | Hypertensive disorders | Distinct separated measurements, clinical context, acute sequences | E-02 exercises pairing and context; acute sequencing deferred |
-| Prior uterine surgery | Consent/choice, advisory prediction, operational readiness | C-02 exercises choice/consent; C-01 referral exercises operational readiness; prediction execution deferred |
+| Prior uterine surgery | Consent/choice, advisory prediction, operational readiness | C-02 exercises choice, explicit refusal and a scoped consent prerequisite (not the full surgical consent workflow); C-01 exercises operational readiness; prediction execution deferred |
 | Hyperthyroidism | Reference context, treatment transitions, administration-relative sampling | Context lookup tested in E-02; treatment transitions and TDM-specific admissibility deferred |
 | Chronic hypertension | Initiation versus continuation, stop/switch, overlapping pathways | C-02 covers initiation only; E-02 covers scoped classification conflict; lifecycle changes deferred |
 | GERD | Independent alarm assessment, counseling, response and follow-up | C-01/C-02 bounded slices; computed response and sequencing deferred |
