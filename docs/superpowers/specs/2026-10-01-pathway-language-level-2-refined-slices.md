@@ -12,6 +12,16 @@
 
 See [Level 1](2026-10-01-pathway-language-level-1-behavioral-slices.md) for overall scope and [Level 3](2026-10-01-pathway-language-level-3-story-spec.md) for story dependencies/readiness. L00 child stories produce reviewed decisions and examples. Other child stories include implementation and its meaningful verification; source, compiler, runtime and test chores are not separate horizontal milestones.
 
+## Source for the first language-definition story
+
+Use the supplied [GERD pregnancy pathway](../records/pathway-language/corpus/GERD-Pregnancy-Care-Pathway.txt), under “CLINICAL DIAGNOSIS” → “ALARM SYMPTOMS REQUIRING IMMEDIATE EVALUATION”, specifically the progressive-dysphagia bullet. The unchanged source is pinned by SHA-256 `937859b9b22f672e4d212cdd99b188f1e1d12b6cd4217459155d2c34a8f67032` in the [corpus manifest](../records/pathway-language/corpus/manifest.json).
+
+L00.1.a defines only how evidence for this alarm relates to a proposed evaluation within an explicitly agreed scope. The source’s urgency wording is a requirement to interpret, not permission to invent a numerical deadline, diagnostic test or treatment. Preserve the distinction between progressive dysphagia in this passage and the broader dysphagia wording in the referral section. Other alarms, referral/endoscopy decisions, medication sequencing and the full C-01 scenario remain outside this first story.
+
+Use constructed evidence cases for symptom present, explicitly assessed absent, and not assessed/unavailable. Establish what evidence can support each case; an empty chart is not an explicit negative. A negative for this one symptom cannot clear all alarms or imply that no evaluation is needed for another reason. Source documents are design inputs, not approved executable guidance. Drafting and extracting questions can begin now; a named clinical reviewer must adjudicate the intended scope, urgency and action meaning before the story closes. This update selects the source, but does not claim that adjudication or its outcome table is complete.
+
+The later constant-only F01 validator fixture remains an engineering restriction of the reviewed representation, not an executable clinical version of this alarm rule. Evidence-dependent evaluation arrives later. L00 completion also does not close the larger C-01 packet.
+
 ## L00 — Define the meaning and representation of one pathway
 
 Parent: [L00](2026-10-01-pathway-language-level-1-behavioral-slices.md#l00). Stage A trace: Stage A sections 2, 3, 6, 8 and 17; prepares B-01, B-03, B-04, B-24; no conformance completion claimed.
@@ -20,7 +30,7 @@ Parent: [L00](2026-10-01-pathway-language-level-1-behavioral-slices.md#l00). Sta
 
 ### L00.1 — Example meaning and necessary concepts
 
-**Problem statement:** Given one fictional recommendation dependent on one boolean fact, produce an agreed input/output example and definitions of only the concepts it needs.
+**Problem statement:** Given the GERD source passage relating progressive dysphagia to immediate evaluation, produce an agreed input/output example and definitions of only the concepts it needs.
 
 **High-level work:** Separate agreement about behavior from choosing syntax or software structures.
 
@@ -28,9 +38,9 @@ Parent: [L00](2026-10-01-pathway-language-level-1-behavioral-slices.md#l00). Sta
 
 **External integration/acceptance gates:** No additional external gate beyond the child stories and profile/scenario requirements.
 
-**Boundary:** No JSON fields, grammar, complete node catalogue or clinical adjudication.
+**Boundary:** No JSON fields, grammar, complete node catalogue, full GERD algorithm or unreviewed clinical interpretation.
 
-**Completion evidence:** Every case has one agreed expected meaning with no unstated assumption; unavailable evidence is distinguishable from false; unresolved questions that affect these outcomes block completion; record the decision owner and reviewed revision. Each concept points to a concrete part of the example; no two concepts have silently overlapping responsibilities; no software class or node catalogue is implied.
+**Completion evidence:** Each case traces to the pinned source and a named clinical reviewer’s interpretation; present, explicitly absent and unassessed evidence remain distinct; absence of this one trigger cannot establish absence of other alarms or overall safety; proposal is not execution; unresolved scope, urgency or action meaning blocks completion; record clinical and engineering review identities and revision. Each concept points to a concrete part of the example; no two concepts have silently overlapping responsibilities; no software class or node catalogue is implied.
 
 **Executable components:** [L00.1.a Define one pathway’s intended meaning without syntax](2026-10-01-pathway-language-level-3-story-spec.md#l00-1-a), [L00.1.b Define only the concepts needed by the example](2026-10-01-pathway-language-level-3-story-spec.md#l00-1-b).
 

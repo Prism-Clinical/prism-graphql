@@ -10,7 +10,7 @@
 
 **Authority:** [Accepted architecture](2026-09-28-pathway-language-rfc.md) and [Stage A contracts](2026-09-30-pathway-language-stage-a-spec.md). These documents organize delivery under the Stage A capability contracts. They do not independently promote deferred capabilities.
 
-L00 defines one example’s meaning and minimal source contract before implementation begins. The RFC fixes architectural boundaries, while Stage A remains a draft: neither supplies every exact language decision. L00 completion defines only this fragment, not the whole language. Later capability tracks must resolve their own contracts before implementation.
+L00 defines one source-backed GERD example’s meaning and minimal source contract before implementation begins. The RFC fixes architectural boundaries, while Stage A remains a draft: neither supplies every exact language decision. L00 completion defines only this fragment, not the whole language. Later capability tracks must resolve their own contracts before implementation.
 
 The F01–F07 slices establish a narrow source-to-reviewed-result loop. Follow-on tracks add the clinically justified capabilities; they are not prerequisites for a literal-only foundation demo. Completed implementation slices contribute evidence toward stages B/C/E; no single early slice claims full `ppl-core-v0` support or permission for clinical launch.
 
@@ -19,6 +19,16 @@ Intermediate artifacts declare only the implemented engineering subset and canno
 Clinical examples use frozen nonclinical fixtures. Real thresholds, medication definitions, date rules and expected clinical interpretations require named adjudicators under Stage A. Engineering contract decisions must also be fixed before their dependent story starts. Prototype work while Stage A is open remains explicitly nonclinical and cannot satisfy a clinical gate by itself.
 
 No production database wipe, deployment, EHR transmission or new ingestion work is authorized by these plans. A story involving persistence uses an isolated new-system test schema. A trusted nonclinical harness may materialize sandbox plan artifacts using the shared domain/transaction logic; it cannot call clinical endpoints with synthetic evidence or expose a caller-selectable bypass. Clinical mode must reject synthetic/preview artifacts.
+
+## Source for the first language-definition story
+
+Use the supplied [GERD pregnancy pathway](../records/pathway-language/corpus/GERD-Pregnancy-Care-Pathway.txt), under “CLINICAL DIAGNOSIS” → “ALARM SYMPTOMS REQUIRING IMMEDIATE EVALUATION”, specifically the progressive-dysphagia bullet. The unchanged source is pinned by SHA-256 `937859b9b22f672e4d212cdd99b188f1e1d12b6cd4217459155d2c34a8f67032` in the [corpus manifest](../records/pathway-language/corpus/manifest.json).
+
+L00.1.a defines only how evidence for this alarm relates to a proposed evaluation within an explicitly agreed scope. The source’s urgency wording is a requirement to interpret, not permission to invent a numerical deadline, diagnostic test or treatment. Preserve the distinction between progressive dysphagia in this passage and the broader dysphagia wording in the referral section. Other alarms, referral/endoscopy decisions, medication sequencing and the full C-01 scenario remain outside this first story.
+
+Use constructed evidence cases for symptom present, explicitly assessed absent, and not assessed/unavailable. Establish what evidence can support each case; an empty chart is not an explicit negative. A negative for this one symptom cannot clear all alarms or imply that no evaluation is needed for another reason. Source documents are design inputs, not approved executable guidance. Drafting and extracting questions can begin now; a named clinical reviewer must adjudicate the intended scope, urgency and action meaning before the story closes. This update selects the source, but does not claim that adjudication or its outcome table is complete.
+
+The later constant-only F01 validator fixture remains an engineering restriction of the reviewed representation, not an executable clinical version of this alarm rule. Evidence-dependent evaluation arrives later. L00 completion also does not close the larger C-01 packet.
 
 ## Story execution rules
 
@@ -33,7 +43,7 @@ No production database wipe, deployment, EHR transmission or new ingestion work 
 
 | Code | Required before starting the story | Current status |
 |---|---|---|
-| D | Prior design outputs are reviewed; an engineering decision owner is identified to resolve this story’s questions | Language decisions are open; this story produces the contract rather than requiring it to exist |
+| D | Prior design outputs are reviewed; engineering decisions have an owner; L00.1.a additionally requires named clinical review of the source interpretation before completion | Language decisions are open; this story produces the contract rather than requiring it to exist |
 | E | Engineering owner has fixed the exact supported contract and expected nonclinical outputs in Stage A or the linked story decision | Contract-specific decisions remain open; do not treat this plan as completed Stage A |
 | C1 | E plus named clinical review of the relevant C-01 assessment/follow-up behavior | Clinical owner/reviewers unassigned in Stage A |
 | C2 | E plus actual reviewed medication definitions, safety requirements and C-02 expected outcomes | Clinical owner/reviewers unassigned; no invented drugs/doses |
@@ -46,7 +56,7 @@ Technical prototypes can precede clinical adjudication only as nonclinical provi
 
 There are 17 outcomes, 44 refinements and 85 stories. The original 65-story implementation plan had a longest dependency chain of 34 stories. The subsequent 77-story plan had start depth 17 and acceptance depth 23 but omitted the prerequisite language-definition work. The current counts include that newly explicit design work. The revised start-prerequisite graph has depth 25; including integration/acceptance gates gives depth 31. Both have no dangling references or cycles. These are unit-weighted graph depths, not duration estimates or a promise of proportionate speedup; scope has also increased.
 
-8 stories define language contracts (D); 47 implementation stories have engineering readiness code E; 30 require clinical adjudication (C1: 4, C2: 8, E1: 11, E2: 7). E does not mean immediately ready: prerequisites and unresolved engineering contracts still apply. Clinical owners remain unassigned and are required before clinical acceptance.
+8 stories define language contracts (D); 47 implementation stories have engineering readiness code E; 30 require clinical adjudication (C1: 4, C2: 8, E1: 11, E2: 7). E does not mean immediately ready: prerequisites and unresolved engineering contracts still apply. Clinical owners remain unassigned and are required before clinical acceptance. D is a design-work code, not a clinical-review exemption: the source-backed L00.1.a requires clinical interpretation review, inherited by later L00 stories.
 
 L00.1.a is the first story with no implementation predecessor; its unresolved questions are its work. After L00 and F01.1.a, F01.1.b, F01.2.a, F01.2.b and U01.1.a can start independently once their contract decisions are fixed. The previous plan was not literally serial for its first fifteen stories: it already had two successors after F01.1.a. Read the exact leaf prerequisites rather than inferring order from document position.
 
@@ -56,7 +66,7 @@ L00.1.a is the first story with no implementation predecessor; its unresolved qu
 
 ### L00.1.a — Define one pathway’s intended meaning without syntax
 
-**Problem statement:** Given one plain-language fictional recommendation whose indication depends on one boolean fact, produce a reviewed input/output table for true, false and unavailable evidence, with explanations.
+**Problem statement:** Given the supplied GERD pregnancy pathway’s progressive-dysphagia alarm passage and explicitly scoped symptom evidence, produce a source-linked, clinically reviewed meaning table for present, explicitly absent and unavailable symptom evidence, with explanations.
 
 **Parent:** [L00.1](2026-10-01-pathway-language-level-2-refined-slices.md#l00-1). **Stage A trace:** Stage A sections 2, 3, 6, 8 and 17; prepares B-01, B-03, B-04, B-24; no conformance completion claimed.
 
@@ -64,13 +74,13 @@ L00.1.a is the first story with no implementation predecessor; its unresolved qu
 
 **Integration/acceptance gates:** No additional story-specific gates; inherited gates and profile/scenario requirements still apply. **Readiness:** D.
 
-**High-level work:** Write one nonclinical example; identify the fact and proposed recommendation; distinguish proposing from executing; record unanswered questions rather than silently deciding them.
+**High-level work:** Read the named GERD passage and its surrounding context; state the intended pregnancy/encounter scope; distinguish progressive dysphagia from generic dysphagia; identify the symptom evidence and proposed evaluation; preserve the source urgency wording for adjudication; record unanswered questions without adding tests, treatments or deadlines.
 
-**Expected touch surface:** DESIGN/one prose example and outcome table (proposed; inspect existing seams before editing).
+**Expected touch surface:** DESIGN/GERD source passage, interpretation questions and outcome table (proposed; inspect existing seams before editing).
 
-**Acceptance:** Every case has one agreed expected meaning with no unstated assumption; unavailable evidence is distinguishable from false; unresolved questions that affect these outcomes block completion; record the decision owner and reviewed revision.
+**Acceptance:** Each case traces to the pinned source and a named clinical reviewer’s interpretation; present, explicitly absent and unassessed evidence remain distinct; absence of this one trigger cannot establish absence of other alarms or overall safety; proposal is not execution; unresolved scope, urgency or action meaning blocks completion; record clinical and engineering review identities and revision.
 
-**Out of this story:** No JSON fields, grammar, complete node catalogue or clinical adjudication. Stop when the stated outcome and its required review/verification pass; do not absorb the rest of the parent track.
+**Out of this story:** No JSON fields, grammar, complete node catalogue, full GERD algorithm or unreviewed clinical interpretation. Stop when the stated outcome and its required review/verification pass; do not absorb the rest of the parent track.
 
 <a id="l00-1-b"></a>
 
@@ -90,7 +100,7 @@ L00.1.a is the first story with no implementation predecessor; its unresolved qu
 
 **Acceptance:** Each concept points to a concrete part of the example; no two concepts have silently overlapping responsibilities; no software class or node catalogue is implied.
 
-**Out of this story:** No JSON fields, grammar, complete node catalogue or clinical adjudication. Stop when the stated outcome and its required review/verification pass; do not absorb the rest of the parent track.
+**Out of this story:** No JSON fields, grammar, complete node catalogue, full GERD algorithm or unreviewed clinical interpretation. Stop when the stated outcome and its required review/verification pass; do not absorb the rest of the parent track.
 
 <a id="l00-2-a"></a>
 

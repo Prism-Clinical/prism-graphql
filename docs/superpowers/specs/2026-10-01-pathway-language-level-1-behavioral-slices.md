@@ -10,7 +10,7 @@
 
 **Authority:** [Accepted architecture](2026-09-28-pathway-language-rfc.md) and [Stage A contracts](2026-09-30-pathway-language-stage-a-spec.md). These documents organize delivery under the Stage A capability contracts. They do not independently promote deferred capabilities.
 
-L00 defines one example’s meaning and minimal source contract before implementation begins. The RFC fixes architectural boundaries, while Stage A remains a draft: neither supplies every exact language decision. L00 completion defines only this fragment, not the whole language. Later capability tracks must resolve their own contracts before implementation.
+L00 defines one source-backed GERD example’s meaning and minimal source contract before implementation begins. The RFC fixes architectural boundaries, while Stage A remains a draft: neither supplies every exact language decision. L00 completion defines only this fragment, not the whole language. Later capability tracks must resolve their own contracts before implementation.
 
 The F01–F07 slices establish a narrow source-to-reviewed-result loop. Follow-on tracks add the clinically justified capabilities; they are not prerequisites for a literal-only foundation demo. Completed implementation slices contribute evidence toward stages B/C/E; no single early slice claims full `ppl-core-v0` support or permission for clinical launch.
 
@@ -19,6 +19,16 @@ Intermediate artifacts declare only the implemented engineering subset and canno
 Clinical examples use frozen nonclinical fixtures. Real thresholds, medication definitions, date rules and expected clinical interpretations require named adjudicators under Stage A. Engineering contract decisions must also be fixed before their dependent story starts. Prototype work while Stage A is open remains explicitly nonclinical and cannot satisfy a clinical gate by itself.
 
 No production database wipe, deployment, EHR transmission or new ingestion work is authorized by these plans. A story involving persistence uses an isolated new-system test schema. A trusted nonclinical harness may materialize sandbox plan artifacts using the shared domain/transaction logic; it cannot call clinical endpoints with synthetic evidence or expose a caller-selectable bypass. Clinical mode must reject synthetic/preview artifacts.
+
+## Source for the first language-definition story
+
+Use the supplied [GERD pregnancy pathway](../records/pathway-language/corpus/GERD-Pregnancy-Care-Pathway.txt), under “CLINICAL DIAGNOSIS” → “ALARM SYMPTOMS REQUIRING IMMEDIATE EVALUATION”, specifically the progressive-dysphagia bullet. The unchanged source is pinned by SHA-256 `937859b9b22f672e4d212cdd99b188f1e1d12b6cd4217459155d2c34a8f67032` in the [corpus manifest](../records/pathway-language/corpus/manifest.json).
+
+L00.1.a defines only how evidence for this alarm relates to a proposed evaluation within an explicitly agreed scope. The source’s urgency wording is a requirement to interpret, not permission to invent a numerical deadline, diagnostic test or treatment. Preserve the distinction between progressive dysphagia in this passage and the broader dysphagia wording in the referral section. Other alarms, referral/endoscopy decisions, medication sequencing and the full C-01 scenario remain outside this first story.
+
+Use constructed evidence cases for symptom present, explicitly assessed absent, and not assessed/unavailable. Establish what evidence can support each case; an empty chart is not an explicit negative. A negative for this one symptom cannot clear all alarms or imply that no evaluation is needed for another reason. Source documents are design inputs, not approved executable guidance. Drafting and extracting questions can begin now; a named clinical reviewer must adjudicate the intended scope, urgency and action meaning before the story closes. This update selects the source, but does not claim that adjudication or its outcome table is complete.
+
+The later constant-only F01 validator fixture remains an engineering restriction of the reviewed representation, not an executable clinical version of this alarm rule. Evidence-dependent evaluation arrives later. L00 completion also does not close the larger C-01 packet.
 
 ## How the three levels fit
 
@@ -30,7 +40,7 @@ The hierarchy is a foundation or extension outcome → numbered refinement → l
 
 ## Initial delivery sequence
 
-Start with L00.1.a: agree on one fictional pathway’s input/output meaning without syntax. Complete its eight small design stories through L00.4.b before F01.1.a starts implementing the first validator. These are reviewed design deliverables, not completed decisions or new engineering packages.
+Start with L00.1.a: agree on the supplied GERD progressive-dysphagia passage’s input/output meaning without syntax. Complete its eight small design stories through L00.4.b before F01.1.a starts implementing the first validator. These are reviewed design deliverables, not completed decisions or new engineering packages.
 
 F01–F07 describe the foundation outcomes, not a serial implementation schedule. Leaf start prerequisites are authoritative. Once the compiled-artifact/evaluator contracts exist, evidence and Needs, fingerprint/review, preview holes, and timing can advance independently where their inputs permit. Medication work also needs its reviewed clinical content. Authoring display begins after the AST contract; structural analysis begins after the relevant typed dependencies.
 
@@ -38,7 +48,7 @@ F01–F07 describe the foundation outcomes, not a serial implementation schedule
 
 There are 17 outcomes, 44 refinements and 85 stories. The original 65-story implementation plan had a longest dependency chain of 34 stories. The subsequent 77-story plan had start depth 17 and acceptance depth 23 but omitted the prerequisite language-definition work. The current counts include that newly explicit design work. The revised start-prerequisite graph has depth 25; including integration/acceptance gates gives depth 31. Both have no dangling references or cycles. These are unit-weighted graph depths, not duration estimates or a promise of proportionate speedup; scope has also increased.
 
-8 stories define language contracts (D); 47 implementation stories have engineering readiness code E; 30 require clinical adjudication (C1: 4, C2: 8, E1: 11, E2: 7). E does not mean immediately ready: prerequisites and unresolved engineering contracts still apply. Clinical owners remain unassigned and are required before clinical acceptance.
+8 stories define language contracts (D); 47 implementation stories have engineering readiness code E; 30 require clinical adjudication (C1: 4, C2: 8, E1: 11, E2: 7). E does not mean immediately ready: prerequisites and unresolved engineering contracts still apply. Clinical owners remain unassigned and are required before clinical acceptance. D is a design-work code, not a clinical-review exemption: the source-backed L00.1.a requires clinical interpretation review, inherited by later L00 stories.
 
 L00.1.a is the first story with no implementation predecessor; its unresolved questions are its work. After L00 and F01.1.a, F01.1.b, F01.2.a, F01.2.b and U01.1.a can start independently once their contract decisions are fixed. The previous plan was not literally serial for its first fifteen stories: it already had two successors after F01.1.a. Read the exact leaf prerequisites rather than inferring order from document position.
 
@@ -56,7 +66,7 @@ L00.1.a is the first story with no implementation predecessor; its unresolved qu
 
 ## L00 — Define the meaning and representation of one pathway
 
-**Problem statement:** Given one fictional pathway described in plain language, produce a reviewed minimal language definition and source-validation contract before writing its validator.
+**Problem statement:** Given the progressive-dysphagia alarm-symptom passage in the supplied GERD pregnancy pathway, produce a reviewed minimal language definition and source-validation contract before writing its validator.
 
 **High-level work:** Work from observable meaning to concepts, relationships, types, evaluation rules, invalid definitions and only then representation.
 
