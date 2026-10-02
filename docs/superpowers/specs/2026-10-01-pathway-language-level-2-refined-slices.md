@@ -2,13 +2,91 @@
 
 **Problem statement:** Given a Level 1 outcome, produce a dependency-bounded set of smaller behaviors whose combined outputs establish that outcome without hidden work. Each refinement identifies an observable boundary and delegates implementation to explicit stories.
 
-**Status:** Proposed implementation decomposition, not implementation completion or clinical approval.
+**Status:** Proposed language-definition and implementation decomposition, not implementation completion or clinical approval.
 
 **Date:** 2026-10-01
 
+**Last revised:** 2026-10-02 — add language definition before implementation.
+
 **Authority:** [Accepted architecture](2026-09-28-pathway-language-rfc.md) and [Stage A contracts](2026-09-30-pathway-language-stage-a-spec.md). These documents organize delivery under the Stage A capability contracts. They do not independently promote deferred capabilities.
 
-See [Level 1](2026-10-01-pathway-language-level-1-behavioral-slices.md) for overall scope and [Level 3](2026-10-01-pathway-language-level-3-story-spec.md) for story dependencies/readiness. Child stories include implementation and its meaningful verification; source, compiler, runtime and test chores are not separate horizontal milestones.
+See [Level 1](2026-10-01-pathway-language-level-1-behavioral-slices.md) for overall scope and [Level 3](2026-10-01-pathway-language-level-3-story-spec.md) for story dependencies/readiness. L00 child stories produce reviewed decisions and examples. Other child stories include implementation and its meaningful verification; source, compiler, runtime and test chores are not separate horizontal milestones.
+
+## L00 — Define the meaning and representation of one pathway
+
+Parent: [L00](2026-10-01-pathway-language-level-1-behavioral-slices.md#l00). Stage A trace: Stage A sections 2, 3, 6, 8 and 17; prepares B-01, B-03, B-04, B-24; no conformance completion claimed.
+
+<a id="l00-1"></a>
+
+### L00.1 — Example meaning and necessary concepts
+
+**Problem statement:** Given one fictional recommendation dependent on one boolean fact, produce an agreed input/output example and definitions of only the concepts it needs.
+
+**High-level work:** Separate agreement about behavior from choosing syntax or software structures.
+
+**External start prerequisites:** Approved minimal engineering source contract; no implementation predecessor.
+
+**External integration/acceptance gates:** No additional external gate beyond the child stories and profile/scenario requirements.
+
+**Boundary:** No JSON fields, grammar, complete node catalogue or clinical adjudication.
+
+**Completion evidence:** Every case has one agreed expected meaning with no unstated assumption; unavailable evidence is distinguishable from false; unresolved questions that affect these outcomes block completion; record the decision owner and reviewed revision. Each concept points to a concrete part of the example; no two concepts have silently overlapping responsibilities; no software class or node catalogue is implied.
+
+**Executable components:** [L00.1.a Define one pathway’s intended meaning without syntax](2026-10-01-pathway-language-level-3-story-spec.md#l00-1-a), [L00.1.b Define only the concepts needed by the example](2026-10-01-pathway-language-level-3-story-spec.md#l00-1-b).
+
+<a id="l00-2"></a>
+
+### L00.2 — Relationships and value domains
+
+**Problem statement:** Given the example glossary, produce explicit connection meaning and allowed values.
+
+**High-level work:** Define legal relationships before selecting their serialization, then their value and binding constraints.
+
+**External start prerequisites:** [L00.1.b](2026-10-01-pathway-language-level-3-story-spec.md#l00-1-b).
+
+**External integration/acceptance gates:** No additional external gate beyond the child stories and profile/scenario requirements.
+
+**Boundary:** No generic graph framework, all future operators or implementation schemas.
+
+**Completion evidence:** Each relationship has one explicit meaning; ambiguous or duplicate binding is identified as invalid where appropriate; two readers can reconstruct the example without inferring meaning from diagram layout. True, false and unavailable are distinguishable; wrong-type binding is an invalid definition; missing evidence is a valid input case; all domains needed by the example have explicit boundaries.
+
+**Executable components:** [L00.2.a Define the example’s relationships](2026-10-01-pathway-language-level-3-story-spec.md#l00-2-a), [L00.2.b Define the example’s types and unavailable evidence](2026-10-01-pathway-language-level-3-story-spec.md#l00-2-b).
+
+<a id="l00-3"></a>
+
+### L00.3 — Evaluation meaning and invalid definitions
+
+**Problem statement:** Given typed relationships and agreed expected results, produce precise evaluation rules and independent rejection examples.
+
+**High-level work:** Derive only the rules needed to reproduce the example and check them manually against the original expectations.
+
+**External start prerequisites:** [L00.2.b](2026-10-01-pathway-language-level-3-story-spec.md#l00-2-b).
+
+**External integration/acceptance gates:** No additional external gate beyond the child stories and profile/scenario requirements.
+
+**Boundary:** No evaluator code, full boolean algebra specification or patient-dependent proofs.
+
+**Completion evidence:** Walk every original case through the rules without inventing a default; no rule executes the proposal; disagreements with Stage A are recorded for explicit resolution rather than silently creating alternate semantics. Each invalid example violates a named rule; each valid control example remains valid; source-validation versus later semantic checking is explicitly assigned; no diagnostic code or field syntax is assumed yet.
+
+**Executable components:** [L00.3.a Define evaluation rules for the example](2026-10-01-pathway-language-level-3-story-spec.md#l00-3-a), [L00.3.b Define invalid pathway examples](2026-10-01-pathway-language-level-3-story-spec.md#l00-3-b).
+
+<a id="l00-4"></a>
+
+### L00.4 — Representation and validator contract
+
+**Problem statement:** Given reviewed semantic and invalid examples, produce a concrete minimal source representation and exact validator boundary.
+
+**High-level work:** Choose a representation within the accepted canonical-source architecture, then document exact accepted input and returned output.
+
+**External start prerequisites:** [L00.3.b](2026-10-01-pathway-language-level-3-story-spec.md#l00-3-b).
+
+**External integration/acceptance gates:** No additional external gate beyond the child stories and profile/scenario requirements.
+
+**Boundary:** No reopening the architecture silently, full textual language, compiler IR or validator implementation.
+
+**Completion evidence:** The example can be read back without changing meaning; representation introduces no implicit clinical defaults; record the choice, alternatives and owner; illustrate both evidence-driven meaning and the constant-only restriction used by F01. F01.1.a can be implemented without choosing language meaning or inventing fields; complete input passes, missing applicability and unknown executable property have exact rejection expectations; contract owner and reviewed revision are recorded.
+
+**Executable components:** [L00.4.a Choose the initial authoring representation](2026-10-01-pathway-language-level-3-story-spec.md#l00-4-a), [L00.4.b Specify the smallest source-validation contract](2026-10-01-pathway-language-level-3-story-spec.md#l00-4-b).
 
 ## F01 — Accept one explicit source definition
 
@@ -22,7 +100,7 @@ Parent: [F01](2026-10-01-pathway-language-level-1-behavioral-slices.md#f01). Sta
 
 **High-level work:** Limit the grammar to version headers, one guidance action, four literal decisions and stable IDs.
 
-**External start prerequisites:** Approved minimal engineering source contract; no implementation predecessor.
+**External start prerequisites:** [L00.4.b](2026-10-01-pathway-language-level-3-story-spec.md#l00-4-b).
 
 **External integration/acceptance gates:** No additional external gate beyond the child stories and profile/scenario requirements.
 

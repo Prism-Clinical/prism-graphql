@@ -4,13 +4,13 @@
 
 **Date:** 2026-09-30
 
-**Last revised:** 2026-10-01 — Need/acquisition traceability, precedence, positive handoffs, composition/finalization scope, refusal/consent cases and version identities.
+**Last revised:** 2026-10-02 — explicit language-definition work before implementation; retains relationship verification, authoring and scenario coverage.
 
 **Architecture authority:** [Accepted pathway-language RFC](2026-09-28-pathway-language-rfc.md).
 
 **Design inputs:** [Reviewable corpus and provenance](../records/pathway-language/corpus/README.md).
 
-**Implementation decomposition:** [Level 1 — behavioral outcomes](2026-10-01-pathway-language-level-1-behavioral-slices.md), [Level 2 — refined slices](2026-10-01-pathway-language-level-2-refined-slices.md), and [Level 3 — single-story components](2026-10-01-pathway-language-level-3-story-spec.md). These proposed delivery plans inherit this specification; story completion does not replace Stage A or clinical acceptance.
+**Language-definition and implementation decomposition:** [Level 1 — behavioral outcomes](2026-10-01-pathway-language-level-1-behavioral-slices.md), [Level 2 — refined slices](2026-10-01-pathway-language-level-2-refined-slices.md), and [Level 3 — single-story components](2026-10-01-pathway-language-level-3-story-spec.md). These proposed delivery plans inherit this specification; story completion does not replace Stage A or clinical acceptance.
 
 ## 1. Ownership and acceptance rule
 
@@ -898,6 +898,10 @@ Measure inappropriate recommendations and missed indicated actions separately; a
 Required tests/type checks must fail the release on failure. Run database-backed activation, revision and materialization checks in isolated infrastructure. Verify authenticated roles, patient/institution scope and preview separation. These are clinical-release obligations that accompany the replacement; they are not evidence that the language design must wait for unrelated legacy cleanup.
 
 ## 17. Stage A decisions and exit gate
+
+Begin with [L00.1.a — one pathway’s intended meaning without syntax](2026-10-01-pathway-language-level-3-story-spec.md#l00-1-a). The eight L00 stories explicitly define one nonclinical example’s meaning, concepts, relationships, types, evaluation rules, invalid definitions, initial representation and source-validation contract. Their deliverables are reviewed decisions and examples, not implementation or clinical approval. The accepted architecture and this draft’s semantic constraints guide these decisions; incomplete field/schema/operator details must not be invented inside implementation stories.
+
+F01.1.a starts only after L00.4.b records the reviewed validator contract. L00 distinguishes the first constant-only implementation subset from the example’s later evidence-dependent behavior. Completing it does not define the whole language or close Stage A: each subsequent capability needs its own resolved contract, and the remaining exit requirements below still apply. An unresolved design question becomes a bounded design story rather than hidden implementation work. Persist the reviewed L00 outputs in Stage A or linked design records with owner and revision so they remain available beyond a conversation.
 
 Assign a named accountable clinical owner early, before treating clinical scenario decisions as settled. That owner assigns appropriately qualified named reviewers for each scenario packet, including medication-safety review for C-02. Record their review scope, decision authority, artifact version and adjudication outcome. A role label or an engineering author is not a substitute for actual reviewer identity.
 

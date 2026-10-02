@@ -1,14 +1,18 @@
 # Level 3: Single-story executable components
 
-**Problem statement:** Given one refined slice with its prerequisites and contract decisions satisfied, produce a reviewable implementation increment with a single behavioral outcome, a small touch surface and independent acceptance evidence. No story below means “build the service” or “implement the whole node type.”
+**Problem statement:** Given one refined slice with its prerequisites and contract decisions satisfied, produce a reviewable implementation increment with a single behavioral outcome, a small touch surface and independent acceptance evidence. Design stories produce precise reviewed decisions before their dependent implementation starts. No story below means “build the service” or “implement the whole node type.”
 
-**Status:** Proposed implementation decomposition, not implementation completion or clinical approval.
+**Status:** Proposed language-definition and implementation decomposition, not implementation completion or clinical approval.
 
 **Date:** 2026-10-01
 
+**Last revised:** 2026-10-02 — add language definition before implementation.
+
 **Authority:** [Accepted architecture](2026-09-28-pathway-language-rfc.md) and [Stage A contracts](2026-09-30-pathway-language-stage-a-spec.md). These documents organize delivery under the Stage A capability contracts. They do not independently promote deferred capabilities.
 
-The first seven slices establish a narrow source-to-reviewed-result loop. Follow-on tracks add the clinically justified capabilities; they are not prerequisites for a literal-only foundation demo. Completed implementation slices contribute evidence toward stages B/C/E; no single early slice claims full `ppl-core-v0` support or permission for clinical launch.
+L00 defines one example’s meaning and minimal source contract before implementation begins. The RFC fixes architectural boundaries, while Stage A remains a draft: neither supplies every exact language decision. L00 completion defines only this fragment, not the whole language. Later capability tracks must resolve their own contracts before implementation.
+
+The F01–F07 slices establish a narrow source-to-reviewed-result loop. Follow-on tracks add the clinically justified capabilities; they are not prerequisites for a literal-only foundation demo. Completed implementation slices contribute evidence toward stages B/C/E; no single early slice claims full `ppl-core-v0` support or permission for clinical launch.
 
 Intermediate artifacts declare only the implemented engineering subset and cannot claim the complete `ppl-core-v0` profile. Unsupported operations reject; test harness support must not weaken the clinical loader. The foundation finalization demonstration is sandbox-only until publication, safety and live-evidence boundaries are implemented and validated.
 
@@ -18,17 +22,18 @@ No production database wipe, deployment, EHR transmission or new ingestion work 
 
 ## Story execution rules
 
-- Each story is a candidate for one independently reviewable PR: implementation, fixture and meaningful tests together. This is a scope target, not a duration promise. If a new operator, adapter or unresolved clinical policy is discovered, record it as a dependency or split a child story; do not silently expand the story.
-- Start prerequisites require usable implementation outputs and their targeted boundary tests. They do not require every downstream integration check to finish before another story can begin. Integration/acceptance gates must pass before the affected story claims integrated capability or scenario acceptance; all prerequisite gates remain cumulative for publication. Both the start graph and the graph including acceptance gates are acyclic. A prototype cannot bypass a runtime or publication guard.
-- Proposed locations use `CORE` for the new `libs/pathway-language` package and `APP` for new-system seams in `apps/pathway-service`. Existing `services/resolution/session-store.ts`, `effective-context.ts` and `resolvers/mutations/resolution.ts` are reference points, not promises of legacy compatibility or instructions to reuse old semantics. UI refers to the separate `prism-admin-dashboard` repository: `src/components/graph/PathwayCanvas.tsx` and its PropertiesPanel are inspected reuse seams. Its current node-only validationErrors shape needs explicit relationship/field source mapping. The UI consumes the canonical AST and backend semantics. Each story chooses the smallest appropriate files after inspection.
+- Each story is a candidate for one independently reviewable PR. L00 produces reviewed design documents and manually checked examples; it does not require code or automated tests. Implementation stories include implementation, fixtures and meaningful tests together. This is a scope target, not a duration promise. If a new operator, adapter or unresolved clinical policy is discovered, record it as a dependency or split a child story; do not silently expand the story.
+- Start prerequisites require reviewed design outputs for L00 and usable implementation outputs with targeted boundary tests for implementation stories. They do not require every downstream integration check to finish before another story can begin. Integration/acceptance gates must pass before the affected story claims integrated capability or scenario acceptance; all prerequisite gates remain cumulative for publication. Both the start graph and the graph including acceptance gates are acyclic. A prototype cannot bypass a runtime or publication guard.
+- DESIGN means reviewed specification examples and decisions, with no new package. Proposed implementation locations use `CORE` for the new `libs/pathway-language` package and `APP` for new-system seams in `apps/pathway-service`. Existing `services/resolution/session-store.ts`, `effective-context.ts` and `resolvers/mutations/resolution.ts` are reference points, not promises of legacy compatibility or instructions to reuse old semantics. UI refers to the separate `prism-admin-dashboard` repository: `src/components/graph/PathwayCanvas.tsx` and its PropertiesPanel are inspected reuse seams. Its current node-only validationErrors shape needs explicit relationship/field source mapping. The UI consumes the canonical AST and backend semantics. Each story chooses the smallest appropriate files after inspection.
 - Every compiler/evaluator story uses a minimal authored-source fixture through the supported public pipeline when its compiler path exists. Application stories consume compiled artifacts. Do not validate a story solely by invoking the function being implemented without checking its boundary.
 - Exact TypeScript names, error tokens and canonical schema shapes are fixed in Stage A/story contract review. Semantic outcomes below are normative acceptance expectations; example field labels are not permission to invent a second language model.
 - Run targeted unit/conformance tests for core behavior; use independent golden/metamorphic cases where appropriate. Transaction stories require isolated real database integration. No application implementation or test execution is claimed by this documentation.
 
 ## Readiness codes
 
-| Code | Required before starting the dependent implementation | Current status |
+| Code | Required before starting the story | Current status |
 |---|---|---|
+| D | Prior design outputs are reviewed; an engineering decision owner is identified to resolve this story’s questions | Language decisions are open; this story produces the contract rather than requiring it to exist |
 | E | Engineering owner has fixed the exact supported contract and expected nonclinical outputs in Stage A or the linked story decision | Contract-specific decisions remain open; do not treat this plan as completed Stage A |
 | C1 | E plus named clinical review of the relevant C-01 assessment/follow-up behavior | Clinical owner/reviewers unassigned in Stage A |
 | C2 | E plus actual reviewed medication definitions, safety requirements and C-02 expected outcomes | Clinical owner/reviewers unassigned; no invented drugs/doses |
@@ -39,11 +44,173 @@ Technical prototypes can precede clinical adjudication only as nonclinical provi
 
 ## Dependency audit
 
-There are 16 outcomes, 40 refinements and 77 stories. The previous 65-story plan had a longest dependency chain of 34 stories. The revised start-prerequisite graph has depth 17; including integration/acceptance gates gives depth 23. Both have no dangling references or cycles. These are unit-weighted graph depths, not duration estimates or a promise of proportionate speedup; scope has also increased.
+There are 17 outcomes, 44 refinements and 85 stories. The original 65-story implementation plan had a longest dependency chain of 34 stories. The subsequent 77-story plan had start depth 17 and acceptance depth 23 but omitted the prerequisite language-definition work. The current counts include that newly explicit design work. The revised start-prerequisite graph has depth 25; including integration/acceptance gates gives depth 31. Both have no dangling references or cycles. These are unit-weighted graph depths, not duration estimates or a promise of proportionate speedup; scope has also increased.
 
-47 stories have engineering readiness code E; 30 require clinical adjudication (C1: 4, C2: 8, E1: 11, E2: 7). E does not mean immediately ready: prerequisites and unresolved engineering contracts still apply. Clinical owners remain unassigned and are required before clinical acceptance.
+8 stories define language contracts (D); 47 implementation stories have engineering readiness code E; 30 require clinical adjudication (C1: 4, C2: 8, E1: 11, E2: 7). E does not mean immediately ready: prerequisites and unresolved engineering contracts still apply. Clinical owners remain unassigned and are required before clinical acceptance.
 
-After F01.1.a, F01.1.b, F01.2.a, F01.2.b and U01.1.a can start independently once their contract decisions are fixed. The previous plan was not literally serial for its first fifteen stories: it already had two successors after F01.1.a. Read the exact leaf prerequisites rather than inferring order from document position.
+L00.1.a is the first story with no implementation predecessor; its unresolved questions are its work. After L00 and F01.1.a, F01.1.b, F01.2.a, F01.2.b and U01.1.a can start independently once their contract decisions are fixed. The previous plan was not literally serial for its first fifteen stories: it already had two successors after F01.1.a. Read the exact leaf prerequisites rather than inferring order from document position.
+
+## L00 — Define the meaning and representation of one pathway
+
+<a id="l00-1-a"></a>
+
+### L00.1.a — Define one pathway’s intended meaning without syntax
+
+**Problem statement:** Given one plain-language fictional recommendation whose indication depends on one boolean fact, produce a reviewed input/output table for true, false and unavailable evidence, with explanations.
+
+**Parent:** [L00.1](2026-10-01-pathway-language-level-2-refined-slices.md#l00-1). **Stage A trace:** Stage A sections 2, 3, 6, 8 and 17; prepares B-01, B-03, B-04, B-24; no conformance completion claimed.
+
+**Start prerequisites:** No implementation predecessor.
+
+**Integration/acceptance gates:** No additional story-specific gates; inherited gates and profile/scenario requirements still apply. **Readiness:** D.
+
+**High-level work:** Write one nonclinical example; identify the fact and proposed recommendation; distinguish proposing from executing; record unanswered questions rather than silently deciding them.
+
+**Expected touch surface:** DESIGN/one prose example and outcome table (proposed; inspect existing seams before editing).
+
+**Acceptance:** Every case has one agreed expected meaning with no unstated assumption; unavailable evidence is distinguishable from false; unresolved questions that affect these outcomes block completion; record the decision owner and reviewed revision.
+
+**Out of this story:** No JSON fields, grammar, complete node catalogue or clinical adjudication. Stop when the stated outcome and its required review/verification pass; do not absorb the rest of the parent track.
+
+<a id="l00-1-b"></a>
+
+### L00.1.b — Define only the concepts needed by the example
+
+**Problem statement:** Given the reviewed meaning table from L00.1.a, produce a small glossary of necessary concepts with one responsibility each.
+
+**Parent:** [L00.1](2026-10-01-pathway-language-level-2-refined-slices.md#l00-1). **Stage A trace:** Stage A sections 2, 3, 6, 8 and 17; prepares B-01, B-03, B-04, B-24; no conformance completion claimed.
+
+**Start prerequisites:** [L00.1.a](2026-10-01-pathway-language-level-3-story-spec.md#l00-1-a).
+
+**Integration/acceptance gates:** No additional story-specific gates; inherited gates and profile/scenario requirements still apply. **Readiness:** D.
+
+**High-level work:** Identify inputs, evidence state, authored condition, recommendation and result only where needed; relate definitions to Stage A terminology and list remaining ambiguities.
+
+**Expected touch surface:** DESIGN/example glossary (proposed; inspect existing seams before editing).
+
+**Acceptance:** Each concept points to a concrete part of the example; no two concepts have silently overlapping responsibilities; no software class or node catalogue is implied.
+
+**Out of this story:** No JSON fields, grammar, complete node catalogue or clinical adjudication. Stop when the stated outcome and its required review/verification pass; do not absorb the rest of the parent track.
+
+<a id="l00-2-a"></a>
+
+### L00.2.a — Define the example’s relationships
+
+**Problem statement:** Given the reviewed example and glossary, produce a small relation table stating endpoints, direction, cardinality and effect on meaning.
+
+**Parent:** [L00.2](2026-10-01-pathway-language-level-2-refined-slices.md#l00-2). **Stage A trace:** Stage A sections 2, 3, 6, 8 and 17; prepares B-01, B-03, B-04, B-24; no conformance completion claimed.
+
+**Start prerequisites:** [L00.1.b](2026-10-01-pathway-language-level-3-story-spec.md#l00-1-b).
+
+**Integration/acceptance gates:** No additional story-specific gates; inherited gates and profile/scenario requirements still apply. **Readiness:** D.
+
+**High-level work:** Describe how the fact supplies the condition and how the condition supports the proposal; distinguish dependency from presentation and execution order.
+
+**Expected touch surface:** DESIGN/relation table (proposed; inspect existing seams before editing).
+
+**Acceptance:** Each relationship has one explicit meaning; ambiguous or duplicate binding is identified as invalid where appropriate; two readers can reconstruct the example without inferring meaning from diagram layout.
+
+**Out of this story:** No generic graph framework, all future operators or implementation schemas. Stop when the stated outcome and its required review/verification pass; do not absorb the rest of the parent track.
+
+<a id="l00-2-b"></a>
+
+### L00.2.b — Define the example’s types and unavailable evidence
+
+**Problem statement:** Given the concepts and legal relation table, produce a minimal value-domain and compatibility table.
+
+**Parent:** [L00.2](2026-10-01-pathway-language-level-2-refined-slices.md#l00-2). **Stage A trace:** Stage A sections 2, 3, 6, 8 and 17; prepares B-01, B-03, B-04, B-24; no conformance completion claimed.
+
+**Start prerequisites:** [L00.2.a](2026-10-01-pathway-language-level-3-story-spec.md#l00-2-a).
+
+**Integration/acceptance gates:** No additional story-specific gates; inherited gates and profile/scenario requirements still apply. **Readiness:** D.
+
+**High-level work:** Define the boolean domain and distinct unresolved evidence state; specify allowed bindings and reject incompatible ones; keep missing patient evidence separate from malformed authored definitions.
+
+**Expected touch surface:** DESIGN/types and compatibility examples (proposed; inspect existing seams before editing).
+
+**Acceptance:** True, false and unavailable are distinguishable; wrong-type binding is an invalid definition; missing evidence is a valid input case; all domains needed by the example have explicit boundaries.
+
+**Out of this story:** No generic graph framework, all future operators or implementation schemas. Stop when the stated outcome and its required review/verification pass; do not absorb the rest of the parent track.
+
+<a id="l00-3-a"></a>
+
+### L00.3.a — Define evaluation rules for the example
+
+**Problem statement:** Given the typed model and original meaning table, produce a small rule table that reproduces the agreed outputs and explanations.
+
+**Parent:** [L00.3](2026-10-01-pathway-language-level-2-refined-slices.md#l00-3). **Stage A trace:** Stage A sections 2, 3, 6, 8 and 17; prepares B-01, B-03, B-04, B-24; no conformance completion claimed.
+
+**Start prerequisites:** [L00.2.b](2026-10-01-pathway-language-level-3-story-spec.md#l00-2-b).
+
+**Integration/acceptance gates:** No additional story-specific gates; inherited gates and profile/scenario requirements still apply. **Readiness:** D.
+
+**High-level work:** State fact resolution, condition result and proposal disposition separately; specify handling of unavailable evidence; distinguish language meaning from a future execution algorithm.
+
+**Expected touch surface:** DESIGN/evaluation rule table (proposed; inspect existing seams before editing).
+
+**Acceptance:** Walk every original case through the rules without inventing a default; no rule executes the proposal; disagreements with Stage A are recorded for explicit resolution rather than silently creating alternate semantics.
+
+**Out of this story:** No evaluator code, full boolean algebra specification or patient-dependent proofs. Stop when the stated outcome and its required review/verification pass; do not absorb the rest of the parent track.
+
+<a id="l00-3-b"></a>
+
+### L00.3.b — Define invalid pathway examples
+
+**Problem statement:** Given the reviewed relationships, types and evaluation rules, produce a small rejection catalogue with one reason and boundary per invalid definition.
+
+**Parent:** [L00.3](2026-10-01-pathway-language-level-2-refined-slices.md#l00-3). **Stage A trace:** Stage A sections 2, 3, 6, 8 and 17; prepares B-01, B-03, B-04, B-24; no conformance completion claimed.
+
+**Start prerequisites:** [L00.3.a](2026-10-01-pathway-language-level-3-story-spec.md#l00-3-a).
+
+**Integration/acceptance gates:** No additional story-specific gates; inherited gates and profile/scenario requirements still apply. **Readiness:** D.
+
+**High-level work:** Write minimal malformed or ambiguous definitions in prose; cover missing required meaning, incompatible binding and unsupported meaning; separate definition errors from unavailable evidence.
+
+**Expected touch surface:** DESIGN/negative examples (proposed; inspect existing seams before editing).
+
+**Acceptance:** Each invalid example violates a named rule; each valid control example remains valid; source-validation versus later semantic checking is explicitly assigned; no diagnostic code or field syntax is assumed yet.
+
+**Out of this story:** No evaluator code, full boolean algebra specification or patient-dependent proofs. Stop when the stated outcome and its required review/verification pass; do not absorb the rest of the parent track.
+
+<a id="l00-4-a"></a>
+
+### L00.4.a — Choose the initial authoring representation
+
+**Problem statement:** Given the reviewed meaning, relation, type and rejection examples, produce one documented representation for the tiny language fragment with tradeoffs and an example encoding.
+
+**Parent:** [L00.4](2026-10-01-pathway-language-level-2-refined-slices.md#l00-4). **Stage A trace:** Stage A sections 2, 3, 6, 8 and 17; prepares B-01, B-03, B-04, B-24; no conformance completion claimed.
+
+**Start prerequisites:** [L00.3.b](2026-10-01-pathway-language-level-3-story-spec.md#l00-3-b).
+
+**Integration/acceptance gates:** No additional story-specific gates; inherited gates and profile/scenario requirements still apply. **Readiness:** D.
+
+**High-level work:** Separate human authoring notation from canonical source; select the minimal initial encoding within the accepted AST architecture; map each encoded element back to its meaning; explicitly defer textual parser and UI decisions not needed here.
+
+**Expected touch surface:** DESIGN/representation decision and example encoding (proposed; inspect existing seams before editing).
+
+**Acceptance:** The example can be read back without changing meaning; representation introduces no implicit clinical defaults; record the choice, alternatives and owner; illustrate both evidence-driven meaning and the constant-only restriction used by F01.
+
+**Out of this story:** No reopening the architecture silently, full textual language, compiler IR or validator implementation. Stop when the stated outcome and its required review/verification pass; do not absorb the rest of the parent track.
+
+<a id="l00-4-b"></a>
+
+### L00.4.b — Specify the smallest source-validation contract
+
+**Problem statement:** Given the selected representation and reviewed positive/negative examples, produce exact input, normalized source output and diagnostic examples for the first validator.
+
+**Parent:** [L00.4](2026-10-01-pathway-language-level-2-refined-slices.md#l00-4). **Stage A trace:** Stage A sections 2, 3, 6, 8 and 17; prepares B-01, B-03, B-04, B-24; no conformance completion claimed.
+
+**Start prerequisites:** [L00.4.a](2026-10-01-pathway-language-level-3-story-spec.md#l00-4-a).
+
+**Integration/acceptance gates:** No additional story-specific gates; inherited gates and profile/scenario requirements still apply. **Readiness:** D.
+
+**High-level work:** Fix required fields, literal types, source identity, supported version pair and error locations; define the constant-only F01 subset separately from later evidence evaluation; record cases owned by later stories.
+
+**Expected touch surface:** DESIGN/validator contract and acceptance fixtures (proposed; inspect existing seams before editing).
+
+**Acceptance:** F01.1.a can be implemented without choosing language meaning or inventing fields; complete input passes, missing applicability and unknown executable property have exact rejection expectations; contract owner and reviewed revision are recorded.
+
+**Out of this story:** No reopening the architecture silently, full textual language, compiler IR or validator implementation. Stop when the stated outcome and its required review/verification pass; do not absorb the rest of the parent track.
 
 ## F01 — Accept one explicit source definition
 
@@ -55,17 +222,17 @@ After F01.1.a, F01.1.b, F01.2.a, F01.2.b and U01.1.a can start independently onc
 
 **Parent:** [F01.1](2026-10-01-pathway-language-level-2-refined-slices.md#f01-1). **Stage A trace:** B-01, B-24, B-25; C-03.
 
-**Start prerequisites:** No implementation predecessor.
+**Start prerequisites:** [L00.4.b](2026-10-01-pathway-language-level-3-story-spec.md#l00-4-b).
 
 **Integration/acceptance gates:** No additional story-specific gates; inherited gates and profile/scenario requirements still apply. **Readiness:** E.
 
-**High-level implementation:** Create the isolated core package only as needed to run this fixture and its schema tests; document the public input/output contract.
+**High-level work:** Implement the reviewed L00.4.b contract in the smallest isolated core package and public export; return any missing language decision to L00 rather than choosing semantics in code.
 
 **Expected touch surface:** CORE/source and package exports (proposed; inspect existing seams before editing).
 
 **Acceptance:** A complete fixture succeeds; missing applicability and an unknown executable property fail with their AST locations.
 
-**Out of this story:** No general node catalogue or hidden default conditions. Stop when the stated behavior and its boundary tests pass; do not implement the rest of the parent track.
+**Out of this story:** No general node catalogue or hidden default conditions. Stop when the stated outcome and its required review/verification pass; do not absorb the rest of the parent track.
 
 <a id="f01-1-b"></a>
 
@@ -79,13 +246,13 @@ After F01.1.a, F01.1.b, F01.2.a, F01.2.b and U01.1.a can start independently onc
 
 **Integration/acceptance gates:** No additional story-specific gates; inherited gates and profile/scenario requirements still apply. **Readiness:** E.
 
-**High-level implementation:** Validate the explicit compatibility pair from the Stage A contract; keep compiler build identity separate.
+**High-level work:** Validate the explicit compatibility pair from the Stage A contract; keep compiler build identity separate.
 
 **Expected touch surface:** CORE/source version validation (proposed; inspect existing seams before editing).
 
 **Acceptance:** Supported pair passes; unsupported profile or language fails; version checking does not silently substitute another profile.
 
-**Out of this story:** No general node catalogue or hidden default conditions. Stop when the stated behavior and its boundary tests pass; do not implement the rest of the parent track.
+**Out of this story:** No general node catalogue or hidden default conditions. Stop when the stated outcome and its required review/verification pass; do not absorb the rest of the parent track.
 
 <a id="f01-2-a"></a>
 
@@ -99,13 +266,13 @@ After F01.1.a, F01.1.b, F01.2.a, F01.2.b and U01.1.a can start independently onc
 
 **Integration/acceptance gates:** No additional story-specific gates; inherited gates and profile/scenario requirements still apply. **Readiness:** E.
 
-**High-level implementation:** Add source identity indexing and stable error ordering; retain diagnostic schema in fixture expectations.
+**High-level work:** Add source identity indexing and stable error ordering; retain diagnostic schema in fixture expectations.
 
 **Expected touch surface:** CORE/diagnostics (proposed; inspect existing seams before editing).
 
 **Acceptance:** Wrong literal type and duplicate ID each point to the offending source; repeated runs produce equivalent diagnostics.
 
-**Out of this story:** No broad developer tooling or application refactor. Stop when the stated behavior and its boundary tests pass; do not implement the rest of the parent track.
+**Out of this story:** No broad developer tooling or application refactor. Stop when the stated outcome and its required review/verification pass; do not absorb the rest of the parent track.
 
 <a id="f01-2-b"></a>
 
@@ -119,13 +286,13 @@ After F01.1.a, F01.1.b, F01.2.a, F01.2.b and U01.1.a can start independently onc
 
 **Integration/acceptance gates:** No additional story-specific gates; inherited gates and profile/scenario requirements still apply. **Readiness:** E.
 
-**High-level implementation:** Add the core package build/configuration and targeted direct/transitive import check; do not reorganize unrelated services.
+**High-level work:** Add the core package build/configuration and targeted direct/transitive import check; do not reorganize unrelated services.
 
 **Expected touch surface:** CORE/package boundary and CI (proposed; inspect existing seams before editing).
 
 **Acceptance:** Public consumer builds without resolver/database/network imports; an injected forbidden dependency fails CI check.
 
-**Out of this story:** No broad developer tooling or application refactor. Stop when the stated behavior and its boundary tests pass; do not implement the rest of the parent track.
+**Out of this story:** No broad developer tooling or application refactor. Stop when the stated outcome and its required review/verification pass; do not absorb the rest of the parent track.
 
 ## F02 — Compile and execute the smallest pathway
 
@@ -141,13 +308,13 @@ After F01.1.a, F01.1.b, F01.2.a, F01.2.b and U01.1.a can start independently onc
 
 **Integration/acceptance gates:** [F01.1.b](2026-10-01-pathway-language-level-3-story-spec.md#f01-1-b), [F01.2.b](2026-10-01-pathway-language-level-3-story-spec.md#f01-2-b). **Readiness:** E.
 
-**High-level implementation:** Implement direct lowering for the one supported action and freeze/copy immutable structures.
+**High-level work:** Implement direct lowering for the one supported action and freeze/copy immutable structures.
 
 **Expected touch surface:** CORE/compiler and IR (proposed; inspect existing seams before editing).
 
 **Acceptance:** Each generated operation maps to source; explicit false remains false; unsupported source constructs reject rather than disappear.
 
-**Out of this story:** No generic virtual machine or remote compiler. Stop when the stated behavior and its boundary tests pass; do not implement the rest of the parent track.
+**Out of this story:** No generic virtual machine or remote compiler. Stop when the stated outcome and its required review/verification pass; do not absorb the rest of the parent track.
 
 <a id="f02-1-b"></a>
 
@@ -161,13 +328,13 @@ After F01.1.a, F01.1.b, F01.2.a, F01.2.b and U01.1.a can start independently onc
 
 **Integration/acceptance gates:** No additional story-specific gates; inherited gates and profile/scenario requirements still apply. **Readiness:** E.
 
-**High-level implementation:** Add IR schema/opcode/version checks; production approval/digest authorization comes in F06/A01.
+**High-level work:** Add IR schema/opcode/version checks; production approval/digest authorization comes in F06/A01.
 
 **Expected touch surface:** CORE/artifact validation (proposed; inspect existing seams before editing).
 
 **Acceptance:** Valid literal artifact loads; unknown opcode and missing source reference fail before execution.
 
-**Out of this story:** No generic virtual machine or remote compiler. Stop when the stated behavior and its boundary tests pass; do not implement the rest of the parent track.
+**Out of this story:** No generic virtual machine or remote compiler. Stop when the stated outcome and its required review/verification pass; do not absorb the rest of the parent track.
 
 <a id="f02-2-a"></a>
 
@@ -181,13 +348,13 @@ After F01.1.a, F01.1.b, F01.2.a, F01.2.b and U01.1.a can start independently onc
 
 **Integration/acceptance gates:** No additional story-specific gates; inherited gates and profile/scenario requirements still apply. **Readiness:** E.
 
-**High-level implementation:** Implement the boolean portion of the Stage A reducer and minimal structured trace.
+**High-level work:** Implement the boolean portion of the Stage A reducer and minimal structured trace.
 
 **Expected touch surface:** CORE/evaluator reducer (proposed; inspect existing seams before editing).
 
 **Acceptance:** False indication plus true exclusion preserves both; unmet prerequisite is distinguished from not indicated.
 
-**Out of this story:** No clinical-ready medication or external side effects. Stop when the stated behavior and its boundary tests pass; do not implement the rest of the parent track.
+**Out of this story:** No clinical-ready medication or external side effects. Stop when the stated outcome and its required review/verification pass; do not absorb the rest of the parent track.
 
 <a id="f02-2-b"></a>
 
@@ -201,13 +368,13 @@ After F01.1.a, F01.1.b, F01.2.a, F01.2.b and U01.1.a can start independently onc
 
 **Integration/acceptance gates:** No additional story-specific gates; inherited gates and profile/scenario requirements still apply. **Readiness:** E.
 
-**High-level implementation:** Add deterministic trace ordering and a small direct metamorphic fixture.
+**High-level work:** Add deterministic trace ordering and a small direct metamorphic fixture.
 
 **Expected touch surface:** CORE/evaluator determinism (proposed; inspect existing seams before editing).
 
 **Acceptance:** Reordering independent source fields/definitions changes neither disposition nor semantic explanation; unsupported work budget returns failure.
 
-**Out of this story:** No clinical-ready medication or external side effects. Stop when the stated behavior and its boundary tests pass; do not implement the rest of the parent track.
+**Out of this story:** No clinical-ready medication or external side effects. Stop when the stated outcome and its required review/verification pass; do not absorb the rest of the parent track.
 
 ## F03 — Interpret one known or missing observation
 
@@ -223,13 +390,13 @@ After F01.1.a, F01.1.b, F01.2.a, F01.2.b and U01.1.a can start independently onc
 
 **Integration/acceptance gates:** [F02.2.b](2026-10-01-pathway-language-level-3-story-spec.md#f02-2-b). **Readiness:** E.
 
-**High-level implementation:** Extend source/lowering with exactly one EvidenceQuery binding; reject incompatible port types.
+**High-level work:** Extend source/lowering with exactly one EvidenceQuery binding; reject incompatible port types.
 
 **Expected touch surface:** CORE/binding and evidence resolution (proposed; inspect existing seams before editing).
 
 **Acceptance:** Known False stays known false; wrong-subject observation cannot satisfy the binding; a wrong-type binding is a compile error.
 
-**Out of this story:** No provenance ranking or query-completeness assertions. Stop when the stated behavior and its boundary tests pass; do not implement the rest of the parent track.
+**Out of this story:** No provenance ranking or query-completeness assertions. Stop when the stated outcome and its required review/verification pass; do not absorb the rest of the parent track.
 
 <a id="f03-1-b"></a>
 
@@ -243,13 +410,13 @@ After F01.1.a, F01.1.b, F01.2.a, F01.2.b and U01.1.a can start independently onc
 
 **Integration/acceptance gates:** No additional story-specific gates; inherited gates and profile/scenario requirements still apply. **Readiness:** E.
 
-**High-level implementation:** Add tagged evidence result and preserve relevant candidate diagnostics.
+**High-level work:** Add tagged evidence result and preserve relevant candidate diagnostics.
 
 **Expected touch surface:** CORE/evidence results (proposed; inspect existing seams before editing).
 
 **Acceptance:** An empty bag is Unknown/Missing, not False; unavailable and invalid remain distinguishable.
 
-**Out of this story:** No provenance ranking or query-completeness assertions. Stop when the stated behavior and its boundary tests pass; do not implement the rest of the parent track.
+**Out of this story:** No provenance ranking or query-completeness assertions. Stop when the stated outcome and its required review/verification pass; do not absorb the rest of the parent track.
 
 <a id="f03-2-a"></a>
 
@@ -263,13 +430,13 @@ After F01.1.a, F01.1.b, F01.2.a, F01.2.b and U01.1.a can start independently onc
 
 **Integration/acceptance gates:** No additional story-specific gates; inherited gates and profile/scenario requirements still apply. **Readiness:** E.
 
-**High-level implementation:** Implement the operator truth tables through the same compiler/evaluator path.
+**High-level work:** Implement the operator truth tables through the same compiler/evaluator path.
 
 **Expected touch surface:** CORE/boolean expressions (proposed; inspect existing seams before editing).
 
 **Acceptance:** False AND Unknown resolves false while retaining uncertainty; True OR Unknown resolves true; NOT Unknown stays unknown.
 
-**Out of this story:** No arbitrary expressions or confidence scoring. Stop when the stated behavior and its boundary tests pass; do not implement the rest of the parent track.
+**Out of this story:** No arbitrary expressions or confidence scoring. Stop when the stated outcome and its required review/verification pass; do not absorb the rest of the parent track.
 
 <a id="f03-2-b"></a>
 
@@ -283,13 +450,13 @@ After F01.1.a, F01.1.b, F01.2.a, F01.2.b and U01.1.a can start independently onc
 
 **Integration/acceptance gates:** No additional story-specific gates; inherited gates and profile/scenario requirements still apply. **Readiness:** E.
 
-**High-level implementation:** Extend graph validation for the new explicit reads and retain legal acyclic ordering.
+**High-level work:** Extend graph validation for the new explicit reads and retain legal acyclic ordering.
 
 **Expected touch surface:** CORE/dependency validation (proposed; inspect existing seams before editing).
 
 **Acceptance:** A cycle and ambiguous binding fail; a reordered legal graph compiles and produces the same result.
 
-**Out of this story:** No arbitrary expressions or confidence scoring. Stop when the stated behavior and its boundary tests pass; do not implement the rest of the parent track.
+**Out of this story:** No arbitrary expressions or confidence scoring. Stop when the stated outcome and its required review/verification pass; do not absorb the rest of the parent track.
 
 ## F04 — Turn material uncertainty into stable Needs
 
@@ -305,13 +472,13 @@ After F01.1.a, F01.1.b, F01.2.a, F01.2.b and U01.1.a can start independently onc
 
 **Integration/acceptance gates:** [F03.2.b](2026-10-01-pathway-language-level-3-story-spec.md#f03-2-b). **Readiness:** E.
 
-**High-level implementation:** Implement the approved canonical key inputs and source link.
+**High-level work:** Implement the approved canonical key inputs and source link.
 
 **Expected touch surface:** CORE/needs (proposed; inspect existing seams before editing).
 
 **Acceptance:** Equivalent reevaluations share the key; changed requirement or episode gets a different key.
 
-**Out of this story:** No arbitrary string concatenation contract or automatic retry. Stop when the stated behavior and its boundary tests pass; do not implement the rest of the parent track.
+**Out of this story:** No arbitrary string concatenation contract or automatic retry. Stop when the stated outcome and its required review/verification pass; do not absorb the rest of the parent track.
 
 <a id="f04-1-b"></a>
 
@@ -325,13 +492,13 @@ After F01.1.a, F01.1.b, F01.2.a, F01.2.b and U01.1.a can start independently onc
 
 **Integration/acceptance gates:** No additional story-specific gates; inherited gates and profile/scenario requirements still apply. **Readiness:** E.
 
-**High-level implementation:** Combine only identical requirement identities; preserve per-result links.
+**High-level work:** Combine only identical requirement identities; preserve per-result links.
 
 **Expected touch surface:** CORE/need aggregation (proposed; inspect existing seams before editing).
 
 **Acceptance:** Repeated/shared reads do not duplicate Needs; distinct scopes remain distinct.
 
-**Out of this story:** No arbitrary string concatenation contract or automatic retry. Stop when the stated behavior and its boundary tests pass; do not implement the rest of the parent track.
+**Out of this story:** No arbitrary string concatenation contract or automatic retry. Stop when the stated outcome and its required review/verification pass; do not absorb the rest of the parent track.
 
 <a id="f04-2-a"></a>
 
@@ -345,13 +512,13 @@ After F01.1.a, F01.1.b, F01.2.a, F01.2.b and U01.1.a can start independently onc
 
 **Integration/acceptance gates:** No additional story-specific gates; inherited gates and profile/scenario requirements still apply. **Readiness:** E.
 
-**High-level implementation:** Implement reducer-aware materiality propagation for supported boolean operations.
+**High-level work:** Implement reducer-aware materiality propagation for supported boolean operations.
 
 **Expected touch surface:** CORE/materiality (proposed; inspect existing seams before editing).
 
 **Acceptance:** The false branch retains the unknown reason without an unnecessary blocker; the true branch emits the required Need.
 
-**Out of this story:** No claim of completed whole-scope readiness before all required obligations settle. Stop when the stated behavior and its boundary tests pass; do not implement the rest of the parent track.
+**Out of this story:** No claim of completed whole-scope readiness before all required obligations settle. Stop when the stated outcome and its required review/verification pass; do not absorb the rest of the parent track.
 
 <a id="f04-2-b"></a>
 
@@ -365,13 +532,13 @@ After F01.1.a, F01.1.b, F01.2.a, F01.2.b and U01.1.a can start independently onc
 
 **Integration/acceptance gates:** No additional story-specific gates; inherited gates and profile/scenario requirements still apply. **Readiness:** E.
 
-**High-level implementation:** Attach declared independent findings/review obligations outside ordinary eligibility suppression.
+**High-level work:** Attach declared independent findings/review obligations outside ordinary eligibility suppression.
 
 **Expected touch surface:** CORE/findings and readiness (proposed; inspect existing seams before editing).
 
 **Acceptance:** Unrelated uncertainty cannot erase urgency; a required independent review remains even where clinical unknown is immaterial.
 
-**Out of this story:** No claim of completed whole-scope readiness before all required obligations settle. Stop when the stated behavior and its boundary tests pass; do not implement the rest of the parent track.
+**Out of this story:** No claim of completed whole-scope readiness before all required obligations settle. Stop when the stated outcome and its required review/verification pass; do not absorb the rest of the parent track.
 
 ## F05 — Fulfill a Need and reevaluate a new revision
 
@@ -387,13 +554,13 @@ After F01.1.a, F01.1.b, F01.2.a, F01.2.b and U01.1.a can start independently onc
 
 **Integration/acceptance gates:** [F04.2.a](2026-10-01-pathway-language-level-3-story-spec.md#f04-2-a), [F04.1.b](2026-10-01-pathway-language-level-3-story-spec.md#f04-1-b). **Readiness:** E.
 
-**High-level implementation:** Implement the fulfilled_by contract for this one response type; trust actor identity only from the boundary.
+**High-level work:** Implement the fulfilled_by contract for this one response type; trust actor identity only from the boundary.
 
 **Expected touch surface:** CORE/fulfillment (proposed; inspect existing seams before editing).
 
 **Acceptance:** Correct response is accepted; acceptance records origin and does not itself assert plan completion.
 
-**Out of this story:** No clinical truth manufactured from response receipt. Stop when the stated behavior and its boundary tests pass; do not implement the rest of the parent track.
+**Out of this story:** No clinical truth manufactured from response receipt. Stop when the stated outcome and its required review/verification pass; do not absorb the rest of the parent track.
 
 <a id="f05-1-b"></a>
 
@@ -407,13 +574,13 @@ After F01.1.a, F01.1.b, F01.2.a, F01.2.b and U01.1.a can start independently onc
 
 **Integration/acceptance gates:** No additional story-specific gates; inherited gates and profile/scenario requirements still apply. **Readiness:** E.
 
-**High-level implementation:** Add contract mismatch diagnostics and event-identity checks.
+**High-level work:** Add contract mismatch diagnostics and event-identity checks.
 
 **Expected touch surface:** CORE/fulfillment validation (proposed; inspect existing seams before editing).
 
 **Acceptance:** Wrong-scope evidence cannot close the Need; replaying one response does not create another observation.
 
-**Out of this story:** No clinical truth manufactured from response receipt. Stop when the stated behavior and its boundary tests pass; do not implement the rest of the parent track.
+**Out of this story:** No clinical truth manufactured from response receipt. Stop when the stated outcome and its required review/verification pass; do not absorb the rest of the parent track.
 
 <a id="f05-2-a"></a>
 
@@ -427,13 +594,13 @@ After F01.1.a, F01.1.b, F01.2.a, F01.2.b and U01.1.a can start independently onc
 
 **Integration/acceptance gates:** [F03.2.b](2026-10-01-pathway-language-level-3-story-spec.md#f03-2-b). **Readiness:** E.
 
-**High-level implementation:** Add one adapter path into versioned session persistence and use optimistic revision checks.
+**High-level work:** Add one adapter path into versioned session persistence and use optimistic revision checks.
 
 **Expected touch surface:** APP/session application boundary (proposed; inspect existing seams before editing).
 
 **Acceptance:** Event creates one new revision; wrong session revision cannot overwrite current evidence; old evaluation remains inspectable.
 
-**Out of this story:** No external EHR calls, broad UI redesign or endless retry. Stop when the stated behavior and its boundary tests pass; do not implement the rest of the parent track.
+**Out of this story:** No external EHR calls, broad UI redesign or endless retry. Stop when the stated outcome and its required review/verification pass; do not absorb the rest of the parent track.
 
 <a id="f05-2-b"></a>
 
@@ -447,13 +614,13 @@ After F01.1.a, F01.1.b, F01.2.a, F01.2.b and U01.1.a can start independently onc
 
 **Integration/acceptance gates:** No additional story-specific gates; inherited gates and profile/scenario requirements still apply. **Readiness:** E.
 
-**High-level implementation:** Implement idempotent dispatch identity and attempt/deadline state outside the core; use an injected clock.
+**High-level work:** Implement idempotent dispatch identity and attempt/deadline state outside the core; use an injected clock.
 
 **Expected touch surface:** APP/acquisition coordinator (proposed; inspect existing seams before editing).
 
 **Acceptance:** Duplicate dispatch has one effect; refusal/exhaustion survives reevaluation; no acquisition resets simply because evaluation reruns.
 
-**Out of this story:** No external EHR calls, broad UI redesign or endless retry. Stop when the stated behavior and its boundary tests pass; do not implement the rest of the parent track.
+**Out of this story:** No external EHR calls, broad UI redesign or endless retry. Stop when the stated outcome and its required review/verification pass; do not absorb the rest of the parent track.
 
 ## F06 — Pin results and invalidate stale review
 
@@ -469,13 +636,13 @@ After F01.1.a, F01.1.b, F01.2.a, F01.2.b and U01.1.a can start independently onc
 
 **Integration/acceptance gates:** [F01.2.b](2026-10-01-pathway-language-level-3-story-spec.md#f01-2-b). **Readiness:** E.
 
-**High-level implementation:** Specify deterministic serialization for current supported fields and keep operational logs excluded.
+**High-level work:** Specify deterministic serialization for current supported fields and keep operational logs excluded.
 
 **Expected touch surface:** CORE/canonical bundle identity (proposed; inspect existing seams before editing).
 
 **Acceptance:** Permutation of unordered inputs preserves digest; changed fact, clock or requested scope changes it.
 
-**Out of this story:** No incremental evaluator or remote artifact service. Stop when the stated behavior and its boundary tests pass; do not implement the rest of the parent track.
+**Out of this story:** No incremental evaluator or remote artifact service. Stop when the stated outcome and its required review/verification pass; do not absorb the rest of the parent track.
 
 <a id="f06-1-b"></a>
 
@@ -489,13 +656,13 @@ After F01.1.a, F01.1.b, F01.2.a, F01.2.b and U01.1.a can start independently onc
 
 **Integration/acceptance gates:** No additional story-specific gates; inherited gates and profile/scenario requirements still apply. **Readiness:** E.
 
-**High-level implementation:** Implement a small artifact repository interface with local test storage and verified load.
+**High-level work:** Implement a small artifact repository interface with local test storage and verified load.
 
 **Expected touch surface:** CORE/replay plus APP/test artifact store (proposed; inspect existing seams before editing).
 
 **Acceptance:** Original result reproduces exactly under its clock; missing content or mismatched digest cannot return an empty ready plan.
 
-**Out of this story:** No incremental evaluator or remote artifact service. Stop when the stated behavior and its boundary tests pass; do not implement the rest of the parent track.
+**Out of this story:** No incremental evaluator or remote artifact service. Stop when the stated outcome and its required review/verification pass; do not absorb the rest of the parent track.
 
 <a id="f06-2-a"></a>
 
@@ -509,13 +676,13 @@ After F01.1.a, F01.1.b, F01.2.a, F01.2.b and U01.1.a can start independently onc
 
 **Integration/acceptance gates:** No additional story-specific gates; inherited gates and profile/scenario requirements still apply. **Readiness:** E.
 
-**High-level implementation:** Persist review identity through the session API; do not let callers choose another institution context.
+**High-level work:** Persist review identity through the session API; do not let callers choose another institution context.
 
 **Expected touch surface:** APP/review boundary (proposed; inspect existing seams before editing).
 
 **Acceptance:** Correct-scope review is recorded; wrong actor/scope/revision is rejected.
 
-**Out of this story:** No consent inference from clicking a generic acknowledgement. Stop when the stated behavior and its boundary tests pass; do not implement the rest of the parent track.
+**Out of this story:** No consent inference from clicking a generic acknowledgement. Stop when the stated outcome and its required review/verification pass; do not absorb the rest of the parent track.
 
 <a id="f06-2-b"></a>
 
@@ -529,13 +696,13 @@ After F01.1.a, F01.1.b, F01.2.a, F01.2.b and U01.1.a can start independently onc
 
 **Integration/acceptance gates:** No additional story-specific gates; inherited gates and profile/scenario requirements still apply. **Readiness:** E.
 
-**High-level implementation:** Compare approved material identities; reuse the same evaluation path.
+**High-level work:** Compare approved material identities; reuse the same evaluation path.
 
 **Expected touch surface:** APP/review invalidation (proposed; inspect existing seams before editing).
 
 **Acceptance:** Changed clinical input blocks reuse; identical frozen reevaluation does not invent a new clinical change.
 
-**Out of this story:** No consent inference from clicking a generic acknowledgement. Stop when the stated behavior and its boundary tests pass; do not implement the rest of the parent track.
+**Out of this story:** No consent inference from clicking a generic acknowledgement. Stop when the stated outcome and its required review/verification pass; do not absorb the rest of the parent track.
 
 ## F07 — Finalize one reviewed scope without duplicate effects
 
@@ -551,13 +718,13 @@ After F01.1.a, F01.1.b, F01.2.a, F01.2.b and U01.1.a can start independently onc
 
 **Integration/acceptance gates:** [F06.2.b](2026-10-01-pathway-language-level-3-story-spec.md#f06-2-b), [A01.1.b](2026-10-01-pathway-language-level-3-story-spec.md#a01-1-b). **Readiness:** E.
 
-**High-level implementation:** Create the narrow finalization validator over pinned input/review identity; include nonclinical mode checks and reject clinical requests until the separate publication/approval contracts are implemented.
+**High-level work:** Create the narrow finalization validator over pinned input/review identity; include nonclinical mode checks and reject clinical requests until the separate publication/approval contracts are implemented.
 
 **Expected touch surface:** APP/finalization validation (proposed; inspect existing seams before editing).
 
 **Acceptance:** Unresolved required Need, mismatched scope or synthetic clinical request rejects; known findings remain queryable.
 
-**Out of this story:** No silently dropping unresolved actions or bypassing publication. Stop when the stated behavior and its boundary tests pass; do not implement the rest of the parent track.
+**Out of this story:** No silently dropping unresolved actions or bypassing publication. Stop when the stated outcome and its required review/verification pass; do not absorb the rest of the parent track.
 
 <a id="f07-1-b"></a>
 
@@ -571,13 +738,13 @@ After F01.1.a, F01.1.b, F01.2.a, F01.2.b and U01.1.a can start independently onc
 
 **Integration/acceptance gates:** No additional story-specific gates; inherited gates and profile/scenario requirements still apply. **Readiness:** E.
 
-**High-level implementation:** Add the minimal new-system persistence schema/migration and transaction for supported guidance; test store failure rollback.
+**High-level work:** Add the minimal new-system persistence schema/migration and transaction for supported guidance; test store failure rollback.
 
 **Expected touch surface:** APP/persistence and database integration (proposed; inspect existing seams before editing).
 
 **Acceptance:** Both plan and completion commit or neither does; injected write failure leaves no partial materialization.
 
-**Out of this story:** No silently dropping unresolved actions or bypassing publication. Stop when the stated behavior and its boundary tests pass; do not implement the rest of the parent track.
+**Out of this story:** No silently dropping unresolved actions or bypassing publication. Stop when the stated outcome and its required review/verification pass; do not absorb the rest of the parent track.
 
 <a id="f07-2-a"></a>
 
@@ -591,13 +758,13 @@ After F01.1.a, F01.1.b, F01.2.a, F01.2.b and U01.1.a can start independently onc
 
 **Integration/acceptance gates:** No additional story-specific gates; inherited gates and profile/scenario requirements still apply. **Readiness:** E.
 
-**High-level implementation:** Bind idempotency to actor/scope/request identity and reject inconsistent key reuse.
+**High-level work:** Bind idempotency to actor/scope/request identity and reject inconsistent key reuse.
 
 **Expected touch surface:** APP/idempotency (proposed; inspect existing seams before editing).
 
 **Acceptance:** Two repeated identical requests produce one plan; same key with a different payload is rejected.
 
-**Out of this story:** No real clinical order side effects or distributed transaction platform. Stop when the stated behavior and its boundary tests pass; do not implement the rest of the parent track.
+**Out of this story:** No real clinical order side effects or distributed transaction platform. Stop when the stated outcome and its required review/verification pass; do not absorb the rest of the parent track.
 
 <a id="f07-2-b"></a>
 
@@ -611,13 +778,13 @@ After F01.1.a, F01.1.b, F01.2.a, F01.2.b and U01.1.a can start independently onc
 
 **Integration/acceptance gates:** No additional story-specific gates; inherited gates and profile/scenario requirements still apply. **Readiness:** E.
 
-**High-level implementation:** Run barrier-controlled integration cases over real isolated persistence.
+**High-level work:** Run barrier-controlled integration cases over real isolated persistence.
 
 **Expected touch surface:** APP/concurrency tests and transaction guards (proposed; inspect existing seams before editing).
 
 **Acceptance:** Concurrent requests never mix revision evidence or create duplicate plans; changed scope/evidence invalidates the stale transaction.
 
-**Out of this story:** No real clinical order side effects or distributed transaction platform. Stop when the stated behavior and its boundary tests pass; do not implement the rest of the parent track.
+**Out of this story:** No real clinical order side effects or distributed transaction platform. Stop when the stated outcome and its required review/verification pass; do not absorb the rest of the parent track.
 
 ## A01 — Make incomplete authoring and policy visible
 
@@ -633,13 +800,13 @@ After F01.1.a, F01.1.b, F01.2.a, F01.2.b and U01.1.a can start independently onc
 
 **Integration/acceptance gates:** [F03.2.a](2026-10-01-pathway-language-level-3-story-spec.md#f03-2-a), [F04.1.a](2026-10-01-pathway-language-level-3-story-spec.md#f04-1-a). **Readiness:** E.
 
-**High-level implementation:** Add the smallest hole node and preview artifact mode; retain unaffected outputs.
+**High-level work:** Add the smallest hole node and preview artifact mode; retain unaffected outputs.
 
 **Expected touch surface:** CORE/preview (proposed; inspect existing seams before editing).
 
 **Acceptance:** Dependent preview shows a typed hole; a wrong-type hole rejects; integrated acceptance must distinguish the marker from patient Unknown and must not emit a patient Need for the hole.
 
-**Out of this story:** No substituting patient Unknown for authoring incompleteness. Stop when the stated behavior and its boundary tests pass; do not implement the rest of the parent track.
+**Out of this story:** No substituting patient Unknown for authoring incompleteness. Stop when the stated outcome and its required review/verification pass; do not absorb the rest of the parent track.
 
 <a id="a01-1-b"></a>
 
@@ -653,13 +820,13 @@ After F01.1.a, F01.1.b, F01.2.a, F01.2.b and U01.1.a can start independently onc
 
 **Integration/acceptance gates:** No additional story-specific gates; inherited gates and profile/scenario requirements still apply. **Readiness:** E.
 
-**High-level implementation:** Enforce whole-package completeness and trusted execution mode at publication/load boundaries.
+**High-level work:** Enforce whole-package completeness and trusted execution mode at publication/load boundaries.
 
 **Expected touch surface:** APP/publication and CORE/loader (proposed; inspect existing seams before editing).
 
 **Acceptance:** Unvisited hole still blocks publication; relabeling preview/synthetic context cannot authorize clinical finalization.
 
-**Out of this story:** No substituting patient Unknown for authoring incompleteness. Stop when the stated behavior and its boundary tests pass; do not implement the rest of the parent track.
+**Out of this story:** No substituting patient Unknown for authoring incompleteness. Stop when the stated outcome and its required review/verification pass; do not absorb the rest of the parent track.
 
 <a id="a01-2-a"></a>
 
@@ -673,13 +840,13 @@ After F01.1.a, F01.1.b, F01.2.a, F01.2.b and U01.1.a can start independently onc
 
 **Integration/acceptance gates:** [F06.2.b](2026-10-01-pathway-language-level-3-story-spec.md#f06-2-b). **Readiness:** E.
 
-**High-level implementation:** Store declaration rationale and bind it to content review identity separately from semantic result digest.
+**High-level work:** Store declaration rationale and bind it to content review identity separately from semantic result digest.
 
 **Expected touch surface:** CORE/source metadata and APP/review (proposed; inspect existing seams before editing).
 
 **Acceptance:** Executable hash may stay fixed; prior content approval cannot silently cover the changed rationale.
 
-**Out of this story:** No policy scripting or full approval-management UI. Stop when the stated behavior and its boundary tests pass; do not implement the rest of the parent track.
+**Out of this story:** No policy scripting or full approval-management UI. Stop when the stated outcome and its required review/verification pass; do not absorb the rest of the parent track.
 
 <a id="a01-2-b"></a>
 
@@ -693,13 +860,13 @@ After F01.1.a, F01.1.b, F01.2.a, F01.2.b and U01.1.a can start independently onc
 
 **Integration/acceptance gates:** [A01.1.b](2026-10-01-pathway-language-level-3-story-spec.md#a01-1-b). **Readiness:** E.
 
-**High-level implementation:** Implement typed specialization rules and authenticated config binding; register approved artifact in a test store.
+**High-level work:** Implement typed specialization rules and authenticated config binding; register approved artifact in a test store.
 
 **Expected touch surface:** APP/policy binding and CORE/policy validation (proposed; inspect existing seams before editing).
 
 **Acceptance:** Out-of-bound specialization fails; required check survives lower-tier omission; permissions cannot widen.
 
-**Out of this story:** No policy scripting or full approval-management UI. Stop when the stated behavior and its boundary tests pass; do not implement the rest of the parent track.
+**Out of this story:** No policy scripting or full approval-management UI. Stop when the stated outcome and its required review/verification pass; do not absorb the rest of the parent track.
 
 ## M01 — Initiate one reviewed medication through choice and safety
 
@@ -715,13 +882,13 @@ After F01.1.a, F01.1.b, F01.2.a, F01.2.b and U01.1.a can start independently onc
 
 **Integration/acceptance gates:** [A01.2.b](2026-10-01-pathway-language-level-3-story-spec.md#a01-2-b), [F01.1.b](2026-10-01-pathway-language-level-3-story-spec.md#f01-1-b). **Readiness:** C2.
 
-**High-level implementation:** Support the exact reviewed payload contract and bounded decimal representation; reject absent required fields.
+**High-level work:** Support the exact reviewed payload contract and bounded decimal representation; reject absent required fields.
 
 **Expected touch surface:** CORE/action payload (proposed; inspect existing seams before editing).
 
 **Acceptance:** Action identity survives round-trip; incompatible dose units or missing formulation required by the contract fail.
 
-**Out of this story:** No knowledge-base integration or dose calculation. Stop when the stated behavior and its boundary tests pass; do not implement the rest of the parent track.
+**Out of this story:** No knowledge-base integration or dose calculation. Stop when the stated outcome and its required review/verification pass; do not absorb the rest of the parent track.
 
 <a id="m01-1-b"></a>
 
@@ -735,13 +902,13 @@ After F01.1.a, F01.1.b, F01.2.a, F01.2.b and U01.1.a can start independently onc
 
 **Integration/acceptance gates:** No additional story-specific gates; inherited gates and profile/scenario requirements still apply. **Readiness:** C2.
 
-**High-level implementation:** Implement the allergy assessment result contract without a live lookup; include coverage identity in trace.
+**High-level work:** Implement the allergy assessment result contract without a live lookup; include coverage identity in trace.
 
 **Expected touch surface:** CORE/safety assessment (proposed; inspect existing seams before editing).
 
 **Acceptance:** Unmapped allergy is not clear; complete scoped negative is traceable; incomplete scope cannot finalize.
 
-**Out of this story:** No knowledge-base integration or dose calculation. Stop when the stated behavior and its boundary tests pass; do not implement the rest of the parent track.
+**Out of this story:** No knowledge-base integration or dose calculation. Stop when the stated outcome and its required review/verification pass; do not absorb the rest of the parent track.
 
 <a id="m01-2-a"></a>
 
@@ -755,13 +922,13 @@ After F01.1.a, F01.1.b, F01.2.a, F01.2.b and U01.1.a can start independently onc
 
 **Integration/acceptance gates:** No additional story-specific gates; inherited gates and profile/scenario requirements still apply. **Readiness:** C2.
 
-**High-level implementation:** Apply approved hold severity semantics and preserve required evidence references.
+**High-level work:** Apply approved hold severity semantics and preserve required evidence references.
 
 **Expected touch surface:** CORE/safety reducer (proposed; inspect existing seams before editing).
 
 **Acceptance:** Known exclusion/hold stays visible even with unrelated unknown; acknowledgement alone cannot clear it.
 
-**Out of this story:** No inferred safety from a medication name or missing chart rows. Stop when the stated behavior and its boundary tests pass; do not implement the rest of the parent track.
+**Out of this story:** No inferred safety from a medication name or missing chart rows. Stop when the stated outcome and its required review/verification pass; do not absorb the rest of the parent track.
 
 <a id="m01-2-b"></a>
 
@@ -775,13 +942,13 @@ After F01.1.a, F01.1.b, F01.2.a, F01.2.b and U01.1.a can start independently onc
 
 **Integration/acceptance gates:** No additional story-specific gates; inherited gates and profile/scenario requirements still apply. **Readiness:** C2.
 
-**High-level implementation:** Add typed interaction knowledge-version and coverage inputs; no external lookup in core.
+**High-level work:** Add typed interaction knowledge-version and coverage inputs; no external lookup in core.
 
 **Expected touch surface:** CORE/interaction contract (proposed; inspect existing seams before editing).
 
 **Acceptance:** An unavailable knowledge source or incomplete current-therapy coverage is unresolved; known finding is preserved.
 
-**Out of this story:** No inferred safety from a medication name or missing chart rows. Stop when the stated behavior and its boundary tests pass; do not implement the rest of the parent track.
+**Out of this story:** No inferred safety from a medication name or missing chart rows. Stop when the stated outcome and its required review/verification pass; do not absorb the rest of the parent track.
 
 <a id="m01-3-a"></a>
 
@@ -795,13 +962,13 @@ After F01.1.a, F01.1.b, F01.2.a, F01.2.b and U01.1.a can start independently onc
 
 **Integration/acceptance gates:** No additional story-specific gates; inherited gates and profile/scenario requirements still apply. **Readiness:** C2.
 
-**High-level implementation:** Compile the supported one_of and selection ports through normal IR.
+**High-level work:** Compile the supported one_of and selection ports through normal IR.
 
 **Expected touch surface:** CORE/choice (proposed; inspect existing seams before editing).
 
 **Acceptance:** No selection yields Need; selecting ineligible candidate rejects; valid single selection does not erase the other candidate trace.
 
-**Out of this story:** No bundle choices or automatically selected alternative. Stop when the stated behavior and its boundary tests pass; do not implement the rest of the parent track.
+**Out of this story:** No bundle choices or automatically selected alternative. Stop when the stated outcome and its required review/verification pass; do not absorb the rest of the parent track.
 
 <a id="m01-3-b"></a>
 
@@ -815,13 +982,13 @@ After F01.1.a, F01.1.b, F01.2.a, F01.2.b and U01.1.a can start independently onc
 
 **Integration/acceptance gates:** No additional story-specific gates; inherited gates and profile/scenario requirements still apply. **Readiness:** C2.
 
-**High-level implementation:** Implement scoped refusal/consent evidence validation under the clinical contract.
+**High-level work:** Implement scoped refusal/consent evidence validation under the clinical contract.
 
 **Expected touch surface:** CORE/consent and APP/recorded inputs (proposed; inspect existing seams before editing).
 
 **Acceptance:** Refusal is not Unknown/no-response; it never satisfies consent or silently selects B; valid consent satisfies only its own requirement.
 
-**Out of this story:** No bundle choices or automatically selected alternative. Stop when the stated behavior and its boundary tests pass; do not implement the rest of the parent track.
+**Out of this story:** No bundle choices or automatically selected alternative. Stop when the stated outcome and its required review/verification pass; do not absorb the rest of the parent track.
 
 <a id="m01-4-a"></a>
 
@@ -835,13 +1002,13 @@ After F01.1.a, F01.1.b, F01.2.a, F01.2.b and U01.1.a can start independently onc
 
 **Integration/acceptance gates:** No additional story-specific gates; inherited gates and profile/scenario requirements still apply. **Readiness:** C2.
 
-**High-level implementation:** Connect final safety disposition to choice obligations without feedback execution.
+**High-level work:** Connect final safety disposition to choice obligations without feedback execution.
 
 **Expected touch surface:** CORE/choice-safety composition (proposed; inspect existing seams before editing).
 
 **Acceptance:** B never becomes selected by evaluation; authorized later selection creates a new input/review cycle.
 
-**Out of this story:** No automatic switch or second finalization mechanism. Stop when the stated behavior and its boundary tests pass; do not implement the rest of the parent track.
+**Out of this story:** No automatic switch or second finalization mechanism. Stop when the stated outcome and its required review/verification pass; do not absorb the rest of the parent track.
 
 <a id="m01-4-b"></a>
 
@@ -855,13 +1022,13 @@ After F01.1.a, F01.1.b, F01.2.a, F01.2.b and U01.1.a can start independently onc
 
 **Integration/acceptance gates:** [U01.2.b](2026-10-01-pathway-language-level-3-story-spec.md#u01-2-b), [V01.1.b](2026-10-01-pathway-language-level-3-story-spec.md#v01-1-b), [A01.1.b](2026-10-01-pathway-language-level-3-story-spec.md#a01-1-b). **Readiness:** C2.
 
-**High-level implementation:** Reuse F07 transaction path; carry full medication payload, scope and review IDs; own the full C-02 packet through the minimal authoring view once its acceptance gates pass, retaining independent clinical expectations.
+**High-level work:** Reuse F07 transaction path; carry full medication payload, scope and review IDs; own the full C-02 packet through the minimal authoring view once its acceptance gates pass, retaining independent clinical expectations.
 
 **Expected touch surface:** APP/C-02 integration (proposed; inspect existing seams before editing).
 
 **Acceptance:** Clear selected action commits once in test mode; changed safety blocks old review and leaves no partial scope write.
 
-**Out of this story:** No automatic switch or second finalization mechanism. Stop when the stated behavior and its boundary tests pass; do not implement the rest of the parent track.
+**Out of this story:** No automatic switch or second finalization mechanism. Stop when the stated outcome and its required review/verification pass; do not absorb the rest of the parent track.
 
 ## T01 — Use explicit time for one follow-up
 
@@ -877,13 +1044,13 @@ After F01.1.a, F01.1.b, F01.2.a, F01.2.b and U01.1.a can start independently onc
 
 **Integration/acceptance gates:** [F06.1.b](2026-10-01-pathway-language-level-3-story-spec.md#f06-1-b). **Readiness:** E.
 
-**High-level implementation:** Add supported instant parsing and duration comparison under a frozen clock.
+**High-level work:** Add supported instant parsing and duration comparison under a frozen clock.
 
 **Expected touch surface:** CORE/time (proposed; inspect existing seams before editing).
 
 **Acceptance:** Exact endpoints match contract; implicit wall-clock reads are absent; malformed/partial evidence stays explicit.
 
-**Out of this story:** No fabricated precision for partial dates. Stop when the stated behavior and its boundary tests pass; do not implement the rest of the parent track.
+**Out of this story:** No fabricated precision for partial dates. Stop when the stated outcome and its required review/verification pass; do not absorb the rest of the parent track.
 
 <a id="t01-1-b"></a>
 
@@ -897,13 +1064,13 @@ After F01.1.a, F01.1.b, F01.2.a, F01.2.b and U01.1.a can start independently onc
 
 **Integration/acceptance gates:** No additional story-specific gates; inherited gates and profile/scenario requirements still apply. **Readiness:** E.
 
-**High-level implementation:** Reuse the time predicate in F05 validation; do not mutate old responses.
+**High-level work:** Reuse the time predicate in F05 validation; do not mutate old responses.
 
 **Expected touch surface:** CORE/temporal fulfillment (proposed; inspect existing seams before editing).
 
 **Acceptance:** Boundary-valid response can fulfill; expired response cannot; old replay retains original clock result.
 
-**Out of this story:** No fabricated precision for partial dates. Stop when the stated behavior and its boundary tests pass; do not implement the rest of the parent track.
+**Out of this story:** No fabricated precision for partial dates. Stop when the stated outcome and its required review/verification pass; do not absorb the rest of the parent track.
 
 <a id="t01-2-a"></a>
 
@@ -917,13 +1084,13 @@ After F01.1.a, F01.1.b, F01.2.a, F01.2.b and U01.1.a can start independently onc
 
 **Integration/acceptance gates:** No additional story-specific gates; inherited gates and profile/scenario requirements still apply. **Readiness:** E1.
 
-**High-level implementation:** Bind same-subject/episode/course completion to the authored fixed follow-up rule.
+**High-level work:** Bind same-subject/episode/course completion to the authored fixed follow-up rule.
 
 **Expected touch surface:** CORE/follow-up anchors (proposed; inspect existing seams before editing).
 
 **Acceptance:** Order alone cannot create completed anchor; wrong course rejects; valid completion creates source-linked deadline.
 
-**Out of this story:** No repeated schedules or rescheduling implementation. Stop when the stated behavior and its boundary tests pass; do not implement the rest of the parent track.
+**Out of this story:** No repeated schedules or rescheduling implementation. Stop when the stated outcome and its required review/verification pass; do not absorb the rest of the parent track.
 
 <a id="t01-2-b"></a>
 
@@ -937,13 +1104,13 @@ After F01.1.a, F01.1.b, F01.2.a, F01.2.b and U01.1.a can start independently onc
 
 **Integration/acceptance gates:** No additional story-specific gates; inherited gates and profile/scenario requirements still apply. **Readiness:** E1.
 
-**High-level implementation:** Derive progress from recorded instance and clock; retain cancellation/completion separately.
+**High-level work:** Derive progress from recorded instance and clock; retain cancellation/completion separately.
 
 **Expected touch surface:** CORE/follow-up progress (proposed; inspect existing seams before editing).
 
 **Acceptance:** Later encounter does not shift due date; completed/cancelled event changes progress only under its contract.
 
-**Out of this story:** No repeated schedules or rescheduling implementation. Stop when the stated behavior and its boundary tests pass; do not implement the rest of the parent track.
+**Out of this story:** No repeated schedules or rescheduling implementation. Stop when the stated outcome and its required review/verification pass; do not absorb the rest of the parent track.
 
 <a id="t01-3-a"></a>
 
@@ -957,13 +1124,13 @@ After F01.1.a, F01.1.b, F01.2.a, F01.2.b and U01.1.a can start independently onc
 
 **Integration/acceptance gates:** [F07.1.a](2026-10-01-pathway-language-level-3-story-spec.md#f07-1-a). **Readiness:** C1.
 
-**High-level implementation:** Add typed timing outputs without reusing disposition as a due flag.
+**High-level work:** Add typed timing outputs without reusing disposition as a due flag.
 
 **Expected touch surface:** CORE/action timing and APP/result contract (proposed; inspect existing seams before editing).
 
 **Acceptance:** Advance proposal does not imply action performed; soft overdue does not suppress independently authored stop/reassessment.
 
-**Out of this story:** No automatic EHR renewal or indefinite clinical permission. Stop when the stated behavior and its boundary tests pass; do not implement the rest of the parent track.
+**Out of this story:** No automatic EHR renewal or indefinite clinical permission. Stop when the stated outcome and its required review/verification pass; do not absorb the rest of the parent track.
 
 <a id="t01-3-b"></a>
 
@@ -977,13 +1144,13 @@ After F01.1.a, F01.1.b, F01.2.a, F01.2.b and U01.1.a can start independently onc
 
 **Integration/acceptance gates:** No additional story-specific gates; inherited gates and profile/scenario requirements still apply. **Readiness:** C1.
 
-**High-level implementation:** Map recorded external expiry into an adapter-facing field, preserving source contract.
+**High-level work:** Map recorded external expiry into an adapter-facing field, preserving source contract.
 
 **Expected touch surface:** APP/expiry mapping and CORE/readiness (proposed; inspect existing seams before editing).
 
 **Acceptance:** Order expiry cannot silently change clinical eligibility; clinical stop prevents performance readiness despite a later external expiry.
 
-**Out of this story:** No automatic EHR renewal or indefinite clinical permission. Stop when the stated behavior and its boundary tests pass; do not implement the rest of the parent track.
+**Out of this story:** No automatic EHR renewal or indefinite clinical permission. Stop when the stated outcome and its required review/verification pass; do not absorb the rest of the parent track.
 
 <a id="t01-4-a"></a>
 
@@ -997,13 +1164,13 @@ After F01.1.a, F01.1.b, F01.2.a, F01.2.b and U01.1.a can start independently onc
 
 **Integration/acceptance gates:** No additional story-specific gates; inherited gates and profile/scenario requirements still apply. **Readiness:** E1.
 
-**High-level implementation:** Name timestamp role and freshness policy; retain unknown timing and rejected reason.
+**High-level work:** Name timestamp role and freshness policy; retain unknown timing and rejected reason.
 
 **Expected touch surface:** CORE/query admissibility (proposed; inspect existing seams before editing).
 
 **Acceptance:** Receipt cannot replace collection; historical query can accept what current query excludes; no usable result stays unresolved.
 
-**Out of this story:** No global expired flag or inferred negative result. Stop when the stated behavior and its boundary tests pass; do not implement the rest of the parent track.
+**Out of this story:** No global expired flag or inferred negative result. Stop when the stated outcome and its required review/verification pass; do not absorb the rest of the parent track.
 
 <a id="t01-4-b"></a>
 
@@ -1017,13 +1184,13 @@ After F01.1.a, F01.1.b, F01.2.a, F01.2.b and U01.1.a can start independently onc
 
 **Integration/acceptance gates:** No additional story-specific gates; inherited gates and profile/scenario requirements still apply. **Readiness:** E1.
 
-**High-level implementation:** Apply independent anchors through existing boolean/evidence semantics and run one authored integration fixture.
+**High-level work:** Apply independent anchors through existing boolean/evidence semantics and run one authored integration fixture.
 
 **Expected touch surface:** CORE/E-01 evaluation plus APP/revision (proposed; inspect existing seams before editing).
 
 **Acceptance:** Unknown anchor or stale result stays explicit; a reviewed unavailable contingency is distinct from clinical negative; corrected collection time produces a new revision.
 
-**Out of this story:** No global expired flag or inferred negative result. Stop when the stated behavior and its boundary tests pass; do not implement the rest of the parent track.
+**Out of this story:** No global expired flag or inferred negative result. Stop when the stated outcome and its required review/verification pass; do not absorb the rest of the parent track.
 
 ## O01 — Select comparable distinct observations
 
@@ -1039,13 +1206,13 @@ After F01.1.a, F01.1.b, F01.2.a, F01.2.b and U01.1.a can start independently onc
 
 **Integration/acceptance gates:** No additional story-specific gates; inherited gates and profile/scenario requirements still apply. **Readiness:** E1.
 
-**High-level implementation:** Implement declared identity/context predicates including optional culture/isolate link.
+**High-level work:** Implement declared identity/context predicates including optional culture/isolate link.
 
 **Expected touch surface:** CORE/query identity (proposed; inspect existing seams before editing).
 
 **Acceptance:** Wrong episode or isolate cannot satisfy query; missing required method stays unresolved rather than silently admissible.
 
-**Out of this story:** No source precedence inferred from ingestion order. Stop when the stated behavior and its boundary tests pass; do not implement the rest of the parent track.
+**Out of this story:** No source precedence inferred from ingestion order. Stop when the stated outcome and its required review/verification pass; do not absorb the rest of the parent track.
 
 <a id="o01-1-b"></a>
 
@@ -1059,13 +1226,13 @@ After F01.1.a, F01.1.b, F01.2.a, F01.2.b and U01.1.a can start independently onc
 
 **Integration/acceptance gates:** No additional story-specific gates; inherited gates and profile/scenario requirements still apply. **Readiness:** E.
 
-**High-level implementation:** Apply authorized correction history before time selection; declare identity ordering only for serialization.
+**High-level work:** Apply authorized correction history before time selection; declare identity ordering only for serialization.
 
 **Expected touch surface:** CORE/evidence selection (proposed; inspect existing seams before editing).
 
 **Acceptance:** Correction can change winner; equal-time conflicting candidates remain unresolved; input order does not decide.
 
-**Out of this story:** No source precedence inferred from ingestion order. Stop when the stated behavior and its boundary tests pass; do not implement the rest of the parent track.
+**Out of this story:** No source precedence inferred from ingestion order. Stop when the stated outcome and its required review/verification pass; do not absorb the rest of the parent track.
 
 <a id="o01-2-a"></a>
 
@@ -1079,13 +1246,13 @@ After F01.1.a, F01.1.b, F01.2.a, F01.2.b and U01.1.a can start independently onc
 
 **Integration/acceptance gates:** [F01.2.b](2026-10-01-pathway-language-level-3-story-spec.md#f01-2-b). **Readiness:** E2.
 
-**High-level implementation:** Implement only reviewed whitelist conversions and decimal bounds; keep assay comparability separate.
+**High-level work:** Implement only reviewed whitelist conversions and decimal bounds; keep assay comparability separate.
 
 **Expected touch surface:** CORE/quantities (proposed; inspect existing seams before editing).
 
 **Acceptance:** Equivalent unit values compare identically; unsupported conversion or assay compatibility is unresolved with reason.
 
-**Out of this story:** No inferencing that multiple duplicate rows establish persistence. Stop when the stated behavior and its boundary tests pass; do not implement the rest of the parent track.
+**Out of this story:** No inferencing that multiple duplicate rows establish persistence. Stop when the stated outcome and its required review/verification pass; do not absorb the rest of the parent track.
 
 <a id="o01-2-b"></a>
 
@@ -1099,13 +1266,13 @@ After F01.1.a, F01.1.b, F01.2.a, F01.2.b and U01.1.a can start independently onc
 
 **Integration/acceptance gates:** No additional story-specific gates; inherited gates and profile/scenario requirements still apply. **Readiness:** E2.
 
-**High-level implementation:** Compile the bounded pairing contract and return selected evidence identities.
+**High-level work:** Compile the bounded pairing contract and return selected evidence identities.
 
 **Expected touch surface:** CORE/pair selection (proposed; inspect existing seams before editing).
 
 **Acceptance:** Duplicate identity cannot count twice; exact interval boundaries and uncertain timestamps behave as reviewed; order permutation is invariant.
 
-**Out of this story:** No inferencing that multiple duplicate rows establish persistence. Stop when the stated behavior and its boundary tests pass; do not implement the rest of the parent track.
+**Out of this story:** No inferencing that multiple duplicate rows establish persistence. Stop when the stated outcome and its required review/verification pass; do not absorb the rest of the parent track.
 
 <a id="o01-3-a"></a>
 
@@ -1119,13 +1286,13 @@ After F01.1.a, F01.1.b, F01.2.a, F01.2.b and U01.1.a can start independently onc
 
 **Integration/acceptance gates:** No additional story-specific gates; inherited gates and profile/scenario requirements still apply. **Readiness:** E.
 
-**High-level implementation:** Implement supported presence/absence coverage and pair adequacy; no generic counts.
+**High-level work:** Implement supported presence/absence coverage and pair adequacy; no generic counts.
 
 **Expected touch surface:** CORE/coverage and sufficiency (proposed; inspect existing seams before editing).
 
 **Acceptance:** A complete sparse snapshot is still insufficient for pairing; one admissible positive may establish existence under incomplete coverage.
 
-**Out of this story:** No generic provider override or synthetic clinical coverage. Stop when the stated behavior and its boundary tests pass; do not implement the rest of the parent track.
+**Out of this story:** No generic provider override or synthetic clinical coverage. Stop when the stated outcome and its required review/verification pass; do not absorb the rest of the parent track.
 
 <a id="o01-3-b"></a>
 
@@ -1139,13 +1306,13 @@ After F01.1.a, F01.1.b, F01.2.a, F01.2.b and U01.1.a can start independently onc
 
 **Integration/acceptance gates:** [O01.3.a](2026-10-01-pathway-language-level-3-story-spec.md#o01-3-a). **Readiness:** E1.
 
-**High-level implementation:** Apply declared strategy after scope/time/authority checks; use E-01 completion concept chosen by clinical reviewers.
+**High-level work:** Apply declared strategy after scope/time/authority checks; use E-01 completion concept chosen by clinical reviewers.
 
 **Expected touch surface:** CORE/precedence and APP/E-01 case (proposed; inspect existing seams before editing).
 
 **Acceptance:** Valid same-course assertion can govern; expired/wrong-course/wrong-subject request cannot; changed result invalidates review.
 
-**Out of this story:** No generic provider override or synthetic clinical coverage. Stop when the stated behavior and its boundary tests pass; do not implement the rest of the parent track.
+**Out of this story:** No generic provider override or synthetic clinical coverage. Stop when the stated outcome and its required review/verification pass; do not absorb the rest of the parent track.
 
 ## G01 — Interpret measurements in an explicit pregnancy context
 
@@ -1161,13 +1328,13 @@ After F01.1.a, F01.1.b, F01.2.a, F01.2.b and U01.1.a can start independently onc
 
 **Integration/acceptance gates:** No additional story-specific gates; inherited gates and profile/scenario requirements still apply. **Readiness:** E2.
 
-**High-level implementation:** Implement the approved date basis and limits with independent boundary examples.
+**High-level work:** Implement the approved date basis and limits with independent boundary examples.
 
 **Expected touch surface:** CORE/dating derivation (proposed; inspect existing seams before editing).
 
 **Acceptance:** Day-before/at/after cases are exact; missing/partial reference remains unresolved; episode mismatch rejects.
 
-**Out of this story:** No full calendar recurrence or implicit timezone conversion. Stop when the stated behavior and its boundary tests pass; do not implement the rest of the parent track.
+**Out of this story:** No full calendar recurrence or implicit timezone conversion. Stop when the stated outcome and its required review/verification pass; do not absorb the rest of the parent track.
 
 <a id="g01-1-b"></a>
 
@@ -1181,13 +1348,13 @@ After F01.1.a, F01.1.b, F01.2.a, F01.2.b and U01.1.a can start independently onc
 
 **Integration/acceptance gates:** No additional story-specific gates; inherited gates and profile/scenario requirements still apply. **Readiness:** E2.
 
-**High-level implementation:** Bind dating-reference version into evidence/result identity.
+**High-level work:** Bind dating-reference version into evidence/result identity.
 
 **Expected touch surface:** CORE/dating identity and APP/revision (proposed; inspect existing seams before editing).
 
 **Acceptance:** Correction can cross a boundary in new result; replay of earlier bundle returns its earlier dating interpretation.
 
-**Out of this story:** No full calendar recurrence or implicit timezone conversion. Stop when the stated behavior and its boundary tests pass; do not implement the rest of the parent track.
+**Out of this story:** No full calendar recurrence or implicit timezone conversion. Stop when the stated outcome and its required review/verification pass; do not absorb the rest of the parent track.
 
 <a id="g01-2-a"></a>
 
@@ -1201,13 +1368,13 @@ After F01.1.a, F01.1.b, F01.2.a, F01.2.b and U01.1.a can start independently onc
 
 **Integration/acceptance gates:** No additional story-specific gates; inherited gates and profile/scenario requirements still apply. **Readiness:** E2.
 
-**High-level implementation:** Validate coverage/overlap rules and lookup boundary conventions.
+**High-level work:** Validate coverage/overlap rules and lookup boundary conventions.
 
 **Expected touch surface:** CORE/context lookup (proposed; inspect existing seams before editing).
 
 **Acceptance:** Exact boundaries match approved entries; invalid overlapping table rejects; outside declared coverage stays explicit.
 
-**Out of this story:** No unreviewed table values or forced clinical dependency for a demo. Stop when the stated behavior and its boundary tests pass; do not implement the rest of the parent track.
+**Out of this story:** No unreviewed table values or forced clinical dependency for a demo. Stop when the stated outcome and its required review/verification pass; do not absorb the rest of the parent track.
 
 <a id="g01-2-b"></a>
 
@@ -1221,13 +1388,13 @@ After F01.1.a, F01.1.b, F01.2.a, F01.2.b and U01.1.a can start independently onc
 
 **Integration/acceptance gates:** [U01.2.b](2026-10-01-pathway-language-level-3-story-spec.md#u01-2-b), [X01.2.b](2026-10-01-pathway-language-level-3-story-spec.md#x01-2-b), [V01.1.b](2026-10-01-pathway-language-level-3-story-spec.md#v01-1-b). **Readiness:** E2.
 
-**High-level implementation:** Compose O01 pairing with G01 date/table operations and scoped standing-condition fact; own the full E-02 packet including composed hypertension scope once X01.2.b and the author-facing view pass their gates.
+**High-level work:** Compose O01 pairing with G01 date/table operations and scoped standing-condition fact; own the full E-02 packet including composed hypertension scope once X01.2.b and the author-facing view pass their gates.
 
 **Expected touch surface:** APP/E-02 fixture and CORE/composition (proposed; inspect existing seams before editing).
 
 **Acceptance:** Collection-time and now-context variants can differ only as authored; an independent urgent finding stays visible; no rate/acute treatment is executed.
 
-**Out of this story:** No unreviewed table values or forced clinical dependency for a demo. Stop when the stated behavior and its boundary tests pass; do not implement the rest of the parent track.
+**Out of this story:** No unreviewed table values or forced clinical dependency for a demo. Stop when the stated outcome and its required review/verification pass; do not absorb the rest of the parent track.
 
 ## X01 — Compose pathways without hidden merging or scope changes
 
@@ -1243,13 +1410,13 @@ After F01.1.a, F01.1.b, F01.2.a, F01.2.b and U01.1.a can start independently onc
 
 **Integration/acceptance gates:** [T01.3.b](2026-10-01-pathway-language-level-3-story-spec.md#t01-3-b). **Readiness:** E.
 
-**High-level implementation:** Define canonical fields per supported action type and explicit unknown-key failure.
+**High-level work:** Define canonical fields per supported action type and explicit unknown-key failure.
 
 **Expected touch surface:** CORE/action identity (proposed; inspect existing seams before editing).
 
 **Acceptance:** Same display text with different dose or timing does not merge; permutation of irrelevant fields preserves key.
 
-**Out of this story:** No matching by display name or code alone. Stop when the stated behavior and its boundary tests pass; do not implement the rest of the parent track.
+**Out of this story:** No matching by display name or code alone. Stop when the stated outcome and its required review/verification pass; do not absorb the rest of the parent track.
 
 <a id="x01-1-b"></a>
 
@@ -1263,13 +1430,13 @@ After F01.1.a, F01.1.b, F01.2.a, F01.2.b and U01.1.a can start independently onc
 
 **Integration/acceptance gates:** No additional story-specific gates; inherited gates and profile/scenario requirements still apply. **Readiness:** E1.
 
-**High-level implementation:** Merge only established equivalents; retain contributing disposition and evidence traces.
+**High-level work:** Merge only established equivalents; retain contributing disposition and evidence traces.
 
 **Expected touch surface:** CORE/action coalescing (proposed; inspect existing seams before editing).
 
 **Acceptance:** Reversing package order changes nothing; unresolved required source cannot disappear behind the ready source.
 
-**Out of this story:** No matching by display name or code alone. Stop when the stated behavior and its boundary tests pass; do not implement the rest of the parent track.
+**Out of this story:** No matching by display name or code alone. Stop when the stated outcome and its required review/verification pass; do not absorb the rest of the parent track.
 
 <a id="x01-2-a"></a>
 
@@ -1283,13 +1450,13 @@ After F01.1.a, F01.1.b, F01.2.a, F01.2.b and U01.1.a can start independently onc
 
 **Integration/acceptance gates:** No additional story-specific gates; inherited gates and profile/scenario requirements still apply. **Readiness:** E1.
 
-**High-level implementation:** Implement reviewed supported conflict predicates; retain all rationale.
+**High-level work:** Implement reviewed supported conflict predicates; retain all rationale.
 
 **Expected touch surface:** CORE/composition conflict (proposed; inspect existing seams before editing).
 
 **Acceptance:** Unknown equivalence is not guessed; conflicting required actions block readiness; known not-applicable findings remain distinct.
 
-**Out of this story:** No universal medical interaction engine or partial finalization. Stop when the stated behavior and its boundary tests pass; do not implement the rest of the parent track.
+**Out of this story:** No universal medical interaction engine or partial finalization. Stop when the stated outcome and its required review/verification pass; do not absorb the rest of the parent track.
 
 <a id="x01-2-b"></a>
 
@@ -1303,13 +1470,13 @@ After F01.1.a, F01.1.b, F01.2.a, F01.2.b and U01.1.a can start independently onc
 
 **Integration/acceptance gates:** [V01.1.b](2026-10-01-pathway-language-level-3-story-spec.md#v01-1-b). **Readiness:** E2.
 
-**High-level implementation:** Feed combined canonical scope into F07 and reject tampering; test failure status separately.
+**High-level work:** Feed combined canonical scope into F07 and reject tampering; test failure status separately.
 
 **Expected touch surface:** APP/composed scope integration (proposed; inspect existing seams before editing).
 
 **Acceptance:** No partial write when one required component unresolved; failed evaluator cannot claim exhaustive no-urgency assessment.
 
-**Out of this story:** No universal medical interaction engine or partial finalization. Stop when the stated behavior and its boundary tests pass; do not implement the rest of the parent track.
+**Out of this story:** No universal medical interaction engine or partial finalization. Stop when the stated outcome and its required review/verification pass; do not absorb the rest of the parent track.
 
 <a id="x01-3-a"></a>
 
@@ -1323,13 +1490,13 @@ After F01.1.a, F01.1.b, F01.2.a, F01.2.b and U01.1.a can start independently onc
 
 **Integration/acceptance gates:** No additional story-specific gates; inherited gates and profile/scenario requirements still apply. **Readiness:** E1.
 
-**High-level implementation:** Add supported handoff payload and source trace; bind subject and recipient context explicitly.
+**High-level work:** Add supported handoff payload and source trace; bind subject and recipient context explicitly.
 
 **Expected touch surface:** CORE/handoff proposal (proposed; inspect existing seams before editing).
 
 **Acceptance:** Positive finding produces proposal; unknown recipient patient cannot become an order target; creating proposal is not communication.
 
-**Out of this story:** No automated messaging, neonatal prescription or implicit completion. Stop when the stated behavior and its boundary tests pass; do not implement the rest of the parent track.
+**Out of this story:** No automated messaging, neonatal prescription or implicit completion. Stop when the stated outcome and its required review/verification pass; do not absorb the rest of the parent track.
 
 <a id="x01-3-b"></a>
 
@@ -1343,13 +1510,13 @@ After F01.1.a, F01.1.b, F01.2.a, F01.2.b and U01.1.a can start independently onc
 
 **Integration/acceptance gates:** No additional story-specific gates; inherited gates and profile/scenario requirements still apply. **Readiness:** E1.
 
-**High-level implementation:** Reuse fulfillment identity/authority mechanism for the handoff event.
+**High-level work:** Reuse fulfillment identity/authority mechanism for the handoff event.
 
 **Expected touch surface:** APP/handoff acknowledgment (proposed; inspect existing seams before editing).
 
 **Acceptance:** Correct acknowledgment fulfills communication only; wrong context does not; no neonatal action completion is inferred.
 
-**Out of this story:** No automated messaging, neonatal prescription or implicit completion. Stop when the stated behavior and its boundary tests pass; do not implement the rest of the parent track.
+**Out of this story:** No automated messaging, neonatal prescription or implicit completion. Stop when the stated outcome and its required review/verification pass; do not absorb the rest of the parent track.
 
 <a id="x01-4-a"></a>
 
@@ -1363,13 +1530,13 @@ After F01.1.a, F01.1.b, F01.2.a, F01.2.b and U01.1.a can start independently onc
 
 **Integration/acceptance gates:** No additional story-specific gates; inherited gates and profile/scenario requirements still apply. **Readiness:** C1.
 
-**High-level implementation:** Add one operational evidence subject and authority contract, reusing fulfillment/review machinery.
+**High-level work:** Add one operational evidence subject and authority contract, reusing fulfillment/review machinery.
 
 **Expected touch surface:** CORE/operational query and APP/C-01 fixture (proposed; inspect existing seams before editing).
 
 **Acceptance:** Institutional requirement alone is not availability; wrong-facility attestation rejects; valid evidence satisfies only readiness and does not mark referral delivered.
 
-**Out of this story:** No live scheduling, institution microservice or assumption that policy proves availability. Stop when the stated behavior and its boundary tests pass; do not implement the rest of the parent track.
+**Out of this story:** No live scheduling, institution microservice or assumption that policy proves availability. Stop when the stated outcome and its required review/verification pass; do not absorb the rest of the parent track.
 
 ## V01 — Explain ineffective or inconsistent relationships before execution
 
@@ -1385,13 +1552,13 @@ After F01.1.a, F01.1.b, F01.2.a, F01.2.b and U01.1.a can start independently onc
 
 **Integration/acceptance gates:** No additional story-specific gates; inherited gates and profile/scenario requirements still apply. **Readiness:** E.
 
-**High-level implementation:** Add backward dependency reachability from all declared meaningful outputs; account for public library exports and intentionally retained provenance.
+**High-level work:** Add backward dependency reachability from all declared meaningful outputs; account for public library exports and intentionally retained provenance.
 
 **Expected touch surface:** CORE/compiler structural analysis (proposed; inspect existing seams before editing).
 
 **Acceptance:** A query feeding a Need or independent finding is not falsely unused; an unreferenced local predicate is diagnosed; presentation-only roots do not invent eligibility.
 
-**Out of this story:** No inference that every node must change eligibility. Stop when the stated behavior and its boundary tests pass; do not implement the rest of the parent track.
+**Out of this story:** No inference that every node must change eligibility. Stop when the stated outcome and its required review/verification pass; do not absorb the rest of the parent track.
 
 <a id="v01-1-b"></a>
 
@@ -1405,13 +1572,13 @@ After F01.1.a, F01.1.b, F01.2.a, F01.2.b and U01.1.a can start independently onc
 
 **Integration/acceptance gates:** No additional story-specific gates; inherited gates and profile/scenario requirements still apply. **Readiness:** E.
 
-**High-level implementation:** Reuse defined all/any/not semantics for static constant propagation without evaluating patient evidence.
+**High-level work:** Reuse defined all/any/not semantics for static constant propagation without evaluating patient evidence.
 
 **Expected touch surface:** CORE/compiler constant analysis (proposed; inspect existing seams before editing).
 
 **Acceptance:** A constant-false branch is identified; a patient-dependent Unknown is not declared unreachable; severity follows the declared publication policy.
 
-**Out of this story:** No inference that every node must change eligibility. Stop when the stated behavior and its boundary tests pass; do not implement the rest of the parent track.
+**Out of this story:** No inference that every node must change eligibility. Stop when the stated outcome and its required review/verification pass; do not absorb the rest of the parent track.
 
 <a id="v01-2-a"></a>
 
@@ -1425,13 +1592,13 @@ After F01.1.a, F01.1.b, F01.2.a, F01.2.b and U01.1.a can start independently onc
 
 **Integration/acceptance gates:** No additional story-specific gates; inherited gates and profile/scenario requirements still apply. **Readiness:** E.
 
-**High-level implementation:** Implement bounded simplification and source witnesses; preserve the authored AST rather than silently deleting the guard.
+**High-level work:** Implement bounded simplification and source witnesses; preserve the authored AST rather than silently deleting the guard.
 
 **Expected touch surface:** CORE/compiler influence diagnostics (proposed; inspect existing seams before editing).
 
 **Acceptance:** Diagnostic points to the actual binding/expression; an independently useful finding/review output is retained; unsupported analysis is reported as not analyzed.
 
-**Out of this story:** No global assertion that redundant clinical constraints are invalid. Stop when the stated behavior and its boundary tests pass; do not implement the rest of the parent track.
+**Out of this story:** No global assertion that redundant clinical constraints are invalid. Stop when the stated outcome and its required review/verification pass; do not absorb the rest of the parent track.
 
 <a id="v01-3-a"></a>
 
@@ -1445,13 +1612,13 @@ After F01.1.a, F01.1.b, F01.2.a, F01.2.b and U01.1.a can start independently onc
 
 **Integration/acceptance gates:** No additional story-specific gates; inherited gates and profile/scenario requirements still apply. **Readiness:** E.
 
-**High-level implementation:** Add only enum equality through the canonical AST/IR/operator ledger and independent conformance fixtures.
+**High-level work:** Add only enum equality through the canonical AST/IR/operator ledger and independent conformance fixtures.
 
 **Expected touch surface:** CORE/finite-enum equality (proposed; inspect existing seams before editing).
 
 **Acceptance:** Equal/different literals give True/False; wrong enum type rejects; unknown evidence stays Unknown; no implicit string coercion.
 
-**Out of this story:** No solver dependency, numeric interval theory or ban on eligible alternatives in provider choices. Stop when the stated behavior and its boundary tests pass; do not implement the rest of the parent track.
+**Out of this story:** No solver dependency, numeric interval theory or ban on eligible alternatives in provider choices. Stop when the stated outcome and its required review/verification pass; do not absorb the rest of the parent track.
 
 <a id="v01-3-b"></a>
 
@@ -1465,13 +1632,13 @@ After F01.1.a, F01.1.b, F01.2.a, F01.2.b and U01.1.a can start independently onc
 
 **Integration/acceptance gates:** No additional story-specific gates; inherited gates and profile/scenario requirements still apply. **Readiness:** E.
 
-**High-level implementation:** Analyze the finite declared domain and link both condition sources; unknown/unsupported expressions produce an explicit not-analyzed outcome.
+**High-level work:** Analyze the finite declared domain and link both condition sources; unknown/unsupported expressions produce an explicit not-analyzed outcome.
 
 **Expected touch surface:** CORE/compiler disjointness checks (proposed; inspect existing seams before editing).
 
 **Acceptance:** Overlapping required-exclusive conditions trigger their declared publication obligation; ordinary provider one-of candidates may overlap without an error; findings never claim clinical completeness.
 
-**Out of this story:** No solver dependency, numeric interval theory or ban on eligible alternatives in provider choices. Stop when the stated behavior and its boundary tests pass; do not implement the rest of the parent track.
+**Out of this story:** No solver dependency, numeric interval theory or ban on eligible alternatives in provider choices. Stop when the stated outcome and its required review/verification pass; do not absorb the rest of the parent track.
 
 ## U01 — Author and inspect a supported pathway without reading raw JSON
 
@@ -1487,13 +1654,13 @@ After F01.1.a, F01.1.b, F01.2.a, F01.2.b and U01.1.a can start independently onc
 
 **Integration/acceptance gates:** No additional story-specific gates; inherited gates and profile/scenario requirements still apply. **Readiness:** E.
 
-**High-level implementation:** Inspect PathwayCanvas and PropertiesPanel in prism-admin-dashboard; implement a narrow AST projection or a small compatible view if the legacy model cannot preserve meaning.
+**High-level work:** Inspect PathwayCanvas and PropertiesPanel in prism-admin-dashboard; implement a narrow AST projection or a small compatible view if the legacy model cannot preserve meaning.
 
 **Expected touch surface:** UI/canonical AST projection and graph/details view (proposed; inspect existing seams before editing).
 
 **Acceptance:** The displayed relationships round-trip to their source IDs; presentation layout changes no executable meaning; unsupported constructs are visible rather than silently dropped.
 
-**Out of this story:** No assumption that old canvas data or edge meaning equals the new language. Stop when the stated behavior and its boundary tests pass; do not implement the rest of the parent track.
+**Out of this story:** No assumption that old canvas data or edge meaning equals the new language. Stop when the stated outcome and its required review/verification pass; do not absorb the rest of the parent track.
 
 <a id="u01-1-b"></a>
 
@@ -1507,13 +1674,13 @@ After F01.1.a, F01.1.b, F01.2.a, F01.2.b and U01.1.a can start independently onc
 
 **Integration/acceptance gates:** No additional story-specific gates; inherited gates and profile/scenario requirements still apply. **Readiness:** E.
 
-**High-level implementation:** Consume structured backend source maps; extend beyond the canvas current node-only validationErrors shape; retain source revision identity.
+**High-level work:** Consume structured backend source maps; extend beyond the canvas current node-only validationErrors shape; retain source revision identity.
 
 **Expected touch surface:** UI/diagnostic navigation (proposed; inspect existing seams before editing).
 
 **Acceptance:** Node, edge and field diagnostics each locate their source; stale/missing source mappings are explicitly indicated, not attached to another revision.
 
-**Out of this story:** No assumption that old canvas data or edge meaning equals the new language. Stop when the stated behavior and its boundary tests pass; do not implement the rest of the parent track.
+**Out of this story:** No assumption that old canvas data or edge meaning equals the new language. Stop when the stated outcome and its required review/verification pass; do not absorb the rest of the parent track.
 
 <a id="u01-2-a"></a>
 
@@ -1527,13 +1694,13 @@ After F01.1.a, F01.1.b, F01.2.a, F01.2.b and U01.1.a can start independently onc
 
 **Integration/acceptance gates:** No additional story-specific gates; inherited gates and profile/scenario requirements still apply. **Readiness:** E.
 
-**High-level implementation:** Implement the smallest draft-save/recompile boundary with revision checks; select one supported field, not a generic form framework.
+**High-level work:** Implement the smallest draft-save/recompile boundary with revision checks; select one supported field, not a generic form framework.
 
 **Expected touch surface:** UI/property edit plus APP/draft API (proposed; inspect existing seams before editing).
 
 **Acceptance:** Editing the field changes the canonical source; a rejected/stale save cannot overwrite newer edits; saving/reloading preserves IDs and diagnostics map to the new revision.
 
-**Out of this story:** No alternate frontend truth rules or clinical publication from preview. Stop when the stated behavior and its boundary tests pass; do not implement the rest of the parent track.
+**Out of this story:** No alternate frontend truth rules or clinical publication from preview. Stop when the stated outcome and its required review/verification pass; do not absorb the rest of the parent track.
 
 <a id="u01-2-b"></a>
 
@@ -1547,13 +1714,13 @@ After F01.1.a, F01.1.b, F01.2.a, F01.2.b and U01.1.a can start independently onc
 
 **Integration/acceptance gates:** [A01.1.b](2026-10-01-pathway-language-level-3-story-spec.md#a01-1-b). **Readiness:** E.
 
-**High-level implementation:** Call the shared preview entry point; render structured outputs with source links; discard stale asynchronous responses by revision/scenario identity.
+**High-level work:** Call the shared preview entry point; render structured outputs with source links; discard stale asynchronous responses by revision/scenario identity.
 
 **Expected touch surface:** UI/preview and APP/preview API (proposed; inspect existing seams before editing).
 
 **Acceptance:** A reviewer can follow a diagnostic, change the field, recompile and inspect changed output without reading JSON; a hole remains visibly incomplete; preview cannot finalize or activate clinical artifacts.
 
-**Out of this story:** No alternate frontend truth rules or clinical publication from preview. Stop when the stated behavior and its boundary tests pass; do not implement the rest of the parent track.
+**Out of this story:** No alternate frontend truth rules or clinical publication from preview. Stop when the stated outcome and its required review/verification pass; do not absorb the rest of the parent track.
 
 ## I01 — Close named scenario acceptance through the assembled application
 
@@ -1569,13 +1736,13 @@ After F01.1.a, F01.1.b, F01.2.a, F01.2.b and U01.1.a can start independently onc
 
 **Integration/acceptance gates:** [V01.1.a](2026-10-01-pathway-language-level-3-story-spec.md#v01-1-a), [V01.1.b](2026-10-01-pathway-language-level-3-story-spec.md#v01-1-b), [V01.2.a](2026-10-01-pathway-language-level-3-story-spec.md#v01-2-a). **Readiness:** C1.
 
-**High-level implementation:** Run load/edit/compile/preview, missing-attestation Need, authorized fulfillment, new revision, review and sandbox whole-scope finalization; include retry and rejection variants.
+**High-level work:** Run load/edit/compile/preview, missing-attestation Need, authorized fulfillment, new revision, review and sandbox whole-scope finalization; include retry and rejection variants.
 
 **Expected touch surface:** APP and UI/C-01 integration harness (proposed; inspect existing seams before editing).
 
 **Acceptance:** All C-01 expected findings/omissions/Needs/timing and failure cases are checked with concrete case IDs; a missing primitive becomes a new dependency, not hidden implementation in this story.
 
-**Out of this story:** No replacing independent expected outcomes with evaluator-generated expectations. Stop when the stated behavior and its boundary tests pass; do not implement the rest of the parent track.
+**Out of this story:** No replacing independent expected outcomes with evaluator-generated expectations. Stop when the stated outcome and its required review/verification pass; do not absorb the rest of the parent track.
 
 <a id="i01-1-b"></a>
 
@@ -1589,13 +1756,13 @@ After F01.1.a, F01.1.b, F01.2.a, F01.2.b and U01.1.a can start independently onc
 
 **Integration/acceptance gates:** [O01.3.a](2026-10-01-pathway-language-level-3-story-spec.md#o01-3-a), [V01.1.a](2026-10-01-pathway-language-level-3-story-spec.md#v01-1-a), [V01.1.b](2026-10-01-pathway-language-level-3-story-spec.md#v01-1-b). **Readiness:** E1.
 
-**High-level implementation:** Run collection/completion/current-time cases, corrections, accepted/rejected precedence, UTI/GBS overlap and positive handoff through the same application path.
+**High-level work:** Run collection/completion/current-time cases, corrections, accepted/rejected precedence, UTI/GBS overlap and positive handoff through the same application path.
 
 **Expected touch surface:** APP and UI/E-01 integration harness (proposed; inspect existing seams before editing).
 
 **Acceptance:** Every E-01 acceptance case has independently expected output and concrete evidence; handoff acknowledgment is not neonatal treatment; unresolved scope cannot partially finalize.
 
-**Out of this story:** No replacing independent expected outcomes with evaluator-generated expectations. Stop when the stated behavior and its boundary tests pass; do not implement the rest of the parent track.
+**Out of this story:** No replacing independent expected outcomes with evaluator-generated expectations. Stop when the stated outcome and its required review/verification pass; do not absorb the rest of the parent track.
 
 <a id="i01-2-a"></a>
 
@@ -1609,24 +1776,24 @@ After F01.1.a, F01.1.b, F01.2.a, F01.2.b and U01.1.a can start independently onc
 
 **Integration/acceptance gates:** [F06.2.b](2026-10-01-pathway-language-level-3-story-spec.md#f06-2-b). **Readiness:** E.
 
-**High-level implementation:** Drive source diagnostics through the authoring view and direct API rejection tests; exercise actual loader, policy and finalization checks in isolated infrastructure.
+**High-level work:** Drive source diagnostics through the authoring view and direct API rejection tests; exercise actual loader, policy and finalization checks in isolated infrastructure.
 
 **Expected touch surface:** UI, APP and CORE/C-03 acceptance harness (proposed; inspect existing seams before editing).
 
 **Acceptance:** Visible diagnostics agree with API failures; bypassing the UI cannot publish incomplete artifacts or finalize synthetic clinical inputs; import-boundary checks and supported relationship-analysis cases are recorded.
 
-**Out of this story:** No clinical adjudication bypass, rollout approval or new authorization subsystem. Stop when the stated behavior and its boundary tests pass; do not implement the rest of the parent track.
+**Out of this story:** No clinical adjudication bypass, rollout approval or new authorization subsystem. Stop when the stated outcome and its required review/verification pass; do not absorb the rest of the parent track.
 
 ## Traceability and completion record
 
-Each story inherits its parent's B/C/E references as context; it closes only its explicit acceptance assertions. During implementation, attach the exact concrete case IDs and test/PR evidence to the story. Do not mark an entire B family or C/E scenario complete because one child passes.
+Design stories prepare B/C/E contracts and close no implemented conformance family. Their evidence is reviewed decisions and manually checked examples, with unresolved questions recorded. Implementation stories inherit their parent's B/C/E references as context; it closes only its explicit acceptance assertions. During implementation, attach the exact concrete case IDs and test/PR evidence to the story. Do not mark an entire B family or C/E scenario complete because one child passes.
 
 | Record for each story | Required evidence |
 |---|---|
 | Contract/readiness | Approved input/output contract and applicable clinical reviewer/version |
-| Implementation | PR/commit, actual touched boundaries, unexpected scope decisions |
-| Verification | Concrete case IDs, observed outputs and meaningful positive/rejection checks |
-| Integration | Demonstration through authored source or appropriate application boundary |
+| Deliverable | Design document/review revision for L00; implementation PR/commit and actual touched boundaries otherwise |
+| Verification | L00: independently reviewed expected examples and decision records; implementation: concrete case IDs, observed outputs and meaningful positive/rejection checks |
+| Integration | L00: trace meaning through concepts, rules and representation; implementation: demonstrate authored source or the appropriate application boundary |
 | Remaining work | Unimplemented parent assertions and next dependent story IDs |
 
 A failed test, unresolved clinical rule, absent real adapter, or missing required authorization remains visible. No approval of these decomposition documents authorizes deployment or advances an incomplete Stage A/scenario gate.

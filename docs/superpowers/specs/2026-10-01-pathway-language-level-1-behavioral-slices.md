@@ -2,13 +2,17 @@
 
 **Problem statement:** Given an authored pathway and explicitly scoped evidence, produce a deterministic, explainable result that can request missing evidence, accept authorized fulfillment, and be reviewed/finalized only within its declared scope. Deliver this through small observable increments rather than building a whole compiler or evaluator at once.
 
-**Status:** Proposed implementation decomposition, not implementation completion or clinical approval.
+**Status:** Proposed language-definition and implementation decomposition, not implementation completion or clinical approval.
 
 **Date:** 2026-10-01
 
+**Last revised:** 2026-10-02 — add language definition before implementation.
+
 **Authority:** [Accepted architecture](2026-09-28-pathway-language-rfc.md) and [Stage A contracts](2026-09-30-pathway-language-stage-a-spec.md). These documents organize delivery under the Stage A capability contracts. They do not independently promote deferred capabilities.
 
-The first seven slices establish a narrow source-to-reviewed-result loop. Follow-on tracks add the clinically justified capabilities; they are not prerequisites for a literal-only foundation demo. Completed implementation slices contribute evidence toward stages B/C/E; no single early slice claims full `ppl-core-v0` support or permission for clinical launch.
+L00 defines one example’s meaning and minimal source contract before implementation begins. The RFC fixes architectural boundaries, while Stage A remains a draft: neither supplies every exact language decision. L00 completion defines only this fragment, not the whole language. Later capability tracks must resolve their own contracts before implementation.
+
+The F01–F07 slices establish a narrow source-to-reviewed-result loop. Follow-on tracks add the clinically justified capabilities; they are not prerequisites for a literal-only foundation demo. Completed implementation slices contribute evidence toward stages B/C/E; no single early slice claims full `ppl-core-v0` support or permission for clinical launch.
 
 Intermediate artifacts declare only the implemented engineering subset and cannot claim the complete `ppl-core-v0` profile. Unsupported operations reject; test harness support must not weaken the clinical loader. The foundation finalization demonstration is sandbox-only until publication, safety and live-evidence boundaries are implemented and validated.
 
@@ -26,15 +30,17 @@ The hierarchy is a foundation or extension outcome → numbered refinement → l
 
 ## Initial delivery sequence
 
+Start with L00.1.a: agree on one fictional pathway’s input/output meaning without syntax. Complete its eight small design stories through L00.4.b before F01.1.a starts implementing the first validator. These are reviewed design deliverables, not completed decisions or new engineering packages.
+
 F01–F07 describe the foundation outcomes, not a serial implementation schedule. Leaf start prerequisites are authoritative. Once the compiled-artifact/evaluator contracts exist, evidence and Needs, fingerprint/review, preview holes, and timing can advance independently where their inputs permit. Medication work also needs its reviewed clinical content. Authoring display begins after the AST contract; structural analysis begins after the relevant typed dependencies.
 
 ## Dependency audit
 
-There are 16 outcomes, 40 refinements and 77 stories. The previous 65-story plan had a longest dependency chain of 34 stories. The revised start-prerequisite graph has depth 17; including integration/acceptance gates gives depth 23. Both have no dangling references or cycles. These are unit-weighted graph depths, not duration estimates or a promise of proportionate speedup; scope has also increased.
+There are 17 outcomes, 44 refinements and 85 stories. The original 65-story implementation plan had a longest dependency chain of 34 stories. The subsequent 77-story plan had start depth 17 and acceptance depth 23 but omitted the prerequisite language-definition work. The current counts include that newly explicit design work. The revised start-prerequisite graph has depth 25; including integration/acceptance gates gives depth 31. Both have no dangling references or cycles. These are unit-weighted graph depths, not duration estimates or a promise of proportionate speedup; scope has also increased.
 
-47 stories have engineering readiness code E; 30 require clinical adjudication (C1: 4, C2: 8, E1: 11, E2: 7). E does not mean immediately ready: prerequisites and unresolved engineering contracts still apply. Clinical owners remain unassigned and are required before clinical acceptance.
+8 stories define language contracts (D); 47 implementation stories have engineering readiness code E; 30 require clinical adjudication (C1: 4, C2: 8, E1: 11, E2: 7). E does not mean immediately ready: prerequisites and unresolved engineering contracts still apply. Clinical owners remain unassigned and are required before clinical acceptance.
 
-After F01.1.a, F01.1.b, F01.2.a, F01.2.b and U01.1.a can start independently once their contract decisions are fixed. The previous plan was not literally serial for its first fifteen stories: it already had two successors after F01.1.a. Read the exact leaf prerequisites rather than inferring order from document position.
+L00.1.a is the first story with no implementation predecessor; its unresolved questions are its work. After L00 and F01.1.a, F01.1.b, F01.2.a, F01.2.b and U01.1.a can start independently once their contract decisions are fixed. The previous plan was not literally serial for its first fifteen stories: it already had two successors after F01.1.a. Read the exact leaf prerequisites rather than inferring order from document position.
 
 ## Scenario acceptance owners
 
@@ -46,6 +52,22 @@ After F01.1.a, F01.1.b, F01.2.a, F01.2.b and U01.1.a can start independently onc
 | E-01 | [I01.1.b](2026-10-01-pathway-language-level-3-story-spec.md#i01-1-b) |
 | E-02 | [G01.2.b](2026-10-01-pathway-language-level-3-story-spec.md#g01-2-b) (including composed scope through X01.2.b) |
 
+<a id="l00"></a>
+
+## L00 — Define the meaning and representation of one pathway
+
+**Problem statement:** Given one fictional pathway described in plain language, produce a reviewed minimal language definition and source-validation contract before writing its validator.
+
+**High-level work:** Work from observable meaning to concepts, relationships, types, evaluation rules, invalid definitions and only then representation.
+
+**Demonstrable completion:** All child behaviors have their declared acceptance evidence and gates. For L00, this is reviewed example meaning, decisions and the source contract; no executable artifact is required. For implementation tracks, output is reachable through authored input, not a test-only call that skips compilation; application boundaries use compiled results.
+
+**Scope boundary:** No full language design in one story, clinical rules, parser, runtime, package or schema implementation.
+
+**Stage A trace:** Stage A sections 2, 3, 6, 8 and 17; prepares B-01, B-03, B-04, B-24; no conformance completion claimed.
+
+**Refinement:** [L00.1 Example meaning and necessary concepts](2026-10-01-pathway-language-level-2-refined-slices.md#l00-1), [L00.2 Relationships and value domains](2026-10-01-pathway-language-level-2-refined-slices.md#l00-2), [L00.3 Evaluation meaning and invalid definitions](2026-10-01-pathway-language-level-2-refined-slices.md#l00-3), [L00.4 Representation and validator contract](2026-10-01-pathway-language-level-2-refined-slices.md#l00-4).
+
 <a id="f01"></a>
 
 ## F01 — Accept one explicit source definition
@@ -54,7 +76,7 @@ After F01.1.a, F01.1.b, F01.2.a, F01.2.b and U01.1.a can start independently onc
 
 **High-level work:** Exercise a public core entry point with a tiny fixture; establish schema/version and package boundaries through that behavior.
 
-**Demonstrable completion:** All child behaviors have their declared positive/rejection acceptance evidence; the output is reachable through authored input, not a direct test-only call that skips compilation. Application-only boundaries are tested using compiled results.
+**Demonstrable completion:** All child behaviors have their declared acceptance evidence and gates. For L00, this is reviewed example meaning, decisions and the source contract; no executable artifact is required. For implementation tracks, output is reachable through authored input, not a test-only call that skips compilation; application boundaries use compiled results.
 
 **Scope boundary:** No evidence retrieval, expressions beyond literals, graph editor, text parser or clinical publication.
 
@@ -70,7 +92,7 @@ After F01.1.a, F01.1.b, F01.2.a, F01.2.b and U01.1.a can start independently onc
 
 **High-level work:** Lower only the supported subset, then execute explicit constant clinical contracts.
 
-**Demonstrable completion:** All child behaviors have their declared positive/rejection acceptance evidence; the output is reachable through authored input, not a direct test-only call that skips compilation. Application-only boundaries are tested using compiled results.
+**Demonstrable completion:** All child behaviors have their declared acceptance evidence and gates. For L00, this is reviewed example meaning, decisions and the source contract; no executable artifact is required. For implementation tracks, output is reachable through authored input, not a test-only call that skips compilation; application boundaries use compiled results.
 
 **Scope boundary:** No choices, medication safety, variable evidence or full publication workflow.
 
@@ -86,7 +108,7 @@ After F01.1.a, F01.1.b, F01.2.a, F01.2.b and U01.1.a can start independently onc
 
 **High-level work:** Introduce explicit binding, query result and lifted boolean composition without live acquisition.
 
-**Demonstrable completion:** All child behaviors have their declared positive/rejection acceptance evidence; the output is reachable through authored input, not a direct test-only call that skips compilation. Application-only boundaries are tested using compiled results.
+**Demonstrable completion:** All child behaviors have their declared acceptance evidence and gates. For L00, this is reviewed example meaning, decisions and the source contract; no executable artifact is required. For implementation tracks, output is reachable through authored input, not a test-only call that skips compilation; application boundaries use compiled results.
 
 **Scope boundary:** No thresholds, latest-selection heuristics, aggregates or implicit absence-as-false.
 
@@ -102,7 +124,7 @@ After F01.1.a, F01.1.b, F01.2.a, F01.2.b and U01.1.a can start independently onc
 
 **High-level work:** Separate evidence causes from actionable requirements and declared materiality.
 
-**Demonstrable completion:** All child behaviors have their declared positive/rejection acceptance evidence; the output is reachable through authored input, not a direct test-only call that skips compilation. Application-only boundaries are tested using compiled results.
+**Demonstrable completion:** All child behaviors have their declared acceptance evidence and gates. For L00, this is reviewed example meaning, decisions and the source contract; no executable artifact is required. For implementation tracks, output is reachable through authored input, not a test-only call that skips compilation; application boundaries use compiled results.
 
 **Scope boundary:** No fulfiller selection or external requests.
 
@@ -118,7 +140,7 @@ After F01.1.a, F01.1.b, F01.2.a, F01.2.b and U01.1.a can start independently onc
 
 **High-level work:** Separate pure fulfillment validation from the controlled application fulfiller.
 
-**Demonstrable completion:** All child behaviors have their declared positive/rejection acceptance evidence; the output is reachable through authored input, not a direct test-only call that skips compilation. Application-only boundaries are tested using compiled results.
+**Demonstrable completion:** All child behaviors have their declared acceptance evidence and gates. For L00, this is reviewed example meaning, decisions and the source contract; no executable artifact is required. For implementation tracks, output is reachable through authored input, not a test-only call that skips compilation; application boundaries use compiled results.
 
 **Scope boundary:** No live EHR integration, generic provider override or implicit approval.
 
@@ -134,7 +156,7 @@ After F01.1.a, F01.1.b, F01.2.a, F01.2.b and U01.1.a can start independently onc
 
 **High-level work:** Canonical identities bind evidence, content, result and requested scope.
 
-**Demonstrable completion:** All child behaviors have their declared positive/rejection acceptance evidence; the output is reachable through authored input, not a direct test-only call that skips compilation. Application-only boundaries are tested using compiled results.
+**Demonstrable completion:** All child behaviors have their declared acceptance evidence and gates. For L00, this is reviewed example meaning, decisions and the source contract; no executable artifact is required. For implementation tracks, output is reachable through authored input, not a test-only call that skips compilation; application boundaries use compiled results.
 
 **Scope boundary:** No historical legacy reconstruction or production artifact-retention system.
 
@@ -150,7 +172,7 @@ After F01.1.a, F01.1.b, F01.2.a, F01.2.b and U01.1.a can start independently onc
 
 **High-level work:** Use one isolated database-backed integration seam, not a whole service rewrite.
 
-**Demonstrable completion:** All child behaviors have their declared positive/rejection acceptance evidence; the output is reachable through authored input, not a direct test-only call that skips compilation. Application-only boundaries are tested using compiled results.
+**Demonstrable completion:** All child behaviors have their declared acceptance evidence and gates. For L00, this is reviewed example meaning, decisions and the source contract; no executable artifact is required. For implementation tracks, output is reachable through authored input, not a test-only call that skips compilation; application boundaries use compiled results.
 
 **Scope boundary:** No production deployment, real EHR order transmission or partial finalization.
 
@@ -166,7 +188,7 @@ After F01.1.a, F01.1.b, F01.2.a, F01.2.b and U01.1.a can start independently onc
 
 **High-level work:** Add draft incompleteness and publication checks without alternate clinical semantics.
 
-**Demonstrable completion:** All child behaviors have their declared positive/rejection acceptance evidence; the output is reachable through authored input, not a direct test-only call that skips compilation. Application-only boundaries are tested using compiled results.
+**Demonstrable completion:** All child behaviors have their declared acceptance evidence and gates. For L00, this is reviewed example meaning, decisions and the source contract; no executable artifact is required. For implementation tracks, output is reachable through authored input, not a test-only call that skips compilation; application boundaries use compiled results.
 
 **Scope boundary:** No textual editor, custom interpreter, solver or ingestion.
 
@@ -182,7 +204,7 @@ After F01.1.a, F01.1.b, F01.2.a, F01.2.b and U01.1.a can start independently onc
 
 **High-level work:** Build medication payload, safety outcomes and choice separately, then integrate C-02.
 
-**Demonstrable completion:** All child behaviors have their declared positive/rejection acceptance evidence; the output is reachable through authored input, not a direct test-only call that skips compilation. Application-only boundaries are tested using compiled results.
+**Demonstrable completion:** All child behaviors have their declared acceptance evidence and gates. For L00, this is reviewed example meaning, decisions and the source contract; no executable artifact is required. For implementation tracks, output is reachable through authored input, not a test-only call that skips compilation; application boundaries use compiled results.
 
 **Scope boundary:** No titration, calculated dosing, substitution, drug sequencing or real prescribing.
 
@@ -198,7 +220,7 @@ After F01.1.a, F01.1.b, F01.2.a, F01.2.b and U01.1.a can start independently onc
 
 **High-level work:** Introduce one clock and one fixed interval at a time before multi-anchor composition.
 
-**Demonstrable completion:** All child behaviors have their declared positive/rejection acceptance evidence; the output is reachable through authored input, not a direct test-only call that skips compilation. Application-only boundaries are tested using compiled results.
+**Demonstrable completion:** All child behaviors have their declared acceptance evidence and gates. For L00, this is reviewed example meaning, decisions and the source contract; no executable artifact is required. For implementation tracks, output is reachable through authored input, not a test-only call that skips compilation; application boundaries use compiled results.
 
 **Scope boundary:** No calendar recurrence, event-ended regimens or therapeutic-drug-monitoring workflow.
 
@@ -214,7 +236,7 @@ After F01.1.a, F01.1.b, F01.2.a, F01.2.b and U01.1.a can start independently onc
 
 **High-level work:** Build identity, filtering and pairing without implementing general counts/trends.
 
-**Demonstrable completion:** All child behaviors have their declared positive/rejection acceptance evidence; the output is reachable through authored input, not a direct test-only call that skips compilation. Application-only boundaries are tested using compiled results.
+**Demonstrable completion:** All child behaviors have their declared acceptance evidence and gates. For L00, this is reviewed example meaning, decisions and the source contract; no executable artifact is required. For implementation tracks, output is reachable through authored input, not a test-only call that skips compilation; application boundaries use compiled results.
 
 **Scope boundary:** No value differences, two-point rate, regression or arbitrary joins.
 
@@ -230,7 +252,7 @@ After F01.1.a, F01.1.b, F01.2.a, F01.2.b and U01.1.a can start independently onc
 
 **High-level work:** Use day count and lookup separately before integrating clinical interpretation.
 
-**Demonstrable completion:** All child behaviors have their declared positive/rejection acceptance evidence; the output is reachable through authored input, not a direct test-only call that skips compilation. Application-only boundaries are tested using compiled results.
+**Demonstrable completion:** All child behaviors have their declared acceptance evidence and gates. For L00, this is reviewed example meaning, decisions and the source contract; no executable artifact is required. For implementation tracks, output is reachable through authored input, not a test-only call that skips compilation; application boundaries use compiled results.
 
 **Scope boundary:** No inferred trimester constants, fuzzy date precision or universal clinical thresholds.
 
@@ -246,7 +268,7 @@ After F01.1.a, F01.1.b, F01.2.a, F01.2.b and U01.1.a can start independently onc
 
 **High-level work:** Introduce semantic action identity before coalescing, conflict checks and positive handoff.
 
-**Demonstrable completion:** All child behaviors have their declared positive/rejection acceptance evidence; the output is reachable through authored input, not a direct test-only call that skips compilation. Application-only boundaries are tested using compiled results.
+**Demonstrable completion:** All child behaviors have their declared acceptance evidence and gates. For L00, this is reviewed example meaning, decisions and the source contract; no executable artifact is required. For implementation tracks, output is reachable through authored input, not a test-only call that skips compilation; application boundaries use compiled results.
 
 **Scope boundary:** No heuristic merging, compromise treatment or partial-group finalization.
 
@@ -262,7 +284,7 @@ After F01.1.a, F01.1.b, F01.2.a, F01.2.b and U01.1.a can start independently onc
 
 **High-level work:** Use dependency tracing, constant folding and finite-domain comparison before considering a solver.
 
-**Demonstrable completion:** All child behaviors have their declared positive/rejection acceptance evidence; the output is reachable through authored input, not a direct test-only call that skips compilation. Application-only boundaries are tested using compiled results.
+**Demonstrable completion:** All child behaviors have their declared acceptance evidence and gates. For L00, this is reviewed example meaning, decisions and the source contract; no executable artifact is required. For implementation tracks, output is reachable through authored input, not a test-only call that skips compilation; application boundaries use compiled results.
 
 **Scope boundary:** No universal reachability proof, automatic clinical-rule repair or rejection of legitimate provider-choice overlap.
 
@@ -278,7 +300,7 @@ After F01.1.a, F01.1.b, F01.2.a, F01.2.b and U01.1.a can start independently onc
 
 **High-level work:** Reuse a narrow existing canvas/details seam where suitable; keep the backend authoritative.
 
-**Demonstrable completion:** All child behaviors have their declared positive/rejection acceptance evidence; the output is reachable through authored input, not a direct test-only call that skips compilation. Application-only boundaries are tested using compiled results.
+**Demonstrable completion:** All child behaviors have their declared acceptance evidence and gates. For L00, this is reviewed example meaning, decisions and the source contract; no executable artifact is required. For implementation tracks, output is reachable through authored input, not a test-only call that skips compilation; application boundaries use compiled results.
 
 **Scope boundary:** No full editor rewrite, ingestion, text parser, production activation UI or client-side clinical evaluator.
 
@@ -294,7 +316,7 @@ After F01.1.a, F01.1.b, F01.2.a, F01.2.b and U01.1.a can start independently onc
 
 **High-level work:** Assign a concrete integration story for C-01, E-01 and C-03 and explicit completion ownership for existing C-02/E-02 stories.
 
-**Demonstrable completion:** All child behaviors have their declared positive/rejection acceptance evidence; the output is reachable through authored input, not a direct test-only call that skips compilation. Application-only boundaries are tested using compiled results.
+**Demonstrable completion:** All child behaviors have their declared acceptance evidence and gates. For L00, this is reviewed example meaning, decisions and the source contract; no executable artifact is required. For implementation tracks, output is reachable through authored input, not a test-only call that skips compilation; application boundaries use compiled results.
 
 **Scope boundary:** No new clinical rules, catch-all feature development, live EHR evidence or declaration of production readiness.
 

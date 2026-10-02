@@ -157,7 +157,7 @@ The material risk is replacing one complex evaluator with another framework. Kee
 
 ## 13. Supporting specifications and change control
 
-- [Three-level implementation decomposition](2026-10-01-pathway-language-level-1-behavioral-slices.md) breaks the foundation and follow-on capabilities into linked behavioral outcomes, refinements and single-story components; it is a delivery plan, not an architectural amendment.
+- [Three-level language-definition and implementation decomposition](2026-10-01-pathway-language-level-1-behavioral-slices.md) starts with eight L00 design stories defining one example before its validator implementation, then breaks the foundation and follow-on capabilities into linked behavioral outcomes, refinements and single-story components; it is a delivery plan, not an architectural amendment.
 - [Stage A implementation specification](2026-09-30-pathway-language-stage-a-spec.md) is authoritative for detailed schemas, truth tables, operator signatures, capability cuts, acceptance cases and Stage A decisions. Its draft status is separate from this accepted architecture.
 - [Design corpus](../records/pathway-language/corpus/README.md) preserves the eight care documents and two temporal discussions with provenance and hashes. Interpretations remain in the specification, not edits to those source documents.
 - [Historical direction record](../records/pathway-language/2026-09-28-direction.md) explains earlier options; it is not an alternate implementation contract.
