@@ -26,7 +26,7 @@ Use the supplied [GERD pregnancy pathway](../records/pathway-language/corpus/GER
 
 L00.1.a defines only how evidence for this alarm relates to a proposed evaluation within an explicitly agreed scope. The source’s urgency wording is a requirement to interpret, not permission to invent a numerical deadline, diagnostic test or treatment. Preserve the distinction between progressive dysphagia in this passage and the broader dysphagia wording in the referral section. Other alarms, referral/endoscopy decisions, medication sequencing and the full C-01 scenario remain outside this first story.
 
-Use constructed evidence cases for symptom present, explicitly assessed absent, and not assessed/unavailable. Establish what evidence can support each case; an empty chart is not an explicit negative. A negative for this one symptom cannot clear all alarms or imply that no evaluation is needed for another reason. Source documents are design inputs, not approved executable guidance. Drafting and extracting questions can begin now; a named clinical reviewer must adjudicate the intended scope, urgency and action meaning before the story closes. This update selects the source, but does not claim that adjudication or its outcome table is complete.
+Use constructed evidence cases for symptom present, explicitly assessed absent, and not assessed/unavailable. Establish what evidence can support each case; an empty chart is not an explicit negative. A negative for this one symptom cannot clear all alarms or imply that no evaluation is needed for another reason. Source documents are design inputs, not approved executable guidance. Drafting and extracting questions can begin now; a named clinical reviewer must adjudicate the intended scope, urgency and action meaning before the story closes. This update selects the source, but does not claim that adjudication or its outcome table is complete. Language modeling (L00.1.b–L00.4.b) does not wait for that adjudication: it starts from the recorded [interpretation draft](../records/pathway-language/gerd-progressive-dysphagia-interpretation-draft.md) and represents unresolved clinical meaning as typed holes, as in the [minimal language model draft](../records/pathway-language/gerd-minimal-language-model.md). Those stories cannot resolve a hole or claim clinical meaning. Adjudication remains required to close L00.1.a and before any executable clinical content for this alarm is approved; C-01 acceptance ([I01.1.a](2026-10-01-pathway-language-level-3-story-spec.md#i01-1-a)) is gated on L00.1.a.
 
 The later constant-only F01 validator fixture remains an engineering restriction of the reviewed representation, not an executable clinical version of this alarm rule. Evidence-dependent evaluation arrives later. L00 completion also does not close the larger C-01 packet.
 
@@ -43,7 +43,7 @@ The later constant-only F01 validator fixture remains an engineering restriction
 
 | Code | Required before starting the story | Current status |
 |---|---|---|
-| D | Prior design outputs are reviewed; engineering decisions have an owner; L00.1.a additionally requires named clinical review of the source interpretation before completion | Language decisions are open; this story produces the contract rather than requiring it to exist |
+| D | Prior design outputs are reviewed; engineering decisions have an owner; L00.1.a additionally requires named clinical review of the source interpretation before completion (later L00 stories use its draft and keep unresolved clinical meaning as typed holes) | Language decisions are open; this story produces the contract rather than requiring it to exist |
 | E | Engineering owner has fixed the exact supported contract and expected nonclinical outputs in Stage A or the linked story decision | Contract-specific decisions remain open; do not treat this plan as completed Stage A |
 | C1 | E plus named clinical review of the relevant C-01 assessment/follow-up behavior | Clinical owner/reviewers unassigned in Stage A |
 | C2 | E plus actual reviewed medication definitions, safety requirements and C-02 expected outcomes | Clinical owner/reviewers unassigned; no invented drugs/doses |
@@ -54,11 +54,11 @@ Technical prototypes can precede clinical adjudication only as nonclinical provi
 
 ## Dependency audit
 
-There are 17 outcomes, 44 refinements and 85 stories. The original 65-story implementation plan had a longest dependency chain of 34 stories. The subsequent 77-story plan had start depth 17 and acceptance depth 23 but omitted the prerequisite language-definition work. The current counts include that newly explicit design work. The revised start-prerequisite graph has depth 25; including integration/acceptance gates gives depth 31. Both have no dangling references or cycles. These are unit-weighted graph depths, not duration estimates or a promise of proportionate speedup; scope has also increased.
+There are 17 outcomes, 44 refinements and 85 stories. The original 65-story implementation plan had a longest dependency chain of 34 stories. The subsequent 77-story plan had start depth 17 and acceptance depth 23 but omitted the prerequisite language-definition work. The current counts include that newly explicit design work. The revised start-prerequisite graph has depth 24; including integration/acceptance gates gives depth 30 (each one fewer than before L00.1.b stopped waiting for L00.1.a adjudication, which now gates I01.1.a instead). Both have no dangling references or cycles. These are unit-weighted graph depths, not duration estimates or a promise of proportionate speedup; scope has also increased.
 
-8 stories define language contracts (D); 47 implementation stories have engineering readiness code E; 30 require clinical adjudication (C1: 4, C2: 8, E1: 11, E2: 7). E does not mean immediately ready: prerequisites and unresolved engineering contracts still apply. Clinical owners remain unassigned and are required before clinical acceptance. D is a design-work code, not a clinical-review exemption: the source-backed L00.1.a requires clinical interpretation review, inherited by later L00 stories.
+8 stories define language contracts (D); 47 implementation stories have engineering readiness code E; 30 require clinical adjudication (C1: 4, C2: 8, E1: 11, E2: 7). E does not mean immediately ready: prerequisites and unresolved engineering contracts still apply. Clinical owners remain unassigned and are required before clinical acceptance. D is a design-work code, not a clinical-review exemption: the source-backed L00.1.a requires clinical interpretation review. Later L00 stories do not inherit it as a start or completion prerequisite, because they keep unresolved clinical meaning as typed holes; approving executable clinical content still requires it.
 
-L00.1.a is the first story with no implementation predecessor; its unresolved questions are its work. After L00 and F01.1.a, F01.1.b, F01.2.a, F01.2.b and U01.1.a can start independently once their contract decisions are fixed. The previous plan was not literally serial for its first fifteen stories: it already had two successors after F01.1.a. Read the exact leaf prerequisites rather than inferring order from document position.
+L00.1.a and L00.1.b have no story predecessor: L00.1.a’s unresolved questions are its work, and L00.1.b starts from the L00.1.a interpretation draft rather than its adjudicated completion. After L00 and F01.1.a, F01.1.b, F01.2.a, F01.2.b and U01.1.a can start independently once their contract decisions are fixed. The previous plan was not literally serial for its first fifteen stories: it already had two successors after F01.1.a. Read the exact leaf prerequisites rather than inferring order from document position.
 
 ## L00 — Define the meaning and representation of one pathway
 
@@ -86,11 +86,11 @@ L00.1.a is the first story with no implementation predecessor; its unresolved qu
 
 ### L00.1.b — Define only the concepts needed by the example
 
-**Problem statement:** Given the reviewed meaning table from L00.1.a, produce a small glossary of necessary concepts with one responsibility each.
+**Problem statement:** Given the L00.1.a interpretation draft (adjudicated meaning where available; otherwise its open questions as typed holes), produce a small glossary of necessary concepts with one responsibility each.
 
 **Parent:** [L00.1](2026-10-01-pathway-language-level-2-refined-slices.md#l00-1). **Stage A trace:** Stage A sections 2, 3, 6, 8 and 17; prepares B-01, B-03, B-04, B-24; no conformance completion claimed.
 
-**Start prerequisites:** [L00.1.a](2026-10-01-pathway-language-level-3-story-spec.md#l00-1-a).
+**Start prerequisites:** No story predecessor; input is the recorded [L00.1.a interpretation draft](../records/pathway-language/gerd-progressive-dysphagia-interpretation-draft.md). L00.1.a adjudication is not required to start or complete this story.
 
 **Integration/acceptance gates:** No additional story-specific gates; inherited gates and profile/scenario requirements still apply. **Readiness:** D.
 
@@ -1744,7 +1744,7 @@ L00.1.a is the first story with no implementation predecessor; its unresolved qu
 
 **Start prerequisites:** [U01.2.b](2026-10-01-pathway-language-level-3-story-spec.md#u01-2-b), [F05.2.b](2026-10-01-pathway-language-level-3-story-spec.md#f05-2-b), [F06.2.b](2026-10-01-pathway-language-level-3-story-spec.md#f06-2-b), [F07.2.b](2026-10-01-pathway-language-level-3-story-spec.md#f07-2-b), [T01.3.b](2026-10-01-pathway-language-level-3-story-spec.md#t01-3-b), [X01.4.a](2026-10-01-pathway-language-level-3-story-spec.md#x01-4-a).
 
-**Integration/acceptance gates:** [V01.1.a](2026-10-01-pathway-language-level-3-story-spec.md#v01-1-a), [V01.1.b](2026-10-01-pathway-language-level-3-story-spec.md#v01-1-b), [V01.2.a](2026-10-01-pathway-language-level-3-story-spec.md#v01-2-a). **Readiness:** C1.
+**Integration/acceptance gates:** [V01.1.a](2026-10-01-pathway-language-level-3-story-spec.md#v01-1-a), [V01.1.b](2026-10-01-pathway-language-level-3-story-spec.md#v01-1-b), [V01.2.a](2026-10-01-pathway-language-level-3-story-spec.md#v01-2-a), [L00.1.a](2026-10-01-pathway-language-level-3-story-spec.md#l00-1-a). **Readiness:** C1.
 
 **High-level work:** Run load/edit/compile/preview, missing-attestation Need, authorized fulfillment, new revision, review and sandbox whole-scope finalization; include retry and rejection variants.
 
