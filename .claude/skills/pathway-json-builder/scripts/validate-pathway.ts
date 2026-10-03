@@ -31,6 +31,7 @@
 // Exit codes: 0 = valid and in sync with its brief, 1 = invalid,
 //             2 = could not read/parse the file,
 //             3 = checkout does not contain origin/main (stale validator),
+//             5 = valid, but the compiler would refuse to activate it,
 //             4 = valid, but out of sync with its brief (check-brief-sync failed).
 
 import { readFileSync } from 'fs';
@@ -38,6 +39,7 @@ import { resolve } from 'path';
 import { execFileSync, spawnSync } from 'child_process';
 import { validatePathwayJson } from '../../../../apps/pathway-service/src/services/import/validator';
 import type { PathwayJson } from '../../../../apps/pathway-service/src/services/import/types';
+import { compilePathway } from '../../../../apps/pathway-service/src/services/compiler/compile';
 
 const SCHEMA_PATHS = [
   'apps/pathway-service/src/services/import',
@@ -121,6 +123,20 @@ if (!result.valid) {
   process.exit(1);
 }
 console.log(`✓ VALID — ${parsed.nodes?.length ?? 0} nodes, ${parsed.edges?.length ?? 0} edges (${result.warnings.length} warnings)`);
+
+// Activation compiles the stored pathway and refuses on any compile error
+// (resolvers/mutations/import.ts) — a JSON can import cleanly and then be
+// impossible to activate. Compile here so that is caught at build time.
+// Coded conditions need no attribute code map; `lab.*` / `allergy.*`
+// attribute-form conditions would report UNMAPPED_ATTRIBUTE, which is the
+// truth on an unseeded deployment (the spec tells the builder to emit coded form).
+const compiled = compilePathway({ pathway: parsed, codeMap: new Map(), temporalDefaults: {} } as never);
+if (compiled.ok === false) {
+  console.log(`✗ WILL NOT ACTIVATE — ${compiled.errors.length} compile error(s):`);
+  for (const e of compiled.errors) console.log(`  - [${e.code}] ${e.message}`);
+  process.exit(5);
+}
+console.log('✓ COMPILES — activation will not be refused');
 
 // The brief is the source of truth: a valid JSON its brief does not describe
 // is not deliverable. Plain node runs the check (it needs no ts-node).

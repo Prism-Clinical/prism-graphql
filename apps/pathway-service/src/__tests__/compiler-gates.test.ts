@@ -82,6 +82,9 @@ describe('conditionProblem', () => {
     [{ field: 'labs', operator: 'less_than', value: '718-7', system: 'LOINC' }, 'numeric threshold'],
     [{ field: 'labs', operator: 'less_than', value: '', threshold: 7 }, 'code value'],
     [{ operator: 'equals', value: 1 }, 'field or attribute'],
+    [{ operator: 'OR', conditions: [LAB, { operator: 'equals', value: 1 }] }, 'field or attribute'],
+    [{ operator: 'XOR', conditions: [LAB] }, 'AND\" or \"OR'],
+    [{ operator: 'AND', conditions: [] }, 'at least one condition'],
   ])('rejects %j', (c, fragment) => expect(conditionProblem(c)).toContain(fragment));
 
   it.each([
@@ -91,6 +94,8 @@ describe('conditionProblem', () => {
     [LAB],
     [{ field: 'conditions', operator: 'includes_code', value: 'O99.0*', system: 'ICD-10' }],
     [{ field: 'labs', operator: 'exists', value: '' }],
+    // A nested group is sound when every entry in it is.
+    [{ operator: 'OR', conditions: [LAB, { operator: 'and', conditions: [LAB, { attribute: 'patient.trimester', operator: 'equals', value: 2 }] }] }],
   ])('accepts %j', (c) => expect(conditionProblem(c)).toBeNull());
 });
 

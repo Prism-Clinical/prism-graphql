@@ -64,7 +64,13 @@ export function resolveDatums(
     if (p) fail('PAYLOAD', `condition on "${String(c.attribute)}": ${p}`);
   };
 
-  for (const c of conditions) {
+  // Nested AND/OR groups contribute their LEAVES: a datum two levels down is
+  // still a datum the gate reads.
+  const leaves = (cs: Record<string, unknown>[]): Record<string, unknown>[] =>
+    cs.flatMap((c) => (Array.isArray(c.conditions) && c.field === undefined && c.attribute === undefined
+      ? leaves(c.conditions as Record<string, unknown>[])
+      : [c]));
+  for (const c of leaves(conditions)) {
     const op = String(c.operator ?? '');
     if (typeof c.attribute === 'string') {
       const [ns, ...rest] = c.attribute.split('.');

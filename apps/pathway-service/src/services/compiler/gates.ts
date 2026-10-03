@@ -16,6 +16,18 @@ const isScalar = (v: unknown) => typeof v === 'number' || typeof v === 'string' 
 export function conditionProblem(c: unknown): string | null {
   if (typeof c !== 'object' || c === null || Array.isArray(c)) return 'a condition must be an object';
   const r = c as Record<string, unknown>;
+  // A nested AND/OR group (josh-dev): sound when its operator is and every
+  // entry inside it is — leaves and further groups alike.
+  if (Array.isArray(r.conditions) && r.field === undefined && r.attribute === undefined) {
+    const op = String(r.operator ?? '').toUpperCase();
+    if (op !== 'AND' && op !== 'OR') return 'a condition group needs operator "AND" or "OR"';
+    if (r.conditions.length === 0) return 'a condition group needs at least one condition';
+    for (const inner of r.conditions) {
+      const problem = conditionProblem(inner);
+      if (problem) return problem;
+    }
+    return null;
+  }
   if (typeof r.attribute === 'string') {
     if (typeof r.operator !== 'string') return `the condition on "${r.attribute}" has no operator`;
     if (r.operator === 'exists') return null;
