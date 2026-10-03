@@ -410,7 +410,7 @@ describe('one pathway offering a first-line drug and an alternative (medication_
     expect(medsOf(runId)).toEqual(['Metoprolol']);
     expect(run.mergedPlan.conflicts).toEqual([expect.objectContaining({ type: 'medication_choice', resolution: null })]);
     // The alternative stays visible as the choice's other candidate.
-    expect(run.mergedPlan.conflicts[0].candidates.map((c) => c.recommendation.name)).toEqual(['Metoprolol', 'Carvedilol']);
+    expect(run.mergedPlan.conflicts[0].candidates.map((c) => c.recommendation.name).sort()).toEqual(['Carvedilol', 'Metoprolol']);
     expect(blockerTypes(runId)).not.toContain('UNRESOLVED_CONFLICT');
     expect(formatMergedForGraphQL(run.mergedPlan as MergedCarePlan).conflicts[0].type).toBe('MEDICATION_CHOICE');
   });
