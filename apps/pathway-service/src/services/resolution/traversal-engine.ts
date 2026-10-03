@@ -37,6 +37,7 @@ import {
   AttributeCodeMap,
   WindowAnchorEvidence,
   conditionLeaves,
+  declinedKeyFor,
 } from './types';
 
 // ─── Helpers ──────────────────────────────────────────────────────────
@@ -116,6 +117,8 @@ function unresolvedAsk(
   },
   /** The attribute vocabulary, so a lab attribute asks for a LAB. */
   codeMap?: AttributeCodeMap,
+  /** For data the provider has said they do not have (`declinedKeyFor`). */
+  gateAnswers?: ReadonlyMap<string, GateAnswer>,
 ): UnresolvedAsk | null {
   const couldNotDecide =
     gateResult.indeterminate === true || gateResult.dataUnavailable === true;
@@ -146,6 +149,9 @@ function unresolvedAsk(
       : shortSeries
         ? seriesAskFor(condition, shortSeries.latestDate)
         : askFor(condition, codeMap);
+    // Declined: the provider was asked for this datum and has none. Asking
+    // again cannot help, so the gate falls through to `default_behavior`.
+    if (ask && gateAnswers?.get(declinedKeyFor(ask.datumKey))?.notAvailable === true) continue;
     if (ask) return ask;
   }
   return null;
@@ -984,7 +990,7 @@ export class TraversalEngine {
             affectedSubtreeSize: subtreeSize,
             estimatedImpact: subtreeSize > 3 ? 'high' : subtreeSize > 1 ? 'medium' : 'low',
           });
-        } else if (unresolvedAsk(gateProps, gateResult, this.codeMap)) {
+        } else if (unresolvedAsk(gateProps, gateResult, this.codeMap, gateAnswers)) {
           // The gate could not DECIDE — as opposed to deciding "no". Ask for
           // the datum it needed rather than silently taking default_behavior,
           // which is what made a missing haemoglobin indistinguishable from a
@@ -993,7 +999,7 @@ export class TraversalEngine {
           // `unresolvedAsk` returns null for every class with no honest
           // question (membership, aggregate) and whenever the author set
           // on_unresolved: 'default', so this arm cannot fire on them.
-          const ask = unresolvedAsk(gateProps, gateResult, this.codeMap)!;
+          const ask = unresolvedAsk(gateProps, gateResult, this.codeMap, gateAnswers)!;
 
           resolutionState.set(nodeIdentifier, {
             nodeId: nodeIdentifier,

@@ -395,7 +395,18 @@ export interface GateAnswer {
    * needed no migration.
    */
   dateValue?: string;
+  /**
+   * The provider has no value for a datum the pathway asked for. Stored under
+   * `declinedKeyFor(datumKey)`, never a gate id: every gate that would ask for
+   * that datum stops asking and takes its `default_behavior`, as if authored
+   * `on_unresolved: 'default'`. It asserts nothing about the patient — a value
+   * that later reaches the chart decides the gates as usual.
+   */
+  notAvailable?: boolean;
 }
+
+/** Where "the provider has no value for this datum" lives in a session's gate answers. */
+export const declinedKeyFor = (datumKey: string): string => `declined:${datumKey}`;
 
 /** Where a `window_from` window opened, recorded on the gate (see NodeResult). */
 export interface WindowAnchorEvidence {

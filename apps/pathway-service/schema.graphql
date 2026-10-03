@@ -1283,6 +1283,14 @@ input GateAnswerInput {
   anchored on (`ResolvedNode.windowAnchors`). Supply it alone.
   """
   dateValue: String
+  """
+  The provider has no value for the datum a pending question asks for (a lab,
+  a vital, a `patient.*` attribute or a treatment start date). Supply it alone,
+  as `true`. Every gate waiting on that datum stops asking and takes its
+  default; the pathway may route on the absence itself (for example, order the
+  lab). A value that later reaches the chart decides those gates as usual.
+  """
+  notAvailable: Boolean
 }
 
 input AdditionalContextInput {

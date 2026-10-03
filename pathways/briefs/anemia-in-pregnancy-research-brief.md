@@ -1,6 +1,6 @@
 # Pathway Research Brief — Anemia in Pregnancy
 
-JSON: pathways/json/anemia-in-pregnancy.json @ version 9
+JSON: pathways/json/anemia-in-pregnancy.json @ version 10
 
 **Status: DRAFT v2 for physician review — not yet approved for JSON build.**
 Scope assumed from request: outpatient prenatal care, adult pregnant patients, US practice,
@@ -34,8 +34,18 @@ still current, `[BLOCKED — prior_node_result]` import-blocked gate design with
 
 - **Logical ID**: `anemia-in-pregnancy`
 - **Title**: Anemia in Pregnancy — Classification and Treatment
-- **Version**: 9 `[DECISION — Josh 2026-09-25]` (JSON `"9"`; was `"8"`). Imports as
-  NEW_VERSION; v8 sessions keep v8's graph. Bumped for:
+- **Version**: 10 `[DECISION — Josh 2026-10-03]` (JSON `"10"`; was `"9"`). Imports as
+  NEW_VERSION; v9 sessions keep v9's graph. Bumped for:
+  - **No hemoglobin level: ask, and if there is none, order the anemia labs** (§3 Step 1.9,
+    §4b `gate-no-hgb-on-file`, §6 Lab-18, §18). Josh, 2026-10-03: "we ask the provider for a
+    level if we don't have it. If none is entered, then we treat it as unknown level of
+    anemia and recommend ordering anemia labs." The hemoglobin gates keep
+    `on_unresolved: ask`. What is new: the provider can answer the question **"Not
+    available"** (engine: `GateAnswerInput.notAvailable`), which stops every gate asking for
+    that datum and lets them take their defaults; and with no hemoglobin on file in 90 days
+    Step 1.9 orders a ferritin alongside Step 1.1's CBC with indices, so one draw returns
+    the level, the indices and the iron status.
+  v9 was bumped for:
   - **IV iron first needs a ferritin-confirmed iron deficiency** (§3 Steps 2.9, 2.12, 2.13,
     §2 Stage 2.6, §4 DP-3, §4b `gate-oral-bridge-ga` / `gate-ida-confirmed-iv` /
     `gate-no-ferritin-on-file`, §6 Lab-17): v8 gave IV iron first on the empiric arm with no
@@ -256,6 +266,15 @@ None. (Single-condition pathway; O99.01x already encodes the pregnancy+anemia co
   `[DECISION — Josh 2026-09-24]` (3c readable from the chart) as a `[BUILD NOTE]`
   recommendation step: hosts Guid-6. Opens next to the DP-3 question whenever the chart
   carries a malabsorption code (§4b), on either iron arm; it does not choose the route. [1][8][18][19]
+- **Step 1.9 — Hemoglobin level unknown: order anemia labs** *(gated by
+  gate-no-hgb-on-file on Step 1.1 — its only way in; v10)* `[DECISION — Josh 2026-10-03]`
+  (no level on file and none entered → unknown severity → order the anemia labs): no
+  hemoglobin in the last 90 days. Orders Lab-18 (ferritin, its own node); Step 1.1's Lab-1
+  (CBC with indices) is unconditional, so together they are the anemia labs. Open from the
+  start of the visit, while the hemoglobin question is still being asked; closed as soon
+  as a hemoglobin is on file — entered by the provider or resulted. `[JOSH — CONFIRM]` the
+  order set: CBC with indices + ferritin. Iron/TIBC, reticulocytes and B12/folate stay
+  behind the MCV classification, which the CBC answers. [1][5]
 - **Step 2.12 — No ferritin on file: order ferritin before IV iron** *(gated by
   gate-no-ferritin-on-file on Step 2.9 — its only way in; v9)* `[DECISION — Josh 2026-09-25]`
   (IV iron first on the empiric arm orders a ferritin) as a `[BUILD NOTE]` step: IV iron
@@ -942,6 +961,22 @@ the pathway presumes the coded diagnosis.
     (LOINC 2276-4) — most recent value?" and holds IV iron (reached only at GA ≥ 14, since it
     sits behind gate-iv-iron-ga-direct). On the confirmed arm the ferritin that opened Stage 2
     satisfies it. [1][2][5]
+- **Gate `gate-no-hgb-on-file` — No hemoglobin on file (90 days) — severity unknown, order
+  anemia labs** (v10) `[DECISION — Josh 2026-10-03]` (unknown level → order anemia labs) ·
+  `[BUILD NOTE]` (wiring)
+  - Attached to: step-1-1 · Branches to: **step-1-9** · patient_attribute · Default:
+    **skip** · On unresolved: **default** (membership only — nothing is ever asked)
+  - Condition: coded, field `labs`, **`not_includes_code`**, value `718-7`, system LOINC,
+    display "Hemoglobin (g/dL)", horizon **{days: 90}**. No hemoglobin → true (Step 1.9
+    orders the ferritin); any hemoglobin in 90 days → false.
+  - How it sits with the asking gates: `gate-severe-anemia`, `gate-referral-threshold` and
+    the two response gates still **ask** for a hemoglobin they cannot find. The provider
+    either enters one (the fact decides those gates, and this gate closes) or answers "Not
+    available" (those gates stop asking and close on their defaults; this gate stays open,
+    so the plan is the anemia labs). `gate-severe-anemia` reads a 7-day horizon: a
+    hemoglobin 8–90 days old is asked about again but is not "unknown" — this gate stays
+    closed and Step 1.1's CBC is the order.
+  - Proof: `gate-proof.ts unknown-hgb`.
 - **Gate `gate-no-ferritin-on-file` — No ferritin on file (90 days) — order one before IV
   iron** (v9) `[DECISION — Josh 2026-09-25]` (IV iron first on the empiric arm orders a
   ferritin) · `[BUILD NOTE]` (wiring)
@@ -1145,6 +1180,8 @@ narrative. Recorded so reviewers know the omission is deliberate.
   is the narrative-interpretation alternative if gating on a resulted read). [1]
 - **Lab-9 — Type and antibody screen** (on Step 4.1): ABO/Rh LOINC 882-1 + antibody screen
   890-4; hemorrhage-bundle tie-in for anemic patients approaching delivery. [11]
+- **Lab-18 — Ferritin, serum** (on Step 1.9; v10): LOINC 2276-4 / CPT 82728; ordered with
+  the CBC when no hemoglobin is on file. A copy of Lab-2 — one node per host step. [1][5]
 - **Lab-17 — Ferritin, serum** (on Step 2.12; v9): LOINC 2276-4 / CPT 82728; ordered when IV
   iron first is chosen with no ferritin on file (the empiric arm). A copy of Lab-2 — one node
   per host step. [1][5]
@@ -1170,6 +1207,7 @@ its other host:
 | Lab-2 Ferritin | Step 1.2 | **Lab-15** (v7) | Step 1.8 |
 | Lab-3 Iron/TIBC/saturation | Step 1.2 | **Lab-16** (v7) | Step 1.8 |
 | Lab-2 Ferritin | Step 1.2 | **Lab-17** (v9) | Step 2.12 |
+| Lab-2 Ferritin | Step 1.2 | **Lab-18** (v10) | Step 1.9 |
 
 The new nodes share the originals' CodeEntries (HAS_CODE) and citations; CodeEntries are
 not projected into the care plan, so sharing them is harmless. Proof: `gate-proof.ts
@@ -1300,7 +1338,7 @@ All pairs acyclic; REQUIRES points dependent → prerequisite:
 | 718-7 | LOINC | Hemoglobin [Mass/Vol] blood | Lab-1, Lab-10 |
 | 4544-3 | LOINC | Hematocrit, automated | Lab-1, Lab-10 |
 | 787-2 | LOINC | MCV, RBC | Lab-1, Lab-10 |
-| 2276-4 | LOINC | Ferritin, serum | Lab-2, Lab-11, Lab-15, Lab-17 |
+| 2276-4 | LOINC | Ferritin, serum | Lab-2, Lab-11, Lab-15, Lab-17, Lab-18 |
 | 2498-4 | LOINC | Iron, serum | Lab-3, Lab-16 |
 | 2500-7 | LOINC | TIBC | Lab-3, Lab-16 |
 | 2502-3 | LOINC | Iron saturation | Lab-3, Lab-16 |
@@ -1312,7 +1350,7 @@ All pairs acyclic; REQUIRES points dependent → prerequisite:
 | 882-1 | LOINC | ABO+Rh type | Lab-9 |
 | 890-4 | LOINC | RBC antibody screen | Lab-9 |
 | 85025 | CPT | CBC with automated differential | Lab-1, Lab-10 |
-| 82728 | CPT | Ferritin | Lab-2, Lab-11, Lab-15, Lab-17 |
+| 82728 | CPT | Ferritin | Lab-2, Lab-11, Lab-15, Lab-17, Lab-18 |
 | 83540 | CPT | Iron | Lab-3, Lab-16 |
 | 83550 | CPT | TIBC | Lab-3, Lab-16 |
 | 85045 | CPT | Reticulocytes, automated | Lab-4, Lab-12 |
@@ -1449,12 +1487,13 @@ Nodes that can carry CITES_EVIDENCE:
   [1][5][7][22]
 - Meds: Med-1: [1][5][13][14][15] · Med-2, Med-3: [1] · Med-4–Med-7, Med-13–Med-16: [5][22] · Med-8,
   Med-9: [1] · Med-10: [13] · Med-11: [1] · Med-12: [1][17]
-- Labs: Lab-1, Lab-10: [1] · Lab-2, Lab-11, Lab-15, Lab-17: [1][5] · Lab-3, Lab-16: [1] · Lab-4, Lab-12: [1] · Lab-5, Lab-6: [1]
+- Labs: Lab-1, Lab-10: [1] · Lab-2, Lab-11, Lab-15, Lab-17, Lab-18: [1][5] · Lab-3, Lab-16: [1] · Lab-4, Lab-12: [1] · Lab-5, Lab-6: [1]
   · Lab-7, Lab-14: [4] · Lab-8, Lab-13: [1] · Lab-9: [11]
 - Proc-1: [1][11] · Guid-1: [1][12] · Guid-2: [1][12][13] · Guid-3: [1][12]
   · Guid-4: [5][13][14] · Guid-5: [1][10] · Guid-6 (v8): [8][18]
 - Step 2.11 (v8): [1][8][18][19]
 - Step 2.12, Step 2.13 (v9): [1][5] (Step 1.2's — the ferritin workup)
+- Step 1.9 (v10): [1][5]
 
 Cannot cite (evidence attaches to host step — builder must reattach): all Gates → their
 attached Stage/Step per §4b rationale refs; QM-1 → Step 2.3 [1][3]; QM-2 → Step 4.1
@@ -1474,6 +1513,7 @@ margin). **These day-counts are my proposal — review.**
 | gate-ida-confirmed | labs 2276-4 (ferritin) | {days: 90} | — | — | Confirmatory ferritin from this workup |
 | gate-ida-confirmed-iv (v9) / gate-oral-bridge-ga's ferritin leaf (v9) | labs 2276-4 (ferritin) `less_than` 30 | {days: 90} | — | — | Identical to gate-ida-confirmed, so both arms read the same ferritin |
 | gate-no-ferritin-on-file (v9) / gate-oral-bridge-ga's "no ferritin" leaf (v9) | labs 2276-4 `not_includes_code` | {days: 90} | — | — | Same window as the threshold leaves: "no ferritin on file" and "ferritin < 30 on file" never read different results |
+| gate-no-hgb-on-file (v10) | labs 718-7 `not_includes_code` | {days: 90} | — | — | "No level on file": the lab default window, deliberately wider than gate-severe-anemia's 7 days |
 | gate-oral-bridge-ga's GA leaf / gate-iv-iron-ga-direct | `patient.gestational_age_weeks` | — (`patient.*` has no temporal policy) | — | — | Current GA |
 | gate-hgb-response / gate-hgb-nonresponse | labs 718-7 Δ (`delta_from_baseline`) | — (`window_from` *is* the window: oral-iron start → clock, + latest Hgb ≤ 28 d before the start) | — | — | v7 — anchored to the treatment start, so the pre-treatment state is out by construction; due at day 14 |
 | gate-hgb-response / gate-hgb-nonresponse | labs 718-7 (at-target arm) | {days: 28} | — | — | The current Hgb, not last trimester's |
@@ -1661,6 +1701,21 @@ and Step 3.3 allows iron only with ferritin-confirmed deficiency. v3 exposed the
 patients to Step 2.1 alone; v4's empiric arm also includes the trial period, recheck and
 IV-iron route. Should a hemoglobinopathy code suppress the empiric option (e.g. a gate on
 Stage 1.5)? Not changed here.
+
+### `[DECISION — Josh 2026-10-03]` No hemoglobin level: ask; if none, unknown severity → order anemia labs — ENCODED (v10)
+
+Asked whether an anemia diagnosis with no level should simply order the labs, Josh chose to
+keep asking: "we ask the provider for a level if we don't have it. If none is entered, then
+we treat it as unknown level of anemia and recommend ordering anemia labs."
+
+- **Pathway:** `gate-no-hgb-on-file` → Step 1.9 → Lab-18 (ferritin), beside Step 1.1's
+  unconditional CBC with indices.
+- **Engine (josh-dev, not on main):** a data question can be answered "Not available"
+  (`GateAnswerInput.notAvailable`). The decline is stored against the datum, so every gate
+  asking for it stops and takes its `default_behavior`. It also closes the dead end the
+  coverage audit found, where a response gate asked for a "newest result drawn after" the
+  provider's own answer.
+- **Open:** `[JOSH — CONFIRM]` the order set (CBC with indices + ferritin).
 
 ### `[DECISION — Josh 2026-09-25]` IV iron first needs a confirmed ferritin — ENCODED (v9)
 

@@ -3,7 +3,7 @@
   "pathway": {
     "logical_id": "anemia-in-pregnancy",
     "title": "Anemia in Pregnancy \u2014 Classification and Treatment",
-    "version": "9",
+    "version": "10",
     "category": "OBSTETRIC",
     "scope": "Outpatient prenatal care, from diagnosed anemia through postpartum handoff. Screening is upstream of this pathway.",
     "target_population": "Adult pregnant patients with diagnosed anemia; hemoglobinopathy disease, thalassemia syndromes, and CKD-associated anemia are detected and routed out.",
@@ -185,6 +185,17 @@
         "display_number": "1.8",
         "title": "Hemoglobinopathy disease, empiric iron chosen: iron studies instead",
         "description": "Entered only via gate-hgbpathy-microcytic on Stage 1.5: empiric oral iron was chosen at DP-1 for a patient with sickle cell disease, a thalassemia syndrome or HbC/HbE disease on file. Empiric iron is not given (gate-empiric-no-hgbpathy closes it). Confirm iron deficiency first: ferritin < 30 ng/mL confirms it; iron, TIBC and transferrin saturation help separate it from the hemoglobinopathy's own microcytosis. Iron for confirmed deficiency follows DP-1's confirmatory-studies branch (Step 1.2 \u2192 Stage 2), directed with hematology/MFM (Steps 3.1 / 3.2)."
+      }
+    },
+    {
+      "id": "step-1-9",
+      "type": "Step",
+      "properties": {
+        "stage_number": 1,
+        "step_number": 9,
+        "display_number": "1.9",
+        "title": "Hemoglobin level unknown: order anemia labs",
+        "description": "Entered only via gate-no-hgb-on-file on Step 1.1: no hemoglobin on file in the last 90 days, so the severity of the anemia is unknown. Order a ferritin with Step 1.1's CBC with indices so one draw returns the level, the indices and the iron status. Closes as soon as a hemoglobin is on file."
       }
     },
     {
@@ -1151,6 +1162,26 @@
       }
     },
     {
+      "id": "gate-no-hgb-on-file",
+      "type": "Gate",
+      "properties": {
+        "title": "No hemoglobin on file (90 days) \u2014 severity unknown, order anemia labs",
+        "gate_type": "patient_attribute",
+        "default_behavior": "skip",
+        "on_unresolved": "default",
+        "condition": {
+          "field": "labs",
+          "operator": "not_includes_code",
+          "value": "718-7",
+          "system": "LOINC",
+          "display": "Hemoglobin (g/dL)",
+          "horizon": {
+            "days": 90
+          }
+        }
+      }
+    },
+    {
       "id": "gate-malabsorption-chart",
       "type": "Gate",
       "properties": {
@@ -2021,6 +2052,16 @@
     },
     {
       "id": "lab-17",
+      "type": "LabTest",
+      "properties": {
+        "name": "Ferritin, serum",
+        "code": "2276-4",
+        "system": "LOINC",
+        "specimen": "Serum"
+      }
+    },
+    {
+      "id": "lab-18",
       "type": "LabTest",
       "properties": {
         "name": "Ferritin, serum",
@@ -4599,6 +4640,51 @@
     },
     {
       "from": "step-2-12",
+      "to": "ev-5",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-1-1",
+      "to": "gate-no-hgb-on-file",
+      "type": "HAS_GATE"
+    },
+    {
+      "from": "gate-no-hgb-on-file",
+      "to": "step-1-9",
+      "type": "BRANCHES_TO"
+    },
+    {
+      "from": "step-1-9",
+      "to": "lab-18",
+      "type": "HAS_LAB_TEST"
+    },
+    {
+      "from": "lab-18",
+      "to": "code-loinc-2276-4",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "lab-18",
+      "to": "code-cpt-82728",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "lab-18",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "lab-18",
+      "to": "ev-5",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-1-9",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-1-9",
       "to": "ev-5",
       "type": "CITES_EVIDENCE"
     },

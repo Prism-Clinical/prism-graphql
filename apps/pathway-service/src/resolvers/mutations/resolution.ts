@@ -32,6 +32,7 @@ import type { DdiFinding } from '../../services/medications/ddi-pass';
 import { childChange, commitRun } from '../../services/resolution/pipeline/run-commit';
 import { generateCarePlan } from '../../services/resolution/care-plan-generator';
 import type { CarePlanData } from '../../services/resolution/care-plan-generator';
+import { declinedKeyFor } from '../../services/resolution/types';
 import type { GateAnswer, GateProperties, ProviderOverride, ResolutionSession } from '../../services/resolution/types';
 import { resolveTemporalPolicyVersion } from '../helpers/resolution-context';
 import {
@@ -68,6 +69,8 @@ export interface GateAnswerInput {
   selectedOption?: string;
   /** `YYYY-MM-DD` — a `window_from` treatment start date. See anchor-answer.ts. */
   dateValue?: string;
+  /** The provider has no value for the datum asked for. Supplied alone. */
+  notAvailable?: boolean;
 }
 
 /**
@@ -196,6 +199,31 @@ function answerChange(session: ResolutionSession, args: { sessionId: string; nod
     return { inputs, event: { eventType: 'BRANCH_CHOSEN', triggerData: { nodeId: args.nodeId, chosen, candidates } } };
   }
 
+  // "I don't have it." Recorded against the DATUM, so every gate asking for
+  // it stops; decided first, since it is neither a fact nor a verdict.
+  if (args.answer.notAvailable === true) {
+    if (!pending?.askTarget || !pending.datumKey) {
+      throw new GraphQLError(`"${args.nodeId}" is not asking for a value — notAvailable answers a data request only`, {
+        extensions: { code: 'BAD_USER_INPUT' },
+      });
+    }
+    const others = (['booleanValue', 'numericValue', 'selectedOption', 'dateValue'] as const)
+      .filter((k) => args.answer[k] !== undefined && args.answer[k] !== null);
+    if (others.length > 0) {
+      throw new GraphQLError(`Gate "${args.nodeId}": notAvailable is sent alone; got ${others.join(' and ')}`, {
+        extensions: { code: 'BAD_USER_INPUT' },
+      });
+    }
+    inputs.gateAnswers.set(declinedKeyFor(pending.datumKey), { notAvailable: true });
+    return {
+      inputs,
+      event: {
+        eventType: 'PROVIDER_ASSERTED_DATUM',
+        triggerData: { gateId: args.nodeId, datumKey: pending.datumKey, target: pending.askTarget, notAvailable: true },
+      },
+    };
+  }
+
   // A `window_from` treatment start date — asked (the anchor could not be
   // resolved) or edited (it resolved, and the clinician is correcting it).
   // Decided BEFORE the datum branch: an anchor date is not a fact to inject,
@@ -264,6 +292,7 @@ function answerChange(session: ResolutionSession, args: { sessionId: string; nod
           // option), because compareScalar compares with `===`.
           : { patientAttributes: { [target.path.split('.').slice(1).join('.')]: value } };
     inputs.additionalContext = mergeAdditionalContext(inputs.additionalContext, fragment);
+    if (pending.datumKey) inputs.gateAnswers.delete(declinedKeyFor(pending.datumKey));
     return {
       inputs,
       event: {

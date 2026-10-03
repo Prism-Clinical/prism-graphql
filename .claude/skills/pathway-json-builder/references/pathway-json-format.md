@@ -13,7 +13,8 @@
 > - `window_from` anchored trend windows, `delta_comparison`, NOT_YET_DUE
 > - `not_includes_code`
 > - nested AND/OR condition groups inside a compound gate
-> - `DATE` answers (treatment start dates) and typed `patient.*` datum answers
+> - `DATE` answers (treatment start dates), typed `patient.*` datum answers, and the
+>   "Not available" answer to a data question (`notAvailable`)
 > - import-time checks main lacks: `depends_on` object shape, code wildcard grammar,
 >   temporal override rules, SELECT options regardless of `answer_type` case
 >
@@ -294,6 +295,17 @@ but cannot be ordered, e.g. two undated results for the same LOINC → `AMBIGUOU
 |---|---|
 | `ask` (**the default when absent**) | Gate → PENDING_QUESTION, its whole subtree held ("Awaiting <datum>"), and a pending question asks the provider for the missing value. The answer is injected as a fact and the gate re-evaluates. |
 | `default` | `default_behavior` applies, exactly as for "answered no". |
+
+**"Not available" (josh-dev, 2026-10-03).** A provider asked for a datum can answer that
+they do not have it (`GateAnswerInput.notAvailable: true`; the simulator's "Not available"
+button). The decline is stored against the *datum*, so every `ask` gate waiting on it stops
+asking and takes its `default_behavior` — exactly as if it were `on_unresolved: default` for
+this session. Author for it: when a missing value should itself lead somewhere ("level
+unknown → order the labs"), add a **membership** gate on the absence — coded
+`not_includes_code` on the same LOINC, `on_unresolved: default` — branching to the step
+that orders it (anemia v10: `gate-no-hgb-on-file` → Step 1.9; `gate-proof.ts unknown-hgb`).
+That gate is open from the start of the visit, stays open after a decline, and closes when
+a value is on file. Without such a gate a declined datum simply closes its gates.
 
 - **Which conditions can be unresolved — the *numeric* conditions.** One definition,
   used by this spec, the brief template and `check-gate-control.ts` (which applies it, and

@@ -46,6 +46,10 @@
 //                    arm is closed (iron studies, Step 1.8, if chosen anyway);
 //                    confirmatory studies + ferritin 12 → the normal Stage 2 iron
 //                    path, ferritin 50 → no iron; traits / uncoded unchanged
+//   unknown-hgb      anemia v10: no hemoglobin on file — the level is ASKED for; Step 1.9
+//                    orders a ferritin beside Step 1.1's CBC meanwhile; "Not available"
+//                    stops the asking and the plan generates with the anemia labs; a
+//                    level entered instead closes Step 1.9 and decides the gates
 //   ghtn-shared-labs gestational hypertension v2: BP, severity-panel and urine-protein
 //                    labs split per host step — each follows its own step's gate
 //   ghtn-seizure     gestational hypertension v5: Guid-5 "Seizure: call 911" sits on
@@ -75,6 +79,7 @@ import { normalizePatientAttributes } from '../../../../apps/pathway-service/src
 import { TraversalEngine } from '../../../../apps/pathway-service/src/services/resolution/traversal-engine';
 import { readinessOf } from '../../../../apps/pathway-service/src/services/resolution/pipeline/readiness';
 import { GateType, DefaultBehavior, ScoringType } from '../../../../apps/pathway-service/src/types';
+import { declinedKeyFor } from '../../../../apps/pathway-service/src/services/resolution/types';
 import type { GateAnswer, GateProperties } from '../../../../apps/pathway-service/src/services/resolution/types';
 import type {
   GraphContext, GraphEdge, GraphNode, PatientContext, SignalDefinition, SignalScorer,
@@ -247,7 +252,8 @@ function engineFor(
 type Replay =
   | { dp: string; option: string }            // answerPendingDecision (a DecisionPoint branch)
   | { gate: string; answer: GateAnswer }      // answerGateQuestion (a question gate)
-  | { anchor: string; answer: GateAnswer };   // a window_from start date (DATE), keyed on the anchor
+  | { anchor: string; answer: GateAnswer }    // a window_from start date (DATE), keyed on the anchor
+  | { decline: string };                      // "Not available" for a datum (datumKey), e.g. 'LOINC:718-7'
 
 /**
  * What blocks care-plan generation from this state — the pipeline's one
@@ -286,14 +292,17 @@ async function resolveSession(opts: {
   let r = await engine.traverse(graph, opts.patient, answers);
   let pending = r.pendingQuestions;
   let redFlags = r.redFlags;
-  const idOf = (step: Replay) => ('dp' in step ? step.dp : 'gate' in step ? step.gate : step.anchor);
+  const idOf = (step: Replay) =>
+    'dp' in step ? step.dp : 'gate' in step ? step.gate : 'anchor' in step ? step.anchor : step.decline;
   // Exposed for `supplyLab`, which continues this session the way addPatientContext does.
   const session = { graph, answers };
   const asked = (id: string) =>
     pending.some((q: any) => q.gateId === id || (q.askedByNodeIds ?? []).includes(id) || q.datumKey === id);
   const give = async (step: Replay) => {
     const nodeId = idOf(step);
-    answers.set(nodeId, 'dp' in step ? ({ selectedOption: step.option } as GateAnswer) : step.answer);
+    // A decline is stored against the DATUM (types.ts `declinedKeyFor`), as the resolver does.
+    if ('decline' in step) answers.set(declinedKeyFor(step.decline), { notAvailable: true } as GateAnswer);
+    else answers.set(nodeId, 'dp' in step ? ({ selectedOption: step.option } as GateAnswer) : step.answer);
     // A fresh engine each time: the pipeline builds one per evaluation.
     r = await engineFor(opts.patient, opts.conf ?? (() => 0.9), { asOf: opts.asOf, oralIronStart: opts.oralIronStart })
       .traverse(graph, opts.patient, answers);
@@ -1486,6 +1495,44 @@ async function proveGhtnSharedLabs(): Promise<void> {
 // reference, left byte-identical to routine-prenatal-care's). Step 4.4 is
 // gated by gate-no-severe-features, so Guid-5 reaches the patients managed as
 // outpatients and follows that gate — never a severe-feature patient's plan.
+// ── Proof: anemia v10 — no hemoglobin level on file ──────────────────
+// [DECISION — Josh 2026-10-03]: ask the provider for a level; if none is
+// entered, the severity is unknown and the anemia labs are ordered.
+async function proveUnknownHgb(): Promise<void> {
+  console.log(`\n=== unknown-hgb: anemia v10 — no hemoglobin on file (${ANEMIA}) ===`);
+  const HGB = 'LOINC:718-7';
+  const HCT = 'LOINC:4544-3';
+  const ORDERS = ['gate-no-hgb-on-file', 'step-1-9', 'lab-18'];
+  for (const reverse of [false, true]) {
+    console.log(`  -- edge order: ${reverse ? 'reversed' : 'file'}`);
+    const noLevel = patientWith([['787-2', 72]]);
+
+    console.log('  no Hgb on file: the level is asked for, and the anemia labs are ordered meanwhile:');
+    let r = await resolveSession({ file: ANEMIA, reverse, patient: noLevel });
+    expect('Hgb questions', String(r.pending.filter((p: any) => p.datumKey === HGB).length), '1');
+    expectAll('(order ferritin)', r.state, ORDERS, 'INCLUDED');
+    expect('lab-1 CBC with indices (Step 1.1, unconditional)', status(r.state, 'lab-1'), 'INCLUDED');
+    expect('gate-severe-anemia', status(r.state, 'gate-severe-anemia'), 'PENDING_QUESTION');
+
+    console.log('  "Not available" for the Hgb (and the Hct the referral gate also reads): nothing left to ask about the level:');
+    r = await resolveSession({ file: ANEMIA, reverse, patient: noLevel, replay: [{ decline: HGB }], ask: [{ decline: HCT }] });
+    expect('level questions left', String(r.pending.filter((p: any) => [HGB, HCT].includes(p.datumKey)).length), '0');
+    expect('gate-severe-anemia', status(r.state, 'gate-severe-anemia'), 'GATED_OUT');
+    expect('gate-referral-threshold', status(r.state, 'gate-referral-threshold'), 'GATED_OUT');
+    expectAll('(order ferritin)', r.state, ORDERS, 'INCLUDED');
+    expect('lab-1 CBC with indices', status(r.state, 'lab-1'), 'INCLUDED');
+    expect('level gates among the generation blockers',
+      String(validateForGeneration(r.state, r.redFlags).some((b) => b.relatedNodeIds.some((id) => /severe-anemia|referral-threshold/.test(id)))), 'false');
+
+    console.log('  a level entered instead (Hgb 9.5, 4 days old): Step 1.9 closes, the CBC stays:');
+    r = await resolveSession({ file: ANEMIA, reverse, patient: patientWith([['787-2', 72], ['718-7', 9.5, '2026-09-20']]) });
+    expect('Hgb questions', String(r.pending.filter((p: any) => p.datumKey === HGB).length), '0');
+    expectAll('(no ferritin order from Step 1.9)', r.state, ['step-1-9', 'lab-18'], 'GATED_OUT');
+    expect('gate-no-hgb-on-file', status(r.state, 'gate-no-hgb-on-file'), 'GATED_OUT');
+    expect('lab-1 CBC with indices', status(r.state, 'lab-1'), 'INCLUDED');
+  }
+}
+
 async function proveGhtnSeizure(): Promise<void> {
   console.log(`\n=== ghtn-seizure: Guid-5 "Seizure: call 911" on Step 2.1 — every patient (${GHTN}) ===`);
   const pw = JSON.parse(readFileSync(resolve(GHTN), 'utf8'));
@@ -1693,6 +1740,7 @@ const PROOFS: Record<string, () => Promise<void>> = {
   'malabsorption': proveMalabsorption,
   'hgbpathy': proveHgbpathy,
   'ghtn-shared-labs': proveGhtnSharedLabs,
+  'unknown-hgb': proveUnknownHgb,
   'ghtn-seizure': proveGhtnSeizure,
   'uti-shared-labs': proveUtiSharedLabs,
 };

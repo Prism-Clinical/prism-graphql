@@ -220,3 +220,60 @@ describe('a window_from start date', () => {
     expect(session(id).revision).toBe(0);
   });
 });
+
+describe('"not available" — the provider has no value for the datum asked for', () => {
+  const HGB_LOW = { field: 'labs', operator: 'less_than', value: '718-7', system: 'LOINC', threshold: 11 };
+  /** Two gates on one haemoglobin, plus "no Hgb on file → order the labs". */
+  const UNKNOWN_LEVEL = makeEnv(
+    [
+      node('root', 'Pathway'),
+      node('gate-low', 'Gate', { title: 'Low', gate_type: GateType.PATIENT_ATTRIBUTE, default_behavior: DefaultBehavior.SKIP, on_unresolved: 'ask', condition: HGB_LOW }),
+      node('gate-severe', 'Gate', { title: 'Severe', gate_type: GateType.PATIENT_ATTRIBUTE, default_behavior: DefaultBehavior.SKIP, on_unresolved: 'ask', condition: { ...HGB_LOW, threshold: 6 } }),
+      node('gate-none', 'Gate', {
+        title: 'No Hgb on file', gate_type: GateType.PATIENT_ATTRIBUTE, default_behavior: DefaultBehavior.SKIP, on_unresolved: 'default',
+        condition: { field: 'labs', operator: 'not_includes_code', value: '718-7', system: 'LOINC' },
+      }),
+      node('step-iron', 'Step'), node('step-transfuse', 'Step'), node('step-order-labs', 'Step', { title: 'Order anemia labs' }),
+    ],
+    [
+      edge('root', 'gate-low', 'HAS_GATE'), edge('root', 'gate-severe', 'HAS_GATE'), edge('root', 'gate-none', 'HAS_GATE'),
+      edge('gate-low', 'step-iron'), edge('gate-severe', 'step-transfuse'), edge('gate-none', 'step-order-labs'),
+    ],
+  );
+
+  it('stops every gate asking for that datum, closes them, and leaves the "unknown level" route open', async () => {
+    harness.addPathway('pw', UNKNOWN_LEVEL);
+    const id = await start('pw');
+    expect(session(id).pendingQuestions).toHaveLength(1);
+    expect(status(id, 'step-order-labs')).toBe(NodeStatus.INCLUDED);
+
+    await answer(id, { notAvailable: true }, session(id).pendingQuestions[0].gateId);
+    expect(session(id).pendingQuestions).toEqual([]);
+    expect(status(id, 'gate-low')).toBe(NodeStatus.GATED_OUT);
+    expect(status(id, 'gate-severe')).toBe(NodeStatus.GATED_OUT);
+    expect(status(id, 'step-order-labs')).toBe(NodeStatus.INCLUDED);
+    expect(session(id).additionalContext).toEqual({});
+    expect(session(id).readiness.blockers.filter((b) => b.type === 'PENDING_GATE')).toEqual([]);
+    expect(lastEvent()).toMatchObject({ eventType: 'PROVIDER_ASSERTED_DATUM', triggerData: { datumKey: 'LOINC:718-7', notAvailable: true } });
+  });
+
+  it('a value added to the chart afterwards still decides the gates', async () => {
+    harness.addPathway('pw', UNKNOWN_LEVEL);
+    const id = await start('pw');
+    await answer(id, { notAvailable: true }, session(id).pendingQuestions[0].gateId);
+    await resolutionMutations.addPatientContext(null, {
+      sessionId: id, additionalContext: { labResults: [{ code: '718-7', system: 'LOINC', value: 9.4, date: '2026-08-29' }] },
+    } as never, ctx());
+    expect(status(id, 'step-iron')).toBe(NodeStatus.INCLUDED);
+    expect(status(id, 'step-order-labs')).toBe(NodeStatus.GATED_OUT);
+  });
+
+  it('is refused with another field, and on a question that is not a data request', async () => {
+    harness.addPathway('pw', UNKNOWN_LEVEL);
+    const id = await start('pw');
+    const gateId = session(id).pendingQuestions[0].gateId;
+    await expect(answer(id, { notAvailable: true, numericValue: 9 }, gateId)).rejects.toThrow(/sent alone/);
+    await expect(answer(id, { notAvailable: true }, 'gate-none')).rejects.toThrow(/not asking for a value/);
+    expect(session(id).revision).toBe(0);
+  });
+});

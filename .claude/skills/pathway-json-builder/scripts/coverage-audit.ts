@@ -14,7 +14,7 @@
 // contributes a fact that is randomly absent, satisfying or not satisfying.
 // Pending questions are then answered at random, as a provider would through
 // answerPendingDecision — a question-gate answer, a DecisionPoint choice, a
-// datum (a FACT added to the patient), or a window_from start date — and after
+// datum (a FACT added to the patient), "Not available", or a window_from start date — and after
 // every answer the pathway is evaluated again from scratch, as the evaluation
 // pipeline does.
 import { readFileSync, readdirSync } from 'fs';
@@ -30,6 +30,7 @@ import { EvidenceStrengthScorer } from '../../../../apps/pathway-service/src/ser
 import { PatientMatchQualityScorer } from '../../../../apps/pathway-service/src/services/confidence/scorers/patient-match-quality';
 import { RiskMagnitudeScorer } from '../../../../apps/pathway-service/src/services/confidence/scorers/risk-magnitude';
 import { ScoringType } from '../../../../apps/pathway-service/src/types';
+import { declinedKeyFor } from '../../../../apps/pathway-service/src/services/resolution/types';
 import type { GateAnswer } from '../../../../apps/pathway-service/src/services/resolution/types';
 import type { GraphContext, GraphEdge, GraphNode, PatientContext } from '../../../../apps/pathway-service/src/services/confidence/types';
 
@@ -206,6 +207,7 @@ async function audit(file: string): Promise<number> {
   const stuck = new Map<string, number>();
   const stuckExample = new Map<string, string>();
   const lowConfidence = new Map<string, number>();
+  const onlyDecline = new Map<string, number>();
   const questionKinds = new Map<string, number>();
   let evaluations = 0, finished = 0, ready = 0, capped = 0;
 
@@ -234,6 +236,9 @@ async function audit(file: string): Promise<number> {
         const sig = `${q.gateId}|${q.datumKey ?? ''}`;
 
         if (node?.nodeType === 'DecisionPoint') answers.set(q.gateId, { selectedOption: pick(q.options ?? []) } as GateAnswer);
+        // One data question in six is answered "Not available", as a provider
+        // without the value would (GateAnswerInput.notAvailable).
+        else if (q.askTarget && q.datumKey && rnd() < 1 / 6) answers.set(declinedKeyFor(q.datumKey), { notAvailable: true } as GateAnswer);
         else if (q.askTarget?.kind === 'anchor') answers.set(q.askTarget.key, { dateValue: daysAgo(pick([5, 21])) } as GateAnswer);
         else if (q.askTarget?.kind === 'lab') {
           const vs = facts.labs.get(q.askTarget.code) ?? [pick([8, 10, 12])];
@@ -258,6 +263,18 @@ async function audit(file: string): Promise<number> {
         repeats = sig === lastSig ? repeats + 1 : 1;
         lastSig = sig;
         if (repeats >= STUCK_AFTER && r.pendingQuestions.some((x: any) => `${x.gateId}|${x.datumKey ?? ''}` === sig)) {
+          // No VALUE settles it. A provider's way out is "Not available"; a
+          // question that survives even that is a dead end.
+          if (q.askTarget && q.datumKey) {
+            answers.set(declinedKeyFor(q.datumKey), { notAvailable: true } as GateAnswer);
+            r = await run(p, answers);
+            if (!r.pendingQuestions.some((x: any) => `${x.gateId}|${x.datumKey ?? ''}` === sig)) {
+              const note = `${q.gateId} — "${String(q.prompt).slice(0, 70)}"`;
+              onlyDecline.set(note, (onlyDecline.get(note) ?? 0) + 1);
+              repeats = 0;
+              continue;
+            }
+          }
           const key = `${q.gateId} (${kind}) — "${String(q.prompt).slice(0, 70)}"`;
           if (!stuck.has(key)) {
             stuckExample.set(key, JSON.stringify({
@@ -301,6 +318,10 @@ async function audit(file: string): Promise<number> {
   const section = (name: string, lines: string[]) => { console.log(`  ${name}: ${lines.length === 0 ? 'none' : ''}`); for (const l of lines) console.log(`    ✗ ${l}`); };
   section('ERRORS (evaluation threw)', [...errors].map(([m, n]) => `×${n} ${m}`));
   section('STUCK (still asked after being answered)', [...stuck].map(([m, n]) => `×${n} ${m}\n        e.g. ${stuckExample.get(m)}`));
+  if (onlyDecline.size > 0) {
+    console.log('  NOTE — no value settles these; only "Not available" does:');
+    for (const [m, n] of onlyDecline) console.log(`    · ×${n} ${m}`);
+  }
   section('NEVER (not reached, never included, or a gate that never closes)', never);
   section('INCOMPLETE statuses seen', odd);
   if (REAL_SCORING) {
