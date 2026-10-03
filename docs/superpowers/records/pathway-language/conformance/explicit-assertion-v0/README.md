@@ -11,8 +11,9 @@ The expected outputs were written by hand from the contract (§§1–7) and [CAN
 | `query/q.demo.json` | The query contract (contract §7.1), predicate `p.demo` and pinned value-set expansion. Symbolic contract digest `d1` |
 | `fixtures/EA-*.json` | Evaluation, preview and compilation fixtures |
 | `fixtures/CAN-*.json` | Canonicalization fixtures |
-| `index.json` | Contract case number (1–75) → fixture IDs; pairs (with their comparison mode); contrasts |
-| `validate.py` | Structural validator (`python3 validate.py`) |
+| `index.json` | Contract case number (1–80) → fixture IDs; pairs (with their comparison mode); history-resolution group; contrasts |
+| `validate.py` | Structural validator and pair self-tests (`python3 validate.py --self-test`) |
+| `check-canonical.cjs` | Canonical bytes, digests and variant IDs, verified with the RFC 8785 library `canonicalize@5.1.0` (see “Canonicalization checks”) |
 
 ## Expansion
 
@@ -60,7 +61,7 @@ Each evaluation and preview fixture requests output `p.demo`. The query output i
 
 - `evidence.status`, `value` and `decision` compare exactly.
 - `causes`, `supportingEvidenceIds` and `candidateEvidenceIds` compare as sets. Each is also written in canonical order (contract §5.3), so an implementation emitting canonical order can compare them exactly.
-- `causeAttribution` compares as a set of entries (all fields), canonically ordered by cause, then origin.
+- `causeAttribution` compares as a set of entries (all fields), canonically ordered by cause, then origin, then reason.
 - `needs` compares exactly: Need key, state causes as a set, `deferred`, and obligations as a set.
 - `traceAssertions`: every listed fact must hold in the implementation’s trace. List-valued facts (`variants`, `possibleCurrent`, `possibleClasses`, `stagesRun`) compare as sets, and are written in canonical order. Facts not listed are not asserted.
 
@@ -113,7 +114,7 @@ Each evaluation and preview fixture requests output `p.demo`. The query output i
 
 | Stage | Reasons |
 |---|---|
-| S1 | `PayloadConflict`, `Fork`, `SelfSupersession`, `Cycle`, `CorrectionTargetAbsent`, `CorrectionRefIncomplete`, `CorrectionRefMalformed`, `CorrectionAuthorityMissing`, `CorrectionAuthorityMalformed`, `RetractionTargetAbsent`, `RetractionAuthorityMissing`, `RetractionAuthorityMalformed`, `RetractionConflict`, `EnvelopeFieldAbsent`, `EnvelopeFieldMalformed` |
+| S1 | `PayloadConflict`, `Fork`, `CorrectionBoundaryUndeterminable`, `SelfSupersession`, `Cycle`, `CorrectionTargetAbsent`, `CorrectionRefIncomplete`, `CorrectionRefMalformed`, `CorrectionAuthorityMissing`, `CorrectionAuthorityMalformed`, `RetractionTargetAbsent`, `RetractionAuthorityMissing`, `RetractionAuthorityMalformed`, `RetractionConflict`, `EnvelopeFieldAbsent`, `EnvelopeFieldMalformed` |
 | S2 | `TerminologyUnavailable`, `CodeMalformed` |
 | S3 | `FieldAbsent:<field>`, `ContextUnknown:<binding>` |
 | S5 | `FieldAbsent:<field>`, `FieldMalformed:<field>` |
@@ -128,18 +129,51 @@ Each evaluation and preview fixture requests output `p.demo`. The query output i
 - `result`: `evidence`, `decision` and `needs` must be identical, while diagnostics and trace assertions may legitimately differ. This applies to the before/after pairs 64/20, 64/21, 1/22 and 1/63, and to the irrelevant-gap pair 53/54.
 - `wholeExpected`: the entire `expected` block must be identical, including cause attribution and trace assertions, and the two inputs must be permutations of each other without being identical. This applies to 70/71.
 
+Within a compared field, ordering follows the `evaluation-v1` rules. Lists are written in canonical order. Implementations may compare them as sets, except where the fixture lists them in canonical order for an exact comparison.
+
+**History resolution.** `historyResolution` names a before-state (EA-076, the revision-1 payload conflict), an after-state (EA-072, resolved by a valid correction) and four controls that must stay unresolved:
+
+- EA-073: correction authority unresolved;
+- EA-077: an independent active defect remains;
+- EA-078: a later revision without `supersedes`;
+- EA-079: ownership-conflicted variants.
+
+Resolved defects appear only as `HistoricalDefect` trace diagnostics, never in `causeAttribution`.
+
+**Self-test.** `python3 validate.py --self-test` mutates in-memory copies, never the committed files. It checks that:
+
+- changing only EA-071’s cause attribution is rejected;
+- changing only its trace assertions is rejected;
+- adding a diagnostic to the before/after pair 1/22 is allowed;
+- changing that pair’s result is rejected.
+
 It also lists **contrasts** that keep proven-invalid boundary attempts distinguishable from undeterminable identity or authority, and from genuine payload conflicts.
+
+## Canonicalization checks
+
+Two helpers divide the work. Neither computes an expected evidence outcome.
+
+- **`check-canonical.cjs`** uses a maintained RFC 8785 implementation, `canonicalize@5.1.0` from npm (by S. Erdtman). As in RFC 8785 Appendix A, it serializes primitives with ECMAScript `JSON.stringify`. The script first checks the library against the RFC’s Appendix B number vectors. It then verifies every canonicalization fixture’s bytes and digests, and every `variants` and `occurrences` assertion in the evaluation fixtures, numbers included. Run it without adding a repository dependency:
+
+  ```bash
+  TMP=$(mktemp -d) && npm install --no-save --prefix "$TMP" canonicalize@5.1.0 \
+    && NODE_PATH="$TMP/node_modules" node check-canonical.cjs
+  ```
+
+  It requires Node ≥ 20.19, for `require()` of the ES-module package.
+- **`validate.py`** handles a restricted subset: `null`, booleans, strings, arrays and objects. It uses RFC 8785 string escaping and member order on UTF-16 code units, parses strictly, and rejects duplicate member names, non-finite numbers and lone surrogates. It does **not** serialize numbers. Any payload containing a number is counted as *deferred to check-canonical.cjs* and is never reported as verified by `validate.py`.
 
 ## What `validate.py` checks
 
-The validator parses JSON strictly, rejecting duplicate member names and non-finite numbers. It canonicalizes with its own RFC 8785 serializer: ECMAScript number formatting, the RFC 8785 string escaping and member order on UTF-16 code units, with explicit rejection of input RFC 8785 cannot represent. It checks that:
+It checks that:
 
-- every file parses, IDs are unique and match file names, and the index maps every case 1–71 to existing fixtures;
+- every file parses, IDs are unique and match file names, and the index maps every case 1–80 to existing fixtures;
 - expected lists and attributions are in canonical order;
 - decisions are the projection of evidence, and Need causes equal result causes;
-- every `variants` assertion matches the digests of the input occurrences;
-- each canonicalization fixture’s hand-written `canonicalBytes` are reproduced from its raw occurrences, and its digest is the SHA-256 of those bytes;
-- each pair satisfies its `compare` mode.
+- every `variants` assertion matches the digests of the input occurrences (number-free payloads; numeric ones are deferred);
+- each canonicalization fixture’s hand-written `canonicalBytes` are reproduced from its raw occurrences (number-free payloads; numeric ones are deferred), and its digest is the SHA-256 of those bytes;
+- each pair satisfies its `compare` mode, and the history-resolution before-state and controls are `Unresolved` while the after-state is `Known`;
+- no defect shown as `HistoricalDefect` also appears as an active attributed cause.
 
 It computes **no** expected evidence result, cause, Need or trace fact.
 

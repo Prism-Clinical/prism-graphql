@@ -238,7 +238,23 @@
     "75": [
       "CAN-08",
       "CAN-09",
-      "CAN-10"
+      "CAN-10",
+      "CAN-11"
+    ],
+    "76": [
+      "EA-076"
+    ],
+    "77": [
+      "EA-077"
+    ],
+    "78": [
+      "EA-078"
+    ],
+    "79": [
+      "EA-079"
+    ],
+    "80": [
+      "EA-080"
     ]
   },
   "pairs": [
@@ -279,6 +295,19 @@
       "claim": "Permuting occurrences changes neither variant identities, order nor result"
     }
   ],
+  "historyResolution": [
+    {
+      "before": "EA-076",
+      "after": "EA-072",
+      "controls": [
+        "EA-073",
+        "EA-077",
+        "EA-078",
+        "EA-079"
+      ],
+      "claim": "A valid, unambiguous correction resolves the revision-1 payload conflict (history kept as a diagnostic); unresolved authority, an independent active defect, a later revision without supersedes, or ownership-conflicted variants do not"
+    }
+  ],
   "contrasts": [
     {
       "fixtures": [
@@ -315,6 +344,13 @@
         "EA-073"
       ],
       "claim": "A conflict superseded by a valid correction is historical; with an undeterminable correction it still affects the result"
+    },
+    {
+      "fixtures": [
+        "EA-076",
+        "EA-080"
+      ],
+      "claim": "An authorized retraction also makes the payload conflict historical; the key becomes Retracted"
     }
   ]
 }

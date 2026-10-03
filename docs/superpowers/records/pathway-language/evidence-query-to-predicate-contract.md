@@ -2,7 +2,7 @@
 
 **Status:** Proposed design draft. **Not** accepted, not finalized syntax, not a schema and not implemented. It contains no clinical content: the record type, enum values, codes, sources and permission below are fictional and illustrate language behavior only. They do not map to dysphagia, progression, urgency or any other clinical definition.
 
-**Date:** 2026-10-03. **Revised:** 2026-10-03, six times, after review. The third revision fixed three things:
+**Date:** 2026-10-03. **Revised:** 2026-10-03, seven times, after review. The third revision fixed three things:
 
 - revision-chain boundaries: source-scoped identity, same-source corrections and one fully specified schematic authority rule;
 - deterministic outcomes for malformed history;
@@ -13,6 +13,12 @@ The fourth revision made three changes:
 - Proven cross-boundary corrections and retractions are now rejected without changing their target. This keeps gap irrelevance consistent with S1.
 - Payload identity for duplicate detection is defined.
 - An unsupported justification about coverage attestations is removed.
+
+The seventh revision made three changes:
+
+- History resolution is defined explicitly, with before/after and control fixtures (cases 76–80).
+- Canonical bytes are verified with a maintained RFC 8785 implementation, and the Python helper is restricted to a documented subset.
+- Pair comparison scopes are enforced by self-tests.
 
 The sixth revision made three changes:
 
@@ -206,7 +212,7 @@ S1 runs per `RecordKey` over a finite graph and always terminates. Its cycle det
 | `supersedes` malformed | Defective, `Invalid` | Edge ignored |
 | Names another `RecordKey` (cross-source or other local ID), with all `RevisionRef` fields present | Proven cross-boundary | The correcting revision is rejected and preserved (`CrossKeyCorrection`) and is no longer a node of its own key. No cause. The target key is **unchanged**; the diagnostic is also attached to its trace |
 | Target is an ordinary revision present in the snapshot with a different record type or subject | Proven cross-boundary | The correcting revision is rejected and preserved (`SubjectChanged` / `RecordTypeChanged`). No cause. The target is unchanged |
-| Target is a conflicted revision whose variants disagree on record type or subject | Undeterminable, `Conflicting` | Edge ignored; both remain possible |
+| Target is a conflicted revision whose variants disagree on record type or subject | Undeterminable, `Conflicting` (`CorrectionBoundaryUndeterminable`) | Edge ignored; both remain possible |
 | Names itself | Defective, `Invalid` | Edge ignored |
 | Target revision absent from the snapshot | Defective, `Missing` | Edge ignored; addition `unknown` (the unseen chain could hold anything) |
 | Authority unauthorized (1.3) | Proven unauthorized | The correcting revision is rejected and preserved (`Unauthorized`); no cause; the target is unaffected |
@@ -246,7 +252,18 @@ S1 runs per `RecordKey` over a finite graph and always terminates. Its cycle det
 
 A defect is **current-affecting** if any revision it involves is in *H*. Otherwise it is **historical**: it stays in the trace as a diagnostic (`HistoricalDefect`, with its original cause and reason) but adds no cause and no addition.
 
-For example, if a conflicted revision is superseded by a valid, unambiguous correction, its `PayloadConflict` is historical (case 72). If the correction is itself undeterminable, both revisions remain heads and the conflict still affects the result (case 73).
+*H* depends only on **valid** edges and valid retractions (steps 3–6). A defect therefore becomes historical only when an explicit, authorized, boundary-valid correction or retraction removes every revision it involves from *H*. A later revision alone never resolves anything.
+
+| Situation | Effect on an earlier defect | Case |
+|---|---|---|
+| Valid, unambiguous correction supersedes the conflicted `RevisionRef` (all variants share subject, type and source) | Historical; the result can be `Current` | 72 (before: 76) |
+| Correction with undeterminable authority | Still active: both revisions remain heads | 73 |
+| Valid correction resolves the conflict, but another defect involves the new head (e.g. a retraction of it with missing authority) | The conflict is historical; the other defect stays active | 77 |
+| Later revision without a valid `supersedes` | Still active: the conflicted revision stays a head | 78 |
+| Correction of a conflicted revision whose variants disagree on subject (ownership) | Still active: the edge is undeterminable (step 3), so the existing ownership behavior is unchanged | 79 |
+| Authorized retraction of the conflicted `RevisionRef` | Historical; the key is `Retracted` | 80 |
+
+Historical defects remain in the trace as `HistoricalDefect` diagnostics, with their variants, original cause and reason. They are never listed among the result’s causes or attributions.
 
 Write *C* for the causes and *X* for the additions of current-affecting defects only.
 
@@ -446,7 +463,7 @@ These orderings exist only so expected traces and lists compare byte-for-byte. T
 | Payload variants | `RevisionRef#digest` (1.2), ordered by `RevisionRef` then digest |
 | Occurrences within a variant | By `provenance.acquisition`, then `provenance.sourceRecordRef`, by code point |
 | Causes | Stage A §4.1 order: `Missing`, `Conflicting`, `Unavailable`, `Invalid`, `Inadmissible`, `InsufficientEvidence` |
-| Attribution entries | By cause order, then origin reference |
+| Attribution entries | By cause order, then origin reference, then reason |
 | Gaps | Coverage cells (by source), then failures (by `id`), then rejected items (by `id`) |
 | Trace records | By stage (S1–S7), then by key or revision reference |
 
@@ -712,7 +729,12 @@ All cases start from D0. Every row was traced manually through 1.5, 2.1 and 4.
 | 72 | Conflict resolved by a valid correction | Two occurrences of s1/r1@1 (`Affirmed`, `Denied`); s1/r1@2 `Affirmed`, supersedes @1, `+amend` | `Known(true, [s1/r1@2])` | True | s1/r1 `Current(@2)`; `PayloadConflict` at s1/r1@1 is a historical diagnostic | None |
 | 73 | Conflict with an undeterminable correction | As 72, but @2 `perm omitted` | `Unresolved{Missing, Conflicting}` @s1/r1 | Unknown | Heads {@1 variants, @2}; both defects current-affecting | K1; `CorrectRecord` s1/r1 |
 | 74 | Numeric malformed values equal under RFC 8785 | Two occurrences of s1/r1@1, `assertion: 1` and `assertion: 1.0` | `Unresolved{Invalid}` @s1/r1@1 | Unknown(Invalid) | One variant (identical canonical bytes); `FieldMalformed:assertion` | K1; `CorrectRecord` s1/r1 |
-| 75 | Numeric canonicalization | Canonicalization only: `1`/`1.0`/`1E0`; `0`/`-0.0`; `1e21`/`1000000000000000000000` | — | — | Equal within each group | — |
+| 75 | Numeric canonicalization | Canonicalization only. Equal: `1`/`1.0`/`1E0`; `0`/`-0.0`; `1e21`/`1000000000000000000000`. Distinct: `1`/`2`; `999999999999999900000`/`1e21`; `1e23`/`9.999999999999997e+22`; `1`/`"1"` | — | — | Equal or distinct exactly as listed (RFC 8785 Appendix B values) | — |
+| 76 | Before-state for case 72 | Two occurrences of s1/r1@1 (`Affirmed`, `Denied`) | `Unresolved{Conflicting}` @s1/r1 | Unknown(Conflicting) | Conflicted revision | K1; `CorrectRecord` s1/r1 |
+| 77 | Conflict resolved, independent defect remains | As 72, plus retraction x2 of s1/r1@2 with `perm omitted` | `Unresolved{Missing}` @s1/r1 | Unknown(Missing) | `PayloadConflict` historical; possible {@2, excluded} | K1; `CorrectRecord` s1/r1 |
+| 78 | Later revision without `supersedes` | Two occurrences of s1/r1@1 (`Affirmed`, `Denied`); s1/r1@2 `Affirmed` with no `supersedes` | `Unresolved{Conflicting}` @s1/r1 | Unknown(Conflicting) | Heads {@1 variants, @2}; conflict active | K1; `CorrectRecord` s1/r1 |
+| 79 | Correction of an ownership-conflicted revision | Case 62’s variants (P1, P2) plus s1/r1@2 `Affirmed`, supersedes @1, `+amend` | `Unresolved{Conflicting}` @s1/r1 | Unknown(Conflicting) | Edge undeterminable (`CorrectionBoundaryUndeterminable`); possible {P1 variant, @2, excluded} | K1; `CorrectRecord` s1/r1 |
+| 80 | Conflict removed by an authorized retraction | Two occurrences of s1/r1@1 (`Affirmed`, `Denied`); retraction x1 of s1/r1@1, `+amend` | `Unresolved{Missing}` | Unknown(Missing) | Key `Retracted`; `PayloadConflict` historical | K1 |
 
 ### 7.5 Invariance checks
 
@@ -776,7 +798,7 @@ These must hold for every case:
 
 **Query/predicate split.** The query carries the reasoning. A projection-only Predicate is optional naming and composition structure. No node kind is added or removed.
 
-**Conformance fixtures.** [conformance/explicit-assertion-v0/](conformance/explicit-assertion-v0/README.md) holds machine-readable fixtures for cases 1–75, mapped by case number, with expected outputs written from this contract. They are proposed, like this document.
+**Conformance fixtures.** [conformance/explicit-assertion-v0/](conformance/explicit-assertion-v0/README.md) holds machine-readable fixtures for cases 1–80, mapped by case number, with expected outputs written from this contract. They are proposed, like this document.
 
 **Remaining items.**
 

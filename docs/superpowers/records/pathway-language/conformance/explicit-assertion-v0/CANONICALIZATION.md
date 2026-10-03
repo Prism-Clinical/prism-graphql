@@ -91,4 +91,6 @@ The normalized canonical bytes are:
 {"assertion":"Affirmed","author":{"actor":"u1","permissions":["demo.permission.amend-record","p"]},"subject":"P1"}
 ```
 
+**Verification.** Canonical bytes and digests in the fixtures are checked by `check-canonical.cjs`, which uses the maintained RFC 8785 implementation `canonicalize@5.1.0` (npm, by S. Erdtman). That library is itself checked against the RFC 8785 Appendix B number vectors. `validate.py` serializes only the number-free subset and reports numeric payloads as deferred, never as verified.
+
 This example is shortened to three fields. Full payloads appear in fixture `CAN-01`, with their expected canonical bytes and digests.
