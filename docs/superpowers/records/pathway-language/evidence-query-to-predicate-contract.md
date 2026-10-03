@@ -2,7 +2,7 @@
 
 **Status:** Proposed design draft. **Not** accepted, not finalized syntax, not a schema and not implemented. It contains no clinical content: the record type, enum values, codes, sources and permission below are fictional and illustrate language behavior only. They do not map to dysphagia, progression, urgency or any other clinical definition.
 
-**Date:** 2026-10-03. **Revised:** 2026-10-03, seven times, after review. The third revision fixed three things:
+**Date:** 2026-10-03. **Revised:** 2026-10-03, eight times, after review. The third revision fixed three things:
 
 - revision-chain boundaries: source-scoped identity, same-source corrections and one fully specified schematic authority rule;
 - deterministic outcomes for malformed history;
@@ -13,6 +13,8 @@ The fourth revision made three changes:
 - Proven cross-boundary corrections and retractions are now rejected without changing their target. This keeps gap irrelevance consistent with S1.
 - Payload identity for duplicate detection is defined.
 - An unsupported justification about coverage attestations is removed.
+
+The eighth revision resolves each S1 defect by its own condition against the final heads, rather than by whether any revision it involves survives. For example, a fork whose competing branch is validly retracted becomes historical (cases 81–84).
 
 The seventh revision made three changes:
 
@@ -240,19 +242,22 @@ S1 runs per `RecordKey` over a finite graph and always terminates. Its cycle det
 | Valid, target is a head | That head is removed (no reinstatement of earlier revisions) |
 | Valid, target is superseded | No effect; traced |
 
-**Step 7 — scope defects, then decide the result.** Write *H* for the heads remaining after steps 5 and 6. Each defect recorded in steps 1–6 (a cause and any addition `excluded`/`unknown`) involves specific revisions:
+**Step 7 — scope defects, then decide the result.** Write *H* for the heads remaining after steps 5 and 6. Each defect recorded in steps 1–6 (a cause and any addition `excluded`/`unknown`) is **current-affecting** while its own ambiguity can still affect which revision is current. That is judged against *H*:
 
-| Defect | Involves |
+| Defect | Current-affecting while… |
 |---|---|
-| `PayloadConflict` | The conflicted revision |
-| Defective or undeterminable correction edge (absent/malformed reference, missing target, self-supersession, cycle, undeterminable authority or boundary) | The edge’s source revision and its target (if present) |
-| Undeterminable envelope membership | That revision |
-| Undeterminable or conflicted retraction | Its target revision (for an absent target: every revision of the key) |
-| Fork | The heads themselves |
+| `PayloadConflict` | The conflicted revision is in *H* |
+| Fork (recorded at step 5) | At least two of the fork’s branch heads are still in *H* |
+| Undeterminable correction edge (authority or boundary undeterminable) | Both its source and its target are in *H*. The open question is whether the source supersedes the target; once either is otherwise removed, the question cannot affect the result |
+| Correction edge whose target cannot be identified (absent or malformed reference) or is absent from the snapshot (`unknown`) | Its source is in *H* |
+| Self-supersession | The revision is in *H* |
+| Cycle | Any revision of the cycle is in *H*. Which member superseded which is unknown, and a retraction never reinstates, so one surviving member is still ambiguous |
+| Undeterminable envelope membership | The revision is in *H* |
+| Undeterminable or conflicted retraction | Its target is in *H* (for an absent target: any revision of the key is in *H*) |
 
-A defect is **current-affecting** if any revision it involves is in *H*. Otherwise it is **historical**: it stays in the trace as a diagnostic (`HistoricalDefect`, with its original cause and reason) but adds no cause and no addition.
+Otherwise a defect is **historical**: it stays in the trace as a diagnostic (`HistoricalDefect`, with its original cause and reason) but adds no cause and no addition.
 
-*H* depends only on **valid** edges and valid retractions (steps 3–6). A defect therefore becomes historical only when an explicit, authorized, boundary-valid correction or retraction removes every revision it involves from *H*. A later revision alone never resolves anything.
+*H* depends only on **valid** edges and valid retractions (steps 3–6). A defect therefore becomes historical only when an explicit, authorized, boundary-valid correction or retraction removes the condition above. A later revision alone never resolves anything.
 
 | Situation | Effect on an earlier defect | Case |
 |---|---|---|
@@ -262,6 +267,9 @@ A defect is **current-affecting** if any revision it involves is in *H*. Otherwi
 | Later revision without a valid `supersedes` | Still active: the conflicted revision stays a head | 78 |
 | Correction of a conflicted revision whose variants disagree on subject (ownership) | Still active: the edge is undeterminable (step 3), so the existing ownership behavior is unchanged | 79 |
 | Authorized retraction of the conflicted `RevisionRef` | Historical; the key is `Retracted` | 80 |
+| Fork (`Affirmed` vs `Denied` branches); authorized retraction removes the `Denied` branch | The fork is historical: one branch head remains, so the result can be `Current` | 81 (before: 84) |
+| As 81, but the retraction is unauthorized | Still active: the retraction is rejected and both branches remain | 82 |
+| As 81, but the retraction’s authority is missing | Still active: both branches remain, and the retraction defect is active too | 83 |
 
 Historical defects remain in the trace as `HistoricalDefect` diagnostics, with their variants, original cause and reason. They are never listed among the result’s causes or attributions.
 
@@ -735,6 +743,10 @@ All cases start from D0. Every row was traced manually through 1.5, 2.1 and 4.
 | 78 | Later revision without `supersedes` | Two occurrences of s1/r1@1 (`Affirmed`, `Denied`); s1/r1@2 `Affirmed` with no `supersedes` | `Unresolved{Conflicting}` @s1/r1 | Unknown(Conflicting) | Heads {@1 variants, @2}; conflict active | K1; `CorrectRecord` s1/r1 |
 | 79 | Correction of an ownership-conflicted revision | Case 62’s variants (P1, P2) plus s1/r1@2 `Affirmed`, supersedes @1, `+amend` | `Unresolved{Conflicting}` @s1/r1 | Unknown(Conflicting) | Edge undeterminable (`CorrectionBoundaryUndeterminable`); possible {P1 variant, @2, excluded} | K1; `CorrectRecord` s1/r1 |
 | 80 | Conflict removed by an authorized retraction | Two occurrences of s1/r1@1 (`Affirmed`, `Denied`); retraction x1 of s1/r1@1, `+amend` | `Unresolved{Missing}` | Unknown(Missing) | Key `Retracted`; `PayloadConflict` historical | K1 |
+| 81 | Fork resolved by an authorized retraction | s1/r1@1 `Affirmed`; @2a `Affirmed` and @2b `Denied` both supersede @1, `+amend`; retraction x1 of @2b, `+amend` | `Known(true, [s1/r1@2a])` | True | s1/r1 `Current(@2a)`; `Fork` is a historical diagnostic | None |
+| 82 | Fork with an unauthorized retraction | As 81, but x1 `perm: []` | `Unresolved{Conflicting}` @s1/r1 | Unknown(Conflicting) | x1 rejected `Unauthorized`; heads {@2a, @2b}; `Fork` active | K1; `CorrectRecord` s1/r1 |
+| 83 | Fork with retraction authority missing | As 81, but x1 `perm omitted` | `Unresolved{Missing, Conflicting}` @s1/r1 | Unknown | `Fork` and `RetractionAuthorityMissing` both active; possible {@2a, @2b, excluded} | K1; `CorrectRecord` s1/r1 |
+| 84 | Before-state for case 81 | As 81 without the retraction | `Unresolved{Conflicting}` @s1/r1 | Unknown(Conflicting) | `Fork`; possible classes {Supporting, Refuting} | K1; `CorrectRecord` s1/r1 |
 
 ### 7.5 Invariance checks
 
@@ -798,7 +810,7 @@ These must hold for every case:
 
 **Query/predicate split.** The query carries the reasoning. A projection-only Predicate is optional naming and composition structure. No node kind is added or removed.
 
-**Conformance fixtures.** [conformance/explicit-assertion-v0/](conformance/explicit-assertion-v0/README.md) holds machine-readable fixtures for cases 1–80, mapped by case number, with expected outputs written from this contract. They are proposed, like this document.
+**Conformance fixtures.** [conformance/explicit-assertion-v0/](conformance/explicit-assertion-v0/README.md) holds machine-readable fixtures for cases 1–84, mapped by case number, with expected outputs written from this contract. They are proposed, like this document.
 
 **Remaining items.**
 

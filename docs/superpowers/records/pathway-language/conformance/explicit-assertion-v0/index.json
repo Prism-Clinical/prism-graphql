@@ -255,6 +255,18 @@
     ],
     "80": [
       "EA-080"
+    ],
+    "81": [
+      "EA-081"
+    ],
+    "82": [
+      "EA-082"
+    ],
+    "83": [
+      "EA-083"
+    ],
+    "84": [
+      "EA-084"
     ]
   },
   "pairs": [
@@ -306,6 +318,15 @@
         "EA-079"
       ],
       "claim": "A valid, unambiguous correction resolves the revision-1 payload conflict (history kept as a diagnostic); unresolved authority, an independent active defect, a later revision without supersedes, or ownership-conflicted variants do not"
+    },
+    {
+      "before": "EA-084",
+      "after": "EA-081",
+      "controls": [
+        "EA-082",
+        "EA-083"
+      ],
+      "claim": "An authorized retraction of the competing branch makes the fork historical; an unauthorized retraction or one with unresolved authority does not"
     }
   ],
   "contrasts": [

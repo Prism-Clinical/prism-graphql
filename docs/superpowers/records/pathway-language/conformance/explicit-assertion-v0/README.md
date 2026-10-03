@@ -11,7 +11,7 @@ The expected outputs were written by hand from the contract (§§1–7) and [CAN
 | `query/q.demo.json` | The query contract (contract §7.1), predicate `p.demo` and pinned value-set expansion. Symbolic contract digest `d1` |
 | `fixtures/EA-*.json` | Evaluation, preview and compilation fixtures |
 | `fixtures/CAN-*.json` | Canonicalization fixtures |
-| `index.json` | Contract case number (1–80) → fixture IDs; pairs (with their comparison mode); history-resolution group; contrasts |
+| `index.json` | Contract case number (1–84) → fixture IDs; pairs (with their comparison mode); history-resolution groups; contrasts |
 | `validate.py` | Structural validator and pair self-tests (`python3 validate.py --self-test`) |
 | `check-canonical.cjs` | Canonical bytes, digests and variant IDs, verified with the RFC 8785 library `canonicalize@5.1.0` (see “Canonicalization checks”) |
 
@@ -138,7 +138,9 @@ Within a compared field, ordering follows the `evaluation-v1` rules. Lists are w
 - EA-078: a later revision without `supersedes`;
 - EA-079: ownership-conflicted variants.
 
-Resolved defects appear only as `HistoricalDefect` trace diagnostics, never in `causeAttribution`.
+A second group covers forks. Its before-state is EA-084 (`Affirmed` and `Denied` branches) and its after-state is EA-081, where an authorized retraction of the `Denied` branch leaves one head. Its two controls must stay unresolved: EA-082 (the retraction is unauthorized) and EA-083 (the retraction’s authority is unresolved).
+
+Resolved defects appear only as `HistoricalDefect` trace diagnostics, never in `causeAttribution`. Each defect is resolved by its own condition (contract §2.1 step 7).
 
 **Self-test.** `python3 validate.py --self-test` mutates in-memory copies, never the committed files. It checks that:
 
@@ -167,7 +169,7 @@ Two helpers divide the work. Neither computes an expected evidence outcome.
 
 It checks that:
 
-- every file parses, IDs are unique and match file names, and the index maps every case 1–80 to existing fixtures;
+- every file parses, IDs are unique and match file names, and the index maps every case 1–84 to existing fixtures;
 - expected lists and attributions are in canonical order;
 - decisions are the projection of evidence, and Need causes equal result causes;
 - every `variants` assertion matches the digests of the input occurrences (number-free payloads; numeric ones are deferred);
