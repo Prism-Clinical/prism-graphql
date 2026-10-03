@@ -500,7 +500,7 @@ passes in both edge orders; v1 fails it on the original ids. No clinical content
   in v2 every patient had two INCLUDED urine-culture nodes: Lab-1 (screen) and Lab-7
   (interpretation). The care-plan generator does not deduplicate by code, so the plan listed
   "Urine culture with colony count" twice.
-- **Engine caveat, not fixed here.** When a question gate is answered incrementally, the pass is
+- **Engine caveat, closed 2026-10-03 by the evaluation pipeline (every answer re-evaluates the whole pathway; nothing is seeded). Historical note.** When a question gate is answered incrementally, the pass is
   seeded with shared CodeEntry and EvidenceCitation leaves. It can then re-open DP-1 as
   PENDING_QUESTION after "no GBS" on a negative culture (reversed edge order). v1 and v2 behave
   the same (not re-examined for v3); the proof pre-loads its gate answers.

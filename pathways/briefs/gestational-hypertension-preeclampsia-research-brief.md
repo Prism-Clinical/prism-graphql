@@ -553,7 +553,7 @@ projected into the care plan, so sharing them does not bring the defect back. Ch
 `check-gate-control.ts` is clean (v1: 6 Rule-1 violations). `gate-proof.ts ghtn-shared-labs`
 passes in both edge orders; v1 fails it on the original ids. No clinical content changed.
 
-Engine caveat, not fixed here: when a question gate is answered incrementally
+Engine caveat, closed 2026-10-03 by the evaluation pipeline (every answer re-evaluates the whole pathway; nothing is seeded). Historical note: when a question gate is answered incrementally
 (`answerGateQuestion`), the pass is seeded with shared CodeEntry and EvidenceCitation leaves. It
 can then re-open a decider those leaves are not governed by. Example: aspirin "yes" with BP
 120/75 leaves DP-1 PENDING_QUESTION inside the GATED_OUT work-up. v1 and v2 behave the same,

@@ -59,9 +59,12 @@
 // The anemia proofs read pathways/json/anemia-in-pregnancy.json (override with
 // ANEMIA_JSON=<path>); ghtn-* reads gestational-hypertension-preeclampsia.json
 // (GHTN_JSON=<path>); uti-* reads uti-asymptomatic-bacteriuria-pregnancy.json
-// (UTI_JSON=<path>). They replay a branch choice the way the live mutation does
-// (answerPendingDecision → resolveIncrementally seeded at the DecisionPoint), not
-// by pre-loading the answer into a fresh traversal — the two can disagree.
+// (UTI_JSON=<path>). They replay a provider answer the way the live mutation
+// does since the evaluation pipeline (main PRs #56–#61): the answer is added
+// to the session's INPUTS and the whole pathway is evaluated again from them
+// (pipeline/evaluate.ts). There is no incremental re-resolution any more, so
+// a replayed answer and a pre-loaded one can no longer disagree — what the
+// replay still proves is that each answer was actually being ASKED when given.
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
 import { evaluateGate, GateEvaluationDeps } from '../../../../apps/pathway-service/src/services/resolution/gate-evaluator';
@@ -70,8 +73,7 @@ import { assembleContext } from '../../../../apps/pathway-service/src/services/r
 import { withTherapyStarts } from '../../../../apps/pathway-service/src/services/resolution/temporal/anchored-window';
 import { normalizePatientAttributes } from '../../../../apps/pathway-service/src/services/resolution/patient-attributes';
 import { TraversalEngine } from '../../../../apps/pathway-service/src/services/resolution/traversal-engine';
-import { validateForGeneration } from '../../../../apps/pathway-service/src/services/resolution/care-plan-generator';
-import { dependencyContextKey } from '../../../../apps/pathway-service/src/services/resolution/effective-context';
+import { readinessOf } from '../../../../apps/pathway-service/src/services/resolution/pipeline/readiness';
 import { GateType, DefaultBehavior, ScoringType } from '../../../../apps/pathway-service/src/types';
 import type { GateAnswer, GateProperties } from '../../../../apps/pathway-service/src/services/resolution/types';
 import type {
@@ -248,12 +250,23 @@ type Replay =
   | { anchor: string; answer: GateAnswer };   // a window_from start date (DATE), keyed on the anchor
 
 /**
+ * What blocks care-plan generation from this state — the pipeline's one
+ * readiness rule set (pipeline/readiness.ts), as a standalone session's ROOT
+ * evaluation applies it. Safety data is out of scope for a no-DB proof.
+ */
+function validateForGeneration(state: unknown, redFlags: unknown) {
+  return readinessOf({
+    state: state as never, pendingQuestions: [], redFlags: redFlags as never,
+    unavailable: [], scope: 'ROOT', isDegraded: false,
+  }).blockers;
+}
+
+/**
  * Traverse; then give each answer the way the live app does — one at a time,
- * and only once it is actually being asked:
- * - a DecisionPoint choice (answerPendingDecision) re-resolves incrementally
- *   seeded at the DecisionPoint;
- * - a question-gate answer (answerGateQuestion) re-resolves seeded at the gate
- *   (resolvers/mutations/resolution.ts); its subtree is the engine's region.
+ * and only once it is actually being asked. Every answer (a DecisionPoint
+ * choice, a question-gate answer, a window_from start date) is added to the
+ * session's inputs and the pathway is evaluated again from scratch, as
+ * `commitEvaluation` does (resolvers/mutations/resolution.ts → pipeline).
  * `choose` is shorthand for a single leading DecisionPoint choice. `replay`
  * is given in order, and each step must be pending when it is given. `ask` is
  * given AS ASKED — whichever listed question is pending next, until none is —
@@ -270,26 +283,22 @@ async function resolveSession(opts: {
   const graph = graphFrom(opts.file, opts.reverse);
   const engine = engineFor(opts.patient, opts.conf ?? (() => 0.9), { asOf: opts.asOf, oralIronStart: opts.oralIronStart });
   const answers = new Map<string, GateAnswer>();
-  const r = await engine.traverse(graph, opts.patient, answers);
+  let r = await engine.traverse(graph, opts.patient, answers);
   let pending = r.pendingQuestions;
   let redFlags = r.redFlags;
   const idOf = (step: Replay) => ('dp' in step ? step.dp : 'gate' in step ? step.gate : step.anchor);
   // Exposed for `supplyLab`, which continues this session the way addPatientContext does.
-  const session = { graph, answers, dependencyMap: r.dependencyMap! };
+  const session = { graph, answers };
   const asked = (id: string) =>
     pending.some((q: any) => q.gateId === id || (q.askedByNodeIds ?? []).includes(id) || q.datumKey === id);
   const give = async (step: Replay) => {
     const nodeId = idOf(step);
     answers.set(nodeId, 'dp' in step ? ({ selectedOption: step.option } as GateAnswer) : step.answer);
-    // An anchor answer re-disposes every gate that asked for it (anchor-answer.ts).
-    const q = 'anchor' in step ? pending.find((p: any) => p.datumKey === nodeId) as any : undefined;
-    const seeds = q ? [q.gateId, ...(q.askedByNodeIds ?? [])] : [nodeId];
-    const rr = await engine.resolveIncrementally(
-      new Set(seeds), r.resolutionState, r.dependencyMap!, graph, opts.patient, answers,
-      { pendingQuestions: pending, redFlags, alsoDropGateIds: seeds } as never,
-    );
-    pending = rr.pendingQuestions;
-    redFlags = rr.redFlags;
+    // A fresh engine each time: the pipeline builds one per evaluation.
+    r = await engineFor(opts.patient, opts.conf ?? (() => 0.9), { asOf: opts.asOf, oralIronStart: opts.oralIronStart })
+      .traverse(graph, opts.patient, answers);
+    pending = r.pendingQuestions;
+    redFlags = r.redFlags;
   };
   for (const step of [...(opts.choose ? [opts.choose] : []), ...(opts.replay ?? [])]) {
     // Asked now, or answered before (a re-answer, e.g. at the recheck visit).
@@ -305,18 +314,19 @@ async function resolveSession(opts: {
     await give(toAsk.splice(i, 1)[0]);
   }
   for (const step of toAsk) expect(`${idOf(step)} was asked`, 'no', 'yes');
-  return { state: r.resolutionState, pending, redFlags, session };
+  return { state: r.resolutionState, pending, redFlags, session, gateContextFields: r.dependencyMap?.gateContextFields };
 }
 
 /**
  * The provider supplies a lab mid-session — the answer to an escalated lab
  * question — continued exactly as `addPatientContext` does it
  * (resolvers/mutations/resolution.ts): the value becomes a DATED fact at the
- * session clock (providerAsserted), a new engine is built over the enlarged
- * fact store, and EVERY gate whose recorded context fields map to
- * `labResults` (dependencyContextKey) is re-resolved — not only the gate that
- * asked. The gate-answer replay in `resolveSession` cannot represent this: a
- * lab answer is a fact, not a gate answer.
+ * session clock (providerAsserted), added to the session's facts, and the
+ * whole pathway is evaluated again over the enlarged fact store — so every
+ * gate reading that lab sees it, not only the gate that asked. The
+ * gate-answer replay in `resolveSession` cannot represent this: a lab answer
+ * is a fact, not a gate answer. `affected` is every gate the first evaluation
+ * recorded as reading labs, for proofs that assert who else re-decides.
  */
 async function supplyLab(
   run: Awaited<ReturnType<typeof resolveSession>>, patient: PatientContext,
@@ -328,15 +338,12 @@ async function supplyLab(
       { code: lab.code, system: 'LOINC', value: lab.value, date: asOf, providerAsserted: true }],
   } as unknown as PatientContext;
   const affected = new Set<string>();
-  for (const [gateId, fields] of run.session.dependencyMap.gateContextFields) {
-    if ([...fields].some((f) => dependencyContextKey(f) === 'labResults')) affected.add(gateId);
+  for (const [gateId, fields] of run.gateContextFields ?? []) {
+    if ([...fields].some((f) => f === 'labs' || f.startsWith('labs.') || f.startsWith('lab.'))) affected.add(gateId);
   }
-  const engine = engineFor(patient2, () => 0.9, { asOf });
-  const rr = await engine.resolveIncrementally(
-    affected, run.state as never, run.session.dependencyMap, run.session.graph, patient2, run.session.answers,
-    { pendingQuestions: run.pending, redFlags: run.redFlags } as never,
-  );
-  return { state: run.state, pending: rr.pendingQuestions, redFlags: rr.redFlags, affected, patient: patient2 };
+  const rr = await engineFor(patient2, () => 0.9, { asOf })
+    .traverse(run.session.graph, patient2, run.session.answers);
+  return { state: rr.resolutionState, pending: rr.pendingQuestions, redFlags: rr.redFlags, affected, patient: patient2 };
 }
 
 const status = (s: Map<string, { status: string }>, id: string) => s.get(id)?.status ?? '(absent)';
@@ -662,19 +669,17 @@ async function proveResponse(): Promise<void> {
       for (const id of ['step-2-4', 'step-2-6', 'step-2-5']) expect(id, status(r.state, id), 'PENDING_QUESTION');
 
       // The pre-treatment baseline is 24 days old, so gate-severe-anemia (Hgb,
-      // 7-day horizon) asks for a current Hgb on the FIRST pass. The response
-      // gates are reached only after the DP-1 answer (an incremental pass), and
-      // reconcilePendingQuestions keeps the existing out-of-scope prompt for the
-      // shared datum and drops the new claim (findings-reconciliation.ts: the
-      // derived copy is skipped once the key is emitted). ONE Hgb question
-      // still stands and both response gates are held on it; only its wording
-      // ("most recent value?") and askedByNodeIds come from gate-severe-anemia.
-      // Engine gap, reported — not a pathway defect.
-      console.log('    day 21, baseline only (24 days old, not rechecked) — one Hgb question (raised by gate-severe-anemia); both branches held:');
+      // 7-day horizon) asks for a current Hgb, and both response gates need the
+      // same datum. ONE Hgb question stands, and it names all three gates as
+      // askers. (Before the evaluation pipeline the response gates' claim was
+      // dropped when an incremental pass reconciled pending questions; a fresh
+      // evaluation per mutation has no reconcile step, so that gap is closed.)
+      console.log('    day 21, baseline only (24 days old, not rechecked) — one Hgb question, asked by all three gates; both branches held:');
       r = await visit({ asOf: DAY21, start: IRON_START, hgb: [[9.5, BASELINE_DATE]], attrs: { gestational_age_weeks: 20 } });
       hq = r.pending.filter((p: any) => p.datumKey === 'LOINC:718-7') as any[];
       expect('Hgb questions', String(hq.length), '1');
-      expect('ENGINE GAP — asked by (response gates\' claim dropped on reconcile)', JSON.stringify(hq[0]?.askedByNodeIds ?? []), '["gate-severe-anemia"]');
+      expect('asked by', JSON.stringify([...(hq[0]?.askedByNodeIds ?? [])].sort()), '["gate-hgb-nonresponse","gate-hgb-response","gate-severe-anemia"]');
+      console.log(`    (prompt: ${JSON.stringify(hq[0]?.prompt)}; raised by ${hq[0]?.gateId})`);
       for (const g of RESPONSE_GATES) expect(g, status(r.state, g), 'PENDING_QUESTION');
       expect('gate-hgb-nonresponse reason', String(/Need ≥2 dated values for 718-7; found 1/.test(r.state.get('gate-hgb-nonresponse')?.excludeReason ?? '')), 'true');
       for (const id of ['step-2-4', 'step-2-6', 'step-2-5']) expect(id, status(r.state, id), 'PENDING_QUESTION');

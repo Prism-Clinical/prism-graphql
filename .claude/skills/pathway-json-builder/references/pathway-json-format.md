@@ -1,21 +1,34 @@
-# Prism Pathway JSON Format — Authoritative Spec (v5)
+# Prism Pathway JSON Format — Authoritative Spec (v6)
 
-> **Generated from `origin/main`:** commit `a428da5` (2026-09-10) of
-> `apps/pathway-service/src/services/import/`, `src/services/resolution/`, and `src/types/`
-> — includes the temporal-horizon evaluator kernel (PR #54), the `v1` temporal policy as the
-> deployment default, and PR #55's decision semantics (multi-branch `when` routing,
-> `on_unresolved`, required `branch_mode`, gate enum validation).
+> **Describes the `josh-dev` engine: `origin/main` at commit `f0c2ca1` (2026-09-28) plus
+> josh-dev's authoring extensions.** Main's side includes the temporal-horizon kernel
+> (PR #54), `v1` as the default temporal policy, PR #55's decision semantics, and the
+> **evaluation pipeline** (PRs #56–#61): a session stores only its *inputs*, and every
+> answer, override or added fact re-evaluates the whole pathway from them. There is no
+> incremental re-resolution any more.
 >
-> **Build from a branch based on current `origin/main`.** `scripts/validate-pathway.ts`
-> imports the validator from the checkout it runs in and refuses to run when HEAD does not
-> contain `origin/main`. A stale checkout is how two pathways once "passed" here and then
-> failed main's import.
+> **josh-dev extensions — NOT on `origin/main`.** Main's validator rejects a JSON that uses
+> any of these (checked 2026-10-03: anemia v9 fails main with 21 errors; GHTN v5 and UTI v3
+> pass both):
+> - `window_from` anchored trend windows, `delta_comparison`, NOT_YET_DUE
+> - `not_includes_code`
+> - nested AND/OR condition groups inside a compound gate
+> - `DATE` answers (treatment start dates) and typed `patient.*` datum answers
+> - import-time checks main lacks: `depends_on` object shape, code wildcard grammar,
+>   temporal override rules, SELECT options regardless of `answer_type` case
+>
+> **Build from a checkout that contains current `origin/main`.** `scripts/validate-pathway.ts`
+> imports the validator from the checkout it runs in and refuses to run (exit 3) when HEAD
+> does not contain `origin/main`. On josh-dev it then prints a notice that the schema source
+> differs from main — expected, because of the extensions above. A stale checkout is how two
+> pathways once "passed" here and then failed main's import.
 >
 > **Drift check (do this every time you build a JSON):** run
 > `git fetch origin && git log -1 --format=%h origin/main -- apps/pathway-service/src/services/import apps/pathway-service/src/services/resolution apps/pathway-service/src/types`
-> — compare against **`origin/main`, never local HEAD**. If the hash is not `a428da5`, the
-> schema may have moved: `git diff a428da5 origin/main -- <those paths>`, apply any changes to
-> your output, and update this document.
+> — compare against **`origin/main`, never local HEAD**. If the hash is not `f0c2ca1`, main
+> has moved: merge it into josh-dev first (the validator refuses otherwise), then
+> `git diff f0c2ca1 origin/main -- <those paths>`, apply any changes to your output, re-run
+> `scripts/gate-proof.ts`, and update this document.
 >
 > Source-of-truth files (verify against these, never against memory):
 > - `apps/pathway-service/src/services/import/types.ts` — node/edge types, required props, edge endpoints, limits, enums
@@ -193,8 +206,8 @@ exactly one (Rule 3).
 > - **`SELECTS_BRANCH` is a live traversal edge**, not just UI metadata. A Criterion
 >   reaches its `SELECTS_BRANCH` target unconditionally, so it counts as a competing route
 >   under Rule 1.
-> - **A DecisionPoint branch into a gate's target overrides the gate.** On the live path
->   the provider's branch choice re-resolves incrementally from the DecisionPoint, and the
+> - **A DecisionPoint branch into a gate's target overrides the gate.** The provider's
+>   branch choice is an answer the engine routes on in every evaluation, and the
 >   chosen branch is walked whatever the gate said (proved on anemia v3: MCV 90 + "workup"
 >   included the microcytic workup). So a step is either a DP branch or gated — not both.
 >   To make the *decision itself* conditional, gate the Step that hosts the DP and give
@@ -570,7 +583,7 @@ With `min_days_since_anchor: 14` and `baseline_days: 28`:
 | day ≥ 14, no Hgb since `baseline_days` before the start, no recheck (0 points) | closed — nothing to ask | closed — nothing to ask |
 
 NOT_YET_DUE asks nothing, so **the start visit's care plan is not blocked**
-(`validateForGeneration` refuses only pending questions) — this replaces anemia v5's
+(the pipeline's readiness rules, `pipeline/readiness.ts`, block only on pending questions, unresolved nodes, red flags and unavailable safety data) — this replaces anemia v5's
 "recheck not yet done" option. A *held* gate (the last-but-two and last-but-one rows) is
 still a pending question and does block generation until answered. The day ≥ 14 rows need
 the anchor from a record — the care plan the start visit committed, a dated order, or a
@@ -704,9 +717,11 @@ deliberately include them (`"any"`).
   vocabulary check on `answer_type` itself is case-insensitive.)
 - Use for symptom presence (`BOOLEAN`) and severity (`SELECT` with e.g. `["mild","moderate","severe"]`, or `NUMERIC` for validated scales). Never invent an ordinal attribute for severity.
 
-### prior_node_result — ⛔ do not emit (import-blocked; re-verified at a428da5)
+### prior_node_result — ⚠ importable since v6, still not emitted by this pipeline
 
-Runtime contract: `depends_on: [{ "node_id": "step-3-1", "status": "INCLUDED" }]` with `status` from `INCLUDED`, `EXCLUDED`, `GATED_OUT`, `PENDING_QUESTION`, `TIMEOUT`, `CASCADE_LIMIT`, `UNKNOWN`. But the import validator (`validator.ts:245-254`) checks entries as plain strings, so the runtime-correct object form fails import with `references nonexistent node "[object Object]"`, and string form imports but breaks evaluation. **Until the validator fix lands, do not emit this gate type.** Model the dependency as a `REQUIRES` edge (prerequisite semantics), a `compound`/`patient_attribute` gate on the underlying data, or keep it as a DecisionPoint. Record the intent in the brief so it can be upgraded when unblocked.
+Runtime contract: `depends_on: [{ "node_id": "step-3-1", "status": "INCLUDED" }]` with `status` from `INCLUDED`, `EXCLUDED`, `GATED_OUT`, `PENDING_QUESTION`, `TIMEOUT`, `CASCADE_LIMIT`, `UNKNOWN` (compared exactly). The import validator now checks that object shape (`validateDependsOn`): a bare node-id string is rejected with the rewrite to use, `status` must be one of the above, and — main's rule (evaluation pipeline, spec C2) — **the target may not be a Medication**, because a medication can be withheld after traversal by safety or conflict selection. A `prior_node_result` gate also needs a non-empty `depends_on`.
+
+So the gate type is no longer import-blocked. **Still do not emit it**: no `gate-proof.ts` proof covers it, and its verdict depends on the depended-on node having been disposed before the gate is reached. Model the dependency structurally (place the dependent node under the node it depends on) until a proof exists.
 
 ### compound — AND/OR over multiple conditions
 
@@ -874,14 +889,16 @@ Authoring rules this example carries:
 - `confidence_threshold` — below it the gate routes the safe default but surfaces as a *tentative* pending question for provider confirmation. Default 0.75.
 - Use only where the decision genuinely lives in narrative (HPI character, mechanism of injury) — if a structured value can answer it, use `patient_attribute`.
 
-### Validator gaps recheck (a428da5)
+### Validator gaps recheck (josh-dev at main `f0c2ca1`)
 
-Re-verified at `a428da5` (PR #55): the `depends_on` validator/runtime shape mismatch is
-**not** fixed (prior_node_result still unauthorable — see its section above). The SELECT
-options check now exists but is case-sensitive, so it skips uppercase `SELECT` (see
-**question**). Still preflight-only, not import: `status` on labs/vitals, `window_days` +
-`horizon` together, horizon grammar. Import still accepts a wildcard anywhere in a code.
-The builder rules and `check-gate-control.ts` cover all of these.
+Closed on josh-dev (each was a gap at `a428da5`): `depends_on` is validated in the shape the
+runtime reads (see **prior_node_result**); SELECT `options` are required whatever the case of
+`answer_type`; a code wildcard the engine cannot match is rejected at import (only one
+trailing `.*`); the temporal override rules — `window_days` XOR `horizon`, horizon grammar,
+no `status` on labs/vitals — are enforced at import as well as at session preflight. **None
+of these four checks is on `origin/main`**, where they remain builder-enforced only.
+New from main: `depends_on` may not target a Medication.
+The builder rules and `check-gate-control.ts` still apply in full.
 
 ### Brief markers (read by `check-gate-control.ts`)
 

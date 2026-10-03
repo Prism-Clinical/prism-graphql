@@ -837,13 +837,13 @@ the pathway presumes the coded diagnosis.
       nothing asked.
     - **Recheck missing** (due, one Hgb short of a series): both gates held, **one** Hgb
       question — "Hemoglobin (g/dL) (LOINC 718-7) — newest result, drawn after <date>?"
-      when the only value is in the window. `[ENGINE GAP — reported]` When the only value is
+      when the only value is in the window. When the only value is
       the pre-treatment baseline (> 7 days old), `gate-severe-anemia` (Hgb, 7-day horizon)
-      has already asked for a current Hgb on the first pass, and the response gates are
-      reached only after the DP-1 answer (an incremental pass): `reconcilePendingQuestions`
-      keeps the existing prompt for the shared datum and drops the response gates' claim.
-      One Hgb question still stands and both gates stay held on it, but it reads "most
-      recent value?" and lists only `gate-severe-anemia` as asker. Not a pathway defect.
+      asks for a current Hgb too: still **one** Hgb question, worded "most recent value?",
+      naming all three gates as askers, with both response gates held on it.
+      `[ENGINE GAP — closed 2026-10-03]` Before the evaluation pipeline, an incremental pass
+      dropped the response gates' claim on that question; every answer now re-evaluates the
+      whole pathway, so the question lists all three (`gate-proof.ts response`).
     - **Where the start date comes from at a recheck** (first hit wins): a clinician-entered
       date → the earliest stored care plan of this pathway recommending oral iron → the
       earliest dated chart order of 310325/198630/284202 (proved: a dated ferrous sulfate

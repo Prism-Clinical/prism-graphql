@@ -72,8 +72,14 @@ git log -1 --format=%h origin/main -- apps/pathway-service/src/services/import a
 If the hash differs from the one in the spec's header, run
 `git diff <stamped-hash> origin/main -- <those paths>`, fold any enum/rule changes into your
 generation, tell the user what changed, and update the spec (including its header hash).
-This is how the pipeline absorbed the temporal-horizon evaluator kernel (spec v4) and PR #55's
-decision semantics (spec v5) — the same procedure covers whatever lands next.
+This is how the pipeline absorbed the temporal-horizon evaluator kernel (spec v4), PR #55's
+decision semantics (spec v5) and the evaluation pipeline (spec v6, 2026-10-03) — the same
+procedure covers whatever lands next.
+
+**The oracle is the `josh-dev` engine: `origin/main` plus josh-dev's authoring extensions**
+(the spec header lists them). When main has moved, merge it into `josh-dev` *first*, re-run
+the pathway-service suite and `scripts/gate-proof.ts`, and only then build. A JSON that uses
+an extension validates here and fails on main — say so in the delivery whenever one is used.
 
 ## Step 3 — Generate the JSON
 

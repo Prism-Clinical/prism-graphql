@@ -34,8 +34,13 @@ Design principles:
   preflight-owned rules import doesn't check (window_days XOR horizon, value grammars).
   Briefs carry a temporal-audit table (§17) so time semantics get physician review in one
   place. PR #55's decision semantics (multi-target routing, `on_unresolved`, required
-  `branch_mode`) were absorbed as spec v5 on 2026-09-24. The same drift-check procedure
-  absorbs whatever lands on main next.
+  `branch_mode`) were absorbed as spec v5 on 2026-09-24, and main's evaluation pipeline
+  (PRs #56–#61: sessions store inputs; every answer re-evaluates the whole pathway) as
+  spec v6 on 2026-10-03, when main was merged into `josh-dev` and `gate-proof.ts` was
+  moved onto it. The same drift-check procedure absorbs whatever lands on main next.
+- **Lockstep means three things agree:** the engine on `josh-dev` (main + josh-dev's
+  extensions), the format spec, and `scripts/gate-proof.ts`. A change to any one is not
+  done until the other two pass against it.
 
 Requirements: `npm ci` at the repo root once per checkout (for ts-node), and web access for
 the research skill.
