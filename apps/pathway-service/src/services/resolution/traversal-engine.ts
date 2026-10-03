@@ -1423,18 +1423,22 @@ export class TraversalEngine {
         node, graphContext, patientContext,
       );
 
-      // An `all_of` mandate outranks the threshold. The fork already
-      // red-flagged this branch as unsupported, which reports the
-      // disagreement; excluding it here would resolve the disagreement by
-      // dropping a step the pathway says always happens.
-      const isMandated = mandated.has(nodeIdentifier);
-      const status = isMandated || confResult.confidence >= this.thresholds.suggestThreshold
-        ? NodeStatus.INCLUDED
-        : NodeStatus.EXCLUDED;
-
-      const excludeReason = status === NodeStatus.EXCLUDED
-        ? `Confidence ${confResult.confidence} below suggest threshold ${this.thresholds.suggestThreshold}`
-        : undefined;
+      // An action node the walk reaches is INCLUDED. Reaching it is the
+      // pathway's conclusion from the information available: every gate and
+      // fork above it is open. Confidence is reported beside it and never
+      // removes it.
+      //
+      // It used to: a node scoring below the suggest threshold was EXCLUDED
+      // here. The seeded scorers rate a Medication or LabTest by whether the
+      // patient ALREADY has it (data_completeness, match_quality), so a new
+      // prescription or a lab still to be drawn scored ~0.25 and vanished from
+      // the plan with nothing shown — the pathway said "order a CBC" and the
+      // plan was empty. [DECISION — Josh 2026-10-03]: nothing is hidden;
+      // conclusions come from the available information.
+      //
+      // A DecisionPoint still uses scores to choose between its branches;
+      // that is a decision between alternatives, not a filter on orders.
+      const status = NodeStatus.INCLUDED;
 
       resolutionState.set(nodeIdentifier, {
         nodeId: nodeIdentifier,
@@ -1443,7 +1447,6 @@ export class TraversalEngine {
         status,
         confidence: confResult.confidence,
         confidenceBreakdown: confResult.breakdown,
-        excludeReason,
         parentNodeId,
         depth,
         properties: node.properties,

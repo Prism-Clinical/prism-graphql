@@ -374,8 +374,9 @@ describe('branch_mode: all_of with an action-node target', () => {
     const r = await engine.traverse(g, PATIENT, new Map());
 
     expect(r.resolutionState.get('med-weak')!.status).toBe(NodeStatus.INCLUDED);
-    // Not a branch target, so ordinary scoring still governs it.
-    expect(r.resolutionState.get('med-deep')!.status).toBe(NodeStatus.EXCLUDED);
+    // Not a branch target — and included all the same: a reached action node
+    // is never dropped for its score (Josh 2026-10-03). Its confidence is reported.
+    expect(r.resolutionState.get('med-deep')!.status).toBe(NodeStatus.INCLUDED);
   });
 });
 

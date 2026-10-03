@@ -15,6 +15,12 @@
 > - nested AND/OR condition groups inside a compound gate
 > - `DATE` answers (treatment start dates), typed `patient.*` datum answers, and the
 >   "Not available" answer to a data question (`notAvailable`)
+> - a reached action node (Medication, LabTest, …) is always INCLUDED: confidence is
+>   reported with it and never removes it (`[DECISION — Josh 2026-10-03]`: nothing is
+>   hidden; conclusions come from the available information). On main a node scoring
+>   below the suggest threshold is EXCLUDED — and the seeded scorers rate an order by
+>   whether the patient already has it, so new orders drop out. A DecisionPoint still
+>   uses scores to choose between its branches
 > - import-time checks main lacks: `depends_on` object shape, code wildcard grammar,
 >   temporal override rules, SELECT options regardless of `answer_type` case
 >

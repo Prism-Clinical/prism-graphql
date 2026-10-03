@@ -266,9 +266,15 @@ describe('A4 — configuration changes between mutations (C4, D13)', () => {
   it('the next answer yields the run a fresh evaluation gives under the new snapshot, with a new envFingerprint', async () => {
     const { id: runId } = await startRun(['pw-q', 'pw-carv']);
     const before = harness.run(runId).envFingerprint;
-    // Stricter thresholds on one pathway: Carvedilol (0.9) is no longer auto-included.
-    const stricter = carvEnv();
-    stricter.resolution.thresholds = { autoResolveThreshold: 0.95, suggestThreshold: 0.95 };
+    // One pathway's medication loses its normalisation, so it can no longer be
+    // safety-checked. (Thresholds used to be the lever; a reached medication is
+    // no longer dropped for its score.)
+    const carv = med('carv', 'Carvedilol', { clinical_role: 'beta_blocker' });
+    const stricter = makeEnv(
+      [node('root', 'Pathway'), node('step', 'Step'), carv],
+      [edge('root', 'step'), edge('step', 'carv')],
+      { ...SAFETY, normalized: new Map() },
+    );
     stricter.envFingerprint = 'env-stricter';
     harness.addPathway('pw-carv', stricter);
 
@@ -278,7 +284,6 @@ describe('A4 — configuration changes between mutations (C4, D13)', () => {
     expect(run.envFingerprint).not.toBe(before);
     const fresh = await evaluateRun(harness.pool(), newRunRequest(), runInputsOf(await loadRun(harness.pool(), runId)));
     expect(run.resultHash).toBe(fresh.result.resultHash);
-    expect(medsOf(runId)).toEqual(['Metoprolol']);
   });
 });
 

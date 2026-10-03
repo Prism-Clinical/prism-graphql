@@ -146,9 +146,11 @@ describe('answerPendingDecision — a question gate', () => {
 });
 
 describe('overrideNode', () => {
-  it('an INCLUDE override brings a below-threshold medication in, and holds on every later evaluation', async () => {
+  it('an INCLUDE override brings an excluded medication in, and holds on every later evaluation', async () => {
     const id = await start('pw-route');
-    await answer(id, 'gate-b', { booleanValue: true });
+    // "No" routes away from Treat, so its medications are excluded. (A low
+    // score used to exclude med-weak; a reached medication is no longer dropped.)
+    await answer(id, 'gate-b', { booleanValue: false });
     expect(status(id, 'med-weak')).toBe(NodeStatus.EXCLUDED);
 
     await resolutionMutations.overrideNode(null, { sessionId: id, nodeId: 'med-weak', action: OverrideAction.INCLUDE, reason: 'clinician' }, ctx());
@@ -162,7 +164,7 @@ describe('overrideNode', () => {
 
   it('keeps the pathway’s original decision across re-overrides', async () => {
     const id = await start('pw-route');
-    await answer(id, 'gate-b', { booleanValue: true });
+    await answer(id, 'gate-b', { booleanValue: false });
     await resolutionMutations.overrideNode(null, { sessionId: id, nodeId: 'med-weak', action: OverrideAction.INCLUDE }, ctx());
     await resolutionMutations.overrideNode(null, { sessionId: id, nodeId: 'med-weak', action: OverrideAction.EXCLUDE }, ctx());
     expect(harness.session(id).providerOverrides.get('med-weak')).toMatchObject({ action: 'EXCLUDE', originalStatus: 'EXCLUDED' });

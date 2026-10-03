@@ -58,11 +58,11 @@ describe('generateCarePlanFromResolution', () => {
   it('returns PLAN_CHANGED_SINCE_REVIEW and stores the fresh cache when the plan moved (D7)', async () => {
     const id = await start();
     const reviewed = harness.session(id).resultHash;
-    // Configuration changes between mutations (spec Constraints): stricter thresholds
-    // exclude the medication. The graph, and so its fingerprint, is unchanged.
-    const stricter = makeEnv(nodes(), edges, SAFETY);
-    stricter.resolution.thresholds = { autoResolveThreshold: 0.95, suggestThreshold: 0.95 };
-    harness.addPathway('pw-gen', stricter);
+    // Configuration changes between mutations (spec Constraints): the medication
+    // is no longer normalised, so it can no longer be safety-checked. The graph,
+    // and so its fingerprint, is unchanged. (Thresholds used to be the lever; a
+    // reached medication is no longer dropped for its score.)
+    harness.addPathway('pw-gen', makeEnv(nodes(), edges, { ...SAFETY, normalized: new Map() }));
 
     const r = await generate(id, reviewed);
 

@@ -92,8 +92,8 @@ describe('TraversalEngine', () => {
     });
   });
 
-  describe('exclude below threshold', () => {
-    it('should EXCLUDE action nodes with confidence below suggestThreshold', async () => {
+  describe('confidence does not remove a reached action node', () => {
+    it('keeps a reached action node whatever its confidence, and reports the confidence', async () => {
       const nodes = [
         node('root', 'Pathway'),
         node('step-1', 'Step'),
@@ -132,8 +132,11 @@ describe('TraversalEngine', () => {
       const result = await engine.traverse(graphContext, REFERENCE_PATIENT, new Map());
 
       expect(result.resolutionState.get('med-1')!.status).toBe(NodeStatus.INCLUDED);
-      expect(result.resolutionState.get('med-2')!.status).toBe(NodeStatus.EXCLUDED);
-      expect(result.resolutionState.get('med-2')!.excludeReason).toContain('below suggest threshold');
+      // Nothing is hidden: the pathway reached it, so it is in the plan. The
+      // score travels with it for the provider to weigh.
+      expect(result.resolutionState.get('med-2')!.status).toBe(NodeStatus.INCLUDED);
+      expect(result.resolutionState.get('med-2')!.confidence).toBe(0.4);
+      expect(result.resolutionState.get('med-2')!.excludeReason).toBeUndefined();
     });
   });
 

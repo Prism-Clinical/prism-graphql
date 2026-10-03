@@ -53,6 +53,6 @@ describe('traverse with overrides as input', () => {
     const withDefault = await engine().traverse(g, REFERENCE_PATIENT, new Map());
     const withEmpty = await engine().traverse(g, REFERENCE_PATIENT, new Map(), new Map());
     expect([...withEmpty.resolutionState]).toEqual([...withDefault.resolutionState]);
-    expect(withDefault.resolutionState.get('med')!.status).toBe(NodeStatus.EXCLUDED);
+    expect(withDefault.resolutionState.get('med')!.status).toBe(NodeStatus.INCLUDED);
   });
 });

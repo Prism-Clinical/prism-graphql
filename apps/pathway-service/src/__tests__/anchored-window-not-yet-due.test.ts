@@ -22,6 +22,7 @@
  * Pinned to `v1` with an assembled fact store: anchors resolve only there.
  */
 
+import { OverrideAction } from '../services/resolution/types';
 import { TraversalEngine } from '../services/resolution/traversal-engine';
 import { makeEvaluationTemporalContext } from '../services/resolution/temporal/evaluation-context';
 import type { EvaluationTemporalContext } from '../services/resolution/temporal/evaluation-context';
@@ -401,11 +402,12 @@ describe('recheck visits — anchored on the care plan the start visit wrote', (
 
 describe('no anchor at all', () => {
   it('drug not recommended this session and no record: the date question, as before', async () => {
-    confidence.mockImplementation(async (n: GraphNode) => ({
-      confidence: n.nodeIdentifier === 'med-1' ? 0.3 : 0.85, breakdown: [],
-    }));
+    // The provider has excluded the drug at this visit. (A low confidence used
+    // to do it; a reached action node is no longer dropped for its score.)
     const pc = hgb([BASELINE, ['2026-06-20', 9.4]]);
-    const r = await engineAt(DAY21, pc).traverse(anemiaShape(), pc, new Map());
+    const r = await engineAt(DAY21, pc).traverse(anemiaShape(), pc, new Map(), new Map([
+      ['med-1', { action: OverrideAction.EXCLUDE, originalStatus: NodeStatus.INCLUDED, originalConfidence: 0.85 }],
+    ]));
     expect(r.resolutionState.get('med-1')!.status).toBe(NodeStatus.EXCLUDED);
     expect(r.pendingQuestions).toHaveLength(1);
     expect(r.pendingQuestions[0]).toMatchObject({
