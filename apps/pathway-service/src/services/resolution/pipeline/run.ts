@@ -125,9 +125,12 @@ export async function evaluateRun(
 
   // A run being started pins each pathway's care-plan therapy starts onto the
   // shared clock, tagged with the pathway they anchor (see `therapyStartsFor`).
+  // A child whose graph is not pinned yet is JOINING: at start that is every
+  // child (`pinGraphs`); later it is a pathway a newly added diagnosis matched.
+  const joining = (child: RunInputs['children'][number]) => opts.pinGraphs === true || child.inputs.graphFingerprint === '';
   let temporalContext = inputs.temporalContext;
-  if (opts.pinGraphs) {
-    for (const child of inputs.children) {
+  {
+    for (const child of inputs.children.filter(joining)) {
       const starts = await loadCarePlanTherapyStarts(pool, {
         patientId: inputs.initialPatientContext.patientId,
         pathwayId: child.pathwayId,
@@ -146,8 +149,8 @@ export async function evaluateRun(
   const contributions: Contribution[] = [];
   for (const child of inputs.children) {
     const childEnv = env.children.get(child.pathwayId)!;
-    if (opts.pinGraphs && childEnv.resolution.graphContext.allNodes.length === 0) continue;
-    const own = opts.pinGraphs ? { ...child.inputs, graphFingerprint: childEnv.graphFingerprint } : child.inputs;
+    if (joining(child) && childEnv.resolution.graphContext.allNodes.length === 0) continue;
+    const own = joining(child) ? { ...child.inputs, graphFingerprint: childEnv.graphFingerprint } : child.inputs;
     const req = requestFor(request, child.pathwayId);
     const provider = liveObservations(
       own.observations,

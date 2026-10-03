@@ -950,6 +950,18 @@ export type Mutation = {
   /** Activate a DRAFT pathway, making it available for patient matching. */
   activatePathway: PathwayStatusResult;
   addAdminEvidence: AdminEvidenceEntry;
+  /**
+   * Add facts to an encounter in progress — a diagnosis made during the visit, a
+   * lab, a medication, an allergy. The facts go to the run, every pathway in it
+   * is re-evaluated with them, and any pathway the patient's diagnoses NOW match
+   * joins the run with its own questions and plan. Answers, branch choices and
+   * overrides already given are kept. A diagnosis no pathway covers is simply a
+   * fact on the chart: the run is returned unchanged in its pathways.
+   *
+   * `includeDraftPathways` matches DRAFT pathways too, as on
+   * `startMultiPathwayResolution`.
+   */
+  addEncounterContext: MultiPathwayResolutionSession;
   addPatientContext: ResolutionSession;
   /**
    * Answer whatever the session is waiting on at a node: a question gate, an
@@ -1067,6 +1079,13 @@ export type MutationActivatePathwayArgs = {
 
 export type MutationAddAdminEvidenceArgs = {
   input: AddAdminEvidenceInput;
+};
+
+
+export type MutationAddEncounterContextArgs = {
+  additionalContext: AdditionalContextInput;
+  includeDraftPathways?: InputMaybe<Scalars['Boolean']['input']>;
+  sessionId: Scalars['ID']['input'];
 };
 
 
@@ -3031,6 +3050,7 @@ export type MutationResolvers<ContextType = DataSourceContext, ParentType extend
   abandonSession?: Resolver<ResolversTypes['ResolutionSession'], ParentType, ContextType, RequireFields<MutationAbandonSessionArgs, 'sessionId'>>;
   activatePathway?: Resolver<ResolversTypes['PathwayStatusResult'], ParentType, ContextType, RequireFields<MutationActivatePathwayArgs, 'id'>>;
   addAdminEvidence?: Resolver<ResolversTypes['AdminEvidenceEntry'], ParentType, ContextType, RequireFields<MutationAddAdminEvidenceArgs, 'input'>>;
+  addEncounterContext?: Resolver<ResolversTypes['MultiPathwayResolutionSession'], ParentType, ContextType, RequireFields<MutationAddEncounterContextArgs, 'additionalContext' | 'sessionId'>>;
   addPatientContext?: Resolver<ResolversTypes['ResolutionSession'], ParentType, ContextType, RequireFields<MutationAddPatientContextArgs, 'additionalContext' | 'sessionId'>>;
   answerPendingDecision?: Resolver<ResolversTypes['ResolutionSession'], ParentType, ContextType, RequireFields<MutationAnswerPendingDecisionArgs, 'answer' | 'nodeId' | 'sessionId'>>;
   archivePathway?: Resolver<ResolversTypes['PathwayStatusResult'], ParentType, ContextType, RequireFields<MutationArchivePathwayArgs, 'id'>>;

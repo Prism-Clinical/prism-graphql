@@ -327,3 +327,57 @@ describe('formatting', () => {
     });
   });
 });
+
+describe('addEncounterContext — a diagnosis added during the encounter', () => {
+  const add = (runId: string, code: string, opts: Record<string, unknown> = {}) =>
+    multiPathwayResolutionMutations.addEncounterContext(null, {
+      sessionId: runId, additionalContext: { conditionCodes: [{ code, system: 'ICD-10' }] }, ...opts,
+    } as never, ctx());
+
+  it('a pathway the new diagnosis matches joins the run, and earlier answers are kept', async () => {
+    const { id: runId } = await startRun(['pw-q']);
+    await answerQ(runId, true);
+    expect(medsOf(runId)).toEqual(['Metoprolol']);
+    const firstChild = childOf(runId, 'pw-q');
+
+    harness.matchPathways('pw-q', 'pw-amox');
+    await add(runId, 'J02.0');
+
+    const run = harness.run(runId);
+    expect(run.contributingPathwayIds).toEqual(['pw-q', 'pw-amox']);
+    expect(childOf(runId, 'pw-q')).toBe(firstChild);
+    expect(harness.session(firstChild).gateAnswers.get('q')).toEqual({ booleanValue: true });
+    expect(medsOf(runId)).toEqual(['Amoxicillin', 'Metoprolol']);
+    expect(run.additionalContext).toMatchObject({ conditionCodes: [{ code: 'J02.0', system: 'ICD-10' }] });
+    const joined = harness.session(childOf(runId, 'pw-amox'));
+    expect(joined.parentSessionId).toBe(runId);
+    expect(joined.graphFingerprint).not.toBe('');
+    expect(harness.tables.events.at(-1)).toMatchObject({ eventType: 'traversal_complete', triggerData: { joined: true } });
+  });
+
+  it('an encounter that matched nothing at the start gains its first pathway', async () => {
+    const { id: runId } = await startRun([]);
+    expect(harness.run(runId).contributingPathwayIds).toEqual([]);
+    harness.matchPathways('pw-q');
+    await add(runId, 'I10');
+    expect(harness.run(runId).contributingPathwayIds).toEqual(['pw-q']);
+    expect(harness.run(runId).pendingGateQuestions ?? harness.session(childOf(runId, 'pw-q')).pendingQuestions).toBeDefined();
+    expect(harness.session(childOf(runId, 'pw-q')).pendingQuestions.map((q) => q.gateId)).toEqual(['q']);
+  });
+
+  it('a diagnosis no pathway covers is recorded on the chart and changes no pathway', async () => {
+    const { id: runId } = await startRun(['pw-q']);
+    await add(runId, 'Z99.9');
+    const run = harness.run(runId);
+    expect(run.contributingPathwayIds).toEqual(['pw-q']);
+    expect(run.additionalContext).toMatchObject({ conditionCodes: [{ code: 'Z99.9', system: 'ICD-10' }] });
+    expect(run.revision).toBe(1);
+  });
+
+  it('never adds a pathway twice', async () => {
+    const { id: runId } = await startRun(['pw-q']);
+    await add(runId, 'I10');
+    await add(runId, 'I11');
+    expect(harness.run(runId).contributingPathwayIds).toEqual(['pw-q']);
+  });
+});

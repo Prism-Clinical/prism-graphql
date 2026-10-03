@@ -1,7 +1,7 @@
 import { GraphQLError } from 'graphql';
 import type { Pool } from 'pg';
-import { getMultiPathwaySession, writeRunEvaluation } from '../multi-pathway-session-store';
-import { getSession, logEvent, statusChangesBetween, writeChildEvaluation, writeLlmAudits } from '../session-store';
+import { getMultiPathwaySession, setContributingSessions, writeRunEvaluation } from '../multi-pathway-session-store';
+import { getSession, insertSession, logEvent, statusChangesBetween, writeChildEvaluation, writeLlmAudits } from '../session-store';
 import type { Db } from '../session-store';
 import { ResolutionSession, SessionStatus } from '../types';
 import { canonicalJson } from './canonical';
@@ -156,6 +156,87 @@ export async function commitRun(
             });
           }
           await change.record?.(db, ev);
+        });
+      } catch (err) {
+        if (err instanceof RevisionConflict) continue;
+        throw err;
+      }
+      clearAudits(request);
+      return loadRun(pool, runId);
+    }
+    throw conflictError();
+  });
+}
+
+/** A pathway joining a run: what `insertSession` needs that evaluation does not produce. */
+export interface JoiningPathway { pathwayId: string; version: string }
+
+/**
+ * Add facts to a run and let pathways join it (an encounter in progress: a
+ * diagnosis added as the visit goes on). `build` returns the run's new inputs —
+ * the existing children untouched, plus a child with `sessionId: ''` and an
+ * empty graph fingerprint for every pathway that now matches. Everything is
+ * evaluated under one snapshot and committed under the parent's revision, as
+ * `commitRun` does; a joining child's row is inserted in the same transaction.
+ */
+export async function commitRunWithJoiners(
+  pool: Pool,
+  runId: string,
+  providerId: string,
+  build: (run: Run) => Promise<{ inputs: RunInputs; joining: JoiningPathway[]; triggerData: Record<string, unknown> }>,
+): Promise<Run> {
+  const request = newRunRequest();
+  return withRunAudits(pool, request, async (seen) => {
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+      const run = await loadRun(pool, runId);
+      seen.run = run;
+      assertRunMutable(run);
+      const change = await build(run);
+      const ev = await evaluateRun(pool, request, change.inputs);
+      const versionOf = new Map(change.joining.map((j) => [j.pathwayId, j.version]));
+      const existing = new Map(run.children.map((c) => [c.pathwayId, c]));
+
+      try {
+        await inTransaction(pool, async (db) => {
+          // writeRun writes the parent and every EXISTING child; the joiners follow.
+          const known = { ...ev, result: { ...ev.result, children: ev.result.children.filter((c) => existing.has(c.pathwayId)) } };
+          await writeRun(db, run, known, request, 'ACTIVE');
+          const sessionIds: string[] = [];
+          for (const child of ev.result.children) {
+            const before = existing.get(child.pathwayId);
+            if (before) {
+              sessionIds.push(before.id);
+              await logEvent(db, before.id, {
+                eventType: 'context_update',
+                triggerData: change.triggerData,
+                nodesRecomputed: child.result.resolutionState.size,
+                statusChanges: statusChangesBetween(before.resolutionState, child.result.resolutionState),
+              });
+              continue;
+            }
+            const own = ev.inputs.children.find((c) => c.pathwayId === child.pathwayId)!;
+            const inputs = sessionInputsOf(ev.inputs, own.inputs);
+            const req = requestFor(request, child.pathwayId);
+            const sessionId = await insertSession(db, {
+              pathwayVersion: versionOf.get(child.pathwayId)!,
+              patientId: run.parent.patientId,
+              providerId,
+              inputs: { ...inputs, additionalContext: {}, observations: persistedObservations(inputs, req, child.result) },
+              result: child.result,
+              status: statusOf(child.result),
+              durationMs: ev.durationMs,
+              parentSessionId: run.parent.id,
+            });
+            await writeLlmAudits(db, sessionId, req.audits);
+            await logEvent(db, sessionId, {
+              eventType: 'traversal_complete',
+              triggerData: { runId: run.parent.id, pathwayId: child.pathwayId, patientId: run.parent.patientId, joined: true },
+              nodesRecomputed: child.result.resolutionState.size,
+              statusChanges: [],
+            });
+            sessionIds.push(sessionId);
+          }
+          await setContributingSessions(db, run.parent.id, sessionIds, ev.result.children.map((c) => c.pathwayId));
         });
       } catch (err) {
         if (err instanceof RevisionConflict) continue;

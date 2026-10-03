@@ -42,6 +42,9 @@ import {
 } from '../../services/resolution/session-store';
 import type { Db } from '../../services/resolution/session-store';
 import { collapseLattice } from '../../services/resolution/lattice-collapse';
+import { buildEffectivePatientContext, mergeAdditionalContext } from '../../services/resolution/effective-context';
+import { firstTrustAssertion, normalizeContextEntryNulls } from '../../services/resolution/temporal/trust-mode';
+import type { AdditionalContextInput } from './resolution';
 import {
   MergedCarePlan,
   MergedConflict,
@@ -76,6 +79,7 @@ import {
 import {
   assertRunMutable,
   commitRun,
+  commitRunWithJoiners,
   loadRun,
   withRunAudits,
   writeRun,
@@ -295,6 +299,61 @@ export const multiPathwayResolutionMutations = {
     });
 
     return formatSessionForGraphQL((await getMultiPathwaySession(pool, runId))!);
+  },
+
+  /**
+   * Add facts to an encounter in progress, and let newly matching pathways
+   * join it. Matching runs on the patient's diagnoses as they stand AFTER the
+   * addition; a pathway already in the run is never added twice, and one that
+   * no longer matches stays — an encounter does not un-ask what it has asked.
+   */
+  async addEncounterContext(
+    _parent: unknown,
+    args: { sessionId: string; additionalContext: AdditionalContextInput; includeDraftPathways?: boolean },
+    context: DataSourceContext,
+  ) {
+    // The same trust parsing as addPatientContext (D10).
+    const assertion = firstTrustAssertion(args.additionalContext);
+    if (assertion) {
+      throw new GraphQLError(
+        `additionalContext.${assertion} is a SYNTHETIC assertion about clinical truth and cannot be supplied through addEncounterContext`,
+        { extensions: { code: 'INVALID_RESOLUTION_INPUT' } },
+      );
+    }
+    const added = normalizeContextEntryNulls(args.additionalContext);
+    const { pool } = context;
+
+    const run = await commitRunWithJoiners(pool, args.sessionId, context.userId, async (r) => {
+      const inputs = runInputsOf(r);
+      inputs.additionalContext = mergeAdditionalContext(inputs.additionalContext, added);
+
+      // Match on the VALIDATED effective context: what the evaluator will read.
+      const patient = buildEffectivePatientContext(inputs.initialPatientContext, inputs.additionalContext);
+      const matched = await getMatchedPathways(pool, r.parent.patientId, {
+        directPatientCodes: patient.conditionCodes.map((c) => ({ code: c.code, system: c.system })),
+        ...(args.includeDraftPathways ? { includeDraftPathways: true } : {}),
+      });
+      const surviving = matched.length === 0 ? [] : await collapseLattice(pool, matched);
+      const present = new Set(inputs.children.map((c) => c.pathwayId));
+      const joining = surviving.filter((m) => !present.has(m.pathway.id));
+      for (const m of joining) {
+        inputs.children.push({
+          sessionId: '',
+          pathwayId: m.pathway.id,
+          // '' = not pinned yet: evaluateRun pins the graph and the therapy starts.
+          inputs: { pathwayId: m.pathway.id, graphFingerprint: '', gateAnswers: new Map(), providerOverrides: new Map(), observations: new Map(), revision: 0 },
+        });
+      }
+      return {
+        inputs,
+        joining: joining.map((m) => ({ pathwayId: m.pathway.id, version: m.pathway.version })),
+        triggerData: {
+          addedContext: Object.keys(added).filter((k) => (added as Record<string, unknown>)[k] !== undefined),
+          joinedPathwayIds: joining.map((m) => m.pathway.id),
+        },
+      };
+    });
+    return formatSessionForGraphQL(run.parent);
   },
 
   /**
