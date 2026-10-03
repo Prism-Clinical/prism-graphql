@@ -2,7 +2,7 @@
 
 **Status:** Interpretation draft prepared for review. **Not** clinically adjudicated. L00.1.a remains open.
 
-**Date:** 2026-10-02
+**Date:** 2026-10-02 (wording corrections 2026-10-03)
 
 **Story:** [L00.1.a — Define one pathway’s intended meaning without syntax](../../specs/2026-10-01-pathway-language-level-3-story-spec.md#l00-1-a). **Authority:** [RFC](../../specs/2026-09-28-pathway-language-rfc.md), [Stage A](../../specs/2026-09-30-pathway-language-stage-a-spec.md) sections 4, 8 and 17.
 
@@ -47,7 +47,7 @@ Each item below is a proposal, not a decision.
 
 | Case | Evidence (what would establish it is itself open — Q1–Q7) | Proposed output | Must **not** be concluded |
 |---|---|---|---|
-| **Present** | Admissible evidence within scope that progressive dysphagia is present | Alarm finding established and surfaced as urgent, independent of other branches being unresolved. Evaluation **proposed** (nature per Q8, timing per Q11). Proposed reading: line 72’s “without alarm features” no longer holds | That evaluation was ordered or performed; any specific test, referral destination or deadline |
+| **Present** | Admissible evidence within scope that progressive dysphagia is present | Alarm finding established and surfaced as one of the source’s alarm symptoms “requiring immediate evaluation” (line 85, source wording preserved), independent of other branches being unresolved. Whether “immediate” relates to “urgent” (lines 376, 449) is unresolved (Q12); this draft does not equate them. Evaluation **proposed** (nature per Q8, timing per Q11). Proposed reading: line 72’s “without alarm features” no longer holds | That evaluation was ordered or performed; any specific test, referral destination or deadline |
 | **Explicitly assessed, absent** | An admissible, in-scope explicit negative for progressive dysphagia (e.g. a documented assessment that it is absent) | This one alarm is not established for the assessed scope and time. No evaluation is proposed **on the basis of this alarm** | That other alarms (lines 87–92) are absent; that the patient is “without alarm features”; that evaluation is unnecessary for any other reason; that the negative persists beyond its assessed time |
 | **Unassessed / unavailable** | No admissible assessment, retrieval failure, or only out-of-scope/stale evidence. **An empty chart is in this row**, not the previous one | Unresolved. Proposed: surface a need to assess this symptom where it is material (C-01 Need behaviour); keep any other established findings visible | That the symptom is absent; that line 72’s empiric-therapy path is cleared; that the encounter’s alarm screening is complete |
 
@@ -55,9 +55,9 @@ Not yet covered: conflicting evidence (e.g. present in one note, denied in anoth
 
 ## 5. Questions requiring clinical adjudication
 
-**What establishes progressive dysphagia**
+**What establishes progressive dysphagia** (review packet: [gerd-progressive-dysphagia-q1-q3-review.md](gerd-progressive-dysphagia-q1-q3-review.md); unresolved)
 
-- **Q1.** Is “progressive” required, or does any new dysphagia count? Line 86 says progressive; line 288 says dysphagia; line 298 says refractory. Which wording governs this alarm, and is dysphagia without a stated progression qualifier present, absent or unresolved for it?
+- **Q1.** Is “progressive” required, or can dysphagia documented without a progression qualifier establish this alarm? Line 86 says progressive; line 288 says dysphagia; line 298 says refractory. Which wording governs this alarm, and is dysphagia without a stated progression qualifier present, absent or unresolved for it?
 - **Q2.** Is “particularly solids before liquids” a required feature, a supporting feature, or illustrative only? Is line 375’s “to solids” intended to be the same thing?
 - **Q3.** Can the coded SNOMED `40739000` “Dysphagia (disorder)” alone establish this alarm, given it carries no progression qualifier?
 
@@ -71,7 +71,7 @@ Not yet covered: conflicting evidence (e.g. present in one note, denied in anoth
 **Intended evaluation**
 
 - **Q8.** What is the “evaluation” in line 85: clinician reassessment, GI referral (line 288), endoscopy consideration (lines 298, 375–376), or something else? The source does not say, and this draft does not choose.
-- **Q9.** Does the output stop at proposing evaluation for clinician review, or should it also propose a specific downstream action? (Out of L00.1.a scope either way; the answer bounds later stories.)
+- **Q9.** Does the proposed output stop at proposing evaluation for clinician review, or should it also name a specific downstream action? Defining what the proposed output means belongs in L00.1.a; implementing, ordering or routing any downstream action does not, and bounds later stories.
 - **Q10.** If the evaluation is a GI referral, does that use the line 288 referral wording, which covers broader dysphagia than this alarm?
 
 **Meaning of “immediate”**
