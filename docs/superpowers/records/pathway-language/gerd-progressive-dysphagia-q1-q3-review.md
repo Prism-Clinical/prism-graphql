@@ -36,7 +36,7 @@ The coding entry is a claim made by the supplied document. Its code, description
 
 ## 3. Decisions for the reviewer
 
-Each decision is independent. Record each separately.
+Record each decision separately and identify dependencies between answers. Q3 may depend on the answers to Q1 and Q2.
 
 - **Q1. Is progression required to establish this specific alarm?** If not, what dysphagia evidence suffices? If so, is dysphagia documented without a progression qualifier treated as not establishing this alarm, as unresolved for it, or otherwise?
 - **Q2. What role does the solids/liquids description play?** For example: required, supporting but not required, or illustrative only. Is line 375’s “to solids” the same feature as line 86’s “particularly solids before liquids”?
@@ -48,7 +48,7 @@ These are invented for discrimination only. They are not patient records. Outcom
 
 | # | Constructed in-scope evidence | Mainly tests | Outcome for this alarm |
 |---|---|---|---|
-| E1 | Patient reports swallowing difficulty with meat and bread that has worsened over two months; liquids pass normally | Baseline: progression and solids-first both stated | Unresolved |
+| E1 | Patient reports swallowing difficulty with meat and bread that has worsened over two months; liquids pass normally | Q1, Q2: worsening difficulty with solids; liquids unaffected. Whether this satisfies the source’s wording remains unresolved | Unresolved |
 | E2 | Patient reports swallowing difficulty that has worsened over three weeks; no solids/liquids description recorded | Q2 | Unresolved |
 | E3 | Patient reports difficulty swallowing solids; nothing recorded about change over time | Q1 | Unresolved |
 | E4 | Patient reports worsening difficulty swallowing solids and liquids equally | Q2 | Unresolved |
