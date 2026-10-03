@@ -11,7 +11,7 @@ The expected outputs were written by hand from the contract (§§1–7) and [CAN
 | `query/q.demo.json` | The query contract (contract §7.1), predicate `p.demo` and pinned value-set expansion. Symbolic contract digest `d1` |
 | `fixtures/EA-*.json` | Evaluation, preview and compilation fixtures |
 | `fixtures/CAN-*.json` | Canonicalization fixtures |
-| `index.json` | Contract case number → fixture IDs; before/after pairs; contrasts |
+| `index.json` | Contract case number (1–75) → fixture IDs; pairs (with their comparison mode); contrasts |
 | `validate.py` | Structural validator (`python3 validate.py`) |
 
 ## Expansion
@@ -104,7 +104,7 @@ Each evaluation and preview fixture requests output `p.demo`. The query output i
 | `cell` | `source`, `value` ∈ `Complete`/`Incomplete`/`Unknown`/`Absent` | Combined coverage cell |
 | `gap` | `ref`, `relevant`, `provenBy?` | Gap relevance (contract §4.1) |
 | `notCurrent` | `ref` | Statement or failure for another snapshot |
-| `diagnostic` | `code`, `ref`, `path?` | `ContradictoryAttestation`, `InsufficientlyScopedStatement`, `CrossKeyCorrection` (on the target), `UndeclaredField` |
+| `diagnostic` | `code`, `ref`, `path?`, `cause?`, `reason?` | `ContradictoryAttestation`, `InsufficientlyScopedStatement`, `CrossKeyCorrection` (on the target), `UndeclaredField`, `HistoricalDefect` (an S1 defect no longer involving a possible current revision; contract §2.1 step 7) |
 | `rule` | `value` | Contract §4.2 rule applied |
 | `needDeferred` | `binding` | No evidence Need, because a key binding is unresolved |
 | `stagesRun` | `value` | Stages executed in preview |
@@ -123,26 +123,25 @@ Each evaluation and preview fixture requests output `p.demo`. The query output i
 
 ## Pairs and contrasts
 
-`index.json` lists **pairs**, in which the semantic result must be identical:
+`index.json` lists **pairs**, each with a `compare` mode:
 
-- before/after a proven boundary attempt becomes available: 64/20, 64/21, 1/22, 1/63;
-- an irrelevant gap versus its boundary counterpart: 53/54;
-- an input permutation: 70/71, where the whole expected block is identical.
+- `result`: `evidence`, `decision` and `needs` must be identical, while diagnostics and trace assertions may legitimately differ. This applies to the before/after pairs 64/20, 64/21, 1/22 and 1/63, and to the irrelevant-gap pair 53/54.
+- `wholeExpected`: the entire `expected` block must be identical, including cause attribution and trace assertions, and the two inputs must be permutations of each other without being identical. This applies to 70/71.
 
 It also lists **contrasts** that keep proven-invalid boundary attempts distinguishable from undeterminable identity or authority, and from genuine payload conflicts.
 
 ## What `validate.py` checks
 
-The validator checks:
+The validator parses JSON strictly, rejecting duplicate member names and non-finite numbers. It canonicalizes with its own RFC 8785 serializer: ECMAScript number formatting, the RFC 8785 string escaping and member order on UTF-16 code units, with explicit rejection of input RFC 8785 cannot represent. It checks that:
 
 - every file parses, IDs are unique and match file names, and the index maps every case 1–71 to existing fixtures;
 - expected lists and attributions are in canonical order;
 - decisions are the projection of evidence, and Need causes equal result causes;
 - every `variants` assertion matches the digests of the input occurrences;
 - each canonicalization fixture’s hand-written `canonicalBytes` are reproduced from its raw occurrences, and its digest is the SHA-256 of those bytes;
-- the paired fixtures have equal results.
+- each pair satisfies its `compare` mode.
 
-It computes **no** expected evidence result, cause, Need or trace fact. It supports ASCII payloads only, and does not reimplement RFC 8785 string escaping.
+It computes **no** expected evidence result, cause, Need or trace fact.
 
 ## Open items
 

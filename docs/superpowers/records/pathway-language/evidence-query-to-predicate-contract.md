@@ -2,7 +2,7 @@
 
 **Status:** Proposed design draft. **Not** accepted, not finalized syntax, not a schema and not implemented. It contains no clinical content: the record type, enum values, codes, sources and permission below are fictional and illustrate language behavior only. They do not map to dysphagia, progression, urgency or any other clinical definition.
 
-**Date:** 2026-10-03. **Revised:** 2026-10-03, five times, after review. The third revision fixed three things:
+**Date:** 2026-10-03. **Revised:** 2026-10-03, six times, after review. The third revision fixed three things:
 
 - revision-chain boundaries: source-scoped identity, same-source corrections and one fully specified schematic authority rule;
 - deterministic outcomes for malformed history;
@@ -13,6 +13,12 @@ The fourth revision made three changes:
 - Proven cross-boundary corrections and retractions are now rejected without changing their target. This keeps gap irrelevance consistent with S1.
 - Payload identity for duplicate detection is defined.
 - An unsupported justification about coverage attestations is removed.
+
+The sixth revision made three changes:
+
+- S1 defects are scoped. A defect that no longer involves a possible current revision becomes a historical diagnostic, so a valid correction can resolve an earlier conflict.
+- The canonicalizer conforms to RFC 8785, including numbers.
+- Permutation pairs are validated on their whole expected output.
 
 The fifth revision made five changes:
 
@@ -228,7 +234,21 @@ S1 runs per `RecordKey` over a finite graph and always terminates. Its cycle det
 | Valid, target is a head | That head is removed (no reinstatement of earlier revisions) |
 | Valid, target is superseded | No effect; traced |
 
-**Step 7 — result.** Write *H* for the remaining heads, *X* for the additions and *C* for the accumulated causes.
+**Step 7 — scope defects, then decide the result.** Write *H* for the heads remaining after steps 5 and 6. Each defect recorded in steps 1–6 (a cause and any addition `excluded`/`unknown`) involves specific revisions:
+
+| Defect | Involves |
+|---|---|
+| `PayloadConflict` | The conflicted revision |
+| Defective or undeterminable correction edge (absent/malformed reference, missing target, self-supersession, cycle, undeterminable authority or boundary) | The edge’s source revision and its target (if present) |
+| Undeterminable envelope membership | That revision |
+| Undeterminable or conflicted retraction | Its target revision (for an absent target: every revision of the key) |
+| Fork | The heads themselves |
+
+A defect is **current-affecting** if any revision it involves is in *H*. Otherwise it is **historical**: it stays in the trace as a diagnostic (`HistoricalDefect`, with its original cause and reason) but adds no cause and no addition.
+
+For example, if a conflicted revision is superseded by a valid, unambiguous correction, its `PayloadConflict` is historical (case 72). If the correction is itself undeterminable, both revisions remain heads and the conflict still affects the result (case 73).
+
+Write *C* for the causes and *X* for the additions of current-affecting defects only.
 
 | Condition | Result |
 |---|---|
@@ -239,7 +259,7 @@ S1 runs per `RecordKey` over a finite graph and always terminates. Its cycle det
 
 `excluded` means “possibly not a current record for this query”; `unknown` means “possibly a current revision with any content”. No current revision is ever chosen by input order, revision-ID order or recency.
 
-Rejected and superseded revisions are kept in the trace with reasons. A `Complete` cell claim alongside a missing target in that cell is also traced as a contradictory attestation.
+Rejected and superseded revisions and historical defects are kept in the trace with reasons. A `Complete` cell claim alongside a missing target in that cell is also traced as a contradictory attestation.
 
 ### 2.2 S3 admissibility rules in this example
 
@@ -689,6 +709,10 @@ All cases start from D0. Every row was traced manually through 1.5, 2.1 and 4.
 | 69 | Undeclared field | Two occurrences of s1/r1@1 `Affirmed`; one adds an undeclared `note` | `Known(true, [s1/r1@1])` | True | One variant; `UndeclaredField` diagnostic | None |
 | 70 | Three variants, order A,B,C | s1/r14@1 as `Affirmed`, `Denied`, `Indeterminate` | `Unresolved{Conflicting}` @s1/r14 | Unknown(Conflicting) | Three variant IDs | K1; `CorrectRecord` s1/r14 |
 | 71 | Case 70 permuted (C,A,B) | Same occurrences, different order | Identical to case 70, including variant IDs and order | Same | Same | Same |
+| 72 | Conflict resolved by a valid correction | Two occurrences of s1/r1@1 (`Affirmed`, `Denied`); s1/r1@2 `Affirmed`, supersedes @1, `+amend` | `Known(true, [s1/r1@2])` | True | s1/r1 `Current(@2)`; `PayloadConflict` at s1/r1@1 is a historical diagnostic | None |
+| 73 | Conflict with an undeterminable correction | As 72, but @2 `perm omitted` | `Unresolved{Missing, Conflicting}` @s1/r1 | Unknown | Heads {@1 variants, @2}; both defects current-affecting | K1; `CorrectRecord` s1/r1 |
+| 74 | Numeric malformed values equal under RFC 8785 | Two occurrences of s1/r1@1, `assertion: 1` and `assertion: 1.0` | `Unresolved{Invalid}` @s1/r1@1 | Unknown(Invalid) | One variant (identical canonical bytes); `FieldMalformed:assertion` | K1; `CorrectRecord` s1/r1 |
+| 75 | Numeric canonicalization | Canonicalization only: `1`/`1.0`/`1E0`; `0`/`-0.0`; `1e21`/`1000000000000000000000` | — | — | Equal within each group | — |
 
 ### 7.5 Invariance checks
 
@@ -742,6 +766,7 @@ These must hold for every case:
 10. Canonical ordering for representation only.
 11. Payload equality, normative in [CANONICALIZATION.md](conformance/explicit-assertion-v0/CANONICALIZATION.md). Equality is defined over normalized payload values. The SHA-256 digest of RFC 8785 bytes only identifies variants.
 12. Key-closed gap dimensions, under which irrelevance is exact. Conflicted revisions stay conflicts, and undeterminable envelope membership stays unresolved.
+13. S1 defect scoping: only defects involving a possible current revision affect the result; others are historical diagnostics.
 
 **Possible conflicts needing a Stage A amendment.** None found. Items to confirm:
 
@@ -751,7 +776,7 @@ These must hold for every case:
 
 **Query/predicate split.** The query carries the reasoning. A projection-only Predicate is optional naming and composition structure. No node kind is added or removed.
 
-**Conformance fixtures.** [conformance/explicit-assertion-v0/](conformance/explicit-assertion-v0/README.md) holds machine-readable fixtures for cases 1–71, mapped by case number, with expected outputs written from this contract. They are proposed, like this document.
+**Conformance fixtures.** [conformance/explicit-assertion-v0/](conformance/explicit-assertion-v0/README.md) holds machine-readable fixtures for cases 1–75, mapped by case number, with expected outputs written from this contract. They are proposed, like this document.
 
 **Remaining items.**
 

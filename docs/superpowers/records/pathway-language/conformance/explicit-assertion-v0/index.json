@@ -225,37 +225,57 @@
     ],
     "71": [
       "EA-071"
+    ],
+    "72": [
+      "EA-072"
+    ],
+    "73": [
+      "EA-073"
+    ],
+    "74": [
+      "EA-074"
+    ],
+    "75": [
+      "CAN-08",
+      "CAN-09",
+      "CAN-10"
     ]
   },
   "pairs": [
     {
       "before": "EA-064",
       "after": "EA-020",
+      "compare": "result",
       "claim": "Proven subject-change attempt leaves the valid target's result unchanged; only the rejection diagnostic is added"
     },
     {
       "before": "EA-064",
       "after": "EA-021",
+      "compare": "result",
       "claim": "Proven record-type-change attempt leaves the valid target's result unchanged"
     },
     {
       "before": "EA-001",
       "after": "EA-022",
+      "compare": "result",
       "claim": "Proven cross-source correction leaves the valid target's result unchanged"
     },
     {
       "before": "EA-001",
       "after": "EA-063",
+      "compare": "result",
       "claim": "Proven cross-local-ID correction leaves the valid target's result unchanged"
     },
     {
       "before": "EA-053",
       "after": "EA-054",
+      "compare": "result",
       "claim": "A gap stated for another subject is irrelevant, and the boundary attempt it might be confused with does not change the result"
     },
     {
       "before": "EA-070",
       "after": "EA-071",
+      "compare": "wholeExpected",
       "claim": "Permuting occurrences changes neither variant identities, order nor result"
     }
   ],
@@ -288,6 +308,13 @@
         "EA-062"
       ],
       "claim": "Boundary rejection of a distinct revision versus a genuine payload conflict under one RevisionRef"
+    },
+    {
+      "fixtures": [
+        "EA-072",
+        "EA-073"
+      ],
+      "claim": "A conflict superseded by a valid correction is historical; with an undeterminable correction it still affects the result"
     }
   ]
 }

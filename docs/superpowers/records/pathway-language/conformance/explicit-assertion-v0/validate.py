@@ -2,11 +2,12 @@
 """Structural validator for the explicit-assertion-v0 fixtures.
 
 It checks format, references, case coverage, canonical ordering and the
-canonicalization fixtures (CANONICALIZATION.md). It is NOT an evaluator: it never
+canonicalization fixtures (CANONICALIZATION.md), using an RFC 8785 serializer
+(es_number, es_string, canonical below). It is NOT an evaluator: it never
 computes an expected evidence result, cause, Need or trace fact.
 Usage: python3 validate.py
 """
-import copy, hashlib, json, os, sys
+import copy, hashlib, json, math, os, sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 CAUSES = ["Missing", "Conflicting", "Unavailable", "Invalid", "Inadmissible", "InsufficientEvidence"]
@@ -42,11 +43,89 @@ def payload(occ):
     return out, sorted(undeclared)
 
 
-def canonical(p):
-    s = json.dumps(p, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
-    if not s.isascii():
-        raise ValueError("this validator only supports ASCII payloads (RFC 8785 escaping not reimplemented)")
-    return s
+class Unsupported(ValueError):
+    """Input that RFC 8785 / I-JSON cannot represent (CANONICALIZATION.md section 7)."""
+
+
+def _reject_constant(tok):
+    raise Unsupported(f"non-finite number {tok}")
+
+
+def _no_duplicates(pairs):
+    keys = [k for k, _ in pairs]
+    if len(keys) != len(set(keys)):
+        raise Unsupported("duplicate member name")
+    return dict(pairs)
+
+
+def strict_loads(text):
+    """Parse JSON text, rejecting what RFC 8785 cannot represent."""
+    return json.loads(text, object_pairs_hook=_no_duplicates, parse_constant=_reject_constant)
+
+
+def es_number(v):
+    """ECMAScript Number.prototype.toString of the nearest double (RFC 8785 section 3.2.2.3)."""
+    f = float(v)
+    if math.isinf(f) or math.isnan(f):
+        raise Unsupported("non-finite number")
+    if f == 0:
+        return "0"
+    sign = "-" if f < 0 else ""
+    mant, _, exp = repr(abs(f)).partition("e")  # repr gives the shortest round-trip digits
+    ip, _, fp = mant.partition(".")
+    raw = ip + fp
+    n = len(ip) + (int(exp) if exp else 0)  # value = 0.raw * 10^n
+    stripped = raw.lstrip("0")
+    n -= len(raw) - len(stripped)
+    digits = stripped.rstrip("0")
+    k = len(digits)
+    if k <= n <= 21:
+        s = digits + "0" * (n - k)
+    elif 0 < n <= 21:
+        s = digits[:n] + "." + digits[n:]
+    elif -6 < n <= 0:
+        s = "0." + "0" * (-n) + digits
+    else:
+        e = n - 1
+        s = (digits if k == 1 else digits[0] + "." + digits[1:]) + "e" + ("+" if e >= 0 else "-") + str(abs(e))
+    return sign + s
+
+
+_ESC = {'"': '\\"', "\\": "\\\\", "\b": "\\b", "\t": "\\t", "\n": "\\n", "\f": "\\f", "\r": "\\r"}
+
+
+def es_string(s):
+    out = []
+    for ch in s:
+        if 0xD800 <= ord(ch) <= 0xDFFF:
+            raise Unsupported("lone surrogate")
+        if ch in _ESC:
+            out.append(_ESC[ch])
+        elif ord(ch) < 0x20:
+            out.append("\\u%04x" % ord(ch))
+        else:
+            out.append(ch)
+    return '"' + "".join(out) + '"'
+
+
+def canonical(v):
+    """RFC 8785 serialization."""
+    if v is None:
+        return "null"
+    if v is True:
+        return "true"
+    if v is False:
+        return "false"
+    if isinstance(v, (int, float)):
+        return es_number(v)
+    if isinstance(v, str):
+        return es_string(v)
+    if isinstance(v, list):
+        return "[" + ",".join(canonical(x) for x in v) + "]"
+    if isinstance(v, dict):
+        items = sorted(v.items(), key=lambda kv: kv[0].encode("utf-16-be", "surrogatepass"))
+        return "{" + ",".join(es_string(k) + ":" + canonical(x) for k, x in items) + "}"
+    raise Unsupported(f"unsupported value type {type(v).__name__}")
 
 
 def sha(s):
@@ -79,8 +158,8 @@ def main():
     for name in sorted(os.listdir(fx_dir)):
         path = os.path.join(fx_dir, name)
         try:
-            fx = json.load(open(path))
-        except json.JSONDecodeError as e:
+            fx = strict_loads(open(path, encoding="utf-8").read())
+        except (json.JSONDecodeError, Unsupported) as e:
             err(name, f"invalid JSON: {e}")
             continue
         if fx.get("id") + ".json" != name:
@@ -89,7 +168,7 @@ def main():
             err(name, "duplicate id")
         fixtures[fx["id"]] = fx
 
-    index = json.load(open(os.path.join(HERE, "index.json")))
+    index = strict_loads(open(os.path.join(HERE, "index.json"), encoding="utf-8").read())
     referenced = set()
     for case, ids in index["cases"].items():
         for i in ids:
@@ -98,8 +177,8 @@ def main():
                 err("index", f"case {case} references missing fixture {i}")
             elif int(case) not in fixtures[i]["contractCases"]:
                 err(i, f"index maps case {case} but fixture does not declare it")
-    if sorted(map(int, index["cases"])) != list(range(1, 72)):
-        err("index", "contract cases 1-71 not all mapped")
+    if sorted(map(int, index["cases"])) != list(range(1, 76)):
+        err("index", "contract cases 1-75 not all mapped")
     for i in fixtures:
         if i not in referenced:
             err("index", f"fixture {i} is not referenced by any case")
@@ -109,7 +188,7 @@ def main():
                 if i not in fixtures:
                     err("index", f"{group} references missing fixture {i}")
 
-    query = json.load(open(os.path.join(HERE, "query", "q.demo.json")))
+    query = strict_loads(open(os.path.join(HERE, "query", "q.demo.json"), encoding="utf-8").read())
     for i, fx in fixtures.items():
         kind = fx["kind"]
         if kind == "canonicalization":
@@ -120,7 +199,11 @@ def main():
                     err(i, "digest does not match canonicalBytes")
                 for o in v["occurrences"]:
                     seen.append(o)
-                    got = canonical(payload(json.loads(raws[o]))[0])
+                    try:
+                        got = canonical(payload(strict_loads(raws[o]))[0])
+                    except Unsupported as e:
+                        err(i, f"occurrence {o} is not representable under RFC 8785: {e}")
+                        continue
                     if got != v["canonicalBytes"]:
                         err(i, f"occurrence {o} canonicalizes to {got}")
             if sorted(seen) != list(range(len(raws))):
@@ -128,7 +211,7 @@ def main():
             if fx["expected"]["equalPayload"] != (len(fx["expected"]["variants"]) == 1):
                 err(i, "equalPayload inconsistent with variants")
             for u in fx["expected"]["undeclaredFields"]:
-                if payload(json.loads(raws[u["occurrence"]]))[1] != sorted(u["paths"]):
+                if payload(strict_loads(raws[u["occurrence"]]))[1] != sorted(u["paths"]):
                     err(i, "undeclared fields mismatch")
             continue
         if kind in ("compilation", "preview"):
@@ -140,8 +223,6 @@ def main():
             err(i, "query reference mismatch")
         exp = fx["expected"]
         ev = exp["evidence"]
-        if not str(json.dumps(fx)).isascii():
-            err(i, "non-ASCII content")
         if ev["status"] == "Known":
             check_sorted(i + " supportingEvidenceIds", ev["supportingEvidenceIds"], id_key)
             want = {"value": "True" if ev["value"] else "False"}
@@ -175,9 +256,26 @@ def main():
                 check_sorted(i + " possibleCurrent", t["possibleCurrent"], id_key)
 
     for p in index["pairs"]:
-        a, b = fixtures[p["before"]]["expected"], fixtures[p["after"]]["expected"]
-        if (a["evidence"], a["decision"], a["needs"]) != (b["evidence"], b["decision"], b["needs"]):
-            err("pair", f'{p["before"]}/{p["after"]} results differ')
+        fa, fb = fixtures[p["before"]], fixtures[p["after"]]
+        a, b = fa["expected"], fb["expected"]
+        if p["compare"] == "result":
+            # before/after a proven boundary attempt: diagnostics legitimately differ
+            if (a["evidence"], a["decision"], a["needs"]) != (b["evidence"], b["decision"], b["needs"]):
+                err("pair", f'{p["before"]}/{p["after"]} results differ')
+        elif p["compare"] == "wholeExpected":
+            # input permutation: every expected field, including attribution and trace assertions
+            if a != b:
+                err("pair", f'{p["before"]}/{p["after"]} expected outputs differ')
+            ia, ib = fa["input"], fb["input"]
+            for k in ia:
+                same = (sorted(map(canonical, ia[k]), key=str) == sorted(map(canonical, ib[k]), key=str)
+                        if isinstance(ia[k], list) else ia[k] == ib[k])
+                if not same:
+                    err("pair", f'{p["before"]}/{p["after"]} inputs are not a permutation ({k})')
+            if ia == ib:
+                err("pair", f'{p["before"]}/{p["after"]} inputs are identical, not permuted')
+        else:
+            err("pair", f'unknown compare mode {p["compare"]}')
 
     if errors:
         print("\n".join(errors))

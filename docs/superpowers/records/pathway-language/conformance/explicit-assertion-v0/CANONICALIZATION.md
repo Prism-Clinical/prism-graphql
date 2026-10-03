@@ -41,7 +41,13 @@ Any other field, at any depth, is **undeclared**. It is removed from the payload
 ## 4. Strings and numbers
 
 - **Strings** are compared as exact sequences of Unicode scalar values. There is no normalization, case folding or trimming.
-- **Numbers.** `demo-model@0.1` declares no numeric field. A number in a declared field is malformed and kept verbatim; two numbers are equal only if their RFC 8785 serializations are identical. A future model with numeric fields needs its own numeric-equality rule.
+- **Numbers.** `demo-model@0.1` declares no numeric field, so a number in a declared field is malformed and kept as a value. As in RFC 8785, each JSON number is read as the nearest IEEE-754 double and serialized with the ECMAScript `Number.prototype.toString` algorithm. Two numbers are equal if and only if those serializations are identical. Hence:
+  - `1`, `1.0` and `1E0` are equal (`1`);
+  - `0` and `-0.0` are equal (`0`);
+  - `1e21` and `1000000000000000000000` are equal (`1e+21`);
+  - `1` and `2` differ.
+
+  A future model with numeric *declared* fields needs its own clinical numeric-equality rule. Units and precision are not addressed here.
 
 ## 5. Arrays and sets
 
@@ -61,7 +67,12 @@ Equal payloads form one **variant**. Two or more variants under one identity is 
 
 ## 7. Canonical bytes, digest and variant identity
 
-- **Canonical bytes:** the UTF-8 encoding of the RFC 8785 (JSON Canonicalization Scheme) serialization of the normalized payload. RFC 8785 fixes key order (UTF-16 code units), string escaping, number form and the absence of whitespace. Equal payloads have identical canonical bytes, and vice versa.
+- **Canonical bytes:** the UTF-8 encoding of the RFC 8785 (JSON Canonicalization Scheme) serialization of the normalized payload. Equal payloads have identical canonical bytes, and vice versa. RFC 8785 fixes:
+  - member order by UTF-16 code units;
+  - strings with only `"`, `\` and U+0000–U+001F escaped (`\b \t \n \f \r`, else `\u00xx` lower-case), everything else literal;
+  - the number form above;
+  - no whitespace.
+- **Input RFC 8785 cannot represent:** a non-finite number, a duplicate member name or a lone surrogate. Such an occurrence is not valid I-JSON. It is an unparseable item, a rejected item under contract §1.7, and never a payload variant. `validate.py` rejects such fixture content explicitly.
 - **Digest:** SHA-256 over the canonical bytes, written as 64 lower-case hex characters.
 - **Variant identity:** `<source>/<localId>@<revision>#<digest>`. Revisions with a single variant are referenced without the suffix.
 - **Ordering** of variants and other identity lists follows contract §5.3. It is representation only.

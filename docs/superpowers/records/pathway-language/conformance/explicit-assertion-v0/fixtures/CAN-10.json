@@ -1,0 +1,31 @@
+{
+  "id": "CAN-10",
+  "contractCases": [
+    75
+  ],
+  "title": "Exponent form 1e21 equals 1000000000000000000000",
+  "kind": "canonicalization",
+  "evidenceModel": "demo-model@0.1",
+  "itemType": "revision",
+  "comparison": "canonicalization-v1",
+  "input": {
+    "rawOccurrences": [
+      "{\"key\":{\"source\":\"s1\",\"localId\":\"r1\"},\"revision\":\"1\",\"recordType\":\"demo-model/DemoAssessment@0.1\",\"subject\":\"P1\",\"episode\":\"E1\",\"encounter\":\"N1\",\"concept\":{\"system\":\"demo-cs\",\"code\":\"item-x\"},\"assertion\":1e21,\"assertionKind\":\"ClinicianDocumented\",\"author\":{\"actor\":\"u1\",\"permissions\":[]},\"provenance\":{\"acquisition\":\"a0\",\"sourceRecordRef\":\"s1:r1:1\"}}",
+      "{\"key\":{\"source\":\"s1\",\"localId\":\"r1\"},\"revision\":\"1\",\"recordType\":\"demo-model/DemoAssessment@0.1\",\"subject\":\"P1\",\"episode\":\"E1\",\"encounter\":\"N1\",\"concept\":{\"system\":\"demo-cs\",\"code\":\"item-x\"},\"assertion\":1000000000000000000000,\"assertionKind\":\"ClinicianDocumented\",\"author\":{\"actor\":\"u1\",\"permissions\":[]},\"provenance\":{\"acquisition\":\"a0\",\"sourceRecordRef\":\"s1:r1:1\"}}"
+    ]
+  },
+  "expected": {
+    "equalPayload": true,
+    "variants": [
+      {
+        "occurrences": [
+          0,
+          1
+        ],
+        "canonicalBytes": "{\"assertion\":1e+21,\"assertionKind\":\"ClinicianDocumented\",\"author\":{\"actor\":\"u1\",\"permissions\":[]},\"concept\":{\"code\":\"item-x\",\"system\":\"demo-cs\"},\"encounter\":\"N1\",\"episode\":\"E1\",\"recordType\":\"demo-model/DemoAssessment@0.1\",\"subject\":\"P1\"}",
+        "digest": "3c0200bc4396e79655c5d82efe530c01f9864039c8785ee25d57f0ce460a703b"
+      }
+    ],
+    "undeclaredFields": []
+  }
+}
