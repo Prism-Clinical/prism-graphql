@@ -278,8 +278,9 @@ function definiteLatest(facts: NormalizedFact[], clockMs: number): NormalizedFac
  * than it — which is right for chart values and is left alone. But when the
  * ambiguity was escalated and a provider answered, their value is dated at the
  * session clock and is the one thing on file known to be current. It is
- * ordered against the DATED candidates only: it beats every undated value,
- * and still loses to a dated chart value that is genuinely later.
+ * ordered against the DATED candidates only: it beats every undated value
+ * and a chart value from the same day with no time, and still loses to a
+ * dated chart value that is, or may be, later.
  *
  * Without a dated provider assertion this returns null, so "several undated
  * values" and "a dated value beside undated ones" stay AMBIGUOUS_LATEST
@@ -288,8 +289,23 @@ function definiteLatest(facts: NormalizedFact[], clockMs: number): NormalizedFac
  */
 function providerAssertedLatest(facts: NormalizedFact[], clockMs: number): NormalizedFact | null {
   const dated = facts.filter((f) => f.interval.start !== undefined);
-  if (!dated.some((f) => f.provenance.sourceType === 'PROVIDER_ASSERTED')) return null;
-  return definiteLatest(dated, clockMs);
+  const asserted = dated.filter((f) => f.provenance.sourceType === 'PROVIDER_ASSERTED');
+  if (asserted.length === 0) return null;
+  const strict = definiteLatest(dated, clockMs);
+  if (strict) return strict;
+  // Not STRICTLY later than everything — the case of a chart value dated
+  // today with no time, whose range runs up to the clock the answer is dated
+  // at. `definiteLatest` rightly calls two chart values like that unordered.
+  // A provider's answer is different: it was given, at the clock, to the
+  // question "what is the most recent value?". Nothing on file can be later
+  // than the clock, so the answer stands unless a dated value may be later
+  // than it. Left unordered, the gate asked again after every answer, forever.
+  // Two assertions at one instant remain a genuine tie.
+  const atOrAfterAll = asserted.filter((a) => {
+    const lo = effectiveRange(a, clockMs).loMs;
+    return dated.every((g) => g === a || lo >= effectiveRange(g, clockMs).hiMs);
+  });
+  return atOrAfterAll.length === 1 ? atOrAfterAll[0] : null;
 }
 
 export function selectFacts(

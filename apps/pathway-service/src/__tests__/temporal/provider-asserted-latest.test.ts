@@ -76,4 +76,36 @@ describe('scalar latest-value selection with a provider assertion', () => {
     );
     expect(selectedIds(out)).toEqual(['c']);
   });
+
+  // A chart value dated the clock's day with no time spans [00:00, clock]; the
+  // answer is dated AT the clock. Not strictly later — and still the answer.
+  const CLOCK = '2026-07-26T12:00:00.000Z';
+  const NOON: ResolvedHorizon = { lowerBound: '2026-04-27T00:00:00.000Z', upperBound: CLOCK };
+  const today = (factId: string, value: number): NormalizedFact => ({
+    kind: 'lab', factId, code: '718-7', system: 'LOINC', value,
+    interval: {
+      start: { value: '2026-07-26', precision: 'day' },
+      end: { kind: 'KNOWN', bound: { value: '2026-07-26', precision: 'day' } },
+    },
+    recordValidity: 'VALID', validityBasis: 'SYNTHETIC_DEFAULT', provenance: { sourceType: 'SYNTHETIC' },
+  });
+
+  it('wins over a chart value dated today with no time — the gate stops asking', () => {
+    const out = selectFacts(HB, [today('c', 10.8), dated('p', CLOCK, 8.7, 'PROVIDER_ASSERTED')], { horizon: NOON });
+    expect(selectedIds(out)).toEqual(['p']);
+  });
+
+  it('UNCHANGED: the same two values with no provider assertion stay ambiguous', () => {
+    const out = selectFacts(HB, [today('c', 10.8), dated('d', CLOCK, 8.7)], { horizon: NOON });
+    expect(out.status).toBe('INDETERMINATE');
+  });
+
+  it('two provider assertions at one instant are a genuine tie', () => {
+    const out = selectFacts(
+      HB,
+      [dated('p1', CLOCK, 8.7, 'PROVIDER_ASSERTED'), dated('p2', CLOCK, 9.9, 'PROVIDER_ASSERTED')],
+      { horizon: NOON },
+    );
+    expect(out.status).toBe('INDETERMINATE');
+  });
 });
