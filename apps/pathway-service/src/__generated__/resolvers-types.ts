@@ -428,6 +428,14 @@ export type GateAnswerInput = {
    */
   notAvailable?: InputMaybe<Scalars['Boolean']['input']>;
   numericValue?: InputMaybe<Scalars['Float']['input']>;
+  /**
+   * With `numericValue`, answering a request for a LAB: the day the result was
+   * drawn, `YYYY-MM-DD`, on or before the session's evaluation date. Omitted, the
+   * value is dated now. A dated value is what a trend or response check needs —
+   * a baseline three weeks ago and a recheck yesterday are two answers with two
+   * dates.
+   */
+  observedOn?: InputMaybe<Scalars['String']['input']>;
   selectedOption?: InputMaybe<Scalars['String']['input']>;
 };
 

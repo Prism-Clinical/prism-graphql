@@ -235,7 +235,9 @@ export function seriesAskFor(condition: GateCondition, latestDate: string): Unre
   const label = authoredDisplay(condition.display) ?? value;
   return {
     datumKey: `${system}:${value}`,
-    prompt: `${label} (${system} ${value}) — newest result, drawn after ${latestDate}?`,
+    prompt: latestDate
+      ? `${label} (${system} ${value}) — newest result, drawn after ${latestDate}?`
+      : `${label} (${system} ${value}) — a result, and the date it was drawn?`,
     answerType: AnswerType.NUMERIC,
     target: { kind: 'lab', code: value, system },
   };

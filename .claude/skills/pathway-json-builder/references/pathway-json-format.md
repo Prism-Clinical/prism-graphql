@@ -313,6 +313,13 @@ that orders it (anemia v10: `gate-no-hgb-on-file` → Step 1.9; `gate-proof.ts u
 That gate is open from the start of the visit, stays open after a decline, and closes when
 a value is on file. Without such a gate a declined datum simply closes its gates.
 
+**Dated lab answers (josh-dev, 2026-10-03).** A lab answer may carry the day it was drawn
+(`GateAnswerInput.observedOn`; the simulator's "drawn" date beside the value). Dated, it is
+an ordinary dated result and several stand side by side — a baseline three weeks ago and a
+recheck yesterday. Undated, it is "the value now": marked provider-asserted, and a later
+one supersedes it. Series conditions (`delta_from_baseline`, trends) count only dated
+values, and a series short of them now ASKS, however many it is short by.
+
 - **Which conditions can be unresolved — the *numeric* conditions.** One definition,
   used by this spec, the brief template and `check-gate-control.ts` (which applies it, and
   every other condition lint, to leaves at any nesting depth):
@@ -598,7 +605,7 @@ With `min_days_since_anchor: 14` and `baseline_days: 28`:
 | day ≥ 14, baseline + recheck, rise < 1 | closed | opens |
 | day ≥ 14, baseline only (not rechecked) | held — ONE question: newest Hgb after the baseline date | held (same question) |
 | no start date and the drug not recommended this session | held — ONE question: "When did oral iron start?" | held (same question) |
-| day ≥ 14, no Hgb since `baseline_days` before the start, no recheck (0 points) | closed — nothing to ask | closed — nothing to ask |
+| day ≥ 14, no Hgb since `baseline_days` before the start, no recheck (0 points) | held — ONE question: "a result, and the date it was drawn?" (since 2026-10-03; was closed with nothing asked) | held (same question) |
 
 NOT_YET_DUE asks nothing, so **the start visit's care plan is not blocked**
 (the pipeline's readiness rules, `pipeline/readiness.ts`, block only on pending questions, unresolved nodes, red flags and unavailable safety data) — this replaces anemia v5's

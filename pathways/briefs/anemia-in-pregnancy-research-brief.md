@@ -1716,6 +1716,12 @@ we treat it as unknown level of anemia and recommend ordering anemia labs."
   coverage audit found, where a response gate asked for a "newest result drawn after" the
   provider's own answer.
 - **Open:** `[JOSH — CONFIRM]` the order set (CBC with indices + ferritin).
+- **Recheck due with no dated hemoglobin (engine, 2026-10-03):** the response gates used to
+  close without asking when the window held no dated hemoglobin at all, so an encounter
+  with iron started 45 days earlier and only an undated hemoglobin on the chart showed no
+  prompt for the recheck. They now ask — "Hemoglobin (g/dL) (LOINC 718-7) — a result, and
+  the date it was drawn?" — and a lab answer can carry its draw date, so a baseline and a
+  recheck can both be entered. "Not available" closes them. No JSON change.
 
 ### `[DECISION — Josh 2026-09-25]` IV iron first needs a confirmed ferritin — ENCODED (v9)
 

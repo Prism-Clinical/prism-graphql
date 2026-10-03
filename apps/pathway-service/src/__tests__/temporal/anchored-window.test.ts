@@ -495,7 +495,7 @@ describe('insufficient series is UNRESOLVED, not "no"', () => {
     expect(r.unresolvedSeries).toEqual([{ condition: expect.anything(), latestDate: '2026-06-03' }]);
   });
 
-  it('two or more short asks nothing (no single answer completes it)', async () => {
+  it('two or more short still asks — answers carry their draw date, so each one adds a point', async () => {
     const r = await evaluateGate(
       trendGate({ ...DELTA('less_than'), min_points: 3 }),
       deps(patient({ labs: [{ date: '2026-06-03', value: 8.4 }] }), {
@@ -503,7 +503,16 @@ describe('insufficient series is UNRESOLVED, not "no"', () => {
       }),
     );
     expect(r.indeterminate).toBe(true);
-    expect(r.unresolvedSeries).toBeUndefined();
+    expect(r.unresolvedSeries).toEqual([expect.objectContaining({ latestDate: '2026-06-03' })]);
+  });
+
+  it('nothing dated on file at all asks for a result and its date', async () => {
+    const r = await evaluateGate(
+      trendGate(DELTA('less_than')),
+      deps(patient({ labs: [] }), { answers: new Map([[KEY, { dateValue: '2026-06-01' }]]) }),
+    );
+    expect(r.indeterminate).toBe(true);
+    expect(r.unresolvedSeries).toEqual([expect.objectContaining({ latestDate: '' })]);
   });
 
   it('count_in_window is unchanged: a count of zero is an answer', async () => {

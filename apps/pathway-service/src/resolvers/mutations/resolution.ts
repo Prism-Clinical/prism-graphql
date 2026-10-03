@@ -41,6 +41,7 @@ import {
   validateAnswerAgainstGate,
 } from '../../services/resolution/answer-validation';
 import { planAnchorAnswer } from '../../services/resolution/anchor-answer';
+import { anchorDateProblem } from '../../services/resolution/temporal/anchored-window';
 import { normalizePatientAttributes } from '../../services/resolution/patient-attributes';
 import { mergeAdditionalContext } from '../../services/resolution/effective-context';
 import {
@@ -71,6 +72,8 @@ export interface GateAnswerInput {
   dateValue?: string;
   /** The provider has no value for the datum asked for. Supplied alone. */
   notAvailable?: boolean;
+  /** `YYYY-MM-DD` — when a lab value being supplied was drawn. */
+  observedOn?: string;
 }
 
 /**
@@ -277,12 +280,30 @@ function answerChange(session: ResolutionSession, args: { sessionId: string; nod
     // The session clock, not the wall clock: a fact dated after
     // `evaluationAsOf` lies outside every horizon and is dropped.
     const assertedAsOf = session.temporalContext.evaluationAsOf;
+    // A lab the provider reads off an older report carries the day it was
+    // drawn. Checked like a treatment start date: a real day, not after the
+    // session's clock.
+    const observedOn = args.answer.observedOn;
+    if (observedOn !== undefined && observedOn !== null) {
+      if (target.kind !== 'lab') {
+        throw new GraphQLError(`Gate "${args.nodeId}": observedOn dates a lab result; ${pending.datumKey} is not a lab`, {
+          extensions: { code: 'BAD_USER_INPUT' },
+        });
+      }
+      const dateProblem = anchorDateProblem(observedOn, assertedAsOf);
+      if (dateProblem !== null) {
+        throw new GraphQLError(`Gate "${args.nodeId}": observedOn — ${dateProblem}`, { extensions: { code: 'BAD_USER_INPUT' } });
+      }
+    }
     const fragment: AdditionalContextInput =
       target.kind === 'lab'
         ? {
             labResults: [{
               code: target.code, system: target.system, value: value as number,
-              date: assertedAsOf, providerAsserted: true,
+              // Dated the day it was drawn when the provider says so, and then it is
+              // an ordinary dated result — several can stand side by side. Undated
+              // by the provider, it is "the value now" and supersedes earlier ones.
+              ...(observedOn ? { date: observedOn } : { date: assertedAsOf, providerAsserted: true }),
             }],
           }
         : target.kind === 'vital'

@@ -1570,17 +1570,21 @@ function evaluatePatientAttribute(
 }
 
 /**
- * A series ONE dated value short can be completed by asking for the newest
- * result; short by more, no single answer completes it (a second answer would
- * land at the same session instant and make the series unorderable). The
- * latest date on file goes with it, so the question asks for a NEWER draw.
+ * A series short of dated values asks for one. The latest date on file goes
+ * with it, so the question asks for a NEWER draw; with nothing on file it asks
+ * for a result and its date. ([DECISION — Josh 2026-10-03]: ask when a value
+ * is missing; "Not available" is the way out.)
  */
 function seriesAskableOf(
   condition: GateCondition,
   result: ConditionOutcome,
 ): { condition: GateCondition; latestDate: string } | null {
-  if (result.seriesShortBy !== 1 || result.seriesLatestDate === undefined) return null;
-  return { condition, latestDate: result.seriesLatestDate };
+  if (result.seriesShortBy === undefined || result.seriesShortBy < 1) return null;
+  // Short by one with a value on file: ask for a NEWER draw. With nothing
+  // dated on file at all, ask for a dated result — answers carry the day they
+  // were drawn (`observedOn`), so a baseline and a recheck can both be given.
+  // Closing without a question left a due recheck with no prompt at all.
+  return { condition, latestDate: result.seriesLatestDate ?? '' };
 }
 
 /** The distinct anchors, by key, in the order they were first resolved. */

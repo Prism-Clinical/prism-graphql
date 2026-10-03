@@ -288,3 +288,27 @@ describe('an answer sent to a chart gate that is not asking', () => {
     expect(session(id).gateAnswers.size).toBe(0);
   });
 });
+
+describe('a lab value entered with the day it was drawn', () => {
+  const HGB_LOW = { field: 'labs', operator: 'less_than', value: '718-7', system: 'LOINC', threshold: 11 };
+  const TWO_UNDATED = { labResults: [{ code: '718-7', system: 'LOINC', value: 9 }, { code: '718-7', system: 'LOINC', value: 12 }] };
+
+  it('is stored as an ordinary dated result on that day', async () => {
+    harness.addPathway('pw', oneGate(HGB_LOW));
+    const id = await start('pw', TWO_UNDATED);
+    await answer(id, { numericValue: 8.4, observedOn: '2026-08-20' });
+    expect(session(id).additionalContext.labResults).toEqual([
+      expect.objectContaining({ code: '718-7', value: 8.4, date: '2026-08-20' }),
+    ]);
+    expect((session(id).additionalContext.labResults as Array<Record<string, unknown>>)[0].providerAsserted).toBeUndefined();
+  });
+
+  it('refuses a day after the session clock, and a date on a non-lab datum', async () => {
+    harness.addPathway('pw', oneGate(HGB_LOW));
+    const id = await start('pw', TWO_UNDATED);
+    await expect(answer(id, { numericValue: 8.4, observedOn: '2026-09-15' })).rejects.toThrow(/observedOn/);
+    harness.addPathway('pw-ga', oneGate({ attribute: 'patient.gestational_age_weeks', operator: 'greater_or_equal', value: 18 }));
+    const id2 = await start('pw-ga');
+    await expect(answer(id2, { numericValue: 20, observedOn: '2026-08-20' })).rejects.toThrow(/not a lab/);
+  });
+});
