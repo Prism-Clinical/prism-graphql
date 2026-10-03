@@ -1,0 +1,140 @@
+PRISM · CLINICAL INFORMATICS · PROBLEM DEFINITION
+Time, Acuity, and the Reading of Data
+A working catalogue of clinical scenarios in which the timing of a data point — not the data point itself — determines its clinical meaning.
+
+Prologue: Two Axes
+
+No clinical datum carries its own acuity. A lab value, a vital sign, a symptom report — none of these are intrinsically urgent or benign. Acuity belongs to the reading of the datum: the context, trajectory, and clinical question being asked of it, not the number itself. A hemoglobin of 9.5 g/dL means something different in a patient three days post-partum hemorrhage than it does in a patient with a decade of stable iron-deficiency anemia. Same number, different reading, different pathway.
+
+This document works through a series of clinical scenarios that illustrate this problem across specialties. Each one is evaluated along two independent axes.
+
+Axis one: read type
+This is the model Prism already implements. A Gate can evaluate a datum as a stateless single point (a lab value against a threshold), a counter (has this occurred N times within a window — recurrent UTIs, for example), or a trend (a trajectory of values over time). Choosing among these three is largely a solved design problem.
+
+Axis two: timing window complexity
+This is newer and harder. Even once a datum is correctly typed as a counter or a trend, the system still has to define what window counts — how many days, how many recurrences, how much data — before it or the provider can act with confidence. This is not a solved problem, and it's largely independent of which read type applies. A trend gate and a counter gate can both be easy or both be hard depending on how ambiguous the window boundary is.
+
+A modifier on both axes: standing facts
+Some data points carry a further complication: the read type and window aren't enough on their own, because how the datum should be read depends on a standing fact recorded elsewhere in the graph. Blood pressure is the clearest case — the same threshold means something different depending on whether chronic hypertension is already present. This isn't a third axis so much as a modifier on the first two: it means the gate logic often has to be compound, tying trend or counter evaluation to a prior condition check before the reading resolves to a meaning.
+
+Each worked example below is classified on both axes before its clinical narrative and schema implications are discussed.
+
+ 
+
+Example One — Temperature & Fever of Unknown Origin
+
+READ TYPE: Trend (dual-lens)     WINDOW COMPLEXITY: Moderate — soft, clinical-judgment window
+
+Clinical framing
+
+A single elevated temperature reading is genuinely useful on its own when a patient presents with an acute complaint — it is diagnostic in the moment, and that utility doesn't disappear. The fever-of-unknown-origin picture is a separate question entirely: whether the pattern meets actual time criteria for FUO, versus a single acute spike, versus a trajectory that is building or resolving, which then matters differently depending on whether the underlying etiology is known or unknown.
+
+So the same data class needs near-parallel evaluation lenses depending on the clinical question being asked of it — not one trend read, but a family of them, selected by clinical context rather than by the data itself.
+
+Technical points
+
+1.  A single temperature reading and a trend-evaluated temperature reading are not different data — they're the same attribute read through different lenses depending on the clinical question in play. The schema doesn't currently distinguish "this gate is asking about right now" from "this gate is asking about a pattern."
+
+2.  The FUO window itself is not codified the way blood pressure's is (see Example Two) — duration and recurrence criteria involve real clinical judgment, which makes this the softest timing-window problem in the document.
+
+ 
+
+Example Two — Blood Pressure & Hypertensive Disorders of Pregnancy
+
+READ TYPE: Counter (hard-coded window)     WINDOW COMPLEXITY: Low on its own — high once standing facts are layered in
+
+Clinical framing
+
+A single elevated blood pressure reading in clinic is ambiguous — pain, anxiety, a full bladder, or the first data point in evolving preeclampsia can all produce the same number. What resolves the ambiguity is repetition within a specific, guideline-defined window: two readings at least four hours apart, both in range, is a formal diagnostic criterion in pregnancy, not just useful context.
+
+Pre-existing chronic hypertension complicates this further. A mild-range reading in a chronic HTN patient is expected baseline, not a new finding — the same counter criterion cannot be read identically for every patient. Severe range, however, still represents a real acute event even against a chronic baseline; it routes to superimposed preeclampsia management rather than being read as noise.
+
+The resulting diagnostic model is partly exclusive and partly overlapping. Chronic hypertension and gestational hypertension cannot both be true for the same patient — gestational HTN is defined as new-onset, chronic HTN as pre-existing, so one diagnosis excludes the other. Chronic hypertension and preeclampsia, however, can coexist as superimposed preeclampsia, a chronic-plus-acute overlay rather than a contradiction.
+
+Blood pressure data also does three distinct jobs depending on where the patient is in the pathway, and each job wants a different read type: diagnostic categorization uses the counter logic described above; treatment-phase monitoring reads BP as a trend, both to decide when to start medication and to assess response to an intervention already underway; and outside those two moments, BP functions as a stateless watchdog for the severe threshold, which routes to acute evaluation regardless of chronic status.
+
+Technical points
+
+1.  Compound standing-fact modifier. The counter logic needs to be paired with a prior_node_result or patient_attribute check for chronic HTN history before the same threshold can be interpreted correctly — mild range plus chronic HTN routes to routine management, severe range routes to acute evaluation regardless of chronic status.
+
+2.  Mutually exclusive vs. overlapping diagnoses. The schema has to represent both an XOR relationship (chronic HTN vs. gestational HTN) and an AND relationship (chronic HTN plus preeclampsia) for the same underlying data.
+
+3.  Position-dependent gate type. One data class — vital.systolic_bp / vital.diastolic_bp — needs three different gate shapes (counter, trend, stateless) depending on where the patient sits in the pathway, not one gate type per datum.
+
+4.  Diagnosis transition over time (for discussion). Gestational HTN progressing to preeclampsia is not a re-read of the same window — it's the diagnosis node itself changing state mid-pathway. Structurally this may already be the easy case: BRANCHES_TO and re-evaluation already model re-routing as new criteria are met, while the original gestational HTN finding remains true rather than being overwritten. The open question is less architectural and more about ensuring pathway authors build the transition edge rather than treating preeclampsia as a wholly separate diagnostic silo.
+
+5.  Postpartum window edge (for discussion). The clinically relevant temporal boundary for this data is not delivery — hypertensive disorders of pregnancy pathways extend surveillance into a defined postpartum window (six weeks, ACOG-aligned). This is a reminder that "pregnancy" as an implicit temporal scope elsewhere in the schema is a simplification; the relevant window can outlive the pregnancy state that triggered the pathway. This pattern likely recurs elsewhere — postpartum hemorrhage risk, postpartum depression screening — rather than being unique to hypertension.
+
+ 
+
+Example Three — Hemoglobin & Anemia
+
+READ TYPE: Trend (delta-from-baseline)     WINDOW COMPLEXITY: Moderate — obvious observation window, but baseline may sit outside it
+
+Clinical framing
+
+The same absolute hemoglobin value means entirely different things depending on trajectory. A drop from 13 to 9 g/dL over 48 hours post-partum is an acute bleed, evaluated as an emergency. A hemoglobin that has held steady at 9 for three months in a patient with known iron-deficiency anemia is a chronic management problem, no urgency at all. Same number, opposite clinical weight.
+
+Unlike temperature's directional trend or blood pressure's threshold-crossing counter, hemoglobin's trend is fundamentally about delta against a personalized baseline — and interpreting an intervention that occurred in between the two readings correctly requires knowing not just the two values, but what happened between them.
+
+Technical points
+
+1.  Delta-from-baseline as its own gate concept. The gate evaluates the difference between a current reading and a stored prior value for the same patient, not a fixed threshold — a different shape than a namespace-typed current attribute alone can express.
+
+2.  Rate of change as the real trigger. Delta alone is insufficient — a 4-point drop over 48 hours is an emergency, over 4 months it isn't — so the gate needs delta-per-unit-time, which requires genuine trend evaluation across multiple timestamped readings, not a simple two-point comparison.
+
+3.  No-baseline fallback. With no prior hemoglobin on file — a new patient's first-ever draw — there is nothing to compute delta or rate against, so the pathway falls back to stateless evaluation against population-level thresholds (e.g. WHO/CDC anemia cutoffs). This is the clearest real-world trigger for default_behavior in the entire document: traverse proceeds conservatively on absolute thresholds, skip suppresses the acute-drop branch until a second reading establishes trajectory.
+
+4.  Intervention as a confound on the trend read. A rising or stable hemoglobin between two readings could mean the bleed resolved on its own, or it could mean an iron infusion or transfusion happened in the interval and is doing the work, masking ongoing losses. Reading the trend correctly requires visibility into whether a relevant Medication or Procedure node occurred within the interval between the two readings specifically — not a static prior-diagnosis check like Example Two's chronic HTN modifier, but an interval-bounded intervention check. If the intervention falls outside the comparison window, it is not a confound at all — it is simply the new baseline.
+
+ 
+
+Example Four — Therapeutic Drug Monitoring (Lithium)
+
+READ TYPE: Validity precondition (no clean fit)     WINDOW COMPLEXITY: High — two independent timing anchors, no missingness signal
+
+Clinical framing
+
+A lithium level drawn too early after a dose change is actively misleading, not merely noisy. Lithium takes roughly five days to reach steady state after any dose adjustment; a level drawn on day two looks low not because the dose is inadequate, but because the drug hasn't equilibrated yet. Increasing the dose in response would be a real clinical error.
+
+A second, independent timing requirement sits on top of the first: even at steady state, the level has to be drawn as a proper trough, roughly twelve hours after the last dose — not two hours after, which would catch the absorption peak and read falsely high. A single lithium value can therefore be wrong in two unrelated ways, anchored to two different clocks: time since the last dose change, and time since the last individual dose.
+
+This differs in kind from Examples One through Three, all of which were about interpreting an already-valid reading correctly. This is about whether the reading is valid at all, before clinical interpretation even starts.
+
+Illustration
+
+Consider two sequential gates. The first asks a clinical question — "is this lithium level in the therapeutic range?" — the kind of gate already modeled today, a patient_attribute comparing lab.lithium_level against a threshold. The problem is that this gate can fire on a number that is real but not yet meaningful: a level of 0.4 mEq/L reads as subtherapeutic whether or not the sample was drawn at true steady state. If it was, the finding is legitimate and the dose should be increased. If it was drawn two days after a dose change, before equilibration, the same 0.4 says nothing about dose adequacy — and acting on it would be a real error, despite nothing about the data itself appearing wrong or missing.
+
+Technical points
+
+1.  Two independent timing anchors. Steady-state timing references the last dose-change event; trough timing references the last dose-administration event. These are different nodes in the graph and do not share a clock.
+
+2.  The system does not currently distinguish a valid reading from a premature one. A subtherapeutic level drawn before steady state looks structurally identical to a genuinely subtherapeutic level at steady state — both are simply lab.lithium_level below threshold.
+
+3.  Future consideration, not a current design commitment. The right owner of this judgment is the provider, not the system. Rather than Prism attempting to infer or enforce draw-timing validity automatically, this is flagged as an open question for Wyeth: should the schema eventually support a provider-facing mechanism to mark a specific reading as premature or unreliable, excluding it from gate evaluation without deleting it from the record? No mechanism is proposed here — only the gap, named ahead of it surfacing as a real safety issue in a titration-heavy pathway.
+
+ 
+
+Example Five — Data Staleness (GBS Culture Validity)
+
+READ TYPE: Stateless, with an expiration condition     WINDOW COMPLEXITY: Moderate — window is guideline-fixed, but anchored to a future event
+
+Clinical framing
+
+This is the mirror image of the lithium problem. Lithium concerned a reading drawn too early, before it was valid. GBS staleness concerns a reading that was perfectly valid and stops being trustworthy simply because too much time has passed.
+
+Universal GBS screening occurs at 36–37 weeks, and the culture result is considered valid for five weeks — deliberately calibrated to cover deliveries through 41 weeks. If delivery happens within that window, the result governs intrapartum antibiotic prophylaxis directly. If the pregnancy runs long and delivery falls outside the five-week window, the same result can no longer be trusted as current — colonization status can change — so the pathway has to treat the patient as unknown-status rather than relying on a now-stale fact, which changes intrapartum management entirely.
+
+Technical points
+
+1.  Expiration as a property of the fact, not the read type. This does not require a new read type — a stateless patient_attribute gate still works, provided it carries an additional temporal validity condition, such as "attribute recorded within N days of evaluation time," attached to the condition itself.
+
+2.  The clock anchors to an event that hasn't happened yet. Unlike the screening date, which is fixed once recorded, the other endpoint of the validity window is delivery — unknown until it occurs. The gate cannot fully resolve until the anchoring event happens, a genuinely different shape from every other example in this document, where both endpoints of the comparison window were already-known past events.
+
+3.  Silent failure, opposite direction from lithium. Lithium risked acting on a number too early. This risks acting on a number too late — a stale result that still looks perfectly normal and available, with no missingness signal. Same failure shape as lithium — a legitimate-looking value that shouldn't be trusted — but the fix runs the opposite direction of the same missing schema concept: an explicit fact-validity window.
+
+ 
+
+Closing Note
+
+Lithium and GBS are two faces of one concept the schema does not yet express: every fact has a validity window, and a reading can fail that window from either direction — too early, or too late — while looking, in both cases, like a perfectly ordinary value. This document surfaces both edges without proposing a resolution; that discussion is deferred to review with Wyeth.
