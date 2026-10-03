@@ -1,0 +1,108 @@
+{
+  "id": "EA-005",
+  "contractCases": [
+    5
+  ],
+  "title": "Empty snapshot with Complete coverage",
+  "kind": "evaluation",
+  "policy": "explicit-assertion-v0",
+  "evidenceModel": "demo-model@0.1",
+  "query": {
+    "file": "../query/q.demo.json",
+    "contractDigest": "d1"
+  },
+  "requestedOutputs": [
+    "p.demo"
+  ],
+  "comparison": "evaluation-v1",
+  "input": {
+    "snapshot": "snap-1",
+    "supersedesSnapshot": null,
+    "context": {
+      "subject": "P1",
+      "episode": {
+        "known": "E1"
+      },
+      "encounter": {
+        "known": "N1"
+      },
+      "clock": "2026-01-01T00:00:00Z",
+      "mode": "nonclinical"
+    },
+    "records": [],
+    "retractions": [],
+    "coverage": [
+      {
+        "id": "cov-all",
+        "appliesTo": {
+          "snapshot": "snap-1"
+        },
+        "recordType": "demo-model/DemoAssessment@0.1",
+        "subject": "P1",
+        "sources": [
+          "s1",
+          "s2"
+        ],
+        "status": "Complete",
+        "attestedBy": "demo-adapter@1"
+      }
+    ],
+    "failures": [],
+    "rejectedItems": []
+  },
+  "expected": {
+    "evidence": {
+      "status": "Unresolved",
+      "causes": [
+        "Missing"
+      ],
+      "candidateEvidenceIds": []
+    },
+    "decision": {
+      "value": "Unknown",
+      "causes": [
+        "Missing"
+      ]
+    },
+    "causeAttribution": [
+      {
+        "cause": "Missing",
+        "origin": "query",
+        "stage": "S6",
+        "reason": "NoInDomainRecord"
+      }
+    ],
+    "needs": {
+      "evidence": {
+        "key": {
+          "query": "q.demo",
+          "contractDigest": "d1",
+          "subject": "P1",
+          "episode": "E1",
+          "encounter": "N1"
+        },
+        "causes": [
+          "Missing"
+        ]
+      },
+      "deferred": null,
+      "obligations": []
+    },
+    "traceAssertions": [
+      {
+        "fact": "cell",
+        "source": "s1",
+        "value": "Complete"
+      },
+      {
+        "fact": "cell",
+        "source": "s2",
+        "value": "Complete"
+      },
+      {
+        "fact": "rule",
+        "value": 5
+      }
+    ]
+  }
+}

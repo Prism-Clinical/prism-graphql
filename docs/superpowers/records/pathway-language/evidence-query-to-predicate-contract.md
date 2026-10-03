@@ -2,7 +2,7 @@
 
 **Status:** Proposed design draft. **Not** accepted, not finalized syntax, not a schema and not implemented. It contains no clinical content: the record type, enum values, codes, sources and permission below are fictional and illustrate language behavior only. They do not map to dysphagia, progression, urgency or any other clinical definition.
 
-**Date:** 2026-10-03. **Revised:** 2026-10-03, four times, after review. The third revision fixed three things:
+**Date:** 2026-10-03. **Revised:** 2026-10-03, five times, after review. The third revision fixed three things:
 
 - revision-chain boundaries: source-scoped identity, same-source corrections and one fully specified schematic authority rule;
 - deterministic outcomes for malformed history;
@@ -13,6 +13,14 @@ The fourth revision made three changes:
 - Proven cross-boundary corrections and retractions are now rejected without changing their target. This keeps gap irrelevance consistent with S1.
 - Payload identity for duplicate detection is defined.
 - An unsupported justification about coverage attestations is removed.
+
+The fifth revision made five changes:
+
+- Gap dimensions are now key-closed, so a gap proven irrelevant cannot affect the result at all.
+- Conflicting payload variants under one `RevisionRef` remain conflicts and are never treated as boundary rejections.
+- Payload equality is defined in [CANONICALIZATION.md](conformance/explicit-assertion-v0/CANONICALIZATION.md).
+- `candidateEvidenceIds` and `CorrectRecord` emission are defined.
+- Structured conformance fixtures are added under [conformance/explicit-assertion-v0/](conformance/explicit-assertion-v0/README.md).
 
 **Authority:** [RFC](../../specs/2026-09-28-pathway-language-rfc.md) (accepted architecture) and [Stage A](../../specs/2026-09-30-pathway-language-stage-a-spec.md) §§2–7 (draft contracts). This document builds on the [minimal GERD language model](gerd-minimal-language-model.md), including its settled behavior for an established alarm with unknown applicability (its §6.1). Where this draft and Stage A disagree, Stage A governs until amended (section 8).
 
@@ -55,12 +63,14 @@ Records are instances of a record type declared in a pinned evidence-model libra
 
 `Field<T> = Present(T) | Absent`. In the fixture notation (7.1), an omitted optional field is `Absent`. A present value of the wrong type, or an enum code outside the pinned enum, is **malformed**.
 
-**Payload identity.** Payload identity decides whether two rows with the same `RevisionRef` are one revision (an identical duplicate) or contradictory data (`Conflicting`, 2.1 step 1), so it is semantic.
+**Payload equality.** Each row received is an *occurrence*. Whether two occurrences with the same `RevisionRef` are one revision (identical duplicates) or contradictory data (distinct *variants*, `Conflicting`) is semantic. [CANONICALIZATION.md](conformance/explicit-assertion-v0/CANONICALIZATION.md) defines it normatively. In summary:
 
-- **Participating fields:** every field of the revision except `key`, `revision` and `provenance`. That is `recordType`, `subject`, `supersedes`, `episode`, `encounter`, `concept`, `assertion`, `assertionKind` and `author`, including `author.permissions`.
-- **Acquisition provenance does not participate.** The same revision obtained through different acquisitions is one revision. Every row’s provenance is kept in the trace.
-- **Canonical form:** JSON with object keys sorted by Unicode code point and no insignificant whitespace. Strings are compared by exact code-point sequence, without Unicode normalization. `Absent` fields are omitted; a JSON `null` is a malformed value, not `Absent`. Set-valued fields (`author.permissions`) are sorted by code point with duplicates removed. Malformed values are kept as their canonicalized JSON token.
-- **Payload digest:** the SHA-256 of the canonical UTF-8 bytes, in lower-case hex. Two rows are an identical duplicate if and only if their digests are equal.
+- **Payload:** every declared field except `key`, `revision` and `provenance`.
+- **Not payload:** acquisition provenance is occurrence metadata. Undeclared fields are kept with a diagnostic but are not payload.
+- **Set fields:** `author.permissions` is compared as a set. Every other array is ordered.
+- **Absent, `null`, malformed:** `Absent` is distinct from `null`, and both are distinct from other malformed values.
+- **Strings:** compared exactly.
+- **Digest:** a SHA-256 over RFC 8785 canonical bytes. It *identifies* variants; equality is defined first, and the digest never selects a winner.
 
 Retractions are separate items: `Retraction { id, key, target: RevisionRef, author, provenance }`.
 
@@ -97,7 +107,9 @@ Every evaluation reads exactly one **current snapshot**. A snapshot may name the
 | Acquisition failure | `id`, `attempt`, `appliesTo.snapshot`, `outcome ∈ {Failed, TimedOut, Refused}`; optional `recordType`, `subject`, `sources`, `valueSet`, `episode`, `encounter` | Omitted means unknown |
 | Rejected item | `id`, `appliesTo.snapshot`, `reason`; optional `recordType`, `subject`, `sources` | Omitted means unknown |
 
-**What a dimension describes.** A revision’s record type, subject and source are its own fields. A retraction’s record type and subject are those of its *target revision*, and its source is its own. An adapter labeling a gap must apply these definitions.
+**What a dimension describes (key-closed).** Gap and coverage dimensions describe **envelope membership**, not an occurrence’s own fields. Every occurrence of a `RecordKey` that has at least one revision with record type *T* and subject *P* in a declared source counts as content of (*T*, *P*, that source), whatever its own `recordType` or `subject` field says. This covers revisions, payload variants, out-of-envelope revisions and retractions alike.
+
+A failure or rejected item stated for another record type or subject therefore asserts that it contains **no** occurrence of a key in this query’s envelope. An adapter that cannot establish that must leave the dimension unstated, which makes the item relevant (4.1).
 
 A statement whose `appliesTo.snapshot` is not the current snapshot is **not current**: it is traced and ignored. A coverage statement with an unrecognized `status`, or otherwise malformed, is **malformed**: it is treated as `Unknown` for every cell it might affect, and it adds `Invalid`.
 
@@ -166,9 +178,19 @@ The stages follow Stage A §4.4’s order: identities and correction/retraction 
 
 S1 runs per `RecordKey` over a finite graph and always terminates. Its cycle detection is a strongly-connected-component analysis bounded by the snapshot size limits of §11.3.
 
-**Step 1 — nodes.** Rows with the same `RevisionRef` and the same payload digest (1.2) form one node. Rows with the same `RevisionRef` and different digests become separate nodes, named `RevisionRef#digest` in traces, and the key gets cause `Conflicting`.
+**Step 1 — occurrences and variants.** Group occurrences by `RevisionRef`. Within a group, occurrences with equal payloads (1.2) form one *variant*, which keeps every occurrence’s provenance.
 
-**Step 2 — out-of-envelope revisions.** A revision of the key whose record type or subject differs from the envelope’s is not a node for this query. It is preserved with reason `OutOfEnvelopeRevision`. It adds no cause and no addition, and it cannot form a fork with in-envelope revisions. It is still available as a *target* in step 3, so a correction of it can be recognized as a boundary violation.
+- **One variant:** the group is an ordinary revision.
+- **Two or more variants:** the group is a **conflicted revision**, and the key gets cause `Conflicting` (reason `PayloadConflict`). This is genuine contradictory data, **not** a boundary violation, even if variants differ in subject or record type.
+  - Its in-envelope variants are its possible contents, and any out-of-envelope variant adds `excluded`.
+  - Its own `supersedes` edges are not applied, because they are contradictory.
+  - A valid correction that names its `RevisionRef` supersedes all its variants.
+  - Variants are named `RevisionRef#digest`.
+
+**Step 2 — out-of-envelope revisions.** Step 2 applies to ordinary (single-variant) revisions only.
+
+- **Record type or subject present and different from the envelope’s:** the revision is not a node for this query. It is preserved with reason `OutOfEnvelopeRevision`, adds no cause and no addition, and cannot form a fork. It is still available as a *target* in step 3, so a correction of it is recognized as a boundary violation.
+- **Record type or subject absent or malformed:** membership is **undeterminable**. The revision stays a node, the key gets `Missing` or `Invalid` (`EnvelopeFieldAbsent` / `EnvelopeFieldMalformed`), and the addition `excluded` is recorded. A correction edge *from* it is treated as undeterminable: it is ignored, and both its target and the revision remain possible.
 
 **Step 3 — correction edges.** Each node with `supersedes` produces an edge; out-of-envelope revisions (step 2) produce none. Each edge is classified by the first row that matches:
 
@@ -177,7 +199,8 @@ S1 runs per `RecordKey` over a finite graph and always terminates. Its cycle det
 | `supersedes` absent fields (e.g. no `source`) | Defective, `Missing` | Edge ignored; the correcting revision stays a node |
 | `supersedes` malformed | Defective, `Invalid` | Edge ignored |
 | Names another `RecordKey` (cross-source or other local ID), with all `RevisionRef` fields present | Proven cross-boundary | The correcting revision is rejected and preserved (`CrossKeyCorrection`) and is no longer a node of its own key. No cause. The target key is **unchanged**; the diagnostic is also attached to its trace |
-| Target present in the snapshot with a different record type or subject | Proven cross-boundary | The correcting revision is rejected and preserved (`SubjectChanged` / `RecordTypeChanged`). No cause. The target is unchanged |
+| Target is an ordinary revision present in the snapshot with a different record type or subject | Proven cross-boundary | The correcting revision is rejected and preserved (`SubjectChanged` / `RecordTypeChanged`). No cause. The target is unchanged |
+| Target is a conflicted revision whose variants disagree on record type or subject | Undeterminable, `Conflicting` | Edge ignored; both remain possible |
 | Names itself | Defective, `Invalid` | Edge ignored |
 | Target revision absent from the snapshot | Defective, `Missing` | Edge ignored; addition `unknown` (the unseen chain could hold anything) |
 | Authority unauthorized (1.3) | Proven unauthorized | The correcting revision is rejected and preserved (`Unauthorized`); no cause; the target is unaffected |
@@ -188,7 +211,10 @@ S1 runs per `RecordKey` over a finite graph and always terminates. Its cycle det
 
 **Step 5 — heads.** Heads are the non-rejected nodes not superseded by any valid edge. More than one head without any other defect means a fork, with cause `Conflicting`.
 
-**Step 6 — retractions.** Each retraction is judged against the same checks:
+**Step 6 — retractions.** Retraction occurrences are grouped by (`key.source`, `id`), and their payload is `key`, `target` and `author` (CANONICALIZATION.md).
+
+- If a group has two or more variants, the retraction is **conflicted**: each in-envelope key that any variant targets gets `Conflicting` (`RetractionConflict`) plus `excluded`.
+- Otherwise, each retraction is judged against the same checks:
 
 | Retraction condition | Effect |
 |---|---|
@@ -303,13 +329,9 @@ Coverage-cell gaps lie inside the envelope and are always relevant. A failure or
 
 An unstated dimension proves nothing. Everything not proven irrelevant is relevant, and irrelevant items are traced only.
 
-**Why this is consistent with S1.** Take any item whose stated record type, subject or source excludes it from the envelope, with dimensions as defined in 1.5. If it arrived, it could only be one of these:
+**Why this is consistent with S1.** Dimensions are key-closed (1.5). A gap proven irrelevant by record type, subject or source therefore contains no occurrence of any key in the envelope. Its content cannot change any S1 result, candidate, admissibility or classification, so it **cannot change the result** (cases 53 and 47).
 
-- an out-of-envelope revision, which is ignored (step 2);
-- a cross-boundary correction or retraction, which is rejected without changing its target (steps 3 and 6);
-- an item of another key or source, which is outside the envelope.
-
-None of these changes an envelope record. One residual effect remains. An envelope revision may reference such an item as its correction target while the item is absent. S1 then already reports that record as `UnresolvedRevision(Missing)`, which is always material. The item’s arrival can therefore only resolve an `Unresolved` result that already names the missing reference. It can never turn a `Known` result into `Unresolved` (case 55).
+Occurrences that *are* envelope content but cross a boundary are handled separately by S1. A correction or retraction naming another key, or one targeting a revision of another subject or type, is rejected without changing its target (steps 3 and 6). An out-of-envelope revision of an enveloped key is ignored (step 2). A proven boundary attempt therefore never changes its valid target, whether it arrives through a relevant gap or is present from the start (pairs 64/20, 64/21, 1/22, 1/63, 53/54). Undeterminable identity, target or authority stays unresolved and goes through materiality (cases 18, 58, 65).
 
 ### 4.2 Resolution
 
@@ -342,7 +364,7 @@ None of these changes an envelope record. One residual effect remains. An envelo
 
 - the base causes;
 - every relevant gap’s causes;
-- every material *u*’s origin causes, attributed to its record and stage.
+- every material *u*’s origin causes, attributed to its record and stage. These are its S1 causes plus the S2, S3 and S5 causes of each of its possible current revisions or variants.
 
 An established conflict stays `Conflicting`, with the other causes added. Immaterial records and irrelevant gaps add nothing and stay in the trace.
 
@@ -371,7 +393,10 @@ Consequence: a `Known` result requires every declared source’s cell to be `Com
 
 ### 5.1 `Evidence<Boolean>` (Stage A §4.1, unchanged)
 
-`Known(value, supportingEvidenceIds, provenance) | Unresolved(causes, candidateEvidenceIds)`. No new cause is introduced. Each cause is attributed in the trace to its origin: a revision, key, cell, failure, rejected item or context input, together with the stage and reason. The trace records:
+`Known(value, supportingEvidenceIds, provenance) | Unresolved(causes, candidateEvidenceIds)`. No new cause is introduced.
+
+- `supportingEvidenceIds` is *S* for `Known(true)` and *R* for `Known(false)`.
+- `candidateEvidenceIds` is the set of every current or possible-current revision or variant ID, of every key seen in S2–S4 (selected, unresolved or inadmissible), whose candidacy is in domain or unresolved. Markers `excluded` and `unknown`, out-of-domain revisions and retracted keys are not listed. Each cause is attributed in the trace to its origin: a revision, key, cell, failure, rejected item or context input, together with the stage and reason. The trace records:
 
 - the envelope, retrieve parameters and pinned versions;
 - per key: nodes, edges and their classification, rejections, heads, additions and the S1 result;
@@ -392,13 +417,14 @@ Consequence: a `Known` result requires every declared source’s cell to be `Com
 
 ### 5.3 Canonical ordering (representation only)
 
-These orderings exist only so expected traces and lists compare byte-for-byte. They never influence candidacy, selection, classification or resolution.
+These orderings exist only so expected traces and lists compare byte-for-byte. They never influence candidacy, selection, classification or resolution, and no variant is ever preferred because of its digest or lexical position.
 
 | Item | Order |
 |---|---|
 | `RecordKey` | `(source, localId)`, by Unicode code point |
 | `RevisionRef` | `(source, localId, revision)`, by code point. Revision order is **not** recency |
-| Conflicting-payload nodes | `RevisionRef#digest` (1.2), ordered by `RevisionRef` then digest |
+| Payload variants | `RevisionRef#digest` (1.2), ordered by `RevisionRef` then digest |
+| Occurrences within a variant | By `provenance.acquisition`, then `provenance.sourceRecordRef`, by code point |
 | Causes | Stage A §4.1 order: `Missing`, `Conflicting`, `Unavailable`, `Invalid`, `Inadmissible`, `InsufficientEvidence` |
 | Attribution entries | By cause order, then origin reference |
 | Gaps | Coverage cells (by source), then failures (by `id`), then rejected items (by `id`) |
@@ -424,7 +450,7 @@ Holes propagate to dependents only (Stage A §2.3), and markers name their hole 
 
 Causes, contributing records, gap diagnostics and the orchestrator’s recorded attempts and outcomes are the Need’s evolving state (Stage A §7). Attempt history from superseded snapshots stays in that state.
 
-**Separate obligations exist only for a different fulfillment requirement.** The explicit example is conflict: a further assessment can never remove an established conflict under this policy, so fulfillment needs an authorized correction or retraction of an existing record. That is a `ResolveConflict` obligation (Need key + kind). `CorrectRecord` (Need key + kind + `RecordKey`) is emitted when a specific record’s own data or history blocks the result. Its fulfillment validation (`fulfilled_by`, §7) remains **deferred**: cases below verify only that it is emitted.
+**Separate obligations exist only for a different fulfillment requirement.** The explicit example is conflict: a further assessment can never remove an established conflict under this policy, so fulfillment needs an authorized correction or retraction of an existing record. That is a `ResolveConflict` obligation (Need key + kind). `CorrectRecord` (Need key + kind + `RecordKey`) is emitted for each material unresolved record whose attributed causes include one from that record’s own data or history. That means an S1 cause, or `FieldAbsent`, `FieldMalformed` or `CodeMalformed` on one of its revisions. It is *not* emitted for `TerminologyUnavailable`, `ContextUnknown`, an inadmissible record or a gap. Its fulfillment validation (`fulfilled_by`, §7) remains **deferred**: cases below verify only that it is emitted.
 
 **Unresolved scope.** If a key binding is unresolved, as with a context episode `Unknown(Conflicting)`, no evidence Need is emitted. The scope’s source declaration emits its own Need, linked through the trace.
 
@@ -446,6 +472,8 @@ K1 = (`q.demo`, d1, P1, E1, N1).
 ## 7. Fixture format, traces and acceptance cases
 
 ### 7.1 Minimal fixture format (proposed notation, not a schema)
+
+The machine-readable, fully expanded fixtures for every case below are in [conformance/explicit-assertion-v0/](conformance/explicit-assertion-v0/README.md). This section shows the notation they use.
 
 ```jsonc
 // Query contract
@@ -639,13 +667,28 @@ All cases start from D0. Every row was traced manually through 1.5, 2.1 and 4.
 |---|---|---|---|---|---|---|
 | 53 | Subject-labelled gap, revision absent | s1/r1@1 `Affirmed` (P1); failure f1 (DemoAssessment, P2, {s1}) | `Known(true, [s1/r1@1])` | True | f1 irrelevant (subject) | None |
 | 54 | The same gap’s revision present | s1/r1@1 `Affirmed` (P1); s1/r1@2 supersedes @1, subject P2, `+amend` | `Known(true, [s1/r1@1])` | True | @2 `OutOfEnvelopeRevision`. Same result as case 53: the irrelevance claim holds | None |
-| 55 | Missing target later found out of envelope | s1/r9@2 `Affirmed` (P1), supersedes s1/r9@1, which is absent; s1/r1@1 `Affirmed`; failure (DemoAssessment, P2, {s1}). Variant 55b: s1/r9@1 present with subject P2 | 55: `Unresolved{Missing}` @s1/r9 history. 55b: `Known(true, [s1/r1@1])` | 55: Unknown; 55b: True | 55b: @1 `OutOfEnvelopeRevision`; @2 rejected `SubjectChanged`; s1/r9 no record. The change only resolves the already-reported `Missing` | 55: K1, `CorrectRecord` s1/r9 |
+| 55 | Missing target, then found out of envelope | s1/r9@2 `Affirmed` (P1), supersedes s1/r9@1, which is absent; s1/r1@1 `Affirmed`; failure (DemoAssessment, P2, {s1}). Variant 55b: s1/r9@1 present with subject P2 | 55: `Unresolved{Missing}` @s1/r9 history. 55b: `Known(true, [s1/r1@1])` | 55: Unknown; 55b: True | The P2 failure is irrelevant in both. s1/r9@1 is envelope content (key-closed), so it was never inside that failure. 55b: @1 `OutOfEnvelopeRevision`; @2 rejected `SubjectChanged`; s1/r9 no record | 55: K1, `CorrectRecord` s1/r9 |
 | 56 | Other-subject original in the same key | s1/r50@1 `Affirmed` (P1); s1/r50@x original (no `supersedes`), subject P2, `Denied` | `Known(true, [s1/r50@1])` | True | @x `OutOfEnvelopeRevision`; no fork | None |
 | 57 | Cross-source retraction | s1/r1@1 `Affirmed`; retraction (key s2/r60) targeting s1/r1@1, `+amend` | `Known(true, [s1/r1@1])` | True | `CrossKeyRetraction`; target unchanged | None |
 | 58 | Correction identity undeterminable | s1/r1@1 `Affirmed`; s1/r1@2 `Denied`, `supersedes` with `source` omitted, `+amend` | `Unresolved{Missing}` @s1/r1 history | Unknown(Missing) | Edge defective; heads {@1, @2}; not treated as cross-boundary | K1; `CorrectRecord` s1/r1 |
 | 59 | Duplicate rows differing only in acquisition provenance | Two rows s1/r1@1 `Affirmed`, acquisitions a1 and a2 | `Known(true, [s1/r1@1])` | True | One node; both provenances retained | None |
 | 60 | Same identity, payloads differ only in `author.permissions` | Two rows s1/r1@1 `Affirmed`: `perm: []` and `+amend` | `Unresolved{Conflicting}` @s1/r1 | Unknown(Conflicting) | Two digests; `author` participates in payload identity | K1; `CorrectRecord` s1/r1 |
 | 61 | Same identity, permissions in different order or repeated | Two rows s1/r1@1 `Affirmed`: permissions `[p, amend]` and `[amend, p, amend]` | `Known(true, [s1/r1@1])` | True | Same digest after set canonicalization | None |
+
+**F. Variants, undeterminable membership, pairs and canonicalization** (D0 unless stated)
+
+| # | Case | Records / changes | `Evidence<Boolean>` | `Decision` | Trace must show | Need |
+|---|---|---|---|---|---|---|
+| 62 | Conflicting variants differing in subject | Two occurrences of s1/r1@1, both `Affirmed`: one P1, one P2 | `Unresolved{Conflicting}` @s1/r1 | Unknown(Conflicting) | Conflicted revision, **not** a boundary rejection; possible {P1 variant, excluded} | K1; `CorrectRecord` s1/r1 |
+| 63 | Cross-local-ID correction, same source | s1/r1@1 `Affirmed`; s1/r70@1 supersedes s1/r1@1, `+amend` | `Known(true, [s1/r1@1])` | True | s1/r70@1 rejected `CrossKeyCorrection`; s1/r70 no record; s1/r1 unchanged | None |
+| 64 | Before-state for cases 20 and 21 | s1/r20@1 `Affirmed` only | `Known(true, [s1/r20@1])` | True | No diagnostic on s1/r20. Paired with 20/21: same result, trace differs only by the rejection | None |
+| 65 | Subject undeterminable | s1/r1@1 `Affirmed`; s1/r1@2 `Denied`, supersedes @1, `subject` omitted, `+amend` | `Unresolved{Missing}` @s1/r1 | Unknown(Missing) | `EnvelopeFieldAbsent`; possible {@1, @2, excluded}; contrast with proven case 20 | K1; `CorrectRecord` s1/r1 |
+| 66 | Conflicting retraction occurrences | s1/r1@1 `Affirmed`; retraction x1 targeting @1 received twice, once `+amend` and once `perm: []` | `Unresolved{Conflicting}` @s1/r1 | Unknown(Conflicting) | `RetractionConflict`; possible {@1, excluded} | K1; `CorrectRecord` s1/r1 |
+| 67 | Same payload, different object-key order | Canonicalization only | — | — | Equal payloads, one digest | — |
+| 68 | Absent versus `null` | Two occurrences of s1/r1@1: `assertion` omitted, and `assertion: null` | `Unresolved{Missing, Conflicting, Invalid}` @s1/r1 | Unknown (same) | Two variants; `FieldAbsent` vs `FieldMalformed` | K1; `CorrectRecord` s1/r1 |
+| 69 | Undeclared field | Two occurrences of s1/r1@1 `Affirmed`; one adds an undeclared `note` | `Known(true, [s1/r1@1])` | True | One variant; `UndeclaredField` diagnostic | None |
+| 70 | Three variants, order A,B,C | s1/r14@1 as `Affirmed`, `Denied`, `Indeterminate` | `Unresolved{Conflicting}` @s1/r14 | Unknown(Conflicting) | Three variant IDs | K1; `CorrectRecord` s1/r14 |
+| 71 | Case 70 permuted (C,A,B) | Same occurrences, different order | Identical to case 70, including variant IDs and order | Same | Same | Same |
 
 ### 7.5 Invariance checks
 
@@ -658,7 +701,9 @@ These must hold for every case:
 | Add a row with an existing `RevisionRef` but a different payload | **Changes** that key to `Conflicting` (case 27). Correct: it is new contradictory data, not a duplicate |
 | Add records of an undeclared source, another subject (not key-linked) or another record type | Unchanged; outside the envelope |
 | Add a failure proven irrelevant by a stated dimension | Unchanged result; one more irrelevant-gap trace entry |
-| Add the content of a gap proven irrelevant | Unchanged result (cases 53, 54), except that it may resolve a correction target already reported as `Missing` (case 55). Never `Known` → `Unresolved` |
+| Add the content of a gap proven irrelevant | Unchanged result: by the key-closed definition it holds no envelope occurrence (4.1) |
+| Make a proven cross-boundary attempt available | Unchanged result; only the rejection diagnostic is added (pairs 64/20, 64/21, 1/22, 1/63) |
+| Permute occurrences of a conflicted revision | Identical variant IDs, order and result (cases 70/71) |
 | Add a duplicate row differing only in acquisition provenance | Unchanged result (case 59) |
 | Add a key whose every possible current is out of domain, even with malformed history | Unchanged result (case 33) |
 | Rename revision IDs consistently within a key | Unchanged result; only the canonical order may differ |
@@ -695,19 +740,24 @@ These must hold for every case:
 8. `explicit-assertion-v0` as one strict demonstration policy, with symmetric gap blocking and the materiality and cause-accumulation rules.
 9. Need identity, the `ResolveConflict` example, deferred `CorrectRecord` fulfillment and no Need under unresolved scope.
 10. Canonical ordering for representation only.
-11. Payload identity: all fields except `key`, `revision` and `provenance`, in canonical JSON with set fields normalized. The SHA-256 digest decides duplicate versus conflict and names conflicting nodes in traces.
+11. Payload equality, normative in [CANONICALIZATION.md](conformance/explicit-assertion-v0/CANONICALIZATION.md). Equality is defined over normalized payload values. The SHA-256 digest of RFC 8785 bytes only identifies variants.
+12. Key-closed gap dimensions, under which irrelevance is exact. Conflicted revisions stay conflicts, and undeterminable envelope membership stays unresolved.
 
 **Possible conflicts needing a Stage A amendment.** None found. Items to confirm:
 
 - (a) The disjointness obligation relies on §6.5’s enum analysis being mandatory for this policy.
 - (b) Using `ref` for every dependency follows the minimal model’s proposed narrowing of §2.2, which is not yet accepted.
-- (c) Under this policy, a cell with contradictory coverage attestations is a gap with cause `InsufficientEvidence`, and the contradiction is kept as a diagnostic. No new cause is introduced.
+- (c) Bounded policy choice: coverage status drives sufficiency. A cell that cannot be established `Complete`, including one with contradictory statements, is a gap with cause `InsufficientEvidence`. Contradictory statements remain explicit diagnostics. Underlying causes are retained where they apply (e.g. `Invalid` from a malformed statement). No new cause is introduced and Stage A semantics are not broadened.
 
 **Query/predicate split.** The query carries the reasoning. A projection-only Predicate is optional naming and composition structure. No node kind is added or removed.
 
-**Remaining semantic ambiguity before conformance fixtures.** None known in the policy semantics. Gap relevance, S1 boundary handling, payload identity and coverage combination now define one outcome for every listed input. Two items remain:
+**Conformance fixtures.** [conformance/explicit-assertion-v0/](conformance/explicit-assertion-v0/README.md) holds machine-readable fixtures for cases 1–71, mapped by case number, with expected outputs written from this contract. They are proposed, like this document.
 
-1. **`CorrectRecord` fulfillment (`fulfilled_by`, §7)** remains deferred. Cases verify emission only.
-2. **Digest encoding detail.** The canonical form is fixed for every field `DemoAssessment` uses. A future record type with numeric fields would need a number-canonicalization rule before it could use this policy.
+**Remaining items.**
 
-**Next smallest task.** Write the conformance fixtures for `explicit-assertion-v0` from sections 7.1–7.5.
+1. **`CorrectRecord` fulfillment (`fulfilled_by`, §7)** remains deferred. Fixtures verify emission only.
+2. **The contract digest `d1`** is a symbolic label. Computing a contract digest needs the canonical source/IR schema (Stage A §17 item 7).
+3. **Numeric payload fields.** `DemoAssessment` has none. A future record type with numeric fields would need a numeric-equality rule beyond RFC 8785 serialization.
+4. **The reevaluation sequence (6.3)** spans orchestrator attempt events, which have no fixture format yet. It is not part of the fixture set.
+
+**Next smallest task.** Specify the minimal orchestrator-event format, so the 6.3 Need sequence can become a multi-revision fixture.

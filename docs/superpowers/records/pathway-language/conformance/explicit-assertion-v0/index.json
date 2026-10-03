@@ -1,0 +1,293 @@
+{
+  "policy": "explicit-assertion-v0",
+  "evidenceModel": "demo-model@0.1",
+  "contract": "../../evidence-query-to-predicate-contract.md",
+  "status": "proposed",
+  "cases": {
+    "1": [
+      "EA-001"
+    ],
+    "2": [
+      "EA-002"
+    ],
+    "3": [
+      "EA-003"
+    ],
+    "4": [
+      "EA-004"
+    ],
+    "5": [
+      "EA-005"
+    ],
+    "6": [
+      "EA-006"
+    ],
+    "7": [
+      "EA-007"
+    ],
+    "8": [
+      "EA-008"
+    ],
+    "9": [
+      "EA-009"
+    ],
+    "10": [
+      "EA-010"
+    ],
+    "11": [
+      "EA-011"
+    ],
+    "12": [
+      "EA-012"
+    ],
+    "13": [
+      "EA-013"
+    ],
+    "14": [
+      "EA-014"
+    ],
+    "15": [
+      "EA-015"
+    ],
+    "16": [
+      "EA-016"
+    ],
+    "17": [
+      "EA-017"
+    ],
+    "18": [
+      "EA-018"
+    ],
+    "19": [
+      "CAN-07",
+      "EA-019"
+    ],
+    "20": [
+      "EA-020"
+    ],
+    "21": [
+      "EA-021"
+    ],
+    "22": [
+      "EA-022"
+    ],
+    "23": [
+      "EA-023"
+    ],
+    "24": [
+      "EA-024"
+    ],
+    "25": [
+      "EA-025"
+    ],
+    "26": [
+      "EA-026"
+    ],
+    "27": [
+      "CAN-06",
+      "EA-027"
+    ],
+    "28": [
+      "EA-028"
+    ],
+    "29": [
+      "EA-029"
+    ],
+    "30": [
+      "EA-030"
+    ],
+    "31": [
+      "EA-031"
+    ],
+    "32": [
+      "EA-032"
+    ],
+    "33": [
+      "EA-033"
+    ],
+    "34": [
+      "EA-034"
+    ],
+    "35": [
+      "EA-035"
+    ],
+    "36": [
+      "EA-036"
+    ],
+    "37": [
+      "EA-037"
+    ],
+    "38": [
+      "EA-038"
+    ],
+    "39": [
+      "EA-039"
+    ],
+    "40": [
+      "EA-040"
+    ],
+    "41": [
+      "EA-041"
+    ],
+    "42": [
+      "EA-042"
+    ],
+    "43": [
+      "EA-043"
+    ],
+    "44": [
+      "EA-044"
+    ],
+    "45": [
+      "EA-045"
+    ],
+    "46": [
+      "EA-046"
+    ],
+    "47": [
+      "EA-047"
+    ],
+    "48": [
+      "EA-048"
+    ],
+    "49": [
+      "EA-049"
+    ],
+    "50": [
+      "EA-050"
+    ],
+    "51": [
+      "EA-051a",
+      "EA-051b"
+    ],
+    "52": [
+      "EA-052a",
+      "EA-052b"
+    ],
+    "53": [
+      "EA-053"
+    ],
+    "54": [
+      "EA-054"
+    ],
+    "55": [
+      "EA-055a",
+      "EA-055b"
+    ],
+    "56": [
+      "EA-056"
+    ],
+    "57": [
+      "EA-057"
+    ],
+    "58": [
+      "EA-058"
+    ],
+    "59": [
+      "CAN-02",
+      "EA-059"
+    ],
+    "60": [
+      "EA-060"
+    ],
+    "61": [
+      "CAN-03",
+      "EA-061"
+    ],
+    "62": [
+      "EA-062"
+    ],
+    "63": [
+      "EA-063"
+    ],
+    "64": [
+      "EA-064"
+    ],
+    "65": [
+      "EA-065"
+    ],
+    "66": [
+      "EA-066"
+    ],
+    "67": [
+      "CAN-01"
+    ],
+    "68": [
+      "CAN-04",
+      "EA-068"
+    ],
+    "69": [
+      "CAN-05",
+      "EA-069"
+    ],
+    "70": [
+      "EA-070"
+    ],
+    "71": [
+      "EA-071"
+    ]
+  },
+  "pairs": [
+    {
+      "before": "EA-064",
+      "after": "EA-020",
+      "claim": "Proven subject-change attempt leaves the valid target's result unchanged; only the rejection diagnostic is added"
+    },
+    {
+      "before": "EA-064",
+      "after": "EA-021",
+      "claim": "Proven record-type-change attempt leaves the valid target's result unchanged"
+    },
+    {
+      "before": "EA-001",
+      "after": "EA-022",
+      "claim": "Proven cross-source correction leaves the valid target's result unchanged"
+    },
+    {
+      "before": "EA-001",
+      "after": "EA-063",
+      "claim": "Proven cross-local-ID correction leaves the valid target's result unchanged"
+    },
+    {
+      "before": "EA-053",
+      "after": "EA-054",
+      "claim": "A gap stated for another subject is irrelevant, and the boundary attempt it might be confused with does not change the result"
+    },
+    {
+      "before": "EA-070",
+      "after": "EA-071",
+      "claim": "Permuting occurrences changes neither variant identities, order nor result"
+    }
+  ],
+  "contrasts": [
+    {
+      "fixtures": [
+        "EA-022",
+        "EA-058"
+      ],
+      "claim": "Proven cross-boundary correction (rejected, Known) versus correction identity undeterminable (Unresolved Missing)"
+    },
+    {
+      "fixtures": [
+        "EA-017",
+        "EA-018",
+        "EA-019"
+      ],
+      "claim": "Proven unauthorized versus authority missing versus authority malformed"
+    },
+    {
+      "fixtures": [
+        "EA-020",
+        "EA-065"
+      ],
+      "claim": "Proven subject change versus subject undeterminable"
+    },
+    {
+      "fixtures": [
+        "EA-054",
+        "EA-062"
+      ],
+      "claim": "Boundary rejection of a distinct revision versus a genuine payload conflict under one RevisionRef"
+    }
+  ]
+}

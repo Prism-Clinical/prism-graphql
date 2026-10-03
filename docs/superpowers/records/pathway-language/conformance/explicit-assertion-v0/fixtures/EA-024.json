@@ -1,0 +1,163 @@
+{
+  "id": "EA-024",
+  "contractCases": [
+    24
+  ],
+  "title": "Corrected to another concept",
+  "kind": "evaluation",
+  "policy": "explicit-assertion-v0",
+  "evidenceModel": "demo-model@0.1",
+  "query": {
+    "file": "../query/q.demo.json",
+    "contractDigest": "d1"
+  },
+  "requestedOutputs": [
+    "p.demo"
+  ],
+  "comparison": "evaluation-v1",
+  "input": {
+    "snapshot": "snap-1",
+    "supersedesSnapshot": null,
+    "context": {
+      "subject": "P1",
+      "episode": {
+        "known": "E1"
+      },
+      "encounter": {
+        "known": "N1"
+      },
+      "clock": "2026-01-01T00:00:00Z",
+      "mode": "nonclinical"
+    },
+    "records": [
+      {
+        "key": {
+          "source": "s1",
+          "localId": "r8"
+        },
+        "revision": "1",
+        "recordType": "demo-model/DemoAssessment@0.1",
+        "subject": "P1",
+        "episode": "E1",
+        "encounter": "N1",
+        "concept": {
+          "system": "demo-cs",
+          "code": "item-x"
+        },
+        "assertion": "Affirmed",
+        "assertionKind": "ClinicianDocumented",
+        "author": {
+          "actor": "u1",
+          "permissions": []
+        },
+        "provenance": {
+          "acquisition": "a0",
+          "sourceRecordRef": "s1:r8:1"
+        }
+      },
+      {
+        "key": {
+          "source": "s1",
+          "localId": "r8"
+        },
+        "revision": "2",
+        "recordType": "demo-model/DemoAssessment@0.1",
+        "subject": "P1",
+        "episode": "E1",
+        "encounter": "N1",
+        "concept": {
+          "system": "demo-cs",
+          "code": "item-y"
+        },
+        "assertion": "Affirmed",
+        "assertionKind": "ClinicianDocumented",
+        "author": {
+          "actor": "u2",
+          "permissions": [
+            "demo.permission.amend-record"
+          ]
+        },
+        "provenance": {
+          "acquisition": "a0",
+          "sourceRecordRef": "s1:r8:2"
+        },
+        "supersedes": {
+          "source": "s1",
+          "localId": "r8",
+          "revision": "1"
+        }
+      }
+    ],
+    "retractions": [],
+    "coverage": [
+      {
+        "id": "cov-all",
+        "appliesTo": {
+          "snapshot": "snap-1"
+        },
+        "recordType": "demo-model/DemoAssessment@0.1",
+        "subject": "P1",
+        "sources": [
+          "s1",
+          "s2"
+        ],
+        "status": "Complete",
+        "attestedBy": "demo-adapter@1"
+      }
+    ],
+    "failures": [],
+    "rejectedItems": []
+  },
+  "expected": {
+    "evidence": {
+      "status": "Unresolved",
+      "causes": [
+        "Missing"
+      ],
+      "candidateEvidenceIds": []
+    },
+    "decision": {
+      "value": "Unknown",
+      "causes": [
+        "Missing"
+      ]
+    },
+    "causeAttribution": [
+      {
+        "cause": "Missing",
+        "origin": "query",
+        "stage": "S6",
+        "reason": "NoInDomainRecord"
+      }
+    ],
+    "needs": {
+      "evidence": {
+        "key": {
+          "query": "q.demo",
+          "contractDigest": "d1",
+          "subject": "P1",
+          "episode": "E1",
+          "encounter": "N1"
+        },
+        "causes": [
+          "Missing"
+        ]
+      },
+      "deferred": null,
+      "obligations": []
+    },
+    "traceAssertions": [
+      {
+        "fact": "keyResult",
+        "ref": "s1/r8",
+        "value": "Current",
+        "current": "s1/r8@2"
+      },
+      {
+        "fact": "candidacy",
+        "ref": "s1/r8@2",
+        "value": "OutOfDomain"
+      }
+    ]
+  }
+}
