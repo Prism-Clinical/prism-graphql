@@ -305,6 +305,20 @@ function answerChange(session: ResolutionSession, args: { sessionId: string; nod
     };
   }
 
+  // Only a QUESTION gate takes a verdict. A chart gate (patient_attribute,
+  // compound, …) is decided from facts: an "answer" sent to one that is not
+  // asking used to be stored under its id and change nothing, while the caller
+  // was told it succeeded — a stale screen then looked like answers that would
+  // not save. Refuse it, and say what to do instead.
+  const gateType = String((node.properties as Record<string, unknown> | undefined)?.gate_type ?? '');
+  if (node.nodeType === 'Gate' && gateType !== 'question' && gateType !== 'llm_text_analysis') {
+    throw new GraphQLError(
+      `"${args.nodeId}" is not asking for anything right now — it is decided from the chart. ` +
+        `Reload the encounter; to change a value already given, add it to the chart.`,
+      { extensions: { code: 'NOT_PENDING' } },
+    );
+  }
+
   // A question gate's answer, checked against the gate's own schema first.
   const problem = node.properties
     ? validateAnswerAgainstGate(args.answer, node.properties as unknown as GateProperties)

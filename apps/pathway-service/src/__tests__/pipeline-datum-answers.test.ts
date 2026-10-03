@@ -277,3 +277,14 @@ describe('"not available" — the provider has no value for the datum asked for'
     expect(session(id).revision).toBe(0);
   });
 });
+
+describe('an answer sent to a chart gate that is not asking', () => {
+  it('is refused instead of being stored where nothing reads it', async () => {
+    harness.addPathway('pw', oneGate({ field: 'labs', operator: 'less_than', value: '718-7', system: 'LOINC', threshold: 11 }));
+    const id = await start('pw', { labResults: [{ code: '718-7', system: 'LOINC', value: 9, date: '2026-08-29' }] });
+    expect(session(id).pendingQuestions).toEqual([]);
+    await expect(answer(id, { numericValue: 34 })).rejects.toThrow(/not asking for anything/);
+    expect(session(id).revision).toBe(0);
+    expect(session(id).gateAnswers.size).toBe(0);
+  });
+});

@@ -46,6 +46,7 @@ import { buildEffectivePatientContext, mergeAdditionalContext } from '../../serv
 import { firstTrustAssertion, normalizeContextEntryNulls } from '../../services/resolution/temporal/trust-mode';
 import type { AdditionalContextInput } from './resolution';
 import {
+  candidatePathwayIds,
   MergedCarePlan,
   MergedConflict,
   ConflictResolution,
@@ -731,10 +732,9 @@ function validateResolutionAgainstConflict(
   conflict: MergedConflict,
 ): void {
   if (resolution.kind !== 'CONFIRM_PATHWAY') return;
-  const candidatePathwayIds = new Set(
-    conflict.candidates.map((c) => c.sourcePathwayId),
-  );
-  if (!candidatePathwayIds.has(resolution.chosenPathwayId)) {
+  // Any pathway that asked for a candidate's exact drug and regimen is a valid choice.
+  const validPathwayIds = new Set(conflict.candidates.flatMap(candidatePathwayIds));
+  if (!validPathwayIds.has(resolution.chosenPathwayId)) {
     throw new GraphQLError(
       `chosenPathwayId "${resolution.chosenPathwayId}" is not among this conflict's candidates`,
       { extensions: { code: 'BAD_USER_INPUT' } },
@@ -973,6 +973,10 @@ function formatConflictForGraphQL(c: MergedConflict) {
     candidates: c.candidates.map((cand) => ({
       recommendation: cand.recommendation,
       sourcePathwayId: cand.sourcePathwayId,
+      // Non-null in the SDL: every pathway that asked for this exact drug and
+      // regimen. Omitting it failed the WHOLE session query the moment a run
+      // had a conflict, and the simulator fell back to its start snapshot.
+      sourcePathwayIds: candidatePathwayIds(cand),
       sourcePathwayTitle: cand.sourcePathwayTitle,
     })),
     resolution: c.resolution ? formatResolutionForGraphQL(c.resolution) : null,

@@ -381,3 +381,17 @@ describe('addEncounterContext — a diagnosis added during the encounter', () =>
     expect(harness.run(runId).contributingPathwayIds).toEqual(['pw-q']);
   });
 });
+
+describe('a run with a conflict can be read through the API', () => {
+  it('every conflict candidate carries its source pathways (non-null in the SDL)', async () => {
+    const { id: runId } = await startRun(['pw-q', 'pw-carv']);
+    await answerQ(runId, true);
+    const merged = formatMergedForGraphQL(harness.run(runId).mergedPlan as MergedCarePlan);
+    expect(merged.conflicts.length).toBeGreaterThan(0);
+    for (const c of merged.conflicts) {
+      for (const cand of c.candidates) {
+        expect(cand.sourcePathwayIds).toEqual(expect.arrayContaining([cand.sourcePathwayId]));
+      }
+    }
+  });
+});
