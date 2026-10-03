@@ -2,7 +2,7 @@
 
 **Status:** Proposed language-design draft. **Not** finalized syntax, not a schema, not an implementation and not clinical approval. No clinical question (Q1–Q14, A1–A3) is answered here. L00.1.a remains open.
 
-**Date:** 2026-10-03
+**Date:** 2026-10-03. **Revised:** 2026-10-03 after design review. Changes: the evidence criterion must be a visible typed expression; holes may be whole or partial; the finding is its own declaration with explicit scope; each dependency has one authoritative representation; unresolved causes are preserved.
 
 **Authority:** [RFC](../../specs/2026-09-28-pathway-language-rfc.md) (accepted architecture) and [Stage A](../../specs/2026-09-30-pathway-language-stage-a-spec.md) (draft contracts). Where this draft and Stage A disagree, Stage A governs until it is explicitly revised; disagreements are listed in section 7.
 
@@ -24,86 +24,95 @@ Related wording (lines 288 “dysphagia”, 298 “Refractory dysphagia”, 375�
 
 ## 1. Minimal declarations
 
-Every declaration reuses a Stage A §5 node kind or §4.5/§6.2 contract. Two bounded additions are proposed in section 1.1.
+Every declaration reuses a Stage A §5 node kind or a §4.5/§6.2 contract, except the finding. Section 1.1 proposes and justifies the finding and two other bounded changes.
 
 | Declaration | Purpose | Inputs → outputs | Required information | May remain unresolved while drafting |
 |---|---|---|---|---|
-| **Pathway applicability** (Predicate, Stage A §4.5) | States the population/encounter scope in which this alarm rule applies | Declared evidence reads → `Decision` *A* | Must be declared; an unconditional scope must be written explicitly | The whole expression (A1, A2, Q14) as a typed hole of type `Decision` |
-| **Symptom assessment** (EvidenceQuery, §4.4, §4.6) | Says which recorded evidence can establish that progressive dysphagia is present, or explicitly absent, for this question | Frozen evidence snapshot + coverage → `Evidence<Boolean>`, candidate assessments, acquisition Needs | Subject binding; output type; the slot structure of the selection contract (concept, admissible assertion kinds, episode/encounter scope and window, precedence/conflict rule, rule for an explicit negative) | Each contract slot as a typed hole (Q1–Q7, A2, A3). The slots themselves cannot be omitted |
-| **Alarm predicate** (Predicate, §5, §2.4) | Turns the assessment into the clinical condition used by the rule | `Evidence<Boolean>` → `Decision` (lifted projection, §2.4) | Exactly one bound input | Nothing. It is fully defined language behavior; its meaning depends on the query contract |
-| **Alarm finding export** (on the alarm predicate; see 1.1) | Surfaces an established alarm independently of what happens to the proposal (§8.3) | `Decision` → finding record (label, source citation, urgency requirement) | Source label quoted verbatim; citation | The urgency requirement (Q12, Q13) as a typed hole |
-| **Evaluation proposal** (Recommendation, §5, §6.2, §8) | Proposes the source’s “evaluation” for clinician review | *A* (compiler-bound), `I_local`, *P*, *X* → base eligibility, `ActionProposal`, disposition | Explicit indication; explicit prerequisite and exclusion groups (empty groups written); review requirement; action slot; timing slot | Action definition (Q8–Q10) and timing (“immediate”, Q11–Q12) as typed holes |
+| **Pathway applicability** (Predicate, Stage A §4.5) | States the population/encounter scope in which this alarm rule applies | Declared evidence reads → `Decision` *A* | Must be declared; an unconditional scope must be written explicitly | The whole expression (A1, A2, Q14) as a hole of type `Decision` |
+| **Symptom assessment** (EvidenceQuery, §4.4, §4.6) | Says which recorded evidence can establish that progressive dysphagia is present, or explicitly absent, for this question | Frozen evidence snapshot + coverage → `Evidence<Boolean>`, candidate assessments, acquisition Needs | Subject binding; output type; a selection contract (§4.4). Once written, the contract’s establishing criterion is a supported typed expression over the retrieved candidates, or a reference to a versioned library declaration (1.1) | The whole selection contract as one hole (today’s state, Q1–Q7, A2, A3), or a partly written contract with nested holes |
+| **Alarm predicate** (Predicate, §5, §2.4) | Turns the assessment into the clinical condition used by the rule | `Evidence<Boolean>` → `Decision` (lifted projection, §2.4) | Exactly one input reference | Nothing. It is fully defined language behavior; its meaning depends on the query contract |
+| **Alarm finding** (proposed; see 1.1) | Surfaces an established alarm independently of what happens to the proposal (§8.3), within the pathway’s scope | *A*, alarm `Decision` → finding status `Decision` + attributes (label, citation, urgency requirement) | Status expression `all(A, alarm)`; source label quoted verbatim; citation | The urgency attribute (Q12, Q13) as a hole. A hole in an attribute does not make the status incomplete |
+| **Evaluation proposal** (Recommendation, §5, §6.2, §8) | Proposes the source’s “evaluation” for clinician review | *A* (compiler-bound), `I_local`, *P*, *X* → base eligibility, `ActionProposal`, disposition | Explicit indication; explicit prerequisite and exclusion groups (empty groups written); review requirement; action; §7.2 timing attributes | Action definition (Q8–Q10) and timing for “immediate” (Q11–Q12) as holes |
 | **Source citation** (EvidenceReference, §5) | Pins the passage to each executable declaration | — → provenance and review obligations | File, SHA-256, line range | Nothing |
 
 Not declared: Choice (no alternatives), Group (no executable meaning), an authored Need node (Needs are generated by the query, §7), DerivedValue (no calculation), workflow/acquisition strategy (orchestrator-owned, §7).
 
-### 1.1 Proposed additions and why this example needs them
+### 1.1 Proposed changes and why this example needs them
 
-1. **Typed holes in contract slots, not only expression positions.** Stage A §2.3 illustrates a hole for an unresolved quantity threshold. Here the unresolved clinical meaning is *what evidence counts* (Q1–Q7) and *what the action is* (Q8–Q11). Those are slots of an EvidenceQuery selection contract and a Recommendation action, not scalar values. The proposal: the language fixes each contract’s slot structure; any slot may hold a hole of that slot’s declared type. This keeps the hole mechanism unchanged (identity, expected type, AST location, explanation, citations) and keeps the slot structure non-optional. A single hole for an entire contract is rejected: it would hide which clinical question remains open.
-2. **A finding export with an urgency slot on a Predicate.** Stage A §8.3 and the RFC §6 require established urgent findings to remain visible independently of disposition, and §6.5 already treats “independently meaningful findings” as analysis roots, but §5 has no declaration that marks one. This example needs exactly that: the alarm must be surfaced even if the proposal is unresolved or its action is undefined. The proposal is an attribute on the existing Predicate, not a new node kind.
+1. **Holes in contract and action positions, at whatever granularity the author knows.** Stage A §2.3 illustrates a hole for an unresolved threshold. Here the unresolved meaning is *what evidence counts* (Q1–Q7) and *what the action is* (Q8–Q11). The proposal allows a hole wherever a typed contract or action is expected, keeping the §2.3 hole mechanism unchanged: identity, expected type, AST location, explanation and citations. An author may leave a whole selection contract as one hole and refine it later into a partly written contract with nested holes. Each hole stays visible and blocks publication, and nested holes must type-check against the contract structure. This draft does not fix a list of new slot types. The contract’s parts are whatever Stage A §17 item 4 fixes for §4.4 selection contracts.
+2. **The evidence criterion stays visible.** A selection contract’s establishing criterion is not a named box that hides evaluator logic. Once written, it must be one of two things: a typed expression in the supported fragment, built from terminology membership, enum equality, `all`/`any`/`not` and bounded filtering over typed candidate fields, or a reference to a versioned library declaration built the same way (§2.1). Prose, callbacks and opaque classifiers are rejected. Until written, it is a hole of type `Decision` over one candidate, an existing type. This follows CQL’s boundary between data access and logic. In CQL, “the data requirements of a particular artifact can be clearly and accurately defined by inspecting only the Retrieve expressions defined within the artifact” ([Language Semantics](https://cql.hl7.org/N1A/05-languagesemantics.html)), and the conditions applied to retrieved data are ordinary expressions.
+3. **A finding declaration, separate from its attributes and from disposition.** Stage A §8.3 and RFC §6 require established urgent findings to remain visible independently of disposition, and §6.5 treats “independently meaningful findings” as analysis roots. However, §5 has no declaration for one. The proposed finding has a status expression and attributes. The status is `all(A, alarm)`. Independence from disposition is not independence from scope, so applicability is an explicit input. Holes in attributes (urgency, or the linked action) mark only those attributes, so an established finding stays inspectable while its urgency is still undefined.
+4. **One authoritative representation per dependency.** References written inside expressions (`ref`) are the only editable definition of a dependency. The graph edges in section 2 are derived from them. Drawing a connection in the editor edits the reference, and deleting it removes the reference. Edges are not stored separately. This narrows Stage A §2.2, which lets drawn connections and textual bindings both lower to canonical edges and diagnoses conflicts between them. With one source of truth, that consistency check disappears for authored source.
 
-Neither addition introduces quantities, temporal arithmetic, recursion or inference.
+None of these changes introduces quantities, temporal arithmetic, recursion or inference.
 
 ## 2. Minimal relationships
 
-| Relationship (Stage A §6.1) | Endpoints and direction | Meaning | Type / cardinality constraint |
-|---|---|---|---|
-| `binds` | Symptom assessment `.value` → alarm predicate `input` | The predicate reads exactly this evidence | `Evidence<Boolean>` → scalar port of the same type; exactly one binding |
-| `indicates` | Alarm predicate `decision` → evaluation proposal `I_local` | The alarm is the local indication | `Decision` → indication expression; composition written explicitly (`all` over one operand) |
-| compiler-bound applicability (§4.5, §6.2) | Applicability *A* → proposal *I* = `all(A, I_local)` | Scope dependency; not authorable or omittable | Exactly one per pathway; visible in IR and trace |
-| `cites` | Each executable declaration → source citation | Provenance and review identity only | Never changes eligibility; changing it changes reviewed artifact identity (§2.3, §19.1) |
+All rows except the compiler-bound applicability row are **derived** from references in the declarations; none is authored separately.
 
-Contribution chain (all edges point from producer to consumer):
+| Relationship (Stage A §6.1) | Derived from | Endpoints and direction | Meaning | Type / cardinality constraint |
+|---|---|---|---|---|
+| `binds` | `p.alarm.expr` → `ref q.pd` | Symptom assessment `.value` → alarm predicate input | The predicate reads exactly this evidence | `Evidence<Boolean>`; exactly one |
+| `binds` | `f.alarm.status` → `ref applicability`, `ref p.alarm` | *A*, alarm `Decision` → finding status | The finding holds only within scope | `Decision`, `Decision`; one each |
+| `indicates` | `r.evaluation.indication` → `ref p.alarm` | Alarm predicate → proposal `I_local` | The alarm is the local indication | `Decision`; composition written explicitly (`all` over one operand) |
+| compiler-bound applicability (§4.5, §6.2) | Compiler | *A* → proposal *I* = `all(A, I_local)` | Scope dependency; not authorable or omittable | Exactly one per pathway; visible in IR and trace |
+| `cites` | `cites` field of each declaration | Declaration → source citation | Provenance and review identity only | Never changes eligibility; changing it changes reviewed artifact identity (§2.3, §19.1) |
 
 ```text
 frozen evidence ──► Symptom assessment ──binds──► Alarm predicate ──indicates──► Evaluation proposal
                          │ Evidence<Boolean>            │ Decision                    │ I = all(A, I_local)
-                         └─► Needs (if material)        └─► finding export          │ P = all() = True
-                                                                                    │ X = any() = False
-Applicability A ──────────────(compiler-bound)─────────────────────────────────────►┘
+                         └─► Needs (if material)        │                             │ P = all() = True
+                                                        ▼                             │ X = any() = False
+Applicability A ──────────────────────────────► Alarm finding = all(A, alarm)          │
+          └──────────────────────(compiler-bound)─────────────────────────────────────┘
 ```
 
-The executable dependency graph has four executable nodes and three edges and is acyclic (§6.3). No `requires`, `excludes`, `candidate_of`, `selects` or `fulfilled_by` edge is authored. `fulfilled_by` arises only at runtime when recorded evidence answers a generated Need. Layout, grouping and `precedes_display` live in the presentation section and cannot create or reorder a dependency (§2.2). Evaluation order is the compiler’s topological order, not drawing order.
+The executable dependency graph has five executable declarations and five edges, and it is acyclic (§6.3). The finding reads the predicate, not the proposal, so no disposition can affect it. No `requires`, `excludes`, `candidate_of`, `selects` or `fulfilled_by` edge is authored. `fulfilled_by` arises only at runtime, when recorded evidence answers a generated Need. Layout and grouping live in the presentation section and cannot create or reorder a dependency (§2.2). Evaluation order is the compiler’s topological order, not drawing order.
 
 ## 3. How the language foundations contribute
 
-**CQL inspiration (pinned comparison baseline: CQL 1.5.3).** A PPL evidence query, like a CQL retrieve, is a declarative typed request for clinical data by terminology. The [CQL Author’s Guide](https://cql.hl7.org/N1A/02-authorsguide.html) notes that “because CQL uses three-valued logic, the result of evaluating any given boolean-valued condition may be unknown (null)”, and the [CQL reference](https://cql.hl7.org/N1A/09-b-cqlreference.html) defines `and`, `or` and `not` with exactly the Kleene truth tables used by Stage A §4.3. CQL is “pure functional, meaning no operations are allowed to have side effects” ([Language Semantics](https://cql.hl7.org/N1A/05-languagesemantics.html)), matching the PPL purity invariant. PPL deviates where CQL’s missing-information model is too coarse for Prism. CQL represents missing information as a single `null`. Its `exists` “returns true if the list contains any non-null elements. If the argument is null, the result is false”, so an empty retrieve yields `false`. In PPL, an empty query result is `Unresolved(Missing)` unless the query’s coverage contract establishes a scoped negative (Stage A §4.2). Unknown carries a typed cause set, not a bare null.
+**CQL inspiration (pinned comparison baseline: CQL 1.5.3).** A PPL evidence query, like a CQL retrieve, is a declarative typed request for clinical data by terminology. It is the only point where the rule touches data, and the logic applied to the retrieved candidates stays an ordinary visible expression (1.1, item 2). The [CQL Author’s Guide](https://cql.hl7.org/N1A/02-authorsguide.html) notes that “because CQL uses three-valued logic, the result of evaluating any given boolean-valued condition may be unknown (null)”. The [CQL reference](https://cql.hl7.org/N1A/09-b-cqlreference.html) defines `and`, `or` and `not` with exactly the Kleene truth tables used by Stage A §4.3. CQL is “pure functional, meaning no operations are allowed to have side effects” ([Language Semantics](https://cql.hl7.org/N1A/05-languagesemantics.html)), matching the PPL purity invariant.
 
-**Datalog inspiration (Soufflé as reference).** The [Soufflé tutorial](https://souffle-lang.github.io/tutorial) declares typed relations (`.decl edge(a:symbol, b:symbol)`; “a relation must be declared in order to be able to be used”) and derives facts with `head :- body` rules. PPL adopts typed declared relations for the program structure: `binds`, `indicates` and `cites` are typed relations over declared ports, and the compiler can check them. Each executable declaration is one non-recursive defining rule over its explicit inputs: `alarm(s) ⇐ assessment(s)` and `I_local(proposal, s) ⇐ alarm(s)`. PPL does not adopt two features. First, recursive rules: Soufflé’s transitive-closure example derives `reachable` recursively, but PPL patient-time derivation is acyclic. Second, Soufflé negation `!Heritage(building)` tests that a tuple is not in a relation, and “rules involving negation must be stratifiable” ([Soufflé rules](https://souffle-lang.github.io/rules)). That is absence-as-negation. PPL `not` applies only to an explicit `Decision` value, so `not(Unknown) = Unknown`. Soufflé’s [provenance facility](https://souffle-lang.github.io/provenance) is a model for explanation traces, not their contract.
+PPL deviates where CQL’s missing-information model is too coarse for Prism. CQL represents missing information as a single `null`. Its `exists` “returns true if the list contains any non-null elements. If the argument is null, the result is false”, so an empty retrieve yields `false`. In PPL, an empty query result is `Unresolved(Missing)` unless the query’s coverage contract establishes a scoped negative (Stage A §4.2). Unknown carries a typed cause set, not a bare null.
 
-**Prism contracts.** Applicability is mandatory and compiler-bound into indication (§4.5, §6.2). Indication, prerequisite and exclusion stay separate, and the disposition reducer (§8) yields *proposed*, *not applicable* or *unresolved*, with review still required. Evidence uncertainty uses typed causes (§4.1). Needs come only from material unresolved patient evidence under a complete query contract (§7). Typed holes and preview mode express incomplete authoring (§2.3, §11.2). Neither CQL nor Datalog supplies these behaviors.
+**Datalog inspiration (Soufflé as reference).** The [Soufflé tutorial](https://souffle-lang.github.io/tutorial) declares typed relations (`.decl edge(a:symbol, b:symbol)`; “a relation must be declared in order to be able to be used”) and derives facts with `head :- body` rules. PPL adopts typed declared relations for program structure: `binds`, `indicates` and `cites` are typed relations over declared ports, derived from references and checkable by the compiler. Each executable declaration is one non-recursive defining rule over its explicit inputs: `alarm(s) ⇐ assessment(s)`, `finding(s) ⇐ all(A(s), alarm(s))` and `I_local(proposal, s) ⇐ alarm(s)`.
+
+PPL does not adopt two Soufflé features. First, recursive rules: Soufflé’s transitive-closure example derives `reachable` recursively, but PPL patient-time derivation is acyclic. Second, Soufflé negation `!Heritage(building)` tests that a tuple is not in a relation, and “rules involving negation must be stratifiable” ([Soufflé rules](https://souffle-lang.github.io/rules)). That is absence-as-negation. PPL `not` applies only to an explicit `Decision` value, so `not(Unknown) = Unknown`. Soufflé’s [provenance facility](https://souffle-lang.github.io/provenance) is a model for explanation traces, not their contract.
+
+**Prism contracts.** Applicability is mandatory: the compiler binds it into indication (§4.5, §6.2), and the finding references it explicitly. Indication, prerequisite and exclusion stay separate, and the disposition reducer (§8) yields *proposed*, *not applicable* or *unresolved*, with review still required. Evidence uncertainty uses typed causes (§4.1). Needs come only from material unresolved patient evidence under a complete query contract (§7). Typed holes and preview mode express incomplete authoring (§2.3, §11.2). Neither CQL nor Datalog supplies these behaviors.
 
 ### 3.1 Adopt, adapt or Prism-specific
 
 | Concept needed here | Reference-language concept | Adopted behavior | Restriction or deviation | Why needed |
 |---|---|---|---|---|
-| Typed symptom-evidence request | CQL retrieve `[Condition: code in "…"]` returning a list | Declarative, typed, terminology-based query; no I/O in the expression | **Adapt:** returns `Evidence<Boolean>` with coverage and causes, not a list; selection contract is explicit (§4.4) | A list cannot distinguish an empty chart from a documented negative |
+| Typed symptom-evidence request | CQL retrieve `[Condition: code in "…"]` returning a list | Declarative, typed, terminology-based query; the only data-access point | **Adapt:** returns `Evidence<Boolean>` with coverage and causes, not a list; selection contract is explicit (§4.4) | A list cannot distinguish an empty chart from a documented negative |
+| Establishing criterion | CQL expressions applied to retrieved data, separate from the retrieve | **Adopt** the boundary: the criterion is a visible typed expression or a versioned library reference | Supported fragment only; no prose, callbacks or classifiers (1.1, item 2) | Keeps clinical reasoning inspectable instead of hiding it in an abstraction |
 | Alarm predicate result | CQL `and`/`or`/`not` truth tables | **Adopt** Kleene three-valued composition | Unknown carries `NonEmptySet<Cause>` and trace instead of `null` | “Not assessed” must stay distinct from “absent” |
 | Unknown propagation | CQL null propagation (“operations are defined to result in null if any of their arguments are null”) | **Adopt** lifting through the projection | Causes preserved; no CQL nullological operators (`Coalesce`, `IsNull`) exposed in v0 | Prevents silent coercion of unknown to false |
 | Explicit negative | CQL `exists` (false on empty or null) | — | **Deviate:** emptiness yields `Unresolved(Missing)` unless a scoped coverage or explicit-negative rule applies (§4.2, diagnostic `UNSUPPORTED_NEGATIVE_EVIDENCE`) | Source and draft require that an empty chart is not an explicit negative |
 | Purity | CQL “pure functional” | **Adopt** | — | Determinism and replay |
-| Declared connections | Soufflé `.decl` typed relations | **Adopt** typed, declared relations for edges and ports | Fixed relation catalogue (§6.1); authors cannot declare new relation kinds | Compiler-checkable endpoints and cardinality |
-| Derivation of alarm and indication | Soufflé `head :- body` rules | **Adapt:** one defining rule per declaration over explicit inputs | Non-recursive, acyclic, one definition per output; no recursion although Soufflé supports it | Bounded, explainable evaluation |
+| Declared connections | Soufflé `.decl` typed relations | **Adopt** typed, declared relations for edges and ports | Fixed relation catalogue (§6.1); edges derived from references; authors cannot declare relation kinds | Compiler-checkable endpoints and cardinality |
+| Derivation of alarm, finding and indication | Soufflé `head :- body` rules | **Adapt:** one defining rule per declaration over explicit inputs | Non-recursive, acyclic, one definition per output; no recursion, although Soufflé supports it | Bounded, explainable evaluation |
 | “Not established” | Soufflé `!R(x)` (membership negation, stratified) | — | **Deviate:** no negation-as-failure; `not` only over explicit `Decision` (RFC §5) | Missing fact ≠ clinical absence |
 | Explanation | Soufflé provenance | Inspiration for proof-like traces | Explanations follow Stage A §11.4, not a minimal proof tree | Reviewable rationale |
 | Applicability, indication, *P*, *X*, disposition | — | — | **Prism-specific** (§4.5, §6.2, §8) | Separates scope, indication and the “proposed ≠ ordered” rule |
 | Uncertainty causes and Needs | — | — | **Prism-specific** (§4.1, §7) | Turns material missing evidence into a traceable request |
-| Typed holes and preview | — | — | **Prism-specific** (§2.3), extended to contract slots (1.1) | Represents open clinical meaning without inventing values |
-| Finding export with urgency slot | — | — | **Prism-specific** proposal (1.1, §8.3) | Alarm stays visible independently of disposition |
+| Typed holes and preview | — | — | **Prism-specific** (§2.3), extended to contract and action positions at author-chosen granularity (1.1) | Represents open clinical meaning without inventing values |
+| Finding with attributes | — | — | **Prism-specific** proposal (1.1, §8.3) | Alarm stays visible within scope, independently of disposition and of undefined attributes |
 
 ## 4. Failure and incompleteness states
 
 | State | Example in this model | Validation | Preview | Patient-data Needs | Publication | Clinical execution |
 |---|---|---|---|---|---|---|
-| **Complete program, insufficient patient evidence** | All holes filled (hypothetically); chart has no admissible assessment, the retrieval failed, or in-scope evidence conflicts | Passes | Assessment `Unresolved(causes)`; alarm `Unknown`; proposal *unresolved* | **Yes:** a stable Need keyed by the complete query contract and scope, when material | Not blocked by this state | Runs; result is a valid unresolved outcome; finalization of the requested scope is blocked by the material Need (§8.3) |
-| **Authoring hole** | Today’s draft: concept, scope, action, timing and urgency slots are holes | Well-formed draft; `UNRESOLVED_AUTHORING_HOLE` diagnostics with hole IDs | Only via `compilePreview`; dependent outputs carry incomplete-authoring markers, even for patients whose chart looks positive; unaffected outputs remain inspectable | **None for the hole.** A Need’s identity requires a defined evidence type, scope and window (§7), so a holed contract cannot request patient data, and no provider field is offered | Rejected (§2.3), including holes in branches that no scenario reaches | Impossible: no clinical package exists; preview artifacts are rejected by the clinical loader (§11.1) |
-| **Structurally invalid program** | Section 6 row 5 (cycle), a wrong-type binding, a missing applicability declaration, an unknown executable property | Fails with a located diagnostic | None: `compilePreview` also fails (§10.1) | None | Rejected | Impossible |
+| **Complete program, insufficient patient evidence** | All holes filled (hypothetically); no admissible assessment, retrieval failure, only inadmissible candidates, or conflict | Passes | Assessment `Unresolved(causes)` with the actual causes; alarm and finding `Unknown`; proposal *unresolved* | **Yes**, when material: a stable Need whose kind follows the cause (section 6, rows 3a–3d) | Not blocked by this state | Runs; result is a valid unresolved outcome; finalization of the requested scope is blocked by the material Need (§8.3) |
+| **Authoring hole** | Today’s draft: whole selection contract, action, timing, urgency and applicability are holes | Well-formed draft; `UNRESOLVED_AUTHORING_HOLE` diagnostics with hole IDs | Only via `compilePreview`. Outputs that depend on a hole carry incomplete-authoring markers, even for patients whose chart looks positive. Outputs that do not depend on one remain inspectable (section 6, row 4) | **None for the hole.** A Need’s identity requires a defined evidence type, scope and window (§7), so a holed contract cannot request patient data, and no provider field is offered | Rejected (§2.3), including holes in branches that no scenario reaches | Impossible: no clinical package exists; preview artifacts are rejected by the clinical loader (§11.1) |
+| **Structurally invalid program** | Section 6, row 6 (cycle); a wrong-type reference; missing applicability; an unknown executable property; prose where a criterion expression is required | Fails with a located diagnostic | None: `compilePreview` also fails (§10.1) | None | Rejected | Impossible |
 
 The first and second rows must stay distinguishable in every output (§11.4). The first is a finished rule whose answer for *this patient* is not yet known. The second is an unfinished rule whose meaning is not yet known for *any* patient. Asking the provider about dysphagia cannot repair the second, and filling a hole cannot be done at the bedside.
 
 ## 5. Worked representation (proposed, not finalized syntax)
 
-Illustrative canonical-AST fragment. Field names and nesting are placeholders for L00.4.a, not a schema. Hole types name contract slots whose exact schemas Stage A §17 item 4 still has to fix.
+Illustrative canonical-AST fragment for today’s draft. Field names and nesting are placeholders for L00.4.a, not a schema. Dependencies appear only as `ref`; there is no separate edge list.
 
 ```jsonc
 {
@@ -126,35 +135,27 @@ Illustrative canonical-AST fragment. Field names and nesting are placeholders fo
 
   "nodes": [
     { "id": "q.pd", "kind": "EvidenceQuery", "subject": "patient", "output": "Evidence<Boolean>",
-      "contract": {
-        "concept":     { "hole": { "id": "H-CONCEPT", "type": "ConceptCriterion",
-                          "explains": "What establishes progressive dysphagia (Q1–Q3)" } },
-        "assertions":  { "hole": { "id": "H-SOURCES", "type": "AssertionKindSet",
-                          "explains": "Acceptable sources for present and absent (Q4)" } },
-        "scope":       { "hole": { "id": "H-WINDOW",  "type": "QueryScope",
-                          "explains": "Episode, encounter and recency (Q5, Q7; A2, A3)" } },
-        "precedence":  { "hole": { "id": "H-CONFLICT", "type": "SelectionStrategy",
-                          "explains": "Conflicting in-scope evidence (Q6)" } },
-        "negative":    { "hole": { "id": "H-NEGATIVE", "type": "NegativeEvidenceRule",
-                          "explains": "What counts as an explicit negative (Q4, Q5)" } }
-      },
+      "contract": { "hole": { "id": "H-EVIDENCE", "type": "EvidenceSelectionContract<Boolean>",
+        "explains": "What establishes presence or explicit absence, from which sources, in what scope and window, and how conflicts resolve (Q1–Q7; A2, A3)" } },
       "cites": ["src.l85-86"] },
 
     { "id": "p.alarm", "kind": "Predicate",
-      "expr": { "op": "evidenceValue", "input": "in" },
-      "ports": { "in": "Evidence<Boolean>" },
-      "finding": {
-        "label": "Progressive dysphagia (particularly solids before liquids)",
-        "heading": "ALARM SYMPTOMS REQUIRING IMMEDIATE EVALUATION",
-        "urgency": { "hole": { "id": "H-URGENCY", "type": "UrgencyRequirement",
-                     "explains": "Display/finalization effect of this finding (Q12, Q13)" } } },
+      "expr": { "op": "evidenceValue", "arg": { "ref": "q.pd" } },
+      "cites": ["src.l85-86"] },
+
+    { "id": "f.alarm", "kind": "Finding",
+      "status": { "all": [{ "ref": "applicability" }, { "ref": "p.alarm" }] },
+      "label": "Progressive dysphagia (particularly solids before liquids)",
+      "heading": "ALARM SYMPTOMS REQUIRING IMMEDIATE EVALUATION",
+      "urgency": { "hole": { "id": "H-URGENCY", "type": "UrgencyRequirement",
+                   "explains": "Display/finalization effect of this finding (Q12, Q13)" } },
       "cites": ["src.l85-86"] },
 
     { "id": "r.evaluation", "kind": "Recommendation", "intent": "propose",
       "action":   { "hole": { "id": "H-ACTION", "type": "ActionDefinition",
                     "explains": "What the source's 'evaluation' is (Q8–Q10)" } },
-      "timing":   { "hole": { "id": "H-IMMEDIATE", "type": "TimingRequirement",
-                    "explains": "Meaning of 'immediate' (Q11); not equated with 'urgent' (Q12)" } },
+      "timing":   { "hole": { "id": "H-IMMEDIATE", "type": "ActionTiming",
+                    "explains": "Meaning of 'immediate' in §7.2 terms, if any (Q11); not equated with 'urgent' (Q12)" } },
       "indication":    { "all": [{ "ref": "p.alarm" }] },
       "prerequisites": { "all": [] },
       "exclusions":    { "any": [] },
@@ -162,18 +163,31 @@ Illustrative canonical-AST fragment. Field names and nesting are placeholders fo
       "cites": ["src.l85-86"] }
   ],
 
-  "relationships": [
-    { "id": "e1", "kind": "binds",     "from": "q.pd.value",     "to": "p.alarm.in" },
-    { "id": "e2", "kind": "indicates", "from": "p.alarm.decision", "to": "r.evaluation.indication" }
-  ],
-
-  "presentation": { "layout": { "q.pd": [0, 0], "p.alarm": [240, 0], "r.evaluation": [480, 0] } }
+  "presentation": { "layout": { "q.pd": [0, 0], "p.alarm": [240, 0], "f.alarm": [240, 120], "r.evaluation": [480, 0] } }
 }
 ```
 
-`indication` references `p.alarm` and `e2` states the same connection. Stage A §2.2 requires both to lower to one canonical edge rather than applying the predicate twice. Whether the AST keeps only the edge or only the reference is open (section 7).
+`EvidenceSelectionContract<Boolean>` names the Stage A §4.4 contract, and `ActionDefinition` names the §2.4/§5 action reference. `ActionTiming` stands for the §7.2 timing attributes, and `UrgencyRequirement` is the one genuinely new type; its shape is open (section 7).
 
-### 5.1 Traceability
+### 5.1 Refining the evidence hole (illustrative)
+
+When reviewers answer some questions, the author can replace `H-EVIDENCE` with a partly written contract. Every clinical part below remains a hole, because none is answered.
+
+```jsonc
+"contract": {
+  "retrieve":   { "concept": { "hole": { "id": "H-CONCEPT",  "type": "ValueSetRef" } } },
+  "establishes":{ "hole": { "id": "H-CRITERION", "type": "Decision",
+                  "over": "candidate", "explains": "Q1–Q3; when written: typed expression or versioned library ref" } },
+  "assertions": { "hole": { "id": "H-SOURCES",  "explains": "Q4" } },
+  "scope":      { "hole": { "id": "H-WINDOW",   "explains": "Q5, Q7; A2, A3" } },
+  "precedence": { "hole": { "id": "H-CONFLICT", "explains": "Q6" } },
+  "negative":   { "hole": { "id": "H-NEGATIVE", "explains": "Q4, Q5" } }
+}
+```
+
+The keys loosely follow Stage A §4.4’s list of contract contents. Their exact names and types are fixed by Stage A §17 item 4, not here. `H-CRITERION` is a hole of an existing type, a `Decision` over one candidate. Filling it with prose or a callback is a structural error.
+
+### 5.2 Traceability
 
 | Element | Classification | Basis |
 |---|---|---|
@@ -183,37 +197,48 @@ Illustrative canonical-AST fragment. Field names and nesting are placeholders fo
 | Assessment output is `Evidence<Boolean>` (present / explicitly absent, else unresolved) | **Proposed interpretation** | Draft §4 three cases |
 | `I_local` = alarm alone; empty *P* and *X* groups | **Proposed interpretation**: the source states no prerequisite or exclusion for this alarm. Clinical review must confirm it | Lines 85–86 |
 | `review: clinician_required` | **Proposed interpretation** | Stage A §8 |
-| Finding surfaced independently of disposition | **Proposed interpretation** of “alarm” | Stage A §8.3; draft §4 Present row |
-| H-SCOPE, H-CONCEPT, H-SOURCES, H-WINDOW, H-CONFLICT, H-NEGATIVE | **Unresolved clinical meaning** | A1–A3, Q1–Q7 |
+| Finding surfaced independently of disposition, within pathway scope | **Proposed interpretation** of “alarm” | Stage A §8.3; draft §4 Present row |
+| H-SCOPE, H-EVIDENCE (or its refinements) | **Unresolved clinical meaning** | A1–A3, Q1–Q7 |
 | H-ACTION, H-IMMEDIATE, H-URGENCY | **Unresolved clinical meaning** | Q8–Q13 |
 
 Lines 288, 298 and 375–376 are not encoded. In particular, line 376’s “urgent” is not used to fill H-IMMEDIATE or H-URGENCY.
 
 ## 6. Behavior table
 
-Rows 1–3 assume a *hypothetical* complete contract **K**: every hole is replaced by some well-typed definition, applicability evaluates `True`, and required review and safety policy add no blocker. K is a schematic language example, not a claim about what the clinical answer to Q1–Q14 is.
+Rows 1–3 assume a *hypothetical* complete program **K**: every hole is replaced by some well-typed definition, applicability evaluates `True`, and required review and safety policy add no blocker. Row 4 completes only the evidence contract and applicability. These are schematic language examples, not claims about the clinical answers to Q1–Q14.
 
 | # | Program state | Patient evidence | Assessment | Alarm | Finding | Proposal disposition | Needs | Must not be concluded |
 |---|---|---|---|---|---|---|---|---|
-| 1 | Complete (K) | Admissible in-scope evidence satisfies K’s positive criterion | `Known(true)` | `True` | Surfaced, with K’s urgency requirement | *proposed* (base eligibility `True`); clinician review still required | None from this query | That evaluation was ordered, scheduled or performed |
-| 2 | Complete (K) | Admissible explicit negative satisfying K’s negative rule | `Known(false)` | `False` | Not raised **for this alarm** | *not applicable*, `NOT_INDICATED` **on the basis of this alarm** | None from this query | That other alarms (lines 87–92) are absent; that the patient is “without alarm features” (line 72); that evaluation is unneeded for other reasons; overall safety; persistence beyond the assessed scope and time |
-| 3 | Complete (K) | Empty chart, retrieval failure, only out-of-scope or stale evidence, or unresolved conflict | `Unresolved({Missing} / {Unavailable} / {Inadmissible} / {Conflicting})` | `Unknown` | Not raised; “not assessed” shown | *unresolved* | One stable Need keyed by K’s contract and scope | Absence of the symptom; completion of alarm screening |
-| 4 | Incomplete (this draft) | Any, including a chart note that looks positive | Incomplete-authoring marker (H-CONCEPT, …) | Marker | Marker (H-URGENCY) | Preview-only marker; no disposition | **None** | That the patient lacks the alarm; that a provider must supply data; that the package can publish or execute |
-| 5 | Invalid | — | — | — | — | — | — | The author binds `r.evaluation.disposition` back into `p.alarm.in` (or into `I_local`): `CYCLIC_EXECUTION_DEPENDENCY` (§6.3, §10.4). Compilation and preview both fail, and no artifact is produced |
+| 1 | Complete (K) | Admissible in-scope evidence satisfies K’s criterion | `Known(true)` | `True` | Established; K’s urgency requirement applies | *proposed* (base eligibility `True`); clinician review still required | None from this query | That evaluation was ordered, scheduled or performed |
+| 2 | Complete (K) | Admissible explicit negative satisfying K’s negative rule | `Known(false)` | `False` | Not established **for this alarm** | *not applicable*, `NOT_INDICATED` **on the basis of this alarm** | None from this query | That other alarms (lines 87–92) are absent; that the patient is “without alarm features” (line 72); that evaluation is unneeded for other reasons; overall safety; persistence beyond the assessed scope and time |
+| 3 | Complete (K) | Evidence insufficient; see 3a–3d | `Unresolved(causes)` | `Unknown` | `Unknown`, showing the actual causes | *unresolved* | Per cause, below | Absence of the symptom; completion of alarm screening |
+| 4 | Evidence contract and applicability complete; H-URGENCY, H-ACTION, H-IMMEDIATE still holes (preview only) | Admissible in-scope evidence satisfies the criterion | `Known(true)` | `True` | **Established and inspectable**; only the urgency attribute carries an incomplete-authoring marker | Indication `True`; action and timing carry markers, so there is no disposition | None (the evidence is resolved; holes never create Needs) | That urgency or the action is defined; that the package can publish or execute |
+| 5 | Evidence contract incomplete (today’s draft) | Any, including a chart note that looks positive | Incomplete-authoring marker (H-EVIDENCE) | Marker | Marker | Marker; no disposition | **None** | That the patient lacks the alarm; that a provider must supply data; that the package can publish or execute |
+| 6 | Invalid | — | — | — | — | — | — | Example: `p.alarm` references `r.evaluation`’s disposition (or the indication references the proposal itself), giving `CYCLIC_EXECUTION_DEPENDENCY` (§6.3, §10.4). Compilation and preview both fail, and no artifact is produced |
+
+Row 3 causes stay distinct (Stage A §4.1). They can coexist; the trace keeps every one.
+
+| Row | Patient evidence | Cause | Shown as | Need (when material) |
+|---|---|---|---|---|
+| 3a | No in-scope assessment, including an empty chart | `Missing` | Not assessed | Request an assessment that satisfies K |
+| 3b | Retrieval failed or the source was unreachable | `Unavailable` | Source unavailable, with the failed acquisition | Re-acquisition under orchestrator attempt/deadline policy; the failure stays recorded |
+| 3c | Only stale or out-of-scope candidates | `Inadmissible` | Evidence present but not admissible, with per-candidate reasons | Request an in-scope assessment; the rejected candidates are retained |
+| 3d | In-scope candidates disagree and K’s precedence rule does not resolve them | `Conflicting` | Conflicting evidence, with every candidate | Clarification Need; no input-order winner |
 
 ## 7. Design assessment
 
-**What the example demonstrates.** One small program connects a typed evidence query, a lifted three-valued predicate, a finding and a Recommendation under compiler-bound applicability. Every dependency is an explicit typed edge. The model separates three states: unresolved clinical meaning (holes), unresolved patient evidence (`Unknown` with causes) and invalid structure (errors). Each has its own validation, preview, Need and publication consequences. CQL supplies the expression and truth-table behavior, Datalog supplies the relation and rule discipline, and Prism contracts supply everything about scope, absence, Needs and disposition.
+**What the example demonstrates.** One small program connects a typed evidence query, a lifted three-valued predicate, a scoped finding and a Recommendation under compiler-bound applicability. Every dependency is written once as a reference, and the graph is derived from those references. The model separates three states, each with its own validation, preview, Need and publication consequences: unresolved clinical meaning (holes, whole or partial), unresolved patient evidence (`Unknown` with its actual causes) and invalid structure (errors). Holes mark only their dependents, so an established finding stays inspectable while its attributes are undefined. CQL supplies the retrieve/expression boundary and the truth tables, and Datalog supplies the relation and rule discipline. Prism contracts supply scope, absence, Needs, findings and disposition.
 
 **Open language-design decisions.**
 
-1. Holes in contract slots (1.1, item 1): approve the extension of Stage A §2.3, and fix the slot types (`ConceptCriterion`, `AssertionKindSet`, `QueryScope`, `SelectionStrategy`, `NegativeEvidenceRule`, `ActionDefinition`, `TimingRequirement`) as part of Stage A §17 items 4 and 10.
-2. Finding export (1.1, item 2): its shape and the type of `UrgencyRequirement`, including whether urgency can affect finalization (§8.3) or only display.
-3. Whether a Need from a *complete* query is material in preview when every affected output except an independent finding carries a hole marker.
-4. Canonical form when both an inline `ref` and an `indicates` edge express the same dependency (§2.2): keep one, or keep both with a duplicate-binding check.
-5. Whether a `Boolean` assessment is enough, or whether the clinical answers to Q1–Q2 will need a finer evidence value (e.g. dysphagia recorded without the progression qualifier). This depends on Q1 and must not be decided by the language alone.
-6. Whether empty *P*/*X* groups need their own rationale citation, so that “none stated in the source” is reviewable.
+1. Approve hole placement in contract and action positions at author-chosen granularity (1.1, item 1), and fix the §4.4 selection-contract structure that refinements type-check against (Stage A §17 items 4 and 10).
+2. The supported expression fragment for an establishing criterion over one candidate: which candidate fields are typed and readable, and how a library reference is versioned and pinned (1.1, item 2).
+3. The finding declaration: whether it is a node kind or an attribute group; the shape of `UrgencyRequirement`, including whether it can block finalization (§8.3) or only affects display; and whether *A* = `Unknown` with alarm `True` should yield `Unknown` (as proposed) or a separately labeled “alarm present, scope unresolved” state. The last choice also needs clinical input (Q14).
+4. Amending Stage A §2.2 to make expression references the only authored form of a dependency (1.1, item 4), including how the editor maps a drawn edge onto a reference with a non-trivial composition (`all` versus `any`).
+5. Whether a request for patient data from a complete query is material in preview when every affected output except an independent finding carries a hole marker.
+6. Whether a `Boolean` assessment is enough, or whether the answers to Q1–Q2 will need a finer evidence value (e.g. dysphagia recorded without the progression qualifier). This depends on Q1 and must not be decided by the language alone.
+7. Whether empty *P*/*X* groups need their own rationale citation, so that “none stated in the source” is reviewable.
 
-**Open clinical-content decisions.** All of Q1–Q14 and A1–A3, which map to the nine holes in 5.1. Also open: confirming the empty prerequisite and exclusion groups and the `clinician_required` review. Line 72 (“without alarm features”) cannot be represented by negating this one alarm: it would need every alarm with a complete negative contract, and that is out of scope here.
+**Open clinical-content decisions.** All of Q1–Q14 and A1–A3, mapped to the holes in 5.2. Also open: confirming the empty prerequisite and exclusion groups, the `clinician_required` review, and the finding’s dependence on scope. Line 72 (“without alarm features”) cannot be represented by negating this one alarm: it would need every alarm with a complete negative contract, and that is out of scope here.
 
-**Next smallest language-design task.** Define the slot structure and hole types of the EvidenceQuery selection contract for one `Evidence<Boolean>` symptom query (decision 1). That is the smallest step on which items 3 and 5 depend, and it feeds L00.2.b. It does not require any clinical answer.
+**Next smallest language-design task.** Define the §4.4 selection-contract structure for one `Evidence<Boolean>` symptom query, together with the expression fragment its establishing criterion may use (decisions 1–2). Items 5 and 6 depend on it, and it feeds L00.2.b. It needs no clinical answers.
