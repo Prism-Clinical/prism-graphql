@@ -132,6 +132,7 @@ export interface ConflictChoiceInput {
   kind: ConflictResolutionKind;
   reason?: string;
   chosenPathwayId?: string;
+  chosenNodeId?: string;
   customMedication?: CustomMedicationOverride;
 }
 
@@ -708,7 +709,12 @@ function buildResolution(
           extensions: { code: 'BAD_USER_INPUT' },
         });
       }
-      return { kind: 'CONFIRM_PATHWAY', chosenPathwayId: choice.chosenPathwayId, ...meta };
+      return {
+        kind: 'CONFIRM_PATHWAY',
+        chosenPathwayId: choice.chosenPathwayId,
+        ...(choice.chosenNodeId ? { chosenNodeId: choice.chosenNodeId } : {}),
+        ...meta,
+      };
     case 'ACCEPT_BOTH':
       return { kind: 'ACCEPT_BOTH', ...meta };
     case 'REJECT_BOTH':
@@ -737,6 +743,12 @@ function validateResolutionAgainstConflict(
   if (!validPathwayIds.has(resolution.chosenPathwayId)) {
     throw new GraphQLError(
       `chosenPathwayId "${resolution.chosenPathwayId}" is not among this conflict's candidates`,
+      { extensions: { code: 'BAD_USER_INPUT' } },
+    );
+  }
+  if (resolution.chosenNodeId && !conflict.candidates.some((c) => c.recommendation.sourceNodeId === resolution.chosenNodeId)) {
+    throw new GraphQLError(
+      `chosenNodeId "${resolution.chosenNodeId}" is not among this conflict's candidates`,
       { extensions: { code: 'BAD_USER_INPUT' } },
     );
   }
@@ -968,7 +980,7 @@ function formatSuppressedForGraphQL(s: MergedCarePlan['suppressed'][number]) {
 function formatConflictForGraphQL(c: MergedConflict) {
   return {
     conflictId: c.conflictId,
-    type: 'MEDICATION',
+    type: c.type === 'medication_regimen' ? 'MEDICATION_REGIMEN' : c.type === 'medication_choice' ? 'MEDICATION_CHOICE' : 'MEDICATION',
     clinicalRole: c.clinicalRole,
     candidates: c.candidates.map((cand) => ({
       recommendation: cand.recommendation,
@@ -990,9 +1002,13 @@ function formatResolutionForGraphQL(r: ConflictResolution) {
     resolvedAt: r.resolvedAt,
     reason: r.reason ?? null,
     chosenPathwayId: null as string | null,
+    chosenNodeId: null as string | null,
     customMedication: null as CustomMedicationOverride | null,
   };
-  if (r.kind === 'CONFIRM_PATHWAY') base.chosenPathwayId = r.chosenPathwayId;
+  if (r.kind === 'CONFIRM_PATHWAY') {
+    base.chosenPathwayId = r.chosenPathwayId;
+    base.chosenNodeId = r.chosenNodeId ?? null;
+  }
   if (r.kind === 'CUSTOM_OVERRIDE') base.customMedication = r.customMedication;
   return base;
 }

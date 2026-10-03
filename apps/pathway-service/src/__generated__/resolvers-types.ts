@@ -229,6 +229,11 @@ export type ConflictCandidate = {
  *   CUSTOM_OVERRIDE  → customMedication
  */
 export type ConflictChoiceInput = {
+  /**
+   * With CONFIRM_PATHWAY: the chosen candidate's `recommendation.sourceNodeId`.
+   * Needed when several candidates come from one pathway (MEDICATION_CHOICE).
+   */
+  chosenNodeId?: InputMaybe<Scalars['ID']['input']>;
   chosenPathwayId?: InputMaybe<Scalars['ID']['input']>;
   customMedication?: InputMaybe<CustomMedicationOverrideInput>;
   kind: ConflictResolutionKind;
@@ -237,6 +242,7 @@ export type ConflictChoiceInput = {
 
 export type ConflictResolution = {
   __typename?: 'ConflictResolution';
+  chosenNodeId?: Maybe<Scalars['ID']['output']>;
   /** Set when kind=CONFIRM_PATHWAY. */
   chosenPathwayId?: Maybe<Scalars['ID']['output']>;
   /** Set when kind=CUSTOM_OVERRIDE. */
@@ -257,6 +263,13 @@ export enum ConflictResolutionKind {
 export enum ConflictType {
   /** Two or more DIFFERENT drugs share a clinical_role lane. */
   Medication = 'MEDICATION',
+  /**
+   * ONE pathway offers several drugs for one clinical_role — a first-line drug
+   * and its alternatives. Not a disagreement between problems: with no decision
+   * the pathway's own first-line is used and nothing blocks. To pick another,
+   * resolve with CONFIRM_PATHWAY and `chosenNodeId`.
+   */
+  MedicationChoice = 'MEDICATION_CHOICE',
   /**
    * ONE drug asked for at different regimens (dose, frequency, route or
    * duration) by different pathways. Every candidate names the same drug;
@@ -2716,6 +2729,7 @@ export type ConflictCandidateResolvers<ContextType = DataSourceContext, ParentTy
 }>;
 
 export type ConflictResolutionResolvers<ContextType = DataSourceContext, ParentType extends ResolversParentTypes['ConflictResolution'] = ResolversParentTypes['ConflictResolution']> = ResolversObject<{
+  chosenNodeId?: Resolver<Maybe<ResolversTypes['ID']>, ParentType, ContextType>;
   chosenPathwayId?: Resolver<Maybe<ResolversTypes['ID']>, ParentType, ContextType>;
   customMedication?: Resolver<Maybe<ResolversTypes['CustomMedicationOverride']>, ParentType, ContextType>;
   kind?: Resolver<ResolversTypes['ConflictResolutionKind'], ParentType, ContextType>;

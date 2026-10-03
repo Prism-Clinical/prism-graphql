@@ -238,6 +238,25 @@ export function selectConflicts(base: MergedCarePlan, decisions: Record<string, 
   for (const conflict of base.conflicts) {
     const related = conflict.candidates.map((c) => c.recommendation.sourceNodeId ?? c.sourcePathwayId);
     const decision = decisions[conflict.conflictId];
+    // One pathway offering a first-line drug and its alternatives is not a
+    // disagreement to adjudicate. With no decision, the pathway's own
+    // first-line stands — the conclusion the available information supports —
+    // and the alternatives stay visible as not chosen. Nothing blocks; the
+    // provider can still pick another (CONFIRM_PATHWAY + chosenNodeId).
+    if (!decision && conflict.type === 'medication_choice') {
+      const firstLine = conflict.candidates.filter((c) => c.recommendation.role === 'first_line');
+      if (firstLine.length === 1) {
+        conflicts.push(conflict);
+        for (const c of conflict.candidates) {
+          if (c === firstLine[0]) {
+            medications.push({ recommendation: c.recommendation, sourcePathwayIds: [c.sourcePathwayId], state: 'auto-included' });
+          } else {
+            losers.push({ candidate: c, conflict, reason: `Alternative for "${conflict.clinicalRole}" — the pathway's first-line was used` });
+          }
+        }
+        continue;
+      }
+    }
     if (!decision) {
       conflicts.push(conflict);
       blockers.push({
@@ -246,7 +265,14 @@ export function selectConflicts(base: MergedCarePlan, decisions: Record<string, 
       });
       continue;
     }
-    if (decision.kind === 'CONFIRM_PATHWAY' && !conflict.candidates.some((c) => c.sourcePathwayId === decision.chosenPathwayId)) {
+    // The chosen candidate: by its Medication node when the decision names
+    // one, else by pathway.
+    const isChosen = (c: ConflictCandidate): boolean =>
+      decision.kind === 'CONFIRM_PATHWAY' &&
+      (decision.chosenNodeId !== undefined
+        ? c.recommendation.sourceNodeId === decision.chosenNodeId
+        : c.sourcePathwayId === decision.chosenPathwayId);
+    if (decision.kind === 'CONFIRM_PATHWAY' && !conflict.candidates.some(isChosen)) {
       conflicts.push(conflict);
       blockers.push({
         scope: 'OUTPUT', type: 'STALE_CONFLICT_DECISION', relatedNodeIds: related,
@@ -260,7 +286,7 @@ export function selectConflicts(base: MergedCarePlan, decisions: Record<string, 
     switch (decision.kind) {
       case 'CONFIRM_PATHWAY':
         for (const c of conflict.candidates) {
-          if (c.sourcePathwayId === decision.chosenPathwayId) {
+          if (isChosen(c)) {
             medications.push({ recommendation: c.recommendation, sourcePathwayIds: [c.sourcePathwayId], state: 'provider-confirmed' });
           } else {
             lose(c, `Not chosen for "${conflict.clinicalRole}"`);

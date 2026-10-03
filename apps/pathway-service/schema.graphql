@@ -762,6 +762,13 @@ enum ConflictType {
   tell them apart by their regimen, not their name.
   """
   MEDICATION_REGIMEN
+  """
+  ONE pathway offers several drugs for one clinical_role — a first-line drug
+  and its alternatives. Not a disagreement between problems: with no decision
+  the pathway's own first-line is used and nothing blocks. To pick another,
+  resolve with CONFIRM_PATHWAY and `chosenNodeId`.
+  """
+  MEDICATION_CHOICE
 }
 
 enum ConflictResolutionKind {
@@ -814,6 +821,7 @@ type ConflictResolution {
   reason: String
   """Set when kind=CONFIRM_PATHWAY."""
   chosenPathwayId: ID
+  chosenNodeId: ID
   """Set when kind=CUSTOM_OVERRIDE."""
   customMedication: CustomMedicationOverride
 }
@@ -856,6 +864,11 @@ input ConflictChoiceInput {
   kind: ConflictResolutionKind!
   reason: String
   chosenPathwayId: ID
+  """
+  With CONFIRM_PATHWAY: the chosen candidate's `recommendation.sourceNodeId`.
+  Needed when several candidates come from one pathway (MEDICATION_CHOICE).
+  """
+  chosenNodeId: ID
   customMedication: CustomMedicationOverrideInput
 }
 

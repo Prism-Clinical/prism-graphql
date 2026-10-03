@@ -313,7 +313,16 @@ export interface CustomMedicationOverride {
 }
 
 export type ConflictResolution =
-  | ({ kind: 'CONFIRM_PATHWAY'; chosenPathwayId: string } & ConflictResolutionMeta)
+  | ({
+      kind: 'CONFIRM_PATHWAY';
+      chosenPathwayId: string;
+      /**
+       * The chosen candidate's Medication node, when the pathway id alone does
+       * not single it out — a `medication_choice`, where every candidate comes
+       * from the SAME pathway.
+       */
+      chosenNodeId?: string;
+    } & ConflictResolutionMeta)
   | ({ kind: 'ACCEPT_BOTH' } & ConflictResolutionMeta)
   | ({ kind: 'REJECT_BOTH' } & ConflictResolutionMeta)
   | ({ kind: 'CUSTOM_OVERRIDE'; customMedication: CustomMedicationOverride } & ConflictResolutionMeta);
@@ -335,8 +344,12 @@ export interface ConflictCandidate {
  * - `medication`: two or more DIFFERENT drugs share a clinical_role lane.
  * - `medication_regimen`: ONE drug is asked for at different regimens (dose,
  *   frequency, route or duration) by different pathways.
+ * - `medication_choice`: ONE pathway offers several drugs for one clinical_role
+ *   (a first-line drug and its alternatives). Not a disagreement between
+ *   problems: the pathway's own first-line stands unless the provider picks
+ *   another, and nothing blocks while it does.
  */
-export type MergedConflictType = 'medication' | 'medication_regimen';
+export type MergedConflictType = 'medication' | 'medication_regimen' | 'medication_choice';
 
 export interface MergedConflict {
   /**
@@ -713,9 +726,12 @@ function detectConflicts(
     if (drugs.length < 2) continue;
     const groups = drugs.flatMap((d) => byDrug.get(d)!);
     for (const g of groups) inConflict.add(g);
+    // One pathway behind the whole lane is that pathway offering options,
+    // not two problems disagreeing.
+    const lanePathways = new Set(groups.flatMap((g) => g.sourcePathwayIds));
     conflicts.push({
       conflictId: role,
-      type: 'medication',
+      type: lanePathways.size > 1 ? 'medication' : 'medication_choice',
       clinicalRole: role,
       candidates: groups.map(toCandidate),
       resolution: null,

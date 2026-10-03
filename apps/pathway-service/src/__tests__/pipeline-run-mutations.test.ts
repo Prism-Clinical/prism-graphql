@@ -395,3 +395,41 @@ describe('a run with a conflict can be read through the API', () => {
     }
   });
 });
+
+describe('one pathway offering a first-line drug and an alternative (medication_choice)', () => {
+  const CHOICE = () => plain([
+    med('meto', 'Metoprolol', { clinical_role: 'beta_blocker', role: 'first_line' }),
+    med('carv', 'Carvedilol', { clinical_role: 'beta_blocker', role: 'alternative' }),
+  ]);
+  const blockerTypes = (runId: string) => harness.run(runId).readiness.blockers.map((b) => b.type);
+
+  it('uses the first-line without asking, keeps the alternative visible, and blocks nothing', async () => {
+    harness.addPathway('pw-choice', CHOICE());
+    const { id: runId } = await startRun(['pw-choice']);
+    const run = harness.run(runId);
+    expect(medsOf(runId)).toEqual(['Metoprolol']);
+    expect(run.mergedPlan.conflicts).toEqual([expect.objectContaining({ type: 'medication_choice', resolution: null })]);
+    // The alternative stays visible as the choice's other candidate.
+    expect(run.mergedPlan.conflicts[0].candidates.map((c) => c.recommendation.name)).toEqual(['Metoprolol', 'Carvedilol']);
+    expect(blockerTypes(runId)).not.toContain('UNRESOLVED_CONFLICT');
+    expect(formatMergedForGraphQL(run.mergedPlan as MergedCarePlan).conflicts[0].type).toBe('MEDICATION_CHOICE');
+  });
+
+  it('lets the provider pick the alternative by its node', async () => {
+    harness.addPathway('pw-choice', CHOICE());
+    const { id: runId } = await startRun(['pw-choice']);
+    await multiPathwayResolutionMutations.resolveConflict(null, {
+      sessionId: runId, conflictId: 'beta_blocker',
+      choice: { kind: 'CONFIRM_PATHWAY', chosenPathwayId: 'pw-choice', chosenNodeId: 'carv' },
+    } as never, ctx());
+    expect(medsOf(runId)).toEqual(['Carvedilol']);
+    expect(blockerTypes(runId)).not.toContain('UNRESOLVED_CONFLICT');
+  });
+
+  it('two pathways in one lane is still a conflict that must be resolved', async () => {
+    const { id: runId } = await startRun(['pw-q', 'pw-carv']);
+    await answerQ(runId, true);
+    expect(harness.run(runId).mergedPlan.conflicts[0].type).toBe('medication');
+    expect(blockerTypes(runId)).toContain('UNRESOLVED_CONFLICT');
+  });
+});
