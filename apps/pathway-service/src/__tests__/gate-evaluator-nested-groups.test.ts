@@ -341,14 +341,12 @@ describe('legacy-v0 composes nested groups as plain booleans', () => {
       satisfied: true,
       reason: expect.stringMatching(/^Satisfied conditions: all of \(/),
       contextFieldsRead: ['conditions'],
-      dependedOnNodes: [],
     });
     const miss = await evaluateGate(compound('AND', [leaf('T'), group('OR', [leaf('F'), leaf('F')])]), legacy());
     expect(miss).toEqual({
       satisfied: false,
       reason: expect.stringMatching(/^Unsatisfied conditions: none of \(/),
       contextFieldsRead: ['conditions'],
-      dependedOnNodes: [],
     });
   });
 });

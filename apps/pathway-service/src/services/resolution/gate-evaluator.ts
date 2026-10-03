@@ -1541,7 +1541,6 @@ function evaluatePatientAttribute(
       satisfied: false,
       reason: 'Gate has no condition defined',
       contextFieldsRead: [],
-      dependedOnNodes: [],
     };
   }
 
@@ -1550,7 +1549,6 @@ function evaluatePatientAttribute(
     satisfied: result.satisfied,
     reason: result.reason,
     contextFieldsRead: result.fieldsRead,
-    dependedOnNodes: result.sessionNodeIds ?? [],
   };
   if (result.awaitingSession === true) out.awaitingSessionRecommendation = true;
   if (result.notYetDue !== undefined) out.notYetDue = result.notYetDue;
@@ -1602,7 +1600,6 @@ function evaluateQuestion(
       satisfied: false,
       reason: 'No gate ID provided for question evaluation',
       contextFieldsRead: [],
-      dependedOnNodes: [],
     };
   }
 
@@ -1612,7 +1609,6 @@ function evaluateQuestion(
       satisfied: false,
       reason: 'Question has not been answered',
       contextFieldsRead: [],
-      dependedOnNodes: [],
     };
   }
 
@@ -1624,7 +1620,6 @@ function evaluateQuestion(
         ? 'Question answered yes'
         : 'Question answered no',
       contextFieldsRead: [],
-      dependedOnNodes: [],
     };
   }
 
@@ -1634,7 +1629,6 @@ function evaluateQuestion(
       satisfied: true,
       reason: `Numeric answer provided: ${answer.numericValue}`,
       contextFieldsRead: [],
-      dependedOnNodes: [],
     };
   }
 
@@ -1644,7 +1638,6 @@ function evaluateQuestion(
       satisfied: true,
       reason: `Option selected: ${answer.selectedOption}`,
       contextFieldsRead: [],
-      dependedOnNodes: [],
     };
   }
 
@@ -1652,7 +1645,6 @@ function evaluateQuestion(
     satisfied: false,
     reason: 'Question answer has no value',
     contextFieldsRead: [],
-    dependedOnNodes: [],
   };
 }
 
@@ -1665,15 +1657,12 @@ function evaluatePriorNodeResult(
       satisfied: false,
       reason: 'Gate has no depends_on entries',
       contextFieldsRead: [],
-      dependedOnNodes: [],
     };
   }
 
-  const dependedOnNodes: string[] = [];
   const unsatisfied: string[] = [];
 
   for (const dep of gate.depends_on) {
-    dependedOnNodes.push(dep.node_id);
     const nodeResult = resolutionState.get(dep.node_id);
     if (!nodeResult || nodeResult.status !== dep.status) {
       const actual = nodeResult?.status ?? 'NOT_FOUND';
@@ -1688,7 +1677,6 @@ function evaluatePriorNodeResult(
       ? `All depended-on nodes have expected status`
       : `Unmet dependencies: ${unsatisfied.join('; ')}`,
     contextFieldsRead: [],
-    dependedOnNodes,
   };
 }
 
@@ -1946,7 +1934,6 @@ function evaluateCompound(
       satisfied: false,
       reason: 'Compound gate has no conditions',
       contextFieldsRead: [],
-      dependedOnNodes: [],
     };
   }
 
@@ -1977,7 +1964,6 @@ function evaluateCompound(
         ? 'All compound conditions satisfied'
         : `Unsatisfied conditions: ${failedReasons.join('; ')}`,
       contextFieldsRead: c.fieldsRead,
-      dependedOnNodes: [],
     };
   } else {
     // OR
@@ -1991,7 +1977,6 @@ function evaluateCompound(
         ? `Satisfied conditions: ${satisfiedReasons.join('; ')}`
         : 'No compound conditions satisfied',
       contextFieldsRead: c.fieldsRead,
-      dependedOnNodes: [],
     };
   }
 
@@ -2041,7 +2026,6 @@ function evaluateCompound(
   const anchors = distinctAnchors(c.anchors);
   if (anchors.length > 0) out.windowAnchors = anchors;
 
-  out.dependedOnNodes = c.sessionNodeIds;
   if (c.awaitingSession) out.awaitingSessionRecommendation = true;
 
   // NOT YET DUE crosses the boundary on the truth table's terms: it is not a
@@ -2093,7 +2077,6 @@ async function evaluateLlmTextAnalysis(
       satisfied: false,
       reason: 'LLM gate evaluated without gateId',
       contextFieldsRead: [],
-      dependedOnNodes: [],
     };
   }
   if (!gate.branches || gate.branches.length === 0) {
@@ -2101,7 +2084,6 @@ async function evaluateLlmTextAnalysis(
       satisfied: false,
       reason: 'LLM gate has no declared branches',
       contextFieldsRead: [],
-      dependedOnNodes: [],
     };
   }
 
@@ -2118,7 +2100,6 @@ async function evaluateLlmTextAnalysis(
       satisfied: true,
       reason: 'LLM gate evaluator not configured; defaulted to safe branch',
       contextFieldsRead: inputAttr ? [inputAttr] : [],
-      dependedOnNodes: [],
       tentative: true,
       chosenBranch: safeDefault,
       llmConfidence: 0,
@@ -2133,7 +2114,6 @@ async function evaluateLlmTextAnalysis(
       satisfied: true,
       reason: `LLM call failed (${verdict.errorMessage ?? 'unknown'}); defaulted to safe branch`,
       contextFieldsRead: inputAttr ? [inputAttr] : [],
-      dependedOnNodes: [],
       tentative: true,
       chosenBranch: safeDefault,
       llmConfidence: 0,
@@ -2152,7 +2132,6 @@ async function evaluateLlmTextAnalysis(
       ? `LLM picked "${verdict.chosenBranch}" with confidence ${verdict.confidence.toFixed(2)} < ${threshold}; routing safe-default "${safeDefault}" pending provider confirmation`
       : `LLM picked "${verdict.chosenBranch}" with confidence ${verdict.confidence.toFixed(2)}`,
     contextFieldsRead: inputAttr ? [inputAttr] : [],
-    dependedOnNodes: [],
     tentative,
     chosenBranch: effectiveBranch,
     llmConfidence: verdict.confidence,
@@ -2328,7 +2307,6 @@ export async function evaluateGate(
         satisfied: false,
         reason: `Unknown gate type: ${gate.gate_type}`,
         contextFieldsRead: [],
-        dependedOnNodes: [],
       };
   }
 }

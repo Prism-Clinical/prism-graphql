@@ -112,7 +112,7 @@ function engine(): TraversalEngine {
 }
 
 /** Start, find the fork pending, then answer it the way answerPendingDecision does. */
-async function chooseIncrementally(choice: string) {
+async function choose(choice: string) {
   const graph = makeGraphContext(NODES, EDGES);
   const eng = engine();
   const answers = new Map<string, GateAnswer>([['gate-severe', { booleanValue: false } as GateAnswer]]);
@@ -128,20 +128,15 @@ async function chooseIncrementally(choice: string) {
   );
 
   answers.set('dp-1', { selectedOption: choice } as GateAnswer);
-  const state = start.resolutionState;
-  await eng.resolveIncrementally(
-    new Set(['dp-1']), state, start.dependencyMap ?? createEmptyDependencyMap(), graph,
-    REFERENCE_PATIENT, answers,
-    { pendingQuestions: start.pendingQuestions, redFlags: start.redFlags, alsoDropGateIds: ['dp-1'] },
-  );
-  return state;
+  // A mutation is a fresh evaluation from the session's inputs (pipeline C1).
+  return (await eng.traverse(graph, REFERENCE_PATIENT, answers)).resolutionState;
 }
 
 const status = (s: Map<string, { status: NodeStatus }>, id: string) => s.get(id)?.status;
 
 describe('choosing a branch at a DecisionPoint', () => {
   it('choosing "Microcytic workup" keeps it — and dp-1\'s own parent — included', async () => {
-    const s = await chooseIncrementally('step-1-2');
+    const s = await choose('step-1-2');
 
     expect(status(s, 'step-1-2')).toBe(NodeStatus.INCLUDED);
     expect(status(s, 'lab-2')).toBe(NodeStatus.INCLUDED);
@@ -168,11 +163,7 @@ describe('choosing a branch at a DecisionPoint', () => {
     const answers = new Map<string, GateAnswer>([['gate-severe', { booleanValue: false } as GateAnswer]]);
     const start = await eng.traverse(graph, REFERENCE_PATIENT, answers);
     answers.set('dp-1', { selectedOption: 'step-1-2' } as GateAnswer);
-    await eng.resolveIncrementally(
-      new Set(['dp-1']), start.resolutionState, start.dependencyMap, graph, REFERENCE_PATIENT, answers,
-      { pendingQuestions: start.pendingQuestions, redFlags: start.redFlags, alsoDropGateIds: ['dp-1'] },
-    );
-    const s = start.resolutionState;
+    const s = (await eng.traverse(graph, REFERENCE_PATIENT, answers)).resolutionState;
 
     expect(status(s, 'step-1-2')).toBe(NodeStatus.INCLUDED);
     expect(status(s, 'step-1-1')).toBe(NodeStatus.INCLUDED);
@@ -182,7 +173,7 @@ describe('choosing a branch at a DecisionPoint', () => {
   });
 
   it('choosing "Initiate oral iron + counseling" keeps it included', async () => {
-    const s = await chooseIncrementally('step-2-1');
+    const s = await choose('step-2-1');
 
     expect(status(s, 'step-2-1')).toBe(NodeStatus.INCLUDED);
     expect(status(s, 'med-1')).toBe(NodeStatus.INCLUDED);

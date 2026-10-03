@@ -9,14 +9,9 @@ import { parseBranchWhen } from '../import/branch-when';
 import { decisionValueOf, decisionSelects } from './decision-value';
 import { normalizeAnswerType } from './answer-validation';
 import {
-  containmentChildIds, containmentParentIds, containmentClosure, NON_CONTAINMENT_EDGES,
+  containmentChildIds, containmentClosure,
 } from './graph-containment';
 import type { SessionRecommendationLookup } from './temporal/anchored-window';
-import {
-  reconcilePendingQuestions,
-  reconcileRedFlags,
-  RECONCILABLE_RED_FLAG_TYPES,
-} from './findings-reconciliation';
 import type { UnresolvedAsk } from './unresolved-prompt';
 import {
   NodeResult,
@@ -27,6 +22,8 @@ import {
   GateType,
   DefaultBehavior,
   AnswerType,
+  OverrideAction,
+  ProviderOverride,
   TraversalResult,
   TraversalConfidenceAdapter,
   DependencyMap,
@@ -169,7 +166,6 @@ function markBranchNotSelected(
   depth: number,
   graphContext: GraphContext,
   resolutionState: ResolutionState,
-  rewritten: Set<string>,
   provisional?: Set<string>,
   held?: Set<string>,
   /** Live nodes the sweep must neither write nor pass through. See markSubtree. */
@@ -181,19 +177,16 @@ function markBranchNotSelected(
   if (!target) return;
 
   // A HELD branch root keeps its override — but the sweep must go on beneath
-  // it. Returning here abandoned the descendants, and since the incremental
-  // pass had already cleared them, they were not excluded but DELETED: a
-  // medication vanished from the session outright when the provider switched
-  // away from an overridden branch.
+  // it. Returning here would abandon the descendants: a medication under an
+  // overridden branch the provider switched away from would stay as it was.
   if (held?.has(targetId)) {
     const heldKids = containmentChildIds(graphContext, targetId);
-    addAll(rewritten, markSubtree(heldKids, graphContext, resolutionState, NodeStatus.EXCLUDED,
-      `Excluded with ${nodeTitle(target)}`, targetId, depth + 1, provisional, held, spare));
+    markSubtree(heldKids, graphContext, resolutionState, NodeStatus.EXCLUDED,
+      `Excluded with ${nodeTitle(target)}`, targetId, depth + 1, provisional, held, spare);
     return;
   }
 
   provisional?.delete(targetId);
-  rewritten.add(targetId);
 
   resolutionState.set(targetId, {
     nodeId: targetId,
@@ -209,8 +202,8 @@ function markBranchNotSelected(
   });
 
   const kids = containmentChildIds(graphContext, targetId);
-  addAll(rewritten, markSubtree(kids, graphContext, resolutionState, NodeStatus.EXCLUDED,
-    `Excluded with ${nodeTitle(target)}`, targetId, depth + 1, provisional, held, spare));
+  markSubtree(kids, graphContext, resolutionState, NodeStatus.EXCLUDED,
+    `Excluded with ${nodeTitle(target)}`, targetId, depth + 1, provisional, held, spare);
 }
 
 function isDecisionPoint(node: GraphNode): boolean {
@@ -264,11 +257,6 @@ function countSubtree(startIds: string[], graphContext: GraphContext): number {
  * Mark an entire subtree (from the children of a node) with the given status.
  * Returns the set of marked node identifiers.
  */
-/** Union `from` into `into`, for accumulating what a pass rewrote. */
-function addAll(into: Set<string>, from: Iterable<string>): void {
-  for (const id of from) into.add(id);
-}
-
 export function markSubtree(
   startIds: string[],
   graphContext: GraphContext,
@@ -313,8 +301,8 @@ export function markSubtree(
     const node = graphContext.getNode(id);
     if (!node) continue;
 
-    // A held node keeps its status and is NOT counted as rewritten — but the
-    // loop below still descends through it.
+    // A held node keeps its status and is not marked — but the loop below
+    // still descends through it.
     if (isHeld) {
       for (const child of containmentChildIds(graphContext, id)) {
         if (!marked.has(child)) queue.push({ id: child, depth: depth + 1 });
@@ -352,29 +340,6 @@ export function markSubtree(
 
 // ─── Record dependency helpers ────────────────────────────────────────
 
-/**
- * Which slices of added patient context can move this node's confidence.
- *
- * `addPatientContext` reads `scorerInputs` to decide which action nodes need
- * re-scoring. Nothing ever wrote it, so a context change that moved a score
- * without touching a gate seeded no recomputation — the node kept a
- * confidence derived from data the session no longer held.
- */
-function recordScorerInputs(depMap: DependencyMap, nodeId: string, inputs?: string[]): void {
-  if (!inputs || inputs.length === 0) return;
-  if (!depMap.scorerInputs.has(nodeId)) depMap.scorerInputs.set(nodeId, new Set());
-  const set = depMap.scorerInputs.get(nodeId)!;
-  for (const i of inputs) set.add(i);
-}
-
-function recordInfluence(depMap: DependencyMap, from: string, to: string): void {
-  if (!depMap.influences.has(from)) depMap.influences.set(from, new Set());
-  depMap.influences.get(from)!.add(to);
-
-  if (!depMap.influencedBy.has(to)) depMap.influencedBy.set(to, new Set());
-  depMap.influencedBy.get(to)!.add(from);
-}
-
 function recordGateContextFields(depMap: DependencyMap, gateId: string, fields: string[]): void {
   if (fields.length === 0) return;
   if (!depMap.gateContextFields.has(gateId)) depMap.gateContextFields.set(gateId, new Set());
@@ -388,10 +353,8 @@ function recordGateContextFields(depMap: DependencyMap, gateId: string, fields: 
  * move out of the BFS loop verbatim: the fields destructure under exactly the
  * names the loop used.
  *
- * `queue` is the walk's own queue, which is what lets one disposition unit
- * serve both entry points — a full traversal seeds it from the Pathway root, an
- * incremental resolve seeds it from an affected set, and neither needs to know
- * how a node decides.
+ * `queue` is the walk's own queue. Eager evaluation passes a throwaway one, so
+ * a node resolved only so a gate can read it opens nothing.
  */
 interface WalkContext {
   graphContext: GraphContext;
@@ -404,16 +367,6 @@ interface WalkContext {
   redFlags: RedFlag[];
   evaluationStack: Set<string>;
   startTime: number;
-  /**
-   * Every node this pass REWROTE, not just the ones it disposed directly.
-   *
-   * `disposeNode` also rewrites descendants wholesale through `markSubtree` —
-   * a gate closing takes its whole subtree GATED_OUT, an unchosen branch takes
-   * its subtree EXCLUDED. Those nodes were outside the reconciliation scope,
-   * so their old questions and red flags survived a pass that had just
-   * overwritten the nodes they were about, and went on blocking generation.
-   */
-  rewritten: Set<string>;
   /**
    * Nodes written by EAGER evaluation — resolved so a `prior_node_result` gate
    * could read them, not because the walk reached them.
@@ -481,18 +434,6 @@ function nextEntry(
   const entry = deferred.shift();
   if (entry) finalizing.add(entry.nodeIdentifier);
   return entry;
-}
-
-/**
- * What an incremental resolve produced, on top of a traversal's result.
- *
- * `statusChanges` is the incremental path's alone: only a walk that starts
- * from an existing state knows what a node's status USED to be, and callers
- * record it as the session's audit trail.
- */
-export interface IncrementalResult extends TraversalResult {
-  statusChanges: Array<{ nodeId: string; from: string; to: string }>;
-  nodesRecomputed: number;
 }
 
 // ─── Traversal Engine ─────────────────────────────────────────────────
@@ -614,6 +555,7 @@ export class TraversalEngine {
     graphContext: GraphContext,
     patientContext: PatientContext,
     gateAnswers: Map<string, GateAnswer>,
+    overrides: Map<string, ProviderOverride> = new Map(),
   ): Promise<TraversalResult> {
     const startTime = Date.now();
     const resolutionState: ResolutionState = new Map();
@@ -621,8 +563,6 @@ export class TraversalEngine {
     const pendingQuestions: PendingQuestion[] = [];
     const redFlags: RedFlag[] = [];
     const evaluationStack = new Set<string>();
-    /** Every node this pass rewrote — its reconciliation authority. */
-    const rewritten = new Set<string>();
     /** Nodes written out of order by eager evaluation. See WalkContext. */
     const provisional = new Set<string>();
     /** Overridden nodes kept as-is; the walk opens their children on arrival. */
@@ -650,6 +590,26 @@ export class TraversalEngine {
 
     // 2. Init BFS queue
     const queue: BfsEntry[] = [{ nodeIdentifier: rootNode.nodeIdentifier, depth: 0 }];
+
+    // Provider overrides are INPUTS (spec §1 rule 3). Each is pre-seeded HELD:
+    // the decision about THIS node stands, a closing sweep descends past it without
+    // rewriting it, and the walk opens its children when it arrives.
+    for (const [id, override] of overrides) {
+      const n = graphContext.getNode(id);
+      if (!n) continue;
+      resolutionState.set(id, {
+        nodeId: id,
+        nodeType: n.nodeType,
+        title: nodeTitle(n),
+        status: override.action === OverrideAction.INCLUDE ? NodeStatus.INCLUDED : NodeStatus.EXCLUDED,
+        confidence: override.originalConfidence,
+        confidenceBreakdown: [],
+        providerOverride: override,
+        depth: 0,
+        properties: n.properties,
+      });
+      overrideHeld.add(id);
+    }
 
     // 3-4. BFS loop — deferred gates last, once everything else has settled.
     while (queue.length > 0 || deferred.length > 0) {
@@ -696,6 +656,21 @@ export class TraversalEngine {
         break;
       }
 
+      // Arrival at a held override: record where the walk reached it, then open
+      // its children.
+      if (overrideHeld.has(nodeIdentifier)) {
+        overrideHeld.delete(nodeIdentifier);
+        const held = resolutionState.get(nodeIdentifier)!;
+        held.parentNodeId = parentNodeId;
+        held.depth = depth;
+        for (const e of graphContext.outgoingEdges(nodeIdentifier)) {
+          if (!resolutionState.has(e.targetId) || provisional.has(e.targetId) || overrideHeld.has(e.targetId)) {
+            queue.push({ nodeIdentifier: e.targetId, parentNodeId: nodeIdentifier, depth: depth + 1 });
+          }
+        }
+        continue;
+      }
+
       // Memoization: skip already-resolved nodes (first-writer-wins for diamond graphs)
       if (resolutionState.has(nodeIdentifier)) continue;
 
@@ -705,7 +680,7 @@ export class TraversalEngine {
       await this.disposeNode(node, nodeIdentifier, parentNodeId, depth, {
         graphContext, patientContext, gateAnswers,
         resolutionState, dependencyMap, queue,
-        pendingQuestions, redFlags, evaluationStack, startTime, rewritten,
+        pendingQuestions, redFlags, evaluationStack, startTime,
         provisional, overrideHeld, mandated, deferred, finalizing,
       });
     }
@@ -722,498 +697,11 @@ export class TraversalEngine {
   }
 
   /**
-   * Re-resolve part of an existing session in place, seeded from the nodes
-   * whose inputs changed.
-   *
-   * This is the entry point that replaces `RetraversalEngine`. It shares
-   * `disposeNode` with `traverse`, which is the whole point: the retraversal
-   * defect family existed because a second implementation decided nodes
-   * differently from the first. There is no second implementation to drift.
-   *
-   * The mechanism is deliberately simple. Clear the region the seeds can
-   * reach, then walk it exactly as a full traversal walks the graph from the
-   * root. Every defect falls out of that rather than being handled:
-   *
-   *   - a gate that now opens re-resolves its subtree, because the walk
-   *     follows GRAPH edges and never consulted `dependencyMap.influences`,
-   *     which is the map that never recorded gate -> subtree;
-   *   - nothing is lost, because clearing is immediately followed by
-   *     re-resolution through the unit that MATERIALISES nodes — the old
-   *     engine could only skip ids that were missing, so deletions were
-   *     permanent;
-   *   - `default_behavior` applies, because `disposeNode` consults it and
-   *     there is no second rule left to forget.
-   */
-  async resolveIncrementally(
-    seedNodeIds: Set<string>,
-    resolutionState: ResolutionState,
-    dependencyMap: DependencyMap,
-    graphContext: GraphContext,
-    patientContext: PatientContext,
-    gateAnswers: Map<string, GateAnswer>,
-    /**
-     * The session's stored findings. Given, the returned lists are the
-     * RECONCILED whole — assign them, do not concat. Omitted, the derived set
-     * comes back as-is, which is what a fresh session wants.
-     */
-    existing?: {
-      pendingQuestions?: readonly PendingQuestion[];
-      redFlags?: readonly RedFlag[];
-      /** Gates settled by this very mutation, dropped whether re-derived or not. */
-      alsoDropGateIds?: Iterable<string>;
-    },
-  ): Promise<IncrementalResult> {
-    const startTime = Date.now();
-    const pendingQuestions: PendingQuestion[] = [];
-    const redFlags: RedFlag[] = [];
-    const evaluationStack = new Set<string>();
-    /** Every node this pass rewrote — its reconciliation authority. */
-    const rewritten = new Set<string>();
-    /** Nodes written out of order by eager evaluation. See WalkContext. */
-    const provisional = new Set<string>();
-    /** Overridden nodes kept as-is; the walk opens their children on arrival. */
-    const overrideHeld = new Set<string>();
-    /** Branch targets an `all_of` DecisionPoint mandated. See WalkContext. */
-    const mandated = new Set<string>();
-    const queue: BfsEntry[] = [];
-    /** Gates waiting for the walk to settle. See WalkContext.deferred. */
-    const deferred: BfsEntry[] = [];
-    const finalizing = new Set<string>();
-
-    // Captured before anything is cleared — the only moment the previous
-    // status of each node in the region is still known.
-    const statusBefore = new Map<string, NodeStatus>();
-    /** Where each region node sat, so a timed-out rebuild can be put back. */
-    const priorPlacement = new Map<string, { depth: number; parentNodeId?: string }>();
-
-    // PROMOTE each seed past any ancestor that currently closes it.
-    //
-    // A seed is otherwise walked as a ROOT — disposed on its own account, with
-    // nothing above it consulted. So a lab change touching a medication deep
-    // under a gate the provider had already shut re-opened that medication:
-    // the gate was never re-disposed, stayed GATED_OUT, and the treatment
-    // beneath it came back INCLUDED.
-    //
-    // Promoting to the closing ancestor makes its disposition part of this
-    // pass, so it either opens the branch honestly or sweeps the subtree. The
-    // walk is bounded by the graph and stops at the first ancestor that is
-    // still open, so this is not a full traversal in disguise.
-    // ── Where an incremental pass may re-enter ────────────────────────
-    //
-    // THE INVARIANT: a node's status is written either by disposing that node,
-    // or by an ancestor that DECIDED it. So a pass must re-enter at the
-    // decider of every seed — disposing a node whose status was somebody
-    // else's decision makes that decision up again from nothing.
-    //
-    // The deciders are exactly two, and the list is derived rather than
-    // assumed: every write of a node OTHER than the one being disposed comes
-    // from `markBranchNotSelected`, `markSubtree`, or the DecisionPoint branch
-    // arms — and all three are a Gate or a DecisionPoint ruling on its
-    // BRANCHES_TO targets and their subtrees. (The timeout sweep also writes
-    // foreign nodes, but that is the PASS deciding, not a graph node, and it
-    // has no ancestor to re-enter at.)
-    //
-    // This replaced four accumulated special cases — closed ancestors,
-    // rejected branches, held overrides, `all_of` mandates — each added after
-    // a separate bug report. They were four faces of this one rule, and the
-    // rule catches a fifth the reports had not reached: a mandated branch
-    // target seeded alone lost its mandate, because `mandated` is filled by
-    // the fork and the pass never re-entered there.
-    const CLOSED = [
-      NodeStatus.GATED_OUT, NodeStatus.EXCLUDED, NodeStatus.PENDING_QUESTION,
-    ];
-    const isClosed = (id: string | undefined): boolean =>
-      id !== undefined && CLOSED.includes(resolutionState.get(id)?.status as NodeStatus);
-    /**
-     * Was this node's closed status written by something ABOVE it?
-     *
-     * Almost always, for a closed node: sweeps are how closed statuses reach
-     * a subtree. The exception is a decider closing ITSELF — a gate that shut
-     * because its condition failed, or that pends for want of an answer; a
-     * DecisionPoint pending on an exclusive fork. A DecisionPoint never writes
-     * itself GATED_OUT or EXCLUDED, and a gate never writes itself EXCLUDED.
-     *
-     * And even an own-shaped status came from above when the node that placed
-     * it is itself closed: closed gates and forks enqueue nothing, so a gate
-     * whose recorded parent is shut was swept, not disposed. Treating every
-     * closed decider as self-closed is how a DecisionPoint gated out with the
-     * work-up it sits in was re-disposed as a root and re-opened, pending.
-     */
-    const closedFromAbove = (id: string): boolean => {
-      const r = resolutionState.get(id);
-      if (!r || !CLOSED.includes(r.status)) return false;
-      const n = graphContext.getNode(id);
-      if (!n || !(isGateNode(n) || isDecisionPoint(n))) return true;
-      const ownClosures = isGateNode(n)
-        ? [NodeStatus.GATED_OUT, NodeStatus.PENDING_QUESTION]
-        : [NodeStatus.PENDING_QUESTION];
-      if (!ownClosures.includes(r.status)) return true;
-      return isClosed(r.parentNodeId);
-    };
-    /**
-     * The deciders of `id`: parents that write its status on their own
-     * account. A Gate rules on every containment child (it enqueues them all,
-     * or sweeps them all). A DecisionPoint rules only on its BRANCHES_TO
-     * targets — its criteria, citations and nested gates dispose themselves
-     * when it opens, and nothing writes them while it pends. Counting a
-     * DecisionPoint that merely CITES a shared citation as that citation's
-     * decider is how answering one gate re-opened an unrelated fork.
-     */
-    const decidersOf = (id: string): string[] =>
-      graphContext.incomingEdges(id)
-        .filter(e => {
-          const p = graphContext.getNode(e.sourceId);
-          if (!p) return false;
-          if (isGateNode(p)) return !NON_CONTAINMENT_EDGES.has(e.edgeType);
-          return isDecisionPoint(p) && e.edgeType === 'BRANCHES_TO';
-        })
-        .map(e => e.sourceId);
-    const promote = (id: string): string => {
-      const seen = new Set<string>([id]);
-
-      let current = id;
-      // 1. A node closed from above does not own its status — climb to what
-      //    closed it. The RECORDED parent first: a sweep records the node
-      //    that swept, so this goes straight to the closing decider. A graph
-      //    parent is only a fallback, because on a node with several parents
-      //    (a citation or code shared across the pathway) "the first parent"
-      //    is an arbitrary host, and climbing through it lands in a region
-      //    this seed has nothing to do with. The recorded parent must actually
-      //    CONTAIN the node: eager evaluation records the reading gate's
-      //    placement, not the node's own.
-      while (closedFromAbove(current)) {
-        const recorded = resolutionState.get(current)?.parentNodeId;
-        const up = recorded !== undefined && !seen.has(recorded)
-          && containmentClosure(graphContext, [recorded]).has(current)
-          ? recorded
-          : containmentParentIds(graphContext, current).find(p => !seen.has(p));
-        if (up === undefined) break;
-        seen.add(up);
-        current = up;
-      }
-      // 2. Re-enter at whatever decides this node. One level: re-disposing the
-      //    decider re-decides everything below it, so climbing further would
-      //    only widen the region without changing an outcome.
-      return decidersOf(current).find(p => !seen.has(p)) ?? current;
-    };
-
-    // A seed inside another seed's containment closure is NOT promoted: the
-    // walk from that other seed — itself promoted to its decider — disposes
-    // it in place, in order, beneath everything that governs it. Promoting it
-    // separately can only find a SECOND entry point, and for a node with
-    // several parents that entry point is somewhere else in the graph.
-    //
-    // `answerGateQuestion` used to seed an answered gate's whole closure,
-    // shared leaves included, which is how one answer re-opened DP-1 in a
-    // gated-out branch. It now seeds the gate alone; this keeps the engine
-    // correct for any caller that still sends a closure.
-    //
-    // Only strictly: seeds on one cycle reach each other, and each is
-    // promoted as before.
-    const closureOf = new Map<string, Set<string>>();
-    for (const s of seedNodeIds) closureOf.set(s, containmentClosure(graphContext, [s]));
-    const coveredByAnotherSeed = (id: string): boolean =>
-      [...seedNodeIds].some(s => s !== id && closureOf.get(s)!.has(id) && !closureOf.get(id)!.has(s));
-
-    const effectiveSeeds = new Set(
-      [...seedNodeIds].map(id => (coveredByAnotherSeed(id) ? id : promote(id))),
-    );
-
-    // The region a seed can reach. Bounded by the graph, so it is finite and
-    // needs no visited-set of its own beyond `region`.
-    //
-    // Structural descendants AND logical consumers. Following outgoing edges
-    // alone left a sibling `prior_node_result` gate holding its previous
-    // decision after the node it depends on changed — `dependencyMap.influences`
-    // is exactly the record of who reads whom, and it was not consulted.
-    const region = new Set<string>();
-    const frontier = [...effectiveSeeds];
-    while (frontier.length > 0) {
-      const id = frontier.shift()!;
-      if (region.has(id)) continue;
-      region.add(id);
-      for (const child of containmentChildIds(graphContext, id)) {
-        if (!region.has(child)) frontier.push(child);
-      }
-      for (const consumer of dependencyMap.influences.get(id) ?? []) {
-        if (region.has(consumer)) continue;
-        // A consumer is not BELOW us — a `prior_node_result` gate that reads
-        // this node is typically a sibling. So it needs its own seed: adding
-        // it to the region alone would clear it and then leave it unreachable,
-        // deleting it and its subtree from the session outright.
-        const consumerSeed = promote(consumer);
-        effectiveSeeds.add(consumerSeed);
-        frontier.push(consumerSeed);
-      }
-    }
-
-    // Clear the region so `disposeNode` sees it as unresolved and rebuilds it.
-    // A node the provider overrode is KEPT: that decision was made about that
-    // node and stands. It is not, however, a decision about the node's
-    // descendants, so the walk continues past it — the old engine's `continue`
-    // skipped the override AND everything below it, freezing a whole branch
-    // behind one manual inclusion.
-    for (const id of region) {
-      const existing = resolutionState.get(id);
-      if (!existing) continue;
-      statusBefore.set(id, existing.status);
-      priorPlacement.set(id, { depth: existing.depth, parentNodeId: existing.parentNodeId });
-      if (existing.providerOverride) {
-        // HELD, not queued-through. Pushing its children here put them ahead
-        // of the ancestor seeds, so they disposed before the gate governing
-        // them — and a later sweep skipped them as already-written, leaving a
-        // medication included beneath a gate that had closed.
-        //
-        // The walk enqueues them when it ARRIVES at this node, by which point
-        // everything above it has been disposed and reachability is settled.
-        overrideHeld.add(id);
-        continue;
-      }
-      resolutionState.delete(id);
-    }
-
-    // Seed only the HIGHEST affected ancestors.
-    //
-    // A seed that another seed can reach is redundant — the walk gets there
-    // anyway — and seeding it is actively wrong, because disposition is
-    // first-writer-wins. A branch target seeded before its DecisionPoint
-    // resolves first, and when the fork is disposed a moment later and decides
-    // to pend, the loop marking its branches PENDING_QUESTION skips anything
-    // already written. The branch stays INCLUDED while the fork governing it is
-    // unanswered: one arm of a mutually exclusive decision taken by nobody.
-    //
-    // `addPatientContext` produces exactly that order — branch confidences are
-    // recorded against the target and then the DecisionPoint, and a Map keeps
-    // insertion order — so this was reachable, not theoretical.
-    const reachableFromASeed = new Set<string>();
-    for (const seed of effectiveSeeds) {
-      const frontier = containmentChildIds(graphContext, seed);
-      const seen = new Set<string>();
-      while (frontier.length > 0) {
-        const id = frontier.shift()!;
-        if (seen.has(id)) continue;
-        seen.add(id);
-        reachableFromASeed.add(id);
-        for (const c of containmentChildIds(graphContext, id)) {
-          if (!seen.has(c)) frontier.push(c);
-        }
-      }
-    }
-    let rootSeeds = [...effectiveSeeds].filter(id => !reachableFromASeed.has(id));
-    // Every seed inside one cycle reaches every other, so the filter can empty
-    // the list. Falling back to the full set keeps a cyclic region resolvable;
-    // ordering within a cycle has no correct answer anyway.
-    if (rootSeeds.length === 0) rootSeeds = [...effectiveSeeds];
-
-    for (const id of rootSeeds) {
-      // A HELD override is still in the state, so the plain has-check skipped
-      // it — and the walk then never arrived to open its descendants. It has
-      // to be enqueued precisely because it is held.
-      if (!resolutionState.has(id) || overrideHeld.has(id) || provisional.has(id)) {
-        // Its PREVIOUS placement, not root-level. Every incremental root used
-        // to be re-parented to `undefined` at depth 0, which broke the
-        // ancestry chain care-plan generation walks — re-answering a gate
-        // beneath a Stage silently dropped that Stage's goals from the plan.
-        const was = priorPlacement.get(id);
-        queue.push({
-          nodeIdentifier: id,
-          parentNodeId: was?.parentNodeId,
-          depth: was?.depth ?? 0,
-        });
-      }
-    }
-
-    let isDegraded = false;
-    let disposed = 0;
-
-    // Deferred gates last, once everything else in the region has settled —
-    // meds and gates are cleared and re-disposed together here, in whatever
-    // order the region's BFS gives. A timeout leaves any still deferred for
-    // the TIMEOUT sweep below, which covers every region member.
-    while (queue.length > 0 || deferred.length > 0) {
-      if (Date.now() - startTime > TRAVERSAL_TIMEOUT_MS) {
-        isDegraded = true;
-        break;
-      }
-
-      const { nodeIdentifier, parentNodeId, depth } = nextEntry(queue, deferred, finalizing)!;
-      if (overrideHeld.has(nodeIdentifier)) {
-        // The provider's decision about THIS node stands; it was never a
-        // decision about its descendants, so they are re-disposed now that the
-        // walk has established this node is reachable.
-        overrideHeld.delete(nodeIdentifier);
-        const held = resolutionState.get(nodeIdentifier);
-        for (const edge of graphContext.outgoingEdges(nodeIdentifier)) {
-          if (!resolutionState.has(edge.targetId) || provisional.has(edge.targetId)) {
-            queue.push({
-              nodeIdentifier: edge.targetId,
-              parentNodeId: nodeIdentifier,
-              depth: (held?.depth ?? depth) + 1,
-            });
-          }
-        }
-        continue;
-      }
-      if (provisional.has(nodeIdentifier)) {
-        provisional.delete(nodeIdentifier);
-        resolutionState.delete(nodeIdentifier);
-      }
-      if (resolutionState.has(nodeIdentifier)) continue;
-
-      const node = graphContext.getNode(nodeIdentifier);
-      if (!node) continue;
-
-      await this.disposeNode(node, nodeIdentifier, parentNodeId, depth, {
-        graphContext, patientContext, gateAnswers,
-        resolutionState, dependencyMap, queue,
-        pendingQuestions, redFlags, evaluationStack, startTime, rewritten,
-        provisional, overrideHeld, mandated, deferred, finalizing,
-      });
-      disposed++;
-    }
-
-    // A timeout here is worse than in a full traversal, which has simply not
-    // reached a node yet. This walk DELETED the region up front, so anything
-    // not rebuilt has been erased from a session that had it — and the caller
-    // then persists that map. Materialise every region member still missing,
-    // so the node set stays complete (plan 03's invariant) and the gap reads
-    // as TIMEOUT rather than as absence.
-    //
-    // Every region member, not just what is left in the queue: a node whose
-    // parent timed out before enqueuing it is missing from both.
-    if (isDegraded) {
-      for (const id of region) {
-        if (resolutionState.has(id)) continue;
-        const n = graphContext.getNode(id);
-        if (!n) continue;
-        const placement = priorPlacement.get(id);
-        resolutionState.set(id, {
-          nodeId: id,
-          nodeType: n.nodeType,
-          title: nodeTitle(n),
-          status: NodeStatus.TIMEOUT,
-          confidence: 0,
-          confidenceBreakdown: [],
-          excludeReason: 'Traversal timeout exceeded before this node was re-resolved',
-          parentNodeId: placement?.parentNodeId,
-          depth: placement?.depth ?? 0,
-          properties: n.properties,
-        });
-      }
-    }
-
-    // A shared REFERENCE leaf — a citation or code entry: childless, no
-    // inputs, INCLUDED whenever something live reaches it — is INCLUDED if any
-    // host still holding it is. The region's sweeps write whatever they reach
-    // first, and a shared leaf is reached from hosts on both sides of the
-    // answer: answering "no GBS" wrote GATED_OUT over a citation the
-    // still-open culture step cites. Only leaves, because rewriting a node
-    // with a subtree would owe that subtree a walk; and only SHARED ones,
-    // since a leaf with one host already has that host's verdict.
-    //
-    // A live host is one the walk DISPOSED as included. An overridden host is
-    // INCLUDED by a provider's decision about that node alone — the sweep
-    // closes what lies beneath it on purpose — and a node eager evaluation
-    // wrote but no walk reached is not settled. Counting either would put a
-    // Schedule the closing gate had just removed back into the care plan.
-    const isLiveHost = (id: string): boolean => {
-      const h = resolutionState.get(id);
-      return h !== undefined && h.status === NodeStatus.INCLUDED
-        && !h.providerOverride && !provisional.has(id);
-    };
-    if (!isDegraded) {
-      for (const id of region) {
-        const r = resolutionState.get(id);
-        if (!r || !CLOSED.includes(r.status) || r.providerOverride) continue;
-        const n = graphContext.getNode(id);
-        if (!n || !isReferenceLeaf(n, graphContext)) continue;
-        if (containmentParentIds(graphContext, id).length < 2) continue;
-        const host = graphContext.incomingEdges(id).find(e =>
-          !NON_CONTAINMENT_EDGES.has(e.edgeType)
-          && e.edgeType !== 'BRANCHES_TO'
-          && isLiveHost(e.sourceId));
-        if (!host) continue;
-        const hostResult = resolutionState.get(host.sourceId)!;
-        resolutionState.set(id, {
-          nodeId: id,
-          nodeType: n.nodeType,
-          title: nodeTitle(n),
-          status: NodeStatus.INCLUDED,
-          confidence: 1,
-          confidenceBreakdown: [],
-          parentNodeId: host.sourceId,
-          depth: hostResult.depth + 1,
-          properties: n.properties,
-        });
-        rewritten.add(id);
-      }
-    }
-
-    const statusChanges: Array<{ nodeId: string; from: string; to: string }> = [];
-    for (const [id, from] of statusBefore) {
-      const to = resolutionState.get(id)?.status;
-      if (to !== undefined && to !== from) statusChanges.push({ nodeId: id, from, to });
-    }
-
-    // Scope is `rewritten` — every node this pass CHANGED, not only the ones
-    // it disposed directly. `disposeNode` also rewrites descendants wholesale
-    // through `markSubtree`, and those nodes' old findings survived a pass that
-    // had just overwritten the nodes they were about.
-    //
-    // Still not the whole `region`: a node the walk timed out before reaching
-    // was never rewritten at all, and reading its absence from the derived set
-    // as "settled" would silently drop a live question.
-    //
-    // Reconcile against what the session already holds, rather than handing
-    // back a raw derived set for the caller to CONCAT. Appending re-emitted an
-    // identical finding on every pass and never removed one whose condition had
-    // resolved — and since generation blocks on unacknowledged red flags, a
-    // flag true for one instant blocked that session for ever.
-    //
-    // Findings about nodes this pass never disposed are outside its authority
-    // and pass through untouched.
-    const reconciledQuestions = reconcilePendingQuestions(
-      existing?.pendingQuestions ?? [],
-      pendingQuestions,
-      {
-        gateIds: rewritten,
-        alsoDropGateIds: existing?.alsoDropGateIds,
-        // Read from the state this pass just produced, so a shared datum
-        // prompt outlives the gate that raised it exactly as long as some
-        // other gate still waits on the value.
-        stillPending: (id) => resolutionState.get(id)?.status === NodeStatus.PENDING_QUESTION,
-      },
-    );
-    const reconciledFlags = reconcileRedFlags(
-      existing?.redFlags ?? [],
-      redFlags,
-      { nodeIds: rewritten, types: RECONCILABLE_RED_FLAG_TYPES },
-    );
-
-    return {
-      resolutionState,
-      dependencyMap,
-      pendingQuestions: reconciledQuestions,
-      redFlags: reconciledFlags,
-      totalNodesEvaluated: region.size,
-      traversalDurationMs: Date.now() - startTime,
-      isDegraded,
-      statusChanges,
-      // What was actually disposed, not the size of the region we intended to
-      // dispose. On a timeout those differ, and reporting the intent made a
-      // partial rebuild indistinguishable from a complete one.
-      nodesRecomputed: disposed,
-    };
-  }
-
-  /**
    * Resolve ONE node: decide its status, write it into `w.resolutionState`,
    * and enqueue whatever its decision opens up.
    *
-   * Extracted verbatim from `traverse`'s BFS body so the incremental entry
-   * point resolves a node the same way a full traversal does. The retraversal
-   * defect family came from a second implementation drifting from this one;
-   * there is now only this one.
+   * Extracted from `traverse`'s BFS body so eager evaluation resolves a node
+   * the same way the walk does.
    *
    * `w` is destructured immediately so the body below is byte-identical to
    * what ran inside the loop. The only edits are five outer-loop `continue`
@@ -1231,7 +719,7 @@ export class TraversalEngine {
     const {
       graphContext, patientContext, gateAnswers,
       resolutionState, dependencyMap, queue,
-      pendingQuestions, redFlags, evaluationStack, startTime, rewritten,
+      pendingQuestions, redFlags, evaluationStack, startTime,
       provisional, overrideHeld, mandated,
     } = w;
 
@@ -1245,9 +733,6 @@ export class TraversalEngine {
      */
     const enqueueable = (id: string): boolean =>
       !resolutionState.has(id) || provisional.has(id) || overrideHeld.has(id);
-
-    // Everything below rewrites this node; the subtree helpers add theirs.
-    rewritten.add(nodeIdentifier);
 
     // ── Gate node ──────────────────────────────────────────────────
     if (isGateNode(node)) {
@@ -1289,8 +774,8 @@ export class TraversalEngine {
           });
           if (defaultStatus === NodeStatus.GATED_OUT) {
             const childIds = containmentChildIds(graphContext, nodeIdentifier);
-            addAll(rewritten, markSubtree(childIds, graphContext, resolutionState, NodeStatus.GATED_OUT,
-              'Parent gate has cycle — default skip', nodeIdentifier, depth, provisional, overrideHeld));
+            markSubtree(childIds, graphContext, resolutionState, NodeStatus.GATED_OUT,
+              'Parent gate has cycle — default skip', nodeIdentifier, depth, provisional, overrideHeld);
           } else {
             // Traverse children
             for (const edge of graphContext.outgoingEdges(nodeIdentifier)) {
@@ -1331,9 +816,6 @@ export class TraversalEngine {
 
       // Record dependencies
       recordGateContextFields(dependencyMap, nodeIdentifier, gateResult.contextFieldsRead);
-      for (const depNodeId of gateResult.dependedOnNodes) {
-        recordInfluence(dependencyMap, depNodeId, nodeIdentifier);
-      }
 
       // What the gate DECIDED, separate from whether it is SATISFIED. A
       // multi-branch gate answered "no" is decided, not undecided: routing has
@@ -1433,7 +915,7 @@ export class TraversalEngine {
                 // missing branch reads as an oversight rather than a decision.
                 markBranchNotSelected(
                   edge.targetId, nodeIdentifier, nodeTitle(node), depth,
-                  graphContext, resolutionState, rewritten, provisional, overrideHeld,
+                  graphContext, resolutionState, provisional, overrideHeld,
                   liveUnderSelected,
                 );
                 continue;
@@ -1470,8 +952,8 @@ export class TraversalEngine {
             notYetDue: true,
           });
           const childIds = containmentChildIds(graphContext, nodeIdentifier);
-          addAll(rewritten, markSubtree(childIds, graphContext, resolutionState, NodeStatus.GATED_OUT,
-            `Gated out by ${nodeTitle(node)}: ${gateResult.reason}`, nodeIdentifier, depth, provisional, overrideHeld));
+          markSubtree(childIds, graphContext, resolutionState, NodeStatus.GATED_OUT,
+            `Gated out by ${nodeTitle(node)}: ${gateResult.reason}`, nodeIdentifier, depth, provisional, overrideHeld);
         } else if (isUnansweredQuestion) {
           // Pending question
           resolutionState.set(nodeIdentifier, {
@@ -1491,8 +973,8 @@ export class TraversalEngine {
           // Mark subtree as PENDING_QUESTION
           const childIds = containmentChildIds(graphContext, nodeIdentifier);
           const subtreeSize = countSubtree(childIds, graphContext);
-          addAll(rewritten, markSubtree(childIds, graphContext, resolutionState, NodeStatus.PENDING_QUESTION,
-            `Awaiting answer to: ${gateProps.prompt ?? gateProps.title}`, nodeIdentifier, depth, provisional, overrideHeld));
+          markSubtree(childIds, graphContext, resolutionState, NodeStatus.PENDING_QUESTION,
+            `Awaiting answer to: ${gateProps.prompt ?? gateProps.title}`, nodeIdentifier, depth, provisional, overrideHeld);
 
           pendingQuestions.push({
             gateId: nodeIdentifier,
@@ -1531,8 +1013,8 @@ export class TraversalEngine {
           // subtree, it cannot decide yet.
           const childIds = containmentChildIds(graphContext, nodeIdentifier);
           const subtreeSize = countSubtree(childIds, graphContext);
-          addAll(rewritten, markSubtree(childIds, graphContext, resolutionState, NodeStatus.PENDING_QUESTION,
-            `Awaiting ${ask.datumKey}`, nodeIdentifier, depth, provisional, overrideHeld));
+          markSubtree(childIds, graphContext, resolutionState, NodeStatus.PENDING_QUESTION,
+            `Awaiting ${ask.datumKey}`, nodeIdentifier, depth, provisional, overrideHeld);
 
           // Dedup on the DATUM, not the gate. Both gates still hold their
           // subtrees; the provider is asked once, and the one injected fact
@@ -1591,8 +1073,8 @@ export class TraversalEngine {
           ...uncertaintyFields,
           });
           const childIds = containmentChildIds(graphContext, nodeIdentifier);
-          addAll(rewritten, markSubtree(childIds, graphContext, resolutionState, NodeStatus.GATED_OUT,
-            `Gated out by ${nodeTitle(node)}: ${gateResult.reason}`, nodeIdentifier, depth, provisional, overrideHeld));
+          markSubtree(childIds, graphContext, resolutionState, NodeStatus.GATED_OUT,
+            `Gated out by ${nodeTitle(node)}: ${gateResult.reason}`, nodeIdentifier, depth, provisional, overrideHeld);
         } else {
           // Default traverse — include anyway
           resolutionState.set(nodeIdentifier, {
@@ -1652,17 +1134,6 @@ export class TraversalEngine {
         const confResult = await this.confidenceEngine.computeNodeConfidence(
           targetNode, graphContext, patientContext,
         );
-        recordScorerInputs(dependencyMap, targetNode.nodeIdentifier, confResult.contextInputs);
-        // AND onto the DecisionPoint itself. The branch scores are computed
-        // here, but the DECISION they feed — which branches qualify, and
-        // whether an exclusive fork must pend — belongs to this node.
-        //
-        // Recording only against the targets left that decision unreachable:
-        // `addPatientContext` seeds the affected targets, and an incremental
-        // resolve walks DOWNSTREAM, so it never revisits the parent that
-        // decides. New context could move a branch above or below the
-        // threshold and the fork would keep its old answer.
-        recordScorerInputs(dependencyMap, nodeIdentifier, confResult.contextInputs);
 
         const conf = confResult.confidence;
         // The author's own words beat a confidence number. Both criteria are
@@ -1814,8 +1285,8 @@ export class TraversalEngine {
             properties: targetNode.properties,
           });
           const kids = containmentChildIds(graphContext, br.targetId);
-          addAll(rewritten, markSubtree(kids, graphContext, resolutionState, NodeStatus.PENDING_QUESTION,
-            `Awaiting branch choice at ${nodeTitle(node)}`, br.targetId, depth + 1, provisional, overrideHeld));
+          markSubtree(kids, graphContext, resolutionState, NodeStatus.PENDING_QUESTION,
+            `Awaiting branch choice at ${nodeTitle(node)}`, br.targetId, depth + 1, provisional, overrideHeld);
         }
 
         pendingQuestions.push({
@@ -1879,12 +1350,11 @@ export class TraversalEngine {
             });
             // Mark the excluded branch's subtree too
             const childIds = containmentChildIds(graphContext, br.targetId);
-            addAll(rewritten, markSubtree(childIds, graphContext, resolutionState, NodeStatus.EXCLUDED,
+            markSubtree(childIds, graphContext, resolutionState, NodeStatus.EXCLUDED,
               `Excluded by decision point: ${br.excludeReason}`, br.targetId, depth + 1, provisional, overrideHeld,
-              liveUnderIncluded));
+              liveUnderIncluded);
           }
         }
-        recordInfluence(dependencyMap, nodeIdentifier, br.targetId);
       }
 
       // Red flag: all branches excluded
@@ -1920,7 +1390,6 @@ export class TraversalEngine {
       const confResult = await this.confidenceEngine.computeNodeConfidence(
         node, graphContext, patientContext,
       );
-      recordScorerInputs(dependencyMap, nodeIdentifier, confResult.contextInputs);
 
       resolutionState.set(nodeIdentifier, {
         nodeId: nodeIdentifier,
@@ -1947,7 +1416,6 @@ export class TraversalEngine {
       const confResult = await this.confidenceEngine.computeNodeConfidence(
         node, graphContext, patientContext,
       );
-      recordScorerInputs(dependencyMap, nodeIdentifier, confResult.contextInputs);
 
       // An `all_of` mandate outranks the threshold. The fork already
       // red-flagged this branch as unsupported, which reports the

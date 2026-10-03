@@ -32,7 +32,12 @@ import { makeEvaluationTemporalContext } from '../services/resolution/temporal/e
 import type { EvaluationTemporalContext } from '../services/resolution/temporal/evaluation-context';
 import { assembleContext } from '../services/resolution/temporal/context-assembler';
 import { withTherapyStarts } from '../services/resolution/temporal/anchored-window';
-import { validateForGeneration } from '../services/resolution/care-plan-generator';
+import { readinessOf } from '../services/resolution/pipeline/readiness';
+import type { RedFlag, ResolutionState } from '../services/resolution/types';
+
+/** What blocks generation from this state — the pipeline's one readiness rule set (spec C3). */
+const validateForGeneration = (state: ResolutionState, redFlags: RedFlag[]) =>
+  readinessOf({ state, pendingQuestions: [], redFlags, unavailable: [], scope: 'ROOT', isDegraded: false }).blockers;
 import {
   NodeStatus,
   AnswerType,
@@ -287,9 +292,6 @@ describe('the start visit — oral iron recommended in this very session', () =>
     }
     expect(r.resolutionState.get('step-2-4')!.status).toBe(NodeStatus.GATED_OUT);
     expect(r.resolutionState.get('step-2-6')!.status).toBe(NodeStatus.GATED_OUT);
-    // The session-recommendation read crosses the compound boundary: a later
-    // change to the drug re-decides both gates.
-    expect([...(r.dependencyMap.influences.get('med-1') ?? [])].sort()).toEqual([NONRESP, RESP]);
     expect(validateForGeneration(r.resolutionState, r.redFlags)).toEqual([]);
   });
 
@@ -483,12 +485,10 @@ describe('a window_from nested inside a group', () => {
       nodeId: 'gate-nested',
       answer: { dateValue: '2026-06-03' },
       pendingQuestions: [],
-      dependencyMap: r.dependencyMap,
-      graphContext: graph(),
+      nodeProperties: graph().getNode('gate-nested')?.properties as Record<string, unknown> | undefined,
       evaluationAsOf: DAY21,
     });
     expect(plan).toMatchObject({ kind: 'anchor', key: KEY, dateValue: '2026-06-03' });
-    expect((plan as { rootGateIds: string[] }).rootGateIds).toContain('gate-nested');
   });
 
   it('the care-plan anchor loader and the anchor sweep both see it', () => {

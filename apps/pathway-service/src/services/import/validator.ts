@@ -228,7 +228,7 @@ export function validatePathwayJson(pw: PathwayJson, options: ValidateOptions = 
   }
 
   // ─── Gate-specific validation ───────────────────────────────────
-  validateGateNodes(pw, nodeIds, errors, warnings, draftMode);
+  validateGateNodes(pw, nodeIds, nodeTypeMap, errors, warnings, draftMode);
 
   // ─── Semantic validation ────────────────────────────────────────
   validateSemanticRules(pw, nodeIds, nodeTypeMap, errors, warnings, draftMode);
@@ -241,6 +241,7 @@ export function validatePathwayJson(pw: PathwayJson, options: ValidateOptions = 
 function validateGateNodes(
   pw: PathwayJson,
   nodeIds: Set<string>,
+  nodeTypeMap: Map<string, string>,
   errors: string[],
   warnings: string[],
   draftMode: boolean,
@@ -294,7 +295,7 @@ function validateGateNodes(
     // (`dep.node_id` of a string is undefined). A prior_node_result gate was
     // therefore unauthorable in any form that could ever be satisfied.
     if (props.depends_on !== undefined && props.depends_on !== null) {
-      validateDependsOn(gate.id, props.depends_on, nodeIds, errors);
+      validateDependsOn(gate.id, props.depends_on, nodeIds, nodeTypeMap, errors);
     }
     if (String(props.gate_type) === 'prior_node_result') {
       const deps = props.depends_on;
@@ -598,10 +599,19 @@ const NODE_STATUSES: readonly string[] = Object.values(NodeStatus);
  * `!==` against a `NodeStatus` enum value — a lowercase `"included"` would
  * import cleanly and never match.
  */
+/**
+ * A medication's final status can be withheld after traversal (safety,
+ * conflict selection), so a dependency on it cannot be evaluated consistently
+ * (spec C2).
+ */
+const medicationDependencyError = (gateId: string, nodeId: string): string =>
+  `Gate "${gateId}": depends_on may not target Medication node "${nodeId}" — a medication can be withheld after traversal, so the dependency cannot be evaluated consistently`;
+
 function validateDependsOn(
   gateId: string,
   raw: unknown,
   nodeIds: Set<string>,
+  nodeTypeMap: Map<string, string>,
   errors: string[],
 ): void {
   const shape = `{ "node_id": "<node id>", "status": "${NodeStatus.INCLUDED}" }`;
@@ -616,6 +626,11 @@ function validateDependsOn(
         `${where}: a bare node id ("${entry}") is not a dependency the engine can read — ` +
           `write ${shape.replace('<node id>', entry)}`,
       );
+      // Named as well: the shape fix above would otherwise be followed by a
+      // second rejection on the next import.
+      if (nodeTypeMap.get(entry) === 'Medication') {
+        errors.push(medicationDependencyError(gateId, entry));
+      }
       return;
     }
     if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
@@ -627,6 +642,8 @@ function validateDependsOn(
       errors.push(`${where}: missing "node_id"`);
     } else if (!nodeIds.has(nodeId)) {
       errors.push(`Gate "${gateId}": depends_on references nonexistent node "${nodeId}"`);
+    } else if (nodeTypeMap.get(nodeId) === 'Medication') {
+      errors.push(medicationDependencyError(gateId, nodeId));
     }
     if (typeof status !== 'string' || !NODE_STATUSES.includes(status)) {
       errors.push(

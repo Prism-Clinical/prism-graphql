@@ -18,10 +18,7 @@ import {
   ResolutionState,
   NodeResult,
   NodeStatus,
-  BlockerType,
-  ValidationBlocker,
   ACTION_NODE_TYPES,
-  RedFlag,
 } from './types';
 
 // ─── Output Types ──────────────────────────────────────────────────
@@ -100,74 +97,6 @@ function stageHasIncludedActions(
     }
   }
   return false;
-}
-
-// ─── Validation ────────────────────────────────────────────────────
-
-export function validateForGeneration(
-  state: ResolutionState,
-  redFlags: RedFlag[],
-): ValidationBlocker[] {
-  const blockers: ValidationBlocker[] = [];
-
-  // 1. At least one included action node
-  const hasAction = Array.from(state.values()).some(
-    n => isIncluded(n) && isActionNode(n.nodeType),
-  );
-  if (!hasAction) {
-    blockers.push({
-      type: BlockerType.EMPTY_PLAN,
-      description: 'No included action nodes in resolved pathway — care plan would be empty',
-      relatedNodeIds: [],
-    });
-  }
-
-  // 2. Unresolved red flags (only block on unacknowledged ones)
-  for (const flag of redFlags) {
-    if (!flag.acknowledged) {
-      blockers.push({
-        type: BlockerType.UNRESOLVED_RED_FLAG,
-        description: `Unresolved red flag: ${flag.description}`,
-        relatedNodeIds: [flag.nodeId],
-      });
-    }
-  }
-
-  // 3. Pending gates guarding included subtrees
-  for (const node of state.values()) {
-    if (node.status === NodeStatus.PENDING_QUESTION) {
-      blockers.push({
-        type: BlockerType.PENDING_GATE,
-        description: `Gate "${node.title}" has an unanswered question — subtree may contain relevant actions`,
-        relatedNodeIds: [node.nodeId],
-      });
-    }
-  }
-
-  // 4. Nodes that never reached a verdict.
-  //
-  // A traversal cut short leaves TIMEOUT, CASCADE_LIMIT or UNKNOWN nodes, and
-  // only PENDING_QUESTION was blocking — so a partial resolve could produce a
-  // clinical artefact as long as SOME other action survived. What those nodes
-  // would have recommended is unknown, and a care plan silently missing an arm
-  // is indistinguishable from one that considered and rejected it.
-  //
-  // Separate from PENDING_GATE because the remedy differs: nothing a provider
-  // answers clears this, only re-resolving does.
-  const INCOMPLETE = [NodeStatus.TIMEOUT, NodeStatus.CASCADE_LIMIT, NodeStatus.UNKNOWN];
-  for (const node of state.values()) {
-    if (INCOMPLETE.includes(node.status)) {
-      blockers.push({
-        type: BlockerType.INCOMPLETE_RESOLUTION,
-        description:
-          `"${node.title}" was never resolved (${node.status}) — the pathway was not ` +
-          `fully evaluated, so the plan may be missing recommendations`,
-        relatedNodeIds: [node.nodeId],
-      });
-    }
-  }
-
-  return blockers;
 }
 
 // ─── Generation ────────────────────────────────────────────────────

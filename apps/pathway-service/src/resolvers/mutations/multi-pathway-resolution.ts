@@ -1,106 +1,85 @@
 /**
- * Phase 3 commit 4: persistent multi-pathway resolution mutations.
+ * Multi-pathway runs on the evaluation pipeline (spec §3; plan 04).
  *
- * The pipeline is unchanged from commit 3 — matchedPathways → collapseLattice
- * → per-pathway TraversalEngine → project → merge — but the result now lands
- * in `multi_pathway_resolution_sessions`, the per-pathway sessions are
- * persisted alongside (so providers can drill in), and the merge surfaces
- * `clinical_role` conflicts that the provider has to resolve before a real
- * care plan can be generated.
+ * A run is a parent session plus one child session per contributing pathway.
+ * The parent owns the patient facts added after start, the clock, the
+ * conflict decisions and the run's single revision (D5, D6). Every mutation
+ * loads one environment snapshot, re-evaluates every child at CONTRIBUTION
+ * scope, composes the run (`composeRun`) and commits the parent and every
+ * child in one transaction under the parent's revision (`commitRun`). Reads
+ * never recompute.
  *
- * Mutations exposed:
- *   - startMultiPathwayResolution    creates the session + per-pathway sessions
- *   - resolveConflict                applies one provider choice
- *   - generateMergedCarePlan         materializes care_plans rows (validates
- *                                    no unresolved conflicts remain)
- *   - abandonMultiPathwaySession     marks ABANDONED (row preserved for audit)
- *   - deletePreviewSession           hard-deletes a preview session and its
- *                                    contributing per-pathway sessions
+ * Mutations here: startMultiPathwayResolution, resolveConflict,
+ * generateMergedCarePlan, abandonMultiPathwaySession, deletePreviewSession.
+ * An answer, override or fact on a child goes through the single-pathway
+ * mutations, which route a child to `commitRun` (resolution.ts).
  */
 
 import { GraphQLError } from 'graphql';
-import { Pool } from 'pg';
-import {
-  DataSourceContext,
-  SessionStatus,
-  BlockerType,
-} from '../../types';
-import { PatientContext } from '../../services/confidence/types';
-import { normalizePatientAttributes } from '../../services/resolution/patient-attributes';
-import { TraversalEngine } from '../../services/resolution/traversal-engine';
+import { DataSourceContext } from '../../types';
 import { makeEvaluationTemporalContext } from '../../services/resolution/temporal/evaluation-context';
-import type { EvaluationTemporalContext } from '../../services/resolution/temporal/evaluation-context';
 import {
   parseResolutionInput,
   ResolutionModeArgs,
 } from '../../services/resolution/temporal/trust-mode';
 import { assertAssemblableMode } from '../../services/resolution/temporal/context-assembler';
 import {
+  formatBlocker,
   PatientContextArgs,
+  PLAN_CHANGED,
   TemporalAnchorArgs,
   temporalInputFrom,
   toPatientContext,
+  warningsOf,
 } from './resolution';
-import {
-  GateAnswer,
-  MatchedPathway,
-  NodeStatus,
-} from '../../services/resolution/types';
+import { SessionStatus } from '../../services/resolution/types';
 import {
   getMatchedPathways,
-  createSession,
-  getSession,
+  insertSession,
+  logEvent,
+  writeChildrenLifecycle,
+  writeLlmAudits,
 } from '../../services/resolution/session-store';
+import type { Db } from '../../services/resolution/session-store';
 import { collapseLattice } from '../../services/resolution/lattice-collapse';
 import {
-  mergeResolvedCarePlans,
-  ResolvedCarePlan,
-  ResolvedMedication,
   MergedCarePlan,
   MergedConflict,
-  MergedRecommendation,
   ConflictResolution,
   ConflictResolutionKind,
   CustomMedicationOverride,
-  SuppressedRecommendation,
-  SuppressionSource,
-  candidatePathwayIds,
-  drugKey,
-  medicationRegimenKey,
 } from '../../services/resolution/care-plan-merge';
-import {
-  runPatientContextDdi,
-  runCrossRecommendationDdi,
-  DdiFinding,
-} from '../../services/medications/ddi-pass';
-import { projectResolutionToCarePlan } from '../../services/resolution/care-plan-projection';
-import { findUnmetPrerequisites } from '../../services/resolution/prerequisites';
-import { CatchUpItem, SkippedPathway } from '../../services/resolution/care-plan-merge';
-import { TemporalContextError } from '../../services/resolution/temporal/evaluation-context';
-import {
-  buildResolutionContext,
-  makeTraversalAdapter,
-  makeLlmGateEvaluator,
-  assertEncounterAnchor,
-  resolveTemporalPolicyVersion,
-  ResolutionContext,
-} from '../helpers/resolution-context';
+import { resolveTemporalPolicyVersion } from '../helpers/resolution-context';
 import { factStoreForInput } from '../../services/resolution/temporal/fact-store';
-import type { FactStore } from '../../services/resolution/temporal/fact-model';
 import { assertKnownPolicyVersion } from '../../services/resolution/temporal/policy-registry';
-import { normalizeAnswerType } from '../../services/resolution/answer-validation';
-import { withTherapyStarts } from '../../services/resolution/temporal/anchored-window';
-import { loadCarePlanTherapyStarts } from '../helpers/therapy-starts';
 import {
-  createMultiPathwaySession,
   deletePreviewSession,
   getMultiPathwaySession,
   getPatientMultiPathwaySessions,
-  markMultiPathwaySessionStatus,
-  updateMergedPlanAndResolutions,
+  insertRun,
   MultiPathwayResolutionSession,
   MultiPathwaySessionStatus,
+  setContributingSessions,
+  setRunCarePlanId,
+  writeRunLifecycle,
 } from '../../services/resolution/multi-pathway-session-store';
+import { conflictError, MAX_ATTEMPTS, statusOf } from '../../services/resolution/pipeline/commit';
+import { inTransaction, persistedObservations, RevisionConflict } from '../../services/resolution/pipeline/request';
+import {
+  clearAudits,
+  evaluateRun,
+  newRunRequest,
+  requestFor,
+  runInputsOf,
+  sessionInputsOf,
+} from '../../services/resolution/pipeline/run';
+import {
+  assertRunMutable,
+  commitRun,
+  loadRun,
+  withRunAudits,
+  writeRun,
+} from '../../services/resolution/pipeline/run-commit';
 
 // ─── Argument shapes ────────────────────────────────────────────────
 
@@ -228,174 +207,238 @@ export const multiPathwayResolutionMutations = {
     // One clock for the entire multi-pathway run (§1) — the parent session and
     // every contributing session resolve horizons against the same instant.
     // Created here, before the zero-match branch, so BOTH exits stamp it.
-    const temporalInput = { ...temporalInputFrom(args), temporalPolicyVersion };
-    // A synthetic (simulator / preview) run has no real encounter, so an
-    // ENCOUNTER horizon had nothing to anchor to and the pathway using it
-    // could not resolve at all. Anchor it at the session's own evaluation
-    // instant — ONE stamp for both, not two reads of the wall clock, so the
-    // encounter can never start after the evaluation it belongs to.
-    if (isPreview && temporalInput.encounterStart === undefined) {
-      temporalInput.evaluationAsOf ??= new Date(Date.now()).toISOString();
-      temporalInput.encounterStart = temporalInput.evaluationAsOf;
-    }
-    const temporalContext = makeEvaluationTemporalContext(temporalInput);
+    const temporalContext = makeEvaluationTemporalContext({
+      ...temporalInputFrom(args),
+      temporalPolicyVersion,
+    });
 
     // Before the zero-match branch: that path creates a parent session and
     // returns without ever entering resolveAndPersistAll, so a version
     // validated only during the sweep would never be checked at all.
     assertKnownPolicyVersion(temporalContext.temporalPolicyVersion);
 
-    // Assembled ONCE for the whole run, and — like the version check — before
-    // the zero-match branch: the assembler validates, and whether a malformed
-    // context is rejected must not depend on how many pathways happened to
-    // match. On the zero-match path the store is simply discarded. `[]` under
-    // `legacy-v0`, without entering the assembler at all (P1-9).
-    const factStore = factStoreForInput(resolutionInput, temporalContext);
+    // Validates the request — like the version check — before the zero-match
+    // branch: whether a malformed context is rejected must not depend on how
+    // many pathways happened to match. The store itself is discarded; each
+    // child's evaluation assembles its own from the same inputs. Under
+    // `legacy-v0` the assembler is never entered (P1-9).
+    factStoreForInput(resolutionInput, temporalContext);
 
     const matched = await getMatchedPathways(pool, args.patientId, matcherOptions);
-    if (matched.length === 0) {
-      // Persist an empty session so the FE has something to show — and so we
-      // have a paper trail that no pathways matched on this date.
-      const sessionId = await createMultiPathwaySession(pool, {
+    // Zero matches takes the same path with no children (spec §3): the run is
+    // stored, with EMPTY_PLAN at its root, as a record that nothing matched.
+    const surviving = matched.length === 0 ? [] : await collapseLattice(pool, matched);
+
+    const request = newRunRequest();
+    const ev = await evaluateRun(pool, request, {
+      initialPatientContext: patientContext,
+      additionalContext: {},
+      temporalContext,
+      conflictResolutions: {},
+      children: surviving.map((m) => ({
+        sessionId: '',
+        pathwayId: m.pathway.id,
+        inputs: {
+          pathwayId: m.pathway.id,
+          graphFingerprint: '',
+          gateAnswers: new Map(),
+          providerOverrides: new Map(),
+          observations: new Map(),
+          revision: 0,
+        },
+      })),
+    }, { pinGraphs: true });
+    const versionOf = new Map(surviving.map((m) => [m.pathway.id, m.pathway.version]));
+
+    // Every pathway was evaluated before anything is written, and everything is
+    // written in ONE transaction: a failure leaves no parent, no child and no
+    // audit row behind (P3-10).
+    const runId = await inTransaction(pool, async (db) => {
+      const id = await insertRun(db, {
         patientId: args.patientId,
         providerId: context.userId,
-        initialPatientContext: patientContext,
-        contributingSessionIds: [],
-        contributingPathwayIds: [],
-        mergedPlan: emptyMergedCarePlan(),
         isPreview,
-        temporalContext,
+        initialPatientContext: patientContext,
+        // The evaluated clock: it carries the therapy starts pinned at start.
+        temporalContext: ev.inputs.temporalContext,
+        additionalContext: {},
+        conflictResolutions: {},
+        result: ev.result,
       });
-      const session = await getMultiPathwaySession(pool, sessionId);
-      return formatSessionForGraphQL(session!);
-    }
-
-    const surviving = await collapseLattice(pool, matched);
-
-    const { resolvedPlans, contributingSessionIds, contributingPathwayIds, skippedPathways } =
-      await resolveAndPersistAll(
-        pool,
-        surviving,
-        patientContext,
-        context.userId,
-        temporalContext,
-        factStore,
-      );
-
-    const { mergedPlan: merged, ddiWarnings } = await runMergePipeline(
-      pool,
-      resolvedPlans,
-      patientContext,
-    );
-    const finalMerged: MergedCarePlan = { ...merged, skippedPathways };
-
-    const sessionId = await createMultiPathwaySession(pool, {
-      patientId: args.patientId,
-      providerId: context.userId,
-      initialPatientContext: patientContext,
-      contributingSessionIds,
-      contributingPathwayIds,
-      mergedPlan: finalMerged,
-      ddiWarnings,
-      isPreview,
-      temporalContext,
+      const sessionIds: string[] = [];
+      for (const child of ev.result.children) {
+        const own = ev.inputs.children.find((c) => c.pathwayId === child.pathwayId)!;
+        const inputs = sessionInputsOf(ev.inputs, own.inputs);
+        const req = requestFor(request, child.pathwayId);
+        const sessionId = await insertSession(db, {
+          pathwayVersion: versionOf.get(child.pathwayId)!,
+          patientId: patientContext.patientId,
+          providerId: context.userId,
+          // The parent owns the facts (D5); the child keeps a copy of the initial context (P4-1).
+          inputs: { ...inputs, additionalContext: {}, observations: persistedObservations(inputs, req, child.result) },
+          result: child.result,
+          status: statusOf(child.result),
+          durationMs: ev.durationMs,
+          parentSessionId: id,
+        });
+        await writeLlmAudits(db, sessionId, req.audits);
+        await logEvent(db, sessionId, {
+          eventType: 'traversal_complete',
+          triggerData: { runId: id, pathwayId: child.pathwayId, patientId: args.patientId },
+          nodesRecomputed: child.result.resolutionState.size,
+          statusChanges: [],
+        });
+        sessionIds.push(sessionId);
+      }
+      await setContributingSessions(db, id, sessionIds, ev.result.children.map((c) => c.pathwayId));
+      return id;
     });
 
-    const session = await getMultiPathwaySession(pool, sessionId);
-    return formatSessionForGraphQL(session!);
+    return formatSessionForGraphQL((await getMultiPathwaySession(pool, runId))!);
   },
 
+  /**
+   * Record a provider's decision for one conflict (spec §3). The decision is an
+   * input on the parent; the merged plan is re-derived from the base merge on
+   * every evaluation, so a changed decision REPLACES the previous one (review
+   * #6), and the final set is safety-checked again (review #7).
+   */
   async resolveConflict(
     _parent: unknown,
     args: ResolveConflictArgs,
     context: DataSourceContext,
   ) {
-    const { pool } = context;
-    const session = await loadActiveSession(pool, args.sessionId);
-
-    const conflict = session.mergedPlan.conflicts.find(
-      (c) => c.conflictId === args.conflictId,
-    );
-    if (!conflict) {
-      throw new GraphQLError(
-        `Conflict "${args.conflictId}" not found in session "${args.sessionId}"`,
-        { extensions: { code: 'NOT_FOUND' } },
-      );
-    }
-
-    const resolution = buildResolution(args.choice, context.userId);
-    validateResolutionAgainstConflict(resolution, conflict);
-
-    const updatedPlan = applyResolution(session.mergedPlan, conflict, resolution);
-    const updatedResolutions = {
-      ...session.conflictResolutions,
-      [args.conflictId]: resolution,
-    };
-
-    await updateMergedPlanAndResolutions(
-      pool,
-      args.sessionId,
-      updatedPlan,
-      updatedResolutions,
-    );
-
-    const refreshed = await getMultiPathwaySession(pool, args.sessionId);
-    return formatSessionForGraphQL(refreshed!);
+    // Built once, outside the retries: `resolvedAt` is when the provider decided.
+    const decision = buildResolution(args.choice, context.userId);
+    const run = await commitRun(context.pool, args.sessionId, (r) => {
+      const conflict = r.parent.mergedPlan.conflicts.find((c) => c.conflictId === args.conflictId);
+      if (!conflict) {
+        throw new GraphQLError(
+          `Conflict "${args.conflictId}" not found in session "${args.sessionId}"`,
+          { extensions: { code: 'NOT_FOUND' } },
+        );
+      }
+      validateResolutionAgainstConflict(decision, conflict);
+      const inputs = runInputsOf(r);
+      inputs.conflictResolutions = { ...inputs.conflictResolutions, [args.conflictId]: decision };
+      return { inputs, events: [] };
+    });
+    return formatSessionForGraphQL(run.parent);
   },
 
+  /**
+   * Materialize the run the provider reviewed (spec §4, Generation; D7).
+   *
+   * A COMPLETED run returns its plan without evaluating. Otherwise every child
+   * is re-evaluated and the run recomposed: a changed resultHash returns
+   * PLAN_CHANGED_SINCE_REVIEW, and unready readiness returns its blockers,
+   * after storing the fresh run. If that store loses a revision race, the
+   * blockers describe a state that no longer exists, so generation reloads and
+   * evaluates again. The claim — the run to COMPLETED under the revision read,
+   * every child with it — precedes the inserts in one transaction, so a lost
+   * race or a failed insert leaves nothing behind (#4, #8). Every exit writes
+   * the audit rows of LLM calls no committed transaction wrote.
+   */
   async generateMergedCarePlan(
     _parent: unknown,
-    args: { sessionId: string },
+    args: { sessionId: string; reviewedResultHash: string },
     context: DataSourceContext,
   ) {
     const { pool } = context;
-    const session = await loadActiveSession(pool, args.sessionId);
+    const request = newRunRequest();
+    type Outcome = { success: boolean; carePlanId: string | null; warnings: string[]; blockers: ReturnType<typeof formatBlocker>[] };
 
-    const blockers = [
-      ...validateForGeneration(session),
-      ...(await unansweredQuestionBlockers(pool, session)),
-    ];
-    if (blockers.length > 0) {
-      return {
-        success: false as const,
-        carePlanId: null as string | null,
-        warnings: [] as string[],
-        blockers,
-      };
-    }
+    return withRunAudits(pool, request, async (seen): Promise<Outcome> => {
+      for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+        const run = await loadRun(pool, args.sessionId);
+        seen.run = run;
+        if (run.parent.status === 'COMPLETED') {
+          return { success: true, carePlanId: run.parent.carePlanId, warnings: [], blockers: [] };
+        }
+        if (run.parent.status === 'ABANDONED') {
+          throw new GraphQLError('Session was abandoned and cannot generate a care plan', {
+            extensions: { code: 'BAD_REQUEST' },
+          });
+        }
 
-    const carePlanId = await materializeCarePlan(pool, session);
+        const ev = await evaluateRun(pool, request, runInputsOf(run));
+        const warnings = warningsOf(ev.result.ddiWarnings);
+        const planChanged = ev.result.resultHash !== args.reviewedResultHash;
 
-    await markMultiPathwaySessionStatus(
-      pool,
-      args.sessionId,
-      'COMPLETED',
-      carePlanId,
-    );
+        try {
+          if (planChanged || !ev.result.readiness.ready) {
+            // Store what was just evaluated, so the provider re-reviews exactly this.
+            await inTransaction(pool, (db) => writeRun(db, run, ev, request, 'ACTIVE'));
+            clearAudits(request);
+            const blockers = planChanged ? [PLAN_CHANGED] : ev.result.readiness.blockers;
+            return { success: false, carePlanId: null, warnings, blockers: blockers.map(formatBlocker) };
+          }
 
-    return {
-      success: true as const,
-      carePlanId,
-      warnings: [] as string[],
-      blockers: [] as Array<{ type: string; description: string; relatedNodeIds: string[] }>,
-    };
+          const carePlanId = await inTransaction(pool, async (db) => {
+            // Claim first (#8): only the request that moves the run to COMPLETED inserts.
+            await writeRun(db, run, ev, request, 'COMPLETED');
+            const id = await materializeCarePlan(db, run.parent, ev.result.mergedPlan);
+            await setRunCarePlanId(db, run.parent.id, id);
+            await writeChildrenLifecycle(db, run.parent.id, SessionStatus.COMPLETED, id);
+            for (const child of run.children) {
+              await logEvent(db, child.id, {
+                eventType: 'care_plan_generated',
+                triggerData: { carePlanId: id, runId: run.parent.id },
+                nodesRecomputed: 0,
+                statusChanges: [{ nodeId: 'session', from: child.status, to: SessionStatus.COMPLETED }],
+              });
+            }
+            return id;
+          });
+          clearAudits(request);
+          return { success: true, carePlanId, warnings, blockers: [] };
+        } catch (err) {
+          // Either write lost a race: reload, and evaluate the run that won.
+          if (err instanceof RevisionConflict) continue;
+          if (err instanceof GraphQLError) throw err;
+          console.error('Merged care plan generation failed:', err);
+          throw new GraphQLError('Failed to generate care plan: transaction rolled back', {
+            extensions: { code: 'INTERNAL_SERVER_ERROR' },
+          });
+        }
+      }
+      throw conflictError();
+    });
   },
 
+  /** Lifecycle only (spec §4): no evaluation; an ACTIVE run only; the revision check applies; every child follows. */
   async abandonMultiPathwaySession(
     _parent: unknown,
     args: { sessionId: string; reason?: string },
     context: DataSourceContext,
   ) {
     const { pool } = context;
-    const session = await getMultiPathwaySession(pool, args.sessionId);
-    if (!session) {
-      throw new GraphQLError('Session not found', {
-        extensions: { code: 'NOT_FOUND' },
-      });
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+      const run = await loadRun(pool, args.sessionId);
+      assertRunMutable(run);
+      try {
+        await inTransaction(pool, async (db) => {
+          const written = await writeRunLifecycle(db, {
+            runId: run.parent.id, expectedRevision: run.parent.revision, status: 'ABANDONED',
+          });
+          if (!written) throw new RevisionConflict();
+          await writeChildrenLifecycle(db, run.parent.id, SessionStatus.ABANDONED);
+          for (const child of run.children) {
+            await logEvent(db, child.id, {
+              eventType: 'abandoned',
+              triggerData: { reason: args.reason ?? 'No reason provided', runId: run.parent.id },
+              nodesRecomputed: 0,
+              statusChanges: [{ nodeId: 'session', from: child.status, to: SessionStatus.ABANDONED }],
+            });
+          }
+        });
+      } catch (err) {
+        if (err instanceof RevisionConflict) continue;
+        throw err;
+      }
+      return formatSessionForGraphQL((await getMultiPathwaySession(pool, args.sessionId))!);
     }
-    await markMultiPathwaySessionStatus(pool, args.sessionId, 'ABANDONED');
-    const refreshed = await getMultiPathwaySession(pool, args.sessionId);
-    return formatSessionForGraphQL(refreshed!);
+    throw conflictError();
   },
 
   /**
@@ -426,59 +469,6 @@ export const multiPathwayResolutionMutations = {
       sessionId: args.sessionId,
       contributingSessionsDeleted: result.contributingSessionsDeleted,
     };
-  },
-
-  /**
-   * Re-run the merge pipeline against the current state of every contributing
-   * per-pathway session, then update this multi-pathway session's stored
-   * mergedPlan + ddiWarnings. Used after a provider answers a Gate question
-   * (which re-traverses the per-pathway session) so the merged view picks up
-   * the new per-pathway state without forcing a full new resolution.
-   *
-   * Existing conflict resolutions are preserved — the new merged plan is
-   * re-derived from the resolved per-pathway plans, then any prior provider
-   * conflict choices replay on top of it.
-   */
-  async reMergeMultiPathwaySession(
-    _parent: unknown,
-    args: { sessionId: string },
-    context: DataSourceContext,
-  ) {
-    const { pool } = context;
-    const session = await loadActiveSession(pool, args.sessionId);
-
-    const resolvedPlans = await buildResolvedPlansFromSessions(
-      pool,
-      session.contributingSessionIds,
-    );
-    const patientContext = session.initialPatientContext as PatientContext;
-    const { mergedPlan, ddiWarnings } = await runMergePipeline(
-      pool,
-      resolvedPlans,
-      patientContext,
-    );
-
-    // Replay prior conflict resolutions onto the freshly-merged plan so the
-    // provider doesn't have to re-pick them — but only where the conflict
-    // still offers the same choices (see replayConflictResolutions).
-    // Which pathways were dropped is decided once, at creation; a re-merge
-    // re-projects the survivors and must not forget the others.
-    const { plan: replayedPlan, resolutions } = replayConflictResolutions(
-      session.mergedPlan,
-      { ...mergedPlan, skippedPathways: session.mergedPlan.skippedPathways ?? [] },
-      session.conflictResolutions,
-    );
-
-    await updateMergedPlanAndResolutions(
-      pool,
-      args.sessionId,
-      replayedPlan,
-      resolutions,
-      ddiWarnings,
-    );
-
-    const refreshed = await getMultiPathwaySession(pool, args.sessionId);
-    return formatSessionForGraphQL(refreshed!);
   },
 };
 
@@ -612,7 +602,7 @@ export const multiPathwayResolutionTypeResolvers = {
             pathwayTitle: String(row.pathway_title ?? '(untitled pathway)'),
             gateId: String(q.gateId ?? q.gate_id ?? ''),
             prompt: String(q.prompt ?? ''),
-            answerType: normalizeAnswerType(q.answerType ?? q.answer_type),
+            answerType: String(q.answerType ?? q.answer_type ?? 'BOOLEAN'),
             options: Array.isArray(q.options) ? (q.options as string[]) : null,
             affectedSubtreeSize: Number(q.affectedSubtreeSize ?? q.affected_subtree_size ?? 0),
             estimatedImpact: String(q.estimatedImpact ?? q.estimated_impact ?? 'unknown'),
@@ -643,352 +633,6 @@ export const multiPathwayResolutionTypeResolvers = {
 };
 
 // ─── Internals ──────────────────────────────────────────────────────
-
-export function buildPatientContext(args: MultiPathwayResolutionArgs): PatientContext {
-  const pc = args.patientContext;
-  return {
-    patientId: args.patientId,
-    conditionCodes: pc?.conditionCodes ?? [],
-    medications: pc?.medications ?? [],
-    labResults: pc?.labResults ?? [],
-    allergies: pc?.allergies ?? [],
-    vitalSigns: pc?.vitalSigns,
-    freeformData: pc?.freeformData,
-    patientAttributes: normalizePatientAttributes(pc?.patientAttributes),
-  };
-}
-
-/**
- * Run the full merge pipeline (DDI stage 1 → merge → DDI stage 2) over a set
- * of already-resolved per-pathway care plans. Used both by the initial
- * `startMultiPathwayResolution` flow and by `reMergeMultiPathwaySession` after
- * gate answers re-traverse a contributing session.
- *
- * Returns the final merged plan plus the DDI WARN-severity findings; the
- * suppressions are folded into `mergedPlan.suppressed` directly.
- */
-export async function runMergePipeline(
-  pool: Pool,
-  resolvedPlans: ResolvedCarePlan[],
-  patientContext: PatientContext,
-): Promise<{ mergedPlan: MergedCarePlan; ddiWarnings: unknown[] }> {
-  // ── DDI stage 1: pre-merge, per-plan against patient context ──
-  const preMergeWarnings: unknown[] = [];
-  const preMergeSuppressions: SuppressedRecommendation[] = [];
-  const ddiCleanedPlans: ResolvedCarePlan[] = [];
-
-  for (const plan of resolvedPlans) {
-    const candidates = plan.medications.map((m) => ({
-      recommendationId: m.sourceNodeId ?? `${plan.pathwayId}|${m.name}`,
-      drugName: m.name,
-    }));
-    const ddi = await runPatientContextDdi(pool, candidates, patientContext);
-    preMergeWarnings.push(...ddi.findings.filter((f) => f.action === 'WARN'));
-
-    const suppressedIds = ddi.suppressedRecommendationIds;
-    for (const finding of ddi.findings) {
-      if (finding.action !== 'SUPPRESS') continue;
-      const med = plan.medications.find(
-        (m) => (m.sourceNodeId ?? `${plan.pathwayId}|${m.name}`) === finding.recommendationId,
-      );
-      if (!med) continue;
-      preMergeSuppressions.push(buildDdiSuppression(med, finding));
-    }
-
-    ddiCleanedPlans.push({
-      ...plan,
-      medications: plan.medications.filter(
-        (m) => !suppressedIds.has(m.sourceNodeId ?? `${plan.pathwayId}|${m.name}`),
-      ),
-    });
-  }
-
-  const merged = mergeResolvedCarePlans(ddiCleanedPlans);
-
-  // ── DDI stage 2: post-merge, cross-recommendation pairs ──
-  // Checked: every auto-included medication AND every regimen of a drug held
-  // in a MEDICATION_REGIMEN conflict. Those regimens are one drug the plan
-  // will contain in some form, and before regimens were kept apart they
-  // name-merged into `medications` and were checked here; parking them in a
-  // conflict must not exempt them. (clinical_role conflict candidates are
-  // alternatives, not co-prescriptions, and were never checked here — a known
-  // gap, unchanged.) Suppression then removes the DRUG, every regimen of it,
-  // matching the drug-identity rule the pathway flags follow.
-  const recId = (r: ResolvedMedication) => r.sourceNodeId ?? `${r.sourcePathwayId}|${r.name}`;
-  const crossMeds: ResolvedMedication[] = [
-    ...merged.medications.map((m) => m.recommendation),
-    ...merged.conflicts
-      .filter((c) => c.type === 'medication_regimen')
-      .flatMap((c) => c.candidates.map((cand) => cand.recommendation)),
-  ];
-  const crossCandidates = crossMeds.map((r) => ({
-    recommendationId: recId(r),
-    drugName: r.name,
-    sourcePathwayId: r.sourcePathwayId,
-  }));
-  const cross = await runCrossRecommendationDdi(pool, crossCandidates);
-  const crossWarnings = cross.findings.filter((f) => f.action === 'WARN');
-  const crossSuppressions: SuppressedRecommendation[] = [];
-  for (const finding of cross.findings) {
-    if (finding.action !== 'SUPPRESS') continue;
-    const med = crossMeds.find((r) => recId(r) === finding.recommendationId);
-    if (!med) continue;
-    crossSuppressions.push(buildDdiSuppression(med, finding));
-  }
-  const suppressedDrugs = new Set(
-    crossMeds
-      .filter((r) => cross.suppressedRecommendationIds.has(recId(r)))
-      .map((r) => drugKey(r.name)),
-  );
-
-  const finalMerged: MergedCarePlan = {
-    ...merged,
-    medications: merged.medications.filter(
-      (m) => !suppressedDrugs.has(drugKey(m.recommendation.name)),
-    ),
-    // A regimen conflict is one drug; if that drug is suppressed the choice
-    // is gone. clinical_role conflicts never contain a drug checked above.
-    conflicts: merged.conflicts.filter(
-      (c) =>
-        c.type !== 'medication_regimen' ||
-        !c.candidates.some((cand) => suppressedDrugs.has(drugKey(cand.recommendation.name))),
-    ),
-    suppressed: [...merged.suppressed, ...preMergeSuppressions, ...crossSuppressions],
-  };
-
-  return { mergedPlan: finalMerged, ddiWarnings: [...preMergeWarnings, ...crossWarnings] };
-}
-
-/**
- * Rebuild `ResolvedCarePlan` array by re-projecting the current state of
- * each contributing per-pathway session. Used by `reMergeMultiPathwaySession`
- * — the gate answers that have been applied since session creation are
- * reflected in the per-pathway session's `resolutionState`, so re-projection
- * picks up the post-answer state. Sessions with missing rows are skipped
- * (consistent with the initial-merge behavior).
- */
-export async function buildResolvedPlansFromSessions(
-  pool: Pool,
-  sessionIds: string[],
-): Promise<ResolvedCarePlan[]> {
-  const plans: ResolvedCarePlan[] = [];
-  for (const sessionId of sessionIds) {
-    const session = await getSession(pool, sessionId);
-    if (!session) continue;
-    const meta = await pool.query<{ logical_id: string; title: string }>(
-      `SELECT logical_id, title FROM pathway_graph_index WHERE id = $1`,
-      [session.pathwayId],
-    );
-    const pathwayLogicalId = meta.rows[0]?.logical_id ?? session.pathwayId;
-    const pathwayTitle = meta.rows[0]?.title ?? session.pathwayId;
-    plans.push(
-      projectResolutionToCarePlan(
-        session.resolutionState,
-        {
-          pathwayId: session.pathwayId,
-          pathwayLogicalId,
-          pathwayTitle,
-        },
-        [],
-        session.dependencyMap,
-      ),
-    );
-  }
-  return plans;
-}
-
-/**
- * Run TraversalEngine for each surviving pathway, persist the per-pathway
- * session, and project the result. Empty graphs are skipped (consistent
- * with commit 3 behavior — one broken pathway shouldn't kill the merge).
- */
-export async function resolveAndPersistAll(
-  pool: Pool,
-  pathways: MatchedPathway[],
-  patientContext: PatientContext,
-  providerId: string,
-  /**
-   * Created by the caller, never here. `startMultiPathwayResolution` stamps
-   * one clock for the whole run and hands it down, because it — not this
-   * function — is the outermost boundary: it creates the parent session on
-   * two paths, one of which (zero matches) returns before this is ever
-   * called. A clock created here could not reach the parent at all on that
-   * path, and on the other the parent would need the child's clock handed
-   * back out.
-   */
-  temporalContext: EvaluationTemporalContext,
-  /**
-   * Assembled by the caller for the same reason the clock is: one store for the
-   * whole run. Assembly is pathway-independent — it reads the patient payload
-   * and the clock, neither of which varies per pathway — so building it here,
-   * once per pathway, would do the same work N times and give sibling sessions
-   * distinct (though equal) fact objects.
-   */
-  factStore: FactStore,
-): Promise<{
-  resolvedPlans: ResolvedCarePlan[];
-  contributingSessionIds: string[];
-  contributingPathwayIds: string[];
-  /** Matched pathways left out, with the reason. See the preflight below. */
-  skippedPathways: SkippedPathway[];
-}> {
-  const skippedPathways: SkippedPathway[] = [];
-  const resolvedPlans: ResolvedCarePlan[] = [];
-  const contributingSessionIds: string[] = [];
-  const contributingPathwayIds: string[] = [];
-
-  // Load every pathway's context and validate the whole set BEFORE any
-  // traversal. Nothing here writes: a rejection must leave no child sessions
-  // and no audit rows behind. Validating inside the traversal loop would mean
-  // pathway A is already persisted by the time pathway B is rejected.
-  const loaded: Array<{ m: MatchedPathway; rctx: ResolutionContext }> = [];
-  for (const m of pathways) {
-    const rctx = await buildResolutionContext(pool, m.pathway.id);
-    if (rctx.graphContext.allNodes.length === 0) continue;
-    try {
-      assertEncounterAnchor(rctx, temporalContext);
-    } catch (err) {
-      // A missing encounter anchor is a fact about THIS pathway and this
-      // session, not about the request: the other pathways resolve without
-      // one. Rejecting the whole session over it withheld every other
-      // pathway's plan. It is dropped, with the reason recorded on the
-      // merged plan so the omission is visible.
-      //
-      // Only this code. Anything else the preflight raises — an unknown
-      // policy version, a malformed horizon — is a defect in the request or
-      // the pathway, and still rejects the run before anything is written.
-      if (err instanceof TemporalContextError && err.code === 'MISSING_ENCOUNTER_ANCHOR') {
-        skippedPathways.push({
-          pathwayId: m.pathway.id,
-          logicalId: m.pathway.logicalId,
-          pathwayTitle: m.pathway.title,
-          code: err.code,
-          reason: err.message,
-        });
-        continue;
-      }
-      throw err;
-    }
-    loaded.push({ m, rctx });
-  }
-
-  for (const { m, rctx } of loaded) {
-    // The run's clock, plus THIS pathway's care-plan therapy starts for its
-    // `window_from` anchors (none, and no query, for a pathway without one).
-    // Per pathway because the starts are matched against this pathway's own
-    // recommendations; the clock itself is identical across the run.
-    const pathwayClock = withTherapyStarts(
-      temporalContext,
-      await loadCarePlanTherapyStarts(pool, {
-        patientId: patientContext.patientId,
-        pathwayId: m.pathway.id,
-        graphContext: rctx.graphContext,
-      }),
-    );
-    const llmBundle = makeLlmGateEvaluator(pool, m.pathway.id);
-    const engine = new TraversalEngine(
-      makeTraversalAdapter(rctx, pool, m.pathway.id, patientContext),
-      rctx.thresholds,
-      pathwayClock,
-      rctx.temporalDefaults,
-      factStore,
-      rctx.codeMap,
-      llmBundle?.evaluator,
-    );
-    const traversalResult = await engine.traverse(
-      rctx.graphContext,
-      patientContext,
-      new Map<string, GateAnswer>(),
-    );
-
-    // REQUIRES backtracking pass — for every included Stage/Step node,
-    // walk outgoing REQUIRES edges and check each prereq's
-    // satisfaction_check against the patient snapshot. Deduplicate by
-    // prereq nodeId (one prereq can be reached from many dependents).
-    const catchUpItems: CatchUpItem[] = [];
-    const seenPrereqs = new Set<string>();
-    for (const node of traversalResult.resolutionState.values()) {
-      if (node.status !== NodeStatus.INCLUDED) continue;
-      if (node.nodeType !== 'Stage' && node.nodeType !== 'Step') continue;
-      const unmet = findUnmetPrerequisites(
-        node.nodeId,
-        patientContext,
-        rctx.graphContext,
-      );
-      for (const u of unmet) {
-        if (seenPrereqs.has(u.nodeId)) continue;
-        seenPrereqs.add(u.nodeId);
-        catchUpItems.push({
-          nodeId: u.nodeId,
-          nodeType: u.nodeType,
-          title: u.title,
-          dependentNodeId: u.dependentNodeId,
-          reason: u.reason,
-          sourcePathwayId: m.pathway.id,
-        });
-      }
-    }
-
-    const status = traversalResult.isDegraded
-      ? SessionStatus.DEGRADED
-      : SessionStatus.ACTIVE;
-
-    const sessionId = await createSession(pool, {
-      pathwayId: m.pathway.id,
-      pathwayVersion: m.pathway.version,
-      patientId: patientContext.patientId,
-      providerId,
-      status,
-      initialPatientContext: patientContext,
-      resolutionState: traversalResult.resolutionState,
-      dependencyMap: traversalResult.dependencyMap,
-      pendingQuestions: traversalResult.pendingQuestions,
-      redFlags: traversalResult.redFlags,
-      totalNodesEvaluated: traversalResult.totalNodesEvaluated,
-      traversalDurationMs: traversalResult.traversalDurationMs,
-      temporalContext: pathwayClock,
-    });
-
-    if (llmBundle) await llmBundle.flushAudits(sessionId);
-
-    contributingSessionIds.push(sessionId);
-    contributingPathwayIds.push(m.pathway.id);
-
-    resolvedPlans.push(
-      projectResolutionToCarePlan(
-        traversalResult.resolutionState,
-        {
-          pathwayId: m.pathway.id,
-          pathwayLogicalId: m.pathway.logicalId,
-          pathwayTitle: m.pathway.title,
-        },
-        catchUpItems,
-        traversalResult.dependencyMap,
-      ),
-    );
-  }
-
-  return { resolvedPlans, contributingSessionIds, contributingPathwayIds, skippedPathways };
-}
-
-async function loadActiveSession(
-  pool: Pool,
-  sessionId: string,
-): Promise<MultiPathwayResolutionSession> {
-  const session = await getMultiPathwaySession(pool, sessionId);
-  if (!session) {
-    throw new GraphQLError('Session not found', {
-      extensions: { code: 'NOT_FOUND' },
-    });
-  }
-  if (session.status !== 'ACTIVE') {
-    throw new GraphQLError(
-      `Cannot modify session with status "${session.status}"`,
-      { extensions: { code: 'BAD_USER_INPUT' } },
-    );
-  }
-  return session;
-}
 
 // ─── Conflict resolution logic ──────────────────────────────────────
 
@@ -1027,7 +671,11 @@ function validateResolutionAgainstConflict(
   resolution: ConflictResolution,
   conflict: MergedConflict,
 ): void {
-  if (resolution.kind === 'CONFIRM_PATHWAY' && !resolutionFitsConflict(resolution, conflict)) {
+  if (resolution.kind !== 'CONFIRM_PATHWAY') return;
+  const candidatePathwayIds = new Set(
+    conflict.candidates.map((c) => c.sourcePathwayId),
+  );
+  if (!candidatePathwayIds.has(resolution.chosenPathwayId)) {
     throw new GraphQLError(
       `chosenPathwayId "${resolution.chosenPathwayId}" is not among this conflict's candidates`,
       { extensions: { code: 'BAD_USER_INPUT' } },
@@ -1035,372 +683,77 @@ function validateResolutionAgainstConflict(
   }
 }
 
-/**
- * A CONFIRM_PATHWAY choice fits a conflict when the chosen pathway asked for
- * at least one of its candidates — any contributor, not only the first one
- * recorded on the candidate. Other kinds fit any conflict.
- */
-function resolutionFitsConflict(
-  resolution: ConflictResolution,
-  conflict: MergedConflict,
-): boolean {
-  if (resolution.kind !== 'CONFIRM_PATHWAY') return true;
-  return conflict.candidates.some((c) =>
-    candidatePathwayIds(c).includes(resolution.chosenPathwayId),
-  );
-}
-
-/**
- * What a conflict offered the provider: each candidate's drug+regimen and the
- * pathways behind it. Pathways are part of it because CONFIRM_PATHWAY names a
- * pathway, not a regimen — if two pathways swapped regimens, replaying "use
- * Obesity's" would silently hand the provider the other dose. Two conflicts
- * with the same id and the same offer are the same decision; anything else is
- * a new one.
- */
-function conflictOffer(conflict: MergedConflict): string {
-  return conflict.candidates
-    .map((c) => `${medicationRegimenKey(c.recommendation)}@${[...candidatePathwayIds(c)].sort().join(',')}`)
-    .sort()
-    .join('\n');
-}
-
-/**
- * Re-apply the provider's earlier choices to a freshly re-merged plan.
- *
- * A choice is replayed only when the same conflict existed in the previous
- * plan offering exactly the same drug+regimen candidates, and (for
- * CONFIRM_PATHWAY) the chosen pathway still asks for one of them. Otherwise
- * the conflict surfaces unresolved: a provider who picked "Obesity's 1000 mg"
- * did not pick whatever Obesity asks for after a gate answer moved it to
- * 2000 mg. Replaying without that check also crashed outright when the chosen
- * pathway had left the conflict.
- *
- * Returns the plan and the resolutions still in force; stale ones are dropped
- * so a later re-merge cannot resurrect them against a conflict that happens
- * to match again.
- */
-export function replayConflictResolutions(
-  previousPlan: MergedCarePlan,
-  freshPlan: MergedCarePlan,
-  priorResolutions: Record<string, ConflictResolution>,
-): { plan: MergedCarePlan; resolutions: Record<string, ConflictResolution> } {
-  const previousById = new Map(
-    (previousPlan.conflicts ?? []).map((c) => [c.conflictId, c]),
-  );
-  let plan = freshPlan;
-  const resolutions: Record<string, ConflictResolution> = {};
-  for (const conflict of freshPlan.conflicts) {
-    const prior = priorResolutions[conflict.conflictId];
-    if (!prior) continue;
-    const previous = previousById.get(conflict.conflictId);
-    if (!previous || conflictOffer(previous) !== conflictOffer(conflict)) continue;
-    if (!resolutionFitsConflict(prior, conflict)) continue;
-    plan = applyResolution(plan, conflict, prior);
-    resolutions[conflict.conflictId] = prior;
-  }
-  return { plan, resolutions };
-}
-
-/**
- * Apply a single conflict resolution to the merged plan. Mutates the conflict
- * entry's `resolution` field; for CONFIRM_PATHWAY and CUSTOM_OVERRIDE it also
- * adds new MergedRecommendations to the medications list. ACCEPT_BOTH adds
- * all candidates as auto-included recommendations. REJECT_BOTH only updates
- * the conflict's resolution — no medications surface.
- */
-export function applyResolution(
-  plan: MergedCarePlan,
-  conflict: MergedConflict,
-  resolution: ConflictResolution,
-): MergedCarePlan {
-  const conflicts = plan.conflicts.map((c) =>
-    c.conflictId === conflict.conflictId ? { ...c, resolution } : c,
-  );
-  let medications = [...plan.medications];
-
-  switch (resolution.kind) {
-    case 'CONFIRM_PATHWAY': {
-      // Everything the chosen pathway asked for in this conflict — one
-      // candidate normally; more when that pathway itself authored two
-      // regimens (or two lane drugs). Provenance keeps every pathway that
-      // asked for the same regimen, not just the one clicked.
-      const chosen = conflict.candidates.filter((c) =>
-        candidatePathwayIds(c).includes(resolution.chosenPathwayId),
-      );
-      for (const c of chosen) {
-        medications.push({
-          recommendation: c.recommendation,
-          sourcePathwayIds: candidatePathwayIds(c),
-          state: 'provider-confirmed',
-        });
-      }
-      break;
-    }
-    case 'ACCEPT_BOTH': {
-      for (const c of conflict.candidates) {
-        medications.push({
-          recommendation: c.recommendation,
-          sourcePathwayIds: candidatePathwayIds(c),
-          state: 'auto-included',
-        });
-      }
-      break;
-    }
-    case 'REJECT_BOTH':
-      // No new recommendations; conflict carries the rejection.
-      break;
-    case 'CUSTOM_OVERRIDE': {
-      const custom = resolution.customMedication;
-      const customMed: ResolvedMedication = {
-        name: custom.name,
-        role: 'first_line', // provider's write-in is treated as first-line
-        dose: custom.dose,
-        frequency: custom.frequency,
-        duration: custom.duration,
-        route: custom.route,
-        sourcePathwayId: 'provider-override',
-        // Provider-typed override doesn't trace back to any pathway gate.
-        evidenceGateIds: [],
-      };
-      const rec: MergedRecommendation<ResolvedMedication> = {
-        recommendation: customMed,
-        sourcePathwayIds: ['provider-override'],
-        state: 'provider-override',
-      };
-      medications.push(rec);
-      break;
-    }
-  }
-
-  return { ...plan, conflicts, medications };
-}
-
-// ─── Generation validation ──────────────────────────────────────────
-
-function validateForGeneration(
-  session: MultiPathwayResolutionSession,
-): Array<{ type: string; description: string; relatedNodeIds: string[] }> {
-  const blockers: Array<{ type: string; description: string; relatedNodeIds: string[] }> = [];
-  const unresolved = session.mergedPlan.conflicts.filter((c) => c.resolution == null);
-  for (const c of unresolved) {
-    blockers.push({
-      type: BlockerType.PENDING_GATE, // reuse: closest semantic existing enum
-      description: `Conflict "${c.conflictId}" is unresolved — provider must choose before generating the care plan`,
-      relatedNodeIds: c.candidates.map((cand) => cand.recommendation.sourceNodeId ?? cand.sourcePathwayId),
-    });
-  }
-  if (
-    session.mergedPlan.medications.length === 0 &&
-    session.mergedPlan.labs.length === 0 &&
-    session.mergedPlan.procedures.length === 0
-  ) {
-    blockers.push({
-      type: BlockerType.EMPTY_PLAN,
-      description: 'Merged plan has no recommendations — care plan would be empty',
-      relatedNodeIds: [],
-    });
-  }
-  return blockers;
-}
-
-/**
- * One blocker per question a contributing pathway is still waiting on.
- *
- * [DECISION — Josh] Care-plan generation is blocked while any question is
- * unanswered. Single-pathway generation already refuses on any
- * PENDING_QUESTION node (care-plan-generator `validateForGeneration`); merged
- * generation only looked at conflicts and emptiness, so a merged plan could be
- * materialised with a gate question — a subtree the pathway had not decided —
- * still open in a contributing session.
- *
- * The SAME predicate as single-pathway, applied to each contributing session:
- * it blocks iff that session's state holds a PENDING_QUESTION node. The
- * session's pending questions only NAME the blocker, so the provider sees
- * what to answer rather than a node id. So, like single-pathway:
- *   - a tentative LLM gate (INCLUDED, surfaced for confirmation) does not
- *     block;
- *   - a NOT_YET_DUE gate is GATED_OUT — closed, nothing asked — and does not
- *     block.
- * A session with pending nodes but no question covering them still blocks,
- * with a blocker that says so: no answer can clear it, only re-resolving.
- *
- * The state is scanned here rather than in SQL on purpose: one malformed
- * query would fail every merged generation, and nothing short of a database
- * catches that.
- */
-async function unansweredQuestionBlockers(
-  pool: Pool,
-  session: MultiPathwayResolutionSession,
-): Promise<Array<{ type: string; description: string; relatedNodeIds: string[] }>> {
-  const ids = session.contributingSessionIds ?? [];
-  if (ids.length === 0) return [];
-  const result = await pool.query(
-    `SELECT s.id AS session_id,
-            p.title AS pathway_title,
-            s.pending_questions AS pending_questions,
-            s.resolution_state AS resolution_state
-       FROM pathway_resolution_sessions s
-       LEFT JOIN pathway_graph_index p ON p.id = s.pathway_id
-      WHERE s.id = ANY($1::uuid[])`,
-    [ids],
-  );
-
-  const blockers: Array<{ type: string; description: string; relatedNodeIds: string[] }> = [];
-  for (const row of result.rows) {
-    const title = String(row.pathway_title ?? '(untitled pathway)');
-    const state = (row.resolution_state ?? {}) as Record<string, { status?: string } | null>;
-    const pendingNodes = new Set(
-      Object.entries(state)
-        .filter(([, n]) => n?.status === NodeStatus.PENDING_QUESTION)
-        .map(([id]) => id),
-    );
-    if (pendingNodes.size === 0) continue;
-
-    const questions = (row.pending_questions ?? []) as Array<Record<string, unknown>>;
-    let named = 0;
-    for (const q of questions) {
-      const gateId = String(q.gateId ?? q.gate_id ?? '');
-      const askedBy = ((q.askedByNodeIds ?? q.asked_by_node_ids ?? []) as unknown[]).map(String);
-      const related = [...new Set([gateId, ...askedBy].filter((id) => id !== ''))];
-      if (!related.some((id) => pendingNodes.has(id))) continue;
-      named++;
-      blockers.push({
-        type: BlockerType.PENDING_GATE,
-        description:
-          `${title}: "${String(q.prompt ?? gateId)}" has not been answered — ` +
-          `answer it before generating the care plan`,
-        relatedNodeIds: related,
-      });
-    }
-    if (named === 0) {
-      blockers.push({
-        type: BlockerType.PENDING_GATE,
-        description:
-          `${title}: ${pendingNodes.size} node(s) are awaiting an answer but no open ` +
-          `question covers them — re-resolve this pathway before generating the care plan`,
-        relatedNodeIds: [...pendingNodes],
-      });
-    }
-  }
-  return blockers;
-}
-
 // ─── Care plan materialization ──────────────────────────────────────
 
 /**
- * Insert care_plans/care_plan_goals/care_plan_interventions rows from the
- * merged plan. Mirrors single-pathway generateCarePlanFromResolution but
- * works off the MergedCarePlan shape directly. Goals come from contributing
- * pathway titles (one per pathway); interventions come from the merged
- * recommendations across all five types.
+ * Insert the patient care plan, goals and interventions from the composed
+ * merged plan, inside generation's claimed transaction. Goals come from the
+ * contributing pathways (one per pathway); interventions from the merged
+ * medications, labs and procedures (review #11 is out of scope).
+ *
+ * Per migration 019: `care_plans` is the patient-agnostic pathway-definition
+ * table; per-patient instances live in `patient_care_plans` (with
+ * `patient_care_plan_goals` / `patient_care_plan_interventions`). Provenance
+ * (source pathway, source node) goes into `guideline_reference`, since the
+ * patient tables have no dedicated columns for it.
  */
-async function materializeCarePlan(
-  pool: Pool,
-  session: MultiPathwayResolutionSession,
-): Promise<string> {
-  // Per migration 019: `care_plans` is the patient-agnostic pathway-definition
-  // table; per-patient instances belong in `patient_care_plans` (with
-  // `patient_care_plan_goals` / `patient_care_plan_interventions` for children).
-  // Earlier versions of this resolver targeted `care_plans` directly and broke
-  // at runtime because `patient_id` / `provider_id` / `source` etc. only exist
-  // on the patient-specific table. Provenance (source pathway, source node)
-  // is stashed in `guideline_reference` since the patient tables don't carry
-  // dedicated columns for it.
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
+async function materializeCarePlan(db: Db, session: MultiPathwayResolutionSession, plan: MergedCarePlan): Promise<string> {
+  // A no-op for a real patient; a placeholder for the simulator's synthetic ids,
+  // so the patient_care_plans foreign key holds.
+  await db.query(
+    `INSERT INTO patients (id, first_name, last_name, date_of_birth)
+     VALUES ($1, 'Synthetic', 'Simulator Patient', CURRENT_DATE)
+     ON CONFLICT (id) DO NOTHING`,
+    [session.patientId],
+  );
 
-    // Ensure the patient row exists. For real-patient flows this is a no-op
-    // (ON CONFLICT DO NOTHING). For simulator flows where patient_id is a
-    // freshly-generated UUID with no matching `patients` row, this stashes a
-    // placeholder so the patient_care_plans FK is satisfied.
-    await ensurePatientRowExists(client, session.patientId);
+  const carePlanResult = await db.query(
+    `INSERT INTO patient_care_plans
+       (patient_id, title, provider_id, status, condition_codes, start_date, created_by)
+     VALUES ($1, $2, $3, 'DRAFT', $4, CURRENT_DATE, $5)
+     RETURNING id`,
+    [session.patientId, 'Multi-Pathway Care Plan', session.providerId, [], session.providerId],
+  );
+  const carePlanId: string = carePlanResult.rows[0].id;
 
-    const carePlanResult = await client.query(
-      `INSERT INTO patient_care_plans
-         (patient_id, title, provider_id, status, condition_codes, start_date, created_by)
-       VALUES ($1, $2, $3, 'DRAFT', $4, CURRENT_DATE, $5)
-       RETURNING id`,
-      [
-        session.patientId,
-        'Multi-Pathway Care Plan',
-        session.providerId,
-        [], // condition codes aggregation deferred
-        session.providerId,
-      ],
+  for (const pathwayId of session.contributingPathwayIds) {
+    await db.query(
+      `INSERT INTO patient_care_plan_goals
+         (patient_care_plan_id, description, priority, guideline_reference)
+       VALUES ($1, $2, 'HIGH', $3)`,
+      [carePlanId, `Goals from pathway ${pathwayId}`, `pathway:${pathwayId}`],
     );
-    const carePlanId: string = carePlanResult.rows[0].id;
-
-    // One placeholder goal per contributing pathway. Pathway id lives in
-    // guideline_reference (the only free-text-ish column on the table).
-    for (const pathwayId of session.contributingPathwayIds) {
-      await client.query(
-        `INSERT INTO patient_care_plan_goals
-           (patient_care_plan_id, description, priority, guideline_reference)
-         VALUES ($1, $2, 'HIGH', $3)`,
-        [carePlanId, `Goals from pathway ${pathwayId}`, `pathway:${pathwayId}`],
-      );
-    }
-
-    // Interventions: one row per merged recommendation. Per the
-    // check_constraint on patient_care_plan_interventions.type, labs map to
-    // MONITORING (no LAB type exists).
-    // The table has dosage and frequency columns but none for route or
-    // duration, which used to be dropped here — so a conflict the provider
-    // settled on route (PO vs IV) or duration reached the care plan without
-    // the thing they chose. They ride in patient_instructions instead.
-    for (const m of session.mergedPlan.medications) {
-      const r = m.recommendation;
-      await client.query(
-        `INSERT INTO patient_care_plan_interventions
-           (patient_care_plan_id, type, description, dosage, frequency, patient_instructions, guideline_reference)
-         VALUES ($1, 'MEDICATION', $2, $3, $4, $5, $6)`,
-        [
-          carePlanId,
-          r.name,
-          r.dose ?? null,
-          r.frequency ?? null,
-          medicationInstructions(r),
-          provenance(r.sourcePathwayId, r.sourceNodeId),
-        ],
-      );
-    }
-    for (const l of session.mergedPlan.labs) {
-      const r = l.recommendation;
-      await client.query(
-        `INSERT INTO patient_care_plan_interventions
-           (patient_care_plan_id, type, description, guideline_reference)
-         VALUES ($1, 'MONITORING', $2, $3)`,
-        [carePlanId, r.name, provenance(r.sourcePathwayId, r.sourceNodeId)],
-      );
-    }
-    for (const p of session.mergedPlan.procedures) {
-      const r = p.recommendation;
-      await client.query(
-        `INSERT INTO patient_care_plan_interventions
-           (patient_care_plan_id, type, description, procedure_code, guideline_reference)
-         VALUES ($1, 'PROCEDURE', $2, $3, $4)`,
-        [carePlanId, r.name, r.code ?? null, provenance(r.sourcePathwayId, r.sourceNodeId)],
-      );
-    }
-
-    await client.query('COMMIT');
-    return carePlanId;
-  } catch (err) {
-    await client.query('ROLLBACK');
-    throw err;
-  } finally {
-    client.release();
   }
-}
 
-/** Route and duration for a medication intervention row, or null when neither is stated. */
-function medicationInstructions(r: ResolvedMedication): string | null {
-  const parts: string[] = [];
-  if (r.route?.trim()) parts.push(`Route: ${r.route.trim()}`);
-  if (r.duration?.trim()) parts.push(`Duration: ${r.duration.trim()}`);
-  return parts.length > 0 ? parts.join('; ') : null;
+  // Labs map to MONITORING: the interventions type CHECK has no LAB type.
+  for (const m of plan.medications) {
+    const r = m.recommendation;
+    await db.query(
+      `INSERT INTO patient_care_plan_interventions
+         (patient_care_plan_id, type, description, dosage, frequency, guideline_reference)
+       VALUES ($1, 'MEDICATION', $2, $3, $4, $5)`,
+      [carePlanId, r.name, r.dose ?? null, r.frequency ?? null, provenance(r.sourcePathwayId, r.sourceNodeId)],
+    );
+  }
+  for (const l of plan.labs) {
+    const r = l.recommendation;
+    await db.query(
+      `INSERT INTO patient_care_plan_interventions
+         (patient_care_plan_id, type, description, guideline_reference)
+       VALUES ($1, 'MONITORING', $2, $3)`,
+      [carePlanId, r.name, provenance(r.sourcePathwayId, r.sourceNodeId)],
+    );
+  }
+  for (const p of plan.procedures) {
+    const r = p.recommendation;
+    await db.query(
+      `INSERT INTO patient_care_plan_interventions
+         (patient_care_plan_id, type, description, procedure_code, guideline_reference)
+       VALUES ($1, 'PROCEDURE', $2, $3, $4)`,
+      [carePlanId, r.name, r.code ?? null, provenance(r.sourcePathwayId, r.sourceNodeId)],
+    );
+  }
+  return carePlanId;
 }
 
 function provenance(pathwayId: string | undefined, nodeId: string | null | undefined): string | null {
@@ -1411,31 +764,15 @@ function provenance(pathwayId: string | undefined, nodeId: string | null | undef
   return parts.length > 0 ? parts.join(' ') : null;
 }
 
-/**
- * Ensure a row exists in `patients` for the given id so the FK on
- * `patient_care_plans.patient_id` can be satisfied. For real patient flows
- * the row exists from EMR sync and this is a no-op. For the admin simulator
- * (which fabricates patientIds via crypto.randomUUID()) it creates a
- * placeholder so the commit flow can complete; the row remains discoverable
- * for any downstream audit.
- */
-async function ensurePatientRowExists(client: { query: (sql: string, params: unknown[]) => Promise<unknown> }, patientId: string): Promise<void> {
-  await client.query(
-    `INSERT INTO patients (id, first_name, last_name, date_of_birth)
-     VALUES ($1, 'Synthetic', 'Simulator Patient', CURRENT_DATE)
-     ON CONFLICT (id) DO NOTHING`,
-    [patientId],
-  );
-}
-
-// ─── GraphQL formatting ─────────────────────────────────────────────
-
 export function formatSessionForGraphQL(s: MultiPathwayResolutionSession) {
   return {
     id: s.id,
     patientId: s.patientId,
     providerId: s.providerId,
     status: s.status,
+    revision: s.revision,
+    resultHash: s.resultHash,
+    envFingerprint: s.envFingerprint,
     isPreview: s.isPreview,
     mergedPlan: formatMergedForGraphQL(s.mergedPlan),
     contributingSessionIds: s.contributingSessionIds,
@@ -1526,7 +863,6 @@ export function formatMergedForGraphQL(merged: MergedCarePlan) {
     catchUpItems: merged.catchUpItems ?? [],
     evidenceTrail: merged.evidenceTrail ?? [],
     dataGapHints: merged.dataGapHints ?? [],
-    skippedPathways: merged.skippedPathways ?? [],
   };
 }
 
@@ -1563,20 +899,21 @@ function formatSuppressedForGraphQL(s: MergedCarePlan['suppressed'][number]) {
       src.kind === 'PATIENT_ALLERGY' ? src.snomedCode : null,
     suppressedByAllergyDisplay:
       src.kind === 'PATIENT_ALLERGY' ? src.snomedDisplay : null,
+    suppressedByRecommendationName:
+      src.kind === 'OTHER_RECOMMENDATION' ? src.drugName : null,
+    // Which pathway proposed it: the "pathway reason" beside the safety reason (spec §5.10).
+    sourcePathwayId: s.original.sourcePathwayId ?? null,
   };
 }
 
 function formatConflictForGraphQL(c: MergedConflict) {
   return {
     conflictId: c.conflictId,
-    // Rows stored before regimen conflicts existed carry no `type`; every one
-    // of them was a clinical_role conflict.
-    type: c.type === 'medication_regimen' ? 'MEDICATION_REGIMEN' : 'MEDICATION',
+    type: 'MEDICATION',
     clinicalRole: c.clinicalRole,
     candidates: c.candidates.map((cand) => ({
       recommendation: cand.recommendation,
       sourcePathwayId: cand.sourcePathwayId,
-      sourcePathwayIds: candidatePathwayIds(cand),
       sourcePathwayTitle: cand.sourcePathwayTitle,
     })),
     resolution: c.resolution ? formatResolutionForGraphQL(c.resolution) : null,
@@ -1595,53 +932,4 @@ function formatResolutionForGraphQL(r: ConflictResolution) {
   if (r.kind === 'CONFIRM_PATHWAY') base.chosenPathwayId = r.chosenPathwayId;
   if (r.kind === 'CUSTOM_OVERRIDE') base.customMedication = r.customMedication;
   return base;
-}
-
-function buildDdiSuppression(
-  med: ResolvedMedication,
-  finding: DdiFinding,
-): SuppressedRecommendation {
-  const reasonMap: Record<string, SuppressedRecommendation['reason']> = {
-    DDI_CONTRAINDICATED: 'ddi_contraindicated',
-    DDI_SEVERE: 'ddi_severe',
-    ALLERGY: 'allergy',
-  };
-  let source: SuppressionSource;
-  switch (finding.source.kind) {
-    case 'PATIENT_MEDICATION':
-      source = { kind: 'PATIENT_MEDICATION', rxcui: finding.source.rxcui, name: finding.source.name };
-      break;
-    case 'PATIENT_ALLERGY':
-      source = { kind: 'PATIENT_ALLERGY', snomedCode: finding.source.snomedCode, snomedDisplay: finding.source.snomedDisplay };
-      break;
-    case 'OTHER_RECOMMENDATION':
-      source = { kind: 'OTHER_RECOMMENDATION', recommendationId: finding.source.recommendationId, drugName: finding.source.drugName };
-      break;
-  }
-  return {
-    type: 'medication',
-    name: med.name,
-    reason: reasonMap[finding.category] ?? 'ddi_severe',
-    source,
-    original: med,
-  };
-}
-
-function emptyMergedCarePlan(): MergedCarePlan {
-  return {
-    sourcePathwayIds: [],
-    medications: [],
-    labs: [],
-    imaging: [],
-    procedures: [],
-    guidance: [],
-    schedules: [],
-    qualityMetrics: [],
-    suppressed: [],
-    conflicts: [],
-    catchUpItems: [],
-    evidenceTrail: [],
-    dataGapHints: [],
-    skippedPathways: [],
-  };
 }

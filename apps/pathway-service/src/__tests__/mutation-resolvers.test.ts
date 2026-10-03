@@ -6,7 +6,37 @@ jest.mock('../services/import/import-orchestrator', () => ({
   importPathway: jest.fn(),
 }));
 
+// Import and activation start a background medication pre-warm (D14) whose graph
+// read would land on this suite's mocked pool; prewarm-pathway-medications.test.ts
+// covers that wiring, so here the resolvers' own queries are counted alone.
+jest.mock('../services/medications/prewarm-pathway', () => ({
+  prewarmPathwayInBackground: jest.fn(),
+}));
+
 import { importPathway as mockImportPathway } from '../services/import/import-orchestrator';
+import { loadStoredCompileInput } from '../services/compiler/stored-input';
+import { prewarmPathwayInBackground } from '../services/medications/prewarm-pathway';
+
+jest.mock('../services/compiler/stored-input', () => ({ loadStoredCompileInput: jest.fn() }));
+
+type Route = (sql: string) => { rows: unknown[] } | undefined;
+function txContext(route: Route) {
+  const query = jest.fn(async (sql: string) => route(String(sql)) ?? { rows: [] });
+  const client = { query, release: jest.fn() };
+  return { ctx: { pool: { query, connect: jest.fn(async () => client) }, redis: {}, userId: 'test-user', userRole: 'PROVIDER' } as never, query, client };
+}
+const sqlOf = (query: jest.Mock) => query.mock.calls.map(([s]) => String(s));
+const row = (status: string, extra: Record<string, unknown> = {}) => ({ id: 'test-id', status, logicalId: 'CP-Test', ageNodeId: '7', title: 'Test', version: '1.0', category: 'ACUTE_CARE', ...extra });
+const LEGACY = {
+  ...MINIMAL_PATHWAY,
+  nodes: [
+    ...MINIMAL_PATHWAY.nodes,
+    { id: 'gate-legacy', type: 'Gate', properties: { title: 'Severe', gate_type: 'patient_attribute', default_behavior: 'skip', condition: { attribute: 'lab.hemoglobin', operator: 'LT', value: 7 } } },
+    { id: 'step-1-2', type: 'Step', properties: { stage_number: 1, step_number: 2, display_number: '1.2', title: 'Transfusion' } },
+  ],
+  edges: [...MINIMAL_PATHWAY.edges, { from: 'stage-1', to: 'gate-legacy', type: 'HAS_GATE' }, { from: 'gate-legacy', to: 'step-1-2', type: 'BRANCHES_TO' }],
+} as never;
+const compileInput = (pathway: unknown) => ({ pathway, codeMap: new Map(), temporalDefaults: {} });
 
 function createMockContext() {
   return {
@@ -80,88 +110,120 @@ describe('Mutation resolvers', () => {
   });
 
   describe('activatePathway', () => {
-    it('should activate a DRAFT pathway using single atomic CTE', async () => {
-      const ctx = createMockContext();
-      // Single query returns both the activated pathway and previousStatus
-      ctx.pool.query = jest.fn().mockResolvedValueOnce({
-        rows: [{
-          id: 'test-id', status: 'ACTIVE', logicalId: 'CP-Test',
-          ageNodeId: null, title: 'Test', version: '1.0', category: 'ACUTE_CARE',
-          conditionCodes: [], scope: null, targetPopulation: null,
-          isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
-          previousStatus: 'DRAFT',
-        }],
-      });
+    beforeEach(() => (loadStoredCompileInput as jest.Mock).mockReset());
+
+    it('locks the logical pathway, compiles the stored graph under the lock, then activates, in one transaction', async () => {
+      (loadStoredCompileInput as jest.Mock).mockResolvedValue(compileInput(MINIMAL_PATHWAY));
+      const { ctx, query, client } = txContext((sql) =>
+        sql.includes('FOR UPDATE') ? { rows: [{ id: 'test-id', status: 'DRAFT' }] }
+          : sql.startsWith('WITH') ? { rows: [{ ...row('ACTIVE'), previousStatus: 'DRAFT' }] } : undefined);
 
       const result = await Mutation.Mutation.activatePathway({}, { id: 'test-id' }, ctx);
-      expect(result).toBeDefined();
+
       expect(result.previousStatus).toBe('DRAFT');
-      // Should only need one query for the happy path
-      expect(ctx.pool.query).toHaveBeenCalledTimes(1);
+      const sqls = sqlOf(query);
+      const at = (p: (s: string) => boolean) => sqls.findIndex(p);
+      expect(sqls[0]).toBe('BEGIN');
+      expect(at((s) => s.includes('FOR UPDATE') && s.includes('ORDER BY id'))).toBeLessThan(at((s) => s.startsWith('WITH')));
+      expect(sqls.at(-1)).toBe('COMMIT');
+      expect((loadStoredCompileInput as jest.Mock).mock.calls[0][0]).toBe(client);   // read on the locked client
+      expect(client.release).toHaveBeenCalled();
     });
 
-    it('should reject activating a non-DRAFT pathway', async () => {
-      const ctx = createMockContext();
-      // CTE returns empty (status wasn't DRAFT), fallback SELECT returns ACTIVE
-      ctx.pool.query = jest.fn()
-        .mockResolvedValueOnce({ rows: [] })
-        .mockResolvedValueOnce({ rows: [{ status: 'ACTIVE' }] });
+    it('refuses a DRAFT that does not compile, lists the errors, updates nothing, and rolls back', async () => {
+      (loadStoredCompileInput as jest.Mock).mockResolvedValue(compileInput(LEGACY));
+      const { ctx, query } = txContext((sql) => (sql.includes('FOR UPDATE') ? { rows: [{ id: 'test-id', status: 'DRAFT' }] } : undefined));
 
-      await expect(
-        Mutation.Mutation.activatePathway({}, { id: 'test-id' }, ctx)
-      ).rejects.toThrow('Cannot activate');
+      await expect(Mutation.Mutation.activatePathway({}, { id: 'test-id' }, ctx)).rejects.toMatchObject({
+        extensions: { code: 'BAD_USER_INPUT', compileErrors: expect.arrayContaining([expect.objectContaining({ code: 'VALIDATION' })]) },
+      });
+      const sqls = sqlOf(query);
+      expect(sqls.some((s) => s.startsWith('WITH') || /^\s*UPDATE/.test(s))).toBe(false);   // the lock query says FOR UPDATE; no status write may run
+      expect(sqls.at(-1)).toBe('ROLLBACK');
     });
 
-    it('should throw NOT_FOUND for nonexistent pathway', async () => {
-      const ctx = createMockContext();
-      // CTE returns empty, fallback SELECT also returns empty
-      ctx.pool.query = jest.fn()
-        .mockResolvedValueOnce({ rows: [] })
-        .mockResolvedValueOnce({ rows: [] });
+    it.each([
+      ['patient_attribute with no condition', { gate_type: 'patient_attribute', default_behavior: 'skip' }],
+      ['SELECT question with no options', { gate_type: 'question', default_behavior: 'skip', answer_type: 'SELECT' }],
+      ['trimester comparison with no value', { gate_type: 'patient_attribute', default_behavior: 'skip', condition: { attribute: 'patient.trimester', operator: 'less_than' } }],
+    ])('refuses to activate an unusable gate payload: %s', async (_label, props) => {
+      const pathway = {
+        ...MINIMAL_PATHWAY,
+        nodes: [...MINIMAL_PATHWAY.nodes, { id: 'gate-x', type: 'Gate', properties: { title: 'X', ...props } }, { id: 'step-1-2', type: 'Step', properties: { stage_number: 1, step_number: 2, display_number: '1.2', title: 'Guarded' } }],
+        edges: [...MINIMAL_PATHWAY.edges, { from: 'stage-1', to: 'gate-x', type: 'HAS_GATE' }, { from: 'gate-x', to: 'step-1-2', type: 'BRANCHES_TO' }],
+      };
+      (loadStoredCompileInput as jest.Mock).mockResolvedValue(compileInput(pathway));
+      const { ctx } = txContext((sql) => (sql.includes('FOR UPDATE') ? { rows: [{ id: 'test-id', status: 'DRAFT' }] } : undefined));
+      await expect(Mutation.Mutation.activatePathway({}, { id: 'test-id' }, ctx)).rejects.toMatchObject({
+        extensions: { compileErrors: expect.arrayContaining([expect.objectContaining({ code: 'PAYLOAD' })]) },
+      });
+    });
 
-      await expect(
-        Mutation.Mutation.activatePathway({}, { id: 'nonexistent' }, ctx)
-      ).rejects.toThrow('not found');
+    it('does not block a metadata-only pathway (no stored graph to compile)', async () => {
+      (loadStoredCompileInput as jest.Mock).mockResolvedValue(null);
+      const { ctx } = txContext((sql) =>
+        sql.includes('FOR UPDATE') ? { rows: [{ id: 'test-id', status: 'DRAFT' }] }
+          : sql.startsWith('WITH') ? { rows: [{ ...row('ACTIVE'), previousStatus: 'DRAFT' }] } : undefined);
+      await expect(Mutation.Mutation.activatePathway({}, { id: 'test-id' }, ctx)).resolves.toMatchObject({ previousStatus: 'DRAFT' });
+    });
+
+    it('rejects activating a non-DRAFT pathway without compiling it', async () => {
+      const { ctx } = txContext((sql) =>
+        sql.includes('FOR UPDATE') ? { rows: [{ id: 'test-id', status: 'ACTIVE' }] }
+          : sql.startsWith('SELECT status') ? { rows: [{ status: 'ACTIVE' }] } : undefined);
+      await expect(Mutation.Mutation.activatePathway({}, { id: 'test-id' }, ctx)).rejects.toThrow('Cannot activate');
+      expect(loadStoredCompileInput).not.toHaveBeenCalled();
+    });
+
+    it('throws NOT_FOUND for a nonexistent pathway', async () => {
+      const { ctx } = txContext(() => undefined);
+      await expect(Mutation.Mutation.activatePathway({}, { id: 'nonexistent' }, ctx)).rejects.toThrow('not found');
     });
   });
 
   describe('archivePathway', () => {
     it('should reject archiving a non-ACTIVE pathway', async () => {
       const ctx = createMockContext();
-      // CTE returns empty (status wasn't ACTIVE), fallback SELECT returns DRAFT
+      // CTE returns empty (status wasn't ACTIVE), fallback SELECT returns SUPERSEDED
       ctx.pool.query = jest.fn()
         .mockResolvedValueOnce({ rows: [] })
-        .mockResolvedValueOnce({ rows: [{ status: 'DRAFT' }] });
+        .mockResolvedValueOnce({ rows: [{ status: 'SUPERSEDED' }] });
 
       await expect(
         Mutation.Mutation.archivePathway({}, { id: 'test-id' }, ctx)
       ).rejects.toThrow('Cannot archive');
     });
+
+    it('archives a DRAFT', async () => {
+      const ctx = createMockContext();
+      await Mutation.Mutation.archivePathway({}, { id: 'test-id' }, ctx);
+      expect((ctx.pool.query as jest.Mock).mock.calls.some(([sql]) => /status IN \('ACTIVE', 'DRAFT'\)/.test(String(sql)))).toBe(true);
+    });
   });
 
   describe('reactivatePathway', () => {
-    it('should reject reactivating a DRAFT pathway', async () => {
-      const ctx = createMockContext();
-      // CTE returns empty (status wasn't SUPERSEDED/ARCHIVED), fallback SELECT returns DRAFT
-      ctx.pool.query = jest.fn()
-        .mockResolvedValueOnce({ rows: [] })
-        .mockResolvedValueOnce({ rows: [{ status: 'DRAFT' }] });
+    beforeEach(() => (loadStoredCompileInput as jest.Mock).mockReset());
 
-      await expect(
-        Mutation.Mutation.reactivatePathway({}, { id: 'test-id' }, ctx)
-      ).rejects.toThrow('Cannot reactivate');
+    it('pre-warms a reactivated pathway, which may be an archived draft that was never activated (D14)', async () => {
+      (loadStoredCompileInput as jest.Mock).mockResolvedValue(compileInput(MINIMAL_PATHWAY));
+      const { ctx } = txContext((sql) =>
+        sql.includes('FOR UPDATE') ? { rows: [{ id: 'test-id', status: 'ARCHIVED' }] }
+          : sql.startsWith('WITH') ? { rows: [{ ...row('ACTIVE'), previousStatus: 'ARCHIVED' }] } : undefined);
+      await Mutation.Mutation.reactivatePathway({}, { id: 'test-id' }, ctx);
+      expect(prewarmPathwayInBackground).toHaveBeenCalledWith((ctx as { pool: unknown }).pool, 'test-id', 'activate');
     });
 
-    it('should reject reactivating an ACTIVE pathway', async () => {
-      const ctx = createMockContext();
-      // CTE returns empty (status wasn't SUPERSEDED/ARCHIVED), fallback SELECT returns ACTIVE
-      ctx.pool.query = jest.fn()
-        .mockResolvedValueOnce({ rows: [] })
-        .mockResolvedValueOnce({ rows: [{ status: 'ACTIVE' }] });
+    it('refuses to reactivate an ARCHIVED pathway that does not compile', async () => {
+      (loadStoredCompileInput as jest.Mock).mockResolvedValue(compileInput(LEGACY));
+      const { ctx } = txContext((sql) => (sql.includes('FOR UPDATE') ? { rows: [{ id: 'test-id', status: 'ARCHIVED' }] } : undefined));
+      await expect(Mutation.Mutation.reactivatePathway({}, { id: 'test-id' }, ctx)).rejects.toMatchObject({ extensions: { code: 'BAD_USER_INPUT' } });
+    });
 
-      await expect(
-        Mutation.Mutation.reactivatePathway({}, { id: 'test-id' }, ctx)
-      ).rejects.toThrow('Cannot reactivate');
+    it.each(['DRAFT', 'ACTIVE'])('rejects reactivating a %s pathway', async (status) => {
+      const { ctx } = txContext((sql) =>
+        sql.includes('FOR UPDATE') ? { rows: [{ id: 'test-id', status }] }
+          : sql.startsWith('SELECT status') ? { rows: [{ status }] } : undefined);
+      await expect(Mutation.Mutation.reactivatePathway({}, { id: 'test-id' }, ctx)).rejects.toThrow('Cannot reactivate');
     });
   });
 });

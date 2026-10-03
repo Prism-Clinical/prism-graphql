@@ -1,4 +1,4 @@
-import { generateCarePlan, validateForGeneration } from '../services/resolution/care-plan-generator';
+import { generateCarePlan } from '../services/resolution/care-plan-generator';
 import { NodeStatus, NodeResult, BlockerType } from '../services/resolution/types';
 import type { SignalBreakdown } from '../services/confidence/types';
 
@@ -17,98 +17,6 @@ function makeNode(overrides: Partial<NodeResult> & Pick<NodeResult, 'nodeId' | '
 // ─── Tests ─────────────────────────────────────────────────────────
 
 describe('CarePlanGenerator', () => {
-  /**
-   * A plan must not be built from a resolve that never finished.
-   *
-   * Only PENDING_QUESTION blocked, so a traversal cut short — leaving TIMEOUT,
-   * CASCADE_LIMIT or UNKNOWN nodes — still produced a clinical artefact as long
-   * as SOME other action survived. What those nodes would have recommended is
-   * unknown, and a plan silently missing an arm is indistinguishable from one
-   * that considered and rejected it.
-   */
-  describe('validateForGeneration — unresolved state', () => {
-    const withStatus = (status: NodeStatus) => new Map<string, NodeResult>([
-      ['med-1', makeNode({ nodeId: 'med-1', nodeType: 'Medication', title: 'Med' })],
-      ['step-9', makeNode({ nodeId: 'step-9', nodeType: 'Step', title: 'Unreached', status })],
-    ]);
-
-    it.each([NodeStatus.TIMEOUT, NodeStatus.CASCADE_LIMIT, NodeStatus.UNKNOWN])(
-      'blocks on a %s node',
-      (status) => {
-        const blockers = validateForGeneration(withStatus(status), []);
-        expect(blockers.some(b => b.type === BlockerType.INCOMPLETE_RESOLUTION)).toBe(true);
-      },
-    );
-
-    it('names the node so it can be found', () => {
-      const blockers = validateForGeneration(withStatus(NodeStatus.TIMEOUT), []);
-      const b = blockers.find(x => x.type === BlockerType.INCOMPLETE_RESOLUTION)!;
-      expect(b.relatedNodeIds).toContain('step-9');
-    });
-
-    // A decided exclusion is not an unresolved one — blocking on those would
-    // stop every plan, since most pathways exclude most branches.
-    it.each([NodeStatus.EXCLUDED, NodeStatus.GATED_OUT])(
-      'does NOT block on a %s node',
-      (status) => {
-        const blockers = validateForGeneration(withStatus(status), []);
-        expect(blockers.some(b => b.type === BlockerType.INCOMPLETE_RESOLUTION)).toBe(false);
-      },
-    );
-
-    it('lets a fully resolved plan through', () => {
-      const state = new Map<string, NodeResult>([
-        ['med-1', makeNode({ nodeId: 'med-1', nodeType: 'Medication', title: 'Med' })],
-      ]);
-      expect(validateForGeneration(state, [])).toEqual([]);
-    });
-  });
-
-  describe('validateForGeneration', () => {
-    it('should block on empty plan (no included action nodes)', () => {
-      const state = new Map<string, NodeResult>([
-        ['stage-1', makeNode({ nodeId: 'stage-1', nodeType: 'Stage', title: 'S1', depth: 0 })],
-      ]);
-      const result = validateForGeneration(state, []);
-      expect(result.some(b => b.type === BlockerType.EMPTY_PLAN)).toBe(true);
-    });
-
-    it('should block on unresolved red flags', () => {
-      const state = new Map<string, NodeResult>([
-        ['med-1', makeNode({ nodeId: 'med-1', nodeType: 'Medication', title: 'Med' })],
-      ]);
-      const redFlags = [{
-        nodeId: 'dp-1',
-        nodeTitle: 'DP',
-        type: 'all_branches_excluded' as const,
-        description: 'All excluded',
-      }];
-      const result = validateForGeneration(state, redFlags);
-      expect(result.some(b => b.type === BlockerType.UNRESOLVED_RED_FLAG)).toBe(true);
-    });
-
-    it('should block on pending gate questions', () => {
-      const state = new Map<string, NodeResult>([
-        ['med-1', makeNode({ nodeId: 'med-1', nodeType: 'Medication', title: 'Med' })],
-        ['gate-1', makeNode({
-          nodeId: 'gate-1', nodeType: 'Gate', title: 'Allergy check',
-          status: NodeStatus.PENDING_QUESTION, confidence: 0, depth: 0,
-        })],
-      ]);
-      const result = validateForGeneration(state, []);
-      expect(result.some(b => b.type === BlockerType.PENDING_GATE)).toBe(true);
-      expect(result.find(b => b.type === BlockerType.PENDING_GATE)!.relatedNodeIds).toContain('gate-1');
-    });
-
-    it('should pass validation with included action nodes and no red flags', () => {
-      const state = new Map<string, NodeResult>([
-        ['med-1', makeNode({ nodeId: 'med-1', nodeType: 'Medication', title: 'Med' })],
-      ]);
-      const result = validateForGeneration(state, []);
-      expect(result.length).toBe(0);
-    });
-  });
-
   describe('generateCarePlan', () => {
     it('should map Stage to goal and Medication to intervention', () => {
       const state = new Map<string, NodeResult>([

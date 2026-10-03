@@ -177,7 +177,7 @@ describe('the clinician date resolves it', () => {
     ]);
   });
 
-  it('answering the pending question re-anchors every asking gate in one incremental pass', async () => {
+  it('answering the pending question re-anchors every asking gate', async () => {
     const engine = engineFor(RESPONDER);
     const graph = twoGates();
     const first = await engine.traverse(graph, RESPONDER, new Map());
@@ -186,29 +186,18 @@ describe('the clinician date resolves it', () => {
       nodeId: 'gate-a',
       answer: { dateValue: '2026-06-01' },
       pendingQuestions: first.pendingQuestions,
-      dependencyMap: first.dependencyMap,
-      graphContext: graph,
+      nodeProperties: graph.getNode('gate-a')?.properties as Record<string, unknown> | undefined,
       evaluationAsOf: AS_OF,
     });
     expect(plan).toMatchObject({ kind: 'anchor', key: KEY, dateValue: '2026-06-01' });
-    expect(plan.kind === 'anchor' && [...plan.rootGateIds].sort()).toEqual(['gate-a', 'gate-b']);
 
     // What answerPendingDecision does with the plan: store under the ANCHOR
-    // key, re-dispose the roots and their subtrees.
+    // key and re-evaluate.
     const answers = new Map<string, GateAnswer>([[KEY, { dateValue: '2026-06-01' }]]);
-    const affected = new Set(['gate-a', 'step-a', 'gate-b', 'step-b']);
-    const second = await engine.resolveIncrementally(
-      affected,
-      first.resolutionState,
-      first.dependencyMap,
-      graph,
-      RESPONDER,
-      answers,
-      { pendingQuestions: first.pendingQuestions, redFlags: first.redFlags, alsoDropGateIds: [] },
-    );
+    const second = await engineFor(RESPONDER).traverse(graph, RESPONDER, answers);
     expect(second.pendingQuestions).toEqual([]);
-    expect(first.resolutionState.get('gate-b')!.status).toBe(NodeStatus.INCLUDED);
-    expect(first.resolutionState.get('step-a')!.status).toBe(NodeStatus.INCLUDED);
+    expect(second.resolutionState.get('gate-b')!.status).toBe(NodeStatus.INCLUDED);
+    expect(second.resolutionState.get('step-a')!.status).toBe(NodeStatus.INCLUDED);
     // Never written under a gate id.
     expect(answers.has('gate-a')).toBe(false);
   });
@@ -359,13 +348,10 @@ describe('planAnchorAnswer', () => {
       nodeId: 'gate-b',
       answer: { dateValue: '2026-06-10' },
       pendingQuestions: resolved.pendingQuestions,
-      dependencyMap: resolved.dependencyMap,
-      graphContext: graph,
+      nodeProperties: graph.getNode('gate-b')?.properties as Record<string, unknown> | undefined,
       evaluationAsOf: AS_OF,
     });
-    // Both gates read the key, so both are re-disposed.
     expect(plan).toMatchObject({ kind: 'anchor', key: KEY, dateValue: '2026-06-10' });
-    expect(plan.kind === 'anchor' && [...plan.rootGateIds].sort()).toEqual(['gate-a', 'gate-b']);
   });
 
   it.each<[string, Partial<GateAnswer>, string]>([
@@ -379,8 +365,7 @@ describe('planAnchorAnswer', () => {
       nodeId: 'gate-a',
       answer,
       pendingQuestions: first.pendingQuestions,
-      dependencyMap: first.dependencyMap,
-      graphContext: graph,
+      nodeProperties: graph.getNode('gate-a')?.properties as Record<string, unknown> | undefined,
       evaluationAsOf: AS_OF,
     });
     expect(plan.kind).toBe('problem');
@@ -393,8 +378,7 @@ describe('planAnchorAnswer', () => {
       [],
     );
     const common = {
-      nodeId: 'q', pendingQuestions: [], graphContext: graph, evaluationAsOf: AS_OF,
-      dependencyMap: { influencedBy: new Map(), influences: new Map(), gateContextFields: new Map(), scorerInputs: new Map() },
+      nodeId: 'q', pendingQuestions: [], nodeProperties: graph.getNode('q')?.properties as Record<string, unknown> | undefined, evaluationAsOf: AS_OF,
     };
     const dated = planAnchorAnswer({ ...common, answer: { dateValue: '2026-06-01' } });
     expect(dated.kind === 'problem' && dated.message).toContain('has no window_from condition');

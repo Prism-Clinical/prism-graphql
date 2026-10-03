@@ -5,8 +5,8 @@ import {
   GraphNode,
   GraphEdge,
   GraphContext,
-  PatientContext,
   SignalDefinition,
+  hydrateSignalDefinition,
 } from '../../services/confidence/types';
 import {
   GateProperties,
@@ -17,15 +17,6 @@ import {
 } from '../../services/resolution/types';
 import { DataSourceContext, GateType } from '../../types';
 import { loadAttributeCodeMap } from '../../services/resolution/attribute-code-map';
-import {
-  LlmGateEvaluator,
-  LlmGateVerdict,
-} from '../../services/resolution/gate-evaluator';
-import {
-  loadLLMGateConfig,
-  evaluateGateWithLLM,
-  LLMGateError,
-} from '../../services/llm/llm-gate-client';
 import { ConfidenceEngine } from '../../services/confidence/confidence-engine';
 import { ScorerRegistry } from '../../services/confidence/scorer-registry';
 import { WeightCascadeResolver } from '../../services/confidence/weight-cascade-resolver';
@@ -34,7 +25,6 @@ import { DataCompletenessScorer } from '../../services/confidence/scorers/data-c
 import { EvidenceStrengthScorer } from '../../services/confidence/scorers/evidence-strength';
 import { PatientMatchQualityScorer } from '../../services/confidence/scorers/patient-match-quality';
 import { RiskMagnitudeScorer } from '../../services/confidence/scorers/risk-magnitude';
-import { hydrateSignalDefinition } from '../Query';
 import { executeCypher } from '../../services/age-client';
 import {
   PathwayTemporalDefaults,
@@ -141,7 +131,7 @@ export function buildGraphContext(nodes: GraphNode[], edges: GraphEdge[]): Graph
 export async function fetchGraphFromAGE(
   pool: import('pg').Pool,
   ageNodeId: string,
-): Promise<{ nodes: GraphNode[]; edges: GraphEdge[] }> {
+): Promise<{ nodes: GraphNode[]; edges: GraphEdge[]; shadowedNodes: GraphNode[] }> {
   // Validate ageNodeId is a numeric AGE internal ID to prevent Cypher injection
   if (!/^\d+$/.test(String(ageNodeId))) {
     throw new GraphQLError(`Invalid AGE node ID: "${ageNodeId}"`, {
@@ -159,7 +149,7 @@ export async function fetchGraphFromAGE(
   const rootMetaResult = await executeCypher(pool, rootMetaCypher, '(lid agtype, ver agtype)');
   const rootRow = rootMetaResult.rows[0];
   if (!rootRow) {
-    return { nodes: [], edges: [] };
+    return { nodes: [], edges: [], shadowedNodes: [] };
   }
   const logicalId = String(JSON.parse(rootRow.lid));
   const version = String(JSON.parse(rootRow.ver));
@@ -191,7 +181,13 @@ export async function fetchGraphFromAGE(
     String(val).replace(/::(?:vertex|edge)$/, '');
 
   const nodes: GraphNode[] = [];
-  const seenNodeIds = new Set<string>();
+  // One logical node per node_id, first vertex wins — the rendering contract.
+  // A dropped vertex of a DIFFERENT type is an identity conflict, not drift
+  // (e.g. a Stage stored as node_id "root" beside the Pathway root), and which
+  // one wins depends on AGE's row order. Those are returned in `shadowedNodes`
+  // (one per node_id + type) so compilation sees every identity regardless.
+  const typesById = new Map<string, Set<string>>();
+  const shadowedNodes: GraphNode[] = [];
 
   for (const row of nodesResult.rows) {
     if (!row.v) continue;
@@ -200,16 +196,16 @@ export async function fetchGraphFromAGE(
       if (!parsed || !parsed.properties) continue;
       const props = parsed.properties;
       const nodeId = props.node_id ?? `age_${parsed.id}`;
-      if (seenNodeIds.has(nodeId)) continue;
-      seenNodeIds.add(nodeId);
-
       const nodeType = parsed.label ?? props.node_type ?? 'Unknown';
-      nodes.push({
-        id: String(parsed.id),
-        nodeIdentifier: nodeId,
-        nodeType,
-        properties: props,
-      });
+      const node = { id: String(parsed.id), nodeIdentifier: nodeId, nodeType, properties: props };
+      const seenTypes = typesById.get(nodeId);
+      if (!seenTypes) {
+        typesById.set(nodeId, new Set([nodeType]));
+        nodes.push(node);
+      } else if (!seenTypes.has(nodeType)) {
+        seenTypes.add(nodeType);
+        shadowedNodes.push(node);
+      }
     } catch {
       // Skip unparseable nodes
     }
@@ -259,7 +255,7 @@ export async function fetchGraphFromAGE(
     }
   }
 
-  return { nodes, edges };
+  return { nodes, edges, shadowedNodes };
 }
 
 // ─── Shared Engine Instances ────────────────────────────────────────
@@ -292,6 +288,8 @@ export interface ResolutionContext {
    * relational index. `{}` when the pathway states no opinion.
    */
   temporalDefaults: PathwayTemporalDefaults;
+  /** `fetchGraphFromAGE`'s identity conflicts, for compilation only. Absent = none. */
+  shadowedNodes?: GraphNode[];
 }
 
 export async function buildResolutionContext(
@@ -314,7 +312,7 @@ export async function buildResolutionContext(
   const temporalDefaults = parsePathwayTemporalDefaults(pathwayRow.rows[0]?.temporal_defaults);
 
   // These four operations are independent — run in parallel
-  const [{ nodes, edges }, signalResult, thresholds, codeMap] = await Promise.all([
+  const [{ nodes, edges, shadowedNodes }, signalResult, thresholds, codeMap] = await Promise.all([
     fetchGraphFromAGE(pool, ageNodeId),
     pool.query(
       `SELECT id, name, display_name, description, scoring_type, scoring_rules,
@@ -337,254 +335,8 @@ export async function buildResolutionContext(
     confidenceEngine,
     codeMap,
     temporalDefaults,
+    shadowedNodes,
   };
-}
-
-export function makeTraversalAdapter(
-  ctx: ResolutionContext,
-  pool: import('pg').Pool,
-  pathwayId: string,
-  patientContext: PatientContext,
-) {
-  return {
-    computeNodeConfidence: async (node: unknown, _gc: unknown, _pctx: unknown) => {
-      const result = await ctx.confidenceEngine.computePathwayConfidence({
-        pool,
-        pathwayId,
-        nodes: [node as GraphNode],
-        // The whole pathway as CONTEXT. Scoring one node at a time meant a
-        // node's linked CodeEntry children could never be resolved, so every
-        // coded medication, lab and procedure scored as if it had no codes.
-        contextNodes: ctx.graphContext.allNodes,
-        edges: ctx.edges,
-        signalDefinitions: ctx.signals,
-        patientContext,
-      });
-      return result.nodes[0] ?? {
-        nodeIdentifier: (node as GraphNode).nodeIdentifier,
-        nodeType: (node as GraphNode).nodeType,
-        confidence: 0.5,
-        breakdown: [],
-        propagationInfluences: [],
-      };
-    },
-  };
-}
-
-export function makeRetraversalAdapter(
-  ctx: ResolutionContext,
-  pool: import('pg').Pool,
-  pathwayId: string,
-  patientContext: PatientContext,
-) {
-  return {
-    computeNodeConfidence: async (nodeId: string, _gc: GraphContext, _pctx: PatientContext) => {
-      const graphNode = ctx.graphContext.getNode(nodeId);
-      if (!graphNode) {
-        return { confidence: 0.5, breakdown: [], resolutionType: 'SYSTEM_SUGGESTED' };
-      }
-      const result = await ctx.confidenceEngine.computePathwayConfidence({
-        pool,
-        pathwayId,
-        nodes: [graphNode],
-        contextNodes: ctx.graphContext.allNodes,
-        edges: ctx.edges,
-        signalDefinitions: ctx.signals,
-        patientContext,
-      });
-      const nodeConf = result.nodes[0];
-      return nodeConf
-        ? { confidence: nodeConf.confidence, breakdown: nodeConf.breakdown, resolutionType: nodeConf.resolutionType ?? 'SYSTEM_SUGGESTED' }
-        : { confidence: 0.5, breakdown: [], resolutionType: 'SYSTEM_SUGGESTED' };
-    },
-  };
-}
-
-// ─── LLM Gate Evaluator ─────────────────────────────────────────────
-
-/**
- * Walk a dotted path into a JSON bag. Returns undefined if any segment is
- * missing. Used to resolve a gate's `input_attribute` against the patient
- * narrative (e.g. `freeformData.narrative.chief_complaint`).
- */
-function resolveDottedPath(root: unknown, path: string): unknown {
-  if (!path) return undefined;
-  let cursor: unknown = root;
-  for (const segment of path.split('.')) {
-    if (cursor == null || typeof cursor !== 'object') return undefined;
-    cursor = (cursor as Record<string, unknown>)[segment];
-  }
-  return cursor;
-}
-
-interface PendingAuditRow {
-  gateId: string;
-  pathwayId: string;
-  inputAttribute: string | null;
-  inputText: string | null;
-  prompt: string;
-  branches: unknown;
-  model: string;
-  chosenBranch: string | null;
-  confidence: number | null;
-  reasoning: string | null;
-  fullResponse: unknown;
-  tentative: boolean;
-  errorMessage: string | null;
-  latencyMs: number | null;
-}
-
-export interface LlmEvaluatorBundle {
-  evaluator: LlmGateEvaluator;
-  flushAudits: (sessionId: string) => Promise<void>;
-}
-
-/**
- * Build an LLM gate evaluator bundle for one resolver call. Returns null when
- * no API key is configured — callers pass that through to TraversalEngine,
- * which routes the gate's safe-default branch with tentative=true.
- *
- * The evaluator:
- *   - resolves the gate's `input_attribute` dotted path against patientContext
- *   - looks up the result in a per-bundle cache to dedupe re-evaluations on
- *     the same gate during this resolver call (retraversal can hit the same
- *     gate multiple times)
- *   - calls evaluateGateWithLLM; on failure returns a `failed: true` verdict
- *     so the upstream evaluator falls back to safe-default + tentative
- *   - buffers an audit row; `flushAudits(sessionId)` writes them all at once
- *     once the resolver has a session_id (startResolution creates the session
- *     AFTER the initial traversal, so audit writes must be deferred)
- *
- * @param initialSessionId - When known up-front (overrideNode, addPatientContext,
- *   answerQuestion), audit rows can carry the session_id from the start.
- *   For startResolution this is null and gets filled in at flush time.
- */
-export function makeLlmGateEvaluator(
-  pool: import('pg').Pool,
-  pathwayId: string,
-  _initialSessionId: string | null = null,
-): LlmEvaluatorBundle | null {
-  const config = loadLLMGateConfig();
-  if (!config) return null;
-
-  const cache = new Map<string, LlmGateVerdict>();
-  const pendingAudits: PendingAuditRow[] = [];
-
-  const evaluator: LlmGateEvaluator = async (
-    gate: GateProperties,
-    gateId: string,
-    patientContext: PatientContext,
-  ): Promise<LlmGateVerdict> => {
-    const inputAttr = gate.input_attribute ?? '';
-    const narrativeRaw = resolveDottedPath(patientContext, inputAttr);
-    const narrative = typeof narrativeRaw === 'string' ? narrativeRaw : '';
-
-    const cacheKey = `${gateId}::${narrative}`;
-    const cached = cache.get(cacheKey);
-    if (cached) return cached;
-
-    const branches = (gate.branches ?? []).map((b) => ({
-      name: b.name,
-      description: b.description,
-    }));
-    const promptText = gate.prompt ?? gate.title;
-
-    try {
-      const out = await evaluateGateWithLLM(
-        { prompt: promptText, narrative, branches },
-        config,
-      );
-      const threshold = gate.confidence_threshold ?? 0.75;
-      const tentative = out.confidence < threshold;
-      pendingAudits.push({
-        gateId,
-        pathwayId,
-        inputAttribute: inputAttr || null,
-        inputText: narrative,
-        prompt: promptText,
-        branches: gate.branches ?? [],
-        model: out.model,
-        chosenBranch: out.chosenBranch,
-        confidence: out.confidence,
-        reasoning: out.reasoning,
-        fullResponse: out.rawResponse,
-        tentative,
-        errorMessage: null,
-        latencyMs: out.latencyMs,
-      });
-      const verdict: LlmGateVerdict = {
-        chosenBranch: out.chosenBranch,
-        confidence: out.confidence,
-        reasoning: out.reasoning,
-      };
-      cache.set(cacheKey, verdict);
-      return verdict;
-    } catch (err) {
-      const message = err instanceof LLMGateError
-        ? err.message
-        : err instanceof Error
-          ? err.message
-          : String(err);
-      pendingAudits.push({
-        gateId,
-        pathwayId,
-        inputAttribute: inputAttr || null,
-        inputText: narrative,
-        prompt: promptText,
-        branches: gate.branches ?? [],
-        model: config.model,
-        chosenBranch: null,
-        confidence: null,
-        reasoning: null,
-        fullResponse: null,
-        tentative: true,
-        errorMessage: message,
-        latencyMs: null,
-      });
-      const verdict: LlmGateVerdict = {
-        chosenBranch: '',
-        confidence: 0,
-        reasoning: message,
-        failed: true,
-        errorMessage: message,
-      };
-      cache.set(cacheKey, verdict);
-      return verdict;
-    }
-  };
-
-  const flushAudits = async (sessionId: string): Promise<void> => {
-    if (pendingAudits.length === 0) return;
-    const rows = pendingAudits.splice(0);
-    for (const row of rows) {
-      await pool.query(
-        `INSERT INTO llm_gate_evaluations (
-           session_id, gate_id, pathway_id, input_attribute, input_text,
-           prompt, branches, model, chosen_branch, confidence, reasoning,
-           full_response, tentative, error_message, latency_ms
-         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
-        [
-          sessionId,
-          row.gateId,
-          row.pathwayId,
-          row.inputAttribute,
-          row.inputText,
-          row.prompt,
-          JSON.stringify(row.branches),
-          row.model,
-          row.chosenBranch,
-          row.confidence,
-          row.reasoning,
-          row.fullResponse ? JSON.stringify(row.fullResponse) : null,
-          row.tentative,
-          row.errorMessage,
-          row.latencyMs,
-        ],
-      );
-    }
-  };
-
-  return { evaluator, flushAudits };
 }
 
 // ─── ENCOUNTER anchor preflight ─────────────────────────────────────

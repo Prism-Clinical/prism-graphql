@@ -28,7 +28,12 @@ import type { EvaluationTemporalContext } from '../services/resolution/temporal/
 import { assembleContext } from '../services/resolution/temporal/context-assembler';
 import { parseWindowFrom, withTherapyStarts } from '../services/resolution/temporal/anchored-window';
 import { TemporalContextError } from '../services/resolution/temporal/evaluation-context';
-import { validateForGeneration } from '../services/resolution/care-plan-generator';
+import { readinessOf } from '../services/resolution/pipeline/readiness';
+import type { RedFlag, ResolutionState } from '../services/resolution/types';
+
+/** What blocks generation from this state — the pipeline's one readiness rule set (spec C3). */
+const validateForGeneration = (state: ResolutionState, redFlags: RedFlag[]) =>
+  readinessOf({ state, pendingQuestions: [], redFlags, unavailable: [], scope: 'ROOT', isDegraded: false }).blockers;
 import {
   NodeStatus,
   AnswerType,
@@ -231,13 +236,6 @@ describe('the start visit — the drug is recommended in this very session', () 
     expect(validateForGeneration(r.resolutionState, r.redFlags)).toEqual([]);
   });
 
-  it('records the medication → gate influence, so a later change to the drug re-decides the gate', async () => {
-    const pc = hgb([BASELINE]);
-    const r = await engineAt(DAY0, pc).traverse(anemiaShape(), pc, new Map());
-    expect([...(r.dependencyMap.influences.get('med-1') ?? [])].sort())
-      .toEqual(['gate-hgb-nonresponse', 'gate-hgb-response']);
-  });
-
   it('NOT_YET_DUE closes the gate even under default_behavior: traverse', async () => {
     const pc = hgb([BASELINE]);
     const r = await engineAt(DAY0, pc).traverse(
@@ -274,7 +272,7 @@ describe('the start visit — the drug is recommended in this very session', () 
     expect(r.pendingQuestions[0]).toMatchObject({ datumKey: KEY, answerType: AnswerType.DATE });
   });
 
-  it('the start visit reached incrementally (DP pends, clinician picks empiric iron) closes NOT_YET_DUE too', async () => {
+  it('the start visit reached by a branch choice (DP pends, clinician picks empiric iron) closes NOT_YET_DUE too', async () => {
     // step-1-7 → dp-1 ⇒ stage-2-empiric | step-1-2. Both branches score 0.85,
     // so the one_of fork pends; answering it re-disposes the chosen branch —
     // meds and gates together — in ONE incremental pass.
@@ -303,16 +301,9 @@ describe('the start visit — the drug is recommended in this very session', () 
     expect(first.pendingQuestions.map((q) => q.gateId)).toEqual(['dp-1']);
 
     const answers = new Map<string, GateAnswer>([['dp-1', { selectedOption: 'stage-2-empiric' }]]);
-    const second = await engine.resolveIncrementally(
-      new Set(['dp-1']),
-      first.resolutionState,
-      first.dependencyMap,
-      graph,
-      pc,
-      answers,
-      { pendingQuestions: first.pendingQuestions, redFlags: first.redFlags, alsoDropGateIds: ['dp-1'] },
-    );
-    const state = first.resolutionState;
+    // A mutation is a fresh evaluation from the session's inputs (pipeline C1).
+    const second = await engineAt(DAY0, pc).traverse(graph, pc, answers);
+    const state = second.resolutionState;
     expect(second.pendingQuestions).toEqual([]);
     expect(state.get('med-1')!.status).toBe(NodeStatus.INCLUDED);
     for (const gateId of ['gate-hgb-response', 'gate-hgb-nonresponse']) {
@@ -552,8 +543,6 @@ describe('a recheck with no stored start asks for the date instead of closing NO
     // Neither response branch is opened on a guess.
     expect(r.resolutionState.get('step-2-4')!.status).not.toBe(NodeStatus.INCLUDED);
     expect(r.resolutionState.get('step-2-6')!.status).not.toBe(NodeStatus.INCLUDED);
-    // The medication → gate influence is kept: a change to the drug re-decides the gate.
-    expect([...(r.dependencyMap.influences.get('med-1') ?? [])].sort()).toEqual([...RESPONSE_GATES].sort());
     // The audit trail says why this visit was not read as the start.
     expect(g.excludeReason).toMatch(/oral iron is recommended at this visit, but the chart holds a LOINC 718-7 result from 2026-06-01, at least 14 days before this visit/);
   });
@@ -575,30 +564,6 @@ describe('a recheck with no stored start asks for the date instead of closing NO
     expect(r.resolutionState.get('gate-hgb-nonresponse')!.windowAnchors?.[0])
       .toMatchObject({ source: 'CLINICIAN', date: '2026-06-01', dueOn: '2026-06-15' });
     expect(validateForGeneration(r.resolutionState, r.redFlags)).toEqual([]);
-  });
-
-  it('…answered incrementally, lands where a full traversal with the date lands', async () => {
-    const pc = patient({ labs: [['2026-06-01', 8.2], ['2026-06-20', 8.6]] });
-    const graph = anemiaShape();
-    const engine = engineAt(DAY21, pc);
-    const first = await engine.traverse(graph, pc, new Map());
-    expectDateQuestion(first);
-
-    // As `answerPendingDecision` does for an anchor answer: stored under the
-    // ANCHOR key, the asking gates re-disposed.
-    const q = first.pendingQuestions[0];
-    const answers = new Map<string, GateAnswer>([[KEY, { dateValue: '2026-06-01' }]]);
-    const roots = new Set([q.gateId, ...(q.askedByNodeIds ?? [])]);
-    const second = await engine.resolveIncrementally(
-      roots, first.resolutionState, first.dependencyMap, graph, pc, answers,
-      { pendingQuestions: first.pendingQuestions, redFlags: first.redFlags, alsoDropGateIds: [...roots] },
-    );
-    const full = await engineAt(DAY21, pc).traverse(graph, pc, new Map(answers));
-    expect(second.pendingQuestions).toEqual([]);
-    for (const id of new Set([...first.resolutionState.keys(), ...full.resolutionState.keys()])) {
-      expect([id, first.resolutionState.get(id)?.status]).toEqual([id, full.resolutionState.get(id)?.status]);
-    }
-    expect(first.resolutionState.get('step-2-6')!.status).toBe(NodeStatus.INCLUDED);
   });
 
   it('with a stored care plan: anchored on it, nothing asked', async () => {

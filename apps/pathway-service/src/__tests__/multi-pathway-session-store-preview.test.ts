@@ -6,7 +6,7 @@
  * which would otherwise erase the functions under test here).
  *
  * Two flavors of pool mock:
- *   - makeSpyPool: single-query functions (createMultiPathwaySession,
+ *   - makeSpyPool: single-query functions (insertRun,
  *     getPatientMultiPathwaySessions) run against `pool.query` directly.
  *   - makeTxnPool: transaction-based function (deletePreviewSession) uses
  *     `pool.connect()` → client.query / BEGIN / COMMIT / ROLLBACK. Control
@@ -15,14 +15,14 @@
  */
 
 import {
-  createMultiPathwaySession,
+  insertRun,
   getPatientMultiPathwaySessions,
   deletePreviewSession,
 } from '../services/resolution/multi-pathway-session-store';
 import { makeEvaluationTemporalContext } from '../services/resolution/temporal/evaluation-context';
 
 /**
- * Every new session needs a pinned clock — createMultiPathwaySession now
+ * Every new session needs a pinned clock — insertRun now
  * rejects one without it, since a NULL clock on a fresh row means a session
  * that can never be retraversed.
  */
@@ -66,38 +66,31 @@ const EMPTY_MERGED_PLAN = {
   catchUpItems: [],
 };
 
-describe('createMultiPathwaySession: is_preview persistence', () => {
-  it('defaults isPreview to false and includes it in the INSERT', async () => {
+describe('insertRun: is_preview persistence', () => {
+  const run = (isPreview: boolean) => ({
+    patientId: 'pt-1', providerId: 'prov-1', isPreview, initialPatientContext: {}, temporalContext: TEST_TCTX,
+    additionalContext: {}, conflictResolutions: {},
+    result: {
+      mergedPlan: EMPTY_MERGED_PLAN, safetyFindings: [], ddiWarnings: [], readiness: { ready: false, blockers: [] },
+      children: [], envFingerprint: 'e', resultHash: 'h',
+    },
+  });
+  const isPreviewParam = (call: { sql: string; params: unknown[] }) => {
+    const columns = call.sql.slice(call.sql.indexOf('(') + 1, call.sql.indexOf(')')).split(',').map((c) => c.trim());
+    return call.params[columns.indexOf('is_preview')];
+  };
+
+  it('writes is_preview=false for a real run', async () => {
     const { pool, calls } = makeSpyPool([{ rows: [{ id: 'sess-1' }] }]);
-    await createMultiPathwaySession(pool, {
-      patientId: 'pt-1',
-      providerId: 'prov-1',
-      initialPatientContext: {},
-      contributingSessionIds: [],
-      contributingPathwayIds: [],
-      mergedPlan: EMPTY_MERGED_PLAN,
-      temporalContext: TEST_TCTX,
-    });
+    await insertRun(pool, run(false) as never);
     expect(calls).toHaveLength(1);
-    expect(calls[0].sql).toMatch(/is_preview/);
-    // Positional: (patient_id, provider_id, status, is_preview, ...) — since
-    // status is a literal in the SQL, is_preview is param $3 (index 2).
-    expect(calls[0].params[2]).toBe(false);
+    expect(isPreviewParam(calls[0])).toBe(false);
   });
 
   it('threads isPreview=true when supplied', async () => {
     const { pool, calls } = makeSpyPool([{ rows: [{ id: 'sess-2' }] }]);
-    await createMultiPathwaySession(pool, {
-      patientId: 'pt-1',
-      providerId: 'prov-1',
-      initialPatientContext: {},
-      contributingSessionIds: [],
-      contributingPathwayIds: [],
-      mergedPlan: EMPTY_MERGED_PLAN,
-      isPreview: true,
-      temporalContext: TEST_TCTX,
-    });
-    expect(calls[0].params[2]).toBe(true);
+    await insertRun(pool, run(true) as never);
+    expect(isPreviewParam(calls[0])).toBe(true);
   });
 });
 

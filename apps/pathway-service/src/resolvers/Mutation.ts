@@ -24,8 +24,6 @@ export {
   buildGraphContext,
   fetchGraphFromAGE,
   buildResolutionContext,
-  makeTraversalAdapter,
-  makeRetraversalAdapter,
 } from './helpers/resolution-context';
 export type { ResolutionContext } from './helpers/resolution-context';
 

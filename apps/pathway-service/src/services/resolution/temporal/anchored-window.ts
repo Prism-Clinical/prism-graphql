@@ -321,6 +321,12 @@ export function anchorDateProblem(date: unknown, evaluationAsOf: string): string
  */
 export interface TherapyStartEvent {
   clinicalRole: string;
+  /**
+   * The session pathway this start anchors, when one clock is shared by
+   * several pathways (a multi-pathway run). A child reads only its own —
+   * see `therapyStartsFor`. Absent on a standalone session's events.
+   */
+  forPathwayId?: string;
   /** `YYYY-MM-DD` — the plan's `start_date`. */
   date: string;
   source: {
@@ -344,7 +350,11 @@ export function withTherapyStarts(
   ctx: EvaluationTemporalContext,
   events: readonly TherapyStartEvent[],
 ): EvaluationTemporalContext {
-  const earliest = new Map<string, TherapyStartEvent>();
+  const keyOf = (e: TherapyStartEvent) => `${e.forPathwayId ?? ''}|${e.clinicalRole}`;
+  // What is already pinned stays: a run pins each child's starts in turn.
+  const earliest = new Map<string, TherapyStartEvent>(
+    (ctx.therapyStarts ?? []).map((e) => [keyOf(e), e]),
+  );
   for (const e of events) {
     const problem = anchorDateProblem(e.date, ctx.evaluationAsOf);
     if (problem !== null) {
@@ -356,11 +366,29 @@ export function withTherapyStarts(
         'INVALID_RESOLUTION_INPUT',
       );
     }
-    const prior = earliest.get(e.clinicalRole);
-    if (!prior || e.date < prior.date) earliest.set(e.clinicalRole, e);
+    const prior = earliest.get(keyOf(e));
+    if (!prior || e.date < prior.date) earliest.set(keyOf(e), e);
   }
   if (earliest.size === 0) return ctx;
   return { ...ctx, therapyStarts: [...earliest.values()] };
+}
+
+/**
+ * The context one pathway of a run evaluates under: the shared clock, with
+ * only the therapy starts pinned for THAT pathway. Another pathway's oral iron
+ * is not this pathway's own recommendation.
+ */
+export function therapyStartsFor(
+  ctx: EvaluationTemporalContext,
+  pathwayId: string,
+): EvaluationTemporalContext {
+  if (!ctx.therapyStarts) return ctx;
+  const own = ctx.therapyStarts.filter(
+    (e) => e.forPathwayId === undefined || e.forPathwayId === pathwayId,
+  );
+  if (own.length === ctx.therapyStarts.length) return ctx;
+  const { therapyStarts: _dropped, ...rest } = ctx;
+  return own.length === 0 ? rest : { ...rest, therapyStarts: own };
 }
 
 // ─── Resolution ───────────────────────────────────────────────────────

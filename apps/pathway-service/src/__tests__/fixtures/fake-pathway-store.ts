@@ -232,6 +232,7 @@ export class FakePathwayStore {
     if (sql.startsWith('SELECT 1 FROM icd10_codes')) return { rows: [{}], rowCount: 1 };
     if (sql.startsWith('INSERT INTO clinical_code_reference')) return { rows: [] };
     if (sql.startsWith('INSERT INTO pathway_version_diffs')) return { rows: [] };
+    if (sql.includes('FROM pathway_attribute_code_map')) return { rows: [] };
 
     throw new Error(`FakePathwayStore: unhandled statement: ${sql.slice(0, 160)}`);
   };

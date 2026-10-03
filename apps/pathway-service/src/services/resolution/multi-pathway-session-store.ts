@@ -1,16 +1,19 @@
 /**
  * Phase 3 commit 4: persistence layer for multi-pathway resolution sessions.
  *
- * One row in `multi_pathway_resolution_sessions` per merge run. The merged
- * plan + provider conflict resolutions live in two JSONB columns; the
- * contributing per-pathway session ids live in a UUID array. Pure CRUD —
- * conflict-application logic lives in the resolver layer so this module
- * stays storage-agnostic.
+ * One row per run. The parent's inputs (facts added after start, conflict
+ * decisions) and the cache of its last composition live in JSONB columns;
+ * the contributing child session ids live in a UUID array, written once at
+ * start.
  */
 
 import { Pool } from 'pg';
 import { MergedCarePlan, ConflictResolution } from './care-plan-merge';
 import { EvaluationTemporalContext } from './temporal/evaluation-context';
+import type { PatientContext } from '../confidence/types';
+import type { AdditionalContextInput } from '../../resolvers/mutations/resolution';
+import type { RunBlocker, RunResult } from './pipeline/types';
+import type { Db } from './session-store';
 
 // ─── Types ──────────────────────────────────────────────────────────
 
@@ -21,6 +24,14 @@ export interface MultiPathwayResolutionSession {
   patientId: string;
   providerId: string;
   status: MultiPathwaySessionStatus;
+  /** Optimistic-lock counter for the whole run (D6); every committed write increments it. */
+  revision: number;
+  /** Patient facts supplied after start, on any child of the run (D5). */
+  additionalContext: Partial<AdditionalContextInput>;
+  /** Cache of the last committed composition. Never an input. */
+  envFingerprint: string;
+  resultHash: string;
+  readiness: { ready: boolean; blockers: RunBlocker[] };
   /**
    * True when this session was created by admin/QA/preview tooling
    * (currently: `startMultiPathwayResolution` called with
@@ -39,11 +50,8 @@ export interface MultiPathwayResolutionSession {
   carePlanId: string | null;
   /** Phase 4: DDI warnings (MODERATE) — pre-merge + cross-recommendation. */
   ddiWarnings: unknown[];
-  /**
-   * The clock stamped once for the whole multi-pathway run and shared by
-   * every contributing session. Optional only for pre-migration-063 rows.
-   */
-  temporalContext?: EvaluationTemporalContext;
+  /** The run's clock, shared by every child. NOT NULL since migration 068. */
+  temporalContext: EvaluationTemporalContext;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -63,53 +71,6 @@ export interface MultiPathwayResolutionSessionSummary {
 
 // ─── CRUD ───────────────────────────────────────────────────────────
 
-export async function createMultiPathwaySession(
-  pool: Pool,
-  s: {
-    patientId: string;
-    providerId: string;
-    initialPatientContext: unknown;
-    contributingSessionIds: string[];
-    contributingPathwayIds: string[];
-    mergedPlan: MergedCarePlan;
-    ddiWarnings?: unknown[];
-    isPreview?: boolean;
-    // Required on the way in — same read-optional / write-required split as
-    // createSession, and for the same reason.
-    temporalContext: EvaluationTemporalContext;
-  },
-): Promise<string> {
-  // Same runtime guard as createSession — the declared type is erased and
-  // does not cover untyped callers, and a NULL clock on a new row means a
-  // session that can never be retraversed. See session-store.ts.
-  if (!s.temporalContext) {
-    throw new Error(
-      'createMultiPathwaySession requires temporalContext — a session with no pinned evaluation clock cannot be retraversed',
-    );
-  }
-
-  const result = await pool.query(
-    `INSERT INTO multi_pathway_resolution_sessions
-       (patient_id, provider_id, status, is_preview, initial_patient_context,
-        contributing_session_ids, contributing_pathway_ids,
-        merged_plan, conflict_resolutions, ddi_warnings, temporal_context)
-     VALUES ($1, $2, 'ACTIVE', $3, $4::jsonb, $5::uuid[], $6::uuid[], $7::jsonb, '{}'::jsonb, $8::jsonb, $9::jsonb)
-     RETURNING id`,
-    [
-      s.patientId,
-      s.providerId,
-      s.isPreview ?? false,
-      JSON.stringify(s.initialPatientContext),
-      s.contributingSessionIds,
-      s.contributingPathwayIds,
-      JSON.stringify(s.mergedPlan),
-      JSON.stringify(s.ddiWarnings ?? []),
-      JSON.stringify(s.temporalContext),
-    ],
-  );
-  return result.rows[0].id;
-}
-
 export async function getMultiPathwaySession(
   pool: Pool,
   sessionId: string,
@@ -119,7 +80,7 @@ export async function getMultiPathwaySession(
     [sessionId],
   );
   if (r.rows.length === 0) return null;
-  return rowToSession(r.rows[0]);
+  return runRowToSession(r.rows[0]);
 }
 
 export async function getPatientMultiPathwaySessions(
@@ -166,51 +127,10 @@ export async function getPatientMultiPathwaySessions(
 }
 
 /**
- * Persist an updated merged plan + conflict resolutions atomically. Used by
- * `resolveConflict`. Optimistic-lock-free for v1 — the conflict-resolution
- * UX is single-provider, single-session, so concurrent edits aren't a real
- * threat. We can add `updated_at`-based optimistic locking later if needed.
- */
-export async function updateMergedPlanAndResolutions(
-  pool: Pool,
-  sessionId: string,
-  mergedPlan: MergedCarePlan,
-  conflictResolutions: Record<string, ConflictResolution>,
-  /** Optional: when re-merging after gate answers, ddi warnings also change. */
-  ddiWarnings?: unknown[],
-): Promise<void> {
-  if (ddiWarnings !== undefined) {
-    await pool.query(
-      `UPDATE multi_pathway_resolution_sessions
-         SET merged_plan = $2::jsonb,
-             conflict_resolutions = $3::jsonb,
-             ddi_warnings = $4::jsonb,
-             updated_at = NOW()
-       WHERE id = $1`,
-      [
-        sessionId,
-        JSON.stringify(mergedPlan),
-        JSON.stringify(conflictResolutions),
-        JSON.stringify(ddiWarnings),
-      ],
-    );
-    return;
-  }
-  await pool.query(
-    `UPDATE multi_pathway_resolution_sessions
-       SET merged_plan = $2::jsonb,
-           conflict_resolutions = $3::jsonb,
-           updated_at = NOW()
-     WHERE id = $1`,
-    [sessionId, JSON.stringify(mergedPlan), JSON.stringify(conflictResolutions)],
-  );
-}
-
-/**
  * Hard-delete a preview session and its contributing per-pathway sessions.
  * Real (non-preview) sessions are refused with a `NotPreviewError` — the
- * caller has to use `markMultiPathwaySessionStatus(..., 'ABANDONED')` for
- * those, which preserves the row for audit.
+ * caller has to use `abandonMultiPathwaySession` for those, which
+ * preserves the row for audit.
  *
  * Result kinds:
  *   - 'not-found'     — no row for this id
@@ -280,30 +200,139 @@ export async function deletePreviewSession(
   }
 }
 
-export async function markMultiPathwaySessionStatus(
-  pool: Pool,
-  sessionId: string,
-  status: MultiPathwaySessionStatus,
-  carePlanId?: string,
-): Promise<void> {
-  await pool.query(
-    `UPDATE multi_pathway_resolution_sessions
-       SET status = $2,
-           care_plan_id = COALESCE($3, care_plan_id),
-           updated_at = NOW()
-     WHERE id = $1`,
-    [sessionId, status, carePlanId ?? null],
+// ─── Runs on the evaluation pipeline (plan 04) ──────────────────────
+
+export interface NewRun {
+  patientId: string;
+  providerId: string;
+  isPreview: boolean;
+  initialPatientContext: PatientContext;
+  temporalContext: EvaluationTemporalContext;
+  additionalContext: Partial<AdditionalContextInput>;
+  conflictResolutions: Record<string, ConflictResolution>;
+  result: RunResult;
+}
+
+/** JSONB parameters are sent as JSON text; scalars pass through. */
+const param = (v: unknown): unknown => (v !== null && typeof v === 'object' ? JSON.stringify(v) : v);
+
+/** The columns a composition writes: the parent's mutable inputs and the cache of the run's result. */
+export function runColumns(args: {
+  additionalContext: Partial<AdditionalContextInput>;
+  conflictResolutions: Record<string, ConflictResolution>;
+  result: RunResult;
+  status: MultiPathwaySessionStatus;
+}): Record<string, unknown> {
+  return {
+    status: args.status,
+    additional_context: args.additionalContext,
+    conflict_resolutions: args.conflictResolutions,
+    merged_plan: args.result.mergedPlan,
+    ddi_warnings: args.result.ddiWarnings,
+    readiness: args.result.readiness,
+    env_fingerprint: args.result.envFingerprint,
+    result_hash: args.result.resultHash,
+  };
+}
+
+/** Every column of a new run: identity, the immutable inputs, then `runColumns`. The contributing arrays are set once the children exist. */
+export function insertRunColumns(r: NewRun): Record<string, unknown> {
+  return {
+    patient_id: r.patientId,
+    provider_id: r.providerId,
+    is_preview: r.isPreview,
+    initial_patient_context: r.initialPatientContext,
+    temporal_context: r.temporalContext,
+    ...runColumns({ ...r, status: 'ACTIVE' }),
+  };
+}
+
+export async function insertRun(db: Db, r: NewRun): Promise<string> {
+  // Types are erased and tests are not typechecked: a clock-less run could
+  // never be evaluated again, so refuse it here rather than at the NOT NULL.
+  if (!r.temporalContext) {
+    throw new Error('insertRun requires temporalContext — a run with no pinned clock cannot be evaluated');
+  }
+  const cols = insertRunColumns(r);
+  const names = Object.keys(cols);
+  const result = await db.query(
+    `INSERT INTO multi_pathway_resolution_sessions (${names.join(', ')})
+     VALUES (${names.map((_, i) => `$${i + 1}`).join(', ')})
+     RETURNING id`,
+    names.map((n) => param(cols[n])),
   );
+  return result.rows[0].id;
+}
+
+/** The children exist only after the run row does; written once, in the start transaction. */
+export async function setContributingSessions(db: Db, runId: string, sessionIds: string[], pathwayIds: string[]): Promise<void> {
+  await db.query(
+    `UPDATE multi_pathway_resolution_sessions
+        SET contributing_session_ids = $2::uuid[], contributing_pathway_ids = $3::uuid[]
+      WHERE id = $1`,
+    [runId, sessionIds, pathwayIds],
+  );
+}
+
+/**
+ * Commit a composition as a compare-and-set on the run's revision (D6).
+ * Returns false when another write moved the run or it left ACTIVE; the caller
+ * rolls back and retries. `status: COMPLETED` is generation's claim.
+ */
+export async function writeRunEvaluation(
+  db: Db,
+  args: {
+    runId: string;
+    expectedRevision: number;
+    additionalContext: Partial<AdditionalContextInput>;
+    conflictResolutions: Record<string, ConflictResolution>;
+    result: RunResult;
+    status: MultiPathwaySessionStatus;
+  },
+): Promise<boolean> {
+  const cols = runColumns(args);
+  const names = Object.keys(cols);
+  const result = await db.query(
+    `UPDATE multi_pathway_resolution_sessions
+        SET ${names.map((n, i) => `${n} = $${i + 1}`).join(', ')}, revision = revision + 1, updated_at = NOW()
+      WHERE id = $${names.length + 1} AND revision = $${names.length + 2} AND status = 'ACTIVE'`,
+    [...names.map((n) => param(cols[n])), args.runId, args.expectedRevision],
+  );
+  return result.rowCount === 1;
+}
+
+/** Lifecycle-only change (abandon): no evaluation, same revision check (spec §4). */
+export async function writeRunLifecycle(
+  db: Db,
+  args: { runId: string; expectedRevision: number; status: MultiPathwaySessionStatus },
+): Promise<boolean> {
+  const result = await db.query(
+    `UPDATE multi_pathway_resolution_sessions
+        SET status = $1, revision = revision + 1, updated_at = NOW()
+      WHERE id = $2 AND revision = $3 AND status = 'ACTIVE'`,
+    [args.status, args.runId, args.expectedRevision],
+  );
+  return result.rowCount === 1;
+}
+
+/** Inside generation's claimed transaction only. */
+export async function setRunCarePlanId(db: Db, runId: string, carePlanId: string): Promise<void> {
+  await db.query('UPDATE multi_pathway_resolution_sessions SET care_plan_id = $1 WHERE id = $2', [carePlanId, runId]);
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────
 
-function rowToSession(row: Record<string, unknown>): MultiPathwayResolutionSession {
+export function runRowToSession(row: Record<string, unknown>): MultiPathwayResolutionSession {
   return {
     id: row.id as string,
     patientId: row.patient_id as string,
     providerId: row.provider_id as string,
     status: row.status as MultiPathwaySessionStatus,
+    revision: (row.revision as number) ?? 0,
+    additionalContext: (row.additional_context as Partial<AdditionalContextInput>) ?? {},
+    envFingerprint: (row.env_fingerprint as string) ?? '',
+    resultHash: (row.result_hash as string) ?? '',
+    readiness: (row.readiness as MultiPathwayResolutionSession['readiness']) ?? { ready: false, blockers: [] },
     isPreview: (row.is_preview as boolean) ?? false,
     initialPatientContext: row.initial_patient_context,
     contributingSessionIds: (row.contributing_session_ids as string[]) ?? [],

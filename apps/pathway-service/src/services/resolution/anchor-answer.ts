@@ -1,5 +1,4 @@
-import type { GraphContext } from '../confidence/types';
-import type { DependencyMap, GateAnswer, PendingQuestion } from './types';
+import type { GateAnswer, PendingQuestion } from './types';
 import { gateConditionLeaves } from './types';
 import {
   anchorDateProblem,
@@ -33,8 +32,6 @@ export type AnchorAnswerPlan =
       kind: 'anchor';
       key: string;
       dateValue: string;
-      /** Every gate to re-dispose: the asker(s), the answered gate, and every gate reading the key. */
-      rootGateIds: string[];
     };
 
 function windowFromKeysOf(properties: Record<string, unknown> | undefined): string[] {
@@ -54,8 +51,8 @@ export function planAnchorAnswer(input: {
   nodeId: string;
   answer: Pick<GateAnswer, 'booleanValue' | 'numericValue' | 'selectedOption' | 'dateValue'>;
   pendingQuestions: readonly PendingQuestion[];
-  dependencyMap: DependencyMap;
-  graphContext: GraphContext;
+  /** The answered node's own properties — where its `window_from` keys are read. */
+  nodeProperties: Record<string, unknown> | undefined;
   evaluationAsOf: string;
 }): AnchorAnswerPlan {
   const { nodeId, answer } = input;
@@ -70,9 +67,7 @@ export function planAnchorAnswer(input: {
   if (pending && pending.askTarget?.kind === 'anchor') {
     key = pending.askTarget.key;
   } else if (answer.dateValue !== undefined && answer.dateValue !== null) {
-    const keys = windowFromKeysOf(
-      input.graphContext.getNode(nodeId)?.properties as Record<string, unknown> | undefined,
-    );
+    const keys = windowFromKeysOf(input.nodeProperties);
     if (keys.length === 0) {
       return {
         kind: 'problem',
@@ -106,14 +101,5 @@ export function planAnchorAnswer(input: {
   const problem = anchorDateProblem(answer.dateValue, input.evaluationAsOf);
   if (problem !== null) return { kind: 'problem', message: problem };
 
-  const roots = new Set<string>([nodeId]);
-  if (pending) {
-    roots.add(pending.gateId);
-    for (const id of pending.askedByNodeIds ?? []) roots.add(id);
-  }
-  for (const [gateId, fields] of input.dependencyMap.gateContextFields) {
-    if (fields.has(key)) roots.add(gateId);
-  }
-
-  return { kind: 'anchor', key, dateValue: answer.dateValue as string, rootGateIds: [...roots] };
+  return { kind: 'anchor', key, dateValue: answer.dateValue as string };
 }
