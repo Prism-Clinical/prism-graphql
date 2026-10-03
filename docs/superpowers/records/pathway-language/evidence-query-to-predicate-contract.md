@@ -2,11 +2,17 @@
 
 **Status:** Proposed design draft. **Not** accepted, not finalized syntax, not a schema and not implemented. It contains no clinical content: the record type, enum values, codes, sources and permission below are fictional and illustrate language behavior only. They do not map to dysphagia, progression, urgency or any other clinical definition.
 
-**Date:** 2026-10-03. **Revised:** 2026-10-03, three times, after review. The third revision fixed three things:
+**Date:** 2026-10-03. **Revised:** 2026-10-03, four times, after review. The third revision fixed three things:
 
 - revision-chain boundaries: source-scoped identity, same-source corrections and one fully specified schematic authority rule;
 - deterministic outcomes for malformed history;
 - a coverage-combination rule over a declared finite source set, with a minimal fixture format and canonical ordering.
+
+The fourth revision made three changes:
+
+- Proven cross-boundary corrections and retractions are now rejected without changing their target. This keeps gap irrelevance consistent with S1.
+- Payload identity for duplicate detection is defined.
+- An unsupported justification about coverage attestations is removed.
 
 **Authority:** [RFC](../../specs/2026-09-28-pathway-language-rfc.md) (accepted architecture) and [Stage A](../../specs/2026-09-30-pathway-language-stage-a-spec.md) §§2–7 (draft contracts). This document builds on the [minimal GERD language model](gerd-minimal-language-model.md), including its settled behavior for an established alarm with unknown applicability (its §6.1). Where this draft and Stage A disagree, Stage A governs until amended (section 8).
 
@@ -29,7 +35,7 @@ The core receives frozen inputs only (RFC §3; Stage A §4.8, §11.2). Retrieval
 - Record type, subject and source are immutable within a chain.
 - Corrections and retractions are same-source only: a `supersedes` or retraction target must name the item’s own `RecordKey`.
 - An authorized correction may change concept, assertion, episode and encounter.
-- Cross-source correction and movement between subjects or record types are unsupported (2.1).
+- Cross-source correction and movement between subjects or record types are unsupported. When identity and the violation are both established, the violating item is rejected and kept as a diagnostic, and its target is unchanged (2.1). When identity or authority cannot be established, the record stays unresolved.
 
 ### 1.2 Per-record evidence
 
@@ -48,6 +54,13 @@ Records are instances of a record type declared in a pinned evidence-model libra
 | `provenance` | acquisition ID, source record reference | Retained in every trace |
 
 `Field<T> = Present(T) | Absent`. In the fixture notation (7.1), an omitted optional field is `Absent`. A present value of the wrong type, or an enum code outside the pinned enum, is **malformed**.
+
+**Payload identity.** Payload identity decides whether two rows with the same `RevisionRef` are one revision (an identical duplicate) or contradictory data (`Conflicting`, 2.1 step 1), so it is semantic.
+
+- **Participating fields:** every field of the revision except `key`, `revision` and `provenance`. That is `recordType`, `subject`, `supersedes`, `episode`, `encounter`, `concept`, `assertion`, `assertionKind` and `author`, including `author.permissions`.
+- **Acquisition provenance does not participate.** The same revision obtained through different acquisitions is one revision. Every row’s provenance is kept in the trace.
+- **Canonical form:** JSON with object keys sorted by Unicode code point and no insignificant whitespace. Strings are compared by exact code-point sequence, without Unicode normalization. `Absent` fields are omitted; a JSON `null` is a malformed value, not `Absent`. Set-valued fields (`author.permissions`) are sorted by code point with duplicates removed. Malformed values are kept as their canonicalized JSON token.
+- **Payload digest:** the SHA-256 of the canonical UTF-8 bytes, in lower-case hex. Two rows are an identical duplicate if and only if their digests are equal.
 
 Retractions are separate items: `Retraction { id, key, target: RevisionRef, author, provenance }`.
 
@@ -68,7 +81,7 @@ Unknown permission codes inside a well-formed set are ignored; they neither gran
 
 The query contract declares a **finite source set**; the fixture uses `sources: ["s1", "s2"]`. This is a schematic test boundary, not a claim of complete clinical coverage.
 
-The **input envelope** consists of the record type × the context subject × the declared sources, closed over keys. The snapshot must contain every revision and retraction of every `RecordKey` in a declared source that has at least one revision with this record type and subject. Revisions are not pre-filtered by concept, episode or encounter, because an authorized correction may change those. Revisions of an enveloped key that carry another subject or record type are included, so S1 can detect boundary violations.
+The **input envelope** consists of the record type × the context subject × the declared sources, closed over keys. The snapshot must contain every revision and retraction of every `RecordKey` in a declared source that has at least one revision with this record type and subject. Revisions are not pre-filtered by concept, episode or encounter, because an authorized correction may change those. Revisions of an enveloped key that carry another subject or record type are included, so S1 can recognize and reject boundary violations.
 
 Items from undeclared sources are outside the envelope and never enter evaluation.
 
@@ -83,6 +96,8 @@ Every evaluation reads exactly one **current snapshot**. A snapshot may name the
 | Coverage statement | `id`, `appliesTo.snapshot`, `recordType`, `subject`, `sources` (nonempty array), `status ∈ {Complete, Incomplete, Unknown}`, `attestedBy` | An omitted or `null` dimension is **unstated (unknown)** |
 | Acquisition failure | `id`, `attempt`, `appliesTo.snapshot`, `outcome ∈ {Failed, TimedOut, Refused}`; optional `recordType`, `subject`, `sources`, `valueSet`, `episode`, `encounter` | Omitted means unknown |
 | Rejected item | `id`, `appliesTo.snapshot`, `reason`; optional `recordType`, `subject`, `sources` | Omitted means unknown |
+
+**What a dimension describes.** A revision’s record type, subject and source are its own fields. A retraction’s record type and subject are those of its *target revision*, and its source is its own. An adapter labeling a gap must apply these definitions.
 
 A statement whose `appliesTo.snapshot` is not the current snapshot is **not current**: it is traced and ignored. A coverage statement with an unrecognized `status`, or otherwise malformed, is **malformed**: it is treated as `Unknown` for every cell it might affect, and it adds `Invalid`.
 
@@ -126,7 +141,8 @@ An `episode` may come from an evaluated declaration through an explicit, acyclic
 | Field absent | `assertion` missing | Patient evidence | `Missing` (3.4) |
 | Field malformed | `assertion = "Maybe"`; a syntactically invalid code | Patient evidence | `Invalid` |
 | Terminology information unavailable | A well-formed code from a system the pinned expansion does not cover | Patient evidence | `Unavailable` (S2) |
-| Malformed or contradictory revision history | Missing target, fork, self-supersession, cycle, boundary violation, undeterminable authority | Patient evidence | Per 2.1 (`Missing`, `Conflicting`, `Invalid`) |
+| Malformed or contradictory revision history | Missing target, fork, self-supersession, cycle, undeterminable identity or authority | Patient evidence | Per 2.1 (`Missing`, `Conflicting`, `Invalid`) |
+| Proven cross-boundary correction or retraction | Subject or record-type change; correction or retraction naming another key | Patient evidence | No cause: rejected, kept as a diagnostic, target unchanged (2.1) |
 | Unparseable item or uninterpretable type version | No key; `demo-model@0.2` | Patient evidence (snapshot) | Rejected item; `Invalid` if relevant |
 | Wrong-type expression, unknown field, executable-dependency cycle | Section 7, case 51 | **Invalid program** | Compilation fails |
 
@@ -150,17 +166,18 @@ The stages follow Stage A §4.4’s order: identities and correction/retraction 
 
 S1 runs per `RecordKey` over a finite graph and always terminates. Its cycle detection is a strongly-connected-component analysis bounded by the snapshot size limits of §11.3.
 
-**Step 1 — nodes.** Rows with the same `RevisionRef` and identical payload form one node. Rows with the same `RevisionRef` and different payloads become separate nodes, and the key gets cause `Conflicting`.
+**Step 1 — nodes.** Rows with the same `RevisionRef` and the same payload digest (1.2) form one node. Rows with the same `RevisionRef` and different digests become separate nodes, named `RevisionRef#digest` in traces, and the key gets cause `Conflicting`.
 
-**Step 2 — boundary check.** If any revision of the key has a record type or subject different from the envelope’s, the key gets cause `Invalid`. Those revisions are rejected and preserved with reason `SubjectChanged` or `RecordTypeChanged`, and the addition `excluded` is recorded. The key’s true owner is unknown, so it might not belong in this query.
+**Step 2 — out-of-envelope revisions.** A revision of the key whose record type or subject differs from the envelope’s is not a node for this query. It is preserved with reason `OutOfEnvelopeRevision`. It adds no cause and no addition, and it cannot form a fork with in-envelope revisions. It is still available as a *target* in step 3, so a correction of it can be recognized as a boundary violation.
 
-**Step 3 — correction edges.** Each non-rejected revision with `supersedes` produces an edge; revisions rejected in step 2 produce none. Each edge is classified by the first row that matches:
+**Step 3 — correction edges.** Each node with `supersedes` produces an edge; out-of-envelope revisions (step 2) produce none. Each edge is classified by the first row that matches:
 
 | Edge condition | Classification | Effect |
 |---|---|---|
 | `supersedes` absent fields (e.g. no `source`) | Defective, `Missing` | Edge ignored; the correcting revision stays a node |
 | `supersedes` malformed | Defective, `Invalid` | Edge ignored |
-| Names another `RecordKey` (cross-source or other local ID) | Proven invalid (cross-boundary), `Invalid` | The correcting revision is rejected and preserved (`CrossKeyCorrection`). Target key, if in the envelope, gets `Invalid` and addition `excluded`. The correcting revision is not a node of its own key |
+| Names another `RecordKey` (cross-source or other local ID), with all `RevisionRef` fields present | Proven cross-boundary | The correcting revision is rejected and preserved (`CrossKeyCorrection`) and is no longer a node of its own key. No cause. The target key is **unchanged**; the diagnostic is also attached to its trace |
+| Target present in the snapshot with a different record type or subject | Proven cross-boundary | The correcting revision is rejected and preserved (`SubjectChanged` / `RecordTypeChanged`). No cause. The target is unchanged |
 | Names itself | Defective, `Invalid` | Edge ignored |
 | Target revision absent from the snapshot | Defective, `Missing` | Edge ignored; addition `unknown` (the unseen chain could hold anything) |
 | Authority unauthorized (1.3) | Proven unauthorized | The correcting revision is rejected and preserved (`Unauthorized`); no cause; the target is unaffected |
@@ -176,7 +193,8 @@ S1 runs per `RecordKey` over a finite graph and always terminates. Its cycle det
 | Retraction condition | Effect |
 |---|---|
 | Target fields absent / malformed | The retraction cannot be attributed; it is a rejected item (`Missing` / `Invalid` gap) whose dimensions are its known fields |
-| Target in another key than the retraction’s own `key` | Proven invalid (cross-boundary). Preserved; target key, if in the envelope, gets `Invalid` + `excluded` |
+| Target in another key than the retraction’s own `key` (all fields present) | Proven cross-boundary. Rejected and preserved (`CrossKeyRetraction`); no cause; target unchanged, diagnostic attached |
+| Target is an out-of-envelope revision (step 2) | No effect on this query; traced |
 | Target key not in the envelope | Traced only |
 | Target revision absent | `Missing` + `excluded` |
 | Unauthorized | Rejected, preserved, no effect |
@@ -199,7 +217,7 @@ Rejected and superseded revisions are kept in the trace with reasons. A `Complet
 
 ### 2.2 S3 admissibility rules in this example
 
-- `subject` equals the context subject, else `Inadmissible(WrongSubject)`. This cannot arise after S1’s boundary check, but the rule is kept for completeness.
+- `subject` equals the context subject, else `Inadmissible(WrongSubject)`. This cannot arise after S1 step 2 (out-of-envelope revisions), but the rule is kept for completeness.
 - `episode` equals the context episode, with no prior-episode history (§4.7).
   - The record’s field is absent: `UnresolvedAdmissibility(Missing)`.
   - The context episode is `Unknown(causes)`: `UnresolvedAdmissibility(causes)`.
@@ -278,12 +296,20 @@ Coverage-cell gaps lie inside the envelope and are always relevant. A failure or
 
 | Dimension | Proves irrelevance when… |
 |---|---|
-| Record type | Stated and different (record type is immutable within a chain) |
-| Subject | Stated and different (subject is immutable; the envelope is key-closed) |
-| Sources | Stated and disjoint from the declared source set (corrections are same-source only) |
+| Record type | Stated and different |
+| Subject | Stated and different |
+| Sources | Stated and disjoint from the declared source set |
 | Value set, episode, encounter | **Never**: an authorized correction may move a record across them |
 
 An unstated dimension proves nothing. Everything not proven irrelevant is relevant, and irrelevant items are traced only.
+
+**Why this is consistent with S1.** Take any item whose stated record type, subject or source excludes it from the envelope, with dimensions as defined in 1.5. If it arrived, it could only be one of these:
+
+- an out-of-envelope revision, which is ignored (step 2);
+- a cross-boundary correction or retraction, which is rejected without changing its target (steps 3 and 6);
+- an item of another key or source, which is outside the envelope.
+
+None of these changes an envelope record. One residual effect remains. An envelope revision may reference such an item as its correction target while the item is absent. S1 then already reports that record as `UnresolvedRevision(Missing)`, which is always material. The item’s arrival can therefore only resolve an `Unresolved` result that already names the missing reference. It can never turn a `Known` result into `Unresolved` (case 55).
 
 ### 4.2 Resolution
 
@@ -372,6 +398,7 @@ These orderings exist only so expected traces and lists compare byte-for-byte. T
 |---|---|
 | `RecordKey` | `(source, localId)`, by Unicode code point |
 | `RevisionRef` | `(source, localId, revision)`, by code point. Revision order is **not** recency |
+| Conflicting-payload nodes | `RevisionRef#digest` (1.2), ordered by `RevisionRef` then digest |
 | Causes | Stage A §4.1 order: `Missing`, `Conflicting`, `Unavailable`, `Invalid`, `Inadmissible`, `InsufficientEvidence` |
 | Attribution entries | By cause order, then origin reference |
 | Gaps | Coverage cells (by source), then failures (by `id`), then rejected items (by `id`) |
@@ -562,14 +589,14 @@ All cases start from D0. Every row was traced manually through 1.5, 2.1 and 4.
 | 17 | Proven unauthorized correction | s1/r1@1 `Affirmed`; s1/r1@2 `Denied`, supersedes @1, `perm: []` | `Known(true, [s1/r1@1])` | True | @2 rejected `Unauthorized` | None |
 | 18 | Authority missing | As 17, but @2 `perm omitted` | `Unresolved{Missing}` @s1/r1 history | Unknown | Heads {@1, @2}; classes {Supporting, Refuting} | K1; `CorrectRecord` s1/r1 |
 | 19 | Authority malformed | As 17, but @2 `permissions: "yes"` | `Unresolved{Invalid}` @s1/r1 history | Unknown | Undeterminable, not unauthorized | K1; `CorrectRecord` s1/r1 |
-| 20 | Subject change attempted | s1/r20@1 `Affirmed`; s1/r20@2 supersedes @1, subject P2, `+amend` | `Unresolved{Invalid}` @s1/r20 | Unknown(Invalid) | @2 rejected `SubjectChanged`; possible {@1, excluded} | K1; `CorrectRecord` s1/r20 |
-| 21 | Record-type change attempted | As 20, but @2 recordType `demo-model/OtherAssessment@0.1` | `Unresolved{Invalid}` @s1/r20 | Unknown(Invalid) | `RecordTypeChanged` | K1; `CorrectRecord` s1/r20 |
-| 22 | Cross-source correction | s1/r1@1 `Affirmed`; s2/r21@1 supersedes s1/r1@1, `+amend` | `Unresolved{Invalid}` @s1/r1 | Unknown(Invalid) | s2/r21@1 rejected `CrossKeyCorrection` (key s2/r21: no record); s1/r1 possible {@1, excluded} | K1; `CorrectRecord` s1/r1 |
+| 20 | Subject change attempted | s1/r20@1 `Affirmed`; s1/r20@2 supersedes @1, subject P2, `+amend` | `Known(true, [s1/r20@1])` | True | @2 `OutOfEnvelopeRevision`, diagnostic on s1/r20; @1 unchanged | None |
+| 21 | Record-type change attempted | As 20, but @2 recordType `demo-model/OtherAssessment@0.1` | `Known(true, [s1/r20@1])` | True | @2 `OutOfEnvelopeRevision`; @1 unchanged | None |
+| 22 | Cross-source correction | s1/r1@1 `Affirmed`; s2/r21@1 supersedes s1/r1@1, `+amend` | `Known(true, [s1/r1@1])` | True | s2/r21@1 rejected `CrossKeyCorrection` (key s2/r21: no record); diagnostic on s1/r1; s1/r1 unchanged | None |
 | 23 | Same local ID, different sources | s1/r30@1 `Affirmed`; s2/r30@1 `Indeterminate` | `Known(true, [s1/r30@1])` | True | Two unrelated keys; no duplicate or payload conflict | None |
 | 24 | Corrected to another concept | s1/r8@1 `Affirmed`; s1/r8@2 supersedes @1, concept `item-y`, `+amend` | `Unresolved{Missing}` | Unknown(Missing) | r8 “corrected out of domain”; @1 is **not** evidence | K1 |
 | 25 | Correction changes scope | s1/r16@1 `Affirmed`; s1/r16@2 supersedes @1, `Affirmed`, encounter N0, `+amend` | `Unresolved{Inadmissible}` | Unknown | @2 `OtherEncounter` | K1 |
 | 26 | Missing correction target | s1/r9@2 `Affirmed`, supersedes s1/r9@1 (absent), `+amend` | `Unresolved{Missing}` @s1/r9 history | Unknown(Missing) | Addition `unknown`; contradictory attestation for cell s1 | K1; `CorrectRecord` s1/r9 |
-| 27 | Same identity, conflicting payloads | Two rows s1/r14@1: `Affirmed` and `Denied` | `Unresolved{Conflicting}` @s1/r14 | Unknown(Conflicting) | Independent of row order | K1; `CorrectRecord` s1/r14 |
+| 27 | Same identity, conflicting payloads | Two rows s1/r14@1: `Affirmed` and `Denied` | `Unresolved{Conflicting}` @s1/r14 | Unknown(Conflicting) | Nodes `s1/r14@1#<digest>` ×2; independent of row order | K1; `CorrectRecord` s1/r14 |
 | 28 | Fork | s1/r12@1 `Affirmed`; @2a (`Affirmed`, N1) and @2b (`Affirmed`, N0) both supersede @1, both `+amend` | `Unresolved{Conflicting}` @s1/r12 | Unknown(Conflicting) | Heads {@2a, @2b}; possible {Supporting, excluded} | K1; `CorrectRecord` s1/r12 |
 | 29 | Self-supersession | s1/r40@1 `Affirmed`, supersedes s1/r40@1, `+amend` | `Unresolved{Invalid}` @s1/r40 | Unknown(Invalid) | Edge defective; heads {@1}; not used as support | K1; `CorrectRecord` s1/r40 |
 | 30 | Correction cycle | Trace B | `Unresolved{Invalid}` @s1/r41 | Unknown(Invalid) | SCC {@2, @3} | K1; `CorrectRecord` s1/r41 |
@@ -606,6 +633,20 @@ All cases start from D0. Every row was traced manually through 1.5, 2.1 and 4.
 | 51 | Wrong-type reference: `establishes` is `c.assertion == AssertionKind.PatientReport`, or the predicate references a non-`Evidence<Boolean>` output | Compile error (cross-enum equality or binding type mismatch; §6.5, §10.4); no preview |
 | 52 | Nested criterion hole (`establishes` is a hole) | Preview marker; S1–S4 and `refutes` traces shown; no Need even with an empty snapshot; publication blocked |
 
+**E. Boundary consistency and payload identity** (D0 unless stated)
+
+| # | Case | Records / changes | `Evidence<Boolean>` | `Decision` | Trace must show | Need |
+|---|---|---|---|---|---|---|
+| 53 | Subject-labelled gap, revision absent | s1/r1@1 `Affirmed` (P1); failure f1 (DemoAssessment, P2, {s1}) | `Known(true, [s1/r1@1])` | True | f1 irrelevant (subject) | None |
+| 54 | The same gap’s revision present | s1/r1@1 `Affirmed` (P1); s1/r1@2 supersedes @1, subject P2, `+amend` | `Known(true, [s1/r1@1])` | True | @2 `OutOfEnvelopeRevision`. Same result as case 53: the irrelevance claim holds | None |
+| 55 | Missing target later found out of envelope | s1/r9@2 `Affirmed` (P1), supersedes s1/r9@1, which is absent; s1/r1@1 `Affirmed`; failure (DemoAssessment, P2, {s1}). Variant 55b: s1/r9@1 present with subject P2 | 55: `Unresolved{Missing}` @s1/r9 history. 55b: `Known(true, [s1/r1@1])` | 55: Unknown; 55b: True | 55b: @1 `OutOfEnvelopeRevision`; @2 rejected `SubjectChanged`; s1/r9 no record. The change only resolves the already-reported `Missing` | 55: K1, `CorrectRecord` s1/r9 |
+| 56 | Other-subject original in the same key | s1/r50@1 `Affirmed` (P1); s1/r50@x original (no `supersedes`), subject P2, `Denied` | `Known(true, [s1/r50@1])` | True | @x `OutOfEnvelopeRevision`; no fork | None |
+| 57 | Cross-source retraction | s1/r1@1 `Affirmed`; retraction (key s2/r60) targeting s1/r1@1, `+amend` | `Known(true, [s1/r1@1])` | True | `CrossKeyRetraction`; target unchanged | None |
+| 58 | Correction identity undeterminable | s1/r1@1 `Affirmed`; s1/r1@2 `Denied`, `supersedes` with `source` omitted, `+amend` | `Unresolved{Missing}` @s1/r1 history | Unknown(Missing) | Edge defective; heads {@1, @2}; not treated as cross-boundary | K1; `CorrectRecord` s1/r1 |
+| 59 | Duplicate rows differing only in acquisition provenance | Two rows s1/r1@1 `Affirmed`, acquisitions a1 and a2 | `Known(true, [s1/r1@1])` | True | One node; both provenances retained | None |
+| 60 | Same identity, payloads differ only in `author.permissions` | Two rows s1/r1@1 `Affirmed`: `perm: []` and `+amend` | `Unresolved{Conflicting}` @s1/r1 | Unknown(Conflicting) | Two digests; `author` participates in payload identity | K1; `CorrectRecord` s1/r1 |
+| 61 | Same identity, permissions in different order or repeated | Two rows s1/r1@1 `Affirmed`: permissions `[p, amend]` and `[amend, p, amend]` | `Known(true, [s1/r1@1])` | True | Same digest after set canonicalization | None |
+
 ### 7.5 Invariance checks
 
 These must hold for every case:
@@ -617,6 +658,8 @@ These must hold for every case:
 | Add a row with an existing `RevisionRef` but a different payload | **Changes** that key to `Conflicting` (case 27). Correct: it is new contradictory data, not a duplicate |
 | Add records of an undeclared source, another subject (not key-linked) or another record type | Unchanged; outside the envelope |
 | Add a failure proven irrelevant by a stated dimension | Unchanged result; one more irrelevant-gap trace entry |
+| Add the content of a gap proven irrelevant | Unchanged result (cases 53, 54), except that it may resolve a correction target already reported as `Missing` (case 55). Never `Known` → `Unresolved` |
+| Add a duplicate row differing only in acquisition provenance | Unchanged result (case 59) |
 | Add a key whose every possible current is out of domain, even with malformed history | Unchanged result (case 33) |
 | Rename revision IDs consistently within a key | Unchanged result; only the canonical order may differ |
 | Add a failure or statement with an unstated dimension inside the envelope | **May** block a `Known` result (cases 8, 40, 49). Correct: relevance or completeness is not established |
@@ -643,7 +686,7 @@ These must hold for every case:
 **Decisions proposed here.**
 
 1. Source-scoped identity: `RecordKey` = (source, localId); `RevisionRef` = (source, localId, revision), with opaque revision IDs.
-2. Chain boundary for this policy: type, subject and source are immutable; corrections and retractions are same-source only. Violations are proven-invalid malformed history (`Invalid` + `excluded`) and never silently supersede.
+2. Chain boundary for this policy: type, subject and source are immutable; corrections and retractions are same-source only. A proven violation is rejected without changing its target, keeps its diagnostic and adds no cause. Undeterminable identity or authority stays unresolved. Gap irrelevance by type, subject or source is consistent with S1, with the one residual effect stated in 4.1.
 3. The schematic authority rule `demo-policy/same-source-amend@1`, distinguishing authorized, proven unauthorized (rejected, no effect) and undeterminable authority (missing → `Missing`, malformed → `Invalid`, both outcomes possible).
 4. Deterministic S1: duplicate and payload-conflict handling, edge classification, cycle detection by strongly connected component, heads, retractions, and possible currents `H ∪ {excluded, unknown}`. No current revision is invented.
 5. A key-closed input envelope over a declared finite source set.
@@ -652,19 +695,19 @@ These must hold for every case:
 8. `explicit-assertion-v0` as one strict demonstration policy, with symmetric gap blocking and the materiality and cause-accumulation rules.
 9. Need identity, the `ResolveConflict` example, deferred `CorrectRecord` fulfillment and no Need under unresolved scope.
 10. Canonical ordering for representation only.
+11. Payload identity: all fields except `key`, `revision` and `provenance`, in canonical JSON with set fields normalized. The SHA-256 digest decides duplicate versus conflict and names conflicting nodes in traces.
 
 **Possible conflicts needing a Stage A amendment.** None found. Items to confirm:
 
 - (a) The disjointness obligation relies on §6.5’s enum analysis being mandatory for this policy.
 - (b) Using `ref` for every dependency follows the minimal model’s proposed narrowing of §2.2, which is not yet accepted.
-- (c) Contradictory coverage attestations add `InsufficientEvidence`, not `Conflicting`, because Stage A uses `Conflicting` for contradictory clinical evidence and attestations are not patient observations. The contradiction is visible as a diagnostic. If reviewers want `Conflicting` here, that is a cause-vocabulary decision for Stage A.
+- (c) Under this policy, a cell with contradictory coverage attestations is a gap with cause `InsufficientEvidence`, and the contradiction is kept as a diagnostic. No new cause is introduced.
 
 **Query/predicate split.** The query carries the reasoning. A projection-only Predicate is optional naming and composition structure. No node kind is added or removed.
 
-**Remaining semantic ambiguity before conformance fixtures.** The policy semantics now define an outcome for every listed history and coverage combination. Three items remain:
+**Remaining semantic ambiguity before conformance fixtures.** None known in the policy semantics. Gap relevance, S1 boundary handling, payload identity and coverage combination now define one outcome for every listed input. Two items remain:
 
-1. **Revision node identity for conflicting payloads.** Case 27 has two nodes sharing one `RevisionRef`. Fixtures need a canonical way to name them in traces, e.g. a payload digest suffix; this is representation, not semantics.
-2. **Payload-digest canonicalization.** “Identical payload” needs a defined canonical JSON form (key order, number formatting) so independent implementations agree on duplicate detection.
-3. **`CorrectRecord` fulfillment (`fulfilled_by`, §7)** remains deferred. Cases verify emission only.
+1. **`CorrectRecord` fulfillment (`fulfilled_by`, §7)** remains deferred. Cases verify emission only.
+2. **Digest encoding detail.** The canonical form is fixed for every field `DemoAssessment` uses. A future record type with numeric fields would need a number-canonicalization rule before it could use this policy.
 
-**Next smallest task.** Fix items 1–2 as a short canonicalization note, then write the conformance fixtures for `explicit-assertion-v0` from sections 7.1–7.5.
+**Next smallest task.** Write the conformance fixtures for `explicit-assertion-v0` from sections 7.1–7.5.
