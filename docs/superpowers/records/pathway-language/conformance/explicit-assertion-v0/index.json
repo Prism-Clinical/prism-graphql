@@ -267,6 +267,15 @@
     ],
     "84": [
       "EA-084"
+    ],
+    "85": [
+      "EA-085"
+    ],
+    "86": [
+      "EA-086"
+    ],
+    "87": [
+      "EA-087"
     ]
   },
   "pairs": [
@@ -372,6 +381,14 @@
         "EA-080"
       ],
       "claim": "An authorized retraction also makes the payload conflict historical; the key becomes Retracted"
+    },
+    {
+      "fixtures": [
+        "EA-085",
+        "EA-086",
+        "EA-087"
+      ],
+      "claim": "Retracting a correction whose authority is unknown keeps the supersession uncertainty (Unresolved, possible {@1, excluded}); with known authority the key is Retracted (no reinstatement), and with known lack of authority @1 is Current"
     }
   ]
 }

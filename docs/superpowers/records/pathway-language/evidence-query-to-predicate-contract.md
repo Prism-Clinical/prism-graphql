@@ -2,7 +2,7 @@
 
 **Status:** Proposed design draft. **Not** accepted, not finalized syntax, not a schema and not implemented. It contains no clinical content: the record type, enum values, codes, sources and permission below are fictional and illustrate language behavior only. They do not map to dysphagia, progression, urgency or any other clinical definition.
 
-**Date:** 2026-10-03. **Revised:** 2026-10-03, eight times, after review. The third revision fixed three things:
+**Date:** 2026-10-03. **Revised:** 2026-10-03, nine times, after review. The third revision fixed three things:
 
 - revision-chain boundaries: source-scoped identity, same-source corrections and one fully specified schematic authority rule;
 - deterministic outcomes for malformed history;
@@ -13,6 +13,8 @@ The fourth revision made three changes:
 - Proven cross-boundary corrections and retractions are now rejected without changing their target. This keeps gap irrelevance consistent with S1.
 - Payload identity for duplicate detection is defined.
 - An unsupported justification about coverage attestations is removed.
+
+The ninth revision corrects one condition from the eighth. An undeterminable correction stays active while its target remains a head, even after the correcting revision is retracted (cases 85–87).
 
 The eighth revision resolves each S1 defect by its own condition against the final heads, rather than by whether any revision it involves survives. For example, a fork whose competing branch is validly retracted becomes historical (cases 81–84).
 
@@ -235,6 +237,7 @@ S1 runs per `RecordKey` over a finite graph and always terminates. Its cycle det
 | Target fields absent / malformed | The retraction cannot be attributed; it is a rejected item (`Missing` / `Invalid` gap) whose dimensions are its known fields |
 | Target in another key than the retraction’s own `key` (all fields present) | Proven cross-boundary. Rejected and preserved (`CrossKeyRetraction`); no cause; target unchanged, diagnostic attached |
 | Target is an out-of-envelope revision (step 2) | No effect on this query; traced |
+| Target is a rejected revision (unauthorized or cross-boundary, step 3) | No effect; traced |
 | Target key not in the envelope | Traced only |
 | Target revision absent | `Missing` + `excluded` |
 | Unauthorized | Rejected, preserved, no effect |
@@ -248,7 +251,7 @@ S1 runs per `RecordKey` over a finite graph and always terminates. Its cycle det
 |---|---|
 | `PayloadConflict` | The conflicted revision is in *H* |
 | Fork (recorded at step 5) | At least two of the fork’s branch heads are still in *H* |
-| Undeterminable correction edge (authority or boundary undeterminable) | Both its source and its target are in *H*. The open question is whether the source supersedes the target; once either is otherwise removed, the question cannot affect the result |
+| Undeterminable correction edge (authority or boundary undeterminable) | Its **target** is in *H* (computed with this edge ignored). The open question is whether the target was superseded, and removing the source does not answer it: if the correction was valid, the target stays superseded even after the source is retracted, because a retraction never reinstates. If the source was removed by a valid retraction, the defect also adds `excluded`, for the branch in which the target was superseded and nothing remains. If the source was superseded by a valid later correction, that successor is already in *H* |
 | Correction edge whose target cannot be identified (absent or malformed reference) or is absent from the snapshot (`unknown`) | Its source is in *H* |
 | Self-supersession | The revision is in *H* |
 | Cycle | Any revision of the cycle is in *H*. Which member superseded which is unknown, and a retraction never reinstates, so one surviving member is still ambiguous |
@@ -270,6 +273,9 @@ Otherwise a defect is **historical**: it stays in the trace as a diagnostic (`Hi
 | Fork (`Affirmed` vs `Denied` branches); authorized retraction removes the `Denied` branch | The fork is historical: one branch head remains, so the result can be `Current` | 81 (before: 84) |
 | As 81, but the retraction is unauthorized | Still active: the retraction is rejected and both branches remain | 82 |
 | As 81, but the retraction’s authority is missing | Still active: both branches remain, and the retraction defect is active too | 83 |
+| Correction with unknown authority; the correcting revision is then validly retracted | Still active: if the correction was authorized, the target stays superseded (no reinstatement); if not, the target is current. Possible {target, excluded} | 85 |
+| As 85, but the correction is known to be authorized | No defect: the target was superseded and its successor retracted, so the key is `Retracted` | 86 |
+| As 85, but the correction is known to be unauthorized | No defect: the correction is rejected (and its retraction has no effect), so the target is `Current` | 87 |
 
 Historical defects remain in the trace as `HistoricalDefect` diagnostics, with their variants, original cause and reason. They are never listed among the result’s causes or attributions.
 
@@ -747,6 +753,9 @@ All cases start from D0. Every row was traced manually through 1.5, 2.1 and 4.
 | 82 | Fork with an unauthorized retraction | As 81, but x1 `perm: []` | `Unresolved{Conflicting}` @s1/r1 | Unknown(Conflicting) | x1 rejected `Unauthorized`; heads {@2a, @2b}; `Fork` active | K1; `CorrectRecord` s1/r1 |
 | 83 | Fork with retraction authority missing | As 81, but x1 `perm omitted` | `Unresolved{Missing, Conflicting}` @s1/r1 | Unknown | `Fork` and `RetractionAuthorityMissing` both active; possible {@2a, @2b, excluded} | K1; `CorrectRecord` s1/r1 |
 | 84 | Before-state for case 81 | As 81 without the retraction | `Unresolved{Conflicting}` @s1/r1 | Unknown(Conflicting) | `Fork`; possible classes {Supporting, Refuting} | K1; `CorrectRecord` s1/r1 |
+| 85 | Retracted correction with unknown authority | s1/r1@1 `Affirmed`; s1/r1@2 `Denied`, supersedes @1, `perm omitted`; retraction x2 of @2, `+amend` | `Unresolved{Missing}` @s1/r1 | Unknown(Missing) | `CorrectionAuthorityMissing` active; possible {@1, excluded}. **Not** `Known(true)` | K1; `CorrectRecord` s1/r1 |
+| 86 | Control: known-authorized correction, then retracted | As 85, but @2 `+amend` | `Unresolved{Missing}` | Unknown(Missing) | @1 superseded; @2 retracted; key `Retracted`; no reinstatement | K1 |
+| 87 | Control: known-unauthorized correction, then retracted | As 85, but @2 `perm: []` | `Known(true, [s1/r1@1])` | True | @2 rejected `Unauthorized`; x2 has no effect | None |
 
 ### 7.5 Invariance checks
 
@@ -810,7 +819,7 @@ These must hold for every case:
 
 **Query/predicate split.** The query carries the reasoning. A projection-only Predicate is optional naming and composition structure. No node kind is added or removed.
 
-**Conformance fixtures.** [conformance/explicit-assertion-v0/](conformance/explicit-assertion-v0/README.md) holds machine-readable fixtures for cases 1–84, mapped by case number, with expected outputs written from this contract. They are proposed, like this document.
+**Conformance fixtures.** [conformance/explicit-assertion-v0/](conformance/explicit-assertion-v0/README.md) holds machine-readable fixtures for cases 1–87, mapped by case number, with expected outputs written from this contract. They are proposed, like this document.
 
 **Remaining items.**
 
