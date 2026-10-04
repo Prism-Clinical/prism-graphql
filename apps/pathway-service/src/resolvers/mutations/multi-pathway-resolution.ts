@@ -47,6 +47,16 @@ import { buildEffectivePatientContext, mergeAdditionalContext } from '../../serv
 import { firstTrustAssertion, normalizeContextEntryNulls } from '../../services/resolution/temporal/trust-mode';
 import type { AdditionalContextInput } from './resolution';
 import { setPlanNode } from './resolution';
+import { randomUUID } from 'crypto';
+import {
+  PLAN_ITEM_KINDS,
+  WRITE_IN,
+  cleanFields,
+  planEditProblem,
+  type PlanEdit,
+  type PlanItemKind,
+  type PlanNodeRef,
+} from '../../services/resolution/pipeline/plan-edits';
 import {
   candidatePathwayIds,
   MergedCarePlan,
@@ -244,6 +254,7 @@ export const multiPathwayResolutionMutations = {
       additionalContext: {},
       temporalContext,
       conflictResolutions: {},
+      planEdits: {},
       children: surviving.map((m) => ({
         sessionId: '',
         pathwayId: m.pathway.id,
@@ -409,7 +420,19 @@ export const multiPathwayResolutionMutations = {
       [args.sessionId],
     );
     const sessionOf = new Map(children.rows.map((r) => [String(r.pathway_id), String(r.id)]));
+    // A line the provider ADDED has no node: its reference is the write-in
+    // pathway and the edit id. Removing it deletes the addition (there is
+    // nothing of the pathway's to restore).
+    const additions = args.items.filter((i) => i.pathwayId === WRITE_IN).map((i) => i.nodeId);
+    if (additions.length > 0 && args.action === 'REMOVE') {
+      await commitRun(context.pool, args.sessionId, (r) => {
+        const inputs = runInputsOf(r);
+        for (const id of additions) delete inputs.planEdits[id];
+        return { inputs, events: [] };
+      });
+    }
     for (const item of args.items) {
+      if (item.pathwayId === WRITE_IN) continue;
       const childId = sessionOf.get(item.pathwayId);
       if (!childId) {
         throw new GraphQLError(
@@ -426,6 +449,69 @@ export const multiPathwayResolutionMutations = {
     }
     const session = await getMultiPathwaySession(context.pool, args.sessionId);
     return session ? formatSessionForGraphQL(session) : null;
+  },
+
+  /**
+   * The provider edits a line of the plan as free text (a dose, a follow-up
+   * interval, a guidance note). `fields: null` withdraws the edit — the line
+   * reads as the pathway wrote it again. An edit of a line the provider added
+   * changes the addition itself.
+   */
+  async editPlanItem(
+    _parent: unknown,
+    args: { sessionId: string; items: PlanNodeRef[]; kind: string; fields?: Record<string, unknown> | null },
+    context: DataSourceContext,
+  ) {
+    const kind = planItemKind(args.kind);
+    const refs = args.items.map(({ pathwayId, nodeId }) => ({ pathwayId, nodeId }));
+    if (refs.length === 0) invalidPlanEdit('items is empty — pass the line\'s sourceNodes');
+    const addition = refs.find((r) => r.pathwayId === WRITE_IN);
+    const fields = args.fields ? cleanFields(args.fields) : null;
+    if (args.fields) {
+      const problem = planEditProblem(addition ? 'ADD' : 'EDIT', kind, args.fields);
+      if (problem) invalidPlanEdit(problem);
+    }
+    const run = await commitRun(context.pool, args.sessionId, (r) => {
+      const inputs = runInputsOf(r);
+      if (addition) {
+        const existing = inputs.planEdits[addition.nodeId];
+        if (!existing) invalidPlanEdit(`No added line "${addition.nodeId}" in this session`);
+        if (fields) inputs.planEdits[addition.nodeId] = { ...existing, fields, at: existing.at };
+        return { inputs, events: [] };
+      }
+      // One edit per line: an edit that shares a node with this one is replaced.
+      for (const [id, e] of Object.entries(inputs.planEdits)) {
+        if (e.action === 'EDIT' && (e.target ?? []).some((t) => refs.some((x) => x.pathwayId === t.pathwayId && x.nodeId === t.nodeId))) {
+          delete inputs.planEdits[id];
+        }
+      }
+      if (fields) {
+        const edit: PlanEdit = { id: randomUUID(), action: 'EDIT', itemKind: kind, target: refs, fields, by: context.userId, at: new Date().toISOString() };
+        inputs.planEdits[edit.id] = edit;
+      }
+      return { inputs, events: [] };
+    });
+    return formatSessionForGraphQL(run.parent);
+  },
+
+  /** The provider adds a line no pathway produced. An added medication is safety-checked like any write-in. */
+  async addPlanItem(
+    _parent: unknown,
+    args: { sessionId: string; kind: string; fields: Record<string, unknown> },
+    context: DataSourceContext,
+  ) {
+    const kind = planItemKind(args.kind);
+    const problem = planEditProblem('ADD', kind, args.fields ?? {});
+    if (problem) invalidPlanEdit(problem);
+    const edit: PlanEdit = {
+      id: randomUUID(), action: 'ADD', itemKind: kind, fields: cleanFields(args.fields), by: context.userId, at: new Date().toISOString(),
+    };
+    const run = await commitRun(context.pool, args.sessionId, (r) => {
+      const inputs = runInputsOf(r);
+      inputs.planEdits[edit.id] = edit;
+      return { inputs, events: [] };
+    });
+    return formatSessionForGraphQL(run.parent);
   },
 
   /**
@@ -576,6 +662,16 @@ export const multiPathwayResolutionMutations = {
 
 // ─── Query resolvers (exported separately for Query.ts) ─────────────
 
+function invalidPlanEdit(message: string): never {
+  throw new GraphQLError(message, { extensions: { code: 'INVALID_PLAN_EDIT' } });
+}
+
+function planItemKind(raw: string): PlanItemKind {
+  const kind = String(raw).toLowerCase() as PlanItemKind;
+  if (!PLAN_ITEM_KINDS.includes(kind)) invalidPlanEdit(`Unknown plan item kind "${raw}"`);
+  return kind;
+}
+
 export const multiPathwayResolutionQueries = {
   async multiPathwayResolutionSession(
     _: unknown,
@@ -650,6 +746,33 @@ export const multiPathwayResolutionTypeResolvers = {
       return parent.contributingPathwayIds
         .map((id) => byId.get(id))
         .filter((row): row is Record<string, unknown> => row !== undefined);
+    },
+
+    /**
+     * The provider's edits and additions, each with whether it currently
+     * applies: an edit whose line the pathways no longer produce is listed as
+     * not applying, never dropped.
+     */
+    planChanges: (parent: { planEdits?: Record<string, PlanEdit>; mergedPlan: { [k: string]: unknown } }) => {
+      const edits = Object.values(parent.planEdits ?? {});
+      if (edits.length === 0) return [];
+      const lines = ['medications', 'labs', 'imaging', 'procedures', 'guidance', 'schedules']
+        .flatMap((k) => (parent.mergedPlan[k] as Array<{ sourceNodes?: PlanNodeRef[] }> | undefined) ?? []);
+      const present = new Set(lines.flatMap((l) => (l.sourceNodes ?? []).map((n) => `${n.pathwayId}|${n.nodeId}`)));
+      return edits
+        .sort((a, b) => (a.at < b.at ? -1 : 1))
+        .map((e) => ({
+          id: e.id,
+          action: e.action,
+          kind: e.itemKind.toUpperCase(),
+          items: e.action === 'ADD' ? [{ pathwayId: WRITE_IN, nodeId: e.id }] : e.target ?? [],
+          fields: e.fields,
+          // An added order the pathways already carry is folded into their
+          // line; only an added medication can be withheld (by a safety check).
+          applies: e.action === 'ADD'
+            ? present.has(`${WRITE_IN}|${e.id}`) || e.itemKind !== 'medication'
+            : (e.target ?? []).some((t) => present.has(`${t.pathwayId}|${t.nodeId}`)),
+        }));
     },
 
     /**
@@ -924,6 +1047,7 @@ export function formatSessionForGraphQL(s: MultiPathwayResolutionSession) {
     envFingerprint: s.envFingerprint,
     isPreview: s.isPreview,
     mergedPlan: formatMergedForGraphQL(s.mergedPlan),
+    planEdits: s.planEdits ?? {},
     contributingSessionIds: s.contributingSessionIds,
     contributingPathwayIds: s.contributingPathwayIds,
     carePlanId: s.carePlanId,

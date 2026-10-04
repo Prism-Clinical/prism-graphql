@@ -17,6 +17,7 @@ import type { Db } from './session-store';
 
 // ─── Types ──────────────────────────────────────────────────────────
 
+import type { PlanEdits } from './pipeline/plan-edits';
 export type MultiPathwaySessionStatus = 'ACTIVE' | 'COMPLETED' | 'ABANDONED';
 
 export interface MultiPathwayResolutionSession {
@@ -47,6 +48,8 @@ export interface MultiPathwayResolutionSession {
   contributingPathwayIds: string[];
   mergedPlan: MergedCarePlan;
   conflictResolutions: Record<string, ConflictResolution>;
+  /** The provider's edits and additions to the plan (migration 069). */
+  planEdits: PlanEdits;
   carePlanId: string | null;
   /** Phase 4: DDI warnings (MODERATE) — pre-merge + cross-recommendation. */
   ddiWarnings: unknown[];
@@ -210,6 +213,7 @@ export interface NewRun {
   temporalContext: EvaluationTemporalContext;
   additionalContext: Partial<AdditionalContextInput>;
   conflictResolutions: Record<string, ConflictResolution>;
+  planEdits?: PlanEdits;
   result: RunResult;
 }
 
@@ -220,6 +224,7 @@ const param = (v: unknown): unknown => (v !== null && typeof v === 'object' ? JS
 export function runColumns(args: {
   additionalContext: Partial<AdditionalContextInput>;
   conflictResolutions: Record<string, ConflictResolution>;
+  planEdits?: PlanEdits;
   result: RunResult;
   status: MultiPathwaySessionStatus;
 }): Record<string, unknown> {
@@ -227,6 +232,7 @@ export function runColumns(args: {
     status: args.status,
     additional_context: args.additionalContext,
     conflict_resolutions: args.conflictResolutions,
+    plan_edits: args.planEdits ?? {},
     merged_plan: args.result.mergedPlan,
     ddi_warnings: args.result.ddiWarnings,
     readiness: args.result.readiness,
@@ -286,6 +292,7 @@ export async function writeRunEvaluation(
     expectedRevision: number;
     additionalContext: Partial<AdditionalContextInput>;
     conflictResolutions: Record<string, ConflictResolution>;
+    planEdits?: PlanEdits;
     result: RunResult;
     status: MultiPathwaySessionStatus;
   },
@@ -339,6 +346,7 @@ export function runRowToSession(row: Record<string, unknown>): MultiPathwayResol
     contributingPathwayIds: (row.contributing_pathway_ids as string[]) ?? [],
     mergedPlan: row.merged_plan as MergedCarePlan,
     conflictResolutions: (row.conflict_resolutions as Record<string, ConflictResolution>) ?? {},
+    planEdits: (row.plan_edits as PlanEdits) ?? {},
     carePlanId: (row.care_plan_id as string) ?? null,
     ddiWarnings: (row.ddi_warnings as unknown[]) ?? [],
     // pg parses JSONB already; `?? undefined` maps SQL NULL to undefined.

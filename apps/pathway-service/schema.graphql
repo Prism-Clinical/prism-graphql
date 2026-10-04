@@ -644,6 +644,22 @@ input PlanNodeRefInput {
 
 enum PlanItemAction { REMOVE RESTORE }
 
+enum PlanItemKind { MEDICATION LAB IMAGING PROCEDURE GUIDANCE SCHEDULE }
+
+"""
+One change the provider made to the plan: an EDIT of a line the pathways
+produced, or an ADD of a line they did not. `applies` is false for an edit
+whose line is no longer in the plan.
+"""
+type PlanChange {
+  id: ID!
+  action: String!
+  kind: PlanItemKind!
+  items: [PlanNodeRef!]!
+  fields: JSON!
+  applies: Boolean!
+}
+
 """A line the provider took out of the plan."""
 type ProviderRemoval {
   pathwayId: ID!
@@ -980,6 +996,8 @@ type MultiPathwayResolutionSession {
   pendingGateQuestions: [MultiPathwayPendingGate!]!
   """Lines the provider removed from the plan, each restorable with `setPlanItems`."""
   providerRemovals: [ProviderRemoval!]!
+  """The provider's edits and additions to the plan."""
+  planChanges: [PlanChange!]!
   createdAt: String!
   updatedAt: String!
 }
@@ -1943,6 +1961,25 @@ type Mutation {
   `items` are the line's `sourceNodes`. The run is re-evaluated and returned.
   """
   setPlanItems(sessionId: ID!, items: [PlanNodeRefInput!]!, action: PlanItemAction!, reason: String): MultiPathwayResolutionSession!
+
+  """
+  Edit a plan line as free text. `items` are the line's `sourceNodes`. Editable
+  fields — MEDICATION: dose, frequency, route, duration; GUIDANCE: topic,
+  instructions; SCHEDULE: interval, description. A lab, image or procedure is
+  changed by removing it and adding the order wanted. `fields: null` withdraws
+  the edit. The run is re-evaluated and returned.
+  """
+  editPlanItem(sessionId: ID!, items: [PlanNodeRefInput!]!, kind: PlanItemKind!, fields: JSON): MultiPathwayResolutionSession!
+
+  """
+  Add a line no pathway produced. Fields — MEDICATION: name, dose, frequency,
+  route, duration; LAB: name, code, system, specimen; IMAGING: name, modality,
+  bodyRegion, code, system; PROCEDURE: name, code, system; GUIDANCE: topic,
+  instructions; SCHEDULE: interval, description. The first is required. An
+  added medication is safety-checked like any write-in. Remove an added line
+  with `setPlanItems` REMOVE and its `sourceNodes`.
+  """
+  addPlanItem(sessionId: ID!, kind: PlanItemKind!, fields: JSON!): MultiPathwayResolutionSession!
 
   """
   Add facts to an encounter in progress — a diagnosis made during the visit, a

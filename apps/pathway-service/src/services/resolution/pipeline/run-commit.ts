@@ -67,6 +67,7 @@ export async function writeRun(db: Db, run: Run, ev: RunEvaluation, request: Run
     expectedRevision: run.parent.revision,
     additionalContext: ev.inputs.additionalContext,
     conflictResolutions: ev.inputs.conflictResolutions,
+    planEdits: ev.inputs.planEdits ?? {},
     result: ev.result,
     status,
   });

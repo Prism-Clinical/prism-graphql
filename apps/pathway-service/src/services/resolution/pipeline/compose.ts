@@ -22,6 +22,8 @@ import { pairSafety, patientSafety } from './safety';
 import type { EvaluationResult, RunBlocker, RunChildResult, RunResult } from './types';
 
 /** One child of a run, evaluated at CONTRIBUTION scope. */
+import { WRITE_IN, addedMedications, applyPlanEdits, type PlanEdits } from './plan-edits';
+
 export interface Contribution {
   pathwayId: string;
   /** '' before the child row exists (start). */
@@ -33,14 +35,15 @@ export interface ComposeContext {
   /** The run's effective patient: the parent's initial context plus its additions (D5). */
   patient: PatientContext;
   conflictResolutions: Record<string, ConflictResolution>;
+  /** The provider's edits and additions to the plan; absent = none. */
+  planEdits?: PlanEdits;
   /** The run's one safety reference (C4). */
   safety: SafetyReference;
   meta: Map<string, PathwayMeta>;
   envFingerprint: string;
 }
 
-/** The pathway id the merge has always given a provider's write-in. */
-export const WRITE_IN = 'provider-override';
+export { WRITE_IN };
 
 /**
  * A recommendation's identity across a run. Node ids are local to a pathway —
@@ -116,7 +119,10 @@ export function composeRun(contributions: Contribution[], ctx: ComposeContext): 
 
   // 2. Merge. 3. Select, from the base merge — never appended (review #6).
   const base = mergeResolvedCarePlans(plans);
-  const selection = selectConflicts(base, ctx.conflictResolutions);
+  const selected = selectConflicts(base, ctx.conflictResolutions);
+  // Medications the provider added are write-ins: checked by stages 4 and 5 like a conflict write-in.
+  const planEdits = ctx.planEdits ?? {};
+  const selection = { ...selected, medications: [...selected.medications, ...addedMedications(planEdits)] };
   const candidateOf = (m: MergedRecommendation<ResolvedMedication>): DdiCandidate =>
     ({ recommendationId: recommendationKey(m.recommendation), drugName: m.recommendation.name });
   const byKey = new Map(selection.medications.map((m) => [recommendationKey(m.recommendation), m]));
@@ -146,7 +152,7 @@ export function composeRun(contributions: Contribution[], ctx: ComposeContext): 
       relatedNodeIds: [],
     })),
   ];
-  const mergedPlan: MergedCarePlan = {
+  const mergedPlan: MergedCarePlan = applyPlanEdits({
     ...base,
     medications,
     conflicts: selection.conflicts,
@@ -154,7 +160,7 @@ export function composeRun(contributions: Contribution[], ctx: ComposeContext): 
       ...base.suppressed,
       ...[...contributionSuppressed, ...rootSuppressed].sort((a, b) => byString(canonicalJson(a), canonicalJson(b))),
     ],
-  };
+  }, planEdits).plan;
   if (mergedPlan.medications.length + mergedPlan.labs.length + mergedPlan.procedures.length === 0) {
     blockers.push({
       scope: 'OUTPUT',

@@ -954,6 +954,8 @@ export type MultiPathwayResolutionSession = {
    * answer returns.
    */
   pendingGateQuestions: Array<MultiPathwayPendingGate>;
+  /** The provider's edits and additions to the plan. */
+  planChanges: Array<PlanChange>;
   providerId: Scalars['ID']['output'];
   /** Lines the provider removed from the plan, each restorable with `setPlanItems`. */
   providerRemovals: Array<ProviderRemoval>;
@@ -1009,6 +1011,15 @@ export type Mutation = {
   addEncounterContext: MultiPathwayResolutionSession;
   addPatientContext: ResolutionSession;
   /**
+   * Add a line no pathway produced. Fields — MEDICATION: name, dose, frequency,
+   * route, duration; LAB: name, code, system, specimen; IMAGING: name, modality,
+   * bodyRegion, code, system; PROCEDURE: name, code, system; GUIDANCE: topic,
+   * instructions; SCHEDULE: interval, description. The first is required. An
+   * added medication is safety-checked like any write-in. Remove an added line
+   * with `setPlanItems` REMOVE and its `sourceNodes`.
+   */
+  addPlanItem: MultiPathwayResolutionSession;
+  /**
    * Answer whatever the session is waiting on at a node: a question gate, an
    * escalated request for a datum the pathway needed, or a branch choice at a
    * DecisionPoint whose branches could not be told apart by the data.
@@ -1030,6 +1041,14 @@ export type Mutation = {
   deleteSignalDefinition: Scalars['Boolean']['output'];
   /** Delete a saved simulator scenario. Returns true when a row was removed. */
   deleteSimulatorScenario: Scalars['Boolean']['output'];
+  /**
+   * Edit a plan line as free text. `items` are the line's `sourceNodes`. Editable
+   * fields — MEDICATION: dose, frequency, route, duration; GUIDANCE: topic,
+   * instructions; SCHEDULE: interval, description. A lab, image or procedure is
+   * changed by removing it and adding the order wanted. `fields: null` withdraws
+   * the edit. The run is re-evaluated and returned.
+   */
+  editPlanItem: MultiPathwayResolutionSession;
   /**
    * Materialize the plan the provider reviewed. `reviewedResultHash` is the
    * session's `resultHash` at review time; if re-evaluation now produces a
@@ -1146,6 +1165,13 @@ export type MutationAddPatientContextArgs = {
 };
 
 
+export type MutationAddPlanItemArgs = {
+  fields: Scalars['JSON']['input'];
+  kind: PlanItemKind;
+  sessionId: Scalars['ID']['input'];
+};
+
+
 export type MutationAnswerPendingDecisionArgs = {
   answer: GateAnswerInput;
   nodeId: Scalars['ID']['input'];
@@ -1175,6 +1201,14 @@ export type MutationDeleteSignalDefinitionArgs = {
 
 export type MutationDeleteSimulatorScenarioArgs = {
   id: Scalars['ID']['input'];
+};
+
+
+export type MutationEditPlanItemArgs = {
+  fields?: InputMaybe<Scalars['JSON']['input']>;
+  items: Array<PlanNodeRefInput>;
+  kind: PlanItemKind;
+  sessionId: Scalars['ID']['input'];
 };
 
 
@@ -1516,9 +1550,33 @@ export type PendingQuestionType = {
   tentativeReasoning?: Maybe<Scalars['String']['output']>;
 };
 
+/**
+ * One change the provider made to the plan: an EDIT of a line the pathways
+ * produced, or an ADD of a line they did not. `applies` is false for an edit
+ * whose line is no longer in the plan.
+ */
+export type PlanChange = {
+  __typename?: 'PlanChange';
+  action: Scalars['String']['output'];
+  applies: Scalars['Boolean']['output'];
+  fields: Scalars['JSON']['output'];
+  id: Scalars['ID']['output'];
+  items: Array<PlanNodeRef>;
+  kind: PlanItemKind;
+};
+
 export enum PlanItemAction {
   Remove = 'REMOVE',
   Restore = 'RESTORE'
+}
+
+export enum PlanItemKind {
+  Guidance = 'GUIDANCE',
+  Imaging = 'IMAGING',
+  Lab = 'LAB',
+  Medication = 'MEDICATION',
+  Procedure = 'PROCEDURE',
+  Schedule = 'SCHEDULE'
 }
 
 export type PlanNodeRef = {
@@ -2572,7 +2630,9 @@ export type ResolversTypes = ResolversObject<{
   PathwayStatusResult: ResolverTypeWrapper<PathwayStatusResult>;
   PatientContextInput: PatientContextInput;
   PendingQuestionType: ResolverTypeWrapper<PendingQuestionType>;
+  PlanChange: ResolverTypeWrapper<PlanChange>;
   PlanItemAction: PlanItemAction;
+  PlanItemKind: PlanItemKind;
   PlanNodeRef: ResolverTypeWrapper<PlanNodeRef>;
   PlanNodeRefInput: PlanNodeRefInput;
   PropagationConfigInput: PropagationConfigInput;
@@ -2702,6 +2762,7 @@ export type ResolversParentTypes = ResolversObject<{
   PathwayStatusResult: PathwayStatusResult;
   PatientContextInput: PatientContextInput;
   PendingQuestionType: PendingQuestionType;
+  PlanChange: PlanChange;
   PlanNodeRef: PlanNodeRef;
   PlanNodeRefInput: PlanNodeRefInput;
   PropagationConfigInput: PropagationConfigInput;
@@ -3144,6 +3205,7 @@ export type MultiPathwayResolutionSessionResolvers<ContextType = DataSourceConte
   mergedPlan?: Resolver<ResolversTypes['MergedCarePlan'], ParentType, ContextType>;
   patientId?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
   pendingGateQuestions?: Resolver<Array<ResolversTypes['MultiPathwayPendingGate']>, ParentType, ContextType>;
+  planChanges?: Resolver<Array<ResolversTypes['PlanChange']>, ParentType, ContextType>;
   providerId?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
   providerRemovals?: Resolver<Array<ResolversTypes['ProviderRemoval']>, ParentType, ContextType>;
   resultHash?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
@@ -3174,12 +3236,14 @@ export type MutationResolvers<ContextType = DataSourceContext, ParentType extend
   addAdminEvidence?: Resolver<ResolversTypes['AdminEvidenceEntry'], ParentType, ContextType, RequireFields<MutationAddAdminEvidenceArgs, 'input'>>;
   addEncounterContext?: Resolver<ResolversTypes['MultiPathwayResolutionSession'], ParentType, ContextType, RequireFields<MutationAddEncounterContextArgs, 'additionalContext' | 'sessionId'>>;
   addPatientContext?: Resolver<ResolversTypes['ResolutionSession'], ParentType, ContextType, RequireFields<MutationAddPatientContextArgs, 'additionalContext' | 'sessionId'>>;
+  addPlanItem?: Resolver<ResolversTypes['MultiPathwayResolutionSession'], ParentType, ContextType, RequireFields<MutationAddPlanItemArgs, 'fields' | 'kind' | 'sessionId'>>;
   answerPendingDecision?: Resolver<ResolversTypes['ResolutionSession'], ParentType, ContextType, RequireFields<MutationAnswerPendingDecisionArgs, 'answer' | 'nodeId' | 'sessionId'>>;
   archivePathway?: Resolver<ResolversTypes['PathwayStatusResult'], ParentType, ContextType, RequireFields<MutationArchivePathwayArgs, 'id'>>;
   createSignalDefinition?: Resolver<ResolversTypes['SignalDefinitionType'], ParentType, ContextType, RequireFields<MutationCreateSignalDefinitionArgs, 'input'>>;
   deletePreviewSession?: Resolver<ResolversTypes['DeletePreviewSessionResult'], ParentType, ContextType, RequireFields<MutationDeletePreviewSessionArgs, 'sessionId'>>;
   deleteSignalDefinition?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationDeleteSignalDefinitionArgs, 'id'>>;
   deleteSimulatorScenario?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationDeleteSimulatorScenarioArgs, 'id'>>;
+  editPlanItem?: Resolver<ResolversTypes['MultiPathwayResolutionSession'], ParentType, ContextType, RequireFields<MutationEditPlanItemArgs, 'items' | 'kind' | 'sessionId'>>;
   generateCarePlanFromResolution?: Resolver<ResolversTypes['CarePlanGenerationResult'], ParentType, ContextType, RequireFields<MutationGenerateCarePlanFromResolutionArgs, 'reviewedResultHash' | 'sessionId'>>;
   generateMergedCarePlan?: Resolver<ResolversTypes['CarePlanGenerationResult'], ParentType, ContextType, RequireFields<MutationGenerateMergedCarePlanArgs, 'reviewedResultHash' | 'sessionId'>>;
   importPathway?: Resolver<ResolversTypes['ImportPathwayResult'], ParentType, ContextType, RequireFields<MutationImportPathwayArgs, 'importMode' | 'pathwayJson'>>;
@@ -3309,6 +3373,16 @@ export type PendingQuestionTypeResolvers<ContextType = DataSourceContext, Parent
   tentativeBranch?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   tentativeConfidence?: Resolver<Maybe<ResolversTypes['Float']>, ParentType, ContextType>;
   tentativeReasoning?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
+}>;
+
+export type PlanChangeResolvers<ContextType = DataSourceContext, ParentType extends ResolversParentTypes['PlanChange'] = ResolversParentTypes['PlanChange']> = ResolversObject<{
+  action?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  applies?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType>;
+  fields?: Resolver<ResolversTypes['JSON'], ParentType, ContextType>;
+  id?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
+  items?: Resolver<Array<ResolversTypes['PlanNodeRef']>, ParentType, ContextType>;
+  kind?: Resolver<ResolversTypes['PlanItemKind'], ParentType, ContextType>;
   __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
 }>;
 
@@ -3789,6 +3863,7 @@ export type Resolvers<ContextType = DataSourceContext> = ResolversObject<{
   PathwayGraphNode?: PathwayGraphNodeResolvers<ContextType>;
   PathwayStatusResult?: PathwayStatusResultResolvers<ContextType>;
   PendingQuestionType?: PendingQuestionTypeResolvers<ContextType>;
+  PlanChange?: PlanChangeResolvers<ContextType>;
   PlanNodeRef?: PlanNodeRefResolvers<ContextType>;
   PropagationConfigType?: PropagationConfigTypeResolvers<ContextType>;
   PropagationInfluence?: PropagationInfluenceResolvers<ContextType>;

@@ -18,6 +18,7 @@ import { loadCarePlanTherapyStarts } from '../../../resolvers/helpers/therapy-st
 import { evaluateAs, newRequest, prewarmInBackground } from './request';
 import type { EvaluationRequest } from './request';
 import type { RunResult, SessionInputs } from './types';
+import { addedMedicationNames, type PlanEdits } from './plan-edits';
 
 /** A child's node-local inputs. The parent owns every patient fact and the clock (D5). */
 export type ChildInputs = Omit<SessionInputs, 'initialPatientContext' | 'additionalContext' | 'temporalContext'>;
@@ -28,6 +29,8 @@ export interface RunInputs {
   additionalContext: Partial<AdditionalContextInput>;
   temporalContext: EvaluationTemporalContext;
   conflictResolutions: Record<string, ConflictResolution>;
+  /** The provider's edits and additions to the plan. */
+  planEdits: PlanEdits;
   /** In contributing order. `sessionId` is '' until the child row exists (start). */
   children: Array<{ sessionId: string; pathwayId: string; inputs: ChildInputs }>;
 }
@@ -53,6 +56,7 @@ export function runInputsOf(run: Run): RunInputs {
     additionalContext: { ...run.parent.additionalContext },
     temporalContext: run.parent.temporalContext,
     conflictResolutions: { ...run.parent.conflictResolutions },
+    planEdits: { ...(run.parent.planEdits ?? {}) },
     children: run.children.map((c) => ({
       sessionId: c.id,
       pathwayId: c.pathwayId,
@@ -119,7 +123,7 @@ export async function evaluateRun(
   const patient = buildEffectivePatientContext(inputs.initialPatientContext, inputs.additionalContext);
   const env = await loadRunEnv(pool, inputs.children.map((c) => c.pathwayId), {
     patient,
-    writeIns: writeInsOf(inputs.conflictResolutions),
+    writeIns: [...writeInsOf(inputs.conflictResolutions), ...addedMedicationNames(inputs.planEdits ?? {})],
   });
   prewarmInBackground(pool, env.unnormalized);
 
@@ -166,6 +170,7 @@ export async function evaluateRun(
   const result = composeRun(contributions, {
     patient,
     conflictResolutions: inputs.conflictResolutions,
+    planEdits: inputs.planEdits ?? {},
     safety: env.safety,
     meta: env.meta,
     envFingerprint: env.envFingerprint,
