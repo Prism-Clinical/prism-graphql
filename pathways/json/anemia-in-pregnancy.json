@@ -3,7 +3,7 @@
   "pathway": {
     "logical_id": "anemia-in-pregnancy",
     "title": "Anemia in Pregnancy \u2014 Classification and Treatment",
-    "version": "15",
+    "version": "16",
     "category": "OBSTETRIC",
     "scope": "Outpatient prenatal care, from diagnosed anemia through postpartum handoff. Screening is upstream of this pathway.",
     "target_population": "Adult pregnant patients with diagnosed anemia; hemoglobinopathy disease, thalassemia syndromes, and CKD-associated anemia are detected and routed out.",
@@ -3510,36 +3510,36 @@
       "id": "guid-9",
       "type": "Guidance",
       "properties": {
-        "topic": "Response to oral iron not yet checked: repeat CBC and iron studies",
+        "topic": "What the response recheck decides",
         "category": "treatment-planning",
-        "instructions": "No hemoglobin has been drawn since oral iron started, and it started at least 14 days ago, so the response can be judged now but has not been checked. Continue oral iron. Order a repeat CBC with indices, ferritin, and iron/TIBC/transferrin saturation now. These results decide whether she is responding or needs IV iron: a hemoglobin rise of at least 1 g/dL since oral iron started, or hemoglobin at target (\u2265 11 g/dL; \u2265 10.5 in the second trimester), is a response and oral iron continues; a rise of less than 1 g/dL with hemoglobin still below target is nonresponse and leads to nonresponse management \u2014 expanded workup, and IV iron from 14 0/7 weeks. Do not start IV iron from this step; wait for the results."
+        "instructions": "No hemoglobin has been drawn since oral iron started, 14 or more days ago. When the results are back: a hemoglobin rise of at least 1 g/dL since oral iron started, or hemoglobin at target (\u2265 11 g/dL; \u2265 10.5 in the second trimester), is a response. A rise of less than 1 g/dL with hemoglobin still below target is nonresponse: expanded workup, and IV iron from 14 0/7 weeks. Do not start IV iron before the results."
       }
     },
     {
       "id": "guid-10",
       "type": "Guidance",
       "properties": {
-        "topic": "Response to oral iron not yet checked: repeat CBC and iron studies",
+        "topic": "What the response recheck decides",
         "category": "treatment-planning",
-        "instructions": "No hemoglobin has been drawn since oral iron started, and it started at least 14 days ago, so the response can be judged now but has not been checked. Continue oral iron. Order a repeat CBC with indices, ferritin, and iron/TIBC/transferrin saturation now. These results decide whether she is responding or needs IV iron: a hemoglobin rise of at least 1 g/dL since oral iron started, or hemoglobin at target (\u2265 11 g/dL; \u2265 10.5 in the second trimester), is a response and oral iron continues; a rise of less than 1 g/dL with hemoglobin still below target is nonresponse and leads to nonresponse management \u2014 expanded workup, and IV iron from 14 0/7 weeks. Do not start IV iron from this step; wait for the results."
+        "instructions": "No hemoglobin has been drawn since oral iron started, 14 or more days ago. When the results are back: a hemoglobin rise of at least 1 g/dL since oral iron started, or hemoglobin at target (\u2265 11 g/dL; \u2265 10.5 in the second trimester), is a response. A rise of less than 1 g/dL with hemoglobin still below target is nonresponse: expanded workup, and IV iron from 14 0/7 weeks. Do not start IV iron before the results."
       }
     },
     {
       "id": "guid-11",
       "type": "Guidance",
       "properties": {
-        "topic": "Rise cannot be measured yet: recheck hemoglobin in 2\u20134 weeks",
+        "topic": "Not nonresponse: today's hemoglobin is the baseline",
         "category": "treatment-planning",
-        "instructions": "A hemoglobin has been drawn since oral iron started, but there is no hemoglobin from before it started to measure the rise from, so the response cannot be judged yet. This is not nonresponse. Continue oral iron. Today's hemoglobin becomes the baseline: repeat the CBC in 2\u20134 weeks, and the rise is judged at that recheck (a rise of at least 1 g/dL, or hemoglobin at target, is a response). Do not escalate to IV iron on this result alone."
+        "instructions": "There is no hemoglobin from before oral iron started to measure the rise from, so the response cannot be judged yet. Today's value becomes the baseline; the rise is judged at the recheck (a rise of at least 1 g/dL, or hemoglobin at target, is a response). Do not escalate to IV iron on this result alone."
       }
     },
     {
       "id": "guid-12",
       "type": "Guidance",
       "properties": {
-        "topic": "Rise cannot be measured yet: recheck hemoglobin in 2\u20134 weeks",
+        "topic": "Not nonresponse: today's hemoglobin is the baseline",
         "category": "treatment-planning",
-        "instructions": "A hemoglobin has been drawn since oral iron started, but there is no hemoglobin from before it started to measure the rise from, so the response cannot be judged yet. This is not nonresponse. Continue oral iron. Today's hemoglobin becomes the baseline: repeat the CBC in 2\u20134 weeks, and the rise is judged at that recheck (a rise of at least 1 g/dL, or hemoglobin at target, is a response). Do not escalate to IV iron on this result alone."
+        "instructions": "There is no hemoglobin from before oral iron started to measure the rise from, so the response cannot be judged yet. Today's value becomes the baseline; the rise is judged at the recheck (a rise of at least 1 g/dL, or hemoglobin at target, is a response). Do not escalate to IV iron on this result alone."
       }
     },
     {

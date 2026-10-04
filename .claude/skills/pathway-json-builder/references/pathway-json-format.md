@@ -322,6 +322,23 @@ and marks the others EXCLUDED; no answer, or an answer matching zero or several 
 none and raises an `unroutable_decision` red flag (`traversal-engine.ts:1078-1150`). So a
 router is "route yes vs no", never "fan out on yes".
 
+### Guidance says what the order lines cannot (`[DECISION — Josh 2026-10-04]`)
+
+The plan shows a step's orders and its guidance side by side. A Guidance node that restates
+them ("repeat CBC and iron studies" under a CBC, a ferritin and an iron-studies line) reads
+as a duplicate recommendation. So, for every Guidance node:
+
+- **Never name an order the same step (or the route into it) already carries** as a LabTest,
+  Medication, Procedure, Imaging or Schedule node — not in the `topic`, not in the
+  `instructions`. The order line is the instruction to order.
+- **Never repeat another Guidance node** that is in the plan at the same time ("continue oral
+  iron" belongs to one node).
+- **Say what the results or the order mean:** what they decide, the thresholds that decide
+  it, and what must not be done before they are back.
+- **The `topic` is that point in a few words** ("What the response recheck decides"), not a
+  restatement of the step title.
+- A step whose guidance would only restate its orders needs no Guidance node.
+
 ### Use the data the chart gives (`[DECISION — Josh 2026-10-03]`)
 
 **A pathway never ignores data it has been given. The authoring question is never *whether*

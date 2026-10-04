@@ -1,6 +1,6 @@
 # Pathway Research Brief — Anemia in Pregnancy
 
-JSON: pathways/json/anemia-in-pregnancy.json @ version 15
+JSON: pathways/json/anemia-in-pregnancy.json @ version 16
 
 **Status: DRAFT v2 for physician review — not yet approved for JSON build.**
 Scope assumed from request: outpatient prenatal care, adult pregnant patients, US practice,
@@ -92,7 +92,7 @@ still current, `[BLOCKED — prior_node_result]` import-blocked gate design with
 
 - **Logical ID**: `anemia-in-pregnancy`
 - **Title**: Anemia in Pregnancy — Classification and Treatment
-- **Version**: 15 `[DECISION — Josh 2026-10-04]` (JSON `"15"`; was `"14"`). Imports as
+- **Version**: 16 `[DECISION — Josh 2026-10-04]` (JSON `"16"`; was `"15"`). v16 changes wording only: Guid-9–12 no longer restate the orders (§9). v15: Imports as
   NEW_VERSION; v14 sessions keep v14's graph. Bumped for:
   - **A single hemoglobin since oral iron started, below target, with no baseline, is "recheck
     in 2–4 weeks, not nonresponse"** (§3 Steps 2.23, 2.24; §4b `gate-rise-unmeasurable` and its
@@ -1901,15 +1901,21 @@ prevention step left with the screening stage):
   choices) with `[JOSH — CONFIRM]` wording — he gave no detail beyond "skip". Instructions
   (exact JSON text): "The medication list holds an IV iron product, so IV iron has been given. Do not start IV iron again or an oral iron trial on the strength of this pathway. Recheck hemoglobin about 4 weeks after the IV iron; persistent anemia prompts hematology referral or re-evaluation of the diagnosis." The recheck interval and what persistent
   anemia prompts are Sched-3's existing text; no dose and no new timing. [1][5]
-- **Guid-9 — topic "Response to oral iron not yet checked: repeat CBC and iron studies"** (on
+- `[DECISION — Josh 2026-10-04]` **Guidance does not restate the orders (v16).** Josh, seeing
+  CBC and iron studies in the plan and then a guidance line "Response to oral iron not yet
+  checked: repeat CBC and iron studies": "why? that's repetitive". Guid-9–12 no longer say what
+  to order or to continue oral iron (the lab lines, the schedule and Guid-7 already do); they
+  say only what the order lines cannot: what the results decide. Topics and text rewritten;
+  no gate, step, order or routing changed.
+- **Guid-9 — topic "What the response recheck decides"** (on
   Step 2.19; v14): category treatment-planning, clinician-facing `[DECISION — Josh
-  2026-10-04]`. Instructions (exact JSON text): "No hemoglobin has been drawn since oral iron started, and it started at least 14 days ago, so the response can be judged now but has not been checked. Continue oral iron. Order a repeat CBC with indices, ferritin, and iron/TIBC/transferrin saturation now. These results decide whether she is responding or needs IV iron: a hemoglobin rise of at least 1 g/dL since oral iron started, or hemoglobin at target (≥ 11 g/dL; ≥ 10.5 in the second trimester), is a response and oral iron continues; a rise of less than 1 g/dL with hemoglobin still below target is nonresponse and leads to nonresponse management — expanded workup, and IV iron from 14 0/7 weeks. Do not start IV iron from this step; wait for the results." The rise and target figures are the response gates' own (§4b); "IV iron
+  2026-10-04]`. Instructions (exact JSON text): "No hemoglobin has been drawn since oral iron started, 14 or more days ago. When the results are back: a hemoglobin rise of at least 1 g/dL since oral iron started, or hemoglobin at target (≥ 11 g/dL; ≥ 10.5 in the second trimester), is a response. A rise of less than 1 g/dL with hemoglobin still below target is nonresponse: expanded workup, and IV iron from 14 0/7 weeks. Do not start IV iron before the results." The rise and target figures are the response gates' own (§4b); "IV iron
   from 14 0/7 weeks" is gate-iv-iron-ga's rule. [1][3]
 - **Guid-10** (on Step 2.21; v14): Guid-9's topic, category and text on its own node, for the
   route where the pathway started the oral iron. [1][3]
-- **Guid-11 — topic "Rise cannot be measured yet: recheck hemoglobin in 2–4 weeks"** (on Step
+- **Guid-11 — topic "Not nonresponse: today's hemoglobin is the baseline"** (on Step
   2.23; v15): category treatment-planning, clinician-facing `[DECISION — Josh 2026-10-04]`.
-  Instructions (exact JSON text): "A hemoglobin has been drawn since oral iron started, but there is no hemoglobin from before it started to measure the rise from, so the response cannot be judged yet. This is not nonresponse. Continue oral iron. Today's hemoglobin becomes the baseline: repeat the CBC in 2–4 weeks, and the rise is judged at that recheck (a rise of at least 1 g/dL, or hemoglobin at target, is a response). Do not escalate to IV iron on this result alone." [1][3]
+  Instructions (exact JSON text): "There is no hemoglobin from before oral iron started to measure the rise from, so the response cannot be judged yet. Today's value becomes the baseline; the rise is judged at the recheck (a rise of at least 1 g/dL, or hemoglobin at target, is a response). Do not escalate to IV iron on this result alone." [1][3]
 - **Guid-12** (on Step 2.24; v15): Guid-11's topic, category and text on its own node. [1][3]
 
 ## 10. Quality metrics
