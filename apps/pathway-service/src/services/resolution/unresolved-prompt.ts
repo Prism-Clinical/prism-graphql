@@ -6,6 +6,7 @@ import { anchorKeyFor, anchorPromptFor, parseWindowFrom } from './temporal/ancho
 import { PREGNANCY_HORIZON_ATTRIBUTE } from './temporal/evaluation-context';
 import { isCalendarCondition } from './temporal/condition-adapter';
 import { LabMeasure, equivalenceGroupOf, labDatumKey } from './lab-equivalents';
+import { medicationClassLabel } from './medication-classes';
 
 /**
  * The measures a lab request may be answered in — the asked lab first — when
@@ -104,7 +105,8 @@ export interface UnresolvedAsk {
     | { kind: 'lab'; code: string; system: string }
     | { kind: 'vital'; path: string }
     | { kind: 'attribute'; path: string }
-    | { kind: 'anchor'; key: string };
+    | { kind: 'anchor'; key: string }
+    | { kind: 'medication_class'; key: string };
   /**
    * The generated prompt is the question, whatever the gate's authored
    * `prompt` says. Set when the datum asked for is NOT the gate's own subject
@@ -118,6 +120,31 @@ export interface UnresolvedAsk {
    * (`enteredAs`), and is stored as that lab.
    */
   alternatives?: LabMeasure[];
+}
+
+/**
+ * The question for a class condition waiting on a chart medication that could
+ * not be identified: is THIS entry in the class? One entry, yes or no.
+ *
+ * The datum key is the class and the entry, so every gate on the same class
+ * shares the question, and "Not available" (declined under the same key) is
+ * honoured for exactly that entry. The prompt is fixed: the gate's own prompt
+ * is about the class, not about this medication.
+ */
+export function medicationClassAskFor(
+  condition: GateCondition,
+  entry: { key: string; label: string },
+): UnresolvedAsk {
+  const label = medicationClassLabel(condition as { system?: string; value: string; display?: string });
+  return {
+    datumKey: entry.key,
+    prompt:
+      `"${entry.label}" is on the medication list and could not be identified. ` +
+      `Does it count as ${label}?`,
+    answerType: AnswerType.BOOLEAN,
+    target: { kind: 'medication_class', key: entry.key },
+    fixedPrompt: true,
+  };
 }
 
 /**

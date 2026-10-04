@@ -13,11 +13,12 @@ import type { EvaluationEnv } from './load-env';
 import { auditingLlmClient } from './llm-audit';
 import { liveObservations } from './observations';
 import type { ObservationProvider } from './observations';
-import type { EvaluationResult, EvaluationScope, LlmObservation, ObservationKey, SessionInputs } from './types';
+import type { EvaluationResult, EvaluationScope, ObservationKey, SessionInputs, SessionObservation } from './types';
+import { normalizedFor } from '../../medications/safety-reference';
 
 /** What survives a request's retries (D9, C1): acquired observations, and every LLM call made. */
 export interface EvaluationRequest {
-  requestObservations: Map<ObservationKey, LlmObservation>;
+  requestObservations: Map<ObservationKey, SessionObservation>;
   /** Written once, in the transaction that commits — or after the last failed attempt. */
   audits: LlmAuditRow[];
 }
@@ -68,7 +69,10 @@ export async function evaluateSession(
       }
     : inputs;
   const client = auditingLlmClient(loadLLMGateConfig(), inputs.pathwayId, request.audits);
-  const provider = liveObservations(pinned.observations, request.requestObservations, client, env.llmModel ?? '');
+  const provider = liveObservations(
+    pinned.observations, request.requestObservations, client, env.llmModel ?? '', undefined,
+    (m) => normalizedFor(env.safety, m),
+  );
 
   const started = Date.now();
   const result = await evaluateAs(pinned, env, provider, scope);
@@ -80,7 +84,7 @@ export function persistedObservations(
   inputs: SessionInputs,
   request: EvaluationRequest,
   result: EvaluationResult,
-): Map<ObservationKey, LlmObservation> {
+): Map<ObservationKey, SessionObservation> {
   const out = new Map(inputs.observations);
   for (const key of result.observationsUsed) {
     const obs = request.requestObservations.get(key);

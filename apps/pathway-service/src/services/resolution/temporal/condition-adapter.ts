@@ -8,6 +8,7 @@ import {
 import { ConditionTemporalOverride, parseHorizonValue, parseStatusValue } from './cascade';
 import { TemporalContextError, isGestationalWeekHorizon, isSinceHorizon } from './evaluation-context';
 import { MonthDay, parseMonthDay } from './calendar';
+import { medicationClassConditionError } from '../medication-classes';
 // Only the urn constant. Vitals carry no terminology code, so the assembler
 // stamps every vital with this system and the adapter must select on the same
 // one; a second spelling here would silently match nothing.
@@ -374,6 +375,13 @@ export function toFactSelectionCondition(
   const controls = conditionControlDomainError(condition);
   if (controls !== null) {
     throw new TemporalContextError(`${where}: ${controls}`, 'INVALID_TEMPORAL_DEFAULTS');
+  }
+
+  // A class `system` (RXNORM_INGREDIENT / ATC) has its own grammar — field,
+  // operators, value format — checked by the predicate import uses.
+  const medicationClass = medicationClassConditionError(condition);
+  if (medicationClass !== null) {
+    throw new TemporalContextError(`${where}: ${medicationClass}`, 'INVALID_TEMPORAL_DEFAULTS');
   }
 
   if (isBucketExistence(operator)) {

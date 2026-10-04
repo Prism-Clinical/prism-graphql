@@ -67,4 +67,10 @@ export type UncertaintyReason =
    * passed since its anchor (or on the visit that starts the drug). Not an
    * answer either way: the gate closes without asking until it is due.
    */
-  | 'NOT_YET_DUE';
+  | 'NOT_YET_DUE'
+  /**
+   * A condition matching a medication by ingredient or class
+   * (`medication-classes.ts`) whose answer depends on a chart medication that
+   * could not be identified. Not an answer: the provider is asked about it.
+   */
+  | 'MEDICATION_UNIDENTIFIED';

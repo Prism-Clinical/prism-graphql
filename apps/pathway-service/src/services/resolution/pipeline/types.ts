@@ -19,6 +19,31 @@ export interface LlmObservation {
   acquiredAt: string;
 }
 
+/**
+ * What a chart medication was identified AS when a session first needed to
+ * know — its ingredients and product classes, from the normalisation cache —
+ * recorded as a session input exactly as an LLM verdict is.
+ *
+ * Pinned because the cache is not the session's: a row can be refreshed or
+ * corrected later, and a stored session re-evaluated (or replayed) must decide
+ * its gates from what it decided them from the first time. Only a SUCCESSFUL
+ * identification is pinned; a medication that could not be identified is
+ * looked up again on the next evaluation.
+ */
+export interface MedicationObservation {
+  key: ObservationKey;
+  kind: 'medication';
+  ingredientRxcuis: string[];
+  ingredientNames: string[];
+  productAtcClasses: string[];
+}
+
+/** Everything a session records about the outside world. */
+export type SessionObservation = LlmObservation | MedicationObservation;
+
+export const isMedicationObservation = (o: SessionObservation | undefined): o is MedicationObservation =>
+  o !== undefined && (o as MedicationObservation).kind === 'medication';
+
 /** What a session stores: inputs only (spec §1). */
 export interface SessionInputs {
   pathwayId: string;
@@ -28,7 +53,7 @@ export interface SessionInputs {
   additionalContext: Partial<AdditionalContextInput>;
   gateAnswers: Map<string, GateAnswer>;
   providerOverrides: Map<string, ProviderOverride>;
-  observations: Map<ObservationKey, LlmObservation>;
+  observations: Map<ObservationKey, SessionObservation>;
   revision: number;
 }
 

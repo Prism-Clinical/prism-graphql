@@ -22,7 +22,7 @@ import {
 import { EvaluationTemporalContext } from './temporal/evaluation-context';
 // contract.ts imports nothing at all, so this stays acyclic too.
 import type { UncertaintyReason } from './temporal/contract';
-import type { LlmObservation, ScopedBlocker } from './pipeline/types';
+import type { ScopedBlocker, SessionObservation } from './pipeline/types';
 import type { CatchUpItem } from './care-plan-merge';
 
 export {
@@ -515,6 +515,15 @@ export interface GateEvaluationResult {
    * answered; on a single-condition gate, that condition.
    */
   unresolvedPregnancyConditions?: GateCondition[];
+  /**
+   * The unresolved conditions that match a medication by ingredient or class
+   * and wait on chart entries that could not be identified — each asked about
+   * by name ("is this one an influenza vaccine?").
+   */
+  unresolvedMedicationClasses?: Array<{
+    condition: GateCondition;
+    entries: Array<{ key: string; label: string }>;
+  }>;
   /** The resolved anchors, deduplicated by key, in condition order. */
   windowAnchors?: WindowAnchorEvidence[];
   /**
@@ -621,7 +630,13 @@ export interface PendingQuestion {
      * A `window_from` start date. NOT a fact: the answer is the clinician's
      * date for the anchor, stored in `gateAnswers` under `key`.
      */
-    | { kind: 'anchor'; key: string };
+    | { kind: 'anchor'; key: string }
+    /**
+     * "Is this chart medication in the class?" — a yes/no about ONE entry that
+     * could not be identified. Not a fact either: stored in `gateAnswers`
+     * under `key` (`medicationClassKey`).
+     */
+    | { kind: 'medication_class'; key: string };
 }
 
 // ─── Red Flags ──────────────────────────────────────────────────────
@@ -686,7 +701,7 @@ export interface ResolutionSession {
   revision: number;
   // ── Inputs (spec §1): what a person or the outside world told the session.
   providerOverrides: Map<string, ProviderOverride>;
-  observations: Map<string, LlmObservation>;
+  observations: Map<string, SessionObservation>;
   graphFingerprint: string;
   // ── Cache of the last committed evaluation. Never an input.
   envFingerprint: string;

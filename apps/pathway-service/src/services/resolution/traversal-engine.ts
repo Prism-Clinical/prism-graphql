@@ -4,8 +4,9 @@ import type { GateEvaluationDeps } from './gate-evaluator';
 import type { PathwayTemporalDefaults } from './temporal/cascade';
 import type { FactStore } from './temporal/fact-model';
 import { EvaluationTemporalContext } from './temporal/evaluation-context';
-import { anchorAskFor, askFor, pregnancyAskFor, seriesAskFor, unionOptions } from './unresolved-prompt';
+import { anchorAskFor, askFor, medicationClassAskFor, pregnancyAskFor, seriesAskFor, unionOptions } from './unresolved-prompt';
 import { equivalenceGroupOf } from './lab-equivalents';
+import type { MedicationIdentityLookup } from './medication-classes';
 import type { LabMeasure } from './lab-equivalents';
 import { parseBranchWhen } from '../import/branch-when';
 import { decisionValueOf, decisionSelects } from './decision-value';
@@ -117,6 +118,7 @@ function unresolvedAsk(
     unresolvedAnchorConditions?: GateCondition[];
     unresolvedSeries?: Array<{ condition: GateCondition; latestDate: string }>;
     unresolvedPregnancyConditions?: GateCondition[];
+    unresolvedMedicationClasses?: Array<{ condition: GateCondition; entries: Array<{ key: string; label: string }> }>;
   },
   /** The attribute vocabulary, so a lab attribute asks for a LAB. */
   codeMap?: AttributeCodeMap,
@@ -145,6 +147,20 @@ function unresolvedAsk(
         ? (conditionLeaves(gateProps.conditions) as GateCondition[])
         : (gateProps.condition ? [gateProps.condition] : []);
   for (const condition of conditions) {
+    // A class condition waiting on medications that could not be identified
+    // asks about them ONE ENTRY AT A TIME, by name. An entry the provider
+    // declined ("Not available") is skipped; when every entry was declined the
+    // condition has nothing left to ask and the gate takes its default — or
+    // opens, under `on_declined`.
+    const unidentified = gateResult.unresolvedMedicationClasses?.find((u) => u.condition === condition);
+    if (unidentified) {
+      const open = unidentified.entries.find(
+        (e) => gateAnswers?.get(declinedKeyFor(e.key))?.notAvailable !== true,
+      );
+      if (open) return medicationClassAskFor(condition, open);
+      if (out) out.declined = true;
+      continue;
+    }
     // An unresolved `window_from` anchor asks for its start DATE; an undated
     // `horizon: "PREGNANCY"` window asks for the gestational age (whatever the
     // operator — `askFor` has no question for membership, and the missing
@@ -579,6 +595,14 @@ export class TraversalEngine {
      */
     private codeMap: AttributeCodeMap,
     private llmGateEvaluator?: LlmGateEvaluator,
+    /**
+     * What each chart medication was identified as, for gates that match by
+     * ingredient or class (`medication-classes.ts`). Supplied by the pipeline
+     * from the session's pinned observations and the evaluation environment.
+     * Absent — every caller outside the pipeline — means no medication is
+     * identified, and such a gate asks rather than guesses.
+     */
+    private medicationIdentity?: MedicationIdentityLookup,
   ) {
     assertEngineCodeMap(codeMap, 'TraversalEngine');
   }
@@ -601,6 +625,7 @@ export class TraversalEngine {
       gateId,
       llmEvaluator: this.llmGateEvaluator,
       codeMap: this.codeMap,
+      ...(this.medicationIdentity ? { medicationIdentity: this.medicationIdentity } : {}),
       ...(sessionRecommendation ? { sessionRecommendation } : {}),
     };
   }

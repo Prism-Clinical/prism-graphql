@@ -27,6 +27,7 @@ import {
 import type { ConditionGroup } from '../resolution/types';
 import { VALID_ATTRIBUTE_NAMESPACES } from '../resolution/attribute-registry';
 import { rhFactorComparandError } from '../resolution/patient-attributes';
+import { medicationClassConditionError } from '../resolution/medication-classes';
 import { FIELD_TO_KIND } from '../resolution/temporal/contract';
 import {
   codedVitalsSystemError,
@@ -785,6 +786,11 @@ function validateGateConditions(
       // covered by this predicate — `parseHorizonValue` owns that rule (D2).
       const controlDomain = conditionControlDomainError(c);
       if (controlDomain !== null) errors.push(`${where}: ${controlDomain}.`);
+      // A class `system` (RXNORM_INGREDIENT / ATC): medications only, three
+      // operators, a well-formed value and a `display` to ask about — the
+      // predicate the runtime adapter throws on.
+      const medicationClass = medicationClassConditionError(c);
+      if (medicationClass !== null) errors.push(`${where}: ${medicationClass}.`);
       // Only for a known field: `resolveEffectivePolicy` throws on an unknown
       // one, which would duplicate the field error above.
       if (CODED_FIELDS.has(c.field as string)) {

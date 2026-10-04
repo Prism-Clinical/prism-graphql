@@ -102,6 +102,69 @@ export async function getAtcClasses(rxcui: string): Promise<string[]> {
   return [...classes];
 }
 
+/**
+ * EVERY ingredient (TTY=IN) of an RxCUI, in RxNav's order. `getIngredientRxcui`
+ * returns only the first — right for the drug-safety pair lookup it was written
+ * for, wrong for "does this product contain folic acid": a prenatal
+ * multivitamin has a dozen ingredients and folic acid is rarely the first.
+ */
+export async function getIngredients(rxcui: string): Promise<Array<{ rxcui: string; name: string }>> {
+  const data = (await rxnavFetch(
+    `/rxcui/${encodeURIComponent(rxcui)}/related.json?tty=IN`,
+  )) as {
+    relatedGroup?: {
+      conceptGroup?: Array<{ tty?: string; conceptProperties?: Array<{ rxcui: string; name: string }> }>;
+    };
+  };
+  const out: Array<{ rxcui: string; name: string }> = [];
+  for (const g of data.relatedGroup?.conceptGroup ?? []) {
+    if (g.tty !== 'IN') continue;
+    for (const p of g.conceptProperties ?? []) out.push({ rxcui: p.rxcui, name: p.name });
+  }
+  return out;
+}
+
+/** The term type of an RxCUI (SCD, SBD, BN, IN, GPCK, …), or null when RxNav does not know it. */
+export async function getTermType(rxcui: string): Promise<string | null> {
+  const data = (await rxnavFetch(`/rxcui/${encodeURIComponent(rxcui)}/properties.json`)) as {
+    properties?: { tty?: string };
+  };
+  return data.properties?.tty ?? null;
+}
+
+/** RxNorm term types that are one dispensable PRODUCT, as opposed to an ingredient or a brand. */
+const PRODUCT_TERM_TYPES = new Set(['SCD', 'SBD', 'GPCK', 'BPCK']);
+
+/**
+ * The PRODUCT-level ATC classes (levels 1–4) of an RxCUI — RxClass's
+ * `ATCPROD` relation. Several classes exist only here: an influenza vaccine's
+ * ingredients carry no ATC class at all, and a Tdap's ingredients say only
+ * "diphtheria" and "tetanus" (the same as plain Td) while the product is
+ * J07AJ, pertussis.
+ *
+ * Asked about an ingredient or a brand, RxClass answers with the classes of
+ * EVERY product made from it — ferrous sulfate returns B03AA (oral iron) and
+ * B03AE (multivitamins containing iron) alike. That union says nothing about
+ * the entry on the chart, so for a non-product concept the classes are kept
+ * only when there is exactly ONE (Venofer → B03AC). Otherwise: none, which
+ * readers treat as "class unknown", never as "in no class".
+ */
+export async function getProductAtcClasses(rxcui: string, termType: string | null): Promise<string[]> {
+  const data = (await rxnavFetch(
+    `/rxclass/class/byRxcui.json?rxcui=${encodeURIComponent(rxcui)}&relaSource=ATCPROD`,
+  )) as {
+    rxclassDrugInfoList?: { rxclassDrugInfo?: Array<{ rxclassMinConceptItem?: { classId?: string } }> };
+  };
+  const classes = new Set<string>();
+  for (const item of data.rxclassDrugInfoList?.rxclassDrugInfo ?? []) {
+    const id = item.rxclassMinConceptItem?.classId;
+    if (id) classes.add(id);
+  }
+  const sorted = [...classes].sort();
+  const isProduct = termType !== null && PRODUCT_TERM_TYPES.has(termType);
+  return isProduct || sorted.length === 1 ? sorted : [];
+}
+
 /** Resolve an NDC (drug package code) to an RxCUI. */
 export async function getRxcuiByNdc(ndc: string): Promise<string | null> {
   const data = (await rxnavFetch(

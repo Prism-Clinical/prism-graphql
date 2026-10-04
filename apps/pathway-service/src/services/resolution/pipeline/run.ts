@@ -1,3 +1,4 @@
+import { normalizedFor } from '../../medications/safety-reference';
 import type { Pool } from 'pg';
 import type { AdditionalContextInput } from '../../../resolvers/mutations/resolution';
 import type { PatientContext } from '../../confidence/types';
@@ -161,6 +162,8 @@ export async function evaluateRun(
       req.requestObservations,
       auditingLlmClient(config, child.pathwayId, req.audits),
       childEnv.llmModel ?? '',
+      undefined,
+      (m) => normalizedFor(childEnv.safety, m),
     );
     const result = await evaluateAs(sessionInputsOf(pinnedInputs, own), childEnv, provider, 'CONTRIBUTION');
     children.push({ ...child, inputs: own });

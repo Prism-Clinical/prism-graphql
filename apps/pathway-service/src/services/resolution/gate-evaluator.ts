@@ -31,6 +31,19 @@ import type { PathwayTemporalDefaults } from './temporal/cascade';
 import type { FactStore, NormalizedFact } from './temporal/fact-model';
 import { isObservationFact } from './temporal/fact-model';
 import { describeDerivation } from './lab-equivalents';
+import {
+  classMembership,
+  isMedicationClassCondition,
+  medicationClassKey,
+  medicationClassLabel,
+  medicationEntryInput,
+} from './medication-classes';
+import type {
+  MedicationClassSystem,
+  MedicationIdentityLookup,
+  UnidentifiedMedication,
+} from './medication-classes';
+import { normalizedKey } from '../medications/safety-reference';
 import { boundEpochRange } from './temporal/interval';
 import type { ResolvedHorizon } from './temporal/overlap';
 import { isTemporalOperator, operatorClass } from './temporal/contract';
@@ -560,6 +573,14 @@ export interface ConditionOutcome {
    * the gate would quietly take its default.
    */
   gestationalAgeMissing?: boolean;
+  /**
+   * A condition matching by ingredient or class whose answer depends on chart
+   * medications that could not be identified. Paired with `indeterminate:
+   * true` and `MEDICATION_UNIDENTIFIED`; kept as its own list because the
+   * question is about a named ENTRY — "is this one an influenza vaccine?" —
+   * not a datum.
+   */
+  unidentifiedMedications?: UnidentifiedMedication[];
   /** The anchor must consult this visit's recommendation, which is not settled yet. */
   awaitingSession?: boolean;
   /** Medication nodes the session anchor source read — recorded as influences. */
@@ -645,6 +666,17 @@ function evaluateConditionLegacyMode(
       satisfied: false,
       reason: 'in_season requires the v1 temporal kernel; legacy-v0 cannot evaluate it',
       fieldsRead: [(condition as AttributeCondition).attribute],
+    };
+  }
+  // Legacy compares `system` literally, so a class system would match no
+  // chart entry at all and read as "not on the list".
+  if (isMedicationClassCondition(condition)) {
+    return {
+      satisfied: false,
+      reason:
+        `matching a medication by ${String((condition as CodedCondition).system)} requires the v1 temporal kernel; ` +
+        'legacy-v0 cannot evaluate it',
+      fieldsRead: [(condition as CodedCondition).field],
     };
   }
   const horizon = kernelOnlyHorizon(condition);
@@ -1571,6 +1603,161 @@ function evaluateAggregateKernel(
   });
 }
 
+// ─── medications by ingredient or class ───────────────────────────────
+
+/**
+ * `includes_code` / `not_includes_code` / `count_in_window` on `medications`
+ * with a class `system` (`RXNORM_INGREDIENT`, `ATC`).
+ *
+ * The chart's medications are sorted three ways — IS the class, is NOT, or
+ * UNKNOWN (could not be identified, and the provider has not said) — and the
+ * condition is then the ordinary one over the members: the same selection
+ * kernel, so the horizon, the clinical status and the interval-versus-start
+ * rule (`includes_code` overlaps the window; `count_in_window` counts what
+ * BEGAN in it) are exactly what they are for a product-code condition. Dates
+ * and status are the chart entry's; only the identity comes from normalisation.
+ *
+ * **An unknown is never a silent "no".** The condition is evaluated twice in
+ * effect — with the in-window unknowns counted as members and with none — and
+ * is definite only when both agree (one identified Tdap settles "a Tdap is on
+ * the list" whatever the unidentified entries are). When they differ it is
+ * UNRESOLVED, naming the entries, and the gate asks the provider about them.
+ * A provider's yes/no for an entry (stored under `medicationClassKey`) is
+ * authoritative for that entry.
+ *
+ * No I/O: identities come from `deps.medicationIdentity`.
+ */
+function evaluateMedicationClassKernel(
+  condition: CodedCondition,
+  deps: GateEvaluationDeps,
+): ConditionOutcome {
+  const where = `condition (${condition.field})`;
+  // Refuses, by the import validator's own predicate, a class system on any
+  // other field or operator.
+  const adapted = adaptCodedCondition(condition, where);
+  const system = condition.system as MedicationClassSystem;
+  const label = medicationClassLabel(condition);
+  const fieldsRead = [condition.field];
+
+  const resolved = policyFor(adapted, deps);
+  if (resolved.status === 'PREGNANCY_UNDATED') {
+    return pregnancyUndatedOutcome(fieldsRead, `${condition.field}: ${label}`);
+  }
+
+  // Each medication, re-coded AS the class when it is (or may be) a member, so
+  // the selection kernel matches it by the condition's own code and system.
+  const asClass = (f: NormalizedFact): NormalizedFact => ({ ...f, code: condition.value, system });
+  const members: NormalizedFact[] = [];
+  const unknowns: NormalizedFact[] = [];
+  const entryOf = new Map<string, { key: string; label: string }>();
+  for (const fact of resolved.facts) {
+    if (fact.kind !== 'medication_order') continue;
+    const input = medicationEntryInput(fact);
+    const key = medicationClassKey(system, condition.value, normalizedKey(input));
+    const answered = deps.gateAnswers.get(key)?.booleanValue;
+    const membership =
+      answered === true ? 'MEMBER'
+        : answered === false ? 'NOT'
+          : classMembership(deps.medicationIdentity?.(input) ?? null, fact, system, condition.value);
+    if (membership === 'MEMBER') members.push(asClass(fact));
+    if (membership === 'UNKNOWN') {
+      unknowns.push(asClass(fact));
+      entryOf.set(fact.factId, { key, label: fact.display ?? `${fact.system} ${fact.code}` });
+    }
+  }
+
+  const definite = selectFacts(adapted.selection, members, resolved.policy);
+  const maybe = selectFacts(adapted.selection, unknowns, resolved.policy);
+  // The unknowns that would COUNT if they were members: inside the window and
+  // in the clinical state asked for. An unidentified entry outside the window
+  // cannot change the answer and is never asked about.
+  const relevant = maybe.decisions.filter((d) => d.operatorDecision === 'INCLUDE').map((d) => d.fact);
+  const uncertainty = [...new Set(definite.decisions.flatMap((d) => d.uncertainty))];
+  const names = (facts: readonly NormalizedFact[]): string =>
+    [...new Set(facts.map((f) => entryOf.get(f.factId)?.label ?? f.display ?? `${f.system} ${f.code}`))].join(', ');
+  const matched = definite.status === 'READY' ? definite.selected : [];
+  const originals = new Map(resolved.facts.map((f) => [f.factId, f]));
+  const matchedNames = [...new Set(matched.map((f) => {
+    const o = originals.get(f.factId);
+    return o?.display ?? `${o?.system} ${o?.code}`;
+  }))].join(', ');
+
+  const unresolved = (): ConditionOutcome => {
+    const entries = [...new Map(relevant.map((f) => [entryOf.get(f.factId)!.key, entryOf.get(f.factId)!])).values()];
+    return inPregnancy({
+      satisfied: false,
+      reason:
+        `Cannot tell whether ${names(relevant)} on the medication list ` +
+        `${entries.length === 1 ? 'is' : 'are'} ${label}: not identified`,
+      fieldsRead,
+      indeterminate: true,
+      uncertainty: [...new Set<UncertaintyReason>([...uncertainty, 'MEDICATION_UNIDENTIFIED'])],
+      unidentifiedMedications: entries,
+    }, resolved);
+  };
+
+  if (condition.operator === 'count_in_window') {
+    const n = matched.length;
+    const threshold = condition.count_threshold ?? 2;
+    const reachedWith = (count: number) => count >= threshold;
+    // Would the unknowns, counted, cross the threshold? Then it is not a count yet.
+    if (reachedWith(n) !== reachedWith(n + relevant.length)) return unresolved();
+    const reached = reachedWith(n);
+    const satisfied = condition.count_comparison === 'less_than' ? !reached : reached;
+    return inPregnancy({
+      satisfied,
+      reason:
+        `Found ${n} on the medication list matching ${label}` +
+        `${n > 0 ? ` (${matchedNames})` : ''} ` +
+        `${
+          resolved.notOpen
+            ? notOpenClause(resolved.notOpen)
+            : resolved.since
+              ? sincePhrase(resolved.since)
+              : resolved.pregnancy
+                ? pregnancyClause(resolved.pregnancy)
+                : `within ${windowDescription(resolved.policy.horizon)}`
+        } (${reached ? `≥${threshold}` : `<${threshold}`})`,
+      fieldsRead,
+      indeterminate: false,
+      uncertainty,
+    }, resolved, true);
+  }
+
+  if (condition.operator === 'not_includes_code') {
+    const base = notIncludesOutcome(condition, definite.decisions, uncertainty);
+    // "None on the list" holds only if no unidentified entry could be one.
+    if (base.satisfied && relevant.length > 0) return unresolved();
+    return inPregnancy({
+      ...base,
+      reason: base.satisfied
+        ? `No medication on the list is ${label}`
+        : base.indeterminate
+          ? base.reason
+          : `Medication list includes ${label} (${matchedNames})`,
+    }, resolved);
+  }
+
+  // includes_code
+  if (definite.status === 'READY') {
+    return inPregnancy({
+      satisfied: true,
+      reason: `Medication list includes ${label} (${matchedNames})`,
+      fieldsRead,
+      indeterminate: false,
+      uncertainty,
+    }, resolved);
+  }
+  if (relevant.length > 0) return unresolved();
+  return inPregnancy({
+    satisfied: false,
+    reason: `No medication on the list is ${label}`,
+    fieldsRead,
+    indeterminate: false,
+    uncertainty,
+  }, resolved);
+}
+
 /**
  * The `v1` path for an attribute condition the kernel does not route — the
  * legacy comparison, plus the missing-data signal for `patient.*`.
@@ -1766,6 +1953,11 @@ function evaluateConditionKernel(
   if (isAttributeCondition(condition)) {
     return evaluateAttributeKernel(condition, deps);
   }
+  // By ingredient or class: the same operators, over the medications that ARE
+  // the class rather than the ones coded as it.
+  if (isMedicationClassCondition(condition)) {
+    return evaluateMedicationClassKernel(condition, deps);
+  }
   const { operator } = condition;
   if (isTemporalOperator(operator) && operatorClass(operator) === 'membership') {
     return evaluateMembershipKernel(condition, deps);
@@ -1918,6 +2110,9 @@ function evaluatePatientAttribute(
   if (result.dataUnavailable !== undefined) out.dataUnavailable = result.dataUnavailable;
   if (result.anchorUnresolved === true) out.unresolvedAnchorConditions = [gate.condition];
   if (result.gestationalAgeMissing === true) out.unresolvedPregnancyConditions = [gate.condition];
+  if (result.unidentifiedMedications && result.unidentifiedMedications.length > 0) {
+    out.unresolvedMedicationClasses = [{ condition: gate.condition, entries: result.unidentifiedMedications }];
+  }
   const shortSeries = seriesAskableOf(gate.condition, result);
   if (shortSeries) out.unresolvedSeries = [shortSeries];
   if (result.windowAnchor !== undefined) out.windowAnchors = [result.windowAnchor];
@@ -2142,6 +2337,8 @@ interface EntryResult {
   shortSeries: Array<{ condition: GateCondition; latestDate: string }>;
   /** Of those, the `horizon: "PREGNANCY"` leaves with no usable gestational age. */
   undated: GateCondition[];
+  /** Of those, the class conditions waiting on medications that could not be identified. */
+  unidentified: Array<{ condition: GateCondition; entries: UnidentifiedMedication[] }>;
   /** Every anchor any leaf resolved, settled or not — evidence, not a question. */
   anchors: WindowAnchorEvidence[];
 }
@@ -2157,6 +2354,7 @@ interface CombinedEntries {
   anchorless: GateCondition[];
   shortSeries: Array<{ condition: GateCondition; latestDate: string }>;
   undated: GateCondition[];
+  unidentified: Array<{ condition: GateCondition; entries: UnidentifiedMedication[] }>;
   anchors: WindowAnchorEvidence[];
   sessionNodeIds: string[];
   awaitingSession: boolean;
@@ -2179,6 +2377,9 @@ function evaluateEntry(
     anchorless: outcome.anchorUnresolved === true ? [entry] : [],
     shortSeries: short ? [short] : [],
     undated: outcome.gestationalAgeMissing === true ? [entry] : [],
+    unidentified: outcome.unidentifiedMedications && outcome.unidentifiedMedications.length > 0
+      ? [{ condition: entry, entries: outcome.unidentifiedMedications }]
+      : [],
     anchors: outcome.windowAnchor ? [outcome.windowAnchor] : [],
   };
 }
@@ -2204,6 +2405,7 @@ function combineEntries(op: 'AND' | 'OR', parts: readonly EntryResult[]): Combin
     anchorless: open ? [...new Set(parts.flatMap((p) => p.anchorless))] : [],
     shortSeries: open ? parts.flatMap((p) => p.shortSeries) : [],
     undated: open ? [...new Set(parts.flatMap((p) => p.undated))] : [],
+    unidentified: open ? parts.flatMap((p) => p.unidentified) : [],
     anchors: parts.flatMap((p) => p.anchors),
     sessionNodeIds: [...new Set(results.flatMap((r) => r.sessionNodeIds ?? []))],
     awaitingSession: results.some((r) => r.awaitingSession === true),
@@ -2248,7 +2450,7 @@ function evaluateGroup(
     // Refused at import; fails closed like a compound gate with no conditions.
     return {
       outcome: { satisfied: false, reason: `${op} group has no conditions`, fieldsRead: [] },
-      unresolved: [], anchorless: [], shortSeries: [], undated: [], anchors: [],
+      unresolved: [], anchorless: [], shortSeries: [], undated: [], unidentified: [], anchors: [],
     };
   }
   const parts = group.conditions.map((e) => evaluateEntry(e, evaluateOneCondition, deps));
@@ -2286,6 +2488,7 @@ function evaluateGroup(
     anchorless: c.anchorless,
     shortSeries: c.shortSeries,
     undated: c.undated,
+    unidentified: c.unidentified,
     anchors: c.anchors,
   };
 }
@@ -2390,6 +2593,8 @@ function evaluateCompound(
     // Which of those need the GESTATIONAL AGE (a `horizon: "PREGNANCY"` leaf
     // that could not be dated) rather than their own datum.
     if (c.undated.length > 0) out.unresolvedPregnancyConditions = c.undated;
+    // Which of those wait on a medication that could not be identified.
+    if (c.unidentified.length > 0) out.unresolvedMedicationClasses = c.unidentified;
   }
   const anchors = distinctAnchors(c.anchors);
   if (anchors.length > 0) out.windowAnchors = anchors;
@@ -2559,6 +2764,16 @@ export interface GateEvaluationDeps {
    * "not recommended".
    */
   sessionRecommendation?: SessionRecommendationLookup;
+  /**
+   * What each chart medication was identified as — its ingredients and
+   * product classes — for conditions that match by ingredient or class
+   * (`medication-classes.ts`). The pipeline supplies it from the session's
+   * pinned observations and the evaluation environment; gate evaluation itself
+   * never looks anything up. Absent, or `null` for an entry, means "not
+   * identified": such a condition is unresolved, never a silent "not in the
+   * class".
+   */
+  medicationIdentity?: MedicationIdentityLookup;
   /**
    * Namespace/system/code lookup table for attribute conditions (e.g.
    * `lab.hemoglobin` → LOINC 718-7).

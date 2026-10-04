@@ -1,5 +1,5 @@
 import { Pool } from 'pg';
-import { canonicalKey } from './normalizer';
+import { canonicalKey, normalizedOf } from './normalizer';
 import { AllergyMapping, DdiSeverity, InteractionResult, fetchAllergyMappings } from './ddi-engine';
 import { MedicationInput, NormalizedMedication } from './types';
 
@@ -43,19 +43,25 @@ export async function loadSafetyReference(
   const normalized = new Map<string, NormalizedMedication>();
   if (keys.length > 0) {
     const r = await db.query(
-      `SELECT input_text, input_system, input_code, ingredient_rxcui, ingredient_name, atc_classes
+      `SELECT input_text, input_system, input_code, ingredient_rxcui, ingredient_name, atc_classes,
+              ingredient_rxcuis, ingredient_names, product_atc_classes
          FROM medication_normalization_cache
         WHERE (input_text, input_system, input_code) IN (
           SELECT t, s, c FROM unnest($1::text[], $2::text[], $3::text[]) AS u(t, s, c))`,
       [keys.map((k) => k.text), keys.map((k) => k.system), keys.map((k) => k.code)],
     );
     for (const row of r.rows) {
-      if (!row.ingredient_rxcui) continue; // cached NULL = tried and unmappable: still not normalised
-      normalized.set(`${row.input_text}|${row.input_system}|${row.input_code}`, {
+      // cached NULL = tried and unmappable: still not normalised
+      const norm = normalizedOf({
+        inputText: row.input_text,
         ingredientRxcui: row.ingredient_rxcui,
-        ingredientName: row.ingredient_name ?? row.input_text,
+        ingredientName: row.ingredient_name,
         atcClasses: row.atc_classes ?? [],
+        ingredientRxcuis: row.ingredient_rxcuis ?? null,
+        ingredientNames: row.ingredient_names ?? null,
+        productAtcClasses: row.product_atc_classes ?? null,
       });
+      if (norm) normalized.set(`${row.input_text}|${row.input_system}|${row.input_code}`, norm);
     }
   }
 

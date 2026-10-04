@@ -126,6 +126,7 @@ export function validateAnswerAgainstGate(
  */
 export function datumAnswerType(q: Pick<PendingQuestion, 'answerType' | 'askTarget'>): AnswerType {
   if (q.askTarget?.kind === 'anchor') return AnswerType.DATE;
+  if (q.askTarget?.kind === 'medication_class') return AnswerType.BOOLEAN;
   if (q.askTarget?.kind !== 'attribute') return AnswerType.NUMERIC;
   return normalizeAnswerType(q.answerType);
 }

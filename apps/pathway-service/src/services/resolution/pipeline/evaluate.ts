@@ -62,6 +62,7 @@ export async function evaluate(
     factStore,
     rctx.codeMap,
     observations.evaluator,
+    observations.medication,
   );
   const t = await engine.traverse(rctx.graphContext, patient, inputs.gateAnswers, inputs.providerOverrides);
 

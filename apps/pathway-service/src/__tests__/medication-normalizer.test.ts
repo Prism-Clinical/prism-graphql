@@ -10,6 +10,11 @@ jest.mock('../services/medications/rxnav-client', () => ({
   findRxcuiByString: jest.fn(),
   getIngredientRxcui: jest.fn(),
   getAtcClasses: jest.fn(),
+  // Migration 071: every ingredient and the product classes. Unstubbed, they
+  // resolve to undefined and the normaliser falls back to the first ingredient.
+  getIngredients: jest.fn(),
+  getTermType: jest.fn(),
+  getProductAtcClasses: jest.fn(),
   getRxcuiByNdc: jest.fn(),
 }));
 
@@ -54,8 +59,10 @@ function makeFakePool() {
       }
 
       if (/INSERT INTO medication_normalization_cache/i.test(sql)) {
-        const [text, system, code, rxcui, name, atc] = params as [
+        // $7–$11 are migration 071's columns; the fake stores the ones read back.
+        const [text, system, code, rxcui, name, atc, rxcuis, names, , , productAtc] = params as [
           string, string, string, string | null, string | null, string[],
+          string[] | null, string[] | null, unknown, unknown, string[] | null,
         ];
         cache.set(key(text, system, code), {
           input_text: text,
@@ -64,8 +71,11 @@ function makeFakePool() {
           ingredient_rxcui: rxcui,
           ingredient_name: name,
           atc_classes: atc ?? [],
+          ingredient_rxcuis: rxcuis ?? null,
+          ingredient_names: names ?? null,
+          product_atc_classes: productAtc ?? null,
           normalized_at: new Date(),
-        });
+        } as CacheRow);
         return { rows: [], rowCount: 1 };
       }
 

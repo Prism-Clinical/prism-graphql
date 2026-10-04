@@ -260,6 +260,34 @@ function answerChange(session: ResolutionSession, args: { sessionId: string; nod
     };
   }
 
+  // "Is this chart medication in the class?" — asked about ONE entry the
+  // engine could not identify (`medication-classes.ts`). A yes/no, and like an
+  // anchor date not a fact about the chart: stored in gateAnswers under the
+  // question's own key, where every gate on the same class reads it.
+  if (pending?.askTarget?.kind === 'medication_class') {
+    const target = pending.askTarget;
+    const others = (['numericValue', 'selectedOption', 'dateValue', 'observedOn', 'enteredAs'] as const)
+      .filter((k) => args.answer[k] !== undefined && args.answer[k] !== null);
+    if (typeof args.answer.booleanValue !== 'boolean' || others.length > 0) {
+      throw new GraphQLError(
+        `Gate "${args.nodeId}" asks whether a medication on the list is in a class; supply booleanValue alone`,
+        { extensions: { code: 'BAD_USER_INPUT' } },
+      );
+    }
+    inputs.gateAnswers.set(target.key, { booleanValue: args.answer.booleanValue });
+    inputs.gateAnswers.delete(declinedKeyFor(target.key));
+    return {
+      inputs,
+      event: {
+        eventType: 'PROVIDER_ASSERTED_DATUM',
+        triggerData: {
+          gateId: args.nodeId, datumKey: pending.datumKey, target, value: args.answer.booleanValue,
+          answerType: datumAnswerType(pending), assertedAsOf: session.temporalContext.evaluationAsOf,
+        },
+      },
+    };
+  }
+
   // An escalated datum request: the answer is a FACT, added to the patient
   // context — never to gateAnswers — so every gate reading that datum sees it.
   if (pending?.askTarget) {

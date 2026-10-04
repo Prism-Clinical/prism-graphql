@@ -19,7 +19,7 @@ import {
   SessionStatus,
 } from './types';
 import type { AdditionalContextInput } from '../../resolvers/mutations/resolution';
-import type { EvaluationResult, LlmObservation, SessionInputs } from './pipeline/types';
+import type { EvaluationResult, SessionInputs, SessionObservation } from './pipeline/types';
 import { activeConditionPredicate } from '../snapshot/active-context-filter';
 import { findAncestors } from '../codes/icd10-hierarchy';
 
@@ -240,7 +240,7 @@ export function rowToSession(row: any, events: unknown[]): ResolutionSession {
     resolutionEvents: events as ResolutionSession['resolutionEvents'],
     gateAnswers: mapOf<GateAnswer>(row.gate_answers),
     providerOverrides: mapOf<ProviderOverride>(row.provider_overrides),
-    observations: mapOf<LlmObservation>(row.observations),
+    observations: mapOf<SessionObservation>(row.observations),
     graphFingerprint: row.graph_fingerprint ?? '',
     envFingerprint: row.env_fingerprint ?? '',
     resultHash: row.result_hash ?? '',

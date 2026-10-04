@@ -24,6 +24,11 @@
 > - calendar checks on the session clock (2026-10-04): the condition
 >   `encounter.date` / `in_season` ("is today inside Sept 1 – Jan 31?") and the horizon
 >   `{ "since": "MM-DD" }` ("since the most recent July 1")
+> - match a medication by what it IS (2026-10-04): a `medications` condition may set
+>   `"system": "RXNORM_INGREDIENT"` (value = an ingredient RxCUI) or `"system": "ATC"`
+>   (value = a product class, levels 1–4) — any brand, any season, no product list; a chart
+>   medication that cannot be identified is asked about by name (see **Match a medication by
+>   ingredient or class**; migration 071)
 > - equivalent lab measures (2026-10-04): hemoglobin (LOINC 718-7) and hematocrit (LOINC
 >   4544-3) stand in for each other — the engine estimates one from the other
 >   (Hgb = Hct ÷ 3), asks for them as ONE question the provider may answer in either
@@ -478,9 +483,9 @@ different date at every visit, and a look-back cannot say "it is October" at all
     { "attribute": "encounter.date", "operator": "in_season", "from": "09-01", "to": "01-31",
       "display": "RSV season (Sept 1 – Jan 31)" },
     { "attribute": "patient.gestational_age_weeks", "operator": "greater_or_equal", "value": 32 },
-    { "field": "medications", "operator": "count_in_window", "value": "<RSV vaccine RxNorm code>",
-      "system": "RXNORM", "status": "any", "count_threshold": 1, "count_comparison": "less_than",
-      "horizon": "PREGNANCY" } ] }
+    { "field": "medications", "operator": "count_in_window", "value": "2636589",
+      "system": "RXNORM_INGREDIENT", "display": "an RSV vaccine", "status": "any",
+      "count_threshold": 1, "count_comparison": "less_than", "horizon": "PREGNANCY" } ] }
 ```
 
 - **The season's dates come from the brief**, with their source (CDC and ACOG differ for
@@ -502,6 +507,7 @@ different date at every visit, and a look-back cannot say "it is October" at all
   chart, vaccinated or not. The window is exercised only with dated entries
   (`medications[].date`). State this in the brief (§18).
 
+| Listed vaccines and prenatal vitamins product by product — sixteen influenza vaccine RxCUIs for two seasons, eight COVID-19, four prenatal multivitamins. The list is stale every August, misses every brand not on it, and a missed product reads as "not given" (`[DECISION — Josh 2026-10-04]`: "Match the vaccine, not the brand"). | One condition on the **ingredient** (`"system": "RXNORM_INGREDIENT"`) or the **product class** (`"system": "ATC"`). Any influenza vaccine product of any season contains ingredient 1657128; any prenatal multivitamin and any plain folic acid tablet contains 4511. A chart entry the engine cannot identify is never "not given": the gate asks the provider about that entry by name. See **Match a medication by ingredient or class**. |
 | Read hemoglobin (718-7) almost everywhere and hematocrit (4544-3) in one OR leaf (referral: Hgb < 9 OR Hct < 27). After a hemoglobin was entered the provider was asked for a hematocrit too, and a provider who had only a hematocrit could not answer the hemoglobin question (`[DECISION — Josh 2026-10-04]`: "the ability to choose whether to input hemoglobin vs hematocrit"). | Nothing to author: the engine treats the two as **one quantity**. Either on file answers a gate on either code (the other is estimated, and the reason says so), and when neither is on file there is one question with a Hgb / Hct switch. Write the gate on hemoglobin. See **Equivalent lab measures**. |
 
 Authoring rules that follow:
@@ -513,7 +519,12 @@ Authoring rules that follow:
    *meaningless* for the decision (a value from a previous pregnancy; the post-treatment
    window of a response check) — then say why in the brief: `[WINDOW — <gate-id>: <why>]`.
 2. **Before the pathway starts, chooses or orders something, check whether the chart already
-   has it.** A treatment → gate on `medications`. A lab result the pathway would order →
+   has it.** A treatment → gate on `medications`, **matching the ingredient or class, not a
+   list of products** (`"system": "RXNORM_INGREDIENT"` / `"ATC"` — see **Match a medication
+   by ingredient or class**): one condition covers every brand, strength and season, and
+   needs no edit when next year's products are released. A product-code list
+   (`"system": "RXNORM"`, one leaf per product) is right only when no ingredient or class
+   distinguishes the drug — a specific strength or formulation, such as "aspirin **81 mg**". A lab result the pathway would order →
    gate on `labs` membership. A diagnosis the pathway would work up → gate on `conditions`.
    A pathway that recommends medications and never reads the medication list must say why:
    `[NO MEDICATION CHECK — <why>]`.
@@ -576,6 +587,105 @@ Authoring rules that follow:
 read each one and either fix the pathway or add the marker. (Rule 5: a `window_from` trend
 or delta whose `clinical_role` has no `count_in_window` … `count_comparison: "less_than"`
 gate anywhere in the pathway.)
+
+### Match a medication by ingredient or class (josh-dev, 2026-10-04)
+
+`[DECISION — Josh 2026-10-04]`: "Match the vaccine, not the brand" — any influenza vaccine
+product counts as an influenza vaccine, whatever the brand or season, and likewise
+COVID-19, Tdap, RSV, prenatal vitamins / folic-acid-containing products and iron; no yearly
+code-list edits.
+
+A coded condition on `field: "medications"` may name, in `system`, what the medication
+**is** instead of a product code:
+
+```json
+{ "field": "medications", "operator": "count_in_window", "value": "1657128",
+  "system": "RXNORM_INGREDIENT", "display": "an influenza vaccine", "status": "any",
+  "count_threshold": 1, "count_comparison": "less_than", "horizon": { "since": "07-01" } }
+
+{ "field": "medications", "operator": "includes_code", "value": "B03AA",
+  "system": "ATC", "display": "an oral iron supplement", "status": "active", "horizon": "LIFETIME" }
+```
+
+| `system` | `value` | A chart medication matches when … |
+|---|---|---|
+| `RXNORM_INGREDIENT` | an ingredient RxCUI (digits; RxNorm TTY `IN`) | its normalisation **contains that ingredient** — any brand, strength, pack, or multi-ingredient product. An entry charted *as* the ingredient code matches too. |
+| `ATC` | an ATC class of **level 1–4** (`J`, `J07`, `J07B`, `J07BB`) | one of its **product-level** ATC classes starts with the value (`J07` covers `J07BB`). Level-5 codes (`J07BB02`) are an import error: RxNav classifies products to level 4. |
+
+- **Operators:** `includes_code`, `not_includes_code`, `count_in_window` — nothing else
+  (import error). **`display` is required** and names the class in words as it would follow
+  "does it count as …" (`"an influenza vaccine"`): it is what the provider is asked.
+  `window_from` is not allowed with a class system.
+- **Everything else is the chart entry's.** The entry's date, end date and clinical status
+  decide the window and `status` exactly as for a product-code condition; every `horizon`
+  works (`LIFETIME`, `{days}`, `window_days`, `PREGNANCY`, `{ "since": … }`,
+  `{ "since_gestational_week": N }`). Only the *identity* comes from normalisation.
+- **Membership or count — choose by what the record is.** A medication record is an
+  **interval** (start → end, or still open):
+  - `includes_code` / `not_includes_code` ask "was a record of this **open at any time** in
+    the window". Right for an ongoing treatment — "on oral iron", "taking a prenatal
+    vitamin" (`status: "active"`, `horizon: "LIFETIME"`). An entry with no end date is open
+    until today, so it satisfies *every* window after its start.
+  - `count_in_window` counts records that **began** in the window. Right for an event — a
+    vaccine dose: "given this season", "given this pregnancy" — with `status: "any"`
+    (a completed administration is not an "active" medication). "Still owed" is the same
+    condition with `"count_comparison": "less_than"`, `"count_threshold": 1`.
+  - Undated entries (every simulator chart): satisfy membership in any window, and count
+    **0** toward any bounded count.
+- **Ingredient or class?** Use the **ingredient** when it is what defines the drug — the
+  vaccines, folic acid, a named IV iron. Use the **ATC product class** when the ingredient
+  is shared with things that are not the drug: every prenatal multivitamin contains an iron
+  salt, so "on an oral iron supplement" is `ATC` `B03AA` (oral iron(II)) / `B03AB` (oral
+  iron(III)), which a prenatal vitamin (`B03AE`, `A11…`) is not. Avoid ATC where the table
+  below says it is unreliable.
+
+**Verified against RxNav, 2026-10-04** (through the service's own normaliser):
+
+| What | Author as | Verified on | Notes |
+|---|---|---|---|
+| Influenza vaccine, any brand / season | `RXNORM_INGREDIENT` `1657128` (influenza A H1N1 antigen; every seasonal product also has `1657131` H3N2 and `1657134` B) — or `ATC` `J07BB` | Flucelvax 2025-26, Flublok 2026-27, Afluria (brand) | Both forms match all three. |
+| COVID-19 vaccine | `RXNORM_INGREDIENT` `2468231` (mRNA: Comirnaty, Spikevax) **OR** `2606074` (protein subunit: Nuvaxovid) — two leaves | Comirnaty, Spikevax, Nuvaxovid 2025-26 | `ATC` `J07BN` covers the mRNA products only: **Nuvaxovid has no ATC class in RxNav**, so an ATC gate asks about it. Use the ingredients. |
+| Tdap | `RXNORM_INGREDIENT` `798302` (acellular pertussis vaccine) — or `ATC` `J07AJ` | Boostrix, Adacel match; **Tenivac (plain Td) does not** | Pediatric DTaP (Daptacel) and its combinations contain the same ingredient. It does not matter under a `PREGNANCY` window; do not use it with `LIFETIME` to mean "an adult Tdap". |
+| RSV vaccine (RSVpreF) | `RXNORM_INGREDIENT` `2636589` | Abrysvo | **Arexvy shares the ingredient** (it is not for use in pregnancy). `ATC` `J07BX` is "other viral vaccines" — too broad; do not use it. |
+| Folic acid, alone or in a prenatal vitamin | `RXNORM_INGREDIENT` `4511` | folic acid 0.4 mg tablet; five prenatal multivitamins (ferrous fumarate, polysaccharide iron, iron carbonyl, DHA, CitraNatal pack) | "Is a prenatal vitamin" has no class: the products scatter over `B03AE`, `A11AA`, `A11JB`, `A11JC`. "Contains folic acid" is the expressible question. Products with L-methylfolate instead of folic acid are a different ingredient. |
+| Oral iron supplement (not a multivitamin) | `ATC` `B03AA` **OR** `B03AB` — two leaves | ferrous sulfate 325 mg, ferrous gluconate 324 mg, Slow Fe → `B03AA` | By ingredient it would also match every prenatal vitamin. Ingredients, for reference: ferrous sulfate `24947`, ferrous gluconate `24942`, ferrous fumarate `24941`, polysaccharide iron complex `105669`, iron carbonyl `262150`, ferrous bisglycinate `1102188`. |
+| IV iron | `ATC` `B03AC` — or the ingredients: iron sucrose `24909`, ferric carboxymaltose `1433693`, ferumoxytol `473387`, iron dextran `5992`, ferric derisomaltose `2274394`, sodium ferric gluconate `261435` | Venofer, Injectafer, Feraheme, INFeD, Monoferric → `B03AC` | Either form. |
+
+A medication charted as an **ingredient or brand** rather than a product (e.g. the bare
+ingredient "ferrous sulfate", RxCUI `24947`) has its ingredient but often **no single
+product class** — RxNav returns the classes of every product made from it. The engine
+records a class for such an entry only when there is exactly one (Venofer → `B03AC`);
+otherwise an `ATC` condition treats the entry as unidentified and asks.
+
+**A medication that cannot be identified is never "not in the class".** Each chart entry is
+*in the class*, *not in it*, or **unidentified** — RxNav had no match for it, was
+unreachable, or (for `ATC`) gives it no product class. The condition is decided only when
+the unidentified entries **cannot change the answer** (one identified Tdap settles "a Tdap
+is on the list"; an unidentified entry outside the window is irrelevant). Otherwise it is
+*unresolved* — `indeterminate`, reason `MEDICATION_UNIDENTIFIED` — and follows
+`on_unresolved`:
+
+- `ask` → the gate pends on a **yes/no question about that entry**, e.g. *"Flublok
+  Quadrivalent 2026" is on the medication list and could not be identified. Does it count
+  as an influenza vaccine?* — the entry as the chart names it, the class from `display`
+  (the gate's own `prompt` is not used). **Yes** counts the entry as a member, dated as the
+  chart dates it; **No** excludes it; **Not available** stops the question, and the gate
+  takes `default_behavior` (or opens, with `on_declined: "traverse"`). Several unidentified
+  entries are asked about one at a time; gates on the same class share the question.
+- `default` → nothing is asked; `default_behavior` applies and the gate's reason still
+  names the entry (it shows in the plan's data gaps).
+
+Identification is done **before** evaluation, never during it: the patient's chart
+medications are normalised (RxNav, cached; awaited up to 4 s for ones not seen before) when
+the evaluation's environment is loaded. What a session identified a medication as is
+**pinned in the session** the first time a gate uses it, so re-evaluating or replaying the
+session later decides the same way even if the cache row has since changed. `legacy-v0`
+sessions refuse a class system (`matching a medication by … requires the v1 temporal
+kernel`).
+
+**Simulator.** The simulator's medication entries are coded and normalise like any other,
+but they are undated: membership works, and a bounded `count_in_window` reads 0 (so a
+"still owed" count opens for every simulator chart — state it in the brief, §18).
 
 ### Equivalent lab measures — hemoglobin ⇄ hematocrit (josh-dev, 2026-10-04)
 
@@ -1364,9 +1474,9 @@ refusal — message `horizon { since_gestational_week } requires the v1 temporal
 `[DECISION — Josh 2026-10-04]`: "can we add a calendar check?" — "this season".
 
 ```json
-{ "field": "medications", "operator": "count_in_window", "value": "<influenza vaccine RxNorm code>",
-  "system": "RXNORM", "status": "any", "count_threshold": 1, "count_comparison": "less_than",
-  "display": "Influenza vaccine this season", "horizon": { "since": "07-01" } }
+{ "field": "medications", "operator": "count_in_window", "value": "1657128",
+  "system": "RXNORM_INGREDIENT", "display": "an influenza vaccine", "status": "any",
+  "count_threshold": 1, "count_comparison": "less_than", "horizon": { "since": "07-01" } }
 ```
 
 - **The window.** Lower bound = 00:00 on the most recent occurrence of that month-day **on

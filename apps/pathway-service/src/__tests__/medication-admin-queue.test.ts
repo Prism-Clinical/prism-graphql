@@ -5,6 +5,11 @@
 jest.mock('../services/medications/rxnav-client', () => ({
   getIngredientRxcui: jest.fn(),
   getAtcClasses: jest.fn(),
+  // Migration 071: every ingredient and the product classes. Unstubbed, they
+  // resolve to undefined and the normaliser falls back to the first ingredient.
+  getIngredients: jest.fn(),
+  getTermType: jest.fn(),
+  getProductAtcClasses: jest.fn(),
 }));
 
 import {

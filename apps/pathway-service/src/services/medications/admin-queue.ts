@@ -8,7 +8,13 @@
  */
 
 import { Pool } from 'pg';
-import { getAtcClasses, getIngredientRxcui } from './rxnav-client';
+import {
+  getAtcClasses,
+  getIngredientRxcui,
+  getIngredients,
+  getProductAtcClasses,
+  getTermType,
+} from './rxnav-client';
 
 export interface UnnormalizedMedication {
   inputText: string;
@@ -71,6 +77,12 @@ export async function manuallyResolveMedicationNormalization(
     );
   }
   const atcClasses = await getAtcClasses(ingredient.rxcui);
+  // Every ingredient and the product's own classes (migration 071), so a
+  // manually resolved medication can be matched by a pathway gate too.
+  const allIngredients = await getIngredients(args.rxcui);
+  const ingredients = allIngredients && allIngredients.length > 0 ? allIngredients : [ingredient];
+  const productTty = (await getTermType(args.rxcui)) ?? null;
+  const productAtcClasses = (await getProductAtcClasses(args.rxcui, productTty)) ?? [];
 
   const inputText = args.inputText.toLowerCase().trim();
   const inputSystem = args.inputSystem ?? '';
@@ -78,14 +90,23 @@ export async function manuallyResolveMedicationNormalization(
 
   await pool.query(
     `INSERT INTO medication_normalization_cache
-       (input_text, input_system, input_code, ingredient_rxcui, ingredient_name, atc_classes)
-     VALUES ($1, $2, $3, $4, $5, $6)
+       (input_text, input_system, input_code, ingredient_rxcui, ingredient_name, atc_classes,
+        ingredient_rxcuis, ingredient_names, product_rxcui, product_tty, product_atc_classes)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
      ON CONFLICT (input_text, input_system, input_code) DO UPDATE SET
-       ingredient_rxcui = EXCLUDED.ingredient_rxcui,
-       ingredient_name  = EXCLUDED.ingredient_name,
-       atc_classes      = EXCLUDED.atc_classes,
-       normalized_at    = NOW()`,
-    [inputText, inputSystem, inputCode, ingredient.rxcui, ingredient.name, atcClasses],
+       ingredient_rxcui    = EXCLUDED.ingredient_rxcui,
+       ingredient_name     = EXCLUDED.ingredient_name,
+       atc_classes         = EXCLUDED.atc_classes,
+       ingredient_rxcuis   = EXCLUDED.ingredient_rxcuis,
+       ingredient_names    = EXCLUDED.ingredient_names,
+       product_rxcui       = EXCLUDED.product_rxcui,
+       product_tty         = EXCLUDED.product_tty,
+       product_atc_classes = EXCLUDED.product_atc_classes,
+       normalized_at       = NOW()`,
+    [
+      inputText, inputSystem, inputCode, ingredient.rxcui, ingredient.name, atcClasses,
+      ingredients.map((i) => i.rxcui), ingredients.map((i) => i.name), args.rxcui, productTty, productAtcClasses,
+    ],
   );
 
   return {

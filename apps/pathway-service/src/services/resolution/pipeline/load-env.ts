@@ -5,6 +5,7 @@ import type { ScoringConfig } from '../../confidence/confidence-engine';
 import type { PatientContext } from '../../confidence/types';
 import { loadLLMGateConfig } from '../../llm/llm-gate-client';
 import { SafetyReference, loadSafetyReference, normalizedKey } from '../../medications/safety-reference';
+import { ensureChartMedicationsNormalized } from '../../medications/normalizer';
 import type { MedicationInput } from '../../medications/types';
 import { compileCached } from '../../compiler/cache';
 import type { CompileResult } from '../../compiler/model';
@@ -136,7 +137,15 @@ function envOf(resolution: ResolutionContext, scoring: ScoringConfig, safety: Sa
   return { resolution, scoring, safety, graphFingerprint, envFingerprint, llmModel, unnormalized, compilation };
 }
 
+/** The patient's own medications, keyed exactly as `candidateMedications` keys them. */
+const chartMedications = (universe: CandidateUniverse): MedicationInput[] =>
+  universe.patient.medications.map((m) => ({ text: m.display ?? m.code, system: m.system, code: m.code }));
+
 export async function loadEvaluationEnv(pool: Pool, pathwayId: string, universe: CandidateUniverse): Promise<EvaluationEnv> {
+  // BEFORE the snapshot, and on the pool: a REPEATABLE READ snapshot cannot
+  // see a row written after it opens, so the chart's medications are
+  // normalised first and the snapshot then reads them like any other row.
+  await ensureChartMedicationsNormalized(pool, chartMedications(universe));
   const read = await inSnapshot(pool, async (db) => {
     const { resolution, scoring, compilation } = await readPathway(db, pathwayId);
     const medications = candidateMedications([resolution], universe);
@@ -152,6 +161,7 @@ export async function loadEvaluationEnv(pool: Pool, pathwayId: string, universe:
  * child is ever composed with a result from a different snapshot (D13).
  */
 export async function loadRunEnv(pool: Pool, pathwayIds: string[], universe: CandidateUniverse): Promise<RunEnv> {
+  await ensureChartMedicationsNormalized(pool, chartMedications(universe));
   const read = await inSnapshot(pool, async (db) => {
     const graphs = new Map<string, { resolution: ResolutionContext; scoring: ScoringConfig; compilation: CompileResult }>();
     for (const id of pathwayIds) graphs.set(id, await readPathway(db, id));
