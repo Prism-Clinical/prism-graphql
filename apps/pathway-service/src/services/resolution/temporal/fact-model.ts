@@ -1,4 +1,5 @@
 import { FactKind } from './contract';
+import type { DerivedFrom } from '../lab-equivalents';
 
 export interface TemporalBound {
   value: string; // FHIR: YYYY | YYYY-MM | YYYY-MM-DD | full instant with timezone
@@ -46,6 +47,14 @@ export interface ObservationFact extends FactBase {
   unit?: string;
   observationStatus?: string; // labs only; vitals typically have none
   issuedAt?: string;
+  /**
+   * Set on an ESTIMATED lab value: one derived at fact assembly from an
+   * equivalent measure (`lab-equivalents.ts` — a hemoglobin estimated from a
+   * hematocrit). `value` is the estimate; this is what was actually measured.
+   * Absent on every measured fact. Exists only in the assembled store — it is
+   * never written to a patient context.
+   */
+  derivedFrom?: DerivedFrom;
 }
 
 export type NormalizedFact = StatefulFact | ObservationFact;

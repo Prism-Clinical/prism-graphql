@@ -1057,6 +1057,24 @@ type MultiPathwayPendingGate {
   lastOnFileValue: Float
   """The day `lastOnFileValue` was drawn, `YYYY-MM-DD`; null when undated."""
   lastOnFileDate: String
+  """
+  When the question has `alternatives`: WHICH measure `lastOnFileValue` is. The
+  newest value on file across the equivalents may be the other measure (a
+  hematocrit, for a hemoglobin question) — prefill it under this one. Null
+  for a question with no alternatives, where the value is the asked lab's.
+  """
+  lastOnFileCode: String
+  lastOnFileSystem: String
+  lastOnFileDisplay: String
+  lastOnFileUnit: String
+  """
+  For a request for a LAB that has equivalent measures (hemoglobin ⇄
+  hematocrit): every measure the answer may be given in, the asked lab FIRST.
+  Offer a switch between them and send the one entered as
+  `GateAnswerInput.enteredAs`; one answer, in either measure, resolves every
+  gate waiting on any of them. Null for every other question.
+  """
+  alternatives: [LabMeasure!]
 }
 
 """Lightweight summary for list views (no embedded merged plan)."""
@@ -1307,6 +1325,24 @@ type PendingQuestionType {
   lastOnFileValue: Float
   """The day `lastOnFileValue` was drawn, `YYYY-MM-DD`; null when undated."""
   lastOnFileDate: String
+  """
+  When the question has `alternatives`: WHICH measure `lastOnFileValue` is. The
+  newest value on file across the equivalents may be the other measure (a
+  hematocrit, for a hemoglobin question) — prefill it under this one. Null
+  for a question with no alternatives, where the value is the asked lab's.
+  """
+  lastOnFileCode: String
+  lastOnFileSystem: String
+  lastOnFileDisplay: String
+  lastOnFileUnit: String
+  """
+  For a request for a LAB that has equivalent measures (hemoglobin ⇄
+  hematocrit): every measure the answer may be given in, the asked lab FIRST.
+  Offer a switch between them and send the one entered as
+  `GateAnswerInput.enteredAs`; one answer, in either measure, resolves every
+  gate waiting on any of them. Null for every other question.
+  """
+  alternatives: [LabMeasure!]
 }
 
 type CarePlanGenerationResult {
@@ -1361,6 +1397,23 @@ type ValidationBlockerType {
 
 # ─── Resolution Inputs ───────────────────────────────────────────────
 
+"""One way of reporting a lab quantity: a coded lab with its display name and unit."""
+type LabMeasure {
+  code: String!
+  system: String!
+  """e.g. "Hemoglobin", "Hematocrit"."""
+  display: String!
+  """e.g. "g/dL", "%"."""
+  unit: String!
+}
+
+"""Names the lab measure an answer was entered as (see `PendingQuestionType.alternatives`)."""
+input LabMeasureInput {
+  code: String!
+  """Defaults to LOINC."""
+  system: String
+}
+
 input GateAnswerInput {
   booleanValue: Boolean
   numericValue: Float
@@ -1388,6 +1441,15 @@ input GateAnswerInput {
   dates.
   """
   observedOn: String
+  """
+  With `numericValue`, answering a request for a LAB that offers
+  `alternatives`: the measure the value was entered as. It must be the asked
+  lab or one of its alternatives (BAD_USER_INPUT otherwise). The value is
+  stored as THAT lab — a hematocrit stays a hematocrit — and the engine
+  estimates the equivalent for every gate that needs it. Omitted, the value is
+  the asked lab's.
+  """
+  enteredAs: LabMeasureInput
 }
 
 input AdditionalContextInput {

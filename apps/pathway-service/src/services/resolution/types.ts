@@ -579,7 +579,26 @@ export interface PendingQuestion {
    * answer, so the provider confirms or replaces it instead of retyping a
    * value Prism already has. Absent when nothing is on file.
    */
-  lastOnFile?: { value: number; date?: string };
+  lastOnFile?: {
+    value: number;
+    date?: string;
+    /**
+     * Set when the question has `alternatives`: WHICH measure `value` is. The
+     * newest value on file across the equivalents may be the other measure —
+     * a hematocrit, for a hemoglobin question — so a client prefills it under
+     * the right one.
+     */
+    code?: string;
+    system?: string;
+    display?: string;
+    unit?: string;
+  };
+  /**
+   * For a LAB request with registered equivalents (`lab-equivalents.ts`): the
+   * measures the answer may be given in, the asked lab first. Absent for every
+   * other question.
+   */
+  alternatives?: Array<{ code: string; system: string; display: string; unit: string }>;
   /**
    * Every gate this pass saw asking for this datum.
    *

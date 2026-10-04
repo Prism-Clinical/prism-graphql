@@ -65,6 +65,7 @@ import {
 import type { ScopedBlocker } from '../../services/resolution/pipeline/types';
 
 import { forgetAnswer, parseRememberAnswer, rememberAnswer, shouldRemember } from '../../services/resolution/remembered-answers';
+import { equivalenceGroupOf } from '../../services/resolution/lab-equivalents';
 
 export interface GateAnswerInput {
   booleanValue?: boolean;
@@ -76,6 +77,8 @@ export interface GateAnswerInput {
   notAvailable?: boolean;
   /** `YYYY-MM-DD` — when a lab value being supplied was drawn. */
   observedOn?: string;
+  /** The lab measure the value was entered as — the asked lab or a registered equivalent. */
+  enteredAs?: { code: string; system?: string | null } | null;
 }
 
 /**
@@ -297,11 +300,38 @@ function answerChange(session: ResolutionSession, args: { sessionId: string; nod
         throw new GraphQLError(`Gate "${args.nodeId}": observedOn — ${dateProblem}`, { extensions: { code: 'BAD_USER_INPUT' } });
       }
     }
+    // The measure the provider entered: the asked lab, or one of its
+    // registered equivalents (a hematocrit for a hemoglobin question). The
+    // value is stored AS that lab — never converted here — and the assembled
+    // fact store estimates the other measure for every gate that needs it.
+    const enteredAs = args.answer.enteredAs;
+    let entered: { code: string; system: string } | null =
+      target.kind === 'lab' ? { code: target.code, system: target.system } : null;
+    if (enteredAs !== undefined && enteredAs !== null) {
+      if (target.kind !== 'lab') {
+        throw new GraphQLError(`Gate "${args.nodeId}": enteredAs names a lab measure; ${pending.datumKey} is not a lab`, {
+          extensions: { code: 'BAD_USER_INPUT' },
+        });
+      }
+      const allowed = equivalenceGroupOf(target.code, target.system)
+        ?? [{ code: target.code, system: target.system, display: target.code, unit: '' }];
+      const match = allowed.find((m) =>
+        m.code === enteredAs.code && m.system.toUpperCase() === String(enteredAs.system ?? m.system).toUpperCase());
+      if (!match) {
+        throw new GraphQLError(
+          `Gate "${args.nodeId}": enteredAs ${enteredAs.system ?? 'LOINC'} ${enteredAs.code} is not a measure this question ` +
+            `accepts (${allowed.map((m) => `${m.system} ${m.code}`).join(', ')})`,
+          { extensions: { code: 'BAD_USER_INPUT' } },
+        );
+      }
+      // The asked lab keeps its own system spelling; an equivalent takes the registry's.
+      entered = match.code === target.code ? { code: target.code, system: target.system } : { code: match.code, system: match.system };
+    }
     const fragment: AdditionalContextInput =
       target.kind === 'lab'
         ? {
             labResults: [{
-              code: target.code, system: target.system, value: value as number,
+              code: entered!.code, system: entered!.system, value: value as number,
               // Dated the day it was drawn when the provider says so, and then it is
               // an ordinary dated result — several can stand side by side. Undated
               // by the provider, it is "the value now" and supersedes earlier ones.
@@ -330,6 +360,9 @@ function answerChange(session: ResolutionSession, args: { sessionId: string; nod
         triggerData: {
           gateId: args.nodeId, datumKey: pending.datumKey, target, value,
           answerType: datumAnswerType(pending), assertedAsOf,
+          // Recorded only when the value was entered as a DIFFERENT measure
+          // from the one asked for, so an ordinary answer's event is unchanged.
+          ...(entered && target.kind === 'lab' && entered.code !== target.code ? { enteredAs: entered } : {}),
         },
       },
       ...(rule && !('problem' in rule)

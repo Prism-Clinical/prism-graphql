@@ -5,6 +5,17 @@ import { patientAttributeLabel } from './attribute-vocabulary';
 import { anchorKeyFor, anchorPromptFor, parseWindowFrom } from './temporal/anchored-window';
 import { PREGNANCY_HORIZON_ATTRIBUTE } from './temporal/evaluation-context';
 import { isCalendarCondition } from './temporal/condition-adapter';
+import { LabMeasure, equivalenceGroupOf, labDatumKey } from './lab-equivalents';
+
+/**
+ * The measures a lab request may be answered in — the asked lab first — when
+ * it has registered equivalents (hemoglobin ⇄ hematocrit). Absent otherwise.
+ */
+function alternativesFor(target: UnresolvedAsk['target']): { alternatives?: LabMeasure[] } {
+  if (target.kind !== 'lab') return {};
+  const group = equivalenceGroupOf(target.code, target.system);
+  return group ? { alternatives: group } : {};
+}
 
 /**
  * What to ask a provider for, when a gate could not evaluate its condition.
@@ -101,6 +112,12 @@ export interface UnresolvedAsk {
    * gestational age must not ask for it under that sentence.
    */
   fixedPrompt?: true;
+  /**
+   * For a LAB with registered equivalents: every measure the answer may be
+   * given in, the asked lab first. The answer names the one entered
+   * (`enteredAs`), and is stored as that lab.
+   */
+  alternatives?: LabMeasure[];
 }
 
 /**
@@ -197,10 +214,14 @@ export function askFor(
     const label = authoredDisplay(condition.display) ?? patientAttributeLabel(path) ?? path;
 
     return {
+      // The attribute PATH, as always — also for a `lab.*` in an equivalence
+      // group, which therefore offers the alternatives but does not share its
+      // question with a coded gate (the coded form is the one pathways use).
       datumKey: path,
       prompt: `${label} — current value?`,
       ...attributeAnswerShape(condition, target),
       target,
+      ...alternativesFor(target),
     };
   }
 
@@ -227,11 +248,16 @@ export function askFor(
     // faster than "718-7" — but the KEY is always code+system, so a pathway
     // that labels the same lab differently in two gates still asks once.
     const label = authoredDisplay(condition.display) ?? value;
+    const target = { kind: 'lab' as const, code: value, system };
     return {
-      datumKey: `${system}:${value}`,
+      // The equivalence GROUP's key: a hemoglobin gate and a hematocrit gate
+      // need one thing from the provider, so they ask one question, and a
+      // decline of either covers both.
+      datumKey: labDatumKey(value, system),
       prompt: `${label} (${system} ${value}) — most recent value?`,
       answerType: AnswerType.NUMERIC,
-      target: { kind: 'lab', code: value, system },
+      target,
+      ...alternativesFor(target),
     };
   }
 
@@ -263,13 +289,15 @@ export function seriesAskFor(condition: GateCondition, latestDate: string): Unre
   if (field !== 'labs' || typeof value !== 'string' || value === '' || value.includes('*')) return null;
   const system = condition.system ?? 'LOINC';
   const label = authoredDisplay(condition.display) ?? value;
+  const target = { kind: 'lab' as const, code: value, system };
   return {
-    datumKey: `${system}:${value}`,
+    datumKey: labDatumKey(value, system),
     prompt: latestDate
       ? `${label} (${system} ${value}) — newest result, drawn after ${latestDate}?`
       : `${label} (${system} ${value}) — a result, and the date it was drawn?`,
     answerType: AnswerType.NUMERIC,
-    target: { kind: 'lab', code: value, system },
+    target,
+    ...alternativesFor(target),
   };
 }
 

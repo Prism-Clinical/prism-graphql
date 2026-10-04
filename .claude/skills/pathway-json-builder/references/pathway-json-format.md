@@ -24,6 +24,10 @@
 > - calendar checks on the session clock (2026-10-04): the condition
 >   `encounter.date` / `in_season` ("is today inside Sept 1 – Jan 31?") and the horizon
 >   `{ "since": "MM-DD" }` ("since the most recent July 1")
+> - equivalent lab measures (2026-10-04): hemoglobin (LOINC 718-7) and hematocrit (LOINC
+>   4544-3) stand in for each other — the engine estimates one from the other
+>   (Hgb = Hct ÷ 3), asks for them as ONE question the provider may answer in either
+>   measure, and says "estimated from …" in the reason (see **Equivalent lab measures**)
 > - nested AND/OR condition groups inside a compound gate
 > - `DATE` answers (treatment start dates), typed `patient.*` datum answers, and the
 >   "Not available" answer to a data question (`notAvailable`)
@@ -498,6 +502,8 @@ different date at every visit, and a look-back cannot say "it is October" at all
   chart, vaccinated or not. The window is exercised only with dated entries
   (`medications[].date`). State this in the brief (§18).
 
+| Read hemoglobin (718-7) almost everywhere and hematocrit (4544-3) in one OR leaf (referral: Hgb < 9 OR Hct < 27). After a hemoglobin was entered the provider was asked for a hematocrit too, and a provider who had only a hematocrit could not answer the hemoglobin question (`[DECISION — Josh 2026-10-04]`: "the ability to choose whether to input hemoglobin vs hematocrit"). | Nothing to author: the engine treats the two as **one quantity**. Either on file answers a gate on either code (the other is estimated, and the reason says so), and when neither is on file there is one question with a Hgb / Hct switch. Write the gate on hemoglobin. See **Equivalent lab measures**. |
+
 Authoring rules that follow:
 
 1. **A horizon is not a freshness filter.** On a threshold condition (`less_than`,
@@ -570,6 +576,89 @@ Authoring rules that follow:
 read each one and either fix the pathway or add the marker. (Rule 5: a `window_from` trend
 or delta whose `clinical_role` has no `count_in_window` … `count_comparison: "less_than"`
 gate anywhere in the pathway.)
+
+### Equivalent lab measures — hemoglobin ⇄ hematocrit (josh-dev, 2026-10-04)
+
+`[DECISION — Josh 2026-10-04]`: "the ability to choose whether to input hemoglobin vs
+hematocrit". The engine holds a small registry of lab measures that report the same
+quantity (`lab-equivalents.ts`). One group today:
+
+| Measure | Code | Unit | Conversion |
+|---|---|---|---|
+| Hemoglobin (primary) | LOINC `718-7` | g/dL | Hgb = Hct ÷ 3 |
+| Hematocrit | LOINC `4544-3` | % | Hct = Hgb × 3 |
+
+**What is derived.** When the patient's facts are assembled for an evaluation, every
+measured value of one measure also appears as an **estimated** value of the other — same
+date, rounded to one decimal, remembering exactly what was measured. Nothing else changes:
+an estimate is an ordinary dated lab fact, so *every* operator and horizon uses it —
+`includes_code` / `not_includes_code` ("no hemoglobin on file" is **false** when a
+hematocrit is), thresholds, `count_in_window` (a hematocrit draw counts as a hemoglobin
+measurement), trends and deltas (a rise between a hematocrit-derived value and a measured
+one is a rise), `PREGNANCY`, `{ "since_gestational_week": N }`, `{ "since": … }` and
+`window_from` windows. Estimates exist only inside an evaluation; they are never stored on
+the patient or the session.
+
+**Which value decides** (`[DECISION]`: "whichever is most recent; on the same date, the
+measured hemoglobin"):
+
+| On file | A hemoglobin gate reads |
+|---|---|
+| hematocrit only | the estimate |
+| hemoglobin only | the hemoglobin (a hematocrit gate reads its estimate) |
+| both, different dates | whichever is **newer** — measured or estimated |
+| both, same date | the **measured** hemoglobin |
+| both, one or both undated (every simulator chart) | the **measured** hemoglobin — an undated value cannot be shown to be newer, so no estimate is made and the gate reads exactly what it read before |
+
+The same holds mirrored for a gate on the hematocrit code: its own measured value on the
+same date, or where order is unknown; otherwise the newer of the two. A value the provider
+types in answer to the question is the newest by construction and always decides.
+
+**How reasons read.** A measured value reads as it always did (`labs value 8.5 < 11`). An
+estimate says so, with the value actually measured:
+
+- `labs value 9 (estimated from hematocrit 27%) < 11`
+- `Patient has matching code 718-7 in labs (estimated from hematocrit 27%)`
+- `718-7 delta 1.2000 (baseline 9 (estimated from hematocrit 27%), current 10.2) satisfies ≥ 1`
+- a trend: `… (1 of 3 values estimated from an equivalent measure)`
+- a count: `Found 2 matching 718-7 in labs within last 60 days (≥2) (1 estimated from an equivalent measure)`
+
+**Units are not converted.** An estimate is made only from a value in the measure's
+registered unit — hematocrit in `%` (5–75), hemoglobin in `g/dL` (1.5–25). A hematocrit
+charted as a fraction (`0.27`, `L/L`) or a hemoglobin in `g/L` (`105`) is left as it is and
+estimated from nothing, so the gate reads what it read before (and asks, if it has nothing
+else) rather than an estimate of 0.1 g/dL.
+
+**The question.** A gate that needs either measure, with neither usable, asks **one**
+question under the datum key `LOINC:718-7` — shared by gates on both codes — and the
+pending question lists the measures it may be answered in (`alternatives`, the asked lab
+first). The provider enters a hemoglobin or a hematocrit (`GateAnswerInput.enteredAs`); the
+value is stored as the lab actually entered, dated by `observedOn` or the session clock as
+any lab answer is, and decides every gate on either code. "Not available" declines the
+quantity: the other measure is not asked for next. A later answer in either measure
+replaces the provider's earlier one.
+
+**Authoring.**
+
+- **Write the gate on the primary measure (hemoglobin) and add no OR leaf for the other.**
+  `718-7 less_than 11` already means "hemoglobin, measured or estimated from a hematocrit,
+  below 11". An extra `OR 4544-3 less_than 33` leaf is redundant and can only disagree
+  through rounding.
+- **Read the hematocrit code directly only when the source states its threshold as a
+  hematocrit** — the referral criterion "Hgb < 9 **or** Hct < 27" may stay as written: the
+  hematocrit leaf reads a measured hematocrit when one is on file (same date, or newer) and
+  an estimate from the hemoglobin otherwise, and never asks a second question.
+- Thresholds are compared against the estimate rounded to one decimal: hematocrit 32.9 % is
+  an estimated hemoglobin of 11.0, which is **not** `< 11`. Where a guideline gives both
+  cut-offs and they do not divide by three exactly, keep both leaves.
+- `count_in_window` on hemoglobin counts hematocrit-only draws too (a same-day pair once).
+  That is what "has it been rechecked" means; say so in the brief if a count gate is meant
+  to count hemoglobin reports specifically (it cannot).
+- Attribute-form `lab.hemoglobin` / `lab.hematocrit` conditions read the same estimated
+  facts, and their question offers the same alternatives, but they keep their own datum key
+  (the attribute path), so they do not share a question with a coded gate. Use the coded
+  form, as every current pathway does.
+- `legacy-v0` sessions do **no** derivation: each code reads only its own values there.
 
 ### Missing data — `on_unresolved` (emit on every chart gate)
 

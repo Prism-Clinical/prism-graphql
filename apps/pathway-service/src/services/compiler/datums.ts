@@ -2,6 +2,7 @@
 import { KNOWN_PATIENT_ATTRIBUTES } from '../resolution/attribute-vocabulary';
 import { conditionReadsGestationalAge } from '../resolution/temporal/condition-adapter';
 import { PREGNANCY_HORIZON_ATTRIBUTE } from '../resolution/temporal/evaluation-context';
+import { labDatumKey } from '../resolution/lab-equivalents';
 import type { AttributeCodeMap } from '../resolution/types';
 import type { CompileError, DatumKey, DatumSpec } from './model';
 
@@ -10,8 +11,15 @@ export interface DatumRegistry { types: Map<DatumKey, ValueType>; conflicts: Map
 
 const NUMERIC_CODED = new Set(['greater_than', 'less_than', 'trend_up', 'trend_down', 'delta_from_baseline']);
 const ORDERED_ATTRIBUTE_OPS = new Set(['greater_than', 'greater_or_equal', 'less_than', 'less_or_equal']);
+/**
+ * A lab's datum is its EQUIVALENCE GROUP's (`lab-equivalents.ts`): a gate that
+ * reads hemoglobin is answered by a hematocrit and the reverse, so both codes
+ * are one datum — the same key the runtime's shared question is asked under.
+ * A lab with no equivalents keeps `lab:<system>:<code>` exactly.
+ */
+const labKey = (system: string, code: string): DatumKey => `lab:${labDatumKey(code, system)}`;
 const keyOfRow = (row: { namespace: string; system: string; code: string }): DatumKey =>
-  `${row.namespace === 'allergy' ? 'allergy' : 'lab'}:${row.system}:${row.code}`;
+  row.namespace === 'allergy' ? `allergy:${row.system}:${row.code}` : labKey(row.system, row.code);
 
 /** Once per compilation. Aliases must agree on a code's type; a disagreement is kept as a conflict, never resolved by picking one. */
 export function buildDatumRegistry(codeMap: AttributeCodeMap): DatumRegistry {
@@ -104,7 +112,7 @@ export function resolveDatums(
       }
       // Other namespaces are rejected by validatePathwayJson (V6).
     } else if (NUMERIC_CODED.has(op) && c.field === 'labs') {
-      add(`lab:${String(c.system ?? 'LOINC')}:${String(c.value)}`, 'lab', 'number', true);
+      add(labKey(String(c.system ?? 'LOINC'), String(c.value)), 'lab', 'number', true);
     } else if (NUMERIC_CODED.has(op) && c.field === 'vitals') {
       add(`vital:${String(c.value)}`, 'vital', 'number', true);
     }

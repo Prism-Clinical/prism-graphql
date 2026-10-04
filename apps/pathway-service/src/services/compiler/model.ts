@@ -4,7 +4,7 @@ import type { AttributeCodeMap } from '../resolution/types';
 import type { PathwayTemporalDefaults } from '../resolution/temporal/cascade';
 
 /** Bump whenever compiled output for the same input can change (it keys the cache). */
-export const COMPILER_VERSION = '1';
+export const COMPILER_VERSION = '2';
 
 export type NodeKind = 'root' | 'container' | 'gate' | 'choice' | 'action' | 'constraint' | 'item' | 'annotation';
 export type EdgeKind = 'contains' | 'guards' | 'owns' | 'references' | 'prerequisite' | 'alternative';

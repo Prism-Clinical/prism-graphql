@@ -869,6 +869,11 @@ export const multiPathwayResolutionTypeResolvers = {
         datumKey: string | null;
         lastOnFileValue: number | null;
         lastOnFileDate: string | null;
+        lastOnFileCode: string | null;
+        lastOnFileSystem: string | null;
+        lastOnFileDisplay: string | null;
+        lastOnFileUnit: string | null;
+        alternatives: Array<{ code: string; system: string; display: string; unit: string }> | null;
         optionLabels: string[] | null;
       }> = [];
       for (const row of result.rows) {
@@ -905,6 +910,13 @@ export const multiPathwayResolutionTypeResolvers = {
               : null,
             lastOnFileDate: typeof (q.lastOnFile as { date?: unknown } | undefined)?.date === 'string'
               ? (q.lastOnFile as { date: string }).date
+              : null,
+            ...(['Code', 'System', 'Display', 'Unit'] as const).reduce((acc, k) => {
+              const v = (q.lastOnFile as Record<string, unknown> | undefined)?.[k.toLowerCase()];
+              return { ...acc, [`lastOnFile${k}`]: typeof v === 'string' ? v : null };
+            }, {} as Record<'lastOnFileCode' | 'lastOnFileSystem' | 'lastOnFileDisplay' | 'lastOnFileUnit', string | null>),
+            alternatives: Array.isArray(q.alternatives)
+              ? (q.alternatives as Array<{ code: string; system: string; display: string; unit: string }>)
               : null,
             optionLabels: Array.isArray(q.optionLabels ?? q.option_labels)
               ? ((q.optionLabels ?? q.option_labels) as string[])

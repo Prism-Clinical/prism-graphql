@@ -1682,8 +1682,11 @@ async function proveUnknownHgb(): Promise<void> {
     expect('lab-1 CBC with indices (Step 1.1, unconditional)', status(r.state, 'lab-1'), 'INCLUDED');
     expect('gate-severe-anemia', status(r.state, 'gate-severe-anemia'), 'PENDING_QUESTION');
 
-    console.log('  "Not available" for the Hgb (and the Hct the referral gate also reads): nothing left to ask about the level:');
-    r = await resolveSession({ file: ANEMIA, reverse, patient: noLevel, replay: [{ decline: HGB }], ask: [{ decline: HCT }] });
+    // Hemoglobin and hematocrit are one quantity (lab-equivalents): declining
+    // the hemoglobin declines the level, so the hematocrit the referral gate
+    // also reads is NOT asked for separately ([DECISION — Josh 2026-10-04]).
+    console.log('  "Not available" for the Hgb covers the Hct too: nothing left to ask about the level:');
+    r = await resolveSession({ file: ANEMIA, reverse, patient: noLevel, replay: [{ decline: HGB }] });
     expect('level questions left', String(r.pending.filter((p: any) => [HGB, HCT].includes(p.datumKey)).length), '0');
     expect('gate-severe-anemia', status(r.state, 'gate-severe-anemia'), 'GATED_OUT');
     expect('gate-referral-threshold', status(r.state, 'gate-referral-threshold'), 'GATED_OUT');

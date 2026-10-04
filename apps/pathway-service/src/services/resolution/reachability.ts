@@ -2,6 +2,7 @@ import { GateProperties, GateCondition, isAttributeCondition, AttributeCodeMap, 
 import { resolveAttribute } from './attribute-registry';
 import { PatientContext, GraphNode } from '../confidence/types';
 import { GateType } from '../../types';
+import { areEquivalentLabs } from './lab-equivalents';
 import { conditionReadsGestationalAge, isCalendarCondition } from './temporal/condition-adapter';
 import { isUsableGestationalAge, PREGNANCY_HORIZON_ATTRIBUTE } from './temporal/evaluation-context';
 
@@ -102,11 +103,15 @@ export function hasDataForCondition(
   }
 
   if (field === 'labs') {
+    // A value of an EQUIVALENT measure is data for this condition too: the
+    // engine estimates the lab from it (`lab-equivalents.ts`), so a hemoglobin
+    // gate is not blocked for a patient with a hematocrit on file.
     return patient.labResults.some(
       (l) =>
-        l.code === condition.value &&
-        (!condition.system || l.system === condition.system) &&
-        typeof l.value === 'number',
+        typeof l.value === 'number' &&
+        ((l.code === condition.value && (!condition.system || l.system === condition.system)) ||
+          (l.code !== condition.value &&
+            areEquivalentLabs({ code: l.code, system: l.system }, { code: condition.value, system: condition.system }))),
     );
   }
 

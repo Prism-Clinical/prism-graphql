@@ -1,3 +1,4 @@
+import { canDeriveFrom, convertLabValue, equivalenceGroupOf } from '../lab-equivalents';
 import {
   FactStore,
   NormalizedFact,
@@ -205,6 +206,89 @@ function assembleLabs(
   });
 }
 
+/** The calendar day a fact is dated on, or `undefined` when it is undated. */
+function dayOf(fact: ObservationFact): string | undefined {
+  return fact.interval.start?.value.slice(0, 10);
+}
+
+/**
+ * Estimated lab facts: for every measured lab with a registered equivalent
+ * (`lab-equivalents.ts`), the same observation expressed as the other measure
+ * — same date, same validity, same provenance, `derivedFrom` naming what was
+ * actually measured.
+ *
+ * [DECISION — Josh 2026-10-04]: a hematocrit is used wherever a hemoglobin is
+ * needed; with both on file the most recent decides, and on the same date the
+ * measured value.
+ *
+ * Deriving HERE, once, is what makes every consumer right without knowing
+ * about equivalence: an estimate is an ordinary dated fact of the target code,
+ * so membership finds it, a threshold reads it, a count counts it, a series
+ * orders it, every horizon bounds it — and "the most recent decides" is the
+ * selection kernel's existing newest-value rule, not a second ordering.
+ *
+ * **When NOT to derive — "the measured value stands".** An estimate is added
+ * only where it can be ORDERED against every measured value of the target
+ * code. It is skipped when a measured target value exists and
+ *
+ *  - it is dated the same day (the decision's tie-break), or
+ *  - either is undated (order unknowable — and an undated value beside a dated
+ *    one makes a threshold read AMBIGUOUS_LATEST, so adding the estimate would
+ *    turn a gate that reads its own measure today into one that asks).
+ *
+ * The one exception is a PROVIDER'S ANSWER (`PROVIDER_ASSERTED`): given at the
+ * session clock to "what is the most recent value?", it is the newest by
+ * construction, and the kernel's provider-answer rule orders it. Its estimate
+ * is always derived — otherwise a provider who answers a hemoglobin question
+ * with a hematocrit would be asked again, forever.
+ *
+ * Ids are `<source id>~<target code>`: stable, and outside the ordinal
+ * sequence, so no measured fact's id moves. Nothing here is ever persisted —
+ * the store is assembled from the stored context on every evaluation.
+ */
+function deriveEquivalentLabs(labs: readonly ObservationFact[]): ObservationFact[] {
+  const measured = labs.filter((f) => typeof f.value === 'number' && Number.isFinite(f.value));
+  const derived: ObservationFact[] = [];
+  for (const source of measured) {
+    const group = equivalenceGroupOf(source.code, source.system);
+    if (!group) continue;
+    // In another unit (a hematocrit as a fraction, a hemoglobin in g/L): not
+    // converted, and so not estimated from. See `canDeriveFrom`.
+    if (!canDeriveFrom({ code: source.code, system: source.system, value: source.value as number, unit: source.unit })) continue;
+    const [own, ...targets] = group;
+    for (const target of targets) {
+      const rivals = measured.filter((f) => f.code === target.code && f.system.toUpperCase() === target.system.toUpperCase());
+      const asserted = source.provenance.sourceType === 'PROVIDER_ASSERTED';
+      const sourceDay = dayOf(source);
+      const unorderable = rivals.some((m) => {
+        const day = dayOf(m);
+        return sourceDay === undefined || day === undefined || day === sourceDay;
+      });
+      if (unorderable && !asserted) continue;
+      const value = convertLabValue(source.value as number, source, target);
+      if (value === null) continue;
+      derived.push({
+        ...source,
+        factId: `${source.factId}~${target.code}`,
+        code: target.code,
+        system: target.system,
+        display: target.display,
+        value,
+        unit: target.unit,
+        provenance: { ...source.provenance },
+        derivedFrom: {
+          code: source.code,
+          system: source.system,
+          value: source.value as number,
+          unit: source.unit ?? own.unit,
+          display: own.display,
+        },
+      });
+    }
+  }
+  return derived;
+}
+
 /**
  * Depth cap for the vitals walk. `resolveNumericPath` has no cap because it
  * follows one caller-supplied path; this walks the whole bag, so a cyclic or
@@ -313,8 +397,12 @@ export function assembleContext(
   facts.push(...assembleStateful(pc.conditionCodes ?? [], 'condition', 'conditionCodes', ctx, nextId));
   facts.push(...assembleStateful(pc.medications ?? [], 'medication_order', 'medications', ctx, nextId));
   facts.push(...assembleStateful(pc.allergies ?? [], 'allergy', 'allergies', ctx, nextId));
-  facts.push(...assembleLabs(pc.labResults ?? [], ctx, nextId));
+  const labs = assembleLabs(pc.labResults ?? [], ctx, nextId);
+  facts.push(...labs);
   facts.push(...assembleVitals(pc.vitalSigns, ctx, nextId));
+  // Last, and with ids of their own, so adding an estimate never renumbers a
+  // measured fact.
+  facts.push(...deriveEquivalentLabs(labs));
 
   return facts;
 }

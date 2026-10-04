@@ -1,6 +1,7 @@
 import type { PatientContext } from '../confidence/types';
 import type { AdditionalContextInput } from '../../resolvers/mutations/resolution';
 import { normalizeAttributeValues, normalizePatientAttributes } from './patient-attributes';
+import { labGroupKey } from './lab-equivalents';
 
 function isPlainObject(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v);
@@ -123,11 +124,16 @@ function supersededProviderAnswersRemoved<
   T extends { code: string; system: string; providerAsserted?: boolean },
 >(base: T[] | undefined, next: T[] | undefined): T[] | undefined {
   if (!base || !next) return base;
+  // Keyed on the EQUIVALENCE GROUP, not the code: a provider who answered
+  // hemoglobin 9 and then corrects it as hematocrit 33 has replaced their
+  // answer. Kept side by side, both would be dated at the session clock, the
+  // estimate from the correction would lose the same-day tie to the stale
+  // measured value, and the correction would be ignored.
   const replaced = new Set(
-    next.filter((l) => l.providerAsserted === true).map((l) => `${l.code}|${l.system}`),
+    next.filter((l) => l.providerAsserted === true).map((l) => labGroupKey(l.code, l.system)),
   );
   if (replaced.size === 0) return base;
-  return base.filter((l) => !(l.providerAsserted === true && replaced.has(`${l.code}|${l.system}`)));
+  return base.filter((l) => !(l.providerAsserted === true && replaced.has(labGroupKey(l.code, l.system))));
 }
 
 /**

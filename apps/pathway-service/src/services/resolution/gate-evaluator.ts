@@ -30,6 +30,7 @@ import type { EvaluationMode } from './temporal/policy-registry';
 import type { PathwayTemporalDefaults } from './temporal/cascade';
 import type { FactStore, NormalizedFact } from './temporal/fact-model';
 import { isObservationFact } from './temporal/fact-model';
+import { describeDerivation } from './lab-equivalents';
 import { boundEpochRange } from './temporal/interval';
 import type { ResolvedHorizon } from './temporal/overlap';
 import { isTemporalOperator, operatorClass } from './temporal/contract';
@@ -911,7 +912,9 @@ function evaluateMembershipKernel(
   const satisfied = outcome.status === 'READY';
   return inPregnancy({
     satisfied,
-    reason: membershipReason(condition, satisfied),
+    reason:
+      membershipReason(condition, satisfied) +
+      (outcome.status === 'READY' ? membershipEstimateNote(outcome.selected) : ''),
     fieldsRead: condition.field ? [condition.field] : [],
     // Derived rather than hard-coded to `false`: membership cannot be
     // INDETERMINATE today, and if that ever changes this reports the truth
@@ -955,7 +958,9 @@ function notIncludesOutcome(
   if (definite) {
     return {
       satisfied: false,
-      reason: membershipReason(condition, true),
+      reason:
+        membershipReason(condition, true) +
+        membershipEstimateNote(included.filter((d) => d.uncertainty.length === 0).map((d) => d.fact)),
       fieldsRead,
       indeterminate: false,
       uncertainty,
@@ -991,6 +996,8 @@ function scalarReason(
   numericVal: number,
   threshold: number,
   satisfied: boolean,
+  /** `estimateNote` of the fact compared; empty for a measured value. */
+  note = '',
 ): string {
   const symbol =
     condition.operator === 'greater_than'
@@ -1000,7 +1007,7 @@ function scalarReason(
       : satisfied
         ? '<'
         : '>=';
-  return `${condition.field} value ${numericVal} ${symbol} ${threshold}`;
+  return `${condition.field} value ${numericVal}${note} ${symbol} ${threshold}`;
 }
 
 /**
@@ -1014,6 +1021,31 @@ function scalarReason(
  * would be an invariant no test could cover.
  */
 function scalarValueOf(fact: NormalizedFact): number | undefined {
+  return scalarValueOfFact(fact);
+}
+
+/**
+ * " (estimated from hematocrit 27%)" for a value derived from an equivalent
+ * measure (`lab-equivalents.ts`), and "" for every measured fact — so an
+ * ordinary fact's reason is byte-for-byte what it always was.
+ */
+function estimateNote(fact: NormalizedFact | undefined): string {
+  return fact && isObservationFact(fact) && fact.derivedFrom
+    ? ` (${describeDerivation(fact.derivedFrom)})`
+    : '';
+}
+
+/**
+ * The note for a MEMBERSHIP match: said only when every matching fact is an
+ * estimate — i.e. the code is "on file" solely through its equivalent. With a
+ * measured fact among the matches the plain reason is simply true.
+ */
+function membershipEstimateNote(facts: readonly NormalizedFact[]): string {
+  if (facts.length === 0 || !facts.every((f) => isObservationFact(f) && f.derivedFrom)) return '';
+  return estimateNote(facts[facts.length - 1]);
+}
+
+function scalarValueOfFact(fact: NormalizedFact): number | undefined {
   if (!isObservationFact(fact)) return undefined;
   return typeof fact.value === 'number' && Number.isFinite(fact.value) ? fact.value : undefined;
 }
@@ -1121,7 +1153,10 @@ function scalarOutcome(
 
   return {
     satisfied,
-    reason: scalarReason(condition, numericVal, threshold, satisfied),
+    reason: scalarReason(
+      condition, numericVal, threshold, satisfied,
+      estimateNote(outcome.status === 'READY' ? outcome.selected[0] : undefined),
+    ),
     fieldsRead,
     // Derived, never hard-coded: a READY or NO_MATCH selection is by definition
     // a decision the kernel was able to make.
@@ -1189,13 +1224,18 @@ function withLatestBaseline(facts: readonly NormalizedFact[], anchorMs: number):
   return pre.length > 0 ? [pre[pre.length - 1], ...post] : post;
 }
 
-function seriesPoints(facts: readonly NormalizedFact[]): Array<{ ts: number; value: number }> {
-  const points: Array<{ ts: number; value: number }> = [];
+function seriesPoints(
+  facts: readonly NormalizedFact[],
+): Array<{ ts: number; value: number; note: string }> {
+  const points: Array<{ ts: number; value: number; note: string }> = [];
   for (const fact of facts) {
     const start = fact.interval.start;
     const value = scalarValueOf(fact);
     if (!start || value === undefined) continue;
-    points.push({ ts: boundEpochRange(start).loMs, value });
+    // `note` says when a point is an estimate from an equivalent measure. A
+    // change measured between an estimated and a measured value is allowed —
+    // both are the same quantity — and the reason shows which was which.
+    points.push({ ts: boundEpochRange(start).loMs, value, note: estimateNote(fact) });
   }
   return points;
 }
@@ -1395,11 +1435,17 @@ function evaluateAggregateKernel(
   if (operator === 'count_in_window') {
     // `selectFacts` has already deduplicated by `factId` (design §4), so the
     // count is over distinct occurrences.
-    const matches = (
+    const counted =
       resolvedAnchor && baselineDays !== undefined
         ? withLatestBaseline(selected, Date.parse(resolvedAnchor.lowerBound))
-        : selected
-    ).length;
+        : selected;
+    const matches = counted.length;
+    // How many of those were estimates from an equivalent measure — a
+    // hematocrit counted as a hemoglobin measurement. Empty when none were, so
+    // an ordinary count reads exactly as it always did.
+    const estimatedCount = counted.filter((f) => isObservationFact(f) && f.derivedFrom).length;
+    const estimatedCountNote =
+      estimatedCount > 0 ? ` (${estimatedCount} estimated from an equivalent measure)` : '';
     const threshold = condition.count_threshold ?? 2;
     const reached = matches >= threshold;
     const satisfied = condition.count_comparison === 'less_than' ? !reached : reached;
@@ -1417,7 +1463,7 @@ function evaluateAggregateKernel(
               : pregnancy
                 ? pregnancyClause(pregnancy)
                 : `within ${windowDescription(policy.horizon)}`
-        } (${bound})`,
+        } (${bound})${estimatedCountNote}`,
       fieldsRead,
       // Derived, never hard-coded: only an unorderable series is indeterminate,
       // and `count_in_window` never builds one.
@@ -1473,7 +1519,8 @@ function evaluateAggregateKernel(
     const current = points[points.length - 1].value;
     const observed = current - baseline;
     const delta = condition.delta_threshold ?? 0;
-    const decoration = `(baseline ${baseline}, current ${current})`;
+    const decoration =
+      `(baseline ${baseline}${points[0].note}, current ${current}${points[points.length - 1].note})`;
     const comparison = condition.delta_comparison;
     if (comparison !== undefined) {
       // Explicit direction: `at_least` and `less_than` on one threshold are
@@ -1510,11 +1557,14 @@ function evaluateAggregateKernel(
   const slopeFloor = condition.slope_threshold ?? 0;
   const slope = linearSlope(points);
   const ok = operator === 'trend_up' ? slope > slopeFloor : slope < -slopeFloor;
+  const estimated = points.filter((p) => p.note !== '').length;
+  const estimatedNote =
+    estimated > 0 ? ` (${estimated} of ${points.length} values estimated from an equivalent measure)` : '';
   return finish({
     satisfied: ok,
-    reason: ok
+    reason: (ok
       ? `${value} slope ${slope.toFixed(4)} value/day satisfies ${operator}${slopeFloor !== 0 ? ` (|slope| > ${slopeFloor})` : ''}`
-      : `${value} slope ${slope.toFixed(4)} value/day does not satisfy ${operator}`,
+      : `${value} slope ${slope.toFixed(4)} value/day does not satisfy ${operator}`) + estimatedNote,
     fieldsRead,
     indeterminate: false,
     uncertainty,
@@ -1661,7 +1711,11 @@ function attributeOutcome(
         ? scalarValueOf(outcome.selected[0])
         : undefined;
 
-  const { satisfied, reason } = compareScalar(value, condition.operator, condition.value);
+  const compared = compareScalar(value, condition.operator, condition.value);
+  const satisfied = compared.satisfied;
+  const reason =
+    compared.reason +
+    (klass === 'scalar' && outcome.status === 'READY' ? estimateNote(outcome.selected[0]) : '');
   return {
     satisfied,
     reason,

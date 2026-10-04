@@ -420,6 +420,15 @@ export type GateAnswerInput = {
    */
   dateValue?: InputMaybe<Scalars['String']['input']>;
   /**
+   * With `numericValue`, answering a request for a LAB that offers
+   * `alternatives`: the measure the value was entered as. It must be the asked
+   * lab or one of its alternatives (BAD_USER_INPUT otherwise). The value is
+   * stored as THAT lab — a hematocrit stays a hematocrit — and the engine
+   * estimates the equivalent for every gate that needs it. Omitted, the value is
+   * the asked lab's.
+   */
+  enteredAs?: InputMaybe<LabMeasureInput>;
+  /**
    * The provider has no value for the datum a pending question asks for (a lab,
    * a vital, a `patient.*` attribute or a treatment start date). Supply it alone,
    * as `true`. Every gate waiting on that datum stops asking and takes its
@@ -546,6 +555,24 @@ export enum LabKind {
   Panel = 'PANEL',
   Test = 'TEST'
 }
+
+/** One way of reporting a lab quantity: a coded lab with its display name and unit. */
+export type LabMeasure = {
+  __typename?: 'LabMeasure';
+  code: Scalars['String']['output'];
+  /** e.g. "Hemoglobin", "Hematocrit". */
+  display: Scalars['String']['output'];
+  system: Scalars['String']['output'];
+  /** e.g. "g/dL", "%". */
+  unit: Scalars['String']['output'];
+};
+
+/** Names the lab measure an answer was entered as (see `PendingQuestionType.alternatives`). */
+export type LabMeasureInput = {
+  code: Scalars['String']['input'];
+  /** Defaults to LOINC. */
+  system?: InputMaybe<Scalars['String']['input']>;
+};
 
 export type LabResultInput = {
   code: Scalars['String']['input'];
@@ -851,6 +878,14 @@ export type MissingData = {
 export type MultiPathwayPendingGate = {
   __typename?: 'MultiPathwayPendingGate';
   affectedSubtreeSize: Scalars['Int']['output'];
+  /**
+   * For a request for a LAB that has equivalent measures (hemoglobin ⇄
+   * hematocrit): every measure the answer may be given in, the asked lab FIRST.
+   * Offer a switch between them and send the one entered as
+   * `GateAnswerInput.enteredAs`; one answer, in either measure, resolves every
+   * gate waiting on any of them. Null for every other question.
+   */
+  alternatives?: Maybe<Array<LabMeasure>>;
   answerType: AnswerType;
   /**
    * Set when this question is a request for a DATUM — a gate that could not
@@ -865,8 +900,18 @@ export type MultiPathwayPendingGate = {
   datumKey?: Maybe<Scalars['String']['output']>;
   estimatedImpact: Scalars['String']['output'];
   gateId: Scalars['ID']['output'];
+  /**
+   * When the question has `alternatives`: WHICH measure `lastOnFileValue` is. The
+   * newest value on file across the equivalents may be the other measure (a
+   * hematocrit, for a hemoglobin question) — prefill it under this one. Null
+   * for a question with no alternatives, where the value is the asked lab's.
+   */
+  lastOnFileCode?: Maybe<Scalars['String']['output']>;
   /** The day `lastOnFileValue` was drawn, `YYYY-MM-DD`; null when undated. */
   lastOnFileDate?: Maybe<Scalars['String']['output']>;
+  lastOnFileDisplay?: Maybe<Scalars['String']['output']>;
+  lastOnFileSystem?: Maybe<Scalars['String']['output']>;
+  lastOnFileUnit?: Maybe<Scalars['String']['output']>;
   /**
    * The newest value the chart holds for the lab or vital asked for, when the
    * gate could not use it (too old for its window, or not orderable). Offer it
@@ -1510,6 +1555,14 @@ export type PatientContextInput = {
 export type PendingQuestionType = {
   __typename?: 'PendingQuestionType';
   affectedSubtreeSize: Scalars['Int']['output'];
+  /**
+   * For a request for a LAB that has equivalent measures (hemoglobin ⇄
+   * hematocrit): every measure the answer may be given in, the asked lab FIRST.
+   * Offer a switch between them and send the one entered as
+   * `GateAnswerInput.enteredAs`; one answer, in either measure, resolves every
+   * gate waiting on any of them. Null for every other question.
+   */
+  alternatives?: Maybe<Array<LabMeasure>>;
   answerType: AnswerType;
   /**
    * Set when this question is a request for a DATUM — a gate that could not
@@ -1524,8 +1577,18 @@ export type PendingQuestionType = {
   datumKey?: Maybe<Scalars['String']['output']>;
   estimatedImpact: Scalars['String']['output'];
   gateId: Scalars['ID']['output'];
+  /**
+   * When the question has `alternatives`: WHICH measure `lastOnFileValue` is. The
+   * newest value on file across the equivalents may be the other measure (a
+   * hematocrit, for a hemoglobin question) — prefill it under this one. Null
+   * for a question with no alternatives, where the value is the asked lab's.
+   */
+  lastOnFileCode?: Maybe<Scalars['String']['output']>;
   /** The day `lastOnFileValue` was drawn, `YYYY-MM-DD`; null when undated. */
   lastOnFileDate?: Maybe<Scalars['String']['output']>;
+  lastOnFileDisplay?: Maybe<Scalars['String']['output']>;
+  lastOnFileSystem?: Maybe<Scalars['String']['output']>;
+  lastOnFileUnit?: Maybe<Scalars['String']['output']>;
   /**
    * The newest value the chart holds for the lab or vital asked for, when the
    * gate could not use it (too old for its window, or not orderable). Offer it
@@ -2592,6 +2655,8 @@ export type ResolversTypes = ResolversObject<{
   ImportPathwayResult: ResolverTypeWrapper<ImportPathwayResult>;
   JSON: ResolverTypeWrapper<Scalars['JSON']['output']>;
   LabKind: LabKind;
+  LabMeasure: ResolverTypeWrapper<LabMeasure>;
+  LabMeasureInput: LabMeasureInput;
   LabResultInput: LabResultInput;
   LlmGateEvaluation: ResolverTypeWrapper<LlmGateEvaluation>;
   LoincPanelConstituent: ResolverTypeWrapper<LoincPanelConstituent>;
@@ -2730,6 +2795,8 @@ export type ResolversParentTypes = ResolversObject<{
   ImportDiffSummary: ImportDiffSummary;
   ImportPathwayResult: ImportPathwayResult;
   JSON: Scalars['JSON']['output'];
+  LabMeasure: LabMeasure;
+  LabMeasureInput: LabMeasureInput;
   LabResultInput: LabResultInput;
   LlmGateEvaluation: LlmGateEvaluation;
   LoincPanelConstituent: LoincPanelConstituent;
@@ -3011,6 +3078,14 @@ export interface JsonScalarConfig extends GraphQLScalarTypeConfig<ResolversTypes
   name: 'JSON';
 }
 
+export type LabMeasureResolvers<ContextType = DataSourceContext, ParentType extends ResolversParentTypes['LabMeasure'] = ResolversParentTypes['LabMeasure']> = ResolversObject<{
+  code?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  display?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  system?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  unit?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
+}>;
+
 export type LlmGateEvaluationResolvers<ContextType = DataSourceContext, ParentType extends ResolversParentTypes['LlmGateEvaluation'] = ResolversParentTypes['LlmGateEvaluation']> = ResolversObject<{
   branches?: Resolver<ResolversTypes['JSON'], ParentType, ContextType>;
   chosenBranch?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
@@ -3174,11 +3249,16 @@ export type MissingDataResolvers<ContextType = DataSourceContext, ParentType ext
 
 export type MultiPathwayPendingGateResolvers<ContextType = DataSourceContext, ParentType extends ResolversParentTypes['MultiPathwayPendingGate'] = ResolversParentTypes['MultiPathwayPendingGate']> = ResolversObject<{
   affectedSubtreeSize?: Resolver<ResolversTypes['Int'], ParentType, ContextType>;
+  alternatives?: Resolver<Maybe<Array<ResolversTypes['LabMeasure']>>, ParentType, ContextType>;
   answerType?: Resolver<ResolversTypes['AnswerType'], ParentType, ContextType>;
   datumKey?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   estimatedImpact?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   gateId?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
+  lastOnFileCode?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   lastOnFileDate?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  lastOnFileDisplay?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  lastOnFileSystem?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  lastOnFileUnit?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   lastOnFileValue?: Resolver<Maybe<ResolversTypes['Float']>, ParentType, ContextType>;
   optionLabels?: Resolver<Maybe<Array<ResolversTypes['String']>>, ParentType, ContextType>;
   options?: Resolver<Maybe<Array<ResolversTypes['String']>>, ParentType, ContextType>;
@@ -3361,11 +3441,16 @@ export type PathwayStatusResultResolvers<ContextType = DataSourceContext, Parent
 
 export type PendingQuestionTypeResolvers<ContextType = DataSourceContext, ParentType extends ResolversParentTypes['PendingQuestionType'] = ResolversParentTypes['PendingQuestionType']> = ResolversObject<{
   affectedSubtreeSize?: Resolver<ResolversTypes['Int'], ParentType, ContextType>;
+  alternatives?: Resolver<Maybe<Array<ResolversTypes['LabMeasure']>>, ParentType, ContextType>;
   answerType?: Resolver<ResolversTypes['AnswerType'], ParentType, ContextType>;
   datumKey?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   estimatedImpact?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   gateId?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
+  lastOnFileCode?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   lastOnFileDate?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  lastOnFileDisplay?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  lastOnFileSystem?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  lastOnFileUnit?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   lastOnFileValue?: Resolver<Maybe<ResolversTypes['Float']>, ParentType, ContextType>;
   optionLabels?: Resolver<Maybe<Array<ResolversTypes['String']>>, ParentType, ContextType>;
   options?: Resolver<Maybe<Array<ResolversTypes['String']>>, ParentType, ContextType>;
@@ -3833,6 +3918,7 @@ export type Resolvers<ContextType = DataSourceContext> = ResolversObject<{
   ImportDiffSummary?: ImportDiffSummaryResolvers<ContextType>;
   ImportPathwayResult?: ImportPathwayResultResolvers<ContextType>;
   JSON?: GraphQLScalarType;
+  LabMeasure?: LabMeasureResolvers<ContextType>;
   LlmGateEvaluation?: LlmGateEvaluationResolvers<ContextType>;
   LoincPanelConstituent?: LoincPanelConstituentResolvers<ContextType>;
   ManuallyResolvedMedication?: ManuallyResolvedMedicationResolvers<ContextType>;

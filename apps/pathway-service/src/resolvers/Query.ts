@@ -135,6 +135,11 @@ export function formatSessionForGraphQL(session: ResolutionSession) {
       datumKey: q.datumKey ?? null,
       lastOnFileValue: q.lastOnFile?.value ?? null,
       lastOnFileDate: q.lastOnFile?.date ?? null,
+      lastOnFileCode: q.lastOnFile?.code ?? null,
+      lastOnFileSystem: q.lastOnFile?.system ?? null,
+      lastOnFileDisplay: q.lastOnFile?.display ?? null,
+      lastOnFileUnit: q.lastOnFile?.unit ?? null,
+      alternatives: q.alternatives ?? null,
       optionLabels: q.optionLabels ?? null,
     })),
     redFlags: session.redFlags.map(f => ({
@@ -744,6 +749,11 @@ export const Query = {
         datumKey: q.datumKey ?? null,
       lastOnFileValue: q.lastOnFile?.value ?? null,
       lastOnFileDate: q.lastOnFile?.date ?? null,
+      lastOnFileCode: q.lastOnFile?.code ?? null,
+      lastOnFileSystem: q.lastOnFile?.system ?? null,
+      lastOnFileDisplay: q.lastOnFile?.display ?? null,
+      lastOnFileUnit: q.lastOnFile?.unit ?? null,
+      alternatives: q.alternatives ?? null,
         optionLabels: q.optionLabels ?? null,
       }));
     },

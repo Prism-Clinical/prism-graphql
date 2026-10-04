@@ -5,6 +5,8 @@ import type { PathwayTemporalDefaults } from './temporal/cascade';
 import type { FactStore } from './temporal/fact-model';
 import { EvaluationTemporalContext } from './temporal/evaluation-context';
 import { anchorAskFor, askFor, pregnancyAskFor, seriesAskFor, unionOptions } from './unresolved-prompt';
+import { equivalenceGroupOf } from './lab-equivalents';
+import type { LabMeasure } from './lab-equivalents';
 import { parseBranchWhen } from '../import/branch-when';
 import { decisionValueOf, decisionSelects } from './decision-value';
 import { normalizeAnswerType } from './answer-validation';
@@ -200,22 +202,47 @@ function lastOnFileFor(
   target: UnresolvedAsk['target'],
   factStore: FactStore,
   patient: PatientContext,
-): { lastOnFile?: { value: number; date?: string } } {
+): { lastOnFile?: PendingQuestion['lastOnFile'] } {
   if (target.kind === 'vital') {
     const v = (patient.vitalSigns as Record<string, unknown> | undefined)?.[target.path];
     return typeof v === 'number' ? { lastOnFile: { value: v } } : {};
   }
   if (target.kind !== 'lab') return {};
+  // With registered equivalents, the newest across ALL of them, described as
+  // the measure it actually is — a hematocrit stays a hematocrit, so the
+  // client offers it under the right side of the switch. Read from the
+  // patient's own results, never from the estimates in the fact store.
+  const group: LabMeasure[] | null = equivalenceGroupOf(target.code, target.system);
+  const codes = group ? group.map((m) => m.code) : [target.code];
   const labs = (patient.labResults ?? []).filter(
-    (l) => l.code === target.code && typeof l.value === 'number',
-  ) as Array<{ value: number; date?: string }>;
+    (l) => codes.includes(l.code) && typeof l.value === 'number',
+  ) as Array<{ code: string; value: number; date?: string }>;
   if (labs.length === 0) return {};
+  const described = (l: { code: string; value: number }, date?: string) => {
+    const measure = group?.find((m) => m.code === l.code);
+    return {
+      lastOnFile: {
+        value: l.value,
+        ...(date !== undefined ? { date } : {}),
+        ...(measure
+          ? { code: measure.code, system: measure.system, display: measure.display, unit: measure.unit }
+          : {}),
+      },
+    };
+  };
   const dated = labs.filter((l) => typeof l.date === 'string' && l.date !== '');
   if (dated.length > 0) {
-    const newest = dated.reduce((a, b) => (String(b.date) > String(a.date) ? b : a));
-    return { lastOnFile: { value: newest.value, date: String(newest.date).slice(0, 10) } };
+    // Newest by date; on the same date the ASKED lab, as it is for the gate.
+    const newest = dated.reduce((a, b) => {
+      const [da, db] = [String(a.date), String(b.date)];
+      if (db > da) return b;
+      return db === da && b.code === target.code && a.code !== target.code ? b : a;
+    });
+    return described(newest, String(newest.date).slice(0, 10));
   }
-  return labs.length === 1 ? { lastOnFile: { value: labs[0].value } } : {};
+  const own = labs.filter((l) => l.code === target.code);
+  if (own.length === 1) return described(own[0]);
+  return own.length === 0 && labs.length === 1 ? described(labs[0]) : {};
 }
 
 /**
@@ -1116,6 +1143,7 @@ export class TraversalEngine {
               estimatedImpact: subtreeSize > 3 ? 'high' : subtreeSize > 1 ? 'medium' : 'low',
               datumKey: ask.datumKey,
               askTarget: ask.target,
+              ...(ask.alternatives ? { alternatives: ask.alternatives } : {}),
               ...lastOnFileFor(ask.target, this.factStore, patientContext),
             });
           }
