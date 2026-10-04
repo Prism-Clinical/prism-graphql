@@ -57,3 +57,15 @@ to be written later ("don't write constipation yet"). No connection is built bet
 pathways. Until it exists, a constipation diagnosis in the simulator shows as not supported.
 General rule this sets for authors: a pathway does not order treatment for a different
 problem; that problem gets its own pathway.
+
+## Rh-negative pregnancy — its own pathway (not started)
+
+`[DECISION — Josh 2026-10-04]` Rh-negative management was taken out of routine-prenatal-care
+(v1): RhIG before 12 weeks "that's part of rh neg pathway, not routine prenatal", fetal RhD
+cfDNA likewise, and the routine 28-week RhIG moves there too. Routine prenatal care only types
+Rh and runs the antibody screen; when the type is negative it recommends adding the diagnosis
+(built as Z67.91 or the ABO-specific Rh-negative code — to be confirmed). No connection is
+built between the two pathways. Until this pathway exists, Prism recommends no Rh immune
+globulin for anyone. Inputs already gathered (the removed content, sources [21]–[23], and
+Josh's leanings: RhIG at about 28 weeks after the repeat antibody screen; forgo routine RhIG
+before 12 weeks per ACOG) are in `pathways/briefs/routine-prenatal-care-research-brief.md` §0.9.
