@@ -417,8 +417,11 @@ for (const { gate, at, c } of chartConditions()) {
 // there imports cleanly and then throws at session preflight.
 for (const { gate, at, c } of chartConditions()) {
   // patient.* has no temporal policy at all (the adapter returns null for it).
+  // encounter.* (the calendar condition `encounter.date` / `in_season`) reads the
+  // session clock, not chart data: it has no window, and a `horizon` there is an
+  // import error.
   if (c.horizon === undefined && c.window_days === undefined && c.window_from === undefined && !isVitals(c) &&
-      !(typeof c.attribute === 'string' && c.attribute.startsWith('patient.'))) {
+      !(typeof c.attribute === 'string' && (c.attribute.startsWith('patient.') || c.attribute.startsWith('encounter.')))) {
     errors.push(
       `EXPLICIT HORIZON — "${gate}" ${at} (${c.field ?? c.attribute} ${c.value ?? ''}) has neither ` +
       `horizon, window_days nor window_from.\n      => it silently inherits the v1 field default ` +
@@ -501,6 +504,16 @@ const isNumeric = (c: any): boolean =>
   for (const [gate, conds] of byGate) {
     const props = (nodes.find((n) => n.id === gate) as any).properties ?? {};
     const askable = conds.some(isNumeric);
+    // `horizon: "PREGNANCY"` needs the gestational age: when it is missing the
+    // condition is unresolved for EVERY operator, membership included, and with
+    // `ask` the gate holds on the shared gestational-age question. So `ask` is
+    // not inert there — and `default` stays legal without a marker, because the
+    // gestational-age gates ask for the same datum anyway.
+    const holdsOnGestationalAge = conds.some((c) => c.horizon === 'PREGNANCY');
+    // The distinct data this gate can ask for. One datum: an authored prompt is
+    // simply that question's wording. Several: the one prompt would be shown for each.
+    const askableData = new Set(conds.filter(isNumeric).map((c) => String(c.attribute ?? `${c.field}:${c.value}`)));
+    if (holdsOnGestationalAge) askableData.add('patient.gestational_age_weeks');
     if (props.on_unresolved === undefined) {
       errors.push(
         `ON_UNRESOLVED — "${gate}" does not say what to do when it cannot decide.\n` +
@@ -516,13 +529,13 @@ const isNumeric = (c: any): boolean =>
         `      => emit "ask", or justify the exception in the brief with a line containing\n` +
         `         "[ON-UNRESOLVED DEFAULT — ${gate}]" and the clinical reason (brief: ${briefName()}).`,
       );
-    } else if (props.on_unresolved === 'ask' && !askable) {
+    } else if (props.on_unresolved === 'ask' && !askable && !holdsOnGestationalAge) {
       warnings.push(
         `Gate "${gate}": on_unresolved "ask" is inert — it has no numeric condition, so the engine ` +
         `never asks and applies default_behavior. Emit "default" so the JSON says what happens.`,
       );
     }
-    if (askable && typeof props.prompt === 'string') {
+    if (askable && typeof props.prompt === 'string' && askableData.size > 1) {
       warnings.push(
         `Gate "${gate}": an authored \`prompt\` on a chart gate replaces the generated per-datum ` +
         `escalation prompt — a compound gate asking for several values would show the same text for each.`,

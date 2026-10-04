@@ -1,10 +1,11 @@
 # Pathway Research Brief — Routine Prenatal Care (with universal GDM screening)
 
-JSON: pathways/json/routine-prenatal-care.json @ version 2
+JSON: pathways/json/routine-prenatal-care.json @ version 3
 
-**Status: version 2, built from Josh's review of version 1 (2026-10-04); items marked CONFIRM
-remain.** Built as `pathways/json/routine-prenatal-care.json`, version 2 (354 nodes, 660
-edges). Version 1 is commit `b251958` and is loaded as a draft; version 2 is not imported.
+**Status: version 3, built from Josh's review of version 2 (2026-10-04); items marked CONFIRM
+remain.** Built as `pathways/json/routine-prenatal-care.json`, version 3 (387 nodes, 746
+edges). Version 1 is commit `b251958`, version 2 `fbed785` (loaded as a draft); version 3 is
+not imported.
 
 **What this is.** The pathway `routine-prenatal-care`. It replaces the older stored
 `routine-prenatal-care-v1` and `-v2` graphs (§0.2), neither of which is active locally any
@@ -29,33 +30,29 @@ Flags:
 - `[WINDOW — <gate>: …]`, `[ON-UNRESOLVED DEFAULT — <gate>]`, `[LEAF CODES — <parent>: …]` the
   format spec's markers.
 
-> ### Read this first (version 2, 2026-10-04)
+> ### Read this first (version 3, 2026-10-04)
 >
-> What changed from version 1, each from Josh's review `[DECISION — Josh 2026-10-04]`:
+> What changed from version 2, each from Josh's review `[DECISION — Josh 2026-10-04]`:
 >
-> 1. **"This pregnancy" uses the gestational age.** Every look-back that meant "drawn this
->    pregnancy" is now `horizon: "PREGNANCY"` — the window opens on the LMP date worked out
->    from the gestational age. The 98 / 196 / 300-day bands and the 140-day GDM window are gone.
-> 2. **A low hemoglobin from before this pregnancy does not open the anemia hand-off.** Only a
->    value drawn this pregnancy does.
-> 3. **Gestational diabetes is read from the chart and nothing is asked that the chart
->    holds.** A positive 50-g challenge goes straight to the 100-g test with no strategy
->    question. A test just ordered is never asked about; its result is read once it is on the
->    chart. The strategy question is asked only when no screening result is on file.
-> 4. **The 100-g test is read from its four values** (two or more at or above threshold). The
->    question is gone, so nothing recurs after a normal 100-g test.
-> 5. **Nobody is asked for an HbA1c.** One on file is read whatever the eligibility answer.
-> 6. **Vaccines are checked against the medication list** as dated entries: Tdap this
->    pregnancy, RSV ever, influenza and COVID-19 in the last 180 days.
-> 7. **Prenatal vitamin: a known list, else ask once.**
-> 8. **Triggers are supervision of pregnancy and pregnant state only**: `Z34`, `O09`, `Z33.1`,
->    `Z33.3`. The gestational diabetes codes are no longer triggers. Triggers are matched
->    against the diagnoses on the **encounter**, never the chart.
-> 9. **Hand-off steps say "add the diagnosis to the encounter".**
+> 1. **"This season" is a calendar date.** An influenza or COVID-19 dose on or after the most
+>    recent **September 1** is this season's. The 180-day look-back is gone.
+> 2. **The RSV vaccine is offered only in season** — September 1 to March 1 (ACOG) — inside
+>    the 32 0/7–36 6/7-week window, and once in a lifetime.
+> 3. **An undated vaccine on the medication list is asked about, not assumed given.** Tdap:
+>    "given this pregnancy?"; influenza and COVID-19: "given this season (since September
+>    1)?"; RSV: "has she ever had the RSV vaccine?". Yes → not recommended; no → recommended.
+> 4. **Rh is not just negative or positive.** Anything not clearly positive — negative, weak D,
+>    partial D, or any other result — is flagged and the Rh-negative pathway suggested. Only a
+>    plain "positive" is left alone.
+> 5. **The prenatal-vitamin "yes" is a sticky answer.** If nothing recognised is on the
+>    medication list the patient is asked once; a "yes" is remembered for this pregnancy and
+>    not asked again at later visits; a "no" is not remembered. The same is done for an
+>    undated Tdap (this pregnancy) and an undated RSV vaccine (for the patient).
 >
-> Unchanged: gestational age drives the timeline through eight gates on Step 1.1; routine care
-> screens and hands off, and treats nothing but its own problem; this pathway contains **no Rh
-> immune globulin** (§0.9).
+> Unchanged from version 2: "this pregnancy" from the gestational age; gestational diabetes
+> read from the chart with nothing asked that it holds; supervision-of-pregnancy triggers on
+> the encounter; hand-offs that say "add the diagnosis to this encounter"; **no Rh immune
+> globulin** (§0.9).
 >
 > Checked against the real engine: `gate-proof.ts prenatal-ga`, `prenatal-triggers`,
 > `prenatal-gdm`, `prenatal-handoffs`, `prenatal-meds`, `prenatal-vaccines`, and
@@ -86,7 +83,7 @@ Flags:
   | 100-g or 75-g test diagnostic | `gate-100g-diagnostic` / `gate-75g-diagnostic` | 6.11 / 6.13 | O24.410 | `gestational-diabetes-management` (brief only) |
   | BP ≥140/90 (D-25) | `gate-bp-elevated` | 2.2 | R03.0, then O13.x / O14.x | `gestational-hypertension-preeclampsia` |
   | Low hemoglobin drawn this pregnancy | `gate-hgb-low` | 1.23 | O99.011 / .012 / .013 | `anemia-in-pregnancy` |
-  | Rh(D) negative | `gate-rh-negative` | 1.24 | Z67.91 (or Z67.11/.21/.31/.41) | Rh-negative pregnancy (**not started**, `pathways/TODO.md`) |
+  | Rh(D) type not clearly positive (negative, weak D, partial D, other) | `gate-rh-not-positive` | 1.24 | Z67.91 (or Z67.11/.21/.31/.41) | Rh-negative pregnancy (**not started**, `pathways/TODO.md`) |
   | Early HbA1c ≥6.5% | `gate-overt-diabetes` | 4.3 | O24.111–.119 | none yet (pregestational diabetes) |
 
 - **Each hand-off closes when its diagnosis is already on the chart**, so a patient whose
@@ -163,7 +160,7 @@ word).
   - The gestational diabetes codes (O24.41x, O99.810) are therefore **not** triggers any
     more. They are still read from the chart by the GDM status gates.
 
-### 0.4 Co-matching with the other pathways (re-checked for version 2)
+### 0.4 Co-matching with the other pathways (re-checked for version 3)
 
 Triggers, from the built JSONs on josh-dev. Each is matched against the **encounter's**
 diagnoses:
@@ -233,11 +230,23 @@ pregnancy evidence that rule needs.
 | V2-11 | `[DECISION — Josh 2026-10-04]` A positive 50-g on the chart, not yet diagnosed: **"read the chart, ask nothing"** — straight to the 100-g test (closes J7, J9, J12). |
 | V2-12 | `[DECISION — Josh 2026-10-04]` The 100-g test with chart-only reading: built as the six-pair encoding, so the four values settle it with no question and no recurrence (closes J8). |
 | V2-13 | `[DECISION — Josh 2026-10-04]` Hand-offs recommend the diagnosis, which the provider adds to the **encounter**. |
+| V3-1 | `[DECISION — Josh 2026-10-04]` **Calendar check.** Influenza and COVID-19 "given this season": a dose on or after the most recent **September 1** counts (`{ "since": "09-01" }`). Replaces the 180-day look-back (closes J23). |
+| V3-2 | `[DECISION — Josh 2026-10-04]` **RSV: follow the guideline** — once in a lifetime, and offered only in season, **September 1 to March 1 (ACOG)**, inside 32 0/7–36 6/7 weeks (closes J27). |
+| V3-3 | `[DECISION — Josh 2026-10-04]` **Vaccines as RxNorm: confirmed** (closes J24). A chart that records immunizations as CVX is a known limit (§0.8). |
+| V3-4 | `[DECISION — Josh 2026-10-04]` **An undated vaccine on the medication list must be asked about, not assumed given** (reverses the version 2 default, J29). |
+| V3-5 | `[DECISION — Josh 2026-10-04]` **The prenatal vitamin is a sticky answer**: "effectively is pt on prenatal > yes" — a "yes" remembered for this pregnancy, a "no" not remembered. Built on `patient.on_prenatal_vitamin` (closes J26). The undated Tdap and RSV answers are remembered the same way; influenza and COVID-19 are not (no season scope). |
+| V3-6 | `[DECISION — Josh 2026-10-04]` Hemoglobin asked for at the first visit when none was drawn this pregnancy: agreed (closes J25). |
+| V3-7 | `[DECISION — Josh 2026-10-04]` **Rh is not just negative/positive**: "there can be weakly pos". Flag anything not clearly positive; only a plain "positive" is left alone (closes J4). |
+| V3-8 | `[DECISION — Josh 2026-10-04]` "Already done" per test — blood type, hemoglobinopathy, HBV antibodies once ever; everything else each pregnancy: agreed (closes J6). |
+| V3-9 | `[DECISION — Josh 2026-10-04]` The BP hand-off closes once hypertension is on the chart: agreed (closes J17). |
 | — | `[DECISION — Josh 2026-10-04]` **Source conflicts ratified** (§18 C1, C2, C3, C7, C9). |
 
-### 0.6 Spec and engine limitations (re-checked against spec v6 + josh-dev, version 2)
+### 0.6 Spec and engine limitations (re-checked against spec v6 + josh-dev, version 3)
 
 **No longer limitations:**
+- **The calendar** — `encounter.date` / `in_season` ("is it RSV season?") and the horizon
+  `{ "since": "09-01" }` ("this season"), both 2026-10-04. Version 2's 180-day look-back is
+  gone.
 - **Negation** (`not_includes_code`), **"Not available"**, **nested AND/OR groups** (4 levels),
   **typed `patient.*` answers** — as version 1.
 - **"Drawn this pregnancy"** — `horizon: "PREGNANCY"` (2026-10-04). Version 1's #3 is closed
@@ -269,21 +278,24 @@ pregnancy evidence that rule needs.
      `[JOSH — CONFIRM]` (J22).
    - What would fix all three: a horizon that opens at a stated gestational age
      (`{ "since_gestational_week": 24 }`).
-2. **No calendar-month operator** `[NOT ENCODABLE]`. "This season" for influenza and COVID-19
-   is approximated by a 180-day look-back (§4b) `[JOSH — CONFIRM]` (J23). The RSV season is
-   text.
-3. **A vaccine is an event, and the medication list stores intervals** `[NOT ENCODABLE]` as a
-   single condition. `includes_code` with `PREGNANCY` on `medications` means "active at some
-   point this pregnancy": a Tdap entry dated two years ago with no end date is still "open"
-   and would read as given this pregnancy. `count_in_window` counts by the day the entry
-   **started**, which is right for a dose, but never counts an undated entry — and the
-   simulator dates nothing. Built: both, per code (§4b "Vaccines"). What would fix it: an
-   immunization list, or an "administered on" fact kind.
+2. **A remembered answer needs a registered patient attribute.** The compiler activates only
+   the `patient.*` attributes listed in `attribute-vocabulary.ts`. Three provider-answered
+   booleans were registered on 2026-10-04 for this pathway — `on_prenatal_vitamin`,
+   `tdap_given_this_pregnancy`, `rsv_vaccine_ever_given` — and are used here (§4b). A further
+   sticky answer needs a further row.
+3. **A vaccine is an event, and the medication list stores intervals.** `includes_code` on
+   `medications` means "an entry open at some time in the window": a Tdap dated two years ago
+   with no end date reads as given this pregnancy. So "given in the window" is a
+   `count_in_window` (it selects on the day the entry **started**), and an entry with no date
+   at all — which a count never sees — is detected separately and asked about (§4b
+   "Vaccines"). What would simplify it: an immunization list, or an "administered on" fact
+   kind.
 4. **Vaccine product codes are seasonal.** RxNorm issues new influenza and COVID-19 product
    concepts every season; `includes_code` does not expand a brand to its products. The lists
    in §0.8 cover 2025–2026 and 2026–2027 and need adding to each year.
-5. **`patient.rh_factor` SELECT options come from the comparands**; one compound gate supplies
-   both (§4b).
+5. **`patient.rh_factor` SELECT options come from the comparands.** The gate's first leaf is
+   `in ["positive", "negative", "weak D", "partial D"]`, which supplies the four options
+   (§4b).
 6. **REQUIRES has no authorable satisfaction check.** One pair is kept (§12).
 7. **Question gates do not dedupe across pathways** (aspirin, §0.4).
 8. **GA is completed weeks.** Windows "A 0/7–B 6/7" are `≥ A` and `< B+1`.
@@ -293,10 +305,15 @@ pregnancy evidence that rule needs.
 10. **Gated regions (Rule 1).** No edge points into a gated step from outside it; no
     `ESCALATES_TO`; a lab on several hosts is one node per host. CodeEntry and
     EvidenceCitation nodes are shared (exempt).
-11. **`check-gate-control.ts` does not yet know `PREGNANCY`.** It warns that `on_unresolved:
-    "ask"` is "inert" on 14 membership gates that read `PREGNANCY`. It is not inert: with the
-    gestational age missing those gates hold and share the gestational-age question (proved,
-    `gate-proof.ts prenatal-ga`). The warnings are left; the lint needs the update.
+11. **Calendar conditions and `PREGNANCY` in `check-gate-control.ts`** — fixed with version 3:
+    `encounter.*` leaves are exempt from the explicit-horizon lint, "ask" on a `PREGNANCY`
+    membership gate is no longer reported inert, and an authored `prompt` is warned about
+    only on a gate that can ask for more than one datum. Regression cases are in
+    `test-pipeline-checks.ts`.
+12. **No "season" scope for a remembered answer.** `remember_answer` has `PREGNANCY` and
+    `PATIENT`. "Influenza vaccine given this season" would need a scope that ends on the next
+    September 1. So the undated influenza and COVID-19 questions stay question gates, asked
+    at each visit until the entry is dated (J36).
 - **Simulator caveats.** The simulator dates nothing: an undated lab or medication is asserted
   current, so it reads as "drawn this pregnancy" / "given" whatever its real date. The
   `PREGNANCY` bound and the vaccine look-backs are exercised only with dated entries
@@ -376,8 +393,9 @@ instead of stated.
 (`rxcui/<id>/properties`) on 2026-10-04.** The gates match **RXNORM only**: the engine fixes
 the code system per field (medications → RXNORM), and the simulator's composer searches
 medications with `system="RXNORM"` (`PatientComposer.tsx`). **CVX is not used**: the local
-reference table has no CVX system and the composer cannot enter one. A chart feed that
-records immunizations as CVX would not be recognised `[JOSH — CONFIRM]` (J24).
+reference table has no CVX system and the composer cannot enter one. Vaccines as RxNorm:
+confirmed `[DECISION — Josh 2026-10-04]`. **Known limit:** a chart feed that records
+immunizations as CVX is not recognised.
 
 | Group | RxNorm codes (type) |
 |---|---|
@@ -442,6 +460,15 @@ before 12 weeks, per ACOG.
 **Until that pathway exists, Prism recommends no Rh immune globulin for anyone.** Step 1.24
 says so in its guidance.
 
+**Weak D and partial D** `[DECISION — Josh 2026-10-04]` (version 3): "there can be weakly pos" — a
+result that is not clearly positive is flagged the same way as a negative one, and the
+Rh-negative pathway is where RHD genotyping and the decision to treat as Rh-negative belong.
+The 2026-09-24 draft's line "weak D (Du-positive) patients are not at risk of
+alloimmunization" (Guidelines for Perinatal Care [2]) is removed from Step 1.3: it is that
+pathway's question, not a reason for routine care to stay silent. ICD-10-CM has no code for
+weak D or partial D; the step recommends Z67.91 when she is to be managed as Rh-negative
+`[JOSH — CONFIRM]` (J32).
+
 **The diagnosis to add** `[DECISION — Josh 2026-10-04]` ("Z67.91 stands"). Built: **Z67.91** (unspecified blood type, Rh
 negative), or the ABO-specific Z67.11 / .21 / .31 / .41. Reasons:
 - It says exactly what is known — her blood type — and nothing about antibodies.
@@ -462,7 +489,7 @@ negative), or the ABO-specific Z67.11 / .21 / .31 / .41. Reasons:
 
 - **Logical ID**: `routine-prenatal-care`
 - **Title**: Routine Prenatal Care
-- **Version**: 2
+- **Version**: 3
 - **Category**: OBSTETRIC (behaviour, not a label: the pathway applies only to a patient the
   chart shows is pregnant)
 - **Scope**: Outpatient antepartum care for every pregnancy under supervision, from the first
@@ -587,9 +614,9 @@ A step marked *(gated)* has no `HAS_STEP` edge; its gate is the only way in.
 
   [1][2][46][49]
 - **Step 1.3 — Initial prenatal laboratory panel: what is already on file** *(hosts the
-  thirteen "not on file" gates, `gate-hgb-low` and `gate-rh-negative`)*: the chart is read
+  thirteen "not on file" gates, `gate-hgb-low` and `gate-rh-not-positive`)*: the chart is read
   test by test (§4b). "This pregnancy" is since the LMP, from the gestational age. The step
-  itself orders nothing. Weak D patients are not at risk of alloimmunization. TB testing and
+  itself orders nothing. An Rh(D) type that is not clearly positive is flagged (Step 1.24). TB testing and
   TSH only if at risk; cervical screening on the routine schedule.
   [1][2][6][7][9][10][11][12][13][14][15][21][22]
 - **Steps 1.10–1.22 — one order step per panel test** *(each gated by its "not on file"
@@ -618,12 +645,18 @@ A step marked *(gated)* has no `HAS_STEP` edge; its gate is the only way in.
   and owns the workup and treatment; this step orders nothing. A hemoglobin from before this
   pregnancy does not open this step: it is left for the anemia pathway to use if the provider
   adds anemia. CodeEntry `O99.01`; Guid-12. [1][2]
-- **Step 1.24 — Rh(D)-negative: add the diagnosis** *(gated by `gate-rh-negative`)*
-  `[DECISION — Josh 2026-10-04]` ("if rh neg found, suggest rh neg pathway as result in
-  prenatal pathway"): add Z67.91, or the ABO-specific Rh-negative code, to the encounter. Rh
-  management — the 24–28-week repeat antibody screen and all Rh immune globulin — belongs to
-  the Rh-negative pathway. A positive antibody screen (alloimmunization, O36.01-) needs
-  maternal–fetal medicine. CodeEntry Z67.91; Guid-13. [21][22]
+- **Step 1.24 — Rh(D) type not clearly positive: add the diagnosis** *(gated by
+  `gate-rh-not-positive`)* `[DECISION — Josh 2026-10-04]` ("there can be weakly pos"; "if rh
+  neg found, suggest rh neg pathway as result in prenatal pathway"): the type is negative,
+  weak D, partial D or otherwise not clearly positive.
+  - **Rh(D) negative:** add Z67.91, or the ABO-specific Rh-negative code, to the encounter.
+  - **Weak D or partial D:** no ICD-10-CM code names either; add Z67.91 when she is to be
+    managed as Rh(D) negative, and note the serologic result `[JOSH — CONFIRM]` (J32).
+  - Rh management — RHD genotyping for weak D, the 24–28-week repeat antibody screen and all
+    Rh immune globulin — belongs to the Rh-negative pathway.
+  - A positive antibody screen (alloimmunization, O36.01-) needs maternal–fetal medicine.
+
+  CodeEntry Z67.91; Guid-13. [21][22]
 - **Step 1.4 — Psychosocial and behavioral screening** *(unconditional; QM-3)*:
   - **Depression and anxiety:** validated instrument (EPDS or PHQ-9; GAD-7) at the initial
     visit, later in pregnancy (Step 9.6) and postpartum. If a self-harm item is positive, assess
@@ -686,30 +719,48 @@ A step marked *(gated)* has no `HAS_STEP` edge; its gate is the only way in.
 - **Step 1.28 — Prenatal vitamin already on the medication list: continue** *(gated by
   `gate-on-prenatal-vitamin`)*: folic acid or a recognised prenatal multivitamin is listed.
   Nothing is started and nothing is asked. Guid-10. [28][65][66][67]
-- **Step 1.29 — No prenatal vitamin on the medication list: ask** *(gated by
-  `gate-prenatal-vitamin-not-on-list`; hosts the router `gate-taking-prenatal-vitamin`)*
-  `[DECISION — Josh 2026-10-04]` ("known list, else ask"). [28][65][66][67]
+- **Step 1.29 — No prenatal vitamin on the medication list: is she taking one?** *(gated by
+  `gate-prenatal-vitamin-not-on-list`; hosts `gate-taking-prenatal-vitamin` and
+  `gate-not-taking-prenatal-vitamin`)* `[DECISION — Josh 2026-10-04]` ("known list, else
+  ask"; "effectively is pt on prenatal > yes"): asked once; a "yes" is remembered for this
+  pregnancy. [28][65][66][67]
 - **Step 1.30 — Taking a prenatal vitamin that is not on the medication list: continue**
-  *(router: yes)*: nothing is started; add it to the medication list. Guid-19. [28][65][66][67]
-- **Step 1.27 — Start a prenatal vitamin with folic acid** *(router: no)*: Med-1.
+  *(gated by `gate-taking-prenatal-vitamin`)*: nothing is started; the answer is remembered; add
+  the vitamin to the medication list. Guid-19. [28][65][66][67]
+- **Step 1.27 — Start a prenatal vitamin with folic acid** *(gated by
+  `gate-not-taking-prenatal-vitamin`)*: Med-1.
   [28][65][66][67]
 - **Step 1.9 — Immunizations at any gestational age: what has already been given** *(hosts
-  `gate-influenza-vaccine-due` and `gate-covid-vaccine-due`)* `[DECISION — Josh 2026-10-04]`:
-  vaccines are read from the medication list as dated entries.
+  `gate-influenza-vaccine-due`, `gate-influenza-vaccine-undated`, `gate-covid-vaccine-due`,
+  `gate-covid-vaccine-undated`)* `[DECISION — Josh 2026-10-04]`: vaccines are read from the
+  medication list.
   - **Inactivated or recombinant influenza vaccine** in any trimester during the season
     (third-trimester patients as soon as vaccine is available; LAIV is contraindicated).
   - **COVID-19 vaccine per ACOG**, with shared decision-making and the discussion documented;
     CDC's current position is stated in Med-4 (D-26 `[DECISION — Josh 2026-09-24]`).
-  - Each is recommended only when no dose is recorded in the last 180 days (§4b).
+  - A dose dated on or after the most recent **September 1** is this season's and is not
+    repeated; an entry with no date is asked about (§4b).
   - **Hepatitis B vaccine** if susceptible on the triple panel (Engerix-B, Heplisav-B,
     Recombivax HB or Twinrix; PreHevbrio is not recommended in pregnancy).
   - **MMR and varicella are contraindicated in pregnancy.** Give postpartum if non-immune.
 
   [24][25][27]
 - **Step 1.31 — Give the influenza vaccine** *(gated by `gate-influenza-vaccine-due`)*: Med-3.
-  In season only; the season is not read from the chart. [24][25][27]
+  [24][25][27]
+- **Step 1.33 — Influenza vaccine on the medication list with no date: was it this season?**
+  *(gated by `gate-influenza-vaccine-undated`; hosts the router
+  `gate-influenza-vaccine-given`)*. [24][25][27]
+- **Step 1.34 — Influenza vaccine already given this season** *(router: yes)*: not repeated;
+  add the date. Guid-20. [24][25][27]
+- **Step 1.35 — Give the influenza vaccine** *(router: no)*: Med-3b, the same order as Med-3.
+  [24][25][27]
 - **Step 1.32 — Offer the COVID-19 vaccine** *(gated by `gate-covid-vaccine-due`)*: Med-4.
   [24][25]
+- **Step 1.36 — COVID-19 vaccine on the medication list with no date: was it this season?**
+  *(gated by `gate-covid-vaccine-undated`; hosts the router `gate-covid-vaccine-given`)*.
+  [24][25]
+- **Step 1.37 — COVID-19 vaccine already given this season** *(router: yes)*: Guid-21. [24][25]
+- **Step 1.38 — Offer the COVID-19 vaccine** *(router: no)*: Med-4b. [24][25]
 
 ### Stage 2 — Every prenatal visit
 
@@ -824,11 +875,19 @@ asked) are gone.
 
 ### Stage 9 — From 27 0/7 weeks
 
-- **Step 9.1 — Tdap vaccine: what has already been given** *(hosts `gate-tdap-due`; QM-2)*
-  `[DECISION — Josh 2026-10-04]`: one dose each pregnancy, early in the 27–36-week window.
-  The medication list is read: a Tdap given this pregnancy is not repeated; one given in an
-  earlier pregnancy does not count. [24][25][26][27][60]
+- **Step 9.1 — Tdap vaccine: what has already been given** *(hosts `gate-tdap-due` and
+  `gate-tdap-undated`; QM-2)* `[DECISION — Josh 2026-10-04]`: one dose each pregnancy, early
+  in the 27–36-week window. The medication list is read: a Tdap dated this pregnancy is not
+  repeated; one dated in an earlier pregnancy does not count; one listed with no date is
+  asked about. [24][25][26][27][60]
 - **Step 9.10 — Give the Tdap vaccine** *(gated by `gate-tdap-due`)*: Med-5, Sched-4. [24][25]
+- **Step 9.11 — Tdap on the medication list with no date: was it this pregnancy?** *(gated by
+  `gate-tdap-undated`; hosts `gate-tdap-given` and `gate-tdap-not-given`)*: a "yes" is
+  remembered for this pregnancy. [24][25]
+- **Step 9.12 — Tdap already given this pregnancy** *(gated by `gate-tdap-given`)*: Guid-22.
+  [24][25]
+- **Step 9.13 — Give the Tdap vaccine** *(gated by `gate-tdap-not-given`)*: Med-5b, Sched-4b.
+  [24][25]
 - **Step 9.5 — Third-trimester infection rescreening: what is already on file** *(hosts three
   "not since 27 weeks" gates)*: **syphilis in every patient** in the third trimester and at
   birth (ACOG 2024; `[DECISION — Josh 2026-10-04]`, conflict C1); HIV before 36 weeks if at
@@ -851,14 +910,22 @@ Version 1 removed the draft's Steps 9.2–9.4 (Rh review, RhIG, Rh-positive) (§
 
 ### Stage 10 — Maternal RSV vaccine window
 
-- **Step 10.1 — Maternal RSV vaccine: what has already been given** *(hosts
-  `gate-rsv-vaccine-due`)*: one dose at 32 0/7–36 6/7 weeks, in season — **ACOG September 1
-  to March 1; CDC September through January, both stated** (`[DECISION — Josh 2026-10-04]`,
-  conflict C3). The medication list is read: an RSV vaccine already recorded is not repeated.
-  Also not offered if delivery is planned within 2 weeks or the family plans the infant
-  monoclonal. [24][25][26]
+- **Step 10.1 — Maternal RSV vaccine: season, and what has already been given** *(hosts
+  `gate-rsv-vaccine-due` and `gate-rsv-vaccine-undated`)* `[DECISION — Josh 2026-10-04]`:
+  offered at 32 0/7–36 6/7 weeks and **only in season: September 1 to March 1 (ACOG)**; CDC's
+  season is September through January (conflict C3). Out of season nothing is offered. One
+  dose in a lifetime: an RSV vaccine recorded at any time is not repeated; one listed with no
+  date is asked about. Also not offered if delivery is planned within 2 weeks or the family
+  plans the infant monoclonal. [24][25][26]
 - **Step 10.2 — Offer the maternal RSV vaccine, or plan the infant monoclonal antibody**
   *(gated by `gate-rsv-vaccine-due`)*: Med-7, Sched-6. [24][25][26]
+- **Step 10.3 — RSV vaccine on the medication list with no date: has she had it?** *(gated by
+  `gate-rsv-vaccine-undated`; hosts `gate-rsv-vaccine-given` and `gate-rsv-vaccine-not-given`)*:
+  a "yes" is remembered for the patient. [24][25][26]
+- **Step 10.4 — RSV vaccine already given: not repeated** *(gated by
+  `gate-rsv-vaccine-given`)*: plan the infant monoclonal. Guid-23. [24][25][26]
+- **Step 10.5 — Offer the maternal RSV vaccine, or plan the infant monoclonal antibody**
+  *(gated by `gate-rsv-vaccine-not-given`)*: Med-7b, Sched-6b. [24][25][26]
 
 ### Stage 11 — From 36 0/7 weeks
 
@@ -882,21 +949,22 @@ None. Every decision is a gate (§4b).
 
 ## 4b. Gates
 
-**52 gates**: 48 chart gates and 4 question gates (`gate-aspirin-indicated` and
-`gate-early-testing-indicated`, yes/no; `gate-taking-prenatal-vitamin`, a yes/no router;
-`gate-gdm-strategy`, a two-option router).
-Every gate is the **sole route** to its target; every chart gate has one target; both routers
-map every answer; `default_behavior` is `skip` on all of them. `check-gate-control.ts` reports
-no violations.
+**63 gates**: 58 chart gates and 5 question gates — `gate-aspirin-indicated` and
+`gate-early-testing-indicated` (yes/no), and three routers: `gate-gdm-strategy`,
+`gate-influenza-vaccine-given` and `gate-covid-vaccine-given`. Six of the chart gates are
+yes/no pairs on a remembered patient attribute (prenatal vitamin, Tdap, RSV). Every gate is
+the **sole route** to its target; every chart gate has one target; every router maps every
+answer; `default_behavior` is `skip` on all of them. `check-gate-control.ts` reports no
+violations and no warnings.
 
 ### How each datum is used (the brief template's "use the data the chart gives")
 
 | Datum | Current value | Old value | Undated value | No value |
 |---|---|---|---|---|
 | `patient.gestational_age_weeks` | Opens the windowed stages; sets where "this pregnancy" begins (the LMP date); picks the hemoglobin threshold | n/a (sent per session) | n/a | **Asked once**; every gate reading it, `PREGNANCY` gates included, is held on the one question |
-| `patient.rh_factor` | "negative" → hand-off; "positive" → nothing | n/a | n/a | **Asked once** (negative / positive) unless an Rh-negative Z67 code is on the chart |
+| `patient.rh_factor` | "positive" → nothing. **Anything else** — "negative", "weak D", "partial D", or any other value — → hand-off | n/a | n/a | **Asked once** (positive / negative / weak D / partial D) unless an Rh-negative Z67 code is on the chart. The answer is remembered for the patient (`remember_answer`, scope `PATIENT`) |
 | Blood pressure (vitals) | ≥140 or ≥90 → hand-off, unless hypertension is already on the chart | n/a (`DAY`) | Asserted current | **Asked** (a measurement owed at every visit) |
-| Hemoglobin 718-7 | Drawn this pregnancy and below the trimester threshold → anemia hand-off; drawn this pregnancy → no first-panel CBC; since 24 weeks → no repeat CBC | **From before this pregnancy: ignored here** `[DECISION — Josh 2026-10-04]` — no hand-off; the CBC is ordered; the value is left for the anemia pathway | Counts as drawn this pregnancy | The CBC is ordered; this pregnancy's value is **asked** for, and "Not available" leaves the order and blocks nothing `[JOSH — CONFIRM]` (J25) |
+| Hemoglobin 718-7 | Drawn this pregnancy and below the trimester threshold → anemia hand-off; drawn this pregnancy → no first-panel CBC; since 24 weeks → no repeat CBC | **From before this pregnancy: ignored here** `[DECISION — Josh 2026-10-04]` — no hand-off; the CBC is ordered; the value is left for the anemia pathway | Counts as drawn this pregnancy | The CBC is ordered; this pregnancy's value is **asked** for, and "Not available" leaves the order and blocks nothing (agreed, Josh 2026-10-04) |
 | HbA1c 4548-4 (before 24 weeks) | ≥6.5 → overt diabetes; 5.9–6.4 → early abnormal glucose; normal → nothing | **Still decides** (most recent, `LIFETIME`) `[JOSH — CONFIRM]` (J13); not this pregnancy's test, so eligibility is asked too | Counts as current | **Not asked** `[DECISION — Josh 2026-10-04]`. Eligibility is asked; yes → ordered |
 | 50-g challenge 1504-0 (from 24 weeks) | <140 → screening complete; ≥140 → the 100-g test. Nothing asked | Before this pregnancy: not this pregnancy's screen, ignored | Counts as this pregnancy's | **Not asked.** With no 75-g value either, the strategy is asked and the chosen test ordered |
 | 75-g values 1552-9 / 1507-3 / 1518-0 | All three below threshold → complete; any at or above → diagnose GDM. Nothing asked | As the 50-g | As the 50-g | **Not asked** when none is on file. A partly entered test asks for the missing values |
@@ -905,11 +973,11 @@ no violations.
 | Anemia O99.01x / D50, hypertension R03.0 / O10 / O11 / O13 / O14 / O16, Rh-negative Z67.x1 | Closes that hand-off | Lifetime, active | Active | Hand-off can open |
 | GBS carrier O99.820 | No 36-week culture | Lifetime, active | Active | Culture ordered if none in 5 weeks |
 | Each panel lab (§3 table) | Drawn this pregnancy → not ordered | From before this pregnancy → ordered again; type, hemoglobinopathy and HBV antibodies count **forever** | Counts as drawn this pregnancy | Ordered |
-| Medication list: folic acid, prenatal multivitamins, aspirin | On it → "continue", nothing started, nothing asked | Active only (a stopped one does not count) | Active | Vitamin: **asked once** "Already taking a prenatal vitamin?"; aspirin: eligibility asked (before 28 weeks) |
-| Medication list: vaccines (dated entries) | Tdap given this pregnancy → not recommended; RSV ever → not offered; influenza / COVID-19 in the last 180 days → not recommended | Tdap before this pregnancy → recommended again; influenza / COVID-19 older than 180 days → recommended | **Reads as given** (not recommended) | Recommended |
+| Medication list: folic acid, prenatal multivitamins, aspirin | On it → "continue", nothing started, nothing asked | Active only (a stopped one does not count) | Active | Vitamin: **asked once** "Already taking a prenatal vitamin?"; a "yes" is remembered for this pregnancy (`patient.on_prenatal_vitamin`) and not asked again; aspirin: eligibility asked (before 28 weeks) |
+| Medication list: vaccines | A dose **dated** in the window → not recommended, nothing asked: Tdap this pregnancy; influenza / COVID-19 since the most recent September 1; RSV ever | Dated outside the window → recommended (Tdap before this pregnancy; influenza / COVID-19 before September 1) | **Asked about** `[DECISION — Josh 2026-10-04]` — one yes/no question per vaccine; yes → not recommended, no → recommended. A "yes" for Tdap is remembered for this pregnancy and for RSV for the patient. A dated dose in the window settles it without the question | Recommended (RSV: only in season) |
 
-**Not read from the chart, and why** (§0.6 #9): imaging results, age, risk factors, the
-season.
+**Not read from the chart, and why** (§0.6 #9): imaging results, age, risk factors. **The
+season is read from the calendar** (the session's date), not from the chart.
 
 **"This pregnancy"** `[DECISION — Josh 2026-10-04]`: `horizon: "PREGNANCY"` on the condition.
 The window opens on the LMP date — the session clock minus the gestational age — and needs no
@@ -975,7 +1043,7 @@ All conditions are `labs` / `not_includes_code` / LOINC with a `display`.
   on file at some earlier date is **not** ordered — it cannot be placed in or out of this
   pregnancy. `[JOSH — CONFIRM]` (J30) whether that residual case should order the test
   instead. Proved: `gate-proof.ts prenatal-meds`.
-- **What "already done" means per test** `[JOSH — CONFIRM]` (J6): blood type, hemoglobinopathy
+- **What "already done" means per test** `[DECISION — Josh 2026-10-04]` (agreed): blood type, hemoglobinopathy
   evaluation and the HBV antibodies once ever (`LIFETIME`); everything else, rubella and
   varicella included, this pregnancy (`PREGNANCY`). The hepatitis B triple panel is "never
   documented" (`[DECISION — Josh 2026-10-04]`, conflict C2).
@@ -1003,28 +1071,40 @@ All conditions are `labs` / `not_includes_code` / LOINC with a `display`.
   chart → closed, nothing asked.
 - **None drawn this pregnancy:** the CBC is ordered (`gate-cbc-due`) and this pregnancy's
   value is asked for; "Not available" closes the gate, leaves the order and blocks nothing.
-  `[JOSH — CONFIRM]` (J25): version 2 stops asking for a result at the ordering visit for the
-  glucose tests and the HbA1c (V2-11); the hemoglobin still asks, as in version 1, because
-  the decision was given for those tests. Making it chart-only is one field
-  (`on_unresolved: "default"` plus the marker).
+  Agreed `[DECISION — Josh 2026-10-04]`: the hemoglobin is asked for at the first visit when
+  none was drawn this pregnancy.
 - **Rationale & source:** [1][2] → Step 1.3. Proved: `gate-proof.ts prenatal-handoffs`
   (including a value one day into the pregnancy, and one before it).
 
-### `gate-rh-negative` — Rh(D) negative: hand-off (D-24) `[DECISION — Josh 2026-10-04]`
+### `gate-rh-not-positive` — Rh(D) type not clearly positive: hand-off (D-24) `[DECISION — Josh 2026-10-04]`
 
 - **Attached to:** `step-1-3` · **Branches to:** `step-1-24` (exclusively gated)
-- **Type:** compound **AND** · **On unresolved: ask**
-- **Conditions:** `patient.rh_factor` `in` `["negative", "positive"]`, display `"Rh(D) type"`
-  (present so that the SELECT question offers both answers); `patient.rh_factor` `equals`
-  `"negative"`; `conditions` `not_includes_code` for each of `Z67.11`, `Z67.21`, `Z67.31`,
-  `Z67.41`, `Z67.91` (`LIFETIME`, active).
-- **States:** negative → hand-off; positive → nothing; missing → ONE question with both
-  options; an Rh-negative Z67 code on the chart → closed without asking; "Not available" →
-  closed, and `gate-abo-rh-due` still orders the typing.
-- **Vocabulary** `[JOSH — CONFIRM]` (J4): the chart feed must populate `rh_factor` with exactly
-  `"negative"` / `"positive"`.
-- **No Rh-positive step, no repeat antibody screen, no RhIG** (§0.9; V2-3).
-- **Rationale & source:** [21][22] → Step 1.3. Proved: `gate-proof.ts prenatal-handoffs`.
+- **Type:** compound **AND** · **On unresolved: ask** ·
+  **`remember_answer`: `{ "scope": "PATIENT" }`** (any answer)
+- **Conditions:**
+  - group **OR** ("Rh(D) type is known"): `patient.rh_factor` `in` `["positive", "negative",
+    "weak D", "partial D"]`; `patient.rh_factor` `not_equals` `"positive"`. True for every
+    known type, listed or not. It is first so that the question a missing type raises offers
+    all four options;
+  - `patient.rh_factor` `not_equals` `"positive"` — the rule: **anything not clearly positive**;
+  - `conditions` `not_includes_code` for each of `Z67.11`, `Z67.21`, `Z67.31`, `Z67.41`,
+    `Z67.91` (`LIFETIME`, active).
+- **States:** "positive" → nothing; "negative", "weak D", "partial D", or any other string
+  (for example "indeterminate") → hand-off; missing → ONE question with the four options; an
+  Rh-negative Z67 code on the chart → closed without asking; "Not available" → closed, and
+  `gate-abo-rh-due` still orders the typing.
+- **Asked once, across visits too.** The answer is kept for the patient and supplied at later
+  encounters unless the chart carries a type (the chart wins). A blood type does not change,
+  hence scope `PATIENT` `[JOSH — CONFIRM]` (J33): remembering the type is the builder's
+  addition to "asks once if missing".
+- **Vocabulary** `[JOSH — CONFIRM]` (J34): only the exact string `"positive"` is left alone. A
+  chart feed that writes "Rh+", "pos" or "Positive" is flagged as not clearly positive —
+  the safe side of Josh's rule, but it makes a hand-off for every such patient until the
+  feed's values are known.
+- **No Rh-positive step, no repeat antibody screen, no RhIG** (§0.9).
+- **Rationale & source:** [21][22] → Step 1.3. Proved: `gate-proof.ts prenatal-handoffs`
+  (negative, weak D, partial D and "indeterminate" → hand-off; positive → none; missing →
+  asked once with all four options).
 
 ### Aspirin: `gate-on-aspirin`, `gate-aspirin-not-on-list`, `gate-aspirin-indicated`
 
@@ -1053,67 +1133,109 @@ All conditions are `labs` / `not_includes_code` / LOINC with a `display`.
   asked.
 - **`gate-prenatal-vitamin-not-on-list`** — `step-1-8` → `step-1-29`. compound **AND**: the
   same ten codes, `not_includes_code`. Default. The exact complement of the gate above.
-- **`gate-taking-prenatal-vitamin`** — attached to `step-1-29`. **Router**, question,
-  **BOOLEAN**. Prompt: "Already taking a prenatal vitamin? None is on the medication list."
-
-  | Answer | Target |
-  |---|---|
-  | yes (`true`) | `step-1-30` — continue; add it to the medication list; nothing started |
-  | no (`false`) | `step-1-27` — start a prenatal vitamin (Med-1) |
-
-- **"Once":** one question per visit, and only while nothing recognised is on the list. Step
-  1.30 says to add the vitamin to the medication list, which stops the question at later
-  visits if the product is one of the ten codes. A product outside the list is asked about
-  again at each visit `[JOSH — CONFIRM]` (J26).
+- **`gate-taking-prenatal-vitamin`** — `step-1-29` → `step-1-30`. patient_attribute:
+  `patient.on_prenatal_vitamin` `equals` `true`. **Ask.**
+- **`gate-not-taking-prenatal-vitamin`** — `step-1-29` → `step-1-27` (Med-1).
+  patient_attribute: `patient.on_prenatal_vitamin` `equals` `false`. **Ask.**
+- Both carry **`"remember_answer": { "scope": "PREGNANCY", "values": [true] }`** and the
+  prompt "Already taking a prenatal vitamin? None is on the medication list." They read one
+  datum, so a missing value raises **one** yes/no question.
+- **Sticky answer** `[DECISION — Josh 2026-10-04]` ("effectively is pt on prenatal > yes"):
+  - **yes** → Step 1.30, nothing started; the answer is stored for the patient and supplied
+    at later encounters this pregnancy (by gestational age; with none, for 300 days), so she
+    is not asked again;
+  - **no** → the vitamin is recommended; "no" is not among the remembered values, so nothing
+    is stored (and an earlier "yes" is withdrawn) and the question returns next visit;
+  - **a recognised product on the medication list** still settles it with no question,
+    whatever was remembered: the list is read first;
+  - **"Not available"** closes both gates: nothing is started and nothing is assumed.
+- The attribute is registered in `attribute-vocabulary.ts` (boolean). Storing and supplying
+  the answer needs the database; `gate-proof.ts` shows what a session does when the attribute
+  is supplied, which is what a later encounter is given.
 - **Rationale & source:** [28][65][66] → Step 1.8. Proved: `gate-proof.ts prenatal-meds`
   (folic acid, Vitafol-One and a generic prenatal multivitamin on the list → nothing asked;
-  none → asked once; yes → not started; no → started).
+  none → asked once; yes, or supplied true as a remembered answer → not asked, not started;
+  no → started; on the list with a remembered "no" → the list wins).
 
-### Vaccines: read from the medication list as dated entries `[DECISION — Josh 2026-10-04]`
+### Vaccines: read from the medication list; the season from the calendar `[DECISION — Josh 2026-10-04]`
 
 There is no immunization list in the patient context; a vaccine is read from `medications`
-(RXNORM, §0.8). A vaccine is given on a day, but a medication entry is an interval (§0.6 #3),
-so "given in the window" is two conditions per product code, and "due" is their negation:
+(RXNORM, §0.8). For each vaccine the list is in one of three states, and each state is its own
+gate on the vaccine's host step:
+
+| State of the medication list | Gate | Opens |
+|---|---|---|
+| A dose **dated** inside the window | neither gate | nothing — not recommended, nothing asked |
+| No entry, or only doses dated outside the window | `gate-<vaccine>-due` | the step that recommends it |
+| An entry with **no date**, and no dated dose in the window | `gate-<vaccine>-undated` | a step that asks; yes → "already given" step, no → a step that recommends it |
 
 ```
-due  =  AND over every product code of
-          count_in_window (count_comparison less_than, count_threshold 1, <window>)   — no dose dated inside the window
-        AND over every product code of
-          OR( not_includes_code (LIFETIME),                                           — not on the list at all, or
-              count_in_window (at_least 1, window_days 36525) )                       — on it with a date
+no dated dose   =  AND over every product code of
+                     count_in_window (count_comparison less_than, count_threshold 1, <window>)
+no undated entry =  AND over every product code of
+                     OR( not_includes_code (LIFETIME),  count_in_window (at_least 1, window_days 36525) )
+an undated entry =  OR  over every product code of
+                     AND( includes_code (LIFETIME),     count_in_window (less_than 1, window_days 36525) )
+
+gate-<vaccine>-due      =  AND( [season,]  no dated dose,  no undated entry )
+gate-<vaccine>-undated  =  AND( [season,]  no dated dose,  an undated entry )
 ```
 
-The first half counts by the day the entry started, so a dose from an earlier pregnancy that
-is still listed with no end date does not count. The second half catches an entry with **no
-date at all** (it is on the list, yet no dated entry exists): that reads as given. All
-`status: "any"`.
+A count selects on the day the entry **started**, so a dose from an earlier pregnancy or
+season that is still listed with no end date does not count (§0.6 #3). A count never sees an
+entry with no date, which is why "on the list, yet no dated entry" identifies one. All
+`status: "any"`. The two gates are mutually exclusive.
 
-| Gate | Attached to → target | Product codes | Window | On unresolved |
-|---|---|---|---|---|
-| `gate-influenza-vaccine-due` | `step-1-9` → `step-1-31` | 28 influenza codes | `window_days: 180` | default |
-| `gate-covid-vaccine-due` | `step-1-9` → `step-1-32` | 10 COVID-19 codes | `window_days: 180` | default |
-| `gate-tdap-due` | `step-9-1` → `step-9-10` | 10 Tdap codes | `horizon: "PREGNANCY"` | ask (GA) |
-| `gate-rsv-vaccine-due` | `step-10-1` → `step-10-2` | 3 RSVpreF codes | — (see below) | default |
+| Vaccine | Host → recommend / ask | Codes | Window ("a dated dose counts if…") | Season leaf | On unresolved |
+|---|---|---|---|---|---|
+| Influenza | `step-1-9` → `step-1-31` / `step-1-33` | 28 | `horizon: { "since": "09-01" }` — on or after the most recent September 1 | — | default |
+| COVID-19 | `step-1-9` → `step-1-32` / `step-1-36` | 10 | `horizon: { "since": "09-01" }` | — | default |
+| Tdap | `step-9-1` → `step-9-10` / `step-9-11` | 10 | `horizon: "PREGNANCY"` | — | ask (GA) |
+| RSV | `step-10-1` → `step-10-2` / `step-10-3` | 3 | `window_days: 36525` — ever | `encounter.date` `in_season` `from: "09-01"` `to: "03-01"` | default |
 
-- **Tdap — this pregnancy.** Given this pregnancy → not recommended; given in an earlier
-  pregnancy → recommended again (one dose every pregnancy [24]).
-- **RSV — ever.** `gate-rsv-vaccine-due` is a plain compound **AND** of `not_includes_code`
-  (`LIFETIME`, any status) over the three codes: an RSV vaccine recorded at any time closes
-  it. Josh's instruction was "not if given this pregnancy"; the guideline in this brief is
-  one dose in a lifetime, not repeated in later pregnancies [25][26], and "ever" covers both.
-  `[JOSH — CONFIRM]` (J27) that a dose in an earlier pregnancy should also close it.
-- **Influenza and COVID-19 — "this season"** `[NOT ENCODABLE]` `[JOSH — CONFIRM]` (J23):
-  there is no calendar-month operator, so the season is approximated by **180 days**.
-  - Why 180: one dose is given per season, and a season's vaccine is given from about
-    September. A dose from the previous season is at least about five months old when the
-    next season's vaccine arrives, so 180 days rarely hides a patient who is due. It errs
-    toward recommending: a patient vaccinated in September is offered it again from March
-    (the provider declines). A longer look-back would fail the other way — a March dose would
-    suppress the October vaccine — which is the worse error.
-  - The same number is used for COVID-19 (one updated dose per season).
-  - The season itself (is vaccine available now?) is not read.
-- **Simulator:** the composer sends medications undated, so a vaccine added there reads as
-  given. Dated entries are exercised in `gate-proof.ts prenatal-vaccines`.
+**The question** `[DECISION — Josh 2026-10-04]`, on the "ask" step:
+
+| Vaccine | Asked as | Prompt (exact) | yes → | no → | Remembered |
+|---|---|---|---|---|---|
+| Influenza | router `gate-influenza-vaccine-given` (question, BOOLEAN) | "Influenza vaccine given this season (since September 1)?" | `step-1-34` | `step-1-35` (Med-3b) | no |
+| COVID-19 | router `gate-covid-vaccine-given` (question, BOOLEAN) | "COVID-19 vaccine given this season (since September 1)?" | `step-1-37` | `step-1-38` (Med-4b) | no |
+| Tdap | `gate-tdap-given` / `gate-tdap-not-given`: `patient.tdap_given_this_pregnancy` `equals` `true` / `false`, ask | "Tdap given this pregnancy?" | `step-9-12` | `step-9-13` (Med-5b) | `{ "scope": "PREGNANCY", "values": [true] }` |
+| RSV | `gate-rsv-vaccine-given` / `gate-rsv-vaccine-not-given`: `patient.rsv_vaccine_ever_given` `equals` `true` / `false`, ask | "Has she ever had the RSV vaccine?" | `step-10-4` | `step-10-5` (Med-7b) | `{ "scope": "PATIENT", "values": [true] }` |
+
+- **Nothing is unanswerable**: yes or no, and each has its step. **No repeat within a
+  session**: one question per vaccine (the Tdap and RSV pairs each read one datum), and its
+  answer holds.
+- **Tdap and RSV: a "yes" is remembered** `[DECISION — Josh 2026-10-04]` — Tdap for this
+  pregnancy, RSV for the patient — and supplied at later encounters, so the question does not
+  return while the entry stays undated. A "no" is not remembered. The remembered "yes" is
+  read only on the "undated entry" step: with no entry on the list it changes nothing, and a
+  dated dose settles the matter from the chart before it is consulted.
+- **Influenza and COVID-19 are not remembered** (J36): there is no scope that ends with the
+  season (§0.6 #12), so the question returns at each visit until the entry is dated. Each
+  "yes" step says to add the date.
+- **"Not available"** (Tdap, RSV) closes both gates: not recommended and not marked given.
+  The two routers have no such answer; an unanswered router holds its steps.
+- **Why two "recommend" steps per vaccine.** Two gates may not share a target (Rule 2), so
+  the "no" answer leads to its own step with its own Medication node (Med-3b, -4b, -5b,
+  -7b). The name, lane and text are identical to the first, so the plan shows one line
+  whichever route was taken; the two are never in the plan together.
+- **"This season" = since the most recent September 1** `[DECISION — Josh 2026-10-04]`. At a
+  visit on 2026-10-15 a dose on 2026-09-05 counts and one on 2026-08-20 does not; at a visit
+  on 2026-06-15 the window opened on 2025-09-01, so last October's dose still counts. The
+  date is in the session's timezone, UTC today.
+- **Whether influenza or COVID-19 vaccine is in season now is not read** — only whether one
+  was given this season. In August a patient with no dose since last September 1 is
+  recommended one although the new season's vaccine may not have arrived `[JOSH — CONFIRM]`
+  (J35): an `in_season` leaf could close the recommendation for part of the year, but Josh
+  gave a season only for RSV.
+- **RSV season: September 1 to March 1, both days included (ACOG)**
+  `[DECISION — Josh 2026-10-04]`; CDC's season is September through January (conflict C3).
+  Out of season neither RSV gate opens: nothing is offered and an undated entry is not asked
+  about. The gestational-age window is Stage 10's gate (32 0/7–36 6/7).
+- **RSV once in a lifetime**: a dated dose at any time closes both gates.
+- **Simulator:** the composer sends medications undated, so a vaccine added there is asked
+  about. Dated entries and other session dates are exercised in `gate-proof.ts
+  prenatal-vaccines`.
 - **Codes are RxNorm, and seasonal** (§0.6 #4, §0.8).
 - **Rationale & source:** [24][25][26][27] → Steps 1.9, 9.1, 10.1.
 
@@ -1126,7 +1248,7 @@ date at all** (it is on the list, yet no dated entry exists): that reads as give
   `greater_than` **89.9**, display `"Diastolic BP (mmHg)"` — the same two leaves as GHTN's
   gate; and `conditions` `not_includes_code` for each of `R03.0`, `O10.*`, `O11.*`, `O13.*`,
   `O14.*`, `O16.*` (`LIFETIME`, active).
-- `[JOSH — CONFIRM]` (J17) the hypertension-already-on-the-chart guard.
+- The hypertension-already-on-the-chart guard: agreed `[DECISION — Josh 2026-10-04]`.
 - **Rationale & source:** [16] → Step 2.1. Proved: `gate-proof.ts prenatal-handoffs`.
 
 ### Early diabetes testing (D-6, D-7; chart-only since version 2)
@@ -1304,7 +1426,10 @@ HIV and chlamydia/gonorrhea rescreening are risk-based and shown for everyone
 
 ## 5. Medications
 
-Six Medication nodes. No `ESCALATES_TO`. **Every one is checked against the medication list
+Ten Medication nodes for six medications: each of the four vaccines has a second node with
+the same name, lane and text (Med-3b, Med-4b, Med-5b, Med-7b) on the step reached by answering
+"no" to its undated-entry question — two gates may not share a target, and the two nodes are
+never in the plan together. No `ESCALATES_TO`. **Every one is checked against the medication list
 before it is recommended** (§4b): the prenatal vitamin and aspirin against their ingredient
 and product codes, and the four vaccines against their RxNorm product codes as dated entries
 `[DECISION — Josh 2026-10-04]`.
@@ -1323,10 +1448,10 @@ and product codes, and the four vaccines against their RxNorm product codes as d
     as GHTN `med-1`, so the merge shows one.
   - **Dose:** 81 mg PO once daily, from 12–28 weeks until delivery.
   - **Codes:** RxNorm 1191 (IN), 243670 (81 mg tablet). **Source:** [17][18][19][64]
-- **Med-3 — Influenza vaccine, inactivated or recombinant** (on Step 1.31, behind
-  `gate-influenza-vaccine-due`): first_line, `influenza-immunization`; one dose IM per season;
+- **Med-3 / Med-3b — Influenza vaccine, inactivated or recombinant** (on Step 1.31, behind
+  `gate-influenza-vaccine-due`; and on Step 1.35): first_line, `influenza-immunization`; one dose IM per season;
   CPT 90656, 90673. [24][25][27]
-- **Med-4 — COVID-19 vaccine (current-season formulation)** (on Step 1.32, behind `gate-covid-vaccine-due`) `[DECISION D-26 —
+- **Med-4 — COVID-19 vaccine (current-season formulation)** (on Step 1.32, behind `gate-covid-vaccine-due`; Med-4b on Step 1.38) `[DECISION D-26 —
   Josh 2026-09-24]`
   - **Role:** first_line (per ACOG) · **clinical role:** `covid-immunization`
   - **Dose:** one dose IM of the current-season product, any trimester. `[GAP]` The
@@ -1347,12 +1472,12 @@ and product codes, and the four vaccines against their RxNorm product codes as d
     - CDC interim considerations (Sep 2026) urge a review of risks and benefits.
   - **Code:** `[GAP]` 2026–27 product CPTs are not in the CDC crosswalk.
   - **Source:** [24][25]
-- **Med-5 — Tdap vaccine** (on Step 9.10, behind `gate-tdap-due`): first_line,
+- **Med-5 / Med-5b — Tdap vaccine** (on Step 9.10, behind `gate-tdap-due`; and on Step 9.13): first_line,
   `pertussis-immunization`; one dose IM each pregnancy, early in the 27–36-week window; CPT
   90715. [24][25]
-- **Med-7 — RSV vaccine, RSVpreF (Abrysvo)** (on Step 10.2, behind `gate-rsv-vaccine-due`):
-  first_line, `rsv-maternal-immunization`; one dose IM at 32 0/7–36 6/7 weeks in season, once
-  in a lifetime; CPT 90678. [25][26]
+- **Med-7 / Med-7b — RSV vaccine, RSVpreF (Abrysvo)** (on Step 10.2, behind
+  `gate-rsv-vaccine-due`; and on Step 10.5): first_line, `rsv-maternal-immunization`; one dose
+  IM at 32 0/7–36 6/7 weeks, in season (September 1 to March 1), once in a lifetime; CPT 90678. [25][26]
 
 **Removed in version 1:** Med-6 Rho(D) immune globulin `[DECISION — Josh 2026-10-04]` (§0.9).
 
@@ -1422,7 +1547,7 @@ v2 carried these as `Procedure` nodes, which is the wrong node type.
 
 ## 9. Guidance
 
-24 Guidance nodes. Each was checked against the spec's "guidance says what the order lines
+28 Guidance nodes. Each was checked against the spec's "guidance says what the order lines
 cannot": none names an order its own step carries, none repeats another node, and each topic
 is the point in a few words. Two changes for that rule:
 - **Guid-3** no longer opens with "take a daily prenatal vitamin" (that is Med-1's line).
@@ -1555,9 +1680,10 @@ version 2):
   so none is started. Confirm it supplies 400-800 mcg of folic acid a day, with iron and
   iodine, and that the labelled dose is not exceeded." [28][65][66][67]
 - **Guid-19 — `Prenatal vitamin reported but not listed`** (Step 1.30), education: "She is
-  taking a prenatal vitamin that is not on the medication list, so none is started. Add it to
-  the medication list so it is not asked about again, and confirm it supplies 400-800 mcg of
-  folic acid a day, with iron and iodine." [28][65][66][67]
+  taking a prenatal vitamin that is not on the medication list, so none is started. The
+  answer is remembered for this pregnancy. Add the vitamin to the medication list, and
+  confirm it supplies 400-800 mcg of folic acid a day, with iron and iodine."
+  [28][65][66][67]
 - **Guid-11 — `Already on low-dose aspirin: continue it`** (Step 1.25), education: "Aspirin is
   already on the medication list. Continue 81 mg daily until delivery; do not add a second
   prescription. It is exempt from the advice to avoid NSAIDs from 20 weeks." [17][18][19][64]
@@ -1566,10 +1692,12 @@ version 2):
   first and third, 10.5 g/dL in the second). Add anemia complicating pregnancy as a diagnosis
   on this encounter so the anemia pathway can guide the workup and treatment. Routine
   prenatal care continues unchanged." [1][2]
-- **Guid-13 — `Rh(D)-negative: what routine care does not cover`** (Step 1.24), education:
-  "This pathway recommends no Rh immune globulin and no repeat antibody screen. Add the
-  Rh-negative blood type as a diagnosis on this encounter and manage Rh prophylaxis under the
-  Rh-negative plan of care." [21][22]
+- **Guid-13 — `Rh(D) not clearly positive: what routine care does not cover`** (Step 1.24),
+  education: "The Rh(D) type is negative, weak D, partial D or otherwise not clearly positive.
+  This pathway recommends no Rh immune globulin and no repeat antibody screen. Add the
+  diagnosis to this encounter (Z67.91 for Rh negative; for weak D or partial D, Z67.91 if she
+  is to be managed as Rh negative) and manage Rh prophylaxis under the Rh-negative plan of
+  care." [21][22]
 - **Guid-14 — `Elevated blood pressure: what happens next`** (Step 2.2), education: "Today's
   blood pressure is 140/90 or higher. Repeat it. If it stays elevated, add the diagnosis to
   this encounter (R03.0 until confirmed; gestational hypertension or preeclampsia once
@@ -1593,8 +1721,25 @@ version 2):
   3-hour test did not meet the criteria for gestational diabetes, so no diabetes diagnosis is
   made and screening is not repeated unless there is a new clinical reason." [53][55]
 
-`[JOSH — CONFIRM]` (J18) the wording of Guid-10 to Guid-19: they are the builder's sentences
-for the hand-off and "already on it" steps, written from the brief's own step text.
+- **Guid-20 — `Influenza vaccine: add the date it was given`** (Step 1.34), education: "The
+  influenza vaccine was given this season, so it is not repeated. Add the date to the entry
+  on the medication list so the chart shows it and the question is not asked again."
+  [24][25][27]
+- **Guid-21 — `COVID-19 vaccine: add the date it was given`** (Step 1.37), education: "The
+  COVID-19 vaccine was given this season, so it is not offered again. Add the date to the
+  entry on the medication list so the chart shows it and the question is not asked again."
+  [24][25]
+- **Guid-22 — `Tdap: add the date it was given`** (Step 9.12), education: "Tdap was given this
+  pregnancy, so it is not repeated. The answer is remembered for this pregnancy. Add the date to the entry on the medication list so the
+  chart shows it." [24][25]
+- **Guid-23 — `RSV vaccine: already given`** (Step 10.4), education: "She has had the RSV
+  vaccine, so it is not repeated in this pregnancy; plan the infant monoclonal antibody. The
+  answer is remembered. Add the date to the entry on the medication list so the chart shows
+  it." [24][25][26]
+
+`[JOSH — CONFIRM]` (J18) the wording of Guid-10 to Guid-23: they are the builder's sentences
+for the hand-off, "already on it" and "already given" steps, written from the brief's own
+step text.
 
 ## 10. Quality metrics
 
@@ -1630,8 +1775,8 @@ for the hand-off and "already on it" steps, written from the brief's own step te
 | Sched-1 | Step 2.4 | "Tailored: intake plus about 8 visits (average risk) or about 13 (greater than average)" | Traditional reference: every 4 weeks to 28, every 2 weeks to 36, then weekly. The CC No. 8 sample puts in-person visits at 10, 16, 28, 36 and 39 weeks; any modality at 22, 32 and 38; anatomy US at 20. | [1][2] |
 | Sched-2 | Step 1.7 | "Start at 12-28 weeks (optimally before 16), then daily until delivery" | Low-dose aspirin | [18][19] |
 | Sched-3 | Step 4.5 | "24 0/7-28 6/7 weeks" | Universal GDM screening window | [55][57] |
-| Sched-4 | Step 9.10 | "27-36 weeks, early in the window, every pregnancy" | Tdap | [24][25] |
-| Sched-6 | Step 10.2 | "32 0/7-36 6/7 weeks, in season" | Maternal RSV vaccine. ACOG September 1 to March 1; CDC September through January | [25][26] |
+| Sched-4, Sched-4b | Step 9.10, Step 9.13 | "27-36 weeks, early in the window, every pregnancy" | Tdap | [24][25] |
+| Sched-6, Sched-6b | Step 10.2, Step 10.5 | "32 0/7-36 6/7 weeks, in season (September 1 to March 1)" | Maternal RSV vaccine. ACOG September 1 to March 1; CDC September through January | [25][26] |
 | Sched-7 | Step 11.4 | "36 0/7-37 6/7 weeks" | GBS culture; valid 5 weeks | [20] |
 | Sched-8 | Step 12.1 | "Once or twice weekly from 41 0/7 weeks until delivery" | Late-term surveillance | [46] |
 
@@ -1666,7 +1811,7 @@ one-node-per-host rule). 77 nodes.
 (Proc-1); 76818 (Proc-2); 59412 (Proc-3).
 
 **Medication codes:** RXNORM 4511 (Med-1); RXNORM 1191, 243670 (Med-2); CPT 90656, 90673
-(Med-3); CPT 90715 (Med-5); CPT 90678 (Med-7).
+(Med-3, Med-3b); CPT 90715 (Med-5, Med-5b); CPT 90678 (Med-7, Med-7b).
 
 **Codes read by gates but not emitted as CodeEntry nodes:** the 64 RxNorm medication and
 vaccine codes of §0.8 (aspirin 3, folic acid and prenatal multivitamins 10, Tdap 10, RSV 3,
@@ -1940,7 +2085,8 @@ emitted; it stays in §15 for the Rh-negative pathway.
 - 1.4: [1][29][30][31][32][33][34][35][61] · 1.5: [4][5][6][63] · 1.6, 1.25, 1.26: [17][18][19]
   · 1.7: [17][18][19][64]
 - 1.8: [28][36][37][38][39][40][41][45][51][64][65][66][67][68] · 1.27, 1.28, 1.29, 1.30:
-  [28][65][66][67] · 1.9, 1.31: [24][25][27] · 1.32: [24][25]
+  [28][65][66][67] · 1.9, 1.31, 1.33, 1.34, 1.35: [24][25][27] · 1.32, 1.36, 1.37, 1.38:
+  [24][25]
 - 2.1, 2.2: [16] · 2.3: [1][2][50] · 2.4: [1][2]
 - 3.1: [3] · 3.2: [4]
 - 4.1, 4.6: [52][55][56][58] · 4.2: [52][55] · 4.3: [55] · 4.4: [52][55][56] · 4.5: [53][55][57]
@@ -1948,22 +2094,22 @@ emitted; it stays in §15 for the Rh-negative pathway.
 - 6.1, 6.5: [1][2] · 6.2, 6.6: [53][55][57] · 6.3: [53] · 6.4: [55][56] · 6.7: [53][54][55][57]
   · 6.8: [55][57] · 6.9, 6.10: [53][55][57][58] · 6.11: [53][55][56] · 6.12: [53][55] ·
   6.13: [55][56]
-- 9.1: [24][25][26][27][60] · 9.10: [24][25] · 9.5: [8][10][11][15] · 9.7: [7][8] ·
+- 9.1: [24][25][26][27][60] · 9.10, 9.11, 9.12, 9.13: [24][25] · 9.5: [8][10][11][15] · 9.7: [7][8] ·
   9.8: [10][11] · 9.9: [15] · 9.6: [29][31][42][43][44][59]
-- 10.1, 10.2: [24][25][26] · 11.1, 11.4: [20] · 11.2: [1][48] · 11.3: [47][49][62] ·
+- 10.1, 10.2, 10.3, 10.4, 10.5: [24][25][26] · 11.1, 11.4: [20] · 11.2: [1][48] · 11.3: [47][49][62] ·
   12.1: [46][47]
 
-**Medications:** Med-1: [28][65][66][67] · Med-2: [17][18][19][64] · Med-3: [24][25][27] ·
-Med-4: [24][25] · Med-5: [24][25] · Med-7: [25][26]
+**Medications:** Med-1: [28][65][66][67] · Med-2: [17][18][19][64] · Med-3, Med-3b:
+[24][25][27] · Med-4, Med-4b: [24][25] · Med-5, Med-5b: [24][25] · Med-7, Med-7b: [25][26]
 
 **Labs:** as the Source column of §6. **Imaging:** Img-1: [3] · Img-2: [4] · Img-3: [1][4].
 **Procedures:** Proc-1, Proc-2: [46] · Proc-3: [48]. **Guidance:** as listed in §9.
 
 **Gate evidence on host steps:** GA gates → 1.1; panel gates, `gate-hgb-low`,
-`gate-rh-negative` → 1.3; aspirin gates → 1.6 / 1.26; prenatal vitamin gates → 1.8 / 1.29;
-influenza and COVID-19 gates → 1.9; `gate-bp-elevated` → 2.1; early-diabetes gates → 4.1 /
-4.6; `gate-cbc-repeat-due` → 6.1; GDM gates → 6.2 / 6.6 / 6.9; `gate-tdap-due` → 9.1; rescreen
-gates → 9.5; `gate-rsv-vaccine-due` → 10.1; `gate-gbs-culture-due` → 11.1.
+`gate-rh-not-positive` → 1.3; aspirin gates → 1.6 / 1.26; prenatal vitamin gates → 1.8 / 1.29;
+influenza and COVID-19 gates → 1.9 / 1.33 / 1.36; `gate-bp-elevated` → 2.1; early-diabetes gates → 4.1 /
+4.6; `gate-cbc-repeat-due` → 6.1; GDM gates → 6.2 / 6.6 / 6.9; Tdap gates → 9.1 / 9.11; rescreen
+gates → 9.5; RSV gates → 10.1 / 10.3; `gate-gbs-culture-due` → 11.1.
 QM-1 → 1.1; QM-2 → 9.1; QM-3 → 1.4; QM-4 → 9.6.
 
 ## 17. Temporal horizon & status summary (EMITTED — review carefully)
@@ -1976,14 +2122,16 @@ QM-1 → 1.1; QM-2 → 9.1; QM-3 → 1.4; QM-4 → 9.6.
 | `gate-abo-rh-due`, `gate-hbv-triple-due`, `gate-hgbpathy-due` | labs `not_includes_code` | LIFETIME | — | Done once, ever |
 | `gate-hgb-low` | labs 718-7 < 10.45 / < 10.95 | **PREGNANCY** | — | Only a value drawn this pregnancy opens the hand-off (Josh) |
 | `gate-hgb-low` | conditions O99.01.\*, D50.\* | LIFETIME | active | Already diagnosed |
-| `gate-rh-negative` | conditions Z67.11 / .21 / .31 / .41 / .91 | LIFETIME | active | Already recorded |
-| `gate-rh-negative` | `patient.rh_factor` | — | — | No temporal policy |
+| `gate-rh-not-positive` | conditions Z67.11 / .21 / .31 / .41 / .91 | LIFETIME | active | Already recorded |
+| `gate-rh-not-positive` | `patient.rh_factor` | — | — | No temporal policy |
+| `gate-taking-prenatal-vitamin` / `gate-not-taking-prenatal-vitamin`, `gate-tdap-given` / `-not-given`, `gate-rsv-vaccine-given` / `-not-given` | `patient.on_prenatal_vitamin`, `patient.tdap_given_this_pregnancy`, `patient.rsv_vaccine_ever_given` | — | — | No temporal policy; how long a remembered answer holds is `remember_answer.scope` |
 | `gate-on-aspirin`, `gate-aspirin-not-on-list`, `gate-on-prenatal-vitamin`, `gate-prenatal-vitamin-not-on-list` | medications | LIFETIME | active | Currently on it |
-| `gate-influenza-vaccine-due`, `gate-covid-vaccine-due` | medications `count_in_window` | `window_days: 180` | any | A dose in the season, approximated (J23) |
-| `gate-tdap-due` | medications `count_in_window` | **PREGNANCY** | any | A dose this pregnancy |
-| the three gates above | medications `not_includes_code` | LIFETIME | any | The undated-entry check: on the list at all? |
-| the three gates above | medications `count_in_window` (at least 1) | `window_days: 36525` | any | The undated-entry check: any dated entry? |
-| `gate-rsv-vaccine-due` | medications `not_includes_code` | LIFETIME | any | Ever given |
+| `gate-influenza-vaccine-due` / `-undated`, `gate-covid-vaccine-due` / `-undated` | medications `count_in_window` | **`{ since: "09-01" }`** | any | A dose this season: on or after the most recent September 1 (Josh) |
+| `gate-tdap-due` / `-undated` | medications `count_in_window` | **PREGNANCY** | any | A dose this pregnancy |
+| `gate-rsv-vaccine-due` / `-undated` | medications `count_in_window` | `window_days: 36525` | any | A dated dose, ever |
+| `gate-rsv-vaccine-due` / `-undated` | `encounter.date` `in_season` 09-01 → 03-01 | — (the session clock) | — | RSV season, ACOG (Josh) |
+| all eight vaccine gates | medications `includes_code` / `not_includes_code` | LIFETIME | any | The undated-entry check: on the list at all? |
+| all eight vaccine gates | medications `count_in_window` | `window_days: 36525` | any | The undated-entry check: any dated entry? |
 | `gate-bp-elevated` | vitals systolic_bp, diastolic_bp | DAY | — | Today's reading (never ENCOUNTER) |
 | `gate-bp-elevated` | conditions R03.0, O10.\*, O11.\*, O13.\*, O14.\*, O16.\* | LIFETIME | active | Already diagnosed |
 | `gate-overt-diabetes`, `gate-early-abnormal-glucose` | labs 4548-4 | LIFETIME | — | Most recent value decides (J13) |
@@ -1995,7 +2143,8 @@ QM-1 → 1.1; QM-2 → 9.1; QM-3 → 1.4; QM-4 → 9.6.
 | `gate-gbs-culture-due` | labs 72607-5, 91875-5 | `{days: 35}` | — | Result validity, 5 weeks |
 | `gate-gbs-culture-due` | conditions O99.820 | LIFETIME | active | Carrier state |
 
-- `window_days` only on the vaccine counts; never together with `horizon`. No `status` on labs
+- `window_days` only on the vaccine counts; never together with `horizon`. The calendar leaf
+  carries neither (a horizon there is an import error). No `status` on labs
   or vitals. No trend or delta operator; no `window_from`.
 - Every condition carries an explicit horizon or `window_days` except `patient.*` attributes.
 - **Simulator:** an undated lab or medication is asserted current, so it reads as inside
@@ -2005,49 +2154,62 @@ QM-1 → 1.1; QM-2 → 9.1; QM-3 → 1.4; QM-4 → 9.6.
 
 ### `[JOSH — CONFIRM]` items
 
-**Closed by Josh's review of version 1** `[DECISION — Josh 2026-10-04]`: J1 (hemoglobin
-thresholds: "correct"), J2 (pre-pregnancy hemoglobin: does not open the hand-off), J3 (Z67.91
-stands), J5 ("this pregnancy" uses the gestational age), J7, J8, J9, J12 (GDM and HbA1c:
-read the chart, ask nothing; the 100-g test is read from its values), J11 (a stale diabetes
-code is a chart problem), J14 (aspirin before 28 weeks), J15 / J21 (prenatal vitamin: known
-list, else ask), J16 (triggers: supervision and pregnant state only), J19 (risk-based tests
-for everyone), J20 (vaccines checked against the medication list).
+**Closed by Josh's reviews** `[DECISION — Josh 2026-10-04]`:
+- of version 1: J1, J2, J3, J5, J7, J8, J9, J11, J12, J14, J15 / J21, J16, J19, J20;
+- of version 2: J4 (Rh: anything not clearly positive), J6 ("already done" per test: agreed),
+  J17 (BP hand-off closes on a hypertension code: agreed), J23 (this season = since September
+  1), J24 (vaccines as RxNorm: confirmed; CVX charts are a known limit), J25 (hemoglobin
+  asked at the first visit: agreed), J26 (the prenatal-vitamin "yes" is remembered for the
+  pregnancy), J27 (RSV: once in a lifetime, in season), J29 (an undated vaccine is asked
+  about).
 
 **Still open:**
 
 | # | Item | Built as | Where |
 |---|---|---|---|
-| J4 | `patient.rh_factor` vocabulary: exactly "negative" / "positive" | As stated | `gate-rh-negative` |
-| J6 | What "already done" means per test: type, hemoglobinopathy, HBV antibodies once ever (`LIFETIME`); all others, rubella and varicella included, this pregnancy (`PREGNANCY`) | As stated | §4b panel table |
-| J10 | A GDM screen drawn before 24 0/7 weeks is inside `PREGNANCY`; a negative early 50-g reads as "complete". Not expressible exactly; **approximable** with the same gestational-age bands the repeat CBC uses (J22). Not built, because Josh asked for `PREGNANCY` on this window | Text in Step 6.3 / Guid-17 | §0.6 #1 |
+| J10 | A GDM screen drawn before 24 0/7 weeks is inside `PREGNANCY`; a negative early 50-g reads as "complete". Approximable with the bands of J22; not built because Josh asked for `PREGNANCY` on this window | Text in Step 6.3 / Guid-17 | §0.6 #1 |
 | J13 | The HbA1c value gates read the most recent value however old, while "is one owed?" reads this pregnancy | `LIFETIME` / `PREGNANCY` | §4b early diabetes |
-| J17 | BP hand-off closes when a hypertension code is on the chart | As stated | `gate-bp-elevated` |
-| J18 | Wording of the builder's Guidance nodes Guid-10 to Guid-19 | Builder's sentences | §9 |
-| J22 | **Departure from "replace every GA-banded look-back".** "Since about 24 weeks" (repeat CBC: 28 / 56 / 84 / 126 days) and "since about 27 weeks" (third-trimester rescreens: 35 / 70 / 105 days) still use look-backs banded by gestational age. Under `PREGNANCY` the first-visit test would satisfy the repeat for the whole pregnancy and it would never be ordered | 4–5-week bands `[NOT ENCODABLE]` | §0.6 #1 |
-| J23 | "This season" for influenza and COVID-19 is a **180-day** look-back | 180 days `[NOT ENCODABLE]` | §4b vaccines |
-| J24 | Vaccines are matched as **RxNorm** product codes; a chart feed that records immunizations as CVX is not recognised | RXNORM only | §0.8 |
-| J25 | A hemoglobin not yet drawn this pregnancy is still **asked** for at the first visit (the glucose tests and the HbA1c no longer are) | `ask`, as version 1 | `gate-hgb-low` |
-| J26 | A prenatal vitamin outside the ten recognised codes is asked about at every visit | One question per visit | prenatal vitamin gates |
-| J27 | RSV vaccine: a dose in an **earlier** pregnancy also closes the offer (Josh said "this pregnancy"; the guideline is once in a lifetime) | `LIFETIME` | `gate-rsv-vaccine-due` |
-| J29 | An **undated** vaccine on the medication list reads as given (not recommended). The simulator dates nothing, so adding any vaccine there suppresses it — the builder's default, not one of Josh's instructions. The alternative (an undated entry does not count) would make the check untestable in the simulator | Reads as given | §4b vaccines |
-| J30 | Gestational age declined and a panel test on file at an earlier date: that test is not ordered | As stated | §4b panel gates |
-| J31 | Influenza and COVID-19 lists hold brand products (BN, SBD) only; Tdap and RSV also hold their generic (SCD) concepts. A chart coding a flu or COVID-19 vaccine generically is not recognised | Brand products only | §0.8 |
+| J18 | Wording of the builder's Guidance nodes Guid-10 to Guid-23 | Builder's sentences | §9 |
+| J22 | **Josh has not ruled.** "Since about 24 weeks" (repeat CBC: 28 / 56 / 84 / 126 days) and "since about 27 weeks" (third-trimester rescreens: 35 / 70 / 105 days) use look-backs banded by gestational age. Under `PREGNANCY` the first-visit test would satisfy the repeat for the whole pregnancy and it would never be ordered | 4–5-week bands `[NOT ENCODABLE]` | §0.6 #1, and "What a window opening at a stated gestational age would fix" below |
 | J28 | Vaccine product lists are seasonal and need adding to each year; no 2026–2027 COVID-19 concept existed in RxNorm on 2026-10-04 | 2025–2026 and 2026–2027 codes | §0.6 #4, §0.8 |
+| J30 | Gestational age declined and a panel test on file at an earlier date: that test is not ordered | As stated | §4b panel gates |
+| J31 | Influenza and COVID-19 lists hold brand products (BN, SBD) only; Tdap and RSV also hold their generic (SCD) concepts | Brand products only | §0.8 |
+| J32 | Weak D / partial D have no ICD-10-CM code: the hand-off recommends Z67.91 "when she is to be managed as Rh(D) negative" | Z67.91, with the serologic result noted | Step 1.24, §0.9 |
+| J33 | The Rh type, once answered, is remembered for the patient (`remember_answer`, scope `PATIENT`, any answer) so it is not asked at later encounters — the builder's addition | As stated | `gate-rh-not-positive` |
+| J34 | Only the exact string "positive" is left alone: a feed that writes "Rh+" or "Positive" would be flagged for every patient | As stated | `gate-rh-not-positive` |
+| J35 | Influenza and COVID-19 vaccines have no season leaf: a patient with no dose since September 1 is recommended one in any month | No `in_season` | §4b vaccines |
+| J36 | The undated **influenza and COVID-19** answers are not remembered (no season scope): the question returns each visit until the entry is dated. Tdap and RSV are remembered | Question routers | §4b vaccines, §0.6 #12 |
+
+**What a window opening at a stated gestational age would fix** (J10, J22 — Josh has not
+ruled). An engine horizon such as `{ "since_gestational_week": 24 }` — lower bound = the LMP
+date plus that many weeks, from the same gestational age `PREGNANCY` reads, asking the same
+question when it is missing — would replace, exactly:
+- `gate-cbc-repeat-due`'s four bands with one leaf: no hemoglobin drawn since 24 0/7 weeks.
+  Today a hemoglobin drawn up to 4 weeks before 24 weeks can count as the repeat.
+- the three third-trimester rescreen gates' three bands with one leaf each: none drawn since
+  27 0/7 weeks. Today a test drawn up to 5 weeks before 27 weeks can count.
+- the GDM screen: `gate-gdm-screen-negative` would read only a result drawn since 24 0/7
+  weeks, so a negative 50-g at 14 weeks would no longer read as "screening complete", and the
+  instruction in Step 6.3 / Guid-17 could go. (`gate-gct-positive` would stay on `PREGNANCY`:
+  an early positive goes straight to the diagnostic test.)
+It would remove 10 banded groups and the only fixed day counts left in the pathway other
+than the 35-day GBS validity.
 
 ### Not encodable on the josh-dev engine
 
 | # | Requirement | Why not | Built instead |
 |---|---|---|---|
 | G1 | A GDM screen before 24 0/7 weeks does not count; "since 24 weeks" CBC; "since 27 weeks" rescreens | No horizon that opens at a stated gestational age. Approximable with look-backs banded by gestational age | GA-banded look-backs for the CBC and rescreens (J22); step text for the GDM screen, where Josh asked for `PREGNANCY` (J10) |
-| G2 | Influenza / COVID-19 "this season"; the RSV season | No calendar-month operator | 180-day look-back (J23); season as text |
-| G3 | "A vaccine was given on a day in the window" as one condition | Medication entries are intervals; an event count ignores undated entries | A count and an undated-entry check per product code (§4b) |
+| G2 | Remembering "influenza / COVID-19 vaccine given this season" | `remember_answer` has no scope that ends with the season | Question routers, asked each visit until the entry is dated (J36) |
+| G3 | "A vaccine was given on a day in the window" as one condition | Medication entries are intervals; an event count ignores undated entries | A count per product code, and the undated entry asked about (§4b) |
 | G4 | Aspirin eligibility; early-testing eligibility | Counting; uncoded factors; BMI not codeable in pregnancy | BOOLEAN questions |
 | G5 | Missed-anatomy-survey catch-up after 24 weeks | REQUIRES has no authorable satisfaction check; imaging is not in the chart | Not encoded |
 | G6 | Cross-pathway question dedup (aspirin) | Question gates dedupe only within a pathway | Verbatim prompt |
 | G7 | Imaging, age and risk checks | Not in the patient context | Step text; risk-based tests shown for everyone |
 
 Resolved in version 2: "≥2 of 4" (six-pair encoding); the strategy question repeating on a
-positive screen; "drawn this pregnancy".
+positive screen; "drawn this pregnancy". Resolved in version 3: "this season" and the RSV
+season (the calendar).
 
 ### No pathway yet — what Prism does not recommend
 
@@ -2089,22 +2251,24 @@ positive screen; "drawn this pregnancy".
 | C12 | Strategy: ADA one-step vs ACOG two-step | D-5 |
 | C13 | RhIG before 12 weeks: label vs ACOG CPU 2024 | Moved to the Rh-negative pathway (§0.9) |
 
-### Checks run on 2026-10-04 (version 2)
+### Checks run on 2026-10-04 (version 3)
 
 - `validate-pathway.ts`: valid, compiles, trigger codes are families or justified leaves,
   DATA USE clean, brief in sync.
-- `check-gate-control.ts`: no violations; 14 warnings, all the stale "ask is inert" lint on
-  `PREGNANCY` membership gates (§0.6 #11).
-- `gate-proof.ts prenatal-triggers` checks the trigger list by ICD-10 ancestry and the
-  pregnancy rule on the encounter's own code. It does not run the live matcher (that needs
-  the database), so "the chart cannot start a pathway" is the engine's rule, read from
-  `multi-pathway-resolution.ts`, not something this proof exercises.
+- `check-gate-control.ts`: no violations, no warnings (the lint was fixed for calendar leaves
+  and `PREGNANCY`, §0.6 #11).
 - `gate-proof.ts prenatal-ga`, `prenatal-triggers`, `prenatal-gdm`, `prenatal-handoffs`,
   `prenatal-meds`, `prenatal-vaccines`: every expectation held, in both edge orders.
 - `coverage-audit.ts`: every gate opens and closes, every node is included in some session,
   no question is a dead end.
+- `gate-proof.ts prenatal-triggers` checks the trigger list by ICD-10 ancestry and the
+  pregnancy rule on the encounter's own code; it does not run the live matcher.
+- Remembered answers need the database: no proof exercises the storing. What a later
+  encounter does with a supplied `true` is proved for the prenatal vitamin, Tdap and RSV
+  (not asked, not started); the gates' `remember_answer` values are checked in the proofs.
 
 ### Uses josh-dev extensions (will not validate on `origin/main`)
 
-`not_includes_code`, `horizon: "PREGNANCY"`, `count_comparison` on `count_in_window`, nested
-AND/OR groups, typed `patient.*` answers and "Not available".
+`not_includes_code`, `horizon: "PREGNANCY"`, `horizon: { "since": … }`, the calendar condition
+`encounter.date` / `in_season`, `remember_answer`, `count_comparison` on `count_in_window`,
+nested AND/OR groups, typed `patient.*` answers and "Not available".

@@ -25,6 +25,12 @@ function run(script: string, args: string[]): { code: number; out: string } {
   const r = spawnSync(process.execPath, [script, ...args], { encoding: 'utf8' });
   return { code: r.status ?? -1, out: `${r.stdout ?? ''}${r.stderr ?? ''}` };
 }
+function expectAbsent(name: string, got: { code: number; out: string }, code: number, needle: string): void {
+  const ok = got.code === code && !got.out.includes(needle);
+  if (!ok) failed++;
+  console.log(`${ok ? '✓' : '✗'} ${name} — exit ${got.code}, ${got.out.includes(needle) ? 'MENTIONS' : 'does not mention'} "${needle}"`);
+  if (!ok) console.log(got.out.split('\n').map((l) => `    | ${l}`).join('\n'));
+}
 function expect(name: string, got: { code: number; out: string }, code: number, needle?: string): void {
   const ok = got.code === code && (!needle || got.out.includes(needle));
   if (!ok) failed++;
@@ -81,6 +87,30 @@ expect('gate-control: a malformed nested wildcard is named by its path',
       { field: 'conditions', operator: 'not_includes_code', value: 'G82.2*', system: 'ICD-10', horizon: 'LIFETIME' },
     ] },
   ] })]), 1, '"gate-iv-iron-ga" condition[0].conditions[1] value "G82.2*"');
+
+// The calendar condition reads the session clock, not chart data: no horizon (one is an import error).
+const SEASON = { attribute: 'encounter.date', operator: 'in_season', from: '09-01', to: '03-01' };
+expect('gate-control: an encounter.date / in_season leaf needs no horizon',
+  run(GATE, [withGate({ on_unresolved: 'ask', operator: 'AND', conditions: [SEASON, TRI] })]), 0, 'GATE CONTROL OK');
+expectAbsent('gate-control: … and is not reported under EXPLICIT HORIZON, nested or not',
+  run(GATE, [withGate({ on_unresolved: 'ask', operator: 'AND', conditions: [TRI, { operator: 'OR', conditions: [SEASON, HGB] }] })]), 0, 'EXPLICIT HORIZON');
+expect('gate-control: a chart leaf with no horizon is still an error beside a calendar leaf',
+  run(GATE, [withGate({ on_unresolved: 'default', operator: 'AND', conditions: [SEASON,
+    { field: 'conditions', operator: 'includes_code', value: 'D50.9', system: 'ICD-10' }] })]), 1, 'EXPLICIT HORIZON');
+// horizon PREGNANCY needs the gestational age: `ask` holds the gate on that question, so it is not inert.
+const PREG_MEMBER = { field: 'labs', operator: 'not_includes_code', value: '56888-1', system: 'LOINC', display: 'HIV screen', horizon: 'PREGNANCY' };
+expectAbsent('gate-control: "ask" on a PREGNANCY membership gate is not reported inert',
+  run(GATE, [withGate({ on_unresolved: 'ask', operator: 'AND', conditions: [PREG_MEMBER] })]), 0, 'is inert');
+expect('gate-control: "ask" on a LIFETIME membership gate still is',
+  run(GATE, [withGate({ on_unresolved: 'ask', operator: 'AND', conditions: [{ ...PREG_MEMBER, horizon: 'LIFETIME' }] })]), 0, 'is inert');
+expect('gate-control: "default" on a PREGNANCY membership gate needs no marker',
+  run(GATE, [withGate({ on_unresolved: 'default', operator: 'AND', conditions: [PREG_MEMBER] })]), 0, 'GATE CONTROL OK');
+// An authored prompt is one question's wording when the gate can ask for one datum only.
+const VITAMIN = { attribute: 'patient.on_prenatal_vitamin', operator: 'equals', value: true };
+expectAbsent('gate-control: an authored prompt on a single-datum gate is not warned about',
+  run(GATE, [withGate({ gate_type: 'patient_attribute', on_unresolved: 'ask', prompt: 'Already taking a prenatal vitamin?', condition: VITAMIN })]), 0, 'authored `prompt`');
+expect('gate-control: … and still is when the gate can ask for two data',
+  run(GATE, [withGate({ on_unresolved: 'ask', prompt: 'One text for both', operator: 'AND', conditions: [VITAMIN, TRI] })]), 0, 'authored `prompt`');
 
 // ── validate-pathway: DATA USE — a response check must order its recheck ──
 // [DECISION — Josh 2026-10-04]. validate-pathway.ts imports pathway-service

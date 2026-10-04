@@ -22,6 +22,9 @@
 > - nested AND/OR condition groups inside a compound gate
 > - `DATE` answers (treatment start dates), typed `patient.*` datum answers, and the
 >   "Not available" answer to a data question (`notAvailable`)
+> - `remember_answer` on a gate that reads a `patient.<attribute>` (2026-10-04): the
+>   provider's answer is kept for the patient and supplied at later encounters, scoped to
+>   this pregnancy or to the patient (see **Remembered answers**)
 > - a reached action node (Medication, LabTest, …) is always INCLUDED: confidence is
 >   reported with it and never removes it (`[DECISION — Josh 2026-10-03]`: nothing is
 >   hidden; conclusions come from the available information). On main a node scoring
@@ -507,6 +510,16 @@ Authoring rules that follow:
    A pathway that judges a response and deliberately has no such route says why:
    `[NO RECHECK ROUTE — <clinical_role>: <why>]`.
 
+6. **An answer the provider should not be asked again at every visit is remembered,
+   scoped** (`[DECISION — Josh 2026-10-04]`: "prenatal vitamin needs to be a sticky answer
+   for that patient"). When the chart cannot hold a fact and the pathway has to ask for it
+   as a `patient.<attribute>`, put `remember_answer` on the gate (see **Remembered
+   answers**): `PREGNANCY` for something true of this pregnancy ("taking a prenatal
+   vitamin"), `PATIENT` for something that does not change (a blood type). Name the
+   `values` worth keeping — usually only the answer that ends the asking; an answer that
+   leads to an order should be asked again next visit. A chart value always wins over a
+   remembered one.
+
 `validate-pathway.ts` reports rules 1, 2 and 5 as **DATA USE** warnings (not failures):
 read each one and either fix the pathway or add the marker. (Rule 5: a `window_from` trend
 or delta whose `clinical_role` has no `count_in_window` … `count_comparison: "less_than"`
@@ -536,6 +549,53 @@ unknown → order the labs"), add a **membership** gate on the absence — coded
 that orders it (anemia v10: `gate-no-hgb-on-file` → Step 1.9; `gate-proof.ts unknown-hgb`).
 That gate is open from the start of the visit, stays open after a decline, and closes when
 a value is on file. Without such a gate a declined datum simply closes its gates.
+
+**Remembered answers — `remember_answer` (josh-dev, 2026-10-04).** A gate whose condition
+reads a `patient.<attribute>` may carry
+
+```json
+"remember_answer": { "scope": "PREGNANCY", "values": [true] }
+```
+
+- **What it does.** When the provider answers that attribute's question and the answer is
+  one of `values` (any answer when `values` is omitted), it is stored for the patient. At
+  the start of a later encounter it is supplied as that patient attribute, so the gate
+  decides without asking. An answer **not** in `values` withdraws what was remembered: with
+  `"values": [true]`, a later "no" forgets the earlier "yes".
+- **The chart wins.** A value the chart (or the encounter) already carries for the attribute
+  is used and the remembered one is not supplied.
+- **`scope`** — required, `"PREGNANCY"` or `"PATIENT"`.
+  - `PREGNANCY`: held while the answer was given during this pregnancy — on or after the LMP
+    date derived from the gestational age (the whole LMP day counts, as for `horizon:
+    "PREGNANCY"`); with no gestational age, within the last 300 days.
+  - `PATIENT`: held until the question is answered again.
+- **`values`** — optional, a non-empty list of strings, numbers or booleans, compared with
+  `===` to the typed answer (so `true`, not `"true"`).
+- **Import rules (hard errors):** an object with only `scope` and `values`; `scope` one of
+  the two; `values`, when present, non-empty and of those three types; and the gate must
+  have a condition on a `patient.<attribute>` (that attribute is what a later encounter is
+  given).
+- **Which gate carries it.** The answer is recorded against the gate the pending question
+  belongs to. When two gates read the same attribute (a yes arm and a no arm) they share one
+  question and either may own it, so put the **same** `remember_answer` on both.
+- **⚠ The attribute must be registered.** Import accepts any `patient.<name>`, but
+  activation compiles the pathway and refuses a `patient.*` attribute that is not in
+  `KNOWN_PATIENT_ATTRIBUTES` (`apps/pathway-service/src/services/resolution/attribute-vocabulary.ts`)
+  — error `UNKNOWN_PATIENT_ATTRIBUTE`, `validate-pathway.ts` exit 5. Registered today: the
+  chart-derived `trimester`, `rh_factor`, `gestational_age_weeks`, and three
+  provider-answered booleans added for remembered answers (2026-10-04):
+  `on_prenatal_vitamin`, `tdap_given_this_pregnancy`, `rsv_vaccine_ever_given`. A new sticky
+  attribute needs a row there (name, display, value type) before a pathway can use it; until
+  then, ask with a `question` gate (not remembered) and say so in the brief. Routine prenatal
+  care v3 uses `remember_answer` on `patient.rh_factor` (`PATIENT`), `patient.on_prenatal_vitamin`
+  and `patient.tdap_given_this_pregnancy` (`PREGNANCY`, `[true]`), and
+  `patient.rsv_vaccine_ever_given` (`PATIENT`, `[true]`).
+- **Not a chart fact.** A remembered answer is a convenience: the encounter shows the
+  attribute as supplied, and answering the question again replaces it. It needs the
+  database (`patient_remembered_answers`), so `gate-proof.ts` can only show what a session
+  does when the attribute is supplied — which is exactly what a later encounter is given.
+- Source: `resolution/remembered-answers.ts`, `resolvers/mutations/resolution.ts`
+  (recording), `import/validator.ts` (shape).
 
 **Dated lab answers (josh-dev, 2026-10-03).** A lab answer may carry the day it was drawn
 (`GateAnswerInput.observedOn`; the simulator's "drawn" date beside the value). Dated, it is
@@ -581,9 +641,12 @@ values, and a series short of them now ASKS, however many it is short by.
 - **Prompt text:** generated per datum. For labs it uses the condition's **`display`**:
   `"<display> (LOINC <code>) — most recent value?"` — so put a readable `display` (with the
   unit the threshold assumes, e.g. `"Platelets (x10^9/L)"`) on every lab condition. Vitals
-  and attribute (`patient.*`, `vitals.*`, `lab.*`) prompts print the path —
-  `"patient.gestational_age_weeks — current value?"` — and ignore `display`. **Do not set `prompt` on a chart gate:** an
-  authored prompt replaces the generated one for every datum the gate asks for.
+  and attribute (`patient.*`, `vitals.*`, `lab.*`) prompts read `"<label> — current value?"`,
+  the label being the condition's `display`, else the built-in label of a known `patient.*`
+  attribute, else the path. **Do not set `prompt` on a chart gate that can ask for more than
+  one datum:** an authored prompt replaces the generated one for every datum the gate asks
+  for. On a gate that can only ever ask for one datum it is simply that question's wording
+  (`check-gate-control.ts` warns only in the several-data case).
 - **Question gates:** inert — an unanswered question always pends.
 - **Choosing — decided, not per-gate (Josh, 2026-09-24): numeric gates ask when the value
   is missing.** Every gate with a numeric condition emits `on_unresolved: "ask"`. This is
@@ -676,11 +739,9 @@ one operator, `in_season`. Usable as a `patient_attribute` gate's `condition`, a
 - **`legacy-v0` sessions refuse it** (`in_season requires the v1 temporal kernel`).
 - `in_season` on any other attribute, any other operator on `encounter.date`, and any other
   `encounter.*` attribute are import errors.
-- **⚠ Build check not yet updated (2026-10-04).** `check-gate-control.ts`'s EXPLICIT
-  HORIZON lint exempts only vitals and `patient.*`, so it currently fails every
-  `encounter.date` leaf ("has neither horizon, window_days nor window_from") — and a
-  `horizon` there is an import error. The lint needs an `encounter.*` exemption before a
-  pathway can ship an `in_season` leaf; `validate-pathway.ts` (import + compile) accepts it.
+- **Build check.** `check-gate-control.ts`'s EXPLICIT HORIZON lint exempts `encounter.*`
+  leaves (they read the clock, not chart data, and a `horizon` there is an import error);
+  regression cases are in `test-pipeline-checks.ts`.
 
 **Coded condition** — allowed keys exactly: `field`, `operator`, `value`, `system`, `threshold`, `window_days`, `count_threshold`, `min_points`, `slope_threshold`, `delta_threshold`, `delta_comparison`, `count_comparison`, `horizon`, `status`, `window_from`, `display`, `note`. (`window_from` is coded-only — see **Anchored trend windows** below; on an attribute condition it is an unknown key.)
 
@@ -1048,7 +1109,9 @@ Any attribute or coded condition may carry:
   evaluation.
 - **Gestational age missing** (absent, not a number, ≤ 0, or more than 36525 days' worth):
   the condition is **unresolved** — `dataUnavailable`, never a "yes" and never a "no", for
-  every operator including `not_includes_code` — and follows `on_unresolved`. With `ask`
+  every operator including `not_includes_code` — and follows `on_unresolved`. (So `ask` on a
+  membership gate that reads `PREGNANCY` is not inert, and `check-gate-control.ts` does not
+  warn about it; `default` there needs no marker.) With `ask`
   the gate pends on **the same question a `patient.gestational_age_weeks` attribute gate
   asks** (`datumKey` `patient.gestational_age_weeks`, NUMERIC, "Gestational age (weeks) —
   current value?"), so every gate that needs the age shares one question and one answer

@@ -69,3 +69,11 @@ built between the two pathways. Until this pathway exists, Prism recommends no R
 globulin for anyone. Inputs already gathered (the removed content, sources [21]–[23], and
 Josh's leanings: RhIG at about 28 weeks after the repeat antibody screen; forgo routine RhIG
 before 12 weeks per ACOG) are in `pathways/briefs/routine-prenatal-care-research-brief.md` §0.9.
+
+## A "season" scope for remembered answers (not built)
+
+routine-prenatal-care v3 remembers a "yes" for the prenatal vitamin and an undated Tdap (this
+pregnancy) and an undated RSV vaccine (the patient) with `remember_answer`. "Influenza /
+COVID-19 vaccine given this season" cannot be remembered: the scopes are `PREGNANCY` and
+`PATIENT`, and neither ends on the next September 1. Those two questions return at each visit
+until the entry on the medication list is dated (brief J36).

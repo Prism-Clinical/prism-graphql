@@ -15,6 +15,11 @@ export const KNOWN_PATIENT_ATTRIBUTES = [
   { name: 'trimester', display: 'Trimester', valueType: 'number' as const },
   { name: 'rh_factor', display: 'Rh factor', valueType: 'string' as const },
   { name: 'gestational_age_weeks', display: 'Gestational age (weeks)', valueType: 'number' as const, unit: 'weeks' },
+  // Provider-answered facts the chart has no reliable field for. Asked as
+  // yes/no, and remembered for the patient by the asking gate's `remember_answer`.
+  { name: 'on_prenatal_vitamin', display: 'Taking a prenatal vitamin', valueType: 'boolean' as const },
+  { name: 'tdap_given_this_pregnancy', display: 'Tdap vaccine given this pregnancy', valueType: 'boolean' as const },
+  { name: 'rsv_vaccine_ever_given', display: 'RSV vaccine ever given', valueType: 'boolean' as const },
 ] as const;
 
 /**
