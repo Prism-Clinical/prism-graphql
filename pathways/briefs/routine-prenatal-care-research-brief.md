@@ -1,12 +1,12 @@
 # Pathway Research Brief — Routine Prenatal Care (with universal GDM screening)
 
-JSON: pathways/json/routine-prenatal-care.json @ version 1
+JSON: pathways/json/routine-prenatal-care.json @ version 2
 
-**Status: approved for build by Josh's decisions of 2026-10-04; items marked CONFIRM remain.**
-Built as `pathways/json/routine-prenatal-care.json`, version 1 (346 nodes, 639 edges). Not
-imported into any database.
+**Status: version 2, built from Josh's review of version 1 (2026-10-04); items marked CONFIRM
+remain.** Built as `pathways/json/routine-prenatal-care.json`, version 2 (354 nodes, 660
+edges). Version 1 is commit `b251958` and is loaded as a draft; version 2 is not imported.
 
-**What this is.** A new pathway, `routine-prenatal-care`. It replaces the older stored
+**What this is.** The pathway `routine-prenatal-care`. It replaces the older stored
 `routine-prenatal-care-v1` and `-v2` graphs (§0.2), neither of which is active locally any
 more (D-27 is moot). Per Josh's D-1 it **owns gestational diabetes screening and diagnosis**;
 the GDM brief is management-only (`pathways/briefs/gestational-diabetes-management-research-brief.md`).
@@ -14,8 +14,8 @@ the GDM brief is management-only (`pathways/briefs/gestational-diabetes-manageme
 **Research method** (per `.claude/skills/pathway-research/SKILL.md`), all on 2026-09-24:
 landscape scan, four parallel domain agents over fetched guideline text, and wave-2
 verification agents for codes and citations (§0.7). The GDM screening content reuses the GDM
-brief v1 research. No new research was done on 2026-10-04; that pass applied Josh's decisions
-and the current authoring rules, and verified the added codes (§0.8).
+brief v1 research. No new clinical research was done on 2026-10-04; those passes applied
+Josh's decisions and the current authoring rules, and verified the added codes (§0.8).
 
 Flags:
 - `[GAP]` unsourceable.
@@ -26,31 +26,40 @@ Flags:
 - `[JOSH — CONFIRM]` a clinical or coding choice the builder had to make; listed together in §18.
 - `[PAYWALL]` the primary text could not be read; the claim rests on the named secondary or
   mirror.
-- `[WINDOW — <gate>: …]`, `[ON-UNRESOLVED DEFAULT — <gate>]` the format spec's markers.
+- `[WINDOW — <gate>: …]`, `[ON-UNRESOLVED DEFAULT — <gate>]`, `[LEAF CODES — <parent>: …]` the
+  format spec's markers.
 
-> ### Read this first (2026-10-04 build)
+> ### Read this first (version 2, 2026-10-04)
 >
-> 1. **The chart is read before anything is asked or ordered.** A test already resulted is not
->    ordered again; a supplement or aspirin already on the medication list is continued, not
->    started; a diagnosis already on the problem list closes its hand-off (§4b "How each datum
->    is used").
-> 2. **Gestational age drives the timeline.** Eight gates on Step 1.1 read ONE datum,
->    `patient.gestational_age_weeks`, and open the windowed stages. A missing value is asked
->    for once.
-> 3. **Routine care screens; it does not treat other problems.** For diabetes, hypertension,
->    anemia and Rh(D)-negative blood type the pathway reads or orders the screening test and,
->    on a positive result, opens a step that says "add the diagnosis". The provider adding the
->    diagnosis is the only link to that problem's pathway. `[DECISION — Josh 2026-10-04]`
-> 4. **Rh-negative management is not here.** This pathway types the blood and runs the
->    antibody screen. It contains **no Rh immune globulin**, at any gestational age. Until the
->    Rh-negative pathway exists, Prism recommends none (§0.9, §18).
-> 5. **GDM status from 24 weeks is read from the chart** (D-22): a diabetes code means
->    diagnosed, a screening result means screened. The provider is asked the strategy only
->    while screening is open, and the result of the test just ordered is asked for with "Not
->    available" as an answer that blocks nothing (D-29). One residual question the engine
->    cannot remove is described in §0.6 #2.
-> 6. **Checked against the real engine**: `gate-proof.ts prenatal-ga`, `prenatal-gdm`,
->    `prenatal-handoffs`, `prenatal-meds`, and `coverage-audit.ts`.
+> What changed from version 1, each from Josh's review `[DECISION — Josh 2026-10-04]`:
+>
+> 1. **"This pregnancy" uses the gestational age.** Every look-back that meant "drawn this
+>    pregnancy" is now `horizon: "PREGNANCY"` — the window opens on the LMP date worked out
+>    from the gestational age. The 98 / 196 / 300-day bands and the 140-day GDM window are gone.
+> 2. **A low hemoglobin from before this pregnancy does not open the anemia hand-off.** Only a
+>    value drawn this pregnancy does.
+> 3. **Gestational diabetes is read from the chart and nothing is asked that the chart
+>    holds.** A positive 50-g challenge goes straight to the 100-g test with no strategy
+>    question. A test just ordered is never asked about; its result is read once it is on the
+>    chart. The strategy question is asked only when no screening result is on file.
+> 4. **The 100-g test is read from its four values** (two or more at or above threshold). The
+>    question is gone, so nothing recurs after a normal 100-g test.
+> 5. **Nobody is asked for an HbA1c.** One on file is read whatever the eligibility answer.
+> 6. **Vaccines are checked against the medication list** as dated entries: Tdap this
+>    pregnancy, RSV ever, influenza and COVID-19 in the last 180 days.
+> 7. **Prenatal vitamin: a known list, else ask once.**
+> 8. **Triggers are supervision of pregnancy and pregnant state only**: `Z34`, `O09`, `Z33.1`,
+>    `Z33.3`. The gestational diabetes codes are no longer triggers. Triggers are matched
+>    against the diagnoses on the **encounter**, never the chart.
+> 9. **Hand-off steps say "add the diagnosis to the encounter".**
+>
+> Unchanged: gestational age drives the timeline through eight gates on Step 1.1; routine care
+> screens and hands off, and treats nothing but its own problem; this pathway contains **no Rh
+> immune globulin** (§0.9).
+>
+> Checked against the real engine: `gate-proof.ts prenatal-ga`, `prenatal-triggers`,
+> `prenatal-gdm`, `prenatal-handoffs`, `prenatal-meds`, `prenatal-vaccines`, and
+> `coverage-audit.ts`.
 
 ---
 
@@ -58,29 +67,32 @@ Flags:
 
 ### 0.1 Architecture `[DECISION — Josh 2026-09-24]` (D-1), extended `[DECISION — Josh 2026-10-04]`
 
+- **Only a diagnosis on the encounter starts a pathway.** `[DECISION — Josh 2026-10-04]` "It
+  can read throughout the chart to help a pathway, but chart can't cause a pathway to be
+  activated." This pathway starts when the provider puts a supervision-of-pregnancy or
+  pregnant-state diagnosis on the visit (§1). Its gates read the whole chart.
 - **GDM testing is part of routine prenatal care.** A positive result opens **"Diagnose GDM:
-  add O24.410 to the problem list"**, with a CodeEntry for O24.410. Once coded,
-  `gestational-diabetes-management` matches on the next resolve and owns glycemic management.
+  add O24.410 to the encounter"**, with a CodeEntry for O24.410. When the provider adds it,
+  `gestational-diabetes-management` joins the visit and owns glycemic management.
 - **Screening for other problems stays in routine care; treatment does not.**
   `[DECISION — Josh 2026-10-04]` Routine care screens for diabetes, hypertension and anemia
-  and recommends adding the diagnosis. Treatment belongs to that problem's own pathway. The
-  provider makes the link by adding the diagnosis; pathways are not linked to one another
-  (the spec's "one problem per pathway"). Four hand-offs are built, all the same shape — a
-  gate on chart data, one step, one CodeEntry, one Guidance node, no orders for the other
-  problem:
+  and recommends the diagnosis. Treatment belongs to that problem's own pathway. The provider
+  makes the link by adding the diagnosis **to the encounter**; pathways are not linked to one
+  another. Five hand-offs, all the same shape — a gate on chart data, one step, one
+  CodeEntry, one Guidance node, no orders for the other problem:
 
-  | Finding | Gate | Step | Code recommended | Pathway that takes it |
+  | Finding | Gate | Step | Diagnosis to add to the encounter | Pathway that takes it |
   |---|---|---|---|---|
-  | GDM diagnostic test positive | `gate-100g-diagnostic` / `gate-75g-diagnostic` | 7.3 / 8.2 | O24.410 | `gestational-diabetes-management` (brief only) |
+  | 100-g or 75-g test diagnostic | `gate-100g-diagnostic` / `gate-75g-diagnostic` | 6.11 / 6.13 | O24.410 | `gestational-diabetes-management` (brief only) |
   | BP ≥140/90 (D-25) | `gate-bp-elevated` | 2.2 | R03.0, then O13.x / O14.x | `gestational-hypertension-preeclampsia` |
-  | Low hemoglobin (G8) | `gate-hgb-low` | 1.23 | O99.011 / .012 / .013 | `anemia-in-pregnancy` |
+  | Low hemoglobin drawn this pregnancy | `gate-hgb-low` | 1.23 | O99.011 / .012 / .013 | `anemia-in-pregnancy` |
   | Rh(D) negative | `gate-rh-negative` | 1.24 | Z67.91 (or Z67.11/.21/.31/.41) | Rh-negative pregnancy (**not started**, `pathways/TODO.md`) |
   | Early HbA1c ≥6.5% | `gate-overt-diabetes` | 4.3 | O24.111–.119 | none yet (pregestational diabetes) |
 
-- **Each hand-off closes when its diagnosis is already on the problem list**, so a patient
-  whose anemia or hypertension pathway is already running is not told to add the code again.
-- **This pathway stays active after a hand-off** through Z34 / O09, and through the GDM
-  families after a GDM diagnosis (D-21).
+- **Each hand-off closes when its diagnosis is already on the chart**, so a patient whose
+  anemia or hypertension is already recorded is not told to add it again.
+- **Routine care continues after a hand-off as long as a supervision code is on the
+  encounter** (§0.3).
 
 ### 0.2 Inventory: what the stored `routine-prenatal-care-v2` held, and where it went (2026-09-24)
 
@@ -108,7 +120,7 @@ Reconstructed from the stored graph (pathway id `0c12db5b`; active on 2026-09-24
 | Lab codes (58410-2, 34530-6, 25514-1, 20507-0, 5195-3, 75622-1, 16128-1, 630-4, 43304-5, 1504-0, 11475-1) | **75622-1** (HIV panel grouper), **43304-5** (CT only) and **11475-1** (generic culture) are wrong for their purpose. 5195-3, 16128-1 and 25514-1 are right; the seed table mislabels them (§0.7) | Re-verified |
 | ev-1…ev-8 | ev-6 cites withdrawn PB 226; ev-4 is a generic "USPSTF recommendations" entry | Replaced by §15 |
 
-### 0.3 Coding facts that shape the triggers (ICD-10-CM FY2027 Official Guidelines [58])
+### 0.3 Coding facts, and what the provider puts on the encounter (ICD-10-CM FY2027 Official Guidelines [58])
 
 The FY2026 and FY2027 texts of these sections are identical (agent A compared them word by
 word).
@@ -134,14 +146,27 @@ word).
   - 3rd: ≥28 weeks 0 days.
 - **After an abnormal glucose challenge**, the pregnancy is coded **O99.810** (Excludes1 GDM
   O24.4-). Once coded, **GDM is O24.41x**, and no other O24 code is used with it.
-- **Consequence (D-21).** A patient whose problem list moves from Z34.x to O24.410 alone no
-  longer matches a Z34-only trigger set, hence the GDM families in §1. The same is true of
-  every chapter-15 complication the co-matching pathways key on (O99.01x anemia, O13/O14
-  GHTN, O23.x UTI); those are not triggers here (§1, J16).
+- **What this means for triggers, now that only the encounter is matched (rule B, D-21
+  rewritten).** `[DECISION — Josh 2026-10-04]` Triggers are "any code for supervision of
+  pregnancy or pregnancy in general. Not pregnancy related problems." The version 1 worry —
+  a problem list recoded from Z34 to O24.410 stops matching — was about the chart. It is now
+  a statement about what the provider puts on the **visit**:
+  - A routine prenatal visit carries Z34.x (or O09.x for a high-risk pregnancy). That starts
+    this pathway.
+  - When a problem is found, the provider adds that diagnosis to the same encounter and the
+    problem's pathway joins. In the simulator both sit on the encounter and both run.
+  - Under the ICD-10-CM rule above, a real claim for that visit would not carry Z34 beside a
+    chapter-15 code; a complicated pregnancy is supervised under **O09.x**, which may be
+    used with chapter-15 codes and is a trigger here. A visit coded with a complication code
+    alone — no Z34, no O09, no Z33.1 — does not start routine prenatal care. That is the
+    intended reading of "not pregnancy related problems".
+  - The gestational diabetes codes (O24.41x, O99.810) are therefore **not** triggers any
+    more. They are still read from the chart by the GDM status gates.
 
-### 0.4 Co-matching with the other pathways (re-checked 2026-10-04 with family triggers)
+### 0.4 Co-matching with the other pathways (re-checked for version 2)
 
-Triggers, from the built JSONs on josh-dev:
+Triggers, from the built JSONs on josh-dev. Each is matched against the **encounter's**
+diagnoses:
 
 | Pathway | Triggers (families) |
 |---|---|
@@ -149,39 +174,33 @@ Triggers, from the built JSONs on josh-dev:
 | `gestational-hypertension-preeclampsia` v6 | `O13.2`, `O13.3`, `O13.9`, `O14.0`, `O14.1`, `O16`, `R03.0` |
 | `uti-asymptomatic-bacteriuria-pregnancy` v4 | `R82.71`, `O23.1`, `O23.4`, `O99.820`, `Z13.89` |
 | `gestational-diabetes-management` (brief only) | O24.41x, O24.43x |
-| **this pathway** | `Z34`, `O09`, `O24.41`, `O99.810` |
+| **this pathway** | `Z34`, `O09`, `Z33.1`, `Z33.3` |
 
-The analysis still holds with families, and co-matching is now the designed route: every
-hand-off step tells the provider to add a code that is another pathway's trigger, and the
-routine pathway keeps matching through Z34 / O09. All four are `category: OBSTETRIC`, so
-each applies only to a pregnant patient; Z34 and every O-code are themselves pregnancy
-evidence for that rule, so `D50` or `R03.0` beside Z34 fires its pathway.
+No trigger is shared, so co-matching happens only when the encounter carries a supervision
+code **and** a problem code — which is exactly what a hand-off step asks the provider to do.
+All four are `category: OBSTETRIC`; the supervision code on the encounter is itself the
+pregnancy evidence that rule needs.
 
 **How the merge treats it** (josh-dev `care-plan-merge.ts`):
 - **Labs** with the same `system|code` fold into ONE line; the other nodes' names are shown as
-  "Ordered for: …". So every LabTest name here says why this pathway orders it — "CBC with
-  indices — first prenatal panel (no hemoglobin this pregnancy)" next to anemia's "CBC with
-  indices" reads as two reasons for one order.
+  "Ordered for: …". So every LabTest name here says why this pathway orders it.
 - **Medications** are deduped by name; `clinical_role` conflicts on ≥2 distinct names in one lane.
 - **Guidance** is deduped on topic + instructions.
 - **Question gates do not dedupe across pathways.** Chart data questions are keyed on the datum.
 
 | Overlap | With | Handling |
 |---|---|---|
-| **Aspirin 81 mg** (`preeclampsia-prophylaxis`) | GHTN `med-1` | Same name, same lane → one line. The eligibility **question is duplicated** for a co-matched patient; the prompt is verbatim GHTN's, so the answers mean the same. This pathway now asks it only of a patient not on aspirin and before 28 weeks, so the duplicate is rarer. |
-| **BP ≥140/90** | GHTN `gate-bp-elevated` | Same two vitals leaves, same datum keys. This pathway's gate also requires that no hypertension code is on file, so once R03.0 / O13 / O14 / O16 is recorded (the moment GHTN matches) the routine hand-off step closes and only GHTN speaks. |
-| **CBC** 58410-2 | anemia `lab-1` and its rechecks | Folds to one line. This pathway orders it only when no hemoglobin was drawn this pregnancy (Lab-1) or since 24 weeks (Lab-19). |
-| **Hemoglobin 718-7 as a datum** | anemia threshold gates | Both pathways ask for a missing hemoglobin; one datum key, so one question. Once O99.01x is on file this pathway's `gate-hgb-low` is closed and no longer asks. |
-| **ABO/Rh type** 882-1 | anemia `lab-9` "Type and antibody screen" | Same LOINC → one line. |
-| **Hemoglobinopathy evaluation** 43113-0 | anemia `lab-7` | Same LOINC → one line. Ordered here only if never resulted. |
+| **Aspirin 81 mg** (`preeclampsia-prophylaxis`) | GHTN `med-1` | Same name, same lane → one line. The eligibility question is duplicated for a co-matched patient; the prompt is verbatim GHTN's. This pathway asks it only of a patient not on aspirin and before 28 weeks. |
+| **BP ≥140/90** | GHTN `gate-bp-elevated` | Same two vitals leaves, same datum keys. This pathway's gate also requires that no hypertension code is on the chart. |
+| **CBC** 58410-2 | anemia `lab-1` and its rechecks | Folds to one line. |
+| **Hemoglobin 718-7 as a datum** | anemia threshold gates | One datum key, one question. This pathway reads only a value drawn this pregnancy; the anemia pathway reads the most recent value however old, so a pre-pregnancy value is "left for the anemia pathway to use if the provider adds anemia" (Josh). |
+| **ABO/Rh type** 882-1 | anemia `lab-9` | Same LOINC → one line. |
+| **Hemoglobinopathy evaluation** 43113-0 | anemia `lab-7` | Same LOINC → one line. |
 | **Urine culture** 630-4 | UTI `lab-2`/`lab-9` | Same LOINC → one line. UTI owns treatment. |
-| **GBS** | UTI (`O99.820` trigger) | `O99.820` on the problem list now closes this pathway's 36-week culture order (negation exists). |
+| **GBS** | UTI (`O99.820`) | `O99.820` on the chart closes this pathway's 36-week culture order. |
 | **Urgent maternal warning signs** | GHTN `guid-1` | Byte-identical text and topic (D-28) → one block. |
-| **NST 59025 / BPP 76818** | GHTN, GDM | Same CPTs → one line each; names say "late-term surveillance". |
-| **clinical_role lanes** | all | `prenatal-vitamin-supplementation`, `preeclampsia-prophylaxis` (shared with GHTN by design), `influenza-immunization`, `covid-immunization`, `pertussis-immunization`, `rsv-maternal-immunization`. `rh-immune-globulin-prophylaxis` is gone with the RhIG node. No conflict with anemia (iron lanes), GHTN antihypertensives, UTI antibiotics or GDM. |
-
-Guidance topics do not collide with another pathway's except the deliberate "Urgent maternal
-warning signs".
+| **NST 59025 / BPP 76818** | GHTN, GDM | Same CPTs → one line each. |
+| **clinical_role lanes** | all | `prenatal-vitamin-supplementation`, `preeclampsia-prophylaxis` (shared with GHTN by design), `influenza-immunization`, `covid-immunization`, `pertussis-immunization`, `rsv-maternal-immunization`. No conflict with anemia, GHTN, UTI or GDM lanes. |
 
 ### 0.5 Decision index
 
@@ -189,88 +208,100 @@ warning signs".
 |---|---|
 | D-1 | `[DECISION — Josh 2026-09-24]` GDM testing lives in routine prenatal care; a positive result opens "Diagnose GDM (add O24.410)". |
 | D-3 | `[DECISION — Josh 2026-09-24]` 50-g cutoff **140 mg/dL** (threshold 139.9). |
-| D-4 | `[DECISION — Josh 2026-09-24]` 100-g test: **Carpenter–Coustan, ≥2 abnormal values**, a question gate. Kept as a question on 2026-10-04 (§0.6 #1). |
-| D-5 | `[DECISION — Josh 2026-10-04]` Screening strategy: **both one-step and two-step; the provider picks** (`gate-gdm-strategy`). |
-| D-6 | `[DECISION — Josh 2026-10-04]` Early test: **HbA1c only.** The fasting-glucose LabTest (old Lab-18) is removed; the alternatives are text in Step 4.1. |
-| D-7 | `[DECISION — Josh 2026-10-04]` Early abnormal glucose (HbA1c 5.9–6.4%): **include; counselling and fasting-glucose monitoring only** (Step 4.4). |
+| D-4 | `[DECISION — Josh 2026-09-24]` 100-g test: **Carpenter–Coustan, ≥2 abnormal values**. Version 2: read from the four values on the chart, not asked (§4b). |
+| D-5 | `[DECISION — Josh 2026-10-04]` Screening strategy: **both one-step and two-step; the provider picks** — asked only when no screening result is on file. |
+| D-6 | `[DECISION — Josh 2026-10-04]` Early test: **HbA1c only.** |
+| D-7 | `[DECISION — Josh 2026-10-04]` Early abnormal glucose (HbA1c 5.9–6.4%): **include; counselling and fasting-glucose monitoring only**. |
 | D-12 | `[DECISION — Josh 2026-09-24]` Post-GDM long-term screening belongs to routine care; in pregnancy it is an early-testing criterion (Step 4.6). |
-| D-17 / D-21 / D-23 | `[DECISION — Josh 2026-10-04]` Triggers: **Z34 + O09 + the gestational diabetes codes**, authored as families (§1). Z3A is not used. O09 is included for routine elements only. Category OBSTETRIC. |
-| D-22 | `[DECISION — Josh 2026-10-04]` GDM status from 24 weeks: **read the chart, ask only the gaps.** The every-visit SELECT router is gone (§4b "GDM status"). |
-| D-24 | `[DECISION — Josh 2026-10-04]` Rh type: **read `patient.rh_factor`; ask only if missing** (`gate-rh-negative`). |
-| D-25 | `[DECISION — Josh 2026-10-04]` BP ≥140/90: **include the hand-off** — confirm, record the diagnosis; the provider adds it, which brings in the hypertension pathway. No link between pathways. |
+| D-17 / D-21 / D-23 | `[DECISION — Josh 2026-10-04]` (version 2, replaces version 1's option (b)) Triggers: **"any code for supervision of pregnancy or pregnancy in general. Not pregnancy related problems."** `Z34`, `O09`, `Z33.1`, `Z33.3`. Not the `Z33` parent (Z33.2 is elective termination). No Z3A. `O24.41` and `O99.810` removed. |
+| D-22 | `[DECISION — Josh 2026-10-04]` GDM status from 24 weeks: **read the chart, ask only the gaps.** |
+| D-24 | `[DECISION — Josh 2026-10-04]` Rh type: **read `patient.rh_factor`; ask only if missing**. |
+| D-25 | `[DECISION — Josh 2026-10-04]` BP ≥140/90: **include the hand-off**. |
 | D-26 | `[DECISION — Josh 2026-09-24]` COVID-19 vaccine: recommend per ACOG, with shared decision-making documented; CDC's position stated in the node text. |
-| D-27 | Moot `[2026-10-04]`: neither `routine-prenatal-care-v1` nor `-v2` is active locally any more, so there is nothing to archive at import. |
+| D-27 | Moot `[2026-10-04]`: neither stored graph is active locally. |
 | D-28 | `[DECISION — Josh 2026-09-24]` Urgent maternal warning signs: reference the list, never include it. |
-| D-29 | `[DECISION — Josh 2026-10-04]` A test ordered with no result yet (50-g challenge, early HbA1c, 75-g test): **the result gate asks; "Not available" keeps the order in the plan and blocks nothing; the result is read at the next visit.** Anemia's "no hemoglobin on file" pattern (v10–v13): a threshold gate that asks, beside a membership gate on the absence that opens the order step. |
-| — | `[DECISION — Josh 2026-10-04]` **Screening for other problems stays in routine care** (diabetes, hypertension, anemia); treatment belongs to that problem's pathway (§0.1). |
-| — | `[DECISION — Josh 2026-10-04]` **Low hemoglobin on the routine CBC: built** (`gate-hgb-low` → Step 1.23). The **most recent** hemoglobin is read, however old. |
-| — | `[DECISION — Josh 2026-10-04]` **Rh-negative management is its own pathway, not routine prenatal** (§0.9). |
+| D-29 | **Superseded for the GDM tests and the early HbA1c** `[DECISION — Josh 2026-10-04]` (review of version 1): "read the chart, ask nothing" — at the ordering visit the test is ordered and its result is **not** asked for; a result is read once it is on the chart. Version 1's "the result gate asks; Not available keeps the order" is withdrawn for these tests. |
+| V2-1 | `[DECISION — Josh 2026-10-04]` Hemoglobin thresholds 11 / 10.5 / 11 g/dL: **"correct"** (closes J1). |
+| V2-2 | `[DECISION — Josh 2026-10-04]` A low hemoglobin from **before** this pregnancy does **not** open the anemia suggestion; only a value drawn this pregnancy. An older value is left for the anemia pathway to use if the provider adds anemia. Reverses version 1's "most recent however old" (closes J2). |
+| V2-3 | `[DECISION — Josh 2026-10-04]` Rh: type and screen stay in routine care; "if rh neg found, suggest rh neg pathway as result in prenatal pathway"; the 24–28-week repeat antibody screen and all RhIG belong to the Rh-negative pathway. **Z67.91 stands** (closes J3). |
+| V2-4 | `[DECISION — Josh 2026-10-04]` "Drawn this pregnancy needs to use the gestational age" → `horizon: "PREGNANCY"` (closes J5). |
+| V2-5 | `[DECISION — Josh 2026-10-04]` A GDM code from a prior pregnancy left on the chart: "that's a chart problem". A diabetes code on the chart reads as diagnosed; no work-around (closes J11). |
+| V2-6 | `[DECISION — Josh 2026-10-04]` Aspirin eligibility asked only before 28 weeks: agreed (closes J14). |
+| V2-7 | `[DECISION — Josh 2026-10-04]` Risk-based tests are shown for everyone with the condition in the name: "risk based for everyone" (closes J19). |
+| V2-8 | `[DECISION — Josh 2026-10-04]` **Vaccines must be checked against the chart**, read from the medication list as dated entries (closes J20). |
+| V2-9 | `[DECISION — Josh 2026-10-04]` Prenatal vitamins: **"known list, else ask"** (closes J15, J21). |
+| V2-11 | `[DECISION — Josh 2026-10-04]` A positive 50-g on the chart, not yet diagnosed: **"read the chart, ask nothing"** — straight to the 100-g test (closes J7, J9, J12). |
+| V2-12 | `[DECISION — Josh 2026-10-04]` The 100-g test with chart-only reading: built as the six-pair encoding, so the four values settle it with no question and no recurrence (closes J8). |
+| V2-13 | `[DECISION — Josh 2026-10-04]` Hand-offs recommend the diagnosis, which the provider adds to the **encounter**. |
 | — | `[DECISION — Josh 2026-10-04]` **Source conflicts ratified** (§18 C1, C2, C3, C7, C9). |
 
-### 0.6 Spec and engine limitations (re-checked against spec v6 + josh-dev, 2026-10-04)
+### 0.6 Spec and engine limitations (re-checked against spec v6 + josh-dev, version 2)
 
-**No longer limitations** (the 2026-09-24 draft listed them):
-- **Negation exists** (`not_includes_code`). "Not diagnosed", "no result on file", "no GBS
-  carrier state", "not on the medication" are all chart-read now.
-- **"Not available" exists.** A declined datum closes the gates waiting on it for the session,
-  so a held result gate no longer blocks a plan (D-29).
-- **Nested AND/OR groups exist** (4 levels). Used for the trimester hemoglobin thresholds,
-  "this pregnancy" look-backs and the GDM status gates.
-- **`patient.*` answers are typed.** A missing Rh type is a SELECT, not a number.
-- **Simulator code coverage** is no longer the constraint it was: the full ICD-10-CM set is
-  loaded, code search matches words, and a code a pathway carries is added to the reference
-  table on upload. The draft's `[SIM]` notes are dropped. One caveat remains: the local
-  `clinical_code_reference` table mislabels three hepatitis B LOINCs (5196-1 and 5195-3 as
-  surface *antibody*, 16933-4 as surface *antigen*; §0.7), so a tester closes the HBsAg order
-  by entering what the picker calls an antibody.
+**No longer limitations:**
+- **Negation** (`not_includes_code`), **"Not available"**, **nested AND/OR groups** (4 levels),
+  **typed `patient.*` answers** — as version 1.
+- **"Drawn this pregnancy"** — `horizon: "PREGNANCY"` (2026-10-04). Version 1's #3 is closed
+  for every "this pregnancy" read.
+- **N-of-M for the 100-g test** — "≥2 of 4" is one gate, `OR` over the six pairs of values,
+  and its complement is `AND` over the six pairs (§4b). Version 1's #1 is closed.
+- **The D-22 / D-29 conflict** — gone with D-29's withdrawal: with no result question at the
+  ordering visit, every result gate sits on the chart-read step and the strategy question sits
+  behind "nothing on file". Version 1's #2 is closed.
 
 **Still limitations:**
 
-1. **No N-of-M operator** `[NOT ENCODABLE]`. Carpenter–Coustan "≥2 of 4" stays a question
-   (D-4). With nested groups a faithful chart encoding now exists in principle — one gate,
-   `OR` over the six pairs of values — but it would ask for up to four values one at a time,
-   and Josh's instruction on 2026-10-04 was to keep D-4 as a question. `[JOSH — CONFIRM]`
-   whether to build the six-pair encoding: it is what would let a positive 50-g challenge with
-   a normal 100-g test be read from the chart and stop being asked about (#2).
-2. **A question cannot be skipped when the chart already answers it, without also losing the
-   "ask for the result" behaviour** `[NOT ENCODABLE]`. D-22 and D-29 pull against each other in
-   one state. D-29 needs the result gate to sit behind the strategy question (otherwise a
-   one-step site is asked for a 50-g value it never draws). The engine closes a region and
-   everything in it together, so the strategy question's region must stay open while the
-   result it asked for is being read — which means it is open, and the question is asked,
-   whenever screening is not finished. **Consequence:** a patient whose 50-g challenge is
-   ≥140 and who is not yet diagnosed is asked the strategy at each visit even though the
-   50-g result on file shows it is two-step, and then (D-4) whether the 100-g test met
-   criteria. A negative screen and a diagnosis are both read from the chart with nothing
-   asked. What would remove it: a question gate that can be pre-answered from a chart
-   condition, or an OR between a question and a chart condition on one target (two gates on
-   one target are an AND, Rule 2). The alternative built on today's engine — chart gates
-   only, no result question at the ordering visit — satisfies D-22 fully and D-29's outcome
-   (order stays, nothing blocks) but not its "the result gate asks". `[JOSH — CONFIRM]` which
-   he prefers.
-3. **No look-back anchored on the pregnancy** `[NOT ENCODABLE]`. "Drawn this pregnancy" has no
-   operator: `window_from` anchors only on a medication start, and a horizon is a fixed number
-   of days. Nearest pattern, built: the look-back is the trimester's length, chosen by
-   gestational age in nested groups (first trimester 98 days, second 196, third 300). A result
-   drawn up to 14 weeks before conception can therefore count as this pregnancy's. What would
-   fix it: a `window_from` event for the pregnancy start (or an EDD attribute a horizon can
-   read). The same applies to "since 24 weeks" and "since 27 weeks" (4–5-week bands).
-4. **No calendar-month operator.** The RSV and influenza seasons are text.
-5. **`patient.rh_factor` SELECT options come from the comparands.** A lone
-   `equals "negative"` offers one option. Built: one compound gate whose first leaf is
-   `in ["negative", "positive"]` (it supplies both options) and whose second is
-   `equals "negative"`. No Rh-positive step is needed.
-6. **REQUIRES has no authorable satisfaction check**, so every prerequisite surfaces as
-   catch-up even when done. One pair is kept (§12).
+1. **"Since N weeks of gestation" has no operator** `[NOT ENCODABLE]`. `PREGNANCY` opens at
+   the LMP; nothing opens at 24 or 27 weeks. Three places need it:
+   - **A GDM screen drawn before 24 0/7 weeks should not count as the 24–28-week screen.**
+     `PREGNANCY` alone cannot say this: a 50-g challenge at 14 weeks is inside the window. A
+     positive early result is read correctly (PB 180 — go straight to the diagnostic test); a
+     **negative** early one reads as "screening complete", which is wrong. Step 6.3 and
+     Guid-17 keep the instruction: a result drawn before 24 weeks is not the screen; order it.
+     (The banding below would approximate it; it is not used here because Josh asked for
+     `PREGNANCY` on this window — J10.)
+     This pathway never orders an early 50-g (D-6), so it arises only from testing done
+     outside it.
+   - **The 24–28-week CBC** ("no hemoglobin since about 24 weeks") and the **third-trimester
+     rescreens** ("none since about 27 weeks"). With `PREGNANCY` the first-visit test would
+     satisfy them for the rest of the pregnancy and the repeat would never be ordered. They
+     keep version 1's look-backs banded by gestational age (4–5-week bands), which is not a
+     "this pregnancy" look-back but the only expression of "since N weeks".
+     `[JOSH — CONFIRM]` (J22).
+   - What would fix all three: a horizon that opens at a stated gestational age
+     (`{ "since_gestational_week": 24 }`).
+2. **No calendar-month operator** `[NOT ENCODABLE]`. "This season" for influenza and COVID-19
+   is approximated by a 180-day look-back (§4b) `[JOSH — CONFIRM]` (J23). The RSV season is
+   text.
+3. **A vaccine is an event, and the medication list stores intervals** `[NOT ENCODABLE]` as a
+   single condition. `includes_code` with `PREGNANCY` on `medications` means "active at some
+   point this pregnancy": a Tdap entry dated two years ago with no end date is still "open"
+   and would read as given this pregnancy. `count_in_window` counts by the day the entry
+   **started**, which is right for a dose, but never counts an undated entry — and the
+   simulator dates nothing. Built: both, per code (§4b "Vaccines"). What would fix it: an
+   immunization list, or an "administered on" fact kind.
+4. **Vaccine product codes are seasonal.** RxNorm issues new influenza and COVID-19 product
+   concepts every season; `includes_code` does not expand a brand to its products. The lists
+   in §0.8 cover 2025–2026 and 2026–2027 and need adding to each year.
+5. **`patient.rh_factor` SELECT options come from the comparands**; one compound gate supplies
+   both (§4b).
+6. **REQUIRES has no authorable satisfaction check.** One pair is kept (§12).
 7. **Question gates do not dedupe across pathways** (aspirin, §0.4).
 8. **GA is completed weeks.** Windows "A 0/7–B 6/7" are `≥ A` and `< B+1`.
-9. **Imaging results, immunization records, age and risk factors are not in the patient
-   context.** The dating and anatomy ultrasounds, the vaccines, and the age- or risk-based
-   tests (chlamydia/gonorrhea, HIV rescreen, varicella) cannot be checked against the chart;
-   each says so in its step text.
-10. **Gated regions (Rule 1).** No edge points into a gated stage or step from outside it; no
+9. **Imaging results, age and risk factors are not in the patient context.** The ultrasounds
+   and the age- or risk-based tests cannot be checked against the chart; risk-based tests are
+   shown for everyone with the condition in the name (V2-7).
+10. **Gated regions (Rule 1).** No edge points into a gated step from outside it; no
     `ESCALATES_TO`; a lab on several hosts is one node per host. CodeEntry and
     EvidenceCitation nodes are shared (exempt).
+11. **`check-gate-control.ts` does not yet know `PREGNANCY`.** It warns that `on_unresolved:
+    "ask"` is "inert" on 14 membership gates that read `PREGNANCY`. It is not inert: with the
+    gestational age missing those gates hold and share the gestational-age question (proved,
+    `gate-proof.ts prenatal-ga`). The warnings are left; the lint needs the update.
+- **Simulator caveats.** The simulator dates nothing: an undated lab or medication is asserted
+  current, so it reads as "drawn this pregnancy" / "given" whatever its real date. The
+  `PREGNANCY` bound and the vaccine look-backs are exercised only with dated entries
+  (`gate-proof.ts`). The local `clinical_code_reference` table mislabels three hepatitis B
+  LOINCs (5196-1 and 5195-3 as surface *antibody*, 16933-4 as surface *antigen*; §0.7).
 
 ### 0.7 Wave-2 verification outcome (2026-09-24)
 
@@ -335,14 +366,46 @@ instead of stated.
 
 | Code | System | Verified against | Finding |
 |---|---|---|---|
-| Z34, O09, O24.41, O99.810, O99.81, O24.4 | ICD-10 | local `icd10_codes` (98,188 rows — the full set) | All present. `O24.4` also holds O24.42x (childbirth) and O24.43x (puerperium); `O99.81` also holds O99.814 / O99.815. |
-| Z67.11, Z67.21, Z67.31, Z67.41, Z67.91 | ICD-10 | local `icd10_codes` | Blood type, Rh negative (A / B / AB / O / unspecified). All present. |
-| O36.01 and its leaves | ICD-10 | local `icd10_codes` | "Maternal care for anti-D [Rh] antibodies" — the alloimmunized patient, 7th character per fetus. |
-| O26.89, O26.891–.899 | ICD-10 | local `icd10_codes` | "Other specified pregnancy related conditions". |
-| O99.820 | ICD-10 | already a UTI-pathway trigger | Streptococcus B carrier state complicating pregnancy. |
-| 4511 folic acid (IN), 198640 folic acid 0.4 MG Oral Tablet, 310410 folic acid 1 MG Oral Tablet | RXNORM | RxNav `properties` | Confirmed. |
-| 1191 aspirin (IN), 243670 aspirin 81 MG Oral Tablet, 318272 aspirin 81 MG Chewable Tablet | RXNORM | RxNav `properties` | Confirmed. The local seed table mislabels 243670 as "325 MG" and 318272 as "Delayed Release". |
-| 91875-5 | LOINC | carried from the 2026-09-24 wave-2 list (GBS NAAT) | Not re-verified today. |
+| Z34, O09, Z33.1, Z33.3, Z33.2, Z33 | ICD-10 | local `icd10_codes` (full set) | Z33.1 pregnant state, incidental; Z33.2 encounter for elective termination of pregnancy; Z33.3 pregnant state, gestational carrier. |
+| Z67.11, Z67.21, Z67.31, Z67.41, Z67.91 | ICD-10 | local `icd10_codes` | Blood type, Rh negative. |
+| O36.01 and leaves; O26.89 and leaves; O99.820; O24.4, O24.41, O99.81, O99.810 | ICD-10 | local `icd10_codes` | As version 1. |
+| 91875-5 | LOINC | carried from the 2026-09-24 wave-2 list (GBS NAAT) | Not re-verified. |
+| 1549-5, 1501-6, 1514-9, 1530-5 | LOINC | 2026-09-24 wave-2 (100-g test: fasting, 1 h, 2 h, 3 h) | Now read by gates. |
+
+**Medication and vaccine codes read by gates — all RxNorm, each verified on RxNav
+(`rxcui/<id>/properties`) on 2026-10-04.** The gates match **RXNORM only**: the engine fixes
+the code system per field (medications → RXNORM), and the simulator's composer searches
+medications with `system="RXNORM"` (`PatientComposer.tsx`). **CVX is not used**: the local
+reference table has no CVX system and the composer cannot enter one. A chart feed that
+records immunizations as CVX would not be recognised `[JOSH — CONFIRM]` (J24).
+
+| Group | RxNorm codes (type) |
+|---|---|
+| Folic acid | 4511 (IN), 198640 (0.4 mg tablet, SCD), 310410 (1 mg tablet, SCD) |
+| Prenatal multivitamins | 1119570 Vitafol-One (BN), 1119573 Vitafol-One capsule (SBD), 1100471 CitraNatal pack (BPCK), 1248142 (SCD: folic acid 1 mg, iron carbonyl 90 mg, with docusate), 1116183 (SBD: folic acid 1 mg, ferrous fumarate 65 mg), 1313925 (SCD: folic acid 1 mg, ferrous fumarate 29 mg), 1485531 (SCD: DHA, folic acid 1.2 mg, ferrous fumarate 30 mg) |
+| Aspirin | 1191 (IN), 243670 (81 mg tablet), 318272 (81 mg chewable) |
+| Tdap | Boostrix: 583411 (BN), 1300370, 1300378 (SBD), 1300368, 1300377 (SCD); Adacel: 605718 (BN), 1300191, 1300206 (SBD), 1300189, 1300205 (SCD) |
+| RSV (RSVpreF) | Abrysvo: 2642144 (BN), 2642148 (SBD), 2642142 (SCD) |
+| Influenza 2025–2026 | Fluzone 2718464 (BN), 2718469, 2719212, 2719216; Flublok 2719306 (BN), 2719311; Flucelvax 2718369 (BN), 2718374, 2718382; Fluarix 2720029 (BN), 2720034; Flulaval 2718457 (BN), 2718462; Afluria 2718395 (BN), 2718400, 2718406 |
+| Influenza 2026–2027 | Fluzone 2746457 (BN), 2746462, 2746468, 2746475; Flublok 2746444 (BN), 2746449; Flucelvax 2746484 (BN), 2746489; Fluarix 2749251 (BN), 2749256; Flulaval 2747246 (BN), 2747251 |
+| COVID-19 2025–2026 | Comirnaty 2722600 (BN), 2722605, 2722614; Spikevax 2722430 (BN), 2722435, 2722438; Nuvaxovid 2723009 (BN), 2723014; Mnexspike 2722656 (BN), 2722661 |
+
+- A chart would carry the product codes (SBD / SCD); the brand-name (BN) concepts are included
+  so a vaccine can be found and entered in the simulator by its name.
+- **Prenatal multivitamins**: RxNorm has no ingredient or class for "prenatal vitamin", and
+  most brands are not RxNorm concepts at all (RxNav found nothing for Prenate, Nestabs,
+  Select-OB, Prenatal Plus, PNV-DHA). The seven above are the ones that resolved. That is why
+  the pathway also asks (V2-9).
+- **No 2026–2027 COVID-19 product concepts** were in RxNorm on 2026-10-04; no Afluria
+  2026–2027 concept either.
+- The local `clinical_code_reference` table (232 RxNorm rows) held none of the prenatal
+  multivitamin or vaccine codes. `scripts/seed-prenatal-reference-codes.sql` inserts all 61 prenatal-vitamin and vaccine codes
+  plus the three aspirin codes — 64 rows, system `RXNORM`. It is idempotent: a code already
+  present is left alone, except that a row whose description is still the import placeholder
+  `<auto-added from pathway upload>` (4511 and 1191 are, locally) is given its real name so
+  it can be searched — a deliberate departure from a plain `ON CONFLICT DO NOTHING`. CVX
+  could not be seeded in any case: the table's `system` check allows only ICD-10, SNOMED,
+  LOINC, RXNORM and CPT. It has not been run.
 
 ### 0.9 Moved out to the future Rh-negative pathway `[DECISION — Josh 2026-10-04]`
 
@@ -367,6 +430,11 @@ Rh-negative pathway can pick it up. **None of it is built content.**
 | ECV text "anti-D after ECV if Rh-negative" (old Step 11.2) | A sensitizing event |
 | Timing conflict C5 | Label 26–28 weeks; USPSTF after the 24–28-week screen; ACOG 28 weeks |
 
+**Confirmed on review of version 1** `[DECISION — Josh 2026-10-04]`: type and screen stay in
+routine care; "if rh neg found, suggest rh neg pathway as result in prenatal pathway"; the
+24–28-week repeat antibody screen and all RhIG belong to the Rh-negative pathway; Z67.91
+stands as the diagnosis to add.
+
 **Josh's inputs to that pathway** (recorded, not built): about 28 weeks, after the repeat
 antibody screen, is the right timing for routine RhIG; his leaning is to forgo routine RhIG
 before 12 weeks, per ACOG.
@@ -374,14 +442,13 @@ before 12 weeks, per ACOG.
 **Until that pathway exists, Prism recommends no Rh immune globulin for anyone.** Step 1.24
 says so in its guidance.
 
-**The diagnosis to add** `[JOSH — CONFIRM]`. Built: **Z67.91** (unspecified blood type, Rh
+**The diagnosis to add** `[DECISION — Josh 2026-10-04]` ("Z67.91 stands"). Built: **Z67.91** (unspecified blood type, Rh
 negative), or the ABO-specific Z67.11 / .21 / .31 / .41. Reasons:
 - It says exactly what is known — her blood type — and nothing about antibodies.
 - It is a Z code, so it sits beside Z34 without breaking the ICD-10-CM rule that Z34 is not
   used with a chapter-15 code (§0.3). O26.89- ("other specified pregnancy related
   conditions", the index entry for Rh-negative state in pregnancy) is a chapter-15 code:
-  adding it would mean dropping Z34, and with the D-21 trigger set the routine pathway would
-  then stop matching unless O09 is present.
+  on a visit coded that way Z34 would not be used beside it (§0.3).
 - **O36.01-** means anti-D antibodies are present. It is the code for the alloimmunized
   patient, not for an unsensitized Rh-negative one, and is named in Step 1.24 only for that
   case.
@@ -395,7 +462,7 @@ negative), or the ABO-specific Z67.11 / .21 / .31 / .41. Reasons:
 
 - **Logical ID**: `routine-prenatal-care`
 - **Title**: Routine Prenatal Care
-- **Version**: 1
+- **Version**: 2
 - **Category**: OBSTETRIC (behaviour, not a label: the pathway applies only to a patient the
   chart shows is pregnant)
 - **Scope**: Outpatient antepartum care for every pregnancy under supervision, from the first
@@ -406,12 +473,14 @@ negative), or the ABO-specific Z67.11 / .21 / .31 / .41. Reasons:
   testing, the 24–28-week CBC, Tdap, third-trimester rescreening, the RSV vaccine, GBS, fetal
   presentation, birth and postpartum planning, late-term surveillance).
 
-  **Screens and hands off** (adds the diagnosis; does not treat): gestational diabetes, overt
-  diabetes, elevated blood pressure, anemia, Rh(D)-negative blood type.
+  **Screens and hands off** (recommends the diagnosis, which the provider adds to the
+  encounter; does not treat): gestational diabetes, overt diabetes, elevated blood pressure,
+  anemia, Rh(D)-negative blood type.
 
   **Out of scope:**
   - treatment of any of those problems;
-  - **all Rh-negative management, including Rh immune globulin** (§0.9);
+  - **all Rh-negative management, including the 24–28-week repeat antibody screen and Rh
+    immune globulin** (§0.9);
   - condition-specific high-risk management (multiples, prior preterm birth and cervical
     length, TOLAC, OUD treatment, age ≥40 testing, obesity-based testing), listed as text in
     Step 1.2 (D-23);
@@ -419,32 +488,25 @@ negative), or the ABO-specific Z67.11 / .21 / .31 / .41. Reasons:
   - nausea/vomiting treatment.
 - **Target population**: Pregnant patients receiving outpatient prenatal care, average risk or
   under high-risk supervision.
-- **Condition codes** (trigger codes; OR semantics) `[DECISION — Josh 2026-10-04]` (D-21
-  option (b), D-17, D-23), authored as **families** per the current spec — the matcher expands
-  a patient's code to its ancestors, so a parent matches every code beneath it:
+- **Condition codes** (trigger codes; OR semantics; matched against the diagnoses on the
+  **encounter**, never the chart) `[DECISION — Josh 2026-10-04]`: "any code for supervision of
+  pregnancy or pregnancy in general. Not pregnancy related problems."
 
 | Code | System | Description | Usage note | Grouping |
 |---|---|---|---|---|
-| `Z34` | ICD-10 | Encounter for supervision of normal pregnancy (all 12 leaves) | primary trigger | normal-pregnancy |
-| `O09` | ICD-10 | Supervision of high risk pregnancy (all 64 leaves) | primary trigger — routine elements only (D-23) | high-risk-pregnancy |
-| `O24.41` | ICD-10 | Gestational diabetes mellitus in pregnancy (O24.410 / .414 / .415 / .419) | keeps routine care after the GDM diagnosis recodes the pregnancy | pregnancy-complication-coded |
-| `O99.810` | ICD-10 | Abnormal glucose complicating pregnancy | abnormal 50-g challenge awaiting the diagnostic test | pregnancy-complication-coded |
+| `Z34` | ICD-10 | Encounter for supervision of normal pregnancy (family, all 12 leaves) | primary trigger | supervision-of-pregnancy |
+| `O09` | ICD-10 | Supervision of high risk pregnancy (family, all 64 leaves) | primary trigger — routine elements only (D-23) | supervision-of-pregnancy |
+| `Z33.1` | ICD-10 | Pregnant state, incidental | pregnancy in general | pregnant-state |
+| `Z33.3` | ICD-10 | Pregnant state, gestational carrier | pregnancy in general | pregnant-state |
 
-- **Why these levels.** `Z34` and `O09` are prenatal-only categories, so the whole family
-  belongs. `O24.41` and not `O24.4`: the parent also holds O24.42x (GDM in childbirth) and
-  O24.43x (in the puerperium), which an outpatient prenatal pathway must not take. `O99.810`
-  and not `O99.81`: the parent also holds O99.814 (childbirth) and O99.815 (puerperium); it is
-  a single leaf, so no `[LEAF CODES]` marker is required.
-- **The 2026-09-24 draft listed 81 leaves** because the local `icd10_codes` table then held
-  666 rows. It now holds the full set (98,188 rows; `Z34`, `O09`, `O24.41`, `O99.810`
-  verified present), so the families match.
-- **Z3A is not used** (D-17).
-- **What option (b) leaves out** `[JOSH — CONFIRM]`. ICD-10-CM forbids Z34 beside a chapter-15
-  code (§0.3). A patient recoded from Z34 to **O99.01x** (anemia), **O13 / O14**
-  (hypertension) or **O23** (UTI) alone, with no O09, stops matching this pathway and loses
-  the rest of routine care (Tdap, GBS, GDM screening). In the simulator the provider adds the
-  diagnosis beside Z34, so both pathways run. Option (c) — adding those families as triggers —
-  closes the gap in coded practice; it was not chosen.
+- `[LEAF CODES — Z33: the family would admit Z33.2, encounter for elective termination of pregnancy, which is not prenatal care]`
+  `Z33.1` and `Z33.3` therefore stay leaves (Josh: "NOT the Z33 parent").
+- `Z34` and `O09` are whole families: every code beneath them is supervision of pregnancy.
+- **Removed in version 2:** `O24.41` and `O99.810`. They are pregnancy problems, not
+  supervision of pregnancy. They are still read from the chart by the GDM gates.
+- **Z3A is not used** (weeks of gestation; D-17).
+- Proved: `gate-proof.ts prenatal-triggers` — Z34.90, Z34.03, O09.513, O09.90, Z33.1, Z33.3
+  start it; Z33.2, Z3A.28, O24.410, O99.810, O99.012, O13.3, D50.9 do not.
 
 ## 1b. Code sets
 
@@ -452,32 +514,30 @@ None. Single-condition pathway, legacy OR over `condition_codes`.
 
 ## 2. Stages
 
-Stages 1–2 are root-connected. Every other stage is **branch-entry only**, with no root
-`HAS_STAGE`. Stage numbers are unique (1–12).
+Stages 1–2 are root-connected. Every other stage is **branch-entry only**, behind a
+gestational-age gate. Stage numbers are unique: 1–6 and 9–12. **Stages 7 and 8 no longer
+exist**: in version 1 they were the two branches of the strategy question; in version 2 the
+results are read from the chart on Stage 6, so their steps are Stage 6 steps (6.7–6.13). The
+later stages keep their numbers and ids.
 
 - **Stage 1 — Initial prenatal assessment and whole-pregnancy care** *(root)*: dating; history
   and risk; the initial laboratory panel, each test ordered only if not on file; the anemia
   and Rh hand-offs; psychosocial screening; genetic screening options; preeclampsia risk and
-  aspirin; supplements and counselling; immunizations at any gestational age. Step 1.1 hosts
-  every GA gate. [1][2][3]
+  aspirin; supplements and counselling; influenza and COVID-19 vaccines. Step 1.1 hosts every
+  GA gate. [1][2][3]
 - **Stage 2 — Every prenatal visit** *(root)*: BP with the elevated-BP hand-off, weight, fetal
   heart and movement, fundal height, symptom review, tailored visit schedule. [1][16][50]
-- **Stage 3 — First trimester (before 14 0/7 weeks)** *(via `gate-ga-first-trimester`)*:
-  dating ultrasound, first-trimester aneuploidy screening window. [3][4]
-- **Stage 4 — Early diabetes testing (before 24 0/7 weeks)** *(via `gate-ga-before-24`)*: the
-  HbA1c on file is read; one is ordered when none was drawn this pregnancy and testing is
-  indicated. [52][55][56]
-- **Stage 5 — Second-trimester screening (14 0/7–23 6/7 weeks)** *(via `gate-ga-14-to-24`)*:
-  anatomy ultrasound; quad screen / open NTD assessment. [1][4]
-- **Stage 6 — From 24 0/7 weeks: repeat CBC and GDM screening status** *(via
-  `gate-ga-24-plus`)*. [1][53][57]
-- **Stage 7 — Two-step GDM screening and diagnosis** *(via `gate-gdm-strategy` = two-step)*.
-  [53][54][55][57]
-- **Stage 8 — One-step GDM screening and diagnosis** *(via `gate-gdm-strategy` = one-step)*.
-  [55][57]
+- **Stage 3 — First trimester (before 14 0/7 weeks)** *(via `gate-ga-first-trimester`)*. [3][4]
+- **Stage 4 — Early diabetes testing (before 24 0/7 weeks)** *(via `gate-ga-before-24`)*.
+  [52][55][56]
+- **Stage 5 — Second-trimester screening (14 0/7–23 6/7 weeks)** *(via `gate-ga-14-to-24`)*.
+  [1][4]
+- **Stage 6 — From 24 0/7 weeks: repeat CBC and gestational diabetes screening** *(via
+  `gate-ga-24-plus`)*: the repeat CBC; GDM status, screening and diagnosis, all read from the
+  chart. [1][53][54][55][57]
 - **Stage 9 — From 27 0/7 weeks: third-trimester care** *(via `gate-ga-27-plus`)*: Tdap;
   third-trimester rescreening; repeat psychosocial screening; birth, breastfeeding and
-  contraception planning. **No Rh content** (§0.9). [1][8][24][44]
+  contraception planning. No Rh content (§0.9). [1][8][24][44]
 - **Stage 10 — Maternal RSV vaccine window (32 0/7–36 6/7 weeks)** *(via `gate-ga-32-to-37`)*.
   [24][25][26]
 - **Stage 11 — From 36 0/7 weeks: GBS, presentation and birth planning** *(via
@@ -485,10 +545,9 @@ Stages 1–2 are root-connected. Every other stage is **branch-entry only**, wit
 - **Stage 12 — From 41 0/7 weeks: late-term surveillance and delivery** *(via
   `gate-ga-41-plus`)*. [46][47]
 
-GA bands overlap on purpose: Stages 4 and 5 both run to 24 weeks, and Stages 6, 9, 10, 11 and
-12 stack. Proved (`gate-proof.ts prenatal-ga`): a 10-week patient gets Stages 1–4; 20 weeks
-1, 2, 4, 5; 28 weeks 1, 2, 6, 9; 36 weeks 1, 2, 6, 9, 10, 11; 41 weeks 1, 2, 6, 9, 11, 12; and
-nothing from a later window.
+Proved (`gate-proof.ts prenatal-ga`): a 10-week patient gets Stages 1–4; 20 weeks 1, 2, 4, 5;
+28 weeks 1, 2, 6, 9; 36 weeks 1, 2, 6, 9, 10, 11; 41 weeks 1, 2, 6, 9, 11, 12; and nothing from
+a later window.
 
 ## 3. Steps
 
@@ -529,15 +588,16 @@ A step marked *(gated)* has no `HAS_STEP` edge; its gate is the only way in.
   [1][2][46][49]
 - **Step 1.3 — Initial prenatal laboratory panel: what is already on file** *(hosts the
   thirteen "not on file" gates, `gate-hgb-low` and `gate-rh-negative`)*: the chart is read
-  test by test (§4b). The step itself orders nothing. Weak D patients are not at risk of
-  alloimmunization. TB testing and TSH only if at risk; cervical screening on the routine
-  schedule. [1][2][6][7][9][10][11][12][13][14][15][21][22]
+  test by test (§4b). "This pregnancy" is since the LMP, from the gestational age. The step
+  itself orders nothing. Weak D patients are not at risk of alloimmunization. TB testing and
+  TSH only if at risk; cervical screening on the routine schedule.
+  [1][2][6][7][9][10][11][12][13][14][15][21][22]
 - **Steps 1.10–1.22 — one order step per panel test** *(each gated by its "not on file"
   gate)*; each carries exactly one LabTest (§6):
 
   | Step | Orders | Gate | "Already done" means |
   |---|---|---|---|
-  | 1.10 | CBC (Lab-1) | `gate-cbc-due` | a hemoglobin (718-7) drawn this pregnancy |
+  | 1.10 | CBC (Lab-1) | `gate-cbc-due` | a hemoglobin (718-7) drawn this pregnancy (`PREGNANCY`) |
   | 1.11 | ABO/Rh(D) type (Lab-2) | `gate-abo-rh-due` | a type (882-1) on file, **ever** |
   | 1.12 | Antibody screen (Lab-3) | `gate-antibody-screen-due` | 890-4 this pregnancy |
   | 1.13 | Rubella IgG (Lab-4) | `gate-rubella-due` | 25514-1 this pregnancy |
@@ -552,19 +612,18 @@ A step marked *(gated)* has no `HAS_STEP` edge; its gate is the only way in.
   | 1.22 | Varicella IgG, if no history or vaccination (Lab-13) | `gate-varicella-due` | 19162-7 this pregnancy |
 
 - **Step 1.23 — Low hemoglobin: add the anemia diagnosis** *(gated by `gate-hgb-low`)*
-  `[DECISION — Josh 2026-10-04]`: the most recent hemoglobin is below the trimester threshold
-  (<11.0 g/dL first or third trimester; <10.5 second). Record O99.011 / .012 / .013. The
-  anemia pathway owns the workup and treatment; this step orders nothing. CodeEntry `O99.01`;
-  Guid-12. [1][2]
-  - `[PAYWALL]` `[JOSH — CONFIRM]` **The thresholds are secondary-sourced.** ACOG PB 233 is
-    paywalled; the 11 / 10.5 / 11 values are the ones the anemia pathway uses for its
-    trimester targets, taken there from the PB 233 abstract and secondary summaries. Confirm
-    them as the **screening** cut-offs for the hand-off.
+  `[DECISION — Josh 2026-10-04]`: the most recent hemoglobin **drawn this pregnancy** is below
+  the trimester threshold (<11.0 g/dL first or third trimester; <10.5 second — "correct",
+  Josh). Add O99.011 / .012 / .013 to the encounter. The anemia pathway then joins the visit
+  and owns the workup and treatment; this step orders nothing. A hemoglobin from before this
+  pregnancy does not open this step: it is left for the anemia pathway to use if the provider
+  adds anemia. CodeEntry `O99.01`; Guid-12. [1][2]
 - **Step 1.24 — Rh(D)-negative: add the diagnosis** *(gated by `gate-rh-negative`)*
-  `[DECISION — Josh 2026-10-04]`: record Z67.91, or the ABO-specific Rh-negative code. Rh
-  management, including Rh immune globulin, belongs to its own pathway. A positive antibody
-  screen (alloimmunization, O36.01-) needs maternal–fetal medicine. CodeEntry Z67.91; Guid-13.
-  [21][22] The code choice is `[JOSH — CONFIRM]` (§0.9).
+  `[DECISION — Josh 2026-10-04]` ("if rh neg found, suggest rh neg pathway as result in
+  prenatal pathway"): add Z67.91, or the ABO-specific Rh-negative code, to the encounter. Rh
+  management — the 24–28-week repeat antibody screen and all Rh immune globulin — belongs to
+  the Rh-negative pathway. A positive antibody screen (alloimmunization, O36.01-) needs
+  maternal–fetal medicine. CodeEntry Z67.91; Guid-13. [21][22]
 - **Step 1.4 — Psychosocial and behavioral screening** *(unconditional; QM-3)*:
   - **Depression and anxiety:** validated instrument (EPDS or PHQ-9; GAD-7) at the initial
     visit, later in pregnancy (Step 9.6) and postpartum. If a self-harm item is positive, assess
@@ -616,29 +675,41 @@ A step marked *(gated)* has no `HAS_STEP` edge; its gate is the only way in.
 - **Step 1.7 — Start low-dose aspirin** *(gated by `gate-aspirin-indicated`)*: 81 mg daily,
   started at 12–28 weeks (optimally before 16), continued until delivery. Exempt from the FDA
   NSAID advice [64]. Med-2, Sched-2. [17][18][19][64]
-- **Step 1.8 — Supplements and healthy-pregnancy counselling** *(hosts `gate-no-folic-acid`
-  and `gate-on-folic-acid`; Guid-1 to Guid-6)*: the medication list is read first. 4 mg folic
-  acid after a prior NTD-affected pregnancy, as a separate supplement through the first
-  3 months — CDC: start 1 month before conception [65]; ACOG: at least 3 months before [66]
-  (both stated, `[DECISION — Josh 2026-10-04]`). Iron 27 mg/day [66]; iodine 150 mcg/day [67].
-  Avoid NSAIDs from 20 weeks, except aspirin 81 mg [64]. [28][36]–[41][45][51][64]–[68]
-- **Step 1.27 — Start a prenatal vitamin with folic acid** *(gated by `gate-no-folic-acid`)*:
-  Med-1. [28][65][66][67]
-- **Step 1.28 — Already taking folic acid: continue** *(gated by `gate-on-folic-acid`)*:
-  nothing is started; Guid-10. [28][65][66][67]
-- **Step 1.9 — Immunizations at any gestational age** *(unconditional; Med-3, Med-4)*:
+- **Step 1.8 — Supplements and healthy-pregnancy counselling** *(hosts
+  `gate-on-prenatal-vitamin` and `gate-prenatal-vitamin-not-on-list`; Guid-1 to Guid-6)*: the
+  medication list is read first; if nothing recognised is on it the patient is asked once.
+  4 mg folic acid after a prior NTD-affected pregnancy, as a separate supplement through the
+  first 3 months — CDC: start 1 month before conception [65]; ACOG: at least 3 months before
+  [66] (both stated, `[DECISION — Josh 2026-10-04]`). Iron 27 mg/day [66]; iodine 150 mcg/day
+  [67]. Avoid NSAIDs from 20 weeks, except aspirin 81 mg [64].
+  [28][36]–[41][45][51][64]–[68]
+- **Step 1.28 — Prenatal vitamin already on the medication list: continue** *(gated by
+  `gate-on-prenatal-vitamin`)*: folic acid or a recognised prenatal multivitamin is listed.
+  Nothing is started and nothing is asked. Guid-10. [28][65][66][67]
+- **Step 1.29 — No prenatal vitamin on the medication list: ask** *(gated by
+  `gate-prenatal-vitamin-not-on-list`; hosts the router `gate-taking-prenatal-vitamin`)*
+  `[DECISION — Josh 2026-10-04]` ("known list, else ask"). [28][65][66][67]
+- **Step 1.30 — Taking a prenatal vitamin that is not on the medication list: continue**
+  *(router: yes)*: nothing is started; add it to the medication list. Guid-19. [28][65][66][67]
+- **Step 1.27 — Start a prenatal vitamin with folic acid** *(router: no)*: Med-1.
+  [28][65][66][67]
+- **Step 1.9 — Immunizations at any gestational age: what has already been given** *(hosts
+  `gate-influenza-vaccine-due` and `gate-covid-vaccine-due`)* `[DECISION — Josh 2026-10-04]`:
+  vaccines are read from the medication list as dated entries.
   - **Inactivated or recombinant influenza vaccine** in any trimester during the season
     (third-trimester patients as soon as vaccine is available; LAIV is contraindicated).
   - **COVID-19 vaccine per ACOG**, with shared decision-making and the discussion documented;
     CDC's current position is stated in Med-4 (D-26 `[DECISION — Josh 2026-09-24]`).
+  - Each is recommended only when no dose is recorded in the last 180 days (§4b).
   - **Hepatitis B vaccine** if susceptible on the triple panel (Engerix-B, Heplisav-B,
     Recombivax HB or Twinrix; PreHevbrio is not recommended in pregnancy).
   - **MMR and varicella are contraindicated in pregnancy.** Give postpartum if non-immune.
-  - **Not read from the chart.** Immunization records are not in the patient context, so
-    the step says to confirm what has already been given this season and this pregnancy
-    (§0.6 #9).
 
   [24][25][27]
+- **Step 1.31 — Give the influenza vaccine** *(gated by `gate-influenza-vaccine-due`)*: Med-3.
+  In season only; the season is not read from the chart. [24][25][27]
+- **Step 1.32 — Offer the COVID-19 vaccine** *(gated by `gate-covid-vaccine-due`)*: Med-4.
+  [24][25]
 
 ### Stage 2 — Every prenatal visit
 
@@ -646,9 +717,10 @@ A step marked *(gated)* has no `HAS_STEP` edge; its gate is the only way in.
   ≥140 systolic or ≥90 diastolic; confirm; diagnosis needs two readings ≥4 hours apart;
   severe range ≥160/≥110. [16]
 - **Step 2.2 — Elevated blood pressure: confirm and add the diagnosis** *(gated)*
-  `[DECISION — Josh 2026-10-04]` (D-25): severe range → same-day evaluation. At ≥20 weeks
-  record R03.0 until confirmed, then O13.x or O14.x; the hypertension pathway then applies.
-  Before 20 weeks evaluate for chronic hypertension. CodeEntry R03.0; Guid-14. [16]
+  `[DECISION — Josh 2026-10-04]` (D-25): severe range → same-day evaluation. At ≥20 weeks add
+  R03.0 to the encounter until confirmed, then O13.x or O14.x; the hypertension pathway then
+  joins the visit. Before 20 weeks evaluate for chronic hypertension. CodeEntry R03.0;
+  Guid-14. [16]
 - **Step 2.3 — Routine per-visit assessment** *(unconditional)*:
   - weight;
   - fetal heart activity at appropriate GA. It adds nothing when the patient confirms fetal
@@ -682,12 +754,15 @@ A step marked *(gated)* has no `HAS_STEP` edge; its gate is the only way in.
 
 - **Step 4.1 — Early diabetes testing: read the HbA1c on file** *(hosts
   `gate-overt-diabetes`, `gate-early-abnormal-glucose`, `gate-a1c-not-on-file`)*: the most
-  recent HbA1c decides — ≥6.5% is diabetes; 5.9–6.4% is early abnormal glucose metabolism.
-  One-step/two-step GDM criteria are not applied before 24 weeks. The alternatives (FPG ≥126;
-  2-h 75-g ≥200; random ≥200 with symptoms) are text only (D-6). [52][55][56][58]
+  recent HbA1c decides — ≥6.5% is diabetes; 5.9–6.4% is early abnormal glucose metabolism —
+  whatever the eligibility answer. **Nobody is asked for an HbA1c**
+  (`[DECISION — Josh 2026-10-04]`). One-step/two-step GDM criteria are not applied before
+  24 weeks. The alternatives (FPG ≥126; 2-h 75-g ≥200; random ≥200 with symptoms) are text
+  only (D-6). [52][55][56][58]
 - **Step 4.3 — Overt diabetes in pregnancy: confirm and add the diagnosis** *(gated by
-  `gate-overt-diabetes`)*: confirm with a second abnormal test unless unequivocal; record
-  O24.111–.119 (or O24.911–.919). Not GDM. CodeEntries O24.111/.112/.113/.119; Guid-15. [55]
+  `gate-overt-diabetes`)*: confirm with a second abnormal test unless unequivocal; add
+  O24.111–.119 (or O24.911–.919) to the encounter. Not GDM. CodeEntries
+  O24.111/.112/.113/.119; Guid-15. [55]
 - **Step 4.4 — Early abnormal glucose metabolism: counselling and fasting-glucose
   monitoring** *(gated by `gate-early-abnormal-glucose`)* (D-7): not a GDM diagnosis; do not
   code O24.4-. Nutrition counselling; fasting glucose 3–4 times a week. Universal screening
@@ -696,7 +771,8 @@ A step marked *(gated)* has no `HAS_STEP` edge; its gate is the only way in.
   `gate-a1c-not-on-file`; hosts `gate-early-testing-indicated`)*: ADA Table 2.5 criteria
   (D-12 lands here: GDM in a prior pregnancy). [52][55][56][58]
 - **Step 4.2 — Order the HbA1c** *(gated by `gate-early-testing-indicated`)*: before 15 weeks
-  if possible. Lab-17; Guid-A2. [52][55]
+  if possible. The result is not asked for; it is read once it is on the chart. Lab-17;
+  Guid-A2. [52][55]
 - **Step 4.5 — Plan universal GDM screening at 24–28 weeks** *(Sched-3)*. [53][55][57]
 
 ### Stage 5 — Second-trimester screening
@@ -710,47 +786,49 @@ A step marked *(gated)* has no `HAS_STEP` edge; its gate is the only way in.
   `gate-cbc-repeat-due`)*. [1][2]
 - **Step 6.5 — Repeat the CBC** *(gated)*: Lab-19. [1][2]
 - **Step 6.2 — Gestational diabetes status: read from the chart** *(hosts
-  `gate-diabetes-on-file`, `gate-gdm-screen-negative`, `gate-gdm-screen-open`)*. Universal
-  screening at ≥24 0/7 weeks; as soon as possible if first seen after 28 weeks. After
-  bariatric surgery with dumping consider alternatives (`[GAP]`, PB 105 paywalled).
+  `gate-diabetes-on-file`, `gate-gdm-screen-negative`, `gate-gdm-nothing-on-file`,
+  `gate-gct-positive`, `gate-75g-diagnostic`)*. Nothing is asked for that the chart holds.
+  Universal screening at ≥24 0/7 weeks; as soon as possible if first seen after 28 weeks.
+  After bariatric surgery with dumping consider alternatives (`[GAP]`, PB 105 paywalled).
   [53][55][57]
-- **Step 6.4 — Diabetes already diagnosed this pregnancy: no screening** *(gated by
+- **Step 6.4 — Diabetes already diagnosed: no screening** *(gated by
   `gate-diabetes-on-file`)*: Guid-16. [55][56]
 - **Step 6.3 — GDM screening complete: negative** *(gated by `gate-gdm-screen-negative`)*: no
-  repeat unless clinically suspected. A result drawn before 24 weeks is not the screen
-  (§4b). Guid-17. [53]
-- **Step 6.6 — GDM screening is open: choose the strategy** *(gated by
-  `gate-gdm-screen-open`; hosts the router `gate-gdm-strategy`)*: Guid-A1. [53][55][57]
+  repeat unless clinically suspected. A result drawn before 24 weeks is not the screen: order
+  it if that is the case (§0.6 #1). Guid-17. [53]
+- **Step 6.6 — No GDM screen on file: choose the strategy** *(gated by
+  `gate-gdm-nothing-on-file`; hosts the router `gate-gdm-strategy`)*: the only question in GDM
+  screening. Guid-A1. [53][55][57]
+- **Step 6.7 — Order the 50-g 1-hour challenge** *(router: two-step)*: nonfasting; positive at
+  ≥140 mg/dL (D-3). Lab-20. The result is not asked for. [53][54][55][57]
+- **Step 6.8 — Order the 75-g 2-hour test** *(router: one-step)*: thresholds 92 / 180 / 153;
+  GDM if any one is met. Lab-22. The result is not asked for. [55][57]
+- **Step 6.9 — Positive 50-g challenge: the 100-g 3-hour test** *(gated by
+  `gate-gct-positive`; hosts `gate-ogtt100-not-on-file`, `gate-100g-diagnostic`,
+  `gate-100g-negative`)* `[DECISION — Josh 2026-10-04]`: a 50-g ≥140 on the chart is the
+  two-step route; the strategy is not asked. Carpenter–Coustan 95 / 180 / 155 / 140 mg/dL;
+  GDM if ≥2 met (D-4). The four values are read from the chart. [53][55][57][58]
+- **Step 6.10 — Order the 100-g 3-hour test** *(gated by `gate-ogtt100-not-on-file`)*: add
+  O99.810 to the encounter while it is pending. Lab-21; CodeEntry O99.810. The result is not
+  asked for. [53][55][57][58]
+- **Step 6.11 — Diagnose GDM (two-step): add O24.410 to the encounter** *(gated by
+  `gate-100g-diagnostic`)*: replaces O99.810. CodeEntry O24.410; Guid-A4. [53][55][56]
+- **Step 6.12 — Two-step screening complete: the 100-g test does not meet criteria** *(gated
+  by `gate-100g-negative`)*: not GDM; no repeat unless suspected. Guid-18. [53][55]
+- **Step 6.13 — Diagnose GDM (one-step): add O24.410 to the encounter** *(gated by
+  `gate-75g-diagnostic`)*: CodeEntry O24.410; Guid-A4b. [55][56]
 
-### Stage 7 — Two-step GDM screening and diagnosis
-
-- **Step 7.1 — Two-step screening: the 50-g 1-hour challenge** *(hosts `gate-gct-not-on-file`
-  and `gate-gct-positive`)*: nonfasting; positive at ≥140 mg/dL (D-3). [53][54][55][57]
-- **Step 7.5 — Order the 50-g challenge** *(gated by `gate-gct-not-on-file`)*: Lab-20.
-  [53][55][57]
-- **Step 7.2 — Positive 50-g challenge: the 100-g 3-hour test** *(gated by
-  `gate-gct-positive`; hosts the router `gate-100g-diagnostic`)*: Carpenter–Coustan
-  95 / 180 / 155 / 140 mg/dL; GDM if ≥2 met (D-4). [53][55][57][58]
-- **Step 7.6 — Order the 100-g 3-hour test and await the result** *(router: "Not resulted
-  yet")*: record O99.810 meanwhile. Lab-21; CodeEntry O99.810. [53][55][57][58]
-- **Step 7.3 — Diagnose GDM (two-step): add O24.410** *(router: "Meets criteria")*: replaces
-  O99.810. CodeEntry O24.410; Guid-A4. [53][55][56]
-- **Step 7.4 — Two-step screening complete: the 100-g test does not meet criteria** *(router:
-  "Does not meet criteria")*: not GDM; no repeat unless suspected. Guid-18. [53][55]
-
-### Stage 8 — One-step GDM screening and diagnosis
-
-- **Step 8.1 — One-step screening: the 75-g 2-hour test** *(hosts `gate-ogtt75-not-on-file`
-  and `gate-75g-diagnostic`)*: thresholds 92 / 180 / 153; GDM if any one is met. [55][57]
-- **Step 8.3 — Order the 75-g 2-hour test** *(gated by `gate-ogtt75-not-on-file`)*: Lab-22.
-  [55][57]
-- **Step 8.2 — Diagnose GDM (one-step): add O24.410** *(gated by `gate-75g-diagnostic`)*:
-  CodeEntry O24.410; Guid-A4b. [55][56]
+Version 1's Stage 7 and Stage 8 steps map as: 7.5 → 6.7; 8.3 → 6.8; 7.2 → 6.9; 7.6 → 6.10;
+7.3 → 6.11; 7.4 → 6.12; 8.2 → 6.13. Steps 7.1 and 8.1 (the hosts of the result gates that
+asked) are gone.
 
 ### Stage 9 — From 27 0/7 weeks
 
-- **Step 9.1 — Tdap vaccine** *(Med-5, Sched-4, QM-2)*: one dose each pregnancy, early in
-  the 27–36-week window. [24][25][26][27][60]
+- **Step 9.1 — Tdap vaccine: what has already been given** *(hosts `gate-tdap-due`; QM-2)*
+  `[DECISION — Josh 2026-10-04]`: one dose each pregnancy, early in the 27–36-week window.
+  The medication list is read: a Tdap given this pregnancy is not repeated; one given in an
+  earlier pregnancy does not count. [24][25][26][27][60]
+- **Step 9.10 — Give the Tdap vaccine** *(gated by `gate-tdap-due`)*: Med-5, Sched-4. [24][25]
 - **Step 9.5 — Third-trimester infection rescreening: what is already on file** *(hosts three
   "not since 27 weeks" gates)*: **syphilis in every patient** in the third trimester and at
   birth (ACOG 2024; `[DECISION — Josh 2026-10-04]`, conflict C1); HIV before 36 weeks if at
@@ -769,15 +847,18 @@ A step marked *(gated)* has no `HAS_STEP` edge; its gate is the only way in.
   - **Postpartum care plan:** contact within 3 weeks; comprehensive visit by 12 weeks.
   [29][31][42][43][44][59]
 
-Old Steps 9.2–9.4 (Rh review, RhIG, Rh-positive) are removed (§0.9).
+Version 1 removed the draft's Steps 9.2–9.4 (Rh review, RhIG, Rh-positive) (§0.9).
 
 ### Stage 10 — Maternal RSV vaccine window
 
-- **Step 10.1 — Offer the maternal RSV vaccine, or plan the infant monoclonal antibody**
-  *(Med-7, Sched-6)*: one dose at 32 0/7–36 6/7 weeks, in season — **ACOG September 1 to
-  March 1; CDC September through January, both stated** (`[DECISION — Josh 2026-10-04]`,
-  conflict C3). Not if vaccinated in a prior pregnancy, delivery planned within 2 weeks, or
-  the family plans the infant monoclonal. [24][25][26]
+- **Step 10.1 — Maternal RSV vaccine: what has already been given** *(hosts
+  `gate-rsv-vaccine-due`)*: one dose at 32 0/7–36 6/7 weeks, in season — **ACOG September 1
+  to March 1; CDC September through January, both stated** (`[DECISION — Josh 2026-10-04]`,
+  conflict C3). The medication list is read: an RSV vaccine already recorded is not repeated.
+  Also not offered if delivery is planned within 2 weeks or the family plans the infant
+  monoclonal. [24][25][26]
+- **Step 10.2 — Offer the maternal RSV vaccine, or plan the infant monoclonal antibody**
+  *(gated by `gate-rsv-vaccine-due`)*: Med-7, Sched-6. [24][25][26]
 
 ### Stage 11 — From 36 0/7 weeks
 
@@ -801,45 +882,41 @@ None. Every decision is a gate (§4b).
 
 ## 4b. Gates
 
-**47 gates**: 43 chart gates and 4 question gates (two BOOLEAN, two SELECT routers). Every
-gate is the **sole route** to its target; every chart gate has one target; both routers map
-every option; `default_behavior` is `skip` on all of them. `check-gate-control.ts` passes.
+**52 gates**: 48 chart gates and 4 question gates (`gate-aspirin-indicated` and
+`gate-early-testing-indicated`, yes/no; `gate-taking-prenatal-vitamin`, a yes/no router;
+`gate-gdm-strategy`, a two-option router).
+Every gate is the **sole route** to its target; every chart gate has one target; both routers
+map every answer; `default_behavior` is `skip` on all of them. `check-gate-control.ts` reports
+no violations.
 
 ### How each datum is used (the brief template's "use the data the chart gives")
 
 | Datum | Current value | Old value | Undated value | No value |
 |---|---|---|---|---|
-| `patient.gestational_age_weeks` | Opens the windowed stages; picks the look-back band and the hemoglobin threshold | n/a (sent per session) | n/a | **Asked once**; every gate reading it is held |
-| `patient.rh_factor` | "negative" → hand-off step; "positive" → nothing | n/a | n/a | **Asked once** (SELECT negative / positive) unless an Rh-negative Z67 code is on file; "Not available" closes the gate and leaves the typing order |
-| Blood pressure (vitals) | ≥140 or ≥90 → hand-off, unless hypertension is already coded | n/a (`DAY`) | Asserted current | **Asked** (systolic, then diastolic); not asked when hypertension is already coded |
-| Hemoglobin 718-7 | Below the trimester threshold → anemia hand-off; drawn this pregnancy → no first-panel CBC; since 24 weeks → no repeat CBC | **Still decides the hand-off** (most recent, `LIFETIME`) `[DECISION — Josh 2026-10-04]`; does not count as this pregnancy's CBC, so the CBC is ordered | Counts as current | **Asked**, and the CBC is ordered meanwhile; "Not available" leaves the order and blocks nothing |
-| HbA1c 4548-4 (before 24 weeks) | ≥6.5 → overt diabetes; 5.9–6.4 → early abnormal glucose; normal → nothing | **Still decides** (most recent, `LIFETIME`): an HbA1c ≥6.5 is diabetes whenever it was drawn. An old one does not count as this pregnancy's test, so the eligibility question is asked as well | Counts as current | **Asked**; the eligibility question is asked beside it; "Not available" + "yes" → ordered (D-29) |
-| 50-g challenge 1504-0 (from 24 weeks) | <140 → screening complete; ≥140 → the 100-g test (after the strategy question, §0.6 #2) | Older than 140 days: not this pregnancy's screen, ignored `[WINDOW]` | Counts as current | Screening is open: strategy asked; two-step → ordered, and the result is **asked for**; "Not available" leaves the order (D-29) |
-| 75-g values 1552-9 / 1507-3 / 1518-0 | All three below threshold → complete; any at or above → diagnose GDM | As the 50-g | Counts as current | As the 50-g; only the fasting value is asked for at the ordering visit, the 1-h and 2-h once the fasting value is on file |
-| 100-g values | **Not read** (D-4: a question) | — | — | The question offers "Not resulted yet", which orders the test |
-| Diabetes code O24.- | Diagnosed: no screening, no question | Lifetime, active | Active | Not diagnosed (a definite answer; nothing asked) |
+| `patient.gestational_age_weeks` | Opens the windowed stages; sets where "this pregnancy" begins (the LMP date); picks the hemoglobin threshold | n/a (sent per session) | n/a | **Asked once**; every gate reading it, `PREGNANCY` gates included, is held on the one question |
+| `patient.rh_factor` | "negative" → hand-off; "positive" → nothing | n/a | n/a | **Asked once** (negative / positive) unless an Rh-negative Z67 code is on the chart |
+| Blood pressure (vitals) | ≥140 or ≥90 → hand-off, unless hypertension is already on the chart | n/a (`DAY`) | Asserted current | **Asked** (a measurement owed at every visit) |
+| Hemoglobin 718-7 | Drawn this pregnancy and below the trimester threshold → anemia hand-off; drawn this pregnancy → no first-panel CBC; since 24 weeks → no repeat CBC | **From before this pregnancy: ignored here** `[DECISION — Josh 2026-10-04]` — no hand-off; the CBC is ordered; the value is left for the anemia pathway | Counts as drawn this pregnancy | The CBC is ordered; this pregnancy's value is **asked** for, and "Not available" leaves the order and blocks nothing `[JOSH — CONFIRM]` (J25) |
+| HbA1c 4548-4 (before 24 weeks) | ≥6.5 → overt diabetes; 5.9–6.4 → early abnormal glucose; normal → nothing | **Still decides** (most recent, `LIFETIME`) `[JOSH — CONFIRM]` (J13); not this pregnancy's test, so eligibility is asked too | Counts as current | **Not asked** `[DECISION — Josh 2026-10-04]`. Eligibility is asked; yes → ordered |
+| 50-g challenge 1504-0 (from 24 weeks) | <140 → screening complete; ≥140 → the 100-g test. Nothing asked | Before this pregnancy: not this pregnancy's screen, ignored | Counts as this pregnancy's | **Not asked.** With no 75-g value either, the strategy is asked and the chosen test ordered |
+| 75-g values 1552-9 / 1507-3 / 1518-0 | All three below threshold → complete; any at or above → diagnose GDM. Nothing asked | As the 50-g | As the 50-g | **Not asked** when none is on file. A partly entered test asks for the missing values |
+| 100-g values 1549-5 / 1501-6 / 1514-9 / 1530-5 (after a 50-g ≥140) | Two or more at or above threshold → diagnose GDM; fewer → complete. Nothing asked | As the 50-g | As the 50-g | **Not asked**; the test is ordered. A partly entered test asks for the missing values |
+| Diabetes code O24.- | Diagnosed: no screening, no question | Lifetime, active — a code left from a prior pregnancy reads as diagnosed: "that's a chart problem" `[DECISION — Josh 2026-10-04]` | Active | Not diagnosed |
 | Anemia O99.01x / D50, hypertension R03.0 / O10 / O11 / O13 / O14 / O16, Rh-negative Z67.x1 | Closes that hand-off | Lifetime, active | Active | Hand-off can open |
 | GBS carrier O99.820 | No 36-week culture | Lifetime, active | Active | Culture ordered if none in 5 weeks |
-| Each panel lab (§3 table) | On file → not ordered | Outside the look-back → ordered again (this pregnancy's test is required); type, hemoglobinopathy and HBV antibodies count **forever** | Counts as on file | Ordered |
-| Medication list: folic acid, aspirin | On it → "continue", nothing started; aspirin eligibility not asked | Lifetime, active only (a stopped one does not count) | Active | Vitamin started; aspirin eligibility asked (before 28 weeks) |
+| Each panel lab (§3 table) | Drawn this pregnancy → not ordered | From before this pregnancy → ordered again; type, hemoglobinopathy and HBV antibodies count **forever** | Counts as drawn this pregnancy | Ordered |
+| Medication list: folic acid, prenatal multivitamins, aspirin | On it → "continue", nothing started, nothing asked | Active only (a stopped one does not count) | Active | Vitamin: **asked once** "Already taking a prenatal vitamin?"; aspirin: eligibility asked (before 28 weeks) |
+| Medication list: vaccines (dated entries) | Tdap given this pregnancy → not recommended; RSV ever → not offered; influenza / COVID-19 in the last 180 days → not recommended | Tdap before this pregnancy → recommended again; influenza / COVID-19 older than 180 days → recommended | **Reads as given** (not recommended) | Recommended |
 
-**Not read from the chart, and why** (§0.6 #9): imaging results, immunization records, age,
-risk factors, the season. The vaccines therefore carry no medication-list check: an
-immunization is not a medication-list entry, and the context has no immunization field. The
-medication list *is* read for the two medications that live on it.
+**Not read from the chart, and why** (§0.6 #9): imaging results, age, risk factors, the
+season.
 
-**"This pregnancy"** `[NOT ENCODABLE]` (§0.6 #3) `[JOSH — CONFIRM]`. Built as one nested `OR`
-of three `AND` bands on one datum:
-
-```
-OR( AND(GA < 14,              none in the last  98 days),
-    AND(GA >= 14, GA < 28,    none in the last 196 days),
-    AND(GA >= 28,             none in the last 300 days) )
-```
-
-Because the band is as long as the trimester, a result drawn up to 14 weeks before conception
-counts as this pregnancy's. A missing GA is asked for (the same question as the GA gates),
-unless the test is on file inside the shortest band, in which case the gate is already closed.
+**"This pregnancy"** `[DECISION — Josh 2026-10-04]`: `horizon: "PREGNANCY"` on the condition.
+The window opens on the LMP date — the session clock minus the gestational age — and needs no
+banding. A missing gestational age is asked for by the same question as the GA gates. No gate
+adds a gestational-age condition to "protect" the window. Proved (`gate-proof.ts
+prenatal-meds`): at 10 weeks an HIV test 6 days before the LMP is not this pregnancy's and one
+the day after it is; at 30 weeks the same test is this pregnancy's.
 
 ### Gestational-age gates (all attached to `step-1-1`)
 
@@ -858,43 +935,55 @@ unless the test is on file inside the shortest band, in which case the gate is a
 | `gate-ga-41-plus` | GA `greater_or_equal` 41 | `stage-12` | [46] |
 
 Upper bounds are deliberately omitted on Stages 6, 9, 11 and 12: a late entrant still needs
-the content. The design is unchanged from the 2026-09-24 draft; the current spec offers nothing better
-(the simulator sends `gestational_age_weeks` and `trimester`).
+the content.
 
 ### Initial-panel "not on file" gates (all attached to `step-1-3`)
 
 All conditions are `labs` / `not_includes_code` / LOINC with a `display`.
 
-| Gate | Type | Absent | Look-back | On unresolved | Branches to |
-|---|---|---|---|---|---|
-| `gate-cbc-due` | compound OR (this-pregnancy bands) | 718-7 | this pregnancy | ask (GA) | `step-1-10` |
-| `gate-abo-rh-due` | patient_attribute | 882-1 | `LIFETIME` | default | `step-1-11` |
-| `gate-antibody-screen-due` | compound OR | 890-4 | this pregnancy | ask | `step-1-12` |
-| `gate-rubella-due` | compound OR | 25514-1 | this pregnancy | ask | `step-1-13` |
-| `gate-syphilis-due` | compound OR | 20507-0 AND 22587-0 | this pregnancy | ask | `step-1-14` |
-| `gate-hbsag-due` | compound OR | 5196-1 AND 5195-3 | this pregnancy | ask | `step-1-15` |
-| `gate-hbv-triple-due` | compound AND | 16935-9 AND 16933-4 | `LIFETIME` | default | `step-1-16` |
-| `gate-hiv-due` | compound OR | 56888-1 | this pregnancy | ask | `step-1-17` |
-| `gate-hcv-due` | compound OR | 13955-0 | this pregnancy | ask | `step-1-18` |
-| `gate-urine-culture-due` | compound OR | 630-4 | this pregnancy | ask | `step-1-19` |
-| `gate-ct-gc-due` | compound OR | 21613-5 AND 21416-3 | this pregnancy | ask | `step-1-20` |
-| `gate-hgbpathy-due` | patient_attribute | 43113-0 | `LIFETIME` | default | `step-1-21` |
-| `gate-varicella-due` | compound OR | 19162-7 | this pregnancy | ask | `step-1-22` |
+- A **once-ever** test is `not_includes_code` with `LIFETIME` (one code: `patient_attribute`;
+  two codes: `compound` AND).
+- A **this-pregnancy** test is a `compound` AND with, per code, the group
+  `OR( not_includes_code LIFETIME, not_includes_code PREGNANCY )` — "never resulted, or not
+  drawn this pregnancy". Logically that is just "not drawn this pregnancy"; the `LIFETIME`
+  leaf is there for one reason: **a test that has never been drawn is owed whatever the
+  gestational age, so it is ordered even when the gestational age is unknown.** Without it,
+  a first visit with no dating (no LMP, no ultrasound yet) held the whole panel on the
+  gestational-age question, and "Not available" closed all ten orders. Only a test that *is*
+  on file at some date waits for the gestational age to say whether that date is in this
+  pregnancy.
 
-- "Ask" here can only ever ask for the gestational age; a membership condition never asks for
-  a lab.
-- **What "already done" means per test** `[JOSH — CONFIRM]`: blood type, hemoglobinopathy
-  evaluation and the HBV antibodies once ever; everything else this pregnancy. Rubella and
-  varicella immunity are re-tested each pregnancy as built (presence of a test is readable;
-  "immune" is not — the result is qualitative). The hepatitis B triple panel is "never
-  documented" (`[DECISION — Josh 2026-10-04]`, conflict C2); its other two triggers
-  (incomplete vaccine series, ongoing risk) are text in Step 1.16.
-- An **old** value outside the look-back is not used for the "done" decision: the guideline
-  wants the test in this pregnancy. It is never asked about.
-- Proved: `gate-proof.ts prenatal-meds` (empty chart → all 13 ordered; all on file → none; an
-  HIV test 200 days old at 10 weeks → ordered; a blood type 5 years old → not ordered).
+| Gate | Absent | Horizon | On unresolved | Branches to |
+|---|---|---|---|---|
+| `gate-cbc-due` | 718-7 | never, or not this pregnancy | ask | `step-1-10` |
+| `gate-abo-rh-due` | 882-1 | `LIFETIME` | default | `step-1-11` |
+| `gate-antibody-screen-due` | 890-4 | never, or not this pregnancy | ask | `step-1-12` |
+| `gate-rubella-due` | 25514-1 | never, or not this pregnancy | ask | `step-1-13` |
+| `gate-syphilis-due` | 20507-0 AND 22587-0 | never, or not this pregnancy | ask | `step-1-14` |
+| `gate-hbsag-due` | 5196-1 AND 5195-3 | never, or not this pregnancy | ask | `step-1-15` |
+| `gate-hbv-triple-due` | 16935-9 AND 16933-4 | `LIFETIME` | default | `step-1-16` |
+| `gate-hiv-due` | 56888-1 | never, or not this pregnancy | ask | `step-1-17` |
+| `gate-hcv-due` | 13955-0 | never, or not this pregnancy | ask | `step-1-18` |
+| `gate-urine-culture-due` | 630-4 | never, or not this pregnancy | ask | `step-1-19` |
+| `gate-ct-gc-due` | 21613-5 AND 21416-3 | never, or not this pregnancy | ask | `step-1-20` |
+| `gate-hgbpathy-due` | 43113-0 | `LIFETIME` | default | `step-1-21` |
+| `gate-varicella-due` | 19162-7 | never, or not this pregnancy | ask | `step-1-22` |
 
-### `gate-hgb-low` — Low hemoglobin: anemia hand-off `[DECISION — Josh 2026-10-04]`
+- "Ask" here asks only for the gestational age, and only when a result is on file whose date
+  has to be placed (§0.6 #11 on the lint warning).
+- **Gestational age unknown and declined**: every never-drawn test is still ordered. A test
+  on file at some earlier date is **not** ordered — it cannot be placed in or out of this
+  pregnancy. `[JOSH — CONFIRM]` (J30) whether that residual case should order the test
+  instead. Proved: `gate-proof.ts prenatal-meds`.
+- **What "already done" means per test** `[JOSH — CONFIRM]` (J6): blood type, hemoglobinopathy
+  evaluation and the HBV antibodies once ever (`LIFETIME`); everything else, rubella and
+  varicella included, this pregnancy (`PREGNANCY`). The hepatitis B triple panel is "never
+  documented" (`[DECISION — Josh 2026-10-04]`, conflict C2).
+- **Risk-based tests** (chlamydia/gonorrhea, varicella) are ordered for everyone with no
+  result this pregnancy, with the condition in the order's name `[DECISION — Josh 2026-10-04]`
+  ("risk based for everyone").
+
+### `gate-hgb-low` — Low hemoglobin this pregnancy: anemia hand-off `[DECISION — Josh 2026-10-04]`
 
 - **Attached to:** `step-1-3` · **Branches to:** `step-1-23` (exclusively gated)
 - **Type:** compound **AND** · **On unresolved: ask**
@@ -902,53 +991,50 @@ All conditions are `labs` / `not_includes_code` / LOINC with a `display`.
   - `conditions` `not_includes_code` `O99.01.*` (ICD-10, `LIFETIME`, active);
   - `conditions` `not_includes_code` `D50.*`;
   - group **OR**:
-    - `labs` `718-7` `less_than` **10.45**, `LIFETIME`, display `"Hemoglobin (g/dL)"`;
-    - group **AND**: `718-7` `less_than` **10.95**, `LIFETIME`; group **OR**: GA `less_than`
-      14, GA `greater_or_equal` 28.
-- **Reads the MOST RECENT hemoglobin, with no freshness window** (Josh's instruction; the
-  spec's data-use rule 1). Staleness is handled separately by the CBC gates.
-- **States:** below threshold → hand-off; normal → nothing; none on file → asked (and the CBC
-  is ordered by `gate-cbc-due`); "Not available" → closed, order stays, nothing blocks;
-  hemoglobin 10.5–10.9 with GA missing → GA asked; anemia already coded → closed, nothing
-  asked.
-- "<11.0" is `less_than 10.95` and "<10.5" is `less_than 10.45` (0.1 g/dL precision), the
-  anemia pathway's numbers.
-- **Thresholds** `[PAYWALL]` `[JOSH — CONFIRM]` (Step 1.23).
-- `[JOSH — CONFIRM]` Because the most recent value decides however old it is, a low
-  hemoglobin from before this pregnancy opens the hand-off (with the CBC ordered beside it).
-- **Rationale & source:** [1][2] → Step 1.3. Proved: `gate-proof.ts prenatal-handoffs`.
+    - `labs` `718-7` `less_than` **10.45**, horizon **`PREGNANCY`**, display `"Hemoglobin (g/dL)"`;
+    - group **AND**: `718-7` `less_than` **10.95**, **`PREGNANCY`**; group **OR**: GA
+      `less_than` 14, GA `greater_or_equal` 28.
+- `[WINDOW — gate-hgb-low: this pregnancy. A hemoglobin from before it does not open the anemia suggestion (Josh, 2026-10-04); it is left for the anemia pathway to use if the provider adds anemia]`
+- **Thresholds** `[DECISION — Josh 2026-10-04]`: <11.0 first and third trimester, <10.5
+  second — "correct". (`less_than 10.95` / `10.45` at 0.1 g/dL precision.)
+- **States:** drawn this pregnancy and below threshold → hand-off; normal → nothing; a low
+  value from before this pregnancy and none since → **no hand-off**, CBC ordered; a low
+  pre-pregnancy value and a normal one this pregnancy → no hand-off; anemia already on the
+  chart → closed, nothing asked.
+- **None drawn this pregnancy:** the CBC is ordered (`gate-cbc-due`) and this pregnancy's
+  value is asked for; "Not available" closes the gate, leaves the order and blocks nothing.
+  `[JOSH — CONFIRM]` (J25): version 2 stops asking for a result at the ordering visit for the
+  glucose tests and the HbA1c (V2-11); the hemoglobin still asks, as in version 1, because
+  the decision was given for those tests. Making it chart-only is one field
+  (`on_unresolved: "default"` plus the marker).
+- **Rationale & source:** [1][2] → Step 1.3. Proved: `gate-proof.ts prenatal-handoffs`
+  (including a value one day into the pregnancy, and one before it).
 
 ### `gate-rh-negative` — Rh(D) negative: hand-off (D-24) `[DECISION — Josh 2026-10-04]`
 
 - **Attached to:** `step-1-3` · **Branches to:** `step-1-24` (exclusively gated)
 - **Type:** compound **AND** · **On unresolved: ask**
-- **Conditions:**
-  - `patient.rh_factor` `in` `["negative", "positive"]`, display `"Rh(D) type"` — true for
-    either known type; present so that the SELECT question offers both answers (§0.6 #5);
-  - `patient.rh_factor` `equals` `"negative"`;
-  - `conditions` `not_includes_code` for each of `Z67.11`, `Z67.21`, `Z67.31`, `Z67.41`,
-    `Z67.91` (`LIFETIME`, active).
-- **States:** negative → hand-off; positive → nothing (no step); missing → ONE SELECT question
-  with both options; an Rh-negative Z67 code on file → closed without asking; "Not available"
-  → closed, and `gate-abo-rh-due` still orders the typing.
-- **Vocabulary risk** `[JOSH — CONFIRM]`: the chart feed must populate `rh_factor` with exactly
-  `"negative"` / `"positive"`. Any other string evaluates as neither.
-- **There is no Rh-positive step and no RhIG** (§0.9).
+- **Conditions:** `patient.rh_factor` `in` `["negative", "positive"]`, display `"Rh(D) type"`
+  (present so that the SELECT question offers both answers); `patient.rh_factor` `equals`
+  `"negative"`; `conditions` `not_includes_code` for each of `Z67.11`, `Z67.21`, `Z67.31`,
+  `Z67.41`, `Z67.91` (`LIFETIME`, active).
+- **States:** negative → hand-off; positive → nothing; missing → ONE question with both
+  options; an Rh-negative Z67 code on the chart → closed without asking; "Not available" →
+  closed, and `gate-abo-rh-due` still orders the typing.
+- **Vocabulary** `[JOSH — CONFIRM]` (J4): the chart feed must populate `rh_factor` with exactly
+  `"negative"` / `"positive"`.
+- **No Rh-positive step, no repeat antibody screen, no RhIG** (§0.9; V2-3).
 - **Rationale & source:** [21][22] → Step 1.3. Proved: `gate-proof.ts prenatal-handoffs`.
 
 ### Aspirin: `gate-on-aspirin`, `gate-aspirin-not-on-list`, `gate-aspirin-indicated`
 
-- **`gate-on-aspirin`** — attached to `step-1-6` → `step-1-25`. compound **OR**:
-  `medications` `includes_code` RXNORM `1191`, `243670`, `318272` (`LIFETIME`, active). On
-  unresolved: n/a — default.
-- **`gate-aspirin-not-on-list`** — attached to `step-1-6` → `step-1-26`. compound **AND**:
-  `not_includes_code` for the same three codes; GA `less_than` 28. **On unresolved: ask**
-  (GA).
-  - `[JOSH — CONFIRM]` **The 28-week bound is new.** The draft asked eligibility at every
-    visit. Prophylaxis is started at 12–28 weeks [18][19], so past 28 weeks the question
-    cannot lead to a start and is not asked.
-- **`gate-aspirin-indicated`** — attached to `step-1-26` → `step-1-7`. question, **BOOLEAN**.
-  Prompt **verbatim** from GHTN's gate of the same id (§0.4):
+- **`gate-on-aspirin`** — `step-1-6` → `step-1-25`. compound **OR**: `medications`
+  `includes_code` RXNORM `1191`, `243670`, `318272` (`LIFETIME`, active). Default.
+- **`gate-aspirin-not-on-list`** — `step-1-6` → `step-1-26`. compound **AND**:
+  `not_includes_code` for the same three codes; GA `less_than` 28. **Ask** (GA). The 28-week
+  bound: `[DECISION — Josh 2026-10-04]` agreed.
+- **`gate-aspirin-indicated`** — `step-1-26` → `step-1-7`. question, **BOOLEAN**. Prompt
+  **verbatim** from GHTN's gate of the same id:
   > "Does this patient qualify for low-dose aspirin prophylaxis? Qualifies with ANY ONE
   > high-risk factor (prior preeclampsia, multifetal gestation, chronic hypertension,
   > pregestational type 1 or 2 diabetes, kidney disease, autoimmune disease such as SLE or
@@ -956,50 +1042,106 @@ All conditions are `labs` / `not_includes_code` / LOINC with a `display`.
   > family history of preeclampsia in mother or sister, Black race, lower income, age 35 or
   > older, personal history factors, in vitro conception); OR, on its own, Black race or lower
   > income."
-  - Still a question: several factors are uncoded (family history, income, nulliparity, race)
-    and the rule counts.
 - **Rationale & source:** [17][18][19] → Step 1.6. Proved: `gate-proof.ts prenatal-meds`.
 
-### Folic acid: `gate-no-folic-acid`, `gate-on-folic-acid`
+### Prenatal vitamin: "known list, else ask" `[DECISION — Josh 2026-10-04]`
 
-- **`gate-no-folic-acid`** — attached to `step-1-8` → `step-1-27`. compound **AND**:
-  `medications` `not_includes_code` RXNORM `4511`, `198640`, `310410` (`LIFETIME`, active).
-  Default.
-- **`gate-on-folic-acid`** — attached to `step-1-8` → `step-1-28`. compound **OR**: the same
-  three codes, `includes_code`. Default.
-- `[JOSH — CONFIRM]` **A prenatal multivitamin coded as a branded product is not recognised.**
-  RxNorm has no ingredient for "prenatal vitamins", only product-level codes, and
-  `includes_code` does not expand a product to its ingredients. The three codes are folic acid
-  itself. A patient on a product-coded prenatal vitamin is offered one again.
-- **Rationale & source:** [28][65][66] → Step 1.8. Proved: `gate-proof.ts prenatal-meds`.
+- **`gate-on-prenatal-vitamin`** — `step-1-8` → `step-1-28`. compound **OR**: `medications`
+  `includes_code` (RXNORM, `LIFETIME`, active) for each of the ten codes in §0.8: folic acid
+  `4511`, `198640`, `310410`; prenatal multivitamins `1119570`, `1119573`, `1100471`,
+  `1248142`, `1116183`, `1313925`, `1485531`. Default. On the list → "continue"; nothing
+  asked.
+- **`gate-prenatal-vitamin-not-on-list`** — `step-1-8` → `step-1-29`. compound **AND**: the
+  same ten codes, `not_includes_code`. Default. The exact complement of the gate above.
+- **`gate-taking-prenatal-vitamin`** — attached to `step-1-29`. **Router**, question,
+  **BOOLEAN**. Prompt: "Already taking a prenatal vitamin? None is on the medication list."
+
+  | Answer | Target |
+  |---|---|
+  | yes (`true`) | `step-1-30` — continue; add it to the medication list; nothing started |
+  | no (`false`) | `step-1-27` — start a prenatal vitamin (Med-1) |
+
+- **"Once":** one question per visit, and only while nothing recognised is on the list. Step
+  1.30 says to add the vitamin to the medication list, which stops the question at later
+  visits if the product is one of the ten codes. A product outside the list is asked about
+  again at each visit `[JOSH — CONFIRM]` (J26).
+- **Rationale & source:** [28][65][66] → Step 1.8. Proved: `gate-proof.ts prenatal-meds`
+  (folic acid, Vitafol-One and a generic prenatal multivitamin on the list → nothing asked;
+  none → asked once; yes → not started; no → started).
+
+### Vaccines: read from the medication list as dated entries `[DECISION — Josh 2026-10-04]`
+
+There is no immunization list in the patient context; a vaccine is read from `medications`
+(RXNORM, §0.8). A vaccine is given on a day, but a medication entry is an interval (§0.6 #3),
+so "given in the window" is two conditions per product code, and "due" is their negation:
+
+```
+due  =  AND over every product code of
+          count_in_window (count_comparison less_than, count_threshold 1, <window>)   — no dose dated inside the window
+        AND over every product code of
+          OR( not_includes_code (LIFETIME),                                           — not on the list at all, or
+              count_in_window (at_least 1, window_days 36525) )                       — on it with a date
+```
+
+The first half counts by the day the entry started, so a dose from an earlier pregnancy that
+is still listed with no end date does not count. The second half catches an entry with **no
+date at all** (it is on the list, yet no dated entry exists): that reads as given. All
+`status: "any"`.
+
+| Gate | Attached to → target | Product codes | Window | On unresolved |
+|---|---|---|---|---|
+| `gate-influenza-vaccine-due` | `step-1-9` → `step-1-31` | 28 influenza codes | `window_days: 180` | default |
+| `gate-covid-vaccine-due` | `step-1-9` → `step-1-32` | 10 COVID-19 codes | `window_days: 180` | default |
+| `gate-tdap-due` | `step-9-1` → `step-9-10` | 10 Tdap codes | `horizon: "PREGNANCY"` | ask (GA) |
+| `gate-rsv-vaccine-due` | `step-10-1` → `step-10-2` | 3 RSVpreF codes | — (see below) | default |
+
+- **Tdap — this pregnancy.** Given this pregnancy → not recommended; given in an earlier
+  pregnancy → recommended again (one dose every pregnancy [24]).
+- **RSV — ever.** `gate-rsv-vaccine-due` is a plain compound **AND** of `not_includes_code`
+  (`LIFETIME`, any status) over the three codes: an RSV vaccine recorded at any time closes
+  it. Josh's instruction was "not if given this pregnancy"; the guideline in this brief is
+  one dose in a lifetime, not repeated in later pregnancies [25][26], and "ever" covers both.
+  `[JOSH — CONFIRM]` (J27) that a dose in an earlier pregnancy should also close it.
+- **Influenza and COVID-19 — "this season"** `[NOT ENCODABLE]` `[JOSH — CONFIRM]` (J23):
+  there is no calendar-month operator, so the season is approximated by **180 days**.
+  - Why 180: one dose is given per season, and a season's vaccine is given from about
+    September. A dose from the previous season is at least about five months old when the
+    next season's vaccine arrives, so 180 days rarely hides a patient who is due. It errs
+    toward recommending: a patient vaccinated in September is offered it again from March
+    (the provider declines). A longer look-back would fail the other way — a March dose would
+    suppress the October vaccine — which is the worse error.
+  - The same number is used for COVID-19 (one updated dose per season).
+  - The season itself (is vaccine available now?) is not read.
+- **Simulator:** the composer sends medications undated, so a vaccine added there reads as
+  given. Dated entries are exercised in `gate-proof.ts prenatal-vaccines`.
+- **Codes are RxNorm, and seasonal** (§0.6 #4, §0.8).
+- **Rationale & source:** [24][25][26][27] → Steps 1.9, 9.1, 10.1.
 
 ### `gate-bp-elevated` — BP at or above 140/90 today (D-25) `[DECISION — Josh 2026-10-04]`
 
 - **Attached to:** `step-2-1` · **Branches to:** `step-2-2` (exclusively gated)
 - **Type:** compound **AND** · **On unresolved: ask**
-- **Conditions:**
-  - group **OR** (coded, `field: vitals`, **no `system`**, horizon **DAY**): `systolic_bp`
-    `greater_than` **139.9**, display `"Systolic BP (mmHg)"`; `diastolic_bp` `greater_than`
-    **89.9**, display `"Diastolic BP (mmHg)"` — the same two leaves as GHTN's gate;
-  - `conditions` `not_includes_code` for each of `R03.0`, `O10.*`, `O11.*`, `O13.*`,
-    `O14.*`, `O16.*` (`LIFETIME`, active).
-- **New since the draft:** the hypertension-already-coded guard, so the hand-off is not
-  repeated once the diagnosis is on file.
+- **Conditions:** group **OR** (coded, `field: vitals`, no `system`, horizon **DAY**):
+  `systolic_bp` `greater_than` **139.9**, display `"Systolic BP (mmHg)"`; `diastolic_bp`
+  `greater_than` **89.9**, display `"Diastolic BP (mmHg)"` — the same two leaves as GHTN's
+  gate; and `conditions` `not_includes_code` for each of `R03.0`, `O10.*`, `O11.*`, `O13.*`,
+  `O14.*`, `O16.*` (`LIFETIME`, active).
+- `[JOSH — CONFIRM]` (J17) the hypertension-already-on-the-chart guard.
 - **Rationale & source:** [16] → Step 2.1. Proved: `gate-proof.ts prenatal-handoffs`.
 
-### Early diabetes testing (D-6, D-7, D-29)
-
-Anemia's pattern, exactly: two threshold gates that ask, and a membership gate on the absence
-that leads to the order — all three siblings on the unconditional Step 4.1.
+### Early diabetes testing (D-6, D-7; chart-only since version 2)
 
 - **`gate-overt-diabetes`** — `step-4-1` → `step-4-3`. patient_attribute: `labs` `4548-4`
-  `greater_than` **6.49**, `LIFETIME`, display `"Hemoglobin A1c (%)"`. **On unresolved: ask.**
+  `greater_than` **6.49**, `LIFETIME`, display `"Hemoglobin A1c (%)"`. **On unresolved:
+  default.**
+  `[ON-UNRESOLVED DEFAULT — gate-overt-diabetes]` Nobody is asked for an HbA1c (Josh,
+  2026-10-04): a missing value means "not tested", and the eligibility question decides
+  whether to order it.
 - **`gate-early-abnormal-glucose`** — `step-4-1` → `step-4-4`. compound **AND**: `4548-4`
-  `greater_than` **5.89**; `4548-4` `less_than` **6.5**; both `LIFETIME`. **Ask.** Same
-  datum, one question. Mutually exclusive with the gate above at 0.1% precision.
-- **`gate-a1c-not-on-file`** — `step-4-1` → `step-4-6`. compound **OR** of two bands:
-  AND(GA < 14, `not_includes_code` 4548-4 within 98 days); AND(GA ≥ 14, none within
-  196 days). **Ask** (GA). Stage 4 is itself behind GA < 24.
+  `greater_than` **5.89**; `4548-4` `less_than` **6.5**; both `LIFETIME`. **Default.**
+  `[ON-UNRESOLVED DEFAULT — gate-early-abnormal-glucose]` As above.
+- **`gate-a1c-not-on-file`** — `step-4-1` → `step-4-6`. patient_attribute: `labs`
+  `not_includes_code` `4548-4`, horizon **`PREGNANCY`**. Ask (GA only).
 - **`gate-early-testing-indicated`** — `step-4-6` → `step-4-2`. question, **BOOLEAN**:
   > "Does this patient meet criteria for early testing for undiagnosed diabetes? Criteria: BMI
   > 25 or higher (23 or higher if Asian ancestry) PLUS at least one of: first-degree relative
@@ -1008,16 +1150,13 @@ that leads to the order — all three siblings on the unconditional Step 4.1.
   > inactivity; other insulin-resistance conditions (e.g., acanthosis nigricans). OR,
   > regardless of BMI: prediabetes (A1C 5.7% or higher) or gestational diabetes in a prior
   > pregnancy. (ADA also advises considering early testing for all patients.)"
-- **States:** HbA1c on file this pregnancy → read, no question, no order. None → the value is
-  asked for AND eligibility is asked; "Not available" + yes → HbA1c ordered, nothing blocks,
-  read at the next visit; a value typed in → read at once, and the eligibility question
-  closes.
-- `[JOSH — CONFIRM]` **Every patient before 24 weeks with no HbA1c on file is asked for one**,
-  eligible or not. The value gates must sit outside the eligibility question so that an HbA1c
-  on file is never hidden by a "no"; the engine cannot make them ask only after a "yes"
-  (§0.6 #2, the same constraint).
-- `[JOSH — CONFIRM]` The thresholds read the most recent HbA1c however old (an HbA1c ≥6.5% is
-  diabetes whenever drawn). The draft used a 90-day window.
+- **States:** an HbA1c drawn this pregnancy → read, no question, no order. None this
+  pregnancy → eligibility asked; yes → HbA1c ordered, **no result question**, nothing blocks,
+  read at the next visit. **An HbA1c on file is read whatever the eligibility answer**: the
+  two value gates sit on Step 4.1, outside the question (proved with an HbA1c of 6.8 from
+  before the pregnancy and the answer "no").
+- `[JOSH — CONFIRM]` (J13) The value gates read the most recent HbA1c however old (an HbA1c
+  ≥6.5% is diabetes whenever drawn), while "is one owed?" reads this pregnancy only.
 - `[GAP]` The ACOG CPU 2024 risk-factor table is paywalled; the prompt uses ADA Table 2.5.
 - **Rationale & source:** [52][55][56] → Step 4.1. Proved: `gate-proof.ts prenatal-gdm`.
 
@@ -1026,122 +1165,125 @@ that leads to the order — all three siblings on the unconditional Step 4.1.
 - **Attached to:** `step-6-1` · **Branches to:** `step-6-5` · compound **OR**, **ask** (GA):
   AND(GA < 28, no 718-7 within 28 days); AND(GA ≥ 28, GA < 32, none within 56 days);
   AND(GA ≥ 32, GA < 36, none within 84 days); AND(GA ≥ 36, none within 126 days).
-- "Since about 24 weeks": each band reaches back to 24 weeks from its upper edge, so a
-  hemoglobin drawn up to 4 weeks before 24 weeks can count `[NOT ENCODABLE]` (§0.6 #3).
+- "Since about 24 weeks" `[NOT ENCODABLE]` `[JOSH — CONFIRM]` (J22, §0.6 #1): not a "this
+  pregnancy" look-back, so `PREGNANCY` does not apply; each band reaches back to 24 weeks
+  from its upper edge.
 - **Rationale & source:** [1][2] → Step 6.1. Proved: `gate-proof.ts prenatal-handoffs`.
 
-### GDM status from 24 weeks (D-22, D-5, D-29) `[DECISION — Josh 2026-10-04]`
+### Gestational diabetes from 24 weeks: read the chart, ask nothing `[DECISION — Josh 2026-10-04]`
 
-**The new shape.** The draft asked one SELECT at every visit from 24 weeks (not screened
-two-step / one-step / screened negative / already diagnosed). Three of those four are now read
-from the chart, on Step 6.2:
+Five gates on Step 6.2, each with "no diabetes code on the chart" (`conditions`
+`not_includes_code` `O24.*`, `LIFETIME`, active) except the first. Every lab leaf is
+`horizon: "PREGNANCY"`.
 
 | Chart state | Gate | Opens | Asked |
 |---|---|---|---|
-| A diabetes code (O24.-) on the problem list | `gate-diabetes-on-file` | Step 6.4 "already diagnosed: no screening" | nothing |
-| No diabetes code, and a negative screen on file (50-g <140, or all three 75-g values below threshold) | `gate-gdm-screen-negative` | Step 6.3 "screening complete" | nothing |
-| No diabetes code and no negative screen (nothing on file; or a 50-g ≥140; or a 75-g value at or above threshold; or an incomplete 75-g test) | `gate-gdm-screen-open` | Step 6.6 → the strategy question | the strategy |
+| A diabetes code (O24.-) on the chart | `gate-diabetes-on-file` | Step 6.4 — no screening | nothing |
+| 50-g <140, or all three 75-g values below threshold | `gate-gdm-screen-negative` | Step 6.3 — complete | nothing |
+| No 50-g and no 75-g value this pregnancy | `gate-gdm-nothing-on-file` | Step 6.6 — the strategy question → Step 6.7 (order the 50-g) or Step 6.8 (order the 75-g) | the strategy, once |
+| 50-g ≥140 | `gate-gct-positive` | Step 6.9 — the 100-g test | nothing |
+| Any 75-g value at or above threshold | `gate-75g-diagnostic` | Step 6.13 — diagnose GDM | nothing |
 
-The second and third are exact complements (De Morgan, leaf by leaf), so exactly one is open
-for every patient without a diabetes code.
+And on Step 6.9, behind the positive 50-g:
 
-Behind the strategy question, each strategy's stage has the anemia pattern: a membership gate
-on the absence that opens the **order** step, beside a threshold gate that **asks** for the
-result.
+| Chart state | Gate | Opens | Asked |
+|---|---|---|---|
+| No 100-g value this pregnancy | `gate-ogtt100-not-on-file` | Step 6.10 — order the 100-g test; O99.810 | nothing |
+| Two or more of the four values at or above threshold | `gate-100g-diagnostic` | Step 6.11 — diagnose GDM | nothing |
+| Fewer than two | `gate-100g-negative` | Step 6.12 — complete | nothing |
 
 | Visit | What happens |
 |---|---|
-| Nothing on file | Strategy asked → two-step → 50-g ordered (Step 7.5), result asked for → **"Not available"**: order stays, nothing blocks, plan generates |
-| Same visit, result typed in: 121 | Read at once: screening complete (Step 6.3); the order and the strategy question close |
-| Same visit, result typed in: 155 | Read at once: the 50-g order closes, Step 7.2 opens, the 100-g question is asked |
-| Next visit, 50-g 118 on file | Screening complete; nothing asked |
-| Next visit, 50-g 152 on file | Strategy asked (§0.6 #2), then the 100-g question: "Not resulted yet" → 100-g ordered, O99.810; "Meets" → diagnose GDM; "Does not meet" → Step 7.4 |
-| O24.410 on file | No screening, nothing asked |
+| Nothing on file at 28 weeks | Strategy asked once → the chosen test is ordered → **no result question**, no blocker, plan generates |
+| Next visit, still nothing on file (the test was not done, or is not on the chart) | The strategy is asked again — the chart cannot say which test was ordered |
+| 50-g 118 on file | Screening complete; nothing asked |
+| 50-g 152 on file | The 100-g test is ordered; **no strategy question, no result question** |
+| 50-g 152 and the four 100-g values on file | Two or more abnormal → diagnose GDM; otherwise complete. Nothing asked, and nothing recurs at later visits |
+| O24.410 on the chart | No screening, nothing asked |
 
 All of it is proved in `gate-proof.ts prenatal-gdm`, in both edge orders.
 
 - **`gate-diabetes-on-file`** — `step-6-2` → `step-6-4`. patient_attribute: `conditions`
   `includes_code` `O24.*` (ICD-10, `LIFETIME`, active). Default.
-  - `[JOSH — CONFIRM]` `O24.*` is every diabetes-in-pregnancy code, gestational and
-    pre-existing. A GDM code left **active** on the problem list from a previous pregnancy
-    would read as diagnosed.
-- **`gate-gdm-screen-negative`** — `step-6-2` → `step-6-3`. compound **AND**:
-  `not_includes_code` `O24.*`; group **OR**: `1504-0` `less_than` **139.9**; group **AND**:
-  `1552-9` `less_than` **91.9**, `1507-3` `less_than` **179.9**, `1518-0` `less_than`
-  **152.9**. All labs horizon `{days: 140}`.
-  - **On unresolved: default.** `[ON-UNRESOLVED DEFAULT — gate-gdm-screen-negative]` A missing
-    value here means "not screened", which is `gate-gdm-screen-open`'s case; asking would put
-    a 50-g question and a 75-g question to every unscreened patient before the strategy is
-    known.
-  - `[WINDOW — gate-gdm-screen-negative: a glucose screen from a previous pregnancy is meaningless for this one. 140 days (20 weeks) reaches back to 24 weeks from any gestational age up to 44 weeks and, at 24 weeks, no further than 4 weeks of this pregnancy]`
-- **`gate-gdm-screen-open`** — `step-6-2` → `step-6-6`. compound **AND**: `not_includes_code`
-  `O24.*`; group **OR**: `not_includes_code` `1504-0`, `1504-0` `greater_than` **139.9**;
-  group **OR**: for each of `1552-9` / `1507-3` / `1518-0`, `not_includes_code` and
-  `greater_than` **91.9** / **179.9** / **152.9**. Horizon `{days: 140}`. **Ask** (it can
-  only be unresolved on two undated results for one code).
-  - `[WINDOW — gate-gdm-screen-open: the complement of gate-gdm-screen-negative, on the same window]`
+- **`gate-gdm-screen-negative`** — `step-6-2` → `step-6-3`. compound **AND**: no `O24.*`;
+  group **OR**: `1504-0` `less_than` **139.9**; group **AND**: `1552-9` `less_than` **91.9**,
+  `1507-3` `less_than` **179.9**, `1518-0` `less_than` **152.9**. **Default.**
+  - `[ON-UNRESOLVED DEFAULT — gate-gdm-screen-negative]` A missing value means "not
+    screened"; a result is never asked for (Josh, 2026-10-04).
+  - `[WINDOW — gate-gdm-screen-negative: this pregnancy. A glucose screen from an earlier pregnancy says nothing about this one]`
+- **`gate-gdm-nothing-on-file`** — `step-6-2` → `step-6-6`. compound **AND**: no `O24.*`;
+  `not_includes_code` `1504-0`, `1552-9`, `1507-3`, `1518-0` (`PREGNANCY`). Ask (GA only).
 - **`gate-gdm-strategy`** — attached to `step-6-6`. **Router**, question, **SELECT** (D-5):
 
   | Option (exact string) | Target |
   |---|---|
-  | `"Two-step: 50-g 1-hour challenge, then a 100-g 3-hour test if it is 140 mg/dL or higher"` | `stage-7` |
-  | `"One-step: 75-g 2-hour test"` | `stage-8` |
+  | `"Two-step: 50-g 1-hour challenge, then a 100-g 3-hour test if it is 140 mg/dL or higher"` | `step-6-7` |
+  | `"One-step: 75-g 2-hour test"` | `step-6-8` |
 
   Prompt:
-  > "Gestational diabetes screening for this patient: two-step (50-g 1-hour challenge, then a
-  > 100-g 3-hour test if it is 140 mg/dL or higher) or one-step (75-g 2-hour test)? If a 50-g
-  > result is already on file, the two-step strategy is under way."
-- **`gate-gct-not-on-file`** — `step-7-1` → `step-7-5`. patient_attribute: `labs`
-  `not_includes_code` `1504-0`, `{days: 140}`. Default.
-- **`gate-gct-positive`** — `step-7-1` → `step-7-2` `[DECISION D-3 — Josh 2026-09-24]`.
-  patient_attribute: `1504-0` `greater_than` **139.9**, `{days: 140}`, display `"Glucose 1 h
-  post 50 g glucose (mg/dL)"`. **On unresolved: ask** (D-29).
-  - `[WINDOW — gate-gct-positive: as gate-gdm-screen-negative — this pregnancy's screen only]`
+  > "No gestational diabetes screening result is on file. Which test: two-step (50-g 1-hour
+  > challenge, then a 100-g 3-hour test if it is 140 mg/dL or higher) or one-step (75-g 2-hour
+  > test)?"
+- **`gate-gct-positive`** — `step-6-2` → `step-6-9` `[DECISION D-3 — Josh 2026-09-24]`.
+  compound **AND**: no `O24.*`; `1504-0` `greater_than` **139.9**, display `"Glucose 1 h post
+  50 g glucose (mg/dL)"`. **Default.**
+  - `[ON-UNRESOLVED DEFAULT — gate-gct-positive]` As `gate-gdm-screen-negative`.
+  - `[WINDOW — gate-gct-positive: this pregnancy]`
   - `[GAP]` A 50-g value ≥200 treated as diagnostic: no accessible US source. Not built.
-- **`gate-100g-diagnostic`** — attached to `step-7-2`. **Router**, question, **SELECT**
-  `[DECISION D-4 — Josh 2026-09-24]`:
+- **`gate-75g-diagnostic`** — `step-6-2` → `step-6-13`. compound **AND**, **ask**: no
+  `O24.*`; group **OR** `includes_code` `1552-9` / `1507-3` / `1518-0` (at least one 75-g
+  value on file); group **OR** `1552-9` `greater_than` **91.9**, `1507-3` `greater_than`
+  **179.9**, `1518-0` `greater_than` **152.9**.
+  - The "at least one on file" group is why this gate never asks at the ordering visit: with
+    none on file it is a definite no. With part of the test on file it asks for the missing
+    values — a gap in a test the chart shows was done.
+  - `[WINDOW — gate-75g-diagnostic: this pregnancy]`
+- **`gate-ogtt100-not-on-file`** — `step-6-9` → `step-6-10`. compound **AND**:
+  `not_includes_code` `1549-5`, `1501-6`, `1514-9`, `1530-5` (`PREGNANCY`). Ask (GA only).
+- **`gate-100g-diagnostic`** — `step-6-9` → `step-6-11` `[DECISION D-4 — Josh 2026-09-24]`,
+  built from the chart `[DECISION — Josh 2026-10-04]`. compound **AND**, **ask**:
+  - group **OR** `includes_code` over the four LOINCs (at least one 100-g value on file);
+  - group **OR** of six groups, one per pair, each an **AND** of two `greater_than` leaves:
 
-  | Option (exact string) | Target |
-  |---|---|
-  | `"Not resulted yet"` | `step-7-6` (orders the 100-g test; O99.810) |
-  | `"Meets criteria: two or more values at or above threshold"` | `step-7-3` (diagnose GDM) |
-  | `"Does not meet criteria: fewer than two values at or above threshold"` | `step-7-4` |
+    | Pair | Leaves |
+    |---|---|
+    | fasting and 1-hour | `1549-5` > **94.9** AND `1501-6` > **179.9** |
+    | fasting and 2-hour | `1549-5` > 94.9 AND `1514-9` > **154.9** |
+    | fasting and 3-hour | `1549-5` > 94.9 AND `1530-5` > **139.9** |
+    | 1-hour and 2-hour | `1501-6` > 179.9 AND `1514-9` > 154.9 |
+    | 1-hour and 3-hour | `1501-6` > 179.9 AND `1530-5` > 139.9 |
+    | 2-hour and 3-hour | `1514-9` > 154.9 AND `1530-5` > 139.9 |
 
-  Prompt:
-  > "100-g 3-hour glucose tolerance test (Carpenter-Coustan thresholds: fasting 95, 1-hour
-  > 180, 2-hour 155, 3-hour 140 mg/dL): not resulted yet; meets criteria (two or more values
-  > at or above threshold); or does not meet criteria?"
-  - **Changed from the draft's BOOLEAN**: a question gate has no "Not available", so at the
-    visit that orders the 100-g test a yes/no question could only be answered "no", which
-    also meant "not diabetes". "Not resulted yet" is the D-29 answer for this gate, and the
-    order sits behind it so it is not re-ordered once resulted.
-  - `[JOSH — CONFIRM]` This question recurs at every visit for a patient with a positive
-    50-g challenge until O24.4x is coded — including after a normal 100-g test, because
-    nothing in the chart records that conclusion (§0.6 #1).
-- **`gate-ogtt75-not-on-file`** — `step-8-1` → `step-8-3`. compound **AND**:
-  `not_includes_code` `1552-9`, `1507-3`, `1518-0`, `{days: 140}`. Default.
-- **`gate-75g-diagnostic`** — `step-8-1` → `step-8-2`. compound **OR**, **ask**: `1552-9`
-  `greater_than` **91.9**; group **AND**: `includes_code` `1552-9`; group **OR**: `1507-3`
-  `greater_than` **179.9**, `1518-0` `greater_than` **152.9**. Horizon `{days: 140}`.
-  - The inner group makes the gate ask for **one** value at the ordering visit (the fasting
-    one); one "Not available" then closes it. With the fasting value on file it asks for the
-    1-hour and 2-hour values.
-  - `[WINDOW — gate-75g-diagnostic: as gate-gdm-screen-negative — this pregnancy's screen only]`
-- `[JOSH — CONFIRM]` **A screen drawn before 24 weeks is inside the 140-day window.** A 50-g
-  challenge at, say, 14 weeks is read at 24 weeks. Positive: correct (PB 180 — go straight to
-  the diagnostic test). Negative: read as "screening complete", which is wrong; Step 6.3 and
-  Guid-17 say a result drawn before 24 weeks is not the screen and to order it. This pathway
-  never orders an early 50-g (D-6), so it arises only from testing done outside it
-  `[NOT ENCODABLE]` (§0.6 #3).
+  "Two or more of four at or above threshold" is exactly "some pair is both at or above".
+  Each group carries a `display` ("Fasting and 1-hour both at or above threshold").
+  - `[WINDOW — gate-100g-diagnostic: this pregnancy]`
+- **`gate-100g-negative`** — `step-6-9` → `step-6-12`. compound **AND**, **ask**: the same
+  "at least one on file" group; then six groups, one per pair, each an **OR** of two
+  `less_than` leaves on the same numbers ("fasting or 1-hour below threshold", …). It is the
+  leaf-by-leaf De Morgan complement of the gate above: "fewer than two abnormal" is "in every
+  pair, at least one is normal".
+  - `[WINDOW — gate-100g-negative: this pregnancy]`
+  - **Why build it (V2-12).** With chart-only reading the question could only be answered by
+    someone holding the result, and nothing recorded a "does not meet" answer, so it recurred
+    at every visit to delivery. The four values on the chart settle it once.
+  - **Proved**: all six pairs → diagnose; each single abnormal value → complete; all four
+    abnormal → diagnose; exactly one of the two gates is open whenever the four values are on
+    file. A partly entered test asks for the missing value and re-orders nothing.
+  - 12 leaves per gate; the canvas shows the six pair names, not the leaves.
+- **What is still asked, and what recurs across visits:** only the strategy, and only while
+  no screening result is on file. Nothing recurs once any result is on the chart.
+- `[JOSH — CONFIRM]` (J10) **A screen drawn before 24 0/7 weeks is inside `PREGNANCY`**
+  `[NOT ENCODABLE]` (§0.6 #1). A negative early 50-g reads as "complete"; Step 6.3 and Guid-17
+  keep the instruction to order the screen in that case.
 - "≥140" is `greater_than 139.9` and "<140" is `less_than 139.9`: complements for every value
-  except exactly 139.9, which a whole-number mg/dL result never takes. Likewise 91.9 / 179.9 /
-  152.9.
-- **Rationale & source:** [53][55][57] → Steps 6.2, 7.1, 7.2, 8.1.
+  except exactly 139.9, which a whole-number mg/dL result never takes. Likewise the others.
+- **Rationale & source:** [53][54][55][57] → Steps 6.2, 6.6, 6.9.
 
 ### Third-trimester rescreen gates (all attached to `step-9-5`)
 
 compound **OR**, **ask** (GA). Bands: AND(GA < 32, none within 35 days); AND(GA ≥ 32, GA < 37,
-none within 70 days); AND(GA ≥ 37, none within 105 days). Stage 9 is behind GA ≥ 27.
+none within 70 days); AND(GA ≥ 37, none within 105 days). "Since about 27 weeks"
+`[NOT ENCODABLE]` (J22, §0.6 #1).
 
 | Gate | Absent | Branches to |
 |---|---|---|
@@ -1149,29 +1291,26 @@ none within 70 days); AND(GA ≥ 37, none within 105 days). Stage 9 is behind GA
 | `gate-hiv-rescreen-due` | 56888-1 | `step-9-8` |
 | `gate-ct-gc-rescreen-due` | 21613-5 AND 21416-3 | `step-9-9` |
 
-HIV and chlamydia/gonorrhea rescreening are risk-based; risk is not in the chart, so the order
-appears for every patient with "if at risk" in its name. **Source:** [8][10][11][15] → Step 9.5.
+HIV and chlamydia/gonorrhea rescreening are risk-based and shown for everyone
+(`[DECISION — Josh 2026-10-04]`). **Source:** [8][10][11][15] → Step 9.5.
 
 ### `gate-gbs-culture-due`
 
 - **Attached to:** `step-11-1` · **Branches to:** `step-11-4` · compound **AND**, default:
   `labs` `not_includes_code` `72607-5` within **35 days**; `not_includes_code` `91875-5`
   within 35 days; `conditions` `not_includes_code` `O99.820`.
-- 35 days is the result's validity (CO 797: valid 5 weeks), so an expired culture is ordered
-  again.
+- 35 days is the result's validity (CO 797: valid 5 weeks), not a "this pregnancy" look-back.
 - **Rationale & source:** [20] → Step 11.1. Proved: `gate-proof.ts prenatal-meds`.
 
 ## 5. Medications
 
-Six Medication nodes. No `ESCALATES_TO`. The medication list is read before the two
-medications that live on it are started (§4b); the four vaccines are not on a medication list
-and the context has no immunization field (§0.6 #9).
+Six Medication nodes. No `ESCALATES_TO`. **Every one is checked against the medication list
+before it is recommended** (§4b): the prenatal vitamin and aspirin against their ingredient
+and product codes, and the four vaccines against their RxNorm product codes as dated entries
+`[DECISION — Josh 2026-10-04]`.
 
-`[NO MEDICATION CHECK — influenza, COVID-19, Tdap and RSV vaccines: the patient context (PatientContext) has conditions, medications, labs, allergies, vitals and patient attributes, and no immunization field; the pathway's vaccine codes are CPT administration codes, which a medication list does not hold. Each vaccine step says to confirm what has already been given. A prior RSV vaccine, given once in a lifetime, is the case this misses]`
-`[JOSH — CONFIRM]` (J20).
-
-- **Med-1 — Prenatal vitamin with folic acid 0.4–0.8 mg** (on Step 1.27, behind
-  `gate-no-folic-acid`)
+- **Med-1 — Prenatal vitamin with folic acid 0.4–0.8 mg** (on Step 1.27, reached only when
+  none is on the medication list and the patient says she is not taking one)
   - **Role:** first_line · **clinical role:** `prenatal-vitamin-supplementation`
   - **Dose:** one tablet PO daily (folic acid 400–800 mcg, iron, iodine 150 mcg), from at
     least 1 month before conception through pregnancy.
@@ -1184,9 +1323,10 @@ and the context has no immunization field (§0.6 #9).
     as GHTN `med-1`, so the merge shows one.
   - **Dose:** 81 mg PO once daily, from 12–28 weeks until delivery.
   - **Codes:** RxNorm 1191 (IN), 243670 (81 mg tablet). **Source:** [17][18][19][64]
-- **Med-3 — Influenza vaccine, inactivated or recombinant** (on Step 1.9): first_line,
-  `influenza-immunization`; one dose IM per season; CPT 90656, 90673. [24][25][27]
-- **Med-4 — COVID-19 vaccine (current-season formulation)** (on Step 1.9) `[DECISION D-26 —
+- **Med-3 — Influenza vaccine, inactivated or recombinant** (on Step 1.31, behind
+  `gate-influenza-vaccine-due`): first_line, `influenza-immunization`; one dose IM per season;
+  CPT 90656, 90673. [24][25][27]
+- **Med-4 — COVID-19 vaccine (current-season formulation)** (on Step 1.32, behind `gate-covid-vaccine-due`) `[DECISION D-26 —
   Josh 2026-09-24]`
   - **Role:** first_line (per ACOG) · **clinical role:** `covid-immunization`
   - **Dose:** one dose IM of the current-season product, any trimester. `[GAP]` The
@@ -1207,14 +1347,14 @@ and the context has no immunization field (§0.6 #9).
     - CDC interim considerations (Sep 2026) urge a review of risks and benefits.
   - **Code:** `[GAP]` 2026–27 product CPTs are not in the CDC crosswalk.
   - **Source:** [24][25]
-- **Med-5 — Tdap vaccine** (on Step 9.1): first_line, `pertussis-immunization`; one dose IM
-  each pregnancy, early in the 27–36-week window; CPT 90715. [24][25]
-- **Med-7 — RSV vaccine, RSVpreF (Abrysvo)** (on Step 10.1): first_line,
-  `rsv-maternal-immunization`; one dose IM at 32 0/7–36 6/7 weeks in season, once in a
-  lifetime; CPT 90678. [25][26]
+- **Med-5 — Tdap vaccine** (on Step 9.10, behind `gate-tdap-due`): first_line,
+  `pertussis-immunization`; one dose IM each pregnancy, early in the 27–36-week window; CPT
+  90715. [24][25]
+- **Med-7 — RSV vaccine, RSVpreF (Abrysvo)** (on Step 10.2, behind `gate-rsv-vaccine-due`):
+  first_line, `rsv-maternal-immunization`; one dose IM at 32 0/7–36 6/7 weeks in season, once
+  in a lifetime; CPT 90678. [25][26]
 
-**Removed:** Med-6 Rho(D) immune globulin `[DECISION — Josh 2026-10-04]` (§0.9). The id
-`med-6` is left unused.
+**Removed in version 1:** Med-6 Rho(D) immune globulin `[DECISION — Josh 2026-10-04]` (§0.9).
 
 **Not given nodes** (text only): folic acid 4 mg; hepatitis B vaccine; MMR and varicella
 (postpartum only); doxylamine–pyridoxine (out of scope).
@@ -1245,16 +1385,18 @@ line and lists the other names as "Ordered for: …" (§0.4).
 | Lab-16 | 5.2 | Quad screen — if serum screening is chosen and no first-trimester screen was done | — | 81511 | [4] |
 | Lab-17 | 4.2 | Hemoglobin A1c — early testing for undiagnosed diabetes (none this pregnancy) | 4548-4 | 83036 | [55] |
 | Lab-19 | 6.5 | CBC with indices — 24-28-week anemia rescreen (no hemoglobin since 24 weeks) | 58410-2 | 85025 | [1][2] |
-| Lab-20 | 7.5 | 50-g 1-hour glucose challenge — gestational diabetes screen, two-step (no result on file) | 1504-0 | 82950 | [53][55][57] |
-| Lab-21 | 7.6 | 100-g 3-hour glucose tolerance test — diagnostic test after a positive 50-g challenge | 50608-9; 1549-5, 1501-6, 1514-9, 1530-5 | 82951, 82952 | [53][55][57] |
-| Lab-22 | 8.3 | 75-g 2-hour glucose tolerance test — gestational diabetes screen, one-step (no result on file) | 1552-9; 1507-3, 1518-0 | 82951 | [55][57] |
+| Lab-20 | 6.7 | 50-g 1-hour glucose challenge — gestational diabetes screen, two-step (no screening result this pregnancy) | 1504-0 | 82950 | [53][55][57] |
+| Lab-21 | 6.10 | 100-g 3-hour glucose tolerance test — diagnostic test after a positive 50-g challenge (no result this pregnancy) | 50608-9; 1549-5, 1501-6, 1514-9, 1530-5 | 82951, 82952 | [53][55][57] |
+| Lab-22 | 6.8 | 75-g 2-hour glucose tolerance test — gestational diabetes screen, one-step (no screening result this pregnancy) | 1552-9; 1507-3, 1518-0 | 82951 | [55][57] |
 | Lab-24 | 9.7 | Syphilis serology — third-trimester rescreen, every patient (none since 27 weeks) | 20507-0; 22587-0 | 86592, 86780 | [7][8] |
 | Lab-25 | 9.8 | HIV-1/2 antigen and antibody — third-trimester rescreen if at risk (none since 27 weeks) | 56888-1 | 87389 | [10][11] |
 | Lab-26 | 9.9 | Chlamydia and gonorrhea NAAT — third-trimester rescreen if under 25 or at risk (none since 27 weeks) | 21613-5; 21416-3 | 87491, 87591 | [15] |
 | Lab-27 | 11.4 | Group B streptococcus vaginal-rectal culture — 36-37-week screen (no valid result on file) | 72607-5 | 87081 | [20] |
 
-- **Removed:** Lab-18 fasting plasma glucose (D-6: HbA1c only) and Lab-23 repeat antibody
-  screen for Rh-negative patients (§0.9). Their ids are left unused.
+- **Removed in version 1:** Lab-18 fasting plasma glucose (D-6: HbA1c only) and Lab-23, the
+  24–28-week repeat antibody screen for Rh-negative patients (§0.9; confirmed by Josh on
+  review). Their ids are left unused.
+- The 100-g values (1549-5, 1501-6, 1514-9, 1530-5) are now read by gates, not only ordered.
 - Lab-14, -15 and -16 have no verified result LOINC, so the chart is not checked for them;
   they are patient-choice tests and say so in their names.
 
@@ -1280,7 +1422,7 @@ v2 carried these as `Procedure` nodes, which is the wrong node type.
 
 ## 9. Guidance
 
-23 Guidance nodes. Each was checked against the spec's "guidance says what the order lines
+24 Guidance nodes. Each was checked against the spec's "guidance says what the order lines
 cannot": none names an order its own step carries, none repeats another node, and each topic
 is the point in a few words. Two changes for that rule:
 - **Guid-3** no longer opens with "take a daily prenatal vitamin" (that is Med-1's line).
@@ -1378,8 +1520,8 @@ Unchanged from the 2026-09-24 draft:
     fasting and at 1 and 2 hours.
   - Stay seated and do not eat or smoke during the test."
   - **Source:** [53][55]
-- **Guid-A4 — topic `GDM diagnosis: what happens next`** (on Step 7.3; duplicate node Guid-A4b,
-  same topic and text, on Step 8.2), education.
+- **Guid-A4 — topic `GDM diagnosis: what happens next`** (on Step 6.11; duplicate node Guid-A4b,
+  same topic and text, on Step 6.13), education.
   - "Gestational diabetes means your body is not handling sugar as well as it needs to during
     pregnancy. Most patients (about 70–85%) control it with changes in eating and activity
     alone.
@@ -1394,7 +1536,8 @@ Unchanged from the 2026-09-24 draft:
   - Whether treating this early helps is still being studied; we will decide together."
   - **Source:** [55][56]
 
-Edited or new on 2026-10-04 (exact node text):
+Edited or new on 2026-10-04 (exact node text; hand-off wording is "on this encounter" since
+version 2):
 
 - **Guid-3 — `Eating well and food safety in pregnancy`** (Step 1.8), lifestyle: "To avoid
   listeria, a germ that can harm your baby: skip raw (unpasteurized) milk and cheeses made
@@ -1407,47 +1550,51 @@ Edited or new on 2026-10-04 (exact node text):
   patients have type 2 diabetes before pregnancy without knowing it. With risk factors,
   checking at the first visits means diabetes can be treated from the start. A normal early
   result does not replace the standard glucose test at 24-28 weeks." [55][56]
-- **Guid-10 — `Already taking folic acid: check what the supplement contains`** (Step 1.28),
-  education: "A folic acid supplement is already on the medication list, so none is started.
-  Confirm it supplies 400-800 mcg of folic acid a day, with iron and iodine, and that the
-  labelled dose is not exceeded." [28][65][66][67]
+- **Guid-10 — `Already taking a prenatal vitamin: check what it contains`** (Step 1.28),
+  education: "A folic acid supplement or prenatal vitamin is already on the medication list,
+  so none is started. Confirm it supplies 400-800 mcg of folic acid a day, with iron and
+  iodine, and that the labelled dose is not exceeded." [28][65][66][67]
+- **Guid-19 — `Prenatal vitamin reported but not listed`** (Step 1.30), education: "She is
+  taking a prenatal vitamin that is not on the medication list, so none is started. Add it to
+  the medication list so it is not asked about again, and confirm it supplies 400-800 mcg of
+  folic acid a day, with iron and iodine." [28][65][66][67]
 - **Guid-11 — `Already on low-dose aspirin: continue it`** (Step 1.25), education: "Aspirin is
   already on the medication list. Continue 81 mg daily until delivery; do not add a second
   prescription. It is exempt from the advice to avoid NSAIDs from 20 weeks." [17][18][19][64]
-- **Guid-12 — `Low hemoglobin: what happens next`** (Step 1.23), education: "The most recent
-  hemoglobin is below the screening threshold for this trimester (11.0 g/dL in the first and
-  third, 10.5 g/dL in the second). Add anemia complicating pregnancy to the problem list so
-  the anemia pathway can guide the workup and treatment. Routine prenatal care continues
-  unchanged." [1][2]
+- **Guid-12 — `Low hemoglobin: what happens next`** (Step 1.23), education: "The hemoglobin
+  drawn this pregnancy is below the screening threshold for this trimester (11.0 g/dL in the
+  first and third, 10.5 g/dL in the second). Add anemia complicating pregnancy as a diagnosis
+  on this encounter so the anemia pathway can guide the workup and treatment. Routine
+  prenatal care continues unchanged." [1][2]
 - **Guid-13 — `Rh(D)-negative: what routine care does not cover`** (Step 1.24), education:
-  "This pathway recommends no Rh immune globulin. Record the Rh-negative blood type on the
-  problem list and manage Rh prophylaxis under the Rh-negative plan of care." [21][22]
+  "This pathway recommends no Rh immune globulin and no repeat antibody screen. Add the
+  Rh-negative blood type as a diagnosis on this encounter and manage Rh prophylaxis under the
+  Rh-negative plan of care." [21][22]
 - **Guid-14 — `Elevated blood pressure: what happens next`** (Step 2.2), education: "Today's
   blood pressure is 140/90 or higher. Repeat it. If it stays elevated, add the diagnosis to
-  the problem list (R03.0 until confirmed; gestational hypertension or preeclampsia once
+  this encounter (R03.0 until confirmed; gestational hypertension or preeclampsia once
   confirmed) so the hypertension in pregnancy pathway can guide the evaluation. Urine protein
   is tested only when preeclampsia is suspected, not routinely." [16]
 - **Guid-15 — `A1c in the diabetes range: what happens next`** (Step 4.3), education: "The
   hemoglobin A1c is 6.5% or higher, which means diabetes that was present before pregnancy.
   Confirm it with a second test unless the result is unequivocal, then add pre-existing
-  diabetes in pregnancy to the problem list. No gestational diabetes screening is needed once
-  it is recorded." [55]
-- **Guid-16 — `Diabetes on the problem list: screening is not repeated`** (Step 6.4),
-  education: "Diabetes in pregnancy is already on the problem list, so no glucose screening
-  test is ordered. Glucose management follows the diabetes plan of care; routine prenatal
-  care continues unchanged." [55][56]
+  diabetes in pregnancy as a diagnosis on this encounter. No gestational diabetes screening
+  is needed once it is on the chart." [55]
+- **Guid-16 — `Diabetes on the chart: screening is not repeated`** (Step 6.4), education:
+  "Diabetes in pregnancy is already on the chart, so no glucose screening test is ordered.
+  Glucose management follows the diabetes plan of care; routine prenatal care continues
+  unchanged." [55][56]
 - **Guid-17 — `What a negative glucose screen settles`** (Step 6.3), education: "The glucose
   screening result on file is negative, so gestational diabetes screening is complete and is
   not repeated. Retest only on clinical suspicion: new glycosuria, a fetus measuring large,
   or excess amniotic fluid. If the result on file was drawn before 24 weeks it is not the
   screen; order the screening test." [53][55]
-- **Guid-18 — `A positive challenge with a normal 3-hour test`** (Step 7.4), education: "The
+- **Guid-18 — `A positive challenge with a normal 3-hour test`** (Step 6.12), education: "The
   3-hour test did not meet the criteria for gestational diabetes, so no diabetes diagnosis is
-  made and screening is not repeated unless there is a new clinical reason. Remove O99.810
-  only if it no longer describes the pregnancy." [53][55]
+  made and screening is not repeated unless there is a new clinical reason." [53][55]
 
-`[JOSH — CONFIRM]` the wording of Guid-10 to Guid-18: they are the builder's sentences for
-the hand-off and "already on it" steps, written from the brief's own step text.
+`[JOSH — CONFIRM]` (J18) the wording of Guid-10 to Guid-19: they are the builder's sentences
+for the hand-off and "already on it" steps, written from the brief's own step text.
 
 ## 10. Quality metrics
 
@@ -1483,12 +1630,12 @@ the hand-off and "already on it" steps, written from the brief's own step text.
 | Sched-1 | Step 2.4 | "Tailored: intake plus about 8 visits (average risk) or about 13 (greater than average)" | Traditional reference: every 4 weeks to 28, every 2 weeks to 36, then weekly. The CC No. 8 sample puts in-person visits at 10, 16, 28, 36 and 39 weeks; any modality at 22, 32 and 38; anatomy US at 20. | [1][2] |
 | Sched-2 | Step 1.7 | "Start at 12-28 weeks (optimally before 16), then daily until delivery" | Low-dose aspirin | [18][19] |
 | Sched-3 | Step 4.5 | "24 0/7-28 6/7 weeks" | Universal GDM screening window | [55][57] |
-| Sched-4 | Step 9.1 | "27-36 weeks, early in the window, every pregnancy" | Tdap | [24][25] |
-| Sched-6 | Step 10.1 | "32 0/7-36 6/7 weeks, in season" | Maternal RSV vaccine. ACOG September 1 to March 1; CDC September through January | [25][26] |
+| Sched-4 | Step 9.10 | "27-36 weeks, early in the window, every pregnancy" | Tdap | [24][25] |
+| Sched-6 | Step 10.2 | "32 0/7-36 6/7 weeks, in season" | Maternal RSV vaccine. ACOG September 1 to March 1; CDC September through January | [25][26] |
 | Sched-7 | Step 11.4 | "36 0/7-37 6/7 weeks" | GBS culture; valid 5 weeks | [20] |
 | Sched-8 | Step 12.1 | "Once or twice weekly from 41 0/7 weeks until delivery" | Late-term surveillance | [46] |
 
-Sched-5 (RhIG) is removed (§0.9).
+Sched-5 (RhIG) was removed in version 1 (§0.9).
 
 ## 12. Prerequisites (REQUIRES)
 
@@ -1497,14 +1644,10 @@ One pair, because a prerequisite with no `satisfaction_check` always surfaces as
 
 - `step-5-1` REQUIRES `step-1-1`: the anatomy survey dates a pregnancy not yet dated [3].
 
-Dropped on 2026-10-04: `step-9-3 → step-1-3` (RhIG, §0.9); and the three GDM pairs
-(`7-2 → 7-1`, `7-3 → 7-2`, `8-2 → 8-1`), which are now structural — each dependent step sits
-behind a gate hosted on its prerequisite.
-
 ## 13. Code entries
 
 One CodeEntry node per code, shared by its hosts (CodeEntry nodes are exempt from the
-one-node-per-host rule; anemia does the same). 77 nodes.
+one-node-per-host rule). 77 nodes.
 
 **Condition codes on steps:**
 
@@ -1515,19 +1658,21 @@ one-node-per-host rule; anemia does the same). 77 nodes.
 | Z67.91 | ICD-10 | Unspecified blood type, Rh negative | Step 1.24 |
 | R03.0 | ICD-10 | Elevated blood-pressure reading, without diagnosis of hypertension | Step 2.2 |
 | O24.111, O24.112, O24.113, O24.119 | ICD-10 | Pre-existing type 2 diabetes mellitus, in pregnancy | Step 4.3 |
-| O99.810 | ICD-10 | Abnormal glucose complicating pregnancy | Step 7.6 |
-| O24.410 | ICD-10 | Gestational diabetes mellitus in pregnancy, diet controlled | Step 7.3, Step 8.2 |
+| O99.810 | ICD-10 | Abnormal glucose complicating pregnancy | Step 6.10 |
+| O24.410 | ICD-10 | Gestational diabetes mellitus in pregnancy, diet controlled | Step 6.11, Step 6.13 |
 
 **Lab codes:** each LabTest carries the LOINC and CPT codes in its §6 row.
 **Imaging:** 76801, 76817 (Img-1); 76813 (Img-2); 76805 (Img-3). **Procedures:** 59025
 (Proc-1); 76818 (Proc-2); 59412 (Proc-3).
 
 **Medication codes:** RXNORM 4511 (Med-1); RXNORM 1191, 243670 (Med-2); CPT 90656, 90673
-(Med-3); CPT 90715 (Med-5); CPT 90678 (Med-7). RXNORM 35465 (RhIG) is removed.
+(Med-3); CPT 90715 (Med-5); CPT 90678 (Med-7).
 
-Codes read by gates but not emitted as CodeEntry nodes: RXNORM 198640, 310410, 318272;
-ICD-10 Z67.11 / .21 / .31 / .41, O24.\*, O99.01.\*, D50.\*, O10–O16, O99.820; LOINC 718-7,
-5195-3, 91875-5 (§0.8).
+**Codes read by gates but not emitted as CodeEntry nodes:** the 64 RxNorm medication and
+vaccine codes of §0.8 (aspirin 3, folic acid and prenatal multivitamins 10, Tdap 10, RSV 3,
+influenza 28, COVID-19 10) — seeded for the simulator by
+`scripts/seed-prenatal-reference-codes.sql`; ICD-10 Z67.11 / .21 / .31 / .41, O24.\*,
+O99.01.\*, D50.\*, O10–O16, O99.820; LOINC 718-7, 5195-3, 91875-5.
 
 ## 14. Attribute-map registrations
 
@@ -1780,12 +1925,12 @@ is kept for the Rh-negative pathway (§0.9).
 ## 16. Citation map
 
 Gates, CodeEntries, QMs and Schedules cannot cite; their evidence is on the host step. 70 of
-the 71 references are cited by a node. [23] (the RhoGAM label) is cited by nothing now and is
-not emitted; it stays in §15 for the Rh-negative pathway.
+the 71 references are cited by a node. [23] (the RhoGAM label) is cited by nothing and is not
+emitted; it stays in §15 for the Rh-negative pathway.
 
 **Stages:** 1: [1][2][3] · 2: [1][16][50] · 3: [3][4] · 4: [52][55][56] · 5: [1][4] ·
-6: [1][53][57] · 7: [53][54][55][57] · 8: [55][57] · 9: [1][8][24][44] · 10: [24][25][26] ·
-11: [1][20][44][48][62] · 12: [46][47]
+6: [1][53][54][55][57] · 9: [1][8][24][44] · 10: [24][25][26] · 11: [1][20][44][48][62] ·
+12: [46][47]
 
 **Steps:**
 - 1.1: [1][3][59][71] · 1.2: [1][2][46][49] · 1.3: [1][2][6][7][9][10][11][12][13][14][15][21][22]
@@ -1794,19 +1939,19 @@ not emitted; it stays in §15 for the Rh-negative pathway.
 - 1.23: [1][2] · 1.24: [21][22]
 - 1.4: [1][29][30][31][32][33][34][35][61] · 1.5: [4][5][6][63] · 1.6, 1.25, 1.26: [17][18][19]
   · 1.7: [17][18][19][64]
-- 1.8: [28][36][37][38][39][40][41][45][51][64][65][66][67][68] · 1.27, 1.28: [28][65][66][67]
-  · 1.9: [24][25][27]
+- 1.8: [28][36][37][38][39][40][41][45][51][64][65][66][67][68] · 1.27, 1.28, 1.29, 1.30:
+  [28][65][66][67] · 1.9, 1.31: [24][25][27] · 1.32: [24][25]
 - 2.1, 2.2: [16] · 2.3: [1][2][50] · 2.4: [1][2]
 - 3.1: [3] · 3.2: [4]
 - 4.1, 4.6: [52][55][56][58] · 4.2: [52][55] · 4.3: [55] · 4.4: [52][55][56] · 4.5: [53][55][57]
 - 5.1: [1][3][4] · 5.2: [4]
-- 6.1, 6.5: [1][2] · 6.2, 6.6: [53][55][57] · 6.3: [53] · 6.4: [55][56]
-- 7.1: [53][54][55][57] · 7.5: [53][55][57] · 7.2, 7.6: [53][55][57][58] · 7.3: [53][55][56] ·
-  7.4: [53][55]
-- 8.1, 8.3: [55][57] · 8.2: [55][56]
-- 9.1: [24][25][26][27][60] · 9.5: [8][10][11][15] · 9.7: [7][8] · 9.8: [10][11] · 9.9: [15] ·
-  9.6: [29][31][42][43][44][59]
-- 10.1: [24][25][26] · 11.1, 11.4: [20] · 11.2: [1][48] · 11.3: [47][49][62] · 12.1: [46][47]
+- 6.1, 6.5: [1][2] · 6.2, 6.6: [53][55][57] · 6.3: [53] · 6.4: [55][56] · 6.7: [53][54][55][57]
+  · 6.8: [55][57] · 6.9, 6.10: [53][55][57][58] · 6.11: [53][55][56] · 6.12: [53][55] ·
+  6.13: [55][56]
+- 9.1: [24][25][26][27][60] · 9.10: [24][25] · 9.5: [8][10][11][15] · 9.7: [7][8] ·
+  9.8: [10][11] · 9.9: [15] · 9.6: [29][31][42][43][44][59]
+- 10.1, 10.2: [24][25][26] · 11.1, 11.4: [20] · 11.2: [1][48] · 11.3: [47][49][62] ·
+  12.1: [46][47]
 
 **Medications:** Med-1: [28][65][66][67] · Med-2: [17][18][19][64] · Med-3: [24][25][27] ·
 Med-4: [24][25] · Med-5: [24][25] · Med-7: [25][26]
@@ -1815,9 +1960,10 @@ Med-4: [24][25] · Med-5: [24][25] · Med-7: [25][26]
 **Procedures:** Proc-1, Proc-2: [46] · Proc-3: [48]. **Guidance:** as listed in §9.
 
 **Gate evidence on host steps:** GA gates → 1.1; panel gates, `gate-hgb-low`,
-`gate-rh-negative` → 1.3; aspirin gates → 1.6 / 1.26; folic acid gates → 1.8;
-`gate-bp-elevated` → 2.1; early-diabetes gates → 4.1 / 4.6; `gate-cbc-repeat-due` → 6.1; GDM
-status gates → 6.2 / 6.6 / 7.1 / 7.2 / 8.1; rescreen gates → 9.5; `gate-gbs-culture-due` → 11.1.
+`gate-rh-negative` → 1.3; aspirin gates → 1.6 / 1.26; prenatal vitamin gates → 1.8 / 1.29;
+influenza and COVID-19 gates → 1.9; `gate-bp-elevated` → 2.1; early-diabetes gates → 4.1 /
+4.6; `gate-cbc-repeat-due` → 6.1; GDM gates → 6.2 / 6.6 / 6.9; `gate-tdap-due` → 9.1; rescreen
+gates → 9.5; `gate-rsv-vaccine-due` → 10.1; `gate-gbs-culture-due` → 11.1.
 QM-1 → 1.1; QM-2 → 9.1; QM-3 → 1.4; QM-4 → 9.6.
 
 ## 17. Temporal horizon & status summary (EMITTED — review carefully)
@@ -1825,81 +1971,90 @@ QM-1 → 1.1; QM-2 → 9.1; QM-3 → 1.4; QM-4 → 9.6.
 | Gate(s) | Condition on | horizon | status | Rationale |
 |---|---|---|---|---|
 | eight `gate-ga-*` | `patient.gestational_age_weeks` | — | — | `patient.*` has no temporal policy |
-| every "this pregnancy" gate (`gate-cbc-due`, `-antibody-screen-due`, `-rubella-due`, `-syphilis-due`, `-hbsag-due`, `-hiv-due`, `-hcv-due`, `-urine-culture-due`, `-ct-gc-due`, `-varicella-due`, `gate-a1c-not-on-file`) | labs `not_includes_code` | `{days: 98}` / `{days: 196}` / `{days: 300}` by GA band (A1c: 98 / 196) | — | The trimester's length (§4b) |
+| `gate-cbc-due`, `-antibody-screen-due`, `-rubella-due`, `-syphilis-due`, `-hbsag-due`, `-hiv-due`, `-hcv-due`, `-urine-culture-due`, `-ct-gc-due`, `-varicella-due` | labs `not_includes_code`, twice per code | **LIFETIME** OR **PREGNANCY** | — | Never resulted (no gestational age needed), or not drawn this pregnancy (Josh: use the gestational age) |
+| `gate-a1c-not-on-file` | labs `not_includes_code` | **PREGNANCY** | — | Drawn this pregnancy; Stage 4 is already behind a gestational-age gate |
 | `gate-abo-rh-due`, `gate-hbv-triple-due`, `gate-hgbpathy-due` | labs `not_includes_code` | LIFETIME | — | Done once, ever |
-| `gate-hgb-low` | labs 718-7 < 10.45 / < 10.95 | LIFETIME | — | Most recent value decides (Josh) |
+| `gate-hgb-low` | labs 718-7 < 10.45 / < 10.95 | **PREGNANCY** | — | Only a value drawn this pregnancy opens the hand-off (Josh) |
 | `gate-hgb-low` | conditions O99.01.\*, D50.\* | LIFETIME | active | Already diagnosed |
 | `gate-rh-negative` | conditions Z67.11 / .21 / .31 / .41 / .91 | LIFETIME | active | Already recorded |
 | `gate-rh-negative` | `patient.rh_factor` | — | — | No temporal policy |
-| `gate-on-aspirin`, `gate-aspirin-not-on-list`, `gate-no-folic-acid`, `gate-on-folic-acid` | medications | LIFETIME | active | Currently on it; a stopped medication does not count |
+| `gate-on-aspirin`, `gate-aspirin-not-on-list`, `gate-on-prenatal-vitamin`, `gate-prenatal-vitamin-not-on-list` | medications | LIFETIME | active | Currently on it |
+| `gate-influenza-vaccine-due`, `gate-covid-vaccine-due` | medications `count_in_window` | `window_days: 180` | any | A dose in the season, approximated (J23) |
+| `gate-tdap-due` | medications `count_in_window` | **PREGNANCY** | any | A dose this pregnancy |
+| the three gates above | medications `not_includes_code` | LIFETIME | any | The undated-entry check: on the list at all? |
+| the three gates above | medications `count_in_window` (at least 1) | `window_days: 36525` | any | The undated-entry check: any dated entry? |
+| `gate-rsv-vaccine-due` | medications `not_includes_code` | LIFETIME | any | Ever given |
 | `gate-bp-elevated` | vitals systolic_bp, diastolic_bp | DAY | — | Today's reading (never ENCOUNTER) |
 | `gate-bp-elevated` | conditions R03.0, O10.\*, O11.\*, O13.\*, O14.\*, O16.\* | LIFETIME | active | Already diagnosed |
-| `gate-overt-diabetes`, `gate-early-abnormal-glucose` | labs 4548-4 | LIFETIME | — | Most recent value decides |
-| `gate-cbc-repeat-due` | labs 718-7 `not_includes_code` | `{days: 28}` / `56` / `84` / `126` by GA band | — | Since about 24 weeks |
-| `gate-diabetes-on-file`, `gate-gdm-screen-negative`, `gate-gdm-screen-open` | conditions O24.\* | LIFETIME | active | Diagnosed |
-| `gate-gdm-screen-negative`, `gate-gdm-screen-open`, `gate-gct-not-on-file`, `gate-gct-positive`, `gate-ogtt75-not-on-file`, `gate-75g-diagnostic` | labs 1504-0, 1552-9, 1507-3, 1518-0 | `{days: 140}` | — | This pregnancy's screen (`[WINDOW]` markers, §4b) |
-| three `gate-*-rescreen-due` | labs `not_includes_code` | `{days: 35}` / `70` / `105` by GA band | — | Since about 27 weeks |
+| `gate-overt-diabetes`, `gate-early-abnormal-glucose` | labs 4548-4 | LIFETIME | — | Most recent value decides (J13) |
+| `gate-cbc-repeat-due` | labs 718-7 `not_includes_code` | `{days: 28}` / `56` / `84` / `126` by GA band | — | Since about 24 weeks (J22) |
+| `gate-diabetes-on-file` and the `O24.*` leaf of the GDM gates | conditions O24.\* | LIFETIME | active | Diagnosed |
+| `gate-gdm-screen-negative`, `gate-gdm-nothing-on-file`, `gate-gct-positive`, `gate-75g-diagnostic` | labs 1504-0, 1552-9, 1507-3, 1518-0 | **PREGNANCY** | — | This pregnancy's screen |
+| `gate-ogtt100-not-on-file`, `gate-100g-diagnostic`, `gate-100g-negative` | labs 1549-5, 1501-6, 1514-9, 1530-5 | **PREGNANCY** | — | This pregnancy's diagnostic test |
+| three `gate-*-rescreen-due` | labs `not_includes_code` | `{days: 35}` / `70` / `105` by GA band | — | Since about 27 weeks (J22) |
 | `gate-gbs-culture-due` | labs 72607-5, 91875-5 | `{days: 35}` | — | Result validity, 5 weeks |
 | `gate-gbs-culture-due` | conditions O99.820 | LIFETIME | active | Carrier state |
 
-- No `window_days`; no `status` on labs or vitals; no trend, delta or count operator; no
-  `window_from` (no response-to-treatment check in this pathway).
-- Every condition carries an explicit horizon except `patient.*` attributes.
-- Dated results are needed to exercise the look-back bands; an undated (simulator) result
-  counts as current and so as "on file".
+- `window_days` only on the vaccine counts; never together with `horizon`. No `status` on labs
+  or vitals. No trend or delta operator; no `window_from`.
+- Every condition carries an explicit horizon or `window_days` except `patient.*` attributes.
+- **Simulator:** an undated lab or medication is asserted current, so it reads as inside
+  `PREGNANCY` and as a vaccine "given". The bounds are exercised only with dated entries.
 
 ## 18. Gaps & fallbacks
 
-### `[JOSH — CONFIRM]` items raised by the 2026-10-04 build
+### `[JOSH — CONFIRM]` items
+
+**Closed by Josh's review of version 1** `[DECISION — Josh 2026-10-04]`: J1 (hemoglobin
+thresholds: "correct"), J2 (pre-pregnancy hemoglobin: does not open the hand-off), J3 (Z67.91
+stands), J5 ("this pregnancy" uses the gestational age), J7, J8, J9, J12 (GDM and HbA1c:
+read the chart, ask nothing; the 100-g test is read from its values), J11 (a stale diabetes
+code is a chart problem), J14 (aspirin before 28 weeks), J15 / J21 (prenatal vitamin: known
+list, else ask), J16 (triggers: supervision and pregnant state only), J19 (risk-based tests
+for everyone), J20 (vaccines checked against the medication list).
+
+**Still open:**
 
 | # | Item | Built as | Where |
 |---|---|---|---|
-| J1 | Hemoglobin hand-off thresholds (<11.0 first/third trimester, <10.5 second) are secondary-sourced `[PAYWALL]` (PB 233) | As stated | Step 1.23, `gate-hgb-low` |
-| J2 | The most recent hemoglobin decides however old — a low value from before this pregnancy opens the hand-off | LIFETIME, per Josh's instruction | `gate-hgb-low` |
-| J3 | Rh-negative diagnosis code | Z67.91 (or the ABO-specific Z67.x1); O36.01- only when antibodies are present; O26.89- not used because it displaces Z34 | §0.9, Step 1.24 |
 | J4 | `patient.rh_factor` vocabulary: exactly "negative" / "positive" | As stated | `gate-rh-negative` |
-| J5 | "This pregnancy" = the trimester's length (98 / 196 / 300 days), so a test up to 14 weeks before conception counts | Nearest supported pattern `[NOT ENCODABLE]` | §4b, §0.6 #3 |
-| J6 | What "already done" means per test: type, hemoglobinopathy, HBV antibodies once ever; all others, rubella and varicella included, this pregnancy | As stated | §4b panel table |
-| J7 | Strategy question re-asked while a positive 50-g (or abnormal 75-g) awaits its diagnosis, though the result on file shows the strategy | Consequence of D-29's "result gate asks" `[NOT ENCODABLE]`; the alternative is chart-only gates with no result question | §0.6 #2 |
-| J8 | The 100-g question recurs each visit for a positive 50-g, including after a normal 100-g test; a six-pair chart encoding is now possible | Question kept (D-4) | §0.6 #1, `gate-100g-diagnostic` |
-| J9 | `gate-100g-diagnostic` changed from yes/no to three answers, with "Not resulted yet" ordering the test | SELECT router | §4b |
-| J10 | A screen drawn before 24 weeks is inside the 140-day window; a negative early 50-g reads as "complete" | Text in Step 6.3 / Guid-17 | §4b |
-| J11 | `O24.*` active from a previous pregnancy reads as diagnosed | As stated | `gate-diabetes-on-file` |
-| J12 | Every patient before 24 weeks with no HbA1c is asked for one, eligible or not | Anemia's pattern, per D-29 | §4b early diabetes |
-| J13 | The HbA1c thresholds read the most recent value however old (draft: 90 days) | LIFETIME | §4b early diabetes |
-| J14 | Aspirin eligibility is asked only before 28 weeks and only of a patient not on aspirin (draft: every visit) | As stated | `gate-aspirin-not-on-list` |
-| J15 | A product-coded prenatal multivitamin is not recognised as folic acid | Three folic acid codes | folic acid gates |
-| J16 | Trigger option (b): a pregnancy recoded from Z34 to an anemia, hypertension or UTI O-code alone (no O09) stops matching routine care | (b), per Josh | §1 |
-| J17 | BP hand-off closes when a hypertension code is on file (new guard) | As stated | `gate-bp-elevated` |
-| J18 | Wording of the new Guidance nodes Guid-10 to Guid-18 | Builder's sentences | §9 |
-| J19 | Age- and risk-based tests (chlamydia/gonorrhea, HIV rescreen, varicella) appear for every patient with the condition in the name, because age and risk are not in the chart | As stated | §0.6 #9 |
-| J20 | Vaccines are not checked against the chart (no immunization field); a prior RSV vaccine is not detected | Step text says to confirm | §5 marker |
-| J21 | "Already on a prenatal vitamin" is recognised only as folic acid (RxNorm 4511, 198640, 310410); RxNav returned no usable prenatal-multivitamin concept on 2026-10-04 | As J15 | folic acid gates |
+| J6 | What "already done" means per test: type, hemoglobinopathy, HBV antibodies once ever (`LIFETIME`); all others, rubella and varicella included, this pregnancy (`PREGNANCY`) | As stated | §4b panel table |
+| J10 | A GDM screen drawn before 24 0/7 weeks is inside `PREGNANCY`; a negative early 50-g reads as "complete". Not expressible exactly; **approximable** with the same gestational-age bands the repeat CBC uses (J22). Not built, because Josh asked for `PREGNANCY` on this window | Text in Step 6.3 / Guid-17 | §0.6 #1 |
+| J13 | The HbA1c value gates read the most recent value however old, while "is one owed?" reads this pregnancy | `LIFETIME` / `PREGNANCY` | §4b early diabetes |
+| J17 | BP hand-off closes when a hypertension code is on the chart | As stated | `gate-bp-elevated` |
+| J18 | Wording of the builder's Guidance nodes Guid-10 to Guid-19 | Builder's sentences | §9 |
+| J22 | **Departure from "replace every GA-banded look-back".** "Since about 24 weeks" (repeat CBC: 28 / 56 / 84 / 126 days) and "since about 27 weeks" (third-trimester rescreens: 35 / 70 / 105 days) still use look-backs banded by gestational age. Under `PREGNANCY` the first-visit test would satisfy the repeat for the whole pregnancy and it would never be ordered | 4–5-week bands `[NOT ENCODABLE]` | §0.6 #1 |
+| J23 | "This season" for influenza and COVID-19 is a **180-day** look-back | 180 days `[NOT ENCODABLE]` | §4b vaccines |
+| J24 | Vaccines are matched as **RxNorm** product codes; a chart feed that records immunizations as CVX is not recognised | RXNORM only | §0.8 |
+| J25 | A hemoglobin not yet drawn this pregnancy is still **asked** for at the first visit (the glucose tests and the HbA1c no longer are) | `ask`, as version 1 | `gate-hgb-low` |
+| J26 | A prenatal vitamin outside the ten recognised codes is asked about at every visit | One question per visit | prenatal vitamin gates |
+| J27 | RSV vaccine: a dose in an **earlier** pregnancy also closes the offer (Josh said "this pregnancy"; the guideline is once in a lifetime) | `LIFETIME` | `gate-rsv-vaccine-due` |
+| J29 | An **undated** vaccine on the medication list reads as given (not recommended). The simulator dates nothing, so adding any vaccine there suppresses it — the builder's default, not one of Josh's instructions. The alternative (an undated entry does not count) would make the check untestable in the simulator | Reads as given | §4b vaccines |
+| J30 | Gestational age declined and a panel test on file at an earlier date: that test is not ordered | As stated | §4b panel gates |
+| J31 | Influenza and COVID-19 lists hold brand products (BN, SBD) only; Tdap and RSV also hold their generic (SCD) concepts. A chart coding a flu or COVID-19 vaccine generically is not recognised | Brand products only | §0.8 |
+| J28 | Vaccine product lists are seasonal and need adding to each year; no 2026–2027 COVID-19 concept existed in RxNorm on 2026-10-04 | 2025–2026 and 2026–2027 codes | §0.6 #4, §0.8 |
 
 ### Not encodable on the josh-dev engine
 
 | # | Requirement | Why not | Built instead |
 |---|---|---|---|
-| G1 | Carpenter–Coustan "≥2 of 4" | No N-of-M operator (a six-pair nested encoding is possible; not built, J8) | SELECT question (D-4) |
-| G2 | Aspirin eligibility | Counting; uncoded factors | BOOLEAN question (verbatim GHTN prompt) |
-| G3 | Early-testing eligibility | Counting; BMI not codeable in pregnancy; uncoded factors | BOOLEAN question |
-| G4 | Skip the strategy question when a result on file shows the strategy, while still asking for the result of the test just ordered | A question cannot be pre-answered from the chart, and a question and a chart condition cannot OR onto one target | Strategy asked whenever screening is open (§0.6 #2, J7) |
-| G5 | "Drawn this pregnancy", "since 24 weeks", "since 27 weeks" | No look-back anchored on the pregnancy | GA-banded look-backs (§0.6 #3, J5) |
-| G6 | RSV and influenza seasons | No calendar-month operator | Text |
-| G7 | Missed-anatomy-survey catch-up after 24 weeks | REQUIRES has no authorable satisfaction check; imaging is not in the chart | Not encoded |
-| G8 | Cross-pathway question dedup (aspirin) | Question gates dedupe only within a pathway | Verbatim prompt |
-| G9 | Immunization, imaging, age and risk checks | Not in the patient context | Step text (§0.6 #9) |
+| G1 | A GDM screen before 24 0/7 weeks does not count; "since 24 weeks" CBC; "since 27 weeks" rescreens | No horizon that opens at a stated gestational age. Approximable with look-backs banded by gestational age | GA-banded look-backs for the CBC and rescreens (J22); step text for the GDM screen, where Josh asked for `PREGNANCY` (J10) |
+| G2 | Influenza / COVID-19 "this season"; the RSV season | No calendar-month operator | 180-day look-back (J23); season as text |
+| G3 | "A vaccine was given on a day in the window" as one condition | Medication entries are intervals; an event count ignores undated entries | A count and an undated-entry check per product code (§4b) |
+| G4 | Aspirin eligibility; early-testing eligibility | Counting; uncoded factors; BMI not codeable in pregnancy | BOOLEAN questions |
+| G5 | Missed-anatomy-survey catch-up after 24 weeks | REQUIRES has no authorable satisfaction check; imaging is not in the chart | Not encoded |
+| G6 | Cross-pathway question dedup (aspirin) | Question gates dedupe only within a pathway | Verbatim prompt |
+| G7 | Imaging, age and risk checks | Not in the patient context | Step text; risk-based tests shown for everyone |
 
-Resolved since the draft: the old G4 (negations) and G5 (GBS swab after GBS bacteriuria) are
-chart-read with `not_includes_code`; the old G8 (anemia hand-off) is built; the old G6
-("unsensitized" before RhIG) left with the RhIG.
+Resolved in version 2: "≥2 of 4" (six-pair encoding); the strategy question repeating on a
+positive screen; "drawn this pregnancy".
 
 ### No pathway yet — what Prism does not recommend
 
 - **Rh-negative pregnancy: no pathway.** `[DECISION — Josh 2026-10-04]` Routine prenatal care
-  types Rh, runs the antibody screen and says "add the diagnosis". **Until the Rh-negative
-  pathway is written, Prism recommends no Rh immune globulin** — not at 28 weeks, not
-  postpartum, not after a sensitizing event. Listed in `pathways/TODO.md`; inputs in §0.9.
+  types Rh, runs the first antibody screen and says "add the diagnosis to the encounter".
+  **Until the Rh-negative pathway is written, Prism recommends no Rh immune globulin and no
+  24–28-week repeat antibody screen.** Listed in `pathways/TODO.md`; inputs in §0.9.
 - `gestational-diabetes-management` exists as a brief only; no JSON.
 - No pathway for pregestational / overt diabetes in pregnancy (Step 4.3's destination),
   chronic hypertension before 20 weeks, or adult preventive care after GDM (D-12).
@@ -1907,12 +2062,12 @@ chart-read with `not_includes_code`; the old G8 (anemia hand-off) is built; the 
 ### Source gaps
 
 - **Paywalled `[PAYWALL]`/`[GAP]` primaries:** PB 175 (ultrasound); PB 162 (CVS/amniocentesis
-  windows; the FAQ gives them); PB 181 (mirror); **PB 233 (anemia thresholds, J1)**; CPG 4;
-  CPG 6 (HBV triple panel, via a news release); SMFM Consult #74; PB 190 and the 2024 CPU
-  (GDM); CPU 2025 (39-week).
+  windows; the FAQ gives them); PB 181 (mirror); PB 233 (anemia thresholds — confirmed by Josh,
+  V2-1); CPG 4; CPG 6 (HBV triple panel, via a news release); SMFM Consult #74; PB 190 and the
+  2024 CPU (GDM); CPU 2025 (39-week).
 - `[GAP]` Doppler FHT audibility; numeric quickening GA; COVID-19 and Tdap dose volumes;
-  2026–27 COVID CPT codes; HEDIS MY2026 detail (PRS-E windows, PND-E cut-points); a 50-g value
-  ≥200 as diagnostic; bariatric-surgery alternative screening (PB 105).
+  2026–27 COVID CPT and RxNorm codes; HEDIS MY2026 detail (PRS-E windows, PND-E cut-points); a
+  50-g value ≥200 as diagnostic; bariatric-surgery alternative screening (PB 105).
 - `[GAP]` No current ACOG documents on adolescent prenatal care, employment, or a late-entry
   protocol. Late entry is handled by the GA gates and the "not on file" gates.
 
@@ -1934,18 +2089,22 @@ chart-read with `not_includes_code`; the old G8 (anemia hand-off) is built; the 
 | C12 | Strategy: ADA one-step vs ACOG two-step | D-5 |
 | C13 | RhIG before 12 weeks: label vs ACOG CPU 2024 | Moved to the Rh-negative pathway (§0.9) |
 
-### Checks run on 2026-10-04 (this JSON)
+### Checks run on 2026-10-04 (version 2)
 
-- `validate-pathway.ts`: valid, compiles, trigger codes are families, DATA USE clean, brief in
-  sync.
-- `check-gate-control.ts`: no violations.
-- `gate-proof.ts prenatal-ga`, `prenatal-gdm`, `prenatal-handoffs`, `prenatal-meds`: every
-  expectation held, in both edge orders.
+- `validate-pathway.ts`: valid, compiles, trigger codes are families or justified leaves,
+  DATA USE clean, brief in sync.
+- `check-gate-control.ts`: no violations; 14 warnings, all the stale "ask is inert" lint on
+  `PREGNANCY` membership gates (§0.6 #11).
+- `gate-proof.ts prenatal-triggers` checks the trigger list by ICD-10 ancestry and the
+  pregnancy rule on the encounter's own code. It does not run the live matcher (that needs
+  the database), so "the chart cannot start a pathway" is the engine's rule, read from
+  `multi-pathway-resolution.ts`, not something this proof exercises.
+- `gate-proof.ts prenatal-ga`, `prenatal-triggers`, `prenatal-gdm`, `prenatal-handoffs`,
+  `prenatal-meds`, `prenatal-vaccines`: every expectation held, in both edge orders.
 - `coverage-audit.ts`: every gate opens and closes, every node is included in some session,
-  no question is a dead end (stub and real scoring).
-- The look-back bands and the 140-day window need **dated** results; the simulator sends
-  undated ones, which count as current.
+  no question is a dead end.
 
 ### Uses josh-dev extensions (will not validate on `origin/main`)
 
-`not_includes_code`, nested AND/OR groups, typed `patient.*` answers and "Not available".
+`not_includes_code`, `horizon: "PREGNANCY"`, `count_comparison` on `count_in_window`, nested
+AND/OR groups, typed `patient.*` answers and "Not available".
