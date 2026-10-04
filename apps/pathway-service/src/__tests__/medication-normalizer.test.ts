@@ -232,6 +232,17 @@ describe('prewarmMedication', () => {
     expect(getIngredientRxcui).toHaveBeenCalledWith('866924');
   });
 
+  it('reads the code whatever the system casing — charts and pathways send RXNORM', async () => {
+    const { pool } = makeFakePool();
+    (getIngredientRxcui as jest.Mock).mockResolvedValue({ rxcui: '4511', name: 'folic acid' });
+    (getAtcClasses as jest.Mock).mockResolvedValue(['B03BB']);
+
+    const result = await prewarmMedication(pool, { text: 'folic acid 0.4 mg tablet', system: 'RXNORM', code: '198640' });
+    expect(result?.ingredientRxcui).toBe('4511');
+    expect(findRxcuiByString).not.toHaveBeenCalled();
+    expect(getIngredientRxcui).toHaveBeenCalledWith('198640');
+  });
+
   it('returns empty atcClasses when RxNav has no ATC mapping', async () => {
     const { pool } = makeFakePool();
     (findRxcuiByString as jest.Mock).mockResolvedValue('6918');

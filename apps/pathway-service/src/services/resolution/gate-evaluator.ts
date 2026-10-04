@@ -702,15 +702,41 @@ function policyFor(
   adapted: AdaptedCondition,
   deps: GateEvaluationDeps,
   anchorLowerBound?: string,
-): ConditionPolicy {
-  return conditionPolicyFor(
+): SelectionPolicy | { status: 'PREGNANCY_UNDATED' } {
+  const resolved = conditionPolicyFor(
     adapted,
     deps.temporalContext,
     deps.pathwayDefaults,
     () => resolveAttribute(deps.patientContext, PREGNANCY_HORIZON_ATTRIBUTE, deps.codeMap).value,
     anchorLowerBound,
   );
+  if (resolved.status === 'PREGNANCY_UNDATED') return resolved;
+  if (resolved.status === 'WINDOW_NOT_OPEN') {
+    // The window opens in the future, so NOTHING is inside it. Rather than a
+    // second set of "empty" answers per operator, every evaluator runs its
+    // ordinary logic over an EMPTY selection — membership finds nothing,
+    // `not_includes_code` finds nothing to refute it, a count is 0 — and
+    // `inPregnancy` then removes the missing-data signals an empty selection
+    // would otherwise raise: the patient not having reached the week is a
+    // fact, not a gap, and must not ask for a lab that cannot exist yet.
+    // The policy is a placeholder that is never matched against anything.
+    return {
+      status: 'RESOLVED',
+      policy: { horizon: { lowerBound: null, upperBound: deps.temporalContext.evaluationAsOf } },
+      facts: [],
+      notOpen: { sinceWeek: resolved.sinceWeek, opensOn: resolved.opensOn, weeks: resolved.weeks },
+    };
+  }
+  return { ...resolved, facts: deps.factStore };
 }
+
+/** A resolved policy plus the facts to select from under it. */
+type SelectionPolicy = Extract<ConditionPolicy, { status: 'RESOLVED' }> & {
+  /** `deps.factStore` — or nothing at all, when the window has not opened. */
+  facts: FactStore;
+  /** Set when a `{ since_gestational_week }` window opens after the session clock. */
+  notOpen?: { sinceWeek: number; opensOn: string; weeks: number };
+};
 
 /**
  * A PREGNANCY-horizon condition that could not be dated.
@@ -735,10 +761,33 @@ function pregnancyUndatedOutcome(fieldsRead: string[], what: string): ConditionO
   };
 }
 
+const weeksText = (n: number): string => {
+  const w = Number(n.toFixed(1));
+  return `${w} week${w === 1 ? '' : 's'}`;
+};
+
 /** "this pregnancy (since 2026-03-22, 28 weeks)". */
 function pregnancyPhrase(w: PregnancyWindow): string {
-  const weeks = Number(w.weeks.toFixed(1));
-  return `this pregnancy (since ${w.lmpDate}, ${weeks} week${weeks === 1 ? '' : 's'})`;
+  return `this pregnancy (since ${w.lmpDate}, ${weeksText(w.weeks)})`;
+}
+
+/**
+ * The window as a clause that follows a reason: "within this pregnancy (since
+ * 2026-03-22, 28 weeks)", or "since week 24 of this pregnancy (from
+ * 2026-09-06; now 28 weeks)".
+ */
+function pregnancyClause(w: PregnancyWindow): string {
+  return w.sinceWeek === undefined
+    ? `within ${pregnancyPhrase(w)}`
+    : `since week ${Number(w.sinceWeek.toFixed(2))} of this pregnancy (from ${w.sinceDate}; now ${weeksText(w.weeks)})`;
+}
+
+/** "since week 24 of this pregnancy, which has not begun (opens 2026-11-01; now 20 weeks)". */
+function notOpenClause(n: NonNullable<SelectionPolicy['notOpen']>): string {
+  return (
+    `since week ${Number(n.sinceWeek.toFixed(2))} of this pregnancy, which has not begun ` +
+    `(opens ${n.opensOn}; now ${weeksText(n.weeks)})`
+  );
 }
 
 /** "since 2026-07-01 (this season)". */
@@ -757,11 +806,25 @@ function sincePhrase(w: SinceWindow): string {
  */
 function inPregnancy(
   outcome: ConditionOutcome,
-  resolved: ConditionPolicy,
+  resolved: SelectionPolicy | { status: 'PREGNANCY_UNDATED' },
   /** The reason already names the window (`count_in_window` does). */
   reasonNamesWindow = false,
 ): ConditionOutcome {
   if (resolved.status !== 'RESOLVED') return outcome;
+  if (resolved.notOpen !== undefined) {
+    // DEFINITE, whatever the empty selection reported: "no value" and "too few
+    // values" are missing-data signals, and nothing is missing here — the
+    // window simply has not opened. So no `dataUnavailable`, no short series,
+    // no doubt: the gate answers and asks nothing.
+    const { dataUnavailable: _d, seriesShortBy: _s, seriesLatestDate: _l, ...definite } = outcome;
+    return {
+      ...definite,
+      reason: reasonNamesWindow ? outcome.reason : `${outcome.reason} ${notOpenClause(resolved.notOpen)}`,
+      fieldsRead: [...new Set([...outcome.fieldsRead, PREGNANCY_HORIZON_ATTRIBUTE])],
+      indeterminate: false,
+      uncertainty: [],
+    };
+  }
   if (resolved.since !== undefined) {
     return reasonNamesWindow
       ? outcome
@@ -772,7 +835,7 @@ function inPregnancy(
     ...outcome,
     reason: reasonNamesWindow
       ? outcome.reason
-      : `${outcome.reason} within ${pregnancyPhrase(resolved.pregnancy)}`,
+      : `${outcome.reason} ${pregnancyClause(resolved.pregnancy)}`,
     fieldsRead: [...new Set([...outcome.fieldsRead, PREGNANCY_HORIZON_ATTRIBUTE])],
   };
 }
@@ -832,7 +895,7 @@ function evaluateMembershipKernel(
       `${condition.field}:${condition.value}`,
     );
   }
-  const outcome = selectFacts(adapted.selection, deps.factStore, resolved.policy);
+  const outcome = selectFacts(adapted.selection, resolved.facts, resolved.policy);
 
   // Uncertainty is read off the DECISIONS, not off the outcome's summary flags,
   // because the flags are booleans and D5 requires the reasons themselves. For
@@ -990,16 +1053,16 @@ function evaluateScalarKernel(
       `${condition.field}:${condition.value}`,
     );
   }
-  return inPregnancy(scalarOutcome(condition, adapted, resolved.policy, deps), resolved);
+  return inPregnancy(scalarOutcome(condition, adapted, resolved.policy, resolved.facts), resolved);
 }
 
 function scalarOutcome(
   condition: CodedCondition,
   adapted: AdaptedCondition,
   policy: EffectivePolicy,
-  deps: GateEvaluationDeps,
+  facts: FactStore,
 ): ConditionOutcome {
-  const outcome = selectFacts(adapted.selection, deps.factStore, policy);
+  const outcome = selectFacts(adapted.selection, facts, policy);
 
   const fieldsRead = condition.field ? [condition.field] : [];
 
@@ -1082,9 +1145,7 @@ function scalarOutcome(
  * "last 90 days", and LIFETIME renders "lifetime". Only a horizon with a
  * non-integral width — ENCOUNTER — needs a spelling legacy never had.
  */
-function windowDescription(horizon: ResolvedHorizon, pregnancy?: PregnancyWindow): string {
-  // Named for what it is: its width in days is an accident of the visit date.
-  if (pregnancy !== undefined) return pregnancyPhrase(pregnancy);
+function windowDescription(horizon: ResolvedHorizon): string {
   if (horizon.lowerBound === null) return 'lifetime';
   const days = (Date.parse(horizon.upperBound) - Date.parse(horizon.lowerBound)) / 86_400_000;
   if (!Number.isInteger(days)) return `the window since ${horizon.lowerBound}`;
@@ -1250,7 +1311,7 @@ function evaluateAggregateKernel(
   const policy = resolved.policy;
   const pregnancy = resolved.pregnancy;
   const since = resolved.since;
-  const outcome = selectFacts(adapted.selection, deps.factStore, policy);
+  const outcome = selectFacts(adapted.selection, resolved.facts, policy);
 
   // Appended to every reason this condition gives, so the date the window
   // opened on — and where it came from — is on the audit row whatever the
@@ -1348,7 +1409,15 @@ function evaluateAggregateKernel(
       reason:
         `Found ${matches} matching ${value} in ${field} ` +
         // "since 2026-07-01 (this season)" is already a prepositional phrase.
-        `${since ? sincePhrase(since) : `within ${windowDescription(policy.horizon, pregnancy)}`} (${bound})`,
+        `${
+          resolved.notOpen
+            ? notOpenClause(resolved.notOpen)
+            : since
+              ? sincePhrase(since)
+              : pregnancy
+                ? pregnancyClause(pregnancy)
+                : `within ${windowDescription(policy.horizon)}`
+        } (${bound})`,
       fieldsRead,
       // Derived, never hard-coded: only an unorderable series is indeterminate,
       // and `count_in_window` never builds one.
@@ -1524,16 +1593,16 @@ function evaluateAttributeKernel(
   if (resolved.status === 'PREGNANCY_UNDATED') {
     return pregnancyUndatedOutcome([condition.attribute], condition.attribute);
   }
-  return inPregnancy(attributeOutcome(condition, adapted, resolved.policy, deps), resolved);
+  return inPregnancy(attributeOutcome(condition, adapted, resolved.policy, resolved.facts), resolved);
 }
 
 function attributeOutcome(
   condition: AttributeCondition,
   adapted: AdaptedCondition,
   policy: EffectivePolicy,
-  deps: GateEvaluationDeps,
+  facts: FactStore,
 ): ConditionOutcome {
-  const outcome = selectFacts(adapted.selection, deps.factStore, policy);
+  const outcome = selectFacts(adapted.selection, facts, policy);
 
   // Byte-identical to `resolveAttribute`'s: the attribute name, not the gate
   // field. Reporting `labs` here would change what every audit row records for

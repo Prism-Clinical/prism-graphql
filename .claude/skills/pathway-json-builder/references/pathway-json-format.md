@@ -16,6 +16,11 @@
 > - `not_includes_code`
 > - `horizon: "PREGNANCY"` — a window that opens at the start of THIS pregnancy, dated from
 >   `patient.gestational_age_weeks` (2026-10-04; see **Temporal horizon & status**)
+> - `horizon: { "since_gestational_week": N }` — the same window opened N weeks into the
+>   pregnancy ("drawn since 24 weeks"); before week N it is definitely empty (2026-10-04)
+> - `patient.rh_factor` is read tolerantly: chart spellings ("Rh+", "POS", "Rh(D) negative",
+>   "Du") are normalised to `positive` / `negative` / `weak D` / `partial D`, and a
+>   non-canonical comparand is an import error (2026-10-04)
 > - calendar checks on the session clock (2026-10-04): the condition
 >   `encounter.date` / `in_season` ("is today inside Sept 1 – Jan 31?") and the horizon
 >   `{ "since": "MM-DD" }` ("since the most recent July 1")
@@ -419,6 +424,36 @@ day count chosen to be "about a pregnancy long":
   pregnancy" whatever its real date; the bound is exercised only with dated labs
   (`labResults[].date`, or a dated answer). State this in the brief (§18).
 
+##### Done since a gestational week — `{ "since_gestational_week": N }`
+
+"Repeat CBC drawn **since 24 weeks**", "third-trimester rescreen drawn **since 27
+weeks**", "a GDM screen drawn before 24 0/7 weeks does not count as the 24–28-week screen"
+(`[DECISION — Josh 2026-10-04]`) are the same window opened later. **"Since week N"
+replaces every gestational-age-banded day count** — `{ "days": 28 }` "at 28 weeks",
+`{ "days": 42 }` "at 30 weeks" — which is right at one gestational age and wrong at every
+other:
+
+```json
+{ "gate_type": "compound", "operator": "AND", "default_behavior": "skip", "on_unresolved": "ask",
+  "conditions": [
+    { "attribute": "patient.gestational_age_weeks", "operator": "greater_or_equal", "value": 24 },
+    { "field": "labs", "operator": "not_includes_code", "value": "1504-0", "system": "LOINC",
+      "display": "1-hour glucose challenge", "horizon": { "since_gestational_week": 24 } } ] }
+```
+
+- **Done in the window** → `includes_code`; **still owed** → `not_includes_code`; **a value
+  from the window** → the threshold leaf — each with the same
+  `"horizon": { "since_gestational_week": N }`.
+- **Always pair the "still owed" leaf with the timing leaf** (`patient.gestational_age_weeks
+  >= N`), as above. Before week N the window has not opened and is definitely empty, so
+  `not_includes_code` (and `count_in_window` … `less_than`) is definitely **true** — alone,
+  it would open the "order it" step at 12 weeks. The timing leaf is what says "not yet".
+  (This is the one place a gestational-age leaf belongs beside a pregnancy-dated window.)
+- A window with an upper end ("drawn **between** 24 and 28 weeks") is not expressible as
+  one horizon. In practice "since 24 weeks" is the clinical question — a screen drawn at 30
+  weeks still answers it — so author that.
+- The simulator caveat above applies unchanged.
+
 #### Seasons and "this season" — calendar checks (`[DECISION — Josh 2026-10-04]`)
 
 Josh, on routine prenatal vaccines: "can we add a calendar check?" Two different questions,
@@ -697,6 +732,19 @@ Carries one `condition` object, which is either an **attribute condition** or a 
   - `lab.*` / `allergy.*` resolve through the DB table `pathway_attribute_code_map` (attribute_name → system+code+value_type). **An unregistered attribute name imports fine but silently resolves to undefined at runtime** ⇒ the gate falls back to `default_behavior`. Every `lab.*`/`allergy.*` attribute you emit must be listed in the brief's "Attribute-map registrations" section so it gets seeded.
   - `vitals.*` walks a dotted numeric path in the patient's vitalSigns bag (e.g. `vitals.systolic_bp`, `vitals.temperature_f`) — keys per **What the simulator sends**.
   - `patient.*` reads derived scalars with no terminology code (e.g. `patient.gestational_age_weeks`, `patient.trimester`, `patient.rh_factor`). No code-map row, no temporal policy (emit no `horizon`). A missing value **asks** (`on_unresolved: "ask"`; datum `patient.<attr>`) since `8f64fc1` — see the box above.
+  - **`patient.rh_factor` is read tolerantly** (josh-dev, `[DECISION — Josh 2026-10-04]`: "Accept common spellings"). String comparisons are exact, so the engine normalises the *value* — from the chart, from a value added or answered during the session, and from a remembered answer — to one vocabulary before any gate compares it, and **comparands must be the canonical words**:
+
+    | Canonical | Read from (any case, spacing, brackets, dots) |
+    |---|---|
+    | `positive` | positive, pos, `+`, Rh+, Rh positive, Rh pos, Rh(D) positive, RhD positive, Rh(D)+, D positive, D pos, D+, Rhesus positive |
+    | `negative` | negative, neg, `-`, Rh-, Rh negative, Rh neg, Rh(D) negative, RhD negative, Rh(D)-, D negative, D neg, D-, Rhesus negative |
+    | `weak D` | weak D, Du, weak positive, weakly positive, weak, weak D positive |
+    | `partial D` | partial D |
+
+    - **Anything else is left exactly as written** — "unknown", "pending", and ABO+Rh strings such as "O+", "A POS", "AB negative" (not parsed: not in the decision's list) — so a gate written `not_equals "positive"` still flags it, and the provider sees the chart's own words. Nothing is ever guessed toward positive.
+    - `weak D` and `partial D` are their own values, never folded into `positive`: "anything not clearly positive" flags them.
+    - A comparand in a recognised non-canonical spelling (`"Positive"`, `"Rh+"`, `"NEG"`, `"weak d"`) is an **import error** — no normalised value could ever equal it; the message names the word to write. Words that are not Rh spellings (`"unknown"`) are accepted as comparands.
+    - Only `rh_factor` is normalised; every other `patient.*` value is compared as supplied.
 - `operator` ∈ `equals`, `not_equals`, `greater_than`, `greater_or_equal`, `less_than`, `less_or_equal`, `in` (value = array), `exists`. Note: `exists` on an **absent** fact (e.g. an allergy the patient doesn't have) is unsatisfied — it no longer degrades to "attribute resolved" semantics (fixed post-kernel).
 - There is **no** `symptom.*`, `medication.*`, or `condition.*` namespace (older docs said otherwise — they now hard-fail import). Symptom presence/severity is elicited ⇒ use a `question` gate. Diagnosis/medication history ⇒ use a coded condition.
 - `horizon` / `status` — see **Temporal horizon & status** below; both are legal here exactly as on coded conditions.
@@ -1081,8 +1129,8 @@ Any attribute or coded condition may carry:
   day-count object `{ "days": N }` with N an integer 1..36525 — or a season-opening date
   `{ "since": "MM-DD" }` (josh-dev). Named horizons are fixed day-widths counted back from
   `evaluationAsOf` (not calendar units), except `ENCOUNTER` (since `encounterStart`),
-  `PREGNANCY` (since the LMP date) and `{ "since": … }` (since a calendar date) — next
-  two sections.
+  `PREGNANCY` (since the LMP date), `{ "since_gestational_week": N }` (since week N of the
+  pregnancy) and `{ "since": … }` (since a calendar date) — next three sections.
 - **`status`** — which fact states count: `"active"`, `"inactive"`, or `"any"`.
 
 #### `"PREGNANCY"` — since the start of this pregnancy (josh-dev, 2026-10-04)
@@ -1127,6 +1175,52 @@ Any attribute or coded condition may carry:
   compiler lists it among the gate's datums.
 - **`legacy-v0` sessions refuse it** (`horizon PREGNANCY requires the v1 temporal kernel`),
   as they refuse `window_from`; `v1` is the default.
+
+#### `{ "since_gestational_week": N }` — since week N of this pregnancy (josh-dev, 2026-10-04)
+
+`[DECISION — Josh 2026-10-04]`: "repeat CBC drawn since 24 weeks"; "a GDM screen drawn
+before 24 0/7 weeks does not count as the 24–28-week screen".
+
+```json
+{ "field": "labs", "operator": "includes_code", "value": "718-7", "system": "LOINC",
+  "display": "Hemoglobin (repeat CBC)", "horizon": { "since_gestational_week": 24 } }
+```
+
+It is `PREGNANCY` with the opening moved forward, and everything not stated here is as
+stated there (which gestational age is read, where it may be written, per-condition only,
+exclusive with `window_days` / `window_from`, the dated/undated rules, `legacy-v0`
+refusal — message `horizon { since_gestational_week } requires the v1 temporal kernel`).
+
+- **The window.** Lower bound = 00:00 UTC on (the LMP date + N × 7 days), the LMP date being
+  exactly the one `PREGNANCY` opens on; upper bound = `evaluationAsOf`. At a session clock
+  of 2026-10-04 and 28 weeks, the LMP date is 2026-03-22 and week 24 began 2026-09-06: a
+  lab dated 2026-09-06 is in, one dated 2026-09-05 is out.
+- **Grammar.** `N` is a number of weeks, above 0 and at most 45; fractions are allowed
+  (`24.5`; `24 + 3/7 ≈ 24.43` for 24 3/7 weeks), floored to the day. `0` is refused — that
+  window is `"PREGNANCY"`. The object takes no other key. There is no weeks+days form.
+- **Gestational age missing** → exactly as `PREGNANCY`: the condition is unresolved and,
+  with `on_unresolved: "ask"`, pends on the shared gestational-age question. Never a
+  fallback window.
+- **Gestational age below N — the window has not opened.** A **definite** outcome, never
+  missing data, never a question and never an error: nothing can be inside a window that
+  starts in the future, so every operator answers from an empty selection —
+
+  | Operator | Before week N |
+  |---|---|
+  | `includes_code`, `equals`, `exists` | false |
+  | `not_includes_code` | **true** |
+  | `count_in_window` | count 0 — `at_least` false, `less_than` **true** |
+  | `greater_than`, `less_than` (threshold) | false, and it does **not** ask for the lab |
+  | `trend_*`, `delta_from_baseline` | false, and it does not ask |
+
+  An undated chart entry — which an *open* window admits — is not inside it either. Because
+  the "owed" forms are true, pair them with a `patient.gestational_age_weeks >= N` leaf
+  (see **Done since a gestational week**). The window is open from the day week N begins,
+  i.e. at exactly N weeks 0 days.
+- **Evidence.** `… since week 24 of this pregnancy (from 2026-09-06; now 28 weeks)`, or,
+  before it opens, `… since week 24 of this pregnancy, which has not begun (opens
+  2026-11-01; now 20 weeks)`. The gate records `patient.gestational_age_weeks` among the
+  fields it read and the compiler lists it among the gate's datums.
 
 #### `{ "since": "MM-DD" }` — since the most recent occurrence of a date (josh-dev, 2026-10-04)
 

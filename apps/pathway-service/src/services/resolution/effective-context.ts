@@ -1,6 +1,6 @@
 import type { PatientContext } from '../confidence/types';
 import type { AdditionalContextInput } from '../../resolvers/mutations/resolution';
-import { normalizePatientAttributes } from './patient-attributes';
+import { normalizeAttributeValues, normalizePatientAttributes } from './patient-attributes';
 
 function isPlainObject(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v);
@@ -78,10 +78,14 @@ export function buildEffectivePatientContext(
     // `narrative.chief_complaint` dropped `narrative.hpi`.
     vitalSigns: deepMerge(initialPc.vitalSigns ?? {}, add.vitalSigns ?? {}),
     freeformData: deepMerge(initialPc.freeformData ?? {}, add.freeformData ?? {}),
-    patientAttributes: deepMerge(
+    // Value normalisers (Rh spellings) run over the MERGED bag, so the chart's
+    // value, a typed answer and a remembered answer all reach a gate in the
+    // one vocabulary it compares against — whichever entry point stored them,
+    // and however long ago. Idempotent, so already-normalised input is a no-op.
+    patientAttributes: normalizeAttributeValues(deepMerge(
       initialPc.patientAttributes ?? {},
       normalizePatientAttributes(add.patientAttributes) ?? {},
-    ) as PatientContext['patientAttributes'],
+    )) as PatientContext['patientAttributes'],
   };
 }
 

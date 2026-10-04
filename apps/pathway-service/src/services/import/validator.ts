@@ -26,6 +26,7 @@ import {
 } from '../resolution/types';
 import type { ConditionGroup } from '../resolution/types';
 import { VALID_ATTRIBUTE_NAMESPACES } from '../resolution/attribute-registry';
+import { rhFactorComparandError } from '../resolution/patient-attributes';
 import { FIELD_TO_KIND } from '../resolution/temporal/contract';
 import {
   codedVitalsSystemError,
@@ -741,6 +742,10 @@ function validateGateConditions(
       if (!ATTR_OPS.has(op)) errors.push(`${where}: operator "${op}" is not a valid attribute operator.`);
       const ns = (c.attribute as string).split('.')[0];
       if (!NAMESPACES.has(ns)) errors.push(`${where}: attribute namespace "${ns}" is not registered.`);
+      if (c.attribute === 'patient.rh_factor') {
+        const rh = rhFactorComparandError(c.value);
+        if (rh !== null) errors.push(`${where}: ${rh}.`);
+      }
       // `patient.*` maps to no field and is not governed by temporal policy —
       // the runtime ignores its override on both sides, so import does too.
       const attrField = attributeNamespaceToField(ns);

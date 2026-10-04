@@ -3,6 +3,8 @@ import {
   EvaluationTemporalContext,
   PregnancyWindow,
   SinceWindow,
+  gestationalWeekWindowFrom,
+  isGestationalWeekHorizon,
   isSinceHorizon,
   pregnancyWindowFrom,
   requiresPregnancyAnchor,
@@ -74,7 +76,15 @@ export type ConditionPolicy =
    * gestational age. NOT a policy: there is no window to select over, and the
    * caller must report the condition as unresolved for that datum.
    */
-  | { status: 'PREGNANCY_UNDATED' };
+  | { status: 'PREGNANCY_UNDATED' }
+  /**
+   * The condition's horizon is `{ since_gestational_week: N }` and the patient
+   * has not reached week N: the window opens after the session clock. NOT a
+   * policy either — but, unlike PREGNANCY_UNDATED, a DEFINITE state: nothing
+   * can be inside a window that has not opened, so the caller answers from an
+   * empty selection and asks nothing.
+   */
+  | { status: 'WINDOW_NOT_OPEN'; sinceWeek: number; opensOn: string; weeks: number };
 
 /**
  * `effectivePolicyFor`, plus the one horizon whose lower bound is PATIENT data.
@@ -112,6 +122,20 @@ export function conditionPolicyFor(
     return isSinceHorizon(tier.horizon)
       ? { status: 'RESOLVED', policy, since: sinceWindowFrom(tier.horizon, ctx) }
       : { status: 'RESOLVED', policy };
+  }
+  if (isGestationalWeekHorizon(tier.horizon)) {
+    const resolved = gestationalWeekWindowFrom(tier.horizon, gestationalAgeWeeks(), ctx);
+    if (resolved === null) return { status: 'PREGNANCY_UNDATED' };
+    // Decided HERE, before the cascade: `resolveHorizon` refuses a lower bound
+    // after the clock with INVALID_CLOCK, which would abort the traversal.
+    if (resolved.status === 'NOT_OPEN') {
+      return { status: 'WINDOW_NOT_OPEN', sinceWeek: resolved.sinceWeek, opensOn: resolved.opensOn, weeks: resolved.weeks };
+    }
+    return {
+      status: 'RESOLVED',
+      policy: toEffectivePolicy(tier, ctx, anchorLowerBound, resolved.window.lowerBound),
+      pregnancy: resolved.window,
+    };
   }
   const pregnancy = pregnancyWindowFrom(gestationalAgeWeeks(), ctx);
   if (pregnancy === null) return { status: 'PREGNANCY_UNDATED' };

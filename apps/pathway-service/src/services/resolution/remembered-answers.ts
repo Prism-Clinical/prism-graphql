@@ -23,6 +23,7 @@
  */
 
 import type { Db } from './session-store';
+import { normalizeAttributeValues } from './patient-attributes';
 
 export const REMEMBER_SCOPES = ['PREGNANCY', 'PATIENT'] as const;
 export type RememberScope = (typeof REMEMBER_SCOPES)[number];
@@ -122,5 +123,7 @@ export async function loadRememberedAttributes(db: Db, args: {
     if (!stillHolds(String(row.scope), String(row.answered_on), args.asOf, supplied.gestational_age_weeks)) continue;
     out[attribute] = row.value as string | number | boolean;
   }
-  return out;
+  // A remembered answer is read in the vocabulary gates compare against — an
+  // Rh type stored as "Rh+" before normalisation existed is "positive" now.
+  return normalizeAttributeValues(out);
 }

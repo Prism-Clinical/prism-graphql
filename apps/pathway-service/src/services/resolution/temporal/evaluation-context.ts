@@ -37,7 +37,24 @@ export interface SinceHorizon {
   since: string;
 }
 
-export type Horizon = NamedHorizon | CustomHorizon | SinceHorizon;
+/**
+ * "Since gestational week N of this pregnancy" — the PREGNANCY horizon with
+ * its opening moved forward from the LMP date by N weeks. See
+ * `gestationalWeekWindowFrom`.
+ */
+export interface GestationalWeekHorizon {
+  /** Completed weeks of gestation at which the window opens; fractions allowed. */
+  since_gestational_week: number;
+}
+
+/**
+ * The latest week a window may be authored to open at. Past 45 weeks no
+ * pregnancy is still running, so a larger number is a typo (days for weeks),
+ * and a window that can never open is a gate that silently never fires.
+ */
+export const MAX_GESTATIONAL_WEEK = 45;
+
+export type Horizon = NamedHorizon | CustomHorizon | SinceHorizon | GestationalWeekHorizon;
 
 /**
  * Day-count sugar (design §2). Plain day arithmetic back from
@@ -94,6 +111,15 @@ export function isSinceHorizon(h: unknown): h is SinceHorizon {
   );
 }
 
+export function isGestationalWeekHorizon(h: unknown): h is GestationalWeekHorizon {
+  return (
+    typeof h === 'object' &&
+    h !== null &&
+    !Array.isArray(h) &&
+    Object.prototype.hasOwnProperty.call(h, 'since_gestational_week')
+  );
+}
+
 /** Only ENCOUNTER needs `encounterStart`. Plan 03 sweeps effective horizons with this. */
 export function requiresEncounterAnchor(h: Horizon): boolean {
   return h === 'ENCOUNTER';
@@ -112,19 +138,75 @@ export function requiresEncounterAnchor(h: Horizon): boolean {
  */
 export const PREGNANCY_HORIZON_ATTRIBUTE = 'patient.gestational_age_weeks';
 
-/** Only PREGNANCY needs the patient's gestational age. */
+/** The horizons dated from the patient's gestational age: PREGNANCY and `{ since_gestational_week }`. */
 export function requiresPregnancyAnchor(h: Horizon): boolean {
-  return h === 'PREGNANCY';
+  return h === 'PREGNANCY' || isGestationalWeekHorizon(h);
 }
 
-/** The PREGNANCY horizon's window, resolved for one evaluation. */
+/** A gestational-age-dated window, resolved for one evaluation. */
 export interface PregnancyWindow {
-  /** ISO instant: 00:00 UTC on the LMP date, so a fact dated that day counts. */
+  /**
+   * ISO instant the window opens: 00:00 UTC on the LMP date (PREGNANCY), or on
+   * the day gestational week `sinceWeek` began. A fact dated that day counts.
+   */
   lowerBound: string;
   /** `YYYY-MM-DD` — the LMP date. */
   lmpDate: string;
   /** The gestational age the window was derived from. */
   weeks: number;
+  /** Set for `{ since_gestational_week }`: the week the window opens at. */
+  sinceWeek?: number;
+  /** `YYYY-MM-DD` — the day that week began (the window's opening day). */
+  sinceDate?: string;
+}
+
+/** `{ since_gestational_week }` resolved: an open window, or one that has not opened yet. */
+export type GestationalWeekWindow =
+  | { status: 'OPEN'; window: PregnancyWindow }
+  /**
+   * The patient has not reached week `sinceWeek`: the window opens on
+   * `opensOn`, after the session clock. Nothing can be inside it — a definite
+   * state, never missing data.
+   */
+  | { status: 'NOT_OPEN'; sinceWeek: number; opensOn: string; weeks: number };
+
+/**
+ * Resolve `{ "since_gestational_week": N }`: the window opens at 00:00 UTC on
+ * the day N weeks after the LMP date — the SAME floored LMP day PREGNANCY
+ * opens on, plus N × 7 days (floored again for a fractional N), so "since week
+ * 24" and "this pregnancy" share their day boundaries.
+ *
+ * `null` when the gestational age is missing or unusable — exactly as
+ * `pregnancyWindowFrom`, and for the caller to report the same way. When the
+ * opening day is after the session clock the window is NOT_OPEN: never a
+ * throw (the cascade refuses a lower bound after the clock) and never a
+ * question (the age is known; the patient is simply not there yet).
+ */
+export function gestationalWeekWindowFrom(
+  h: GestationalWeekHorizon,
+  gestationalAgeWeeks: unknown,
+  ctx: EvaluationTemporalContext,
+): GestationalWeekWindow | null {
+  const pregnancy = pregnancyWindowFrom(gestationalAgeWeeks, ctx);
+  if (pregnancy === null) return null;
+  const upperMs = clockEpoch('evaluationAsOf', ctx.evaluationAsOf);
+  const lmpDayMs = instantEpoch(pregnancy.lowerBound);
+  const opensMs = Math.floor((lmpDayMs + h.since_gestational_week * 7 * MS_PER_DAY) / MS_PER_DAY) * MS_PER_DAY;
+  if (!Number.isFinite(opensMs) || Math.abs(opensMs) > MAX_TIME_VALUE) return null;
+  const lowerBound = new Date(opensMs).toISOString();
+  try {
+    instantEpoch(lowerBound);
+  } catch {
+    return null;
+  }
+  const sinceDate = lowerBound.slice(0, 10);
+  if (opensMs > upperMs) {
+    return { status: 'NOT_OPEN', sinceWeek: h.since_gestational_week, opensOn: sinceDate, weeks: pregnancy.weeks };
+  }
+  return {
+    status: 'OPEN',
+    window: { ...pregnancy, lowerBound, sinceWeek: h.since_gestational_week, sinceDate },
+  };
 }
 
 /**
@@ -350,7 +432,7 @@ export function resolveHorizon(
     return { lowerBound: ctx.encounterStart, upperBound };
   }
 
-  if (h === 'PREGNANCY') {
+  if (h === 'PREGNANCY' || isGestationalWeekHorizon(h)) {
     if (pregnancyLowerBound === undefined) {
       throw new TemporalContextError(
         'PREGNANCY horizon requires a lower bound derived from the patient\'s gestational age ' +

@@ -6,7 +6,7 @@ import {
   isTemporalOperator,
 } from './contract';
 import { ConditionTemporalOverride, parseHorizonValue, parseStatusValue } from './cascade';
-import { TemporalContextError, isSinceHorizon } from './evaluation-context';
+import { TemporalContextError, isGestationalWeekHorizon, isSinceHorizon } from './evaluation-context';
 import { MonthDay, parseMonthDay } from './calendar';
 // Only the urn constant. Vitals carry no terminology code, so the assembler
 // stamps every vital with this system and the adapter must select on the same
@@ -73,7 +73,8 @@ export function attributeNamespaceToField(namespace: string): GateField | null {
 export function conditionReadsGestationalAge(condition: unknown): boolean {
   if (!condition || typeof condition !== 'object') return false;
   const c = condition as Record<string, unknown>;
-  return c.horizon === 'PREGNANCY' && isGovernedCondition(c);
+  // PREGNANCY, or the same window opened later: `{ since_gestational_week }`.
+  return (c.horizon === 'PREGNANCY' || isGestationalWeekHorizon(c.horizon)) && isGovernedCondition(c);
 }
 
 /** Is this authored condition one temporal policy governs (so its `horizon` is honoured)? */
@@ -97,6 +98,7 @@ export function kernelOnlyHorizon(condition: unknown): string | null {
   if (!isGovernedCondition(c)) return null;
   if (c.horizon === 'PREGNANCY') return 'PREGNANCY';
   if (isSinceHorizon(c.horizon)) return '{ since }';
+  if (isGestationalWeekHorizon(c.horizon)) return '{ since_gestational_week }';
   return null;
 }
 

@@ -2,7 +2,9 @@ import {
   Horizon,
   isNamedHorizon,
   isCustomHorizon,
+  isGestationalWeekHorizon,
   isSinceHorizon,
+  MAX_GESTATIONAL_WEEK,
   MAX_CUSTOM_HORIZON_DAYS,
   TemporalContextError,
   EvaluationTemporalContext,
@@ -63,6 +65,27 @@ export function parseHorizonValue(raw: unknown, where: string): Horizon {
     }
     // Normalize: keep only `since`, as the day-count form keeps only `days`.
     return { since: raw.since };
+  }
+
+  if (isGestationalWeekHorizon(raw)) {
+    const extra = Object.keys(raw).filter((k) => k !== 'since_gestational_week');
+    if (extra.length > 0) {
+      throw new TemporalContextError(
+        `${where}: a { since_gestational_week } horizon takes no other key (got: ${extra.join(', ')})`,
+        'INVALID_HORIZON',
+      );
+    }
+    const week = raw.since_gestational_week;
+    // Above zero: week 0 is the LMP date, which is "PREGNANCY" — one spelling
+    // per window. Fractions are allowed (24.5, or 24 + 3/7 for 24 3/7 weeks).
+    if (typeof week !== 'number' || !Number.isFinite(week) || week <= 0 || week > MAX_GESTATIONAL_WEEK) {
+      throw new TemporalContextError(
+        `${where}.since_gestational_week: must be a number of weeks above 0 and at most ` +
+          `${MAX_GESTATIONAL_WEEK} (got: ${JSON.stringify(week)}) — for the whole pregnancy use "PREGNANCY"`,
+        'INVALID_HORIZON',
+      );
+    }
+    return { since_gestational_week: week };
   }
 
   if (isCustomHorizon(raw)) {
@@ -226,6 +249,12 @@ function isPerConditionOnlyHorizon(h: Horizon): boolean {
 }
 
 function perConditionOnlyRefusal(where: string, h: Horizon): string {
+  if (isGestationalWeekHorizon(h)) {
+    return (
+      `${where}: { since_gestational_week } is a per-condition horizon — set "horizon": ` +
+      `${JSON.stringify(h)} on the condition that means "since that week", not as a default`
+    );
+  }
   if (requiresPregnancyAnchor(h)) return pregnancyDefaultRefusal(where);
   return (
     `${where}: { since } is a per-condition horizon — set "horizon": ${JSON.stringify(h)} on the ` +

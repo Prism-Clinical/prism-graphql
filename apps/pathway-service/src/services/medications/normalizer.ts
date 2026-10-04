@@ -193,9 +193,13 @@ async function resolveViaRxNav(
 ): Promise<{ rxcui: string; name: string; atcClasses: string[] } | null> {
   let startingRxcui: string | null = null;
 
-  if (input.system === 'RxNorm' && input.code) {
+  // Compared case-insensitively: charts and pathways send 'RXNORM', and an
+  // exact 'RxNorm' sent every coded medication down the free-text lookup,
+  // where it failed and was cached as unmappable — invisible to safety checks.
+  const system = input.system?.toLowerCase();
+  if (system === 'rxnorm' && input.code) {
     startingRxcui = input.code;
-  } else if (input.system === 'NDC' && input.code) {
+  } else if (system === 'ndc' && input.code) {
     startingRxcui = await getRxcuiByNdc(input.code);
   } else {
     startingRxcui = await findRxcuiByString(input.text);
