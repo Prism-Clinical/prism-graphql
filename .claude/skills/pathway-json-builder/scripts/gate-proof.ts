@@ -68,7 +68,9 @@
 //                    measure a rise from → "recheck in 2–4 weeks" (Step 2.23 / 2.24), not
 //                    nonresponse and nothing asked — including a value the provider types
 //                    in at the visit, and a baseline older than 28 days before the start
-//   on-iron          anemia v12: the medication list is read behind gate-microcytic.
+//   on-iron          anemia v12 (v18: iron is matched by ATC class — any brand of oral iron,
+//                    any IV iron; a prenatal vitamin is not oral iron; an entry that cannot
+//                    be identified is asked about): the medication list is read behind gate-microcytic.
 //                    Oral iron on it (any of 310325 / 198630 / 284202 / 311975) → no
 //                    DP-1, no DP-3, no oral-iron Medication node; "continue" guidance,
 //                    the response check on its own gate copies (start date from a
@@ -103,11 +105,11 @@
 //                    the anemia diagnosis; a low one from before it → no hand-off, CBC
 //                    ordered; BP 140/90 or higher → add the diagnosis; Rh(D) negative → add
 //                    the diagnosis, positive → nothing, missing → asked once
-//   prenatal-meds    routine prenatal care v4: folic acid or a known prenatal multivitamin
+//   prenatal-meds    routine prenatal care v5 (medications matched by ingredient): folic acid or any prenatal multivitamin
 //                    on the medication list → nothing asked, nothing started; none → asked
 //                    once, yes → not started; aspirin likewise; panel tests on file this
 //                    pregnancy (by gestational age) are not re-ordered
-//   prenatal-vaccines routine prenatal care v4: vaccines read from the medication list —
+//   prenatal-vaccines routine prenatal care v5: vaccines read from the medication list by ingredient (any brand) —
 //                    Tdap given this pregnancy → not recommended, in a prior pregnancy →
 //                    recommended; RSV ever → not offered; influenza / COVID-19 within 180
 //                    days → not recommended; an undated entry reads as given
@@ -144,6 +146,20 @@ import { PatientMatchQualityScorer } from '../../../../apps/pathway-service/src/
 import { RiskMagnitudeScorer } from '../../../../apps/pathway-service/src/services/confidence/scorers/risk-magnitude';
 
 const AS_OF = '2026-09-24T12:00:00.000Z';
+/**
+ * What each chart medication is identified as, for gates that match by
+ * ingredient or class. The live pipeline takes this from the service's
+ * medication normaliser (RxNav, cached in the database); a no-DB proof takes
+ * it from `fixtures/medication-identities.json` — RxNav's own answers, fetched
+ * 2026-10-04. A code that is not in the fixture is UNIDENTIFIED, exactly as
+ * for a medication RxNav does not know, and a gate that depends on it asks.
+ */
+const MED_IDENTITIES: Record<string, { name: string; ingredientRxcuis: string[]; productAtcClasses: string[] }> =
+  JSON.parse(readFileSync(resolve(__dirname, 'fixtures/medication-identities.json'), 'utf8')).codes;
+const medicationIdentity = (input: { code?: string }) => {
+  const hit = input.code ? MED_IDENTITIES[input.code] : undefined;
+  return hit ? { ingredientRxcuis: hit.ingredientRxcuis, ingredientNames: [hit.name], productAtcClasses: hit.productAtcClasses } : null;
+};
 const ANEMIA = process.env.ANEMIA_JSON ?? 'pathways/json/anemia-in-pregnancy.json';
 const GHTN = process.env.GHTN_JSON ?? 'pathways/json/gestational-hypertension-preeclampsia.json';
 const UTI = process.env.UTI_JSON ?? 'pathways/json/uti-asymptomatic-bacteriuria-pregnancy.json';
@@ -318,7 +334,7 @@ function engineFor(
         confidence: conf(node.nodeIdentifier), breakdown: [], resolutionType: 'AUTO_RESOLVED',
       }),
     } as never,
-    THRESHOLDS, tc, {}, facts, new Map(),
+    THRESHOLDS, tc, {}, facts, new Map(), undefined, medicationIdentity,
   );
 }
 
@@ -1982,8 +1998,10 @@ async function proveUtiSharedLabs(): Promise<void> {
 // as before; oral iron and no IV iron → Step 2.14; IV iron → Step 2.18.
 async function proveOnIron(): Promise<void> {
   console.log(`\n=== on-iron: anemia v12 — iron already on the medication list (${ANEMIA}) ===`);
-  const ORAL_CODES = ['310325', '198630', '284202', '311975'];
-  const IV_CODES = ['1741261', '2274409', '1435169', '1311224', '206216'];
+  // v18: matched by ATC product class, so brands outside v17's list count too — Fergon (217095), Slow-Fe (152364);
+  // Venofer (136209), Injectafer (1435170). (v17's 311975 and 1311224 were never iron: nicotine gum and indole.)
+  const ORAL_CODES = ['310325', '198630', '284202', '217095', '152364'];
+  const IV_CODES = ['1741261', '2274409', '1435169', '206216', '136209', '1435170'];
   const SPLIT = ['gate-no-iron-on-list', 'gate-on-oral-iron', 'gate-iv-iron-on-list'];
   const ORAL_MEDS = ['med-1', 'med-2', 'med-3', 'med-11'];
   const IV_MEDS = ['med-4', 'med-5', 'med-6', 'med-7', 'med-13', 'med-14', 'med-15', 'med-16', 'med-17', 'med-18', 'med-19', 'med-20'];
@@ -2126,10 +2144,36 @@ async function proveOnIron(): Promise<void> {
     r = await recheck(DAY21, [[9.5, BASELINE_DATE], [9.9, RECHECK_DATE]], 12);
     expectAll('(workup)', r.state, ['step-2-16', 'dp-4', 'step-1-11'], 'INCLUDED');
     expectAll('(IV iron)', r.state, ['gate-iv-iron-ga-on-iron', 'step-2-17', 'med-17', 'med-18', 'med-19', 'med-20', 'sched-8'], 'GATED_OUT');
-    console.log('    …and with a dated ferrous sulfate INGREDIENT order (311975) — it anchors the window too:');
-    r = await recheck(DAY21, [[9.5, BASELINE_DATE], [9.9, RECHECK_DATE]], 20, '311975');
+    // v18: the gate recognises oral iron by ATC product class; the anchor still takes codes (window_from.codes).
+    console.log('    …a BRAND outside the anchor\'s code list (Fergon, 217095, ordered 2026-06-01): the gate recognises it as oral iron, but it cannot anchor the start date — the date is asked:');
+    r = await resolveSession({ ...base, asOf: DAY21, ask: [{ gate: CONFIRM, answer: NO }],
+      patient: patientWith([['787-2', 72], ['718-7', 9.5, BASELINE_DATE], ['718-7', 9.9, RECHECK_DATE]], { gestational_age_weeks: 20 }, [], [['217095', IRON_START]]) });
+    split(r.state, 'gate-on-oral-iron');
+    expect('start-date question', String(r.pending.filter((p: any) => p.datumKey === ORAL_IRON_ANCHOR).length), '1');
+    console.log('    …an order charted as the bare INGREDIENT ferrous sulfate (24947; RxNav gives an ingredient no single product class): asked "does it count as an oral iron supplement?"; yes → route A, and the order anchors the window:');
+    const K = (cls: string) => `medclass:ATC:${cls}:24947|RXNORM|24947`;
+    const ingredientOrder = patientWith([['787-2', 72], ['718-7', 9.5, BASELINE_DATE], ['718-7', 9.9, RECHECK_DATE]], { gestational_age_weeks: 20 }, [], [['24947', IRON_START]]);
+    r = await resolveSession({ ...base, asOf: DAY21, patient: ingredientOrder });
+    const ironQ: any = r.pending.find((p: any) => p.datumKey === K('B03AA'));
+    expect('asked about the entry', String(ironQ?.prompt), '"RXNORM 24947" is on the medication list and could not be identified. Does it count as an oral iron supplement (a ferrous salt such as ferrous sulfate, gluconate or fumarate)?');
+    expect('medication questions pending (oral, and IV)', String(r.pending.filter((p: any) => String(p.datumKey).startsWith('medclass:')).length), '2');
+    expectAll('(held: no route chosen yet)', r.state, ['gate-on-oral-iron', 'gate-no-iron-on-list'], 'PENDING_QUESTION');
+    r = await resolveSession({ ...base, asOf: DAY21, patient: ingredientOrder, ask: [
+      { gate: K('B03AA'), answer: YES }, { gate: K('B03AC'), answer: NO }, { gate: CONFIRM, answer: NO }] });
+    split(r.state, 'gate-on-oral-iron');
     expect('anchor source', String(r.state.get('gate-hgb-nonresponse-on-iron')?.windowAnchors?.[0]?.source), 'MEDICATION_ORDER');
     expect('step-2-16 nonresponse', status(r.state, 'step-2-16'), 'INCLUDED');
+    console.log('    …answered no to each class (ferrous, ferric, intravenous): no iron on the list — DP-1 as for any patient:');
+    r = await resolveSession({ ...base, asOf: DAY21, patient: ingredientOrder, ask: [
+      { gate: K('B03AA'), answer: NO }, { gate: K('B03AB'), answer: NO }, { gate: K('B03AC'), answer: NO }] });
+    split(r.state, 'gate-no-iron-on-list');
+    console.log('    a PRENATAL VITAMIN on the list (1248142: iron carbonyl 90 mg with folic acid; ATC B03AE) is NOT oral iron: DP-1 as for a patient on no iron, nothing asked about it:');
+    r = await resolveSession({ ...base, patient: patientWith([['787-2', 72], ['718-7', 9.5]], { gestational_age_weeks: 20 }, [], [['1248142'], ['1119573']]) });
+    split(r.state, 'gate-no-iron-on-list');
+    expect('medication questions', String(r.pending.filter((p: any) => String(p.datumKey).startsWith('medclass:')).length), '0');
+    console.log('    nicotine gum (311975 — v17 listed this code as "ferrous sulfate"): not iron:');
+    r = await resolveSession({ ...base, patient: patientWith([['787-2', 72], ['718-7', 9.5]], { gestational_age_weeks: 20 }, [], [['311975']]) });
+    split(r.state, 'gate-no-iron-on-list');
 
     // ── B: IV iron on the list ──
     console.log('  B. iron sucrose (1741261), MCV 72, Hgb 9.5, GA 20 — no DP-1, no DP-3, no iron recommended; follow-up CBC:');
@@ -2417,9 +2461,11 @@ async function proveResponseRecheck(): Promise<void> {
 }
 
 
-// ── Proofs: routine prenatal care v4 ([DECISION — Josh 2026-10-04]) ──
+// ── Proofs: routine prenatal care v5 ([DECISION — Josh 2026-10-04]) ──
+// v5 matches medications by ingredient ("match the vaccine, not the brand"). The identities come from
+// fixtures/medication-identities.json (RxNav's answers), not from the live normaliser.
 /** A medication-list entry: `[RxNorm]` undated (as the simulator sends it), or `[RxNorm, 'YYYY-MM-DD']` given that day. */
-type PnMed = [string] | [string, string];
+type PnMed = [string] | [string, string] | [string, string | undefined, string];
 /** A routine-prenatal patient. `codes` are CHART conditions; labs dated or undated, as `Lab`. */
 function prenatalPatient(opts: {
   ga?: number; rh?: string; codes?: string[]; labs?: Lab[]; meds?: Array<string | PnMed>; vitals?: Record<string, number>;
@@ -2433,7 +2479,7 @@ function prenatalPatient(opts: {
     patientId: 'proof',
     conditionCodes: ['Z34.90', ...(opts.codes ?? [])].map((code) => ({ code, system: 'ICD-10' })),
     medications: (opts.meds ?? []).map((m) => (typeof m === 'string' ? [m] as PnMed : m))
-      .map(([code, date]) => ({ code, system: 'RXNORM', ...(date ? { date } : {}) })),
+      .map(([code, date, display]) => ({ code, system: 'RXNORM', ...(date ? { date } : {}), ...(display ? { display } : {}) })),
     allergies: [], vitalSigns: opts.vitals ?? { systolic_bp: 112, diastolic_bp: 70 },
     patientAttributes: normalizePatientAttributes(attrs as never) ?? {},
     labResults: (opts.labs ?? []).map(([code, value, date]) => ({ code, system: 'LOINC', value, ...(date ? { date } : {}) })),
@@ -2880,6 +2926,31 @@ async function provePrenatalMeds(): Promise<void> {
     expectAll('(not started)', r.state, START_ASA, 'GATED_OUT');
     expectAll('(continue)', r.state, CONT_ASA, 'INCLUDED');
 
+    console.log('  MATCHED BY INGREDIENT: any product containing aspirin counts (aspirin 81 mg chewable 318272; the ingredient itself 1191) — and any product containing folic acid (CitraNatal-type 1248142, folic acid 1 mg 310410):');
+    for (const [asa, vit] of [['318272', '1248142'], ['1191', '310410']] as const) {
+      r = await resolveSession({ file: PRENATAL, reverse, patient: pt(14, [vit, asa]) });
+      expect(`${asa} + ${vit}: pending questions`, keysOf(r.pending), '(none)');
+      expectAll(`(${asa}: aspirin continued, not started)`, r.state, CONT_ASA, 'INCLUDED');
+      expectAll(`(${vit}: vitamin continued, not started)`, r.state, ON_LIST, 'INCLUDED');
+      expectAll('(nothing started)', r.state, [...START_ASA, ...START_VIT], 'GATED_OUT');
+    }
+    console.log('  an entry that cannot be identified ("PNV-DHA softgel") with no folic acid otherwise on the list: asked whether it counts as one; yes → continue, no → the usual question:');
+    const pnv = pt(30, [['8888888', undefined, 'PNV-DHA softgel'] as PnMed, '243670'] as never, { codes: ['O24.410'], labs: [['718-7', 12, '2026-09-15']] });
+    const PK = 'medclass:RXNORM_INGREDIENT:4511:pnv-dha softgel|RXNORM|8888888';
+    r = await resolveSession({ file: PRENATAL, reverse, patient: pnv });
+    expect('prompt', String(r.pending.find((p: any) => p.datumKey === PK)?.prompt), '"PNV-DHA softgel" is on the medication list and could not be identified. Does it count as a folic acid supplement or prenatal vitamin?');
+    const notVaccine = ['1657128', '2468231', '2606074', '798302', '2636589', '1191'].map((c) => ({ gate: PK.replace(':4511:', `:${c}:`), answer: NO }));
+    const answerable = async (answer: GateAnswer) => {
+      const first = await resolveSession({ file: PRENATAL, reverse, patient: pnv });
+      const keys = new Set(first.pending.map((p: any) => p.datumKey));
+      return resolveSession({ file: PRENATAL, reverse, patient: pnv, ask: [{ gate: PK, answer }, ...notVaccine.filter((n) => keys.has(n.gate))] });
+    };
+    r = await answerable(YES);
+    expectAll('(yes: continue, nothing started, vitamin question not asked)', r.state, ON_LIST, 'INCLUDED');
+    expect('vitamin question', String(r.pending.some((p: any) => p.datumKey === PN_VITAMIN_Q)), 'false');
+    r = await answerable(NO);
+    expect('no: the usual question', String(r.pending.some((p: any) => p.datumKey === PN_VITAMIN_Q)), 'true');
+
     console.log('  not on aspirin, 14 weeks: eligibility is asked; yes → started, no → not:');
     const noAsa = pt(14, ['4511']);
     r = await resolveSession({ file: PRENATAL, reverse, patient: noAsa });
@@ -3006,6 +3077,55 @@ async function provePrenatalVaccines(): Promise<void> {
       r = await resolveSession({ file: PRENATAL, reverse, asOf: `${day}T12:00:00.000Z`, patient: pt([], day) });
       expect(`clock ${day}: influenza / COVID-19`, `${status(r.state, 'step-1-31')} / ${status(r.state, 'step-1-32')}`, `${want} / ${want}`);
     }
+
+    console.log('  MATCHED BY INGREDIENT: brands that were in no product list — Fluad 2026-2027 (2746971) and FluMist 2026-2027 (2747690), dated Sep 20 → recognised as this season\'s influenza vaccine, nothing asked:');
+    for (const code of ['2746971', '2747690']) {
+      r = await resolveSession({ file: PRENATAL, reverse, asOf: OCT, patient: pt([[code, '2026-09-20']], '2026-10-10') });
+      expectAll(`(${code}: not recommended)`, r.state, FLU, 'GATED_OUT');
+      expect(`${code}: medication questions`, String(r.pending.filter((p: any) => String(p.datumKey).startsWith('medclass:')).length), '0');
+      expectAll(`(${code}: COVID-19 unaffected)`, r.state, COVID, 'INCLUDED');
+    }
+    console.log('  … Nuvaxovid (2723014, protein subunit: the second COVID-19 ingredient) counts as a COVID-19 vaccine; plain Td (Tenivac, 1190916) does NOT count as Tdap; Arexvy (2636599) shares the RSV ingredient and does:');
+    r = await resolveSession({ file: PRENATAL, reverse, asOf: OCT, patient: pt([['2723014', '2026-09-20'], ['1190916', '2026-09-20'], ['2636599', '2025-11-01']], '2026-10-10') });
+    expectAll('(COVID-19 not offered)', r.state, COVID, 'GATED_OUT');
+    expectAll('(Tdap still recommended)', r.state, TDAP, 'INCLUDED');
+    expectAll('(RSV not offered)', r.state, RSV, 'GATED_OUT');
+    expect('medication questions', String(r.pending.filter((p: any) => String(p.datumKey).startsWith('medclass:')).length), '0');
+
+    console.log('  an entry that CANNOT BE IDENTIFIED ("Flublok Quadrivalent 2026", dated Sep 22) is asked about by name, once per class it could belong to:');
+    const mystery = pt([['9999999', '2026-09-22', 'Flublok Quadrivalent 2026']], '2026-10-10');
+    const MK = (ingredientCode: string) => `medclass:RXNORM_INGREDIENT:${ingredientCode}:flublok quadrivalent 2026|RXNORM|9999999`;
+    r = await resolveSession({ file: PRENATAL, reverse, asOf: OCT, patient: mystery });
+    const fluQ: any = r.pending.find((p: any) => p.datumKey === MK('1657128'));
+    expect('influenza question', String(fluQ?.prompt), '"Flublok Quadrivalent 2026" is on the medication list and could not be identified. Does it count as an influenza vaccine?');
+    expect('answer type', String(fluQ?.answerType), 'BOOLEAN');
+    expect('classes asked about', r.pending.filter((p: any) => String(p.datumKey).startsWith('medclass:')).map((p: any) => String(p.prompt).replace(/^.*Does it count as /, '').replace('?', '')).sort().join(' | '),
+      'a COVID-19 vaccine | a Tdap vaccine | an RSV vaccine | an influenza vaccine');
+    expectAll('(influenza held: neither recommended nor assumed given)', r.state, FLU, 'PENDING_QUESTION');
+    const others = [{ gate: MK('2468231'), answer: NO }, { gate: MK('2606074'), answer: NO }, { gate: MK('798302'), answer: NO }, { gate: MK('2636589'), answer: NO }];
+    console.log('  … yes, it is an influenza vaccine (and none of the others): this season\'s dose — not recommended; the other three are recommended:');
+    r = await resolveSession({ file: PRENATAL, reverse, asOf: OCT, patient: mystery, ask: [{ gate: MK('1657128'), answer: YES }, ...others] });
+    expect('pending questions', keysOf(r.pending), '(none)');
+    expectAll('(influenza not recommended)', r.state, FLU, 'GATED_OUT');
+    expectAll('(the others recommended)', r.state, [...COVID, ...TDAP, ...RSV], 'INCLUDED');
+    console.log('  … no, it is not an influenza vaccine: recommended:');
+    r = await resolveSession({ file: PRENATAL, reverse, asOf: OCT, patient: mystery, ask: [{ gate: MK('1657128'), answer: NO }, ...others] });
+    expect('pending questions', keysOf(r.pending), '(none)');
+    expectAll('(influenza recommended)', r.state, FLU, 'INCLUDED');
+    console.log('  … "Not available" to each: the gates close (default_behavior) — not recommended, nothing blocks:');
+    r = await resolveSession({ file: PRENATAL, reverse, asOf: OCT, patient: mystery, ask: [MK('1657128'), MK('2468231'), MK('2606074'), MK('798302'), MK('2636589')].map((k) => ({ decline: k })) });
+    expect('pending questions', keysOf(r.pending), '(none)');
+    expectAll('(influenza not recommended)', r.state, FLU, 'GATED_OUT');
+    expect('care-plan blockers', String(validateForGeneration(r.state, r.redFlags).length), '0');
+    console.log('  … an unidentified entry dated LAST season (2025-10-01) is asked about too (the "is one listed without a date" check reads the whole list); yes → a dated dose from last season: recommended:');
+    const lastSeason = pt([['9999999', '2025-10-01', 'Flublok Quadrivalent 2025']], '2026-10-10');
+    const LK = (c: string) => `medclass:RXNORM_INGREDIENT:${c}:flublok quadrivalent 2025|RXNORM|9999999`;
+    r = await resolveSession({ file: PRENATAL, reverse, asOf: OCT, patient: lastSeason });
+    expect('influenza question', String(r.pending.some((p: any) => p.datumKey === LK('1657128'))), 'true');
+    r = await resolveSession({ file: PRENATAL, reverse, asOf: OCT, patient: lastSeason,
+      ask: [{ gate: LK('1657128'), answer: YES }, ...['2468231', '2606074', '798302', '2636589'].map((c) => ({ gate: LK(c), answer: NO }))] });
+    expect('pending questions', keysOf(r.pending), '(none)');
+    expectAll('(influenza recommended)', r.state, FLU, 'INCLUDED');
 
     console.log('  an UNDATED influenza vaccine on the list: asked "given this season (since September 1)?" — yes → not recommended, no → recommended; not asked twice:');
     const undatedFlu = pt(['2746457']);

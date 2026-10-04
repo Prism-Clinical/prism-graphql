@@ -7,7 +7,7 @@
 //
 // Run from the repo root:
 //   npx ts-node --transpile-only .claude/skills/pathway-json-builder/scripts/coverage-audit.ts [file.json ...]
-// Default: every pathways/json/*.json. RUNS=<n> patients per pathway (default 400).
+// Default: every pathways/json/*.json. RUNS=<n> patients per pathway (default 3000).
 // Exit 1 when anything is reported under ERRORS, STUCK or NEVER.
 //
 // Patients are generated FROM the pathway: every chart condition a gate reads
@@ -35,10 +35,35 @@ import type { GateAnswer } from '../../../../apps/pathway-service/src/services/r
 import type { GraphContext, GraphEdge, GraphNode, PatientContext } from '../../../../apps/pathway-service/src/services/confidence/types';
 
 const AS_OF = '2026-09-24T12:00:00.000Z';
+/**
+ * What each chart medication is identified as, for gates that match by
+ * ingredient or class — RxNav's answers (fixtures/medication-identities.json),
+ * standing in for the service's normaliser. A code that is not in the fixture
+ * is unidentified, and a gate that depends on it asks about it.
+ */
+const MED_IDENTITIES: Record<string, { name: string; ingredientRxcuis: string[]; productAtcClasses: string[] }> =
+  JSON.parse(readFileSync(resolve(__dirname, 'fixtures/medication-identities.json'), 'utf8')).codes;
+const medicationIdentity = (input: { code?: string }) => {
+  const hit = input.code ? MED_IDENTITIES[input.code] : undefined;
+  return hit ? { ingredientRxcuis: hit.ingredientRxcuis, ingredientNames: [hit.name], productAtcClasses: hit.productAtcClasses } : null;
+};
+/** A chart code that IS in the class a condition names: a product of that ATC class, or the ingredient code itself. */
+function memberOf(l: any): string {
+  if (l.system === 'ATC') {
+    const hit = Object.entries(MED_IDENTITIES).find(([, m]) => m.productAtcClasses.some((c) => c.startsWith(l.value)));
+    return hit ? hit[0] : l.value;
+  }
+  return l.value;
+}
+/** An entry no normaliser knows: every class gate has to ask about it. */
+const UNIDENTIFIED_MED = { code: '9999999', system: 'RXNORM', display: 'Unrecognised entry' };
 const TODAY = AS_OF.slice(0, 10);
 const daysAgo = (n: number) => new Date(Date.parse(AS_OF) - n * 86_400_000).toISOString().slice(0, 10);
 const THRESHOLDS = { autoResolveThreshold: 0.85, suggestThreshold: 0.6 };
-const RUNS = Number(process.env.RUNS ?? 1500);
+// 3000 since routine prenatal care v5 / anemia v18: a rare route (a positive 50-g challenge after 24 weeks with
+// no 100-g test; oral iron due for its recheck) was missed by 1500 patients once charts could also carry an
+// unidentified medication. It is a sampling size, not a property of the pathway.
+const RUNS = Number(process.env.RUNS ?? 3000);
 /** The same question still asked after this many answers in a row is a dead end. */
 const STUCK_AFTER = 3;
 const MAX_ANSWERS = 40;
@@ -116,6 +141,7 @@ interface Facts {
   attrs: Map<string, unknown[]>;     // attribute key (after `patient.`) → candidate values
   series: Set<string>;               // lab codes read as a dated series (delta_from_baseline)
   roles: Set<string>;                // window_from clinical roles
+  classGates?: boolean;              // some gate matches a medication by ingredient or class
 }
 
 function factsOf(pw: any): Facts {
@@ -139,7 +165,7 @@ function factsOf(pw: any): Facts {
       } else if (l.field === 'vitals') add(f.vitals, l.value, [l.threshold * 0.8, l.threshold * 1.2]);
       else if (l.field === 'conditions') (l.operator === 'count_in_window' ? f.counted : f.conditions).add(l.value);
       else if (l.field === 'allergies') f.allergies.add(l.value);
-      else if (l.field === 'medications') f.meds.add(l.value);
+      else if (l.field === 'medications') { f.meds.add(memberOf(l)); if (l.system === 'ATC' || l.system === 'RXNORM_INGREDIENT') f.classGates = true; }
     }
   }
   return f;
@@ -176,7 +202,11 @@ function randomPatient(pw: any, f: Facts): Patient {
   return {
     ctx: {
       patientId: 'audit', conditionCodes,
-      medications: [...f.meds].filter(() => rnd() < medDensity).map((code) => ({ code: concrete(code), system: 'RXNORM' })),
+      medications: [
+        ...[...f.meds].filter(() => rnd() < medDensity).map((code) => ({ code: concrete(code), system: 'RXNORM' })),
+        // One chart in eight carries an entry that cannot be identified, so the "does it count as …" questions are exercised.
+        ...(f.classGates && rnd() < 1 / 8 ? [UNIDENTIFIED_MED] : []),
+      ],
       allergies: [...f.allergies].filter(() => rnd() < 0.3).map((code) => ({ code, system: 'SNOMED' })),
       vitalSigns, labResults,
       patientAttributes: normalizePatientAttributes(attrs as never) ?? {},
@@ -196,7 +226,7 @@ function engineFor(p: Patient, pathwayId: string, graph: GraphContext): Traversa
     { computeNodeConfidence: async (node: GraphNode) => ({
       confidence: REAL_SCORING ? realConfidence(node, p.ctx, graph) : 0.9, breakdown: [], resolutionType: 'AUTO_RESOLVED',
     }) } as never,
-    THRESHOLDS, tc, {}, facts, new Map(),
+    THRESHOLDS, tc, {}, facts, new Map(), undefined, medicationIdentity,
   );
 }
 
@@ -255,6 +285,9 @@ async function audit(file: string): Promise<number> {
             { code: q.askTarget.code, system: q.askTarget.system, value: pick(vs), date: AS_OF, providerAsserted: true }];
         } else if (q.askTarget?.kind === 'vital') {
           (p.ctx as any).vitalSigns = { ...(p.ctx as any).vitalSigns, [q.askTarget.path]: pick(facts.vitals.get(q.askTarget.path) ?? [1]) };
+        } else if (q.askTarget?.kind === 'medication_class') {
+          // "<entry> could not be identified. Does it count as <class>?" — stored under the question's own key.
+          answers.set(q.askTarget.key, { booleanValue: rnd() < 0.5 } as GateAnswer);
         } else if (q.askTarget?.kind === 'attribute') {
           const key = q.askTarget.path.split('.').slice(1).join('.');
           const t = String(q.answerType).toUpperCase();

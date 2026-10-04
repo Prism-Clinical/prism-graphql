@@ -1,0 +1,503 @@
+{
+ "_comment": "What RxNav identifies each RxNorm code as \u2014 its ingredients (TTY IN) and product-level ATC classes (RxClass ATCPROD, levels 1-4). Fetched from rxnav.nlm.nih.gov on 2026-10-04. Read by gate-proof.ts and coverage-audit.ts in place of the service's medication normaliser (which needs the database and the network). A code that is not here is unidentified, as it would be for RxNav. An ingredient- or brand-level concept keeps a product class only when RxNav gives exactly one, as the engine does.",
+ "codes": {
+  "1191": {
+   "name": "aspirin",
+   "tty": "IN",
+   "ingredientRxcuis": [
+    "1191"
+   ],
+   "productAtcClasses": []
+  },
+  "4511": {
+   "name": "folic acid",
+   "tty": "IN",
+   "ingredientRxcuis": [
+    "4511"
+   ],
+   "productAtcClasses": []
+  },
+  "24947": {
+   "name": "ferrous sulfate",
+   "tty": "IN",
+   "ingredientRxcuis": [
+    "24947"
+   ],
+   "productAtcClasses": []
+  },
+  "136209": {
+   "name": "Venofer",
+   "tty": "BN",
+   "ingredientRxcuis": [
+    "24909"
+   ],
+   "productAtcClasses": [
+    "B03AC"
+   ]
+  },
+  "152364": {
+   "name": "Slow-Fe",
+   "tty": "BN",
+   "ingredientRxcuis": [
+    "24947"
+   ],
+   "productAtcClasses": [
+    "B03AA"
+   ]
+  },
+  "198630": {
+   "name": "ferrous gluconate 324 MG Oral Tablet",
+   "tty": "SCD",
+   "ingredientRxcuis": [
+    "24942"
+   ],
+   "productAtcClasses": [
+    "B03AA"
+   ]
+  },
+  "198640": {
+   "name": "folic acid 0.4 MG Oral Tablet",
+   "tty": "SCD",
+   "ingredientRxcuis": [
+    "4511"
+   ],
+   "productAtcClasses": [
+    "B03BB"
+   ]
+  },
+  "206216": {
+   "name": "2 ML iron-dextran complex 50 MG/ML Injection [InFed]",
+   "tty": "SBD",
+   "ingredientRxcuis": [
+    "5992"
+   ],
+   "productAtcClasses": [
+    "B03AC"
+   ]
+  },
+  "217095": {
+   "name": "Fergon",
+   "tty": "BN",
+   "ingredientRxcuis": [
+    "24942"
+   ],
+   "productAtcClasses": [
+    "B03AA"
+   ]
+  },
+  "243670": {
+   "name": "aspirin 81 MG Oral Tablet",
+   "tty": "SCD",
+   "ingredientRxcuis": [
+    "1191"
+   ],
+   "productAtcClasses": [
+    "B01AC",
+    "C10BX"
+   ]
+  },
+  "284202": {
+   "name": "ferrous fumarate 324 MG Oral Tablet",
+   "tty": "SCD",
+   "ingredientRxcuis": [
+    "24941"
+   ],
+   "productAtcClasses": [
+    "B03AA"
+   ]
+  },
+  "310325": {
+   "name": "ferrous sulfate 325 MG Oral Tablet",
+   "tty": "SCD",
+   "ingredientRxcuis": [
+    "24947"
+   ],
+   "productAtcClasses": [
+    "B03AA"
+   ]
+  },
+  "310410": {
+   "name": "folic acid 1 MG Oral Tablet",
+   "tty": "SCD",
+   "ingredientRxcuis": [
+    "4511"
+   ],
+   "productAtcClasses": [
+    "B03BB"
+   ]
+  },
+  "311975": {
+   "name": "nicotine 4 MG Chewing Gum",
+   "tty": "SCD",
+   "ingredientRxcuis": [
+    "7407"
+   ],
+   "productAtcClasses": [
+    "N07BA"
+   ]
+  },
+  "318272": {
+   "name": "aspirin 81 MG Chewable Tablet",
+   "tty": "SCD",
+   "ingredientRxcuis": [
+    "1191"
+   ],
+   "productAtcClasses": [
+    "B01AC"
+   ]
+  },
+  "352572": {
+   "name": "Daptacel",
+   "tty": "BN",
+   "ingredientRxcuis": [
+    "798302",
+    "798304",
+    "798306"
+   ],
+   "productAtcClasses": [
+    "J07AJ"
+   ]
+  },
+  "583411": {
+   "name": "Boostrix",
+   "tty": "BN",
+   "ingredientRxcuis": [
+    "798302",
+    "798304",
+    "798306"
+   ],
+   "productAtcClasses": [
+    "J07AJ"
+   ]
+  },
+  "1119573": {
+   "name": "ascorbic acid 30 MG / cholecalciferol 1000 UNT / cuprous oxide 2 MG / folic acid 1 MG / magnesium oxide 20 MG ",
+   "tty": "SBD",
+   "ingredientRxcuis": [
+    "10454",
+    "105669",
+    "11246",
+    "11248",
+    "11256",
+    "11423",
+    "1151",
+    "21842",
+    "2418",
+    "4511",
+    "6582",
+    "684879",
+    "7393",
+    "8597",
+    "9346"
+   ],
+   "productAtcClasses": [
+    "A11AA"
+   ]
+  },
+  "1190911": {
+   "name": "Tenivac",
+   "tty": "BN",
+   "ingredientRxcuis": [
+    "798304",
+    "798306"
+   ],
+   "productAtcClasses": [
+    "J07AM"
+   ]
+  },
+  "1190916": {
+   "name": "0.5 ML diphtheria toxoid vaccine, inactivated 4 UNT/ML / tetanus toxoid vaccine, inactivated 10 UNT/ML Injecti",
+   "tty": "SBD",
+   "ingredientRxcuis": [
+    "798304",
+    "798306"
+   ],
+   "productAtcClasses": [
+    "J07AM"
+   ]
+  },
+  "1248142": {
+   "name": "ascorbic acid 120 MG / beta carotene 2700 UNT / calcium carbonate 200 MG / cholecalciferol 400 UNT / cupric ox",
+   "tty": "SCD",
+   "ingredientRxcuis": [
+    "10454",
+    "11248",
+    "11256",
+    "11423",
+    "1151",
+    "1897",
+    "19143",
+    "21837",
+    "2418",
+    "262150",
+    "4511",
+    "6582",
+    "684879",
+    "7405",
+    "82003",
+    "9346"
+   ],
+   "productAtcClasses": [
+    "B03AE"
+   ]
+  },
+  "1300191": {
+   "name": "0.5 ML Bordetella pertussis filamentous hemagglutinin vaccine, inactivated 0.01 MG/ML / Bordetella pertussis f",
+   "tty": "SBD",
+   "ingredientRxcuis": [
+    "798302",
+    "798304",
+    "798306"
+   ],
+   "productAtcClasses": [
+    "J07AJ"
+   ]
+  },
+  "1300310": {
+   "name": "0.5 ML Bordetella pertussis filamentous hemagglutinin vaccine, inactivated 0.01 MG/ML / Bordetella pertussis f",
+   "tty": "SBD",
+   "ingredientRxcuis": [
+    "798302",
+    "798304",
+    "798306"
+   ],
+   "productAtcClasses": [
+    "J07AJ"
+   ]
+  },
+  "1300370": {
+   "name": "0.5 ML Bordetella pertussis filamentous hemagglutinin vaccine, inactivated 0.016 MG/ML / Bordetella pertussis ",
+   "tty": "SBD",
+   "ingredientRxcuis": [
+    "798302",
+    "798304",
+    "798306"
+   ],
+   "productAtcClasses": [
+    "J07AJ"
+   ]
+  },
+  "1311224": {
+   "name": "indole",
+   "tty": "IN",
+   "ingredientRxcuis": [
+    "1311224"
+   ],
+   "productAtcClasses": []
+  },
+  "1435169": {
+   "name": "15 ML ferric carboxymaltose 50 MG/ML Injection",
+   "tty": "SCD",
+   "ingredientRxcuis": [
+    "1433693"
+   ],
+   "productAtcClasses": [
+    "B03AC"
+   ]
+  },
+  "1435170": {
+   "name": "Injectafer",
+   "tty": "BN",
+   "ingredientRxcuis": [
+    "1433693"
+   ],
+   "productAtcClasses": [
+    "B03AC"
+   ]
+  },
+  "1741261": {
+   "name": "10 ML iron sucrose 20 MG/ML Injection",
+   "tty": "SCD",
+   "ingredientRxcuis": [
+    "24909"
+   ],
+   "productAtcClasses": [
+    "B03AC"
+   ]
+  },
+  "2274409": {
+   "name": "10 ML ferric derisomaltose 100 MG/ML Injection [Monoferric]",
+   "tty": "SBD",
+   "ingredientRxcuis": [
+    "2274394"
+   ],
+   "productAtcClasses": [
+    "B03AC"
+   ]
+  },
+  "2636595": {
+   "name": "Arexvy",
+   "tty": "BN",
+   "ingredientRxcuis": [
+    "2636589"
+   ],
+   "productAtcClasses": [
+    "J07BX"
+   ]
+  },
+  "2636599": {
+   "name": "0.5 ML respiratory syncytial virus pre-fusion F protein, recombinant 0.24 MG/ML Injection [Arexvy]",
+   "tty": "SBD",
+   "ingredientRxcuis": [
+    "2636589"
+   ],
+   "productAtcClasses": [
+    "J07BX"
+   ]
+  },
+  "2642144": {
+   "name": "Abrysvo",
+   "tty": "BN",
+   "ingredientRxcuis": [
+    "2636589"
+   ],
+   "productAtcClasses": [
+    "J07BX"
+   ]
+  },
+  "2642148": {
+   "name": "0.5 ML respiratory syncytial virus pre-fusion F protein, A, recombinant, stabilized 0.12 MG/ML / respiratory s",
+   "tty": "SBD",
+   "ingredientRxcuis": [
+    "2636589"
+   ],
+   "productAtcClasses": [
+    "J07BX"
+   ]
+  },
+  "2719212": {
+   "name": "0.5 ML influenza A virus A/Croatia/10136RV/2023 (H3N2) antigen 0.03 MG/ML / influenza A virus A/Victoria/4897/",
+   "tty": "SBD",
+   "ingredientRxcuis": [
+    "1657128",
+    "1657131",
+    "1657134"
+   ],
+   "productAtcClasses": [
+    "J07BB"
+   ]
+  },
+  "2722600": {
+   "name": "Comirnaty 2025-2026",
+   "tty": "BN",
+   "ingredientRxcuis": [
+    "2468231"
+   ],
+   "productAtcClasses": [
+    "J07BN"
+   ]
+  },
+  "2722605": {
+   "name": "0.3 ML SARS-CoV-2 (COVID-19) vaccine, mRNA-BNT162b2 OMICRON (LP.8.1) 0.1 MG/ML Prefilled Syringe [Comirnaty 20",
+   "tty": "SBD",
+   "ingredientRxcuis": [
+    "2468231"
+   ],
+   "productAtcClasses": [
+    "J07BN"
+   ]
+  },
+  "2722661": {
+   "name": "0.2 ML SARS-CoV-2 (COVID-19) vaccine, mRNA-1283 OMICRON (LP.8.1) 0.05 MG/ML Prefilled Syringe [Mnexspike 2025-",
+   "tty": "SBD",
+   "ingredientRxcuis": [
+    "2468231"
+   ],
+   "productAtcClasses": [
+    "J07BN"
+   ]
+  },
+  "2723014": {
+   "name": "0.5 ML SARS-CoV-2 (COVID-19) vaccine, protein NVX-CoV2705 0.01 MG/ML Prefilled Syringe [Nuvaxovid 2025-2026]",
+   "tty": "SBD",
+   "ingredientRxcuis": [
+    "2606074"
+   ],
+   "productAtcClasses": []
+  },
+  "2746457": {
+   "name": "Fluzone 2026-2027",
+   "tty": "BN",
+   "ingredientRxcuis": [
+    "1657128",
+    "1657131",
+    "1657134"
+   ],
+   "productAtcClasses": [
+    "J07BB"
+   ]
+  },
+  "2746468": {
+   "name": "0.5 ML influenza A virus A/Michigan/105/2025 (H3N2) antigen 0.03 MG/ML / influenza A virus A/Switzerland/6849/",
+   "tty": "SBD",
+   "ingredientRxcuis": [
+    "1657128",
+    "1657131",
+    "1657134"
+   ],
+   "productAtcClasses": [
+    "J07BB"
+   ]
+  },
+  "2746475": {
+   "name": "0.5 ML influenza A virus A/Michigan/105/2025 (H3N2) antigen 0.12 MG/ML / influenza A virus A/Switzerland/6849/",
+   "tty": "SBD",
+   "ingredientRxcuis": [
+    "1657128",
+    "1657131",
+    "1657134"
+   ],
+   "productAtcClasses": [
+    "J07BB"
+   ]
+  },
+  "2746966": {
+   "name": "Fluad 2026-2027",
+   "tty": "BN",
+   "ingredientRxcuis": [
+    "1657128",
+    "1657131",
+    "1657134"
+   ],
+   "productAtcClasses": [
+    "J07BB"
+   ]
+  },
+  "2746971": {
+   "name": "0.5 ML influenza A virus A/Michigan/105/2025 (H3N2) antigen 0.03 MG/ML / influenza A virus A/Missouri/11/2025 ",
+   "tty": "SBD",
+   "ingredientRxcuis": [
+    "1657128",
+    "1657131",
+    "1657134"
+   ],
+   "productAtcClasses": [
+    "J07BB"
+   ]
+  },
+  "2747684": {
+   "name": "FluMist 2026-2027",
+   "tty": "BN",
+   "ingredientRxcuis": [
+    "1657128",
+    "1657131",
+    "1657134"
+   ],
+   "productAtcClasses": [
+    "J07BB"
+   ]
+  },
+  "2747690": {
+   "name": "influenza A virus A/Darwin/1369/2025 (H3N2) antigen 158000000 UNT/ML / influenza A virus A/Switzerland/6849/20",
+   "tty": "SBD",
+   "ingredientRxcuis": [
+    "1657128",
+    "1657131",
+    "1657134"
+   ],
+   "productAtcClasses": [
+    "J07BB"
+   ]
+  }
+ }
+}

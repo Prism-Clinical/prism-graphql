@@ -78,16 +78,21 @@ COVID-19 vaccine given this season" cannot be remembered: the scopes are `PREGNA
 `PATIENT`, and neither ends on the next September 1. Those two questions return at each visit
 until the entry on the medication list is dated (brief J36).
 
-## Medication class matching — match a medication by ingredient/class, not product code
+## Anchor a treatment-start window on a medication class (`window_from.codes`)
 
-`[DECISION — Josh 2026-10-04]` "Match the vaccine, not the brand." A gate reads the medication
-list by exact product code (`includes_code` / `count_in_window`; no expansion from a product to
-its ingredient or class). routine-prenatal-care v4 therefore carries lists of RxNorm product
-codes that go stale: influenza and COVID-19 concepts are reissued every season, the lists hold
-brand products for 2025-2026 and 2026-2027 only, and a chart that codes the vaccine another way
-(a generic concept, or CVX) is not recognised (brief §0.6 #4, §0.8).
+Medication class matching landed on 2026-10-04 (`system: "RXNORM_INGREDIENT"` / `"ATC"` on
+`includes_code` / `not_includes_code` / `count_in_window`): routine-prenatal-care v5 matches
+vaccines, folic acid and aspirin by ingredient, and anemia-in-pregnancy v18 matches oral and
+IV iron by ATC class. One place still takes product codes only: **`window_from.codes`**, the
+list of chart orders that can date the start of a treatment (anemia's oral-iron response
+window). The spec refuses `window_from` with a class system.
 
-- First users: the vaccines (Tdap, RSV, influenza, COVID-19) and folic-acid-containing
-  products, which would become "any product whose ingredient is folic acid".
-- Prenatal multivitamins have no clean class in RxNorm (most brands are not RxNorm concepts
-  at all), so for them the known list plus the remembered "yes" stays even with class matching.
+- Effect in anemia v18: a brand outside the code list (Fergon, Slow-Fe, a polysaccharide iron
+  product) is recognised as oral iron by the gate, but its dated order cannot anchor the
+  start, so "When did oral iron start?" is asked although the chart has the date (brief §18,
+  v18; proved in `gate-proof.ts on-iron`).
+- Wanted: `window_from.codes` entries of the form `{ "system": "ATC", "code": "B03AA" }`.
+- Related: an order charted as a bare ingredient (ferrous sulfate, RxCUI 24947) has no single
+  product class in RxNav, so an ATC gate asks about it. Prenatal multivitamins have no clean
+  class either; routine prenatal care matches "contains folic acid" and keeps the remembered
+  question for the rest.

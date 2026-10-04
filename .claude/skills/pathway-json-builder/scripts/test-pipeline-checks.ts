@@ -125,6 +125,17 @@ expect('gate-control: on_declined "traverse" on a gate that can ask for nothing 
 expect('gate-control: default_behavior "traverse" on a single-target gate is still an INERT GATE',
   run(GATE, [withGate({ gate_type: 'patient_attribute', default_behavior: 'traverse', on_unresolved: 'ask', condition: VITAMIN })]), 1, 'INERT GATE');
 
+// A medication matched by ingredient or class asks about an entry it cannot identify: `ask` is live.
+const FLU_CLASS = { field: 'medications', operator: 'includes_code', value: '1657128', system: 'RXNORM_INGREDIENT', display: 'an influenza vaccine', status: 'any', horizon: 'LIFETIME' };
+expectAbsent('gate-control: "ask" on a gate matching a medication by ingredient is not reported inert',
+  run(GATE, [withGate({ gate_type: 'patient_attribute', on_unresolved: 'ask', condition: FLU_CLASS })]), 0, 'is inert');
+expectAbsent('gate-control: … nor by ATC class',
+  run(GATE, [withGate({ on_unresolved: 'ask', operator: 'OR', conditions: [{ ...FLU_CLASS, value: 'B03AA', system: 'ATC', display: 'an oral iron supplement' }] })]), 0, 'is inert');
+expect('gate-control: "ask" on a product-code medication gate still is',
+  run(GATE, [withGate({ gate_type: 'patient_attribute', on_unresolved: 'ask', condition: { ...FLU_CLASS, system: 'RXNORM', value: '2746468' } })]), 0, 'is inert');
+expect('gate-control: "default" on a medication-class gate needs no marker',
+  run(GATE, [withGate({ gate_type: 'patient_attribute', on_unresolved: 'default', condition: FLU_CLASS })]), 0, 'GATE CONTROL OK');
+
 // ── validate-pathway: DATA USE — a response check must order its recheck ──
 // [DECISION — Josh 2026-10-04]. validate-pathway.ts imports pathway-service
 // TypeScript, so it runs under ts-node (slow: a few seconds per case). The

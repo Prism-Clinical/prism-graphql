@@ -650,12 +650,23 @@ A coded condition on `field: "medications"` may name, in `system`, what the medi
 | Folic acid, alone or in a prenatal vitamin | `RXNORM_INGREDIENT` `4511` | folic acid 0.4 mg tablet; five prenatal multivitamins (ferrous fumarate, polysaccharide iron, iron carbonyl, DHA, CitraNatal pack) | "Is a prenatal vitamin" has no class: the products scatter over `B03AE`, `A11AA`, `A11JB`, `A11JC`. "Contains folic acid" is the expressible question. Products with L-methylfolate instead of folic acid are a different ingredient. |
 | Oral iron supplement (not a multivitamin) | `ATC` `B03AA` **OR** `B03AB` — two leaves | ferrous sulfate 325 mg, ferrous gluconate 324 mg, Slow Fe → `B03AA` | By ingredient it would also match every prenatal vitamin. Ingredients, for reference: ferrous sulfate `24947`, ferrous gluconate `24942`, ferrous fumarate `24941`, polysaccharide iron complex `105669`, iron carbonyl `262150`, ferrous bisglycinate `1102188`. |
 | IV iron | `ATC` `B03AC` — or the ingredients: iron sucrose `24909`, ferric carboxymaltose `1433693`, ferumoxytol `473387`, iron dextran `5992`, ferric derisomaltose `2274394`, sodium ferric gluconate `261435` | Venofer, Injectafer, Feraheme, INFeD, Monoferric → `B03AC` | Either form. |
+| Aspirin, any product | `RXNORM_INGREDIENT` `1191` | RxNav: `1191` aspirin (TTY IN); aspirin 81 mg tablet `243670` and chewable `318272` → ingredient `1191` (checked for routine prenatal care v5) | Any dose and any combination product matches; say in the step what dose is meant. |
 
 A medication charted as an **ingredient or brand** rather than a product (e.g. the bare
 ingredient "ferrous sulfate", RxCUI `24947`) has its ingredient but often **no single
 product class** — RxNav returns the classes of every product made from it. The engine
 records a class for such an entry only when there is exactly one (Venofer → `B03AC`);
 otherwise an `ATC` condition treats the entry as unidentified and asks.
+
+**Verify a code before authoring it.** Anemia v12–v17 carried `311975` as "ferrous sulfate
+(ingredient)" and `1311224` as "ferric carboxymaltose (ingredient)"; RxNav says they are
+nicotine 4 mg chewing gum and indole. Check every RxCUI on `rxnav.nlm.nih.gov/REST/rxcui/<id>/properties.json`.
+
+**Build checks.** `check-gate-control.ts` treats `on_unresolved: "ask"` as live on a gate with
+a class-system medication leaf (it asks about an unidentifiable entry). `gate-proof.ts` and
+`coverage-audit.ts` have no normaliser: they read identities from
+`scripts/fixtures/medication-identities.json` (RxNav's answers; add a row for any code a new
+proof uses), and a code that is not there is unidentified.
 
 **A medication that cannot be identified is never "not in the class".** Each chart entry is
 *in the class*, *not in it*, or **unidentified** — RxNav had no match for it, was

@@ -1,21 +1,21 @@
--- Reference codes for the routine-prenatal-care pathway (version 2).
+-- Reference codes for the simulator's medication search (routine-prenatal-care).
 --
--- Every medication and vaccine code the pathway's gates recognise on the medication list:
--- aspirin, folic acid, prenatal multivitamins, and the Tdap, RSV, influenza and COVID-19
--- vaccine products. All are RxNorm concepts verified on RxNav on 2026-10-04 (see
--- pathways/briefs/routine-prenatal-care-research-brief.md, section 0.8).
+-- Aspirin, folic acid, prenatal multivitamins, and Tdap, RSV, influenza and COVID-19 vaccine
+-- products — RxNorm concepts verified on RxNav on 2026-10-04.
 --
--- Why: the encounter simulator's code search reads clinical_code_reference, and its
--- medication picker searches system 'RXNORM' only. Without these rows a tester cannot find
--- or enter a prenatal vitamin or a vaccine, so the gates that read them cannot be exercised.
--- Vaccines are seeded as RXNORM (not CVX) for that reason.
+-- Matching no longer depends on this file. Since routine-prenatal-care version 5 the
+-- pathway's gates match a medication by INGREDIENT (system RXNORM_INGREDIENT), so any brand
+-- or season is recognised whether or not its product code is listed here; no gate reads these
+-- product codes. The file is still useful for one thing: the encounter simulator's code
+-- search reads clinical_code_reference (medications as system 'RXNORM' only), and without
+-- these rows a tester cannot find and enter a prenatal vitamin or a vaccine by name.
 --
 -- Idempotent: safe to run any number of times. A code already present is left as it is,
 -- except that a row whose description is still the import placeholder
 -- '<auto-added from pathway upload>' is given its real name so it can be searched.
 --
--- The influenza and COVID-19 products are seasonal (2025-2026 and 2026-2027): add the new
--- season's RxNorm concepts here, and to the pathway's gates, each year.
+-- The influenza and COVID-19 rows are 2025-2026 and 2026-2027 products; add a new season's
+-- products when testers need to enter them. The pathway itself needs no change.
 --
 -- Run (not run by the build):
 --   psql "$DATABASE_URL" -f scripts/seed-prenatal-reference-codes.sql

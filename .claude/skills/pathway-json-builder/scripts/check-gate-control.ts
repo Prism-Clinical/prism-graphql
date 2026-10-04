@@ -514,6 +514,12 @@ const isNumeric = (c: any): boolean =>
     // simply that question's wording. Several: the one prompt would be shown for each.
     const askableData = new Set(conds.filter(isNumeric).map((c) => String(c.attribute ?? `${c.field}:${c.value}`)));
     if (holdsOnGestationalAge) askableData.add('patient.gestational_age_weeks');
+    // A medication matched by ingredient or class (`system: "RXNORM_INGREDIENT"` /
+    // `"ATC"`) is unresolved when an entry on the list cannot be identified: with
+    // `ask` the gate asks about that entry by name. So `ask` is not inert there.
+    // The question's wording is fixed by the engine (the entry, and the class from
+    // `display`), so it is not counted among the data an authored prompt covers.
+    const asksAboutMedications = conds.some((c) => c.field === 'medications' && (c.system === 'RXNORM_INGREDIENT' || c.system === 'ATC'));
     if (props.on_unresolved === undefined) {
       errors.push(
         `ON_UNRESOLVED — "${gate}" does not say what to do when it cannot decide.\n` +
@@ -529,7 +535,7 @@ const isNumeric = (c: any): boolean =>
         `      => emit "ask", or justify the exception in the brief with a line containing\n` +
         `         "[ON-UNRESOLVED DEFAULT — ${gate}]" and the clinical reason (brief: ${briefName()}).`,
       );
-    } else if (props.on_unresolved === 'ask' && !askable && !holdsOnGestationalAge) {
+    } else if (props.on_unresolved === 'ask' && !askable && !holdsOnGestationalAge && !asksAboutMedications) {
       warnings.push(
         `Gate "${gate}": on_unresolved "ask" is inert — it has no numeric condition, so the engine ` +
         `never asks and applies default_behavior. Emit "default" so the JSON says what happens.`,
@@ -544,7 +550,7 @@ const isNumeric = (c: any): boolean =>
         errors.push(
           `ON_DECLINED — "${gate}" sets on_declined ${JSON.stringify(props.on_declined)}; only "traverse" and "default" exist.`,
         );
-      } else if (props.on_declined === 'traverse' && (askableData.size === 0 || props.on_unresolved !== 'ask')) {
+      } else if (props.on_declined === 'traverse' && ((askableData.size === 0 && !asksAboutMedications) || props.on_unresolved !== 'ask')) {
         warnings.push(
           `Gate "${gate}": on_declined "traverse" is inert — ${askableData.size === 0
             ? 'the gate has no condition it can ask for, so nothing can be declined'

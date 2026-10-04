@@ -3,7 +3,7 @@
   "pathway": {
     "logical_id": "routine-prenatal-care",
     "title": "Routine Prenatal Care",
-    "version": "4",
+    "version": "5",
     "category": "OBSTETRIC",
     "scope": "Outpatient antepartum care for every pregnancy under supervision, from the first prenatal contact to birth: intake and dating, the initial laboratory panel, genetic screening options, psychosocial screening, preeclampsia risk and aspirin, supplements, immunizations and counselling, every-visit monitoring, and gestational-age-windowed care including gestational diabetes screening and diagnosis. Screens for diabetes, hypertension, anemia and Rh(D)-negative blood type and recommends adding the diagnosis to the encounter; treatment of each belongs to its own pathway.",
     "target_population": "Pregnant patients receiving outpatient prenatal care, average risk or under high-risk supervision.",
@@ -1452,8 +1452,8 @@
         "stage_number": 1,
         "step_number": 25,
         "display_number": "1.25",
-        "title": "Already on low-dose aspirin: continue",
-        "description": "Aspirin is on the medication list. Nothing is started."
+        "title": "Already on aspirin: continue",
+        "description": "An aspirin-containing product is on the medication list, whatever the brand. Nothing is started. Confirm the dose is 81 mg daily."
       }
     },
     {
@@ -1462,7 +1462,7 @@
       "properties": {
         "topic": "Already on low-dose aspirin: continue it",
         "category": "education",
-        "instructions": "Aspirin is already on the medication list. Continue 81 mg daily until delivery; do not add a second prescription. It is exempt from the advice to avoid NSAIDs from 20 weeks."
+        "instructions": "An aspirin-containing product is already on the medication list. Confirm it is 81 mg daily and continue it until delivery; do not add a second prescription. It is exempt from the advice to avoid NSAIDs from 20 weeks."
       }
     },
     {
@@ -1471,38 +1471,17 @@
       "properties": {
         "title": "Aspirin on the medication list",
         "default_behavior": "skip",
-        "gate_type": "compound",
-        "on_unresolved": "default",
-        "operator": "OR",
-        "conditions": [
-          {
-            "field": "medications",
-            "operator": "includes_code",
-            "value": "1191",
-            "system": "RXNORM",
-            "display": "Aspirin (ingredient)",
-            "horizon": "LIFETIME",
-            "status": "active"
-          },
-          {
-            "field": "medications",
-            "operator": "includes_code",
-            "value": "243670",
-            "system": "RXNORM",
-            "display": "Aspirin 81 mg oral tablet",
-            "horizon": "LIFETIME",
-            "status": "active"
-          },
-          {
-            "field": "medications",
-            "operator": "includes_code",
-            "value": "318272",
-            "system": "RXNORM",
-            "display": "Aspirin 81 mg chewable tablet",
-            "horizon": "LIFETIME",
-            "status": "active"
-          }
-        ]
+        "gate_type": "patient_attribute",
+        "on_unresolved": "ask",
+        "condition": {
+          "field": "medications",
+          "operator": "includes_code",
+          "value": "1191",
+          "system": "RXNORM_INGREDIENT",
+          "display": "aspirin",
+          "horizon": "LIFETIME",
+          "status": "active"
+        }
       }
     },
     {
@@ -1530,26 +1509,8 @@
             "field": "medications",
             "operator": "not_includes_code",
             "value": "1191",
-            "system": "RXNORM",
-            "display": "Aspirin (ingredient)",
-            "horizon": "LIFETIME",
-            "status": "active"
-          },
-          {
-            "field": "medications",
-            "operator": "not_includes_code",
-            "value": "243670",
-            "system": "RXNORM",
-            "display": "Aspirin 81 mg oral tablet",
-            "horizon": "LIFETIME",
-            "status": "active"
-          },
-          {
-            "field": "medications",
-            "operator": "not_includes_code",
-            "value": "318272",
-            "system": "RXNORM",
-            "display": "Aspirin 81 mg chewable tablet",
+            "system": "RXNORM_INGREDIENT",
+            "display": "aspirin",
             "horizon": "LIFETIME",
             "status": "active"
           },
@@ -1632,7 +1593,7 @@
         "step_number": 8,
         "display_number": "1.8",
         "title": "Supplements and healthy-pregnancy counselling",
-        "description": "The medication list is read first: folic acid or a recognised prenatal multivitamin already on it is continued, not started again, and nothing is asked. If none is on the list the patient is asked once whether she is already taking one. After a prior pregnancy affected by a neural tube defect: folic acid 4 mg daily as a separate supplement through the first 3 months (CDC: start 1 month before conception; ACOG: at least 3 months before). Iron requirement 27 mg a day; choose a vitamin containing iodine (150 mcg a day as potassium iodide). Avoid NSAIDs from 20 weeks, except aspirin 81 mg."
+        "description": "The medication list is read first: any product containing folic acid (a folic acid tablet or a prenatal multivitamin of any brand) already on it is continued, not started again, and nothing is asked. If none is on the list the patient is asked once whether she is already taking one. After a prior pregnancy affected by a neural tube defect: folic acid 4 mg daily as a separate supplement through the first 3 months (CDC: start 1 month before conception; ACOG: at least 3 months before). Iron requirement 27 mg a day; choose a vitamin containing iodine (150 mcg a day as potassium iodide). Avoid NSAIDs from 20 weeks, except aspirin 81 mg."
       }
     },
     {
@@ -1643,7 +1604,7 @@
         "step_number": 28,
         "display_number": "1.28",
         "title": "Prenatal vitamin already on the medication list: continue",
-        "description": "Folic acid or a recognised prenatal multivitamin is on the medication list. Nothing is started and nothing is asked."
+        "description": "A product containing folic acid is on the medication list: a folic acid tablet or any prenatal multivitamin, whatever the brand. Nothing is started and nothing is asked."
       }
     },
     {
@@ -1659,103 +1620,19 @@
       "id": "gate-on-prenatal-vitamin",
       "type": "Gate",
       "properties": {
-        "title": "Folic acid or a prenatal multivitamin on the medication list",
+        "title": "A product containing folic acid on the medication list",
         "default_behavior": "skip",
-        "gate_type": "compound",
-        "on_unresolved": "default",
-        "operator": "OR",
-        "conditions": [
-          {
-            "field": "medications",
-            "operator": "includes_code",
-            "value": "4511",
-            "system": "RXNORM",
-            "display": "Folic acid (ingredient)",
-            "horizon": "LIFETIME",
-            "status": "active"
-          },
-          {
-            "field": "medications",
-            "operator": "includes_code",
-            "value": "198640",
-            "system": "RXNORM",
-            "display": "Folic acid 0.4 mg oral tablet",
-            "horizon": "LIFETIME",
-            "status": "active"
-          },
-          {
-            "field": "medications",
-            "operator": "includes_code",
-            "value": "310410",
-            "system": "RXNORM",
-            "display": "Folic acid 1 mg oral tablet",
-            "horizon": "LIFETIME",
-            "status": "active"
-          },
-          {
-            "field": "medications",
-            "operator": "includes_code",
-            "value": "1119570",
-            "system": "RXNORM",
-            "display": "Vitafol-One (brand)",
-            "horizon": "LIFETIME",
-            "status": "active"
-          },
-          {
-            "field": "medications",
-            "operator": "includes_code",
-            "value": "1119573",
-            "system": "RXNORM",
-            "display": "Vitafol-One prenatal multivitamin capsule",
-            "horizon": "LIFETIME",
-            "status": "active"
-          },
-          {
-            "field": "medications",
-            "operator": "includes_code",
-            "value": "1100471",
-            "system": "RXNORM",
-            "display": "CitraNatal prenatal multivitamin pack",
-            "horizon": "LIFETIME",
-            "status": "active"
-          },
-          {
-            "field": "medications",
-            "operator": "includes_code",
-            "value": "1248142",
-            "system": "RXNORM",
-            "display": "Prenatal multivitamin with folic acid 1 mg and iron carbonyl 90 mg, oral tablet",
-            "horizon": "LIFETIME",
-            "status": "active"
-          },
-          {
-            "field": "medications",
-            "operator": "includes_code",
-            "value": "1116183",
-            "system": "RXNORM",
-            "display": "Prenatal multivitamin with folic acid 1 mg and ferrous fumarate 65 mg, oral tablet (branded)",
-            "horizon": "LIFETIME",
-            "status": "active"
-          },
-          {
-            "field": "medications",
-            "operator": "includes_code",
-            "value": "1313925",
-            "system": "RXNORM",
-            "display": "Prenatal multivitamin with folic acid 1 mg and ferrous fumarate 29 mg, oral tablet",
-            "horizon": "LIFETIME",
-            "status": "active"
-          },
-          {
-            "field": "medications",
-            "operator": "includes_code",
-            "value": "1485531",
-            "system": "RXNORM",
-            "display": "Prenatal multivitamin with DHA, folic acid 1.2 mg and ferrous fumarate 30 mg, oral capsule",
-            "horizon": "LIFETIME",
-            "status": "active"
-          }
-        ]
+        "gate_type": "patient_attribute",
+        "on_unresolved": "ask",
+        "condition": {
+          "field": "medications",
+          "operator": "includes_code",
+          "value": "4511",
+          "system": "RXNORM_INGREDIENT",
+          "display": "a folic acid supplement or prenatal vitamin",
+          "horizon": "LIFETIME",
+          "status": "active"
+        }
       }
     },
     {
@@ -1766,110 +1643,26 @@
         "step_number": 29,
         "display_number": "1.29",
         "title": "No prenatal vitamin on the medication list: is she taking one?",
-        "description": "Neither folic acid nor a recognised prenatal multivitamin is on the medication list. Many are bought over the counter and never listed, so the patient is asked. A \"yes\" is remembered for this pregnancy and not asked again; a \"no\" is not remembered."
+        "description": "No product containing folic acid is on the medication list. Many are bought over the counter and never listed, so the patient is asked. A \"yes\" is remembered for this pregnancy and not asked again; a \"no\" is not remembered."
       }
     },
     {
       "id": "gate-prenatal-vitamin-not-on-list",
       "type": "Gate",
       "properties": {
-        "title": "No folic acid or prenatal multivitamin on the medication list",
+        "title": "No product containing folic acid on the medication list",
         "default_behavior": "skip",
-        "gate_type": "compound",
-        "on_unresolved": "default",
-        "operator": "AND",
-        "conditions": [
-          {
-            "field": "medications",
-            "operator": "not_includes_code",
-            "value": "4511",
-            "system": "RXNORM",
-            "display": "Folic acid (ingredient)",
-            "horizon": "LIFETIME",
-            "status": "active"
-          },
-          {
-            "field": "medications",
-            "operator": "not_includes_code",
-            "value": "198640",
-            "system": "RXNORM",
-            "display": "Folic acid 0.4 mg oral tablet",
-            "horizon": "LIFETIME",
-            "status": "active"
-          },
-          {
-            "field": "medications",
-            "operator": "not_includes_code",
-            "value": "310410",
-            "system": "RXNORM",
-            "display": "Folic acid 1 mg oral tablet",
-            "horizon": "LIFETIME",
-            "status": "active"
-          },
-          {
-            "field": "medications",
-            "operator": "not_includes_code",
-            "value": "1119570",
-            "system": "RXNORM",
-            "display": "Vitafol-One (brand)",
-            "horizon": "LIFETIME",
-            "status": "active"
-          },
-          {
-            "field": "medications",
-            "operator": "not_includes_code",
-            "value": "1119573",
-            "system": "RXNORM",
-            "display": "Vitafol-One prenatal multivitamin capsule",
-            "horizon": "LIFETIME",
-            "status": "active"
-          },
-          {
-            "field": "medications",
-            "operator": "not_includes_code",
-            "value": "1100471",
-            "system": "RXNORM",
-            "display": "CitraNatal prenatal multivitamin pack",
-            "horizon": "LIFETIME",
-            "status": "active"
-          },
-          {
-            "field": "medications",
-            "operator": "not_includes_code",
-            "value": "1248142",
-            "system": "RXNORM",
-            "display": "Prenatal multivitamin with folic acid 1 mg and iron carbonyl 90 mg, oral tablet",
-            "horizon": "LIFETIME",
-            "status": "active"
-          },
-          {
-            "field": "medications",
-            "operator": "not_includes_code",
-            "value": "1116183",
-            "system": "RXNORM",
-            "display": "Prenatal multivitamin with folic acid 1 mg and ferrous fumarate 65 mg, oral tablet (branded)",
-            "horizon": "LIFETIME",
-            "status": "active"
-          },
-          {
-            "field": "medications",
-            "operator": "not_includes_code",
-            "value": "1313925",
-            "system": "RXNORM",
-            "display": "Prenatal multivitamin with folic acid 1 mg and ferrous fumarate 29 mg, oral tablet",
-            "horizon": "LIFETIME",
-            "status": "active"
-          },
-          {
-            "field": "medications",
-            "operator": "not_includes_code",
-            "value": "1485531",
-            "system": "RXNORM",
-            "display": "Prenatal multivitamin with DHA, folic acid 1.2 mg and ferrous fumarate 30 mg, oral capsule",
-            "horizon": "LIFETIME",
-            "status": "active"
-          }
-        ]
+        "gate_type": "patient_attribute",
+        "on_unresolved": "ask",
+        "condition": {
+          "field": "medications",
+          "operator": "not_includes_code",
+          "value": "4511",
+          "system": "RXNORM_INGREDIENT",
+          "display": "a folic acid supplement or prenatal vitamin",
+          "horizon": "LIFETIME",
+          "status": "active"
+        }
       }
     },
     {
@@ -2035,7 +1828,7 @@
         "step_number": 9,
         "display_number": "1.9",
         "title": "Immunizations at any gestational age: what has already been given",
-        "description": "Vaccines are read from the medication list. Influenza vaccine in any trimester during the season (third-trimester patients as soon as vaccine is available; the live intranasal vaccine is contraindicated). COVID-19 vaccine per ACOG, with shared decision-making and the discussion documented. Both are recommended only in season, September 1 to March 31, and only when no dose is dated on or after the most recent September 1; an entry with no date is asked about. Out of season nothing is recommended or asked. Hepatitis B vaccine if susceptible on the triple panel. MMR and varicella vaccines are contraindicated in pregnancy: give postpartum if non-immune."
+        "description": "Vaccines are read from the medication list and matched by what they are, not by brand. Influenza vaccine in any trimester during the season (third-trimester patients as soon as vaccine is available; the live intranasal vaccine is contraindicated). COVID-19 vaccine per ACOG, with shared decision-making and the discussion documented. Both are recommended only in season, September 1 to March 31, and only when no dose is dated on or after the most recent September 1; an entry with no date is asked about. Out of season nothing is recommended or asked. Hepatitis B vaccine if susceptible on the triple panel. MMR and varicella vaccines are contraindicated in pregnancy: give postpartum if non-immune."
       }
     },
     {
@@ -2088,7 +1881,7 @@
         "title": "In season, no influenza vaccine dated this season (since September 1), and none listed without a date",
         "default_behavior": "skip",
         "gate_type": "compound",
-        "on_unresolved": "default",
+        "on_unresolved": "ask",
         "operator": "AND",
         "conditions": [
           {
@@ -2101,360 +1894,9 @@
           {
             "field": "medications",
             "operator": "count_in_window",
-            "value": "2718464",
-            "system": "RXNORM",
-            "display": "Fluzone 2025-2026",
-            "count_threshold": 1,
-            "count_comparison": "less_than",
-            "status": "any",
-            "horizon": {
-              "since": "09-01"
-            }
-          },
-          {
-            "field": "medications",
-            "operator": "count_in_window",
-            "value": "2718469",
-            "system": "RXNORM",
-            "display": "Fluzone 2025-2026 0.5 mL prefilled syringe",
-            "count_threshold": 1,
-            "count_comparison": "less_than",
-            "status": "any",
-            "horizon": {
-              "since": "09-01"
-            }
-          },
-          {
-            "field": "medications",
-            "operator": "count_in_window",
-            "value": "2719212",
-            "system": "RXNORM",
-            "display": "Fluzone 2025-2026 0.5 mL prefilled syringe",
-            "count_threshold": 1,
-            "count_comparison": "less_than",
-            "status": "any",
-            "horizon": {
-              "since": "09-01"
-            }
-          },
-          {
-            "field": "medications",
-            "operator": "count_in_window",
-            "value": "2719216",
-            "system": "RXNORM",
-            "display": "Fluzone 2025-2026 injectable suspension",
-            "count_threshold": 1,
-            "count_comparison": "less_than",
-            "status": "any",
-            "horizon": {
-              "since": "09-01"
-            }
-          },
-          {
-            "field": "medications",
-            "operator": "count_in_window",
-            "value": "2746457",
-            "system": "RXNORM",
-            "display": "Fluzone 2026-2027",
-            "count_threshold": 1,
-            "count_comparison": "less_than",
-            "status": "any",
-            "horizon": {
-              "since": "09-01"
-            }
-          },
-          {
-            "field": "medications",
-            "operator": "count_in_window",
-            "value": "2746462",
-            "system": "RXNORM",
-            "display": "Fluzone 2026-2027 injectable suspension",
-            "count_threshold": 1,
-            "count_comparison": "less_than",
-            "status": "any",
-            "horizon": {
-              "since": "09-01"
-            }
-          },
-          {
-            "field": "medications",
-            "operator": "count_in_window",
-            "value": "2746468",
-            "system": "RXNORM",
-            "display": "Fluzone 2026-2027 0.5 mL prefilled syringe",
-            "count_threshold": 1,
-            "count_comparison": "less_than",
-            "status": "any",
-            "horizon": {
-              "since": "09-01"
-            }
-          },
-          {
-            "field": "medications",
-            "operator": "count_in_window",
-            "value": "2746475",
-            "system": "RXNORM",
-            "display": "Fluzone 2026-2027 0.5 mL prefilled syringe",
-            "count_threshold": 1,
-            "count_comparison": "less_than",
-            "status": "any",
-            "horizon": {
-              "since": "09-01"
-            }
-          },
-          {
-            "field": "medications",
-            "operator": "count_in_window",
-            "value": "2719306",
-            "system": "RXNORM",
-            "display": "Flublok 2025-2026",
-            "count_threshold": 1,
-            "count_comparison": "less_than",
-            "status": "any",
-            "horizon": {
-              "since": "09-01"
-            }
-          },
-          {
-            "field": "medications",
-            "operator": "count_in_window",
-            "value": "2719311",
-            "system": "RXNORM",
-            "display": "Flublok 2025-2026 0.5 mL prefilled syringe",
-            "count_threshold": 1,
-            "count_comparison": "less_than",
-            "status": "any",
-            "horizon": {
-              "since": "09-01"
-            }
-          },
-          {
-            "field": "medications",
-            "operator": "count_in_window",
-            "value": "2746444",
-            "system": "RXNORM",
-            "display": "Flublok 2026-2027",
-            "count_threshold": 1,
-            "count_comparison": "less_than",
-            "status": "any",
-            "horizon": {
-              "since": "09-01"
-            }
-          },
-          {
-            "field": "medications",
-            "operator": "count_in_window",
-            "value": "2746449",
-            "system": "RXNORM",
-            "display": "Flublok 2026-2027 0.5 mL prefilled syringe",
-            "count_threshold": 1,
-            "count_comparison": "less_than",
-            "status": "any",
-            "horizon": {
-              "since": "09-01"
-            }
-          },
-          {
-            "field": "medications",
-            "operator": "count_in_window",
-            "value": "2718369",
-            "system": "RXNORM",
-            "display": "Flucelvax 2025-2026",
-            "count_threshold": 1,
-            "count_comparison": "less_than",
-            "status": "any",
-            "horizon": {
-              "since": "09-01"
-            }
-          },
-          {
-            "field": "medications",
-            "operator": "count_in_window",
-            "value": "2718374",
-            "system": "RXNORM",
-            "display": "Flucelvax 2025-2026 injectable suspension",
-            "count_threshold": 1,
-            "count_comparison": "less_than",
-            "status": "any",
-            "horizon": {
-              "since": "09-01"
-            }
-          },
-          {
-            "field": "medications",
-            "operator": "count_in_window",
-            "value": "2718382",
-            "system": "RXNORM",
-            "display": "Flucelvax 2025-2026 0.5 mL prefilled syringe",
-            "count_threshold": 1,
-            "count_comparison": "less_than",
-            "status": "any",
-            "horizon": {
-              "since": "09-01"
-            }
-          },
-          {
-            "field": "medications",
-            "operator": "count_in_window",
-            "value": "2746484",
-            "system": "RXNORM",
-            "display": "Flucelvax 2026-2027",
-            "count_threshold": 1,
-            "count_comparison": "less_than",
-            "status": "any",
-            "horizon": {
-              "since": "09-01"
-            }
-          },
-          {
-            "field": "medications",
-            "operator": "count_in_window",
-            "value": "2746489",
-            "system": "RXNORM",
-            "display": "Flucelvax 2026-2027 0.5 mL prefilled syringe",
-            "count_threshold": 1,
-            "count_comparison": "less_than",
-            "status": "any",
-            "horizon": {
-              "since": "09-01"
-            }
-          },
-          {
-            "field": "medications",
-            "operator": "count_in_window",
-            "value": "2720029",
-            "system": "RXNORM",
-            "display": "Fluarix 2025-2026",
-            "count_threshold": 1,
-            "count_comparison": "less_than",
-            "status": "any",
-            "horizon": {
-              "since": "09-01"
-            }
-          },
-          {
-            "field": "medications",
-            "operator": "count_in_window",
-            "value": "2720034",
-            "system": "RXNORM",
-            "display": "Fluarix 2025-2026 0.5 mL prefilled syringe",
-            "count_threshold": 1,
-            "count_comparison": "less_than",
-            "status": "any",
-            "horizon": {
-              "since": "09-01"
-            }
-          },
-          {
-            "field": "medications",
-            "operator": "count_in_window",
-            "value": "2749251",
-            "system": "RXNORM",
-            "display": "Fluarix 2026-2027",
-            "count_threshold": 1,
-            "count_comparison": "less_than",
-            "status": "any",
-            "horizon": {
-              "since": "09-01"
-            }
-          },
-          {
-            "field": "medications",
-            "operator": "count_in_window",
-            "value": "2749256",
-            "system": "RXNORM",
-            "display": "Fluarix 2026-2027 0.5 mL prefilled syringe",
-            "count_threshold": 1,
-            "count_comparison": "less_than",
-            "status": "any",
-            "horizon": {
-              "since": "09-01"
-            }
-          },
-          {
-            "field": "medications",
-            "operator": "count_in_window",
-            "value": "2718457",
-            "system": "RXNORM",
-            "display": "Flulaval 2025-2026",
-            "count_threshold": 1,
-            "count_comparison": "less_than",
-            "status": "any",
-            "horizon": {
-              "since": "09-01"
-            }
-          },
-          {
-            "field": "medications",
-            "operator": "count_in_window",
-            "value": "2718462",
-            "system": "RXNORM",
-            "display": "Flulaval 2025-2026 0.5 mL prefilled syringe",
-            "count_threshold": 1,
-            "count_comparison": "less_than",
-            "status": "any",
-            "horizon": {
-              "since": "09-01"
-            }
-          },
-          {
-            "field": "medications",
-            "operator": "count_in_window",
-            "value": "2747246",
-            "system": "RXNORM",
-            "display": "Flulaval 2026-2027",
-            "count_threshold": 1,
-            "count_comparison": "less_than",
-            "status": "any",
-            "horizon": {
-              "since": "09-01"
-            }
-          },
-          {
-            "field": "medications",
-            "operator": "count_in_window",
-            "value": "2747251",
-            "system": "RXNORM",
-            "display": "Flulaval 2026-2027 0.5 mL prefilled syringe",
-            "count_threshold": 1,
-            "count_comparison": "less_than",
-            "status": "any",
-            "horizon": {
-              "since": "09-01"
-            }
-          },
-          {
-            "field": "medications",
-            "operator": "count_in_window",
-            "value": "2718395",
-            "system": "RXNORM",
-            "display": "Afluria 2025-2026",
-            "count_threshold": 1,
-            "count_comparison": "less_than",
-            "status": "any",
-            "horizon": {
-              "since": "09-01"
-            }
-          },
-          {
-            "field": "medications",
-            "operator": "count_in_window",
-            "value": "2718400",
-            "system": "RXNORM",
-            "display": "Afluria 2025-2026 0.5 mL prefilled syringe",
-            "count_threshold": 1,
-            "count_comparison": "less_than",
-            "status": "any",
-            "horizon": {
-              "since": "09-01"
-            }
-          },
-          {
-            "field": "medications",
-            "operator": "count_in_window",
-            "value": "2718406",
-            "system": "RXNORM",
-            "display": "Afluria 2025-2026 injectable suspension",
+            "value": "1657128",
+            "system": "RXNORM_INGREDIENT",
+            "display": "an influenza vaccine",
             "count_threshold": 1,
             "count_comparison": "less_than",
             "status": "any",
@@ -2468,727 +1910,25 @@
               {
                 "field": "medications",
                 "operator": "not_includes_code",
-                "value": "2718464",
-                "system": "RXNORM",
-                "display": "Fluzone 2025-2026",
+                "value": "1657128",
+                "system": "RXNORM_INGREDIENT",
+                "display": "an influenza vaccine",
                 "horizon": "LIFETIME",
                 "status": "any"
               },
               {
                 "field": "medications",
                 "operator": "count_in_window",
-                "value": "2718464",
-                "system": "RXNORM",
-                "display": "Fluzone 2025-2026",
+                "value": "1657128",
+                "system": "RXNORM_INGREDIENT",
+                "display": "an influenza vaccine",
                 "count_threshold": 1,
                 "count_comparison": "at_least",
                 "status": "any",
                 "window_days": 36525
               }
             ],
-            "display": "Fluzone 2025-2026: not on the list, or on it with a date"
-          },
-          {
-            "operator": "OR",
-            "conditions": [
-              {
-                "field": "medications",
-                "operator": "not_includes_code",
-                "value": "2718469",
-                "system": "RXNORM",
-                "display": "Fluzone 2025-2026 0.5 mL prefilled syringe",
-                "horizon": "LIFETIME",
-                "status": "any"
-              },
-              {
-                "field": "medications",
-                "operator": "count_in_window",
-                "value": "2718469",
-                "system": "RXNORM",
-                "display": "Fluzone 2025-2026 0.5 mL prefilled syringe",
-                "count_threshold": 1,
-                "count_comparison": "at_least",
-                "status": "any",
-                "window_days": 36525
-              }
-            ],
-            "display": "Fluzone 2025-2026 0.5 mL prefilled syringe: not on the list, or on it with a date"
-          },
-          {
-            "operator": "OR",
-            "conditions": [
-              {
-                "field": "medications",
-                "operator": "not_includes_code",
-                "value": "2719212",
-                "system": "RXNORM",
-                "display": "Fluzone 2025-2026 0.5 mL prefilled syringe",
-                "horizon": "LIFETIME",
-                "status": "any"
-              },
-              {
-                "field": "medications",
-                "operator": "count_in_window",
-                "value": "2719212",
-                "system": "RXNORM",
-                "display": "Fluzone 2025-2026 0.5 mL prefilled syringe",
-                "count_threshold": 1,
-                "count_comparison": "at_least",
-                "status": "any",
-                "window_days": 36525
-              }
-            ],
-            "display": "Fluzone 2025-2026 0.5 mL prefilled syringe: not on the list, or on it with a date"
-          },
-          {
-            "operator": "OR",
-            "conditions": [
-              {
-                "field": "medications",
-                "operator": "not_includes_code",
-                "value": "2719216",
-                "system": "RXNORM",
-                "display": "Fluzone 2025-2026 injectable suspension",
-                "horizon": "LIFETIME",
-                "status": "any"
-              },
-              {
-                "field": "medications",
-                "operator": "count_in_window",
-                "value": "2719216",
-                "system": "RXNORM",
-                "display": "Fluzone 2025-2026 injectable suspension",
-                "count_threshold": 1,
-                "count_comparison": "at_least",
-                "status": "any",
-                "window_days": 36525
-              }
-            ],
-            "display": "Fluzone 2025-2026 injectable suspension: not on the list, or on it with a date"
-          },
-          {
-            "operator": "OR",
-            "conditions": [
-              {
-                "field": "medications",
-                "operator": "not_includes_code",
-                "value": "2746457",
-                "system": "RXNORM",
-                "display": "Fluzone 2026-2027",
-                "horizon": "LIFETIME",
-                "status": "any"
-              },
-              {
-                "field": "medications",
-                "operator": "count_in_window",
-                "value": "2746457",
-                "system": "RXNORM",
-                "display": "Fluzone 2026-2027",
-                "count_threshold": 1,
-                "count_comparison": "at_least",
-                "status": "any",
-                "window_days": 36525
-              }
-            ],
-            "display": "Fluzone 2026-2027: not on the list, or on it with a date"
-          },
-          {
-            "operator": "OR",
-            "conditions": [
-              {
-                "field": "medications",
-                "operator": "not_includes_code",
-                "value": "2746462",
-                "system": "RXNORM",
-                "display": "Fluzone 2026-2027 injectable suspension",
-                "horizon": "LIFETIME",
-                "status": "any"
-              },
-              {
-                "field": "medications",
-                "operator": "count_in_window",
-                "value": "2746462",
-                "system": "RXNORM",
-                "display": "Fluzone 2026-2027 injectable suspension",
-                "count_threshold": 1,
-                "count_comparison": "at_least",
-                "status": "any",
-                "window_days": 36525
-              }
-            ],
-            "display": "Fluzone 2026-2027 injectable suspension: not on the list, or on it with a date"
-          },
-          {
-            "operator": "OR",
-            "conditions": [
-              {
-                "field": "medications",
-                "operator": "not_includes_code",
-                "value": "2746468",
-                "system": "RXNORM",
-                "display": "Fluzone 2026-2027 0.5 mL prefilled syringe",
-                "horizon": "LIFETIME",
-                "status": "any"
-              },
-              {
-                "field": "medications",
-                "operator": "count_in_window",
-                "value": "2746468",
-                "system": "RXNORM",
-                "display": "Fluzone 2026-2027 0.5 mL prefilled syringe",
-                "count_threshold": 1,
-                "count_comparison": "at_least",
-                "status": "any",
-                "window_days": 36525
-              }
-            ],
-            "display": "Fluzone 2026-2027 0.5 mL prefilled syringe: not on the list, or on it with a date"
-          },
-          {
-            "operator": "OR",
-            "conditions": [
-              {
-                "field": "medications",
-                "operator": "not_includes_code",
-                "value": "2746475",
-                "system": "RXNORM",
-                "display": "Fluzone 2026-2027 0.5 mL prefilled syringe",
-                "horizon": "LIFETIME",
-                "status": "any"
-              },
-              {
-                "field": "medications",
-                "operator": "count_in_window",
-                "value": "2746475",
-                "system": "RXNORM",
-                "display": "Fluzone 2026-2027 0.5 mL prefilled syringe",
-                "count_threshold": 1,
-                "count_comparison": "at_least",
-                "status": "any",
-                "window_days": 36525
-              }
-            ],
-            "display": "Fluzone 2026-2027 0.5 mL prefilled syringe: not on the list, or on it with a date"
-          },
-          {
-            "operator": "OR",
-            "conditions": [
-              {
-                "field": "medications",
-                "operator": "not_includes_code",
-                "value": "2719306",
-                "system": "RXNORM",
-                "display": "Flublok 2025-2026",
-                "horizon": "LIFETIME",
-                "status": "any"
-              },
-              {
-                "field": "medications",
-                "operator": "count_in_window",
-                "value": "2719306",
-                "system": "RXNORM",
-                "display": "Flublok 2025-2026",
-                "count_threshold": 1,
-                "count_comparison": "at_least",
-                "status": "any",
-                "window_days": 36525
-              }
-            ],
-            "display": "Flublok 2025-2026: not on the list, or on it with a date"
-          },
-          {
-            "operator": "OR",
-            "conditions": [
-              {
-                "field": "medications",
-                "operator": "not_includes_code",
-                "value": "2719311",
-                "system": "RXNORM",
-                "display": "Flublok 2025-2026 0.5 mL prefilled syringe",
-                "horizon": "LIFETIME",
-                "status": "any"
-              },
-              {
-                "field": "medications",
-                "operator": "count_in_window",
-                "value": "2719311",
-                "system": "RXNORM",
-                "display": "Flublok 2025-2026 0.5 mL prefilled syringe",
-                "count_threshold": 1,
-                "count_comparison": "at_least",
-                "status": "any",
-                "window_days": 36525
-              }
-            ],
-            "display": "Flublok 2025-2026 0.5 mL prefilled syringe: not on the list, or on it with a date"
-          },
-          {
-            "operator": "OR",
-            "conditions": [
-              {
-                "field": "medications",
-                "operator": "not_includes_code",
-                "value": "2746444",
-                "system": "RXNORM",
-                "display": "Flublok 2026-2027",
-                "horizon": "LIFETIME",
-                "status": "any"
-              },
-              {
-                "field": "medications",
-                "operator": "count_in_window",
-                "value": "2746444",
-                "system": "RXNORM",
-                "display": "Flublok 2026-2027",
-                "count_threshold": 1,
-                "count_comparison": "at_least",
-                "status": "any",
-                "window_days": 36525
-              }
-            ],
-            "display": "Flublok 2026-2027: not on the list, or on it with a date"
-          },
-          {
-            "operator": "OR",
-            "conditions": [
-              {
-                "field": "medications",
-                "operator": "not_includes_code",
-                "value": "2746449",
-                "system": "RXNORM",
-                "display": "Flublok 2026-2027 0.5 mL prefilled syringe",
-                "horizon": "LIFETIME",
-                "status": "any"
-              },
-              {
-                "field": "medications",
-                "operator": "count_in_window",
-                "value": "2746449",
-                "system": "RXNORM",
-                "display": "Flublok 2026-2027 0.5 mL prefilled syringe",
-                "count_threshold": 1,
-                "count_comparison": "at_least",
-                "status": "any",
-                "window_days": 36525
-              }
-            ],
-            "display": "Flublok 2026-2027 0.5 mL prefilled syringe: not on the list, or on it with a date"
-          },
-          {
-            "operator": "OR",
-            "conditions": [
-              {
-                "field": "medications",
-                "operator": "not_includes_code",
-                "value": "2718369",
-                "system": "RXNORM",
-                "display": "Flucelvax 2025-2026",
-                "horizon": "LIFETIME",
-                "status": "any"
-              },
-              {
-                "field": "medications",
-                "operator": "count_in_window",
-                "value": "2718369",
-                "system": "RXNORM",
-                "display": "Flucelvax 2025-2026",
-                "count_threshold": 1,
-                "count_comparison": "at_least",
-                "status": "any",
-                "window_days": 36525
-              }
-            ],
-            "display": "Flucelvax 2025-2026: not on the list, or on it with a date"
-          },
-          {
-            "operator": "OR",
-            "conditions": [
-              {
-                "field": "medications",
-                "operator": "not_includes_code",
-                "value": "2718374",
-                "system": "RXNORM",
-                "display": "Flucelvax 2025-2026 injectable suspension",
-                "horizon": "LIFETIME",
-                "status": "any"
-              },
-              {
-                "field": "medications",
-                "operator": "count_in_window",
-                "value": "2718374",
-                "system": "RXNORM",
-                "display": "Flucelvax 2025-2026 injectable suspension",
-                "count_threshold": 1,
-                "count_comparison": "at_least",
-                "status": "any",
-                "window_days": 36525
-              }
-            ],
-            "display": "Flucelvax 2025-2026 injectable suspension: not on the list, or on it with a date"
-          },
-          {
-            "operator": "OR",
-            "conditions": [
-              {
-                "field": "medications",
-                "operator": "not_includes_code",
-                "value": "2718382",
-                "system": "RXNORM",
-                "display": "Flucelvax 2025-2026 0.5 mL prefilled syringe",
-                "horizon": "LIFETIME",
-                "status": "any"
-              },
-              {
-                "field": "medications",
-                "operator": "count_in_window",
-                "value": "2718382",
-                "system": "RXNORM",
-                "display": "Flucelvax 2025-2026 0.5 mL prefilled syringe",
-                "count_threshold": 1,
-                "count_comparison": "at_least",
-                "status": "any",
-                "window_days": 36525
-              }
-            ],
-            "display": "Flucelvax 2025-2026 0.5 mL prefilled syringe: not on the list, or on it with a date"
-          },
-          {
-            "operator": "OR",
-            "conditions": [
-              {
-                "field": "medications",
-                "operator": "not_includes_code",
-                "value": "2746484",
-                "system": "RXNORM",
-                "display": "Flucelvax 2026-2027",
-                "horizon": "LIFETIME",
-                "status": "any"
-              },
-              {
-                "field": "medications",
-                "operator": "count_in_window",
-                "value": "2746484",
-                "system": "RXNORM",
-                "display": "Flucelvax 2026-2027",
-                "count_threshold": 1,
-                "count_comparison": "at_least",
-                "status": "any",
-                "window_days": 36525
-              }
-            ],
-            "display": "Flucelvax 2026-2027: not on the list, or on it with a date"
-          },
-          {
-            "operator": "OR",
-            "conditions": [
-              {
-                "field": "medications",
-                "operator": "not_includes_code",
-                "value": "2746489",
-                "system": "RXNORM",
-                "display": "Flucelvax 2026-2027 0.5 mL prefilled syringe",
-                "horizon": "LIFETIME",
-                "status": "any"
-              },
-              {
-                "field": "medications",
-                "operator": "count_in_window",
-                "value": "2746489",
-                "system": "RXNORM",
-                "display": "Flucelvax 2026-2027 0.5 mL prefilled syringe",
-                "count_threshold": 1,
-                "count_comparison": "at_least",
-                "status": "any",
-                "window_days": 36525
-              }
-            ],
-            "display": "Flucelvax 2026-2027 0.5 mL prefilled syringe: not on the list, or on it with a date"
-          },
-          {
-            "operator": "OR",
-            "conditions": [
-              {
-                "field": "medications",
-                "operator": "not_includes_code",
-                "value": "2720029",
-                "system": "RXNORM",
-                "display": "Fluarix 2025-2026",
-                "horizon": "LIFETIME",
-                "status": "any"
-              },
-              {
-                "field": "medications",
-                "operator": "count_in_window",
-                "value": "2720029",
-                "system": "RXNORM",
-                "display": "Fluarix 2025-2026",
-                "count_threshold": 1,
-                "count_comparison": "at_least",
-                "status": "any",
-                "window_days": 36525
-              }
-            ],
-            "display": "Fluarix 2025-2026: not on the list, or on it with a date"
-          },
-          {
-            "operator": "OR",
-            "conditions": [
-              {
-                "field": "medications",
-                "operator": "not_includes_code",
-                "value": "2720034",
-                "system": "RXNORM",
-                "display": "Fluarix 2025-2026 0.5 mL prefilled syringe",
-                "horizon": "LIFETIME",
-                "status": "any"
-              },
-              {
-                "field": "medications",
-                "operator": "count_in_window",
-                "value": "2720034",
-                "system": "RXNORM",
-                "display": "Fluarix 2025-2026 0.5 mL prefilled syringe",
-                "count_threshold": 1,
-                "count_comparison": "at_least",
-                "status": "any",
-                "window_days": 36525
-              }
-            ],
-            "display": "Fluarix 2025-2026 0.5 mL prefilled syringe: not on the list, or on it with a date"
-          },
-          {
-            "operator": "OR",
-            "conditions": [
-              {
-                "field": "medications",
-                "operator": "not_includes_code",
-                "value": "2749251",
-                "system": "RXNORM",
-                "display": "Fluarix 2026-2027",
-                "horizon": "LIFETIME",
-                "status": "any"
-              },
-              {
-                "field": "medications",
-                "operator": "count_in_window",
-                "value": "2749251",
-                "system": "RXNORM",
-                "display": "Fluarix 2026-2027",
-                "count_threshold": 1,
-                "count_comparison": "at_least",
-                "status": "any",
-                "window_days": 36525
-              }
-            ],
-            "display": "Fluarix 2026-2027: not on the list, or on it with a date"
-          },
-          {
-            "operator": "OR",
-            "conditions": [
-              {
-                "field": "medications",
-                "operator": "not_includes_code",
-                "value": "2749256",
-                "system": "RXNORM",
-                "display": "Fluarix 2026-2027 0.5 mL prefilled syringe",
-                "horizon": "LIFETIME",
-                "status": "any"
-              },
-              {
-                "field": "medications",
-                "operator": "count_in_window",
-                "value": "2749256",
-                "system": "RXNORM",
-                "display": "Fluarix 2026-2027 0.5 mL prefilled syringe",
-                "count_threshold": 1,
-                "count_comparison": "at_least",
-                "status": "any",
-                "window_days": 36525
-              }
-            ],
-            "display": "Fluarix 2026-2027 0.5 mL prefilled syringe: not on the list, or on it with a date"
-          },
-          {
-            "operator": "OR",
-            "conditions": [
-              {
-                "field": "medications",
-                "operator": "not_includes_code",
-                "value": "2718457",
-                "system": "RXNORM",
-                "display": "Flulaval 2025-2026",
-                "horizon": "LIFETIME",
-                "status": "any"
-              },
-              {
-                "field": "medications",
-                "operator": "count_in_window",
-                "value": "2718457",
-                "system": "RXNORM",
-                "display": "Flulaval 2025-2026",
-                "count_threshold": 1,
-                "count_comparison": "at_least",
-                "status": "any",
-                "window_days": 36525
-              }
-            ],
-            "display": "Flulaval 2025-2026: not on the list, or on it with a date"
-          },
-          {
-            "operator": "OR",
-            "conditions": [
-              {
-                "field": "medications",
-                "operator": "not_includes_code",
-                "value": "2718462",
-                "system": "RXNORM",
-                "display": "Flulaval 2025-2026 0.5 mL prefilled syringe",
-                "horizon": "LIFETIME",
-                "status": "any"
-              },
-              {
-                "field": "medications",
-                "operator": "count_in_window",
-                "value": "2718462",
-                "system": "RXNORM",
-                "display": "Flulaval 2025-2026 0.5 mL prefilled syringe",
-                "count_threshold": 1,
-                "count_comparison": "at_least",
-                "status": "any",
-                "window_days": 36525
-              }
-            ],
-            "display": "Flulaval 2025-2026 0.5 mL prefilled syringe: not on the list, or on it with a date"
-          },
-          {
-            "operator": "OR",
-            "conditions": [
-              {
-                "field": "medications",
-                "operator": "not_includes_code",
-                "value": "2747246",
-                "system": "RXNORM",
-                "display": "Flulaval 2026-2027",
-                "horizon": "LIFETIME",
-                "status": "any"
-              },
-              {
-                "field": "medications",
-                "operator": "count_in_window",
-                "value": "2747246",
-                "system": "RXNORM",
-                "display": "Flulaval 2026-2027",
-                "count_threshold": 1,
-                "count_comparison": "at_least",
-                "status": "any",
-                "window_days": 36525
-              }
-            ],
-            "display": "Flulaval 2026-2027: not on the list, or on it with a date"
-          },
-          {
-            "operator": "OR",
-            "conditions": [
-              {
-                "field": "medications",
-                "operator": "not_includes_code",
-                "value": "2747251",
-                "system": "RXNORM",
-                "display": "Flulaval 2026-2027 0.5 mL prefilled syringe",
-                "horizon": "LIFETIME",
-                "status": "any"
-              },
-              {
-                "field": "medications",
-                "operator": "count_in_window",
-                "value": "2747251",
-                "system": "RXNORM",
-                "display": "Flulaval 2026-2027 0.5 mL prefilled syringe",
-                "count_threshold": 1,
-                "count_comparison": "at_least",
-                "status": "any",
-                "window_days": 36525
-              }
-            ],
-            "display": "Flulaval 2026-2027 0.5 mL prefilled syringe: not on the list, or on it with a date"
-          },
-          {
-            "operator": "OR",
-            "conditions": [
-              {
-                "field": "medications",
-                "operator": "not_includes_code",
-                "value": "2718395",
-                "system": "RXNORM",
-                "display": "Afluria 2025-2026",
-                "horizon": "LIFETIME",
-                "status": "any"
-              },
-              {
-                "field": "medications",
-                "operator": "count_in_window",
-                "value": "2718395",
-                "system": "RXNORM",
-                "display": "Afluria 2025-2026",
-                "count_threshold": 1,
-                "count_comparison": "at_least",
-                "status": "any",
-                "window_days": 36525
-              }
-            ],
-            "display": "Afluria 2025-2026: not on the list, or on it with a date"
-          },
-          {
-            "operator": "OR",
-            "conditions": [
-              {
-                "field": "medications",
-                "operator": "not_includes_code",
-                "value": "2718400",
-                "system": "RXNORM",
-                "display": "Afluria 2025-2026 0.5 mL prefilled syringe",
-                "horizon": "LIFETIME",
-                "status": "any"
-              },
-              {
-                "field": "medications",
-                "operator": "count_in_window",
-                "value": "2718400",
-                "system": "RXNORM",
-                "display": "Afluria 2025-2026 0.5 mL prefilled syringe",
-                "count_threshold": 1,
-                "count_comparison": "at_least",
-                "status": "any",
-                "window_days": 36525
-              }
-            ],
-            "display": "Afluria 2025-2026 0.5 mL prefilled syringe: not on the list, or on it with a date"
-          },
-          {
-            "operator": "OR",
-            "conditions": [
-              {
-                "field": "medications",
-                "operator": "not_includes_code",
-                "value": "2718406",
-                "system": "RXNORM",
-                "display": "Afluria 2025-2026 injectable suspension",
-                "horizon": "LIFETIME",
-                "status": "any"
-              },
-              {
-                "field": "medications",
-                "operator": "count_in_window",
-                "value": "2718406",
-                "system": "RXNORM",
-                "display": "Afluria 2025-2026 injectable suspension",
-                "count_threshold": 1,
-                "count_comparison": "at_least",
-                "status": "any",
-                "window_days": 36525
-              }
-            ],
-            "display": "Afluria 2025-2026 injectable suspension: not on the list, or on it with a date"
+            "display": "An influenza vaccine: not on the list, or on it with a date"
           }
         ]
       }
@@ -3211,7 +1951,7 @@
         "title": "In season, an influenza vaccine is on the medication list with no date, and none is dated this season",
         "default_behavior": "skip",
         "gate_type": "compound",
-        "on_unresolved": "default",
+        "on_unresolved": "ask",
         "operator": "AND",
         "conditions": [
           {
@@ -3224,360 +1964,9 @@
           {
             "field": "medications",
             "operator": "count_in_window",
-            "value": "2718464",
-            "system": "RXNORM",
-            "display": "Fluzone 2025-2026",
-            "count_threshold": 1,
-            "count_comparison": "less_than",
-            "status": "any",
-            "horizon": {
-              "since": "09-01"
-            }
-          },
-          {
-            "field": "medications",
-            "operator": "count_in_window",
-            "value": "2718469",
-            "system": "RXNORM",
-            "display": "Fluzone 2025-2026 0.5 mL prefilled syringe",
-            "count_threshold": 1,
-            "count_comparison": "less_than",
-            "status": "any",
-            "horizon": {
-              "since": "09-01"
-            }
-          },
-          {
-            "field": "medications",
-            "operator": "count_in_window",
-            "value": "2719212",
-            "system": "RXNORM",
-            "display": "Fluzone 2025-2026 0.5 mL prefilled syringe",
-            "count_threshold": 1,
-            "count_comparison": "less_than",
-            "status": "any",
-            "horizon": {
-              "since": "09-01"
-            }
-          },
-          {
-            "field": "medications",
-            "operator": "count_in_window",
-            "value": "2719216",
-            "system": "RXNORM",
-            "display": "Fluzone 2025-2026 injectable suspension",
-            "count_threshold": 1,
-            "count_comparison": "less_than",
-            "status": "any",
-            "horizon": {
-              "since": "09-01"
-            }
-          },
-          {
-            "field": "medications",
-            "operator": "count_in_window",
-            "value": "2746457",
-            "system": "RXNORM",
-            "display": "Fluzone 2026-2027",
-            "count_threshold": 1,
-            "count_comparison": "less_than",
-            "status": "any",
-            "horizon": {
-              "since": "09-01"
-            }
-          },
-          {
-            "field": "medications",
-            "operator": "count_in_window",
-            "value": "2746462",
-            "system": "RXNORM",
-            "display": "Fluzone 2026-2027 injectable suspension",
-            "count_threshold": 1,
-            "count_comparison": "less_than",
-            "status": "any",
-            "horizon": {
-              "since": "09-01"
-            }
-          },
-          {
-            "field": "medications",
-            "operator": "count_in_window",
-            "value": "2746468",
-            "system": "RXNORM",
-            "display": "Fluzone 2026-2027 0.5 mL prefilled syringe",
-            "count_threshold": 1,
-            "count_comparison": "less_than",
-            "status": "any",
-            "horizon": {
-              "since": "09-01"
-            }
-          },
-          {
-            "field": "medications",
-            "operator": "count_in_window",
-            "value": "2746475",
-            "system": "RXNORM",
-            "display": "Fluzone 2026-2027 0.5 mL prefilled syringe",
-            "count_threshold": 1,
-            "count_comparison": "less_than",
-            "status": "any",
-            "horizon": {
-              "since": "09-01"
-            }
-          },
-          {
-            "field": "medications",
-            "operator": "count_in_window",
-            "value": "2719306",
-            "system": "RXNORM",
-            "display": "Flublok 2025-2026",
-            "count_threshold": 1,
-            "count_comparison": "less_than",
-            "status": "any",
-            "horizon": {
-              "since": "09-01"
-            }
-          },
-          {
-            "field": "medications",
-            "operator": "count_in_window",
-            "value": "2719311",
-            "system": "RXNORM",
-            "display": "Flublok 2025-2026 0.5 mL prefilled syringe",
-            "count_threshold": 1,
-            "count_comparison": "less_than",
-            "status": "any",
-            "horizon": {
-              "since": "09-01"
-            }
-          },
-          {
-            "field": "medications",
-            "operator": "count_in_window",
-            "value": "2746444",
-            "system": "RXNORM",
-            "display": "Flublok 2026-2027",
-            "count_threshold": 1,
-            "count_comparison": "less_than",
-            "status": "any",
-            "horizon": {
-              "since": "09-01"
-            }
-          },
-          {
-            "field": "medications",
-            "operator": "count_in_window",
-            "value": "2746449",
-            "system": "RXNORM",
-            "display": "Flublok 2026-2027 0.5 mL prefilled syringe",
-            "count_threshold": 1,
-            "count_comparison": "less_than",
-            "status": "any",
-            "horizon": {
-              "since": "09-01"
-            }
-          },
-          {
-            "field": "medications",
-            "operator": "count_in_window",
-            "value": "2718369",
-            "system": "RXNORM",
-            "display": "Flucelvax 2025-2026",
-            "count_threshold": 1,
-            "count_comparison": "less_than",
-            "status": "any",
-            "horizon": {
-              "since": "09-01"
-            }
-          },
-          {
-            "field": "medications",
-            "operator": "count_in_window",
-            "value": "2718374",
-            "system": "RXNORM",
-            "display": "Flucelvax 2025-2026 injectable suspension",
-            "count_threshold": 1,
-            "count_comparison": "less_than",
-            "status": "any",
-            "horizon": {
-              "since": "09-01"
-            }
-          },
-          {
-            "field": "medications",
-            "operator": "count_in_window",
-            "value": "2718382",
-            "system": "RXNORM",
-            "display": "Flucelvax 2025-2026 0.5 mL prefilled syringe",
-            "count_threshold": 1,
-            "count_comparison": "less_than",
-            "status": "any",
-            "horizon": {
-              "since": "09-01"
-            }
-          },
-          {
-            "field": "medications",
-            "operator": "count_in_window",
-            "value": "2746484",
-            "system": "RXNORM",
-            "display": "Flucelvax 2026-2027",
-            "count_threshold": 1,
-            "count_comparison": "less_than",
-            "status": "any",
-            "horizon": {
-              "since": "09-01"
-            }
-          },
-          {
-            "field": "medications",
-            "operator": "count_in_window",
-            "value": "2746489",
-            "system": "RXNORM",
-            "display": "Flucelvax 2026-2027 0.5 mL prefilled syringe",
-            "count_threshold": 1,
-            "count_comparison": "less_than",
-            "status": "any",
-            "horizon": {
-              "since": "09-01"
-            }
-          },
-          {
-            "field": "medications",
-            "operator": "count_in_window",
-            "value": "2720029",
-            "system": "RXNORM",
-            "display": "Fluarix 2025-2026",
-            "count_threshold": 1,
-            "count_comparison": "less_than",
-            "status": "any",
-            "horizon": {
-              "since": "09-01"
-            }
-          },
-          {
-            "field": "medications",
-            "operator": "count_in_window",
-            "value": "2720034",
-            "system": "RXNORM",
-            "display": "Fluarix 2025-2026 0.5 mL prefilled syringe",
-            "count_threshold": 1,
-            "count_comparison": "less_than",
-            "status": "any",
-            "horizon": {
-              "since": "09-01"
-            }
-          },
-          {
-            "field": "medications",
-            "operator": "count_in_window",
-            "value": "2749251",
-            "system": "RXNORM",
-            "display": "Fluarix 2026-2027",
-            "count_threshold": 1,
-            "count_comparison": "less_than",
-            "status": "any",
-            "horizon": {
-              "since": "09-01"
-            }
-          },
-          {
-            "field": "medications",
-            "operator": "count_in_window",
-            "value": "2749256",
-            "system": "RXNORM",
-            "display": "Fluarix 2026-2027 0.5 mL prefilled syringe",
-            "count_threshold": 1,
-            "count_comparison": "less_than",
-            "status": "any",
-            "horizon": {
-              "since": "09-01"
-            }
-          },
-          {
-            "field": "medications",
-            "operator": "count_in_window",
-            "value": "2718457",
-            "system": "RXNORM",
-            "display": "Flulaval 2025-2026",
-            "count_threshold": 1,
-            "count_comparison": "less_than",
-            "status": "any",
-            "horizon": {
-              "since": "09-01"
-            }
-          },
-          {
-            "field": "medications",
-            "operator": "count_in_window",
-            "value": "2718462",
-            "system": "RXNORM",
-            "display": "Flulaval 2025-2026 0.5 mL prefilled syringe",
-            "count_threshold": 1,
-            "count_comparison": "less_than",
-            "status": "any",
-            "horizon": {
-              "since": "09-01"
-            }
-          },
-          {
-            "field": "medications",
-            "operator": "count_in_window",
-            "value": "2747246",
-            "system": "RXNORM",
-            "display": "Flulaval 2026-2027",
-            "count_threshold": 1,
-            "count_comparison": "less_than",
-            "status": "any",
-            "horizon": {
-              "since": "09-01"
-            }
-          },
-          {
-            "field": "medications",
-            "operator": "count_in_window",
-            "value": "2747251",
-            "system": "RXNORM",
-            "display": "Flulaval 2026-2027 0.5 mL prefilled syringe",
-            "count_threshold": 1,
-            "count_comparison": "less_than",
-            "status": "any",
-            "horizon": {
-              "since": "09-01"
-            }
-          },
-          {
-            "field": "medications",
-            "operator": "count_in_window",
-            "value": "2718395",
-            "system": "RXNORM",
-            "display": "Afluria 2025-2026",
-            "count_threshold": 1,
-            "count_comparison": "less_than",
-            "status": "any",
-            "horizon": {
-              "since": "09-01"
-            }
-          },
-          {
-            "field": "medications",
-            "operator": "count_in_window",
-            "value": "2718400",
-            "system": "RXNORM",
-            "display": "Afluria 2025-2026 0.5 mL prefilled syringe",
-            "count_threshold": 1,
-            "count_comparison": "less_than",
-            "status": "any",
-            "horizon": {
-              "since": "09-01"
-            }
-          },
-          {
-            "field": "medications",
-            "operator": "count_in_window",
-            "value": "2718406",
-            "system": "RXNORM",
-            "display": "Afluria 2025-2026 injectable suspension",
+            "value": "1657128",
+            "system": "RXNORM_INGREDIENT",
+            "display": "an influenza vaccine",
             "count_threshold": 1,
             "count_comparison": "less_than",
             "status": "any",
@@ -3594,727 +1983,25 @@
                   {
                     "field": "medications",
                     "operator": "includes_code",
-                    "value": "2718464",
-                    "system": "RXNORM",
-                    "display": "Fluzone 2025-2026",
+                    "value": "1657128",
+                    "system": "RXNORM_INGREDIENT",
+                    "display": "an influenza vaccine",
                     "horizon": "LIFETIME",
                     "status": "any"
                   },
                   {
                     "field": "medications",
                     "operator": "count_in_window",
-                    "value": "2718464",
-                    "system": "RXNORM",
-                    "display": "Fluzone 2025-2026",
+                    "value": "1657128",
+                    "system": "RXNORM_INGREDIENT",
+                    "display": "an influenza vaccine",
                     "count_threshold": 1,
                     "count_comparison": "less_than",
                     "status": "any",
                     "window_days": 36525
                   }
                 ],
-                "display": "Fluzone 2025-2026: on the list with no date"
-              },
-              {
-                "operator": "AND",
-                "conditions": [
-                  {
-                    "field": "medications",
-                    "operator": "includes_code",
-                    "value": "2718469",
-                    "system": "RXNORM",
-                    "display": "Fluzone 2025-2026 0.5 mL prefilled syringe",
-                    "horizon": "LIFETIME",
-                    "status": "any"
-                  },
-                  {
-                    "field": "medications",
-                    "operator": "count_in_window",
-                    "value": "2718469",
-                    "system": "RXNORM",
-                    "display": "Fluzone 2025-2026 0.5 mL prefilled syringe",
-                    "count_threshold": 1,
-                    "count_comparison": "less_than",
-                    "status": "any",
-                    "window_days": 36525
-                  }
-                ],
-                "display": "Fluzone 2025-2026 0.5 mL prefilled syringe: on the list with no date"
-              },
-              {
-                "operator": "AND",
-                "conditions": [
-                  {
-                    "field": "medications",
-                    "operator": "includes_code",
-                    "value": "2719212",
-                    "system": "RXNORM",
-                    "display": "Fluzone 2025-2026 0.5 mL prefilled syringe",
-                    "horizon": "LIFETIME",
-                    "status": "any"
-                  },
-                  {
-                    "field": "medications",
-                    "operator": "count_in_window",
-                    "value": "2719212",
-                    "system": "RXNORM",
-                    "display": "Fluzone 2025-2026 0.5 mL prefilled syringe",
-                    "count_threshold": 1,
-                    "count_comparison": "less_than",
-                    "status": "any",
-                    "window_days": 36525
-                  }
-                ],
-                "display": "Fluzone 2025-2026 0.5 mL prefilled syringe: on the list with no date"
-              },
-              {
-                "operator": "AND",
-                "conditions": [
-                  {
-                    "field": "medications",
-                    "operator": "includes_code",
-                    "value": "2719216",
-                    "system": "RXNORM",
-                    "display": "Fluzone 2025-2026 injectable suspension",
-                    "horizon": "LIFETIME",
-                    "status": "any"
-                  },
-                  {
-                    "field": "medications",
-                    "operator": "count_in_window",
-                    "value": "2719216",
-                    "system": "RXNORM",
-                    "display": "Fluzone 2025-2026 injectable suspension",
-                    "count_threshold": 1,
-                    "count_comparison": "less_than",
-                    "status": "any",
-                    "window_days": 36525
-                  }
-                ],
-                "display": "Fluzone 2025-2026 injectable suspension: on the list with no date"
-              },
-              {
-                "operator": "AND",
-                "conditions": [
-                  {
-                    "field": "medications",
-                    "operator": "includes_code",
-                    "value": "2746457",
-                    "system": "RXNORM",
-                    "display": "Fluzone 2026-2027",
-                    "horizon": "LIFETIME",
-                    "status": "any"
-                  },
-                  {
-                    "field": "medications",
-                    "operator": "count_in_window",
-                    "value": "2746457",
-                    "system": "RXNORM",
-                    "display": "Fluzone 2026-2027",
-                    "count_threshold": 1,
-                    "count_comparison": "less_than",
-                    "status": "any",
-                    "window_days": 36525
-                  }
-                ],
-                "display": "Fluzone 2026-2027: on the list with no date"
-              },
-              {
-                "operator": "AND",
-                "conditions": [
-                  {
-                    "field": "medications",
-                    "operator": "includes_code",
-                    "value": "2746462",
-                    "system": "RXNORM",
-                    "display": "Fluzone 2026-2027 injectable suspension",
-                    "horizon": "LIFETIME",
-                    "status": "any"
-                  },
-                  {
-                    "field": "medications",
-                    "operator": "count_in_window",
-                    "value": "2746462",
-                    "system": "RXNORM",
-                    "display": "Fluzone 2026-2027 injectable suspension",
-                    "count_threshold": 1,
-                    "count_comparison": "less_than",
-                    "status": "any",
-                    "window_days": 36525
-                  }
-                ],
-                "display": "Fluzone 2026-2027 injectable suspension: on the list with no date"
-              },
-              {
-                "operator": "AND",
-                "conditions": [
-                  {
-                    "field": "medications",
-                    "operator": "includes_code",
-                    "value": "2746468",
-                    "system": "RXNORM",
-                    "display": "Fluzone 2026-2027 0.5 mL prefilled syringe",
-                    "horizon": "LIFETIME",
-                    "status": "any"
-                  },
-                  {
-                    "field": "medications",
-                    "operator": "count_in_window",
-                    "value": "2746468",
-                    "system": "RXNORM",
-                    "display": "Fluzone 2026-2027 0.5 mL prefilled syringe",
-                    "count_threshold": 1,
-                    "count_comparison": "less_than",
-                    "status": "any",
-                    "window_days": 36525
-                  }
-                ],
-                "display": "Fluzone 2026-2027 0.5 mL prefilled syringe: on the list with no date"
-              },
-              {
-                "operator": "AND",
-                "conditions": [
-                  {
-                    "field": "medications",
-                    "operator": "includes_code",
-                    "value": "2746475",
-                    "system": "RXNORM",
-                    "display": "Fluzone 2026-2027 0.5 mL prefilled syringe",
-                    "horizon": "LIFETIME",
-                    "status": "any"
-                  },
-                  {
-                    "field": "medications",
-                    "operator": "count_in_window",
-                    "value": "2746475",
-                    "system": "RXNORM",
-                    "display": "Fluzone 2026-2027 0.5 mL prefilled syringe",
-                    "count_threshold": 1,
-                    "count_comparison": "less_than",
-                    "status": "any",
-                    "window_days": 36525
-                  }
-                ],
-                "display": "Fluzone 2026-2027 0.5 mL prefilled syringe: on the list with no date"
-              },
-              {
-                "operator": "AND",
-                "conditions": [
-                  {
-                    "field": "medications",
-                    "operator": "includes_code",
-                    "value": "2719306",
-                    "system": "RXNORM",
-                    "display": "Flublok 2025-2026",
-                    "horizon": "LIFETIME",
-                    "status": "any"
-                  },
-                  {
-                    "field": "medications",
-                    "operator": "count_in_window",
-                    "value": "2719306",
-                    "system": "RXNORM",
-                    "display": "Flublok 2025-2026",
-                    "count_threshold": 1,
-                    "count_comparison": "less_than",
-                    "status": "any",
-                    "window_days": 36525
-                  }
-                ],
-                "display": "Flublok 2025-2026: on the list with no date"
-              },
-              {
-                "operator": "AND",
-                "conditions": [
-                  {
-                    "field": "medications",
-                    "operator": "includes_code",
-                    "value": "2719311",
-                    "system": "RXNORM",
-                    "display": "Flublok 2025-2026 0.5 mL prefilled syringe",
-                    "horizon": "LIFETIME",
-                    "status": "any"
-                  },
-                  {
-                    "field": "medications",
-                    "operator": "count_in_window",
-                    "value": "2719311",
-                    "system": "RXNORM",
-                    "display": "Flublok 2025-2026 0.5 mL prefilled syringe",
-                    "count_threshold": 1,
-                    "count_comparison": "less_than",
-                    "status": "any",
-                    "window_days": 36525
-                  }
-                ],
-                "display": "Flublok 2025-2026 0.5 mL prefilled syringe: on the list with no date"
-              },
-              {
-                "operator": "AND",
-                "conditions": [
-                  {
-                    "field": "medications",
-                    "operator": "includes_code",
-                    "value": "2746444",
-                    "system": "RXNORM",
-                    "display": "Flublok 2026-2027",
-                    "horizon": "LIFETIME",
-                    "status": "any"
-                  },
-                  {
-                    "field": "medications",
-                    "operator": "count_in_window",
-                    "value": "2746444",
-                    "system": "RXNORM",
-                    "display": "Flublok 2026-2027",
-                    "count_threshold": 1,
-                    "count_comparison": "less_than",
-                    "status": "any",
-                    "window_days": 36525
-                  }
-                ],
-                "display": "Flublok 2026-2027: on the list with no date"
-              },
-              {
-                "operator": "AND",
-                "conditions": [
-                  {
-                    "field": "medications",
-                    "operator": "includes_code",
-                    "value": "2746449",
-                    "system": "RXNORM",
-                    "display": "Flublok 2026-2027 0.5 mL prefilled syringe",
-                    "horizon": "LIFETIME",
-                    "status": "any"
-                  },
-                  {
-                    "field": "medications",
-                    "operator": "count_in_window",
-                    "value": "2746449",
-                    "system": "RXNORM",
-                    "display": "Flublok 2026-2027 0.5 mL prefilled syringe",
-                    "count_threshold": 1,
-                    "count_comparison": "less_than",
-                    "status": "any",
-                    "window_days": 36525
-                  }
-                ],
-                "display": "Flublok 2026-2027 0.5 mL prefilled syringe: on the list with no date"
-              },
-              {
-                "operator": "AND",
-                "conditions": [
-                  {
-                    "field": "medications",
-                    "operator": "includes_code",
-                    "value": "2718369",
-                    "system": "RXNORM",
-                    "display": "Flucelvax 2025-2026",
-                    "horizon": "LIFETIME",
-                    "status": "any"
-                  },
-                  {
-                    "field": "medications",
-                    "operator": "count_in_window",
-                    "value": "2718369",
-                    "system": "RXNORM",
-                    "display": "Flucelvax 2025-2026",
-                    "count_threshold": 1,
-                    "count_comparison": "less_than",
-                    "status": "any",
-                    "window_days": 36525
-                  }
-                ],
-                "display": "Flucelvax 2025-2026: on the list with no date"
-              },
-              {
-                "operator": "AND",
-                "conditions": [
-                  {
-                    "field": "medications",
-                    "operator": "includes_code",
-                    "value": "2718374",
-                    "system": "RXNORM",
-                    "display": "Flucelvax 2025-2026 injectable suspension",
-                    "horizon": "LIFETIME",
-                    "status": "any"
-                  },
-                  {
-                    "field": "medications",
-                    "operator": "count_in_window",
-                    "value": "2718374",
-                    "system": "RXNORM",
-                    "display": "Flucelvax 2025-2026 injectable suspension",
-                    "count_threshold": 1,
-                    "count_comparison": "less_than",
-                    "status": "any",
-                    "window_days": 36525
-                  }
-                ],
-                "display": "Flucelvax 2025-2026 injectable suspension: on the list with no date"
-              },
-              {
-                "operator": "AND",
-                "conditions": [
-                  {
-                    "field": "medications",
-                    "operator": "includes_code",
-                    "value": "2718382",
-                    "system": "RXNORM",
-                    "display": "Flucelvax 2025-2026 0.5 mL prefilled syringe",
-                    "horizon": "LIFETIME",
-                    "status": "any"
-                  },
-                  {
-                    "field": "medications",
-                    "operator": "count_in_window",
-                    "value": "2718382",
-                    "system": "RXNORM",
-                    "display": "Flucelvax 2025-2026 0.5 mL prefilled syringe",
-                    "count_threshold": 1,
-                    "count_comparison": "less_than",
-                    "status": "any",
-                    "window_days": 36525
-                  }
-                ],
-                "display": "Flucelvax 2025-2026 0.5 mL prefilled syringe: on the list with no date"
-              },
-              {
-                "operator": "AND",
-                "conditions": [
-                  {
-                    "field": "medications",
-                    "operator": "includes_code",
-                    "value": "2746484",
-                    "system": "RXNORM",
-                    "display": "Flucelvax 2026-2027",
-                    "horizon": "LIFETIME",
-                    "status": "any"
-                  },
-                  {
-                    "field": "medications",
-                    "operator": "count_in_window",
-                    "value": "2746484",
-                    "system": "RXNORM",
-                    "display": "Flucelvax 2026-2027",
-                    "count_threshold": 1,
-                    "count_comparison": "less_than",
-                    "status": "any",
-                    "window_days": 36525
-                  }
-                ],
-                "display": "Flucelvax 2026-2027: on the list with no date"
-              },
-              {
-                "operator": "AND",
-                "conditions": [
-                  {
-                    "field": "medications",
-                    "operator": "includes_code",
-                    "value": "2746489",
-                    "system": "RXNORM",
-                    "display": "Flucelvax 2026-2027 0.5 mL prefilled syringe",
-                    "horizon": "LIFETIME",
-                    "status": "any"
-                  },
-                  {
-                    "field": "medications",
-                    "operator": "count_in_window",
-                    "value": "2746489",
-                    "system": "RXNORM",
-                    "display": "Flucelvax 2026-2027 0.5 mL prefilled syringe",
-                    "count_threshold": 1,
-                    "count_comparison": "less_than",
-                    "status": "any",
-                    "window_days": 36525
-                  }
-                ],
-                "display": "Flucelvax 2026-2027 0.5 mL prefilled syringe: on the list with no date"
-              },
-              {
-                "operator": "AND",
-                "conditions": [
-                  {
-                    "field": "medications",
-                    "operator": "includes_code",
-                    "value": "2720029",
-                    "system": "RXNORM",
-                    "display": "Fluarix 2025-2026",
-                    "horizon": "LIFETIME",
-                    "status": "any"
-                  },
-                  {
-                    "field": "medications",
-                    "operator": "count_in_window",
-                    "value": "2720029",
-                    "system": "RXNORM",
-                    "display": "Fluarix 2025-2026",
-                    "count_threshold": 1,
-                    "count_comparison": "less_than",
-                    "status": "any",
-                    "window_days": 36525
-                  }
-                ],
-                "display": "Fluarix 2025-2026: on the list with no date"
-              },
-              {
-                "operator": "AND",
-                "conditions": [
-                  {
-                    "field": "medications",
-                    "operator": "includes_code",
-                    "value": "2720034",
-                    "system": "RXNORM",
-                    "display": "Fluarix 2025-2026 0.5 mL prefilled syringe",
-                    "horizon": "LIFETIME",
-                    "status": "any"
-                  },
-                  {
-                    "field": "medications",
-                    "operator": "count_in_window",
-                    "value": "2720034",
-                    "system": "RXNORM",
-                    "display": "Fluarix 2025-2026 0.5 mL prefilled syringe",
-                    "count_threshold": 1,
-                    "count_comparison": "less_than",
-                    "status": "any",
-                    "window_days": 36525
-                  }
-                ],
-                "display": "Fluarix 2025-2026 0.5 mL prefilled syringe: on the list with no date"
-              },
-              {
-                "operator": "AND",
-                "conditions": [
-                  {
-                    "field": "medications",
-                    "operator": "includes_code",
-                    "value": "2749251",
-                    "system": "RXNORM",
-                    "display": "Fluarix 2026-2027",
-                    "horizon": "LIFETIME",
-                    "status": "any"
-                  },
-                  {
-                    "field": "medications",
-                    "operator": "count_in_window",
-                    "value": "2749251",
-                    "system": "RXNORM",
-                    "display": "Fluarix 2026-2027",
-                    "count_threshold": 1,
-                    "count_comparison": "less_than",
-                    "status": "any",
-                    "window_days": 36525
-                  }
-                ],
-                "display": "Fluarix 2026-2027: on the list with no date"
-              },
-              {
-                "operator": "AND",
-                "conditions": [
-                  {
-                    "field": "medications",
-                    "operator": "includes_code",
-                    "value": "2749256",
-                    "system": "RXNORM",
-                    "display": "Fluarix 2026-2027 0.5 mL prefilled syringe",
-                    "horizon": "LIFETIME",
-                    "status": "any"
-                  },
-                  {
-                    "field": "medications",
-                    "operator": "count_in_window",
-                    "value": "2749256",
-                    "system": "RXNORM",
-                    "display": "Fluarix 2026-2027 0.5 mL prefilled syringe",
-                    "count_threshold": 1,
-                    "count_comparison": "less_than",
-                    "status": "any",
-                    "window_days": 36525
-                  }
-                ],
-                "display": "Fluarix 2026-2027 0.5 mL prefilled syringe: on the list with no date"
-              },
-              {
-                "operator": "AND",
-                "conditions": [
-                  {
-                    "field": "medications",
-                    "operator": "includes_code",
-                    "value": "2718457",
-                    "system": "RXNORM",
-                    "display": "Flulaval 2025-2026",
-                    "horizon": "LIFETIME",
-                    "status": "any"
-                  },
-                  {
-                    "field": "medications",
-                    "operator": "count_in_window",
-                    "value": "2718457",
-                    "system": "RXNORM",
-                    "display": "Flulaval 2025-2026",
-                    "count_threshold": 1,
-                    "count_comparison": "less_than",
-                    "status": "any",
-                    "window_days": 36525
-                  }
-                ],
-                "display": "Flulaval 2025-2026: on the list with no date"
-              },
-              {
-                "operator": "AND",
-                "conditions": [
-                  {
-                    "field": "medications",
-                    "operator": "includes_code",
-                    "value": "2718462",
-                    "system": "RXNORM",
-                    "display": "Flulaval 2025-2026 0.5 mL prefilled syringe",
-                    "horizon": "LIFETIME",
-                    "status": "any"
-                  },
-                  {
-                    "field": "medications",
-                    "operator": "count_in_window",
-                    "value": "2718462",
-                    "system": "RXNORM",
-                    "display": "Flulaval 2025-2026 0.5 mL prefilled syringe",
-                    "count_threshold": 1,
-                    "count_comparison": "less_than",
-                    "status": "any",
-                    "window_days": 36525
-                  }
-                ],
-                "display": "Flulaval 2025-2026 0.5 mL prefilled syringe: on the list with no date"
-              },
-              {
-                "operator": "AND",
-                "conditions": [
-                  {
-                    "field": "medications",
-                    "operator": "includes_code",
-                    "value": "2747246",
-                    "system": "RXNORM",
-                    "display": "Flulaval 2026-2027",
-                    "horizon": "LIFETIME",
-                    "status": "any"
-                  },
-                  {
-                    "field": "medications",
-                    "operator": "count_in_window",
-                    "value": "2747246",
-                    "system": "RXNORM",
-                    "display": "Flulaval 2026-2027",
-                    "count_threshold": 1,
-                    "count_comparison": "less_than",
-                    "status": "any",
-                    "window_days": 36525
-                  }
-                ],
-                "display": "Flulaval 2026-2027: on the list with no date"
-              },
-              {
-                "operator": "AND",
-                "conditions": [
-                  {
-                    "field": "medications",
-                    "operator": "includes_code",
-                    "value": "2747251",
-                    "system": "RXNORM",
-                    "display": "Flulaval 2026-2027 0.5 mL prefilled syringe",
-                    "horizon": "LIFETIME",
-                    "status": "any"
-                  },
-                  {
-                    "field": "medications",
-                    "operator": "count_in_window",
-                    "value": "2747251",
-                    "system": "RXNORM",
-                    "display": "Flulaval 2026-2027 0.5 mL prefilled syringe",
-                    "count_threshold": 1,
-                    "count_comparison": "less_than",
-                    "status": "any",
-                    "window_days": 36525
-                  }
-                ],
-                "display": "Flulaval 2026-2027 0.5 mL prefilled syringe: on the list with no date"
-              },
-              {
-                "operator": "AND",
-                "conditions": [
-                  {
-                    "field": "medications",
-                    "operator": "includes_code",
-                    "value": "2718395",
-                    "system": "RXNORM",
-                    "display": "Afluria 2025-2026",
-                    "horizon": "LIFETIME",
-                    "status": "any"
-                  },
-                  {
-                    "field": "medications",
-                    "operator": "count_in_window",
-                    "value": "2718395",
-                    "system": "RXNORM",
-                    "display": "Afluria 2025-2026",
-                    "count_threshold": 1,
-                    "count_comparison": "less_than",
-                    "status": "any",
-                    "window_days": 36525
-                  }
-                ],
-                "display": "Afluria 2025-2026: on the list with no date"
-              },
-              {
-                "operator": "AND",
-                "conditions": [
-                  {
-                    "field": "medications",
-                    "operator": "includes_code",
-                    "value": "2718400",
-                    "system": "RXNORM",
-                    "display": "Afluria 2025-2026 0.5 mL prefilled syringe",
-                    "horizon": "LIFETIME",
-                    "status": "any"
-                  },
-                  {
-                    "field": "medications",
-                    "operator": "count_in_window",
-                    "value": "2718400",
-                    "system": "RXNORM",
-                    "display": "Afluria 2025-2026 0.5 mL prefilled syringe",
-                    "count_threshold": 1,
-                    "count_comparison": "less_than",
-                    "status": "any",
-                    "window_days": 36525
-                  }
-                ],
-                "display": "Afluria 2025-2026 0.5 mL prefilled syringe: on the list with no date"
-              },
-              {
-                "operator": "AND",
-                "conditions": [
-                  {
-                    "field": "medications",
-                    "operator": "includes_code",
-                    "value": "2718406",
-                    "system": "RXNORM",
-                    "display": "Afluria 2025-2026 injectable suspension",
-                    "horizon": "LIFETIME",
-                    "status": "any"
-                  },
-                  {
-                    "field": "medications",
-                    "operator": "count_in_window",
-                    "value": "2718406",
-                    "system": "RXNORM",
-                    "display": "Afluria 2025-2026 injectable suspension",
-                    "count_threshold": 1,
-                    "count_comparison": "less_than",
-                    "status": "any",
-                    "window_days": 36525
-                  }
-                ],
-                "display": "Afluria 2025-2026 injectable suspension: on the list with no date"
+                "display": "An influenza vaccine: on the list with no date"
               }
             ],
             "display": "An entry on the medication list with no date"
@@ -4410,7 +2097,7 @@
         "title": "In season, no COVID-19 vaccine dated this season (since September 1), and none listed without a date",
         "default_behavior": "skip",
         "gate_type": "compound",
-        "on_unresolved": "default",
+        "on_unresolved": "ask",
         "operator": "AND",
         "conditions": [
           {
@@ -4423,9 +2110,9 @@
           {
             "field": "medications",
             "operator": "count_in_window",
-            "value": "2722600",
-            "system": "RXNORM",
-            "display": "Comirnaty 2025-2026",
+            "value": "2468231",
+            "system": "RXNORM_INGREDIENT",
+            "display": "a COVID-19 vaccine",
             "count_threshold": 1,
             "count_comparison": "less_than",
             "status": "any",
@@ -4436,113 +2123,9 @@
           {
             "field": "medications",
             "operator": "count_in_window",
-            "value": "2722605",
-            "system": "RXNORM",
-            "display": "Comirnaty 2025-2026 0.3 mL prefilled syringe",
-            "count_threshold": 1,
-            "count_comparison": "less_than",
-            "status": "any",
-            "horizon": {
-              "since": "09-01"
-            }
-          },
-          {
-            "field": "medications",
-            "operator": "count_in_window",
-            "value": "2722614",
-            "system": "RXNORM",
-            "display": "Comirnaty 2025-2026 0.3 mL injection",
-            "count_threshold": 1,
-            "count_comparison": "less_than",
-            "status": "any",
-            "horizon": {
-              "since": "09-01"
-            }
-          },
-          {
-            "field": "medications",
-            "operator": "count_in_window",
-            "value": "2722430",
-            "system": "RXNORM",
-            "display": "Spikevax 2025-2026",
-            "count_threshold": 1,
-            "count_comparison": "less_than",
-            "status": "any",
-            "horizon": {
-              "since": "09-01"
-            }
-          },
-          {
-            "field": "medications",
-            "operator": "count_in_window",
-            "value": "2722435",
-            "system": "RXNORM",
-            "display": "Spikevax 2025-2026 0.25 mL prefilled syringe",
-            "count_threshold": 1,
-            "count_comparison": "less_than",
-            "status": "any",
-            "horizon": {
-              "since": "09-01"
-            }
-          },
-          {
-            "field": "medications",
-            "operator": "count_in_window",
-            "value": "2722438",
-            "system": "RXNORM",
-            "display": "Spikevax 2025-2026 0.5 mL prefilled syringe",
-            "count_threshold": 1,
-            "count_comparison": "less_than",
-            "status": "any",
-            "horizon": {
-              "since": "09-01"
-            }
-          },
-          {
-            "field": "medications",
-            "operator": "count_in_window",
-            "value": "2723009",
-            "system": "RXNORM",
-            "display": "Nuvaxovid 2025-2026",
-            "count_threshold": 1,
-            "count_comparison": "less_than",
-            "status": "any",
-            "horizon": {
-              "since": "09-01"
-            }
-          },
-          {
-            "field": "medications",
-            "operator": "count_in_window",
-            "value": "2723014",
-            "system": "RXNORM",
-            "display": "Nuvaxovid 2025-2026 0.5 mL prefilled syringe",
-            "count_threshold": 1,
-            "count_comparison": "less_than",
-            "status": "any",
-            "horizon": {
-              "since": "09-01"
-            }
-          },
-          {
-            "field": "medications",
-            "operator": "count_in_window",
-            "value": "2722656",
-            "system": "RXNORM",
-            "display": "Mnexspike 2025-2026",
-            "count_threshold": 1,
-            "count_comparison": "less_than",
-            "status": "any",
-            "horizon": {
-              "since": "09-01"
-            }
-          },
-          {
-            "field": "medications",
-            "operator": "count_in_window",
-            "value": "2722661",
-            "system": "RXNORM",
-            "display": "Mnexspike 2025-2026 0.2 mL prefilled syringe",
+            "value": "2606074",
+            "system": "RXNORM_INGREDIENT",
+            "display": "a COVID-19 vaccine",
             "count_threshold": 1,
             "count_comparison": "less_than",
             "status": "any",
@@ -4556,25 +2139,25 @@
               {
                 "field": "medications",
                 "operator": "not_includes_code",
-                "value": "2722600",
-                "system": "RXNORM",
-                "display": "Comirnaty 2025-2026",
+                "value": "2468231",
+                "system": "RXNORM_INGREDIENT",
+                "display": "a COVID-19 vaccine",
                 "horizon": "LIFETIME",
                 "status": "any"
               },
               {
                 "field": "medications",
                 "operator": "count_in_window",
-                "value": "2722600",
-                "system": "RXNORM",
-                "display": "Comirnaty 2025-2026",
+                "value": "2468231",
+                "system": "RXNORM_INGREDIENT",
+                "display": "a COVID-19 vaccine",
                 "count_threshold": 1,
                 "count_comparison": "at_least",
                 "status": "any",
                 "window_days": 36525
               }
             ],
-            "display": "Comirnaty 2025-2026: not on the list, or on it with a date"
+            "display": "A COVID-19 vaccine: not on the list, or on it with a date"
           },
           {
             "operator": "OR",
@@ -4582,233 +2165,25 @@
               {
                 "field": "medications",
                 "operator": "not_includes_code",
-                "value": "2722605",
-                "system": "RXNORM",
-                "display": "Comirnaty 2025-2026 0.3 mL prefilled syringe",
+                "value": "2606074",
+                "system": "RXNORM_INGREDIENT",
+                "display": "a COVID-19 vaccine",
                 "horizon": "LIFETIME",
                 "status": "any"
               },
               {
                 "field": "medications",
                 "operator": "count_in_window",
-                "value": "2722605",
-                "system": "RXNORM",
-                "display": "Comirnaty 2025-2026 0.3 mL prefilled syringe",
+                "value": "2606074",
+                "system": "RXNORM_INGREDIENT",
+                "display": "a COVID-19 vaccine",
                 "count_threshold": 1,
                 "count_comparison": "at_least",
                 "status": "any",
                 "window_days": 36525
               }
             ],
-            "display": "Comirnaty 2025-2026 0.3 mL prefilled syringe: not on the list, or on it with a date"
-          },
-          {
-            "operator": "OR",
-            "conditions": [
-              {
-                "field": "medications",
-                "operator": "not_includes_code",
-                "value": "2722614",
-                "system": "RXNORM",
-                "display": "Comirnaty 2025-2026 0.3 mL injection",
-                "horizon": "LIFETIME",
-                "status": "any"
-              },
-              {
-                "field": "medications",
-                "operator": "count_in_window",
-                "value": "2722614",
-                "system": "RXNORM",
-                "display": "Comirnaty 2025-2026 0.3 mL injection",
-                "count_threshold": 1,
-                "count_comparison": "at_least",
-                "status": "any",
-                "window_days": 36525
-              }
-            ],
-            "display": "Comirnaty 2025-2026 0.3 mL injection: not on the list, or on it with a date"
-          },
-          {
-            "operator": "OR",
-            "conditions": [
-              {
-                "field": "medications",
-                "operator": "not_includes_code",
-                "value": "2722430",
-                "system": "RXNORM",
-                "display": "Spikevax 2025-2026",
-                "horizon": "LIFETIME",
-                "status": "any"
-              },
-              {
-                "field": "medications",
-                "operator": "count_in_window",
-                "value": "2722430",
-                "system": "RXNORM",
-                "display": "Spikevax 2025-2026",
-                "count_threshold": 1,
-                "count_comparison": "at_least",
-                "status": "any",
-                "window_days": 36525
-              }
-            ],
-            "display": "Spikevax 2025-2026: not on the list, or on it with a date"
-          },
-          {
-            "operator": "OR",
-            "conditions": [
-              {
-                "field": "medications",
-                "operator": "not_includes_code",
-                "value": "2722435",
-                "system": "RXNORM",
-                "display": "Spikevax 2025-2026 0.25 mL prefilled syringe",
-                "horizon": "LIFETIME",
-                "status": "any"
-              },
-              {
-                "field": "medications",
-                "operator": "count_in_window",
-                "value": "2722435",
-                "system": "RXNORM",
-                "display": "Spikevax 2025-2026 0.25 mL prefilled syringe",
-                "count_threshold": 1,
-                "count_comparison": "at_least",
-                "status": "any",
-                "window_days": 36525
-              }
-            ],
-            "display": "Spikevax 2025-2026 0.25 mL prefilled syringe: not on the list, or on it with a date"
-          },
-          {
-            "operator": "OR",
-            "conditions": [
-              {
-                "field": "medications",
-                "operator": "not_includes_code",
-                "value": "2722438",
-                "system": "RXNORM",
-                "display": "Spikevax 2025-2026 0.5 mL prefilled syringe",
-                "horizon": "LIFETIME",
-                "status": "any"
-              },
-              {
-                "field": "medications",
-                "operator": "count_in_window",
-                "value": "2722438",
-                "system": "RXNORM",
-                "display": "Spikevax 2025-2026 0.5 mL prefilled syringe",
-                "count_threshold": 1,
-                "count_comparison": "at_least",
-                "status": "any",
-                "window_days": 36525
-              }
-            ],
-            "display": "Spikevax 2025-2026 0.5 mL prefilled syringe: not on the list, or on it with a date"
-          },
-          {
-            "operator": "OR",
-            "conditions": [
-              {
-                "field": "medications",
-                "operator": "not_includes_code",
-                "value": "2723009",
-                "system": "RXNORM",
-                "display": "Nuvaxovid 2025-2026",
-                "horizon": "LIFETIME",
-                "status": "any"
-              },
-              {
-                "field": "medications",
-                "operator": "count_in_window",
-                "value": "2723009",
-                "system": "RXNORM",
-                "display": "Nuvaxovid 2025-2026",
-                "count_threshold": 1,
-                "count_comparison": "at_least",
-                "status": "any",
-                "window_days": 36525
-              }
-            ],
-            "display": "Nuvaxovid 2025-2026: not on the list, or on it with a date"
-          },
-          {
-            "operator": "OR",
-            "conditions": [
-              {
-                "field": "medications",
-                "operator": "not_includes_code",
-                "value": "2723014",
-                "system": "RXNORM",
-                "display": "Nuvaxovid 2025-2026 0.5 mL prefilled syringe",
-                "horizon": "LIFETIME",
-                "status": "any"
-              },
-              {
-                "field": "medications",
-                "operator": "count_in_window",
-                "value": "2723014",
-                "system": "RXNORM",
-                "display": "Nuvaxovid 2025-2026 0.5 mL prefilled syringe",
-                "count_threshold": 1,
-                "count_comparison": "at_least",
-                "status": "any",
-                "window_days": 36525
-              }
-            ],
-            "display": "Nuvaxovid 2025-2026 0.5 mL prefilled syringe: not on the list, or on it with a date"
-          },
-          {
-            "operator": "OR",
-            "conditions": [
-              {
-                "field": "medications",
-                "operator": "not_includes_code",
-                "value": "2722656",
-                "system": "RXNORM",
-                "display": "Mnexspike 2025-2026",
-                "horizon": "LIFETIME",
-                "status": "any"
-              },
-              {
-                "field": "medications",
-                "operator": "count_in_window",
-                "value": "2722656",
-                "system": "RXNORM",
-                "display": "Mnexspike 2025-2026",
-                "count_threshold": 1,
-                "count_comparison": "at_least",
-                "status": "any",
-                "window_days": 36525
-              }
-            ],
-            "display": "Mnexspike 2025-2026: not on the list, or on it with a date"
-          },
-          {
-            "operator": "OR",
-            "conditions": [
-              {
-                "field": "medications",
-                "operator": "not_includes_code",
-                "value": "2722661",
-                "system": "RXNORM",
-                "display": "Mnexspike 2025-2026 0.2 mL prefilled syringe",
-                "horizon": "LIFETIME",
-                "status": "any"
-              },
-              {
-                "field": "medications",
-                "operator": "count_in_window",
-                "value": "2722661",
-                "system": "RXNORM",
-                "display": "Mnexspike 2025-2026 0.2 mL prefilled syringe",
-                "count_threshold": 1,
-                "count_comparison": "at_least",
-                "status": "any",
-                "window_days": 36525
-              }
-            ],
-            "display": "Mnexspike 2025-2026 0.2 mL prefilled syringe: not on the list, or on it with a date"
+            "display": "A COVID-19 vaccine: not on the list, or on it with a date"
           }
         ]
       }
@@ -4831,7 +2206,7 @@
         "title": "In season, a COVID-19 vaccine is on the medication list with no date, and none is dated this season",
         "default_behavior": "skip",
         "gate_type": "compound",
-        "on_unresolved": "default",
+        "on_unresolved": "ask",
         "operator": "AND",
         "conditions": [
           {
@@ -4844,9 +2219,9 @@
           {
             "field": "medications",
             "operator": "count_in_window",
-            "value": "2722600",
-            "system": "RXNORM",
-            "display": "Comirnaty 2025-2026",
+            "value": "2468231",
+            "system": "RXNORM_INGREDIENT",
+            "display": "a COVID-19 vaccine",
             "count_threshold": 1,
             "count_comparison": "less_than",
             "status": "any",
@@ -4857,113 +2232,9 @@
           {
             "field": "medications",
             "operator": "count_in_window",
-            "value": "2722605",
-            "system": "RXNORM",
-            "display": "Comirnaty 2025-2026 0.3 mL prefilled syringe",
-            "count_threshold": 1,
-            "count_comparison": "less_than",
-            "status": "any",
-            "horizon": {
-              "since": "09-01"
-            }
-          },
-          {
-            "field": "medications",
-            "operator": "count_in_window",
-            "value": "2722614",
-            "system": "RXNORM",
-            "display": "Comirnaty 2025-2026 0.3 mL injection",
-            "count_threshold": 1,
-            "count_comparison": "less_than",
-            "status": "any",
-            "horizon": {
-              "since": "09-01"
-            }
-          },
-          {
-            "field": "medications",
-            "operator": "count_in_window",
-            "value": "2722430",
-            "system": "RXNORM",
-            "display": "Spikevax 2025-2026",
-            "count_threshold": 1,
-            "count_comparison": "less_than",
-            "status": "any",
-            "horizon": {
-              "since": "09-01"
-            }
-          },
-          {
-            "field": "medications",
-            "operator": "count_in_window",
-            "value": "2722435",
-            "system": "RXNORM",
-            "display": "Spikevax 2025-2026 0.25 mL prefilled syringe",
-            "count_threshold": 1,
-            "count_comparison": "less_than",
-            "status": "any",
-            "horizon": {
-              "since": "09-01"
-            }
-          },
-          {
-            "field": "medications",
-            "operator": "count_in_window",
-            "value": "2722438",
-            "system": "RXNORM",
-            "display": "Spikevax 2025-2026 0.5 mL prefilled syringe",
-            "count_threshold": 1,
-            "count_comparison": "less_than",
-            "status": "any",
-            "horizon": {
-              "since": "09-01"
-            }
-          },
-          {
-            "field": "medications",
-            "operator": "count_in_window",
-            "value": "2723009",
-            "system": "RXNORM",
-            "display": "Nuvaxovid 2025-2026",
-            "count_threshold": 1,
-            "count_comparison": "less_than",
-            "status": "any",
-            "horizon": {
-              "since": "09-01"
-            }
-          },
-          {
-            "field": "medications",
-            "operator": "count_in_window",
-            "value": "2723014",
-            "system": "RXNORM",
-            "display": "Nuvaxovid 2025-2026 0.5 mL prefilled syringe",
-            "count_threshold": 1,
-            "count_comparison": "less_than",
-            "status": "any",
-            "horizon": {
-              "since": "09-01"
-            }
-          },
-          {
-            "field": "medications",
-            "operator": "count_in_window",
-            "value": "2722656",
-            "system": "RXNORM",
-            "display": "Mnexspike 2025-2026",
-            "count_threshold": 1,
-            "count_comparison": "less_than",
-            "status": "any",
-            "horizon": {
-              "since": "09-01"
-            }
-          },
-          {
-            "field": "medications",
-            "operator": "count_in_window",
-            "value": "2722661",
-            "system": "RXNORM",
-            "display": "Mnexspike 2025-2026 0.2 mL prefilled syringe",
+            "value": "2606074",
+            "system": "RXNORM_INGREDIENT",
+            "display": "a COVID-19 vaccine",
             "count_threshold": 1,
             "count_comparison": "less_than",
             "status": "any",
@@ -4980,25 +2251,25 @@
                   {
                     "field": "medications",
                     "operator": "includes_code",
-                    "value": "2722600",
-                    "system": "RXNORM",
-                    "display": "Comirnaty 2025-2026",
+                    "value": "2468231",
+                    "system": "RXNORM_INGREDIENT",
+                    "display": "a COVID-19 vaccine",
                     "horizon": "LIFETIME",
                     "status": "any"
                   },
                   {
                     "field": "medications",
                     "operator": "count_in_window",
-                    "value": "2722600",
-                    "system": "RXNORM",
-                    "display": "Comirnaty 2025-2026",
+                    "value": "2468231",
+                    "system": "RXNORM_INGREDIENT",
+                    "display": "a COVID-19 vaccine",
                     "count_threshold": 1,
                     "count_comparison": "less_than",
                     "status": "any",
                     "window_days": 36525
                   }
                 ],
-                "display": "Comirnaty 2025-2026: on the list with no date"
+                "display": "A COVID-19 vaccine: on the list with no date"
               },
               {
                 "operator": "AND",
@@ -5006,233 +2277,25 @@
                   {
                     "field": "medications",
                     "operator": "includes_code",
-                    "value": "2722605",
-                    "system": "RXNORM",
-                    "display": "Comirnaty 2025-2026 0.3 mL prefilled syringe",
+                    "value": "2606074",
+                    "system": "RXNORM_INGREDIENT",
+                    "display": "a COVID-19 vaccine",
                     "horizon": "LIFETIME",
                     "status": "any"
                   },
                   {
                     "field": "medications",
                     "operator": "count_in_window",
-                    "value": "2722605",
-                    "system": "RXNORM",
-                    "display": "Comirnaty 2025-2026 0.3 mL prefilled syringe",
+                    "value": "2606074",
+                    "system": "RXNORM_INGREDIENT",
+                    "display": "a COVID-19 vaccine",
                     "count_threshold": 1,
                     "count_comparison": "less_than",
                     "status": "any",
                     "window_days": 36525
                   }
                 ],
-                "display": "Comirnaty 2025-2026 0.3 mL prefilled syringe: on the list with no date"
-              },
-              {
-                "operator": "AND",
-                "conditions": [
-                  {
-                    "field": "medications",
-                    "operator": "includes_code",
-                    "value": "2722614",
-                    "system": "RXNORM",
-                    "display": "Comirnaty 2025-2026 0.3 mL injection",
-                    "horizon": "LIFETIME",
-                    "status": "any"
-                  },
-                  {
-                    "field": "medications",
-                    "operator": "count_in_window",
-                    "value": "2722614",
-                    "system": "RXNORM",
-                    "display": "Comirnaty 2025-2026 0.3 mL injection",
-                    "count_threshold": 1,
-                    "count_comparison": "less_than",
-                    "status": "any",
-                    "window_days": 36525
-                  }
-                ],
-                "display": "Comirnaty 2025-2026 0.3 mL injection: on the list with no date"
-              },
-              {
-                "operator": "AND",
-                "conditions": [
-                  {
-                    "field": "medications",
-                    "operator": "includes_code",
-                    "value": "2722430",
-                    "system": "RXNORM",
-                    "display": "Spikevax 2025-2026",
-                    "horizon": "LIFETIME",
-                    "status": "any"
-                  },
-                  {
-                    "field": "medications",
-                    "operator": "count_in_window",
-                    "value": "2722430",
-                    "system": "RXNORM",
-                    "display": "Spikevax 2025-2026",
-                    "count_threshold": 1,
-                    "count_comparison": "less_than",
-                    "status": "any",
-                    "window_days": 36525
-                  }
-                ],
-                "display": "Spikevax 2025-2026: on the list with no date"
-              },
-              {
-                "operator": "AND",
-                "conditions": [
-                  {
-                    "field": "medications",
-                    "operator": "includes_code",
-                    "value": "2722435",
-                    "system": "RXNORM",
-                    "display": "Spikevax 2025-2026 0.25 mL prefilled syringe",
-                    "horizon": "LIFETIME",
-                    "status": "any"
-                  },
-                  {
-                    "field": "medications",
-                    "operator": "count_in_window",
-                    "value": "2722435",
-                    "system": "RXNORM",
-                    "display": "Spikevax 2025-2026 0.25 mL prefilled syringe",
-                    "count_threshold": 1,
-                    "count_comparison": "less_than",
-                    "status": "any",
-                    "window_days": 36525
-                  }
-                ],
-                "display": "Spikevax 2025-2026 0.25 mL prefilled syringe: on the list with no date"
-              },
-              {
-                "operator": "AND",
-                "conditions": [
-                  {
-                    "field": "medications",
-                    "operator": "includes_code",
-                    "value": "2722438",
-                    "system": "RXNORM",
-                    "display": "Spikevax 2025-2026 0.5 mL prefilled syringe",
-                    "horizon": "LIFETIME",
-                    "status": "any"
-                  },
-                  {
-                    "field": "medications",
-                    "operator": "count_in_window",
-                    "value": "2722438",
-                    "system": "RXNORM",
-                    "display": "Spikevax 2025-2026 0.5 mL prefilled syringe",
-                    "count_threshold": 1,
-                    "count_comparison": "less_than",
-                    "status": "any",
-                    "window_days": 36525
-                  }
-                ],
-                "display": "Spikevax 2025-2026 0.5 mL prefilled syringe: on the list with no date"
-              },
-              {
-                "operator": "AND",
-                "conditions": [
-                  {
-                    "field": "medications",
-                    "operator": "includes_code",
-                    "value": "2723009",
-                    "system": "RXNORM",
-                    "display": "Nuvaxovid 2025-2026",
-                    "horizon": "LIFETIME",
-                    "status": "any"
-                  },
-                  {
-                    "field": "medications",
-                    "operator": "count_in_window",
-                    "value": "2723009",
-                    "system": "RXNORM",
-                    "display": "Nuvaxovid 2025-2026",
-                    "count_threshold": 1,
-                    "count_comparison": "less_than",
-                    "status": "any",
-                    "window_days": 36525
-                  }
-                ],
-                "display": "Nuvaxovid 2025-2026: on the list with no date"
-              },
-              {
-                "operator": "AND",
-                "conditions": [
-                  {
-                    "field": "medications",
-                    "operator": "includes_code",
-                    "value": "2723014",
-                    "system": "RXNORM",
-                    "display": "Nuvaxovid 2025-2026 0.5 mL prefilled syringe",
-                    "horizon": "LIFETIME",
-                    "status": "any"
-                  },
-                  {
-                    "field": "medications",
-                    "operator": "count_in_window",
-                    "value": "2723014",
-                    "system": "RXNORM",
-                    "display": "Nuvaxovid 2025-2026 0.5 mL prefilled syringe",
-                    "count_threshold": 1,
-                    "count_comparison": "less_than",
-                    "status": "any",
-                    "window_days": 36525
-                  }
-                ],
-                "display": "Nuvaxovid 2025-2026 0.5 mL prefilled syringe: on the list with no date"
-              },
-              {
-                "operator": "AND",
-                "conditions": [
-                  {
-                    "field": "medications",
-                    "operator": "includes_code",
-                    "value": "2722656",
-                    "system": "RXNORM",
-                    "display": "Mnexspike 2025-2026",
-                    "horizon": "LIFETIME",
-                    "status": "any"
-                  },
-                  {
-                    "field": "medications",
-                    "operator": "count_in_window",
-                    "value": "2722656",
-                    "system": "RXNORM",
-                    "display": "Mnexspike 2025-2026",
-                    "count_threshold": 1,
-                    "count_comparison": "less_than",
-                    "status": "any",
-                    "window_days": 36525
-                  }
-                ],
-                "display": "Mnexspike 2025-2026: on the list with no date"
-              },
-              {
-                "operator": "AND",
-                "conditions": [
-                  {
-                    "field": "medications",
-                    "operator": "includes_code",
-                    "value": "2722661",
-                    "system": "RXNORM",
-                    "display": "Mnexspike 2025-2026 0.2 mL prefilled syringe",
-                    "horizon": "LIFETIME",
-                    "status": "any"
-                  },
-                  {
-                    "field": "medications",
-                    "operator": "count_in_window",
-                    "value": "2722661",
-                    "system": "RXNORM",
-                    "display": "Mnexspike 2025-2026 0.2 mL prefilled syringe",
-                    "count_threshold": 1,
-                    "count_comparison": "less_than",
-                    "status": "any",
-                    "window_days": 36525
-                  }
-                ],
-                "display": "Mnexspike 2025-2026 0.2 mL prefilled syringe: on the list with no date"
+                "display": "A COVID-19 vaccine: on the list with no date"
               }
             ],
             "display": "An entry on the medication list with no date"
@@ -7243,7 +4306,7 @@
         "step_number": 1,
         "display_number": "9.1",
         "title": "Tdap vaccine: what has already been given",
-        "description": "One dose in each pregnancy, as early in the 27-36-week window as possible, whatever the Tdap history before this pregnancy. The medication list is read: a Tdap given this pregnancy is not repeated; one given in an earlier pregnancy does not count; one listed with no date is asked about."
+        "description": "One dose in each pregnancy, as early in the 27-36-week window as possible, whatever the Tdap history before this pregnancy. The medication list is read, any brand: a Tdap given this pregnancy is not repeated; one given in an earlier pregnancy does not count; one listed with no date is asked about."
       }
     },
     {
@@ -7309,108 +4372,9 @@
           {
             "field": "medications",
             "operator": "count_in_window",
-            "value": "583411",
-            "system": "RXNORM",
-            "display": "Boostrix",
-            "count_threshold": 1,
-            "count_comparison": "less_than",
-            "status": "any",
-            "horizon": "PREGNANCY"
-          },
-          {
-            "field": "medications",
-            "operator": "count_in_window",
-            "value": "1300370",
-            "system": "RXNORM",
-            "display": "Boostrix 0.5 mL prefilled syringe",
-            "count_threshold": 1,
-            "count_comparison": "less_than",
-            "status": "any",
-            "horizon": "PREGNANCY"
-          },
-          {
-            "field": "medications",
-            "operator": "count_in_window",
-            "value": "1300378",
-            "system": "RXNORM",
-            "display": "Boostrix 0.5 mL injection",
-            "count_threshold": 1,
-            "count_comparison": "less_than",
-            "status": "any",
-            "horizon": "PREGNANCY"
-          },
-          {
-            "field": "medications",
-            "operator": "count_in_window",
-            "value": "1300368",
-            "system": "RXNORM",
-            "display": "Tdap vaccine (SCD)",
-            "count_threshold": 1,
-            "count_comparison": "less_than",
-            "status": "any",
-            "horizon": "PREGNANCY"
-          },
-          {
-            "field": "medications",
-            "operator": "count_in_window",
-            "value": "1300377",
-            "system": "RXNORM",
-            "display": "Tdap vaccine (SCD)",
-            "count_threshold": 1,
-            "count_comparison": "less_than",
-            "status": "any",
-            "horizon": "PREGNANCY"
-          },
-          {
-            "field": "medications",
-            "operator": "count_in_window",
-            "value": "605718",
-            "system": "RXNORM",
-            "display": "Adacel",
-            "count_threshold": 1,
-            "count_comparison": "less_than",
-            "status": "any",
-            "horizon": "PREGNANCY"
-          },
-          {
-            "field": "medications",
-            "operator": "count_in_window",
-            "value": "1300191",
-            "system": "RXNORM",
-            "display": "Adacel 0.5 mL prefilled syringe",
-            "count_threshold": 1,
-            "count_comparison": "less_than",
-            "status": "any",
-            "horizon": "PREGNANCY"
-          },
-          {
-            "field": "medications",
-            "operator": "count_in_window",
-            "value": "1300206",
-            "system": "RXNORM",
-            "display": "Adacel 0.5 mL injection",
-            "count_threshold": 1,
-            "count_comparison": "less_than",
-            "status": "any",
-            "horizon": "PREGNANCY"
-          },
-          {
-            "field": "medications",
-            "operator": "count_in_window",
-            "value": "1300189",
-            "system": "RXNORM",
-            "display": "Tdap vaccine (SCD)",
-            "count_threshold": 1,
-            "count_comparison": "less_than",
-            "status": "any",
-            "horizon": "PREGNANCY"
-          },
-          {
-            "field": "medications",
-            "operator": "count_in_window",
-            "value": "1300205",
-            "system": "RXNORM",
-            "display": "Tdap vaccine (SCD)",
+            "value": "798302",
+            "system": "RXNORM_INGREDIENT",
+            "display": "a Tdap vaccine",
             "count_threshold": 1,
             "count_comparison": "less_than",
             "status": "any",
@@ -7422,259 +4386,25 @@
               {
                 "field": "medications",
                 "operator": "not_includes_code",
-                "value": "583411",
-                "system": "RXNORM",
-                "display": "Boostrix",
+                "value": "798302",
+                "system": "RXNORM_INGREDIENT",
+                "display": "a Tdap vaccine",
                 "horizon": "LIFETIME",
                 "status": "any"
               },
               {
                 "field": "medications",
                 "operator": "count_in_window",
-                "value": "583411",
-                "system": "RXNORM",
-                "display": "Boostrix",
+                "value": "798302",
+                "system": "RXNORM_INGREDIENT",
+                "display": "a Tdap vaccine",
                 "count_threshold": 1,
                 "count_comparison": "at_least",
                 "status": "any",
                 "window_days": 36525
               }
             ],
-            "display": "Boostrix: not on the list, or on it with a date"
-          },
-          {
-            "operator": "OR",
-            "conditions": [
-              {
-                "field": "medications",
-                "operator": "not_includes_code",
-                "value": "1300370",
-                "system": "RXNORM",
-                "display": "Boostrix 0.5 mL prefilled syringe",
-                "horizon": "LIFETIME",
-                "status": "any"
-              },
-              {
-                "field": "medications",
-                "operator": "count_in_window",
-                "value": "1300370",
-                "system": "RXNORM",
-                "display": "Boostrix 0.5 mL prefilled syringe",
-                "count_threshold": 1,
-                "count_comparison": "at_least",
-                "status": "any",
-                "window_days": 36525
-              }
-            ],
-            "display": "Boostrix 0.5 mL prefilled syringe: not on the list, or on it with a date"
-          },
-          {
-            "operator": "OR",
-            "conditions": [
-              {
-                "field": "medications",
-                "operator": "not_includes_code",
-                "value": "1300378",
-                "system": "RXNORM",
-                "display": "Boostrix 0.5 mL injection",
-                "horizon": "LIFETIME",
-                "status": "any"
-              },
-              {
-                "field": "medications",
-                "operator": "count_in_window",
-                "value": "1300378",
-                "system": "RXNORM",
-                "display": "Boostrix 0.5 mL injection",
-                "count_threshold": 1,
-                "count_comparison": "at_least",
-                "status": "any",
-                "window_days": 36525
-              }
-            ],
-            "display": "Boostrix 0.5 mL injection: not on the list, or on it with a date"
-          },
-          {
-            "operator": "OR",
-            "conditions": [
-              {
-                "field": "medications",
-                "operator": "not_includes_code",
-                "value": "1300368",
-                "system": "RXNORM",
-                "display": "Tdap vaccine (SCD)",
-                "horizon": "LIFETIME",
-                "status": "any"
-              },
-              {
-                "field": "medications",
-                "operator": "count_in_window",
-                "value": "1300368",
-                "system": "RXNORM",
-                "display": "Tdap vaccine (SCD)",
-                "count_threshold": 1,
-                "count_comparison": "at_least",
-                "status": "any",
-                "window_days": 36525
-              }
-            ],
-            "display": "Tdap vaccine (SCD): not on the list, or on it with a date"
-          },
-          {
-            "operator": "OR",
-            "conditions": [
-              {
-                "field": "medications",
-                "operator": "not_includes_code",
-                "value": "1300377",
-                "system": "RXNORM",
-                "display": "Tdap vaccine (SCD)",
-                "horizon": "LIFETIME",
-                "status": "any"
-              },
-              {
-                "field": "medications",
-                "operator": "count_in_window",
-                "value": "1300377",
-                "system": "RXNORM",
-                "display": "Tdap vaccine (SCD)",
-                "count_threshold": 1,
-                "count_comparison": "at_least",
-                "status": "any",
-                "window_days": 36525
-              }
-            ],
-            "display": "Tdap vaccine (SCD): not on the list, or on it with a date"
-          },
-          {
-            "operator": "OR",
-            "conditions": [
-              {
-                "field": "medications",
-                "operator": "not_includes_code",
-                "value": "605718",
-                "system": "RXNORM",
-                "display": "Adacel",
-                "horizon": "LIFETIME",
-                "status": "any"
-              },
-              {
-                "field": "medications",
-                "operator": "count_in_window",
-                "value": "605718",
-                "system": "RXNORM",
-                "display": "Adacel",
-                "count_threshold": 1,
-                "count_comparison": "at_least",
-                "status": "any",
-                "window_days": 36525
-              }
-            ],
-            "display": "Adacel: not on the list, or on it with a date"
-          },
-          {
-            "operator": "OR",
-            "conditions": [
-              {
-                "field": "medications",
-                "operator": "not_includes_code",
-                "value": "1300191",
-                "system": "RXNORM",
-                "display": "Adacel 0.5 mL prefilled syringe",
-                "horizon": "LIFETIME",
-                "status": "any"
-              },
-              {
-                "field": "medications",
-                "operator": "count_in_window",
-                "value": "1300191",
-                "system": "RXNORM",
-                "display": "Adacel 0.5 mL prefilled syringe",
-                "count_threshold": 1,
-                "count_comparison": "at_least",
-                "status": "any",
-                "window_days": 36525
-              }
-            ],
-            "display": "Adacel 0.5 mL prefilled syringe: not on the list, or on it with a date"
-          },
-          {
-            "operator": "OR",
-            "conditions": [
-              {
-                "field": "medications",
-                "operator": "not_includes_code",
-                "value": "1300206",
-                "system": "RXNORM",
-                "display": "Adacel 0.5 mL injection",
-                "horizon": "LIFETIME",
-                "status": "any"
-              },
-              {
-                "field": "medications",
-                "operator": "count_in_window",
-                "value": "1300206",
-                "system": "RXNORM",
-                "display": "Adacel 0.5 mL injection",
-                "count_threshold": 1,
-                "count_comparison": "at_least",
-                "status": "any",
-                "window_days": 36525
-              }
-            ],
-            "display": "Adacel 0.5 mL injection: not on the list, or on it with a date"
-          },
-          {
-            "operator": "OR",
-            "conditions": [
-              {
-                "field": "medications",
-                "operator": "not_includes_code",
-                "value": "1300189",
-                "system": "RXNORM",
-                "display": "Tdap vaccine (SCD)",
-                "horizon": "LIFETIME",
-                "status": "any"
-              },
-              {
-                "field": "medications",
-                "operator": "count_in_window",
-                "value": "1300189",
-                "system": "RXNORM",
-                "display": "Tdap vaccine (SCD)",
-                "count_threshold": 1,
-                "count_comparison": "at_least",
-                "status": "any",
-                "window_days": 36525
-              }
-            ],
-            "display": "Tdap vaccine (SCD): not on the list, or on it with a date"
-          },
-          {
-            "operator": "OR",
-            "conditions": [
-              {
-                "field": "medications",
-                "operator": "not_includes_code",
-                "value": "1300205",
-                "system": "RXNORM",
-                "display": "Tdap vaccine (SCD)",
-                "horizon": "LIFETIME",
-                "status": "any"
-              },
-              {
-                "field": "medications",
-                "operator": "count_in_window",
-                "value": "1300205",
-                "system": "RXNORM",
-                "display": "Tdap vaccine (SCD)",
-                "count_threshold": 1,
-                "count_comparison": "at_least",
-                "status": "any",
-                "window_days": 36525
-              }
-            ],
-            "display": "Tdap vaccine (SCD): not on the list, or on it with a date"
+            "display": "A Tdap vaccine: not on the list, or on it with a date"
           }
         ]
       }
@@ -7703,108 +4433,9 @@
           {
             "field": "medications",
             "operator": "count_in_window",
-            "value": "583411",
-            "system": "RXNORM",
-            "display": "Boostrix",
-            "count_threshold": 1,
-            "count_comparison": "less_than",
-            "status": "any",
-            "horizon": "PREGNANCY"
-          },
-          {
-            "field": "medications",
-            "operator": "count_in_window",
-            "value": "1300370",
-            "system": "RXNORM",
-            "display": "Boostrix 0.5 mL prefilled syringe",
-            "count_threshold": 1,
-            "count_comparison": "less_than",
-            "status": "any",
-            "horizon": "PREGNANCY"
-          },
-          {
-            "field": "medications",
-            "operator": "count_in_window",
-            "value": "1300378",
-            "system": "RXNORM",
-            "display": "Boostrix 0.5 mL injection",
-            "count_threshold": 1,
-            "count_comparison": "less_than",
-            "status": "any",
-            "horizon": "PREGNANCY"
-          },
-          {
-            "field": "medications",
-            "operator": "count_in_window",
-            "value": "1300368",
-            "system": "RXNORM",
-            "display": "Tdap vaccine (SCD)",
-            "count_threshold": 1,
-            "count_comparison": "less_than",
-            "status": "any",
-            "horizon": "PREGNANCY"
-          },
-          {
-            "field": "medications",
-            "operator": "count_in_window",
-            "value": "1300377",
-            "system": "RXNORM",
-            "display": "Tdap vaccine (SCD)",
-            "count_threshold": 1,
-            "count_comparison": "less_than",
-            "status": "any",
-            "horizon": "PREGNANCY"
-          },
-          {
-            "field": "medications",
-            "operator": "count_in_window",
-            "value": "605718",
-            "system": "RXNORM",
-            "display": "Adacel",
-            "count_threshold": 1,
-            "count_comparison": "less_than",
-            "status": "any",
-            "horizon": "PREGNANCY"
-          },
-          {
-            "field": "medications",
-            "operator": "count_in_window",
-            "value": "1300191",
-            "system": "RXNORM",
-            "display": "Adacel 0.5 mL prefilled syringe",
-            "count_threshold": 1,
-            "count_comparison": "less_than",
-            "status": "any",
-            "horizon": "PREGNANCY"
-          },
-          {
-            "field": "medications",
-            "operator": "count_in_window",
-            "value": "1300206",
-            "system": "RXNORM",
-            "display": "Adacel 0.5 mL injection",
-            "count_threshold": 1,
-            "count_comparison": "less_than",
-            "status": "any",
-            "horizon": "PREGNANCY"
-          },
-          {
-            "field": "medications",
-            "operator": "count_in_window",
-            "value": "1300189",
-            "system": "RXNORM",
-            "display": "Tdap vaccine (SCD)",
-            "count_threshold": 1,
-            "count_comparison": "less_than",
-            "status": "any",
-            "horizon": "PREGNANCY"
-          },
-          {
-            "field": "medications",
-            "operator": "count_in_window",
-            "value": "1300205",
-            "system": "RXNORM",
-            "display": "Tdap vaccine (SCD)",
+            "value": "798302",
+            "system": "RXNORM_INGREDIENT",
+            "display": "a Tdap vaccine",
             "count_threshold": 1,
             "count_comparison": "less_than",
             "status": "any",
@@ -7819,259 +4450,25 @@
                   {
                     "field": "medications",
                     "operator": "includes_code",
-                    "value": "583411",
-                    "system": "RXNORM",
-                    "display": "Boostrix",
+                    "value": "798302",
+                    "system": "RXNORM_INGREDIENT",
+                    "display": "a Tdap vaccine",
                     "horizon": "LIFETIME",
                     "status": "any"
                   },
                   {
                     "field": "medications",
                     "operator": "count_in_window",
-                    "value": "583411",
-                    "system": "RXNORM",
-                    "display": "Boostrix",
+                    "value": "798302",
+                    "system": "RXNORM_INGREDIENT",
+                    "display": "a Tdap vaccine",
                     "count_threshold": 1,
                     "count_comparison": "less_than",
                     "status": "any",
                     "window_days": 36525
                   }
                 ],
-                "display": "Boostrix: on the list with no date"
-              },
-              {
-                "operator": "AND",
-                "conditions": [
-                  {
-                    "field": "medications",
-                    "operator": "includes_code",
-                    "value": "1300370",
-                    "system": "RXNORM",
-                    "display": "Boostrix 0.5 mL prefilled syringe",
-                    "horizon": "LIFETIME",
-                    "status": "any"
-                  },
-                  {
-                    "field": "medications",
-                    "operator": "count_in_window",
-                    "value": "1300370",
-                    "system": "RXNORM",
-                    "display": "Boostrix 0.5 mL prefilled syringe",
-                    "count_threshold": 1,
-                    "count_comparison": "less_than",
-                    "status": "any",
-                    "window_days": 36525
-                  }
-                ],
-                "display": "Boostrix 0.5 mL prefilled syringe: on the list with no date"
-              },
-              {
-                "operator": "AND",
-                "conditions": [
-                  {
-                    "field": "medications",
-                    "operator": "includes_code",
-                    "value": "1300378",
-                    "system": "RXNORM",
-                    "display": "Boostrix 0.5 mL injection",
-                    "horizon": "LIFETIME",
-                    "status": "any"
-                  },
-                  {
-                    "field": "medications",
-                    "operator": "count_in_window",
-                    "value": "1300378",
-                    "system": "RXNORM",
-                    "display": "Boostrix 0.5 mL injection",
-                    "count_threshold": 1,
-                    "count_comparison": "less_than",
-                    "status": "any",
-                    "window_days": 36525
-                  }
-                ],
-                "display": "Boostrix 0.5 mL injection: on the list with no date"
-              },
-              {
-                "operator": "AND",
-                "conditions": [
-                  {
-                    "field": "medications",
-                    "operator": "includes_code",
-                    "value": "1300368",
-                    "system": "RXNORM",
-                    "display": "Tdap vaccine (SCD)",
-                    "horizon": "LIFETIME",
-                    "status": "any"
-                  },
-                  {
-                    "field": "medications",
-                    "operator": "count_in_window",
-                    "value": "1300368",
-                    "system": "RXNORM",
-                    "display": "Tdap vaccine (SCD)",
-                    "count_threshold": 1,
-                    "count_comparison": "less_than",
-                    "status": "any",
-                    "window_days": 36525
-                  }
-                ],
-                "display": "Tdap vaccine (SCD): on the list with no date"
-              },
-              {
-                "operator": "AND",
-                "conditions": [
-                  {
-                    "field": "medications",
-                    "operator": "includes_code",
-                    "value": "1300377",
-                    "system": "RXNORM",
-                    "display": "Tdap vaccine (SCD)",
-                    "horizon": "LIFETIME",
-                    "status": "any"
-                  },
-                  {
-                    "field": "medications",
-                    "operator": "count_in_window",
-                    "value": "1300377",
-                    "system": "RXNORM",
-                    "display": "Tdap vaccine (SCD)",
-                    "count_threshold": 1,
-                    "count_comparison": "less_than",
-                    "status": "any",
-                    "window_days": 36525
-                  }
-                ],
-                "display": "Tdap vaccine (SCD): on the list with no date"
-              },
-              {
-                "operator": "AND",
-                "conditions": [
-                  {
-                    "field": "medications",
-                    "operator": "includes_code",
-                    "value": "605718",
-                    "system": "RXNORM",
-                    "display": "Adacel",
-                    "horizon": "LIFETIME",
-                    "status": "any"
-                  },
-                  {
-                    "field": "medications",
-                    "operator": "count_in_window",
-                    "value": "605718",
-                    "system": "RXNORM",
-                    "display": "Adacel",
-                    "count_threshold": 1,
-                    "count_comparison": "less_than",
-                    "status": "any",
-                    "window_days": 36525
-                  }
-                ],
-                "display": "Adacel: on the list with no date"
-              },
-              {
-                "operator": "AND",
-                "conditions": [
-                  {
-                    "field": "medications",
-                    "operator": "includes_code",
-                    "value": "1300191",
-                    "system": "RXNORM",
-                    "display": "Adacel 0.5 mL prefilled syringe",
-                    "horizon": "LIFETIME",
-                    "status": "any"
-                  },
-                  {
-                    "field": "medications",
-                    "operator": "count_in_window",
-                    "value": "1300191",
-                    "system": "RXNORM",
-                    "display": "Adacel 0.5 mL prefilled syringe",
-                    "count_threshold": 1,
-                    "count_comparison": "less_than",
-                    "status": "any",
-                    "window_days": 36525
-                  }
-                ],
-                "display": "Adacel 0.5 mL prefilled syringe: on the list with no date"
-              },
-              {
-                "operator": "AND",
-                "conditions": [
-                  {
-                    "field": "medications",
-                    "operator": "includes_code",
-                    "value": "1300206",
-                    "system": "RXNORM",
-                    "display": "Adacel 0.5 mL injection",
-                    "horizon": "LIFETIME",
-                    "status": "any"
-                  },
-                  {
-                    "field": "medications",
-                    "operator": "count_in_window",
-                    "value": "1300206",
-                    "system": "RXNORM",
-                    "display": "Adacel 0.5 mL injection",
-                    "count_threshold": 1,
-                    "count_comparison": "less_than",
-                    "status": "any",
-                    "window_days": 36525
-                  }
-                ],
-                "display": "Adacel 0.5 mL injection: on the list with no date"
-              },
-              {
-                "operator": "AND",
-                "conditions": [
-                  {
-                    "field": "medications",
-                    "operator": "includes_code",
-                    "value": "1300189",
-                    "system": "RXNORM",
-                    "display": "Tdap vaccine (SCD)",
-                    "horizon": "LIFETIME",
-                    "status": "any"
-                  },
-                  {
-                    "field": "medications",
-                    "operator": "count_in_window",
-                    "value": "1300189",
-                    "system": "RXNORM",
-                    "display": "Tdap vaccine (SCD)",
-                    "count_threshold": 1,
-                    "count_comparison": "less_than",
-                    "status": "any",
-                    "window_days": 36525
-                  }
-                ],
-                "display": "Tdap vaccine (SCD): on the list with no date"
-              },
-              {
-                "operator": "AND",
-                "conditions": [
-                  {
-                    "field": "medications",
-                    "operator": "includes_code",
-                    "value": "1300205",
-                    "system": "RXNORM",
-                    "display": "Tdap vaccine (SCD)",
-                    "horizon": "LIFETIME",
-                    "status": "any"
-                  },
-                  {
-                    "field": "medications",
-                    "operator": "count_in_window",
-                    "value": "1300205",
-                    "system": "RXNORM",
-                    "display": "Tdap vaccine (SCD)",
-                    "count_threshold": 1,
-                    "count_comparison": "less_than",
-                    "status": "any",
-                    "window_days": 36525
-                  }
-                ],
-                "display": "Tdap vaccine (SCD): on the list with no date"
+                "display": "A Tdap vaccine: on the list with no date"
               }
             ],
             "display": "An entry on the medication list with no date"
@@ -8439,7 +4836,7 @@
         "step_number": 1,
         "display_number": "10.1",
         "title": "Maternal RSV vaccine: season, and what has already been given",
-        "description": "Offered at 32 0/7-36 6/7 weeks and only in season: September 1 to March 1 (ACOG; CDC: September through January). Out of season nothing is offered. One dose in a lifetime: an RSV vaccine recorded at any time, in this or an earlier pregnancy, is not repeated (the infant then receives the monoclonal antibody); one listed with no date is asked about. Also not offered if delivery is planned within 2 weeks or the family plans the infant monoclonal antibody instead. Only Abrysvo is approved in pregnancy."
+        "description": "Offered at 32 0/7-36 6/7 weeks and only in season: September 1 to March 1 (ACOG; CDC: September through January). Out of season nothing is offered. One dose in a lifetime: an RSV vaccine of any brand recorded at any time, in this or an earlier pregnancy, is not repeated (the infant then receives the monoclonal antibody); one listed with no date is asked about. Also not offered if delivery is planned within 2 weeks or the family plans the infant monoclonal antibody instead. Only Abrysvo is approved in pregnancy."
       }
     },
     {
@@ -8491,7 +4888,7 @@
         "title": "In RSV season, and no RSV vaccine on the medication list",
         "default_behavior": "skip",
         "gate_type": "compound",
-        "on_unresolved": "default",
+        "on_unresolved": "ask",
         "operator": "AND",
         "conditions": [
           {
@@ -8504,31 +4901,9 @@
           {
             "field": "medications",
             "operator": "count_in_window",
-            "value": "2642144",
-            "system": "RXNORM",
-            "display": "Abrysvo",
-            "count_threshold": 1,
-            "count_comparison": "less_than",
-            "status": "any",
-            "window_days": 36525
-          },
-          {
-            "field": "medications",
-            "operator": "count_in_window",
-            "value": "2642148",
-            "system": "RXNORM",
-            "display": "Abrysvo 0.5 mL injection",
-            "count_threshold": 1,
-            "count_comparison": "less_than",
-            "status": "any",
-            "window_days": 36525
-          },
-          {
-            "field": "medications",
-            "operator": "count_in_window",
-            "value": "2642142",
-            "system": "RXNORM",
-            "display": "RSV vaccine, RSVpreF (SCD)",
+            "value": "2636589",
+            "system": "RXNORM_INGREDIENT",
+            "display": "an RSV vaccine",
             "count_threshold": 1,
             "count_comparison": "less_than",
             "status": "any",
@@ -8540,77 +4915,25 @@
               {
                 "field": "medications",
                 "operator": "not_includes_code",
-                "value": "2642144",
-                "system": "RXNORM",
-                "display": "Abrysvo",
+                "value": "2636589",
+                "system": "RXNORM_INGREDIENT",
+                "display": "an RSV vaccine",
                 "horizon": "LIFETIME",
                 "status": "any"
               },
               {
                 "field": "medications",
                 "operator": "count_in_window",
-                "value": "2642144",
-                "system": "RXNORM",
-                "display": "Abrysvo",
+                "value": "2636589",
+                "system": "RXNORM_INGREDIENT",
+                "display": "an RSV vaccine",
                 "count_threshold": 1,
                 "count_comparison": "at_least",
                 "status": "any",
                 "window_days": 36525
               }
             ],
-            "display": "Abrysvo: not on the list, or on it with a date"
-          },
-          {
-            "operator": "OR",
-            "conditions": [
-              {
-                "field": "medications",
-                "operator": "not_includes_code",
-                "value": "2642148",
-                "system": "RXNORM",
-                "display": "Abrysvo 0.5 mL injection",
-                "horizon": "LIFETIME",
-                "status": "any"
-              },
-              {
-                "field": "medications",
-                "operator": "count_in_window",
-                "value": "2642148",
-                "system": "RXNORM",
-                "display": "Abrysvo 0.5 mL injection",
-                "count_threshold": 1,
-                "count_comparison": "at_least",
-                "status": "any",
-                "window_days": 36525
-              }
-            ],
-            "display": "Abrysvo 0.5 mL injection: not on the list, or on it with a date"
-          },
-          {
-            "operator": "OR",
-            "conditions": [
-              {
-                "field": "medications",
-                "operator": "not_includes_code",
-                "value": "2642142",
-                "system": "RXNORM",
-                "display": "RSV vaccine, RSVpreF (SCD)",
-                "horizon": "LIFETIME",
-                "status": "any"
-              },
-              {
-                "field": "medications",
-                "operator": "count_in_window",
-                "value": "2642142",
-                "system": "RXNORM",
-                "display": "RSV vaccine, RSVpreF (SCD)",
-                "count_threshold": 1,
-                "count_comparison": "at_least",
-                "status": "any",
-                "window_days": 36525
-              }
-            ],
-            "display": "RSV vaccine, RSVpreF (SCD): not on the list, or on it with a date"
+            "display": "An RSV vaccine: not on the list, or on it with a date"
           }
         ]
       }
@@ -8633,7 +4956,7 @@
         "title": "In RSV season, and an RSV vaccine is on the medication list with no date",
         "default_behavior": "skip",
         "gate_type": "compound",
-        "on_unresolved": "default",
+        "on_unresolved": "ask",
         "operator": "AND",
         "conditions": [
           {
@@ -8646,31 +4969,9 @@
           {
             "field": "medications",
             "operator": "count_in_window",
-            "value": "2642144",
-            "system": "RXNORM",
-            "display": "Abrysvo",
-            "count_threshold": 1,
-            "count_comparison": "less_than",
-            "status": "any",
-            "window_days": 36525
-          },
-          {
-            "field": "medications",
-            "operator": "count_in_window",
-            "value": "2642148",
-            "system": "RXNORM",
-            "display": "Abrysvo 0.5 mL injection",
-            "count_threshold": 1,
-            "count_comparison": "less_than",
-            "status": "any",
-            "window_days": 36525
-          },
-          {
-            "field": "medications",
-            "operator": "count_in_window",
-            "value": "2642142",
-            "system": "RXNORM",
-            "display": "RSV vaccine, RSVpreF (SCD)",
+            "value": "2636589",
+            "system": "RXNORM_INGREDIENT",
+            "display": "an RSV vaccine",
             "count_threshold": 1,
             "count_comparison": "less_than",
             "status": "any",
@@ -8685,77 +4986,25 @@
                   {
                     "field": "medications",
                     "operator": "includes_code",
-                    "value": "2642144",
-                    "system": "RXNORM",
-                    "display": "Abrysvo",
+                    "value": "2636589",
+                    "system": "RXNORM_INGREDIENT",
+                    "display": "an RSV vaccine",
                     "horizon": "LIFETIME",
                     "status": "any"
                   },
                   {
                     "field": "medications",
                     "operator": "count_in_window",
-                    "value": "2642144",
-                    "system": "RXNORM",
-                    "display": "Abrysvo",
+                    "value": "2636589",
+                    "system": "RXNORM_INGREDIENT",
+                    "display": "an RSV vaccine",
                     "count_threshold": 1,
                     "count_comparison": "less_than",
                     "status": "any",
                     "window_days": 36525
                   }
                 ],
-                "display": "Abrysvo: on the list with no date"
-              },
-              {
-                "operator": "AND",
-                "conditions": [
-                  {
-                    "field": "medications",
-                    "operator": "includes_code",
-                    "value": "2642148",
-                    "system": "RXNORM",
-                    "display": "Abrysvo 0.5 mL injection",
-                    "horizon": "LIFETIME",
-                    "status": "any"
-                  },
-                  {
-                    "field": "medications",
-                    "operator": "count_in_window",
-                    "value": "2642148",
-                    "system": "RXNORM",
-                    "display": "Abrysvo 0.5 mL injection",
-                    "count_threshold": 1,
-                    "count_comparison": "less_than",
-                    "status": "any",
-                    "window_days": 36525
-                  }
-                ],
-                "display": "Abrysvo 0.5 mL injection: on the list with no date"
-              },
-              {
-                "operator": "AND",
-                "conditions": [
-                  {
-                    "field": "medications",
-                    "operator": "includes_code",
-                    "value": "2642142",
-                    "system": "RXNORM",
-                    "display": "RSV vaccine, RSVpreF (SCD)",
-                    "horizon": "LIFETIME",
-                    "status": "any"
-                  },
-                  {
-                    "field": "medications",
-                    "operator": "count_in_window",
-                    "value": "2642142",
-                    "system": "RXNORM",
-                    "display": "RSV vaccine, RSVpreF (SCD)",
-                    "count_threshold": 1,
-                    "count_comparison": "less_than",
-                    "status": "any",
-                    "window_days": 36525
-                  }
-                ],
-                "display": "RSV vaccine, RSVpreF (SCD): on the list with no date"
+                "display": "An RSV vaccine: on the list with no date"
               }
             ],
             "display": "An entry on the medication list with no date"

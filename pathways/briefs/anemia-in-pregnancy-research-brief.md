@@ -1,6 +1,6 @@
 # Pathway Research Brief — Anemia in Pregnancy
 
-JSON: pathways/json/anemia-in-pregnancy.json @ version 17
+JSON: pathways/json/anemia-in-pregnancy.json @ version 18
 
 **Status: DRAFT v2 for physician review — not yet approved for JSON build.**
 Scope assumed from request: outpatient prenatal care, adult pregnant patients, US practice,
@@ -13,6 +13,31 @@ agents (codes, citations); every claim carries a reference number resolving in �
 `[GAP]` unsourceable, `[FALLBACK SOURCE]` non-US-guideline basis, `[OLDER SOURCE]` >5y but
 still current, `[BLOCKED — prior_node_result]` import-blocked gate design with fallback.
 
+> ### ⚠ For Josh (v18) — iron on the medication list is recognised by what it is, not by product code
+>
+> `[DECISION — Josh 2026-10-04]` "Match the vaccine, not the brand" — medication matching by
+> ingredient or class is available, and this pathway now uses it. It implements your
+> 2026-10-03 answer "all oral iron supplements based on what's written":
+> - **Any oral iron supplement** on the medication list (ferrous sulfate, gluconate, fumarate,
+>   Slow Fe, Fergon, a polysaccharide iron product — any brand) routes to "continue and
+>   assess". **A prenatal vitamin does not count as oral iron**, although it contains iron.
+> - **Any IV iron** (Venofer, Injectafer, Feraheme, INFeD, Monoferric) routes to "IV iron
+>   already given".
+> - **An entry that cannot be identified is asked about by name** ("… could not be
+>   identified. Does it count as an oral iron supplement?") instead of being read as "no
+>   iron".
+> - **Two of v17's nine codes were not iron at all.** RxNav says `311975` is nicotine 4 mg
+>   chewing gum and `1311224` is indole; v12–v17 labelled them "ferrous sulfate (ingredient)"
+>   and "ferric carboxymaltose (ingredient)". Through v17 a patient with nicotine gum on her
+>   list was routed as already on oral iron. v18 removes both.
+> - Hemoglobin and hematocrit are now one quantity to the engine: either answers the level
+>   question (§18). No gate changed for it.
+>
+> Three points are marked `[JOSH — CONFIRM]` in §18 (v18): a brand outside the start-date
+> anchor's code list is recognised as oral iron but its order cannot date the start, so the
+> date is asked; an order charted as a bare ingredient is asked about; and an estimate from a
+> hematocrit can decide a response near the 1 g/dL line.
+>
 > ### ⚠ For Josh (v15) — one hemoglobin since iron started, no baseline: "recheck in 2–4 weeks, not nonresponse"
 >
 > v14's remaining dead end is closed. A patient 14 or more days into oral iron with a single
@@ -92,7 +117,7 @@ still current, `[BLOCKED — prior_node_result]` import-blocked gate design with
 
 - **Logical ID**: `anemia-in-pregnancy`
 - **Title**: Anemia in Pregnancy — Classification and Treatment
-- **Version**: 17 `[DECISION — Josh 2026-10-04]` (JSON `"17"`; was `"16"`). v17 removes docusate (Med-10): constipation gets its own pathway (§8). v16 changed wording only: Guid-9–12 no longer restate the orders (§9). v15: Imports as
+- **Version**: 18 `[DECISION — Josh 2026-10-04]` (JSON `"18"`; was `"17"`). v18 reads the medication list by class (oral iron, IV iron) instead of by product code; no other gate changes (§4b, §18). v17 removes docusate (Med-10): constipation gets its own pathway (§8). v16 changed wording only: Guid-9–12 no longer restate the orders (§9). v15: Imports as
   NEW_VERSION; v14 sessions keep v14's graph. Bumped for:
   - **A single hemoglobin since oral iron started, below target, with no baseline, is "recheck
     in 2–4 weeks, not nonresponse"** (§3 Steps 2.23, 2.24; §4b `gate-rise-unmeasurable` and its
@@ -463,7 +488,8 @@ None. (Single-condition pathway; O99.01x already encodes the pregnancy+anemia co
   so the response rule is the same rule. **Where the start date comes from here:** no
   oral-iron Medication node is recommended on this route, so the visit can never be read as
   the start; the anchor is a clinician-entered date, else the earliest stored care plan, else
-  the earliest **dated** order of 310325 / 198630 / 284202 / 311975, else it is **asked**
+  the earliest **dated** order of 310325 / 198630 / 284202 / 24947 (v18; v17's fourth code
+  311975 was not iron — §18), else it is **asked**
   ("When did oral iron start?") — which is what the simulator's undated medication list
   gives. No `REQUIRES Step 2.1` (there is no initiation on this route). [1][3]
 - **Step 2.15 — Maintenance & surveillance (already on oral iron)** *(gate-hgb-response-on-iron
@@ -1032,28 +1058,48 @@ the pathway presumes the coded diagnosis.
 - **Gates `gate-no-iron-on-list` / `gate-on-oral-iron` / `gate-iv-iron-on-list` — is iron
   already on the medication list?** (v12) `[DECISION — Josh 2026-10-03]` (already on iron:
   skip the iron choices) · `[BUILD NOTE]` (wiring)
-  - All three attached to: **step-1-10** · compound · Default: **skip** · On unresolved:
-    **default** (membership only — nothing is ever asked). Every leaf: field `medications`,
-    system `RXNORM`, horizon **LIFETIME**, status **any**, with a `display` naming the product.
-  - **Oral iron codes** (answer 2, "all oral iron supplements based on what's written" — every
-    oral iron entry the simulator's medication reference holds): `310325` ferrous sulfate
-    325 mg tablet · `198630` ferrous gluconate 324 mg tablet · `284202` ferrous fumarate 324 mg
-    tablet · `311975` ferrous sulfate (ingredient).
-  - **IV iron codes**: `1741261` iron sucrose · `2274409` ferric derisomaltose · `1435169`
-    ferric carboxymaltose 750 mg/15 mL · `1311224` ferric carboxymaltose (ingredient) ·
-    `206216` iron dextran.
-  - **`gate-no-iron-on-list`** → **step-1-7** (DP-1): **AND** of `not_includes_code` on all
-    nine codes, in the order above (four oral, then five IV).
-  - **`gate-on-oral-iron`** → **step-2-14**: **AND(** nested **OR(** `includes_code` on the four
-    oral codes **)** — display "Oral iron on the medication list" — **,** `not_includes_code`
-    on each of the five IV codes **)**.
-  - **`gate-iv-iron-on-list`** → **step-2-18**: **OR** of `includes_code` on the five IV codes.
-  - **Exact complements.** For any medication list exactly one of the three is satisfied: no
-    listed code → the first; an oral code and no IV code → the second; any IV code → the
-    third. **Oral and IV iron both on the list is treated as IV iron given** (the third):
-    IV iron is the later step of the same treatment, and the oral-versus-IV choice is behind
-    her. Same horizon and status on every leaf, and status `any`, so no leaf is ever
-    indeterminate and no patient falls between the gates (§17).
+  - **v18** `[DECISION — Josh 2026-10-04]` ("match the vaccine, not the brand"; and his
+    2026-10-03 answer 2, "all oral iron supplements based on what's written"): the medication
+    list is matched by **ATC product class**, not by product code.
+  - All three attached to: **step-1-10** · Default: **skip** · On unresolved: **ask** (v18;
+    was default — a class gate asks about an entry it cannot identify; nothing is asked when
+    every entry is identified). Every leaf: field `medications`, system **`ATC`**, horizon
+    **LIFETIME**, status **any** (unchanged from v17), with the `display` below.
+  - **Oral iron** — two leaves: `B03AA` (iron, bivalent, oral preparations), display "an oral
+    iron supplement (a ferrous salt such as ferrous sulfate, gluconate or fumarate)"; `B03AB`
+    (iron, trivalent, oral preparations), display "an oral iron supplement (a ferric product
+    such as polysaccharide iron complex)". Verified on RxNav 2026-10-04: ferrous sulfate
+    325 mg (310325), ferrous gluconate 324 mg (198630), ferrous fumarate 324 mg (284202),
+    Slow-Fe and Fergon → `B03AA`.
+  - **Why the class and not the ingredient.** Every prenatal multivitamin contains an iron
+    salt, so matching the ingredient would call a prenatal vitamin "oral iron". Its product
+    class is `B03AE` (iron in other combinations) or `A11…`, which neither leaf covers.
+    Checked: the iron-carbonyl prenatal multivitamin 1248142 is `B03AE`; Vitafol-One is
+    `A11AA`.
+  - **IV iron** — one leaf: `B03AC` (iron, parenteral preparations), display "an intravenous
+    iron product". Verified: iron sucrose (1741261, Venofer), ferric derisomaltose (2274409),
+    ferric carboxymaltose (1435169, Injectafer), iron dextran (206216) → `B03AC`.
+  - **`gate-no-iron-on-list`** → **step-1-7** (DP-1): compound **AND** of `not_includes_code`
+    `B03AA`, `B03AB`, `B03AC`.
+  - **`gate-on-oral-iron`** → **step-2-14**: compound **AND(** nested **OR(** `includes_code`
+    `B03AA`, `includes_code` `B03AB` **)** — display "An oral iron supplement on the
+    medication list (any brand; a prenatal vitamin does not count)" — **,** `not_includes_code`
+    `B03AC` **)**.
+  - **`gate-iv-iron-on-list`** → **step-2-18**: patient_attribute, `includes_code` `B03AC`.
+  - **Exact complements.** For any medication list whose entries are all identified, exactly
+    one of the three is satisfied: no iron → the first; oral iron and no IV iron → the second;
+    any IV iron → the third. **Oral and IV iron both on the list is treated as IV iron given**
+    (the third). Same horizon and status on every leaf.
+  - **An entry that cannot be identified** — RxNav has no match, or gives it no single product
+    class — makes the gates that depend on it hold and ask: *"<entry> is on the medication
+    list and could not be identified. Does it count as an oral iron supplement (a ferrous
+    salt …)?"*, then, if needed, the ferric and the intravenous question. Yes counts the
+    entry; no excludes it; all three "no" → no iron on the list. **An order charted as a bare
+    ingredient** (ferrous sulfate, RxCUI 24947) is such an entry: RxNav lists several product
+    classes for an ingredient (`B03AA`, `B03AD`, `B03AE`), so the engine records none
+    `[JOSH — CONFIRM]` (§18, v18).
+  - **v17's nine product codes are gone**, and two of them were wrong (§18, v18): `311975` is
+    nicotine gum and `1311224` is indole.
   - **Why three chart gates in front of DP-1, when v8 moved the disease split behind it:**
     that split had to let the confirmatory branch into Stage 2 for everyone; this one wants
     the opposite — DP-1 itself gone — and the three targets share **nothing** (Step 2.14's
@@ -1110,8 +1156,8 @@ the pathway presumes the coded diagnosis.
   - **Condition:** labs `718-7` (LOINC, display "Hemoglobin (g/dL)") `count_in_window`,
     `count_threshold` 1, **`count_comparison`** `less_than` (recheck due) / `at_least`
     (rechecked), **`window_from`**: event `medication_start`, clinical_role
-    `oral-iron-repletion`, label "oral iron", codes RXNORM 310325 / 198630 / 284202 / 311975
-    (the response gates' four), **`min_days_since_anchor` 14**. No `baseline_days` (not
+    `oral-iron-repletion`, label "oral iron", codes RXNORM 310325 / 198630 / 284202 / 24947
+    (the response gates' four; v18: 24947, the ferrous sulfate ingredient, replaces 311975), **`min_days_since_anchor` 14**. No `baseline_days` (not
     allowed on a count; the window is start day → visit, so a pre-treatment value is never
     counted). The two counts are exact complements, so once due exactly one count is true.
     **`gate-rechecked` = `OR(` that count `at_least` 1 `,` At target `)`**, where "At target"
@@ -1229,7 +1275,8 @@ the pathway presumes the coded diagnosis.
     sulfate ordered 2026-06-01 → anchored on the order (`MEDICATION_ORDER`): day 5 → NOT YET
     DUE, nothing asked; day 21, 9.5 → 10.7 → Step 2.15, no escalation; day 21, 9.5 → 9.9 →
     Step 2.16, DP-4, Step 1.11 and (GA 20) Step 2.17 with Med-17–20; GA 12 → Step 2.17
-    GATED_OUT. A dated `311975` order anchors the same way. Step 2.3 and the original gates
+    GATED_OUT. A dated `24947` (ferrous sulfate, ingredient) order anchors the same way once
+    the provider has confirmed it is oral iron (v18). Step 2.3 and the original gates
     stay GATED_OUT throughout.
 - **Gate `gate-iv-iron-ga-on-iron` — Beyond first trimester (GA ≥ 14 0/7 weeks), IV iron after
   nonresponse, already on oral iron** (v12) `[BUILD NOTE]`
@@ -1322,8 +1369,8 @@ the pathway presumes the coded diagnosis.
       event `medication_start`, clinical_role **`oral-iron-repletion`** (the class tag on
       Med-1/2/3 — and Med-11, the "avoid" enteric-coated entry, which carries no code),
       label "oral iron", codes RXNORM **310325 / 198630 / 284202** (exactly the CodeEntries
-      of Med-1/2/3, §13) **and, since v12, 311975** (ferrous sulfate, ingredient — the fourth
-      code that counts as "on oral iron", §4b gate-on-oral-iron; without it a dated 311975
+      of Med-1/2/3, §13) **and 24947** (ferrous sulfate, ingredient — v18; v12–v17 had
+      `311975` here, which RxNav identifies as nicotine gum, §18; without it a dated 24947
       order would route to Step 2.14 and then be asked for a start date its own order
       already gives. It cannot change a patient with no iron on the list, and it is the same
       on the `-on-iron` copies), **`baseline_days` 28** (admits the latest pre-treatment Hgb within
@@ -1602,7 +1649,8 @@ the pathway presumes the coded diagnosis.
 - **Gate `gate-referral-threshold` — Referral-level anemia**
   - Attached to: stage-3 · Branches to: step-3-7 · compound (OR) · Default: skip
   - Conditions (coded): labs `718-7` less_than threshold 9; labs `4544-3` (Hct, LOINC)
-    less_than threshold 27. Horizon **`"LIFETIME"`** each — the most recent value on file,
+    less_than threshold 27. (Since the engine's hemoglobin/hematocrit equivalence, 2026-10-04,
+    either measure on file resolves both leaves — §18, v18.) Horizon **`"LIFETIME"`** each — the most recent value on file,
     however old (v13) `[DECISION — Josh 2026-10-03]`; a hemoglobin more than 30 days old also
     opens `gate-hgb-recheck-due` (repeat CBC). On unresolved: ask.
   - Rationale: CDC/IOM referral rule; no ACOG numeric equivalent [GAP]. [3]
@@ -2034,11 +2082,13 @@ All pairs acyclic; REQUIRES points dependent → prerequisite:
 | D56.3 | ICD-10 | Thalassemia minor | Step 3.3 (gate-captured) |
 | O09.40 | ICD-10 | Supervision of pregnancy with grand multiparity, unspecified trimester | Step 1.1 (risk-factor flag) |
 
-All codes wave-2 verified — see §18 item 11. **v12 adds no CodeEntry.** `311975` (ferrous
-sulfate, ingredient) and `1311224` (ferric carboxymaltose, ingredient) appear only inside gate
-conditions (§4b) and, for `311975`, the response gates' `window_from.codes`; they were given
-with Josh's decision as entries of the simulator's medication reference and were not
-re-verified against RxNav here.
+All codes wave-2 verified — see §18 item 11. **v12 adds no CodeEntry; nor does v18.** v12–v17
+carried `311975` and `1311224` inside gate conditions as "ferrous sulfate (ingredient)" and
+"ferric carboxymaltose (ingredient)", taken from the simulator's medication reference and not
+re-verified. **Verified against RxNav on 2026-10-04 they are nicotine 4 mg chewing gum and
+indole.** v18 removes both: the gates match by ATC class, and the response gates'
+`window_from.codes` now carry `24947` (ferrous sulfate, TTY IN, verified) in place of
+`311975`.
 
 ## 14. Attribute-map registrations
 
@@ -2217,7 +2267,7 @@ being ignored.
 | gate-ibd | K50.*, K51.* | LIFETIME | any | — | Chronic relapsing disease stays gate-relevant |
 | gate-malabsorption-chart (v8) | Z98.84, O99.84.*, K50.*, K51.0/.2/.3/.5/.8/.9.*, K90.0, K90.82.*, K90.83, K90.9, K91.2, Z90.3 | LIFETIME | any | — | Chronic or anatomical; same reading as gate-bariatric / gate-ibd |
 | gate-ckd | N18.*, O26.83.* | LIFETIME | active | — | Route out only on standing CKD; a resolved/erroneous historical code shouldn't exile the patient from the pathway |
-| gate-no-iron-on-list (`not_includes_code` ×9) / gate-on-oral-iron (`includes_code` ×4 oral, `not_includes_code` ×5 IV) / gate-iv-iron-on-list (`includes_code` ×5 IV) (v12) | medications, RXNORM 310325, 198630, 284202, 311975 (oral); 1741261, 2274409, 1435169, 1311224, 206216 (IV) | LIFETIME | any | — | "On the medication list". One horizon and status on all 18 leaves so the three gates are exact complements; `any` keeps `not_includes_code` from ever being indeterminate (an entry whose state cannot be decided is a definite match), as for the hemoglobinopathy pair. LIFETIME because a bounded horizon selects on the start date: it would drop an iron started long ago and still taken. `[JOSH — CONFIRM]` cost: a stopped or old iron order still on the list counts as "on iron" (§18) |
+| gate-no-iron-on-list / gate-on-oral-iron / gate-iv-iron-on-list (v12; by class since v18) | medications, **ATC** `B03AA`, `B03AB` (oral), `B03AC` (IV) | LIFETIME | any | — | "On the medication list". One horizon and status on every leaf so the three gates are exact complements. LIFETIME because a bounded horizon selects on the start date: it would drop an iron started long ago and still taken. Status `any`: a stopped or old order still counts — `[JOSH — CONFIRM]`, unchanged from v12 (§18). v18 changes only what identifies the medication. |
 | gate-hgb-response-on-iron / gate-hgb-nonresponse-on-iron / gate-iv-iron-ga-on-iron (v12) | as gate-hgb-response / gate-hgb-nonresponse / gate-iv-iron-ga | identical to the originals' rows above | — | — | Fan-out copies; `check-gate-control` holds them in sync |
 
 Kernel semantics reviewers should know: windows/horizons select on a fact's **start
@@ -2688,6 +2738,103 @@ not < 6): the question is still exactly one, asked by the two response gates, an
 scenario now also asserts `gate-severe-anemia` GATED_OUT. Every other expectation is
 untouched.
 
+### `[DECISION — Josh 2026-10-04]` Iron is recognised by class, not by product code — ENCODED (v18)
+
+**The decision.** "Match the vaccine, not the brand" — medication matching by ingredient or
+class is now available in the engine. For this pathway it completes his 2026-10-03 answer 2,
+"all oral iron supplements based on what's written", which v12 could only approximate with
+the four codes the simulator's reference happened to hold.
+
+**What changed** (three gates, §4b; nothing else in the graph):
+
+| Gate | v17 | v18 |
+|---|---|---|
+| `gate-on-oral-iron` | `includes_code` on 4 RxNorm codes; `not_includes_code` on 5 | `includes_code` ATC `B03AA` OR `B03AB`; `not_includes_code` ATC `B03AC` |
+| `gate-iv-iron-on-list` | `includes_code` on 5 RxNorm codes | `includes_code` ATC `B03AC` |
+| `gate-no-iron-on-list` | `not_includes_code` on all 9 | `not_includes_code` ATC `B03AA`, `B03AB`, `B03AC` |
+| all three | on unresolved: default | on unresolved: **ask** (an unidentifiable entry) |
+| status / horizon | `any` / LIFETIME | unchanged |
+
+**Two of v17's codes were wrong.** Checked against RxNav on 2026-10-04: `311975` is "nicotine
+4 MG Chewing Gum" and `1311224` is "indole". v12 took them from the simulator's medication
+reference as "ferrous sulfate (ingredient)" and "ferric carboxymaltose (ingredient)" and said
+they were not re-verified (§13). The effect through v17: nicotine gum on the medication list
+routed a patient to "already on oral iron", and a dated nicotine-gum order could anchor the
+response window. Both are removed. The real ingredients are ferrous sulfate `24947` and ferric
+carboxymaltose `1433693`.
+
+**A prenatal vitamin is not oral iron.** That is why the class is used and not the
+ingredient: every prenatal multivitamin contains an iron salt. Proved: a patient with two
+prenatal multivitamins on her list (ATC `B03AE`, `A11AA`) is asked DP-1 as a patient on no
+iron, and nothing is asked about them.
+
+**`window_from.codes` cannot take a class** `[NOT ENCODABLE]` `[JOSH — CONFIRM]`. The response
+gates' anchor ("when did oral iron start?") reads a dated order from an exact list of codes
+(`window_from.codes`); the spec refuses `window_from` with a class system and the list takes
+product codes only. So the list stays as codes — 310325, 198630, 284202 and, in place of the
+wrong 311975, the ferrous sulfate ingredient `24947`. **The mismatch:** a brand outside the
+list (Fergon, Slow-Fe, a polysaccharide iron product) is now recognised as oral iron by the
+gate and routed to Step 2.14, but its dated order cannot anchor the start, so "When did oral
+iron start?" is asked even though the chart has the date. Proved (`gate-proof.ts on-iron`,
+Fergon ordered 2026-06-01: one start-date question). What would fix it: `window_from` taking
+`{ "system": "ATC", "code": "B03AA" }`. Logged in `pathways/TODO.md`.
+
+**An order charted as a bare ingredient is asked about** `[JOSH — CONFIRM]`. "Ferrous sulfate"
+recorded as the ingredient concept (`24947`) has no single product class in RxNav (`B03AA`,
+`B03AD`, `B03AE`), so the engine records none and the gates ask: "… could not be identified.
+Does it count as an oral iron supplement (a ferrous salt …)?" and "… an intravenous iron
+product?". Yes to the first and no to the second → Step 2.14, and the dated order anchors the
+window. Matching oral iron by its ingredients as well (`RXNORM_INGREDIENT` 24947, 24942,
+24941, …) would recognise it without the question, but would also match every prenatal
+vitamin. Left as asked.
+
+**Two same-looking questions avoided.** The two oral leaves have different `display` text
+(ferrous salt / ferric product), so an unidentifiable entry that is answered "no" to the first
+is not then asked an identically worded second question.
+
+**A stopped or old order still counts** — status `any`, LIFETIME: the v12 `[JOSH — CONFIRM]`
+below is unchanged.
+
+**Hemoglobin and hematocrit are one quantity** (engine, 2026-10-04; `[DECISION — Josh
+2026-10-04]`: "the ability to choose whether to input hemoglobin vs hematocrit"). No gate
+changed, and none double-counts. What it means for this pathway, wherever the brief says a
+gate reads "the hemoglobin":
+- **Either measure answers the level question.** A hematocrit on file satisfies every gate
+  written on hemoglobin (718-7) through an estimate, Hgb = Hct ÷ 3, and the reason says so
+  ("9 (estimated from hematocrit 27%)"). "No hemoglobin on file" (`gate-no-hgb-on-file`) is
+  false when a hematocrit is on file; a hematocrit drawn since oral iron started counts as
+  the recheck; a rise between a hematocrit-derived value and a measured one is a rise.
+- **`gate-referral-threshold` stays `OR(Hgb < 9, Hct < 27)` as authored** — the guideline
+  states both. Its hematocrit leaf now resolves from a hemoglobin (Hct = Hgb × 3) and its
+  hemoglobin leaf from a hematocrit, so with either on file nothing is asked for the other.
+  The two leaves agree except within rounding of the line.
+- **One CBC is one measurement.** A hemoglobin and a hematocrit on the same date count once
+  (checked: count 1, the measured hemoglobin read); on different dates they are two points.
+- **Three engine limits:**
+  1. **No unit conversion.** Hemoglobin is read as g/dL and hematocrit as %. A hemoglobin in
+     g/L or a hematocrit as a fraction (0.27) is not converted.
+  2. **Undated values are not estimated.** When either value has no date (every simulator
+     chart) no estimate is made and each gate reads only its own measure — as before v18.
+  3. **One-decimal rounding at thresholds** `[JOSH — CONFIRM]`. An estimate is rounded to one
+     decimal (Hct 31% → 10.3; Hct 26% → 8.7). Near a line — the 1 g/dL rise, 11.0 / 10.5 at
+     target, 9, 6 — an estimate can fall on the other side from the measured value it stands
+     in for: a rise from 9.5 to an estimated 10.3 is 0.8, "not responding", where the
+     measured hemoglobin might have been 10.5. The reason shows it is an estimate.
+
+**DATA USE warnings: unchanged.** `validate-pathway.ts` reports the same 15 on v18 as on v17
+(MCV and ferritin 90-day windows; the response gates' 28-day at-target windows). None
+concerns the medication list, and v18 adds none.
+
+**Proofs** (`gate-proof.ts on-iron`, both edge orders): ferrous sulfate, gluconate and
+fumarate tablets, Fergon and Slow-Fe → Step 2.14; iron sucrose, Venofer, Injectafer,
+Monoferric, ferric carboxymaltose, INFeD → Step 2.18; oral and IV together → Step 2.18; two
+prenatal multivitamins → DP-1, nothing asked; nicotine gum → DP-1; Fergon ordered → start
+date asked; a bare-ingredient order → asked, yes → Step 2.14 anchored by the order, no to all
+three → DP-1. **Not exercised:** the proofs take each medication's identity from
+`scripts/fixtures/medication-identities.json` (RxNav's answers, fetched 2026-10-04) in place of
+the service's normaliser, which needs the database and the network — so not the live RxNav
+call, its cache, the pinning of an identification in a session, or a free-text entry.
+
 ### `[DECISION — Josh 2026-10-03]` Already on iron: skip the iron choices — ENCODED (v12)
 
 **What Josh saw.** In the simulator, a patient with ferrous sulfate on her medication list was
@@ -2702,8 +2849,8 @@ supplements based on what's written. 3. yes, skip":
    confirmatory iron studies now?" (BOOLEAN). Yes → Step 1.12 orders ferritin (Lab-22) and
    iron/TIBC/saturation (Lab-23); no → they are not ordered. Neither skipped nor forced.
 2. *Which medications count as "on oral iron"?* — **"all oral iron supplements based on what's
-   written."** Encoded as the four oral iron entries the simulator's medication reference
-   holds: RxNorm `310325` (ferrous sulfate 325 mg tablet), `198630` (ferrous gluconate 324 mg
+   written."** (v18: now any oral iron supplement, by ATC class — section above.) Encoded in
+   v12 as the four oral iron entries the simulator's medication reference holds: RxNorm `310325` (ferrous sulfate 325 mg tablet), `198630` (ferrous gluconate 324 mg
    tablet), `284202` (ferrous fumarate 324 mg tablet), `311975` (ferrous sulfate, ingredient).
    Any one of them, with no IV iron on the list → `gate-on-oral-iron` → Step 2.14: DP-1 and
    DP-3 are not asked; she continues the oral iron she is on (Guid-7; no Medication node, so

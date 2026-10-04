@@ -1,11 +1,11 @@
 # Pathway Research Brief — Routine Prenatal Care (with universal GDM screening)
 
-JSON: pathways/json/routine-prenatal-care.json @ version 4
+JSON: pathways/json/routine-prenatal-care.json @ version 5
 
-**Status: version 4, built from Josh's review of version 3 (2026-10-04); items marked CONFIRM
-remain.** Built as `pathways/json/routine-prenatal-care.json`, version 4 (387 nodes, 746
-edges). Versions 1–3 are commits `b251958`, `fbed785` and `45f8e30` (version 3 is loaded as a
-draft); version 4 is not imported.
+**Status: version 5 (2026-10-04): medications are matched by ingredient; items marked CONFIRM
+remain.** Built as `pathways/json/routine-prenatal-care.json`, version 5 (387 nodes, 746
+edges). Versions 1–4 are commits `b251958`, `fbed785`, `45f8e30` and `4d9559e` (version 4 is
+loaded as a draft); version 5 is not imported.
 
 **What this is.** The pathway `routine-prenatal-care`. It replaces the older stored
 `routine-prenatal-care-v1` and `-v2` graphs (§0.2), neither of which is active locally any
@@ -30,32 +30,31 @@ Flags:
 - `[WINDOW — <gate>: …]`, `[ON-UNRESOLVED DEFAULT — <gate>]`, `[LEAF CODES — <parent>: …]` the
   format spec's markers.
 
-> ### Read this first (version 4, 2026-10-04)
+> ### Read this first (version 5, 2026-10-04)
 >
-> What changed from version 3, each from Josh's review `[DECISION — Josh 2026-10-04]`:
+> One change from version 4 `[DECISION — Josh 2026-10-04]`: **"match the vaccine, not the
+> brand."** Every gate that reads the medication list now matches by **ingredient**, not by a
+> list of product codes:
 >
-> 1. **Week windows.** "Since 24 weeks" and "since 28 weeks" are now exact
->    (`{ "since_gestational_week": N }`). The look-backs banded by gestational age are gone
->    from the repeat CBC and the third-trimester rescreens.
-> 2. **Only a GDM screen drawn at or after 24 0/7 weeks counts as the 24–28-week screen.** An
->    early negative 50-g no longer reads as complete. An early positive one still goes straight
->    to the 100-g test.
-> 3. **Influenza and COVID-19 vaccines are recommended only in season, September 1 to March
->    31**, and only when no dose is dated since the most recent September 1. Out of season
->    nothing is recommended or asked.
-> 4. **Weak D and partial D: always add Z67.91.** The chart's own Rh spellings ("Rh+", "neg",
->    "Du") are read.
-> 5. **Early HbA1c: only a value drawn this pregnancy is read.**
-> 6. **"Not available" on the prenatal vitamin, Tdap or RSV question recommends it.** Unknown
->    is treated like "no"; nothing is remembered, so the question returns next visit.
+> 1. **Vaccines** — any influenza, COVID-19, Tdap or RSV vaccine product counts, whatever the
+>    brand or season. The season, this-pregnancy and once-ever rules, the undated-entry
+>    questions, the remembered Tdap / RSV answers and the in-season rule are exactly as
+>    version 4.
+> 2. **Prenatal vitamin** — any product containing folic acid on the medication list settles
+>    it: a folic acid tablet or a prenatal multivitamin of any brand. Otherwise the remembered
+>    question, as before.
+> 3. **Aspirin** — any product containing aspirin.
+> 4. **New behaviour: an entry on the medication list that cannot be identified is asked
+>    about by name** — "… could not be identified. Does it count as an influenza vaccine?" —
+>    instead of being silently treated as "not one".
 >
-> Unchanged from version 3: the calendar season for RSV; undated vaccines asked about; the
-> remembered "yes" for the prenatal vitamin, Tdap and RSV; supervision-of-pregnancy triggers
-> on the encounter; chart-read gestational diabetes; **no Rh immune globulin** (§0.9).
+> The product-code lists and their yearly upkeep are gone from the gates (§0.6 #4, J28 / J31
+> closed).
 >
 > Checked against the real engine: `gate-proof.ts prenatal-ga`, `prenatal-triggers`,
 > `prenatal-gdm`, `prenatal-handoffs`, `prenatal-meds`, `prenatal-vaccines`, and
-> `coverage-audit.ts`.
+> `coverage-audit.ts`. The proofs take each medication's identity from a fixture of RxNav's
+> answers, not from the live normaliser (§18).
 
 ---
 
@@ -159,7 +158,7 @@ word).
   - The gestational diabetes codes (O24.41x, O99.810) are therefore **not** triggers any
     more. They are still read from the chart by the GDM status gates.
 
-### 0.4 Co-matching with the other pathways (re-checked for version 4)
+### 0.4 Co-matching with the other pathways (re-checked for version 5)
 
 Triggers, from the built JSONs on josh-dev. Each is matched against the **encounter's**
 diagnoses:
@@ -246,9 +245,10 @@ pregnancy evidence that rule needs.
 | V4-6 | `[DECISION — Josh 2026-10-04]` Vaccine products: **"match the vaccine, not the brand."** Needs medication class matching, an engine project (`pathways/TODO.md`). The product lists stay for version 4 (J28 / J31 become one known limit). |
 | V4-7 | `[DECISION — Josh 2026-10-04]` **Early HbA1c: only a value drawn this pregnancy** for the overt-diabetes and 5.9–6.4% gates (closes J13). |
 | V4-8 | `[DECISION — Josh 2026-10-04]` Guidance wording: Josh reviews it in the simulator. J18 is "review in place", not blocking. |
+| V5-1 | `[DECISION — Josh 2026-10-04]` **"Match the vaccine, not the brand"** — medication matching by ingredient is available and used: vaccines, folic acid and aspirin are matched by ingredient RxCUI (`system: "RXNORM_INGREDIENT"`), replacing every product list (closes J28 / J31, V4-6). |
 | — | `[DECISION — Josh 2026-10-04]` **Source conflicts ratified** (§18 C1, C2, C3, C7, C9). |
 
-### 0.6 Spec and engine limitations (re-checked against spec v6 + josh-dev, version 4)
+### 0.6 Spec and engine limitations (re-checked against spec v6 + josh-dev, version 5)
 
 **No longer limitations:**
 - **"Since week N of this pregnancy"** — `{ "since_gestational_week": N }` (2026-10-04). The
@@ -288,14 +288,20 @@ pregnancy evidence that rule needs.
    at all — which a count never sees — is detected separately and asked about (§4b
    "Vaccines"). What would simplify it: an immunization list, or an "administered on" fact
    kind.
-4. **A medication is matched by product code, not by what it is** (V4-6: "match the vaccine,
-   not the brand"). `includes_code` and `count_in_window` do not expand a product to its
-   ingredient or class, and RxNorm issues new influenza and COVID-19 product concepts every
-   season. So the gates carry product lists (§0.8: 2025–2026 and 2026–2027; brand products
-   only for influenza and COVID-19) that need adding to each year, and a chart coding the
-   vaccine another way is not recognised. **Known limit**, waiting on medication class
-   matching (`pathways/TODO.md`). Prenatal multivitamins have no clean class in RxNorm, so the
-   known list plus the remembered answer stays for them even then.
+4. **Medications are matched by ingredient** — resolved on 2026-10-04 (V5-1). What remains:
+   - **An entry that cannot be identified is asked about, once per class it could belong
+     to.** A chart entry RxNav cannot identify is never "not a vaccine": each gate whose
+     answer it could change asks "does it count as …?". One unidentified entry can therefore
+     raise up to seven yes/no questions in this pathway (influenza, COVID-19 twice — two
+     ingredients, Tdap, RSV, folic acid, aspirin). An identified entry of the class settles
+     the matter without the question. `[JOSH — CONFIRM]` (J40).
+   - **Ingredients shared with products that are not the intended one** (§0.8): FluMist
+     (contraindicated in pregnancy) is an influenza vaccine; Arexvy is an RSV vaccine;
+     pediatric DTaP is "a Tdap" (irrelevant inside this pregnancy's window); any aspirin
+     product, at any dose or in a combination, is "aspirin" (J41).
+   - **"Is a prenatal vitamin" has no class in RxNorm**; "contains folic acid" is what is
+     matched. A product with L-methylfolate instead of folic acid is a different ingredient
+     and is not recognised — the remembered question covers it.
 5. **`patient.rh_factor` SELECT options come from the comparands.** The gate's first leaf is
    `in ["positive", "negative", "weak D", "partial D"]`, which supplies the four options
    (§4b).
@@ -392,41 +398,28 @@ instead of stated.
 | 91875-5 | LOINC | carried from the 2026-09-24 wave-2 list (GBS NAAT) | Not re-verified. |
 | 1549-5, 1501-6, 1514-9, 1530-5 | LOINC | 2026-09-24 wave-2 (100-g test: fasting, 1 h, 2 h, 3 h) | Now read by gates. |
 
-**Medication and vaccine codes read by gates — all RxNorm, each verified on RxNav
-(`rxcui/<id>/properties`) on 2026-10-04.** The gates match **RXNORM only**: the engine fixes
-the code system per field (medications → RXNORM), and the simulator's composer searches
-medications with `system="RXNORM"` (`PatientComposer.tsx`). **CVX is not used**: the local
-reference table has no CVX system and the composer cannot enter one. Vaccines as RxNorm:
-confirmed `[DECISION — Josh 2026-10-04]`. **Known limit:** a chart feed that records
-immunizations as CVX is not recognised.
+**What the gates match on the medication list (version 5) — ingredients, verified on RxNav on
+2026-10-04** (the spec's reference table, "Match a medication by ingredient or class"; the
+aspirin ingredient was verified the same way for this brief):
 
-| Group | RxNorm codes (type) |
-|---|---|
-| Folic acid | 4511 (IN), 198640 (0.4 mg tablet, SCD), 310410 (1 mg tablet, SCD) |
-| Prenatal multivitamins | 1119570 Vitafol-One (BN), 1119573 Vitafol-One capsule (SBD), 1100471 CitraNatal pack (BPCK), 1248142 (SCD: folic acid 1 mg, iron carbonyl 90 mg, with docusate), 1116183 (SBD: folic acid 1 mg, ferrous fumarate 65 mg), 1313925 (SCD: folic acid 1 mg, ferrous fumarate 29 mg), 1485531 (SCD: DHA, folic acid 1.2 mg, ferrous fumarate 30 mg) |
-| Aspirin | 1191 (IN), 243670 (81 mg tablet), 318272 (81 mg chewable) |
-| Tdap | Boostrix: 583411 (BN), 1300370, 1300378 (SBD), 1300368, 1300377 (SCD); Adacel: 605718 (BN), 1300191, 1300206 (SBD), 1300189, 1300205 (SCD) |
-| RSV (RSVpreF) | Abrysvo: 2642144 (BN), 2642148 (SBD), 2642142 (SCD) |
-| Influenza 2025–2026 | Fluzone 2718464 (BN), 2718469, 2719212, 2719216; Flublok 2719306 (BN), 2719311; Flucelvax 2718369 (BN), 2718374, 2718382; Fluarix 2720029 (BN), 2720034; Flulaval 2718457 (BN), 2718462; Afluria 2718395 (BN), 2718400, 2718406 |
-| Influenza 2026–2027 | Fluzone 2746457 (BN), 2746462, 2746468, 2746475; Flublok 2746444 (BN), 2746449; Flucelvax 2746484 (BN), 2746489; Fluarix 2749251 (BN), 2749256; Flulaval 2747246 (BN), 2747251 |
-| COVID-19 2025–2026 | Comirnaty 2722600 (BN), 2722605, 2722614; Spikevax 2722430 (BN), 2722435, 2722438; Nuvaxovid 2723009 (BN), 2723014; Mnexspike 2722656 (BN), 2722661 |
+| What | Gate condition | Verified on | Notes |
+|---|---|---|---|
+| Influenza vaccine | `RXNORM_INGREDIENT` `1657128` (influenza A H1N1 antigen) | Fluzone, Fluad, Flucelvax, Flublok, Afluria, FluMist — 2025–26 and 2026–27 products all carry 1657128, 1657131 and 1657134 | One ingredient is enough: every seasonal product has all three. Chosen over `ATC` `J07BB` because an ingredient-coded entry matches without needing a product class. **FluMist (live, contraindicated in pregnancy) matches too**: a dose given is still a dose given. |
+| COVID-19 vaccine | `RXNORM_INGREDIENT` `2468231` **or** `2606074` — two leaves | Comirnaty, Spikevax, mNEXSPIKE → 2468231; Nuvaxovid → 2606074 | `ATC` `J07BN` misses Nuvaxovid (no ATC class in RxNav). |
+| Tdap | `RXNORM_INGREDIENT` `798302` (acellular pertussis vaccine) | Boostrix, Adacel match; Tenivac (plain Td) does not | **Pediatric DTaP (Daptacel) shares the ingredient.** It cannot matter here: the window is this pregnancy. |
+| RSV vaccine | `RXNORM_INGREDIENT` `2636589` (RSV pre-fusion F protein) | Abrysvo | **Arexvy shares the ingredient** (not approved in pregnancy). A prior Arexvy dose closes the offer, as any RSV vaccine does. |
+| Folic acid, alone or in a prenatal vitamin | `RXNORM_INGREDIENT` `4511` | folic acid 0.4 mg and 1 mg tablets; Vitafol-One; the iron-carbonyl prenatal multivitamin 1248142 | "Contains folic acid". |
+| Aspirin | `RXNORM_INGREDIENT` `1191` | RxNav: `1191` is aspirin, TTY IN; aspirin 81 mg tablet (243670) and chewable (318272) normalise to it | Any aspirin product, any dose, any combination (J41). |
 
-- A chart would carry the product codes (SBD / SCD); the brand-name (BN) concepts are included
-  so a vaccine can be found and entered in the simulator by its name.
-- **Prenatal multivitamins**: RxNorm has no ingredient or class for "prenatal vitamin", and
-  most brands are not RxNorm concepts at all (RxNav found nothing for Prenate, Nestabs,
-  Select-OB, Prenatal Plus, PNV-DHA). The seven above are the ones that resolved. That is why
-  the pathway also asks (V2-9).
-- **No 2026–2027 COVID-19 product concepts** were in RxNorm on 2026-10-04; no Afluria
-  2026–2027 concept either.
-- The local `clinical_code_reference` table (232 RxNorm rows) held none of the prenatal
-  multivitamin or vaccine codes. `scripts/seed-prenatal-reference-codes.sql` inserts all 61 prenatal-vitamin and vaccine codes
-  plus the three aspirin codes — 64 rows, system `RXNORM`. It is idempotent: a code already
-  present is left alone, except that a row whose description is still the import placeholder
-  `<auto-added from pathway upload>` (4511 and 1191 are, locally) is given its real name so
-  it can be searched — a deliberate departure from a plain `ON CONFLICT DO NOTHING`. CVX
-  could not be seeded in any case: the table's `system` check allows only ICD-10, SNOMED,
-  LOINC, RXNORM and CPT. It has not been run.
+- **System.** The medication list is RxNorm (the engine fixes the code system per field, and
+  the simulator's composer searches medications as `RXNORM`). Vaccines as RxNorm: confirmed
+  `[DECISION — Josh 2026-10-04]`. **Known limit:** a chart feed that records immunizations as
+  CVX is not recognised.
+- **The product codes of versions 2–4** (64 RxNorm codes: aspirin, folic acid, seven prenatal
+  multivitamins, and the Tdap, RSV, influenza and COVID-19 products) are no longer read by any
+  gate. They remain in `scripts/seed-prenatal-reference-codes.sql` only so that a tester can
+  find and enter those products in the simulator; matching does not depend on the file. It
+  has not been run.
 
 ### 0.9 Moved out to the future Rh-negative pathway `[DECISION — Josh 2026-10-04]`
 
@@ -492,7 +485,7 @@ negative), or the ABO-specific Z67.11 / .21 / .31 / .41. Reasons:
 
 - **Logical ID**: `routine-prenatal-care`
 - **Title**: Routine Prenatal Care
-- **Version**: 4
+- **Version**: 5
 - **Category**: OBSTETRIC (behaviour, not a label: the pathway applies only to a patient the
   chart shows is pregnant)
 - **Scope**: Outpatient antepartum care for every pregnancy under supervision, from the first
@@ -989,8 +982,8 @@ violations and no warnings.
 | Anemia O99.01x / D50, hypertension R03.0 / O10 / O11 / O13 / O14 / O16, Rh-negative Z67.x1 | Closes that hand-off | Lifetime, active | Active | Hand-off can open |
 | GBS carrier O99.820 | No 36-week culture | Lifetime, active | Active | Culture ordered unless one was drawn at or after 36 0/7 weeks and within 5 weeks |
 | Each panel lab (§3 table) | Drawn this pregnancy → not ordered | From before this pregnancy → ordered again; type, hemoglobinopathy and HBV antibodies count **forever** | Counts as drawn this pregnancy | Ordered |
-| Medication list: folic acid, prenatal multivitamins, aspirin | On it → "continue", nothing started, nothing asked | Active only (a stopped one does not count) | Active | Vitamin: **asked once** "Already taking a prenatal vitamin?"; a "yes" is remembered for this pregnancy (`patient.on_prenatal_vitamin`) and not asked again; "Not available" → recommended; aspirin: eligibility asked (before 28 weeks) |
-| Medication list: vaccines | A dose **dated** in the window → not recommended, nothing asked: Tdap this pregnancy; influenza / COVID-19 since the most recent September 1; RSV ever | Dated outside the window → recommended (Tdap before this pregnancy; influenza / COVID-19 before September 1) | **Asked about** `[DECISION — Josh 2026-10-04]` — one yes/no question per vaccine; yes → not recommended, no → recommended. A "yes" for Tdap is remembered for this pregnancy and for RSV for the patient; "Not available" for either → recommended. A dated dose in the window settles it without the question | Recommended — RSV only in its season (September 1 to March 1), influenza and COVID-19 only in theirs (September 1 to March 31) |
+| Medication list: folic acid, prenatal multivitamins, aspirin — matched by **ingredient** | On it (any brand, any product containing it) → "continue", nothing started, nothing asked | Active only (a stopped one does not count) | Active | Vitamin: **asked once** "Already taking a prenatal vitamin?"; a "yes" is remembered for this pregnancy; "Not available" → recommended. Aspirin: eligibility asked (before 28 weeks). **An entry that cannot be identified → asked whether it counts** |
+| Medication list: vaccines — matched by **ingredient** (an unidentifiable entry is asked about) | A dose **dated** in the window → not recommended, nothing asked: Tdap this pregnancy; influenza / COVID-19 since the most recent September 1; RSV ever | Dated outside the window → recommended (Tdap before this pregnancy; influenza / COVID-19 before September 1) | **Asked about** `[DECISION — Josh 2026-10-04]` — one yes/no question per vaccine; yes → not recommended, no → recommended. A "yes" for Tdap is remembered for this pregnancy and for RSV for the patient; "Not available" for either → recommended. A dated dose in the window settles it without the question | Recommended — RSV only in its season (September 1 to March 1), influenza and COVID-19 only in theirs (September 1 to March 31) |
 
 **Not read from the chart, and why** (§0.6 #9): imaging results, age, risk factors. **The
 season is read from the calendar** (the session's date), not from the chart.
@@ -1126,11 +1119,15 @@ All conditions are `labs` / `not_includes_code` / LOINC with a `display`.
 
 ### Aspirin: `gate-on-aspirin`, `gate-aspirin-not-on-list`, `gate-aspirin-indicated`
 
-- **`gate-on-aspirin`** — `step-1-6` → `step-1-25`. compound **OR**: `medications`
-  `includes_code` RXNORM `1191`, `243670`, `318272` (`LIFETIME`, active). Default.
+- **`gate-on-aspirin`** — `step-1-6` → `step-1-25`. patient_attribute: `medications`
+  `includes_code` `1191`, `system: "RXNORM_INGREDIENT"`, display `"aspirin"` (`LIFETIME`,
+  active). **Ask** (an unidentifiable entry).
 - **`gate-aspirin-not-on-list`** — `step-1-6` → `step-1-26`. compound **AND**:
-  `not_includes_code` for the same three codes; GA `less_than` 28. **Ask** (GA). The 28-week
-  bound: `[DECISION — Josh 2026-10-04]` agreed.
+  `not_includes_code` the same ingredient; GA `less_than` 28. **Ask** (GA, or an
+  unidentifiable entry). The 28-week bound: `[DECISION — Josh 2026-10-04]` agreed.
+- `[JOSH — CONFIRM]` (J41) **Any aspirin-containing product counts** — 325 mg, or a
+  combination product — where versions 2–4 named the ingredient and the two 81 mg products.
+  Step 1.25 and Guid-11 now say to confirm the dose is 81 mg daily.
 - **`gate-aspirin-indicated`** — `step-1-26` → `step-1-7`. question, **BOOLEAN**. Prompt
   **verbatim** from GHTN's gate of the same id:
   > "Does this patient qualify for low-dose aspirin prophylaxis? Qualifies with ANY ONE
@@ -1142,15 +1139,18 @@ All conditions are `labs` / `not_includes_code` / LOINC with a `display`.
   > income."
 - **Rationale & source:** [17][18][19] → Step 1.6. Proved: `gate-proof.ts prenatal-meds`.
 
-### Prenatal vitamin: "known list, else ask" `[DECISION — Josh 2026-10-04]`
+### Prenatal vitamin: on the list by ingredient, else ask `[DECISION — Josh 2026-10-04]`
 
-- **`gate-on-prenatal-vitamin`** — `step-1-8` → `step-1-28`. compound **OR**: `medications`
-  `includes_code` (RXNORM, `LIFETIME`, active) for each of the ten codes in §0.8: folic acid
-  `4511`, `198640`, `310410`; prenatal multivitamins `1119570`, `1119573`, `1100471`,
-  `1248142`, `1116183`, `1313925`, `1485531`. Default. On the list → "continue"; nothing
-  asked.
-- **`gate-prenatal-vitamin-not-on-list`** — `step-1-8` → `step-1-29`. compound **AND**: the
-  same ten codes, `not_includes_code`. Default. The exact complement of the gate above.
+- **`gate-on-prenatal-vitamin`** — `step-1-8` → `step-1-28`. patient_attribute: `medications`
+  `includes_code` `4511`, `system: "RXNORM_INGREDIENT"`, display `"a folic acid supplement or
+  prenatal vitamin"` (`LIFETIME`, active). **Ask** (an unidentifiable entry). Any product
+  containing folic acid → "continue"; nothing asked.
+- **`gate-prenatal-vitamin-not-on-list`** — `step-1-8` → `step-1-29`. patient_attribute: the
+  same ingredient, `not_includes_code`. **Ask.** The exact complement of the gate above.
+- **Version 5** `[DECISION — Josh 2026-10-04]`: "contains folic acid" replaces the ten-code
+  list, so a prenatal multivitamin of any brand settles it. An entry that cannot be
+  identified is asked about ("… Does it count as a folic acid supplement or prenatal
+  vitamin?"): yes → continue; no → the remembered question below.
 - **`gate-taking-prenatal-vitamin`** — `step-1-29` → `step-1-30`. patient_attribute:
   `patient.on_prenatal_vitamin` `equals` `true`. **Ask.**
 - **`gate-not-taking-prenatal-vitamin`** — `step-1-29` → `step-1-27` (Med-1).
@@ -1183,7 +1183,7 @@ All conditions are `labs` / `not_includes_code` / LOINC with a `display`.
 ### Vaccines: read from the medication list; the season from the calendar `[DECISION — Josh 2026-10-04]`
 
 There is no immunization list in the patient context; a vaccine is read from `medications`
-(RXNORM, §0.8). For each vaccine the list is in one of three states, and each state is its own
+(by ingredient, §0.8). For each vaccine the list is in one of three states, and each state is its own
 gate on the vaccine's host step:
 
 | State of the medication list | Gate | Opens |
@@ -1193,11 +1193,11 @@ gate on the vaccine's host step:
 | An entry with **no date**, and no dated dose in the window | `gate-<vaccine>-undated` | a step that asks; yes → "already given" step, no → a step that recommends it |
 
 ```
-no dated dose   =  AND over every product code of
+no dated dose   =  AND over every ingredient leaf of
                      count_in_window (count_comparison less_than, count_threshold 1, <window>)
-no undated entry =  AND over every product code of
+no undated entry =  AND over every ingredient leaf of
                      OR( not_includes_code (LIFETIME),  count_in_window (at_least 1, window_days 36525) )
-an undated entry =  OR  over every product code of
+an undated entry =  OR  over every ingredient leaf of
                      AND( includes_code (LIFETIME),     count_in_window (less_than 1, window_days 36525) )
 
 gate-<vaccine>-due      =  AND( [season,]  no dated dose,  no undated entry )
@@ -1209,12 +1209,12 @@ season that is still listed with no end date does not count (§0.6 #3). A count 
 entry with no date, which is why "on the list, yet no dated entry" identifies one. All
 `status: "any"`. The two gates are mutually exclusive.
 
-| Vaccine | Host → recommend / ask | Codes | Window ("a dated dose counts if…") | Season leaf | On unresolved |
+| Vaccine | Host → recommend / ask | Ingredient (`RXNORM_INGREDIENT`) | Window ("a dated dose counts if…") | Season leaf | On unresolved |
 |---|---|---|---|---|---|
-| Influenza | `step-1-9` → `step-1-31` / `step-1-33` | 28 | `horizon: { "since": "09-01" }` — on or after the most recent September 1 | `encounter.date` `in_season` `from: "09-01"` `to: "03-31"` | default |
-| COVID-19 | `step-1-9` → `step-1-32` / `step-1-36` | 10 | `horizon: { "since": "09-01" }` | `in_season` `09-01` → `03-31` | default |
-| Tdap | `step-9-1` → `step-9-10` / `step-9-11` | 10 | `horizon: "PREGNANCY"` | — | ask (GA) |
-| RSV | `step-10-1` → `step-10-2` / `step-10-3` | 3 | `window_days: 36525` — ever | `encounter.date` `in_season` `from: "09-01"` `to: "03-01"` | default |
+| Influenza | `step-1-9` → `step-1-31` / `step-1-33` | `1657128` | `horizon: { "since": "09-01" }` — on or after the most recent September 1 | `encounter.date` `in_season` `from: "09-01"` `to: "03-31"` | ask |
+| COVID-19 | `step-1-9` → `step-1-32` / `step-1-36` | `2468231`, `2606074` | `horizon: { "since": "09-01" }` | `in_season` `09-01` → `03-31` | ask |
+| Tdap | `step-9-1` → `step-9-10` / `step-9-11` | `798302` | `horizon: "PREGNANCY"` | — | ask (GA) |
+| RSV | `step-10-1` → `step-10-2` / `step-10-3` | `2636589` | `window_days: 36525` — ever | `encounter.date` `in_season` `from: "09-01"` `to: "03-01"` | ask |
 
 **The question** `[DECISION — Josh 2026-10-04]`, on the "ask" step:
 
@@ -1261,7 +1261,18 @@ entry with no date, which is why "on the list, yet no dated entry" identifies on
 - **Simulator:** the composer sends medications undated, so a vaccine added there is asked
   about. Dated entries and other session dates are exercised in `gate-proof.ts
   prenatal-vaccines`.
-- **Codes are RxNorm, and seasonal** (§0.6 #4, §0.8).
+- **Matched by ingredient** `[DECISION — Josh 2026-10-04]` ("match the vaccine, not the
+  brand"): every leaf is `system: "RXNORM_INGREDIENT"` with a `display` naming the class
+  ("an influenza vaccine"). No product list, nothing to add each season. "On unresolved" is
+  `ask` on all eight gates: with these systems a gate is unresolved when an entry on the
+  list cannot be identified, and it then asks about that entry by name.
+- **One class-level consequence.** The undated-entry check is now per ingredient, not per
+  product: with one **dated** and one **undated** entry of the same vaccine, "is one listed
+  without a date" reads as no (a dated one exists), so the undated entry is not asked about
+  and the dated one decides. In versions 3–4 the two had different product codes and the
+  undated one was asked about.
+- **An unidentifiable entry** is asked about for each vaccine whose answer it could change —
+  including an old one, because the undated-entry check reads the whole list (J40).
 - **Rationale & source:** [24][25][26][27] → Steps 1.9, 9.1, 10.1.
 
 ### `gate-bp-elevated` — BP at or above 140/90 today (D-25) `[DECISION — Josh 2026-10-04]`
@@ -1483,13 +1494,14 @@ each code, horizon **`{ "since_gestational_week": 28 }`**.
 
 ## 5. Medications
 
-Ten Medication nodes for six medications: each of the four vaccines has a second node with
+Ten Medication nodes for six medications (unchanged in version 5; what changed is how the
+medication list is read — by ingredient, §4b): each of the four vaccines has a second node with
 the same name, lane and text (Med-3b, Med-4b, Med-5b, Med-7b) on the step reached by answering
 "no" to its undated-entry question — two gates may not share a target, and the two nodes are
 never in the plan together. No `ESCALATES_TO`. **Every one is checked against the medication list
-before it is recommended** (§4b): the prenatal vitamin and aspirin against their ingredient
-and product codes, and the four vaccines against their RxNorm product codes as dated entries
-`[DECISION — Josh 2026-10-04]`.
+before it is recommended** (§4b), by ingredient: the prenatal vitamin against folic acid,
+aspirin against aspirin, and the four vaccines against their vaccine ingredient as dated
+entries `[DECISION — Josh 2026-10-04]`.
 
 - **Med-1 — Prenatal vitamin with folic acid 0.4–0.8 mg** (on Step 1.27, reached only when
   none is on the medication list and the patient says she is not taking one)
@@ -1869,11 +1881,11 @@ one-node-per-host rule). 77 nodes.
 **Medication codes:** RXNORM 4511 (Med-1); RXNORM 1191, 243670 (Med-2); CPT 90656, 90673
 (Med-3, Med-3b); CPT 90715 (Med-5, Med-5b); CPT 90678 (Med-7, Med-7b).
 
-**Codes read by gates but not emitted as CodeEntry nodes:** the 64 RxNorm medication and
-vaccine codes of §0.8 (aspirin 3, folic acid and prenatal multivitamins 10, Tdap 10, RSV 3,
-influenza 28, COVID-19 10) — seeded for the simulator by
-`scripts/seed-prenatal-reference-codes.sql`; ICD-10 Z67.11 / .21 / .31 / .41, O24.\*,
-O99.01.\*, D50.\*, O10–O16, O99.820; LOINC 718-7, 5195-3, 91875-5.
+**Codes read by gates but not emitted as CodeEntry nodes:** the six ingredient RxCUIs of
+§0.8 (`1657128`, `2468231`, `2606074`, `798302`, `2636589`, `4511`, `1191` — seven with both
+COVID-19 ingredients); ICD-10 Z67.11 / .21 / .31 / .41, O24.\*, O99.01.\*, D50.\*, O10–O16,
+O99.820; LOINC 718-7, 5195-3, 91875-5. The 64 product codes of versions 2–4 are read by no
+gate; they stay in `scripts/seed-prenatal-reference-codes.sql` for the simulator's search.
 
 ## 14. Attribute-map registrations
 
@@ -2181,13 +2193,13 @@ QM-1 → 1.1; QM-2 → 9.1; QM-3 → 1.4; QM-4 → 9.6.
 | `gate-rh-not-positive` | conditions Z67.11 / .21 / .31 / .41 / .91 | LIFETIME | active | Already recorded |
 | `gate-rh-not-positive` | `patient.rh_factor` | — | — | No temporal policy |
 | `gate-taking-prenatal-vitamin` / `gate-not-taking-prenatal-vitamin`, `gate-tdap-given` / `-not-given`, `gate-rsv-vaccine-given` / `-not-given` | `patient.on_prenatal_vitamin`, `patient.tdap_given_this_pregnancy`, `patient.rsv_vaccine_ever_given` | — | — | No temporal policy; how long a remembered answer holds is `remember_answer.scope` |
-| `gate-on-aspirin`, `gate-aspirin-not-on-list`, `gate-on-prenatal-vitamin`, `gate-prenatal-vitamin-not-on-list` | medications | LIFETIME | active | Currently on it |
+| `gate-on-aspirin`, `gate-aspirin-not-on-list`, `gate-on-prenatal-vitamin`, `gate-prenatal-vitamin-not-on-list` | medications, by ingredient (`RXNORM_INGREDIENT`) | LIFETIME | active | Currently on it |
 | `gate-influenza-vaccine-due` / `-undated`, `gate-covid-vaccine-due` / `-undated` | medications `count_in_window` | **`{ since: "09-01" }`** | any | A dose this season: on or after the most recent September 1 (Josh) |
 | the same four gates | `encounter.date` `in_season` 09-01 → 03-31 | — (the session clock) | — | Influenza and COVID-19 season (Josh) |
 | `gate-tdap-due` / `-undated` | medications `count_in_window` | **PREGNANCY** | any | A dose this pregnancy |
 | `gate-rsv-vaccine-due` / `-undated` | medications `count_in_window` | `window_days: 36525` | any | A dated dose, ever |
 | `gate-rsv-vaccine-due` / `-undated` | `encounter.date` `in_season` 09-01 → 03-01 | — (the session clock) | — | RSV season, ACOG (Josh) |
-| all eight vaccine gates | medications `includes_code` / `not_includes_code` | LIFETIME | any | The undated-entry check: on the list at all? |
+| all eight vaccine gates (every leaf `RXNORM_INGREDIENT`) | medications `includes_code` / `not_includes_code` | LIFETIME | any | The undated-entry check: on the list at all? |
 | all eight vaccine gates | medications `count_in_window` | `window_days: 36525` | any | The undated-entry check: any dated entry? |
 | `gate-bp-elevated` | vitals systolic_bp, diastolic_bp | DAY | — | Today's reading (never ENCOUNTER) |
 | `gate-bp-elevated` | conditions R03.0, O10.\*, O11.\*, O13.\*, O14.\*, O16.\* | LIFETIME | active | Already diagnosed |
@@ -2222,10 +2234,9 @@ QM-1 → 1.1; QM-2 → 9.1; QM-3 → 1.4; QM-4 → 9.6.
   spellings accepted), J35 (influenza and COVID-19 only in season, September 1 to March 31),
   J38 ("Not available" on the prenatal vitamin, Tdap or RSV question recommends it).
 
-**Known limit, not a question:** J28 / J31 — medications are matched by product code. The
-vaccine lists are brand products for two seasons and need adding to each year
-(`[DECISION — Josh 2026-10-04]`: "match the vaccine, not the brand" — waiting on medication
-class matching, `pathways/TODO.md`; §0.6 #4).
+**Closed in version 5:** J28 / J31 — medications are matched by ingredient
+(`[DECISION — Josh 2026-10-04]`: "match the vaccine, not the brand"); no product lists, no
+yearly upkeep.
 
 **Review in place, not blocking:** J18 — the wording of the builder's Guidance nodes Guid-10
 to Guid-23; Josh reviews it in the simulator.
@@ -2238,13 +2249,15 @@ to Guid-23; Josh reviews it in the simulator.
 | J33 | The Rh type, once answered, is remembered for the patient (`remember_answer`, scope `PATIENT`, any answer) so it is not asked at later encounters — the builder's addition | As stated | `gate-rh-not-positive` |
 | J36 | The undated **influenza and COVID-19** answers are not remembered (no season scope): the question returns each in-season visit until the entry is dated. Tdap and RSV are remembered | Question routers | §4b vaccines, §0.6 #12 |
 | J37 | Third-trimester rescreens are due from **28 0/7** weeks (the third trimester), not 27; a test at 27 weeks does not count | Week 28 | §4b rescreen gates |
+| J40 | An entry on the medication list that cannot be identified is asked about once per class it could belong to — up to seven yes/no questions for one entry (influenza, COVID-19 ×2, Tdap, RSV, folic acid, aspirin) | Engine behaviour; `ask` on every medication gate | §0.6 #4 |
+| J41 | Any aspirin-containing product counts as "already on aspirin" (any dose, any combination); the step says to confirm 81 mg daily | Ingredient `1191` | aspirin gates |
 | J39 | A GBS culture drawn before 36 0/7 weeks no longer closes the order, even inside its 5 weeks | Since week 36, and within 35 days | `gate-gbs-culture-due` |
 
 ### Not encodable on the josh-dev engine
 
 | # | Requirement | Why not | Built instead |
 |---|---|---|---|
-| G2 | Remembering "influenza / COVID-19 vaccine given this season"; matching a vaccine by what it is rather than by product code | `remember_answer` has no scope that ends with the season; no medication class matching | Question routers (J36); product lists (§0.6 #4) |
+| G2 | Remembering "influenza / COVID-19 vaccine given this season" | `remember_answer` has no scope that ends with the season | Question routers (J36) |
 | G3 | "A vaccine was given on a day in the window" as one condition | Medication entries are intervals; an event count ignores undated entries | A count per product code, and the undated entry asked about (§4b) |
 | G4 | Aspirin eligibility; early-testing eligibility | Counting; uncoded factors; BMI not codeable in pregnancy | BOOLEAN questions |
 | G5 | Missed-anatomy-survey catch-up after 24 weeks | REQUIRES has no authorable satisfaction check; imaging is not in the chart | Not encoded |
@@ -2254,7 +2267,7 @@ to Guid-23; Josh reviews it in the simulator.
 Resolved in version 2: "≥2 of 4" (six-pair encoding); the strategy question repeating on a
 positive screen; "drawn this pregnancy". Resolved in version 3: "this season" and the RSV
 season (the calendar). Resolved in version 4: "since N weeks of gestation"; "Not available" leading to a
-recommendation (`on_declined`).
+recommendation (`on_declined`). Resolved in version 5: matching a medication by what it is.
 
 ### No pathway yet — what Prism does not recommend
 
@@ -2296,22 +2309,28 @@ recommendation (`on_declined`).
 | C12 | Strategy: ADA one-step vs ACOG two-step | D-5 |
 | C13 | RhIG before 12 weeks: label vs ACOG CPU 2024 | Moved to the Rh-negative pathway (§0.9) |
 
-### Checks run on 2026-10-04 (version 4)
+### Checks run on 2026-10-04 (version 5)
 
 - `validate-pathway.ts`: valid, compiles, trigger codes are families or justified leaves,
   DATA USE clean, brief in sync.
-- `check-gate-control.ts`: no violations, no warnings.
-- `gate-proof.ts prenatal-ga`, `prenatal-triggers`, `prenatal-gdm`, `prenatal-handoffs`,
-  `prenatal-meds`, `prenatal-vaccines`: every expectation held, in both edge orders.
+- `check-gate-control.ts`: no violations, no warnings (the lint now knows that a gate matching
+  a medication by ingredient or class can ask).
+- `gate-proof.ts prenatal-*`: every expectation held, in both edge orders.
 - `coverage-audit.ts`: every gate opens and closes, every node is included in some session,
-  no question is a dead end.
-- `gate-proof.ts prenatal-triggers` checks the trigger list by ICD-10 ancestry and the
-  pregnancy rule on the encounter's own code; it does not run the live matcher.
-- Remembered answers need the database: no proof exercises the storing.
+  no question is a dead end — including the "could not be identified" questions.
+- **What the proofs do not exercise.** The proofs and the audit run the real evaluator and
+  traversal engine, but take each medication's identity from
+  `scripts/fixtures/medication-identities.json` — RxNav's own answers for 45 codes, fetched
+  2026-10-04 — in place of the service's normaliser, which needs the database and the
+  network. So they do not exercise: the live RxNav call and its cache, the 4-second wait for
+  a medication not seen before, the pinning of an identification in the session, or a
+  free-text (uncoded) entry. A code missing from the fixture is treated as unidentified.
+- `gate-proof.ts prenatal-triggers` does not run the live matcher. Remembered answers need
+  the database: no proof exercises the storing.
 
 ### Uses josh-dev extensions (will not validate on `origin/main`)
 
 `not_includes_code`, `horizon: "PREGNANCY"`, `horizon: { "since_gestational_week": … }`,
-`horizon: { "since": … }`, `on_declined`, the calendar condition
+`horizon: { "since": … }`, `on_declined`, `system: "RXNORM_INGREDIENT"` on medications, the calendar condition
 `encounter.date` / `in_season`, `remember_answer`, `count_comparison` on `count_in_window`,
 nested AND/OR groups, typed `patient.*` answers and "Not available".

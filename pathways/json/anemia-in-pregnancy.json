@@ -3,7 +3,7 @@
   "pathway": {
     "logical_id": "anemia-in-pregnancy",
     "title": "Anemia in Pregnancy \u2014 Classification and Treatment",
-    "version": "17",
+    "version": "18",
     "category": "OBSTETRIC",
     "scope": "Outpatient prenatal care, from diagnosed anemia through postpartum handoff. Screening is upstream of this pathway.",
     "target_population": "Adult pregnant patients with diagnosed anemia; hemoglobinopathy disease, thalassemia syndromes, and CKD-associated anemia are detected and routed out.",
@@ -1094,7 +1094,7 @@
                 },
                 {
                   "system": "RXNORM",
-                  "code": "311975"
+                  "code": "24947"
                 }
               ],
               "baseline_days": 28,
@@ -1181,7 +1181,7 @@
                 },
                 {
                   "system": "RXNORM",
-                  "code": "311975"
+                  "code": "24947"
                 }
               ],
               "baseline_days": 28,
@@ -1856,92 +1856,38 @@
       "id": "gate-no-iron-on-list",
       "type": "Gate",
       "properties": {
-        "title": "No iron on the medication list \u2014 iron strategy is chosen (DP-1)",
+        "title": "No iron supplement on the medication list \u2014 iron strategy is chosen (DP-1)",
         "gate_type": "compound",
         "default_behavior": "skip",
-        "on_unresolved": "default",
+        "on_unresolved": "ask",
         "operator": "AND",
         "conditions": [
           {
             "field": "medications",
             "operator": "not_includes_code",
-            "value": "310325",
-            "system": "RXNORM",
+            "value": "B03AA",
+            "system": "ATC",
+            "display": "an oral iron supplement (a ferrous salt such as ferrous sulfate, gluconate or fumarate)",
             "horizon": "LIFETIME",
-            "status": "any",
-            "display": "Ferrous sulfate 325 mg tablet"
+            "status": "any"
           },
           {
             "field": "medications",
             "operator": "not_includes_code",
-            "value": "198630",
-            "system": "RXNORM",
+            "value": "B03AB",
+            "system": "ATC",
+            "display": "an oral iron supplement (a ferric product such as polysaccharide iron complex)",
             "horizon": "LIFETIME",
-            "status": "any",
-            "display": "Ferrous gluconate 324 mg tablet"
+            "status": "any"
           },
           {
             "field": "medications",
             "operator": "not_includes_code",
-            "value": "284202",
-            "system": "RXNORM",
+            "value": "B03AC",
+            "system": "ATC",
+            "display": "an intravenous iron product",
             "horizon": "LIFETIME",
-            "status": "any",
-            "display": "Ferrous fumarate 324 mg tablet"
-          },
-          {
-            "field": "medications",
-            "operator": "not_includes_code",
-            "value": "311975",
-            "system": "RXNORM",
-            "horizon": "LIFETIME",
-            "status": "any",
-            "display": "Ferrous sulfate (ingredient)"
-          },
-          {
-            "field": "medications",
-            "operator": "not_includes_code",
-            "value": "1741261",
-            "system": "RXNORM",
-            "horizon": "LIFETIME",
-            "status": "any",
-            "display": "Iron sucrose"
-          },
-          {
-            "field": "medications",
-            "operator": "not_includes_code",
-            "value": "2274409",
-            "system": "RXNORM",
-            "horizon": "LIFETIME",
-            "status": "any",
-            "display": "Ferric derisomaltose"
-          },
-          {
-            "field": "medications",
-            "operator": "not_includes_code",
-            "value": "1435169",
-            "system": "RXNORM",
-            "horizon": "LIFETIME",
-            "status": "any",
-            "display": "Ferric carboxymaltose 750 mg/15 mL"
-          },
-          {
-            "field": "medications",
-            "operator": "not_includes_code",
-            "value": "1311224",
-            "system": "RXNORM",
-            "horizon": "LIFETIME",
-            "status": "any",
-            "display": "Ferric carboxymaltose (ingredient)"
-          },
-          {
-            "field": "medications",
-            "operator": "not_includes_code",
-            "value": "206216",
-            "system": "RXNORM",
-            "horizon": "LIFETIME",
-            "status": "any",
-            "display": "Iron dextran"
+            "status": "any"
           }
         ]
       }
@@ -1950,98 +1896,44 @@
       "id": "gate-on-oral-iron",
       "type": "Gate",
       "properties": {
-        "title": "Already on oral iron (and no IV iron on the medication list)",
+        "title": "Already on an oral iron supplement (and no IV iron on the medication list)",
         "gate_type": "compound",
         "default_behavior": "skip",
-        "on_unresolved": "default",
+        "on_unresolved": "ask",
         "operator": "AND",
         "conditions": [
           {
             "operator": "OR",
-            "display": "Oral iron on the medication list",
+            "display": "An oral iron supplement on the medication list (any brand; a prenatal vitamin does not count)",
             "conditions": [
               {
                 "field": "medications",
                 "operator": "includes_code",
-                "value": "310325",
-                "system": "RXNORM",
+                "value": "B03AA",
+                "system": "ATC",
+                "display": "an oral iron supplement (a ferrous salt such as ferrous sulfate, gluconate or fumarate)",
                 "horizon": "LIFETIME",
-                "status": "any",
-                "display": "Ferrous sulfate 325 mg tablet"
+                "status": "any"
               },
               {
                 "field": "medications",
                 "operator": "includes_code",
-                "value": "198630",
-                "system": "RXNORM",
+                "value": "B03AB",
+                "system": "ATC",
+                "display": "an oral iron supplement (a ferric product such as polysaccharide iron complex)",
                 "horizon": "LIFETIME",
-                "status": "any",
-                "display": "Ferrous gluconate 324 mg tablet"
-              },
-              {
-                "field": "medications",
-                "operator": "includes_code",
-                "value": "284202",
-                "system": "RXNORM",
-                "horizon": "LIFETIME",
-                "status": "any",
-                "display": "Ferrous fumarate 324 mg tablet"
-              },
-              {
-                "field": "medications",
-                "operator": "includes_code",
-                "value": "311975",
-                "system": "RXNORM",
-                "horizon": "LIFETIME",
-                "status": "any",
-                "display": "Ferrous sulfate (ingredient)"
+                "status": "any"
               }
             ]
           },
           {
             "field": "medications",
             "operator": "not_includes_code",
-            "value": "1741261",
-            "system": "RXNORM",
+            "value": "B03AC",
+            "system": "ATC",
+            "display": "an intravenous iron product",
             "horizon": "LIFETIME",
-            "status": "any",
-            "display": "Iron sucrose"
-          },
-          {
-            "field": "medications",
-            "operator": "not_includes_code",
-            "value": "2274409",
-            "system": "RXNORM",
-            "horizon": "LIFETIME",
-            "status": "any",
-            "display": "Ferric derisomaltose"
-          },
-          {
-            "field": "medications",
-            "operator": "not_includes_code",
-            "value": "1435169",
-            "system": "RXNORM",
-            "horizon": "LIFETIME",
-            "status": "any",
-            "display": "Ferric carboxymaltose 750 mg/15 mL"
-          },
-          {
-            "field": "medications",
-            "operator": "not_includes_code",
-            "value": "1311224",
-            "system": "RXNORM",
-            "horizon": "LIFETIME",
-            "status": "any",
-            "display": "Ferric carboxymaltose (ingredient)"
-          },
-          {
-            "field": "medications",
-            "operator": "not_includes_code",
-            "value": "206216",
-            "system": "RXNORM",
-            "horizon": "LIFETIME",
-            "status": "any",
-            "display": "Iron dextran"
+            "status": "any"
           }
         ]
       }
@@ -2051,57 +1943,18 @@
       "type": "Gate",
       "properties": {
         "title": "IV iron on the medication list",
-        "gate_type": "compound",
+        "gate_type": "patient_attribute",
         "default_behavior": "skip",
-        "on_unresolved": "default",
-        "operator": "OR",
-        "conditions": [
-          {
-            "field": "medications",
-            "operator": "includes_code",
-            "value": "1741261",
-            "system": "RXNORM",
-            "horizon": "LIFETIME",
-            "status": "any",
-            "display": "Iron sucrose"
-          },
-          {
-            "field": "medications",
-            "operator": "includes_code",
-            "value": "2274409",
-            "system": "RXNORM",
-            "horizon": "LIFETIME",
-            "status": "any",
-            "display": "Ferric derisomaltose"
-          },
-          {
-            "field": "medications",
-            "operator": "includes_code",
-            "value": "1435169",
-            "system": "RXNORM",
-            "horizon": "LIFETIME",
-            "status": "any",
-            "display": "Ferric carboxymaltose 750 mg/15 mL"
-          },
-          {
-            "field": "medications",
-            "operator": "includes_code",
-            "value": "1311224",
-            "system": "RXNORM",
-            "horizon": "LIFETIME",
-            "status": "any",
-            "display": "Ferric carboxymaltose (ingredient)"
-          },
-          {
-            "field": "medications",
-            "operator": "includes_code",
-            "value": "206216",
-            "system": "RXNORM",
-            "horizon": "LIFETIME",
-            "status": "any",
-            "display": "Iron dextran"
-          }
-        ]
+        "on_unresolved": "ask",
+        "condition": {
+          "field": "medications",
+          "operator": "includes_code",
+          "value": "B03AC",
+          "system": "ATC",
+          "display": "an intravenous iron product",
+          "horizon": "LIFETIME",
+          "status": "any"
+        }
       }
     },
     {
@@ -2153,7 +2006,7 @@
                 },
                 {
                   "system": "RXNORM",
-                  "code": "311975"
+                  "code": "24947"
                 }
               ],
               "baseline_days": 28,
@@ -2240,7 +2093,7 @@
                 },
                 {
                   "system": "RXNORM",
-                  "code": "311975"
+                  "code": "24947"
                 }
               ],
               "baseline_days": 28,
@@ -2358,7 +2211,7 @@
               },
               {
                 "system": "RXNORM",
-                "code": "311975"
+                "code": "24947"
               }
             ],
             "min_days_since_anchor": 14
@@ -2403,7 +2256,7 @@
                 },
                 {
                   "system": "RXNORM",
-                  "code": "311975"
+                  "code": "24947"
                 }
               ],
               "baseline_days": 28,
@@ -2487,7 +2340,7 @@
               },
               {
                 "system": "RXNORM",
-                "code": "311975"
+                "code": "24947"
               }
             ],
             "min_days_since_anchor": 14
@@ -2532,7 +2385,7 @@
                 },
                 {
                   "system": "RXNORM",
-                  "code": "311975"
+                  "code": "24947"
                 }
               ],
               "baseline_days": 28,
@@ -2618,7 +2471,7 @@
                 },
                 {
                   "system": "RXNORM",
-                  "code": "311975"
+                  "code": "24947"
                 }
               ],
               "min_days_since_anchor": 14
@@ -2651,7 +2504,7 @@
                 },
                 {
                   "system": "RXNORM",
-                  "code": "311975"
+                  "code": "24947"
                 }
               ],
               "baseline_days": 28,
@@ -2737,7 +2590,7 @@
                 },
                 {
                   "system": "RXNORM",
-                  "code": "311975"
+                  "code": "24947"
                 }
               ],
               "min_days_since_anchor": 14
@@ -2770,7 +2623,7 @@
                 },
                 {
                   "system": "RXNORM",
-                  "code": "311975"
+                  "code": "24947"
                 }
               ],
               "baseline_days": 28,
