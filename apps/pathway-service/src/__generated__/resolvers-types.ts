@@ -1556,6 +1556,11 @@ export type Query = {
    */
   relatedPathways: Array<RelatedPathway>;
   resolutionSession?: Maybe<ResolutionSession>;
+  /**
+   * `billableOnly` leaves out ICD-10 category headings (O99.0, D50), which no
+   * chart carries: use it when choosing a PATIENT's diagnosis. Pathway authoring
+   * searches without it, because trigger codes are authored as families.
+   */
   searchCodes: Array<CodeDefinition>;
   signalDefinitions: Array<SignalDefinitionType>;
   /** Fetch a single saved simulator scenario by id. */
@@ -1672,6 +1677,7 @@ export type QueryResolutionSessionArgs = {
 
 
 export type QuerySearchCodesArgs = {
+  billableOnly?: InputMaybe<Scalars['Boolean']['input']>;
   limit?: InputMaybe<Scalars['Int']['input']>;
   query: Scalars['String']['input'];
   system?: InputMaybe<Scalars['String']['input']>;

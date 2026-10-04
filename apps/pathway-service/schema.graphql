@@ -1658,7 +1658,12 @@ type Query {
 
   adminEvidenceEntries(pathwayId: ID!, nodeIdentifier: String): [AdminEvidenceEntry!]!
 
-  searchCodes(query: String!, system: String, limit: Int): [CodeDefinition!]!
+  """
+  `billableOnly` leaves out ICD-10 category headings (O99.0, D50), which no
+  chart carries: use it when choosing a PATIENT's diagnosis. Pathway authoring
+  searches without it, because trigger codes are authored as families.
+  """
+  searchCodes(query: String!, system: String, limit: Int, billableOnly: Boolean): [CodeDefinition!]!
 
   """
   Return the constituent LOINC tests for a panel code (ordered as a clinician

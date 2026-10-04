@@ -408,7 +408,7 @@ export const Query = {
 
     searchCodes: async (
       _: unknown,
-      args: { query: string; system?: string; limit?: number },
+      args: { query: string; system?: string; limit?: number; billableOnly?: boolean },
       context: DataSourceContext
     ) => {
       const { pool } = context;
@@ -432,6 +432,13 @@ export const Query = {
       if (args.system) {
         params.push(args.system);
         clauses.push(`system = $${params.length}`);
+      }
+      if (args.billableOnly) {
+        // A heading is an ancestor of a pathway's family, not a member of it,
+        // so a patient given one matches nothing.
+        clauses.push(
+          `(system <> 'ICD-10' OR EXISTS (SELECT 1 FROM icd10_codes i WHERE i.code = clinical_code_reference.code AND i.is_billable))`,
+        );
       }
       // A code typed as a prefix first; then common codes; then the shortest
       // code, so a family (O99.01) comes before its trimester leaves.
