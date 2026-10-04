@@ -137,13 +137,17 @@ function notAlreadyOrdered<T extends { name: string; code?: string; system?: str
   existing: MergedRecommendation<T>[],
   additions: MergedRecommendation<T>[],
 ): MergedRecommendation<T>[] {
-  const key = (r: { name: string; code?: string; system?: string }) =>
-    (r.code && r.system ? `${r.system}|${r.code}` : r.name.toLowerCase().trim());
-  const seen = new Set(existing.map((m) => key(m.recommendation)));
+  // By code AND by name: the pathway's line may carry a different code for
+  // the same test, or none.
+  const keys = (r: { name: string; code?: string; system?: string }) => [
+    ...(r.code && r.system ? [`${r.system}|${r.code}`] : []),
+    `name|${r.name.toLowerCase().trim()}`,
+  ];
+  const seen = new Set(existing.flatMap((m) => keys(m.recommendation)));
   return additions.filter((m) => {
-    const k = key(m.recommendation);
-    if (seen.has(k)) return false;
-    seen.add(k);
+    const mine = keys(m.recommendation);
+    if (mine.some((k) => seen.has(k))) return false;
+    for (const k of mine) seen.add(k);
     return true;
   });
 }

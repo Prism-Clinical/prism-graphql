@@ -105,6 +105,13 @@ describe('applyPlanEdits', () => {
     expect(applied).toEqual(['a1']);
   });
 
+  it('…and the same name under a different code is the same order too', () => {
+    const { plan: out } = applyPlanEdits(plan(), edits(edit({
+      id: 'a1', action: 'ADD', itemKind: 'lab', fields: { name: 'cbc with indices', code: '57021-8', system: 'LOINC' },
+    })));
+    expect(out.labs).toHaveLength(1);
+  });
+
   it('an added medication is NOT appended here — it enters through the write-in safety path', () => {
     const e = edits(edit({ id: 'a1', action: 'ADD', itemKind: 'medication', fields: { name: 'Polyethylene glycol 3350', dose: '17 g' } }));
     expect(applyPlanEdits(plan(), e).plan.medications).toHaveLength(1);
