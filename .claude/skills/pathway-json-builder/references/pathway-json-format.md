@@ -324,6 +324,21 @@ and marks the others EXCLUDED; no answer, or an answer matching zero or several 
 none and raises an `unroutable_decision` red flag (`traversal-engine.ts:1078-1150`). So a
 router is "route yes vs no", never "fan out on yes".
 
+### Only an encounter diagnosis activates a pathway (`[DECISION — Josh 2026-10-04]`)
+
+"It can read throughout the chart to help a pathway, but chart can't cause a pathway to be
+activated." Trigger codes (`condition_codes`) are matched against the diagnoses **on the
+encounter** — the ones the provider adds at the visit — never against the chart's problem
+list. So:
+
+- Write triggers as the diagnoses a provider would put on the visit for this problem.
+- A hand-off ("add the diagnosis") is the only way one pathway leads to another: the pathway
+  recommends the diagnosis, the provider adds it to the encounter, the other pathway joins.
+- **Gates still read the whole chart** — conditions, labs, medications, history. A chart
+  condition can settle a gate (a comorbidity, "already diagnosed"); it cannot start a pathway.
+- A stale code on the chart (a prior pregnancy's diagnosis left active) is a chart problem,
+  not something a pathway works around.
+
 ### One problem per pathway (`[DECISION — Josh 2026-10-04]`)
 
 A pathway orders treatment only for its own problem. A drug or test for a **different**

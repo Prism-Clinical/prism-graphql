@@ -1307,6 +1307,7 @@ export type MutationSetSignalWeightArgs = {
 
 
 export type MutationStartMultiPathwayResolutionArgs = {
+  encounterDiagnoses?: InputMaybe<Array<CodeInput>>;
   encounterStart?: InputMaybe<Scalars['String']['input']>;
   evaluationAsOf?: InputMaybe<Scalars['String']['input']>;
   includeDraftPathways?: InputMaybe<Scalars['Boolean']['input']>;

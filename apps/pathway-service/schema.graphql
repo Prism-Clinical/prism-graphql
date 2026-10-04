@@ -1900,6 +1900,13 @@ type Mutation {
     patientId: ID!,
     patientContext: PatientContextInput,
     """
+    The diagnoses on THIS encounter. Only these activate a pathway: the chart
+    (`patientContext`, or the patient's stored problem list) is read by every
+    gate but never starts one. Omitted or empty, the run starts with no
+    pathways and they join as diagnoses are added with `addEncounterContext`.
+    """
+    encounterDiagnoses: [CodeInput!],
+    """
     QA / preview capability. When true, DRAFT pathways are also matched (in
     addition to ACTIVE). Production encounter callers should leave this false
     or unset.

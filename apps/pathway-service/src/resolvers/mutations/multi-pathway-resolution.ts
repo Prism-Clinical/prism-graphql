@@ -129,6 +129,8 @@ export interface MultiPathwayResolutionArgs extends ResolutionModeArgs, Temporal
    * verified claims when auth lands, not before.
    */
   includeDraftPathways?: boolean;
+  /** Diagnoses on THIS encounter — the only codes that activate a pathway. */
+  encounterDiagnoses?: Array<{ code: string; system: string; display?: string | null; date?: string | null }>;
   /**
    * QA / preview capability. When true, the matcher uses the resolved
    * `conditionCodes` directly instead of looking up the patient row in the
@@ -196,16 +198,16 @@ export const multiPathwayResolutionMutations = {
     if (args.includeDraftPathways) {
       matcherOptions.includeDraftPathways = true;
     }
-    if (args.syntheticPatient) {
-      // For synthetic patients, drive matching off the supplied codes only —
-      // there is no real patients row to read from. Read from the VALIDATED
-      // context, so every code that reaches the matcher has been through the
-      // same boundary as the codes that reach the evaluator.
-      matcherOptions.directPatientCodes = patientContext.conditionCodes.map((c) => ({
-        code: c.code,
-        system: c.system,
-      }));
-    }
+    // Only a diagnosis ON THE ENCOUNTER activates a pathway
+    // ([DECISION — Josh 2026-10-04]: "it can read throughout the chart to help
+    // a pathway, but chart can't cause a pathway to be activated"). The chart's
+    // problem list — the supplied context, or the patient's stored rows — is
+    // data every gate may read, and is never what the matcher sees. A run with
+    // no encounter diagnosis starts with no pathways; they join as diagnoses
+    // are added (`addEncounterContext`).
+    const encounterDiagnoses = normalizeContextEntryNulls({ conditionCodes: args.encounterDiagnoses ?? [] }).conditionCodes ?? [];
+    matcherOptions.directPatientCodes = encounterDiagnoses.map((c) => ({ code: c.code, system: c.system }));
+    const startingContext: Partial<AdditionalContextInput> = encounterDiagnoses.length > 0 ? { conditionCodes: encounterDiagnoses } : {};
 
     // syntheticPatient signals this is admin/QA/preview traffic; persist that
     // so downstream list views can filter it out and `deletePreviewSession`
@@ -243,7 +245,10 @@ export const multiPathwayResolutionMutations = {
     factStoreForInput(resolutionInput, temporalContext);
 
     // Obstetric pathways apply to pregnant patients only (pathway-applicability.ts).
-    const matched = applicablePathways(await getMatchedPathways(pool, args.patientId, matcherOptions), patientContext);
+    const matched = applicablePathways(
+      await getMatchedPathways(pool, args.patientId, matcherOptions),
+      buildEffectivePatientContext(patientContext, startingContext),
+    );
     // Zero matches takes the same path with no children (spec §3): the run is
     // stored, with EMPTY_PLAN at its root, as a record that nothing matched.
     const surviving = matched.length === 0 ? [] : await collapseLattice(pool, matched);
@@ -251,7 +256,7 @@ export const multiPathwayResolutionMutations = {
     const request = newRunRequest();
     const ev = await evaluateRun(pool, request, {
       initialPatientContext: patientContext,
-      additionalContext: {},
+      additionalContext: startingContext,
       temporalContext,
       conflictResolutions: {},
       planEdits: {},
@@ -281,7 +286,7 @@ export const multiPathwayResolutionMutations = {
         initialPatientContext: patientContext,
         // The evaluated clock: it carries the therapy starts pinned at start.
         temporalContext: ev.inputs.temporalContext,
-        additionalContext: {},
+        additionalContext: startingContext,
         conflictResolutions: {},
         result: ev.result,
       });
@@ -343,11 +348,12 @@ export const multiPathwayResolutionMutations = {
       const inputs = runInputsOf(r);
       inputs.additionalContext = mergeAdditionalContext(inputs.additionalContext, added);
 
-      // Match on the VALIDATED effective context: what the evaluator will read.
+      // Applicability (is she pregnant?) reads the whole effective context; matching does not.
       const patient = buildEffectivePatientContext(inputs.initialPatientContext, inputs.additionalContext);
       const matched = applicablePathways(
         await getMatchedPathways(pool, r.parent.patientId, {
-          directPatientCodes: patient.conditionCodes.map((c) => ({ code: c.code, system: c.system })),
+          // Encounter diagnoses only: the run's additions, never the chart it started from.
+          directPatientCodes: (inputs.additionalContext.conditionCodes ?? []).map((c) => ({ code: c.code, system: c.system })),
           ...(args.includeDraftPathways ? { includeDraftPathways: true } : {}),
         }),
         patient,
