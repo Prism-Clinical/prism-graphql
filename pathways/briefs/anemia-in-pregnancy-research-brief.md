@@ -1,6 +1,6 @@
 # Pathway Research Brief — Anemia in Pregnancy
 
-JSON: pathways/json/anemia-in-pregnancy.json @ version 10
+JSON: pathways/json/anemia-in-pregnancy.json @ version 11
 
 **Status: DRAFT v2 for physician review — not yet approved for JSON build.**
 Scope assumed from request: outpatient prenatal care, adult pregnant patients, US practice,
@@ -34,8 +34,15 @@ still current, `[BLOCKED — prior_node_result]` import-blocked gate design with
 
 - **Logical ID**: `anemia-in-pregnancy`
 - **Title**: Anemia in Pregnancy — Classification and Treatment
-- **Version**: 10 `[DECISION — Josh 2026-10-03]` (JSON `"10"`; was `"9"`). Imports as
-  NEW_VERSION; v9 sessions keep v9's graph. Bumped for:
+- **Version**: 11 `[DECISION — Josh 2026-10-03]` (JSON `"11"`; was `"10"`). Imports as
+  NEW_VERSION; v10 sessions keep v10's graph. Bumped for:
+  - **Trigger codes are authored as families** (§1 Condition codes). Josh, 2026-10-03: "fix
+    it in authoring and make sure various parent levels are included." The matcher expands a
+    patient's diagnosis to its ICD-10 ancestors, so a parent code matches everything beneath
+    it: `O99.011`/`O99.012`/`O99.013`/`O99.019` become `O99.01`, and `D50.9` becomes `D50`.
+    Only `pathway.condition_codes` changed — no node, edge, gate or `CodeEntry` change. What
+    each family newly admits is listed under the table, each item `[JOSH — CONFIRM]`.
+  v10 `[DECISION — Josh 2026-10-03]` (was `"9"`; v9 sessions keep v9's graph) was bumped for:
   - **No hemoglobin level: ask, and if there is none, order the anemia labs** (§3 Step 1.9,
     §4b `gate-no-hgb-on-file`, §6 Lab-18, §18). Josh, 2026-10-03: "we ask the provider for a
     level if we don't have it. If none is entered, then we treat it as unknown level of
@@ -109,11 +116,30 @@ still current, `[BLOCKED — prior_node_result]` import-blocked gate design with
 
 | Code | System | Description | Usage note | Grouping |
 |---|---|---|---|---|
-| O99.011 | ICD-10 | Anemia complicating pregnancy, first trimester | primary trigger | anemia-pregnancy |
-| O99.012 | ICD-10 | Anemia complicating pregnancy, second trimester | primary trigger | anemia-pregnancy |
-| O99.013 | ICD-10 | Anemia complicating pregnancy, third trimester | primary trigger | anemia-pregnancy |
-| O99.019 | ICD-10 | Anemia complicating pregnancy, unspecified trimester | primary trigger | anemia-pregnancy |
-| D50.9 | ICD-10 | Iron deficiency anemia, unspecified | secondary trigger — often coded alongside O99.01x [1] | anemia-etiology |
+| O99.01 | ICD-10 | Anemia complicating pregnancy (family: all trimesters) | primary trigger | anemia-pregnancy |
+| D50 | ICD-10 | Iron deficiency anemia (family: all types) | secondary trigger — often coded alongside O99.01x [1] | anemia-etiology |
+
+**Trigger codes are families** `[DECISION — Josh 2026-10-03]` (v11). Each row is a parent
+code; a patient's diagnosis matches when it is that code or any code beneath it. Until v10
+the list was the leaves `O99.011`, `O99.012`, `O99.013`, `O99.019` and `D50.9`. What each
+family admits that the leaf list did not:
+
+- **`O99.01`** — nothing new. Its members are the four codes v10 listed (`O99.011`,
+  `O99.012`, `O99.013`, `O99.019`). `[JOSH — CONFIRM]` The family stops at `O99.01` on
+  purpose: one level up, `O99.0`, would also admit `O99.02` (anemia complicating childbirth)
+  and `O99.03` (anemia complicating the puerperium), which v10 did not trigger on. Say so if
+  the postpartum handoff (Step 4.3) should make `O99.03` a trigger.
+- **`D50`** — newly admits `D50.0` (iron deficiency anemia secondary to chronic blood loss),
+  `D50.1` (sideropenic dysphagia) and `D50.8` (other iron deficiency anemias); `D50.9` was
+  already a trigger. `[JOSH — CONFIRM]` each belongs on this pathway.
+- **`D50` is not a pregnancy code** `[JOSH — CONFIRM]` — true of `D50.9` in v10 as well, now
+  true of the whole family: until pathway classification is built (`pathways/TODO.md`), any
+  patient with a `D50` code, pregnant or not, triggers this pathway.
+- `[BUILD NOTE]` The family match needs the patient's code and the parent in the deployment's
+  `icd10_codes` table. The repo's common-codes seed
+  (`shared/data-layer/seed/icd10-common-codes.sql`) holds `D50` and its four children but
+  **no `O99.01x` row**, so on a database seeded only from it a patient's `O99.012` has no
+  ancestors to expand to and will not match `O99.01`.
 
 ## 1b. Code sets
 

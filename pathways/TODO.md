@@ -27,3 +27,21 @@ Open design questions:
 - How are re-reviews handled when a guideline changes? Re-open the register entry, bump the
   version, and rebuild.
 - Should each decision record the reviewer (e.g. Josh vs Wyeth)?
+
+## Pathway classification — pregnant / adult / pediatric (Josh, 2026-10-03)
+
+Not built. Needed before pathways exist outside obstetrics.
+
+- Every pathway carries a **class**: pregnant, adult or pediatric.
+- **Pregnant wins.** A pregnant patient with iron deficiency anemia gets the pregnancy anemia
+  pathway, not a general-medicine one, even though both match the diagnosis.
+- **Adult vs pediatric is decided by age.**
+- Today the only preference between two matching pathways is code specificity (lattice
+  collapse) and `code_sets` combinations; neither knows the patient is pregnant.
+
+Open design questions:
+- What marks a patient as pregnant — a pregnancy code family on the chart (`Z34`, `O09`,
+  `Z3A`, any `O` code), a recorded gestational age, or either?
+- Where the class is authored (pathway metadata) and where it is enforced (the matcher,
+  before lattice collapse).
+- The age boundary between pediatric and adult, and whether a pathway may span both.

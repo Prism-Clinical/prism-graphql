@@ -32,10 +32,11 @@
 //             2 = could not read/parse the file,
 //             3 = checkout does not contain origin/main (stale validator),
 //             5 = valid, but the compiler would refuse to activate it,
+//             6 = trigger codes list sibling leaves instead of their family,
 //             4 = valid, but out of sync with its brief (check-brief-sync failed).
 
-import { readFileSync } from 'fs';
-import { resolve } from 'path';
+import { existsSync, readFileSync } from 'fs';
+import { dirname, resolve } from 'path';
 import { execFileSync, spawnSync } from 'child_process';
 import { validatePathwayJson } from '../../../../apps/pathway-service/src/services/import/validator';
 import type { PathwayJson } from '../../../../apps/pathway-service/src/services/import/types';
@@ -137,6 +138,34 @@ if (compiled.ok === false) {
   process.exit(5);
 }
 console.log('✓ COMPILES — activation will not be refused');
+
+// Trigger codes are FAMILIES ([DECISION — Josh 2026-10-03]). The matcher
+// expands each patient diagnosis to its ICD-10 ancestors, so one parent code
+// matches everything beneath it; a list of sibling leaves matches only those
+// leaves, misses the ones nobody thought to list, and grows without bound.
+// Two or more ICD-10 trigger codes under one parent must be authored as the
+// parent — unless the brief says why not, with `[LEAF CODES — <parent>: why]`.
+{
+  const parentOf = (code: string): string => {
+    const cut = code.slice(0, -1);
+    return cut.endsWith('.') ? cut.slice(0, -1) : cut;
+  };
+  const triggers = ((parsed.pathway?.condition_codes ?? []) as Array<{ code: string; system: string }>)
+    .filter((c) => /^ICD-?10/i.test(c.system) && c.code.length > 3);
+  const byParent = new Map<string, string[]>();
+  for (const c of triggers) byParent.set(parentOf(c.code), [...(byParent.get(parentOf(c.code)) ?? []), c.code]);
+  const briefPath = resolve(dirname(filePath), '..', 'briefs', `${parsed.pathway?.logical_id}-research-brief.md`);
+  const brief = existsSync(briefPath) ? readFileSync(briefPath, 'utf8') : '';
+  const problems = [...byParent]
+    .filter(([parent, codes]) => codes.length > 1 && !brief.includes(`[LEAF CODES — ${parent}:`))
+    .map(([parent, codes]) => `${codes.join(', ')} are siblings under ${parent} — author the family "${parent}", or justify the leaves in the brief with [LEAF CODES — ${parent}: <why>]`);
+  if (problems.length > 0) {
+    console.log(`✗ TRIGGER CODES ARE NOT FAMILIES — ${problems.length} problem(s):`);
+    for (const pr of problems) console.log(`  - ${pr}`);
+    process.exit(6);
+  }
+  console.log('✓ TRIGGER CODES — families, or justified leaves');
+}
 
 // The brief is the source of truth: a valid JSON its brief does not describe
 // is not deliverable. Plain node runs the check (it needs no ts-node).

@@ -3,43 +3,22 @@
   "pathway": {
     "logical_id": "anemia-in-pregnancy",
     "title": "Anemia in Pregnancy \u2014 Classification and Treatment",
-    "version": "10",
+    "version": "11",
     "category": "OBSTETRIC",
     "scope": "Outpatient prenatal care, from diagnosed anemia through postpartum handoff. Screening is upstream of this pathway.",
     "target_population": "Adult pregnant patients with diagnosed anemia; hemoglobinopathy disease, thalassemia syndromes, and CKD-associated anemia are detected and routed out.",
     "condition_codes": [
       {
-        "code": "O99.011",
+        "code": "O99.01",
         "system": "ICD-10",
-        "description": "Anemia complicating pregnancy, first trimester",
+        "description": "Anemia complicating pregnancy (family: all trimesters)",
         "usage": "primary trigger",
         "grouping": "anemia-pregnancy"
       },
       {
-        "code": "O99.012",
+        "code": "D50",
         "system": "ICD-10",
-        "description": "Anemia complicating pregnancy, second trimester",
-        "usage": "primary trigger",
-        "grouping": "anemia-pregnancy"
-      },
-      {
-        "code": "O99.013",
-        "system": "ICD-10",
-        "description": "Anemia complicating pregnancy, third trimester",
-        "usage": "primary trigger",
-        "grouping": "anemia-pregnancy"
-      },
-      {
-        "code": "O99.019",
-        "system": "ICD-10",
-        "description": "Anemia complicating pregnancy, unspecified trimester",
-        "usage": "primary trigger",
-        "grouping": "anemia-pregnancy"
-      },
-      {
-        "code": "D50.9",
-        "system": "ICD-10",
-        "description": "Iron deficiency anemia, unspecified",
+        "description": "Iron deficiency anemia (family: all types)",
         "usage": "secondary trigger \u2014 often coded alongside O99.01x",
         "grouping": "anemia-etiology"
       }

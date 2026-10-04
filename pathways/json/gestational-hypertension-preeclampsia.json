@@ -3,7 +3,7 @@
   "pathway": {
     "logical_id": "gestational-hypertension-preeclampsia",
     "title": "Gestational Hypertension and Preeclampsia \u2014 Outpatient Screening, Diagnosis and Surveillance",
-    "version": "5",
+    "version": "6",
     "category": "OBSTETRIC",
     "scope": "Outpatient prenatal care. Risk assessment and aspirin prophylaxis from the first prenatal visit; blood pressure surveillance; diagnosis and severity classification after 20 weeks; outpatient expectant management. Ends at the trigger for admission or delivery.",
     "target_population": "Pregnant patients receiving prenatal care. The prophylaxis arm applies to all; diagnostic and surveillance arms apply after 20 0/7 weeks.",
@@ -30,58 +30,23 @@
         "grouping": "gestational-htn"
       },
       {
-        "code": "O14.02",
+        "code": "O14.0",
         "system": "ICD-10",
-        "description": "Mild to moderate pre-eclampsia, second trimester",
+        "description": "Mild to moderate pre-eclampsia (family: all trimesters, childbirth and the puerperium)",
         "usage": "primary trigger",
         "grouping": "preeclampsia"
       },
       {
-        "code": "O14.03",
+        "code": "O14.1",
         "system": "ICD-10",
-        "description": "Mild to moderate pre-eclampsia, third trimester",
-        "usage": "primary trigger",
-        "grouping": "preeclampsia"
-      },
-      {
-        "code": "O14.00",
-        "system": "ICD-10",
-        "description": "Mild to moderate pre-eclampsia, unspecified trimester",
-        "usage": "primary trigger",
-        "grouping": "preeclampsia"
-      },
-      {
-        "code": "O14.12",
-        "system": "ICD-10",
-        "description": "Severe pre-eclampsia, second trimester",
+        "description": "Severe pre-eclampsia (family: all trimesters, childbirth and the puerperium)",
         "usage": "primary trigger",
         "grouping": "preeclampsia-severe"
       },
       {
-        "code": "O14.13",
+        "code": "O16",
         "system": "ICD-10",
-        "description": "Severe pre-eclampsia, third trimester",
-        "usage": "primary trigger",
-        "grouping": "preeclampsia-severe"
-      },
-      {
-        "code": "O14.10",
-        "system": "ICD-10",
-        "description": "Severe pre-eclampsia, unspecified trimester",
-        "usage": "primary trigger",
-        "grouping": "preeclampsia-severe"
-      },
-      {
-        "code": "O16.2",
-        "system": "ICD-10",
-        "description": "Unspecified maternal hypertension, second trimester",
-        "usage": "undifferentiated presentation",
-        "grouping": "htn-unspecified"
-      },
-      {
-        "code": "O16.3",
-        "system": "ICD-10",
-        "description": "Unspecified maternal hypertension, third trimester",
+        "description": "Unspecified maternal hypertension (family: all trimesters, childbirth and the puerperium)",
         "usage": "undifferentiated presentation",
         "grouping": "htn-unspecified"
       },

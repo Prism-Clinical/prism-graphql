@@ -1,6 +1,6 @@
 # Pathway Research Brief — Gestational Hypertension & Preeclampsia
 
-JSON: pathways/json/gestational-hypertension-preeclampsia.json @ version 5
+JSON: pathways/json/gestational-hypertension-preeclampsia.json @ version 6
 
 **Status: DRAFT v1 for physician review — not yet approved for JSON build.**
 
@@ -46,7 +46,15 @@ claims confirmed. Flags: `[GAP]` unsourceable · `[FALLBACK SOURCE]` non-US basi
 
 - **Logical ID**: `gestational-hypertension-preeclampsia`
 - **Title**: Gestational Hypertension and Preeclampsia — Outpatient Screening, Diagnosis and Surveillance
-- **Version**: 5 (JSON `"5"`; was `"4"`). `[DECISION — Josh 2026-09-24]` Guid-5 "Seizure:
+- **Version**: 6 (JSON `"6"`; was `"5"`). `[DECISION — Josh 2026-10-03]` Trigger codes are
+  authored as families (§1 Condition codes): "fix it in authoring and make sure various parent
+  levels are included." The matcher expands a patient's diagnosis to its ICD-10 ancestors, so
+  a parent code matches everything beneath it. `O14.00`/`O14.02`/`O14.03` become `O14.0`,
+  `O14.10`/`O14.12`/`O14.13` become `O14.1`, `O16.2`/`O16.3` become `O16`; `O13.2`/`O13.3`/
+  `O13.9` stay leaves (`[LEAF CODES]`, below) and `R03.0` is unchanged. Only
+  `pathway.condition_codes` changed. What each family newly admits is listed under the table,
+  each item `[JOSH — CONFIRM]`. Imports as **NEW_VERSION**; no gate change.
+  v5 history: `[DECISION — Josh 2026-09-24]` Guid-5 "Seizure:
   call 911" moves from Step 4.4 to Step 2.1 (BP at every prenatal visit — unconditional), so
   every patient on the pathway sees it, including patients with severe features and
   postpartum patients, whom Step 4.4 never reached (§9). Still its own node, separate from
@@ -77,15 +85,46 @@ claims confirmed. Flags: `[GAP]` unsourceable · `[FALLBACK SOURCE]` non-US basi
 | O13.2 | ICD-10 | Gestational [pregnancy-induced] hypertension without significant proteinuria, second trimester | primary trigger | gestational-htn |
 | O13.3 | ICD-10 | Gestational hypertension without significant proteinuria, third trimester | primary trigger | gestational-htn |
 | O13.9 | ICD-10 | Gestational hypertension without significant proteinuria, unspecified trimester | primary trigger | gestational-htn |
-| O14.02 | ICD-10 | Mild to moderate pre-eclampsia, second trimester | primary trigger | preeclampsia |
-| O14.03 | ICD-10 | Mild to moderate pre-eclampsia, third trimester | primary trigger | preeclampsia |
-| O14.00 | ICD-10 | Mild to moderate pre-eclampsia, unspecified trimester | primary trigger | preeclampsia |
-| O14.12 | ICD-10 | Severe pre-eclampsia, second trimester | primary trigger | preeclampsia-severe |
-| O14.13 | ICD-10 | Severe pre-eclampsia, third trimester | primary trigger | preeclampsia-severe |
-| O14.10 | ICD-10 | Severe pre-eclampsia, unspecified trimester | primary trigger | preeclampsia-severe |
-| O16.2 | ICD-10 | Unspecified maternal hypertension, second trimester | undifferentiated presentation | htn-unspecified |
-| O16.3 | ICD-10 | Unspecified maternal hypertension, third trimester | undifferentiated presentation | htn-unspecified |
+| O14.0 | ICD-10 | Mild to moderate pre-eclampsia (family: all trimesters, childbirth and the puerperium) | primary trigger | preeclampsia |
+| O14.1 | ICD-10 | Severe pre-eclampsia (family: all trimesters, childbirth and the puerperium) | primary trigger | preeclampsia-severe |
+| O16 | ICD-10 | Unspecified maternal hypertension (family: all trimesters, childbirth and the puerperium) | undifferentiated presentation | htn-unspecified |
 | R03.0 | ICD-10 | Elevated blood-pressure reading, without diagnosis of hypertension | the interim state between a first elevated reading and confirmation | htn-unconfirmed |
+
+**Trigger codes are families** `[DECISION — Josh 2026-10-03]` (v6). A row that is a parent
+code matches that code and every code beneath it. Until v5 the list was all leaves: `O13.2`,
+`O13.3`, `O13.9`, `O14.00`, `O14.02`, `O14.03`, `O14.10`, `O14.12`, `O14.13`, `O16.2`,
+`O16.3`, `R03.0`.
+
+- `[LEAF CODES — O13: the family would admit O13.1, first-trimester gestational hypertension, which this brief deliberately excludes from triggers (next paragraph)]`
+  `O13.2`, `O13.3` and `O13.9` therefore stay leaves. `[JOSH — CONFIRM]` Staying on leaves
+  also keeps out `O13.4` (gestational hypertension complicating childbirth) and `O13.5`
+  (complicating the puerperium), while the preeclampsia families below now admit their
+  childbirth and puerperium codes. If `O13.1` is acceptable as a trigger, author `O13`; if
+  only the puerperium code is wanted, add `O13.5` as a fourth leaf. Note that
+  `gate-gestational-htn` lists `O13.2`/`O13.3`/`O13.9` exactly, so it would not read either.
+- `[LEAF CODES — O14: the family would admit O14.2 (HELLP syndrome), which this pathway treats only as an escalation trigger, not a managed entity]`
+  The two sub-families `O14.0` and `O14.1` are therefore authored instead of `O14`.
+  `[JOSH — CONFIRM]` `O14` would also admit all codes under `O14.9` (unspecified
+  pre-eclampsia), which `gate-htn-diagnosed` already reads as a diagnosis (`O14.9.*`) but
+  which was not a trigger in v5 and is not one now. Say so if `O14.9` should be added.
+- **`O14.0`** newly admits `O14.04` (mild to moderate pre-eclampsia complicating childbirth)
+  and `O14.05` (complicating the puerperium). `[JOSH — CONFIRM]` `O14.05` is the postpartum
+  patient §9 already proves reaches Step 5.2; `O14.04` is an intrapartum code in a pathway
+  whose scope "ends at the trigger for admission or delivery".
+- **`O14.1`** newly admits `O14.14` (severe pre-eclampsia complicating childbirth) and
+  `O14.15` (complicating the puerperium). `[JOSH — CONFIRM]` Same question as `O14.0`; both
+  already satisfy `gate-escalation-required` (`O14.1.*`).
+- **`O16`** newly admits `O16.1` (unspecified maternal hypertension, first trimester),
+  `O16.4` (complicating childbirth), `O16.5` (complicating the puerperium) and `O16.9`
+  (unspecified trimester). `[JOSH — CONFIRM]` — **`O16.1` in particular**: v5 listed only the
+  second- and third-trimester codes, and the reasoning that excludes `O13.1` (hypertension
+  before 20 weeks is not gestational) may apply to it too. It was not named as an exclusion
+  anywhere in this brief, so the family was authored; if `O16.1` must stay out, go back to
+  leaves with a `[LEAF CODES — O16: …]` marker.
+- `[BUILD NOTE]` The family match needs the patient's code and the parent in the deployment's
+  `icd10_codes` table. The repo's common-codes seed
+  (`shared/data-layer/seed/icd10-common-codes.sql`) holds **no `O13`, `O14` or `O16` row**,
+  so on a database seeded only from it these families have nothing to expand.
 
 **Deliberately excluded from triggers.** `O13.1` (first-trimester gestational hypertension)
 exists but contradicts the ≥20-week definition — it should never be emitted by this pathway.

@@ -75,6 +75,33 @@
 | `condition_codes` | ✅ non-empty | `{code, system, description?, usage?, grouping?}` — the codes that trigger this pathway (OR semantics unless `code_sets` present) |
 | `code_sets` | optional | AND-combination matching, below |
 
+### Trigger codes are families (`[DECISION — Josh 2026-10-03]`)
+
+The matcher expands each patient diagnosis to its ICD-10 ancestors and compares those with
+`condition_codes`, so **a parent code matches everything beneath it**. Author the family, at
+the highest level whose every member belongs in the pathway:
+
+| Instead of | Author |
+|---|---|
+| `O99.011`, `O99.012`, `O99.013`, `O99.019` | `O99.01` |
+| `O23.10`, `O23.12`, `O23.13` | `O23.1` |
+
+- A list of sibling leaves matches only those leaves, silently misses the sibling nobody
+  listed, and grows until it is unreadable.
+- Go up only as far as the family stays inside the pathway's scope. If a parent admits a
+  code the pathway must NOT take (a childbirth or puerperium code in an outpatient prenatal
+  pathway), keep the leaves and say why in the brief: `[LEAF CODES — <parent>: <why>]`.
+- `validate-pathway.ts` enforces it (exit 6): two or more ICD-10 trigger codes under one
+  parent, with no such marker, fail the build.
+- The family lookup needs the patient's code AND the parent in the deployment's
+  `icd10_codes` table. The local table holds a common-codes subset — check both are present.
+- Gate conditions already do this with `includes_code` and a trailing `.*`.
+- **Not built yet — pathway classification.** Josh, 2026-10-03: pathways will carry a
+  class (pregnant, adult, pediatric); for a pregnant patient the pregnancy pathway wins, and
+  adult vs pediatric is decided by age. Until it exists, a family such as `D50` on a
+  pregnancy pathway fires for any patient with that code, and a future general-medicine
+  pathway on the same family would run beside it. See `pathways/TODO.md`.
+
 ### code_sets (comorbidity-combination matching)
 
 Only for pathways that should fire when **multiple codes are present together** (e.g. "Pregnancy + Chronic HTN" must not fire on either alone). When absent, each `condition_codes` entry independently triggers the pathway (legacy OR).

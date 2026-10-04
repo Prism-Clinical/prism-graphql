@@ -3,7 +3,7 @@
   "pathway": {
     "logical_id": "uti-asymptomatic-bacteriuria-pregnancy",
     "title": "Urinary Tract Infection and Asymptomatic Bacteriuria in Pregnancy \u2014 Outpatient Screening, Treatment and Surveillance",
-    "version": "3",
+    "version": "4",
     "category": "OBSTETRIC",
     "scope": "US outpatient prenatal care. Universal early-pregnancy screening for asymptomatic bacteriuria; treatment of asymptomatic bacteriuria and acute cystitis; the group B streptococcus bacteriuria arm; test of cure; recurrence and suppressive prophylaxis. Ends at the trigger for admission with pyelonephritis.",
     "target_population": "All pregnant patients receiving prenatal care. Screening applies universally; treatment and surveillance arms apply to those with a positive culture.",
@@ -16,44 +16,16 @@
         "grouping": "bacteriuria"
       },
       {
-        "code": "O23.10",
+        "code": "O23.1",
         "system": "ICD-10",
-        "description": "Infections of bladder in pregnancy, unspecified trimester",
+        "description": "Infections of bladder in pregnancy (family: all trimesters)",
         "usage": "cystitis in pregnancy",
         "grouping": "uti-pregnancy"
       },
       {
-        "code": "O23.12",
+        "code": "O23.4",
         "system": "ICD-10",
-        "description": "Infections of bladder in pregnancy, second trimester",
-        "usage": "cystitis in pregnancy",
-        "grouping": "uti-pregnancy"
-      },
-      {
-        "code": "O23.13",
-        "system": "ICD-10",
-        "description": "Infections of bladder in pregnancy, third trimester",
-        "usage": "cystitis in pregnancy",
-        "grouping": "uti-pregnancy"
-      },
-      {
-        "code": "O23.40",
-        "system": "ICD-10",
-        "description": "Unspecified infection of urinary tract in pregnancy, unspecified trimester",
-        "usage": "undifferentiated UTI",
-        "grouping": "uti-pregnancy"
-      },
-      {
-        "code": "O23.42",
-        "system": "ICD-10",
-        "description": "Unspecified infection of urinary tract in pregnancy, second trimester",
-        "usage": "undifferentiated UTI",
-        "grouping": "uti-pregnancy"
-      },
-      {
-        "code": "O23.43",
-        "system": "ICD-10",
-        "description": "Unspecified infection of urinary tract in pregnancy, third trimester",
+        "description": "Unspecified infection of urinary tract in pregnancy (family: all trimesters)",
         "usage": "undifferentiated UTI",
         "grouping": "uti-pregnancy"
       },

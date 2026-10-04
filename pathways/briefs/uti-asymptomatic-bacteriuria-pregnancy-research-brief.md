@@ -1,6 +1,6 @@
 # Pathway Research Brief — UTI and Asymptomatic Bacteriuria in Pregnancy
 
-JSON: pathways/json/uti-asymptomatic-bacteriuria-pregnancy.json @ version 3
+JSON: pathways/json/uti-asymptomatic-bacteriuria-pregnancy.json @ version 4
 
 **Status: DRAFT v1 for physician review — not yet approved for JSON build.**
 
@@ -42,7 +42,14 @@ Flags: `[GAP]` · `[NOT ENCODABLE]` · `[DECISION]` an authoring choice needing 
 
 - **Logical ID**: `uti-asymptomatic-bacteriuria-pregnancy`
 - **Title**: Urinary Tract Infection and Asymptomatic Bacteriuria in Pregnancy — Outpatient Screening, Treatment and Surveillance
-- **Version**: 3 (JSON `"3"`; was `"2"`). `[DECISION — Josh 2026-09-24]` One urine-culture
+- **Version**: 4 (JSON `"4"`; was `"3"`). `[DECISION — Josh 2026-10-03]` Trigger codes are
+  authored as families (§1 Condition codes): "fix it in authoring and make sure various parent
+  levels are included." The matcher expands a patient's diagnosis to its ICD-10 ancestors, so
+  a parent code matches everything beneath it. `O23.10`/`O23.12`/`O23.13` become `O23.1` and
+  `O23.40`/`O23.42`/`O23.43` become `O23.4`; `R82.71`, `O99.820` and `Z13.89` are unchanged.
+  Only `pathway.condition_codes` changed. What each family newly admits is listed under the
+  table, each item `[JOSH — CONFIRM]`. Imports as **NEW_VERSION**; no gate change.
+  v3 history: `[DECISION — Josh 2026-09-24]` One urine-culture
   node serves Steps 1.1 and 2.1: v2's Lab-7 (the Step 2.1 culture) is removed and Lab-1 is
   hosted by both steps, so the care plan lists the culture once (§6). The test-of-cure culture
   (Lab-8) stays separate. Imports as **NEW_VERSION** (same logical_id, bumped version).
@@ -65,14 +72,30 @@ Flags: `[GAP]` · `[NOT ENCODABLE]` · `[DECISION]` an authoring choice needing 
 | Code | System | Description | Usage note | Grouping |
 |---|---|---|---|---|
 | R82.71 | ICD-10 | Bacteriuria | primary trigger — the only ASB code that exists | bacteriuria |
-| O23.10 | ICD-10 | Infections of bladder in pregnancy, unspecified trimester | cystitis in pregnancy | uti-pregnancy |
-| O23.12 | ICD-10 | Infections of bladder in pregnancy, second trimester | cystitis in pregnancy | uti-pregnancy |
-| O23.13 | ICD-10 | Infections of bladder in pregnancy, third trimester | cystitis in pregnancy | uti-pregnancy |
-| O23.40 | ICD-10 | Unspecified infection of urinary tract in pregnancy, unspecified trimester | undifferentiated UTI | uti-pregnancy |
-| O23.42 | ICD-10 | Unspecified infection of urinary tract in pregnancy, second trimester | undifferentiated UTI | uti-pregnancy |
-| O23.43 | ICD-10 | Unspecified infection of urinary tract in pregnancy, third trimester | undifferentiated UTI | uti-pregnancy |
+| O23.1 | ICD-10 | Infections of bladder in pregnancy (family: all trimesters) | cystitis in pregnancy | uti-pregnancy |
+| O23.4 | ICD-10 | Unspecified infection of urinary tract in pregnancy (family: all trimesters) | undifferentiated UTI | uti-pregnancy |
 | O99.820 | ICD-10 | Streptococcus B carrier state complicating pregnancy | GBS arm trigger | gbs |
 | Z13.89 | ICD-10 | Encounter for screening for other disorder | the ASB screening encounter | screening |
+
+**Trigger codes are families** `[DECISION — Josh 2026-10-03]` (v4). A row that is a parent
+code matches that code and every code beneath it. Until v3 the O23 triggers were the leaves
+`O23.10`, `O23.12`, `O23.13`, `O23.40`, `O23.42`, `O23.43`.
+
+- **`O23.1`** newly admits `O23.11` (infections of bladder in pregnancy, first trimester).
+  `[JOSH — CONFIRM]` v3 listed no first-trimester code; the pathway does carry first-trimester
+  content (`gate-first-trimester`, the nitrofurantoin / sulfonamide question).
+- **`O23.4`** newly admits `O23.41` (unspecified infection of urinary tract in pregnancy,
+  first trimester). `[JOSH — CONFIRM]` Same question.
+- `[LEAF CODES — O23: the family would admit O23.0 (infections of kidney in pregnancy — pyelonephritis, this pathway's admission exit) and O23.5 (infections of the genital tract in pregnancy), both outside scope]`
+  The two sub-families `O23.1` and `O23.4` are therefore authored instead of `O23`.
+  `[JOSH — CONFIRM]` Also left out, as in v3: all codes under `O23.2` (infections of urethra
+  in pregnancy), `O23.3` (infections of other parts of urinary tract in pregnancy) and
+  `O23.9`. `gate-recurrent-uti` counts `O23.*`, so those codes count toward recurrence
+  without triggering the pathway. Say so if `O23.2` or `O23.3` should be triggers.
+- `[BUILD NOTE]` The family match needs the patient's code and the parent in the deployment's
+  `icd10_codes` table. The repo's common-codes seed
+  (`shared/data-layer/seed/icd10-common-codes.sql`) holds **no `O23` row**, so on a database
+  seeded only from it these families have nothing to expand.
 
 **`[GAP]` — there is no ICD-10 code for asymptomatic bacteriuria in pregnancy.** Verified
 against the official alphabetic index: `Bacteriuria` routes to **R82.71** with no pregnancy
