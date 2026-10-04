@@ -6,7 +6,8 @@ import {
   isTemporalOperator,
 } from './contract';
 import { ConditionTemporalOverride, parseHorizonValue, parseStatusValue } from './cascade';
-import { TemporalContextError } from './evaluation-context';
+import { TemporalContextError, isSinceHorizon } from './evaluation-context';
+import { MonthDay, parseMonthDay } from './calendar';
 // Only the urn constant. Vitals carry no terminology code, so the assembler
 // stamps every vital with this system and the adapter must select on the same
 // one; a second spelling here would silently match nothing.
@@ -72,11 +73,100 @@ export function attributeNamespaceToField(namespace: string): GateField | null {
 export function conditionReadsGestationalAge(condition: unknown): boolean {
   if (!condition || typeof condition !== 'object') return false;
   const c = condition as Record<string, unknown>;
-  if (c.horizon !== 'PREGNANCY') return false;
+  return c.horizon === 'PREGNANCY' && isGovernedCondition(c);
+}
+
+/** Is this authored condition one temporal policy governs (so its `horizon` is honoured)? */
+function isGovernedCondition(c: Record<string, unknown>): boolean {
   if (typeof c.field === 'string') return true;
   if (typeof c.attribute !== 'string') return false;
   const dot = c.attribute.indexOf('.');
   return attributeNamespaceToField(dot === -1 ? c.attribute : c.attribute.slice(0, dot)) !== null;
+}
+
+/**
+ * The horizon on this condition that only the `v1` kernel can evaluate, named
+ * for a refusal message — or `null`. `legacy-v0` honours no horizon at all, so
+ * a `PREGNANCY` or `{ since }` window would silently become the whole history
+ * there; both are new, so there is no legacy behaviour to preserve by letting
+ * that happen.
+ */
+export function kernelOnlyHorizon(condition: unknown): string | null {
+  if (!condition || typeof condition !== 'object') return null;
+  const c = condition as Record<string, unknown>;
+  if (!isGovernedCondition(c)) return null;
+  if (c.horizon === 'PREGNANCY') return 'PREGNANCY';
+  if (isSinceHorizon(c.horizon)) return '{ since }';
+  return null;
+}
+
+// ─── Calendar conditions — `encounter.date` / `in_season` ─────────────
+
+/**
+ * The one attribute of the engine-supplied `encounter` namespace: the calendar
+ * date of the session clock. It is NOT patient data — there is no chart entry,
+ * no code-map row, nothing to be missing and nothing to ask for.
+ */
+export const CALENDAR_ATTRIBUTE = 'encounter.date';
+export const CALENDAR_OPERATOR = 'in_season';
+const CALENDAR_KEYS = new Set(['attribute', 'operator', 'from', 'to', 'display', 'note']);
+
+/**
+ * Is this a condition on the `encounter` namespace? Keyed on the NAMESPACE,
+ * not on the exact attribute, so `encounter.dat` is refused as a malformed
+ * calendar condition instead of falling through as an unknown attribute that
+ * quietly never matches.
+ */
+export function isCalendarCondition(condition: unknown): boolean {
+  if (!condition || typeof condition !== 'object') return false;
+  const attribute = (condition as { attribute?: unknown }).attribute;
+  return typeof attribute === 'string' && (attribute === 'encounter' || attribute.startsWith('encounter.'));
+}
+
+export interface CalendarSeason {
+  from: MonthDay;
+  to: MonthDay;
+}
+
+/**
+ * Why a calendar condition cannot be evaluated as written, or `null`.
+ *
+ * The ONE grammar check: the import validator and the compiler push this
+ * message, session preflight and the evaluator throw it (the D9 shape — one
+ * predicate, two error protocols). Exact: `encounter.date`, `in_season`, a
+ * `from` and a `to` that are real month-days, and no other key — a `value`,
+ * `horizon` or `status` here would be silently ignored, and an ignored key is
+ * an author being ignored.
+ */
+export function calendarConditionError(condition: unknown): string | null {
+  const c = (condition ?? {}) as Record<string, unknown>;
+  if (c.attribute !== CALENDAR_ATTRIBUTE) {
+    return `the encounter namespace has one attribute, "${CALENDAR_ATTRIBUTE}" (got ${JSON.stringify(c.attribute)})`;
+  }
+  if (c.operator !== CALENDAR_OPERATOR) {
+    return `"${CALENDAR_ATTRIBUTE}" takes operator "${CALENDAR_OPERATOR}" only (got ${JSON.stringify(c.operator)})`;
+  }
+  for (const key of ['from', 'to'] as const) {
+    if (c[key] === undefined) return `${CALENDAR_OPERATOR} needs "${key}" ("MM-DD")`;
+    const md = parseMonthDay(c[key]);
+    if ('problem' in md) return `"${key}" ${md.problem}`;
+  }
+  for (const key of Object.keys(c)) {
+    if (!CALENDAR_KEYS.has(key)) {
+      return `unknown key "${key}" on an ${CALENDAR_OPERATOR} condition (allowed: ${[...CALENDAR_KEYS].join(', ')})`;
+    }
+  }
+  return null;
+}
+
+/** The season a calendar condition names. Throws what `calendarConditionError` reports. */
+export function parseCalendarCondition(condition: unknown, where = 'gate condition'): CalendarSeason {
+  const problem = calendarConditionError(condition);
+  if (problem !== null) {
+    throw new TemporalContextError(`${where}: ${problem}`, 'INVALID_TEMPORAL_DEFAULTS');
+  }
+  const c = condition as { from: string; to: string };
+  return { from: parseMonthDay(c.from) as MonthDay, to: parseMonthDay(c.to) as MonthDay };
 }
 
 /** `exists` is bucket existence: it ignores code and system (select-facts.ts:75). */

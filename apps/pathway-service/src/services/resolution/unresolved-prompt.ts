@@ -4,6 +4,7 @@ import { isTemporalOperator, operatorClass } from './temporal/contract';
 import { patientAttributeLabel } from './attribute-vocabulary';
 import { anchorKeyFor, anchorPromptFor, parseWindowFrom } from './temporal/anchored-window';
 import { PREGNANCY_HORIZON_ATTRIBUTE } from './temporal/evaluation-context';
+import { isCalendarCondition } from './temporal/condition-adapter';
 
 /**
  * What to ask a provider for, when a gate could not evaluate its condition.
@@ -172,6 +173,9 @@ export function askFor(
    */
   codeMap?: AttributeCodeMap,
 ): UnresolvedAsk | null {
+  // The session's calendar date is engine-supplied and always known: there is
+  // never a question for it, whatever path led here.
+  if (isCalendarCondition(condition)) return null;
   if (isAttributeCondition(condition)) {
     const path = condition.attribute;
     if (!path) return null;

@@ -43,6 +43,8 @@ import { GateField, FIELD_TO_KIND } from '../../services/resolution/temporal/con
 import {
   adaptAttributeCondition,
   adaptCodedCondition,
+  isCalendarCondition,
+  parseCalendarCondition,
 } from '../../services/resolution/temporal/condition-adapter';
 import {
   assertKnownPolicyVersion,
@@ -487,6 +489,14 @@ export function sweepableConditions(
       // attribute still rejects here — pinned by test, not assumed.
       const attribute = cond.attribute;
       if (typeof attribute !== 'string') return;
+      // `encounter.date in_season` resolves no horizon, so it adds nothing to
+      // the sweep — but its grammar is parsed HERE, by the evaluator's own
+      // parser, so a malformed one rejects the session instead of throwing
+      // mid-traversal. Errors propagate, like every other parser error here.
+      if (isCalendarCondition(cond)) {
+        parseCalendarCondition(cond, label);
+        return;
+      }
       const adaptedAttr = adaptAttributeCondition(
         cond as unknown as AttributeCondition,
         codeMap,

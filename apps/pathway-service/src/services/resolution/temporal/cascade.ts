@@ -2,6 +2,7 @@ import {
   Horizon,
   isNamedHorizon,
   isCustomHorizon,
+  isSinceHorizon,
   MAX_CUSTOM_HORIZON_DAYS,
   TemporalContextError,
   EvaluationTemporalContext,
@@ -20,6 +21,7 @@ import {
 import { EffectivePolicy } from './select-facts';
 import type { WindowFromSelector } from './anchored-window';
 import { instantEpoch } from './interval';
+import { parseMonthDay } from './calendar';
 
 /** The PATHWAY level of the cascade, as loaded from `temporal_defaults`. */
 export interface PathwayTemporalDefaults {
@@ -45,6 +47,23 @@ function isGateField(k: string): k is GateField {
  */
 export function parseHorizonValue(raw: unknown, where: string): Horizon {
   if (isNamedHorizon(raw)) return raw;
+
+  if (isSinceHorizon(raw)) {
+    // One meaning per horizon: `{ days, since }` has no defensible winner.
+    const extra = Object.keys(raw).filter((k) => k !== 'since');
+    if (extra.length > 0) {
+      throw new TemporalContextError(
+        `${where}: a { since } horizon takes no other key (got: ${extra.join(', ')})`,
+        'INVALID_HORIZON',
+      );
+    }
+    const md = parseMonthDay(raw.since);
+    if ('problem' in md) {
+      throw new TemporalContextError(`${where}.since: ${md.problem}`, 'INVALID_HORIZON');
+    }
+    // Normalize: keep only `since`, as the day-count form keeps only `days`.
+    return { since: raw.since };
+  }
 
   if (isCustomHorizon(raw)) {
     const { days } = raw;
@@ -146,8 +165,11 @@ export function parsePathwayTemporalDefaults(raw: unknown): PathwayTemporalDefau
         );
       }
       horizons[key] = parseHorizonValue(val, `default_horizons.${key}`);
-      if (requiresPregnancyAnchor(horizons[key]!)) {
-        throw new TemporalContextError(pregnancyDefaultRefusal(`default_horizons.${key}`), 'INVALID_TEMPORAL_DEFAULTS');
+      if (isPerConditionOnlyHorizon(horizons[key]!)) {
+        throw new TemporalContextError(
+          perConditionOnlyRefusal(`default_horizons.${key}`, horizons[key]!),
+          'INVALID_TEMPORAL_DEFAULTS',
+        );
       }
     }
     if (Object.keys(horizons).length > 0) out.horizons = horizons;
@@ -190,6 +212,24 @@ function pregnancyDefaultRefusal(where: string): string {
   return (
     `${where}: PREGNANCY is a per-condition horizon — set "horizon": "PREGNANCY" on the ` +
     `condition that means "this pregnancy", not as a default`
+  );
+}
+
+/**
+ * `{ since }` is per-condition only too. A season's opening date belongs to
+ * the thing whose season it is — "influenza vaccine since July 1" — and as a
+ * field-wide default it would silently bound every other gate on that field
+ * (a medication started last spring would stop counting as "on it").
+ */
+function isPerConditionOnlyHorizon(h: Horizon): boolean {
+  return requiresPregnancyAnchor(h) || isSinceHorizon(h);
+}
+
+function perConditionOnlyRefusal(where: string, h: Horizon): string {
+  if (requiresPregnancyAnchor(h)) return pregnancyDefaultRefusal(where);
+  return (
+    `${where}: { since } is a per-condition horizon — set "horizon": ${JSON.stringify(h)} on the ` +
+    `condition that means "this season", not as a default`
   );
 }
 
@@ -259,9 +299,12 @@ export function resolveEffectivePolicy(
   }
   // Refused below the NODE tier, whichever level it came from — a hand-built
   // defaults object must not smuggle in what the parser refuses.
-  if (requiresPregnancyAnchor(horizon)) {
+  if (isPerConditionOnlyHorizon(horizon)) {
     throw new TemporalContextError(
-      pregnancyDefaultRefusal(`${horizonLevel === 'PATHWAY' ? 'default_horizons' : 'system default'}.${field}`),
+      perConditionOnlyRefusal(
+        `${horizonLevel === 'PATHWAY' ? 'default_horizons' : 'system default'}.${field}`,
+        horizon,
+      ),
       'INVALID_TEMPORAL_DEFAULTS',
     );
   }

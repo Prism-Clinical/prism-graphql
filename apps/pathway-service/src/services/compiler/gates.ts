@@ -1,5 +1,6 @@
 // apps/pathway-service/src/services/compiler/gates.ts
 import { NodeStatus } from '../../types';
+import { calendarConditionError, isCalendarCondition } from '../resolution/temporal/condition-adapter';
 import type { ChoiceArm, CompileError, CompileErrorCode, CompiledGate, DefaultBehavior, GateArm, GraphEdgeIn, NodeKind } from './model';
 
 const STATUSES = new Set<string>(Object.values(NodeStatus));
@@ -28,6 +29,9 @@ export function conditionProblem(c: unknown): string | null {
     }
     return null;
   }
+  // `encounter.date in_season`: engine-supplied, with its own grammar (from/to,
+  // no value) — checked by the parser the evaluator runs.
+  if (isCalendarCondition(r)) return calendarConditionError(r);
   if (typeof r.attribute === 'string') {
     if (typeof r.operator !== 'string') return `the condition on "${r.attribute}" has no operator`;
     if (r.operator === 'exists') return null;

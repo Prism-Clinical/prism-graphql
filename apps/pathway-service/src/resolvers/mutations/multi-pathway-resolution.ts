@@ -47,6 +47,7 @@ import { buildEffectivePatientContext, mergeAdditionalContext } from '../../serv
 import { firstTrustAssertion, normalizeContextEntryNulls } from '../../services/resolution/temporal/trust-mode';
 import type { AdditionalContextInput } from './resolution';
 import { setPlanNode } from './resolution';
+import { loadRememberedAttributes } from '../../services/resolution/remembered-answers';
 import { randomUUID } from 'crypto';
 import {
   PLAN_ITEM_KINDS,
@@ -180,7 +181,7 @@ export const multiPathwayResolutionMutations = {
 
     // Built once, from the VARIANT — never re-derived from args.patientContext,
     // which would reintroduce the raw payload on a path that already validated.
-    const patientContext = toPatientContext(resolutionInput);
+    let patientContext = toPatientContext(resolutionInput);
 
     // `syntheticPatient` means "drive matching from the caller's own code set",
     // which has no coherent meaning once the facts come from a snapshot (LIVE)
@@ -236,6 +237,22 @@ export const multiPathwayResolutionMutations = {
     // returns without ever entering resolveAndPersistAll, so a version
     // validated only during the sweep would never be checked at all.
     assertKnownPolicyVersion(temporalContext.temporalPolicyVersion);
+
+    // Answers remembered for this patient from earlier encounters
+    // (remembered-answers.ts) are supplied as patient attributes the chart does
+    // not carry — read once here, so the run's stored context holds them and
+    // every re-evaluation and replay sees the same patient.
+    const remembered = await loadRememberedAttributes(pool, {
+      patientId: args.patientId,
+      asOf: temporalContext.evaluationAsOf,
+      suppliedAttributes: patientContext.patientAttributes as Record<string, unknown> | undefined,
+    });
+    if (Object.keys(remembered).length > 0) {
+      patientContext = {
+        ...patientContext,
+        patientAttributes: { ...remembered, ...(patientContext.patientAttributes ?? {}) } as typeof patientContext.patientAttributes,
+      };
+    }
 
     // Validates the request — like the version check — before the zero-match
     // branch: whether a malformed context is rejected must not depend on how

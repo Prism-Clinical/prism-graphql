@@ -1,5 +1,14 @@
 import { ResolvedHorizon } from './overlap';
 import { instantEpoch } from './interval';
+import {
+  CalendarDate,
+  calendarDateAt,
+  formatCalendarDate,
+  mostRecentOccurrence,
+  normalizeCalendarDate,
+  parseMonthDay,
+  startOfDateMs,
+} from './calendar';
 // Type-only: anchored-window imports this module's values, not the reverse.
 import type { TherapyStartEvent } from './anchored-window';
 
@@ -19,7 +28,16 @@ export interface CustomHorizon {
   days: number;
 }
 
-export type Horizon = NamedHorizon | CustomHorizon;
+/**
+ * "Since the most recent <month-day>" — a season's opening date, authored
+ * (`{ "since": "07-01" }`), never hard-coded. See `sinceWindowFrom`.
+ */
+export interface SinceHorizon {
+  /** `MM-DD`. */
+  since: string;
+}
+
+export type Horizon = NamedHorizon | CustomHorizon | SinceHorizon;
 
 /**
  * Day-count sugar (design §2). Plain day arithmetic back from
@@ -64,6 +82,15 @@ export function isCustomHorizon(h: unknown): h is CustomHorizon {
     typeof h === 'object' &&
     h !== null &&
     typeof (h as CustomHorizon).days === 'number'
+  );
+}
+
+export function isSinceHorizon(h: unknown): h is SinceHorizon {
+  return (
+    typeof h === 'object' &&
+    h !== null &&
+    !Array.isArray(h) &&
+    Object.prototype.hasOwnProperty.call(h, 'since')
   );
 }
 
@@ -149,6 +176,71 @@ export function pregnancyWindowFrom(
     return null;
   }
   return { lowerBound, lmpDate: lowerBound.slice(0, 10), weeks: gestationalAgeWeeks };
+}
+
+// ─── The session's calendar date, and the `since` horizon ─────────────
+
+/**
+ * The calendar date of the SESSION CLOCK in the session's timezone.
+ *
+ * `ctx.timezone` is `'UTC'` for every context `makeEvaluationTemporalContext`
+ * builds today; the lookup goes through the field anyway, so a context that
+ * one day carries an IANA zone gets that zone's date with no change here. A
+ * zone the runtime cannot resolve is a wiring bug and throws `INVALID_CLOCK`.
+ */
+export function sessionCalendarDate(ctx: EvaluationTemporalContext): CalendarDate {
+  const ms = clockEpoch('evaluationAsOf', ctx.evaluationAsOf);
+  try {
+    return calendarDateAt(ms, sessionTimezone(ctx));
+  } catch {
+    throw new TemporalContextError(
+      `the session timezone "${String(ctx.timezone)}" is not a timezone this runtime can resolve`,
+      'INVALID_CLOCK',
+    );
+  }
+}
+
+function sessionTimezone(ctx: EvaluationTemporalContext): string {
+  const tz: unknown = ctx.timezone;
+  return typeof tz === 'string' && tz !== '' ? tz : 'UTC';
+}
+
+/** The `{ since }` horizon's window, resolved against one session clock. */
+export interface SinceWindow {
+  /** ISO instant: 00:00 on `date` in the session's timezone. */
+  lowerBound: string;
+  /** `YYYY-MM-DD` — the day the window opened, in the session's timezone. */
+  date: string;
+}
+
+/**
+ * Resolve `{ "since": "MM-DD" }`: the window opens at 00:00 (session timezone)
+ * on the most recent occurrence of that month-day ON OR BEFORE the session
+ * clock — this year's when the clock has reached it, last year's otherwise.
+ *
+ * A function of the pinned context alone: no patient data, nothing to ask for,
+ * nothing that can be missing, and the same answer on every replay. `02-29` in
+ * a year that has none opens on Mar 1.
+ */
+export function sinceWindowFrom(h: SinceHorizon, ctx: EvaluationTemporalContext): SinceWindow {
+  const md = parseMonthDay(h.since);
+  if ('problem' in md) {
+    throw new TemporalContextError(`horizon.since ${md.problem}`, 'INVALID_HORIZON');
+  }
+  const today = sessionCalendarDate(ctx);
+  const opened = normalizeCalendarDate(mostRecentOccurrence(md, today));
+  const lowerMs = startOfDateMs(opened, sessionTimezone(ctx));
+  let lowerBound: string;
+  try {
+    lowerBound = new Date(lowerMs).toISOString();
+    instantEpoch(lowerBound);
+  } catch {
+    throw new TemporalContextError(
+      `horizon since ${h.since} is not representable as a date from ${ctx.evaluationAsOf}`,
+      'INVALID_HORIZON',
+    );
+  }
+  return { lowerBound, date: formatCalendarDate(opened) };
 }
 
 // ─── Evaluation context ───────────────────────────────────────────────
@@ -274,6 +366,10 @@ export function resolveHorizon(
       );
     }
     return { lowerBound: pregnancyLowerBound, upperBound };
+  }
+
+  if (isSinceHorizon(h)) {
+    return { lowerBound: sinceWindowFrom(h, ctx).lowerBound, upperBound };
   }
 
   let days: number;

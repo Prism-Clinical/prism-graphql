@@ -16,6 +16,7 @@ import {
   MAX_GRAPH_DEPTH,
   ValidationResult,
 } from './types';
+import { parseRememberAnswer } from '../resolution/remembered-answers';
 import { PathwayCategory, NodeStatus } from '../../types';
 import {
   VALID_CODED_OPERATORS,
@@ -29,6 +30,8 @@ import { FIELD_TO_KIND } from '../resolution/temporal/contract';
 import {
   codedVitalsSystemError,
   conditionControlDomainError,
+  calendarConditionError,
+  isCalendarCondition,
   parseConditionOverride,
   attributeNamespaceToField,
 } from '../resolution/temporal/condition-adapter';
@@ -463,6 +466,21 @@ function validateGateNodes(
       );
     }
 
+    // remember_answer: an answer kept for the patient across encounters. Only
+    // a `patient.<attribute>` value can be supplied again at a later start, so
+    // the gate must be one that asks for one.
+    if (props.remember_answer !== undefined) {
+      const parsed = parseRememberAnswer(props.remember_answer);
+      if ('problem' in parsed) {
+        errors.push(`Gate "${gate.id}": ${parsed.problem}`);
+      } else if (!JSON.stringify(props.condition ?? props.conditions ?? null).includes('"attribute":"patient.')) {
+        errors.push(
+          `Gate "${gate.id}": remember_answer needs a condition on a "patient.<attribute>" — ` +
+            `that attribute is what a later encounter is given`,
+        );
+      }
+    }
+
     // select answer_type requires non-empty options array — also soft in
     // draft mode (author may still be filling in the options list).
     // Gate enum vocabularies. `default_behavior` was REQUIRED but its value
@@ -711,6 +729,14 @@ function validateGateConditions(
       return; // can't classify further
     }
     const op = typeof c.operator === 'string' ? c.operator : '';
+    // `encounter.date in_season` — the session's calendar date. Attribute-
+    // shaped, but engine-supplied: its operator, namespace and keys (`from`,
+    // `to`, no `value`) are its own, and the ONE check is the runtime's.
+    if (hasAttr && isCalendarCondition(c)) {
+      const calendar = calendarConditionError(c);
+      if (calendar !== null) errors.push(`${where}: ${calendar}.`);
+      return;
+    }
     if (hasAttr) {
       if (!ATTR_OPS.has(op)) errors.push(`${where}: operator "${op}" is not a valid attribute operator.`);
       const ns = (c.attribute as string).split('.')[0];

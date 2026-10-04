@@ -2,8 +2,11 @@ import { EffectivePolicy } from './select-facts';
 import {
   EvaluationTemporalContext,
   PregnancyWindow,
+  SinceWindow,
+  isSinceHorizon,
   pregnancyWindowFrom,
   requiresPregnancyAnchor,
+  sinceWindowFrom,
 } from './evaluation-context';
 import {
   PathwayTemporalDefaults,
@@ -63,6 +66,8 @@ export type ConditionPolicy =
       policy: EffectivePolicy;
       /** Set when the window is the PREGNANCY horizon's — evidence for the reason string. */
       pregnancy?: PregnancyWindow;
+      /** Set when the window is a `{ since }` horizon's — evidence, likewise. */
+      since?: SinceWindow;
     }
   /**
    * The condition's horizon is PREGNANCY and the patient has no usable
@@ -101,7 +106,12 @@ export function conditionPolicyFor(
     adapted.override,
   );
   if (!requiresPregnancyAnchor(tier.horizon)) {
-    return { status: 'RESOLVED', policy: toEffectivePolicy(tier, ctx, anchorLowerBound) };
+    const policy = toEffectivePolicy(tier, ctx, anchorLowerBound);
+    // A `window_from` tier's horizon is the LIFETIME placeholder, so a
+    // `{ since }` tier is never anchored and its window is the policy's own.
+    return isSinceHorizon(tier.horizon)
+      ? { status: 'RESOLVED', policy, since: sinceWindowFrom(tier.horizon, ctx) }
+      : { status: 'RESOLVED', policy };
   }
   const pregnancy = pregnancyWindowFrom(gestationalAgeWeeks(), ctx);
   if (pregnancy === null) return { status: 'PREGNANCY_UNDATED' };

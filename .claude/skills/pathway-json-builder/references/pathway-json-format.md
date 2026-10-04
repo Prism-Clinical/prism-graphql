@@ -16,6 +16,9 @@
 > - `not_includes_code`
 > - `horizon: "PREGNANCY"` — a window that opens at the start of THIS pregnancy, dated from
 >   `patient.gestational_age_weeks` (2026-10-04; see **Temporal horizon & status**)
+> - calendar checks on the session clock (2026-10-04): the condition
+>   `encounter.date` / `in_season` ("is today inside Sept 1 – Jan 31?") and the horizon
+>   `{ "since": "MM-DD" }` ("since the most recent July 1")
 > - nested AND/OR condition groups inside a compound gate
 > - `DATE` answers (treatment start dates), typed `patient.*` datum answers, and the
 >   "Not available" answer to a data question (`notAvailable`)
@@ -413,6 +416,48 @@ day count chosen to be "about a pregnancy long":
   pregnancy" whatever its real date; the bound is exercised only with dated labs
   (`labResults[].date`, or a dated answer). State this in the brief (§18).
 
+#### Seasons and "this season" — calendar checks (`[DECISION — Josh 2026-10-04]`)
+
+Josh, on routine prenatal vaccines: "can we add a calendar check?" Two different questions,
+two different tools — both read the calendar date of the **session clock**, and neither is
+ever approximated with a fixed day count (`{ "days": 150 }` for "about a season" opens on a
+different date at every visit, and a look-back cannot say "it is October" at all):
+
+| The clinical sentence | Author it as |
+|---|---|
+| "Offered only **in season**" — maternal RSV vaccine Sept 1 – Jan 31 (CDC); influenza season | `{ "attribute": "encounter.date", "operator": "in_season", "from": "09-01", "to": "01-31" }` — a leaf of the step's compound gate, ANDed with the chart conditions |
+| "Has it been given **this season**?" — influenza / COVID-19 vaccine since the most recent July 1 | `"horizon": { "since": "07-01" }` on the condition that reads the chart for it |
+
+```json
+{ "gate_type": "compound", "operator": "AND", "default_behavior": "skip", "on_unresolved": "ask",
+  "conditions": [
+    { "attribute": "encounter.date", "operator": "in_season", "from": "09-01", "to": "01-31",
+      "display": "RSV season (Sept 1 – Jan 31)" },
+    { "attribute": "patient.gestational_age_weeks", "operator": "greater_or_equal", "value": 32 },
+    { "field": "medications", "operator": "count_in_window", "value": "<RSV vaccine RxNorm code>",
+      "system": "RXNORM", "status": "any", "count_threshold": 1, "count_comparison": "less_than",
+      "horizon": "PREGNANCY" } ] }
+```
+
+- **The season's dates come from the brief**, with their source (CDC and ACOG differ for
+  RSV: Jan 31 vs Mar 1). They are authored on the condition, not built into the engine.
+- **`in_season` never asks and is never missing.** It is a definite yes or no at every
+  visit, so out of season it settles an `AND` by itself and the gate asks for nothing else.
+- **"Given this season" for a vaccine is a COUNT, not a membership read.** A medication or
+  immunization record is an *interval*: `includes_code` asks "was a record of this open at
+  any time in the window", and a 2024 record with no end date is open in every season
+  since. `count_in_window` selects on the **start date** — when it was given:
+  - given this season → `count_in_window`, `count_threshold: 1`, `status: "any"`,
+    `"horizon": { "since": "07-01" }`;
+  - still owed → the same with `"count_comparison": "less_than"`.
+  For a **lab** (a point in time) `includes_code` / `not_includes_code` with
+  `{ "since": … }` is exact and is the simpler pair.
+- **Simulator caveat.** The simulator dates nothing. An undated entry satisfies
+  `includes_code` inside any bounded window and counts **0** toward any bounded
+  `count_in_window` — so in the simulator the "still owed" count gate opens for every
+  chart, vaccinated or not. The window is exercised only with dated entries
+  (`medications[].date`). State this in the brief (§18).
+
 Authoring rules that follow:
 
 1. **A horizon is not a freshness filter.** On a threshold condition (`less_than`,
@@ -585,13 +630,57 @@ Carries one `condition` object, which is either an **attribute condition** or a 
 { "attribute": "vitals.temperature_f", "operator": "greater_than", "value": 100.3, "horizon": "DAY" }
 ```
 
-- `attribute` = `<namespace>.<name>`. Registered namespaces (hard error otherwise): **`lab`**, **`vitals`**, **`allergy`**, **`patient`**.
+- `attribute` = `<namespace>.<name>`. Registered namespaces (hard error otherwise): **`lab`**, **`vitals`**, **`allergy`**, **`patient`** — plus the engine-supplied **`encounter`**, which has its own grammar (**Calendar condition** below) and none of the keys or operators listed here.
   - `lab.*` / `allergy.*` resolve through the DB table `pathway_attribute_code_map` (attribute_name → system+code+value_type). **An unregistered attribute name imports fine but silently resolves to undefined at runtime** ⇒ the gate falls back to `default_behavior`. Every `lab.*`/`allergy.*` attribute you emit must be listed in the brief's "Attribute-map registrations" section so it gets seeded.
   - `vitals.*` walks a dotted numeric path in the patient's vitalSigns bag (e.g. `vitals.systolic_bp`, `vitals.temperature_f`) — keys per **What the simulator sends**.
   - `patient.*` reads derived scalars with no terminology code (e.g. `patient.gestational_age_weeks`, `patient.trimester`, `patient.rh_factor`). No code-map row, no temporal policy (emit no `horizon`). A missing value **asks** (`on_unresolved: "ask"`; datum `patient.<attr>`) since `8f64fc1` — see the box above.
 - `operator` ∈ `equals`, `not_equals`, `greater_than`, `greater_or_equal`, `less_than`, `less_or_equal`, `in` (value = array), `exists`. Note: `exists` on an **absent** fact (e.g. an allergy the patient doesn't have) is unsatisfied — it no longer degrades to "attribute resolved" semantics (fixed post-kernel).
 - There is **no** `symptom.*`, `medication.*`, or `condition.*` namespace (older docs said otherwise — they now hard-fail import). Symptom presence/severity is elicited ⇒ use a `question` gate. Diagnosis/medication history ⇒ use a coded condition.
 - `horizon` / `status` — see **Temporal horizon & status** below; both are legal here exactly as on coded conditions.
+
+**Calendar condition — `encounter.date` / `in_season`** (josh-dev, 2026-10-04) — allowed keys exactly: `attribute`, `operator`, `from`, `to`, `display`, `note`.
+
+```json
+{ "attribute": "encounter.date", "operator": "in_season", "from": "09-01", "to": "01-31" }
+```
+
+"Is the session's calendar date inside this season?" It is attribute-*shaped* but it is not
+patient data: `encounter` is an engine-supplied namespace with one attribute, `date`, and
+one operator, `in_season`. Usable as a `patient_attribute` gate's `condition`, as a leaf of a
+`compound` gate, and inside nested groups.
+
+- **`from` / `to`** — month-days, `"MM-DD"`, two digits each, **both inclusive**. A real day
+  of a real month: `"13-01"`, `"02-30"`, `"04-31"` and `"9-1"` are import errors; `"02-29"`
+  is valid.
+- **Wrap-around.** `from` after `to` wraps the year end: `09-01` → `01-31` is September
+  through January (Dec 31 and Jan 1 are both inside). `from` on or before `to` is a season
+  inside one year. `from` equal to `to` is that single day. (There is no "all year" other
+  than `01-01` → `12-31`; if a step is offered all year, it needs no season leaf.)
+- **Feb 29.** A session on Feb 29 compares as `02-29`. As a bound in a year that has none,
+  `to: "02-29"` ends on Feb 28 and `from: "02-29"` starts on Mar 1.
+- **Which date.** The calendar date of the session's pinned clock (`evaluationAsOf`) in the
+  session's timezone — **UTC for every session today** (the temporal context carries
+  `timezone: "UTC"`; the engine honours an IANA zone there if one is ever stored). Never
+  the wall clock: a session replayed next year answers what it answered when it was created.
+  A visit late in the evening US time is therefore already "tomorrow" (UTC) on the last and
+  first day of a season.
+- **Never missing, never asks.** No chart entry, no code-map row, no `horizon`, no `status`,
+  no `value` (each is an import error: an ignored key is an ignored author). The condition
+  is always a definite true or false, so `on_unresolved` never applies to it; inside a
+  compound, out of season settles an `AND` and in season settles an `OR`, whatever the
+  other leaves could not resolve. The compiler records no datum for it and reachability
+  classes a gate of only calendar leaves as always evaluable.
+- **Evidence.** `Session date 2026-10-04 is within the season 09-01 to 01-31` /
+  `… is outside the season …`; the gate records `encounter.date` among the fields it read.
+- **Checked by one parser** at import, at compile, at session preflight and at evaluation.
+- **`legacy-v0` sessions refuse it** (`in_season requires the v1 temporal kernel`).
+- `in_season` on any other attribute, any other operator on `encounter.date`, and any other
+  `encounter.*` attribute are import errors.
+- **⚠ Build check not yet updated (2026-10-04).** `check-gate-control.ts`'s EXPLICIT
+  HORIZON lint exempts only vitals and `patient.*`, so it currently fails every
+  `encounter.date` leaf ("has neither horizon, window_days nor window_from") — and a
+  `horizon` there is an import error. The lint needs an `encounter.*` exemption before a
+  pathway can ship an `in_season` leaf; `validate-pathway.ts` (import + compile) accepts it.
 
 **Coded condition** — allowed keys exactly: `field`, `operator`, `value`, `system`, `threshold`, `window_days`, `count_threshold`, `min_points`, `slope_threshold`, `delta_threshold`, `delta_comparison`, `count_comparison`, `horizon`, `status`, `window_from`, `display`, `note`. (`window_from` is coded-only — see **Anchored trend windows** below; on an attribute condition it is an unknown key.)
 
@@ -928,9 +1017,11 @@ Any attribute or coded condition may carry:
 - **`horizon`** — how far back facts remain relevant to *this condition*. Either a named
   horizon — `"LIFETIME"`, `"YEAR"` (365 d), `"QUARTER"` (90 d), `"MONTH"` (30 d),
   `"WEEK"` (7 d), `"DAY"` (1 d), `"ENCOUNTER"`, `"PREGNANCY"` (josh-dev) — or a custom
-  day-count object `{ "days": N }` with N an integer 1..36525. Named horizons are fixed
-  day-widths counted back from `evaluationAsOf` (not calendar units), except `ENCOUNTER`
-  (since `encounterStart`) and `PREGNANCY` (since the LMP date — next section).
+  day-count object `{ "days": N }` with N an integer 1..36525 — or a season-opening date
+  `{ "since": "MM-DD" }` (josh-dev). Named horizons are fixed day-widths counted back from
+  `evaluationAsOf` (not calendar units), except `ENCOUNTER` (since `encounterStart`),
+  `PREGNANCY` (since the LMP date) and `{ "since": … }` (since a calendar date) — next
+  two sections.
 - **`status`** — which fact states count: `"active"`, `"inactive"`, or `"any"`.
 
 #### `"PREGNANCY"` — since the start of this pregnancy (josh-dev, 2026-10-04)
@@ -974,6 +1065,49 @@ Any attribute or coded condition may carry:
 - **`legacy-v0` sessions refuse it** (`horizon PREGNANCY requires the v1 temporal kernel`),
   as they refuse `window_from`; `v1` is the default.
 
+#### `{ "since": "MM-DD" }` — since the most recent occurrence of a date (josh-dev, 2026-10-04)
+
+`[DECISION — Josh 2026-10-04]`: "can we add a calendar check?" — "this season".
+
+```json
+{ "field": "medications", "operator": "count_in_window", "value": "<influenza vaccine RxNorm code>",
+  "system": "RXNORM", "status": "any", "count_threshold": 1, "count_comparison": "less_than",
+  "display": "Influenza vaccine this season", "horizon": { "since": "07-01" } }
+```
+
+- **The window.** Lower bound = 00:00 on the most recent occurrence of that month-day **on
+  or before** the session clock; upper bound = the clock. With `"07-01"`: a session on
+  2026-06-30 looks back to 2025-07-01; a session on 2026-07-01 (from 00:00) or 2026-10-04
+  looks back to 2026-07-01. So the window is between 0 and 365/366 days wide, and it
+  resets on the date — which is the point.
+- **Grammar.** `since` is `"MM-DD"`, two digits each, a real day of a real month (the
+  same parser as `in_season`: `"13-01"`, `"02-30"`, `"9-1"` are import errors). The object
+  takes no other key — `{ "since": …, "days": … }` is an import error. `"02-29"` opens on
+  Feb 29 in a leap year and on Mar 1 in a year without one.
+- **Timezone.** The date and the 00:00 are in the session's timezone — UTC for every
+  session today (see the calendar condition above for what that means at a season's edge).
+- **Where it may be written.** A condition's `horizon` only — everywhere `horizon` is
+  honoured (coded conditions on any field; `lab.*` / `vitals.*` / `allergy.*` attribute
+  conditions; membership, threshold, count, trend and delta operators). **Not** as a
+  pathway-level `temporal_defaults` default (`{ since } is a per-condition horizon`).
+  Exclusive with `window_days` and `window_from`, like any `horizon`; ignored on
+  `patient.*`; not allowed on `encounter.date`.
+- **Needs nothing from the patient.** The window is a function of the session clock alone:
+  nothing can be missing, nothing is asked, and a replayed session resolves the same window.
+- **Dated and undated facts** — the kernel's rules for any bounded window (identical to
+  `{ "days": N }`, pinned by test):
+  - a **lab** is a point: in when its date is on or after the opening date;
+  - a **condition / medication / allergy** is an interval: membership operators
+    (`includes_code`, `not_includes_code`, `equals`, `exists`) are satisfied by a record
+    that *overlaps* the window, so one that started earlier and has no end date counts.
+    `count_in_window` selects on the **start date**, so it counts only what *began* in the
+    window — use it for an event such as a vaccine dose;
+  - an **undated** fact is asserted current: it satisfies membership and threshold reads,
+    and never counts toward an aggregate (`count_in_window` reads 0).
+- **Evidence.** The reason reads `… since 2026-07-01 (this season)` — e.g.
+  `Found 0 matching <code> in medications since 2026-07-01 (this season) (<1)`.
+- **`legacy-v0` sessions refuse it** (`horizon { since } requires the v1 temporal kernel`).
+
 Rules the **builder must enforce** (import accepts the keys but defers value/conflict
 validation to session-creation preflight — a violation would import cleanly and then fail
 at runtime):
@@ -994,7 +1128,8 @@ at runtime):
    window_days"; both-set throws `INVALID_TEMPORAL_DEFAULTS` at preflight). Verified: the
    import validator does NOT catch this.
 2. `horizon` values must be from the grammar above; `status` from its enum. (`"PREGNANCY"`
-   is upper-case like the other named horizons; `"pregnancy"` is `not a horizon`.)
+   is upper-case like the other named horizons; `"pregnancy"` is `not a horizon`. A
+   malformed `{ "since": … }` month-day is an import error.)
 3. `window_days` itself must be a positive integer ≤ 36525 (also preflight-owned).
 
 Authoring guidance: use `window_days` when the *operator* is inherently windowed

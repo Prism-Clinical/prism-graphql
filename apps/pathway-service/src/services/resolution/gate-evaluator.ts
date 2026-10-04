@@ -37,13 +37,16 @@ import type { UncertaintyReason } from './temporal/contract';
 import {
   adaptAttributeCondition,
   adaptCodedCondition,
-  conditionReadsGestationalAge,
+  isCalendarCondition,
+  kernelOnlyHorizon,
+  parseCalendarCondition,
 } from './temporal/condition-adapter';
+import { formatCalendarDate, formatMonthDay, inSeason } from './temporal/calendar';
 import type { AdaptedCondition } from './temporal/condition-adapter';
 import { conditionPolicyFor } from './temporal/gate-policy';
 import type { ConditionPolicy } from './temporal/gate-policy';
-import { PREGNANCY_HORIZON_ATTRIBUTE } from './temporal/evaluation-context';
-import type { PregnancyWindow } from './temporal/evaluation-context';
+import { PREGNANCY_HORIZON_ATTRIBUTE, sessionCalendarDate } from './temporal/evaluation-context';
+import type { PregnancyWindow, SinceWindow } from './temporal/evaluation-context';
 import { selectFacts } from './temporal/select-facts';
 import type { EffectivePolicy, FactDecision } from './temporal/select-facts';
 import {
@@ -633,14 +636,54 @@ function evaluateConditionLegacyMode(
   condition: GateCondition,
   deps: GateEvaluationDeps,
 ): ConditionOutcome {
-  if (conditionReadsGestationalAge(condition)) {
+  // The calendar condition is new, and legacy's attribute path would read
+  // `encounter.date` as an unknown attribute with an unknown operator — a
+  // quiet `false` that reads as "out of season" all year.
+  if (isCalendarCondition(condition)) {
     return {
       satisfied: false,
-      reason: 'horizon PREGNANCY requires the v1 temporal kernel; legacy-v0 cannot evaluate it',
+      reason: 'in_season requires the v1 temporal kernel; legacy-v0 cannot evaluate it',
+      fieldsRead: [(condition as AttributeCondition).attribute],
+    };
+  }
+  const horizon = kernelOnlyHorizon(condition);
+  if (horizon !== null) {
+    return {
+      satisfied: false,
+      reason: `horizon ${horizon} requires the v1 temporal kernel; legacy-v0 cannot evaluate it`,
       fieldsRead: isAttributeCondition(condition) ? [condition.attribute] : [condition.field],
     };
   }
   return evaluateConditionLegacyAdapted(condition, deps);
+}
+
+// ─── encounter.date / in_season ───────────────────────────────────────
+
+/**
+ * "Is the session's calendar date inside this season?"
+ *
+ * Reads the pinned clock and nothing else — no patient context, no fact store,
+ * no cascade — so it is ALWAYS definite: never `indeterminate`, never
+ * `dataUnavailable`, never a question, and the same answer on every replay of
+ * the session. `fieldsRead` names the engine-supplied attribute so the
+ * evidence trail shows what decided the gate.
+ *
+ * The grammar is re-checked here by the same parser import and preflight use;
+ * a condition that fails it was refused at both, so the throw is a backstop.
+ */
+function evaluateCalendar(condition: GateCondition, deps: GateEvaluationDeps): ConditionOutcome {
+  const { from, to } = parseCalendarCondition(condition);
+  const today = sessionCalendarDate(deps.temporalContext);
+  const satisfied = inSeason(today, from, to);
+  return {
+    satisfied,
+    reason:
+      `Session date ${formatCalendarDate(today)} is ${satisfied ? 'within' : 'outside'} ` +
+      `the season ${formatMonthDay(from)} to ${formatMonthDay(to)}`,
+    fieldsRead: [(condition as AttributeCondition).attribute],
+    indeterminate: false,
+    uncertainty: [],
+  };
 }
 
 // ─── horizon: "PREGNANCY" ─────────────────────────────────────────────
@@ -698,11 +741,19 @@ function pregnancyPhrase(w: PregnancyWindow): string {
   return `this pregnancy (since ${w.lmpDate}, ${weeks} week${weeks === 1 ? '' : 's'})`;
 }
 
+/** "since 2026-07-01 (this season)". */
+function sincePhrase(w: SinceWindow): string {
+  return `since ${w.date} (this season)`;
+}
+
 /**
- * Put the pregnancy window on an outcome: the gestational age among what was
- * read (so a changed age re-decides the gate and the evidence trail names it),
- * and the window on the reason. A no-op for every other horizon, so their
- * outcomes keep the exact shape and prose they had.
+ * Put a NAMED window on an outcome.
+ *
+ * PREGNANCY: the gestational age among what was read (so a changed age
+ * re-decides the gate and the evidence trail names it), and the window on the
+ * reason. `{ since }`: the window on the reason only — it reads no patient
+ * datum. A no-op for every other horizon, so their outcomes keep the exact
+ * shape and prose they had.
  */
 function inPregnancy(
   outcome: ConditionOutcome,
@@ -710,7 +761,13 @@ function inPregnancy(
   /** The reason already names the window (`count_in_window` does). */
   reasonNamesWindow = false,
 ): ConditionOutcome {
-  if (resolved.status !== 'RESOLVED' || resolved.pregnancy === undefined) return outcome;
+  if (resolved.status !== 'RESOLVED') return outcome;
+  if (resolved.since !== undefined) {
+    return reasonNamesWindow
+      ? outcome
+      : { ...outcome, reason: `${outcome.reason} ${sincePhrase(resolved.since)}` };
+  }
+  if (resolved.pregnancy === undefined) return outcome;
   return {
     ...outcome,
     reason: reasonNamesWindow
@@ -1192,6 +1249,7 @@ function evaluateAggregateKernel(
   }
   const policy = resolved.policy;
   const pregnancy = resolved.pregnancy;
+  const since = resolved.since;
   const outcome = selectFacts(adapted.selection, deps.factStore, policy);
 
   // Appended to every reason this condition gives, so the date the window
@@ -1289,7 +1347,8 @@ function evaluateAggregateKernel(
       satisfied,
       reason:
         `Found ${matches} matching ${value} in ${field} ` +
-        `within ${windowDescription(policy.horizon, pregnancy)} (${bound})`,
+        // "since 2026-07-01 (this season)" is already a prepositional phrase.
+        `${since ? sincePhrase(since) : `within ${windowDescription(policy.horizon, pregnancy)}`} (${bound})`,
       fieldsRead,
       // Derived, never hard-coded: only an unorderable series is indeterminate,
       // and `count_in_window` never builds one.
@@ -1575,6 +1634,12 @@ function evaluateConditionKernel(
   condition: GateCondition,
   deps: GateEvaluationDeps,
 ): ConditionOutcome {
+  // Before the attribute path: `encounter.date` is attribute-SHAPED, but it is
+  // not patient data and must not reach the adapter or the demographic
+  // fallback (which would read it as a missing attribute).
+  if (isCalendarCondition(condition)) {
+    return evaluateCalendar(condition, deps);
+  }
   if (isAttributeCondition(condition)) {
     return evaluateAttributeKernel(condition, deps);
   }

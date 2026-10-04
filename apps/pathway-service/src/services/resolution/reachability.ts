@@ -2,7 +2,7 @@ import { GateProperties, GateCondition, isAttributeCondition, AttributeCodeMap, 
 import { resolveAttribute } from './attribute-registry';
 import { PatientContext, GraphNode } from '../confidence/types';
 import { GateType } from '../../types';
-import { conditionReadsGestationalAge } from './temporal/condition-adapter';
+import { conditionReadsGestationalAge, isCalendarCondition } from './temporal/condition-adapter';
 import { isUsableGestationalAge, PREGNANCY_HORIZON_ATTRIBUTE } from './temporal/evaluation-context';
 
 /**
@@ -84,6 +84,8 @@ export function hasDataForCondition(
   codeMap: AttributeCodeMap,
 ): boolean {
   if (pregnancyUndated(condition, patient, codeMap)) return false;
+  // The session's calendar date is engine-supplied: always there.
+  if (isCalendarCondition(condition)) return true;
   if (isAttributeCondition(condition)) {
     if (condition.operator === 'exists') return true; // data-independent
     return resolveAttribute(patient, condition.attribute, codeMap).value !== undefined;
@@ -157,6 +159,8 @@ function missingDataForCondition(
 function isDataDependent(c: GateCondition): boolean {
   // A PREGNANCY window depends on the gestational age, whatever the operator.
   if (conditionReadsGestationalAge(c)) return true;
+  // `encounter.date in_season` reads the session clock, not the patient.
+  if (isCalendarCondition(c)) return false;
   return isAttributeCondition(c) ? c.operator !== 'exists' : DATA_DEPENDENT_OPERATORS.has(c.operator);
 }
 

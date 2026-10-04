@@ -64,6 +64,8 @@ import {
 } from '../../services/resolution/pipeline/request';
 import type { ScopedBlocker } from '../../services/resolution/pipeline/types';
 
+import { forgetAnswer, parseRememberAnswer, rememberAnswer, shouldRemember } from '../../services/resolution/remembered-answers';
+
 export interface GateAnswerInput {
   booleanValue?: boolean;
   numericValue?: number;
@@ -314,6 +316,13 @@ function answerChange(session: ResolutionSession, args: { sessionId: string; nod
           : { patientAttributes: { [target.path.split('.').slice(1).join('.')]: value } };
     inputs.additionalContext = mergeAdditionalContext(inputs.additionalContext, fragment);
     if (pending.datumKey) inputs.gateAnswers.delete(declinedKeyFor(pending.datumKey));
+    // A gate may ask for its answer to be remembered for the patient
+    // (`remember_answer`): kept when the answer is one it names, withdrawn
+    // when the provider answers otherwise.
+    const rule = target.kind === 'attribute'
+      ? parseRememberAnswer((node.properties as Record<string, unknown> | undefined)?.remember_answer)
+      : null;
+    const attribute = target.kind === 'attribute' ? target.path.split('.').slice(1).join('.') : '';
     return {
       inputs,
       event: {
@@ -323,6 +332,16 @@ function answerChange(session: ResolutionSession, args: { sessionId: string; nod
           answerType: datumAnswerType(pending), assertedAsOf,
         },
       },
+      ...(rule && !('problem' in rule)
+        ? {
+            record: (db: Db) => shouldRemember(rule, value)
+              ? rememberAnswer(db, {
+                  patientId: session.patientId, attribute, value: value as string | number | boolean,
+                  scope: rule.scope, answeredAsOf: assertedAsOf, answeredBy: session.providerId, pathwayId: session.pathwayId,
+                })
+              : forgetAnswer(db, session.patientId, attribute),
+          }
+        : {}),
     };
   }
 
