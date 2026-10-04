@@ -167,10 +167,15 @@ function randomPatient(pw: any, f: Facts): Patient {
   const attrs: Record<string, unknown> = {};
   for (const [key, vs] of f.attrs) if (rnd() < 0.6) attrs[key] = pick(vs);
   const role = [...f.roles][0];
+  // Medication lists sparse and dense too, for the same reason as `density`
+  // above (anemia v12: DP-1 needs NONE of nine iron codes — 4% of patients at a
+  // flat 30% each). Drawn only when a gate reads medications, so a pathway
+  // without such gates generates exactly the patients it did before.
+  const medDensity = f.meds.size > 0 ? pick([0, 0.03, 0.3]) : 0;
   return {
     ctx: {
       patientId: 'audit', conditionCodes,
-      medications: [...f.meds].filter(() => rnd() < 0.3).map((code) => ({ code: concrete(code), system: 'RXNORM' })),
+      medications: [...f.meds].filter(() => rnd() < medDensity).map((code) => ({ code: concrete(code), system: 'RXNORM' })),
       allergies: [...f.allergies].filter(() => rnd() < 0.3).map((code) => ({ code, system: 'SNOMED' })),
       vitalSigns, labResults,
       patientAttributes: normalizePatientAttributes(attrs as never) ?? {},

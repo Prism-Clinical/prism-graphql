@@ -3,7 +3,7 @@
   "pathway": {
     "logical_id": "anemia-in-pregnancy",
     "title": "Anemia in Pregnancy \u2014 Classification and Treatment",
-    "version": "11",
+    "version": "12",
     "category": "OBSTETRIC",
     "scope": "Outpatient prenatal care, from diagnosed anemia through postpartum handoff. Screening is upstream of this pathway.",
     "target_population": "Adult pregnant patients with diagnosed anemia; hemoglobinopathy disease, thalassemia syndromes, and CKD-associated anemia are detected and routed out.",
@@ -152,7 +152,7 @@
         "step_number": 7,
         "display_number": "1.7",
         "title": "Microcytic anemia: iron strategy",
-        "description": "Entered only via gate-microcytic (MCV < 80 fL). Hosts DP-1: empiric oral iron vs confirmatory iron studies first. Normocytic and macrocytic anemia never reach this step; they go to Steps 1.3 / 1.4 through their own MCV gates. With hemoglobinopathy disease on file the empiric branch opens iron studies only (Step 1.8); the confirmatory branch leads to the same iron treatment as any confirmed iron deficiency."
+        "description": "Entered only via gate-no-iron-on-list on Step 1.10 (MCV < 80 fL and no iron product on the medication list). Hosts DP-1: empiric oral iron vs confirmatory iron studies first. Normocytic and macrocytic anemia never reach this step; they go to Steps 1.3 / 1.4 through their own MCV gates. A patient already on oral iron goes to Step 2.14 and one with IV iron on the medication list to Step 2.18, neither asked DP-1. With hemoglobinopathy disease on file the empiric branch opens iron studies only (Step 1.8); the confirmatory branch leads to the same iron treatment as any confirmed iron deficiency."
       }
     },
     {
@@ -435,6 +435,94 @@
       }
     },
     {
+      "id": "step-1-10",
+      "type": "Step",
+      "properties": {
+        "stage_number": 1,
+        "step_number": 10,
+        "display_number": "1.10",
+        "title": "Microcytic anemia: is iron already on the medication list?",
+        "description": "Entered only via gate-microcytic (MCV < 80 fL). Reads the medication list and asks nothing. No iron product on the list (gate-no-iron-on-list) opens Step 1.7 and DP-1. An oral iron product and no IV iron (gate-on-oral-iron) opens Step 2.14: she continues the oral iron she is on and its response is assessed, with DP-1 and DP-3 not asked. An IV iron product (gate-iv-iron-on-list, with or without oral iron) opens Step 2.18, follow-up after IV iron. Exactly one of the three opens."
+      }
+    },
+    {
+      "id": "step-2-14",
+      "type": "Step",
+      "properties": {
+        "stage_number": 2,
+        "step_number": 14,
+        "display_number": "2.14",
+        "title": "Already on oral iron: continue it and assess the response",
+        "description": "Entered only via gate-on-oral-iron on Step 1.10: MCV < 80 fL and the medication list holds an oral iron product and no IV iron. DP-1 and DP-3 are not asked, and no oral iron is initiated or chosen here: she continues the oral iron she is on (Guid-7). Hosts the same response assessment as Step 2.3, on its own copies of the gates: responding = Hgb risen \u2265 1 g/dL since oral iron started, or Hgb at target (\u2265 11 g/dL; \u2265 10.5 in the second trimester) \u2192 Step 2.15; not responding = risen < 1 g/dL and below target \u2192 Step 2.16. The start date is read from a dated oral iron order, and asked for when there is none; the rise is not judged before day 14 of oral iron. Also asks whether to order confirmatory iron studies now (yes \u2192 Step 1.12)."
+      }
+    },
+    {
+      "id": "step-1-12",
+      "type": "Step",
+      "properties": {
+        "stage_number": 1,
+        "step_number": 12,
+        "display_number": "1.12",
+        "title": "Confirmatory iron studies (already on oral iron)",
+        "description": "Entered only when the provider answers yes to gate-confirm-studies-on-iron on Step 2.14. Orders ferritin and iron/TIBC/saturation, the same tests as Step 1.2 (own lab nodes). Nothing on this route reads the results: oral iron continues whatever the ferritin."
+      }
+    },
+    {
+      "id": "step-2-15",
+      "type": "Step",
+      "properties": {
+        "stage_number": 2,
+        "step_number": 15,
+        "display_number": "2.15",
+        "title": "Maintenance & surveillance (already on oral iron)",
+        "description": "Copy of Step 2.4 for a patient already on oral iron; entered only via gate-hgb-response-on-iron on Step 2.14."
+      }
+    },
+    {
+      "id": "step-2-16",
+      "type": "Step",
+      "properties": {
+        "stage_number": 2,
+        "step_number": 16,
+        "display_number": "2.16",
+        "title": "Nonresponse management (already on oral iron)",
+        "description": "Copy of Step 2.6 for a patient already on oral iron. Reached only when the Step 2.14 recheck shows no response to oral iron (hemoglobin rise < 1 g/dL at least 14 days after starting it, and below the trimester target). Hosts DP-4: expanded workup, and IV iron after the first trimester."
+      }
+    },
+    {
+      "id": "step-1-11",
+      "type": "Step",
+      "properties": {
+        "stage_number": 1,
+        "step_number": 11,
+        "display_number": "1.11",
+        "title": "Expanded / nonresponse workup (already on oral iron)",
+        "description": "Copy of Step 1.5 for a patient already on oral iron; DP-4's branch."
+      }
+    },
+    {
+      "id": "step-2-17",
+      "type": "Step",
+      "properties": {
+        "stage_number": 2,
+        "step_number": 17,
+        "display_number": "2.17",
+        "title": "IV iron therapy (after nonresponse, already on oral iron)",
+        "description": "Copy of Step 2.5 for a patient already on oral iron: IV iron after no response to oral iron, from 14 0/7 weeks (gate-iv-iron-ga-on-iron on DP-4)."
+      }
+    },
+    {
+      "id": "step-2-18",
+      "type": "Step",
+      "properties": {
+        "stage_number": 2,
+        "step_number": 18,
+        "display_number": "2.18",
+        "title": "IV iron on the medication list: follow-up",
+        "description": "Entered only via gate-iv-iron-on-list on Step 1.10: MCV < 80 fL and the medication list holds an IV iron product (with or without oral iron). DP-1 and DP-3 are not asked, and neither IV iron nor an oral iron trial is started from this step. Orders the follow-up CBC (hemoglobin recheck after IV iron)."
+      }
+    },
+    {
       "id": "dp-1",
       "type": "DecisionPoint",
       "properties": {
@@ -501,6 +589,14 @@
       }
     },
     {
+      "id": "dp-4",
+      "type": "DecisionPoint",
+      "properties": {
+        "title": "Nonresponse management (already on oral iron)",
+        "branch_mode": "one_of"
+      }
+    },
+    {
       "id": "crit-3a",
       "type": "Criterion",
       "properties": {
@@ -526,6 +622,34 @@
       "type": "Criterion",
       "properties": {
         "description": "Anemia diagnosed at 34 weeks or later (iron deficiency confirmed, or presumed on the empiric arm) \u2014 too little time for an oral trial; IV iron (on the empiric arm, once a ferritin < 30 ng/mL confirms iron deficiency; oral iron meanwhile)"
+      }
+    },
+    {
+      "id": "crit-4a",
+      "type": "Criterion",
+      "properties": {
+        "description": "Intolerance or nonadherence despite coaching \u2014 consider IV iron"
+      }
+    },
+    {
+      "id": "crit-4b",
+      "type": "Criterion",
+      "properties": {
+        "description": "Suspected malabsorption (enteric-coated tablets, antacids, bariatric surgery, IBD) \u2014 consider IV iron"
+      }
+    },
+    {
+      "id": "crit-4c",
+      "type": "Criterion",
+      "properties": {
+        "description": "Suspected incorrect diagnosis or blood loss \u2014 expanded workup"
+      }
+    },
+    {
+      "id": "crit-4d",
+      "type": "Criterion",
+      "properties": {
+        "description": "Moderate\u2013severe iron deficiency anemia within ~4\u20136 weeks of anticipated delivery, or oral failure near term \u2014 IV iron"
       }
     },
     {
@@ -890,6 +1014,10 @@
                 {
                   "system": "RXNORM",
                   "code": "284202"
+                },
+                {
+                  "system": "RXNORM",
+                  "code": "311975"
                 }
               ],
               "baseline_days": 28,
@@ -973,6 +1101,10 @@
                 {
                   "system": "RXNORM",
                   "code": "284202"
+                },
+                {
+                  "system": "RXNORM",
+                  "code": "311975"
                 }
               ],
               "baseline_days": 28,
@@ -1650,6 +1782,459 @@
       }
     },
     {
+      "id": "gate-no-iron-on-list",
+      "type": "Gate",
+      "properties": {
+        "title": "No iron on the medication list \u2014 iron strategy is chosen (DP-1)",
+        "gate_type": "compound",
+        "default_behavior": "skip",
+        "on_unresolved": "default",
+        "operator": "AND",
+        "conditions": [
+          {
+            "field": "medications",
+            "operator": "not_includes_code",
+            "value": "310325",
+            "system": "RXNORM",
+            "horizon": "LIFETIME",
+            "status": "any",
+            "display": "Ferrous sulfate 325 mg tablet"
+          },
+          {
+            "field": "medications",
+            "operator": "not_includes_code",
+            "value": "198630",
+            "system": "RXNORM",
+            "horizon": "LIFETIME",
+            "status": "any",
+            "display": "Ferrous gluconate 324 mg tablet"
+          },
+          {
+            "field": "medications",
+            "operator": "not_includes_code",
+            "value": "284202",
+            "system": "RXNORM",
+            "horizon": "LIFETIME",
+            "status": "any",
+            "display": "Ferrous fumarate 324 mg tablet"
+          },
+          {
+            "field": "medications",
+            "operator": "not_includes_code",
+            "value": "311975",
+            "system": "RXNORM",
+            "horizon": "LIFETIME",
+            "status": "any",
+            "display": "Ferrous sulfate (ingredient)"
+          },
+          {
+            "field": "medications",
+            "operator": "not_includes_code",
+            "value": "1741261",
+            "system": "RXNORM",
+            "horizon": "LIFETIME",
+            "status": "any",
+            "display": "Iron sucrose"
+          },
+          {
+            "field": "medications",
+            "operator": "not_includes_code",
+            "value": "2274409",
+            "system": "RXNORM",
+            "horizon": "LIFETIME",
+            "status": "any",
+            "display": "Ferric derisomaltose"
+          },
+          {
+            "field": "medications",
+            "operator": "not_includes_code",
+            "value": "1435169",
+            "system": "RXNORM",
+            "horizon": "LIFETIME",
+            "status": "any",
+            "display": "Ferric carboxymaltose 750 mg/15 mL"
+          },
+          {
+            "field": "medications",
+            "operator": "not_includes_code",
+            "value": "1311224",
+            "system": "RXNORM",
+            "horizon": "LIFETIME",
+            "status": "any",
+            "display": "Ferric carboxymaltose (ingredient)"
+          },
+          {
+            "field": "medications",
+            "operator": "not_includes_code",
+            "value": "206216",
+            "system": "RXNORM",
+            "horizon": "LIFETIME",
+            "status": "any",
+            "display": "Iron dextran"
+          }
+        ]
+      }
+    },
+    {
+      "id": "gate-on-oral-iron",
+      "type": "Gate",
+      "properties": {
+        "title": "Already on oral iron (and no IV iron on the medication list)",
+        "gate_type": "compound",
+        "default_behavior": "skip",
+        "on_unresolved": "default",
+        "operator": "AND",
+        "conditions": [
+          {
+            "operator": "OR",
+            "display": "Oral iron on the medication list",
+            "conditions": [
+              {
+                "field": "medications",
+                "operator": "includes_code",
+                "value": "310325",
+                "system": "RXNORM",
+                "horizon": "LIFETIME",
+                "status": "any",
+                "display": "Ferrous sulfate 325 mg tablet"
+              },
+              {
+                "field": "medications",
+                "operator": "includes_code",
+                "value": "198630",
+                "system": "RXNORM",
+                "horizon": "LIFETIME",
+                "status": "any",
+                "display": "Ferrous gluconate 324 mg tablet"
+              },
+              {
+                "field": "medications",
+                "operator": "includes_code",
+                "value": "284202",
+                "system": "RXNORM",
+                "horizon": "LIFETIME",
+                "status": "any",
+                "display": "Ferrous fumarate 324 mg tablet"
+              },
+              {
+                "field": "medications",
+                "operator": "includes_code",
+                "value": "311975",
+                "system": "RXNORM",
+                "horizon": "LIFETIME",
+                "status": "any",
+                "display": "Ferrous sulfate (ingredient)"
+              }
+            ]
+          },
+          {
+            "field": "medications",
+            "operator": "not_includes_code",
+            "value": "1741261",
+            "system": "RXNORM",
+            "horizon": "LIFETIME",
+            "status": "any",
+            "display": "Iron sucrose"
+          },
+          {
+            "field": "medications",
+            "operator": "not_includes_code",
+            "value": "2274409",
+            "system": "RXNORM",
+            "horizon": "LIFETIME",
+            "status": "any",
+            "display": "Ferric derisomaltose"
+          },
+          {
+            "field": "medications",
+            "operator": "not_includes_code",
+            "value": "1435169",
+            "system": "RXNORM",
+            "horizon": "LIFETIME",
+            "status": "any",
+            "display": "Ferric carboxymaltose 750 mg/15 mL"
+          },
+          {
+            "field": "medications",
+            "operator": "not_includes_code",
+            "value": "1311224",
+            "system": "RXNORM",
+            "horizon": "LIFETIME",
+            "status": "any",
+            "display": "Ferric carboxymaltose (ingredient)"
+          },
+          {
+            "field": "medications",
+            "operator": "not_includes_code",
+            "value": "206216",
+            "system": "RXNORM",
+            "horizon": "LIFETIME",
+            "status": "any",
+            "display": "Iron dextran"
+          }
+        ]
+      }
+    },
+    {
+      "id": "gate-iv-iron-on-list",
+      "type": "Gate",
+      "properties": {
+        "title": "IV iron on the medication list",
+        "gate_type": "compound",
+        "default_behavior": "skip",
+        "on_unresolved": "default",
+        "operator": "OR",
+        "conditions": [
+          {
+            "field": "medications",
+            "operator": "includes_code",
+            "value": "1741261",
+            "system": "RXNORM",
+            "horizon": "LIFETIME",
+            "status": "any",
+            "display": "Iron sucrose"
+          },
+          {
+            "field": "medications",
+            "operator": "includes_code",
+            "value": "2274409",
+            "system": "RXNORM",
+            "horizon": "LIFETIME",
+            "status": "any",
+            "display": "Ferric derisomaltose"
+          },
+          {
+            "field": "medications",
+            "operator": "includes_code",
+            "value": "1435169",
+            "system": "RXNORM",
+            "horizon": "LIFETIME",
+            "status": "any",
+            "display": "Ferric carboxymaltose 750 mg/15 mL"
+          },
+          {
+            "field": "medications",
+            "operator": "includes_code",
+            "value": "1311224",
+            "system": "RXNORM",
+            "horizon": "LIFETIME",
+            "status": "any",
+            "display": "Ferric carboxymaltose (ingredient)"
+          },
+          {
+            "field": "medications",
+            "operator": "includes_code",
+            "value": "206216",
+            "system": "RXNORM",
+            "horizon": "LIFETIME",
+            "status": "any",
+            "display": "Iron dextran"
+          }
+        ]
+      }
+    },
+    {
+      "id": "gate-confirm-studies-on-iron",
+      "type": "Gate",
+      "properties": {
+        "title": "Order confirmatory iron studies now?",
+        "gate_type": "question",
+        "default_behavior": "skip",
+        "prompt": "She is already on oral iron. Order confirmatory iron studies (ferritin, iron/TIBC/saturation) now?",
+        "answer_type": "BOOLEAN"
+      }
+    },
+    {
+      "id": "gate-hgb-response-on-iron",
+      "type": "Gate",
+      "properties": {
+        "title": "Responding to oral iron (Hgb +\u22651 g/dL since start, or at trimester target)",
+        "gate_type": "compound",
+        "default_behavior": "skip",
+        "on_unresolved": "ask",
+        "operator": "OR",
+        "conditions": [
+          {
+            "field": "labs",
+            "operator": "delta_from_baseline",
+            "value": "718-7",
+            "system": "LOINC",
+            "display": "Hemoglobin (g/dL)",
+            "delta_threshold": 1.0,
+            "delta_comparison": "at_least",
+            "min_points": 2,
+            "window_from": {
+              "event": "medication_start",
+              "clinical_role": "oral-iron-repletion",
+              "label": "oral iron",
+              "codes": [
+                {
+                  "system": "RXNORM",
+                  "code": "310325"
+                },
+                {
+                  "system": "RXNORM",
+                  "code": "198630"
+                },
+                {
+                  "system": "RXNORM",
+                  "code": "284202"
+                },
+                {
+                  "system": "RXNORM",
+                  "code": "311975"
+                }
+              ],
+              "baseline_days": 28,
+              "min_days_since_anchor": 14
+            }
+          },
+          {
+            "operator": "OR",
+            "display": "At target (Hgb \u2265 11, or \u2265 10.5 in trimester 2)",
+            "conditions": [
+              {
+                "field": "labs",
+                "operator": "greater_than",
+                "value": "718-7",
+                "system": "LOINC",
+                "display": "Hemoglobin (g/dL)",
+                "threshold": 10.95,
+                "horizon": {
+                  "days": 28
+                }
+              },
+              {
+                "operator": "AND",
+                "display": "Trimester 2 and Hgb \u2265 10.5",
+                "conditions": [
+                  {
+                    "attribute": "patient.trimester",
+                    "operator": "equals",
+                    "value": 2
+                  },
+                  {
+                    "field": "labs",
+                    "operator": "greater_than",
+                    "value": "718-7",
+                    "system": "LOINC",
+                    "display": "Hemoglobin (g/dL)",
+                    "threshold": 10.45,
+                    "horizon": {
+                      "days": 28
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "gate-hgb-nonresponse-on-iron",
+      "type": "Gate",
+      "properties": {
+        "title": "Not responding to oral iron (Hgb +<1 g/dL since start, and below trimester target)",
+        "gate_type": "compound",
+        "default_behavior": "skip",
+        "on_unresolved": "ask",
+        "operator": "AND",
+        "conditions": [
+          {
+            "field": "labs",
+            "operator": "delta_from_baseline",
+            "value": "718-7",
+            "system": "LOINC",
+            "display": "Hemoglobin (g/dL)",
+            "delta_threshold": 1.0,
+            "delta_comparison": "less_than",
+            "min_points": 2,
+            "window_from": {
+              "event": "medication_start",
+              "clinical_role": "oral-iron-repletion",
+              "label": "oral iron",
+              "codes": [
+                {
+                  "system": "RXNORM",
+                  "code": "310325"
+                },
+                {
+                  "system": "RXNORM",
+                  "code": "198630"
+                },
+                {
+                  "system": "RXNORM",
+                  "code": "284202"
+                },
+                {
+                  "system": "RXNORM",
+                  "code": "311975"
+                }
+              ],
+              "baseline_days": 28,
+              "min_days_since_anchor": 14
+            }
+          },
+          {
+            "operator": "AND",
+            "display": "Below target (Hgb < 11, and < 10.5 unless trimester 2)",
+            "conditions": [
+              {
+                "field": "labs",
+                "operator": "less_than",
+                "value": "718-7",
+                "system": "LOINC",
+                "display": "Hemoglobin (g/dL)",
+                "threshold": 10.95,
+                "horizon": {
+                  "days": 28
+                }
+              },
+              {
+                "operator": "OR",
+                "display": "Not trimester 2, or Hgb < 10.5",
+                "conditions": [
+                  {
+                    "attribute": "patient.trimester",
+                    "operator": "not_equals",
+                    "value": 2
+                  },
+                  {
+                    "field": "labs",
+                    "operator": "less_than",
+                    "value": "718-7",
+                    "system": "LOINC",
+                    "display": "Hemoglobin (g/dL)",
+                    "threshold": 10.45,
+                    "horizon": {
+                      "days": 28
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "gate-iv-iron-ga-on-iron",
+      "type": "Gate",
+      "properties": {
+        "title": "Beyond first trimester (GA \u2265 14 0/7 weeks)",
+        "gate_type": "patient_attribute",
+        "default_behavior": "skip",
+        "on_unresolved": "ask",
+        "condition": {
+          "attribute": "patient.gestational_age_weeks",
+          "operator": "greater_or_equal",
+          "value": 14,
+          "unit": "weeks"
+        }
+      }
+    },
+    {
       "id": "med-1",
       "type": "Medication",
       "properties": {
@@ -1870,6 +2455,62 @@
       }
     },
     {
+      "id": "med-17",
+      "type": "Medication",
+      "properties": {
+        "name": "Iron sucrose (Venofer)",
+        "role": "second_line",
+        "route": "IV",
+        "instructions": "Label indication is CKD \u2014 pregnancy use off-label. Multiple visits; historically most-used in pregnancy.",
+        "clinical_role": "iv-iron-repletion",
+        "dose": "200 mg IV per session \u00d7 5 within 14 days (~1,000 mg total)",
+        "frequency": "per protocol",
+        "duration": "until repleted"
+      }
+    },
+    {
+      "id": "med-18",
+      "type": "Medication",
+      "properties": {
+        "name": "Ferric derisomaltose (Monoferric)",
+        "role": "second_line",
+        "route": "IV",
+        "instructions": "Single-visit total replacement preferred. Hypophosphatemia 3.5%.",
+        "clinical_role": "iv-iron-repletion",
+        "dose": "1,000 mg IV single dose over \u226520 min (\u226550 kg; 20 mg/kg if <50 kg)",
+        "frequency": "single dose",
+        "duration": "single course"
+      }
+    },
+    {
+      "id": "med-19",
+      "type": "Medication",
+      "properties": {
+        "name": "Ferric carboxymaltose (Injectafer)",
+        "role": "second_line",
+        "route": "IV",
+        "instructions": "Symptomatic hypophosphatemia 2.1%; osteomalacia postmarketing \u2014 check phosphate on repeat courses.",
+        "clinical_role": "iv-iron-repletion",
+        "dose": "750 mg \u00d7 2 \u22657 days apart (total 1,500 mg), or single 15 mg/kg \u22641,000 mg",
+        "frequency": "per protocol",
+        "duration": "single course"
+      }
+    },
+    {
+      "id": "med-20",
+      "type": "Medication",
+      "properties": {
+        "name": "Low-molecular-weight iron dextran (INFeD)",
+        "role": "acceptable",
+        "route": "IV",
+        "instructions": "BOXED WARNING: anaphylaxis. Mandatory 25 mg test dose. Single-visit total-dose infusion exceeds the 100 mg/day label \u2014 flag for local policy.",
+        "clinical_role": "iv-iron-repletion",
+        "dose": "Total-dose by formula",
+        "frequency": "per protocol",
+        "duration": "single course"
+      }
+    },
+    {
       "id": "lab-1",
       "type": "LabTest",
       "properties": {
@@ -2050,6 +2691,66 @@
       }
     },
     {
+      "id": "lab-19",
+      "type": "LabTest",
+      "properties": {
+        "name": "CBC with indices",
+        "code": "58410-2",
+        "system": "LOINC",
+        "specimen": "Venous blood"
+      }
+    },
+    {
+      "id": "lab-22",
+      "type": "LabTest",
+      "properties": {
+        "name": "Ferritin, serum",
+        "code": "2276-4",
+        "system": "LOINC",
+        "specimen": "Serum"
+      }
+    },
+    {
+      "id": "lab-23",
+      "type": "LabTest",
+      "properties": {
+        "name": "Iron, TIBC and transferrin saturation",
+        "code": "2498-4",
+        "system": "LOINC",
+        "specimen": "Serum"
+      }
+    },
+    {
+      "id": "lab-20",
+      "type": "LabTest",
+      "properties": {
+        "name": "Peripheral blood smear",
+        "code": "34994-4",
+        "system": "LOINC",
+        "specimen": "Whole blood"
+      }
+    },
+    {
+      "id": "lab-21",
+      "type": "LabTest",
+      "properties": {
+        "name": "Hemoglobin electrophoresis",
+        "code": "43113-0",
+        "system": "LOINC",
+        "specimen": "Whole blood"
+      }
+    },
+    {
+      "id": "lab-24",
+      "type": "LabTest",
+      "properties": {
+        "name": "CBC with indices",
+        "code": "58410-2",
+        "system": "LOINC",
+        "specimen": "Venous blood"
+      }
+    },
+    {
       "id": "proc-1",
       "type": "Procedure",
       "properties": {
@@ -2113,6 +2814,24 @@
       }
     },
     {
+      "id": "guid-7",
+      "type": "Guidance",
+      "properties": {
+        "topic": "Already on oral iron: continue it",
+        "category": "treatment-planning",
+        "instructions": "The medication list holds an oral iron product. Continue the oral iron she is taking: do not start a second oral iron product, and there is no choice to make between ferrous sulfate, ferrous gluconate and ferrous fumarate. Her response is read from the hemoglobin recheck 2\u20134 weeks after oral iron started: a rise of at least 1 g/dL, or hemoglobin at target, is a response; otherwise nonresponse management follows. Confirmatory iron studies (ferritin, iron/TIBC/saturation) are optional on this route and are ordered only if chosen."
+      }
+    },
+    {
+      "id": "guid-8",
+      "type": "Guidance",
+      "properties": {
+        "topic": "IV iron already given: follow up, do not restart",
+        "category": "treatment-planning",
+        "instructions": "The medication list holds an IV iron product, so IV iron has been given. Do not start IV iron again or an oral iron trial on the strength of this pathway. Recheck hemoglobin about 4 weeks after the IV iron; persistent anemia prompts hematology referral or re-evaluation of the diagnosis."
+      }
+    },
+    {
       "id": "qm-1",
       "type": "QualityMetric",
       "properties": {
@@ -2170,6 +2889,30 @@
     },
     {
       "id": "sched-6",
+      "type": "Schedule",
+      "properties": {
+        "interval": "~4 weeks after IV iron",
+        "description": "Hemoglobin recheck; persistent anemia prompts hematology referral or re-evaluation of the diagnosis."
+      }
+    },
+    {
+      "id": "sched-7",
+      "type": "Schedule",
+      "properties": {
+        "interval": "2\u20134 weeks after starting oral iron",
+        "description": "Hemoglobin/hematocrit recheck; a rise < 1 g/dL with Hgb still below target is nonresponse and routes to nonresponse management (Step 2.14 response check, already on oral iron)."
+      }
+    },
+    {
+      "id": "sched-8",
+      "type": "Schedule",
+      "properties": {
+        "interval": "~4 weeks after IV iron",
+        "description": "Hemoglobin recheck; persistent anemia prompts hematology referral or re-evaluation of the diagnosis."
+      }
+    },
+    {
+      "id": "sched-9",
       "type": "Schedule",
       "properties": {
         "interval": "~4 weeks after IV iron",
@@ -2949,7 +3692,7 @@
     },
     {
       "from": "gate-microcytic",
-      "to": "step-1-7",
+      "to": "step-1-10",
       "type": "BRANCHES_TO"
     },
     {
@@ -4741,6 +5484,531 @@
       "from": "crit-3d",
       "to": "ev-1",
       "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-1-10",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-1-10",
+      "to": "gate-no-iron-on-list",
+      "type": "HAS_GATE"
+    },
+    {
+      "from": "gate-no-iron-on-list",
+      "to": "step-1-7",
+      "type": "BRANCHES_TO"
+    },
+    {
+      "from": "step-1-10",
+      "to": "gate-on-oral-iron",
+      "type": "HAS_GATE"
+    },
+    {
+      "from": "gate-on-oral-iron",
+      "to": "step-2-14",
+      "type": "BRANCHES_TO"
+    },
+    {
+      "from": "step-1-10",
+      "to": "gate-iv-iron-on-list",
+      "type": "HAS_GATE"
+    },
+    {
+      "from": "gate-iv-iron-on-list",
+      "to": "step-2-18",
+      "type": "BRANCHES_TO"
+    },
+    {
+      "from": "step-2-14",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-2-14",
+      "to": "ev-3",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "guid-7",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "guid-7",
+      "to": "ev-3",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-2-14",
+      "to": "guid-7",
+      "type": "HAS_GUIDANCE"
+    },
+    {
+      "from": "lab-19",
+      "to": "code-loinc-58410-2",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "lab-19",
+      "to": "code-loinc-718-7",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "lab-19",
+      "to": "code-loinc-4544-3",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "lab-19",
+      "to": "code-loinc-787-2",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "lab-19",
+      "to": "code-cpt-85025",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "lab-19",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-2-14",
+      "to": "lab-19",
+      "type": "HAS_LAB_TEST"
+    },
+    {
+      "from": "step-2-14",
+      "to": "sched-7",
+      "type": "HAS_SCHEDULE"
+    },
+    {
+      "from": "step-2-14",
+      "to": "gate-confirm-studies-on-iron",
+      "type": "HAS_GATE"
+    },
+    {
+      "from": "gate-confirm-studies-on-iron",
+      "to": "step-1-12",
+      "type": "BRANCHES_TO"
+    },
+    {
+      "from": "step-1-12",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-1-12",
+      "to": "ev-5",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "lab-22",
+      "to": "code-loinc-2276-4",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "lab-22",
+      "to": "code-cpt-82728",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "lab-22",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "lab-22",
+      "to": "ev-5",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-1-12",
+      "to": "lab-22",
+      "type": "HAS_LAB_TEST"
+    },
+    {
+      "from": "lab-23",
+      "to": "code-loinc-2498-4",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "lab-23",
+      "to": "code-loinc-2500-7",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "lab-23",
+      "to": "code-loinc-2502-3",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "lab-23",
+      "to": "code-cpt-83540",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "lab-23",
+      "to": "code-cpt-83550",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "lab-23",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-1-12",
+      "to": "lab-23",
+      "type": "HAS_LAB_TEST"
+    },
+    {
+      "from": "step-2-14",
+      "to": "gate-hgb-response-on-iron",
+      "type": "HAS_GATE"
+    },
+    {
+      "from": "gate-hgb-response-on-iron",
+      "to": "step-2-15",
+      "type": "BRANCHES_TO"
+    },
+    {
+      "from": "step-2-14",
+      "to": "gate-hgb-nonresponse-on-iron",
+      "type": "HAS_GATE"
+    },
+    {
+      "from": "gate-hgb-nonresponse-on-iron",
+      "to": "step-2-16",
+      "type": "BRANCHES_TO"
+    },
+    {
+      "from": "step-2-15",
+      "to": "ev-3",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-2-16",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-2-16",
+      "to": "ev-3",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-2-16",
+      "to": "ev-6",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "dp-4",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "dp-4",
+      "to": "ev-6",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-2-16",
+      "to": "dp-4",
+      "type": "HAS_DECISION_POINT"
+    },
+    {
+      "from": "crit-4a",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "crit-4a",
+      "to": "ev-5",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "dp-4",
+      "to": "crit-4a",
+      "type": "HAS_CRITERION"
+    },
+    {
+      "from": "crit-4b",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "crit-4b",
+      "to": "ev-8",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "dp-4",
+      "to": "crit-4b",
+      "type": "HAS_CRITERION"
+    },
+    {
+      "from": "crit-4c",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "dp-4",
+      "to": "crit-4c",
+      "type": "HAS_CRITERION"
+    },
+    {
+      "from": "crit-4d",
+      "to": "ev-6",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "crit-4d",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "dp-4",
+      "to": "crit-4d",
+      "type": "HAS_CRITERION"
+    },
+    {
+      "from": "dp-4",
+      "to": "step-1-11",
+      "type": "BRANCHES_TO"
+    },
+    {
+      "from": "crit-4c",
+      "to": "step-1-11",
+      "type": "SELECTS_BRANCH"
+    },
+    {
+      "from": "step-1-11",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-1-11",
+      "to": "ev-4",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "lab-20",
+      "to": "code-loinc-34994-4",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "lab-20",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-1-11",
+      "to": "lab-20",
+      "type": "HAS_LAB_TEST"
+    },
+    {
+      "from": "lab-21",
+      "to": "code-loinc-43113-0",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "lab-21",
+      "to": "code-cpt-83020",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "lab-21",
+      "to": "ev-4",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-1-11",
+      "to": "lab-21",
+      "type": "HAS_LAB_TEST"
+    },
+    {
+      "from": "dp-4",
+      "to": "gate-iv-iron-ga-on-iron",
+      "type": "HAS_GATE"
+    },
+    {
+      "from": "gate-iv-iron-ga-on-iron",
+      "to": "step-2-17",
+      "type": "BRANCHES_TO"
+    },
+    {
+      "from": "step-2-17",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-2-17",
+      "to": "ev-5",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-2-17",
+      "to": "ev-7",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-2-17",
+      "to": "ev-22",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "med-17",
+      "to": "code-rxnorm-1741261",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "med-17",
+      "to": "ev-5",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "med-17",
+      "to": "ev-22",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-2-17",
+      "to": "med-17",
+      "type": "USES_MEDICATION"
+    },
+    {
+      "from": "med-18",
+      "to": "code-rxnorm-2274409",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "med-18",
+      "to": "ev-5",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "med-18",
+      "to": "ev-22",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-2-17",
+      "to": "med-18",
+      "type": "USES_MEDICATION"
+    },
+    {
+      "from": "med-19",
+      "to": "code-rxnorm-1435169",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "med-19",
+      "to": "ev-5",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "med-19",
+      "to": "ev-22",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-2-17",
+      "to": "med-19",
+      "type": "USES_MEDICATION"
+    },
+    {
+      "from": "med-20",
+      "to": "code-rxnorm-206216",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "med-20",
+      "to": "ev-5",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "med-20",
+      "to": "ev-22",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-2-17",
+      "to": "med-20",
+      "type": "USES_MEDICATION"
+    },
+    {
+      "from": "step-2-17",
+      "to": "sched-8",
+      "type": "HAS_SCHEDULE"
+    },
+    {
+      "from": "step-2-18",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-2-18",
+      "to": "ev-5",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "guid-8",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "guid-8",
+      "to": "ev-5",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-2-18",
+      "to": "guid-8",
+      "type": "HAS_GUIDANCE"
+    },
+    {
+      "from": "lab-24",
+      "to": "code-loinc-58410-2",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "lab-24",
+      "to": "code-loinc-718-7",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "lab-24",
+      "to": "code-loinc-4544-3",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "lab-24",
+      "to": "code-loinc-787-2",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "lab-24",
+      "to": "code-cpt-85025",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "lab-24",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-2-18",
+      "to": "lab-24",
+      "type": "HAS_LAB_TEST"
+    },
+    {
+      "from": "step-2-18",
+      "to": "sched-9",
+      "type": "HAS_SCHEDULE"
     }
   ]
 }
