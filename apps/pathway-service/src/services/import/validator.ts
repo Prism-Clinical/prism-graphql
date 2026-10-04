@@ -62,7 +62,7 @@ const VALID_CATEGORIES = new Set<string>(Object.values(PathwayCategory));
 const CODED_KEYS = new Set([
   'field', 'operator', 'value', 'system', 'threshold',
   'window_days', 'count_threshold', 'min_points', 'slope_threshold', 'delta_threshold',
-  'delta_comparison',
+  'delta_comparison', 'count_comparison',
   'horizon', 'status', 'window_from',
   'display', 'note',
 ]);

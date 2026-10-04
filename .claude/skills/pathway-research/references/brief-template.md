@@ -75,7 +75,11 @@ together become its BRANCHES_TO set. `all_of` = sequencing fan-out (all branches
 > staleness), an **undated** value, and **no** value. For every treatment or test the pathway
 > starts, say what happens when the chart already holds it. A bounded window on a threshold
 > needs `[WINDOW — <gate-id>: <why>]`; a pathway that recommends medications without reading
-> the medication list needs `[NO MEDICATION CHECK — <why>]`.
+> the medication list needs `[NO MEDICATION CHECK — <why>]`. For every response-to-treatment
+> check add the state **due, nothing drawn since the treatment started**: it opens a step that
+> orders the recheck (name the tests and what they decide) and asks for nothing; the response
+> gates sit behind "one or more since the start". A response check without that route needs
+> `[NO RECHECK ROUTE — <clinical_role>: <why>]`.
 
 One block per machine-evaluable decision. Common fields for every gate:
 

@@ -132,7 +132,8 @@ function factsOf(pw: any): Facts {
         continue;
       }
       if (l.field === 'labs') {
-        if (l.operator === 'delta_from_baseline') { f.series.add(l.value); if (l.window_from?.clinical_role) f.roles.add(l.window_from.clinical_role); }
+        // An anchored count ("any result since the treatment started?", anemia v14) reads the same dated series.
+        if (l.operator === 'delta_from_baseline' || (l.operator === 'count_in_window' && l.window_from)) { f.series.add(l.value); if (l.window_from?.clinical_role) f.roles.add(l.window_from.clinical_role); }
         else if (typeof l.threshold === 'number') add(f.labs, l.value, [l.threshold * 0.8, l.threshold, l.threshold * 1.2]);
         else add(f.labs, l.value, [1]);
       } else if (l.field === 'vitals') add(f.vitals, l.value, [l.threshold * 0.8, l.threshold * 1.2]);

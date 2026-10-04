@@ -1,8 +1,10 @@
 // .claude/skills/pathway-json-builder/scripts/test-pipeline-checks.ts
 //
 // Regression tests for the builder's own checks: check-gate-control.ts against
-// its fixtures, and check-brief-sync.ts against deliberately broken sample
-// trees built in a temp dir. Run after changing either script:
+// its fixtures, check-brief-sync.ts against deliberately broken sample trees
+// built in a temp dir, and validate-pathway.ts's response-recheck DATA USE
+// warning (that one runs under ts-node, so `npm ci` must have been run). Run
+// after changing any of them:
 //
 //   node .claude/skills/pathway-json-builder/scripts/test-pipeline-checks.ts
 //
@@ -79,6 +81,42 @@ expect('gate-control: a malformed nested wildcard is named by its path',
       { field: 'conditions', operator: 'not_includes_code', value: 'G82.2*', system: 'ICD-10', horizon: 'LIFETIME' },
     ] },
   ] })]), 1, '"gate-iv-iron-ga" condition[0].conditions[1] value "G82.2*"');
+
+// ── validate-pathway: DATA USE — a response check must order its recheck ──
+// [DECISION — Josh 2026-10-04]. validate-pathway.ts imports pathway-service
+// TypeScript, so it runs under ts-node (slow: a few seconds per case). The
+// fixtures live in a temp dir, outside pathways/json/, so brief sync is skipped;
+// PATHWAY_VALIDATE_ALLOW_STALE keeps the case independent of where HEAD sits
+// relative to origin/main (this test is about the warning, not the verdict).
+const VALIDATE = join(HERE, 'validate-pathway.ts');
+function validate(file: string): { code: number; out: string } {
+  const r = spawnSync('npx', ['ts-node', '--transpile-only', VALIDATE, file], {
+    encoding: 'utf8', cwd: join(HERE, '..', '..', '..', '..'), env: { ...process.env, PATHWAY_VALIDATE_ALLOW_STALE: '1' },
+  });
+  return { code: r.status ?? -1, out: `${r.stdout ?? ''}${r.stderr ?? ''}` };
+}
+function expectNot(name: string, got: { code: number; out: string }, code: number, needle: string): void {
+  const ok = got.code === code && !got.out.includes(needle);
+  if (!ok) failed++;
+  console.log(`${ok ? '✓' : '✗'} ${name} — exit ${got.code}, ${got.out.includes(needle) ? 'MENTIONS' : 'does not mention'} "${needle}"`);
+  if (!ok) console.log(got.out.split('\n').map((l) => `    | ${l}`).join('\n'));
+}
+const ANCHOR = { event: 'medication_start', clinical_role: 'oral-iron-repletion', label: 'oral iron',
+  codes: [{ system: 'RXNORM', code: '310325' }], min_days_since_anchor: 14 };
+const DELTA = { field: 'labs', operator: 'delta_from_baseline', value: '718-7', system: 'LOINC', display: 'Hemoglobin (g/dL)',
+  delta_threshold: 1.0, delta_comparison: 'less_than', min_points: 2, window_from: { ...ANCHOR, baseline_days: 28 } };
+const COUNT = (cmp: string) => ({ field: 'labs', operator: 'count_in_window', value: '718-7', system: 'LOINC', display: 'Hemoglobin (g/dL)',
+  count_threshold: 1, count_comparison: cmp, window_from: ANCHOR });
+const NEEDLE = 'judge the response to "oral-iron-repletion"';
+expect('validate-pathway: an anchored delta with no "nothing since the start" count gate warns (DATA USE)',
+  validate(withGate({ on_unresolved: 'ask', operator: 'AND', conditions: [DELTA] })), 0, NEEDLE);
+expect('validate-pathway: an at_least count beside it is not a recheck route — still warns',
+  validate(withGate({ on_unresolved: 'ask', operator: 'AND', conditions: [DELTA, COUNT('at_least')] })), 0, NEEDLE);
+expectNot('validate-pathway: a less_than count on the same class silences it',
+  validate(withGate({ on_unresolved: 'ask', operator: 'OR', conditions: [DELTA, COUNT('less_than')] })), 0, NEEDLE);
+expect('validate-pathway: count_comparison on another operator is an import error',
+  validate(withGate({ on_unresolved: 'ask', operator: 'AND', conditions: [{ ...DELTA, count_comparison: 'less_than' }] })), 1, 'count_comparison');
+
 for (const r of gateRoots) rmSync(r, { recursive: true, force: true });
 
 // ── check-brief-sync ──────────────────────────────────────────────────

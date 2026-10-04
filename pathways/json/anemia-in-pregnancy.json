@@ -3,7 +3,7 @@
   "pathway": {
     "logical_id": "anemia-in-pregnancy",
     "title": "Anemia in Pregnancy \u2014 Classification and Treatment",
-    "version": "13",
+    "version": "14",
     "category": "OBSTETRIC",
     "scope": "Outpatient prenatal care, from diagnosed anemia through postpartum handoff. Screening is upstream of this pathway.",
     "target_population": "Adult pregnant patients with diagnosed anemia; hemoglobinopathy disease, thalassemia syndromes, and CKD-associated anemia are detected and routed out.",
@@ -205,7 +205,7 @@
         "step_number": 3,
         "display_number": "2.3",
         "title": "Response assessment",
-        "description": "Hemoglobin recheck 2\u20134 weeks after starting oral iron. Read from the chart: responding = Hgb risen \u2265 1 g/dL since oral iron started, or Hgb at target (\u2265 11 g/dL; \u2265 10.5 in the second trimester) \u2192 Step 2.4; not responding = risen < 1 g/dL and below target \u2192 Step 2.6. The rise is not judged before day 14 of oral iron: until then (and at the visit that starts it) neither branch opens and nothing is asked, unless Hgb is already at target."
+        "description": "Hemoglobin recheck 2\u20134 weeks after starting oral iron. The response is checked from day 14 of oral iron, by whether a hemoglobin has been drawn since it started: none \u2192 Step 2.21 (repeat CBC and iron studies; no value is asked for); one on file \u2192 Step 2.22 (response assessment: responding \u2192 Step 2.4, not responding \u2192 Step 2.6). Hemoglobin already at target opens Step 2.22 and maintenance at any time. Before day 14 (and at the visit that starts oral iron) neither step opens and nothing is asked, unless hemoglobin is already at target."
       }
     },
     {
@@ -236,7 +236,7 @@
         "step_number": 6,
         "display_number": "2.6",
         "title": "Nonresponse management",
-        "description": "Reached only when the Step 2.3 recheck shows no response to oral iron (hemoglobin rise < 1 g/dL at least 14 days after starting it, and below the trimester target). Hosts DP-2: expanded workup, and IV iron after the first trimester."
+        "description": "Reached only when the Step 2.22 response assessment shows no response to oral iron (hemoglobin rise < 1 g/dL at least 14 days after starting it, and below the trimester target). Hosts DP-2: expanded workup, and IV iron after the first trimester."
       }
     },
     {
@@ -453,7 +453,7 @@
         "step_number": 14,
         "display_number": "2.14",
         "title": "Already on oral iron: continue it and assess the response",
-        "description": "Entered only via gate-on-oral-iron on Step 1.10: MCV < 80 fL and the medication list holds an oral iron product and no IV iron. DP-1 and DP-3 are not asked, and no oral iron is initiated or chosen here: she continues the oral iron she is on (Guid-7). Hosts the same response assessment as Step 2.3, on its own copies of the gates: responding = Hgb risen \u2265 1 g/dL since oral iron started, or Hgb at target (\u2265 11 g/dL; \u2265 10.5 in the second trimester) \u2192 Step 2.15; not responding = risen < 1 g/dL and below target \u2192 Step 2.16. The start date is read from a dated oral iron order, and asked for when there is none; the rise is not judged before day 14 of oral iron. Also asks whether to order confirmatory iron studies now (yes \u2192 Step 1.12)."
+        "description": "Entered only via gate-on-oral-iron on Step 1.10: MCV < 80 fL and the medication list holds an oral iron product and no IV iron. DP-1 and DP-3 are not asked, and no oral iron is initiated or chosen here: she continues the oral iron she is on (Guid-7). The response to it is checked from day 14 of oral iron, by whether a hemoglobin has been drawn since it started: none \u2192 Step 2.19 (repeat CBC and iron studies; no value is asked for); one on file \u2192 Step 2.20 (response assessment: responding \u2192 Step 2.15, not responding \u2192 Step 2.16). Hemoglobin already at target opens Step 2.20 and maintenance at any time. The start date is read from a dated oral iron order, and asked for when there is none; before day 14 neither step opens and nothing is asked, unless hemoglobin is already at target. Also asks whether to order confirmatory iron studies now (yes \u2192 Step 1.12)."
       }
     },
     {
@@ -475,7 +475,7 @@
         "step_number": 15,
         "display_number": "2.15",
         "title": "Maintenance & surveillance (already on oral iron)",
-        "description": "Copy of Step 2.4 for a patient already on oral iron; entered only via gate-hgb-response-on-iron on Step 2.14."
+        "description": "Copy of Step 2.4 for a patient already on oral iron; entered only via gate-hgb-response-on-iron on Step 2.20."
       }
     },
     {
@@ -486,7 +486,7 @@
         "step_number": 16,
         "display_number": "2.16",
         "title": "Nonresponse management (already on oral iron)",
-        "description": "Copy of Step 2.6 for a patient already on oral iron. Reached only when the Step 2.14 recheck shows no response to oral iron (hemoglobin rise < 1 g/dL at least 14 days after starting it, and below the trimester target). Hosts DP-4: expanded workup, and IV iron after the first trimester."
+        "description": "Copy of Step 2.6 for a patient already on oral iron. Reached only when the Step 2.20 response assessment shows no response to oral iron (hemoglobin rise < 1 g/dL at least 14 days after starting it, and below the trimester target). Hosts DP-4: expanded workup, and IV iron after the first trimester."
       }
     },
     {
@@ -531,6 +531,50 @@
         "display_number": "1.13",
         "title": "Hemoglobin older than 30 days: repeat the CBC",
         "description": "Entered only via gate-hgb-recheck-due on Step 1.1: no hemoglobin on file in the last 30 days. The threshold gates read the most recent hemoglobin however old it is; when that value is more than 30 days old this step orders a repeat CBC with indices (its own lab node). Also open when there is no hemoglobin on file at all, beside Step 1.9. Closes as soon as a hemoglobin from the last 30 days is on file."
+      }
+    },
+    {
+      "id": "step-2-19",
+      "type": "Step",
+      "properties": {
+        "stage_number": 2,
+        "step_number": 19,
+        "display_number": "2.19",
+        "title": "Response to oral iron not yet checked: repeat CBC and iron studies (already on oral iron)",
+        "description": "Entered only via gate-response-recheck-due-on-iron on Step 2.14: oral iron started 14 or more days ago and no hemoglobin has been drawn since it started. The hemoglobin on file from before oral iron started is used as the baseline; no newer value is asked for. Orders the response recheck on its own lab nodes \u2014 CBC with indices, ferritin, and iron/TIBC/transferrin saturation \u2014 whatever the answer to the confirmatory-studies question on Step 2.14. Oral iron continues (Guid-9); the results decide whether she is responding or needs IV iron. IV iron is not started from this step. Closes once a hemoglobin dated on or after the start day is on file; Step 2.20 then assesses the response."
+      }
+    },
+    {
+      "id": "step-2-20",
+      "type": "Step",
+      "properties": {
+        "stage_number": 2,
+        "step_number": 20,
+        "display_number": "2.20",
+        "title": "Response assessment (already on oral iron)",
+        "description": "Entered only via gate-rechecked-on-iron on Step 2.14: oral iron started 14 or more days ago and a hemoglobin dated on or after the start day is on file, or hemoglobin is already at target (which opens maintenance at once). Hosts the same response assessment as Step 2.22, on its own copies of the gates: responding = Hgb risen \u2265 1 g/dL since oral iron started, or Hgb at target (\u2265 11 g/dL; \u2265 10.5 in the second trimester) \u2192 Step 2.15; not responding = risen < 1 g/dL and below target \u2192 Step 2.16. When the pre-treatment baseline is missing, the gates ask for a dated hemoglobin."
+      }
+    },
+    {
+      "id": "step-2-21",
+      "type": "Step",
+      "properties": {
+        "stage_number": 2,
+        "step_number": 21,
+        "display_number": "2.21",
+        "title": "Response to oral iron not yet checked: repeat CBC and iron studies",
+        "description": "Entered only via gate-response-recheck-due on Step 2.3: oral iron started 14 or more days ago and no hemoglobin has been drawn since it started. The hemoglobin on file from before oral iron started is used as the baseline; no newer value is asked for. Orders the response recheck on its own lab nodes \u2014 CBC with indices, ferritin, and iron/TIBC/transferrin saturation. Oral iron continues (Guid-10); the results decide whether she is responding or needs IV iron. IV iron is not started from this step. Closes once a hemoglobin dated on or after the start day is on file; Step 2.22 then assesses the response."
+      }
+    },
+    {
+      "id": "step-2-22",
+      "type": "Step",
+      "properties": {
+        "stage_number": 2,
+        "step_number": 22,
+        "display_number": "2.22",
+        "title": "Response assessment: hemoglobin on file since oral iron started",
+        "description": "Entered only via gate-rechecked on Step 2.3: oral iron started 14 or more days ago and a hemoglobin dated on or after the start day is on file, or hemoglobin is already at target (which opens maintenance at once, the start visit included). Read from the chart: responding = Hgb risen \u2265 1 g/dL since oral iron started, or Hgb at target (\u2265 11 g/dL; \u2265 10.5 in the second trimester) \u2192 Step 2.4; not responding = risen < 1 g/dL and below target \u2192 Step 2.6. When the pre-treatment baseline is missing, the gates ask for a dated hemoglobin."
       }
     },
     {
@@ -2258,6 +2302,262 @@
       }
     },
     {
+      "id": "gate-response-recheck-due",
+      "type": "Gate",
+      "properties": {
+        "title": "Response recheck due: on oral iron 14 days or more, no hemoglobin since it started",
+        "gate_type": "patient_attribute",
+        "default_behavior": "skip",
+        "on_unresolved": "ask",
+        "condition": {
+          "field": "labs",
+          "operator": "count_in_window",
+          "value": "718-7",
+          "system": "LOINC",
+          "display": "Hemoglobin (g/dL)",
+          "count_threshold": 1,
+          "count_comparison": "less_than",
+          "window_from": {
+            "event": "medication_start",
+            "clinical_role": "oral-iron-repletion",
+            "label": "oral iron",
+            "codes": [
+              {
+                "system": "RXNORM",
+                "code": "310325"
+              },
+              {
+                "system": "RXNORM",
+                "code": "198630"
+              },
+              {
+                "system": "RXNORM",
+                "code": "284202"
+              },
+              {
+                "system": "RXNORM",
+                "code": "311975"
+              }
+            ],
+            "min_days_since_anchor": 14
+          }
+        }
+      }
+    },
+    {
+      "id": "gate-rechecked",
+      "type": "Gate",
+      "properties": {
+        "title": "Hemoglobin on file since oral iron started (14 days or more ago), or hemoglobin at target: assess the response",
+        "gate_type": "compound",
+        "default_behavior": "skip",
+        "on_unresolved": "default",
+        "operator": "OR",
+        "conditions": [
+          {
+            "field": "labs",
+            "operator": "count_in_window",
+            "value": "718-7",
+            "system": "LOINC",
+            "display": "Hemoglobin (g/dL)",
+            "count_threshold": 1,
+            "count_comparison": "at_least",
+            "window_from": {
+              "event": "medication_start",
+              "clinical_role": "oral-iron-repletion",
+              "label": "oral iron",
+              "codes": [
+                {
+                  "system": "RXNORM",
+                  "code": "310325"
+                },
+                {
+                  "system": "RXNORM",
+                  "code": "198630"
+                },
+                {
+                  "system": "RXNORM",
+                  "code": "284202"
+                },
+                {
+                  "system": "RXNORM",
+                  "code": "311975"
+                }
+              ],
+              "min_days_since_anchor": 14
+            }
+          },
+          {
+            "operator": "OR",
+            "display": "At target (Hgb \u2265 11, or \u2265 10.5 in trimester 2)",
+            "conditions": [
+              {
+                "field": "labs",
+                "operator": "greater_than",
+                "value": "718-7",
+                "system": "LOINC",
+                "display": "Hemoglobin (g/dL)",
+                "threshold": 10.95,
+                "horizon": {
+                  "days": 28
+                }
+              },
+              {
+                "operator": "AND",
+                "display": "Trimester 2 and Hgb \u2265 10.5",
+                "conditions": [
+                  {
+                    "attribute": "patient.trimester",
+                    "operator": "equals",
+                    "value": 2
+                  },
+                  {
+                    "field": "labs",
+                    "operator": "greater_than",
+                    "value": "718-7",
+                    "system": "LOINC",
+                    "display": "Hemoglobin (g/dL)",
+                    "threshold": 10.45,
+                    "horizon": {
+                      "days": 28
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "gate-response-recheck-due-on-iron",
+      "type": "Gate",
+      "properties": {
+        "title": "Response recheck due: on oral iron 14 days or more, no hemoglobin since it started",
+        "gate_type": "patient_attribute",
+        "default_behavior": "skip",
+        "on_unresolved": "ask",
+        "condition": {
+          "field": "labs",
+          "operator": "count_in_window",
+          "value": "718-7",
+          "system": "LOINC",
+          "display": "Hemoglobin (g/dL)",
+          "count_threshold": 1,
+          "count_comparison": "less_than",
+          "window_from": {
+            "event": "medication_start",
+            "clinical_role": "oral-iron-repletion",
+            "label": "oral iron",
+            "codes": [
+              {
+                "system": "RXNORM",
+                "code": "310325"
+              },
+              {
+                "system": "RXNORM",
+                "code": "198630"
+              },
+              {
+                "system": "RXNORM",
+                "code": "284202"
+              },
+              {
+                "system": "RXNORM",
+                "code": "311975"
+              }
+            ],
+            "min_days_since_anchor": 14
+          }
+        }
+      }
+    },
+    {
+      "id": "gate-rechecked-on-iron",
+      "type": "Gate",
+      "properties": {
+        "title": "Hemoglobin on file since oral iron started (14 days or more ago), or hemoglobin at target: assess the response",
+        "gate_type": "compound",
+        "default_behavior": "skip",
+        "on_unresolved": "default",
+        "operator": "OR",
+        "conditions": [
+          {
+            "field": "labs",
+            "operator": "count_in_window",
+            "value": "718-7",
+            "system": "LOINC",
+            "display": "Hemoglobin (g/dL)",
+            "count_threshold": 1,
+            "count_comparison": "at_least",
+            "window_from": {
+              "event": "medication_start",
+              "clinical_role": "oral-iron-repletion",
+              "label": "oral iron",
+              "codes": [
+                {
+                  "system": "RXNORM",
+                  "code": "310325"
+                },
+                {
+                  "system": "RXNORM",
+                  "code": "198630"
+                },
+                {
+                  "system": "RXNORM",
+                  "code": "284202"
+                },
+                {
+                  "system": "RXNORM",
+                  "code": "311975"
+                }
+              ],
+              "min_days_since_anchor": 14
+            }
+          },
+          {
+            "operator": "OR",
+            "display": "At target (Hgb \u2265 11, or \u2265 10.5 in trimester 2)",
+            "conditions": [
+              {
+                "field": "labs",
+                "operator": "greater_than",
+                "value": "718-7",
+                "system": "LOINC",
+                "display": "Hemoglobin (g/dL)",
+                "threshold": 10.95,
+                "horizon": {
+                  "days": 28
+                }
+              },
+              {
+                "operator": "AND",
+                "display": "Trimester 2 and Hgb \u2265 10.5",
+                "conditions": [
+                  {
+                    "attribute": "patient.trimester",
+                    "operator": "equals",
+                    "value": 2
+                  },
+                  {
+                    "field": "labs",
+                    "operator": "greater_than",
+                    "value": "718-7",
+                    "system": "LOINC",
+                    "display": "Hemoglobin (g/dL)",
+                    "threshold": 10.45,
+                    "horizon": {
+                      "days": 28
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
       "id": "med-1",
       "type": "Medication",
       "properties": {
@@ -2784,6 +3084,66 @@
       }
     },
     {
+      "id": "lab-26",
+      "type": "LabTest",
+      "properties": {
+        "name": "CBC with indices \u2014 response to oral iron (no hemoglobin since it started)",
+        "code": "58410-2",
+        "system": "LOINC",
+        "specimen": "Venous blood"
+      }
+    },
+    {
+      "id": "lab-27",
+      "type": "LabTest",
+      "properties": {
+        "name": "Ferritin, serum \u2014 response recheck on oral iron",
+        "code": "2276-4",
+        "system": "LOINC",
+        "specimen": "Serum"
+      }
+    },
+    {
+      "id": "lab-28",
+      "type": "LabTest",
+      "properties": {
+        "name": "Iron, TIBC and transferrin saturation \u2014 response recheck on oral iron",
+        "code": "2498-4",
+        "system": "LOINC",
+        "specimen": "Serum"
+      }
+    },
+    {
+      "id": "lab-29",
+      "type": "LabTest",
+      "properties": {
+        "name": "CBC with indices \u2014 response to oral iron (no hemoglobin since it started)",
+        "code": "58410-2",
+        "system": "LOINC",
+        "specimen": "Venous blood"
+      }
+    },
+    {
+      "id": "lab-30",
+      "type": "LabTest",
+      "properties": {
+        "name": "Ferritin, serum \u2014 response recheck on oral iron",
+        "code": "2276-4",
+        "system": "LOINC",
+        "specimen": "Serum"
+      }
+    },
+    {
+      "id": "lab-31",
+      "type": "LabTest",
+      "properties": {
+        "name": "Iron, TIBC and transferrin saturation \u2014 response recheck on oral iron",
+        "code": "2498-4",
+        "system": "LOINC",
+        "specimen": "Serum"
+      }
+    },
+    {
       "id": "proc-1",
       "type": "Procedure",
       "properties": {
@@ -2852,7 +3212,7 @@
       "properties": {
         "topic": "Already on oral iron: continue it",
         "category": "treatment-planning",
-        "instructions": "The medication list holds an oral iron product. Continue the oral iron she is taking: do not start a second oral iron product, and there is no choice to make between ferrous sulfate, ferrous gluconate and ferrous fumarate. Her response is read from the hemoglobin recheck 2\u20134 weeks after oral iron started: a rise of at least 1 g/dL, or hemoglobin at target, is a response; otherwise nonresponse management follows. Confirmatory iron studies (ferritin, iron/TIBC/saturation) are optional on this route and are ordered only if chosen."
+        "instructions": "The medication list holds an oral iron product. Continue the oral iron she is taking: do not start a second oral iron product, and there is no choice to make between ferrous sulfate, ferrous gluconate and ferrous fumarate. Her response is read from the hemoglobin recheck 2\u20134 weeks after oral iron started: a rise of at least 1 g/dL, or hemoglobin at target, is a response; otherwise nonresponse management follows. Confirmatory iron studies (ferritin, iron/TIBC/saturation) are optional on this route and are ordered only if chosen \u2014 except when the response recheck is due (oral iron for 14 days or more with no hemoglobin drawn since it started), which orders them with the repeat CBC."
       }
     },
     {
@@ -2862,6 +3222,24 @@
         "topic": "IV iron already given: follow up, do not restart",
         "category": "treatment-planning",
         "instructions": "The medication list holds an IV iron product, so IV iron has been given. Do not start IV iron again or an oral iron trial on the strength of this pathway. Recheck hemoglobin about 4 weeks after the IV iron; persistent anemia prompts hematology referral or re-evaluation of the diagnosis."
+      }
+    },
+    {
+      "id": "guid-9",
+      "type": "Guidance",
+      "properties": {
+        "topic": "Response to oral iron not yet checked: repeat CBC and iron studies",
+        "category": "treatment-planning",
+        "instructions": "No hemoglobin has been drawn since oral iron started, and it started at least 14 days ago, so the response can be judged now but has not been checked. Continue oral iron. Order a repeat CBC with indices, ferritin, and iron/TIBC/transferrin saturation now. These results decide whether she is responding or needs IV iron: a hemoglobin rise of at least 1 g/dL since oral iron started, or hemoglobin at target (\u2265 11 g/dL; \u2265 10.5 in the second trimester), is a response and oral iron continues; a rise of less than 1 g/dL with hemoglobin still below target is nonresponse and leads to nonresponse management \u2014 expanded workup, and IV iron from 14 0/7 weeks. Do not start IV iron from this step; wait for the results."
+      }
+    },
+    {
+      "id": "guid-10",
+      "type": "Guidance",
+      "properties": {
+        "topic": "Response to oral iron not yet checked: repeat CBC and iron studies",
+        "category": "treatment-planning",
+        "instructions": "No hemoglobin has been drawn since oral iron started, and it started at least 14 days ago, so the response can be judged now but has not been checked. Continue oral iron. Order a repeat CBC with indices, ferritin, and iron/TIBC/transferrin saturation now. These results decide whether she is responding or needs IV iron: a hemoglobin rise of at least 1 g/dL since oral iron started, or hemoglobin at target (\u2265 11 g/dL; \u2265 10.5 in the second trimester), is a response and oral iron continues; a rise of less than 1 g/dL with hemoglobin still below target is nonresponse and leads to nonresponse management \u2014 expanded workup, and IV iron from 14 0/7 weeks. Do not start IV iron from this step; wait for the results."
       }
     },
     {
@@ -3769,7 +4147,7 @@
       "type": "BRANCHES_TO"
     },
     {
-      "from": "step-2-3",
+      "from": "step-2-22",
       "to": "gate-hgb-response",
       "type": "HAS_GATE"
     },
@@ -3779,7 +4157,7 @@
       "type": "BRANCHES_TO"
     },
     {
-      "from": "step-2-3",
+      "from": "step-2-22",
       "to": "gate-hgb-nonresponse",
       "type": "HAS_GATE"
     },
@@ -5749,7 +6127,7 @@
       "type": "HAS_LAB_TEST"
     },
     {
-      "from": "step-2-14",
+      "from": "step-2-20",
       "to": "gate-hgb-response-on-iron",
       "type": "HAS_GATE"
     },
@@ -5759,7 +6137,7 @@
       "type": "BRANCHES_TO"
     },
     {
-      "from": "step-2-14",
+      "from": "step-2-20",
       "to": "gate-hgb-nonresponse-on-iron",
       "type": "HAS_GATE"
     },
@@ -6092,6 +6470,306 @@
       "from": "step-2-18",
       "to": "sched-9",
       "type": "HAS_SCHEDULE"
+    },
+    {
+      "from": "step-2-14",
+      "to": "gate-response-recheck-due-on-iron",
+      "type": "HAS_GATE"
+    },
+    {
+      "from": "gate-response-recheck-due-on-iron",
+      "to": "step-2-19",
+      "type": "BRANCHES_TO"
+    },
+    {
+      "from": "step-2-19",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-2-19",
+      "to": "ev-3",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-2-19",
+      "to": "guid-9",
+      "type": "HAS_GUIDANCE"
+    },
+    {
+      "from": "guid-9",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "guid-9",
+      "to": "ev-3",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-2-19",
+      "to": "lab-26",
+      "type": "HAS_LAB_TEST"
+    },
+    {
+      "from": "lab-26",
+      "to": "code-loinc-58410-2",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "lab-26",
+      "to": "code-loinc-718-7",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "lab-26",
+      "to": "code-loinc-4544-3",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "lab-26",
+      "to": "code-loinc-787-2",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "lab-26",
+      "to": "code-cpt-85025",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "lab-26",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-2-19",
+      "to": "lab-27",
+      "type": "HAS_LAB_TEST"
+    },
+    {
+      "from": "lab-27",
+      "to": "code-loinc-2276-4",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "lab-27",
+      "to": "code-cpt-82728",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "lab-27",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "lab-27",
+      "to": "ev-5",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-2-19",
+      "to": "lab-28",
+      "type": "HAS_LAB_TEST"
+    },
+    {
+      "from": "lab-28",
+      "to": "code-loinc-2498-4",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "lab-28",
+      "to": "code-loinc-2500-7",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "lab-28",
+      "to": "code-loinc-2502-3",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "lab-28",
+      "to": "code-cpt-83540",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "lab-28",
+      "to": "code-cpt-83550",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "lab-28",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-2-14",
+      "to": "gate-rechecked-on-iron",
+      "type": "HAS_GATE"
+    },
+    {
+      "from": "gate-rechecked-on-iron",
+      "to": "step-2-20",
+      "type": "BRANCHES_TO"
+    },
+    {
+      "from": "step-2-20",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-2-20",
+      "to": "ev-3",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-2-3",
+      "to": "gate-response-recheck-due",
+      "type": "HAS_GATE"
+    },
+    {
+      "from": "gate-response-recheck-due",
+      "to": "step-2-21",
+      "type": "BRANCHES_TO"
+    },
+    {
+      "from": "step-2-21",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-2-21",
+      "to": "ev-3",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-2-21",
+      "to": "guid-10",
+      "type": "HAS_GUIDANCE"
+    },
+    {
+      "from": "guid-10",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "guid-10",
+      "to": "ev-3",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-2-21",
+      "to": "lab-29",
+      "type": "HAS_LAB_TEST"
+    },
+    {
+      "from": "lab-29",
+      "to": "code-loinc-58410-2",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "lab-29",
+      "to": "code-loinc-718-7",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "lab-29",
+      "to": "code-loinc-4544-3",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "lab-29",
+      "to": "code-loinc-787-2",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "lab-29",
+      "to": "code-cpt-85025",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "lab-29",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-2-21",
+      "to": "lab-30",
+      "type": "HAS_LAB_TEST"
+    },
+    {
+      "from": "lab-30",
+      "to": "code-loinc-2276-4",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "lab-30",
+      "to": "code-cpt-82728",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "lab-30",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "lab-30",
+      "to": "ev-5",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-2-21",
+      "to": "lab-31",
+      "type": "HAS_LAB_TEST"
+    },
+    {
+      "from": "lab-31",
+      "to": "code-loinc-2498-4",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "lab-31",
+      "to": "code-loinc-2500-7",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "lab-31",
+      "to": "code-loinc-2502-3",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "lab-31",
+      "to": "code-cpt-83540",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "lab-31",
+      "to": "code-cpt-83550",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "lab-31",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-2-3",
+      "to": "gate-rechecked",
+      "type": "HAS_GATE"
+    },
+    {
+      "from": "gate-rechecked",
+      "to": "step-2-22",
+      "type": "BRANCHES_TO"
+    },
+    {
+      "from": "step-2-22",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-2-22",
+      "to": "ev-3",
+      "type": "CITES_EVIDENCE"
     }
   ]
 }

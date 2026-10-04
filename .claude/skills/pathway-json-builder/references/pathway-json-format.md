@@ -11,6 +11,7 @@
 > any of these (checked 2026-10-03: anemia v9 fails main with 21 errors; GHTN v5 and UTI v3
 > pass both):
 > - `window_from` anchored trend windows, `delta_comparison`, NOT_YET_DUE
+> - `count_comparison` on `count_in_window` (2026-10-04; anemia v14 uses it)
 > - `not_includes_code`
 > - nested AND/OR condition groups inside a compound gate
 > - `DATE` answers (treatment start dates), typed `patient.*` datum answers, and the
@@ -330,7 +331,8 @@ the simulator:
 |---|---|
 | Read hemoglobin with a 7-day horizon. A value from 33 days ago was treated as no value at all, and the provider was asked for one. | Read the **most recent** value (`horizon: "LIFETIME"`) to decide, and express staleness **separately**: a membership gate (`not_includes_code`, the same LOINC, `horizon: "MONTH"` or the interval the guideline gives) that opens a "repeat the test" step. Anemia v13: `gate-hgb-recheck-due` → Step 1.13. |
 | Asked "empiric iron or workup?" and "oral or IV?" of a patient with ferrous sulfate already on her medication list. | Read the medication list before offering to start or choose a treatment: membership gates on `medications` route "already on it" to *continue and assess* (anemia v12). |
-| Closed a response check silently when no dated value existed. | Ask for the value (with its date), and let "Not available" route to ordering the test. |
+| Closed a response check silently when no dated value existed. | Ask for the value (with its date), and let "Not available" route to ordering the test. *(Superseded for the "not yet rechecked" case by the next row.)* |
+| Asked for a newer hemoglobin when the response to oral iron was due and none had been drawn since it started; "No newer result" closed both response gates and left nothing (`[DECISION — Josh 2026-10-04]`). | **Order the recheck; do not ask for the value.** An anchored count gate — `count_in_window`, `count_comparison: "less_than"`, `count_threshold: 1`, on the response gates' own `window_from` — opens a step that carries the recheck orders and says what they decide. The response gates move behind the `at_least` twin, so they are not evaluated (and cannot ask) until a value since the start exists. Anemia v14: `gate-response-recheck-due` → Step 2.21, `gate-rechecked` → Step 2.22. |
 
 Authoring rules that follow:
 
@@ -350,9 +352,34 @@ Authoring rules that follow:
 4. **Ask only for what the chart does not hold**, and when a question is asked about a lab
    or vital the chart has an older value of, the engine offers that value with it
    (`lastOnFile`) — nothing to author.
+5. **A response-to-treatment check that is due, with no value since the treatment started,
+   ORDERS the recheck — it does not ask for the value** (`[DECISION — Josh 2026-10-04]`:
+   "It should be accepting the value I gave … The recommendation should be to repeat testing
+   with iron studies to determine need for IV iron"). The provider has just told the pathway
+   everything there is; a question for a result that does not exist can only be declined,
+   and a declined datum closes every gate waiting on it. Author two anchored count gates on
+   the step that hosted the response gates, both with the response gates' `window_from` and
+   `min_days_since_anchor`, `count_threshold: 1`, `on_unresolved: "ask"`, `default_behavior:
+   "skip"`:
+   - `count_comparison: "less_than"` → a **recheck step** with its own LabTest nodes (named
+     so the plan line says they are the response recheck) and a Guidance node saying what the
+     results decide. Never start the escalation from this step.
+   - `count_comparison: "at_least"` → a **response-assessment step** that hosts the response
+     gates (which keep `on_unresolved: "ask"`: a value since the start with no baseline to
+     measure from is still worth asking about).
+   Do it on every route that has a response check (anemia: the pathway-started route and the
+   already-on-it route). An arm of the response gate that is *not* anchored (an absolute "at target"
+   arm) would stop being read until a value since the start exists — so OR that same group
+   into the `at_least` gate and set it `on_unresolved: "default"` (pattern under **Anchored
+   trend windows**). State in the brief that the recheck's labs duplicate any the host step
+   already orders.
+   A pathway that judges a response and deliberately has no such route says why:
+   `[NO RECHECK ROUTE — <clinical_role>: <why>]`.
 
-`validate-pathway.ts` reports rule 1 and rule 2 as **DATA USE** warnings (not failures):
-read each one and either fix the pathway or add the marker.
+`validate-pathway.ts` reports rules 1, 2 and 5 as **DATA USE** warnings (not failures):
+read each one and either fix the pathway or add the marker. (Rule 5: a `window_from` trend
+or delta whose `clinical_role` has no `count_in_window` … `count_comparison: "less_than"`
+gate anywhere in the pathway.)
 
 ### Missing data — `on_unresolved` (emit on every chart gate)
 
@@ -480,7 +507,7 @@ Carries one `condition` object, which is either an **attribute condition** or a 
 - There is **no** `symptom.*`, `medication.*`, or `condition.*` namespace (older docs said otherwise — they now hard-fail import). Symptom presence/severity is elicited ⇒ use a `question` gate. Diagnosis/medication history ⇒ use a coded condition.
 - `horizon` / `status` — see **Temporal horizon & status** below; both are legal here exactly as on coded conditions.
 
-**Coded condition** — allowed keys exactly: `field`, `operator`, `value`, `system`, `threshold`, `window_days`, `count_threshold`, `min_points`, `slope_threshold`, `delta_threshold`, `delta_comparison`, `horizon`, `status`, `window_from`, `display`, `note`. (`window_from` is coded-only — see **Anchored trend windows** below; on an attribute condition it is an unknown key.)
+**Coded condition** — allowed keys exactly: `field`, `operator`, `value`, `system`, `threshold`, `window_days`, `count_threshold`, `min_points`, `slope_threshold`, `delta_threshold`, `delta_comparison`, `count_comparison`, `horizon`, `status`, `window_from`, `display`, `note`. (`window_from` is coded-only — see **Anchored trend windows** below; on an attribute condition it is an unknown key.)
 
 ```json
 { "field": "conditions", "operator": "includes_code", "value": "Z94.*", "system": "ICD-10" }
@@ -506,6 +533,15 @@ Carries one `condition` object, which is either an **attribute condition** or a 
   neither. Compared at 1e-9, so an exact decimal rise (7.2 → 8.2) is exactly 1.0. Absent,
   the threshold's **sign** picks the direction (below) and "rose by less than t" has no
   encoding. `legacy-v0` refuses it.
+- **`count_comparison`** ∈ `at_least`, `less_than` — **`count_in_window` only** (josh-dev,
+  2026-10-04; an import error on any other operator, where it would be silently ignored and
+  read as its inverse, and for any other value). `at_least` (the default when absent) ⇒
+  count ≥ `count_threshold`; `less_than` ⇒ count < `count_threshold`. The two are exact
+  complements on one threshold. `less_than` with `count_threshold: 1` is "none in the
+  window" — with `window_from`, "nothing drawn since the treatment started". A count is
+  never unresolved for want of a value (zero is an answer), so a `less_than` gate **never
+  asks for a lab**; with `window_from` only an unknown start date is asked. `legacy-v0`
+  refuses it.
 - `display` / `note` are ignored by the evaluator. `display` on a **lab** condition is the
   label in the missing-data prompt — emit it on every lab condition (with unit).
 
@@ -518,7 +554,7 @@ Runtime semantics (from `gate-evaluator.ts`):
 | `equals` | same | Exact code match — no wildcard (a `.*` here is literal) |
 | `exists` | same | Field has ≥1 entry of any kind |
 | `greater_than` / `less_than` | labs, vitals | For `labs`: `value` = the lab code, compare that lab's numeric result to `threshold` (falls back to `parseFloat(value)` — so always set `threshold` explicitly). For `vitals`: `value` = dotted path into vitalSigns |
-| `count_in_window` | labs + code fields | Count entries matching `value` (+`system`; trailing `.*` wildcard allowed) whose **start** falls within `window_days` of the session clock; satisfied when count ≥ `count_threshold` (default 2). Omit `window_days` ⇒ the field's v1 default horizon (below): LIFETIME for conditions/medications/allergies (undated entries count), but **QUARTER for labs** (90 days; undated entries never count). A bounded window never counts an undated entry. A vitals count is always 0. |
+| `count_in_window` | labs + code fields | Count entries matching `value` (+`system`; trailing `.*` wildcard allowed) whose **start** falls within `window_days` of the session clock (or since the `window_from` start day); satisfied when count ≥ `count_threshold` (default 2) — or, with `count_comparison: "less_than"`, when count < `count_threshold`. Omit `window_days` ⇒ the field's v1 default horizon (below): LIFETIME for conditions/medications/allergies (undated entries count), but **QUARTER for labs** (90 days; undated entries never count). A bounded window never counts an undated entry. A vitals count is always 0. |
 | `trend_up` / `trend_down` | **labs only** | Linear-regression slope over dated values of lab `value` within `window_days`; needs ≥ `min_points` (default 3, floor 2) dated points; satisfied when slope > `slope_threshold` (up) or < −`slope_threshold` (down); default threshold 0 |
 | `delta_from_baseline` | **labs only** | newest − oldest in-window value vs `delta_threshold`: with `delta_comparison`, `≥` (`at_least`) or `<` (`less_than`); without it, signed (positive = rose by ≥ that much; negative = fell by ≥ magnitude; 0 = changed at all); needs ≥ `min_points` (default 2) |
 
@@ -595,7 +631,10 @@ Rules (hard import errors unless marked; the validator calls the runtime parser
 `parseConditionOverride` → `parseWindowFrom`, so import and runtime agree):
 
 - **Operators:** only `count_in_window`, `trend_up`, `trend_down`, `delta_from_baseline`.
-  On any other operator it is an error.
+  On any other operator it is an error. On `count_in_window` it counts the entries dated from
+  the start of the anchor day to the session clock — "how many since the treatment started" —
+  and takes `count_comparison` (`at_least` / `less_than`, above), `count_threshold` and
+  `min_days_since_anchor`, but **not** `baseline_days`.
 - **Mutually exclusive** with `window_days` and with `horizon`. It *is* the window.
 - `event` — required; `"medication_start"` is the only event.
 - `clinical_role` — required, the **class** tag the pathway's Medication nodes carry
@@ -655,28 +694,66 @@ unresolved condition (so a missing trimester is not asked for on the start visit
 group passes NOT YET DUE up on the same terms, so this holds at every level. Once
 due, normal evaluation applies (incl. `INSUFFICIENT_SERIES` → ask for the newest result).
 
-**Pattern — a response check with three outcomes from chart data.** Two single-target
-gates on the SAME anchored delta, `at_least` and `less_than` the same threshold, both
-`on_unresolved: "ask"` (a condition gate cannot route several ways — chart-derived branch
-routing does not exist; a multi-target condition gate raises `unroutable_decision`):
+**Pattern — a response check from chart data: four gates, two steps** (the two response
+gates since anemia v7; the two count gates in front of them since v14, `[DECISION — Josh
+2026-10-04]`). A condition gate cannot route several ways — chart-derived branch routing
+does not exist; a multi-target condition gate raises `unroutable_decision` — so every
+outcome is its own single-target gate, all `on_unresolved: "ask"`:
 
-With `min_days_since_anchor: 14` and `baseline_days: 28`:
+1. On the step that carries the scheduled recheck, two **count gates** on the SAME
+   `window_from` (no `baseline_days`), `count_threshold: 1`:
+   `count_comparison: "less_than"` → the **recheck step** (orders the recheck and says what
+   it decides); `count_comparison: "at_least"` → the **response-assessment step**. **If the
+   response gate has an unanchored arm** (an absolute "at target"), the second gate is a
+   compound `OR(count at_least 1, <that same group>)` with `on_unresolved: "default"` (and
+   its `[ON-UNRESOLVED DEFAULT — <gate-id>]` marker): the arm keeps deciding at once, and
+   the gate can never ask for the lab — with `ask`, a baseline older than the arm's horizon
+   is asked for again, which is the question this pattern exists to remove. The start-date
+   question still comes from the `less_than` gate.
+2. On the response-assessment step, two **response gates** on the SAME anchored delta,
+   `at_least` and `less_than` the same threshold.
 
-| Visit / chart | Response gate (`at_least 1.0`) → maintenance | Non-response gate (`less_than 1.0`) → escalation |
-|---|---|---|
-| **start visit** — drug recommended this session, no care plan / order / clinician date | closed, NOT_YET_DUE — nothing asked | closed, NOT_YET_DUE |
-| **recheck with nothing stored** — drug recommended this session, no care plan / dated order / clinician date, but an Hgb ≥ 14 days old (or an undated order of the class) | held — ONE question: "When did oral iron start?" (today's date if it starts now → NOT_YET_DUE) | held (same question) |
-| **before day 14** (any recheck, any rise) | closed, NOT_YET_DUE | closed, NOT_YET_DUE |
-| day ≥ 14, baseline + recheck, rise ≥ 1 | opens | closed |
-| day ≥ 14, baseline + recheck, rise < 1 | closed | opens |
-| day ≥ 14, baseline only (not rechecked) | held — ONE question: newest Hgb after the baseline date | held (same question) |
-| no start date and the drug not recommended this session | held — ONE question: "When did oral iron start?" | held (same question) |
-| day ≥ 14, no Hgb since `baseline_days` before the start, no recheck (0 points) | held — ONE question: "a result, and the date it was drawn?" (since 2026-10-03; was closed with nothing asked) | held (same question) |
+```json
+{ "field": "labs", "operator": "count_in_window", "value": "718-7", "system": "LOINC",
+  "display": "Hemoglobin (g/dL)", "count_threshold": 1, "count_comparison": "less_than",
+  "window_from": { "event": "medication_start", "clinical_role": "oral-iron-repletion",
+    "label": "oral iron", "codes": [ { "system": "RXNORM", "code": "310325" } ],
+    "min_days_since_anchor": 14 } }
+```
+
+With `min_days_since_anchor: 14` on all four and `baseline_days: 28` on the deltas:
+
+| Visit / chart | Recheck-due gate (count `less_than 1`) → recheck step | Rechecked gate (count `at_least 1`, OR at target) → assessment step | Response gate (`at_least 1.0`) → maintenance | Non-response gate (`less_than 1.0`) → escalation |
+|---|---|---|---|---|
+| **start visit** — drug recommended this session, no care plan / order / clinician date | closed, NOT_YET_DUE — nothing asked | closed, NOT_YET_DUE | not evaluated | not evaluated |
+| **recheck with nothing stored** — drug recommended this session, no care plan / dated order / clinician date, but an Hgb ≥ 14 days old (or an undated order of the class) | held — ONE question: "When did oral iron start?" (today's date if it starts now → NOT_YET_DUE) | closed until answered (never asks) | not evaluated | not evaluated |
+| **at target** (any visit, the start visit included) | NOT_YET_DUE, or by its count | **opens** (the at-target arm settles the OR) | opens — maintenance at once | closed — a definite no |
+| **before day 14** (any recheck, any rise) | closed, NOT_YET_DUE | closed, NOT_YET_DUE | not evaluated | not evaluated |
+| day ≥ 14, baseline + recheck, rise ≥ 1 | closed | opens | opens | closed |
+| day ≥ 14, baseline + recheck, rise < 1 | closed | opens | closed | opens |
+| day ≥ 14, **baseline only (not rechecked)** | **opens — the recheck is ordered; nothing asked** (through anemia v13: both response gates held on "newest Hgb after the baseline date?", and "Not available" dead-ended) | closed | not evaluated | not evaluated |
+| day ≥ 14, **no dated value at all** (none, or only undated ones — the simulator) | **opens — nothing asked** (2026-10-03 to v13: "a result, and the date it was drawn?") | closed | not evaluated | not evaluated |
+| day ≥ 14, a value since the start but **no baseline** (one point) | closed | opens | held — ONE question: newest Hgb after that value's date | held (same question) |
+| no start date and the drug not recommended this session | held — ONE question: "When did oral iron start?" | closed until answered (never asks) | not evaluated | not evaluated |
+
+"Since the start" is from the **start of the anchor day**: a value drawn on the day the drug
+was started counts as a recheck (flag it in the brief — clinically it is a pre-treatment
+value). An at-target baseline at day ≥ 14 with nothing since the start opens **both** steps:
+maintenance and the recheck orders. Say so in the brief.
+
+**Known gap (engine, open 2026-10-04).** A value the provider *enters at the visit* is dated
+at the visit, so it counts as "since the start". With no earlier value on the chart the
+recheck step then closes and the response gates — one point, no baseline — ask for a result
+"drawn after" today, which cannot exist; "Not available" closes both. The count cannot tell
+an entered value from a recheck, and "no value before the start" has no encoding. Record it
+in the brief (`[GAP — NEEDS JOSH]`) wherever this pattern is used; `gate-proof.ts
+response-recheck` pins the current behaviour.
 
 NOT_YET_DUE asks nothing, so **the start visit's care plan is not blocked**
 (the pipeline's readiness rules, `pipeline/readiness.ts`, block only on pending questions, unresolved nodes, red flags and unavailable safety data) — this replaces anemia v5's
-"recheck not yet done" option. A *held* gate (the last-but-two and last-but-one rows) is
-still a pending question and does block generation until answered. The day ≥ 14 rows need
+"recheck not yet done" option. A *held* gate (the "nothing stored", "no baseline" and "no
+start date" rows) is still a pending question and does block generation until answered; the
+"not rechecked" rows ask nothing and block nothing. The day ≥ 14 rows need
 the anchor from a record — the care plan the start visit committed, a dated order, or a
 clinician date: the session source only ever produces NOT_YET_DUE.
 
@@ -696,9 +773,11 @@ Authoring notes:
   NOT_YET_DUE (nothing asked) — unless the synthetic patient's medication list already
   holds a drug of the class (undated, so "on it since an unknown date"), which asks;
   otherwise the gate asks "When did … start?", the tester
-  answers. **The series then still has no dated value**: zero points is short by ≥ 2, so
-  nothing more is asked and the gate takes `default_behavior` (both response-check gates
-  close). A dated trend/delta arm is only
+  answers. **The series then still has no dated value.** With the count gates in front
+  (anemia v14) an undated value is not "since the start", so a start date ≥
+  `min_days_since_anchor` days back opens the **recheck step** and nothing more is asked;
+  the response gates are not reached. (A response gate with no count gate in front asks for
+  "a result, and the date it was drawn?".) A dated trend/delta arm is only
   exercisable through the API with dated labs (`labResults[].date`), not from the
   simulator UI.
 - `legacy-v0` sessions refuse `window_from` conditions (they cannot anchor); `v1` is the default.
@@ -741,13 +820,16 @@ horizon, but they have no start, so:
 |---|---|
 | `includes_code`, `not_includes_code`, `equals`, `exists` | Work. |
 | `greater_than`, `less_than` | One value per code works. Two or more undated values for one code cannot be ordered → `AMBIGUOUS_LATEST` → the gate is unresolved and asks; the injected answer is undated too, so it stays ambiguous (engine gap). |
-| `count_in_window` | Counts undated entries **only** under `LIFETIME` (conditions/meds/allergies default). Any bounded window → count 0 → a silent **"no"** (aggregates never ask). |
+| `count_in_window` | Counts undated entries **only** under `LIFETIME` (conditions/meds/allergies default). Any bounded window (and any `window_from`) → count 0 → a silent **"no"** (aggregates never ask) — which, with `count_comparison: "less_than"`, is a silent **"yes"**: the simulator opens a "nothing since the start" gate for every undated chart. |
 | `trend_up`, `trend_down`, `delta_from_baseline` | Need `min_points` **dated** values. Undated values contribute no point: one → zero points, short by ≥ 2 → *unresolved* with nothing to ask → `default_behavior`; two or more → unorderable series (`indeterminate`, never asks → `default_behavior`, or the compound asks for a sibling scalar). |
 | any aggregate with `window_from` | The anchor itself needs a date: no care plan and undated orders → the gate **asks** "When did … start?" (DATE) — unless this session recommends the class and nothing in the chart says the course is already under way (an undated order of the class, or with `min_days_since_anchor` a result of the series ≥ that many days old), which closes it NOT_YET_DUE. The series still needs dated lab values. |
 
 Gates built on the last two rows are **untestable in the simulator** — say so in the brief
 (§18) and the delivery message. In the current pathways: UTI `gate-recurrent-uti`, and anemia v7's `gate-hgb-response` / `gate-hgb-nonresponse` rise
-arm (the simulator anchors oral iron on the session, so both close NOT YET DUE there).
+arm (the simulator anchors oral iron on the session, so both close NOT YET DUE there). Since
+anemia v14 the count gates in front of them make the *recheck step* reachable from the
+simulator (a start date ≥ 14 days back, answered when asked), but the response assessment
+behind `gate-rechecked` still needs a **dated** value since the start.
 
 ### Temporal horizon & status (per-condition, NODE tier — merged, emit freely)
 

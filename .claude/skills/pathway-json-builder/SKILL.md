@@ -216,9 +216,11 @@ To prove what a gate or DecisionPoint actually does for a patient, run the real 
 [proof]` (no DB; replays branch choices the way the live mutation does). Add a proof there
 when a brief decision hinges on runtime behaviour.
 
-After changing `check-gate-control.ts` or `check-brief-sync.ts`, run their regression
-cases: `node .claude/skills/pathway-json-builder/scripts/test-pipeline-checks.ts`
-(fixtures in `scripts/fixtures/`, including the anemia ESCALATES_TO leak).
+After changing `check-gate-control.ts`, `check-brief-sync.ts` or `validate-pathway.ts`'s
+DATA USE checks, run their regression cases:
+`node .claude/skills/pathway-json-builder/scripts/test-pipeline-checks.ts`
+(fixtures in `scripts/fixtures/`, including the anemia ESCALATES_TO leak; the
+validate-pathway cases run under ts-node, so `npm ci` first).
 
 ### Step 4c — Brief sync (builder-enforced)
 

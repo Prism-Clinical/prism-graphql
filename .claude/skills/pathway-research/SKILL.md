@@ -184,9 +184,17 @@ brief (§4b for gates, §18 for anything left open):
   already had it? Read the medication list first.
 - **Every test the pathway orders:** what if a result is already on file?
 - **Every question the pathway asks:** could the chart have answered it?
+- **Every response-to-treatment check** (Josh, 2026-10-04): what happens when the check is
+  due and *nothing has been drawn since the treatment started*? The pathway **orders the
+  recheck** — a step with the repeat tests and what they decide — and does not ask the
+  provider for a result that does not exist. Write both states in §4b: "none since the
+  start → recheck step" and "one or more since the start → the response is assessed", each
+  with its gate, plus what the recheck orders and from which day it is due. Also say what a
+  value drawn on the start day counts as, and what happens to any "already at target" arm
+  before a recheck exists.
 
-The format spec's section "Use the data the chart gives" has the patterns and the two brief
-markers (`[WINDOW — …]`, `[NO MEDICATION CHECK — …]`).
+The format spec's section "Use the data the chart gives" has the patterns and the brief
+markers (`[WINDOW — …]`, `[NO MEDICATION CHECK — …]`, `[NO RECHECK ROUTE — …]`).
 
 ## Step 4 — Validate the brief
 

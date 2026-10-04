@@ -68,6 +68,13 @@ export interface ResolvedLab extends WithEvidence {
   specimen?: string;
   sourcePathwayId: string;
   sourceNodeId?: string;
+  /**
+   * Set by the merge. One code is one order, so lab nodes sharing a code fold
+   * into one line — but each node's name says WHY it is ordered ("CBC with
+   * indices — recheck (no hemoglobin in the last 30 days)"). The names of the
+   * folded-in nodes that differ from this line's, so the reason is not lost.
+   */
+  alsoOrderedAs?: string[];
 }
 
 export interface ResolvedProcedure extends WithEvidence {
@@ -593,7 +600,11 @@ export function mergeResolvedCarePlans(
   // Labs/imaging/procedures/guidance/schedules/quality metrics: pure dedup
   // by appropriate key. Hard constraints don't apply (only medications carry
   // contraindication semantics in the existing schema).
-  const labs = mergeByKey(plans, (p) => p.labs, labKey);
+  const labs = mergeByKey(plans, (p) => p.labs, labKey, (canonical, items) => {
+    const others = dedupStringArray(items.map((i) => i.name.trim()))
+      .filter((n) => norm(n) !== norm(canonical.name));
+    return others.length ? { ...canonical, alsoOrderedAs: others } : canonical;
+  });
   const imaging = mergeByKey(plans, (p) => p.imaging, imagingKey);
   const procedures = mergeByKey(plans, (p) => p.procedures, procedureKey);
   const guidance = mergeByKey(plans, (p) => p.guidance, guidanceKey);
@@ -834,6 +845,8 @@ function mergeByKey<T extends { sourcePathwayId: string }>(
   plans: ResolvedCarePlan[],
   selector: (p: ResolvedCarePlan) => T[],
   keyer: (item: T) => string,
+  /** Builds the line from the first-encountered item and everything folded into it. */
+  fold?: (canonical: T, items: T[]) => T,
 ): MergedRecommendation<T>[] {
   const buckets = new Map<string, T[]>();
   for (const plan of plans) {
@@ -843,16 +856,17 @@ function mergeByKey<T extends { sourcePathwayId: string }>(
       buckets.get(key)!.push(item);
     }
   }
-  return mapMergeBucket(buckets);
+  return mapMergeBucket(buckets, fold);
 }
 
 function mapMergeBucket<T extends { sourcePathwayId: string }>(
   buckets: Map<string, T[]>,
+  fold?: (canonical: T, items: T[]) => T,
 ): MergedRecommendation<T>[] {
   const out: MergedRecommendation<T>[] = [];
   for (const items of buckets.values()) {
     out.push({
-      recommendation: items[0], // canonical = first encountered
+      recommendation: fold ? fold(items[0], items) : items[0], // canonical = first encountered
       sourcePathwayIds: dedupStringArray(items.map((i) => i.sourcePathwayId)),
       state: 'auto-included',
     });

@@ -180,11 +180,24 @@ console.log('✓ COMPILES — activation will not be refused');
   const gates = (parsed.nodes ?? []).filter((n) => n.type === 'Gate');
   const notes: string[] = [];
   let readsMedications = false;
+  // Response-to-treatment checks, by the therapeutic class they are anchored on:
+  // which gates judge the response (an anchored trend/delta), and whether any
+  // gate catches "due, nothing drawn since the start" (an anchored count below N).
+  const responseGates = new Map<string, string[]>();
+  const recheckRoutes = new Set<string>();
   for (const g of gates) {
     const props = (g.properties ?? {}) as Leaf;
     const leaves = [...(props.condition ? [props.condition] : []), ...((props.conditions as unknown[]) ?? [])].flatMap(leavesOf);
     for (const l of leaves) {
       if (l.field === 'medications') readsMedications = true;
+      const role = (l.window_from as Leaf | undefined)?.clinical_role;
+      if (typeof role === 'string') {
+        if (l.operator === 'delta_from_baseline' || l.operator === 'trend_up' || l.operator === 'trend_down') {
+          responseGates.set(role, [...new Set([...(responseGates.get(role) ?? []), g.id])]);
+        } else if (l.operator === 'count_in_window' && l.count_comparison === 'less_than') {
+          recheckRoutes.add(role);
+        }
+      }
       const threshold = l.field === 'labs' && (l.operator === 'less_than' || l.operator === 'greater_than');
       const bounded = l.horizon !== undefined && l.horizon !== 'LIFETIME';
       if (threshold && bounded && !l.window_from && !brief.includes(`[WINDOW — ${g.id}:`)) {
@@ -203,11 +216,25 @@ console.log('✓ COMPILES — activation will not be refused');
         `Gate on \`medications\`, or say why not in the brief with [NO MEDICATION CHECK — <why>]`,
     );
   }
+  // [DECISION — Josh 2026-10-04] A response check that is due with no value
+  // since the treatment started ORDERS the recheck; it does not ask for the
+  // value. That takes an anchored `count_in_window` … `count_comparison:
+  // "less_than"` gate on the same class, leading to a step with the orders.
+  for (const [role, ids] of responseGates) {
+    if (recheckRoutes.has(role) || brief.includes(`[NO RECHECK ROUTE — ${role}:`)) continue;
+    notes.push(
+      `Gate(s) ${ids.map((id) => `"${id}"`).join(', ')} judge the response to "${role}" from a series anchored on its start, and no gate ` +
+        `counts "nothing drawn since the start" — when the check is due and has not been done, the provider is asked for a value ` +
+        `instead of the recheck being ordered. Add a \`count_in_window\` gate with \`count_comparison: "less_than"\` on the same ` +
+        `\`window_from\` that opens a step ordering the recheck (and put the response gates behind its \`at_least\` twin), ` +
+        `or justify in the brief with [NO RECHECK ROUTE — ${role}: <why>]`,
+    );
+  }
   if (notes.length > 0) {
     console.log(`⚠ DATA USE — ${notes.length} place(s) where chart data may be ignored:`);
     for (const n of notes) console.log(`  - ${n}`);
   } else {
-    console.log('✓ DATA USE — no discarded windows; treatments check the medication list');
+    console.log('✓ DATA USE — no discarded windows; treatments check the medication list; response checks order their recheck');
   }
 }
 

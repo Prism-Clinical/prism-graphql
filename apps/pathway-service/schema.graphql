@@ -535,6 +535,11 @@ type ResolvedLab {
   sourcePathwayId: ID!
   sourceNodeId: String
   """
+  Names of other lab nodes with the same code that folded into this line —
+  the other reasons this one order is recommended.
+  """
+  alsoOrderedAs: [String!]
+  """
   Gate / decision-point node ids that gated the path to this
   recommendation. Cross-reference with MergedCarePlan.evidenceTrail
   to render "this fired because of A, B, C" chips per rec.

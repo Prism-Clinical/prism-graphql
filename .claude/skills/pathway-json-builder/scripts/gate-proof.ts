@@ -57,6 +57,13 @@
 //                    Hgb 5.5 at 33 days: transfusion yes, recheck ordered; Hgb 8 at 10
 //                    days or undated: no recheck; no Hgb at all: the level is asked for, and both
 //                    Step 1.13 (CBC recheck) and Step 1.9 (ferritin) are open
+//   response-recheck anemia v14: on oral iron ≥ 14 days with no hemoglobin drawn since it
+//                    started, the pathway does not ask for one — an anchored count gate
+//                    (count_comparison less_than 1) opens a step that orders the response
+//                    recheck (CBC, ferritin, iron/TIBC/saturation); the response gates sit
+//                    behind the at_least-1 twin. Josh's patient of 2026-10-04, then
+//                    rise ≥ 1 → maintenance, rise < 1 → nonresponse, day 7 → nothing,
+//                    and the start visit unchanged; both routes (Step 2.14 and Step 2.3)
 //   on-iron          anemia v12: the medication list is read behind gate-microcytic.
 //                    Oral iron on it (any of 310325 / 198630 / 284202 / 311975) → no
 //                    DP-1, no DP-3, no oral-iron Medication node; "continue" guidance,
@@ -122,6 +129,18 @@ const WORKUP: Replay = { dp: 'dp-1', option: 'step-1-2' };
 const ORAL: Replay = { dp: 'dp-3', option: ORAL_TRIAL };
 /** v8: the empiric arm reaches DP-3 too, so its oral iron is chosen there as well. */
 const EMPIRIC_CHOICE: Replay = { dp: 'dp-1', option: EMPIRIC };
+/**
+ * v14 [DECISION — Josh 2026-10-04]: the two anchored COUNT gates on Step 2.3 —
+ * no hemoglobin since oral iron started (→ Step 2.21, the recheck orders) and
+ * one on file (→ Step 2.22, which hosts gate-hgb-response / -nonresponse). They
+ * carry the NOT YET DUE verdict now; the response gates sit behind the second.
+ */
+const DUE_GATES = ['gate-response-recheck-due', 'gate-rechecked'];
+/** Step 2.21 and what it orders (the Step 2.3 route's response recheck). */
+const RECHECK = ['step-2-21', 'lab-29', 'lab-30', 'lab-31', 'guid-10'];
+/** The same pair and step on the already-on-oral-iron route (Step 2.14). */
+const DUE_GATES_ON_IRON = ['gate-response-recheck-due-on-iron', 'gate-rechecked-on-iron'];
+const RECHECK_ON_IRON = ['step-2-19', 'lab-26', 'lab-27', 'lab-28', 'guid-9'];
 
 // ── Proof: attribute-form vs coded-form lab gates ─────────────────────
 async function proveAttributeForm(): Promise<void> {
@@ -480,18 +499,18 @@ async function proveEmpiric(): Promise<void> {
       expect(id, status(r.state, id), 'INCLUDED');
     }
     expect('step-2-3 sits under', String(r.state.get('step-2-3')?.parentNodeId), ORAL_TRIAL);
-    expect('gate-hgb-response (not yet due)', String(r.state.get('gate-hgb-response')?.notYetDue === true), 'true');
-    expect('gate-hgb-nonresponse (not yet due)', String(r.state.get('gate-hgb-nonresponse')?.notYetDue === true), 'true');
+    for (const g of DUE_GATES) expect(`${g} (not yet due)`, String(r.state.get(g)?.notYetDue === true), 'true');
+    expectAll('(behind the count gates, v14)', r.state, [...RECHECK, 'step-2-22', 'gate-hgb-response', 'gate-hgb-nonresponse'], 'GATED_OUT');
     expect('no response question', String(r.pending.some((p: any) =>
-      ['gate-hgb-response', 'gate-hgb-nonresponse'].includes(p.gateId)
-      || (p.askedByNodeIds ?? []).some((id: string) => id.startsWith('gate-hgb-')))), 'false');
+      [...DUE_GATES, 'gate-hgb-response', 'gate-hgb-nonresponse'].includes(p.gateId)
+      || (p.askedByNodeIds ?? []).some((id: string) => id.startsWith('gate-hgb-') || DUE_GATES.includes(id)))), 'false');
     expect('no ferritin question', String(r.pending.some((p: any) => p.datumKey === 'LOINC:2276-4')), 'false');
 
     console.log('  ferritin never drawn — empiric needs none:');
     r = await resolveSession({ ...base, patient: patientWith(labs(null, 9.5), { gestational_age_weeks: 20 }), replay: [EMPIRIC_CHOICE, ORAL] });
     expect('no ferritin question', String(r.pending.some((p: any) => p.datumKey === 'LOINC:2276-4')), 'false');
     expect('step-2-3 response assessment', status(r.state, 'step-2-3'), 'INCLUDED');
-    expect('gate-hgb-response (not yet due)', String(r.state.get('gate-hgb-response')?.notYetDue === true), 'true');
+    for (const g of DUE_GATES) expect(`${g} (not yet due)`, String(r.state.get(g)?.notYetDue === true), 'true');
   }
 }
 
@@ -522,14 +541,15 @@ async function proveResponse(): Promise<void> {
   const RESPONSE_GATES_SORTED = [...RESPONSE_GATES].sort();
   const ESCALATION = ['step-2-6', 'dp-2', 'step-1-5', 'lab-8', 'lab-14', 'step-2-5', 'med-4', 'med-5', 'med-6', 'med-7'];
   const IV = ['step-2-5', 'med-4', 'med-5', 'med-6', 'med-7', 'sched-3'];
-  const REGION = [...RESPONSE_GATES, 'step-2-4', ...ESCALATION, 'gate-iv-iron-ga'];
+  const REGION = [...DUE_GATES, ...RECHECK, 'step-2-22', ...RESPONSE_GATES, 'step-2-4', ...ESCALATION, 'gate-iv-iron-ga'];
   /** Care-plan blockers that point into the response region (Stage 3 questions etc. excluded). */
   const regionBlockers = (r: { state: any; redFlags: any[] }) => String(
     validateForGeneration(r.state, r.redFlags)
       .filter((b) => b.relatedNodeIds.some((id) => REGION.includes(id))).length,
   );
   const regionQuestions = (pending: any[]) => pending.filter((p) =>
-    RESPONSE_GATES.includes(p.gateId) || (p.askedByNodeIds ?? []).some((id: string) => RESPONSE_GATES.includes(id)));
+    [...DUE_GATES, ...RESPONSE_GATES].includes(p.gateId)
+    || (p.askedByNodeIds ?? []).some((id: string) => [...DUE_GATES, ...RESPONSE_GATES].includes(id)));
   const arms: Array<[string, Lab[], Replay[]]> = [
     ['empiric arm (ferritin never drawn; oral trial at DP-3, v8)', [['787-2', 72]], [EMPIRIC_CHOICE, ORAL]],
     ['confirmed arm (workup, ferritin 12, oral trial at DP-3)', [['787-2', 72], ['2276-4', 12]], [WORKUP, ORAL]],
@@ -546,13 +566,19 @@ async function proveResponse(): Promise<void> {
         file: ANEMIA, reverse, replay: choice, asOf: o.asOf, oralIronStart: o.start, ask: o.ask,
         patient: patientWith([...base, ...o.hgb.map(([v, date]) => ['718-7', v, date] as Lab)], o.attrs ?? {}, [], o.meds ?? []),
       });
+      // v14: NOT YET DUE is the verdict of the two count gates on Step 2.3. The
+      // response gates sit behind gate-rechecked, so they are not evaluated at
+      // all (closed with it, not "not yet due" themselves), and Step 2.21's
+      // recheck orders stay closed too.
       const notYetDue = (r: { state: any }) => {
-        for (const g of RESPONSE_GATES) {
+        for (const g of DUE_GATES) {
           const n = r.state.get(g);
           expect(`${g}`, status(r.state, g), 'GATED_OUT');
           expect(`${g} not yet due`, String(n?.notYetDue === true), 'true');
           expect(`${g} reason`, String(n?.excludeReason ?? '').slice(0, 36), 'NOT_YET_DUE: due on/after 2026-06-15');
         }
+        expectAll('(behind the count gates)', r.state, [...RECHECK, 'step-2-22', ...RESPONSE_GATES], 'GATED_OUT');
+        for (const g of RESPONSE_GATES) expect(`${g} itself not evaluated`, String(r.state.get(g)?.notYetDue === true), 'false');
       };
 
       console.log('    start visit (oral iron recommended this session), Hgb 9.5, GA 20 — NOT YET DUE, nothing asked:');
@@ -561,7 +587,7 @@ async function proveResponse(): Promise<void> {
       expect('lab-10 Hgb recheck', status(r.state, 'lab-10'), 'INCLUDED');
       expect('med-1 ferrous sulfate', status(r.state, 'med-1'), 'INCLUDED');
       notYetDue(r);
-      expect('anchor source', String(r.state.get('gate-hgb-response')?.windowAnchors?.[0]?.source), 'SESSION_RECOMMENDATION');
+      expect('anchor source', String(r.state.get('gate-rechecked')?.windowAnchors?.[0]?.source), 'SESSION_RECOMMENDATION');
       expect('step-2-4 maintenance', status(r.state, 'step-2-4'), 'GATED_OUT');
       for (const id of ESCALATION) expect(id, status(r.state, id), 'GATED_OUT');
       expect('response questions', String(regionQuestions(r.pending).length), '0');
@@ -573,23 +599,34 @@ async function proveResponse(): Promise<void> {
       expect('trimester question', String(r.pending.some((p: any) => p.datumKey === 'patient.trimester')), 'false');
       expect('care-plan blockers in the response region', regionBlockers(r), '0');
 
+      // [DECISION — Josh 2026-09-24] "At target at once" — kept in v14. gate-rechecked
+      // is OR(a hemoglobin since the start, at target): a definite "at target" settles
+      // the OR while the count arm is NOT YET DUE, so Step 2.22 opens and
+      // gate-hgb-response opens maintenance, the start visit included.
       console.log('    start visit, Hgb 11.2 (already at target) — maintenance opens at once (accepted):');
       r = await visit({ asOf: DAY0, hgb: [[11.2, BASELINE_DATE]], attrs: { gestational_age_weeks: 20 } });
+      expectAll('(at target settles the OR)', r.state, ['gate-rechecked', 'step-2-22'], 'INCLUDED');
       expect('gate-hgb-response', status(r.state, 'gate-hgb-response'), 'INCLUDED');
       expect('step-2-4 maintenance', status(r.state, 'step-2-4'), 'INCLUDED');
       expect('gate-hgb-nonresponse (definite no, not "not yet due")', status(r.state, 'gate-hgb-nonresponse'), 'GATED_OUT');
       expect('gate-hgb-nonresponse notYetDue', String(r.state.get('gate-hgb-nonresponse')?.notYetDue === true), 'false');
+      expectAll('(no recheck orders: not yet due)', r.state, ['gate-response-recheck-due', ...RECHECK], 'GATED_OUT');
+      expect('gate-response-recheck-due not yet due', String(r.state.get('gate-response-recheck-due')?.notYetDue === true), 'true');
       for (const id of ESCALATION) expect(id, status(r.state, id), 'GATED_OUT');
+      expect('response questions', String(regionQuestions(r.pending).length), '0');
 
       console.log('    day 5 recheck, +0.3 (anchored on the start visit\'s care plan) — NOT YET DUE:');
       r = await visit({ asOf: DAY5, start: IRON_START, hgb: [[9.5, BASELINE_DATE], [9.8, '2026-06-05']], attrs: { gestational_age_weeks: 20 } });
       notYetDue(r);
-      expect('anchor source', String(r.state.get('gate-hgb-nonresponse')?.windowAnchors?.[0]?.source), 'CARE_PLAN');
+      expect('anchor source', String(r.state.get('gate-rechecked')?.windowAnchors?.[0]?.source), 'CARE_PLAN');
       expect('step-2-6 nonresponse (a day-5 +0.3 does not escalate)', status(r.state, 'step-2-6'), 'GATED_OUT');
       expect('response questions', String(regionQuestions(r.pending).length), '0');
 
       console.log('    day 21, 9.5 → 10.7 (+1.2) — responder: maintenance, nothing escalates:');
       r = await visit({ asOf: DAY21, start: IRON_START, hgb: [[9.5, BASELINE_DATE], [10.7, RECHECK_DATE]], attrs: { gestational_age_weeks: 20 } });
+      expectAll('(a hemoglobin since the start is on file: Step 2.22 assesses it)', r.state, ['gate-rechecked', 'step-2-22'], 'INCLUDED');
+      expect('step-2-22 sits under', String(r.state.get('step-2-22')?.parentNodeId), 'gate-rechecked');
+      expectAll('(no recheck orders: it has been rechecked)', r.state, ['gate-response-recheck-due', ...RECHECK], 'GATED_OUT');
       expect('gate-hgb-response', status(r.state, 'gate-hgb-response'), 'INCLUDED');
       expect('step-2-4 maintenance', status(r.state, 'step-2-4'), 'INCLUDED');
       expect('gate-hgb-nonresponse', status(r.state, 'gate-hgb-nonresponse'), 'GATED_OUT');
@@ -599,6 +636,8 @@ async function proveResponse(): Promise<void> {
 
       console.log('    day 21, 9.5 → 9.9 (+0.4, below target), GA 20 — nonresponder: expanded workup + IV iron:');
       r = await visit({ asOf: DAY21, start: IRON_START, hgb: [[9.5, BASELINE_DATE], [9.9, RECHECK_DATE]], attrs: { gestational_age_weeks: 20 } });
+      expectAll('(Step 2.22 assesses it)', r.state, ['gate-rechecked', 'step-2-22'], 'INCLUDED');
+      expectAll('(no recheck orders)', r.state, ['gate-response-recheck-due', ...RECHECK], 'GATED_OUT');
       expect('gate-hgb-nonresponse', status(r.state, 'gate-hgb-nonresponse'), 'INCLUDED');
       expect('gate-hgb-response', status(r.state, 'gate-hgb-response'), 'GATED_OUT');
       expect('step-2-4 maintenance', status(r.state, 'step-2-4'), 'GATED_OUT');
@@ -671,14 +710,17 @@ async function proveResponse(): Promise<void> {
       expect('start-date questions', String(dq.length), '1');
       expect('answer type', String(dq[0]?.answerType), 'DATE');
       expect('prompt', String(dq[0]?.prompt), 'When did oral iron start?');
-      expect('asked by both response gates', JSON.stringify([dq[0]?.gateId, ...(dq[0]?.askedByNodeIds ?? [])].filter((x, i, a) => a.indexOf(x) === i).sort()),
-        JSON.stringify(RESPONSE_GATES_SORTED));
-      expect('no anchor resolved', String(r.state.get('gate-hgb-nonresponse')?.windowAnchors?.[0]?.source), 'undefined');
-      for (const g of RESPONSE_GATES) {
-        expect(g, status(r.state, g), 'PENDING_QUESTION');
-        expect(`${g} not yet due`, String(r.state.get(g)?.notYetDue === true), 'false');
-      }
-      for (const id of ['step-2-4', 'step-2-6']) expect(id, status(r.state, id), 'PENDING_QUESTION');
+      // v14: the question is gate-response-recheck-due's. gate-rechecked never asks
+      // (on_unresolved: default — its at-target arm must not ask for a hemoglobin), so
+      // it is closed until the date is answered, and the response gates with it.
+      expect('asked by the recheck-due gate (v14)', JSON.stringify([dq[0]?.gateId, ...(dq[0]?.askedByNodeIds ?? [])].filter((x, i, a) => x && a.indexOf(x) === i).sort()),
+        JSON.stringify(['gate-response-recheck-due']));
+      expect('no anchor resolved', String(r.state.get('gate-response-recheck-due')?.windowAnchors?.[0]?.source), 'undefined');
+      expect('gate-response-recheck-due', status(r.state, 'gate-response-recheck-due'), 'PENDING_QUESTION');
+      expect('gate-response-recheck-due not yet due', String(r.state.get('gate-response-recheck-due')?.notYetDue === true), 'false');
+      expect('step-2-21', status(r.state, 'step-2-21'), 'PENDING_QUESTION');
+      expect('questions about a hemoglobin value', String(r.pending.filter((p: any) => p.datumKey === 'LOINC:718-7').length), '0');
+      expectAll('(closed until the start date is answered)', r.state, ['gate-rechecked', 'step-2-22', 'step-2-4', 'step-2-6'], 'GATED_OUT');
       console.log('      answered 2026-06-01 (21 days ago) — anchored on the clinician\'s date: nonresponder:');
       r = await visit({ asOf: DAY21, hgb: [[9.5, BASELINE_DATE], [9.9, RECHECK_DATE]], attrs: { gestational_age_weeks: 20 },
         ask: [{ anchor: ORAL_IRON_ANCHOR, answer: { dateValue: IRON_START } as GateAnswer }] });
@@ -690,12 +732,17 @@ async function proveResponse(): Promise<void> {
       console.log('      answered today (a start visit with an older Hgb on file) — NOT YET DUE, nothing else asked:');
       r = await visit({ asOf: DAY21, hgb: [[9.5, BASELINE_DATE], [9.9, RECHECK_DATE]], attrs: { gestational_age_weeks: 20 },
         ask: [{ anchor: ORAL_IRON_ANCHOR, answer: { dateValue: '2026-06-22' } as GateAnswer }] });
-      for (const g of RESPONSE_GATES) expect(`${g} not yet due`, String(r.state.get(g)?.notYetDue === true), 'true');
+      for (const g of DUE_GATES) expect(`${g} not yet due`, String(r.state.get(g)?.notYetDue === true), 'true');
+      expectAll('(nothing opens)', r.state, [...RECHECK, 'step-2-22', 'step-2-4'], 'GATED_OUT');
       expect('step-2-6 nonresponse', status(r.state, 'step-2-6'), 'GATED_OUT');
       expect('response questions', String(regionQuestions(r.pending).length), '0');
 
-      console.log('    day 21, one in-window Hgb (day 15), no later recheck — ONE question: the newest Hgb; both branches held:');
+      // A hemoglobin since the start IS on file (so no recheck orders), but there is
+      // no pre-treatment baseline to measure the rise from: asking is still right.
+      console.log('    day 21, one in-window Hgb (day 15), no baseline — Step 2.22 opens; ONE question: the newest Hgb; both branches held:');
       r = await visit({ asOf: DAY21, start: IRON_START, hgb: [[9.6, '2026-06-16']], attrs: { gestational_age_weeks: 20 } });
+      expectAll('(rechecked)', r.state, ['gate-rechecked', 'step-2-22'], 'INCLUDED');
+      expectAll('(no recheck orders)', r.state, ['gate-response-recheck-due', ...RECHECK], 'GATED_OUT');
       let hq = r.pending.filter((p: any) => p.datumKey === 'LOINC:718-7') as any[];
       expect('Hgb questions', String(hq.length), '1');
       expect('asks for the newest result', String(/newest result, drawn after 2026-06-16/.test(hq[0]?.prompt ?? '')), 'true');
@@ -703,23 +750,47 @@ async function proveResponse(): Promise<void> {
       for (const g of RESPONSE_GATES) expect(g, status(r.state, g), 'PENDING_QUESTION');
       for (const id of ['step-2-4', 'step-2-6', 'step-2-5']) expect(id, status(r.state, id), 'PENDING_QUESTION');
 
-      // The only Hgb is the pre-treatment baseline, 24 days old. Through v12
-      // gate-severe-anemia read a 7-day horizon, found nothing and asked too,
-      // so the one Hgb question named three gates. v13 [DECISION — Josh
-      // 2026-10-03]: the threshold gates read the MOST RECENT value however
-      // old, so gate-severe-anemia decides on the baseline (9.5 is not < 6)
-      // and asks nothing. ONE Hgb question still stands — the response gates'
-      // recheck — and it names those two.
-      console.log('    day 21, baseline only (24 days old, not rechecked) — one Hgb question, asked by both response gates; gate-severe-anemia decides on the baseline; both branches held:');
+      // The only Hgb is the pre-treatment baseline, 24 days old, and oral iron
+      // started 21 days ago: the response is due and has not been checked.
+      // Through v13 both response gates held on ONE question ("newest result,
+      // drawn after 2026-05-29?"), and "Not available" closed both — a dead end.
+      // v14 [DECISION — Josh 2026-10-04]: nothing is asked. gate-response-
+      // recheck-due (count of hemoglobins since the start < 1) opens Step 2.21,
+      // which orders the recheck — CBC, ferritin, iron/TIBC/saturation — and
+      // gate-rechecked (count >= 1) keeps the response gates closed.
+      console.log('    day 21, baseline only (24 days old, not rechecked) — v14: no Hgb question; Step 2.21 orders the recheck; the response gates are not evaluated:');
       r = await visit({ asOf: DAY21, start: IRON_START, hgb: [[9.5, BASELINE_DATE]], attrs: { gestational_age_weeks: 20 } });
       hq = r.pending.filter((p: any) => p.datumKey === 'LOINC:718-7') as any[];
-      expect('Hgb questions', String(hq.length), '1');
-      expect('asked by', JSON.stringify([...(hq[0]?.askedByNodeIds ?? [])].sort()), '["gate-hgb-nonresponse","gate-hgb-response"]');
+      expect('Hgb questions', String(hq.length), '0');
+      expect('response questions', String(regionQuestions(r.pending).length), '0');
+      expectAll('(recheck ordered)', r.state, ['gate-response-recheck-due', ...RECHECK], 'INCLUDED');
+      expect('step-2-21 sits under', String(r.state.get('step-2-21')?.parentNodeId), 'gate-response-recheck-due');
+      expect('lab-29 name', String((graphFrom(ANEMIA).getNode('lab-29') as any)?.properties?.name), 'CBC with indices — response to oral iron (no hemoglobin since it started)');
+      expect('anchor source', String(r.state.get('gate-response-recheck-due')?.windowAnchors?.[0]?.source), 'CARE_PLAN');
+      expect('gate-rechecked (a definite no, not "not yet due")', status(r.state, 'gate-rechecked'), 'GATED_OUT');
+      expect('gate-rechecked notYetDue', String(r.state.get('gate-rechecked')?.notYetDue === true), 'false');
+      expectAll('(response not assessed)', r.state, ['step-2-22', ...RESPONSE_GATES, 'step-2-4', 'step-2-6', 'step-2-5'], 'GATED_OUT');
       expect('gate-severe-anemia (v13: reads the 24-day-old 9.5)', status(r.state, 'gate-severe-anemia'), 'GATED_OUT');
-      console.log(`    (prompt: ${JSON.stringify(hq[0]?.prompt)}; raised by ${hq[0]?.gateId})`);
+      expect('care-plan blockers in the response region', regionBlockers(r), '0');
+      expectAll('(oral iron continues; the scheduled recheck stays)', r.state, ['med-1', 'step-2-3', 'lab-10', 'sched-2'], 'INCLUDED');
+
+      // An at-target baseline at day >= 14 with no recheck gets BOTH: maintenance
+      // (at target, as always) and the recheck orders (nothing drawn since the start).
+      console.log('    day 21, baseline 11.2 only (at target, not rechecked) — maintenance AND the recheck orders:');
+      r = await visit({ asOf: DAY21, start: IRON_START, hgb: [[11.2, BASELINE_DATE]], attrs: { gestational_age_weeks: 20 } });
+      expectAll('(recheck ordered)', r.state, ['gate-response-recheck-due', ...RECHECK], 'INCLUDED');
+      expectAll('(maintenance)', r.state, ['gate-rechecked', 'step-2-22', 'gate-hgb-response', 'step-2-4'], 'INCLUDED');
+      expectAll('(no nonresponse)', r.state, ['gate-hgb-nonresponse', 'step-2-6'], 'GATED_OUT');
+      expect('response questions', String(regionQuestions(r.pending).length), '0');
+
+      // [JOSH — CONFIRM] (a): the window opens at the start of the anchor day, so a
+      // hemoglobin drawn on the day oral iron started counts as "since the start".
+      console.log('    day 21, the only Hgb drawn on the start day itself — counts as "since the start": no recheck step; the response gates ask:');
+      r = await visit({ asOf: DAY21, start: IRON_START, hgb: [[9.5, IRON_START]], attrs: { gestational_age_weeks: 20 } });
+      expectAll('(rechecked)', r.state, ['gate-rechecked', 'step-2-22'], 'INCLUDED');
+      expectAll('(no recheck orders)', r.state, ['gate-response-recheck-due', ...RECHECK], 'GATED_OUT');
       for (const g of RESPONSE_GATES) expect(g, status(r.state, g), 'PENDING_QUESTION');
-      expect('gate-hgb-nonresponse reason', String(/Need ≥2 dated values for 718-7; found 1/.test(r.state.get('gate-hgb-nonresponse')?.excludeReason ?? '')), 'true');
-      for (const id of ['step-2-4', 'step-2-6', 'step-2-5']) expect(id, status(r.state, id), 'PENDING_QUESTION');
+      expect('Hgb questions', String(r.pending.filter((p: any) => p.datumKey === 'LOINC:718-7').length), '1');
     }
   }
 }
@@ -965,7 +1036,7 @@ async function proveDp3(): Promise<void> {
       console.log('    oral trial chosen (3a) — oral iron and the response check; no IV-first route:');
       r = await resolveSession({ ...base, patient: patient(20), replay: [dp1, ORAL] });
       expectAll('(oral arm)', r.state, ORAL_ARM.filter((id) => !id.startsWith('gate-hgb')), 'INCLUDED');
-      for (const g of ['gate-hgb-response', 'gate-hgb-nonresponse']) {
+      for (const g of DUE_GATES) {
         expect(`${g} not yet due (start visit)`, String(r.state.get(g)?.notYetDue === true), 'true');
       }
       expect('step-2-3 sits under', String(r.state.get('step-2-3')?.parentNodeId), ORAL_TRIAL);
@@ -1026,7 +1097,7 @@ async function proveDp3(): Promise<void> {
         [BRIDGE, ...ORAL_STEPS.filter((id) => !id.startsWith('gate-hgb'))], 'INCLUDED');
       expect('step-2-3 sits under', String(r.state.get('step-2-3')?.parentNodeId), BRIDGE);
       expect(`${ORAL_TRIAL} (unchosen DP-3 branch)`, status(r.state, ORAL_TRIAL), 'EXCLUDED');
-      for (const g of ['gate-hgb-response', 'gate-hgb-nonresponse']) {
+      for (const g of DUE_GATES) {
         expect(`${g} not yet due (start visit)`, String(r.state.get(g)?.notYetDue === true), 'true');
       }
       expect('GA questions', String(r.pending.filter((p: any) => p.datumKey === 'patient.gestational_age_weeks').length), '0');
@@ -1132,7 +1203,7 @@ async function proveIvFerritin(): Promise<void> {
     expect('gate-oral-bridge-ga (no ferritin on file)', status(r.state, 'gate-oral-bridge-ga'), 'INCLUDED');
     expectAll('(oral iron meanwhile)', r.state, [BRIDGE, ...ORAL_IRON], 'INCLUDED');
     expect('step-2-1 sits under', String(r.state.get('step-2-1')?.parentNodeId), BRIDGE);
-    for (const g of ['gate-hgb-response', 'gate-hgb-nonresponse']) {
+    for (const g of DUE_GATES) {
       expect(`${g} not yet due (oral iron starts this visit)`, String(r.state.get(g)?.notYetDue === true), 'true');
     }
     expect('gate-iv-iron-ga-direct', status(r.state, 'gate-iv-iron-ga-direct'), 'INCLUDED');
@@ -1356,7 +1427,7 @@ async function proveHgbpathy(): Promise<void> {
       expectAll('(oral iron path)', r.state, ORAL_PATH, 'INCLUDED');
       expect('step-2-3 sits under', String(r.state.get('step-2-3')?.parentNodeId), ORAL_TRIAL);
       expectAll('(empiric arm, unchosen)', r.state, [...EMPIRIC_ARM, ...HG_WORKUP], 'EXCLUDED');
-      for (const g of ['gate-hgb-response', 'gate-hgb-nonresponse']) {
+      for (const g of DUE_GATES) {
         expect(`${g} not yet due (start visit)`, String(r.state.get(g)?.notYetDue === true), 'true');
       }
       if (gate && step) {
@@ -1846,14 +1917,13 @@ async function proveOnIron(): Promise<void> {
   const IV_MEDS = ['med-4', 'med-5', 'med-6', 'med-7', 'med-13', 'med-14', 'med-15', 'med-16', 'med-17', 'med-18', 'med-19', 'med-20'];
   /** The iron choices' own content: DP-1's host and everything DP-1 / DP-3 lead to. */
   const CHOICES = ['step-1-7', 'dp-1', 'stage-2-empiric', 'step-1-2', 'stage-2', 'step-2-8', 'dp-3', 'stage-2-oral', 'step-2-9',
-    'step-2-1', 'step-2-2', 'step-2-3', 'gate-hgb-response', 'gate-hgb-nonresponse', 'step-2-4', 'step-2-6', 'step-2-10'];
+    'step-2-1', 'step-2-2', 'step-2-3', ...DUE_GATES, ...RECHECK, 'step-2-22', 'gate-hgb-response', 'gate-hgb-nonresponse', 'step-2-4', 'step-2-6', 'step-2-10'];
   const CONTINUE = ['step-2-14', 'guid-7', 'lab-19', 'sched-7'];
   const COPIES = ['gate-hgb-response-on-iron', 'gate-hgb-nonresponse-on-iron'];
-  const COPIES_SORTED = [...COPIES].sort();
   const ESCALATION = ['step-2-16', 'dp-4', 'crit-4a', 'crit-4b', 'crit-4c', 'crit-4d', 'step-1-11', 'lab-20', 'lab-21', 'gate-iv-iron-ga-on-iron', 'step-2-17',
     'med-17', 'med-18', 'med-19', 'med-20', 'sched-8'];
   const STUDIES = ['step-1-12', 'lab-22', 'lab-23'];
-  const ROUTE_A = [...CONTINUE, ...COPIES, 'gate-confirm-studies-on-iron', ...STUDIES, 'step-2-15', ...ESCALATION];
+  const ROUTE_A = [...CONTINUE, ...DUE_GATES_ON_IRON, ...RECHECK_ON_IRON, 'step-2-20', ...COPIES, 'gate-confirm-studies-on-iron', ...STUDIES, 'step-2-15', ...ESCALATION];
   const ROUTE_B = ['step-2-18', 'guid-8', 'lab-24', 'sched-9'];
   const CONFIRM = 'gate-confirm-studies-on-iron';
   const dpAsked = (pending: unknown[]) => String(pending.some((p: any) => ['dp-1', 'dp-3', 'dp-4'].includes(p.gateId)));
@@ -1886,9 +1956,11 @@ async function proveOnIron(): Promise<void> {
     let dq = r.pending.filter((p: any) => p.datumKey === ORAL_IRON_ANCHOR) as any[];
     expect('start-date questions', String(dq.length), '1');
     expect('prompt', String(dq[0]?.prompt), 'When did oral iron start?');
-    expect('asked by both response-gate copies', JSON.stringify([dq[0]?.gateId, ...(dq[0]?.askedByNodeIds ?? [])].filter((x, i, a) => x && a.indexOf(x) === i).sort()),
-      JSON.stringify(COPIES_SORTED));
-    for (const g of COPIES) expect(g, status(r.state, g), 'PENDING_QUESTION');
+    expect('asked by the recheck-due gate (v14: gate-rechecked-on-iron never asks; the copies sit behind it)', JSON.stringify([dq[0]?.gateId, ...(dq[0]?.askedByNodeIds ?? [])].filter((x, i, a) => x && a.indexOf(x) === i).sort()),
+      JSON.stringify(['gate-response-recheck-due-on-iron']));
+    expect('gate-response-recheck-due-on-iron', status(r.state, 'gate-response-recheck-due-on-iron'), 'PENDING_QUESTION');
+    expectAll('(closed until the start date is answered)', r.state, ['gate-rechecked-on-iron', 'step-2-20', ...COPIES], 'GATED_OUT');
+    expect('questions about a hemoglobin value', String(r.pending.filter((p: any) => p.datumKey === 'LOINC:718-7').length), '0');
     const cq = r.pending.filter((p: any) => p.gateId === CONFIRM) as any[];
     expect('confirmatory-studies questions', String(cq.length), '1');
     expect('prompt', String(cq[0]?.prompt), 'She is already on oral iron. Order confirmatory iron studies (ferritin, iron/TIBC/saturation) now?');
@@ -1909,23 +1981,23 @@ async function proveOnIron(): Promise<void> {
     expect('oral-iron Medication nodes INCLUDED', included(r.state, ORAL_MEDS), '[]');
     expect('dp-1 / dp-3 asked', dpAsked(r.pending), 'false');
 
-    // The simulator flow: the start date answered (21 days before the proof clock),
-    // one undated Hgb on the chart — no dated series yet, so a dated result is asked for.
-    console.log('    …the start date answered 2026-09-03, only an undated Hgb on the chart — the copies ask for a dated hemoglobin:');
+    // The simulator flow — and the dead end Josh hit on 2026-10-04: the start date
+    // answered (21 days before the proof clock), one undated Hgb on the chart. An
+    // undated value has no draw date, so it is not "drawn since oral iron started".
+    // Through v13 the copies then asked for "a result, and the date it was drawn?",
+    // and "Not available" closed both with nothing on the route. v14: nothing is
+    // asked; Step 2.19 orders the response recheck (full scenario: `response-recheck`).
+    console.log('    …the start date answered 2026-09-03, only an undated Hgb on the chart — v14: no hemoglobin question; Step 2.19 orders the recheck:');
     r = await resolveSession({ ...base, patient: onOral, ask: [{ gate: CONFIRM, answer: NO },
       { anchor: ORAL_IRON_ANCHOR, answer: { dateValue: '2026-09-03' } as GateAnswer }] });
-    expect('anchor source', String(r.state.get('gate-hgb-response-on-iron')?.windowAnchors?.[0]?.source), 'CLINICIAN');
-    for (const g of COPIES) expect(g, status(r.state, g), 'PENDING_QUESTION');
-    const sq = r.pending.filter((p: any) => (p.askedByNodeIds ?? [p.gateId]).some((id: string) => COPIES.includes(id))) as any[];
-    expect('questions from the response-gate copies', String(sq.length), '1');
-    expect('it asks for', `${sq[0]?.datumKey}: ${sq[0]?.prompt}`, 'LOINC:718-7: Hemoglobin (g/dL) (LOINC 718-7) — a result, and the date it was drawn?');
-    console.log('    …"Not available" — both copies close, nothing left to ask on this route:');
-    r = await resolveSession({ ...base, patient: onOral, ask: [{ gate: CONFIRM, answer: NO },
-      { anchor: ORAL_IRON_ANCHOR, answer: { dateValue: '2026-09-03' } as GateAnswer }, { decline: 'LOINC:718-7' }] });
-    for (const g of COPIES) expect(g, status(r.state, g), 'GATED_OUT');
+    expect('anchor source', String(r.state.get('gate-response-recheck-due-on-iron')?.windowAnchors?.[0]?.source), 'CLINICIAN');
+    expectAll('(recheck ordered)', r.state, ['gate-response-recheck-due-on-iron', ...RECHECK_ON_IRON], 'INCLUDED');
+    expect('step-2-19 sits under', String(r.state.get('step-2-19')?.parentNodeId), 'gate-response-recheck-due-on-iron');
+    expectAll('(response not assessed)', r.state, ['gate-rechecked-on-iron', 'step-2-20', ...COPIES, 'step-2-15', 'step-2-16'], 'GATED_OUT');
+    expect('questions about a hemoglobin value', String(r.pending.filter((p: any) => p.datumKey === 'LOINC:718-7').length), '0');
+    expect('questions from the count gates or the response-gate copies', String(r.pending.filter((p: any) =>
+      [p.gateId, ...(p.askedByNodeIds ?? [])].some((id: string) => [...DUE_GATES_ON_IRON, ...COPIES].includes(id))).length), '0');
     expectAll('(continue stays)', r.state, CONTINUE, 'INCLUDED');
-    expect('questions from the response-gate copies', String(r.pending.filter((p: any) =>
-      (p.askedByNodeIds ?? [p.gateId]).some((id: string) => COPIES.includes(id))).length), '0');
 
     console.log('    every oral iron code routes the same way:');
     for (const code of ORAL_CODES) {
@@ -1943,18 +2015,20 @@ async function proveOnIron(): Promise<void> {
     });
     console.log('    ferrous sulfate ordered 2026-06-01; day 5, 9.5 → 9.8 — NOT YET DUE, nothing asked about the response:');
     r = await recheck(DAY5, [[9.5, BASELINE_DATE], [9.8, '2026-06-05']], 20);
-    for (const g of COPIES) {
+    for (const g of DUE_GATES_ON_IRON) {
       expect(g, status(r.state, g), 'GATED_OUT');
       expect(`${g} not yet due`, String(r.state.get(g)?.notYetDue === true), 'true');
     }
-    expect('anchor source', String(r.state.get('gate-hgb-response-on-iron')?.windowAnchors?.[0]?.source), 'MEDICATION_ORDER');
-    expectAll('(neither branch)', r.state, ['step-2-15', 'step-2-16'], 'GATED_OUT');
-    expect('questions from the response-gate copies', String(r.pending.filter((p: any) =>
-      COPIES.includes(p.gateId) || (p.askedByNodeIds ?? []).some((id: string) => COPIES.includes(id))).length), '0');
+    expect('anchor source', String(r.state.get('gate-rechecked-on-iron')?.windowAnchors?.[0]?.source), 'MEDICATION_ORDER');
+    expectAll('(nothing opens: no recheck orders, no assessment, neither branch)', r.state, [...RECHECK_ON_IRON, 'step-2-20', ...COPIES, 'step-2-15', 'step-2-16'], 'GATED_OUT');
+    expect('questions from the count gates or the response-gate copies', String(r.pending.filter((p: any) =>
+      [p.gateId, ...(p.askedByNodeIds ?? [])].some((id: string) => [...DUE_GATES_ON_IRON, ...COPIES].includes(id))).length), '0');
 
     console.log('    day 21, 9.5 → 10.7 (+1.2) — responding: maintenance, nothing escalates:');
     r = await recheck(DAY21, [[9.5, BASELINE_DATE], [10.7, RECHECK_DATE]], 20);
     expect('anchor source', String(r.state.get('gate-hgb-response-on-iron')?.windowAnchors?.[0]?.source), 'MEDICATION_ORDER');
+    expectAll('(a hemoglobin since the start: Step 2.20 assesses it)', r.state, ['gate-rechecked-on-iron', 'step-2-20'], 'INCLUDED');
+    expectAll('(no recheck orders)', r.state, ['gate-response-recheck-due-on-iron', ...RECHECK_ON_IRON], 'GATED_OUT');
     expect('gate-hgb-response-on-iron', status(r.state, 'gate-hgb-response-on-iron'), 'INCLUDED');
     expect('step-2-15 maintenance', status(r.state, 'step-2-15'), 'INCLUDED');
     expect('gate-hgb-nonresponse-on-iron', status(r.state, 'gate-hgb-nonresponse-on-iron'), 'GATED_OUT');
@@ -1971,6 +2045,7 @@ async function proveOnIron(): Promise<void> {
     expect('gate-hgb-response-on-iron', status(r.state, 'gate-hgb-response-on-iron'), 'GATED_OUT');
     expect('step-2-15 maintenance', status(r.state, 'step-2-15'), 'GATED_OUT');
     expectAll('(escalation)', r.state, ESCALATION, 'INCLUDED');
+    expectAll('(no recheck orders)', r.state, ['gate-response-recheck-due-on-iron', ...RECHECK_ON_IRON], 'GATED_OUT');
     expect('med-17 sits under', String(r.state.get('med-17')?.parentNodeId), 'step-2-17');
     expect('oral-iron Medication nodes INCLUDED', included(r.state, ORAL_MEDS), '[]');
     expect('IV-iron Medication nodes INCLUDED (Step 2.17\'s only)', included(r.state, IV_MEDS), JSON.stringify(['med-17', 'med-18', 'med-19', 'med-20']));
@@ -2041,6 +2116,188 @@ async function proveOnIron(): Promise<void> {
   }
 }
 
+// ── Proof: anemia v14 — response due, no hemoglobin since the start → order the recheck ──
+// [DECISION — Josh 2026-10-04] "It should be accepting the value I gave along with
+// MCV and that oral iron supplementation was started 1 month ago. The recommendation
+// should be to repeat testing with iron studies to determine need for IV iron."
+// His patient: 28 weeks, Hgb 8 and MCV 70 dated 2026-09-01, ferrous gluconate on the
+// medication list, oral iron started 2026-09-03 (his answer), visit 2026-10-04. v13
+// routed her to Step 2.14 and then asked for a newer hemoglobin; "No newer result"
+// closed both response gates and left nothing. v14 puts two anchored COUNT gates in
+// front of the response gates, on both routes:
+//   gate-response-recheck-due[-on-iron] = count(Hgb since the start) < 1, due day 14
+//                                         → Step 2.21 / 2.19: CBC + ferritin + iron/TIBC/sat
+//   gate-rechecked[-on-iron]            = count(Hgb since the start) ≥ 1, due day 14
+//                                         → Step 2.22 / 2.20, hosting the response gates
+// A count never asks for a lab value; only an unknown start date is asked.
+async function proveResponseRecheck(): Promise<void> {
+  console.log(`\n=== response-recheck: anemia v14 — on oral iron ≥ 14 days, no hemoglobin since it started → the recheck is ordered, not asked for (${ANEMIA}) ===`);
+  const VISIT = '2026-10-04T15:00:00.000Z';
+  const START = '2026-09-03';                       // 31 days before the visit
+  const BASELINE = '2026-09-01';                    // 33 days before the visit
+  const GLUCONATE = '198630';                       // Med-2's CodeEntry: ferrous gluconate 324 mg tablet
+  const CONFIRM = 'gate-confirm-studies-on-iron';
+  const COPIES = ['gate-hgb-response-on-iron', 'gate-hgb-nonresponse-on-iron'];
+  const ORIGINALS = ['gate-hgb-response', 'gate-hgb-nonresponse'];
+  const ALL_CHECK_GATES = [...DUE_GATES, ...DUE_GATES_ON_IRON, ...COPIES, ...ORIGINALS];
+  const checkQuestions = (pending: any[]) => String(pending.filter((p: any) =>
+    [p.gateId, ...(p.askedByNodeIds ?? [])].some((id: string) => ALL_CHECK_GATES.includes(id))).length);
+  const hgbQuestions = (pending: any[]) => String(pending.filter((p: any) => p.datumKey === 'LOINC:718-7').length);
+  const pw = JSON.parse(readFileSync(resolve(ANEMIA), 'utf8'));
+  /** INCLUDED LabTest nodes ordering LOINC `code` — how many plan lines carry that test. */
+  const orders = (state: Map<string, { status: string }>, code: string) => pw.nodes
+    .filter((n: any) => n.type === 'LabTest' && n.properties.code === code && status(state, n.id) === 'INCLUDED')
+    .map((n: any) => n.id).sort();
+
+  for (const reverse of [false, true]) {
+    console.log(`  -- edge order: ${reverse ? 'reversed' : 'file'}`);
+    const base = { file: ANEMIA, reverse };
+
+    // ── Already on oral iron (Step 2.14) ──
+    const onIron = (o: { hgb: Array<[number, string]>; asOf?: string; med?: [string, string] | [string]; ask?: Replay[]; ga?: number }) => resolveSession({
+      ...base, asOf: o.asOf ?? VISIT, ask: o.ask ?? [{ gate: CONFIRM, answer: NO }],
+      patient: patientWith([['787-2', 70, BASELINE], ...o.hgb.map(([v, date]) => ['718-7', v, date] as Lab)],
+        { gestational_age_weeks: o.ga ?? 28 }, [], [o.med ?? [GLUCONATE, START]]),
+    });
+
+    console.log('  Josh\'s patient: GA 28, Hgb 8 + MCV 70 dated 2026-09-01, ferrous gluconate on the list (undated), visit 2026-10-04:');
+    console.log('    before any answer — the start date is asked once; no hemoglobin value is asked for:');
+    let r = await onIron({ hgb: [[8, BASELINE]], med: [GLUCONATE], ask: [] });
+    expect('step-2-14', status(r.state, 'step-2-14'), 'INCLUDED');
+    let dq = r.pending.filter((p: any) => p.datumKey === ORAL_IRON_ANCHOR) as any[];
+    expect('start-date questions', String(dq.length), '1');
+    expect('prompt', String(dq[0]?.prompt), 'When did oral iron start?');
+    expect('Hgb questions', hgbQuestions(r.pending), '0');
+    console.log('    "oral iron started 2026-09-03", confirmatory studies: no — the recheck is ordered and nothing more is asked:');
+    r = await onIron({ hgb: [[8, BASELINE]], med: [GLUCONATE],
+      ask: [{ gate: CONFIRM, answer: NO }, { anchor: ORAL_IRON_ANCHOR, answer: { dateValue: START } as GateAnswer }] });
+    expect('anchor source', String(r.state.get('gate-response-recheck-due-on-iron')?.windowAnchors?.[0]?.source), 'CLINICIAN');
+    expectAll('(response recheck)', r.state, ['gate-response-recheck-due-on-iron', ...RECHECK_ON_IRON], 'INCLUDED');
+    expect('step-2-19 sits under', String(r.state.get('step-2-19')?.parentNodeId), 'gate-response-recheck-due-on-iron');
+    expectAll('(response not assessed; no maintenance, no nonresponse, no IV iron)', r.state,
+      ['gate-rechecked-on-iron', 'step-2-20', ...COPIES, 'step-2-15', 'step-2-16', 'dp-4', 'step-2-17', 'med-17'], 'GATED_OUT');
+    expectAll('(continue oral iron)', r.state, ['step-2-14', 'guid-7'], 'INCLUDED');
+    expect('Hgb questions', hgbQuestions(r.pending), '0');
+    expect('response-check questions', checkQuestions(r.pending), '0');
+    expect('care-plan blockers on the route', String(validateForGeneration(r.state, r.redFlags)
+      .filter((b) => b.relatedNodeIds.some((id) => ['step-2-14', ...DUE_GATES_ON_IRON, ...RECHECK_ON_IRON, 'step-2-20', ...COPIES].includes(id))).length), '0');
+    expect('Medication nodes INCLUDED (no iron started or escalated)', JSON.stringify(pw.nodes
+      .filter((n: any) => n.type === 'Medication' && /iron-repletion/.test(n.properties.clinical_role ?? '') && status(r.state, n.id) === 'INCLUDED').map((n: any) => n.id)), '[]');
+    expect('referral (Hgb 8 < 9, read from the 33-day-old value)', status(r.state, 'gate-referral-threshold'), 'INCLUDED');
+    // [JOSH — CONFIRM] — her plan carries the CBC four times: Step 1.1's (Lab-1),
+    // Step 1.13's 30-day recheck (Lab-25: her Hgb is 33 days old), Step 2.14's
+    // scheduled recheck (Lab-19) and the response recheck (Lab-26). One draw.
+    expect('CBC (58410-2) order lines', JSON.stringify(orders(r.state, '58410-2')), JSON.stringify(['lab-1', 'lab-19', 'lab-25', 'lab-26']));
+    expect('ferritin (2276-4) order lines', JSON.stringify(orders(r.state, '2276-4')), JSON.stringify(['lab-27']));
+    expect('iron/TIBC/sat (2498-4) order lines', JSON.stringify(orders(r.state, '2498-4')), JSON.stringify(['lab-28']));
+    console.log('    …confirmatory studies: yes — the recheck is ordered either way; ferritin and iron/TIBC are then listed twice:');
+    r = await onIron({ hgb: [[8, BASELINE]], med: [GLUCONATE],
+      ask: [{ gate: CONFIRM, answer: YES }, { anchor: ORAL_IRON_ANCHOR, answer: { dateValue: START } as GateAnswer }] });
+    expectAll('(response recheck)', r.state, RECHECK_ON_IRON, 'INCLUDED');
+    expect('ferritin (2276-4) order lines', JSON.stringify(orders(r.state, '2276-4')), JSON.stringify(['lab-22', 'lab-27']));
+    expect('iron/TIBC/sat (2498-4) order lines', JSON.stringify(orders(r.state, '2498-4')), JSON.stringify(['lab-23', 'lab-28']));
+
+    console.log('  (i) the same from a DATED order: Hgb 33 days ago, gluconate ordered 31 days ago, no later Hgb — nothing asked at all:');
+    r = await onIron({ hgb: [[8, BASELINE]] });
+    expect('anchor source', String(r.state.get('gate-response-recheck-due-on-iron')?.windowAnchors?.[0]?.source), 'MEDICATION_ORDER');
+    expectAll('(response recheck)', r.state, ['gate-response-recheck-due-on-iron', ...RECHECK_ON_IRON], 'INCLUDED');
+    expectAll('(response not assessed)', r.state, ['gate-rechecked-on-iron', 'step-2-20', ...COPIES, 'step-2-15', 'step-2-16'], 'GATED_OUT');
+    expect('start-date questions', String(r.pending.filter((p: any) => p.datumKey === ORAL_IRON_ANCHOR).length), '0');
+    expect('Hgb questions', hgbQuestions(r.pending), '0');
+    expect('response-check questions', checkQuestions(r.pending), '0');
+
+    console.log('  (ii) a hemoglobin since the start, 8.0 → 9.4 (+1.4) — responding: maintenance; no recheck orders:');
+    r = await onIron({ hgb: [[8, BASELINE], [9.4, '2026-10-01']] });
+    expectAll('(assessed)', r.state, ['gate-rechecked-on-iron', 'step-2-20', 'gate-hgb-response-on-iron', 'step-2-15'], 'INCLUDED');
+    expectAll('(no recheck orders, no nonresponse)', r.state, ['gate-response-recheck-due-on-iron', ...RECHECK_ON_IRON, 'gate-hgb-nonresponse-on-iron', 'step-2-16'], 'GATED_OUT');
+    expect('response-check questions', checkQuestions(r.pending), '0');
+    console.log('       8.0 → 8.5 (+0.5, below target), GA 28 — not responding: nonresponse management, IV iron:');
+    r = await onIron({ hgb: [[8, BASELINE], [8.5, '2026-10-01']] });
+    expectAll('(assessed)', r.state, ['gate-rechecked-on-iron', 'step-2-20', 'gate-hgb-nonresponse-on-iron', 'step-2-16', 'dp-4', 'step-2-17', 'med-17'], 'INCLUDED');
+    expectAll('(no recheck orders, no maintenance)', r.state, ['gate-response-recheck-due-on-iron', ...RECHECK_ON_IRON, 'gate-hgb-response-on-iron', 'step-2-15'], 'GATED_OUT');
+    expect('response-check questions', checkQuestions(r.pending), '0');
+
+    console.log('  (iii) day 7 of oral iron (ordered 2026-09-27), no hemoglobin since — NOT YET DUE: nothing asked, neither opens:');
+    r = await onIron({ hgb: [[8, '2026-09-25']], med: [GLUCONATE, '2026-09-27'] });
+    for (const g of DUE_GATES_ON_IRON) {
+      expect(g, status(r.state, g), 'GATED_OUT');
+      expect(`${g} not yet due`, String(r.state.get(g)?.notYetDue === true), 'true');
+      expect(`${g} reason`, String(r.state.get(g)?.excludeReason ?? '').slice(0, 36), 'NOT_YET_DUE: due on/after 2026-10-11');
+    }
+    expectAll('(nothing opens)', r.state, [...RECHECK_ON_IRON, 'step-2-20', ...COPIES, 'step-2-15', 'step-2-16'], 'GATED_OUT');
+    expect('Hgb questions', hgbQuestions(r.pending), '0');
+    expect('response-check questions', checkQuestions(r.pending), '0');
+    console.log('       …day 7 with a hemoglobin drawn on day 5 — still NOT YET DUE (a day-5 value does not decide):');
+    r = await onIron({ hgb: [[8, '2026-09-25'], [8.2, '2026-10-02']], med: [GLUCONATE, '2026-09-27'] });
+    for (const g of DUE_GATES_ON_IRON) expect(`${g} not yet due`, String(r.state.get(g)?.notYetDue === true), 'true');
+    expectAll('(nothing opens)', r.state, [...RECHECK_ON_IRON, 'step-2-20', 'step-2-15', 'step-2-16'], 'GATED_OUT');
+
+    // KNOWN GAP (brief §18 "Limits", not closed by v14 — it needs an engine change).
+    // No hemoglobin on the chart at all: the recheck is ordered (a count of zero) and
+    // the LEVEL is asked for by the Stage 3 threshold gates (v10). If the provider
+    // then enters today's value, that value is dated at the visit, so it counts as
+    // "drawn since oral iron started": the recheck step closes, Step 2.20 opens, and
+    // the response gates — one value, no baseline — ask for a result "drawn after"
+    // today, which cannot exist. "Not available" closes both.
+    console.log('  no hemoglobin on the chart, oral iron ordered 31 days ago — recheck ordered; the level is asked for (v10):');
+    r = await onIron({ hgb: [] });
+    expectAll('(response recheck)', r.state, ['gate-response-recheck-due-on-iron', ...RECHECK_ON_IRON], 'INCLUDED');
+    expect('Hgb question asked by', JSON.stringify(r.pending.filter((p: any) => p.datumKey === 'LOINC:718-7').flatMap((p: any) => p.askedByNodeIds ?? [p.gateId]).sort()),
+      JSON.stringify(['gate-referral-threshold', 'gate-severe-anemia']));
+    console.log('    …the provider enters Hgb 8 at the visit — KNOWN GAP: it counts as "since the start"; the recheck closes and a newer result is asked for:');
+    const entered = await supplyLab(r, patientWith([['787-2', 70, BASELINE]], { gestational_age_weeks: 28 }, [], [[GLUCONATE, START]]), { code: '718-7', value: 8 }, VISIT);
+    expectAll('(recheck closed)', entered.state, ['gate-response-recheck-due-on-iron', ...RECHECK_ON_IRON], 'GATED_OUT');
+    expectAll('(assessment opened)', entered.state, ['gate-rechecked-on-iron', 'step-2-20'], 'INCLUDED');
+    for (const g of COPIES) expect(g, status(entered.state, g), 'PENDING_QUESTION');
+    expect('it asks', String((entered.pending.find((p: any) => p.datumKey === 'LOINC:718-7') as any)?.prompt), 'Hemoglobin (g/dL) (LOINC 718-7) — newest result, drawn after 2026-10-04?');
+
+    // ── Oral iron started by this pathway (Step 2.3), both arms' shared steps ──
+    const started = (o: { hgb: Array<[number, string]>; asOf?: string; start?: string; ask?: Replay[] }) => resolveSession({
+      ...base, asOf: o.asOf ?? VISIT, replay: [EMPIRIC_CHOICE, ORAL], oralIronStart: o.start, ask: o.ask,
+      patient: patientWith([['787-2', 70, BASELINE], ...o.hgb.map(([v, date]) => ['718-7', v, date] as Lab)], { gestational_age_weeks: 28 }),
+    });
+    console.log('  Step 2.3 route (oral iron started by the pathway; the start is the stored care plan of 2026-09-03):');
+    console.log('  (i) Hgb 33 days ago, started 31 days ago, no later Hgb — Step 2.21 orders the recheck; nothing asked:');
+    r = await started({ hgb: [[8, BASELINE]], start: START });
+    expect('anchor source', String(r.state.get('gate-response-recheck-due')?.windowAnchors?.[0]?.source), 'CARE_PLAN');
+    expectAll('(response recheck)', r.state, ['gate-response-recheck-due', ...RECHECK], 'INCLUDED');
+    expect('step-2-21 sits under', String(r.state.get('step-2-21')?.parentNodeId), 'gate-response-recheck-due');
+    expectAll('(response not assessed)', r.state, ['gate-rechecked', 'step-2-22', ...ORIGINALS, 'step-2-4', 'step-2-6', 'step-2-5'], 'GATED_OUT');
+    expect('Hgb questions', hgbQuestions(r.pending), '0');
+    expect('response-check questions', checkQuestions(r.pending), '0');
+    expect('CBC (58410-2) order lines', JSON.stringify(orders(r.state, '58410-2')), JSON.stringify(['lab-1', 'lab-10', 'lab-25', 'lab-29']));
+    console.log('  (ii) 8.0 → 9.4 — maintenance; 8.0 → 8.5 — nonresponse management:');
+    r = await started({ hgb: [[8, BASELINE], [9.4, '2026-10-01']], start: START });
+    expectAll('(assessed: responding)', r.state, ['gate-rechecked', 'step-2-22', 'gate-hgb-response', 'step-2-4'], 'INCLUDED');
+    expectAll('(no recheck orders, no nonresponse)', r.state, ['gate-response-recheck-due', ...RECHECK, 'gate-hgb-nonresponse', 'step-2-6'], 'GATED_OUT');
+    r = await started({ hgb: [[8, BASELINE], [8.5, '2026-10-01']], start: START });
+    expectAll('(assessed: not responding)', r.state, ['gate-rechecked', 'step-2-22', 'gate-hgb-nonresponse', 'step-2-6', 'dp-2', 'step-2-5'], 'INCLUDED');
+    expectAll('(no recheck orders, no maintenance)', r.state, ['gate-response-recheck-due', ...RECHECK, 'gate-hgb-response', 'step-2-4'], 'GATED_OUT');
+    console.log('  (iii) day 7 (care plan of 2026-09-27) — NOT YET DUE: nothing asked, neither opens:');
+    r = await started({ hgb: [[8, '2026-09-25']], start: '2026-09-27' });
+    for (const g of DUE_GATES) {
+      expect(g, status(r.state, g), 'GATED_OUT');
+      expect(`${g} not yet due`, String(r.state.get(g)?.notYetDue === true), 'true');
+    }
+    expectAll('(nothing opens)', r.state, [...RECHECK, 'step-2-22', ...ORIGINALS, 'step-2-4', 'step-2-6'], 'GATED_OUT');
+    expect('response-check questions', checkQuestions(r.pending), '0');
+    console.log('  (iv) the START visit (oral iron recommended this session, Hgb drawn 3 days ago) — unchanged: NOT YET DUE, nothing asked:');
+    r = await started({ hgb: [[8, '2026-10-01']] });
+    for (const g of DUE_GATES) {
+      expect(g, status(r.state, g), 'GATED_OUT');
+      expect(`${g} not yet due`, String(r.state.get(g)?.notYetDue === true), 'true');
+      expect(`${g} anchor source`, String(r.state.get(g)?.windowAnchors?.[0]?.source), 'SESSION_RECOMMENDATION');
+    }
+    expectAll('(the start visit\'s plan)', r.state, ['step-2-1', 'med-1', 'step-2-3', 'lab-10', 'sched-2'], 'INCLUDED');
+    expectAll('(nothing opens)', r.state, [...RECHECK, 'step-2-22', ...ORIGINALS, 'step-2-4', 'step-2-6'], 'GATED_OUT');
+    expect('start-date questions', String(r.pending.filter((p: any) => p.datumKey === ORAL_IRON_ANCHOR).length), '0');
+    expect('Hgb questions', hgbQuestions(r.pending), '0');
+    expect('response-check questions', checkQuestions(r.pending), '0');
+    expect('care-plan blockers on the route', String(validateForGeneration(r.state, r.redFlags)
+      .filter((b) => b.relatedNodeIds.some((id) => [...DUE_GATES, ...RECHECK, 'step-2-22', ...ORIGINALS].includes(id))).length), '0');
+  }
+}
+
 const PROOFS: Record<string, () => Promise<void>> = {
   'attribute-form': proveAttributeForm,
   'dp-1': proveDp1,
@@ -2058,6 +2315,7 @@ const PROOFS: Record<string, () => Promise<void>> = {
   'unknown-hgb': proveUnknownHgb,
   'on-iron': proveOnIron,
   'hgb-recheck': proveHgbRecheck,
+  'response-recheck': proveResponseRecheck,
   'ghtn-seizure': proveGhtnSeizure,
   'uti-shared-labs': proveUtiSharedLabs,
 };

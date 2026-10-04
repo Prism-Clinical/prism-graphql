@@ -243,6 +243,28 @@ describe('mergeResolvedCarePlans — non-medication dedup', () => {
     ]);
   });
 
+  it('one code is one order, and the line keeps every reason it is ordered', () => {
+    const a = makePathway({
+      title: 'A',
+      labs: [
+        { name: 'CBC with indices', code: '58410-2', system: 'LOINC' },
+        { name: 'CBC with indices — recheck (no hemoglobin in the last 30 days)', code: '58410-2', system: 'LOINC' },
+        { name: 'CBC with indices', code: '58410-2', system: 'LOINC' },
+      ],
+    });
+    const merged = mergeResolvedCarePlans([a]);
+    expect(merged.labs).toHaveLength(1);
+    expect(merged.labs[0].recommendation.name).toBe('CBC with indices');
+    expect(merged.labs[0].recommendation.alsoOrderedAs).toEqual([
+      'CBC with indices — recheck (no hemoglobin in the last 30 days)',
+    ]);
+  });
+
+  it('a lab ordered under one name carries no alsoOrderedAs', () => {
+    const a = makePathway({ title: 'A', labs: [{ name: 'HbA1c', code: '4548-4', system: 'LOINC' }] });
+    expect(mergeResolvedCarePlans([a]).labs[0].recommendation.alsoOrderedAs).toBeUndefined();
+  });
+
   it('keeps labs with different codes separate', () => {
     const a = makePathway({
       title: 'A',

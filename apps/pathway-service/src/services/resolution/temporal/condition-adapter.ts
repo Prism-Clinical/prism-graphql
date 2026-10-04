@@ -179,6 +179,22 @@ export function conditionControlDomainError(condition: unknown): string | null {
     }
   }
 
+  // `count_comparison` — the same reasoning for a count: "fewer than N in the
+  // window" has no other encoding, and ignored on another operator it would
+  // read as its inverse.
+  const countComparison = c.count_comparison;
+  if (countComparison !== undefined) {
+    if (c.operator !== 'count_in_window') {
+      return (
+        `"count_comparison" applies only to count_in_window ` +
+        `(got operator ${JSON.stringify(c.operator)})`
+      );
+    }
+    if (countComparison !== 'at_least' && countComparison !== 'less_than') {
+      return `"count_comparison" must be "at_least" or "less_than" (got ${JSON.stringify(countComparison)})`;
+    }
+  }
+
   const slope = c.slope_threshold;
   if (slope !== undefined) {
     if (typeof slope !== 'number' || !Number.isFinite(slope)) {

@@ -1895,6 +1895,11 @@ export type ResolvedImaging = {
 
 export type ResolvedLab = {
   __typename?: 'ResolvedLab';
+  /**
+   * Names of other lab nodes with the same code that folded into this line —
+   * the other reasons this one order is recommended.
+   */
+  alsoOrderedAs?: Maybe<Array<Scalars['String']['output']>>;
   code?: Maybe<Scalars['String']['output']>;
   /**
    * Gate / decision-point node ids that gated the path to this
@@ -3410,6 +3415,7 @@ export type ResolvedImagingResolvers<ContextType = DataSourceContext, ParentType
 }>;
 
 export type ResolvedLabResolvers<ContextType = DataSourceContext, ParentType extends ResolversParentTypes['ResolvedLab'] = ResolversParentTypes['ResolvedLab']> = ResolversObject<{
+  alsoOrderedAs?: Resolver<Maybe<Array<ResolversTypes['String']>>, ParentType, ContextType>;
   code?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   evidenceGateIds?: Resolver<Array<ResolversTypes['String']>, ParentType, ContextType>;
   name?: Resolver<ResolversTypes['String'], ParentType, ContextType>;

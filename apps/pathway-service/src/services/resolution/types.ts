@@ -186,6 +186,12 @@ export interface CodedCondition {
    * `conditionControlDomainError`.
    */
   delta_comparison?: 'at_least' | 'less_than';
+  /**
+   * `count_in_window` only. `at_least` (the default) is satisfied by
+   * count >= `count_threshold`; `less_than` by count < `count_threshold` —
+   * "nothing drawn since treatment started" (`less_than 1`).
+   */
+  count_comparison?: 'at_least' | 'less_than';
   display?: string; // UI decorator — ignored by the evaluator
   note?: string;    // UI decorator — ignored by the evaluator
 }

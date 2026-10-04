@@ -566,7 +566,7 @@ function evaluateConditionLegacyAdapted(
   //    alone, so the window would silently become the whole history;
   //  - `delta_comparison`: legacy picks the direction from the threshold's
   //    sign, so `less_than 1.0` would run as `>= 1.0` — the exact inverse.
-  for (const key of ['window_from', 'delta_comparison'] as const) {
+  for (const key of ['window_from', 'delta_comparison', 'count_comparison'] as const) {
     if ((condition as unknown as Record<string, unknown>)[key] !== undefined) {
       return {
         satisfied: false,
@@ -1129,8 +1129,9 @@ function evaluateAggregateKernel(
     // count is over distinct occurrences.
     const matches = selected.length;
     const threshold = condition.count_threshold ?? 2;
-    const satisfied = matches >= threshold;
-    const bound = satisfied ? `≥${threshold}` : `<${threshold}`;
+    const reached = matches >= threshold;
+    const satisfied = condition.count_comparison === 'less_than' ? !reached : reached;
+    const bound = reached ? `≥${threshold}` : `<${threshold}`;
     return finish({
       satisfied,
       reason:
