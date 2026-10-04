@@ -581,6 +581,12 @@ type ResolvedImaging {
 }
 
 """Patient instruction / counseling content."""
+type SuggestedDiagnosis {
+  code: String!
+  system: String!
+  display: String
+}
+
 type ResolvedGuidance {
   """Short title for the care-plan section."""
   topic: String!
@@ -588,6 +594,12 @@ type ResolvedGuidance {
   instructions: String!
   """Optional category (counseling, lifestyle, medication_adherence, self_monitoring, other)."""
   category: String
+  """
+  Set when this note is a hand-off: it recommends adding a diagnosis to the
+  encounter, which is what brings that problem's pathway in. `code` may be a
+  family; the provider picks the billable code under it.
+  """
+  suggestsDiagnosis: SuggestedDiagnosis
   sourcePathwayId: ID!
   sourceNodeId: String
   """

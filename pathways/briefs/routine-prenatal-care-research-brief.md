@@ -1,6 +1,16 @@
 # Pathway Research Brief — Routine Prenatal Care (with universal GDM screening)
 
-JSON: pathways/json/routine-prenatal-care.json @ version 5
+JSON: pathways/json/routine-prenatal-care.json @ version 6
+
+> **v6 (2026-10-04) — hand-offs are shown as suggested diagnoses.** Josh ran the 20-week
+> patient with a hemoglobin of 8.5 and "didn't see anything": the anemia hand-off was one
+> line in the guidance list. `[DECISION — Josh 2026-10-04]` (from that report): a hand-off
+> must be visible and actionable. The six hand-off guidance nodes now carry
+> `suggests_diagnosis_code` / `_system` / `_display` (Guid-12 O99.01, Guid-13 Z67.91,
+> Guid-14 R03.0, Guid-15 O24.11, Guid-A4 and Guid-A4b O24.41), which the plan shows as
+> "Suggested diagnosis" with an Add control; a family code lets the provider pick the
+> billable code under it. No gate, step, order or wording changed.
+
 
 **Status: version 5 (2026-10-04): medications are matched by ingredient; items marked CONFIRM
 remain.** Built as `pathways/json/routine-prenatal-care.json`, version 5 (387 nodes, 746
@@ -485,7 +495,7 @@ negative), or the ABO-specific Z67.11 / .21 / .31 / .41. Reasons:
 
 - **Logical ID**: `routine-prenatal-care`
 - **Title**: Routine Prenatal Care
-- **Version**: 5
+- **Version**: 6
 - **Category**: OBSTETRIC (behaviour, not a label: the pathway applies only to a patient the
   chart shows is pregnant)
 - **Scope**: Outpatient antepartum care for every pregnancy under supervision, from the first

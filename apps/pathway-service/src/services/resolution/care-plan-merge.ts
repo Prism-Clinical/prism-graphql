@@ -113,6 +113,12 @@ export interface ResolvedGuidance extends WithEvidence {
    * for forward-compat with future categories.
    */
   category?: string;
+  /**
+   * A hand-off: this note recommends adding a diagnosis to the encounter (the
+   * only way one pathway leads to another). `code` may be a family — the
+   * provider picks the billable code under it.
+   */
+  suggestsDiagnosis?: { code: string; system: string; display?: string };
   sourcePathwayId: string;
   sourceNodeId?: string;
 }

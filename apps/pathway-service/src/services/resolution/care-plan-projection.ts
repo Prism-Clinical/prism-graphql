@@ -407,10 +407,20 @@ function projectGuidance(
   const topic = strProp(node, 'topic') ?? node.title;
   const instructions = strProp(node, 'instructions');
   if (!instructions) return null;
+  const suggested = strProp(node, 'suggests_diagnosis_code');
   return {
     topic,
     instructions,
     category: strProp(node, 'category'),
+    ...(suggested
+      ? {
+          suggestsDiagnosis: {
+            code: suggested,
+            system: strProp(node, 'suggests_diagnosis_system') ?? 'ICD-10',
+            display: strProp(node, 'suggests_diagnosis_display'),
+          },
+        }
+      : {}),
     sourcePathwayId: pathwayId,
     sourceNodeId: node.nodeId,
     evidenceGateIds: [],

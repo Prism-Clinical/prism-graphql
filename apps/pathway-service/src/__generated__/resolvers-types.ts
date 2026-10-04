@@ -2032,7 +2032,6 @@ export enum ResolutionType {
   SystemSuggested = 'SYSTEM_SUGGESTED'
 }
 
-/** Patient instruction / counseling content. */
 export type ResolvedGuidance = {
   __typename?: 'ResolvedGuidance';
   /** Optional category (counseling, lifestyle, medication_adherence, self_monitoring, other). */
@@ -2047,6 +2046,12 @@ export type ResolvedGuidance = {
   instructions: Scalars['String']['output'];
   sourceNodeId?: Maybe<Scalars['String']['output']>;
   sourcePathwayId: Scalars['ID']['output'];
+  /**
+   * Set when this note is a hand-off: it recommends adding a diagnosis to the
+   * encounter, which is what brings that problem's pathway in. `code` may be a
+   * family; the provider picks the billable code under it.
+   */
+  suggestsDiagnosis?: Maybe<SuggestedDiagnosis>;
   /** Short title for the care-plan section. */
   topic: Scalars['String']['output'];
 };
@@ -2376,6 +2381,14 @@ export type SkippedPathway = {
   pathwayId: Scalars['ID']['output'];
   pathwayTitle: Scalars['String']['output'];
   reason: Scalars['String']['output'];
+};
+
+/** Patient instruction / counseling content. */
+export type SuggestedDiagnosis = {
+  __typename?: 'SuggestedDiagnosis';
+  code: Scalars['String']['output'];
+  display?: Maybe<Scalars['String']['output']>;
+  system: Scalars['String']['output'];
 };
 
 /**
@@ -2743,6 +2756,7 @@ export type ResolversTypes = ResolversObject<{
   SimulatorScenarioCode: ResolverTypeWrapper<SimulatorScenarioCode>;
   SimulatorScenarioLabResult: ResolverTypeWrapper<SimulatorScenarioLabResult>;
   SkippedPathway: ResolverTypeWrapper<SkippedPathway>;
+  SuggestedDiagnosis: ResolverTypeWrapper<SuggestedDiagnosis>;
   SuppressedRecommendation: ResolverTypeWrapper<SuppressedRecommendation>;
   SuppressedRecommendationType: SuppressedRecommendationType;
   SuppressionReason: SuppressionReason;
@@ -2867,6 +2881,7 @@ export type ResolversParentTypes = ResolversObject<{
   SimulatorScenarioCode: SimulatorScenarioCode;
   SimulatorScenarioLabResult: SimulatorScenarioLabResult;
   SkippedPathway: SkippedPathway;
+  SuggestedDiagnosis: SuggestedDiagnosis;
   SuppressedRecommendation: SuppressedRecommendation;
   UnlockedRecommendation: UnlockedRecommendation;
   UnnormalizedMedication: UnnormalizedMedication;
@@ -3644,6 +3659,7 @@ export type ResolvedGuidanceResolvers<ContextType = DataSourceContext, ParentTyp
   instructions?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   sourceNodeId?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   sourcePathwayId?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
+  suggestsDiagnosis?: Resolver<Maybe<ResolversTypes['SuggestedDiagnosis']>, ParentType, ContextType>;
   topic?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
 }>;
@@ -3826,6 +3842,13 @@ export type SkippedPathwayResolvers<ContextType = DataSourceContext, ParentType 
   __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
 }>;
 
+export type SuggestedDiagnosisResolvers<ContextType = DataSourceContext, ParentType extends ResolversParentTypes['SuggestedDiagnosis'] = ResolversParentTypes['SuggestedDiagnosis']> = ResolversObject<{
+  code?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  display?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  system?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
+}>;
+
 export type SuppressedRecommendationResolvers<ContextType = DataSourceContext, ParentType extends ResolversParentTypes['SuppressedRecommendation'] = ResolversParentTypes['SuppressedRecommendation']> = ResolversObject<{
   name?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   reason?: Resolver<ResolversTypes['SuppressionReason'], ParentType, ContextType>;
@@ -3981,6 +4004,7 @@ export type Resolvers<ContextType = DataSourceContext> = ResolversObject<{
   SimulatorScenarioCode?: SimulatorScenarioCodeResolvers<ContextType>;
   SimulatorScenarioLabResult?: SimulatorScenarioLabResultResolvers<ContextType>;
   SkippedPathway?: SkippedPathwayResolvers<ContextType>;
+  SuggestedDiagnosis?: SuggestedDiagnosisResolvers<ContextType>;
   SuppressedRecommendation?: SuppressedRecommendationResolvers<ContextType>;
   UnlockedRecommendation?: UnlockedRecommendationResolvers<ContextType>;
   UnnormalizedMedication?: UnnormalizedMedicationResolvers<ContextType>;

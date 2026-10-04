@@ -3,7 +3,7 @@
   "pathway": {
     "logical_id": "routine-prenatal-care",
     "title": "Routine Prenatal Care",
-    "version": "5",
+    "version": "6",
     "category": "OBSTETRIC",
     "scope": "Outpatient antepartum care for every pregnancy under supervision, from the first prenatal contact to birth: intake and dating, the initial laboratory panel, genetic screening options, psychosocial screening, preeclampsia risk and aspirin, supplements, immunizations and counselling, every-visit monitoring, and gestational-age-windowed care including gestational diabetes screening and diagnosis. Screens for diabetes, hypertension, anemia and Rh(D)-negative blood type and recommends adding the diagnosis to the encounter; treatment of each belongs to its own pathway.",
     "target_population": "Pregnant patients receiving outpatient prenatal care, average risk or under high-risk supervision.",
@@ -1184,7 +1184,10 @@
       "properties": {
         "topic": "Low hemoglobin: what happens next",
         "category": "education",
-        "instructions": "The hemoglobin drawn this pregnancy is below the screening threshold for this trimester (11.0 g/dL in the first and third, 10.5 g/dL in the second). Add anemia complicating pregnancy as a diagnosis on this encounter so the anemia pathway can guide the workup and treatment. Routine prenatal care continues unchanged."
+        "instructions": "The hemoglobin drawn this pregnancy is below the screening threshold for this trimester (11.0 g/dL in the first and third, 10.5 g/dL in the second). Add anemia complicating pregnancy as a diagnosis on this encounter so the anemia pathway can guide the workup and treatment. Routine prenatal care continues unchanged.",
+        "suggests_diagnosis_code": "O99.01",
+        "suggests_diagnosis_system": "ICD-10",
+        "suggests_diagnosis_display": "Anemia complicating pregnancy"
       }
     },
     {
@@ -1292,7 +1295,10 @@
       "properties": {
         "topic": "Rh(D) not clearly positive: what routine care does not cover",
         "category": "education",
-        "instructions": "The Rh(D) type is negative, weak D, partial D or otherwise not clearly positive. This pathway recommends no Rh immune globulin and no repeat antibody screen. Add Z67.91 (blood type, Rh negative) to this encounter, for weak D and partial D as well as for Rh negative, and manage Rh prophylaxis under the Rh-negative plan of care."
+        "instructions": "The Rh(D) type is negative, weak D, partial D or otherwise not clearly positive. This pathway recommends no Rh immune globulin and no repeat antibody screen. Add Z67.91 (blood type, Rh negative) to this encounter, for weak D and partial D as well as for Rh negative, and manage Rh prophylaxis under the Rh-negative plan of care.",
+        "suggests_diagnosis_code": "Z67.91",
+        "suggests_diagnosis_system": "ICD-10",
+        "suggests_diagnosis_display": "Blood type, Rh negative"
       }
     },
     {
@@ -2405,7 +2411,10 @@
       "properties": {
         "topic": "Elevated blood pressure: what happens next",
         "category": "education",
-        "instructions": "Today's blood pressure is 140/90 or higher. Repeat it. If it stays elevated, add the diagnosis to this encounter (R03.0 until confirmed; gestational hypertension or preeclampsia once confirmed) so the hypertension in pregnancy pathway can guide the evaluation. Urine protein is tested only when preeclampsia is suspected, not routinely."
+        "instructions": "Today's blood pressure is 140/90 or higher. Repeat it. If it stays elevated, add the diagnosis to this encounter (R03.0 until confirmed; gestational hypertension or preeclampsia once confirmed) so the hypertension in pregnancy pathway can guide the evaluation. Urine protein is tested only when preeclampsia is suspected, not routinely.",
+        "suggests_diagnosis_code": "R03.0",
+        "suggests_diagnosis_system": "ICD-10",
+        "suggests_diagnosis_display": "Elevated blood-pressure reading, without diagnosis of hypertension"
       }
     },
     {
@@ -2731,7 +2740,10 @@
       "properties": {
         "topic": "A1c in the diabetes range: what happens next",
         "category": "education",
-        "instructions": "The hemoglobin A1c is 6.5% or higher, which means diabetes that was present before pregnancy. Confirm it with a second test unless the result is unequivocal, then add pre-existing diabetes in pregnancy as a diagnosis on this encounter. No gestational diabetes screening is needed once it is on the chart."
+        "instructions": "The hemoglobin A1c is 6.5% or higher, which means diabetes that was present before pregnancy. Confirm it with a second test unless the result is unequivocal, then add pre-existing diabetes in pregnancy as a diagnosis on this encounter. No gestational diabetes screening is needed once it is on the chart.",
+        "suggests_diagnosis_code": "O24.11",
+        "suggests_diagnosis_system": "ICD-10",
+        "suggests_diagnosis_display": "Pre-existing type 2 diabetes mellitus, in pregnancy"
       }
     },
     {
@@ -3673,7 +3685,10 @@
       "properties": {
         "topic": "GDM diagnosis: what happens next",
         "category": "education",
-        "instructions": "Gestational diabetes means your body is not handling sugar as well as it needs to during pregnancy. Most patients (about 70-85%) control it with changes in eating and activity alone. We will refer you to a dietitian and teach you to check your blood sugar at home. Well-controlled gestational diabetes lowers the chance of a very large baby, birth injury and low blood sugar in your newborn."
+        "instructions": "Gestational diabetes means your body is not handling sugar as well as it needs to during pregnancy. Most patients (about 70-85%) control it with changes in eating and activity alone. We will refer you to a dietitian and teach you to check your blood sugar at home. Well-controlled gestational diabetes lowers the chance of a very large baby, birth injury and low blood sugar in your newborn.",
+        "suggests_diagnosis_code": "O24.41",
+        "suggests_diagnosis_system": "ICD-10",
+        "suggests_diagnosis_display": "Gestational diabetes mellitus in pregnancy"
       }
     },
     {
@@ -4173,7 +4188,10 @@
       "properties": {
         "topic": "GDM diagnosis: what happens next",
         "category": "education",
-        "instructions": "Gestational diabetes means your body is not handling sugar as well as it needs to during pregnancy. Most patients (about 70-85%) control it with changes in eating and activity alone. We will refer you to a dietitian and teach you to check your blood sugar at home. Well-controlled gestational diabetes lowers the chance of a very large baby, birth injury and low blood sugar in your newborn."
+        "instructions": "Gestational diabetes means your body is not handling sugar as well as it needs to during pregnancy. Most patients (about 70-85%) control it with changes in eating and activity alone. We will refer you to a dietitian and teach you to check your blood sugar at home. Well-controlled gestational diabetes lowers the chance of a very large baby, birth injury and low blood sugar in your newborn.",
+        "suggests_diagnosis_code": "O24.41",
+        "suggests_diagnosis_system": "ICD-10",
+        "suggests_diagnosis_display": "Gestational diabetes mellitus in pregnancy"
       }
     },
     {

@@ -346,6 +346,23 @@ and marks the others EXCLUDED; no answer, or an answer matching zero or several 
 none and raises an `unroutable_decision` red flag (`traversal-engine.ts:1078-1150`). So a
 router is "route yes vs no", never "fan out on yes".
 
+### A hand-off is a suggested diagnosis (`[DECISION — Josh 2026-10-04]`)
+
+When a pathway finds another problem (a low hemoglobin, an elevated blood pressure, a
+positive screen), the step's Guidance node carries the diagnosis to add:
+
+```json
+{ "topic": "Low hemoglobin: what happens next", "category": "education", "instructions": "…",
+  "suggests_diagnosis_code": "O99.01", "suggests_diagnosis_system": "ICD-10",
+  "suggests_diagnosis_display": "Anemia complicating pregnancy" }
+```
+
+The plan then shows it as a **Suggested diagnosis** with an Add control, above the orders —
+not as one more line of guidance. `suggests_diagnosis_code` may be a family (the provider is
+offered the billable codes under it) and must be a code the target pathway's triggers cover.
+`_system` defaults to ICD-10. Every hand-off step needs one; a hand-off with no such node is
+invisible in practice (the 20-week / Hgb 8.5 report).
+
 ### Only an encounter diagnosis activates a pathway (`[DECISION — Josh 2026-10-04]`)
 
 "It can read throughout the chart to help a pathway, but chart can't cause a pathway to be
