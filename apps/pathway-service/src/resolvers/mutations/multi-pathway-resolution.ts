@@ -46,6 +46,7 @@ import { applicablePathways } from '../../services/resolution/pathway-applicabil
 import { buildEffectivePatientContext, mergeAdditionalContext } from '../../services/resolution/effective-context';
 import { firstTrustAssertion, normalizeContextEntryNulls } from '../../services/resolution/temporal/trust-mode';
 import type { AdditionalContextInput } from './resolution';
+import { setPlanNode } from './resolution';
 import {
   candidatePathwayIds,
   MergedCarePlan,
@@ -393,6 +394,41 @@ export const multiPathwayResolutionMutations = {
   },
 
   /**
+   * The provider removes a line from the plan, or puts one back. A line can
+   * stand for several nodes (one code ordered by several steps or pathways),
+   * so the nodes arrive as a list; each is overridden on the per-pathway
+   * session that owns it and the run is re-evaluated.
+   */
+  async setPlanItems(
+    _parent: unknown,
+    args: { sessionId: string; items: Array<{ pathwayId: string; nodeId: string }>; action: 'REMOVE' | 'RESTORE'; reason?: string | null },
+    context: DataSourceContext,
+  ) {
+    const children = await context.pool.query(
+      `SELECT id, pathway_id FROM pathway_resolution_sessions WHERE parent_session_id = $1`,
+      [args.sessionId],
+    );
+    const sessionOf = new Map(children.rows.map((r) => [String(r.pathway_id), String(r.id)]));
+    for (const item of args.items) {
+      const childId = sessionOf.get(item.pathwayId);
+      if (!childId) {
+        throw new GraphQLError(
+          `Pathway "${item.pathwayId}" is not part of session "${args.sessionId}"`,
+          { extensions: { code: 'NOT_FOUND' } },
+        );
+      }
+      await setPlanNode(context.pool, {
+        sessionId: childId,
+        nodeId: item.nodeId,
+        remove: args.action === 'REMOVE',
+        reason: args.reason ?? undefined,
+      });
+    }
+    const session = await getMultiPathwaySession(context.pool, args.sessionId);
+    return session ? formatSessionForGraphQL(session) : null;
+  },
+
+  /**
    * Materialize the run the provider reviewed (spec §4, Generation; D7).
    *
    * A COMPLETED run returns its plan without evaluating. Otherwise every child
@@ -614,6 +650,35 @@ export const multiPathwayResolutionTypeResolvers = {
       return parent.contributingPathwayIds
         .map((id) => byId.get(id))
         .filter((row): row is Record<string, unknown> => row !== undefined);
+    },
+
+    /**
+     * What the provider took out of the plan — every EXCLUDE override on the
+     * contributing sessions, with enough to name the line and put it back.
+     */
+    providerRemovals: async (
+      parent: { contributingSessionIds: string[] },
+      _args: unknown,
+      context: DataSourceContext,
+    ) => {
+      if (!parent.contributingSessionIds?.length) return [];
+      const result = await context.pool.query(
+        `SELECT s.pathway_id, o.key AS node_id, o.value AS override, s.resolution_state -> o.key AS node
+           FROM pathway_resolution_sessions s, jsonb_each(s.provider_overrides) o
+          WHERE s.id = ANY($1::uuid[]) AND o.value ->> 'action' = 'EXCLUDE'`,
+        [parent.contributingSessionIds],
+      );
+      return result.rows.map((r) => {
+        const props = (r.node?.properties ?? {}) as Record<string, unknown>;
+        const name = props.name ?? props.topic ?? props.interval ?? props.title ?? r.node?.title ?? r.node_id;
+        return {
+          pathwayId: String(r.pathway_id),
+          nodeId: String(r.node_id),
+          nodeType: String(r.node?.nodeType ?? ''),
+          title: String(name),
+          reason: r.override?.reason ?? null,
+        };
+      });
     },
 
     /**
@@ -900,6 +965,19 @@ function gqlState(state: string): string {
   return STATE_TO_GQL[state] ?? 'AUTO_INCLUDED';
 }
 
+/**
+ * Every node a merged line stands for. Stored plans from before the merge
+ * recorded this carry only the canonical node, which is used as the fallback.
+ */
+function sourceNodesOf(m: {
+  sourceNodes?: Array<{ pathwayId: string; nodeId: string }>;
+  recommendation: { sourcePathwayId?: string; sourceNodeId?: string };
+}): Array<{ pathwayId: string; nodeId: string }> {
+  if (m.sourceNodes?.length) return m.sourceNodes;
+  const { sourcePathwayId, sourceNodeId } = m.recommendation;
+  return sourcePathwayId && sourceNodeId ? [{ pathwayId: sourcePathwayId, nodeId: sourceNodeId }] : [];
+}
+
 export function formatMergedForGraphQL(merged: MergedCarePlan) {
   // Defensive defaults on read: sessions stored under prior schema versions
   // may not carry the newer fields (imaging / guidance / catchUpItems /
@@ -910,36 +988,43 @@ export function formatMergedForGraphQL(merged: MergedCarePlan) {
     medications: merged.medications.map((m) => ({
       recommendation: m.recommendation,
       sourcePathwayIds: m.sourcePathwayIds,
+      sourceNodes: sourceNodesOf(m),
       state: gqlState(m.state),
     })),
     labs: merged.labs.map((m) => ({
       recommendation: m.recommendation,
       sourcePathwayIds: m.sourcePathwayIds,
+      sourceNodes: sourceNodesOf(m),
       state: gqlState(m.state),
     })),
     imaging: (merged.imaging ?? []).map((m) => ({
       recommendation: m.recommendation,
       sourcePathwayIds: m.sourcePathwayIds,
+      sourceNodes: sourceNodesOf(m),
       state: gqlState(m.state),
     })),
     procedures: merged.procedures.map((m) => ({
       recommendation: m.recommendation,
       sourcePathwayIds: m.sourcePathwayIds,
+      sourceNodes: sourceNodesOf(m),
       state: gqlState(m.state),
     })),
     guidance: (merged.guidance ?? []).map((m) => ({
       recommendation: m.recommendation,
       sourcePathwayIds: m.sourcePathwayIds,
+      sourceNodes: sourceNodesOf(m),
       state: gqlState(m.state),
     })),
     schedules: merged.schedules.map((m) => ({
       recommendation: m.recommendation,
       sourcePathwayIds: m.sourcePathwayIds,
+      sourceNodes: sourceNodesOf(m),
       state: gqlState(m.state),
     })),
     qualityMetrics: merged.qualityMetrics.map((m) => ({
       recommendation: m.recommendation,
       sourcePathwayIds: m.sourcePathwayIds,
+      sourceNodes: sourceNodesOf(m),
       state: gqlState(m.state),
     })),
     suppressed: merged.suppressed.map(formatSuppressedForGraphQL),

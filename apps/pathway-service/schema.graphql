@@ -627,42 +627,77 @@ type ResolvedQualityMetric {
 type MergedMedicationRecommendation {
   recommendation: ResolvedMedication!
   sourcePathwayIds: [ID!]!
+  """Every node this line stands for; pass them to `setPlanItems` to remove the line."""
+  sourceNodes: [PlanNodeRef!]!
   state: RecommendationState!
+}
+
+type PlanNodeRef {
+  pathwayId: ID!
+  nodeId: String!
+}
+
+input PlanNodeRefInput {
+  pathwayId: ID!
+  nodeId: String!
+}
+
+enum PlanItemAction { REMOVE RESTORE }
+
+"""A line the provider took out of the plan."""
+type ProviderRemoval {
+  pathwayId: ID!
+  nodeId: String!
+  nodeType: String!
+  title: String!
+  reason: String
 }
 
 type MergedLabRecommendation {
   recommendation: ResolvedLab!
   sourcePathwayIds: [ID!]!
+  """Every node this line stands for; pass them to `setPlanItems` to remove the line."""
+  sourceNodes: [PlanNodeRef!]!
   state: RecommendationState!
 }
 
 type MergedProcedureRecommendation {
   recommendation: ResolvedProcedure!
   sourcePathwayIds: [ID!]!
+  """Every node this line stands for; pass them to `setPlanItems` to remove the line."""
+  sourceNodes: [PlanNodeRef!]!
   state: RecommendationState!
 }
 
 type MergedImagingRecommendation {
   recommendation: ResolvedImaging!
   sourcePathwayIds: [ID!]!
+  """Every node this line stands for; pass them to `setPlanItems` to remove the line."""
+  sourceNodes: [PlanNodeRef!]!
   state: RecommendationState!
 }
 
 type MergedGuidanceRecommendation {
   recommendation: ResolvedGuidance!
   sourcePathwayIds: [ID!]!
+  """Every node this line stands for; pass them to `setPlanItems` to remove the line."""
+  sourceNodes: [PlanNodeRef!]!
   state: RecommendationState!
 }
 
 type MergedScheduleRecommendation {
   recommendation: ResolvedSchedule!
   sourcePathwayIds: [ID!]!
+  """Every node this line stands for; pass them to `setPlanItems` to remove the line."""
+  sourceNodes: [PlanNodeRef!]!
   state: RecommendationState!
 }
 
 type MergedQualityMetricRecommendation {
   recommendation: ResolvedQualityMetric!
   sourcePathwayIds: [ID!]!
+  """Every node this line stands for; pass them to `setPlanItems` to remove the line."""
+  sourceNodes: [PlanNodeRef!]!
   state: RecommendationState!
 }
 
@@ -943,6 +978,8 @@ type MultiPathwayResolutionSession {
   answer returns.
   """
   pendingGateQuestions: [MultiPathwayPendingGate!]!
+  """Lines the provider removed from the plan, each restorable with `setPlanItems`."""
+  providerRemovals: [ProviderRemoval!]!
   createdAt: String!
   updatedAt: String!
 }
@@ -1899,6 +1936,13 @@ type Mutation {
   Returns the run.
   """
   resolveConflict(sessionId: ID!, conflictId: String!, choice: ConflictChoiceInput!): MultiPathwayResolutionSession!
+
+  """
+  The provider removes a line from the recommended plan (REMOVE), or withdraws
+  that removal (RESTORE — the line goes back to whatever the pathway concludes).
+  `items` are the line's `sourceNodes`. The run is re-evaluated and returned.
+  """
+  setPlanItems(sessionId: ID!, items: [PlanNodeRefInput!]!, action: PlanItemAction!, reason: String): MultiPathwayResolutionSession!
 
   """
   Add facts to an encounter in progress — a diagnosis made during the visit, a

@@ -260,6 +260,25 @@ describe('mergeResolvedCarePlans — non-medication dedup', () => {
     ]);
   });
 
+  it('a merged line names every node it stands for, so removing the line removes them all', () => {
+    const a = makePathway({
+      title: 'A',
+      labs: [
+        { name: 'CBC with indices', code: '58410-2', system: 'LOINC', sourceNodeId: 'lab-1' },
+        { name: 'CBC with indices — recheck', code: '58410-2', system: 'LOINC', sourceNodeId: 'lab-25' },
+      ],
+    });
+    const b = makePathway({
+      title: 'B',
+      labs: [{ name: 'CBC', code: '58410-2', system: 'LOINC', sourceNodeId: 'lab-3' }],
+    });
+    expect(mergeResolvedCarePlans([a, b]).labs[0].sourceNodes).toEqual([
+      { pathwayId: a.pathwayId, nodeId: 'lab-1' },
+      { pathwayId: a.pathwayId, nodeId: 'lab-25' },
+      { pathwayId: b.pathwayId, nodeId: 'lab-3' },
+    ]);
+  });
+
   it('a lab ordered under one name carries no alsoOrderedAs', () => {
     const a = makePathway({ title: 'A', labs: [{ name: 'HbA1c', code: '4548-4', system: 'LOINC' }] });
     expect(mergeResolvedCarePlans([a]).labs[0].recommendation.alsoOrderedAs).toBeUndefined();

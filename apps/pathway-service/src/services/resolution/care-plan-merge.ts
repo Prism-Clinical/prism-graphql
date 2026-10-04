@@ -293,6 +293,8 @@ export interface MergedRecommendation<T> {
   recommendation: T;
   /** All pathway IDs whose resolution contributed this recommendation. */
   sourcePathwayIds: string[];
+  /** Every node folded into this line — what a provider removes when they remove the line. */
+  sourceNodes?: Array<{ pathwayId: string; nodeId: string }>;
   state: RecommendationState;
 }
 
@@ -868,8 +870,22 @@ function mapMergeBucket<T extends { sourcePathwayId: string }>(
     out.push({
       recommendation: fold ? fold(items[0], items) : items[0], // canonical = first encountered
       sourcePathwayIds: dedupStringArray(items.map((i) => i.sourcePathwayId)),
+      sourceNodes: sourceNodesIn(items),
       state: 'auto-included',
     });
+  }
+  return out;
+}
+
+function sourceNodesIn(items: Array<{ sourcePathwayId: string; sourceNodeId?: string }>) {
+  const seen = new Set<string>();
+  const out: Array<{ pathwayId: string; nodeId: string }> = [];
+  for (const i of items) {
+    if (!i.sourceNodeId) continue;
+    const key = `${i.sourcePathwayId}::${i.sourceNodeId}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ pathwayId: i.sourcePathwayId, nodeId: i.sourceNodeId });
   }
   return out;
 }

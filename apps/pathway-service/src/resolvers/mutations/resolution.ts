@@ -402,6 +402,44 @@ function overrideChange(
   };
 }
 
+/**
+ * Withdraw a provider override: the node goes back to whatever the pathway
+ * concludes, now and on every later re-evaluation. Not the same as overriding
+ * the other way — an INCLUDE override would keep an order in the plan after
+ * the pathway itself stopped recommending it.
+ */
+function clearOverrideChange(s: ResolutionSession, args: { sessionId: string; nodeId: string }): Change {
+  const previous = s.providerOverrides.get(args.nodeId);
+  const inputs = inputsOf(s);
+  inputs.providerOverrides.delete(args.nodeId);
+  return {
+    inputs,
+    event: { eventType: 'override', triggerData: { nodeId: args.nodeId, action: 'CLEARED' } },
+    record: previous
+      ? (db) => logNodeOverride(db, {
+          sessionId: args.sessionId,
+          nodeId: args.nodeId,
+          pathwayId: s.pathwayId,
+          action: OverrideAction.INCLUDE,
+          reason: 'Override withdrawn',
+          originalStatus: previous.originalStatus,
+          originalConfidence: previous.originalConfidence,
+        })
+      : undefined,
+  };
+}
+
+/** Remove one node from, or restore it to, the plan of the session that owns it. */
+export async function setPlanNode(
+  pool: Pool,
+  args: { sessionId: string; nodeId: string; remove: boolean; reason?: string },
+): Promise<void> {
+  await commitSession(pool, args.sessionId, (s) =>
+    args.remove
+      ? overrideChange(s, { ...args, action: OverrideAction.EXCLUDE })
+      : clearOverrideChange(s, args));
+}
+
 /** New facts accumulate onto everything supplied before: adding A then B keeps both. */
 function contextChange(s: ResolutionSession, additionalContext: AdditionalContextInput): Change {
   const inputs = inputsOf(s);

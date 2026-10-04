@@ -771,6 +771,8 @@ export type MergedConflict = {
 export type MergedGuidanceRecommendation = {
   __typename?: 'MergedGuidanceRecommendation';
   recommendation: ResolvedGuidance;
+  /** Every node this line stands for; pass them to `setPlanItems` to remove the line. */
+  sourceNodes: Array<PlanNodeRef>;
   sourcePathwayIds: Array<Scalars['ID']['output']>;
   state: RecommendationState;
 };
@@ -778,6 +780,8 @@ export type MergedGuidanceRecommendation = {
 export type MergedImagingRecommendation = {
   __typename?: 'MergedImagingRecommendation';
   recommendation: ResolvedImaging;
+  /** Every node this line stands for; pass them to `setPlanItems` to remove the line. */
+  sourceNodes: Array<PlanNodeRef>;
   sourcePathwayIds: Array<Scalars['ID']['output']>;
   state: RecommendationState;
 };
@@ -785,6 +789,8 @@ export type MergedImagingRecommendation = {
 export type MergedLabRecommendation = {
   __typename?: 'MergedLabRecommendation';
   recommendation: ResolvedLab;
+  /** Every node this line stands for; pass them to `setPlanItems` to remove the line. */
+  sourceNodes: Array<PlanNodeRef>;
   sourcePathwayIds: Array<Scalars['ID']['output']>;
   state: RecommendationState;
 };
@@ -792,6 +798,8 @@ export type MergedLabRecommendation = {
 export type MergedMedicationRecommendation = {
   __typename?: 'MergedMedicationRecommendation';
   recommendation: ResolvedMedication;
+  /** Every node this line stands for; pass them to `setPlanItems` to remove the line. */
+  sourceNodes: Array<PlanNodeRef>;
   sourcePathwayIds: Array<Scalars['ID']['output']>;
   state: RecommendationState;
 };
@@ -799,6 +807,8 @@ export type MergedMedicationRecommendation = {
 export type MergedProcedureRecommendation = {
   __typename?: 'MergedProcedureRecommendation';
   recommendation: ResolvedProcedure;
+  /** Every node this line stands for; pass them to `setPlanItems` to remove the line. */
+  sourceNodes: Array<PlanNodeRef>;
   sourcePathwayIds: Array<Scalars['ID']['output']>;
   state: RecommendationState;
 };
@@ -806,6 +816,8 @@ export type MergedProcedureRecommendation = {
 export type MergedQualityMetricRecommendation = {
   __typename?: 'MergedQualityMetricRecommendation';
   recommendation: ResolvedQualityMetric;
+  /** Every node this line stands for; pass them to `setPlanItems` to remove the line. */
+  sourceNodes: Array<PlanNodeRef>;
   sourcePathwayIds: Array<Scalars['ID']['output']>;
   state: RecommendationState;
 };
@@ -813,6 +825,8 @@ export type MergedQualityMetricRecommendation = {
 export type MergedScheduleRecommendation = {
   __typename?: 'MergedScheduleRecommendation';
   recommendation: ResolvedSchedule;
+  /** Every node this line stands for; pass them to `setPlanItems` to remove the line. */
+  sourceNodes: Array<PlanNodeRef>;
   sourcePathwayIds: Array<Scalars['ID']['output']>;
   state: RecommendationState;
 };
@@ -941,6 +955,8 @@ export type MultiPathwayResolutionSession = {
    */
   pendingGateQuestions: Array<MultiPathwayPendingGate>;
   providerId: Scalars['ID']['output'];
+  /** Lines the provider removed from the plan, each restorable with `setPlanItems`. */
+  providerRemovals: Array<ProviderRemoval>;
   /** Hash of exactly what a provider reviews (spec §1 rule 8). Pass it to generateMergedCarePlan. */
   resultHash: Scalars['String']['output'];
   /** Optimistic-lock counter for the whole run; increments on every committed write to it or any of its pathways. */
@@ -1072,6 +1088,12 @@ export type Mutation = {
    */
   saveSimulatorScenario: SimulatorScenario;
   setNodeWeight: NodeWeight;
+  /**
+   * The provider removes a line from the recommended plan (REMOVE), or withdraws
+   * that removal (RESTORE — the line goes back to whatever the pathway concludes).
+   * `items` are the line's `sourceNodes`. The run is re-evaluated and returned.
+   */
+  setPlanItems: MultiPathwayResolutionSession;
   setResolutionThresholds: ResolutionThresholds;
   setSignalWeight: SignalWeight;
   /**
@@ -1229,6 +1251,14 @@ export type MutationSaveSimulatorScenarioArgs = {
 
 export type MutationSetNodeWeightArgs = {
   input: SetNodeWeightInput;
+};
+
+
+export type MutationSetPlanItemsArgs = {
+  action: PlanItemAction;
+  items: Array<PlanNodeRefInput>;
+  reason?: InputMaybe<Scalars['String']['input']>;
+  sessionId: Scalars['ID']['input'];
 };
 
 
@@ -1486,6 +1516,22 @@ export type PendingQuestionType = {
   tentativeReasoning?: Maybe<Scalars['String']['output']>;
 };
 
+export enum PlanItemAction {
+  Remove = 'REMOVE',
+  Restore = 'RESTORE'
+}
+
+export type PlanNodeRef = {
+  __typename?: 'PlanNodeRef';
+  nodeId: Scalars['String']['output'];
+  pathwayId: Scalars['ID']['output'];
+};
+
+export type PlanNodeRefInput = {
+  nodeId: Scalars['String']['input'];
+  pathwayId: Scalars['ID']['input'];
+};
+
 export type PropagationConfigInput = {
   decayFactor?: InputMaybe<Scalars['Float']['input']>;
   edgeTypes?: InputMaybe<Array<Scalars['String']['input']>>;
@@ -1526,6 +1572,16 @@ export type ProviderOverrideType = {
   originalConfidence: Scalars['Float']['output'];
   originalStatus: NodeStatus;
   reason?: Maybe<Scalars['String']['output']>;
+};
+
+/** A line the provider took out of the plan. */
+export type ProviderRemoval = {
+  __typename?: 'ProviderRemoval';
+  nodeId: Scalars['String']['output'];
+  nodeType: Scalars['String']['output'];
+  pathwayId: Scalars['ID']['output'];
+  reason?: Maybe<Scalars['String']['output']>;
+  title: Scalars['String']['output'];
 };
 
 export type Query = {
@@ -2516,11 +2572,15 @@ export type ResolversTypes = ResolversObject<{
   PathwayStatusResult: ResolverTypeWrapper<PathwayStatusResult>;
   PatientContextInput: PatientContextInput;
   PendingQuestionType: ResolverTypeWrapper<PendingQuestionType>;
+  PlanItemAction: PlanItemAction;
+  PlanNodeRef: ResolverTypeWrapper<PlanNodeRef>;
+  PlanNodeRefInput: PlanNodeRefInput;
   PropagationConfigInput: PropagationConfigInput;
   PropagationConfigType: ResolverTypeWrapper<PropagationConfigType>;
   PropagationInfluence: ResolverTypeWrapper<PropagationInfluence>;
   PropagationMode: PropagationMode;
   ProviderOverrideType: ResolverTypeWrapper<ProviderOverrideType>;
+  ProviderRemoval: ResolverTypeWrapper<ProviderRemoval>;
   Query: ResolverTypeWrapper<{}>;
   ReachabilityScore: ResolverTypeWrapper<ReachabilityScore>;
   RecommendationState: RecommendationState;
@@ -2642,10 +2702,13 @@ export type ResolversParentTypes = ResolversObject<{
   PathwayStatusResult: PathwayStatusResult;
   PatientContextInput: PatientContextInput;
   PendingQuestionType: PendingQuestionType;
+  PlanNodeRef: PlanNodeRef;
+  PlanNodeRefInput: PlanNodeRefInput;
   PropagationConfigInput: PropagationConfigInput;
   PropagationConfigType: PropagationConfigType;
   PropagationInfluence: PropagationInfluence;
   ProviderOverrideType: ProviderOverrideType;
+  ProviderRemoval: ProviderRemoval;
   Query: {};
   ReachabilityScore: ReachabilityScore;
   RedFlagBranchType: RedFlagBranchType;
@@ -2982,6 +3045,7 @@ export type MergedConflictResolvers<ContextType = DataSourceContext, ParentType 
 
 export type MergedGuidanceRecommendationResolvers<ContextType = DataSourceContext, ParentType extends ResolversParentTypes['MergedGuidanceRecommendation'] = ResolversParentTypes['MergedGuidanceRecommendation']> = ResolversObject<{
   recommendation?: Resolver<ResolversTypes['ResolvedGuidance'], ParentType, ContextType>;
+  sourceNodes?: Resolver<Array<ResolversTypes['PlanNodeRef']>, ParentType, ContextType>;
   sourcePathwayIds?: Resolver<Array<ResolversTypes['ID']>, ParentType, ContextType>;
   state?: Resolver<ResolversTypes['RecommendationState'], ParentType, ContextType>;
   __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
@@ -2989,6 +3053,7 @@ export type MergedGuidanceRecommendationResolvers<ContextType = DataSourceContex
 
 export type MergedImagingRecommendationResolvers<ContextType = DataSourceContext, ParentType extends ResolversParentTypes['MergedImagingRecommendation'] = ResolversParentTypes['MergedImagingRecommendation']> = ResolversObject<{
   recommendation?: Resolver<ResolversTypes['ResolvedImaging'], ParentType, ContextType>;
+  sourceNodes?: Resolver<Array<ResolversTypes['PlanNodeRef']>, ParentType, ContextType>;
   sourcePathwayIds?: Resolver<Array<ResolversTypes['ID']>, ParentType, ContextType>;
   state?: Resolver<ResolversTypes['RecommendationState'], ParentType, ContextType>;
   __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
@@ -2996,6 +3061,7 @@ export type MergedImagingRecommendationResolvers<ContextType = DataSourceContext
 
 export type MergedLabRecommendationResolvers<ContextType = DataSourceContext, ParentType extends ResolversParentTypes['MergedLabRecommendation'] = ResolversParentTypes['MergedLabRecommendation']> = ResolversObject<{
   recommendation?: Resolver<ResolversTypes['ResolvedLab'], ParentType, ContextType>;
+  sourceNodes?: Resolver<Array<ResolversTypes['PlanNodeRef']>, ParentType, ContextType>;
   sourcePathwayIds?: Resolver<Array<ResolversTypes['ID']>, ParentType, ContextType>;
   state?: Resolver<ResolversTypes['RecommendationState'], ParentType, ContextType>;
   __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
@@ -3003,6 +3069,7 @@ export type MergedLabRecommendationResolvers<ContextType = DataSourceContext, Pa
 
 export type MergedMedicationRecommendationResolvers<ContextType = DataSourceContext, ParentType extends ResolversParentTypes['MergedMedicationRecommendation'] = ResolversParentTypes['MergedMedicationRecommendation']> = ResolversObject<{
   recommendation?: Resolver<ResolversTypes['ResolvedMedication'], ParentType, ContextType>;
+  sourceNodes?: Resolver<Array<ResolversTypes['PlanNodeRef']>, ParentType, ContextType>;
   sourcePathwayIds?: Resolver<Array<ResolversTypes['ID']>, ParentType, ContextType>;
   state?: Resolver<ResolversTypes['RecommendationState'], ParentType, ContextType>;
   __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
@@ -3010,6 +3077,7 @@ export type MergedMedicationRecommendationResolvers<ContextType = DataSourceCont
 
 export type MergedProcedureRecommendationResolvers<ContextType = DataSourceContext, ParentType extends ResolversParentTypes['MergedProcedureRecommendation'] = ResolversParentTypes['MergedProcedureRecommendation']> = ResolversObject<{
   recommendation?: Resolver<ResolversTypes['ResolvedProcedure'], ParentType, ContextType>;
+  sourceNodes?: Resolver<Array<ResolversTypes['PlanNodeRef']>, ParentType, ContextType>;
   sourcePathwayIds?: Resolver<Array<ResolversTypes['ID']>, ParentType, ContextType>;
   state?: Resolver<ResolversTypes['RecommendationState'], ParentType, ContextType>;
   __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
@@ -3017,6 +3085,7 @@ export type MergedProcedureRecommendationResolvers<ContextType = DataSourceConte
 
 export type MergedQualityMetricRecommendationResolvers<ContextType = DataSourceContext, ParentType extends ResolversParentTypes['MergedQualityMetricRecommendation'] = ResolversParentTypes['MergedQualityMetricRecommendation']> = ResolversObject<{
   recommendation?: Resolver<ResolversTypes['ResolvedQualityMetric'], ParentType, ContextType>;
+  sourceNodes?: Resolver<Array<ResolversTypes['PlanNodeRef']>, ParentType, ContextType>;
   sourcePathwayIds?: Resolver<Array<ResolversTypes['ID']>, ParentType, ContextType>;
   state?: Resolver<ResolversTypes['RecommendationState'], ParentType, ContextType>;
   __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
@@ -3024,6 +3093,7 @@ export type MergedQualityMetricRecommendationResolvers<ContextType = DataSourceC
 
 export type MergedScheduleRecommendationResolvers<ContextType = DataSourceContext, ParentType extends ResolversParentTypes['MergedScheduleRecommendation'] = ResolversParentTypes['MergedScheduleRecommendation']> = ResolversObject<{
   recommendation?: Resolver<ResolversTypes['ResolvedSchedule'], ParentType, ContextType>;
+  sourceNodes?: Resolver<Array<ResolversTypes['PlanNodeRef']>, ParentType, ContextType>;
   sourcePathwayIds?: Resolver<Array<ResolversTypes['ID']>, ParentType, ContextType>;
   state?: Resolver<ResolversTypes['RecommendationState'], ParentType, ContextType>;
   __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
@@ -3075,6 +3145,7 @@ export type MultiPathwayResolutionSessionResolvers<ContextType = DataSourceConte
   patientId?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
   pendingGateQuestions?: Resolver<Array<ResolversTypes['MultiPathwayPendingGate']>, ParentType, ContextType>;
   providerId?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
+  providerRemovals?: Resolver<Array<ResolversTypes['ProviderRemoval']>, ParentType, ContextType>;
   resultHash?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   revision?: Resolver<ResolversTypes['Int'], ParentType, ContextType>;
   status?: Resolver<ResolversTypes['MultiPathwayResolutionSessionStatus'], ParentType, ContextType>;
@@ -3122,6 +3193,7 @@ export type MutationResolvers<ContextType = DataSourceContext, ParentType extend
   resolveConflict?: Resolver<ResolversTypes['MultiPathwayResolutionSession'], ParentType, ContextType, RequireFields<MutationResolveConflictArgs, 'choice' | 'conflictId' | 'sessionId'>>;
   saveSimulatorScenario?: Resolver<ResolversTypes['SimulatorScenario'], ParentType, ContextType, RequireFields<MutationSaveSimulatorScenarioArgs, 'input'>>;
   setNodeWeight?: Resolver<ResolversTypes['NodeWeight'], ParentType, ContextType, RequireFields<MutationSetNodeWeightArgs, 'input'>>;
+  setPlanItems?: Resolver<ResolversTypes['MultiPathwayResolutionSession'], ParentType, ContextType, RequireFields<MutationSetPlanItemsArgs, 'action' | 'items' | 'sessionId'>>;
   setResolutionThresholds?: Resolver<ResolversTypes['ResolutionThresholds'], ParentType, ContextType, RequireFields<MutationSetResolutionThresholdsArgs, 'input'>>;
   setSignalWeight?: Resolver<ResolversTypes['SignalWeight'], ParentType, ContextType, RequireFields<MutationSetSignalWeightArgs, 'input'>>;
   startMultiPathwayResolution?: Resolver<ResolversTypes['MultiPathwayResolutionSession'], ParentType, ContextType, RequireFields<MutationStartMultiPathwayResolutionArgs, 'patientId'>>;
@@ -3240,6 +3312,12 @@ export type PendingQuestionTypeResolvers<ContextType = DataSourceContext, Parent
   __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
 }>;
 
+export type PlanNodeRefResolvers<ContextType = DataSourceContext, ParentType extends ResolversParentTypes['PlanNodeRef'] = ResolversParentTypes['PlanNodeRef']> = ResolversObject<{
+  nodeId?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  pathwayId?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
+  __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
+}>;
+
 export type PropagationConfigTypeResolvers<ContextType = DataSourceContext, ParentType extends ResolversParentTypes['PropagationConfigType'] = ResolversParentTypes['PropagationConfigType']> = ResolversObject<{
   decayFactor?: Resolver<Maybe<ResolversTypes['Float']>, ParentType, ContextType>;
   edgeTypes?: Resolver<Maybe<Array<ResolversTypes['String']>>, ParentType, ContextType>;
@@ -3264,6 +3342,15 @@ export type ProviderOverrideTypeResolvers<ContextType = DataSourceContext, Paren
   originalConfidence?: Resolver<ResolversTypes['Float'], ParentType, ContextType>;
   originalStatus?: Resolver<ResolversTypes['NodeStatus'], ParentType, ContextType>;
   reason?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
+}>;
+
+export type ProviderRemovalResolvers<ContextType = DataSourceContext, ParentType extends ResolversParentTypes['ProviderRemoval'] = ResolversParentTypes['ProviderRemoval']> = ResolversObject<{
+  nodeId?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  nodeType?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  pathwayId?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
+  reason?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  title?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
 }>;
 
@@ -3702,9 +3789,11 @@ export type Resolvers<ContextType = DataSourceContext> = ResolversObject<{
   PathwayGraphNode?: PathwayGraphNodeResolvers<ContextType>;
   PathwayStatusResult?: PathwayStatusResultResolvers<ContextType>;
   PendingQuestionType?: PendingQuestionTypeResolvers<ContextType>;
+  PlanNodeRef?: PlanNodeRefResolvers<ContextType>;
   PropagationConfigType?: PropagationConfigTypeResolvers<ContextType>;
   PropagationInfluence?: PropagationInfluenceResolvers<ContextType>;
   ProviderOverrideType?: ProviderOverrideTypeResolvers<ContextType>;
+  ProviderRemoval?: ProviderRemovalResolvers<ContextType>;
   Query?: QueryResolvers<ContextType>;
   ReachabilityScore?: ReachabilityScoreResolvers<ContextType>;
   RedFlagBranchType?: RedFlagBranchTypeResolvers<ContextType>;
