@@ -1,6 +1,6 @@
 # Pathway Research Brief — Anemia in Pregnancy
 
-JSON: pathways/json/anemia-in-pregnancy.json @ version 16
+JSON: pathways/json/anemia-in-pregnancy.json @ version 17
 
 **Status: DRAFT v2 for physician review — not yet approved for JSON build.**
 Scope assumed from request: outpatient prenatal care, adult pregnant patients, US practice,
@@ -92,7 +92,7 @@ still current, `[BLOCKED — prior_node_result]` import-blocked gate design with
 
 - **Logical ID**: `anemia-in-pregnancy`
 - **Title**: Anemia in Pregnancy — Classification and Treatment
-- **Version**: 16 `[DECISION — Josh 2026-10-04]` (JSON `"16"`; was `"15"`). v16 changes wording only: Guid-9–12 no longer restate the orders (§9). v15: Imports as
+- **Version**: 17 `[DECISION — Josh 2026-10-04]` (JSON `"17"`; was `"16"`). v17 removes docusate (Med-10): constipation gets its own pathway (§8). v16 changed wording only: Guid-9–12 no longer restate the orders (§9). v15: Imports as
   NEW_VERSION; v14 sessions keep v14's graph. Bumped for:
   - **A single hemoglobin since oral iron started, below target, with no baseline, is "recheck
     in 2–4 weeks, not nonresponse"** (§3 Steps 2.23, 2.24; §4b `gate-rise-unmeasurable` and its
@@ -1700,9 +1700,14 @@ narrative. Recorded so reviewers know the omission is deliberate.
   - Role: first_line · Clinical role: `b12-repletion` · ACOG's regimen is specified for
     **total** gastrectomy (checker-verified); no general oral high-dose regimen in
     fetched sources [GAP]. [1]
-- **Med-10 — Docusate sodium 100 mg PO** (on Step 2.1)
-  - Role: acceptable · Clinical role: n/a (non-conflicting adjunct — stool softener for
-    iron-induced constipation). [13]
+- ~~**Med-10 — Docusate sodium 100 mg PO** (on Step 2.1)~~ **Removed in v17.**
+  `[DECISION — Josh 2026-10-04]`: "shouldn't the docusate be behind a separate constipation
+  pathway that we would need to write?" … "agree with 2 pathways. don't write constipation
+  yet, but remove docusate from here. there won't be a connection built between pathways."
+  The anemia pathway no longer orders a stool softener: constipation is its own problem and
+  will get its own pathway (not yet written — `pathways/TODO.md`), with no link between the
+  two. Guid-4 keeps one counselling sentence that constipation is common on oral iron and to
+  report it; it names no drug. The id `med-10` is retired, not reused.
 - **Med-11 — Enteric-coated / sustained-release iron preparations** (on Step 2.1)
   - Role: avoid · Clinical role: `oral-iron-repletion` (lane-tagged so the resolver flags
     cross-pathway substitution attempts) · "Dissolve poorly and may be less effective." [1]
@@ -1862,7 +1867,7 @@ prevention step left with the screening stage):
   plant-based diet for closer lab surveillance. [1][12]
 - **Guid-4 — topic "Making your iron pill work"** (on Step 2.1): category adherence.
   Instructions: Block 4 — morning empty-stomach dosing with OJ/vitamin C; snack if GI
-  upset; 2-hour separation rules; dark stools normal; constipation plan incl. docusate;
+  upset; 2-hour separation rules; dark stools normal; constipation is common, report it (no drug named — v17);
   alternate-day schedule as planned option (hepcidin rationale, patient-level); response
   kinetics expectation-setting; keep the lab recheck. [5][13][14]
 - **Guid-5 — topic "When to call us right away"** (on Step 1.1): category safety-netting.
@@ -2148,7 +2153,7 @@ Nodes that can carry CITES_EVIDENCE:
 - Stage 2.5 (v7): [1][5] · Stage 2.6 (v8): [1][5] · Step 2.8: [1][5][6] · Step 2.9: [1][5][6][8] · Step 2.10:
   [1][5][7][22]
 - Meds: Med-1: [1][5][13][14][15] · Med-2, Med-3: [1] · Med-4–Med-7, Med-13–Med-16: [5][22] · Med-8,
-  Med-9: [1] · Med-10: [13] · Med-11: [1] · Med-12: [1][17]
+  Med-9: [1] · Med-11: [1] · Med-12: [1][17]
 - Labs: Lab-1, Lab-10: [1] · Lab-2, Lab-11, Lab-15, Lab-17, Lab-18: [1][5] · Lab-3, Lab-16: [1] · Lab-4, Lab-12: [1] · Lab-5, Lab-6: [1]
   · Lab-7, Lab-14: [4] · Lab-8, Lab-13: [1] · Lab-9: [11]
 - Proc-1: [1][11] · Guid-1: [1][12] · Guid-2: [1][12][13] · Guid-3: [1][12]
@@ -2772,7 +2777,7 @@ Step 2.18, nothing asked about iron.
 - `[JOSH — CONFIRM]` **No confirmatory-studies question after IV iron** (Step 2.18). Answer 1
   was read as being about the oral-iron patient.
 - `[JOSH — CONFIRM]` **Counseling blocks.** Guid-1–4 (diet, what blocks iron, plant-based
-  plan, "making your iron pill work") and docusate (Med-10) hang from Step 2.1, the
+  plan, "making your iron pill work") and (until v17, when it was removed) docusate (Med-10) hang from Step 2.1, the
   initiation step, and are not shown to a patient already on oral iron. The reticulocyte
   check (Step 2.2) and DP-3's malabsorption recommendation (Step 2.11) are not on this route
   either; gate-bariatric / gate-ibd (Steps 3.4 / 3.5) still fire.

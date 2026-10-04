@@ -3,7 +3,7 @@
   "pathway": {
     "logical_id": "anemia-in-pregnancy",
     "title": "Anemia in Pregnancy \u2014 Classification and Treatment",
-    "version": "16",
+    "version": "17",
     "category": "OBSTETRIC",
     "scope": "Outpatient prenatal care, from diagnosed anemia through postpartum handoff. Screening is upstream of this pathway.",
     "target_population": "Adult pregnant patients with diagnosed anemia; hemoglobinopathy disease, thalassemia syndromes, and CKD-associated anemia are detected and routed out.",
@@ -2946,19 +2946,6 @@
       }
     },
     {
-      "id": "med-10",
-      "type": "Medication",
-      "properties": {
-        "name": "Docusate sodium 100 mg",
-        "role": "acceptable",
-        "route": "oral",
-        "instructions": "Non-conflicting adjunct \u2014 stool softener for iron-induced constipation.",
-        "dose": "100 mg",
-        "frequency": "as needed",
-        "duration": "as needed"
-      }
-    },
-    {
       "id": "med-11",
       "type": "Medication",
       "properties": {
@@ -3467,7 +3454,7 @@
       "properties": {
         "topic": "Making your iron pill work",
         "category": "adherence",
-        "instructions": "Morning empty-stomach dosing with orange juice or another vitamin C source; add a small snack if GI upset. Keep the 2-hour separation rules. Dark stools are normal. Plan for constipation, including docusate if needed. Alternate-day dosing is an option to discuss. Expect the response to take weeks \u2014 keep the scheduled lab recheck."
+        "instructions": "Morning empty-stomach dosing with orange juice or another vitamin C source; add a small snack if GI upset. Keep the 2-hour separation rules. Dark stools are normal. Constipation is common on oral iron; ask her to report it. Alternate-day dosing is an option to discuss. Expect the response to take weeks \u2014 keep the scheduled lab recheck."
       }
     },
     {
@@ -4764,11 +4751,6 @@
     },
     {
       "from": "step-2-1",
-      "to": "med-10",
-      "type": "USES_MEDICATION"
-    },
-    {
-      "from": "step-2-1",
       "to": "med-11",
       "type": "USES_MEDICATION"
     },
@@ -5645,11 +5627,6 @@
     {
       "from": "med-9",
       "to": "ev-1",
-      "type": "CITES_EVIDENCE"
-    },
-    {
-      "from": "med-10",
-      "to": "ev-13",
       "type": "CITES_EVIDENCE"
     },
     {

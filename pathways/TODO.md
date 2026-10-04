@@ -48,3 +48,12 @@ Open design questions:
 - Where the class is authored (pathway metadata) and where it is enforced (the matcher,
   before lattice collapse).
 - The age boundary between pediatric and adult, and whether a pathway may span both.
+
+## Constipation in pregnancy — its own pathway (not started)
+
+`[DECISION — Josh 2026-10-04]` Docusate was removed from anemia-in-pregnancy (v17): a stool
+softener is a constipation decision, not an anemia one. A separate constipation pathway is
+to be written later ("don't write constipation yet"). No connection is built between the two
+pathways. Until it exists, a constipation diagnosis in the simulator shows as not supported.
+General rule this sets for authors: a pathway does not order treatment for a different
+problem; that problem gets its own pathway.

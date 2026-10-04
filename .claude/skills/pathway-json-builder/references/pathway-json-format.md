@@ -322,6 +322,16 @@ and marks the others EXCLUDED; no answer, or an answer matching zero or several 
 none and raises an `unroutable_decision` red flag (`traversal-engine.ts:1078-1150`). So a
 router is "route yes vs no", never "fan out on yes".
 
+### One problem per pathway (`[DECISION — Josh 2026-10-04]`)
+
+A pathway orders treatment only for its own problem. A drug or test for a **different**
+problem — even one the pathway's own treatment commonly causes (a stool softener for
+constipation on oral iron) — is not ordered here: that problem gets its own pathway, fired
+by its own diagnosis. Pathways are not linked to one another. What the pathway may keep is
+one counselling sentence that the side effect is common and should be reported, naming no
+drug. In the brief, mark a removed or declined cross-problem order with the decision, and
+list the other problem under `pathways/TODO.md` if it has no pathway yet.
+
 ### Guidance says what the order lines cannot (`[DECISION — Josh 2026-10-04]`)
 
 The plan shows a step's orders and its guidance side by side. A Guidance node that restates
