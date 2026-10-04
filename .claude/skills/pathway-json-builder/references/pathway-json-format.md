@@ -27,6 +27,8 @@
 > - nested AND/OR condition groups inside a compound gate
 > - `DATE` answers (treatment start dates), typed `patient.*` datum answers, and the
 >   "Not available" answer to a data question (`notAvailable`)
+> - `on_declined: "traverse"` on a gate (2026-10-04): "Not available" to the datum the gate
+>   asked for OPENS it — a declined question leads to the action (see **"Not available"**)
 > - `remember_answer` on a gate that reads a `patient.<attribute>` (2026-10-04): the
 >   provider's answer is kept for the patient and supplied at later encounters, scoped to
 >   this pregnancy or to the patient (see **Remembered answers**)
@@ -555,6 +557,15 @@ Authoring rules that follow:
    leads to an order should be asked again next visit. A chart value always wins over a
    remembered one.
 
+7. **A declined question leads to the action when the pathway says so**
+   (`[DECISION — Josh 2026-10-04]`). "Not available" is an answer, not a dead end: decide,
+   for every datum the pathway asks for, what the provider not having it should lead to. If
+   the answer is "then do it anyway" — recommend the vitamin, give the vaccine, order the
+   test — author that route: a membership gate on the absence for a coded fact, or
+   `on_declined: "traverse"` on the gate that leads to the action for a `patient.*` answer
+   (see **"Not available"**). A decline that silently closes every gate waiting on it must be
+   a choice, stated in the brief.
+
 `validate-pathway.ts` reports rules 1, 2 and 5 as **DATA USE** warnings (not failures):
 read each one and either fix the pathway or add the marker. (Rule 5: a `window_from` trend
 or delta whose `clinical_role` has no `count_in_window` … `count_comparison: "less_than"`
@@ -584,6 +595,43 @@ unknown → order the labs"), add a **membership** gate on the absence — coded
 that orders it (anemia v10: `gate-no-hgb-on-file` → Step 1.9; `gate-proof.ts unknown-hgb`).
 That gate is open from the start of the visit, stays open after a decline, and closes when
 a value is on file. Without such a gate a declined datum simply closes its gates.
+
+**`on_declined` — what "Not available" means for a gate (josh-dev, 2026-10-04).**
+`[DECISION — Josh 2026-10-04]`: "Not available" on "already taking a prenatal vitamin?"
+should recommend the vitamin — unknown is treated like "no".
+
+```json
+{ "gate_type": "patient_attribute", "default_behavior": "skip", "on_unresolved": "ask",
+  "on_declined": "traverse",
+  "condition": { "attribute": "patient.on_prenatal_vitamin", "operator": "equals", "value": false } }
+```
+
+- **`"traverse"`**: the gate **opens** when the datum it needed was asked for and the
+  provider answered "Not available" — and only then. It does nothing while the question is
+  still unanswered (the gate holds and asks, as always), nothing when the condition is
+  definitely false (a "yes" here still closes the gate), and nothing when the condition is
+  true (it was open anyway).
+- **`"default"`, or absent**: today's behaviour — a declined datum makes the gate take
+  `default_behavior`.
+- **It is not `default_behavior: "traverse"`.** That includes the target on a definite "no"
+  as well, which is why it is rejected on a single-target gate. `on_declined` is independent
+  of `default_behavior` (keep `skip`) and legal on a single-target gate.
+- **Import:** only `"traverse"` and `"default"` are accepted. `check-gate-control.ts` repeats
+  that, and warns when `"traverse"` sits on a gate that cannot ask (no askable condition, or
+  `on_unresolved` not `"ask"`): nothing can be declined there.
+- **When to use which pattern.**
+  - The missing datum is a **coded** fact (a lab, a diagnosis, a medication): keep the
+    membership gate on the absence (`not_includes_code`, above). It opens the order before
+    the question is answered as well as after a decline.
+  - The missing datum is a **`patient.*` attribute**: no condition is true on absence (every
+    operator is unresolved except `exists`, which is false), so a membership gate cannot be
+    written. Put `on_declined: "traverse"` on the gate whose target is what "unknown" should
+    lead to — usually the "no → recommend" gate of a yes/no pair. Leave it off the other.
+- A decline is not remembered: with `remember_answer` on the pair, nothing is stored, and the
+  question returns at the next encounter.
+- Source: `opensOnDecline` in `resolution/traversal-engine.ts`; `import/validator.ts`;
+  `__tests__/on-declined-traverse.test.ts`. Used by routine prenatal care v4 (prenatal
+  vitamin, Tdap, RSV); proved in `gate-proof.ts prenatal-meds` / `prenatal-vaccines`.
 
 **Remembered answers — `remember_answer` (josh-dev, 2026-10-04).** A gate whose condition
 reads a `patient.<attribute>` may carry

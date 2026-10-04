@@ -77,3 +77,17 @@ pregnancy) and an undated RSV vaccine (the patient) with `remember_answer`. "Inf
 COVID-19 vaccine given this season" cannot be remembered: the scopes are `PREGNANCY` and
 `PATIENT`, and neither ends on the next September 1. Those two questions return at each visit
 until the entry on the medication list is dated (brief J36).
+
+## Medication class matching — match a medication by ingredient/class, not product code
+
+`[DECISION — Josh 2026-10-04]` "Match the vaccine, not the brand." A gate reads the medication
+list by exact product code (`includes_code` / `count_in_window`; no expansion from a product to
+its ingredient or class). routine-prenatal-care v4 therefore carries lists of RxNorm product
+codes that go stale: influenza and COVID-19 concepts are reissued every season, the lists hold
+brand products for 2025-2026 and 2026-2027 only, and a chart that codes the vaccine another way
+(a generic concept, or CVX) is not recognised (brief §0.6 #4, §0.8).
+
+- First users: the vaccines (Tdap, RSV, influenza, COVID-19) and folic-acid-containing
+  products, which would become "any product whose ingredient is folic acid".
+- Prenatal multivitamins have no clean class in RxNorm (most brands are not RxNorm concepts
+  at all), so for them the known list plus the remembered "yes" stays even with class matching.

@@ -120,6 +120,8 @@ function unresolvedAsk(
   codeMap?: AttributeCodeMap,
   /** For data the provider has said they do not have (`declinedKeyFor`). */
   gateAnswers?: ReadonlyMap<string, GateAnswer>,
+  /** Set when a datum the gate needed was skipped because it was declined. */
+  out?: { declined: boolean },
 ): UnresolvedAsk | null {
   const couldNotDecide =
     gateResult.indeterminate === true || gateResult.dataUnavailable === true;
@@ -156,11 +158,36 @@ function unresolvedAsk(
           ? seriesAskFor(condition, shortSeries.latestDate)
           : askFor(condition, codeMap);
     // Declined: the provider was asked for this datum and has none. Asking
-    // again cannot help, so the gate falls through to `default_behavior`.
-    if (ask && gateAnswers?.get(declinedKeyFor(ask.datumKey))?.notAvailable === true) continue;
+    // again cannot help, so the gate falls through to `default_behavior` —
+    // or opens, when it says a decline means "act" (`on_declined`).
+    if (ask && gateAnswers?.get(declinedKeyFor(ask.datumKey))?.notAvailable === true) {
+      if (out) out.declined = true;
+      continue;
+    }
     if (ask) return ask;
   }
   return null;
+}
+
+/**
+ * `on_declined: "traverse"` — the gate OPENS when the datum it needed was
+ * asked for and the provider answered "Not available".
+ *
+ * Josh, 2026-10-04: "Not available" on "already taking a prenatal vitamin?"
+ * means recommend it — a missing answer leads to the action, never to silence.
+ * `default_behavior: traverse` cannot say this: it would also open the gate
+ * whenever the condition is undecided for any other reason. This opens it for
+ * one reason only: nothing is left to ask, and what was asked was declined.
+ */
+function opensOnDecline(
+  gateProps: Parameters<typeof unresolvedAsk>[0],
+  gateResult: Parameters<typeof unresolvedAsk>[1],
+  codeMap: AttributeCodeMap | undefined,
+  gateAnswers: ReadonlyMap<string, GateAnswer> | undefined,
+): boolean {
+  if (String((gateProps as { on_declined?: unknown }).on_declined ?? '').toLowerCase() !== 'traverse') return false;
+  const out = { declined: false };
+  return unresolvedAsk(gateProps, gateResult, codeMap, gateAnswers, out) === null && out.declined;
 }
 
 
@@ -1101,6 +1128,7 @@ export class TraversalEngine {
           // import validator now refuses the value outright.
         } else if (
           String(gateProps.default_behavior).toLowerCase() !== DefaultBehavior.TRAVERSE
+          && !opensOnDecline(gateProps, gateResult, this.codeMap, gateAnswers)
         ) {
           // Default skip — gate out entire subtree
           resolutionState.set(nodeIdentifier, {

@@ -86,28 +86,28 @@
 //                    gate; the one Step 1.1/2.1 culture (both unconditional) is
 //                    listed once
 //
-//   prenatal-ga      routine prenatal care v2: the eight gestational-age gates — a 10-,
+//   prenatal-ga      routine prenatal care v4: the eight gestational-age gates — a 10-,
 //                    20-, 28- and 36-week patient each get the stages due at that age and
 //                    nothing from a later window; a missing gestational age is asked for
 //                    once, by the stage gates and the "this pregnancy" gates alike
-//   prenatal-triggers routine prenatal care v2: started only by a supervision-of-pregnancy
+//   prenatal-triggers routine prenatal care v4: started only by a supervision-of-pregnancy
 //                    or pregnant-state diagnosis on the encounter (Z34, O09, Z33.1, Z33.3) —
 //                    not Z33.2, Z3A, or a pregnancy problem (O24.41x, O99.810, O99.01x, O13)
-//   prenatal-gdm     routine prenatal care v2: gestational diabetes read from the chart —
+//   prenatal-gdm     routine prenatal care v4: gestational diabetes read from the chart —
 //                    a diabetes code → no screening; nothing on file → the strategy asked
 //                    once, the test ordered, NO result question, no blocker; a positive 50-g
 //                    → the 100-g test ordered with no strategy and no result question; the
 //                    four 100-g values settle it (every pair → diagnose, every single → not)
 //                    with nothing asked; early HbA1c: nobody is asked for a value
-//   prenatal-handoffs routine prenatal care v2: a low hemoglobin drawn THIS pregnancy → add
+//   prenatal-handoffs routine prenatal care v4: a low hemoglobin drawn THIS pregnancy → add
 //                    the anemia diagnosis; a low one from before it → no hand-off, CBC
 //                    ordered; BP 140/90 or higher → add the diagnosis; Rh(D) negative → add
 //                    the diagnosis, positive → nothing, missing → asked once
-//   prenatal-meds    routine prenatal care v2: folic acid or a known prenatal multivitamin
+//   prenatal-meds    routine prenatal care v4: folic acid or a known prenatal multivitamin
 //                    on the medication list → nothing asked, nothing started; none → asked
 //                    once, yes → not started; aspirin likewise; panel tests on file this
 //                    pregnancy (by gestational age) are not re-ordered
-//   prenatal-vaccines routine prenatal care v2: vaccines read from the medication list —
+//   prenatal-vaccines routine prenatal care v4: vaccines read from the medication list —
 //                    Tdap given this pregnancy → not recommended, in a prior pregnancy →
 //                    recommended; RSV ever → not offered; influenza / COVID-19 within 180
 //                    days → not recommended; an undated entry reads as given
@@ -2414,7 +2414,7 @@ async function proveResponseRecheck(): Promise<void> {
 }
 
 
-// ── Proofs: routine prenatal care v3 ([DECISION — Josh 2026-10-04]) ──
+// ── Proofs: routine prenatal care v4 ([DECISION — Josh 2026-10-04]) ──
 /** A medication-list entry: `[RxNorm]` undated (as the simulator sends it), or `[RxNorm, 'YYYY-MM-DD']` given that day. */
 type PnMed = [string] | [string, string];
 /** A routine-prenatal patient. `codes` are CHART conditions; labs dated or undated, as `Lab`. */
@@ -2642,11 +2642,39 @@ async function provePrenatalGdm(): Promise<void> {
     expect('step-4-4 early abnormal glucose', status(r.state, 'step-4-4'), 'INCLUDED');
     expectAll('(no overt diabetes, no eligibility question, no order)', r.state, ['step-4-3', 'step-4-6', 'step-4-2', 'lab-17'], 'GATED_OUT');
 
-    console.log('  HbA1c 6.8 from before this pregnancy (2026-03-01): still read (overt diabetes) whatever the eligibility answer:');
+    console.log('  HbA1c 6.8 from BEFORE this pregnancy (2026-03-01; at 10 weeks it began 2026-07-16): NOT read — no overt-diabetes step; eligibility is asked as for any patient with none this pregnancy:');
     const old = prenatalPatient({ ...quiet, ga: 10, labs: [['718-7', 12.4, '2026-09-10'], ['4548-4', 6.8, '2026-03-01']] });
-    r = await resolveSession({ file: PRENATAL, reverse, patient: old, replay: [{ gate: 'gate-early-testing-indicated', answer: NO }] });
-    expect('step-4-3 overt diabetes', status(r.state, 'step-4-3'), 'INCLUDED');
-    expectAll('(not ordered: answered no)', r.state, ['step-4-2', 'lab-17'], 'GATED_OUT');
+    r = await resolveSession({ file: PRENATAL, reverse, patient: old });
+    expect('pending questions', keysOf(r.pending), 'gate-early-testing-indicated');
+    expectAll('(not read)', r.state, ['step-4-3', 'step-4-4'], 'GATED_OUT');
+    console.log('  … HbA1c 6.8 drawn THIS pregnancy (2026-08-01): overt diabetes step, nothing asked — whatever eligibility would have been:');
+    r = await resolveSession({ file: PRENATAL, reverse, patient: prenatalPatient({ ...quiet, ga: 10, labs: [['718-7', 12.4, '2026-09-10'], ['4548-4', 6.8, '2026-08-01']] }) });
+    expect('pending questions', keysOf(r.pending), '(none)');
+    expectAll('(overt diabetes: add the diagnosis)', r.state, ['step-4-3', 'guid-15'], 'INCLUDED');
+    expectAll('(no eligibility question, no order)', r.state, ['step-4-6', 'step-4-2', 'lab-17'], 'GATED_OUT');
+
+    // 28 weeks at AS_OF 2026-09-24: the pregnancy began 2026-03-12, 16 weeks was 2026-07-02, and week 24 began 2026-08-27.
+    console.log('  an EARLY 50-g challenge (16 weeks, 2026-07-02) that was NEGATIVE (118) is not the 24-28-week screen: at 28 weeks screening is still open — the strategy is asked:');
+    r = await resolveSession({ file: PRENATAL, reverse, patient: with_([['1504-0', 118, '2026-07-02']]) });
+    expect('pending questions', keysOf(r.pending), PN_STRATEGY);
+    expect('step-6-3 screening complete', status(r.state, 'step-6-3'), 'GATED_OUT');
+    expect('step-6-6 choose the strategy', status(r.state, 'step-6-6'), 'INCLUDED');
+    console.log('  … the day before 24 0/7 weeks (2026-08-26) does not count; the first day of week 24 (2026-08-27) does:');
+    r = await resolveSession({ file: PRENATAL, reverse, patient: with_([['1504-0', 118, '2026-08-26']]) });
+    expect('step-6-3 (2026-08-26)', status(r.state, 'step-6-3'), 'GATED_OUT');
+    r = await resolveSession({ file: PRENATAL, reverse, patient: with_([['1504-0', 118, '2026-08-27']]) });
+    expect('step-6-3 (2026-08-27)', status(r.state, 'step-6-3'), 'INCLUDED');
+    expect('pending questions', keysOf(r.pending), '(none)');
+    console.log('  an EARLY 50-g that was POSITIVE (155 at 16 weeks): straight to the 100-g test at 28 weeks — no strategy question, no 50-g re-ordered:');
+    r = await resolveSession({ file: PRENATAL, reverse, patient: with_([['1504-0', 155, '2026-07-02']]) });
+    expect('pending questions', keysOf(r.pending), '(none)');
+    expectAll('(100-g test ordered)', r.state, ['step-6-9', 'step-6-10', 'lab-21'], 'INCLUDED');
+    expectAll('(no strategy question, no screening order)', r.state, ORDERS, 'GATED_OUT');
+    console.log('  … and a 100-g test done early with it (17 weeks, normal) does not settle it: the 100-g test is still ordered at 28 weeks, nothing concluded:');
+    r = await resolveSession({ file: PRENATAL, reverse, patient: with_([['1504-0', 155, '2026-07-02'], ['1549-5', 88, '2026-07-09'], ['1501-6', 160, '2026-07-09'], ['1514-9', 140, '2026-07-09'], ['1530-5', 120, '2026-07-09']]) });
+    expect('pending questions', keysOf(r.pending), '(none)');
+    expectAll('(100-g test ordered)', r.state, ['step-6-10', 'lab-21'], 'INCLUDED');
+    expectAll('(nothing concluded from the early test)', r.state, ['step-6-11', 'step-6-12'], 'GATED_OUT');
   }
 }
 
@@ -2709,6 +2737,30 @@ async function provePrenatalHandoffs(): Promise<void> {
     r = await resolveSession({ file: PRENATAL, reverse, patient: at(28, [['718-7', 12.0, '2026-09-15']], { codes: ['O24.410'] }) });
     expectAll('(no repeat CBC)', r.state, ['step-6-5', 'lab-19'], 'GATED_OUT');
 
+    // 26 weeks at AS_OF 2026-09-24: the pregnancy began 2026-03-26; 10 weeks was 2026-06-04; week 24 began 2026-09-10; 25 weeks was 2026-09-17.
+    console.log('  26 weeks, CBC at 10 weeks only (2026-06-04): the repeat CBC is ordered; with a CBC at 25 weeks (2026-09-17): not; the day before week 24 (2026-09-09) does not count:');
+    r = await resolveSession({ file: PRENATAL, reverse, patient: at(26, [['718-7', 12.0, '2026-06-04']], { codes: ['O24.410'] }) });
+    expectAll('(repeat CBC)', r.state, ['step-6-5', 'lab-19'], 'INCLUDED');
+    r = await resolveSession({ file: PRENATAL, reverse, patient: at(26, [['718-7', 12.0, '2026-06-04'], ['718-7', 11.8, '2026-09-17']], { codes: ['O24.410'] }) });
+    expectAll('(no repeat CBC)', r.state, ['step-6-5', 'lab-19'], 'GATED_OUT');
+    r = await resolveSession({ file: PRENATAL, reverse, patient: at(26, [['718-7', 12.0, '2026-09-09']], { codes: ['O24.410'] }) });
+    expectAll('(repeat CBC: 2026-09-09 is before 24 0/7 weeks)', r.state, ['step-6-5', 'lab-19'], 'INCLUDED');
+
+    const T3 = ['step-9-7', 'lab-24', 'step-9-8', 'lab-25', 'step-9-9', 'lab-26'];
+    console.log('  20 weeks: nothing third-trimester is ordered, and no repeat CBC; 27 weeks (Stage 9 open for Tdap): still no rescreens; 28 weeks: ordered:');
+    r = await resolveSession({ file: PRENATAL, reverse, patient: at(20, [['718-7', 12.0, '2026-09-10']]) });
+    expectAll('(20 weeks)', r.state, [...T3, 'step-6-5', 'lab-19', 'step-9-10', 'med-5'], 'GATED_OUT');
+    r = await resolveSession({ file: PRENATAL, reverse, patient: at(27, [['718-7', 12.0, '2026-09-15']], { codes: ['O24.410'] }) });
+    expect('stage-9 (27 weeks)', status(r.state, 'stage-9'), 'INCLUDED');
+    expectAll('(27 weeks: no rescreens yet)', r.state, T3, 'GATED_OUT');
+    r = await resolveSession({ file: PRENATAL, reverse, patient: at(28, [['718-7', 12.0, '2026-09-15']], { codes: ['O24.410'] }) });
+    expectAll('(28 weeks: rescreens ordered)', r.state, T3, 'INCLUDED');
+    console.log('  … 32 weeks (began 2026-02-12; week 28 began 2026-08-27): a syphilis test at 10 weeks does not count as the rescreen; one at 29 weeks (2026-09-03) does:');
+    r = await resolveSession({ file: PRENATAL, reverse, patient: at(32, [['718-7', 12.0, '2026-09-15'], ['20507-0', 1, '2026-04-23']], { codes: ['O24.410'] }) });
+    expectAll('(rescreen ordered)', r.state, ['step-9-7', 'lab-24'], 'INCLUDED');
+    r = await resolveSession({ file: PRENATAL, reverse, patient: at(32, [['718-7', 12.0, '2026-09-15'], ['20507-0', 1, '2026-09-03']], { codes: ['O24.410'] }) });
+    expectAll('(rescreen not ordered)', r.state, ['step-9-7', 'lab-24'], 'GATED_OUT');
+
     console.log('  BP 146/88: hand-off; 118/76: none; 146/88 with O13.3 on the chart: none; BP missing: asked for:');
     const bp = (vitals: Record<string, number>, codes: string[] = []) => at(30, [['718-7', 12, '2026-09-15']], { codes: ['O24.410', ...codes], vitals });
     r = await resolveSession({ file: PRENATAL, reverse, patient: bp({ systolic_bp: 146, diastolic_bp: 88 }) });
@@ -2729,6 +2781,16 @@ async function provePrenatalHandoffs(): Promise<void> {
     }
     r = await resolveSession({ file: PRENATAL, reverse, patient: rh('positive') });
     expectAll('(nothing)', r.state, RH_STEP, 'GATED_OUT');
+    console.log('  the chart\'s own spellings are read: "Rh+", "POS", "Rh(D) positive" → no hand-off; "Rh-", "neg", "Du", "weakly positive" → hand-off; "O+" (not an Rh spelling) → flagged:');
+    for (const [spelling, want] of [['Rh+', 'GATED_OUT'], ['POS', 'GATED_OUT'], ['Rh(D) positive', 'GATED_OUT'], ['Rh-', 'INCLUDED'], ['neg', 'INCLUDED'], ['Du', 'INCLUDED'], ['weakly positive', 'INCLUDED'], ['O+', 'INCLUDED']] as const) {
+      r = await resolveSession({ file: PRENATAL, reverse, patient: rh(spelling) });
+      expect(`chart "${spelling}": step-1-24`, status(r.state, 'step-1-24'), want);
+      expect(`chart "${spelling}": pending questions`, keysOf(r.pending), '(none)');
+    }
+    const rhStep = String(graphFrom(PRENATAL).getNode('step-1-24')?.properties?.description ?? '');
+    const rhGuid = String(graphFrom(PRENATAL).getNode('guid-13')?.properties?.instructions ?? '');
+    expect('step text recommends Z67.91 for weak D and partial D', String(/Add Z67\.91/.test(rhStep) && /weak D and partial D as well as/.test(rhStep)), 'true');
+    expect('… with no "when she is to be managed as" qualifier, in the step or the guidance', String(/managed as/.test(rhStep + rhGuid)), 'false');
     r = await resolveSession({ file: PRENATAL, reverse, patient: rh('negative', ['Z67.91']) });
     expectAll('(already recorded)', r.state, RH_STEP, 'GATED_OUT');
     expect('no Rh immune globulin and no repeat antibody screen anywhere in the pathway',
@@ -2795,6 +2857,14 @@ async function provePrenatalMeds(): Promise<void> {
     expect('pending questions', keysOf(r.pending), '(none)');
     expectAll('(started)', r.state, START_VIT, 'INCLUDED');
     expectAll('(no "continue")', r.state, [...REPORTED, ...ON_LIST], 'GATED_OUT');
+    console.log('  … "Not available" (on_declined: traverse on the "no" gate): unknown is treated like "no" — the vitamin is recommended, the "continue" side is closed, nothing blocks:');
+    r = await resolveSession({ file: PRENATAL, reverse, patient: noVit(), replay: [{ decline: PN_VITAMIN_Q }] });
+    expect('pending questions', keysOf(r.pending), '(none)');
+    expectAll('(recommended)', r.state, START_VIT, 'INCLUDED');
+    expectAll('("continue" side closed)', r.state, REPORTED, 'GATED_OUT');
+    expect('care-plan blockers', String(validateForGeneration(r.state, r.redFlags).length), '0');
+    expect('on_declined on the "no" gate / the "yes" gate', `${String(graphFrom(PRENATAL).getNode('gate-not-taking-prenatal-vitamin')?.properties?.on_declined)} / ${String(graphFrom(PRENATAL).getNode('gate-taking-prenatal-vitamin')?.properties?.on_declined)}`, 'traverse / undefined');
+    console.log('  … on_declined acts only on a decline: while the question is unanswered the vitamin is still held, and a "yes" still closes it (both shown above)');
     console.log('  … a recognised product on the list settles it whatever was remembered: nothing asked, the "on the list" step, not the "reported" one:');
     r = await resolveSession({ file: PRENATAL, reverse, patient: pt(10, ['1119573', '243670'], { attrs: { on_prenatal_vitamin: false } }) });
     expect('pending questions', keysOf(r.pending), '(none)');
@@ -2855,15 +2925,21 @@ async function provePrenatalMeds(): Promise<void> {
     expect('lab-8 HIV', status(r.state, 'lab-8'), 'GATED_OUT');
     expect('lab-1 CBC', status(r.state, 'lab-1'), 'INCLUDED');
 
-    console.log('  36 weeks: GBS culture ordered; a culture 10 days ago, or O99.820 on the chart → not ordered:');
-    const late = (extra: { codes?: string[]; labs?: Lab[] }) =>
-      prenatalPatient({ ...quiet, ga: 36, codes: ['O24.410', ...(extra.codes ?? [])], labs: [['718-7', 12, '2026-09-15'], ...(extra.labs ?? [])] });
+    // 37 weeks at AS_OF 2026-09-24: the pregnancy began 2026-01-08 and week 36 began 2026-09-17.
+    console.log('  37 weeks: GBS culture ordered; a culture at 36 2/7 weeks (2026-09-19), or O99.820 on the chart → not ordered; a culture at 35 weeks (2026-09-10) does not count:');
+    const late = (extra: { codes?: string[]; labs?: Lab[]; ga?: number }) =>
+      prenatalPatient({ ...quiet, ga: extra.ga ?? 37, codes: ['O24.410', ...(extra.codes ?? [])], labs: [['718-7', 12, '2026-09-18'], ...(extra.labs ?? [])] });
     r = await resolveSession({ file: PRENATAL, reverse, patient: late({}) });
     expectAll('(ordered)', r.state, ['step-11-4', 'lab-27'], 'INCLUDED');
-    r = await resolveSession({ file: PRENATAL, reverse, patient: late({ labs: [['72607-5', 1, '2026-09-14']] }) });
+    r = await resolveSession({ file: PRENATAL, reverse, patient: late({ labs: [['72607-5', 1, '2026-09-19']] }) });
     expectAll('(not ordered)', r.state, ['step-11-4', 'lab-27'], 'GATED_OUT');
     r = await resolveSession({ file: PRENATAL, reverse, patient: late({ codes: ['O99.820'] }) });
     expectAll('(not ordered)', r.state, ['step-11-4', 'lab-27'], 'GATED_OUT');
+    r = await resolveSession({ file: PRENATAL, reverse, patient: late({ labs: [['72607-5', 1, '2026-09-10']] }) });
+    expectAll('(ordered: drawn before 36 0/7 weeks)', r.state, ['step-11-4', 'lab-27'], 'INCLUDED');
+    console.log('  … 41 4/7 weeks (week 36 began 2026-08-16): a culture drawn at 36 2/7 weeks (2026-08-18, 37 days ago) has expired (valid 5 weeks) → ordered again:');
+    r = await resolveSession({ file: PRENATAL, reverse, patient: late({ ga: 41.5, labs: [['72607-5', 1, '2026-08-18']] }) });
+    expectAll('(ordered)', r.state, ['step-11-4', 'lab-27'], 'INCLUDED');
   }
 }
 
@@ -2911,6 +2987,22 @@ async function provePrenatalVaccines(): Promise<void> {
     expectAll('(not offered)', r.state, COVID, 'GATED_OUT');
     r = await resolveSession({ file: PRENATAL, reverse, asOf: OCT, patient: pt([['2722605', '2026-07-26']], '2026-10-10') });
     expectAll('(offered)', r.state, COVID, 'INCLUDED');
+
+    console.log('  INFLUENZA and COVID-19 are recommended only IN SEASON (September 1 to March 31): clock in July, no dose → not recommended, nothing asked; in October → recommended:');
+    r = await resolveSession({ file: PRENATAL, reverse, asOf: '2026-07-15T12:00:00.000Z', patient: pt([], '2026-07-10') });
+    expectAll('(July: not recommended)', r.state, [...FLU, ...COVID, 'med-3b', 'med-4b'], 'GATED_OUT');
+    expect('influenza question', asked(r, FLU_ASK), 'false');
+    r = await resolveSession({ file: PRENATAL, reverse, asOf: OCT, patient: pt([], '2026-10-10') });
+    expectAll('(October: recommended)', r.state, [...FLU, ...COVID], 'INCLUDED');
+    console.log('  … July, with an UNDATED influenza and COVID-19 vaccine on the list: out of season nothing is asked either:');
+    r = await resolveSession({ file: PRENATAL, reverse, asOf: '2026-07-15T12:00:00.000Z', patient: pt(['2746457', '2722600'], '2026-07-10') });
+    expect('influenza question', asked(r, FLU_ASK), 'false');
+    expect('COVID-19 question', asked(r, COVID_ASK), 'false');
+    console.log('  … the season\'s edges: March 31 in, April 1 out; August 31 out, September 1 in:');
+    for (const [day, want] of [['2027-03-31', 'INCLUDED'], ['2027-04-01', 'GATED_OUT'], ['2026-08-31', 'GATED_OUT'], ['2026-09-01', 'INCLUDED']] as const) {
+      r = await resolveSession({ file: PRENATAL, reverse, asOf: `${day}T12:00:00.000Z`, patient: pt([], day) });
+      expect(`clock ${day}: influenza / COVID-19`, `${status(r.state, 'step-1-31')} / ${status(r.state, 'step-1-32')}`, `${want} / ${want}`);
+    }
 
     console.log('  an UNDATED influenza vaccine on the list: asked "given this season (since September 1)?" — yes → not recommended, no → recommended; not asked twice:');
     const undatedFlu = pt(['2746457']);
@@ -2964,6 +3056,12 @@ async function provePrenatalVaccines(): Promise<void> {
     r = await resolveSession({ file: PRENATAL, reverse, patient: undatedTdap({ tdap_given_this_pregnancy: false }) });
     expect('pending questions', keysOf(r.pending), '(none)');
     expectAll('(recommended)', r.state, ['step-9-13', 'med-5b', 'sched-4b'], 'INCLUDED');
+    console.log('  … "Not available": unknown is treated like "no" — Tdap is recommended, the "already given" side is closed, nothing blocks:');
+    r = await resolveSession({ file: PRENATAL, reverse, patient: undatedTdap(), replay: [{ decline: TDAP_ASK }] });
+    expect('pending questions', keysOf(r.pending), '(none)');
+    expectAll('(recommended)', r.state, ['step-9-13', 'med-5b', 'sched-4b'], 'INCLUDED');
+    expectAll('("already given" side closed; the other Tdap step stays closed)', r.state, ['step-9-12', 'guid-22', ...TDAP], 'GATED_OUT');
+    expect('care-plan blockers', String(validateForGeneration(r.state, r.redFlags).length), '0');
     console.log('  … the remembered "yes" matters only while the entry is undated: with NO Tdap on the list it is ignored and Tdap is recommended:');
     r = await resolveSession({ file: PRENATAL, reverse, patient: pt([], '2026-09-15', { tdap_given_this_pregnancy: true }) });
     expectAll('(recommended)', r.state, TDAP, 'INCLUDED');
@@ -3003,6 +3101,12 @@ async function provePrenatalVaccines(): Promise<void> {
     console.log('  … answered no: offered:');
     r = await resolveSession({ file: PRENATAL, reverse, patient: undatedRsv({ rsv_vaccine_ever_given: false }) });
     expectAll('(offered)', r.state, ['step-10-5', 'med-7b', 'sched-6b'], 'INCLUDED');
+    console.log('  … "Not available": unknown is treated like "no" — the RSV vaccine is offered, the "already given" side is closed, nothing blocks:');
+    r = await resolveSession({ file: PRENATAL, reverse, patient: undatedRsv(), replay: [{ decline: RSV_ASK }] });
+    expect('pending questions', keysOf(r.pending), '(none)');
+    expectAll('(offered)', r.state, ['step-10-5', 'med-7b', 'sched-6b'], 'INCLUDED');
+    expectAll('("already given" side closed)', r.state, ['step-10-4', 'guid-23', ...RSV], 'GATED_OUT');
+    expect('care-plan blockers', String(validateForGeneration(r.state, r.redFlags).length), '0');
     console.log('  … out of season an undated RSV vaccine is not asked about:');
     r = await resolveSession({ file: PRENATAL, reverse, asOf: '2026-06-15T12:00:00.000Z', patient: pt(['2642144'], '2026-06-10') });
     expect('RSV question', asked(r, RSV_ASK), 'false');

@@ -535,6 +535,23 @@ const isNumeric = (c: any): boolean =>
         `never asks and applies default_behavior. Emit "default" so the JSON says what happens.`,
       );
     }
+    // ON_DECLINED — what "Not available" means for this gate. `traverse` opens
+    // the gate when the datum it asked for was declined, and only then: it is NOT
+    // `default_behavior: "traverse"` (it does nothing on a definite "no"), so it
+    // is legal on a single-target gate. It can act only on a gate that can ask.
+    if (props.on_declined !== undefined) {
+      if (props.on_declined !== 'traverse' && props.on_declined !== 'default') {
+        errors.push(
+          `ON_DECLINED — "${gate}" sets on_declined ${JSON.stringify(props.on_declined)}; only "traverse" and "default" exist.`,
+        );
+      } else if (props.on_declined === 'traverse' && (askableData.size === 0 || props.on_unresolved !== 'ask')) {
+        warnings.push(
+          `Gate "${gate}": on_declined "traverse" is inert — ${askableData.size === 0
+            ? 'the gate has no condition it can ask for, so nothing can be declined'
+            : 'the gate does not ask (on_unresolved is not "ask"), so nothing can be declined'}.`,
+        );
+      }
+    }
     if (askable && typeof props.prompt === 'string' && askableData.size > 1) {
       warnings.push(
         `Gate "${gate}": an authored \`prompt\` on a chart gate replaces the generated per-datum ` +

@@ -467,6 +467,12 @@ function validateGateNodes(
       );
     }
 
+    // on_declined: what "Not available" means for this gate. Only `traverse`
+    // (open the gate) and `default` (take default_behavior, the unset meaning).
+    if (props.on_declined !== undefined && props.on_declined !== 'traverse' && props.on_declined !== 'default') {
+      errors.push(`Gate "${gate.id}": invalid on_declined ${JSON.stringify(props.on_declined)}. Must be "traverse" or "default"`);
+    }
+
     // remember_answer: an answer kept for the patient across encounters. Only
     // a `patient.<attribute>` value can be supplied again at a later start, so
     // the gate must be one that asks for one.

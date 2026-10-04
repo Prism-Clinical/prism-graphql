@@ -3,7 +3,7 @@
   "pathway": {
     "logical_id": "routine-prenatal-care",
     "title": "Routine Prenatal Care",
-    "version": "3",
+    "version": "4",
     "category": "OBSTETRIC",
     "scope": "Outpatient antepartum care for every pregnancy under supervision, from the first prenatal contact to birth: intake and dating, the initial laboratory panel, genetic screening options, psychosocial screening, preeclampsia risk and aspirin, supplements, immunizations and counselling, every-visit monitoring, and gestational-age-windowed care including gestational diabetes screening and diagnosis. Screens for diabetes, hypertension, anemia and Rh(D)-negative blood type and recommends adding the diagnosis to the encounter; treatment of each belongs to its own pathway.",
     "target_population": "Pregnant patients receiving outpatient prenatal care, average risk or under high-risk supervision.",
@@ -1274,7 +1274,7 @@
         "step_number": 24,
         "display_number": "1.24",
         "title": "Rh(D) type not clearly positive: add the diagnosis",
-        "description": "The Rh(D) type is negative, weak D, partial D or otherwise not clearly positive, and no Rh-negative blood type is on the chart. Rh(D) negative: add Z67.91 (unspecified blood type, Rh negative) or the ABO-specific code (Z67.11, Z67.21, Z67.31, Z67.41) to this encounter. Weak D or partial D: there is no ICD-10-CM code for either; add Z67.91 when she is to be managed as Rh(D) negative, and note the serologic result. Rh-negative management, including RHD genotyping for weak D, the 24-28-week repeat antibody screen and Rh immune globulin, belongs to the Rh-negative pathway; routine prenatal care types the blood and runs the first antibody screen only. A positive antibody screen (alloimmunization) is O36.01- and needs maternal-fetal medicine."
+        "description": "The Rh(D) type is negative, weak D, partial D or otherwise not clearly positive, and no Rh-negative blood type is on the chart. Add Z67.91 (unspecified blood type, Rh negative) to this encounter, or the ABO-specific Rh-negative code (Z67.11, Z67.21, Z67.31, Z67.41). This applies to weak D and partial D as well as to Rh(D) negative; note the serologic result. Rh-negative management, including RHD genotyping for weak D, the 24-28-week repeat antibody screen and Rh immune globulin, belongs to the Rh-negative pathway; routine prenatal care types the blood and runs the first antibody screen only. A positive antibody screen (alloimmunization) is O36.01- and needs maternal-fetal medicine."
       }
     },
     {
@@ -1292,7 +1292,7 @@
       "properties": {
         "topic": "Rh(D) not clearly positive: what routine care does not cover",
         "category": "education",
-        "instructions": "The Rh(D) type is negative, weak D, partial D or otherwise not clearly positive. This pathway recommends no Rh immune globulin and no repeat antibody screen. Add the diagnosis to this encounter (Z67.91 for Rh negative; for weak D or partial D, Z67.91 if she is to be managed as Rh negative) and manage Rh prophylaxis under the Rh-negative plan of care."
+        "instructions": "The Rh(D) type is negative, weak D, partial D or otherwise not clearly positive. This pathway recommends no Rh immune globulin and no repeat antibody screen. Add Z67.91 (blood type, Rh negative) to this encounter, for weak D and partial D as well as for Rh negative, and manage Rh prophylaxis under the Rh-negative plan of care."
       }
     },
     {
@@ -1880,7 +1880,7 @@
         "step_number": 27,
         "display_number": "1.27",
         "title": "Start a prenatal vitamin with folic acid",
-        "description": "Not on the medication list, and the patient is not taking one."
+        "description": "Not on the medication list, and the patient is not taking one, or it is not known whether she is."
       }
     },
     {
@@ -1953,7 +1953,7 @@
       "id": "gate-not-taking-prenatal-vitamin",
       "type": "Gate",
       "properties": {
-        "title": "Already taking a prenatal vitamin: no",
+        "title": "Already taking a prenatal vitamin: no, or not available",
         "default_behavior": "skip",
         "gate_type": "patient_attribute",
         "on_unresolved": "ask",
@@ -1964,6 +1964,7 @@
             true
           ]
         },
+        "on_declined": "traverse",
         "condition": {
           "attribute": "patient.on_prenatal_vitamin",
           "operator": "equals",
@@ -2034,7 +2035,7 @@
         "step_number": 9,
         "display_number": "1.9",
         "title": "Immunizations at any gestational age: what has already been given",
-        "description": "Vaccines are read from the medication list. Influenza vaccine in any trimester during the season (third-trimester patients as soon as vaccine is available; the live intranasal vaccine is contraindicated). COVID-19 vaccine per ACOG, with shared decision-making and the discussion documented. A dose dated on or after the most recent September 1 is this season's and is not repeated; an entry with no date is asked about. Hepatitis B vaccine if susceptible on the triple panel. MMR and varicella vaccines are contraindicated in pregnancy: give postpartum if non-immune."
+        "description": "Vaccines are read from the medication list. Influenza vaccine in any trimester during the season (third-trimester patients as soon as vaccine is available; the live intranasal vaccine is contraindicated). COVID-19 vaccine per ACOG, with shared decision-making and the discussion documented. Both are recommended only in season, September 1 to March 31, and only when no dose is dated on or after the most recent September 1; an entry with no date is asked about. Out of season nothing is recommended or asked. Hepatitis B vaccine if susceptible on the triple panel. MMR and varicella vaccines are contraindicated in pregnancy: give postpartum if non-immune."
       }
     },
     {
@@ -2045,7 +2046,7 @@
         "step_number": 31,
         "display_number": "1.31",
         "title": "Give the influenza vaccine",
-        "description": "No influenza vaccine on the medication list since the most recent September 1."
+        "description": "In season (September 1 to March 31), and no influenza vaccine on the medication list since the most recent September 1."
       }
     },
     {
@@ -2059,7 +2060,7 @@
         "frequency": "once per influenza season",
         "duration": "single dose",
         "route": "intramuscular",
-        "instructions": "Any trimester, during the season. The live intranasal vaccine is contraindicated in pregnancy. May be given with Tdap, RSV and COVID-19 vaccines."
+        "instructions": "Any trimester, in season (September 1 to March 31). The live intranasal vaccine is contraindicated in pregnancy. May be given with Tdap, RSV and COVID-19 vaccines."
       }
     },
     {
@@ -2084,12 +2085,19 @@
       "id": "gate-influenza-vaccine-due",
       "type": "Gate",
       "properties": {
-        "title": "No influenza vaccine dated this season (since September 1), and none listed without a date",
+        "title": "In season, no influenza vaccine dated this season (since September 1), and none listed without a date",
         "default_behavior": "skip",
         "gate_type": "compound",
         "on_unresolved": "default",
         "operator": "AND",
         "conditions": [
+          {
+            "attribute": "encounter.date",
+            "operator": "in_season",
+            "from": "09-01",
+            "to": "03-31",
+            "display": "Vaccine season (September 1 to March 31)"
+          },
           {
             "field": "medications",
             "operator": "count_in_window",
@@ -3200,12 +3208,19 @@
       "id": "gate-influenza-vaccine-undated",
       "type": "Gate",
       "properties": {
-        "title": "An influenza vaccine is on the medication list with no date, and none is dated this season",
+        "title": "In season, an influenza vaccine is on the medication list with no date, and none is dated this season",
         "default_behavior": "skip",
         "gate_type": "compound",
         "on_unresolved": "default",
         "operator": "AND",
         "conditions": [
+          {
+            "attribute": "encounter.date",
+            "operator": "in_season",
+            "from": "09-01",
+            "to": "03-31",
+            "display": "Vaccine season (September 1 to March 31)"
+          },
           {
             "field": "medications",
             "operator": "count_in_window",
@@ -4349,7 +4364,7 @@
         "frequency": "once per influenza season",
         "duration": "single dose",
         "route": "intramuscular",
-        "instructions": "Any trimester, during the season. The live intranasal vaccine is contraindicated in pregnancy. May be given with Tdap, RSV and COVID-19 vaccines."
+        "instructions": "Any trimester, in season (September 1 to March 31). The live intranasal vaccine is contraindicated in pregnancy. May be given with Tdap, RSV and COVID-19 vaccines."
       }
     },
     {
@@ -4371,7 +4386,7 @@
         "step_number": 32,
         "display_number": "1.32",
         "title": "Offer the COVID-19 vaccine",
-        "description": "No COVID-19 vaccine on the medication list since the most recent September 1."
+        "description": "In season (September 1 to March 31), and no COVID-19 vaccine on the medication list since the most recent September 1."
       }
     },
     {
@@ -4392,12 +4407,19 @@
       "id": "gate-covid-vaccine-due",
       "type": "Gate",
       "properties": {
-        "title": "No COVID-19 vaccine dated this season (since September 1), and none listed without a date",
+        "title": "In season, no COVID-19 vaccine dated this season (since September 1), and none listed without a date",
         "default_behavior": "skip",
         "gate_type": "compound",
         "on_unresolved": "default",
         "operator": "AND",
         "conditions": [
+          {
+            "attribute": "encounter.date",
+            "operator": "in_season",
+            "from": "09-01",
+            "to": "03-31",
+            "display": "Vaccine season (September 1 to March 31)"
+          },
           {
             "field": "medications",
             "operator": "count_in_window",
@@ -4806,12 +4828,19 @@
       "id": "gate-covid-vaccine-undated",
       "type": "Gate",
       "properties": {
-        "title": "A COVID-19 vaccine is on the medication list with no date, and none is dated this season",
+        "title": "In season, a COVID-19 vaccine is on the medication list with no date, and none is dated this season",
         "default_behavior": "skip",
         "gate_type": "compound",
         "on_unresolved": "default",
         "operator": "AND",
         "conditions": [
+          {
+            "attribute": "encounter.date",
+            "operator": "in_season",
+            "from": "09-01",
+            "to": "03-31",
+            "display": "Vaccine season (September 1 to March 31)"
+          },
           {
             "field": "medications",
             "operator": "count_in_window",
@@ -5583,7 +5612,7 @@
         "step_number": 1,
         "display_number": "4.1",
         "title": "Early diabetes testing: read the hemoglobin A1c on file",
-        "description": "The most recent hemoglobin A1c decides: 6.5% or higher is diabetes; 5.9-6.4% is early abnormal glucose metabolism. The one-step and two-step gestational diabetes criteria are not applied before 24 weeks. Alternatives to the A1c, not ordered here: fasting plasma glucose 126 mg/dL or higher; 2-hour 75-g value 200 or higher; random 200 or higher with classic symptoms."
+        "description": "The hemoglobin A1c drawn this pregnancy decides: 6.5% or higher is diabetes; 5.9-6.4% is early abnormal glucose metabolism. The one-step and two-step gestational diabetes criteria are not applied before 24 weeks. Alternatives to the A1c, not ordered here: fasting plasma glucose 126 mg/dL or higher; 2-hour 75-g value 200 or higher; random 200 or higher with classic symptoms."
       }
     },
     {
@@ -5646,7 +5675,7 @@
       "id": "gate-overt-diabetes",
       "type": "Gate",
       "properties": {
-        "title": "Most recent hemoglobin A1c 6.5% or higher",
+        "title": "Hemoglobin A1c drawn this pregnancy 6.5% or higher",
         "default_behavior": "skip",
         "gate_type": "patient_attribute",
         "on_unresolved": "default",
@@ -5657,7 +5686,7 @@
           "system": "LOINC",
           "display": "Hemoglobin A1c (%)",
           "threshold": 6.49,
-          "horizon": "LIFETIME"
+          "horizon": "PREGNANCY"
         }
       }
     },
@@ -5685,7 +5714,7 @@
       "id": "gate-early-abnormal-glucose",
       "type": "Gate",
       "properties": {
-        "title": "Most recent hemoglobin A1c 5.9-6.4%",
+        "title": "Hemoglobin A1c drawn this pregnancy 5.9-6.4%",
         "default_behavior": "skip",
         "gate_type": "compound",
         "on_unresolved": "default",
@@ -5698,7 +5727,7 @@
             "system": "LOINC",
             "display": "Hemoglobin A1c (%)",
             "threshold": 5.89,
-            "horizon": "LIFETIME"
+            "horizon": "PREGNANCY"
           },
           {
             "field": "labs",
@@ -5707,7 +5736,7 @@
             "system": "LOINC",
             "display": "Hemoglobin A1c (%)",
             "threshold": 6.5,
-            "horizon": "LIFETIME"
+            "horizon": "PREGNANCY"
           }
         ]
       }
@@ -5947,7 +5976,7 @@
         "step_number": 1,
         "display_number": "6.1",
         "title": "Anemia rescreen at 24-28 weeks: what is already on file",
-        "description": "A hemoglobin drawn since about 24 weeks counts; otherwise the CBC is repeated."
+        "description": "A hemoglobin drawn at or after 24 0/7 weeks counts; otherwise the CBC is repeated."
       }
     },
     {
@@ -5958,7 +5987,7 @@
         "step_number": 5,
         "display_number": "6.5",
         "title": "Repeat the CBC",
-        "description": "No hemoglobin drawn since about 24 weeks."
+        "description": "No hemoglobin drawn since 24 0/7 weeks."
       }
     },
     {
@@ -5975,111 +6004,27 @@
       "id": "gate-cbc-repeat-due",
       "type": "Gate",
       "properties": {
-        "title": "No hemoglobin drawn since about 24 weeks",
+        "title": "At or after 24 weeks, and no hemoglobin drawn since 24 0/7 weeks",
         "default_behavior": "skip",
         "gate_type": "compound",
         "on_unresolved": "ask",
-        "operator": "OR",
+        "operator": "AND",
         "conditions": [
           {
-            "operator": "AND",
-            "conditions": [
-              {
-                "attribute": "patient.gestational_age_weeks",
-                "operator": "less_than",
-                "value": 28,
-                "unit": "weeks"
-              },
-              {
-                "field": "labs",
-                "operator": "not_includes_code",
-                "value": "718-7",
-                "system": "LOINC",
-                "display": "Hemoglobin (g/dL)",
-                "horizon": {
-                  "days": 28
-                }
-              }
-            ],
-            "display": "24-27 weeks: none in the last 4 weeks"
+            "attribute": "patient.gestational_age_weeks",
+            "operator": "greater_or_equal",
+            "value": 24,
+            "unit": "weeks"
           },
           {
-            "operator": "AND",
-            "conditions": [
-              {
-                "attribute": "patient.gestational_age_weeks",
-                "operator": "greater_or_equal",
-                "value": 28,
-                "unit": "weeks"
-              },
-              {
-                "attribute": "patient.gestational_age_weeks",
-                "operator": "less_than",
-                "value": 32,
-                "unit": "weeks"
-              },
-              {
-                "field": "labs",
-                "operator": "not_includes_code",
-                "value": "718-7",
-                "system": "LOINC",
-                "display": "Hemoglobin (g/dL)",
-                "horizon": {
-                  "days": 56
-                }
-              }
-            ],
-            "display": "28-31 weeks: none in the last 8 weeks"
-          },
-          {
-            "operator": "AND",
-            "conditions": [
-              {
-                "attribute": "patient.gestational_age_weeks",
-                "operator": "greater_or_equal",
-                "value": 32,
-                "unit": "weeks"
-              },
-              {
-                "attribute": "patient.gestational_age_weeks",
-                "operator": "less_than",
-                "value": 36,
-                "unit": "weeks"
-              },
-              {
-                "field": "labs",
-                "operator": "not_includes_code",
-                "value": "718-7",
-                "system": "LOINC",
-                "display": "Hemoglobin (g/dL)",
-                "horizon": {
-                  "days": 84
-                }
-              }
-            ],
-            "display": "32-35 weeks: none in the last 12 weeks"
-          },
-          {
-            "operator": "AND",
-            "conditions": [
-              {
-                "attribute": "patient.gestational_age_weeks",
-                "operator": "greater_or_equal",
-                "value": 36,
-                "unit": "weeks"
-              },
-              {
-                "field": "labs",
-                "operator": "not_includes_code",
-                "value": "718-7",
-                "system": "LOINC",
-                "display": "Hemoglobin (g/dL)",
-                "horizon": {
-                  "days": 126
-                }
-              }
-            ],
-            "display": "36 weeks or later: none in the last 18 weeks"
+            "field": "labs",
+            "operator": "not_includes_code",
+            "value": "718-7",
+            "system": "LOINC",
+            "display": "Hemoglobin (g/dL)",
+            "horizon": {
+              "since_gestational_week": 24
+            }
           }
         ]
       }
@@ -6092,7 +6037,7 @@
         "step_number": 2,
         "display_number": "6.2",
         "title": "Gestational diabetes status: read from the chart",
-        "description": "Nothing is asked for that the chart holds. A diabetes-in-pregnancy code on the chart means already diagnosed: no screening. A screening result drawn this pregnancy is read: a 50-g challenge below 140 mg/dL, or a 75-g test with all three values below threshold, means screening is complete; a 50-g challenge of 140 or higher is the two-step route and leads to the 100-g test; a 75-g value at or above threshold is gestational diabetes. Only when no screening result is on file is the strategy asked. Universal screening is at 24 0/7 weeks or later; screen as soon as possible if first seen after 28 weeks. After bariatric surgery with dumping, a glucose load may not be tolerated: consider alternatives."
+        "description": "Nothing is asked for that the chart holds. A diabetes-in-pregnancy code on the chart means already diagnosed: no screening. Only a screen drawn at or after 24 0/7 weeks counts as the 24-28-week screen: a 50-g challenge below 140 mg/dL, or a 75-g test with all three values below threshold, means screening is complete; a 75-g value at or above threshold is gestational diabetes. A 50-g challenge of 140 or higher at any time this pregnancy is the two-step route and leads to the 100-g test. Only when no screen has been drawn since 24 weeks is the strategy asked. Screen as soon as possible if first seen after 28 weeks. After bariatric surgery with dumping, a glucose load may not be tolerated: consider alternatives."
       }
     },
     {
@@ -6142,7 +6087,7 @@
         "step_number": 3,
         "display_number": "6.3",
         "title": "Gestational diabetes screening complete: negative",
-        "description": "The 50-g challenge drawn this pregnancy is below 140 mg/dL, or all three 75-g values are below threshold (fasting 92, 1-hour 180, 2-hour 153 mg/dL). No repeat screening unless clinically suspected (new glycosuria, suspected macrosomia or polyhydramnios). A result drawn before 24 weeks does not count as the screen: order it if that is the case."
+        "description": "The 50-g challenge drawn at or after 24 0/7 weeks is below 140 mg/dL, or all three 75-g values drawn at or after 24 weeks are below threshold (fasting 92, 1-hour 180, 2-hour 153 mg/dL). No repeat screening unless clinically suspected (new glycosuria, suspected macrosomia or polyhydramnios)."
       }
     },
     {
@@ -6151,14 +6096,14 @@
       "properties": {
         "topic": "What a negative glucose screen settles",
         "category": "education",
-        "instructions": "The glucose screening result on file is negative, so gestational diabetes screening is complete and is not repeated. Retest only on clinical suspicion: new glycosuria, a fetus measuring large, or excess amniotic fluid. If the result on file was drawn before 24 weeks it is not the screen; order the screening test."
+        "instructions": "The glucose screening result on file is negative, so gestational diabetes screening is complete and is not repeated. Retest only on clinical suspicion: new glycosuria, a fetus measuring large, or excess amniotic fluid."
       }
     },
     {
       "id": "gate-gdm-screen-negative",
       "type": "Gate",
       "properties": {
-        "title": "Glucose screen drawn this pregnancy is negative, and no diabetes diagnosis",
+        "title": "Glucose screen drawn at or after 24 weeks is negative, and no diabetes diagnosis",
         "default_behavior": "skip",
         "gate_type": "compound",
         "on_unresolved": "default",
@@ -6183,7 +6128,9 @@
                 "system": "LOINC",
                 "display": "Glucose 1 h post 50 g glucose (mg/dL)",
                 "threshold": 139.9,
-                "horizon": "PREGNANCY"
+                "horizon": {
+                  "since_gestational_week": 24
+                }
               },
               {
                 "operator": "AND",
@@ -6195,7 +6142,9 @@
                     "system": "LOINC",
                     "display": "Glucose fasting, pre 75 g glucose (mg/dL)",
                     "threshold": 91.9,
-                    "horizon": "PREGNANCY"
+                    "horizon": {
+                      "since_gestational_week": 24
+                    }
                   },
                   {
                     "field": "labs",
@@ -6204,7 +6153,9 @@
                     "system": "LOINC",
                     "display": "Glucose 1 h post 75 g glucose (mg/dL)",
                     "threshold": 179.9,
-                    "horizon": "PREGNANCY"
+                    "horizon": {
+                      "since_gestational_week": 24
+                    }
                   },
                   {
                     "field": "labs",
@@ -6213,7 +6164,9 @@
                     "system": "LOINC",
                     "display": "Glucose 2 h post 75 g glucose (mg/dL)",
                     "threshold": 152.9,
-                    "horizon": "PREGNANCY"
+                    "horizon": {
+                      "since_gestational_week": 24
+                    }
                   }
                 ],
                 "display": "75-g test: all three values below threshold"
@@ -6231,8 +6184,8 @@
         "stage_number": 6,
         "step_number": 6,
         "display_number": "6.6",
-        "title": "No gestational diabetes screen on file: choose the strategy",
-        "description": "No diabetes diagnosis and no glucose screening result drawn this pregnancy. Either strategy is acceptable: two-step (50-g 1-hour challenge, then a 100-g 3-hour test if it is 140 mg/dL or higher) or one-step (75-g 2-hour test). The test is ordered; its result is not asked for and is read once it is on the chart."
+        "title": "No gestational diabetes screen since 24 weeks: choose the strategy",
+        "description": "No diabetes diagnosis, no glucose screen drawn at or after 24 0/7 weeks, and no earlier 50-g challenge of 140 or higher. A negative screen from before 24 weeks does not count. Either strategy is acceptable: two-step (50-g 1-hour challenge, then a 100-g 3-hour test if it is 140 mg/dL or higher) or one-step (75-g 2-hour test). The test is ordered; its result is not asked for and is read once it is on the chart."
       }
     },
     {
@@ -6248,7 +6201,7 @@
       "id": "gate-gdm-nothing-on-file",
       "type": "Gate",
       "properties": {
-        "title": "No diabetes diagnosis and no glucose screening result drawn this pregnancy",
+        "title": "No diabetes diagnosis, no glucose screen drawn since 24 weeks, and no earlier positive 50-g challenge",
         "default_behavior": "skip",
         "gate_type": "compound",
         "on_unresolved": "ask",
@@ -6264,12 +6217,20 @@
             "status": "active"
           },
           {
+            "attribute": "patient.gestational_age_weeks",
+            "operator": "greater_or_equal",
+            "value": 24,
+            "unit": "weeks"
+          },
+          {
             "field": "labs",
             "operator": "not_includes_code",
             "value": "1504-0",
             "system": "LOINC",
             "display": "Glucose 1 h post 50 g glucose (mg/dL)",
-            "horizon": "PREGNANCY"
+            "horizon": {
+              "since_gestational_week": 24
+            }
           },
           {
             "field": "labs",
@@ -6277,7 +6238,9 @@
             "value": "1552-9",
             "system": "LOINC",
             "display": "Glucose fasting, pre 75 g glucose (mg/dL)",
-            "horizon": "PREGNANCY"
+            "horizon": {
+              "since_gestational_week": 24
+            }
           },
           {
             "field": "labs",
@@ -6285,7 +6248,9 @@
             "value": "1507-3",
             "system": "LOINC",
             "display": "Glucose 1 h post 75 g glucose (mg/dL)",
-            "horizon": "PREGNANCY"
+            "horizon": {
+              "since_gestational_week": 24
+            }
           },
           {
             "field": "labs",
@@ -6293,7 +6258,32 @@
             "value": "1518-0",
             "system": "LOINC",
             "display": "Glucose 2 h post 75 g glucose (mg/dL)",
-            "horizon": "PREGNANCY"
+            "horizon": {
+              "since_gestational_week": 24
+            }
+          },
+          {
+            "operator": "OR",
+            "conditions": [
+              {
+                "field": "labs",
+                "operator": "not_includes_code",
+                "value": "1504-0",
+                "system": "LOINC",
+                "display": "Glucose 1 h post 50 g glucose (mg/dL)",
+                "horizon": "PREGNANCY"
+              },
+              {
+                "field": "labs",
+                "operator": "less_than",
+                "value": "1504-0",
+                "system": "LOINC",
+                "display": "Glucose 1 h post 50 g glucose (mg/dL)",
+                "threshold": 139.9,
+                "horizon": "PREGNANCY"
+              }
+            ],
+            "display": "No 50-g challenge of 140 or higher earlier this pregnancy"
           }
         ]
       }
@@ -6310,7 +6300,7 @@
           "Two-step: 50-g 1-hour challenge, then a 100-g 3-hour test if it is 140 mg/dL or higher",
           "One-step: 75-g 2-hour test"
         ],
-        "prompt": "No gestational diabetes screening result is on file. Which test: two-step (50-g 1-hour challenge, then a 100-g 3-hour test if it is 140 mg/dL or higher) or one-step (75-g 2-hour test)?"
+        "prompt": "No gestational diabetes screen has been drawn since 24 weeks. Which test: two-step (50-g 1-hour challenge, then a 100-g 3-hour test if it is 140 mg/dL or higher) or one-step (75-g 2-hour test)?"
       }
     },
     {
@@ -6328,7 +6318,7 @@
       "id": "lab-20",
       "type": "LabTest",
       "properties": {
-        "name": "50-g 1-hour glucose challenge — gestational diabetes screen, two-step (no screening result this pregnancy)",
+        "name": "50-g 1-hour glucose challenge — gestational diabetes screen, two-step (no screen since 24 weeks)",
         "code": "1504-0",
         "system": "LOINC",
         "specimen": "Plasma"
@@ -6367,7 +6357,7 @@
       "id": "lab-22",
       "type": "LabTest",
       "properties": {
-        "name": "75-g 2-hour glucose tolerance test — gestational diabetes screen, one-step (no screening result this pregnancy)",
+        "name": "75-g 2-hour glucose tolerance test — gestational diabetes screen, one-step (no screen since 24 weeks)",
         "code": "1552-9",
         "system": "LOINC",
         "specimen": "Plasma"
@@ -6417,7 +6407,7 @@
         "step_number": 9,
         "display_number": "6.9",
         "title": "Positive 50-g challenge: the 100-g 3-hour test",
-        "description": "The 50-g challenge drawn this pregnancy is 140 mg/dL or higher: this is the two-step route, and the strategy is not asked. After a fast of at least 8 hours, give the 100-g load; draw plasma glucose fasting and at 1, 2 and 3 hours. Carpenter-Coustan thresholds: 95 / 180 / 155 / 140 mg/dL. Gestational diabetes if two or more values are met or exceeded. The four values are read from the chart."
+        "description": "A 50-g challenge drawn this pregnancy, at any gestational age, is 140 mg/dL or higher: this is the two-step route, and the strategy is not asked. The diagnostic test is done at 24-28 weeks; one done before 24 weeks does not count. After a fast of at least 8 hours, give the 100-g load; draw plasma glucose fasting and at 1, 2 and 3 hours. Carpenter-Coustan thresholds: 95 / 180 / 155 / 140 mg/dL. Gestational diabetes if two or more values are met or exceeded. The four values are read from the chart."
       }
     },
     {
@@ -6459,7 +6449,7 @@
         "step_number": 10,
         "display_number": "6.10",
         "title": "Order the 100-g 3-hour test",
-        "description": "No 100-g result drawn this pregnancy. Add O99.810 (abnormal glucose complicating pregnancy) to the encounter while the diagnostic test is pending. The result is not asked for; it is read once it is on the chart."
+        "description": "No 100-g result drawn at or after 24 0/7 weeks. Add O99.810 (abnormal glucose complicating pregnancy) to the encounter while the diagnostic test is pending. The result is not asked for; it is read once it is on the chart."
       }
     },
     {
@@ -6475,7 +6465,7 @@
       "id": "lab-21",
       "type": "LabTest",
       "properties": {
-        "name": "100-g 3-hour glucose tolerance test — diagnostic test after a positive 50-g challenge (no result this pregnancy)",
+        "name": "100-g 3-hour glucose tolerance test — diagnostic test after a positive 50-g challenge (no result since 24 weeks)",
         "code": "50608-9",
         "system": "LOINC",
         "specimen": "Plasma"
@@ -6539,19 +6529,27 @@
       "id": "gate-ogtt100-not-on-file",
       "type": "Gate",
       "properties": {
-        "title": "No 100-g test value drawn this pregnancy",
+        "title": "No 100-g test value drawn since 24 weeks",
         "default_behavior": "skip",
         "gate_type": "compound",
         "on_unresolved": "ask",
         "operator": "AND",
         "conditions": [
           {
+            "attribute": "patient.gestational_age_weeks",
+            "operator": "greater_or_equal",
+            "value": 24,
+            "unit": "weeks"
+          },
+          {
             "field": "labs",
             "operator": "not_includes_code",
             "value": "1549-5",
             "system": "LOINC",
             "display": "Glucose fasting, pre 100 g glucose (mg/dL)",
-            "horizon": "PREGNANCY"
+            "horizon": {
+              "since_gestational_week": 24
+            }
           },
           {
             "field": "labs",
@@ -6559,7 +6557,9 @@
             "value": "1501-6",
             "system": "LOINC",
             "display": "Glucose 1 h post 100 g glucose (mg/dL)",
-            "horizon": "PREGNANCY"
+            "horizon": {
+              "since_gestational_week": 24
+            }
           },
           {
             "field": "labs",
@@ -6567,7 +6567,9 @@
             "value": "1514-9",
             "system": "LOINC",
             "display": "Glucose 2 h post 100 g glucose (mg/dL)",
-            "horizon": "PREGNANCY"
+            "horizon": {
+              "since_gestational_week": 24
+            }
           },
           {
             "field": "labs",
@@ -6575,7 +6577,9 @@
             "value": "1530-5",
             "system": "LOINC",
             "display": "Glucose 3 h post 100 g glucose (mg/dL)",
-            "horizon": "PREGNANCY"
+            "horizon": {
+              "since_gestational_week": 24
+            }
           }
         ]
       }
@@ -6628,7 +6632,9 @@
                 "value": "1549-5",
                 "system": "LOINC",
                 "display": "Glucose fasting, pre 100 g glucose (mg/dL)",
-                "horizon": "PREGNANCY"
+                "horizon": {
+                  "since_gestational_week": 24
+                }
               },
               {
                 "field": "labs",
@@ -6636,7 +6642,9 @@
                 "value": "1501-6",
                 "system": "LOINC",
                 "display": "Glucose 1 h post 100 g glucose (mg/dL)",
-                "horizon": "PREGNANCY"
+                "horizon": {
+                  "since_gestational_week": 24
+                }
               },
               {
                 "field": "labs",
@@ -6644,7 +6652,9 @@
                 "value": "1514-9",
                 "system": "LOINC",
                 "display": "Glucose 2 h post 100 g glucose (mg/dL)",
-                "horizon": "PREGNANCY"
+                "horizon": {
+                  "since_gestational_week": 24
+                }
               },
               {
                 "field": "labs",
@@ -6652,10 +6662,12 @@
                 "value": "1530-5",
                 "system": "LOINC",
                 "display": "Glucose 3 h post 100 g glucose (mg/dL)",
-                "horizon": "PREGNANCY"
+                "horizon": {
+                  "since_gestational_week": 24
+                }
               }
             ],
-            "display": "At least one 100-g value on file this pregnancy"
+            "display": "At least one 100-g value drawn since 24 weeks"
           },
           {
             "operator": "OR",
@@ -6670,7 +6682,9 @@
                     "system": "LOINC",
                     "display": "Glucose fasting, pre 100 g glucose (mg/dL)",
                     "threshold": 94.9,
-                    "horizon": "PREGNANCY"
+                    "horizon": {
+                      "since_gestational_week": 24
+                    }
                   },
                   {
                     "field": "labs",
@@ -6679,7 +6693,9 @@
                     "system": "LOINC",
                     "display": "Glucose 1 h post 100 g glucose (mg/dL)",
                     "threshold": 179.9,
-                    "horizon": "PREGNANCY"
+                    "horizon": {
+                      "since_gestational_week": 24
+                    }
                   }
                 ],
                 "display": "Fasting and 1-hour both at or above threshold"
@@ -6694,7 +6710,9 @@
                     "system": "LOINC",
                     "display": "Glucose fasting, pre 100 g glucose (mg/dL)",
                     "threshold": 94.9,
-                    "horizon": "PREGNANCY"
+                    "horizon": {
+                      "since_gestational_week": 24
+                    }
                   },
                   {
                     "field": "labs",
@@ -6703,7 +6721,9 @@
                     "system": "LOINC",
                     "display": "Glucose 2 h post 100 g glucose (mg/dL)",
                     "threshold": 154.9,
-                    "horizon": "PREGNANCY"
+                    "horizon": {
+                      "since_gestational_week": 24
+                    }
                   }
                 ],
                 "display": "Fasting and 2-hour both at or above threshold"
@@ -6718,7 +6738,9 @@
                     "system": "LOINC",
                     "display": "Glucose fasting, pre 100 g glucose (mg/dL)",
                     "threshold": 94.9,
-                    "horizon": "PREGNANCY"
+                    "horizon": {
+                      "since_gestational_week": 24
+                    }
                   },
                   {
                     "field": "labs",
@@ -6727,7 +6749,9 @@
                     "system": "LOINC",
                     "display": "Glucose 3 h post 100 g glucose (mg/dL)",
                     "threshold": 139.9,
-                    "horizon": "PREGNANCY"
+                    "horizon": {
+                      "since_gestational_week": 24
+                    }
                   }
                 ],
                 "display": "Fasting and 3-hour both at or above threshold"
@@ -6742,7 +6766,9 @@
                     "system": "LOINC",
                     "display": "Glucose 1 h post 100 g glucose (mg/dL)",
                     "threshold": 179.9,
-                    "horizon": "PREGNANCY"
+                    "horizon": {
+                      "since_gestational_week": 24
+                    }
                   },
                   {
                     "field": "labs",
@@ -6751,7 +6777,9 @@
                     "system": "LOINC",
                     "display": "Glucose 2 h post 100 g glucose (mg/dL)",
                     "threshold": 154.9,
-                    "horizon": "PREGNANCY"
+                    "horizon": {
+                      "since_gestational_week": 24
+                    }
                   }
                 ],
                 "display": "1-hour and 2-hour both at or above threshold"
@@ -6766,7 +6794,9 @@
                     "system": "LOINC",
                     "display": "Glucose 1 h post 100 g glucose (mg/dL)",
                     "threshold": 179.9,
-                    "horizon": "PREGNANCY"
+                    "horizon": {
+                      "since_gestational_week": 24
+                    }
                   },
                   {
                     "field": "labs",
@@ -6775,7 +6805,9 @@
                     "system": "LOINC",
                     "display": "Glucose 3 h post 100 g glucose (mg/dL)",
                     "threshold": 139.9,
-                    "horizon": "PREGNANCY"
+                    "horizon": {
+                      "since_gestational_week": 24
+                    }
                   }
                 ],
                 "display": "1-hour and 3-hour both at or above threshold"
@@ -6790,7 +6822,9 @@
                     "system": "LOINC",
                     "display": "Glucose 2 h post 100 g glucose (mg/dL)",
                     "threshold": 154.9,
-                    "horizon": "PREGNANCY"
+                    "horizon": {
+                      "since_gestational_week": 24
+                    }
                   },
                   {
                     "field": "labs",
@@ -6799,7 +6833,9 @@
                     "system": "LOINC",
                     "display": "Glucose 3 h post 100 g glucose (mg/dL)",
                     "threshold": 139.9,
-                    "horizon": "PREGNANCY"
+                    "horizon": {
+                      "since_gestational_week": 24
+                    }
                   }
                 ],
                 "display": "2-hour and 3-hour both at or above threshold"
@@ -6849,7 +6885,9 @@
                 "value": "1549-5",
                 "system": "LOINC",
                 "display": "Glucose fasting, pre 100 g glucose (mg/dL)",
-                "horizon": "PREGNANCY"
+                "horizon": {
+                  "since_gestational_week": 24
+                }
               },
               {
                 "field": "labs",
@@ -6857,7 +6895,9 @@
                 "value": "1501-6",
                 "system": "LOINC",
                 "display": "Glucose 1 h post 100 g glucose (mg/dL)",
-                "horizon": "PREGNANCY"
+                "horizon": {
+                  "since_gestational_week": 24
+                }
               },
               {
                 "field": "labs",
@@ -6865,7 +6905,9 @@
                 "value": "1514-9",
                 "system": "LOINC",
                 "display": "Glucose 2 h post 100 g glucose (mg/dL)",
-                "horizon": "PREGNANCY"
+                "horizon": {
+                  "since_gestational_week": 24
+                }
               },
               {
                 "field": "labs",
@@ -6873,10 +6915,12 @@
                 "value": "1530-5",
                 "system": "LOINC",
                 "display": "Glucose 3 h post 100 g glucose (mg/dL)",
-                "horizon": "PREGNANCY"
+                "horizon": {
+                  "since_gestational_week": 24
+                }
               }
             ],
-            "display": "At least one 100-g value on file this pregnancy"
+            "display": "At least one 100-g value drawn since 24 weeks"
           },
           {
             "operator": "OR",
@@ -6888,7 +6932,9 @@
                 "system": "LOINC",
                 "display": "Glucose fasting, pre 100 g glucose (mg/dL)",
                 "threshold": 94.9,
-                "horizon": "PREGNANCY"
+                "horizon": {
+                  "since_gestational_week": 24
+                }
               },
               {
                 "field": "labs",
@@ -6897,7 +6943,9 @@
                 "system": "LOINC",
                 "display": "Glucose 1 h post 100 g glucose (mg/dL)",
                 "threshold": 179.9,
-                "horizon": "PREGNANCY"
+                "horizon": {
+                  "since_gestational_week": 24
+                }
               }
             ],
             "display": "Fasting or 1-hour below threshold"
@@ -6912,7 +6960,9 @@
                 "system": "LOINC",
                 "display": "Glucose fasting, pre 100 g glucose (mg/dL)",
                 "threshold": 94.9,
-                "horizon": "PREGNANCY"
+                "horizon": {
+                  "since_gestational_week": 24
+                }
               },
               {
                 "field": "labs",
@@ -6921,7 +6971,9 @@
                 "system": "LOINC",
                 "display": "Glucose 2 h post 100 g glucose (mg/dL)",
                 "threshold": 154.9,
-                "horizon": "PREGNANCY"
+                "horizon": {
+                  "since_gestational_week": 24
+                }
               }
             ],
             "display": "Fasting or 2-hour below threshold"
@@ -6936,7 +6988,9 @@
                 "system": "LOINC",
                 "display": "Glucose fasting, pre 100 g glucose (mg/dL)",
                 "threshold": 94.9,
-                "horizon": "PREGNANCY"
+                "horizon": {
+                  "since_gestational_week": 24
+                }
               },
               {
                 "field": "labs",
@@ -6945,7 +6999,9 @@
                 "system": "LOINC",
                 "display": "Glucose 3 h post 100 g glucose (mg/dL)",
                 "threshold": 139.9,
-                "horizon": "PREGNANCY"
+                "horizon": {
+                  "since_gestational_week": 24
+                }
               }
             ],
             "display": "Fasting or 3-hour below threshold"
@@ -6960,7 +7016,9 @@
                 "system": "LOINC",
                 "display": "Glucose 1 h post 100 g glucose (mg/dL)",
                 "threshold": 179.9,
-                "horizon": "PREGNANCY"
+                "horizon": {
+                  "since_gestational_week": 24
+                }
               },
               {
                 "field": "labs",
@@ -6969,7 +7027,9 @@
                 "system": "LOINC",
                 "display": "Glucose 2 h post 100 g glucose (mg/dL)",
                 "threshold": 154.9,
-                "horizon": "PREGNANCY"
+                "horizon": {
+                  "since_gestational_week": 24
+                }
               }
             ],
             "display": "1-hour or 2-hour below threshold"
@@ -6984,7 +7044,9 @@
                 "system": "LOINC",
                 "display": "Glucose 1 h post 100 g glucose (mg/dL)",
                 "threshold": 179.9,
-                "horizon": "PREGNANCY"
+                "horizon": {
+                  "since_gestational_week": 24
+                }
               },
               {
                 "field": "labs",
@@ -6993,7 +7055,9 @@
                 "system": "LOINC",
                 "display": "Glucose 3 h post 100 g glucose (mg/dL)",
                 "threshold": 139.9,
-                "horizon": "PREGNANCY"
+                "horizon": {
+                  "since_gestational_week": 24
+                }
               }
             ],
             "display": "1-hour or 3-hour below threshold"
@@ -7008,7 +7072,9 @@
                 "system": "LOINC",
                 "display": "Glucose 2 h post 100 g glucose (mg/dL)",
                 "threshold": 154.9,
-                "horizon": "PREGNANCY"
+                "horizon": {
+                  "since_gestational_week": 24
+                }
               },
               {
                 "field": "labs",
@@ -7017,7 +7083,9 @@
                 "system": "LOINC",
                 "display": "Glucose 3 h post 100 g glucose (mg/dL)",
                 "threshold": 139.9,
-                "horizon": "PREGNANCY"
+                "horizon": {
+                  "since_gestational_week": 24
+                }
               }
             ],
             "display": "2-hour or 3-hour below threshold"
@@ -7033,7 +7101,7 @@
         "step_number": 13,
         "display_number": "6.13",
         "title": "Diagnose gestational diabetes (one-step): add O24.410 to the encounter",
-        "description": "A 75-g value drawn this pregnancy is at or above threshold (fasting 92, 1-hour 180, 2-hour 153 mg/dL). Add O24.410 (gestational diabetes mellitus in pregnancy, diet controlled) as a diagnosis on this encounter. The gestational diabetes pathway then joins the visit and owns glucose management."
+        "description": "A 75-g value drawn at or after 24 0/7 weeks is at or above threshold (fasting 92, 1-hour 180, 2-hour 153 mg/dL). Add O24.410 (gestational diabetes mellitus in pregnancy, diet controlled) as a diagnosis on this encounter. The gestational diabetes pathway then joins the visit and owns glucose management."
       }
     },
     {
@@ -7049,7 +7117,7 @@
       "id": "gate-75g-diagnostic",
       "type": "Gate",
       "properties": {
-        "title": "Any 75-g value drawn this pregnancy at or above threshold (92 / 180 / 153 mg/dL), and no diabetes diagnosis",
+        "title": "Any 75-g value drawn since 24 weeks at or above threshold (92 / 180 / 153 mg/dL), and no diabetes diagnosis",
         "default_behavior": "skip",
         "gate_type": "compound",
         "on_unresolved": "ask",
@@ -7073,7 +7141,9 @@
                 "value": "1552-9",
                 "system": "LOINC",
                 "display": "Glucose fasting, pre 75 g glucose (mg/dL)",
-                "horizon": "PREGNANCY"
+                "horizon": {
+                  "since_gestational_week": 24
+                }
               },
               {
                 "field": "labs",
@@ -7081,7 +7151,9 @@
                 "value": "1507-3",
                 "system": "LOINC",
                 "display": "Glucose 1 h post 75 g glucose (mg/dL)",
-                "horizon": "PREGNANCY"
+                "horizon": {
+                  "since_gestational_week": 24
+                }
               },
               {
                 "field": "labs",
@@ -7089,10 +7161,12 @@
                 "value": "1518-0",
                 "system": "LOINC",
                 "display": "Glucose 2 h post 75 g glucose (mg/dL)",
-                "horizon": "PREGNANCY"
+                "horizon": {
+                  "since_gestational_week": 24
+                }
               }
             ],
-            "display": "At least one 75-g value on file this pregnancy"
+            "display": "At least one 75-g value drawn since 24 weeks"
           },
           {
             "operator": "OR",
@@ -7104,7 +7178,9 @@
                 "system": "LOINC",
                 "display": "Glucose fasting, pre 75 g glucose (mg/dL)",
                 "threshold": 91.9,
-                "horizon": "PREGNANCY"
+                "horizon": {
+                  "since_gestational_week": 24
+                }
               },
               {
                 "field": "labs",
@@ -7113,7 +7189,9 @@
                 "system": "LOINC",
                 "display": "Glucose 1 h post 75 g glucose (mg/dL)",
                 "threshold": 179.9,
-                "horizon": "PREGNANCY"
+                "horizon": {
+                  "since_gestational_week": 24
+                }
               },
               {
                 "field": "labs",
@@ -7122,7 +7200,9 @@
                 "system": "LOINC",
                 "display": "Glucose 2 h post 75 g glucose (mg/dL)",
                 "threshold": 152.9,
-                "horizon": "PREGNANCY"
+                "horizon": {
+                  "since_gestational_week": 24
+                }
               }
             ],
             "display": "Any value at or above threshold"
@@ -8027,7 +8107,7 @@
         "step_number": 13,
         "display_number": "9.13",
         "title": "Give the Tdap vaccine",
-        "description": "The Tdap on the medication list was not given this pregnancy."
+        "description": "The Tdap on the medication list was not given this pregnancy, or it is not known whether it was."
       }
     },
     {
@@ -8079,7 +8159,7 @@
       "id": "gate-tdap-not-given",
       "type": "Gate",
       "properties": {
-        "title": "Tdap given this pregnancy: no",
+        "title": "Tdap given this pregnancy: no, or not available",
         "default_behavior": "skip",
         "gate_type": "patient_attribute",
         "on_unresolved": "ask",
@@ -8090,6 +8170,7 @@
             true
           ]
         },
+        "on_declined": "traverse",
         "condition": {
           "attribute": "patient.tdap_given_this_pregnancy",
           "operator": "equals",
@@ -8106,7 +8187,7 @@
         "step_number": 5,
         "display_number": "9.5",
         "title": "Third-trimester infection rescreening: what is already on file",
-        "description": "Syphilis is rescreened in every patient in the third trimester and again at birth. HIV is repeated before 36 weeks for patients at risk or in a high-incidence setting. Chlamydia and gonorrhea are repeated for patients under 25 or at continued risk. A test drawn since about 27 weeks counts as done."
+        "description": "Syphilis is rescreened in every patient in the third trimester and again at birth. HIV is repeated before 36 weeks for patients at risk or in a high-incidence setting. Chlamydia and gonorrhea are repeated for patients under 25 or at continued risk. From 28 0/7 weeks; a test drawn at or after 28 0/7 weeks counts as done."
       }
     },
     {
@@ -8117,14 +8198,14 @@
         "step_number": 7,
         "display_number": "9.7",
         "title": "Order the third-trimester syphilis rescreen",
-        "description": "No syphilis test drawn since about 27 weeks."
+        "description": "No syphilis test drawn since 28 0/7 weeks."
       }
     },
     {
       "id": "lab-24",
       "type": "LabTest",
       "properties": {
-        "name": "Syphilis serology — third-trimester rescreen, every patient (none since 27 weeks)",
+        "name": "Syphilis serology — third-trimester rescreen, every patient (none since 28 weeks)",
         "code": "20507-0",
         "system": "LOINC",
         "specimen": "Serum"
@@ -8134,113 +8215,37 @@
       "id": "gate-syphilis-rescreen-due",
       "type": "Gate",
       "properties": {
-        "title": "No syphilis test drawn since about 27 weeks",
+        "title": "No syphilis test drawn since 28 0/7 weeks",
         "default_behavior": "skip",
         "gate_type": "compound",
         "on_unresolved": "ask",
-        "operator": "OR",
+        "operator": "AND",
         "conditions": [
           {
-            "operator": "AND",
-            "conditions": [
-              {
-                "attribute": "patient.gestational_age_weeks",
-                "operator": "less_than",
-                "value": 32,
-                "unit": "weeks"
-              },
-              {
-                "field": "labs",
-                "operator": "not_includes_code",
-                "value": "20507-0",
-                "system": "LOINC",
-                "display": "RPR",
-                "horizon": {
-                  "days": 35
-                }
-              },
-              {
-                "field": "labs",
-                "operator": "not_includes_code",
-                "value": "22587-0",
-                "system": "LOINC",
-                "display": "Treponema pallidum antibody",
-                "horizon": {
-                  "days": 35
-                }
-              }
-            ],
-            "display": "27-31 weeks: none in the last 5 weeks"
+            "attribute": "patient.gestational_age_weeks",
+            "operator": "greater_or_equal",
+            "value": 28,
+            "unit": "weeks"
           },
           {
-            "operator": "AND",
-            "conditions": [
-              {
-                "attribute": "patient.gestational_age_weeks",
-                "operator": "greater_or_equal",
-                "value": 32,
-                "unit": "weeks"
-              },
-              {
-                "attribute": "patient.gestational_age_weeks",
-                "operator": "less_than",
-                "value": 37,
-                "unit": "weeks"
-              },
-              {
-                "field": "labs",
-                "operator": "not_includes_code",
-                "value": "20507-0",
-                "system": "LOINC",
-                "display": "RPR",
-                "horizon": {
-                  "days": 70
-                }
-              },
-              {
-                "field": "labs",
-                "operator": "not_includes_code",
-                "value": "22587-0",
-                "system": "LOINC",
-                "display": "Treponema pallidum antibody",
-                "horizon": {
-                  "days": 70
-                }
-              }
-            ],
-            "display": "32-36 weeks: none in the last 10 weeks"
+            "field": "labs",
+            "operator": "not_includes_code",
+            "value": "20507-0",
+            "system": "LOINC",
+            "display": "RPR",
+            "horizon": {
+              "since_gestational_week": 28
+            }
           },
           {
-            "operator": "AND",
-            "conditions": [
-              {
-                "attribute": "patient.gestational_age_weeks",
-                "operator": "greater_or_equal",
-                "value": 37,
-                "unit": "weeks"
-              },
-              {
-                "field": "labs",
-                "operator": "not_includes_code",
-                "value": "20507-0",
-                "system": "LOINC",
-                "display": "RPR",
-                "horizon": {
-                  "days": 105
-                }
-              },
-              {
-                "field": "labs",
-                "operator": "not_includes_code",
-                "value": "22587-0",
-                "system": "LOINC",
-                "display": "Treponema pallidum antibody",
-                "horizon": {
-                  "days": 105
-                }
-              }
-            ],
-            "display": "37 weeks or later: none in the last 15 weeks"
+            "field": "labs",
+            "operator": "not_includes_code",
+            "value": "22587-0",
+            "system": "LOINC",
+            "display": "Treponema pallidum antibody",
+            "horizon": {
+              "since_gestational_week": 28
+            }
           }
         ]
       }
@@ -8253,14 +8258,14 @@
         "step_number": 8,
         "display_number": "9.8",
         "title": "Order the HIV rescreen if at risk",
-        "description": "No HIV test drawn since about 27 weeks. Before 36 weeks, for patients at risk or in a high-incidence setting; risk is not read from the chart."
+        "description": "No HIV test drawn since 28 0/7 weeks. Before 36 weeks, for patients at risk or in a high-incidence setting; risk is not read from the chart."
       }
     },
     {
       "id": "lab-25",
       "type": "LabTest",
       "properties": {
-        "name": "HIV-1/2 antigen and antibody — third-trimester rescreen if at risk (none since 27 weeks)",
+        "name": "HIV-1/2 antigen and antibody — third-trimester rescreen if at risk (none since 28 weeks)",
         "code": "56888-1",
         "system": "LOINC",
         "specimen": "Serum or plasma"
@@ -8270,83 +8275,27 @@
       "id": "gate-hiv-rescreen-due",
       "type": "Gate",
       "properties": {
-        "title": "No HIV test drawn since about 27 weeks",
+        "title": "No HIV test drawn since 28 0/7 weeks",
         "default_behavior": "skip",
         "gate_type": "compound",
         "on_unresolved": "ask",
-        "operator": "OR",
+        "operator": "AND",
         "conditions": [
           {
-            "operator": "AND",
-            "conditions": [
-              {
-                "attribute": "patient.gestational_age_weeks",
-                "operator": "less_than",
-                "value": 32,
-                "unit": "weeks"
-              },
-              {
-                "field": "labs",
-                "operator": "not_includes_code",
-                "value": "56888-1",
-                "system": "LOINC",
-                "display": "HIV-1/2 antigen and antibody",
-                "horizon": {
-                  "days": 35
-                }
-              }
-            ],
-            "display": "27-31 weeks: none in the last 5 weeks"
+            "attribute": "patient.gestational_age_weeks",
+            "operator": "greater_or_equal",
+            "value": 28,
+            "unit": "weeks"
           },
           {
-            "operator": "AND",
-            "conditions": [
-              {
-                "attribute": "patient.gestational_age_weeks",
-                "operator": "greater_or_equal",
-                "value": 32,
-                "unit": "weeks"
-              },
-              {
-                "attribute": "patient.gestational_age_weeks",
-                "operator": "less_than",
-                "value": 37,
-                "unit": "weeks"
-              },
-              {
-                "field": "labs",
-                "operator": "not_includes_code",
-                "value": "56888-1",
-                "system": "LOINC",
-                "display": "HIV-1/2 antigen and antibody",
-                "horizon": {
-                  "days": 70
-                }
-              }
-            ],
-            "display": "32-36 weeks: none in the last 10 weeks"
-          },
-          {
-            "operator": "AND",
-            "conditions": [
-              {
-                "attribute": "patient.gestational_age_weeks",
-                "operator": "greater_or_equal",
-                "value": 37,
-                "unit": "weeks"
-              },
-              {
-                "field": "labs",
-                "operator": "not_includes_code",
-                "value": "56888-1",
-                "system": "LOINC",
-                "display": "HIV-1/2 antigen and antibody",
-                "horizon": {
-                  "days": 105
-                }
-              }
-            ],
-            "display": "37 weeks or later: none in the last 15 weeks"
+            "field": "labs",
+            "operator": "not_includes_code",
+            "value": "56888-1",
+            "system": "LOINC",
+            "display": "HIV-1/2 antigen and antibody",
+            "horizon": {
+              "since_gestational_week": 28
+            }
           }
         ]
       }
@@ -8359,14 +8308,14 @@
         "step_number": 9,
         "display_number": "9.9",
         "title": "Order the chlamydia and gonorrhea rescreen if under 25 or at risk",
-        "description": "No chlamydia or gonorrhea test drawn since about 27 weeks. Age and risk are not read from the chart."
+        "description": "No chlamydia or gonorrhea test drawn since 28 0/7 weeks. Age and risk are not read from the chart."
       }
     },
     {
       "id": "lab-26",
       "type": "LabTest",
       "properties": {
-        "name": "Chlamydia and gonorrhea NAAT — third-trimester rescreen if under 25 or at risk (none since 27 weeks)",
+        "name": "Chlamydia and gonorrhea NAAT — third-trimester rescreen if under 25 or at risk (none since 28 weeks)",
         "code": "21613-5",
         "system": "LOINC",
         "specimen": "Urine or vaginal swab"
@@ -8376,113 +8325,37 @@
       "id": "gate-ct-gc-rescreen-due",
       "type": "Gate",
       "properties": {
-        "title": "No chlamydia or gonorrhea test drawn since about 27 weeks",
+        "title": "No chlamydia or gonorrhea test drawn since 28 0/7 weeks",
         "default_behavior": "skip",
         "gate_type": "compound",
         "on_unresolved": "ask",
-        "operator": "OR",
+        "operator": "AND",
         "conditions": [
           {
-            "operator": "AND",
-            "conditions": [
-              {
-                "attribute": "patient.gestational_age_weeks",
-                "operator": "less_than",
-                "value": 32,
-                "unit": "weeks"
-              },
-              {
-                "field": "labs",
-                "operator": "not_includes_code",
-                "value": "21613-5",
-                "system": "LOINC",
-                "display": "Chlamydia NAAT",
-                "horizon": {
-                  "days": 35
-                }
-              },
-              {
-                "field": "labs",
-                "operator": "not_includes_code",
-                "value": "21416-3",
-                "system": "LOINC",
-                "display": "Gonorrhea NAAT",
-                "horizon": {
-                  "days": 35
-                }
-              }
-            ],
-            "display": "27-31 weeks: none in the last 5 weeks"
+            "attribute": "patient.gestational_age_weeks",
+            "operator": "greater_or_equal",
+            "value": 28,
+            "unit": "weeks"
           },
           {
-            "operator": "AND",
-            "conditions": [
-              {
-                "attribute": "patient.gestational_age_weeks",
-                "operator": "greater_or_equal",
-                "value": 32,
-                "unit": "weeks"
-              },
-              {
-                "attribute": "patient.gestational_age_weeks",
-                "operator": "less_than",
-                "value": 37,
-                "unit": "weeks"
-              },
-              {
-                "field": "labs",
-                "operator": "not_includes_code",
-                "value": "21613-5",
-                "system": "LOINC",
-                "display": "Chlamydia NAAT",
-                "horizon": {
-                  "days": 70
-                }
-              },
-              {
-                "field": "labs",
-                "operator": "not_includes_code",
-                "value": "21416-3",
-                "system": "LOINC",
-                "display": "Gonorrhea NAAT",
-                "horizon": {
-                  "days": 70
-                }
-              }
-            ],
-            "display": "32-36 weeks: none in the last 10 weeks"
+            "field": "labs",
+            "operator": "not_includes_code",
+            "value": "21613-5",
+            "system": "LOINC",
+            "display": "Chlamydia NAAT",
+            "horizon": {
+              "since_gestational_week": 28
+            }
           },
           {
-            "operator": "AND",
-            "conditions": [
-              {
-                "attribute": "patient.gestational_age_weeks",
-                "operator": "greater_or_equal",
-                "value": 37,
-                "unit": "weeks"
-              },
-              {
-                "field": "labs",
-                "operator": "not_includes_code",
-                "value": "21613-5",
-                "system": "LOINC",
-                "display": "Chlamydia NAAT",
-                "horizon": {
-                  "days": 105
-                }
-              },
-              {
-                "field": "labs",
-                "operator": "not_includes_code",
-                "value": "21416-3",
-                "system": "LOINC",
-                "display": "Gonorrhea NAAT",
-                "horizon": {
-                  "days": 105
-                }
-              }
-            ],
-            "display": "37 weeks or later: none in the last 15 weeks"
+            "field": "labs",
+            "operator": "not_includes_code",
+            "value": "21416-3",
+            "system": "LOINC",
+            "display": "Gonorrhea NAAT",
+            "horizon": {
+              "since_gestational_week": 28
+            }
           }
         ]
       }
@@ -8918,7 +8791,7 @@
         "step_number": 5,
         "display_number": "10.5",
         "title": "Offer the maternal RSV vaccine, or plan the infant monoclonal antibody",
-        "description": "In season, and she has not had the RSV vaccine."
+        "description": "In season, and she has not had the RSV vaccine, or it is not known whether she has."
       }
     },
     {
@@ -8970,7 +8843,7 @@
       "id": "gate-rsv-vaccine-not-given",
       "type": "Gate",
       "properties": {
-        "title": "Has she ever had the RSV vaccine: no",
+        "title": "Has she ever had the RSV vaccine: no, or not available",
         "default_behavior": "skip",
         "gate_type": "patient_attribute",
         "on_unresolved": "ask",
@@ -8981,6 +8854,7 @@
             true
           ]
         },
+        "on_declined": "traverse",
         "condition": {
           "attribute": "patient.rsv_vaccine_ever_given",
           "operator": "equals",
@@ -9022,7 +8896,7 @@
         "step_number": 1,
         "display_number": "11.1",
         "title": "Group B streptococcus screening: what is already on file",
-        "description": "Screen at 36 0/7-37 6/7 weeks, whatever the planned mode of birth. A culture or NAAT from the last 5 weeks is still valid and is not repeated. Not needed with group B streptococcus bacteriuria this pregnancy (O99.820 on the chart) or a prior newborn with group B streptococcal disease: both receive intrapartum prophylaxis. Colonization in a prior pregnancy does not exempt."
+        "description": "Screen at 36 0/7-37 6/7 weeks, whatever the planned mode of birth. A culture or NAAT drawn at or after 36 0/7 weeks and within the last 5 weeks is valid and is not repeated. Not needed with group B streptococcus bacteriuria this pregnancy (O99.820 on the chart) or a prior newborn with group B streptococcal disease: both receive intrapartum prophylaxis. Colonization in a prior pregnancy does not exempt."
       }
     },
     {
@@ -9033,7 +8907,7 @@
         "step_number": 4,
         "display_number": "11.4",
         "title": "Order the group B streptococcus vaginal-rectal culture",
-        "description": "No culture or NAAT in the last 5 weeks, and no group B streptococcus carrier state on the chart. Note a penicillin allergy on the requisition."
+        "description": "No culture or NAAT drawn since 36 0/7 weeks that is still within its 5 weeks, and no group B streptococcus carrier state on the chart. Note a penicillin allergy on the requisition."
       }
     },
     {
@@ -9076,31 +8950,17 @@
       "id": "gate-gbs-culture-due",
       "type": "Gate",
       "properties": {
-        "title": "No group B streptococcus result in the last 5 weeks, and no carrier state on the chart",
+        "title": "At or after 36 weeks, no valid group B streptococcus result, and no carrier state on the chart",
         "default_behavior": "skip",
         "gate_type": "compound",
-        "on_unresolved": "default",
+        "on_unresolved": "ask",
         "operator": "AND",
         "conditions": [
           {
-            "field": "labs",
-            "operator": "not_includes_code",
-            "value": "72607-5",
-            "system": "LOINC",
-            "display": "Group B streptococcus vaginal-rectal culture",
-            "horizon": {
-              "days": 35
-            }
-          },
-          {
-            "field": "labs",
-            "operator": "not_includes_code",
-            "value": "91875-5",
-            "system": "LOINC",
-            "display": "Group B streptococcus NAAT",
-            "horizon": {
-              "days": 35
-            }
+            "attribute": "patient.gestational_age_weeks",
+            "operator": "greater_or_equal",
+            "value": 36,
+            "unit": "weeks"
           },
           {
             "field": "conditions",
@@ -9110,6 +8970,64 @@
             "display": "Streptococcus B carrier state complicating pregnancy",
             "horizon": "LIFETIME",
             "status": "active"
+          },
+          {
+            "operator": "OR",
+            "conditions": [
+              {
+                "operator": "AND",
+                "conditions": [
+                  {
+                    "field": "labs",
+                    "operator": "not_includes_code",
+                    "value": "72607-5",
+                    "system": "LOINC",
+                    "display": "Group B streptococcus vaginal-rectal culture",
+                    "horizon": {
+                      "since_gestational_week": 36
+                    }
+                  },
+                  {
+                    "field": "labs",
+                    "operator": "not_includes_code",
+                    "value": "91875-5",
+                    "system": "LOINC",
+                    "display": "Group B streptococcus NAAT",
+                    "horizon": {
+                      "since_gestational_week": 36
+                    }
+                  }
+                ],
+                "display": "None drawn since 36 0/7 weeks"
+              },
+              {
+                "operator": "AND",
+                "conditions": [
+                  {
+                    "field": "labs",
+                    "operator": "not_includes_code",
+                    "value": "72607-5",
+                    "system": "LOINC",
+                    "display": "Group B streptococcus vaginal-rectal culture",
+                    "horizon": {
+                      "days": 35
+                    }
+                  },
+                  {
+                    "field": "labs",
+                    "operator": "not_includes_code",
+                    "value": "91875-5",
+                    "system": "LOINC",
+                    "display": "Group B streptococcus NAAT",
+                    "horizon": {
+                      "days": 35
+                    }
+                  }
+                ],
+                "display": "None in the last 5 weeks (a result is valid for 5 weeks)"
+              }
+            ],
+            "display": "No result drawn since 36 weeks, or none still valid"
           }
         ]
       }

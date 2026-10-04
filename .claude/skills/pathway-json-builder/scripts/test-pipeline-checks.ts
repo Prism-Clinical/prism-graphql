@@ -112,6 +112,19 @@ expectAbsent('gate-control: an authored prompt on a single-datum gate is not war
 expect('gate-control: … and still is when the gate can ask for two data',
   run(GATE, [withGate({ on_unresolved: 'ask', prompt: 'One text for both', operator: 'AND', conditions: [VITAMIN, TRI] })]), 0, 'authored `prompt`');
 
+// on_declined: "traverse" opens a gate on "Not available" only — it is not default_behavior traverse.
+expectAbsent('gate-control: on_declined "traverse" on a single-target asking gate is not an INERT GATE',
+  run(GATE, [withGate({ gate_type: 'patient_attribute', on_unresolved: 'ask', on_declined: 'traverse', condition: { ...VITAMIN, value: false } })]), 0, 'INERT GATE');
+expect('gate-control: … and passes clean',
+  run(GATE, [withGate({ gate_type: 'patient_attribute', on_unresolved: 'ask', on_declined: 'traverse', condition: { ...VITAMIN, value: false } })]), 0, 'GATE CONTROL OK');
+expect('gate-control: an on_declined value that does not exist is an error',
+  run(GATE, [withGate({ gate_type: 'patient_attribute', on_unresolved: 'ask', on_declined: 'skip', condition: VITAMIN })]), 1, 'ON_DECLINED');
+expect('gate-control: on_declined "traverse" on a gate that can ask for nothing is reported inert',
+  run(GATE, [withGate({ on_unresolved: 'default', on_declined: 'traverse', operator: 'AND', conditions: [
+    { field: 'conditions', operator: 'includes_code', value: 'D50.9', system: 'ICD-10', horizon: 'LIFETIME' }] })]), 0, 'on_declined "traverse" is inert');
+expect('gate-control: default_behavior "traverse" on a single-target gate is still an INERT GATE',
+  run(GATE, [withGate({ gate_type: 'patient_attribute', default_behavior: 'traverse', on_unresolved: 'ask', condition: VITAMIN })]), 1, 'INERT GATE');
+
 // ── validate-pathway: DATA USE — a response check must order its recheck ──
 // [DECISION — Josh 2026-10-04]. validate-pathway.ts imports pathway-service
 // TypeScript, so it runs under ts-node (slow: a few seconds per case). The
