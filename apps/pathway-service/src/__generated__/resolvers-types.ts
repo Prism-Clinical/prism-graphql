@@ -410,6 +410,16 @@ export type DiffDetail = {
   entityType: Scalars['String']['output'];
 };
 
+/** A condition code as a run holds it — on the chart it started from, or on the encounter. */
+export type EncounterConditionCode = {
+  __typename?: 'EncounterConditionCode';
+  code: Scalars['String']['output'];
+  /** Occurrence date as supplied (FHIR date or instant); null when undated. */
+  date?: Maybe<Scalars['String']['output']>;
+  display?: Maybe<Scalars['String']['output']>;
+  system: Scalars['String']['output'];
+};
+
 export type GateAnswerInput = {
   booleanValue?: InputMaybe<Scalars['Boolean']['input']>;
   /**
@@ -964,6 +974,12 @@ export type MultiPathwayPendingGate = {
 export type MultiPathwayResolutionSession = {
   __typename?: 'MultiPathwayResolutionSession';
   carePlanId?: Maybe<Scalars['ID']['output']>;
+  /**
+   * The problem list of the chart the run started from: the condition codes of
+   * its stored initial context. Read-only background — a chart problem never
+   * activates a pathway — exposed so a client can show it after a reload.
+   */
+  chartConditionCodes: Array<EncounterConditionCode>;
   /** Bare ID list of pathways that fed the merge. For full pathway data use `contributingPathways`. */
   contributingPathwayIds: Array<Scalars['ID']['output']>;
   /**
@@ -976,6 +992,11 @@ export type MultiPathwayResolutionSession = {
   createdAt: Scalars['String']['output'];
   /** Phase 4: DDI MODERATE-severity findings — pre-merge + cross-recommendation. */
   ddiWarnings: Array<DdiWarning>;
+  /**
+   * The diagnoses ON THE ENCOUNTER: the condition codes of the run's additional
+   * context (`encounterDiagnoses` at start, plus every `addEncounterContext`).
+   */
+  encounterDiagnoses: Array<EncounterConditionCode>;
   /** Fingerprint of the configuration snapshot the current run was evaluated under. */
   envFingerprint: Scalars['String']['output'];
   id: Scalars['ID']['output'];
@@ -2658,6 +2679,7 @@ export type ResolversTypes = ResolversObject<{
   DataGapHint: ResolverTypeWrapper<DataGapHint>;
   DeletePreviewSessionResult: ResolverTypeWrapper<DeletePreviewSessionResult>;
   DiffDetail: ResolverTypeWrapper<DiffDetail>;
+  EncounterConditionCode: ResolverTypeWrapper<EncounterConditionCode>;
   GateAnswerInput: GateAnswerInput;
   GateClassification: GateClassification;
   GateEvidence: ResolverTypeWrapper<GateEvidence>;
@@ -2802,6 +2824,7 @@ export type ResolversParentTypes = ResolversObject<{
   DataGapHint: DataGapHint;
   DeletePreviewSessionResult: DeletePreviewSessionResult;
   DiffDetail: DiffDetail;
+  EncounterConditionCode: EncounterConditionCode;
   GateAnswerInput: GateAnswerInput;
   GateEvidence: GateEvidence;
   GateExplanation: GateExplanation;
@@ -3038,6 +3061,14 @@ export type DiffDetailResolvers<ContextType = DataSourceContext, ParentType exte
   entityId?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   entityLabel?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   entityType?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
+}>;
+
+export type EncounterConditionCodeResolvers<ContextType = DataSourceContext, ParentType extends ResolversParentTypes['EncounterConditionCode'] = ResolversParentTypes['EncounterConditionCode']> = ResolversObject<{
+  code?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  date?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  display?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  system?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
 }>;
 
@@ -3290,11 +3321,13 @@ export type MultiPathwayPendingGateResolvers<ContextType = DataSourceContext, Pa
 
 export type MultiPathwayResolutionSessionResolvers<ContextType = DataSourceContext, ParentType extends ResolversParentTypes['MultiPathwayResolutionSession'] = ResolversParentTypes['MultiPathwayResolutionSession']> = ResolversObject<{
   carePlanId?: Resolver<Maybe<ResolversTypes['ID']>, ParentType, ContextType>;
+  chartConditionCodes?: Resolver<Array<ResolversTypes['EncounterConditionCode']>, ParentType, ContextType>;
   contributingPathwayIds?: Resolver<Array<ResolversTypes['ID']>, ParentType, ContextType>;
   contributingPathways?: Resolver<Array<ResolversTypes['Pathway']>, ParentType, ContextType>;
   contributingSessionIds?: Resolver<Array<ResolversTypes['ID']>, ParentType, ContextType>;
   createdAt?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   ddiWarnings?: Resolver<Array<ResolversTypes['DDIWarning']>, ParentType, ContextType>;
+  encounterDiagnoses?: Resolver<Array<ResolversTypes['EncounterConditionCode']>, ParentType, ContextType>;
   envFingerprint?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   id?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
   isPreview?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType>;
@@ -3935,6 +3968,7 @@ export type Resolvers<ContextType = DataSourceContext> = ResolversObject<{
   DataGapHint?: DataGapHintResolvers<ContextType>;
   DeletePreviewSessionResult?: DeletePreviewSessionResultResolvers<ContextType>;
   DiffDetail?: DiffDetailResolvers<ContextType>;
+  EncounterConditionCode?: EncounterConditionCodeResolvers<ContextType>;
   GateEvidence?: GateEvidenceResolvers<ContextType>;
   GateExplanation?: GateExplanationResolvers<ContextType>;
   ImportDiff?: ImportDiffResolvers<ContextType>;

@@ -1087,9 +1087,33 @@ export function formatSessionForGraphQL(s: MultiPathwayResolutionSession) {
     contributingPathwayIds: s.contributingPathwayIds,
     carePlanId: s.carePlanId,
     ddiWarnings: (s.ddiWarnings ?? []).map(formatDdiWarningForGraphQL),
+    // Read-only views of the run's own inputs, so a client that reloads can
+    // still tell the chart's problems from the encounter's diagnoses.
+    chartConditionCodes: conditionCodesOf(s.initialPatientContext),
+    encounterDiagnoses: conditionCodesOf(s.additionalContext),
     createdAt: s.createdAt.toISOString(),
     updatedAt: s.updatedAt.toISOString(),
   };
+}
+
+/**
+ * The condition codes of a stored context, as `EncounterConditionCode`. The
+ * stored JSON is not trusted to be well-formed (older rows, hand-made
+ * fixtures): anything without a code and a system is left out.
+ */
+function conditionCodesOf(context: unknown): Array<{ code: string; system: string; display: string | null; date: string | null }> {
+  const codes = (context as { conditionCodes?: unknown } | null | undefined)?.conditionCodes;
+  if (!Array.isArray(codes)) return [];
+  return codes.flatMap((c) => {
+    const e = (c ?? {}) as Record<string, unknown>;
+    if (typeof e.code !== 'string' || typeof e.system !== 'string') return [];
+    return [{
+      code: e.code,
+      system: e.system,
+      display: typeof e.display === 'string' ? e.display : null,
+      date: typeof e.date === 'string' ? e.date : null,
+    }];
+  });
 }
 
 function formatDdiWarningForGraphQL(w: unknown) {

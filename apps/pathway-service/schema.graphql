@@ -1010,8 +1010,28 @@ type MultiPathwayResolutionSession {
   providerRemovals: [ProviderRemoval!]!
   """The provider's edits and additions to the plan."""
   planChanges: [PlanChange!]!
+  """
+  The problem list of the chart the run started from: the condition codes of
+  its stored initial context. Read-only background — a chart problem never
+  activates a pathway — exposed so a client can show it after a reload.
+  """
+  chartConditionCodes: [EncounterConditionCode!]!
+  """
+  The diagnoses ON THE ENCOUNTER: the condition codes of the run's additional
+  context (`encounterDiagnoses` at start, plus every `addEncounterContext`).
+  """
+  encounterDiagnoses: [EncounterConditionCode!]!
   createdAt: String!
   updatedAt: String!
+}
+
+"""A condition code as a run holds it — on the chart it started from, or on the encounter."""
+type EncounterConditionCode {
+  code: String!
+  system: String!
+  display: String
+  """Occurrence date as supplied (FHIR date or instant); null when undated."""
+  date: String
 }
 
 """
