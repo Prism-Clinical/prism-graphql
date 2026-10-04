@@ -331,14 +331,9 @@ export function parseConditionOverride(
       );
     }
     override.windowFrom = parseWindowFrom(cond.window_from, `${where}.window_from`);
-    // A pre-anchor BASELINE is a series concept; a count has no baseline.
-    if (override.windowFrom.baselineDays !== undefined && op === 'count_in_window') {
-      throw new TemporalContextError(
-        `${where}.window_from: "baseline_days" applies only to trend_up / trend_down / ` +
-          `delta_from_baseline — a count has no baseline`,
-        'INVALID_TEMPORAL_DEFAULTS',
-      );
-    }
+    // `baseline_days` on a count admits the same ONE pre-anchor value a delta
+    // over this window would read, so "fewer than 2" says exactly "the rise
+    // cannot be measured yet" — the delta's own point set, counted.
   }
 
   if (hasWindowDays) {

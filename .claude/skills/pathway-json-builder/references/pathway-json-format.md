@@ -12,6 +12,7 @@
 > pass both):
 > - `window_from` anchored trend windows, `delta_comparison`, NOT_YET_DUE
 > - `count_comparison` on `count_in_window` (2026-10-04; anemia v14 uses it)
+> - `baseline_days` on an anchored `count_in_window` (2026-10-04; anemia v15 uses it)
 > - `not_includes_code`
 > - nested AND/OR condition groups inside a compound gate
 > - `DATE` answers (treatment start dates), typed `patient.*` datum answers, and the
@@ -332,6 +333,7 @@ the simulator:
 | Read hemoglobin with a 7-day horizon. A value from 33 days ago was treated as no value at all, and the provider was asked for one. | Read the **most recent** value (`horizon: "LIFETIME"`) to decide, and express staleness **separately**: a membership gate (`not_includes_code`, the same LOINC, `horizon: "MONTH"` or the interval the guideline gives) that opens a "repeat the test" step. Anemia v13: `gate-hgb-recheck-due` → Step 1.13. |
 | Asked "empiric iron or workup?" and "oral or IV?" of a patient with ferrous sulfate already on her medication list. | Read the medication list before offering to start or choose a treatment: membership gates on `medications` route "already on it" to *continue and assess* (anemia v12). |
 | Closed a response check silently when no dated value existed. | Ask for the value (with its date), and let "Not available" route to ordering the test. *(Superseded for the "not yet rechecked" case by the next row.)* |
+| With one hemoglobin since oral iron started and no baseline — most simply a value the provider typed in at the visit — asked for a result "drawn after" today (`[DECISION — Josh 2026-10-04]`: "recheck in 2–4 weeks, not nonresponse"). | A third anchored state: `AND(count at_least 1 since the start, count less_than 2 with baseline_days, below target)` opens a "cannot be measured yet" step — repeat test, schedule, "this is not nonresponse" — and the response gates move behind "two points, or at target". Anemia v15: `gate-rise-unmeasurable` → Step 2.24. |
 | Asked for a newer hemoglobin when the response to oral iron was due and none had been drawn since it started; "No newer result" closed both response gates and left nothing (`[DECISION — Josh 2026-10-04]`). | **Order the recheck; do not ask for the value.** An anchored count gate — `count_in_window`, `count_comparison: "less_than"`, `count_threshold: 1`, on the response gates' own `window_from` — opens a step that carries the recheck orders and says what they decide. The response gates move behind the `at_least` twin, so they are not evaluated (and cannot ask) until a value since the start exists. Anemia v14: `gate-response-recheck-due` → Step 2.21, `gate-rechecked` → Step 2.22. |
 
 Authoring rules that follow:
@@ -357,22 +359,29 @@ Authoring rules that follow:
    "It should be accepting the value I gave … The recommendation should be to repeat testing
    with iron studies to determine need for IV iron"). The provider has just told the pathway
    everything there is; a question for a result that does not exist can only be declined,
-   and a declined datum closes every gate waiting on it. Author two anchored count gates on
-   the step that hosted the response gates, both with the response gates' `window_from` and
-   `min_days_since_anchor`, `count_threshold: 1`, `on_unresolved: "ask"`, `default_behavior:
-   "skip"`:
-   - `count_comparison: "less_than"` → a **recheck step** with its own LabTest nodes (named
-     so the plan line says they are the response recheck) and a Guidance node saying what the
-     results decide. Never start the escalation from this step.
-   - `count_comparison: "at_least"` → a **response-assessment step** that hosts the response
-     gates (which keep `on_unresolved: "ask"`: a value since the start with no baseline to
-     measure from is still worth asking about).
+   and a declined datum closes every gate waiting on it. There are **three** states before
+   the response can be judged, each its own anchored count gate on the step that hosted the
+   response gates (the response gates' `window_from` and `min_days_since_anchor`,
+   `default_behavior: "skip"`):
+   - **Not rechecked** — nothing since the start: `count_threshold: 1`,
+     `count_comparison: "less_than"`, `on_unresolved: "ask"` → a **recheck step** with its
+     own LabTest nodes (named so the plan line says they are the response recheck) and a
+     Guidance node saying what the results decide. Never start the escalation from it.
+   - **Rechecked but unmeasurable** (`[DECISION — Josh 2026-10-04]`: "recheck in 2–4 weeks,
+     not nonresponse") — a value since the start, but fewer than two points to measure a
+     change between, and not at target: compound `AND(count at_least 1 since the start,
+     count less_than 2 WITH the delta's baseline_days, <the non-response gate's below-target
+     group>)`, `on_unresolved: "ask"` → a **"cannot be measured yet" step**: its own repeat
+     test named for the reason, a Schedule, and Guidance saying this is not nonresponse, the
+     value on file becomes the baseline, and not to escalate on it. This is the state a value
+     *typed in at the visit* lands in.
+   - **Measurable, or at target** — compound `OR(count at_least 2 WITH baseline_days, <the
+     response gate's at-target group>)`, `on_unresolved: "default"` (+ marker) → the
+     **response-assessment step** hosting the response gates. They are then reached only
+     with the values they need and never ask for a second value.
    Do it on every route that has a response check (anemia: the pathway-started route and the
-   already-on-it route). An arm of the response gate that is *not* anchored (an absolute "at target"
-   arm) would stop being read until a value since the start exists — so OR that same group
-   into the `at_least` gate and set it `on_unresolved: "default"` (pattern under **Anchored
-   trend windows**). State in the brief that the recheck's labs duplicate any the host step
-   already orders.
+   already-on-it route). State in the brief that the recheck's labs duplicate any the host
+   step already orders, and add `[WINDOW — <gate-id>: <why>]` for the copied target groups.
    A pathway that judges a response and deliberately has no such route says why:
    `[NO RECHECK ROUTE — <clinical_role>: <why>]`.
 
@@ -633,8 +642,8 @@ Rules (hard import errors unless marked; the validator calls the runtime parser
 - **Operators:** only `count_in_window`, `trend_up`, `trend_down`, `delta_from_baseline`.
   On any other operator it is an error. On `count_in_window` it counts the entries dated from
   the start of the anchor day to the session clock — "how many since the treatment started" —
-  and takes `count_comparison` (`at_least` / `less_than`, above), `count_threshold` and
-  `min_days_since_anchor`, but **not** `baseline_days`.
+  and takes `count_comparison` (`at_least` / `less_than`, above), `count_threshold`,
+  `min_days_since_anchor` and (since 2026-10-04) `baseline_days`.
 - **Mutually exclusive** with `window_days` and with `horizon`. It *is* the window.
 - `event` — required; `"medication_start"` is the only event.
 - `clinical_role` — required, the **class** tag the pathway's Medication nodes carry
@@ -650,8 +659,13 @@ Rules (hard import errors unless marked; the validator calls the runtime parser
   that `codes` omits — copy the class's CodeEntry codes.
 - `label` — optional, the class in words for the prompt: `"When did oral iron start?"`
   (default: the `clinical_role` with dashes as spaces).
-- `baseline_days` — optional integer (1..36525), **trends/deltas only** (an error on
-  `count_in_window`). Admits ONE pre-treatment baseline: the **latest** value dated within
+- `baseline_days` — optional integer (1..36525), trends, deltas and (since 2026-10-04,
+  josh-dev) `count_in_window`. On a count it makes the count run over **exactly the delta's
+  point set** — the ONE latest value dated up to `baseline_days` before the start day, plus
+  every value since — so `count_threshold: 2` with `less_than` is "the change cannot be
+  measured yet" and with `at_least` "measurable". Two pre-treatment values and nothing since
+  is still one point; a baseline older than `baseline_days` does not count. Without it a
+  count sees only values since the start. Admits ONE pre-treatment baseline: the **latest** value dated within
   that many days *before* the anchor day. Use it for every "rise since treatment" delta:
   the diagnostic value is usually drawn before the prescription, and without it the window
   excludes the very value the rise is measured from — the patient then looks one value
@@ -694,66 +708,65 @@ unresolved condition (so a missing trimester is not asked for on the start visit
 group passes NOT YET DUE up on the same terms, so this holds at every level. Once
 due, normal evaluation applies (incl. `INSUFFICIENT_SERIES` → ask for the newest result).
 
-**Pattern — a response check from chart data: four gates, two steps** (the two response
-gates since anemia v7; the two count gates in front of them since v14, `[DECISION — Josh
-2026-10-04]`). A condition gate cannot route several ways — chart-derived branch routing
-does not exist; a multi-target condition gate raises `unroutable_decision` — so every
-outcome is its own single-target gate, all `on_unresolved: "ask"`:
+**Pattern — a response check from chart data: five gates, three steps** (the two response
+gates since anemia v7; count gates in front of them since v14; the "unmeasurable" state since
+v15 — all `[DECISION — Josh 2026-10-04]`). A condition gate cannot route several ways —
+chart-derived branch routing does not exist; a multi-target condition gate raises
+`unroutable_decision` — so every outcome is its own single-target gate:
 
-1. On the step that carries the scheduled recheck, two **count gates** on the SAME
-   `window_from` (no `baseline_days`), `count_threshold: 1`:
-   `count_comparison: "less_than"` → the **recheck step** (orders the recheck and says what
-   it decides); `count_comparison: "at_least"` → the **response-assessment step**. **If the
-   response gate has an unanchored arm** (an absolute "at target"), the second gate is a
-   compound `OR(count at_least 1, <that same group>)` with `on_unresolved: "default"` (and
-   its `[ON-UNRESOLVED DEFAULT — <gate-id>]` marker): the arm keeps deciding at once, and
-   the gate can never ask for the lab — with `ask`, a baseline older than the arm's horizon
-   is asked for again, which is the question this pattern exists to remove. The start-date
-   question still comes from the `less_than` gate.
+1. On the step that carries the scheduled recheck, three gates on the SAME `window_from`:
+   - **recheck-due** — `count_in_window`, `count_threshold: 1`, `count_comparison:
+     "less_than"`, no `baseline_days`, `on_unresolved: "ask"` → the **recheck step** (orders
+     the recheck and says what it decides);
+   - **unmeasurable** — compound `AND(count at_least 1 (no baseline_days), count less_than 2
+     with baseline_days, <the non-response gate's below-target group>)`, `on_unresolved:
+     "ask"` → the **"cannot be measured yet" step** (repeat test, schedule, "not
+     nonresponse" guidance). It can ask only the start date and whatever the below-target
+     group asks (the trimester); the counts never ask for a value;
+   - **rechecked** — compound `OR(count at_least 2 with baseline_days, <the response gate's
+     at-target group>)`, `on_unresolved: "default"` with its `[ON-UNRESOLVED DEFAULT —
+     <gate-id>]` marker → the **response-assessment step**. `default` because the at-target
+     arm has its own horizon: with `ask`, a baseline older than that horizon is asked for
+     again — the question this pattern exists to remove. The at-target arm keeps "at target
+     → maintenance at once" working, the start visit included.
 2. On the response-assessment step, two **response gates** on the SAME anchored delta,
-   `at_least` and `less_than` the same threshold.
+   `at_least` and `less_than` the same threshold, `on_unresolved: "ask"`.
 
 ```json
 { "field": "labs", "operator": "count_in_window", "value": "718-7", "system": "LOINC",
-  "display": "Hemoglobin (g/dL)", "count_threshold": 1, "count_comparison": "less_than",
+  "display": "Hemoglobin (g/dL)", "count_threshold": 2, "count_comparison": "less_than",
   "window_from": { "event": "medication_start", "clinical_role": "oral-iron-repletion",
     "label": "oral iron", "codes": [ { "system": "RXNORM", "code": "310325" } ],
-    "min_days_since_anchor": 14 } }
+    "baseline_days": 28, "min_days_since_anchor": 14 } }
 ```
 
-With `min_days_since_anchor: 14` on all four and `baseline_days: 28` on the deltas:
+With `min_days_since_anchor: 14` on all of them and `baseline_days: 28` on the deltas and the
+two-point counts ("points" = the latest value ≤ 28 days before the start + every value since):
 
-| Visit / chart | Recheck-due gate (count `less_than 1`) → recheck step | Rechecked gate (count `at_least 1`, OR at target) → assessment step | Response gate (`at_least 1.0`) → maintenance | Non-response gate (`less_than 1.0`) → escalation |
-|---|---|---|---|---|
-| **start visit** — drug recommended this session, no care plan / order / clinician date | closed, NOT_YET_DUE — nothing asked | closed, NOT_YET_DUE | not evaluated | not evaluated |
-| **recheck with nothing stored** — drug recommended this session, no care plan / dated order / clinician date, but an Hgb ≥ 14 days old (or an undated order of the class) | held — ONE question: "When did oral iron start?" (today's date if it starts now → NOT_YET_DUE) | closed until answered (never asks) | not evaluated | not evaluated |
-| **at target** (any visit, the start visit included) | NOT_YET_DUE, or by its count | **opens** (the at-target arm settles the OR) | opens — maintenance at once | closed — a definite no |
-| **before day 14** (any recheck, any rise) | closed, NOT_YET_DUE | closed, NOT_YET_DUE | not evaluated | not evaluated |
-| day ≥ 14, baseline + recheck, rise ≥ 1 | closed | opens | opens | closed |
-| day ≥ 14, baseline + recheck, rise < 1 | closed | opens | closed | opens |
-| day ≥ 14, **baseline only (not rechecked)** | **opens — the recheck is ordered; nothing asked** (through anemia v13: both response gates held on "newest Hgb after the baseline date?", and "Not available" dead-ended) | closed | not evaluated | not evaluated |
-| day ≥ 14, **no dated value at all** (none, or only undated ones — the simulator) | **opens — nothing asked** (2026-10-03 to v13: "a result, and the date it was drawn?") | closed | not evaluated | not evaluated |
-| day ≥ 14, a value since the start but **no baseline** (one point) | closed | opens | held — ONE question: newest Hgb after that value's date | held (same question) |
-| no start date and the drug not recommended this session | held — ONE question: "When did oral iron start?" | closed until answered (never asks) | not evaluated | not evaluated |
+| Visit / chart | Recheck-due (none since the start) → recheck step | Unmeasurable (one since, < 2 points, below target) → "recheck in 2–4 weeks" step | Rechecked (≥ 2 points, OR at target) → assessment step | Response gate → maintenance | Non-response gate → escalation |
+|---|---|---|---|---|---|
+| **start visit** — drug recommended this session, no care plan / order / clinician date | closed, NOT_YET_DUE — nothing asked | closed, NOT_YET_DUE | closed, NOT_YET_DUE | not evaluated | not evaluated |
+| **start date unknown** (nothing stored and an Hgb ≥ 14 days old or an undated order; or the drug not recommended this session) | held — ONE question: "When did oral iron start?" | held (same question) | closed until answered (never asks) | not evaluated | not evaluated |
+| **at target** (any visit, the start visit included) | NOT_YET_DUE, or by its count | closed — a definite no | **opens** | opens — maintenance at once | closed — a definite no |
+| **before day 14** (any recheck, any rise) | closed, NOT_YET_DUE | closed, NOT_YET_DUE | closed, NOT_YET_DUE | not evaluated | not evaluated |
+| day ≥ 14, **baseline only (not rechecked)**, or no dated value at all (the simulator) | **opens — the recheck is ordered; nothing asked** | closed | closed | not evaluated | not evaluated |
+| day ≥ 14, **one value since the start and no baseline** (incl. a value typed in at the visit, a start-day value, or a baseline older than `baseline_days`), below target | closed | **opens — recheck scheduled; nothing asked; not nonresponse** (through anemia v14: the response gates asked "newest result, drawn after <date>?") | closed | not evaluated | not evaluated |
+| day ≥ 14, two points, rise ≥ 1 | closed | closed | opens | opens | closed |
+| day ≥ 14, two points, rise < 1 and below target | closed | closed | opens | closed | opens |
 
 "Since the start" is from the **start of the anchor day**: a value drawn on the day the drug
-was started counts as a recheck (flag it in the brief — clinically it is a pre-treatment
-value). An at-target baseline at day ≥ 14 with nothing since the start opens **both** steps:
-maintenance and the recheck orders. Say so in the brief.
-
-**Known gap (engine, open 2026-10-04).** A value the provider *enters at the visit* is dated
-at the visit, so it counts as "since the start". With no earlier value on the chart the
-recheck step then closes and the response gates — one point, no baseline — ask for a result
-"drawn after" today, which cannot exist; "Not available" closes both. The count cannot tell
-an entered value from a recheck, and "no value before the start" has no encoding. Record it
-in the brief (`[GAP — NEEDS JOSH]`) wherever this pattern is used; `gate-proof.ts
-response-recheck` pins the current behaviour.
+was started counts as a value since the start, not as a baseline (flag it in the brief). An
+at-target baseline at day ≥ 14 with nothing since the start opens **both** maintenance and
+the recheck orders. The copied target groups keep the response gates' horizon: a lone value
+since the start that is older than that horizon is outside the group, and the unmeasurable
+gate then asks for the lab's "most recent value?" (answerable — never "drawn after today").
+Say each of these in the brief.
 
 NOT_YET_DUE asks nothing, so **the start visit's care plan is not blocked**
 (the pipeline's readiness rules, `pipeline/readiness.ts`, block only on pending questions, unresolved nodes, red flags and unavailable safety data) — this replaces anemia v5's
-"recheck not yet done" option. A *held* gate (the "nothing stored", "no baseline" and "no
-start date" rows) is still a pending question and does block generation until answered; the
-"not rechecked" rows ask nothing and block nothing. The day ≥ 14 rows need
+"recheck not yet done" option. A *held* gate (the "start date unknown" row) is still a
+pending question and does block generation until answered; the "not rechecked" and
+"unmeasurable" rows ask nothing and block nothing. The day ≥ 14 rows need
 the anchor from a record — the care plan the start visit committed, a dated order, or a
 clinician date: the session source only ever produces NOT_YET_DUE.
 

@@ -192,6 +192,9 @@ brief (§4b for gates, §18 for anything left open):
   with its gate, plus what the recheck orders and from which day it is due. Also say what a
   value drawn on the start day counts as, and what happens to any "already at target" arm
   before a recheck exists.
+  And the third state: *one value since the start but nothing to measure a change from* (no
+  baseline — e.g. a value typed in at the visit) is "repeat in <interval>, not nonresponse" —
+  a step with the repeat test and its schedule, nothing asked, no escalation.
 
 The format spec's section "Use the data the chart gives" has the patterns and the brief
 markers (`[WINDOW — …]`, `[NO MEDICATION CHECK — …]`, `[NO RECHECK ROUTE — …]`).

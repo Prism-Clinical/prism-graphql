@@ -78,7 +78,9 @@ together become its BRANCHES_TO set. `all_of` = sequencing fan-out (all branches
 > the medication list needs `[NO MEDICATION CHECK — <why>]`. For every response-to-treatment
 > check add the state **due, nothing drawn since the treatment started**: it opens a step that
 > orders the recheck (name the tests and what they decide) and asks for nothing; the response
-> gates sit behind "one or more since the start". A response check without that route needs
+> gates sit behind "measurable (two values), or at target". And the state **one value since
+> the start, nothing to measure a change from**: a step that schedules the repeat test, says it
+> is not nonresponse, and asks for nothing. A response check without that route needs
 > `[NO RECHECK ROUTE — <clinical_role>: <why>]`.
 
 One block per machine-evaluable decision. Common fields for every gate:

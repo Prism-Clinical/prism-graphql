@@ -1127,7 +1127,11 @@ function evaluateAggregateKernel(
   if (operator === 'count_in_window') {
     // `selectFacts` has already deduplicated by `factId` (design §4), so the
     // count is over distinct occurrences.
-    const matches = selected.length;
+    const matches = (
+      resolvedAnchor && baselineDays !== undefined
+        ? withLatestBaseline(selected, Date.parse(resolvedAnchor.lowerBound))
+        : selected
+    ).length;
     const threshold = condition.count_threshold ?? 2;
     const reached = matches >= threshold;
     const satisfied = condition.count_comparison === 'less_than' ? !reached : reached;

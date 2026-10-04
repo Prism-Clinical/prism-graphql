@@ -553,13 +553,13 @@ describe('window_from.baseline_days — the pre-treatment baseline', () => {
     expect(r.unresolvedSeries?.[0].latestDate).toBe('2026-06-26');
   });
 
-  it('is refused on a count, and must be a positive whole number of days', () => {
+  it('is accepted on a count (the delta\'s own point set, counted), and must be a positive whole number of days', () => {
     expect(() =>
       parseConditionOverride(
         { field: 'labs', operator: 'count_in_window', value: HGB, window_from: { ...ORAL_IRON_RAW, baseline_days: 14 } },
         'c',
       ),
-    ).toThrow('a count has no baseline');
+    ).not.toThrow();
     expect(() =>
       parseConditionOverride({ ...DELTA('at_least', { ...ORAL_IRON_RAW, baseline_days: 0 }) }, 'c'),
     ).toThrow('"baseline_days" must be an integer');

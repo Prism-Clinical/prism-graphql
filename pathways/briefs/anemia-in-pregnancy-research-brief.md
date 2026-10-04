@@ -1,6 +1,6 @@
 # Pathway Research Brief — Anemia in Pregnancy
 
-JSON: pathways/json/anemia-in-pregnancy.json @ version 14
+JSON: pathways/json/anemia-in-pregnancy.json @ version 15
 
 **Status: DRAFT v2 for physician review — not yet approved for JSON build.**
 Scope assumed from request: outpatient prenatal care, adult pregnant patients, US practice,
@@ -13,6 +13,19 @@ agents (codes, citations); every claim carries a reference number resolving in �
 `[GAP]` unsourceable, `[FALLBACK SOURCE]` non-US-guideline basis, `[OLDER SOURCE]` >5y but
 still current, `[BLOCKED — prior_node_result]` import-blocked gate design with fallback.
 
+> ### ⚠ For Josh (v15) — one hemoglobin since iron started, no baseline: "recheck in 2–4 weeks, not nonresponse"
+>
+> v14's remaining dead end is closed. A patient 14 or more days into oral iron with a single
+> hemoglobin below target and no pre-iron value to measure a rise from — including a value you
+> type in at the visit — now gets a step that says: continue oral iron, this is not
+> nonresponse, today's value is the baseline, repeat the CBC in 2–4 weeks. Nothing is asked.
+> The response gates are reached only when the rise can be measured (two values) or she is at
+> target, so they no longer ask for a second hemoglobin. Your own patient's result is
+> unchanged ("came out correctly"). Two new points are marked `[JOSH — CONFIRM]` in §18:
+> whether the at-target / below-target checks should read the **most recent** hemoglobin
+> rather than only one from the last 28 days (as built, a lone value since the start that is
+> itself over 28 days old is asked for again), and what this step orders (a CBC only).
+>
 > ### ⚠ For Josh (v14) — response check due, no hemoglobin since oral iron started → the recheck is ordered, not asked for
 >
 > Your patient of 2026-10-04 (28 weeks, Hgb 8 and MCV 70 dated 2026-09-01, ferrous gluconate on
@@ -31,9 +44,7 @@ still current, `[BLOCKED — prior_node_result]` import-blocked gate design with
 > ferritin and iron studies twice if "confirmatory studies" is answered yes); and nothing in
 > the pathway reads the ferritin or iron-study results — the next visit decides on the
 > hemoglobin rise.
-> **One dead end of the same kind remains** (§18, `[GAP — NEEDS JOSH]`): with no hemoglobin on
-> the chart, a value typed in at the visit counts as "drawn since the start", and the response
-> gates then ask for a still newer result. It needs an engine change, not a pathway one.
+> The dead end v14 left (a value typed in at the visit) is closed in v15, above.
 >
 > ### ⚠ For Josh (v13) — the most recent hemoglobin decides, however old; over 30 days old → repeat CBC
 >
@@ -81,8 +92,20 @@ still current, `[BLOCKED — prior_node_result]` import-blocked gate design with
 
 - **Logical ID**: `anemia-in-pregnancy`
 - **Title**: Anemia in Pregnancy — Classification and Treatment
-- **Version**: 14 `[DECISION — Josh 2026-10-04]` (JSON `"14"`; was `"13"`). Imports as
-  NEW_VERSION; v13 sessions keep v13's graph. Bumped for:
+- **Version**: 15 `[DECISION — Josh 2026-10-04]` (JSON `"15"`; was `"14"`). Imports as
+  NEW_VERSION; v14 sessions keep v14's graph. Bumped for:
+  - **A single hemoglobin since oral iron started, below target, with no baseline, is "recheck
+    in 2–4 weeks, not nonresponse"** (§3 Steps 2.23, 2.24; §4b `gate-rise-unmeasurable` and its
+    `-on-iron` copy, `gate-rechecked` / `gate-rechecked-on-iron` changed; §6 Lab-32, Lab-33;
+    §9 Guid-11, Guid-12; §11 Sched-10, Sched-11; §13; §16; §17; §18). v14 left one dead end:
+    with one hemoglobin since the start and nothing before it — most simply a value typed in
+    at the visit — the response gates asked for a result "drawn after" today. Josh,
+    2026-10-04: that state is "recheck in 2–4 weeks, not nonresponse". A new gate per route
+    opens a step that says so and orders the repeat CBC; the rechecked gates now require the
+    rise to be *measurable* (two points) or the hemoglobin at target, so the response gates
+    never ask for a second value. Uses the engine's new `baseline_days` on an anchored
+    `count_in_window` (josh-dev). Proofs: `gate-proof.ts response-recheck`, `response`.
+  v14 `[DECISION — Josh 2026-10-04]` (was `"13"`; v13 sessions keep v13's graph) was bumped for:
   - **A response check that is due with no hemoglobin since oral iron started orders the
     recheck instead of asking for a value** (§3 Steps 2.3, 2.14, 2.19–2.22; §4b
     `gate-response-recheck-due` / `gate-rechecked` and their `-on-iron` copies, and the four
@@ -477,6 +500,23 @@ None. (Single-condition pathway; O99.01x already encodes the pregnancy+anemia co
   hemoglobin since the start, or already at target); hosts
   `gate-hgb-response` → Step 2.4 and `gate-hgb-nonresponse` → Step 2.6, moved here from Step
   2.3 unchanged. [1][3]
+- **Step 2.23 — Rise cannot be measured yet: recheck hemoglobin in 2–4 weeks (already on oral
+  iron)** *(gated by gate-rise-unmeasurable-on-iron on Step 2.14 — its only way in; v15)*
+  `[DECISION — Josh 2026-10-04]`: oral iron started 14 or more days ago; a hemoglobin has been
+  drawn since and is below target; there is no second value to measure a rise from (none from
+  the 28 days before the start, and only one since). **Not nonresponse.** Carries Guid-11
+  (continue oral iron; today's value becomes the baseline; the rise is judged at the recheck;
+  do not escalate to IV iron on this alone), Lab-32 (the repeat CBC, named for the reason)
+  and Sched-10 (2–4 weeks). No hemoglobin is asked for. Closes once a second hemoglobin is on
+  file; Step 2.20 then assesses the response. [1][3]
+- **Step 2.24 — Rise cannot be measured yet: recheck hemoglobin in 2–4 weeks** *(gated by
+  gate-rise-unmeasurable on Step 2.3 — its only way in; v15)* `[DECISION — Josh 2026-10-04]`:
+  Step 2.23's twin on the route where the pathway started the oral iron. Guid-12, Lab-33,
+  Sched-11. [1][3]
+- **v15 note on Steps 2.20 / 2.22:** their gates (`gate-rechecked-on-iron` / `gate-rechecked`)
+  now open when the rise is *measurable* — two hemoglobins: one from the 28 days before the
+  start or an earlier one since, and one since — or the hemoglobin is at target. So the
+  response gates they host are reached only with the values they need.
 - **Step 1.11 — Expanded / nonresponse workup (already on oral iron)** *(DP-4's branch; v12)*
   `[BUILD NOTE]`: a copy of Step 1.5 with its own Lab-20 (smear) and Lab-21 (hemoglobin
   electrophoresis). [1][4]
@@ -555,7 +595,7 @@ the root entry stage; Stage 3 is a root-connected container whose steps all hang
 gates; Stage 4 is root-connected. v12's Steps 1.10, 1.11, 1.12 and 2.14–2.18 are all gated
 (or DP-4's branch) and belong to no Stage by HAS_STEP; their `stage_number` (1 or 2) places
 them for display. v13's Step 1.13 is the same: gated by gate-hgb-recheck-due on Step 1.1, no
-HAS_STEP, `stage_number` 1. v14's Steps 2.19–2.22 likewise: each gated by a count gate on
+HAS_STEP, `stage_number` 1. v14's Steps 2.19–2.22 and v15's Steps 2.23–2.24 likewise: each gated by a count gate on
 Step 2.14 or Step 2.3, no HAS_STEP, `stage_number` 2. Gated steps connect **only** via their gate/DP
 BRANCHES_TO (no HAS_STEP edge), per the reference-fixture pattern.
 
@@ -1052,8 +1092,21 @@ the pathway presumes the coded diagnosis.
     `gate-rechecked` → **step-2-22**, `gate-response-recheck-due-on-iron` → **step-2-19**,
     `gate-rechecked-on-iron` → **step-2-20**. One target each; no `when` edges.
   - Titles: "Response recheck due: on oral iron 14 days or more, no hemoglobin since it
-    started" / "Hemoglobin on file since oral iron started (14 days or more ago), or
-    hemoglobin at target: assess the response" (the same on the copies).
+    started" / (v15) "Rise measurable (two hemoglobins: a baseline or an earlier value, and
+    one since oral iron started), or hemoglobin at target: assess the response" (the same on
+    the copies).
+  - **v15 `[DECISION — Josh 2026-10-04]` — `gate-rechecked` / `gate-rechecked-on-iron`
+    changed:** the count arm is now `count_threshold` **2**, `at_least`, with
+    **`baseline_days` 28** — the count over exactly the response gates' point set (the one
+    latest hemoglobin from the 28 days before the start, plus every one since). "Two points"
+    is "the rise can be measured". So the gate is `OR(` measurable `,` At target `)`; the
+    v14 text below describing a count of `at_least` 1 is superseded on this point only.
+    Still `on_unresolved: default` (markers below): the at-target arm reads 28 days, and your
+    patient's 33-day-old baseline would otherwise be asked for again.
+  - `[WINDOW — gate-rechecked: the at-target arm is the response gates' own group, 28 days,
+    copied so that this gate and gate-hgb-response read the same value; whether both should
+    read the most recent value instead is open, §18]`
+    `[WINDOW — gate-rechecked-on-iron: as gate-rechecked]`
   - **Condition:** labs `718-7` (LOINC, display "Hemoglobin (g/dL)") `count_in_window`,
     `count_threshold` 1, **`count_comparison`** `less_than` (recheck due) / `at_least`
     (rechecked), **`window_from`**: event `medication_start`, clinical_role
@@ -1079,7 +1132,7 @@ the pathway presumes the coded diagnosis.
     | fewer than 14 days ago | any, including one drawn since the start | NOT YET DUE — neither opens | no |
     | 14 or more days ago | none dated on or after the start day — only earlier values, only undated values, or none | `…recheck-due` opens → Step 2.21 / 2.19: CBC, ferritin, iron/TIBC/saturation ordered | **no** |
     | any, or not known | **at target** (≥ 11, or ≥ 10.5 in trimester 2) within the last 28 days | `…rechecked` opens → the response gate opens **maintenance at once** (Step 2.4 / 2.15). At day ≥ 14 with none drawn since the start, the recheck is ordered **as well** | no |
-    | 14 or more days ago | one or more dated on or after the start day | `…rechecked` opens → Step 2.22 / 2.20: the response gates decide (below) | only what the response gates ask: the trimester for Hgb 10.5–11 with a rise < 1; a dated hemoglobin when there is no baseline to measure from |
+    | 14 or more days ago | *(v15: this row holds only when the rise is measurable — two points; with one point and below target see `gate-rise-unmeasurable` above)* one or more dated on or after the start day | `…rechecked` opens → Step 2.22 / 2.20: the response gates decide (below) | only what the response gates ask: the trimester for Hgb 10.5–11 with a rise < 1; a dated hemoglobin when there is no baseline to measure from |
 
     A hemoglobin dated **before** the start is the baseline and nothing else: it is used (the
     threshold gates decide on it; the response gates measure the rise from it) and never
@@ -1093,7 +1146,8 @@ the pathway presumes the coded diagnosis.
     with `ask` a baseline older than that (Josh's patient: 33 days) would be asked for again —
     the very question v14 removes. With `default`, "cannot decide" closes the gate; the
     recheck-due twin (which is `ask`) still raises the start-date question when the start is
-    unknown, and the response gates behind still ask what only they need.
+    unknown, and the response gates behind ask only for the trimester (v15: they are reached
+    only with two points or at target, so never for a hemoglobin).
   - **Why two gates and a step in between.** A chart gate has one target and cannot route. The
     response gates must not be *evaluated* until a recheck exists — evaluated without one they
     are one value short and ask for it, which is the dead end this version removes — and the
@@ -1115,6 +1169,51 @@ the pathway presumes the coded diagnosis.
     from the stored care plan): the same four, on Steps 2.21 / 2.22 / 2.4 / 2.6; the start
     visit → both gates NOT_YET_DUE on `SESSION_RECOMMENDATION`, nothing asked, no care-plan
     blocker.
+- **Gates `gate-rise-unmeasurable` / `gate-rise-unmeasurable-on-iron` — a hemoglobin since
+  oral iron started, below target, and nothing to measure the rise from** (v15)
+  `[DECISION — Josh 2026-10-04]`
+  - Attached to: **step-2-3** / **step-2-14** · Type: **compound AND** · Default: **skip** ·
+    On unresolved: **ask** · Branch to: `gate-rise-unmeasurable` → **step-2-24**,
+    `gate-rise-unmeasurable-on-iron` → **step-2-23**. One target each.
+  - Title: "Hemoglobin since oral iron started, below target, and no baseline to measure the
+    rise from: recheck in 2–4 weeks".
+  - **Conditions** (all on labs `718-7`, the oral-iron `window_from` with the four codes,
+    `min_days_since_anchor` 14):
+    1. `count_in_window`, `count_threshold` 1, `at_least`, no `baseline_days` — a hemoglobin
+       since the start;
+    2. `count_in_window`, `count_threshold` 2, `less_than`, **`baseline_days` 28** — fewer than
+       two points in the response gates' own point set: the rise cannot be measured;
+    3. the group "Below target (Hgb < 11, and < 10.5 unless trimester 2)" exactly as
+       `gate-hgb-nonresponse` carries it: `AND( Hgb < 10.95 , OR( patient.trimester not_equals
+       2 , Hgb < 10.45 ) )`, hemoglobin horizon {days: 28}.
+  - `[WINDOW — gate-rise-unmeasurable: the below-target group is the nonresponse gate's own,
+    28 days, copied so the two read the same value; whether it should read the most recent
+    value instead is open, §18]` `[WINDOW — gate-rise-unmeasurable-on-iron: as
+    gate-rise-unmeasurable]`
+  - **What it can ask, and why `ask`.** The counts never ask for a value. The start date, when
+    unknown (shared with `gate-response-recheck-due`). The **trimester**, only for a
+    hemoglobin of 10.5–11 — as the nonresponse gate asks it; T2 → at target → maintenance,
+    otherwise this step. And one case `[JOSH — CONFIRM]` (§18): a lone hemoglobin since the
+    start that is itself more than 28 days old is outside the 28-day group, so the gate asks
+    "Hemoglobin … most recent value?" — answerable (today's value is the second point), never
+    "drawn after today". With `default` the trimester case would close silently with no step.
+  - **How each state is used** (day ≥ 14; "points" = the latest value from the 28 days before
+    the start, plus every value since):
+
+    | Since the start | Points | Level | Result | Asked |
+    |---|---|---|---|---|
+    | none | 0 or 1 | any | response recheck ordered (Step 2.21 / 2.19); at target → maintenance too | nothing |
+    | one | 1 (no baseline, or baseline older than 28 days before the start) | below target | **Step 2.24 / 2.23: recheck in 2–4 weeks — not nonresponse** | nothing (trimester for 10.5–11) |
+    | one | 1 | at target | maintenance at once (via `gate-rechecked`) | nothing |
+    | one or more | 2 or more | any | response assessed (Step 2.22 / 2.20): maintenance or nonresponse | trimester for 10.5–11 with a rise < 1 |
+
+  - Outcomes (`gate-proof.ts response-recheck` and `response`, both edge orders): no
+    hemoglobin on the chart → the provider enters 8 at the visit → Step 2.23 / 2.24 with its
+    lab, guidance and schedule INCLUDED, no hemoglobin question, no care-plan blocker on the
+    route, response gates and escalation GATED_OUT; enters 11.4 → maintenance. A baseline
+    older than 28 days before the start + one value since → the same step. One value since
+    the start (day 15), no baseline → the same step (v14: "newest result?" asked). Two since
+    the start → assessed. The start-day-only value → the same step.
 - **Gates `gate-hgb-response-on-iron` / `gate-hgb-nonresponse-on-iron` — the response check,
   for a patient already on oral iron** (v12) `[BUILD NOTE]`
   - Attached to: **step-2-20** (v14; step-2-14 through v13) · Branch to: **step-2-15** (maintenance) / **step-2-16**
@@ -1684,6 +1783,10 @@ narrative. Recorded so reviewers know the omission is deliberate.
   one node per host step. [1] / [1][5] / [1]
 - `[JOSH — CONFIRM]` (§18) whether the recheck should also carry a reticulocyte count (it
   does not), and that the plan then lists the CBC more than once.
+- **Lab-32 — CBC with indices — recheck in 2–4 weeks (no pre-iron baseline to measure the rise
+  from)** (on Step 2.23; v15) `[DECISION — Josh 2026-10-04]`: a copy of Lab-26's codes (LOINC
+  58410-2 with 718-7 / 4544-3 / 787-2, CPT 85025). [1]
+- **Lab-33** (on Step 2.24; v15): the same on the route where the pathway started the iron. [1]
 
 `[BUILD FIX 2026-09-24]` **One host step per lab node (v4).** Lab-1, 2, 4, 7 and 8 were each
 one node ordered by two steps on opposite sides of a gate or DecisionPoint. The engine
@@ -1720,6 +1823,8 @@ its other host:
 | Lab-10 CBC (recheck) | Step 2.3 | **Lab-29** (v14) | Step 2.21 (response recheck, none since the start) |
 | Lab-2 Ferritin | Step 1.2 | **Lab-30** (v14) | Step 2.21 |
 | Lab-3 Iron/TIBC/saturation | Step 1.2 | **Lab-31** (v14) | Step 2.21 |
+| Lab-19 CBC (recheck) | Step 2.14 | **Lab-32** (v15) | Step 2.23 (recheck in 2–4 weeks, no baseline) |
+| Lab-10 CBC (recheck) | Step 2.3 | **Lab-33** (v15) | Step 2.24 |
 
 The new nodes share the originals' CodeEntries (HAS_CODE) and citations; CodeEntries are
 not projected into the care plan, so sharing them is harmless. Proof: `gate-proof.ts
@@ -1802,6 +1907,10 @@ prevention step left with the screening stage):
   from 14 0/7 weeks" is gate-iv-iron-ga's rule. [1][3]
 - **Guid-10** (on Step 2.21; v14): Guid-9's topic, category and text on its own node, for the
   route where the pathway started the oral iron. [1][3]
+- **Guid-11 — topic "Rise cannot be measured yet: recheck hemoglobin in 2–4 weeks"** (on Step
+  2.23; v15): category treatment-planning, clinician-facing `[DECISION — Josh 2026-10-04]`.
+  Instructions (exact JSON text): "A hemoglobin has been drawn since oral iron started, but there is no hemoglobin from before it started to measure the rise from, so the response cannot be judged yet. This is not nonresponse. Continue oral iron. Today's hemoglobin becomes the baseline: repeat the CBC in 2–4 weeks, and the rise is judged at that recheck (a rise of at least 1 g/dL, or hemoglobin at target, is a response). Do not escalate to IV iron on this result alone." [1][3]
+- **Guid-12** (on Step 2.24; v15): Guid-11's topic, category and text on its own node. [1][3]
 
 ## 10. Quality metrics
 
@@ -1846,6 +1955,9 @@ risk-adjustment variable in ePC-07/CMS1028.] Local process measures encoded inst
 - **Sched-9** (on Step 2.18; v12): copy of Sched-3 — "~4 weeks after IV iron"; hemoglobin
   recheck; persistent anemia prompts hematology referral or re-evaluation of the diagnosis.
   `[JOSH — CONFIRM]` — the pathway cannot tell when the listed IV iron was given. [1]
+- **Sched-10** (on Step 2.23; v15) / **Sched-11** (on Step 2.24; v15) `[DECISION — Josh
+  2026-10-04]`: interval **"2–4 weeks"** (from this visit — Josh's figure, the same span as
+  Sched-2); description (exact JSON text): "Repeat hemoglobin/hematocrit. The hemoglobin on file is the baseline; the rise since it is judged at this recheck (a rise < 1 g/dL with Hgb still below target is then nonresponse)." [1][3]
 - **Sched-5** (on Step 4.3): interval "once, ~6 weeks postpartum"; Hgb recheck + iron
   continuation; symptomatic/severe postpartum anemia → IV iron or transfusion pathway. [1][6]
 
@@ -1873,10 +1985,10 @@ All pairs acyclic; REQUIRES points dependent → prerequisite:
 
 | Code | System | Description | Attached to |
 |---|---|---|---|
-| 58410-2 | LOINC | CBC panel, automated | Lab-1, Lab-10, Lab-19, Lab-24, Lab-25, Lab-26, Lab-29 |
-| 718-7 | LOINC | Hemoglobin [Mass/Vol] blood | Lab-1, Lab-10, Lab-19, Lab-24, Lab-25, Lab-26, Lab-29 |
-| 4544-3 | LOINC | Hematocrit, automated | Lab-1, Lab-10, Lab-19, Lab-24, Lab-25, Lab-26, Lab-29 |
-| 787-2 | LOINC | MCV, RBC | Lab-1, Lab-10, Lab-19, Lab-24, Lab-25, Lab-26, Lab-29 |
+| 58410-2 | LOINC | CBC panel, automated | Lab-1, Lab-10, Lab-19, Lab-24, Lab-25, Lab-26, Lab-29, Lab-32, Lab-33 |
+| 718-7 | LOINC | Hemoglobin [Mass/Vol] blood | Lab-1, Lab-10, Lab-19, Lab-24, Lab-25, Lab-26, Lab-29, Lab-32, Lab-33 |
+| 4544-3 | LOINC | Hematocrit, automated | Lab-1, Lab-10, Lab-19, Lab-24, Lab-25, Lab-26, Lab-29, Lab-32, Lab-33 |
+| 787-2 | LOINC | MCV, RBC | Lab-1, Lab-10, Lab-19, Lab-24, Lab-25, Lab-26, Lab-29, Lab-32, Lab-33 |
 | 2276-4 | LOINC | Ferritin, serum | Lab-2, Lab-11, Lab-15, Lab-17, Lab-18, Lab-22, Lab-27, Lab-30 |
 | 2498-4 | LOINC | Iron, serum | Lab-3, Lab-16, Lab-23, Lab-28, Lab-31 |
 | 2500-7 | LOINC | TIBC | Lab-3, Lab-16, Lab-23, Lab-28, Lab-31 |
@@ -1888,7 +2000,7 @@ All pairs acyclic; REQUIRES points dependent → prerequisite:
 | 34994-4 | LOINC | Smear morphology panel, blood | Lab-8, Lab-13, Lab-20 |
 | 882-1 | LOINC | ABO+Rh type | Lab-9 |
 | 890-4 | LOINC | RBC antibody screen | Lab-9 |
-| 85025 | CPT | CBC with automated differential | Lab-1, Lab-10, Lab-19, Lab-24, Lab-25, Lab-26, Lab-29 |
+| 85025 | CPT | CBC with automated differential | Lab-1, Lab-10, Lab-19, Lab-24, Lab-25, Lab-26, Lab-29, Lab-32, Lab-33 |
 | 82728 | CPT | Ferritin | Lab-2, Lab-11, Lab-15, Lab-17, Lab-18, Lab-22, Lab-27, Lab-30 |
 | 83540 | CPT | Iron | Lab-3, Lab-16, Lab-23, Lab-28, Lab-31 |
 | 83550 | CPT | TIBC | Lab-3, Lab-16, Lab-23, Lab-28, Lab-31 |
@@ -2049,6 +2161,9 @@ Nodes that can carry CITES_EVIDENCE:
   · Lab-27, Lab-30: [1][5] · Lab-28, Lab-31: [1] · Guid-9, Guid-10: [1][3] (Guid-7's). No new
   evidence node. `[GAP]` no source gives "ferritin and iron studies at the response recheck"
   as such — the order set is Josh's decision; the tests carry their originals' citations.
+- v15 — Steps 2.23, 2.24: [1][3] · Lab-32, Lab-33: [1] · Guid-11, Guid-12: [1][3]. Sched-10 /
+  Sched-11 cannot cite (host steps' [1][3]). No new evidence node. `[GAP]` "recheck in 2–4
+  weeks when there is no baseline" is Josh's decision; no guideline states it.
 
 Cannot cite (evidence attaches to host step — builder must reattach): all Gates → their
 attached Stage/Step per §4b rationale refs; QM-1 → Step 2.3 [1][3]; QM-2 → Step 4.1
@@ -2076,6 +2191,8 @@ being ignored.
 | gate-hgb-recheck-due (v13) | labs 718-7 `not_includes_code` | MONTH (30 days) | — | — | "> 30 days should trigger recheck": true when no hemoglobin is dated within the last 30 days — the most recent one is older, or there is none |
 | gate-oral-bridge-ga's GA leaf / gate-iv-iron-ga-direct | `patient.gestational_age_weeks` | — (`patient.*` has no temporal policy) | — | — | Current GA |
 | gate-response-recheck-due / gate-rechecked and their `-on-iron` copies (v14) | labs 718-7 `count_in_window`, `count_threshold` 1, `count_comparison` `less_than` / `at_least` | — (`window_from` *is* the window: start of the oral-iron start day → clock; no baseline admitted) | — | — | `[DECISION — Josh 2026-10-04]` "Has a hemoglobin been drawn since oral iron started?" Due at day 14 (`min_days_since_anchor` 14, the response gates' own figure — `[JOSH — CONFIRM]`). Only dated values count; one drawn on the start day counts (`[JOSH — CONFIRM]`) |
+| gate-rise-unmeasurable / gate-rise-unmeasurable-on-iron (v15) | labs 718-7: count `at_least` 1 (since the start); count `less_than` 2 with `baseline_days` 28; below-target group `less_than` 10.95 / 10.45 + `patient.trimester` | counts: `window_from` (the second also admits the latest value ≤ 28 d before the start); below-target leaves {days: 28} | — | — | `[DECISION — Josh 2026-10-04]` one value since the start, no baseline, below target → recheck in 2–4 weeks. `[WINDOW]` markers in §4b; `[JOSH — CONFIRM]` most-recent vs 28 days |
+| gate-rechecked / gate-rechecked-on-iron — count arm (v15) | labs 718-7 `count_in_window` `at_least` 2, `baseline_days` 28 | `window_from` + the latest value ≤ 28 d before the start | — | — | "The rise is measurable": the response gates' own point set has two values |
 | gate-rechecked / gate-rechecked-on-iron (v14) — at-target arm | labs 718-7 `greater_than` 10.95 / 10.45; `patient.trimester` | {days: 28} on the hemoglobin leaves; none on the trimester | — | — | Copied from gate-hgb-response's at-target group so "At target at once" survives the move. `on_unresolved: default`: a baseline older than 28 days must not be asked for again |
 | gate-hgb-response / gate-hgb-nonresponse | labs 718-7 Δ (`delta_from_baseline`) | — (`window_from` *is* the window: oral-iron start → clock, + latest Hgb ≤ 28 d before the start) | — | — | v7 — anchored to the treatment start, so the pre-treatment state is out by construction; due at day 14 |
 | gate-hgb-response / gate-hgb-nonresponse | labs 718-7 (at-target arm) | {days: 28} | — | — | The current Hgb, not last trimester's |
@@ -2266,6 +2383,80 @@ patients to Step 2.1 alone; v4's empiric arm also includes the trial period, rec
 IV-iron route. Should a hemoglobinopathy code suppress the empiric option (e.g. a gate on
 Stage 1.5)? Not changed here.
 
+### `[DECISION — Josh 2026-10-04]` One hemoglobin, no baseline: recheck in 2–4 weeks, not nonresponse — ENCODED (v15)
+
+**What was left open in v14.** With one hemoglobin since oral iron started and nothing before
+it — most simply: no hemoglobin on the chart, the level asked for, and the provider typing in
+today's value — the response gates had one value and no baseline, and asked "Hemoglobin …
+newest result, drawn after <today>?". That cannot be answered; "Not available" closed both.
+
+**Josh, 2026-10-04:** a single hemoglobin below target, at least 14 days into oral iron, with
+no pre-iron baseline is **"recheck in 2–4 weeks, not nonresponse"**. He also confirmed that
+v14's result for his own patient "came out correctly" (it is unchanged here).
+
+**How it is encoded** (both routes).
+
+1. **A third state, between "not rechecked" and "assessed".** `gate-rise-unmeasurable` (Step
+   2.3) / `gate-rise-unmeasurable-on-iron` (Step 2.14): `AND(` a hemoglobin since the start
+   `,` fewer than two points in the response gates' point set `,` below target `)` → **Step
+   2.24 / Step 2.23**: Guid-12 / Guid-11 (continue oral iron; not nonresponse; today's value
+   becomes the baseline; the rise is judged at the recheck; no IV iron on this alone), Lab-33
+   / Lab-32 ("CBC with indices — recheck in 2–4 weeks (no pre-iron baseline to measure the
+   rise from)"), Sched-11 / Sched-10 ("2–4 weeks").
+2. **The response gates wait for a measurable rise.** `gate-rechecked` /
+   `gate-rechecked-on-iron` change from `OR(` one since the start `,` at target `)` to `OR(`
+   **two points** (`count_in_window` `at_least` 2 with `baseline_days` 28) `,` at target `)`.
+   Behind them the response gates always have what they need, so they never ask for a second
+   hemoglobin. "At target at once" is unchanged.
+3. **"Points"** is the engine's new `baseline_days` on an anchored count: the one latest
+   hemoglobin from the 28 days before the start, plus every one since — exactly what the
+   delta is computed over. A baseline older than 28 days before the start does not count, so
+   that patient is "unmeasurable" too, rather than being asked for a value.
+
+**Behaviour changes beyond the dead end** (all follow from the rule; proved):
+- One hemoglobin since the start with **no baseline** on the chart (not typed in): v14 asked
+  "newest result, drawn after <its date>?" and held maintenance / nonresponse. v15: the
+  recheck-in-2–4-weeks step, nothing asked.
+- A hemoglobin drawn **on the start day** and nothing else (v14 point (a)): same — the step,
+  nothing asked. It still counts as "since the start" and not as a baseline.
+- The start-date question, when the start is unknown, is now raised by
+  `gate-response-recheck-due` and `gate-rise-unmeasurable` together (one question).
+
+**Open points.**
+
+- `[JOSH — CONFIRM]` **Most recent hemoglobin, or only one from the last 28 days?** The
+  "at target" and "below target" checks — in the response gates since v7, and copied into
+  `gate-rechecked` and `gate-rise-unmeasurable` so all read the same value — read hemoglobin
+  only inside 28 days. Your v13 rule for the threshold gates was "most recent, however old".
+  Not changed here (it would change the response gates' clinical behaviour: an at-target value
+  from two months ago would open maintenance). Costs as built: (1) a lone hemoglobin since
+  the start that is itself more than 28 days old is neither "below target" nor "at target",
+  so `gate-rise-unmeasurable` **asks "Hemoglobin … most recent value?"** — a value the chart
+  holds an older copy of (proved; answerable, and the 30-day recheck of Step 1.13 is ordered
+  beside it); (2) an at-target baseline older than 28 days does not open maintenance. Reading
+  the most recent value (`LIFETIME`) in all four gates plus the four response gates would
+  remove both. The four `[WINDOW — …]` markers in §4b record this.
+- `[JOSH — CONFIRM]` **What the step orders.** Built: a repeat CBC with indices only, in 2–4
+  weeks. No ferritin or iron studies here (the v14 "response not yet checked" step orders
+  those, when nothing at all has been drawn since the start). Say if this step should too.
+
+**Proof.** `gate-proof.ts response-recheck`, both edge orders, clock 2026-10-04. Step 2.14
+route: no hemoglobin on the chart, gluconate ordered 31 days ago → the response recheck is
+ordered and the level asked for (v10); the provider enters 8 → `gate-rise-unmeasurable-on-iron`
+/ Step 2.23 / Lab-32 / Guid-11 / Sched-10 INCLUDED, the response recheck, `gate-rechecked-on-iron`,
+Step 2.20, both response gates and Steps 2.15 / 2.16 / 2.17 GATED_OUT, no hemoglobin question,
+no response-check question, no care-plan blocker on the route; enters 11.4 → Step 2.20 and
+maintenance, the new step closed. A baseline of 2026-07-20 (older than 28 days before the
+start) + 8.5 on 2026-10-01 → Step 2.23, nothing asked. A lone value since the start that is
+45 days old → the gate asks "most recent value?" (the first open point). Step 2.3 route
+(care plan of 2026-09-03): the typed value and the old-baseline case → Step 2.24, nothing
+asked, no blocker. `response` (clock June 2026): one value on day 15 and no baseline → Step
+2.24 (was: one "newest result" question); the same at 11.3 → maintenance; at 10.7 with the
+trimester unknown → one trimester question and no hemoglobin question, GA 20 → maintenance,
+GA 30 → Step 2.24; two values since the start → assessed (nonresponse at +0.6); the
+start-day-only value → Step 2.24. Josh's patient, "at target at once", the start visit and
+day 7 are unchanged.
+
 ### `[DECISION — Josh 2026-10-04]` Response due, not yet rechecked: order the recheck, do not ask for a value — ENCODED (v14)
 
 **What Josh saw.** Patient: pregnant, 28 weeks, anemia. Chart: hemoglobin 8 g/dL dated
@@ -2304,8 +2495,9 @@ the threshold gates (referral at Hgb 8) and it is the baseline the rise will be 
    `gate-hgb-nonresponse-on-iron` → Step 2.16, moved off Step 2.14 and otherwise unchanged.
    They are not evaluated — so they cannot ask — until a hemoglobin since the start exists
    (or she is at target, where they decide without asking).
-   They keep `on_unresolved: ask`: with a value since the start but no baseline to measure
-   from, asking for a dated hemoglobin is still right.
+   They keep `on_unresolved: ask`. ~~With a value since the start but no baseline to measure
+   from, asking for a dated hemoglobin is still right.~~ **v15:** that state is "recheck in
+   2–4 weeks" (section above); the response gates are no longer reached in it.
 4. **The same on the route where the pathway started the iron.** A patient started on oral
    iron at an earlier visit, back 14 or more days later with no recheck, fell into the same
    hole on Step 2.3. `gate-response-recheck-due` → **Step 2.21** (Lab-29 / Lab-30 / Lab-31,
@@ -2323,15 +2515,15 @@ the threshold gates (referral at Hgb 8) and it is the baseline the rise will be 
 | day ≥ 14 | none | **recheck ordered** (Step 2.19 / 2.21); with an at-target baseline, maintenance as well | nothing |
 | day ≥ 14 | one or more, baseline on file, rise ≥ 1 or at target | maintenance (Step 2.15 / 2.4) | nothing |
 | day ≥ 14 | one or more, baseline on file, rise < 1 and below target | nonresponse management (Step 2.16 / 2.6) | the trimester, only for Hgb 10.5–11 |
-| day ≥ 14 | one or more, no baseline | response gates held | one dated hemoglobin |
+| day ≥ 14 | one, no baseline, below target | **v15:** recheck in 2–4 weeks (Step 2.23 / 2.24) — not nonresponse *(v14: response gates held on one hemoglobin question)* | nothing (trimester for Hgb 10.5–11) |
 
 **Open points.**
 
 - `[JOSH — CONFIRM]` **(a) A hemoglobin drawn on the day iron started counts as "since the
   start".** The window opens at the start of the start day. Such a value is really a
-  pre-treatment value, yet it closes the recheck step and opens the response assessment — and
-  with it as the only value in the window the response gates ask for a newer one (the v13
-  behaviour, for this one case). Proved in `gate-proof.ts response`. Counting only from the
+  pre-treatment value, yet it closes the recheck step — and, with it as the only value, **v15** opens
+  "recheck in 2–4 weeks" (Step 2.23 / 2.24) with nothing asked (v14: the response gates asked
+  for a newer one). Proved in `gate-proof.ts response`. Counting only from the
   day after would need an engine change.
 - `[JOSH — CONFIRM]` **(b) What the recheck orders.** Built: CBC with indices + ferritin +
   iron/TIBC/transferrin saturation ("repeat testing with iron studies"). No reticulocyte
@@ -2370,20 +2562,9 @@ A level the provider enters in answer to a hemoglobin question with its draw dat
 result like any other and counts when that date is on or after the start. With no hemoglobin on file at all the recheck step opens as well (a count of zero),
 beside v10's question for the level.
 
-`[GAP — NEEDS JOSH]` **One dead end of the same kind remains, and v14 does not close it.**
-Chart with **no** hemoglobin, on oral iron 14 or more days: the level is asked for (v10). If
-the provider enters today's value, it is recorded at the visit date, so it counts as "drawn
-since oral iron started": the recheck step closes, the response assessment opens, and — with
-one value and no baseline to measure a rise from, and below target — the response gates ask
-"Hemoglobin … newest result, drawn after <today>?", which cannot be answered; "Not available"
-closes both and the route is left with "continue oral iron" only. (At or above target the
-at-target arm opens maintenance and nothing is asked.) v13 asked the same question in this
-case, so this is not new, but it is the same failure you reported, reached by typing the value
-instead of having it on the chart. It cannot be fixed in the pathway: the count cannot tell a
-value entered now from a recheck, and "no baseline before the start" has no encoding. It needs
-an engine decision — e.g. a response gate one value short *with no value before the start*
-orders a recheck rather than asking, or a provider-entered value does not count as a recheck.
-Proved as it stands in `gate-proof.ts response-recheck` ("KNOWN GAP").
+**Closed in v15.** v14 left one dead end of the same kind — no hemoglobin on the chart, the
+provider types today's value, and the response gates ask for a result "drawn after" today.
+Josh decided it the same day (section above: "recheck in 2–4 weeks, not nonresponse").
 
 **Proof.** `gate-proof.ts response-recheck` (new), both edge orders, real engine, clock
 2026-10-04. Step 2.14 route: Josh's patient (ferrous gluconate 198630 undated) → one

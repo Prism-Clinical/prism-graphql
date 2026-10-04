@@ -39,7 +39,7 @@ const gate = (id: string, condition: Record<string, unknown>) => node(id, 'Gate'
   on_unresolved: 'ask', condition,
 });
 
-const graph = () => makeGraphContext(
+const graph = (extra: { nodes: GraphNode[]; edges: GraphEdge[] } = { nodes: [], edges: [] }) => makeGraphContext(
   [
     node('root', 'Pathway'),
     node('stage', 'Stage'),
@@ -49,6 +49,7 @@ const graph = () => makeGraphContext(
     node('lab-recheck', 'LabTest'),
     gate('gate-rechecked', COUNT('at_least')),
     node('step-assess', 'Step'),
+    ...extra.nodes,
   ],
   [
     edge('root', 'stage', 'HAS_STAGE'),
@@ -58,12 +59,13 @@ const graph = () => makeGraphContext(
     edge('step-recheck', 'lab-recheck', 'HAS_LAB_TEST'),
     edge('step-on-iron', 'gate-rechecked', 'HAS_GATE'),
     edge('gate-rechecked', 'step-assess', 'BRANCHES_TO'),
+    ...extra.edges,
   ],
 );
 
 const confidence = { computeNodeConfidence: jest.fn().mockResolvedValue({ confidence: 0.85, breakdown: [], resolutionType: 'AUTO_RESOLVED' }) };
 
-function run(asOf: string, labs: Array<[string, number]>, started?: string) {
+function run(asOf: string, labs: Array<[string, number]>, started?: string, g = graph()) {
   const pc = {
     patientId: 'pt-1', conditionCodes: [], allergies: [],
     medications: [{ code: '198630', system: 'RXNORM' }],
@@ -76,7 +78,7 @@ function run(asOf: string, labs: Array<[string, number]>, started?: string) {
   return new TraversalEngine(
     confidence as never, { autoResolveThreshold: 0.85, suggestThreshold: 0.6 },
     temporalContext, {}, factStore, new Map(),
-  ).traverse(graph(), pc, answers);
+  ).traverse(g, pc, answers);
 }
 
 const status = (r: Awaited<ReturnType<typeof run>>, id: string) => r.resolutionState.get(id)?.status;
@@ -112,6 +114,39 @@ describe('count_comparison: less_than on an anchored window', () => {
     const r = await run('2026-10-04T13:00:00.000Z', [['2026-09-01', 8]]);
     expect(r.pendingQuestions).toHaveLength(1);
     expect(r.pendingQuestions[0].prompt).toMatch(/When did oral iron start/);
+  });
+});
+
+describe('baseline_days on an anchored count — "the rise cannot be measured yet"', () => {
+  // Fewer than 2 of { the latest value up to 28 d before the start, every value since }.
+  const UNMEASURABLE = { ...COUNT('less_than'), count_threshold: 2, window_from: { ...WINDOW, baseline_days: 28 } };
+  const g = () => graph({
+    nodes: [gate('gate-unmeasurable', UNMEASURABLE), node('step-recheck-later', 'Step')],
+    edges: [
+      edge('step-on-iron', 'gate-unmeasurable', 'HAS_GATE'),
+      edge('gate-unmeasurable', 'step-recheck-later', 'BRANCHES_TO'),
+    ],
+  });
+
+  it('one hemoglobin since the start and no baseline: unmeasurable', async () => {
+    const r = await run('2026-10-04T13:00:00.000Z', [['2026-10-04', 9]], '2026-09-03', g());
+    expect(r.pendingQuestions).toEqual([]);
+    expect(status(r, 'step-recheck-later')).toBe(NodeStatus.INCLUDED);
+  });
+
+  it('a baseline and a value since the start: measurable', async () => {
+    const r = await run('2026-10-04T13:00:00.000Z', [['2026-09-01', 8], ['2026-10-04', 9]], '2026-09-03', g());
+    expect(status(r, 'gate-unmeasurable')).toBe(NodeStatus.GATED_OUT);
+  });
+
+  it('only ONE baseline counts: two pre-iron values and nothing since is still one point', async () => {
+    const r = await run('2026-10-04T13:00:00.000Z', [['2026-08-20', 8.5], ['2026-09-01', 8]], '2026-09-03', g());
+    expect(status(r, 'gate-unmeasurable')).toBe(NodeStatus.INCLUDED);
+  });
+
+  it('a baseline older than baseline_days does not count', async () => {
+    const r = await run('2026-10-04T13:00:00.000Z', [['2026-07-01', 8], ['2026-10-04', 9]], '2026-09-03', g());
+    expect(status(r, 'gate-unmeasurable')).toBe(NodeStatus.INCLUDED);
   });
 });
 

@@ -221,11 +221,6 @@ describe('window_from at import', () => {
       '"delta_comparison" must be "at_least" or "less_than"',
     ],
     [
-      'baseline_days on a count',
-      { ...TREND, operator: 'count_in_window', window_from: { ...ORAL_IRON, baseline_days: 14 } },
-      'a count has no baseline',
-    ],
-    [
       'a fractional baseline_days',
       { ...TREND, window_from: { ...ORAL_IRON, baseline_days: 1.5 } },
       '"baseline_days" must be an integer',
