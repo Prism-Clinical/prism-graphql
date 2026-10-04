@@ -413,44 +413,43 @@ export const Query = {
     ) => {
       const { pool } = context;
       const limit = Math.min(args.limit ?? 20, 100);
-      const searchPattern = `%${args.query}%`;
 
-      let query: string;
-      const params: unknown[] = [searchPattern, searchPattern];
-      let paramIdx = 3;
+      // Every WORD must appear, in the code or the description, in any order.
+      // A literal substring match meant "anemia in pregnancy" found nothing,
+      // because the code is called "Anemia complicating pregnancy". Joining
+      // words ("in", "of", …) say nothing about which code is meant.
+      const STOP = new Set(['in', 'of', 'the', 'and', 'with', 'a', 'an', 'to', 'for', 'on', 'due', 'by']);
+      const words = args.query.trim().split(/\s+/).filter((w) => w.length > 0);
+      const meaningful = words.filter((w) => !STOP.has(w.toLowerCase()));
+      const terms = (meaningful.length > 0 ? meaningful : words).slice(0, 8);
+      if (terms.length === 0) return [];
 
+      const params: unknown[] = [];
+      const clauses = terms.map((t) => {
+        params.push(`%${t.replace(/[%_\\]/g, (ch) => `\\${ch}`)}%`);
+        return `(code ILIKE $${params.length} OR description ILIKE $${params.length})`;
+      });
       if (args.system) {
-        query = `
-          SELECT code, system, description, category, is_common AS "isCommon",
-                 lab_kind AS "labKind"
-          FROM clinical_code_reference
-          WHERE (code ILIKE $1 OR description ILIKE $2)
-            AND system = $${paramIdx}
-          ORDER BY
-            (code ILIKE $${paramIdx + 1}) DESC,
-            is_common DESC,
-            length(code) ASC,
-            code ASC
-          LIMIT $${paramIdx + 2}
-        `;
-        const prefixPattern = `${args.query}%`;
-        params.push(args.system, prefixPattern, limit);
-      } else {
-        query = `
-          SELECT code, system, description, category, is_common AS "isCommon",
-                 lab_kind AS "labKind"
-          FROM clinical_code_reference
-          WHERE (code ILIKE $1 OR description ILIKE $2)
-          ORDER BY
-            (code ILIKE $3) DESC,
-            is_common DESC,
-            length(code) ASC,
-            code ASC
-          LIMIT $4
-        `;
-        const prefixPattern = `${args.query}%`;
-        params.push(prefixPattern, limit);
+        params.push(args.system);
+        clauses.push(`system = $${params.length}`);
       }
+      // A code typed as a prefix first; then common codes; then the shortest
+      // code, so a family (O99.01) comes before its trimester leaves.
+      params.push(`${terms[0]}%`);
+      const prefixIdx = params.length;
+      params.push(limit);
+      const query = `
+        SELECT code, system, description, category, is_common AS "isCommon",
+               lab_kind AS "labKind"
+        FROM clinical_code_reference
+        WHERE ${clauses.join(' AND ')}
+        ORDER BY
+          (code ILIKE $${prefixIdx}) DESC,
+          is_common DESC,
+          length(code) ASC,
+          code ASC
+        LIMIT $${params.length}
+      `;
 
       const result = await pool.query(query, params);
       return result.rows;

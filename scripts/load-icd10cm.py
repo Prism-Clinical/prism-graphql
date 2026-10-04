@@ -64,6 +64,12 @@ def main() -> None:
             "category_description = EXCLUDED.category_description, is_billable = EXCLUDED.is_billable, "
             "parent_code = EXCLUDED.parent_code, path = EXCLUDED.path;"
         )
+    # The simulator's code search reads clinical_code_reference, not icd10_codes.
+    print(
+        "INSERT INTO clinical_code_reference (code, system, description, category, is_common) "
+        "SELECT code, 'ICD-10', description, category, false FROM icd10_codes "
+        "ON CONFLICT (code, system) DO NOTHING;"
+    )
     print("COMMIT;")
 
 
