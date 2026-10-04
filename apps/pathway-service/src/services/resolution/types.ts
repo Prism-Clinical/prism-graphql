@@ -508,6 +508,13 @@ export interface GateEvaluationResult {
    * rather than re-collecting the one the series already has.
    */
   unresolvedSeries?: Array<{ condition: GateCondition; latestDate: string }>;
+  /**
+   * The unresolved conditions whose trouble is a `horizon: "PREGNANCY"` window
+   * that could not be dated — asked for as the patient's GESTATIONAL AGE, not
+   * as the condition's own datum. A subset of the conditions that could not be
+   * answered; on a single-condition gate, that condition.
+   */
+  unresolvedPregnancyConditions?: GateCondition[];
   /** The resolved anchors, deduplicated by key, in condition order. */
   windowAnchors?: WindowAnchorEvidence[];
   /**

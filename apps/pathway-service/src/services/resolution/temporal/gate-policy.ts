@@ -1,5 +1,10 @@
 import { EffectivePolicy } from './select-facts';
-import { EvaluationTemporalContext } from './evaluation-context';
+import {
+  EvaluationTemporalContext,
+  PregnancyWindow,
+  pregnancyWindowFrom,
+  requiresPregnancyAnchor,
+} from './evaluation-context';
 import {
   PathwayTemporalDefaults,
   resolveEffectivePolicy,
@@ -29,6 +34,11 @@ import { AdaptedCondition } from './condition-adapter';
  * up-front session rejection listing every offending gate; catching it here
  * would restore the mid-traversal throw the sweep exists to prevent — after LLM
  * gates have run and audit rows have been written.
+ *
+ * **The evaluator calls `conditionPolicyFor` (below), not this.** This function
+ * has no patient data, so a `horizon: "PREGNANCY"` condition throws
+ * `MISSING_PREGNANCY_ANCHOR` here by design; `conditionPolicyFor` is the one
+ * that derives the bound and reports a missing gestational age as an outcome.
  */
 export function effectivePolicyFor(
   adapted: AdaptedCondition,
@@ -44,4 +54,60 @@ export function effectivePolicyFor(
     adapted.override,
   );
   return toEffectivePolicy(tier, ctx, anchorLowerBound);
+}
+
+/** What `conditionPolicyFor` resolved for one condition. */
+export type ConditionPolicy =
+  | {
+      status: 'RESOLVED';
+      policy: EffectivePolicy;
+      /** Set when the window is the PREGNANCY horizon's — evidence for the reason string. */
+      pregnancy?: PregnancyWindow;
+    }
+  /**
+   * The condition's horizon is PREGNANCY and the patient has no usable
+   * gestational age. NOT a policy: there is no window to select over, and the
+   * caller must report the condition as unresolved for that datum.
+   */
+  | { status: 'PREGNANCY_UNDATED' };
+
+/**
+ * `effectivePolicyFor`, plus the one horizon whose lower bound is PATIENT data.
+ *
+ * This is the seam for `horizon: "PREGNANCY"`. The cascade resolves the tier
+ * exactly as for every other condition; only then — when the resolved tier IS
+ * PREGNANCY — is the gestational age read, through a thunk so a condition that
+ * does not need it never touches patient data. The evaluator's four operator
+ * classes all call this one function, so none of them can resolve the window
+ * differently or forget the missing-age outcome.
+ *
+ * The age arrives as a thunk rather than as a field on
+ * `EvaluationTemporalContext` because that context is PINNED at session
+ * creation, and a gestational age answered mid-session must move the window on
+ * the very next evaluation.
+ */
+export function conditionPolicyFor(
+  adapted: AdaptedCondition,
+  ctx: EvaluationTemporalContext,
+  pathwayDefaults: PathwayTemporalDefaults,
+  gestationalAgeWeeks: () => unknown,
+  /** The resolved `window_from` lower bound; see `toEffectivePolicy`. */
+  anchorLowerBound?: string,
+): ConditionPolicy {
+  const tier = resolveEffectivePolicy(
+    adapted.selection.field,
+    ctx.temporalPolicyVersion,
+    pathwayDefaults,
+    adapted.override,
+  );
+  if (!requiresPregnancyAnchor(tier.horizon)) {
+    return { status: 'RESOLVED', policy: toEffectivePolicy(tier, ctx, anchorLowerBound) };
+  }
+  const pregnancy = pregnancyWindowFrom(gestationalAgeWeeks(), ctx);
+  if (pregnancy === null) return { status: 'PREGNANCY_UNDATED' };
+  return {
+    status: 'RESOLVED',
+    policy: toEffectivePolicy(tier, ctx, anchorLowerBound, pregnancy.lowerBound),
+    pregnancy,
+  };
 }

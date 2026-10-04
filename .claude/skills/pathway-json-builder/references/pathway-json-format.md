@@ -14,6 +14,8 @@
 > - `count_comparison` on `count_in_window` (2026-10-04; anemia v14 uses it)
 > - `baseline_days` on an anchored `count_in_window` (2026-10-04; anemia v15 uses it)
 > - `not_includes_code`
+> - `horizon: "PREGNANCY"` — a window that opens at the start of THIS pregnancy, dated from
+>   `patient.gestational_age_weeks` (2026-10-04; see **Temporal horizon & status**)
 > - nested AND/OR condition groups inside a compound gate
 > - `DATE` answers (treatment start dates), typed `patient.*` datum answers, and the
 >   "Not available" answer to a data question (`notAvailable`)
@@ -362,6 +364,39 @@ the simulator:
 | Closed a response check silently when no dated value existed. | Ask for the value (with its date), and let "Not available" route to ordering the test. *(Superseded for the "not yet rechecked" case by the next row.)* |
 | With one hemoglobin since oral iron started and no baseline — most simply a value the provider typed in at the visit — asked for a result "drawn after" today (`[DECISION — Josh 2026-10-04]`: "recheck in 2–4 weeks, not nonresponse"). | A third anchored state: `AND(count at_least 1 since the start, count less_than 2 with baseline_days, below target)` opens a "cannot be measured yet" step — repeat test, schedule, "this is not nonresponse" — and the response gates move behind "two points, or at target". Anemia v15: `gate-rise-unmeasurable` → Step 2.24. |
 | Asked for a newer hemoglobin when the response to oral iron was due and none had been drawn since it started; "No newer result" closed both response gates and left nothing (`[DECISION — Josh 2026-10-04]`). | **Order the recheck; do not ask for the value.** An anchored count gate — `count_in_window`, `count_comparison: "less_than"`, `count_threshold: 1`, on the response gates' own `window_from` — opens a step that carries the recheck orders and says what they decide. The response gates move behind the `at_least` twin, so they are not evaluated (and cannot ask) until a value since the start exists. Anemia v14: `gate-response-recheck-due` → Step 2.21, `gate-rechecked` → Step 2.22. |
+
+| Approximated "drawn this pregnancy" with fixed look-backs banded by gestational age (98 / 196 / 300 days). A 98-day look-back at 8 weeks reaches six weeks before the LMP — about eight before conception — so a screen from before this pregnancy counted as done in it (`[DECISION — Josh 2026-10-04]`: "drawn this pregnancy needs to use the gestational age"). | **`horizon: "PREGNANCY"`** on the condition. The window opens on the LMP date — the session clock minus `patient.gestational_age_weeks` × 7 days — and needs no banding: one gate serves every gestational age. A missing gestational age asks for it; it never guesses a window. See **Done this pregnancy** below. |
+
+#### Done this pregnancy — `horizon: "PREGNANCY"`
+
+"Was X drawn / diagnosed / started **this pregnancy**" is one condition with
+`horizon: "PREGNANCY"` — never a set of gates banded by gestational age, and never a fixed
+day count chosen to be "about a pregnancy long":
+
+```json
+{ "field": "labs", "operator": "not_includes_code", "value": "75622-1", "system": "LOINC",
+  "display": "HIV-1/2 antigen and antibody screen", "horizon": "PREGNANCY" }
+```
+
+- **Screen already done** → `includes_code` + `horizon: "PREGNANCY"`; **screen still owed**
+  → `not_includes_code` + `horizon: "PREGNANCY"` (the exact mirror, same window).
+- **A value from this pregnancy** → the threshold leaf with `horizon: "PREGNANCY"`
+  (`less_than` on hemoglobin reads the newest value since the LMP and ignores one from
+  before it; with none since the LMP it asks for the lab). This is rule 1's "an older value
+  is clinically meaningless" case — say so in the brief: `[WINDOW — <gate-id>: this
+  pregnancy]`.
+- **Do not also gate on gestational age to "protect" the window.** The engine reads
+  `patient.gestational_age_weeks` itself; when it is missing the gate pends on the one
+  gestational-age question every other gate shares. A separate `patient.gestational_age_weeks`
+  condition belongs in the gate only when the *timing* of the step depends on it ("at or
+  after 24 weeks").
+- **Leave `prompt` unset** (as on every chart gate). If one is set, it is not used for the
+  gestational-age question.
+- **Simulator caveat.** The simulator dates nothing, and an undated lab is asserted current:
+  it satisfies `includes_code` inside any bounded window, `PREGNANCY` included (see **What
+  needs dated facts**). So in the simulator a lab on the chart reads as "drawn this
+  pregnancy" whatever its real date; the bound is exercised only with dated labs
+  (`labResults[].date`, or a dated answer). State this in the brief (§18).
 
 Authoring rules that follow:
 
@@ -877,10 +912,52 @@ Any attribute or coded condition may carry:
 
 - **`horizon`** — how far back facts remain relevant to *this condition*. Either a named
   horizon — `"LIFETIME"`, `"YEAR"` (365 d), `"QUARTER"` (90 d), `"MONTH"` (30 d),
-  `"WEEK"` (7 d), `"DAY"` (1 d), `"ENCOUNTER"` — or a custom day-count object
-  `{ "days": N }` with N an integer 1..36525. Named horizons are fixed day-widths counted
-  back from `evaluationAsOf` (not calendar units).
+  `"WEEK"` (7 d), `"DAY"` (1 d), `"ENCOUNTER"`, `"PREGNANCY"` (josh-dev) — or a custom
+  day-count object `{ "days": N }` with N an integer 1..36525. Named horizons are fixed
+  day-widths counted back from `evaluationAsOf` (not calendar units), except `ENCOUNTER`
+  (since `encounterStart`) and `PREGNANCY` (since the LMP date — next section).
 - **`status`** — which fact states count: `"active"`, `"inactive"`, or `"any"`.
+
+#### `"PREGNANCY"` — since the start of this pregnancy (josh-dev, 2026-10-04)
+
+`[DECISION — Josh 2026-10-04]`: "drawn this pregnancy needs to use the gestational age".
+
+- **The window.** Lower bound = `evaluationAsOf` − `patient.gestational_age_weeks` × 7 days,
+  floored to 00:00 UTC of that day. Gestational age is dated from the last menstrual period,
+  so this is the **LMP date**, and a fact dated on that day counts. Fractional weeks are
+  honoured (28.5 weeks = 199.5 days). Upper bound = `evaluationAsOf`, as for every horizon.
+  At a session clock of 2026-10-04 and 28 weeks the window opens 2026-03-22.
+- **Where it may be written.** On a condition's `horizon` only — coded conditions on any
+  field (`labs`, `conditions`, `medications`, `allergies`, `vitals`) and `lab.*` /
+  `vitals.*` / `allergy.*` attribute conditions, with every operator that honours `horizon`
+  (`includes_code`, `not_includes_code`, `equals`, `exists`, `greater_than`, `less_than`,
+  `count_in_window`, trends and deltas). **Not** as a pathway-level `temporal_defaults`
+  default — refused with `PREGNANCY is a per-condition horizon`. Exclusive with
+  `window_days` and `window_from`, like any `horizon`. Ignored on `patient.*` (no temporal
+  policy), like any `horizon`.
+- **Which gestational age.** The session's *effective* patient at each evaluation: the
+  chart's `patientAttributes.gestational_age_weeks`, a value added mid-session, or the
+  typed answer to the gestational-age question. It is **not** pinned when the session
+  starts, so an age answered or corrected during the visit moves the window on the next
+  evaluation.
+- **Gestational age missing** (absent, not a number, ≤ 0, or more than 36525 days' worth):
+  the condition is **unresolved** — `dataUnavailable`, never a "yes" and never a "no", for
+  every operator including `not_includes_code` — and follows `on_unresolved`. With `ask`
+  the gate pends on **the same question a `patient.gestational_age_weeks` attribute gate
+  asks** (`datumKey` `patient.gestational_age_weeks`, NUMERIC, "Gestational age (weeks) —
+  current value?"), so every gate that needs the age shares one question and one answer
+  decides them all. It never falls back to `LIFETIME` or to an empty window, and it never
+  rejects the session.
+- **Dated and undated facts** — the kernel's rules for any bounded window, unchanged: a
+  dated lab is in when its date is on or after the LMP date; a condition or medication is
+  an interval, so one that began earlier and is still open overlaps the pregnancy; an
+  undated fact is asserted current and satisfies membership and threshold reads, and never
+  counts toward an aggregate.
+- **Evidence.** The reason reads `… within this pregnancy (since 2026-03-22, 28 weeks)`,
+  and the gate records `patient.gestational_age_weeks` among the fields it read; the
+  compiler lists it among the gate's datums.
+- **`legacy-v0` sessions refuse it** (`horizon PREGNANCY requires the v1 temporal kernel`),
+  as they refuse `window_from`; `v1` is the default.
 
 Rules the **builder must enforce** (import accepts the keys but defers value/conflict
 validation to session-creation preflight — a violation would import cleanly and then fail
@@ -901,7 +978,8 @@ at runtime):
 1. **`window_days` XOR `horizon`** — never both on one condition ("horizon supersedes
    window_days"; both-set throws `INVALID_TEMPORAL_DEFAULTS` at preflight). Verified: the
    import validator does NOT catch this.
-2. `horizon` values must be from the grammar above; `status` from its enum.
+2. `horizon` values must be from the grammar above; `status` from its enum. (`"PREGNANCY"`
+   is upper-case like the other named horizons; `"pregnancy"` is `not a horizon`.)
 3. `window_days` itself must be a positive integer ≤ 36525 (also preflight-owned).
 
 Authoring guidance: use `window_days` when the *operator* is inherently windowed

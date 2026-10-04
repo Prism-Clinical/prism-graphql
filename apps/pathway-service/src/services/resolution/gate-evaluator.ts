@@ -34,10 +34,18 @@ import { boundEpochRange } from './temporal/interval';
 import type { ResolvedHorizon } from './temporal/overlap';
 import { isTemporalOperator, operatorClass } from './temporal/contract';
 import type { UncertaintyReason } from './temporal/contract';
-import { adaptAttributeCondition, adaptCodedCondition } from './temporal/condition-adapter';
-import { effectivePolicyFor } from './temporal/gate-policy';
+import {
+  adaptAttributeCondition,
+  adaptCodedCondition,
+  conditionReadsGestationalAge,
+} from './temporal/condition-adapter';
+import type { AdaptedCondition } from './temporal/condition-adapter';
+import { conditionPolicyFor } from './temporal/gate-policy';
+import type { ConditionPolicy } from './temporal/gate-policy';
+import { PREGNANCY_HORIZON_ATTRIBUTE } from './temporal/evaluation-context';
+import type { PregnancyWindow } from './temporal/evaluation-context';
 import { selectFacts } from './temporal/select-facts';
-import type { FactDecision } from './temporal/select-facts';
+import type { EffectivePolicy, FactDecision } from './temporal/select-facts';
 import {
   anchorDueOn,
   anchorLabelFor,
@@ -539,6 +547,15 @@ export interface ConditionOutcome {
    * either way, and it must not be asked anything.
    */
   notYetDue?: { dueOn: string };
+  /**
+   * A `horizon: "PREGNANCY"` condition on a patient with no usable gestational
+   * age: there is no window to select over. Always paired with
+   * `dataUnavailable: true`; kept as its own flag because the datum to ask for
+   * is the GESTATIONAL AGE, not the condition's own lab or code — and for a
+   * membership condition `askFor` has no question at all, so without this flag
+   * the gate would quietly take its default.
+   */
+  gestationalAgeMissing?: boolean;
   /** The anchor must consult this visit's recommendation, which is not settled yet. */
   awaitingSession?: boolean;
   /** Medication nodes the session anchor source read — recorded as influences. */
@@ -599,6 +616,111 @@ function evaluateConditionLegacyAdapted(
 }
 
 /**
+ * The `legacy-v0` MODE's evaluator: `evaluateConditionLegacyAdapted`, plus the
+ * refusal of the one horizon legacy would misread.
+ *
+ * Legacy has no horizons at all — it reads `window_days` and nothing else — so
+ * `horizon: "PREGNANCY"` would silently become the patient's whole history,
+ * and a screen from a previous pregnancy would count as done in this one.
+ * Refused the way `window_from` is: an explicit reason, never an approximation.
+ *
+ * A wrapper rather than one more key in the adapted function's loop, because
+ * the `v1` kernel ALSO falls back to that function (for `patient.*`, whose
+ * override is ignored on both sides) and "requires the v1 kernel" would be a
+ * false statement there.
+ */
+function evaluateConditionLegacyMode(
+  condition: GateCondition,
+  deps: GateEvaluationDeps,
+): ConditionOutcome {
+  if (conditionReadsGestationalAge(condition)) {
+    return {
+      satisfied: false,
+      reason: 'horizon PREGNANCY requires the v1 temporal kernel; legacy-v0 cannot evaluate it',
+      fieldsRead: isAttributeCondition(condition) ? [condition.attribute] : [condition.field],
+    };
+  }
+  return evaluateConditionLegacyAdapted(condition, deps);
+}
+
+// ─── horizon: "PREGNANCY" ─────────────────────────────────────────────
+
+/**
+ * Resolve the policy for one condition — the single call all four kernel
+ * operator classes make.
+ *
+ * The gestational age is read with `resolveAttribute`, the same reader a
+ * `patient.gestational_age_weeks` attribute condition uses, off the same
+ * `deps.patientContext` (the session's EFFECTIVE context: initial + additions
+ * + typed answers). So a gestational age answered mid-session moves the window
+ * on the next evaluation, and the two ways of reading it cannot disagree.
+ */
+function policyFor(
+  adapted: AdaptedCondition,
+  deps: GateEvaluationDeps,
+  anchorLowerBound?: string,
+): ConditionPolicy {
+  return conditionPolicyFor(
+    adapted,
+    deps.temporalContext,
+    deps.pathwayDefaults,
+    () => resolveAttribute(deps.patientContext, PREGNANCY_HORIZON_ATTRIBUTE, deps.codeMap).value,
+    anchorLowerBound,
+  );
+}
+
+/**
+ * A PREGNANCY-horizon condition that could not be dated.
+ *
+ * UNRESOLVED for missing data — the shape a scalar with no value reports
+ * (`dataUnavailable`), never a verdict. `satisfied: false` for every operator
+ * INCLUDING `not_includes_code`: "no gestational age" is not "not drawn this
+ * pregnancy", and a silent `true` there would re-order every screen. Nothing
+ * is selected, so there is no LIFETIME fallback and no zero-width window.
+ */
+function pregnancyUndatedOutcome(fieldsRead: string[], what: string): ConditionOutcome {
+  return {
+    satisfied: false,
+    reason:
+      `Cannot tell what falls within this pregnancy for ${what}: ` +
+      `gestational age (${PREGNANCY_HORIZON_ATTRIBUTE}) is missing or not a positive number`,
+    fieldsRead: [...new Set([...fieldsRead, PREGNANCY_HORIZON_ATTRIBUTE])],
+    indeterminate: false,
+    uncertainty: [],
+    dataUnavailable: true,
+    gestationalAgeMissing: true,
+  };
+}
+
+/** "this pregnancy (since 2026-03-22, 28 weeks)". */
+function pregnancyPhrase(w: PregnancyWindow): string {
+  const weeks = Number(w.weeks.toFixed(1));
+  return `this pregnancy (since ${w.lmpDate}, ${weeks} week${weeks === 1 ? '' : 's'})`;
+}
+
+/**
+ * Put the pregnancy window on an outcome: the gestational age among what was
+ * read (so a changed age re-decides the gate and the evidence trail names it),
+ * and the window on the reason. A no-op for every other horizon, so their
+ * outcomes keep the exact shape and prose they had.
+ */
+function inPregnancy(
+  outcome: ConditionOutcome,
+  resolved: ConditionPolicy,
+  /** The reason already names the window (`count_in_window` does). */
+  reasonNamesWindow = false,
+): ConditionOutcome {
+  if (resolved.status !== 'RESOLVED' || resolved.pregnancy === undefined) return outcome;
+  return {
+    ...outcome,
+    reason: reasonNamesWindow
+      ? outcome.reason
+      : `${outcome.reason} within ${pregnancyPhrase(resolved.pregnancy)}`,
+    fieldsRead: [...new Set([...outcome.fieldsRead, PREGNANCY_HORIZON_ATTRIBUTE])],
+  };
+}
+
+/**
  * The membership reason strings, kept byte-identical to the legacy evaluator's.
  *
  * `v1` changes *which facts* are admitted, not how the decision reads. Rewriting
@@ -646,8 +768,14 @@ function evaluateMembershipKernel(
 ): ConditionOutcome {
   const where = `condition (${condition.field})`;
   const adapted = adaptCodedCondition(condition, where);
-  const policy = effectivePolicyFor(adapted, deps.temporalContext, deps.pathwayDefaults);
-  const outcome = selectFacts(adapted.selection, deps.factStore, policy);
+  const resolved = policyFor(adapted, deps);
+  if (resolved.status === 'PREGNANCY_UNDATED') {
+    return pregnancyUndatedOutcome(
+      condition.field ? [condition.field] : [],
+      `${condition.field}:${condition.value}`,
+    );
+  }
+  const outcome = selectFacts(adapted.selection, deps.factStore, resolved.policy);
 
   // Uncertainty is read off the DECISIONS, not off the outcome's summary flags,
   // because the flags are booleans and D5 requires the reasons themselves. For
@@ -657,11 +785,11 @@ function evaluateMembershipKernel(
   const uncertainty = [...new Set(outcome.decisions.flatMap((d) => d.uncertainty))];
 
   if (condition.operator === 'not_includes_code') {
-    return notIncludesOutcome(condition, outcome.decisions, uncertainty);
+    return inPregnancy(notIncludesOutcome(condition, outcome.decisions, uncertainty), resolved);
   }
 
   const satisfied = outcome.status === 'READY';
-  return {
+  return inPregnancy({
     satisfied,
     reason: membershipReason(condition, satisfied),
     fieldsRead: condition.field ? [condition.field] : [],
@@ -670,7 +798,7 @@ function evaluateMembershipKernel(
     // instead of asserting a stale one.
     indeterminate: outcome.status === 'INDETERMINATE',
     uncertainty,
-  };
+  }, resolved);
 }
 
 /**
@@ -798,7 +926,22 @@ function evaluateScalarKernel(
 ): ConditionOutcome {
   const where = `condition (${condition.field})`;
   const adapted = adaptCodedCondition(condition, where);
-  const policy = effectivePolicyFor(adapted, deps.temporalContext, deps.pathwayDefaults);
+  const resolved = policyFor(adapted, deps);
+  if (resolved.status === 'PREGNANCY_UNDATED') {
+    return pregnancyUndatedOutcome(
+      condition.field ? [condition.field] : [],
+      `${condition.field}:${condition.value}`,
+    );
+  }
+  return inPregnancy(scalarOutcome(condition, adapted, resolved.policy, deps), resolved);
+}
+
+function scalarOutcome(
+  condition: CodedCondition,
+  adapted: AdaptedCondition,
+  policy: EffectivePolicy,
+  deps: GateEvaluationDeps,
+): ConditionOutcome {
   const outcome = selectFacts(adapted.selection, deps.factStore, policy);
 
   const fieldsRead = condition.field ? [condition.field] : [];
@@ -882,7 +1025,9 @@ function evaluateScalarKernel(
  * "last 90 days", and LIFETIME renders "lifetime". Only a horizon with a
  * non-integral width — ENCOUNTER — needs a spelling legacy never had.
  */
-function windowDescription(horizon: ResolvedHorizon): string {
+function windowDescription(horizon: ResolvedHorizon, pregnancy?: PregnancyWindow): string {
+  // Named for what it is: its width in days is an accident of the visit date.
+  if (pregnancy !== undefined) return pregnancyPhrase(pregnancy);
   if (horizon.lowerBound === null) return 'lifetime';
   const days = (Date.parse(horizon.upperBound) - Date.parse(horizon.lowerBound)) / 86_400_000;
   if (!Number.isInteger(days)) return `the window since ${horizon.lowerBound}`;
@@ -1039,12 +1184,14 @@ function evaluateAggregateKernel(
     resolvedAnchor && baselineDays !== undefined
       ? new Date(Date.parse(resolvedAnchor.lowerBound) - baselineDays * 86_400_000).toISOString()
       : resolvedAnchor?.lowerBound;
-  const policy = effectivePolicyFor(
-    adapted,
-    deps.temporalContext,
-    deps.pathwayDefaults,
-    selectionLowerBound,
-  );
+  // `horizon: "PREGNANCY"` and `window_from` are mutually exclusive (the
+  // override parser refuses both), so an undated pregnancy is never anchored.
+  const resolved = policyFor(adapted, deps, selectionLowerBound);
+  if (resolved.status === 'PREGNANCY_UNDATED') {
+    return pregnancyUndatedOutcome(fieldsRead, `${operator} of ${field}:${value}`);
+  }
+  const policy = resolved.policy;
+  const pregnancy = resolved.pregnancy;
   const outcome = selectFacts(adapted.selection, deps.factStore, policy);
 
   // Appended to every reason this condition gives, so the date the window
@@ -1069,8 +1216,10 @@ function evaluateAggregateKernel(
         },
       }
     : {};
-  const finish = (o: ConditionOutcome): ConditionOutcome =>
-    resolvedAnchor ? { ...o, reason: o.reason + anchorNote, ...anchorFields, ...sessionRead } : o;
+  const finish = (o: ConditionOutcome, reasonNamesWindow = false): ConditionOutcome =>
+    resolvedAnchor
+      ? { ...o, reason: o.reason + anchorNote, ...anchorFields, ...sessionRead }
+      : inPregnancy(o, resolved, reasonNamesWindow);
 
   // ─── NOT YET DUE — before anything is selected ─────────────────────
   //
@@ -1140,13 +1289,13 @@ function evaluateAggregateKernel(
       satisfied,
       reason:
         `Found ${matches} matching ${value} in ${field} ` +
-        `within ${windowDescription(policy.horizon)} (${bound})`,
+        `within ${windowDescription(policy.horizon, pregnancy)} (${bound})`,
       fieldsRead,
       // Derived, never hard-coded: only an unorderable series is indeterminate,
       // and `count_in_window` never builds one.
       indeterminate: false,
       uncertainty,
-    });
+    }, true);
   }
 
   // trend_up / trend_down / delta_from_baseline — a numeric series over labs.
@@ -1312,7 +1461,19 @@ function evaluateAttributeKernel(
   const adapted = adaptAttributeCondition(condition, deps.codeMap, where);
   if (adapted === null) return evaluateDemographicFallback(condition, deps);
 
-  const policy = effectivePolicyFor(adapted, deps.temporalContext, deps.pathwayDefaults);
+  const resolved = policyFor(adapted, deps);
+  if (resolved.status === 'PREGNANCY_UNDATED') {
+    return pregnancyUndatedOutcome([condition.attribute], condition.attribute);
+  }
+  return inPregnancy(attributeOutcome(condition, adapted, resolved.policy, deps), resolved);
+}
+
+function attributeOutcome(
+  condition: AttributeCondition,
+  adapted: AdaptedCondition,
+  policy: EffectivePolicy,
+  deps: GateEvaluationDeps,
+): ConditionOutcome {
   const outcome = selectFacts(adapted.selection, deps.factStore, policy);
 
   // Byte-identical to `resolveAttribute`'s: the attribute name, not the gate
@@ -1457,7 +1618,7 @@ function evaluateConditionKernel(
 export const CONDITION_EVALUATORS: Readonly<
   Record<EvaluationMode, ConditionEvaluator>
 > = Object.freeze({
-  legacy: evaluateConditionLegacyAdapted,
+  legacy: evaluateConditionLegacyMode,
   kernel: evaluateConditionKernel,
 });
 
@@ -1568,6 +1729,7 @@ function evaluatePatientAttribute(
   if (result.uncertainty !== undefined) out.uncertainty = result.uncertainty;
   if (result.dataUnavailable !== undefined) out.dataUnavailable = result.dataUnavailable;
   if (result.anchorUnresolved === true) out.unresolvedAnchorConditions = [gate.condition];
+  if (result.gestationalAgeMissing === true) out.unresolvedPregnancyConditions = [gate.condition];
   const shortSeries = seriesAskableOf(gate.condition, result);
   if (shortSeries) out.unresolvedSeries = [shortSeries];
   if (result.windowAnchor !== undefined) out.windowAnchors = [result.windowAnchor];
@@ -1790,6 +1952,8 @@ interface EntryResult {
   anchorless: GateCondition[];
   /** Of those, the trend/delta series exactly one dated value short. */
   shortSeries: Array<{ condition: GateCondition; latestDate: string }>;
+  /** Of those, the `horizon: "PREGNANCY"` leaves with no usable gestational age. */
+  undated: GateCondition[];
   /** Every anchor any leaf resolved, settled or not — evidence, not a question. */
   anchors: WindowAnchorEvidence[];
 }
@@ -1804,6 +1968,7 @@ interface CombinedEntries {
   unresolved: GateCondition[];
   anchorless: GateCondition[];
   shortSeries: Array<{ condition: GateCondition; latestDate: string }>;
+  undated: GateCondition[];
   anchors: WindowAnchorEvidence[];
   sessionNodeIds: string[];
   awaitingSession: boolean;
@@ -1825,6 +1990,7 @@ function evaluateEntry(
     unresolved: conditionUnresolved(outcome) ? [entry] : [],
     anchorless: outcome.anchorUnresolved === true ? [entry] : [],
     shortSeries: short ? [short] : [],
+    undated: outcome.gestationalAgeMissing === true ? [entry] : [],
     anchors: outcome.windowAnchor ? [outcome.windowAnchor] : [],
   };
 }
@@ -1849,6 +2015,7 @@ function combineEntries(op: 'AND' | 'OR', parts: readonly EntryResult[]): Combin
     unresolved: open ? [...new Set(parts.flatMap((p) => p.unresolved))] : [],
     anchorless: open ? [...new Set(parts.flatMap((p) => p.anchorless))] : [],
     shortSeries: open ? parts.flatMap((p) => p.shortSeries) : [],
+    undated: open ? [...new Set(parts.flatMap((p) => p.undated))] : [],
     anchors: parts.flatMap((p) => p.anchors),
     sessionNodeIds: [...new Set(results.flatMap((r) => r.sessionNodeIds ?? []))],
     awaitingSession: results.some((r) => r.awaitingSession === true),
@@ -1893,7 +2060,7 @@ function evaluateGroup(
     // Refused at import; fails closed like a compound gate with no conditions.
     return {
       outcome: { satisfied: false, reason: `${op} group has no conditions`, fieldsRead: [] },
-      unresolved: [], anchorless: [], shortSeries: [], anchors: [],
+      unresolved: [], anchorless: [], shortSeries: [], undated: [], anchors: [],
     };
   }
   const parts = group.conditions.map((e) => evaluateEntry(e, evaluateOneCondition, deps));
@@ -1930,6 +2097,7 @@ function evaluateGroup(
     unresolved: c.unresolved,
     anchorless: c.anchorless,
     shortSeries: c.shortSeries,
+    undated: c.undated,
     anchors: c.anchors,
   };
 }
@@ -2031,6 +2199,9 @@ function evaluateCompound(
     // series order is asked nothing, since a date would not unblock it.
     if (c.anchorless.length > 0) out.unresolvedAnchorConditions = c.anchorless;
     if (c.shortSeries.length > 0) out.unresolvedSeries = c.shortSeries;
+    // Which of those need the GESTATIONAL AGE (a `horizon: "PREGNANCY"` leaf
+    // that could not be dated) rather than their own datum.
+    if (c.undated.length > 0) out.unresolvedPregnancyConditions = c.undated;
   }
   const anchors = distinctAnchors(c.anchors);
   if (anchors.length > 0) out.windowAnchors = anchors;

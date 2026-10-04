@@ -2,6 +2,20 @@ import { GateProperties, GateCondition, isAttributeCondition, AttributeCodeMap, 
 import { resolveAttribute } from './attribute-registry';
 import { PatientContext, GraphNode } from '../confidence/types';
 import { GateType } from '../../types';
+import { conditionReadsGestationalAge } from './temporal/condition-adapter';
+import { isUsableGestationalAge, PREGNANCY_HORIZON_ATTRIBUTE } from './temporal/evaluation-context';
+
+/**
+ * A `horizon: "PREGNANCY"` condition whose window cannot be dated for this
+ * patient: no usable gestational age. Such a condition cannot be evaluated
+ * whatever its operator — even a membership one, which otherwise needs nothing.
+ */
+function pregnancyUndated(condition: GateCondition, patient: PatientContext, codeMap: AttributeCodeMap): boolean {
+  return (
+    conditionReadsGestationalAge(condition) &&
+    !isUsableGestationalAge(resolveAttribute(patient, PREGNANCY_HORIZON_ATTRIBUTE, codeMap).value)
+  );
+}
 
 export type GateClassification =
   | 'ALWAYS_EVALUABLE'
@@ -69,6 +83,7 @@ export function hasDataForCondition(
   patient: PatientContext,
   codeMap: AttributeCodeMap,
 ): boolean {
+  if (pregnancyUndated(condition, patient, codeMap)) return false;
   if (isAttributeCondition(condition)) {
     if (condition.operator === 'exists') return true; // data-independent
     return resolveAttribute(patient, condition.attribute, codeMap).value !== undefined;
@@ -101,7 +116,16 @@ export function hasDataForCondition(
   return false;
 }
 
-function missingDataForCondition(condition: GateCondition): MissingData {
+function missingDataForCondition(
+  condition: GateCondition,
+  patient: PatientContext,
+  codeMap: AttributeCodeMap,
+): MissingData {
+  // The gestational age comes first: without it the window is unknown, so
+  // whether the condition's own datum is "missing" cannot be said yet.
+  if (pregnancyUndated(condition, patient, codeMap)) {
+    return { attribute: PREGNANCY_HORIZON_ATTRIBUTE, comparison: undefined };
+  }
   if (isAttributeCondition(condition)) {
     return { attribute: condition.attribute, comparison: undefined };
   }
@@ -131,6 +155,8 @@ function missingDataForCondition(condition: GateCondition): MissingData {
  *  condition is data-dependent unless its operator is `exists` (data-independent);
  *  a coded condition is data-dependent iff its operator is in DATA_DEPENDENT_OPERATORS. */
 function isDataDependent(c: GateCondition): boolean {
+  // A PREGNANCY window depends on the gestational age, whatever the operator.
+  if (conditionReadsGestationalAge(c)) return true;
   return isAttributeCondition(c) ? c.operator !== 'exists' : DATA_DEPENDENT_OPERATORS.has(c.operator);
 }
 
@@ -217,7 +243,7 @@ function buildExplanation(
     case 'DATA_BLOCKED': {
       const missing = conditions
         .filter((c) => isDataDependent(c) && !hasDataForCondition(c, patient, codeMap))
-        .map(missingDataForCondition);
+        .map((c) => missingDataForCondition(c, patient, codeMap));
 
       const summary = missing
         .map((m) => {

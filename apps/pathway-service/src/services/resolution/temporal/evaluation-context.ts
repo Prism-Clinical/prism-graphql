@@ -12,7 +12,8 @@ export type NamedHorizon =
   | 'MONTH'
   | 'WEEK'
   | 'DAY'
-  | 'ENCOUNTER';
+  | 'ENCOUNTER'
+  | 'PREGNANCY';
 
 export interface CustomHorizon {
   days: number;
@@ -48,8 +49,10 @@ export const MAX_CUSTOM_HORIZON_DAYS = 36_525;
 /** ECMAScript's maximum time value (ES2024 §21.4.1.1). */
 const MAX_TIME_VALUE = 8.64e15;
 
+const MS_PER_DAY = 86_400_000;
+
 const NAMED: readonly string[] = [
-  'LIFETIME', 'YEAR', 'QUARTER', 'MONTH', 'WEEK', 'DAY', 'ENCOUNTER',
+  'LIFETIME', 'YEAR', 'QUARTER', 'MONTH', 'WEEK', 'DAY', 'ENCOUNTER', 'PREGNANCY',
 ];
 
 export function isNamedHorizon(h: unknown): h is NamedHorizon {
@@ -67,6 +70,85 @@ export function isCustomHorizon(h: unknown): h is CustomHorizon {
 /** Only ENCOUNTER needs `encounterStart`. Plan 03 sweeps effective horizons with this. */
 export function requiresEncounterAnchor(h: Horizon): boolean {
   return h === 'ENCOUNTER';
+}
+
+// ─── PREGNANCY horizon ────────────────────────────────────────────────
+
+/**
+ * The patient datum the PREGNANCY horizon is anchored on. Gestational age is
+ * dated from the last menstrual period, so `evaluationAsOf − weeks × 7 days`
+ * is the LMP date — the first day of THIS pregnancy.
+ *
+ * One constant, read by the evaluator (the value), the escalation prompt (the
+ * question), the compiler (what the gate reads) and reachability, so none of
+ * them can name a different datum.
+ */
+export const PREGNANCY_HORIZON_ATTRIBUTE = 'patient.gestational_age_weeks';
+
+/** Only PREGNANCY needs the patient's gestational age. */
+export function requiresPregnancyAnchor(h: Horizon): boolean {
+  return h === 'PREGNANCY';
+}
+
+/** The PREGNANCY horizon's window, resolved for one evaluation. */
+export interface PregnancyWindow {
+  /** ISO instant: 00:00 UTC on the LMP date, so a fact dated that day counts. */
+  lowerBound: string;
+  /** `YYYY-MM-DD` — the LMP date. */
+  lmpDate: string;
+  /** The gestational age the window was derived from. */
+  weeks: number;
+}
+
+/**
+ * Is this value a gestational age a window can be derived from? A positive
+ * finite NUMBER — a string "28" is not coerced, for the reason `compareScalar`
+ * does not coerce one — and no wider than the engine's widest bounded window
+ * (`MAX_CUSTOM_HORIZON_DAYS`), which also keeps the LMP date representable.
+ */
+export function isUsableGestationalAge(weeks: unknown): weeks is number {
+  return (
+    typeof weeks === 'number' &&
+    Number.isFinite(weeks) &&
+    weeks > 0 &&
+    weeks * 7 <= MAX_CUSTOM_HORIZON_DAYS
+  );
+}
+
+/**
+ * Derive the PREGNANCY window from a gestational age and the session clock, or
+ * `null` when the age is missing or unusable.
+ *
+ * `null` is the caller's signal to report the condition as UNRESOLVED for
+ * missing data — never to fall back to LIFETIME (which would count a screen
+ * from a previous pregnancy) or to a zero-width window (which would count
+ * nothing). It never throws for a bad age: the age is patient data, and
+ * patient data must not be able to abort a traversal.
+ *
+ * NOT pinned on the session context, unlike `encounterStart`: gestational age
+ * can be supplied or corrected mid-session, so the window is derived at every
+ * evaluation from the patient the evaluation actually sees.
+ *
+ * Fractional weeks are honoured (28.5 weeks is 199.5 days), then the bound is
+ * floored to the start of that UTC day.
+ */
+export function pregnancyWindowFrom(
+  gestationalAgeWeeks: unknown,
+  ctx: EvaluationTemporalContext,
+): PregnancyWindow | null {
+  if (!isUsableGestationalAge(gestationalAgeWeeks)) return null;
+  const upperMs = clockEpoch('evaluationAsOf', ctx.evaluationAsOf);
+  const lmpMs = upperMs - gestationalAgeWeeks * 7 * MS_PER_DAY;
+  const dayStartMs = Math.floor(lmpMs / MS_PER_DAY) * MS_PER_DAY;
+  if (!Number.isFinite(dayStartMs) || Math.abs(dayStartMs) > MAX_TIME_VALUE) return null;
+  const lowerBound = new Date(dayStartMs).toISOString();
+  try {
+    // Outside the FHIR year range (a very low-year clock): unusable, not fatal.
+    instantEpoch(lowerBound);
+  } catch {
+    return null;
+  }
+  return { lowerBound, lmpDate: lowerBound.slice(0, 10), weeks: gestationalAgeWeeks };
 }
 
 // ─── Evaluation context ───────────────────────────────────────────────
@@ -95,6 +177,12 @@ export interface EvaluationTemporalContext {
 
 export type TemporalContextErrorCode =
   | 'MISSING_ENCOUNTER_ANCHOR'
+  /**
+   * A PREGNANCY horizon reached resolution without its derived lower bound.
+   * A wiring bug, never a patient-data outcome: the evaluator reports a
+   * missing gestational age as an unresolved condition before it gets here.
+   */
+  | 'MISSING_PREGNANCY_ANCHOR'
   | 'INVALID_HORIZON'
   | 'INVALID_CLOCK'
   | 'SESSION_NOT_RETRAVERSABLE'
@@ -117,8 +205,6 @@ export class TemporalContextError extends Error {
 
 // ─── resolveHorizon ───────────────────────────────────────────────────
 
-const MS_PER_DAY = 86_400_000;
-
 function clockEpoch(label: string, iso: string): number {
   try {
     return instantEpoch(iso);
@@ -137,8 +223,17 @@ function clockEpoch(label: string, iso: string): number {
  *
  * Never substitutes `evaluationAsOf` for a missing `encounterStart` (§1) —
  * that would silently narrow an ENCOUNTER horizon to a zero-width window.
+ *
+ * `pregnancyLowerBound` is the PREGNANCY horizon's lower bound, derived per
+ * evaluation by `pregnancyWindowFrom` and passed in — it is patient data, so
+ * it is not on the pinned context. PREGNANCY without it throws rather than
+ * falling back to any other window.
  */
-export function resolveHorizon(h: Horizon, ctx: EvaluationTemporalContext): ResolvedHorizon {
+export function resolveHorizon(
+  h: Horizon,
+  ctx: EvaluationTemporalContext,
+  pregnancyLowerBound?: string,
+): ResolvedHorizon {
   const upperBound = ctx.evaluationAsOf;
   const upperMs = clockEpoch('evaluationAsOf', upperBound);
 
@@ -161,6 +256,24 @@ export function resolveHorizon(h: Horizon, ctx: EvaluationTemporalContext): Reso
       );
     }
     return { lowerBound: ctx.encounterStart, upperBound };
+  }
+
+  if (h === 'PREGNANCY') {
+    if (pregnancyLowerBound === undefined) {
+      throw new TemporalContextError(
+        'PREGNANCY horizon requires a lower bound derived from the patient\'s gestational age ' +
+          '(pregnancyWindowFrom) — it is never resolved from the session context alone',
+        'MISSING_PREGNANCY_ANCHOR',
+      );
+    }
+    const startMs = clockEpoch('pregnancy lower bound', pregnancyLowerBound);
+    if (startMs > upperMs) {
+      throw new TemporalContextError(
+        `pregnancy lower bound (${pregnancyLowerBound}) is after evaluationAsOf (${upperBound})`,
+        'INVALID_CLOCK',
+      );
+    }
+    return { lowerBound: pregnancyLowerBound, upperBound };
   }
 
   let days: number;

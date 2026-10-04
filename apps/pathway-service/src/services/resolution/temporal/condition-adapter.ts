@@ -56,6 +56,29 @@ export function attributeNamespaceToField(namespace: string): GateField | null {
   }
 }
 
+/**
+ * Does this authored condition read the patient's gestational age — i.e. is it
+ * a condition temporal policy governs, with `horizon: "PREGNANCY"`?
+ *
+ * Syntactic on purpose, and sound because PREGNANCY is refused below the NODE
+ * tier (`cascade.ts`): the horizon a condition resolves is PREGNANCY exactly
+ * when the condition says so. `patient.*` and unrecognized namespaces are not
+ * governed by temporal policy (their override is ignored on both sides), so
+ * they read no gestational age through a horizon.
+ *
+ * Takes `unknown`: the compiler and reachability read conditions off untyped
+ * JSON.
+ */
+export function conditionReadsGestationalAge(condition: unknown): boolean {
+  if (!condition || typeof condition !== 'object') return false;
+  const c = condition as Record<string, unknown>;
+  if (c.horizon !== 'PREGNANCY') return false;
+  if (typeof c.field === 'string') return true;
+  if (typeof c.attribute !== 'string') return false;
+  const dot = c.attribute.indexOf('.');
+  return attributeNamespaceToField(dot === -1 ? c.attribute : c.attribute.slice(0, dot)) !== null;
+}
+
 /** `exists` is bucket existence: it ignores code and system (select-facts.ts:75). */
 function isBucketExistence(operator: string): boolean {
   return operator === 'exists';

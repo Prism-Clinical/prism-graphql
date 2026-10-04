@@ -3,6 +3,7 @@ import { AnswerType, GateCondition, isAttributeCondition } from './types';
 import { isTemporalOperator, operatorClass } from './temporal/contract';
 import { patientAttributeLabel } from './attribute-vocabulary';
 import { anchorKeyFor, anchorPromptFor, parseWindowFrom } from './temporal/anchored-window';
+import { PREGNANCY_HORIZON_ATTRIBUTE } from './temporal/evaluation-context';
 
 /**
  * What to ask a provider for, when a gate could not evaluate its condition.
@@ -92,6 +93,31 @@ export interface UnresolvedAsk {
     | { kind: 'vital'; path: string }
     | { kind: 'attribute'; path: string }
     | { kind: 'anchor'; key: string };
+  /**
+   * The generated prompt is the question, whatever the gate's authored
+   * `prompt` says. Set when the datum asked for is NOT the gate's own subject
+   * — a gate titled "HIV screen drawn this pregnancy?" that needs a
+   * gestational age must not ask for it under that sentence.
+   */
+  fixedPrompt?: true;
+}
+
+/**
+ * The question for a `horizon: "PREGNANCY"` condition that could not be dated:
+ * the patient's gestational age.
+ *
+ * Built BY `askFor`, from the attribute condition an author would write, so it
+ * is the same question a `patient.gestational_age_weeks` gate asks — same
+ * datum key, label, NUMERIC type and attribute target. Every gate that needs
+ * the age therefore shares one question, and the answer lands where both kinds
+ * of gate read it (`patientAttributes.gestational_age_weeks`).
+ */
+export function pregnancyAskFor(codeMap?: AttributeCodeMap): UnresolvedAsk {
+  const ask = askFor(
+    { attribute: PREGNANCY_HORIZON_ATTRIBUTE, operator: 'greater_than', value: 0 } as GateCondition,
+    codeMap,
+  )!;
+  return { ...ask, fixedPrompt: true };
 }
 
 /**

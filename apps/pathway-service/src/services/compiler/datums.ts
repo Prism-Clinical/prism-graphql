@@ -1,5 +1,7 @@
 // apps/pathway-service/src/services/compiler/datums.ts
 import { KNOWN_PATIENT_ATTRIBUTES } from '../resolution/attribute-vocabulary';
+import { conditionReadsGestationalAge } from '../resolution/temporal/condition-adapter';
+import { PREGNANCY_HORIZON_ATTRIBUTE } from '../resolution/temporal/evaluation-context';
 import type { AttributeCodeMap } from '../resolution/types';
 import type { CompileError, DatumKey, DatumSpec } from './model';
 
@@ -72,6 +74,13 @@ export function resolveDatums(
       : [c]));
   for (const c of leaves(conditions)) {
     const op = String(c.operator ?? '');
+    // `horizon: "PREGNANCY"` bounds the window by the patient's gestational
+    // age, so the gate READS that attribute whatever else it reads — including
+    // a membership condition, which otherwise reads no datum at all. Recorded
+    // first, and independently of the chain below (which `continue`s).
+    if (conditionReadsGestationalAge(c)) {
+      add(`attribute:${PREGNANCY_HORIZON_ATTRIBUTE.slice('patient.'.length)}`, 'attribute', 'number', true);
+    }
     if (typeof c.attribute === 'string') {
       const [ns, ...rest] = c.attribute.split('.');
       const name = rest.join('.');

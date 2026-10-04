@@ -7,6 +7,7 @@ import {
   EvaluationTemporalContext,
   resolveHorizon,
   requiresEncounterAnchor,
+  requiresPregnancyAnchor,
 } from './evaluation-context';
 import { GateField, FIELD_TO_KIND } from './contract';
 import {
@@ -145,6 +146,9 @@ export function parsePathwayTemporalDefaults(raw: unknown): PathwayTemporalDefau
         );
       }
       horizons[key] = parseHorizonValue(val, `default_horizons.${key}`);
+      if (requiresPregnancyAnchor(horizons[key]!)) {
+        throw new TemporalContextError(pregnancyDefaultRefusal(`default_horizons.${key}`), 'INVALID_TEMPORAL_DEFAULTS');
+      }
     }
     if (Object.keys(horizons).length > 0) out.horizons = horizons;
   }
@@ -171,6 +175,22 @@ export function parsePathwayTemporalDefaults(raw: unknown): PathwayTemporalDefau
   }
 
   return out;
+}
+
+/**
+ * PREGNANCY is a per-condition horizon only.
+ *
+ * A pathway-level default would make every gate on that field demand a
+ * gestational age, including gates on patients who are not pregnant; and it
+ * would make "this condition reads gestational age" a property of the cascade
+ * instead of the condition — which the compiler's datum list, reachability and
+ * the `legacy-v0` refusal all read straight off the condition.
+ */
+function pregnancyDefaultRefusal(where: string): string {
+  return (
+    `${where}: PREGNANCY is a per-condition horizon — set "horizon": "PREGNANCY" on the ` +
+    `condition that means "this pregnancy", not as a default`
+  );
 }
 
 /** Which cascade level supplied a resolved value — surfaced in evidence (Plan 08). */
@@ -236,6 +256,14 @@ export function resolveEffectivePolicy(
   if (fromPathway !== undefined) {
     horizon = parseHorizonValue(fromPathway, `default_horizons.${field}`);
     horizonLevel = 'PATHWAY';
+  }
+  // Refused below the NODE tier, whichever level it came from — a hand-built
+  // defaults object must not smuggle in what the parser refuses.
+  if (requiresPregnancyAnchor(horizon)) {
+    throw new TemporalContextError(
+      pregnancyDefaultRefusal(`${horizonLevel === 'PATHWAY' ? 'default_horizons' : 'system default'}.${field}`),
+      'INVALID_TEMPORAL_DEFAULTS',
+    );
   }
   if (condition?.horizon !== undefined) {
     horizon = parseHorizonValue(condition.horizon, `condition.horizon (${field})`);
@@ -304,7 +332,20 @@ export function toEffectivePolicy(
    * tier is anchored and refused when it is not. See `resolveWindowAnchor`.
    */
   anchorLowerBound?: string,
+  /**
+   * The PREGNANCY horizon's lower bound (`pregnancyWindowFrom`), REQUIRED when
+   * the tier's horizon is PREGNANCY and refused when it is not — the same
+   * both-ways rule as `anchorLowerBound`, so a bound can neither be forgotten
+   * nor applied to a window the author did not anchor on the pregnancy.
+   */
+  pregnancyLowerBound?: string,
 ): EffectivePolicy {
+  if (pregnancyLowerBound !== undefined && !requiresPregnancyAnchor(tier.horizon)) {
+    throw new TemporalContextError(
+      'a pregnancy lower bound was supplied for a condition whose horizon is not PREGNANCY',
+      'INVALID_TEMPORAL_DEFAULTS',
+    );
+  }
   if (tier.windowFrom !== undefined || anchorLowerBound !== undefined) {
     if (tier.windowFrom === undefined) {
       throw new TemporalContextError(
@@ -331,7 +372,9 @@ export function toEffectivePolicy(
     if (tier.status !== undefined) policy.status = tier.status;
     return policy;
   }
-  const policy: EffectivePolicy = { horizon: resolveHorizon(tier.horizon, ctx) };
+  const policy: EffectivePolicy = {
+    horizon: resolveHorizon(tier.horizon, ctx, pregnancyLowerBound),
+  };
   if (tier.status !== undefined) policy.status = tier.status;
   return policy;
 }

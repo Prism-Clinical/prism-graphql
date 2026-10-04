@@ -4,7 +4,7 @@ import type { GateEvaluationDeps } from './gate-evaluator';
 import type { PathwayTemporalDefaults } from './temporal/cascade';
 import type { FactStore } from './temporal/fact-model';
 import { EvaluationTemporalContext } from './temporal/evaluation-context';
-import { anchorAskFor, askFor, seriesAskFor, unionOptions } from './unresolved-prompt';
+import { anchorAskFor, askFor, pregnancyAskFor, seriesAskFor, unionOptions } from './unresolved-prompt';
 import { parseBranchWhen } from '../import/branch-when';
 import { decisionValueOf, decisionSelects } from './decision-value';
 import { normalizeAnswerType } from './answer-validation';
@@ -114,6 +114,7 @@ function unresolvedAsk(
     unresolvedConditions?: GateCondition[];
     unresolvedAnchorConditions?: GateCondition[];
     unresolvedSeries?: Array<{ condition: GateCondition; latestDate: string }>;
+    unresolvedPregnancyConditions?: GateCondition[];
   },
   /** The attribute vocabulary, so a lab attribute asks for a LAB. */
   codeMap?: AttributeCodeMap,
@@ -140,15 +141,20 @@ function unresolvedAsk(
         ? (conditionLeaves(gateProps.conditions) as GateCondition[])
         : (gateProps.condition ? [gateProps.condition] : []);
   for (const condition of conditions) {
-    // An unresolved `window_from` anchor asks for its start DATE; a series one
-    // value short asks for the newest result; every other condition asks for
-    // its datum, or nothing (`askFor` refuses aggregates).
+    // An unresolved `window_from` anchor asks for its start DATE; an undated
+    // `horizon: "PREGNANCY"` window asks for the gestational age (whatever the
+    // operator — `askFor` has no question for membership, and the missing
+    // datum is the age, not the code); a series one value short asks for the
+    // newest result; every other condition asks for its datum, or nothing
+    // (`askFor` refuses aggregates).
     const shortSeries = gateResult.unresolvedSeries?.find((s) => s.condition === condition);
     const ask = gateResult.unresolvedAnchorConditions?.includes(condition)
       ? anchorAskFor(condition)
-      : shortSeries
-        ? seriesAskFor(condition, shortSeries.latestDate)
-        : askFor(condition, codeMap);
+      : gateResult.unresolvedPregnancyConditions?.includes(condition)
+        ? pregnancyAskFor(codeMap)
+        : shortSeries
+          ? seriesAskFor(condition, shortSeries.latestDate)
+          : askFor(condition, codeMap);
     // Declined: the provider was asked for this datum and has none. Asking
     // again cannot help, so the gate falls through to `default_behavior`.
     if (ask && gateAnswers?.get(declinedKeyFor(ask.datumKey))?.notAvailable === true) continue;
@@ -1072,7 +1078,11 @@ export class TraversalEngine {
               // An authored prompt beats the generated one. The generated text
               // is a fallback so every escalatable gate CAN ask without extra
               // authoring — not a preference for machine wording.
-              prompt: gateProps.prompt ?? ask.prompt,
+              //
+              // Except when the ask is for a datum that is not the gate's own
+              // subject (`fixedPrompt`): the authored sentence would then
+              // label the wrong question.
+              prompt: ask.fixedPrompt ? ask.prompt : (gateProps.prompt ?? ask.prompt),
               answerType: ask.answerType,
               ...(ask.options ? { options: ask.options } : {}),
               affectedSubtreeSize: subtreeSize,
