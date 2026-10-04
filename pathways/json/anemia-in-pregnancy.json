@@ -3,7 +3,7 @@
   "pathway": {
     "logical_id": "anemia-in-pregnancy",
     "title": "Anemia in Pregnancy \u2014 Classification and Treatment",
-    "version": "12",
+    "version": "13",
     "category": "OBSTETRIC",
     "scope": "Outpatient prenatal care, from diagnosed anemia through postpartum handoff. Screening is upstream of this pathway.",
     "target_population": "Adult pregnant patients with diagnosed anemia; hemoglobinopathy disease, thalassemia syndromes, and CKD-associated anemia are detected and routed out.",
@@ -520,6 +520,17 @@
         "display_number": "2.18",
         "title": "IV iron on the medication list: follow-up",
         "description": "Entered only via gate-iv-iron-on-list on Step 1.10: MCV < 80 fL and the medication list holds an IV iron product (with or without oral iron). DP-1 and DP-3 are not asked, and neither IV iron nor an oral iron trial is started from this step. Orders the follow-up CBC (hemoglobin recheck after IV iron)."
+      }
+    },
+    {
+      "id": "step-1-13",
+      "type": "Step",
+      "properties": {
+        "stage_number": 1,
+        "step_number": 13,
+        "display_number": "1.13",
+        "title": "Hemoglobin older than 30 days: repeat the CBC",
+        "description": "Entered only via gate-hgb-recheck-due on Step 1.1: no hemoglobin on file in the last 30 days. The threshold gates read the most recent hemoglobin however old it is; when that value is more than 30 days old this step orders a repeat CBC with indices (its own lab node). Also open when there is no hemoglobin on file at all, beside Step 1.9. Closes as soon as a hemoglobin from the last 30 days is on file."
       }
     },
     {
@@ -1455,9 +1466,7 @@
           "system": "LOINC",
           "display": "Hemoglobin (g/dL)",
           "threshold": 6,
-          "horizon": {
-            "days": 7
-          }
+          "horizon": "LIFETIME"
         }
       }
     },
@@ -1478,9 +1487,7 @@
             "system": "LOINC",
             "display": "Hemoglobin (g/dL)",
             "threshold": 9,
-            "horizon": {
-              "days": 90
-            }
+            "horizon": "LIFETIME"
           },
           {
             "field": "labs",
@@ -1489,9 +1496,7 @@
             "system": "LOINC",
             "display": "Hematocrit (%)",
             "threshold": 27,
-            "horizon": {
-              "days": 90
-            }
+            "horizon": "LIFETIME"
           }
         ]
       }
@@ -2235,6 +2240,24 @@
       }
     },
     {
+      "id": "gate-hgb-recheck-due",
+      "type": "Gate",
+      "properties": {
+        "title": "No hemoglobin in the last 30 days \u2014 recheck due, repeat the CBC",
+        "gate_type": "patient_attribute",
+        "default_behavior": "skip",
+        "on_unresolved": "default",
+        "condition": {
+          "field": "labs",
+          "operator": "not_includes_code",
+          "value": "718-7",
+          "system": "LOINC",
+          "display": "Hemoglobin (g/dL)",
+          "horizon": "MONTH"
+        }
+      }
+    },
+    {
       "id": "med-1",
       "type": "Medication",
       "properties": {
@@ -2745,6 +2768,16 @@
       "type": "LabTest",
       "properties": {
         "name": "CBC with indices",
+        "code": "58410-2",
+        "system": "LOINC",
+        "specimen": "Venous blood"
+      }
+    },
+    {
+      "id": "lab-25",
+      "type": "LabTest",
+      "properties": {
+        "name": "CBC with indices \u2014 recheck (no hemoglobin in the last 30 days)",
         "code": "58410-2",
         "system": "LOINC",
         "specimen": "Venous blood"
@@ -5408,6 +5441,56 @@
     {
       "from": "step-1-9",
       "to": "ev-5",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-1-1",
+      "to": "gate-hgb-recheck-due",
+      "type": "HAS_GATE"
+    },
+    {
+      "from": "gate-hgb-recheck-due",
+      "to": "step-1-13",
+      "type": "BRANCHES_TO"
+    },
+    {
+      "from": "step-1-13",
+      "to": "lab-25",
+      "type": "HAS_LAB_TEST"
+    },
+    {
+      "from": "lab-25",
+      "to": "code-loinc-58410-2",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "lab-25",
+      "to": "code-loinc-718-7",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "lab-25",
+      "to": "code-loinc-4544-3",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "lab-25",
+      "to": "code-loinc-787-2",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "lab-25",
+      "to": "code-cpt-85025",
+      "type": "HAS_CODE"
+    },
+    {
+      "from": "lab-25",
+      "to": "ev-1",
+      "type": "CITES_EVIDENCE"
+    },
+    {
+      "from": "step-1-13",
+      "to": "ev-1",
       "type": "CITES_EVIDENCE"
     },
     {

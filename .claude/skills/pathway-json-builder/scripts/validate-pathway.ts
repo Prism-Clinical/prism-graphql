@@ -167,6 +167,50 @@ console.log('✓ COMPILES — activation will not be refused');
   console.log('✓ TRIGGER CODES — families, or justified leaves');
 }
 
+// Use the data the chart gives ([DECISION — Josh 2026-10-03]). Warnings, not
+// failures: each is a place the pathway may be ignoring data it was given.
+{
+  const briefPath = resolve(dirname(filePath), '..', 'briefs', `${parsed.pathway?.logical_id}-research-brief.md`);
+  const brief = existsSync(briefPath) ? readFileSync(briefPath, 'utf8') : '';
+  type Leaf = Record<string, unknown>;
+  const leavesOf = (c: unknown): Leaf[] =>
+    c && typeof c === 'object' && Array.isArray((c as Leaf).conditions)
+      ? ((c as Leaf).conditions as unknown[]).flatMap(leavesOf)
+      : c && typeof c === 'object' ? [c as Leaf] : [];
+  const gates = (parsed.nodes ?? []).filter((n) => n.type === 'Gate');
+  const notes: string[] = [];
+  let readsMedications = false;
+  for (const g of gates) {
+    const props = (g.properties ?? {}) as Leaf;
+    const leaves = [...(props.condition ? [props.condition] : []), ...((props.conditions as unknown[]) ?? [])].flatMap(leavesOf);
+    for (const l of leaves) {
+      if (l.field === 'medications') readsMedications = true;
+      const threshold = l.field === 'labs' && (l.operator === 'less_than' || l.operator === 'greater_than');
+      const bounded = l.horizon !== undefined && l.horizon !== 'LIFETIME';
+      if (threshold && bounded && !l.window_from && !brief.includes(`[WINDOW — ${g.id}:`)) {
+        notes.push(
+          `Gate "${g.id}": ${String(l.value)} ${String(l.operator)} reads only values inside ${JSON.stringify(l.horizon)} — an older value is ` +
+            `discarded and the gate asks. Decide on the most recent value (horizon "LIFETIME") with a separate recheck gate, ` +
+            `or justify the window in the brief with [WINDOW — ${g.id}: <why>]`,
+        );
+      }
+    }
+  }
+  const medications = (parsed.nodes ?? []).filter((n) => n.type === 'Medication').length;
+  if (medications > 0 && !readsMedications && !brief.includes('[NO MEDICATION CHECK —')) {
+    notes.push(
+      `${medications} Medication node(s) and no gate reads the medication list — a patient already on the treatment is offered it again. ` +
+        `Gate on \`medications\`, or say why not in the brief with [NO MEDICATION CHECK — <why>]`,
+    );
+  }
+  if (notes.length > 0) {
+    console.log(`⚠ DATA USE — ${notes.length} place(s) where chart data may be ignored:`);
+    for (const n of notes) console.log(`  - ${n}`);
+  } else {
+    console.log('✓ DATA USE — no discarded windows; treatments check the medication list');
+  }
+}
+
 // The brief is the source of truth: a valid JSON its brief does not describe
 // is not deliverable. Plain node runs the check (it needs no ts-node).
 const sync = spawnSync(process.execPath, [resolve(__dirname, 'check-brief-sync.ts'), '--json', filePath], {

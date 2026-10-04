@@ -320,6 +320,40 @@ and marks the others EXCLUDED; no answer, or an answer matching zero or several 
 none and raises an `unroutable_decision` red flag (`traversal-engine.ts:1078-1150`). So a
 router is "route yes vs no", never "fan out on yes".
 
+### Use the data the chart gives (`[DECISION — Josh 2026-10-03]`)
+
+**A pathway never ignores data it has been given. The authoring question is never *whether*
+to use a value on the chart, but *how*.** Three failures taught this, each found by Josh in
+the simulator:
+
+| What the pathway did | What it should do |
+|---|---|
+| Read hemoglobin with a 7-day horizon. A value from 33 days ago was treated as no value at all, and the provider was asked for one. | Read the **most recent** value (`horizon: "LIFETIME"`) to decide, and express staleness **separately**: a membership gate (`not_includes_code`, the same LOINC, `horizon: "MONTH"` or the interval the guideline gives) that opens a "repeat the test" step. Anemia v13: `gate-hgb-recheck-due` → Step 1.13. |
+| Asked "empiric iron or workup?" and "oral or IV?" of a patient with ferrous sulfate already on her medication list. | Read the medication list before offering to start or choose a treatment: membership gates on `medications` route "already on it" to *continue and assess* (anemia v12). |
+| Closed a response check silently when no dated value existed. | Ask for the value (with its date), and let "Not available" route to ordering the test. |
+
+Authoring rules that follow:
+
+1. **A horizon is not a freshness filter.** On a threshold condition (`less_than`,
+   `greater_than` on `labs`) a short horizon *discards* an older value and makes the gate
+   ask. Use `"LIFETIME"` and add a recheck gate when the guideline wants a recent value. A
+   bounded horizon on a threshold leaf is right only when an older value is clinically
+   *meaningless* for the decision (a value from a previous pregnancy; the post-treatment
+   window of a response check) — then say why in the brief: `[WINDOW — <gate-id>: <why>]`.
+2. **Before the pathway starts, chooses or orders something, check whether the chart already
+   has it.** A treatment → gate on `medications`. A lab result the pathway would order →
+   gate on `labs` membership. A diagnosis the pathway would work up → gate on `conditions`.
+   A pathway that recommends medications and never reads the medication list must say why:
+   `[NO MEDICATION CHECK — <why>]`.
+3. **Stale, undated, old or partial data routes somewhere; it is never dropped.** Decide what
+   each state means — use it, recheck it, ask about it — and author a gate for each.
+4. **Ask only for what the chart does not hold**, and when a question is asked about a lab
+   or vital the chart has an older value of, the engine offers that value with it
+   (`lastOnFile`) — nothing to author.
+
+`validate-pathway.ts` reports rule 1 and rule 2 as **DATA USE** warnings (not failures):
+read each one and either fix the pathway or add the marker.
+
 ### Missing data — `on_unresolved` (emit on every chart gate)
 
 A chart gate ends in one of three states: **satisfied**, **answered no**, or **could not

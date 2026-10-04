@@ -1,6 +1,6 @@
 # Pathway Research Brief — Anemia in Pregnancy
 
-JSON: pathways/json/anemia-in-pregnancy.json @ version 12
+JSON: pathways/json/anemia-in-pregnancy.json @ version 13
 
 **Status: DRAFT v2 for physician review — not yet approved for JSON build.**
 Scope assumed from request: outpatient prenatal care, adult pregnant patients, US practice,
@@ -13,6 +13,18 @@ agents (codes, citations); every claim carries a reference number resolving in �
 `[GAP]` unsourceable, `[FALLBACK SOURCE]` non-US-guideline basis, `[OLDER SOURCE]` >5y but
 still current, `[BLOCKED — prior_node_result]` import-blocked gate design with fallback.
 
+> ### ⚠ For Josh (v13) — the most recent hemoglobin decides, however old; over 30 days old → repeat CBC
+>
+> "it should be most recent but > 30 days should trigger recheck" (§18). The transfusion gate
+> (Hgb < 6) and the referral gate (Hgb < 9 or Hct < 27%) now read the newest value on file
+> whatever its age, instead of 7 and 90 days — so a hemoglobin of 8 dated 33 days ago decides
+> them and nothing is asked. When the newest hemoglobin is more than 30 days old (or there is
+> none), Step 1.13 orders a repeat CBC. With no hemoglobin at all the level is still asked for,
+> as in v10. Four points are marked `[JOSH — CONFIRM]` in §18: whether "severity unknown"
+> (Step 1.9's ferritin) should now mean no hemoglobin ever rather than none in 90 days; the
+> plan listing two CBC lines when the recheck is due; no upper limit on how old a deciding
+> value may be; and the recheck line's wording.
+>
 > ### ⚠ For Josh (v12) — a patient already on iron skips the iron choices; points to confirm
 >
 > With MCV < 80, the pathway now reads the medication list before it asks anything about iron
@@ -47,8 +59,21 @@ still current, `[BLOCKED — prior_node_result]` import-blocked gate design with
 
 - **Logical ID**: `anemia-in-pregnancy`
 - **Title**: Anemia in Pregnancy — Classification and Treatment
-- **Version**: 12 `[DECISION — Josh 2026-10-03]` (JSON `"12"`; was `"11"`). Imports as
-  NEW_VERSION; v11 sessions keep v11's graph. Bumped for:
+- **Version**: 13 `[DECISION — Josh 2026-10-03]` (JSON `"13"`; was `"12"`). Imports as
+  NEW_VERSION; v12 sessions keep v12's graph. Bumped for:
+  - **The most recent hemoglobin decides, however old; over 30 days old triggers a recheck**
+    (§3 Step 1.13, §4b `gate-severe-anemia` / `gate-referral-threshold` /
+    `gate-hgb-recheck-due`, §6 Lab-25, §17, §18). A chart held a hemoglobin of 8 g/dL dated
+    33 days before the visit; `gate-severe-anemia` read a 7-day horizon, treated the chart as
+    having none and asked "most recent value?". Josh, 2026-10-03: "it should be most recent
+    but > 30 days should trigger recheck". Now `gate-severe-anemia` (Hgb) and
+    `gate-referral-threshold` (Hgb, Hct) read horizon `LIFETIME` — the newest value on file,
+    whatever its date — and a new membership gate on Step 1.1, `gate-hgb-recheck-due` (no
+    hemoglobin in the last 30 days), opens Step 1.13, which orders a repeat CBC with indices
+    (Lab-25). With no hemoglobin on file at all the threshold gates still ask (v10's rule).
+    The response gates and `gate-no-hgb-on-file` are unchanged. Proof: `gate-proof.ts
+    hgb-recheck`.
+  v12 `[DECISION — Josh 2026-10-03]` (was `"11"`; v11 sessions keep v11's graph) was bumped for:
   - **Already on iron: the iron choices are skipped** (§3 Steps 1.10, 2.14–2.18, 1.11, 1.12;
     §4 DP-1, DP-4; §4b `gate-no-iron-on-list` / `gate-on-oral-iron` / `gate-iv-iron-on-list` /
     `gate-confirm-studies-on-iron` and the `-on-iron` gate copies; §5 Med-17–20; §6 Lab-19–24;
@@ -332,6 +357,15 @@ None. (Single-condition pathway; O99.01x already encodes the pregnancy+anemia co
   as a hemoglobin is on file — entered by the provider or resulted. `[JOSH — CONFIRM]` the
   order set: CBC with indices + ferritin. Iron/TIBC, reticulocytes and B12/folate stay
   behind the MCV classification, which the CBC answers. [1][5]
+- **Step 1.13 — Hemoglobin older than 30 days: repeat the CBC** *(gated by
+  gate-hgb-recheck-due on Step 1.1 — its only way in; v13)* `[DECISION — Josh 2026-10-03]`
+  ("> 30 days should trigger recheck"): no hemoglobin in the last 30 days. The threshold
+  gates (§4b `gate-severe-anemia`, `gate-referral-threshold`) decide on the most recent
+  value however old it is; when that value is more than 30 days old this step orders Lab-25,
+  a repeat CBC with indices (its own node — a copy of Lab-1). It is also open when there is
+  no hemoglobin on file at all — then Step 1.9 is open too and the level is asked for.
+  Closed as soon as a hemoglobin from the last 30 days is on file — resulted, or entered by
+  the provider. Hematocrit has no recheck step of its own; the CBC returns it. [1]
 - **Step 1.10 — Microcytic anemia: is iron already on the medication list?** *(gated by
   gate-microcytic — its only way in; v12)* `[DECISION — Josh 2026-10-03]` (already on iron →
   skip the iron choices) as a `[BUILD NOTE]` step: hosts the three medication-list gates
@@ -444,7 +478,8 @@ open; Stage 2.5 holds Steps 2.1–2.3. Stage 1 is
 the root entry stage; Stage 3 is a root-connected container whose steps all hang from
 gates; Stage 4 is root-connected. v12's Steps 1.10, 1.11, 1.12 and 2.14–2.18 are all gated
 (or DP-4's branch) and belong to no Stage by HAS_STEP; their `stage_number` (1 or 2) places
-them for display. Gated steps connect **only** via their gate/DP
+them for display. v13's Step 1.13 is the same: gated by gate-hgb-recheck-due on Step 1.1, no
+HAS_STEP, `stage_number` 1. Gated steps connect **only** via their gate/DP
 BRANCHES_TO (no HAS_STEP edge), per the reference-fixture pattern.
 
 ## 4. Decision points
@@ -1074,12 +1109,13 @@ the pathway presumes the coded diagnosis.
     - **Recheck missing** (due, one Hgb short of a series): both gates held, **one** Hgb
       question — "Hemoglobin (g/dL) (LOINC 718-7) — newest result, drawn after <date>?"
       when the only value is in the window. When the only value is
-      the pre-treatment baseline (> 7 days old), `gate-severe-anemia` (Hgb, 7-day horizon)
-      asks for a current Hgb too: still **one** Hgb question, worded "most recent value?",
-      naming all three gates as askers, with both response gates held on it.
-      `[ENGINE GAP — closed 2026-10-03]` Before the evaluation pipeline, an incremental pass
-      dropped the response gates' claim on that question; every answer now re-evaluates the
-      whole pathway, so the question lists all three (`gate-proof.ts response`).
+      the pre-treatment baseline, it is the same: **one** Hgb question, "newest result,
+      drawn after <the baseline's date>?", asked by the two response gates, both held on it.
+      **v13:** `gate-severe-anemia` no longer joins that question — it reads the most recent
+      hemoglobin however old (LIFETIME), so it decides on the baseline and asks nothing.
+      Through v12 it read a 7-day horizon, found no current value and asked too, so the one
+      question was worded "most recent value?" and named three gates (`gate-proof.ts
+      response`, changed in v13 for exactly this).
     - **Where the start date comes from at a recheck** (first hit wins): a clinician-entered
       date → the earliest stored care plan of this pathway recommending oral iron → the
       earliest dated chart order of 310325/198630/284202 (proved: a dated ferrous sulfate
@@ -1196,10 +1232,36 @@ the pathway presumes the coded diagnosis.
     the two response gates still **ask** for a hemoglobin they cannot find. The provider
     either enters one (the fact decides those gates, and this gate closes) or answers "Not
     available" (those gates stop asking and close on their defaults; this gate stays open,
-    so the plan is the anemia labs). `gate-severe-anemia` reads a 7-day horizon: a
-    hemoglobin 8–90 days old is asked about again but is not "unknown" — this gate stays
-    closed and Step 1.1's CBC is the order.
+    so the plan is the anemia labs). **v13:** `gate-severe-anemia` and
+    `gate-referral-threshold` now read the most recent hemoglobin however old, so a
+    hemoglobin of any age is no longer asked about. One 31–90 days old keeps this gate
+    closed and opens `gate-hgb-recheck-due` (repeat CBC). One **more than 90 days old**
+    decides the threshold gates, opens the recheck, **and** opens this gate (no hemoglobin
+    in 90 days → Step 1.9's ferritin) — `[JOSH — CONFIRM]` whether "severity unknown" should
+    now mean no hemoglobin **ever** (horizon LIFETIME here) rather than none in 90 days
+    (§18). This gate is unchanged in v13.
   - Proof: `gate-proof.ts unknown-hgb`.
+- **Gate `gate-hgb-recheck-due` — No hemoglobin in the last 30 days — recheck due, repeat
+  the CBC** (v13) `[DECISION — Josh 2026-10-03]` ("it should be most recent but > 30 days
+  should trigger recheck") · `[BUILD NOTE]` (wiring)
+  - Attached to: step-1-1 · Branches to: **step-1-13** · patient_attribute · Default:
+    **skip** · On unresolved: **default** (membership only — nothing is ever asked)
+  - Condition: coded, field `labs`, **`not_includes_code`**, value `718-7`, system LOINC,
+    display "Hemoglobin (g/dL)", horizon **`"MONTH"`** (30 days). No hemoglobin dated within
+    the last 30 days → true (Step 1.13 orders the repeat CBC, Lab-25); any hemoglobin in the
+    last 30 days → false.
+  - It is the "recheck" half of the decision; the "most recent" half is the LIFETIME horizon
+    on `gate-severe-anemia` and `gate-referral-threshold`. Together: an older hemoglobin
+    still decides transfusion consideration and referral, nothing is asked, and a fresh CBC
+    is ordered.
+  - **Also open with no hemoglobin at all** — "none in 30 days" includes "none". Then
+    `gate-no-hgb-on-file` → Step 1.9 (ferritin) is open too and the threshold gates ask for
+    the level (v10). A level the provider enters in answer is a current value, so it closes
+    this gate; "Not available" leaves it open.
+  - An **undated** hemoglobin counts as current (the engine asserts undated facts at the
+    session clock), so it closes this gate: the recheck needs a dated result to fire.
+  - Hematocrit gets no gate of its own: the CBC recheck returns it.
+  - Proof: `gate-proof.ts hgb-recheck`.
 - **Gate `gate-no-ferritin-on-file` — No ferritin on file (90 days) — order one before IV
   iron** (v9) `[DECISION — Josh 2026-09-25]` (IV iron first on the empiric arm orders a
   ferritin) · `[BUILD NOTE]` (wiring)
@@ -1267,12 +1329,16 @@ the pathway presumes the coded diagnosis.
 - **Gate `gate-severe-anemia` — Severe anemia (transfusion consideration)**
   - Attached to: stage-3 · Branches to: step-3-6 · patient_attribute · Default: skip
   - Condition (coded): field `labs`, less_than, value `718-7` (Hgb, LOINC), threshold 6,
-    horizon {days: 7}
+    horizon **`"LIFETIME"`** — the most recent hemoglobin on file, however old (v13)
+    `[DECISION — Josh 2026-10-03]`. With none on file at all it asks (`on_unresolved: ask`).
+    A value more than 30 days old also opens `gate-hgb-recheck-due` (repeat CBC).
   - Rationale: ACOG Level B fetal-indication threshold. [1]
 - **Gate `gate-referral-threshold` — Referral-level anemia**
   - Attached to: stage-3 · Branches to: step-3-7 · compound (OR) · Default: skip
   - Conditions (coded): labs `718-7` less_than threshold 9; labs `4544-3` (Hct, LOINC)
-    less_than threshold 27. Horizon {days: 90} each.
+    less_than threshold 27. Horizon **`"LIFETIME"`** each — the most recent value on file,
+    however old (v13) `[DECISION — Josh 2026-10-03]`; a hemoglobin more than 30 days old also
+    opens `gate-hgb-recheck-due` (repeat CBC). On unresolved: ask.
   - Rationale: CDC/IOM referral rule; no ACOG numeric equivalent [GAP]. [3]
 - **Gate `gate-scd` — Sickle cell disease (route out)**
   - Attached to: stage-3 · Branches to: step-3-1 · compound (OR) · Default: skip
@@ -1430,6 +1496,12 @@ narrative. Recorded so reviewers know the omission is deliberate.
 - **Lab-23 — Iron, TIBC and transferrin saturation** (on Step 1.12; v12): a copy of Lab-3. [1]
 - **Lab-24 — CBC with indices** (on Step 2.18; v12): the follow-up CBC after IV iron
   `[JOSH — CONFIRM]`. A copy of Lab-10. [1]
+- **Lab-25 — CBC with indices — recheck (no hemoglobin in the last 30 days)** (on Step
+  1.13; v13) `[DECISION — Josh 2026-10-03]`: the repeat CBC when the most recent hemoglobin
+  is more than 30 days old, or there is none. A copy of Lab-1 (LOINC 58410-2 with 718-7 /
+  4544-3 / 787-2, CPT 85025) — one node per host step — named so its plan line is distinct
+  from Step 1.1's "CBC with indices". `[JOSH — CONFIRM]` the wording, and that the plan then
+  lists both CBC lines (§18). [1]
 
 `[BUILD FIX 2026-09-24]` **One host step per lab node (v4).** Lab-1, 2, 4, 7 and 8 were each
 one node ordered by two steps on opposite sides of a gate or DecisionPoint. The engine
@@ -1459,6 +1531,7 @@ its other host:
 | Lab-2 Ferritin | Step 1.2 | **Lab-22** (v12) | Step 1.12 |
 | Lab-3 Iron/TIBC/saturation | Step 1.2 | **Lab-23** (v12) | Step 1.12 |
 | Lab-10 CBC (recheck) | Step 2.3 | **Lab-24** (v12) | Step 2.18 |
+| Lab-1 CBC | Step 1.1 | **Lab-25** (v13) | Step 1.13 (recheck, last Hgb > 30 days old) |
 
 The new nodes share the originals' CodeEntries (HAS_CODE) and citations; CodeEntries are
 not projected into the care plan, so sharing them is harmless. Proof: `gate-proof.ts
@@ -1606,10 +1679,10 @@ All pairs acyclic; REQUIRES points dependent → prerequisite:
 
 | Code | System | Description | Attached to |
 |---|---|---|---|
-| 58410-2 | LOINC | CBC panel, automated | Lab-1, Lab-10, Lab-19, Lab-24 |
-| 718-7 | LOINC | Hemoglobin [Mass/Vol] blood | Lab-1, Lab-10, Lab-19, Lab-24 |
-| 4544-3 | LOINC | Hematocrit, automated | Lab-1, Lab-10, Lab-19, Lab-24 |
-| 787-2 | LOINC | MCV, RBC | Lab-1, Lab-10, Lab-19, Lab-24 |
+| 58410-2 | LOINC | CBC panel, automated | Lab-1, Lab-10, Lab-19, Lab-24, Lab-25 |
+| 718-7 | LOINC | Hemoglobin [Mass/Vol] blood | Lab-1, Lab-10, Lab-19, Lab-24, Lab-25 |
+| 4544-3 | LOINC | Hematocrit, automated | Lab-1, Lab-10, Lab-19, Lab-24, Lab-25 |
+| 787-2 | LOINC | MCV, RBC | Lab-1, Lab-10, Lab-19, Lab-24, Lab-25 |
 | 2276-4 | LOINC | Ferritin, serum | Lab-2, Lab-11, Lab-15, Lab-17, Lab-18, Lab-22 |
 | 2498-4 | LOINC | Iron, serum | Lab-3, Lab-16, Lab-23 |
 | 2500-7 | LOINC | TIBC | Lab-3, Lab-16, Lab-23 |
@@ -1621,7 +1694,7 @@ All pairs acyclic; REQUIRES points dependent → prerequisite:
 | 34994-4 | LOINC | Smear morphology panel, blood | Lab-8, Lab-13, Lab-20 |
 | 882-1 | LOINC | ABO+Rh type | Lab-9 |
 | 890-4 | LOINC | RBC antibody screen | Lab-9 |
-| 85025 | CPT | CBC with automated differential | Lab-1, Lab-10, Lab-19, Lab-24 |
+| 85025 | CPT | CBC with automated differential | Lab-1, Lab-10, Lab-19, Lab-24, Lab-25 |
 | 82728 | CPT | Ferritin | Lab-2, Lab-11, Lab-15, Lab-17, Lab-18, Lab-22 |
 | 83540 | CPT | Iron | Lab-3, Lab-16, Lab-23 |
 | 83550 | CPT | TIBC | Lab-3, Lab-16, Lab-23 |
@@ -1777,6 +1850,7 @@ Nodes that can carry CITES_EVIDENCE:
   · Med-17–Med-20: [5][22] · Lab-19, Lab-24: [1] · Lab-20: [1] · Lab-21: [4] · Lab-22: [1][5]
   · Lab-23: [1] · Guid-7: [1][3] · Guid-8: [1][5]. Every copy carries its original's citations
   as built in the JSON; no new evidence node (§15 unchanged).
+- v13 — Step 1.13: [1] · Lab-25: [1] (Lab-1's). No new evidence node.
 
 Cannot cite (evidence attaches to host step — builder must reattach): all Gates → their
 attached Stage/Step per §4b rationale refs; QM-1 → Step 2.3 [1][3]; QM-2 → Step 4.1
@@ -1788,7 +1862,11 @@ The temporal-horizon kernel is merged; these assignments are emitted directly in
 gate conditions. The named-horizon grammar has no "current pregnancy" concept, so
 pregnancy-scoping uses `{days: 90}` (≈ trimester — a stale pre-pregnancy or
 prior-trimester lab must not drive classification) and `{days: 300}` (≈ full pregnancy +
-margin). **These day-counts are my proposal — review.**
+margin). **These day-counts are my proposal — review.** **v13 exception** `[DECISION — Josh
+2026-10-03]`: the hemoglobin / hematocrit **threshold** gates (gate-severe-anemia,
+gate-referral-threshold) are not pregnancy-scoped any more — they read `LIFETIME`, the most
+recent value however old, and a hemoglobin more than 30 days old orders a recheck instead of
+being ignored.
 
 | Gate | Condition on | horizon | status | window_days | Rationale |
 |---|---|---|---|---|---|
@@ -1796,13 +1874,14 @@ margin). **These day-counts are my proposal — review.**
 | gate-ida-confirmed | labs 2276-4 (ferritin) | {days: 90} | — | — | Confirmatory ferritin from this workup |
 | gate-ida-confirmed-iv (v9) / gate-oral-bridge-ga's ferritin leaf (v9) | labs 2276-4 (ferritin) `less_than` 30 | {days: 90} | — | — | Identical to gate-ida-confirmed, so both arms read the same ferritin |
 | gate-no-ferritin-on-file (v9) / gate-oral-bridge-ga's "no ferritin" leaf (v9) | labs 2276-4 `not_includes_code` | {days: 90} | — | — | Same window as the threshold leaves: "no ferritin on file" and "ferritin < 30 on file" never read different results |
-| gate-no-hgb-on-file (v10) | labs 718-7 `not_includes_code` | {days: 90} | — | — | "No level on file": the lab default window, deliberately wider than gate-severe-anemia's 7 days |
+| gate-no-hgb-on-file (v10) | labs 718-7 `not_includes_code` | {days: 90} | — | — | "No level on file": the lab default window. Unchanged in v13, though the threshold gates it sits beside now read LIFETIME — `[JOSH — CONFIRM]` whether this should be LIFETIME too (§18) |
+| gate-hgb-recheck-due (v13) | labs 718-7 `not_includes_code` | MONTH (30 days) | — | — | "> 30 days should trigger recheck": true when no hemoglobin is dated within the last 30 days — the most recent one is older, or there is none |
 | gate-oral-bridge-ga's GA leaf / gate-iv-iron-ga-direct | `patient.gestational_age_weeks` | — (`patient.*` has no temporal policy) | — | — | Current GA |
 | gate-hgb-response / gate-hgb-nonresponse | labs 718-7 Δ (`delta_from_baseline`) | — (`window_from` *is* the window: oral-iron start → clock, + latest Hgb ≤ 28 d before the start) | — | — | v7 — anchored to the treatment start, so the pre-treatment state is out by construction; due at day 14 |
 | gate-hgb-response / gate-hgb-nonresponse | labs 718-7 (at-target arm) | {days: 28} | — | — | The current Hgb, not last trimester's |
 | gate-hgb-response / gate-hgb-nonresponse | `patient.trimester` | — (`patient.*` has no temporal policy) | — | — | Derived from GA by the resolver |
-| gate-severe-anemia | labs 718-7 (Hgb) | {days: 7} | — | — | Hgb <6 is an acute finding; only a current value justifies transfusion routing |
-| gate-referral-threshold | labs 718-7, 4544-3 | {days: 90} | — | — | Referral on current-pregnancy values |
+| gate-severe-anemia | labs 718-7 (Hgb) | LIFETIME (v13; was {days: 7}) | — | — | `[DECISION — Josh 2026-10-03]` "it should be most recent": the newest hemoglobin on file decides, whatever its date — no upper limit on its age. Staleness is handled by ordering a recheck (gate-hgb-recheck-due), not by ignoring the value |
+| gate-referral-threshold | labs 718-7, 4544-3 | LIFETIME each (v13; was {days: 90}) | — | — | Same decision: the newest hemoglobin / hematocrit on file, whatever its date |
 | gate-multi-gestation | O30.* | {days: 300} | active | — | A *prior* pregnancy's twin code must not fire this pregnancy's surveillance branch |
 | gate-scd / gate-thal-major / gate-trait | D57.* / D56.* | LIFETIME | any | — | Genetic conditions never expire |
 | gate-empiric-no-hgbpathy (`not_includes_code`, v8; on gate-microcytic in v7) / gate-hgbpathy-microcytic (`includes_code`) | D57.0.*, D57.1, D57.2.*, D57.4.*, D57.8.*, D56.0/.1/.2/.5/.8/.9, D58.2 | LIFETIME | any | — | Genetic; `any` also makes `not_includes_code` never indeterminate (a code with an undecidable state is a definite match) |
@@ -1986,6 +2065,93 @@ and Step 3.3 allows iron only with ferritin-confirmed deficiency. v3 exposed the
 patients to Step 2.1 alone; v4's empiric arm also includes the trial period, recheck and
 IV-iron route. Should a hemoglobinopathy code suppress the empiric option (e.g. a gate on
 Stage 1.5)? Not changed here.
+
+### `[DECISION — Josh 2026-10-03]` The most recent hemoglobin decides; over 30 days old → recheck — ENCODED (v13)
+
+**What prompted it.** A patient's chart held a hemoglobin of 8 g/dL dated 33 days before the
+visit. `gate-severe-anemia` read hemoglobin with a 7-day horizon, so it treated the chart as
+having none and asked "Hemoglobin (g/dL) (LOINC 718-7) — most recent value?" — for a value
+the chart already had.
+
+**Josh:** "it should be most recent but > 30 days should trigger recheck".
+
+**How each part is encoded.**
+
+1. **"it should be most recent"** — the threshold gates read the newest value on file,
+   however old. `gate-severe-anemia`: hemoglobin horizon `{days: 7}` → `"LIFETIME"`.
+   `gate-referral-threshold`: both leaves (hemoglobin 718-7, hematocrit 4544-3) `{days: 90}`
+   → `"LIFETIME"`. `LIFETIME` is in the horizon grammar for any coded condition and the
+   import validator accepts it on a `labs` scalar; no fallback was needed.
+2. **"> 30 days should trigger recheck"** — new membership gate `gate-hgb-recheck-due` on
+   Step 1.1: `labs` `not_includes_code` 718-7, horizon `"MONTH"` (30 days),
+   `on_unresolved: default` (never asks) → **Step 1.13** → **Lab-25**, a repeat CBC with
+   indices (a copy of Lab-1 on its own node, one node per host step).
+3. **No hemoglobin at all — unchanged.** The threshold gates still ask (v10: "we ask the
+   provider for a level if we don't have it. If none is entered, then we treat it as unknown
+   level of anemia and recommend ordering anemia labs"). `gate-hgb-recheck-due` is open in
+   that case too ("none in 30 days" includes "none"), beside `gate-no-hgb-on-file` → Step
+   1.9, so the plan holds the CBC, the CBC recheck line and the ferritin.
+4. **Not touched.** The response gates (`gate-hgb-response`, `gate-hgb-nonresponse` and
+   their `-on-iron` copies): their `{days: 28}` at-target leaves and `window_from` windows
+   are the treatment-response mechanism, not a threshold on the level. `gate-no-hgb-on-file`
+   (90 days). Hematocrit gets no recheck gate; the CBC returns it.
+
+**What a visit now does** (hemoglobin on file, by the age of the newest one):
+
+| Newest hemoglobin | Threshold gates | Asked? | Step 1.13 repeat CBC | Step 1.9 ferritin |
+|---|---|---|---|---|
+| ≤ 30 days old | decide on it | no | closed | closed |
+| 31–90 days old | decide on it | no | **open** | closed |
+| > 90 days old | decide on it | no | **open** | **open** (see below) |
+| none | ask; "Not available" closes them | **yes** | **open** | **open** |
+
+**Open points.**
+
+- `[JOSH — CONFIRM]` **Should "severity unknown" now mean no hemoglobin ever?**
+  `gate-no-hgb-on-file` still reads 90 days. Before v13 a hemoglobin older than 90 days was
+  invisible to every gate, so "none in 90 days" and "level unknown" were the same thing. Now
+  a 4-month-old hemoglobin decides transfusion and referral — the level is *known*, only old
+  — yet Step 1.9 ("Hemoglobin level unknown: order anemia labs") still opens and orders a
+  ferritin beside the CBC recheck. Changing this gate's horizon to `LIFETIME` would make
+  Step 1.9 open only when there is no hemoglobin at all. Not changed: you did not ask for it.
+- `[JOSH — CONFIRM]` **Two CBC lines in the plan.** Step 1.1's CBC with indices (Lab-1) is
+  unconditional, so whenever the recheck is due the plan lists "CBC with indices" and "CBC
+  with indices — recheck (no hemoglobin in the last 30 days)". One draw answers both. The
+  alternative — no Lab-25, Step 1.13 carrying only the reason — would leave the recheck
+  with no order line of its own.
+- `[JOSH — CONFIRM]` **No upper limit on age.** "Most recent" is encoded literally: a
+  hemoglobin from before this pregnancy, or years old, decides transfusion consideration
+  (Step 3.6) and referral (Step 3.7) when nothing newer is on file, with the recheck ordered
+  beside it. The same holds for the hematocrit leaf — and an old hematocrit < 27% with a
+  recent hemoglobin ≥ 9 opens referral with no recheck, since the recheck gate reads
+  hemoglobin only. A cap (e.g. `YEAR`, or `{days: 300}` as gate-multi-gestation uses) is one
+  horizon value if you want one.
+- `[JOSH — CONFIRM]` **The recheck line's wording.** Lab-25 is named "CBC with indices —
+  recheck (no hemoglobin in the last 30 days)" rather than "(last hemoglobin over 30 days
+  old)", because the gate is also open with no hemoglobin on file at all, where the second
+  wording would be false. Step 1.13's title is "Hemoglobin older than 30 days: repeat the
+  CBC"; its description says it is also open with none on file.
+
+**Limits.** An undated hemoglobin counts as current (undated facts are asserted at the
+session clock), so it never opens the recheck; the > 30-day arm needs a dated result. A
+level the provider types in answer to the hemoglobin question is likewise current and closes
+the recheck.
+
+**Proof.** `gate-proof.ts hgb-recheck`, both edge orders, real engine, clock 2026-09-24:
+Hgb 8 dated 33 days earlier (MCV 72) → no hemoglobin question, `gate-severe-anemia`
+GATED_OUT, `gate-referral-threshold` INCLUDED, `gate-hgb-recheck-due` / Step 1.13 / Lab-25
+INCLUDED, `gate-no-hgb-on-file` / Step 1.9 / Lab-18 GATED_OUT. Hgb 5.5 at 33 days →
+`gate-severe-anemia` and Step 3.6 INCLUDED, recheck INCLUDED. Hgb 8 at 10 days → nothing
+asked, recheck GATED_OUT. Hgb 8 at 120 days → nothing asked, referral INCLUDED, recheck and
+Step 1.9 / Lab-18 both INCLUDED (the first open point above). Undated Hgb 8 → recheck
+GATED_OUT. No hemoglobin → one question (`LOINC:718-7`), recheck and Step 1.9 both INCLUDED;
+answered with Hgb 8 → both close and referral opens. **One v12 expectation changed:**
+`response`'s "day 21, baseline only (24 days old, not rechecked)" expected the one hemoglobin
+question to be asked by three gates, `gate-severe-anemia` among them (7-day horizon, so the
+24-day-old baseline was invisible to it). In v13 that gate decides on the baseline (9.5 is
+not < 6): the question is still exactly one, asked by the two response gates, and the
+scenario now also asserts `gate-severe-anemia` GATED_OUT. Every other expectation is
+untouched.
 
 ### `[DECISION — Josh 2026-10-03]` Already on iron: skip the iron choices — ENCODED (v12)
 

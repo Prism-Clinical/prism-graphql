@@ -70,6 +70,13 @@ together become its BRANCHES_TO set. `all_of` = sequencing fan-out (all branches
 
 ## 4b. Gates
 
+> **Use the data the chart gives.** For every gate say how each state of its data is used: a
+> current value, an **old** value (decide on the most recent; a recheck gate handles
+> staleness), an **undated** value, and **no** value. For every treatment or test the pathway
+> starts, say what happens when the chart already holds it. A bounded window on a threshold
+> needs `[WINDOW — <gate-id>: <why>]`; a pathway that recommends medications without reading
+> the medication list needs `[NO MEDICATION CHECK — <why>]`.
+
 One block per machine-evaluable decision. Common fields for every gate:
 
 - **Gate `gate-<slug>` — `<title>`**

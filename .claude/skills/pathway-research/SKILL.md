@@ -171,6 +171,23 @@ Schedules with intervals, QualityMetrics with measure definitions, ESCALATES_TO 
 comorbidity-combination pathways. Summarize all horizon/status assignments in §17 (the
 temporal-audit table — these are emitted into the JSON, not annotations).
 
+## Step 3b — Use the data the chart gives
+
+Josh, 2026-10-03: a pathway never ignores data it has been given; the question is *how* to
+use it. Before validating, walk every gate and every action in the draft and answer, in the
+brief (§4b for gates, §18 for anything left open):
+
+- **Every lab the pathway reads:** what does a value mean when it is *old*? Decide on the most
+  recent value, and author a separate recheck (interval from the guideline) rather than a short
+  window that throws the value away. What when it is *undated*? What when there is *none*?
+- **Every treatment the pathway starts or chooses:** what if she is already on it, or has
+  already had it? Read the medication list first.
+- **Every test the pathway orders:** what if a result is already on file?
+- **Every question the pathway asks:** could the chart have answered it?
+
+The format spec's section "Use the data the chart gives" has the patterns and the two brief
+markers (`[WINDOW — …]`, `[NO MEDICATION CHECK — …]`).
+
 ## Step 4 — Validate the brief
 
 - [ ] Every Stage/Step/DP/Criterion/Med/Lab/Imaging/Procedure/Guidance node has a citation

@@ -50,6 +50,13 @@
 //                    orders a ferritin beside Step 1.1's CBC meanwhile; "Not available"
 //                    stops the asking and the plan generates with the anemia labs; a
 //                    level entered instead closes Step 1.9 and decides the gates
+//   hgb-recheck      anemia v13: the hemoglobin threshold gates read the MOST RECENT value
+//                    however old (LIFETIME), and a newest value over 30 days old opens
+//                    gate-hgb-recheck-due → Step 1.13 → Lab-25 (repeat CBC). Hgb 8 at 33
+//                    days: nothing asked, referral yes, transfusion no, recheck ordered;
+//                    Hgb 5.5 at 33 days: transfusion yes, recheck ordered; Hgb 8 at 10
+//                    days or undated: no recheck; no Hgb at all: the level is asked for, and both
+//                    Step 1.13 (CBC recheck) and Step 1.9 (ferritin) are open
 //   on-iron          anemia v12: the medication list is read behind gate-microcytic.
 //                    Oral iron on it (any of 310325 / 198630 / 284202 / 311975) → no
 //                    DP-1, no DP-3, no oral-iron Medication node; "continue" guidance,
@@ -696,17 +703,19 @@ async function proveResponse(): Promise<void> {
       for (const g of RESPONSE_GATES) expect(g, status(r.state, g), 'PENDING_QUESTION');
       for (const id of ['step-2-4', 'step-2-6', 'step-2-5']) expect(id, status(r.state, id), 'PENDING_QUESTION');
 
-      // The pre-treatment baseline is 24 days old, so gate-severe-anemia (Hgb,
-      // 7-day horizon) asks for a current Hgb, and both response gates need the
-      // same datum. ONE Hgb question stands, and it names all three gates as
-      // askers. (Before the evaluation pipeline the response gates' claim was
-      // dropped when an incremental pass reconciled pending questions; a fresh
-      // evaluation per mutation has no reconcile step, so that gap is closed.)
-      console.log('    day 21, baseline only (24 days old, not rechecked) — one Hgb question, asked by all three gates; both branches held:');
+      // The only Hgb is the pre-treatment baseline, 24 days old. Through v12
+      // gate-severe-anemia read a 7-day horizon, found nothing and asked too,
+      // so the one Hgb question named three gates. v13 [DECISION — Josh
+      // 2026-10-03]: the threshold gates read the MOST RECENT value however
+      // old, so gate-severe-anemia decides on the baseline (9.5 is not < 6)
+      // and asks nothing. ONE Hgb question still stands — the response gates'
+      // recheck — and it names those two.
+      console.log('    day 21, baseline only (24 days old, not rechecked) — one Hgb question, asked by both response gates; gate-severe-anemia decides on the baseline; both branches held:');
       r = await visit({ asOf: DAY21, start: IRON_START, hgb: [[9.5, BASELINE_DATE]], attrs: { gestational_age_weeks: 20 } });
       hq = r.pending.filter((p: any) => p.datumKey === 'LOINC:718-7') as any[];
       expect('Hgb questions', String(hq.length), '1');
-      expect('asked by', JSON.stringify([...(hq[0]?.askedByNodeIds ?? [])].sort()), '["gate-hgb-nonresponse","gate-hgb-response","gate-severe-anemia"]');
+      expect('asked by', JSON.stringify([...(hq[0]?.askedByNodeIds ?? [])].sort()), '["gate-hgb-nonresponse","gate-hgb-response"]');
+      expect('gate-severe-anemia (v13: reads the 24-day-old 9.5)', status(r.state, 'gate-severe-anemia'), 'GATED_OUT');
       console.log(`    (prompt: ${JSON.stringify(hq[0]?.prompt)}; raised by ${hq[0]?.gateId})`);
       for (const g of RESPONSE_GATES) expect(g, status(r.state, g), 'PENDING_QUESTION');
       expect('gate-hgb-nonresponse reason', String(/Need ≥2 dated values for 718-7; found 1/.test(r.state.get('gate-hgb-nonresponse')?.excludeReason ?? '')), 'true');
@@ -1552,6 +1561,83 @@ async function proveUnknownHgb(): Promise<void> {
   }
 }
 
+// ── Proof: anemia v13 — most recent hemoglobin, recheck when over 30 days old ──
+// [DECISION — Josh 2026-10-03]: "it should be most recent but > 30 days should
+// trigger recheck". The chart that prompted it: Hgb 8 g/dL dated 33 days before
+// the visit, which v12's 7-day gate-severe-anemia could not see, so it asked.
+async function proveHgbRecheck(): Promise<void> {
+  console.log(`\n=== hgb-recheck: anemia v13 — most recent Hgb decides; over 30 days old → repeat CBC (${ANEMIA}) ===`);
+  const HGB = 'LOINC:718-7';
+  const DAYS_33 = '2026-08-22'; // 33 days before AS_OF (2026-09-24)
+  const DAYS_10 = '2026-09-14'; // 10 days before AS_OF
+  const DAYS_120 = '2026-05-27'; // 120 days before AS_OF
+  const RECHECK = ['gate-hgb-recheck-due', 'step-1-13', 'lab-25'];
+  const UNKNOWN = ['gate-no-hgb-on-file', 'step-1-9', 'lab-18'];
+  const hgbQuestions = (r: { pending: any[] }) => String(r.pending.filter((p: any) => p.datumKey === HGB).length);
+  for (const reverse of [false, true]) {
+    console.log(`  -- edge order: ${reverse ? 'reversed' : 'file'}`);
+
+    console.log('  Hgb 8, 33 days old, MCV 72: nothing asked about the level; referral yes, transfusion no; repeat CBC ordered:');
+    let r = await resolveSession({ file: ANEMIA, reverse, patient: patientWith([['787-2', 72], ['718-7', 8, DAYS_33]]) });
+    expect('Hgb questions', hgbQuestions(r), '0');
+    expect('gate-severe-anemia (8 is not < 6)', status(r.state, 'gate-severe-anemia'), 'GATED_OUT');
+    expect('step-3-6 transfusion consideration', status(r.state, 'step-3-6'), 'GATED_OUT');
+    expect('gate-referral-threshold (8 < 9)', status(r.state, 'gate-referral-threshold'), 'INCLUDED');
+    expect('step-3-7 specialist referral', status(r.state, 'step-3-7'), 'INCLUDED');
+    expectAll('(repeat CBC)', r.state, RECHECK, 'INCLUDED');
+    expectAll('(level is not unknown)', r.state, UNKNOWN, 'GATED_OUT');
+    expect('lab-1 CBC with indices (Step 1.1, unconditional)', status(r.state, 'lab-1'), 'INCLUDED');
+
+    console.log('  Hgb 5.5, 33 days old: transfusion consideration opens on the old value, and the CBC is repeated:');
+    r = await resolveSession({ file: ANEMIA, reverse, patient: patientWith([['787-2', 72], ['718-7', 5.5, DAYS_33]]) });
+    expect('Hgb questions', hgbQuestions(r), '0');
+    expect('gate-severe-anemia (5.5 < 6)', status(r.state, 'gate-severe-anemia'), 'INCLUDED');
+    expect('step-3-6 transfusion consideration', status(r.state, 'step-3-6'), 'INCLUDED');
+    expect('gate-referral-threshold (5.5 < 9)', status(r.state, 'gate-referral-threshold'), 'INCLUDED');
+    expectAll('(repeat CBC)', r.state, RECHECK, 'INCLUDED');
+    expectAll('(level is not unknown)', r.state, UNKNOWN, 'GATED_OUT');
+
+    // gate-no-hgb-on-file is unchanged in v13 (90 days), so a value older than
+    // that opens Step 1.9 as well — the brief's [JOSH — CONFIRM] on that gate.
+    console.log('  Hgb 8, 120 days old: still decides the threshold gates, nothing asked; recheck AND Step 1.9 (no Hgb in 90 days) open:');
+    r = await resolveSession({ file: ANEMIA, reverse, patient: patientWith([['787-2', 72], ['718-7', 8, DAYS_120]]) });
+    expect('Hgb questions', hgbQuestions(r), '0');
+    expect('gate-severe-anemia', status(r.state, 'gate-severe-anemia'), 'GATED_OUT');
+    expect('gate-referral-threshold (8 < 9)', status(r.state, 'gate-referral-threshold'), 'INCLUDED');
+    expectAll('(repeat CBC)', r.state, RECHECK, 'INCLUDED');
+    expectAll('(none in 90 days: ferritin)', r.state, UNKNOWN, 'INCLUDED');
+
+    console.log('  Hgb 8, 10 days old: nothing asked, no recheck:');
+    r = await resolveSession({ file: ANEMIA, reverse, patient: patientWith([['787-2', 72], ['718-7', 8, DAYS_10]]) });
+    expect('Hgb questions', hgbQuestions(r), '0');
+    expect('gate-severe-anemia', status(r.state, 'gate-severe-anemia'), 'GATED_OUT');
+    expect('gate-referral-threshold', status(r.state, 'gate-referral-threshold'), 'INCLUDED');
+    expectAll('(no repeat CBC)', r.state, RECHECK, 'GATED_OUT');
+    expectAll('(level is not unknown)', r.state, UNKNOWN, 'GATED_OUT');
+    expect('lab-1 CBC with indices', status(r.state, 'lab-1'), 'INCLUDED');
+
+    console.log('  Hgb 8, undated (asserted current): nothing asked, no recheck:');
+    r = await resolveSession({ file: ANEMIA, reverse, patient: patientWith([['787-2', 72], ['718-7', 8]]) });
+    expect('Hgb questions', hgbQuestions(r), '0');
+    expectAll('(no repeat CBC)', r.state, RECHECK, 'GATED_OUT');
+
+    console.log('  no Hgb at all: the level is still ASKED for; the CBC recheck and Step 1.9\'s ferritin are both open:');
+    const noLevel = patientWith([['787-2', 72]]);
+    r = await resolveSession({ file: ANEMIA, reverse, patient: noLevel });
+    expect('Hgb questions', hgbQuestions(r), '1');
+    expect('gate-severe-anemia', status(r.state, 'gate-severe-anemia'), 'PENDING_QUESTION');
+    expectAll('(repeat CBC)', r.state, RECHECK, 'INCLUDED');
+    expectAll('(order ferritin)', r.state, UNKNOWN, 'INCLUDED');
+
+    console.log('  the provider answers the question with Hgb 8 (a value as of today): the recheck and Step 1.9 close:');
+    const answered = await supplyLab(r, noLevel, { code: '718-7', value: 8 });
+    expect('Hgb questions', String(answered.pending.filter((p: any) => p.datumKey === HGB).length), '0');
+    expect('gate-referral-threshold (8 < 9)', status(answered.state, 'gate-referral-threshold'), 'INCLUDED');
+    expectAll('(no repeat CBC)', answered.state, RECHECK, 'GATED_OUT');
+    expectAll('(level is not unknown)', answered.state, UNKNOWN, 'GATED_OUT');
+  }
+}
+
 async function proveGhtnSeizure(): Promise<void> {
   console.log(`\n=== ghtn-seizure: Guid-5 "Seizure: call 911" on Step 2.1 — every patient (${GHTN}) ===`);
   const pw = JSON.parse(readFileSync(resolve(GHTN), 'utf8'));
@@ -1971,6 +2057,7 @@ const PROOFS: Record<string, () => Promise<void>> = {
   'ghtn-shared-labs': proveGhtnSharedLabs,
   'unknown-hgb': proveUnknownHgb,
   'on-iron': proveOnIron,
+  'hgb-recheck': proveHgbRecheck,
   'ghtn-seizure': proveGhtnSeizure,
   'uti-shared-labs': proveUtiSharedLabs,
 };
