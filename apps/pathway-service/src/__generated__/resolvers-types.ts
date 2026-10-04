@@ -143,6 +143,11 @@ export type CatchUpItem = {
   title: Scalars['String']['output'];
 };
 
+export enum CitationOrigin {
+  Item = 'ITEM',
+  Step = 'STEP'
+}
+
 /** Clinical state a SYNTHETIC caller may assert on a coded entry. */
 export enum ClinicalStateInput {
   Active = 'ACTIVE',
@@ -1025,6 +1030,13 @@ export type MultiPathwayResolutionSession = {
   providerId: Scalars['ID']['output'];
   /** Lines the provider removed from the plan, each restorable with `setPlanItems`. */
   providerRemovals: Array<ProviderRemoval>;
+  /**
+   * The guideline citations behind each line of the merged plan, keyed by the
+   * line's source node. Read-only reference material looked up from the pathway
+   * graphs on request; not part of the plan and not covered by `resultHash`.
+   * A node with no citation (its own or its step's) has no entry.
+   */
+  recommendationCitations: Array<RecommendationCitations>;
   /** Hash of exactly what a provider reviews (spec §1 rule 8). Pass it to generateMergedCarePlan. */
   resultHash: Scalars['String']['output'];
   /** Optimistic-lock counter for the whole run; increments on every committed write to it or any of its pathways. */
@@ -1650,6 +1662,19 @@ export type PlanChange = {
   kind: PlanItemKind;
 };
 
+/** An EvidenceCitation node as authored in the pathway. */
+export type PlanCitation = {
+  __typename?: 'PlanCitation';
+  authors?: Maybe<Scalars['String']['output']>;
+  evidenceLevel?: Maybe<Scalars['String']['output']>;
+  referenceNumber?: Maybe<Scalars['Int']['output']>;
+  /** Journal or publisher line, e.g. "Obstetrics & Gynecology 138:e55–64". */
+  source?: Maybe<Scalars['String']['output']>;
+  title: Scalars['String']['output'];
+  url?: Maybe<Scalars['String']['output']>;
+  year?: Maybe<Scalars['Int']['output']>;
+};
+
 export enum PlanItemAction {
   Remove = 'REMOVE',
   Restore = 'RESTORE'
@@ -1925,6 +1950,22 @@ export type ReachabilityScore = {
   indeterminateGates: Scalars['Int']['output'];
   questionGates: Scalars['Int']['output'];
   totalGates: Scalars['Int']['output'];
+};
+
+/** The evidence one plan line's source node rests on. */
+export type RecommendationCitations = {
+  __typename?: 'RecommendationCitations';
+  citations: Array<PlanCitation>;
+  /**
+   * ITEM when the recommendation cites the evidence itself; STEP when it cites
+   * none and these are the citations of the pathway step that holds it.
+   */
+  from: CitationOrigin;
+  /** The recommendation's node — matches `sourceNodes.nodeId` on a merged line. */
+  nodeId: Scalars['String']['output'];
+  pathwayId: Scalars['ID']['output'];
+  /** The step's title when `from` is STEP. */
+  stepTitle?: Maybe<Scalars['String']['output']>;
 };
 
 export enum RecommendationState {
@@ -2660,6 +2701,7 @@ export type ResolversTypes = ResolversObject<{
   BlockerType: BlockerType;
   CarePlanGenerationResult: ResolverTypeWrapper<CarePlanGenerationResult>;
   CatchUpItem: ResolverTypeWrapper<CatchUpItem>;
+  CitationOrigin: CitationOrigin;
   ClinicalStateInput: ClinicalStateInput;
   CodeDefinition: ResolverTypeWrapper<CodeDefinition>;
   CodeInput: CodeInput;
@@ -2732,6 +2774,7 @@ export type ResolversTypes = ResolversObject<{
   PatientContextInput: PatientContextInput;
   PendingQuestionType: ResolverTypeWrapper<PendingQuestionType>;
   PlanChange: ResolverTypeWrapper<PlanChange>;
+  PlanCitation: ResolverTypeWrapper<PlanCitation>;
   PlanItemAction: PlanItemAction;
   PlanItemKind: PlanItemKind;
   PlanNodeRef: ResolverTypeWrapper<PlanNodeRef>;
@@ -2744,6 +2787,7 @@ export type ResolversTypes = ResolversObject<{
   ProviderRemoval: ResolverTypeWrapper<ProviderRemoval>;
   Query: ResolverTypeWrapper<{}>;
   ReachabilityScore: ResolverTypeWrapper<ReachabilityScore>;
+  RecommendationCitations: ResolverTypeWrapper<RecommendationCitations>;
   RecommendationState: RecommendationState;
   RecordValidityInput: RecordValidityInput;
   RedFlagBranchType: ResolverTypeWrapper<RedFlagBranchType>;
@@ -2868,6 +2912,7 @@ export type ResolversParentTypes = ResolversObject<{
   PatientContextInput: PatientContextInput;
   PendingQuestionType: PendingQuestionType;
   PlanChange: PlanChange;
+  PlanCitation: PlanCitation;
   PlanNodeRef: PlanNodeRef;
   PlanNodeRefInput: PlanNodeRefInput;
   PropagationConfigInput: PropagationConfigInput;
@@ -2877,6 +2922,7 @@ export type ResolversParentTypes = ResolversObject<{
   ProviderRemoval: ProviderRemoval;
   Query: {};
   ReachabilityScore: ReachabilityScore;
+  RecommendationCitations: RecommendationCitations;
   RedFlagBranchType: RedFlagBranchType;
   RedFlagType: RedFlagType;
   RelatedPathway: RelatedPathway;
@@ -3337,6 +3383,7 @@ export type MultiPathwayResolutionSessionResolvers<ContextType = DataSourceConte
   planChanges?: Resolver<Array<ResolversTypes['PlanChange']>, ParentType, ContextType>;
   providerId?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
   providerRemovals?: Resolver<Array<ResolversTypes['ProviderRemoval']>, ParentType, ContextType>;
+  recommendationCitations?: Resolver<Array<ResolversTypes['RecommendationCitations']>, ParentType, ContextType>;
   resultHash?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   revision?: Resolver<ResolversTypes['Int'], ParentType, ContextType>;
   status?: Resolver<ResolversTypes['MultiPathwayResolutionSessionStatus'], ParentType, ContextType>;
@@ -3520,6 +3567,17 @@ export type PlanChangeResolvers<ContextType = DataSourceContext, ParentType exte
   __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
 }>;
 
+export type PlanCitationResolvers<ContextType = DataSourceContext, ParentType extends ResolversParentTypes['PlanCitation'] = ResolversParentTypes['PlanCitation']> = ResolversObject<{
+  authors?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  evidenceLevel?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  referenceNumber?: Resolver<Maybe<ResolversTypes['Int']>, ParentType, ContextType>;
+  source?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  title?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  url?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  year?: Resolver<Maybe<ResolversTypes['Int']>, ParentType, ContextType>;
+  __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
+}>;
+
 export type PlanNodeRefResolvers<ContextType = DataSourceContext, ParentType extends ResolversParentTypes['PlanNodeRef'] = ResolversParentTypes['PlanNodeRef']> = ResolversObject<{
   nodeId?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   pathwayId?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
@@ -3598,6 +3656,15 @@ export type ReachabilityScoreResolvers<ContextType = DataSourceContext, ParentTy
   indeterminateGates?: Resolver<ResolversTypes['Int'], ParentType, ContextType>;
   questionGates?: Resolver<ResolversTypes['Int'], ParentType, ContextType>;
   totalGates?: Resolver<ResolversTypes['Int'], ParentType, ContextType>;
+  __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
+}>;
+
+export type RecommendationCitationsResolvers<ContextType = DataSourceContext, ParentType extends ResolversParentTypes['RecommendationCitations'] = ResolversParentTypes['RecommendationCitations']> = ResolversObject<{
+  citations?: Resolver<Array<ResolversTypes['PlanCitation']>, ParentType, ContextType>;
+  from?: Resolver<ResolversTypes['CitationOrigin'], ParentType, ContextType>;
+  nodeId?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  pathwayId?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
+  stepTitle?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
 }>;
 
@@ -4008,6 +4075,7 @@ export type Resolvers<ContextType = DataSourceContext> = ResolversObject<{
   PathwayStatusResult?: PathwayStatusResultResolvers<ContextType>;
   PendingQuestionType?: PendingQuestionTypeResolvers<ContextType>;
   PlanChange?: PlanChangeResolvers<ContextType>;
+  PlanCitation?: PlanCitationResolvers<ContextType>;
   PlanNodeRef?: PlanNodeRefResolvers<ContextType>;
   PropagationConfigType?: PropagationConfigTypeResolvers<ContextType>;
   PropagationInfluence?: PropagationInfluenceResolvers<ContextType>;
@@ -4015,6 +4083,7 @@ export type Resolvers<ContextType = DataSourceContext> = ResolversObject<{
   ProviderRemoval?: ProviderRemovalResolvers<ContextType>;
   Query?: QueryResolvers<ContextType>;
   ReachabilityScore?: ReachabilityScoreResolvers<ContextType>;
+  RecommendationCitations?: RecommendationCitationsResolvers<ContextType>;
   RedFlagBranchType?: RedFlagBranchTypeResolvers<ContextType>;
   RedFlagType?: RedFlagTypeResolvers<ContextType>;
   RelatedPathway?: RelatedPathwayResolvers<ContextType>;

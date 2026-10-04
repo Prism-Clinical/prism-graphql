@@ -66,7 +66,8 @@ import {
   ConflictResolutionKind,
   CustomMedicationOverride,
 } from '../../services/resolution/care-plan-merge';
-import { resolveTemporalPolicyVersion } from '../helpers/resolution-context';
+import { fetchGraphFromAGE, resolveTemporalPolicyVersion } from '../helpers/resolution-context';
+import { citationsForNodes } from '../../services/resolution/plan-citations';
 import { factStoreForInput } from '../../services/resolution/temporal/fact-store';
 import { assertKnownPolicyVersion } from '../../services/resolution/temporal/policy-registry';
 import {
@@ -796,6 +797,42 @@ export const multiPathwayResolutionTypeResolvers = {
             ? present.has(`${WRITE_IN}|${e.id}`) || e.itemKind !== 'medication'
             : (e.target ?? []).some((t) => present.has(`${t.pathwayId}|${t.nodeId}`)),
         }));
+    },
+
+    /**
+     * The guideline citations behind each line of the merged plan. Read from
+     * the pathway graphs when asked for, never stored with the run: the plan
+     * (and so `resultHash`) is exactly what it was without them. One graph
+     * read per contributing pathway that has a line in the plan.
+     */
+    recommendationCitations: async (
+      parent: { mergedPlan: { [k: string]: unknown } },
+      _args: unknown,
+      context: DataSourceContext,
+    ) => {
+      const lines = ['medications', 'labs', 'imaging', 'procedures', 'guidance', 'schedules', 'qualityMetrics']
+        .flatMap((k) => (parent.mergedPlan[k] as Array<{ sourceNodes?: PlanNodeRef[] }> | undefined) ?? []);
+      const nodesByPathway = new Map<string, string[]>();
+      for (const ref of lines.flatMap((l) => l.sourceNodes ?? [])) {
+        // A line the provider wrote in has no pathway and cites nothing.
+        if (ref.pathwayId === WRITE_IN) continue;
+        nodesByPathway.set(ref.pathwayId, [...(nodesByPathway.get(ref.pathwayId) ?? []), ref.nodeId]);
+      }
+      if (nodesByPathway.size === 0) return [];
+      const index = await context.pool.query(
+        'SELECT id, age_node_id FROM pathway_graph_index WHERE id = ANY($1::uuid[])',
+        [[...nodesByPathway.keys()]],
+      );
+      const perPathway = await Promise.all(
+        index.rows
+          .filter((row) => row.age_node_id)
+          .map(async (row) => {
+            const pathwayId = String(row.id);
+            const graph = await fetchGraphFromAGE(context.pool, String(row.age_node_id));
+            return citationsForNodes(graph, nodesByPathway.get(pathwayId) ?? []).map((c) => ({ pathwayId, ...c }));
+          }),
+      );
+      return perPathway.flat();
     },
 
     /**

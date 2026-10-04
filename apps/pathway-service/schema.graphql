@@ -1021,8 +1021,47 @@ type MultiPathwayResolutionSession {
   context (`encounterDiagnoses` at start, plus every `addEncounterContext`).
   """
   encounterDiagnoses: [EncounterConditionCode!]!
+  """
+  The guideline citations behind each line of the merged plan, keyed by the
+  line's source node. Read-only reference material looked up from the pathway
+  graphs on request; not part of the plan and not covered by `resultHash`.
+  A node with no citation (its own or its step's) has no entry.
+  """
+  recommendationCitations: [RecommendationCitations!]!
   createdAt: String!
   updatedAt: String!
+}
+
+"""The evidence one plan line's source node rests on."""
+type RecommendationCitations {
+  pathwayId: ID!
+  """The recommendation's node — matches `sourceNodes.nodeId` on a merged line."""
+  nodeId: String!
+  """
+  ITEM when the recommendation cites the evidence itself; STEP when it cites
+  none and these are the citations of the pathway step that holds it.
+  """
+  from: CitationOrigin!
+  """The step's title when `from` is STEP."""
+  stepTitle: String
+  citations: [PlanCitation!]!
+}
+
+enum CitationOrigin {
+  ITEM
+  STEP
+}
+
+"""An EvidenceCitation node as authored in the pathway."""
+type PlanCitation {
+  referenceNumber: Int
+  title: String!
+  authors: String
+  year: Int
+  """Journal or publisher line, e.g. "Obstetrics & Gynecology 138:e55–64"."""
+  source: String
+  url: String
+  evidenceLevel: String
 }
 
 """A condition code as a run holds it — on the chart it started from, or on the encounter."""
