@@ -312,3 +312,25 @@ describe('a lab value entered with the day it was drawn', () => {
     await expect(answer(id2, { numericValue: 20, observedOn: '2026-08-20' })).rejects.toThrow(/not a lab/);
   });
 });
+
+describe('a question for a lab the chart holds an older value of', () => {
+  // Severe-anaemia style: only a value from the last 7 days counts.
+  const RECENT = { field: 'labs', operator: 'less_than', value: '718-7', system: 'LOINC', threshold: 6, horizon: { days: 7 } };
+
+  it('carries the newest value on file and its date, so the provider confirms or replaces it', async () => {
+    harness.addPathway('pw', oneGate(RECENT));
+    const id = await start('pw', { labResults: [
+      { code: '718-7', system: 'LOINC', value: 9.1, date: '2026-07-01' },
+      { code: '718-7', system: 'LOINC', value: 8, date: '2026-08-01' },
+    ] });
+    expect(session(id).pendingQuestions[0]).toMatchObject({
+      datumKey: 'LOINC:718-7', lastOnFile: { value: 8, date: '2026-08-01' },
+    });
+  });
+
+  it('carries nothing when the chart holds no value', async () => {
+    harness.addPathway('pw', oneGate(RECENT));
+    const id = await start('pw');
+    expect(session(id).pendingQuestions[0].lastOnFile).toBeUndefined();
+  });
+});

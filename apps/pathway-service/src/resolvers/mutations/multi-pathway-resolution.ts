@@ -656,6 +656,8 @@ export const multiPathwayResolutionTypeResolvers = {
         tentativeConfidence: number | null;
         tentativeReasoning: string | null;
         datumKey: string | null;
+        lastOnFileValue: number | null;
+        lastOnFileDate: string | null;
         optionLabels: string[] | null;
       }> = [];
       for (const row of result.rows) {
@@ -687,6 +689,12 @@ export const multiPathwayResolutionTypeResolvers = {
             datumKey: q.datumKey == null && q.datum_key == null
               ? null
               : String(q.datumKey ?? q.datum_key),
+            lastOnFileValue: typeof (q.lastOnFile as { value?: unknown } | undefined)?.value === 'number'
+              ? (q.lastOnFile as { value: number }).value
+              : null,
+            lastOnFileDate: typeof (q.lastOnFile as { date?: unknown } | undefined)?.date === 'string'
+              ? (q.lastOnFile as { date: string }).date
+              : null,
             optionLabels: Array.isArray(q.optionLabels ?? q.option_labels)
               ? ((q.optionLabels ?? q.option_labels) as string[])
               : null,

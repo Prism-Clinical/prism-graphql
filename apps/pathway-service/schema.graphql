@@ -989,6 +989,14 @@ type MultiPathwayPendingGate {
   symptomatic?". Null for ordinary question gates.
   """
   datumKey: String
+  """
+  The newest value the chart holds for the lab or vital asked for, when the
+  gate could not use it (too old for its window, or not orderable). Offer it
+  as the question's starting answer; null when nothing is on file.
+  """
+  lastOnFileValue: Float
+  """The day `lastOnFileValue` was drawn, `YYYY-MM-DD`; null when undated."""
+  lastOnFileDate: String
 }
 
 """Lightweight summary for list views (no embedded merged plan)."""
@@ -1231,6 +1239,14 @@ type PendingQuestionType {
   symptomatic?". Null for ordinary question gates.
   """
   datumKey: String
+  """
+  The newest value the chart holds for the lab or vital asked for, when the
+  gate could not use it (too old for its window, or not orderable). Offer it
+  as the question's starting answer; null when nothing is on file.
+  """
+  lastOnFileValue: Float
+  """The day `lastOnFileValue` was drawn, `YYYY-MM-DD`; null when undated."""
+  lastOnFileDate: String
 }
 
 type CarePlanGenerationResult {

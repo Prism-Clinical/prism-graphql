@@ -851,6 +851,14 @@ export type MultiPathwayPendingGate = {
   datumKey?: Maybe<Scalars['String']['output']>;
   estimatedImpact: Scalars['String']['output'];
   gateId: Scalars['ID']['output'];
+  /** The day `lastOnFileValue` was drawn, `YYYY-MM-DD`; null when undated. */
+  lastOnFileDate?: Maybe<Scalars['String']['output']>;
+  /**
+   * The newest value the chart holds for the lab or vital asked for, when the
+   * gate could not use it (too old for its window, or not orderable). Offer it
+   * as the question's starting answer; null when nothing is on file.
+   */
+  lastOnFileValue?: Maybe<Scalars['Float']['output']>;
   /**
    * Display text for `options`, index-aligned, when the option values are not
    * readable on their own. A branch choice answers with a node id; this carries
@@ -1451,6 +1459,14 @@ export type PendingQuestionType = {
   datumKey?: Maybe<Scalars['String']['output']>;
   estimatedImpact: Scalars['String']['output'];
   gateId: Scalars['ID']['output'];
+  /** The day `lastOnFileValue` was drawn, `YYYY-MM-DD`; null when undated. */
+  lastOnFileDate?: Maybe<Scalars['String']['output']>;
+  /**
+   * The newest value the chart holds for the lab or vital asked for, when the
+   * gate could not use it (too old for its window, or not orderable). Offer it
+   * as the question's starting answer; null when nothing is on file.
+   */
+  lastOnFileValue?: Maybe<Scalars['Float']['output']>;
   /**
    * Display text for `options`, index-aligned, when the option values are not
    * readable on their own. A branch choice answers with a node id; this carries
@@ -3025,6 +3041,8 @@ export type MultiPathwayPendingGateResolvers<ContextType = DataSourceContext, Pa
   datumKey?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   estimatedImpact?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   gateId?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
+  lastOnFileDate?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  lastOnFileValue?: Resolver<Maybe<ResolversTypes['Float']>, ParentType, ContextType>;
   optionLabels?: Resolver<Maybe<Array<ResolversTypes['String']>>, ParentType, ContextType>;
   options?: Resolver<Maybe<Array<ResolversTypes['String']>>, ParentType, ContextType>;
   pathwayId?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
@@ -3205,6 +3223,8 @@ export type PendingQuestionTypeResolvers<ContextType = DataSourceContext, Parent
   datumKey?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   estimatedImpact?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   gateId?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
+  lastOnFileDate?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  lastOnFileValue?: Resolver<Maybe<ResolversTypes['Float']>, ParentType, ContextType>;
   optionLabels?: Resolver<Maybe<Array<ResolversTypes['String']>>, ParentType, ContextType>;
   options?: Resolver<Maybe<Array<ResolversTypes['String']>>, ParentType, ContextType>;
   prompt?: Resolver<ResolversTypes['String'], ParentType, ContextType>;

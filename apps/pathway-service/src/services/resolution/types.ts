@@ -560,6 +560,14 @@ export interface PendingQuestion {
    */
   datumKey?: string;
   /**
+   * The newest value the chart holds for a requested LAB or VITAL, when there
+   * is one the gate could not use — outside its horizon, or not orderable
+   * against the others. Shown with the question and offered as its starting
+   * answer, so the provider confirms or replaces it instead of retyping a
+   * value Prism already has. Absent when nothing is on file.
+   */
+  lastOnFile?: { value: number; date?: string };
+  /**
    * Every gate this pass saw asking for this datum.
    *
    * A shared datum prompt is deduped — two gates needing one haemoglobin ask

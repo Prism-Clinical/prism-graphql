@@ -133,6 +133,8 @@ export function formatSessionForGraphQL(session: ResolutionSession) {
       tentativeConfidence: q.tentativeConfidence ?? null,
       tentativeReasoning: q.tentativeReasoning ?? null,
       datumKey: q.datumKey ?? null,
+      lastOnFileValue: q.lastOnFile?.value ?? null,
+      lastOnFileDate: q.lastOnFile?.date ?? null,
       optionLabels: q.optionLabels ?? null,
     })),
     redFlags: session.redFlags.map(f => ({
@@ -740,6 +742,8 @@ export const Query = {
         tentativeConfidence: q.tentativeConfidence ?? null,
         tentativeReasoning: q.tentativeReasoning ?? null,
         datumKey: q.datumKey ?? null,
+      lastOnFileValue: q.lastOnFile?.value ?? null,
+      lastOnFileDate: q.lastOnFile?.date ?? null,
         optionLabels: q.optionLabels ?? null,
       }));
     },

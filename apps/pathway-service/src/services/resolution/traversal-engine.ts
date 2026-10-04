@@ -159,6 +159,33 @@ function unresolvedAsk(
 
 
 /**
+ * The newest value on file for the lab or vital a question asks for — the one
+ * the gate could not use (too old for its horizon, or unorderable). Dated
+ * values are ordered by date; with none dated, a lone undated value is offered.
+ */
+function lastOnFileFor(
+  target: UnresolvedAsk['target'],
+  factStore: FactStore,
+  patient: PatientContext,
+): { lastOnFile?: { value: number; date?: string } } {
+  if (target.kind === 'vital') {
+    const v = (patient.vitalSigns as Record<string, unknown> | undefined)?.[target.path];
+    return typeof v === 'number' ? { lastOnFile: { value: v } } : {};
+  }
+  if (target.kind !== 'lab') return {};
+  const labs = (patient.labResults ?? []).filter(
+    (l) => l.code === target.code && typeof l.value === 'number',
+  ) as Array<{ value: number; date?: string }>;
+  if (labs.length === 0) return {};
+  const dated = labs.filter((l) => typeof l.date === 'string' && l.date !== '');
+  if (dated.length > 0) {
+    const newest = dated.reduce((a, b) => (String(b.date) > String(a.date) ? b : a));
+    return { lastOnFile: { value: newest.value, date: String(newest.date).slice(0, 10) } };
+  }
+  return labs.length === 1 ? { lastOnFile: { value: labs[0].value } } : {};
+}
+
+/**
  * Close a branch the answer did not select, and everything under it.
  *
  * EXCLUDED rather than absent: a node missing from the session reads as an
@@ -1052,6 +1079,7 @@ export class TraversalEngine {
               estimatedImpact: subtreeSize > 3 ? 'high' : subtreeSize > 1 ? 'medium' : 'low',
               datumKey: ask.datumKey,
               askTarget: ask.target,
+              ...lastOnFileFor(ask.target, this.factStore, patientContext),
             });
           }
           // Fail CLOSED on anything that is not an explicit traverse.
