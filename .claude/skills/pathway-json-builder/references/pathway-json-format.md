@@ -96,11 +96,16 @@ the highest level whose every member belongs in the pathway:
 - The family lookup needs the patient's code AND the parent in the deployment's
   `icd10_codes` table. The local table holds a common-codes subset — check both are present.
 - Gate conditions already do this with `includes_code` and a trailing `.*`.
-- **Not built yet — pathway classification.** Josh, 2026-10-03: pathways will carry a
-  class (pregnant, adult, pediatric); for a pregnant patient the pregnancy pathway wins, and
-  adult vs pediatric is decided by age. Until it exists, a family such as `D50` on a
-  pregnancy pathway fires for any patient with that code, and a future general-medicine
-  pathway on the same family would run beside it. See `pathways/TODO.md`.
+- **Obstetric pathways apply to pregnant patients only** (`[DECISION — Josh 2026-10-03]`,
+  josh-dev engine: `pathway-applicability.ts`). A pathway with `category: OBSTETRIC` is
+  dropped from matching unless the chart says the patient is pregnant: any chapter-15 code
+  (`O…`), `Z33`, `Z34`, `Z3A`, or a recorded gestational age or trimester. So a non-pregnancy
+  family on a pregnancy pathway (`D50`, `R82.71`, `R03.0`) fires only for a pregnant
+  patient. **Set `category: OBSTETRIC` on every pregnancy pathway — it is now behaviour, not
+  a label.**
+- **Not built yet — the rest of pathway classification** (adult / pediatric by age, and
+  preferring the pregnancy pathway over a general one when both match). See
+  `pathways/TODO.md`.
 
 ### code_sets (comorbidity-combination matching)
 

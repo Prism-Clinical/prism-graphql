@@ -30,7 +30,10 @@ Open design questions:
 
 ## Pathway classification — pregnant / adult / pediatric (Josh, 2026-10-03)
 
-Not built. Needed before pathways exist outside obstetrics.
+**Built so far (2026-10-03):** obstetric pathways (`category: OBSTETRIC`) apply only to a
+pregnant patient — a chapter-15 code, `Z33`/`Z34`/`Z3A`, or a recorded gestational age or
+trimester (`pathway-applicability.ts`). The rest below is not built and is needed before
+pathways exist outside obstetrics.
 
 - Every pathway carries a **class**: pregnant, adult or pediatric.
 - **Pregnant wins.** A pregnant patient with iron deficiency anemia gets the pregnancy anemia

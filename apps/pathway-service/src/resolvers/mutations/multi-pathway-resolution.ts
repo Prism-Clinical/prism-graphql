@@ -42,6 +42,7 @@ import {
 } from '../../services/resolution/session-store';
 import type { Db } from '../../services/resolution/session-store';
 import { collapseLattice } from '../../services/resolution/lattice-collapse';
+import { applicablePathways } from '../../services/resolution/pathway-applicability';
 import { buildEffectivePatientContext, mergeAdditionalContext } from '../../services/resolution/effective-context';
 import { firstTrustAssertion, normalizeContextEntryNulls } from '../../services/resolution/temporal/trust-mode';
 import type { AdditionalContextInput } from './resolution';
@@ -230,7 +231,8 @@ export const multiPathwayResolutionMutations = {
     // `legacy-v0` the assembler is never entered (P1-9).
     factStoreForInput(resolutionInput, temporalContext);
 
-    const matched = await getMatchedPathways(pool, args.patientId, matcherOptions);
+    // Obstetric pathways apply to pregnant patients only (pathway-applicability.ts).
+    const matched = applicablePathways(await getMatchedPathways(pool, args.patientId, matcherOptions), patientContext);
     // Zero matches takes the same path with no children (spec §3): the run is
     // stored, with EMPTY_PLAN at its root, as a record that nothing matched.
     const surviving = matched.length === 0 ? [] : await collapseLattice(pool, matched);
@@ -331,10 +333,13 @@ export const multiPathwayResolutionMutations = {
 
       // Match on the VALIDATED effective context: what the evaluator will read.
       const patient = buildEffectivePatientContext(inputs.initialPatientContext, inputs.additionalContext);
-      const matched = await getMatchedPathways(pool, r.parent.patientId, {
-        directPatientCodes: patient.conditionCodes.map((c) => ({ code: c.code, system: c.system })),
-        ...(args.includeDraftPathways ? { includeDraftPathways: true } : {}),
-      });
+      const matched = applicablePathways(
+        await getMatchedPathways(pool, r.parent.patientId, {
+          directPatientCodes: patient.conditionCodes.map((c) => ({ code: c.code, system: c.system })),
+          ...(args.includeDraftPathways ? { includeDraftPathways: true } : {}),
+        }),
+        patient,
+      );
       const surviving = matched.length === 0 ? [] : await collapseLattice(pool, matched);
       const present = new Set(inputs.children.map((c) => c.pathwayId));
       const joining = surviving.filter((m) => !present.has(m.pathway.id));
