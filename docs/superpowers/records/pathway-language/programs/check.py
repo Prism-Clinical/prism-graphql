@@ -10,6 +10,9 @@ output. It checks only:
 - each example's program link, patch and JSON Pointers resolve;
 - each example's dependency edges equal the edges derived from the program's references;
 - each example's hole diagnostics and markers name holes that exist in the program;
+- every diagnostic code is one of the named codes of the implementation contract (section 5);
+- no example promises a Need, which is deferred from this slice, and no example of a program with
+  holes claims any patient-data request;
 - examples based on an EA fixture use that fixture's input verbatim, and the claimed outputs equal
   the fixture's expected values;
 - the schematic query contract and value sets equal the pinned q.demo.json ones;
@@ -23,6 +26,13 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 REC = os.path.dirname(HERE)
 CONF = os.path.join(REC, "conformance", "explicit-assertion-v0")
 errors = []
+# Mirrors first-program-implementation-contract.md section 5 (existing Stage A codes plus the subset's additions).
+CODES = {
+    "SOURCE_INVALID", "UNKNOWN_EXECUTABLE_PROPERTY", "INVALID_DECLARATION_ID", "UNDEFINED_REFERENCE",
+    "TYPE_MISMATCH", "UNSUPPORTED_CONTEXT_REFERENCE", "UNSUPPORTED_CONSTRUCT", "CYCLIC_EXECUTION_DEPENDENCY",
+    "EXCLUSIVE_BRANCH_OVERLAP", "UNSUPPORTED_PROOF_FRAGMENT", "UNRESOLVED_AUTHORING_HOLE",
+}
+REQUEST_KEYS = {"evidenceNeed", "needs", "patientDataRequest", "patientDataRequests"}
 
 
 def err(where, msg):
@@ -179,6 +189,8 @@ def main():
         exp = ex["expected"]
         comp = exp["compile"]
         for d in comp.get("diagnostics", []):
+            if d.get("code") not in CODES:
+                err(where, f"diagnostic code {d.get('code')!r} is not a named code of the contract")
             try:
                 pointer(prog, d["location"])
             except (KeyError, IndexError, ValueError):
@@ -206,8 +218,11 @@ def main():
             err(where, "IncompleteAuthoring without a hole")
         if hs and exp["state"] in ("EstablishedTrue", "EstablishedFalse", "UnresolvedPatientEvidence"):
             err(where, "patient-evidence state for a program with holes")
-        if hs and exp.get("evidenceNeed") is not None:
-            err(where, "a program with holes must not request patient data")
+        request_keys = {k for _, v in walk(exp) if isinstance(v, dict) for k in v if k in REQUEST_KEYS}
+        if hs and request_keys:
+            err(where, f"a program with holes must not request patient data ({sorted(request_keys)})")
+        elif request_keys:
+            err(where, f"Need generation is deferred from this slice; remove {sorted(request_keys)}")
         base = ex.get("basedOn") or {}
         if base.get("fixture", "").startswith("EA-") and ex.get("input") is not None and "q.demo" in (exp.get("outputs") or {}):
             fx = load(os.path.join(CONF, "fixtures", f"{base['fixture']}.json"))

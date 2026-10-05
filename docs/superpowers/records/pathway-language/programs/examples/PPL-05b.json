@@ -36,9 +36,9 @@
       "wellFormed": false,
       "diagnostics": [
         {
-          "code": null,
+          "code": "TYPE_MISMATCH",
           "location": "/nodes/2/status/all/2",
-          "violation": "Type mismatch: all requires Decision operands; found enum AssertionValue (Stage A 4.3, 10.1 step 4)"
+          "message": "all requires Decision operands; found enum AssertionValue (Stage A 4.3, 10.1 step 4)"
         }
       ]
     },
@@ -48,7 +48,6 @@
     },
     "outputs": null,
     "causeAttribution": null,
-    "evidenceNeed": null,
     "trace": [
       {
         "output": "compile",

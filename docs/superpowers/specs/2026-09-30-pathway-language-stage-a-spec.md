@@ -4,7 +4,17 @@
 
 **Date:** 2026-09-30
 
-**Last revised:** 2026-10-02 — explicit language-definition work before implementation; retains relationship verification, authoring and scenario coverage.
+**Last revised:** 2026-10-05. Applies the user-approved first-program decisions P1–P8 ([first-program implementation contract](../records/pathway-language/first-program-implementation-contract.md) §9) to §2.2, §2.3, §4.3, §5 and §10.4:
+
+- authored references are the authoritative executable dependencies;
+- `ctx.` is reserved for context bindings;
+- holes must be explained;
+- normal and preview compilation are separate modes;
+- `all` is n-ary;
+- Finding is a declaration kind;
+- the first compiler subset has named diagnostic codes.
+
+The status above is unchanged. Previously revised 2026-10-02: explicit language-definition work before implementation, retaining relationship verification, authoring and scenario coverage.
 
 **Architecture authority:** [Accepted pathway-language RFC](2026-09-28-pathway-language-rfc.md).
 
@@ -38,13 +48,29 @@ Make a typed, versioned JSON AST the initial canonical source format. Expression
 
 The graph editor edits this AST. A textual syntax is a readable projection that parses into it; exact spelling is deferred to an authoring specification. Layout, colors, coordinates, and other presentation data live in a separate namespaced section and cannot affect execution.
 
-Bindings written in textual expressions and connections drawn in the editor lower to the same canonical edges. A graphical edge plus an expression reference must not accidentally apply a predicate twice. Conflicting declarations for one binding are errors.
+**Authoritative dependencies (amended 2026-10-05).** Authored references inside expressions are the only authoritative representation of an executable dependency. Executable graph edges are derived from them. A graphical editor creates, edits and deletes those references, and the source keeps no second executable edge list, so a dependency cannot be applied twice through an edge and a reference. Citations, layout links and grouping are non-executable relationships and never become executable dependencies.
+
+**Context bindings (amended 2026-10-05).** The prefix `ctx.` is reserved for evaluation-context bindings:
+
+- declaration identifiers cannot use it;
+- each supported context name has a declared type;
+- an unknown or unsupported context reference is a compile error.
+
+A language subset may restrict the positions where context references are allowed. Such a restriction is a capability limit of that subset, not a permanent rule of the language.
 
 ### 2.3 Draft holes and clinical rationale
 
 The canonical AST supports a typed authoring hole with stable identity, expected type/dimension, AST location, explanation and optional citation references. For example, an unresolved quantity threshold can declare its dimension without inventing a value. A hole is well-formed draft syntax and participates in surrounding type checks; it is not a resolved clinical rule. Wrong types, cycles and unsupported operations remain errors.
 
 An explicit preview compilation mode may lower holes to typed incomplete-authoring markers in a preview-only artifact. Dependent preview outputs retain those markers and authoring diagnostics, separately from patient evidence uncertainty; unaffected outputs can be inspected. Boolean simplification or an unvisited branch cannot make a package containing a hole publishable. Publication rejects all unresolved holes. A hole never becomes a patient-data Need or a field a provider can fill during a clinical encounter. Proofs depending on holes are inconclusive.
+
+**Holes in authored source (amended 2026-10-05).** In authored program source, a hole’s explanation (`explains`) is required, alongside its identity, expected type and location. The explanation records what is undecided and supplies no executable meaning. Lower-level conformance fixtures that contain holes are not thereby complete authored programs.
+
+- Normal compilation rejects every unresolved hole with `UNRESOLVED_AUTHORING_HOLE`. A program whose only problems are correctly typed holes is still well-formed.
+- Preview compilation accepts structurally valid, correctly typed holes and keeps their markers.
+- Structural errors fail both modes.
+- Hole markers are never patient-evidence uncertainty.
+- Successful compilation confers no clinical approval, and unfinished programs stay blocked from publication and clinical execution.
 
 Every executable declaration can carry clinical rationale and citation references. Publication policy can require them for designated declarations. The reviewed interpretation participates in review digests; changing it requires review under the change contract even when executable output is unchanged. Package-level approval is sufficient; per-declaration approval states are not required.
 
@@ -178,6 +204,12 @@ Comparisons lift known compatible values to `True`/`False`; insufficient evidenc
 | False | Unknown | False | Unknown |
 | Unknown | Unknown | Unknown | Unknown |
 
+**N-ary `all` (amended 2026-10-05).** `all` takes zero or more Decision operands.
+
+- `all()` is `True`.
+- A nonempty `all` follows the table above pairwise, and every operand’s trace stays inspectable even when one operand determines the result.
+- An empty `all` is an explicitly authored expression. It is never a default for an omitted applicability or any other required Decision.
+
 `not(True) = False`, `not(False) = True`, `not(Unknown) = Unknown`. This is negation of an explicit decision, not negation of database membership.
 
 Preserve diagnostics and source traces even where a decisive operand settles the result. Distinguish uncertainty that affects the result from uncertainty that is presently immaterial. Only material unresolved dependencies generate blocking needs for that result, unless an independently declared review requirement applies. An engine error cannot be hidden by Boolean short-circuiting.
@@ -244,6 +276,7 @@ Each built-in contract defines typed ports, cardinality, required properties, ex
 | Need | Typed missing measurement, attestation, clarification, or workflow requirement | Stable requirement identity and fulfillment status |
 | EvidenceReference | Versioned citation or source reference | Provenance/review information |
 | Group | Authoring organization and presentation | Membership; no implicit clinical execution |
+| Finding (added 2026-10-05) | A Decision-valued status over explicit references, explanatory attributes and citations. It reports what the pathway establishes, independently of any Recommendation or action. An attribute hole marks only that attribute and does not invalidate an evaluable status. The first compiler subset supports urgency only as a typed hole. Clinical urgency, finalization effects and downstream actions are not defined here | Status Decision, attributes, trace |
 
 Recommendation subclasses can carry medication, test, imaging, procedure, guidance, and follow-up payloads. Do not force all clinical actions into a medication-shaped schema. A follow-up proposal must carry its timing anchor, responsible role, and completion evidence requirement. Proposing an action does not prove that it was ordered, performed, or completed.
 
@@ -540,6 +573,18 @@ Diagnostics include stable codes, source span or AST path, node/edge identifiers
 - `QUERY_ADMISSIBILITY_UNRESOLVED`: required sampling, timing or context evidence is unresolved for this query.
 - `INSUFFICIENT_SAMPLING_EVIDENCE`: retrieved observations do not satisfy the supported calculation's evidence contract.
 - `UNBOUND_TEMPORAL_ANCHOR`: authored timing has no explicit event/date binding.
+
+Added for the first compiler subset (2026-10-05). Meanings and locations are defined in the [first-program implementation contract](../records/pathway-language/first-program-implementation-contract.md) §5:
+
+- `SOURCE_INVALID`
+- `UNKNOWN_EXECUTABLE_PROPERTY`
+- `INVALID_DECLARATION_ID`
+- `UNDEFINED_REFERENCE`
+- `TYPE_MISMATCH`
+- `UNSUPPORTED_CONTEXT_REFERENCE`
+- `UNSUPPORTED_CONSTRUCT`
+
+Machine comparisons use the code and location. Prose messages are explanatory only.
 
 Diagnostics must refer to authored concepts, not only generated IR indices.
 

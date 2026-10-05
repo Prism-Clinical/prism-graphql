@@ -114,12 +114,6 @@
         "reason": "NoInDomainRecord"
       }
     ],
-    "evidenceNeed": {
-      "query": "q.demo",
-      "causes": [
-        "Missing"
-      ]
-    },
     "trace": [
       {
         "output": "applicability",
@@ -144,12 +138,6 @@
         "source": "/nodes/2/status",
         "result": "Unknown(Missing)",
         "because": "all(True, Unknown(Missing)) = Unknown(Missing). Never False: no explicit negative exists"
-      },
-      {
-        "output": "evidenceNeed",
-        "source": "/nodes/0",
-        "result": "q.demo [Missing]",
-        "because": "The query contract is complete and the unresolved result is material to the requested finding (contract 6.2)"
       }
     ]
   }

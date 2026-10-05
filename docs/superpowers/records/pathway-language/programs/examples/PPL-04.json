@@ -159,7 +159,6 @@
       }
     },
     "causeAttribution": [],
-    "evidenceNeed": null,
     "trace": [
       {
         "output": "applicability",
@@ -171,7 +170,7 @@
         "output": "q.pd",
         "source": "/nodes/0/contract",
         "result": "Marker[H-EVIDENCE]",
-        "because": "Whole-contract hole: no envelope, so no evidence stage runs and nothing in any chart is read"
+        "because": "Whole-contract hole: no envelope, so no evidence stage runs and nothing in any chart is read. A hole is never patient uncertainty and never requests patient data (Stage A 2.3)"
       },
       {
         "output": "p.alarm",
@@ -190,12 +189,6 @@
         "source": "/nodes/2/urgency",
         "result": "Marker[H-URGENCY]",
         "because": "Attribute hole; it marks only this attribute"
-      },
-      {
-        "output": "evidenceNeed",
-        "source": "/nodes/0",
-        "result": "none",
-        "because": "A hole is never patient uncertainty and never requests patient data (Stage A 2.3)"
       }
     ]
   }

@@ -24,9 +24,9 @@
       "wellFormed": false,
       "diagnostics": [
         {
-          "code": null,
+          "code": "UNDEFINED_REFERENCE",
           "location": "/nodes/1/expr/evidenceValue/ref",
-          "violation": "Undefined read: no declaration 'q.demo.missing' (Stage A 10.1 step 6)"
+          "message": "No declaration 'q.demo.missing' (Stage A 10.1 step 6)"
         }
       ]
     },
@@ -36,7 +36,6 @@
     },
     "outputs": null,
     "causeAttribution": null,
-    "evidenceNeed": null,
     "trace": [
       {
         "output": "compile",

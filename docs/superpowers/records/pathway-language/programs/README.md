@@ -6,7 +6,7 @@
 - No clinical question is answered. The [interpretation draft](../gerd-progressive-dysphagia-interpretation-draft.md) and the [Q1–Q3 review packet](../gerd-progressive-dysphagia-q1-q3-review.md) keep their statuses: not clinically adjudicated, and L00.1.a remains open.
 - The schematic companion is nonclinical.
 
-The implementation contract for these artifacts is [first-program-implementation-contract.md](../first-program-implementation-contract.md).
+The implementation contract for these artifacts is [first-program-implementation-contract.md](../first-program-implementation-contract.md). Its §9 records the language-structure decisions P1–P8, approved by the user for this subset on 2026-10-05.
 
 ## Layout
 
@@ -15,7 +15,7 @@ The implementation contract for these artifacts is [first-program-implementation
 | `gerd-progressive-dysphagia.ppl.json` | GERD-based program: applicability, evidence query, predicate and finding, with three typed holes |
 | `schematic-demo-finding.ppl.json` | **Nonclinical** companion with the same constructs. Its query is the explicit-assertion-v0 contract, unchanged |
 | `examples/PPL-01.json` … `PPL-05b.json` | Hand-derived acceptance examples (below) |
-| `check.py` | Mechanical checks (JSON, references, quotations, digests, fixture links). It is **not** a compiler or a language-conformance test |
+| `check.py` | Mechanical checks: JSON, references, quotations, digests, fixture links, diagnostic codes, and no data requests from holes. It is **not** a compiler or a language-conformance test |
 
 ## The two programs
 
@@ -54,7 +54,7 @@ Source: [corpus/GERD-Pregnancy-Care-Pathway.txt](../corpus/GERD-Pregnancy-Care-P
 | `applicability` (Predicate) | Nothing: the passage states no population or encounter scope | Required by Stage A §4.5; minimal model §1, where the finding reads *A* explicitly | **H-SCOPE**: population and encounter scope (A1, A2, Q14). Neither unconditional scope nor same-encounter evidence is assumed |
 | `q.pd` (EvidenceQuery) | Progressive dysphagia is listed as an alarm symptom | Minimal model §1, §5 (`Evidence<Boolean>`, whole-contract hole allowed, §1.1 item 1) | **H-EVIDENCE**: what establishes presence or explicit absence (Q1–Q3), acceptable sources (Q4), recency and encounter/episode scope (Q5, Q7, A2, A3) and conflicts (Q6). `Evidence<Boolean>` itself is a proposed interpretation (minimal model §7, decision 6) |
 | `p.alarm` (Predicate) | — | Minimal model §1, §2: lifted projection of exactly one evidence input | None. It is fixed language behavior whose meaning comes entirely from `q.pd` |
-| `f.alarm` (Finding, proposed kind) | Label is line 86 without its bullet; heading is line 85 without its colon | Minimal model §1.1 item 3: status `all(A, alarm)`; attributes separate from status | **H-URGENCY**: what “immediate” requires and whether the finding blocks finalization (Q11–Q13). It is not equated with “urgent” (lines 376, 449; Q12) |
+| `f.alarm` (Finding; declaration kind per Stage A §5, amended 2026-10-05) | Label is line 86 without its bullet; heading is line 85 without its colon | Minimal model §1.1 item 3: status `all(A, alarm)`; attributes separate from status | **H-URGENCY**: what “immediate” requires and whether the finding blocks finalization (Q11–Q13). It is not equated with “urgent” (lines 376, 449; Q12) |
 
 **What the GERD program deliberately does not contain:**
 
@@ -77,12 +77,12 @@ The companion is **not** an approved or proposed translation of GERD, and its la
 |---|---|---|---|---|---|
 | PPL-01 | schematic | compile, evaluate | **EstablishedTrue** | `True` [s1/r1@1] | `True` |
 | PPL-02 | schematic | compile, evaluate | **EstablishedFalse** (explicit Denied record, complete coverage) | `False` [s1/r2@1] | `False` |
-| PPL-03 | schematic | compile, evaluate | **UnresolvedPatientEvidence** (no record; complete coverage is not a negative) | `Unknown(Missing)` | `Unknown(Missing)`; evidence Need for `q.demo` |
-| PPL-04 | GERD | compile, compilePreview, evaluatePreview | **IncompleteAuthoring** | Marker [H-EVIDENCE] | Marker [H-EVIDENCE, H-SCOPE]; urgency marker [H-URGENCY]; no Need; publication blocked |
-| PPL-05a | schematic + patch | compile, compilePreview | **InvalidProgram**: undefined reference | — | — |
-| PPL-05b | schematic + patch | compile, compilePreview | **InvalidProgram**: enum literal as an `all` operand | — | — |
+| PPL-03 | schematic | compile, evaluate | **UnresolvedPatientEvidence** (no record; complete coverage is not a negative) | `Unknown(Missing)` | `Unknown(Missing)`, with cause attribution and trace (Need generation is not in this slice) |
+| PPL-04 | GERD | compile, compilePreview, evaluatePreview | **IncompleteAuthoring** | Marker [H-EVIDENCE] | Marker [H-EVIDENCE, H-SCOPE]; urgency marker [H-URGENCY]; no patient cause or data request; publication blocked |
+| PPL-05a | schematic + patch | compile, compilePreview | **InvalidProgram**: `UNDEFINED_REFERENCE` | — | — |
+| PPL-05b | schematic + patch | compile, compilePreview | **InvalidProgram**: `TYPE_MISMATCH` (enum literal as an `all` operand) | — | — |
 
-PPL-01 to PPL-03 reuse the inputs of EA-001, EA-002 and EA-005 verbatim. Their query evidence, predicate decision and attributions equal those fixtures’ expectations, and `check.py` verifies the equality. The applicability and finding values, supports, Needs and traces are new hand-derived expectations, traced in each file. The fields each example promises are defined in the implementation contract (§4).
+PPL-01 to PPL-03 reuse the inputs of EA-001, EA-002 and EA-005 verbatim. Their query evidence, predicate decision and attributions equal those fixtures’ expectations, and `check.py` verifies the equality. The applicability and finding values, supports and traces are new hand-derived expectations, traced in each file. The fields each example promises are defined in the implementation contract (§4), and its diagnostic codes in §5. Need generation is deliberately absent: the evidence-query contract’s Need semantics are unchanged and unimplemented, and no example promises a Need (contract §3).
 
 ## Running the checks
 
