@@ -978,6 +978,15 @@ export type MultiPathwayPendingGate = {
  */
 export type MultiPathwayResolutionSession = {
   __typename?: 'MultiPathwayResolutionSession';
+  /**
+   * Where the plan rests on something less than a fresh, measured chart value:
+   * a datum answered "Not available", a lab estimated from its equivalent
+   * measure, a value older than the pathway's own recheck rule, a medication the
+   * provider vouched for, a value entered with no draw date. Read from what the
+   * run stores when asked for; not an input, not part of the plan, and not
+   * covered by `resultHash`. Nothing here blocks generation.
+   */
+  assumptions: Array<RunAssumption>;
   carePlanId?: Maybe<Scalars['ID']['output']>;
   /**
    * The problem list of the chart the run started from: the condition codes of
@@ -2265,6 +2274,47 @@ export type ResolvedThresholds = {
   suggestThreshold: Scalars['Float']['output'];
 };
 
+/** One thing the plan assumed, however many gates it touched. */
+export type RunAssumption = {
+  __typename?: 'RunAssumption';
+  /** Set when `supply` is ANCHOR_DATE. */
+  anchorGateId?: Maybe<Scalars['String']['output']>;
+  /** The datum as the engine keys it (`LOINC:718-7`, `anchor:…`, `patient.…`, `medclass:…`). */
+  datumKey: Scalars['String']['output'];
+  /**
+   * The gates of `pathwayId` that ran on the assumption. A merged line whose
+   * `evidenceGateIds` (for that pathway) include one of them rests on it.
+   */
+  gateIds: Array<Scalars['String']['output']>;
+  /** Titles of `gateIds`, index-aligned. */
+  gateTitles: Array<Scalars['String']['output']>;
+  /** Stable for the thing assumed (`<pathwayId>|<kind>|<datum>`): what a client keys an acknowledgement by. */
+  key: Scalars['String']['output'];
+  kind: RunAssumptionKind;
+  pathwayId: Scalars['ID']['output'];
+  /** The per-pathway session that holds the answer or the gates. */
+  sessionId: Scalars['ID']['output'];
+  /** What was assumed, in one or two plain sentences, with the figures the run holds. */
+  statement: Scalars['String']['output'];
+  supply: RunAssumptionSupply;
+};
+
+export enum RunAssumptionKind {
+  EstimatedValue = 'ESTIMATED_VALUE',
+  NotAvailable = 'NOT_AVAILABLE',
+  OlderThanRecheck = 'OLDER_THAN_RECHECK',
+  UndatedValue = 'UNDATED_VALUE',
+  VouchedMedication = 'VOUCHED_MEDICATION'
+}
+
+/** How the thing an assumption stands in for can be supplied. */
+export enum RunAssumptionSupply {
+  /** A treatment start date: send `dateValue` to `anchorGateId` on `sessionId` with `answerPendingDecision`. */
+  AnchorDate = 'ANCHOR_DATE',
+  /** Only by changing the chart. */
+  Chart = 'CHART'
+}
+
 export type SaveSimulatorScenarioInput = {
   allergies?: InputMaybe<Array<CodeInput>>;
   conditionCodes?: InputMaybe<Array<CodeInput>>;
@@ -2808,6 +2858,9 @@ export type ResolversTypes = ResolversObject<{
   ResolvedQualityMetric: ResolverTypeWrapper<ResolvedQualityMetric>;
   ResolvedSchedule: ResolverTypeWrapper<ResolvedSchedule>;
   ResolvedThresholds: ResolverTypeWrapper<ResolvedThresholds>;
+  RunAssumption: ResolverTypeWrapper<RunAssumption>;
+  RunAssumptionKind: RunAssumptionKind;
+  RunAssumptionSupply: RunAssumptionSupply;
   SaveSimulatorScenarioInput: SaveSimulatorScenarioInput;
   ScoringType: ScoringType;
   SessionStatus: SessionStatus;
@@ -2939,6 +2992,7 @@ export type ResolversParentTypes = ResolversObject<{
   ResolvedQualityMetric: ResolvedQualityMetric;
   ResolvedSchedule: ResolvedSchedule;
   ResolvedThresholds: ResolvedThresholds;
+  RunAssumption: RunAssumption;
   SaveSimulatorScenarioInput: SaveSimulatorScenarioInput;
   SetNodeWeightInput: SetNodeWeightInput;
   SetResolutionThresholdsInput: SetResolutionThresholdsInput;
@@ -3366,6 +3420,7 @@ export type MultiPathwayPendingGateResolvers<ContextType = DataSourceContext, Pa
 }>;
 
 export type MultiPathwayResolutionSessionResolvers<ContextType = DataSourceContext, ParentType extends ResolversParentTypes['MultiPathwayResolutionSession'] = ResolversParentTypes['MultiPathwayResolutionSession']> = ResolversObject<{
+  assumptions?: Resolver<Array<ResolversTypes['RunAssumption']>, ParentType, ContextType>;
   carePlanId?: Resolver<Maybe<ResolversTypes['ID']>, ParentType, ContextType>;
   chartConditionCodes?: Resolver<Array<ResolversTypes['EncounterConditionCode']>, ParentType, ContextType>;
   contributingPathwayIds?: Resolver<Array<ResolversTypes['ID']>, ParentType, ContextType>;
@@ -3856,6 +3911,20 @@ export type ResolvedThresholdsResolvers<ContextType = DataSourceContext, ParentT
   __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
 }>;
 
+export type RunAssumptionResolvers<ContextType = DataSourceContext, ParentType extends ResolversParentTypes['RunAssumption'] = ResolversParentTypes['RunAssumption']> = ResolversObject<{
+  anchorGateId?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  datumKey?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  gateIds?: Resolver<Array<ResolversTypes['String']>, ParentType, ContextType>;
+  gateTitles?: Resolver<Array<ResolversTypes['String']>, ParentType, ContextType>;
+  key?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  kind?: Resolver<ResolversTypes['RunAssumptionKind'], ParentType, ContextType>;
+  pathwayId?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
+  sessionId?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
+  statement?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  supply?: Resolver<ResolversTypes['RunAssumptionSupply'], ParentType, ContextType>;
+  __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
+}>;
+
 export type SignalBreakdownResolvers<ContextType = DataSourceContext, ParentType extends ResolversParentTypes['SignalBreakdown'] = ResolversParentTypes['SignalBreakdown']> = ResolversObject<{
   missingInputs?: Resolver<Array<ResolversTypes['String']>, ParentType, ContextType>;
   score?: Resolver<ResolversTypes['Float'], ParentType, ContextType>;
@@ -4100,6 +4169,7 @@ export type Resolvers<ContextType = DataSourceContext> = ResolversObject<{
   ResolvedQualityMetric?: ResolvedQualityMetricResolvers<ContextType>;
   ResolvedSchedule?: ResolvedScheduleResolvers<ContextType>;
   ResolvedThresholds?: ResolvedThresholdsResolvers<ContextType>;
+  RunAssumption?: RunAssumptionResolvers<ContextType>;
   SignalBreakdown?: SignalBreakdownResolvers<ContextType>;
   SignalDefinitionType?: SignalDefinitionTypeResolvers<ContextType>;
   SignalWeight?: SignalWeightResolvers<ContextType>;

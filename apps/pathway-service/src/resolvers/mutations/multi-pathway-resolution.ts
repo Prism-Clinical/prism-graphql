@@ -68,6 +68,7 @@ import {
 } from '../../services/resolution/care-plan-merge';
 import { fetchGraphFromAGE, resolveTemporalPolicyVersion } from '../helpers/resolution-context';
 import { citationsForNodes } from '../../services/resolution/plan-citations';
+import { runAssumptions } from '../../services/resolution/assumptions';
 import { factStoreForInput } from '../../services/resolution/temporal/fact-store';
 import { assertKnownPolicyVersion } from '../../services/resolution/temporal/policy-registry';
 import {
@@ -833,6 +834,46 @@ export const multiPathwayResolutionTypeResolvers = {
           }),
       );
       return perPathway.flat();
+    },
+
+    /**
+     * Where the plan rests on something less than a fresh, measured chart
+     * value. Read from the run's stored chart and its pathways' stored answers
+     * and gates when asked for (`runAssumptions`); nothing is evaluated,
+     * stored or hashed.
+     */
+    assumptions: async (
+      parent: { id: string; contributingSessionIds: string[] },
+      _args: unknown,
+      context: DataSourceContext,
+    ) => {
+      if (!parent.contributingSessionIds?.length) return [];
+      const [chart, children] = await Promise.all([
+        context.pool.query(
+          `SELECT initial_patient_context, additional_context FROM multi_pathway_resolution_sessions WHERE id = $1`,
+          [parent.id],
+        ),
+        context.pool.query(
+          `SELECT id, pathway_id, gate_answers, resolution_state
+             FROM pathway_resolution_sessions
+            WHERE id = ANY($1::uuid[])`,
+          [parent.contributingSessionIds],
+        ),
+      ]);
+      // In the run's own pathway order, so the list does not shuffle between reads.
+      const order = new Map(parent.contributingSessionIds.map((id, i) => [id, i]));
+      return runAssumptions({
+        initialContext: chart.rows[0]?.initial_patient_context ?? {},
+        additionalContext: chart.rows[0]?.additional_context ?? {},
+        children: children.rows
+          .map((r) => ({
+            sessionId: String(r.id),
+            pathwayId: String(r.pathway_id),
+            gateAnswers: r.gate_answers ?? {},
+            resolutionState: r.resolution_state ?? {},
+          }))
+          .sort((a, b) => (order.get(a.sessionId) ?? 0) - (order.get(b.sessionId) ?? 0)),
+      });
     },
 
     /**

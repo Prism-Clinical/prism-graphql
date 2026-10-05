@@ -1028,8 +1028,57 @@ type MultiPathwayResolutionSession {
   A node with no citation (its own or its step's) has no entry.
   """
   recommendationCitations: [RecommendationCitations!]!
+  """
+  Where the plan rests on something less than a fresh, measured chart value:
+  a datum answered "Not available", a lab estimated from its equivalent
+  measure, a value older than the pathway's own recheck rule, a medication the
+  provider vouched for, a value entered with no draw date. Read from what the
+  run stores when asked for; not an input, not part of the plan, and not
+  covered by `resultHash`. Nothing here blocks generation.
+  """
+  assumptions: [RunAssumption!]!
   createdAt: String!
   updatedAt: String!
+}
+
+enum RunAssumptionKind {
+  NOT_AVAILABLE
+  ESTIMATED_VALUE
+  OLDER_THAN_RECHECK
+  VOUCHED_MEDICATION
+  UNDATED_VALUE
+}
+
+"""How the thing an assumption stands in for can be supplied."""
+enum RunAssumptionSupply {
+  """A treatment start date: send `dateValue` to `anchorGateId` on `sessionId` with `answerPendingDecision`."""
+  ANCHOR_DATE
+  """Only by changing the chart."""
+  CHART
+}
+
+"""One thing the plan assumed, however many gates it touched."""
+type RunAssumption {
+  """Stable for the thing assumed (`<pathwayId>|<kind>|<datum>`): what a client keys an acknowledgement by."""
+  key: String!
+  kind: RunAssumptionKind!
+  pathwayId: ID!
+  """The per-pathway session that holds the answer or the gates."""
+  sessionId: ID!
+  """The datum as the engine keys it (`LOINC:718-7`, `anchor:…`, `patient.…`, `medclass:…`)."""
+  datumKey: String!
+  """What was assumed, in one or two plain sentences, with the figures the run holds."""
+  statement: String!
+  """
+  The gates of `pathwayId` that ran on the assumption. A merged line whose
+  `evidenceGateIds` (for that pathway) include one of them rests on it.
+  """
+  gateIds: [String!]!
+  """Titles of `gateIds`, index-aligned."""
+  gateTitles: [String!]!
+  supply: RunAssumptionSupply!
+  """Set when `supply` is ANCHOR_DATE."""
+  anchorGateId: String
 }
 
 """The evidence one plan line's source node rests on."""
