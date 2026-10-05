@@ -15,15 +15,21 @@ export class S2ConfigurationError extends Error {}
 
 const CAUSE_ORDER: readonly AnyCause[] = ['Missing', 'Conflicting', 'Unavailable', 'Invalid']; // Stage A §4.1
 const own = (o: JsonObject, k: string): JsonValue | undefined => (Object.prototype.hasOwnProperty.call(o, k) ? o[k] : undefined);
+/**
+ * Identifier syntax for the fictional model (contract §2.3): a string with at least one character
+ * outside Unicode White_Space. Never trimmed or otherwise normalized.
+ */
+const identifier = (v: unknown): v is string => typeof v === 'string' && /\P{White_Space}/u.test(v);
 
 function checkExpansion(pin: unknown, e: ValueSetExpansion): void {
-  const strings = (v: unknown): v is string[] => Array.isArray(v) && v.every((x) => typeof x === 'string');
-  if (typeof pin !== 'string' || pin === '') throw new S2ConfigurationError('value-set pin must be a nonempty string');
+  if (!identifier(pin)) throw new S2ConfigurationError('value-set pin must be a well-formed identifier');
   if (!e || e.id !== pin) throw new S2ConfigurationError(`expansion ${JSON.stringify(e?.id)} does not match pin ${JSON.stringify(pin)}`);
-  if (!strings(e.coveredSystems)) throw new S2ConfigurationError('coveredSystems must be an array of strings');
+  if (!Array.isArray(e.coveredSystems) || !e.coveredSystems.every(identifier)) {
+    throw new S2ConfigurationError('coveredSystems must be an array of well-formed identifiers');
+  }
   if (!Array.isArray(e.expansion)) throw new S2ConfigurationError('expansion must be an array of codes');
   for (const c of e.expansion) {
-    if (!isObject(c) || typeof c['system'] !== 'string' || typeof c['code'] !== 'string') {
+    if (!isObject(c) || !identifier(c['system']) || !identifier(c['code'])) {
       throw new S2ConfigurationError(`malformed expansion entry ${JSON.stringify(c)}`);
     }
     if (!e.coveredSystems.includes(c['system'])) throw new S2ConfigurationError(`expansion code in uncovered system ${c['system']}`);
@@ -51,10 +57,10 @@ function classify(node: NodeRef, payload: JsonObject, e: ValueSetExpansion): Nod
     const value = own(concept, 'code');
     if (system === undefined) findings.push({ cause: 'Missing', reason: 'FieldAbsent:concept.system' });
     if (value === undefined) findings.push({ cause: 'Missing', reason: 'FieldAbsent:concept.code' });
-    if ((system !== undefined && typeof system !== 'string') || (value !== undefined && typeof value !== 'string')) {
+    if ((system !== undefined && !identifier(system)) || (value !== undefined && !identifier(value))) {
       findings.push({ cause: 'Invalid', reason: 'CodeMalformed' });
     }
-    if (typeof system === 'string' && typeof value === 'string') code = { system, code: value };
+    if (identifier(system) && identifier(value)) code = { system, code: value };
   }
   if (!code) return { kind: 'node', node, candidacy: 'Unresolved', findings };
   // Membership is decidable only inside a covered system; an uncovered system is not nonmembership.

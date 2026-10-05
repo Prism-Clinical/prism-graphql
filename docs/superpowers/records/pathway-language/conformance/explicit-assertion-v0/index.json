@@ -292,6 +292,32 @@
     ],
     "92": [
       "EA-092"
+    ],
+    "93": [
+      "EA-093"
+    ],
+    "94": [
+      "EA-094"
+    ],
+    "95": [
+      "EA-095"
+    ],
+    "96": [
+      "EA-096"
+    ],
+    "97": [
+      "EA-097"
+    ],
+    "98": [
+      "EA-098a",
+      "EA-098b"
+    ],
+    "99": [
+      "EA-099a",
+      "EA-099b"
+    ],
+    "100": [
+      "EA-100"
     ]
   },
   "pairs": [
@@ -435,6 +461,27 @@
         "EA-090"
       ],
       "claim": "Retracting every surviving head leaves the key Retracted; a superseded revision, conflicted or not, is never reinstated"
+    },
+    {
+      "fixtures": [
+        "EA-024",
+        "EA-098a"
+      ],
+      "claim": "A well-formed code outside the expansion in a covered system is OutOfDomain (Missing, no candidate); an empty code is malformed, so candidacy is Unresolved{Invalid}, never established nonmembership"
+    },
+    {
+      "fixtures": [
+        "EA-099a",
+        "EA-100"
+      ],
+      "claim": "A whitespace-only code is malformed (Invalid); a code with surrounding whitespace is well-formed, compared without trimming, and therefore OutOfDomain"
+    },
+    {
+      "fixtures": [
+        "EA-093",
+        "EA-096"
+      ],
+      "claim": "An absent concept component is Missing (FieldAbsent); a present null component is malformed (Invalid, CodeMalformed)"
     }
   ]
 }

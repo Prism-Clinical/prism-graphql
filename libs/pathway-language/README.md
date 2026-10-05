@@ -78,9 +78,9 @@ const s2 = experimentalIdentifyCandidates({
 
 The expansion uses the format of the fixtures’ `query/q.demo.json` `valueSets` entry, plus its `id`. The `id` includes the version and must equal the pin exactly. The function is pure: no I/O, no clock, no input mutation, and no terminology lookup. It throws `S2ConfigurationError` for invalid *program or configuration* input, never for patient evidence:
 
-- a missing or empty pin;
+- a missing or malformed pin;
 - a missing expansion, or one whose `id` differs from the pin (for example `@2` for `@1`);
-- a malformed code list or covered-system list;
+- a malformed code list or covered-system list, including any identifier that violates the syntax below;
 - an expansion code in a system it does not cover;
 - an input that is not an S1 result, or an S1 node with no unique retained variant.
 
@@ -102,11 +102,13 @@ Each possibility is one of:
 |---|---|
 | `{kind:'node', node, candidacy:'InDomain', reason:'CodeInExpansion', code}` | `concept.system` is covered and (`system`, `code`) is in the expansion |
 | `{kind:'node', node, candidacy:'OutOfDomain', reason:'CodeNotInExpansion', code}` | Well-formed code in a **covered** system, not in the expansion |
-| `{kind:'node', node, candidacy:'Unresolved', findings}` | `Unavailable`/`TerminologyUnavailable`: well-formed code in an uncovered system. `Invalid`/`CodeMalformed`: `concept`, `system` or `code` present but not of its declared type (`null` included). `Missing`/`FieldAbsent:concept[.system\|.code]`: absent. Missing and Invalid findings accumulate |
+| `{kind:'node', node, candidacy:'Unresolved', findings}` | `Unavailable`/`TerminologyUnavailable`: well-formed code in an uncovered system. `Invalid`/`CodeMalformed`: `concept` not an object, or `system`/`code` present but not a well-formed identifier. `Missing`/`FieldAbsent:concept[.system\|.code]`: absent. Findings from different components accumulate |
 | `{kind:'excluded'}` | Carried from S1: possibly not a current record. Never in domain |
 | `{kind:'unknown'}` | Carried from S1: possibly a current revision with any content. Possibly in domain |
 
 The expansion pin is on the result (`valueSet`). `node` is S1’s `NodeRef`, with `digest` for a variant.
+
+**Identifier syntax** (contract §2.3). A system or code is well-formed if it is a string containing at least one character without the Unicode `White_Space` property. `""`, `"   "` and `"\u00a0\u2003"` are malformed. Nothing is trimmed or normalized, so `" item-x"` is well-formed and differs from `item-x`. The same rule applies to the expansion’s pin, codes and covered systems; a violation there is a configuration error.
 
 **How payloads are read.** S2 reads each node’s concept from the variant S1 retained, by parsing the RFC 8785 bytes in `Variant.canonicalPayload`. A node without a digest must have exactly one variant, and a digest selects one. S2 never re-reads input rows, uses input positions, re-derives history or reconsiders superseded or rejected revisions. Undeclared concept members, such as `display`, are not payload, so they cannot affect membership. Comparison is exact on `system` and `code`: no normalization, case folding, synonyms or cross-system matching (Stage A §3.1).
 
@@ -146,26 +148,26 @@ This package has its own Jest configuration and is not part of the root Jest roo
   - undeclared fields named `constructor`, `__proto__`, `toString` and `hasOwnProperty`, with scalar and object values, at the top level and nested, on revisions and retractions. Inputs are built with `JSON.parse`, so `__proto__` is an own property;
   - the retraction trace: a valid removal, every step 6 row, identical duplicates, conflicting variants (including variants that name different keys, in both input orders), absent and malformed targets, and permutation invariance;
   - a malformed value with a `toJSON` member received in two member orders (one variant, `Current`).
-- **`src/__tests__/s2.test.ts`** has 35 independent S2 tests (counting each parameterized case), with expectations derived by hand from the contract. They cover:
+- **`src/__tests__/s2.test.ts`** has 46 independent S2 tests (counting each parameterized case), with expectations derived by hand from the contract. They cover:
   - a current revision inside the expansion, outside it in a covered system, and in an uncovered system;
-  - malformed concepts and codes, and absent concept information;
+  - malformed concepts and codes, absent concept components (alone and combined with malformed ones), and empty, whitespace-only (ASCII and Unicode) and surrounding-whitespace identifiers;
   - exact comparison, including that undeclared `display` members are ignored;
   - an authorized correction from an included to an excluded concept (only the current revision is classified), and the reverse;
   - unresolved histories with in- and out-of-domain possibilities, with only out-of-domain possibilities (case 33: not a candidate, `Invalid` kept), and with `unknown` or `excluded`;
   - digest-qualified variants under one `RevisionRef`, and `Retracted` and `NoRecord` keys;
   - inherited S1 causes kept with their attribution alongside new S2 causes, including `Invalid` from both stages;
   - permutation, duplicate-occurrence and S1 key-order invariance, and deep-frozen inputs;
-  - configuration validation.
+  - configuration validation, including the identifier syntax for the expansion.
 - **`src/__tests__/fixtures.test.ts`** runs the committed [explicit-assertion-v0 fixtures](../../docs/superpowers/records/pathway-language/conformance/explicit-assertion-v0/README.md) and checks **only** their S1 and S2 assertions. It never reports a fixture as passing as a whole, because S3–S7 are not implemented. On the current fixtures it reports:
-  - **164 S1 assertions checked, 164 passing.** That is 89 trace facts (`keyResult`, `variants`, `occurrences`, `rejected`, `outOfEnvelope`, `outsideEnvelope`, and the `HistoricalDefect`, `CrossKeyCorrection` and `UndeclaredField` diagnostics) plus 75 canonicalization checks (bytes, digests, variant partition, undeclared fields). These are unchanged from S1 alone.
-  - **6 S2 assertions checked, 6 passing:** every `candidacy` trace fact (EA-013, EA-014, EA-024, and three in EA-033).
+  - **165 S1 assertions checked, 165 passing.** That is 90 trace facts (`keyResult`, `variants`, `occurrences`, `rejected`, `outOfEnvelope`, `outsideEnvelope`, and the `HistoricalDefect`, `CrossKeyCorrection` and `UndeclaredField` diagnostics) plus 75 canonicalization checks (bytes, digests, variant partition, undeclared fields). The one added fact is EA-100’s `keyResult`.
+  - **16 S2 assertions checked, 16 passing:** every `candidacy` trace fact (EA-013, EA-014, EA-024, three in EA-033, and EA-093 to EA-100).
   - **One-way checks**, which can fail but cannot prove completeness:
     - 32 S1-stage cause attributions, each of which must be an active S1 defect;
-    - 2 S2-stage cause attributions (EA-013 `TerminologyUnavailable`, EA-014 `CodeMalformed`), each of which must be an S2 finding on that revision;
-    - 84 `candidateEvidenceIds` entries, each of which must have S2 candidacy `InDomain` or `Unresolved` (contract §5.1). The field is an S6 output, and its converse is not checked.
+    - 12 S2-stage cause attributions (EA-013, EA-014, EA-093 to EA-099), each of which must be an S2 finding on that revision;
+    - 93 `candidateEvidenceIds` entries, each of which must have S2 candidacy `InDomain` or `Unresolved` (contract §5.1). The field is an S6 output, and its converse is not checked.
 
     The absence of an attribution proves nothing, because attribution also depends on S5/S6 materiality.
-  - **445 expected fields and trace facts outside the implemented scope,** not checked: evidence, decision, Needs, admissibility, classification, cells, gaps and so on.
+  - **485 expected fields and trace facts outside the implemented scope,** not checked: evidence, decision, Needs, admissibility, classification, cells, gaps and so on.
   - **3 fixtures not run:** EA-050 (whole-contract hole) and EA-051a/b (compilation).
   - **10 evaluation/preview fixtures with no applicable S1/S2 assertion,** listed by the test: EA-001, -002, -005, -011, -043, -045, -046, -047, -052b and -053. Their S1/S2 behavior is exercised but not asserted.
 
@@ -183,15 +185,18 @@ These are implementation choices for review. None changes a fixture expectation.
 5. **Rejection reason when both subject and record type differ:** `SubjectChanged`.
 6. **A retraction whose target key is not in the envelope** is listed in `outsideEnvelope` (“traced only”).
 
-## S2 interpretations and open decisions
+## S2 input rules
 
-The contract fixes the S2 outcomes: in domain, out of domain, `Unavailable` for an uncovered system and `Invalid` for a malformed code. These details are left open. The implementation’s choices are listed for review. None changes a fixture expectation, and no fixture was added.
+Review of 4608f95 settled the three interpretations it listed. They are now specified in contract §2.3 (still a proposed draft), with fixtures EA-093 to EA-100:
 
-1. **Absent concept information: reason label.** The cause `Missing` follows contract §1.7 (“field absent → `Missing`”; no stage invents a default). The fixture vocabulary lists only `TerminologyUnavailable` and `CodeMalformed` as S2 reasons, so `FieldAbsent:concept` (after the S3/S5 `FieldAbsent:<field>` form) is **provisional**. Proposed resolution: add `FieldAbsent:<field>` to the S2 attribution reasons in the fixture README, with a fixture.
-2. **Absent `concept.system` or `concept.code`.** It is unspecified whether a partly absent code is `Missing` (absence) or `Invalid` (“malformed code”). The implementation uses `Missing` (`FieldAbsent:concept.system` / `.code`), consistent with absent ≠ `null` ≠ malformed (CANONICALIZATION.md), and accumulates `Invalid` if the other part is malformed. Its test is labelled “interpretation”.
-3. **Code syntax.** The contract mentions a “syntactically invalid code” but defines no syntax. Only type errors are malformed here, so any string is a well-formed code (including `""`).
-4. **Expansion binding.** The pin is the contract’s `retrieve.valueSet` string, compared exactly with the expansion’s identity. In the fixtures, that identity is the `valueSets` map key. An expansion code outside `coveredSystems` is a configuration error. The format has no separate version field; the version lives in the identifier.
-5. **Key-level causes are a union, not a result.** `KeyCandidacy.causes` does not decide what S6 attributes. Under contract §4.2 step C, only a material record’s origin causes are attributed.
+1. An absent `concept`, `concept.system` or `concept.code` is `Missing`, with reason `FieldAbsent:<path>`. A present malformed component is `Invalid` (`CodeMalformed`). Findings from different components accumulate.
+2. Identifier syntax for the fictional model is as above: nonempty, not whitespace-only, never normalized. Before this, `{system: "demo-cs", code: ""}` was classified `OutOfDomain`, with no candidate and no cause. That treated an empty code as established nonmembership. EA-098a/b and EA-099a/b fail against the earlier code.
+3. The expansion is bound by the same syntax and raises `S2ConfigurationError` when it violates it. There is no fixture for this, because the fixture format has no configuration-failure kind; the independent tests cover it.
+
+Remaining notes:
+
+- `KeyCandidacy.causes` is a union, not an S6 result. Under contract §4.2 step C, only a material record’s origin causes are attributed.
+- Production code-system syntax is out of scope.
 
 ## Fork fallback (contract §2.1 step 7)
 
@@ -201,7 +206,7 @@ Step 5 records a fork only when no other defect exists. If that other defect lat
 
 - S1 and S2 only: no admissibility (S3), selection, criteria, materiality, resolution, Needs, coverage or preview markers.
 - S2 supports only the fixtures’ flat expansion format: no hierarchies, intensional definitions, terminology service, normalization, code-system conversion or version resolution.
-- The fixtures assert S2 candidacy for only six revisions; most S2 behavior is covered by the independent tests only.
+- The fixtures assert S2 candidacy for 16 revisions. Variants, `excluded`/`unknown` propagation and configuration errors are covered by the independent tests only.
 - One schematic authority rule and one fictional evidence model (`demo-model@0.1`). No clinical definitions.
 - The fixtures assert S1 results only for some keys of some fixtures (see coverage above). No fixture asserts the retraction trace; it is covered by the independent tests only.
 - **Asymmetry left by the concrete fallback.** With retraction authority missing on one of two heads, a fork recorded at step 5 stays active (EA-083: `Missing`, `Conflicting`). If the fork was suppressed by a now-historical conflict, only `Missing` remains (EA-092), because the fallback requires that no defect be active. Both results are unresolved with the same possible currents. Whether EA-092 should also be `Conflicting` would require a general rule for whether a defect explains multiple heads. That rule is deliberately not defined here. This is a known limitation of the narrow fallback, not an implementation error (review, 2026-10-05). Cause completeness must be revisited before building any behavior driven by causes, such as acquisition or conflict resolution.

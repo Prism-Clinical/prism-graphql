@@ -1,8 +1,7 @@
 /**
  * EXPERIMENTAL, NONCLINICAL. Independent S2 tests. Expectations are derived by hand from the
- * contract (evidence-query-to-predicate-contract.md §1.2, §1.7, §2 row S2, §2.1 step 7, §4.2
- * step B) and Stage A §3.1; none is copied from implementation output. Where the contract leaves a
- * detail open, the test is labelled "interpretation" and the README records the ambiguity.
+ * contract (evidence-query-to-predicate-contract.md §1.2, §1.7, §2 row S2, §2.1 step 7, §2.3, §4.2
+ * step B) and Stage A §3.1; none is copied from implementation output.
  */
 import {
   DEMO_AMEND_PERMISSION,
@@ -115,6 +114,11 @@ describe('S2: single current revision', () => {
     ['non-string system', { system: ['demo-cs'], code: 'item-x' }],
     ['concept null', null],
     ['concept a string', 'demo-cs#item-x'],
+    ['empty code (case 98a)', { system: 'demo-cs', code: '' }],
+    ['empty system (case 98b)', { system: '', code: 'item-x' }],
+    ['ASCII whitespace-only code (case 99a)', { system: 'demo-cs', code: '   ' }],
+    ['Unicode whitespace-only code (case 99b)', { system: 'demo-cs', code: '\u00a0\u2003' }],
+    ['line-terminator-only system', { system: '\n\u2028', code: 'item-x' }],
   ] as [string, JsonValue][])('malformed concept/code (%s) → Unresolved{Invalid}, not Unavailable', (_n, concept) => {
     expect(view(key(s2Of([rev('s1', 'r15', '1', { concept })]), 's1/r15'))).toEqual({
       s1Status: 'Current',
@@ -127,9 +131,25 @@ describe('S2: single current revision', () => {
 
   it('malformed code in an uncovered system is Invalid only: Unavailable needs a well-formed code (§1.7)', () => {
     expect(key(s2Of([rev('s1', 'r15', '1', { concept: { system: 'other-cs', code: 7 } })]), 's1/r15').causes).toEqual(['Invalid']);
+    expect(key(s2Of([rev('s1', 'r15', '1', { concept: { system: 'other-cs', code: ' ' } })]), 's1/r15').causes).toEqual(['Invalid']);
   });
 
-  it('absent concept → Unresolved{Missing}: absence is explicit, never defaulted (§1.7; reason label is provisional)', () => {
+  it('surrounding whitespace is kept verbatim, not trimmed: well-formed but a different code (case 100)', () => {
+    for (const code of [' item-x', 'item-x\t', '\u00a0item-x']) {
+      expect(key(s2Of([rev('s1', 'r100', '1', { concept: { system: 'demo-cs', code } })]), 's1/r100').possibilities.map((p) => show(p))).toEqual([
+        's1/r100@1 OutOfDomain',
+      ]);
+    }
+  });
+
+  it('a code containing inner whitespace that IS in the expansion is in domain: only whitespace-only identifiers are rejected', () => {
+    const expansion = { ...VS, expansion: [{ system: 'demo-cs', code: 'item x' }] };
+    expect(key(s2Of([rev('s1', 'r1', '1', { concept: { system: 'demo-cs', code: 'item x' } })], [], expansion), 's1/r1').possibilities.map((p) => show(p))).toEqual([
+      's1/r1@1 InDomain',
+    ]);
+  });
+
+  it('absent concept → Unresolved{Missing, FieldAbsent:concept}: absence is explicit, never defaulted (§2.3, case 93)', () => {
     expect(view(key(s2Of([rev('s1', 'r3', '1', { concept: undefined })]), 's1/r3'))).toEqual({
       s1Status: 'Current',
       possibilities: ['s1/r3@1 Unresolved[Missing/FieldAbsent:concept]'],
@@ -139,11 +159,13 @@ describe('S2: single current revision', () => {
     });
   });
 
-  it('interpretation: absent concept.code is Missing; absent system plus malformed code accumulates Missing and Invalid', () => {
-    expect(key(s2Of([rev('s1', 'r3', '1', { concept: { system: 'demo-cs' } })]), 's1/r3').possibilities.map((p) => show(p))).toEqual([
-      's1/r3@1 Unresolved[Missing/FieldAbsent:concept.code]',
-    ]);
-    expect(key(s2Of([rev('s1', 'r3', '1', { concept: { code: 7 } })]), 's1/r3').causes).toEqual(['Missing', 'Invalid']);
+  it('absent components are Missing with their field path; absent plus malformed components keep both causes (§2.3, cases 94, 95, 97)', () => {
+    const shown = (concept: JsonValue) => key(s2Of([rev('s1', 'r3', '1', { concept })]), 's1/r3').possibilities.map((p) => show(p));
+    expect(shown({ code: 'item-x' })).toEqual(['s1/r3@1 Unresolved[Missing/FieldAbsent:concept.system]']);
+    expect(shown({ system: 'demo-cs' })).toEqual(['s1/r3@1 Unresolved[Missing/FieldAbsent:concept.code]']);
+    expect(shown({})).toEqual(['s1/r3@1 Unresolved[Missing/FieldAbsent:concept.system,Missing/FieldAbsent:concept.code]']);
+    expect(shown({ code: 7 })).toEqual(['s1/r3@1 Unresolved[Missing/FieldAbsent:concept.system,Invalid/CodeMalformed]']);
+    expect(shown({ system: '', code: ' ' })).toEqual(['s1/r3@1 Unresolved[Invalid/CodeMalformed]']); // one finding: attribution is a set
   });
 
   it('compares system and code exactly: no case folding, and undeclared concept members (display) play no part', () => {
@@ -316,6 +338,10 @@ describe('S2: configuration is validated, never treated as patient evidence', ()
     ['expansion without covered systems', PIN, { id: PIN, expansion: VS.expansion }],
     ['malformed expansion entry', PIN, { ...VS, expansion: [{ system: 'demo-cs', code: 7 }] }],
     ['expansion code in an uncovered system', PIN, { ...VS, expansion: [OTHER] }],
+    ['empty expansion code', PIN, { ...VS, expansion: [{ system: 'demo-cs', code: '' }] }],
+    ['whitespace-only expansion code', PIN, { ...VS, expansion: [{ system: 'demo-cs', code: '\u2003' }] }],
+    ['whitespace-only covered system', PIN, { ...VS, coveredSystems: ['demo-cs', ' '] }],
+    ['whitespace-only pin', ' ', { ...VS, id: ' ' }],
   ])('%s → S2ConfigurationError', (_n, valueSet, expansion) => {
     expect(run(valueSet, expansion)).toThrow(S2ConfigurationError);
   });

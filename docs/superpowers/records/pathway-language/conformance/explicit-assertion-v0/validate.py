@@ -16,7 +16,7 @@ Usage: python3 validate.py [--self-test]
 import copy, hashlib, json, os, sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-CASE_RANGE = range(1, 93)
+CASE_RANGE = range(1, 101)
 CAUSES = ["Missing", "Conflicting", "Unavailable", "Invalid", "Inadmissible", "InsufficientEvidence"]
 MARKERS = ["excluded", "unknown"]
 REV_DECL = {"key": {"source", "localId"}, "revision": None, "recordType": None, "subject": None,

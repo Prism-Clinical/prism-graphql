@@ -2,7 +2,7 @@
 
 **Status:** Proposed design draft. **Not** accepted, not finalized syntax, not a schema and not implemented. It contains no clinical content: the record type, enum values, codes, sources and permission below are fictional and illustrate language behavior only. They do not map to dysphagia, progression, urgency or any other clinical definition.
 
-**Date:** 2026-10-03. **Revised:** 2026-10-03, nine times, and 2026-10-04, once, after review. The third revision fixed three things:
+**Date:** 2026-10-03. **Revised:** 2026-10-03, nine times, 2026-10-04, once, and 2026-10-05, once, after review. The third revision fixed three things:
 
 - revision-chain boundaries: source-scoped identity, same-source corrections and one fully specified schematic authority rule;
 - deterministic outcomes for malformed history;
@@ -13,6 +13,13 @@ The fourth revision made three changes:
 - Proven cross-boundary corrections and retractions are now rejected without changing their target. This keeps gap irrelevance consistent with S1.
 - Payload identity for duplicate detection is defined.
 - An unsupported justification about coverage attestations is removed.
+
+The eleventh revision settles S2’s input rules (2.3, cases 93–100). It came from review of the first S2 implementation, where an empty code was classified as established nonmembership.
+
+- Absent concept information is `Missing`, with the field path as the reason.
+- A present but malformed concept component is `Invalid`.
+- Fictional identifiers must contain at least one non-whitespace character, and they are never trimmed.
+- The same syntax binds the supplied expansion; a violation there is a configuration error, not patient evidence.
 
 The tenth revision closes a gap in step 7. A step 5 fork can be suppressed by a defect that step 7 later makes historical, which left several heads with no cause. If several heads remain and no defect is current-affecting, step 7 now records a fork (cases 88–92).
 
@@ -73,7 +80,7 @@ Records are instances of a record type declared in a pinned evidence-model libra
 | `recordType`, `subject` | type ID, `SubjectRef` | Required; immutable within a chain |
 | `supersedes` | optional `RevisionRef` | A correction of the referenced revision |
 | `episode`, `encounter` | `Field<EpisodeRef>`, `Field<EncounterRef>` | Absence is explicit, never defaulted |
-| `concept` | `Code` (`system`, `code`) | Matched against a pinned value-set expansion |
+| `concept` | `Code` (`system`, `code`) | Matched against a pinned value-set expansion (2.3) |
 | `assertion` | `Field<AssertionValue>` | `Affirmed \| Denied \| Indeterminate` (fictional) |
 | `assertionKind` | `AssertionKind` | Fictional: `ClinicianDocumented \| PatientReport` |
 | `author` | `{ actor, permissions: Field<Set<Permission>> }` | Permissions are read only for corrections and retractions (1.3) |
@@ -169,7 +176,7 @@ An `episode` may come from an evaluated declaration through an explicit, acyclic
 | Problem | Example | Class | Cause |
 |---|---|---|---|
 | Field absent | `assertion` missing | Patient evidence | `Missing` (3.4) |
-| Field malformed | `assertion = "Maybe"`; a syntactically invalid code | Patient evidence | `Invalid` |
+| Field malformed | `assertion = "Maybe"`; a syntactically invalid code, e.g. empty or whitespace-only (2.3) | Patient evidence | `Invalid` |
 | Terminology information unavailable | A well-formed code from a system the pinned expansion does not cover | Patient evidence | `Unavailable` (S2) |
 | Malformed or contradictory revision history | Missing target, fork, self-supersession, cycle, undeterminable identity or authority | Patient evidence | Per 2.1 (`Missing`, `Conflicting`, `Invalid`) |
 | Proven cross-boundary correction or retraction | Subject or record-type change; correction or retraction naming another key | Patient evidence | No cause: rejected, kept as a diagnostic, target unchanged (2.1) |
@@ -185,7 +192,7 @@ The stages follow Stage A §4.4’s order: identities and correction/retraction 
 | # | Stage | Inputs | Outputs | Kind |
 |---|---|---|---|---|
 | S1 | Identity and revision history | The whole envelope (revisions and retractions), before any semantic filter; authority rule 1.3 | Per `RecordKey`: `Current(rev) \| Retracted \| NoRecord \| UnresolvedRevision(causes, possibleCurrent)`, plus rejected items with reasons (2.1) | Fixed behavior; authority is a versioned schematic rule |
-| S2 | Candidate identification | S1; pinned value-set expansion | For each possible current revision: in domain, out of domain, or candidacy unresolved (`Unavailable` for an uncovered code system, `Invalid` for a malformed code). `excluded` stays excluded; `unknown` stays possible-in-domain. A key is a candidate if any possible current could be in domain | Fixed behavior over pinned parameters |
+| S2 | Candidate identification | S1; pinned value-set expansion | For each possible current revision: in domain, out of domain, or candidacy unresolved (`Unavailable` for an uncovered code system, `Invalid` for a malformed code). `excluded` stays excluded; `unknown` stays possible-in-domain. A key is a candidate if any possible current could be in domain (2.3) | Fixed behavior over pinned parameters |
 | S3 | Admissibility | Candidates; context; authored rules (2.2) | Per candidate revision: `Admissible \| Inadmissible(reasons) \| UnresolvedAdmissibility(causes)` with origin causes | Fixed semantics over authored rules |
 | S4 | Selection | S3 | `selected` = keys whose single current revision is `Admissible`; `unresolved` = keys with unresolved history, candidacy or admissibility; inadmissible keys retained | Policy `explicit-assertion-v0` |
 | S5 | Criterion evaluation | `selected`, `unresolved`; `establishes`, `refutes` | Classification per revision (3.3); unresolved keys are classified only to judge materiality | Authored expressions; fixed rule |
@@ -313,6 +320,39 @@ Rejected and superseded revisions and historical defects are kept in the trace w
 - `assertionKind` must be in the authored set, else `Inadmissible(AssertionKindNotAllowed)`.
 
 Causes from several unresolved rules accumulate. “Unresolved admissibility” is a stage outcome; the causes stay those of the underlying input.
+
+### 2.3 S2: concept presence, identifier syntax and membership
+
+S2 classifies each possible current revision or variant from S1 (2.1). `Current(rev)` contributes its revision. `UnresolvedRevision` contributes every node in *H*, each conflicted variant separately. `Retracted` and no-record keys contribute nothing, which is not a negative conclusion. S2 never reconsiders superseded or rejected revisions and never chooses among possible currents.
+
+**Identifier syntax (fictional, `demo-model@0.1` only).** A code-system identifier or code is **well-formed** if and only if it is a JSON string containing at least one character without the Unicode `White_Space` property. That property has been stable since Unicode 6.3.
+
+- The empty string and whitespace-only strings (e.g. `"   "`, `"\u00a0\u2003"`) are malformed.
+- No trimming, case folding or other normalization is applied. `" item-x"` is well-formed and is a different code from `item-x`.
+- Code-system-specific syntax for real terminologies is out of scope.
+
+**Concept rules.** Components are judged independently, and every resulting finding is kept:
+
+| Input | Cause | Reason |
+|---|---|---|
+| `concept` absent | `Missing` | `FieldAbsent:concept` |
+| `concept` present but not an object (including `null`) | `Invalid` | `CodeMalformed` |
+| `concept.system` / `concept.code` absent | `Missing` | `FieldAbsent:concept.system` / `FieldAbsent:concept.code` |
+| `concept.system` / `concept.code` present but not a well-formed identifier (non-string, `null`, empty, whitespace-only) | `Invalid` | `CodeMalformed` |
+
+An absent component and a malformed one give both causes (case 97). Two malformed components give one `CodeMalformed` finding, since attribution entries form a set. Any finding makes candidacy unresolved. Undeclared members of `concept`, such as a display text, are not payload (CANONICALIZATION.md) and are never read.
+
+**Membership.** Only when both components are well-formed:
+
+| Condition | Candidacy |
+|---|---|
+| `system` not in the expansion’s covered systems | Unresolved: `Unavailable`, `TerminologyUnavailable` |
+| (`system`, `code`) in the expansion, compared exactly | In domain |
+| Otherwise | Out of domain: nonmembership established within declared coverage |
+
+**Expansion binding.** The contract pins `retrieve.valueSet` (here `demo-vs/item-x@1`; the version is part of the identifier). The supplied expansion must carry exactly that identity, a list of codes and a list of covered systems. Every identifier in it must be well-formed under the syntax above, and every code’s system must be covered. Any violation, a missing expansion or a mismatched identity is an **invalid configuration**. Evaluation does not proceed, and the problem is never patient-evidence uncertainty or an empty expansion. An explicitly supplied empty code list is valid. There is no terminology lookup, version resolution or code-system conversion.
+
+**Key-level candidacy.** A key is a candidate if any possible current is in domain, has unresolved candidacy, or is `unknown`. `excluded` never makes a key a candidate. Candidacy includes unresolved possibilities, so it does not mean membership is established. S2 discards no inherited S1 cause; materiality is decided in S6 (4.2).
 
 ## 3. Where the clinical expression lives
 
@@ -772,6 +812,21 @@ All cases start from D0. Every row was traced manually through 1.5, 2.1 and 4.
 | 91 | Fork fallback with an unauthorized retraction | As 89, but x1 `perm: []` | `Unresolved{Conflicting}` @s1/r1 | Unknown(Conflicting) | x1 rejected `Unauthorized`; fallback `Fork` active | K1; `CorrectRecord` s1/r1 |
 | 92 | Retraction authority missing after a historical conflict | As 89, but x1 `perm omitted` | `Unresolved{Missing}` @s1/r1 | Unknown(Missing) | `RetractionAuthorityMissing` active; no fallback fork; possible {@2a, @2b, excluded} | K1; `CorrectRecord` s1/r1 |
 
+**G. Concept presence and identifier syntax (2.3)** (D0 unless stated; each record `Affirmed`)
+
+| # | Case | Records / changes | `Evidence<Boolean>` | `Decision` | Trace must show | Need |
+|---|---|---|---|---|---|---|
+| 93 | Concept absent | s1/r93, `concept` omitted | `Unresolved{Missing}` @s1/r93@1 (`FieldAbsent:concept`) | Unknown(Missing) | Candidacy unresolved | K1; `CorrectRecord` s1/r93 |
+| 94 | System absent | s1/r94, concept `{code: item-x}` | `Unresolved{Missing}` @s1/r94@1 (`FieldAbsent:concept.system`) | Unknown(Missing) | Candidacy unresolved | K1; `CorrectRecord` s1/r94 |
+| 95 | Code absent | s1/r95, concept `{system: demo-cs}` | `Unresolved{Missing}` @s1/r95@1 (`FieldAbsent:concept.code`) | Unknown(Missing) | Candidacy unresolved | K1; `CorrectRecord` s1/r95 |
+| 96 | Component `null` | s1/r96, concept `{system: null, code: item-x}` | `Unresolved{Invalid}` @s1/r96@1 (`CodeMalformed`) | Unknown(Invalid) | `null` is malformed, not absent | K1; `CorrectRecord` s1/r96 |
+| 97 | Absent and malformed components | s1/r97, concept `{code: 7}` | `Unresolved{Missing, Invalid}` @s1/r97@1 (`FieldAbsent:concept.system`, `CodeMalformed`) | Unknown (same) | Both causes kept | K1; `CorrectRecord` s1/r97 |
+| 98 | Empty identifier | (a) s1/r98, code `""`; (b) s1/r98, system `""` | `Unresolved{Invalid}` @s1/r98@1 (`CodeMalformed`) | Unknown(Invalid) | **Not** out of domain | K1; `CorrectRecord` s1/r98 |
+| 99 | Whitespace-only identifier | (a) s1/r99, code `"   "`; (b) code `"\u00a0\u2003"` | `Unresolved{Invalid}` @s1/r99@1 (`CodeMalformed`) | Unknown(Invalid) | Unicode `White_Space`, not only ASCII | K1; `CorrectRecord` s1/r99 |
+| 100 | Surrounding whitespace is not trimmed | s1/r100, code `" item-x"` | `Unresolved{Missing}` | Unknown(Missing) | Well-formed; out of domain; base cause `NoInDomainRecord` | K1 |
+
+In cases 93–99 the record is admissible and `Supporting` if selected, so it is material. Its S2 causes are attributed, and its own-data reason emits `CorrectRecord` (6.2). Invalid expansions are configuration errors (2.3). They have no evaluation fixture, because the fixture format has no configuration-failure kind.
+
 ### 7.5 Invariance checks
 
 These must hold for every case:
@@ -826,6 +881,12 @@ These must hold for every case:
 12. Key-closed gap dimensions, under which irrelevance is exact. Conflicted revisions stay conflicts, and undeterminable envelope membership stays unresolved.
 13. S1 defect scoping: only defects involving a possible current revision affect the result; others are historical diagnostics.
 14. Fork fallback: several remaining heads with no current-affecting defect are a fork (`Conflicting`), so an unresolved S1 result never has an empty cause set.
+15. S2 input rules (2.3):
+    - Absent concept information is `Missing`, with a field-path reason.
+    - A malformed component is `Invalid` (`CodeMalformed`).
+    - Findings from different components accumulate.
+    - Fictional identifiers must contain a non-`White_Space` character and are never normalized.
+    - The same syntax binds the supplied expansion, where a violation is an invalid configuration.
 
 **Possible conflicts needing a Stage A amendment.** None found. Items to confirm:
 
@@ -835,7 +896,7 @@ These must hold for every case:
 
 **Query/predicate split.** The query carries the reasoning. A projection-only Predicate is optional naming and composition structure. No node kind is added or removed.
 
-**Conformance fixtures.** [conformance/explicit-assertion-v0/](conformance/explicit-assertion-v0/README.md) holds machine-readable fixtures for cases 1–92, mapped by case number, with expected outputs written from this contract. They are proposed, like this document.
+**Conformance fixtures.** [conformance/explicit-assertion-v0/](conformance/explicit-assertion-v0/README.md) holds machine-readable fixtures for cases 1–100, mapped by case number, with expected outputs written from this contract. They are proposed, like this document.
 
 **Remaining items.**
 

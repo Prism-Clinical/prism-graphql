@@ -18,6 +18,7 @@ export interface Code {
  * A pinned, immutable value-set expansion, in the fixtures' `valueSets` entry format plus its
  * identity. `id` includes the version (e.g. `demo-vs/item-x@1`) and is compared exactly with the
  * query's pin; there is no "latest" resolution. Membership is decidable only for `coveredSystems`.
+ * Every identifier must satisfy the contract §2.3 syntax, or the input is a configuration error.
  */
 export interface ValueSetExpansion {
   readonly id: string;
@@ -40,9 +41,9 @@ export type S2Cause = 'Missing' | 'Unavailable' | 'Invalid';
 export type S2Reason =
   /** Well-formed code from a system the expansion does not cover (contract §1.7). */
   | 'TerminologyUnavailable'
-  /** `concept`, `concept.system` or `concept.code` present but not of the declared type. */
+  /** `concept` present but not an object, or a component present but not a well-formed identifier (contract §2.3). */
   | 'CodeMalformed'
-  /** Required concept information absent. Provisional label: see README "S2 interpretations". */
+  /** Required concept information absent (contract §2.3). */
   | 'FieldAbsent:concept'
   | 'FieldAbsent:concept.system'
   | 'FieldAbsent:concept.code';
