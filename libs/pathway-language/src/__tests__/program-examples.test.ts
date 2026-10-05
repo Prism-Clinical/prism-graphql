@@ -15,7 +15,7 @@ describe('first-program examples: I1 compile/preview and I2 isolated execution',
         `examples: ${reports.length}`,
         ...reports.map(
           (r) =>
-            `${r.id}: compiler ${r.checked}, isolated program-expression ${r.executionChecked}, preview-output ${r.previewChecked} checks (failures ${r.failures.length}); discrepancies: ${r.discrepancies.join('; ') || 'none'}; outside scope: ${r.outOfScope.join('; ') || 'none'}`,
+            `${r.id}: compiler ${r.checked}, isolated program-expression ${r.executionChecked}, preview-output ${r.previewChecked} checks (failures ${r.failures.length}); outside scope: ${r.outOfScope.join('; ') || 'none'}`,
         ),
       ].join('\n'),
     );

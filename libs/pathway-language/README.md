@@ -297,8 +297,10 @@ r.outputs['f.demo'];  // { status:   { value: 'False' }, supportingEvidenceIds: 
 
 **Boundary.**
 
-- `experimentalExecuteWithSuppliedQueryResults` accepts only an I1 `CompiledPackage`. `experimentalExecutePreviewWithSuppliedQueryResults` accepts only a `PreviewPackage`. Packages are checked by `kind`, `experimental` tag and frozenness, so compile failures and copied look-alikes are rejected.
-- Query results are a `Map` keyed by EvidenceQuery ID, so IDs such as `__proto__` are ordinary keys. Each value is the settled `Evidence<Boolean>` fixture shape: `{status: 'Known', value, supportingEvidenceIds}` or `{status: 'Unresolved', causes (nonempty, Stage A causes), candidateEvidenceIds}`. Evidence IDs use the fixture notation `source/localId@revision[#digest]`.
+- `experimentalExecuteWithSuppliedQueryResults` accepts only an I1 `CompiledPackage`. `experimentalExecutePreviewWithSuppliedQueryResults` accepts only a `PreviewPackage`. A package is accepted only if the I1 compiler produced that exact object in this process, as recorded in a private registry, and as the requested kind. Tags, shape and frozenness are not proof of compilation, so frozen fabrications, copies, relabelled packages and compile failures are all rejected.
+- Query results are a `Map` keyed by EvidenceQuery ID, so IDs such as `__proto__` are ordinary keys. Each value is the settled `Evidence<Boolean>` fixture shape: `{status: 'Known', value, supportingEvidenceIds}` or `{status: 'Unresolved', causes (nonempty, Stage A causes), candidateEvidenceIds}`. Arrays are validated element by element: an `undefined` element or a sparse-array hole is malformed.
+
+Evidence IDs use the fixture notation `source/localId@revision[#digest]`. This is the representation **this experimental boundary** supports, not a restriction on underlying record identities.
 - Input errors are returned together, as `outcome: 'ExecutionInputError'`, never as patient uncertainty:
   - `INVALID_PACKAGE`;
   - `INVALID_QUERY_RESULTS` (not a `Map`);
@@ -365,7 +367,7 @@ This package has its own Jest configuration and is not part of the root Jest roo
   - (review of 3ecd664) editing the source after normal and preview compilation, deep-frozen results that throw on mutation, the identifiers `__proto__`, `constructor`, `toString` and `hasOwnProperty` through compilation and serialization, and the `c.assertion`-only restriction. These tests fail against the 3ecd664 compiler.
 
   Targeted mutation checks found no surviving mutation. Each of these breaks at least one test: urgency marking the status, no transitive marking, the wrong cycle pointer, holes compiling normally, no cross-enum check, no overlap check, and a misplaced `ctx.` being accepted.
-- **`src/__tests__/execute.test.ts`** has 38 independent I2 tests over programs compiled in the test, all with **supplied** query results. These are isolated tests, not end-to-end runs. They cover:
+- **`src/__tests__/execute.test.ts`** has 44 independent I2 tests over programs compiled in the test, all with **supplied** query results. These are isolated tests, not end-to-end runs. They cover:
   - projection of Known true, Known false and Unresolved;
   - ID and cause deduplication and ordering;
   - the full two-operand Kleene table, `all` with zero, one and three operands, and False with Unknown;
@@ -381,12 +383,14 @@ This package has its own Jest configuration and is not part of the root Jest roo
   - the IDs `__proto__`, `constructor` and `toString`;
   - frozen inputs, post-execution edits and deep-frozen results.
 
+  Review of 51609c5 added malformed arrays (an `undefined` cause, sparse causes, an `undefined` supporting ID, sparse supporting IDs, a `null` candidate ID), plus frozen fabricated packages, deep-frozen copies and relabelled packages in both directions. Five of these fail against the 51609c5 code.
+
   Targeted mutations each fail tests: False support taken from every operand, a decisive `False` dropping a marker, a missing result not reported, a holed-query result accepted, no ID deduplication, and operand traces hidden after a decisive `False`.
 - **`src/__tests__/program-examples.test.ts`** runs the six [first-program examples](../../docs/superpowers/records/pathway-language/programs/README.md). It reports I1 compiler checks, I2 isolated program-expression checks and I2 preview-output checks separately:
 
   | Example | Compiler | Isolated program-expression | Preview-output |
   |---|---|---|---|
-  | PPL-01 to -03 | 5 each | 5 each (applicability, predicate and finding outputs; applicability and predicate traces), with the query evidence supplied from the example itself | — |
+  | PPL-01 to -03 | 5 each | 6 each (applicability, predicate and finding outputs and traces), with the query evidence supplied from the example itself | — |
   | PPL-04 | 9 | — | 9 (every output and trace entry) |
   | PPL-05a/b | 6 each | — | — |
 
@@ -507,11 +511,11 @@ Two former items are now settled in the contract:
 5. **Declarations with an invalid kind** keep their ID, so references to them add no `UNDEFINED_REFERENCE`.
 6. **Citation shapes.** `lines` is a `[first, last]` range, and `quote` keys must fall inside it. Files, digests and quotations are not read.
 
-## I2: discrepancies and choices where the contract is silent
+## I2: decisions (review of 51609c5)
 
-1. **Finding trace naming (needs a decision).** PPL-01 to PPL-03 name the Finding’s status trace entry `f.demo`. PPL-04 names it `f.alarm.status`, and `f.alarm.urgency` for its attribute. The executor follows the compiler’s marker convention, `<id>.status`. The runner reports the three PPL-01 to PPL-03 entries as discrepancies, neither passed nor failed; their source and result do match. Proposed resolution: rename those entries to `f.demo.status`, which changes no value.
-2. **Known with empty support.** `Known(value, [])` is accepted as shape-valid. Stage A §4.1 does not require supporting IDs; under explicit-assertion-v0 a Known result always has them, so S6 will never produce an empty one.
-3. **Evidence ID notation.** Supplied IDs must match `source/localId@revision[#64-hex digest]`, with no `/`, `@` or `#` inside a component. That is needed to order them by the contract §5.3 tuple, and the notation cannot express such components anyway.
+1. **Finding trace naming.** A Finding’s status trace entry is `<id>.status`, and an attribute’s is `<id>.<attribute>`, following the compiler’s marker convention. PPL-01 to PPL-03 now say `f.demo.status`, and the runner asserts those entries like any other.
+2. **Known with empty support** is accepted by this isolated typed-result executor. Accepting it does not establish that the evidence-query policy could legitimately produce such a result; under explicit-assertion-v0, S6 never does.
+3. **Evidence-ID notation** is this boundary’s supported representation: `source/localId@revision[#64-hex digest]`, with no `/`, `@` or `#` inside a component. It exists so IDs can be ordered by the contract §5.3 tuple. It is not a new restriction on record identities.
 
 ## Limitations
 

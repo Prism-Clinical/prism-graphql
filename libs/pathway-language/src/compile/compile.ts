@@ -80,6 +80,17 @@ export function detach<T>(v: T): T {
   return v;
 }
 const SAME_ENCOUNTER = canon(SAME_ENCOUNTER_RULE);
+
+/** Packages produced by compile/compilePreview in this process. Private: the only proof of compilation. */
+const produced = new WeakMap<object, 'CompiledPackage' | 'PreviewPackage'>();
+/** Which package kind the compiler produced this exact object as, or null for anything else (copies included). */
+export function compiledKind(v: unknown): 'CompiledPackage' | 'PreviewPackage' | null {
+  return v !== null && typeof v === 'object' ? produced.get(v) ?? null : null;
+}
+function register<R extends { package?: object }>(r: R, kind: 'CompiledPackage' | 'PreviewPackage'): R {
+  if (r.package) produced.set(r.package, kind);
+  return r;
+}
 const SAME_EPISODE = canon(EPISODE_RULE);
 
 type Target = { kind: 'Decision' | 'Evidence<Boolean>' | 'Finding' | 'Reference' } | 'ambiguous';
@@ -809,7 +820,7 @@ export function compile(source: unknown): CompileResult {
       dependencyEdges: program.dependencyEdges,
     });
   }
-  return detach({ outcome: 'Compiled', wellFormed: true, diagnostics: [], package: { ...program, kind: 'CompiledPackage', experimental: 'nonclinical-ppl-compile-v0' } });
+  return register(detach({ outcome: 'Compiled', wellFormed: true, diagnostics: [], package: { ...program, kind: 'CompiledPackage', experimental: 'nonclinical-ppl-compile-v0' } }) as CompileResult & { package?: object }, 'CompiledPackage');
 }
 
 /** Preview compilation: accepts correctly typed holes as markers. Never publishable or clinically executable. */
@@ -818,7 +829,7 @@ export function compilePreview(source: unknown): PreviewCompileResult {
   const failed = structuralFailure(r);
   if (failed) return failed;
   const program = r.program!;
-  return detach({
+  return register(detach({
     outcome: 'PreviewPackage',
     wellFormed: true,
     diagnostics: [],
@@ -830,5 +841,5 @@ export function compilePreview(source: unknown): PreviewCompileResult {
       markers: markers(program),
       inspectable: inspectable(program),
     },
-  });
+  }) as PreviewCompileResult & { package?: object }, 'PreviewPackage');
 }

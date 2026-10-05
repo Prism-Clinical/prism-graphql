@@ -52,8 +52,6 @@ export interface ExampleReport {
   /** I2 preview-output checks. */
   previewChecked: number;
   failures: string[];
-  /** Expectation/convention conflicts reported for a decision: neither passed nor failed. */
-  discrepancies: string[];
   outOfScope: string[];
 }
 
@@ -76,18 +74,8 @@ function compareExecution(exp: Json, result: Json, supplied: Set<string>, report
     if (supplied.has(name)) continue; // supplied query evidence is input, not an output to check
     check(isDeepStrictEqual(result.outputs[name], expected), `outputs[${name}] ${JSON.stringify(result.outputs[name])}`);
   }
-  const findings = new Set(Object.keys(result.findingAttributes as Json));
   for (const t of exp.trace as Json[]) {
     if (supplied.has(t.output)) continue;
-    if (findings.has(t.output)) {
-      // Undefined in the contract: some examples name a Finding's status trace `<id>`, others `<id>.status`
-      // (the compiler's marker convention, which the executor follows). Reported, not counted.
-      const alt = (result.trace as Json[]).find((x) => x.output === `${t.output}.status`);
-      report.discrepancies.push(
-        `${label} trace names Finding status '${t.output}'; executor emits '${t.output}.status' (source ${alt?.source === t.source ? 'matches' : 'differs'}, result ${alt?.result === t.result ? 'matches' : 'differs'})`,
-      );
-      continue;
-    }
     const got = (result.trace as Json[]).find((x) => x.output === t.output);
     check(got?.source === t.source && got?.result === t.result, `trace ${t.output}: ${JSON.stringify(got && { source: got.source, result: got.result })}`);
   }
@@ -101,7 +89,7 @@ export function runProgramExamples(dir: string = PROGRAM_DIR): ExampleReport[] {
   const reports: ExampleReport[] = [];
   for (const name of readdirSync(join(dir, 'examples')).sort()) {
     const ex = JSON.parse(readFileSync(join(dir, 'examples', name), 'utf8')) as Json;
-    const report: ExampleReport = { id: ex.id, checked: 0, executionChecked: 0, previewChecked: 0, failures: [], discrepancies: [], outOfScope: [] };
+    const report: ExampleReport = { id: ex.id, checked: 0, executionChecked: 0, previewChecked: 0, failures: [], outOfScope: [] };
     reports.push(report);
     const program = JSON.parse(readFileSync(join(dir, 'examples', ex.program.file), 'utf8')) as JsonValue;
     const source = applyPatch(program, ex.program.patch);

@@ -134,7 +134,7 @@
         "because": "evidenceValue: Unresolved(C) projects to Unknown(C), causes unchanged"
       },
       {
-        "output": "f.demo",
+        "output": "f.demo.status",
         "source": "/nodes/2/status",
         "result": "Unknown(Missing)",
         "because": "all(True, Unknown(Missing)) = Unknown(Missing). Never False: no explicit negative exists"

@@ -151,7 +151,7 @@
         "because": "evidenceValue: Known(false) projects to False with the same supporting IDs"
       },
       {
-        "output": "f.demo",
+        "output": "f.demo.status",
         "source": "/nodes/2/status",
         "result": "False",
         "because": "all(True, False) = False; support is the deciding False operand's support. Not established for this schematic finding only; nothing else is concluded"

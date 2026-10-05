@@ -208,6 +208,12 @@ describe('I2: execution input is validated, never turned into patient uncertaint
     ['extra member', { status: 'Known', value: true, supportingEvidenceIds: [], provenance: 'x' }],
     ['malformed evidence ID', { status: 'Known', value: true, supportingEvidenceIds: ['record-1'] }],
     ['unknown status', { status: 'Maybe' }],
+    // Review of 51609c5: find() treated an undefined element as "nothing invalid found".
+    ['undefined cause', { status: 'Unresolved', causes: [undefined], candidateEvidenceIds: [] }],
+    ['sparse causes', { status: 'Unresolved', causes: new Array(1), candidateEvidenceIds: [] }],
+    ['undefined supporting ID', { status: 'Known', value: true, supportingEvidenceIds: [undefined] }],
+    ['sparse supporting IDs', { status: 'Known', value: true, supportingEvidenceIds: ['s1/a@1', , 's1/b@1'] }],
+    ['null candidate ID', { status: 'Unresolved', causes: ['Missing'], candidateEvidenceIds: [null] }],
     ['not an object', 'Known'],
   ])('%s is MALFORMED_QUERY_RESULT', (_n, bad) => {
     expect(codes(run(pkg, [['qa', bad as SuppliedEvidence], ['qb', T('s1/b@1')]]))).toEqual([['MALFORMED_QUERY_RESULT', 'qa']]);
@@ -215,6 +221,28 @@ describe('I2: execution input is validated, never turned into patient uncertaint
 
   it('a plain object instead of a Map is INVALID_QUERY_RESULTS', () => {
     expect(codes(experimentalExecuteWithSuppliedQueryResults(pkg, { qa: T('s1/a@1'), qb: T('s1/b@1') } as never))).toEqual([['INVALID_QUERY_RESULTS', null]]);
+  });
+
+  it('only packages the compiler produced are accepted: frozen fabrications, deep-frozen copies and relabelled packages are rejected', () => {
+    const deepFreeze = <T>(o: T): T => {
+      if (o && typeof o === 'object') {
+        Object.values(o).forEach(deepFreeze);
+        Object.freeze(o);
+      }
+      return o;
+    };
+    const fabricated = deepFreeze({ kind: 'CompiledPackage', experimental: 'nonclinical-ppl-compile-v0', packageId: 'fake', declarations: [], markers: [] });
+    expect(codes(experimentalExecuteWithSuppliedQueryResults(fabricated as never, new Map()))).toEqual([['INVALID_PACKAGE', null]]);
+    const frozenCopy = deepFreeze(JSON.parse(JSON.stringify(pkg)));
+    expect(codes(experimentalExecuteWithSuppliedQueryResults(frozenCopy, new Map([['qa', T('s1/a@1')], ['qb', T('s1/b@1')]])))).toEqual([['INVALID_PACKAGE', null]]);
+    const prev = preview(source([query('qa'), pred('pa', ev('qa'))]));
+    const relabelledPreview = Object.freeze({ ...prev, kind: 'CompiledPackage' });
+    expect(codes(experimentalExecuteWithSuppliedQueryResults(relabelledPreview as never, new Map([['qa', T('s1/a@1')]])))).toEqual([['INVALID_PACKAGE', null]]);
+    const relabelledCompiled = Object.freeze({ ...pkg, kind: 'PreviewPackage', publication: 'Blocked', markers: [], inspectable: {} });
+    expect(codes(experimentalExecutePreviewWithSuppliedQueryResults(relabelledCompiled as never, new Map()))).toEqual([['INVALID_PACKAGE', null]]);
+    // The genuine objects still execute.
+    expect(experimentalExecuteWithSuppliedQueryResults(pkg, new Map([['qa', T('s1/a@1')], ['qb', T('s1/b@1')]])).outcome).toBe('Executed');
+    expect(experimentalExecutePreviewWithSuppliedQueryResults(prev, new Map([['qa', T('s1/a@1')]])).outcome).toBe('Executed');
   });
 
   it('normal execution rejects preview packages, compile failures and unfrozen look-alikes; preview rejects ordinary packages', () => {

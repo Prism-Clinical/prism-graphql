@@ -6,7 +6,7 @@
  * (S1–S6), reads no patient record and generates no Need. Pure: no I/O, no clock, no input
  * mutation; results are detached and deep-frozen like compiler results.
  */
-import { detach } from '../compile/compile';
+import { compiledKind, detach } from '../compile/compile';
 import type { CompiledDeclaration, CompiledPackage, Expr, PreviewPackage } from '../compile/types';
 import { compareCodePoints } from '../s1/resolve';
 import type {
@@ -23,7 +23,6 @@ import type {
 } from './types';
 
 const CAUSES: readonly Cause[] = ['Missing', 'Conflicting', 'Unavailable', 'Invalid', 'Inadmissible', 'InsufficientEvidence'];
-const EXPERIMENTAL = 'nonclinical-ppl-compile-v0';
 /** Fixture ID notation: `source/localId@revision`, optionally `#<sha-256 digest>` for a payload variant. */
 const EVIDENCE_ID = /^([^/@#]+)\/([^/@#]+)@([^/@#]+)(?:#([0-9a-f]{64}))?$/;
 
@@ -65,14 +64,26 @@ function show(v: Value): string {
 
 // ---------- input validation (never patient uncertainty)
 
+/**
+ * The first invalid element of an array, or null when every element is valid. Explicit index loop:
+ * an array hole (sparse array) and an `undefined` element are both invalid, never “not found”.
+ */
+function elementProblem(x: unknown, name: string, valid: (v: unknown) => boolean, expected: string): string | null {
+  if (!Array.isArray(x)) return `${name} must be an array`;
+  for (let i = 0; i < x.length; i += 1) {
+    if (!Object.prototype.hasOwnProperty.call(x, i)) return `${name}[${i}] is missing (sparse array)`;
+    if (!valid(x[i])) return `${name}[${i}] is ${x[i] === undefined ? 'undefined' : JSON.stringify(x[i])}, not ${expected}`;
+  }
+  return null;
+}
+
 function normalizeEvidence(v: unknown): SuppliedEvidence | string {
   if (v === null || typeof v !== 'object' || Array.isArray(v)) return 'expected an Evidence<Boolean> object';
   const o = v as { [k: string]: unknown };
   const keys = Object.keys(o).sort();
   const ids = (x: unknown, name: string): string[] | string => {
-    if (!Array.isArray(x)) return `${name} must be an array`;
-    const bad = x.find((i) => typeof i !== 'string' || !EVIDENCE_ID.test(i));
-    return bad === undefined ? sortIds(x as string[]) : `${name} contains ${JSON.stringify(bad)}, not an evidence ID (source/localId@revision[#digest])`;
+    const problem = elementProblem(x, name, (i) => typeof i === 'string' && EVIDENCE_ID.test(i), 'an evidence ID (source/localId@revision[#digest])');
+    return problem ?? sortIds(x as string[]);
   };
   if (o['status'] === 'Known') {
     if (keys.join() !== 'status,supportingEvidenceIds,value') return 'Known has exactly status, value, supportingEvidenceIds';
@@ -84,8 +95,8 @@ function normalizeEvidence(v: unknown): SuppliedEvidence | string {
     if (keys.join() !== 'candidateEvidenceIds,causes,status') return 'Unresolved has exactly status, causes, candidateEvidenceIds';
     const cs = o['causes'];
     if (!Array.isArray(cs) || cs.length === 0) return 'Unresolved.causes must be a nonempty set of causes';
-    const badCause = cs.find((c) => !CAUSES.includes(c as Cause));
-    if (badCause !== undefined) return `unknown cause ${JSON.stringify(badCause)}`;
+    const causeProblem = elementProblem(cs, 'causes', (c) => CAUSES.includes(c as Cause), 'a Stage A cause');
+    if (causeProblem) return causeProblem;
     const c = ids(o['candidateEvidenceIds'], 'candidateEvidenceIds');
     return typeof c === 'string' ? c : { status: 'Unresolved', causes: sortCauses(cs as Cause[]), candidateEvidenceIds: c };
   }
@@ -99,10 +110,13 @@ function checkInputs(
 ): { errors: ExecutionInputError[]; evidence: Map<string, SuppliedEvidence> } {
   const errors: ExecutionInputError[] = [];
   const evidence = new Map<string, SuppliedEvidence>();
-  const p = pkg as { kind?: unknown; experimental?: unknown } | null;
-  if (p === null || typeof p !== 'object' || p.kind !== kind || p.experimental !== EXPERIMENTAL || !Object.isFrozen(p)) {
-    const other = p && typeof p === 'object' && 'outcome' in p ? `a compile result (${String((p as { outcome: unknown }).outcome)}), not a package` : `kind ${String(p?.kind)}`;
-    errors.push({ code: 'INVALID_PACKAGE', message: `expected an I1 ${kind}; got ${other}` });
+  // Only objects the compiler itself produced in this process are accepted (a private registry);
+  // tags, shape and frozenness are not proof of compilation.
+  const produced = compiledKind(pkg);
+  if (produced !== kind) {
+    const p = pkg as { outcome?: unknown } | null;
+    const what = produced ? `an I1 ${produced}` : p && typeof p === 'object' && 'outcome' in p ? `a compile result (${String(p.outcome)}), not a package` : 'an object the I1 compiler did not produce';
+    errors.push({ code: 'INVALID_PACKAGE', message: `expected an I1 ${kind}; got ${what}` });
     return { errors, evidence };
   }
   if (!(supplied instanceof Map)) {

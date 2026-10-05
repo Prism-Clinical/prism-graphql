@@ -151,7 +151,7 @@
         "because": "evidenceValue: Known(true) projects to True with the same supporting IDs (contract 5.2)"
       },
       {
-        "output": "f.demo",
+        "output": "f.demo.status",
         "source": "/nodes/2/status",
         "result": "True",
         "because": "all(True, True) = True; support is the union of both operands' support"
