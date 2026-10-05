@@ -2,8 +2,8 @@
  * @prism/pathway-language — EXPERIMENTAL, NONCLINICAL.
  *
  * Public boundary of the isolated pathway-language core. It currently exposes only the S1
- * revision-history resolver of the proposed evidence-query contract
- * (docs/superpowers/records/pathway-language/evidence-query-to-predicate-contract.md §2.1).
+ * revision-history resolver and S2 candidate identification of the proposed evidence-query
+ * contract (docs/superpowers/records/pathway-language/evidence-query-to-predicate-contract.md §2).
  * It is not the PPL evaluator, is not clinically approved and must not be used for patient care.
  */
 export { resolveRevisionHistory as experimentalResolveRevisionHistory } from './s1/resolve';
@@ -40,3 +40,17 @@ export type {
   UndeclaredField,
   Variant,
 } from './s1/types';
+export { identifyCandidates as experimentalIdentifyCandidates, S2ConfigurationError } from './s2/identify';
+export type {
+  AnyCause,
+  Code,
+  KeyCandidacy,
+  NodeCandidacy,
+  PossibleCandidacy,
+  S2Cause,
+  S2Finding,
+  S2Input,
+  S2Reason,
+  S2Result,
+  ValueSetExpansion,
+} from './s2/types';

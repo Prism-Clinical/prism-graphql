@@ -1,0 +1,45 @@
+/**
+ * EXPERIMENTAL, NONCLINICAL. S1 and S2 assertions of the committed explicit-assertion-v0 fixtures.
+ * Only S1 and S2 assertions are checked; no fixture is claimed to pass as a whole, because
+ * S3–S7 are not implemented.
+ */
+import { runFixtures } from './support/fixture-runner';
+
+describe('explicit-assertion-v0 fixtures: S1 and S2 assertions only', () => {
+  const { reports, noApplicableAssertions } = runFixtures();
+  const sum = (f: (r: (typeof reports)[number]) => number) => reports.reduce((t, r) => t + f(r), 0);
+  const totals = {
+    s1: sum((r) => r.s1Applicable),
+    s1Passed: sum((r) => r.s1Passed),
+    s1Attribution: sum((r) => r.s1AttributionOneWay),
+    s2: sum((r) => r.s2Applicable),
+    s2Passed: sum((r) => r.s2Passed),
+    s2Attribution: sum((r) => r.s2AttributionOneWay),
+    s2CandidateIds: sum((r) => r.s2CandidateIdsOneWay),
+    outOfScope: sum((r) => r.outOfScope),
+  };
+
+  it('reports S1 and S2 coverage explicitly', () => {
+    const notRun = reports.filter((r) => r.notRun).map((r) => `${r.id} (${r.notRun})`);
+    // eslint-disable-next-line no-console
+    console.log(
+      [
+        `fixtures loaded: ${reports.length}`,
+        `S1 assertions checked (trace facts + canonicalization): ${totals.s1} (passed ${totals.s1Passed})`,
+        `S2 assertions checked (candidacy trace facts): ${totals.s2} (passed ${totals.s2Passed})`,
+        `one-way checks: S1 cause attributions ${totals.s1Attribution}; S2 cause attributions ${totals.s2Attribution}; candidateEvidenceIds entries ⊆ S2 InDomain/Unresolved ${totals.s2CandidateIds}`,
+        `expected fields/assertions outside implemented scope (S3–S7; not checked): ${totals.outOfScope}`,
+        `fixtures not run: ${notRun.length}: ${notRun.join(', ')}`,
+        `evaluation/preview fixtures with no applicable S1/S2 assertion: ${noApplicableAssertions.length}: ${noApplicableAssertions.join(', ')}`,
+      ].join('\n'),
+    );
+    expect(totals.s1).toBeGreaterThan(0);
+    expect(totals.s2).toBeGreaterThan(0);
+  });
+
+  const checked = (r: (typeof reports)[number]) =>
+    r.s1Applicable + r.s1AttributionOneWay + r.s2Applicable + r.s2AttributionOneWay + r.s2CandidateIdsOneWay > 0;
+  it.each(reports.filter((r) => !r.notRun && checked(r)).map((r) => [r.id, r] as const))('%s: S1/S2 assertions hold', (_id, report) => {
+    expect(report.failures).toEqual([]);
+  });
+});

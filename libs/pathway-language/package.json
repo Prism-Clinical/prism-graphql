@@ -2,7 +2,7 @@
   "name": "@prism/pathway-language",
   "version": "0.0.0-experimental",
   "private": true,
-  "description": "EXPERIMENTAL, NONCLINICAL. Isolated Prism Pathway Language core experiments. Currently only the S1 revision-history resolver.",
+  "description": "EXPERIMENTAL, NONCLINICAL. Isolated Prism Pathway Language core experiments. Currently the S1 revision-history resolver and S2 candidate identification.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "license": "UNLICENSED",
@@ -10,7 +10,8 @@
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "jest",
-    "test:s1": "jest src/__tests__/s1"
+    "test:s1": "jest src/__tests__/s1",
+    "test:s2": "jest src/__tests__/s2"
   },
   "dependencies": {
     "canonicalize": "2.1.0"
