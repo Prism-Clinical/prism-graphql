@@ -605,6 +605,38 @@ read each one and either fix the pathway or add the marker. (Rule 5: a `window_f
 or delta whose `clinical_role` has no `count_in_window` … `count_comparison: "less_than"`
 gate anywhere in the pathway.)
 
+### A vaccine line names its vaccine — `immunization` (josh-dev, 2026-10-05)
+
+`[DECISION — Josh 2026-10-05]`: "for vaccines, we need a way to mark as given previously and
+to add a date. this needs to be stored in a way that can potentially be transferred."
+
+Every **Medication node that orders a vaccine**, and every **Gate that asks whether a vaccine
+was given**, carries:
+
+```json
+"immunization": { "cvx": "88", "rxnorm_ingredient": "1657128", "display": "Influenza vaccine" }
+```
+
+- `rxnorm_ingredient` is the SAME ingredient RxCUI the pathway's `medications` gates match
+  (`system: "RXNORM_INGREDIENT"`). When a vaccine has two (COVID-19), name one the gates check.
+- `cvx` is the CDC CVX code for a dose of unknown product — the "unspecified formulation" code
+  (influenza 88, COVID-19 213, Tdap 115, RSV vaccine 314). **Look it up in the CDC CVX table;
+  never write one from memory.**
+- `display` names the vaccine in plain words.
+
+What it does: the encounter offers "Already given" on the order line and a date on the
+question. The dose is stored on the patient's immunization record as reported history (FHIR
+`Immunization` shape, table `patient_immunizations`) and reaches every gate as a
+medication-list entry coded as the ingredient — dated on the day given, on the first of the
+month for a month-only date, or undated when the date is not known. So:
+
+- **Author no new gates for it.** The existing `count_in_window` gates decide: a dated dose
+  inside the season / pregnancy / lifetime window closes the recommendation; one outside it
+  does not.
+- **Keep the undated path** ("on the list with no date → ask"): a dose recorded with no date
+  lands there.
+- Import rejects `immunization` on any other node type, or with a missing / non-numeric code.
+
 ### Match a medication by ingredient or class (josh-dev, 2026-10-04)
 
 `[DECISION — Josh 2026-10-04]`: "Match the vaccine, not the brand" — any influenza vaccine

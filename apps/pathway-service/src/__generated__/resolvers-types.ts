@@ -530,6 +530,21 @@ export type GateExplanation = {
   reason: Scalars['String']['output'];
 };
 
+export enum ImmunizationDatePrecision {
+  Day = 'DAY',
+  Month = 'MONTH',
+  Unknown = 'UNKNOWN'
+}
+
+/** A dose delivered with the chart at the start of an encounter. */
+export type ImmunizationInput = {
+  /** `YYYY-MM-DD`, `YYYY-MM`, or absent when the date is not known. */
+  date?: InputMaybe<Scalars['String']['input']>;
+  /** True for reported history; false (the default) for a dose the source itself gave. */
+  reported?: InputMaybe<Scalars['Boolean']['input']>;
+  vaccine: VaccineInput;
+};
+
 export type ImportDiff = {
   __typename?: 'ImportDiff';
   details: Array<DiffDetail>;
@@ -1015,6 +1030,12 @@ export type MultiPathwayResolutionSession = {
   envFingerprint: Scalars['String']['output'];
   id: Scalars['ID']['output'];
   /**
+   * The immunization doses this run reads: delivered with the chart, on the
+   * patient's record here from an earlier encounter, or recorded during this one
+   * (`recordImmunization`). Each reaches the pathways as a medication-list entry.
+   */
+  immunizations: Array<RunImmunization>;
+  /**
    * True when this session was created by admin/QA/preview tooling
    * (currently: `startMultiPathwayResolution` called with
    * `syntheticPatient: true`). Preview sessions are filtered out of
@@ -1052,6 +1073,12 @@ export type MultiPathwayResolutionSession = {
   revision: Scalars['Int']['output'];
   status: MultiPathwayResolutionSessionStatus;
   updatedAt: Scalars['String']['output'];
+  /**
+   * The plan lines and questions that are about a vaccine — nodes authored with
+   * an `immunization`. A client offers "Already given" on a matching plan line
+   * (by `sourceNodes`) and a date on a matching question (by gate id).
+   */
+  vaccineNodes: Array<VaccineNode>;
 };
 
 export enum MultiPathwayResolutionSessionStatus {
@@ -1174,7 +1201,23 @@ export type Mutation = {
   overrideNode: ResolutionSession;
   /** Reactivate a SUPERSEDED or ARCHIVED pathway. */
   reactivatePathway: PathwayStatusResult;
+  /**
+   * Record a vaccine dose given BEFORE this visit. It is stored on the patient's
+   * immunization record as reported history (`patientImmunizations`), and the run
+   * is re-evaluated with it: a dated dose counts toward a season, pregnancy or
+   * lifetime window exactly as one on the chart; a dose with no date is an
+   * undated entry, which the pathway asks about.
+   *
+   * `date` is `YYYY-MM-DD`, `YYYY-MM` (counted from the first of the month, so
+   * only when the whole month is inside a window), or absent for "not known".
+   */
+  recordImmunization: MultiPathwayResolutionSession;
   removeAdminEvidence: Scalars['Boolean']['output'];
+  /**
+   * Take back a dose recorded during this encounter. The record is kept, marked
+   * `entered-in-error`, and the run is re-evaluated without it.
+   */
+  removeImmunization: MultiPathwayResolutionSession;
   removeNodeWeight: Scalars['Boolean']['output'];
   removeResolutionThresholds: Scalars['Boolean']['output'];
   removeSignalWeight: Scalars['Boolean']['output'];
@@ -1186,6 +1229,11 @@ export type Mutation = {
    * Returns the run.
    */
   resolveConflict: MultiPathwayResolutionSession;
+  /**
+   * Mark a dose on a patient's record `entered-in-error`, outside any encounter.
+   * Encounters already started keep what they read; later ones no longer see it.
+   */
+  retractPatientImmunization: Scalars['Boolean']['output'];
   /**
    * Save a synthetic-patient scenario for the admin simulator. When `id` is
    * provided in input, the existing scenario is overwritten; otherwise a new
@@ -1338,8 +1386,21 @@ export type MutationReactivatePathwayArgs = {
 };
 
 
+export type MutationRecordImmunizationArgs = {
+  date?: InputMaybe<Scalars['String']['input']>;
+  sessionId: Scalars['ID']['input'];
+  vaccine: VaccineInput;
+};
+
+
 export type MutationRemoveAdminEvidenceArgs = {
   id: Scalars['ID']['input'];
+};
+
+
+export type MutationRemoveImmunizationArgs = {
+  immunizationId: Scalars['ID']['input'];
+  sessionId: Scalars['ID']['input'];
 };
 
 
@@ -1362,6 +1423,12 @@ export type MutationResolveConflictArgs = {
   choice: ConflictChoiceInput;
   conflictId: Scalars['String']['input'];
   sessionId: Scalars['ID']['input'];
+};
+
+
+export type MutationRetractPatientImmunizationArgs = {
+  immunizationId: Scalars['ID']['input'];
+  patientId: Scalars['ID']['input'];
 };
 
 
@@ -1397,6 +1464,7 @@ export type MutationStartMultiPathwayResolutionArgs = {
   encounterDiagnoses?: InputMaybe<Array<CodeInput>>;
   encounterStart?: InputMaybe<Scalars['String']['input']>;
   evaluationAsOf?: InputMaybe<Scalars['String']['input']>;
+  immunizations?: InputMaybe<Array<ImmunizationInput>>;
   includeDraftPathways?: InputMaybe<Scalars['Boolean']['input']>;
   patientContext?: InputMaybe<PatientContextInput>;
   patientId: Scalars['ID']['input'];
@@ -1594,6 +1662,20 @@ export type PatientContextInput = {
   vitalSigns?: InputMaybe<Scalars['JSON']['input']>;
 };
 
+/** One dose on a patient's immunization record, with its FHIR R4 `Immunization` resource for transfer. */
+export type PatientImmunization = {
+  __typename?: 'PatientImmunization';
+  date?: Maybe<Scalars['String']['output']>;
+  fhir: Scalars['JSON']['output'];
+  id: Scalars['ID']['output'];
+  precision: ImmunizationDatePrecision;
+  recordedAt?: Maybe<Scalars['String']['output']>;
+  recordedBy?: Maybe<Scalars['String']['output']>;
+  reported: Scalars['Boolean']['output'];
+  status: Scalars['String']['output'];
+  vaccine: Vaccine;
+};
+
 export type PendingQuestionType = {
   __typename?: 'PendingQuestionType';
   affectedSubtreeSize: Scalars['Int']['output'];
@@ -1768,6 +1850,8 @@ export type Query = {
   attributeVocabulary: Array<AttributeVocabularyEntry>;
   effectiveThresholds: ResolvedThresholds;
   effectiveWeights: WeightMatrix;
+  /** The vaccines a provider can pick when recording history. */
+  knownVaccines: Array<Vaccine>;
   /**
    * Audit trail for llm_text_analysis Gate evaluations on a given session.
    * When `gateId` is provided, scopes to that gate. Most-recent first.
@@ -1787,6 +1871,8 @@ export type Query = {
   pathwayGraph?: Maybe<PathwayGraph>;
   pathwayServiceHealth: Scalars['Boolean']['output'];
   pathways: Array<Pathway>;
+  /** A patient's immunization record here, oldest first, each with its FHIR resource. */
+  patientImmunizations: Array<PatientImmunization>;
   /**
    * List a patient's multi-pathway sessions, optionally filtered by status.
    * Preview sessions (created by admin/QA tooling with `syntheticPatient:
@@ -1889,6 +1975,12 @@ export type QueryPathwaysArgs = {
   category?: InputMaybe<PathwayCategory>;
   first?: InputMaybe<Scalars['Int']['input']>;
   status?: InputMaybe<PathwayStatus>;
+};
+
+
+export type QueryPatientImmunizationsArgs = {
+  includeEnteredInError?: InputMaybe<Scalars['Boolean']['input']>;
+  patientId: Scalars['ID']['input'];
 };
 
 
@@ -2303,6 +2395,8 @@ export enum RunAssumptionKind {
   EstimatedValue = 'ESTIMATED_VALUE',
   NotAvailable = 'NOT_AVAILABLE',
   OlderThanRecheck = 'OLDER_THAN_RECHECK',
+  /** A vaccine dose that was reported, not given here, and that a gate counted. */
+  ReportedImmunization = 'REPORTED_IMMUNIZATION',
   UndatedValue = 'UNDATED_VALUE',
   VouchedMedication = 'VOUCHED_MEDICATION'
 }
@@ -2314,6 +2408,21 @@ export enum RunAssumptionSupply {
   /** Only by changing the chart. */
   Chart = 'CHART'
 }
+
+export type RunImmunization = {
+  __typename?: 'RunImmunization';
+  /** `YYYY-MM-DD`; the first of the month when `precision` is MONTH; null when UNKNOWN. */
+  date?: Maybe<Scalars['String']['output']>;
+  id: Scalars['ID']['output'];
+  /** CHART: delivered with the chart. PRISM: on the patient's record here. */
+  origin: Scalars['String']['output'];
+  precision: ImmunizationDatePrecision;
+  /** Recorded during THIS encounter, so `removeImmunization` can take it back. */
+  recordedThisEncounter: Scalars['Boolean']['output'];
+  /** Reported history, not a dose the source gave. */
+  reported: Scalars['Boolean']['output'];
+  vaccine: Vaccine;
+};
 
 export type SaveSimulatorScenarioInput = {
   allergies?: InputMaybe<Array<CodeInput>>;
@@ -2586,6 +2695,28 @@ export type UpdateSignalDefinitionInput = {
   scoringRules?: InputMaybe<Scalars['JSON']['input']>;
 };
 
+/** A vaccine, as registries name it (CVX) and as pathway gates match it (RxNorm ingredient). */
+export type Vaccine = {
+  __typename?: 'Vaccine';
+  cvx: Scalars['String']['output'];
+  display: Scalars['String']['output'];
+  rxnormIngredient: Scalars['String']['output'];
+};
+
+export type VaccineInput = {
+  cvx: Scalars['String']['input'];
+  display: Scalars['String']['input'];
+  rxnormIngredient: Scalars['String']['input'];
+};
+
+export type VaccineNode = {
+  __typename?: 'VaccineNode';
+  nodeId: Scalars['String']['output'];
+  nodeType: Scalars['String']['output'];
+  pathwayId: Scalars['ID']['output'];
+  vaccine: Vaccine;
+};
+
 export type ValidationBlockerType = {
   __typename?: 'ValidationBlockerType';
   description: Scalars['String']['output'];
@@ -2776,6 +2907,8 @@ export type ResolversTypes = ResolversObject<{
   GateClassification: GateClassification;
   GateEvidence: ResolverTypeWrapper<GateEvidence>;
   GateExplanation: ResolverTypeWrapper<GateExplanation>;
+  ImmunizationDatePrecision: ImmunizationDatePrecision;
+  ImmunizationInput: ImmunizationInput;
   ImportDiff: ResolverTypeWrapper<ImportDiff>;
   ImportDiffSummary: ResolverTypeWrapper<ImportDiffSummary>;
   ImportMode: ImportMode;
@@ -2822,6 +2955,7 @@ export type ResolversTypes = ResolversObject<{
   PathwayStatus: PathwayStatus;
   PathwayStatusResult: ResolverTypeWrapper<PathwayStatusResult>;
   PatientContextInput: PatientContextInput;
+  PatientImmunization: ResolverTypeWrapper<PatientImmunization>;
   PendingQuestionType: ResolverTypeWrapper<PendingQuestionType>;
   PlanChange: ResolverTypeWrapper<PlanChange>;
   PlanCitation: ResolverTypeWrapper<PlanCitation>;
@@ -2861,6 +2995,7 @@ export type ResolversTypes = ResolversObject<{
   RunAssumption: ResolverTypeWrapper<RunAssumption>;
   RunAssumptionKind: RunAssumptionKind;
   RunAssumptionSupply: RunAssumptionSupply;
+  RunImmunization: ResolverTypeWrapper<RunImmunization>;
   SaveSimulatorScenarioInput: SaveSimulatorScenarioInput;
   ScoringType: ScoringType;
   SessionStatus: SessionStatus;
@@ -2883,6 +3018,9 @@ export type ResolversTypes = ResolversObject<{
   UnlockedRecommendation: ResolverTypeWrapper<UnlockedRecommendation>;
   UnnormalizedMedication: ResolverTypeWrapper<UnnormalizedMedication>;
   UpdateSignalDefinitionInput: UpdateSignalDefinitionInput;
+  Vaccine: ResolverTypeWrapper<Vaccine>;
+  VaccineInput: VaccineInput;
+  VaccineNode: ResolverTypeWrapper<VaccineNode>;
   ValidationBlockerType: ResolverTypeWrapper<ValidationBlockerType>;
   ValidationResult: ResolverTypeWrapper<ValidationResult>;
   WeightMatrix: ResolverTypeWrapper<WeightMatrix>;
@@ -2925,6 +3063,7 @@ export type ResolversParentTypes = ResolversObject<{
   GateAnswerInput: GateAnswerInput;
   GateEvidence: GateEvidence;
   GateExplanation: GateExplanation;
+  ImmunizationInput: ImmunizationInput;
   ImportDiff: ImportDiff;
   ImportDiffSummary: ImportDiffSummary;
   ImportPathwayResult: ImportPathwayResult;
@@ -2963,6 +3102,7 @@ export type ResolversParentTypes = ResolversObject<{
   PathwayGraphNode: PathwayGraphNode;
   PathwayStatusResult: PathwayStatusResult;
   PatientContextInput: PatientContextInput;
+  PatientImmunization: PatientImmunization;
   PendingQuestionType: PendingQuestionType;
   PlanChange: PlanChange;
   PlanCitation: PlanCitation;
@@ -2993,6 +3133,7 @@ export type ResolversParentTypes = ResolversObject<{
   ResolvedSchedule: ResolvedSchedule;
   ResolvedThresholds: ResolvedThresholds;
   RunAssumption: RunAssumption;
+  RunImmunization: RunImmunization;
   SaveSimulatorScenarioInput: SaveSimulatorScenarioInput;
   SetNodeWeightInput: SetNodeWeightInput;
   SetResolutionThresholdsInput: SetResolutionThresholdsInput;
@@ -3009,6 +3150,9 @@ export type ResolversParentTypes = ResolversObject<{
   UnlockedRecommendation: UnlockedRecommendation;
   UnnormalizedMedication: UnnormalizedMedication;
   UpdateSignalDefinitionInput: UpdateSignalDefinitionInput;
+  Vaccine: Vaccine;
+  VaccineInput: VaccineInput;
+  VaccineNode: VaccineNode;
   ValidationBlockerType: ValidationBlockerType;
   ValidationResult: ValidationResult;
   WeightMatrix: WeightMatrix;
@@ -3431,6 +3575,7 @@ export type MultiPathwayResolutionSessionResolvers<ContextType = DataSourceConte
   encounterDiagnoses?: Resolver<Array<ResolversTypes['EncounterConditionCode']>, ParentType, ContextType>;
   envFingerprint?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   id?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
+  immunizations?: Resolver<Array<ResolversTypes['RunImmunization']>, ParentType, ContextType>;
   isPreview?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType>;
   mergedPlan?: Resolver<ResolversTypes['MergedCarePlan'], ParentType, ContextType>;
   patientId?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
@@ -3443,6 +3588,7 @@ export type MultiPathwayResolutionSessionResolvers<ContextType = DataSourceConte
   revision?: Resolver<ResolversTypes['Int'], ParentType, ContextType>;
   status?: Resolver<ResolversTypes['MultiPathwayResolutionSessionStatus'], ParentType, ContextType>;
   updatedAt?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  vaccineNodes?: Resolver<Array<ResolversTypes['VaccineNode']>, ParentType, ContextType>;
   __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
 }>;
 
@@ -3481,11 +3627,14 @@ export type MutationResolvers<ContextType = DataSourceContext, ParentType extend
   manuallyResolveMedicationNormalization?: Resolver<ResolversTypes['ManuallyResolvedMedication'], ParentType, ContextType, RequireFields<MutationManuallyResolveMedicationNormalizationArgs, 'inputText' | 'rxcui'>>;
   overrideNode?: Resolver<ResolversTypes['ResolutionSession'], ParentType, ContextType, RequireFields<MutationOverrideNodeArgs, 'action' | 'nodeId' | 'sessionId'>>;
   reactivatePathway?: Resolver<ResolversTypes['PathwayStatusResult'], ParentType, ContextType, RequireFields<MutationReactivatePathwayArgs, 'id'>>;
+  recordImmunization?: Resolver<ResolversTypes['MultiPathwayResolutionSession'], ParentType, ContextType, RequireFields<MutationRecordImmunizationArgs, 'sessionId' | 'vaccine'>>;
   removeAdminEvidence?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationRemoveAdminEvidenceArgs, 'id'>>;
+  removeImmunization?: Resolver<ResolversTypes['MultiPathwayResolutionSession'], ParentType, ContextType, RequireFields<MutationRemoveImmunizationArgs, 'immunizationId' | 'sessionId'>>;
   removeNodeWeight?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationRemoveNodeWeightArgs, 'id'>>;
   removeResolutionThresholds?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationRemoveResolutionThresholdsArgs, 'id'>>;
   removeSignalWeight?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationRemoveSignalWeightArgs, 'id'>>;
   resolveConflict?: Resolver<ResolversTypes['MultiPathwayResolutionSession'], ParentType, ContextType, RequireFields<MutationResolveConflictArgs, 'choice' | 'conflictId' | 'sessionId'>>;
+  retractPatientImmunization?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationRetractPatientImmunizationArgs, 'immunizationId' | 'patientId'>>;
   saveSimulatorScenario?: Resolver<ResolversTypes['SimulatorScenario'], ParentType, ContextType, RequireFields<MutationSaveSimulatorScenarioArgs, 'input'>>;
   setNodeWeight?: Resolver<ResolversTypes['NodeWeight'], ParentType, ContextType, RequireFields<MutationSetNodeWeightArgs, 'input'>>;
   setPlanItems?: Resolver<ResolversTypes['MultiPathwayResolutionSession'], ParentType, ContextType, RequireFields<MutationSetPlanItemsArgs, 'action' | 'items' | 'sessionId'>>;
@@ -3589,6 +3738,19 @@ export type PathwayStatusResultResolvers<ContextType = DataSourceContext, Parent
   __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
 }>;
 
+export type PatientImmunizationResolvers<ContextType = DataSourceContext, ParentType extends ResolversParentTypes['PatientImmunization'] = ResolversParentTypes['PatientImmunization']> = ResolversObject<{
+  date?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  fhir?: Resolver<ResolversTypes['JSON'], ParentType, ContextType>;
+  id?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
+  precision?: Resolver<ResolversTypes['ImmunizationDatePrecision'], ParentType, ContextType>;
+  recordedAt?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  recordedBy?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  reported?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType>;
+  status?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  vaccine?: Resolver<ResolversTypes['Vaccine'], ParentType, ContextType>;
+  __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
+}>;
+
 export type PendingQuestionTypeResolvers<ContextType = DataSourceContext, ParentType extends ResolversParentTypes['PendingQuestionType'] = ResolversParentTypes['PendingQuestionType']> = ResolversObject<{
   affectedSubtreeSize?: Resolver<ResolversTypes['Int'], ParentType, ContextType>;
   alternatives?: Resolver<Maybe<Array<ResolversTypes['LabMeasure']>>, ParentType, ContextType>;
@@ -3680,6 +3842,7 @@ export type QueryResolvers<ContextType = DataSourceContext, ParentType extends R
   attributeVocabulary?: Resolver<Array<ResolversTypes['AttributeVocabularyEntry']>, ParentType, ContextType>;
   effectiveThresholds?: Resolver<ResolversTypes['ResolvedThresholds'], ParentType, ContextType, RequireFields<QueryEffectiveThresholdsArgs, 'pathwayId'>>;
   effectiveWeights?: Resolver<ResolversTypes['WeightMatrix'], ParentType, ContextType, RequireFields<QueryEffectiveWeightsArgs, 'pathwayId'>>;
+  knownVaccines?: Resolver<Array<ResolversTypes['Vaccine']>, ParentType, ContextType>;
   llmGateEvaluations?: Resolver<Array<ResolversTypes['LlmGateEvaluation']>, ParentType, ContextType, RequireFields<QueryLlmGateEvaluationsArgs, 'sessionId'>>;
   loincPanelConstituents?: Resolver<Array<ResolversTypes['LoincPanelConstituent']>, ParentType, ContextType, RequireFields<QueryLoincPanelConstituentsArgs, 'panelCode'>>;
   matchedPathways?: Resolver<Array<ResolversTypes['MatchedPathway']>, ParentType, ContextType, RequireFields<QueryMatchedPathwaysArgs, 'patientId'>>;
@@ -3689,6 +3852,7 @@ export type QueryResolvers<ContextType = DataSourceContext, ParentType extends R
   pathwayGraph?: Resolver<Maybe<ResolversTypes['PathwayGraph']>, ParentType, ContextType, RequireFields<QueryPathwayGraphArgs, 'id'>>;
   pathwayServiceHealth?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType>;
   pathways?: Resolver<Array<ResolversTypes['Pathway']>, ParentType, ContextType, Partial<QueryPathwaysArgs>>;
+  patientImmunizations?: Resolver<Array<ResolversTypes['PatientImmunization']>, ParentType, ContextType, RequireFields<QueryPatientImmunizationsArgs, 'patientId'>>;
   patientMultiPathwayResolutionSessions?: Resolver<Array<ResolversTypes['MultiPathwayResolutionSessionSummary']>, ParentType, ContextType, RequireFields<QueryPatientMultiPathwayResolutionSessionsArgs, 'patientId'>>;
   patientResolutionSessions?: Resolver<Array<ResolversTypes['ResolutionSessionSummary']>, ParentType, ContextType, RequireFields<QueryPatientResolutionSessionsArgs, 'patientId'>>;
   pendingQuestions?: Resolver<Array<ResolversTypes['PendingQuestionType']>, ParentType, ContextType, RequireFields<QueryPendingQuestionsArgs, 'sessionId'>>;
@@ -3925,6 +4089,17 @@ export type RunAssumptionResolvers<ContextType = DataSourceContext, ParentType e
   __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
 }>;
 
+export type RunImmunizationResolvers<ContextType = DataSourceContext, ParentType extends ResolversParentTypes['RunImmunization'] = ResolversParentTypes['RunImmunization']> = ResolversObject<{
+  date?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  id?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
+  origin?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  precision?: Resolver<ResolversTypes['ImmunizationDatePrecision'], ParentType, ContextType>;
+  recordedThisEncounter?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType>;
+  reported?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType>;
+  vaccine?: Resolver<ResolversTypes['Vaccine'], ParentType, ContextType>;
+  __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
+}>;
+
 export type SignalBreakdownResolvers<ContextType = DataSourceContext, ParentType extends ResolversParentTypes['SignalBreakdown'] = ResolversParentTypes['SignalBreakdown']> = ResolversObject<{
   missingInputs?: Resolver<Array<ResolversTypes['String']>, ParentType, ContextType>;
   score?: Resolver<ResolversTypes['Float'], ParentType, ContextType>;
@@ -4048,6 +4223,21 @@ export type UnnormalizedMedicationResolvers<ContextType = DataSourceContext, Par
   __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
 }>;
 
+export type VaccineResolvers<ContextType = DataSourceContext, ParentType extends ResolversParentTypes['Vaccine'] = ResolversParentTypes['Vaccine']> = ResolversObject<{
+  cvx?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  display?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  rxnormIngredient?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
+}>;
+
+export type VaccineNodeResolvers<ContextType = DataSourceContext, ParentType extends ResolversParentTypes['VaccineNode'] = ResolversParentTypes['VaccineNode']> = ResolversObject<{
+  nodeId?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  nodeType?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  pathwayId?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
+  vaccine?: Resolver<ResolversTypes['Vaccine'], ParentType, ContextType>;
+  __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
+}>;
+
 export type ValidationBlockerTypeResolvers<ContextType = DataSourceContext, ParentType extends ResolversParentTypes['ValidationBlockerType'] = ResolversParentTypes['ValidationBlockerType']> = ResolversObject<{
   description?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   pathwayId?: Resolver<Maybe<ResolversTypes['ID']>, ParentType, ContextType>;
@@ -4142,6 +4332,7 @@ export type Resolvers<ContextType = DataSourceContext> = ResolversObject<{
   PathwayGraphEdge?: PathwayGraphEdgeResolvers<ContextType>;
   PathwayGraphNode?: PathwayGraphNodeResolvers<ContextType>;
   PathwayStatusResult?: PathwayStatusResultResolvers<ContextType>;
+  PatientImmunization?: PatientImmunizationResolvers<ContextType>;
   PendingQuestionType?: PendingQuestionTypeResolvers<ContextType>;
   PlanChange?: PlanChangeResolvers<ContextType>;
   PlanCitation?: PlanCitationResolvers<ContextType>;
@@ -4170,6 +4361,7 @@ export type Resolvers<ContextType = DataSourceContext> = ResolversObject<{
   ResolvedSchedule?: ResolvedScheduleResolvers<ContextType>;
   ResolvedThresholds?: ResolvedThresholdsResolvers<ContextType>;
   RunAssumption?: RunAssumptionResolvers<ContextType>;
+  RunImmunization?: RunImmunizationResolvers<ContextType>;
   SignalBreakdown?: SignalBreakdownResolvers<ContextType>;
   SignalDefinitionType?: SignalDefinitionTypeResolvers<ContextType>;
   SignalWeight?: SignalWeightResolvers<ContextType>;
@@ -4181,6 +4373,8 @@ export type Resolvers<ContextType = DataSourceContext> = ResolversObject<{
   SuppressedRecommendation?: SuppressedRecommendationResolvers<ContextType>;
   UnlockedRecommendation?: UnlockedRecommendationResolvers<ContextType>;
   UnnormalizedMedication?: UnnormalizedMedicationResolvers<ContextType>;
+  Vaccine?: VaccineResolvers<ContextType>;
+  VaccineNode?: VaccineNodeResolvers<ContextType>;
   ValidationBlockerType?: ValidationBlockerTypeResolvers<ContextType>;
   ValidationResult?: ValidationResultResolvers<ContextType>;
   WeightMatrix?: WeightMatrixResolvers<ContextType>;

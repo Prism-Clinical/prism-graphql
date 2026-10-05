@@ -23,6 +23,8 @@
  *                       provider said it counts as the class a gate asked for.
  *   UNDATED_VALUE       a lab value the provider entered with no draw date,
  *                       which the run dated at the visit.
+ *   REPORTED_IMMUNIZATION  a vaccine dose that was reported, not given here,
+ *                       and that a gate which ran counts by its ingredient.
  *
  * One assumption is one THING assumed, however many gates it touched: an
  * estimated hemoglobin that decided three gates is one entry naming three.
@@ -31,6 +33,7 @@
 import { normalizedKey } from '../medications/safety-reference';
 import { canDeriveFrom, convertLabValue, equivalenceGroupOf, labDatumKey, labMeasureFor } from './lab-equivalents';
 import { MEDICATION_CLASS_KEY_PREFIX, medicationClassLabel } from './medication-classes';
+import { immunizationOfEntry, occurrencePhrase } from './immunizations';
 import { declinedKeyFor, gateConditionLeaves } from './types';
 import type { GateCondition } from './types';
 import { anchorAskFor, askFor, pregnancyAskFor } from './unresolved-prompt';
@@ -40,7 +43,8 @@ export type AssumptionKind =
   | 'ESTIMATED_VALUE'
   | 'OLDER_THAN_RECHECK'
   | 'VOUCHED_MEDICATION'
-  | 'UNDATED_VALUE';
+  | 'UNDATED_VALUE'
+  | 'REPORTED_IMMUNIZATION';
 
 export interface RunAssumption {
   /** Stable for the thing assumed: `<pathwayId>|<kind>|<datum>`. What a client keys an acknowledgement by. */
@@ -95,7 +99,7 @@ interface ChartLab {
 
 interface ChartContext {
   labResults?: ChartLab[] | null;
-  medications?: Array<{ code?: string; system?: string; display?: string; name?: string; text?: string }> | null;
+  medications?: Array<{ code?: string; system?: string; display?: string; name?: string; text?: string; date?: string; sourceId?: string }> | null;
 }
 
 export interface AssumptionRun {
@@ -379,6 +383,39 @@ function vouched(child: AssumptionChild, gates: Gate[], contexts: ChartContext[]
 }
 
 /**
+ * A reported vaccine dose a gate counted: every decided gate with a
+ * `medications` condition on the dose's ingredient read it.
+ */
+function reportedImmunizations(child: AssumptionChild, gates: Gate[], contexts: ChartContext[]): RunAssumption[] {
+  const out: RunAssumption[] = [];
+  const seen = new Set<string>();
+  for (const entry of contexts.flatMap((c) => c.medications ?? [])) {
+    const dose = immunizationOfEntry(entry);
+    if (!dose || !dose.reported) continue;
+    const key = `${dose.origin}:${dose.id}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const reading = gates.filter((g) => g.leaves.some((c) => {
+      const leaf = c as { field?: unknown; value?: unknown };
+      return leaf.field === 'medications' && leaf.value === dose.rxnormIngredient;
+    }));
+    if (reading.length === 0) continue;
+    out.push({
+      key: `${child.pathwayId}|REPORTED_IMMUNIZATION|${key}`,
+      kind: 'REPORTED_IMMUNIZATION',
+      pathwayId: child.pathwayId,
+      sessionId: child.sessionId,
+      datumKey: `immunization:${key}`,
+      statement: `${dose.display} was not given here: it was reported as given ${occurrencePhrase(dose)}.`,
+      ...names(reading),
+      supply: 'CHART',
+      anchorGateId: null,
+    });
+  }
+  return out;
+}
+
+/**
  * "Not available": only while a gate that needed the datum is still deciding
  * WITHOUT it — it ran, could not answer (`indeterminate` / `dataUnavailable`),
  * and took its default. Once the value reaches the chart those gates decide as
@@ -478,6 +515,7 @@ export function runAssumptions(run: AssumptionRun): RunAssumption[] {
       ...olderThanRecheck(child, gates, labs),
       ...vouched(child, gates, contexts),
       ...undated(child, gates, additional),
+      ...reportedImmunizations(child, gates, contexts),
     );
   }
   // One entry per thing assumed: a repeated key (the same lab entered twice) keeps its first.

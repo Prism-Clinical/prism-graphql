@@ -1,6 +1,20 @@
 # Pathway Research Brief — Routine Prenatal Care (with universal GDM screening)
 
-JSON: pathways/json/routine-prenatal-care.json @ version 6
+JSON: pathways/json/routine-prenatal-care.json @ version 7
+
+> **v7 (2026-10-05) — a vaccine given before the visit can be recorded, with its date.**
+> `[DECISION — Josh 2026-10-05]`: "for vaccines, we need a way to mark as given previously and
+> to add a date. this needs to be stored in a way that can potentially be transferred." The
+> eight vaccine order nodes (med-3/3b influenza, med-4/4b COVID-19, med-5/5b Tdap, med-7/7b
+> RSV) and the six "was it given?" gates now carry `immunization` (`cvx`, `rxnorm_ingredient`,
+> `display`: 88 / 1657128, 213 / 2468231, 115 / 798302, 314 / 2636589 — CVX "unspecified
+> formulation" codes, read from the CDC CVX table 2026-10-05). The encounter offers "Already
+> given" on those lines and a date on those questions; the dose goes onto the patient's
+> immunization record (reported history) and reaches the gates as a dated medication-list
+> entry, so the existing season / pregnancy / lifetime windows decide. His decisions: a day,
+> a month (counted only when the whole month is inside the window), or unknown (the existing
+> undated question asks); a reported dated dose counts like one on the chart and is listed as
+> an assumption at sign-off. No gate, step, order or wording changed (V7-1).
 
 > **v6 (2026-10-04) — hand-offs are shown as suggested diagnoses.** Josh ran the 20-week
 > patient with a hemoglobin of 8.5 and "didn't see anything": the anemia hand-off was one
@@ -256,6 +270,7 @@ pregnancy evidence that rule needs.
 | V4-7 | `[DECISION — Josh 2026-10-04]` **Early HbA1c: only a value drawn this pregnancy** for the overt-diabetes and 5.9–6.4% gates (closes J13). |
 | V4-8 | `[DECISION — Josh 2026-10-04]` Guidance wording: Josh reviews it in the simulator. J18 is "review in place", not blocking. |
 | V5-1 | `[DECISION — Josh 2026-10-04]` **"Match the vaccine, not the brand"** — medication matching by ingredient is available and used: vaccines, folic acid and aspirin are matched by ingredient RxCUI (`system: "RXNORM_INGREDIENT"`), replacing every product list (closes J28 / J31, V4-6). |
+| V7-1 | `[DECISION — Josh 2026-10-05]` **A vaccine given before the visit is recorded as an immunization** (CVX + RxNorm ingredient, a day / month / unknown date, marked reported), from the plan line, the question, or the chart. A dated reported dose closes the recommendation like a chart entry and is shown as reported; an undated one is asked about (V3-4 unchanged). The remembered Tdap / RSV yes-answers (V3-5) stay for a "yes" given without a date. |
 | — | `[DECISION — Josh 2026-10-04]` **Source conflicts ratified** (§18 C1, C2, C3, C7, C9). |
 
 ### 0.6 Spec and engine limitations (re-checked against spec v6 + josh-dev, version 5)
@@ -297,7 +312,8 @@ pregnancy evidence that rule needs.
    `count_in_window` (it selects on the day the entry **started**), and an entry with no date
    at all — which a count never sees — is detected separately and asked about (§4b
    "Vaccines"). What would simplify it: an immunization list, or an "administered on" fact
-   kind.
+   kind. Version 7: recorded and chart-delivered immunizations exist (V7-1) and reach the gates
+   as dated medication-list entries coded as the ingredient, so the gates are unchanged.
 4. **Medications are matched by ingredient** — resolved on 2026-10-04 (V5-1). What remains:
    - **An entry that cannot be identified is asked about, once per class it could belong
      to.** A chart entry RxNav cannot identify is never "not a vaccine": each gate whose
@@ -495,7 +511,7 @@ negative), or the ABO-specific Z67.11 / .21 / .31 / .41. Reasons:
 
 - **Logical ID**: `routine-prenatal-care`
 - **Title**: Routine Prenatal Care
-- **Version**: 6
+- **Version**: 7 (version 7 adds `immunization` to the eight vaccine order nodes and the six "was it given?" gates; nothing else changed)
 - **Category**: OBSTETRIC (behaviour, not a label: the pathway applies only to a patient the
   chart shows is pregnant)
 - **Scope**: Outpatient antepartum care for every pregnancy under supervision, from the first

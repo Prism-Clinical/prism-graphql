@@ -3,7 +3,7 @@
   "pathway": {
     "logical_id": "routine-prenatal-care",
     "title": "Routine Prenatal Care",
-    "version": "6",
+    "version": "7",
     "category": "OBSTETRIC",
     "scope": "Outpatient antepartum care for every pregnancy under supervision, from the first prenatal contact to birth: intake and dating, the initial laboratory panel, genetic screening options, psychosocial screening, preeclampsia risk and aspirin, supplements, immunizations and counselling, every-visit monitoring, and gestational-age-windowed care including gestational diabetes screening and diagnosis. Screens for diabetes, hypertension, anemia and Rh(D)-negative blood type and recommends adding the diagnosis to the encounter; treatment of each belongs to its own pathway.",
     "target_population": "Pregnant patients receiving outpatient prenatal care, average risk or under high-risk supervision.",
@@ -1859,7 +1859,12 @@
         "frequency": "once per influenza season",
         "duration": "single dose",
         "route": "intramuscular",
-        "instructions": "Any trimester, in season (September 1 to March 31). The live intranasal vaccine is contraindicated in pregnancy. May be given with Tdap, RSV and COVID-19 vaccines."
+        "instructions": "Any trimester, in season (September 1 to March 31). The live intranasal vaccine is contraindicated in pregnancy. May be given with Tdap, RSV and COVID-19 vaccines.",
+        "immunization": {
+          "cvx": "88",
+          "rxnorm_ingredient": "1657128",
+          "display": "Influenza vaccine"
+        }
       }
     },
     {
@@ -2057,7 +2062,12 @@
         "frequency": "once per influenza season",
         "duration": "single dose",
         "route": "intramuscular",
-        "instructions": "Any trimester, in season (September 1 to March 31). The live intranasal vaccine is contraindicated in pregnancy. May be given with Tdap, RSV and COVID-19 vaccines."
+        "instructions": "Any trimester, in season (September 1 to March 31). The live intranasal vaccine is contraindicated in pregnancy. May be given with Tdap, RSV and COVID-19 vaccines.",
+        "immunization": {
+          "cvx": "88",
+          "rxnorm_ingredient": "1657128",
+          "display": "Influenza vaccine"
+        }
       }
     },
     {
@@ -2068,7 +2078,12 @@
         "gate_type": "question",
         "default_behavior": "skip",
         "answer_type": "BOOLEAN",
-        "prompt": "Influenza vaccine given this season (since September 1)?"
+        "prompt": "Influenza vaccine given this season (since September 1)?",
+        "immunization": {
+          "cvx": "88",
+          "rxnorm_ingredient": "1657128",
+          "display": "Influenza vaccine"
+        }
       }
     },
     {
@@ -2093,7 +2108,12 @@
         "frequency": "once",
         "duration": "single dose",
         "route": "intramuscular",
-        "instructions": "Recommended in any trimester per ACOG (Committee Statement No. 26, 2026: all pregnant and lactating individuals should receive an updated COVID-19 vaccine). Offer it through shared decision-making and document the discussion. CDC's current position differs: the CDC adult immunization schedule (Jul 2 2025) gives no guidance for pregnancy, and CDC's interim clinical considerations (updated Sep 23 2026) advise a review of the risks and benefits."
+        "instructions": "Recommended in any trimester per ACOG (Committee Statement No. 26, 2026: all pregnant and lactating individuals should receive an updated COVID-19 vaccine). Offer it through shared decision-making and document the discussion. CDC's current position differs: the CDC adult immunization schedule (Jul 2 2025) gives no guidance for pregnancy, and CDC's interim clinical considerations (updated Sep 23 2026) advise a review of the risks and benefits.",
+        "immunization": {
+          "cvx": "213",
+          "rxnorm_ingredient": "2468231",
+          "display": "COVID-19 vaccine"
+        }
       }
     },
     {
@@ -2351,7 +2371,12 @@
         "frequency": "once",
         "duration": "single dose",
         "route": "intramuscular",
-        "instructions": "Recommended in any trimester per ACOG (Committee Statement No. 26, 2026: all pregnant and lactating individuals should receive an updated COVID-19 vaccine). Offer it through shared decision-making and document the discussion. CDC's current position differs: the CDC adult immunization schedule (Jul 2 2025) gives no guidance for pregnancy, and CDC's interim clinical considerations (updated Sep 23 2026) advise a review of the risks and benefits."
+        "instructions": "Recommended in any trimester per ACOG (Committee Statement No. 26, 2026: all pregnant and lactating individuals should receive an updated COVID-19 vaccine). Offer it through shared decision-making and document the discussion. CDC's current position differs: the CDC adult immunization schedule (Jul 2 2025) gives no guidance for pregnancy, and CDC's interim clinical considerations (updated Sep 23 2026) advise a review of the risks and benefits.",
+        "immunization": {
+          "cvx": "213",
+          "rxnorm_ingredient": "2468231",
+          "display": "COVID-19 vaccine"
+        }
       }
     },
     {
@@ -2362,7 +2387,12 @@
         "gate_type": "question",
         "default_behavior": "skip",
         "answer_type": "BOOLEAN",
-        "prompt": "COVID-19 vaccine given this season (since September 1)?"
+        "prompt": "COVID-19 vaccine given this season (since September 1)?",
+        "immunization": {
+          "cvx": "213",
+          "rxnorm_ingredient": "2468231",
+          "display": "COVID-19 vaccine"
+        }
       }
     },
     {
@@ -4357,7 +4387,12 @@
         "frequency": "once each pregnancy",
         "duration": "single dose",
         "route": "intramuscular",
-        "instructions": "Early in the 27-36-week window, in every pregnancy. May be given with influenza, COVID-19 and RSV vaccines."
+        "instructions": "Early in the 27-36-week window, in every pregnancy. May be given with influenza, COVID-19 and RSV vaccines.",
+        "immunization": {
+          "cvx": "115",
+          "rxnorm_ingredient": "798302",
+          "display": "Tdap vaccine"
+        }
       }
     },
     {
@@ -4536,7 +4571,12 @@
         "frequency": "once each pregnancy",
         "duration": "single dose",
         "route": "intramuscular",
-        "instructions": "Early in the 27-36-week window, in every pregnancy. May be given with influenza, COVID-19 and RSV vaccines."
+        "instructions": "Early in the 27-36-week window, in every pregnancy. May be given with influenza, COVID-19 and RSV vaccines.",
+        "immunization": {
+          "cvx": "115",
+          "rxnorm_ingredient": "798302",
+          "display": "Tdap vaccine"
+        }
       }
     },
     {
@@ -4567,6 +4607,11 @@
           "operator": "equals",
           "value": true,
           "display": "Tdap given this pregnancy"
+        },
+        "immunization": {
+          "cvx": "115",
+          "rxnorm_ingredient": "798302",
+          "display": "Tdap vaccine"
         }
       }
     },
@@ -4591,6 +4636,11 @@
           "operator": "equals",
           "value": false,
           "display": "Tdap given this pregnancy"
+        },
+        "immunization": {
+          "cvx": "115",
+          "rxnorm_ingredient": "798302",
+          "display": "Tdap vaccine"
         }
       }
     },
@@ -4879,7 +4929,12 @@
         "frequency": "once in a lifetime",
         "duration": "single dose",
         "route": "intramuscular",
-        "instructions": "At 32 0/7-36 6/7 weeks, in season (September 1 to March 1). Not repeated in later pregnancies. Arexvy and mResvia are not approved in pregnancy. The alternative is the infant monoclonal antibody (nirsevimab or clesrovimab), a newborn order."
+        "instructions": "At 32 0/7-36 6/7 weeks, in season (September 1 to March 1). Not repeated in later pregnancies. Arexvy and mResvia are not approved in pregnancy. The alternative is the infant monoclonal antibody (nirsevimab or clesrovimab), a newborn order.",
+        "immunization": {
+          "cvx": "314",
+          "rxnorm_ingredient": "2636589",
+          "display": "RSV vaccine"
+        }
       }
     },
     {
@@ -5072,7 +5127,12 @@
         "frequency": "once in a lifetime",
         "duration": "single dose",
         "route": "intramuscular",
-        "instructions": "At 32 0/7-36 6/7 weeks, in season (September 1 to March 1). Not repeated in later pregnancies. Arexvy and mResvia are not approved in pregnancy. The alternative is the infant monoclonal antibody (nirsevimab or clesrovimab), a newborn order."
+        "instructions": "At 32 0/7-36 6/7 weeks, in season (September 1 to March 1). Not repeated in later pregnancies. Arexvy and mResvia are not approved in pregnancy. The alternative is the infant monoclonal antibody (nirsevimab or clesrovimab), a newborn order.",
+        "immunization": {
+          "cvx": "314",
+          "rxnorm_ingredient": "2636589",
+          "display": "RSV vaccine"
+        }
       }
     },
     {
@@ -5103,6 +5163,11 @@
           "operator": "equals",
           "value": true,
           "display": "Has she ever had the RSV vaccine"
+        },
+        "immunization": {
+          "cvx": "314",
+          "rxnorm_ingredient": "2636589",
+          "display": "RSV vaccine"
         }
       }
     },
@@ -5127,6 +5192,11 @@
           "operator": "equals",
           "value": false,
           "display": "Has she ever had the RSV vaccine"
+        },
+        "immunization": {
+          "cvx": "314",
+          "rxnorm_ingredient": "2636589",
+          "display": "RSV vaccine"
         }
       }
     },

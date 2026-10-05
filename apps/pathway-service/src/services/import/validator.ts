@@ -1,3 +1,4 @@
+import { parseVaccineRef } from '../resolution/immunizations';
 import {
   PathwayJson,
   PathwayNodeType,
@@ -1020,6 +1021,16 @@ function validateNodeProperties(
   }
 
   // Type-specific validation
+  // A vaccine line or a vaccine question: what "Already given" records.
+  if (properties.immunization !== undefined) {
+    if (nodeType !== 'Medication' && nodeType !== 'Gate') {
+      errors.push(`node[${index}] (${nodeId}): "immunization" is valid on a Medication or a Gate only`);
+    } else {
+      const parsed = parseVaccineRef(properties.immunization);
+      if ('problem' in parsed) errors.push(`node[${index}] (${nodeId}): ${parsed.problem}`);
+    }
+  }
+
   if (nodeType === 'Medication') {
     const role = properties.role as string;
     if (role && !VALID_MEDICATION_ROLES.includes(role as any)) {

@@ -1037,8 +1037,78 @@ type MultiPathwayResolutionSession {
   covered by `resultHash`. Nothing here blocks generation.
   """
   assumptions: [RunAssumption!]!
+  """
+  The immunization doses this run reads: delivered with the chart, on the
+  patient's record here from an earlier encounter, or recorded during this one
+  (`recordImmunization`). Each reaches the pathways as a medication-list entry.
+  """
+  immunizations: [RunImmunization!]!
+  """
+  The plan lines and questions that are about a vaccine — nodes authored with
+  an `immunization`. A client offers "Already given" on a matching plan line
+  (by `sourceNodes`) and a date on a matching question (by gate id).
+  """
+  vaccineNodes: [VaccineNode!]!
   createdAt: String!
   updatedAt: String!
+}
+
+enum ImmunizationDatePrecision { DAY MONTH UNKNOWN }
+
+"""A vaccine, as registries name it (CVX) and as pathway gates match it (RxNorm ingredient)."""
+type Vaccine {
+  cvx: String!
+  rxnormIngredient: String!
+  display: String!
+}
+
+input VaccineInput {
+  cvx: String!
+  rxnormIngredient: String!
+  display: String!
+}
+
+"""A dose delivered with the chart at the start of an encounter."""
+input ImmunizationInput {
+  vaccine: VaccineInput!
+  """`YYYY-MM-DD`, `YYYY-MM`, or absent when the date is not known."""
+  date: String
+  """True for reported history; false (the default) for a dose the source itself gave."""
+  reported: Boolean
+}
+
+type RunImmunization {
+  id: ID!
+  vaccine: Vaccine!
+  """`YYYY-MM-DD`; the first of the month when `precision` is MONTH; null when UNKNOWN."""
+  date: String
+  precision: ImmunizationDatePrecision!
+  """Reported history, not a dose the source gave."""
+  reported: Boolean!
+  """CHART: delivered with the chart. PRISM: on the patient's record here."""
+  origin: String!
+  """Recorded during THIS encounter, so `removeImmunization` can take it back."""
+  recordedThisEncounter: Boolean!
+}
+
+type VaccineNode {
+  pathwayId: ID!
+  nodeId: String!
+  nodeType: String!
+  vaccine: Vaccine!
+}
+
+"""One dose on a patient's immunization record, with its FHIR R4 `Immunization` resource for transfer."""
+type PatientImmunization {
+  id: ID!
+  vaccine: Vaccine!
+  date: String
+  precision: ImmunizationDatePrecision!
+  reported: Boolean!
+  status: String!
+  recordedAt: String
+  recordedBy: String
+  fhir: JSON!
 }
 
 enum RunAssumptionKind {
@@ -1047,6 +1117,8 @@ enum RunAssumptionKind {
   OLDER_THAN_RECHECK
   VOUCHED_MEDICATION
   UNDATED_VALUE
+  """A vaccine dose that was reported, not given here, and that a gate counted."""
+  REPORTED_IMMUNIZATION
 }
 
 """How the thing an assumption stands in for can be supplied."""
@@ -1953,6 +2025,12 @@ type Query {
   """Fetch a single multi-pathway resolution session including its merged plan."""
   multiPathwayResolutionSession(sessionId: ID!): MultiPathwayResolutionSession
 
+  """A patient's immunization record here, oldest first, each with its FHIR resource."""
+  patientImmunizations(patientId: ID!, includeEnteredInError: Boolean): [PatientImmunization!]!
+
+  """The vaccines a provider can pick when recording history."""
+  knownVaccines: [Vaccine!]!
+
   """
   List a patient's multi-pathway sessions, optionally filtered by status.
   Preview sessions (created by admin/QA tooling with `syntheticPatient:
@@ -2089,6 +2167,11 @@ type Mutation {
     """
     encounterDiagnoses: [CodeInput!],
     """
+    Immunization doses delivered with the chart. Read together with the doses
+    on the patient's record here (`recordImmunization` in earlier encounters).
+    """
+    immunizations: [ImmunizationInput!],
+    """
     QA / preview capability. When true, DRAFT pathways are also matched (in
     addition to ACTIVE). Production encounter callers should leave this false
     or unset.
@@ -2182,6 +2265,30 @@ type Mutation {
   `startMultiPathwayResolution`.
   """
   addEncounterContext(sessionId: ID!, additionalContext: AdditionalContextInput!, includeDraftPathways: Boolean): MultiPathwayResolutionSession!
+
+  """
+  Record a vaccine dose given BEFORE this visit. It is stored on the patient's
+  immunization record as reported history (`patientImmunizations`), and the run
+  is re-evaluated with it: a dated dose counts toward a season, pregnancy or
+  lifetime window exactly as one on the chart; a dose with no date is an
+  undated entry, which the pathway asks about.
+
+  `date` is `YYYY-MM-DD`, `YYYY-MM` (counted from the first of the month, so
+  only when the whole month is inside a window), or absent for "not known".
+  """
+  recordImmunization(sessionId: ID!, vaccine: VaccineInput!, date: String): MultiPathwayResolutionSession!
+
+  """
+  Take back a dose recorded during this encounter. The record is kept, marked
+  `entered-in-error`, and the run is re-evaluated without it.
+  """
+  removeImmunization(sessionId: ID!, immunizationId: ID!): MultiPathwayResolutionSession!
+
+  """
+  Mark a dose on a patient's record `entered-in-error`, outside any encounter.
+  Encounters already started keep what they read; later ones no longer see it.
+  """
+  retractPatientImmunization(patientId: ID!, immunizationId: ID!): Boolean!
 
   """
   Materialize the run the provider reviewed. `reviewedResultHash` is the

@@ -69,6 +69,11 @@ import {
 import { fetchGraphFromAGE, resolveTemporalPolicyVersion } from '../helpers/resolution-context';
 import { citationsForNodes } from '../../services/resolution/plan-citations';
 import { runAssumptions } from '../../services/resolution/assumptions';
+import {
+  KNOWN_VACCINES, immunizationMedicationEntry, immunizationOfEntry, insertImmunization, loadImmunizations, parseOccurrence,
+  parseVaccineRef, retractImmunization, toFhirImmunization,
+} from '../../services/resolution/immunizations';
+import type { ImmunizationRecord } from '../../services/resolution/immunizations';
 import { factStoreForInput } from '../../services/resolution/temporal/fact-store';
 import { assertKnownPolicyVersion } from '../../services/resolution/temporal/policy-registry';
 import {
@@ -112,6 +117,8 @@ export interface MultiPathwayResolutionArgs extends ResolutionModeArgs, Temporal
    * next time the input grows.
    */
   patientContext?: PatientContextArgs;
+  /** Doses delivered with the chart. */
+  immunizations?: Array<{ vaccine: unknown; date?: string | null; reported?: boolean | null }> | null;
   /**
    * QA / preview capability. When true, DRAFT pathways are also considered for
    * matching (in addition to ACTIVE). Use for QA tooling against unpublished
@@ -157,6 +164,25 @@ export interface ResolveConflictArgs {
   sessionId: string;
   conflictId: string;
   choice: ConflictChoiceInput;
+}
+
+function invalidImmunization(message: string): never {
+  throw new GraphQLError(message, { extensions: { code: 'INVALID_IMMUNIZATION' } });
+}
+
+/** A dose delivered with the chart, validated; its id is its place in the list. */
+function chartDose(
+  raw: { vaccine: unknown; date?: string | null; reported?: boolean | null },
+  index: number,
+  asOf: string,
+): ImmunizationRecord {
+  const vaccine = parseVaccineRef(raw.vaccine);
+  if ('problem' in vaccine) return invalidImmunization(`immunizations[${index}]: ${vaccine.problem}`);
+  try {
+    return { id: String(index), origin: 'CHART', ...vaccine, ...parseOccurrence(raw.date, null, asOf), reported: raw.reported === true };
+  } catch (err) {
+    return invalidImmunization(`immunizations[${index}]: ${(err as Error).message}`);
+  }
 }
 
 // ─── Mutations ──────────────────────────────────────────────────────
@@ -253,6 +279,21 @@ export const multiPathwayResolutionMutations = {
       patientContext = {
         ...patientContext,
         patientAttributes: { ...remembered, ...(patientContext.patientAttributes ?? {}) } as typeof patientContext.patientAttributes,
+      };
+    }
+
+    // Her immunization doses — delivered with the chart, and on her record
+    // here from earlier encounters (immunizations.ts) — join the medication
+    // list, where the vaccine gates read. Once, here, for the same reason as
+    // the remembered answers: the run's stored context then holds them.
+    const doses: ImmunizationRecord[] = [
+      ...(args.immunizations ?? []).map((d, i) => chartDose(d, i, temporalContext.evaluationAsOf)),
+      ...(await loadImmunizations(pool, args.patientId)),
+    ];
+    if (doses.length > 0) {
+      patientContext = {
+        ...patientContext,
+        medications: [...patientContext.medications, ...doses.map(immunizationMedicationEntry)] as typeof patientContext.medications,
       };
     }
 
@@ -397,6 +438,82 @@ export const multiPathwayResolutionMutations = {
         },
       };
     });
+    return formatSessionForGraphQL(run.parent);
+  },
+
+  /** A dose given before this visit: onto her record, and into the run. See immunizations.ts. */
+  async recordImmunization(
+    _parent: unknown,
+    args: { sessionId: string; vaccine: unknown; date?: string | null },
+    context: DataSourceContext,
+  ) {
+    const vaccine = parseVaccineRef(args.vaccine);
+    if ('problem' in vaccine) invalidImmunization(vaccine.problem);
+    const id = randomUUID();
+    let pendingDose: { patientId: string; when: ReturnType<typeof parseOccurrence>; replacedIds: string[] } | undefined;
+    const run = await commitRun(context.pool, args.sessionId, (r) => {
+      let when: ReturnType<typeof parseOccurrence>;
+      try {
+        // Against the encounter's own clock, not the wall clock.
+        when = parseOccurrence(args.date, null, r.parent.temporalContext.evaluationAsOf);
+      } catch (err) {
+        return invalidImmunization((err as Error).message);
+      }
+      const inputs = runInputsOf(r);
+      const entry = immunizationMedicationEntry({ id, origin: 'PRISM', ...vaccine, ...when, reported: true });
+      // A dose of the same vaccine recorded earlier in this encounter with no
+      // date is the one now being dated: the dated entry replaces it.
+      const replaced = (inputs.additionalContext.medications ?? []).filter((m) => {
+        const dose = immunizationOfEntry(m);
+        return dose?.origin === 'PRISM' && dose.rxnormIngredient === vaccine.rxnormIngredient && !dose.date && !!when.date;
+      });
+      inputs.additionalContext = {
+        ...inputs.additionalContext,
+        medications: [...(inputs.additionalContext.medications ?? []).filter((m) => !replaced.includes(m)), entry],
+      };
+      pendingDose = { patientId: r.parent.patientId, when, replacedIds: replaced.map((m) => immunizationOfEntry(m)!.id) };
+      return { inputs, events: [] };
+    });
+    // After the run took it: a dose the run refused is not on her record.
+    const done = pendingDose as { patientId: string; when: ReturnType<typeof parseOccurrence>; replacedIds: string[] } | undefined;
+    if (done) {
+      await insertImmunization(context.pool, {
+        id, patientId: done.patientId, dose: { ...vaccine, ...done.when, reported: true }, recordedBy: context.userId, sessionId: args.sessionId,
+      });
+      for (const old of done.replacedIds) await retractImmunization(context.pool, done.patientId, old);
+    }
+    return formatSessionForGraphQL(run.parent);
+  },
+
+  async retractPatientImmunization(
+    _parent: unknown,
+    args: { patientId: string; immunizationId: string },
+    context: DataSourceContext,
+  ) {
+    return retractImmunization(context.pool, args.patientId, args.immunizationId);
+  },
+
+  async removeImmunization(
+    _parent: unknown,
+    args: { sessionId: string; immunizationId: string },
+    context: DataSourceContext,
+  ) {
+    let patientId: string | undefined;
+    const run = await commitRun(context.pool, args.sessionId, (r) => {
+      const inputs = runInputsOf(r);
+      const before = inputs.additionalContext.medications ?? [];
+      const after = before.filter((m) => {
+        const dose = immunizationOfEntry(m);
+        return !(dose?.origin === 'PRISM' && dose.id === args.immunizationId);
+      });
+      if (after.length === before.length) {
+        invalidImmunization('Only a dose recorded during this encounter can be taken back here.');
+      }
+      inputs.additionalContext = { ...inputs.additionalContext, medications: after };
+      patientId = r.parent.patientId;
+      return { inputs, events: [] };
+    });
+    if (patientId) await retractImmunization(context.pool, patientId, args.immunizationId);
     return formatSessionForGraphQL(run.parent);
   },
 
@@ -698,6 +815,28 @@ function planItemKind(raw: string): PlanItemKind {
 }
 
 export const multiPathwayResolutionQueries = {
+  /** A patient's immunization record here, each dose with its FHIR resource. */
+  async patientImmunizations(
+    _: unknown,
+    args: { patientId: string; includeEnteredInError?: boolean | null },
+    context: DataSourceContext,
+  ) {
+    const doses = await loadImmunizations(context.pool, args.patientId, args.includeEnteredInError === true);
+    return doses.map((d) => ({
+      id: d.id,
+      vaccine: { cvx: d.cvx, rxnormIngredient: d.rxnormIngredient, display: d.display },
+      date: d.date ?? null,
+      precision: d.precision,
+      reported: d.reported,
+      status: d.status ?? 'completed',
+      recordedAt: d.recordedAt ?? null,
+      recordedBy: d.recordedBy ?? null,
+      fhir: toFhirImmunization(d, args.patientId),
+    }));
+  },
+
+  knownVaccines: () => KNOWN_VACCINES,
+
   async multiPathwayResolutionSession(
     _: unknown,
     args: { sessionId: string },
@@ -834,6 +973,44 @@ export const multiPathwayResolutionTypeResolvers = {
           }),
       );
       return perPathway.flat();
+    },
+
+    /** Doses the run reads, off the medication entries they travel as. */
+    immunizations: async (parent: { id: string }, _args: unknown, context: DataSourceContext) => {
+      const { rows } = await context.pool.query(
+        `SELECT initial_patient_context, additional_context FROM multi_pathway_resolution_sessions WHERE id = $1`,
+        [parent.id],
+      );
+      const of = (ctx: { medications?: unknown[] } | null | undefined, thisEncounter: boolean) =>
+        ((ctx?.medications ?? []) as Array<Record<string, string>>)
+          .map(immunizationOfEntry)
+          .filter((d): d is ImmunizationRecord => d !== null)
+          .map((d) => ({
+            id: d.id,
+            vaccine: { cvx: d.cvx, rxnormIngredient: d.rxnormIngredient, display: d.display },
+            date: d.date ?? null,
+            precision: d.precision,
+            reported: d.reported,
+            origin: d.origin,
+            recordedThisEncounter: thisEncounter,
+          }));
+      return [...of(rows[0]?.initial_patient_context, false), ...of(rows[0]?.additional_context, true)];
+    },
+
+    /** Plan lines and questions about a vaccine: nodes authored with an `immunization`. */
+    vaccineNodes: async (parent: { contributingSessionIds: string[] }, _args: unknown, context: DataSourceContext) => {
+      if (!parent.contributingSessionIds?.length) return [];
+      const { rows } = await context.pool.query(
+        `SELECT s.pathway_id, n.key AS node_id, n.value AS node
+           FROM pathway_resolution_sessions s, jsonb_each(s.resolution_state) n
+          WHERE s.id = ANY($1::uuid[]) AND n.value -> 'properties' ? 'immunization'`,
+        [parent.contributingSessionIds],
+      );
+      return rows.flatMap((r) => {
+        const vaccine = parseVaccineRef(r.node?.properties?.immunization);
+        if ('problem' in vaccine) return [];
+        return [{ pathwayId: String(r.pathway_id), nodeId: String(r.node?.nodeId ?? r.node_id), nodeType: String(r.node?.nodeType ?? ''), vaccine }];
+      });
     },
 
     /**
