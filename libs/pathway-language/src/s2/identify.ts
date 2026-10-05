@@ -21,19 +21,27 @@ const own = (o: JsonObject, k: string): JsonValue | undefined => (Object.prototy
  */
 const identifier = (v: unknown): v is string => typeof v === 'string' && /\P{White_Space}/u.test(v);
 
-function checkExpansion(pin: unknown, e: ValueSetExpansion): void {
-  if (!identifier(pin)) throw new S2ConfigurationError('value-set pin must be a well-formed identifier');
-  if (!e || e.id !== pin) throw new S2ConfigurationError(`expansion ${JSON.stringify(e?.id)} does not match pin ${JSON.stringify(pin)}`);
+/**
+ * Why a pinned expansion is invalid configuration (contract §2.3), or null if it is valid. Shared
+ * with the compiler so a compiled program's value sets are exactly those S2 will accept.
+ */
+export function expansionProblem(pin: unknown, e: ValueSetExpansion): string | null {
+  if (!identifier(pin)) return 'value-set pin must be a well-formed identifier';
+  if (!e || e.id !== pin) return `expansion ${JSON.stringify(e?.id)} does not match pin ${JSON.stringify(pin)}`;
   if (!Array.isArray(e.coveredSystems) || !e.coveredSystems.every(identifier)) {
-    throw new S2ConfigurationError('coveredSystems must be an array of well-formed identifiers');
+    return 'coveredSystems must be an array of well-formed identifiers';
   }
-  if (!Array.isArray(e.expansion)) throw new S2ConfigurationError('expansion must be an array of codes');
+  if (!Array.isArray(e.expansion)) return 'expansion must be an array of codes';
   for (const c of e.expansion) {
-    if (!isObject(c) || !identifier(c['system']) || !identifier(c['code'])) {
-      throw new S2ConfigurationError(`malformed expansion entry ${JSON.stringify(c)}`);
-    }
-    if (!e.coveredSystems.includes(c['system'])) throw new S2ConfigurationError(`expansion code in uncovered system ${c['system']}`);
+    if (!isObject(c) || !identifier(c['system']) || !identifier(c['code'])) return `malformed expansion entry ${JSON.stringify(c)}`;
+    if (!e.coveredSystems.includes(c['system'])) return `expansion code in uncovered system ${c['system']}`;
   }
+  return null;
+}
+
+function checkExpansion(pin: unknown, e: ValueSetExpansion): void {
+  const problem = expansionProblem(pin, e);
+  if (problem) throw new S2ConfigurationError(problem);
 }
 
 function payloadOf(k: KeyResolution, node: NodeRef): JsonObject {

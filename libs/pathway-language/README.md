@@ -1,6 +1,6 @@
 # @prism/pathway-language (experimental, nonclinical)
 
-**Status:** an implementation experiment for **two stages and one rule** (S1 revision history, S2 candidate identification, and the S3 same-encounter rule on its own) of the *proposed* [evidence-query-to-predicate contract](../../docs/superpowers/records/pathway-language/evidence-query-to-predicate-contract.md). It is not the PPL evaluator, not a compiler and not clinically approved. It must not be used for patient care. The RFC, Stage A, the contract and the delivery plans keep their existing statuses; nothing here completes a delivery story.
+**Status:** an implementation experiment. It covers **two stages and one rule** of the *proposed* [evidence-query-to-predicate contract](../../docs/superpowers/records/pathway-language/evidence-query-to-predicate-contract.md): S1 revision history, S2 candidate identification, and the S3 same-encounter rule on its own. It also has the **first PPL compiler subset** (increment I1 of the [first-program implementation contract](../../docs/superpowers/records/pathway-language/first-program-implementation-contract.md)). It is not the PPL evaluator and is not clinically approved; compiling a program confers no clinical approval. It must not be used for patient care. The RFC, Stage A, the contract and the delivery plans keep their existing statuses; nothing here completes a delivery story.
 
 This package is the isolated `libs/pathway-language` boundary named in RFC §10. It has no imports from applications, resolvers, databases or the network; `src/` imports only Node’s `crypto` and one RFC 8785 library.
 
@@ -203,19 +203,109 @@ This demonstration decides none of the following:
 
 A pathway that accepted earlier assessments would author a different rule, which this slice does not implement.
 
+## PPL compiler (I1): `experimentalCompile` and `experimentalCompilePreview`
+
+The first compiler subset, specified by [first-program-implementation-contract.md](../../docs/superpowers/records/pathway-language/first-program-implementation-contract.md) §2, §5, §6 (compile rows), §7 and §8 (I1).
+
+- It takes an **already-parsed JSON value**. Text parsing and duplicate-member detection are outside this subset.
+- It **evaluates nothing**. No query runs, and no predicate or finding gets a value.
+
+```ts
+import { experimentalCompile, experimentalCompilePreview } from '@prism/pathway-language';
+
+const program = JSON.parse(text);              // e.g. programs/schematic-demo-finding.ppl.json
+const r = experimentalCompile(program);
+if (r.outcome === 'Compiled') r.package;       // CompiledPackage: complete, ordinary
+else r.diagnostics;                            // [{ code, location, hole?, message }]
+
+const p = experimentalCompilePreview(program); // accepts correctly typed holes
+if (p.outcome === 'PreviewPackage') p.package.markers; // [{ output: 'f.alarm.status', holes: [...] }]
+```
+
+| Entry point | Complete program | Well-formed, with typed holes | Structural error |
+|---|---|---|---|
+| `experimentalCompile` | `Compiled` + `CompiledPackage` | `CompileFailure`, `wellFormed: true`, one `UNRESOLVED_AUTHORING_HOLE` per hole (location `…/hole`, `hole` ID), `dependencyEdges` | `CompileFailure`, `wellFormed: false`, structural diagnostics |
+| `experimentalCompilePreview` | `PreviewPackage` without markers | `PreviewPackage` with markers, `publication: 'Blocked'` | The same failure, with identical diagnostics |
+
+**Package** (`src/compile/types.ts`). `CompiledPackage` and `PreviewPackage` share `CompiledProgram`, with different `kind` tags, so later code cannot mistake a preview for an executable package. `CompiledProgram` holds:
+
+- `packageId` and the language and profile versions;
+- `applicabilityId`;
+- `declarations`: validated, in a deterministic topological order (dependencies first, ties by identifier);
+- `references`: citation shapes only;
+- `valueSets`: validated with S2’s own `expansionProblem`;
+- `dependencyEdges`: `{reader, read, locations}`, deduplicated, with every authoring `ref` pointer kept;
+- `holes`: `{id, type, explains, cites, location}`.
+
+Each declaration keeps its source JSON Pointer:
+
+- **Predicate** (with `applicability: true` for the top-level one): `expr`, a tree of `ref`, `evidenceValue`, `all` and `hole`, each node with its location.
+- **EvidenceQuery**: `contract` is either a hole or a validated `explicit-assertion-v0` contract. That contract has the record type, sources, value set, authority rule, the recognized admissible rules, `establishes`/`refutes` as `{field, enumType, value}`, and a frozen copy of the authored contract (`source`) for S1–S3 reuse.
+- **Finding**: `status`, `label`, `heading`, an `urgency` hole and `cites`.
+
+`PreviewPackage` adds `markers` and the inspectable Finding attributes `<id>.label`, `<id>.heading` and `<id>.cites`.
+
+**Supported subset.**
+
+- Declarations: `EvidenceReference`, the required applicability `Predicate`, `EvidenceQuery`, `Predicate` and `Finding`.
+- Program expressions: `ref` (declarations only), `evidenceValue` (in Predicate expressions), n-ary `all` (`all()` is True and is never a default), and typed holes. Holes are allowed only as a whole applicability expression (`Decision`), a whole query contract (`EvidenceSelectionContract<Boolean>`) or a Finding `urgency` (`UrgencyRequirement`).
+- Query contracts: exactly the explicit-assertion-v0 structure:
+  - `demo-model@0.1` records, authority `demo-policy/same-source-amend@1`;
+  - `admissible` episode and encounter recognized by exact shape, with `ctx.episode` / `ctx.encounter` only at those two positions;
+  - `assertionKind` as `in` over `AssertionKind`;
+  - criteria `eq(c.<enum field>, <Enum>.<value>)`, type-checked;
+  - `disjoint(establishes, refutes)`, proved for equalities on one field. Equal literals give `EXCLUSIVE_BRANCH_OVERLAP`; anything else gives `UNSUPPORTED_PROOF_FRAGMENT`.
+- Everything else is rejected with a named code (`UNSUPPORTED_CONSTRUCT`, `UNKNOWN_EXECUTABLE_PROPERTY`, …). There is no general expression evaluator or theorem prover.
+
+**Preview markers** (§7). An output is marked if and only if it contains a hole or references a marked output; its marker is the union of the contributing hole IDs. Output names:
+
+- `<id>` for applicability, Predicate and EvidenceQuery;
+- `<id>.status` for a Finding;
+- `<id>.urgency` for an urgency hole, which marks only that attribute and never the status.
+
+Markers are computed statically from references, so no Boolean simplification can remove one. They are never patient causes or data requests.
+
+**Mechanical checks, compilation and execution are different things.**
+
+- `programs/check.py` checks JSON, quotations, digests and links without compiling anything.
+- This compiler validates and types programs and derives dependencies, but executes nothing.
+- No evaluator exists yet (increments I2–I6), so no program has been executed.
+
 ## Running
 
 ```bash
 npm install --prefix libs/pathway-language
 npm run --prefix libs/pathway-language typecheck   # strict, noUncheckedIndexedAccess
 npm run --prefix libs/pathway-language build       # tsc → dist/ (gitignored)
-npm test --prefix libs/pathway-language            # independent S1/S2 tests + fixture S1/S2 runner
+npm test --prefix libs/pathway-language            # independent tests + fixture runners (S1/S2/encounter; I1 compile/preview)
 ```
 
 This package has its own Jest configuration and is not part of the root Jest roots, which require the Docker test stack.
 
 ## Tests and fixture coverage
 
+- **`src/__tests__/compile.test.ts`** has 36 independent I1 tests. Programs are built in the test with their own identifiers, and expected codes and pointers are derived from contract §5. They cover:
+  - every diagnostic code;
+  - changed identifiers and declaration order, and forward references;
+  - edge deduplication with every location kept, and no edges from citations or context bindings;
+  - duplicate (declaration, reference and hole) and reserved identifiers, with no cascades;
+  - undefined references, citations and value-set pins;
+  - wrong operand and hole types;
+  - missing applicability; missing or blank `explains`;
+  - unknown properties, forms and kinds;
+  - unknown and misplaced `ctx.` references, with no shape cascade;
+  - non-hole urgency; overlapping and unsupported disjointness;
+  - two-node and self cycles;
+  - transitive marker propagation; attribute-only holes;
+  - structural errors in a holed program;
+  - a deep-frozen source.
+
+  Targeted mutation checks found no surviving mutation. Each of these breaks at least one test: urgency marking the status, no transitive marking, the wrong cycle pointer, holes compiling normally, no cross-enum check, no overlap check, and a misplaced `ctx.` being accepted.
+- **`src/__tests__/program-examples.test.ts`** runs the six [first-program examples](../../docs/superpowers/records/pathway-language/programs/README.md). It applies each patch in the harness, which is input preparation and not a language feature, and checks **only** the `compile` and `preview` blocks. It also checks `state` where compilation alone decides it (`InvalidProgram`, `IncompleteAuthoring`); for compiled programs it only confirms the state is an evaluation state.
+  - **PPL-01, -02, -03:** 5/5 checks each.
+  - **PPL-04:** 9/9.
+  - **PPL-05a, -05b:** 6/6 each.
+  - `outputs`, `causeAttribution`, `trace` and evaluated `state` values are reported as outside I1 scope. No example is executed.
 - **`src/__tests__/canonical-json.test.ts`** has 28 tests of the RFC 8785 library (above).
 - **`src/__tests__/s1.test.ts`** has 99 independent tests (counting each parameterized case) whose expectations are derived by hand from the contract. They cover:
   - identical versus conflicting payloads, RFC 8785 number equality, absent versus `null`, and set-valued permissions;
@@ -312,9 +402,24 @@ Review of b8eb6fe settled these:
 
 Step 5 records a fork only when no other defect exists. If that other defect later becomes historical, several heads can remain with no active defect. Example: `s1/r1@1` has two payloads, and the authorized `@2a` and `@2b` both supersede it. Step 7 then records a fork over the remaining heads, with cause `Conflicting` (cases 88–92). The fallback applies only when no defect is active. It is not a general test of whether an active defect “explains” the heads.
 
+## I1 compiler: interpretations where the contract is silent
+
+Each item below is an implementation choice, not an accepted semantic. None changes an example expectation.
+
+1. **A structural failure omits hole diagnostics.** When any structural diagnostic exists, both modes return the same structural diagnostics only, matching the examples’ `sameDiagnostics` rule. The contract does not say whether `UNRESOLVED_AUTHORING_HOLE` should also be listed when holes coexist with a structural error. Smallest counterexample: the GERD program with one `ref` renamed to a missing ID.
+2. **Identifier namespaces.** Declaration and EvidenceReference IDs share one namespace; hole IDs have their own, and must also be unique. A duplicate is reported at every occurrence, with `INVALID_DECLARATION_ID` also used for duplicate hole IDs.
+3. **“Allowed position”** for an expression form means anywhere in that field’s expression tree. Holes are accepted only as the whole field.
+4. **Undeclared criterion field or enum value** gives `UNDEFINED_REFERENCE`. The contract’s §5 text names only `ref` and `cites`.
+5. **Criteria on any enum field.** Criteria may compare any enum-typed `demo-model@0.1` field, not only `c.assertion`. Disjointness across different fields is then `UNSUPPORTED_PROOF_FRAGMENT`.
+6. **“Smallest JSON Pointer”** for a cycle is compared by Unicode code point.
+7. **Declarations with an invalid kind** keep their ID, so references to them add no `UNDEFINED_REFERENCE`.
+8. **Citation shapes.** `lines` is a `[first, last]` range, and `quote` keys must fall inside it. Files, digests and quotations are not read.
+
 ## Limitations
 
-- S1, S2 and one S3 rule only: no episode or `assertionKind` rule, no complete admissibility, and no selection, criteria, materiality, resolution, Needs, coverage or preview markers.
+- **I1 compiles; it does not evaluate.** No `evidenceValue`, `all` or Finding value is computed (I2), and no stable serialized IR, manifest, signing or persistence exists. The compiler supports only the first-program subset and one fictional evidence model.
+
+- Evidence stages: S1, S2 and one S3 rule only. There is no episode or `assertionKind` rule, no complete admissibility, and no selection, criteria, materiality, resolution, Needs or coverage evaluation.
 - The encounter check recognizes exactly one authored rule shape. It does not evaluate expressions.
 - S2 supports only the fixtures’ flat expansion format: no hierarchies, intensional definitions, terminology service, normalization, code-system conversion or version resolution.
 - The fixtures assert S2 candidacy for 16 revisions. Variants, `excluded`/`unknown` propagation and configuration errors are covered by the independent tests only.

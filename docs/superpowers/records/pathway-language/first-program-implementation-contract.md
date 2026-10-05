@@ -1,6 +1,6 @@
 # First PPL program: minimal implementation contract
 
-**Status:** Proposed implementation contract for the first compiler subset and the evaluation increments that follow it. It is **not** implemented: no compiler or evaluator exists for these programs yet. The language-structure decisions P1–P8 (section 9) were approved by the user on 2026-10-05 for this subset and are reflected in Stage A and the minimal model. That approval leaves the broader documents’ status unchanged. No clinical question is answered, and the RFC, Stage A, the evidence-query contract, the GERD drafts and every delivery story keep their statuses.
+**Status:** Proposed implementation contract for the first compiler subset and the evaluation increments that follow it. Increment I1, the compiler and preview compiler, is implemented experimentally in [libs/pathway-language](../../../../libs/pathway-language/README.md). No evaluator exists yet, so nothing has been executed. The language-structure decisions P1–P8 (section 9) were approved by the user on 2026-10-05 for this subset and are reflected in Stage A and the minimal model. That approval leaves the broader documents’ status unchanged. No clinical question is answered, and the RFC, Stage A, the evidence-query contract, the GERD drafts and every delivery story keep their statuses.
 
 **Date:** 2026-10-05. **Revised:** 2026-10-05, resolving P1–P8. Need generation is deferred, and the evaluator roadmap is split into bounded increments.
 

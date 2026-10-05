@@ -4,7 +4,9 @@
  * Public boundary of the isolated pathway-language core. It currently exposes only the S1
  * revision-history resolver, S2 candidate identification and one S3 admissibility check
  * (same-encounter scope) of the proposed evidence-query contract
- * (docs/superpowers/records/pathway-language/evidence-query-to-predicate-contract.md §2).
+ * (docs/superpowers/records/pathway-language/evidence-query-to-predicate-contract.md §2), and the
+ * first PPL compiler subset (first-program-implementation-contract.md, increment I1), which compiles
+ * but never evaluates.
  * It is not the PPL evaluator, is not clinically approved and must not be used for patient care.
  */
 export { resolveRevisionHistory as experimentalResolveRevisionHistory } from './s1/resolve';
@@ -67,3 +69,23 @@ export type {
   KeyEncounterScope,
   PossibleEncounterScope,
 } from './s3/types';
+export { compile as experimentalCompile, compilePreview as experimentalCompilePreview } from './compile/compile';
+export type {
+  CompiledDeclaration,
+  CompiledPackage,
+  CompiledProgram,
+  CompiledReference,
+  CompileFailure,
+  CompileResult,
+  DependencyEdge,
+  Diagnostic,
+  DiagnosticCode,
+  EnumCriterion,
+  ExplicitAssertionContract,
+  Expr,
+  HoleInfo,
+  PreviewCompileResult,
+  PreviewMarker,
+  PreviewPackage,
+  ValueType,
+} from './compile/types';

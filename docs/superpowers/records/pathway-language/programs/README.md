@@ -1,8 +1,8 @@
 # First PPL programs: GERD progressive-dysphagia alarm and its schematic companion
 
-**Status:** Proposed. These are proposed source syntax and hand-derived expectations, the acceptance inputs for the first PPL compiler and evaluator. Neither of those exists yet, so nothing here has been compiled or executed.
+**Status:** Proposed. These are proposed source syntax and hand-derived expectations, the acceptance inputs for the first PPL compiler and evaluator. An experimental compiler (I1, `experimentalCompile` / `experimentalCompilePreview` in [libs/pathway-language](../../../../../libs/pathway-language/README.md)) now compiles both programs and checks the examples’ `compile` and `preview` blocks. **No evaluator exists yet, so nothing here has been executed.**
 
-- The GERD program is structurally checkable in the planned preview mode. It is **not publishable and not clinically executable** while its holes remain.
+- The GERD program preview-compiles: it is well-formed, its holes become markers, and normal compilation rejects it with one `UNRESOLVED_AUTHORING_HOLE` per hole. It is **not publishable and not clinically executable** while its holes remain.
 - No clinical question is answered. The [interpretation draft](../gerd-progressive-dysphagia-interpretation-draft.md) and the [Q1–Q3 review packet](../gerd-progressive-dysphagia-q1-q3-review.md) keep their statuses: not clinically adjudicated, and L00.1.a remains open.
 - The schematic companion is nonclinical.
 

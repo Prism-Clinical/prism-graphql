@@ -1,7 +1,7 @@
 {
   "id": "PPL-02",
   "title": "Schematic program: one current Denied record with complete coverage",
-  "status": "Proposed, hand-derived acceptance expectation. Not produced by any PPL compiler or evaluator; neither exists yet.",
+  "status": "Proposed, hand-derived acceptance expectation. Not produced by any PPL compiler or evaluator. The experimental I1 compiler (libs/pathway-language) now checks the compile and preview blocks; no evaluator exists yet.",
   "program": {
     "file": "../schematic-demo-finding.ppl.json",
     "patch": []
