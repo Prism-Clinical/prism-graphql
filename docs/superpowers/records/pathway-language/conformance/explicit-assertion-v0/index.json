@@ -318,6 +318,18 @@
     ],
     "100": [
       "EA-100"
+    ],
+    "101": [
+      "EA-101"
+    ],
+    "102": [
+      "EA-102"
+    ],
+    "103": [
+      "EA-103"
+    ],
+    "104": [
+      "EA-104"
     ]
   },
   "pairs": [
@@ -482,6 +494,20 @@
         "EA-096"
       ],
       "claim": "An absent concept component is Missing (FieldAbsent); a present null component is malformed (Invalid, CodeMalformed)"
+    },
+    {
+      "fixtures": [
+        "EA-009",
+        "EA-103"
+      ],
+      "claim": "Against a known evaluation encounter a different record encounter does not match (Inadmissible, OtherEncounter); against an unknown evaluation encounter it stays unresolved with the context's causes, never Inadmissible"
+    },
+    {
+      "fixtures": [
+        "EA-010",
+        "EA-101"
+      ],
+      "claim": "An absent record encounter is Missing (FieldAbsent:encounter); a present malformed one is Invalid (FieldMalformed:encounter)"
     }
   ]
 }

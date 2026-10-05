@@ -1,11 +1,11 @@
 /**
- * EXPERIMENTAL, NONCLINICAL. S1 and S2 assertions of the committed explicit-assertion-v0 fixtures.
- * Only S1 and S2 assertions are checked; no fixture is claimed to pass as a whole, because
- * S3–S7 are not implemented.
+ * EXPERIMENTAL, NONCLINICAL. S1, S2 and same-encounter-check assertions of the committed
+ * explicit-assertion-v0 fixtures. Only those are checked; no fixture is claimed to pass as a whole,
+ * because the rest of S3 and S4–S7 are not implemented.
  */
 import { runFixtures } from './support/fixture-runner';
 
-describe('explicit-assertion-v0 fixtures: S1 and S2 assertions only', () => {
+describe('explicit-assertion-v0 fixtures: S1, S2 and encounter-check assertions only', () => {
   const { reports, noApplicableAssertions } = runFixtures();
   const sum = (f: (r: (typeof reports)[number]) => number) => reports.reduce((t, r) => t + f(r), 0);
   const totals = {
@@ -16,10 +16,13 @@ describe('explicit-assertion-v0 fixtures: S1 and S2 assertions only', () => {
     s2Passed: sum((r) => r.s2Passed),
     s2Attribution: sum((r) => r.s2AttributionOneWay),
     s2CandidateIds: sum((r) => r.s2CandidateIdsOneWay),
+    encounter: sum((r) => r.encounterApplicable),
+    encounterPassed: sum((r) => r.encounterPassed),
+    encounterOneWay: sum((r) => r.encounterOneWay),
     outOfScope: sum((r) => r.outOfScope),
   };
 
-  it('reports S1 and S2 coverage explicitly', () => {
+  it('reports S1, S2 and encounter-check coverage explicitly', () => {
     const notRun = reports.filter((r) => r.notRun).map((r) => `${r.id} (${r.notRun})`);
     // eslint-disable-next-line no-console
     console.log(
@@ -27,19 +30,21 @@ describe('explicit-assertion-v0 fixtures: S1 and S2 assertions only', () => {
         `fixtures loaded: ${reports.length}`,
         `S1 assertions checked (trace facts + canonicalization): ${totals.s1} (passed ${totals.s1Passed})`,
         `S2 assertions checked (candidacy trace facts): ${totals.s2} (passed ${totals.s2Passed})`,
-        `one-way checks: S1 cause attributions ${totals.s1Attribution}; S2 cause attributions ${totals.s2Attribution}; candidateEvidenceIds entries ⊆ S2 InDomain/Unresolved ${totals.s2CandidateIds}`,
-        `expected fields/assertions outside implemented scope (S3–S7; not checked): ${totals.outOfScope}`,
+        `encounter-check assertions checked (encounterScope trace facts): ${totals.encounter} (passed ${totals.encounterPassed})`,
+        `one-way checks: S1 cause attributions ${totals.s1Attribution}; S2 cause attributions ${totals.s2Attribution}; candidateEvidenceIds entries ⊆ S2 InDomain/Unresolved ${totals.s2CandidateIds}; encounter outcomes implied by complete S3 facts (admissibility Admissible/OtherEncounter, S3 encounter attributions) ${totals.encounterOneWay}`,
+        `expected fields/assertions outside implemented scope (complete S3, S4–S7; not checked): ${totals.outOfScope}`,
         `fixtures not run: ${notRun.length}: ${notRun.join(', ')}`,
-        `evaluation/preview fixtures with no applicable S1/S2 assertion: ${noApplicableAssertions.length}: ${noApplicableAssertions.join(', ')}`,
+        `evaluation/preview fixtures with no applicable S1/S2/encounter-check assertion: ${noApplicableAssertions.length}: ${noApplicableAssertions.join(', ')}`,
       ].join('\n'),
     );
     expect(totals.s1).toBeGreaterThan(0);
     expect(totals.s2).toBeGreaterThan(0);
+    expect(totals.encounter).toBeGreaterThan(0);
   });
 
   const checked = (r: (typeof reports)[number]) =>
-    r.s1Applicable + r.s1AttributionOneWay + r.s2Applicable + r.s2AttributionOneWay + r.s2CandidateIdsOneWay > 0;
-  it.each(reports.filter((r) => !r.notRun && checked(r)).map((r) => [r.id, r] as const))('%s: S1/S2 assertions hold', (_id, report) => {
+    r.s1Applicable + r.s1AttributionOneWay + r.s2Applicable + r.s2AttributionOneWay + r.s2CandidateIdsOneWay + r.encounterApplicable + r.encounterOneWay > 0;
+  it.each(reports.filter((r) => !r.notRun && checked(r)).map((r) => [r.id, r] as const))('%s: S1/S2/encounter-check assertions hold', (_id, report) => {
     expect(report.failures).toEqual([]);
   });
 });

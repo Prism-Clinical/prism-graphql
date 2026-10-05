@@ -7,7 +7,7 @@
  */
 import type { JsonValue, KeyResolution, NodeRef, PossibleCurrent, S1Result } from '../s1/types';
 import { compareCodePoints, type JsonObject } from '../s1/resolve';
-import { isObject } from '../s1/payload';
+import { isObject, retainedPayload } from '../s1/payload';
 import type { AnyCause, Code, KeyCandidacy, NodeCandidacy, PossibleCandidacy, S2Finding, S2Input, S2Result, ValueSetExpansion } from './types';
 
 /** Invalid program or configuration input. Never used for patient-evidence problems. */
@@ -36,14 +36,10 @@ function checkExpansion(pin: unknown, e: ValueSetExpansion): void {
   }
 }
 
-/** The payload S1 retained for a node: its variant's RFC 8785 bytes, parsed. Never re-derived from input rows. */
 function payloadOf(k: KeyResolution, node: NodeRef): JsonObject {
-  const rev = k.revisions.find(
-    (r) => r.ref.source === node.revision.source && r.ref.localId === node.revision.localId && r.ref.revision === node.revision.revision,
-  );
-  const variants = node.digest === undefined ? rev?.variants : rev?.variants.filter((v) => v.digest === node.digest);
-  if (variants?.length !== 1) throw new S2ConfigurationError(`S1 result has no unique variant for node ${JSON.stringify(node)}`);
-  return JSON.parse((variants[0] as { canonicalPayload: string }).canonicalPayload) as JsonObject;
+  const payload = retainedPayload(k, node);
+  if (!payload) throw new S2ConfigurationError(`S1 result has no unique variant for node ${JSON.stringify(node)}`);
+  return payload;
 }
 
 function classify(node: NodeRef, payload: JsonObject, e: ValueSetExpansion): NodeCandidacy {

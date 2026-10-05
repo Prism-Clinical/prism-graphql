@@ -2,7 +2,7 @@
 
 **Status:** Proposed design draft. **Not** accepted, not finalized syntax, not a schema and not implemented. It contains no clinical content: the record type, enum values, codes, sources and permission below are fictional and illustrate language behavior only. They do not map to dysphagia, progression, urgency or any other clinical definition.
 
-**Date:** 2026-10-03. **Revised:** 2026-10-03, nine times, 2026-10-04, once, and 2026-10-05, once, after review. The third revision fixed three things:
+**Date:** 2026-10-03. **Revised:** 2026-10-03, nine times, 2026-10-04, once, and 2026-10-05, twice, after review. The third revision fixed three things:
 
 - revision-chain boundaries: source-scoped identity, same-source corrections and one fully specified schematic authority rule;
 - deterministic outcomes for malformed history;
@@ -13,6 +13,13 @@ The fourth revision made three changes:
 - Proven cross-boundary corrections and retractions are now rejected without changing their target. This keeps gap irrelevance consistent with S1.
 - Payload identity for duplicate detection is defined.
 - An unsupported justification about coverage attestations is removed.
+
+The twelfth revision specifies the S3 `encounter` rule on its own (2.4, cases 101–104). This is so that one admissibility check can be implemented and tested in isolation.
+
+- A malformed record encounter is `Invalid` (`FieldMalformed:encounter`).
+- An unknown evaluation encounter keeps its own causes, even against a known record encounter.
+- Out-of-domain possibilities are not evaluated.
+- Two decisions stay open: encounter-identifier syntax beyond “a JSON string”, and how one rule’s mismatch combines with another rule’s unresolved outcome.
 
 The eleventh revision settles S2’s input rules (2.3, cases 93–100). It came from review of the first S2 implementation, where an empty code was classified as established nonmembership.
 
@@ -316,7 +323,7 @@ Rejected and superseded revisions and historical defects are kept in the trace w
   - The record’s field is absent: `UnresolvedAdmissibility(Missing)`.
   - The context episode is `Unknown(causes)`: `UnresolvedAdmissibility(causes)`.
   - A different known episode: `Inadmissible(OtherEpisode)`.
-- `encounter`: the same rule, with reason `OtherEncounter`.
+- `encounter`: the same rule, with reason `OtherEncounter`. Section 2.4 specifies this rule on its own.
 - `assertionKind` must be in the authored set, else `Inadmissible(AssertionKindNotAllowed)`.
 
 Causes from several unresolved rules accumulate. “Unresolved admissibility” is a stage outcome; the causes stay those of the underlying input.
@@ -353,6 +360,44 @@ An absent component and a malformed one give both causes (case 97). Two malforme
 **Expansion binding.** The contract pins `retrieve.valueSet` (here `demo-vs/item-x@1`; the version is part of the identifier). The supplied expansion must carry exactly that identity, a list of codes and a list of covered systems. Every identifier in it must be well-formed under the syntax above, and every code’s system must be covered. Any violation, a missing expansion or a mismatched identity is an **invalid configuration**. Evaluation does not proceed, and the problem is never patient-evidence uncertainty or an empty expansion. An explicitly supplied empty code list is valid. There is no terminology lookup, version resolution or code-system conversion.
 
 **Key-level candidacy.** A key is a candidate if any possible current is in domain, has unresolved candidacy, or is `unknown`. `excluded` never makes a key a candidate. Candidacy includes unresolved possibilities, so it does not mean membership is established. S2 discards no inherited S1 cause; materiality is decided in S6 (4.2).
+
+### 2.4 S3: the `encounter` rule on its own
+
+This section isolates one rule of 2.2, so it can be checked before the rest of S3 exists. Its result is **not** an admissibility result. A match says only that this rule is satisfied: the episode and `assertionKind` rules, and anything else S3 adds, still apply.
+
+**The authored rule.** The check consumes the contract’s `admissible.encounter` exactly as written (7.1):
+
+`{ "eq": [{ "field": ["c", "encounter"] }, { "ref": "ctx.encounter" }] }`
+
+There is no implicit default. A query without this rule has no encounter check, and any other expression in that position is out of this section’s scope.
+
+**What is checked.** Each S2 possibility (2.3):
+
+- In domain, or with unresolved candidacy: checked. S2 findings stay attached and separate, and a match does not clear them.
+- Out of domain: **not evaluated**. This is not a mismatch.
+- `excluded` and `unknown`: carried unchanged.
+- Keys that are `Retracted` or have no record contribute nothing.
+
+S1 causes stay with the key.
+
+**Comparison.** `EncounterRef` is a JSON string, compared exactly. The record field is `Field<EncounterRef>` (1.2), and the evaluation encounter is `Known(EncounterRef) | Unknown(causes)` (1.6).
+
+| Record `encounter` | Evaluation encounter | Outcome | Findings (cause, origin, reason) |
+|---|---|---|---|
+| String *e* | `Known(e)` | **Matches** | — |
+| String *e* | `Known(f)`, *f* ≠ *e* | **DoesNotMatch** | reason `OtherEncounter` (S3 makes this `Inadmissible`) |
+| String | `Unknown(C)` | **Unresolved** | each *c* ∈ *C*, `context.encounter`, `ContextUnknown:encounter` |
+| Absent | any | **Unresolved** | `Missing`, the record, `FieldAbsent:encounter`; plus the context findings if `Unknown` |
+| Present, not a string (`null` included) | any | **Unresolved** | `Invalid`, the record, `FieldMalformed:encounter`; plus the context findings if `Unknown` |
+
+A known record encounter never decides against an unknown evaluation encounter, and context causes are never relabelled. Record and context findings accumulate. 2.2 states accumulation across rules; this section applies the same principle to the two inputs of one rule, and is the source of that decision.
+
+A malformed evaluation context, such as a `known` value that is not a string or an `Unknown` with no causes, is an invalid program input from the orchestrator. It is not patient uncertainty.
+
+**Open decisions** (not resolved here):
+
+1. **EncounterRef syntax.** Only the type is fixed. Whether `""` or a whitespace-only string is malformed is undefined. The S2 identifier syntax (2.3) covers terminology codes and is not borrowed. Smallest counterexample: record `encounter: ""` against `Known(N1)` is currently `DoesNotMatch`, so S3 would make it `Inadmissible`, not unresolved.
+2. **Combining rule outcomes.** 2.2 says causes from several *unresolved* rules accumulate. It does not say whether one rule’s `Inadmissible` outcome decides the revision while another rule is unresolved. Example: encounter N0 with the episode field absent. This check does not need the answer; the full S3 result does.
 
 ## 3. Where the clinical expression lives
 
@@ -827,6 +872,17 @@ All cases start from D0. Every row was traced manually through 1.5, 2.1 and 4.
 
 In cases 93–99 the record is admissible and `Supporting` if selected, so it is material. Its S2 causes are attributed, and its own-data reason emits `CorrectRecord` (6.2). Invalid expansions are configuration errors (2.3). They have no evaluation fixture, because the fixture format has no configuration-failure kind.
 
+**H. The `encounter` rule on its own (2.4)** (D0 unless stated; each record `Affirmed`)
+
+| # | Case | Records / changes | `Evidence<Boolean>` | `Decision` | Trace must show | Need |
+|---|---|---|---|---|---|---|
+| 101 | Malformed record encounter | s1/r101, `encounter: 7` | `Unresolved{Invalid}` @s1/r101@1 (S3, `FieldMalformed:encounter`) | Unknown(Invalid) | Encounter check unresolved (`Invalid`); admissibility unresolved | K1; `CorrectRecord` s1/r101 |
+| 102 | Evaluation encounter unknown | s1/r102 (N1); context encounter `{unknown: [Conflicting]}` | `Unresolved{Conflicting}` @context encounter | Unknown(Conflicting) | Not rewritten as `Missing`; as case 12, for the encounter binding | **No** evidence Need; deferred (encounter) |
+| 103 | Known record encounter, unknown evaluation encounter | As 102, but s1/r103 encounter N0 | `Unresolved{Conflicting}` @context encounter | Unknown(Conflicting) | Encounter check unresolved, **not** a mismatch; never `Inadmissible` | As 102 |
+| 104 | Payload variants that differ in encounter | Two occurrences of s1/r104@1: N1 and N0 | `Unresolved{Conflicting}` @s1/r104 (`PayloadConflict`) | Unknown(Conflicting) | N1 variant matches, N0 variant does not; possible classes {Supporting, excluded}, as case 28 | K1; `CorrectRecord` s1/r104 |
+
+In cases 101–103 the record is `Supporting` if admitted, so it is material. 104 follows cases 27 and 28: an inadmissible possibility of an unresolved key adds `excluded`, not a base `Inadmissible` cause.
+
 ### 7.5 Invariance checks
 
 These must hold for every case:
@@ -887,6 +943,11 @@ These must hold for every case:
     - Findings from different components accumulate.
     - Fictional identifiers must contain a non-`White_Space` character and are never normalized.
     - The same syntax binds the supplied expansion, where a violation is an invalid configuration.
+16. The `encounter` rule on its own (2.4):
+    - Outcomes are Matches, DoesNotMatch or Unresolved per possibility, and out-of-domain possibilities are not evaluated.
+    - A malformed record encounter is `Invalid` (`FieldMalformed:encounter`).
+    - Context causes are kept unchanged, and record and context findings accumulate.
+    - Open: encounter-identifier syntax, and how one rule’s mismatch combines with another rule’s unresolved outcome.
 
 **Possible conflicts needing a Stage A amendment.** None found. Items to confirm:
 
@@ -896,7 +957,7 @@ These must hold for every case:
 
 **Query/predicate split.** The query carries the reasoning. A projection-only Predicate is optional naming and composition structure. No node kind is added or removed.
 
-**Conformance fixtures.** [conformance/explicit-assertion-v0/](conformance/explicit-assertion-v0/README.md) holds machine-readable fixtures for cases 1–100, mapped by case number, with expected outputs written from this contract. They are proposed, like this document.
+**Conformance fixtures.** [conformance/explicit-assertion-v0/](conformance/explicit-assertion-v0/README.md) holds machine-readable fixtures for cases 1–104, mapped by case number, with expected outputs written from this contract. They are proposed, like this document.
 
 **Remaining items.**
 

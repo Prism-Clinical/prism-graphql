@@ -5,7 +5,7 @@
  */
 import { createHash } from 'node:crypto';
 import canonicalizeJson from 'canonicalize';
-import type { JsonValue, UndeclaredField } from './types';
+import type { JsonValue, KeyResolution, NodeRef, UndeclaredField } from './types';
 
 type JsonObject = { readonly [key: string]: JsonValue };
 /**
@@ -125,4 +125,17 @@ export function payloadIdentity(occurrence: JsonObject, kind: 'revision' | 'retr
     undeclaredPaths: undeclaredFields.map((u) => u.path),
     undeclaredFields,
   };
+}
+
+/**
+ * The payload S1 retained for one possible-current node: its variant's RFC 8785 bytes, parsed.
+ * Later stages read node payloads only through this, never from input rows or positions. Returns
+ * null when the node names no unique variant (a node without a digest needs exactly one).
+ */
+export function retainedPayload(k: KeyResolution, node: NodeRef): JsonObject | null {
+  const rev = k.revisions.find(
+    (r) => r.ref.source === node.revision.source && r.ref.localId === node.revision.localId && r.ref.revision === node.revision.revision,
+  );
+  const variants = node.digest === undefined ? rev?.variants : rev?.variants.filter((v) => v.digest === node.digest);
+  return variants?.length === 1 ? (JSON.parse((variants[0] as { canonicalPayload: string }).canonicalPayload) as JsonObject) : null;
 }

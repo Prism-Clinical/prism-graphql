@@ -1,19 +1,26 @@
 /**
- * EXPERIMENTAL, NONCLINICAL. Runs the S1- and S2-applicable assertions of the committed
- * explicit-assertion-v0 conformance fixtures against the S1 resolver and S2 candidate identification.
+ * EXPERIMENTAL, NONCLINICAL. Runs the S1-, S2- and encounter-check-applicable assertions of the
+ * committed explicit-assertion-v0 conformance fixtures against the S1 resolver, S2 candidate
+ * identification and the S3 same-encounter check.
  *
- * A fixture is never reported as passing as a whole: only its S1 and S2 assertions are checked.
+ * A fixture is never reported as passing as a whole: only its S1, S2 and encounter-check
+ * assertions are checked. Complete S3 `admissibility` facts are never checked as such.
  * Every other expected field or trace fact is counted as outside the implemented scope.
  */
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { payloadIdentity } from '../../s1/payload';
+import { isDeepStrictEqual } from 'node:util';
 import {
+  SAME_ENCOUNTER_RULE,
+  experimentalCheckEncounterScope,
   experimentalIdentifyCandidates,
   experimentalResolveRevisionHistory,
   type JsonValue,
   type KeyResolution,
+  type EncounterBinding,
   type NodeCandidacy,
+  type PossibleEncounterScope,
   type PossibleCurrent,
   type S1Result,
   type S2Result,
@@ -41,6 +48,10 @@ export interface FixtureReport {
   s2AttributionOneWay: number;
   /** One-way: each expected `candidateEvidenceIds` entry must be an S2 InDomain/Unresolved node. */
   s2CandidateIdsOneWay: number;
+  encounterApplicable: number;
+  encounterPassed: number;
+  /** One-way implications from complete S3 facts (`admissibility`, S3 encounter attributions). */
+  encounterOneWay: number;
   outOfScope: number;
   failures: string[];
   notRun: string | null;
@@ -127,6 +138,25 @@ function s2Nodes(r: S2Result): Map<string, NodeCandidacy> {
   return m;
 }
 
+const ENCOUNTER_REASONS = new Set(['FieldAbsent:encounter', 'FieldMalformed:encounter', 'ContextUnknown:encounter']);
+type EncounterNode = Extract<PossibleEncounterScope, { kind: 'node' }>;
+function encounterNodes(r: ReturnType<typeof experimentalCheckEncounterScope>): Map<string, EncounterNode> {
+  const m = new Map<string, EncounterNode>();
+  for (const k of r.keys) for (const p of k.possibilities) if (p.kind === 'node') m.set(showRev(p.node.revision) + (p.node.digest ? `#${p.node.digest}` : ''), p);
+  return m;
+}
+const outcomeOf = (p: EncounterNode | undefined): string => p?.encounter.outcome ?? 'not checked';
+function checkEncounterFact(t: Json, enc: Map<string, EncounterNode> | null): string | null {
+  if (!enc) return `encounterScope ${t.ref}: the query does not author the same-encounter rule`;
+  const p = enc.get(t.ref);
+  if (outcomeOf(p) !== t.value) return `encounterScope ${t.ref}: ${outcomeOf(p)}, expected ${t.value}`;
+  if ('causes' in t) {
+    const got = p?.encounter.outcome === 'Unresolved' ? [...new Set(p.encounter.findings.map((f) => f.cause))] : [];
+    if (JSON.stringify(got) !== JSON.stringify(t.causes)) return `encounterScope ${t.ref}: causes ${JSON.stringify(got)}`;
+  }
+  return null;
+}
+
 export function runFixtures(dir: string = FIXTURE_DIR): { reports: FixtureReport[]; noApplicableAssertions: string[] } {
   const shared = JSON.parse(readFileSync(join(dir, 'query', 'q.demo.json'), 'utf8')) as Json;
   const reports: FixtureReport[] = [];
@@ -143,6 +173,9 @@ export function runFixtures(dir: string = FIXTURE_DIR): { reports: FixtureReport
       s2Passed: 0,
       s2AttributionOneWay: 0,
       s2CandidateIdsOneWay: 0,
+      encounterApplicable: 0,
+      encounterPassed: 0,
+      encounterOneWay: 0,
       outOfScope: 0,
       failures: [],
       notRun: null,
@@ -153,13 +186,13 @@ export function runFixtures(dir: string = FIXTURE_DIR): { reports: FixtureReport
       continue;
     }
     if (fx.kind === 'compilation') {
-      report.notRun = 'compilation fixture: no S1/S2 input';
+      report.notRun = 'compilation fixture: no evidence input';
       continue;
     }
     const query = (fx.query.inline ?? shared) as Json;
     const contract = query.query?.contract;
     if (!contract || contract.hole) {
-      report.notRun = 'query contract is an authoring hole: S1/S2 do not run (contract §6.1)';
+      report.notRun = 'query contract is an authoring hole: no stage runs (contract §6.1)';
       report.outOfScope = countExpected(fx.expected);
       continue;
     }
@@ -172,8 +205,35 @@ export function runFixtures(dir: string = FIXTURE_DIR): { reports: FixtureReport
     const pin = contract.retrieve.valueSet as string;
     const s2 = experimentalIdentifyCandidates({ s1: result, valueSet: pin, expansion: { id: pin, ...query.valueSets[pin] } });
     const nodes = s2Nodes(s2);
+    // The encounter check runs only where the query authors exactly the rule it implements.
+    const enc = isDeepStrictEqual(contract.admissible?.encounter, SAME_ENCOUNTER_RULE)
+      ? encounterNodes(
+          experimentalCheckEncounterScope({
+            s1: result,
+            s2,
+            rule: contract.admissible.encounter,
+            contextEncounter: fx.input.context.encounter as EncounterBinding,
+          }),
+        )
+      : null;
     const exp = fx.expected as Json;
     for (const t of (exp.traceAssertions ?? []) as Json[]) {
+      if (t.fact === 'encounterScope') {
+        report.encounterApplicable += 1;
+        const f = checkEncounterFact(t, enc);
+        if (f) report.failures.push(f);
+        else report.encounterPassed += 1;
+        continue;
+      }
+      if (t.fact === 'admissibility' && enc) {
+        // Complete S3 fact: out of scope as such, but two values imply the encounter outcome.
+        const implied = t.value === 'Admissible' ? 'Matches' : t.value === 'Inadmissible' && t.reason === 'OtherEncounter' ? 'DoesNotMatch' : null;
+        if (implied) {
+          report.encounterOneWay += 1;
+          const got = outcomeOf(enc.get(t.ref));
+          if (got !== implied) report.failures.push(`admissibility ${t.value} ${t.ref}: encounter check ${got}, implied ${implied}`);
+        }
+      }
       if (S2_FACTS.has(t.fact)) {
         report.s2Applicable += 1;
         const got = nodes.get(t.ref)?.candidacy;
@@ -211,6 +271,19 @@ export function runFixtures(dir: string = FIXTURE_DIR): { reports: FixtureReport
       );
       if (!hit) report.failures.push(`causeAttribution ${a.cause}/${a.reason} @${a.origin}: not an S2 finding`);
     }
+    // One-way: an S3 attribution with an encounter reason must be a finding of the encounter check.
+    for (const a of (exp.causeAttribution ?? []) as Json[]) {
+      if (a.stage !== 'S3' || !ENCOUNTER_REASONS.has(a.reason) || !enc) continue;
+      report.encounterOneWay += 1;
+      const refs = (a.origin === 'context.encounter' ? a.refs : [a.origin]) as string[];
+      for (const ref of refs) {
+        const p = [...enc.entries()].filter(([id]) => id === ref || id.split('#')[0] === ref).map(([, v]) => v);
+        const hit = p.some(
+          (x) => x.kind === 'node' && x.encounter.outcome === 'Unresolved' && x.encounter.findings.some((f) => f.cause === a.cause && f.reason === a.reason),
+        );
+        if (!hit) report.failures.push(`causeAttribution ${a.cause}/${a.reason} @${ref}: not an encounter-check finding`);
+      }
+    }
     // One-way check (contract §5.1): every listed candidate ID has in-domain or unresolved candidacy.
     // The field itself is an S6 output and stays out of scope; the converse is not checked.
     for (const id of (exp.evidence?.candidateEvidenceIds ?? []) as string[]) {
@@ -219,7 +292,14 @@ export function runFixtures(dir: string = FIXTURE_DIR): { reports: FixtureReport
       if (c !== 'InDomain' && c !== 'Unresolved') report.failures.push(`candidateEvidenceIds ${id}: S2 candidacy ${c ?? 'none'}`);
     }
     report.outOfScope += countExpected(exp) - ((exp.traceAssertions ?? []) as unknown[]).length;
-    const checked = report.s1Applicable + report.s1AttributionOneWay + report.s2Applicable + report.s2AttributionOneWay + report.s2CandidateIdsOneWay;
+    const checked =
+      report.s1Applicable +
+      report.s1AttributionOneWay +
+      report.s2Applicable +
+      report.s2AttributionOneWay +
+      report.s2CandidateIdsOneWay +
+      report.encounterApplicable +
+      report.encounterOneWay;
     if (checked === 0) missing.push(fx.id);
   }
   return { reports, noApplicableAssertions: missing };
@@ -250,7 +330,7 @@ function checkCanonicalization(fx: Json, report: FixtureReport): void {
   }
 }
 
-/** Top-level expected fields plus trace assertions; used only to count what S1/S2 do not check. */
+/** Top-level expected fields plus trace assertions; used only to count what is not checked. */
 function countExpected(exp: Json): number {
   const fields = Object.keys(exp).filter((k) => k !== 'traceAssertions').length;
   return fields + ((exp.traceAssertions ?? []) as unknown[]).length;

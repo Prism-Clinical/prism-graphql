@@ -2,8 +2,9 @@
  * @prism/pathway-language — EXPERIMENTAL, NONCLINICAL.
  *
  * Public boundary of the isolated pathway-language core. It currently exposes only the S1
- * revision-history resolver and S2 candidate identification of the proposed evidence-query
- * contract (docs/superpowers/records/pathway-language/evidence-query-to-predicate-contract.md §2).
+ * revision-history resolver, S2 candidate identification and one S3 admissibility check
+ * (same-encounter scope) of the proposed evidence-query contract
+ * (docs/superpowers/records/pathway-language/evidence-query-to-predicate-contract.md §2).
  * It is not the PPL evaluator, is not clinically approved and must not be used for patient care.
  */
 export { resolveRevisionHistory as experimentalResolveRevisionHistory } from './s1/resolve';
@@ -54,3 +55,15 @@ export type {
   S2Result,
   ValueSetExpansion,
 } from './s2/types';
+export { checkEncounterScope as experimentalCheckEncounterScope, EncounterCheckConfigurationError } from './s3/encounter';
+export { SAME_ENCOUNTER_RULE } from './s3/types';
+export type {
+  ContextCause,
+  EncounterBinding,
+  EncounterCheckInput,
+  EncounterCheckResult,
+  EncounterFinding,
+  EncounterOutcome,
+  KeyEncounterScope,
+  PossibleEncounterScope,
+} from './s3/types';

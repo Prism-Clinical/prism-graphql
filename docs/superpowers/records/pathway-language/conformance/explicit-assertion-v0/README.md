@@ -11,7 +11,7 @@ The expected outputs were written by hand from the contract (§§1–7) and [CAN
 | `query/q.demo.json` | The query contract (contract §7.1), predicate `p.demo` and pinned value-set expansion. Symbolic contract digest `d1` |
 | `fixtures/EA-*.json` | Evaluation, preview and compilation fixtures |
 | `fixtures/CAN-*.json` | Canonicalization fixtures |
-| `index.json` | Contract case number (1–100) → fixture IDs; pairs (with their comparison mode); history-resolution groups; contrasts |
+| `index.json` | Contract case number (1–104) → fixture IDs; pairs (with their comparison mode); history-resolution groups; contrasts |
 | `validate.py` | Structural validator and pair self-tests (`python3 validate.py --self-test`) |
 | `check-canonical.cjs` | Canonical bytes, digests and variant IDs, verified with the RFC 8785 library `canonicalize@5.1.0` (see “Canonicalization checks”) |
 
@@ -97,7 +97,8 @@ Each evaluation and preview fixture requests output `p.demo`. The query output i
 | `outOfEnvelope` | `ref` | Out-of-envelope revision (S1 step 2) |
 | `outsideEnvelope` | `ref` | Item from an undeclared source; never evaluated |
 | `candidacy` | `ref`, `value` ∈ `InDomain`/`OutOfDomain`/`Unresolved` | S2 |
-| `admissibility` | `ref`, `value`, `reason?`, `causes?` | S3 |
+| `admissibility` | `ref`, `value`, `reason?`, `causes?` | S3 (all admissibility rules together) |
+| `encounterScope` | `ref` (revision or variant), `value` ∈ `Matches`/`DoesNotMatch`/`Unresolved`/`NotEvaluated`, `causes?` | The S3 same-encounter rule alone (contract §2.4). Not an admissibility result |
 | `classification` | `ref`, `value` | S5 |
 | `criterion` | `ref`, `criterion`, `value` ∈ `True`/`False`/`Unknown`/`Marker` | One criterion’s result |
 | `possibleClasses` | `ref` (key), `value` | Step B of contract §4.2 |
@@ -116,7 +117,7 @@ Each evaluation and preview fixture requests output `p.demo`. The query output i
 |---|---|
 | S1 | `PayloadConflict`, `Fork`, `CorrectionBoundaryUndeterminable`, `SelfSupersession`, `Cycle`, `CorrectionTargetAbsent`, `CorrectionRefIncomplete`, `CorrectionRefMalformed`, `CorrectionAuthorityMissing`, `CorrectionAuthorityMalformed`, `RetractionTargetAbsent`, `RetractionAuthorityMissing`, `RetractionAuthorityMalformed`, `RetractionConflict`, `EnvelopeFieldAbsent`, `EnvelopeFieldMalformed` |
 | S2 | `TerminologyUnavailable`, `CodeMalformed`, `FieldAbsent:concept`, `FieldAbsent:concept.system`, `FieldAbsent:concept.code` (contract §2.3) |
-| S3 | `FieldAbsent:<field>`, `ContextUnknown:<binding>` |
+| S3 | `FieldAbsent:<field>`, `FieldMalformed:<field>`, `ContextUnknown:<binding>` |
 | S5 | `FieldAbsent:<field>`, `FieldMalformed:<field>` |
 | S6 (origin `query`) | `AssertionConflict` (rule 1, with `refs`), `NoInDomainRecord`, `InadmissibleSeen`, `NonInformativeSeen` |
 | `coverage` | `CellIncomplete`, `CellUnknown`, `CellAbsent`, `CellMalformedStatement` |
@@ -151,7 +152,7 @@ Resolved defects appear only as `HistoricalDefect` trace diagnostics, never in `
 - adding a diagnostic to the before/after pair 1/22 is allowed;
 - changing that pair’s result is rejected.
 
-It also lists **contrasts** that keep proven-invalid boundary attempts distinguishable from undeterminable identity or authority, and from genuine payload conflicts. Three S2 contrasts (contract §2.3) keep an empty code apart from established nonmembership, a whitespace-only code apart from one with surrounding whitespace, and an absent component apart from a `null` one.
+It also lists **contrasts** that keep proven-invalid boundary attempts distinguishable from undeterminable identity or authority, and from genuine payload conflicts. Three S2 contrasts (contract §2.3) keep an empty code apart from established nonmembership, a whitespace-only code apart from one with surrounding whitespace, and an absent component apart from a `null` one. Two encounter contrasts (contract §2.4) keep a mismatch against a known evaluation encounter apart from an unknown evaluation encounter, and an absent record encounter apart from a malformed one.
 
 ## Canonicalization checks
 
@@ -171,7 +172,7 @@ Two helpers divide the work. Neither computes an expected evidence outcome.
 
 It checks that:
 
-- every file parses, IDs are unique and match file names, and the index maps every case 1–100 to existing fixtures;
+- every file parses, IDs are unique and match file names, and the index maps every case 1–104 to existing fixtures;
 - expected lists and attributions are in canonical order;
 - decisions are the projection of evidence, and Need causes equal result causes;
 - every `variants` assertion matches the digests of the input occurrences (number-free payloads; numeric ones are deferred);

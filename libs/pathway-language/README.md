@@ -1,6 +1,6 @@
 # @prism/pathway-language (experimental, nonclinical)
 
-**Status:** an implementation experiment for **two stages (S1 revision history, S2 candidate identification)** of the *proposed* [evidence-query-to-predicate contract](../../docs/superpowers/records/pathway-language/evidence-query-to-predicate-contract.md). It is not the PPL evaluator, not a compiler and not clinically approved. It must not be used for patient care. The RFC, Stage A, the contract and the delivery plans keep their existing statuses; nothing here completes a delivery story.
+**Status:** an implementation experiment for **two stages and one rule** (S1 revision history, S2 candidate identification, and the S3 same-encounter rule on its own) of the *proposed* [evidence-query-to-predicate contract](../../docs/superpowers/records/pathway-language/evidence-query-to-predicate-contract.md). It is not the PPL evaluator, not a compiler and not clinically approved. It must not be used for patient care. The RFC, Stage A, the contract and the delivery plans keep their existing statuses; nothing here completes a delivery story.
 
 This package is the isolated `libs/pathway-language` boundary named in RFC §10. It has no imports from applications, resolvers, databases or the network; `src/` imports only Node’s `crypto` and one RFC 8785 library.
 
@@ -121,6 +121,83 @@ The expansion pin is on the result (`valueSet`). `node` is S1’s `NodeRef`, wit
 
 S2 picks no winner. Whether the correction was authorized is still open, so the key stays a candidate and keeps its `Missing` defect. S5/S6 later decide whether it is material.
 
+## S3: the same-encounter check (one admissibility rule)
+
+This is **one rule** of S3 (contract §2.2), specified on its own in contract §2.4. It is not the S3 result. A match says only that this rule holds: episode, `assertionKind` and any other admissibility rules are not evaluated. No per-key admissibility decision, evidence result, clinical conclusion or Need is produced.
+
+```ts
+import { experimentalCheckEncounterScope, SAME_ENCOUNTER_RULE, EncounterCheckConfigurationError } from '@prism/pathway-language';
+
+const enc = experimentalCheckEncounterScope({
+  s1,                                   // experimentalResolveRevisionHistory(...) output
+  s2,                                   // experimentalIdentifyCandidates({ s1, ... }) output
+  rule: query.contract.admissible.encounter, // the authored rule, as written
+  contextEncounter: { known: 'N1' },    // or { unknown: ['Conflicting'] } (contract §1.6)
+});
+```
+
+**The rule stays visible.** `rule` is the query’s authored `admissible.encounter` node, which must equal `SAME_ENCOUNTER_RULE`, `{eq: [{field: [c, encounter]}, {ref: ctx.encounter}]}`. The node is recognized, not interpreted, so there is no expression evaluator. The function throws `EncounterCheckConfigurationError` for any other node, including a missing one, so there is never an implicit default. It also throws for:
+
+- a malformed evaluation encounter (a `known` that is not a string; an empty, repeated or unrecognized `unknown` cause list);
+- inputs that are not S1/S2 results, or an S2 not computed from this S1.
+
+A malformed **record** encounter is patient uncertainty, never an error.
+
+**Output** (`src/s3/types.ts`). `EncounterCheckResult = { experimental, check: 'same-encounter', valueSet, contextEncounter, keys }`. Each `KeyEncounterScope` holds:
+
+- `key` and `s1Status`;
+- S2’s `candidate`;
+- `inheritedS1Causes` and `inheritedS1Defects`, unchanged;
+- `possibilities`, in S2/S1 order, one per possibility below.
+
+| Possibility | `encounter` |
+|---|---|
+| node, candidacy `InDomain` or `Unresolved` (S2 findings kept in `s2Findings`) | `Matches` (`recordEncounter`) · `DoesNotMatch` (`OtherEncounter`, both identifiers) · `Unresolved` (`findings`) |
+| node, candidacy `OutOfDomain` | `NotEvaluated` (`OutOfDomain`). Never a mismatch |
+| `excluded` / `unknown` | carried unchanged |
+
+Each finding is `{cause, origin, reason}`:
+
+- `Missing`, origin `record`, reason `FieldAbsent:encounter`;
+- `Invalid`, origin `record`, reason `FieldMalformed:encounter` (any non-string, `null` included);
+- each of the context’s own causes, origin `context.encounter`, reason `ContextUnknown:encounter`.
+
+Record and context findings accumulate. A known record encounter is never compared with an unknown evaluation encounter. Comparison is exact. Payloads come from S1’s retained variant bytes, through `retainedPayload`, which S2 also uses now.
+
+**Worked example (S1 → S2 → encounter check).** The evaluation encounter is `Known(N1)`. `s1/r1@1` is `Affirmed`, in domain, with encounter N1. `s1/r1@2` supersedes it with encounter N0, and its author’s permissions are absent.
+
+| Stage | Result for `s1/r1` |
+|---|---|
+| S1 | `UnresolvedRevision`, `[Missing]` (`CorrectionAuthorityMissing`), possible `[@1, @2]` |
+| S2 | `@1 InDomain`, `@2 InDomain`, candidate |
+| Encounter check | `@1 Matches`, `@2 DoesNotMatch (OtherEncounter: N0 vs N1)`; `inheritedS1Causes: [Missing]` |
+
+The match on `@1` does not clear the unresolved history, and the mismatch on `@2` deletes nothing. Whether `@2` is current is still open, and S4–S6 decide what that means. With `contextEncounter: { unknown: ['Conflicting'] }`, both revisions would instead be `Unresolved[Conflicting @ context.encounter]`. `@2`’s known N0 would not be called a mismatch.
+
+### Conditional language demonstration: GERD progressive-dysphagia alarm
+
+> **Not an approved clinical requirement.** This shows only how the check *would* behave **if** a pathway author required the dysphagia assessment to come from the evaluation encounter. Nobody has decided that. Every encounter identifier and record below is a synthetic test value. None comes from the user-supplied GERD source document or from patient data.
+
+The [interpretation draft](../../docs/superpowers/records/pathway-language/gerd-progressive-dysphagia-interpretation-draft.md), not clinically adjudicated, cites source lines 340, 343 and 582: alarm-symptom screening at the initial visit, at 2–4 weeks, and “at EACH encounter”. It leaves open which encounters count (A2) and whether an earlier assessment counts later (Q5).
+
+Suppose an author did write `admissible.encounter` as above for the alarm-assessment query, with evaluation encounter `Known(N-visit-2)`. The synthetic records would then behave like this:
+
+| Synthetic record | Encounter check |
+|---|---|
+| Assessment documented at `N-visit-2` | `Matches`, which says nothing about whether the assessment is admissible on other rules or what it establishes |
+| Assessment documented at `N-visit-1` | `DoesNotMatch`. Under this hypothetical rule it is out of scope; the rule would make it inadmissible, not a negative |
+| Assessment with no encounter recorded | `Unresolved{Missing}`, which is not treated as current-visit evidence |
+| Evaluation encounter itself unresolved | `Unresolved` with the context’s causes for every assessment |
+
+This demonstration decides none of the following:
+
+- whether the GERD pathway requires same-encounter evidence (A2);
+- whether earlier assessments remain usable (Q5);
+- what establishes *progressive* dysphagia (Q1–Q3);
+- any other open question or approval in the draft.
+
+A pathway that accepted earlier assessments would author a different rule, which this slice does not implement.
+
 ## Running
 
 ```bash
@@ -158,18 +235,35 @@ This package has its own Jest configuration and is not part of the root Jest roo
   - inherited S1 causes kept with their attribution alongside new S2 causes, including `Invalid` from both stages;
   - permutation, duplicate-occurrence and S1 key-order invariance, and deep-frozen inputs;
   - configuration validation, including the identifier syntax for the expansion.
-- **`src/__tests__/fixtures.test.ts`** runs the committed [explicit-assertion-v0 fixtures](../../docs/superpowers/records/pathway-language/conformance/explicit-assertion-v0/README.md) and checks **only** their S1 and S2 assertions. It never reports a fixture as passing as a whole, because S3–S7 are not implemented. On the current fixtures it reports:
-  - **165 S1 assertions checked, 165 passing.** That is 90 trace facts (`keyResult`, `variants`, `occurrences`, `rejected`, `outOfEnvelope`, `outsideEnvelope`, and the `HistoricalDefect`, `CrossKeyCorrection` and `UndeclaredField` diagnostics) plus 75 canonicalization checks (bytes, digests, variant partition, undeclared fields). The one added fact is EA-100’s `keyResult`.
+- **`src/__tests__/s3-encounter.test.ts`** has 34 independent tests of the encounter check (counting each parameterized case), with expectations derived by hand from contract §§1.2, 1.6, 2.2 and 2.4. They cover:
+  - matching, different (including case-sensitive) and absent encounters;
+  - malformed encounters (number, `null`, object);
+  - an unresolved evaluation encounter with its causes kept, including against a known record encounter;
+  - record and context problems together;
+  - unresolved history with one matching and one nonmatching possibility;
+  - variants with different encounters;
+  - unresolved S2 candidacy alongside a decidable check;
+  - out-of-domain `NotEvaluated`, with no `Missing` even when the encounter is absent;
+  - `excluded` and `unknown`;
+  - an authorized correction to another encounter;
+  - `Retracted` and `NoRecord`;
+  - permutation, duplicate and S2 key-order invariance, and deep-frozen inputs;
+  - that the rule equals the pinned query’s `admissible.encounter`;
+  - 13 rule and configuration errors, distinguished from a malformed record encounter.
+- **`src/__tests__/fixtures.test.ts`** runs the committed [explicit-assertion-v0 fixtures](../../docs/superpowers/records/pathway-language/conformance/explicit-assertion-v0/README.md) and checks **only** their S1, S2 and encounter-check assertions. It never reports a fixture as passing as a whole, because the rest of S3 and S4–S7 are not implemented. On the current fixtures it reports:
+  - **167 S1 assertions checked, 167 passing.** That is 92 trace facts (`keyResult`, `variants`, `occurrences`, `rejected`, `outOfEnvelope`, `outsideEnvelope`, and the `HistoricalDefect`, `CrossKeyCorrection` and `UndeclaredField` diagnostics) plus 75 canonicalization checks (bytes, digests, variant partition, undeclared fields). EA-104 adds two.
   - **16 S2 assertions checked, 16 passing:** every `candidacy` trace fact (EA-013, EA-014, EA-024, three in EA-033, and EA-093 to EA-100).
+  - **5 encounter-check assertions checked, 5 passing:** every `encounterScope` trace fact (EA-101, EA-102, EA-103, and both variants of EA-104).
   - **One-way checks**, which can fail but cannot prove completeness:
-    - 32 S1-stage cause attributions, each of which must be an active S1 defect;
+    - 33 S1-stage cause attributions, each of which must be an active S1 defect;
     - 12 S2-stage cause attributions (EA-013, EA-014, EA-093 to EA-099), each of which must be an S2 finding on that revision;
-    - 93 `candidateEvidenceIds` entries, each of which must have S2 candidacy `InDomain` or `Unresolved` (contract §5.1). The field is an S6 output, and its converse is not checked.
+    - 98 `candidateEvidenceIds` entries, each of which must have S2 candidacy `InDomain` or `Unresolved` (contract §5.1). The field is an S6 output, and its converse is not checked;
+    - 8 encounter outcomes implied by complete S3 expectations. `admissibility: Admissible` implies `Matches` (EA-052a). `Inadmissible` with reason `OtherEncounter` implies `DoesNotMatch` (EA-009, EA-025). An S3 attribution with an encounter reason must be a finding of the check (EA-010, EA-015, EA-101, EA-102, EA-103). The `admissibility` facts themselves stay outside the implemented scope.
 
     The absence of an attribution proves nothing, because attribution also depends on S5/S6 materiality.
-  - **485 expected fields and trace facts outside the implemented scope,** not checked: evidence, decision, Needs, admissibility, classification, cells, gaps and so on.
+  - **507 expected fields and trace facts outside the implemented scope,** not checked: evidence, decision, Needs, complete admissibility, classification, cells, gaps and so on.
   - **3 fixtures not run:** EA-050 (whole-contract hole) and EA-051a/b (compilation).
-  - **10 evaluation/preview fixtures with no applicable S1/S2 assertion,** listed by the test: EA-001, -002, -005, -011, -043, -045, -046, -047, -052b and -053. Their S1/S2 behavior is exercised but not asserted.
+  - **10 evaluation/preview fixtures with no applicable S1/S2/encounter-check assertion,** listed by the test: EA-001, -002, -005, -011, -043, -045, -046, -047, -052b and -053. Their behavior in these stages is exercised but not asserted.
 
 ## Interpretations where the contract is silent
 
@@ -198,13 +292,23 @@ Remaining notes:
 - `KeyCandidacy.causes` is a union, not an S6 result. Under contract §4.2 step C, only a material record’s origin causes are attributed.
 - Production code-system syntax is out of scope.
 
+## Encounter check: open decisions
+
+These are recorded in contract §2.4 and are not resolved here:
+
+1. **Encounter-identifier syntax.** Only the type (a JSON string) is defined. The S2 identifier syntax (contract §2.3) applies to terminology codes, and this check does not borrow it. Smallest counterexample: record `encounter: ""` against `Known(N1)` is `DoesNotMatch` today, so a complete S3 would make it `Inadmissible`, not unresolved. The same review that found the empty-code defect in S2 would likely want `""` and whitespace-only values malformed here too. That is a contract decision, so no test asserts either behavior.
+2. **Combining rule outcomes in the complete S3.** Contract §2.2 accumulates causes across *unresolved* rules. It does not say whether one rule’s `Inadmissible` outcome decides a revision while another rule is unresolved (for example, encounter N0 with the episode field absent). This check does not need the answer.
+
+Accumulating record and context findings within this one rule is stated in contract §2.4 (draft), extending §2.2’s cross-rule accumulation.
+
 ## Fork fallback (contract §2.1 step 7)
 
 Step 5 records a fork only when no other defect exists. If that other defect later becomes historical, several heads can remain with no active defect. Example: `s1/r1@1` has two payloads, and the authorized `@2a` and `@2b` both supersede it. Step 7 then records a fork over the remaining heads, with cause `Conflicting` (cases 88–92). The fallback applies only when no defect is active. It is not a general test of whether an active defect “explains” the heads.
 
 ## Limitations
 
-- S1 and S2 only: no admissibility (S3), selection, criteria, materiality, resolution, Needs, coverage or preview markers.
+- S1, S2 and one S3 rule only: no episode or `assertionKind` rule, no complete admissibility, and no selection, criteria, materiality, resolution, Needs, coverage or preview markers.
+- The encounter check recognizes exactly one authored rule shape. It does not evaluate expressions.
 - S2 supports only the fixtures’ flat expansion format: no hierarchies, intensional definitions, terminology service, normalization, code-system conversion or version resolution.
 - The fixtures assert S2 candidacy for 16 revisions. Variants, `excluded`/`unknown` propagation and configuration errors are covered by the independent tests only.
 - One schematic authority rule and one fictional evidence model (`demo-model@0.1`). No clinical definitions.
