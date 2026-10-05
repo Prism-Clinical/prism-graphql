@@ -70,7 +70,7 @@ const canon = (v: unknown): string | null => {
  * defineProperty, so user-chosen names such as `__proto__` or `constructor` survive enumeration and
  * serialization, and later edits to the source can never reach a compiled package.
  */
-function detach<T>(v: T): T {
+export function detach<T>(v: T): T {
   if (Array.isArray(v)) return Object.freeze(v.map(detach)) as unknown as T;
   if (v !== null && typeof v === 'object') {
     const out = {};

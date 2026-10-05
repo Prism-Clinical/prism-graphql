@@ -1,6 +1,6 @@
 # @prism/pathway-language (experimental, nonclinical)
 
-**Status:** an implementation experiment. It covers **two stages and one rule** of the *proposed* [evidence-query-to-predicate contract](../../docs/superpowers/records/pathway-language/evidence-query-to-predicate-contract.md): S1 revision history, S2 candidate identification, and the S3 same-encounter rule on its own. It also has the **first PPL compiler subset** (increment I1 of the [first-program implementation contract](../../docs/superpowers/records/pathway-language/first-program-implementation-contract.md)). It is not the PPL evaluator and is not clinically approved; compiling a program confers no clinical approval. It must not be used for patient care. The RFC, Stage A, the contract and the delivery plans keep their existing statuses; nothing here completes a delivery story.
+**Status:** an implementation experiment. It covers **two stages and one rule** of the *proposed* [evidence-query-to-predicate contract](../../docs/superpowers/records/pathway-language/evidence-query-to-predicate-contract.md): S1 revision history, S2 candidate identification, and the S3 same-encounter rule on its own. It also has the **first PPL compiler subset** and **isolated program-expression execution** over supplied query results (increments I1 and I2 of the [first-program implementation contract](../../docs/superpowers/records/pathway-language/first-program-implementation-contract.md)). It is not an end-to-end PPL evaluator and is not clinically approved; compiling or executing a program confers no clinical approval. It must not be used for patient care. The RFC, Stage A, the contract and the delivery plans keep their existing statuses; nothing here completes a delivery story.
 
 This package is the isolated `libs/pathway-language` boundary named in RFC §10. It has no imports from applications, resolvers, databases or the network; `src/` imports only Node’s `crypto` and one RFC 8785 library.
 
@@ -271,7 +271,68 @@ Markers are computed statically from references, so no Boolean simplification ca
 
 - `programs/check.py` checks JSON, quotations, digests and links without compiling anything.
 - This compiler validates and types programs and derives dependencies, but executes nothing.
-- No evaluator exists yet (increments I2–I6), so no program has been executed.
+- I2 (below) executes program expressions over **supplied** query results. No end-to-end evaluator exists yet (increments I3–I6), so no program has been evaluated from raw records.
+
+## Isolated program-expression execution (I2)
+
+This runs the compiled program’s expressions: `ref`, `evidenceValue`, n-ary `all`, Predicate outputs, Finding status and attributes, and preview markers, all with explanation traces. **Every EvidenceQuery result is supplied by the caller.** No query runs (S1–S6), no patient record is read, and no Need is generated. **This is not end-to-end clinical evaluation**, and the API names say so.
+
+```ts
+import { experimentalCompile, experimentalExecuteWithSuppliedQueryResults } from '@prism/pathway-language';
+
+const c = experimentalCompile(program);                      // must be 'Compiled'
+const r = experimentalExecuteWithSuppliedQueryResults(c.package, new Map([
+  ['q.demo', { status: 'Known', value: false, supportingEvidenceIds: ['s1/r2@1'] }],  // supplied, not computed
+]));
+r.outputs['p.demo'];  // { decision: { value: 'False' }, supportingEvidenceIds: ['s1/r2@1'] }
+r.outputs['f.demo'];  // { status:   { value: 'False' }, supportingEvidenceIds: ['s1/r2@1'] }
+```
+
+| Supplied `q.demo` (schematic program) | `p.demo` | `f.demo` status |
+|---|---|---|
+| `Known(true, [s1/r1@1])` | `True` [s1/r1@1] | `True` [s1/r1@1] |
+| `Known(false, [s1/r2@1])` | `False` [s1/r2@1] | `False` [s1/r2@1]: only this finding is not established |
+| `Unresolved{Missing}` | `Unknown(Missing)` | `Unknown(Missing)` |
+| *(absent)* | — | `MISSING_QUERY_RESULT`: an input error, never `Unresolved{Missing}` |
+
+**Boundary.**
+
+- `experimentalExecuteWithSuppliedQueryResults` accepts only an I1 `CompiledPackage`. `experimentalExecutePreviewWithSuppliedQueryResults` accepts only a `PreviewPackage`. Packages are checked by `kind`, `experimental` tag and frozenness, so compile failures and copied look-alikes are rejected.
+- Query results are a `Map` keyed by EvidenceQuery ID, so IDs such as `__proto__` are ordinary keys. Each value is the settled `Evidence<Boolean>` fixture shape: `{status: 'Known', value, supportingEvidenceIds}` or `{status: 'Unresolved', causes (nonempty, Stage A causes), candidateEvidenceIds}`. Evidence IDs use the fixture notation `source/localId@revision[#digest]`.
+- Input errors are returned together, as `outcome: 'ExecutionInputError'`, never as patient uncertainty:
+  - `INVALID_PACKAGE`;
+  - `INVALID_QUERY_RESULTS` (not a `Map`);
+  - `MISSING_QUERY_RESULT` (every complete query needs one);
+  - `UNEXPECTED_QUERY_RESULT` (unknown or non-query ID);
+  - `MALFORMED_QUERY_RESULT`;
+  - `RESULT_FOR_HOLED_QUERY`: a result can never fill an authoring hole.
+
+**Semantics** (contract §3, §7).
+
+- `evidenceValue`: `Known(true|false, ids)` becomes `True|False` with those supporting IDs, and `Unresolved(C, ids)` becomes `Unknown(C)` with those candidate IDs.
+- `all` (n-ary Kleene):
+  - any `False` gives `False`, supported by the union of the False operands’ supports;
+  - otherwise any `Unknown` gives `Unknown`, with the union of those operands’ causes and candidates;
+  - otherwise `True`, supported by every operand;
+  - `all()` is `True` with empty support.
+- Every operand is evaluated and traced, even after a decisive one.
+- IDs are deduplicated and ordered by `(source, localId, revision, digest)`; causes follow Stage A order.
+- **Preview:** outputs that depend on a hole are markers (`{marker: {holes}}`), never `Unknown`. A marker survives an otherwise decisive `False`. An urgency hole marks only `urgency`. A holed query outputs `{marker, stagesRun: []}`. Unmarked outputs evaluate normally. `publication: 'Blocked'`, the compiler’s `markers` and the `inspectable` attributes are carried through, and the computed markers are cross-checked against the compiler’s static markers.
+
+**Result.** `{outcome: 'Executed', mode, scope: 'program-expressions-with-supplied-query-results', packageId, outputs, findingAttributes, trace}`.
+
+- `outputs` is keyed by declaration ID. A query output is `{evidence, origin: 'supplied'}`, or a marker.
+- Each `trace` entry has `output` (`<id>`, or `<id>.status` / `<id>.urgency` for a Finding), the authored `source` field pointer, `result`, `because`, and `steps`. Each step records `source`, `form`, `result`, the outputs, holes or supplied results it `uses`, and `because`.
+- Results are detached and deep-frozen, like compiler results. Later edits to the supplied map, the evidence objects or the source never change a completed result.
+
+**GERD preview (PPL-04).** It needs no patient evidence. The outputs are:
+
+- `applicability` is `Marker[H-SCOPE]`;
+- `q.pd` is `Marker[H-EVIDENCE]`, with no stage run;
+- `p.alarm` is `Marker[H-EVIDENCE]`;
+- `f.alarm` status is `Marker[H-EVIDENCE, H-SCOPE]`, and its urgency is `Marker[H-URGENCY]`.
+
+The label, heading and citation stay inspectable, and publication is blocked. No clinical question is answered.
 
 ## Running
 
@@ -304,11 +365,36 @@ This package has its own Jest configuration and is not part of the root Jest roo
   - (review of 3ecd664) editing the source after normal and preview compilation, deep-frozen results that throw on mutation, the identifiers `__proto__`, `constructor`, `toString` and `hasOwnProperty` through compilation and serialization, and the `c.assertion`-only restriction. These tests fail against the 3ecd664 compiler.
 
   Targeted mutation checks found no surviving mutation. Each of these breaks at least one test: urgency marking the status, no transitive marking, the wrong cycle pointer, holes compiling normally, no cross-enum check, no overlap check, and a misplaced `ctx.` being accepted.
-- **`src/__tests__/program-examples.test.ts`** runs the six [first-program examples](../../docs/superpowers/records/pathway-language/programs/README.md). It applies each patch in the harness, which is input preparation and not a language feature, and checks **only** the `compile` and `preview` blocks. It also checks `state` where compilation alone decides it (`InvalidProgram`, `IncompleteAuthoring`); for compiled programs it only confirms the state is an evaluation state.
+- **`src/__tests__/execute.test.ts`** has 38 independent I2 tests over programs compiled in the test, all with **supplied** query results. These are isolated tests, not end-to-end runs. They cover:
+  - projection of Known true, Known false and Unresolved;
+  - ID and cause deduplication and ordering;
+  - the full two-operand Kleene table, `all` with zero, one and three operands, and False with Unknown;
+  - support, cause and candidate unions;
+  - nondecisive operand traces;
+  - repeated and transitive references;
+  - multiple supplied results, and map- and ID-order invariance;
+  - missing, unexpected, malformed and non-`Map` results;
+  - package-kind rejection;
+  - holes versus `Unknown`, and results supplied for holed queries;
+  - markers beside a decisive `False`;
+  - attribute-only holes;
+  - the IDs `__proto__`, `constructor` and `toString`;
+  - frozen inputs, post-execution edits and deep-frozen results.
+
+  Targeted mutations each fail tests: False support taken from every operand, a decisive `False` dropping a marker, a missing result not reported, a holed-query result accepted, no ID deduplication, and operand traces hidden after a decisive `False`.
+- **`src/__tests__/program-examples.test.ts`** runs the six [first-program examples](../../docs/superpowers/records/pathway-language/programs/README.md). It reports I1 compiler checks, I2 isolated program-expression checks and I2 preview-output checks separately:
+
+  | Example | Compiler | Isolated program-expression | Preview-output |
+  |---|---|---|---|
+  | PPL-01 to -03 | 5 each | 5 each (applicability, predicate and finding outputs; applicability and predicate traces), with the query evidence supplied from the example itself | — |
+  | PPL-04 | 9 | — | 9 (every output and trace entry) |
+  | PPL-05a/b | 6 each | — | — |
+
+  Supplied query outputs and traces, `causeAttribution` (S1–S6) and evaluated `state` values are reported as outside scope. It applies each patch in the harness, which is input preparation and not a language feature, and checks **only** the `compile` and `preview` blocks. It also checks `state` where compilation alone decides it (`InvalidProgram`, `IncompleteAuthoring`); for compiled programs it only confirms the state is an evaluation state.
   - **PPL-01, -02, -03:** 5/5 checks each.
   - **PPL-04:** 9/9.
   - **PPL-05a, -05b:** 6/6 each.
-  - `outputs`, `causeAttribution`, `trace` and evaluated `state` values are reported as outside I1 scope. No example is executed.
+  - No example is evaluated from raw records.
 - **`src/__tests__/canonical-json.test.ts`** has 28 tests of the RFC 8785 library (above).
 - **`src/__tests__/s1.test.ts`** has 99 independent tests (counting each parameterized case) whose expectations are derived by hand from the contract. They cover:
   - identical versus conflicting payloads, RFC 8785 number equality, absent versus `null`, and set-valued permissions;
@@ -421,9 +507,17 @@ Two former items are now settled in the contract:
 5. **Declarations with an invalid kind** keep their ID, so references to them add no `UNDEFINED_REFERENCE`.
 6. **Citation shapes.** `lines` is a `[first, last]` range, and `quote` keys must fall inside it. Files, digests and quotations are not read.
 
+## I2: discrepancies and choices where the contract is silent
+
+1. **Finding trace naming (needs a decision).** PPL-01 to PPL-03 name the Finding’s status trace entry `f.demo`. PPL-04 names it `f.alarm.status`, and `f.alarm.urgency` for its attribute. The executor follows the compiler’s marker convention, `<id>.status`. The runner reports the three PPL-01 to PPL-03 entries as discrepancies, neither passed nor failed; their source and result do match. Proposed resolution: rename those entries to `f.demo.status`, which changes no value.
+2. **Known with empty support.** `Known(value, [])` is accepted as shape-valid. Stage A §4.1 does not require supporting IDs; under explicit-assertion-v0 a Known result always has them, so S6 will never produce an empty one.
+3. **Evidence ID notation.** Supplied IDs must match `source/localId@revision[#64-hex digest]`, with no `/`, `@` or `#` inside a component. That is needed to order them by the contract §5.3 tuple, and the notation cannot express such components anyway.
+
 ## Limitations
 
-- **I1 compiles; it does not evaluate.** No `evidenceValue`, `all` or Finding value is computed (I2), and no stable serialized IR, manifest, signing or persistence exists. The compiler supports only the first-program subset and one fictional evidence model.
+- **I2 executes program expressions only, over supplied query results.** It computes no query result (S1–S6), reads no records, evaluates no coverage, and generates no Needs, acquisitions, recommendations or urgency behavior.
+
+- **I1 compiles; I2 executes program expressions only.** No stable serialized IR, manifest, signing or persistence exists. The compiler supports only the first-program subset and one fictional evidence model.
 
 - Evidence stages: S1, S2 and one S3 rule only. There is no episode or `assertionKind` rule, no complete admissibility, and no selection, criteria, materiality, resolution, Needs or coverage evaluation.
 - The encounter check recognizes exactly one authored rule shape. It does not evaluate expressions.

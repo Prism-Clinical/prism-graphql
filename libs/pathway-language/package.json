@@ -2,7 +2,7 @@
   "name": "@prism/pathway-language",
   "version": "0.0.0-experimental",
   "private": true,
-  "description": "EXPERIMENTAL, NONCLINICAL. Isolated Prism Pathway Language core experiments. Currently the S1 revision-history resolver, S2 candidate identification, one S3 rule (same-encounter scope) and the first PPL compiler subset (I1).",
+  "description": "EXPERIMENTAL, NONCLINICAL. Isolated Prism Pathway Language core experiments. Currently the S1 revision-history resolver, S2 candidate identification, one S3 rule (same-encounter scope), the first PPL compiler subset (I1) and isolated program-expression execution over supplied query results (I2).",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "license": "UNLICENSED",
@@ -13,7 +13,8 @@
     "test:s1": "jest src/__tests__/s1",
     "test:s2": "jest src/__tests__/s2",
     "test:s3": "jest src/__tests__/s3",
-    "test:compile": "jest src/__tests__/compile src/__tests__/program-examples"
+    "test:compile": "jest src/__tests__/compile src/__tests__/program-examples",
+    "test:execute": "jest src/__tests__/execute src/__tests__/program-examples"
   },
   "dependencies": {
     "canonicalize": "2.1.0"

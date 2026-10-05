@@ -5,8 +5,8 @@
  * revision-history resolver, S2 candidate identification and one S3 admissibility check
  * (same-encounter scope) of the proposed evidence-query contract
  * (docs/superpowers/records/pathway-language/evidence-query-to-predicate-contract.md §2), and the
- * first PPL compiler subset (first-program-implementation-contract.md, increment I1), which compiles
- * but never evaluates.
+ * first PPL compiler subset (first-program-implementation-contract.md, increment I1), and isolated
+ * program-expression execution over SUPPLIED query results (I2), which is not end-to-end evaluation.
  * It is not the PPL evaluator, is not clinically approved and must not be used for patient care.
  */
 export { resolveRevisionHistory as experimentalResolveRevisionHistory } from './s1/resolve';
@@ -89,3 +89,25 @@ export type {
   PreviewPackage,
   ValueType,
 } from './compile/types';
+export {
+  executeWithSuppliedQueryResults as experimentalExecuteWithSuppliedQueryResults,
+  executePreviewWithSuppliedQueryResults as experimentalExecutePreviewWithSuppliedQueryResults,
+} from './execute/execute';
+export type {
+  Cause,
+  DecisionOutput,
+  DecisionValue,
+  ExecutionInputError,
+  ExecutionInputErrorCode,
+  ExecutionResult,
+  FindingAttributes,
+  FindingOutput,
+  Marker,
+  PreviewExecutionResult,
+  ProgramOutput,
+  QueryOutput,
+  SuppliedEvidence,
+  SuppliedQueryResults,
+  TraceEntry,
+  TraceStep,
+} from './execute/types';

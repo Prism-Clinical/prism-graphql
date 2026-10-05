@@ -1,10 +1,11 @@
 /**
- * EXPERIMENTAL, NONCLINICAL. First-program acceptance examples, compile/preview expectations only.
- * No example is executed: evaluation expectations are reported as outside I1 scope.
+ * EXPERIMENTAL, NONCLINICAL. First-program acceptance examples: I1 compile/preview checks, and I2
+ * isolated program-expression and preview-output checks. Query results are SUPPLIED from each
+ * example's own expectations; no example is evaluated end to end.
  */
 import { runProgramExamples } from './support/program-runner';
 
-describe('first-program examples: compile and preview expectations only (I1)', () => {
+describe('first-program examples: I1 compile/preview and I2 isolated execution', () => {
   const reports = runProgramExamples();
 
   it('reports what was and was not checked', () => {
@@ -12,13 +13,16 @@ describe('first-program examples: compile and preview expectations only (I1)', (
     console.log(
       [
         `examples: ${reports.length}`,
-        ...reports.map((r) => `${r.id}: ${r.checked - r.failures.length}/${r.checked} compile/preview checks; outside I1 scope: ${r.outOfScope.join('; ') || 'none'}`),
+        ...reports.map(
+          (r) =>
+            `${r.id}: compiler ${r.checked}, isolated program-expression ${r.executionChecked}, preview-output ${r.previewChecked} checks (failures ${r.failures.length}); discrepancies: ${r.discrepancies.join('; ') || 'none'}; outside scope: ${r.outOfScope.join('; ') || 'none'}`,
+        ),
       ].join('\n'),
     );
     expect(reports.length).toBeGreaterThan(0);
   });
 
-  it.each(reports.map((r) => [r.id, r] as const))('%s: compile/preview expectations hold', (_id, r) => {
+  it.each(reports.map((r) => [r.id, r] as const))('%s: compile, isolated-execution and preview-output expectations hold', (_id, r) => {
     expect(r.failures).toEqual([]);
   });
 });
