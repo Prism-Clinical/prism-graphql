@@ -2,7 +2,7 @@
 
 **Status:** Proposed design draft. **Not** accepted, not finalized syntax, not a schema and not implemented. It contains no clinical content: the record type, enum values, codes, sources and permission below are fictional and illustrate language behavior only. They do not map to dysphagia, progression, urgency or any other clinical definition.
 
-**Date:** 2026-10-03. **Revised:** 2026-10-03, nine times, after review. The third revision fixed three things:
+**Date:** 2026-10-03. **Revised:** 2026-10-03, nine times, and 2026-10-04, once, after review. The third revision fixed three things:
 
 - revision-chain boundaries: source-scoped identity, same-source corrections and one fully specified schematic authority rule;
 - deterministic outcomes for malformed history;
@@ -13,6 +13,8 @@ The fourth revision made three changes:
 - Proven cross-boundary corrections and retractions are now rejected without changing their target. This keeps gap irrelevance consistent with S1.
 - Payload identity for duplicate detection is defined.
 - An unsupported justification about coverage attestations is removed.
+
+The tenth revision closes a gap in step 7. A step 5 fork can be suppressed by a defect that step 7 later makes historical, which left several heads with no cause. If several heads remain and no defect is current-affecting, step 7 now records a fork (cases 88–92).
 
 The ninth revision corrects one condition from the eighth. An undeterminable correction stays active while its target remains a head, even after the correcting revision is retracted (cases 85–87).
 
@@ -225,7 +227,7 @@ S1 runs per `RecordKey` over a finite graph and always terminates. Its cycle det
 
 **Step 4 — cycles.** Valid edges lying on a cycle, i.e. inside a strongly connected component with more than one node, are reclassified as defective, `Invalid`, and ignored.
 
-**Step 5 — heads.** Heads are the non-rejected nodes not superseded by any valid edge. More than one head without any other defect means a fork, with cause `Conflicting`.
+**Step 5 — heads.** Heads are the non-rejected nodes not superseded by any valid edge. More than one head without any other defect means a fork, with cause `Conflicting`. If another defect suppresses the fork here, step 7 may still record one (fork fallback).
 
 **Step 6 — retractions.** Retraction occurrences are grouped by (`key.source`, `id`), and their payload is `key`, `target` and `author` (CANONICALIZATION.md).
 
@@ -251,6 +253,7 @@ S1 runs per `RecordKey` over a finite graph and always terminates. Its cycle det
 |---|---|
 | `PayloadConflict` | The conflicted revision is in *H* |
 | Fork (recorded at step 5) | At least two of the fork’s branch heads are still in *H* |
+| Fork (fork fallback, below) | Always: it is recorded only when it holds |
 | Undeterminable correction edge (authority or boundary undeterminable) | Its **target** is in *H* (computed with this edge ignored). The open question is whether the target was superseded, and removing the source does not answer it: if the correction was valid, the target stays superseded even after the source is retracted, because a retraction never reinstates. If the source was removed by a valid retraction, the defect also adds `excluded`, for the branch in which the target was superseded and nothing remains. If the source was superseded by a valid later correction, that successor is already in *H* |
 | Correction edge whose target cannot be identified (absent or malformed reference) or is absent from the snapshot (`unknown`) | Its source is in *H* |
 | Self-supersession | The revision is in *H* |
@@ -276,10 +279,17 @@ Otherwise a defect is **historical**: it stays in the trace as a diagnostic (`Hi
 | Correction with unknown authority; the correcting revision is then validly retracted | Still active: if the correction was authorized, the target stays superseded (no reinstatement); if not, the target is current. Possible {target, excluded} | 85 |
 | As 85, but the correction is known to be authorized | No defect: the target was superseded and its successor retracted, so the key is `Retracted` | 86 |
 | As 85, but the correction is known to be unauthorized | No defect: the correction is rejected (and its retraction has no effect), so the target is `Current` | 87 |
+| Conflicted revision superseded by two authorized corrections (no fork at step 5) | `PayloadConflict` historical; the two heads are a fallback fork | 88 |
+| As 88, plus an authorized retraction of one head | Both historical: one head remains, so the result can be `Current` | 89 |
+| As 88, plus authorized retractions of both heads | Both historical; the key is `Retracted` (the conflicted revision is not reinstated) | 90 |
+| As 89, but the retraction is unauthorized | The fallback fork stays: the retraction is rejected and both heads remain | 91 |
+| As 89, but the retraction’s authority is missing | The retraction defect is active, so no fallback fork is recorded | 92 |
 
 Historical defects remain in the trace as `HistoricalDefect` diagnostics, with their variants, original cause and reason. They are never listed among the result’s causes or attributions.
 
-Write *C* for the causes and *X* for the additions of current-affecting defects only.
+**Fork fallback.** If, after scoping, |*H*| > 1 and no defect is current-affecting, record a fork over *H* with cause `Conflicting` (reason `Fork`). It is current-affecting. This happens only when a step 5 fork was suppressed by a defect that is now historical (case 88). The fallback is not applied while any defect is current-affecting, even one that does not concern the heads’ multiplicity (case 92). It never replaces a recorded step 5 fork, which is still current-affecting whenever |*H*| > 1.
+
+Write *C* for the causes and *X* for the additions of current-affecting defects only, including a fallback fork. After the fallback, *C* and *X* cannot both be empty while |*H*| > 1, so the table below always yields a result with a nonempty cause set when unresolved.
 
 | Condition | Result |
 |---|---|
@@ -756,6 +766,11 @@ All cases start from D0. Every row was traced manually through 1.5, 2.1 and 4.
 | 85 | Retracted correction with unknown authority | s1/r1@1 `Affirmed`; s1/r1@2 `Denied`, supersedes @1, `perm omitted`; retraction x2 of @2, `+amend` | `Unresolved{Missing}` @s1/r1 | Unknown(Missing) | `CorrectionAuthorityMissing` active; possible {@1, excluded}. **Not** `Known(true)` | K1; `CorrectRecord` s1/r1 |
 | 86 | Control: known-authorized correction, then retracted | As 85, but @2 `+amend` | `Unresolved{Missing}` | Unknown(Missing) | @1 superseded; @2 retracted; key `Retracted`; no reinstatement | K1 |
 | 87 | Control: known-unauthorized correction, then retracted | As 85, but @2 `perm: []` | `Known(true, [s1/r1@1])` | True | @2 rejected `Unauthorized`; x2 has no effect | None |
+| 88 | Fork fallback after a historical conflict | Two occurrences of s1/r1@1 (`Affirmed`, `Denied`); @2a `Affirmed` and @2b `Denied` both supersede @1, `+amend` | `Unresolved{Conflicting}` @s1/r1 | Unknown(Conflicting) | `Fork` active over {@2a, @2b}; `PayloadConflict` at s1/r1@1 historical | K1; `CorrectRecord` s1/r1 |
+| 89 | Fork fallback resolved by an authorized retraction | As 88, plus retraction x1 of @2b, `+amend` | `Known(true, [s1/r1@2a])` | True | s1/r1 `Current(@2a)`; `PayloadConflict` historical; no fork | None |
+| 90 | Both surviving heads retracted | As 88, plus retractions x1 of @2b and x2 of @2a, both `+amend` | `Unresolved{Missing}` | Unknown(Missing) | Key `Retracted`; @1 not reinstated | K1 |
+| 91 | Fork fallback with an unauthorized retraction | As 89, but x1 `perm: []` | `Unresolved{Conflicting}` @s1/r1 | Unknown(Conflicting) | x1 rejected `Unauthorized`; fallback `Fork` active | K1; `CorrectRecord` s1/r1 |
+| 92 | Retraction authority missing after a historical conflict | As 89, but x1 `perm omitted` | `Unresolved{Missing}` @s1/r1 | Unknown(Missing) | `RetractionAuthorityMissing` active; no fallback fork; possible {@2a, @2b, excluded} | K1; `CorrectRecord` s1/r1 |
 
 ### 7.5 Invariance checks
 
@@ -810,6 +825,7 @@ These must hold for every case:
 11. Payload equality, normative in [CANONICALIZATION.md](conformance/explicit-assertion-v0/CANONICALIZATION.md). Equality is defined over normalized payload values. The SHA-256 digest of RFC 8785 bytes only identifies variants.
 12. Key-closed gap dimensions, under which irrelevance is exact. Conflicted revisions stay conflicts, and undeterminable envelope membership stays unresolved.
 13. S1 defect scoping: only defects involving a possible current revision affect the result; others are historical diagnostics.
+14. Fork fallback: several remaining heads with no current-affecting defect are a fork (`Conflicting`), so an unresolved S1 result never has an empty cause set.
 
 **Possible conflicts needing a Stage A amendment.** None found. Items to confirm:
 
@@ -819,7 +835,7 @@ These must hold for every case:
 
 **Query/predicate split.** The query carries the reasoning. A projection-only Predicate is optional naming and composition structure. No node kind is added or removed.
 
-**Conformance fixtures.** [conformance/explicit-assertion-v0/](conformance/explicit-assertion-v0/README.md) holds machine-readable fixtures for cases 1–87, mapped by case number, with expected outputs written from this contract. They are proposed, like this document.
+**Conformance fixtures.** [conformance/explicit-assertion-v0/](conformance/explicit-assertion-v0/README.md) holds machine-readable fixtures for cases 1–92, mapped by case number, with expected outputs written from this contract. They are proposed, like this document.
 
 **Remaining items.**
 

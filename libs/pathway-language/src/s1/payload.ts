@@ -5,13 +5,18 @@
  */
 import { createHash } from 'node:crypto';
 import { canonicalize } from 'json-canonicalize';
-import type { JsonValue } from './types';
+import type { JsonValue, UndeclaredField } from './types';
 
 type JsonObject = { readonly [key: string]: JsonValue };
-type Declaration = Readonly<Record<string, readonly string[] | null>>;
+/**
+ * Field name → declared nested names (`null`: scalar or opaque). A Map, not an object literal,
+ * so lookups never see inherited properties such as `constructor` or `__proto__`.
+ */
+type Declaration = ReadonlyMap<string, readonly string[] | null>;
+const declaration = (fields: Record<string, readonly string[] | null>): Declaration => new Map(Object.entries(fields));
 
-/** Declared fields of demo-model@0.1 (CANONICALIZATION.md §2). `null`: scalar or opaque. */
-const REVISION_FIELDS: Declaration = {
+/** Declared fields of demo-model@0.1 (CANONICALIZATION.md §2). */
+const REVISION_FIELDS = declaration({
   key: ['source', 'localId'],
   revision: null,
   recordType: null,
@@ -24,14 +29,14 @@ const REVISION_FIELDS: Declaration = {
   assertionKind: null,
   author: ['actor', 'permissions'],
   provenance: ['acquisition', 'sourceRecordRef'],
-};
-const RETRACTION_FIELDS: Declaration = {
+});
+const RETRACTION_FIELDS = declaration({
   id: null,
   key: ['source', 'localId'],
   target: ['source', 'localId', 'revision'],
   author: ['actor', 'permissions'],
   provenance: ['acquisition', 'sourceRecordRef'],
-};
+});
 const IDENTITY_AND_METADATA = {
   revision: ['key', 'revision', 'provenance'],
   retraction: ['id', 'provenance'],
@@ -65,25 +70,29 @@ export interface PayloadIdentity {
   readonly digest: string;
   readonly payload: JsonObject;
   readonly undeclaredPaths: readonly string[];
+  /** Undeclared fields, kept verbatim (CANONICALIZATION.md §2), sorted by path. */
+  readonly undeclaredFields: readonly UndeclaredField[];
 }
 
 /** CANONICALIZATION.md §§1–7 for one occurrence. Never mutates its input. */
 export function payloadIdentity(occurrence: JsonObject, kind: 'revision' | 'retraction'): PayloadIdentity {
   const decl = kind === 'revision' ? REVISION_FIELDS : RETRACTION_FIELDS;
-  const undeclared: string[] = [];
+  const undeclared: UndeclaredField[] = [];
+  // Only declared names are ever assigned below, so `payload` and `kept` never receive
+  // `__proto__` or another name with special meaning on a plain object.
   const payload: Record<string, JsonValue> = {};
   for (const [field, value] of Object.entries(occurrence)) {
-    if (!(field in decl)) {
-      undeclared.push(field);
+    const nested = decl.get(field);
+    if (nested === undefined) {
+      undeclared.push({ path: field, value });
       continue;
     }
-    const nested = decl[field];
     let v: JsonValue = value;
     if (nested && isObject(value)) {
       const kept: Record<string, JsonValue> = {};
       for (const [sub, subValue] of Object.entries(value)) {
         if (nested.includes(sub)) kept[sub] = subValue;
-        else undeclared.push(`${field}.${sub}`);
+        else undeclared.push({ path: `${field}.${sub}`, value: subValue });
       }
       v = kept;
     }
@@ -100,10 +109,12 @@ export function payloadIdentity(occurrence: JsonObject, kind: 'revision' | 'retr
   }
   assertRepresentable(payload);
   const canonical = canonicalize(payload);
+  const undeclaredFields = undeclared.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
   return {
     canonical,
     digest: createHash('sha256').update(canonical, 'utf8').digest('hex'),
     payload,
-    undeclaredPaths: undeclared.sort(),
+    undeclaredPaths: undeclaredFields.map((u) => u.path),
+    undeclaredFields,
   };
 }

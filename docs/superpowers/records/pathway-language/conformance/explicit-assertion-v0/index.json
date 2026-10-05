@@ -276,6 +276,21 @@
     ],
     "87": [
       "EA-087"
+    ],
+    "88": [
+      "EA-088"
+    ],
+    "89": [
+      "EA-089"
+    ],
+    "90": [
+      "EA-090"
+    ],
+    "91": [
+      "EA-091"
+    ],
+    "92": [
+      "EA-092"
     ]
   },
   "pairs": [
@@ -336,6 +351,15 @@
         "EA-083"
       ],
       "claim": "An authorized retraction of the competing branch makes the fork historical; an unauthorized retraction or one with unresolved authority does not"
+    },
+    {
+      "before": "EA-088",
+      "after": "EA-089",
+      "controls": [
+        "EA-091",
+        "EA-092"
+      ],
+      "claim": "When a now-historical payload conflict suppressed the step 5 fork, two surviving heads with no active defect are a fallback Fork; an authorized retraction of one head resolves it, an unauthorized retraction or one with unresolved authority does not"
     }
   ],
   "contrasts": [
@@ -389,6 +413,27 @@
         "EA-087"
       ],
       "claim": "Retracting a correction whose authority is unknown keeps the supersession uncertainty (Unresolved, possible {@1, excluded}); with known authority the key is Retracted (no reinstatement), and with known lack of authority @1 is Current"
+    },
+    {
+      "fixtures": [
+        "EA-084",
+        "EA-088"
+      ],
+      "claim": "A fork recorded at step 5 and the step 7 fallback fork give the same result; only the historical PayloadConflict differs"
+    },
+    {
+      "fixtures": [
+        "EA-083",
+        "EA-092"
+      ],
+      "claim": "With retraction authority missing, a step 5 fork stays active (Missing, Conflicting); when the fork was suppressed by a now-historical conflict, the active retraction defect stands alone and the fallback adds no Fork (Missing)"
+    },
+    {
+      "fixtures": [
+        "EA-086",
+        "EA-090"
+      ],
+      "claim": "Retracting every surviving head leaves the key Retracted; a superseded revision, conflicted or not, is never reinstated"
     }
   ]
 }

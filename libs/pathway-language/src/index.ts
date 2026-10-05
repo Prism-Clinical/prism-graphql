@@ -25,7 +25,11 @@ export type {
   RecordKey,
   Rejection,
   RejectionReason,
+  RetractionAuthority,
+  RetractionEffect,
+  RetractionInfo,
   RetractionRef,
+  RetractionVariant,
   RevisionInfo,
   RevisionRef,
   RevisionState,
@@ -33,5 +37,6 @@ export type {
   S1Envelope,
   S1Input,
   S1Result,
+  UndeclaredField,
   Variant,
 } from './s1/types';

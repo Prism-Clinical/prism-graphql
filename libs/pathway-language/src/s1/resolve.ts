@@ -5,7 +5,8 @@
  * identity; input order, revision-ID order and timestamps never choose a revision. Output
  * lists are sorted only for stable representation (contract §5.3).
  */
-import { isObject, payloadIdentity, UnrepresentableError } from './payload';
+import { canonicalize } from 'json-canonicalize';
+import { isObject, payloadIdentity, UnrepresentableError, type PayloadIdentity } from './payload';
 import {
   DEMO_AMEND_PERMISSION,
   DEMO_AUTHORITY_RULE,
@@ -22,7 +23,11 @@ import {
   type PossibleCurrent,
   type RecordKey,
   type Rejection,
+  type RetractionAuthority,
+  type RetractionEffect,
+  type RetractionInfo,
   type RetractionRef,
+  type RetractionVariant,
   type RevisionInfo,
   type RevisionRef,
   type RevisionState,
@@ -113,6 +118,14 @@ interface InternalDefect {
   readonly active: (ctx: ScopeContext) => boolean;
 }
 
+interface RetractionGroup {
+  readonly ref: RetractionRef;
+  readonly key: RecordKey;
+  readonly variants: Map<string, { identity: PayloadIdentity; occurrences: Occurrence[] }>; // by digest
+  authority: RetractionAuthority;
+  effect: RetractionEffect | null; // set exactly once in step 6
+}
+
 interface ScopeContext {
   readonly finalHeads: ReadonlySet<string>; // refIds
   readonly retracted: ReadonlySet<string>; // refIds removed by valid retractions
@@ -132,9 +145,10 @@ function membershipOf(payload: JsonObject, env: S1Input['envelope']) {
   return { membership, defects: mismatch ? [] : defects };
 }
 
-const occurrenceOf = (occ: JsonObject, undeclaredPaths: readonly string[], inputIndex: number): Occurrence => ({
-  provenance: occ['provenance'] ?? null,
-  undeclaredPaths,
+const occurrenceOf = (occ: JsonObject, identity: PayloadIdentity, inputIndex: number): Occurrence => ({
+  provenance: Object.hasOwn(occ, 'provenance') ? (occ['provenance'] as JsonValue) : null,
+  undeclaredPaths: identity.undeclaredPaths,
+  undeclaredFields: identity.undeclaredFields,
   inputIndex,
 });
 
@@ -180,7 +194,7 @@ export function resolveRevisionHistory(input: S1Input): S1Result {
     const g = k.groups.get(refId(ref)) ?? { ref, variants: new Map() };
     k.groups.set(refId(ref), g);
     const existing = g.variants.get(identity.digest);
-    const occurrence = occurrenceOf(occ, identity.undeclaredPaths, inputIndex);
+    const occurrence = occurrenceOf(occ, identity, inputIndex);
     if (existing) existing.occurrences.push(occurrence);
     else {
       const m = membershipOf(identity.payload, env);
@@ -205,7 +219,7 @@ export function resolveRevisionHistory(input: S1Input): S1Result {
   }
 
   // ---------- Retractions: parse and group by (key.source, id) (step 6 grouping)
-  const retractionGroups = new Map<string, { ref: RetractionRef; key: RecordKey; variants: Map<string, { payload: JsonObject; inputIndex: number }> }>();
+  const retractionGroups = new Map<string, RetractionGroup>();
   input.retractions.forEach((occ, inputIndex) => {
     const key = isObject(occ) ? occ['key'] : undefined;
     const id = isObject(occ) ? occ['id'] : undefined;
@@ -226,13 +240,17 @@ export function resolveRevisionHistory(input: S1Input): S1Result {
       unidentified.push({ kind: 'retraction', inputIndex, reason: `not representable under RFC 8785: ${e.message}` });
       return;
     }
-    const g = retractionGroups.get(retractionId(ref)) ?? {
+    const g: RetractionGroup = retractionGroups.get(retractionId(ref)) ?? {
       ref,
       key: { source: key['source'], localId: key['localId'] },
       variants: new Map(),
+      authority: 'NotEvaluated',
+      effect: null,
     };
     retractionGroups.set(retractionId(ref), g);
-    if (!g.variants.has(identity.digest)) g.variants.set(identity.digest, { payload: identity.payload, inputIndex });
+    const v = g.variants.get(identity.digest) ?? { identity, occurrences: [] };
+    g.variants.set(identity.digest, v);
+    v.occurrences.push(occurrenceOf(occ, identity, inputIndex));
   });
 
   // ---------- Per-key analysis, steps 1–5
@@ -312,7 +330,7 @@ export function resolveRevisionHistory(input: S1Input): S1Result {
       if (st.conflicted.has(rid)) continue;
       const g = st.groups.get(rid) as RevisionGroup;
       const v = [...g.variants.values()][0] as ParsedVariant;
-      if (!('supersedes' in v.payload)) continue;
+      if (!Object.hasOwn(v.payload, 'supersedes')) continue;
       const source = g.ref;
       const sourceInH = (ctx: ScopeContext) => ctx.finalHeads.has(rid);
       const t = readRef(v.payload['supersedes']);
@@ -434,14 +452,15 @@ export function resolveRevisionHistory(input: S1Input): S1Result {
     }
   }
 
-  // ---------- Step 6: retractions
+  // ---------- Step 6: retractions. Each row records the group's effect (and authority, when read).
   for (const g of retractionGroups.values()) {
     const variants = [...g.variants.values()];
     if (variants.length > 1) {
       // Conflicted retraction: each in-envelope key any variant targets gets Conflicting + excluded.
+      g.effect = { kind: 'Defect', cause: 'Conflicting', reason: 'RetractionConflict' };
       const targets = new Map<string, RevisionRef>();
       for (const rv of variants) {
-        const t = readRef(rv.payload['target']);
+        const t = readRef(rv.identity.payload['target']);
         if (typeof t !== 'string') targets.set(refId(t), t);
       }
       for (const [tid, t] of targets) {
@@ -451,32 +470,39 @@ export function resolveRevisionHistory(input: S1Input): S1Result {
       }
       continue;
     }
-    const payload = (variants[0] as { payload: JsonObject }).payload;
+    const payload = (variants[0] as { identity: PayloadIdentity }).identity.payload;
     const t = readRef(payload['target']);
     if (t === 'absent' || t === 'malformed') {
-      unattributable.push({ ref: g.ref, cause: t === 'absent' ? 'Missing' : 'Invalid' });
+      const cause = t === 'absent' ? 'Missing' : 'Invalid';
+      g.effect = { kind: 'Unattributable', cause };
+      unattributable.push({ ref: g.ref, cause });
       continue;
     }
     if (!sameKey(t, g.key)) {
+      g.effect = { kind: 'Rejected', reason: 'CrossKeyRetraction' };
       rejections.push({ item: { kind: 'retraction', ref: g.ref }, reason: 'CrossKeyRetraction', target: t });
       states.get(keyId(t))?.diagnostics.push({ code: 'CrossKeyRetraction', from: g.ref, target: t });
       continue;
     }
     const st = states.get(keyId(t));
     if (!st) {
+      g.effect = { kind: 'NoEffect', reason: 'TargetKeyOutsideEnvelope' };
       outsideEnvelope.push({ kind: 'retraction', ref: g.ref }); // target key not in the envelope: traced only
       continue;
     }
     const tid = refId(t);
     if (st.outOfEnvelope.has(tid)) {
+      g.effect = { kind: 'NoEffect', reason: 'TargetOutOfEnvelope' };
       st.diagnostics.push({ code: 'RetractionTargetsOutOfEnvelopeRevision', from: g.ref, target: t });
       continue;
     }
     if (st.rejected.has(tid)) {
+      g.effect = { kind: 'NoEffect', reason: 'TargetRejected' };
       st.diagnostics.push({ code: 'RetractionTargetsRejectedRevision', from: g.ref, target: t });
       continue;
     }
     if (!st.groups.has(tid)) {
+      g.effect = { kind: 'Defect', cause: 'Missing', reason: 'RetractionTargetAbsent' };
       st.defects.push({
         cause: 'Missing',
         reason: 'RetractionTargetAbsent',
@@ -488,18 +514,26 @@ export function resolveRevisionHistory(input: S1Input): S1Result {
       continue;
     }
     const auth = authority(payload['author']);
+    g.authority = ({ authorized: 'Authorized', unauthorized: 'Unauthorized', missing: 'Missing', malformed: 'Malformed' } as const)[auth];
     if (auth === 'unauthorized') {
+      g.effect = { kind: 'Rejected', reason: 'Unauthorized' };
       rejections.push({ item: { kind: 'retraction', ref: g.ref }, reason: 'Unauthorized', target: t });
       continue;
     }
     if (auth === 'missing' || auth === 'malformed') {
-      st.defects.push(
-        retractionDefect(auth === 'missing' ? 'Missing' : 'Invalid', auth === 'missing' ? 'RetractionAuthorityMissing' : 'RetractionAuthorityMalformed', g.ref, t, tid, st),
-      );
+      const cause = auth === 'missing' ? 'Missing' : 'Invalid';
+      const reason = auth === 'missing' ? 'RetractionAuthorityMissing' : 'RetractionAuthorityMalformed';
+      g.effect = { kind: 'Defect', cause, reason };
+      st.defects.push(retractionDefect(cause, reason, g.ref, t, tid, st));
       continue;
     }
-    if (st.heads.has(tid)) st.retracted.add(tid);
-    else st.diagnostics.push({ code: 'RetractionTargetsSupersededRevision', from: g.ref, target: t });
+    if (st.heads.has(tid)) {
+      g.effect = { kind: 'Removed' };
+      st.retracted.add(tid);
+    } else {
+      g.effect = { kind: 'NoEffect', reason: 'TargetSuperseded' };
+      st.diagnostics.push({ code: 'RetractionTargetsSupersededRevision', from: g.ref, target: t });
+    }
   }
 
   // ---------- Step 7: scope defects and decide
@@ -520,20 +554,26 @@ export function resolveRevisionHistory(input: S1Input): S1Result {
         pub.additions.forEach((a) => additions.add(a));
       } else historical.push({ ...pub, additions: [] });
     }
+    // Step 7 fork fallback: several final heads and no active defect (a step 5 fork was
+    // suppressed by a defect that is now historical). Recorded only in exactly this condition.
+    if (active.length === 0 && finalHeads.size > 1) {
+      active.push({
+        cause: 'Conflicting',
+        reason: 'Fork',
+        subject: { kind: 'key', ref: st.key },
+        involves: sortIds([...finalHeads], refById).map((id) => refById.get(id) as RevisionRef),
+        additions: [],
+      });
+      causes.add('Conflicting');
+    }
     let status: KeyResolution['status'];
     let current: NodeRef | null = null;
-    let contractGap: string | null = null;
     if (st.nodes.size === 0 && causes.size === 0 && additions.size === 0) status = 'NoRecord';
     else if (causes.size === 0 && additions.size === 0) {
       if (finalHeads.size === 1) {
         status = 'Current';
         current = { revision: refById.get([...finalHeads][0] as string) as RevisionRef };
-      } else if (finalHeads.size === 0) status = 'Retracted';
-      else {
-        status = 'ContractUndefined';
-        contractGap =
-          'Several heads remain with no active defect: a fork was not recorded at step 5 because another defect existed, and that defect is now historical. Contract §2.1 step 7 then yields UnresolvedRevision with an empty cause set, which Stage A §4.1 forbids.';
-      }
+      } else status = 'Retracted'; // finalHeads.size === 0: the fallback above covers > 1
     } else status = 'UnresolvedRevision';
 
     const possibleCurrent: PossibleCurrent[] = [];
@@ -570,7 +610,6 @@ export function resolveRevisionHistory(input: S1Input): S1Result {
       historicalDefects: sortDefects(historical),
       revisions,
       diagnostics: [...st.diagnostics].sort((a, b) => compareTuples(diagnosticTuple(a), diagnosticTuple(b))),
-      contractGap,
     });
   }
 
@@ -578,6 +617,9 @@ export function resolveRevisionHistory(input: S1Input): S1Result {
     experimental: 'nonclinical-s1-v0',
     keys: results.sort((a, b) => compareTuples([a.key.source, a.key.localId], [b.key.source, b.key.localId])),
     rejections: rejections.sort((a, b) => compareTuples(itemTuple(a), itemTuple(b))),
+    retractions: [...retractionGroups.values()]
+      .map(publicRetraction)
+      .sort((a, b) => compareTuples([a.ref.source, a.ref.id], [b.ref.source, b.ref.id])),
     outsideEnvelope: outsideEnvelope.sort((a, b) =>
       compareTuples(a.kind === 'revision' ? refTuple(a.ref) : [a.ref.source, a.ref.id], b.kind === 'revision' ? refTuple(b.ref) : [b.ref.source, b.ref.id]),
     ),
@@ -600,6 +642,27 @@ export function resolveRevisionHistory(input: S1Input): S1Result {
 
 // ---------- helpers
 
+function publicRetraction(g: RetractionGroup): RetractionInfo {
+  const variants: RetractionVariant[] = sortVariants(
+    [...g.variants.values()].map(({ identity, occurrences }) => {
+      const t = readRef(identity.payload['target']);
+      return {
+        digest: identity.digest,
+        canonicalPayload: identity.canonical,
+        target: t === 'absent' ? 'Absent' : t === 'malformed' ? 'Malformed' : t,
+        occurrences: sortOccurrences(occurrences),
+      };
+    }),
+  );
+  return { ref: g.ref, key: g.key, variants, authority: g.authority, effect: g.effect as RetractionEffect };
+}
+
+/** Contract §5.3: by provenance.acquisition, then provenance.sourceRecordRef (code point). */
+function sortOccurrences(os: readonly Occurrence[]): Occurrence[] {
+  // Input index only separates occurrences with identical provenance.
+  return [...os].sort((a, b) => compareTuples(provenanceTuple(a), provenanceTuple(b)) || a.inputIndex - b.inputIndex);
+}
+
 function itemTuple(r: Rejection): string[] {
   return r.item.kind === 'revision' ? ['revision', ...refTuple(r.item.ref)] : ['retraction', r.item.ref.source, r.item.ref.id];
 }
@@ -617,11 +680,7 @@ function publicVariant(v: ParsedVariant): Variant {
     digest: v.digest,
     canonicalPayload: v.canonical,
     membership: v.membership,
-    // Contract §5.3: by provenance.acquisition, then provenance.sourceRecordRef (code point).
-    // Input index only separates occurrences with identical provenance.
-    occurrences: [...v.occurrences].sort(
-      (a, b) => compareTuples(provenanceTuple(a), provenanceTuple(b)) || a.inputIndex - b.inputIndex,
-    ),
+    occurrences: sortOccurrences(v.occurrences),
   };
 }
 
@@ -630,10 +689,11 @@ function diagnosticTuple(d: KeyDiagnostic): string[] {
   return [d.code, ...refTuple(d.target), ...from];
 }
 
+/** Contract §5.3 keys, then the occurrence's remaining content, so ties never depend on input order. */
 function provenanceTuple(o: Occurrence): string[] {
   const p = o.provenance;
-  const field = (k: string) => (isObject(p) && typeof p[k] === 'string' ? (p[k] as string) : '');
-  return [field('acquisition'), field('sourceRecordRef'), JSON.stringify(p)];
+  const field = (k: string) => (isObject(p) && Object.hasOwn(p, k) && typeof p[k] === 'string' ? (p[k] as string) : '');
+  return [field('acquisition'), field('sourceRecordRef'), canonicalize(p), canonicalize(o.undeclaredFields)];
 }
 
 function subjectTuple(s: DefectSubject): string[] {

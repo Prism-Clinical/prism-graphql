@@ -289,13 +289,176 @@ describe('steps 5–7: forks, retractions and history resolution', () => {
     expect(r.unattributableRetractions).toEqual([{ ref: { source: 's1', id: 'x9' }, cause: 'Missing' }]);
   });
 
-  it('records the contract gap explicitly instead of inventing a cause', () => {
-    // Conflicted @1 superseded by two valid corrections: no fork is recorded at step 5 (another
-    // defect exists), the conflict becomes historical, and step 7 has no valid outcome.
-    const r = run([...conflicted(), ...fork().slice(1)]);
+  // Step 7 fork fallback: conflicted @1, superseded by two authorized corrections. Step 5 records
+  // no fork (PayloadConflict exists); step 7 makes PayloadConflict historical; two heads remain.
+  const conflictedFork = () => [...conflicted(), ...fork().slice(1)];
+  it('88: two heads left with no active defect are a Fork (Conflicting); PayloadConflict stays historical', () => {
+    const r = run(conflictedFork());
+    expect(view(r, 's1/r1')).toEqual({
+      status: 'UnresolvedRevision', current: null, causes: ['Conflicting'], possible: ['s1/r1@2a', 's1/r1@2b'], active: ['Fork'], historical: ['PayloadConflict'],
+    });
     const k = key(r, 's1/r1');
-    expect(k.status).toBe('ContractUndefined');
-    expect(k.contractGap).toMatch(/empty cause set/);
+    expect(k.activeDefects).toEqual([
+      { cause: 'Conflicting', reason: 'Fork', subject: { kind: 'key', ref: { source: 's1', localId: 'r1' } }, involves: [sup('s1', 'r1', '2a'), sup('s1', 'r1', '2b')], additions: [] },
+    ]);
+    expect(k.historicalDefects.map((d) => [d.reason, d.subject])).toEqual([['PayloadConflict', { kind: 'revision', ref: sup('s1', 'r1', '1') }]]);
+  });
+  it('89: authorized retraction of one surviving head leaves the other Current; no fork', () => {
+    expect(view(run(conflictedFork(), retract2b()), 's1/r1')).toEqual({
+      status: 'Current', current: 's1/r1@2a', causes: [], possible: [], active: [], historical: ['PayloadConflict'],
+    });
+  });
+  it('90: authorized retraction of both surviving heads is Retracted; @1 is not reinstated', () => {
+    const r = run(conflictedFork(), [...retract2b(), retr('x2', 's1', 'r1', sup('s1', 'r1', '2a'))]);
+    expect(view(r, 's1/r1')).toEqual({ status: 'Retracted', current: null, causes: [], possible: [], active: [], historical: ['PayloadConflict'] });
+    expect(key(r, 's1/r1').revisions.map((x) => [x.ref.revision, x.state])).toEqual([['1', 'superseded'], ['2a', 'retracted'], ['2b', 'retracted']]);
+  });
+  it('91: unauthorized retraction of one head is rejected; the fallback Fork keeps the key unresolved', () => {
+    const r = run(conflictedFork(), retract2b(NO_PERM));
+    expect(view(r, 's1/r1')).toEqual({
+      status: 'UnresolvedRevision', current: null, causes: ['Conflicting'], possible: ['s1/r1@2a', 's1/r1@2b'], active: ['Fork'], historical: ['PayloadConflict'],
+    });
+    expect(r.rejections.map((x) => x.reason)).toEqual(['Unauthorized']);
+  });
+  it('92: undeterminable retraction authority stays active, so the fallback adds no Fork', () => {
+    // An active defect remains, so the concrete fallback (no active defect at all) does not apply.
+    expect(view(run(conflictedFork(), retract2b(NO_AUTH_FIELD)), 's1/r1')).toEqual({
+      status: 'UnresolvedRevision', current: null, causes: ['Missing'], possible: ['s1/r1@2a', 's1/r1@2b', 'excluded'], active: ['RetractionAuthorityMissing'], historical: ['PayloadConflict'],
+    });
+  });
+  it('a fork recorded at step 5 is not duplicated by the fallback', () => {
+    expect(key(run(fork()), 's1/r1').activeDefects.filter((d) => d.reason === 'Fork')).toHaveLength(1);
+    expect(key(run(fork(), retract2b(NO_PERM)), 's1/r1').activeDefects.map((d) => d.reason)).toEqual(['Fork']);
+  });
+});
+
+describe('undeclared fields named like inherited JavaScript properties', () => {
+  /** Inserts `"name": value` as an own JSON property (JSON.parse, never an object literal). */
+  const withField = (occ: JsonValue, name: string, value: JsonValue, at: 'top' | 'concept'): JsonValue => {
+    const member = `${JSON.stringify(name)}:${JSON.stringify(value)}`;
+    const text = JSON.stringify(occ);
+    return JSON.parse(at === 'top' ? `{${member},${text.slice(1)}` : text.replace('"concept":{', `"concept":{${member},`)) as JsonValue;
+  };
+  const cases = ['constructor', '__proto__', 'toString', 'hasOwnProperty'].flatMap((name) =>
+    (['extra', { x: 1 }] as JsonValue[]).flatMap((value) => (['top', 'concept'] as const).map((at) => [name, value, at] as const)),
+  );
+  /** The result without undeclared-field diagnostics, occurrence lists or input positions. */
+  const semantic = (r: S1Result) =>
+    JSON.parse(JSON.stringify(r, (k, v) => (['occurrences', 'inputIndex'].includes(k) ? undefined : v))) as unknown;
+
+  it.each(cases)('%s = %j (%s) is a diagnostic only: no crash, no payload, no conflict', (name, value, at) => {
+    const plain = rev('s1', 'r1', '1');
+    const extra = withField(plain, name, value, at);
+    const path = at === 'top' ? name : `concept.${name}`;
+    expect(Object.prototype.hasOwnProperty.call(at === 'top' ? extra : (extra as { concept: object }).concept, name)).toBe(true);
+    const r = run([plain, extra]);
+    expect(semantic(r)).toEqual(semantic(run([plain, plain])));
+    const [variant, ...more] = key(r, 's1/r1').revisions[0]?.variants ?? [];
+    expect(more).toEqual([]);
+    expect(variant?.canonicalPayload).not.toContain(name);
+    expect(variant?.occurrences.map((o) => o.undeclaredPaths)).toEqual([[], [path]]);
+    expect(variant?.occurrences[1]?.undeclaredFields).toEqual([{ path, value }]);
+  });
+
+  it.each(cases)('%s = %j (%s) on a retraction is a diagnostic only', (name, value, at) => {
+    const x = retr('x1', 's1', 'r1', sup('s1', 'r1', '1'));
+    const extra = at === 'top' ? withField(x, name, value, 'top') : JSON.parse(JSON.stringify(x).replace('"target":{', `"target":{${JSON.stringify(name)}:${JSON.stringify(value)},`));
+    const r = run([rev('s1', 'r1', '1')], [x, extra]);
+    expect(semantic(r)).toEqual(semantic(run([rev('s1', 'r1', '1')], [x, x])));
+    expect(r.retractions[0]?.variants).toHaveLength(1);
+    expect(r.retractions[0]?.variants[0]?.occurrences[1]?.undeclaredPaths).toEqual([at === 'top' ? name : `target.${name}`]);
+  });
+
+  it('a declared field still participates in payload identity', () => {
+    expect(key(run([rev('s1', 'r1', '1'), rev('s1', 'r1', '1', { episode: 'E2' })]), 's1/r1').activeDefects.map((d) => d.reason)).toEqual(['PayloadConflict']);
+  });
+});
+
+describe('retraction trace', () => {
+  const r1 = () => [rev('s1', 'r1', '1')];
+  const prov = (id: string, acquisition = 'a0') => ({ acquisition, sourceRecordRef: `s1:${id}` });
+  const occ = (provenance: JsonValue, undeclaredPaths: string[] = [], undeclaredFields: unknown[] = []) => ({ provenance, undeclaredPaths, undeclaredFields, inputIndex: expect.any(Number) });
+
+  it('a valid retraction producing Retracted is traceable to its id, target, authority and provenance', () => {
+    const r = run(r1(), [retr('x1', 's1', 'r1', sup('s1', 'r1', '1'))]);
+    expect(key(r, 's1/r1').status).toBe('Retracted');
+    expect(r.retractions).toEqual([
+      {
+        ref: { source: 's1', id: 'x1' },
+        key: { source: 's1', localId: 'r1' },
+        authority: 'Authorized',
+        effect: { kind: 'Removed' },
+        variants: [{ digest: expect.stringMatching(/^[0-9a-f]{64}$/), canonicalPayload: expect.any(String), target: sup('s1', 'r1', '1'), occurrences: [occ(prov('x1'))] }],
+      },
+    ]);
+    const payload = JSON.parse(r.retractions[0]?.variants[0]?.canonicalPayload ?? 'null') as Record<string, unknown>;
+    expect(Object.keys(payload)).toEqual(['author', 'key', 'target']); // CANONICALIZATION §1: no id, no provenance
+  });
+
+  it('identical duplicates keep every occurrence and change no semantic result', () => {
+    const x = retr('x1', 's1', 'r1', sup('s1', 'r1', '1'));
+    const again = { ...(x as object), provenance: prov('x1', 'a1'), note: 'n' } as JsonValue;
+    const single = run(r1(), [x]);
+    const dup = run(r1(), [again, x]);
+    const semantic = (r: S1Result) => JSON.parse(JSON.stringify(r, (k, v) => (k === 'occurrences' ? undefined : v))) as unknown;
+    expect(semantic(dup)).toEqual(semantic(single));
+    expect(dup.retractions[0]?.variants[0]?.occurrences).toEqual([occ(prov('x1')), occ(prov('x1', 'a1'), ['note'], [{ path: 'note', value: 'n' }])]);
+  });
+
+  it('conflicting variants stay separately inspectable, with authority not evaluated', () => {
+    const r = run(r1(), [retr('x1', 's1', 'r1', sup('s1', 'r1', '1')), retr('x1', 's1', 'r1', sup('s1', 'r1', '9'), NO_PERM)]);
+    const [t] = r.retractions;
+    expect(t?.authority).toBe('NotEvaluated');
+    expect(t?.effect).toEqual({ kind: 'Defect', cause: 'Conflicting', reason: 'RetractionConflict' });
+    expect(t?.variants.map((v) => v.target).sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)))).toEqual([sup('s1', 'r1', '1'), sup('s1', 'r1', '9')]);
+    expect(t?.variants.every((v) => v.occurrences.length === 1)).toBe(true);
+  });
+
+  const chain = () => [rev('s1', 'r1', '1'), rev('s1', 'r1', '2', { supersedes: sup('s1', 'r1', '1'), author: AMEND })];
+  it.each([
+    ['already-superseded target', chain(), sup('s1', 'r1', '1'), AMEND, 'Authorized', { kind: 'NoEffect', reason: 'TargetSuperseded' }],
+    ['unauthorized', r1(), sup('s1', 'r1', '1'), NO_PERM, 'Unauthorized', { kind: 'Rejected', reason: 'Unauthorized' }],
+    ['authority missing', r1(), sup('s1', 'r1', '1'), NO_AUTH_FIELD, 'Missing', { kind: 'Defect', cause: 'Missing', reason: 'RetractionAuthorityMissing' }],
+    ['authority malformed', r1(), sup('s1', 'r1', '1'), { actor: 'u2', permissions: 'yes' }, 'Malformed', { kind: 'Defect', cause: 'Invalid', reason: 'RetractionAuthorityMalformed' }],
+    ['rejected target', [rev('s1', 'r1', '1'), rev('s1', 'r1', '2', { supersedes: sup('s1', 'r1', '1'), author: NO_PERM })], sup('s1', 'r1', '2'), AMEND, 'NotEvaluated', { kind: 'NoEffect', reason: 'TargetRejected' }],
+    ['out-of-envelope target', [rev('s1', 'r1', '1'), rev('s1', 'r1', '2', { subject: 'P2' })], sup('s1', 'r1', '2'), AMEND, 'NotEvaluated', { kind: 'NoEffect', reason: 'TargetOutOfEnvelope' }],
+    ['absent target revision', r1(), sup('s1', 'r1', '9'), AMEND, 'NotEvaluated', { kind: 'Defect', cause: 'Missing', reason: 'RetractionTargetAbsent' }],
+    ['target key outside the envelope', [rev('s1', 'r5', '1', { subject: 'P2' })], sup('s1', 'r5', '1'), AMEND, 'NotEvaluated', { kind: 'NoEffect', reason: 'TargetKeyOutsideEnvelope' }],
+  ] as const)('%s', (_n, revisions, target, author, authority, effect) => {
+    const localId = (target as { localId: string }).localId;
+    const r = run([...revisions], [retr('x1', 's1', localId, target, author)]);
+    expect(r.retractions.map((x) => [x.authority, x.effect, x.variants.map((v) => v.target)])).toEqual([[authority, effect, [target]]]);
+  });
+
+  it.each([
+    ['absent target fields', { localId: 'r1' }, 'Absent', 'Missing'],
+    ['malformed target', 'r1@1', 'Malformed', 'Invalid'],
+  ] as const)('%s: no target is invented', (_n, target, shown, cause) => {
+    const r = run(r1(), [retr('x1', 's1', 'r1', target)]);
+    expect(r.retractions.map((x) => [x.authority, x.effect, x.variants.map((v) => v.target)])).toEqual([['NotEvaluated', { kind: 'Unattributable', cause }, [shown]]]);
+  });
+
+  it('cross-key retraction keeps its own key and the target it names', () => {
+    const r = run(r1(), [retr('x60', 's2', 'r60', sup('s1', 'r1', '1'))]);
+    expect(r.retractions.map((x) => [x.key, x.authority, x.effect, x.variants[0]?.target])).toEqual([
+      [{ source: 's2', localId: 'r60' }, 'NotEvaluated', { kind: 'Rejected', reason: 'CrossKeyRetraction' }, sup('s1', 'r1', '1')],
+    ]);
+  });
+
+  it('retraction traces and their occurrence order do not depend on input order', () => {
+    const rets = [
+      retr('x1', 's1', 'r1', sup('s1', 'r1', '1')),
+      { ...(retr('x1', 's1', 'r1', sup('s1', 'r1', '1')) as object), note: 'b' } as JsonValue,
+      { ...(retr('x1', 's1', 'r1', sup('s1', 'r1', '1')) as object), note: 'a' } as JsonValue,
+      retr('x2', 's1', 'r2', sup('s1', 'r2', '1'), NO_AUTH_FIELD),
+      retr('x2', 's1', 'r2', sup('s1', 'r2', '1')),
+      retr('x3', 's1', 'r2', { localId: 'r2' }),
+    ];
+    const revs = [rev('s1', 'r1', '1'), rev('s1', 'r2', '1')];
+    const strip = (r: S1Result) => JSON.parse(JSON.stringify(r, (k, v) => (k === 'inputIndex' ? undefined : v))) as unknown;
+    const baseline = strip(run(revs, rets));
+    expect(strip(run([...revs].reverse(), [...rets].reverse()))).toEqual(baseline);
+    expect(strip(run(revs, [...rets.slice(2), ...rets.slice(0, 2)]))).toEqual(baseline);
   });
 });
 
