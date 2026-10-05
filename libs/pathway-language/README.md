@@ -41,12 +41,13 @@ The `S1Result` also lists:
 
 | Field | Meaning |
 |---|---|
-| `ref`, `key` | Retraction identity (`key.source`, `id`) and the retraction’s own `key` |
-| `variants` | Each distinct payload: `digest`, `canonicalPayload` (`key`, `target`, `author`), `target` as received (`RevisionRef`, or `Absent` / `Malformed`; never inferred) and every `occurrence` with provenance and undeclared fields |
+| `ref` | Retraction identity (`key.source`, `id`) |
+| `key` | The retraction’s own `key` when every variant names the same one, else `Disagreed`. `key` is payload, so no single occurrence speaks for the group |
+| `variants` | Each distinct payload: the `key` it names, `digest`, `canonicalPayload` (`key`, `target`, `author`), `target` as received (`RevisionRef`, or `Absent` / `Malformed`; never inferred) and every `occurrence` with provenance and undeclared fields |
 | `authority` | `Authorized`, `Unauthorized`, `Missing` or `Malformed` (contract §1.3), or `NotEvaluated` when an earlier step 6 row (conflict, unattributable target, cross-key, target outside the envelope, out-of-envelope, rejected or absent target) decided the effect |
 | `effect` | `Removed`; `NoEffect` (`TargetSuperseded`, `TargetRejected`, `TargetOutOfEnvelope`, `TargetKeyOutsideEnvelope`); `Rejected` (`Unauthorized`, `CrossKeyRetraction`); `Defect` (cause and reason: `RetractionTargetAbsent`, `RetractionAuthorityMissing`, `RetractionAuthorityMalformed`, `RetractionConflict`); or `Unattributable` (`Missing` / `Invalid`) |
 
-A `Defect` effect says only that the defect was recorded. Whether it is still active is in the target key’s `activeDefects` / `historicalDefects`, under subject `{kind: 'retraction', ref}`. Retractions from undeclared sources are not traced here; like revisions, they appear only in `outsideEnvelope`.
+A `Defect` effect says only that the defect was recorded. Whether it is still active is in the target key’s `activeDefects` / `historicalDefects`, under subject `{kind: 'retraction', ref}`. Retractions from undeclared sources are not traced here; like revisions, they appear only in `outsideEnvelope` and are never evaluated. Their content is auditable only from the original frozen snapshot, which callers must retain.
 
 Identity tuples (`RecordKey`, `RevisionRef`, `RetractionRef`, `NodeRef`) are objects. Display strings exist only in the tests, for comparing with the fixtures’ notation.
 
@@ -54,7 +55,12 @@ Identity tuples (`RecordKey`, `RevisionRef`, `RetractionRef`, `NodeRef`) are obj
 
 **Undeclared fields.** Declared fields are looked up in a `Map`, never with `in` or indexing on an object literal, so a JSON property named `constructor`, `__proto__`, `toString` and so on is an ordinary undeclared field. It is excluded from the payload and digest, reported in `undeclaredPaths`, and kept verbatim in `undeclaredFields`.
 
-**Canonicalization.** Payload equality follows CANONICALIZATION.md. Serialization uses [`json-canonicalize`](https://www.npmjs.com/package/json-canonicalize) 3.0.1 (MIT; CommonJS-compatible; Node ≥ 8.5). Before adoption it was checked against all 24 RFC 8785 Appendix B number vectors and the RFC’s §3.2.3 sample, and the fixture checker independently verifies the same digests with a *different* library (`canonicalize`). `json-canonicalize` serializes lone surrogates instead of rejecting them, so `payload.ts` rejects them explicitly. No RFC 8785 serialization is hand-written here.
+**Canonicalization.** Payload equality follows CANONICALIZATION.md. Serialization uses [`canonicalize`](https://www.npmjs.com/package/canonicalize) 2.1.0 (Apache-2.0, by S. Erdtman, an RFC 8785 author). It is the last CommonJS release, with no engine constraint, so it runs on the repository’s Node ≥ 18. Later releases are ES modules requiring Node ≥ 18 (3.x/4.x) or ≥ 22 (5.x).
+- **Conformance test:** `src/__tests__/canonical-json.test.ts` checks it against all 24 RFC 8785 Appendix B number vectors and the §3.2.3 sample, with expected strings copied from the RFC. It also checks that members named `toJSON`, `__proto__` and `constructor` are ordinary: the library calls `toJSON` only when it is a function, which a JSON value never has.
+- **Cross-check:** the fixture checker verifies the same digests with `canonicalize@5.1.0`. That is a different major version by the same author, so the cross-check is weaker than a fully independent implementation. `validate.py` checks the number-free subset in Python.
+- **Lone surrogates:** 2.1.0 escapes them instead of rejecting them, so `payload.ts` rejects them explicitly.
+- No RFC 8785 serialization is hand-written here.
+- **History:** `json-canonicalize` 3.0.1, used until this change, serialized any object with a `toJSON` member through `JSON.stringify`, leaving its members unsorted. Two orderings of `{"toJSON":…,"b":…,"a":…}` inside a malformed value got different digests and a false `PayloadConflict`. CAN-12 now covers this.
 
 ## Running
 
@@ -69,7 +75,8 @@ This package has its own Jest configuration and is not part of the root Jest roo
 
 ## Tests and fixture coverage
 
-- **`src/__tests__/s1.test.ts`** has 97 independent tests (counting each parameterized case) whose expectations are derived by hand from the contract. They cover:
+- **`src/__tests__/canonical-json.test.ts`** has 28 tests of the RFC 8785 library (above).
+- **`src/__tests__/s1.test.ts`** has 99 independent tests (counting each parameterized case) whose expectations are derived by hand from the contract. They cover:
   - identical versus conflicting payloads, RFC 8785 number equality, absent versus `null`, and set-valued permissions;
   - authorized, unauthorized and undeterminable corrections;
   - subject changes, out-of-envelope targets, cross-local-ID corrections and undeterminable membership;
@@ -80,9 +87,10 @@ This package has its own Jest configuration and is not part of the root Jest roo
   - input-permutation and duplicate-occurrence invariance, and input immutability;
   - the step 7 fork fallback (cases 88–92), and that a step 5 fork is not duplicated;
   - undeclared fields named `constructor`, `__proto__`, `toString` and `hasOwnProperty`, with scalar and object values, at the top level and nested, on revisions and retractions. Inputs are built with `JSON.parse`, so `__proto__` is an own property;
-  - the retraction trace: a valid removal, every step 6 row, identical duplicates, conflicting variants, absent and malformed targets, and permutation invariance.
+  - the retraction trace: a valid removal, every step 6 row, identical duplicates, conflicting variants (including variants that name different keys, in both input orders), absent and malformed targets, and permutation invariance;
+  - a malformed value with a `toJSON` member received in two member orders (one variant, `Current`).
 - **`src/__tests__/s1-fixtures.test.ts`** runs the committed [explicit-assertion-v0 fixtures](../../docs/superpowers/records/pathway-language/conformance/explicit-assertion-v0/README.md) and checks **only** their S1 assertions. It never reports a fixture as passing as a whole. On the current fixtures it reports:
-  - **157 S1 assertions checked, 157 passing.** That is 89 trace facts (`keyResult`, `variants`, `occurrences`, `rejected`, `outOfEnvelope`, `outsideEnvelope`, and the `HistoricalDefect`, `CrossKeyCorrection` and `UndeclaredField` diagnostics) plus 68 canonicalization checks (bytes, digests, variant partition, undeclared fields).
+  - **164 S1 assertions checked, 164 passing.** That is 89 trace facts (`keyResult`, `variants`, `occurrences`, `rejected`, `outOfEnvelope`, `outsideEnvelope`, and the `HistoricalDefect`, `CrossKeyCorrection` and `UndeclaredField` diagnostics) plus 75 canonicalization checks (bytes, digests, variant partition, undeclared fields).
   - **32 S1-stage cause attributions checked one way:** each must be an active S1 defect. The absence of an attribution proves nothing, because attribution also depends on S5/S6 materiality.
   - **451 expected fields and trace facts out of S1 scope,** not checked: evidence, decision, Needs, candidacy, admissibility, classification, cells, gaps and so on.
   - **3 fixtures not run by S1:** EA-050 (whole-contract hole) and EA-051a/b (compilation).
@@ -111,5 +119,4 @@ Step 5 records a fork only when no other defect exists. If that other defect lat
 - S1 only: no candidacy (S2), admissibility (S3), selection, criteria, resolution, Needs, coverage or preview markers.
 - One schematic authority rule and one fictional evidence model (`demo-model@0.1`). No clinical definitions.
 - The fixtures assert S1 results only for some keys of some fixtures (see coverage above). No fixture asserts the retraction trace; it is covered by the independent tests only.
-- **Known discrepancy: an own `toJSON` member.** `json-canonicalize` serializes any object with a `toJSON` member using `JSON.stringify`, so its keys are not sorted. Smallest counterexample: two occurrences of one revision with `"assertion": {"toJSON":1,"b":1,"a":2}` and `"assertion": {"a":2,"b":1,"toJSON":1}` get different digests, which creates a false `PayloadConflict`. `canonicalize@5.1.0`, used by `check-canonical.cjs`, serializes both as `{"a":2,"b":1,"toJSON":1}`. This only arises inside a malformed value of a declared field: an undeclared top-level `toJSON` field is excluded before serialization. It is not fixed here, because a fix needs either hand-written RFC 8785 serialization or a different library.
-- **Asymmetry left by the concrete fallback.** With retraction authority missing on one of two heads, a fork recorded at step 5 stays active (EA-083: `Missing`, `Conflicting`). If the fork was suppressed by a now-historical conflict, only `Missing` remains (EA-092), because the fallback requires that no defect be active. Both results are unresolved with the same possible currents. Whether EA-092 should also be `Conflicting` would require a general rule for whether a defect explains multiple heads. That rule is deliberately not defined here.
+- **Asymmetry left by the concrete fallback.** With retraction authority missing on one of two heads, a fork recorded at step 5 stays active (EA-083: `Missing`, `Conflicting`). If the fork was suppressed by a now-historical conflict, only `Missing` remains (EA-092), because the fallback requires that no defect be active. Both results are unresolved with the same possible currents. Whether EA-092 should also be `Conflicting` would require a general rule for whether a defect explains multiple heads. That rule is deliberately not defined here. This is a known limitation of the narrow fallback, not an implementation error (review, 2026-10-05). Cause completeness must be revisited before building any behavior driven by causes, such as acquisition or conflict resolution.

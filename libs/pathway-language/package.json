@@ -13,7 +13,7 @@
     "test:s1": "jest src/__tests__/s1"
   },
   "dependencies": {
-    "json-canonicalize": "3.0.1"
+    "canonicalize": "2.1.0"
   },
   "devDependencies": {
     "@types/jest": "^29.0.3",

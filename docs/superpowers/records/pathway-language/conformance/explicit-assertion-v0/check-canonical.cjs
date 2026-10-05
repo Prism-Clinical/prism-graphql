@@ -29,7 +29,7 @@ const sha = (s) => crypto.createHash('sha256').update(Buffer.from(s, 'utf8')).di
 function payload(occ) {
   const out = {};
   for (const [k, v] of Object.entries(occ)) {
-    if (!(k in DECL)) continue;
+    if (!Object.hasOwn(DECL, k)) continue; // own names only: never constructor, __proto__, ...
     const sub = DECL[k];
     out[k] = sub && v !== null && typeof v === 'object' && !Array.isArray(v)
       ? Object.fromEntries(Object.entries(v).filter(([k2]) => sub.includes(k2)))

@@ -5,8 +5,7 @@
  * identity; input order, revision-ID order and timestamps never choose a revision. Output
  * lists are sorted only for stable representation (contract §5.3).
  */
-import { canonicalize } from 'json-canonicalize';
-import { isObject, payloadIdentity, UnrepresentableError, type PayloadIdentity } from './payload';
+import { canonicalJson, isObject, payloadIdentity, UnrepresentableError, type PayloadIdentity } from './payload';
 import {
   DEMO_AMEND_PERMISSION,
   DEMO_AUTHORITY_RULE,
@@ -120,8 +119,8 @@ interface InternalDefect {
 
 interface RetractionGroup {
   readonly ref: RetractionRef;
-  readonly key: RecordKey;
-  readonly variants: Map<string, { identity: PayloadIdentity; occurrences: Occurrence[] }>; // by digest
+  // By digest. `key` is payload, so it is per variant; no occurrence's key speaks for the group.
+  readonly variants: Map<string, { key: RecordKey; identity: PayloadIdentity; occurrences: Occurrence[] }>;
   authority: RetractionAuthority;
   effect: RetractionEffect | null; // set exactly once in step 6
 }
@@ -242,13 +241,12 @@ export function resolveRevisionHistory(input: S1Input): S1Result {
     }
     const g: RetractionGroup = retractionGroups.get(retractionId(ref)) ?? {
       ref,
-      key: { source: key['source'], localId: key['localId'] },
       variants: new Map(),
       authority: 'NotEvaluated',
       effect: null,
     };
     retractionGroups.set(retractionId(ref), g);
-    const v = g.variants.get(identity.digest) ?? { identity, occurrences: [] };
+    const v = g.variants.get(identity.digest) ?? { key: { source: key['source'], localId: key['localId'] }, identity, occurrences: [] };
     g.variants.set(identity.digest, v);
     v.occurrences.push(occurrenceOf(occ, identity, inputIndex));
   });
@@ -470,7 +468,8 @@ export function resolveRevisionHistory(input: S1Input): S1Result {
       }
       continue;
     }
-    const payload = (variants[0] as { identity: PayloadIdentity }).identity.payload;
+    const { key: ownKey, identity } = variants[0] as { key: RecordKey; identity: PayloadIdentity };
+    const payload = identity.payload;
     const t = readRef(payload['target']);
     if (t === 'absent' || t === 'malformed') {
       const cause = t === 'absent' ? 'Missing' : 'Invalid';
@@ -478,7 +477,7 @@ export function resolveRevisionHistory(input: S1Input): S1Result {
       unattributable.push({ ref: g.ref, cause });
       continue;
     }
-    if (!sameKey(t, g.key)) {
+    if (!sameKey(t, ownKey)) {
       g.effect = { kind: 'Rejected', reason: 'CrossKeyRetraction' };
       rejections.push({ item: { kind: 'retraction', ref: g.ref }, reason: 'CrossKeyRetraction', target: t });
       states.get(keyId(t))?.diagnostics.push({ code: 'CrossKeyRetraction', from: g.ref, target: t });
@@ -644,9 +643,10 @@ export function resolveRevisionHistory(input: S1Input): S1Result {
 
 function publicRetraction(g: RetractionGroup): RetractionInfo {
   const variants: RetractionVariant[] = sortVariants(
-    [...g.variants.values()].map(({ identity, occurrences }) => {
+    [...g.variants.values()].map(({ key, identity, occurrences }) => {
       const t = readRef(identity.payload['target']);
       return {
+        key,
         digest: identity.digest,
         canonicalPayload: identity.canonical,
         target: t === 'absent' ? 'Absent' : t === 'malformed' ? 'Malformed' : t,
@@ -654,7 +654,9 @@ function publicRetraction(g: RetractionGroup): RetractionInfo {
       };
     }),
   );
-  return { ref: g.ref, key: g.key, variants, authority: g.authority, effect: g.effect as RetractionEffect };
+  const [first, ...rest] = variants.map((v) => v.key);
+  const key = first && rest.every((k) => sameKey(k, first)) ? first : 'Disagreed';
+  return { ref: g.ref, key, variants, authority: g.authority, effect: g.effect as RetractionEffect };
 }
 
 /** Contract §5.3: by provenance.acquisition, then provenance.sourceRecordRef (code point). */
@@ -693,7 +695,7 @@ function diagnosticTuple(d: KeyDiagnostic): string[] {
 function provenanceTuple(o: Occurrence): string[] {
   const p = o.provenance;
   const field = (k: string) => (isObject(p) && Object.hasOwn(p, k) && typeof p[k] === 'string' ? (p[k] as string) : '');
-  return [field('acquisition'), field('sourceRecordRef'), canonicalize(p), canonicalize(o.undeclaredFields)];
+  return [field('acquisition'), field('sourceRecordRef'), canonicalJson(p), canonicalJson(o.undeclaredFields)];
 }
 
 function subjectTuple(s: DefectSubject): string[] {

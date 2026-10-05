@@ -58,7 +58,7 @@ Any other field, at any depth, is **undeclared**. It is removed from the payload
 
 Two occurrences with the same identity have **equal payloads** if and only if their normalized payloads are equal JSON values. Normalization applies sections 1–5:
 
-- object members are compared by name, irrespective of order;
+- object members are compared by name, irrespective of order. A name has no special meaning: `toJSON`, `__proto__` and `constructor` are ordinary member names (fixture `CAN-12`);
 - arrays are compared element by element, in order, after the set normalization of section 5;
 - strings are compared exactly;
 - `null` equals only `null`.

@@ -1,10 +1,10 @@
 /**
  * EXPERIMENTAL, NONCLINICAL. Payload normalization and identity per CANONICALIZATION.md.
- * Serialization is delegated to `json-canonicalize` (an RFC 8785 implementation); this module
+ * Serialization is delegated to `canonicalize` 2.1.0 (an RFC 8785 implementation); this module
  * only selects payload fields, normalizes the declared set field and rejects lone surrogates.
  */
 import { createHash } from 'node:crypto';
-import { canonicalize } from 'json-canonicalize';
+import canonicalizeJson from 'canonicalize';
 import type { JsonValue, UndeclaredField } from './types';
 
 type JsonObject = { readonly [key: string]: JsonValue };
@@ -41,6 +41,14 @@ const IDENTITY_AND_METADATA = {
   revision: ['key', 'revision', 'provenance'],
   retraction: ['id', 'provenance'],
 } as const;
+
+/**
+ * RFC 8785 bytes of a JSON value, via the library. It calls `toJSON` only when it is a function,
+ * which a JSON value never has, so a member named `toJSON` is an ordinary member.
+ */
+export function canonicalJson(v: JsonValue | readonly unknown[]): string {
+  return canonicalizeJson(v) as string;
+}
 
 export class UnrepresentableError extends Error {}
 
@@ -108,7 +116,7 @@ export function payloadIdentity(occurrence: JsonObject, kind: 'revision' | 'retr
     }
   }
   assertRepresentable(payload);
-  const canonical = canonicalize(payload);
+  const canonical = canonicalJson(payload);
   const undeclaredFields = undeclared.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
   return {
     canonical,

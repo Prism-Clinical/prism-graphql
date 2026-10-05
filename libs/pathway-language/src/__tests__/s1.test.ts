@@ -96,6 +96,13 @@ describe('step 1: identity, payload equality, variants', () => {
     });
   });
 
+  it('a malformed value with a `toJSON` member has one identity regardless of member order (CAN-12)', () => {
+    const occ = (assertion: string) => JSON.parse(JSON.stringify(rev('s1', 'r1', '1')).replace('"assertion":"Affirmed"', `"assertion":${assertion}`)) as JsonValue;
+    const r = run([occ('{"toJSON":"x","b":"1","a":"2"}'), occ('{"a":"2","b":"1","toJSON":"x"}')]);
+    expect(view(r, 's1/r1')).toMatchObject({ status: 'Current', current: 's1/r1@1', active: [] });
+    expect(key(r, 's1/r1').revisions[0]?.variants[0]?.occurrences).toHaveLength(2);
+  });
+
   it('numbers 1 and 1.0 are equal under RFC 8785; 1 and 2 differ (CANONICALIZATION §4)', () => {
     expect(key(run([rev('s1', 'r1', '1', { assertion: 1 }), rev('s1', 'r1', '1', { assertion: 1.0 })]), 's1/r1').status).toBe('Current');
     expect(key(run([rev('s1', 'r1', '1', { assertion: 1 }), rev('s1', 'r1', '1', { assertion: 2 })]), 's1/r1').status).toBe('UnresolvedRevision');
@@ -388,7 +395,7 @@ describe('retraction trace', () => {
         key: { source: 's1', localId: 'r1' },
         authority: 'Authorized',
         effect: { kind: 'Removed' },
-        variants: [{ digest: expect.stringMatching(/^[0-9a-f]{64}$/), canonicalPayload: expect.any(String), target: sup('s1', 'r1', '1'), occurrences: [occ(prov('x1'))] }],
+        variants: [{ key: { source: 's1', localId: 'r1' }, digest: expect.stringMatching(/^[0-9a-f]{64}$/), canonicalPayload: expect.any(String), target: sup('s1', 'r1', '1'), occurrences: [occ(prov('x1'))] }],
       },
     ]);
     const payload = JSON.parse(r.retractions[0]?.variants[0]?.canonicalPayload ?? 'null') as Record<string, unknown>;
@@ -443,6 +450,21 @@ describe('retraction trace', () => {
     expect(r.retractions.map((x) => [x.key, x.authority, x.effect, x.variants[0]?.target])).toEqual([
       [{ source: 's2', localId: 'r60' }, 'NotEvaluated', { kind: 'Rejected', reason: 'CrossKeyRetraction' }, sup('s1', 'r1', '1')],
     ]);
+  });
+
+  it('variants naming different keys: the key is per variant and the group says Disagreed, in any input order', () => {
+    // One retraction identity (s1, x1); one occurrence names key s1/r1, the other s1/r2.
+    const rets = [retr('x1', 's1', 'r1', sup('s1', 'r1', '1')), retr('x1', 's1', 'r2', sup('s1', 'r1', '1'))];
+    const revs = [rev('s1', 'r1', '1'), rev('s1', 'r2', '1')];
+    const strip = (r: S1Result) => JSON.parse(JSON.stringify(r, (k, v) => (k === 'inputIndex' ? undefined : v))) as unknown;
+    const forward = run(revs, rets);
+    expect(strip(run(revs, [...rets].reverse()))).toEqual(strip(forward));
+    const [t, ...more] = forward.retractions;
+    expect(more).toEqual([]);
+    expect(t?.key).toBe('Disagreed');
+    expect(t?.variants.map((v) => v.key.localId).sort()).toEqual(['r1', 'r2']);
+    expect(t?.effect).toEqual({ kind: 'Defect', cause: 'Conflicting', reason: 'RetractionConflict' });
+    expect(view(forward, 's1/r1')).toMatchObject({ causes: ['Conflicting'], active: ['RetractionConflict'] });
   });
 
   it('retraction traces and their occurrence order do not depend on input order', () => {

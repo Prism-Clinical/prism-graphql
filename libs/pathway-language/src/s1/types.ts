@@ -184,6 +184,8 @@ export interface KeyResolution {
 
 /** One payload variant of a retraction (grouped by `RetractionRef`, contract §2.1 step 6). */
 export interface RetractionVariant {
+  /** The `key` this variant names. It is payload, so variants of one retraction may disagree. */
+  readonly key: RecordKey;
   readonly digest: string;
   readonly canonicalPayload: string;
   /** The variant's target as received: a reference, or why none can be read. Never inferred. */
@@ -219,8 +221,11 @@ export type RetractionEffect =
 /** Trace of one retraction identity (every identified occurrence from a declared source). */
 export interface RetractionInfo {
   readonly ref: RetractionRef;
-  /** The retraction's own `key`. */
-  readonly key: RecordKey;
+  /**
+   * The retraction's own `key` when every variant names the same one; `Disagreed` when variants
+   * name different keys (each variant's `key` is then the only key information).
+   */
+  readonly key: RecordKey | 'Disagreed';
   readonly variants: readonly RetractionVariant[];
   readonly authority: RetractionAuthority;
   readonly effect: RetractionEffect;
