@@ -330,6 +330,16 @@
     ],
     "104": [
       "EA-104"
+    ],
+    "105": [
+      "EA-105"
+    ],
+    "106": [
+      "EA-106a",
+      "EA-106b"
+    ],
+    "107": [
+      "EA-107"
     ]
   },
   "pairs": [
@@ -508,6 +518,13 @@
         "EA-101"
       ],
       "claim": "An absent record encounter is Missing (FieldAbsent:encounter); a present malformed one is Invalid (FieldMalformed:encounter)"
+    },
+    {
+      "fixtures": [
+        "EA-106a",
+        "EA-107"
+      ],
+      "claim": "A whitespace-only record encounter is malformed (Invalid, FieldMalformed:encounter); one with surrounding whitespace is a well-formed EncounterRef, compared without trimming, so it does not match N1 (Inadmissible, OtherEncounter)"
     }
   ]
 }

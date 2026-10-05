@@ -210,7 +210,8 @@ export function runFixtures(dir: string = FIXTURE_DIR): { reports: FixtureReport
       ? encounterNodes(
           experimentalCheckEncounterScope({
             s1: result,
-            s2,
+            valueSet: pin,
+            expansion: { id: pin, ...query.valueSets[pin] },
             rule: contract.admissible.encounter,
             contextEncounter: fx.input.context.encounter as EncounterBinding,
           }),

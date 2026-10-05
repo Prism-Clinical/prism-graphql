@@ -7,12 +7,15 @@
  * and no per-key admissibility decision, evidence result or Need is produced.
  */
 import type { Defect, KeyStatus, NodeRef, RecordKey, S1Cause, S1Result } from '../s1/types';
-import type { S2Finding, S2Result } from '../s2/types';
+import type { S2Finding, ValueSetExpansion } from '../s2/types';
 
 /** Stage A §4.1 causes, as an evaluation-context binding may carry them (contract §1.6). */
 export type ContextCause = 'Missing' | 'Conflicting' | 'Unavailable' | 'Invalid' | 'Inadmissible' | 'InsufficientEvidence';
 
-/** The evaluation encounter, in the fixtures' context notation (contract §7.1). */
+/**
+ * The evaluation encounter, in the fixtures' context notation (contract §7.1). A `known` value
+ * must be a well-formed EncounterRef (contract §2.4), or the input is a configuration error.
+ */
 export type EncounterBinding = { readonly known: string } | { readonly unknown: readonly ContextCause[] };
 
 /**
@@ -22,10 +25,16 @@ export type EncounterBinding = { readonly known: string } | { readonly unknown: 
  */
 export const SAME_ENCOUNTER_RULE = { eq: [{ field: ['c', 'encounter'] }, { ref: 'ctx.encounter' }] } as const;
 
+/**
+ * There is deliberately no S2 parameter. The check runs S2 itself on the supplied `s1` with the
+ * supplied pin and expansion, so it cannot combine S1 and S2 results from different snapshots
+ * (review of b8eb6fe). Any other input field is rejected.
+ */
 export interface EncounterCheckInput {
   readonly s1: S1Result;
-  /** S2 result computed from the same `s1`. */
-  readonly s2: S2Result;
+  /** S2 parameters: the query's `retrieve.valueSet` pin and the supplied expansion (contract §2.3). */
+  readonly valueSet: string;
+  readonly expansion: ValueSetExpansion;
   /** The authored `admissible.encounter` node; must equal SAME_ENCOUNTER_RULE. */
   readonly rule: unknown;
   readonly contextEncounter: EncounterBinding;
@@ -34,6 +43,7 @@ export interface EncounterCheckInput {
 /** A finding introduced by this check, attributed to the record or to the context binding. */
 export type EncounterFinding =
   | { readonly cause: 'Missing'; readonly origin: 'record'; readonly reason: 'FieldAbsent:encounter' }
+  /** Not a well-formed EncounterRef: non-string, `null`, empty or whitespace-only (contract §2.4). */
   | { readonly cause: 'Invalid'; readonly origin: 'record'; readonly reason: 'FieldMalformed:encounter' }
   | { readonly cause: ContextCause; readonly origin: 'context.encounter'; readonly reason: 'ContextUnknown:encounter' };
 

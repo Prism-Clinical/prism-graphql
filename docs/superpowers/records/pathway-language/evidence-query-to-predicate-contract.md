@@ -2,7 +2,7 @@
 
 **Status:** Proposed design draft. **Not** accepted, not finalized syntax, not a schema and not implemented. It contains no clinical content: the record type, enum values, codes, sources and permission below are fictional and illustrate language behavior only. They do not map to dysphagia, progression, urgency or any other clinical definition.
 
-**Date:** 2026-10-03. **Revised:** 2026-10-03, nine times, 2026-10-04, once, and 2026-10-05, twice, after review. The third revision fixed three things:
+**Date:** 2026-10-03. **Revised:** 2026-10-03, nine times, 2026-10-04, once, and 2026-10-05, three times, after review. The third revision fixed three things:
 
 - revision-chain boundaries: source-scoped identity, same-source corrections and one fully specified schematic authority rule;
 - deterministic outcomes for malformed history;
@@ -13,6 +13,13 @@ The fourth revision made three changes:
 - Proven cross-boundary corrections and retractions are now rejected without changing their target. This keeps gap irrelevance consistent with S1.
 - Payload identity for duplicate detection is defined.
 - An unsupported justification about coverage attestations is removed.
+
+The thirteenth revision follows review of the first encounter-check implementation. That implementation accepted S1 and S2 results from different snapshots and checked a superseded revision.
+
+- All stages of one evaluation must read one snapshot (section 2).
+- `EncounterRef` syntax is defined: nonempty, not whitespace-only, never trimmed (2.4, cases 105–107).
+- Accumulating record and context findings within the rule is confirmed.
+- Combining several admissibility rules is deferred to a separate slice.
 
 The twelfth revision specifies the S3 `encounter` rule on its own (2.4, cases 101–104). This is so that one admissibility check can be implemented and tested in isolation.
 
@@ -194,7 +201,7 @@ A cycle in patient revision history is malformed *data*, handled in S1. A cycle 
 
 ## 2. Processing boundaries
 
-The stages follow Stage A §4.4’s order: identities and correction/retraction authority and history first, then concept and scope admissibility, then precedence and sufficiency. Authored criterion evaluation sits between selection and resolution. Every stage is a function of *sets* keyed by identity, and every item keeps a recorded stage and reason in the trace.
+The stages follow Stage A §4.4’s order: identities and correction/retraction authority and history first, then concept and scope admissibility, then precedence and sufficiency. Authored criterion evaluation sits between selection and resolution. Every stage is a function of *sets* keyed by identity, and every item keeps a recorded stage and reason in the trace. All stages of one evaluation read **one snapshot**. A stage result computed from another snapshot, such as an S2 classification of a revision a later correction superseded, must never be combined with this snapshot’s results. An implementation enforces this structurally, not by checking that identities exist somewhere in history.
 
 | # | Stage | Inputs | Outputs | Kind |
 |---|---|---|---|---|
@@ -380,24 +387,28 @@ There is no implicit default. A query without this rule has no encounter check, 
 
 S1 causes stay with the key.
 
-**Comparison.** `EncounterRef` is a JSON string, compared exactly. The record field is `Field<EncounterRef>` (1.2), and the evaluation encounter is `Known(EncounterRef) | Unknown(causes)` (1.6).
+**EncounterRef syntax (fictional model).** An `EncounterRef` is well-formed if and only if it is a JSON string containing at least one character without the Unicode `White_Space` property.
+
+- `""`, `"   "` and `"  "` are malformed.
+- Nothing is trimmed or otherwise normalized, so `" N1"` is well-formed and is not `N1`.
+- This rule is stated for encounters on its own. It is not inherited from the identifier syntax for terminology codes (2.3), although its content is the same today.
+- A malformed record encounter is patient evidence (`Invalid`). A malformed `Known` evaluation encounter is an invalid configuration.
+
+**Comparison.** Well-formed `EncounterRef`s are compared exactly. The record field is `Field<EncounterRef>` (1.2), and the evaluation encounter is `Known(EncounterRef) | Unknown(causes)` (1.6).
 
 | Record `encounter` | Evaluation encounter | Outcome | Findings (cause, origin, reason) |
 |---|---|---|---|
-| String *e* | `Known(e)` | **Matches** | — |
-| String *e* | `Known(f)`, *f* ≠ *e* | **DoesNotMatch** | reason `OtherEncounter` (S3 makes this `Inadmissible`) |
-| String | `Unknown(C)` | **Unresolved** | each *c* ∈ *C*, `context.encounter`, `ContextUnknown:encounter` |
+| Well-formed *e* | `Known(e)` | **Matches** | — |
+| Well-formed *e* | `Known(f)`, *f* ≠ *e* | **DoesNotMatch** | reason `OtherEncounter` (S3 makes this `Inadmissible`) |
+| Well-formed | `Unknown(C)` | **Unresolved** | each *c* ∈ *C*, `context.encounter`, `ContextUnknown:encounter` |
 | Absent | any | **Unresolved** | `Missing`, the record, `FieldAbsent:encounter`; plus the context findings if `Unknown` |
-| Present, not a string (`null` included) | any | **Unresolved** | `Invalid`, the record, `FieldMalformed:encounter`; plus the context findings if `Unknown` |
+| Present, not a well-formed `EncounterRef` (non-string, `null`, empty, whitespace-only) | any | **Unresolved** | `Invalid`, the record, `FieldMalformed:encounter`; plus the context findings if `Unknown` |
 
-A known record encounter never decides against an unknown evaluation encounter, and context causes are never relabelled. Record and context findings accumulate. 2.2 states accumulation across rules; this section applies the same principle to the two inputs of one rule, and is the source of that decision.
+A known record encounter never decides against an unknown evaluation encounter, and context causes are never relabelled. Record and context findings accumulate. 2.2 states accumulation across rules; this section applies the same principle to the two inputs of one rule, and is the source of that decision (confirmed in review, 2026-10-05).
 
-A malformed evaluation context, such as a `known` value that is not a string or an `Unknown` with no causes, is an invalid program input from the orchestrator. It is not patient uncertainty.
+A malformed evaluation context, such as a `known` value that is not a well-formed `EncounterRef` or an `Unknown` with no causes, is an invalid program input from the orchestrator. It is not patient uncertainty.
 
-**Open decisions** (not resolved here):
-
-1. **EncounterRef syntax.** Only the type is fixed. Whether `""` or a whitespace-only string is malformed is undefined. The S2 identifier syntax (2.3) covers terminology codes and is not borrowed. Smallest counterexample: record `encounter: ""` against `Known(N1)` is currently `DoesNotMatch`, so S3 would make it `Inadmissible`, not unresolved.
-2. **Combining rule outcomes.** 2.2 says causes from several *unresolved* rules accumulate. It does not say whether one rule’s `Inadmissible` outcome decides the revision while another rule is unresolved. Example: encounter N0 with the episode field absent. This check does not need the answer; the full S3 result does.
+**Deferred to a separate slice: combining rule outcomes.** 2.2 says causes from several *unresolved* rules accumulate. It does not say whether one rule’s `Inadmissible` outcome decides the revision while another rule is unresolved. Example: encounter N0 with the episode field absent. This check does not need the answer; the full S3 result does.
 
 ## 3. Where the clinical expression lives
 
@@ -881,7 +892,11 @@ In cases 93–99 the record is admissible and `Supporting` if selected, so it is
 | 103 | Known record encounter, unknown evaluation encounter | As 102, but s1/r103 encounter N0 | `Unresolved{Conflicting}` @context encounter | Unknown(Conflicting) | Encounter check unresolved, **not** a mismatch; never `Inadmissible` | As 102 |
 | 104 | Payload variants that differ in encounter | Two occurrences of s1/r104@1: N1 and N0 | `Unresolved{Conflicting}` @s1/r104 (`PayloadConflict`) | Unknown(Conflicting) | N1 variant matches, N0 variant does not; possible classes {Supporting, excluded}, as case 28 | K1; `CorrectRecord` s1/r104 |
 
-In cases 101–103 the record is `Supporting` if admitted, so it is material. 104 follows cases 27 and 28: an inadmissible possibility of an unresolved key adds `excluded`, not a base `Inadmissible` cause.
+| 105 | Empty record encounter | s1/r105, `encounter: ""` | `Unresolved{Invalid}` @s1/r105@1 (S3, `FieldMalformed:encounter`) | Unknown(Invalid) | Malformed, **not** a mismatch | K1; `CorrectRecord` s1/r105 |
+| 106 | Whitespace-only record encounter | (a) s1/r106, `"   "`; (b) `"  "` | `Unresolved{Invalid}` @s1/r106@1 (S3, `FieldMalformed:encounter`) | Unknown(Invalid) | Unicode `White_Space`, not only ASCII | K1; `CorrectRecord` s1/r106 |
+| 107 | Surrounding whitespace is not trimmed | s1/r107, `encounter: " N1"` | `Unresolved{Inadmissible}` | Unknown | Encounter check `DoesNotMatch`; `OtherEncounter`, as case 9 | K1 |
+
+In cases 101–103, 105 and 106 the record is `Supporting` if admitted, so it is material. 104 follows cases 27 and 28: an inadmissible possibility of an unresolved key adds `excluded`, not a base `Inadmissible` cause.
 
 ### 7.5 Invariance checks
 
@@ -946,8 +961,10 @@ These must hold for every case:
 16. The `encounter` rule on its own (2.4):
     - Outcomes are Matches, DoesNotMatch or Unresolved per possibility, and out-of-domain possibilities are not evaluated.
     - A malformed record encounter is `Invalid` (`FieldMalformed:encounter`).
+    - `EncounterRef` syntax: nonempty, not whitespace-only, never normalized.
     - Context causes are kept unchanged, and record and context findings accumulate.
-    - Open: encounter-identifier syntax, and how one rule’s mismatch combines with another rule’s unresolved outcome.
+    - All stages read one snapshot.
+    - Deferred: how one rule’s mismatch combines with another rule’s unresolved outcome.
 
 **Possible conflicts needing a Stage A amendment.** None found. Items to confirm:
 
@@ -957,7 +974,7 @@ These must hold for every case:
 
 **Query/predicate split.** The query carries the reasoning. A projection-only Predicate is optional naming and composition structure. No node kind is added or removed.
 
-**Conformance fixtures.** [conformance/explicit-assertion-v0/](conformance/explicit-assertion-v0/README.md) holds machine-readable fixtures for cases 1–104, mapped by case number, with expected outputs written from this contract. They are proposed, like this document.
+**Conformance fixtures.** [conformance/explicit-assertion-v0/](conformance/explicit-assertion-v0/README.md) holds machine-readable fixtures for cases 1–107, mapped by case number, with expected outputs written from this contract. They are proposed, like this document.
 
 **Remaining items.**
 

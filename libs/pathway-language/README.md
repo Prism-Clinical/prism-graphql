@@ -130,16 +130,19 @@ import { experimentalCheckEncounterScope, SAME_ENCOUNTER_RULE, EncounterCheckCon
 
 const enc = experimentalCheckEncounterScope({
   s1,                                   // experimentalResolveRevisionHistory(...) output
-  s2,                                   // experimentalIdentifyCandidates({ s1, ... }) output
+  valueSet: 'demo-vs/item-x@1',         // S2 parameters: S2 runs inside, on this s1
+  expansion,
   rule: query.contract.admissible.encounter, // the authored rule, as written
   contextEncounter: { known: 'N1' },    // or { unknown: ['Conflicting'] } (contract §1.6)
 });
 ```
 
+**One snapshot, structurally.** There is no `s2` parameter. The check runs S2 on the supplied `s1`, so an S2 classification from another snapshot can never be combined with it. Review of b8eb6fe found that the earlier `{s1, s2}` signature compared only key sets. With an updated S1 (an authorized correction made revision 2 current, at N0) and an old S2, it checked the superseded revision 1 and returned `Matches` against N1. That call is now rejected: any unexpected input field, `s2` included, throws `EncounterCheckConfigurationError`. A bad pin or expansion throws S2’s `S2ConfigurationError`. Contract §2 now requires that all stages of one evaluation read one snapshot.
+
 **The rule stays visible.** `rule` is the query’s authored `admissible.encounter` node, which must equal `SAME_ENCOUNTER_RULE`, `{eq: [{field: [c, encounter]}, {ref: ctx.encounter}]}`. The node is recognized, not interpreted, so there is no expression evaluator. The function throws `EncounterCheckConfigurationError` for any other node, including a missing one, so there is never an implicit default. It also throws for:
 
-- a malformed evaluation encounter (a `known` that is not a string; an empty, repeated or unrecognized `unknown` cause list);
-- inputs that are not S1/S2 results, or an S2 not computed from this S1.
+- a malformed evaluation encounter (a `known` that is not a well-formed `EncounterRef`; an empty, repeated or unrecognized `unknown` cause list);
+- an input that is not an S1 result, or any unexpected input field.
 
 A malformed **record** encounter is patient uncertainty, never an error.
 
@@ -159,10 +162,12 @@ A malformed **record** encounter is patient uncertainty, never an error.
 Each finding is `{cause, origin, reason}`:
 
 - `Missing`, origin `record`, reason `FieldAbsent:encounter`;
-- `Invalid`, origin `record`, reason `FieldMalformed:encounter` (any non-string, `null` included);
+- `Invalid`, origin `record`, reason `FieldMalformed:encounter` (not a well-formed `EncounterRef`: non-string, `null`, empty or whitespace-only);
 - each of the context’s own causes, origin `context.encounter`, reason `ContextUnknown:encounter`.
 
-Record and context findings accumulate. A known record encounter is never compared with an unknown evaluation encounter. Comparison is exact. Payloads come from S1’s retained variant bytes, through `retainedPayload`, which S2 also uses now.
+**EncounterRef syntax** (contract §2.4). A string with at least one character outside Unicode `White_Space`, never trimmed. It is defined for encounters on its own, with a separate predicate in `src/s3/encounter.ts`, and not imported from S2’s code syntax. `" N1"` is well-formed and does not match `N1`.
+
+Record and context findings accumulate (confirmed in review). A known record encounter is never compared with an unknown evaluation encounter. Comparison is exact. Payloads come from S1’s retained variant bytes, through `retainedPayload`, which S2 also uses now.
 
 **Worked example (S1 → S2 → encounter check).** The evaluation encounter is `Known(N1)`. `s1/r1@1` is `Affirmed`, in domain, with encounter N1. `s1/r1@2` supersedes it with encounter N0, and its author’s permissions are absent.
 
@@ -235,9 +240,10 @@ This package has its own Jest configuration and is not part of the root Jest roo
   - inherited S1 causes kept with their attribution alongside new S2 causes, including `Invalid` from both stages;
   - permutation, duplicate-occurrence and S1 key-order invariance, and deep-frozen inputs;
   - configuration validation, including the identifier syntax for the expansion.
-- **`src/__tests__/s3-encounter.test.ts`** has 34 independent tests of the encounter check (counting each parameterized case), with expectations derived by hand from contract §§1.2, 1.6, 2.2 and 2.4. They cover:
-  - matching, different (including case-sensitive) and absent encounters;
-  - malformed encounters (number, `null`, object);
+- **`src/__tests__/s3-encounter.test.ts`** has 47 independent tests of the encounter check (counting each parameterized case), with expectations derived by hand from contract §§1.2, 1.6, 2.2 and 2.4. They cover:
+  - matching, different (case-sensitive, untrimmed) and absent encounters;
+  - malformed encounters (number, `null`, object, empty, ASCII and Unicode whitespace-only, line terminators);
+  - one snapshot: an old S2 cannot be supplied with an S1 changed by a correction, a retraction, a replaced payload or a new payload variant. Each time the check reads the current S1 (the reviewer’s reproduction is the correction case);
   - an unresolved evaluation encounter with its causes kept, including against a known record encounter;
   - record and context problems together;
   - unresolved history with one matching and one nonmatching possibility;
@@ -247,21 +253,21 @@ This package has its own Jest configuration and is not part of the root Jest roo
   - `excluded` and `unknown`;
   - an authorized correction to another encounter;
   - `Retracted` and `NoRecord`;
-  - permutation, duplicate and S2 key-order invariance, and deep-frozen inputs;
+  - permutation, duplicate and S1 key-order invariance, and deep-frozen inputs;
   - that the rule equals the pinned query’s `admissible.encounter`;
-  - 13 rule and configuration errors, distinguished from a malformed record encounter.
+  - 15 rule and configuration errors (including an empty or whitespace-only known evaluation encounter and a precomputed `s2`), plus 2 S2 parameter errors, distinguished from a malformed record encounter.
 - **`src/__tests__/fixtures.test.ts`** runs the committed [explicit-assertion-v0 fixtures](../../docs/superpowers/records/pathway-language/conformance/explicit-assertion-v0/README.md) and checks **only** their S1, S2 and encounter-check assertions. It never reports a fixture as passing as a whole, because the rest of S3 and S4–S7 are not implemented. On the current fixtures it reports:
   - **167 S1 assertions checked, 167 passing.** That is 92 trace facts (`keyResult`, `variants`, `occurrences`, `rejected`, `outOfEnvelope`, `outsideEnvelope`, and the `HistoricalDefect`, `CrossKeyCorrection` and `UndeclaredField` diagnostics) plus 75 canonicalization checks (bytes, digests, variant partition, undeclared fields). EA-104 adds two.
   - **16 S2 assertions checked, 16 passing:** every `candidacy` trace fact (EA-013, EA-014, EA-024, three in EA-033, and EA-093 to EA-100).
-  - **5 encounter-check assertions checked, 5 passing:** every `encounterScope` trace fact (EA-101, EA-102, EA-103, and both variants of EA-104).
+  - **9 encounter-check assertions checked, 9 passing:** every `encounterScope` trace fact (EA-101 to EA-103, both variants of EA-104, EA-105, EA-106a/b and EA-107).
   - **One-way checks**, which can fail but cannot prove completeness:
     - 33 S1-stage cause attributions, each of which must be an active S1 defect;
     - 12 S2-stage cause attributions (EA-013, EA-014, EA-093 to EA-099), each of which must be an S2 finding on that revision;
-    - 98 `candidateEvidenceIds` entries, each of which must have S2 candidacy `InDomain` or `Unresolved` (contract §5.1). The field is an S6 output, and its converse is not checked;
-    - 8 encounter outcomes implied by complete S3 expectations. `admissibility: Admissible` implies `Matches` (EA-052a). `Inadmissible` with reason `OtherEncounter` implies `DoesNotMatch` (EA-009, EA-025). An S3 attribution with an encounter reason must be a finding of the check (EA-010, EA-015, EA-101, EA-102, EA-103). The `admissibility` facts themselves stay outside the implemented scope.
+    - 102 `candidateEvidenceIds` entries, each of which must have S2 candidacy `InDomain` or `Unresolved` (contract §5.1). The field is an S6 output, and its converse is not checked;
+    - 12 encounter outcomes implied by complete S3 expectations. `admissibility: Admissible` implies `Matches` (EA-052a). `Inadmissible` with reason `OtherEncounter` implies `DoesNotMatch` (EA-009, EA-025, EA-107). An S3 attribution with an encounter reason must be a finding of the check (EA-010, EA-015, EA-101 to EA-103, EA-105, EA-106a/b). The `admissibility` facts themselves stay outside the implemented scope.
 
     The absence of an attribution proves nothing, because attribution also depends on S5/S6 materiality.
-  - **507 expected fields and trace facts outside the implemented scope,** not checked: evidence, decision, Needs, complete admissibility, classification, cells, gaps and so on.
+  - **527 expected fields and trace facts outside the implemented scope,** not checked: evidence, decision, Needs, complete admissibility, classification, cells, gaps and so on.
   - **3 fixtures not run:** EA-050 (whole-contract hole) and EA-051a/b (compilation).
   - **10 evaluation/preview fixtures with no applicable S1/S2/encounter-check assertion,** listed by the test: EA-001, -002, -005, -011, -043, -045, -046, -047, -052b and -053. Their behavior in these stages is exercised but not asserted.
 
@@ -292,14 +298,15 @@ Remaining notes:
 - `KeyCandidacy.causes` is a union, not an S6 result. Under contract §4.2 step C, only a material record’s origin causes are attributed.
 - Production code-system syntax is out of scope.
 
-## Encounter check: open decisions
+## Encounter check: settled and deferred decisions
 
-These are recorded in contract §2.4 and are not resolved here:
+Review of b8eb6fe settled these:
 
-1. **Encounter-identifier syntax.** Only the type (a JSON string) is defined. The S2 identifier syntax (contract §2.3) applies to terminology codes, and this check does not borrow it. Smallest counterexample: record `encounter: ""` against `Known(N1)` is `DoesNotMatch` today, so a complete S3 would make it `Inadmissible`, not unresolved. The same review that found the empty-code defect in S2 would likely want `""` and whitespace-only values malformed here too. That is a contract decision, so no test asserts either behavior.
-2. **Combining rule outcomes in the complete S3.** Contract §2.2 accumulates causes across *unresolved* rules. It does not say whether one rule’s `Inadmissible` outcome decides a revision while another rule is unresolved (for example, encounter N0 with the episode field absent). This check does not need the answer.
+1. **EncounterRef syntax** (contract §2.4, cases 105–107): nonempty, not whitespace-only, never trimmed. On a record a violation is `Invalid`; in a known evaluation encounter it is a configuration error. Before this, `encounter: ""` against `Known(N1)` was `DoesNotMatch`. EA-105 and EA-106a/b fail against the earlier rule.
+2. **Accumulating record and context findings** within the rule is confirmed.
+3. **One snapshot** (contract §2): enforced by the boundary above.
 
-Accumulating record and context findings within this one rule is stated in contract §2.4 (draft), extending §2.2’s cross-rule accumulation.
+**Deferred to a separate slice:** how several admissibility rules combine. Contract §2.2 does not say whether one rule’s `Inadmissible` outcome decides a revision while another rule is unresolved.
 
 ## Fork fallback (contract §2.1 step 7)
 
