@@ -1,0 +1,162 @@
+{
+  "id": "PPL-01",
+  "title": "Schematic program: one current Affirmed record",
+  "status": "Proposed, hand-derived acceptance expectation. Not produced by any PPL compiler or evaluator; neither exists yet.",
+  "program": {
+    "file": "../schematic-demo-finding.ppl.json",
+    "patch": []
+  },
+  "entryPoints": [
+    "compile",
+    "evaluate"
+  ],
+  "basedOn": {
+    "fixture": "EA-001",
+    "claim": "outputs['q.demo'].evidence and outputs['p.demo'].decision equal EA-001's expected evidence and decision"
+  },
+  "input": {
+    "snapshot": "snap-1",
+    "supersedesSnapshot": null,
+    "context": {
+      "subject": "P1",
+      "episode": {
+        "known": "E1"
+      },
+      "encounter": {
+        "known": "N1"
+      },
+      "clock": "2026-01-01T00:00:00Z",
+      "mode": "nonclinical"
+    },
+    "records": [
+      {
+        "key": {
+          "source": "s1",
+          "localId": "r1"
+        },
+        "revision": "1",
+        "recordType": "demo-model/DemoAssessment@0.1",
+        "subject": "P1",
+        "episode": "E1",
+        "encounter": "N1",
+        "concept": {
+          "system": "demo-cs",
+          "code": "item-x"
+        },
+        "assertion": "Affirmed",
+        "assertionKind": "ClinicianDocumented",
+        "author": {
+          "actor": "u1",
+          "permissions": []
+        },
+        "provenance": {
+          "acquisition": "a0",
+          "sourceRecordRef": "s1:r1:1"
+        }
+      }
+    ],
+    "retractions": [],
+    "coverage": [
+      {
+        "id": "cov-all",
+        "appliesTo": {
+          "snapshot": "snap-1"
+        },
+        "recordType": "demo-model/DemoAssessment@0.1",
+        "subject": "P1",
+        "sources": [
+          "s1",
+          "s2"
+        ],
+        "status": "Complete",
+        "attestedBy": "demo-adapter@1"
+      }
+    ],
+    "failures": [],
+    "rejectedItems": []
+  },
+  "expected": {
+    "state": "EstablishedTrue",
+    "compile": {
+      "outcome": "Compiled",
+      "wellFormed": true,
+      "diagnostics": [],
+      "dependencyEdges": [
+        [
+          "f.demo",
+          "applicability"
+        ],
+        [
+          "f.demo",
+          "p.demo"
+        ],
+        [
+          "p.demo",
+          "q.demo"
+        ]
+      ]
+    },
+    "preview": null,
+    "outputs": {
+      "applicability": {
+        "decision": {
+          "value": "True"
+        },
+        "supportingEvidenceIds": []
+      },
+      "q.demo": {
+        "evidence": {
+          "status": "Known",
+          "value": true,
+          "supportingEvidenceIds": [
+            "s1/r1@1"
+          ]
+        }
+      },
+      "p.demo": {
+        "decision": {
+          "value": "True"
+        },
+        "supportingEvidenceIds": [
+          "s1/r1@1"
+        ]
+      },
+      "f.demo": {
+        "status": {
+          "value": "True"
+        },
+        "supportingEvidenceIds": [
+          "s1/r1@1"
+        ]
+      }
+    },
+    "causeAttribution": [],
+    "evidenceNeed": null,
+    "trace": [
+      {
+        "output": "applicability",
+        "source": "/applicability/expr",
+        "result": "True",
+        "because": "all() over zero operands is True: the schematic scope is unconditional, and says so explicitly"
+      },
+      {
+        "output": "q.demo",
+        "source": "/nodes/0/contract",
+        "result": "Known(true, [s1/r1@1])",
+        "because": "S1 Current(s1/r1@1); S2 InDomain (demo-cs#item-x); S3 Admissible (E1, N1, ClinicianDocumented); S5 establishes True, refutes False, so Supporting; S6 cells s1 and s2 Complete, no gap: rule 2"
+      },
+      {
+        "output": "p.demo",
+        "source": "/nodes/1/expr",
+        "result": "True",
+        "because": "evidenceValue: Known(true) projects to True with the same supporting IDs (contract 5.2)"
+      },
+      {
+        "output": "f.demo",
+        "source": "/nodes/2/status",
+        "result": "True",
+        "because": "all(True, True) = True; support is the union of both operands' support"
+      }
+    ]
+  }
+}

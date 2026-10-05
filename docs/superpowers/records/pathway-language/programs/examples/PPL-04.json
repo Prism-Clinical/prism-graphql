@@ -1,0 +1,202 @@
+{
+  "id": "PPL-04",
+  "title": "GERD program: unresolved clinical authoring holes",
+  "status": "Proposed, hand-derived acceptance expectation. Not produced by any PPL compiler or evaluator; neither exists yet.",
+  "program": {
+    "file": "../gerd-progressive-dysphagia.ppl.json",
+    "patch": []
+  },
+  "entryPoints": [
+    "compile",
+    "compilePreview",
+    "evaluatePreview"
+  ],
+  "basedOn": {
+    "fixture": "EA-050",
+    "claim": "A whole-contract hole runs no evidence stage and emits no Need (same rule as EA-050)"
+  },
+  "input": {
+    "note": "Synthetic preview context. Not patient data and not from the GERD source. No evidence records are supplied: the record type, sources and envelope are part of H-EVIDENCE, so no snapshot content could be read.",
+    "snapshot": "snap-g1",
+    "supersedesSnapshot": null,
+    "context": {
+      "subject": "P-synthetic-1",
+      "episode": {
+        "known": "E-synthetic-1"
+      },
+      "encounter": {
+        "known": "N-synthetic-1"
+      },
+      "clock": "2026-01-01T00:00:00Z",
+      "mode": "preview"
+    },
+    "records": [],
+    "retractions": [],
+    "coverage": [],
+    "failures": [],
+    "rejectedItems": []
+  },
+  "expected": {
+    "state": "IncompleteAuthoring",
+    "compile": {
+      "outcome": "CompileFailure",
+      "wellFormed": true,
+      "diagnostics": [
+        {
+          "code": "UNRESOLVED_AUTHORING_HOLE",
+          "hole": "H-SCOPE",
+          "location": "/applicability/expr/hole"
+        },
+        {
+          "code": "UNRESOLVED_AUTHORING_HOLE",
+          "hole": "H-EVIDENCE",
+          "location": "/nodes/0/contract/hole"
+        },
+        {
+          "code": "UNRESOLVED_AUTHORING_HOLE",
+          "hole": "H-URGENCY",
+          "location": "/nodes/2/urgency/hole"
+        }
+      ],
+      "dependencyEdges": [
+        [
+          "f.alarm",
+          "applicability"
+        ],
+        [
+          "f.alarm",
+          "p.alarm"
+        ],
+        [
+          "p.alarm",
+          "q.pd"
+        ]
+      ]
+    },
+    "preview": {
+      "outcome": "PreviewPackage",
+      "publication": "Blocked",
+      "markers": [
+        {
+          "output": "applicability",
+          "holes": [
+            "H-SCOPE"
+          ]
+        },
+        {
+          "output": "f.alarm.status",
+          "holes": [
+            "H-EVIDENCE",
+            "H-SCOPE"
+          ]
+        },
+        {
+          "output": "f.alarm.urgency",
+          "holes": [
+            "H-URGENCY"
+          ]
+        },
+        {
+          "output": "p.alarm",
+          "holes": [
+            "H-EVIDENCE"
+          ]
+        },
+        {
+          "output": "q.pd",
+          "holes": [
+            "H-EVIDENCE"
+          ]
+        }
+      ],
+      "inspectable": {
+        "f.alarm.label": "Progressive dysphagia (particularly solids before liquids)",
+        "f.alarm.heading": "ALARM SYMPTOMS REQUIRING IMMEDIATE EVALUATION",
+        "f.alarm.cites": [
+          "src.gerd.l85-86"
+        ]
+      }
+    },
+    "outputs": {
+      "applicability": {
+        "marker": {
+          "holes": [
+            "H-SCOPE"
+          ]
+        }
+      },
+      "q.pd": {
+        "marker": {
+          "holes": [
+            "H-EVIDENCE"
+          ]
+        },
+        "stagesRun": []
+      },
+      "p.alarm": {
+        "marker": {
+          "holes": [
+            "H-EVIDENCE"
+          ]
+        }
+      },
+      "f.alarm": {
+        "status": {
+          "marker": {
+            "holes": [
+              "H-EVIDENCE",
+              "H-SCOPE"
+            ]
+          }
+        },
+        "urgency": {
+          "marker": {
+            "holes": [
+              "H-URGENCY"
+            ]
+          }
+        }
+      }
+    },
+    "causeAttribution": [],
+    "evidenceNeed": null,
+    "trace": [
+      {
+        "output": "applicability",
+        "source": "/applicability/expr",
+        "result": "Marker[H-SCOPE]",
+        "because": "The expression is a hole of type Decision; it is not Unknown and carries no patient cause"
+      },
+      {
+        "output": "q.pd",
+        "source": "/nodes/0/contract",
+        "result": "Marker[H-EVIDENCE]",
+        "because": "Whole-contract hole: no envelope, so no evidence stage runs and nothing in any chart is read"
+      },
+      {
+        "output": "p.alarm",
+        "source": "/nodes/1/expr",
+        "result": "Marker[H-EVIDENCE]",
+        "because": "evidenceValue of a marked output keeps the marker"
+      },
+      {
+        "output": "f.alarm.status",
+        "source": "/nodes/2/status",
+        "result": "Marker[H-EVIDENCE, H-SCOPE]",
+        "because": "Both operands are marked; a marker is never simplified away by Kleene composition"
+      },
+      {
+        "output": "f.alarm.urgency",
+        "source": "/nodes/2/urgency",
+        "result": "Marker[H-URGENCY]",
+        "because": "Attribute hole; it marks only this attribute"
+      },
+      {
+        "output": "evidenceNeed",
+        "source": "/nodes/0",
+        "result": "none",
+        "because": "A hole is never patient uncertainty and never requests patient data (Stage A 2.3)"
+      }
+    ]
+  }
+}
