@@ -112,6 +112,74 @@ describe('I1 compiler: complete programs', () => {
   });
 });
 
+describe('I1 compiler: packages are detached from the source and frozen (review of 3ecd664)', () => {
+  const frozenDeep = (v: unknown): boolean =>
+    v === null || typeof v !== 'object' || (Object.isFrozen(v) && Object.values(v as object).every(frozenDeep));
+  /** Every kind of retained content: rules, arrays, value sets, references, labels, hole fields. */
+  const edit = (p: J) => {
+    p.nodes[0].contract.admissible.encounter.eq[1].ref = 'ctx.unsupported';
+    p.nodes[0].contract.admissible.episode.eq[0].field[1] = 'subject';
+    p.nodes[0].contract.admissible.assertionKind.in.push('Hearsay');
+    p.nodes[0].contract.retrieve.sources.push('src-z');
+    p.nodes[0].contract.establishes.eq[1].enum = 'AssertionValue.Denied';
+    p.valueSets['vs/alpha@3'].expansion[0].code = 'changed';
+    p.references[0].quote['3'] = 'changed';
+    p.nodes[2].label = 'changed';
+    p.nodes[2].cites.push('ref-x');
+    if (p.nodes[2].urgency) p.nodes[2].urgency.hole.explains = 'changed';
+  };
+
+  it('editing the source after normal compilation leaves the package unchanged', () => {
+    const p = program();
+    const r = experimentalCompile(p as JsonValue);
+    expect(r.outcome).toBe('Compiled');
+    const before = JSON.stringify(r);
+    edit(p);
+    expect(JSON.stringify(r)).toBe(before);
+    const q = r.outcome === 'Compiled' ? r.package.declarations.find((d) => d.id === 'ev') : undefined;
+    expect(q && q.kind === 'EvidenceQuery' && q.contract.kind === 'explicit-assertion-v0' && q.contract.admissible.encounter).toEqual(SAME_ENCOUNTER_RULE);
+  });
+
+  it('editing the source after preview compilation leaves the package unchanged', () => {
+    const p = with_((x) => (x.nodes[2].urgency = hole('H-U', 'UrgencyRequirement')));
+    const r = experimentalCompilePreview(p as JsonValue);
+    expect(r.outcome).toBe('PreviewPackage');
+    const before = JSON.stringify(r);
+    edit(p);
+    expect(JSON.stringify(r)).toBe(before);
+  });
+
+  it('results are deep-frozen at runtime; mutation attempts throw', () => {
+    const c = experimentalCompile(program() as JsonValue);
+    const v = experimentalCompilePreview(with_((x) => (x.applicability.expr = hole('H-A', 'Decision'))) as JsonValue);
+    const h = experimentalCompile(with_((x) => (x.applicability.expr = hole('H-A', 'Decision'))) as JsonValue);
+    const f = experimentalCompile(with_((x) => delete x.applicability) as JsonValue);
+    for (const r of [c, v, h, f]) expect(frozenDeep(r)).toBe(true);
+    if (c.outcome !== 'Compiled') throw new Error('expected Compiled');
+    expect(() => (c.package.declarations as unknown[]).push({})).toThrow(TypeError);
+    expect(() => ((c.package.valueSets as J)['vs/alpha@3'].expansion = [])).toThrow(TypeError);
+  });
+
+  it.each(['__proto__', 'constructor', 'toString', 'hasOwnProperty'])(
+    'value-set and declaration identifier %j survive compilation and serialization as own keys',
+    (name) => {
+      // Built from JSON text, as a parser would, so `__proto__` is an ordinary own member.
+      const text = JSON.stringify(program()).split('"vs/alpha@3"').join(JSON.stringify(name)).split('"pv"').join(JSON.stringify(name));
+      const r = experimentalCompile(JSON.parse(text));
+      expect(r.outcome).toBe('Compiled');
+      if (r.outcome !== 'Compiled') return;
+      const vs = r.package.valueSets;
+      expect(Object.prototype.hasOwnProperty.call(vs, name)).toBe(true);
+      expect(Object.keys(vs)).toEqual([name]);
+      const roundTrip = JSON.parse(JSON.stringify(vs));
+      expect(Object.prototype.hasOwnProperty.call(roundTrip, name)).toBe(true);
+      expect(roundTrip[name]).toEqual({ id: name, expansion: [{ system: 'cs', code: 'c1' }], coveredSystems: ['cs'] });
+      expect(r.package.declarations.map((d) => d.id)).toContain(name);
+      expect(r.package.dependencyEdges.map((e) => `${e.reader}->${e.read}`)).toEqual(expect.arrayContaining([`fd->${name}`, `${name}->ev`]));
+    },
+  );
+});
+
 describe('I1 compiler: source structure', () => {
   it('missing applicability is SOURCE_INVALID at the root and is never defaulted', () => {
     invalid(with_((p) => delete p.applicability && (p.nodes[2].status = { all: [{ ref: 'pv' }] })), ['SOURCE_INVALID', '']);
@@ -223,9 +291,21 @@ describe('I1 compiler: query contract and context bindings', () => {
     invalid(with_((p) => (p.nodes[0].contract.refutes = eq('mood', { enum: 'AssertionValue.Denied' }))), ['UNDEFINED_REFERENCE', '/nodes/0/contract/refutes/eq/0/field']);
     invalid(with_((p) => (p.nodes[0].contract.refutes = eq('assertion', { enum: 'AssertionValue.Maybe' }))), ['UNDEFINED_REFERENCE', '/nodes/0/contract/refutes/eq/1/enum']);
   });
-  it('disjointness: equal literals overlap; different fields are an unsupported proof fragment', () => {
+  it('criteria are restricted to c.assertion in I1: any other field is UNSUPPORTED_CONSTRUCT at the field operand', () => {
+    const kind = eq('assertionKind', { enum: 'AssertionKind.PatientReport' });
+    invalid(with_((p) => (p.nodes[0].contract.refutes = kind)), ['UNSUPPORTED_CONSTRUCT', '/nodes/0/contract/refutes/eq/0']);
+    invalid(
+      with_((p) => {
+        p.nodes[0].contract.establishes = eq('assertionKind', { enum: 'AssertionKind.ClinicianDocumented' });
+        p.nodes[0].contract.refutes = kind;
+      }),
+      ['UNSUPPORTED_CONSTRUCT', '/nodes/0/contract/establishes/eq/0'],
+      ['UNSUPPORTED_CONSTRUCT', '/nodes/0/contract/refutes/eq/0'],
+    );
+    invalid(with_((p) => (p.nodes[0].contract.establishes = eq('episode', { enum: 'AssertionValue.Affirmed' }))), ['UNSUPPORTED_CONSTRUCT', '/nodes/0/contract/establishes/eq/0']);
+  });
+  it('disjointness: equal literals overlap; distinct literals are proved disjoint', () => {
     invalid(with_((p) => (p.nodes[0].contract.refutes = eq('assertion', { enum: 'AssertionValue.Affirmed' }))), ['EXCLUSIVE_BRANCH_OVERLAP', '/nodes/0/contract/obligations/0']);
-    invalid(with_((p) => (p.nodes[0].contract.refutes = eq('assertionKind', { enum: 'AssertionKind.PatientReport' }))), ['UNSUPPORTED_PROOF_FRAGMENT', '/nodes/0/contract/obligations/0']);
     expect(experimentalCompile(with_((p) => (p.nodes[0].contract.refutes = eq('assertion', { enum: 'AssertionValue.Indeterminate' }))) as JsonValue).outcome).toBe('Compiled');
   });
   it('the disjoint obligation is required by the policy; other obligations are unsupported', () => {

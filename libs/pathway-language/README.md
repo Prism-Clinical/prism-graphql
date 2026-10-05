@@ -227,7 +227,9 @@ if (p.outcome === 'PreviewPackage') p.package.markers; // [{ output: 'f.alarm.st
 | `experimentalCompile` | `Compiled` + `CompiledPackage` | `CompileFailure`, `wellFormed: true`, one `UNRESOLVED_AUTHORING_HOLE` per hole (location `…/hole`, `hole` ID), `dependencyEdges` | `CompileFailure`, `wellFormed: false`, structural diagnostics |
 | `experimentalCompilePreview` | `PreviewPackage` without markers | `PreviewPackage` with markers, `publication: 'Blocked'` | The same failure, with identical diagnostics |
 
-**Package** (`src/compile/types.ts`). `CompiledPackage` and `PreviewPackage` share `CompiledProgram`, with different `kind` tags, so later code cannot mistake a preview for an executable package. `CompiledProgram` holds:
+**Package** (`src/compile/types.ts`). `CompiledPackage` and `PreviewPackage` share `CompiledProgram`, with different `kind` tags, so later code cannot mistake a preview for an executable package.
+
+Every result, including failures, is a **detached, deep-frozen copy**: editing the source after compilation cannot change a package, and mutating a package throws. Every dictionary key is an own data property. So user-chosen identifiers such as `__proto__`, `constructor` or `toString`, as value-set or declaration IDs, survive enumeration and JSON serialization. `CompiledProgram` holds:
 
 - `packageId` and the language and profile versions;
 - `applicabilityId`;
@@ -253,8 +255,8 @@ Each declaration keeps its source JSON Pointer:
   - `demo-model@0.1` records, authority `demo-policy/same-source-amend@1`;
   - `admissible` episode and encounter recognized by exact shape, with `ctx.episode` / `ctx.encounter` only at those two positions;
   - `assertionKind` as `in` over `AssertionKind`;
-  - criteria `eq(c.<enum field>, <Enum>.<value>)`, type-checked;
-  - `disjoint(establishes, refutes)`, proved for equalities on one field. Equal literals give `EXCLUSIVE_BRANCH_OVERLAP`; anything else gives `UNSUPPORTED_PROOF_FRAGMENT`.
+  - criteria `eq(c.assertion, AssertionValue.<value>)` only, type-checked. Any other field is `UNSUPPORTED_CONSTRUCT`;
+  - `disjoint(establishes, refutes)`, proved for two such equalities. Equal literals give `EXCLUSIVE_BRANCH_OVERLAP`; `UNSUPPORTED_PROOF_FRAGMENT` is kept for any other form but is unreachable under the restriction.
 - Everything else is rejected with a named code (`UNSUPPORTED_CONSTRUCT`, `UNKNOWN_EXECUTABLE_PROPERTY`, …). There is no general expression evaluator or theorem prover.
 
 **Preview markers** (§7). An output is marked if and only if it contains a hole or references a marked output; its marker is the union of the contributing hole IDs. Output names:
@@ -284,7 +286,7 @@ This package has its own Jest configuration and is not part of the root Jest roo
 
 ## Tests and fixture coverage
 
-- **`src/__tests__/compile.test.ts`** has 36 independent I1 tests. Programs are built in the test with their own identifiers, and expected codes and pointers are derived from contract §5. They cover:
+- **`src/__tests__/compile.test.ts`** has 44 independent I1 tests. Programs are built in the test with their own identifiers, and expected codes and pointers are derived from contract §5. They cover:
   - every diagnostic code;
   - changed identifiers and declaration order, and forward references;
   - edge deduplication with every location kept, and no edges from citations or context bindings;
@@ -298,7 +300,8 @@ This package has its own Jest configuration and is not part of the root Jest roo
   - two-node and self cycles;
   - transitive marker propagation; attribute-only holes;
   - structural errors in a holed program;
-  - a deep-frozen source.
+  - a deep-frozen source;
+  - (review of 3ecd664) editing the source after normal and preview compilation, deep-frozen results that throw on mutation, the identifiers `__proto__`, `constructor`, `toString` and `hasOwnProperty` through compilation and serialization, and the `c.assertion`-only restriction. These tests fail against the 3ecd664 compiler.
 
   Targeted mutation checks found no surviving mutation. Each of these breaks at least one test: urgency marking the status, no transitive marking, the wrong cycle pointer, holes compiling normally, no cross-enum check, no overlap check, and a misplaced `ctx.` being accepted.
 - **`src/__tests__/program-examples.test.ts`** runs the six [first-program examples](../../docs/superpowers/records/pathway-language/programs/README.md). It applies each patch in the harness, which is input preparation and not a language feature, and checks **only** the `compile` and `preview` blocks. It also checks `state` where compilation alone decides it (`InvalidProgram`, `IncompleteAuthoring`); for compiled programs it only confirms the state is an evaluation state.
@@ -404,16 +407,19 @@ Step 5 records a fork only when no other defect exists. If that other defect lat
 
 ## I1 compiler: interpretations where the contract is silent
 
-Each item below is an implementation choice, not an accepted semantic. None changes an example expectation.
+Each item below is an implementation choice, not an accepted semantic. None changes an example expectation. Review of 3ecd664 accepted items 1, 2 and 4.
+
+Two former items are now settled in the contract:
+
+- `UNDEFINED_REFERENCE` also covers undeclared catalogue fields and enum values (§5).
+- Criteria are restricted to `c.assertion` (§2).
 
 1. **A structural failure omits hole diagnostics.** When any structural diagnostic exists, both modes return the same structural diagnostics only, matching the examples’ `sameDiagnostics` rule. The contract does not say whether `UNRESOLVED_AUTHORING_HOLE` should also be listed when holes coexist with a structural error. Smallest counterexample: the GERD program with one `ref` renamed to a missing ID.
 2. **Identifier namespaces.** Declaration and EvidenceReference IDs share one namespace; hole IDs have their own, and must also be unique. A duplicate is reported at every occurrence, with `INVALID_DECLARATION_ID` also used for duplicate hole IDs.
 3. **“Allowed position”** for an expression form means anywhere in that field’s expression tree. Holes are accepted only as the whole field.
-4. **Undeclared criterion field or enum value** gives `UNDEFINED_REFERENCE`. The contract’s §5 text names only `ref` and `cites`.
-5. **Criteria on any enum field.** Criteria may compare any enum-typed `demo-model@0.1` field, not only `c.assertion`. Disjointness across different fields is then `UNSUPPORTED_PROOF_FRAGMENT`.
-6. **“Smallest JSON Pointer”** for a cycle is compared by Unicode code point.
-7. **Declarations with an invalid kind** keep their ID, so references to them add no `UNDEFINED_REFERENCE`.
-8. **Citation shapes.** `lines` is a `[first, last]` range, and `quote` keys must fall inside it. Files, digests and quotations are not read.
+4. **“Smallest JSON Pointer”** for a cycle is compared by Unicode code point.
+5. **Declarations with an invalid kind** keep their ID, so references to them add no `UNDEFINED_REFERENCE`.
+6. **Citation shapes.** `lines` is a `[first, last]` range, and `quote` keys must fall inside it. Files, digests and quotations are not read.
 
 ## Limitations
 

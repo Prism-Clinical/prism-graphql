@@ -55,8 +55,8 @@ Identifiers are unique strings. They must not start with `ctx.`; a violation is 
 
 - Expression forms: `{"field": ["c", f]}`, `{"enum": "T.v"}`, `{"eq": [a, b]}` and `{"in": [...]}`.
 - `admissible` rules are recognized by exact shape, as the S3 encounter check already does with `SAME_ENCOUNTER_RULE`: `encounter` and `episode` are `eq(c.f, ctx.f)`, and `assertionKind` is `in` over `AssertionKind` values.
-- `establishes` and `refutes` are type-checked as `eq(c.assertion, AssertionValue.v)`; a cross-enum comparison is `TYPE_MISMATCH`.
-- `disjoint(establishes, refutes)` holds for two such equalities with different literals. Equal literals give `EXCLUSIVE_BRANCH_OVERLAP`; any other form gives `UNSUPPORTED_PROOF_FRAGMENT`.
+- `establishes` and `refutes` are type-checked as `eq(c.assertion, AssertionValue.v)`; a cross-enum comparison is `TYPE_MISMATCH`. **Subset restriction:** criteria compare `c.assertion` only. A criterion on any other field, even a declared enum field such as `c.assertionKind`, is `UNSUPPORTED_CONSTRUCT` at the `field` operand. Widening this waits until a program needs it.
+- `disjoint(establishes, refutes)` holds for two such equalities with different literals. Equal literals give `EXCLUSIVE_BRANCH_OVERLAP`. Any other form gives `UNSUPPORTED_PROOF_FRAGMENT`, which the `c.assertion` restriction makes unreachable in I1.
 - Any other form in these positions is `UNSUPPORTED_CONSTRUCT`.
 
 **Context bindings (P3).** `ctx.` is reserved for evaluation-context bindings.
@@ -134,7 +134,7 @@ Each diagnostic has `code`, `location` (a JSON Pointer into the authored source,
 | `SOURCE_INVALID` | Added | Missing required field or top-level section (including `applicability`); a field of the wrong JSON shape; unsupported `languageVersion` or capability profile; hole without `explains` | The missing or malformed member (its parent for a missing one) |
 | `UNKNOWN_EXECUTABLE_PROPERTY` | Added (Stage A §2.2 rule) | Unknown declaration kind, executable property or expression form | That property or form |
 | `INVALID_DECLARATION_ID` | Added | Duplicate identifier, or one starting with `ctx.` | The `id` value |
-| `UNDEFINED_REFERENCE` | Added | A `ref` or `cites` entry names no declaration or reference | The `ref` value or `cites` element |
+| `UNDEFINED_REFERENCE` | Added | A `ref` or `cites` entry names no declaration or reference; a `retrieve.valueSet` names no entry of `valueSets`; or a criterion names a field or enum value the pinned evidence model (`demo-model@0.1`) does not declare | The `ref` value, `cites` element or `valueSet` value; for a catalogue name, the `field` or `enum` member |
 | `TYPE_MISMATCH` | Added | An operand, hole or referenced output has the wrong type for its position (including cross-enum equality) | The operand or hole |
 | `UNSUPPORTED_CONTEXT_REFERENCE` | Added | Unknown `ctx.` name, or a supported name outside its supported position (section 2) | The `ref` value |
 | `UNSUPPORTED_CONSTRUCT` | Added | A recognized language construct outside this subset (e.g. another admissible-rule shape, or non-hole urgency) | The construct |

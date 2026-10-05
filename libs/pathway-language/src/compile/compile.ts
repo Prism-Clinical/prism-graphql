@@ -65,6 +65,20 @@ const canon = (v: unknown): string | null => {
     return null;
   }
 };
+/**
+ * A detached, deep-frozen copy of a JSON-like value. Every key becomes an own data property via
+ * defineProperty, so user-chosen names such as `__proto__` or `constructor` survive enumeration and
+ * serialization, and later edits to the source can never reach a compiled package.
+ */
+function detach<T>(v: T): T {
+  if (Array.isArray(v)) return Object.freeze(v.map(detach)) as unknown as T;
+  if (v !== null && typeof v === 'object') {
+    const out = {};
+    for (const [k, x] of Object.entries(v)) Object.defineProperty(out, k, { value: detach(x), enumerable: true, writable: false, configurable: false });
+    return Object.freeze(out) as T;
+  }
+  return v;
+}
 const SAME_ENCOUNTER = canon(SAME_ENCOUNTER_RULE);
 const SAME_EPISODE = canon(EPISODE_RULE);
 
@@ -288,6 +302,11 @@ function criterion(a: Analysis, v: JsonValue | undefined, ptr: string): EnumCrit
     a.add('UNDEFINED_REFERENCE', at(at(at(ptr, 'eq'), 1), 'enum'), `no enum value '${lit}' in ${RECORD_TYPE}`);
     return null;
   }
+  if (name !== 'assertion') {
+    // I1 subset restriction (first-program contract §2): criteria compare c.assertion only.
+    a.add('UNSUPPORTED_CONSTRUCT', at(at(ptr, 'eq'), 0), `criteria on c.${name} are outside this subset (c.assertion only)`);
+    return null;
+  }
   if (MODEL_FIELDS.get(name) !== enumType) {
     a.add('TYPE_MISMATCH', at(at(ptr, 'eq'), 1), `c.${name} is not of type ${enumType}`);
     return null;
@@ -406,6 +425,7 @@ function explicitContract(a: Analysis, c: JsonObject, ptr: string, valueSets: Re
         }
         found = true;
         if (!establishes || !refutes) return; // an invalid criterion is already diagnosed
+        // Unreachable while criteria are restricted to c.assertion; kept as the documented diagnostic.
         if (establishes.field !== refutes.field || establishes.enumType !== refutes.enumType) {
           a.add('UNSUPPORTED_PROOF_FRAGMENT', at(op, i), 'disjointness is analyzable only for equalities on the same enum field');
         } else if (establishes.value === refutes.value) {
@@ -428,7 +448,7 @@ function explicitContract(a: Analysis, c: JsonObject, ptr: string, valueSets: Re
     admissible: { episode: adm && isObject(adm) ? (adm['episode'] as JsonValue) : null, encounter: isObject(adm) ? (adm['encounter'] as JsonValue) : null, assertionKinds },
     establishes,
     refutes,
-    source: JSON.parse(JSON.stringify(c)) as JsonValue,
+    source: c as JsonValue, // detached and frozen with the whole package
     location: ptr,
   };
 }
@@ -506,7 +526,8 @@ function analyze(source: unknown): Result {
 
   // Value sets (validated exactly as S2 will accept them).
   const valueSets = new Map<string, boolean>();
-  const expansions: { [id: string]: ValueSetExpansion } = {};
+  // Pairs, not a plain object: an ID such as `__proto__` must stay an ordinary key (detach() builds the dictionary).
+  const expansions: [string, ValueSetExpansion][] = [];
   if (has(s, 'valueSets')) {
     const vss = s['valueSets'];
     if (!isObject(vss)) a.add('SOURCE_INVALID', '/valueSets', 'valueSets must map pinned IDs to expansions');
@@ -520,7 +541,7 @@ function analyze(source: unknown): Result {
           if (problem) a.add('SOURCE_INVALID', p, problem);
           else {
             ok = true;
-            expansions[id] = JSON.parse(JSON.stringify({ id, expansion: e['expansion'], coveredSystems: e['coveredSystems'] }));
+            expansions.push([id, { id, expansion: e['expansion'], coveredSystems: e['coveredSystems'] } as unknown as ValueSetExpansion]);
           }
         }
         valueSets.set(id, ok);
@@ -708,17 +729,17 @@ function analyze(source: unknown): Result {
   }
   return {
     structural: [],
-    program: {
+    program: detach({
       packageId: (pkg as JsonObject)['id'] as string,
       languageVersion: 'ppl-1',
       capabilityProfileVersion: 'ppl-core-v0',
       applicabilityId: (app as JsonObject)['id'] as string,
       declarations: order.map((d) => declarations.get(d)!),
       references: [...references].sort((x, y) => compareCodePoints(x.id, y.id)),
-      valueSets: expansions,
+      valueSets: detach(Object.fromEntries(expansions)),
       dependencyEdges: edges,
       holes: [...a.holes].sort((x, y) => compareCodePoints(x.id, y.id)),
-    },
+    }),
   };
 }
 
@@ -730,7 +751,7 @@ const sortDiagnostics = (ds: readonly Diagnostic[]): Diagnostic[] =>
  * thing an author sees is what makes the program invalid (an interpretation; see README).
  */
 function structuralFailure(r: Result): CompileFailure | null {
-  return r.program ? null : { outcome: 'CompileFailure', wellFormed: false, diagnostics: sortDiagnostics(r.structural) };
+  return r.program ? null : detach({ outcome: 'CompileFailure', wellFormed: false, diagnostics: sortDiagnostics(r.structural) });
 }
 
 /** Marked outputs (contract §7): a hole, or a reference to a marked output; attribute holes mark only themselves. */
@@ -779,16 +800,16 @@ export function compile(source: unknown): CompileResult {
   if (failed) return failed;
   const program = r.program!;
   if (program.holes.length > 0) {
-    return {
+    return detach({
       outcome: 'CompileFailure',
       wellFormed: true,
       diagnostics: sortDiagnostics(
         program.holes.map((h) => ({ code: 'UNRESOLVED_AUTHORING_HOLE' as const, location: h.location, hole: h.id, message: `authoring hole ${h.id} is unresolved: ${h.explains}` })),
       ),
       dependencyEdges: program.dependencyEdges,
-    };
+    });
   }
-  return { outcome: 'Compiled', wellFormed: true, diagnostics: [], package: { ...program, kind: 'CompiledPackage', experimental: 'nonclinical-ppl-compile-v0' } };
+  return detach({ outcome: 'Compiled', wellFormed: true, diagnostics: [], package: { ...program, kind: 'CompiledPackage', experimental: 'nonclinical-ppl-compile-v0' } });
 }
 
 /** Preview compilation: accepts correctly typed holes as markers. Never publishable or clinically executable. */
@@ -797,7 +818,7 @@ export function compilePreview(source: unknown): PreviewCompileResult {
   const failed = structuralFailure(r);
   if (failed) return failed;
   const program = r.program!;
-  return {
+  return detach({
     outcome: 'PreviewPackage',
     wellFormed: true,
     diagnostics: [],
@@ -809,5 +830,5 @@ export function compilePreview(source: unknown): PreviewCompileResult {
       markers: markers(program),
       inspectable: inspectable(program),
     },
-  };
+  });
 }
