@@ -1,10 +1,10 @@
 /**
- * EXPERIMENTAL, NONCLINICAL. Runs the S1-, S2- and encounter-check-applicable assertions of the
- * committed explicit-assertion-v0 conformance fixtures against the S1 resolver, S2 candidate
- * identification and the S3 same-encounter check.
+ * EXPERIMENTAL, NONCLINICAL. Runs the S1-, S2-, encounter-check- and episode-check-applicable
+ * assertions of the committed explicit-assertion-v0 conformance fixtures against the S1 resolver,
+ * S2 candidate identification and the S3 same-encounter and same-episode checks.
  *
- * A fixture is never reported as passing as a whole: only its S1, S2 and encounter-check
- * assertions are checked. Complete S3 `admissibility` facts are never checked as such.
+ * A fixture is never reported as passing as a whole: only its S1, S2, encounter-check and
+ * (partial-stage, one-way) episode-check assertions are checked. Complete S3 `admissibility` facts are never checked as such.
  * Every other expected field or trace fact is counted as outside the implemented scope.
  */
 import { readdirSync, readFileSync } from 'node:fs';
@@ -13,14 +13,18 @@ import { payloadIdentity } from '../../s1/payload';
 import { isDeepStrictEqual } from 'node:util';
 import {
   SAME_ENCOUNTER_RULE,
+  SAME_EPISODE_RULE,
   experimentalCheckEncounterScope,
+  experimentalCheckEpisodeScope,
   experimentalIdentifyCandidates,
   experimentalResolveRevisionHistory,
   type JsonValue,
   type KeyResolution,
   type EncounterBinding,
+  type EpisodeBinding,
   type NodeCandidacy,
   type PossibleEncounterScope,
+  type PossibleEpisodeScope,
   type PossibleCurrent,
   type S1Result,
   type S2Result,
@@ -52,6 +56,12 @@ export interface FixtureReport {
   encounterPassed: number;
   /** One-way implications from complete S3 facts (`admissibility`, S3 encounter attributions). */
   encounterOneWay: number;
+  /**
+   * Partial-stage, one-way implications for the same-episode check alone, from complete S3 facts
+   * (`admissibility` Admissible / Inadmissible(OtherEpisode), S3 episode attributions). No fixture
+   * asserts an episode-check trace fact of its own.
+   */
+  episodeOneWay: number;
   outOfScope: number;
   failures: string[];
   notRun: string | null;
@@ -138,6 +148,7 @@ function s2Nodes(r: S2Result): Map<string, NodeCandidacy> {
   return m;
 }
 
+const EPISODE_REASONS = new Set(['FieldAbsent:episode', 'FieldMalformed:episode', 'ContextUnknown:episode']);
 const ENCOUNTER_REASONS = new Set(['FieldAbsent:encounter', 'FieldMalformed:encounter', 'ContextUnknown:encounter']);
 type EncounterNode = Extract<PossibleEncounterScope, { kind: 'node' }>;
 function encounterNodes(r: ReturnType<typeof experimentalCheckEncounterScope>): Map<string, EncounterNode> {
@@ -176,6 +187,7 @@ export function runFixtures(dir: string = FIXTURE_DIR): { reports: FixtureReport
       encounterApplicable: 0,
       encounterPassed: 0,
       encounterOneWay: 0,
+      episodeOneWay: 0,
       outOfScope: 0,
       failures: [],
       notRun: null,
@@ -217,6 +229,19 @@ export function runFixtures(dir: string = FIXTURE_DIR): { reports: FixtureReport
           }),
         )
       : null;
+    // Likewise the episode check, only where the query authors exactly SAME_EPISODE_RULE.
+    const epi = isDeepStrictEqual(contract.admissible?.episode, SAME_EPISODE_RULE)
+      ? experimentalCheckEpisodeScope({
+          s1: result,
+          valueSet: pin,
+          expansion: { id: pin, ...query.valueSets[pin] },
+          rule: contract.admissible.episode,
+          contextEpisode: fx.input.context.episode as EpisodeBinding,
+        })
+      : null;
+    const episodeNodes = new Map<string, Extract<PossibleEpisodeScope, { kind: 'node' }>>();
+    for (const k of epi?.keys ?? []) for (const p of k.possibilities) if (p.kind === 'node') episodeNodes.set(showRev(p.node.revision) + (p.node.digest ? `#${p.node.digest}` : ''), p);
+    const episodeOutcome = (ref: string) => episodeNodes.get(ref)?.episode.outcome ?? 'not checked';
     const exp = fx.expected as Json;
     for (const t of (exp.traceAssertions ?? []) as Json[]) {
       if (t.fact === 'encounterScope') {
@@ -233,6 +258,15 @@ export function runFixtures(dir: string = FIXTURE_DIR): { reports: FixtureReport
           report.encounterOneWay += 1;
           const got = outcomeOf(enc.get(t.ref));
           if (got !== implied) report.failures.push(`admissibility ${t.value} ${t.ref}: encounter check ${got}, implied ${implied}`);
+        }
+      }
+      if (t.fact === 'admissibility' && epi) {
+        // Same implication for the episode rule: Admissible means every rule holds.
+        const implied = t.value === 'Admissible' ? 'Matches' : t.value === 'Inadmissible' && t.reason === 'OtherEpisode' ? 'DoesNotMatch' : null;
+        if (implied) {
+          report.episodeOneWay += 1;
+          const got = episodeOutcome(t.ref);
+          if (got !== implied) report.failures.push(`admissibility ${t.value} ${t.ref}: episode check ${got}, implied ${implied}`);
         }
       }
       if (S2_FACTS.has(t.fact)) {
@@ -285,6 +319,18 @@ export function runFixtures(dir: string = FIXTURE_DIR): { reports: FixtureReport
         if (!hit) report.failures.push(`causeAttribution ${a.cause}/${a.reason} @${ref}: not an encounter-check finding`);
       }
     }
+    // One-way: an S3 attribution with an episode reason must be a finding of the episode check.
+    for (const a of (exp.causeAttribution ?? []) as Json[]) {
+      if (a.stage !== 'S3' || !EPISODE_REASONS.has(a.reason) || !epi) continue;
+      report.episodeOneWay += 1;
+      const refs = (a.origin === 'context.episode' ? a.refs : [a.origin]) as string[];
+      for (const ref of refs) {
+        const hit = [...episodeNodes.entries()].some(
+          ([id, x]) => (id === ref || id.split('#')[0] === ref) && x.episode.outcome === 'Unresolved' && x.episode.findings.some((f) => f.cause === a.cause && f.reason === a.reason),
+        );
+        if (!hit) report.failures.push(`causeAttribution ${a.cause}/${a.reason} @${ref}: not an episode-check finding`);
+      }
+    }
     // One-way check (contract §5.1): every listed candidate ID has in-domain or unresolved candidacy.
     // The field itself is an S6 output and stays out of scope; the converse is not checked.
     for (const id of (exp.evidence?.candidateEvidenceIds ?? []) as string[]) {
@@ -300,7 +346,8 @@ export function runFixtures(dir: string = FIXTURE_DIR): { reports: FixtureReport
       report.s2AttributionOneWay +
       report.s2CandidateIdsOneWay +
       report.encounterApplicable +
-      report.encounterOneWay;
+      report.encounterOneWay +
+      report.episodeOneWay;
     if (checked === 0) missing.push(fx.id);
   }
   return { reports, noApplicableAssertions: missing };

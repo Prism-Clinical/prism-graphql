@@ -95,3 +95,80 @@ export interface EncounterCheckResult {
   /** One entry per key, by `RecordKey`. Deliberately no key-level admissibility decision. */
   readonly keys: readonly KeyEncounterScope[];
 }
+
+// ---------------------------------------------------------------------------------------------
+// ONE more S3 admissibility check: same-episode scope (contract §1.2, §1.6, §2.2). Not the S3
+// result either: a match does not make a record admissible.
+
+/**
+ * The evaluation episode, in the fixtures' context notation (contract §7.1). A `known` value must
+ * be a string, or the input is a configuration error (contract §2.4: a malformed evaluation
+ * context is invalid program input).
+ */
+export type EpisodeBinding = { readonly known: string } | { readonly unknown: readonly ContextCause[] };
+
+/**
+ * The authored rule this check consumes, exactly as written in the query contract's
+ * `admissible.episode` (contract §7.1). Recognized, not interpreted.
+ */
+export const SAME_EPISODE_RULE = { eq: [{ field: ['c', 'episode'] }, { ref: 'ctx.episode' }] } as const;
+
+/** As EncounterCheckInput: no S2 parameter, any other input field is rejected. */
+export interface EpisodeCheckInput {
+  readonly s1: S1Result;
+  readonly valueSet: string;
+  readonly expansion: ValueSetExpansion;
+  /** The authored `admissible.episode` node; must equal SAME_EPISODE_RULE. */
+  readonly rule: unknown;
+  readonly contextEpisode: EpisodeBinding;
+}
+
+export type EpisodeFinding =
+  /** Contract §2.2: the record's field is absent. */
+  | { readonly cause: 'Missing'; readonly origin: 'record'; readonly reason: 'FieldAbsent:episode' }
+  /** Contract §1.2, §1.7: present but not a string (including `null`). */
+  | { readonly cause: 'Invalid'; readonly origin: 'record'; readonly reason: 'FieldMalformed:episode' }
+  /** Contract §2.2, §1.6: the context episode's own causes, unchanged (case 12). */
+  | { readonly cause: ContextCause; readonly origin: 'context.episode'; readonly reason: 'ContextUnknown:episode' };
+
+export type EpisodeOutcome =
+  | { readonly outcome: 'Matches'; readonly recordEpisode: string }
+  | { readonly outcome: 'DoesNotMatch'; readonly reason: 'OtherEpisode'; readonly recordEpisode: string; readonly contextEpisode: string }
+  | { readonly outcome: 'Unresolved'; readonly findings: readonly EpisodeFinding[] };
+
+/** As PossibleEncounterScope. Out-of-domain nodes are NOT episode mismatches. */
+export type PossibleEpisodeScope =
+  | {
+      readonly kind: 'node';
+      readonly node: NodeRef;
+      readonly candidacy: 'InDomain' | 'Unresolved';
+      readonly s2Findings: readonly S2Finding[];
+      readonly episode: EpisodeOutcome;
+    }
+  | {
+      readonly kind: 'node';
+      readonly node: NodeRef;
+      readonly candidacy: 'OutOfDomain';
+      readonly episode: { readonly outcome: 'NotEvaluated'; readonly reason: 'OutOfDomain' };
+    }
+  | { readonly kind: 'excluded' }
+  | { readonly kind: 'unknown' };
+
+export interface KeyEpisodeScope {
+  readonly key: RecordKey;
+  readonly s1Status: KeyStatus;
+  readonly candidate: boolean;
+  /** S1's active causes and defects, unchanged. An episode match never clears them. */
+  readonly inheritedS1Causes: readonly S1Cause[];
+  readonly inheritedS1Defects: readonly Defect[];
+  readonly possibilities: readonly PossibleEpisodeScope[];
+}
+
+/** Detached and deep-frozen. Deliberately no key-level admissibility decision. */
+export interface EpisodeCheckResult {
+  readonly experimental: 'nonclinical-s3-episode-v0';
+  readonly check: 'same-episode';
+  readonly valueSet: string;
+  readonly contextEpisode: EpisodeBinding;
+  readonly keys: readonly KeyEpisodeScope[];
+}
