@@ -20,6 +20,7 @@ The fourteenth revision specifies the S3 `episode` rule on its own (2.5, cases 1
 - An absent record episode is `Missing` (`FieldAbsent:episode`); a present malformed one is `Invalid` (`FieldMalformed:episode`).
 - A malformed or blank `Known` evaluation episode is an invalid configuration.
 - The reason labels `FieldAbsent:episode`, `FieldMalformed:episode`, `ContextUnknown:episode` and `OtherEpisode` are part of the contract.
+- Obligations that depend on an evidence Need are not emitted while a key binding is unresolved; reevaluation after the binding is resolved emits them if still material (6.2).
 - Combining several admissibility rules stays deferred.
 
 The thirteenth revision follows review of the first encounter-check implementation. That implementation accepted S1 and S2 results from different snapshots and checked a superseded revision.
@@ -455,7 +456,7 @@ A known record episode never decides against an unknown evaluation episode, and 
 
 A malformed evaluation context is an invalid program input from the orchestrator, never patient uncertainty: an evaluation episode that is neither `Known` nor `Unknown`, a `known` value that is not a well-formed `EpisodeRef` (including a blank string), or an `Unknown` with no causes or an unrecognized cause. Evaluation does not proceed.
 
-**Needs when record and context problems coincide.** The record is material if it would be `Supporting` when admitted. Its record finding is attributed with the context’s causes. Because a key binding is unresolved, no evidence Need is emitted (6.2), and the episode binding is deferred. `CorrectRecord` is keyed by an evidence Need (6.2), so none is emitted while that Need does not exist (case 113).
+**Needs when record and context problems coincide.** In case 113, the record is material under the policy’s materiality rules (4.2). Its defect and the context’s causes remain attributed in the result. While the episode binding is unresolved, no evidence Need or dependent `CorrectRecord` obligation is emitted, and the scope’s source declaration supplies the binding-resolution Need. Once the binding is resolved, reevaluation determines whether an evidence Need and `CorrectRecord` are required. Section 6.2 states this rule generally.
 
 ## 3. Where the clinical expression lives
 
@@ -657,6 +658,15 @@ Causes, contributing records, gap diagnostics and the orchestrator’s recorded 
 **Separate obligations exist only for a different fulfillment requirement.** The explicit example is conflict: a further assessment can never remove an established conflict under this policy, so fulfillment needs an authorized correction or retraction of an existing record. That is a `ResolveConflict` obligation (Need key + kind). `CorrectRecord` (Need key + kind + `RecordKey`) is emitted for each material unresolved record whose attributed causes include one from that record’s own data or history. That means an S1 cause, or `FieldAbsent`, `FieldMalformed` or `CodeMalformed` on one of its revisions. It is *not* emitted for `TerminologyUnavailable`, `ContextUnknown`, an inadmissible record or a gap. Its fulfillment validation (`fulfilled_by`, §7) remains **deferred**: cases below verify only that it is emitted.
 
 **Unresolved scope.** If a key binding is unresolved, as with a context episode `Unknown(Conflicting)`, no evidence Need is emitted. The scope’s source declaration emits its own Need, linked through the trace.
+
+**Dependent obligations under an unresolved scope.** Every obligation is keyed by an evidence Need (`ResolveConflict` and `CorrectRecord` above). While a key binding is unresolved, that Need cannot be identified, so no dependent obligation is emitted either, even for a material record whose own data is defective. Nothing is lost:
+
+1. The record’s defect and the context’s causes stay attributed in the result and the trace.
+2. The binding is resolved through the Need of the scope’s source declaration.
+3. Each outcome creates a new evaluation revision, which reevaluates the query.
+4. If the record’s defect is still material and an evidence Need now exists, that revision emits the `CorrectRecord` (or `ResolveConflict`) obligation under the Need’s key.
+
+There is no separate correction obligation for an unidentifiable Need (case 113).
 
 **Ownership.** The core emits Needs only where backward dependency tracing shows materiality (§4.3, §7). The orchestrator chooses the fulfiller, dispatches it, retries, enforces deadlines and records outcomes, and each outcome creates a new evaluation revision.
 
@@ -956,7 +966,7 @@ In cases 101–103, 105 and 106 the record is `Supporting` if admitted, so it is
 | 112 | Surrounding whitespace is not trimmed | s1/r112, `episode: " E1"` | `Unresolved{Inadmissible}` | Unknown | Episode check `DoesNotMatch`; `Inadmissible(OtherEpisode)`; the encounter and `assertionKind` rules hold | K1 |
 | 113 | Record and context problems together | (a) s1/r113, `episode` omitted; context episode `{unknown: [Conflicting]}`. (b) s1/r113, `episode: "   "`; context episode `{unknown: [Missing, Conflicting]}` | (a) `Unresolved{Missing, Conflicting}`; (b) `Unresolved{Missing, Conflicting, Invalid}`; record finding @s1/r113@1, context causes @context episode | Unknown (same) | Both origins kept; context causes not relabelled; in (b) the context’s `Missing` is not the record’s | **No** evidence Need; deferred (episode); no `CorrectRecord` (2.5) |
 
-In cases 108–111 and 113 the record is `Supporting` if admitted, so it is material. 112 follows 107: the record is inadmissible on this rule alone.
+In cases 108–111 and 113 the record is the only candidate and its possible classes include `Supporting`, so it is material under 4.2. This is a property of these cases, not a general rule: another sufficient supporting record can make it immaterial (Trace A). 112 follows 107: the record is inadmissible on this rule alone.
 
 ### 7.5 Invariance checks
 
@@ -1029,7 +1039,7 @@ These must hold for every case:
     - The same outcome structure as 16, with `EpisodeRef` syntax stated for episodes on their own: nonempty, not whitespace-only, never normalized.
     - Absent is `Missing` (`FieldAbsent:episode`); malformed is `Invalid` (`FieldMalformed:episode`); an unknown context keeps its causes (`ContextUnknown:episode`); a mismatch is `OtherEpisode`.
     - A malformed or blank `Known` evaluation episode is an invalid configuration.
-    - With record and context problems together, no evidence Need and no `CorrectRecord`; the episode binding is deferred.
+    - With record and context problems together, causes from both stay attributed; no evidence Need and no dependent `CorrectRecord` while the binding is unresolved (6.2, dependent obligations); the episode binding is deferred and resolved through its source declaration’s Need before reevaluation.
 
 **Possible conflicts needing a Stage A amendment.** None found. Items to confirm:
 
