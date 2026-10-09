@@ -1,0 +1,37 @@
+{
+  "id": "CAN-06",
+  "contractCases": [
+    27
+  ],
+  "title": "Different assertion is a different payload",
+  "kind": "canonicalization",
+  "evidenceModel": "demo-model@0.1",
+  "itemType": "revision",
+  "comparison": "canonicalization-v1",
+  "input": {
+    "rawOccurrences": [
+      "{\"key\":{\"source\":\"s1\",\"localId\":\"r14\"},\"revision\":\"1\",\"recordType\":\"demo-model/DemoAssessment@0.1\",\"subject\":\"P1\",\"episode\":\"E1\",\"encounter\":\"N1\",\"concept\":{\"system\":\"demo-cs\",\"code\":\"item-x\"},\"assertion\":\"Affirmed\",\"assertionKind\":\"ClinicianDocumented\",\"author\":{\"actor\":\"u1\",\"permissions\":[]},\"provenance\":{\"acquisition\":\"a0\",\"sourceRecordRef\":\"s1:r14:1\"}}",
+      "{\"key\":{\"source\":\"s1\",\"localId\":\"r14\"},\"revision\":\"1\",\"recordType\":\"demo-model/DemoAssessment@0.1\",\"subject\":\"P1\",\"episode\":\"E1\",\"encounter\":\"N1\",\"concept\":{\"system\":\"demo-cs\",\"code\":\"item-x\"},\"assertion\":\"Denied\",\"assertionKind\":\"ClinicianDocumented\",\"author\":{\"actor\":\"u1\",\"permissions\":[]},\"provenance\":{\"acquisition\":\"a1\",\"sourceRecordRef\":\"s1:r14:1\"}}"
+    ]
+  },
+  "expected": {
+    "equalPayload": false,
+    "variants": [
+      {
+        "occurrences": [
+          0
+        ],
+        "canonicalBytes": "{\"assertion\":\"Affirmed\",\"assertionKind\":\"ClinicianDocumented\",\"author\":{\"actor\":\"u1\",\"permissions\":[]},\"concept\":{\"code\":\"item-x\",\"system\":\"demo-cs\"},\"encounter\":\"N1\",\"episode\":\"E1\",\"recordType\":\"demo-model/DemoAssessment@0.1\",\"subject\":\"P1\"}",
+        "digest": "b9f5d4d1fefb1745e35f52708a2437d050ab5df8f4da9451400e413bc8363924"
+      },
+      {
+        "occurrences": [
+          1
+        ],
+        "canonicalBytes": "{\"assertion\":\"Denied\",\"assertionKind\":\"ClinicianDocumented\",\"author\":{\"actor\":\"u1\",\"permissions\":[]},\"concept\":{\"code\":\"item-x\",\"system\":\"demo-cs\"},\"encounter\":\"N1\",\"episode\":\"E1\",\"recordType\":\"demo-model/DemoAssessment@0.1\",\"subject\":\"P1\"}",
+        "digest": "4a075443572495c93763b4266b06428cefcfbb9b0d8d4ebb78c923eee68182b9"
+      }
+    ],
+    "undeclaredFields": []
+  }
+}

@@ -1,0 +1,39 @@
+{
+  "id": "CAN-05",
+  "contractCases": [
+    69
+  ],
+  "title": "Undeclared field is not payload",
+  "kind": "canonicalization",
+  "evidenceModel": "demo-model@0.1",
+  "itemType": "revision",
+  "comparison": "canonicalization-v1",
+  "input": {
+    "rawOccurrences": [
+      "{\"key\":{\"source\":\"s1\",\"localId\":\"r1\"},\"revision\":\"1\",\"recordType\":\"demo-model/DemoAssessment@0.1\",\"subject\":\"P1\",\"episode\":\"E1\",\"encounter\":\"N1\",\"concept\":{\"system\":\"demo-cs\",\"code\":\"item-x\"},\"assertion\":\"Affirmed\",\"assertionKind\":\"ClinicianDocumented\",\"author\":{\"actor\":\"u1\",\"permissions\":[]},\"provenance\":{\"acquisition\":\"a0\",\"sourceRecordRef\":\"s1:r1:1\"}}",
+      "{\"key\":{\"source\":\"s1\",\"localId\":\"r1\"},\"revision\":\"1\",\"recordType\":\"demo-model/DemoAssessment@0.1\",\"subject\":\"P1\",\"episode\":\"E1\",\"encounter\":\"N1\",\"concept\":{\"system\":\"demo-cs\",\"code\":\"item-x\",\"label\":\"x\"},\"assertion\":\"Affirmed\",\"assertionKind\":\"ClinicianDocumented\",\"author\":{\"actor\":\"u1\",\"permissions\":[]},\"note\":\"extra\",\"provenance\":{\"acquisition\":\"a1\",\"sourceRecordRef\":\"s1:r1:1\"}}"
+    ]
+  },
+  "expected": {
+    "equalPayload": true,
+    "variants": [
+      {
+        "occurrences": [
+          0,
+          1
+        ],
+        "canonicalBytes": "{\"assertion\":\"Affirmed\",\"assertionKind\":\"ClinicianDocumented\",\"author\":{\"actor\":\"u1\",\"permissions\":[]},\"concept\":{\"code\":\"item-x\",\"system\":\"demo-cs\"},\"encounter\":\"N1\",\"episode\":\"E1\",\"recordType\":\"demo-model/DemoAssessment@0.1\",\"subject\":\"P1\"}",
+        "digest": "b9f5d4d1fefb1745e35f52708a2437d050ab5df8f4da9451400e413bc8363924"
+      }
+    ],
+    "undeclaredFields": [
+      {
+        "occurrence": 1,
+        "paths": [
+          "concept.label",
+          "note"
+        ]
+      }
+    ]
+  }
+}

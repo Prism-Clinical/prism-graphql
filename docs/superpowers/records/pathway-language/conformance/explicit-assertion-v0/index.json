@@ -1,0 +1,643 @@
+{
+  "policy": "explicit-assertion-v0",
+  "evidenceModel": "demo-model@0.1",
+  "contract": "../../evidence-query-to-predicate-contract.md",
+  "status": "proposed",
+  "cases": {
+    "1": [
+      "EA-001"
+    ],
+    "2": [
+      "EA-002"
+    ],
+    "3": [
+      "EA-003"
+    ],
+    "4": [
+      "EA-004"
+    ],
+    "5": [
+      "EA-005"
+    ],
+    "6": [
+      "EA-006"
+    ],
+    "7": [
+      "EA-007"
+    ],
+    "8": [
+      "EA-008"
+    ],
+    "9": [
+      "EA-009"
+    ],
+    "10": [
+      "EA-010"
+    ],
+    "11": [
+      "EA-011"
+    ],
+    "12": [
+      "EA-012"
+    ],
+    "13": [
+      "EA-013"
+    ],
+    "14": [
+      "EA-014"
+    ],
+    "15": [
+      "EA-015"
+    ],
+    "16": [
+      "EA-016"
+    ],
+    "17": [
+      "EA-017"
+    ],
+    "18": [
+      "EA-018"
+    ],
+    "19": [
+      "CAN-07",
+      "EA-019"
+    ],
+    "20": [
+      "EA-020"
+    ],
+    "21": [
+      "EA-021"
+    ],
+    "22": [
+      "EA-022"
+    ],
+    "23": [
+      "EA-023"
+    ],
+    "24": [
+      "EA-024"
+    ],
+    "25": [
+      "EA-025"
+    ],
+    "26": [
+      "EA-026"
+    ],
+    "27": [
+      "CAN-06",
+      "EA-027"
+    ],
+    "28": [
+      "EA-028"
+    ],
+    "29": [
+      "EA-029"
+    ],
+    "30": [
+      "EA-030"
+    ],
+    "31": [
+      "EA-031"
+    ],
+    "32": [
+      "EA-032"
+    ],
+    "33": [
+      "EA-033"
+    ],
+    "34": [
+      "EA-034"
+    ],
+    "35": [
+      "EA-035"
+    ],
+    "36": [
+      "EA-036"
+    ],
+    "37": [
+      "EA-037"
+    ],
+    "38": [
+      "EA-038"
+    ],
+    "39": [
+      "EA-039"
+    ],
+    "40": [
+      "EA-040"
+    ],
+    "41": [
+      "EA-041"
+    ],
+    "42": [
+      "EA-042"
+    ],
+    "43": [
+      "EA-043"
+    ],
+    "44": [
+      "EA-044"
+    ],
+    "45": [
+      "EA-045"
+    ],
+    "46": [
+      "EA-046"
+    ],
+    "47": [
+      "EA-047"
+    ],
+    "48": [
+      "EA-048"
+    ],
+    "49": [
+      "EA-049"
+    ],
+    "50": [
+      "EA-050"
+    ],
+    "51": [
+      "EA-051a",
+      "EA-051b"
+    ],
+    "52": [
+      "EA-052a",
+      "EA-052b"
+    ],
+    "53": [
+      "EA-053"
+    ],
+    "54": [
+      "EA-054"
+    ],
+    "55": [
+      "EA-055a",
+      "EA-055b"
+    ],
+    "56": [
+      "EA-056"
+    ],
+    "57": [
+      "EA-057"
+    ],
+    "58": [
+      "EA-058"
+    ],
+    "59": [
+      "CAN-02",
+      "EA-059"
+    ],
+    "60": [
+      "EA-060"
+    ],
+    "61": [
+      "CAN-03",
+      "EA-061"
+    ],
+    "62": [
+      "EA-062"
+    ],
+    "63": [
+      "EA-063"
+    ],
+    "64": [
+      "EA-064"
+    ],
+    "65": [
+      "EA-065"
+    ],
+    "66": [
+      "EA-066"
+    ],
+    "67": [
+      "CAN-01",
+      "CAN-12"
+    ],
+    "68": [
+      "CAN-04",
+      "EA-068"
+    ],
+    "69": [
+      "CAN-05",
+      "EA-069"
+    ],
+    "70": [
+      "EA-070"
+    ],
+    "71": [
+      "EA-071"
+    ],
+    "72": [
+      "EA-072"
+    ],
+    "73": [
+      "EA-073"
+    ],
+    "74": [
+      "EA-074"
+    ],
+    "75": [
+      "CAN-08",
+      "CAN-09",
+      "CAN-10",
+      "CAN-11"
+    ],
+    "76": [
+      "EA-076"
+    ],
+    "77": [
+      "EA-077"
+    ],
+    "78": [
+      "EA-078"
+    ],
+    "79": [
+      "EA-079"
+    ],
+    "80": [
+      "EA-080"
+    ],
+    "81": [
+      "EA-081"
+    ],
+    "82": [
+      "EA-082"
+    ],
+    "83": [
+      "EA-083"
+    ],
+    "84": [
+      "EA-084"
+    ],
+    "85": [
+      "EA-085"
+    ],
+    "86": [
+      "EA-086"
+    ],
+    "87": [
+      "EA-087"
+    ],
+    "88": [
+      "EA-088"
+    ],
+    "89": [
+      "EA-089"
+    ],
+    "90": [
+      "EA-090"
+    ],
+    "91": [
+      "EA-091"
+    ],
+    "92": [
+      "EA-092"
+    ],
+    "93": [
+      "EA-093"
+    ],
+    "94": [
+      "EA-094"
+    ],
+    "95": [
+      "EA-095"
+    ],
+    "96": [
+      "EA-096"
+    ],
+    "97": [
+      "EA-097"
+    ],
+    "98": [
+      "EA-098a",
+      "EA-098b"
+    ],
+    "99": [
+      "EA-099a",
+      "EA-099b"
+    ],
+    "100": [
+      "EA-100"
+    ],
+    "101": [
+      "EA-101"
+    ],
+    "102": [
+      "EA-102"
+    ],
+    "103": [
+      "EA-103"
+    ],
+    "104": [
+      "EA-104"
+    ],
+    "105": [
+      "EA-105"
+    ],
+    "106": [
+      "EA-106a",
+      "EA-106b"
+    ],
+    "107": [
+      "EA-107"
+    ],
+    "108": [
+      "EA-108"
+    ],
+    "109": [
+      "EA-109"
+    ],
+    "110": [
+      "EA-110"
+    ],
+    "111": [
+      "EA-111a",
+      "EA-111b"
+    ],
+    "112": [
+      "EA-112"
+    ],
+    "113": [
+      "EA-113a",
+      "EA-113b"
+    ],
+    "114": [
+      "EA-114"
+    ],
+    "115": [
+      "EA-115a",
+      "EA-115b"
+    ],
+    "116": [
+      "EA-116"
+    ],
+    "117": [
+      "EA-117"
+    ],
+    "118": [
+      "EA-118a",
+      "EA-118b",
+      "EA-118c",
+      "EA-118d"
+    ],
+    "119": [
+      "EA-119"
+    ],
+    "120": [
+      "EA-120"
+    ],
+    "121": [
+      "EA-121"
+    ],
+    "122": [
+      "EA-122"
+    ],
+    "123": [
+      "EA-123"
+    ],
+    "124": [
+      "EA-124"
+    ]
+  },
+  "pairs": [
+    {
+      "before": "EA-064",
+      "after": "EA-020",
+      "compare": "result",
+      "claim": "Proven subject-change attempt leaves the valid target's result unchanged; only the rejection diagnostic is added"
+    },
+    {
+      "before": "EA-064",
+      "after": "EA-021",
+      "compare": "result",
+      "claim": "Proven record-type-change attempt leaves the valid target's result unchanged"
+    },
+    {
+      "before": "EA-001",
+      "after": "EA-022",
+      "compare": "result",
+      "claim": "Proven cross-source correction leaves the valid target's result unchanged"
+    },
+    {
+      "before": "EA-001",
+      "after": "EA-063",
+      "compare": "result",
+      "claim": "Proven cross-local-ID correction leaves the valid target's result unchanged"
+    },
+    {
+      "before": "EA-053",
+      "after": "EA-054",
+      "compare": "result",
+      "claim": "A gap stated for another subject is irrelevant, and the boundary attempt it might be confused with does not change the result"
+    },
+    {
+      "before": "EA-070",
+      "after": "EA-071",
+      "compare": "wholeExpected",
+      "claim": "Permuting occurrences changes neither variant identities, order nor result"
+    }
+  ],
+  "historyResolution": [
+    {
+      "before": "EA-076",
+      "after": "EA-072",
+      "controls": [
+        "EA-073",
+        "EA-077",
+        "EA-078",
+        "EA-079"
+      ],
+      "claim": "A valid, unambiguous correction resolves the revision-1 payload conflict (history kept as a diagnostic); unresolved authority, an independent active defect, a later revision without supersedes, or ownership-conflicted variants do not"
+    },
+    {
+      "before": "EA-084",
+      "after": "EA-081",
+      "controls": [
+        "EA-082",
+        "EA-083"
+      ],
+      "claim": "An authorized retraction of the competing branch makes the fork historical; an unauthorized retraction or one with unresolved authority does not"
+    },
+    {
+      "before": "EA-088",
+      "after": "EA-089",
+      "controls": [
+        "EA-091",
+        "EA-092"
+      ],
+      "claim": "When a now-historical payload conflict suppressed the step 5 fork, two surviving heads with no active defect are a fallback Fork; an authorized retraction of one head resolves it, an unauthorized retraction or one with unresolved authority does not"
+    }
+  ],
+  "contrasts": [
+    {
+      "fixtures": [
+        "EA-022",
+        "EA-058"
+      ],
+      "claim": "Proven cross-boundary correction (rejected, Known) versus correction identity undeterminable (Unresolved Missing)"
+    },
+    {
+      "fixtures": [
+        "EA-017",
+        "EA-018",
+        "EA-019"
+      ],
+      "claim": "Proven unauthorized versus authority missing versus authority malformed"
+    },
+    {
+      "fixtures": [
+        "EA-020",
+        "EA-065"
+      ],
+      "claim": "Proven subject change versus subject undeterminable"
+    },
+    {
+      "fixtures": [
+        "EA-054",
+        "EA-062"
+      ],
+      "claim": "Boundary rejection of a distinct revision versus a genuine payload conflict under one RevisionRef"
+    },
+    {
+      "fixtures": [
+        "EA-072",
+        "EA-073"
+      ],
+      "claim": "A conflict superseded by a valid correction is historical; with an undeterminable correction it still affects the result"
+    },
+    {
+      "fixtures": [
+        "EA-076",
+        "EA-080"
+      ],
+      "claim": "An authorized retraction also makes the payload conflict historical; the key becomes Retracted"
+    },
+    {
+      "fixtures": [
+        "EA-085",
+        "EA-086",
+        "EA-087"
+      ],
+      "claim": "Retracting a correction whose authority is unknown keeps the supersession uncertainty (Unresolved, possible {@1, excluded}); with known authority the key is Retracted (no reinstatement), and with known lack of authority @1 is Current"
+    },
+    {
+      "fixtures": [
+        "EA-084",
+        "EA-088"
+      ],
+      "claim": "A fork recorded at step 5 and the step 7 fallback fork give the same result; only the historical PayloadConflict differs"
+    },
+    {
+      "fixtures": [
+        "EA-083",
+        "EA-092"
+      ],
+      "claim": "With retraction authority missing, a step 5 fork stays active (Missing, Conflicting); when the fork was suppressed by a now-historical conflict, the active retraction defect stands alone and the fallback adds no Fork (Missing)"
+    },
+    {
+      "fixtures": [
+        "EA-086",
+        "EA-090"
+      ],
+      "claim": "Retracting every surviving head leaves the key Retracted; a superseded revision, conflicted or not, is never reinstated"
+    },
+    {
+      "fixtures": [
+        "EA-024",
+        "EA-098a"
+      ],
+      "claim": "A well-formed code outside the expansion in a covered system is OutOfDomain (Missing, no candidate); an empty code is malformed, so candidacy is Unresolved{Invalid}, never established nonmembership"
+    },
+    {
+      "fixtures": [
+        "EA-099a",
+        "EA-100"
+      ],
+      "claim": "A whitespace-only code is malformed (Invalid); a code with surrounding whitespace is well-formed, compared without trimming, and therefore OutOfDomain"
+    },
+    {
+      "fixtures": [
+        "EA-093",
+        "EA-096"
+      ],
+      "claim": "An absent concept component is Missing (FieldAbsent); a present null component is malformed (Invalid, CodeMalformed)"
+    },
+    {
+      "fixtures": [
+        "EA-009",
+        "EA-103"
+      ],
+      "claim": "Against a known evaluation encounter a different record encounter does not match (Inadmissible, OtherEncounter); against an unknown evaluation encounter it stays unresolved with the context's causes, never Inadmissible"
+    },
+    {
+      "fixtures": [
+        "EA-010",
+        "EA-101"
+      ],
+      "claim": "An absent record encounter is Missing (FieldAbsent:encounter); a present malformed one is Invalid (FieldMalformed:encounter)"
+    },
+    {
+      "fixtures": [
+        "EA-106a",
+        "EA-107"
+      ],
+      "claim": "A whitespace-only record encounter is malformed (Invalid, FieldMalformed:encounter); one with surrounding whitespace is a well-formed EncounterRef, compared without trimming, so it does not match N1 (Inadmissible, OtherEncounter)"
+    },
+    {
+      "fixtures": [
+        "EA-108",
+        "EA-109"
+      ],
+      "claim": "An absent record episode is Missing (FieldAbsent:episode); a null one is malformed, Invalid (FieldMalformed:episode)"
+    },
+    {
+      "fixtures": [
+        "EA-111a",
+        "EA-112"
+      ],
+      "claim": "A whitespace-only record episode is malformed (Invalid, FieldMalformed:episode); one with surrounding whitespace is a well-formed EpisodeRef, compared without trimming, so it does not match E1 (Inadmissible, OtherEpisode)"
+    },
+    {
+      "fixtures": [
+        "EA-012",
+        "EA-113a"
+      ],
+      "claim": "An unknown evaluation episode alone gives only the context's causes; with an absent record episode as well, the record's Missing is added with its own origin, and no evidence Need or CorrectRecord is emitted in either"
+    },
+    {
+      "fixtures": [
+        "EA-114",
+        "EA-115a"
+      ],
+      "claim": "The same PatientReport record matches when the authored set includes PatientReport (Known(true)) and does not match when the authored set omits it (Inadmissible, AssertionKindNotAllowed): the authored set decides membership"
+    },
+    {
+      "fixtures": [
+        "EA-115a",
+        "EA-118a"
+      ],
+      "claim": "A recognized kind outside the authored set is a mismatch (Inadmissible, AssertionKindNotAllowed); an unrecognized string is malformed (Invalid, FieldMalformed:assertionKind), never a disallowed kind"
+    },
+    {
+      "fixtures": [
+        "EA-116",
+        "EA-117"
+      ],
+      "claim": "An absent assertion kind is Missing (FieldAbsent:assertionKind); a null one is Invalid (FieldMalformed:assertionKind); neither defaults to a kind"
+    },
+    {
+      "fixtures": [
+        "EA-107",
+        "EA-119"
+      ],
+      "claim": "An encounter mismatch alone is Inadmissible(OtherEncounter); beside an absent episode it is still Inadmissible, and the episode's Missing finding is kept, not relabelled or dropped"
+    },
+    {
+      "fixtures": [
+        "EA-119",
+        "EA-122"
+      ],
+      "claim": "With a mismatch, unresolved rules do not prevent Inadmissible; without one, unresolved rules give UnresolvedAdmissibility with every finding"
+    }
+  ]
+}

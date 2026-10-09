@@ -1,0 +1,48 @@
+{
+  "id": "PPL-05a",
+  "title": "Structural error: unresolved declaration reference",
+  "status": "Proposed, hand-derived acceptance expectation. Not produced by any PPL compiler or evaluator. The experimental I1 compiler checks the compile and preview blocks, and I2 checks program-level outputs with the query evidence supplied directly (libs/pathway-language); no end-to-end evaluator exists yet.",
+  "program": {
+    "file": "../schematic-demo-finding.ppl.json",
+    "patch": [
+      {
+        "op": "replace",
+        "path": "/nodes/1/expr/evidenceValue/ref",
+        "value": "q.demo.missing"
+      }
+    ]
+  },
+  "entryPoints": [
+    "compile",
+    "compilePreview"
+  ],
+  "input": null,
+  "expected": {
+    "state": "InvalidProgram",
+    "compile": {
+      "outcome": "CompileFailure",
+      "wellFormed": false,
+      "diagnostics": [
+        {
+          "code": "UNDEFINED_REFERENCE",
+          "location": "/nodes/1/expr/evidenceValue/ref",
+          "message": "No declaration 'q.demo.missing' (Stage A 10.1 step 6)"
+        }
+      ]
+    },
+    "preview": {
+      "outcome": "CompileFailure",
+      "sameDiagnostics": true
+    },
+    "outputs": null,
+    "causeAttribution": null,
+    "trace": [
+      {
+        "output": "compile",
+        "source": "/nodes/1/expr/evidenceValue/ref",
+        "result": "CompileFailure",
+        "because": "References are resolved before typing; preview fails too, because an invalid program is not an incomplete one (Stage A 2.3, 10.1)"
+      }
+    ]
+  }
+}

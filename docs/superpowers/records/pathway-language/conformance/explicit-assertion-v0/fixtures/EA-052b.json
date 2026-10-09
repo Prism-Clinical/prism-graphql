@@ -1,0 +1,193 @@
+{
+  "id": "EA-052b",
+  "contractCases": [
+    52
+  ],
+  "title": "Nested criterion hole with an empty snapshot",
+  "kind": "preview",
+  "policy": "explicit-assertion-v0",
+  "evidenceModel": "demo-model@0.1",
+  "query": {
+    "inline": {
+      "contractDigest": "d1",
+      "query": {
+        "id": "q.demo",
+        "kind": "EvidenceQuery",
+        "output": "Evidence<Boolean>",
+        "contract": {
+          "retrieve": {
+            "type": "demo-model/DemoAssessment@0.1",
+            "sources": [
+              "s1",
+              "s2"
+            ],
+            "valueSet": "demo-vs/item-x@1"
+          },
+          "corrections": {
+            "authority": "demo-policy/same-source-amend@1"
+          },
+          "admissible": {
+            "episode": {
+              "eq": [
+                {
+                  "field": [
+                    "c",
+                    "episode"
+                  ]
+                },
+                {
+                  "ref": "ctx.episode"
+                }
+              ]
+            },
+            "encounter": {
+              "eq": [
+                {
+                  "field": [
+                    "c",
+                    "encounter"
+                  ]
+                },
+                {
+                  "ref": "ctx.encounter"
+                }
+              ]
+            },
+            "assertionKind": {
+              "in": [
+                "ClinicianDocumented",
+                "PatientReport"
+              ]
+            }
+          },
+          "policy": "explicit-assertion-v0",
+          "establishes": {
+            "hole": {
+              "id": "H-CRITERION",
+              "type": "Decision",
+              "over": "candidate"
+            }
+          },
+          "refutes": {
+            "eq": [
+              {
+                "field": [
+                  "c",
+                  "assertion"
+                ]
+              },
+              {
+                "enum": "AssertionValue.Denied"
+              }
+            ]
+          },
+          "obligations": [
+            {
+              "disjoint": [
+                "establishes",
+                "refutes"
+              ]
+            }
+          ]
+        }
+      },
+      "predicate": {
+        "id": "p.demo",
+        "kind": "Predicate",
+        "expr": {
+          "evidenceValue": {
+            "ref": "q.demo"
+          }
+        }
+      },
+      "valueSets": {
+        "demo-vs/item-x@1": {
+          "expansion": [
+            {
+              "system": "demo-cs",
+              "code": "item-x"
+            }
+          ],
+          "coveredSystems": [
+            "demo-cs"
+          ]
+        }
+      }
+    }
+  },
+  "requestedOutputs": [
+    "p.demo"
+  ],
+  "comparison": "preview-v1",
+  "input": {
+    "snapshot": "snap-1",
+    "supersedesSnapshot": null,
+    "context": {
+      "subject": "P1",
+      "episode": {
+        "known": "E1"
+      },
+      "encounter": {
+        "known": "N1"
+      },
+      "clock": "2026-01-01T00:00:00Z",
+      "mode": "nonclinical"
+    },
+    "records": [],
+    "retractions": [],
+    "coverage": [
+      {
+        "id": "cov-all",
+        "appliesTo": {
+          "snapshot": "snap-1"
+        },
+        "recordType": "demo-model/DemoAssessment@0.1",
+        "subject": "P1",
+        "sources": [
+          "s1",
+          "s2"
+        ],
+        "status": "Complete",
+        "attestedBy": "demo-adapter@1"
+      }
+    ],
+    "failures": [],
+    "rejectedItems": []
+  },
+  "expected": {
+    "outcome": "PreviewOnly",
+    "markers": [
+      {
+        "output": "p.demo",
+        "holes": [
+          "H-CRITERION"
+        ]
+      },
+      {
+        "output": "q.demo",
+        "holes": [
+          "H-CRITERION"
+        ]
+      }
+    ],
+    "evidence": null,
+    "needs": {
+      "evidence": null,
+      "deferred": null,
+      "obligations": []
+    },
+    "publication": "Blocked",
+    "traceAssertions": [
+      {
+        "fact": "stagesRun",
+        "value": [
+          "S1",
+          "S2",
+          "S3",
+          "S4",
+          "S5"
+        ]
+      }
+    ]
+  }
+}
