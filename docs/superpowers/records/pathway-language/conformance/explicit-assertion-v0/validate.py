@@ -16,9 +16,12 @@ Usage: python3 validate.py [--self-test]
 import copy, hashlib, json, os, sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-CASE_RANGE = range(1, 119)
+CASE_RANGE = range(1, 125)
 CAUSES = ["Missing", "Conflicting", "Unavailable", "Invalid", "Inadmissible", "InsufficientEvidence"]
 MARKERS = ["excluded", "unknown"]
+# Trace facts a partial-stage (S1-S3) fixture may assert.
+STAGE_FACTS = {"keyResult", "variants", "occurrences", "rejected", "outOfEnvelope", "outsideEnvelope", "diagnostic",
+               "candidacy", "encounterScope", "episodeScope", "assertionKindScope", "admissibility"}
 REV_DECL = {"key": {"source", "localId"}, "revision": None, "recordType": None, "subject": None,
             "supersedes": {"source", "localId", "revision"}, "episode": None, "encounter": None,
             "concept": {"system", "code"}, "assertion": None, "assertionKind": None,
@@ -169,6 +172,21 @@ def check(fixtures, index, query):
                 if i not in fixtures:
                     err("index", f"{group} references missing fixture {i}")
 
+    def check_variants(i, fx, exp):
+        recs = fx["input"]["records"]
+        for t in exp["traceAssertions"]:
+            if t["fact"] == "variants":
+                try:
+                    computed = sorted({rev_ref(o) + "#" + sha(canonical(payload(o)[0]))
+                                       for o in recs if rev_ref(o) == t["ref"]}, key=id_key)
+                except OutsideSubset:
+                    deferred.append(f"{i} variants {t['ref']}")
+                    continue
+                if computed != t["value"]:
+                    err(i, f"variant ids for {t['ref']} do not match payload digests")
+            if t["fact"] == "keyResult" and "possibleCurrent" in t:
+                check_sorted(i + " possibleCurrent", t["possibleCurrent"], id_key)
+
     for i, fx in fixtures.items():
         kind = fx["kind"]
         if kind == "canonicalization":
@@ -201,6 +219,21 @@ def check(fixtures, index, query):
             if "inline" not in fx["query"]:
                 err(i, "authoring fixture must inline its full query")
             continue
+        if kind == "stage":
+            # Partial-stage fixture: S1-S3 facts only, and no downstream expectation at all.
+            if fx["comparison"] != "stage-v1" or set(fx["expected"]) != {"stages", "traceAssertions"} \
+                    or fx["expected"]["stages"] != ["S1", "S2", "S3"]:
+                err(i, "stage fixture must expect exactly stages [S1, S2, S3] and traceAssertions")
+            for t in fx["expected"]["traceAssertions"]:
+                if t["fact"] not in STAGE_FACTS:
+                    err(i, f"stage fixture asserts {t['fact']}, which is outside S1-S3")
+                if t["fact"] == "admissibility":
+                    if t["value"] == "Inadmissible" and not t.get("reasons", [t.get("reason")])[0]:
+                        err(i, "Inadmissible admissibility fact without a reason")
+                    if "reasons" in t:
+                        check_sorted(i + " reasons", t["reasons"], None)
+                if "causes" in t:
+                    check_sorted(i + " causes", t["causes"], CAUSES.index)
         if "inline" in fx["query"]:
             # A modified contract (e.g. another authored assertionKind set): full query, own digest.
             q = fx["query"]["inline"]
@@ -212,6 +245,9 @@ def check(fixtures, index, query):
                 err(i, "query reference mismatch")
             digest = query["contractDigest"]
         exp = fx["expected"]
+        if kind == "stage":
+            check_variants(i, fx, exp)
+            continue
         ev = exp["evidence"]
         if ev["status"] == "Known":
             check_sorted(i + " supportingEvidenceIds", ev["supportingEvidenceIds"], id_key)
@@ -247,19 +283,7 @@ def check(fixtures, index, query):
             if (a["cause"], a["reason"]) in historical and a["origin"] in {
                     t["ref"].split("@")[0] for t in exp["traceAssertions"] if t.get("code") == "HistoricalDefect"}:
                 err(i, f"historical defect {a['reason']} also listed as an active cause")
-        recs = fx["input"]["records"]
-        for t in exp["traceAssertions"]:
-            if t["fact"] == "variants":
-                try:
-                    computed = sorted({rev_ref(o) + "#" + sha(canonical(payload(o)[0]))
-                                       for o in recs if rev_ref(o) == t["ref"]}, key=id_key)
-                except OutsideSubset:
-                    deferred.append(f"{i} variants {t['ref']}")
-                    continue
-                if computed != t["value"]:
-                    err(i, f"variant ids for {t['ref']} do not match payload digests")
-            if t["fact"] == "keyResult" and "possibleCurrent" in t:
-                check_sorted(i + " possibleCurrent", t["possibleCurrent"], id_key)
+        check_variants(i, fx, exp)
 
     for p in index["pairs"]:
         if p["before"] not in fixtures or p["after"] not in fixtures:
@@ -320,6 +344,12 @@ def self_test(fixtures, index, query):
     def shared_digest_key(e):
         e["needs"]["evidence"]["key"]["contractDigest"] = "d1"
 
+    def add_evidence(e):
+        e["evidence"] = {"status": "Unresolved", "causes": ["Inadmissible"], "candidateEvidenceIds": ["s1/r119@1"]}
+
+    def add_downstream_fact(e):
+        e["traceAssertions"].append({"fact": "classification", "ref": "s1/r119@1", "value": "Supporting"})
+
     def inline_with_shared_digest():
         fx = copy.deepcopy(fixtures)
         fx["EA-115a"]["query"]["inline"]["contractDigest"] = query["contractDigest"]
@@ -331,6 +361,8 @@ def self_test(fixtures, index, query):
         ("result pair: added diagnostic is allowed", mutated("EA-022", add_diagnostic), None),
         ("result pair: changed result is rejected", mutated("EA-022", change_result), "EA-001/EA-022 results differ"),
         ("inline contract: Need key with the shared digest is rejected", mutated("EA-115a", shared_digest_key), "Need key contract digest differs"),
+        ("stage fixture: a downstream evidence expectation is rejected", mutated("EA-119", add_evidence), "must expect exactly stages"),
+        ("stage fixture: an S5 fact is rejected", mutated("EA-119", add_downstream_fact), "outside S1-S3"),
         ("inline contract: reusing the shared digest is rejected", inline_with_shared_digest(), "must be a full query with its own contract digest"),
     ]
     failed = 0

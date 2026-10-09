@@ -379,6 +379,24 @@
       "EA-118b",
       "EA-118c",
       "EA-118d"
+    ],
+    "119": [
+      "EA-119"
+    ],
+    "120": [
+      "EA-120"
+    ],
+    "121": [
+      "EA-121"
+    ],
+    "122": [
+      "EA-122"
+    ],
+    "123": [
+      "EA-123"
+    ],
+    "124": [
+      "EA-124"
     ]
   },
   "pairs": [
@@ -606,6 +624,20 @@
         "EA-117"
       ],
       "claim": "An absent assertion kind is Missing (FieldAbsent:assertionKind); a null one is Invalid (FieldMalformed:assertionKind); neither defaults to a kind"
+    },
+    {
+      "fixtures": [
+        "EA-107",
+        "EA-119"
+      ],
+      "claim": "An encounter mismatch alone is Inadmissible(OtherEncounter); beside an absent episode it is still Inadmissible, and the episode's Missing finding is kept, not relabelled or dropped"
+    },
+    {
+      "fixtures": [
+        "EA-119",
+        "EA-122"
+      ],
+      "claim": "With a mismatch, unresolved rules do not prevent Inadmissible; without one, unresolved rules give UnresolvedAdmissibility with every finding"
     }
   ]
 }

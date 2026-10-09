@@ -236,3 +236,85 @@ export interface AssertionKindCheckResult {
   readonly allowedKinds: readonly string[];
   readonly keys: readonly KeyAssertionKindScope[];
 }
+
+// ---------------------------------------------------------------------------------------------
+// Combined S3 admissibility of one possible revision (contract §2.7): the three rules above,
+// combined within each revision or variant only. No key-level outcome, no evidence result.
+
+export type AdmissibilityRule = 'assertionKind' | 'encounter' | 'episode';
+export type MismatchReason = 'AssertionKindNotAllowed' | 'OtherEncounter' | 'OtherEpisode';
+
+/** One unresolved finding of one rule, with the rule that produced it (contract §2.7). */
+export type AdmissibilityFinding =
+  | ({ readonly rule: 'encounter' } & EncounterFinding)
+  | ({ readonly rule: 'episode' } & EpisodeFinding)
+  | ({ readonly rule: 'assertionKind' } & AssertionKindFinding);
+
+export type CombinedAdmissibility =
+  | { readonly outcome: 'Admissible' }
+  /**
+   * At least one rule definitely mismatches. `reasons` lists every mismatch (code point order);
+   * `findings`/`causes` keep any other rule's unresolved findings, never relabelled.
+   */
+  | {
+      readonly outcome: 'Inadmissible';
+      readonly reasons: readonly MismatchReason[];
+      readonly findings: readonly AdmissibilityFinding[];
+      readonly causes: readonly ContextCause[];
+    }
+  | { readonly outcome: 'UnresolvedAdmissibility'; readonly findings: readonly AdmissibilityFinding[]; readonly causes: readonly ContextCause[] };
+
+export type PossibleAdmissibility =
+  | {
+      readonly kind: 'node';
+      readonly node: NodeRef;
+      readonly candidacy: 'InDomain' | 'Unresolved';
+      readonly s2Findings: readonly S2Finding[];
+      /** Each rule's own outcome, unchanged (contract §2.4–§2.6). */
+      readonly rules: { readonly encounter: EncounterOutcome; readonly episode: EpisodeOutcome; readonly assertionKind: AssertionKindOutcome };
+      readonly admissibility: CombinedAdmissibility;
+    }
+  | {
+      readonly kind: 'node';
+      readonly node: NodeRef;
+      readonly candidacy: 'OutOfDomain';
+      /** Never Inadmissible. */
+      readonly admissibility: { readonly outcome: 'NotEvaluated'; readonly reason: 'OutOfDomain' };
+    }
+  | { readonly kind: 'excluded' }
+  | { readonly kind: 'unknown' };
+
+export interface KeyAdmissibility {
+  readonly key: RecordKey;
+  readonly s1Status: KeyStatus;
+  readonly candidate: boolean;
+  /** S1's active causes and defects, unchanged. An Admissible possibility never clears them. */
+  readonly inheritedS1Causes: readonly S1Cause[];
+  readonly inheritedS1Defects: readonly Defect[];
+  readonly possibilities: readonly PossibleAdmissibility[];
+}
+
+/**
+ * Input: one S1 result, the S2 parameters, the query's authored `admissible` node as written (it
+ * must hold exactly `encounter`, `episode` and `assertionKind`), and the evaluation context.
+ * There is deliberately no way to supply S2 or individual rule results.
+ */
+export interface AdmissibilityCheckInput {
+  readonly s1: S1Result;
+  readonly valueSet: string;
+  readonly expansion: ValueSetExpansion;
+  readonly admissible: unknown;
+  readonly contextEncounter: EncounterBinding;
+  readonly contextEpisode: EpisodeBinding;
+}
+
+/** Detached and deep-frozen. One entry per key; deliberately no key-level outcome. */
+export interface AdmissibilityCheckResult {
+  readonly experimental: 'nonclinical-s3-admissibility-v0';
+  readonly check: 'admissibility';
+  readonly valueSet: string;
+  readonly contextEncounter: EncounterBinding;
+  readonly contextEpisode: EpisodeBinding;
+  readonly allowedKinds: readonly string[];
+  readonly keys: readonly KeyAdmissibility[];
+}

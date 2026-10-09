@@ -81,7 +81,7 @@ for (const name of fs.readdirSync(fxDir).sort()) {
     }
     continue;
   }
-  if (fx.kind !== 'evaluation') continue;
+  if (fx.kind !== 'evaluation' && fx.kind !== 'stage') continue;
   const groups = new Map();
   for (const occ of fx.input.records) {
     const ref = `${occ.key.source}/${occ.key.localId}@${occ.revision}`;

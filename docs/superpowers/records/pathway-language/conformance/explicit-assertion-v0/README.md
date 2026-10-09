@@ -9,9 +9,9 @@ The expected outputs were written by hand from the contract (§§1–7) and [CAN
 | Path | Content |
 |---|---|
 | `query/q.demo.json` | The query contract (contract §7.1), predicate `p.demo` and pinned value-set expansion. Symbolic contract digest `d1` |
-| `fixtures/EA-*.json` | Evaluation, preview and compilation fixtures |
+| `fixtures/EA-*.json` | Evaluation, partial-stage, preview and compilation fixtures |
 | `fixtures/CAN-*.json` | Canonicalization fixtures |
-| `index.json` | Contract case number (1–118) → fixture IDs; pairs (with their comparison mode); history-resolution groups; contrasts |
+| `index.json` | Contract case number (1–124) → fixture IDs; pairs (with their comparison mode); history-resolution groups; contrasts |
 | `validate.py` | Structural validator and pair self-tests (`python3 validate.py --self-test`) |
 | `check-canonical.cjs` | Canonical bytes, digests and variant IDs, verified with the RFC 8785 library `canonicalize@5.1.0` (see “Canonicalization checks”) |
 
@@ -31,7 +31,7 @@ Each evaluation and preview fixture requests output `p.demo`. The query output i
 | Field | Meaning |
 |---|---|
 | `id`, `title`, `contractCases` | Identity and the contract §7.4 case numbers covered |
-| `kind` | `evaluation`, `preview`, `compilation` or `canonicalization` |
+| `kind` | `evaluation`, `stage` (partial-stage, S1–S3 only), `preview`, `compilation` or `canonicalization` |
 | `policy`, `evidenceModel` | `explicit-assertion-v0`, `demo-model@0.1` |
 | `comparison` | Which comparison rule set below applies |
 | `input` | Snapshot (`snapshot`, `supersedesSnapshot`, `context`, `records`, `retractions`, `coverage`, `failures`, `rejectedItems`), or `rawOccurrences` for canonicalization |
@@ -39,6 +39,7 @@ Each evaluation and preview fixture requests output `p.demo`. The query output i
 | `expected.decision` | The projection (contract §5.2) |
 | `expected.causeAttribution` | Entries `{cause, origin, stage, reason, refs?}`. Empty for `Known` |
 | `expected.needs` | `evidence` (Need key and state causes, or `null`), `deferred` (`{"binding":…}` when a key binding is unresolved, else `null`) and `obligations` (`ResolveConflict` / `CorrectRecord` emissions only; fulfillment is deferred) |
+| `expected.stages` | `stage` fixtures only: always `["S1", "S2", "S3"]`, the stages whose facts the fixture asserts |
 | `expected.traceAssertions` | Required trace facts; see the vocabulary below. **Partial**: a conforming trace may contain more |
 
 ## Identifier notation
@@ -74,6 +75,12 @@ Each evaluation and preview fixture requests output `p.demo`. The query output i
 - `publication` must be `Blocked`.
 - `traceAssertions` follow the `evaluation-v1` rules.
 
+**`stage-v1`** (partial-stage)
+
+- Used where the S4–S6 outcome is outside what the contract or the implementation currently specifies (contract §7.4 group K: a revision that is `Inadmissible` while another rule is unresolved). The fixture states no `evidence`, `decision`, `causeAttribution` or `needs`, and is never evidence that a downstream result is right or wrong.
+- `expected` holds exactly `stages` and `traceAssertions`. Facts are restricted to S1–S3 (`keyResult`, `variants`, `occurrences`, `rejected`, `outOfEnvelope`, `outsideEnvelope`, `diagnostic`, `candidacy`, `encounterScope`, `episodeScope`, `assertionKindScope`, `admissibility`), compared as for `evaluation-v1`.
+- The query is referenced or inlined as for evaluation fixtures.
+
 **`compilation-v1`**
 
 - `outcome` must be `CompileFailure`, with a diagnostic at each listed `location` (a JSON Pointer into the inline query).
@@ -97,7 +104,7 @@ Each evaluation and preview fixture requests output `p.demo`. The query output i
 | `outOfEnvelope` | `ref` | Out-of-envelope revision (S1 step 2) |
 | `outsideEnvelope` | `ref` | Item from an undeclared source; never evaluated |
 | `candidacy` | `ref`, `value` ∈ `InDomain`/`OutOfDomain`/`Unresolved` | S2 |
-| `admissibility` | `ref`, `value`, `reason?`, `causes?` | S3 (all admissibility rules together) |
+| `admissibility` | `ref`, `value` ∈ `Admissible`/`Inadmissible`/`UnresolvedAdmissibility`, `reason?` or `reasons?`, `causes?` | Combined S3 for one revision or variant (contract §2.7). `reason` (one) or `reasons` (several, code point order) is the **complete** set of mismatch reasons. `causes` is the set of the revision’s unresolved findings’ causes, for any value; under `Inadmissible` these are the findings kept beside the mismatch |
 | `encounterScope` | `ref` (revision or variant), `value` ∈ `Matches`/`DoesNotMatch`/`Unresolved`/`NotEvaluated`, `causes?` | The S3 same-encounter rule alone (contract §2.4). Not an admissibility result |
 | `episodeScope` | `ref` (revision or variant), `value` ∈ `Matches`/`DoesNotMatch`/`Unresolved`/`NotEvaluated`, `causes?` | The S3 same-episode rule alone (contract §2.5). Not an admissibility result |
 | `assertionKindScope` | `ref` (revision or variant), `value` ∈ `Matches`/`DoesNotMatch`/`Unresolved`/`NotEvaluated`, `causes?` | The S3 `assertionKind` rule alone (contract §2.6). `DoesNotMatch` means a recognized kind outside the authored set (`AssertionKindNotAllowed`); an unrecognized value is `Unresolved{Invalid}`. Not an admissibility result |
@@ -154,13 +161,13 @@ Resolved defects appear only as `HistoricalDefect` trace diagnostics, never in `
 - adding a diagnostic to the before/after pair 1/22 is allowed;
 - changing that pair’s result is rejected.
 
-It also lists **contrasts** that keep proven-invalid boundary attempts distinguishable from undeterminable identity or authority, and from genuine payload conflicts. Three S2 contrasts (contract §2.3) keep an empty code apart from established nonmembership, a whitespace-only code apart from one with surrounding whitespace, and an absent component apart from a `null` one. Three encounter contrasts (contract §2.4) keep three pairs apart: a mismatch against a known evaluation encounter versus an unknown evaluation encounter; an absent record encounter versus a malformed one; and a whitespace-only encounter versus one with surrounding whitespace. Three episode contrasts (contract §2.5) keep an absent record episode apart from a `null` one, a whitespace-only episode apart from one with surrounding whitespace, and an unknown evaluation episode alone (EA-012) apart from one combined with an absent record episode (EA-113a). Three `assertionKind` contrasts (contract §2.6) keep the same record under two authored sets apart (EA-114, EA-115a), a recognized-but-disallowed kind apart from an unrecognized string (EA-115a, EA-118a), and an absent kind apart from a `null` one (EA-116, EA-117).
+It also lists **contrasts** that keep proven-invalid boundary attempts distinguishable from undeterminable identity or authority, and from genuine payload conflicts. Three S2 contrasts (contract §2.3) keep an empty code apart from established nonmembership, a whitespace-only code apart from one with surrounding whitespace, and an absent component apart from a `null` one. Three encounter contrasts (contract §2.4) keep three pairs apart: a mismatch against a known evaluation encounter versus an unknown evaluation encounter; an absent record encounter versus a malformed one; and a whitespace-only encounter versus one with surrounding whitespace. Three episode contrasts (contract §2.5) keep an absent record episode apart from a `null` one, a whitespace-only episode apart from one with surrounding whitespace, and an unknown evaluation episode alone (EA-012) apart from one combined with an absent record episode (EA-113a). Two combination contrasts (contract §2.7) keep a lone mismatch apart from a mismatch beside an unresolved rule (EA-107, EA-119), and a mismatch beside an unresolved rule apart from unresolved rules alone (EA-119, EA-122). Three `assertionKind` contrasts (contract §2.6) keep the same record under two authored sets apart (EA-114, EA-115a), a recognized-but-disallowed kind apart from an unrecognized string (EA-115a, EA-118a), and an absent kind apart from a `null` one (EA-116, EA-117).
 
 ## Canonicalization checks
 
 Two helpers divide the work. Neither computes an expected evidence outcome.
 
-- **`check-canonical.cjs`** uses a maintained RFC 8785 implementation, `canonicalize@5.1.0` from npm (by S. Erdtman). As in RFC 8785 Appendix A, it serializes primitives with ECMAScript `JSON.stringify`. The script first checks the library against the RFC’s Appendix B number vectors. It then verifies every canonicalization fixture’s bytes and digests, and every `variants` and `occurrences` assertion in the evaluation fixtures, numbers included. Run it without adding a repository dependency:
+- **`check-canonical.cjs`** uses a maintained RFC 8785 implementation, `canonicalize@5.1.0` from npm (by S. Erdtman). As in RFC 8785 Appendix A, it serializes primitives with ECMAScript `JSON.stringify`. The script first checks the library against the RFC’s Appendix B number vectors. It then verifies every canonicalization fixture’s bytes and digests, and every `variants` and `occurrences` assertion in the evaluation and partial-stage fixtures, numbers included. Run it without adding a repository dependency:
 
   ```bash
   TMP=$(mktemp -d) && npm install --no-save --prefix "$TMP" canonicalize@5.1.0 \
@@ -174,9 +181,10 @@ Two helpers divide the work. Neither computes an expected evidence outcome.
 
 It checks that:
 
-- every file parses, IDs are unique and match file names, and the index maps every case 1–118 to existing fixtures;
+- every file parses, IDs are unique and match file names, and the index maps every case 1–124 to existing fixtures;
 - expected lists and attributions are in canonical order;
 - decisions are the projection of evidence, and Need causes equal result causes;
+- a `stage` fixture expects exactly stages S1–S3 and S1–S3 facts, with no downstream expectation, and lists `reasons` and `causes` in canonical order;
 - an inline evaluation query is a full query with its own contract digest, and every Need key and obligation key uses the fixture’s contract digest;
 - every `variants` assertion matches the digests of the input occurrences (number-free payloads; numeric ones are deferred);
 - each canonicalization fixture’s hand-written `canonicalBytes` are reproduced from its raw occurrences (number-free payloads; numeric ones are deferred), and its digest is the SHA-256 of those bytes;

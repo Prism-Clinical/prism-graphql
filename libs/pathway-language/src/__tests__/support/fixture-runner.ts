@@ -1,10 +1,11 @@
 /**
  * EXPERIMENTAL, NONCLINICAL. Runs the S1-, S2- and individual-S3-rule-applicable assertions of
  * the committed explicit-assertion-v0 conformance fixtures against the S1 resolver, S2 candidate
- * identification and the S3 same-encounter, same-episode and assertionKind checks, each on its own.
+ * identification, the S3 same-encounter, same-episode and assertionKind checks, and their combined
+ * per-revision admissibility (contract §2.7).
  *
- * A fixture is never reported as passing as a whole: only its S1, S2 and individual-rule
- * assertions are checked. Complete S3 `admissibility` facts are never checked as such.
+ * A fixture is never reported as passing as a whole: only its S1, S2 and S3 assertions are
+ * checked. `stage` fixtures (stage-v1) assert S1–S3 only and carry no downstream expectation. Complete S3 `admissibility` facts are never checked as such.
  * Every other expected field or trace fact is counted as outside the implemented scope.
  */
 import { readdirSync, readFileSync } from 'node:fs';
@@ -15,6 +16,8 @@ import {
   SAME_ENCOUNTER_RULE,
   SAME_EPISODE_RULE,
   experimentalCheckAssertionKind,
+  experimentalCheckAdmissibility,
+  type PossibleAdmissibility,
   type PossibleAssertionKindScope,
   experimentalCheckEncounterScope,
   experimentalCheckEpisodeScope,
@@ -66,6 +69,9 @@ export interface FixtureReport {
   assertionKindPassed: number;
   /** One-way implications from complete S3 facts (`admissibility`, S3 assertionKind attributions). */
   assertionKindOneWay: number;
+  /** Combined S3 `admissibility` facts (contract §2.7), checked directly. */
+  admissibilityApplicable: number;
+  admissibilityPassed: number;
   outOfScope: number;
   failures: string[];
   notRun: string | null;
@@ -152,6 +158,22 @@ function s2Nodes(r: S2Result): Map<string, NodeCandidacy> {
   return m;
 }
 
+/**
+ * A combined `admissibility` fact (README "Trace-assertion vocabulary"): `value` exactly; `reason`
+ * (one) or `reasons` (all, code point order) is the complete set of mismatch reasons; `causes` is
+ * the set of retained unresolved findings' causes, for any value.
+ */
+function checkAdmissibilityFact(t: Json, p: Extract<PossibleAdmissibility, { kind: 'node' }> | undefined): string | null {
+  if (!p) return `admissibility ${t.ref}: not assessed`;
+  const a = p.admissibility;
+  if (a.outcome !== t.value) return `admissibility ${t.ref}: ${a.outcome}, expected ${t.value}`;
+  const reasons = a.outcome === 'Inadmissible' ? a.reasons : [];
+  const want = 'reasons' in t ? t.reasons : 'reason' in t ? [t.reason] : null;
+  if (want && JSON.stringify(reasons) !== JSON.stringify(want)) return `admissibility ${t.ref}: reasons ${JSON.stringify(reasons)}`;
+  const causes = a.outcome === 'Inadmissible' || a.outcome === 'UnresolvedAdmissibility' ? a.causes : [];
+  if ('causes' in t && JSON.stringify(causes) !== JSON.stringify(t.causes)) return `admissibility ${t.ref}: causes ${JSON.stringify(causes)}`;
+  return null;
+}
 const ASSERTION_KIND_REASONS = new Set(['FieldAbsent:assertionKind', 'FieldMalformed:assertionKind']);
 const EPISODE_REASONS = new Set(['FieldAbsent:episode', 'FieldMalformed:episode', 'ContextUnknown:episode']);
 /** Trace `causes` are sets, listed in Stage A §4.1 order. */
@@ -201,6 +223,8 @@ export function runFixtures(dir: string = FIXTURE_DIR): { reports: FixtureReport
       assertionKindApplicable: 0,
       assertionKindPassed: 0,
       assertionKindOneWay: 0,
+      admissibilityApplicable: 0,
+      admissibilityPassed: 0,
       outOfScope: 0,
       failures: [],
       notRun: null,
@@ -262,8 +286,28 @@ export function runFixtures(dir: string = FIXTURE_DIR): { reports: FixtureReport
     const akNodes = new Map<string, Extract<PossibleAssertionKindScope, { kind: 'node' }>>();
     for (const k of akr?.keys ?? []) for (const p of k.possibilities) if (p.kind === 'node') akNodes.set(showRev(p.node.revision) + (p.node.digest ? `#${p.node.digest}` : ''), p);
     const akOutcome = (ref: string) => akNodes.get(ref)?.assertionKind.outcome ?? 'not checked';
+    // Combined S3 (contract §2.7) wherever the query authors the three rules; config errors throw.
+    const adm = contract.admissible
+      ? experimentalCheckAdmissibility({
+          s1: result,
+          valueSet: pin,
+          expansion: { id: pin, ...query.valueSets[pin] },
+          admissible: contract.admissible,
+          contextEncounter: fx.input.context.encounter as EncounterBinding,
+          contextEpisode: fx.input.context.episode as EpisodeBinding,
+        })
+      : null;
+    const admNodes = new Map<string, Extract<PossibleAdmissibility, { kind: 'node' }>>();
+    for (const k of adm?.keys ?? []) for (const p of k.possibilities) if (p.kind === 'node') admNodes.set(showRev(p.node.revision) + (p.node.digest ? `#${p.node.digest}` : ''), p);
     const exp = fx.expected as Json;
     for (const t of (exp.traceAssertions ?? []) as Json[]) {
+      if (t.fact === 'admissibility') {
+        report.admissibilityApplicable += 1;
+        const f = checkAdmissibilityFact(t, adm ? admNodes.get(t.ref) : undefined);
+        if (f) report.failures.push(f);
+        else report.admissibilityPassed += 1;
+        // Falls through: the per-rule one-way implications below still apply.
+      }
       if (t.fact === 'assertionKindScope') {
         report.assertionKindApplicable += 1;
         const p = akNodes.get(t.ref);
@@ -324,6 +368,7 @@ export function runFixtures(dir: string = FIXTURE_DIR): { reports: FixtureReport
         else report.failures.push(`candidacy ${t.ref}: ${got ?? 'not classified'}, expected ${t.value}`);
         continue;
       }
+      if (t.fact === 'admissibility') continue;
       const s1 = S1_FACTS.has(t.fact) || (t.fact === 'diagnostic' && S1_DIAGNOSTICS.has(t.code));
       if (!s1) {
         report.outOfScope += 1;
@@ -407,7 +452,8 @@ export function runFixtures(dir: string = FIXTURE_DIR): { reports: FixtureReport
       report.episodeApplicable +
       report.episodeOneWay +
       report.assertionKindApplicable +
-      report.assertionKindOneWay;
+      report.assertionKindOneWay +
+      report.admissibilityApplicable;
     if (checked === 0) missing.push(fx.id);
   }
   return { reports, noApplicableAssertions: missing };
@@ -440,6 +486,7 @@ function checkCanonicalization(fx: Json, report: FixtureReport): void {
 
 /** Top-level expected fields plus trace assertions; used only to count what is not checked. */
 function countExpected(exp: Json): number {
-  const fields = Object.keys(exp).filter((k) => k !== 'traceAssertions').length;
+  // `stages` only declares a partial-stage fixture's scope; it is not an expectation.
+  const fields = Object.keys(exp).filter((k) => k !== 'traceAssertions' && k !== 'stages').length;
   return fields + ((exp.traceAssertions ?? []) as unknown[]).length;
 }

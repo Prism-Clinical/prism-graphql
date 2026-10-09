@@ -2,7 +2,7 @@
 
 **Status:** Proposed design draft. **Not** accepted, not finalized syntax, not a schema and not implemented. It contains no clinical content: the record type, enum values, codes, sources and permission below are fictional and illustrate language behavior only. They do not map to dysphagia, progression, urgency or any other clinical definition.
 
-**Date:** 2026-10-03. **Revised:** 2026-10-03, nine times, 2026-10-04, once, 2026-10-05, three times, and 2026-10-09, twice, after review. The third revision fixed three things:
+**Date:** 2026-10-03. **Revised:** 2026-10-03, nine times, 2026-10-04, once, 2026-10-05, three times, and 2026-10-09, three times, after review. The third revision fixed three things:
 
 - revision-chain boundaries: source-scoped identity, same-source corrections and one fully specified schematic authority rule;
 - deterministic outcomes for malformed history;
@@ -13,6 +13,13 @@ The fourth revision made three changes:
 - Proven cross-boundary corrections and retractions are now rejected without changing their target. This keeps gap irrelevance consistent with S1.
 - Payload identity for duplicate detection is defined.
 - An unsupported justification about coverage attestations is removed.
+
+The sixteenth revision settles how the three S3 rules combine for one possible revision (2.7, cases 119–124), replacing the deferral recorded in 2.4.
+
+- All rules match: `Admissible`. Any rule definitely mismatches: `Inadmissible`, even if another rule is unresolved. Otherwise, with at least one rule unresolved: `UnresolvedAdmissibility`.
+- Rules combine only within one revision or variant, never across possibilities.
+- Every rule outcome, every mismatch reason and every unresolved finding with its origin is kept; an `Inadmissible` result does not erase or relabel unresolved findings.
+- Materiality, selection and the evidence result are unchanged and stay with S4–S6.
 
 The fifteenth revision specifies the S3 `assertionKind` rule on its own (2.6, cases 114–118).
 
@@ -352,7 +359,7 @@ Rejected and superseded revisions and historical defects are kept in the trace w
 - `encounter`: the same rule, with reason `OtherEncounter`. Section 2.4 specifies this rule on its own.
 - `assertionKind` must be in the authored set, else `Inadmissible(AssertionKindNotAllowed)`. An absent field is `UnresolvedAdmissibility(Missing)`, and a malformed one, including a string outside the pinned enum, is `UnresolvedAdmissibility(Invalid)`. Section 2.6 specifies this rule on its own.
 
-Causes from several unresolved rules accumulate. “Unresolved admissibility” is a stage outcome; the causes stay those of the underlying input.
+Causes from several unresolved rules accumulate. “Unresolved admissibility” is a stage outcome; the causes stay those of the underlying input. Section 2.7 specifies how the rules’ outcomes combine for one revision, including a mismatch beside an unresolved rule.
 
 ### 2.3 S2: concept presence, identifier syntax and membership
 
@@ -427,11 +434,11 @@ A known record encounter never decides against an unknown evaluation encounter, 
 
 A malformed evaluation context, such as a `known` value that is not a well-formed `EncounterRef` or an `Unknown` with no causes, is an invalid program input from the orchestrator. It is not patient uncertainty.
 
-**Deferred to a separate slice: combining rule outcomes.** 2.2 says causes from several *unresolved* rules accumulate. It does not say whether one rule’s `Inadmissible` outcome decides the revision while another rule is unresolved. Example: encounter N0 with the episode field absent. This check does not need the answer; the full S3 result does.
+**Combining rule outcomes.** This section does not combine rules. Section 2.7 does, including the case it once left open: one rule’s mismatch beside another rule’s unresolved outcome (for example, encounter N0 with the episode field absent).
 
 ### 2.5 S3: the `episode` rule on its own
 
-This section isolates the `episode` rule of 2.2, as 2.4 does for `encounter`. Its result is **not** an admissibility result. A match says only that this rule is satisfied: the encounter and `assertionKind` rules, and anything else S3 adds, still apply. How the outcomes of several rules combine stays deferred (2.4).
+This section isolates the `episode` rule of 2.2, as 2.4 does for `encounter`. Its result is **not** an admissibility result. A match says only that this rule is satisfied: the encounter and `assertionKind` rules, and anything else S3 adds, still apply. Section 2.7 combines the rules’ outcomes.
 
 **The authored rule.** The check consumes the contract’s `admissible.episode` exactly as written (7.1):
 
@@ -468,7 +475,7 @@ A malformed evaluation context is an invalid program input from the orchestrator
 
 ### 2.6 S3: the `assertionKind` rule on its own
 
-This section isolates the `assertionKind` rule of 2.2, as 2.4 and 2.5 do for `encounter` and `episode`. Its result is **not** an admissibility result. A match says only that this rule is satisfied: the other admissibility rules still apply, and how several rules’ outcomes combine stays deferred (2.4). The rule checks *what kind of assertion* the record makes. It never decides whether the assertion supports or refutes anything (that is S5).
+This section isolates the `assertionKind` rule of 2.2, as 2.4 and 2.5 do for `encounter` and `episode`. Its result is **not** an admissibility result. A match says only that this rule is satisfied: the other admissibility rules still apply, and section 2.7 combines the rules’ outcomes. The rule checks *what kind of assertion* the record makes. It never decides whether the assertion supports or refutes anything (that is S5).
 
 **The authored rule.** The check consumes the contract’s `admissible.assertionKind` exactly as written (7.1): `{ "in": [k₁, …, kₙ] }`, an array of pinned `AssertionKind` codes. There is no implicit default and no default set. A query without this rule has no assertion-kind check, and any other expression in that position is out of this section’s scope.
 
@@ -490,6 +497,39 @@ An unrecognized string is malformed patient data (1.2, 1.7), **never** a disallo
 **Reason labels.** `FieldAbsent:assertionKind` and `FieldMalformed:assertionKind` (origin: the record’s revision or variant) and `AssertionKindNotAllowed` (the `Inadmissible` reason) are the contract’s labels for this rule.
 
 **Contract identity.** The authored set is part of the admissibility rules, so it is covered by the contract digest (6.2). A query with a different set is a different contract with its own (symbolic) digest and Need key; cases 115a/b use `d-ak1`.
+
+### 2.7 S3: combined admissibility of one possible revision
+
+The S3 result per possible revision or variant combines the three authored rules of 2.2 (`encounter` 2.4, `episode` 2.5, `assertionKind` 2.6). The `subject` rule cannot fail after S1 step 2 and is not evaluated separately. All three rules must be authored; a missing, extra or invalid rule, or a malformed context, is an invalid program or configuration, never unresolved admissibility.
+
+**Combination.** For one revision or digest-qualified variant, with each rule’s outcome `Matches`, `DoesNotMatch` or `Unresolved`:
+
+| Rule outcomes | Combined admissibility |
+|---|---|
+| All three `Matches` | **Admissible** |
+| At least one `DoesNotMatch` | **Inadmissible**, with every mismatch reason; any unresolved findings stay attached |
+| No `DoesNotMatch`, at least one `Unresolved` | **UnresolvedAdmissibility**, with the union of the unresolved findings |
+
+**Rationale.** Each rule is a required condition. If one definitely fails, resolving another cannot make *that revision* admissible while the failure remains, so a mismatch decides the revision’s combined admissibility. That is all it decides. It does not settle which revision is current, whether the key is material or what the query concludes (S4–S6).
+
+**Scope of the combination.**
+
+- Rules combine only within one possibility: one revision, or one digest-qualified variant. An outcome of one possibility never combines with another’s, and a mismatch on one possibility never removes another.
+- Out-of-domain possibilities are **not evaluated** (2.4); they are never `Inadmissible`. `excluded` and `unknown` are carried unchanged. `Retracted` and no-record keys contribute no assessment.
+- S1 causes and defects stay with the key, and S2 findings with the possibility, separately from S3 findings. A possibility being `Admissible` does not make it current while history is unresolved.
+- No key-level outcome and no evidence result is produced.
+
+**Output contract.** For each checked possibility:
+
+| Element | Content | Order |
+|---|---|---|
+| Rule outcomes | The `encounter`, `episode` and `assertionKind` outcomes of 2.4–2.6, unchanged | — |
+| Combined admissibility | `Admissible`, `Inadmissible` or `UnresolvedAdmissibility` | — |
+| Mismatch reasons (`Inadmissible` only) | Every reason: `OtherEncounter`, `OtherEpisode`, `AssertionKindNotAllowed`; nonempty | By code point |
+| Unresolved findings | Every finding of every unresolved rule: `rule`, cause, origin (`record` or `context.<binding>`) and reason. Kept under `Inadmissible` too, never relabelled as `Inadmissible` | By cause (5.3), then rule, origin and reason by code point |
+| Causes | The set of the unresolved findings’ causes (empty when there are none) | Stage A order (5.3) |
+
+No reason or finding is chosen by evaluation order. Under `Inadmissible`, retained unresolved findings are diagnostics of that revision; whether any of them is material to the query is decided in S6 (4.2), not here.
 
 ## 3. Where the clinical expression lives
 
@@ -1013,6 +1053,17 @@ In cases 108–111 and 113 the record is the only candidate and its possible cla
 
 In cases 114, 115b and 116–118 the record is the only candidate and its possible classes include `Supporting`, so it is material under 4.2 where unresolved. In 115a the encounter and episode rules hold, so the record is inadmissible on this rule alone, as in 107 and 112.
 
+**K. Combined admissibility of one possibility (2.7)** (D0 unless stated; each record `Affirmed`). These are **partial-stage** cases: they assert S1–S3 only. The S4–S6 outcome of a revision that is `Inadmissible` while another rule is unresolved is not specified here.
+
+| # | Case | Records / changes | Combined S3 (and retained findings) |
+|---|---|---|---|
+| 119 | Mismatch beside an unresolved rule | s1/r119: encounter N0, `episode` omitted | `Inadmissible [OtherEncounter]`; finding `Missing` (record, `FieldAbsent:episode`) kept |
+| 120 | Every rule mismatches | Query as 115 (digest `d-ak1`); s1/r120: encounter N0, episode E0, `PatientReport` | `Inadmissible [AssertionKindNotAllowed, OtherEncounter, OtherEpisode]` |
+| 121 | One mismatch, two malformed fields | s1/r121: episode E0, `encounter: 7`, `assertionKind: "x"` | `Inadmissible [OtherEpisode]`; findings `Invalid` (`FieldMalformed:assertionKind`), `Invalid` (`FieldMalformed:encounter`) kept |
+| 122 | Several unresolved rules, no mismatch | s1/r122: `encounter` omitted, `assertionKind: null`; context episode `{unknown: [Conflicting]}` | `UnresolvedAdmissibility {Missing, Conflicting, Invalid}`, three findings with their origins |
+| 123 | Possibilities with different outcomes | s1/r123@1 (D0); s1/r123@2 supersedes @1 with `perm omitted`, encounter N0, `episode` omitted | Key `UnresolvedRevision [Missing]`, possible {@1, @2}. @1 `Admissible`, @2 `Inadmissible [OtherEncounter]` with the `Missing` episode finding. @1 being admissible does not make it current |
+| 124 | Variants assessed independently | Two occurrences of s1/r124@1: D0, and one with `assertionKind: "x"` | Key `UnresolvedRevision [Conflicting]`. The D0 variant `Admissible`; the other `UnresolvedAdmissibility {Invalid}` |
+
 ### 7.5 Invariance checks
 
 These must hold for every case:
@@ -1079,7 +1130,7 @@ These must hold for every case:
     - `EncounterRef` syntax: nonempty, not whitespace-only, never normalized.
     - Context causes are kept unchanged, and record and context findings accumulate.
     - All stages read one snapshot.
-    - Deferred: how one rule’s mismatch combines with another rule’s unresolved outcome.
+    - How rules combine for one revision: 2.7.
 17. The `episode` rule on its own (2.5):
     - The same outcome structure as 16, with `EpisodeRef` syntax stated for episodes on their own: nonempty, not whitespace-only, never normalized.
     - Absent is `Missing` (`FieldAbsent:episode`); malformed is `Invalid` (`FieldMalformed:episode`); an unknown context keeps its causes (`ContextUnknown:episode`); a mismatch is `OtherEpisode`.
@@ -1088,7 +1139,11 @@ These must hold for every case:
 18. The `assertionKind` rule on its own (2.6):
     - `assertionKind` is `Field<AssertionKind>`. Absent is `Missing` (`FieldAbsent:assertionKind`); any present value that is not exactly a pinned code is `Invalid` (`FieldMalformed:assertionKind`); a recognized kind outside the authored set is `AssertionKindNotAllowed`.
     - The authored `in` set is validated against the pinned enum as program input; duplicates have no effect; an explicitly authored empty set allows no kind.
-    - Combining rule outcomes stays deferred.
+    - How rules combine for one revision: 2.7.
+19. Combined S3 admissibility per possibility (2.7):
+    - All rules match: `Admissible`; any definite mismatch: `Inadmissible`, even beside an unresolved rule; otherwise `UnresolvedAdmissibility`.
+    - Within one revision or variant only. Every rule outcome, every mismatch reason and every unresolved finding with its origin is kept, in a fixed order.
+    - No key-level outcome; materiality and the evidence result stay with S4–S6.
 
 **Possible conflicts needing a Stage A amendment.** None found. Items to confirm:
 
@@ -1098,7 +1153,7 @@ These must hold for every case:
 
 **Query/predicate split.** The query carries the reasoning. A projection-only Predicate is optional naming and composition structure. No node kind is added or removed.
 
-**Conformance fixtures.** [conformance/explicit-assertion-v0/](conformance/explicit-assertion-v0/README.md) holds machine-readable fixtures for cases 1–118, mapped by case number, with expected outputs written from this contract. They are proposed, like this document.
+**Conformance fixtures.** [conformance/explicit-assertion-v0/](conformance/explicit-assertion-v0/README.md) holds machine-readable fixtures for cases 1–124, mapped by case number, with expected outputs written from this contract. They are proposed, like this document.
 
 **Remaining items.**
 

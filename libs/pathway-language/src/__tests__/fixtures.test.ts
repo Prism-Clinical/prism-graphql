@@ -25,6 +25,8 @@ describe('explicit-assertion-v0 fixtures: S1, S2 and encounter-check assertions 
     assertionKind: sum((r) => r.assertionKindApplicable),
     assertionKindPassed: sum((r) => r.assertionKindPassed),
     assertionKindOneWay: sum((r) => r.assertionKindOneWay),
+    admissibility: sum((r) => r.admissibilityApplicable),
+    admissibilityPassed: sum((r) => r.admissibilityPassed),
     outOfScope: sum((r) => r.outOfScope),
   };
 
@@ -41,10 +43,11 @@ describe('explicit-assertion-v0 fixtures: S1, S2 and encounter-check assertions 
         `episode-check assertions checked (episodeScope trace facts): ${totals.episode} (passed ${totals.episodePassed})`,
         `episode outcomes implied by complete S3 facts (one-way: admissibility Admissible/OtherEpisode, S3 episode attributions): ${totals.episodeOneWay}`,
         `assertionKind-check assertions checked (assertionKindScope trace facts): ${totals.assertionKind} (passed ${totals.assertionKindPassed})`,
+        `combined S3 admissibility assertions checked (admissibility trace facts, contract §2.7): ${totals.admissibility} (passed ${totals.admissibilityPassed})`,
         `assertionKind outcomes implied by complete S3 facts (one-way: admissibility Admissible/AssertionKindNotAllowed, S3 assertionKind attributions): ${totals.assertionKindOneWay}`,
-        `expected fields/assertions outside implemented scope (complete S3, S4–S7; not checked): ${totals.outOfScope}`,
+        `expected fields/assertions outside implemented scope (S4–S7; not checked): ${totals.outOfScope}`,
         `fixtures not run: ${notRun.length}: ${notRun.join(', ')}`,
-        `evaluation/preview fixtures with no applicable S1/S2/individual-rule assertion: ${noApplicableAssertions.length}: ${noApplicableAssertions.join(', ')}`,
+        `evaluation/preview fixtures with no applicable S1–S3 assertion: ${noApplicableAssertions.length}: ${noApplicableAssertions.join(', ')}`,
       ].join('\n'),
     );
     expect(totals.s1).toBeGreaterThan(0);
@@ -53,11 +56,12 @@ describe('explicit-assertion-v0 fixtures: S1, S2 and encounter-check assertions 
     expect(totals.episode).toBeGreaterThan(0);
     expect(totals.episodeOneWay).toBeGreaterThan(0);
     expect(totals.assertionKind).toBeGreaterThan(0);
+    expect(totals.admissibility).toBeGreaterThan(0);
   });
 
   const checked = (r: (typeof reports)[number]) =>
-    r.s1Applicable + r.s1AttributionOneWay + r.s2Applicable + r.s2AttributionOneWay + r.s2CandidateIdsOneWay + r.encounterApplicable + r.encounterOneWay + r.episodeApplicable + r.episodeOneWay + r.assertionKindApplicable + r.assertionKindOneWay > 0;
-  it.each(reports.filter((r) => !r.notRun && checked(r)).map((r) => [r.id, r] as const))('%s: S1/S2 and individual S3 rule assertions hold', (_id, report) => {
+    r.s1Applicable + r.s1AttributionOneWay + r.s2Applicable + r.s2AttributionOneWay + r.s2CandidateIdsOneWay + r.encounterApplicable + r.encounterOneWay + r.episodeApplicable + r.episodeOneWay + r.assertionKindApplicable + r.assertionKindOneWay + r.admissibilityApplicable > 0;
+  it.each(reports.filter((r) => !r.notRun && checked(r)).map((r) => [r.id, r] as const))('%s: S1/S2/S3 assertions hold (not a whole-fixture pass)', (_id, report) => {
     expect(report.failures).toEqual([]);
   });
 });
