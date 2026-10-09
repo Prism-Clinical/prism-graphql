@@ -1,6 +1,6 @@
 # @prism/pathway-language (experimental, nonclinical)
 
-**Status:** an implementation experiment. It covers **two stages and two rules** of the *proposed* [evidence-query-to-predicate contract](../../docs/superpowers/records/pathway-language/evidence-query-to-predicate-contract.md): S1 revision history, S2 candidate identification, and the S3 same-encounter and same-episode rules, each on its own. It also has the **first PPL compiler subset** and **isolated program-expression execution** over supplied query results (increments I1 and I2 of the [first-program implementation contract](../../docs/superpowers/records/pathway-language/first-program-implementation-contract.md)). It is not an end-to-end PPL evaluator and is not clinically approved; compiling or executing a program confers no clinical approval. It must not be used for patient care. The RFC, Stage A, the contract and the delivery plans keep their existing statuses; nothing here completes a delivery story.
+**Status:** an implementation experiment. It covers **two stages and three rules** of the *proposed* [evidence-query-to-predicate contract](../../docs/superpowers/records/pathway-language/evidence-query-to-predicate-contract.md): S1 revision history, S2 candidate identification, and the S3 same-encounter, same-episode and `assertionKind` rules, each on its own. It also has the **first PPL compiler subset** and **isolated program-expression execution** over supplied query results (increments I1 and I2 of the [first-program implementation contract](../../docs/superpowers/records/pathway-language/first-program-implementation-contract.md)). It is not an end-to-end PPL evaluator and is not clinically approved; compiling or executing a program confers no clinical approval. It must not be used for patient care. The RFC, Stage A, the contract and the delivery plans keep their existing statuses; nothing here completes a delivery story.
 
 This package is the isolated `libs/pathway-language` boundary named in RFC §10. It has no imports from applications, resolvers, databases or the network; `src/` imports only Node’s `crypto` and one RFC 8785 library.
 
@@ -261,6 +261,43 @@ const epi = experimentalCheckEpisodeScope({
 
 With `contextEpisode: { unknown: ['Conflicting'] }` (case 12), both revisions are `Unresolved[Conflicting @ context.episode]`.
 
+## S3: the `assertionKind` check (one more admissibility rule)
+
+This is **one rule** of S3 (contract §2.2), specified on its own in contract §2.6 (cases 114–118). It is not the S3 result, and it is not S5: it checks **what kind of assertion** a record makes, never whether that assertion supports or refutes anything. Rule outcomes are not combined with the encounter or episode checks, and there is no per-key admissibility decision, selection, evidence result or Need.
+
+```ts
+import { experimentalCheckAssertionKind, AssertionKindCheckConfigurationError } from '@prism/pathway-language';
+
+const ak = experimentalCheckAssertionKind({
+  s1,                                          // experimentalResolveRevisionHistory(...) output
+  valueSet: 'demo-vs/item-x@1',                // S2 parameters: S2 runs inside, on this s1
+  expansion,
+  rule: query.contract.admissible.assertionKind, // the authored {in: [...]}, as written
+});
+```
+
+**Boundary.** As for the other two checks, through `src/s3/scope.ts`: no `s2` parameter (S2 runs on the supplied `s1`), any extra input field is rejected, a bad pin or expansion throws `S2ConfigurationError`, and the result is detached and deep-frozen.
+
+**The authored rule is validated against the pinned model.** `rule` must be an object whose only member is `in`, an array whose every element is exactly a pinned `AssertionKind` code (`ClinicianDocumented`, `PatientReport`; the list is the compiler’s own `ENUMS`, so the two cannot drift). Anything else throws `AssertionKindCheckConfigurationError`: a missing rule (never a default set), another shape, an unrecognized, differently cased or padded code, a non-string, `null` or `undefined` element, or a sparse array (checked with an index loop, so holes are not skipped). The set is not hard-coded: it comes from the authored rule. A repeated code has no effect, and an explicitly authored empty set allows no kind; the compiler accepts both, and a test checks that the two agree.
+
+**Output** (`src/s3/types.ts`). `AssertionKindCheckResult = { experimental, check: 'assertion-kind', valueSet, allowedKinds, keys }`. `allowedKinds` is the authored list as written. Each `KeyAssertionKindScope` has the same fields as the other checks’ keys; each node possibility carries `assertionKind`:
+
+| Record `assertionKind` | `assertionKind` outcome | Case |
+|---|---|---|
+| Recognized kind in the authored set | `Matches` (`recordKind`) | 114, 115b |
+| Recognized kind not in the authored set | `DoesNotMatch` (`AssertionKindNotAllowed`, `recordKind`) | 115a |
+| Absent | `Unresolved [Missing, record, FieldAbsent:assertionKind]` | 116 |
+| Anything else: non-string, `null`, `""`, whitespace, different case or spacing, any other string | `Unresolved [Invalid, record, FieldMalformed:assertionKind]` | 117, 118a–d |
+| Out-of-domain possibility | `NotEvaluated` (`OutOfDomain`) | — |
+
+An unrecognized string is **never** `AssertionKindNotAllowed`: its true kind is unknown. There is no context binding, so findings come from the record only. S1 causes and defects stay with the key and S2 findings with the possibility; a match neither resolves history nor makes a revision current.
+
+**Settled in contract §2.6** (none of these were inferred silently):
+
+- `assertionKind` is now typed `Field<AssertionKind>` (§1.2). Before, its absence was unstated; absent is `Missing`, by the general rule in §1.7.
+- Duplicate and empty authored sets were unspecified; §2.6 now follows the compiler, which already accepted both.
+- The reason labels `FieldAbsent:assertionKind` and `FieldMalformed:assertionKind`.
+
 ## PPL compiler (I1): `experimentalCompile` and `experimentalCompilePreview`
 
 The first compiler subset, specified by [first-program-implementation-contract.md](../../docs/superpowers/records/pathway-language/first-program-implementation-contract.md) §2, §5, §6 (compile rows), §7 and §8 (I1).
@@ -400,7 +437,7 @@ The label, heading and citation stay inspectable, and publication is blocked. No
 npm install --prefix libs/pathway-language
 npm run --prefix libs/pathway-language typecheck   # strict, noUncheckedIndexedAccess
 npm run --prefix libs/pathway-language build       # tsc → dist/ (gitignored)
-npm test --prefix libs/pathway-language            # independent tests + fixture runners (S1/S2/encounter/episode; I1 compile/preview)
+npm test --prefix libs/pathway-language            # independent tests + fixture runners (S1/S2/encounter/episode/assertionKind; I1 compile/preview)
 ```
 
 This package has its own Jest configuration and is not part of the root Jest roots, which require the Docker test stack.
@@ -511,23 +548,36 @@ This package has its own Jest configuration and is not part of the root Jest roo
   - 20 configuration errors (including empty and whitespace-only known episodes), 2 S2 parameter errors, and a malformed record episode distinguished from a configuration error.
 
   Targeted mutations each fail tests: a blank record episode compared as a string, a blank `known` accepted, `null` treated as absent, an absent episode as a mismatch, an unknown context deciding a mismatch, trimming, an undetached result, sparse cause lists accepted, and input-order context causes.
-- **`src/__tests__/fixtures.test.ts`** runs the committed [explicit-assertion-v0 fixtures](../../docs/superpowers/records/pathway-language/conformance/explicit-assertion-v0/README.md) and checks **only** their S1, S2, encounter-check and episode-check assertions. It never reports a fixture as passing as a whole, because the rest of S3 and S4–S7 are not implemented. On the current fixtures it reports:
+- **`src/__tests__/s3-assertion-kind.test.ts`** has 54 independent tests of the `assertionKind` check (counting each parameterized case), with expectations derived by hand from contract §§1.2, 1.7, 2, 2.2 and 2.6. Allowed sets are built in each test. They cover:
+  - each recognized kind when included, a recognized kind excluded, and the same record under different authored sets;
+  - absent, and 13 malformed or unrecognized values (`null`, number, boolean, object, array, empty, whitespace, two case variants, two whitespace variants, an unrecognized string, a code from another enum), each against three authored sets, so none can become `AssertionKindNotAllowed`;
+  - an empty authored set, a repeated code, and agreement with the compiler on both;
+  - authorized corrections that change the kind, unresolved history with matching and nonmatching alternatives and with absent and malformed alternatives, variants, unresolved S2 candidacy, out of domain, `excluded`, `unknown`, `Retracted` and `NoRecord`;
+  - one snapshot, permutation, duplicate, S1 key-order and authored-set-order invariance, deep-frozen inputs, detachment and a deep-frozen result;
+  - 19 configuration errors, including `undefined` elements and sparse arrays, 2 S2 parameter errors, and a malformed record kind distinguished from a configuration error.
+
+  Targeted mutations each fail tests: every kind allowed, allowed and disallowed swapped, absent treated as not allowed (missing versus false), an unrecognized string treated as a disallowed kind (recognized-but-disallowed versus malformed), trimming, unchecked rule elements, skipped holes and `undefined` elements, and an undetached result.
+- **`src/__tests__/fixtures.test.ts`** runs the committed [explicit-assertion-v0 fixtures](../../docs/superpowers/records/pathway-language/conformance/explicit-assertion-v0/README.md) and checks **only** their S1, S2 and individual S3 rule (encounter, episode, `assertionKind`) assertions. It never reports a fixture as passing as a whole, because the rest of S3 and S4–S7 are not implemented. On the current fixtures it reports:
   - **167 S1 assertions checked, 167 passing.** That is 92 trace facts (`keyResult`, `variants`, `occurrences`, `rejected`, `outOfEnvelope`, `outsideEnvelope`, and the `HistoricalDefect`, `CrossKeyCorrection` and `UndeclaredField` diagnostics) plus 75 canonicalization checks (bytes, digests, variant partition, undeclared fields). EA-104 adds two.
   - **16 S2 assertions checked, 16 passing:** every `candidacy` trace fact (EA-013, EA-014, EA-024, three in EA-033, and EA-093 to EA-100).
-  - **10 encounter-check assertions checked, 10 passing:** every `encounterScope` trace fact (EA-101 to EA-103, both variants of EA-104, EA-105, EA-106a/b, EA-107 and EA-112).
-  - **8 episode-check assertions checked, 8 passing:** every `episodeScope` trace fact (EA-108 to EA-110, EA-111a/b, EA-112 and EA-113a/b). Trace `causes` are compared as sets in Stage A order, for both checks.
+  - **11 encounter-check assertions checked, 11 passing:** every `encounterScope` trace fact (EA-101 to EA-103, both variants of EA-104, EA-105, EA-106a/b, EA-107, EA-112 and EA-115a).
+  - **9 episode-check assertions checked, 9 passing:** every `episodeScope` trace fact (EA-108 to EA-110, EA-111a/b, EA-112, EA-113a/b and EA-115a).
+  - **9 `assertionKind`-check assertions checked, 9 passing:** every `assertionKindScope` trace fact (EA-114, EA-115a/b, EA-116, EA-117, EA-118a–d). EA-115a/b use an inline query with another authored set (digest `d-ak1`).
+
+  Trace `causes` are compared as sets in Stage A order, for every check.
   - **One-way checks**, which can fail but cannot prove completeness:
     - 33 S1-stage cause attributions, each of which must be an active S1 defect;
     - 12 S2-stage cause attributions (EA-013, EA-014, EA-093 to EA-099), each of which must be an S2 finding on that revision;
-    - 110 `candidateEvidenceIds` entries, each of which must have S2 candidacy `InDomain` or `Unresolved` (contract §5.1). The field is an S6 output, and its converse is not checked;
-    - 12 encounter outcomes implied by complete S3 expectations. `admissibility: Admissible` implies `Matches` (EA-052a). `Inadmissible` with reason `OtherEncounter` implies `DoesNotMatch` (EA-009, EA-025, EA-107). An S3 attribution with an encounter reason must be a finding of the check (EA-010, EA-015, EA-101 to EA-103, EA-105, EA-106a/b). The `admissibility` facts themselves stay outside the implemented scope.
+    - 117 `candidateEvidenceIds` entries, each of which must have S2 candidacy `InDomain` or `Unresolved` (contract §5.1). The field is an S6 output, and its converse is not checked;
+    - 14 encounter outcomes implied by complete S3 expectations. `admissibility: Admissible` implies `Matches` (EA-052a, EA-114, EA-115b). `Inadmissible` with reason `OtherEncounter` implies `DoesNotMatch` (EA-009, EA-025, EA-107). An S3 attribution with an encounter reason must be a finding of the check (EA-010, EA-015, EA-101 to EA-103, EA-105, EA-106a/b). The `admissibility` facts themselves stay outside the implemented scope.
 
-    - 13 episode outcomes implied by complete S3 expectations. `admissibility: Admissible` implies `Matches` (EA-052a). `Inadmissible(OtherEpisode)` implies `DoesNotMatch` (EA-112). An S3 attribution with an episode reason must be a finding of the check (EA-012, EA-108 to EA-110, EA-111a/b, EA-113a/b).
+    - 15 episode outcomes implied by complete S3 expectations. `admissibility: Admissible` implies `Matches` (EA-052a, EA-114, EA-115b). `Inadmissible(OtherEpisode)` implies `DoesNotMatch` (EA-112). An S3 attribution with an episode reason must be a finding of the check (EA-012, EA-108 to EA-110, EA-111a/b, EA-113a/b).
+    - 10 `assertionKind` outcomes implied by complete S3 expectations. `admissibility: Admissible` implies `Matches` (EA-052a, EA-114, EA-115b). `Inadmissible(AssertionKindNotAllowed)` implies `DoesNotMatch` (EA-115a). An S3 attribution with an `assertionKind` reason must be a finding of the check (EA-116, EA-117, EA-118a–d).
 
     The absence of an attribution proves nothing, because attribution also depends on S5/S6 materiality.
-  - **569 expected fields and trace facts outside the implemented scope,** not checked: evidence, decision, Needs, complete admissibility, classification, cells, gaps and so on.
+  - **616 expected fields and trace facts outside the implemented scope,** not checked: evidence, decision, Needs, complete admissibility, classification, cells, gaps and so on.
   - **3 fixtures not run:** EA-050 (whole-contract hole) and EA-051a/b (compilation).
-  - **10 evaluation/preview fixtures with no applicable S1/S2/encounter-check assertion,** listed by the test: EA-001, -002, -005, -011, -043, -045, -046, -047, -052b and -053. Their behavior in these stages is exercised but not asserted.
+  - **10 evaluation/preview fixtures with no applicable S1/S2/individual-rule assertion,** listed by the test: EA-001, -002, -005, -011, -043, -045, -046, -047, -052b and -053. Their behavior in these stages is exercised but not asserted.
 
 ## Interpretations where the contract is silent
 
@@ -598,8 +648,8 @@ Two former items are now settled in the contract:
 
 - **I1 compiles; I2 executes program expressions only.** No stable serialized IR, manifest, signing or persistence exists. The compiler supports only the first-program subset and one fictional evidence model.
 
-- Evidence stages: S1, S2 and two S3 rules (encounter and episode), each on its own. There is no `assertionKind` rule, no combination of rule outcomes, no complete admissibility, and no selection, criteria, materiality, resolution, Needs or coverage evaluation.
-- The encounter and episode checks each recognize exactly one authored rule shape. They do not evaluate expressions.
+- Evidence stages: S1, S2 and three S3 rules (encounter, episode and `assertionKind`), each on its own. There is no combination of rule outcomes (including the deferred case of one rule’s mismatch beside another’s unresolved outcome), no complete admissibility, and no selection, criteria, materiality, resolution, Needs or coverage evaluation.
+- The encounter and episode checks each recognize exactly one authored rule shape, and the `assertionKind` check one shape (`in` over pinned codes). They do not evaluate expressions.
 - S2 supports only the fixtures’ flat expansion format: no hierarchies, intensional definitions, terminology service, normalization, code-system conversion or version resolution.
 - The fixtures assert S2 candidacy for 16 revisions. Variants, `excluded`/`unknown` propagation and configuration errors are covered by the independent tests only.
 - One schematic authority rule and one fictional evidence model (`demo-model@0.1`). No clinical definitions.

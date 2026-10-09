@@ -33,7 +33,7 @@ import type {
 
 const RECORD_TYPE = 'demo-model/DemoAssessment@0.1';
 const POLICY = 'explicit-assertion-v0';
-const ENUMS: ReadonlyMap<string, readonly string[]> = new Map([
+export const ENUMS: ReadonlyMap<string, readonly string[]> = new Map([
   ['AssertionValue', ['Affirmed', 'Denied', 'Indeterminate']],
   ['AssertionKind', ['ClinicianDocumented', 'PatientReport']],
 ]);

@@ -360,6 +360,25 @@
     "113": [
       "EA-113a",
       "EA-113b"
+    ],
+    "114": [
+      "EA-114"
+    ],
+    "115": [
+      "EA-115a",
+      "EA-115b"
+    ],
+    "116": [
+      "EA-116"
+    ],
+    "117": [
+      "EA-117"
+    ],
+    "118": [
+      "EA-118a",
+      "EA-118b",
+      "EA-118c",
+      "EA-118d"
     ]
   },
   "pairs": [
@@ -566,6 +585,27 @@
         "EA-113a"
       ],
       "claim": "An unknown evaluation episode alone gives only the context's causes; with an absent record episode as well, the record's Missing is added with its own origin, and no evidence Need or CorrectRecord is emitted in either"
+    },
+    {
+      "fixtures": [
+        "EA-114",
+        "EA-115a"
+      ],
+      "claim": "The same PatientReport record matches when the authored set includes PatientReport (Known(true)) and does not match when the authored set omits it (Inadmissible, AssertionKindNotAllowed): the authored set decides membership"
+    },
+    {
+      "fixtures": [
+        "EA-115a",
+        "EA-118a"
+      ],
+      "claim": "A recognized kind outside the authored set is a mismatch (Inadmissible, AssertionKindNotAllowed); an unrecognized string is malformed (Invalid, FieldMalformed:assertionKind), never a disallowed kind"
+    },
+    {
+      "fixtures": [
+        "EA-116",
+        "EA-117"
+      ],
+      "claim": "An absent assertion kind is Missing (FieldAbsent:assertionKind); a null one is Invalid (FieldMalformed:assertionKind); neither defaults to a kind"
     }
   ]
 }

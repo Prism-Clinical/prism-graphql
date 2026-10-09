@@ -5,9 +5,8 @@
  * (so the two always come from one snapshot) and reads the payloads S1 retained. Never rebuilds history, never picks among possible currents, applies no other
  * admissibility rule and no S4–S6 selection, criteria or materiality.
  */
-import { canonicalJson } from '../s1/payload';
 import type { JsonObject } from '../s1/resolve';
-import { CONTEXT_CAUSES, checkScopeInput, scopeKeys } from './scope';
+import { CONTEXT_CAUSES, checkScopeInput, exactRule, scopeKeys } from './scope';
 import {
   SAME_ENCOUNTER_RULE,
   type EncounterBinding,
@@ -21,7 +20,7 @@ import {
 /** Invalid program, rule or configuration input. Never used for patient-evidence problems. */
 export class EncounterCheckConfigurationError extends Error {}
 
-const RULE = canonicalJson(SAME_ENCOUNTER_RULE as never);
+const RULE = exactRule(SAME_ENCOUNTER_RULE);
 const INPUT_FIELDS = ['s1', 'valueSet', 'expansion', 'rule', 'contextEncounter'];
 /**
  * EncounterRef syntax (contract §2.4), defined for encounters on its own: a string with at least

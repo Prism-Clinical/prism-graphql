@@ -8,9 +8,8 @@
  * deep-frozen.
  */
 import { detach } from '../compile/compile';
-import { canonicalJson } from '../s1/payload';
 import type { JsonObject } from '../s1/resolve';
-import { CONTEXT_CAUSES, checkScopeInput, scopeKeys } from './scope';
+import { CONTEXT_CAUSES, checkScopeInput, exactRule, scopeKeys } from './scope';
 import {
   SAME_EPISODE_RULE,
   type EpisodeBinding,
@@ -24,7 +23,7 @@ import {
 /** Invalid program, rule or configuration input. Never used for patient-evidence problems. */
 export class EpisodeCheckConfigurationError extends Error {}
 
-const RULE = canonicalJson(SAME_EPISODE_RULE as never);
+const RULE = exactRule(SAME_EPISODE_RULE);
 const INPUT_FIELDS = ['s1', 'valueSet', 'expansion', 'rule', 'contextEpisode'];
 const own = (o: object, k: string) => Object.prototype.hasOwnProperty.call(o, k);
 /**

@@ -1,10 +1,10 @@
 /**
- * EXPERIMENTAL, NONCLINICAL. Runs the S1-, S2-, encounter-check- and episode-check-applicable
- * assertions of the committed explicit-assertion-v0 conformance fixtures against the S1 resolver,
- * S2 candidate identification and the S3 same-encounter and same-episode checks.
+ * EXPERIMENTAL, NONCLINICAL. Runs the S1-, S2- and individual-S3-rule-applicable assertions of
+ * the committed explicit-assertion-v0 conformance fixtures against the S1 resolver, S2 candidate
+ * identification and the S3 same-encounter, same-episode and assertionKind checks, each on its own.
  *
- * A fixture is never reported as passing as a whole: only its S1, S2, encounter-check and
- * episode-check assertions are checked. Complete S3 `admissibility` facts are never checked as such.
+ * A fixture is never reported as passing as a whole: only its S1, S2 and individual-rule
+ * assertions are checked. Complete S3 `admissibility` facts are never checked as such.
  * Every other expected field or trace fact is counted as outside the implemented scope.
  */
 import { readdirSync, readFileSync } from 'node:fs';
@@ -14,6 +14,8 @@ import { isDeepStrictEqual } from 'node:util';
 import {
   SAME_ENCOUNTER_RULE,
   SAME_EPISODE_RULE,
+  experimentalCheckAssertionKind,
+  type PossibleAssertionKindScope,
   experimentalCheckEncounterScope,
   experimentalCheckEpisodeScope,
   experimentalIdentifyCandidates,
@@ -60,6 +62,10 @@ export interface FixtureReport {
   episodePassed: number;
   /** One-way implications from complete S3 facts (`admissibility`, S3 episode attributions). */
   episodeOneWay: number;
+  assertionKindApplicable: number;
+  assertionKindPassed: number;
+  /** One-way implications from complete S3 facts (`admissibility`, S3 assertionKind attributions). */
+  assertionKindOneWay: number;
   outOfScope: number;
   failures: string[];
   notRun: string | null;
@@ -146,6 +152,7 @@ function s2Nodes(r: S2Result): Map<string, NodeCandidacy> {
   return m;
 }
 
+const ASSERTION_KIND_REASONS = new Set(['FieldAbsent:assertionKind', 'FieldMalformed:assertionKind']);
 const EPISODE_REASONS = new Set(['FieldAbsent:episode', 'FieldMalformed:episode', 'ContextUnknown:episode']);
 /** Trace `causes` are sets, listed in Stage A §4.1 order. */
 const STAGE_A = ['Missing', 'Conflicting', 'Unavailable', 'Invalid', 'Inadmissible', 'InsufficientEvidence'];
@@ -191,6 +198,9 @@ export function runFixtures(dir: string = FIXTURE_DIR): { reports: FixtureReport
       episodeApplicable: 0,
       episodePassed: 0,
       episodeOneWay: 0,
+      assertionKindApplicable: 0,
+      assertionKindPassed: 0,
+      assertionKindOneWay: 0,
       outOfScope: 0,
       failures: [],
       notRun: null,
@@ -245,8 +255,25 @@ export function runFixtures(dir: string = FIXTURE_DIR): { reports: FixtureReport
     const episodeNodes = new Map<string, Extract<PossibleEpisodeScope, { kind: 'node' }>>();
     for (const k of epi?.keys ?? []) for (const p of k.possibilities) if (p.kind === 'node') episodeNodes.set(showRev(p.node.revision) + (p.node.digest ? `#${p.node.digest}` : ''), p);
     const episodeOutcome = (ref: string) => episodeNodes.get(ref)?.episode.outcome ?? 'not checked';
+    // The assertionKind check runs wherever the query authors the rule; an invalid rule throws (a fixture defect).
+    const akr = contract.admissible?.assertionKind === undefined
+      ? null
+      : experimentalCheckAssertionKind({ s1: result, valueSet: pin, expansion: { id: pin, ...query.valueSets[pin] }, rule: contract.admissible.assertionKind });
+    const akNodes = new Map<string, Extract<PossibleAssertionKindScope, { kind: 'node' }>>();
+    for (const k of akr?.keys ?? []) for (const p of k.possibilities) if (p.kind === 'node') akNodes.set(showRev(p.node.revision) + (p.node.digest ? `#${p.node.digest}` : ''), p);
+    const akOutcome = (ref: string) => akNodes.get(ref)?.assertionKind.outcome ?? 'not checked';
     const exp = fx.expected as Json;
     for (const t of (exp.traceAssertions ?? []) as Json[]) {
+      if (t.fact === 'assertionKindScope') {
+        report.assertionKindApplicable += 1;
+        const p = akNodes.get(t.ref);
+        const got = akr ? akOutcome(t.ref) : 'the query does not author the assertionKind rule';
+        const causes = p?.assertionKind.outcome === 'Unresolved' ? causeSet(p.assertionKind.findings) : [];
+        if (got !== t.value) report.failures.push(`assertionKindScope ${t.ref}: ${got}, expected ${t.value}`);
+        else if ('causes' in t && JSON.stringify(causes) !== JSON.stringify(t.causes)) report.failures.push(`assertionKindScope ${t.ref}: causes ${JSON.stringify(causes)}`);
+        else report.assertionKindPassed += 1;
+        continue;
+      }
       if (t.fact === 'episodeScope') {
         report.episodeApplicable += 1;
         const p = episodeNodes.get(t.ref);
@@ -271,6 +298,14 @@ export function runFixtures(dir: string = FIXTURE_DIR): { reports: FixtureReport
           report.encounterOneWay += 1;
           const got = outcomeOf(enc.get(t.ref));
           if (got !== implied) report.failures.push(`admissibility ${t.value} ${t.ref}: encounter check ${got}, implied ${implied}`);
+        }
+      }
+      if (t.fact === 'admissibility' && akr) {
+        const implied = t.value === 'Admissible' ? 'Matches' : t.value === 'Inadmissible' && t.reason === 'AssertionKindNotAllowed' ? 'DoesNotMatch' : null;
+        if (implied) {
+          report.assertionKindOneWay += 1;
+          const got = akOutcome(t.ref);
+          if (got !== implied) report.failures.push(`admissibility ${t.value} ${t.ref}: assertionKind check ${got}, implied ${implied}`);
         }
       }
       if (t.fact === 'admissibility' && epi) {
@@ -332,6 +367,15 @@ export function runFixtures(dir: string = FIXTURE_DIR): { reports: FixtureReport
         if (!hit) report.failures.push(`causeAttribution ${a.cause}/${a.reason} @${ref}: not an encounter-check finding`);
       }
     }
+    // One-way: an S3 attribution with an assertionKind reason must be a finding of that check.
+    for (const a of (exp.causeAttribution ?? []) as Json[]) {
+      if (a.stage !== 'S3' || !ASSERTION_KIND_REASONS.has(a.reason) || !akr) continue;
+      report.assertionKindOneWay += 1;
+      const hit = [...akNodes.entries()].some(
+        ([id, x]) => (id === a.origin || id.split('#')[0] === a.origin) && x.assertionKind.outcome === 'Unresolved' && x.assertionKind.findings.some((f) => f.cause === a.cause && f.reason === a.reason),
+      );
+      if (!hit) report.failures.push(`causeAttribution ${a.cause}/${a.reason} @${a.origin}: not an assertionKind-check finding`);
+    }
     // One-way: an S3 attribution with an episode reason must be a finding of the episode check.
     for (const a of (exp.causeAttribution ?? []) as Json[]) {
       if (a.stage !== 'S3' || !EPISODE_REASONS.has(a.reason) || !epi) continue;
@@ -361,7 +405,9 @@ export function runFixtures(dir: string = FIXTURE_DIR): { reports: FixtureReport
       report.encounterApplicable +
       report.encounterOneWay +
       report.episodeApplicable +
-      report.episodeOneWay;
+      report.episodeOneWay +
+      report.assertionKindApplicable +
+      report.assertionKindOneWay;
     if (checked === 0) missing.push(fx.id);
   }
   return { reports, noApplicableAssertions: missing };

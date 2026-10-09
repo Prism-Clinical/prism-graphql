@@ -16,7 +16,7 @@ Usage: python3 validate.py [--self-test]
 import copy, hashlib, json, os, sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-CASE_RANGE = range(1, 114)
+CASE_RANGE = range(1, 119)
 CAUSES = ["Missing", "Conflicting", "Unavailable", "Invalid", "Inadmissible", "InsufficientEvidence"]
 MARKERS = ["excluded", "unknown"]
 REV_DECL = {"key": {"source", "localId"}, "revision": None, "recordType": None, "subject": None,
@@ -201,8 +201,16 @@ def check(fixtures, index, query):
             if "inline" not in fx["query"]:
                 err(i, "authoring fixture must inline its full query")
             continue
-        if fx["query"].get("file") != "../query/q.demo.json" or query["contractDigest"] != fx["query"]["contractDigest"]:
-            err(i, "query reference mismatch")
+        if "inline" in fx["query"]:
+            # A modified contract (e.g. another authored assertionKind set): full query, own digest.
+            q = fx["query"]["inline"]
+            if set(q) != set(query) or q["query"]["id"] != query["query"]["id"] or q["contractDigest"] == query["contractDigest"]:
+                err(i, "inline evaluation query must be a full query with its own contract digest")
+            digest = q["contractDigest"]
+        else:
+            if fx["query"].get("file") != "../query/q.demo.json" or query["contractDigest"] != fx["query"]["contractDigest"]:
+                err(i, "query reference mismatch")
+            digest = query["contractDigest"]
         exp = fx["expected"]
         ev = exp["evidence"]
         if ev["status"] == "Known":
@@ -225,6 +233,11 @@ def check(fixtures, index, query):
                 err(i, "Unresolved result without evidence Need or deferral")
             if n["evidence"] is not None and n["evidence"]["causes"] != ev["causes"]:
                 err(i, "Need state causes differ from result causes")
+            keys = [o["needKey"] for o in n["obligations"]]
+            if n["evidence"] is not None:
+                keys.append(n["evidence"]["key"])
+            if any(k["contractDigest"] != digest for k in keys):
+                err(i, "Need key contract digest differs from the fixture's contract")
             check_sorted(i + " obligations", [(o["kind"], o.get("record", "")) for o in n["obligations"]], None)
         if exp["decision"] != want:
             err(i, "decision is not the projection of evidence")
@@ -304,11 +317,21 @@ def self_test(fixtures, index, query):
     def change_result(e):
         e["evidence"]["supportingEvidenceIds"] = ["s2/r21@1"]
 
+    def shared_digest_key(e):
+        e["needs"]["evidence"]["key"]["contractDigest"] = "d1"
+
+    def inline_with_shared_digest():
+        fx = copy.deepcopy(fixtures)
+        fx["EA-115a"]["query"]["inline"]["contractDigest"] = query["contractDigest"]
+        return check(fx, index, query)[0]
+
     tests = [
         ("permutation pair: cause attribution only", mutated("EA-071", bump_reason), "EA-070/EA-071 expected outputs differ"),
         ("permutation pair: trace assertions only", mutated("EA-071", add_trace), "EA-070/EA-071 expected outputs differ"),
         ("result pair: added diagnostic is allowed", mutated("EA-022", add_diagnostic), None),
         ("result pair: changed result is rejected", mutated("EA-022", change_result), "EA-001/EA-022 results differ"),
+        ("inline contract: Need key with the shared digest is rejected", mutated("EA-115a", shared_digest_key), "Need key contract digest differs"),
+        ("inline contract: reusing the shared digest is rejected", inline_with_shared_digest(), "must be a full query with its own contract digest"),
     ]
     failed = 0
     for name, errs, expect in tests:

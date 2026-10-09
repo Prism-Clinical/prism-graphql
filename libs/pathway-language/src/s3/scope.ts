@@ -13,23 +13,37 @@ import type { ContextCause } from './types';
 /** Stage A §4.1 order. */
 export const CONTEXT_CAUSES: readonly ContextCause[] = ['Missing', 'Conflicting', 'Unavailable', 'Invalid', 'Inadmissible', 'InsufficientEvidence'];
 
+/** A rule check that accepts exactly one authored node, by canonical bytes. */
+export function exactRule(expected: unknown): (rule: unknown) => string | null {
+  const bytes = canonicalJson(expected as never);
+  return (rule) => {
+    try {
+      if (canonicalJson(rule as never) === bytes) return null;
+    } catch {
+      // unrepresentable rule: rejected below
+    }
+    return `unsupported rule ${JSON.stringify(rule)}; expected ${bytes}`;
+  };
+}
+
 /**
- * Throws `fail` unless `input` is an object with only `fields`, carries an S1 result, and `rule`
- * has exactly the canonical bytes `expected`. Rules are recognized, never interpreted.
+ * Throws `fail` unless `input` is an object with only `fields` and carries an S1 result, and
+ * `ruleProblem(rule)` finds nothing. Rules are recognized, never interpreted.
  */
-export function checkScopeInput(input: unknown, fields: readonly string[], rule: unknown, expected: string, fail: (m: string) => never): void {
+export function checkScopeInput(
+  input: unknown,
+  fields: readonly string[],
+  rule: unknown,
+  ruleProblem: (rule: unknown) => string | null,
+  fail: (m: string) => never,
+): void {
   if (input === null || typeof input !== 'object') fail('input must be an object');
   const extra = Object.keys(input).filter((k) => !fields.includes(k));
   // In particular a precomputed `s2`: it could come from another snapshot than `s1`.
   if (extra.length > 0) fail(`unexpected input field(s) ${extra.join(', ')}`);
   if ((input as { s1?: S1Result }).s1?.experimental !== 'nonclinical-s1-v0') fail('s1 must be an experimental S1 result');
-  let bytes: string | null = null;
-  try {
-    bytes = canonicalJson(rule as never);
-  } catch {
-    // unrepresentable rule: rejected below
-  }
-  if (bytes !== expected) fail(`unsupported rule ${JSON.stringify(rule)}; expected ${expected}`);
+  const problem = ruleProblem(rule);
+  if (problem !== null) fail(problem);
 }
 
 export interface ScopedKey<P> {

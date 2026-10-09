@@ -2,7 +2,7 @@
 
 **Status:** Proposed design draft. **Not** accepted, not finalized syntax, not a schema and not implemented. It contains no clinical content: the record type, enum values, codes, sources and permission below are fictional and illustrate language behavior only. They do not map to dysphagia, progression, urgency or any other clinical definition.
 
-**Date:** 2026-10-03. **Revised:** 2026-10-03, nine times, 2026-10-04, once, 2026-10-05, three times, and 2026-10-09, once, after review. The third revision fixed three things:
+**Date:** 2026-10-03. **Revised:** 2026-10-03, nine times, 2026-10-04, once, 2026-10-05, three times, and 2026-10-09, twice, after review. The third revision fixed three things:
 
 - revision-chain boundaries: source-scoped identity, same-source corrections and one fully specified schematic authority rule;
 - deterministic outcomes for malformed history;
@@ -13,6 +13,14 @@ The fourth revision made three changes:
 - Proven cross-boundary corrections and retractions are now rejected without changing their target. This keeps gap irrelevance consistent with S1.
 - Payload identity for duplicate detection is defined.
 - An unsupported justification about coverage attestations is removed.
+
+The fifteenth revision specifies the S3 `assertionKind` rule on its own (2.6, cases 114–118).
+
+- `assertionKind` is `Field<AssertionKind>`: absence is `Missing` (`FieldAbsent:assertionKind`), never a default kind.
+- A present value that is not exactly one of the pinned `AssertionKind` codes is malformed, `Invalid` (`FieldMalformed:assertionKind`), and never a disallowed kind.
+- A recognized kind outside the authored set is a mismatch, `AssertionKindNotAllowed`.
+- The authored set is validated against the pinned enum; an invalid rule is a program error. Duplicates have no effect, and an explicitly authored empty set allows no kind.
+- Combining several admissibility rules stays deferred.
 
 The fourteenth revision specifies the S3 `episode` rule on its own (2.5, cases 108–113), closing the gap left when it was first implemented: the contract typed the field as `Field<EpisodeRef>` but did not define `EpisodeRef`.
 
@@ -105,7 +113,7 @@ Records are instances of a record type declared in a pinned evidence-model libra
 | `episode`, `encounter` | `Field<EpisodeRef>`, `Field<EncounterRef>` | Absence is explicit, never defaulted |
 | `concept` | `Code` (`system`, `code`) | Matched against a pinned value-set expansion (2.3) |
 | `assertion` | `Field<AssertionValue>` | `Affirmed \| Denied \| Indeterminate` (fictional) |
-| `assertionKind` | `AssertionKind` | Fictional: `ClinicianDocumented \| PatientReport` |
+| `assertionKind` | `Field<AssertionKind>` | Fictional: `ClinicianDocumented \| PatientReport`. Absence is explicit, never defaulted (2.6) |
 | `author` | `{ actor, permissions: Field<Set<Permission>> }` | Permissions are read only for corrections and retractions (1.3) |
 | `provenance` | acquisition ID, source record reference | Retained in every trace |
 
@@ -342,7 +350,7 @@ Rejected and superseded revisions and historical defects are kept in the trace w
   - A different known episode: `Inadmissible(OtherEpisode)`.
   - Section 2.5 specifies this rule on its own.
 - `encounter`: the same rule, with reason `OtherEncounter`. Section 2.4 specifies this rule on its own.
-- `assertionKind` must be in the authored set, else `Inadmissible(AssertionKindNotAllowed)`.
+- `assertionKind` must be in the authored set, else `Inadmissible(AssertionKindNotAllowed)`. An absent field is `UnresolvedAdmissibility(Missing)`, and a malformed one, including a string outside the pinned enum, is `UnresolvedAdmissibility(Invalid)`. Section 2.6 specifies this rule on its own.
 
 Causes from several unresolved rules accumulate. “Unresolved admissibility” is a stage outcome; the causes stay those of the underlying input.
 
@@ -457,6 +465,31 @@ A known record episode never decides against an unknown evaluation episode, and 
 A malformed evaluation context is an invalid program input from the orchestrator, never patient uncertainty: an evaluation episode that is neither `Known` nor `Unknown`, a `known` value that is not a well-formed `EpisodeRef` (including a blank string), or an `Unknown` with no causes or an unrecognized cause. Evaluation does not proceed.
 
 **Needs when record and context problems coincide.** In case 113, the record is material under the policy’s materiality rules (4.2). Its defect and the context’s causes remain attributed in the result. While the episode binding is unresolved, no evidence Need or dependent `CorrectRecord` obligation is emitted, and the scope’s source declaration supplies the binding-resolution Need. Once the binding is resolved, reevaluation determines whether an evidence Need and `CorrectRecord` are required. Section 6.2 states this rule generally.
+
+### 2.6 S3: the `assertionKind` rule on its own
+
+This section isolates the `assertionKind` rule of 2.2, as 2.4 and 2.5 do for `encounter` and `episode`. Its result is **not** an admissibility result. A match says only that this rule is satisfied: the other admissibility rules still apply, and how several rules’ outcomes combine stays deferred (2.4). The rule checks *what kind of assertion* the record makes. It never decides whether the assertion supports or refutes anything (that is S5).
+
+**The authored rule.** The check consumes the contract’s `admissible.assertionKind` exactly as written (7.1): `{ "in": [k₁, …, kₙ] }`, an array of pinned `AssertionKind` codes. There is no implicit default and no default set. A query without this rule has no assertion-kind check, and any other expression in that position is out of this section’s scope.
+
+**Rule validity (program input).** The rule must be an object whose only member is `in`, holding an array of `AssertionKind` codes (`ClinicianDocumented`, `PatientReport` in `demo-model@0.1`), each compared exactly. Any other shape or element is an invalid program (the compiler reports `UNSUPPORTED_CONSTRUCT` or `TYPE_MISMATCH`, first-program contract §2) and never patient uncertainty. The array is read as a set: a repeated code has no further effect. An explicitly authored empty array is valid and allows no kind; it is never a default for an omitted rule (compare `all()`, first-program contract P2).
+
+**What is checked.** As in 2.4: each S2 possibility that is in domain or has unresolved candidacy is checked, with its S2 findings kept separate; out-of-domain possibilities are **not evaluated**; `excluded` and `unknown` are carried unchanged; `Retracted` and no-record keys contribute nothing; S1 causes stay with the key. A match on one possible current neither resolves its history nor makes it current.
+
+**Field rules.** The record field is `Field<AssertionKind>` (1.2). A value is a *recognized kind* if and only if it is a JSON string exactly equal to one of the pinned codes. Nothing is trimmed, case-folded or otherwise normalized, so `"patientReport"`, `" PatientReport"` and `""` are not recognized kinds.
+
+| Record `assertionKind` | Outcome | Findings (cause, origin, reason) |
+|---|---|---|
+| Recognized kind *k*, *k* in the authored set | **Matches** | — |
+| Recognized kind *k*, *k* not in the authored set | **DoesNotMatch** | reason `AssertionKindNotAllowed` (S3 makes this `Inadmissible`) |
+| Absent | **Unresolved** | `Missing`, the record, `FieldAbsent:assertionKind` |
+| Present, not a recognized kind (non-string, `null`, empty, whitespace, a code with different case or spacing, any other string) | **Unresolved** | `Invalid`, the record, `FieldMalformed:assertionKind` |
+
+An unrecognized string is malformed patient data (1.2, 1.7), **never** a disallowed kind: its true kind is unknown, so it could be an allowed one. There is no context binding, so findings come from the record only.
+
+**Reason labels.** `FieldAbsent:assertionKind` and `FieldMalformed:assertionKind` (origin: the record’s revision or variant) and `AssertionKindNotAllowed` (the `Inadmissible` reason) are the contract’s labels for this rule.
+
+**Contract identity.** The authored set is part of the admissibility rules, so it is covered by the contract digest (6.2). A query with a different set is a different contract with its own (symbolic) digest and Need key; cases 115a/b use `d-ak1`.
 
 ## 3. Where the clinical expression lives
 
@@ -968,6 +1001,18 @@ In cases 101–103, 105 and 106 the record is `Supporting` if admitted, so it is
 
 In cases 108–111 and 113 the record is the only candidate and its possible classes include `Supporting`, so it is material under 4.2. This is a property of these cases, not a general rule: another sufficient supporting record can make it immaterial (Trace A). 112 follows 107: the record is inadmissible on this rule alone.
 
+**J. The `assertionKind` rule on its own (2.6)** (D0 unless stated; each record `Affirmed`)
+
+| # | Case | Records / changes | `Evidence<Boolean>` | `Decision` | Trace must show | Need |
+|---|---|---|---|---|---|---|
+| 114 | Second recognized kind allowed | s1/r114, `PatientReport` | `Known(true, [s1/r114@1])` | True | Check `Matches`; admissible; rule 2 | None |
+| 115 | Authored set without `PatientReport` | Query as 7.1 but `assertionKind: {in: [ClinicianDocumented]}`, digest `d-ak1`. (a) s1/r115, `PatientReport`; (b) s1/r115, `ClinicianDocumented` | (a) `Unresolved{Inadmissible}`; (b) `Known(true, [s1/r115@1])` | (a) Unknown; (b) True | (a) `DoesNotMatch`, `Inadmissible(AssertionKindNotAllowed)`; (b) `Matches`. Contrast with 114: the authored set decides membership | (a) (`q.demo`, d-ak1, P1, E1, N1); (b) None |
+| 116 | Absent kind | s1/r116, `assertionKind` omitted | `Unresolved{Missing}` @s1/r116@1 (S3, `FieldAbsent:assertionKind`) | Unknown(Missing) | Unresolved, **not** a mismatch and no default kind | K1; `CorrectRecord` s1/r116 |
+| 117 | `null` kind | s1/r117, `assertionKind: null` | `Unresolved{Invalid}` @s1/r117@1 (S3, `FieldMalformed:assertionKind`) | Unknown(Invalid) | `null` is malformed, not absent | K1; `CorrectRecord` s1/r117 |
+| 118 | Unrecognized kind | (a) s1/r118, `"patientReport"`; (b) `" PatientReport"`; (c) `""`; (d) `"PhoneCall"` | `Unresolved{Invalid}` @s1/r118@1 (S3, `FieldMalformed:assertionKind`) | Unknown(Invalid) | Malformed, **not** `AssertionKindNotAllowed`; no case folding or trimming | K1; `CorrectRecord` s1/r118 |
+
+In cases 114, 115b and 116–118 the record is the only candidate and its possible classes include `Supporting`, so it is material under 4.2 where unresolved. In 115a the encounter and episode rules hold, so the record is inadmissible on this rule alone, as in 107 and 112.
+
 ### 7.5 Invariance checks
 
 These must hold for every case:
@@ -1040,6 +1085,10 @@ These must hold for every case:
     - Absent is `Missing` (`FieldAbsent:episode`); malformed is `Invalid` (`FieldMalformed:episode`); an unknown context keeps its causes (`ContextUnknown:episode`); a mismatch is `OtherEpisode`.
     - A malformed or blank `Known` evaluation episode is an invalid configuration.
     - With record and context problems together, causes from both stay attributed; no evidence Need and no dependent `CorrectRecord` while the binding is unresolved (6.2, dependent obligations); the episode binding is deferred and resolved through its source declaration’s Need before reevaluation.
+18. The `assertionKind` rule on its own (2.6):
+    - `assertionKind` is `Field<AssertionKind>`. Absent is `Missing` (`FieldAbsent:assertionKind`); any present value that is not exactly a pinned code is `Invalid` (`FieldMalformed:assertionKind`); a recognized kind outside the authored set is `AssertionKindNotAllowed`.
+    - The authored `in` set is validated against the pinned enum as program input; duplicates have no effect; an explicitly authored empty set allows no kind.
+    - Combining rule outcomes stays deferred.
 
 **Possible conflicts needing a Stage A amendment.** None found. Items to confirm:
 
@@ -1049,7 +1098,7 @@ These must hold for every case:
 
 **Query/predicate split.** The query carries the reasoning. A projection-only Predicate is optional naming and composition structure. No node kind is added or removed.
 
-**Conformance fixtures.** [conformance/explicit-assertion-v0/](conformance/explicit-assertion-v0/README.md) holds machine-readable fixtures for cases 1–113, mapped by case number, with expected outputs written from this contract. They are proposed, like this document.
+**Conformance fixtures.** [conformance/explicit-assertion-v0/](conformance/explicit-assertion-v0/README.md) holds machine-readable fixtures for cases 1–118, mapped by case number, with expected outputs written from this contract. They are proposed, like this document.
 
 **Remaining items.**
 

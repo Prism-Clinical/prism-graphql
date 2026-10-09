@@ -171,3 +171,68 @@ export interface EpisodeCheckResult {
   readonly contextEpisode: EpisodeBinding;
   readonly keys: readonly KeyEpisodeScope[];
 }
+
+// ---------------------------------------------------------------------------------------------
+// ONE more S3 admissibility check: the assertionKind rule (contract §2.2, §2.6). Not the S3 result:
+// a match does not make a record admissible, and it never says whether the assertion supports or
+// refutes anything (S5).
+
+/**
+ * The authored `admissible.assertionKind` node, as written: `{in: [AssertionKind codes]}`. Any
+ * other shape, a code outside the pinned enum, or a sparse/undefined element is a configuration
+ * error. Duplicates have no effect; an explicitly authored empty set allows no kind (§2.6).
+ */
+export interface AssertionKindCheckInput {
+  readonly s1: S1Result;
+  readonly valueSet: string;
+  readonly expansion: ValueSetExpansion;
+  readonly rule: unknown;
+}
+
+export type AssertionKindFinding =
+  | { readonly cause: 'Missing'; readonly origin: 'record'; readonly reason: 'FieldAbsent:assertionKind' }
+  /** Not exactly a pinned AssertionKind code: non-string, `null`, or any unrecognized string. */
+  | { readonly cause: 'Invalid'; readonly origin: 'record'; readonly reason: 'FieldMalformed:assertionKind' };
+
+export type AssertionKindOutcome =
+  | { readonly outcome: 'Matches'; readonly recordKind: string }
+  /** A RECOGNIZED kind outside the authored set. Never used for an unrecognized string. */
+  | { readonly outcome: 'DoesNotMatch'; readonly reason: 'AssertionKindNotAllowed'; readonly recordKind: string }
+  | { readonly outcome: 'Unresolved'; readonly findings: readonly AssertionKindFinding[] };
+
+export type PossibleAssertionKindScope =
+  | {
+      readonly kind: 'node';
+      readonly node: NodeRef;
+      readonly candidacy: 'InDomain' | 'Unresolved';
+      readonly s2Findings: readonly S2Finding[];
+      readonly assertionKind: AssertionKindOutcome;
+    }
+  | {
+      readonly kind: 'node';
+      readonly node: NodeRef;
+      readonly candidacy: 'OutOfDomain';
+      readonly assertionKind: { readonly outcome: 'NotEvaluated'; readonly reason: 'OutOfDomain' };
+    }
+  | { readonly kind: 'excluded' }
+  | { readonly kind: 'unknown' };
+
+export interface KeyAssertionKindScope {
+  readonly key: RecordKey;
+  readonly s1Status: KeyStatus;
+  readonly candidate: boolean;
+  /** S1's active causes and defects, unchanged. A match never clears them. */
+  readonly inheritedS1Causes: readonly S1Cause[];
+  readonly inheritedS1Defects: readonly Defect[];
+  readonly possibilities: readonly PossibleAssertionKindScope[];
+}
+
+/** Detached and deep-frozen. Deliberately no key-level admissibility decision. */
+export interface AssertionKindCheckResult {
+  readonly experimental: 'nonclinical-s3-assertion-kind-v0';
+  readonly check: 'assertion-kind';
+  readonly valueSet: string;
+  /** The authored codes, as written (a repeated code is kept here but has no effect). */
+  readonly allowedKinds: readonly string[];
+  readonly keys: readonly KeyAssertionKindScope[];
+}
