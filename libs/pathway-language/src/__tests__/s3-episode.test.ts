@@ -1,9 +1,8 @@
 /**
  * EXPERIMENTAL, NONCLINICAL. Independent tests of the S3 same-episode check. Expectations are
- * derived by hand from the contract (evidence-query-to-predicate-contract.md §1.2, §1.6, §1.7,
- * §2, §2.2, §2.4 where it states general context rules) and from S1/S2 behaviour fixed by their
- * own tests; none is copied from output. EpisodeRef syntax is undefined beyond "a JSON string";
- * the blank-string cases assert only that the check stops (README).
+ * derived by hand from the contract (evidence-query-to-predicate-contract.md §1.2, §1.6, §2,
+ * §2.2 and §2.5, cases 12 and 108–113) and from S1/S2 behaviour fixed by their own tests; none is
+ * copied from output.
  */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -11,7 +10,6 @@ import {
   DEMO_AMEND_PERMISSION,
   DEMO_AUTHORITY_RULE,
   EpisodeCheckConfigurationError,
-  EpisodeRefSyntaxUnspecifiedError,
   S2ConfigurationError,
   SAME_ENCOUNTER_RULE,
   SAME_EPISODE_RULE,
@@ -95,7 +93,7 @@ describe('same-episode check: one current revision', () => {
     expect(p).toMatchObject({ episode: { outcome: 'DoesNotMatch', reason: 'OtherEpisode', recordEpisode: 'E0', contextEpisode: 'E1' } });
   });
 
-  it('identity is exact: no case folding, no trimming', () => {
+  it('identity is exact: no case folding, no trimming (case 112)', () => {
     for (const episode of ['e1', ' E1', 'E1\t', ' E1']) {
       expect(shown(check([rev('s1', 'r1', '1', { episode })]), 's1/r1')).toEqual(['s1/r1@1 DoesNotMatch']);
     }
@@ -116,11 +114,15 @@ describe('same-episode check: one current revision', () => {
 
   it.each([
     ['number', 7],
-    ['null (malformed, not absent: contract §1.2)', null],
+    ['null (malformed, not absent; case 109)', null],
     ['boolean', true],
     ['object', { id: 'E1' }],
     ['array', ['E1']],
-  ] as [string, JsonValue][])('wrong-type record episode (%s) → Unresolved{Invalid}, never a mismatch (contract §1.2, §1.7)', (_n, episode) => {
+    ['empty string (case 110)', ''],
+    ['ASCII whitespace-only (case 111a)', '   '],
+    ['Unicode whitespace-only (case 111b)', '\u00a0\u2003'],
+    ['line terminators only', '\n\u2028'],
+  ] as [string, JsonValue][])('malformed record episode (%s) → Unresolved{Invalid}, never a mismatch (contract §2.5)', (_n, episode) => {
     expect(shown(check([rev('s1', 'r1', '1', { episode })]), 's1/r1')).toEqual(['s1/r1@1 Unresolved[Invalid@record/FieldMalformed:episode]']);
   });
 
@@ -147,22 +149,25 @@ describe('same-episode check: one current revision', () => {
   });
 });
 
-describe('same-episode check: unspecified EpisodeRef syntax stops the check', () => {
-  it.each([
-    ['empty', ''],
-    ['ASCII whitespace-only', '   '],
-    ['Unicode whitespace-only', '  '],
-  ])('%s record episode → EpisodeRefSyntaxUnspecifiedError, not Invalid, Matches or DoesNotMatch', (_n, episode) => {
-    expect(() => check([rev('s1', 'r1', '1', { episode })])).toThrow(EpisodeRefSyntaxUnspecifiedError);
-    // The gap is the same whatever the context: whether `Invalid` joins the context causes is undecided.
-    expect(() => check([rev('s1', 'r1', '1', { episode })], [], { unknown: ['Conflicting'] })).toThrow(EpisodeRefSyntaxUnspecifiedError);
+describe('same-episode check: blank episodes are malformed, with every context (contract §2.5)', () => {
+  it('a blank record episode is Invalid, not a mismatch, against a known context', () => {
+    const p = key(check([rev('s1', 'r1', '1', { episode: '' })]), 's1/r1').possibilities[0];
+    expect(p).toMatchObject({ episode: { outcome: 'Unresolved', findings: [{ cause: 'Invalid', origin: 'record', reason: 'FieldMalformed:episode' }] } });
   });
 
-  it.each([['empty', ''], ['whitespace-only', '  ']])('%s known context episode → EpisodeRefSyntaxUnspecifiedError', (_n, known) => {
-    expect(() => check([rev('s1', 'r1', '1')], [], { known })).toThrow(EpisodeRefSyntaxUnspecifiedError);
+  it('a blank record episode and an unknown context accumulate; the context’s Missing is not the record’s (case 113b)', () => {
+    expect(shown(check([rev('s1', 'r113', '1', { episode: '   ' })], [], { unknown: ['Missing', 'Conflicting'] }), 's1/r113')).toEqual([
+      `s1/r113@1 Unresolved[Invalid@record/FieldMalformed:episode,${ctxFinding('Missing')},${ctxFinding('Conflicting')}]`,
+    ]);
   });
 
-  it('a blank episode on an out-of-domain possibility is never read, so nothing stops', () => {
+  it('an absent record episode and an unknown context accumulate (case 113a)', () => {
+    expect(shown(check([rev('s1', 'r113', '1', { episode: undefined })], [], { unknown: ['Conflicting'] }), 's1/r113')).toEqual([
+      `s1/r113@1 Unresolved[Missing@record/FieldAbsent:episode,${ctxFinding('Conflicting')}]`,
+    ]);
+  });
+
+  it('a blank episode on an out-of-domain possibility is not evaluated', () => {
     const y = { system: 'demo-cs', code: 'item-y' };
     expect(shown(check([rev('s1', 'r8', '1', { concept: y, episode: '' })]), 's1/r8')).toEqual(['s1/r8@1 NotEvaluated']);
   });
@@ -329,6 +334,8 @@ describe('same-episode check: rule and configuration input', () => {
     ['context episode null', { contextEpisode: null }],
     ['known episode not a string', { contextEpisode: { known: 5 } }],
     ['known episode null', { contextEpisode: { known: null } }],
+    ['known episode empty (contract §2.5)', { contextEpisode: { known: '' } }],
+    ['known episode whitespace-only', { contextEpisode: { known: ' \u2003' } }],
     ['unknown with no causes', { contextEpisode: { unknown: [] } }],
     ['unknown not an array', { contextEpisode: { unknown: 'Conflicting' } }],
     ['unknown with an unrecognized cause', { contextEpisode: { unknown: ['Bogus'] } }],

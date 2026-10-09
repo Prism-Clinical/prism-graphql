@@ -97,13 +97,12 @@ export interface EncounterCheckResult {
 }
 
 // ---------------------------------------------------------------------------------------------
-// ONE more S3 admissibility check: same-episode scope (contract §1.2, §1.6, §2.2). Not the S3
-// result either: a match does not make a record admissible.
+// ONE more S3 admissibility check: same-episode scope (contract §1.2, §1.6, §2.2, §2.5). Not the
+// S3 result either: a match does not make a record admissible.
 
 /**
  * The evaluation episode, in the fixtures' context notation (contract §7.1). A `known` value must
- * be a string, or the input is a configuration error (contract §2.4: a malformed evaluation
- * context is invalid program input).
+ * be a well-formed EpisodeRef (contract §2.5), or the input is a configuration error.
  */
 export type EpisodeBinding = { readonly known: string } | { readonly unknown: readonly ContextCause[] };
 
@@ -124,11 +123,11 @@ export interface EpisodeCheckInput {
 }
 
 export type EpisodeFinding =
-  /** Contract §2.2: the record's field is absent. */
+  /** Contract §2.5: the record's field is absent. */
   | { readonly cause: 'Missing'; readonly origin: 'record'; readonly reason: 'FieldAbsent:episode' }
-  /** Contract §1.2, §1.7: present but not a string (including `null`). */
+  /** Contract §2.5: not a well-formed EpisodeRef: non-string, `null`, empty or whitespace-only. */
   | { readonly cause: 'Invalid'; readonly origin: 'record'; readonly reason: 'FieldMalformed:episode' }
-  /** Contract §2.2, §1.6: the context episode's own causes, unchanged (case 12). */
+  /** Contract §2.5: the context episode's own causes, unchanged (cases 12, 113). */
   | { readonly cause: ContextCause; readonly origin: 'context.episode'; readonly reason: 'ContextUnknown:episode' };
 
 export type EpisodeOutcome =

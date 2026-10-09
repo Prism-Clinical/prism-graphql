@@ -72,7 +72,6 @@ export type {
 export {
   checkEpisodeScope as experimentalCheckEpisodeScope,
   EpisodeCheckConfigurationError,
-  EpisodeRefSyntaxUnspecifiedError,
 } from './s3/episode';
 export { SAME_EPISODE_RULE } from './s3/types';
 export type {

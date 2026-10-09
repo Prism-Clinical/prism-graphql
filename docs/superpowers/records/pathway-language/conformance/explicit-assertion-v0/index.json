@@ -340,6 +340,26 @@
     ],
     "107": [
       "EA-107"
+    ],
+    "108": [
+      "EA-108"
+    ],
+    "109": [
+      "EA-109"
+    ],
+    "110": [
+      "EA-110"
+    ],
+    "111": [
+      "EA-111a",
+      "EA-111b"
+    ],
+    "112": [
+      "EA-112"
+    ],
+    "113": [
+      "EA-113a",
+      "EA-113b"
     ]
   },
   "pairs": [
@@ -525,6 +545,27 @@
         "EA-107"
       ],
       "claim": "A whitespace-only record encounter is malformed (Invalid, FieldMalformed:encounter); one with surrounding whitespace is a well-formed EncounterRef, compared without trimming, so it does not match N1 (Inadmissible, OtherEncounter)"
+    },
+    {
+      "fixtures": [
+        "EA-108",
+        "EA-109"
+      ],
+      "claim": "An absent record episode is Missing (FieldAbsent:episode); a null one is malformed, Invalid (FieldMalformed:episode)"
+    },
+    {
+      "fixtures": [
+        "EA-111a",
+        "EA-112"
+      ],
+      "claim": "A whitespace-only record episode is malformed (Invalid, FieldMalformed:episode); one with surrounding whitespace is a well-formed EpisodeRef, compared without trimming, so it does not match E1 (Inadmissible, OtherEpisode)"
+    },
+    {
+      "fixtures": [
+        "EA-012",
+        "EA-113a"
+      ],
+      "claim": "An unknown evaluation episode alone gives only the context's causes; with an absent record episode as well, the record's Missing is added with its own origin, and no evidence Need or CorrectRecord is emitted in either"
     }
   ]
 }

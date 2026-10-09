@@ -2,7 +2,7 @@
 
 **Status:** Proposed design draft. **Not** accepted, not finalized syntax, not a schema and not implemented. It contains no clinical content: the record type, enum values, codes, sources and permission below are fictional and illustrate language behavior only. They do not map to dysphagia, progression, urgency or any other clinical definition.
 
-**Date:** 2026-10-03. **Revised:** 2026-10-03, nine times, 2026-10-04, once, and 2026-10-05, three times, after review. The third revision fixed three things:
+**Date:** 2026-10-03. **Revised:** 2026-10-03, nine times, 2026-10-04, once, 2026-10-05, three times, and 2026-10-09, once, after review. The third revision fixed three things:
 
 - revision-chain boundaries: source-scoped identity, same-source corrections and one fully specified schematic authority rule;
 - deterministic outcomes for malformed history;
@@ -13,6 +13,14 @@ The fourth revision made three changes:
 - Proven cross-boundary corrections and retractions are now rejected without changing their target. This keeps gap irrelevance consistent with S1.
 - Payload identity for duplicate detection is defined.
 - An unsupported justification about coverage attestations is removed.
+
+The fourteenth revision specifies the S3 `episode` rule on its own (2.5, cases 108–113), closing the gap left when it was first implemented: the contract typed the field as `Field<EpisodeRef>` but did not define `EpisodeRef`.
+
+- `EpisodeRef` syntax is defined, for episodes on their own: nonempty, not whitespace-only, never trimmed.
+- An absent record episode is `Missing` (`FieldAbsent:episode`); a present malformed one is `Invalid` (`FieldMalformed:episode`).
+- A malformed or blank `Known` evaluation episode is an invalid configuration.
+- The reason labels `FieldAbsent:episode`, `FieldMalformed:episode`, `ContextUnknown:episode` and `OtherEpisode` are part of the contract.
+- Combining several admissibility rules stays deferred.
 
 The thirteenth revision follows review of the first encounter-check implementation. That implementation accepted S1 and S2 results from different snapshots and checked a superseded revision.
 
@@ -328,8 +336,10 @@ Rejected and superseded revisions and historical defects are kept in the trace w
 - `subject` equals the context subject, else `Inadmissible(WrongSubject)`. This cannot arise after S1 step 2 (out-of-envelope revisions), but the rule is kept for completeness.
 - `episode` equals the context episode, with no prior-episode history (§4.7).
   - The record’s field is absent: `UnresolvedAdmissibility(Missing)`.
+  - The record’s field is present but not a well-formed `EpisodeRef`: `UnresolvedAdmissibility(Invalid)`.
   - The context episode is `Unknown(causes)`: `UnresolvedAdmissibility(causes)`.
   - A different known episode: `Inadmissible(OtherEpisode)`.
+  - Section 2.5 specifies this rule on its own.
 - `encounter`: the same rule, with reason `OtherEncounter`. Section 2.4 specifies this rule on its own.
 - `assertionKind` must be in the authored set, else `Inadmissible(AssertionKindNotAllowed)`.
 
@@ -409,6 +419,43 @@ A known record encounter never decides against an unknown evaluation encounter, 
 A malformed evaluation context, such as a `known` value that is not a well-formed `EncounterRef` or an `Unknown` with no causes, is an invalid program input from the orchestrator. It is not patient uncertainty.
 
 **Deferred to a separate slice: combining rule outcomes.** 2.2 says causes from several *unresolved* rules accumulate. It does not say whether one rule’s `Inadmissible` outcome decides the revision while another rule is unresolved. Example: encounter N0 with the episode field absent. This check does not need the answer; the full S3 result does.
+
+### 2.5 S3: the `episode` rule on its own
+
+This section isolates the `episode` rule of 2.2, as 2.4 does for `encounter`. Its result is **not** an admissibility result. A match says only that this rule is satisfied: the encounter and `assertionKind` rules, and anything else S3 adds, still apply. How the outcomes of several rules combine stays deferred (2.4).
+
+**The authored rule.** The check consumes the contract’s `admissible.episode` exactly as written (7.1):
+
+`{ "eq": [{ "field": ["c", "episode"] }, { "ref": "ctx.episode" }] }`
+
+There is no implicit default. A query without this rule has no episode check, and any other expression in that position is out of this section’s scope.
+
+**What is checked.** As in 2.4: each S2 possibility that is in domain or has unresolved candidacy is checked, with its S2 findings kept separate; out-of-domain possibilities are **not evaluated**, which is not a mismatch; `excluded` and `unknown` are carried unchanged; `Retracted` and no-record keys contribute nothing; S1 causes stay with the key. A match on one possible current neither resolves its history nor makes it current.
+
+**EpisodeRef syntax (fictional model).** An `EpisodeRef` is well-formed if and only if it is a JSON string containing at least one character without the Unicode `White_Space` property.
+
+- `""`, `"   "` and `"\u00a0\u2003"` are malformed.
+- Nothing is trimmed or otherwise normalized, so `" E1"` is well-formed and is not `E1`.
+- This rule is stated for episodes on their own. It is not inherited from `EncounterRef` (2.4) or from the identifier syntax for terminology codes (2.3), although its content is the same today.
+- A malformed record episode is patient evidence (`Invalid`). A malformed `Known` evaluation episode is an invalid configuration.
+
+**Comparison.** Well-formed `EpisodeRef`s are compared exactly. The record field is `Field<EpisodeRef>` (1.2), and the evaluation episode is `Known(EpisodeRef) | Unknown(causes)` (1.6). Episode membership is read only from the record’s `episode` field: it is never inferred from dates, encounters or proximity.
+
+| Record `episode` | Evaluation episode | Outcome | Findings (cause, origin, reason) |
+|---|---|---|---|
+| Well-formed *e* | `Known(e)` | **Matches** | — |
+| Well-formed *e* | `Known(f)`, *f* ≠ *e* | **DoesNotMatch** | reason `OtherEpisode` (S3 makes this `Inadmissible`) |
+| Well-formed | `Unknown(C)` | **Unresolved** | each *c* ∈ *C*, `context.episode`, `ContextUnknown:episode` |
+| Absent | any | **Unresolved** | `Missing`, the record, `FieldAbsent:episode`; plus the context findings if `Unknown` |
+| Present, not a well-formed `EpisodeRef` (non-string, `null`, empty, whitespace-only) | any | **Unresolved** | `Invalid`, the record, `FieldMalformed:episode`; plus the context findings if `Unknown` |
+
+**Reason labels.** These are the contract’s labels for this rule, used in attributions and traces: `FieldAbsent:episode` and `FieldMalformed:episode` (origin: the record’s revision or variant), `ContextUnknown:episode` (origin `context.episode`, with the affected revisions as `refs`), and `OtherEpisode` (the `Inadmissible` reason).
+
+A known record episode never decides against an unknown evaluation episode, and context causes are never relabelled. Record and context findings accumulate, as in 2.4.
+
+A malformed evaluation context is an invalid program input from the orchestrator, never patient uncertainty: an evaluation episode that is neither `Known` nor `Unknown`, a `known` value that is not a well-formed `EpisodeRef` (including a blank string), or an `Unknown` with no causes or an unrecognized cause. Evaluation does not proceed.
+
+**Needs when record and context problems coincide.** The record is material if it would be `Supporting` when admitted. Its record finding is attributed with the context’s causes. Because a key binding is unresolved, no evidence Need is emitted (6.2), and the episode binding is deferred. `CorrectRecord` is keyed by an evidence Need (6.2), so none is emitted while that Need does not exist (case 113).
 
 ## 3. Where the clinical expression lives
 
@@ -898,6 +945,19 @@ In cases 93–99 the record is admissible and `Supporting` if selected, so it is
 
 In cases 101–103, 105 and 106 the record is `Supporting` if admitted, so it is material. 104 follows cases 27 and 28: an inadmissible possibility of an unresolved key adds `excluded`, not a base `Inadmissible` cause.
 
+**I. The `episode` rule on its own (2.5)** (D0 unless stated; each record `Affirmed`)
+
+| # | Case | Records / changes | `Evidence<Boolean>` | `Decision` | Trace must show | Need |
+|---|---|---|---|---|---|---|
+| 108 | Absent record episode | s1/r108, `episode` omitted | `Unresolved{Missing}` @s1/r108@1 (S3, `FieldAbsent:episode`) | Unknown(Missing) | Episode check unresolved (`Missing`), **not** a mismatch | K1; `CorrectRecord` s1/r108 |
+| 109 | `null` record episode | s1/r109, `episode: null` | `Unresolved{Invalid}` @s1/r109@1 (S3, `FieldMalformed:episode`) | Unknown(Invalid) | `null` is malformed, not absent | K1; `CorrectRecord` s1/r109 |
+| 110 | Empty record episode | s1/r110, `episode: ""` | `Unresolved{Invalid}` @s1/r110@1 (S3, `FieldMalformed:episode`) | Unknown(Invalid) | Malformed, **not** a mismatch | K1; `CorrectRecord` s1/r110 |
+| 111 | Whitespace-only record episode | (a) s1/r111, `"   "`; (b) `"\u00a0\u2003"` | `Unresolved{Invalid}` @s1/r111@1 (S3, `FieldMalformed:episode`) | Unknown(Invalid) | Unicode `White_Space`, not only ASCII | K1; `CorrectRecord` s1/r111 |
+| 112 | Surrounding whitespace is not trimmed | s1/r112, `episode: " E1"` | `Unresolved{Inadmissible}` | Unknown | Episode check `DoesNotMatch`; `Inadmissible(OtherEpisode)`; the encounter and `assertionKind` rules hold | K1 |
+| 113 | Record and context problems together | (a) s1/r113, `episode` omitted; context episode `{unknown: [Conflicting]}`. (b) s1/r113, `episode: "   "`; context episode `{unknown: [Missing, Conflicting]}` | (a) `Unresolved{Missing, Conflicting}`; (b) `Unresolved{Missing, Conflicting, Invalid}`; record finding @s1/r113@1, context causes @context episode | Unknown (same) | Both origins kept; context causes not relabelled; in (b) the context’s `Missing` is not the record’s | **No** evidence Need; deferred (episode); no `CorrectRecord` (2.5) |
+
+In cases 108–111 and 113 the record is `Supporting` if admitted, so it is material. 112 follows 107: the record is inadmissible on this rule alone.
+
 ### 7.5 Invariance checks
 
 These must hold for every case:
@@ -965,6 +1025,11 @@ These must hold for every case:
     - Context causes are kept unchanged, and record and context findings accumulate.
     - All stages read one snapshot.
     - Deferred: how one rule’s mismatch combines with another rule’s unresolved outcome.
+17. The `episode` rule on its own (2.5):
+    - The same outcome structure as 16, with `EpisodeRef` syntax stated for episodes on their own: nonempty, not whitespace-only, never normalized.
+    - Absent is `Missing` (`FieldAbsent:episode`); malformed is `Invalid` (`FieldMalformed:episode`); an unknown context keeps its causes (`ContextUnknown:episode`); a mismatch is `OtherEpisode`.
+    - A malformed or blank `Known` evaluation episode is an invalid configuration.
+    - With record and context problems together, no evidence Need and no `CorrectRecord`; the episode binding is deferred.
 
 **Possible conflicts needing a Stage A amendment.** None found. Items to confirm:
 
@@ -974,7 +1039,7 @@ These must hold for every case:
 
 **Query/predicate split.** The query carries the reasoning. A projection-only Predicate is optional naming and composition structure. No node kind is added or removed.
 
-**Conformance fixtures.** [conformance/explicit-assertion-v0/](conformance/explicit-assertion-v0/README.md) holds machine-readable fixtures for cases 1–107, mapped by case number, with expected outputs written from this contract. They are proposed, like this document.
+**Conformance fixtures.** [conformance/explicit-assertion-v0/](conformance/explicit-assertion-v0/README.md) holds machine-readable fixtures for cases 1–113, mapped by case number, with expected outputs written from this contract. They are proposed, like this document.
 
 **Remaining items.**
 

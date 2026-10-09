@@ -1,7 +1,6 @@
 /**
- * EXPERIMENTAL, NONCLINICAL. S1, S2 and same-encounter-check assertions of the committed
- * explicit-assertion-v0 fixtures, plus partial-stage one-way implications for the same-episode
- * check. Only those are checked; no fixture is claimed to pass as a whole, because the rest of S3
+ * EXPERIMENTAL, NONCLINICAL. S1, S2, same-encounter-check and same-episode-check assertions of
+ * the committed explicit-assertion-v0 fixtures. Only those are checked; no fixture is claimed to pass as a whole, because the rest of S3
  * and S4–S7 are not implemented.
  */
 import { runFixtures } from './support/fixture-runner';
@@ -20,6 +19,8 @@ describe('explicit-assertion-v0 fixtures: S1, S2 and encounter-check assertions 
     encounter: sum((r) => r.encounterApplicable),
     encounterPassed: sum((r) => r.encounterPassed),
     encounterOneWay: sum((r) => r.encounterOneWay),
+    episode: sum((r) => r.episodeApplicable),
+    episodePassed: sum((r) => r.episodePassed),
     episodeOneWay: sum((r) => r.episodeOneWay),
     outOfScope: sum((r) => r.outOfScope),
   };
@@ -34,7 +35,8 @@ describe('explicit-assertion-v0 fixtures: S1, S2 and encounter-check assertions 
         `S2 assertions checked (candidacy trace facts): ${totals.s2} (passed ${totals.s2Passed})`,
         `encounter-check assertions checked (encounterScope trace facts): ${totals.encounter} (passed ${totals.encounterPassed})`,
         `one-way checks: S1 cause attributions ${totals.s1Attribution}; S2 cause attributions ${totals.s2Attribution}; candidateEvidenceIds entries ⊆ S2 InDomain/Unresolved ${totals.s2CandidateIds}; encounter outcomes implied by complete S3 facts (admissibility Admissible/OtherEncounter, S3 encounter attributions) ${totals.encounterOneWay}`,
-        `partial-stage episode-check assertions (one-way, implied by complete S3 facts: admissibility Admissible/OtherEpisode, S3 episode attributions): ${totals.episodeOneWay}`,
+        `episode-check assertions checked (episodeScope trace facts): ${totals.episode} (passed ${totals.episodePassed})`,
+        `episode outcomes implied by complete S3 facts (one-way: admissibility Admissible/OtherEpisode, S3 episode attributions): ${totals.episodeOneWay}`,
         `expected fields/assertions outside implemented scope (complete S3, S4–S7; not checked): ${totals.outOfScope}`,
         `fixtures not run: ${notRun.length}: ${notRun.join(', ')}`,
         `evaluation/preview fixtures with no applicable S1/S2/encounter-check assertion: ${noApplicableAssertions.length}: ${noApplicableAssertions.join(', ')}`,
@@ -43,12 +45,13 @@ describe('explicit-assertion-v0 fixtures: S1, S2 and encounter-check assertions 
     expect(totals.s1).toBeGreaterThan(0);
     expect(totals.s2).toBeGreaterThan(0);
     expect(totals.encounter).toBeGreaterThan(0);
+    expect(totals.episode).toBeGreaterThan(0);
     expect(totals.episodeOneWay).toBeGreaterThan(0);
   });
 
   const checked = (r: (typeof reports)[number]) =>
-    r.s1Applicable + r.s1AttributionOneWay + r.s2Applicable + r.s2AttributionOneWay + r.s2CandidateIdsOneWay + r.encounterApplicable + r.encounterOneWay + r.episodeOneWay > 0;
-  it.each(reports.filter((r) => !r.notRun && checked(r)).map((r) => [r.id, r] as const))('%s: S1/S2/encounter-check and partial episode-check assertions hold', (_id, report) => {
+    r.s1Applicable + r.s1AttributionOneWay + r.s2Applicable + r.s2AttributionOneWay + r.s2CandidateIdsOneWay + r.encounterApplicable + r.encounterOneWay + r.episodeApplicable + r.episodeOneWay > 0;
+  it.each(reports.filter((r) => !r.notRun && checked(r)).map((r) => [r.id, r] as const))('%s: S1/S2/encounter-check/episode-check assertions hold', (_id, report) => {
     expect(report.failures).toEqual([]);
   });
 });

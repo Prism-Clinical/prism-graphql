@@ -205,10 +205,10 @@ A pathway that accepted earlier assessments would author a different rule, which
 
 ## S3: the same-episode check (one more admissibility rule)
 
-Like the encounter check, this is **one rule** of S3 (contract §2.2), not the S3 result. A match says only that this rule holds. The encounter and `assertionKind` rules are not applied, rule outcomes are not combined, and there is no per-key admissibility decision, selection, evidence result, clinical conclusion or Need. Neither check consumes the other's result.
+Like the encounter check, this is **one rule** of S3 (contract §2.2), specified on its own in contract §2.5 (cases 108–113). It is not the S3 result. A match says only that this rule holds. The encounter and `assertionKind` rules are not applied, rule outcomes are not combined, and there is no per-key admissibility decision, selection, evidence result, clinical conclusion or Need. Neither check consumes the other's result.
 
 ```ts
-import { experimentalCheckEpisodeScope, SAME_EPISODE_RULE, EpisodeCheckConfigurationError, EpisodeRefSyntaxUnspecifiedError } from '@prism/pathway-language';
+import { experimentalCheckEpisodeScope, SAME_EPISODE_RULE, EpisodeCheckConfigurationError } from '@prism/pathway-language';
 
 const epi = experimentalCheckEpisodeScope({
   s1,                                   // experimentalResolveRevisionHistory(...) output
@@ -224,7 +224,7 @@ const epi = experimentalCheckEpisodeScope({
 - There is no `s2` parameter. S2 runs on the supplied `s1`, so the two always read one snapshot. Any unexpected input field (`s2`, an encounter-check result, `contextEncounter`, …) throws `EpisodeCheckConfigurationError`.
 - `rule` must equal `SAME_EPISODE_RULE`, `{eq: [{field: [c, episode]}, {ref: ctx.episode}]}`. It is recognized, not interpreted, and a missing rule is never defaulted.
 - A bad pin or expansion throws S2's `S2ConfigurationError`.
-- Configuration errors: an evaluation episode that is not exactly one of `{known: <string>}` or `{unknown: <causes>}`; a `known` that is not a string; an `unknown` list that is empty, repeated, sparse or has an unrecognized cause; a non-S1 input.
+- Configuration errors (contract §2.5): an evaluation episode that is not exactly one of `{known: …}` or `{unknown: …}`; a `known` that is not a well-formed `EpisodeRef` (non-string, empty or whitespace-only); an `unknown` list that is empty, repeated, sparse or has an unrecognized cause; a non-S1 input.
 - **Unlike the encounter result**, the episode result is **detached and deep-frozen** (`detach`, as for compiler and I2 results). Later edits to the S1 result or to the context binding cannot reach it.
 
 **Output** (`src/s3/types.ts`). `EpisodeCheckResult = { experimental, check: 'same-episode', valueSet, contextEpisode, keys }`. Each `KeyEpisodeScope` has the same fields as `KeyEncounterScope`, and each possibility carries `episode` in place of `encounter`:
@@ -235,20 +235,21 @@ const epi = experimentalCheckEpisodeScope({
 | node, candidacy `OutOfDomain` | `NotEvaluated` (`OutOfDomain`). Never a mismatch |
 | `excluded` / `unknown` | carried unchanged |
 
-| Record `episode` | Evaluation episode | Outcome | Findings (cause, origin, reason) | Source |
+**EpisodeRef syntax** (contract §2.5). A string with at least one character outside Unicode `White_Space`, never trimmed. It is stated for episodes on their own, with its own predicate in `src/s3/episode.ts`; its content happens to equal the encounter rule. `" E1"` is well-formed and does not match `E1`.
+
+| Record `episode` | Evaluation episode | Outcome | Findings (cause, origin, reason) | Case |
 |---|---|---|---|---|
-| String *e* | `Known(e)` | `Matches` | — | §2.2 |
-| String *e* | `Known(f)`, *f* ≠ *e* | `DoesNotMatch` | reason `OtherEpisode` | §2.2 |
-| String | `Unknown(C)` | `Unresolved` | each *c* ∈ *C*, `context.episode`, `ContextUnknown:episode` | §2.2, §1.6, case 12 |
-| Absent | any | `Unresolved` | `Missing`, `record`, `FieldAbsent:episode`; plus context findings if `Unknown` | §2.2 |
-| Present, not a string (`null`, number, boolean, object, array) | any | `Unresolved` | `Invalid`, `record`, `FieldMalformed:episode`; plus context findings if `Unknown` | §1.2, §1.7 |
-| Empty or whitespace-only string | any | **stops**: `EpisodeRefSyntaxUnspecifiedError` | — | gap, below |
+| Well-formed *e* | `Known(e)` | `Matches` | — | — |
+| Well-formed *e* | `Known(f)`, *f* ≠ *e* | `DoesNotMatch` | reason `OtherEpisode` | 112 |
+| Well-formed | `Unknown(C)` | `Unresolved` | each *c* ∈ *C*, `context.episode`, `ContextUnknown:episode` | 12 |
+| Absent | any | `Unresolved` | `Missing`, `record`, `FieldAbsent:episode`; plus context findings if `Unknown` | 108, 113a |
+| Present, not well-formed (non-string, `null`, empty, whitespace-only) | any | `Unresolved` | `Invalid`, `record`, `FieldMalformed:episode`; plus context findings if `Unknown` | 109–111, 113b |
 
 - Identity is exact string equality, with no trimming, case folding or other normalization. No other field is consulted: episode membership is never inferred from dates, encounters or proximity.
 - Record and context findings accumulate, as for encounters (§2.4). Context causes are kept in Stage A order and never relabelled. A known record episode never decides against an unknown evaluation episode.
 - S1 causes and defects stay with the key, and S2 findings stay with the possibility. A match on one revision of an unresolved history neither resolves correction authority nor makes that revision current. A mismatch on another revision deletes nothing.
 
-**Specification gap: `EpisodeRef` syntax.** The contract types the field as `Field<EpisodeRef>` (§1.2) but never defines `EpisodeRef` syntax. §2.4 defines `EncounterRef` syntax and says it is stated for encounters on its own, not inherited. So for `""`, `"   "` or `"  "` the contract does not say whether the value is a malformed `EpisodeRef` (`Invalid`, as for encounters since cases 105–106) or an ordinary identifier (compared exactly, so `DoesNotMatch`). That choice changes the outcome. The check therefore **stops** with `EpisodeRefSyntaxUnspecifiedError`. That error is neither patient uncertainty nor a configuration error. It is raised for a blank record episode on any checked possibility (out-of-domain possibilities are never read) and for a blank `known` evaluation episode. Resolving the gap needs a contract decision (an `EpisodeRef` syntax paragraph, like §2.4's), with fixtures. Other edges also rest on the plain reading of “equals” over strings and are open to that decision: whitespace-padded strings (compared exactly) and the reason labels `FieldAbsent:episode` / `FieldMalformed:episode`, which follow the S2 and encounter conventions. §2.2 names only `OtherEpisode`, and case 12 names `ContextUnknown:episode`.
+**History.** 507a8da shipped this check while `EpisodeRef` syntax was undefined, and stopped with a temporary `EpisodeRefSyntaxUnspecifiedError` on blank strings. Contract §2.5 now defines the syntax, the outcomes and the reason labels, and the exception is gone: blank record episodes are `Invalid`, and a blank known evaluation episode is a configuration error. EA-110, EA-111a/b and EA-113b make the 507a8da check throw, so the fixture run fails.
 
 **Worked example.** The evaluation episode is `Known(E1)`. `s1/r1@1` has episode E1. `s1/r1@2` supersedes it with episode E0, and its author's permissions are absent (case 18 shape).
 
@@ -496,34 +497,35 @@ This package has its own Jest configuration and is not part of the root Jest roo
   - permutation, duplicate and S1 key-order invariance, and deep-frozen inputs;
   - that the rule equals the pinned query’s `admissible.encounter`;
   - 15 rule and configuration errors (including an empty or whitespace-only known evaluation encounter and a precomputed `s2`), plus 2 S2 parameter errors, distinguished from a malformed record encounter.
-- **`src/__tests__/s3-episode.test.ts`** has 54 independent tests of the episode check (counting each parameterized case), with expectations derived by hand from contract §§1.2, 1.6, 1.7, 2 and 2.2. They cover:
+- **`src/__tests__/s3-episode.test.ts`** has 58 independent tests of the episode check (counting each parameterized case), with expectations derived by hand from contract §§1.2, 1.6, 2, 2.2 and 2.5. They cover:
   - matching and different episodes, exact comparison, and no inference from the encounter field;
-  - absent and wrong-type record episodes (`null`, number, boolean, object, array);
+  - absent and malformed record episodes (`null`, number, boolean, object, array, empty, ASCII and Unicode whitespace-only, line terminators);
   - an unknown evaluation episode, alone and with several causes in either order, including against a known different record episode;
   - record and context problems together;
-  - the specification gap: blank record and `known` episodes stop the check, but a blank episode on an out-of-domain possibility does not;
+  - blank record episodes against known and unknown contexts (cases 113a/b), and a blank episode on an out-of-domain possibility (not evaluated);
   - unresolved correction history with one matching and one nonmatching alternative, and with two undecidable alternatives;
   - authorized corrections out of and into the episode;
   - variants with different episodes, `excluded` and `unknown`, unresolved S2 candidacy, out-of-domain `NotEvaluated`, and `Retracted` and `NoRecord` keys;
   - one snapshot: a precomputed S2 and an extra stage result are rejected;
   - permutation, duplicate and S1 key-order invariance, deep-frozen inputs, detachment from later edits to the S1 result and context binding, and a deep-frozen result;
-  - 18 configuration errors, 2 S2 parameter errors, and a malformed record episode distinguished from a configuration error.
+  - 20 configuration errors (including empty and whitespace-only known episodes), 2 S2 parameter errors, and a malformed record episode distinguished from a configuration error.
 
-  Targeted mutations each fail tests: a blank record episode compared, a blank `known` accepted, `null` treated as absent, an absent episode as a mismatch, an unknown context deciding a mismatch, trimming, an undetached result, sparse cause lists accepted, and input-order context causes.
-- **`src/__tests__/fixtures.test.ts`** runs the committed [explicit-assertion-v0 fixtures](../../docs/superpowers/records/pathway-language/conformance/explicit-assertion-v0/README.md) and checks **only** their S1, S2 and encounter-check assertions. It never reports a fixture as passing as a whole, because the rest of S3 and S4–S7 are not implemented. On the current fixtures it reports:
+  Targeted mutations each fail tests: a blank record episode compared as a string, a blank `known` accepted, `null` treated as absent, an absent episode as a mismatch, an unknown context deciding a mismatch, trimming, an undetached result, sparse cause lists accepted, and input-order context causes.
+- **`src/__tests__/fixtures.test.ts`** runs the committed [explicit-assertion-v0 fixtures](../../docs/superpowers/records/pathway-language/conformance/explicit-assertion-v0/README.md) and checks **only** their S1, S2, encounter-check and episode-check assertions. It never reports a fixture as passing as a whole, because the rest of S3 and S4–S7 are not implemented. On the current fixtures it reports:
   - **167 S1 assertions checked, 167 passing.** That is 92 trace facts (`keyResult`, `variants`, `occurrences`, `rejected`, `outOfEnvelope`, `outsideEnvelope`, and the `HistoricalDefect`, `CrossKeyCorrection` and `UndeclaredField` diagnostics) plus 75 canonicalization checks (bytes, digests, variant partition, undeclared fields). EA-104 adds two.
   - **16 S2 assertions checked, 16 passing:** every `candidacy` trace fact (EA-013, EA-014, EA-024, three in EA-033, and EA-093 to EA-100).
-  - **9 encounter-check assertions checked, 9 passing:** every `encounterScope` trace fact (EA-101 to EA-103, both variants of EA-104, EA-105, EA-106a/b and EA-107).
+  - **10 encounter-check assertions checked, 10 passing:** every `encounterScope` trace fact (EA-101 to EA-103, both variants of EA-104, EA-105, EA-106a/b, EA-107 and EA-112).
+  - **8 episode-check assertions checked, 8 passing:** every `episodeScope` trace fact (EA-108 to EA-110, EA-111a/b, EA-112 and EA-113a/b). Trace `causes` are compared as sets in Stage A order, for both checks.
   - **One-way checks**, which can fail but cannot prove completeness:
     - 33 S1-stage cause attributions, each of which must be an active S1 defect;
     - 12 S2-stage cause attributions (EA-013, EA-014, EA-093 to EA-099), each of which must be an S2 finding on that revision;
-    - 102 `candidateEvidenceIds` entries, each of which must have S2 candidacy `InDomain` or `Unresolved` (contract §5.1). The field is an S6 output, and its converse is not checked;
+    - 110 `candidateEvidenceIds` entries, each of which must have S2 candidacy `InDomain` or `Unresolved` (contract §5.1). The field is an S6 output, and its converse is not checked;
     - 12 encounter outcomes implied by complete S3 expectations. `admissibility: Admissible` implies `Matches` (EA-052a). `Inadmissible` with reason `OtherEncounter` implies `DoesNotMatch` (EA-009, EA-025, EA-107). An S3 attribution with an encounter reason must be a finding of the check (EA-010, EA-015, EA-101 to EA-103, EA-105, EA-106a/b). The `admissibility` facts themselves stay outside the implemented scope.
 
-    - **2 partial-stage episode-check assertions**, one-way and implied by complete S3 facts. No fixture asserts an episode-check trace fact of its own. `admissibility: Admissible` implies `Matches` (EA-052a). An S3 attribution with an episode reason must be a finding of the check (EA-012, `Conflicting @ context.episode`). `Inadmissible(OtherEpisode)` would imply `DoesNotMatch`, but no fixture has it. Removing the context findings fails EA-012.
+    - 13 episode outcomes implied by complete S3 expectations. `admissibility: Admissible` implies `Matches` (EA-052a). `Inadmissible(OtherEpisode)` implies `DoesNotMatch` (EA-112). An S3 attribution with an episode reason must be a finding of the check (EA-012, EA-108 to EA-110, EA-111a/b, EA-113a/b).
 
     The absence of an attribution proves nothing, because attribution also depends on S5/S6 materiality.
-  - **527 expected fields and trace facts outside the implemented scope,** not checked: evidence, decision, Needs, complete admissibility, classification, cells, gaps and so on.
+  - **569 expected fields and trace facts outside the implemented scope,** not checked: evidence, decision, Needs, complete admissibility, classification, cells, gaps and so on.
   - **3 fixtures not run:** EA-050 (whole-contract hole) and EA-051a/b (compilation).
   - **10 evaluation/preview fixtures with no applicable S1/S2/encounter-check assertion,** listed by the test: EA-001, -002, -005, -011, -043, -045, -046, -047, -052b and -053. Their behavior in these stages is exercised but not asserted.
 
@@ -598,7 +600,6 @@ Two former items are now settled in the contract:
 
 - Evidence stages: S1, S2 and two S3 rules (encounter and episode), each on its own. There is no `assertionKind` rule, no combination of rule outcomes, no complete admissibility, and no selection, criteria, materiality, resolution, Needs or coverage evaluation.
 - The encounter and episode checks each recognize exactly one authored rule shape. They do not evaluate expressions.
-- The episode check stops on blank episode strings until the contract defines `EpisodeRef` syntax (above).
 - S2 supports only the fixtures’ flat expansion format: no hierarchies, intensional definitions, terminology service, normalization, code-system conversion or version resolution.
 - The fixtures assert S2 candidacy for 16 revisions. Variants, `excluded`/`unknown` propagation and configuration errors are covered by the independent tests only.
 - One schematic authority rule and one fictional evidence model (`demo-model@0.1`). No clinical definitions.

@@ -4,7 +4,7 @@
  * S2 candidate identification and the S3 same-encounter and same-episode checks.
  *
  * A fixture is never reported as passing as a whole: only its S1, S2, encounter-check and
- * (partial-stage, one-way) episode-check assertions are checked. Complete S3 `admissibility` facts are never checked as such.
+ * episode-check assertions are checked. Complete S3 `admissibility` facts are never checked as such.
  * Every other expected field or trace fact is counted as outside the implemented scope.
  */
 import { readdirSync, readFileSync } from 'node:fs';
@@ -56,11 +56,9 @@ export interface FixtureReport {
   encounterPassed: number;
   /** One-way implications from complete S3 facts (`admissibility`, S3 encounter attributions). */
   encounterOneWay: number;
-  /**
-   * Partial-stage, one-way implications for the same-episode check alone, from complete S3 facts
-   * (`admissibility` Admissible / Inadmissible(OtherEpisode), S3 episode attributions). No fixture
-   * asserts an episode-check trace fact of its own.
-   */
+  episodeApplicable: number;
+  episodePassed: number;
+  /** One-way implications from complete S3 facts (`admissibility`, S3 episode attributions). */
   episodeOneWay: number;
   outOfScope: number;
   failures: string[];
@@ -149,6 +147,9 @@ function s2Nodes(r: S2Result): Map<string, NodeCandidacy> {
 }
 
 const EPISODE_REASONS = new Set(['FieldAbsent:episode', 'FieldMalformed:episode', 'ContextUnknown:episode']);
+/** Trace `causes` are sets, listed in Stage A §4.1 order. */
+const STAGE_A = ['Missing', 'Conflicting', 'Unavailable', 'Invalid', 'Inadmissible', 'InsufficientEvidence'];
+const causeSet = (fs: readonly { cause: string }[]): string[] => STAGE_A.filter((c) => fs.some((f) => f.cause === c));
 const ENCOUNTER_REASONS = new Set(['FieldAbsent:encounter', 'FieldMalformed:encounter', 'ContextUnknown:encounter']);
 type EncounterNode = Extract<PossibleEncounterScope, { kind: 'node' }>;
 function encounterNodes(r: ReturnType<typeof experimentalCheckEncounterScope>): Map<string, EncounterNode> {
@@ -162,7 +163,7 @@ function checkEncounterFact(t: Json, enc: Map<string, EncounterNode> | null): st
   const p = enc.get(t.ref);
   if (outcomeOf(p) !== t.value) return `encounterScope ${t.ref}: ${outcomeOf(p)}, expected ${t.value}`;
   if ('causes' in t) {
-    const got = p?.encounter.outcome === 'Unresolved' ? [...new Set(p.encounter.findings.map((f) => f.cause))] : [];
+    const got = p?.encounter.outcome === 'Unresolved' ? causeSet(p.encounter.findings) : [];
     if (JSON.stringify(got) !== JSON.stringify(t.causes)) return `encounterScope ${t.ref}: causes ${JSON.stringify(got)}`;
   }
   return null;
@@ -187,6 +188,8 @@ export function runFixtures(dir: string = FIXTURE_DIR): { reports: FixtureReport
       encounterApplicable: 0,
       encounterPassed: 0,
       encounterOneWay: 0,
+      episodeApplicable: 0,
+      episodePassed: 0,
       episodeOneWay: 0,
       outOfScope: 0,
       failures: [],
@@ -244,6 +247,16 @@ export function runFixtures(dir: string = FIXTURE_DIR): { reports: FixtureReport
     const episodeOutcome = (ref: string) => episodeNodes.get(ref)?.episode.outcome ?? 'not checked';
     const exp = fx.expected as Json;
     for (const t of (exp.traceAssertions ?? []) as Json[]) {
+      if (t.fact === 'episodeScope') {
+        report.episodeApplicable += 1;
+        const p = episodeNodes.get(t.ref);
+        const got = epi ? episodeOutcome(t.ref) : 'the query does not author the same-episode rule';
+        const causes = p?.episode.outcome === 'Unresolved' ? causeSet(p.episode.findings) : [];
+        if (got !== t.value) report.failures.push(`episodeScope ${t.ref}: ${got}, expected ${t.value}`);
+        else if ('causes' in t && JSON.stringify(causes) !== JSON.stringify(t.causes)) report.failures.push(`episodeScope ${t.ref}: causes ${JSON.stringify(causes)}`);
+        else report.episodePassed += 1;
+        continue;
+      }
       if (t.fact === 'encounterScope') {
         report.encounterApplicable += 1;
         const f = checkEncounterFact(t, enc);
@@ -347,6 +360,7 @@ export function runFixtures(dir: string = FIXTURE_DIR): { reports: FixtureReport
       report.s2CandidateIdsOneWay +
       report.encounterApplicable +
       report.encounterOneWay +
+      report.episodeApplicable +
       report.episodeOneWay;
     if (checked === 0) missing.push(fx.id);
   }

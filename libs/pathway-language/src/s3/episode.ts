@@ -1,6 +1,6 @@
 /**
- * EXPERIMENTAL, NONCLINICAL. One S3 admissibility check: same-episode scope (contract §1.2, §1.6,
- * §2.2). Not the S3 result.
+ * EXPERIMENTAL, NONCLINICAL. One S3 admissibility check: same-episode scope (contract §2.2, §2.5).
+ * Not the S3 result.
  *
  * Pure: no I/O, no clock, no input mutation. Runs S2 on the supplied S1 (one snapshot) and reads
  * the payloads S1 retained. Episode membership is never inferred from dates, encounters or
@@ -24,19 +24,14 @@ import {
 /** Invalid program, rule or configuration input. Never used for patient-evidence problems. */
 export class EpisodeCheckConfigurationError extends Error {}
 
-/**
- * The contract defines no EpisodeRef syntax (§1.2 says only `Field<EpisodeRef>`; §2.4's syntax is
- * stated for EncounterRef alone and is "not inherited"). Whether an empty or whitespace-only
- * string is a malformed EpisodeRef (`Invalid`) or an ordinary identifier (compared exactly) is
- * therefore unspecified, and this check stops instead of choosing. Not patient uncertainty and not
- * a configuration error: a specification gap.
- */
-export class EpisodeRefSyntaxUnspecifiedError extends Error {}
-
 const RULE = canonicalJson(SAME_EPISODE_RULE as never);
 const INPUT_FIELDS = ['s1', 'valueSet', 'expansion', 'rule', 'contextEpisode'];
 const own = (o: object, k: string) => Object.prototype.hasOwnProperty.call(o, k);
-const blank = (s: string) => !/\P{White_Space}/u.test(s);
+/**
+ * EpisodeRef syntax (contract §2.5), defined for episodes on their own: a string with at least one
+ * character outside Unicode White_Space. Never trimmed or otherwise normalized.
+ */
+const episodeRef = (v: unknown): v is string => typeof v === 'string' && /\P{White_Space}/u.test(v);
 
 function checkContext(b: EpisodeBinding): void {
   const fail = (): never => {
@@ -44,9 +39,7 @@ function checkContext(b: EpisodeBinding): void {
   };
   if (b === null || typeof b !== 'object' || Object.keys(b).length !== 1) fail();
   if (own(b, 'known')) {
-    const k: unknown = (b as { known: unknown }).known;
-    if (typeof k !== 'string') fail();
-    if (blank(k as string)) throw new EpisodeRefSyntaxUnspecifiedError(`evaluation episode ${JSON.stringify(k)}: EpisodeRef syntax is unspecified`);
+    if (!episodeRef((b as { known: unknown }).known)) fail();
   } else if (own(b, 'unknown')) {
     const cs: unknown = (b as { unknown: unknown }).unknown;
     if (!Array.isArray(cs)) return fail();
@@ -55,19 +48,18 @@ function checkContext(b: EpisodeBinding): void {
   } else fail();
 }
 
-/** Contract §2.2 `episode` rule for one record payload. Record and context findings accumulate (§2.4). */
+/** Contract §2.5 `episode` rule for one record payload. Record and context findings accumulate. */
 function compare(payload: JsonObject, ctx: EpisodeBinding): EpisodeOutcome {
   const findings: EpisodeFinding[] = [];
   const value = own(payload, 'episode') ? payload['episode'] : undefined;
   if (value === undefined) findings.push({ cause: 'Missing', origin: 'record', reason: 'FieldAbsent:episode' });
-  else if (typeof value !== 'string') findings.push({ cause: 'Invalid', origin: 'record', reason: 'FieldMalformed:episode' });
-  else if (blank(value)) throw new EpisodeRefSyntaxUnspecifiedError(`record episode ${JSON.stringify(value)}: EpisodeRef syntax is unspecified`);
+  else if (!episodeRef(value)) findings.push({ cause: 'Invalid', origin: 'record', reason: 'FieldMalformed:episode' });
   if ('unknown' in ctx) {
     for (const cause of CONTEXT_CAUSES) {
       if (ctx.unknown.includes(cause)) findings.push({ cause, origin: 'context.episode', reason: 'ContextUnknown:episode' });
     }
   }
-  if (findings.length > 0 || typeof value !== 'string' || !('known' in ctx)) return { outcome: 'Unresolved', findings };
+  if (findings.length > 0 || !episodeRef(value) || !('known' in ctx)) return { outcome: 'Unresolved', findings };
   // Identity is exact string equality: no normalization, and no other field is consulted.
   return value === ctx.known
     ? { outcome: 'Matches', recordEpisode: value }
