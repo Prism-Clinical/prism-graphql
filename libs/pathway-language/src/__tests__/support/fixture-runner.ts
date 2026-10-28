@@ -2,13 +2,13 @@
  * EXPERIMENTAL, NONCLINICAL. Runs the S1–S4-applicable assertions of the committed
  * explicit-assertion-v0 conformance fixtures against the S1 resolver, S2 candidate identification,
  * the three S3 rule checks, combined per-revision S3 admissibility (contract §2.7, whose
- * `admissibility` facts are checked directly) and S4 selection (§2.8: `selection` and
- * `disposition` facts).
+ * `admissibility` facts are checked directly), S4 selection (§2.8: `selection` and `disposition`
+ * facts) and per-record S5 criterion evaluation (§3.5: `criterion` facts of complete queries).
  *
- * A fixture is never reported as passing as a whole: only its S1–S4 assertions are checked, plus
- * one-way implications from downstream expectations. `stage` fixtures (stage-v1) assert S1–S3 or
- * S1–S4 only and carry no downstream expectation. Every other expected field or trace fact (S5–S7)
- * is counted as outside the implemented scope.
+ * A fixture is never reported as passing as a whole: only its S1–S4 and criterion assertions are
+ * checked, plus one-way implications from downstream expectations. `stage` fixtures (stage-v1)
+ * assert S1–S3, S1–S4 or S1–S5 (criterion only) and carry no downstream expectation. Every other
+ * expected field or trace fact (classification, possibleClasses, S6–S7) is outside the scope.
  */
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -19,7 +19,11 @@ import {
   SAME_EPISODE_RULE,
   experimentalCheckAssertionKind,
   experimentalCheckAdmissibility,
+  experimentalCompile,
+  experimentalEvaluateCriteria,
   experimentalSelect,
+  type CompiledPackage,
+  type CriteriaResult,
   type PossibleSelection,
   type PossibleAdmissibility,
   type PossibleAssertionKindScope,
@@ -78,6 +82,11 @@ export interface FixtureReport {
   selectionPassed: number;
   /** One-way: every supportingEvidenceIds entry of a Known result must be a selected revision (§4.2). */
   selectionOneWay: number;
+  /** S5 `criterion` facts (contract §3.5), checked directly over complete compiled queries. */
+  criterionApplicable: number;
+  criterionPassed: number;
+  /** One-way: the criterion values a `classification` fact implies (contract §3.3); classification itself is not checked. */
+  criterionOneWay: number;
   /** Combined S3 `admissibility` facts (contract §2.7), checked directly. */
   admissibilityApplicable: number;
   admissibilityPassed: number;
@@ -260,6 +269,9 @@ export function runFixtures(dir: string = FIXTURE_DIR): { reports: FixtureReport
       selectionApplicable: 0,
       selectionPassed: 0,
       selectionOneWay: 0,
+      criterionApplicable: 0,
+      criterionPassed: 0,
+      criterionOneWay: 0,
       admissibilityApplicable: 0,
       admissibilityPassed: 0,
       outOfScope: 0,
@@ -338,6 +350,15 @@ export function runFixtures(dir: string = FIXTURE_DIR): { reports: FixtureReport
     const s4Keys = new Map((s4?.keys ?? []).map((k) => [`${k.key.source}/${k.key.localId}`, k] as const));
     const s4Nodes = new Map<string, Extract<PossibleSelection, { kind: 'node' }>>();
     for (const k of s4?.keys ?? []) for (const p of k.possibilities) if (p.kind === 'node') s4Nodes.set(showRev(p.node.revision) + (p.node.digest ? `#${p.node.digest}` : ''), p);
+    // S5 needs the compiled query: the fixture's query is wrapped in a minimal program (harness input
+    // preparation, not a language feature). A query the compiler rejects evaluates no criterion.
+    const compiledQuery = compileFixtureQuery(query);
+    const criteria = (ref: string): CriteriaResult | string => {
+      const p = s4Nodes.get(ref);
+      if (!s4 || !p) return `no S4 possibility ${ref}`;
+      if (typeof compiledQuery === 'string') return compiledQuery;
+      return experimentalEvaluateCriteria({ package: compiledQuery, query: query.query.id, s4, possibility: p });
+    };
     const admNodes = new Map<string, Extract<PossibleAdmissibility, { kind: 'node' }>>();
     for (const k of adm?.keys ?? []) for (const p of k.possibilities) if (p.kind === 'node') admNodes.set(showRev(p.node.revision) + (p.node.digest ? `#${p.node.digest}` : ''), p);
     const exp = fx.expected as Json;
@@ -348,6 +369,30 @@ export function runFixtures(dir: string = FIXTURE_DIR): { reports: FixtureReport
         if (f) report.failures.push(f);
         else report.selectionPassed += 1;
         continue;
+      }
+      // Preview criterion facts (holes, markers) are outside this slice: preview packages are rejected.
+      if (t.fact === 'criterion' && fx.kind !== 'preview') {
+        report.criterionApplicable += 1;
+        const f = checkCriterionFact(t, criteria(t.ref));
+        if (f) report.failures.push(f);
+        else report.criterionPassed += 1;
+        continue;
+      }
+      if (t.fact === 'classification') {
+        // Not checked (classification is not implemented); the criterion values it implies are (§3.3).
+        const r = criteria(t.ref);
+        const implied: Record<string, (v: [string, string]) => boolean> = {
+          Supporting: ([e, f]) => e === 'True' && f === 'False',
+          Refuting: ([e, f]) => e === 'False' && f === 'True',
+          NonInformative: ([e, f]) => e === 'False' && f === 'False',
+          Unclassified: ([e, f]) => e === 'Unknown' || f === 'Unknown',
+        };
+        const test = implied[t.value as string];
+        if (test) {
+          report.criterionOneWay += 1;
+          if (typeof r === 'string' || r.outcome !== 'Evaluated') report.failures.push(`classification ${t.value} ${t.ref}: criteria ${typeof r === 'string' ? r : `NotEvaluated(${r.reason})`}`);
+          else if (!test([r.establishes.result.value, r.refutes.result.value])) report.failures.push(`classification ${t.value} ${t.ref}: criteria ${r.establishes.result.value}/${r.refutes.result.value}`);
+        }
       }
       if (t.fact === 'admissibility') {
         report.admissibilityApplicable += 1;
@@ -511,10 +556,37 @@ export function runFixtures(dir: string = FIXTURE_DIR): { reports: FixtureReport
       report.assertionKindOneWay +
       report.admissibilityApplicable +
       report.selectionApplicable +
-      report.selectionOneWay;
+      report.selectionOneWay +
+      report.criterionApplicable +
+      report.criterionOneWay;
     if (checked === 0) missing.push(fx.id);
   }
   return { reports, noApplicableAssertions: missing };
+}
+
+/** The fixture query (shared or inline) wrapped in a minimal program and compiled, or why not. */
+function compileFixtureQuery(query: Json): CompiledPackage | string {
+  const r = experimentalCompile({
+    ppl: { languageVersion: 'ppl-1', capabilityProfileVersion: 'ppl-core-v0' },
+    package: { id: 'fixture', state: 'Draft' },
+    references: [],
+    valueSets: query.valueSets,
+    applicability: { id: 'fixture.scope', kind: 'Predicate', expr: { all: [] } },
+    nodes: [{ ...query.query, subject: 'patient' }, query.predicate],
+  } as JsonValue);
+  return r.outcome === 'Compiled' ? r.package : `query does not compile: ${r.diagnostics.map((d) => `${d.code} ${d.location}`).join('; ')}`;
+}
+
+/** A `criterion` fact (README vocabulary): value, and with Unknown the set of causes. */
+function checkCriterionFact(t: Json, r: CriteriaResult | string): string | null {
+  if (typeof r === 'string') return `criterion ${t.criterion} ${t.ref}: ${r}`;
+  if (r.outcome !== 'Evaluated') return `criterion ${t.criterion} ${t.ref}: NotEvaluated(${r.reason}), expected ${t.value}`;
+  const v = r[t.criterion as 'establishes' | 'refutes']?.result;
+  if (!v) return `criterion ${t.ref}: unknown criterion ${t.criterion}`;
+  if (v.value !== t.value) return `criterion ${t.criterion} ${t.ref}: ${v.value}, expected ${t.value}`;
+  const causes = v.value === 'Unknown' ? causeSet(v.findings) : [];
+  if ('causes' in t && JSON.stringify(causes) !== JSON.stringify(t.causes)) return `criterion ${t.criterion} ${t.ref}: causes ${JSON.stringify(causes)}`;
+  return null;
 }
 
 /** S1 step 1 payload equality (CANONICALIZATION.md) against the resolver's payload module. */

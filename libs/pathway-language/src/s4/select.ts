@@ -17,6 +17,8 @@ import type { Blocker, KeySelection, PossibleSelection, SelectionInput, Selectio
 export class SelectionConfigurationError extends Error {}
 
 const produced = new WeakSet<object>();
+/** True only for a result `select` produced in this process (copies and fabrications are not). */
+export const isSelectionResult = (v: unknown): v is SelectionResult => typeof v === 'object' && v !== null && produced.has(v);
 
 /**
  * INTERNAL handoff accessor for S5 (contract §2.8, "Evidence handoff"): the exact, deep-frozen

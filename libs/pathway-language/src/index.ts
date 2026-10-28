@@ -3,9 +3,10 @@
  *
  * Public boundary of the isolated pathway-language core. It currently exposes only the S1
  * revision-history resolver, S2 candidate identification, three S3 admissibility checks
- * (same-encounter, same-episode and assertionKind), their per-revision combination, and S4
- * selection of the proposed evidence-query contract
- * (docs/superpowers/records/pathway-language/evidence-query-to-predicate-contract.md §2), and the
+ * (same-encounter, same-episode and assertionKind), their per-revision combination, S4
+ * selection and per-record S5 criterion evaluation (no classification) of the proposed
+ * evidence-query contract
+ * (docs/superpowers/records/pathway-language/evidence-query-to-predicate-contract.md §2, §3.5), and the
  * first PPL compiler subset (first-program-implementation-contract.md, increment I1), and isolated
  * program-expression execution over SUPPLIED query results (I2), which is not end-to-end evaluation.
  * It is not the PPL evaluator, is not clinically approved and must not be used for patient care.
@@ -115,6 +116,16 @@ export type {
   SelectionStatus,
   UnresolvedBy,
 } from './s4/types';
+export { evaluateCriteria as experimentalEvaluateCriteria, CriteriaConfigurationError } from './s5/criteria';
+export type {
+  CriteriaInput,
+  CriteriaResult,
+  CriterionFinding,
+  CriterionName,
+  CriterionResult,
+  CriterionStep,
+  CriterionValue,
+} from './s5/types';
 export { compile as experimentalCompile, compilePreview as experimentalCompilePreview } from './compile/compile';
 export type {
   CompiledDeclaration,

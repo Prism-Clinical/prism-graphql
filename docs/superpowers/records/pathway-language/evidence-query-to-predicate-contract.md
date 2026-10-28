@@ -2,7 +2,7 @@
 
 **Status:** Proposed design draft. **Not** accepted, not finalized syntax, not a schema and not implemented. It contains no clinical content: the record type, enum values, codes, sources and permission below are fictional and illustrate language behavior only. They do not map to dysphagia, progression, urgency or any other clinical definition.
 
-**Date:** 2026-10-03. **Revised:** 2026-10-03, nine times, 2026-10-04, once, 2026-10-05, three times, 2026-10-09, three times, and 2026-10-28, twice, after review. The third revision fixed three things:
+**Date:** 2026-10-03. **Revised:** 2026-10-03, nine times, 2026-10-04, once, 2026-10-05, three times, 2026-10-09, three times, and 2026-10-28, three times, after review. The third revision fixed three things:
 
 - revision-chain boundaries: source-scoped identity, same-source corrections and one fully specified schematic authority rule;
 - deterministic outcomes for malformed history;
@@ -13,6 +13,12 @@ The fourth revision made three changes:
 - Proven cross-boundary corrections and retractions are now rejected without changing their target. This keeps gap irrelevance consistent with S1.
 - Payload identity for duplicate detection is defined.
 - An unsupported justification about coverage attestations is removed.
+
+The nineteenth revision specifies per-record S5 criterion evaluation (3.5, cases 130–132): `establishes` and `refutes` over one possibility’s exact payload, with no classification.
+
+- Selected possibilities and those blocked only by history, candidacy or admissibility uncertainty are evaluated; inadmissible, out-of-domain, `excluded` and `unknown` possibilities are `NotEvaluated`, which is not a criterion value.
+- Criterion traces are defined per sub-expression.
+- The association between an S4 result and the query whose criteria are evaluated is **not** verified by current structures. It is stated as a precondition, and the smallest binding that would enforce it is proposed (3.5).
 
 The eighteenth revision follows review of the S4 implementation.
 
@@ -653,6 +659,59 @@ For this policy only, the contract declares `disjoint(establishes, refutes)`. Wi
 
 **Failing the positive criterion is not a negative.** `not(c.assertion == Affirmed)` is True for `Indeterminate` and Unknown for `Absent`. An explicit negative is therefore authored separately as `refutes`, and only `Refuting` contributes to `Known(false)`.
 
+### 3.5 S5 per-record criterion evaluation (one possibility)
+
+This section fixes the boundary for evaluating a query’s two criteria over **one** possibility. It classifies nothing (3.3), computes no possible classes or materiality (4.2 step B) and no evidence result.
+
+**Input.** Exactly four items, and no payload, snapshot or S1–S3 result:
+
+- a `CompiledPackage` produced by the compiler in the same process (a copy, a fabrication or a `PreviewPackage` is rejected; authentication reuses the compiler’s private registry);
+- the ID of an `EvidenceQuery` declaration in it (in a `CompiledPackage` its contract is always complete);
+- an S4 result produced in the same process;
+- one possibility object of that S4 result, by identity (a copy, or an identical possibility of another result, is rejected).
+
+Every rejection is an input error, never a criterion value or patient uncertainty.
+
+**Criteria.** The compiled representation: `eq(c.<field>, <Enum>.<value>)`, which I1 accepts only for `c.assertion` and `AssertionValue` literals (first-program contract §2). `all`, `any`, `not`, `call` and holes in criterion position are compile errors, so S5 receives no other tree. Boolean composition inside criteria is therefore not exercised. When the compiler widens the criterion fragment, S5 follows Stage A §4.3’s Kleene tables, with causes accumulated as in 3.4.
+
+**Evidence.** The payload is read only through the evidence handoff (2.8), from the possibility’s own binding.
+
+**Eligibility.** By the possibility’s S4 disposition, which evaluation never changes:
+
+| Possibility | S5 |
+|---|---|
+| `Selected` | Evaluated |
+| `NotSelected`, blockers only from `HistoryUnresolved`, `CandidacyUnresolved`, `AdmissibilityUnresolved` | Evaluated: its class may be needed to judge materiality (4.2 step B). It stays `NotSelected` and its key stays `Unresolved` |
+| Blockers include `Inadmissible` (also beside unresolved candidacy, 2.8) | `NotEvaluated(Inadmissible)` |
+| Out of domain | `NotEvaluated(OutOfDomain)` |
+| `excluded`, `unknown` | `NotEvaluated(ExcludedMarker)`, `NotEvaluated(UnknownMarker)` |
+
+`NotEvaluated` is not a criterion value: it is neither `False` nor `Unknown` and carries no cause. Evaluating an unresolved possibility selects nothing, resolves no history and establishes no materiality.
+
+**Values** (3.4). Each criterion is evaluated on its own; `refutes` is never derived from `establishes`.
+
+| `c.<field>` in the payload | Value |
+|---|---|
+| A declared code of the criterion’s enum, exactly | `True` if it equals the literal, else `False` |
+| Absent | `Unknown`, finding `Missing` (`FieldAbsent:<field>`, origin `record`) |
+| Present but not exactly a declared code (`null`, another JSON type, an undeclared, differently cased or padded string) | `Unknown`, finding `Invalid` (`FieldMalformed:<field>`, origin `record`) |
+
+No value is normalized or defaulted.
+
+**Trace.** Per criterion: its name, its JSON Pointer in the package source, its value, and one step per sub-expression in evaluation order (operands before their operator):
+
+1. `field`: pointer `<criterion>/eq/0`, path `c.<field>`, and what was read: `Present` with the code, `Absent`, or `Malformed` with the value verbatim;
+2. `enum`: pointer `<criterion>/eq/1` and the literal;
+3. `eq`: the criterion’s pointer and its value, with findings when `Unknown`.
+
+The result also names the package, the query, the key, the possibility’s revision (and digest) and its unchanged S4 disposition.
+
+**Query-to-evidence association: a gap.** The evaluator must evaluate a query’s criteria only over that query’s own evaluation. Current structures cannot verify this. S3 takes its value-set pin, expansion and admissibility rules from its caller, not from a compiled query, so nothing ties an S4 result to a query declaration. Matching record identifiers prove nothing (2.8), and neither does the value-set pin: the evaluator rejects a pin that differs from the query’s, but a match is not evidence of association. Until the gap is closed, this association is a **precondition** stated by the caller, not a verified property.
+
+The smallest binding that would close it: S3 takes the package and query ID (with the context) instead of loose configuration, and derives the pin, expansion and rules from the compiled contract. It records the (package, query) pair against its result in the same private, in-process way as the evidence handoff. S4 carries the pair, and S5 requires the identical package and query. This is not implemented.
+
+**Preview.** A nested criterion hole (case 52, 6.1) is outside this boundary. The I1 compiler rejects a hole in criterion position even in preview, and S5 rejects preview packages, so a hole never becomes `Missing` or `False`.
+
 ## 4. One strict demonstration policy: `explicit-assertion-v0`
 
 `explicit-assertion-v0` is **one strict demonstration policy**. It is not the default for clinical queries, and other queries may need other, separately specified policies.
@@ -1147,6 +1206,14 @@ In cases 114, 115b and 116–118 the record is the only candidate and its possib
 | 128 | Variants with different outcomes | Two occurrences of s1/r128@1: D0, and encounter N0 | `Unresolved` [`HistoryUnresolved`]; the D0 variant [`HistoryUnresolved`], the N0 variant [`HistoryUnresolved`, `Inadmissible`] |
 | 129 | `excluded` and `unknown` | s1/r129a@1 with a retraction of @1, `perm omitted`; s1/r129b@2 supersedes absent @1, `+amend` | Both `Unresolved` [`HistoryUnresolved`]; `excluded` and `unknown` carried; @1 and @2 `NotSelected` [`HistoryUnresolved`] |
 
+**M. S5 criteria per possibility (3.5)** (D0 unless stated; the shared query: `establishes` is `== Affirmed`, `refutes` is `== Denied`). **Partial-stage** cases: they assert S1–S4 facts and per-revision `criterion` values only, and state no classification, possible classes, materiality or evidence result.
+
+| # | Case | Records / changes | Criteria (`establishes`, `refutes`) |
+|---|---|---|---|
+| 130 | Declared values | s1/r130a `Affirmed`; s1/r130b `Denied`; s1/r130c `Indeterminate`; each `Selected` | r130a (True, False); r130b (False, True); r130c (False, False): failing `establishes` is not refuting |
+| 131 | Absent and malformed | s1/r131a `assertion` omitted; s1/r131b `null`; s1/r131c `true`; s1/r131d `"affirmed"`; each `Selected` | r131a (Unknown{Missing}, Unknown{Missing}); r131b–d (Unknown{Invalid}, Unknown{Invalid}); never False |
+| 132 | Unresolved possibilities | Two occurrences of s1/r132a@1: `Affirmed`, and `Denied`; s1/r132b `encounter` omitted; s1/r132c concept `other-cs#z`, `Denied` | r132a `Unresolved` [`HistoryUnresolved`], each variant on its own payload: `Affirmed` (True, False), `Denied` (False, True); r132b `Unresolved` [`AdmissibilityUnresolved`], (True, False); r132c `Unresolved` [`CandidacyUnresolved`], (False, True). Every disposition stays `NotSelected` |
+
 
 ### 7.5 Invariance checks
 
@@ -1234,6 +1301,11 @@ These must hold for every case:
     - A current, in-domain, inadmissible revision is retained as inadmissible; its other unresolved findings stay attached.
     - Unresolved candidacy beside inadmissibility is unresolved by candidacy, with both facts kept; its mismatch prevents `Supporting`/`Refuting` evidence; its S6 base-cause contribution is deferred.
     - Evidence handoff: each checked possibility’s exact payload is bound in S3 from S1’s retained variant and carried, by binding, to S4’s result for S5.
+21. Per-record S5 criterion evaluation (3.5):
+    - Input: an authenticated compiled package, a query ID, an authentic S4 result and one of its own possibilities; the payload only through the handoff.
+    - Selected possibilities and those blocked only by uncertainty are evaluated; inadmissible, out-of-domain and marker possibilities are `NotEvaluated`, which is not a value.
+    - Absent is `Unknown{Missing}`, any other non-code value `Unknown{Invalid}`; codes compare exactly; the criteria are independent; traces have one step per sub-expression.
+    - The query-to-evidence association is a stated precondition, not verified; the smallest binding is proposed in 3.5.
 
 **Possible conflicts needing a Stage A amendment.** None found. Items to confirm:
 
@@ -1243,7 +1315,7 @@ These must hold for every case:
 
 **Query/predicate split.** The query carries the reasoning. A projection-only Predicate is optional naming and composition structure. No node kind is added or removed.
 
-**Conformance fixtures.** [conformance/explicit-assertion-v0/](conformance/explicit-assertion-v0/README.md) holds machine-readable fixtures for cases 1–129, mapped by case number, with expected outputs written from this contract. They are proposed, like this document.
+**Conformance fixtures.** [conformance/explicit-assertion-v0/](conformance/explicit-assertion-v0/README.md) holds machine-readable fixtures for cases 1–132, mapped by case number, with expected outputs written from this contract. They are proposed, like this document.
 
 **Remaining items.**
 
