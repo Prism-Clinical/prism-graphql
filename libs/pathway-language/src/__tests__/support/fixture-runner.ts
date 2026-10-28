@@ -1,12 +1,14 @@
 /**
- * EXPERIMENTAL, NONCLINICAL. Runs the S1-, S2- and individual-S3-rule-applicable assertions of
- * the committed explicit-assertion-v0 conformance fixtures against the S1 resolver, S2 candidate
- * identification, the S3 same-encounter, same-episode and assertionKind checks, and their combined
- * per-revision admissibility (contract §2.7).
+ * EXPERIMENTAL, NONCLINICAL. Runs the S1–S4-applicable assertions of the committed
+ * explicit-assertion-v0 conformance fixtures against the S1 resolver, S2 candidate identification,
+ * the three S3 rule checks, combined per-revision S3 admissibility (contract §2.7, whose
+ * `admissibility` facts are checked directly) and S4 selection (§2.8: `selection` and
+ * `disposition` facts).
  *
- * A fixture is never reported as passing as a whole: only its S1, S2 and S3 assertions are
- * checked. `stage` fixtures (stage-v1) assert S1–S3 only and carry no downstream expectation. Complete S3 `admissibility` facts are never checked as such.
- * Every other expected field or trace fact is counted as outside the implemented scope.
+ * A fixture is never reported as passing as a whole: only its S1–S4 assertions are checked, plus
+ * one-way implications from downstream expectations. `stage` fixtures (stage-v1) assert S1–S3 or
+ * S1–S4 only and carry no downstream expectation. Every other expected field or trace fact (S5–S7)
+ * is counted as outside the implemented scope.
  */
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -17,6 +19,8 @@ import {
   SAME_EPISODE_RULE,
   experimentalCheckAssertionKind,
   experimentalCheckAdmissibility,
+  experimentalSelect,
+  type PossibleSelection,
   type PossibleAdmissibility,
   type PossibleAssertionKindScope,
   experimentalCheckEncounterScope,
@@ -59,16 +63,21 @@ export interface FixtureReport {
   s2CandidateIdsOneWay: number;
   encounterApplicable: number;
   encounterPassed: number;
-  /** One-way implications from complete S3 facts (`admissibility`, S3 encounter attributions). */
+  /** One-way implications from combined S3 facts (`admissibility`, S3 encounter attributions). */
   encounterOneWay: number;
   episodeApplicable: number;
   episodePassed: number;
-  /** One-way implications from complete S3 facts (`admissibility`, S3 episode attributions). */
+  /** One-way implications from combined S3 facts (`admissibility`, S3 episode attributions). */
   episodeOneWay: number;
   assertionKindApplicable: number;
   assertionKindPassed: number;
-  /** One-way implications from complete S3 facts (`admissibility`, S3 assertionKind attributions). */
+  /** One-way implications from combined S3 facts (`admissibility`, S3 assertionKind attributions). */
   assertionKindOneWay: number;
+  /** S4 `selection` and `disposition` facts (contract §2.8), checked directly. */
+  selectionApplicable: number;
+  selectionPassed: number;
+  /** One-way: every supportingEvidenceIds entry of a Known result must be a selected revision (§4.2). */
+  selectionOneWay: number;
   /** Combined S3 `admissibility` facts (contract §2.7), checked directly. */
   admissibilityApplicable: number;
   admissibilityPassed: number;
@@ -174,6 +183,31 @@ function checkAdmissibilityFact(t: Json, p: Extract<PossibleAdmissibility, { kin
   if ('causes' in t && JSON.stringify(causes) !== JSON.stringify(t.causes)) return `admissibility ${t.ref}: causes ${JSON.stringify(causes)}`;
   return null;
 }
+/** A `selection` (per key) or `disposition` (per revision or variant) fact (README vocabulary). */
+function checkSelectionFact(
+  t: Json,
+  keys: ReadonlyMap<string, import('../../index').KeySelection>,
+  nodes: ReadonlyMap<string, Extract<PossibleSelection, { kind: 'node' }>>,
+): string | null {
+  if (t.fact === 'selection') {
+    const k = keys.get(t.ref);
+    if (!k) return `selection ${t.ref}: key not in the S4 result`;
+    if (k.status !== t.value) return `selection ${t.ref}: ${k.status}, expected ${t.value}`;
+    if ('unresolvedBy' in t && JSON.stringify(k.unresolvedBy) !== JSON.stringify(t.unresolvedBy)) return `selection ${t.ref}: unresolvedBy ${JSON.stringify(k.unresolvedBy)}`;
+    if ('selected' in t) {
+      const p = k.possibilities[0];
+      const got = p && p.kind === 'node' ? showRev(p.node.revision) : null;
+      if (got !== t.selected) return `selection ${t.ref}: selected ${got}`;
+    }
+    return null;
+  }
+  const p = nodes.get(t.ref);
+  if (!p) return `disposition ${t.ref}: not assessed`;
+  if (p.selection.disposition !== t.value) return `disposition ${t.ref}: ${p.selection.disposition}, expected ${t.value}`;
+  const blockers = p.selection.disposition === 'NotSelected' ? p.selection.blockers : [];
+  if ('blockers' in t && JSON.stringify(blockers) !== JSON.stringify(t.blockers)) return `disposition ${t.ref}: blockers ${JSON.stringify(blockers)}`;
+  return null;
+}
 const ASSERTION_KIND_REASONS = new Set(['FieldAbsent:assertionKind', 'FieldMalformed:assertionKind']);
 const EPISODE_REASONS = new Set(['FieldAbsent:episode', 'FieldMalformed:episode', 'ContextUnknown:episode']);
 /** Trace `causes` are sets, listed in Stage A §4.1 order. */
@@ -223,6 +257,9 @@ export function runFixtures(dir: string = FIXTURE_DIR): { reports: FixtureReport
       assertionKindApplicable: 0,
       assertionKindPassed: 0,
       assertionKindOneWay: 0,
+      selectionApplicable: 0,
+      selectionPassed: 0,
+      selectionOneWay: 0,
       admissibilityApplicable: 0,
       admissibilityPassed: 0,
       outOfScope: 0,
@@ -297,10 +334,21 @@ export function runFixtures(dir: string = FIXTURE_DIR): { reports: FixtureReport
           contextEpisode: fx.input.context.episode as EpisodeBinding,
         })
       : null;
+    const s4 = adm ? experimentalSelect({ s3: adm }) : null;
+    const s4Keys = new Map((s4?.keys ?? []).map((k) => [`${k.key.source}/${k.key.localId}`, k] as const));
+    const s4Nodes = new Map<string, Extract<PossibleSelection, { kind: 'node' }>>();
+    for (const k of s4?.keys ?? []) for (const p of k.possibilities) if (p.kind === 'node') s4Nodes.set(showRev(p.node.revision) + (p.node.digest ? `#${p.node.digest}` : ''), p);
     const admNodes = new Map<string, Extract<PossibleAdmissibility, { kind: 'node' }>>();
     for (const k of adm?.keys ?? []) for (const p of k.possibilities) if (p.kind === 'node') admNodes.set(showRev(p.node.revision) + (p.node.digest ? `#${p.node.digest}` : ''), p);
     const exp = fx.expected as Json;
     for (const t of (exp.traceAssertions ?? []) as Json[]) {
+      if (t.fact === 'selection' || t.fact === 'disposition') {
+        report.selectionApplicable += 1;
+        const f = s4 ? checkSelectionFact(t, s4Keys, s4Nodes) : `${t.fact} ${t.ref}: no S4 result (the query does not author the three rules)`;
+        if (f) report.failures.push(f);
+        else report.selectionPassed += 1;
+        continue;
+      }
       if (t.fact === 'admissibility') {
         report.admissibilityApplicable += 1;
         const f = checkAdmissibilityFact(t, adm ? admNodes.get(t.ref) : undefined);
@@ -336,7 +384,7 @@ export function runFixtures(dir: string = FIXTURE_DIR): { reports: FixtureReport
         continue;
       }
       if (t.fact === 'admissibility' && enc) {
-        // Complete S3 fact: out of scope as such, but two values imply the encounter outcome.
+        // Combined S3 fact (checked directly above); two values also imply the encounter outcome.
         const implied = t.value === 'Admissible' ? 'Matches' : t.value === 'Inadmissible' && t.reason === 'OtherEncounter' ? 'DoesNotMatch' : null;
         if (implied) {
           report.encounterOneWay += 1;
@@ -433,6 +481,14 @@ export function runFixtures(dir: string = FIXTURE_DIR): { reports: FixtureReport
         if (!hit) report.failures.push(`causeAttribution ${a.cause}/${a.reason} @${ref}: not an episode-check finding`);
       }
     }
+    // One-way (contract §4.2 rules 2-3): a Known result is supported only by selected revisions.
+    if (exp.evidence?.status === 'Known' && s4) {
+      const selected = new Set(s4.selected.map((x) => showRev(x.node.revision) + (x.node.digest ? `#${x.node.digest}` : '')));
+      for (const id of exp.evidence.supportingEvidenceIds as string[]) {
+        report.selectionOneWay += 1;
+        if (!selected.has(id)) report.failures.push(`supportingEvidenceIds ${id}: not selected in S4`);
+      }
+    }
     // One-way check (contract §5.1): every listed candidate ID has in-domain or unresolved candidacy.
     // The field itself is an S6 output and stays out of scope; the converse is not checked.
     for (const id of (exp.evidence?.candidateEvidenceIds ?? []) as string[]) {
@@ -453,7 +509,9 @@ export function runFixtures(dir: string = FIXTURE_DIR): { reports: FixtureReport
       report.episodeOneWay +
       report.assertionKindApplicable +
       report.assertionKindOneWay +
-      report.admissibilityApplicable;
+      report.admissibilityApplicable +
+      report.selectionApplicable +
+      report.selectionOneWay;
     if (checked === 0) missing.push(fx.id);
   }
   return { reports, noApplicableAssertions: missing };

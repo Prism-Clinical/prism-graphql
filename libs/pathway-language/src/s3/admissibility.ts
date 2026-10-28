@@ -26,6 +26,14 @@ import type {
   PossibleAdmissibility,
 } from './types';
 
+/**
+ * Every result this module produced in this process. Later stages accept only these exact objects:
+ * tags, shape and frozenness are not proof that a result came from one S1 snapshot (as for compiled
+ * packages, I2).
+ */
+const produced = new WeakSet<object>();
+export const isAdmissibilityResult = (v: unknown): v is AdmissibilityCheckResult => typeof v === 'object' && v !== null && produced.has(v);
+
 /** Invalid input to the combined check itself (the individual checks keep their own error classes). */
 export class AdmissibilityCheckConfigurationError extends Error {}
 
@@ -109,7 +117,7 @@ export function checkAdmissibility(input: AdmissibilityCheckInput): Admissibilit
       possibilities,
     };
   });
-  return detach({
+  const result: AdmissibilityCheckResult = detach({
     experimental: 'nonclinical-s3-admissibility-v0',
     check: 'admissibility',
     valueSet: enc.valueSet,
@@ -118,4 +126,6 @@ export function checkAdmissibility(input: AdmissibilityCheckInput): Admissibilit
     allowedKinds: ak.allowedKinds,
     keys,
   });
+  produced.add(result);
+  return result;
 }

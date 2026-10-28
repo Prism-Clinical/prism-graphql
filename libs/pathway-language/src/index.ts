@@ -3,7 +3,8 @@
  *
  * Public boundary of the isolated pathway-language core. It currently exposes only the S1
  * revision-history resolver, S2 candidate identification, three S3 admissibility checks
- * (same-encounter, same-episode and assertionKind) and their per-revision combination of the proposed evidence-query contract
+ * (same-encounter, same-episode and assertionKind), their per-revision combination, and S4
+ * selection of the proposed evidence-query contract
  * (docs/superpowers/records/pathway-language/evidence-query-to-predicate-contract.md §2), and the
  * first PPL compiler subset (first-program-implementation-contract.md, increment I1), and isolated
  * program-expression execution over SUPPLIED query results (I2), which is not end-to-end evaluation.
@@ -103,6 +104,17 @@ export type {
   MismatchReason,
   PossibleAdmissibility,
 } from './s3/types';
+export { select as experimentalSelect, SelectionConfigurationError } from './s4/select';
+export type {
+  Blocker,
+  Disposition,
+  KeySelection,
+  PossibleSelection,
+  SelectionInput,
+  SelectionResult,
+  SelectionStatus,
+  UnresolvedBy,
+} from './s4/types';
 export { compile as experimentalCompile, compilePreview as experimentalCompilePreview } from './compile/compile';
 export type {
   CompiledDeclaration,

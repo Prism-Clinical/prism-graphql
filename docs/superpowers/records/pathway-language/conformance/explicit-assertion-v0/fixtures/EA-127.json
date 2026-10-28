@@ -1,0 +1,152 @@
+{
+  "id": "EA-127",
+  "contractCases": [
+    127
+  ],
+  "title": "Unresolved history whose every alternative is inadmissible",
+  "kind": "stage",
+  "policy": "explicit-assertion-v0",
+  "evidenceModel": "demo-model@0.1",
+  "query": {
+    "file": "../query/q.demo.json",
+    "contractDigest": "d1"
+  },
+  "requestedOutputs": [
+    "p.demo"
+  ],
+  "comparison": "stage-v1",
+  "input": {
+    "snapshot": "snap-1",
+    "supersedesSnapshot": null,
+    "context": {
+      "subject": "P1",
+      "episode": {
+        "known": "E1"
+      },
+      "encounter": {
+        "known": "N1"
+      },
+      "clock": "2026-01-01T00:00:00Z",
+      "mode": "nonclinical"
+    },
+    "records": [
+      {
+        "key": {
+          "source": "s1",
+          "localId": "r127"
+        },
+        "revision": "1",
+        "recordType": "demo-model/DemoAssessment@0.1",
+        "subject": "P1",
+        "episode": "E0",
+        "encounter": "N1",
+        "concept": {
+          "system": "demo-cs",
+          "code": "item-x"
+        },
+        "assertion": "Affirmed",
+        "assertionKind": "ClinicianDocumented",
+        "author": {
+          "actor": "u1",
+          "permissions": []
+        },
+        "provenance": {
+          "acquisition": "a0",
+          "sourceRecordRef": "s1:r127:1"
+        }
+      },
+      {
+        "key": {
+          "source": "s1",
+          "localId": "r127"
+        },
+        "revision": "2",
+        "recordType": "demo-model/DemoAssessment@0.1",
+        "subject": "P1",
+        "episode": "E1",
+        "encounter": "N0",
+        "concept": {
+          "system": "demo-cs",
+          "code": "item-x"
+        },
+        "assertion": "Affirmed",
+        "assertionKind": "ClinicianDocumented",
+        "author": {
+          "actor": "u2"
+        },
+        "provenance": {
+          "acquisition": "a0",
+          "sourceRecordRef": "s1:r127:2"
+        },
+        "supersedes": {
+          "source": "s1",
+          "localId": "r127",
+          "revision": "1"
+        }
+      }
+    ],
+    "retractions": [],
+    "coverage": [
+      {
+        "id": "cov-all",
+        "appliesTo": {
+          "snapshot": "snap-1"
+        },
+        "recordType": "demo-model/DemoAssessment@0.1",
+        "subject": "P1",
+        "sources": [
+          "s1",
+          "s2"
+        ],
+        "status": "Complete",
+        "attestedBy": "demo-adapter@1"
+      }
+    ],
+    "failures": [],
+    "rejectedItems": []
+  },
+  "expected": {
+    "stages": [
+      "S1",
+      "S2",
+      "S3",
+      "S4"
+    ],
+    "traceAssertions": [
+      {
+        "fact": "keyResult",
+        "ref": "s1/r127",
+        "value": "UnresolvedRevision",
+        "causes": [
+          "Missing"
+        ]
+      },
+      {
+        "fact": "selection",
+        "ref": "s1/r127",
+        "value": "Unresolved",
+        "unresolvedBy": [
+          "HistoryUnresolved"
+        ]
+      },
+      {
+        "fact": "disposition",
+        "ref": "s1/r127@1",
+        "value": "NotSelected",
+        "blockers": [
+          "HistoryUnresolved",
+          "Inadmissible"
+        ]
+      },
+      {
+        "fact": "disposition",
+        "ref": "s1/r127@2",
+        "value": "NotSelected",
+        "blockers": [
+          "HistoryUnresolved",
+          "Inadmissible"
+        ]
+      }
+    ]
+  }
+}

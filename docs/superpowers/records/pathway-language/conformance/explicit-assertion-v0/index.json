@@ -397,6 +397,21 @@
     ],
     "124": [
       "EA-124"
+    ],
+    "125": [
+      "EA-125"
+    ],
+    "126": [
+      "EA-126"
+    ],
+    "127": [
+      "EA-127"
+    ],
+    "128": [
+      "EA-128"
+    ],
+    "129": [
+      "EA-129"
     ]
   },
   "pairs": [
@@ -638,6 +653,13 @@
         "EA-122"
       ],
       "claim": "With a mismatch, unresolved rules do not prevent Inadmissible; without one, unresolved rules give UnresolvedAdmissibility with every finding"
+    },
+    {
+      "fixtures": [
+        "EA-126",
+        "EA-127"
+      ],
+      "claim": "Unresolved history stays Unresolved (HistoryUnresolved) whether one alternative is admissible or every alternative is inadmissible: an admissible possibility selects nothing, and all-inadmissible possibilities do not resolve history"
     }
   ]
 }
