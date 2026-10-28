@@ -382,7 +382,7 @@ s4.inadmissible; // RecordKey[]
 | `Current` | in domain, `UnresolvedAdmissibility` | `Unresolved` | `AdmissibilityUnresolved` |
 | `Current` | in domain, `Inadmissible` (other rules’ findings stay attached) | `Inadmissible` | — |
 | `Current` | candidacy unresolved, `Admissible` / `UnresolvedAdmissibility` | `Unresolved` | `CandidacyUnresolved` (+ `AdmissibilityUnresolved`) |
-| `Current` | candidacy unresolved, `Inadmissible` | `Unresolved` (**proposed rule, awaiting confirmation**) | `CandidacyUnresolved` |
+| `Current` | candidacy unresolved, `Inadmissible` | `Unresolved` (both facts kept; below) | `CandidacyUnresolved` |
 | `Current` | out of domain | `OutOfDomain` | — |
 | `UnresolvedRevision` | anything, including one admissible or all inadmissible | `Unresolved` | `HistoryUnresolved` |
 | `Retracted` / no record | none | `Retracted` / `NoRecord` | — |
@@ -393,15 +393,34 @@ s4.inadmissible; // RecordKey[]
 
 **What it never does.** It never selects by position, order, digest or recency. It never combines possibilities. It never treats an admissible possibility as resolving history, and never resolves history because every possibility is inadmissible; S6 decides whether that uncertainty is material. It never turns an inadmissible revision’s retained unresolved findings into a blocker of their own.
 
-**Proposed rule, awaiting confirmation.** A current revision with unresolved candidacy that is also `Inadmissible` is `Unresolved` by `CandidacyUnresolved`, and its possibility keeps both blockers (`CandidacyUnresolved`, `Inadmissible`). This is the literal reading of the contract’s S4 row. Before §2.8, that row listed such a key both as unresolved and as inadmissible. The choice affects only S6’s base causes: §4.2 rule 5 gives `Inadmissible` for an inadmissible candidate and `Missing` when no in-domain record was seen. In step B the key’s possible classes are `{excluded}` either way. Contract §2.8 explains this, and case 125 (r6) pins the proposed outcome.
+**Unresolved candidacy beside inadmissibility** (confirmed on review). A current revision with unresolved candidacy that is also `Inadmissible` is `Unresolved` by `CandidacyUnresolved`. Its possibility keeps both blockers (`CandidacyUnresolved`, `Inadmissible`) and every S3 reason. Its definite mismatch prevents it from supplying `Supporting` or `Refuting` evidence. Unresolved selection alone does not establish materiality or block the query. Its exact effect on S6’s base causes is deferred to S6. Case 125 (r6) pins the outcome.
 
-**What S5 needs, and gets.** S5 classifies `selected` revisions, and `unresolved` keys only to judge materiality (contract §2 pipeline row S5; §4.2 step B). It needs:
+**What S5 needs.** S5 classifies `selected` revisions, and `unresolved` keys only to judge materiality (contract §2 pipeline row S5; §4.2 step B). It needs:
 
 - every possibility of each unresolved key, with its S2 candidacy and S3 admissibility;
 - `excluded` and `unknown`;
 - the inherited S1 causes.
 
-All of these are in the result as received.
+These are all in the S4 result. It also needs **each revision’s fields** (`c.assertion`), which the result does not carry. An earlier version of this README claimed S4 carried everything S5 needs. That was wrong: two snapshots differing only in `assertion` gave identical S4 results. The evidence handoff below closes the gap.
+
+### Evidence handoff (S3 → S4 → S5; internal)
+
+Mechanism: an **internal immutable association**, not payloads in the output (`src/handoff.ts`).
+
+- **Binding in S3.** For each checked possibility, S3 binds a deep-frozen copy of the payload S1 retained for that exact revision, and for that exact digest when a revision is conflicted. It is parsed from the variant’s canonical bytes with the existing `retainedPayload`, while S3 reads the same `s1` as its rule checks. A private `WeakMap` keys it by the possibility object of the result that owns it.
+- **Rebinding in S4.** `experimentalSelect` binds the same payloads to its own result’s possibility objects, position for position.
+- **Reading it back.** S5 will use the internal accessor `selectionEvidence(s4, possibility)` (`src/s4/select.ts`); `admissibilityEvidence(s3, possibility)` is its S3 counterpart. Neither is exported from the package index.
+
+Guarantees:
+
+- **One snapshot.** There is no lookup by record identity and no snapshot parameter, so the binding is never reconstructed from IDs. An accessor accepts only a result its stage produced in this process, and only that result’s own possibility objects.
+- **Exact revision and variant.** Distinct variants keep distinct payloads. A corrected key supplies its current revision’s payload.
+- **Explicit failure.** A copy (`JSON.parse(JSON.stringify(r))`), a spread or a fabricated object, or a possibility of another result, even one with identical identity and content, throws `EvidenceHandoffError`. So does any missing binding. It is never patient uncertainty, and another payload is never substituted.
+- **Scope.** Every checked possibility has a payload, including inadmissible ones and the alternatives of unresolved keys. `excluded`, `unknown` and out-of-domain possibilities have none. Reading a payload never changes a disposition.
+- **Immutability.** Payloads are deep-frozen copies. Editing the original records, the S1 result or a returned payload changes nothing.
+- **Unchanged output.** No result field or ordering changed, and serialized S3 and S4 results are exactly as before.
+
+**Lifetime and serialization limit.** A binding lives as long as its in-process result object. Serializing a result drops it by design, so evidence cannot be read from a stored or transmitted result. S5 must run on the in-process result of the same evaluation, or evaluation must start again from the snapshot.
 
 ## PPL compiler (I1): `experimentalCompile` and `experimentalCompilePreview`
 
@@ -672,7 +691,7 @@ This package has its own Jest configuration and is not part of the root Jest roo
 
   Targeted mutations each fail tests: mismatch plus unresolved treated as unresolved, unresolved findings dropped under a mismatch, rules joined across possibilities, an admissible possibility clearing unresolved history, and findings left in evaluation order. Combining an out-of-domain possibility is prevented by the types, as it has no rule outcomes.
 - **`src/__tests__/s4-select.test.ts`** has 22 independent S4 tests (counting each parameterized case). Every expected status, `unresolvedBy` and blocker list is taken from contract §2.8. They cover:
-  - each current-revision row of the key table, including an inadmissible revision beside an unresolved rule and the proposed candidacy-plus-inadmissible rule;
+  - each current-revision row of the key table, including an inadmissible revision beside an unresolved rule and the confirmed candidacy-plus-inadmissible rule;
   - `Retracted` and `NoRecord`;
   - preservation of every S3 reason, finding and origin, and of S2 findings;
   - unresolved history with an admissible and an inadmissible alternative, with every alternative inadmissible, with every alternative out of domain, with variants, and with `excluded` and `unknown`;
@@ -688,6 +707,19 @@ This package has its own Jest configuration and is not part of the root Jest roo
   - one possibility’s blockers reused for the others (cross-revision mixing).
 
   The fixture run also catches the precedence flip (EA-125).
+- **`src/__tests__/s4-handoff.test.ts`** has 14 tests of the evidence handoff, using the internal accessors directly, with no criterion evaluation. They cover:
+  - two snapshots with the same identity, `Affirmed` and `Denied`: equal selections, each retrieving its own assertion. This holds even when the stages are interleaved (S3 of both snapshots before S4 of the first), and resolving the second snapshot leaves the first unchanged;
+  - possibilities read through another result, JSON copies, spreads, fabricated objects and relabelled owners, all rejected;
+  - separate S3 and S4 bindings;
+  - variants each retrieving the payload of their own digest;
+  - an authorized correction supplying the current payload;
+  - unresolved-history alternatives with separate payloads and nothing selected;
+  - inadmissible possibilities readable but not selected;
+  - no payload for `excluded`, `unknown` or out-of-domain possibilities;
+  - edits to original records and to the S1 result not reaching retained evidence;
+  - deep-frozen payloads, and unchanged serialized output.
+
+  Deliberate faults each fail a test: a global record-ID lookup (wrong snapshot, caught by the interleaved case), the first variant used for every digest (wrong variant), and an invented out-of-domain payload. The existing S4 tests and fixture expectations are unchanged.
 - **`src/__tests__/fixtures.test.ts`** runs the committed [explicit-assertion-v0 fixtures](../../docs/superpowers/records/pathway-language/conformance/explicit-assertion-v0/README.md) and checks **only** their S1–S4 assertions, plus one-way implications from downstream expectations. It never reports a fixture as passing as a whole, because S5–S7 are not implemented. On the current fixtures it reports:
   - **175 S1 assertions checked, 175 passing.** That is 92 trace facts (`keyResult`, `variants`, `occurrences`, `rejected`, `outOfEnvelope`, `outsideEnvelope`, and the `HistoricalDefect`, `CrossKeyCorrection` and `UndeclaredField` diagnostics) plus 75 canonicalization checks (bytes, digests, variant partition, undeclared fields). EA-104 adds two; EA-123 and EA-124 add three; EA-126 to EA-129 add five.
   - **16 S2 assertions checked, 16 passing:** every `candidacy` trace fact (EA-013, EA-014, EA-024, three in EA-033, and EA-093 to EA-100).

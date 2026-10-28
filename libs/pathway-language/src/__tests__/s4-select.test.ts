@@ -89,7 +89,7 @@ describe('S4: current-revision rows of the §2.8 key table', () => {
       ['AdmissibilityUnresolved', 'CandidacyUnresolved'],
       'NotSelected[AdmissibilityUnresolved,CandidacyUnresolved]',
     ],
-    ['candidacy unresolved, Inadmissible (proposed rule)', { concept: OTHER, encounter: 'N0' }, 'Unresolved', ['CandidacyUnresolved'], 'NotSelected[CandidacyUnresolved,Inadmissible]'],
+    ['candidacy unresolved, Inadmissible (both facts kept)', { concept: OTHER, encounter: 'N0' }, 'Unresolved', ['CandidacyUnresolved'], 'NotSelected[CandidacyUnresolved,Inadmissible]'],
     ['out of domain', { concept: ITEM_Y }, 'OutOfDomain', [], 'NotSelected[OutOfDomain]'],
     ['out of domain, even when every rule would mismatch', { concept: ITEM_Y, encounter: 'N0', episode: 'E0', assertionKind: 'PatientReport' }, 'OutOfDomain', [], 'NotSelected[OutOfDomain]'],
   ];

@@ -7,13 +7,28 @@
  * materiality. Everything earlier stages recorded is carried unchanged. Detached and deep-frozen.
  */
 import { detach } from '../compile/compile';
-import { compareCodePoints } from '../s1/resolve';
-import { isAdmissibilityResult } from '../s3/admissibility';
+import { bindEvidence, boundEvidence, EvidenceHandoffError } from '../handoff';
+import { compareCodePoints, type JsonObject } from '../s1/resolve';
+import { admissibilityEvidence, isAdmissibilityResult } from '../s3/admissibility';
 import type { KeyAdmissibility, PossibleAdmissibility } from '../s3/types';
 import type { Blocker, KeySelection, PossibleSelection, SelectionInput, SelectionResult, SelectionStatus, UnresolvedBy } from './types';
 
 /** Invalid API input. Never used for patient-evidence uncertainty. */
 export class SelectionConfigurationError extends Error {}
+
+const produced = new WeakSet<object>();
+
+/**
+ * INTERNAL handoff accessor for S5 (contract §2.8, "Evidence handoff"): the exact, deep-frozen
+ * payload of one checked revision or variant of `s4`, from the snapshot that produced it. Throws
+ * EvidenceHandoffError for a result not produced by `select` in this process, for a possibility of
+ * another result, a copy or a fabrication, and for markers and out-of-domain possibilities, which
+ * carry no evidence. Access never makes a possibility eligible: its disposition still decides.
+ */
+export function selectionEvidence(s4: SelectionResult, possibility: PossibleSelection): Readonly<JsonObject> {
+  if (typeof s4 !== 'object' || s4 === null || !produced.has(s4)) throw new EvidenceHandoffError('not an S4 result produced in this process');
+  return boundEvidence(s4, possibility);
+}
 
 type Node = Extract<PossibleAdmissibility, { kind: 'node' }>;
 
@@ -51,7 +66,7 @@ function selectKey(k: KeyAdmissibility): KeySelection {
     }
     const b = p.selection.disposition === 'Selected' ? [] : p.selection.blockers;
     unresolvedBy = b.filter((x): x is UnresolvedBy => x === 'AdmissibilityUnresolved' || x === 'CandidacyUnresolved');
-    // Unresolved candidacy keeps the key unresolved even beside Inadmissible (contract §2.8, proposed rule).
+    // Unresolved candidacy keeps the key unresolved even beside Inadmissible; both facts stay on the possibility (contract §2.8).
     status = b.length === 0 ? 'Selected' : b.includes('OutOfDomain') ? 'OutOfDomain' : unresolvedBy.length > 0 ? 'Unresolved' : 'Inadmissible';
   }
   return {
@@ -74,14 +89,16 @@ export function select(input: SelectionInput): SelectionResult {
   if (!isAdmissibilityResult(input.s3)) {
     throw new SelectionConfigurationError('s3 must be a combined S3 result produced by experimentalCheckAdmissibility in this process');
   }
-  const keys = input.s3.keys
-    .map(selectKey)
-    .sort((a, b) => compareCodePoints(a.key.source, b.key.source) || compareCodePoints(a.key.localId, b.key.localId));
+  const s3 = input.s3;
+  const pairs = s3.keys
+    .map((src) => ({ src, sel: selectKey(src) }))
+    .sort((a, b) => compareCodePoints(a.sel.key.source, b.sel.key.source) || compareCodePoints(a.sel.key.localId, b.sel.key.localId));
+  const keys = pairs.map((x) => x.sel);
   const selected = keys.flatMap((k) => {
     const p = k.possibilities[0];
     return k.status === 'Selected' && p && p.kind === 'node' ? [{ key: k.key, node: p.node }] : [];
   });
-  return detach({
+  const result: SelectionResult = detach({
     experimental: 'nonclinical-s4-selection-v0',
     stage: 'S4',
     valueSet: input.s3.valueSet,
@@ -90,4 +107,14 @@ export function select(input: SelectionInput): SelectionResult {
     unresolved: keys.filter((k) => k.status === 'Unresolved').map((k) => k.key),
     inadmissible: keys.filter((k) => k.status === 'Inadmissible').map((k) => k.key),
   });
+  // Re-bind S3's evidence to this result's own possibility objects, position for position.
+  result.keys.forEach((k, i) =>
+    k.possibilities.forEach((p, j) => {
+      const src = pairs[i]?.src.possibilities[j];
+      if (!src || src.kind !== p.kind) throw new EvidenceHandoffError('S4 possibilities do not line up with S3');
+      if (p.kind === 'node' && p.candidacy !== 'OutOfDomain') bindEvidence(result, p, admissibilityEvidence(s3, src));
+    }),
+  );
+  produced.add(result);
+  return result;
 }

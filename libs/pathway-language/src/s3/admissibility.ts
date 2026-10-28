@@ -7,8 +7,10 @@
  * current revision, produces no key-level outcome, and decides no materiality (S4–S6).
  */
 import { detach } from '../compile/compile';
-import { compareCodePoints } from '../s1/resolve';
-import type { NodeRef } from '../s1/types';
+import { bindEvidence, boundEvidence, EvidenceHandoffError } from '../handoff';
+import { retainedPayload } from '../s1/payload';
+import { compareCodePoints, type JsonObject } from '../s1/resolve';
+import type { KeyResolution, NodeRef } from '../s1/types';
 import { checkAssertionKind } from './assertion-kind';
 import { checkEncounterScope } from './encounter';
 import { checkEpisodeScope } from './episode';
@@ -33,6 +35,12 @@ import type {
  */
 const produced = new WeakSet<object>();
 export const isAdmissibilityResult = (v: unknown): v is AdmissibilityCheckResult => typeof v === 'object' && v !== null && produced.has(v);
+
+/** INTERNAL handoff accessor (contract §2.8): the exact payload of one checked possibility of `s3`. */
+export function admissibilityEvidence(s3: AdmissibilityCheckResult, possibility: PossibleAdmissibility): Readonly<JsonObject> {
+  if (!isAdmissibilityResult(s3)) throw new EvidenceHandoffError('not a combined S3 result produced in this process');
+  return boundEvidence(s3, possibility);
+}
 
 /** Invalid input to the combined check itself (the individual checks keep their own error classes). */
 export class AdmissibilityCheckConfigurationError extends Error {}
@@ -87,6 +95,9 @@ export function checkAdmissibility(input: AdmissibilityCheckInput): Admissibilit
   const epi = checkEpisodeScope({ s1, valueSet, expansion, rule: a.episode, contextEpisode });
   const ak = checkAssertionKind({ s1, valueSet, expansion, rule: a.assertionKind });
 
+  // Evidence for the handoff (contract §2.8), taken now, from the S1 result the three checks read.
+  const s1Keys = new Map<string, KeyResolution>(s1.keys.map((k) => [JSON.stringify([k.key.source, k.key.localId]), k]));
+  const evidence: (JsonObject | undefined)[][] = [];
   const byNode = <T extends { kind: string; node?: NodeRef }>(ps: readonly T[]) => new Map(ps.flatMap((p) => (p.node ? [[nodeId(p.node), p] as const] : [])));
   const keys = enc.keys.map((ke, i): KeyAdmissibility => {
     const kp = epi.keys[i];
@@ -96,7 +107,12 @@ export function checkAdmissibility(input: AdmissibilityCheckInput): Admissibilit
     }
     const ep = byNode(kp.possibilities);
     const kn = byNode(kk.possibilities);
+    const k1 = s1Keys.get(JSON.stringify([ke.key.source, ke.key.localId]));
+    if (!k1) throw new EvidenceHandoffError(`key ${JSON.stringify(ke.key)} is not in the S1 result`);
+    const keyEvidence: (JsonObject | undefined)[] = [];
+    evidence.push(keyEvidence);
     const possibilities = ke.possibilities.map((p): PossibleAdmissibility => {
+      keyEvidence.push(undefined);
       if (p.kind !== 'node') return { kind: p.kind };
       if (p.candidacy === 'OutOfDomain') return { kind: 'node', node: p.node, candidacy: 'OutOfDomain', admissibility: { outcome: 'NotEvaluated', reason: 'OutOfDomain' } };
       // Joined on the SAME node identity (revision and digest): never across possibilities.
@@ -106,6 +122,10 @@ export function checkAdmissibility(input: AdmissibilityCheckInput): Admissibilit
         throw new Error(`invariant: node ${nodeId(p.node)} not checked by every rule`);
       }
       const rules = { encounter: p.encounter, episode: pe.episode, assertionKind: pk.assertionKind };
+      // Exact revision and digest; S1 keeps one variant per digest. Never another payload.
+      const payload = retainedPayload(k1, p.node);
+      if (!payload) throw new EvidenceHandoffError(`no unique retained payload for ${nodeId(p.node)}`);
+      keyEvidence[keyEvidence.length - 1] = payload;
       return { kind: 'node', node: p.node, candidacy: p.candidacy, s2Findings: p.s2Findings, rules, admissibility: combine(rules) };
     });
     return {
@@ -126,6 +146,10 @@ export function checkAdmissibility(input: AdmissibilityCheckInput): Admissibilit
     allowedKinds: ak.allowedKinds,
     keys,
   });
+  result.keys.forEach((k, i) => k.possibilities.forEach((p, j) => {
+    const payload = evidence[i]?.[j];
+    if (payload) bindEvidence(result, p, payload);
+  }));
   produced.add(result);
   return result;
 }

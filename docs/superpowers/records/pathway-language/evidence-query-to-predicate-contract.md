@@ -2,7 +2,7 @@
 
 **Status:** Proposed design draft. **Not** accepted, not finalized syntax, not a schema and not implemented. It contains no clinical content: the record type, enum values, codes, sources and permission below are fictional and illustrate language behavior only. They do not map to dysphagia, progression, urgency or any other clinical definition.
 
-**Date:** 2026-10-03. **Revised:** 2026-10-03, nine times, 2026-10-04, once, 2026-10-05, three times, 2026-10-09, three times, and 2026-10-28, once, after review. The third revision fixed three things:
+**Date:** 2026-10-03. **Revised:** 2026-10-03, nine times, 2026-10-04, once, 2026-10-05, three times, 2026-10-09, three times, and 2026-10-28, twice, after review. The third revision fixed three things:
 
 - revision-chain boundaries: source-scoped identity, same-source corrections and one fully specified schematic authority rule;
 - deterministic outcomes for malformed history;
@@ -14,12 +14,17 @@ The fourth revision made three changes:
 - Payload identity for duplicate detection is defined.
 - An unsupported justification about coverage attestations is removed.
 
+The eighteenth revision follows review of the S4 implementation.
+
+- S4’s output carries record references, not payloads. Two snapshots that differ only in `assertion` gave identical selections, with no way to read `c.assertion` for S5. An evidence handoff (2.8) now binds each checked revision’s or variant’s exact payload to the result of the evaluation that produced it.
+- The rule for unresolved candidacy beside inadmissibility is confirmed (2.8): the key is unresolved by candidacy, and its mismatch prevents it from supplying `Supporting` or `Refuting` evidence.
+
 The seventeenth revision specifies S4 selection (2.8, cases 125–129) as a decision table over the combined S3 result.
 
 - Only a key whose single current revision is in domain and `Admissible` is selected. An admissible possibility never resolves uncertain history.
 - A key with unresolved history stays unresolved even when every represented possibility is inadmissible or out of domain; S6 decides whether that uncertainty matters.
 - A current, in-domain, `Inadmissible` revision is retained as inadmissible; its other rules’ unresolved findings stay attached and are not a separate blocker.
-- **Proposed, awaiting confirmation:** a current revision with unresolved candidacy is unresolved even when it is also `Inadmissible`; the inadmissibility stays on the possibility.
+- A current revision with unresolved candidacy is unresolved even when it is also `Inadmissible`; the inadmissibility stays on the possibility (confirmed in the eighteenth revision).
 
 The sixteenth revision settles how the three S3 rules combine for one possible revision (2.7, cases 119–124), replacing the deferral recorded in 2.4.
 
@@ -551,7 +556,7 @@ S4 reads one combined S3 result (2.7) and decides, per key, whether its record i
 | `Current` | In domain, `Inadmissible` (any other rules’ unresolved findings stay attached) | **Inadmissible** | — |
 | `Current` | Candidacy unresolved, `Admissible` | **Unresolved** | `CandidacyUnresolved` |
 | `Current` | Candidacy unresolved, `UnresolvedAdmissibility` | **Unresolved** | `AdmissibilityUnresolved`, `CandidacyUnresolved` |
-| `Current` | Candidacy unresolved, `Inadmissible` | **Unresolved** (proposed rule, below) | `CandidacyUnresolved` |
+| `Current` | Candidacy unresolved, `Inadmissible` | **Unresolved** (below) | `CandidacyUnresolved` |
 | `Current` | Out of domain (S3 not evaluated) | **OutOfDomain** | — |
 | `UnresolvedRevision` | Any possibilities: revisions, variants, `excluded`, `unknown`, whatever their candidacy and admissibility | **Unresolved** | `HistoryUnresolved` |
 | `Retracted` | None | **Retracted** | — |
@@ -578,9 +583,26 @@ Blockers are a set, listed by code point; none is chosen by evaluation order. `e
 - **Selection uncertainty is not materiality.** An `UnresolvedRevision` key stays `Unresolved` even when every represented possibility is inadmissible, out of domain or `excluded`. Whether the uncertainty can affect the query is decided in S6 (4.2, step B), not here.
 - **A definite mismatch stays decisive** for a current, in-domain revision (2.7). Its other rules’ unresolved findings stay attached for S6, but they do not make the key unresolved.
 
-**Proposed rule, awaiting confirmation: unresolved candidacy beside inadmissibility.** A current revision whose S2 candidacy is unresolved (for example, a code from an uncovered system) and whose combined S3 result is `Inadmissible` is in neither definite category. If it is in domain, it is an inadmissible candidate. If it is out of domain, it is not a candidate at all. That difference matters to S6: rule 5 adds `Inadmissible` for an inadmissible candidate seen, and `Missing` when no in-domain record was seen. Before this section, the S4 row listed such a key both as unresolved (by candidacy) and as inadmissible. **Proposed:** the key is `Unresolved` by `CandidacyUnresolved`, which is the literal reading of the S4 row, and its possibility keeps the blockers `CandidacyUnresolved` and `Inadmissible` with all S3 reasons. S4 thus records both facts and resolves neither. Its possible classes in 4.2 step B are `{excluded}` either way, so it can never be material. Only S6’s base causes depend on the choice, and S6 is not specified here. Case 125 (r6) shows the proposed outcome.
+**Unresolved candidacy beside inadmissibility** (confirmed on review, 2026-10-28). A current revision whose S2 candidacy is unresolved (for example, a code from an uncovered system) and whose combined S3 result is `Inadmissible` is in neither definite category: in domain it would be an inadmissible candidate, out of domain no candidate at all.
+
+- The key is `Unresolved` by `CandidacyUnresolved`.
+- Both facts stay attached to its possibility: the blockers `CandidacyUnresolved` and `Inadmissible`, with every S3 reason and finding.
+- Its definite mismatch prevents it from supplying `Supporting` or `Refuting` evidence, whatever its candidacy turns out to be (its possible classes in 4.2 step B are `{excluded}`).
+- Unresolved selection alone neither establishes materiality nor blocks the query.
+- How it contributes to S6’s base causes (4.2 rule 5: `Inadmissible` for an inadmissible candidate seen, `Missing` when no in-domain record was seen) is **deferred** to S6.
+
+Case 125 (r6) shows this outcome.
 
 **Output contract.** Per key: its identity, S1 status, S2 key candidacy, inherited S1 causes and defects, status, `unresolvedBy` (code point order; empty unless `Unresolved`), and its possibilities with their S2 findings, rule outcomes, combined admissibility and disposition. The result also lists `selected` (key and current revision), `unresolved` and `inadmissible`, each in `RecordKey` order (5.3). These lists are summaries of the per-key statuses and add no information.
+
+**Evidence handoff.** S5 evaluates criteria over each record’s fields (`c.assertion`), which no stage result carries. Results hold record references only, so two snapshots that differ only in content can give identical selections. The exact payload therefore travels with the evaluation, not with its serialized output:
+
+- **Origin.** S3 binds, for each checked possibility, the payload S1 retained for that exact revision and, for a conflicted revision, that exact digest. It is parsed from the variant’s canonical bytes (CANONICALIZATION.md) and taken while S3 reads the same S1 result as its rule checks. It is never reconstructed afterwards from record identifiers, and there is no lookup by identity, so a payload cannot come from another snapshot or another variant.
+- **Survival.** S4 binds the same payload to its own result’s possibilities, position for position. The binding belongs to the result object of the stage that made it. A copied, fabricated or foreign result, or a possibility of another result, has none, and asking for one is an error.
+- **Scope.** Every checked possibility, including inadmissible ones and those of unresolved keys, has a payload, so S5 can classify what step B needs. `excluded`, `unknown` and out-of-domain possibilities have none. A payload never makes a possibility eligible: its S4 disposition decides that.
+- **Immutability.** Payloads are deep-frozen copies. Later edits to the original records, the S1 result or a returned payload change nothing.
+- **Failure.** A missing or mismatched binding is a defect of the handoff, never patient uncertainty, and is never replaced by another payload.
+- **Lifetime.** A binding lives as long as its in-process result. A serialized result keeps its references but not its evidence. Evaluation continues from the in-process result of the same evaluation, or starts again from the snapshot.
 
 ## 3. Where the clinical expression lives
 
@@ -1119,7 +1141,7 @@ In cases 114, 115b and 116–118 the record is the only candidate and its possib
 
 | # | Case | Records / changes | Selection |
 |---|---|---|---|
-| 125 | One key per current-revision row | s1/r1 (D0); s1/r2 encounter N0, `episode` omitted; s1/r3 `episode` omitted; s1/r4 concept `demo-cs#item-y`; s1/r5 concept `other-cs#item-x`; s1/r6 concept `other-cs#item-x`, encounter N0; s1/r7 retracted (`+amend`); s2/r8 a correction of s1/r1@1 (cross-key, rejected) | r1 `Selected` (@1); r2 `Inadmissible` (finding `Missing` kept); r3 `Unresolved` [`AdmissibilityUnresolved`]; r4 `OutOfDomain`; r5 `Unresolved` [`CandidacyUnresolved`]; r6 `Unresolved` [`CandidacyUnresolved`], possibility blockers [`CandidacyUnresolved`, `Inadmissible`] (proposed rule); r7 `Retracted`; s2/r8 `NoRecord` |
+| 125 | One key per current-revision row | s1/r1 (D0); s1/r2 encounter N0, `episode` omitted; s1/r3 `episode` omitted; s1/r4 concept `demo-cs#item-y`; s1/r5 concept `other-cs#item-x`; s1/r6 concept `other-cs#item-x`, encounter N0; s1/r7 retracted (`+amend`); s2/r8 a correction of s1/r1@1 (cross-key, rejected) | r1 `Selected` (@1); r2 `Inadmissible` (finding `Missing` kept); r3 `Unresolved` [`AdmissibilityUnresolved`]; r4 `OutOfDomain`; r5 `Unresolved` [`CandidacyUnresolved`]; r6 `Unresolved` [`CandidacyUnresolved`], possibility blockers [`CandidacyUnresolved`, `Inadmissible`]; r7 `Retracted`; s2/r8 `NoRecord` |
 | 126 | Unresolved history, admissible and inadmissible alternatives | s1/r126@1 (D0); @2 supersedes @1, `perm omitted`, encounter N0 | `Unresolved` [`HistoryUnresolved`]; @1 `NotSelected` [`HistoryUnresolved`]; @2 `NotSelected` [`HistoryUnresolved`, `Inadmissible`] |
 | 127 | Unresolved history, every alternative inadmissible | As 126, but @1 has episode E0 | `Unresolved` [`HistoryUnresolved`], **not** resolved or `Inadmissible`; @1 and @2 `NotSelected` [`HistoryUnresolved`, `Inadmissible`] |
 | 128 | Variants with different outcomes | Two occurrences of s1/r128@1: D0, and encounter N0 | `Unresolved` [`HistoryUnresolved`]; the D0 variant [`HistoryUnresolved`], the N0 variant [`HistoryUnresolved`, `Inadmissible`] |
@@ -1210,7 +1232,8 @@ These must hold for every case:
     - Only a definite current, in-domain, admissible revision is selected; an admissible possibility never resolves history.
     - Unresolved history stays unresolved whatever its possibilities’ outcomes; materiality stays with S6.
     - A current, in-domain, inadmissible revision is retained as inadmissible; its other unresolved findings stay attached.
-    - Proposed, awaiting confirmation: unresolved candidacy beside inadmissibility is unresolved by candidacy, with both facts kept.
+    - Unresolved candidacy beside inadmissibility is unresolved by candidacy, with both facts kept; its mismatch prevents `Supporting`/`Refuting` evidence; its S6 base-cause contribution is deferred.
+    - Evidence handoff: each checked possibility’s exact payload is bound in S3 from S1’s retained variant and carried, by binding, to S4’s result for S5.
 
 **Possible conflicts needing a Stage A amendment.** None found. Items to confirm:
 
