@@ -3,13 +3,13 @@
  * explicit-assertion-v0 conformance fixtures against the S1 resolver, S2 candidate identification,
  * the three S3 rule checks, combined per-revision S3 admissibility (contract §2.7, whose
  * `admissibility` facts are checked directly), S4 selection (§2.8: `selection` and `disposition`
- * facts) and per-record S5 criterion evaluation and classification (§3.5, §3.3: `criterion` and
- * `classification` facts of complete queries).
+ * facts), per-record S5 criterion evaluation and classification (§3.5, §3.6: `criterion` and
+ * `classification` facts of complete queries) and key-level possible classes (§3.7: `possibleClasses`).
  *
- * A fixture is never reported as passing as a whole: only its S1–S4, criterion and classification assertions are
+ * A fixture is never reported as passing as a whole: only its S1–S4 and S5 (criterion, classification, possibleClasses) assertions are
  * checked, plus one-way implications from downstream expectations. `stage` fixtures (stage-v1)
- * assert S1–S3, S1–S4 or S1–S5 (criterion and classification only) and carry no downstream
- * expectation. Every other expected field or trace fact (possibleClasses, S6–S7) is outside the scope.
+ * assert S1–S3, S1–S4 or S1–S5 and carry no downstream expectation. Every other expected field or
+ * trace fact (materiality, evidence, S6–S7) is outside the scope.
  */
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -22,6 +22,7 @@ import {
   experimentalCheckAdmissibility,
   experimentalCompile,
   experimentalClassifyRecord,
+  experimentalPossibleClasses,
   experimentalEvaluateCriteria,
   experimentalSelect,
   experimentalSelectForQuery,
@@ -92,6 +93,9 @@ export interface FixtureReport {
   /** S5 per-record `classification` facts (contract §3.3), checked directly. Not possible classes. */
   classificationApplicable: number;
   classificationPassed: number;
+  /** S5 key-level `possibleClasses` facts (contract §4.2 step B, §3.7), checked directly. Not materiality. */
+  possibleClassesApplicable: number;
+  possibleClassesPassed: number;
   /** Combined S3 `admissibility` facts (contract §2.7), checked directly. */
   admissibilityApplicable: number;
   admissibilityPassed: number;
@@ -278,6 +282,8 @@ export function runFixtures(dir: string = FIXTURE_DIR): { reports: FixtureReport
       criterionPassed: 0,
       classificationApplicable: 0,
       classificationPassed: 0,
+      possibleClassesApplicable: 0,
+      possibleClassesPassed: 0,
       admissibilityApplicable: 0,
       admissibilityPassed: 0,
       outOfScope: 0,
@@ -373,6 +379,7 @@ export function runFixtures(dir: string = FIXTURE_DIR): { reports: FixtureReport
           contextEpisode: fx.input.context.episode as EpisodeBinding,
         });
     if (bound && !isDeepStrictEqual(bound, s4)) report.failures.push('query-bound selection differs from the standalone S1–S4 stages');
+    const boundKeys = new Map((bound?.keys ?? []).map((k) => [`${k.key.source}/${k.key.localId}`, k] as const));
     const boundNodes = new Map<string, Extract<PossibleSelection, { kind: 'node' }>>();
     for (const k of bound?.keys ?? []) for (const p of k.possibilities) if (p.kind === 'node') boundNodes.set(showRev(p.node.revision) + (p.node.digest ? `#${p.node.digest}` : ''), p);
     const criteria = (ref: string): CriteriaResult | string => {
@@ -404,6 +411,15 @@ export function runFixtures(dir: string = FIXTURE_DIR): { reports: FixtureReport
         const f = checkCriterionFact(t, criteria(t.ref));
         if (f) report.failures.push(f);
         else report.criterionPassed += 1;
+        continue;
+      }
+      if (t.fact === 'possibleClasses') {
+        // Key-level possible classes (contract §4.2 step B, §3.7), checked directly over the bound selection.
+        report.possibleClassesApplicable += 1;
+        const k = boundKeys.get(t.ref);
+        const got = typeof compiledQuery === 'string' ? compiledQuery : !bound || !k ? `no S4 key ${t.ref}` : experimentalPossibleClasses({ package: compiledQuery, query: query.query.id, s4: bound, key: k }).possibleClasses;
+        if (JSON.stringify(got) === JSON.stringify(t.value)) report.possibleClassesPassed += 1;
+        else report.failures.push(`possibleClasses ${t.ref}: ${JSON.stringify(got)}, expected ${JSON.stringify(t.value)}`);
         continue;
       }
       if (t.fact === 'classification') {
@@ -578,7 +594,8 @@ export function runFixtures(dir: string = FIXTURE_DIR): { reports: FixtureReport
       report.selectionApplicable +
       report.selectionOneWay +
       report.criterionApplicable +
-      report.classificationApplicable;
+      report.classificationApplicable +
+      report.possibleClassesApplicable;
     if (checked === 0) missing.push(fx.id);
   }
   return { reports, noApplicableAssertions: missing };

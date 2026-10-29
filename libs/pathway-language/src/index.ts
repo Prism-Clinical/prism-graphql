@@ -4,7 +4,7 @@
  * Public boundary of the isolated pathway-language core. It currently exposes only the S1
  * revision-history resolver, S2 candidate identification, three S3 admissibility checks
  * (same-encounter, same-episode and assertionKind), their per-revision combination, S4
- * selection, query-bound selection and per-record S5 criterion evaluation and classification (no possible classes) of the proposed
+ * selection, query-bound selection and per-record S5 criterion evaluation and classification, key-level possible classes (no S6) of the proposed
  * evidence-query contract
  * (docs/superpowers/records/pathway-language/evidence-query-to-predicate-contract.md §2, §3.5), and the
  * first PPL compiler subset (first-program-implementation-contract.md, increment I1), and isolated
@@ -120,8 +120,15 @@ export { selectForQuery as experimentalSelectForQuery, QuerySelectionConfigurati
 export type { QuerySelectionInput } from './bound';
 export { evaluateCriteria as experimentalEvaluateCriteria, CriteriaConfigurationError } from './s5/criteria';
 export { classifyRecord as experimentalClassifyRecord } from './s5/classify';
+export { possibleClasses as experimentalPossibleClasses } from './s5/possible-classes';
 export type {
   ClassificationResult,
+  Contribution,
+  ContributionBasis,
+  EvidenceClass,
+  PossibilityContribution,
+  PossibleClassesInput,
+  PossibleClassesResult,
   RecordClass,
   CriteriaInput,
   CriteriaResult,

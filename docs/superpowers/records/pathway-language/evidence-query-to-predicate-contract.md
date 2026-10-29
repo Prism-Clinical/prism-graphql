@@ -2,7 +2,7 @@
 
 **Status:** Proposed design draft. **Not** accepted, not finalized syntax, not a schema and not implemented. It contains no clinical content: the record type, enum values, codes, sources and permission below are fictional and illustrate language behavior only. They do not map to dysphagia, progression, urgency or any other clinical definition.
 
-**Date:** 2026-10-03. **Revised:** 2026-10-03, nine times, 2026-10-04, once, 2026-10-05, three times, 2026-10-09, three times, 2026-10-28, three times, and 2026-10-29, twice, after review. The third revision fixed three things:
+**Date:** 2026-10-03. **Revised:** 2026-10-03, nine times, 2026-10-04, once, 2026-10-05, three times, 2026-10-09, three times, 2026-10-28, three times, and 2026-10-29, three times, after review. The third revision fixed three things:
 
 - revision-chain boundaries: source-scoped identity, same-source corrections and one fully specified schematic authority rule;
 - deterministic outcomes for malformed history;
@@ -13,6 +13,12 @@ The fourth revision made three changes:
 - Proven cross-boundary corrections and retractions are now rejected without changing their target. This keeps gap irrelevance consistent with S1.
 - Payload identity for duplicate detection is defined.
 - An unsupported justification about coverage attestations is removed.
+
+The twenty-second revision specifies key-level possible classes (3.7, case 134), step B of 4.2 as a per-possibility contribution table, and records the review confirmation of 3.6’s two decisions.
+
+- An `Unclassified` record contributes every assertion class but **not** `excluded` (case 4); an `unknown` marker, a possible current with any content (2.1), contributes every class **including** `excluded`.
+- Unresolved candidacy or admissibility adds `excluded` beside the record’s class; unresolved history adds nothing beyond the represented possibilities.
+- Possible classes say what a key could contribute, never whether that matters (S6).
 
 The twenty-first revision specifies per-record S5 classification (3.6, case 133): the 3.3 table applied to one evaluated possibility, through the same boundary as 3.5.
 
@@ -745,9 +751,34 @@ This section applies the 3.3 table to **one** possibility. It computes no possib
 | Unknown | True or False, or the reverse | `Unclassified(causes)` | No (criteria on different fields are outside I1) |
 | True | True | Engine invariant violation: no class, no patient conflict | No: the compiler proves `disjoint(establishes, refutes)` and rejects an overlap (`EXCLUSIVE_BRANCH_OVERLAP`) |
 
-`causes` are the causes of every `Unknown` criterion’s findings, without duplicates, in Stage A order. The findings themselves, with origin and reason, stay in the criterion results. `Unknown` is never read as `False`.
+`causes` are the causes of every `Unknown` criterion’s findings, without duplicates, in Stage A order. The findings themselves, with origin and reason, stay in the criterion results; S1 history and S2–S3 eligibility causes stay with the key and the possibility, never in `causes`. `Unknown` is never read as `False`. True/True stops evaluation with an internal invariant failure; in this experimental subset a plain error suffices, since it signals an engine defect, not patient data. (Both decisions confirmed on review, 2026-10-29.)
 
 **Result.** The 3.5 result unchanged (key, revision and digest, S4 disposition, both criterion results with their traces and findings) plus the class. A `NotEvaluated` possibility keeps its reason (`Inadmissible`, `OutOfDomain`, `ExcludedMarker`, `UnknownMarker`) and gets **no** class: it is not `NonInformative` and not `Unclassified`. A `Supporting` possibility of an unresolved key is not made current or selected, and its class alone never establishes the query.
+
+### 3.7 S5 key-level possible classes (one key)
+
+This section makes 4.2 step B executable for **one** key of a query-bound S4 result: the set of classes its possible current record could contribute, and why. It decides no materiality, base cause or evidence result (4.2), chooses no current revision and changes no selection status.
+
+**Boundary.** As 3.5, with a key in place of a possibility: an authentic compiled package, a query ID, an S4 result of query-bound selection for exactly that package and query, and one key object of that result, by identity. The key’s ownership is checked directly, so a key with no possibilities, or only markers, is validated too. Each possibility is classified by 3.6; classifications, criterion values and class sets are never accepted from the caller.
+
+**Contribution of one possibility.** Classes are `Supporting`, `Refuting`, `NonInformative` and `excluded`, in that canonical order. `Unclassified` is an intermediate per-record class, never a possible class.
+
+| Possibility | Contributes | Basis |
+|---|---|---|
+| Classified `Supporting`, `Refuting` or `NonInformative`, selected or blocked only by history | That class | `Classified` |
+| `Unclassified` (assertion absent or malformed) | `Supporting`, `Refuting`, `NonInformative`; **not** `excluded`: only the assertion is unknown, the record’s existence and eligibility are not (case 4) | `Unclassified` |
+| Either of the above with blocker `CandidacyUnresolved` | Also `excluded`: the record could be out of domain | `CandidacyUnresolved` |
+| Either of the above with blocker `AdmissibilityUnresolved` | Also `excluded`: the record could be inadmissible (cases 10, 11) | `AdmissibilityUnresolved` |
+| Definitely `Inadmissible`, also beside `CandidacyUnresolved` (2.8) | `excluded` only | `Inadmissible` |
+| Out of domain | `excluded` | `OutOfDomain` |
+| `excluded` marker | `excluded` | `ExcludedMarker` |
+| `unknown` marker | Every class, **including** `excluded`: “possibly a current revision with any content” (2.1), including content out of domain or inadmissible | `UnknownMarker` |
+
+`HistoryUnresolved` adds nothing: a key’s alternatives are exactly its represented possibilities, so history uncertainty alone never invents `excluded` (cases 18, 30, 84). Step B’s “rejected” alternative reaches S4 only as an `excluded` or `unknown` marker (2.1 step 7).
+
+**Key.** The possible classes are the union of its possibilities’ contributions, deduplicated, in canonical order. `Retracted` and `NoRecord` keys have no possibilities and no possible classes. The same table applies to every key status. A `Selected` key with a definite class has a singleton set, and so may an `Unresolved` key whose alternatives agree. A singleton never selects a revision or resolves history: the key’s S4 status is reported unchanged. `{Supporting, Refuting}` means either could be current, not that both occurred.
+
+**Explanation.** Per possibility, in S4 order: the S4 possibility unchanged (candidacy and S2 findings, S3 rule outcomes and findings, disposition and blockers), its 3.6 result (classification, both criteria with traces and findings, or `NotEvaluated` with its reason) and its contributions, each with its basis. The key carries its S1 status, inherited S1 causes and defects, S4 status and `unresolvedBy`. S1, S2–S3 and S5 causes therefore stay apart, and each added `excluded` names the uncertainty that added it.
 
 ## 4. One strict demonstration policy: `explicit-assertion-v0`
 
@@ -1257,6 +1288,12 @@ In cases 114, 115b and 116–118 the record is the only candidate and its possib
 |---|---|---|---|
 | 133 | The four classes, and variants | s1/r133a `Affirmed`; s1/r133b `Denied`; s1/r133c `Indeterminate`; s1/r133d `assertion` omitted; s1/r133e `"affirmed"`; each `Selected`. Two occurrences of s1/r133f@1: `Affirmed`, and `Denied` | r133a `Supporting`; r133b `Refuting`; r133c `NonInformative`; r133d `Unclassified{Missing}`; r133e `Unclassified{Invalid}`; r133f `Unresolved` [`HistoryUnresolved`], the `Affirmed` variant `Supporting` and the `Denied` variant `Refuting`, both still `NotSelected` |
 
+**O. S5 possible classes per key (3.7)** (D0 unless stated; the shared query). **Partial-stage**: S1–S4 facts and key-level `possibleClasses` only; no materiality, base cause or evidence result. Cases 4, 10, 11, 18, 28, 30, 62, 78, 84, 85, 88 and 104 already state possible classes for definite, unclassified, variant, inadmissible-variant, unresolved-admissibility and `excluded`-marker keys.
+
+| # | Case | Records / changes | Possible classes |
+|---|---|---|---|
+| 134 | Eligibility uncertainty, `unknown`, deduplication, all excluded, retracted | s1/r134a concept `other-cs#z`; s1/r134b concept `other-cs#z`, encounter N0; s1/r134c@2 `Denied`, supersedes absent @1, `+amend`; s1/r134d@1 and @2 (supersedes @1, `perm omitted`), both `Affirmed`; s1/r134e@1 encounter N0 and @2 concept `demo-cs#item-y` (supersedes @1, `perm omitted`); s1/r134f@1 with a retraction of @1, `+amend` | r134a `Unresolved` [`CandidacyUnresolved`], {Supporting, excluded}; r134b `Unresolved` [`CandidacyUnresolved`], {excluded}; r134c `Unresolved` [`HistoryUnresolved`] with `unknown`, {Supporting, Refuting, NonInformative, excluded}; r134d `Unresolved` [`HistoryUnresolved`], {Supporting}, still unresolved; r134e `Unresolved` [`HistoryUnresolved`], {excluded}; r134f `Retracted`, {} |
+
 
 ### 7.5 Invariance checks
 
@@ -1352,8 +1389,13 @@ These must hold for every case:
 
 22. Per-record S5 classification (3.6):
     - Same boundary and checks as 3.5; criterion values are computed, never supplied.
-    - True/False `Supporting`, False/True `Refuting`, False/False `NonInformative`, any `Unknown` `Unclassified` with the `Unknown` criteria’s causes in Stage A order; True/True an engine invariant violation, unreachable through compiled criteria.
+    - True/False `Supporting`, False/True `Refuting`, False/False `NonInformative`, any `Unknown` `Unclassified` with the deduplicated union of the `Unknown` criteria’s causes in Stage A order (confirmed on review); detailed attribution stays in the criterion findings, and history and admissibility causes stay separate. True/True is an internal invariant failure, unreachable through compiled criteria; a plain error suffices for this subset (confirmed on review).
     - `NotEvaluated` possibilities get no class; classification never selects, resolves history or establishes the query.
+
+23. Key-level possible classes (3.7):
+    - Same boundary as 3.5 with a key object of the bound S4 result; the key’s ownership is checked even when it has no possibilities.
+    - Per possibility: its definite class; `Unclassified` adds every assertion class but not `excluded`; unresolved candidacy or admissibility adds `excluded`; inadmissible, out-of-domain and `excluded` possibilities add only `excluded`; `unknown` adds every class including `excluded`; unresolved history adds nothing. The key’s set is the union, in canonical order.
+    - Each contribution names its basis; the key’s S4 status is unchanged; a singleton resolves nothing; no materiality is decided.
 
 **Possible conflicts needing a Stage A amendment.** None found. Items to confirm:
 
@@ -1363,7 +1405,7 @@ These must hold for every case:
 
 **Query/predicate split.** The query carries the reasoning. A projection-only Predicate is optional naming and composition structure. No node kind is added or removed.
 
-**Conformance fixtures.** [conformance/explicit-assertion-v0/](conformance/explicit-assertion-v0/README.md) holds machine-readable fixtures for cases 1–133, mapped by case number, with expected outputs written from this contract. They are proposed, like this document.
+**Conformance fixtures.** [conformance/explicit-assertion-v0/](conformance/explicit-assertion-v0/README.md) holds machine-readable fixtures for cases 1–134, mapped by case number, with expected outputs written from this contract. They are proposed, like this document.
 
 **Remaining items.**
 

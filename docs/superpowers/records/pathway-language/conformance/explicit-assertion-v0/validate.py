@@ -16,7 +16,7 @@ Usage: python3 validate.py [--self-test]
 import copy, hashlib, json, os, sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-CASE_RANGE = range(1, 134)
+CASE_RANGE = range(1, 135)
 CAUSES = ["Missing", "Conflicting", "Unavailable", "Invalid", "Inadmissible", "InsufficientEvidence"]
 MARKERS = ["excluded", "unknown"]
 # Trace facts a partial-stage (S1-S3) fixture may assert.
@@ -24,9 +24,10 @@ STAGE_FACTS = {"keyResult", "variants", "occurrences", "rejected", "outOfEnvelop
                "candidacy", "encounterScope", "episodeScope", "assertionKindScope", "admissibility"}
 # S4 facts, allowed only when a stage fixture declares stages S1-S4 (contract §2.8).
 S4_FACTS = {"selection", "disposition"}
-# S5 per-record facts, allowed only when a stage fixture declares stages S1-S5: criterion values (contract
-# §3.5) and per-record classification (§3.3). Possible classes and materiality stay with evaluation fixtures.
-S5_FACTS = {"criterion", "classification"}
+# S5 facts, allowed only when a stage fixture declares stages S1-S5: criterion values (contract §3.5),
+# per-record classification (§3.6) and key-level possible classes (§3.7). Materiality stays with S6.
+S5_FACTS = {"criterion", "classification", "possibleClasses"}
+POSSIBLE_CLASSES = ["Supporting", "Refuting", "NonInformative", "excluded"]
 RECORD_CLASSES = {"Supporting", "Refuting", "NonInformative", "Unclassified"}
 SELECTION_STATUS = {"Selected", "Unresolved", "Inadmissible", "OutOfDomain", "Retracted", "NoRecord"}
 REV_DECL = {"key": {"source", "localId"}, "revision": None, "recordType": None, "subject": None,
@@ -227,7 +228,7 @@ def check(fixtures, index, query):
                 err(i, "authoring fixture must inline its full query")
             continue
         if kind == "stage":
-            # Partial-stage fixture: S1-S3, S1-S4 or S1-S5 (criterion, classification) facts only, and no downstream expectation.
+            # Partial-stage fixture: S1-S3, S1-S4 or S1-S5 (criterion, classification, possibleClasses) facts only, and no downstream expectation.
             stages = fx["expected"].get("stages")
             if fx["comparison"] != "stage-v1" or set(fx["expected"]) != {"stages", "traceAssertions"} \
                     or stages not in (["S1", "S2", "S3"], ["S1", "S2", "S3", "S4"], ["S1", "S2", "S3", "S4", "S5"]):
@@ -256,6 +257,9 @@ def check(fixtures, index, query):
                         err(i, f"classification fact for {t['ref']}: value must be one of {sorted(RECORD_CLASSES)}")
                     if ("causes" in t) != (t["value"] == "Unclassified") or ("causes" in t and not t["causes"]):
                         err(i, f"classification fact for {t['ref']}: nonempty causes exactly when Unclassified")
+                if t["fact"] == "possibleClasses":
+                    if not isinstance(t["value"], list) or not set(t["value"]) <= set(POSSIBLE_CLASSES)                             or t["value"] != sorted(set(t["value"]), key=POSSIBLE_CLASSES.index):
+                        err(i, f"possibleClasses fact for {t['ref']}: distinct classes from {POSSIBLE_CLASSES}, in that order")
                 if t["fact"] == "admissibility":
                     if t["value"] == "Inadmissible" and not t.get("reasons", [t.get("reason")])[0]:
                         err(i, "Inadmissible admissibility fact without a reason")
@@ -385,8 +389,11 @@ def self_test(fixtures, index, query):
     def add_criterion_fact(e):
         e["traceAssertions"].append({"fact": "criterion", "ref": "s1/r126@1", "criterion": "establishes", "value": "True"})
 
-    def add_possible_classes(e):
-        e["traceAssertions"].append({"fact": "possibleClasses", "ref": "s1/r130a", "value": ["Supporting"]})
+    def add_material(e):
+        e["traceAssertions"].append({"fact": "material", "ref": "s1/r130a", "value": True})
+
+    def misorder_possible_classes(e):
+        next(t for t in e["traceAssertions"] if t["fact"] == "possibleClasses" and len(t["value"]) > 1)["value"].reverse()
 
     def drop_unclassified_causes(e):
         next(t for t in e["traceAssertions"] if t["fact"] == "classification" and t["value"] == "Unclassified").pop("causes")
@@ -413,7 +420,8 @@ def self_test(fixtures, index, query):
         ("stage fixture: an S4 fact in an S1-S3 fixture is rejected", mutated("EA-119", add_s4_fact_to_s3_stage), "outside S1-S3"),
         ("stage fixture: an S5 fact in an S1-S4 fixture is rejected", mutated("EA-126", add_downstream_fact), "outside S1-S4"),
         ("stage fixture: a criterion fact in an S1-S4 fixture is rejected", mutated("EA-126", add_criterion_fact), "outside S1-S4"),
-        ("stage fixture: possibleClasses in an S1-S5 fixture is rejected", mutated("EA-130", add_possible_classes), "outside S1-S5"),
+        ("stage fixture: material in an S1-S5 fixture is rejected", mutated("EA-130", add_material), "outside S1-S5"),
+        ("stage fixture: possibleClasses out of canonical order is rejected", mutated("EA-134", misorder_possible_classes), "in that order"),
         ("stage fixture: an Unclassified classification without causes is rejected", mutated("EA-133", drop_unclassified_causes), "nonempty causes exactly when Unclassified"),
         ("stage fixture: a classification outside the four classes is rejected", mutated("EA-133", bad_class), "value must be one of"),
         ("stage fixture: an Unknown criterion without causes is rejected", mutated("EA-131", drop_unknown_causes), "nonempty causes exactly when Unknown"),

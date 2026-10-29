@@ -45,13 +45,17 @@ function evaluate(name: CriterionName, c: EnumCriterion, payload: Readonly<JsonO
   return { criterion: name, source: c.location, result, trace: [fieldStep(read), enumStep, { form: 'eq', source: c.location, result }] };
 }
 
-function contractOf(input: CriteriaInput): ExplicitAssertionContract {
+/**
+ * INTERNAL, shared by every S5 entry point: exactly `fields`, an authentic CompiledPackage and
+ * EvidenceQuery, and an S4 result bound to that exact package object and query ID (§3.5).
+ */
+export function boundContract(input: { readonly package: unknown; readonly query: unknown; readonly s4: unknown }, fields: readonly string[]): ExplicitAssertionContract {
   const fail = (m: string): never => {
     throw new CriteriaConfigurationError(m);
   };
   if (input === null || typeof input !== 'object') fail('input must be an object');
   const keys = Object.keys(input);
-  const extra = keys.filter((k) => !INPUT_FIELDS.includes(k));
+  const extra = keys.filter((k) => !fields.includes(k));
   // In particular a payload, snapshot or S1–S3 result: evidence comes only from the S4 handoff.
   if (extra.length > 0) fail(`unexpected input field(s) ${extra.join(', ')}`);
   const contract = queryContract(input.package, input.query, fail);
@@ -65,7 +69,7 @@ function contractOf(input: CriteriaInput): ExplicitAssertionContract {
 }
 
 export function evaluateCriteria(input: CriteriaInput): CriteriaResult {
-  const contract = contractOf(input);
+  const contract = boundContract(input, INPUT_FIELDS);
   const { s4, possibility } = input;
   // Ownership by identity: a copy, a fabrication or another result's possibility is rejected.
   const owner = s4.keys.find((k) => k.possibilities.includes(possibility));
