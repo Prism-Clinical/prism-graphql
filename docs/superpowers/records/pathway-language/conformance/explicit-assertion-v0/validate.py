@@ -16,7 +16,7 @@ Usage: python3 validate.py [--self-test]
 import copy, hashlib, json, os, sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-CASE_RANGE = range(1, 135)
+CASE_RANGE = range(1, 137)
 CAUSES = ["Missing", "Conflicting", "Unavailable", "Invalid", "Inadmissible", "InsufficientEvidence"]
 MARKERS = ["excluded", "unknown"]
 # Trace facts a partial-stage (S1-S3) fixture may assert.
@@ -27,6 +27,12 @@ S4_FACTS = {"selection", "disposition"}
 # S5 facts, allowed only when a stage fixture declares stages S1-S5: criterion values (contract §3.5),
 # per-record classification (§3.6) and key-level possible classes (§3.7). Materiality stays with S6.
 S5_FACTS = {"criterion", "classification", "possibleClasses"}
+# S6 facts, allowed only when a stage fixture declares stages S1-S6: gap relevance only (contract §1.5,
+# §4.1): combined coverage cells, gap relevance and not-current statements. No base result, `rule`,
+# `material`, cause attribution or evidence result.
+S6_FACTS = {"cell", "gap", "notCurrent"}
+CELL_STATUS = {"Complete", "Incomplete", "Unknown", "Absent"}
+GAP_DIMENSIONS = {"recordType", "subject", "sources"}
 POSSIBLE_CLASSES = ["Supporting", "Refuting", "NonInformative", "excluded"]
 RECORD_CLASSES = {"Supporting", "Refuting", "NonInformative", "Unclassified"}
 SELECTION_STATUS = {"Selected", "Unresolved", "Inadmissible", "OutOfDomain", "Retracted", "NoRecord"}
@@ -228,12 +234,14 @@ def check(fixtures, index, query):
                 err(i, "authoring fixture must inline its full query")
             continue
         if kind == "stage":
-            # Partial-stage fixture: S1-S3, S1-S4 or S1-S5 (criterion, classification, possibleClasses) facts only, and no downstream expectation.
+            # Partial-stage fixture: S1-S3, S1-S4, S1-S5 (criterion, classification, possibleClasses) or S1-S6
+            # (gap relevance only) facts, and no downstream expectation.
             stages = fx["expected"].get("stages")
             if fx["comparison"] != "stage-v1" or set(fx["expected"]) != {"stages", "traceAssertions"} \
-                    or stages not in (["S1", "S2", "S3"], ["S1", "S2", "S3", "S4"], ["S1", "S2", "S3", "S4", "S5"]):
-                err(i, "stage fixture must expect exactly stages [S1, S2, S3], [S1, S2, S3, S4] or [S1, S2, S3, S4, S5] and traceAssertions")
-            allowed = STAGE_FACTS | (S4_FACTS if stages and "S4" in stages else set()) | (S5_FACTS if stages and "S5" in stages else set())
+                    or stages not in (["S1", "S2", "S3"], ["S1", "S2", "S3", "S4"], ["S1", "S2", "S3", "S4", "S5"], ["S1", "S2", "S3", "S4", "S5", "S6"]):
+                err(i, "stage fixture must expect exactly stages [S1, S2, S3], [S1, S2, S3, S4], [S1, S2, S3, S4, S5] or [S1, S2, S3, S4, S5, S6] and traceAssertions")
+            allowed = STAGE_FACTS | (S4_FACTS if stages and "S4" in stages else set()) | (S5_FACTS if stages and "S5" in stages else set()) \
+                | (S6_FACTS if stages and "S6" in stages else set())
             for t in fx["expected"]["traceAssertions"]:
                 if t["fact"] not in allowed:
                     err(i, f"stage fixture asserts {t['fact']}, which is outside {stages[0]}-{stages[-1]}" if stages else "no stages")
@@ -260,6 +268,11 @@ def check(fixtures, index, query):
                 if t["fact"] == "possibleClasses":
                     if not isinstance(t["value"], list) or not set(t["value"]) <= set(POSSIBLE_CLASSES)                             or t["value"] != sorted(set(t["value"]), key=POSSIBLE_CLASSES.index):
                         err(i, f"possibleClasses fact for {t['ref']}: distinct classes from {POSSIBLE_CLASSES}, in that order")
+                if t["fact"] == "cell" and t.get("value") not in CELL_STATUS:
+                    err(i, f"cell fact for {t.get('source')}: value must be one of {sorted(CELL_STATUS)}")
+                if t["fact"] == "gap":
+                    if not isinstance(t.get("relevant"), bool) or ("provenBy" in t) == t["relevant"] or t.get("provenBy", "sources") not in GAP_DIMENSIONS:
+                        err(i, f"gap fact for {t.get('ref')}: boolean relevant; provenBy (recordType, subject or sources) exactly when irrelevant")
                 if t["fact"] == "admissibility":
                     if t["value"] == "Inadmissible" and not t.get("reasons", [t.get("reason")])[0]:
                         err(i, "Inadmissible admissibility fact without a reason")
@@ -401,6 +414,18 @@ def self_test(fixtures, index, query):
     def bad_class(e):
         next(t for t in e["traceAssertions"] if t["fact"] == "classification")["value"] = "NotEvaluated"
 
+    def add_gap_fact(e):
+        e["traceAssertions"].append({"fact": "gap", "ref": "f1", "relevant": True})
+
+    def gap_proven_by_episode(e):
+        next(t for t in e["traceAssertions"] if t["fact"] == "gap" and not t["relevant"])["provenBy"] = "episode"
+
+    def relevant_gap_with_proof(e):
+        next(t for t in e["traceAssertions"] if t["fact"] == "gap" and t["relevant"])["provenBy"] = "subject"
+
+    def add_material_s6(e):
+        e["traceAssertions"].append({"fact": "material", "ref": "s1/r135a", "value": True})
+
     def drop_unknown_causes(e):
         next(t for t in e["traceAssertions"] if t["fact"] == "criterion" and t["value"] == "Unknown").pop("causes")
 
@@ -425,6 +450,10 @@ def self_test(fixtures, index, query):
         ("stage fixture: an Unclassified classification without causes is rejected", mutated("EA-133", drop_unclassified_causes), "nonempty causes exactly when Unclassified"),
         ("stage fixture: a classification outside the four classes is rejected", mutated("EA-133", bad_class), "value must be one of"),
         ("stage fixture: an Unknown criterion without causes is rejected", mutated("EA-131", drop_unknown_causes), "nonempty causes exactly when Unknown"),
+        ("stage fixture: a gap fact in an S1-S5 fixture is rejected", mutated("EA-134", add_gap_fact), "outside S1-S5"),
+        ("stage fixture: material in an S1-S6 (gap relevance) fixture is rejected", mutated("EA-135", add_material_s6), "outside S1-S6"),
+        ("stage fixture: a gap proven irrelevant by episode is rejected", mutated("EA-135", gap_proven_by_episode), "provenBy (recordType, subject or sources)"),
+        ("stage fixture: a relevant gap with a proving dimension is rejected", mutated("EA-136", relevant_gap_with_proof), "exactly when irrelevant"),
         ("inline contract: reusing the shared digest is rejected", inline_with_shared_digest(), "must be a full query with its own contract digest"),
     ]
     failed = 0

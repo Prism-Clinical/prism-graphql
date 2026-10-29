@@ -1,6 +1,6 @@
 # @prism/pathway-language (experimental, nonclinical)
 
-**Status:** an implementation experiment. It covers **S1–S5** of the *proposed* [evidence-query-to-predicate contract](../../docs/superpowers/records/pathway-language/evidence-query-to-predicate-contract.md): S1 revision history, S2 candidate identification, the S3 same-encounter, same-episode and `assertionKind` rules, their combination into one admissibility result per possible revision (increment I3), S4 selection, S5 criterion evaluation and classification **for one record at a time**, S5 **key-level possible classes**, and **query-bound preview evaluation** of whole-criterion holes (increment I4). Every acceptance item of I4 is now checked and passes, including EA-052a’s two preview `criterion` facts (case 52), so I4 is complete **as an experimental increment** only. S6 resolution does not exist, so no query result is computed. It also has the **first PPL compiler subset** and **isolated program-expression execution** over supplied query results (increments I1 and I2 of the [first-program implementation contract](../../docs/superpowers/records/pathway-language/first-program-implementation-contract.md)). It is not an end-to-end PPL evaluator and is not clinically approved; compiling or executing a program confers no clinical approval. It must not be used for patient care. The RFC, Stage A, the contract and the delivery plans keep their existing statuses; nothing here completes a delivery story.
+**Status:** an implementation experiment. It covers **S1–S5** of the *proposed* [evidence-query-to-predicate contract](../../docs/superpowers/records/pathway-language/evidence-query-to-predicate-contract.md): S1 revision history, S2 candidate identification, the S3 same-encounter, same-episode and `assertionKind` rules, their combination into one admissibility result per possible revision (increment I3), S4 selection, S5 criterion evaluation and classification **for one record at a time**, S5 **key-level possible classes**, and **query-bound preview evaluation** of whole-criterion holes (increment I4). Every acceptance item of I4 is now checked and passes, including EA-052a’s two preview `criterion` facts (case 52), so I4 is complete **as an experimental increment** only. Of S6 (I5), only **gap relevance** exists: coverage cells and the relevance of each gap. Base results, materiality of unresolved records, cause attribution and the final evidence result do not, so no query result is computed and I5 is not complete. It also has the **first PPL compiler subset** and **isolated program-expression execution** over supplied query results (increments I1 and I2 of the [first-program implementation contract](../../docs/superpowers/records/pathway-language/first-program-implementation-contract.md)). It is not an end-to-end PPL evaluator and is not clinically approved; compiling or executing a program confers no clinical approval. It must not be used for patient care. The RFC, Stage A, the contract and the delivery plans keep their existing statuses; nothing here completes a delivery story.
 
 This package is the isolated `libs/pathway-language` boundary named in RFC §10. It has no imports from applications, resolvers, databases or the network; `src/` imports only Node’s `crypto` and one RFC 8785 library.
 
@@ -454,6 +454,7 @@ const s4 = experimentalSelectForQuery({
 - **S1 is constructed, not verified.** An S1 result retains no envelope or authority provenance and S1 keeps no registry, so no S1 result could be checked against the query. The bound entry point resolves S1 itself from the query’s envelope and authority rule; it accepts no S1, S2 or S3 result.
 - The S4 result is recorded privately (a `WeakMap`, `src/bound.ts`) against the exact package object and query ID. `experimentalEvaluateCriteria` throws `CriteriaConfigurationError` for an S4 result bound to another package (even one with the same `packageId`, or an identical recompilation), to another query of the same package, or not bound at all: a copy, a fabrication, or a result of the standalone `experimentalSelect`.
 - The standalone stage functions are unchanged and remain for isolated tests; their results are never evaluated by S5.
+- Optional `snapshot: { id, coverage, failures, rejectedItems }` (contract §1.5) attaches the current snapshot’s statements to this evaluation for gap relevance ([S6: gap relevance](#s6-gap-relevance-i5-first-slice)). It does not change the S4 result.
 
 Before this, only the value-set pin was compared. A `ClinicianDocumented` record selected under a query that allows that kind then gave `establishes = True` for a second query with the same pin that allows no kind; it is now rejected, and the second query’s own selection makes the record `Inadmissible` (`NotEvaluated`).
 
@@ -573,6 +574,56 @@ const r = experimentalEvaluatePreviewQuery({ package: preview, query: 'q.demo', 
 **Query level.** `marker.holes` is the compiler’s marker for the query, shown with an empty snapshot and when nothing is eligible. `disjointness` stays the compiled `Pending` obligation: evaluating a sibling proves nothing.
 
 **Not produced.** No `classification`, `possibleClasses`, contributions, materiality, evidence result or Needs; no field of that name occurs anywhere in the output. Detached and deep-frozen.
+
+## S6: gap relevance (I5, first slice)
+
+`experimentalGapRelevance` decides, for **one** query-bound evaluation, which gaps could affect the query (contract §1.5, §4.1 “Gap relevance boundary”). It produces coverage cells and, per gap, `Relevant` or `Irrelevant` with the checks behind it. It computes no base result, decides no materiality, attributes no final causes, produces no `Evidence<Boolean>` and emits no Need. A relevant gap is not itself `Missing` or `Conflicting`.
+
+```ts
+const s4 = experimentalSelectForQuery({ package: pkg, query: 'q.demo', subject: 'P1', revisions, retractions, contextEncounter, contextEpisode,
+  snapshot: { id: 'snap-1', coverage, failures, rejectedItems } });
+const r = experimentalGapRelevance({ package: pkg, query: 'q.demo', s4 });
+// r.cells: [{ ref: 'cell:s1', status: 'Complete', establishedBy: ['cov-all'], affectedBy: [] }, …]
+// r.gaps: [{ ref: 'f1', kind: 'AcquisitionFailure', relevant: false, provenBy: ['subject'], dimensions: [...], causes: ['Unavailable'], item }]
+// r.relevant / r.irrelevant: gap references
+```
+
+**Ownership.**
+
+- Coverage, failure and rejected-item statements enter through `experimentalSelectForQuery`’s optional `snapshot` field (contract §1.5 format; `id` is the current snapshot). Selection validates the structure, detaches the statements and records them privately against its own S4 result, with the subject and that run’s S1 result.
+- `experimentalGapRelevance` takes exactly `{ package, query, s4 }`: the same authentic package object, query ID and bound S4 result as S5. It accepts no statement, subject or stage result, so a foreign, copied or standalone selection, another query’s selection, or one made without a snapshot is rejected (`GapRelevanceConfigurationError`). Nothing is reattached by matching identifiers.
+- S1’s rejected items (unattributable retractions, unidentified occurrences) come from that same S1 run, never from S4 possibilities. Preview packages are outside this slice, and preview evaluation rejects a `snapshot`.
+- Structural errors throw at selection: `snapshot` not an object, an omitted list (an empty list is fine, an omitted one is never read as “no gaps”), an entry that is not an object with a string `id`, or one not representable as canonical JSON.
+
+**Cells** (§1.5). One per declared source, for (query record type, evaluation subject, source):
+
+| Current statements for the cell | Status |
+|---|---|
+| Any affecting `Incomplete` | `Incomplete` |
+| Otherwise any affecting `Unknown` or malformed | `Unknown` (malformed adds `Invalid`) |
+| Otherwise a fully scoped `Complete` naming it | `Complete` |
+| Otherwise (no statement, or only statements for other cells) | `Absent` |
+
+A statement *affects* a cell unless a stated, well-formed dimension excludes it. A `Complete` beside an affecting statement, or beside a missing correction/retraction target in that source, is traced as `ContradictoryAttestation`; a `Complete` with an unstated dimension establishes nothing (`InsufficientlyScopedStatement`). Statements for another snapshot are `notCurrent` and ignored. Every non-`Complete` cell is a **relevant** gap (`InsufficientEvidence`), `Incomplete`, `Unknown` and `Absent` alike, with its original status kept.
+
+**Failures and rejected items** (§4.1). Each dimension gets a verdict; irrelevant only when one proves it:
+
+| Dimension | Verdict | Proves |
+|---|---|---|
+| `recordType`, `subject` stated, equal / different | `Matches` / `Differs` | no / **yes** |
+| `sources` sharing a declared source | `Overlaps` | no |
+| `sources` disjoint, same-source correction rule (`demo-policy/same-source-amend@1`) | `Disjoint` | **yes** |
+| `sources` disjoint, any other correction rule | `DisjointCorrectionPossible` | no |
+| `valueSet`, `episode`, `encounter` stated | `NeverProves` | no |
+| omitted or `null` / malformed | `Unstated` / `Malformed` (+`Invalid`) | no |
+
+Causes: a failure `Unavailable`; a stated rejected item `Invalid`; an S1 unattributable retraction its S1 cause (`Missing` or `Invalid`), source stated only; an unidentified occurrence `Invalid`, nothing stated. S1 correction-history defects and proven boundary rejections are not gaps.
+
+**Result.** The envelope used, cells, gaps (cells, then failures, then rejected items; code point order of reference) with `provenBy`, all dimension checks, malformed members, occurrence counts and the original item; the `relevant` and `irrelevant` reference sets; every received statement with currency, malformed and unrecognized members; `notCurrent`; and diagnostics. Identical duplicate statements merge (counted); the same `id` with different content stays as `id#<sha256>` entries. Detached and deep-frozen.
+
+**Proposed clarifications** awaiting review are listed in contract §4.1: structure versus content, malformed failures and items, unreadable currency, duplicate IDs, unrecognized members, unidentified occurrences, the missing-target attestation, and source disjointness under the correction rule.
+
+**Not implemented (rest of I5).** Base results (§4.2 step A), materiality of unresolved records (step B), cause attribution (step C), `rule` facts and the final `Evidence<Boolean>`.
 
 ## PPL compiler (I1): `experimentalCompile` and `experimentalCompilePreview`
 
@@ -946,8 +997,26 @@ This package has its own Jest configuration and is not part of the root Jest roo
   | Payloads looked up by record ID within one evaluation (wrong variant) | 1 |
   | Payloads looked up by record ID across evaluations (wrong snapshot) | 5 |
   | A whole-contract hole running evidence stages | 3 |
-- **`src/__tests__/fixtures.test.ts`** runs the committed [explicit-assertion-v0 fixtures](../../docs/superpowers/records/pathway-language/conformance/explicit-assertion-v0/README.md) and checks **only** their S1–S4 assertions, S5 `criterion`, `classification` and `possibleClasses` assertions, and the preview expectations of preview fixtures, plus one-way implications from downstream expectations. It never reports a fixture as passing as a whole, because S6–S7 are not implemented. On the current fixtures it reports:
-  - **178 S1 assertions checked, 178 passing.** That is 92 trace facts (`keyResult`, `variants`, `occurrences`, `rejected`, `outOfEnvelope`, `outsideEnvelope`, and the `HistoricalDefect`, `CrossKeyCorrection` and `UndeclaredField` diagnostics) plus 75 canonicalization checks (bytes, digests, variant partition, undeclared fields). EA-104 adds two; EA-123 and EA-124 add three; EA-126 to EA-129 add five; EA-132, EA-133 and EA-134 add one each.
+- **`src/__tests__/s6-gaps.test.ts`** has 30 independent tests of gap relevance, with expected values written from the §1.5 and §4.1 tables. They cover:
+  - Complete coverage with no failure (no gap); same-scope `Incomplete`, `Unknown` and `Absent` cells; absent detection with no statement and with statements for other cells; insufficiently scoped and contradictory statements; malformed statements (never dropped or read as `Complete`); not-current statements; the missing-target attestation (case 26);
+  - a failure despite `Complete` coverage; record type, subject and disjoint sources each proving irrelevance; partial source overlap; unstated and `null` dimensions; several dimensions; value set, episode and encounter never proving; malformed dimensions and members;
+  - stated rejected items with definite and undetermined boundaries; S1 unattributable retractions (`Missing`, `Invalid`) and unidentified occurrences; S1 boundary rejections and history defects not being gaps;
+  - simultaneous gaps and failures, input permutation, identical duplicates and same-ID conflicts;
+  - foreign packages, queries and selections, standalone and copied selections, selections without a snapshot, twelve forbidden fields, structural snapshot errors, preview packages and preview evaluation rejecting `snapshot`; the snapshot not changing selection; interleaved evaluations; the subject taken from the evaluation;
+  - no evidence, base result, materiality, Need or cause attribution field; immutability after input edits; deep freezing.
+
+  Deliberate faults, each applied alone (failures across this file and the fixture runner):
+
+  | Fault | Tests failing |
+  |---|---|
+  | Absent coverage treated as `Complete` | 8 |
+  | An unstated dimension proving irrelevance | 19 |
+  | A value set, episode or encounter mismatch proving irrelevance | 3 |
+  | Every failure placed in the relevant set | 11 |
+  | Only the first current failure kept | 5 |
+  | Only the first non-`Complete` cell kept | 6 |
+- **`src/__tests__/fixtures.test.ts`** runs the committed [explicit-assertion-v0 fixtures](../../docs/superpowers/records/pathway-language/conformance/explicit-assertion-v0/README.md) and checks **only** their S1–S4 assertions, S5 `criterion`, `classification` and `possibleClasses` assertions, the preview expectations of preview fixtures, and S6 coverage-cell and gap-relevance facts, plus one-way implications from downstream expectations. It never reports a fixture as passing as a whole, because S6–S7 are not implemented. On the current fixtures it reports:
+  - **180 S1 assertions checked, 180 passing.** That is 92 trace facts (`keyResult`, `variants`, `occurrences`, `rejected`, `outOfEnvelope`, `outsideEnvelope`, and the `HistoricalDefect`, `CrossKeyCorrection` and `UndeclaredField` diagnostics) plus 75 canonicalization checks (bytes, digests, variant partition, undeclared fields). EA-104 adds two; EA-123 and EA-124 add three; EA-126 to EA-129 add five; EA-132, EA-133, EA-134, EA-135 and EA-136 add one each.
   - **16 S2 assertions checked, 16 passing:** every `candidacy` trace fact (EA-013, EA-014, EA-024, three in EA-033, and EA-093 to EA-100).
   - **15 encounter-check assertions checked, 15 passing:** every `encounterScope` trace fact (EA-101 to EA-103, both variants of EA-104, EA-105, EA-106a/b, EA-107, EA-112, EA-115a and EA-119 to EA-122).
   - **13 episode-check assertions checked, 13 passing:** every `episodeScope` trace fact (EA-108 to EA-110, EA-111a/b, EA-112, EA-113a/b, EA-115a and EA-119 to EA-122).
@@ -960,7 +1029,7 @@ This package has its own Jest configuration and is not part of the root Jest roo
   - **10 S5 classification assertions checked, 10 passing:** every `classification` trace fact, checked directly with `experimentalClassifyRecord` over the bound result (contract §3.3, §3.6): `Unclassified` in EA-004 and EA-074 and `NonInformative` in EA-006 (evaluation fixtures, written before §3.6), and seven in the partial-stage fixture EA-133 (`Supporting`, `Refuting`, `NonInformative`, `Unclassified{Missing}`, `Unclassified{Invalid}`, and the two variants of an unresolved key). `possibleClasses` facts are not checked.
   - **18 S5 `possibleClasses` assertions checked, 18 passing:** every `possibleClasses` trace fact, checked directly with `experimentalPossibleClasses` over the bound result (contract §4.2 step B, §3.7). Twelve are in evaluation fixtures written before §3.7, unchanged: EA-004 (`Unclassified`), EA-010 and EA-011 (unresolved admissibility), EA-018, EA-030, EA-078, EA-084 and EA-088 (alternatives), EA-028 and EA-104 (an inadmissible alternative) and EA-062 and EA-085 (an `excluded` marker). Six are in the partial-stage fixture EA-134: unresolved candidacy, unresolved candidacy beside a mismatch, an `unknown` marker, deduplication, all alternatives excluded, and a retracted key. Materiality is not checked.
 
-  Trace `causes` are compared as sets in Stage A order, for every check. EA-119 to EA-124 (S1–S3), EA-125 to EA-129 (S1–S4) and EA-130 to EA-134 (S1–S5: `criterion`, `classification`, `possibleClasses`) are `stage-v1` fixtures: they state no downstream result, and their assertions are partial-stage checks, not end-to-end conformance.
+  Trace `causes` are compared as sets in Stage A order, for every check. EA-119 to EA-124 (S1–S3), EA-125 to EA-129 (S1–S4) and EA-130 to EA-134 (S1–S5: `criterion`, `classification`, `possibleClasses`) and EA-135 to EA-136 (S1–S6, gap relevance only: `cell`, `gap`, `notCurrent`) are `stage-v1` fixtures: they state no downstream result, and their assertions are partial-stage checks, not end-to-end conformance.
   - **One-way checks**, which can fail but cannot prove completeness:
     - 33 S1-stage cause attributions, each of which must be an active S1 defect;
     - 12 S2-stage cause attributions (EA-013, EA-014, EA-093 to EA-099), each of which must be an S2 finding on that revision;
@@ -971,9 +1040,12 @@ This package has its own Jest configuration and is not part of the root Jest roo
     - 12 `assertionKind` outcomes implied by combined S3 expectations (also EA-123, EA-124). `admissibility: Admissible` implies `Matches` (EA-052a, EA-114, EA-115b). `Inadmissible(AssertionKindNotAllowed)` implies `DoesNotMatch` (EA-115a). An S3 attribution with an `assertionKind` reason must be a finding of the check (EA-116, EA-117, EA-118a–d).
 
     The absence of an attribution proves nothing, because attribution also depends on S5/S6 materiality.
-  - **553 expected fields and trace facts outside the implemented scope,** not checked: evidence, decision, Needs, materiality, cause attribution beyond the one-way checks, cells, gaps and so on, in evaluation fixtures.
+  - **31 S6 coverage-state assertions checked, 31 passing:** every `cell` (21) and `notCurrent` (3) fact and every `ContradictoryAttestation` (6) and `InsufficientlyScopedStatement` (1) diagnostic, from `experimentalGapRelevance` over the bound selection with the fixture’s own snapshot statements. Evaluation fixtures EA-005, EA-015, EA-026, EA-035 to EA-041, EA-043 and EA-044, unchanged, and partial-stage EA-135 and EA-136.
+  - **20 S6 gap-relevance assertions checked, 20 passing:** every `gap` fact, with `relevant` and, when stated, `provenBy`: EA-008, EA-041, EA-042, EA-045 to EA-049, EA-053, EA-055a/b (unchanged) and nine in EA-135 and EA-136 (stated rejected items, an unattributable retraction, simultaneous failures).
+  - **48 one-way gap checks:** each of the 16 `coverage`/`gap` cause attributions must be a relevant gap with that cause and reason, and each of the 32 `Known` results must have no relevant gap. These do not check base results or attribution itself.
+  - **517 expected fields and trace facts outside the implemented scope,** not checked: evidence, decision, Needs, `rule`, materiality, cause attribution beyond the one-way checks, and so on.
   - **2 fixtures not run:** EA-051a/b (compilation).
-  - **1 evaluation fixture with no applicable S1–S5 or preview assertion,** listed by the test: EA-005. Its behavior in these stages is exercised but not asserted.
+  - Every other fixture has at least one applicable assertion.
 
   None of this is end-to-end evidence conformance: no `Evidence<Boolean>`, Need or decision is computed or compared.
 

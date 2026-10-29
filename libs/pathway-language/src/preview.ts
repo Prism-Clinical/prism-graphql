@@ -10,7 +10,7 @@
  * Need exists; publication stays blocked. The S4 result never leaves this function, so no
  * caller-supplied, copied or foreign stage result or possibility can enter.
  */
-import { checkInputFields, selectWithSettings, type QuerySelectionInput } from './bound';
+import { checkInputFields, PREVIEW_INPUT_FIELDS, selectWithSettings, type QuerySelectionInput } from './bound';
 import { compiledKind, contractHoles, detach } from './compile/compile';
 import type { CriterionSlot, IncompleteExplicitAssertionContract, PreviewPackage } from './compile/types';
 import { compareCodePoints } from './s1/resolve';
@@ -23,7 +23,7 @@ import type { CriteriaResult, CriterionName, CriterionResult } from './s5/types'
 /** Invalid API input, including a non-preview package or an override. Never patient uncertainty. */
 export class PreviewEvaluationConfigurationError extends Error {}
 
-export interface PreviewQueryInput extends Omit<QuerySelectionInput, 'package'> {
+export interface PreviewQueryInput extends Omit<QuerySelectionInput, 'package' | 'snapshot'> {
   /** A PreviewPackage produced by experimentalCompilePreview in this process. */
   readonly package: PreviewPackage;
 }
@@ -111,7 +111,7 @@ export function evaluatePreviewQuery(input: PreviewQueryInput): PreviewQueryResu
   const fail = (m: string): never => {
     throw new PreviewEvaluationConfigurationError(m);
   };
-  checkInputFields(input, fail);
+  checkInputFields(input, fail, PREVIEW_INPUT_FIELDS);
   const kind = compiledKind(input.package);
   if (kind === 'CompiledPackage') fail('a CompiledPackage is evaluated through the normal entry points; preview evaluation takes a PreviewPackage');
   if (kind !== 'PreviewPackage') fail('package must be a PreviewPackage produced by experimentalCompilePreview in this process');
@@ -140,7 +140,7 @@ export function evaluatePreviewQuery(input: PreviewQueryInput): PreviewQueryResu
     if (!Array.isArray(input.revisions) || !Array.isArray(input.retractions)) fail('revisions and retractions must be arrays');
     return detach({ ...common, contract: 'WholeContractHole', stagesRun: [] });
   }
-  const s4 = selectWithSettings(contract, pkg.valueSets, input, fail);
+  const { s4 } = selectWithSettings(contract, pkg.valueSets, input, fail);
   return detach({
     ...common,
     contract: 'IncompleteCriteria',

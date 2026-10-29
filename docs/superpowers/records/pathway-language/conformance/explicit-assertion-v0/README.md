@@ -11,7 +11,7 @@ The expected outputs were written by hand from the contract (§§1–7) and [CAN
 | `query/q.demo.json` | The query contract (contract §7.1), predicate `p.demo` and pinned value-set expansion. Symbolic contract digest `d1` |
 | `fixtures/EA-*.json` | Evaluation, partial-stage, preview and compilation fixtures |
 | `fixtures/CAN-*.json` | Canonicalization fixtures |
-| `index.json` | Contract case number (1–134) → fixture IDs; pairs (with their comparison mode); history-resolution groups; contrasts |
+| `index.json` | Contract case number (1–136) → fixture IDs; pairs (with their comparison mode); history-resolution groups; contrasts |
 | `validate.py` | Structural validator and pair self-tests (`python3 validate.py --self-test`) |
 | `check-canonical.cjs` | Canonical bytes, digests and variant IDs, verified with the RFC 8785 library `canonicalize@5.1.0` (see “Canonicalization checks”) |
 
@@ -31,7 +31,7 @@ Each evaluation and preview fixture requests output `p.demo`. The query output i
 | Field | Meaning |
 |---|---|
 | `id`, `title`, `contractCases` | Identity and the contract §7.4 case numbers covered |
-| `kind` | `evaluation`, `stage` (partial-stage: S1–S3, S1–S4, or S1–S5 with S5 limited to `criterion` facts), `preview`, `compilation` or `canonicalization` |
+| `kind` | `evaluation`, `stage` (partial-stage: S1–S3, S1–S4, S1–S5 with S5 limited to `criterion`, `classification` and `possibleClasses` facts, or S1–S6 with S6 limited to gap relevance: `cell`, `gap`, `notCurrent`), `preview`, `compilation` or `canonicalization` |
 | `policy`, `evidenceModel` | `explicit-assertion-v0`, `demo-model@0.1` |
 | `comparison` | Which comparison rule set below applies |
 | `input` | Snapshot (`snapshot`, `supersedesSnapshot`, `context`, `records`, `retractions`, `coverage`, `failures`, `rejectedItems`), or `rawOccurrences` for canonicalization |
@@ -77,8 +77,8 @@ Each evaluation and preview fixture requests output `p.demo`. The query output i
 
 **`stage-v1`** (partial-stage)
 
-- Used where the downstream outcome is outside what the contract or the implementation currently specifies: group K (a revision that is `Inadmissible` while another rule is unresolved) group L (S4 selection, whose S5–S6 consequences are not implemented) group M (per-revision S5 criterion values), group N (per-revision classification) and group O (key-level possible classes, without materiality). The fixture states no `evidence`, `decision`, `causeAttribution` or `needs`, and is never evidence that a downstream result is right or wrong.
-- `expected` holds exactly `stages` and `traceAssertions`. With stages S1–S3, facts are restricted to `keyResult`, `variants`, `occurrences`, `rejected`, `outOfEnvelope`, `outsideEnvelope`, `diagnostic`, `candidacy`, `encounterScope`, `episodeScope`, `assertionKindScope` and `admissibility`. With stages S1–S4, `selection` and `disposition` are also allowed. With stages S1–S5, `criterion`, per-record `classification` and key-level `possibleClasses` are also allowed; `material` is not, so an S1–S5 stage fixture never states materiality or an evidence result. Facts compare as for `evaluation-v1`.
+- Used where the downstream outcome is outside what the contract or the implementation currently specifies: group K (a revision that is `Inadmissible` while another rule is unresolved) group L (S4 selection, whose S5–S6 consequences are not implemented) group M (per-revision S5 criterion values), group N (per-revision classification) and group O (key-level possible classes, without materiality) and group P (S6 gap relevance, without base result, materiality or cause attribution). The fixture states no `evidence`, `decision`, `causeAttribution` or `needs`, and is never evidence that a downstream result is right or wrong.
+- `expected` holds exactly `stages` and `traceAssertions`. With stages S1–S3, facts are restricted to `keyResult`, `variants`, `occurrences`, `rejected`, `outOfEnvelope`, `outsideEnvelope`, `diagnostic`, `candidacy`, `encounterScope`, `episodeScope`, `assertionKindScope` and `admissibility`. With stages S1–S4, `selection` and `disposition` are also allowed. With stages S1–S5, `criterion`, per-record `classification` and key-level `possibleClasses` are also allowed; `material` is not, so an S1–S5 stage fixture never states materiality or an evidence result. With stages S1–S6 (vocabulary extension, 2026-10-29), `cell`, `gap` and `notCurrent` are also allowed, and nothing else of S6: no `material`, `rule`, cause attribution or evidence result, so an S1–S6 stage fixture states gap relevance only. Facts compare as for `evaluation-v1`.
 - The query is referenced or inlined as for evaluation fixtures.
 
 **`compilation-v1`**
@@ -115,7 +115,7 @@ Each evaluation and preview fixture requests output `p.demo`. The query output i
 | `possibleClasses` | `ref` (key), `value` (distinct classes from `Supporting`, `Refuting`, `NonInformative`, `excluded`, in that order; empty for a key with no possibilities) | What the key’s possible current could contribute: step B of contract §4.2, per §3.7. Not materiality |
 | `material` | `ref` (key), `value` | Materiality |
 | `cell` | `source`, `value` ∈ `Complete`/`Incomplete`/`Unknown`/`Absent` | Combined coverage cell |
-| `gap` | `ref`, `relevant`, `provenBy?` | Gap relevance (contract §4.1) |
+| `gap` | `ref`, `relevant`, `provenBy?` | Gap relevance (contract §4.1). `provenBy` names one dimension that proves irrelevance (`recordType`, `subject` or `sources`). `ref` is a cell (`cell:s2`), a failure or rejected item ID, or a retraction identity (`s2:x60`) for an unattributable retraction |
 | `notCurrent` | `ref` | Statement or failure for another snapshot |
 | `diagnostic` | `code`, `ref`, `path?`, `cause?`, `reason?` | `ContradictoryAttestation`, `InsufficientlyScopedStatement`, `CrossKeyCorrection` (on the target), `UndeclaredField`, `HistoricalDefect` (an S1 defect no longer involving a possible current revision; contract §2.1 step 7) |
 | `rule` | `value` | Contract §4.2 rule applied |
@@ -183,10 +183,10 @@ Two helpers divide the work. Neither computes an expected evidence outcome.
 
 It checks that:
 
-- every file parses, IDs are unique and match file names, and the index maps every case 1–134 to existing fixtures;
+- every file parses, IDs are unique and match file names, and the index maps every case 1–136 to existing fixtures;
 - expected lists and attributions are in canonical order;
 - decisions are the projection of evidence, and Need causes equal result causes;
-- a `stage` fixture expects exactly stages S1–S3, S1–S4 or S1–S5 and only facts of those stages (for S5, `criterion`, `classification` and `possibleClasses` only), with no downstream expectation; a stage `criterion` fact names `establishes` or `refutes`, has value `True`, `False` or `Unknown`, and has nonempty `causes` exactly when `Unknown`; a stage `classification` fact has one of the four classes and nonempty `causes` exactly when `Unclassified`; a stage `possibleClasses` fact lists distinct classes in canonical order; `reasons`, `causes`, `unresolvedBy` and `blockers` are in canonical order; `selected` appears only with `Selected`, `unresolvedBy` only with `Unresolved`, and `blockers` only with `NotSelected`;
+- a `stage` fixture expects exactly stages S1–S3, S1–S4, S1–S5 or S1–S6 and only facts of those stages (for S5, `criterion`, `classification` and `possibleClasses` only; for S6, `cell`, `gap` and `notCurrent` only), with no downstream expectation; a stage `cell` fact has one of the four statuses; a stage `gap` fact has a boolean `relevant` and `provenBy` (`recordType`, `subject` or `sources`) exactly when irrelevant; a stage `criterion` fact names `establishes` or `refutes`, has value `True`, `False` or `Unknown`, and has nonempty `causes` exactly when `Unknown`; a stage `classification` fact has one of the four classes and nonempty `causes` exactly when `Unclassified`; a stage `possibleClasses` fact lists distinct classes in canonical order; `reasons`, `causes`, `unresolvedBy` and `blockers` are in canonical order; `selected` appears only with `Selected`, `unresolvedBy` only with `Unresolved`, and `blockers` only with `NotSelected`;
 - an inline evaluation query is a full query with its own contract digest, and every Need key and obligation key uses the fixture’s contract digest;
 - every `variants` assertion matches the digests of the input occurrences (number-free payloads; numeric ones are deferred);
 - each canonicalization fixture’s hand-written `canonicalBytes` are reproduced from its raw occurrences (number-free payloads; numeric ones are deferred), and its digest is the SHA-256 of those bytes;

@@ -2,7 +2,7 @@
 
 **Status:** Proposed design draft. **Not** accepted, not finalized syntax, not a schema and not implemented. It contains no clinical content: the record type, enum values, codes, sources and permission below are fictional and illustrate language behavior only. They do not map to dysphagia, progression, urgency or any other clinical definition.
 
-**Date:** 2026-10-03. **Revised:** 2026-10-03, nine times, 2026-10-04, once, 2026-10-05, three times, 2026-10-09, three times, 2026-10-28, three times, and 2026-10-29, seven times, after review. The third revision fixed three things:
+**Date:** 2026-10-03. **Revised:** 2026-10-03, nine times, 2026-10-04, once, 2026-10-05, three times, 2026-10-09, three times, 2026-10-28, three times, and 2026-10-29, eight times, after review. The third revision fixed three things:
 
 - revision-chain boundaries: source-scoped identity, same-source corrections and one fully specified schematic authority rule;
 - deterministic outcomes for malformed history;
@@ -13,6 +13,13 @@ The fourth revision made three changes:
 - Proven cross-boundary corrections and retractions are now rejected without changing their target. This keeps gap irrelevance consistent with S1.
 - Payload identity for duplicate detection is defined.
 - An unsupported justification about coverage attestations is removed.
+
+The twenty-seventh revision specifies the gap-relevance boundary of S6, the first I5 slice (4.1 "Gap relevance boundary", cases 135–136, decision 26):
+
+- Gap relevance reads one query-bound evaluation: the query scope and correction rule from the compiled query; the subject, the current snapshot's coverage, failure and rejected-item statements, and S1's own rejected items from the selection that produced the S4 result.
+- Each gap is `Relevant` or `Irrelevant` with its dimension checks; nothing here computes a base result, materiality, final causes, an evidence result or a Need.
+- Eight smaller points the contract left open are stated as proposed clarifications, not settled rules.
+- Group P adds two partial-stage fixtures for rejected items, an unattributable retraction, a malformed coverage statement and simultaneous failures. The `stage-v1` vocabulary is extended to stages S1–S6 with S6 facts `cell`, `gap` and `notCurrent` only.
 
 The twenty-sixth revision records the review of the twenty-fifth: rejecting a complete query in the preview entry point is a scope restriction (per-record preview would need no S6; only the final query result does), and `Evaluated` with two markers means the slots were processed, not that evidence established anything. I4 is confirmed complete as an experimental increment.
 
@@ -840,6 +847,39 @@ An unstated dimension proves nothing. Everything not proven irrelevant is releva
 
 **Why this is consistent with S1.** Dimensions are key-closed (1.5). A gap proven irrelevant by record type, subject or source therefore contains no occurrence of any key in the envelope. Its content cannot change any S1 result, candidate, admissibility or classification, so it **cannot change the result** (cases 53 and 47).
 
+**Gap relevance boundary** (implemented experimentally; cases 26, 35–49, 53, 55, 135, 136). An entry point separate from resolution decides relevance only.
+
+- **Input.** An authentic `CompiledPackage`, one `EvidenceQuery` ID, and an S4 result that query-bound selection (3.5) produced for exactly that package object and query, **with** the current snapshot: its ID and its coverage, failure and rejected-item statements in the 1.5 format. Selection records those statements, detached, privately against its S4 result, together with the subject and its own S1 result; gap relevance accepts no statement, subject or stage result of its own. A selection made without a snapshot is rejected: no information is never complete coverage. Each statement must be an object with a string `id`, and all three lists must be stated (an empty list is allowed); anything else is a configuration error.
+- **Scope.** Record type, declared sources and correction rule come from the compiled query; the subject from the evaluation. Source disjointness proves irrelevance only under a correction rule that accepts corrections and retractions from the record's own source alone, as `demo-policy/same-source-amend@1` does (1.1, 1.3); under any other rule it proves nothing.
+- **Cells.** One per declared source, combined as in 1.5. `Absent` is detected per declared source: no current statement establishes or affects that cell. A missing statement never establishes anything. `Incomplete`, `Unknown` and `Absent` cells are equally relevant gaps (`InsufficientEvidence`), with the original status and the statements behind it kept.
+- **Failures and rejected items.**
+
+| Dimension | Verdict | Proves irrelevance |
+|---|---|---|
+| Record type, subject: stated, equal | `Matches` | No |
+| Record type, subject: stated, different | `Differs` | **Yes** |
+| Sources: stated, sharing a declared source | `Overlaps` | No |
+| Sources: stated, disjoint, same-source correction rule | `Disjoint` | **Yes** |
+| Sources: stated, disjoint, another correction rule | `DisjointCorrectionPossible` | No |
+| Value set, episode, encounter: stated | `NeverProves` | No |
+| Any dimension omitted or `null` | `Unstated` | No |
+| Any dimension present but malformed | `Malformed` | No; adds `Invalid` |
+
+  One proving dimension suffices, and every proving dimension is reported. A gap that no dimension proves disjoint stays `Relevant`, with every check recorded. Irrelevant gaps stay in the result.
+- **S1's rejected items.** An unattributable retraction (2.1 step 6) is a rejected item with its S1 cause (`Missing` or `Invalid`); its known dimension is its source, so it is relevant. An occurrence S1 could not identify states no dimension (`Invalid`, relevant). S1 correction-history defects and proven boundary rejections are **not** gaps.
+- **Output.** Cells, gaps (cells, then failures, then rejected items; code point order of reference), the relevant and irrelevant reference sets, every received statement with currency and malformed members, the not-current references and the coverage diagnostics. Detached and deep-frozen. No base result, materiality, final cause set, `Evidence<Boolean>` or Need. A relevant gap is not itself `Missing` or `Conflicting`.
+
+**Proposed clarifications** (the contract did not settle these; each is the smallest choice that never makes a gap irrelevant without proof):
+
+1. **Structure versus content.** A statement that is not an object or has no string `id` is a configuration error (it has no identity to trace). Malformed content (status, outcome, attempt, reason, a dimension, `appliesTo`) is kept and judged.
+2. **Malformed failures and rejected items** stay gaps; a malformed member counts as unstated and adds `Invalid`, as a malformed coverage statement does.
+3. **Unreadable currency.** A statement whose `appliesTo.snapshot` is absent or malformed is treated as current and malformed, never dropped.
+4. **Duplicate statement IDs.** Identical statements (RFC 8785 bytes) merge, with an occurrence count; statements sharing an `id` with different content are all kept, as `id#digest`, as payload variants are. Input order never chooses.
+5. **Unrecognized members** are ignored and listed; ignoring one can never make a gap irrelevant.
+6. **Unidentified occurrences** state no dimension; their reference is positional (`unidentified:<kind>#<input index>`) because they have no identity. Their relevance does not depend on order.
+7. **Missing-target attestation** (2.1). A contradictory attestation is traced when a current, fully scoped `Complete` statement claims a cell whose source has a key with a `CorrectionTargetAbsent` or `RetractionTargetAbsent` defect, active or historical. The cell's status is unchanged.
+8. **Source disjointness and correction rules** as stated under Scope above.
+
 Occurrences that *are* envelope content but cross a boundary are handled separately by S1. A correction or retraction naming another key, or one targeting a revision of another subject or type, is rejected without changing its target (steps 3 and 6). An out-of-envelope revision of an enveloped key is ignored (step 2). A proven boundary attempt therefore never changes its valid target, whether it arrives through a relevant gap or is present from the start (pairs 64/20, 64/21, 1/22, 1/63, 53/54). Undeterminable identity, target or authority stays unresolved and goes through materiality (cases 18, 58, 65).
 
 ### 4.2 Resolution
@@ -1326,6 +1366,13 @@ In cases 114, 115b and 116–118 the record is the only candidate and its possib
 | 134 | Eligibility uncertainty, `unknown`, deduplication, all excluded, retracted | s1/r134a concept `other-cs#z`; s1/r134b concept `other-cs#z`, encounter N0; s1/r134c@2 `Denied`, supersedes absent @1, `+amend`; s1/r134d@1 and @2 (supersedes @1, `perm omitted`), both `Affirmed`; s1/r134e@1 encounter N0 and @2 concept `demo-cs#item-y` (supersedes @1, `perm omitted`); s1/r134f@1 with a retraction of @1, `+amend` | r134a `Unresolved` [`CandidacyUnresolved`], {Supporting, excluded}; r134b `Unresolved` [`CandidacyUnresolved`], {excluded}; r134c `Unresolved` [`HistoryUnresolved`] with `unknown`, {Supporting, Refuting, NonInformative, excluded}; r134d `Unresolved` [`HistoryUnresolved`], {Supporting}, still unresolved; r134e `Unresolved` [`HistoryUnresolved`], {excluded}; r134f `Retracted`, {} |
 
 
+**P. S6 gap relevance (4.1)** (D0 unless stated; the shared query). **Partial-stage**: stages S1–S6 with S6 facts `cell`, `gap` and `notCurrent` only (and coverage diagnostics); no base result, `rule`, materiality, cause attribution or evidence result. Cases 26, 35–49, 53 and 55 already state cells, failure relevance, not-current statements and coverage diagnostics.
+
+| # | Case | Records / snapshot | Gap relevance |
+|---|---|---|---|
+| 135 | Stated rejected items and an unattributable retraction | s1/r135a `Affirmed`; `cov-all`; retraction s2:x135 of key s2/r135b whose target lacks `revision`; rejected items x1 (DemoAssessment, P2, {s1}), x2 (no dimension), x3 (DemoAssessment@0.2, P1), x4 (DemoAssessment, P1, {s3}), x5 (DemoAssessment, P1, {s1}) | Cells s1, s2 Complete. s2:x135 relevant (`Missing`, S1); x1 irrelevant by subject; x2 relevant (nothing stated); x3 irrelevant by record type; x4 irrelevant by sources; x5 relevant |
+| 136 | Malformed coverage statement, simultaneous failures | s1/r136a `Affirmed`; `cov-all` and covB {s2} with status `Partial`; failures f1 (DemoAssessment, P1, {s1}), f2 (DemoAssessment, P2, {s2}), f3 (DemoAssessment, P1, {s1}, value set `item-y`, episode E9, encounter N9), f4 for snap-0 | Cell s1 Complete; cell s2 Unknown (malformed statement), contradictory attestation for cell s2; f1 relevant; f2 irrelevant by subject; f3 relevant (value set, episode and encounter never prove); f4 not current |
+
 ### 7.5 Invariance checks
 
 These must hold for every case:
@@ -1442,6 +1489,12 @@ These must hold for every case:
     - `Evaluated` with two markers (both criteria holed) means the slots were processed, not that evidence established anything.
     - Confirmed on review (2026-10-29), with I4 complete as an experimental increment.
     - EA-050’s hole gains the required `explains` (P6); expected outcomes unchanged.
+26. S6 gap relevance, the first I5 slice (4.1 "Gap relevance boundary", cases 135–136):
+    - Snapshot statements enter with query-bound selection and are recorded privately against its S4 result, with the subject and that run's S1 result; gap relevance takes only the package, query and that S4 result.
+    - Cells per declared source (`Absent` when nothing establishes or affects a cell); every non-`Complete` cell is a relevant gap.
+    - Failures and rejected items: irrelevant only by a stated, well-formed, different record type or subject, or by stated sources disjoint from the declared set under a same-source correction rule; value set, episode, encounter and unstated dimensions never prove.
+    - S1's unattributable retractions and unidentified occurrences are rejected items of the same evaluation; S1 history defects and boundary rejections are not gaps.
+    - Eight proposed clarifications (4.1) await review. Base results, materiality of unresolved records, cause attribution and the final evidence result remain unimplemented.
 
 **Possible conflicts needing a Stage A amendment.** None found. Items to confirm:
 
@@ -1451,7 +1504,7 @@ These must hold for every case:
 
 **Query/predicate split.** The query carries the reasoning. A projection-only Predicate is optional naming and composition structure. No node kind is added or removed.
 
-**Conformance fixtures.** [conformance/explicit-assertion-v0/](conformance/explicit-assertion-v0/README.md) holds machine-readable fixtures for cases 1–134, mapped by case number, with expected outputs written from this contract. They are proposed, like this document.
+**Conformance fixtures.** [conformance/explicit-assertion-v0/](conformance/explicit-assertion-v0/README.md) holds machine-readable fixtures for cases 1–136, mapped by case number, with expected outputs written from this contract. They are proposed, like this document.
 
 **Remaining items.**
 

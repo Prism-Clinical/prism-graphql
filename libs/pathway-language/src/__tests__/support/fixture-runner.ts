@@ -7,7 +7,8 @@
  * `classification` facts of complete queries), key-level possible classes (§3.7: `possibleClasses`)
  * and query-bound preview evaluation (§3.5 "Preview evaluation", §6.1): the `criterion` facts of
  * preview fixtures, their `stagesRun` facts, and their markers, publication, outcome, and the absence
- * of an evidence result and of Needs.
+ * of an evidence result and of Needs; and S6 gap relevance (§1.5, §4.1): `cell`, `gap`, `notCurrent`
+ * and the coverage diagnostics, plus two one-way implications from evidence expectations.
  *
  * A fixture is never reported as passing as a whole: only its S1–S4 and S5 (criterion, classification, possibleClasses) assertions are
  * checked, plus one-way implications from downstream expectations. `stage` fixtures (stage-v1)
@@ -26,6 +27,8 @@ import {
   experimentalCompile,
   experimentalCompilePreview,
   experimentalEvaluatePreviewQuery,
+  experimentalGapRelevance,
+  type GapRelevanceResult,
   type PreviewQueryResult,
   type PreviewRecord,
   experimentalClassifyRecord,
@@ -113,6 +116,17 @@ export interface FixtureReport {
    */
   previewApplicable: number;
   previewPassed: number;
+  /** S6 coverage facts (§1.5): `cell`, `notCurrent`, and `ContradictoryAttestation` / `InsufficientlyScopedStatement` diagnostics. */
+  coverageApplicable: number;
+  coveragePassed: number;
+  /** S6 `gap` facts (§4.1): relevance and, when stated, the proving dimension. */
+  gapApplicable: number;
+  gapPassed: number;
+  /**
+   * One-way: every `coverage` / `gap` cause attribution must be a relevant gap with that cause and
+   * reason, and a `Known` result must have no relevant gap (§4.2). Not base results or attribution.
+   */
+  gapOneWay: number;
   /** Combined S3 `admissibility` facts (contract §2.7), checked directly. */
   admissibilityApplicable: number;
   admissibilityPassed: number;
@@ -305,6 +319,11 @@ export function runFixtures(dir: string = FIXTURE_DIR): { reports: FixtureReport
       previewCriterionPassed: 0,
       previewApplicable: 0,
       previewPassed: 0,
+      coverageApplicable: 0,
+      coveragePassed: 0,
+      gapApplicable: 0,
+      gapPassed: 0,
+      gapOneWay: 0,
       admissibilityApplicable: 0,
       admissibilityPassed: 0,
       outOfScope: 0,
@@ -408,8 +427,11 @@ export function runFixtures(dir: string = FIXTURE_DIR): { reports: FixtureReport
           retractions: fx.input.retractions as JsonValue[],
           contextEncounter: fx.input.context.encounter as EncounterBinding,
           contextEpisode: fx.input.context.episode as EpisodeBinding,
+          // The fixture's own snapshot statements, as received (contract §1.5).
+          snapshot: { id: fx.input.snapshot, coverage: fx.input.coverage, failures: fx.input.failures, rejectedItems: fx.input.rejectedItems },
         });
     if (bound && !isDeepStrictEqual(bound, s4)) report.failures.push('query-bound selection differs from the standalone S1–S4 stages');
+    const gaps: GapRelevanceResult | null = bound && typeof compiledQuery !== 'string' ? experimentalGapRelevance({ package: compiledQuery, query: query.query.id, s4: bound }) : null;
     const boundKeys = new Map((bound?.keys ?? []).map((k) => [`${k.key.source}/${k.key.localId}`, k] as const));
     const boundNodes = new Map<string, Extract<PossibleSelection, { kind: 'node' }>>();
     for (const k of bound?.keys ?? []) for (const p of k.possibilities) if (p.kind === 'node') boundNodes.set(showRev(p.node.revision) + (p.node.digest ? `#${p.node.digest}` : ''), p);
@@ -429,6 +451,30 @@ export function runFixtures(dir: string = FIXTURE_DIR): { reports: FixtureReport
     for (const k of adm?.keys ?? []) for (const p of k.possibilities) if (p.kind === 'node') admNodes.set(showRev(p.node.revision) + (p.node.digest ? `#${p.node.digest}` : ''), p);
     const exp = fx.expected as Json;
     for (const t of (exp.traceAssertions ?? []) as Json[]) {
+      const coverageDiagnostic = t.fact === 'diagnostic' && (t.code === 'ContradictoryAttestation' || t.code === 'InsufficientlyScopedStatement');
+      if (t.fact === 'cell' || t.fact === 'notCurrent' || coverageDiagnostic) {
+        report.coverageApplicable += 1;
+        const f = checkCoverageFact(t, gaps);
+        if (f) report.failures.push(f);
+        else report.coveragePassed += 1;
+        continue;
+      }
+      if (t.fact === 'gap') {
+        report.gapApplicable += 1;
+        const g = gaps?.gaps.find((x) => x.ref === t.ref);
+        const f = !gaps
+          ? `gap ${t.ref}: no gap relevance (the query does not compile)`
+          : !g
+            ? `gap ${t.ref}: not a gap (${gaps.gaps.map((x) => x.ref).join(', ')})`
+            : g.relevant !== t.relevant
+              ? `gap ${t.ref}: relevant ${g.relevant}, expected ${t.relevant}`
+              : 'provenBy' in t && (g.kind === 'CoverageCell' || !g.provenBy.includes(t.provenBy))
+                ? `gap ${t.ref}: proven by ${g.kind === 'CoverageCell' ? '-' : g.provenBy.join(', ')}, expected ${t.provenBy}`
+                : null;
+        if (f) report.failures.push(f);
+        else report.gapPassed += 1;
+        continue;
+      }
       if (t.fact === 'selection' || t.fact === 'disposition') {
         report.selectionApplicable += 1;
         const f = s4 ? checkSelectionFact(t, s4Keys, s4Nodes) : `${t.fact} ${t.ref}: no S4 result (the query does not author the three rules)`;
@@ -601,6 +647,18 @@ export function runFixtures(dir: string = FIXTURE_DIR): { reports: FixtureReport
         if (!hit) report.failures.push(`causeAttribution ${a.cause}/${a.reason} @${ref}: not an episode-check finding`);
       }
     }
+    // One-way (§4.1, §4.2 step C): a coverage or gap attribution is a relevant gap with that cause and reason.
+    for (const a of (exp.causeAttribution ?? []) as Json[]) {
+      if (a.stage !== 'coverage' && a.stage !== 'gap') continue;
+      report.gapOneWay += 1;
+      const g = gaps?.gaps.find((x) => x.ref === a.origin);
+      if (!g?.relevant || !g.findings.some((x) => x.cause === a.cause && x.reason === a.reason)) report.failures.push(`causeAttribution ${a.cause}/${a.reason} @${a.origin}: not a relevant gap with that finding`);
+    }
+    // One-way (§4.2): a Known result requires every cell Complete and no relevant failure or rejected item.
+    if (exp.evidence?.status === 'Known' && gaps) {
+      report.gapOneWay += 1;
+      if (gaps.relevant.length > 0) report.failures.push(`Known result with relevant gap(s) ${gaps.relevant.join(', ')}`);
+    }
     // One-way (contract §4.2 rules 2-3): a Known result is supported only by selected revisions.
     if (exp.evidence?.status === 'Known' && s4) {
       const selected = new Set(s4.selected.map((x) => showRev(x.node.revision) + (x.node.digest ? `#${x.node.digest}` : '')));
@@ -636,7 +694,10 @@ export function runFixtures(dir: string = FIXTURE_DIR): { reports: FixtureReport
       report.classificationApplicable +
       report.possibleClassesApplicable +
       report.previewCriterionApplicable +
-      report.previewApplicable;
+      report.previewApplicable +
+      report.coverageApplicable +
+      report.gapApplicable +
+      report.gapOneWay;
     if (checked === 0) missing.push(fx.id);
   }
   return { reports, noApplicableAssertions: missing };
@@ -736,6 +797,18 @@ function checkPreviewExpectations(exp: Json, pv: PreviewRun | string, report: Fi
     check('stagesRun', !!result && isDeepStrictEqual(result.stagesRun, t.value), result?.stagesRun);
   }
   return fields;
+}
+
+/** A `cell`, `notCurrent` or coverage `diagnostic` fact against the gap-relevance result. */
+function checkCoverageFact(t: Json, r: GapRelevanceResult | null): string | null {
+  const head = t.fact === 'diagnostic' ? `diagnostic ${t.code} ${t.ref}` : `${t.fact} ${t.source ?? t.ref}`;
+  if (!r) return `${head}: no gap relevance (the query does not compile)`;
+  if (t.fact === 'cell') {
+    const c = r.cells.find((x) => x.source === t.source);
+    return c?.status === t.value ? null : `${head}: ${c?.status ?? 'no cell'}, expected ${t.value}`;
+  }
+  if (t.fact === 'notCurrent') return r.notCurrent.includes(t.ref) ? null : `${head}: current`;
+  return r.diagnostics.some((d) => d.code === t.code && d.ref === t.ref) ? null : `${head}: not reported (${JSON.stringify(r.diagnostics)})`;
 }
 
 /** A preview `criterion` fact: `Marker` for a hole, otherwise the complete sibling's value (and causes). */
