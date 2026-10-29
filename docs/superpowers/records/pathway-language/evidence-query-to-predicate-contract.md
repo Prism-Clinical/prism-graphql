@@ -2,7 +2,7 @@
 
 **Status:** Proposed design draft. **Not** accepted, not finalized syntax, not a schema and not implemented. It contains no clinical content: the record type, enum values, codes, sources and permission below are fictional and illustrate language behavior only. They do not map to dysphagia, progression, urgency or any other clinical definition.
 
-**Date:** 2026-10-03. **Revised:** 2026-10-03, nine times, 2026-10-04, once, 2026-10-05, three times, 2026-10-09, three times, and 2026-10-28, three times, after review. The third revision fixed three things:
+**Date:** 2026-10-03. **Revised:** 2026-10-03, nine times, 2026-10-04, once, 2026-10-05, three times, 2026-10-09, three times, 2026-10-28, three times, and 2026-10-29, once, after review. The third revision fixed three things:
 
 - revision-chain boundaries: source-scoped identity, same-source corrections and one fully specified schematic authority rule;
 - deterministic outcomes for malformed history;
@@ -14,11 +14,16 @@ The fourth revision made three changes:
 - Payload identity for duplicate detection is defined.
 - An unsupported justification about coverage attestations is removed.
 
+The twentieth revision closes the query-to-evidence gap left open by the nineteenth (3.5). A selection made under one query’s admissibility rules was accepted for another query with the same value-set pin: a `ClinicianDocumented` record selected where that kind is allowed gave `establishes = True` for a query that allows no kind.
+
+- Query-bound selection derives every authored setting (record type, sources, authority rule, value-set expansion, admissibility rules) from one compiled query, and takes only runtime inputs. It constructs S1 itself, because an S1 result retains no envelope or authority provenance to verify.
+- Its S4 result is privately bound to the exact package object and query ID. S5 evaluates only bound results for the identical package and query; anything else is a configuration error.
+
 The nineteenth revision specifies per-record S5 criterion evaluation (3.5, cases 130–132): `establishes` and `refutes` over one possibility’s exact payload, with no classification.
 
 - Selected possibilities and those blocked only by history, candidacy or admissibility uncertainty are evaluated; inadmissible, out-of-domain, `excluded` and `unknown` possibilities are `NotEvaluated`, which is not a criterion value.
 - Criterion traces are defined per sub-expression.
-- The association between an S4 result and the query whose criteria are evaluated is **not** verified by current structures. It is stated as a precondition, and the smallest binding that would enforce it is proposed (3.5).
+- The association between an S4 result and the query whose criteria are evaluated was **not** verified, and a binding was proposed (3.5). The twentieth revision implements it.
 
 The eighteenth revision follows review of the S4 implementation.
 
@@ -667,7 +672,7 @@ This section fixes the boundary for evaluating a query’s two criteria over **o
 
 - a `CompiledPackage` produced by the compiler in the same process (a copy, a fabrication or a `PreviewPackage` is rejected; authentication reuses the compiler’s private registry);
 - the ID of an `EvidenceQuery` declaration in it (in a `CompiledPackage` its contract is always complete);
-- an S4 result produced in the same process;
+- an S4 result produced in the same process by query-bound selection for exactly that package object and query ID (see “Query-to-evidence association” below);
 - one possibility object of that S4 result, by identity (a copy, or an identical possibility of another result, is rejected).
 
 Every rejection is an input error, never a criterion value or patient uncertainty.
@@ -706,9 +711,14 @@ No value is normalized or defaulted.
 
 The result also names the package, the query, the key, the possibility’s revision (and digest) and its unchanged S4 disposition.
 
-**Query-to-evidence association: a gap.** The evaluator must evaluate a query’s criteria only over that query’s own evaluation. Current structures cannot verify this. S3 takes its value-set pin, expansion and admissibility rules from its caller, not from a compiled query, so nothing ties an S4 result to a query declaration. Matching record identifiers prove nothing (2.8), and neither does the value-set pin: the evaluator rejects a pin that differs from the query’s, but a match is not evidence of association. Until the gap is closed, this association is a **precondition** stated by the caller, not a verified property.
+**Query-to-evidence association.** A query’s criteria are evaluated only over that query’s own evaluation, and this is enforced, not assumed. Matching record identifiers prove nothing (2.8), and neither do a matching package ID or value-set pin: two queries with the same pin can differ in their admissibility rules.
 
-The smallest binding that would close it: S3 takes the package and query ID (with the context) instead of loose configuration, and derives the pin, expansion and rules from the compiled contract. It records the (package, query) pair against its result in the same private, in-process way as the evidence handoff. S4 carries the pair, and S5 requires the identical package and query. This is not implemented.
+- **Origin.** Query-bound selection takes an authentic `CompiledPackage`, the ID of one of its `EvidenceQuery` declarations, and runtime inputs only: the patient subject, the raw revisions and retractions, and the evaluation encounter and episode. Everything authored comes from the compiled contract: record type and sources (the S1 envelope), the correction authority rule, the value-set pin and its compiled expansion, and the three admissibility rules. A caller-supplied value set, expansion, rule, envelope, authority rule or earlier-stage result is a configuration error, never an override.
+- **Upstream S1 boundary.** An S1 result does not retain the envelope or authority rule it was resolved under, and S1 keeps no registry of its results, so an existing S1 result cannot be verified against a query. Query-bound selection therefore **constructs** S1 from the query’s configuration; it never accepts an S1 result. Records from undeclared sources or about another subject stay outside the envelope, as in 2.1.
+- **Survival.** The produced S4 result is recorded, privately and in process, against the exact package object and query ID, in the same way as the evidence handoff. The record belongs to that result object: a copy, a fabrication, or an S4 result produced through the standalone stage entry points has none.
+- **Enforcement.** S5 requires the identical package object (a recompilation of the same source is a different package) and the identical query ID. A missing or different association is a configuration error, never `False`, `Unknown` or patient uncertainty.
+
+The standalone S1–S4 entry points remain for isolated stage testing. Their results are never evaluated by S5.
 
 **Preview.** A nested criterion hole (case 52, 6.1) is outside this boundary. The I1 compiler rejects a hole in criterion position even in preview, and S5 rejects preview packages, so a hole never becomes `Missing` or `False`.
 
@@ -1302,10 +1312,10 @@ These must hold for every case:
     - Unresolved candidacy beside inadmissibility is unresolved by candidacy, with both facts kept; its mismatch prevents `Supporting`/`Refuting` evidence; its S6 base-cause contribution is deferred.
     - Evidence handoff: each checked possibility’s exact payload is bound in S3 from S1’s retained variant and carried, by binding, to S4’s result for S5.
 21. Per-record S5 criterion evaluation (3.5):
-    - Input: an authenticated compiled package, a query ID, an authentic S4 result and one of its own possibilities; the payload only through the handoff.
+    - Input: an authenticated compiled package, a query ID, an S4 result produced by query-bound selection for exactly that package and query, and one of its own possibilities; the payload only through the handoff.
     - Selected possibilities and those blocked only by uncertainty are evaluated; inadmissible, out-of-domain and marker possibilities are `NotEvaluated`, which is not a value.
     - Absent is `Unknown{Missing}`, any other non-code value `Unknown{Invalid}`; codes compare exactly; the criteria are independent; traces have one step per sub-expression.
-    - The query-to-evidence association is a stated precondition, not verified; the smallest binding is proposed in 3.5.
+    - The query-to-evidence association is enforced: query-bound selection takes only runtime inputs, constructs S1 from the query’s configuration, and binds its S4 result to the exact package object and query ID; S5 rejects any other result as a configuration error.
 
 **Possible conflicts needing a Stage A amendment.** None found. Items to confirm:
 

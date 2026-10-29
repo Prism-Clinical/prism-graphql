@@ -15,6 +15,8 @@ import {
   experimentalEvaluateCriteria,
   experimentalResolveRevisionHistory,
   experimentalSelect,
+  experimentalSelectForQuery,
+  QuerySelectionConfigurationError,
   type CompiledPackage,
   type CriteriaResult,
   type JsonValue,
@@ -95,7 +97,9 @@ const s1Of = (revisions: JsonValue[], retractions: JsonValue[] = []): S1Result =
   experimentalResolveRevisionHistory({ envelope: ENV, authorityRule: DEMO_AUTHORITY_RULE, revisions, retractions });
 const s3Of = (s1: S1Result) =>
   experimentalCheckAdmissibility({ s1, valueSet: PIN, expansion: VS, admissible: ADM, contextEncounter: { known: 'N1' }, contextEpisode: { known: 'E1' } });
-const sel = (revisions: JsonValue[], retractions: JsonValue[] = []): SelectionResult => experimentalSelect({ s3: s3Of(s1Of(revisions, retractions)) });
+/** Query-bound selection (contract §3.5): every authored setting comes from `pkg`'s query. */
+const sel = (revisions: JsonValue[], retractions: JsonValue[] = [], pkg: CompiledPackage = PKG, query = 'q'): SelectionResult =>
+  experimentalSelectForQuery({ package: pkg, query, subject: 'P1', revisions, retractions, contextEncounter: { known: 'N1' }, contextEpisode: { known: 'E1' } });
 function key(r: SelectionResult, k: string): KeySelection {
   const found = r.keys.find((x) => `${x.key.source}/${x.key.localId}` === k);
   if (!found) throw new Error(`key ${k} missing`);
@@ -187,13 +191,13 @@ describe('S5 criteria: contract §3.4 values', () => {
 
   it('each criterion reads its own compiled literal: swapped criteria swap the values', () => {
     const swapped = compiled(program(eq('assertion', 'AssertionValue.Denied'), eq('assertion', 'AssertionValue.Affirmed')));
-    const s4 = sel([rev('s1', 'r1', '1', { assertion: 'Affirmed' })]);
+    const s4 = sel([rev('s1', 'r1', '1', { assertion: 'Affirmed' })], [], swapped);
     expect(values(run(s4, first(s4, 's1/r1'), swapped))).toEqual(['False', 'True']);
   });
 
   it('establishes and refutes are independent: an Indeterminate criterion is True only for Indeterminate', () => {
     const pkg = compiled(program(eq('assertion', 'AssertionValue.Indeterminate'), eq('assertion', 'AssertionValue.Denied')));
-    const s4 = sel([rev('s1', 'r1', '1', { assertion: 'Indeterminate' }), rev('s1', 'r2', '1', { assertion: 'Affirmed' })]);
+    const s4 = sel([rev('s1', 'r1', '1', { assertion: 'Indeterminate' }), rev('s1', 'r2', '1', { assertion: 'Affirmed' })], [], pkg);
     expect(values(run(s4, first(s4, 's1/r1'), pkg))).toEqual(['True', 'False']);
     expect(values(run(s4, first(s4, 's1/r2'), pkg))).toEqual(['False', 'False']);
   });
@@ -232,10 +236,8 @@ describe('S5 criteria: exact evidence of the possibility', () => {
   });
 
   it('two snapshots with identical record IDs, interleaved: each result evaluates its own assertion', () => {
-    const s3A = s3Of(s1Of([rev('s1', 'r1', '1', { assertion: 'Affirmed' })]));
-    const s3D = s3Of(s1Of([rev('s1', 'r1', '1', { assertion: 'Denied' })]));
-    const s4A = experimentalSelect({ s3: s3A });
-    const s4D = experimentalSelect({ s3: s3D });
+    const s4A = sel([rev('s1', 'r1', '1', { assertion: 'Affirmed' })]);
+    const s4D = sel([rev('s1', 'r1', '1', { assertion: 'Denied' })]);
     expect(s4D).toEqual(s4A); // selection alone cannot tell them apart
     expect(values(run(s4A, first(s4A, 's1/r1')))).toEqual(['True', 'False']);
     expect(values(run(s4D, first(s4D, 's1/r1')))).toEqual(['False', 'True']);
@@ -328,11 +330,9 @@ describe('S5 criteria: input boundary', () => {
     reject(null, /input must be an object/);
   });
 
-  it('s4 must be an authentic S4 result with the query’s value-set pin (a match is not proof of association)', () => {
-    reject({ package: PKG, query: 'q', s4: JSON.parse(JSON.stringify(s4)), possibility: p }, /experimentalSelect/);
-    reject({ package: PKG, query: 'q', s4: { ...s4 }, possibility: p }, /experimentalSelect/);
-    const other = compiled(program(undefined, undefined, 'demo-vs/item-x@2'));
-    reject({ package: other, query: 'q', s4, possibility: p }, /pins demo-vs\/item-x@1, the query demo-vs\/item-x@2/);
+  it('s4 must be an authentic S4 result (copies are rejected)', () => {
+    reject({ package: PKG, query: 'q', s4: JSON.parse(JSON.stringify(s4)), possibility: p }, /experimentalSelectForQuery/);
+    reject({ package: PKG, query: 'q', s4: { ...s4 }, possibility: p }, /experimentalSelectForQuery/);
   });
 
   it('the possibility must be this result’s own object: copies and identical foreign ones are rejected', () => {
@@ -341,6 +341,142 @@ describe('S5 criteria: input boundary', () => {
     expect(() => run(s4, first(twin, 's1/r1'))).toThrow(/not a possibility of this S4 result/);
     expect(() => run(s4, { ...p } as PossibleSelection)).toThrow(CriteriaConfigurationError);
     expect(() => run(s4, { kind: 'excluded' })).toThrow(CriteriaConfigurationError);
+  });
+});
+
+describe('S5 criteria: query-to-evidence binding (contract §3.5)', () => {
+  /** The same program, but the query allows no assertion kind (an explicit empty set allows none, §2.6). */
+  const strictProgram = () => {
+    const p = program();
+    p.nodes[0].contract.admissible.assertionKind = { in: [] };
+    return p;
+  };
+  const STRICT = compiled(strictProgram());
+  /** One package with two queries: `q` (ClinicianDocumented allowed) and `q0` (none allowed). */
+  const TWO = (() => {
+    const p = program();
+    const q0 = strictProgram().nodes[0];
+    p.nodes.push({ ...q0, id: 'q0' }, { id: 'pv0', kind: 'Predicate', expr: { evidenceValue: { ref: 'q0' } } });
+    return compiled(p);
+  })();
+  const RECS = [rev('s1', 'r1', '1', { assertion: 'Affirmed', assertionKind: 'ClinicianDocumented' })];
+  const notEvaluated = { outcome: 'NotEvaluated', reason: 'Inadmissible' };
+
+  it('the reported counterexample: a selection under permissive rules is rejected for a same-pin query that allows no kind', () => {
+    const s4 = sel(RECS);
+    // Everything the old check compared agrees: package ID and value-set pin.
+    expect(STRICT.packageId).toBe(PKG.packageId);
+    expect(s4.valueSet).toBe('demo-vs/item-x@1');
+    expect(() => run(s4, first(s4, 's1/r1'), STRICT)).toThrow(CriteriaConfigurationError);
+    expect(() => run(s4, first(s4, 's1/r1'), STRICT)).toThrow(/another compiled package/);
+  });
+
+  it('a bound query evaluates its own selected evidence', () => {
+    const s4 = sel(RECS);
+    const r = run(s4, first(s4, 's1/r1'));
+    expect(r).toMatchObject({ outcome: 'Evaluated', disposition: { disposition: 'Selected' } });
+    expect(values(r)).toEqual(['True', 'False']);
+  });
+
+  it('the second query, run through its own rules, excludes the record (AssertionKindNotAllowed → Inadmissible)', () => {
+    const s4 = sel(RECS, [], STRICT);
+    expect(key(s4, 's1/r1').status).toBe('Inadmissible');
+    expect(first(s4, 's1/r1')).toMatchObject({
+      admissibility: { outcome: 'Inadmissible', reasons: ['AssertionKindNotAllowed'] },
+      selection: { disposition: 'NotSelected', blockers: ['Inadmissible'] },
+    });
+    expect(run(s4, first(s4, 's1/r1'), STRICT)).toMatchObject(notEvaluated);
+  });
+
+  it('packages with identical package IDs, even identical recompilations, cannot exchange results', () => {
+    const twin = compiled(program());
+    expect(twin).toEqual(PKG);
+    const s4 = sel(RECS);
+    expect(() => run(s4, first(s4, 's1/r1'), twin)).toThrow(/another compiled package/);
+    const s4Twin = sel(RECS, [], twin);
+    expect(() => run(s4Twin, first(s4Twin, 's1/r1'))).toThrow(/another compiled package/);
+    expect(values(run(s4Twin, first(s4Twin, 's1/r1'), twin))).toEqual(['True', 'False']);
+  });
+
+  it('different queries of one package cannot exchange results', () => {
+    const s4q = sel(RECS, [], TWO, 'q');
+    const s4q0 = sel(RECS, [], TWO, 'q0');
+    const evalAs = (s4: SelectionResult, query: string) => experimentalEvaluateCriteria({ package: TWO, query, s4, possibility: first(s4, 's1/r1') });
+    expect(() => evalAs(s4q, 'q0')).toThrow(/selected for query "q", not "q0"/);
+    expect(() => evalAs(s4q0, 'q')).toThrow(/selected for query "q0", not "q"/);
+    expect(values(evalAs(s4q, 'q'))).toEqual(['True', 'False']);
+    expect(evalAs(s4q0, 'q0')).toMatchObject(notEvaluated);
+  });
+
+  it('caller-supplied rules, expansions, envelopes, authority or stage results are rejected', () => {
+    const base = { package: PKG, query: 'q', subject: 'P1', revisions: RECS, retractions: [], contextEncounter: { known: 'N1' }, contextEpisode: { known: 'E1' } };
+    const overrides: Record<string, unknown> = {
+      valueSet: PIN,
+      expansion: VS,
+      admissible: { ...ADM, assertionKind: { in: [] } },
+      rule: SAME_ENCOUNTER_RULE,
+      envelope: ENV,
+      sources: ['s1', 's9'],
+      recordType: ENV.recordType,
+      authorityRule: DEMO_AUTHORITY_RULE,
+      s1: s1Of(RECS),
+      s3: s3Of(s1Of(RECS)),
+    };
+    for (const [field, value] of Object.entries(overrides)) {
+      expect(() => experimentalSelectForQuery({ ...base, [field]: value } as never)).toThrow(QuerySelectionConfigurationError);
+      expect(() => experimentalSelectForQuery({ ...base, [field]: value } as never)).toThrow(new RegExp(`unexpected input field\\(s\\) ${field};`));
+    }
+  });
+
+  it('S1 is built from the query: records outside its sources or for another subject acquire no binding', () => {
+    // Source s9 is not among the query's sources; P2 is not the subject: S1 leaves both outside the envelope.
+    const s4 = sel([rev('s9', 'r1', '1'), rev('s1', 'r2', '1', { subject: 'P2' })]);
+    expect(s4.keys).toEqual([]);
+    // An S1 result resolved under another envelope cannot be supplied at all (previous test), and
+    // the authentic S4 built from it through the standalone stages is unbound:
+    const foreign = experimentalResolveRevisionHistory({ envelope: { ...ENV, sources: ['s9'] }, authorityRule: DEMO_AUTHORITY_RULE, revisions: [rev('s9', 'r1', '1')], retractions: [] });
+    const unbound = experimentalSelect({ s3: s3Of(foreign) });
+    expect(key(unbound, 's9/r1').status).toBe('Selected');
+    expect(() => run(unbound, first(unbound, 's9/r1'))).toThrow(/not bound to a query/);
+  });
+
+  it('interleaved evaluations keep both their query ownership and their exact snapshot payloads', () => {
+    const swapped = compiled(program(eq('assertion', 'AssertionValue.Denied'), eq('assertion', 'AssertionValue.Affirmed')));
+    const s4A = sel([rev('s1', 'r1', '1', { assertion: 'Affirmed' })]);
+    const s4D = sel([rev('s1', 'r1', '1', { assertion: 'Denied' })], [], swapped);
+    expect(s4D).toEqual(s4A); // identical IDs and selection outcomes
+    const pA = first(s4A, 's1/r1');
+    const pD = first(s4D, 's1/r1');
+    expect(values(run(s4A, pA))).toEqual(['True', 'False']); // Affirmed under establishes=Affirmed
+    expect(values(run(s4D, pD, swapped))).toEqual(['True', 'False']); // Denied under establishes=Denied
+    expect(() => run(s4A, pA, swapped)).toThrow(/another compiled package/);
+    expect(() => run(s4D, pD)).toThrow(/another compiled package/);
+    expect(values(run(s4A, pA))).toEqual(['True', 'False']);
+    const d = run(s4D, pD, swapped);
+    if (d.outcome !== 'Evaluated') throw new Error('not evaluated');
+    expect(d.establishes.trace[0]).toMatchObject({ read: { status: 'Present', value: 'Denied' } });
+  });
+
+  it('copies, fabrications and unbound standalone results are rejected', () => {
+    const s4 = sel(RECS);
+    const p = first(s4, 's1/r1');
+    const standalone = experimentalSelect({ s3: s3Of(s1Of(RECS)) });
+    expect(standalone).toEqual(s4);
+    expect(() => run(standalone, first(standalone, 's1/r1'))).toThrow(/not bound to a query/);
+    expect(() => run(JSON.parse(JSON.stringify(s4)), p)).toThrow(/experimentalSelectForQuery/);
+    expect(() => run({ ...s4 }, p)).toThrow(/experimentalSelectForQuery/);
+    expect(() => run(s4, { ...p } as PossibleSelection)).toThrow(/not a possibility of this S4 result/);
+  });
+
+  it('the bound entry point accepts only an authentic package and an EvidenceQuery ID', () => {
+    const preview = experimentalCompilePreview(program() as JsonValue);
+    if (preview.outcome !== 'PreviewPackage') throw new Error('preview');
+    const call = (pkg: unknown, query: string) => () =>
+      experimentalSelectForQuery({ package: pkg as CompiledPackage, query, subject: 'P1', revisions: RECS, retractions: [], contextEncounter: { known: 'N1' }, contextEpisode: { known: 'E1' } });
+    expect(call(preview.package, 'q')).toThrow(/preview packages/);
+    expect(call(JSON.parse(JSON.stringify(PKG)), 'q')).toThrow(/CompiledPackage produced/);
+    expect(call(PKG, 'pv')).toThrow(/not an EvidenceQuery/);
+    expect(call(PKG, 'q')).not.toThrow();
   });
 });
 

@@ -22,6 +22,7 @@ import {
   experimentalCompile,
   experimentalEvaluateCriteria,
   experimentalSelect,
+  experimentalSelectForQuery,
   type CompiledPackage,
   type CriteriaResult,
   type PossibleSelection,
@@ -352,12 +353,28 @@ export function runFixtures(dir: string = FIXTURE_DIR): { reports: FixtureReport
     for (const k of s4?.keys ?? []) for (const p of k.possibilities) if (p.kind === 'node') s4Nodes.set(showRev(p.node.revision) + (p.node.digest ? `#${p.node.digest}` : ''), p);
     // S5 needs the compiled query: the fixture's query is wrapped in a minimal program (harness input
     // preparation, not a language feature). A query the compiler rejects evaluates no criterion.
+    // Criteria are evaluated only over the query-bound selection (contract §3.5), whose S1–S4
+    // configuration comes from the compiled query; it must agree with the standalone stages above.
     const compiledQuery = compileFixtureQuery(query);
+    const bound = typeof compiledQuery === 'string' || !s4
+      ? null
+      : experimentalSelectForQuery({
+          package: compiledQuery,
+          query: query.query.id,
+          subject: fx.input.context.subject,
+          revisions: fx.input.records as JsonValue[],
+          retractions: fx.input.retractions as JsonValue[],
+          contextEncounter: fx.input.context.encounter as EncounterBinding,
+          contextEpisode: fx.input.context.episode as EpisodeBinding,
+        });
+    if (bound && !isDeepStrictEqual(bound, s4)) report.failures.push('query-bound selection differs from the standalone S1–S4 stages');
+    const boundNodes = new Map<string, Extract<PossibleSelection, { kind: 'node' }>>();
+    for (const k of bound?.keys ?? []) for (const p of k.possibilities) if (p.kind === 'node') boundNodes.set(showRev(p.node.revision) + (p.node.digest ? `#${p.node.digest}` : ''), p);
     const criteria = (ref: string): CriteriaResult | string => {
-      const p = s4Nodes.get(ref);
-      if (!s4 || !p) return `no S4 possibility ${ref}`;
       if (typeof compiledQuery === 'string') return compiledQuery;
-      return experimentalEvaluateCriteria({ package: compiledQuery, query: query.query.id, s4, possibility: p });
+      const p = boundNodes.get(ref);
+      if (!bound || !p) return `no S4 possibility ${ref}`;
+      return experimentalEvaluateCriteria({ package: compiledQuery, query: query.query.id, s4: bound, possibility: p });
     };
     const admNodes = new Map<string, Extract<PossibleAdmissibility, { kind: 'node' }>>();
     for (const k of adm?.keys ?? []) for (const p of k.possibilities) if (p.kind === 'node') admNodes.set(showRev(p.node.revision) + (p.node.digest ? `#${p.node.digest}` : ''), p);

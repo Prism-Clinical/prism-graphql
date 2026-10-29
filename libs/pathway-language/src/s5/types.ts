@@ -12,11 +12,7 @@ export interface CriteriaInput {
   readonly package: CompiledPackage;
   /** The ID of a complete EvidenceQuery declaration in `package`. */
   readonly query: string;
-  /**
-   * An S4 result produced by experimentalSelect in this process. PRECONDITION, not verified: it is
-   * this query's evaluation. Only its value-set pin is compared (a mismatch is rejected; a match is
-   * no proof). See contract §3.5, "Query-to-evidence association".
-   */
+  /** An S4 result experimentalSelectForQuery produced in this process for exactly `package` and `query`. */
   readonly s4: SelectionResult;
   /** One possibility object of `s4` itself (identity, not equality). */
   readonly possibility: PossibleSelection;

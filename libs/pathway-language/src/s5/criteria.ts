@@ -7,7 +7,8 @@
  * `not`, `call` and holes are compile errors in criterion position, so no other tree reaches here.
  * It classifies nothing, selects nothing and decides no materiality. Pure; detached, deep-frozen.
  */
-import { ENUMS, compiledKind, detach } from '../compile/compile';
+import { queryContract, selectionQuery } from '../bound';
+import { ENUMS, detach } from '../compile/compile';
 import type { EnumCriterion, ExplicitAssertionContract } from '../compile/types';
 import type { JsonObject } from '../s1/resolve';
 import type { JsonValue } from '../s1/types';
@@ -53,18 +54,14 @@ function contractOf(input: CriteriaInput): ExplicitAssertionContract {
   const extra = keys.filter((k) => !INPUT_FIELDS.includes(k));
   // In particular a payload, snapshot or S1–S3 result: evidence comes only from the S4 handoff.
   if (extra.length > 0) fail(`unexpected input field(s) ${extra.join(', ')}`);
-  const kind = compiledKind(input.package);
-  // Holes are authoring state, not patient uncertainty: preview is outside this slice (§6.1).
-  if (kind === 'PreviewPackage') fail('preview packages are not evaluated here; authoring holes are never Missing or False');
-  if (kind !== 'CompiledPackage') fail('package must be a CompiledPackage produced by experimentalCompile in this process');
-  const decl = input.package.declarations.find((d) => d.id === input.query);
-  if (!decl || decl.kind !== 'EvidenceQuery') fail(`query ${JSON.stringify(input.query)} is not an EvidenceQuery of the package`);
-  const contract = (decl as Extract<typeof decl, { kind: 'EvidenceQuery' }>).contract;
-  if (contract.kind !== 'explicit-assertion-v0') fail(`query ${input.query} has no complete contract`); // unreachable for a CompiledPackage
-  if (!isSelectionResult(input.s4)) fail('s4 must be an S4 result produced by experimentalSelect in this process');
-  // Necessary, not sufficient: a match does not prove the S4 result is this query's evaluation.
-  if (input.s4.valueSet !== (contract as ExplicitAssertionContract).valueSet) fail(`s4 pins ${input.s4.valueSet}, the query ${(contract as ExplicitAssertionContract).valueSet}`);
-  return contract as ExplicitAssertionContract;
+  const contract = queryContract(input.package, input.query, fail);
+  if (!isSelectionResult(input.s4)) fail('s4 must be an S4 result produced by experimentalSelectForQuery in this process');
+  // Exact package object and query ID (§3.5): a matching package ID or value-set pin is no proof.
+  const bound = selectionQuery(input.s4);
+  if (!bound) fail('s4 is not bound to a query: only experimentalSelectForQuery results are evaluated');
+  if (bound!.package !== input.package) fail('s4 was selected for another compiled package');
+  if (bound!.query !== input.query) fail(`s4 was selected for query ${JSON.stringify(bound!.query)}, not ${JSON.stringify(input.query)}`);
+  return contract;
 }
 
 export function evaluateCriteria(input: CriteriaInput): CriteriaResult {
