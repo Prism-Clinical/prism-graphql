@@ -524,12 +524,12 @@ const r = experimentalPossibleClasses({ package: pkg, query: 'q.demo', s4, key: 
 |---|---|---|
 | Classified `Supporting` / `Refuting` / `NonInformative` | that class | `Classified` |
 | `Unclassified` (assertion absent or malformed) | `Supporting`, `Refuting`, `NonInformative`, **not** `excluded` (EA-004) | `Unclassified` |
-| … with blocker `CandidacyUnresolved` | also `excluded` | `CandidacyUnresolved` |
+| … with blocker `CandidacyUnresolved` | also `excluded` (confirmed on review) | `CandidacyUnresolved` |
 | … with blocker `AdmissibilityUnresolved` | also `excluded` (EA-010, EA-011) | `AdmissibilityUnresolved` |
 | Definitely inadmissible (also beside unresolved candidacy) | `excluded` only | `Inadmissible` |
 | Out of domain | `excluded` | `OutOfDomain` |
 | `excluded` marker | `excluded` | `ExcludedMarker` |
-| `unknown` marker (“any content”, contract §2.1) | every class, **including** `excluded` | `UnknownMarker` |
+| `unknown` marker (“any content”, contract §2.1) | every class, **including** `excluded` (confirmed on review) | `UnknownMarker` |
 
 `HistoryUnresolved` adds nothing: the key’s alternatives are its represented possibilities. The key’s set is the union, deduplicated; `Retracted` and `NoRecord` keys give `[]`. `Unclassified` and `unknown` differ deliberately: an `Unclassified` record exists and qualifies, only its assertion is unknown; an `unknown` possible current could hold anything, including content that does not qualify.
 

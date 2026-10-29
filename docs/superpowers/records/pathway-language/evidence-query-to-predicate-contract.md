@@ -14,7 +14,7 @@ The fourth revision made three changes:
 - Payload identity for duplicate detection is defined.
 - An unsupported justification about coverage attestations is removed.
 
-The twenty-second revision specifies key-level possible classes (3.7, case 134), step B of 4.2 as a per-possibility contribution table, and records the review confirmation of 3.6’s two decisions.
+The twenty-second revision specifies key-level possible classes (3.7, case 134), step B of 4.2 as a per-possibility contribution table, and records the review confirmation of 3.6’s two decisions. Both new rules of 3.7 (`unknown` includes `excluded`; unresolved candidacy adds `excluded`) were then confirmed on review.
 
 - An `Unclassified` record contributes every assertion class but **not** `excluded` (case 4); an `unknown` marker, a possible current with any content (2.1), contributes every class **including** `excluded`.
 - Unresolved candidacy or admissibility adds `excluded` beside the record’s class; unresolved history adds nothing beyond the represented possibilities.
@@ -767,12 +767,12 @@ This section makes 4.2 step B executable for **one** key of a query-bound S4 res
 |---|---|---|
 | Classified `Supporting`, `Refuting` or `NonInformative`, selected or blocked only by history | That class | `Classified` |
 | `Unclassified` (assertion absent or malformed) | `Supporting`, `Refuting`, `NonInformative`; **not** `excluded`: only the assertion is unknown, the record’s existence and eligibility are not (case 4) | `Unclassified` |
-| Either of the above with blocker `CandidacyUnresolved` | Also `excluded`: the record could be out of domain | `CandidacyUnresolved` |
+| Either of the above with blocker `CandidacyUnresolved` | Also `excluded`: the record could be out of domain (confirmed on review) | `CandidacyUnresolved` |
 | Either of the above with blocker `AdmissibilityUnresolved` | Also `excluded`: the record could be inadmissible (cases 10, 11) | `AdmissibilityUnresolved` |
 | Definitely `Inadmissible`, also beside `CandidacyUnresolved` (2.8) | `excluded` only | `Inadmissible` |
 | Out of domain | `excluded` | `OutOfDomain` |
 | `excluded` marker | `excluded` | `ExcludedMarker` |
-| `unknown` marker | Every class, **including** `excluded`: “possibly a current revision with any content” (2.1), including content out of domain or inadmissible | `UnknownMarker` |
+| `unknown` marker | Every class, **including** `excluded`: “possibly a current revision with any content” (2.1), including content out of domain or inadmissible (confirmed on review) | `UnknownMarker` |
 
 `HistoryUnresolved` adds nothing: a key’s alternatives are exactly its represented possibilities, so history uncertainty alone never invents `excluded` (cases 18, 30, 84). Step B’s “rejected” alternative reaches S4 only as an `excluded` or `unknown` marker (2.1 step 7).
 
@@ -1396,6 +1396,7 @@ These must hold for every case:
     - Same boundary as 3.5 with a key object of the bound S4 result; the key’s ownership is checked even when it has no possibilities.
     - Per possibility: its definite class; `Unclassified` adds every assertion class but not `excluded`; unresolved candidacy or admissibility adds `excluded`; inadmissible, out-of-domain and `excluded` possibilities add only `excluded`; `unknown` adds every class including `excluded`; unresolved history adds nothing. The key’s set is the union, in canonical order.
     - Each contribution names its basis; the key’s S4 status is unchanged; a singleton resolves nothing; no materiality is decided.
+    - Confirmed on review (2026-10-29): `unknown` includes `excluded`, since its content could be out of domain or inadmissible; unresolved candidacy adds `excluded`, since the record could fail domain membership; an unknown assertion alone does not imply exclusion.
 
 **Possible conflicts needing a Stage A amendment.** None found. Items to confirm:
 
