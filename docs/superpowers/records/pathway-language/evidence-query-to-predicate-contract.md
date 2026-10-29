@@ -2,7 +2,7 @@
 
 **Status:** Proposed design draft. **Not** accepted, not finalized syntax, not a schema and not implemented. It contains no clinical content: the record type, enum values, codes, sources and permission below are fictional and illustrate language behavior only. They do not map to dysphagia, progression, urgency or any other clinical definition.
 
-**Date:** 2026-10-03. **Revised:** 2026-10-03, nine times, 2026-10-04, once, 2026-10-05, three times, 2026-10-09, three times, 2026-10-28, three times, and 2026-10-29, five times, after review. The third revision fixed three things:
+**Date:** 2026-10-03. **Revised:** 2026-10-03, nine times, 2026-10-04, once, 2026-10-05, three times, 2026-10-09, three times, 2026-10-28, three times, and 2026-10-29, six times, after review. The third revision fixed three things:
 
 - revision-chain boundaries: source-scoped identity, same-source corrections and one fully specified schematic authority rule;
 - deterministic outcomes for malformed history;
@@ -13,6 +13,12 @@ The fourth revision made three changes:
 - Proven cross-boundary corrections and retractions are now rejected without changing their target. This keeps gap irrelevance consistent with S1.
 - Payload identity for duplicate detection is defined.
 - An unsupported justification about coverage attestations is removed.
+
+The twenty-fifth revision specifies query-bound preview evaluation for whole-criterion holes (3.5 Preview evaluation, cases 50 and 52; decision 25):
+
+- A dedicated preview entry point runs S1–S4 from an incomplete query’s complete settings, evaluates the complete sibling criterion over eligible possibilities from each one’s own bound payload, and reports a `Marker` for each hole. A whole-contract hole runs no stage.
+- The query stays incomplete: no classification, possible classes, evidence result, materiality or Need; publication stays blocked; disjointness stays `Pending`.
+- EA-050’s whole-contract hole gains the required `explains`; its expected outcomes are unchanged.
 
 The twenty-fourth revision corrects the case 52 fixtures (EA-052a, EA-052b) to the hole syntax of decision 24: their `establishes` hole loses its `over` member and gains the required `explains`. Expected outcomes are unchanged, and the fixtures now compile as written; no runner rewrites them.
 
@@ -745,8 +751,17 @@ The standalone S1–S4 entry points remain for isolated stage testing. Their res
 - **Preview compilation** represents the hole: `establishes` or `refutes` (or both) is a `Decision` hole replacing the whole criterion (first-program contract §2). The hole’s type is the criterion’s result type over the bound candidate `c` (3.1–3.2), and the position fixes the binding.
 - **Incomplete contract.** The query’s contract is a distinct `explicit-assertion-v0-incomplete` kind with the complete contract’s validated settings. Each criterion is either `complete` (the same criterion object a complete contract holds) or a `hole`.
 - **Pending disjointness.** `disjoint(establishes, refutes)` is `Pending`: not proved, not an overlap, and no value is assumed for the hole.
-- **Rejection.** S5, like S4’s bound selection, rejects preview packages, so a hole never becomes `Missing`, `False` or `Unknown`.
-- **Not yet implemented.** Preview evaluation (6.1: S1–S4 and the sibling criterion run; the hole gives a `Marker`) is not implemented.
+- **Rejection.** The normal entry points (bound selection, criteria, classification, possible classes and normal execution) reject preview packages, so a hole never becomes `Missing`, `False` or `Unknown`. Preview packages are evaluated only by the preview entry point below.
+
+**Preview evaluation** (cases 50 and 52, 6.1). A dedicated entry point, separate from the normal ones and never loosening them.
+
+- **Input.** An authentic `PreviewPackage` (compiler registry; a `CompiledPackage`, copy or fabrication is rejected), the ID of one of its `EvidenceQuery` declarations, and the same runtime inputs as query-bound selection: subject, raw revisions and retractions, encounter and episode. Any other field (a value set, expansion, rule, envelope, authority rule, criterion, payload, possibility or stage result) is a configuration error.
+- **Whole-contract hole** (case 50). No stage runs (`stagesRun` empty): the query’s marker only.
+- **Incomplete contract** (case 52). Retrieval, correction authority, value set and admissibility are complete, so S1 is constructed from them and S2–S4 run exactly as in query-bound selection. The S4 result never leaves the entry point, so no foreign, copied or fabricated stage result or possibility can enter; payloads are read only through the evidence handoff (2.8), from each possibility’s own binding.
+- **Slots, per possibility.** Eligibility is the S5 table above, unchanged. For an eligible possibility each criterion slot is evaluated on its own: a complete slot gives its 3.4 value and trace, exactly as in S5; a hole slot gives `Marker` with the hole ID and the pointer of its `hole` member, never `True`, `False`, `Unknown`, a finding or a Need. An ineligible possibility is `NotEvaluated` and gets no slot value of either kind.
+- **Query level.** The query’s marker is reported whatever the snapshot holds and whatever is eligible: an empty snapshot keeps it. Disjointness stays `Pending`: evaluating the sibling proves nothing. S4 facts (key statuses, dispositions, blockers and findings) are reported unchanged.
+- **Not produced.** No classification (3.3), possible classes (3.7), materiality, `Evidence<Boolean>` or Need. The query stays incomplete and publication blocked.
+- **A complete query in a preview package** is rejected by this entry point: it has no hole to preview, and its query result needs S6. Its per-record S5 values are available only after normal compilation of a hole-free program.
 
 ### 3.6 S5 per-record classification (one possibility)
 
@@ -1417,6 +1432,12 @@ These must hold for every case:
     - Preview representation: kind `explicit-assertion-v0-incomplete`, criteria as `complete` or `hole` slots, disjointness `Pending` with the hole IDs and obligation locations; the query and its dependents carry markers.
     - Compilation only: preview evaluation, and EA-052a’s `Marker` and `refutes` True facts, remain outstanding.
     - Fixtures EA-052a and EA-052b corrected to this syntax (2026-10-29, confirmed on review): `over` removed, `explains` added, expected outcomes unchanged.
+25. Query-bound preview evaluation (3.5 Preview evaluation, cases 50 and 52):
+    - A separate entry point taking an authentic `PreviewPackage`, a query ID and runtime inputs only; the normal entry points keep rejecting preview packages.
+    - A whole-contract hole runs no stage. An incomplete contract runs S1–S4 from its complete settings; each eligible possibility gets the complete criterion’s 3.4 value and a `Marker` per hole slot; eligibility as in 3.5.
+    - The query marker survives an empty snapshot; disjointness stays `Pending`; no classification, possible classes, materiality, evidence result or Need; publication blocked.
+    - A complete query inside a `PreviewPackage` is rejected by this entry point (its result needs S6).
+    - EA-050’s hole gains the required `explains` (P6); expected outcomes unchanged.
 
 **Possible conflicts needing a Stage A amendment.** None found. Items to confirm:
 

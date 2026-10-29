@@ -20,7 +20,7 @@ The expected outputs were written by hand from the contract (§§1–7) and [CAN
 Every fixture is **fully expanded**: its `input` lists the complete context, records, retractions, coverage, failures and rejected items. Nothing is inherited at load time.
 
 - Evaluation fixtures reference the shared query by `query.file` and `query.contractDigest`, except where a case needs a different contract (cases 115a/b: another authored `assertionKind` set). Those carry the full modified query inline (`query.inline`) with their own symbolic contract digest (`d-ak1`), which their Need keys use (contract §2.6, §6.2).
-- Preview and compilation fixtures carry their full, modified query inline (`query.inline`). A hole in an inline query uses the program hole syntax (first-program contract §2, P6): `id`, `type`, a nonblank `explains`, optional `cites`, and nothing else. EA-052a and EA-052b were corrected to it on 2026-10-29 (`over` removed, `explains` added; expected outcomes unchanged).
+- Preview and compilation fixtures carry their full, modified query inline (`query.inline`). A hole in an inline query uses the program hole syntax (first-program contract §2, P6): `id`, `type`, a nonblank `explains`, optional `cites`, and nothing else. EA-052a and EA-052b were corrected to it on 2026-10-29 (`over` removed, `explains` added), and so was EA-050’s whole-contract hole (`explains` added); expected outcomes are unchanged.
 
 The contract’s defaults (§7.2, D0) were applied when the fixtures were written and are visible in each file.
 

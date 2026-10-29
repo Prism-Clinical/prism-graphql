@@ -12,18 +12,20 @@ import { queryContract, selectionQuery } from '../bound';
 import { ENUMS, detach } from '../compile/compile';
 import type { EnumCriterion, ExplicitAssertionContract } from '../compile/types';
 import type { JsonObject } from '../s1/resolve';
-import type { JsonValue } from '../s1/types';
+import type { JsonValue, NodeRef } from '../s1/types';
 import { isSelectionResult, selectionEvidence } from '../s4/select';
 import type { PossibleSelection } from '../s4/types';
 import type { CriteriaInput, CriteriaResult, CriterionName, CriterionResult, CriterionStep, CriterionValue } from './types';
+
+type NotEvaluatedReason = Extract<CriteriaResult, { outcome: 'NotEvaluated' }>['reason'];
 
 /** Invalid API input. Never used for patient-evidence uncertainty, and never a criterion value. */
 export class CriteriaConfigurationError extends Error {}
 
 const INPUT_FIELDS = ['package', 'query', 's4', 'possibility'];
 
-/** Contract §3.4 for one `eq(c.f, Enum.v)`: exact comparison, no normalization or default. */
-function evaluate(name: CriterionName, c: EnumCriterion, payload: Readonly<JsonObject>): CriterionResult {
+/** INTERNAL, shared with preview evaluation. Contract §3.4 for one `eq(c.f, Enum.v)`: exact comparison, no normalization or default. */
+export function evaluateCriterion(name: CriterionName, c: EnumCriterion, payload: Readonly<JsonObject>): CriterionResult {
   const fieldStep = (read: Extract<CriterionStep, { form: 'field' }>['read']): CriterionStep => ({ form: 'field', source: `${c.location}/eq/0`, path: `c.${c.field}`, read });
   const enumStep: CriterionStep = { form: 'enum', source: `${c.location}/eq/1`, value: `${c.enumType}.${c.value}` };
   let read: Extract<CriterionStep, { form: 'field' }>['read'];
@@ -77,20 +79,28 @@ export function evaluateCriteria(input: CriteriaInput): CriteriaResult {
   if (!owner) throw new CriteriaConfigurationError('possibility is not a possibility of this S4 result');
   const common = { experimental: 'nonclinical-s5-criteria-v0', stage: 'S5', scope: 'one-possibility-criteria', packageId: input.package.packageId, query: input.query, key: owner.key } as const;
   const p = possibility as PossibleSelection;
-  if (p.kind !== 'node') return detach({ ...common, outcome: 'NotEvaluated', reason: p.kind === 'excluded' ? 'ExcludedMarker' : 'UnknownMarker' });
-  if (p.candidacy === 'OutOfDomain') return detach({ ...common, outcome: 'NotEvaluated', reason: 'OutOfDomain', node: p.node });
-  // A definite mismatch can never supply Supporting or Refuting, whatever else is unresolved (§2.8).
-  if (p.selection.disposition === 'NotSelected' && p.selection.blockers.includes('Inadmissible')) {
-    return detach({ ...common, outcome: 'NotEvaluated', reason: 'Inadmissible', node: p.node });
-  }
-  // Selected, or blocked only by history, candidacy or admissibility uncertainty.
+  const skip = ineligibility(p);
+  if (skip) return detach({ ...common, outcome: 'NotEvaluated', ...skip });
+  if (p.kind !== 'node') throw new Error('invariant: a marker is never eligible');
   const payload = selectionEvidence(s4, p);
   return detach({
     ...common,
     outcome: 'Evaluated',
     node: p.node,
     disposition: p.selection,
-    establishes: evaluate('establishes', contract.establishes, payload),
-    refutes: evaluate('refutes', contract.refutes, payload),
+    establishes: evaluateCriterion('establishes', contract.establishes, payload),
+    refutes: evaluateCriterion('refutes', contract.refutes, payload),
   });
+}
+
+/**
+ * INTERNAL, shared with preview evaluation: why `p` gets no criterion value (§3.5 eligibility), or
+ * null when it is Selected or blocked only by history, candidacy or admissibility uncertainty.
+ */
+export function ineligibility(p: PossibleSelection): { readonly reason: NotEvaluatedReason; readonly node?: NodeRef } | null {
+  if (p.kind !== 'node') return { reason: p.kind === 'excluded' ? 'ExcludedMarker' : 'UnknownMarker' };
+  if (p.candidacy === 'OutOfDomain') return { reason: 'OutOfDomain', node: p.node };
+  // A definite mismatch can never supply Supporting or Refuting, whatever else is unresolved (§2.8).
+  if (p.selection.disposition === 'NotSelected' && p.selection.blockers.includes('Inadmissible')) return { reason: 'Inadmissible', node: p.node };
+  return null;
 }

@@ -640,3 +640,32 @@ describe('Case 52 (EA-052a) as a compiler regression input', () => {
     expect(experimentalExecuteWithSuppliedQueryResults(pre, new Map())).toMatchObject({ outcome: 'ExecutionInputError', errors: [{ code: 'INVALID_PACKAGE' }] });
   });
 });
+
+describe('Case 50 (EA-050) as a compiler regression input', () => {
+  const fx = JSON.parse(readFileSync(join(FIXTURE_DIR, 'fixtures', 'EA-050.json'), 'utf8'));
+  const inline = fx.query.inline;
+  /** The fixture query exactly as written, in a minimal program as the fixture runner wraps it. */
+  const program = {
+    ppl: { languageVersion: 'ppl-1', capabilityProfileVersion: 'ppl-core-v0' },
+    package: { id: 'fixture', state: 'Draft' },
+    references: [],
+    valueSets: inline.valueSets,
+    applicability: { id: 'fixture.scope', kind: 'Predicate', expr: { all: [] } },
+    nodes: [{ ...inline.query, subject: 'patient' }, inline.predicate],
+  };
+
+  it('the fixture hole uses the program hole syntax (explains required, P6)', () => {
+    expect(inline.query.contract).toEqual({ hole: { id: 'H-EVIDENCE', type: 'EvidenceSelectionContract<Boolean>', explains: 'Which recorded evidence answers the query is undecided' } });
+  });
+
+  it('as written, preview gives a whole-contract hole and the fixture markers; normal compilation is blocked', () => {
+    const r = experimentalCompilePreview(program as JsonValue);
+    if (r.outcome !== 'PreviewPackage') throw new Error(JSON.stringify(r.diagnostics));
+    const q = r.package.declarations.find((d) => d.id === 'q.demo');
+    if (q?.kind !== 'EvidenceQuery') throw new Error('q.demo');
+    expect(q.contract).toEqual({ kind: 'hole', hole: 'H-EVIDENCE', location: '/nodes/0/contract/hole' });
+    expect(r.package.markers).toEqual(fx.expected.markers);
+    expect(r.package.publication).toBe(fx.expected.publication);
+    expect(diags(experimentalCompile(program as JsonValue))).toEqual([['UNRESOLVED_AUTHORING_HOLE', '/nodes/0/contract/hole', 'H-EVIDENCE']]);
+  });
+});

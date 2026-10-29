@@ -11,13 +11,14 @@
  * stay available for isolated tests, but their results carry no binding.
  */
 import { compiledKind } from './compile/compile';
-import type { CompiledPackage, ExplicitAssertionContract } from './compile/types';
+import type { CompiledPackage, ExplicitAssertionContract, ExplicitAssertionSettings } from './compile/types';
 import { resolveRevisionHistory } from './s1/resolve';
 import type { JsonValue } from './s1/types';
 import { checkAdmissibility } from './s3/admissibility';
 import type { EncounterBinding, EpisodeBinding } from './s3/types';
 import { select } from './s4/select';
 import type { SelectionResult } from './s4/types';
+import type { ValueSetExpansion } from './s2/types';
 
 /** Invalid API input, including an attempt to override authored configuration. Never patient uncertainty. */
 export class QuerySelectionConfigurationError extends Error {}
@@ -37,6 +38,43 @@ export interface QuerySelectionInput {
 }
 
 const INPUT_FIELDS = ['package', 'query', 'subject', 'revisions', 'retractions', 'contextEncounter', 'contextEpisode'];
+
+/** The runtime part of a query-bound input (patient subject, raw snapshot, evaluation context). */
+type RuntimeInput = Pick<QuerySelectionInput, 'subject' | 'revisions' | 'retractions' | 'contextEncounter' | 'contextEpisode'>;
+
+/** INTERNAL, shared with preview evaluation: an object with no field outside INPUT_FIELDS. */
+export function checkInputFields(input: unknown, fail: (m: string) => never): void {
+  if (input === null || typeof input !== 'object') fail('input must be an object');
+  const extra = Object.keys(input as object).filter((k) => !INPUT_FIELDS.includes(k));
+  // In particular valueSet, expansion, admissible, envelope, authorityRule, s1 or s3: authored
+  // configuration comes only from the compiled query, and no precomputed stage result is accepted.
+  if (extra.length > 0) fail(`unexpected input field(s) ${extra.join(', ')}; authored configuration comes only from the compiled query`);
+}
+
+/**
+ * INTERNAL, shared with preview evaluation: S1–S4 from one query's validated settings and runtime
+ * inputs only. S1 is constructed here from the settings, never accepted. The result is unbound.
+ */
+export function selectWithSettings(settings: ExplicitAssertionSettings, valueSets: { readonly [id: string]: ValueSetExpansion }, input: RuntimeInput, fail: (m: string) => never): SelectionResult {
+  if (typeof input.subject !== 'string') fail('subject must be a string');
+  if (!Array.isArray(input.revisions) || !Array.isArray(input.retractions)) fail('revisions and retractions must be arrays');
+  const s1 = resolveRevisionHistory({
+    envelope: { recordType: settings.recordType, subject: input.subject, sources: settings.sources },
+    authorityRule: settings.authorityRule as never,
+    revisions: input.revisions,
+    retractions: input.retractions,
+  });
+  const s3 = checkAdmissibility({
+    s1,
+    valueSet: settings.valueSet,
+    expansion: valueSets[settings.valueSet]!,
+    // The compiled rules: encounter and episode verbatim, assertionKind as its validated `in` list.
+    admissible: { encounter: settings.admissible.encounter, episode: settings.admissible.episode, assertionKind: { in: settings.admissible.assertionKinds } },
+    contextEncounter: input.contextEncounter,
+    contextEpisode: input.contextEpisode,
+  });
+  return select({ s3 });
+}
 
 /** The exact package object and query ID each bound S4 result was produced for. */
 const bindings = new WeakMap<object, { readonly package: object; readonly query: string }>();
@@ -60,30 +98,9 @@ export function selectForQuery(input: QuerySelectionInput): SelectionResult {
   const fail = (m: string): never => {
     throw new QuerySelectionConfigurationError(m);
   };
-  if (input === null || typeof input !== 'object') fail('input must be an object');
-  const extra = Object.keys(input).filter((k) => !INPUT_FIELDS.includes(k));
-  // In particular valueSet, expansion, admissible, envelope, authorityRule, s1 or s3: authored
-  // configuration comes only from the compiled query, and no precomputed stage result is accepted.
-  if (extra.length > 0) fail(`unexpected input field(s) ${extra.join(', ')}; authored configuration comes only from the compiled query`);
+  checkInputFields(input, fail);
   const contract = queryContract(input.package, input.query, fail);
-  if (typeof input.subject !== 'string') fail('subject must be a string');
-  if (!Array.isArray(input.revisions) || !Array.isArray(input.retractions)) fail('revisions and retractions must be arrays');
-  const s1 = resolveRevisionHistory({
-    envelope: { recordType: contract.recordType, subject: input.subject, sources: contract.sources },
-    authorityRule: contract.authorityRule as never,
-    revisions: input.revisions,
-    retractions: input.retractions,
-  });
-  const s3 = checkAdmissibility({
-    s1,
-    valueSet: contract.valueSet,
-    expansion: input.package.valueSets[contract.valueSet]!,
-    // The compiled rules: encounter and episode verbatim, assertionKind as its validated `in` list.
-    admissible: { encounter: contract.admissible.encounter, episode: contract.admissible.episode, assertionKind: { in: contract.admissible.assertionKinds } },
-    contextEncounter: input.contextEncounter,
-    contextEpisode: input.contextEpisode,
-  });
-  const s4 = select({ s3 });
+  const s4 = selectWithSettings(contract, input.package.valueSets, input, fail);
   bindings.set(s4, { package: input.package, query: input.query });
   return s4;
 }

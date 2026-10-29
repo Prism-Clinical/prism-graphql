@@ -58,7 +58,7 @@ export interface EnumCriterion {
 }
 
 /** Settings shared by the complete and the incomplete explicit-assertion-v0 contract. */
-interface ExplicitAssertionSettings {
+export interface ExplicitAssertionSettings {
   readonly recordType: string;
   readonly sources: readonly string[];
   readonly valueSet: string;

@@ -17,7 +17,8 @@
         "contract": {
           "hole": {
             "id": "H-EVIDENCE",
-            "type": "EvidenceSelectionContract<Boolean>"
+            "type": "EvidenceSelectionContract<Boolean>",
+            "explains": "Which recorded evidence answers the query is undecided"
           }
         }
       },

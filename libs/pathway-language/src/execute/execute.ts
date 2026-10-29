@@ -239,7 +239,7 @@ function evaluate(pkg: CompiledPackage | PreviewPackage, evidence: Map<string, S
         // A criterion hole's S1–S4 and sibling-criterion traces belong to preview evaluation, which this API does not perform.
         const because = d.contract.kind === 'hole'
           ? `whole-contract authoring hole ${d.contract.hole}: no evidence stage runs and nothing is read`
-          : `criterion authoring hole(s) ${holes.join(', ')}: the query is marked; no evidence stage runs here (preview criterion evaluation is not implemented)`;
+          : `criterion authoring hole(s) ${holes.join(', ')}: the query is marked; no evidence stage runs in isolated execution (S1–S4 and the sibling criterion run in experimentalEvaluatePreviewQuery)`;
         trace.push({ output: d.id, source, result: show(v), because, steps });
       } else {
         const ev = evidence.get(d.id) as SuppliedEvidence;

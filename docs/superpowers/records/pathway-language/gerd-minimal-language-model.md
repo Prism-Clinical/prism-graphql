@@ -177,7 +177,7 @@ When reviewers answer some questions, the author can replace `H-EVIDENCE` with a
 "contract": {
   "retrieve":   { "concept": { "hole": { "id": "H-CONCEPT",  "type": "ValueSetRef" } } },
   "establishes":{ "hole": { "id": "H-CRITERION", "type": "Decision",
-                  "over": "candidate", "explains": "Q1–Q3; when written: typed expression or versioned library ref" } },
+                  "explains": "Q1–Q3; when written: typed expression or versioned library ref" } },
   "assertions": { "hole": { "id": "H-SOURCES",  "explains": "Q4" } },
   "scope":      { "hole": { "id": "H-WINDOW",   "explains": "Q5, Q7; A2, A3" } },
   "precedence": { "hole": { "id": "H-CONFLICT", "explains": "Q6" } },
@@ -185,7 +185,7 @@ When reviewers answer some questions, the author can replace `H-EVIDENCE` with a
 }
 ```
 
-The keys loosely follow Stage A §4.4’s list of contract contents. Their exact names and types are fixed by Stage A §17 item 4, not here. `H-CRITERION` is a hole of an existing type, a `Decision` over one candidate. Filling it with prose or a callback is a structural error.
+The keys loosely follow Stage A §4.4’s list of contract contents. Their exact names and types are fixed by Stage A §17 item 4, not here. `H-CRITERION` is a hole of an existing type, a `Decision` over one candidate; its position fixes that binding, so it has no `over` member (first-program contract §2, P6). Filling it with prose or a callback is a structural error.
 
 ### 5.2 Traceability
 

@@ -2,7 +2,8 @@
  * EXPERIMENTAL, NONCLINICAL. S1–S4 and S5 criterion assertions of the committed explicit-assertion-v0
  * fixtures: S1, S2, the three S3 rules, combined S3 admissibility (checked directly), S4 selection,
  * per-record criterion values and classification, and key-level possible classes, plus one-way
- * implications from downstream expectations. No fixture is claimed to pass as a whole: S6–S7 are not implemented.
+ * implications from downstream expectations, and the preview criterion, marker and publication
+ * expectations of preview fixtures (query-bound preview evaluation). No fixture is claimed to pass as a whole: S6–S7 are not implemented.
  */
 import { runFixtures } from './support/fixture-runner';
 
@@ -35,6 +36,10 @@ describe('explicit-assertion-v0 fixtures: S1, S2 and encounter-check assertions 
     classificationPassed: sum((r) => r.classificationPassed),
     possibleClasses: sum((r) => r.possibleClassesApplicable),
     possibleClassesPassed: sum((r) => r.possibleClassesPassed),
+    previewCriterion: sum((r) => r.previewCriterionApplicable),
+    previewCriterionPassed: sum((r) => r.previewCriterionPassed),
+    preview: sum((r) => r.previewApplicable),
+    previewPassed: sum((r) => r.previewPassed),
     admissibility: sum((r) => r.admissibilityApplicable),
     admissibilityPassed: sum((r) => r.admissibilityPassed),
     outOfScope: sum((r) => r.outOfScope),
@@ -60,7 +65,9 @@ describe('explicit-assertion-v0 fixtures: S1, S2 and encounter-check assertions 
         `S5 per-record classification assertions checked (classification trace facts, contract §3.6): ${totals.classification} (passed ${totals.classificationPassed})`,
         `S5 key-level possibleClasses assertions checked (possibleClasses trace facts, contract §4.2 step B, §3.7; not materiality): ${totals.possibleClasses} (passed ${totals.possibleClassesPassed})`,
         `assertionKind outcomes implied by combined S3 facts (one-way: admissibility Admissible/AssertionKindNotAllowed, S3 assertionKind attributions): ${totals.assertionKindOneWay}`,
-        `expected fields/assertions outside implemented scope (preview criterion markers, materiality, S6–S7; not checked): ${totals.outOfScope}`,
+        `preview criterion assertions evaluated (criterion trace facts of preview fixtures, query-bound preview evaluation, contract §3.5): ${totals.previewCriterion} (passed ${totals.previewCriterionPassed})`,
+        `preview compiler/marker/publication checks (outcome, markers, publication, absent evidence and Needs, stagesRun; not evaluation): ${totals.preview} (passed ${totals.previewPassed})`,
+        `expected fields/assertions outside implemented scope (materiality, S6–S7; not checked): ${totals.outOfScope}`,
         `fixtures not run: ${notRun.length}: ${notRun.join(', ')}`,
         `evaluation/preview fixtures with no applicable S1–S5 assertion: ${noApplicableAssertions.length}: ${noApplicableAssertions.join(', ')}`,
       ].join('\n'),
@@ -76,10 +83,12 @@ describe('explicit-assertion-v0 fixtures: S1, S2 and encounter-check assertions 
     expect(totals.criterion).toBeGreaterThan(0);
     expect(totals.classification).toBeGreaterThan(0);
     expect(totals.possibleClasses).toBeGreaterThan(0);
+    expect(totals.previewCriterion).toBeGreaterThan(0);
+    expect(totals.preview).toBeGreaterThan(0);
   });
 
   const checked = (r: (typeof reports)[number]) =>
-    r.s1Applicable + r.s1AttributionOneWay + r.s2Applicable + r.s2AttributionOneWay + r.s2CandidateIdsOneWay + r.encounterApplicable + r.encounterOneWay + r.episodeApplicable + r.episodeOneWay + r.assertionKindApplicable + r.assertionKindOneWay + r.admissibilityApplicable + r.selectionApplicable + r.selectionOneWay + r.criterionApplicable + r.classificationApplicable + r.possibleClassesApplicable > 0;
+    r.s1Applicable + r.s1AttributionOneWay + r.s2Applicable + r.s2AttributionOneWay + r.s2CandidateIdsOneWay + r.encounterApplicable + r.encounterOneWay + r.episodeApplicable + r.episodeOneWay + r.assertionKindApplicable + r.assertionKindOneWay + r.admissibilityApplicable + r.selectionApplicable + r.selectionOneWay + r.criterionApplicable + r.classificationApplicable + r.possibleClassesApplicable + r.previewCriterionApplicable + r.previewApplicable > 0;
   it.each(reports.filter((r) => !r.notRun && checked(r)).map((r) => [r.id, r] as const))('%s: S1–S4 and S5 assertions hold (not a whole-fixture pass)', (_id, report) => {
     expect(report.failures).toEqual([]);
   });

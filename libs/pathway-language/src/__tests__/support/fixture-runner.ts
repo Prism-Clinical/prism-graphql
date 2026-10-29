@@ -4,7 +4,10 @@
  * the three S3 rule checks, combined per-revision S3 admissibility (contract §2.7, whose
  * `admissibility` facts are checked directly), S4 selection (§2.8: `selection` and `disposition`
  * facts), per-record S5 criterion evaluation and classification (§3.5, §3.6: `criterion` and
- * `classification` facts of complete queries) and key-level possible classes (§3.7: `possibleClasses`).
+ * `classification` facts of complete queries), key-level possible classes (§3.7: `possibleClasses`)
+ * and query-bound preview evaluation (§3.5 "Preview evaluation", §6.1): the `criterion` facts of
+ * preview fixtures, their `stagesRun` facts, and their markers, publication, outcome, and the absence
+ * of an evidence result and of Needs.
  *
  * A fixture is never reported as passing as a whole: only its S1–S4 and S5 (criterion, classification, possibleClasses) assertions are
  * checked, plus one-way implications from downstream expectations. `stage` fixtures (stage-v1)
@@ -21,6 +24,10 @@ import {
   experimentalCheckAssertionKind,
   experimentalCheckAdmissibility,
   experimentalCompile,
+  experimentalCompilePreview,
+  experimentalEvaluatePreviewQuery,
+  type PreviewQueryResult,
+  type PreviewRecord,
   experimentalClassifyRecord,
   experimentalPossibleClasses,
   experimentalEvaluateCriteria,
@@ -96,6 +103,16 @@ export interface FixtureReport {
   /** S5 key-level `possibleClasses` facts (contract §4.2 step B, §3.7), checked directly. Not materiality. */
   possibleClassesApplicable: number;
   possibleClassesPassed: number;
+  /** Preview `criterion` facts (`Marker` for a hole, the sibling's value), from experimentalEvaluatePreviewQuery. */
+  previewCriterionApplicable: number;
+  previewCriterionPassed: number;
+  /**
+   * Preview compiler and evaluation expectations: `outcome` PreviewOnly (preview compiles, normal
+   * compilation reports only holes), `markers`, `publication`, `evidence: null` and empty `needs`
+   * (the preview output has neither), and the `stagesRun` trace fact.
+   */
+  previewApplicable: number;
+  previewPassed: number;
   /** Combined S3 `admissibility` facts (contract §2.7), checked directly. */
   admissibilityApplicable: number;
   admissibilityPassed: number;
@@ -284,6 +301,10 @@ export function runFixtures(dir: string = FIXTURE_DIR): { reports: FixtureReport
       classificationPassed: 0,
       possibleClassesApplicable: 0,
       possibleClassesPassed: 0,
+      previewCriterionApplicable: 0,
+      previewCriterionPassed: 0,
+      previewApplicable: 0,
+      previewPassed: 0,
       admissibilityApplicable: 0,
       admissibilityPassed: 0,
       outOfScope: 0,
@@ -301,9 +322,19 @@ export function runFixtures(dir: string = FIXTURE_DIR): { reports: FixtureReport
     }
     const query = (fx.query.inline ?? shared) as Json;
     const contract = query.query?.contract;
+    // Preview fixtures run through query-bound preview evaluation, from the fixture query as written.
+    const pv = fx.kind === 'preview' ? previewFixtureQuery(query, fx.input) : null;
+    const previewFields = pv ? checkPreviewExpectations(fx.expected, pv, report) : 0;
     if (!contract || contract.hole) {
-      report.notRun = 'query contract is an authoring hole: no stage runs (contract §6.1)';
-      report.outOfScope = countExpected(fx.expected);
+      if (!pv) {
+        report.notRun = 'query contract is an authoring hole outside a preview fixture';
+        report.outOfScope = countExpected(fx.expected);
+        continue;
+      }
+      // A whole-contract hole: no stage runs (contract §6.1), so only preview expectations apply.
+      for (const t of (fx.expected.traceAssertions ?? []) as Json[]) if (t.fact !== 'stagesRun') report.outOfScope += 1;
+      report.outOfScope += countExpected(fx.expected) - ((fx.expected.traceAssertions ?? []) as unknown[]).length - previewFields;
+      if (report.previewApplicable === 0) missing.push(fx.id);
       continue;
     }
     const result = experimentalResolveRevisionHistory({
@@ -405,8 +436,16 @@ export function runFixtures(dir: string = FIXTURE_DIR): { reports: FixtureReport
         else report.selectionPassed += 1;
         continue;
       }
-      // Preview criterion facts (holes, markers) are outside this slice: preview packages are rejected.
-      if (t.fact === 'criterion' && fx.kind !== 'preview') {
+      if (t.fact === 'stagesRun' && pv) continue; // checked by checkPreviewExpectations
+      if (t.fact === 'criterion' && pv) {
+        // Preview criteria (§3.5 Preview evaluation): a Marker for a hole, the complete sibling's value.
+        report.previewCriterionApplicable += 1;
+        const f = checkPreviewCriterionFact(t, pv);
+        if (f) report.failures.push(f);
+        else report.previewCriterionPassed += 1;
+        continue;
+      }
+      if (t.fact === 'criterion') {
         report.criterionApplicable += 1;
         const f = checkCriterionFact(t, criteria(t.ref));
         if (f) report.failures.push(f);
@@ -577,7 +616,7 @@ export function runFixtures(dir: string = FIXTURE_DIR): { reports: FixtureReport
       const c = nodes.get(id)?.candidacy;
       if (c !== 'InDomain' && c !== 'Unresolved') report.failures.push(`candidateEvidenceIds ${id}: S2 candidacy ${c ?? 'none'}`);
     }
-    report.outOfScope += countExpected(exp) - ((exp.traceAssertions ?? []) as unknown[]).length;
+    report.outOfScope += countExpected(exp) - ((exp.traceAssertions ?? []) as unknown[]).length - previewFields;
     const checked =
       report.s1Applicable +
       report.s1AttributionOneWay +
@@ -595,7 +634,9 @@ export function runFixtures(dir: string = FIXTURE_DIR): { reports: FixtureReport
       report.selectionOneWay +
       report.criterionApplicable +
       report.classificationApplicable +
-      report.possibleClassesApplicable;
+      report.possibleClassesApplicable +
+      report.previewCriterionApplicable +
+      report.previewApplicable;
     if (checked === 0) missing.push(fx.id);
   }
   return { reports, noApplicableAssertions: missing };
@@ -612,6 +653,110 @@ function compileFixtureQuery(query: Json): CompiledPackage | string {
     nodes: [{ ...query.query, subject: 'patient' }, query.predicate],
   } as JsonValue);
   return r.outcome === 'Compiled' ? r.package : `query does not compile: ${r.diagnostics.map((d) => `${d.code} ${d.location}`).join('; ')}`;
+}
+
+interface PreviewRun {
+  readonly result: PreviewQueryResult | string;
+  readonly markers: unknown;
+  readonly publication: string;
+  /** Normal compilation of the same program: a well-formed CompileFailure with only hole diagnostics. */
+  readonly normalBlockedByHolesOnly: boolean;
+}
+
+/** The fixture query exactly as written, wrapped as for compileFixtureQuery, preview-compiled and evaluated. */
+function previewFixtureQuery(query: Json, input: Json): PreviewRun | string {
+  const program = {
+    ppl: { languageVersion: 'ppl-1', capabilityProfileVersion: 'ppl-core-v0' },
+    package: { id: 'fixture', state: 'Draft' },
+    references: [],
+    valueSets: query.valueSets,
+    applicability: { id: 'fixture.scope', kind: 'Predicate', expr: { all: [] } },
+    nodes: [{ ...query.query, subject: 'patient' }, query.predicate],
+  } as JsonValue;
+  const r = experimentalCompilePreview(program);
+  if (r.outcome !== 'PreviewPackage') return `query does not preview-compile: ${r.diagnostics.map((d) => `${d.code} ${d.location}`).join('; ')}`;
+  const normal = experimentalCompile(program);
+  let result: PreviewQueryResult | string;
+  try {
+    result = experimentalEvaluatePreviewQuery({
+      package: r.package,
+      query: query.query.id,
+      subject: input.context.subject,
+      revisions: input.records as JsonValue[],
+      retractions: input.retractions as JsonValue[],
+      contextEncounter: input.context.encounter as EncounterBinding,
+      contextEpisode: input.context.episode as EpisodeBinding,
+    });
+  } catch (e) {
+    result = `preview evaluation failed: ${(e as Error).message}`;
+  }
+  return {
+    result,
+    markers: r.package.markers,
+    publication: r.package.publication,
+    normalBlockedByHolesOnly: normal.outcome === 'CompileFailure' && normal.wellFormed && normal.diagnostics.every((d) => d.code === 'UNRESOLVED_AUTHORING_HOLE'),
+  };
+}
+
+/** Checks a preview fixture's top-level expectations and `stagesRun` fact; returns how many top-level fields it checked. */
+function checkPreviewExpectations(exp: Json, pv: PreviewRun | string, report: FixtureReport): number {
+  let fields = 0;
+  const run = typeof pv === 'string' ? null : pv;
+  const result = run && typeof run.result !== 'string' ? run.result : null;
+  const check = (what: string, ok: boolean, got: unknown) => {
+    report.previewApplicable += 1;
+    if (ok) report.previewPassed += 1;
+    else report.failures.push(`preview ${what}: ${typeof pv === 'string' ? pv : typeof pv.result === 'string' ? pv.result : JSON.stringify(got)}`);
+  };
+  if ('outcome' in exp) {
+    fields += 1;
+    check('outcome', exp.outcome === 'PreviewOnly' && !!run?.normalBlockedByHolesOnly && result?.mode === 'preview', run?.normalBlockedByHolesOnly);
+  }
+  if ('markers' in exp) {
+    fields += 1;
+    const own = (exp.markers as Json[]).find((m) => m.output === result?.query);
+    check('markers', !!run && isDeepStrictEqual(run.markers, exp.markers) && !!own && isDeepStrictEqual(own.holes, result?.marker.holes), [run?.markers, result?.marker]);
+  }
+  if ('publication' in exp) {
+    fields += 1;
+    check('publication', run?.publication === exp.publication && result?.publication === exp.publication, result?.publication);
+  }
+  // The preview output has no evidence result and no Needs at all: it never computes either.
+  if ('evidence' in exp) {
+    fields += 1;
+    check('evidence', exp.evidence === null && !!result && !('evidence' in result), result);
+  }
+  if ('needs' in exp) {
+    fields += 1;
+    const none = isDeepStrictEqual(exp.needs, { evidence: null, deferred: null, obligations: [] });
+    check('needs', none && !!result && !('needs' in result), result);
+  }
+  for (const t of (exp.traceAssertions ?? []) as Json[]) {
+    if (t.fact !== 'stagesRun') continue;
+    check('stagesRun', !!result && isDeepStrictEqual(result.stagesRun, t.value), result?.stagesRun);
+  }
+  return fields;
+}
+
+/** A preview `criterion` fact: `Marker` for a hole, otherwise the complete sibling's value (and causes). */
+function checkPreviewCriterionFact(t: Json, pv: PreviewRun | string): string | null {
+  const head = `preview criterion ${t.criterion} ${t.ref}`;
+  if (typeof pv === 'string') return `${head}: ${pv}`;
+  if (typeof pv.result === 'string') return `${head}: ${pv.result}`;
+  if (pv.result.contract !== 'IncompleteCriteria') return `${head}: no stage ran (whole-contract hole)`;
+  const records: PreviewRecord[] = pv.result.keys.flatMap((k) =>
+    k.possibilities.flatMap((p) => (p.possibility.kind === 'node' && showRev(p.possibility.node.revision) + (p.possibility.node.digest ? `#${p.possibility.node.digest}` : '') === t.ref ? [p.record] : [])),
+  );
+  const r = records[0];
+  if (records.length !== 1 || !r) return `${head}: ${records.length} possibilities`;
+  if (r.outcome !== 'Evaluated') return `${head}: NotEvaluated(${r.reason}), expected ${t.value}`;
+  const v = r[t.criterion as 'establishes' | 'refutes']?.result;
+  if (!v) return `${head}: unknown criterion`;
+  if (v.value !== t.value) return `${head}: ${v.value}, expected ${t.value}`;
+  if (v.value === 'Marker' && !pv.result.marker.holes.includes(v.hole)) return `${head}: marker ${v.hole} is not a query hole`;
+  const causes = v.value === 'Unknown' ? causeSet(v.findings) : [];
+  if ('causes' in t && JSON.stringify(causes) !== JSON.stringify(t.causes)) return `${head}: causes ${JSON.stringify(causes)}`;
+  return null;
 }
 
 /** A `classification` fact (README vocabulary): the class, and with Unclassified, when stated, its causes. */
