@@ -202,7 +202,7 @@ describe('S5 criteria: contract §3.4 values', () => {
     expect(values(run(s4, first(s4, 's1/r2'), pkg))).toEqual(['False', 'False']);
   });
 
-  it('all/any/not, call and holes never reach S5: the compiler rejects them in criterion position', () => {
+  it('all/any/not and call never reach S5: the compiler rejects them in criterion position (criterion holes are preview-only)', () => {
     const affirmed = eq('assertion', 'AssertionValue.Affirmed');
     for (const establishes of [{ all: [affirmed] }, { any: [affirmed] }, { not: affirmed }, { all: [] }]) {
       const r = experimentalCompile(program(establishes) as JsonValue);

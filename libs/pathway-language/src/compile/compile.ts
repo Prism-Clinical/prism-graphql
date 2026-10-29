@@ -17,15 +17,17 @@ import type {
   CompiledReference,
   CompileFailure,
   CompileResult,
+  CriterionSlot,
   DependencyEdge,
   Diagnostic,
   DiagnosticCode,
-  EnumCriterion,
   ExplicitAssertionContract,
   Expr,
   HoleInfo,
+  IncompleteExplicitAssertionContract,
   PreviewCompileResult,
   PreviewMarker,
+  QueryContract,
   ValueType,
 } from './types';
 
@@ -245,7 +247,7 @@ class Analysis {
       }
       case 'hole': {
         if (!pos.holeType) {
-          this.add('UNSUPPORTED_CONSTRUCT', ptr, 'holes are supported only as a whole applicability expression, query contract or urgency');
+          this.add('UNSUPPORTED_CONSTRUCT', ptr, 'holes are supported only as a whole applicability expression, query contract, criterion or urgency');
           return null;
         }
         const id = this.hole(arg, at(ptr, 'hole'), pos.holeType);
@@ -281,7 +283,13 @@ function contextRefs(v: JsonValue | undefined, ptr: string, out: [string, string
   }
 }
 
-function criterion(a: Analysis, v: JsonValue | undefined, ptr: string): EnumCriterion | null {
+/**
+ * One criterion: `eq(c.<field>, <Enum>.<value>)`, or a hole occupying the whole criterion. Its type
+ * is `Decision`, the criterion's result type over the bound candidate `c` (evidence-query contract
+ * §3.1–§3.2); the position fixes the binding, so the hole declares no extra scope. A hole anywhere
+ * inside a criterion is outside the supported fragment (UNSUPPORTED_CONSTRUCT, as before).
+ */
+function criterion(a: Analysis, v: JsonValue | undefined, ptr: string): CriterionSlot | null {
   if (!isObject(v) || Object.keys(v).length === 0) {
     a.add('SOURCE_INVALID', ptr, 'a criterion must be a typed expression, not prose');
     return null;
@@ -294,11 +302,15 @@ function criterion(a: Analysis, v: JsonValue | undefined, ptr: string): EnumCrit
     a.add('SOURCE_INVALID', ptr, 'one expression form per object');
     return null;
   }
+  if (keys[0] === 'hole') {
+    const id = a.hole(v['hole'], at(ptr, 'hole'), 'Decision');
+    return id === null ? null : { kind: 'hole', hole: id, location: at(ptr, 'hole') };
+  }
   const eq = v['eq'];
   const field = Array.isArray(eq) && isObject(eq[0]) && Object.keys(eq[0]).length === 1 ? eq[0]['field'] : undefined;
   const lit = Array.isArray(eq) && isObject(eq[1]) && Object.keys(eq[1]).length === 1 ? eq[1]['enum'] : undefined;
   if (!Array.isArray(eq) || eq.length !== 2 || !Array.isArray(field) || field.length !== 2 || field[0] !== 'c' || typeof field[1] !== 'string' || typeof lit !== 'string') {
-    a.add('UNSUPPORTED_CONSTRUCT', ptr, 'this subset supports criteria of the form eq(c.<field>, <Enum>.<value>)');
+    a.add('UNSUPPORTED_CONSTRUCT', ptr, 'this subset supports criteria of the form eq(c.<field>, <Enum>.<value>), or a hole replacing the whole criterion');
     return null;
   }
   const name = field[1];
@@ -322,10 +334,15 @@ function criterion(a: Analysis, v: JsonValue | undefined, ptr: string): EnumCrit
     a.add('TYPE_MISMATCH', at(at(ptr, 'eq'), 1), `c.${name} is not of type ${enumType}`);
     return null;
   }
-  return { field: name, enumType, value, location: ptr };
+  return { kind: 'complete', criterion: { field: name, enumType, value, location: ptr } };
 }
 
-function explicitContract(a: Analysis, c: JsonObject, ptr: string, valueSets: ReadonlyMap<string, boolean>): ExplicitAssertionContract | null {
+function explicitContract(
+  a: Analysis,
+  c: JsonObject,
+  ptr: string,
+  valueSets: ReadonlyMap<string, boolean>,
+): ExplicitAssertionContract | IncompleteExplicitAssertionContract | null {
   const before = a.diags.length;
   a.members(c, ptr, ['retrieve', 'corrections', 'admissible', 'policy', 'establishes', 'refutes', 'obligations'], []);
 
@@ -421,12 +438,14 @@ function explicitContract(a: Analysis, c: JsonObject, ptr: string, valueSets: Re
   const establishes = crit('establishes');
   const refutes = crit('refutes');
 
+  let pending: string[] = [];
   if (has(c, 'obligations')) {
     const op = at(ptr, 'obligations');
     const obs = c['obligations'];
     if (!Array.isArray(obs)) a.add('SOURCE_INVALID', op, 'obligations must be an array');
     else {
       let found = false;
+      const pendingAt: string[] = [];
       obs.forEach((o, i) => {
         const d = isObject(o) && Object.keys(o).length === 1 ? o['disjoint'] : undefined;
         const pair = Array.isArray(d) && d.length === 2 && new Set(d).size === 2 && d.every((x) => x === 'establishes' || x === 'refutes');
@@ -436,13 +455,17 @@ function explicitContract(a: Analysis, c: JsonObject, ptr: string, valueSets: Re
         }
         found = true;
         if (!establishes || !refutes) return; // an invalid criterion is already diagnosed
+        // A hole has no value to prove anything with, and none is assumed: the obligation stays pending.
+        if (establishes.kind === 'hole' || refutes.kind === 'hole') return void pendingAt.push(at(op, i));
+        const [e, r] = [establishes.criterion, refutes.criterion];
         // Unreachable while criteria are restricted to c.assertion; kept as the documented diagnostic.
-        if (establishes.field !== refutes.field || establishes.enumType !== refutes.enumType) {
+        if (e.field !== r.field || e.enumType !== r.enumType) {
           a.add('UNSUPPORTED_PROOF_FRAGMENT', at(op, i), 'disjointness is analyzable only for equalities on the same enum field');
-        } else if (establishes.value === refutes.value) {
-          a.add('EXCLUSIVE_BRANCH_OVERLAP', at(op, i), `a record with c.${establishes.field} = ${establishes.value} satisfies both criteria`);
+        } else if (e.value === r.value) {
+          a.add('EXCLUSIVE_BRANCH_OVERLAP', at(op, i), `a record with c.${e.field} = ${e.value} satisfies both criteria`);
         }
       });
+      pending = pendingAt;
       if (!found && obs.every((o) => !(isObject(o) && has(o, 'disjoint')))) {
         a.add('SOURCE_INVALID', op, `${POLICY} requires the obligation disjoint(establishes, refutes)`);
       }
@@ -450,18 +473,27 @@ function explicitContract(a: Analysis, c: JsonObject, ptr: string, valueSets: Re
   }
 
   if (a.diags.length > before || !establishes || !refutes) return null;
-  return {
-    kind: 'explicit-assertion-v0',
+  const settings = {
     recordType,
     sources,
     valueSet,
     authorityRule,
     admissible: { episode: adm && isObject(adm) ? (adm['episode'] as JsonValue) : null, encounter: isObject(adm) ? (adm['encounter'] as JsonValue) : null, assertionKinds },
-    establishes,
-    refutes,
     source: c as JsonValue, // detached and frozen with the whole package
     location: ptr,
   };
+  if (establishes.kind === 'complete' && refutes.kind === 'complete') {
+    return { kind: 'explicit-assertion-v0', ...settings, establishes: establishes.criterion, refutes: refutes.criterion };
+  }
+  const holes = [establishes, refutes].flatMap((x) => (x.kind === 'hole' ? [x.hole] : []));
+  return { kind: 'explicit-assertion-v0-incomplete', ...settings, establishes, refutes, disjointness: { status: 'Pending', holes, locations: pending } };
+}
+
+/** The hole IDs a query contract contains: its whole-contract hole or its criterion holes, in that order. */
+export function contractHoles(c: QueryContract): string[] {
+  if (c.kind === 'hole') return [c.hole];
+  if (c.kind === 'explicit-assertion-v0-incomplete') return [...c.disjointness.holes];
+  return [];
 }
 
 // ---------- graph
@@ -781,9 +813,8 @@ function markers(p: CompiledProgram): PreviewMarker[] {
   for (const d of p.declarations) {
     const set = new Set<string>();
     if (d.kind === 'Predicate') collect(d.expr, set);
-    else if (d.kind === 'EvidenceQuery') {
-      if (d.contract.kind === 'hole') set.add(d.contract.hole);
-    } else collect(d.status, set);
+    else if (d.kind === 'EvidenceQuery') contractHoles(d.contract).forEach((h) => set.add(h));
+    else collect(d.status, set);
     marks.set(d.id, set);
     if (d.kind === 'Finding') {
       emit(`${d.id}.status`, set);
@@ -820,7 +851,12 @@ export function compile(source: unknown): CompileResult {
       dependencyEdges: program.dependencyEdges,
     });
   }
-  return register(detach({ outcome: 'Compiled', wellFormed: true, diagnostics: [], package: { ...program, kind: 'CompiledPackage', experimental: 'nonclinical-ppl-compile-v0' } }) as CompileResult & { package?: object }, 'CompiledPackage');
+  // No holes means every query contract is complete; checked, not assumed, before narrowing the type.
+  if (program.declarations.some((d) => d.kind === 'EvidenceQuery' && d.contract.kind !== 'explicit-assertion-v0')) {
+    throw new Error('invariant: a hole-free program has an incomplete query contract');
+  }
+  const complete = program as CompiledProgram<ExplicitAssertionContract>;
+  return register(detach({ outcome: 'Compiled', wellFormed: true, diagnostics: [], package: { ...complete, kind: 'CompiledPackage', experimental: 'nonclinical-ppl-compile-v0' } }) as CompileResult & { package?: object }, 'CompiledPackage');
 }
 
 /** Preview compilation: accepts correctly typed holes as markers. Never publishable or clinically executable. */

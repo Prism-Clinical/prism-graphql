@@ -3,15 +3,29 @@
  * copied from the acceptance examples, and every expected code and JSON Pointer is derived from
  * first-program-implementation-contract.md §2, §5 (location rules), §6 and §7.
  */
+import { readFileSync } from 'fs';
+import { join } from 'path';
 import {
+  CriteriaConfigurationError,
   DEMO_AUTHORITY_RULE,
+  QuerySelectionConfigurationError,
   SAME_ENCOUNTER_RULE,
+  experimentalClassifyRecord,
   experimentalCompile,
   experimentalCompilePreview,
+  experimentalEvaluateCriteria,
+  experimentalExecutePreviewWithSuppliedQueryResults,
+  experimentalExecuteWithSuppliedQueryResults,
+  experimentalPossibleClasses,
+  experimentalSelectForQuery,
+  type CompiledPackage,
   type CompileResult,
+  type IncompleteExplicitAssertionContract,
   type JsonValue,
   type PreviewCompileResult,
+  type PreviewPackage,
 } from '../index';
+import { FIXTURE_DIR } from './support/fixture-runner';
 
 type J = { [k: string]: any };
 const eq = (field: string, rhs: J) => ({ eq: [{ field: ['c', field] }, rhs] });
@@ -260,7 +274,8 @@ describe('I1 compiler: types', () => {
   it('holes outside the supported positions are UNSUPPORTED_CONSTRUCT', () => {
     invalid(with_((p) => (p.nodes[1].expr = hole('H-1', 'Decision'))), ['UNSUPPORTED_CONSTRUCT', '/nodes/1/expr']);
     invalid(with_((p) => (p.applicability.expr = { all: [hole('H-1', 'Decision')] })), ['UNSUPPORTED_CONSTRUCT', '/applicability/expr/all/0']);
-    invalid(with_((p) => (p.nodes[0].contract.establishes = hole('H-1', 'Decision'))), ['UNSUPPORTED_CONSTRUCT', '/nodes/0/contract/establishes']);
+    // A hole inside a criterion (not replacing all of it) stays unsupported; whole-criterion holes are tested below.
+    invalid(with_((p) => (p.nodes[0].contract.establishes = { eq: [{ field: ['c', 'assertion'] }, hole('H-1', 'Decision')] })), ['UNSUPPORTED_CONSTRUCT', '/nodes/0/contract/establishes']);
   });
   it('duplicate hole identifiers are INVALID_DECLARATION_ID at each hole id', () => {
     invalid(
@@ -384,5 +399,245 @@ describe('I1 compiler: holes in normal and preview compilation', () => {
       Object.assign(p, holed());
       p.nodes[3].expr.all[0].ref = 'missing';
     }), ['UNDEFINED_REFERENCE', '/nodes/3/expr/all/0/ref']);
+  });
+});
+
+describe('I1 compiler: whole-criterion holes (preview only; evidence-query contract §6.1, case 52)', () => {
+  const C = '/nodes/0/contract';
+  const AFFIRMED = { field: 'assertion', enumType: 'AssertionValue', value: 'Affirmed', location: `${C}/establishes` };
+  const DENIED = { field: 'assertion', enumType: 'AssertionValue', value: 'Denied', location: `${C}/refutes` };
+  const holedAt = (...ks: ('establishes' | 'refutes')[]) =>
+    with_((p) => ks.forEach((k) => (p.nodes[0].contract[k] = hole(`H-${k.toUpperCase()}`, 'Decision', { cites: ['ref-1'] }))));
+  const preview = (p: J): PreviewPackage => {
+    const r = experimentalCompilePreview(p as JsonValue);
+    if (r.outcome !== 'PreviewPackage') throw new Error(`preview failed: ${JSON.stringify(r.diagnostics)}`);
+    return r.package;
+  };
+  const queryContract = (pkg: PreviewPackage) => {
+    const q = pkg.declarations.find((d) => d.id === 'ev');
+    if (q?.kind !== 'EvidenceQuery') throw new Error('no ev');
+    return q.contract;
+  };
+  const incomplete = (pkg: PreviewPackage): IncompleteExplicitAssertionContract => {
+    const c = queryContract(pkg);
+    if (c.kind !== 'explicit-assertion-v0-incomplete') throw new Error(`contract kind ${c.kind}`);
+    return c;
+  };
+
+  it.each([
+    [['establishes'], { kind: 'hole', hole: 'H-ESTABLISHES', location: `${C}/establishes/hole` }, { kind: 'complete', criterion: DENIED }],
+    [['refutes'], { kind: 'complete', criterion: AFFIRMED }, { kind: 'hole', hole: 'H-REFUTES', location: `${C}/refutes/hole` }],
+    [['establishes', 'refutes'], { kind: 'hole', hole: 'H-ESTABLISHES', location: `${C}/establishes/hole` }, { kind: 'hole', hole: 'H-REFUTES', location: `${C}/refutes/hole` }],
+  ] as const)('preview keeps the hole and the complete sibling: holes at %j', (at, establishes, refutes) => {
+    const pkg = preview(holedAt(...at));
+    const c = incomplete(pkg);
+    expect(c.establishes).toEqual(establishes);
+    expect(c.refutes).toEqual(refutes);
+    const holes = at.map((k) => `H-${k.toUpperCase()}`);
+    expect(c.disjointness).toEqual({ status: 'Pending', holes, locations: [`${C}/obligations/0`] });
+    // Every other setting is validated and kept exactly as in the complete contract.
+    const complete = experimentalCompile(program() as JsonValue);
+    if (complete.outcome !== 'Compiled') throw new Error('complete');
+    const ev = complete.package.declarations.find((d) => d.id === 'ev');
+    if (ev?.kind !== 'EvidenceQuery') throw new Error('ev');
+    const { kind: _k, establishes: _e, refutes: _r, source: _s, ...settings } = ev.contract;
+    expect(c).toMatchObject(settings);
+    expect(c.source).toEqual(holedAt(...at).nodes[0].contract);
+    // Hole metadata: identity, declared type, explanation, citations and the pointer to the hole member.
+    expect(pkg.holes).toEqual(holes.map((id) => ({ id, type: 'Decision', explains: `undecided: ${id}`, cites: ['ref-1'], location: `${C}/${id === 'H-ESTABLISHES' ? 'establishes' : 'refutes'}/hole` })));
+    // The query and its dependents are marked, never Unresolved or False.
+    expect(pkg.markers).toEqual([
+      { output: 'ev', holes },
+      { output: 'fd.status', holes },
+      { output: 'pv', holes },
+    ]);
+    expect(pkg.publication).toBe('Blocked');
+  });
+
+  it.each([[['establishes']], [['refutes']], [['establishes', 'refutes']]] as const)('normal compilation is blocked, well-formed, one diagnostic per hole: %j', (at) => {
+    const r = experimentalCompile(holedAt(...at) as JsonValue);
+    expect(r).toMatchObject({ outcome: 'CompileFailure', wellFormed: true });
+    expect('package' in r).toBe(false);
+    expect(diags(r)).toEqual(at.map((k) => ['UNRESOLVED_AUTHORING_HOLE', `${C}/${k}/hole`, `H-${k.toUpperCase()}`]));
+  });
+
+  it('a complete query compiles exactly as before, in both modes', () => {
+    const r = experimentalCompile(program() as JsonValue);
+    if (r.outcome !== 'Compiled') throw new Error('complete');
+    const c = r.package.declarations.find((d) => d.id === 'ev')!;
+    if (c.kind !== 'EvidenceQuery') throw new Error('ev');
+    expect(Object.keys(c.contract).sort()).toEqual(['admissible', 'authorityRule', 'establishes', 'kind', 'location', 'recordType', 'refutes', 'source', 'sources', 'valueSet']);
+    expect([c.contract.kind, c.contract.establishes, c.contract.refutes]).toEqual(['explicit-assertion-v0', AFFIRMED, DENIED]);
+    const v = preview(program());
+    expect(queryContract(v)).toEqual(c.contract);
+    expect([v.holes, v.markers]).toEqual([[], []]);
+  });
+
+  it('wrongly typed and malformed criterion holes are errors in both modes', () => {
+    const at = (h: unknown) => with_((p) => (p.nodes[0].contract.establishes = h));
+    invalid(at(hole('H-1', 'EvidenceSelectionContract<Boolean>')), ['TYPE_MISMATCH', `${C}/establishes/hole`]);
+    invalid(at(hole('H-1', 'Evidence<Boolean>')), ['TYPE_MISMATCH', `${C}/establishes/hole`]);
+    invalid(at({ hole: { id: 'H-1', type: 'Decision' } }), ['SOURCE_INVALID', `${C}/establishes/hole`]);
+    invalid(at({ hole: { id: ' ', type: 'Decision', explains: 'x' } }), ['SOURCE_INVALID', `${C}/establishes/hole/id`]);
+    invalid(at({ hole: 'H-1' }), ['SOURCE_INVALID', `${C}/establishes/hole`]);
+    invalid(at(hole('H-1', 'Decision', { over: 'candidate' })), ['UNKNOWN_EXECUTABLE_PROPERTY', `${C}/establishes/hole/over`]);
+    invalid(at({ ...hole('H-1', 'Decision'), ...eq('assertion', { enum: 'AssertionValue.Affirmed' }) }), ['SOURCE_INVALID', `${C}/establishes`]);
+    invalid(at(hole('H-1', 'Decision', { cites: ['nope'] })), ['UNDEFINED_REFERENCE', `${C}/establishes/hole/cites/0`]);
+  });
+
+  it('a hole inside a criterion is still unsupported, in either criterion', () => {
+    for (const k of ['establishes', 'refutes']) {
+      for (const nested of [
+        { eq: [{ field: ['c', 'assertion'] }, hole('H-1', 'Decision')] },
+        { eq: [hole('H-1', 'Decision'), { enum: 'AssertionValue.Denied' }] },
+        { not: hole('H-1', 'Decision') },
+        { all: [hole('H-1', 'Decision')] },
+      ]) invalid(with_((p) => (p.nodes[0].contract[k] = nested)), ['UNSUPPORTED_CONSTRUCT', `${C}/${k}`]);
+    }
+  });
+
+  it('a hole never hides an invalid sibling criterion', () => {
+    const beside = (refutes: J) =>
+      with_((p) => {
+        p.nodes[0].contract.establishes = hole('H-1', 'Decision');
+        p.nodes[0].contract.refutes = refutes;
+      });
+    invalid(beside(eq('mood', { enum: 'AssertionValue.Denied' })), ['UNDEFINED_REFERENCE', `${C}/refutes/eq/0/field`]);
+    invalid(beside(eq('assertion', { enum: 'AssertionValue.Maybe' })), ['UNDEFINED_REFERENCE', `${C}/refutes/eq/1/enum`]);
+    invalid(beside(eq('assertion', { enum: 'AssertionKind.PatientReport' })), ['TYPE_MISMATCH', `${C}/refutes/eq/1`]);
+    invalid(beside(eq('assertionKind', { enum: 'AssertionKind.PatientReport' })), ['UNSUPPORTED_CONSTRUCT', `${C}/refutes/eq/0`]);
+    invalid(beside({ call: 'lib.isDenied' }), ['UNSUPPORTED_CONSTRUCT', `${C}/refutes`]);
+    invalid(beside({ eq: [{ field: ['c', 'assertion'] }, { ref: 'ctx.encounter' }] }), ['UNSUPPORTED_CONTEXT_REFERENCE', `${C}/refutes/eq/1/ref`]);
+    invalid(beside({ assertion: 'Denied' }), ['UNKNOWN_EXECUTABLE_PROPERTY', `${C}/refutes/assertion`]);
+    invalid(beside('the record is negative' as never), ['SOURCE_INVALID', `${C}/refutes`]);
+    // Mirror placement, and the hole's own diagnostic beside the sibling's.
+    invalid(
+      with_((p) => {
+        p.nodes[0].contract.establishes = eq('assertion', { enum: 'AssertionValue.Maybe' });
+        p.nodes[0].contract.refutes = { hole: { id: 'H-2', type: 'Decision' } };
+      }),
+      ['UNDEFINED_REFERENCE', `${C}/establishes/eq/1/enum`],
+      ['SOURCE_INVALID', `${C}/refutes/hole`],
+    );
+  });
+
+  it('unrelated invalid query settings are still rejected beside a criterion hole', () => {
+    const holed = (f: (c: J) => void) => with_((p) => {
+      p.nodes[0].contract.establishes = hole('H-1', 'Decision');
+      f(p.nodes[0].contract);
+    });
+    invalid(holed((c) => (c.policy = 'latest-wins')), ['UNSUPPORTED_CONSTRUCT', `${C}/policy`]);
+    invalid(holed((c) => (c.admissible.subject = { eq: [] })), ['UNSUPPORTED_CONSTRUCT', `${C}/admissible/subject`]);
+    invalid(holed((c) => (c.retrieve.valueSet = 'vs/none@1')), ['UNDEFINED_REFERENCE', `${C}/retrieve/valueSet`]);
+    invalid(holed((c) => (c.obligations = [])), ['SOURCE_INVALID', `${C}/obligations`]);
+    invalid(holed((c) => c.obligations.push({ exhaustive: ['establishes'] })), ['UNSUPPORTED_CONSTRUCT', `${C}/obligations/1`]);
+    invalid(holed((c) => delete c.obligations), ['SOURCE_INVALID', C]);
+    invalid(holed((c) => (c.extra = 1)), ['UNKNOWN_EXECUTABLE_PROPERTY', `${C}/extra`]);
+  });
+
+  it('disjointness: pending with a hole (no value assumed); overlap and proof unchanged when both are complete', () => {
+    // Refutes would overlap with any establishes = Denied; with establishes a hole nothing is proved or refuted.
+    const c = incomplete(preview(holedAt('establishes')));
+    expect(c.disjointness.status).toBe('Pending');
+    // Two disjoint entries are both pending.
+    const twice = incomplete(preview(with_((p) => {
+      p.nodes[0].contract.establishes = hole('H-1', 'Decision');
+      p.nodes[0].contract.obligations.push({ disjoint: ['establishes', 'refutes'] });
+    })));
+    expect(twice.disjointness).toEqual({ status: 'Pending', holes: ['H-1'], locations: [`${C}/obligations/0`, `${C}/obligations/1`] });
+    invalid(with_((p) => (p.nodes[0].contract.refutes = eq('assertion', { enum: 'AssertionValue.Affirmed' }))), ['EXCLUSIVE_BRANCH_OVERLAP', `${C}/obligations/0`]);
+    expect('disjointness' in (queryContract(preview(program())) as object)).toBe(false);
+  });
+
+  it('preview results are detached from the source and deep-frozen', () => {
+    const src = holedAt('establishes');
+    const pkg = preview(src);
+    const before = JSON.stringify(pkg);
+    src.nodes[0].contract.establishes.hole.explains = 'changed';
+    src.nodes[0].contract.establishes.hole.id = 'H-OTHER';
+    src.nodes[0].contract.refutes.eq[1].enum = 'AssertionValue.Affirmed';
+    src.nodes[0].contract.obligations.length = 0;
+    expect(JSON.stringify(pkg)).toBe(before);
+    const c = incomplete(pkg);
+    for (const o of [c, c.establishes, c.refutes, c.disjointness, c.disjointness.holes, c.disjointness.locations, pkg.holes[0]]) expect(Object.isFrozen(o)).toBe(true);
+    if (c.refutes.kind !== 'complete') throw new Error('refutes');
+    expect(Object.isFrozen(c.refutes.criterion)).toBe(true);
+    expect(() => ((c.establishes as { hole: string }).hole = 'X')).toThrow(TypeError);
+  });
+
+  it('preview execution over supplied results marks the query and refuses a result for it', () => {
+    const pkg = preview(holedAt('establishes'));
+    const r = experimentalExecutePreviewWithSuppliedQueryResults(pkg, new Map());
+    expect(r).toMatchObject({ outcome: 'Executed' });
+    if (r.outcome !== 'Executed') return;
+    expect(r.outputs['ev']).toEqual({ marker: { holes: ['H-ESTABLISHES'] }, stagesRun: [] });
+    const supplied = experimentalExecutePreviewWithSuppliedQueryResults(pkg, new Map([['ev', { status: 'Known', value: true, supportingEvidenceIds: [] }]]) as never);
+    expect(supplied).toMatchObject({ outcome: 'ExecutionInputError', errors: [{ code: 'RESULT_FOR_HOLED_QUERY', query: 'ev' }] });
+  });
+});
+
+describe('Case 52 (EA-052a) as a compiler regression input', () => {
+  const fx = JSON.parse(readFileSync(join(FIXTURE_DIR, 'fixtures', 'EA-052a.json'), 'utf8'));
+  const inline = fx.query.inline;
+  /** The fixture query in a minimal program, as the fixture runner wraps it; `establishes` as given. */
+  const wrap = (establishes: J): J => ({
+    ppl: { languageVersion: 'ppl-1', capabilityProfileVersion: 'ppl-core-v0' },
+    package: { id: 'fixture', state: 'Draft' },
+    references: [],
+    valueSets: inline.valueSets,
+    applicability: { id: 'fixture.scope', kind: 'Predicate', expr: { all: [] } },
+    nodes: [{ ...inline.query, subject: 'patient', contract: { ...inline.query.contract, establishes } }, inline.predicate],
+  });
+  const C = '/nodes/0/contract';
+  // P6: the fixture's lower-level hole has no `explains` and an `over` member; an authored hole needs the former and has no such member.
+  const authored = { hole: { id: 'H-CRITERION', type: 'Decision', explains: 'Which candidate assertions establish the query is undecided' } };
+
+  it('the fixture hole as written is not an authored program hole (P6)', () => {
+    expect(inline.query.contract.establishes).toEqual({ hole: { id: 'H-CRITERION', type: 'Decision', over: 'candidate' } });
+    invalid(wrap(inline.query.contract.establishes), ['SOURCE_INVALID', `${C}/establishes/hole`], ['UNKNOWN_EXECUTABLE_PROPERTY', `${C}/establishes/hole/over`]);
+  });
+
+  it('with an explanation, preview represents the hole, keeps refutes, and matches the fixture markers', () => {
+    const r = experimentalCompilePreview(wrap(authored) as JsonValue);
+    if (r.outcome !== 'PreviewPackage') throw new Error(JSON.stringify(r.diagnostics));
+    const q = r.package.declarations.find((d) => d.id === 'q.demo');
+    if (q?.kind !== 'EvidenceQuery' || q.contract.kind !== 'explicit-assertion-v0-incomplete') throw new Error('q.demo');
+    expect(q.contract.establishes).toEqual({ kind: 'hole', hole: 'H-CRITERION', location: `${C}/establishes/hole` });
+    expect(q.contract.refutes).toEqual({ kind: 'complete', criterion: { field: 'assertion', enumType: 'AssertionValue', value: 'Denied', location: `${C}/refutes` } });
+    expect(q.contract.disjointness).toEqual({ status: 'Pending', holes: ['H-CRITERION'], locations: [`${C}/obligations/0`] });
+    expect(r.package.markers).toEqual(fx.expected.markers);
+    expect(r.package.publication).toBe(fx.expected.publication);
+    expect(diags(experimentalCompile(wrap(authored) as JsonValue))).toEqual([['UNRESOLVED_AUTHORING_HOLE', `${C}/establishes/hole`, 'H-CRITERION']]);
+  });
+
+  it('its preview criterion facts stay expected and unevaluated: Marker and True are preview-evaluation work', () => {
+    const facts = fx.expected.traceAssertions.filter((t: J) => t.fact === 'criterion');
+    expect(facts).toEqual([
+      { fact: 'criterion', ref: 's1/r2@1', criterion: 'refutes', value: 'True' },
+      { fact: 'criterion', ref: 's1/r2@1', criterion: 'establishes', value: 'Marker' },
+    ]);
+  });
+
+  it('normal execution entry points reject its preview package; a complete twin is accepted', () => {
+    const twin = experimentalCompile(wrap({ eq: [{ field: ['c', 'assertion'] }, { enum: 'AssertionValue.Affirmed' }] }) as JsonValue);
+    const r = experimentalCompilePreview(wrap(authored) as JsonValue);
+    if (twin.outcome !== 'Compiled' || r.outcome !== 'PreviewPackage') throw new Error('setup');
+    const ctx = { subject: 'P1', revisions: fx.input.records, retractions: [], contextEncounter: { known: 'N1' }, contextEpisode: { known: 'E1' } };
+    const s4 = experimentalSelectForQuery({ package: twin.package, query: 'q.demo', ...ctx });
+    const key = s4.keys[0]!;
+    const possibility = key.possibilities[0]!;
+    expect(() => experimentalEvaluateCriteria({ package: twin.package, query: 'q.demo', s4, possibility })).not.toThrow();
+    const pre = r.package as never as CompiledPackage;
+    expect(() => experimentalSelectForQuery({ package: pre, query: 'q.demo', ...ctx })).toThrow(QuerySelectionConfigurationError);
+    expect(() => experimentalSelectForQuery({ package: pre, query: 'q.demo', ...ctx })).toThrow(/preview packages/);
+    for (const call of [
+      () => experimentalEvaluateCriteria({ package: pre, query: 'q.demo', s4, possibility }),
+      () => experimentalClassifyRecord({ package: pre, query: 'q.demo', s4, possibility }),
+      () => experimentalPossibleClasses({ package: pre, query: 'q.demo', s4, key }),
+    ]) {
+      expect(call).toThrow(CriteriaConfigurationError);
+      expect(call).toThrow(/preview packages/);
+    }
+    expect(experimentalExecuteWithSuppliedQueryResults(pre, new Map())).toMatchObject({ outcome: 'ExecutionInputError', errors: [{ code: 'INVALID_PACKAGE' }] });
   });
 });

@@ -1,6 +1,6 @@
 # @prism/pathway-language (experimental, nonclinical)
 
-**Status:** an implementation experiment. It covers **S1–S5** of the *proposed* [evidence-query-to-predicate contract](../../docs/superpowers/records/pathway-language/evidence-query-to-predicate-contract.md): S1 revision history, S2 candidate identification, the S3 same-encounter, same-episode and `assertionKind` rules, their combination into one admissibility result per possible revision (increment I3), S4 selection, S5 criterion evaluation and classification **for one record at a time**, and S5 **key-level possible classes** (increment I4). I4’s stated acceptance is not fully met: EA-052a’s two preview `criterion` facts (a nested criterion hole, case 52) cannot be produced, because the compiler rejects a hole in criterion position even in preview and preview evaluation is out of scope, so I4 is not complete. S6 resolution does not exist, so no query result is computed. It also has the **first PPL compiler subset** and **isolated program-expression execution** over supplied query results (increments I1 and I2 of the [first-program implementation contract](../../docs/superpowers/records/pathway-language/first-program-implementation-contract.md)). It is not an end-to-end PPL evaluator and is not clinically approved; compiling or executing a program confers no clinical approval. It must not be used for patient care. The RFC, Stage A, the contract and the delivery plans keep their existing statuses; nothing here completes a delivery story.
+**Status:** an implementation experiment. It covers **S1–S5** of the *proposed* [evidence-query-to-predicate contract](../../docs/superpowers/records/pathway-language/evidence-query-to-predicate-contract.md): S1 revision history, S2 candidate identification, the S3 same-encounter, same-episode and `assertionKind` rules, their combination into one admissibility result per possible revision (increment I3), S4 selection, S5 criterion evaluation and classification **for one record at a time**, and S5 **key-level possible classes** (increment I4). I4’s stated acceptance is not fully met: EA-052a’s two preview `criterion` facts (a nested criterion hole, case 52) cannot be produced: preview compilation now represents a whole-criterion hole beside its complete sibling, but preview criterion evaluation is not implemented, so I4 is not complete. S6 resolution does not exist, so no query result is computed. It also has the **first PPL compiler subset** and **isolated program-expression execution** over supplied query results (increments I1 and I2 of the [first-program implementation contract](../../docs/superpowers/records/pathway-language/first-program-implementation-contract.md)). It is not an end-to-end PPL evaluator and is not clinically approved; compiling or executing a program confers no clinical approval. It must not be used for patient care. The RFC, Stage A, the contract and the delivery plans keep their existing statuses; nothing here completes a delivery story.
 
 This package is the isolated `libs/pathway-language` boundary named in RFC §10. It has no imports from applications, resolvers, databases or the network; `src/` imports only Node’s `crypto` and one RFC 8785 library.
 
@@ -457,7 +457,7 @@ const s4 = experimentalSelectForQuery({
 
 Before this, only the value-set pin was compared. A `ClinicianDocumented` record selected under a query that allows that kind then gave `establishes = True` for a second query with the same pin that allows no kind; it is now rejected, and the second query’s own selection makes the record `Inadmissible` (`NotEvaluated`).
 
-**Supported expressions.** Only what the I1 compiler accepts in criterion position: `eq(c.assertion, AssertionValue.<v>)`. `all`, `any`, `not`, `call` and holes there are compile errors, so the evaluator never receives them, and Boolean composition inside criteria is untested here. The evaluator reads `EnumCriterion` (field, enum type, literal) from the compiled package, not a raw expression tree.
+**Supported expressions.** Only what the I1 compiler accepts in criterion position: `eq(c.assertion, AssertionValue.<v>)`. `all`, `any`, `not`, `call` and holes inside a criterion are compile errors. A hole replacing a whole criterion compiles only in preview, and preview packages are rejected here. So the evaluator never receives any of them, and Boolean composition inside criteria is untested here. The evaluator reads `EnumCriterion` (field, enum type, literal) from the compiled package, not a raw expression tree.
 
 **Eligibility** (by the S4 disposition, which is copied unchanged into the result):
 
@@ -574,7 +574,10 @@ Every result, including failures, is a **detached, deep-frozen copy**: editing t
 Each declaration keeps its source JSON Pointer:
 
 - **Predicate** (with `applicability: true` for the top-level one): `expr`, a tree of `ref`, `evidenceValue`, `all` and `hole`, each node with its location.
-- **EvidenceQuery**: `contract` is either a hole or a validated `explicit-assertion-v0` contract. That contract has the record type, sources, value set, authority rule, the recognized admissible rules, `establishes`/`refutes` as `{field, enumType, value}`, and a frozen copy of the authored contract (`source`) for S1–S3 reuse.
+- **EvidenceQuery**: `contract` is a whole-contract hole, a validated `explicit-assertion-v0` contract or, in a `PreviewPackage` only, an `explicit-assertion-v0-incomplete` contract.
+  - **Complete contract.** It has the record type, sources, value set, authority rule, the recognized admissible rules, `establishes`/`refutes` as `{field, enumType, value}`, and a frozen copy of the authored contract (`source`) for S1–S3 reuse.
+  - **Incomplete contract.** It has the same settings. Each criterion is `{kind: 'complete', criterion}` or `{kind: 'hole', hole, location}`, and `disjointness: {status: 'Pending', holes, locations}` (see below).
+  - **Typing.** `CompiledPackage` is typed to hold complete contracts only, and `compile` checks this before producing one.
 - **Finding**: `status`, `label`, `heading`, an `urgency` hole and `cites`.
 
 `PreviewPackage` adds `markers` and the inspectable Finding attributes `<id>.label`, `<id>.heading` and `<id>.cites`.
@@ -582,13 +585,22 @@ Each declaration keeps its source JSON Pointer:
 **Supported subset.**
 
 - Declarations: `EvidenceReference`, the required applicability `Predicate`, `EvidenceQuery`, `Predicate` and `Finding`.
-- Program expressions: `ref` (declarations only), `evidenceValue` (in Predicate expressions), n-ary `all` (`all()` is True and is never a default), and typed holes. Holes are allowed only as a whole applicability expression (`Decision`), a whole query contract (`EvidenceSelectionContract<Boolean>`) or a Finding `urgency` (`UrgencyRequirement`).
+- Program expressions: `ref` (declarations only), `evidenceValue` (in Predicate expressions), n-ary `all` (`all()` is True and is never a default), and typed holes. Holes are allowed only as a whole applicability expression (`Decision`), a whole query contract (`EvidenceSelectionContract<Boolean>`), a whole criterion (`Decision`, below) or a Finding `urgency` (`UrgencyRequirement`).
 - Query contracts: exactly the explicit-assertion-v0 structure:
   - `demo-model@0.1` records, authority `demo-policy/same-source-amend@1`;
   - `admissible` episode and encounter recognized by exact shape, with `ctx.episode` / `ctx.encounter` only at those two positions;
   - `assertionKind` as `in` over `AssertionKind`;
   - criteria `eq(c.assertion, AssertionValue.<value>)` only, type-checked. Any other field is `UNSUPPORTED_CONSTRUCT`;
   - `disjoint(establishes, refutes)`, proved for two such equalities. Equal literals give `EXCLUSIVE_BRANCH_OVERLAP`; `UNSUPPORTED_PROOF_FRAGMENT` is kept for any other form but is unreachable under the restriction.
+  - **Whole-criterion holes** (case 52). `establishes`, `refutes` or both may be `{"hole": {id, type: "Decision", explains, cites?}}`, replacing the whole criterion.
+    - **Type.** `Decision`, the criterion’s type over the bound candidate `c`. The position fixes the binding, so there is no `over` member.
+    - **Errors.** A wrong type is `TYPE_MISMATCH`, a missing `explains` is `SOURCE_INVALID`, and a hole inside a criterion is `UNSUPPORTED_CONSTRUCT`.
+    - **Validation.** The sibling criterion and every other setting are validated exactly as in a complete contract.
+    - **Normal compilation.** Fails, `wellFormed: true`, with one `UNRESOLVED_AUTHORING_HOLE` per hole at `…/<criterion>/hole`.
+    - **Preview compilation.** Produces the incomplete contract above. Disjointness is `Pending`: not proved, not an overlap, and no value is assumed for the hole.
+    - **Markers.** The query and its dependents are marked with the criterion holes.
+    - **Rejection.** Every normal S4–S5 entry point and normal execution still reject the preview package.
+    - **Not implemented.** Preview criterion evaluation (S1–S4 plus the sibling criterion, with a `Marker` for the hole).
 - Everything else is rejected with a named code (`UNSUPPORTED_CONSTRUCT`, `UNKNOWN_EXECUTABLE_PROPERTY`, …). There is no general expression evaluator or theorem prover.
 
 **Preview markers** (§7). An output is marked if and only if it contains a hole or references a marked output; its marker is the union of the contributing hole IDs. Output names:
@@ -651,7 +663,7 @@ Evidence IDs use the fixture notation `source/localId@revision[#digest]`. This i
   - `all()` is `True` with empty support.
 - Every operand is evaluated and traced, even after a decisive one.
 - IDs are deduplicated and ordered by `(source, localId, revision, digest)`; causes follow Stage A order.
-- **Preview:** outputs that depend on a hole are markers (`{marker: {holes}}`), never `Unknown`. A marker survives an otherwise decisive `False`. An urgency hole marks only `urgency`. A holed query outputs `{marker, stagesRun: []}`. Unmarked outputs evaluate normally. `publication: 'Blocked'`, the compiler’s `markers` and the `inspectable` attributes are carried through, and the computed markers are cross-checked against the compiler’s static markers.
+- **Preview:** outputs that depend on a hole are markers (`{marker: {holes}}`), never `Unknown`. A marker survives an otherwise decisive `False`. An urgency hole marks only `urgency`. A holed query, whole-contract or criterion hole, outputs `{marker, stagesRun: []}`; no evidence stage runs here. Unmarked outputs evaluate normally. `publication: 'Blocked'`, the compiler’s `markers` and the `inspectable` attributes are carried through, and the computed markers are cross-checked against the compiler’s static markers.
 
 **Result.** `{outcome: 'Executed', mode, scope: 'program-expressions-with-supplied-query-results', packageId, outputs, findingAttributes, trace}`.
 
@@ -681,7 +693,7 @@ This package has its own Jest configuration and is not part of the root Jest roo
 
 ## Tests and fixture coverage
 
-- **`src/__tests__/compile.test.ts`** has 44 independent I1 tests. Programs are built in the test with their own identifiers, and expected codes and pointers are derived from contract §5. They cover:
+- **`src/__tests__/compile.test.ts`** has 62 independent I1 tests (counting each parameterized case). Programs are built in the test with their own identifiers, and expected codes and pointers are derived from contract §5. They cover:
   - every diagnostic code;
   - changed identifiers and declaration order, and forward references;
   - edge deduplication with every location kept, and no edges from citations or context bindings;
@@ -696,6 +708,28 @@ This package has its own Jest configuration and is not part of the root Jest roo
   - transitive marker propagation; attribute-only holes;
   - structural errors in a holed program;
   - a deep-frozen source;
+  - (whole-criterion holes) each placement, both criteria included:
+    - preview keeps the hole metadata and the complete sibling, and marks the query and its dependents;
+    - normal compilation is blocked per hole;
+    - complete queries are unchanged;
+    - wrong, malformed and nested holes are rejected;
+    - an invalid sibling or unrelated setting is still reported beside a hole;
+    - disjointness is pending, and an overlap of two complete criteria is still rejected;
+    - results are detached and frozen;
+    - I2 preview execution marks the query.
+  - EA-052a’s query as a regression input:
+    - its lower-level hole, as written, is rejected (no `explains`, an `over` member);
+    - with an explanation it preview-compiles to the fixture’s markers, keeping `refutes`;
+    - its two `criterion` facts are left unevaluated;
+    - every S4–S5 entry point and normal execution reject its preview package.
+
+  Deliberate faults, each breaking tests:
+
+  | Fault | Tests failing |
+  |---|---|
+  | A criterion hole accepted as a complete criterion | 9 |
+  | The sibling validated without keeping its diagnostics | 3 |
+  | Pending disjointness dropped | 5 |
   - (review of 3ecd664) editing the source after normal and preview compilation, deep-frozen results that throw on mutation, the identifiers `__proto__`, `constructor`, `toString` and `hasOwnProperty` through compilation and serialization, and the `c.assertion`-only restriction. These tests fail against the 3ecd664 compiler.
 
   Targeted mutation checks found no surviving mutation. Each of these breaks at least one test: urgency marking the status, no transitive marking, the wrong cycle pointer, holes compiling normally, no cross-enum check, no overlap check, and a misplaced `ctx.` being accepted.
@@ -858,7 +892,7 @@ This package has its own Jest configuration and is not part of the root Jest roo
   - **13 `assertionKind`-check assertions checked, 13 passing:** every `assertionKindScope` trace fact (EA-114, EA-115a/b, EA-116, EA-117, EA-118a–d and EA-119 to EA-122). EA-115a/b use an inline query with another authored set (digest `d-ak1`).
   - **37 combined S3 assertions checked, 37 passing:** every `admissibility` trace fact (contract §2.7): 28 in evaluation and preview fixtures written before §2.7, which agree with it, 8 in the partial-stage fixtures EA-119 to EA-124, and 1 in EA-125. Value, the complete set of mismatch reasons, and retained causes are compared.
   - **74 S4 assertions checked, 74 passing:** every `selection` and `disposition` trace fact, all in the partial-stage fixtures EA-125 to EA-134 (contract §2.8); EA-130 to EA-132 add 21, EA-133 and EA-134 13 each.
-  - **22 S5 criterion assertions checked, 22 passing:** every `criterion` trace fact of a complete query, all in the partial-stage fixtures EA-130 to EA-132 (contract §3.5), with value and, for `Unknown`, causes. The fixture query is wrapped in a minimal program and compiled by `experimentalCompile`, and criteria are evaluated over `experimentalSelectForQuery`’s bound result, which the runner also requires to equal the standalone S1–S4 result for the same fixture. EA-052a’s preview `criterion` facts are outside this slice (a nested criterion hole does not compile).
+  - **22 S5 criterion assertions checked, 22 passing:** every `criterion` trace fact of a complete query, all in the partial-stage fixtures EA-130 to EA-132 (contract §3.5), with value and, for `Unknown`, causes. The fixture query is wrapped in a minimal program and compiled by `experimentalCompile`, and criteria are evaluated over `experimentalSelectForQuery`’s bound result, which the runner also requires to equal the standalone S1–S4 result for the same fixture. EA-052a’s preview `criterion` facts are not checked. Its hole now preview-compiles once given an `explains` (see the compiler tests), but preview criterion evaluation is not implemented.
   - **10 S5 classification assertions checked, 10 passing:** every `classification` trace fact, checked directly with `experimentalClassifyRecord` over the bound result (contract §3.3, §3.6): `Unclassified` in EA-004 and EA-074 and `NonInformative` in EA-006 (evaluation fixtures, written before §3.6), and seven in the partial-stage fixture EA-133 (`Supporting`, `Refuting`, `NonInformative`, `Unclassified{Missing}`, `Unclassified{Invalid}`, and the two variants of an unresolved key). `possibleClasses` facts are not checked.
   - **18 S5 `possibleClasses` assertions checked, 18 passing:** every `possibleClasses` trace fact, checked directly with `experimentalPossibleClasses` over the bound result (contract §4.2 step B, §3.7). Twelve are in evaluation fixtures written before §3.7, unchanged: EA-004 (`Unclassified`), EA-010 and EA-011 (unresolved admissibility), EA-018, EA-030, EA-078, EA-084 and EA-088 (alternatives), EA-028 and EA-104 (an inadmissible alternative) and EA-062 and EA-085 (an `excluded` marker). Six are in the partial-stage fixture EA-134: unresolved candidacy, unresolved candidacy beside a mismatch, an `unknown` marker, deduplication, all alternatives excluded, and a retracted key. Materiality is not checked.
 

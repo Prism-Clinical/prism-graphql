@@ -57,22 +57,66 @@ export interface EnumCriterion {
   readonly location: string;
 }
 
-/** A validated explicit-assertion-v0 contract. `source` is a frozen copy of the authored contract. */
-export interface ExplicitAssertionContract {
-  readonly kind: 'explicit-assertion-v0';
+/** Settings shared by the complete and the incomplete explicit-assertion-v0 contract. */
+interface ExplicitAssertionSettings {
   readonly recordType: string;
   readonly sources: readonly string[];
   readonly valueSet: string;
   readonly authorityRule: string;
   /** The recognized admissible rules, verbatim (episode and encounter: eq(c.f, ctx.f)). */
   readonly admissible: { readonly episode: JsonValue; readonly encounter: JsonValue; readonly assertionKinds: readonly string[] };
-  readonly establishes: EnumCriterion;
-  readonly refutes: EnumCriterion;
+  /** A frozen copy of the authored contract. */
   readonly source: JsonValue;
   readonly location: string;
 }
 
-export type CompiledDeclaration =
+/**
+ * A validated, complete explicit-assertion-v0 contract. Its disjointness obligation is proved:
+ * compilation fails otherwise (EXCLUSIVE_BRANCH_OVERLAP / UNSUPPORTED_PROOF_FRAGMENT).
+ */
+export interface ExplicitAssertionContract extends ExplicitAssertionSettings {
+  readonly kind: 'explicit-assertion-v0';
+  readonly establishes: EnumCriterion;
+  readonly refutes: EnumCriterion;
+}
+
+/** A whole criterion replaced by a `Decision` hole (preview only). `location` points to the `hole` member. */
+export interface CriterionHole {
+  readonly kind: 'hole';
+  readonly hole: string;
+  readonly location: string;
+}
+
+/** One criterion of an incomplete contract: a validated complete criterion, or a hole. */
+export type CriterionSlot = { readonly kind: 'complete'; readonly criterion: EnumCriterion } | CriterionHole;
+
+/**
+ * An explicit-assertion-v0 contract with at least one whole-criterion hole. Produced only by
+ * preview compilation and never present in a CompiledPackage. Every other setting is validated
+ * exactly as for a complete contract.
+ */
+export interface IncompleteExplicitAssertionContract extends ExplicitAssertionSettings {
+  readonly kind: 'explicit-assertion-v0-incomplete';
+  readonly establishes: CriterionSlot;
+  readonly refutes: CriterionSlot;
+  /**
+   * disjoint(establishes, refutes) cannot be proved while a criterion is a hole: `Pending`, never
+   * proved, never an overlap. No value is assumed for the hole. `locations` are the obligation entries.
+   */
+  readonly disjointness: { readonly status: 'Pending'; readonly holes: readonly string[]; readonly locations: readonly string[] };
+}
+
+/** A whole-contract hole. */
+export interface ContractHole {
+  readonly kind: 'hole';
+  readonly hole: string;
+  readonly location: string;
+}
+
+export type QueryContract = ExplicitAssertionContract | IncompleteExplicitAssertionContract | ContractHole;
+
+/** `C` narrows the query contracts a package kind can hold (complete only, for a CompiledPackage). */
+export type CompiledDeclaration<C extends QueryContract = QueryContract> =
   | {
       readonly kind: 'Predicate';
       readonly id: string;
@@ -87,7 +131,7 @@ export type CompiledDeclaration =
       readonly id: string;
       readonly subject: 'patient';
       readonly output: 'Evidence<Boolean>';
-      readonly contract: ExplicitAssertionContract | { readonly kind: 'hole'; readonly hole: string; readonly location: string };
+      readonly contract: C;
       readonly cites: readonly string[];
       readonly location: string;
     }
@@ -125,12 +169,12 @@ export interface PreviewMarker {
 }
 
 /** Content shared by both package kinds. Declarations are in a deterministic topological order. */
-export interface CompiledProgram {
+export interface CompiledProgram<C extends QueryContract = QueryContract> {
   readonly packageId: string;
   readonly languageVersion: 'ppl-1';
   readonly capabilityProfileVersion: 'ppl-core-v0';
   readonly applicabilityId: string;
-  readonly declarations: readonly CompiledDeclaration[];
+  readonly declarations: readonly CompiledDeclaration<C>[];
   readonly references: readonly CompiledReference[];
   readonly valueSets: { readonly [id: string]: ValueSetExpansion };
   readonly dependencyEdges: readonly DependencyEdge[];
@@ -138,7 +182,7 @@ export interface CompiledProgram {
 }
 
 /** A complete program. Only this kind may later be evaluated ordinarily. No clinical approval implied. */
-export interface CompiledPackage extends CompiledProgram {
+export interface CompiledPackage extends CompiledProgram<ExplicitAssertionContract> {
   readonly kind: 'CompiledPackage';
   readonly experimental: 'nonclinical-ppl-compile-v0';
 }

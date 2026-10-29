@@ -146,6 +146,9 @@ export type {
   CompiledReference,
   CompileFailure,
   CompileResult,
+  ContractHole,
+  CriterionHole,
+  CriterionSlot,
   DependencyEdge,
   Diagnostic,
   DiagnosticCode,
@@ -153,9 +156,11 @@ export type {
   ExplicitAssertionContract,
   Expr,
   HoleInfo,
+  IncompleteExplicitAssertionContract,
   PreviewCompileResult,
   PreviewMarker,
   PreviewPackage,
+  QueryContract,
   ValueType,
 } from './compile/types';
 export {

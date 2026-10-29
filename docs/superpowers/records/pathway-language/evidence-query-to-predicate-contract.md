@@ -2,7 +2,7 @@
 
 **Status:** Proposed design draft. **Not** accepted, not finalized syntax, not a schema and not implemented. It contains no clinical content: the record type, enum values, codes, sources and permission below are fictional and illustrate language behavior only. They do not map to dysphagia, progression, urgency or any other clinical definition.
 
-**Date:** 2026-10-03. **Revised:** 2026-10-03, nine times, 2026-10-04, once, 2026-10-05, three times, 2026-10-09, three times, 2026-10-28, three times, and 2026-10-29, three times, after review. The third revision fixed three things:
+**Date:** 2026-10-03. **Revised:** 2026-10-03, nine times, 2026-10-04, once, 2026-10-05, three times, 2026-10-09, three times, 2026-10-28, three times, and 2026-10-29, four times, after review. The third revision fixed three things:
 
 - revision-chain boundaries: source-scoped identity, same-source corrections and one fully specified schematic authority rule;
 - deterministic outcomes for malformed history;
@@ -13,6 +13,11 @@ The fourth revision made three changes:
 - Proven cross-boundary corrections and retractions are now rejected without changing their target. This keeps gap irrelevance consistent with S1.
 - Payload identity for duplicate detection is defined.
 - An unsupported justification about coverage attestations is removed.
+
+The twenty-third revision lets preview compilation represent a whole-criterion hole (3.5 Preview, case 52); it changes compilation only:
+
+- `establishes` or `refutes` (or both) may be a typed `Decision` hole replacing the whole criterion. A hole inside a criterion stays unsupported.
+- The preview contract is a distinct incomplete kind that keeps the complete sibling criterion and marks its disjointness obligation `Pending`. Normal compilation and every S4–S5 entry point still reject it, and preview evaluation is not specified as implemented.
 
 The twenty-second revision specifies key-level possible classes (3.7, case 134), step B of 4.2 as a per-possibility contribution table, and records the review confirmation of 3.6’s two decisions. Both new rules of 3.7 (`unknown` includes `excluded`; unresolved candidacy adds `excluded`) were then confirmed on review.
 
@@ -689,7 +694,7 @@ This section fixes the boundary for evaluating a query’s two criteria over **o
 
 Every rejection is an input error, never a criterion value or patient uncertainty.
 
-**Criteria.** The compiled representation: `eq(c.<field>, <Enum>.<value>)`, which I1 accepts only for `c.assertion` and `AssertionValue` literals (first-program contract §2). `all`, `any`, `not`, `call` and holes in criterion position are compile errors, so S5 receives no other tree. Boolean composition inside criteria is therefore not exercised. When the compiler widens the criterion fragment, S5 follows Stage A §4.3’s Kleene tables, with causes accumulated as in 3.4.
+**Criteria.** The compiled representation: `eq(c.<field>, <Enum>.<value>)`, which I1 accepts only for `c.assertion` and `AssertionValue` literals (first-program contract §2). `all`, `any`, `not`, `call` and holes inside a criterion are compile errors. A hole replacing a whole criterion compiles only in preview (Preview below), and S5 rejects preview packages, so S5 receives no other tree. Boolean composition inside criteria is therefore not exercised. When the compiler widens the criterion fragment, S5 follows Stage A §4.3’s Kleene tables, with causes accumulated as in 3.4.
 
 **Evidence.** The payload is read only through the evidence handoff (2.8), from the possibility’s own binding.
 
@@ -732,7 +737,14 @@ The result also names the package, the query, the key, the possibility’s revis
 
 The standalone S1–S4 entry points remain for isolated stage testing. Their results are never evaluated by S5.
 
-**Preview.** A nested criterion hole (case 52, 6.1) is outside this boundary. The I1 compiler rejects a hole in criterion position even in preview, and S5 rejects preview packages, so a hole never becomes `Missing` or `False`.
+**Preview.** A nested criterion hole (case 52, 6.1) is outside this boundary.
+
+- **Normal compilation** fails with `UNRESOLVED_AUTHORING_HOLE`.
+- **Preview compilation** represents the hole: `establishes` or `refutes` (or both) is a `Decision` hole replacing the whole criterion (first-program contract §2). The hole’s type is the criterion’s result type over the bound candidate `c` (3.1–3.2), and the position fixes the binding.
+- **Incomplete contract.** The query’s contract is a distinct `explicit-assertion-v0-incomplete` kind with the complete contract’s validated settings. Each criterion is either `complete` (the same criterion object a complete contract holds) or a `hole`.
+- **Pending disjointness.** `disjoint(establishes, refutes)` is `Pending`: not proved, not an overlap, and no value is assumed for the hole.
+- **Rejection.** S5, like S4’s bound selection, rejects preview packages, so a hole never becomes `Missing`, `False` or `Unknown`.
+- **Not yet implemented.** Preview evaluation (6.1: S1–S4 and the sibling criterion run; the hole gives a `Marker`) is not implemented.
 
 ### 3.6 S5 per-record classification (one possibility)
 
@@ -1397,6 +1409,11 @@ These must hold for every case:
     - Per possibility: its definite class; `Unclassified` adds every assertion class but not `excluded`; unresolved candidacy or admissibility adds `excluded`; inadmissible, out-of-domain and `excluded` possibilities add only `excluded`; `unknown` adds every class including `excluded`; unresolved history adds nothing. The key’s set is the union, in canonical order.
     - Each contribution names its basis; the key’s S4 status is unchanged; a singleton resolves nothing; no materiality is decided.
     - Confirmed on review (2026-10-29): `unknown` includes `excluded`, since its content could be out of domain or inadmissible; unresolved candidacy adds `excluded`, since the record could fail domain membership; an unknown assertion alone does not imply exclusion.
+24. Whole-criterion holes in preview compilation (3.5 Preview, case 52):
+    - Syntax: the existing typed hole, `type: "Decision"`, replacing an entire `establishes` or `refutes`; holes inside criteria remain `UNSUPPORTED_CONSTRUCT`; no `over` member (the position fixes the binding `c`).
+    - The sibling criterion and every other setting are validated as in a complete contract; normal compilation reports `UNRESOLVED_AUTHORING_HOLE` per hole and produces no `CompiledPackage`.
+    - Preview representation: kind `explicit-assertion-v0-incomplete`, criteria as `complete` or `hole` slots, disjointness `Pending` with the hole IDs and obligation locations; the query and its dependents carry markers.
+    - Compilation only: preview evaluation, and EA-052a’s `Marker` and `refutes` True facts, remain outstanding.
 
 **Possible conflicts needing a Stage A amendment.** None found. Items to confirm:
 

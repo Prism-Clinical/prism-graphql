@@ -4,7 +4,8 @@
  * Evaluates a compiled query's `establishes` and `refutes` over ONE possibility of an S4 result,
  * reading its exact payload only through the evidence handoff (§2.8). The criteria are the
  * compiler's `eq(c.<field>, <Enum>.<value>)` form, the only criterion form I1 accepts; `all`, `any`,
- * `not`, `call` and holes are compile errors in criterion position, so no other tree reaches here.
+ * `not`, `call` and nested holes are compile errors in criterion position, and a whole-criterion hole
+ * exists only in a PreviewPackage, which S5 rejects, so no other tree reaches here.
  * It classifies nothing, selects nothing and decides no materiality. Pure; detached, deep-frozen.
  */
 import { queryContract, selectionQuery } from '../bound';

@@ -52,7 +52,7 @@ export function queryContract(pkg: unknown, query: unknown, fail: (m: string) =>
   if (kind !== 'CompiledPackage') fail('package must be a CompiledPackage produced by experimentalCompile in this process');
   const decl = (pkg as CompiledPackage).declarations.find((d) => d.id === query);
   if (!decl || decl.kind !== 'EvidenceQuery') return fail(`query ${JSON.stringify(query)} is not an EvidenceQuery of the package`);
-  if (decl.contract.kind !== 'explicit-assertion-v0') return fail(`query ${String(query)} has no complete contract`); // unreachable for a CompiledPackage
+  if (decl.contract.kind !== 'explicit-assertion-v0') return fail(`query ${String(query)} has no complete contract`); // unreachable: compile() checks every contract is complete
   return decl.contract;
 }
 

@@ -6,7 +6,7 @@
  * (S1–S6), reads no patient record and generates no Need. Pure: no I/O, no clock, no input
  * mutation; results are detached and deep-frozen like compiler results.
  */
-import { compiledKind, detach } from '../compile/compile';
+import { compiledKind, contractHoles, detach } from '../compile/compile';
 import type { CompiledDeclaration, CompiledPackage, Expr, PreviewPackage } from '../compile/types';
 import { compareCodePoints } from '../s1/resolve';
 import type {
@@ -128,8 +128,8 @@ function checkInputs(
     const q = typeof id === 'string' ? queries.get(id) : undefined;
     if (!q || q.kind !== 'EvidenceQuery') {
       errors.push({ code: 'UNEXPECTED_QUERY_RESULT', query: String(id), message: `no EvidenceQuery '${String(id)}' in this package` });
-    } else if (q.contract.kind === 'hole') {
-      errors.push({ code: 'RESULT_FOR_HOLED_QUERY', query: q.id, message: `'${q.id}' is the authoring hole ${q.contract.hole}; a supplied result cannot fill it` });
+    } else if (contractHoles(q.contract).length > 0) {
+      errors.push({ code: 'RESULT_FOR_HOLED_QUERY', query: q.id, message: `'${q.id}' contains the authoring hole(s) ${contractHoles(q.contract).join(', ')}; a supplied result cannot fill it` });
     } else {
       const e = normalizeEvidence(v);
       if (typeof e === 'string') errors.push({ code: 'MALFORMED_QUERY_RESULT', query: q.id, message: e });
@@ -137,7 +137,7 @@ function checkInputs(
     }
   }
   for (const q of queries.values()) {
-    if (q.kind === 'EvidenceQuery' && q.contract.kind !== 'hole' && !supplied.has(q.id)) {
+    if (q.kind === 'EvidenceQuery' && contractHoles(q.contract).length === 0 && !supplied.has(q.id)) {
       errors.push({ code: 'MISSING_QUERY_RESULT', query: q.id, message: `no supplied result for '${q.id}'; an absent result is an input error, never Unresolved{Missing}` });
     }
   }
@@ -230,12 +230,17 @@ function evaluate(pkg: CompiledPackage | PreviewPackage, evidence: Map<string, S
     const steps: TraceStep[] = [];
     if (d.kind === 'EvidenceQuery') {
       const source = `${d.location}/contract`;
-      if (d.contract.kind === 'hole') {
-        const v: Value = { kind: 'marker', holes: [d.contract.hole] };
+      const holes = contractHoles(d.contract);
+      if (holes.length > 0) {
+        const v: Value = { kind: 'marker', holes: [...holes].sort(compareCodePoints) };
         values.set(d.id, v);
         checkMarker(d.id, v);
         outputs.push([d.id, { marker: { holes: v.holes }, stagesRun: [] }]);
-        trace.push({ output: d.id, source, result: show(v), because: `whole-contract authoring hole ${d.contract.hole}: no evidence stage runs and nothing is read`, steps });
+        // A criterion hole's S1–S4 and sibling-criterion traces belong to preview evaluation, which this API does not perform.
+        const because = d.contract.kind === 'hole'
+          ? `whole-contract authoring hole ${d.contract.hole}: no evidence stage runs and nothing is read`
+          : `criterion authoring hole(s) ${holes.join(', ')}: the query is marked; no evidence stage runs here (preview criterion evaluation is not implemented)`;
+        trace.push({ output: d.id, source, result: show(v), because, steps });
       } else {
         const ev = evidence.get(d.id) as SuppliedEvidence;
         const v: Value = { kind: 'evidence', evidence: ev };
