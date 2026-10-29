@@ -1,8 +1,8 @@
 /**
  * EXPERIMENTAL, NONCLINICAL. S1–S4 and S5 criterion assertions of the committed explicit-assertion-v0
- * fixtures: S1, S2, the three S3 rules, combined S3 admissibility (checked directly), S4 selection
- * and per-record criterion values, plus one-way implications from downstream expectations. No
- * fixture is claimed to pass as a whole: classification, possibleClasses and S6–S7 are not implemented.
+ * fixtures: S1, S2, the three S3 rules, combined S3 admissibility (checked directly), S4 selection,
+ * per-record criterion values and per-record classification, plus one-way implications from downstream
+ * expectations. No fixture is claimed to pass as a whole: possibleClasses and S6–S7 are not implemented.
  */
 import { runFixtures } from './support/fixture-runner';
 
@@ -31,7 +31,8 @@ describe('explicit-assertion-v0 fixtures: S1, S2 and encounter-check assertions 
     selectionOneWay: sum((r) => r.selectionOneWay),
     criterion: sum((r) => r.criterionApplicable),
     criterionPassed: sum((r) => r.criterionPassed),
-    criterionOneWay: sum((r) => r.criterionOneWay),
+    classification: sum((r) => r.classificationApplicable),
+    classificationPassed: sum((r) => r.classificationPassed),
     admissibility: sum((r) => r.admissibilityApplicable),
     admissibilityPassed: sum((r) => r.admissibilityPassed),
     outOfScope: sum((r) => r.outOfScope),
@@ -54,9 +55,9 @@ describe('explicit-assertion-v0 fixtures: S1, S2 and encounter-check assertions 
         `S4 selection assertions checked (selection and disposition trace facts, contract §2.8): ${totals.selection} (passed ${totals.selectionPassed})`,
         `one-way: Known supportingEvidenceIds entries that must be S4-selected revisions: ${totals.selectionOneWay}`,
         `S5 criterion assertions checked (criterion trace facts of complete queries, contract §3.5): ${totals.criterion} (passed ${totals.criterionPassed})`,
-        `one-way: criterion values implied by classification facts (contract §3.3; classification itself not checked): ${totals.criterionOneWay}`,
+        `S5 per-record classification assertions checked (classification trace facts, contract §3.3; not possibleClasses): ${totals.classification} (passed ${totals.classificationPassed})`,
         `assertionKind outcomes implied by combined S3 facts (one-way: admissibility Admissible/AssertionKindNotAllowed, S3 assertionKind attributions): ${totals.assertionKindOneWay}`,
-        `expected fields/assertions outside implemented scope (classification, possibleClasses, preview criterion markers, S6–S7; not checked): ${totals.outOfScope}`,
+        `expected fields/assertions outside implemented scope (possibleClasses, preview criterion markers, S6–S7; not checked): ${totals.outOfScope}`,
         `fixtures not run: ${notRun.length}: ${notRun.join(', ')}`,
         `evaluation/preview fixtures with no applicable S1–S5 assertion: ${noApplicableAssertions.length}: ${noApplicableAssertions.join(', ')}`,
       ].join('\n'),
@@ -70,12 +71,12 @@ describe('explicit-assertion-v0 fixtures: S1, S2 and encounter-check assertions 
     expect(totals.admissibility).toBeGreaterThan(0);
     expect(totals.selection).toBeGreaterThan(0);
     expect(totals.criterion).toBeGreaterThan(0);
-    expect(totals.criterionOneWay).toBeGreaterThan(0);
+    expect(totals.classification).toBeGreaterThan(0);
   });
 
   const checked = (r: (typeof reports)[number]) =>
-    r.s1Applicable + r.s1AttributionOneWay + r.s2Applicable + r.s2AttributionOneWay + r.s2CandidateIdsOneWay + r.encounterApplicable + r.encounterOneWay + r.episodeApplicable + r.episodeOneWay + r.assertionKindApplicable + r.assertionKindOneWay + r.admissibilityApplicable + r.selectionApplicable + r.selectionOneWay + r.criterionApplicable + r.criterionOneWay > 0;
-  it.each(reports.filter((r) => !r.notRun && checked(r)).map((r) => [r.id, r] as const))('%s: S1–S4 and criterion assertions hold (not a whole-fixture pass)', (_id, report) => {
+    r.s1Applicable + r.s1AttributionOneWay + r.s2Applicable + r.s2AttributionOneWay + r.s2CandidateIdsOneWay + r.encounterApplicable + r.encounterOneWay + r.episodeApplicable + r.episodeOneWay + r.assertionKindApplicable + r.assertionKindOneWay + r.admissibilityApplicable + r.selectionApplicable + r.selectionOneWay + r.criterionApplicable + r.classificationApplicable > 0;
+  it.each(reports.filter((r) => !r.notRun && checked(r)).map((r) => [r.id, r] as const))('%s: S1–S4, criterion and classification assertions hold (not a whole-fixture pass)', (_id, report) => {
     expect(report.failures).toEqual([]);
   });
 });

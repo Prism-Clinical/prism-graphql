@@ -2,7 +2,7 @@
 
 **Status:** Proposed design draft. **Not** accepted, not finalized syntax, not a schema and not implemented. It contains no clinical content: the record type, enum values, codes, sources and permission below are fictional and illustrate language behavior only. They do not map to dysphagia, progression, urgency or any other clinical definition.
 
-**Date:** 2026-10-03. **Revised:** 2026-10-03, nine times, 2026-10-04, once, 2026-10-05, three times, 2026-10-09, three times, 2026-10-28, three times, and 2026-10-29, once, after review. The third revision fixed three things:
+**Date:** 2026-10-03. **Revised:** 2026-10-03, nine times, 2026-10-04, once, 2026-10-05, three times, 2026-10-09, three times, 2026-10-28, three times, and 2026-10-29, twice, after review. The third revision fixed three things:
 
 - revision-chain boundaries: source-scoped identity, same-source corrections and one fully specified schematic authority rule;
 - deterministic outcomes for malformed history;
@@ -13,6 +13,12 @@ The fourth revision made three changes:
 - Proven cross-boundary corrections and retractions are now rejected without changing their target. This keeps gap irrelevance consistent with S1.
 - Payload identity for duplicate detection is defined.
 - An unsupported justification about coverage attestations is removed.
+
+The twenty-first revision specifies per-record S5 classification (3.6, case 133): the 3.3 table applied to one evaluated possibility, through the same boundary as 3.5.
+
+- `Unclassified` carries the causes of every `Unknown` criterion, in Stage A order; the findings and their attribution stay in the criterion results.
+- `True`/`True` is an engine invariant violation, unreachable through compiled criteria.
+- `NotEvaluated` possibilities get no class: an `excluded` marker is not `NonInformative`.
 
 The twentieth revision closes the query-to-evidence gap left open by the nineteenth (3.5). A selection made under one query’s admissibility rules was accepted for another query with the same value-set pin: a `ClinicianDocumented` record selected where that kind is allowed gave `establishes = True` for a query that allows no kind.
 
@@ -722,6 +728,27 @@ The standalone S1–S4 entry points remain for isolated stage testing. Their res
 
 **Preview.** A nested criterion hole (case 52, 6.1) is outside this boundary. The I1 compiler rejects a hole in criterion position even in preview, and S5 rejects preview packages, so a hole never becomes `Missing` or `False`.
 
+### 3.6 S5 per-record classification (one possibility)
+
+This section applies the 3.3 table to **one** possibility. It computes no possible classes, materiality or evidence result (4.2), and never combines possibilities.
+
+**Boundary.** The same four inputs as 3.5, with every check of 3.5: an authentic compiled package, a query ID, an S4 result of query-bound selection for exactly that package and query, and one of its own possibilities. The criterion values are computed by 3.5 from the handoff payload; criterion values or results are never accepted from the caller.
+
+**Table** (3.3, unchanged in meaning):
+
+| `establishes` | `refutes` | Classification | Reachable through I1 compiled criteria |
+|---|---|---|---|
+| True | False | `Supporting` | Yes |
+| False | True | `Refuting` | Yes |
+| False | False | `NonInformative` | Yes |
+| Unknown | Unknown | `Unclassified(causes)` | Yes: both criteria read `c.assertion`, so an absent or malformed field makes both `Unknown` with the same cause |
+| Unknown | True or False, or the reverse | `Unclassified(causes)` | No (criteria on different fields are outside I1) |
+| True | True | Engine invariant violation: no class, no patient conflict | No: the compiler proves `disjoint(establishes, refutes)` and rejects an overlap (`EXCLUSIVE_BRANCH_OVERLAP`) |
+
+`causes` are the causes of every `Unknown` criterion’s findings, without duplicates, in Stage A order. The findings themselves, with origin and reason, stay in the criterion results. `Unknown` is never read as `False`.
+
+**Result.** The 3.5 result unchanged (key, revision and digest, S4 disposition, both criterion results with their traces and findings) plus the class. A `NotEvaluated` possibility keeps its reason (`Inadmissible`, `OutOfDomain`, `ExcludedMarker`, `UnknownMarker`) and gets **no** class: it is not `NonInformative` and not `Unclassified`. A `Supporting` possibility of an unresolved key is not made current or selected, and its class alone never establishes the query.
+
 ## 4. One strict demonstration policy: `explicit-assertion-v0`
 
 `explicit-assertion-v0` is **one strict demonstration policy**. It is not the default for clinical queries, and other queries may need other, separately specified policies.
@@ -1224,6 +1251,12 @@ In cases 114, 115b and 116–118 the record is the only candidate and its possib
 | 131 | Absent and malformed | s1/r131a `assertion` omitted; s1/r131b `null`; s1/r131c `true`; s1/r131d `"affirmed"`; each `Selected` | r131a (Unknown{Missing}, Unknown{Missing}); r131b–d (Unknown{Invalid}, Unknown{Invalid}); never False |
 | 132 | Unresolved possibilities | Two occurrences of s1/r132a@1: `Affirmed`, and `Denied`; s1/r132b `encounter` omitted; s1/r132c concept `other-cs#z`, `Denied` | r132a `Unresolved` [`HistoryUnresolved`], each variant on its own payload: `Affirmed` (True, False), `Denied` (False, True); r132b `Unresolved` [`AdmissibilityUnresolved`], (True, False); r132c `Unresolved` [`CandidacyUnresolved`], (False, True). Every disposition stays `NotSelected` |
 
+**N. S5 classification per possibility (3.6)** (D0 unless stated; the shared query). **Partial-stage**: S1–S4 facts and per-revision `classification` only; no possible classes, materiality or evidence result.
+
+| # | Case | Records / changes | Classification |
+|---|---|---|---|
+| 133 | The four classes, and variants | s1/r133a `Affirmed`; s1/r133b `Denied`; s1/r133c `Indeterminate`; s1/r133d `assertion` omitted; s1/r133e `"affirmed"`; each `Selected`. Two occurrences of s1/r133f@1: `Affirmed`, and `Denied` | r133a `Supporting`; r133b `Refuting`; r133c `NonInformative`; r133d `Unclassified{Missing}`; r133e `Unclassified{Invalid}`; r133f `Unresolved` [`HistoryUnresolved`], the `Affirmed` variant `Supporting` and the `Denied` variant `Refuting`, both still `NotSelected` |
+
 
 ### 7.5 Invariance checks
 
@@ -1317,6 +1350,11 @@ These must hold for every case:
     - Absent is `Unknown{Missing}`, any other non-code value `Unknown{Invalid}`; codes compare exactly; the criteria are independent; traces have one step per sub-expression.
     - The query-to-evidence association is enforced: query-bound selection takes only runtime inputs, constructs S1 from the query’s configuration, and binds its S4 result to the exact package object and query ID; S5 rejects any other result as a configuration error.
 
+22. Per-record S5 classification (3.6):
+    - Same boundary and checks as 3.5; criterion values are computed, never supplied.
+    - True/False `Supporting`, False/True `Refuting`, False/False `NonInformative`, any `Unknown` `Unclassified` with the `Unknown` criteria’s causes in Stage A order; True/True an engine invariant violation, unreachable through compiled criteria.
+    - `NotEvaluated` possibilities get no class; classification never selects, resolves history or establishes the query.
+
 **Possible conflicts needing a Stage A amendment.** None found. Items to confirm:
 
 - (a) The disjointness obligation relies on §6.5’s enum analysis being mandatory for this policy.
@@ -1325,7 +1363,7 @@ These must hold for every case:
 
 **Query/predicate split.** The query carries the reasoning. A projection-only Predicate is optional naming and composition structure. No node kind is added or removed.
 
-**Conformance fixtures.** [conformance/explicit-assertion-v0/](conformance/explicit-assertion-v0/README.md) holds machine-readable fixtures for cases 1–132, mapped by case number, with expected outputs written from this contract. They are proposed, like this document.
+**Conformance fixtures.** [conformance/explicit-assertion-v0/](conformance/explicit-assertion-v0/README.md) holds machine-readable fixtures for cases 1–133, mapped by case number, with expected outputs written from this contract. They are proposed, like this document.
 
 **Remaining items.**
 

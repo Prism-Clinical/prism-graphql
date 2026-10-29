@@ -75,3 +75,23 @@ export type CriteriaResult =
       readonly reason: 'Inadmissible' | 'OutOfDomain' | 'ExcludedMarker' | 'UnknownMarker';
       readonly node?: NodeRef;
     });
+
+/**
+ * Per-record classification (contract §3.3). `Unclassified` carries the causes of every `Unknown`
+ * criterion (Stage A order); their findings and attribution stay in the criterion results.
+ */
+export type RecordClass =
+  | { readonly class: 'Supporting' | 'Refuting' | 'NonInformative' }
+  | { readonly class: 'Unclassified'; readonly causes: readonly CriterionFinding['cause'][] };
+
+interface ClassificationTags {
+  readonly experimental: 'nonclinical-s5-classification-v0';
+  /** One possibility classified. No possible classes, materiality or evidence result (S6). */
+  readonly scope: 'one-possibility-classification';
+}
+
+/** A criteria result, unchanged apart from its tags, plus the class when it was evaluated. */
+export type ClassificationResult =
+  | (Omit<Extract<CriteriaResult, { outcome: 'Evaluated' }>, keyof ClassificationTags> & ClassificationTags & { readonly classification: RecordClass })
+  /** No class: an ineligible possibility is never NonInformative or Unclassified. */
+  | (Omit<Extract<CriteriaResult, { outcome: 'NotEvaluated' }>, keyof ClassificationTags> & ClassificationTags);
