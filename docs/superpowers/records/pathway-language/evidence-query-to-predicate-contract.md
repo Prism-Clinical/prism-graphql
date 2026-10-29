@@ -2,7 +2,7 @@
 
 **Status:** Proposed design draft. **Not** accepted, not finalized syntax, not a schema and not implemented. It contains no clinical content: the record type, enum values, codes, sources and permission below are fictional and illustrate language behavior only. They do not map to dysphagia, progression, urgency or any other clinical definition.
 
-**Date:** 2026-10-03. **Revised:** 2026-10-03, nine times, 2026-10-04, once, 2026-10-05, three times, 2026-10-09, three times, 2026-10-28, three times, and 2026-10-29, four times, after review. The third revision fixed three things:
+**Date:** 2026-10-03. **Revised:** 2026-10-03, nine times, 2026-10-04, once, 2026-10-05, three times, 2026-10-09, three times, 2026-10-28, three times, and 2026-10-29, five times, after review. The third revision fixed three things:
 
 - revision-chain boundaries: source-scoped identity, same-source corrections and one fully specified schematic authority rule;
 - deterministic outcomes for malformed history;
@@ -13,6 +13,8 @@ The fourth revision made three changes:
 - Proven cross-boundary corrections and retractions are now rejected without changing their target. This keeps gap irrelevance consistent with S1.
 - Payload identity for duplicate detection is defined.
 - An unsupported justification about coverage attestations is removed.
+
+The twenty-fourth revision corrects the case 52 fixtures (EA-052a, EA-052b) to the hole syntax of decision 24: their `establishes` hole loses its `over` member and gains the required `explains`. Expected outcomes are unchanged, and the fixtures now compile as written; no runner rewrites them.
 
 The twenty-third revision lets preview compilation represent a whole-criterion hole (3.5 Preview, case 52); it changes compilation only:
 
@@ -1414,6 +1416,7 @@ These must hold for every case:
     - The sibling criterion and every other setting are validated as in a complete contract; normal compilation reports `UNRESOLVED_AUTHORING_HOLE` per hole and produces no `CompiledPackage`.
     - Preview representation: kind `explicit-assertion-v0-incomplete`, criteria as `complete` or `hole` slots, disjointness `Pending` with the hole IDs and obligation locations; the query and its dependents carry markers.
     - Compilation only: preview evaluation, and EA-052a’s `Marker` and `refutes` True facts, remain outstanding.
+    - Fixtures EA-052a and EA-052b corrected to this syntax (2026-10-29, confirmed on review): `over` removed, `explains` added, expected outcomes unchanged.
 
 **Possible conflicts needing a Stage A amendment.** None found. Items to confirm:
 

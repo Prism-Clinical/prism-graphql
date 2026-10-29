@@ -718,8 +718,8 @@ This package has its own Jest configuration and is not part of the root Jest roo
     - results are detached and frozen;
     - I2 preview execution marks the query.
   - EA-052a’s query as a regression input:
-    - its lower-level hole, as written, is rejected (no `explains`, an `over` member);
-    - with an explanation it preview-compiles to the fixture’s markers, keeping `refutes`;
+    - its hole uses the program hole syntax (`explains`, no `over`), after the fixture correction of 2026-10-29; EA-052b’s query is identical;
+    - as written, it preview-compiles to the fixture’s markers, keeping `refutes`;
     - its two `criterion` facts are left unevaluated;
     - every S4–S5 entry point and normal execution reject its preview package.
 

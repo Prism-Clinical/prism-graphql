@@ -65,7 +65,7 @@
             "hole": {
               "id": "H-CRITERION",
               "type": "Decision",
-              "over": "candidate"
+              "explains": "Which candidate assertions establish the query is undecided"
             }
           },
           "refutes": {

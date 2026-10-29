@@ -579,8 +579,8 @@ describe('I1 compiler: whole-criterion holes (preview only; evidence-query contr
 describe('Case 52 (EA-052a) as a compiler regression input', () => {
   const fx = JSON.parse(readFileSync(join(FIXTURE_DIR, 'fixtures', 'EA-052a.json'), 'utf8'));
   const inline = fx.query.inline;
-  /** The fixture query in a minimal program, as the fixture runner wraps it; `establishes` as given. */
-  const wrap = (establishes: J): J => ({
+  /** The fixture query in a minimal program, as the fixture runner wraps it; `establishes` defaults to the fixture's own. */
+  const wrap = (establishes: J = inline.query.contract.establishes): J => ({
     ppl: { languageVersion: 'ppl-1', capabilityProfileVersion: 'ppl-core-v0' },
     package: { id: 'fixture', state: 'Draft' },
     references: [],
@@ -589,16 +589,15 @@ describe('Case 52 (EA-052a) as a compiler regression input', () => {
     nodes: [{ ...inline.query, subject: 'patient', contract: { ...inline.query.contract, establishes } }, inline.predicate],
   });
   const C = '/nodes/0/contract';
-  // P6: the fixture's lower-level hole has no `explains` and an `over` member; an authored hole needs the former and has no such member.
-  const authored = { hole: { id: 'H-CRITERION', type: 'Decision', explains: 'Which candidate assertions establish the query is undecided' } };
 
-  it('the fixture hole as written is not an authored program hole (P6)', () => {
-    expect(inline.query.contract.establishes).toEqual({ hole: { id: 'H-CRITERION', type: 'Decision', over: 'candidate' } });
-    invalid(wrap(inline.query.contract.establishes), ['SOURCE_INVALID', `${C}/establishes/hole`], ['UNKNOWN_EXECUTABLE_PROPERTY', `${C}/establishes/hole/over`]);
+  it('the fixture hole uses the program hole syntax: explains, no over (P6)', () => {
+    expect(inline.query.contract.establishes).toEqual({ hole: { id: 'H-CRITERION', type: 'Decision', explains: 'Which candidate assertions establish the query is undecided' } });
+    const b = JSON.parse(readFileSync(join(FIXTURE_DIR, 'fixtures', 'EA-052b.json'), 'utf8'));
+    expect(b.query.inline).toEqual(inline); // EA-052b differs only in its snapshot
   });
 
-  it('with an explanation, preview represents the hole, keeps refutes, and matches the fixture markers', () => {
-    const r = experimentalCompilePreview(wrap(authored) as JsonValue);
+  it('as written, preview represents the hole, keeps refutes, and matches the fixture markers', () => {
+    const r = experimentalCompilePreview(wrap() as JsonValue);
     if (r.outcome !== 'PreviewPackage') throw new Error(JSON.stringify(r.diagnostics));
     const q = r.package.declarations.find((d) => d.id === 'q.demo');
     if (q?.kind !== 'EvidenceQuery' || q.contract.kind !== 'explicit-assertion-v0-incomplete') throw new Error('q.demo');
@@ -607,7 +606,7 @@ describe('Case 52 (EA-052a) as a compiler regression input', () => {
     expect(q.contract.disjointness).toEqual({ status: 'Pending', holes: ['H-CRITERION'], locations: [`${C}/obligations/0`] });
     expect(r.package.markers).toEqual(fx.expected.markers);
     expect(r.package.publication).toBe(fx.expected.publication);
-    expect(diags(experimentalCompile(wrap(authored) as JsonValue))).toEqual([['UNRESOLVED_AUTHORING_HOLE', `${C}/establishes/hole`, 'H-CRITERION']]);
+    expect(diags(experimentalCompile(wrap() as JsonValue))).toEqual([['UNRESOLVED_AUTHORING_HOLE', `${C}/establishes/hole`, 'H-CRITERION']]);
   });
 
   it('its preview criterion facts stay expected and unevaluated: Marker and True are preview-evaluation work', () => {
@@ -620,7 +619,7 @@ describe('Case 52 (EA-052a) as a compiler regression input', () => {
 
   it('normal execution entry points reject its preview package; a complete twin is accepted', () => {
     const twin = experimentalCompile(wrap({ eq: [{ field: ['c', 'assertion'] }, { enum: 'AssertionValue.Affirmed' }] }) as JsonValue);
-    const r = experimentalCompilePreview(wrap(authored) as JsonValue);
+    const r = experimentalCompilePreview(wrap() as JsonValue);
     if (twin.outcome !== 'Compiled' || r.outcome !== 'PreviewPackage') throw new Error('setup');
     const ctx = { subject: 'P1', revisions: fx.input.records, retractions: [], contextEncounter: { known: 'N1' }, contextEpisode: { known: 'E1' } };
     const s4 = experimentalSelectForQuery({ package: twin.package, query: 'q.demo', ...ctx });
