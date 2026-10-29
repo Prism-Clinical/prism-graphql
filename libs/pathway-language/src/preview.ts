@@ -119,8 +119,9 @@ export function evaluatePreviewQuery(input: PreviewQueryInput): PreviewQueryResu
   const decl = pkg.declarations.find((d) => d.id === input.query);
   if (!decl || decl.kind !== 'EvidenceQuery') return fail(`query ${JSON.stringify(input.query)} is not an EvidenceQuery of the package`);
   const contract = decl.contract;
-  // A complete query has no authoring hole to preview, and its query result needs S6 (not implemented).
-  if (contract.kind === 'explicit-assertion-v0') return fail(`query ${decl.id} has a complete contract: preview evaluation covers only queries with authoring holes`);
+  // Scope restriction of this slice, not a semantic limit: per-record preview of a complete query
+  // would need no S6; only its final query result does.
+  if (contract.kind === 'explicit-assertion-v0') return fail(`query ${decl.id} has a complete contract: this preview entry point covers only queries with authoring holes (a scope restriction)`);
   const marker = pkg.markers.find((m) => m.output === decl.id);
   const holes = [...contractHoles(contract)].sort(compareCodePoints);
   if (!marker || marker.holes.join('\u0000') !== holes.join('\u0000')) throw new Error(`invariant: query ${decl.id} marker differs from its contract holes`);

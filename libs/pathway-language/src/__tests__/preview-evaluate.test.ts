@@ -425,10 +425,10 @@ describe('preview evaluation: input boundary and ownership', () => {
     expect(incomplete(run(other, [], [], 'q2')).marker).toEqual({ holes: ['H-X'] });
   });
 
-  it('a complete query inside a PreviewPackage is rejected: it has no hole to preview and its result needs S6', () => {
+  it('a complete query inside a PreviewPackage is rejected: a scope restriction of this entry point', () => {
     const mixed = preview(program(hole('H-E'), DEN, [query('qc', AFF, DEN)]));
     expect(mixed.declarations.find((d) => d.id === 'qc')).toMatchObject({ contract: { kind: 'explicit-assertion-v0' } });
-    bad({ ...base, package: mixed, query: 'qc' }, /query qc has a complete contract: preview evaluation covers only queries with authoring holes/);
+    bad({ ...base, package: mixed, query: 'qc' }, /query qc has a complete contract: this preview entry point covers only queries with authoring holes \(a scope restriction\)/);
     expect(incomplete(run(mixed, [rev('s1', 'r1', '1', { assertion: 'Denied' })])).keys).toHaveLength(1);
   });
 

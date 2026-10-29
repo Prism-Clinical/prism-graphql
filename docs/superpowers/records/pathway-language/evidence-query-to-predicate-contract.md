@@ -2,7 +2,7 @@
 
 **Status:** Proposed design draft. **Not** accepted, not finalized syntax, not a schema and not implemented. It contains no clinical content: the record type, enum values, codes, sources and permission below are fictional and illustrate language behavior only. They do not map to dysphagia, progression, urgency or any other clinical definition.
 
-**Date:** 2026-10-03. **Revised:** 2026-10-03, nine times, 2026-10-04, once, 2026-10-05, three times, 2026-10-09, three times, 2026-10-28, three times, and 2026-10-29, six times, after review. The third revision fixed three things:
+**Date:** 2026-10-03. **Revised:** 2026-10-03, nine times, 2026-10-04, once, 2026-10-05, three times, 2026-10-09, three times, 2026-10-28, three times, and 2026-10-29, seven times, after review. The third revision fixed three things:
 
 - revision-chain boundaries: source-scoped identity, same-source corrections and one fully specified schematic authority rule;
 - deterministic outcomes for malformed history;
@@ -13,6 +13,8 @@ The fourth revision made three changes:
 - Proven cross-boundary corrections and retractions are now rejected without changing their target. This keeps gap irrelevance consistent with S1.
 - Payload identity for duplicate detection is defined.
 - An unsupported justification about coverage attestations is removed.
+
+The twenty-sixth revision records the review of the twenty-fifth: rejecting a complete query in the preview entry point is a scope restriction (per-record preview would need no S6; only the final query result does), and `Evaluated` with two markers means the slots were processed, not that evidence established anything. I4 is confirmed complete as an experimental increment.
 
 The twenty-fifth revision specifies query-bound preview evaluation for whole-criterion holes (3.5 Preview evaluation, cases 50 and 52; decision 25):
 
@@ -758,10 +760,10 @@ The standalone S1–S4 entry points remain for isolated stage testing. Their res
 - **Input.** An authentic `PreviewPackage` (compiler registry; a `CompiledPackage`, copy or fabrication is rejected), the ID of one of its `EvidenceQuery` declarations, and the same runtime inputs as query-bound selection: subject, raw revisions and retractions, encounter and episode. Any other field (a value set, expansion, rule, envelope, authority rule, criterion, payload, possibility or stage result) is a configuration error.
 - **Whole-contract hole** (case 50). No stage runs (`stagesRun` empty): the query’s marker only.
 - **Incomplete contract** (case 52). Retrieval, correction authority, value set and admissibility are complete, so S1 is constructed from them and S2–S4 run exactly as in query-bound selection. The S4 result never leaves the entry point, so no foreign, copied or fabricated stage result or possibility can enter; payloads are read only through the evidence handoff (2.8), from each possibility’s own binding.
-- **Slots, per possibility.** Eligibility is the S5 table above, unchanged. For an eligible possibility each criterion slot is evaluated on its own: a complete slot gives its 3.4 value and trace, exactly as in S5; a hole slot gives `Marker` with the hole ID and the pointer of its `hole` member, never `True`, `False`, `Unknown`, a finding or a Need. An ineligible possibility is `NotEvaluated` and gets no slot value of either kind.
+- **Slots, per possibility.** Eligibility is the S5 table above, unchanged. For an eligible possibility each criterion slot is evaluated on its own: a complete slot gives its 3.4 value and trace, exactly as in S5; a hole slot gives `Marker` with the hole ID and the pointer of its `hole` member, never `True`, `False`, `Unknown`, a finding or a Need. An ineligible possibility is `NotEvaluated` and gets no slot value of either kind. `Evaluated` means the slots were processed, not that patient evidence established anything: with both criteria holed, an eligible possibility is `Evaluated` with two markers and no patient value; the marker values and the incomplete query status keep that distinction (confirmed on review, 2026-10-29).
 - **Query level.** The query’s marker is reported whatever the snapshot holds and whatever is eligible: an empty snapshot keeps it. Disjointness stays `Pending`: evaluating the sibling proves nothing. S4 facts (key statuses, dispositions, blockers and findings) are reported unchanged.
 - **Not produced.** No classification (3.3), possible classes (3.7), materiality, `Evidence<Boolean>` or Need. The query stays incomplete and publication blocked.
-- **A complete query in a preview package** is rejected by this entry point: it has no hole to preview, and its query result needs S6. Its per-record S5 values are available only after normal compilation of a hole-free program.
+- **A complete query in a preview package** is rejected by this entry point. This is a **scope restriction** of the slice, not a semantic limit (confirmed on review, 2026-10-29): per-record preview of a complete query could be supported without S6; only its final query result needs S6. Until then its per-record S5 values are available only after normal compilation of a hole-free program.
 
 ### 3.6 S5 per-record classification (one possibility)
 
@@ -1436,7 +1438,9 @@ These must hold for every case:
     - A separate entry point taking an authentic `PreviewPackage`, a query ID and runtime inputs only; the normal entry points keep rejecting preview packages.
     - A whole-contract hole runs no stage. An incomplete contract runs S1–S4 from its complete settings; each eligible possibility gets the complete criterion’s 3.4 value and a `Marker` per hole slot; eligibility as in 3.5.
     - The query marker survives an empty snapshot; disjointness stays `Pending`; no classification, possible classes, materiality, evidence result or Need; publication blocked.
-    - A complete query inside a `PreviewPackage` is rejected by this entry point (its result needs S6).
+    - A complete query inside a `PreviewPackage` is rejected by this entry point: a scope restriction, since per-record preview would need no S6 and only the final query result does.
+    - `Evaluated` with two markers (both criteria holed) means the slots were processed, not that evidence established anything.
+    - Confirmed on review (2026-10-29), with I4 complete as an experimental increment.
     - EA-050’s hole gains the required `explains` (P6); expected outcomes unchanged.
 
 **Possible conflicts needing a Stage A amendment.** None found. Items to confirm:

@@ -561,9 +561,9 @@ const r = experimentalEvaluatePreviewQuery({ package: preview, query: 'q.demo', 
 |---|---|
 | Whole-contract hole (EA-050) | `contract: 'WholeContractHole'`, the query marker, `stagesRun: []`. No stage runs, whatever the snapshot holds |
 | `establishes` and/or `refutes` holed (EA-052a/b) | `contract: 'IncompleteCriteria'`, `stagesRun: [S1…S5]`, the query marker, `Pending` disjointness, which slot is a hole, S4’s summary lists, and per key and possibility the S4 facts unchanged plus a preview record |
-| Complete query inside a `PreviewPackage` | Rejected: it has no hole to preview, and its query result needs S6. Its per-record values need a normally compiled, hole-free program |
+| Complete query inside a `PreviewPackage` | Rejected, as a **scope restriction** of this slice (confirmed on review). Per-record preview of a complete query could be supported without S6; only its final query result needs S6. Until then, its per-record values need a normally compiled, hole-free program |
 
-**Slots, per possibility.** Eligibility is the S5 table above, unchanged. An ineligible possibility is `NotEvaluated` with its reason and has **no** slot value, marker or otherwise. For an eligible one:
+**Slots, per possibility.** Eligibility is the S5 table above, unchanged. An ineligible possibility is `NotEvaluated` with its reason and has **no** slot value, marker or otherwise. For an eligible one, `outcome: 'Evaluated'` means its slots were processed, not that patient evidence established anything; with both criteria holed it carries two markers and no patient value (confirmed on review). The marker values and `queryStatus: 'Incomplete'` keep that distinction:
 
 | Slot | Result |
 |---|---|
