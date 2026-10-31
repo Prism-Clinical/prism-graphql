@@ -461,11 +461,13 @@ export function runFixtures(dir: string = FIXTURE_DIR): { reports: FixtureReport
       }
       if (t.fact === 'gap') {
         report.gapApplicable += 1;
-        const g = gaps?.gaps.find((x) => x.ref === t.ref);
+        // Fixture refs are display labels; a label must name exactly one gap.
+        const matches = gaps?.gaps.filter((x) => x.ref.label === t.ref) ?? [];
+        const g = matches.length === 1 ? matches[0] : undefined;
         const f = !gaps
           ? `gap ${t.ref}: no gap relevance (the query does not compile)`
           : !g
-            ? `gap ${t.ref}: not a gap (${gaps.gaps.map((x) => x.ref).join(', ')})`
+            ? `gap ${t.ref}: ${matches.length} gaps with that label (${gaps.gaps.map((x) => x.ref.label).join(', ')})`
             : g.relevant !== t.relevant
               ? `gap ${t.ref}: relevant ${g.relevant}, expected ${t.relevant}`
               : 'provenBy' in t && (g.kind === 'CoverageCell' || !g.provenBy.includes(t.provenBy))
@@ -651,13 +653,14 @@ export function runFixtures(dir: string = FIXTURE_DIR): { reports: FixtureReport
     for (const a of (exp.causeAttribution ?? []) as Json[]) {
       if (a.stage !== 'coverage' && a.stage !== 'gap') continue;
       report.gapOneWay += 1;
-      const g = gaps?.gaps.find((x) => x.ref === a.origin);
+      const matches = gaps?.gaps.filter((x) => x.ref.label === a.origin) ?? [];
+      const g = matches.length === 1 ? matches[0] : undefined;
       if (!g?.relevant || !g.findings.some((x) => x.cause === a.cause && x.reason === a.reason)) report.failures.push(`causeAttribution ${a.cause}/${a.reason} @${a.origin}: not a relevant gap with that finding`);
     }
     // One-way (§4.2): a Known result requires every cell Complete and no relevant failure or rejected item.
     if (exp.evidence?.status === 'Known' && gaps) {
       report.gapOneWay += 1;
-      if (gaps.relevant.length > 0) report.failures.push(`Known result with relevant gap(s) ${gaps.relevant.join(', ')}`);
+      if (gaps.relevant.length > 0) report.failures.push(`Known result with relevant gap(s) ${gaps.relevant.map((x) => x.label).join(', ')}`);
     }
     // One-way (contract §4.2 rules 2-3): a Known result is supported only by selected revisions.
     if (exp.evidence?.status === 'Known' && s4) {
@@ -807,8 +810,8 @@ function checkCoverageFact(t: Json, r: GapRelevanceResult | null): string | null
     const c = r.cells.find((x) => x.source === t.source);
     return c?.status === t.value ? null : `${head}: ${c?.status ?? 'no cell'}, expected ${t.value}`;
   }
-  if (t.fact === 'notCurrent') return r.notCurrent.includes(t.ref) ? null : `${head}: current`;
-  return r.diagnostics.some((d) => d.code === t.code && d.ref === t.ref) ? null : `${head}: not reported (${JSON.stringify(r.diagnostics)})`;
+  if (t.fact === 'notCurrent') return r.notCurrent.filter((x) => x.label === t.ref).length === 1 ? null : `${head}: not exactly one not-current statement with that label`;
+  return r.diagnostics.some((d) => d.code === t.code && d.ref.label === t.ref) ? null : `${head}: not reported (${JSON.stringify(r.diagnostics)})`;
 }
 
 /** A preview `criterion` fact: `Marker` for a hole, otherwise the complete sibling's value (and causes). */

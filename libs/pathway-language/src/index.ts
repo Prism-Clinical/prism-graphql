@@ -128,10 +128,14 @@ export type {
   GapDiagnostic,
   GapDimension,
   GapFinding,
+  GapId,
   GapReason,
+  GapRef,
   GapRelevanceInput,
   GapRelevanceResult,
   S1RejectedItem,
+  StatementId,
+  StatementRef,
   StatementTrace,
 } from './s6/gaps';
 export { evaluateCriteria as experimentalEvaluateCriteria, CriteriaConfigurationError } from './s5/criteria';

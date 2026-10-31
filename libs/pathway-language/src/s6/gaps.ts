@@ -11,6 +11,10 @@
  * Every input comes from one evaluation: the query scope and correction policy from the compiled
  * query, and the subject, snapshot statements and S1 rejected items from the private record that
  * experimentalSelectForQuery made for the S4 result passed in. Nothing is reattached by identifier.
+ *
+ * Identity: every gap and statement has a structured identity (kind, origin, original ID, payload
+ * digest) and a collision-safe `key` (its RFC 8785 bytes). `label` is for display only and may
+ * coincide across kinds (a failure named `cell:s1` and the coverage cell for s1).
  */
 import { createHash } from 'node:crypto';
 import { queryContract, selectionEvaluation, selectionQuery, type EvaluationSnapshot } from '../bound';
@@ -75,17 +79,44 @@ export interface GapFinding {
   readonly reason: GapReason;
 }
 
+/** A received statement: its list, its original `id`, and the SHA-256 of its RFC 8785 bytes. */
+export interface StatementId {
+  readonly kind: 'coverage' | 'failure' | 'rejectedItem';
+  readonly id: string;
+  readonly digest: string;
+}
+
+/** Structured gap identity. Two gaps are the same gap only if these are equal. */
+export type GapId =
+  | { readonly kind: 'CoverageCell'; readonly origin: 'coverage'; readonly source: string }
+  | { readonly kind: 'AcquisitionFailure' | 'RejectedItem'; readonly origin: 'snapshot'; readonly statement: StatementId }
+  | { readonly kind: 'RejectedItem'; readonly origin: 'S1'; readonly retraction: RetractionRef }
+  | { readonly kind: 'RejectedItem'; readonly origin: 'S1'; readonly occurrence: 'revision' | 'retraction'; readonly inputIndex: number };
+
+/** A gap's identity with its collision-safe key (RFC 8785 bytes of the identity) and display label. */
+export interface GapRef {
+  readonly identity: GapId;
+  readonly key: string;
+  /** Display only: `cell:<source>`, the statement id (`id#<digest>` when another statement shares the id), `<source>:<id>`, `unidentified:<kind>#<index>`. */
+  readonly label: string;
+}
+
+export interface StatementRef {
+  readonly identity: StatementId;
+  readonly key: string;
+  readonly label: string;
+}
+
 export interface CoverageCell {
-  /** `cell:<source>` (conformance notation). */
-  readonly ref: string;
+  readonly ref: GapRef;
   readonly recordType: string;
   readonly subject: string;
   readonly source: string;
   readonly status: CellStatus;
   /** Current, well-formed, fully scoped `Complete` statements naming this cell. */
-  readonly establishedBy: readonly string[];
+  readonly establishedBy: readonly StatementRef[];
   /** Current statements that are Incomplete, Unknown or malformed and not excluded by a stated dimension. */
-  readonly affectedBy: readonly { readonly ref: string; readonly as: 'Incomplete' | 'Unknown' | 'Malformed' }[];
+  readonly affectedBy: readonly { readonly statement: StatementRef; readonly as: 'Incomplete' | 'Unknown' | 'Malformed' }[];
 }
 
 /** The S1-side origin of a rejected item: never an S1 correction-history defect. */
@@ -94,7 +125,7 @@ export type S1RejectedItem =
   | { readonly kind: 'UnidentifiedOccurrence'; readonly occurrence: 'revision' | 'retraction'; readonly inputIndex: number; readonly reason: string };
 
 interface GapCommon {
-  readonly ref: string;
+  readonly ref: GapRef;
   readonly relevant: boolean;
   /** Distinct causes, Stage A order. */
   readonly causes: readonly ContextCause[];
@@ -119,7 +150,7 @@ export type Gap =
       /** Every dimension that proves irrelevance (empty when relevant). */
       readonly provenBy: readonly GapDimension[];
       readonly dimensions: readonly DimensionCheck[];
-      /** Malformed members (Invalid added); never dropped. */
+      /** Malformed or unrecognized members (Invalid added); never dropped. */
       readonly malformed: readonly string[];
       /** Identical occurrences merged into this item (RFC 8785 equality). */
       readonly occurrences: number;
@@ -128,22 +159,20 @@ export type Gap =
     });
 
 export interface StatementTrace {
-  readonly ref: string;
-  readonly kind: 'coverage' | 'failure' | 'rejectedItem';
+  readonly ref: StatementRef;
   readonly current: boolean;
+  /** Malformed members, and members outside the contract §1.5 format (rejected, never ignored). */
   readonly malformed: readonly string[];
-  /** Members outside the contract §1.5 format: ignored, which can never make a gap irrelevant. */
-  readonly unrecognized: readonly string[];
   readonly occurrences: number;
   readonly item: JsonValue;
 }
 
 export type GapDiagnostic =
   /** A cell claimed Complete beside an Incomplete/Unknown/malformed statement, or beside a missing S1 target in that cell (§1.5, §2.1). */
-  | { readonly code: 'ContradictoryAttestation'; readonly ref: string; readonly basis: 'AffectingStatement'; readonly establishedBy: readonly string[]; readonly affectedBy: readonly string[] }
-  | { readonly code: 'ContradictoryAttestation'; readonly ref: string; readonly basis: 'MissingTarget'; readonly establishedBy: readonly string[]; readonly keys: readonly RecordKey[] }
+  | { readonly code: 'ContradictoryAttestation'; readonly ref: GapRef; readonly basis: 'AffectingStatement'; readonly establishedBy: readonly StatementRef[]; readonly affectedBy: readonly StatementRef[] }
+  | { readonly code: 'ContradictoryAttestation'; readonly ref: GapRef; readonly basis: 'MissingTarget'; readonly establishedBy: readonly StatementRef[]; readonly keys: readonly RecordKey[] }
   /** A `Complete` statement with an unstated dimension establishes nothing (§1.5). */
-  | { readonly code: 'InsufficientlyScopedStatement'; readonly ref: string; readonly unstated: readonly ('recordType' | 'subject' | 'sources')[] };
+  | { readonly code: 'InsufficientlyScopedStatement'; readonly ref: StatementRef; readonly unstated: readonly ('recordType' | 'subject' | 'sources')[] };
 
 export interface GapRelevanceResult {
   readonly experimental: 'nonclinical-s6-gap-relevance-v0';
@@ -164,17 +193,22 @@ export interface GapRelevanceResult {
   };
   /** One per declared source, in declared-source code point order. */
   readonly cells: readonly CoverageCell[];
-  /** Coverage cells, then failures, then rejected items; code point order of ref within each. */
+  /** Coverage cells, then failures, then rejected items; code point order of label, then key, within each. */
   readonly gaps: readonly Gap[];
-  readonly relevant: readonly string[];
-  readonly irrelevant: readonly string[];
-  /** Every received statement (coverage, failures, rejected items), current or not. */
+  readonly relevant: readonly GapRef[];
+  readonly irrelevant: readonly GapRef[];
+  /** Every received statement: coverage, then failures, then rejected items; label then key order within each. */
   readonly statements: readonly StatementTrace[];
   /** Statements whose `appliesTo.snapshot` names another snapshot: traced and ignored (§1.5). */
-  readonly notCurrent: readonly string[];
+  readonly notCurrent: readonly StatementRef[];
   readonly diagnostics: readonly GapDiagnostic[];
 }
 
+/**
+ * The §1.5 formats. Every member is recognized; `attestedBy`, `attempt` and `reason` are the
+ * designated non-semantic metadata. Any other member makes the statement malformed: ignoring an
+ * unknown scope restriction could accept a broader claim than intended.
+ */
 const FORMATS = {
   coverage: ['id', 'appliesTo', 'recordType', 'subject', 'sources', 'status', 'attestedBy'],
   failure: ['id', 'attempt', 'appliesTo', 'outcome', 'recordType', 'subject', 'sources', 'valueSet', 'episode', 'encounter'],
@@ -183,21 +217,27 @@ const FORMATS = {
 const KIND_ORDER = ['CoverageCell', 'AcquisitionFailure', 'RejectedItem'] as const;
 
 type Obj = { readonly [k: string]: JsonValue };
-const has = (o: Obj, k: string) => Object.prototype.hasOwnProperty.call(o, k) && o[k] !== null;
-const isNonEmptyStrings = (v: JsonValue | undefined): v is string[] => Array.isArray(v) && v.length > 0 && v.every((x) => typeof x === 'string');
+const own = (o: object, k: string | number) => Object.prototype.hasOwnProperty.call(o, k);
+const has = (o: Obj, k: string) => own(o, k) && o[k] !== null;
+/** A nonempty array of strings, every slot checked explicitly (a sparse slot is not a string). */
+function isNonEmptyStrings(v: JsonValue | undefined): v is string[] {
+  if (!Array.isArray(v) || v.length === 0) return false;
+  for (let i = 0; i < v.length; i++) if (!own(v, i) || typeof v[i] !== 'string') return false;
+  return true;
+}
 const orderCauses = (cs: Iterable<ContextCause>) => {
   const set = new Set(cs);
   return CONTEXT_CAUSES.filter((c) => set.has(c));
 };
+const gapRef = (identity: GapId, label: string): GapRef => ({ identity, key: canonicalJson(identity as unknown as JsonValue), label });
 
-/** One statement after duplicate handling: identical occurrences merge; same id with different content stays apart, as `id#digest`. */
+/** One statement after duplicate handling: identical occurrences merge; same id with different content stays apart. */
 interface Entry {
-  readonly ref: string;
+  readonly ref: StatementRef;
   readonly item: Obj;
   readonly occurrences: number;
   readonly current: boolean;
   readonly malformed: string[];
-  readonly unrecognized: string[];
 }
 
 function entries(kind: keyof typeof FORMATS, items: readonly JsonValue[], snapshot: string): Entry[] {
@@ -214,12 +254,13 @@ function entries(kind: keyof typeof FORMATS, items: readonly JsonValue[], snapsh
   const out: Entry[] = [];
   for (const [id, byId] of groups) {
     for (const [bytes, { item, n }] of byId) {
-      const ref = byId.size === 1 ? id : `${id}#${createHash('sha256').update(bytes, 'utf8').digest('hex')}`;
+      const digest = createHash('sha256').update(bytes, 'utf8').digest('hex');
+      const identity: StatementId = { kind, id, digest };
       const malformed: string[] = [];
       const applies = item['appliesTo'];
-      const appliesSnapshot = applies !== null && typeof applies === 'object' && !Array.isArray(applies) ? (applies as Obj)['snapshot'] : undefined;
+      const appliesOk = applies !== null && typeof applies === 'object' && !Array.isArray(applies) && Object.keys(applies).length === 1 && typeof (applies as Obj)['snapshot'] === 'string';
       // A statement whose currency cannot be read is kept as current and malformed: never dropped.
-      if (typeof appliesSnapshot !== 'string') malformed.push('appliesTo');
+      if (!appliesOk) malformed.push('appliesTo');
       for (const d of ['recordType', 'subject'] as const) if (has(item, d) && typeof item[d] !== 'string') malformed.push(d);
       if (has(item, 'sources') && !isNonEmptyStrings(item['sources'])) malformed.push('sources');
       if (kind === 'coverage') {
@@ -230,17 +271,18 @@ function entries(kind: keyof typeof FORMATS, items: readonly JsonValue[], snapsh
         if (typeof item['attempt'] !== 'string') malformed.push('attempt');
         for (const d of ['valueSet', 'episode', 'encounter'] as const) if (has(item, d) && typeof item[d] !== 'string') malformed.push(d);
       } else if (typeof item['reason'] !== 'string') malformed.push('reason');
+      // Unrecognized members are rejected (the statement is malformed), never ignored.
+      malformed.push(...Object.keys(item).filter((k) => !(FORMATS[kind] as readonly string[]).includes(k)));
       out.push({
-        ref,
+        ref: { identity, key: canonicalJson(identity as unknown as JsonValue), label: byId.size === 1 ? id : `${id}#${digest}` },
         item,
         occurrences: n,
-        current: typeof appliesSnapshot !== 'string' || appliesSnapshot === snapshot,
+        current: !appliesOk || (applies as Obj)['snapshot'] === snapshot,
         malformed: malformed.sort(compareCodePoints),
-        unrecognized: Object.keys(item).filter((k) => !(FORMATS[kind] as readonly string[]).includes(k)).sort(compareCodePoints),
       });
     }
   }
-  return out.sort((a, b) => compareCodePoints(a.ref, b.ref));
+  return out.sort((a, b) => compareCodePoints(a.ref.label, b.ref.label) || compareCodePoints(a.ref.key, b.ref.key));
 }
 
 interface Scope {
@@ -267,7 +309,7 @@ function dimensions(item: Obj, malformed: readonly string[], scope: Scope, extra
   ];
 }
 
-function itemGap(kind: 'AcquisitionFailure' | 'RejectedItem', origin: 'snapshot' | 'S1', ref: string, dims: DimensionCheck[], findings: GapFinding[], malformed: readonly string[], occurrences: number, item: JsonValue | S1RejectedItem): Gap {
+function itemGap(kind: 'AcquisitionFailure' | 'RejectedItem', origin: 'snapshot' | 'S1', ref: GapRef, dims: DimensionCheck[], findings: GapFinding[], malformed: readonly string[], occurrences: number, item: JsonValue | S1RejectedItem): Gap {
   const provenBy = dims.filter((d) => d.proves).map((d) => d.dimension);
   return {
     kind,
@@ -333,17 +375,17 @@ export function gapRelevance(input: GapRelevanceInput): GapRelevanceResult {
     (has(c.item, 'sources') && !c.malformed.includes('sources') && !(c.item['sources'] as string[]).includes(source));
   const cellGaps: Gap[] = [];
   const cells = scope.sources.map((source): CoverageCell => {
-    const ref = `cell:${source}`;
+    const ref = gapRef({ kind: 'CoverageCell', origin: 'coverage', source }, `cell:${source}`);
     const establishedBy = current
       .filter((c) => c.malformed.length === 0 && c.item['status'] === 'Complete' && has(c.item, 'recordType') && has(c.item, 'subject') && has(c.item, 'sources') && !excludes(c, source))
       .map((c) => c.ref);
     const affectedBy = current
       .filter((c) => (c.malformed.length > 0 || c.item['status'] === 'Incomplete' || c.item['status'] === 'Unknown') && !excludes(c, source))
-      .map((c) => ({ ref: c.ref, as: c.malformed.length > 0 ? ('Malformed' as const) : (c.item['status'] as 'Incomplete' | 'Unknown') }));
+      .map((c) => ({ statement: c.ref, as: c.malformed.length > 0 ? ('Malformed' as const) : (c.item['status'] as 'Incomplete' | 'Unknown') }));
     const status: CellStatus = affectedBy.some((a) => a.as === 'Incomplete') ? 'Incomplete' : affectedBy.length > 0 ? 'Unknown' : establishedBy.length > 0 ? 'Complete' : 'Absent';
     const cell: CoverageCell = { ref, recordType: scope.recordType, subject: scope.subject, source, status, establishedBy, affectedBy };
     if (status !== 'Complete' && establishedBy.length > 0) {
-      diagnostics.push({ code: 'ContradictoryAttestation', ref, basis: 'AffectingStatement', establishedBy, affectedBy: affectedBy.map((a) => a.ref) });
+      diagnostics.push({ code: 'ContradictoryAttestation', ref, basis: 'AffectingStatement', establishedBy, affectedBy: affectedBy.map((a) => a.statement) });
     }
     // §2.1: a Complete claim for the cell beside a correction or retraction target absent from the snapshot.
     const missingTarget = s1.keys.filter(
@@ -361,33 +403,30 @@ export function gapRelevance(input: GapRelevanceInput): GapRelevanceResult {
   });
 
   const itemGaps: Gap[] = [];
+  const statementGapRef = (kind: 'AcquisitionFailure' | 'RejectedItem', e: Entry) => gapRef({ kind, origin: 'snapshot', statement: e.ref.identity }, e.ref.label);
   for (const f of failures.filter((x) => x.current)) {
     const findings: GapFinding[] = [{ cause: 'Unavailable', reason: 'AcquisitionFailed' }];
     if (f.malformed.length > 0) findings.push({ cause: 'Invalid', reason: 'AcquisitionFailed' });
-    itemGaps.push(itemGap('AcquisitionFailure', 'snapshot', f.ref, dimensions(f.item, f.malformed, scope, ['valueSet', 'episode', 'encounter']), findings, f.malformed, f.occurrences, f.item));
+    itemGaps.push(itemGap('AcquisitionFailure', 'snapshot', statementGapRef('AcquisitionFailure', f), dimensions(f.item, f.malformed, scope, ['valueSet', 'episode', 'encounter']), findings, f.malformed, f.occurrences, f.item));
   }
   for (const r of rejected.filter((x) => x.current)) {
-    itemGaps.push(itemGap('RejectedItem', 'snapshot', r.ref, dimensions(r.item, r.malformed, scope, []), [{ cause: 'Invalid', reason: 'ItemRejected' }], r.malformed, r.occurrences, r.item));
+    itemGaps.push(itemGap('RejectedItem', 'snapshot', statementGapRef('RejectedItem', r), dimensions(r.item, r.malformed, scope, []), [{ cause: 'Invalid', reason: 'ItemRejected' }], r.malformed, r.occurrences, r.item));
   }
   // S1's own rejected items (§2.1 step 6; §1.7). Their dimensions are their known fields: a
   // retraction states its source only; an occurrence without identity states none.
   for (const u of s1.unattributableRetractions) {
     const item: S1RejectedItem = { kind: 'UnattributableRetraction', retraction: u.ref, cause: u.cause };
-    itemGaps.push(itemGap('RejectedItem', 'S1', `${u.ref.source}:${u.ref.id}`, dimensions({ sources: [u.ref.source] }, [], scope, []), [{ cause: u.cause, reason: 'ItemRejected' }], [], 1, item));
+    const ref = gapRef({ kind: 'RejectedItem', origin: 'S1', retraction: u.ref }, `${u.ref.source}:${u.ref.id}`);
+    itemGaps.push(itemGap('RejectedItem', 'S1', ref, dimensions({ sources: [u.ref.source] }, [], scope, []), [{ cause: u.cause, reason: 'ItemRejected' }], [], 1, item));
   }
   for (const u of s1.unidentified) {
     const item: S1RejectedItem = { kind: 'UnidentifiedOccurrence', occurrence: u.kind, inputIndex: u.inputIndex, reason: u.reason };
-    // ponytail: positional ref (no identity exists); the decision itself never depends on order.
-    itemGaps.push(itemGap('RejectedItem', 'S1', `unidentified:${u.kind}#${u.inputIndex}`, dimensions({}, [], scope, []), [{ cause: 'Invalid', reason: 'ItemRejected' }], [], 1, item));
+    // ponytail: positional identity (no identity exists); the decision itself never depends on order.
+    const ref = gapRef({ kind: 'RejectedItem', origin: 'S1', occurrence: u.kind, inputIndex: u.inputIndex }, `unidentified:${u.kind}#${u.inputIndex}`);
+    itemGaps.push(itemGap('RejectedItem', 'S1', ref, dimensions({}, [], scope, []), [{ cause: 'Invalid', reason: 'ItemRejected' }], [], 1, item));
   }
-  const gaps = [...cellGaps, ...itemGaps].sort((a, b) => KIND_ORDER.indexOf(a.kind) - KIND_ORDER.indexOf(b.kind) || compareCodePoints(a.ref, b.ref));
-  const statements: StatementTrace[] = (
-    [
-      ['coverage', coverage],
-      ['failure', failures],
-      ['rejectedItem', rejected],
-    ] as const
-  ).flatMap(([kind, es]) => es.map((e) => ({ ref: e.ref, kind, current: e.current, malformed: e.malformed, unrecognized: e.unrecognized, occurrences: e.occurrences, item: e.item })));
+  const gaps = [...cellGaps, ...itemGaps].sort((a, b) => KIND_ORDER.indexOf(a.kind) - KIND_ORDER.indexOf(b.kind) || compareCodePoints(a.ref.label, b.ref.label) || compareCodePoints(a.ref.key, b.ref.key));
+  const statements: StatementTrace[] = [...coverage, ...failures, ...rejected].map((e) => ({ ref: e.ref, current: e.current, malformed: e.malformed, occurrences: e.occurrences, item: e.item }));
   return detach({
     experimental: 'nonclinical-s6-gap-relevance-v0',
     stage: 'S6',
@@ -401,7 +440,7 @@ export function gapRelevance(input: GapRelevanceInput): GapRelevanceResult {
     relevant: gaps.filter((g) => g.relevant).map((g) => g.ref),
     irrelevant: gaps.filter((g) => !g.relevant).map((g) => g.ref),
     statements,
-    notCurrent: statements.filter((s) => !s.current).map((s) => s.ref).sort(compareCodePoints),
+    notCurrent: statements.filter((s) => !s.current).map((s) => s.ref),
     diagnostics,
   });
 }

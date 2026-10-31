@@ -104,17 +104,20 @@ const sel = (snapshot: EvaluationSnapshot | undefined, revisions: J[] = [rev('r1
   experimentalSelectForQuery({ package: pkg, query, revisions: revisions as JsonValue[], retractions: retractions as JsonValue[], ...CTX, ...(snapshot ? { snapshot } : {}) });
 const run = (snapshot: EvaluationSnapshot, revisions?: J[], retractions?: J[]) => experimentalGapRelevance({ package: PKG, query: 'q', s4: sel(snapshot, revisions, retractions) });
 const gap = (r: GapRelevanceResult, ref: string): Gap => {
-  const g = r.gaps.find((x) => x.ref === ref);
-  if (!g) throw new Error(`gap ${ref} missing: ${r.gaps.map((x) => x.ref)}`);
+  const gs = r.gaps.filter((x) => x.ref.label === ref);
+  const g = gs[0];
+  if (!g || gs.length > 1) throw new Error(`gap ${ref}: ${gs.length} matches among ${r.gaps.map((x) => x.ref.label)}`);
   return g;
 };
+/** Display labels of gap or statement references (identity is checked separately where it matters). */
+const labels = (xs: readonly { readonly label: string }[]) => xs.map((x) => x.label);
 const cell = (r: GapRelevanceResult, source: string) => r.cells.find((c) => c.source === source)!;
 const verdicts = (g: Gap) => (g.kind === 'CoverageCell' ? {} : Object.fromEntries(g.dimensions.map((d) => [d.dimension, d.verdict])));
 
 describe('S6 gap relevance: coverage cells (§1.5 combination, §4.1)', () => {
   it('Complete coverage for every declared source and no failure: no gap at all', () => {
     const r = run(snap());
-    expect(r.cells.map((c) => [c.ref, c.status, c.establishedBy])).toEqual([
+    expect(r.cells.map((c) => [c.ref.label, c.status, labels(c.establishedBy)])).toEqual([
       ['cell:s1', 'Complete', ['cov-all']],
       ['cell:s2', 'Complete', ['cov-all']],
     ]);
@@ -130,7 +133,7 @@ describe('S6 gap relevance: coverage cells (§1.5 combination, §4.1)', () => {
       const r = run(snap([...coverage]));
       expect(cell(r, 's1').status).toBe('Complete');
       expect(cell(r, 's2').status).toBe(s2);
-      expect(r.relevant).toEqual(['cell:s2']);
+      expect(labels(r.relevant)).toEqual(['cell:s2']);
       expect(gap(r, 'cell:s2')).toMatchObject({ kind: 'CoverageCell', relevant: true, basis: 'InsideEnvelope', causes: ['InsufficientEvidence'], findings: [{ cause: 'InsufficientEvidence', reason }], cell: { status: s2 } });
     }
   });
@@ -138,7 +141,7 @@ describe('S6 gap relevance: coverage cells (§1.5 combination, §4.1)', () => {
   it('absent coverage is detected per declared source: no statement, or only statements for another cell, is never Complete', () => {
     const none = run(snap([]));
     expect(none.cells.map((c) => c.status)).toEqual(['Absent', 'Absent']);
-    expect(none.relevant).toEqual(['cell:s1', 'cell:s2']);
+    expect(labels(none.relevant)).toEqual(['cell:s1', 'cell:s2']);
     const elsewhere = run(snap([cov('covP2', 'Complete', { subject: 'P2' }), cov('covO', 'Complete', { recordType: 'demo-model/Other@0.1' }), cov('covS3', 'Complete', { sources: ['s3'] })]));
     expect(elsewhere.cells.map((c) => c.status)).toEqual(['Absent', 'Absent']);
     expect(elsewhere.diagnostics).toEqual([]);
@@ -147,24 +150,24 @@ describe('S6 gap relevance: coverage cells (§1.5 combination, §4.1)', () => {
   it('a Complete statement with an unstated dimension establishes nothing and is traced as insufficiently scoped (case 40)', () => {
     const r = run(snap([cov('covA', 'Complete', { subject: undefined })]));
     expect(r.cells.map((c) => c.status)).toEqual(['Absent', 'Absent']);
-    expect(r.diagnostics).toEqual([{ code: 'InsufficientlyScopedStatement', ref: 'covA', unstated: ['subject'] }]);
+    expect(r.diagnostics).toMatchObject([{ code: 'InsufficientlyScopedStatement', ref: { label: 'covA', identity: { kind: 'coverage', id: 'covA' } }, unstated: ['subject'] }]);
     const n = run(snap([cov('covA', 'Complete', { sources: null })]));
-    expect(n.diagnostics).toEqual([{ code: 'InsufficientlyScopedStatement', ref: 'covA', unstated: ['sources'] }]);
+    expect(n.diagnostics).toMatchObject([{ code: 'InsufficientlyScopedStatement', ref: { label: 'covA' }, unstated: ['sources'] }]);
   });
 
   it('Complete never overrides Incomplete or Unknown; the contradiction is traced (cases 35–38)', () => {
     const r = run(snap([cov('covA', 'Complete', { sources: ['s1'] }), cov('covB', 'Unknown', { sources: ['s1', 's2'] })]));
     expect(r.cells.map((c) => c.status)).toEqual(['Unknown', 'Unknown']);
-    expect(r.diagnostics).toEqual([{ code: 'ContradictoryAttestation', ref: 'cell:s1', basis: 'AffectingStatement', establishedBy: ['covA'], affectedBy: ['covB'] }]);
+    expect(r.diagnostics).toMatchObject([{ code: 'ContradictoryAttestation', ref: { label: 'cell:s1', identity: { kind: 'CoverageCell', source: 's1' } }, basis: 'AffectingStatement', establishedBy: [{ label: 'covA' }], affectedBy: [{ label: 'covB' }] }]);
     const both = run(snap([cov('covB', 'Complete'), cov('covC', 'Incomplete', { sources: ['s2'] }), cov('covD', 'Unknown', { sources: ['s2'] })]));
-    expect(cell(both, 's2')).toMatchObject({ status: 'Incomplete', affectedBy: [{ ref: 'covC', as: 'Incomplete' }, { ref: 'covD', as: 'Unknown' }] });
+    expect(cell(both, 's2')).toMatchObject({ status: 'Incomplete', affectedBy: [{ statement: { label: 'covC' }, as: 'Incomplete' }, { statement: { label: 'covD' }, as: 'Unknown' }] });
   });
 
   it('a malformed statement is Unknown for every cell it might affect and adds Invalid; never dropped or read as Complete', () => {
     const r = run(snap([cov('covA', 'Complete', { sources: ['s1'] }), cov('covB', 'Done', { sources: ['s2'] })]));
-    expect(cell(r, 's2')).toMatchObject({ status: 'Unknown', affectedBy: [{ ref: 'covB', as: 'Malformed' }] });
+    expect(cell(r, 's2')).toMatchObject({ status: 'Unknown', affectedBy: [{ statement: { label: 'covB' }, as: 'Malformed' }] });
     expect(gap(r, 'cell:s2')).toMatchObject({ causes: ['Invalid', 'InsufficientEvidence'], findings: [{ cause: 'InsufficientEvidence', reason: 'CellUnknown' }, { cause: 'Invalid', reason: 'CellMalformedStatement' }] });
-    expect(r.statements.find((s) => s.ref === 'covB')).toMatchObject({ malformed: ['status'], current: true });
+    expect(r.statements.find((s) => s.ref.label === 'covB')).toMatchObject({ malformed: ['status'], current: true });
     // A malformed Complete (no attestedBy) establishes nothing, and its well-formed subject still excludes other subjects.
     const m = run(snap([cov('covA', 'Complete', { attestedBy: undefined })]));
     expect(m.cells.map((c) => c.status)).toEqual(['Unknown', 'Unknown']);
@@ -178,14 +181,14 @@ describe('S6 gap relevance: coverage cells (§1.5 combination, §4.1)', () => {
   it('a statement for another snapshot is traced as not current and ignored (case 44)', () => {
     const r = run(snap([cov('cov-all', 'Complete', { appliesTo: { snapshot: 'snap-0' } })], [fail('f1', { appliesTo: { snapshot: 'snap-0' } })]));
     expect(r.cells.map((c) => c.status)).toEqual(['Absent', 'Absent']);
-    expect(r.notCurrent).toEqual(['cov-all', 'f1']);
-    expect(r.gaps.map((g) => g.ref)).toEqual(['cell:s1', 'cell:s2']);
+    expect(labels(r.notCurrent)).toEqual(['cov-all', 'f1']);
+    expect(r.gaps.map((g) => g.ref.label)).toEqual(['cell:s1', 'cell:s2']);
   });
 
   it('a Complete claim beside a missing correction target in that cell is a contradictory attestation; the cell stays Complete (case 26)', () => {
     const r = run(snap(), [rev('r9', { revision: '2', supersedes: { source: 's1', localId: 'r9', revision: '1' }, author: AMEND })]);
     expect(r.cells.map((c) => c.status)).toEqual(['Complete', 'Complete']);
-    expect(r.diagnostics).toEqual([{ code: 'ContradictoryAttestation', ref: 'cell:s1', basis: 'MissingTarget', establishedBy: ['cov-all'], keys: [{ source: 's1', localId: 'r9' }] }]);
+    expect(r.diagnostics).toMatchObject([{ code: 'ContradictoryAttestation', ref: { label: 'cell:s1' }, basis: 'MissingTarget', establishedBy: [{ label: 'cov-all' }], keys: [{ source: 's1', localId: 'r9' }] }]);
     // The S1 history defect stays an S1 defect: it is not a gap.
     expect(r.gaps).toEqual([]);
   });
@@ -197,13 +200,13 @@ describe('S6 gap relevance: failures and rejected items (§4.1 dimension table)'
     expect(cell(r, 's2').status).toBe('Complete');
     expect(gap(r, 'f1')).toMatchObject({ kind: 'AcquisitionFailure', origin: 'snapshot', relevant: true, basis: 'NotProvenDisjoint', provenBy: [], causes: ['Unavailable'], findings: [{ cause: 'Unavailable', reason: 'AcquisitionFailed' }] });
     expect(verdicts(gap(r, 'f1'))).toEqual({ recordType: 'Matches', subject: 'Matches', sources: 'Overlaps', valueSet: 'Unstated', episode: 'Unstated', encounter: 'Unstated' });
-    expect(r.relevant).toEqual(['f1']);
+    expect(labels(r.relevant)).toEqual(['f1']);
   });
 
   it('a different record type, a different subject or disjoint sources each prove irrelevance; irrelevant gaps stay inspectable', () => {
     const r = run(snap([COMPLETE], [fail('fT', { recordType: 'demo-model/OtherAssessment@0.1' }), fail('fP', { subject: 'P2' }), fail('fS', { sources: ['s3'] })]));
-    expect(r.relevant).toEqual([]);
-    expect(r.irrelevant).toEqual(['fP', 'fS', 'fT']);
+    expect(labels(r.relevant)).toEqual([]);
+    expect(labels(r.irrelevant)).toEqual(['fP', 'fS', 'fT']);
     expect(gap(r, 'fT')).toMatchObject({ relevant: false, basis: 'ProvenDisjoint', provenBy: ['recordType'], causes: ['Unavailable'] });
     expect(gap(r, 'fP')).toMatchObject({ relevant: false, provenBy: ['subject'] });
     expect(gap(r, 'fS')).toMatchObject({ relevant: false, provenBy: ['sources'] });
@@ -260,7 +263,7 @@ describe('S6 gap relevance: failures and rejected items (§4.1 dimension table)'
     expect(gap(r, 'x2')).toMatchObject({ relevant: true, provenBy: [] });
     expect(verdicts(gap(r, 'x2'))).toEqual({ recordType: 'Unstated', subject: 'Unstated', sources: 'Unstated' });
     expect(gap(r, 'x3')).toMatchObject({ relevant: true });
-    expect(r.relevant).toEqual(['x2', 'x3']);
+    expect(labels(r.relevant)).toEqual(['x2', 'x3']);
   });
 
   it('S1 rejected items from this evaluation: unattributable retractions (Missing / Invalid) and unidentified occurrences are relevant gaps', () => {
@@ -273,7 +276,7 @@ describe('S6 gap relevance: failures and rejected items (§4.1 dimension table)'
     expect(verdicts(gap(r, 's2:x60'))).toEqual({ recordType: 'Unstated', subject: 'Unstated', sources: 'Overlaps' });
     expect(gap(r, 's1:x61')).toMatchObject({ origin: 'S1', relevant: true, causes: ['Invalid'] });
     expect(gap(r, 'unidentified:revision#1')).toMatchObject({ origin: 'S1', relevant: true, causes: ['Invalid'], item: { kind: 'UnidentifiedOccurrence', occurrence: 'revision', inputIndex: 1 } });
-    expect(r.relevant).toEqual(['s1:x61', 's2:x60', 'unidentified:revision#1']);
+    expect(labels(r.relevant)).toEqual(['s1:x61', 's2:x60', 'unidentified:revision#1']);
   });
 
   it('S1 boundary rejections and correction-history defects are not gaps', () => {
@@ -295,7 +298,7 @@ describe('S6 gap relevance: simultaneous gaps, order and duplicates', () => {
 
   it('every simultaneous gap and failure is kept, each with its own decision', () => {
     const r = run(snap(coverage, failures, rejected));
-    expect(r.gaps.map((g) => [g.ref, g.kind, g.relevant])).toEqual([
+    expect(r.gaps.map((g) => [g.ref.label, g.kind, g.relevant])).toEqual([
       ['cell:s2', 'CoverageCell', true],
       ['f1', 'AcquisitionFailure', true],
       ['f2', 'AcquisitionFailure', false],
@@ -303,9 +306,9 @@ describe('S6 gap relevance: simultaneous gaps, order and duplicates', () => {
       ['x1', 'RejectedItem', false],
       ['x2', 'RejectedItem', true],
     ]);
-    expect(r.relevant).toEqual(['cell:s2', 'f1', 'x2']);
-    expect(r.irrelevant).toEqual(['f2', 'f3', 'x1']);
-    expect(r.notCurrent).toEqual(['covZ']);
+    expect(labels(r.relevant)).toEqual(['cell:s2', 'f1', 'x2']);
+    expect(labels(r.irrelevant)).toEqual(['f2', 'f3', 'x1']);
+    expect(labels(r.notCurrent)).toEqual(['covZ']);
   });
 
   it('input permutation changes nothing', () => {
@@ -319,11 +322,11 @@ describe('S6 gap relevance: simultaneous gaps, order and duplicates', () => {
     expect(dup.gaps).toHaveLength(1);
     expect(gap(dup, 'f1')).toMatchObject({ relevant: false, occurrences: 2 });
     const clash = run(snap([COMPLETE], [fail('f1', { sources: ['s3'] }), fail('f1', { sources: ['s1'] })]));
-    expect(clash.gaps.map((g) => [g.ref.replace(/[0-9a-f]{64}$/, 'D'), g.relevant]).sort()).toEqual([
+    expect(clash.gaps.map((g) => [g.ref.label.replace(/[0-9a-f]{64}$/, 'D'), g.relevant]).sort()).toEqual([
       ['f1#D', false],
       ['f1#D', true],
     ]);
-    expect(clash.relevant).toHaveLength(1);
+    expect(labels(clash.relevant)).toHaveLength(1);
     const reversed = run(snap([COMPLETE], [fail('f1', { sources: ['s1'] }), fail('f1', { sources: ['s3'] })]));
     expect(reversed).toEqual(clash);
   });
@@ -381,17 +384,17 @@ describe('S6 gap relevance: ownership of the evaluation', () => {
     const b = sel(snap([], [fail('f1')], [], 'snap-9'), [rev('r1'), { recordType: T }]);
     const ra = experimentalGapRelevance({ package: PKG, query: 'q', s4: a });
     const rb = experimentalGapRelevance({ package: PKG, query: 'q', s4: b });
-    expect(ra.relevant).toEqual([]);
+    expect(labels(ra.relevant)).toEqual([]);
     expect(rb.snapshot).toBe('snap-9');
-    expect(rb.notCurrent).toEqual(['f1']);
-    expect(rb.relevant).toEqual(['cell:s1', 'cell:s2', 'unidentified:revision#1']);
+    expect(labels(rb.notCurrent)).toEqual(['f1']);
+    expect(labels(rb.relevant)).toEqual(['cell:s1', 'cell:s2', 'unidentified:revision#1']);
     expect(experimentalGapRelevance({ package: PKG, query: 'q', s4: a })).toEqual(ra);
   });
 
   it('the subject comes from the same evaluation: another subject makes P1 failures irrelevant and P2 ones relevant', () => {
     const s4 = experimentalSelectForQuery({ package: PKG, query: 'q', revisions: [], retractions: [], ...CTX, subject: 'P2', snapshot: snap([cov('c', 'Complete', { subject: 'P2' })], [fail('f1'), fail('f2', { subject: 'P2' })]) });
     const r = experimentalGapRelevance({ package: PKG, query: 'q', s4 });
-    expect([r.envelope.subject, r.relevant, r.irrelevant]).toEqual(['P2', ['f2'], ['f1']]);
+    expect([r.envelope.subject, labels(r.relevant), labels(r.irrelevant)]).toEqual(['P2', ['f2'], ['f1']]);
   });
 });
 
@@ -415,9 +418,96 @@ describe('S6 gap relevance: no clinical conclusion; immutability', () => {
     failures[0]!.subject = 'P1';
     (s.coverage as J[]).length = 0;
     const r = experimentalGapRelevance({ package: PKG, query: 'q', s4 });
-    expect([r.relevant, r.irrelevant, r.cells.map((c) => c.status)]).toEqual([[], ['f1'], ['Complete', 'Complete']]);
+    expect([labels(r.relevant), labels(r.irrelevant), r.cells.map((c) => c.status)]).toEqual([[], ['f1'], ['Complete', 'Complete']]);
     const isDeepFrozen = (x: unknown): boolean => !x || typeof x !== 'object' || (Object.isFrozen(x) && Object.values(x).every(isDeepFrozen));
     expect(isDeepFrozen(r)).toBe(true);
     expect(experimentalGapRelevance({ package: PKG, query: 'q', s4 })).toEqual(r);
+  });
+});
+
+describe('S6 gap relevance: review of 8e6c46f — JSON validity, identity, unrecognized members', () => {
+  const badSel = (snapshot: unknown, pattern: RegExp) => {
+    expect(() => sel(snapshot as never)).toThrow(QuerySelectionConfigurationError);
+    expect(() => sel(snapshot as never)).toThrow(pattern);
+  };
+
+  it('a sparse source array is a configuration error at selection, never valid disjoint sources', () => {
+    badSel(snap([COMPLETE], [fail('f1', { sources: new Array(1) })]), /snapshot\.failures\[0\]\.sources: sparse array/);
+    // eslint-disable-next-line no-sparse-arrays
+    badSel(snap([COMPLETE], [fail('f1', { sources: [, 's3'] })]), /sparse array/);
+    badSel(snap([cov('c', 'Complete', { sources: new Array(2) })]), /snapshot\.coverage\[0\]\.sources: sparse array/);
+    badSel(snap(new Array(1) as J[]), /snapshot\.coverage: sparse array/);
+  });
+
+  it('other non-JSON values are rejected before canonicalization', () => {
+    const extra = Object.assign(['s1'], { scope: 'x' });
+    const accessor = Object.defineProperty(fail('f1'), 'subject', { get: () => 'P2', enumerable: true });
+    class Statement {
+      id = 'f1';
+    }
+    for (const [failure, pattern] of [
+      [fail('f1', { sources: extra }), /extra array member/],
+      [accessor, /accessor/],
+      [new Statement(), /not a plain object/],
+      [{ ...fail('f1'), subject: undefined as unknown as string, encounter: 'N1' }, /undefined is not JSON/],
+      [fail('f1', { attempt: Number.NaN }), /non-finite number/],
+      [{ ...fail('f1'), [Symbol('s')]: 1 }, /symbol key/],
+      [fail('f1', { subject: '\uD800' }), /lone surrogate/],
+    ] as const) badSel(snap([COMPLETE], [failure as J]), pattern);
+  });
+
+  it('the reported order dependence is gone: an empty source list is malformed and relevant in either order', () => {
+    const a = run(snap([COMPLETE], [fail('f1', { sources: [] }), fail('f1', { sources: ['s3'] })]));
+    const b = run(snap([COMPLETE], [fail('f1', { sources: ['s3'] }), fail('f1', { sources: [] })]));
+    expect(b).toEqual(a);
+    const byMalformed = a.gaps.map((g) => (g.kind === 'CoverageCell' ? null : [g.malformed, g.relevant]));
+    expect(byMalformed).toEqual(expect.arrayContaining([[['sources'], true], [[], false]]));
+    expect(a.relevant).toHaveLength(1);
+  });
+
+  it('identities never collide: a failure named cell:s1 is distinct from the coverage cell for s1', () => {
+    const r = run(snap([cov('covS2', 'Complete', { sources: ['s2'] })], [fail('cell:s1', { subject: 'P2' })]));
+    expect(labels(r.relevant)).toEqual(['cell:s1']);
+    expect(labels(r.irrelevant)).toEqual(['cell:s1']);
+    expect(r.relevant[0]!.identity).toEqual({ kind: 'CoverageCell', origin: 'coverage', source: 's1' });
+    expect(r.irrelevant[0]!.identity).toMatchObject({ kind: 'AcquisitionFailure', origin: 'snapshot', statement: { kind: 'failure', id: 'cell:s1' } });
+    expect(r.relevant[0]!.key).not.toBe(r.irrelevant[0]!.key);
+  });
+
+  it('keys are unique across gaps and statements, and relevant and irrelevant never share one', () => {
+    const r = run(
+      snap([cov('f1', 'Complete'), cov('s1:x61', 'Unknown', { sources: ['s2'] })], [fail('f1', { subject: 'P2' }), fail('s1:x61')], [rej('f1'), rej('cell:s2', { subject: 'P2' })]),
+      [rev('r1')],
+      [{ id: 'x61', key: { source: 's1', localId: 'r1' }, target: { source: 's1', localId: 'r1' }, author: AMEND, provenance: { acquisition: 'a0', sourceRecordRef: 's1:x61' } }],
+    );
+    const keys = r.gaps.map((g) => g.ref.key);
+    expect(new Set(keys).size).toBe(keys.length);
+    expect(r.relevant.map((x) => x.key).filter((k) => r.irrelevant.some((y) => y.key === k))).toEqual([]);
+    expect(new Set(r.statements.map((s) => s.ref.key)).size).toBe(r.statements.length);
+    // Same label, different gaps: a failure, an S1 retraction and a coverage statement all named s1:x61.
+    expect(r.gaps.filter((g) => g.ref.label === 's1:x61').map((g) => [g.kind, g.origin])).toEqual([
+      ['AcquisitionFailure', 'snapshot'],
+      ['RejectedItem', 'S1'],
+    ]);
+  });
+
+  it('same-id conflicting statements have unambiguous identities carrying their digests', () => {
+    const r = run(snap([COMPLETE], [fail('f1', { sources: ['s3'] }), fail('f1', { sources: ['s1'] })]));
+    const ids = r.gaps.map((g) => (g.ref.identity as { statement: { id: string; digest: string } }).statement);
+    expect(ids.map((x) => x.id)).toEqual(['f1', 'f1']);
+    expect(new Set(ids.map((x) => x.digest)).size).toBe(2);
+    expect(r.gaps.every((g) => g.ref.label === `f1#${(g.ref.identity as { statement: { digest: string } }).statement.digest}`)).toBe(true);
+  });
+
+  it('unrecognized members are rejected: the statement is malformed, never a narrower or broader claim', () => {
+    const c = run(snap([cov('cov-all', 'Complete', { concept: { system: 'demo-cs', code: 'item-x' } })]));
+    expect(c.cells.map((x) => x.status)).toEqual(['Unknown', 'Unknown']);
+    expect(c.statements[0]).toMatchObject({ malformed: ['concept'] });
+    expect(gap(c, 'cell:s1').causes).toEqual(['Invalid', 'InsufficientEvidence']);
+    const f = run(snap([COMPLETE], [fail('f1', { subject: 'P2', note: 'x' })]));
+    expect(gap(f, 'f1')).toMatchObject({ relevant: false, provenBy: ['subject'], malformed: ['note'], causes: ['Unavailable', 'Invalid'] });
+    const a = run(snap([cov('cov-all', 'Complete', { appliesTo: { snapshot: 'snap-1', scope: 'x' } })]));
+    expect(a.statements[0]).toMatchObject({ malformed: ['appliesTo'], current: true });
+    expect(a.cells.map((x) => x.status)).toEqual(['Unknown', 'Unknown']);
   });
 });

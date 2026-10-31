@@ -593,7 +593,7 @@ const r = experimentalGapRelevance({ package: pkg, query: 'q.demo', s4 });
 - Coverage, failure and rejected-item statements enter through `experimentalSelectForQuery`’s optional `snapshot` field (contract §1.5 format; `id` is the current snapshot). Selection validates the structure, detaches the statements and records them privately against its own S4 result, with the subject and that run’s S1 result.
 - `experimentalGapRelevance` takes exactly `{ package, query, s4 }`: the same authentic package object, query ID and bound S4 result as S5. It accepts no statement, subject or stage result, so a foreign, copied or standalone selection, another query’s selection, or one made without a snapshot is rejected (`GapRelevanceConfigurationError`). Nothing is reattached by matching identifiers.
 - S1’s rejected items (unattributable retractions, unidentified occurrences) come from that same S1 run, never from S4 possibilities. Preview packages are outside this slice, and preview evaluation rejects a `snapshot`.
-- Structural errors throw at selection: `snapshot` not an object, an omitted list (an empty list is fine, an omitted one is never read as “no gaps”), an entry that is not an object with a string `id`, or one not representable as canonical JSON.
+- Structural errors throw at selection: `snapshot` not an object, an omitted list (an empty list is fine, an omitted one is never read as “no gaps”), an entry that is not an object with a string `id`, or anything that is not a plain JSON value. The JSON check runs before canonicalization and deduplication (serialization is not validation): a sparse slot, an extra array member, an accessor, a symbol key, `undefined`, a non-finite number, a lone surrogate or a non-plain object is rejected.
 
 **Cells** (§1.5). One per declared source, for (query record type, evaluation subject, source):
 
@@ -619,9 +619,11 @@ A statement *affects* a cell unless a stated, well-formed dimension excludes it.
 
 Causes: a failure `Unavailable`; a stated rejected item `Invalid`; an S1 unattributable retraction its S1 cause (`Missing` or `Invalid`), source stated only; an unidentified occurrence `Invalid`, nothing stated. S1 correction-history defects and proven boundary rejections are not gaps.
 
-**Result.** The envelope used, cells, gaps (cells, then failures, then rejected items; code point order of reference) with `provenBy`, all dimension checks, malformed members, occurrence counts and the original item; the `relevant` and `irrelevant` reference sets; every received statement with currency, malformed and unrecognized members; `notCurrent`; and diagnostics. Identical duplicate statements merge (counted); the same `id` with different content stays as `id#<sha256>` entries. Detached and deep-frozen.
+**Identity.** Every gap and statement reference is `{ identity, key, label }`. A statement’s identity is its list, original `id` and the SHA-256 of its RFC 8785 bytes; a gap’s identity is a cell’s source, a stated item’s statement identity, an S1 retraction’s `RetractionRef`, or an unidentified occurrence’s kind and input position. `key` is the identity’s own RFC 8785 bytes and never collides; `label` (`cell:s1`, `f1`, `f1#<digest>`, `s2:x60`) is for display and can coincide, e.g. for a failure named `cell:s1`.
 
-**Proposed clarifications** awaiting review are listed in contract §4.1: structure versus content, malformed failures and items, unreadable currency, duplicate IDs, unrecognized members, unidentified occurrences, the missing-target attestation, and source disjointness under the correction rule.
+**Result.** The envelope used, cells, gaps (cells, then failures, then rejected items; label, then key, within each) with `provenBy`, all dimension checks, malformed members, occurrence counts and the original item; the `relevant` and `irrelevant` reference sets; every received statement with currency and malformed members; `notCurrent`; and diagnostics. Identical duplicate statements merge (counted); the same `id` with different content stays as separate entries, each with its digest in its identity. Members outside the §1.5 format make a statement malformed (a coverage statement then counts as `Unknown`; a failure or rejected item adds `Invalid`); `attestedBy`, `attempt` and `reason` are the only designated metadata. Detached and deep-frozen.
+
+**Clarifications** (contract §4.1), reviewed 2026-10-31: structure versus content, malformed failures and items, unreadable currency, duplicate IDs (with unambiguous identities), unidentified occurrences, the missing-target attestation and source disjointness under the correction rule are accepted; unrecognized members are rejected rather than ignored.
 
 **Not implemented (rest of I5).** Base results (§4.2 step A), materiality of unresolved records (step B), cause attribution (step C), `rule` facts and the final `Evidence<Boolean>`.
 
@@ -997,13 +999,14 @@ This package has its own Jest configuration and is not part of the root Jest roo
   | Payloads looked up by record ID within one evaluation (wrong variant) | 1 |
   | Payloads looked up by record ID across evaluations (wrong snapshot) | 5 |
   | A whole-contract hole running evidence stages | 3 |
-- **`src/__tests__/s6-gaps.test.ts`** has 30 independent tests of gap relevance, with expected values written from the §1.5 and §4.1 tables. They cover:
+- **`src/__tests__/s6-gaps.test.ts`** has 37 independent tests of gap relevance, with expected values written from the §1.5 and §4.1 tables. They cover:
   - Complete coverage with no failure (no gap); same-scope `Incomplete`, `Unknown` and `Absent` cells; absent detection with no statement and with statements for other cells; insufficiently scoped and contradictory statements; malformed statements (never dropped or read as `Complete`); not-current statements; the missing-target attestation (case 26);
   - a failure despite `Complete` coverage; record type, subject and disjoint sources each proving irrelevance; partial source overlap; unstated and `null` dimensions; several dimensions; value set, episode and encounter never proving; malformed dimensions and members;
   - stated rejected items with definite and undetermined boundaries; S1 unattributable retractions (`Missing`, `Invalid`) and unidentified occurrences; S1 boundary rejections and history defects not being gaps;
   - simultaneous gaps and failures, input permutation, identical duplicates and same-ID conflicts;
   - foreign packages, queries and selections, standalone and copied selections, selections without a snapshot, twelve forbidden fields, structural snapshot errors, preview packages and preview evaluation rejecting `snapshot`; the snapshot not changing selection; interleaved evaluations; the subject taken from the evaluation;
-  - no evidence, base result, materiality, Need or cause attribution field; immutability after input edits; deep freezing.
+  - no evidence, base result, materiality, Need or cause attribution field; immutability after input edits; deep freezing;
+  - (review of 8e6c46f) sparse source arrays and lists, extra array members, accessors, non-plain objects, `undefined`, NaN, symbol keys and lone surrogates rejected at selection; `[]` beside another statement with the same `id` decided the same in either order; a failure named `cell:s1` distinct from the s1 cell; unique keys across gaps and statements, with relevant and irrelevant disjoint; same-`id` conflicts with digest identities; unrecognized members (in a statement or in `appliesTo`) making it malformed.
 
   Deliberate faults, each applied alone (failures across this file and the fixture runner):
 
@@ -1015,6 +1018,9 @@ This package has its own Jest configuration and is not part of the root Jest roo
   | Every failure placed in the relevant set | 11 |
   | Only the first current failure kept | 5 |
   | Only the first non-`Complete` cell kept | 6 |
+  | No JSON validation at selection (the 8e6c46f behaviour for sparse arrays) | 2 |
+  | Gap key equal to its display label | 2 |
+  | Unrecognized members ignored | 1 |
 - **`src/__tests__/fixtures.test.ts`** runs the committed [explicit-assertion-v0 fixtures](../../docs/superpowers/records/pathway-language/conformance/explicit-assertion-v0/README.md) and checks **only** their S1–S4 assertions, S5 `criterion`, `classification` and `possibleClasses` assertions, the preview expectations of preview fixtures, and S6 coverage-cell and gap-relevance facts, plus one-way implications from downstream expectations. It never reports a fixture as passing as a whole, because S6–S7 are not implemented. On the current fixtures it reports:
   - **180 S1 assertions checked, 180 passing.** That is 92 trace facts (`keyResult`, `variants`, `occurrences`, `rejected`, `outOfEnvelope`, `outsideEnvelope`, and the `HistoricalDefect`, `CrossKeyCorrection` and `UndeclaredField` diagnostics) plus 75 canonicalization checks (bytes, digests, variant partition, undeclared fields). EA-104 adds two; EA-123 and EA-124 add three; EA-126 to EA-129 add five; EA-132, EA-133, EA-134, EA-135 and EA-136 add one each.
   - **16 S2 assertions checked, 16 passing:** every `candidacy` trace fact (EA-013, EA-014, EA-024, three in EA-033, and EA-093 to EA-100).

@@ -18,7 +18,7 @@
  */
 import { compiledKind, detach } from './compile/compile';
 import type { CompiledPackage, ExplicitAssertionContract, ExplicitAssertionSettings } from './compile/types';
-import { canonicalJson } from './s1/payload';
+import { jsonValueProblem } from './s1/payload';
 import { resolveRevisionHistory } from './s1/resolve';
 import type { JsonValue, S1Result } from './s1/types';
 import { checkAdmissibility } from './s3/admissibility';
@@ -118,13 +118,11 @@ function checkSnapshot(v: unknown, fail: (m: string) => never): EvaluationSnapsh
   if (typeof s.id !== 'string') fail('snapshot.id must be a string');
   for (const f of ['coverage', 'failures', 'rejectedItems'] as const) {
     if (!Array.isArray(s[f])) fail(`snapshot.${f} must be an array`);
+    // Strict JSON first, so canonicalization and deduplication only ever see plain JSON values.
+    const problem = jsonValueProblem(s[f], `snapshot.${f}`);
+    if (problem) fail(`${problem}; snapshot statements must be plain JSON values`);
     s[f].forEach((x, i) => {
       if (x === null || typeof x !== 'object' || Array.isArray(x) || typeof (x as { id?: unknown }).id !== 'string') fail(`snapshot.${f}[${i}] must be an object with a string id`);
-      try {
-        canonicalJson(x); // duplicate identity uses RFC 8785 bytes, as for revisions
-      } catch (e) {
-        fail(`snapshot.${f}[${i}] is not representable as canonical JSON: ${(e as Error).message}`);
-      }
     });
   }
   return detach(s);

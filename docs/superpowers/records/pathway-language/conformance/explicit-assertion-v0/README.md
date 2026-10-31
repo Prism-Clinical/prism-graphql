@@ -115,7 +115,7 @@ Each evaluation and preview fixture requests output `p.demo`. The query output i
 | `possibleClasses` | `ref` (key), `value` (distinct classes from `Supporting`, `Refuting`, `NonInformative`, `excluded`, in that order; empty for a key with no possibilities) | What the key’s possible current could contribute: step B of contract §4.2, per §3.7. Not materiality |
 | `material` | `ref` (key), `value` | Materiality |
 | `cell` | `source`, `value` ∈ `Complete`/`Incomplete`/`Unknown`/`Absent` | Combined coverage cell |
-| `gap` | `ref`, `relevant`, `provenBy?` | Gap relevance (contract §4.1). `provenBy` names one dimension that proves irrelevance (`recordType`, `subject` or `sources`). `ref` is a cell (`cell:s2`), a failure or rejected item ID, or a retraction identity (`s2:x60`) for an unattributable retraction |
+| `gap` | `ref`, `relevant`, `provenBy?` | Gap relevance (contract §4.1). `provenBy` names one dimension that proves irrelevance (`recordType`, `subject` or `sources`). `ref` is a cell (`cell:s2`), a failure or rejected item ID, or a retraction identity (`s2:x60`) for an unattributable retraction. It is a display label: it must name exactly one gap of the result, whose structured identity (kind, origin, original ID, digest) is what implementations compare |
 | `notCurrent` | `ref` | Statement or failure for another snapshot |
 | `diagnostic` | `code`, `ref`, `path?`, `cause?`, `reason?` | `ContradictoryAttestation`, `InsufficientlyScopedStatement`, `CrossKeyCorrection` (on the target), `UndeclaredField`, `HistoricalDefect` (an S1 defect no longer involving a possible current revision; contract §2.1 step 7) |
 | `rule` | `value` | Contract §4.2 rule applied |

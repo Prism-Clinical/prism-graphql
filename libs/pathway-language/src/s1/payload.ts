@@ -58,6 +58,42 @@ export function isObject(v: unknown): v is JsonObject {
 
 const LONE_SURROGATE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
 
+/**
+ * Why `v` is not a plain JSON value, as `<path>: <reason>`, or null. Run before canonicalization:
+ * RFC 8785 serialization silently skips or rewrites what JSON cannot hold (a sparse slot, an extra
+ * array member, an accessor, a symbol key, `undefined`), so serializing is not validating.
+ */
+export function jsonValueProblem(v: unknown, path: string): string | null {
+  if (v === null || typeof v === 'boolean') return null;
+  if (typeof v === 'string') return LONE_SURROGATE.test(v) ? `${path}: lone surrogate` : null;
+  if (typeof v === 'number') return Number.isFinite(v) ? null : `${path}: non-finite number`;
+  if (typeof v !== 'object') return `${path}: ${typeof v} is not JSON`;
+  const keys = Reflect.ownKeys(v);
+  if (keys.some((k) => typeof k !== 'string')) return `${path}: symbol key`;
+  if (Array.isArray(v)) {
+    if (Object.getPrototypeOf(v) !== Array.prototype) return `${path}: not a plain array`;
+    // Index loop: every slot must be an own data element; no other member than `length`.
+    if (keys.length !== v.length + 1) return `${path}: sparse array or extra array member`;
+    for (let i = 0; i < v.length; i++) {
+      const d = Object.getOwnPropertyDescriptor(v, i);
+      if (!d || !('value' in d)) return `${path}[${i}]: missing or accessor element (sparse array)`;
+      const p = jsonValueProblem(d.value, `${path}[${i}]`);
+      if (p) return p;
+    }
+    return null;
+  }
+  const proto = Object.getPrototypeOf(v);
+  if (proto !== Object.prototype && proto !== null) return `${path}: not a plain object`;
+  for (const k of keys as string[]) {
+    const d = Object.getOwnPropertyDescriptor(v, k)!;
+    if (!('value' in d) || !d.enumerable) return `${path}.${k}: accessor or non-enumerable member`;
+    if (LONE_SURROGATE.test(k)) return `${path}: member name with a lone surrogate`;
+    const p = jsonValueProblem(d.value, `${path}.${k}`);
+    if (p) return p;
+  }
+  return null;
+}
+
 function assertRepresentable(v: JsonValue): void {
   if (typeof v === 'string') {
     if (LONE_SURROGATE.test(v)) throw new UnrepresentableError('lone surrogate');
