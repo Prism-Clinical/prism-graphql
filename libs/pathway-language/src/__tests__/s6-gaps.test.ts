@@ -456,6 +456,29 @@ describe('S6 gap relevance: review of 8e6c46f — JSON validity, identity, unrec
     ] as const) badSel(snap([COMPLETE], [failure as J]), pattern);
   });
 
+  it('cyclic statements are a configuration error with the cycle path, not a stack overflow (review of 3e0f967)', () => {
+    const self = fail('f1');
+    self['appliesTo'] = self;
+    badSel(snap([COMPLETE], [self]), /snapshot\.failures\[0\]\.appliesTo: cycle \(refers back to snapshot\.failures\[0\]\)/);
+    const a: J = { snapshot: 'snap-1' };
+    const b: J = { back: a };
+    a['via'] = [b];
+    badSel(snap([COMPLETE], [fail('f1', { appliesTo: a })]), /snapshot\.failures\[0\]\.appliesTo\.via\[0\]\.back: cycle \(refers back to snapshot\.failures\[0\]\.appliesTo\)/);
+    const list: J[] = [COMPLETE];
+    list.push(list as unknown as J);
+    badSel(snap(list), /snapshot\.coverage\[1\]: cycle \(refers back to snapshot\.coverage\)/);
+  });
+
+  it('an object shared by separate branches, forming no cycle, is accepted', () => {
+    const sources = ['s3'];
+    const applies = { snapshot: 'snap-1' };
+    const r = run(snap([{ ...COMPLETE, appliesTo: applies }], [fail('f1', { sources, appliesTo: applies }), fail('f2', { sources, subject: 'P2', appliesTo: applies })]));
+    expect(labels(r.irrelevant)).toEqual(['f1', 'f2']);
+    expect(r.cells.map((c) => c.status)).toEqual(['Complete', 'Complete']);
+    const shared = { snapshot: 'snap-1' };
+    expect(() => sel(snap([COMPLETE], [fail('f1', { appliesTo: shared, sources: ['s1'] }), fail('f2', { appliesTo: shared })]))).not.toThrow();
+  });
+
   it('the reported order dependence is gone: an empty source list is malformed and relevant in either order', () => {
     const a = run(snap([COMPLETE], [fail('f1', { sources: [] }), fail('f1', { sources: ['s3'] })]));
     const b = run(snap([COMPLETE], [fail('f1', { sources: ['s3'] }), fail('f1', { sources: [] })]));

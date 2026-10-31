@@ -593,7 +593,7 @@ const r = experimentalGapRelevance({ package: pkg, query: 'q.demo', s4 });
 - Coverage, failure and rejected-item statements enter through `experimentalSelectForQuery`’s optional `snapshot` field (contract §1.5 format; `id` is the current snapshot). Selection validates the structure, detaches the statements and records them privately against its own S4 result, with the subject and that run’s S1 result.
 - `experimentalGapRelevance` takes exactly `{ package, query, s4 }`: the same authentic package object, query ID and bound S4 result as S5. It accepts no statement, subject or stage result, so a foreign, copied or standalone selection, another query’s selection, or one made without a snapshot is rejected (`GapRelevanceConfigurationError`). Nothing is reattached by matching identifiers.
 - S1’s rejected items (unattributable retractions, unidentified occurrences) come from that same S1 run, never from S4 possibilities. Preview packages are outside this slice, and preview evaluation rejects a `snapshot`.
-- Structural errors throw at selection: `snapshot` not an object, an omitted list (an empty list is fine, an omitted one is never read as “no gaps”), an entry that is not an object with a string `id`, or anything that is not a plain JSON value. The JSON check runs before canonicalization and deduplication (serialization is not validation): a sparse slot, an extra array member, an accessor, a symbol key, `undefined`, a non-finite number, a lone surrogate or a non-plain object is rejected.
+- Structural errors throw at selection: `snapshot` not an object, an omitted list (an empty list is fine, an omitted one is never read as “no gaps”), an entry that is not an object with a string `id`, or anything that is not a plain JSON value. The JSON check runs before canonicalization and deduplication (serialization is not validation): a sparse slot, an extra array member, an accessor, a symbol key, `undefined`, a non-finite number, a lone surrogate, a non-plain object or a cycle is rejected. Cycles are found on the current ancestor chain, with the path of both ends; an object shared by separate branches is accepted.
 
 **Cells** (§1.5). One per declared source, for (query record type, evaluation subject, source):
 
@@ -999,14 +999,15 @@ This package has its own Jest configuration and is not part of the root Jest roo
   | Payloads looked up by record ID within one evaluation (wrong variant) | 1 |
   | Payloads looked up by record ID across evaluations (wrong snapshot) | 5 |
   | A whole-contract hole running evidence stages | 3 |
-- **`src/__tests__/s6-gaps.test.ts`** has 37 independent tests of gap relevance, with expected values written from the §1.5 and §4.1 tables. They cover:
+- **`src/__tests__/s6-gaps.test.ts`** has 39 independent tests of gap relevance, with expected values written from the §1.5 and §4.1 tables. They cover:
   - Complete coverage with no failure (no gap); same-scope `Incomplete`, `Unknown` and `Absent` cells; absent detection with no statement and with statements for other cells; insufficiently scoped and contradictory statements; malformed statements (never dropped or read as `Complete`); not-current statements; the missing-target attestation (case 26);
   - a failure despite `Complete` coverage; record type, subject and disjoint sources each proving irrelevance; partial source overlap; unstated and `null` dimensions; several dimensions; value set, episode and encounter never proving; malformed dimensions and members;
   - stated rejected items with definite and undetermined boundaries; S1 unattributable retractions (`Missing`, `Invalid`) and unidentified occurrences; S1 boundary rejections and history defects not being gaps;
   - simultaneous gaps and failures, input permutation, identical duplicates and same-ID conflicts;
   - foreign packages, queries and selections, standalone and copied selections, selections without a snapshot, twelve forbidden fields, structural snapshot errors, preview packages and preview evaluation rejecting `snapshot`; the snapshot not changing selection; interleaved evaluations; the subject taken from the evaluation;
   - no evidence, base result, materiality, Need or cause attribution field; immutability after input edits; deep freezing;
-  - (review of 8e6c46f) sparse source arrays and lists, extra array members, accessors, non-plain objects, `undefined`, NaN, symbol keys and lone surrogates rejected at selection; `[]` beside another statement with the same `id` decided the same in either order; a failure named `cell:s1` distinct from the s1 cell; unique keys across gaps and statements, with relevant and irrelevant disjoint; same-`id` conflicts with digest identities; unrecognized members (in a statement or in `appliesTo`) making it malformed.
+  - (review of 8e6c46f) sparse source arrays and lists, extra array members, accessors, non-plain objects, `undefined`, NaN, symbol keys and lone surrogates rejected at selection; `[]` beside another statement with the same `id` decided the same in either order; a failure named `cell:s1` distinct from the s1 cell; unique keys across gaps and statements, with relevant and irrelevant disjoint; same-`id` conflicts with digest identities; unrecognized members (in a statement or in `appliesTo`) making it malformed;
+  - (review of 3e0f967) self, indirect and list-level cycles rejected with their path, and objects shared across branches accepted.
 
   Deliberate faults, each applied alone (failures across this file and the fixture runner):
 
@@ -1021,6 +1022,8 @@ This package has its own Jest configuration and is not part of the root Jest roo
   | No JSON validation at selection (the 8e6c46f behaviour for sparse arrays) | 2 |
   | Gap key equal to its display label | 2 |
   | Unrecognized members ignored | 1 |
+  | No cycle detection (stack overflow instead of a configuration error) | 1 |
+  | A global visited set instead of the ancestor chain (rejects shared objects) | 1 |
 - **`src/__tests__/fixtures.test.ts`** runs the committed [explicit-assertion-v0 fixtures](../../docs/superpowers/records/pathway-language/conformance/explicit-assertion-v0/README.md) and checks **only** their S1–S4 assertions, S5 `criterion`, `classification` and `possibleClasses` assertions, the preview expectations of preview fixtures, and S6 coverage-cell and gap-relevance facts, plus one-way implications from downstream expectations. It never reports a fixture as passing as a whole, because S6–S7 are not implemented. On the current fixtures it reports:
   - **180 S1 assertions checked, 180 passing.** That is 92 trace facts (`keyResult`, `variants`, `occurrences`, `rejected`, `outOfEnvelope`, `outsideEnvelope`, and the `HistoricalDefect`, `CrossKeyCorrection` and `UndeclaredField` diagnostics) plus 75 canonicalization checks (bytes, digests, variant partition, undeclared fields). EA-104 adds two; EA-123 and EA-124 add three; EA-126 to EA-129 add five; EA-132, EA-133, EA-134, EA-135 and EA-136 add one each.
   - **16 S2 assertions checked, 16 passing:** every `candidacy` trace fact (EA-013, EA-014, EA-024, three in EA-033, and EA-093 to EA-100).

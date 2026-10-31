@@ -62,12 +62,25 @@ const LONE_SURROGATE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[
  * Why `v` is not a plain JSON value, as `<path>: <reason>`, or null. Run before canonicalization:
  * RFC 8785 serialization silently skips or rewrites what JSON cannot hold (a sparse slot, an extra
  * array member, an accessor, a symbol key, `undefined`), so serializing is not validating.
+ * `ancestors` is the current chain of containers (object → its path): a value that is its own
+ * ancestor is a cycle. An object shared by separate branches is not on its own chain, so it passes.
  */
-export function jsonValueProblem(v: unknown, path: string): string | null {
+export function jsonValueProblem(v: unknown, path: string, ancestors: Map<object, string> = new Map()): string | null {
   if (v === null || typeof v === 'boolean') return null;
   if (typeof v === 'string') return LONE_SURROGATE.test(v) ? `${path}: lone surrogate` : null;
   if (typeof v === 'number') return Number.isFinite(v) ? null : `${path}: non-finite number`;
   if (typeof v !== 'object') return `${path}: ${typeof v} is not JSON`;
+  const back = ancestors.get(v);
+  if (back !== undefined) return `${path}: cycle (refers back to ${back})`;
+  ancestors.set(v, path);
+  try {
+    return containerProblem(v, path, ancestors);
+  } finally {
+    ancestors.delete(v);
+  }
+}
+
+function containerProblem(v: object, path: string, ancestors: Map<object, string>): string | null {
   const keys = Reflect.ownKeys(v);
   if (keys.some((k) => typeof k !== 'string')) return `${path}: symbol key`;
   if (Array.isArray(v)) {
@@ -77,7 +90,7 @@ export function jsonValueProblem(v: unknown, path: string): string | null {
     for (let i = 0; i < v.length; i++) {
       const d = Object.getOwnPropertyDescriptor(v, i);
       if (!d || !('value' in d)) return `${path}[${i}]: missing or accessor element (sparse array)`;
-      const p = jsonValueProblem(d.value, `${path}[${i}]`);
+      const p = jsonValueProblem(d.value, `${path}[${i}]`, ancestors);
       if (p) return p;
     }
     return null;
@@ -88,7 +101,7 @@ export function jsonValueProblem(v: unknown, path: string): string | null {
     const d = Object.getOwnPropertyDescriptor(v, k)!;
     if (!('value' in d) || !d.enumerable) return `${path}.${k}: accessor or non-enumerable member`;
     if (LONE_SURROGATE.test(k)) return `${path}: member name with a lone surrogate`;
-    const p = jsonValueProblem(d.value, `${path}.${k}`);
+    const p = jsonValueProblem(d.value, `${path}.${k}`, ancestors);
     if (p) return p;
   }
   return null;
