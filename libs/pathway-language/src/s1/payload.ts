@@ -116,11 +116,14 @@ function containerProblem(v: object, path: string, ancestors: Map<object, string
 
 /**
  * Why a whole S1 occurrence (identity, payload, provenance and undeclared fields, everything S1
- * canonicalizes or retains) cannot be traversed, or null: a cycle on the current ancestor chain, or
- * nesting deeper than MAX_JSON_DEPTH with the occurrence itself as level 1. Shared acyclic objects
- * pass. Nothing past the limit is visited. Other JSON problems stay with assertRepresentable.
+ * canonicalizes or retains) is not representable, or null: a lone surrogate in a string or member
+ * name, a non-finite number, a cycle on the current ancestor chain, or nesting deeper than
+ * MAX_JSON_DEPTH with the occurrence itself as level 1. Shared acyclic objects pass. Nothing past
+ * the limit is visited.
  */
-export function nestingProblem(v: unknown, path: string, ancestors: Map<object, string> = new Map()): string | null {
+export function occurrenceProblem(v: unknown, path: string, ancestors: Map<object, string> = new Map()): string | null {
+  if (typeof v === 'string') return LONE_SURROGATE.test(v) ? `${path}: lone surrogate (RFC 8785)` : null;
+  if (typeof v === 'number') return Number.isFinite(v) ? null : `${path}: non-finite number (RFC 8785)`;
   if (v === null || typeof v !== 'object') return null;
   const back = ancestors.get(v);
   if (back !== undefined) return `${path}: cycle (refers back to ${back})`;
@@ -128,27 +131,13 @@ export function nestingProblem(v: unknown, path: string, ancestors: Map<object, 
   ancestors.set(v, path);
   try {
     for (const [k, x] of Object.entries(v)) {
-      const p = nestingProblem(x, Array.isArray(v) ? `${path}[${k}]` : `${path}.${k}`, ancestors);
+      if (LONE_SURROGATE.test(k)) return `${path}: member name with a lone surrogate (RFC 8785)`;
+      const p = occurrenceProblem(x, Array.isArray(v) ? `${path}[${k}]` : `${path}.${k}`, ancestors);
       if (p) return p;
     }
     return null;
   } finally {
     ancestors.delete(v);
-  }
-}
-
-function assertRepresentable(v: JsonValue): void {
-  if (typeof v === 'string') {
-    if (LONE_SURROGATE.test(v)) throw new UnrepresentableError('lone surrogate (RFC 8785)');
-  } else if (typeof v === 'number') {
-    if (!Number.isFinite(v)) throw new UnrepresentableError('non-finite number (RFC 8785)');
-  } else if (Array.isArray(v)) {
-    v.forEach(assertRepresentable);
-  } else if (isObject(v)) {
-    for (const [k, x] of Object.entries(v)) {
-      assertRepresentable(k);
-      assertRepresentable(x);
-    }
   }
 }
 
@@ -167,8 +156,8 @@ export interface PayloadIdentity {
  */
 export function payloadIdentity(occurrence: JsonObject, kind: 'revision' | 'retraction', path: string = kind): PayloadIdentity {
   // Before anything is read, selected or retained: the whole occurrence, not only digest fields.
-  const shape = nestingProblem(occurrence, path);
-  if (shape) throw new UnrepresentableError(shape);
+  const problem = occurrenceProblem(occurrence, path);
+  if (problem) throw new UnrepresentableError(problem);
   const decl = kind === 'revision' ? REVISION_FIELDS : RETRACTION_FIELDS;
   const undeclared: UndeclaredField[] = [];
   // Only declared names are ever assigned below, so `payload` and `kept` never receive
@@ -200,7 +189,6 @@ export function payloadIdentity(occurrence: JsonObject, kind: 'revision' | 'retr
       payload['author'] = { ...author, permissions: [...new Set(perms)].sort() };
     }
   }
-  assertRepresentable(payload);
   const canonical = canonicalJson(payload);
   const undeclaredFields = undeclared.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
   return {

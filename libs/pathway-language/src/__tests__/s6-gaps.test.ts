@@ -639,6 +639,40 @@ describe('S1 occurrence nesting: depth and cycles in revisions and retractions (
     );
   });
 
+  it('lone surrogates and non-finite numbers anywhere in the occurrence, member names included, are rejected occurrences (review of c75b2e9)', () => {
+    const prov = (ref: string, over: J = {}): J => ({ acquisition: 'a0', sourceRecordRef: ref, ...over });
+    const rep = (path: string, what: string) => `not representable: ${path}: ${what} (RFC 8785)`;
+    both(
+      [
+        rev('r1'),
+        rev('r2', { provenance: prov('s1:r2', { acquisition: '\uD800' }) }),
+        rev('r3', { provenance: prov('s1:r3', { attempt: Infinity }) }),
+        rev('r4', { note: 'ok\uDC00' }),
+        rev('r5', { score: Number.NaN }),
+        rev('r6', { ['\uD800x']: 1 }),
+        rev('r7', { provenance: prov('s1:r7', { ['k\uDBFF']: 'v' }) }),
+        rev('r8', { note: [1, -Infinity] }),
+        // Well-formed surrogate pairs are ordinary text, in values and member names.
+        rev('r9', { note: '😀', provenance: prov('s1:r9', { ['😀']: 'v' }) }),
+      ],
+      [retraction({ provenance: prov('\uDFFF') }), retraction({ id: 'x2', note: Infinity }), retraction({ id: 'x3', ['\uD800']: 'v' })],
+      [
+        { kind: 'retraction', inputIndex: 0, reason: rep('retractions[0].provenance.sourceRecordRef', 'lone surrogate') },
+        { kind: 'retraction', inputIndex: 1, reason: rep('retractions[1].note', 'non-finite number') },
+        { kind: 'retraction', inputIndex: 2, reason: rep('retractions[2]', 'member name with a lone surrogate') },
+        { kind: 'revision', inputIndex: 1, reason: rep('revisions[1].provenance.acquisition', 'lone surrogate') },
+        { kind: 'revision', inputIndex: 2, reason: rep('revisions[2].provenance.attempt', 'non-finite number') },
+        { kind: 'revision', inputIndex: 3, reason: rep('revisions[3].note', 'lone surrogate') },
+        { kind: 'revision', inputIndex: 4, reason: rep('revisions[4].score', 'non-finite number') },
+        { kind: 'revision', inputIndex: 5, reason: rep('revisions[5]', 'member name with a lone surrogate') },
+        { kind: 'revision', inputIndex: 6, reason: rep('revisions[6].provenance', 'member name with a lone surrogate') },
+        { kind: 'revision', inputIndex: 7, reason: rep('revisions[7].note[1]', 'non-finite number') },
+      ],
+      // No rejected retraction applies; r1 and r9 are Current.
+      [['s1/r1', 'Current'], ['s1/r9', 'Current']],
+    );
+  });
+
   it('objects shared across occurrences and fields, forming no cycle, are accepted', () => {
     const prov = { acquisition: 'a0', sourceRecordRef: 's1:shared' };
     const note = { text: ['a', 'b'] };
