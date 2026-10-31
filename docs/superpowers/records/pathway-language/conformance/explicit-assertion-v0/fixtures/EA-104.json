@@ -1,0 +1,198 @@
+{
+  "id": "EA-104",
+  "contractCases": [
+    104
+  ],
+  "title": "Payload variants that differ only in encounter",
+  "kind": "evaluation",
+  "policy": "explicit-assertion-v0",
+  "evidenceModel": "demo-model@0.1",
+  "query": {
+    "file": "../query/q.demo.json",
+    "contractDigest": "d1"
+  },
+  "requestedOutputs": [
+    "p.demo"
+  ],
+  "comparison": "evaluation-v1",
+  "input": {
+    "snapshot": "snap-1",
+    "supersedesSnapshot": null,
+    "context": {
+      "subject": "P1",
+      "episode": {
+        "known": "E1"
+      },
+      "encounter": {
+        "known": "N1"
+      },
+      "clock": "2026-01-01T00:00:00Z",
+      "mode": "nonclinical"
+    },
+    "records": [
+      {
+        "key": {
+          "source": "s1",
+          "localId": "r104"
+        },
+        "revision": "1",
+        "recordType": "demo-model/DemoAssessment@0.1",
+        "subject": "P1",
+        "episode": "E1",
+        "encounter": "N1",
+        "concept": {
+          "system": "demo-cs",
+          "code": "item-x"
+        },
+        "assertion": "Affirmed",
+        "assertionKind": "ClinicianDocumented",
+        "author": {
+          "actor": "u1",
+          "permissions": []
+        },
+        "provenance": {
+          "acquisition": "a0",
+          "sourceRecordRef": "s1:r104:1"
+        }
+      },
+      {
+        "key": {
+          "source": "s1",
+          "localId": "r104"
+        },
+        "revision": "1",
+        "recordType": "demo-model/DemoAssessment@0.1",
+        "subject": "P1",
+        "episode": "E1",
+        "encounter": "N0",
+        "concept": {
+          "system": "demo-cs",
+          "code": "item-x"
+        },
+        "assertion": "Affirmed",
+        "assertionKind": "ClinicianDocumented",
+        "author": {
+          "actor": "u1",
+          "permissions": []
+        },
+        "provenance": {
+          "acquisition": "a1",
+          "sourceRecordRef": "s1:r104:1"
+        }
+      }
+    ],
+    "retractions": [],
+    "coverage": [
+      {
+        "id": "cov-all",
+        "appliesTo": {
+          "snapshot": "snap-1"
+        },
+        "recordType": "demo-model/DemoAssessment@0.1",
+        "subject": "P1",
+        "sources": [
+          "s1",
+          "s2"
+        ],
+        "status": "Complete",
+        "attestedBy": "demo-adapter@1"
+      }
+    ],
+    "failures": [],
+    "rejectedItems": []
+  },
+  "expected": {
+    "evidence": {
+      "status": "Unresolved",
+      "causes": [
+        "Conflicting"
+      ],
+      "candidateEvidenceIds": [
+        "s1/r104@1#b9f5d4d1fefb1745e35f52708a2437d050ab5df8f4da9451400e413bc8363924",
+        "s1/r104@1#e2bbe0bbb20fa968dd251260db3f35d309e69efab3f84a725721b52ff4c09fab"
+      ]
+    },
+    "decision": {
+      "value": "Unknown",
+      "causes": [
+        "Conflicting"
+      ]
+    },
+    "causeAttribution": [
+      {
+        "cause": "Conflicting",
+        "origin": "s1/r104",
+        "stage": "S1",
+        "reason": "PayloadConflict"
+      }
+    ],
+    "needs": {
+      "evidence": {
+        "key": {
+          "query": "q.demo",
+          "contractDigest": "d1",
+          "subject": "P1",
+          "episode": "E1",
+          "encounter": "N1"
+        },
+        "causes": [
+          "Conflicting"
+        ]
+      },
+      "deferred": null,
+      "obligations": [
+        {
+          "kind": "CorrectRecord",
+          "needKey": {
+            "query": "q.demo",
+            "contractDigest": "d1",
+            "subject": "P1",
+            "episode": "E1",
+            "encounter": "N1"
+          },
+          "record": "s1/r104"
+        }
+      ]
+    },
+    "traceAssertions": [
+      {
+        "fact": "keyResult",
+        "ref": "s1/r104",
+        "value": "UnresolvedRevision",
+        "causes": [
+          "Conflicting"
+        ],
+        "possibleCurrent": [
+          "s1/r104@1#b9f5d4d1fefb1745e35f52708a2437d050ab5df8f4da9451400e413bc8363924",
+          "s1/r104@1#e2bbe0bbb20fa968dd251260db3f35d309e69efab3f84a725721b52ff4c09fab"
+        ]
+      },
+      {
+        "fact": "variants",
+        "ref": "s1/r104@1",
+        "value": [
+          "s1/r104@1#b9f5d4d1fefb1745e35f52708a2437d050ab5df8f4da9451400e413bc8363924",
+          "s1/r104@1#e2bbe0bbb20fa968dd251260db3f35d309e69efab3f84a725721b52ff4c09fab"
+        ]
+      },
+      {
+        "fact": "encounterScope",
+        "ref": "s1/r104@1#e2bbe0bbb20fa968dd251260db3f35d309e69efab3f84a725721b52ff4c09fab",
+        "value": "DoesNotMatch"
+      },
+      {
+        "fact": "encounterScope",
+        "ref": "s1/r104@1#b9f5d4d1fefb1745e35f52708a2437d050ab5df8f4da9451400e413bc8363924",
+        "value": "Matches"
+      },
+      {
+        "fact": "possibleClasses",
+        "ref": "s1/r104",
+        "value": [
+          "Supporting",
+          "excluded"
+        ]
+      }
+    ]
+  }
+}

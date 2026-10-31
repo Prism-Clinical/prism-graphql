@@ -1,0 +1,60 @@
+{
+  "id": "PPL-05b",
+  "title": "Structural error: non-Decision operand of all",
+  "status": "Proposed, hand-derived acceptance expectation. Not produced by any PPL compiler or evaluator. The experimental I1 compiler checks the compile and preview blocks, and I2 checks program-level outputs with the query evidence supplied directly (libs/pathway-language); no end-to-end evaluator exists yet.",
+  "program": {
+    "file": "../schematic-demo-finding.ppl.json",
+    "patch": [
+      {
+        "op": "replace",
+        "path": "/nodes/2/status",
+        "value": {
+          "all": [
+            {
+              "ref": "applicability"
+            },
+            {
+              "ref": "p.demo"
+            },
+            {
+              "enum": "AssertionValue.Affirmed"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "entryPoints": [
+    "compile",
+    "compilePreview"
+  ],
+  "input": null,
+  "expected": {
+    "state": "InvalidProgram",
+    "compile": {
+      "outcome": "CompileFailure",
+      "wellFormed": false,
+      "diagnostics": [
+        {
+          "code": "TYPE_MISMATCH",
+          "location": "/nodes/2/status/all/2",
+          "message": "all requires Decision operands; found enum AssertionValue (Stage A 4.3, 10.1 step 4)"
+        }
+      ]
+    },
+    "preview": {
+      "outcome": "CompileFailure",
+      "sameDiagnostics": true
+    },
+    "outputs": null,
+    "causeAttribution": null,
+    "trace": [
+      {
+        "output": "compile",
+        "source": "/nodes/2/status/all/2",
+        "result": "CompileFailure",
+        "because": "An enum literal is not a Decision; there is no implicit coercion. Enum literals are typed only inside a query criterion over a candidate field"
+      }
+    ]
+  }
+}

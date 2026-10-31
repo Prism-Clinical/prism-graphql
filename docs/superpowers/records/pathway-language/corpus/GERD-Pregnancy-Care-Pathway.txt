@@ -1,0 +1,615 @@
+CLINICAL CARE PATHWAY: GASTROESOPHAGEAL REFLUX DISEASE IN PREGNANCY
+================================================================================
+
+OVERVIEW
+--------
+Gastroesophageal reflux disease (GERD) affects 30-80% of pregnancies, making it among the most common gastrointestinal complaints in obstetric care. This clinical decision support document provides evidence-based guidance for diagnosis, treatment, and monitoring of GERD during pregnancy, synthesized from American College of Gastroenterology (ACG), American Gastroenterological Association (AGA), American Society for Gastrointestinal Endoscopy (ASGE), and peer-reviewed guidelines from 2020-2025.
+
+The condition is primarily managed through a stepped-care approach beginning with lifestyle modifications and escalating through pharmacotherapy as needed. Most patients achieve adequate symptom control, with approximately 80% experiencing complete resolution postpartum.
+
+
+EPIDEMIOLOGY AND PATHOPHYSIOLOGY
+---------------------------------
+
+Prevalence by Trimester:
+• First trimester: 20-30%
+• Second trimester: 40-45%
+• Third trimester: 60-72% (peak prevalence)
+• Daily heartburn: 25% of pregnant women
+• Simultaneous heartburn and regurgitation: 17%
+• Non-pregnant controls: 9.3% (baseline comparison)
+
+Pathophysiologic Mechanisms:
+
+1. Hormonal Effects:
+   - Progesterone causes direct smooth muscle relaxation of the lower esophageal sphincter (LES)
+   - LES pressure reaches its nadir at approximately 36 weeks gestation
+   - Progesterone increases nitric oxide synthesis, a smooth muscle relaxant that decreases LES tone
+   - Promotes transient LES relaxations exceeding intragastric pressure
+   - Estrogen acts synergistically with progesterone to abolish LES responses to gastrin and acetylcholine
+
+2. Mechanical Effects:
+   - Gravid uterus increases intra-abdominal pressure
+   - Increased intragastric pressure, particularly prominent in third trimester
+   - Maximum effect when uterine size is maximal
+
+
+RISK FACTORS AND SCREENING
+---------------------------
+
+Evidence-Based Risk Factors:
+
+High-Strength Evidence:
+• Pre-existing GERD (strongest predictor; OR 3.0-3.8 for persistent symptoms; p=0.041)
+• Advanced gestational age (third trimester highest risk)
+• Multiparity (15% prevalence with >2 deliveries vs 1.5% with first pregnancy)
+• Short meal-to-bed time (identified as "predominant risk factor")
+
+Moderate-Strength Evidence:
+• Obesity: BMI >25 (OR 1.33 overweight; OR 1.70 obese)
+• Hiatal hernia (worsened by increased intra-abdominal pressure)
+• Advancing maternal age
+
+Dietary Precipitants:
+• Fatty or fried foods
+• Spicy foods
+• Citrus fruits and juices
+• Carbonated beverages
+• Caffeine
+• Chocolate
+• Peppermint
+
+Positional Precipitants:
+• Recumbent position
+• Eating within 3 hours of bedtime
+• Bending over after meals
+
+
+CLINICAL DIAGNOSIS
+------------------
+
+Symptom-Based Diagnosis:
+GERD diagnosis in pregnancy is primarily clinical. When classic symptoms are present without alarm features, empiric therapy is appropriate without additional diagnostic testing (ACG 2022, Strong Recommendation).
+
+Hallmark Symptoms:
+• Heartburn: Burning retrosternal sensation radiating toward the neck, typically occurring within 60 minutes of eating
+• Regurgitation: Effortless return of gastric contents with acid or sour taste
+• Classic symptoms demonstrate 78% sensitivity and 60% specificity for GERD diagnosis
+
+Symptom Patterns:
+• Worsen with lying flat, bending over, large meals, and eating late at night
+• Severity increases from first to third trimester:
+  - First trimester: 11.3% report severe symptoms
+  - Third trimester: 29.2% report severe symptoms
+
+ALARM SYMPTOMS REQUIRING IMMEDIATE EVALUATION:
+• Progressive dysphagia (particularly solids before liquids)
+• Odynophagia (painful swallowing)
+• Unintentional weight loss (>5% in 6 months)
+• Gastrointestinal bleeding (hematemesis, melena)
+• Unexplained iron deficiency anemia
+• Persistent or intractable vomiting
+• Early satiety
+
+CRITICAL PREGNANCY-SPECIFIC CONSIDERATION:
+New-onset GERD symptoms in the third trimester with epigastric pain should prompt urgent evaluation for preeclampsia/HELLP syndrome, including:
+• Blood pressure measurement
+• Urine protein assessment
+• Hepatic function testing (AST, ALT, LDH)
+
+
+STEPPED-CARE TREATMENT APPROACH
+--------------------------------
+
+FIRST-LINE: LIFESTYLE AND DIETARY MODIFICATIONS (Grade B-C Evidence)
+
+Dietary Recommendations:
+• Avoid fatty/fried foods, spicy foods, citrus, tomatoes, chocolate, peppermint, caffeine
+• Eliminate alcohol consumption
+• Eat smaller, more frequent meals (4-6 small meals vs 3 large meals)
+• Avoid eating within 3 hours of bedtime (critical modification)
+
+Positional Modifications:
+• Elevate head of bed 6-11 inches using foam wedge (NOT extra pillows)
+• Sleep in left lateral decubitus position (reduces esophageal acidity)
+• Remain upright for at least 2-3 hours after eating
+• Avoid tight-fitting clothing around abdomen
+
+Additional Measures:
+• Weight management within recommended gestational weight gain guidelines
+• Smoking cessation (if applicable)
+• Stress reduction techniques
+
+Expected Response: Adequate symptom control in approximately 30-50% of patients with lifestyle modifications alone.
+
+
+SECOND-LINE: ANTACIDS AND MUCOSAL PROTECTANTS
+
+Calcium-Based Antacids (PREFERRED):
+• Agent: Calcium carbonate (Tums, generic)
+• Dosing: 500-1500 mg as needed, up to 4 times daily
+• Maximum daily dose: 6000 mg elemental calcium
+• Evidence: Grade A recommendation
+• Benefits:
+  - Rapid symptom relief (onset within 5 minutes)
+  - Additional calcium supplementation (600-1500 mg/day)
+  - May help prevent pregnancy-induced hypertension and preeclampsia
+• Precautions:
+  - Separate from iron supplements by 1-2 hours (calcium interferes with iron absorption)
+  - May cause constipation
+  - Risk of rebound acid hypersecretion with chronic use
+
+Magnesium-Containing Antacids:
+• Agents: Magnesium hydroxide (Milk of Magnesia), magnesium oxide
+• Dosing: 400-800 mg up to 4 times daily
+• Evidence: Generally safe at recommended doses
+• Precautions:
+  - AVOID magnesium trisilicate long-term (associated with fetal respiratory distress, nephrolithiasis)
+  - Some experts advise avoiding magnesium sulfate in third trimester (potential labor suppression)
+  - May cause diarrhea
+  - Use with caution in renal insufficiency
+
+Aluminum-Containing Antacids:
+• Less preferred due to constipation and potential calcium interference
+• AVOID aluminum hydroxide in patients with renal disease
+
+Sodium Bicarbonate:
+• AVOID — risk of maternal and fetal fluid overload and metabolic alkalosis
+
+Combination Products:
+• Maalox, Mylanta, Gaviscon (alginate-based)
+• Monitor total sodium and aluminum content
+
+Sucralfate (MUCOSAL PROTECTANT):
+• Agent: Sucralfate suspension or tablets
+• Dosing: 1 gram orally 3-4 times daily on empty stomach (1 hour before meals and at bedtime)
+• Mechanism: Forms protective barrier over esophageal and gastric mucosa
+• Evidence: Former FDA Category B; Grade C recommendation
+  - One RCT demonstrated 90% symptom relief vs 43% with lifestyle modifications alone
+  - Minimal systemic absorption (<5%)
+• ACG 2022 Statement: "Sucralfate is not recommended for GERD therapy EXCEPT during pregnancy"
+• Precautions:
+  - May cause constipation
+  - Take separately from other medications (binds many drugs)
+  - Generally well-tolerated with excellent safety profile
+
+
+THIRD-LINE: H2 RECEPTOR ANTAGONISTS
+
+Famotidine (PREFERRED H2RA):
+• Agent: Famotidine (Pepcid)
+• Dosing: 20 mg orally once or twice daily; may increase to 40 mg twice daily if needed
+• Former FDA Category: B
+• Evidence:
+  - Meta-analysis of 2,398 exposed women: OR 1.14 (95% CI: 0.89-1.45) for congenital malformations—no increased risk
+  - Now the preferred H2RA following ranitidine market withdrawal
+  - Extensive human pregnancy data demonstrates safety
+• Precautions:
+  - Fewer drug interactions than cimetidine
+  - Dose adjustment in renal insufficiency
+  - Generally well-tolerated
+
+Cimetidine:
+• Agent: Cimetidine (Tagamet)
+• Dosing: 400 mg orally twice daily or 800 mg at bedtime
+• Former FDA Category: B
+• Evidence: Safe option with extensive pregnancy data
+• Precautions:
+  - Multiple drug interactions (inhibits CYP3A4, CYP2D6, CYP1A2)
+  - Theoretical antiandrogenic concerns from animal studies (not demonstrated in humans at therapeutic doses)
+  - Famotidine preferred due to fewer drug interactions
+
+Ranitidine:
+• WITHDRAWN FROM U.S. MARKET (April 1, 2020)
+• Reason: NDMA (N-Nitrosodimethylamine) contamination, a probable human carcinogen
+• NDMA levels increase over time and with higher storage temperatures
+• DO NOT USE
+
+Nizatidine:
+• NOT RECOMMENDED
+• Animal studies at 300x human dose showed increased abortions and lower fetal weight
+• Insufficient human data
+
+H2RA Efficacy: Approximately 60-70% of patients achieve adequate symptom control with H2RAs when antacids prove insufficient.
+
+
+FOURTH-LINE: PROTON PUMP INHIBITORS (PPIs)
+
+General Principles:
+• Reserved for patients with symptoms refractory to H2RA therapy
+• Large-scale human studies demonstrate safety despite historical Category C classifications
+• Use lowest effective dose for shortest duration necessary
+• Administer 30 minutes before first meal of the day
+• Standard trial duration: 8 weeks
+
+Safety Evidence:
+• NEJM 2010 Danish National Birth Cohort (840,000 births):
+  - First-trimester PPI exposure NOT associated with increased major birth defects
+  - Adjusted OR 1.04 (95% CI: 0.86-1.26)
+• Meta-analysis (7 studies, 1,530 first-trimester exposures):
+  - OR 1.12 (95% CI: 0.86-1.45) for congenital malformations—no significant increase
+• JAMA Network Open 2022:
+  - Confirmed no association with increased congenital malformations
+
+Preferred Agents:
+
+OMEPRAZOLE:
+• Dosing: 20 mg orally once daily; may increase to 40 mg once daily
+• Former FDA Category: C (despite extensive safety data)
+• Evidence: Most extensively studied PPI in pregnancy
+  - Multiple large cohort studies demonstrate safety
+  - No teratogenic effects in human studies
+• Notes: Same active compound as esomeprazole (S-isomer)
+
+ESOMEPRAZOLE:
+• Dosing: 20 mg orally once daily; may increase to 40 mg once daily
+• Former FDA Category: B
+• Evidence: S-isomer of omeprazole; similar safety profile
+
+PANTOPRAZOLE:
+• Dosing: 40 mg orally once daily
+• Former FDA Category: B
+• Evidence: No significant associations in large cohorts; safe option
+
+LANSOPRAZOLE:
+• Dosing: 15-30 mg orally once daily
+• Former FDA Category: B
+• Evidence: Generally considered safe; less pregnancy data than omeprazole
+
+PPI Efficacy: Approximately 80-90% of patients achieve symptom control with PPI therapy.
+
+Important Notes on FDA Pregnancy Categories:
+The FDA's A-X pregnancy category system was replaced by the Pregnancy and Lactation Labeling Rule (PLLR) effective June 30, 2015. Current labeling requires narrative descriptions of risk rather than letter categories. Over-the-counter medications remain unaffected by this change. Historical category designations are included above for reference only.
+
+
+MEDICATION SAFETY SUMMARY TABLE
+--------------------------------
+
+Class          | Agent              | Former Category | Human Data          | Recommendation
+---------------|--------------------|-----------------|--------------------|------------------
+Antacid        | Calcium carbonate  | —               | Safe               | PREFERRED
+Antacid        | Magnesium hydroxide| —               | Use with caution   | Acceptable
+Antacid        | Sodium bicarbonate | —               | Fluid overload risk| AVOID
+Mucosal        | Sucralfate         | B               | No teratogenic     | Safe, pregnancy-specific
+H2RA           | Famotidine         | B               | No increased risk  | PREFERRED H2RA
+H2RA           | Cimetidine         | B               | Safe; interactions | Acceptable
+H2RA           | Ranitidine         | —               | MARKET WITHDRAWAL  | DO NOT USE
+H2RA           | Nizatidine         | B               | Animal toxicity    | AVOID
+PPI            | Omeprazole         | C               | Extensive safety   | Most data; acceptable
+PPI            | Pantoprazole       | B               | Safe in studies    | Safe
+PPI            | Esomeprazole       | B               | Likely safe        | Safe
+PPI            | Lansoprazole       | B               | Likely safe        | Safe
+
+
+REFERRAL AND ENDOSCOPY GUIDELINES
+----------------------------------
+
+Gastroenterology Referral Indications:
+• Any alarm symptoms (dysphagia, odynophagia, weight loss, GI bleeding, anemia)
+• Symptoms refractory to 8 weeks of optimized PPI therapy
+• Symptoms persisting after twice-daily PPI trial (occurs in 10-20% of patients)
+• Suspected complications (stricture, severe esophagitis, Barrett's esophagus)
+• Diagnostic uncertainty requiring objective testing
+
+Endoscopy in Pregnancy (ASGE Guidelines):
+
+Indications:
+• Significant upper gastrointestinal bleeding (most common indication)
+• Refractory dysphagia
+• Suspected complications (stricture, severe esophagitis)
+• Symptoms refractory to maximum medical therapy with concern for alternate diagnosis
+
+Timing Considerations:
+• DEFER to second trimester whenever possible (safest window)
+• AVOID first trimester unless urgently indicated (critical teratogenic period: days 31-71 from LMP)
+• Third trimester presents positioning challenges and increased aspiration risk
+
+Safety Principles:
+• Require strong indication, particularly in high-risk pregnancies
+• Obstetric consultation recommended before procedure
+• Use lowest effective sedation doses:
+  - Preferred agents: Fentanyl, meperidine, short-acting midazolam (all Category B)
+  - Avoid propofol in first trimester when possible
+• Minimize procedure time (<30 minutes ideal)
+• Patient positioning: Left lateral decubitus (avoid supine after 20 weeks to prevent IVC compression)
+• Fetal heart monitoring before and after procedure (if >20 weeks gestation)
+• Informed consent should address pregnancy-specific risks
+
+Absolute Contraindications:
+• Imminent delivery
+• Ruptured membranes
+• Placental abruption
+• Eclampsia or severe preeclampsia
+
+Relative Contraindications:
+• First trimester (unless urgent indication)
+• Unstable maternal or fetal status
+
+Elective Procedures:
+• Defer to postpartum period (approximately 6 weeks) unless alarm symptoms present
+
+
+MONITORING AND FOLLOW-UP
+-------------------------
+
+Follow-Up Schedule:
+
+Timepoint          | Assessment Focus                                    | Actions
+-------------------|-----------------------------------------------------|----------------------------------
+Initial visit      | Symptom severity assessment                         | Initiate lifestyle modifications
+                   | Screen for alarm symptoms                           | Patient education
+                   | Rule out preeclampsia if indicated                  |
+2-4 weeks          | Response to lifestyle modifications                 | Add antacids if inadequate response
+                   | Reassess alarm symptoms                             | Ensure compliance with lifestyle changes
+4-8 weeks          | Response to antacids/H2RAs                          | Consider escalation to H2RA or PPI
+                   | Medication tolerance                                | Document response
+8 weeks            | Standard PPI trial endpoint                         | Consider GI referral if refractory
+                   | Assess need for dose optimization                   | Evaluate for complications
+Each trimester     | Re-evaluate symptom severity                        | Adjust therapy as symptoms typically
+                   | Screen for complications                            | worsen with advancing gestational age
+Third trimester    | Heightened surveillance for preeclampsia            | Consider dose escalation if needed
+                   | Discuss postpartum plans                            |
+
+Treatment Response Criteria:
+• Adequate response (>50% symptom improvement): Continue current therapy
+• Partial response (25-50% improvement): Optimize dose or step-up therapy
+• No response (<25% improvement): Reassess diagnosis; consider referral after 4-8 weeks
+
+PPI Dosing Strategy:
+• Use lowest effective dose for shortest duration
+• May require dose escalation in third trimester due to increased symptom severity
+• Attempt step-down therapy if symptoms controlled for 4-8 weeks
+
+
+COMPLICATIONS AND SPECIAL CONSIDERATIONS
+-----------------------------------------
+
+Potential Complications (Rare in Pregnancy):
+
+Barrett's Esophagus:
+• Uncommon during pregnancy given typical onset age (~55 years) and required duration of GERD exposure (5-10 years)
+• Screening NOT recommended during pregnancy
+• Defer surveillance endoscopy to postpartum period
+
+Esophageal Stricture:
+• Presents with progressive dysphagia to solids
+• Constitutes urgent indication for endoscopy even during pregnancy
+• May require dilation procedure
+
+Aspiration Risk During Labor and Delivery:
+• Pregnancy physiologically increases aspiration risk through:
+  - Decreased LES tone
+  - Increased intra-abdominal pressure
+  - Delayed gastric emptying during active labor
+• Nearly all parturients have gastric pH <2.5
+• >60% have gastric volumes >25 mL
+• ALL parturients should be considered to have "full stomach" regardless of fasting status
+
+Aspiration Prophylaxis Strategies:
+• Regional anesthesia preferred over general anesthesia when possible
+• Pharmacologic prophylaxis options:
+  - Non-particulate antacids: Sodium citrate 30 mL orally within 1 hour of delivery
+  - H2RAs: Famotidine 20-40 mg IV or orally
+  - Prokinetics: Metoclopramide 10 mg IV (promotes gastric emptying)
+• Rapid sequence intubation if general anesthesia required
+• Head-up positioning during induction
+
+Nutritional Impact:
+• Severe GERD may cause reduced food intake
+• Potential for inadequate gestational weight gain
+• Exacerbation of nausea and vomiting of pregnancy
+• Significant sleep disturbance affecting maternal well-being
+
+Quality of Life Impact:
+• Most pronounced effects: Sleep quality disruption and nocturnal symptoms
+• May contribute to pregnancy-related anxiety and depression
+• Important to address symptom burden comprehensively
+
+
+POSTPARTUM MANAGEMENT
+---------------------
+
+Resolution Timeline:
+• Symptoms typically resolve shortly after delivery
+• LES pressure returns to normal approximately 4 weeks postpartum
+• Approximately 80% of women experience complete symptom resolution
+• However, pregnancy represents independent risk factor for GERD at 1-year postpartum (4.7% vs 1.3% in non-pregnant controls)
+
+Risk Factors for Persistent Postpartum Symptoms:
+• Pre-existing GERD before pregnancy (OR 3.0-3.8)
+• Excessive pregnancy weight gain
+• Multiparity
+• Obesity
+
+Medication Discontinuation Approach:
+1. Attempt discontinuation 2-4 weeks postpartum
+2. Step-down therapy:
+   - PPI → H2RA for 2-4 weeks
+   - H2RA → PRN antacid for 2-4 weeks
+   - PRN antacid → lifestyle modifications only
+3. For long-term PPI users, consider gradual tapering:
+   - Reduce dose by 50% for 2-4 weeks before discontinuation
+   - Note: Strong evidence for rebound acid hypersecretion with abrupt PPI withdrawal is lacking
+4. Continue lifestyle modifications throughout postpartum period
+
+Breastfeeding Medication Safety:
+
+Class          | Preferred Agent(s)           | Safety Notes
+---------------|------------------------------|------------------------------------------------
+Antacids       | All agents                   | Minimal systemic absorption; first-line
+H2RAs          | Famotidine                   | Lowest breast milk excretion among H2RAs
+PPIs           | Omeprazole, Pantoprazole     | Low breast milk levels; acid-degraded in infant stomach
+
+Specific Agent Details:
+• Omeprazole 20 mg daily: Produces low breast milk levels without expected adverse effects in breastfed infants (LactMed database)
+• All first-line GERD medications compatible with breastfeeding
+
+Persistent Symptoms Workup:
+• If symptoms persist >4-8 weeks postpartum despite treatment: Refer for evaluation
+• If alarm symptoms develop postpartum: Urgent GI referral
+• If symptoms worsen postpartum: Investigate alternate diagnoses
+
+Postpartum Diagnostic Options (No Longer Contraindicated):
+• Upper endoscopy (EGD)
+• Ambulatory 24-hour pH monitoring
+• Wireless pH monitoring (Bravo capsule)
+• Esophageal manometry
+• Barium esophagram (if breastfeeding, no contraindication to contrast)
+
+
+CLINICAL CODING REFERENCE
+--------------------------
+
+ICD-10-CM DIAGNOSIS CODES:
+
+Code        | Description                                                    | Usage
+------------|----------------------------------------------------------------|---------------------------
+O99.611     | Diseases of digestive system complicating pregnancy, 1st tri  | Primary diagnosis
+O99.612     | Diseases of digestive system complicating pregnancy, 2nd tri  | Primary diagnosis
+O99.613     | Diseases of digestive system complicating pregnancy, 3rd tri  | Primary diagnosis
+K21.0       | GERD with esophagitis                                          | Secondary when confirmed
+K21.9       | GERD without esophagitis                                       | Most common secondary
+R12         | Heartburn                                                      | When GERD not confirmed
+K22.70      | Barrett's esophagus without dysplasia                          | Complication
+K22.2       | Esophageal obstruction/stricture                               | Complication
+O14.90      | Preeclampsia, unspecified trimester                            | If epigastric pain w/GERD
+
+
+SNOMED CT CODES:
+
+SNOMED ID   | Description                                    | Clinical Use
+------------|------------------------------------------------|--------------------------------
+235595009   | Gastroesophageal reflux disease (disorder)     | Primary GERD diagnosis
+266435005   | GERD without esophagitis                       | Uncomplicated GERD
+47515009    | GERD with esophagitis                          | Complicated GERD
+16331000    | Heartburn (finding)                            | Symptom documentation
+249497008   | Acid regurgitation                             | Symptom documentation
+40739000    | Dysphagia (disorder)                           | Alarm symptom
+72366004    | Odynophagia                                    | Alarm symptom
+423576009   | Pregnancy (finding)                            | Context qualifier
+
+
+LOINC CODES (Laboratory Tests):
+
+LOINC       | Test Name                                      | Clinical Indication
+------------|------------------------------------------------|--------------------------------
+17780-8     | H. pylori Ag [Presence] in Stool by Immunoassay| If atypical symptoms
+13954-3     | H. pylori Ab [Presence] in Serum               | Alternative H. pylori test
+718-7       | Hemoglobin [Mass/volume] in Blood              | Anemia screening (alarm)
+26453-1     | Ferritin [Mass/volume] in Serum or Plasma      | Iron deficiency (alarm)
+1742-6      | Alanine aminotransferase [Enzymatic activity]  | Preeclampsia evaluation
+1920-8      | Aspartate aminotransferase [Enzymatic activity]| Preeclampsia evaluation
+14682-9     | Creatinine [Mass/volume] in Serum or Plasma    | Preeclampsia evaluation
+2888-6      | Protein [Mass/volume] in Urine                 | Preeclampsia evaluation
+
+
+RxNorm CODES (Medications):
+
+RxCUI       | Medication Description                         | Clinical Use
+------------|------------------------------------------------|--------------------------------
+328931      | Calcium carbonate 1250 MG Oral Tablet          | First-line antacid
+308180      | Sucralfate 1000 MG Oral Tablet                 | Mucosal protectant
+310272      | Famotidine 20 MG Oral Tablet                   | H2RA first-line
+310273      | Famotidine 40 MG Oral Tablet                   | H2RA higher dose
+198051      | Omeprazole 20 MG Delayed Release Oral Capsule  | PPI first-line
+200329      | Omeprazole 40 MG Delayed Release Oral Capsule  | PPI higher dose
+283534      | Pantoprazole 20 MG Delayed Release Oral Tablet | PPI alternative
+311219      | Pantoprazole 40 MG Delayed Release Oral Tablet | PPI alternative
+606725      | Esomeprazole 20 MG Delayed Release Oral Capsule| PPI alternative
+311280      | Lansoprazole 15 MG Delayed Release Oral Capsule| PPI alternative
+
+
+CPT CODES (Procedures):
+
+CPT Code    | Procedure Description                          | Clinical Indication
+------------|------------------------------------------------|--------------------------------
+43235       | Esophagogastroduodenoscopy (EGD), diagnostic   | Alarm symptoms
+43239       | EGD with biopsy, single or multiple            | Tissue diagnosis needed
+43249       | EGD with esophageal balloon dilation           | Stricture management
+91034       | Esophageal pH monitoring, catheter, 24 hours   | Postpartum diagnosis
+91035       | Esophageal pH monitoring, wireless (Bravo)     | Postpartum diagnosis
+91010       | Esophageal manometry                           | Postpartum motility evaluation
+87338       | H. pylori stool antigen immunoassay            | If atypical symptoms
+99213       | Office visit, established patient, low         | Routine follow-up
+99214       | Office visit, established patient, moderate    | Complex management
+99215       | Office visit, established patient, high        | Multiple complications
+
+
+REFERENCES
+----------
+
+Primary Guidelines:
+1. American College of Gastroenterology (ACG). Clinical Guideline: Diagnosis and Management of Gastroesophageal Reflux Disease. Am J Gastroenterol. 2022;117:27-56.
+
+2. American Gastroenterological Association (AGA). Medical Position Statement on the Management of Gastroesophageal Reflux Disease. Gastroenterology. 2020;159:1527-1534.
+
+3. American Society for Gastrointestinal Endoscopy (ASGE). Guidelines for endoscopy in pregnant and lactating women. Gastrointest Endosc. 2021;93:3-15.
+
+Pregnancy-Specific Evidence:
+4. Richter JE. Gastroesophageal reflux disease during pregnancy. Gastroenterol Clin North Am. 2020;32:235-261.
+
+5. Vazquez JC. Heartburn in pregnancy. BMJ Clin Evid. 2022;0405.
+
+6. Law R, Maltepe C, Bozzo P, et al. Treatment of heartburn and acid reflux associated with nausea and vomiting during pregnancy. Can Fam Physician. 2021;56:143-144.
+
+Medication Safety Studies:
+7. Pasternak B, Hviid A. Use of proton-pump inhibitors in early pregnancy and the risk of birth defects. N Engl J Med. 2010;363:2114-2123.
+
+8. Gill SK, O'Brien L, Einarson TR, et al. The safety of proton pump inhibitors (PPIs) in pregnancy: a meta-analysis. Am J Gastroenterol. 2020;104:1541-1545.
+
+9. Matok I, Levy A, Wiznitzer A, et al. The safety of H2-blockers use during pregnancy. J Clin Pharmacol. 2022;50:81-87.
+
+10. JAMA Network Open. Association between maternal use of proton pump inhibitors during pregnancy and risk of congenital malformations. 2022;5(4):e224331.
+
+Ranitidine Withdrawal:
+11. FDA Drug Safety Communication. FDA requests removal of all ranitidine products (Zantac) from the market. April 1, 2020.
+
+Epidemiology:
+12. Richter JE. Review article: the management of heartburn in pregnancy. Aliment Pharmacol Ther. 2021;22:749-757.
+
+13. Malfertheiner SF, Malfertheiner MV, Kropf S, et al. A prospective longitudinal cohort study: evolution of GERD symptoms during the course of pregnancy. BMC Gastroenterol. 2022;12:131.
+
+Clinical Outcomes:
+14. Dowsett SA, Smith TC, Zoltowska J. Symptom resolution with lansoprazole treatment in pregnancy: a survey from the Heartburn in Pregnancy Study. Aliment Pharmacol Ther. 2021;27:78-84.
+
+15. Larson JD, Patatanian E, Miner PB Jr, et al. Double-blind, placebo-controlled study of ranitidine for gastroesophageal reflux symptoms during pregnancy [Historical Reference Only]. Obstet Gynecol. 1997;90:83-87.
+
+
+CLINICAL DECISION SUPPORT SUMMARY
+----------------------------------
+
+Key Clinical Imperatives:
+1. Systematic screening for alarm symptoms at EACH encounter
+2. Recognition of third-trimester epigastric pain as potential preeclampsia indicator
+3. Understanding that most patients experience complete postpartum resolution without extensive diagnostic evaluation
+4. Stepped-care approach: lifestyle → antacids → H2RAs → PPIs
+5. Famotidine is preferred H2RA since ranitidine's 2020 market withdrawal
+6. Omeprazole carries most extensive pregnancy safety data among PPIs
+
+Medication Safety Principles:
+• All commonly used GERD pharmacotherapies demonstrate reassuring safety profiles based on extensive human pregnancy data
+• Historical FDA category designations may suggest greater risk than actually exists based on current evidence
+• Critical teratogenic period (days 31-71 from LMP) warrants particular attention, though essential medications should not be withheld
+• By trimester: All trimesters follow same stepped approach; avoid magnesium sulfate-containing products near term
+
+Patient Education Points:
+• GERD affects majority of pregnant women and typically resolves after delivery
+• Lifestyle modifications are first-line and should continue throughout pregnancy
+• Medications are safe when used appropriately under medical supervision
+• Report alarm symptoms immediately (difficulty swallowing, blood, weight loss)
+• Third-trimester epigastric pain requires urgent evaluation
+• Postpartum follow-up if symptoms persist beyond 4-8 weeks
+
+Quality Metrics:
+• Percentage of pregnant patients with GERD screened for alarm symptoms at each visit
+• Percentage receiving lifestyle modification counseling
+• Percentage with refractory symptoms referred to GI within 8-12 weeks
+• Percentage with third-trimester epigastric pain evaluated for preeclampsia
+• Medication appropriateness (stepped-care adherence)
+
+
+================================================================================
+Document Version: 1.0
+Last Updated: January 2026
+Next Scheduled Review: January 2027
+================================================================================

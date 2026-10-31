@@ -1,0 +1,895 @@
+================================================================================
+EVIDENCE-BASED CARE PATHWAY
+PREGNANCY WITH PRIOR UTERINE SURGERY
+================================================================================
+
+PATHWAY OVERVIEW
+================================================================================
+This care pathway addresses the management of pregnancy in patients with prior
+uterine surgery, including cesarean section and myomectomy. The pathway includes
+risk stratification, surveillance protocols, delivery planning, and emergency
+management for uterine rupture.
+
+VBAC Success Rate: 60-80% (overall population)
+Uterine Rupture Risk: 0.5-0.9% (low transverse scar)
+Emergency Readiness: 30-minute decision-to-delivery capability required
+
+
+STAGE 1: INITIAL RISK ASSESSMENT AND STRATIFICATION
+================================================================================
+
+1.1 PATIENT HISTORY REVIEW
+-------------------------------------------------------------------------------
+Required Documentation:
+□ Number and type of prior cesarean deliveries
+□ Incision type (low transverse, classical, T-incision, J-incision, unknown)
+□ Prior myomectomy details (if applicable)
+  - Number of fibroids removed
+  - Location (fundal, intramural, subserosal)
+  - Endometrial cavity entry (yes/no)
+  - Surgical approach (laparoscopic vs open)
+  - Use of monopolar electrosurgery
+□ Prior uterine rupture history
+□ Indication for prior cesarean (arrest disorder, fetal distress, other)
+□ Prior vaginal delivery history (before or after cesarean)
+□ Interpregnancy interval
+□ Chronic medical conditions (hypertension, diabetes, obesity)
+
+Diagnostic Codes:
+- ICD-10: O34.211 (Low transverse scar), O34.212 (Vertical scar),
+  O34.219 (Unspecified scar), O34.29 (Myomectomy scar)
+- SNOMED: 416055001 (History of cesarean section), 275424008 (Previous cesarean)
+
+1.2 PHYSICAL EXAMINATION
+-------------------------------------------------------------------------------
+Assessments:
+□ Maternal weight and height (for VBAC calculator)
+□ Blood pressure (chronic hypertension assessment)
+□ Abdominal examination (prior surgical scars)
+□ Pelvic examination (cervical assessment)
+
+Labs (Initial Visit):
+- CBC with differential (LOINC: 58410-2)
+- Hemoglobin (LOINC: 718-7)
+- ABO and Rh typing (LOINC: 882-1)
+- Antibody screen (LOINC: 890-4)
+
+1.3 RISK STRATIFICATION BY SCAR TYPE
+-------------------------------------------------------------------------------
+
+LOW RISK (TOLAC Candidates - Level A Evidence):
+• Single prior low transverse cesarean delivery
+• Two prior low transverse cesareans (Level B)
+• Unknown scar type without high clinical suspicion for classical
+• Twin gestation with one prior low transverse cesarean
+• Prior myomectomy without cavity entry and complete documentation
+
+MODERATE RISK (Requires Enhanced Counseling):
+• Interpregnancy interval <18 months (2-3× rupture risk)
+• Gestational age >40 weeks
+• Estimated fetal weight >4000g
+• Need for labor induction
+• Arrest disorder as prior cesarean indication
+
+HIGH RISK (Relative Contraindications):
+• Two or more prior cesareans
+• Short interpregnancy interval (<6 months after myomectomy)
+• Prior myomectomy with ≥3 fibroids removed
+• Prior myomectomy with fundal/intramural location
+
+ABSOLUTE CONTRAINDICATIONS (TOLAC Not Permitted):
+• Prior classical (high vertical) incision - Rupture risk 4-9%
+• Prior T-incision or J-incision - Rupture risk 4-9%
+• Prior uterine rupture - Recurrence risk 22-100%
+• Extensive transfundal surgery entering contractile myometrium
+• Standard contraindications to vaginal delivery:
+  - Placenta previa
+  - Vasa previa
+  - Active genital herpes
+
+
+STAGE 2: SHARED DECISION-MAKING AND COUNSELING
+================================================================================
+
+2.1 VBAC SUCCESS PREDICTION
+-------------------------------------------------------------------------------
+Calculate probability using NIH MFMU VBAC Calculator (2021 race-free version)
+
+Input Variables and Effects:
+• Prior vaginal delivery before cesarean: OR 2.38 (increases success)
+• Prior successful VBAC: OR 6.48 (strongest predictor, 90-94% success)
+• Treated chronic hypertension: OR 0.38 (decreases success)
+• Arrest disorder indication: OR 0.55 (decreases success)
+• Maternal age: OR 0.98 per year (slight decrease)
+• Pre-pregnancy weight: OR 0.98 per kg (slight decrease)
+• Height: OR 1.06 per cm (increases success)
+
+Success Rates by Prior Delivery History:
+- No prior vaginal delivery: 63-65%
+- Vaginal delivery before cesarean: Higher success
+- Prior successful VBAC: 90-94%
+- Vaginal delivery before cesarean + subsequent VBAC: 93%
+
+CRITICAL: Calculator scores inform decision-making but do NOT determine
+eligibility or serve as barriers to TOLAC (ACOG guidance)
+
+2.2 INFORMED CONSENT REQUIREMENTS
+-------------------------------------------------------------------------------
+Required Discussion Elements:
+
+Risk-Benefit Comparison:
+┌─────────────────────┬──────────────┬──────────────┬─────────────────────┐
+│ Outcome             │ Success VBAC │ Failed TOLAC │ Elective Cesarean   │
+├─────────────────────┼──────────────┼──────────────┼─────────────────────┤
+│ Uterine Rupture     │ 0.5-0.9%     │ —            │ 0.1%                │
+│ Hysterectomy        │ 0.2%         │ 0.6%         │ 0.2%                │
+│ Blood Transfusion   │ 1.7%         │ 3.2%         │ 1.0%                │
+│ Endometritis        │ 2.9%         │ 7.7%         │ 1.8%                │
+└─────────────────────┴──────────────┴──────────────┴─────────────────────┘
+
+Future Pregnancy Implications:
+- Placenta accreta spectrum (PAS) risk by number of cesareans:
+  • 1 prior: 0.24% (no previa), 3% (with previa)
+  • 2 prior: 0.31% (no previa), 11% (with previa)
+  • 3 prior: 0.57% (no previa), 40% (with previa)
+  • ≥4 prior: 2.13-6.74% (no previa), 61% (with previa)
+
+Facility Capabilities:
+□ 24/7 in-house anesthesia coverage
+□ Immediately available operating room
+□ Blood bank with massive transfusion protocol capability
+□ Surgical team for emergency cesarean
+□ Neonatal resuscitation team available
+
+Documentation Code: CPT 99213-99215 (Office visit with counseling)
+
+
+STAGE 3: ANTEPARTUM SURVEILLANCE PROTOCOL
+================================================================================
+
+3.1 ULTRASOUND SURVEILLANCE SCHEDULE
+-------------------------------------------------------------------------------
+
+11-14 Weeks:
+□ Cesarean scar pregnancy evaluation
+□ Viability confirmation
+□ Dating confirmation
+CPT Code: 76801 (First trimester ultrasound)
+
+18-22 Weeks (Detailed Anatomic Survey):
+□ Fetal anatomic survey
+□ Placental mapping and location documentation
+□ Cesarean scar assessment
+□ Initial PAS screening if placenta anterior/low-lying
+  Ultrasound Markers for PAS:
+  • Loss of retroplacental zone (sensitivity 82%, specificity 90%)
+  • Placental lacunae (sensitivity 79%, specificity 81%)
+  • Myometrial thinning <1mm (sensitivity 76%, specificity 89%)
+  • Bladder wall interruption (sensitivity 46%, specificity 98%)
+  • Bridging vessels (sensitivity 66%, specificity 93%)
+CPT Code: 76811 (Detailed fetal anatomic examination)
+
+28-32 Weeks:
+□ Third trimester reassessment
+□ Fetal growth assessment
+□ Repeat PAS evaluation if initially concerning
+CPT Code: 76805 (Obstetric ultrasound, detailed)
+
+32-34 Weeks (If PAS Suspected):
+□ Surgical planning ultrasound
+□ MRI consideration for surgical mapping (if needed)
+□ Multidisciplinary team consultation
+
+Note: Overall ultrasound sensitivity for PAS is 91%, specificity 97%, but
+absence of findings does NOT exclude PAS - clinical risk factors remain
+equally important (ACOG Level B)
+
+3.2 FETAL SURVEILLANCE
+-------------------------------------------------------------------------------
+
+Starting at 32-34 Weeks (Individualized Based on Risk):
+□ Non-stress testing weekly or biweekly (CPT: 59025)
+□ Biophysical profile if indicated (CPT: 76818)
+□ Fetal movement counting patient education
+
+Increased Surveillance Indications:
+- ≥2 prior cesareans
+- Prior myomectomy with high-risk features
+- Maternal comorbidities
+- Fetal growth restriction
+- Advanced maternal age
+
+3.3 LABORATORY MONITORING
+-------------------------------------------------------------------------------
+
+Each Trimester:
+□ CBC (LOINC: 58410-2) - assess for anemia
+□ Blood type and antibody screen (LOINC: 882-1, 890-4)
+
+Third Trimester (36-37 weeks):
+□ Type and screen update
+□ Consideration for crossmatch if high PAS risk
+
+If PAS Suspected:
+□ Kleihauer-Betke test availability (LOINC: 32140-6, 4633-4)
+□ Coagulation panel
+□ Blood bank notification for potential massive transfusion
+
+3.4 SPECIALIZED CONSULTATIONS
+-------------------------------------------------------------------------------
+
+Required Consultations:
+□ Maternal-Fetal Medicine if:
+  - Multiple prior cesareans
+  - Prior classical incision
+  - PAS suspected
+  - Complex myomectomy history
+
+□ Anesthesia preoperative consultation (32-34 weeks) if:
+  - Planned TOLAC at facility
+  - Scheduled repeat cesarean
+  - High-risk features
+
+□ Neonatology consultation if:
+  - Planned early-term delivery (<39 weeks)
+  - Fetal complications anticipated
+
+
+STAGE 4: DELIVERY PLANNING AND TIMING
+================================================================================
+
+4.1 TIMING OF DELIVERY RECOMMENDATIONS
+-------------------------------------------------------------------------------
+
+Planned Trial of Labor After Cesarean (TOLAC):
+• No specific timing recommendation
+• Await spontaneous labor (lowest rupture risk)
+• May continue to 41+ weeks if otherwise uncomplicated
+• Continuous monitoring required when in labor
+SNOMED Code: 449563009 (Trial of labor after cesarean)
+
+Elective Repeat Cesarean - Low Transverse Scar:
+• Delivery at 39 0/7 - 39 6/7 weeks (Level A Evidence)
+• Rationale: Neonatal morbidity increases at earlier gestations:
+  - 37 weeks: 1.8-4.2× increase in respiratory/NICU/sepsis
+  - 38 weeks: 1.3-2.1× increase
+• Fetal lung maturity testing not routinely indicated
+
+Elective Repeat Cesarean - Two Prior Low Transverse:
+• Delivery at 38 0/7 - 38 6/7 weeks (Expert Consensus)
+
+Elective Repeat Cesarean - ≥3 Prior Cesareans:
+• Delivery at 37-38 weeks (individualized)
+• Consider PAS risk in timing decision
+
+Prior Classical Incision:
+• Delivery at 36 0/7 - 37 0/7 weeks (Level B Evidence)
+• Higher rupture risk necessitates earlier delivery
+• Betamethasone for fetal lung maturity if <37 weeks
+  RxNorm: 1514 (Betamethasone), 3264 (Dexamethasone alternative)
+
+Prior Uterine Rupture:
+• Delivery at 36 0/7 - 37 0/7 weeks
+• Recurrence risk 22-100%
+• Close surveillance in third trimester
+
+Prior Myomectomy with Cavity Entry:
+• Delivery at 37 0/7 - 38 6/7 weeks
+• Cesarean delivery recommended (ACOG)
+• 88% of providers consider cavity entry "crucial" factor
+
+Prior Myomectomy - Extensive Transfundal:
+• Delivery at 36 0/7 - 37 0/7 weeks
+• Cesarean delivery recommended
+• Fetal lung maturity if <37 weeks
+
+Prior Myomectomy - Less Extensive, No Cavity Entry:
+• May continue to 38 6/7 weeks
+• Trial of Labor After Myomectomy (TOLAM) may be considered
+• 90% vaginal delivery success rate in selected patients
+• Rupture rate 0.47% (comparable to TOLAC)
+
+Placenta Accreta Spectrum (PAS):
+• Delivery at 34 0/7 - 35 6/7 weeks (ACOG/SMFM Consensus)
+• Level III/IV maternal care facility required
+• Multidisciplinary surgical team coordination
+• Cell saver NOT recommended (amniotic fluid embolism risk)
+ICD-10 Codes: O43.211-219 (accreta), O43.221-229 (increta),
+O43.231-239 (percreta)
+SNOMED Codes: 33058001 (accreta), 70129008 (increta), 79668009 (percreta)
+
+4.2 MODE OF DELIVERY DECISION
+-------------------------------------------------------------------------------
+
+TOLAC Proceeding Checklist:
+□ Patient meets eligibility criteria (no absolute contraindications)
+□ Informed consent completed and documented
+□ VBAC calculator reviewed with patient
+□ Facility capabilities confirmed:
+  □ 24/7 anesthesia in-house
+  □ OR immediately available
+  □ Blood bank capability
+  □ Neonatal resuscitation available
+□ Continuous EFM capability confirmed
+□ Emergency cesarean capability within 30 minutes
+
+Scheduled Cesarean Proceeding Checklist:
+□ Appropriate gestational age confirmed
+□ Anesthesia consultation completed
+□ Blood type and screen current (<72 hours if high risk)
+□ Crossmatch if PAS suspected (4-6 units minimum)
+□ Surgical plan documented
+□ Neonatology notified if <39 weeks
+
+
+STAGE 5: INTRAPARTUM MANAGEMENT FOR TOLAC
+================================================================================
+
+5.1 LABOR ADMISSION PROTOCOLS
+-------------------------------------------------------------------------------
+
+Initial Assessment:
+□ Review prenatal records and surgical history
+□ Confirm TOLAC eligibility
+□ Establish IV access (minimum 18-gauge)
+□ Type and screen verification
+□ Continuous electronic fetal monitoring initiation (Level B - Required)
+  - External monitoring acceptable
+  - Intrauterine pressure catheter NOT superior for rupture detection
+□ Notify attending obstetrician of TOLAC patient
+□ Confirm anesthesia and OR availability
+
+5.2 LABOR MONITORING REQUIREMENTS
+-------------------------------------------------------------------------------
+
+Continuous Electronic Fetal Monitoring (EFM):
+• Required throughout labor (Level B Evidence)
+• FHR changes are PRIMARY indicator of evolving rupture
+• Patterns concerning for rupture:
+  - Prolonged bradycardia (most common, occurs in 33-70%)
+  - Terminal bradycardia preceded by late decelerations
+  - Recurrent late decelerations (87.5% of cases)
+  - Variable decelerations progressing to bradycardia
+  - Sudden loss of contractions on tocometry
+
+Maternal Monitoring:
+□ Vital signs every 1-2 hours (more frequently if abnormal)
+□ Pain assessment (distinguish labor pain from rupture signs)
+□ Abdominal examination for tenderness
+□ Vaginal bleeding assessment
+□ Uterine activity pattern monitoring
+
+5.3 ANESTHESIA MANAGEMENT
+-------------------------------------------------------------------------------
+
+Epidural Analgesia - RECOMMENDED (Level A Evidence):
+• May be used in TOLAC without restriction
+• Does NOT mask rupture signs
+• Does NOT increase failed TOLAC risk
+• Does NOT result in occult rupture
+• ADVANTAGE: Provides anesthesia for emergency cesarean if needed
+• Standard epidural dosing and management protocols apply
+
+General Anesthesia:
+• Reserved for emergency situations
+• Preferred if patient hemodynamically unstable
+• 5-15 minute delay for epidural top-up may not be acceptable in rupture
+
+5.4 LABOR INDUCTION AND AUGMENTATION
+-------------------------------------------------------------------------------
+
+ACCEPTABLE METHODS:
+
+Mechanical Cervical Ripening (First-Line):
+• Transcervical Foley catheter balloon (Level B Evidence)
+• No increased rupture risk compared to spontaneous labor
+• 30mL or 60mL balloon per institutional protocol
+• Remove after 12-24 hours or when spontaneously expelled
+
+Amniotomy:
+• Acceptable with favorable cervix
+• No increased rupture risk
+• Standard indications apply
+
+Oxytocin (Pitocin):
+• Acceptable for induction AND augmentation
+• Rupture risk 0.7-1.1% with augmentation
+• Rupture risk 0.77-2.0% with induction
+• Dose-response relationship exists with rupture risk
+• Use LOWEST effective dosing
+• No specific upper limit established by ACOG
+• Discontinue immediately if rupture suspected
+RxNorm Code: 7052 (Oxytocin)
+
+AVOID IF POSSIBLE:
+
+Dinoprostone (Cervidil, PGE2):
+• Increased rupture risk versus mechanical methods
+• Use only if benefit outweighs risk
+• Enhanced surveillance if used
+RxNorm Code: 3108 (Dinoprostone)
+
+CONTRAINDICATED:
+
+Misoprostol (Cytotec):
+• CONTRAINDICATED for induction at term (Level A Evidence)
+• 15.6-fold increased rupture risk
+• Rupture risk up to 5.6%
+• May be used for postpartum hemorrhage management only
+RxNorm Code: 42331 (Misoprostol)
+
+5.5 LABOR PROGRESS ASSESSMENT
+-------------------------------------------------------------------------------
+
+First Stage Labor:
+□ Cervical examinations every 2-4 hours
+□ Document labor progress on partogram
+□ Assess for arrest disorders (may predict TOLAC failure)
+
+Second Stage Labor:
+□ Standard management
+□ Operative vaginal delivery acceptable if indicated
+□ Avoid prolonged second stage when possible
+
+Failed TOLAC Indicators:
+• Arrest of dilation: 4+ hours with adequate contractions
+• Arrest of descent: 3+ hours (nulliparous) or 2+ hours (multiparous)
+• Non-reassuring fetal status
+• Maternal exhaustion or request
+• Signs of uterine rupture
+
+Conversion to Cesarean:
+□ Notify OR team immediately
+□ Continue EFM during transport
+□ Anesthesia assessment (epidural top-up vs general)
+□ Target decision-to-delivery <30 minutes
+ICD-10 Code: O66.41 (Failed attempted VBAC)
+CPT Code: 59618 (Global package for failed TOLAC requiring cesarean)
+
+
+STAGE 6: EMERGENCY MANAGEMENT OF UTERINE RUPTURE
+================================================================================
+
+6.1 CLINICAL RECOGNITION
+-------------------------------------------------------------------------------
+
+PRIMARY INDICATOR - Fetal Heart Rate Abnormality:
+• Present in 33-70% of ruptures
+• May be ONLY sign in 50% of cases
+• High suspicion patterns:
+  - Prolonged bradycardia
+  - Terminal bradycardia with preceding late decelerations
+  - Sudden severe variable decelerations
+  - Recurrent late decelerations
+
+MATERNAL SIGNS (Sensitivity Varies):
+• Acute abdominal pain between contractions: 58-66%
+• Uterine tenderness: 79-81%
+• Cessation of contractions: 52-61%
+• Vaginal bleeding: 15-45% (often absent)
+• Loss of fetal station: Pathognomonic when present
+• Easily palpable fetal parts abdominally: 42%
+• Maternal hemodynamic instability (late finding)
+
+Rupture Risk by Scenario:
+┌────────────────────────────────────┬──────────────────┐
+│ Clinical Scenario                  │ Rupture Risk     │
+├────────────────────────────────────┼──────────────────┤
+│ Spontaneous labor (TOLAC)          │ 0.4-0.52%        │
+│ Oxytocin induction                 │ 0.77-2.0%        │
+│ Oxytocin augmentation              │ 0.9-1.4%         │
+│ Prostaglandin + oxytocin           │ 1.4-2.2%         │
+│ Misoprostol (contraindicated)      │ Up to 5.6%       │
+│ Classical/T-incision scar          │ 4-9%             │
+│ Two prior cesareans                │ 1.8-3.7%         │
+│ Elective repeat cesarean (baseline)│ 0.03%            │
+└────────────────────────────────────┴──────────────────┘
+
+ICD-10 Codes: O71.1 (Rupture during labor), O71.00-03 (Before labor onset)
+SNOMED Codes: 34089005 (During labor), 63487001 (Before labor)
+
+6.2 EMERGENCY RESPONSE PROTOCOL
+-------------------------------------------------------------------------------
+
+TARGET: Decision-to-Delivery ≤30 minutes (RCOG/NICE/ACOG)
+OPTIMAL: 10-18 minutes for best outcomes
+
+STEP 1: RECOGNITION AND ALERT (0-2 Minutes)
+□ Recognize warning signs
+□ Activate emergency response ("Code OB" or institutional protocol)
+□ Immediate notifications:
+  □ Senior obstetrician/attending
+  □ Anesthesiologist
+  □ OR team (activate)
+  □ Neonatology/pediatrics
+  □ Blood bank
+  □ Additional nursing support
+□ Invoke massive obstetric hemorrhage protocol if indicated
+
+STEP 2: INITIAL MATERNAL RESUSCITATION (Concurrent)
+□ ABCDE approach
+  A - Airway assessment
+  B - High-flow oxygen 15L/min via non-rebreather mask
+  C - Establish TWO large-bore IV access (14-16 gauge)
+  D - Rapid assessment of consciousness
+  E - Exposure and examination
+□ Left lateral tilt (or manual uterine displacement)
+□ DISCONTINUE OXYTOCIN IMMEDIATELY
+□ Vital signs q5min minimum
+□ Consider terbutaline 0.25mg subcutaneous (temporizing only)
+  RxNorm Code: 10395 (Terbutaline)
+
+STEP 3: FLUID AND BLOOD RESUSCITATION
+□ Crystalloid resuscitation:
+  - Warmed lactated Ringer's or normal saline
+  - Up to 2L rapidly (then reassess)
+□ Activate MASSIVE TRANSFUSION PROTOCOL
+  - O-negative blood if type-specific not immediately available
+  - Crossmatch 4-6 units PRBCs minimum
+  - Maintain 1:1:1 ratio (PRBC : FFP : Platelets)
+  - Anticipate up to 10-15 units in severe cases
+□ Labs: CBC, type and screen/crossmatch, coagulation panel, fibrinogen
+□ Foley catheter (monitor urine output, bladder decompression)
+
+STEP 4: SURGICAL INTERVENTION
+□ Emergency cesarean delivery
+  - General anesthesia preferred if unstable
+  - Epidural top-up if stable and adequate level achievable quickly
+  - Spinal if no existing epidural and patient stable
+□ Neonatal resuscitation team ready
+□ Intraoperative assessment:
+  - Locate rupture site
+  - Assess extent (complete vs incomplete)
+  - Evaluate for:
+    • Fetal expulsion into abdomen
+    • Extension to cervix or vagina
+    • Broad ligament hematoma
+    • Bladder involvement
+    • Vascular injury
+
+STEP 5: SURGICAL REPAIR VS HYSTERECTOMY DECISION
+
+Consider PRIMARY REPAIR if:
+• Patient hemodynamically stable or stabilizing
+• Small, clean rupture edges
+• Single rupture site
+• Transverse direction
+• No cervical or vaginal extension
+• No broad ligament involvement
+• Patient desires future fertility
+• Adequate hemostasis achievable
+
+Consider HYSTERECTOMY if:
+• Intractable hemorrhage despite uterotonics
+• Multiple rupture sites
+• Longitudinal tear extending to cervix
+• Broad ligament hematoma with active bleeding
+• Bladder injury requiring extensive repair
+• DIC developing
+• Unable to achieve hemostasis with repair
+• Patient hemodynamically unstable despite resuscitation
+
+STEP 6: HEMORRHAGE MANAGEMENT
+
+Uterotonic Agents:
+□ Oxytocin 10-40 units in 1L crystalloid, wide open
+  RxNorm: 7052
+□ Methylergonovine (Methergine) 0.2mg IM
+  Contraindication: Hypertension
+  RxNorm: 6847
+□ Carboprost (Hemabate) 250mcg IM q15-90min (max 8 doses)
+  Contraindication: Asthma
+  RxNorm: 19750
+□ Misoprostol 800-1000mcg rectally
+  RxNorm: 42331
+
+Tranexamic Acid:
+□ 1g IV over 10 minutes, may repeat once
+  Give within 3 hours of delivery for maximum benefit
+  RxNorm: 202585
+
+Surgical Hemostasis Techniques:
+□ Uterine artery ligation
+□ O'Leary sutures (uterine/utero-ovarian vessels)
+□ B-Lynch compression suture
+□ Bakri balloon tamponade
+□ Interventional radiology (if time permits and patient stable)
+
+6.3 POST-RESUSCITATION MANAGEMENT
+-------------------------------------------------------------------------------
+
+Immediate Postoperative:
+□ ICU admission if massive transfusion or hemodynamic instability
+□ Serial hemoglobin q4-6h × 24h
+□ Coagulation panel monitoring
+□ Urine output monitoring (Foley to remain)
+□ Vital signs q15min × 4h, then q1h × 24h
+□ DVT prophylaxis when hemostasis achieved
+
+Neonatal Outcomes Monitoring:
+• Fetal mortality (developed countries): 2-6%
+• NICU admission (survivors): 23-40%
+• Assess for HIE, birth trauma, need for therapeutic hypothermia
+
+Maternal Complications:
+• Hysterectomy requirement: 14-80% (severity-dependent)
+• Severe PPH: 43%
+• Maternal mortality (developed countries): 0.1%
+
+6.4 DOCUMENTATION
+-------------------------------------------------------------------------------
+Required Documentation:
+□ Time of symptom recognition
+□ Time of emergency activation
+□ Decision-to-delivery interval
+□ Surgical findings (rupture location, size, direction, involvement)
+□ Repair vs hysterectomy and rationale
+□ Estimated blood loss
+□ Transfusion products and quantities
+□ Neonatal resuscitation details and Apgar scores
+□ Complications
+
+CPT Codes:
+- 59610-59620: VBAC-related delivery codes
+- 59525: Cesarean hysterectomy (add-on)
+
+
+STAGE 7: POSTPARTUM CARE AND FOLLOW-UP
+================================================================================
+
+7.1 IMMEDIATE POSTPARTUM CARE
+-------------------------------------------------------------------------------
+
+Vaginal Birth After Cesarean (Successful):
+□ Standard postpartum care
+□ Monitor for bleeding (slightly higher risk than primary vaginal)
+□ Endometritis surveillance (2.9% rate)
+□ Hospital discharge 24-48 hours if uncomplicated
+SNOMED Code: 10761961000119103 (VBAC delivery)
+CPT Codes: 59610 (global), 59612 (delivery only)
+
+Failed TOLAC (Cesarean After Labor):
+□ Enhanced PPH monitoring (3.2% transfusion risk)
+□ Endometritis prophylaxis and surveillance (7.7% rate)
+□ Hospital stay 48-72 hours typical
+□ Pain management (multimodal approach)
+□ Assess for wound complications
+
+Elective Repeat Cesarean:
+□ Standard cesarean postpartum care
+□ Hospital stay 48-72 hours
+□ Wound care and infection surveillance
+□ VTE prophylaxis per institutional protocol
+
+Post-Rupture Management:
+□ ICU level care initially if indicated
+□ Serial lab monitoring until stable
+□ Wound care (may have vertical incision)
+□ Psychological support and counseling
+□ Lactation support (may be delayed)
+
+7.2 HOSPITAL DISCHARGE PLANNING
+-------------------------------------------------------------------------------
+
+Discharge Criteria:
+□ Hemodynamically stable × 24 hours
+□ Pain controlled with oral medications
+□ Tolerating diet
+□ Voiding spontaneously
+□ Ambulating independently
+□ No signs of infection
+□ Lochia appropriate
+□ Adequate social support at home
+
+Discharge Instructions:
+□ Wound care (if cesarean)
+□ Activity restrictions (6-week recovery for cesarean)
+□ Warning signs (fever, excessive bleeding, wound issues)
+□ Contraception counseling
+□ Follow-up appointment scheduling
+□ Lactation support resources
+
+7.3 INTERPREGNANCY INTERVAL COUNSELING
+-------------------------------------------------------------------------------
+
+Critical for Future Pregnancy Planning:
+
+OPTIMAL: ≥18-24 months between delivery and next conception
+• Allows complete uterine healing
+• Lowest rupture risk in subsequent pregnancy
+
+AVOID: <6 months
+• Highest complication risk
+• Elevated uterine rupture rate
+• Associated with adverse outcomes
+
+COUNSEL: 6-18 months
+• Increased risks but not absolute contraindication
+• Enhanced surveillance in next pregnancy
+• After myomectomy: 87% of providers consider <6 months crucial risk
+
+Contraception Options:
+□ LARC methods (IUD, implant) - highly effective
+□ Combined hormonal contraception (if no contraindications)
+□ Barrier methods
+□ Permanent sterilization if family complete
+
+7.4 POSTPARTUM VISIT (6 WEEKS)
+-------------------------------------------------------------------------------
+
+Assessments:
+□ Wound healing (if cesarean)
+□ Cervical and uterine involution
+□ Psychological screening (postpartum depression, PTSD if rupture)
+□ Contraception review and provision
+□ Future pregnancy counseling
+□ Chronic condition management
+
+Future Pregnancy Counseling:
+□ PAS risk increases with each cesarean:
+  • 1 cesarean: 0.24% baseline, 3% with previa
+  • 2 cesareans: 0.31% baseline, 11% with previa
+  • 3 cesareans: 0.57% baseline, 40% with previa
+  • ≥4 cesareans: 2.13-6.74% baseline, 61% with previa
+□ TOLAC remains option after 2 low transverse cesareans
+□ Early ultrasound screening for placentation in future pregnancy
+□ Optimize health before next conception:
+  - Weight management
+  - Chronic condition control (hypertension, diabetes)
+  - Nutritional status
+  - Smoking cessation if applicable
+
+
+MEDICAL CODING SUMMARY
+================================================================================
+
+ICD-10-CM DIAGNOSIS CODES:
+--------------------------
+O34.211   Maternal care for low transverse scar from previous cesarean
+O34.212   Maternal care for vertical scar from previous cesarean
+O34.219   Maternal care for unspecified type scar from previous cesarean
+O34.29    Maternal care due to uterine scar from other previous surgery
+O66.41    Failed attempted vaginal birth after previous cesarean delivery
+O43.211-219  Placenta accreta by trimester
+O43.221-229  Placenta increta by trimester
+O43.231-239  Placenta percreta by trimester
+O71.00-03 Rupture of uterus before onset of labor
+O71.1     Rupture of uterus during labor
+Z98.891   History of uterine scar from previous surgery
+
+SNOMED CT CODES:
+---------------
+416055001    History of cesarean section
+275424008    Previous cesarean delivery
+449563009    Trial of labor after previous cesarean section
+10761961000119103  Vaginal birth after cesarean delivery
+33058001     Placenta accreta
+70129008     Placenta increta
+79668009     Placenta percreta
+34089005     Rupture of uterus during labor
+63487001     Rupture of uterus before onset of labor
+
+CPT PROCEDURE CODES:
+-------------------
+59610   Global VBAC package (antepartum, delivery, postpartum)
+59612   Vaginal delivery only, after previous cesarean
+59618   Global package for failed TOLAC requiring cesarean
+59620   Cesarean delivery only, following attempted VBAC
+59510   Global cesarean package
+59514   Cesarean delivery only
+59525   Cesarean hysterectomy (add-on code)
+76801   Obstetric ultrasound, first trimester
+76805   Obstetric ultrasound, after first trimester
+76811   Detailed fetal anatomic examination
+76815   Limited obstetric ultrasound
+76818   Biophysical profile with NST
+59025   Fetal non-stress test
+99213-99215  Office visits for counseling
+
+LOINC CODES:
+-----------
+58410-2   CBC panel
+718-7     Hemoglobin
+882-1     ABO and Rh group
+890-4     Blood group antibodies screen
+32140-6   Kleihauer-Betke qualitative
+4633-4    Kleihauer-Betke quantitative
+
+RXNORM CODES:
+------------
+7052      Oxytocin (Pitocin) - Labor augmentation; use cautiously in TOLAC
+6847      Methylergonovine (Methergine) - PPH management
+19750     Carboprost (Hemabate) - Refractory uterine atony
+42331     Misoprostol (Cytotec) - PPH only; CONTRAINDICATED for induction
+3108      Dinoprostone (Cervidil) - Avoid in VBAC candidates if possible
+10395     Terbutaline - Acute tocolysis
+1514      Betamethasone - Fetal lung maturity
+3264      Dexamethasone - Alternative for fetal lung maturity
+202585    Tranexamic acid - Hemorrhage adjunct
+
+
+EVIDENCE QUALITY GRADES
+================================================================================
+
+LEVEL A EVIDENCE (Highest Quality):
+• Most women with 1 prior low transverse cesarean should be offered TOLAC
+• Epidural analgesia may be used in TOLAC
+• Misoprostol contraindicated for induction in scarred uterus
+• Elective repeat cesarean at 39 weeks for single prior low transverse
+
+LEVEL B EVIDENCE:
+• Continuous electronic fetal monitoring required during TOLAC
+• Two prior low transverse cesareans may be candidates for TOLAC
+• Mechanical cervical ripening (Foley) acceptable for TOLAC induction
+• Prior classical incision delivery at 36-37 weeks
+• Ultrasound findings alone do not exclude PAS
+
+EXPERT CONSENSUS:
+• Cesarean recommended for myomectomy with cavity entry
+• PAS patients should deliver at Level III/IV centers (ACOG/SMFM)
+• Two prior cesareans: deliver at 38 weeks
+
+
+REFERENCES
+================================================================================
+
+Primary Guidelines:
+1. American College of Obstetricians and Gynecologists. Practice Bulletin
+   No. 205: Vaginal Birth After Cesarean Delivery. Obstet Gynecol.
+   2019;133(2):e110-e127.
+
+2. American College of Obstetricians and Gynecologists, Society for
+   Maternal-Fetal Medicine. Obstetric Care Consensus No. 7: Placenta Accreta
+   Spectrum. Obstet Gynecol. 2018;132(6):e259-e275.
+
+3. Guise JM, Eden K, Emeis C, et al. Vaginal birth after cesarean: new
+   insights. Evidence Report/Technology Assessment No. 191. AHRQ Publication
+   No. 10-E003. Rockville, MD: Agency for Healthcare Research and Quality; 2010.
+
+VBAC Prediction and Outcomes:
+4. Grobman WA, Lai Y, Landon MB, et al. Development of a nomogram for
+   prediction of vaginal birth after cesarean delivery. Obstet Gynecol.
+   2007;109(4):806-812.
+
+5. Metz TD, Stoddard GJ, Henry E, Jackson M, Holmgren C, Esplin S. Simple,
+   validated vaginal birth after cesarean delivery prediction model for use
+   at the time of admission. Obstet Gynecol. 2013;122(3):571-578.
+
+Uterine Rupture:
+6. Landon MB, Hauth JC, Leveno KJ, et al. Maternal and perinatal outcomes
+   associated with a trial of labor after prior cesarean delivery. N Engl J
+   Med. 2004;351(25):2581-2589.
+
+7. Al-Zirqi I, Stray-Pedersen B, Forsén L, Vangen S. Uterine rupture after
+   previous caesarean section. BJOG. 2010;117(7):809-820.
+
+Myomectomy Considerations:
+8. Parker WH, Einarsson J, Istre O, Dubuisson JB. Risk factors for uterine
+   rupture after laparoscopic myomectomy. J Minim Invasive Gynecol.
+   2010;17(5):551-554.
+
+9. Roberge S, Demers S, Berghella V, Chaillet N, Moore L, Bujold E. Impact
+   of single-layer vs double-layer closure on adverse outcomes and uterine
+   scar defect: a systematic review and metaanalysis. Am J Obstet Gynecol.
+   2014;211(5):453-460.
+
+Placenta Accreta Spectrum:
+10. Jauniaux E, Bhide A. Prenatal ultrasound diagnosis and outcome of placenta
+    previa accreta after cesarean delivery: a systematic review and meta-
+    analysis. Am J Obstet Gynecol. 2017;217(1):27-36.
+
+Timing of Delivery:
+11. Tita AT, Landon MB, Spong CY, et al. Timing of elective repeat cesarean
+    delivery at term and neonatal outcomes. N Engl J Med. 2009;360(2):111-120.
+
+Labor Induction After Cesarean:
+12. Cahill AG, Waterman BM, Stamilio DM, et al. Higher maximum doses of
+    oxytocin are associated with an unacceptably high risk for uterine rupture
+    in patients attempting vaginal birth after cesarean delivery. Am J Obstet
+    Gynecol. 2008;199(1):32.e1-5.
+
+
+================================================================================
+END OF CARE PATHWAY DOCUMENT
+Version 1.0 | Last Updated: January 2026
+================================================================================

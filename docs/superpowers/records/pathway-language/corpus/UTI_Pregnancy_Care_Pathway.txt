@@ -1,0 +1,585 @@
+Urinary Tract Infection in Pregnancy Care Pathway (U.S. Guidelines)
+
+================================================================================
+BACKGROUND
+================================================================================
+
+Clinical Significance and Epidemiology
+Urinary tract infection (UTI) affects approximately 8% of pregnancies and represents one of the most common perinatal complications. The clinical spectrum ranges from asymptomatic bacteriuria (ASB) to acute cystitis to life-threatening pyelonephritis with sepsis. Without treatment, 25-30% of asymptomatic bacteriuria cases progress to pyelonephritis, and 40% develop symptomatic cystitis. Pyelonephritis in pregnancy carries significant maternal and fetal risks, including sepsis (13.3%), bacteremia (7.5-20%), preterm birth (10.3%), and low birth weight.
+
+Pathophysiology in Pregnancy
+Pregnancy creates unique susceptibility to UTI through multiple physiologic mechanisms. Progesterone-induced ureteral dilation, mechanical compression of ureters by the gravid uterus, vesicoureteral reflux, increased residual bladder volume, and glycosuria all enhance bacterial growth and ascending infection. Peak ureteral dilation occurs at 22-24 weeks gestation.
+
+Microbiology
+Escherichia coli causes 70-84% of pregnancy-related UTIs. Other common pathogens include Klebsiella, Proteus, Enterococcus, and Group B Streptococcus. Resistance patterns show 20-40% of E. coli strains resist ampicillin/amoxicillin, necessitating careful antibiotic selection.
+
+Evidence Base for Screening
+The U.S. Preventive Services Task Force (USPSTF) issues a Grade B recommendation for universal screening with urine culture at the first prenatal visit. This is based on evidence that treating screen-detected asymptomatic bacteriuria reduces pyelonephritis incidence from 20-35% to 1-4%. The American College of Obstetricians and Gynecologists (ACOG) and Infectious Diseases Society of America (IDSA) provide concordant recommendations.
+
+Key SNOMED CT Codes:
+- Urinary tract infection in pregnancy: 10754881000119104
+- Pyelonephritis in pregnancy: 237124002
+- Asymptomatic bacteriuria: 61373006
+- Acute pyelonephritis: 45816000
+- Acute cystitis: 9826008
+- E. coli urinary tract infection: 301011002
+
+================================================================================
+SCREENING AND DIAGNOSIS
+================================================================================
+
+Universal Screening Protocol
+
+Timing and Method
+All pregnant individuals should undergo screening for asymptomatic bacteriuria with urine culture at the first prenatal visit, optimally at 12-16 weeks gestation or at initial presentation if later. Screening must use quantitative urine culture obtained by clean-catch midstream collection.
+
+Laboratory Testing
+Order the following tests:
+- Urine culture, bacterial, quantitative colony count (CPT 87086)
+- Urine culture with isolation and identification (CPT 87088)
+- LOINC 630-4: Bacteria identified in Urine by Culture
+- LOINC 100906-7: Bacteria [#/volume] in Urine by Culture
+
+Diagnostic Threshold
+The diagnostic threshold is ≥100,000 CFU/mL (10⁵ CFU/mL) of a single uropathogen. Lower colony counts may represent contamination or inadequate specimen collection. For definitive diagnosis, IDSA recommends ideally two consecutive specimens showing persistence of bacteriuria.
+
+Role of Urinalysis
+Urinalysis alone has insufficient sensitivity (38-55%) for screening asymptomatic bacteriuria and cannot rule out infection. Dipstick testing characteristics:
+- Leukocyte esterase: 97% sensitivity for pyuria, but poor specificity due to vaginal contamination
+- Nitrites: 94-98% specificity, but not all bacteria produce nitrites (many Gram-positives do not)
+
+Order urinalysis (CPT 81001, 81003, or 81015) as:
+- LOINC 24356-8: Urinalysis complete panel - Urine
+- LOINC 5799-2: Leukocyte esterase [Presence] in Urine by Test strip
+- LOINC 5802-4: Nitrite [Presence] in Urine by Test strip
+- LOINC 25145-4: Bacteria [Presence] in Urine sediment by Light microscopy
+
+Clinical Distinction of UTI Types
+
+Asymptomatic Bacteriuria (ASB)
+Definition: Bacteriuria ≥10⁵ CFU/mL with NO signs or symptoms of UTI
+Key Feature: Screen-detected only; patient reports no urinary symptoms
+Management: Treat with antibiotics (prevents progression to symptomatic infection)
+
+Acute Cystitis
+Definition: Bacteriuria ≥10⁵ CFU/mL WITH lower urinary tract symptoms
+Clinical Features:
+- Dysuria (painful urination)
+- Urinary frequency and urgency
+- Suprapubic pain
+- Hematuria
+- Nocturia
+Key Distinction: Symptoms present, but NO systemic signs (no fever, no flank pain)
+Management: Outpatient oral antibiotics
+
+Acute Pyelonephritis
+Definition: Upper urinary tract infection with clinical and bacteriologic evidence
+Clinical Features (must include):
+- Fever ≥38.0°C (100.4°F)
+- Flank pain or costovertebral angle tenderness
+- Often accompanied by: chills, nausea, vomiting
+- Right-sided involvement predominates in pregnancy
+Key Distinction: Systemic illness requiring hospitalization
+Management: Inpatient IV antibiotics initially, then transition to oral
+
+ICD-10-CM Coding for Pregnancy UTI
+
+Pyelonephritis (Kidney Infections):
+- O23.00: Infections of kidney in pregnancy, unspecified trimester
+- O23.01: Infections of kidney in pregnancy, first trimester
+- O23.02: Infections of kidney in pregnancy, second trimester
+- O23.03: Infections of kidney in pregnancy, third trimester
+
+Cystitis (Bladder Infections):
+- O23.10: Infections of bladder in pregnancy, unspecified trimester
+- O23.11: Infections of bladder in pregnancy, first trimester
+- O23.12: Infections of bladder in pregnancy, second trimester
+- O23.13: Infections of bladder in pregnancy, third trimester
+
+Unspecified UTI/ASB:
+- O23.40: Unspecified infection of urinary tract in pregnancy, unspecified trimester
+- O23.41: Unspecified infection of urinary tract in pregnancy, first trimester
+- O23.42: Unspecified infection of urinary tract in pregnancy, second trimester
+- O23.43: Unspecified infection of urinary tract in pregnancy, third trimester
+
+Additional organism codes:
+- B96.20: Unspecified E. coli
+- B95.1: Group B Streptococcus
+- B96.1: Klebsiella
+- B96.4: Proteus
+- B95.2: Enterococcus
+
+================================================================================
+RISK FACTOR ASSESSMENT
+================================================================================
+
+Pregnancy-Related Risk Factors
+All pregnant individuals face increased UTI risk due to:
+- Progesterone-induced ureteral dilation and decreased peristalsis
+- Mechanical ureteral compression by gravid uterus
+- Vesicoureteral reflux
+- Increased residual bladder volume
+- Glycosuria promoting bacterial growth
+- Peak risk period: 22-24 weeks (maximal ureteral dilation)
+
+Patient-Specific Risk Factors
+
+High-Risk Populations:
+- Prior UTI history (strongest predictor: OR 2.5 for whites, 8.8 for Black women)
+- Sickle cell trait (40% increase in positive baseline culture, aOR 1.4)
+- Diabetes mellitus (gestational or pre-existing)
+- Urinary tract abnormalities (reflux, obstructions)
+- Immunosuppression
+- History of pyelonephritis in prior pregnancy
+- Lower socioeconomic status
+- Late prenatal care initiation
+- Young maternal age
+- Obesity
+- Increased sexual activity frequency
+
+Risk Stratification for Progression
+Without treatment of ASB:
+- 25-30% progress to pyelonephritis
+- 40% develop symptomatic cystitis
+
+With acute cystitis:
+- 15-50% risk of progression to pyelonephritis if untreated
+
+Mitigation Strategies
+- Universal screening at first prenatal visit
+- Prompt treatment of asymptomatic bacteriuria
+- Test of cure after treatment
+- Suppressive therapy for recurrent infections
+- Patient education on adequate hydration
+- Counseling on proper perineal hygiene
+- Prompt evaluation of any urinary symptoms
+
+================================================================================
+TREATMENT PROTOCOLS
+================================================================================
+
+Treatment of Asymptomatic Bacteriuria and Acute Cystitis
+
+First-Line Antibiotic Regimens (Outpatient)
+
+Cephalexin (Preferred First-Line)
+- Dose: 250-500 mg PO twice daily (BID)
+- Duration: 5-7 days
+- RxNorm: 309114 (Cephalexin 500mg capsule), 309112 (Cephalexin 250mg capsule)
+- Notes: Safe throughout pregnancy; ACOG first-line empiric choice
+
+Nitrofurantoin
+- Dose: 50-100 mg PO 2-4 times daily (BID-QID)
+- Duration: 5-7 days
+- RxNorm: 1648755 (Nitrofurantoin macrocrystals 100mg capsule), 7454 (Nitrofurantoin ingredient)
+- CRITICAL CONTRAINDICATIONS:
+  * Avoid at term (38-42 weeks gestation) - risk of neonatal hemolytic anemia
+  * Avoid with G6PD deficiency
+  * Acceptable in first/second trimester only if no alternatives
+
+Fosfomycin
+- Dose: 3 grams PO once (single dose)
+- RxNorm: 808917 (Fosfomycin 3g powder sachet)
+- Notes: High compliance; use if culture shows sensitivity; convenient single-dose therapy
+
+Amoxicillin-Clavulanate
+- Dose: 500/125 mg PO twice daily (BID) OR 875/125 mg PO BID
+- Duration: 5-7 days
+- RxNorm: 617296 (Amoxicillin-clavulanate 500/125mg), 562508 (Amoxicillin-clavulanate 875/125mg)
+- Notes: Broader spectrum option
+
+Trimester-Specific Antibiotic Selection
+
+First Trimester Considerations:
+- Preferred: Cephalexin or Amoxicillin-clavulanate
+- Nitrofurantoin and Trimethoprim-sulfamethoxazole: Use ONLY if no appropriate alternatives exist (per ACOG)
+- Avoid TMP-SMX in first trimester when possible (theoretical neural tube defect risk)
+
+Second Trimester:
+- All standard agents acceptable
+- Continue to prefer cephalexin as first-line
+
+Third Trimester:
+- Cephalexin: Safe throughout
+- Amoxicillin-clavulanate: Safe throughout
+- AVOID at term (38-42 weeks):
+  * Nitrofurantoin (neonatal hemolytic anemia risk)
+  * Trimethoprim-sulfamethoxazole (kernicterus risk from bilirubin displacement)
+
+Important Treatment Principles:
+- Three-day regimens NOT recommended in pregnancy - use 5-7 day courses
+- Avoid empiric amoxicillin/ampicillin monotherapy (20-40% E. coli resistance)
+- Tailor therapy based on culture and sensitivity results when available
+
+Treatment of Acute Pyelonephritis
+
+Hospitalization Criteria (ALL pyelonephritis cases require initial inpatient management)
+Reasons for admission:
+- Up to 17% sepsis risk
+- Need for IV hydration and antiemetics
+- Monitoring for maternal complications (sepsis, ARDS, AKI)
+- Monitoring for obstetric complications (preterm labor)
+- Intensive fever and pain control
+
+Initial IV Antibiotic Regimens
+
+Ceftriaxone (Preferred)
+- Dose: 1-2 grams IV every 24 hours
+- RxNorm: 309090 (Ceftriaxone 100mg/mL injectable)
+- CAUTION: Avoid peripartum due to kernicterus risk in neonate
+
+Ampicillin + Gentamicin (Traditional Regimen)
+- Ampicillin: 2 grams IV every 6 hours
+- Gentamicin: 5 mg/kg IV every 24 hours
+- Notes: Monitor gentamicin levels; nephrotoxicity and ototoxicity risk
+
+Cefepime
+- Dose: 2 grams IV every 12 hours
+- Notes: Broader spectrum coverage
+
+For β-lactam Allergy:
+- Aztreoam: 1 gram IV every 8-12 hours
+
+For ESBL-Producing Organisms:
+- Ertapenem: 1 gram IV every 24 hours (carbapenem)
+- Consider infectious disease consultation
+
+Step-Down Criteria to Oral Therapy
+Patient must meet ALL of the following:
+- Afebrile for 48 hours
+- Clinical improvement (decreased flank pain, stable vital signs)
+- Tolerating oral intake
+- Culture sensitivities available
+
+Oral Step-Down Regimens (Total Duration: 14 Days IV + Oral)
+- Cephalexin: 500 mg PO four times daily (QID)
+- Cefuroxime axetil: 500 mg PO twice daily (BID)
+- Amoxicillin-clavulanate: 875/125 mg PO twice daily (BID)
+
+Trimethoprim-sulfamethoxazole for Pyelonephritis:
+- Dose: 160/800 mg (Double Strength) PO twice daily
+- RxNorm: 198335 (Sulfamethoxazole/Trimethoprim DS 800/160mg tablet)
+- Use only if culture-directed and no alternatives
+- Avoid in first trimester and at term
+
+Additional Supportive Care for Pyelonephritis:
+- IV hydration (pregnant patients often volume-depleted)
+- Antiemetics as needed
+- Antipyretics for fever control
+- Analgesia for flank pain
+- Fetal monitoring if ≥24 weeks gestation
+- Monitor for preterm contractions
+
+Special Considerations: Group B Streptococcus (GBS)
+
+GBS Bacteriuria Management:
+- ANY GBS colony count during pregnancy indicates need for intrapartum antibiotic prophylaxis
+- GBS bacteriuria ≥100,000 CFU/mL requires treatment as UTI (standard duration therapy)
+- Document GBS-positive status prominently in prenatal record
+- No repeat GBS screening needed at 36-37 weeks if GBS bacteriuria documented
+- Intrapartum prophylaxis: Penicillin G 5 million units IV loading, then 2.5-3 million units IV every 4 hours until delivery
+
+================================================================================
+MONITORING AND FOLLOW-UP
+================================================================================
+
+Test of Cure Protocol
+
+Timing and Method:
+- Obtain urine culture 1-2 weeks after completing antibiotic treatment
+- Use same methodology as screening (quantitative culture, clean-catch midstream)
+- Order: CPT 87086 (Culture, bacterial, quantitative colony count, urine)
+
+Interpretation:
+- Negative culture: Treatment successful, continue routine prenatal care
+- Persistent bacteriuria (non-negative culture): Treatment failure
+
+Management of Treatment Failure:
+- Prescribe different antibiotic class for 10-14 days
+- Base selection on culture sensitivities when available
+- Repeat test of cure 1-2 weeks after second treatment course
+- Consider urology consultation if persistent infection despite appropriate therapy
+
+Suppressive Therapy Indications
+
+Criteria for Suppressive Therapy:
+- Recurrent UTI: ≥2 UTI episodes during current pregnancy
+- History of pyelonephritis: After one episode of pyelonephritis in current pregnancy
+- Persistent bacteriuria despite repeated treatment courses
+
+Suppressive Regimens:
+Continue for remainder of pregnancy and potentially 4-6 weeks postpartum
+
+Nitrofurantoin Suppression:
+- Dose: 50-100 mg PO daily at bedtime
+- Discontinue at 38 weeks gestation (avoid at term)
+
+Cephalexin Suppression:
+- Dose: 250-500 mg PO daily at bedtime
+- Safe throughout pregnancy and postpartum
+
+Monitoring During Suppressive Therapy:
+- Urine culture monthly or as symptoms warrant
+- Monitor for antibiotic side effects
+- Counsel patient on importance of adherence
+
+Ongoing Surveillance After Pyelonephritis
+
+Enhanced Monitoring Requirements:
+- Urine culture each trimester (second and third trimester)
+- Urine culture with any new urinary symptoms
+- Consider monthly cultures if patient at very high risk
+- Maintain low threshold for evaluation of any concerning symptoms
+
+Patient Education and Counseling
+
+Key Patient Education Points:
+- Recognize UTI symptoms: dysuria, frequency, urgency, fever, flank pain
+- Importance of medication adherence and completing full antibiotic course
+- Adequate hydration (8-10 glasses water daily)
+- Proper perineal hygiene (wipe front to back)
+- Urinate after intercourse
+- Avoid holding urine for prolonged periods
+- Promptly report any urinary symptoms or fever
+- Understand importance of follow-up testing (test of cure)
+
+================================================================================
+COMPLICATIONS AND SPECIALIST REFERRAL
+================================================================================
+
+Maternal Complications of Pyelonephritis
+
+Infectious Complications:
+- Bacteremia: 7.5-20% of cases
+- Sepsis: 13.3% of cases
+- Septic shock: 1.9% of cases
+- Renal abscess (rare)
+
+Hematologic Complications:
+- Anemia: Up to 25% (endotoxin-mediated hemolysis)
+
+Renal Complications:
+- Acute kidney injury (AKI): OR 16.5 compared to controls
+- Usually reversible with appropriate treatment
+
+Pulmonary Complications:
+- Acute respiratory distress syndrome (ARDS): Up to 10% of severe cases
+- Pulmonary edema
+- Respiratory failure
+
+Obstetric Complications
+
+Preterm Birth:
+- Pyelonephritis: 10.3% preterm birth vs 7.9% baseline (OR 1.3)
+- 7% deliver within 72 hours of pyelonephritis presentation
+- Monitor for preterm contractions during acute illness
+
+Fetal Growth and Birth Weight:
+- Low birth weight: OR 1.3 with pyelonephritis
+- Intrauterine growth restriction in severe cases
+
+Fetal/Neonatal Mortality:
+- Increased perinatal mortality with severe maternal infection
+- Fetal mortality approaches 33% with maternal sepsis requiring ICU admission
+
+Hospitalization Criteria
+
+Mandatory Hospitalization:
+- ALL cases of suspected or confirmed pyelonephritis
+- Signs of sepsis:
+  * Persistent tachycardia (HR >100 bpm)
+  * Hypotension (SBP <90 mmHg)
+  * Tachypnea or respiratory distress
+  * Altered mental status
+  * Lactic acid >4 mmol/L
+- Inability to tolerate oral intake (severe nausea/vomiting)
+- Preterm contractions or threatened preterm labor
+- Severe dehydration
+- Social factors preventing outpatient compliance
+
+Specialist Consultation Indications
+
+Urology Consultation:
+- Persistent infection despite 24-48 hours of appropriate IV antibiotics
+- Suspected urinary tract obstruction
+- Suspected renal or perinephric abscess
+- Recurrent pyelonephritis
+- Known urinary tract anatomic abnormalities
+
+Infectious Disease Consultation:
+- Treatment failure with standard regimens
+- Multi-drug resistant organisms (ESBL, carbapenem-resistant)
+- Severe sepsis or septic shock
+- Immunocompromised patients
+- Unusual or atypical organisms
+
+Maternal-Fetal Medicine Consultation:
+- Recurrent pyelonephritis in pregnancy
+- Pyelonephritis with preterm labor
+- Fetal growth concerns
+- Multiple UTI episodes requiring suppressive therapy
+- Complex medical comorbidities (diabetes, renal disease)
+
+Critical Care/ICU Consultation:
+- Septic shock
+- Respiratory failure or ARDS
+- Acute kidney injury requiring renal replacement therapy
+- Multi-organ dysfunction
+
+================================================================================
+LABORATORY AND PROCEDURAL CODING REFERENCE
+================================================================================
+
+LOINC Codes for Urinalysis and Culture
+
+Urinalysis Panels:
+- 24356-8: Urinalysis complete panel - Urine
+- 24357-6: Urinalysis macro (dipstick) panel - Urine
+- 58077-9: Urinalysis complete W Reflex Culture panel - Urine
+
+Individual Urinalysis Components:
+- 5799-2: Leukocyte esterase [Presence] in Urine by Test strip
+- 5802-4: Nitrite [Presence] in Urine by Test strip
+- 5821-4: Leukocytes [#/area] in Urine sediment by Microscopy HPF
+- 25145-4: Bacteria [Presence] in Urine sediment by Light microscopy
+
+Urine Culture Tests:
+- 630-4: Bacteria identified in Urine by Culture
+- 100906-7: Bacteria [#/volume] in Urine by Culture
+- 19090-0: Colony count [#/volume] in Urine
+- 29576-6: Bacterial susceptibility panel
+
+CPT Procedural Codes
+
+Urinalysis (81000 Series):
+- 81001: Urinalysis, dip stick, automated with microscopy
+- 81003: Urinalysis, dip stick, automated without microscopy
+- 81015: Urinalysis, microscopic only
+
+Urine Culture (87000 Series):
+- 87086: Culture, bacterial, quantitative colony count, urine
+- 87088: Culture, bacterial, with isolation and identification, urine
+- 87184: Susceptibility studies, disk method, per plate (≤12 agents)
+- 87186: Susceptibility studies, MIC, each multi-antimicrobial plate
+
+RxNorm Medication Codes
+
+First-Line Oral Antibiotics:
+- 7454: Nitrofurantoin (ingredient)
+- 1648755: Nitrofurantoin macrocrystals 100mg capsule
+- 309114: Cephalexin 500mg capsule
+- 309112: Cephalexin 250mg capsule
+- 562508: Amoxicillin-clavulanate 875/125mg tablet
+- 617296: Amoxicillin-clavulanate 500/125mg tablet
+- 808917: Fosfomycin 3g powder sachet
+
+Second-Line/Alternative Agents:
+- 198335: Sulfamethoxazole/Trimethoprim DS 800/160mg tablet
+
+IV Antibiotics for Pyelonephritis:
+- 309090: Ceftriaxone 100mg/mL injectable
+
+================================================================================
+DECISION SUPPORT SUMMARY
+================================================================================
+
+Quick Reference: UTI Type Classification
+
+Asymptomatic Bacteriuria:
+- Colony count: ≥100,000 CFU/mL
+- Symptoms: NONE
+- Detection: Screening culture
+- Action: Treat with 5-7 day oral antibiotics
+
+Acute Cystitis:
+- Colony count: ≥100,000 CFU/mL
+- Symptoms: Dysuria, frequency, urgency, suprapubic pain
+- Systemic signs: NONE (no fever, no flank pain)
+- Action: Treat with 5-7 day oral antibiotics
+
+Acute Pyelonephritis:
+- Clinical diagnosis with bacteriuria
+- Symptoms: Fever ≥38.0°C, flank pain/CVA tenderness
+- Systemic illness: YES
+- Action: Hospitalize, IV antibiotics, then oral for total 14 days
+
+Quick Reference: Treatment Selection by Trimester
+
+First Trimester:
+- First choice: Cephalexin
+- Alternatives: Amoxicillin-clavulanate
+- Avoid when possible: TMP-SMX, Nitrofurantoin (use only if no alternatives)
+
+Second Trimester:
+- First choice: Cephalexin
+- All standard agents acceptable
+
+Third Trimester (Before 38 Weeks):
+- First choice: Cephalexin
+- Alternatives: Amoxicillin-clavulanate, Fosfomycin
+
+At Term (38-42 Weeks):
+- First choice: Cephalexin
+- Alternatives: Amoxicillin-clavulanate
+- AVOID: Nitrofurantoin, TMP-SMX
+
+Quick Reference: When to Hospitalize
+- ALL pyelonephritis cases
+- Signs of sepsis
+- Inability to tolerate oral intake
+- Preterm contractions
+
+Quick Reference: When to Consult Specialists
+- Urology: Persistent infection despite 48h appropriate antibiotics
+- Infectious Disease: Treatment failure, MDR organisms, severe sepsis
+- MFM: Recurrent pyelonephritis, preterm labor with infection
+
+================================================================================
+REFERENCES
+================================================================================
+
+Primary Guidelines and Recommendations:
+1. U.S. Preventive Services Task Force (USPSTF). Screening for Asymptomatic Bacteriuria in Adults: US Preventive Services Task Force Recommendation Statement. JAMA. 2019;322(12):1188-1194. Grade B recommendation.
+
+2. American College of Obstetricians and Gynecologists (ACOG). Clinical Consensus on Screening and Management of Asymptomatic Bacteriuria in Pregnancy. August 2023.
+
+3. Infectious Diseases Society of America (IDSA). International Clinical Practice Guidelines for the Treatment of Acute Uncomplicated Cystitis and Pyelonephritis in Women. 2019. Strong recommendation with moderate-quality evidence.
+
+Evidence Base:
+4. Nicolle LE, et al. Infectious Diseases Society of America Guidelines for the Diagnosis and Treatment of Asymptomatic Bacteriuria in Adults. Clin Infect Dis. 2005;40(5):643-654.
+
+5. Wing DA, et al. A randomized trial of 3 antibiotic regimens for the treatment of pyelonephritis in pregnancy. Obstet Gynecol. 1998;92(2):249-253.
+
+6. Glaser AP, Schaeffer AJ. Urinary Tract Infection and Bacteriuria in Pregnancy. Urol Clin North Am. 2015;42(4):547-560.
+
+Epidemiology and Complications:
+7. Hill JB, Sheffield JS, McIntire DD, Wendel GD Jr. Acute pyelonephritis in pregnancy. Obstet Gynecol. 2005;105(1):18-23.
+
+8. Mazor-Dray E, Levy A, Schlaeffer F, Sheiner E. Maternal urinary tract infection: is it independently associated with adverse pregnancy outcome? J Matern Fetal Neonatal Med. 2009;22(2):124-128.
+
+Antibiotic Safety:
+9. American College of Obstetricians and Gynecologists. ACOG Committee Opinion No. 494: Sulfonamides, nitrofurantoin, and risk of birth defects. Obstet Gynecol. 2011;117(6):1484-1485.
+
+10. Crider KS, et al. Antibacterial medication use during pregnancy and risk of birth defects: National Birth Defects Prevention Study. Arch Pediatr Adolesc Med. 2009;163(11):978-985.
+
+Coding and Terminology Standards:
+11. SNOMED CT Clinical Terminology - International Health Terminology Standards Development Organisation (IHTSDO). www.snomed.org
+
+12. Logical Observation Identifiers Names and Codes (LOINC). Regenstrief Institute. loinc.org
+
+13. RxNorm - National Library of Medicine. www.nlm.nih.gov/research/umls/rxnorm
+
+14. ICD-10-CM Official Guidelines for Coding and Reporting. Centers for Medicare & Medicaid Services and National Center for Health Statistics.
+
+================================================================================
+DOCUMENT VERSION CONTROL
+================================================================================
+
+Document: UTI in Pregnancy Care Pathway
+Version: 1.0
+Date: January 31, 2026
+Author: Prism Care Pathways
+Guideline Sources: USPSTF 2019, ACOG 2023, IDSA 2019
+Next Review Date: January 31, 2027
+
+This care pathway is designed for integration into electronic health records (EHR) and clinical decision support systems. All codes provided (SNOMED CT, ICD-10-CM, LOINC, CPT, RxNorm) are current as of document creation date and should be verified against current terminology standards at time of implementation.

@@ -1,0 +1,137 @@
+{
+  "id": "EA-051a",
+  "contractCases": [
+    51
+  ],
+  "title": "Cross-enum equality in establishes",
+  "kind": "compilation",
+  "policy": "explicit-assertion-v0",
+  "evidenceModel": "demo-model@0.1",
+  "query": {
+    "inline": {
+      "contractDigest": "d1",
+      "query": {
+        "id": "q.demo",
+        "kind": "EvidenceQuery",
+        "output": "Evidence<Boolean>",
+        "contract": {
+          "retrieve": {
+            "type": "demo-model/DemoAssessment@0.1",
+            "sources": [
+              "s1",
+              "s2"
+            ],
+            "valueSet": "demo-vs/item-x@1"
+          },
+          "corrections": {
+            "authority": "demo-policy/same-source-amend@1"
+          },
+          "admissible": {
+            "episode": {
+              "eq": [
+                {
+                  "field": [
+                    "c",
+                    "episode"
+                  ]
+                },
+                {
+                  "ref": "ctx.episode"
+                }
+              ]
+            },
+            "encounter": {
+              "eq": [
+                {
+                  "field": [
+                    "c",
+                    "encounter"
+                  ]
+                },
+                {
+                  "ref": "ctx.encounter"
+                }
+              ]
+            },
+            "assertionKind": {
+              "in": [
+                "ClinicianDocumented",
+                "PatientReport"
+              ]
+            }
+          },
+          "policy": "explicit-assertion-v0",
+          "establishes": {
+            "eq": [
+              {
+                "field": [
+                  "c",
+                  "assertion"
+                ]
+              },
+              {
+                "enum": "AssertionKind.PatientReport"
+              }
+            ]
+          },
+          "refutes": {
+            "eq": [
+              {
+                "field": [
+                  "c",
+                  "assertion"
+                ]
+              },
+              {
+                "enum": "AssertionValue.Denied"
+              }
+            ]
+          },
+          "obligations": [
+            {
+              "disjoint": [
+                "establishes",
+                "refutes"
+              ]
+            }
+          ]
+        }
+      },
+      "predicate": {
+        "id": "p.demo",
+        "kind": "Predicate",
+        "expr": {
+          "evidenceValue": {
+            "ref": "q.demo"
+          }
+        }
+      },
+      "valueSets": {
+        "demo-vs/item-x@1": {
+          "expansion": [
+            {
+              "system": "demo-cs",
+              "code": "item-x"
+            }
+          ],
+          "coveredSystems": [
+            "demo-cs"
+          ]
+        }
+      }
+    }
+  },
+  "comparison": "compilation-v1",
+  "input": null,
+  "expected": {
+    "outcome": "CompileFailure",
+    "diagnostics": [
+      {
+        "location": "/query/contract/establishes",
+        "code": null
+      }
+    ],
+    "preview": null,
+    "needs": null
+  }
+}

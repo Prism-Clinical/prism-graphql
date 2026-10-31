@@ -1,0 +1,144 @@
+{
+  "id": "PPL-03",
+  "title": "Schematic program: no record, complete coverage",
+  "status": "Proposed, hand-derived acceptance expectation. Not produced by any PPL compiler or evaluator. The experimental I1 compiler checks the compile and preview blocks, and I2 checks program-level outputs with the query evidence supplied directly (libs/pathway-language); no end-to-end evaluator exists yet.",
+  "program": {
+    "file": "../schematic-demo-finding.ppl.json",
+    "patch": []
+  },
+  "entryPoints": [
+    "compile",
+    "evaluate"
+  ],
+  "basedOn": {
+    "fixture": "EA-005",
+    "claim": "outputs['q.demo'].evidence, outputs['p.demo'].decision and causeAttribution equal EA-005's expected evidence, decision and causeAttribution"
+  },
+  "input": {
+    "snapshot": "snap-1",
+    "supersedesSnapshot": null,
+    "context": {
+      "subject": "P1",
+      "episode": {
+        "known": "E1"
+      },
+      "encounter": {
+        "known": "N1"
+      },
+      "clock": "2026-01-01T00:00:00Z",
+      "mode": "nonclinical"
+    },
+    "records": [],
+    "retractions": [],
+    "coverage": [
+      {
+        "id": "cov-all",
+        "appliesTo": {
+          "snapshot": "snap-1"
+        },
+        "recordType": "demo-model/DemoAssessment@0.1",
+        "subject": "P1",
+        "sources": [
+          "s1",
+          "s2"
+        ],
+        "status": "Complete",
+        "attestedBy": "demo-adapter@1"
+      }
+    ],
+    "failures": [],
+    "rejectedItems": []
+  },
+  "expected": {
+    "state": "UnresolvedPatientEvidence",
+    "compile": {
+      "outcome": "Compiled",
+      "wellFormed": true,
+      "diagnostics": [],
+      "dependencyEdges": [
+        [
+          "f.demo",
+          "applicability"
+        ],
+        [
+          "f.demo",
+          "p.demo"
+        ],
+        [
+          "p.demo",
+          "q.demo"
+        ]
+      ]
+    },
+    "preview": null,
+    "outputs": {
+      "applicability": {
+        "decision": {
+          "value": "True"
+        },
+        "supportingEvidenceIds": []
+      },
+      "q.demo": {
+        "evidence": {
+          "status": "Unresolved",
+          "causes": [
+            "Missing"
+          ],
+          "candidateEvidenceIds": []
+        }
+      },
+      "p.demo": {
+        "decision": {
+          "value": "Unknown",
+          "causes": [
+            "Missing"
+          ]
+        },
+        "candidateEvidenceIds": []
+      },
+      "f.demo": {
+        "status": {
+          "value": "Unknown",
+          "causes": [
+            "Missing"
+          ]
+        },
+        "candidateEvidenceIds": []
+      }
+    },
+    "causeAttribution": [
+      {
+        "cause": "Missing",
+        "origin": "query",
+        "stage": "S6",
+        "reason": "NoInDomainRecord"
+      }
+    ],
+    "trace": [
+      {
+        "output": "applicability",
+        "source": "/applicability/expr",
+        "result": "True",
+        "because": "all() over zero operands is True"
+      },
+      {
+        "output": "q.demo",
+        "source": "/nodes/0/contract",
+        "result": "Unresolved{Missing}",
+        "because": "No record; cells s1 and s2 Complete; rule 5 with no in-domain record seen: Missing. Complete coverage with no record is not an explicit negative (contract 1.5, 4.2)"
+      },
+      {
+        "output": "p.demo",
+        "source": "/nodes/1/expr",
+        "result": "Unknown(Missing)",
+        "because": "evidenceValue: Unresolved(C) projects to Unknown(C), causes unchanged"
+      },
+      {
+        "output": "f.demo.status",
+        "source": "/nodes/2/status",
+        "result": "Unknown(Missing)",
+        "because": "all(True, Unknown(Missing)) = Unknown(Missing). Never False: no explicit negative exists"
+      }
+    ]
+  }
+}

@@ -1,0 +1,265 @@
+﻿Group B Streptococcus in Pregnancy
+Complete Clinical Care Plan
+
+
+
+
+
+
+Overview
+Universal GBS screening at 36 0/7–37 6/7 weeks gestation with intrapartum antibiotic prophylaxis (IAP) reduces early-onset neonatal GBS disease by over 80%. This comprehensive care plan synthesizes current guidelines from ACOG Committee Opinion #797 (2020), CDC 2010 prevention guidelines (superseded by ACOG for obstetric components), and AAP 2019 neonatal management recommendations.
+The evidence strongly supports culture-based screening over risk-factor approaches, with US EOGBS rates of 0.23/1000 live births compared to 0.57/1000 in countries using risk-based screening alone. No major guideline updates occurred in 2024-2025—ACOG #797 remains the authoritative standard.
+Screening Protocol and Timing Requirements
+All pregnant women should undergo antepartum GBS screening at 36 0/7 to 37 6/7 weeks gestation using vaginal-rectal culture, regardless of planned delivery mode. This timing window ensures results remain valid for 5 weeks, covering deliveries through 41 0/7 weeks and reducing need for rescreening in post-term pregnancies.
+Two patient populations do NOT require screening because they automatically receive IAP:
+* Women with GBS bacteriuria at any concentration during current pregnancy
+* Women with a previous infant with invasive GBS disease
+Specimen Collection Procedure
+The specimen collection procedure requires a single swab sampling both sites sequentially without a speculum: first the lower vagina (approximately 2 cm insertion near introitus), then through the anal sphincter into the rectum (approximately 1 cm). Cervical specimens, perianal swabs, and vaginal-only specimens are unacceptable. Women may self-collect with appropriate instruction.
+All specimens must be inoculated into selective enrichment broth (Lim or TransVag broth) for 18-24 hours before subculture—direct plating without enrichment misses up to 50% of GBS carriers. Laboratories must detect both hemolytic and non-hemolytic strains, as 4-6% of isolates are non-hemolytic.
+Culture versus PCR Testing
+Culture remains the gold standard for antepartum screening because it allows antibiotic susceptibility testing—critical for penicillin-allergic patients requiring clindamycin. NAAT from enriched broth is acceptable but cannot provide susceptibility results. Direct intrapartum NAAT without enrichment has unacceptably high false-negative rates (6.3-22%) and should not be used to rule out prophylaxis when clinical risk factors are present.
+Intrapartum point-of-care PCR may be considered for term women presenting with unknown GBS status and no risk factors, but positive results require IAP and negative results do not override clinical risk factors that develop during labor.
+Intrapartum Antibiotic Prophylaxis Regimens
+Penicillin G is the preferred agent due to its narrow spectrum and minimal resistance (<0.2% prevalence):
+* Loading dose: 5 million units IV
+* Maintenance: 2.5–3.0 million units IV every 4 hours until delivery
+Ampicillin is an acceptable alternative but less preferred due to broader spectrum:
+* Loading dose: 2 g IV
+* Maintenance: 1 g IV every 4 hours until delivery
+Penicillin Allergy Management
+Risk stratification determines antibiotic selection. Low-risk allergy (maculopapular rash without systemic symptoms, family history only, non-specific symptoms like GI upset) allows cephalosporin use.
+Cefazolin for low-risk penicillin allergy:
+* Loading dose: 2 g IV
+* Maintenance: 1 g IV every 8 hours until delivery
+High-risk allergy (anaphylaxis, angioedema, urticaria, respiratory distress, hypotension) contraindicates all beta-lactams and requires susceptibility-guided therapy.
+Clindamycin (only if GBS susceptibility confirmed):
+* Dose: 900 mg IV every 8 hours until delivery
+* Requires testing for inducible resistance (D-zone test) if susceptible to clindamycin but resistant to erythromycin
+* Approximately 20-30% of GBS isolates are clindamycin-resistant
+Vancomycin (for clindamycin-resistant or unknown susceptibility):
+* Dose: 20 mg/kg IV every 8 hours (maximum 2 g per dose)
+* Minimum 1-hour infusion time to prevent red man syndrome
+Alert the laboratory to penicillin allergy when ordering prenatal GBS culture to ensure clindamycin susceptibility testing is performed. Penicillin allergy testing during pregnancy is safe and recommended—up to 90% of patients with reported allergy are tolerant.
+Timing for Adequate Prophylaxis
+≥4 hours of penicillin, ampicillin, or cefazolin before delivery constitutes adequate IAP. At 2 hours, antibiotics achieve bactericidal levels in amniotic fluid and reduce vaginal colony counts, but transmission rates remain higher. GBS transmission rates drop from 46% with <1 hour of prophylaxis to 1.2% with ≥4 hours.
+Critically, clindamycin and vancomycin are NOT considered adequate IAP for neonatal risk assessment purposes regardless of duration. Medical interventions (AROM, oxytocin, cesarean delivery) should never be delayed solely to achieve 4 hours of coverage.
+Risk Factors and Special Clinical Situations
+Maternal Risk Factors for GBS Colonization
+Black race confers the highest colonization risk (OR 1.54, 95% CI 1.36-1.74), followed by severe obesity (OR 1.45), healthcare occupation (OR 1.22), and higher socioeconomic status (OR 1.21-1.35). Hispanic ethnicity is protective (OR 0.88). Global GBS colonization prevalence averages 17.9%, ranging from 11.1% in Southeast Asia to 22.4% in Africa.
+Intrapartum Risk Factors for Neonatal Disease
+Maternal intrapartum fever ≥100.4°F (38°C) is the strongest predictor (OR 11.9), followed by premature rupture of membranes before labor (OR 8.7). Preterm delivery carries the highest mortality—19.2% for preterm versus 2.1% for term infants. Women colonized with GBS are >25 times more likely to deliver an infant with early-onset disease.
+Preterm Labor Management (<37 weeks)
+On admission with preterm labor symptoms, immediately obtain GBS culture (unless valid within 5 weeks) and start empiric GBS prophylaxis. If labor stops, discontinue antibiotics immediately. If GBS culture returns positive, give IAP when true labor begins—no repeat screening needed. If negative, repeat screening at 36-37 weeks or upon readmission >5 weeks later.
+PPROM Management
+For PPROM <37 weeks, obtain GBS culture and start latency antibiotics that cover GBS (standard regimen: ampicillin 2 g IV then 1 g q6h × 48 hours plus azithromycin). This regimen provides adequate GBS coverage during the latency period. For PPROM ≥34 weeks, ACOG recommends proceeding to delivery; if GBS-positive, discourage extended expectant management due to lower neonatal infection rates with immediate induction.
+GBS Bacteriuria During Pregnancy
+Any GBS bacteriuria indicates heavy genital tract colonization and requires IAP regardless of colony count. Treatment thresholds differ:
+Colony Count
+	Prenatal Treatment
+	IAP Required
+	Repeat Screening
+	≥10⁵ CFU/mL
+	Yes (5-7 day course)
+	Yes
+	Not needed
+	<10⁵ CFU/mL asymptomatic
+	No
+	Yes
+	Not needed
+	<10⁵ CFU/mL symptomatic
+	Yes
+	Yes
+	Not needed
+	Appropriate prenatal antibiotics include amoxicillin 500 mg TID, cephalexin 500 mg QID, or nitrofurantoin 100 mg BID (only 2nd-3rd trimester). Clindamycin is inappropriate for UTI treatment due to poor urinary concentration.
+Unknown GBS Status at Labor Onset
+When culture results are unavailable at delivery, administer IAP if ANY of the following risk factors are present:
+* Gestational age <37 weeks
+* Membrane rupture ≥18 hours
+* Maternal temperature ≥100.4°F (38°C)
+* Positive intrapartum NAAT
+* GBS colonization in previous pregnancy (consider via shared decision-making)
+For term women without risk factors and unknown status, observation without prophylaxis is reasonable, with IAP initiated if risk factors develop during labor. Point-of-care PCR may guide management if available.
+The risk-based approach misses approximately 40% of cases that occur in women without intrapartum risk factors—this is why universal screening remains superior, achieving >50% greater effectiveness than risk-based protocols.
+Neonatal Monitoring After Maternal GBS
+The AAP endorses three equivalent approaches for infants ≥35 weeks gestation, allowing institutions to choose based on local resources:
+Categorical risk assessment (traditional): Start antibiotics for all infants with clinical signs or maternal fever >100.4°F. Well-appearing infants after inadequate IAP undergo monitoring for 36-48 hours.
+Kaiser Permanente EOS Calculator (multivariate): Available at neonatalsepsiscalculator.kaiserpermanente.org, this Bayesian model incorporates gestational age, maternal temperature, ROM duration, GBS status, IAP timing, and neonatal clinical presentation. Implementation at Kaiser reduced blood cultures by 66% and antibiotic use by 48% without compromising safety.
+Enhanced observation (condition-based): Antibiotics only for infants ill at birth or developing illness. Well-appearing newborns undergo structured serial examinations for 36-48 hours.
+Clinical Signs Requiring Evaluation
+Respiratory distress is the most common presenting symptom. Key warning signs include: respiratory rate persistently <30 or >70, oxygen saturation <95%, grunting/flaring/retractions, heart rate persistently <75 or >210, seizures, lethargy, hypotonia, temperature instability, and poor perfusion. Hypoglycemia alone is NOT a sign of sepsis.
+Observation Duration
+Well-appearing term infants with adequate IAP: 48 hours minimum. Inadequate or no IAP: 36-48 hours with enhanced observation. Late preterm infants (35-36 weeks): 48 hours before discharge. Notably, adequate IAP (≥4 hours penicillin/ampicillin/cefazolin) reduces need for laboratory evaluation in well-appearing infants.
+WHO and International Guideline Comparison
+The WHO's September 2024 guidance does not universally recommend screening versus risk-based approaches, instead advocating context-specific decisions based on local epidemiology, resources, and laboratory capacity. For resource-limited settings where screening infrastructure is unavailable, WHO prioritizes vaccine development as a long-term solution.
+Feature
+	US (ACOG/AAP)
+	UK (NICE/RCOG)
+	WHO
+	Screening method
+	Universal culture 36-37 wks
+	Risk-factor based only
+	Context-dependent
+	IAP coverage
+	~80% of GBS+ women
+	~29% of at-risk women
+	Variable
+	EOGBS incidence
+	0.23/1000
+	0.57/1000
+	0.41/1000 globally
+	Risk calculator
+	Kaiser EOS endorsed
+	Not routine
+	Not addressed
+	Finland's 2012 switch from risk-based to universal screening achieved a 58% reduction in EOGBS (IRR 0.42), providing compelling evidence for screening effectiveness that other European nations are now considering.
+Clinical Pathway from Screening Through Delivery
+At 36 0/7 weeks gestation:
+1. Document GBS bacteriuria history and previous GBS-affected infant
+2. If either positive → plan for IAP, no screening needed
+3. Otherwise → obtain vaginal-rectal culture with susceptibility testing request if penicillin-allergic
+At labor presentation:
+4. Review GBS culture status (valid if ≤5 weeks old)
+5. GBS positive → initiate IAP immediately
+6. GBS negative → no IAP unless chorioamnionitis develops
+7. GBS unknown → assess risk factors; initiate IAP if present or consider NAAT
+During labor:
+8. Continue IAP every 4-8 hours based on agent until delivery
+9. Document timing of doses for neonatal risk assessment
+10. Do not delay medically indicated interventions for IAP completion
+Postpartum/neonatal:
+11. Communicate IAP adequacy to nursery team
+12. Institutional protocol determines observation vs. evaluation approach
+13. Minimum 36-48 hour observation for at-risk infants
+14. Evaluate immediately if clinical signs develop
+Medical Terminology Codes
+ICD-10-CM Codes
+Code
+	Description
+	Use Case
+	O99.820
+	Streptococcus B carrier state complicating pregnancy
+	Positive GBS culture during pregnancy
+	O99.821
+	Streptococcus B carrier state complicating childbirth
+	During labor/delivery
+	O99.825
+	Streptococcus B carrier state complicating puerperium
+	Postpartum period
+	B95.1
+	Streptococcus group B as cause of disease
+	Secondary code with O99.820
+	P36.0
+	Sepsis of newborn due to streptococcus group B
+	Neonatal GBS sepsis
+	Z22.330
+	Carrier of streptococcus group B
+	Non-pregnant GBS colonization
+	
+
+LOINC Codes
+Code
+	Description
+	Use Case
+	72607-5
+	S. agalactiae in Vag+Rectum by culture
+	Primary prenatal screening
+	48683-7
+	S. agalactiae DNA by NAA with probe
+	GBS PCR/NAAT testing
+	584-3
+	S. agalactiae in vaginal fluid by culture
+	Vaginal specimen only
+	85767-2
+	S. agalactiae DNA in positive blood culture
+	Neonatal blood culture PCR
+	
+
+CPT Codes
+Code
+	Description
+	Use Case
+	87081
+	Culture, presumptive pathogenic organisms
+	Primary GBS culture billing
+	87653
+	S. agalactiae amplified probe technique
+	GBS PCR/NAAT billing
+	87184
+	Susceptibility, agar/broth dilution
+	Clindamycin susceptibility
+	87077
+	Culture, additional ID methods
+	Add-on for positive culture
+	
+
+SNOMED CT Codes
+Code
+	Description
+	43492007
+	Group B streptococcus (organism)
+	698319000
+	Carrier of group B streptococcus
+	275353009
+	Screening for Group B streptococcus
+	426933007
+	Streptococcus agalactiae infection
+	
+
+RxNorm Codes for IAP Medications
+RxCUI
+	Drug
+	IAP Dosing
+	7980
+	Penicillin G
+	5M units load, 2.5-3M q4h
+	733
+	Ampicillin
+	2g load, 1g q4h
+	2180
+	Cefazolin
+	2g load, 1g q8h
+	2582
+	Clindamycin
+	900mg q8h
+	11124
+	Vancomycin
+	20mg/kg q8h (max 2g)
+	
+
+Evidence Grades and Contraindications
+ACOG and CDC recommendations use a standardized grading system where A indicates strong recommendation and I indicates evidence from randomized trials while II represents well-designed clinical trials without randomization.
+Recommendation
+	Evidence Grade
+	Universal screening at 36-37 weeks
+	AII
+	IAP for GBS-positive women
+	AI
+	GBS bacteriuria as IAP indication
+	AII
+	Intrapartum NAAT for unknown status
+	CII
+	Cefazolin for low-risk PCN allergy
+	AIII
+	Vancomycin for resistant GBS
+	AIII
+	
+
+Contraindications to specific agents:
+* Cefazolin: History of IgE-mediated penicillin reaction (anaphylaxis, urticaria, angioedema)
+* Clindamycin: GBS resistance or positive D-zone test; history of C. difficile colitis
+* Vancomycin: Reserve for beta-lactam and clindamycin contraindications; adjust for renal impairment
+* Erythromycin: Removed from guidelines due to high resistance and poor placental transfer
+* Penicillin allergy testing: Contraindicated in Stevens-Johnson syndrome or toxic epidermal necrolysis history
+Conclusion
+Effective GBS prevention requires systematic implementation of universal screening at 36-37 weeks, timely IAP initiation, and appropriate neonatal surveillance. The shift from CDC to ACOG guideline stewardship in 2018 brought refined screening windows and penicillin allergy management, while AAP's multivariate risk approaches have reduced unnecessary neonatal interventions.
+Key clinical priorities include: ensuring laboratories perform enrichment culture with susceptibility testing for penicillin-allergic patients, achieving ≥4 hours of appropriate antibiotic coverage when feasible, and recognizing that clindamycin/vancomycin do not constitute adequate prophylaxis for neonatal risk stratification.
+With proper protocol adherence, EOGBS disease has decreased >85% since 1990, though racial disparities persist, with Black infants experiencing nearly double the disease incidence—an ongoing focus for quality improvement initiatives.
+References
+15. American College of Obstetricians and Gynecologists. Prevention of Group B Streptococcal Early-Onset Disease in Newborns: ACOG Committee Opinion, Number 797. Obstet Gynecol. 2020;135(2):e51-e72.
+16. Centers for Disease Control and Prevention. Prevention of Perinatal Group B Streptococcal Disease: Revised Guidelines from CDC, 2010. MMWR Recomm Rep. 2010;59(RR-10):1-36.
+17. Puopolo KM, Lynfield R, Cummings JJ; Committee on Fetus and Newborn, Committee on Infectious Diseases. Management of Infants at Risk for Group B Streptococcal Disease. Pediatrics. 2019;144(2):e20191881.
+18. World Health Organization. WHO recommendations on group B streptococcus: policy brief. Geneva: World Health Organization; 2024.
+19. Escobar GJ, Puopolo KM, Wi S, et al. Stratification of risk of early-onset sepsis in newborns ≥34 weeks' gestation. Pediatrics. 2014;133(1):30-36.
+20. Russell NJ, Seale AC, O'Driscoll M, et al. Maternal Colonization With Group B Streptococcus and Serotype Distribution Worldwide: Systematic Review and Meta-analyses. Clin Infect Dis. 2017;65(suppl_2):S100-S111.
+21. Verani JR, McGee L, Schrag SJ; Division of Bacterial Diseases, National Center for Immunization and Respiratory Diseases, Centers for Disease Control and Prevention (CDC). Prevention of perinatal group B streptococcal disease--revised guidelines from CDC, 2010. MMWR Recomm Rep. 2010;59(RR-10):1-36.

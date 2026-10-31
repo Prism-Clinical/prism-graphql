@@ -1,0 +1,31 @@
+{
+  "id": "CAN-09",
+  "contractCases": [
+    75
+  ],
+  "title": "Numbers 0 and -0.0 are equal",
+  "kind": "canonicalization",
+  "evidenceModel": "demo-model@0.1",
+  "itemType": "revision",
+  "comparison": "canonicalization-v1",
+  "input": {
+    "rawOccurrences": [
+      "{\"key\":{\"source\":\"s1\",\"localId\":\"r1\"},\"revision\":\"1\",\"recordType\":\"demo-model/DemoAssessment@0.1\",\"subject\":\"P1\",\"episode\":\"E1\",\"encounter\":\"N1\",\"concept\":{\"system\":\"demo-cs\",\"code\":\"item-x\"},\"assertion\":0,\"assertionKind\":\"ClinicianDocumented\",\"author\":{\"actor\":\"u1\",\"permissions\":[]},\"provenance\":{\"acquisition\":\"a0\",\"sourceRecordRef\":\"s1:r1:1\"}}",
+      "{\"key\":{\"source\":\"s1\",\"localId\":\"r1\"},\"revision\":\"1\",\"recordType\":\"demo-model/DemoAssessment@0.1\",\"subject\":\"P1\",\"episode\":\"E1\",\"encounter\":\"N1\",\"concept\":{\"system\":\"demo-cs\",\"code\":\"item-x\"},\"assertion\":-0.0,\"assertionKind\":\"ClinicianDocumented\",\"author\":{\"actor\":\"u1\",\"permissions\":[]},\"provenance\":{\"acquisition\":\"a0\",\"sourceRecordRef\":\"s1:r1:1\"}}"
+    ]
+  },
+  "expected": {
+    "equalPayload": true,
+    "variants": [
+      {
+        "occurrences": [
+          0,
+          1
+        ],
+        "canonicalBytes": "{\"assertion\":0,\"assertionKind\":\"ClinicianDocumented\",\"author\":{\"actor\":\"u1\",\"permissions\":[]},\"concept\":{\"code\":\"item-x\",\"system\":\"demo-cs\"},\"encounter\":\"N1\",\"episode\":\"E1\",\"recordType\":\"demo-model/DemoAssessment@0.1\",\"subject\":\"P1\"}",
+        "digest": "2138f6e75a4af2ed79e5b6dec8f4d70be49209001ceff6501d8d8b7e4d9b1d03"
+      }
+    ],
+    "undeclaredFields": []
+  }
+}

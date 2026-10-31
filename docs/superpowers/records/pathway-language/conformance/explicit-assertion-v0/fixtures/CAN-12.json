@@ -1,0 +1,39 @@
+{
+  "id": "CAN-12",
+  "contractCases": [
+    67
+  ],
+  "title": "Members named toJSON and __proto__ are ordinary names: member order never changes identity",
+  "kind": "canonicalization",
+  "evidenceModel": "demo-model@0.1",
+  "itemType": "revision",
+  "comparison": "canonicalization-v1",
+  "input": {
+    "rawOccurrences": [
+      "{\"key\":{\"source\":\"s1\",\"localId\":\"r1\"},\"revision\":\"1\",\"recordType\":\"demo-model/DemoAssessment@0.1\",\"subject\":\"P1\",\"episode\":\"E1\",\"encounter\":\"N1\",\"concept\":{\"system\":\"demo-cs\",\"code\":\"item-x\"},\"assertion\":{\"toJSON\":\"x\",\"__proto__\":\"p\",\"b\":\"1\",\"a\":\"2\"},\"assertionKind\":\"ClinicianDocumented\",\"author\":{\"actor\":\"u1\",\"permissions\":[]},\"provenance\":{\"acquisition\":\"a0\",\"sourceRecordRef\":\"s1:r1:1\"}}",
+      "{\"assertion\":{\"a\":\"2\",\"b\":\"1\",\"__proto__\":\"p\",\"toJSON\":\"x\"},\"key\":{\"source\":\"s1\",\"localId\":\"r1\"},\"revision\":\"1\",\"recordType\":\"demo-model/DemoAssessment@0.1\",\"subject\":\"P1\",\"episode\":\"E1\",\"encounter\":\"N1\",\"concept\":{\"system\":\"demo-cs\",\"code\":\"item-x\"},\"assertionKind\":\"ClinicianDocumented\",\"author\":{\"actor\":\"u1\",\"permissions\":[]},\"provenance\":{\"acquisition\":\"a0\",\"sourceRecordRef\":\"s1:r1:1\"}}",
+      "{\"key\":{\"source\":\"s1\",\"localId\":\"r1\"},\"revision\":\"1\",\"recordType\":\"demo-model/DemoAssessment@0.1\",\"subject\":\"P1\",\"episode\":\"E1\",\"encounter\":\"N1\",\"concept\":{\"system\":\"demo-cs\",\"code\":\"item-x\"},\"assertion\":{\"toJSON\":\"y\",\"__proto__\":\"p\",\"b\":\"1\",\"a\":\"2\"},\"assertionKind\":\"ClinicianDocumented\",\"author\":{\"actor\":\"u1\",\"permissions\":[]},\"provenance\":{\"acquisition\":\"a0\",\"sourceRecordRef\":\"s1:r1:1\"}}"
+    ]
+  },
+  "expected": {
+    "equalPayload": false,
+    "variants": [
+      {
+        "occurrences": [
+          2
+        ],
+        "canonicalBytes": "{\"assertion\":{\"__proto__\":\"p\",\"a\":\"2\",\"b\":\"1\",\"toJSON\":\"y\"},\"assertionKind\":\"ClinicianDocumented\",\"author\":{\"actor\":\"u1\",\"permissions\":[]},\"concept\":{\"code\":\"item-x\",\"system\":\"demo-cs\"},\"encounter\":\"N1\",\"episode\":\"E1\",\"recordType\":\"demo-model/DemoAssessment@0.1\",\"subject\":\"P1\"}",
+        "digest": "515c522dee973be05ae32708816a7e4dc058b7eefbea5dad18376f98d20a707b"
+      },
+      {
+        "occurrences": [
+          0,
+          1
+        ],
+        "canonicalBytes": "{\"assertion\":{\"__proto__\":\"p\",\"a\":\"2\",\"b\":\"1\",\"toJSON\":\"x\"},\"assertionKind\":\"ClinicianDocumented\",\"author\":{\"actor\":\"u1\",\"permissions\":[]},\"concept\":{\"code\":\"item-x\",\"system\":\"demo-cs\"},\"encounter\":\"N1\",\"episode\":\"E1\",\"recordType\":\"demo-model/DemoAssessment@0.1\",\"subject\":\"P1\"}",
+        "digest": "616a58b6a33a48b70745eb4510a65d949108d5999450b2b148ec2ad7709b742e"
+      }
+    ],
+    "undeclaredFields": []
+  }
+}

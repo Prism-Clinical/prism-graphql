@@ -1,0 +1,149 @@
+{
+  "id": "EA-037",
+  "contractCases": [
+    37
+  ],
+  "title": "Complete and Unknown for the same source (negative)",
+  "kind": "evaluation",
+  "policy": "explicit-assertion-v0",
+  "evidenceModel": "demo-model@0.1",
+  "query": {
+    "file": "../query/q.demo.json",
+    "contractDigest": "d1"
+  },
+  "requestedOutputs": [
+    "p.demo"
+  ],
+  "comparison": "evaluation-v1",
+  "input": {
+    "snapshot": "snap-1",
+    "supersedesSnapshot": null,
+    "context": {
+      "subject": "P1",
+      "episode": {
+        "known": "E1"
+      },
+      "encounter": {
+        "known": "N1"
+      },
+      "clock": "2026-01-01T00:00:00Z",
+      "mode": "nonclinical"
+    },
+    "records": [
+      {
+        "key": {
+          "source": "s1",
+          "localId": "r2"
+        },
+        "revision": "1",
+        "recordType": "demo-model/DemoAssessment@0.1",
+        "subject": "P1",
+        "episode": "E1",
+        "encounter": "N1",
+        "concept": {
+          "system": "demo-cs",
+          "code": "item-x"
+        },
+        "assertion": "Denied",
+        "assertionKind": "ClinicianDocumented",
+        "author": {
+          "actor": "u1",
+          "permissions": []
+        },
+        "provenance": {
+          "acquisition": "a0",
+          "sourceRecordRef": "s1:r2:1"
+        }
+      }
+    ],
+    "retractions": [],
+    "coverage": [
+      {
+        "id": "covA",
+        "appliesTo": {
+          "snapshot": "snap-1"
+        },
+        "recordType": "demo-model/DemoAssessment@0.1",
+        "subject": "P1",
+        "sources": [
+          "s1",
+          "s2"
+        ],
+        "status": "Complete",
+        "attestedBy": "demo-adapter@1"
+      },
+      {
+        "id": "covB",
+        "appliesTo": {
+          "snapshot": "snap-1"
+        },
+        "recordType": "demo-model/DemoAssessment@0.1",
+        "subject": "P1",
+        "sources": [
+          "s2"
+        ],
+        "status": "Unknown",
+        "attestedBy": "demo-adapter@1"
+      }
+    ],
+    "failures": [],
+    "rejectedItems": []
+  },
+  "expected": {
+    "evidence": {
+      "status": "Unresolved",
+      "causes": [
+        "InsufficientEvidence"
+      ],
+      "candidateEvidenceIds": [
+        "s1/r2@1"
+      ]
+    },
+    "decision": {
+      "value": "Unknown",
+      "causes": [
+        "InsufficientEvidence"
+      ]
+    },
+    "causeAttribution": [
+      {
+        "cause": "InsufficientEvidence",
+        "origin": "cell:s2",
+        "stage": "coverage",
+        "reason": "CellUnknown"
+      }
+    ],
+    "needs": {
+      "evidence": {
+        "key": {
+          "query": "q.demo",
+          "contractDigest": "d1",
+          "subject": "P1",
+          "episode": "E1",
+          "encounter": "N1"
+        },
+        "causes": [
+          "InsufficientEvidence"
+        ]
+      },
+      "deferred": null,
+      "obligations": []
+    },
+    "traceAssertions": [
+      {
+        "fact": "cell",
+        "source": "s2",
+        "value": "Unknown"
+      },
+      {
+        "fact": "diagnostic",
+        "code": "ContradictoryAttestation",
+        "ref": "cell:s2"
+      },
+      {
+        "fact": "rule",
+        "value": 4
+      }
+    ]
+  }
+}

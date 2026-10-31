@@ -1,0 +1,890 @@
+/**
+ * EXPERIMENTAL, NONCLINICAL. Runs the S1–S4-applicable assertions of the committed
+ * explicit-assertion-v0 conformance fixtures against the S1 resolver, S2 candidate identification,
+ * the three S3 rule checks, combined per-revision S3 admissibility (contract §2.7, whose
+ * `admissibility` facts are checked directly), S4 selection (§2.8: `selection` and `disposition`
+ * facts), per-record S5 criterion evaluation and classification (§3.5, §3.6: `criterion` and
+ * `classification` facts of complete queries), key-level possible classes (§3.7: `possibleClasses`)
+ * and query-bound preview evaluation (§3.5 "Preview evaluation", §6.1): the `criterion` facts of
+ * preview fixtures, their `stagesRun` facts, and their markers, publication, outcome, and the absence
+ * of an evidence result and of Needs; and S6 gap relevance (§1.5, §4.1): `cell`, `gap`, `notCurrent`
+ * and the coverage diagnostics, plus two one-way implications from evidence expectations.
+ *
+ * A fixture is never reported as passing as a whole: only its S1–S4 and S5 (criterion, classification, possibleClasses) assertions are
+ * checked, plus one-way implications from downstream expectations. `stage` fixtures (stage-v1)
+ * assert S1–S3, S1–S4 or S1–S5 and carry no downstream expectation. Every other expected field or
+ * trace fact (materiality, evidence, S6–S7) is outside the scope.
+ */
+import { readdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { payloadIdentity } from '../../s1/payload';
+import { isDeepStrictEqual } from 'node:util';
+import {
+  SAME_ENCOUNTER_RULE,
+  SAME_EPISODE_RULE,
+  experimentalCheckAssertionKind,
+  experimentalCheckAdmissibility,
+  experimentalCompile,
+  experimentalCompilePreview,
+  experimentalEvaluatePreviewQuery,
+  experimentalGapRelevance,
+  type GapRelevanceResult,
+  type PreviewQueryResult,
+  type PreviewRecord,
+  experimentalClassifyRecord,
+  experimentalPossibleClasses,
+  experimentalEvaluateCriteria,
+  experimentalSelect,
+  experimentalSelectForQuery,
+  type CompiledPackage,
+  type ClassificationResult,
+  type CriteriaResult,
+  type PossibleSelection,
+  type PossibleAdmissibility,
+  type PossibleAssertionKindScope,
+  experimentalCheckEncounterScope,
+  experimentalCheckEpisodeScope,
+  experimentalIdentifyCandidates,
+  experimentalResolveRevisionHistory,
+  type JsonValue,
+  type KeyResolution,
+  type EncounterBinding,
+  type EpisodeBinding,
+  type NodeCandidacy,
+  type PossibleEncounterScope,
+  type PossibleEpisodeScope,
+  type PossibleCurrent,
+  type S1Result,
+  type S2Result,
+} from '../../index';
+
+export const FIXTURE_DIR = join(__dirname, '..', '..', '..', '..', '..', 'docs', 'superpowers', 'records', 'pathway-language', 'conformance', 'explicit-assertion-v0');
+
+/** Trace facts that S1 decides (README "Trace-assertion vocabulary"). */
+const S1_FACTS = new Set(['keyResult', 'variants', 'occurrences', 'rejected', 'outOfEnvelope', 'outsideEnvelope']);
+/** Diagnostic codes produced by S1. Others (ContradictoryAttestation, InsufficientlyScopedStatement) are coverage-stage. */
+const S1_DIAGNOSTICS = new Set(['HistoricalDefect', 'CrossKeyCorrection', 'UndeclaredField']);
+/** Trace facts that S2 decides. */
+const S2_FACTS = new Set(['candidacy']);
+
+type Json = { [k: string]: any }; // fixture documents are untyped JSON
+
+export interface FixtureReport {
+  id: string;
+  kind: string;
+  s1Applicable: number;
+  s1Passed: number;
+  s1AttributionOneWay: number;
+  s2Applicable: number;
+  s2Passed: number;
+  s2AttributionOneWay: number;
+  /** One-way: each expected `candidateEvidenceIds` entry must be an S2 InDomain/Unresolved node. */
+  s2CandidateIdsOneWay: number;
+  encounterApplicable: number;
+  encounterPassed: number;
+  /** One-way implications from combined S3 facts (`admissibility`, S3 encounter attributions). */
+  encounterOneWay: number;
+  episodeApplicable: number;
+  episodePassed: number;
+  /** One-way implications from combined S3 facts (`admissibility`, S3 episode attributions). */
+  episodeOneWay: number;
+  assertionKindApplicable: number;
+  assertionKindPassed: number;
+  /** One-way implications from combined S3 facts (`admissibility`, S3 assertionKind attributions). */
+  assertionKindOneWay: number;
+  /** S4 `selection` and `disposition` facts (contract §2.8), checked directly. */
+  selectionApplicable: number;
+  selectionPassed: number;
+  /** One-way: every supportingEvidenceIds entry of a Known result must be a selected revision (§4.2). */
+  selectionOneWay: number;
+  /** S5 `criterion` facts (contract §3.5), checked directly over complete compiled queries. */
+  criterionApplicable: number;
+  criterionPassed: number;
+  /** S5 per-record `classification` facts (contract §3.3), checked directly. Not possible classes. */
+  classificationApplicable: number;
+  classificationPassed: number;
+  /** S5 key-level `possibleClasses` facts (contract §4.2 step B, §3.7), checked directly. Not materiality. */
+  possibleClassesApplicable: number;
+  possibleClassesPassed: number;
+  /** Preview `criterion` facts (`Marker` for a hole, the sibling's value), from experimentalEvaluatePreviewQuery. */
+  previewCriterionApplicable: number;
+  previewCriterionPassed: number;
+  /**
+   * Preview compiler and evaluation expectations: `outcome` PreviewOnly (preview compiles, normal
+   * compilation reports only holes), `markers`, `publication`, `evidence: null` and empty `needs`
+   * (the preview output has neither), and the `stagesRun` trace fact.
+   */
+  previewApplicable: number;
+  previewPassed: number;
+  /** S6 coverage facts (§1.5): `cell`, `notCurrent`, and `ContradictoryAttestation` / `InsufficientlyScopedStatement` diagnostics. */
+  coverageApplicable: number;
+  coveragePassed: number;
+  /** S6 `gap` facts (§4.1): relevance and, when stated, the proving dimension. */
+  gapApplicable: number;
+  gapPassed: number;
+  /**
+   * One-way: every `coverage` / `gap` cause attribution must be a relevant gap with that cause and
+   * reason, and a `Known` result must have no relevant gap (§4.2). Not base results or attribution.
+   */
+  gapOneWay: number;
+  /** Combined S3 `admissibility` facts (contract §2.7), checked directly. */
+  admissibilityApplicable: number;
+  admissibilityPassed: number;
+  outOfScope: number;
+  failures: string[];
+  notRun: string | null;
+}
+
+// Display strings are used only to compare with the fixtures' notation (README "Identifier notation").
+const showKey = (k: { source: string; localId: string }) => `${k.source}/${k.localId}`;
+const showRev = (r: { source: string; localId: string; revision: string }) => `${showKey(r)}@${r.revision}`;
+const showPossible = (p: PossibleCurrent) =>
+  p.kind === 'node' ? showRev(p.node.revision) + (p.node.digest ? `#${p.node.digest}` : '') : p.kind;
+
+function keyOf(result: S1Result, ref: string): KeyResolution | undefined {
+  return result.keys.find((k) => showKey(k.key) === ref.split('@')[0]);
+}
+
+function checkFact(t: Json, r: S1Result): string | null {
+  const fail = (msg: string) => `${t.fact} ${t.ref ?? t.code ?? ''}: ${msg}`;
+  switch (t.fact) {
+    case 'keyResult': {
+      const k = keyOf(r, t.ref);
+      if (!k) return fail('key not resolved');
+      if (k.status !== t.value) return fail(`status ${k.status}, expected ${t.value}`);
+      if ('current' in t && (k.current ? showRev(k.current.revision) : null) !== t.current) return fail(`current ${JSON.stringify(k.current)}`);
+      if ('causes' in t && JSON.stringify(k.causes) !== JSON.stringify(t.causes)) return fail(`causes ${JSON.stringify(k.causes)}`);
+      if ('possibleCurrent' in t) {
+        const got = k.possibleCurrent.map(showPossible);
+        if (JSON.stringify(got) !== JSON.stringify(t.possibleCurrent)) return fail(`possibleCurrent ${JSON.stringify(got)}`);
+      }
+      return null;
+    }
+    case 'variants': {
+      const rev = keyOf(r, t.ref)?.revisions.find((x) => showRev(x.ref) === t.ref);
+      const got = (rev?.variants ?? []).map((v) => `${t.ref}#${v.digest}`);
+      return JSON.stringify(got) === JSON.stringify(t.value) ? null : fail(`variants ${JSON.stringify(got)}`);
+    }
+    case 'occurrences': {
+      const rev = keyOf(r, t.ref)?.revisions.find((x) => showRev(x.ref) === t.ref);
+      const ok = rev && rev.variants.length === 1 && rev.variants[0]?.occurrences.length === t.count;
+      return ok ? null : fail(`expected one variant with ${t.count} occurrences`);
+    }
+    case 'rejected': {
+      const hit = r.rejections.find(
+        (x) => (x.item.kind === 'revision' ? showRev(x.item.ref) : `${x.item.ref.source}:${x.item.ref.id}`) === t.ref && x.reason === t.reason,
+      );
+      return hit ? null : fail(`no rejection ${t.reason}`);
+    }
+    case 'outOfEnvelope': {
+      const rev = keyOf(r, t.ref)?.revisions.find((x) => showRev(x.ref) === t.ref);
+      return rev?.state === 'outOfEnvelope' ? null : fail(`state ${rev?.state}`);
+    }
+    case 'outsideEnvelope':
+      return r.outsideEnvelope.some((o) => o.kind === 'revision' && showRev(o.ref) === t.ref) ? null : fail('not outside envelope');
+    case 'diagnostic': {
+      if (t.code === 'HistoricalDefect') {
+        const k = keyOf(r, t.ref);
+        const hit = k?.historicalDefects.find(
+          (d) =>
+            d.cause === t.cause &&
+            d.reason === t.reason &&
+            (d.subject.kind === 'revision' ? showRev(d.subject.ref) : d.subject.kind === 'key' ? showKey(d.subject.ref) : '') === t.ref,
+        );
+        return hit ? null : fail(`no historical ${t.reason}`);
+      }
+      if (t.code === 'CrossKeyCorrection') {
+        return keyOf(r, t.ref)?.diagnostics.some((d) => d.code === 'CrossKeyCorrection') ? null : fail('missing diagnostic');
+      }
+      if (t.code === 'UndeclaredField') {
+        const rev = keyOf(r, t.ref)?.revisions.find((x) => showRev(x.ref) === t.ref);
+        const hit = rev?.variants.some((v) => v.occurrences.some((o) => o.undeclaredPaths.includes(t.path)));
+        return hit ? null : fail(`no undeclared ${t.path}`);
+      }
+      return fail('unexpected S1 diagnostic code');
+    }
+    default:
+      return fail('not an S1 fact');
+  }
+}
+
+const showNode = (n: NodeCandidacy) => showRev(n.node.revision) + (n.node.digest ? `#${n.node.digest}` : '');
+/** Every S2-classified node, by its fixture notation (`RevisionRef`, or `RevisionRef#digest` for a variant). */
+function s2Nodes(r: S2Result): Map<string, NodeCandidacy> {
+  const m = new Map<string, NodeCandidacy>();
+  for (const k of r.keys) for (const p of k.possibilities) if (p.kind === 'node') m.set(showNode(p), p);
+  return m;
+}
+
+/**
+ * A combined `admissibility` fact (README "Trace-assertion vocabulary"): `value` exactly; `reason`
+ * (one) or `reasons` (all, code point order) is the complete set of mismatch reasons; `causes` is
+ * the set of retained unresolved findings' causes, for any value.
+ */
+function checkAdmissibilityFact(t: Json, p: Extract<PossibleAdmissibility, { kind: 'node' }> | undefined): string | null {
+  if (!p) return `admissibility ${t.ref}: not assessed`;
+  const a = p.admissibility;
+  if (a.outcome !== t.value) return `admissibility ${t.ref}: ${a.outcome}, expected ${t.value}`;
+  const reasons = a.outcome === 'Inadmissible' ? a.reasons : [];
+  const want = 'reasons' in t ? t.reasons : 'reason' in t ? [t.reason] : null;
+  if (want && JSON.stringify(reasons) !== JSON.stringify(want)) return `admissibility ${t.ref}: reasons ${JSON.stringify(reasons)}`;
+  const causes = a.outcome === 'Inadmissible' || a.outcome === 'UnresolvedAdmissibility' ? a.causes : [];
+  if ('causes' in t && JSON.stringify(causes) !== JSON.stringify(t.causes)) return `admissibility ${t.ref}: causes ${JSON.stringify(causes)}`;
+  return null;
+}
+/** A `selection` (per key) or `disposition` (per revision or variant) fact (README vocabulary). */
+function checkSelectionFact(
+  t: Json,
+  keys: ReadonlyMap<string, import('../../index').KeySelection>,
+  nodes: ReadonlyMap<string, Extract<PossibleSelection, { kind: 'node' }>>,
+): string | null {
+  if (t.fact === 'selection') {
+    const k = keys.get(t.ref);
+    if (!k) return `selection ${t.ref}: key not in the S4 result`;
+    if (k.status !== t.value) return `selection ${t.ref}: ${k.status}, expected ${t.value}`;
+    if ('unresolvedBy' in t && JSON.stringify(k.unresolvedBy) !== JSON.stringify(t.unresolvedBy)) return `selection ${t.ref}: unresolvedBy ${JSON.stringify(k.unresolvedBy)}`;
+    if ('selected' in t) {
+      const p = k.possibilities[0];
+      const got = p && p.kind === 'node' ? showRev(p.node.revision) : null;
+      if (got !== t.selected) return `selection ${t.ref}: selected ${got}`;
+    }
+    return null;
+  }
+  const p = nodes.get(t.ref);
+  if (!p) return `disposition ${t.ref}: not assessed`;
+  if (p.selection.disposition !== t.value) return `disposition ${t.ref}: ${p.selection.disposition}, expected ${t.value}`;
+  const blockers = p.selection.disposition === 'NotSelected' ? p.selection.blockers : [];
+  if ('blockers' in t && JSON.stringify(blockers) !== JSON.stringify(t.blockers)) return `disposition ${t.ref}: blockers ${JSON.stringify(blockers)}`;
+  return null;
+}
+const ASSERTION_KIND_REASONS = new Set(['FieldAbsent:assertionKind', 'FieldMalformed:assertionKind']);
+const EPISODE_REASONS = new Set(['FieldAbsent:episode', 'FieldMalformed:episode', 'ContextUnknown:episode']);
+/** Trace `causes` are sets, listed in Stage A §4.1 order. */
+const STAGE_A = ['Missing', 'Conflicting', 'Unavailable', 'Invalid', 'Inadmissible', 'InsufficientEvidence'];
+const causeSet = (fs: readonly { cause: string }[]): string[] => STAGE_A.filter((c) => fs.some((f) => f.cause === c));
+const ENCOUNTER_REASONS = new Set(['FieldAbsent:encounter', 'FieldMalformed:encounter', 'ContextUnknown:encounter']);
+type EncounterNode = Extract<PossibleEncounterScope, { kind: 'node' }>;
+function encounterNodes(r: ReturnType<typeof experimentalCheckEncounterScope>): Map<string, EncounterNode> {
+  const m = new Map<string, EncounterNode>();
+  for (const k of r.keys) for (const p of k.possibilities) if (p.kind === 'node') m.set(showRev(p.node.revision) + (p.node.digest ? `#${p.node.digest}` : ''), p);
+  return m;
+}
+const outcomeOf = (p: EncounterNode | undefined): string => p?.encounter.outcome ?? 'not checked';
+function checkEncounterFact(t: Json, enc: Map<string, EncounterNode> | null): string | null {
+  if (!enc) return `encounterScope ${t.ref}: the query does not author the same-encounter rule`;
+  const p = enc.get(t.ref);
+  if (outcomeOf(p) !== t.value) return `encounterScope ${t.ref}: ${outcomeOf(p)}, expected ${t.value}`;
+  if ('causes' in t) {
+    const got = p?.encounter.outcome === 'Unresolved' ? causeSet(p.encounter.findings) : [];
+    if (JSON.stringify(got) !== JSON.stringify(t.causes)) return `encounterScope ${t.ref}: causes ${JSON.stringify(got)}`;
+  }
+  return null;
+}
+
+export function runFixtures(dir: string = FIXTURE_DIR): { reports: FixtureReport[]; noApplicableAssertions: string[] } {
+  const shared = JSON.parse(readFileSync(join(dir, 'query', 'q.demo.json'), 'utf8')) as Json;
+  const reports: FixtureReport[] = [];
+  const missing: string[] = [];
+  for (const name of readdirSync(join(dir, 'fixtures')).sort()) {
+    const fx = JSON.parse(readFileSync(join(dir, 'fixtures', name), 'utf8')) as Json;
+    const report: FixtureReport = {
+      id: fx.id,
+      kind: fx.kind,
+      s1Applicable: 0,
+      s1Passed: 0,
+      s1AttributionOneWay: 0,
+      s2Applicable: 0,
+      s2Passed: 0,
+      s2AttributionOneWay: 0,
+      s2CandidateIdsOneWay: 0,
+      encounterApplicable: 0,
+      encounterPassed: 0,
+      encounterOneWay: 0,
+      episodeApplicable: 0,
+      episodePassed: 0,
+      episodeOneWay: 0,
+      assertionKindApplicable: 0,
+      assertionKindPassed: 0,
+      assertionKindOneWay: 0,
+      selectionApplicable: 0,
+      selectionPassed: 0,
+      selectionOneWay: 0,
+      criterionApplicable: 0,
+      criterionPassed: 0,
+      classificationApplicable: 0,
+      classificationPassed: 0,
+      possibleClassesApplicable: 0,
+      possibleClassesPassed: 0,
+      previewCriterionApplicable: 0,
+      previewCriterionPassed: 0,
+      previewApplicable: 0,
+      previewPassed: 0,
+      coverageApplicable: 0,
+      coveragePassed: 0,
+      gapApplicable: 0,
+      gapPassed: 0,
+      gapOneWay: 0,
+      admissibilityApplicable: 0,
+      admissibilityPassed: 0,
+      outOfScope: 0,
+      failures: [],
+      notRun: null,
+    };
+    reports.push(report);
+    if (fx.kind === 'canonicalization') {
+      checkCanonicalization(fx, report);
+      continue;
+    }
+    if (fx.kind === 'compilation') {
+      report.notRun = 'compilation fixture: no evidence input';
+      continue;
+    }
+    const query = (fx.query.inline ?? shared) as Json;
+    const contract = query.query?.contract;
+    // Preview fixtures run through query-bound preview evaluation, from the fixture query as written.
+    const pv = fx.kind === 'preview' ? previewFixtureQuery(query, fx.input) : null;
+    const previewFields = pv ? checkPreviewExpectations(fx.expected, pv, report) : 0;
+    if (!contract || contract.hole) {
+      if (!pv) {
+        report.notRun = 'query contract is an authoring hole outside a preview fixture';
+        report.outOfScope = countExpected(fx.expected);
+        continue;
+      }
+      // A whole-contract hole: no stage runs (contract §6.1), so only preview expectations apply.
+      for (const t of (fx.expected.traceAssertions ?? []) as Json[]) if (t.fact !== 'stagesRun') report.outOfScope += 1;
+      report.outOfScope += countExpected(fx.expected) - ((fx.expected.traceAssertions ?? []) as unknown[]).length - previewFields;
+      if (report.previewApplicable === 0) missing.push(fx.id);
+      continue;
+    }
+    const result = experimentalResolveRevisionHistory({
+      envelope: { recordType: contract.retrieve.type, subject: fx.input.context.subject, sources: contract.retrieve.sources },
+      authorityRule: contract.corrections.authority,
+      revisions: fx.input.records as JsonValue[],
+      retractions: fx.input.retractions as JsonValue[],
+    });
+    const pin = contract.retrieve.valueSet as string;
+    const s2 = experimentalIdentifyCandidates({ s1: result, valueSet: pin, expansion: { id: pin, ...query.valueSets[pin] } });
+    const nodes = s2Nodes(s2);
+    // The encounter check runs only where the query authors exactly the rule it implements.
+    const enc = isDeepStrictEqual(contract.admissible?.encounter, SAME_ENCOUNTER_RULE)
+      ? encounterNodes(
+          experimentalCheckEncounterScope({
+            s1: result,
+            valueSet: pin,
+            expansion: { id: pin, ...query.valueSets[pin] },
+            rule: contract.admissible.encounter,
+            contextEncounter: fx.input.context.encounter as EncounterBinding,
+          }),
+        )
+      : null;
+    // Likewise the episode check, only where the query authors exactly SAME_EPISODE_RULE.
+    const epi = isDeepStrictEqual(contract.admissible?.episode, SAME_EPISODE_RULE)
+      ? experimentalCheckEpisodeScope({
+          s1: result,
+          valueSet: pin,
+          expansion: { id: pin, ...query.valueSets[pin] },
+          rule: contract.admissible.episode,
+          contextEpisode: fx.input.context.episode as EpisodeBinding,
+        })
+      : null;
+    const episodeNodes = new Map<string, Extract<PossibleEpisodeScope, { kind: 'node' }>>();
+    for (const k of epi?.keys ?? []) for (const p of k.possibilities) if (p.kind === 'node') episodeNodes.set(showRev(p.node.revision) + (p.node.digest ? `#${p.node.digest}` : ''), p);
+    const episodeOutcome = (ref: string) => episodeNodes.get(ref)?.episode.outcome ?? 'not checked';
+    // The assertionKind check runs wherever the query authors the rule; an invalid rule throws (a fixture defect).
+    const akr = contract.admissible?.assertionKind === undefined
+      ? null
+      : experimentalCheckAssertionKind({ s1: result, valueSet: pin, expansion: { id: pin, ...query.valueSets[pin] }, rule: contract.admissible.assertionKind });
+    const akNodes = new Map<string, Extract<PossibleAssertionKindScope, { kind: 'node' }>>();
+    for (const k of akr?.keys ?? []) for (const p of k.possibilities) if (p.kind === 'node') akNodes.set(showRev(p.node.revision) + (p.node.digest ? `#${p.node.digest}` : ''), p);
+    const akOutcome = (ref: string) => akNodes.get(ref)?.assertionKind.outcome ?? 'not checked';
+    // Combined S3 (contract §2.7) wherever the query authors the three rules; config errors throw.
+    const adm = contract.admissible
+      ? experimentalCheckAdmissibility({
+          s1: result,
+          valueSet: pin,
+          expansion: { id: pin, ...query.valueSets[pin] },
+          admissible: contract.admissible,
+          contextEncounter: fx.input.context.encounter as EncounterBinding,
+          contextEpisode: fx.input.context.episode as EpisodeBinding,
+        })
+      : null;
+    const s4 = adm ? experimentalSelect({ s3: adm }) : null;
+    const s4Keys = new Map((s4?.keys ?? []).map((k) => [`${k.key.source}/${k.key.localId}`, k] as const));
+    const s4Nodes = new Map<string, Extract<PossibleSelection, { kind: 'node' }>>();
+    for (const k of s4?.keys ?? []) for (const p of k.possibilities) if (p.kind === 'node') s4Nodes.set(showRev(p.node.revision) + (p.node.digest ? `#${p.node.digest}` : ''), p);
+    // S5 needs the compiled query: the fixture's query is wrapped in a minimal program (harness input
+    // preparation, not a language feature). A query the compiler rejects evaluates no criterion.
+    // Criteria are evaluated only over the query-bound selection (contract §3.5), whose S1–S4
+    // configuration comes from the compiled query; it must agree with the standalone stages above.
+    const compiledQuery = compileFixtureQuery(query);
+    const bound = typeof compiledQuery === 'string' || !s4
+      ? null
+      : experimentalSelectForQuery({
+          package: compiledQuery,
+          query: query.query.id,
+          subject: fx.input.context.subject,
+          revisions: fx.input.records as JsonValue[],
+          retractions: fx.input.retractions as JsonValue[],
+          contextEncounter: fx.input.context.encounter as EncounterBinding,
+          contextEpisode: fx.input.context.episode as EpisodeBinding,
+          // The fixture's own snapshot statements, as received (contract §1.5).
+          snapshot: { id: fx.input.snapshot, coverage: fx.input.coverage, failures: fx.input.failures, rejectedItems: fx.input.rejectedItems },
+        });
+    if (bound && !isDeepStrictEqual(bound, s4)) report.failures.push('query-bound selection differs from the standalone S1–S4 stages');
+    const gaps: GapRelevanceResult | null = bound && typeof compiledQuery !== 'string' ? experimentalGapRelevance({ package: compiledQuery, query: query.query.id, s4: bound }) : null;
+    const boundKeys = new Map((bound?.keys ?? []).map((k) => [`${k.key.source}/${k.key.localId}`, k] as const));
+    const boundNodes = new Map<string, Extract<PossibleSelection, { kind: 'node' }>>();
+    for (const k of bound?.keys ?? []) for (const p of k.possibilities) if (p.kind === 'node') boundNodes.set(showRev(p.node.revision) + (p.node.digest ? `#${p.node.digest}` : ''), p);
+    const criteria = (ref: string): CriteriaResult | string => {
+      if (typeof compiledQuery === 'string') return compiledQuery;
+      const p = boundNodes.get(ref);
+      if (!bound || !p) return `no S4 possibility ${ref}`;
+      return experimentalEvaluateCriteria({ package: compiledQuery, query: query.query.id, s4: bound, possibility: p });
+    };
+    const classification = (ref: string): ClassificationResult | string => {
+      if (typeof compiledQuery === 'string') return compiledQuery;
+      const p = boundNodes.get(ref);
+      if (!bound || !p) return `no S4 possibility ${ref}`;
+      return experimentalClassifyRecord({ package: compiledQuery, query: query.query.id, s4: bound, possibility: p });
+    };
+    const admNodes = new Map<string, Extract<PossibleAdmissibility, { kind: 'node' }>>();
+    for (const k of adm?.keys ?? []) for (const p of k.possibilities) if (p.kind === 'node') admNodes.set(showRev(p.node.revision) + (p.node.digest ? `#${p.node.digest}` : ''), p);
+    const exp = fx.expected as Json;
+    for (const t of (exp.traceAssertions ?? []) as Json[]) {
+      const coverageDiagnostic = t.fact === 'diagnostic' && (t.code === 'ContradictoryAttestation' || t.code === 'InsufficientlyScopedStatement');
+      if (t.fact === 'cell' || t.fact === 'notCurrent' || coverageDiagnostic) {
+        report.coverageApplicable += 1;
+        const f = checkCoverageFact(t, gaps);
+        if (f) report.failures.push(f);
+        else report.coveragePassed += 1;
+        continue;
+      }
+      if (t.fact === 'gap') {
+        report.gapApplicable += 1;
+        // Fixture refs are display labels; a label must name exactly one gap.
+        const matches = gaps?.gaps.filter((x) => x.ref.label === t.ref) ?? [];
+        const g = matches.length === 1 ? matches[0] : undefined;
+        const f = !gaps
+          ? `gap ${t.ref}: no gap relevance (the query does not compile)`
+          : !g
+            ? `gap ${t.ref}: ${matches.length} gaps with that label (${gaps.gaps.map((x) => x.ref.label).join(', ')})`
+            : g.relevant !== t.relevant
+              ? `gap ${t.ref}: relevant ${g.relevant}, expected ${t.relevant}`
+              : 'provenBy' in t && (g.kind === 'CoverageCell' || !g.provenBy.includes(t.provenBy))
+                ? `gap ${t.ref}: proven by ${g.kind === 'CoverageCell' ? '-' : g.provenBy.join(', ')}, expected ${t.provenBy}`
+                : null;
+        if (f) report.failures.push(f);
+        else report.gapPassed += 1;
+        continue;
+      }
+      if (t.fact === 'selection' || t.fact === 'disposition') {
+        report.selectionApplicable += 1;
+        const f = s4 ? checkSelectionFact(t, s4Keys, s4Nodes) : `${t.fact} ${t.ref}: no S4 result (the query does not author the three rules)`;
+        if (f) report.failures.push(f);
+        else report.selectionPassed += 1;
+        continue;
+      }
+      if (t.fact === 'stagesRun' && pv) continue; // checked by checkPreviewExpectations
+      if (t.fact === 'criterion' && pv) {
+        // Preview criteria (§3.5 Preview evaluation): a Marker for a hole, the complete sibling's value.
+        report.previewCriterionApplicable += 1;
+        const f = checkPreviewCriterionFact(t, pv);
+        if (f) report.failures.push(f);
+        else report.previewCriterionPassed += 1;
+        continue;
+      }
+      if (t.fact === 'criterion') {
+        report.criterionApplicable += 1;
+        const f = checkCriterionFact(t, criteria(t.ref));
+        if (f) report.failures.push(f);
+        else report.criterionPassed += 1;
+        continue;
+      }
+      if (t.fact === 'possibleClasses') {
+        // Key-level possible classes (contract §4.2 step B, §3.7), checked directly over the bound selection.
+        report.possibleClassesApplicable += 1;
+        const k = boundKeys.get(t.ref);
+        const got = typeof compiledQuery === 'string' ? compiledQuery : !bound || !k ? `no S4 key ${t.ref}` : experimentalPossibleClasses({ package: compiledQuery, query: query.query.id, s4: bound, key: k }).possibleClasses;
+        if (JSON.stringify(got) === JSON.stringify(t.value)) report.possibleClassesPassed += 1;
+        else report.failures.push(`possibleClasses ${t.ref}: ${JSON.stringify(got)}, expected ${JSON.stringify(t.value)}`);
+        continue;
+      }
+      if (t.fact === 'classification') {
+        // Per-record classification (contract §3.3), checked directly over the query-bound selection.
+        report.classificationApplicable += 1;
+        const f = checkClassificationFact(t, classification(t.ref));
+        if (f) report.failures.push(f);
+        else report.classificationPassed += 1;
+        continue;
+      }
+      if (t.fact === 'admissibility') {
+        report.admissibilityApplicable += 1;
+        const f = checkAdmissibilityFact(t, adm ? admNodes.get(t.ref) : undefined);
+        if (f) report.failures.push(f);
+        else report.admissibilityPassed += 1;
+        // Falls through: the per-rule one-way implications below still apply.
+      }
+      if (t.fact === 'assertionKindScope') {
+        report.assertionKindApplicable += 1;
+        const p = akNodes.get(t.ref);
+        const got = akr ? akOutcome(t.ref) : 'the query does not author the assertionKind rule';
+        const causes = p?.assertionKind.outcome === 'Unresolved' ? causeSet(p.assertionKind.findings) : [];
+        if (got !== t.value) report.failures.push(`assertionKindScope ${t.ref}: ${got}, expected ${t.value}`);
+        else if ('causes' in t && JSON.stringify(causes) !== JSON.stringify(t.causes)) report.failures.push(`assertionKindScope ${t.ref}: causes ${JSON.stringify(causes)}`);
+        else report.assertionKindPassed += 1;
+        continue;
+      }
+      if (t.fact === 'episodeScope') {
+        report.episodeApplicable += 1;
+        const p = episodeNodes.get(t.ref);
+        const got = epi ? episodeOutcome(t.ref) : 'the query does not author the same-episode rule';
+        const causes = p?.episode.outcome === 'Unresolved' ? causeSet(p.episode.findings) : [];
+        if (got !== t.value) report.failures.push(`episodeScope ${t.ref}: ${got}, expected ${t.value}`);
+        else if ('causes' in t && JSON.stringify(causes) !== JSON.stringify(t.causes)) report.failures.push(`episodeScope ${t.ref}: causes ${JSON.stringify(causes)}`);
+        else report.episodePassed += 1;
+        continue;
+      }
+      if (t.fact === 'encounterScope') {
+        report.encounterApplicable += 1;
+        const f = checkEncounterFact(t, enc);
+        if (f) report.failures.push(f);
+        else report.encounterPassed += 1;
+        continue;
+      }
+      if (t.fact === 'admissibility' && enc) {
+        // Combined S3 fact (checked directly above); two values also imply the encounter outcome.
+        const implied = t.value === 'Admissible' ? 'Matches' : t.value === 'Inadmissible' && t.reason === 'OtherEncounter' ? 'DoesNotMatch' : null;
+        if (implied) {
+          report.encounterOneWay += 1;
+          const got = outcomeOf(enc.get(t.ref));
+          if (got !== implied) report.failures.push(`admissibility ${t.value} ${t.ref}: encounter check ${got}, implied ${implied}`);
+        }
+      }
+      if (t.fact === 'admissibility' && akr) {
+        const implied = t.value === 'Admissible' ? 'Matches' : t.value === 'Inadmissible' && t.reason === 'AssertionKindNotAllowed' ? 'DoesNotMatch' : null;
+        if (implied) {
+          report.assertionKindOneWay += 1;
+          const got = akOutcome(t.ref);
+          if (got !== implied) report.failures.push(`admissibility ${t.value} ${t.ref}: assertionKind check ${got}, implied ${implied}`);
+        }
+      }
+      if (t.fact === 'admissibility' && epi) {
+        // Same implication for the episode rule: Admissible means every rule holds.
+        const implied = t.value === 'Admissible' ? 'Matches' : t.value === 'Inadmissible' && t.reason === 'OtherEpisode' ? 'DoesNotMatch' : null;
+        if (implied) {
+          report.episodeOneWay += 1;
+          const got = episodeOutcome(t.ref);
+          if (got !== implied) report.failures.push(`admissibility ${t.value} ${t.ref}: episode check ${got}, implied ${implied}`);
+        }
+      }
+      if (S2_FACTS.has(t.fact)) {
+        report.s2Applicable += 1;
+        const got = nodes.get(t.ref)?.candidacy;
+        if (got === t.value) report.s2Passed += 1;
+        else report.failures.push(`candidacy ${t.ref}: ${got ?? 'not classified'}, expected ${t.value}`);
+        continue;
+      }
+      if (t.fact === 'admissibility') continue;
+      const s1 = S1_FACTS.has(t.fact) || (t.fact === 'diagnostic' && S1_DIAGNOSTICS.has(t.code));
+      if (!s1) {
+        report.outOfScope += 1;
+        continue;
+      }
+      report.s1Applicable += 1;
+      const f = checkFact(t, result);
+      if (f) report.failures.push(f);
+      else report.s1Passed += 1;
+    }
+    // One-way check: an S1-stage cause attribution must be an active S1 defect of that key.
+    // (Absence of attribution proves nothing: attribution also depends on S5/S6 materiality.)
+    for (const a of (exp.causeAttribution ?? []) as Json[]) {
+      if (a.stage !== 'S1') continue;
+      report.s1AttributionOneWay += 1;
+      const k = keyOf(result, a.origin);
+      if (!k?.activeDefects.some((d) => d.cause === a.cause && d.reason === a.reason)) {
+        report.failures.push(`causeAttribution ${a.cause}/${a.reason} @${a.origin}: not an active S1 defect`);
+      }
+    }
+    // One-way check: an S2-stage cause attribution must be an S2 finding on that revision (any variant).
+    // (Absence proves nothing: attribution of S2 causes also depends on S5/S6 materiality.)
+    for (const a of (exp.causeAttribution ?? []) as Json[]) {
+      if (a.stage !== 'S2') continue;
+      report.s2AttributionOneWay += 1;
+      const hit = [...nodes.entries()].some(
+        ([id, n]) => id.split('#')[0] === a.origin && n.candidacy === 'Unresolved' && n.findings.some((f) => f.cause === a.cause && f.reason === a.reason),
+      );
+      if (!hit) report.failures.push(`causeAttribution ${a.cause}/${a.reason} @${a.origin}: not an S2 finding`);
+    }
+    // One-way: an S3 attribution with an encounter reason must be a finding of the encounter check.
+    for (const a of (exp.causeAttribution ?? []) as Json[]) {
+      if (a.stage !== 'S3' || !ENCOUNTER_REASONS.has(a.reason) || !enc) continue;
+      report.encounterOneWay += 1;
+      const refs = (a.origin === 'context.encounter' ? a.refs : [a.origin]) as string[];
+      for (const ref of refs) {
+        const p = [...enc.entries()].filter(([id]) => id === ref || id.split('#')[0] === ref).map(([, v]) => v);
+        const hit = p.some(
+          (x) => x.kind === 'node' && x.encounter.outcome === 'Unresolved' && x.encounter.findings.some((f) => f.cause === a.cause && f.reason === a.reason),
+        );
+        if (!hit) report.failures.push(`causeAttribution ${a.cause}/${a.reason} @${ref}: not an encounter-check finding`);
+      }
+    }
+    // One-way: an S3 attribution with an assertionKind reason must be a finding of that check.
+    for (const a of (exp.causeAttribution ?? []) as Json[]) {
+      if (a.stage !== 'S3' || !ASSERTION_KIND_REASONS.has(a.reason) || !akr) continue;
+      report.assertionKindOneWay += 1;
+      const hit = [...akNodes.entries()].some(
+        ([id, x]) => (id === a.origin || id.split('#')[0] === a.origin) && x.assertionKind.outcome === 'Unresolved' && x.assertionKind.findings.some((f) => f.cause === a.cause && f.reason === a.reason),
+      );
+      if (!hit) report.failures.push(`causeAttribution ${a.cause}/${a.reason} @${a.origin}: not an assertionKind-check finding`);
+    }
+    // One-way: an S3 attribution with an episode reason must be a finding of the episode check.
+    for (const a of (exp.causeAttribution ?? []) as Json[]) {
+      if (a.stage !== 'S3' || !EPISODE_REASONS.has(a.reason) || !epi) continue;
+      report.episodeOneWay += 1;
+      const refs = (a.origin === 'context.episode' ? a.refs : [a.origin]) as string[];
+      for (const ref of refs) {
+        const hit = [...episodeNodes.entries()].some(
+          ([id, x]) => (id === ref || id.split('#')[0] === ref) && x.episode.outcome === 'Unresolved' && x.episode.findings.some((f) => f.cause === a.cause && f.reason === a.reason),
+        );
+        if (!hit) report.failures.push(`causeAttribution ${a.cause}/${a.reason} @${ref}: not an episode-check finding`);
+      }
+    }
+    // One-way (§4.1, §4.2 step C): a coverage or gap attribution is a relevant gap with that cause and reason.
+    for (const a of (exp.causeAttribution ?? []) as Json[]) {
+      if (a.stage !== 'coverage' && a.stage !== 'gap') continue;
+      report.gapOneWay += 1;
+      const matches = gaps?.gaps.filter((x) => x.ref.label === a.origin) ?? [];
+      const g = matches.length === 1 ? matches[0] : undefined;
+      if (!g?.relevant || !g.findings.some((x) => x.cause === a.cause && x.reason === a.reason)) report.failures.push(`causeAttribution ${a.cause}/${a.reason} @${a.origin}: not a relevant gap with that finding`);
+    }
+    // One-way (§4.2): a Known result requires every cell Complete and no relevant failure or rejected item.
+    if (exp.evidence?.status === 'Known' && gaps) {
+      report.gapOneWay += 1;
+      if (gaps.relevant.length > 0) report.failures.push(`Known result with relevant gap(s) ${gaps.relevant.map((x) => x.label).join(', ')}`);
+    }
+    // One-way (contract §4.2 rules 2-3): a Known result is supported only by selected revisions.
+    if (exp.evidence?.status === 'Known' && s4) {
+      const selected = new Set(s4.selected.map((x) => showRev(x.node.revision) + (x.node.digest ? `#${x.node.digest}` : '')));
+      for (const id of exp.evidence.supportingEvidenceIds as string[]) {
+        report.selectionOneWay += 1;
+        if (!selected.has(id)) report.failures.push(`supportingEvidenceIds ${id}: not selected in S4`);
+      }
+    }
+    // One-way check (contract §5.1): every listed candidate ID has in-domain or unresolved candidacy.
+    // The field itself is an S6 output and stays out of scope; the converse is not checked.
+    for (const id of (exp.evidence?.candidateEvidenceIds ?? []) as string[]) {
+      report.s2CandidateIdsOneWay += 1;
+      const c = nodes.get(id)?.candidacy;
+      if (c !== 'InDomain' && c !== 'Unresolved') report.failures.push(`candidateEvidenceIds ${id}: S2 candidacy ${c ?? 'none'}`);
+    }
+    report.outOfScope += countExpected(exp) - ((exp.traceAssertions ?? []) as unknown[]).length - previewFields;
+    const checked =
+      report.s1Applicable +
+      report.s1AttributionOneWay +
+      report.s2Applicable +
+      report.s2AttributionOneWay +
+      report.s2CandidateIdsOneWay +
+      report.encounterApplicable +
+      report.encounterOneWay +
+      report.episodeApplicable +
+      report.episodeOneWay +
+      report.assertionKindApplicable +
+      report.assertionKindOneWay +
+      report.admissibilityApplicable +
+      report.selectionApplicable +
+      report.selectionOneWay +
+      report.criterionApplicable +
+      report.classificationApplicable +
+      report.possibleClassesApplicable +
+      report.previewCriterionApplicable +
+      report.previewApplicable +
+      report.coverageApplicable +
+      report.gapApplicable +
+      report.gapOneWay;
+    if (checked === 0) missing.push(fx.id);
+  }
+  return { reports, noApplicableAssertions: missing };
+}
+
+/** The fixture query (shared or inline) wrapped in a minimal program and compiled, or why not. */
+function compileFixtureQuery(query: Json): CompiledPackage | string {
+  const r = experimentalCompile({
+    ppl: { languageVersion: 'ppl-1', capabilityProfileVersion: 'ppl-core-v0' },
+    package: { id: 'fixture', state: 'Draft' },
+    references: [],
+    valueSets: query.valueSets,
+    applicability: { id: 'fixture.scope', kind: 'Predicate', expr: { all: [] } },
+    nodes: [{ ...query.query, subject: 'patient' }, query.predicate],
+  } as JsonValue);
+  return r.outcome === 'Compiled' ? r.package : `query does not compile: ${r.diagnostics.map((d) => `${d.code} ${d.location}`).join('; ')}`;
+}
+
+interface PreviewRun {
+  readonly result: PreviewQueryResult | string;
+  readonly markers: unknown;
+  readonly publication: string;
+  /** Normal compilation of the same program: a well-formed CompileFailure with only hole diagnostics. */
+  readonly normalBlockedByHolesOnly: boolean;
+}
+
+/** The fixture query exactly as written, wrapped as for compileFixtureQuery, preview-compiled and evaluated. */
+function previewFixtureQuery(query: Json, input: Json): PreviewRun | string {
+  const program = {
+    ppl: { languageVersion: 'ppl-1', capabilityProfileVersion: 'ppl-core-v0' },
+    package: { id: 'fixture', state: 'Draft' },
+    references: [],
+    valueSets: query.valueSets,
+    applicability: { id: 'fixture.scope', kind: 'Predicate', expr: { all: [] } },
+    nodes: [{ ...query.query, subject: 'patient' }, query.predicate],
+  } as JsonValue;
+  const r = experimentalCompilePreview(program);
+  if (r.outcome !== 'PreviewPackage') return `query does not preview-compile: ${r.diagnostics.map((d) => `${d.code} ${d.location}`).join('; ')}`;
+  const normal = experimentalCompile(program);
+  let result: PreviewQueryResult | string;
+  try {
+    result = experimentalEvaluatePreviewQuery({
+      package: r.package,
+      query: query.query.id,
+      subject: input.context.subject,
+      revisions: input.records as JsonValue[],
+      retractions: input.retractions as JsonValue[],
+      contextEncounter: input.context.encounter as EncounterBinding,
+      contextEpisode: input.context.episode as EpisodeBinding,
+    });
+  } catch (e) {
+    result = `preview evaluation failed: ${(e as Error).message}`;
+  }
+  return {
+    result,
+    markers: r.package.markers,
+    publication: r.package.publication,
+    normalBlockedByHolesOnly: normal.outcome === 'CompileFailure' && normal.wellFormed && normal.diagnostics.every((d) => d.code === 'UNRESOLVED_AUTHORING_HOLE'),
+  };
+}
+
+/** Checks a preview fixture's top-level expectations and `stagesRun` fact; returns how many top-level fields it checked. */
+function checkPreviewExpectations(exp: Json, pv: PreviewRun | string, report: FixtureReport): number {
+  let fields = 0;
+  const run = typeof pv === 'string' ? null : pv;
+  const result = run && typeof run.result !== 'string' ? run.result : null;
+  const check = (what: string, ok: boolean, got: unknown) => {
+    report.previewApplicable += 1;
+    if (ok) report.previewPassed += 1;
+    else report.failures.push(`preview ${what}: ${typeof pv === 'string' ? pv : typeof pv.result === 'string' ? pv.result : JSON.stringify(got)}`);
+  };
+  if ('outcome' in exp) {
+    fields += 1;
+    check('outcome', exp.outcome === 'PreviewOnly' && !!run?.normalBlockedByHolesOnly && result?.mode === 'preview', run?.normalBlockedByHolesOnly);
+  }
+  if ('markers' in exp) {
+    fields += 1;
+    const own = (exp.markers as Json[]).find((m) => m.output === result?.query);
+    check('markers', !!run && isDeepStrictEqual(run.markers, exp.markers) && !!own && isDeepStrictEqual(own.holes, result?.marker.holes), [run?.markers, result?.marker]);
+  }
+  if ('publication' in exp) {
+    fields += 1;
+    check('publication', run?.publication === exp.publication && result?.publication === exp.publication, result?.publication);
+  }
+  // The preview output has no evidence result and no Needs at all: it never computes either.
+  if ('evidence' in exp) {
+    fields += 1;
+    check('evidence', exp.evidence === null && !!result && !('evidence' in result), result);
+  }
+  if ('needs' in exp) {
+    fields += 1;
+    const none = isDeepStrictEqual(exp.needs, { evidence: null, deferred: null, obligations: [] });
+    check('needs', none && !!result && !('needs' in result), result);
+  }
+  for (const t of (exp.traceAssertions ?? []) as Json[]) {
+    if (t.fact !== 'stagesRun') continue;
+    check('stagesRun', !!result && isDeepStrictEqual(result.stagesRun, t.value), result?.stagesRun);
+  }
+  return fields;
+}
+
+/** A `cell`, `notCurrent` or coverage `diagnostic` fact against the gap-relevance result. */
+function checkCoverageFact(t: Json, r: GapRelevanceResult | null): string | null {
+  const head = t.fact === 'diagnostic' ? `diagnostic ${t.code} ${t.ref}` : `${t.fact} ${t.source ?? t.ref}`;
+  if (!r) return `${head}: no gap relevance (the query does not compile)`;
+  if (t.fact === 'cell') {
+    const c = r.cells.find((x) => x.source === t.source);
+    return c?.status === t.value ? null : `${head}: ${c?.status ?? 'no cell'}, expected ${t.value}`;
+  }
+  if (t.fact === 'notCurrent') return r.notCurrent.filter((x) => x.label === t.ref).length === 1 ? null : `${head}: not exactly one not-current statement with that label`;
+  return r.diagnostics.some((d) => d.code === t.code && d.ref.label === t.ref) ? null : `${head}: not reported (${JSON.stringify(r.diagnostics)})`;
+}
+
+/** A preview `criterion` fact: `Marker` for a hole, otherwise the complete sibling's value (and causes). */
+function checkPreviewCriterionFact(t: Json, pv: PreviewRun | string): string | null {
+  const head = `preview criterion ${t.criterion} ${t.ref}`;
+  if (typeof pv === 'string') return `${head}: ${pv}`;
+  if (typeof pv.result === 'string') return `${head}: ${pv.result}`;
+  if (pv.result.contract !== 'IncompleteCriteria') return `${head}: no stage ran (whole-contract hole)`;
+  const records: PreviewRecord[] = pv.result.keys.flatMap((k) =>
+    k.possibilities.flatMap((p) => (p.possibility.kind === 'node' && showRev(p.possibility.node.revision) + (p.possibility.node.digest ? `#${p.possibility.node.digest}` : '') === t.ref ? [p.record] : [])),
+  );
+  const r = records[0];
+  if (records.length !== 1 || !r) return `${head}: ${records.length} possibilities`;
+  if (r.outcome !== 'Evaluated') return `${head}: NotEvaluated(${r.reason}), expected ${t.value}`;
+  const v = r[t.criterion as 'establishes' | 'refutes']?.result;
+  if (!v) return `${head}: unknown criterion`;
+  if (v.value !== t.value) return `${head}: ${v.value}, expected ${t.value}`;
+  if (v.value === 'Marker' && !pv.result.marker.holes.includes(v.hole)) return `${head}: marker ${v.hole} is not a query hole`;
+  const causes = v.value === 'Unknown' ? causeSet(v.findings) : [];
+  if ('causes' in t && JSON.stringify(causes) !== JSON.stringify(t.causes)) return `${head}: causes ${JSON.stringify(causes)}`;
+  return null;
+}
+
+/** A `classification` fact (README vocabulary): the class, and with Unclassified, when stated, its causes. */
+function checkClassificationFact(t: Json, r: ClassificationResult | string): string | null {
+  if (typeof r === 'string') return `classification ${t.ref}: ${r}`;
+  if (r.outcome !== 'Evaluated') return `classification ${t.ref}: NotEvaluated(${r.reason}), expected ${t.value}`;
+  if (r.classification.class !== t.value) return `classification ${t.ref}: ${r.classification.class}, expected ${t.value}`;
+  const causes = r.classification.class === 'Unclassified' ? r.classification.causes : [];
+  if ('causes' in t && JSON.stringify(causes) !== JSON.stringify(t.causes)) return `classification ${t.ref}: causes ${JSON.stringify(causes)}`;
+  return null;
+}
+
+/** A `criterion` fact (README vocabulary): value, and with Unknown the set of causes. */
+function checkCriterionFact(t: Json, r: CriteriaResult | string): string | null {
+  if (typeof r === 'string') return `criterion ${t.criterion} ${t.ref}: ${r}`;
+  if (r.outcome !== 'Evaluated') return `criterion ${t.criterion} ${t.ref}: NotEvaluated(${r.reason}), expected ${t.value}`;
+  const v = r[t.criterion as 'establishes' | 'refutes']?.result;
+  if (!v) return `criterion ${t.ref}: unknown criterion ${t.criterion}`;
+  if (v.value !== t.value) return `criterion ${t.criterion} ${t.ref}: ${v.value}, expected ${t.value}`;
+  const causes = v.value === 'Unknown' ? causeSet(v.findings) : [];
+  if ('causes' in t && JSON.stringify(causes) !== JSON.stringify(t.causes)) return `criterion ${t.criterion} ${t.ref}: causes ${JSON.stringify(causes)}`;
+  return null;
+}
+
+/** S1 step 1 payload equality (CANONICALIZATION.md) against the resolver's payload module. */
+function checkCanonicalization(fx: Json, report: FixtureReport): void {
+  const raws = (fx.input.rawOccurrences as string[]).map((s) => JSON.parse(s) as Json);
+  const ids = raws.map((o) => payloadIdentity(o, 'revision'));
+  for (const v of fx.expected.variants as Json[]) {
+    for (const o of v.occurrences as number[]) {
+      report.s1Applicable += 2;
+      const id = ids[o];
+      if (id?.canonical === v.canonicalBytes) report.s1Passed += 1;
+      else report.failures.push(`occurrence ${o}: canonical bytes ${id?.canonical}`);
+      if (id?.digest === v.digest) report.s1Passed += 1;
+      else report.failures.push(`occurrence ${o}: digest ${id?.digest}`);
+    }
+  }
+  report.s1Applicable += 1;
+  const groups = new Set(ids.map((i) => i.digest)).size;
+  if (groups === (fx.expected.variants as unknown[]).length) report.s1Passed += 1;
+  else report.failures.push(`variant partition: ${groups} distinct payloads`);
+  for (const u of fx.expected.undeclaredFields as Json[]) {
+    report.s1Applicable += 1;
+    if (JSON.stringify(ids[u.occurrence]?.undeclaredPaths) === JSON.stringify([...u.paths].sort())) report.s1Passed += 1;
+    else report.failures.push(`undeclared paths of occurrence ${u.occurrence}`);
+  }
+}
+
+/** Top-level expected fields plus trace assertions; used only to count what is not checked. */
+function countExpected(exp: Json): number {
+  // `stages` only declares a partial-stage fixture's scope; it is not an expectation.
+  const fields = Object.keys(exp).filter((k) => k !== 'traceAssertions' && k !== 'stages').length;
+  return fields + ((exp.traceAssertions ?? []) as unknown[]).length;
+}

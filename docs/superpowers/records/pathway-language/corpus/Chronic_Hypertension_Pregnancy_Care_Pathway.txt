@@ -1,0 +1,644 @@
+CHRONIC HYPERTENSION IN PREGNANCY: CLINICAL CARE PATHWAY
+Evidence-Based Decision Support for Comprehensive Management
+=========================================================================
+
+BACKGROUND AND EPIDEMIOLOGY
+
+Chronic hypertension complicates 5-8% of all pregnancies in the United States and represents a significant risk factor for adverse maternal and fetal outcomes. The condition is defined as hypertension that predates pregnancy or is diagnosed before 20 weeks of gestation. Women with chronic hypertension face substantially elevated risks including superimposed preeclampsia (17-25% incidence versus 3-5% in normotensive women), placental abruption, preterm birth, fetal growth restriction, and maternal cardiovascular complications.
+
+Recent landmark evidence from the Chronic Hypertension and Pregnancy (CHAP) trial, published in the New England Journal of Medicine in 2022, fundamentally changed clinical practice by demonstrating improved outcomes with treatment of mild chronic hypertension. This led to updated ACOG and SMFM recommendations in 2022, lowering the treatment threshold from 160/110 mmHg to 140/90 mmHg with a treatment goal of maintaining blood pressure below 140/90 mmHg throughout pregnancy.
+
+DEFINITIONS AND DIAGNOSTIC CRITERIA
+
+Chronic Hypertension Definition
+Chronic hypertension in pregnancy is defined by ACOG Practice Bulletin 203 as systolic blood pressure (SBP) ≥140 mmHg OR diastolic blood pressure (DBP) ≥90 mmHg documented on at least two occasions at least 4 hours apart, either documented before pregnancy or diagnosed before 20 weeks of gestation. Hypertension first identified during pregnancy that persists beyond 12 weeks postpartum is reclassified retrospectively as chronic hypertension.
+
+Severity Classification
+MILD (NON-SEVERE): SBP 140-159 mmHg OR DBP 90-109 mmHg
+SEVERE: SBP ≥160 mmHg OR DBP ≥110 mmHg
+
+Differentiation from Other Hypertensive Disorders of Pregnancy
+
+CHRONIC HYPERTENSION
+- Onset: Pre-pregnancy or diagnosed <20 weeks gestation
+- Features: Pre-existing or early diagnosis; no proteinuria required for diagnosis
+- SNOMED CT: 8762007 (Chronic hypertension in obstetric context)
+
+GESTATIONAL HYPERTENSION
+- Onset: ≥20 weeks gestation
+- Features: New-onset hypertension in previously normotensive patient; NO proteinuria or severe features
+- SNOMED CT: 48194001 (Pregnancy-induced hypertension)
+
+PREECLAMPSIA
+- Onset: ≥20 weeks gestation
+- Features: New-onset hypertension WITH proteinuria (≥300 mg/24 hours or protein:creatinine ratio ≥0.3) OR severe features without proteinuria
+- SNOMED CT: 15938005 (Preeclampsia)
+
+SUPERIMPOSED PREECLAMPSIA
+- Onset: ≥20 weeks gestation in patient with pre-existing chronic hypertension
+- Features: New-onset proteinuria OR severe features in patient with chronic hypertension
+- SNOMED CT: 10759031000119106 (Pre-existing hypertensive heart disease in mother complicating pregnancy)
+
+Preeclampsia Severe Features (Any Single Feature Qualifies)
+
+Blood Pressure Criteria:
+- SBP ≥160 mmHg OR DBP ≥110 mmHg on two occasions at least 4 hours apart (unless antihypertensive therapy initiated before this time)
+
+Laboratory Criteria:
+- Thrombocytopenia: Platelet count <100,000/µL
+- Renal insufficiency: Serum creatinine >1.1 mg/dL or doubling of serum creatinine in absence of other renal disease
+- Hepatic dysfunction: Liver transaminases elevated to twice the upper limit of normal (AST or ALT >2× ULN)
+
+Clinical Criteria:
+- Pulmonary edema
+- New-onset persistent headache unresponsive to medication and not accounted for by alternative diagnoses
+- Visual disturbances (photopsia, scotomata, cortical blindness, blurred vision)
+
+INITIAL PRENATAL ASSESSMENT AND BASELINE EVALUATION
+
+At the first prenatal visit for women with known or suspected chronic hypertension, comprehensive baseline evaluation is essential to enable later detection of superimposed preeclampsia and guide treatment intensity.
+
+Required Baseline Laboratory Evaluation
+
+RENAL FUNCTION PANEL:
+- Serum creatinine (LOINC 2160-0): Baseline <1.1 mg/dL expected
+- Blood urea nitrogen/BUN (LOINC 3094-0)
+- Serum electrolytes including potassium (LOINC 2823-3)
+
+HEPATIC FUNCTION PANEL:
+- Aspartate aminotransferase/AST (LOINC 1920-8)
+- Alanine aminotransferase/ALT (LOINC 1742-6)
+
+HEMATOLOGIC EVALUATION:
+- Complete blood count with differential (LOINC 57021-8)
+- Platelet count (LOINC 777-3): Baseline typically >150,000/µL
+
+PROTEINURIA ASSESSMENT:
+- Spot urine protein:creatinine ratio (LOINC 34366-5)
+- If P:Cr ratio >0.15, obtain 24-hour urine total protein (LOINC 21482-5) for quantification
+- Urine protein dipstick (LOINC 5804-0) as screening tool
+
+CARDIAC ASSESSMENT (When Indicated):
+- 12-lead electrocardiogram (CPT 93000): Recommended if hypertension duration >4 years, patient age >30 years, or additional cardiac risk factors present
+- Echocardiogram (CPT 93306): Consider for long-standing hypertension or symptoms suggesting cardiac involvement
+
+Indications for Secondary Hypertension Workup
+
+Secondary hypertension affects 10-14% of pregnant women with chronic hypertension. Consider comprehensive evaluation when ANY of the following are present:
+
+- Hypertension resistant to ≥2 antihypertensive medications at therapeutic doses
+- Diagnosis of hypertension at age <30 years
+- Strong family history of kidney disease
+- Unexplained hypokalemia (serum potassium <3.5 mEq/L)
+- Baseline serum creatinine >1.1 mg/dL suggesting renal disease
+- Episodic symptoms: palpitations, headaches, diaphoresis (concerning for pheochromocytoma)
+- Physical examination findings: truncal obesity with purple striae (Cushing syndrome), renal artery bruit (renovascular disease)
+
+When secondary hypertension is suspected, subspecialty consultation with Maternal-Fetal Medicine and appropriate medical specialists (nephrology, endocrinology, cardiology) is recommended for comprehensive evaluation and co-management.
+
+RISK STRATIFICATION FOR SUPERIMPOSED PREECLAMPSIA
+
+Women with chronic hypertension have a baseline 17-25% risk of developing superimposed preeclampsia compared to 3-5% risk in the general obstetric population. Risk stratification guides prophylactic interventions and surveillance intensity.
+
+High-Risk Factors (Any Single Factor Warrants Aspirin Prophylaxis)
+- History of preeclampsia in prior pregnancy
+- Multifetal gestation (twins, triplets, or higher-order multiples)
+- Chronic hypertension (the population addressed by this pathway)
+- Pregestational diabetes mellitus (type 1 or type 2)
+- Chronic kidney disease (baseline creatinine >1.1 mg/dL or known renal disease)
+- Autoimmune disease: systemic lupus erythematosus or antiphospholipid syndrome
+
+Moderate-Risk Factors (≥2 Factors Warrant Aspirin Prophylaxis)
+- Nulliparity (first pregnancy)
+- Maternal age ≥35 years
+- Body mass index (BMI) >30 kg/m² (obesity)
+- Family history of preeclampsia (mother or sister affected)
+- Sociodemographic factors: African American/Black race, lower socioeconomic status
+- Personal history factors: previous adverse pregnancy outcome, interpregnancy interval >10 years
+
+ASPIRIN PROPHYLAXIS PROTOCOL
+
+USPSTF 2021 Grade B Recommendation and ACOG Practice Advisory:
+Prescribe low-dose aspirin 81 mg orally once daily initiated between 12-28 weeks of gestation (optimal timing: before 16 weeks) and continued until delivery.
+
+RxNorm Code: 1191 (aspirin)
+Common formulation: Aspirin 81 mg oral tablet (RxCUI 243670)
+
+Evidence Base:
+Meta-analyses demonstrate aspirin prophylaxis in high-risk women reduces:
+- Preeclampsia risk: Relative risk (RR) 0.85 (95% CI 0.78-0.92)
+- Preterm birth risk: RR 0.80 (95% CI 0.74-0.87)
+- Small-for-gestational-age infants: RR 0.82 (95% CI 0.75-0.89)
+- Perinatal mortality: RR 0.79 (95% CI 0.68-0.91)
+
+Important: Aspirin initiated after 28 weeks of gestation is unlikely to provide maternal or fetal benefit for preeclampsia prevention. Early initiation is critical.
+
+ANTIHYPERTENSIVE TREATMENT TARGETS AND MEDICATIONS
+
+CHAP Trial Evidence and Updated Treatment Threshold
+
+Following the landmark Chronic Hypertension and Pregnancy (CHAP) trial published in the New England Journal of Medicine (April 2022), ACOG and SMFM updated recommendations:
+
+TREATMENT INITIATION THRESHOLD: ≥140/90 mmHg
+TREATMENT GOAL: <140/90 mmHg
+
+This represents a significant change from previous guidance, which recommended treatment only for blood pressure ≥160/110 mmHg for mild chronic hypertension. The CHAP trial demonstrated that active treatment to maintain BP <140/90 mmHg reduced adverse pregnancy outcomes including superimposed preeclampsia with severe features, medically indicated preterm birth <35 weeks, placental abruption, and fetal/neonatal death (30.2% versus 37.0% composite outcome; adjusted RR 0.82, 95% CI 0.74-0.92, P<0.001).
+
+First-Line Antihypertensive Medications (Safe in Pregnancy)
+
+LABETALOL (Beta-Blocker with Alpha-Blocking Activity)
+- Starting dose: 100-200 mg orally twice daily (BID)
+- Titration: Increase by 100-200 mg increments every 2-3 days as needed
+- Maximum dose: 2,400 mg/day total (typically divided BID or TID)
+- Frequency: BID to TID dosing
+- Contraindications: Asthma, symptomatic bradycardia, greater than first-degree heart block, decompensated heart failure
+- RxNorm: 6154 (labetalol ingredient)
+- Common formulations: 100 mg tablet (RxCUI 197807), 200 mg tablet (RxCUI 197808), 300 mg tablet (RxCUI 197809)
+- IV formulation: 5 mg/mL injection (RxCUI 204420) for acute severe hypertension
+
+NIFEDIPINE EXTENDED-RELEASE (Calcium Channel Blocker)
+- Starting dose: 30-60 mg orally once daily
+- Titration: May increase to 90-120 mg daily as needed
+- Maximum dose: 120 mg/day
+- Frequency: Once daily (QD) or twice daily (BID) for extended-release formulation
+- Contraindications: Tachycardia; avoid immediate-release formulation for chronic management (acceptable only for acute severe hypertension)
+- RxNorm: 7417 (nifedipine ingredient)
+- Common XL formulations: 30 mg XL tablet (RxCUI 198034), 60 mg XL tablet (RxCUI 198035), 90 mg XL tablet (RxCUI 1000124)
+- Immediate-release: 10 mg capsule (RxCUI 198033) for acute use only
+
+Second-Line Antihypertensive Medications
+
+METHYLDOPA (Centrally-Acting Alpha-2 Agonist)
+- Starting dose: 250 mg orally 2-3 times daily
+- Titration: Increase gradually every 2-3 days
+- Maximum dose: 2,000-3,000 mg/day divided into multiple doses
+- Notes: Longest safety track record in pregnancy; common side effects include sedation, fatigue, and depression; delayed onset of action (4-6 hours)
+- RxNorm: 6876 (methyldopa ingredient)
+- Common formulations: 250 mg tablet (RxCUI 197935), 500 mg tablet (RxCUI 197936)
+
+HYDRALAZINE ORAL (Direct Arterial Vasodilator)
+- Starting dose: 10 mg orally four times daily (QID)
+- Titration: Increase by 10-25 mg increments as needed
+- Maximum dose: 200-300 mg/day
+- Notes: Third-line agent due to reflex tachycardia and headache; often combined with beta-blocker to minimize reflex tachycardia
+- RxNorm: 5470 (hydralazine ingredient)
+- Common formulations: 10 mg tablet (RxCUI 197768), 25 mg tablet (RxCUI 197769), 50 mg tablet (RxCUI 197770)
+- IV formulation: 20 mg/mL injection (RxCUI 311701) for acute use
+
+THIAZIDE DIURETICS (Use with Caution)
+- Hydrochlorothiazide: 12.5-25 mg orally once daily
+- May continue if patient was taking pre-pregnancy for hypertension control
+- Theoretical concerns: May reduce plasma volume and potentially compromise uteroplacental perfusion
+- Not typically initiated de novo in pregnancy but may continue if already established
+- RxNorm: 5487 (hydrochlorothiazide ingredient)
+
+ABSOLUTELY CONTRAINDICATED MEDICATIONS (FDA Warnings)
+
+ACE INHIBITORS (Angiotensin-Converting Enzyme Inhibitors)
+All ACE inhibitors are CONTRAINDICATED in second and third trimesters (FDA Black Box Warning)
+- Examples: Lisinopril, enalapril, captopril, benazepril, fosinopril, perindopril, quinapril, ramipril, trandolapril
+- Fetal effects: Oligohydramnios, renal dysgenesis/failure, fetal growth restriction, hypocalvaria (skull hypoplasia), pulmonary hypoplasia, limb contractures, fetal death
+- Action: DISCONTINUE IMMEDIATELY upon pregnancy confirmation; switch to labetalol or nifedipine
+
+ARBs (Angiotensin II Receptor Blockers)
+All ARBs are CONTRAINDICATED in second and third trimesters (FDA Black Box Warning)
+- Examples: Losartan, valsartan, irbesartan, candesartan, olmesartan, telmisartan, azilsartan
+- Fetal effects: Same teratogenic profile as ACE inhibitors
+- Action: DISCONTINUE IMMEDIATELY upon pregnancy confirmation; switch to pregnancy-compatible agent
+
+OTHER CONTRAINDICATED AGENTS:
+- Renin inhibitors (aliskiren): Similar fetal risks to ACE-I/ARBs
+- Mineralocorticoid receptor antagonists (spironolactone, eplerenone): Theoretical anti-androgen effects; inadequate pregnancy safety data
+- Atenolol: Associated with fetal growth restriction and lower birth weights in multiple studies
+- Sodium nitroprusside: Risk of fetal cyanide toxicity with prolonged infusion
+
+ACUTE SEVERE HYPERTENSION MANAGEMENT (Hypertensive Emergency)
+
+Definition: Persistent SBP ≥160 mmHg OR DBP ≥110 mmHg for ≥15 minutes
+Action Required: Administer antihypertensive medication within 30-60 minutes to reduce stroke risk
+
+Acute Treatment Options (Choose ONE):
+
+IV LABETALOL (Preferred First-Line)
+- Initial dose: 10-20 mg IV push
+- Repeat dosing: 20-80 mg IV every 10-30 minutes as needed
+- Maximum cumulative dose: 300 mg total
+- Goal: Reduce BP to <160/110 mmHg (not to normalize completely)
+
+IV HYDRALAZINE
+- Initial dose: 5-10 mg IV push
+- Repeat dosing: 5-10 mg every 20-40 minutes as needed
+- Maximum cumulative dose: 20-30 mg
+- Note: Slower onset than labetalol; less predictable response
+
+ORAL NIFEDIPINE IMMEDIATE-RELEASE
+- Dose: 10-20 mg orally (capsule may be punctured and liquid administered sublingually for faster absorption)
+- Repeat: May repeat dose every 20-30 minutes if needed
+- Maximum: 180 mg/day
+- Advantage: Oral route accessible when IV access not available
+
+Goal of Acute Treatment:
+Reduce blood pressure to safe range (<160/110 mmHg) to prevent maternal cerebrovascular accident. Do NOT aim to normalize BP acutely as this may compromise uteroplacental perfusion. Once acute hypertension is controlled, transition to oral maintenance therapy.
+
+MONITORING PROTOCOLS FOR CHRONIC HYPERTENSION IN PREGNANCY
+
+Patient Warning Signs Requiring Immediate Evaluation
+
+Educate all patients with chronic hypertension to seek urgent obstetric evaluation for ANY of the following symptoms (possible superimposed preeclampsia or severe features):
+
+NEUROLOGICAL SYMPTOMS:
+- Severe, persistent headache unresponsive to acetaminophen
+- Visual disturbances: blurred vision, seeing spots (scotomata), flashing lights (photopsia), light sensitivity (photophobia), vision loss
+
+ABDOMINAL SYMPTOMS:
+- Severe right upper quadrant pain
+- Severe epigastric pain
+- Unexplained nausea or vomiting (especially in second or third trimester)
+
+CARDIOVASCULAR/RESPIRATORY SYMPTOMS:
+- Shortness of breath, difficulty breathing
+- Chest pain
+
+BLOOD PRESSURE AND EDEMA:
+- Home blood pressure reading ≥160/110 mmHg on two occasions
+- Sudden onset of facial or hand swelling (peripheral edema)
+
+FETAL CONCERNS:
+- Decreased fetal movement: <6 movements in 2 hours after 28 weeks (when fetal movement monitoring typically begins)
+
+Laboratory Surveillance Frequency
+
+Clinical Scenario | Laboratory Tests | Frequency
+---|---|---
+Chronic HTN, well-controlled on stable medications | CBC with platelets, serum creatinine, AST/ALT, urine P:Cr ratio | Baseline, then at 28-32 weeks, then as clinically indicated
+Chronic HTN, requiring medication titration or new symptoms | CBC with platelets, serum creatinine, AST/ALT, urine P:Cr ratio | Every 2-4 weeks or with each medication change
+Gestational hypertension without severe features | CBC with platelets, serum creatinine, AST/ALT, urine P:Cr ratio | Weekly
+Preeclampsia without severe features | CBC with platelets, serum creatinine, AST/ALT, urine P:Cr ratio | Weekly to twice weekly
+Preeclampsia with severe features or superimposed preeclampsia | CBC with platelets, serum creatinine, AST/ALT, LDH, urine P:Cr ratio | At least twice weekly; daily if inpatient
+
+Diagnostic Criteria for Superimposed Preeclampsia
+
+Diagnose superimposed preeclampsia in a patient with chronic hypertension when ANY of the following develop after 20 weeks of gestation:
+
+NEW-ONSET PROTEINURIA (if not present at baseline):
+- Urine protein:creatinine ratio ≥0.3 (LOINC 34366-5)
+- OR 24-hour urine protein ≥300 mg (LOINC 21482-5)
+
+SUDDEN INCREASE IN BLOOD PRESSURE:
+- Previously well-controlled BP suddenly requires additional medications
+- Progression to severe-range BP (≥160/110 mmHg) in previously mild hypertension
+
+NEW-ONSET SEVERE FEATURES:
+- Thrombocytopenia: Platelet count <100,000/µL (LOINC 777-3)
+- Renal insufficiency: Serum creatinine >1.1 mg/dL OR doubling of serum creatinine concentration (LOINC 2160-0)
+- Elevated liver enzymes: AST or ALT >2× upper limit of normal (LOINC 1920-8, 1742-6)
+- Pulmonary edema
+- New-onset severe headache or visual disturbances unresponsive to medication
+
+CRITICAL CLINICAL PEARL:
+New-onset thrombocytopenia is particularly diagnostic of superimposed preeclampsia. Platelet consumption does NOT occur with chronic hypertension or gestational hypertension alone. A dropping platelet count (<100,000/µL) in a patient with chronic hypertension after 20 weeks strongly suggests superimposed preeclampsia even in the absence of other findings.
+
+FETAL SURVEILLANCE AND ANTENATAL TESTING
+
+Antenatal Testing Protocol
+
+Condition | When to Start Testing | Frequency | Modality
+---|---|---|---
+Chronic HTN, well-controlled, no medications | 32-34 weeks | Weekly | NST or BPP
+Chronic HTN, controlled on medications | 32 weeks | Once to twice weekly | NST or BPP
+Chronic HTN, poorly controlled or requiring frequent medication adjustments | Earlier (individualized, possibly 28-30 weeks) | Twice weekly | NST or BPP
+Gestational hypertension or preeclampsia without severe features | At diagnosis | Twice weekly | NST or BPP
+Preeclampsia with severe features or superimposed preeclampsia | At diagnosis | Daily NST; consider continuous monitoring if inpatient | NST + ultrasound assessment
+
+NST = Non-stress test (CPT 59025)
+BPP = Biophysical profile with NST (CPT 76818) or without NST (CPT 76819)
+
+Growth Ultrasound Surveillance Protocol
+
+All patients with chronic hypertension should receive serial third-trimester growth ultrasounds due to increased risk of fetal growth restriction (FGR).
+
+TIMING AND FREQUENCY:
+- Baseline detailed anatomy scan at 18-22 weeks (CPT 76805, 76810, 76811)
+- Growth ultrasounds every 3-4 weeks beginning at 28-32 weeks (CPT 76816)
+- If fetal growth restriction diagnosed: Increase frequency to every 2-4 weeks based on severity
+
+Umbilical Artery Doppler Surveillance for Fetal Growth Restriction
+
+Umbilical artery (UA) Doppler velocimetry (CPT 76820) is the primary surveillance tool for fetal well-being in growth-restricted fetuses. Doppler assessment evaluates placental vascular resistance.
+
+Finding | Interpretation | Surveillance Protocol | Delivery Considerations
+---|---|---|---
+Normal UA Doppler with FGR | Mild placental insufficiency | Weekly Doppler initially; may extend to every 2-4 weeks if stable | Based on growth trajectory; typically ≥37 weeks
+Elevated systolic/diastolic (S/D) ratio >95th percentile | Increased placental resistance | Weekly Doppler studies | Consider delivery at 37-38 weeks
+Absent end-diastolic velocity (AEDV) | Severe placental insufficiency | 2-3 times weekly; strongly consider admission and corticosteroid administration | Delivery typically at 34-37 weeks depending on stability
+Reversed end-diastolic velocity (REDV) | Critical placental insufficiency; high risk imminent fetal demise | Hospitalization required; at least daily monitoring; continuous fetal monitoring | Delivery typically recommended regardless of gestational age if ≥32-34 weeks; if previable or early preterm, individualize with MFM consultation
+
+Middle Cerebral Artery Doppler (CPT 76821):
+In growth-restricted fetuses, MCA Doppler may be added to assess for fetal anemia secondary to hypoxia (brain-sparing physiology). MCA peak systolic velocity <5th percentile suggests cerebral vasodilation due to hypoxemia.
+
+DELIVERY TIMING RECOMMENDATIONS
+
+ACOG Evidence-Based Delivery Timing by Clinical Scenario
+
+Clinical Condition | Recommended Delivery Timing | Rationale
+---|---|---
+Chronic HTN, well-controlled without medications | 38 0/7 to 39 6/7 weeks | Low-risk scenario; await spontaneous labor or favorable cervix
+Chronic HTN, controlled on medications | 37 0/7 to 39 6/7 weeks | Slight increased risk; balance fetal maturity with ongoing risks
+Chronic HTN, poorly controlled despite maximum medical therapy | 36 0/7 to 37 6/7 weeks | High risk for maternal and fetal complications; fetal maturity sufficient
+Gestational hypertension without severe features | 37 0/7 weeks (or at diagnosis if presenting later) | Reduce risk of progression to preeclampsia with severe features
+Preeclampsia without severe features | 37 0/7 weeks (or at diagnosis if presenting later) | Prevent progression to severe features or eclampsia
+Preeclampsia with severe features (stable) | 34 0/7 weeks (or at diagnosis if presenting later) | High maternal and fetal risk; balance against prematurity
+Superimposed preeclampsia with severe features | 34 0/7 weeks | Very high risk for maternal and fetal complications
+
+Maternal Indications for IMMEDIATE Delivery Regardless of Gestational Age
+
+The following maternal conditions warrant delivery regardless of gestational age due to imminent risk of maternal death or severe morbidity:
+
+- Eclampsia (seizures)
+- HELLP syndrome with worsening laboratory parameters
+- Uncontrolled severe-range blood pressure despite maximum antihypertensive therapy
+- Pulmonary edema requiring intensive respiratory support
+- Stroke, myocardial infarction, or other acute cardiovascular event
+- Acute renal failure or rapidly declining renal function
+- Placental abruption with hemodynamic instability
+- Disseminated intravascular coagulation (DIC)
+
+Fetal Indications for Immediate or Expedited Delivery
+
+- Non-reassuring fetal heart rate tracing (Category II with progressive deterioration or Category III)
+- Reversed end-diastolic flow on umbilical artery Doppler with evidence of fetal compromise
+- Biophysical profile score ≤4/10
+- Intrauterine fetal demise
+
+INTRAPARTUM MANAGEMENT
+
+Magnesium Sulfate for Seizure Prophylaxis
+
+INDICATION:
+Preeclampsia with severe features or superimposed preeclampsia with severe features
+
+DOSING PROTOCOL:
+- Loading dose: 4-6 grams IV over 20-30 minutes
+- Maintenance: 1-2 g/hour continuous IV infusion
+- Renal adjustment: Reduce to 1 g/hour if serum creatinine >1.1 mg/dL
+- Duration: Continue during labor and for 24 hours postpartum
+
+RxNorm: 6585 (magnesium sulfate ingredient)
+Common formulation: Magnesium sulfate 500 mg/mL (50%) injection (RxCUI 1658259); Magnesium sulfate 40 mg/mL (4%) in dextrose injection (RxCUI 1658262)
+
+MONITORING REQUIREMENTS:
+- Deep tendon reflexes (DTRs) hourly: Absent reflexes may indicate toxicity
+- Respiratory rate: Maintain >12 breaths/minute; <12 is concerning for toxicity
+- Urine output: Maintain >30 mL/hour; oliguria increases toxicity risk
+- Serum magnesium levels if toxicity suspected: Therapeutic range 4-8 mEq/L; >10 mEq/L associated with loss of DTRs; >12 mEq/L respiratory depression; >15 mEq/L cardiac arrest
+
+REVERSAL AGENT:
+Calcium gluconate 1 gram (10 mL of 10% solution) IV push over 3 minutes for magnesium toxicity (respiratory depression, cardiac arrhythmia)
+
+Blood Pressure Management During Labor
+
+Continue antihypertensive medications during labor to maintain BP <140/90 mmHg. Oral medications may be continued or temporarily transitioned to IV formulations.
+
+For acute severe hypertension during labor (≥160/110 mmHg):
+- Administer IV labetalol or IV hydralazine per acute protocols above
+- Avoid excessive BP reduction which may compromise uteroplacental perfusion
+
+Mode of Delivery
+
+Chronic hypertension alone is NOT an indication for cesarean delivery. Vaginal delivery is preferred when obstetric conditions are favorable. Cesarean delivery is performed for standard obstetric indications (malpresentation, prior cesarean with unfavorable cervix, non-reassuring fetal status, etc.).
+
+POSTPARTUM CARE AND LONG-TERM FOLLOW-UP
+
+Postpartum Hypertension: Peak Risk Period
+
+Blood pressure typically peaks 3-7 days postpartum, representing the highest-risk period for maternal stroke and other cardiovascular complications. Over 50% of pregnancy-related strokes occur within 10 days of hospital discharge.
+
+Postpartum Monitoring Schedule
+
+Timeframe | Monitoring Requirement | Purpose
+---|---|---
+Within 72 hours of discharge | Blood pressure check (in-person or telehealth) for all women with hypertensive disorders during delivery hospitalization | Early detection of postpartum BP elevation
+Within 7-10 days postpartum | In-person office visit for all women with hypertensive disorders of pregnancy | Comprehensive evaluation; medication adjustment
+First week post-discharge | Daily home blood pressure monitoring (patient self-check AM and PM) | Early detection of severe-range BP requiring intervention
+6 weeks postpartum | Comprehensive postpartum visit; blood pressure assessment; transition planning to primary care | Ensure BP normalizing; evaluate for chronic hypertension if persistent
+
+Postpartum Blood Pressure Treatment Threshold
+
+The treatment threshold postpartum is more permissive than during pregnancy since fetal perfusion is no longer a concern:
+
+INITIATE OR RESUME ANTIHYPERTENSIVE THERAPY: BP ≥150/100 mmHg
+GOAL: Long-term goal transitions to non-pregnant guidelines (<130/80 mmHg per ACC/AHA 2017)
+
+Breastfeeding-Compatible Antihypertensive Medications
+
+Medication Category | Safe (Preferred) | Use with Caution | Avoid
+---|---|---|---
+Calcium Channel Blockers | Nifedipine (first choice postpartum) | - | -
+Beta-Blockers | Labetalol, Propranolol | Atenolol (infant bradycardia), Acebutolol (acebutolol and metabolite concentrate in breast milk), Metoprolol | -
+ACE Inhibitors | Enalapril (preferred ACE-I for breastfeeding), Captopril | Other ACE-I (limited data) | -
+ARBs | - | - | Insufficient safety data; avoid during breastfeeding
+Centrally Acting | - | Methyldopa, Clonidine | -
+Diuretics | - | High-dose diuretics (may suppress lactation) | -
+
+Nifedipine and labetalol have the most extensive safety data for breastfeeding. Enalapril is the ACE inhibitor of choice if this class is needed postpartum (ACE inhibitors are safe postpartum but were contraindicated during pregnancy).
+
+Contraception Counseling
+
+Women with chronic hypertension require special contraception considerations:
+
+SAFE OPTIONS:
+- Progesterone-only methods: Implant (Nexplanon), levonorgestrel IUD (Mirena, Skyla, Kyleena, Liletta), depot medroxyprogesterone acetate injection (Depo-Provera)
+- Copper IUD (Paragard)
+- Barrier methods
+
+CONTRAINDICATED:
+- Combined hormonal contraceptives (estrogen-containing pills, patch, ring) are relatively or absolutely contraindicated in women with chronic hypertension due to increased venous thromboembolism and stroke risk
+
+Long-Term Cardiovascular Risk Counseling
+
+Women with hypertensive disorders of pregnancy, including chronic hypertension complicated by superimposed preeclampsia, have significantly elevated lifetime cardiovascular risk:
+
+LONG-TERM RISKS:
+- Chronic hypertension: 2-4× increased risk
+- Cardiovascular disease (coronary artery disease, heart failure): 2-4× increased risk
+- Stroke: 2-3× increased risk
+- End-stage renal disease: Increased risk, especially if baseline renal dysfunction
+
+PREVENTIVE RECOMMENDATIONS:
+- Annual blood pressure assessment at primary care visits
+- Lifestyle modifications: DASH diet, weight management (BMI <30 kg/m²), regular aerobic exercise (150 minutes/week moderate intensity)
+- Cardiovascular risk assessment using ACC/AHA pooled cohort equations
+- Optimize management of other cardiovascular risk factors: diabetes, hyperlipidemia, smoking cessation
+- Consider low-dose aspirin 81 mg daily for primary cardiovascular prevention if 10-year ASCVD risk ≥10% (discuss with primary care provider)
+
+Document hypertensive disorders of pregnancy prominently in the patient's medical record as a significant cardiovascular risk factor. This information should be communicated to primary care providers, cardiologists, and other specialists involved in long-term care.
+
+MEDICAL CODING FOR CLINICAL DECISION SUPPORT INTEGRATION
+
+ICD-10-CM Codes: Pre-Existing Hypertension in Pregnancy (O10 Category)
+
+Code | Description
+---|---
+O10.011 | Pre-existing essential hypertension complicating pregnancy, first trimester
+O10.012 | Pre-existing essential hypertension complicating pregnancy, second trimester
+O10.013 | Pre-existing essential hypertension complicating pregnancy, third trimester
+O10.02 | Pre-existing essential hypertension complicating childbirth
+O10.03 | Pre-existing essential hypertension complicating the puerperium
+O10.111 | Pre-existing hypertensive heart disease complicating pregnancy, first trimester
+O10.112 | Pre-existing hypertensive heart disease complicating pregnancy, second trimester
+O10.113 | Pre-existing hypertensive heart disease complicating pregnancy, third trimester
+O10.12 | Pre-existing hypertensive heart disease complicating childbirth
+O10.13 | Pre-existing hypertensive heart disease complicating the puerperium
+O10.211 | Pre-existing hypertensive chronic kidney disease complicating pregnancy, first trimester
+O10.212 | Pre-existing hypertensive chronic kidney disease complicating pregnancy, second trimester
+O10.213 | Pre-existing hypertensive chronic kidney disease complicating pregnancy, third trimester
+O10.22 | Pre-existing hypertensive chronic kidney disease complicating childbirth
+O10.23 | Pre-existing hypertensive chronic kidney disease complicating the puerperium
+O10.311 | Pre-existing hypertensive heart and chronic kidney disease complicating pregnancy, first trimester
+O10.312 | Pre-existing hypertensive heart and chronic kidney disease complicating pregnancy, second trimester
+O10.313 | Pre-existing hypertensive heart and chronic kidney disease complicating pregnancy, third trimester
+O10.32 | Pre-existing hypertensive heart and chronic kidney disease complicating childbirth
+O10.33 | Pre-existing hypertensive heart and chronic kidney disease complicating the puerperium
+O10.411 | Pre-existing secondary hypertension complicating pregnancy, first trimester
+O10.412 | Pre-existing secondary hypertension complicating pregnancy, second trimester
+O10.413 | Pre-existing secondary hypertension complicating pregnancy, third trimester
+O10.42 | Pre-existing secondary hypertension complicating childbirth
+O10.43 | Pre-existing secondary hypertension complicating the puerperium
+
+ICD-10-CM Codes: Superimposed Preeclampsia (O11 Category)
+
+Code | Description
+---|---
+O11.1 | Pre-existing hypertension with pre-eclampsia, first trimester
+O11.2 | Pre-existing hypertension with pre-eclampsia, second trimester
+O11.3 | Pre-existing hypertension with pre-eclampsia, third trimester
+O11.4 | Pre-existing hypertension with pre-eclampsia, complicating childbirth
+O11.5 | Pre-existing hypertension with pre-eclampsia, complicating the puerperium
+
+NOTE: O11 codes require an additional code from the O10 category to identify the specific type of pre-existing hypertension.
+
+SNOMED CT Codes for Problem List and Clinical Documentation
+
+Code | Description | Clinical Use
+---|---|---
+8762007 | Chronic hypertension in obstetric context | Primary problem list entry for chronic hypertension in pregnancy
+118781000119108 | Pre-existing hypertensive chronic kidney disease complicating pregnancy | Chronic HTN with renal involvement
+10759031000119106 | Pre-existing hypertensive heart disease in mother complicating pregnancy | Chronic HTN with cardiac involvement
+48194001 | Pregnancy-induced hypertension | Gestational hypertension (for differentiation)
+15938005 | Eclampsia | Seizures in context of hypertensive disorder
+
+LOINC Codes for Laboratory Tests
+
+Test | LOINC Code | Normal Range (Pregnancy) | Clinical Significance
+---|---|---|---
+Serum creatinine | 2160-0 | 0.4-0.9 mg/dL (lower in pregnancy) | >1.1 mg/dL suggests renal dysfunction or preeclampsia
+Blood urea nitrogen (BUN) | 3094-0 | 7-12 mg/dL | Elevated in renal insufficiency
+Urine protein (quantitative 24-hour) | 2888-6 or 21482-5 | <300 mg/24 hours | ≥300 mg diagnostic for proteinuria in preeclampsia
+Urine protein dipstick | 5804-0 | Negative to trace | ≥1+ should trigger quantitative testing
+Protein:creatinine ratio (spot urine) | 34366-5 | <0.3 | ≥0.3 diagnostic for significant proteinuria
+Aspartate aminotransferase (AST) | 1920-8 | 10-35 U/L | >2× ULN indicates hepatic involvement (severe feature)
+Alanine aminotransferase (ALT) | 1742-6 | 10-35 U/L | >2× ULN indicates hepatic involvement (severe feature)
+Platelet count | 777-3 | 150,000-400,000/µL | <100,000/µL diagnostic criterion for severe preeclampsia
+Complete blood count with differential | 57021-8 | See individual parameters | Comprehensive hematologic assessment
+Uric acid | 3084-1 | 2.5-5.0 mg/dL (pregnancy) | Elevated in preeclampsia (though not diagnostic)
+Lactate dehydrogenase (LDH) | 2532-0 | 115-225 U/L | Elevated in HELLP syndrome, hemolysis
+Serum potassium | 2823-3 | 3.5-5.0 mEq/L | Monitor when on antihypertensives; low K+ may suggest secondary HTN
+
+RxNorm Codes for Antihypertensive Medications
+
+Medication | RxNorm Ingredient Code | Common Formulation Examples
+---|---|---
+Labetalol | 6154 | 197807 (100 mg tablet), 197808 (200 mg tablet), 197809 (300 mg tablet), 204420 (5 mg/mL injection)
+Nifedipine | 7417 | 198033 (10 mg immediate-release capsule), 198034 (30 mg extended-release tablet), 198035 (60 mg extended-release tablet), 1000124 (90 mg extended-release tablet)
+Methyldopa | 6876 | 197935 (250 mg tablet), 197936 (500 mg tablet)
+Hydralazine | 5470 | 197768 (10 mg tablet), 197769 (25 mg tablet), 197770 (50 mg tablet), 311701 (20 mg/mL injection)
+Magnesium sulfate | 6585 | 1658259 (500 mg/mL or 50% injection), 1658262 (40 mg/mL or 4% in dextrose injection)
+Aspirin (low-dose) | 1191 | 243670 (81 mg tablet)
+Hydrochlorothiazide | 5487 | 310429 (12.5 mg capsule), 197862 (25 mg tablet)
+
+CPT Codes for Services and Procedures
+
+Service/Procedure | CPT Code | Description
+---|---|---
+Antepartum care, 4-6 visits | 59425 | Global antepartum care package (limited visits)
+Antepartum care, 7 or more visits | 59426 | Global antepartum care package (comprehensive)
+First trimester ultrasound | 76801 | Dating ultrasound, single gestation
+Complete obstetric ultrasound (anatomy scan) | 76805 | Detailed fetal anatomic examination ≥14 weeks, single gestation
+Detailed fetal anatomic examination | 76811 | Detailed fetal anatomic examination (when medically indicated)
+Follow-up or repeat fetal ultrasound | 76816 | Growth ultrasound
+Non-stress test (NST) | 59025 | Fetal heart rate monitoring
+Biophysical profile with NST | 76818 | Comprehensive fetal assessment including NST
+Biophysical profile without NST | 76819 | Ultrasound components only (movement, tone, breathing, fluid)
+Umbilical artery Doppler velocimetry | 76820 | Fetal vessels Doppler study
+Middle cerebral artery Doppler | 76821 | Additional fetal vessels Doppler
+Urine protein quantification (24-hour) | 84156 | Laboratory collection and analysis
+Electrocardiogram (12-lead with interpretation) | 93000 | Cardiac assessment
+Echocardiography complete | 93306 | Transthoracic echocardiogram
+
+CLINICAL DECISION SUPPORT IMPLEMENTATION: CRITICAL ALERT TRIGGERS
+
+The following five clinical decision support (CDS) alerts should trigger automatically in any electronic health record implementation of this care pathway:
+
+CDS Alert #1: Aspirin Prophylaxis Initiation
+TRIGGER: Pregnant patient with chronic hypertension (ICD-10 O10.x) reaches 12-16 weeks gestation AND no aspirin prescription on medication list
+ACTION: Order aspirin 81 mg PO daily (RxNorm 243670); educate patient to continue until delivery
+EVIDENCE: USPSTF Grade B recommendation; reduces preeclampsia risk by 15-20%
+
+CDS Alert #2: Blood Pressure Treatment Threshold
+TRIGGER: Blood pressure reading ≥140/90 mmHg in pregnant patient with chronic hypertension
+ACTION: Initiate or titrate antihypertensive medication (labetalol or nifedipine XL); goal BP <140/90 mmHg
+EVIDENCE: CHAP trial 2022; ACOG/SMFM Practice Advisory
+
+CDS Alert #3: ACE Inhibitor/ARB Contraindication
+TRIGGER: Pregnant patient prescribed ACE inhibitor or ARB (RxNorm class search)
+ACTION: IMMEDIATE medication discontinuation alert; switch to labetalol or nifedipine; counsel patient on fetal risks
+EVIDENCE: FDA Black Box Warning; teratogenic effects in second/third trimester
+
+CDS Alert #4: Antenatal Surveillance Initiation
+TRIGGER: Pregnant patient with chronic hypertension (ICD-10 O10.x) reaches 32 weeks gestation (or earlier based on control status) AND no NST orders placed
+ACTION: Order twice-weekly non-stress tests (CPT 59025); consider biweekly growth ultrasounds (CPT 76816)
+EVIDENCE: ACOG guidelines for fetal surveillance in chronic hypertension
+
+CDS Alert #5: Postpartum Blood Pressure Follow-Up
+TRIGGER: Patient with hypertensive disorder during pregnancy (ICD-10 O10.x, O11.x, O13.x, O14.x, O15.x) discharged postpartum AND no BP follow-up appointment scheduled within 7-10 days
+ACTION: Schedule postpartum visit within 7-10 days; provide home BP monitoring instructions; prescribe BP cuff if needed
+EVIDENCE: ACOG/AHA joint guidelines; reduces postpartum stroke risk
+
+REFERENCES AND EVIDENCE BASE
+
+Primary Guidelines and Recommendations:
+1. American College of Obstetricians and Gynecologists. ACOG Practice Bulletin No. 203: Chronic Hypertension in Pregnancy. Obstet Gynecol. 2019;133(1):e26-e50. (Reaffirmed 2021)
+
+2. American College of Obstetricians and Gynecologists. Clinical Guidance for the Integration of the Findings of the Chronic Hypertension and Pregnancy (CHAP) Study. Practice Advisory, April 2022.
+
+3. Tita AT, Szychowski JM, Boggess K, et al. Treatment for Mild Chronic Hypertension during Pregnancy. N Engl J Med. 2022;386(19):1781-1792. [CHAP Trial]
+
+4. Society for Maternal-Fetal Medicine, Redman CWG, Staff AC. Chronic hypertension and superimposed preeclampsia: screening and diagnosis. Am J Obstet Gynecol. 2022;226(2S):S1137-S1145.
+
+5. U.S. Preventive Services Task Force. Aspirin Use to Prevent Preeclampsia and Related Morbidity and Mortality: Preventive Medication. JAMA. 2021;326(12):1186-1191. [Grade B Recommendation]
+
+6. American College of Obstetricians and Gynecologists. Gestational Hypertension and Preeclampsia: ACOG Practice Bulletin Summary, Number 222. Obstet Gynecol. 2020;135(6):1492-1495.
+
+7. Whelton PK, Carey RM, Aronow WS, et al. 2017 ACC/AHA/AAPA/ABC/ACPM/AGS/APhA/ASH/ASPC/NMA/PCNA Guideline for the Prevention, Detection, Evaluation, and Management of High Blood Pressure in Adults. J Am Coll Cardiol. 2018;71(19):e127-e248.
+
+Additional Evidence:
+8. American College of Obstetricians and Gynecologists. Emergent Therapy for Acute-Onset, Severe Hypertension During Pregnancy and the Postpartum Period. Committee Opinion No. 767. Obstet Gynecol. 2019;133:e174-e180.
+
+9. Garovic VD, Dechend R, Easterling T, et al. Hypertension in Pregnancy: Diagnosis, Blood Pressure Goals, and Pharmacotherapy. Hypertension. 2022;79(2):e21-e41. [AHA Scientific Statement]
+
+10. Brown MA, Magee LA, Kenny LC, et al. Hypertensive Disorders of Pregnancy: ISSHP Classification, Diagnosis, and Management Recommendations for International Practice. Hypertension. 2018;72(1):24-43.
+
+Standardized Terminology Sources:
+- SNOMED CT Codes: U.S. National Library of Medicine, SNOMED International
+- ICD-10-CM Codes: Centers for Medicare & Medicaid Services, 2024 version
+- LOINC Codes: Regenstrief Institute, Logical Observation Identifiers Names and Codes
+- RxNorm Codes: U.S. National Library of Medicine, RxNorm database
+- CPT Codes: American Medical Association, Current Procedural Terminology 2024
+
+=========================================================================
+END OF CARE PATHWAY DOCUMENT
+
+This care pathway integrates evidence-based recommendations from ACOG, SMFM, USPSTF, and the landmark CHAP trial to provide comprehensive clinical decision support for chronic hypertension in pregnancy. Implementation requires EHR integration of standardized medical codes (SNOMED CT, ICD-10-CM, LOINC, RxNorm, CPT) and automated clinical decision support alerts for key interventions including aspirin prophylaxis, blood pressure treatment thresholds, medication safety, fetal surveillance, and postpartum follow-up.
+
+Document prepared: January 2026
+Based on: ACOG 2019/2022, SMFM 2022, USPSTF 2021, CHAP Trial 2022
