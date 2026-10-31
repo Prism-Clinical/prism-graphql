@@ -64,7 +64,12 @@ const LONE_SURROGATE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[
  * array member, an accessor, a symbol key, `undefined`), so serializing is not validating.
  * `ancestors` is the current chain of containers (object → its path): a value that is its own
  * ancestor is a cycle. An object shared by separate branches is not on its own chain, so it passes.
+ * Depth: the root value's own members and elements are level 1 (for a snapshot list, each
+ * statement), and each nested array or object adds one. A container deeper than
+ * MAX_JSON_DEPTH is rejected before any recursion past it, so very deep input cannot overflow.
  */
+export const MAX_JSON_DEPTH = 32;
+
 export function jsonValueProblem(v: unknown, path: string, ancestors: Map<object, string> = new Map()): string | null {
   if (v === null || typeof v === 'boolean') return null;
   if (typeof v === 'string') return LONE_SURROGATE.test(v) ? `${path}: lone surrogate` : null;
@@ -72,6 +77,8 @@ export function jsonValueProblem(v: unknown, path: string, ancestors: Map<object
   if (typeof v !== 'object') return `${path}: ${typeof v} is not JSON`;
   const back = ancestors.get(v);
   if (back !== undefined) return `${path}: cycle (refers back to ${back})`;
+  // The chain holds this container's ancestors, so its size is this container's level.
+  if (ancestors.size > MAX_JSON_DEPTH) return `${path}: nested more than ${MAX_JSON_DEPTH} levels deep`;
   ancestors.set(v, path);
   try {
     return containerProblem(v, path, ancestors);

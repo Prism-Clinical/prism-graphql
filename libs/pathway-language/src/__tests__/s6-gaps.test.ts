@@ -7,6 +7,7 @@ import {
   DEMO_AMEND_PERMISSION,
   DEMO_AUTHORITY_RULE,
   GapRelevanceConfigurationError,
+  MAX_JSON_DEPTH,
   PreviewEvaluationConfigurationError,
   QuerySelectionConfigurationError,
   SAME_ENCOUNTER_RULE,
@@ -467,6 +468,25 @@ describe('S6 gap relevance: review of 8e6c46f — JSON validity, identity, unrec
     const list: J[] = [COMPLETE];
     list.push(list as unknown as J);
     badSel(snap(list), /snapshot\.coverage\[1\]: cycle \(refers back to snapshot\.coverage\)/);
+  });
+
+  it('nesting is limited to MAX_JSON_DEPTH levels below the list, counting the statement as level 1 (review of f8801bf)', () => {
+    expect(MAX_JSON_DEPTH).toBe(32);
+    // `levels` containers, outermost first: deep(1) is {}.
+    const deep = (levels: number, array = false): J => {
+      let v: J = {};
+      for (let i = 1; i < levels; i++) v = (array ? [v] : { d: v }) as J;
+      return v;
+    };
+    // Statement (level 1) + 31 containers: the deepest is level 32, exactly at the limit.
+    expect(() => sel(snap([COMPLETE], [fail('f1', { extra: deep(31) })]))).not.toThrow();
+    expect(() => sel(snap([COMPLETE], [fail('f1', { extra: deep(31, true) })]))).not.toThrow();
+    // One level beyond: the path names the first container past the limit.
+    badSel(snap([COMPLETE], [fail('f1', { extra: deep(32) })]), new RegExp(`^snapshot\\.failures\\[0\\]\\.extra${'\\.d'.repeat(31)}: nested more than 32 levels deep`));
+    badSel(snap([COMPLETE], [fail('f1', { extra: deep(32, true) })]), new RegExp(`^snapshot\\.failures\\[0\\]\\.extra${'\\[0\\]'.repeat(31)}: nested more than 32 levels deep`));
+    // Very deep input is a configuration error, not a stack overflow.
+    badSel(snap([deep(200_000)]), /^snapshot\.coverage\[0\](\.d){32}: nested more than 32 levels deep/);
+    badSel(snap([COMPLETE], [fail('f1', { extra: deep(200_000, true) })]), /nested more than 32 levels deep/);
   });
 
   it('an object shared by separate branches, forming no cycle, is accepted', () => {
