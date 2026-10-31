@@ -114,11 +114,34 @@ function containerProblem(v: object, path: string, ancestors: Map<object, string
   return null;
 }
 
+/**
+ * Why a whole S1 occurrence (identity, payload, provenance and undeclared fields, everything S1
+ * canonicalizes or retains) cannot be traversed, or null: a cycle on the current ancestor chain, or
+ * nesting deeper than MAX_JSON_DEPTH with the occurrence itself as level 1. Shared acyclic objects
+ * pass. Nothing past the limit is visited. Other JSON problems stay with assertRepresentable.
+ */
+export function nestingProblem(v: unknown, path: string, ancestors: Map<object, string> = new Map()): string | null {
+  if (v === null || typeof v !== 'object') return null;
+  const back = ancestors.get(v);
+  if (back !== undefined) return `${path}: cycle (refers back to ${back})`;
+  if (ancestors.size >= MAX_JSON_DEPTH) return `${path}: nested more than ${MAX_JSON_DEPTH} levels deep`;
+  ancestors.set(v, path);
+  try {
+    for (const [k, x] of Object.entries(v)) {
+      const p = nestingProblem(x, Array.isArray(v) ? `${path}[${k}]` : `${path}.${k}`, ancestors);
+      if (p) return p;
+    }
+    return null;
+  } finally {
+    ancestors.delete(v);
+  }
+}
+
 function assertRepresentable(v: JsonValue): void {
   if (typeof v === 'string') {
-    if (LONE_SURROGATE.test(v)) throw new UnrepresentableError('lone surrogate');
+    if (LONE_SURROGATE.test(v)) throw new UnrepresentableError('lone surrogate (RFC 8785)');
   } else if (typeof v === 'number') {
-    if (!Number.isFinite(v)) throw new UnrepresentableError('non-finite number');
+    if (!Number.isFinite(v)) throw new UnrepresentableError('non-finite number (RFC 8785)');
   } else if (Array.isArray(v)) {
     v.forEach(assertRepresentable);
   } else if (isObject(v)) {
@@ -138,8 +161,14 @@ export interface PayloadIdentity {
   readonly undeclaredFields: readonly UndeclaredField[];
 }
 
-/** CANONICALIZATION.md §§1–7 for one occurrence. Never mutates its input. */
-export function payloadIdentity(occurrence: JsonObject, kind: 'revision' | 'retraction'): PayloadIdentity {
+/**
+ * CANONICALIZATION.md §§1–7 for one occurrence. Never mutates its input. `path` names the
+ * occurrence in UnrepresentableError messages.
+ */
+export function payloadIdentity(occurrence: JsonObject, kind: 'revision' | 'retraction', path: string = kind): PayloadIdentity {
+  // Before anything is read, selected or retained: the whole occurrence, not only digest fields.
+  const shape = nestingProblem(occurrence, path);
+  if (shape) throw new UnrepresentableError(shape);
   const decl = kind === 'revision' ? REVISION_FIELDS : RETRACTION_FIELDS;
   const undeclared: UndeclaredField[] = [];
   // Only declared names are ever assigned below, so `payload` and `kept` never receive

@@ -554,3 +554,94 @@ describe('S6 gap relevance: review of 8e6c46f — JSON validity, identity, unrec
     expect(a.cells.map((x) => x.status)).toEqual(['Unknown', 'Unknown']);
   });
 });
+
+describe('S1 occurrence nesting: depth and cycles in revisions and retractions (review of 055552f)', () => {
+  // `levels` containers, outermost first: deep(1) is {}.
+  const deep = (levels: number, array = false): J => {
+    let v: J = {};
+    for (let i = 1; i < levels; i++) v = (array ? [v] : { d: v }) as J;
+    return v;
+  };
+  const s1 = (revisions: J[], retractions: J[] = []) =>
+    experimentalResolveRevisionHistory({ envelope: { recordType: T, subject: 'P1', sources: ['s1', 's2'] }, authorityRule: DEMO_AUTHORITY_RULE, revisions: revisions as JsonValue[], retractions: retractions as JsonValue[] });
+  const retraction = (over: J = {}): J => ({ id: 'x1', key: { source: 's1', localId: 'r1' }, target: { source: 's1', localId: 'r1', revision: '1' }, author: AMEND, provenance: { acquisition: 'a0', sourceRecordRef: 's1:x1' }, ...over });
+  const status = (r: ReturnType<typeof s1>) => r.keys.map((k) => [`${k.key.source}/${k.key.localId}`, k.status]);
+  const tooDeep = (path: string, segment: string, n: number) => `not representable: ${path}${segment.repeat(n)}: nested more than 32 levels deep`;
+
+  /** Each case through standalone S1 and through query-bound selection with gap relevance. */
+  function both(revisions: J[], retractions: J[], unidentified: { kind: 'revision' | 'retraction'; inputIndex: number; reason: string | RegExp }[], keys: (string | null)[][]) {
+    const r = s1(revisions, retractions);
+    // S1 order: by kind (code point), then input index.
+    expect(r.unidentified).toHaveLength(unidentified.length);
+    unidentified.forEach((u, i) => expect(r.unidentified[i]).toEqual({ kind: u.kind, inputIndex: u.inputIndex, reason: typeof u.reason === 'string' ? u.reason : expect.stringMatching(u.reason) }));
+    expect(status(r)).toEqual(keys);
+    // Query-bound: never a configuration error; each rejected occurrence is a relevant Invalid gap.
+    const g = run(snap(), revisions, retractions);
+    const expected = unidentified.map((u) => `unidentified:${u.kind}#${u.inputIndex}`);
+    expect(labels(g.relevant)).toEqual(expected);
+    for (const l of expected) expect(gap(g, l)).toMatchObject({ kind: 'RejectedItem', origin: 'S1', relevant: true, causes: ['Invalid'] });
+  }
+
+  it('exactly at the limit (the occurrence is level 1, the deepest container level 32) is accepted and retained', () => {
+    both([rev('r1', { note: deep(31) }), rev('r2', { note: deep(31, true) })], [], [], [['s1/r1', 'Current'], ['s1/r2', 'Current']]);
+    // Retained metadata: provenance (level 2) with an undeclared member reaching level 32.
+    const prov = { acquisition: 'a0', sourceRecordRef: 's1:r1', extra: deep(30) };
+    const r = s1([rev('r1', { provenance: prov })]);
+    expect(r.unidentified).toEqual([]);
+    expect(JSON.stringify(r.keys[0]!.revisions[0]!.variants[0]!.occurrences[0]!.provenance)).toBe(JSON.stringify(prov));
+    both([rev('r1', { provenance: prov, concept: { system: 'demo-cs', code: deep(30) } })], [retraction({ note: deep(31) })], [], [['s1/r1', 'Retracted']]);
+  });
+
+  it('one level beyond is a rejected occurrence naming the first container past the limit, in payload, metadata or undeclared fields', () => {
+    both(
+      [rev('r1'), rev('r2', { note: deep(32) }), rev('r3', { provenance: { acquisition: 'a0', sourceRecordRef: 's1:r3', extra: deep(31, true) } }), rev('r4', { concept: { system: 'demo-cs', code: deep(31) } })],
+      [retraction({ note: deep(32) })],
+      [
+        { kind: 'retraction', inputIndex: 0, reason: tooDeep('retractions[0].note', '.d', 31) },
+        { kind: 'revision', inputIndex: 1, reason: tooDeep('revisions[1].note', '.d', 31) },
+        { kind: 'revision', inputIndex: 2, reason: tooDeep('revisions[2].provenance.extra', '[0]', 30) },
+        { kind: 'revision', inputIndex: 3, reason: tooDeep('revisions[3].concept.code', '.d', 30) },
+      ],
+      // The rejected retraction does not apply: r1 stays Current, and only the relevant gap records the loss.
+      [['s1/r1', 'Current']],
+    );
+  });
+
+  it('very deep input is a rejected occurrence, not a stack overflow or configuration error', () => {
+    both(
+      [rev('r1', { note: deep(200_000) }), rev('r2', { provenance: { acquisition: 'a0', sourceRecordRef: 's1:r2', extra: deep(200_000, true) } })],
+      [retraction({ note: deep(200_000) })],
+      [
+        { kind: 'retraction', inputIndex: 0, reason: tooDeep('retractions[0].note', '.d', 31) },
+        { kind: 'revision', inputIndex: 0, reason: tooDeep('revisions[0].note', '.d', 31) },
+        { kind: 'revision', inputIndex: 1, reason: tooDeep('revisions[1].provenance.extra', '[0]', 30) },
+      ],
+      [],
+    );
+  });
+
+  it('cycles are rejected occurrences with the path of both ends', () => {
+    const self = rev('r2');
+    self['note'] = self;
+    const prov: J = { acquisition: 'a0', sourceRecordRef: 's1:r3' };
+    prov['self'] = prov;
+    const target: J = { source: 's1', localId: 'r1', revision: '1' };
+    target['extra'] = { back: target };
+    both(
+      [rev('r1'), self, rev('r3', { provenance: prov })],
+      [retraction({ target })],
+      [
+        { kind: 'retraction', inputIndex: 0, reason: 'not representable: retractions[0].target.extra.back: cycle (refers back to retractions[0].target)' },
+        { kind: 'revision', inputIndex: 1, reason: 'not representable: revisions[1].note: cycle (refers back to revisions[1])' },
+        { kind: 'revision', inputIndex: 2, reason: 'not representable: revisions[2].provenance.self: cycle (refers back to revisions[2].provenance)' },
+      ],
+      [['s1/r1', 'Current']],
+    );
+  });
+
+  it('objects shared across occurrences and fields, forming no cycle, are accepted', () => {
+    const prov = { acquisition: 'a0', sourceRecordRef: 's1:shared' };
+    const note = { text: ['a', 'b'] };
+    both([rev('r1', { provenance: prov, note, note2: note }), rev('r2', { provenance: prov, concept: { system: 'demo-cs', code: 'item-x' } })], [retraction({ provenance: prov, note })], [], [['s1/r1', 'Retracted'], ['s1/r2', 'Current']]);
+  });
+});

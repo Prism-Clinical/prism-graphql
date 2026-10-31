@@ -182,10 +182,10 @@ export function resolveRevisionHistory(input: S1Input): S1Result {
     }
     let identity;
     try {
-      identity = payloadIdentity(occ, 'revision');
+      identity = payloadIdentity(occ, 'revision', `revisions[${inputIndex}]`);
     } catch (e) {
       if (!(e instanceof UnrepresentableError)) throw e;
-      unidentified.push({ kind: 'revision', inputIndex, reason: `not representable under RFC 8785: ${e.message}` });
+      unidentified.push({ kind: 'revision', inputIndex, reason: `not representable: ${e.message}` });
       return;
     }
     const k = keys.get(keyId(ref)) ?? { key: { source: ref.source, localId: ref.localId }, groups: new Map() };
@@ -233,10 +233,10 @@ export function resolveRevisionHistory(input: S1Input): S1Result {
     }
     let identity;
     try {
-      identity = payloadIdentity(occ, 'retraction');
+      identity = payloadIdentity(occ, 'retraction', `retractions[${inputIndex}]`);
     } catch (e) {
       if (!(e instanceof UnrepresentableError)) throw e;
-      unidentified.push({ kind: 'retraction', inputIndex, reason: `not representable under RFC 8785: ${e.message}` });
+      unidentified.push({ kind: 'retraction', inputIndex, reason: `not representable: ${e.message}` });
       return;
     }
     const g: RetractionGroup = retractionGroups.get(retractionId(ref)) ?? {

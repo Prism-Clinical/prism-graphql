@@ -239,7 +239,7 @@ export interface S1Result {
   readonly retractions: readonly RetractionInfo[];
   /** Occurrences never evaluated: undeclared source, or a key with no possible envelope revision. */
   readonly outsideEnvelope: readonly ({ kind: 'revision'; ref: RevisionRef } | { kind: 'retraction'; ref: RetractionRef })[];
-  /** Occurrences lacking identity or not representable under RFC 8785 (rejected items for S6). */
+  /** Occurrences lacking identity, not representable under RFC 8785, cyclic or nested deeper than MAX_JSON_DEPTH (rejected items for S6). */
   readonly unidentified: readonly { kind: 'revision' | 'retraction'; inputIndex: number; reason: string }[];
   /** Retractions whose target cannot be attributed (absent or malformed target fields). */
   readonly unattributableRetractions: readonly { ref: RetractionRef; cause: 'Missing' | 'Invalid' }[];
