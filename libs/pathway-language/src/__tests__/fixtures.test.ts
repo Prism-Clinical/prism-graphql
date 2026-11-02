@@ -95,7 +95,7 @@ describe('explicit-assertion-v0 fixtures: S1, S2 and encounter-check assertions 
         `S6 step A base causes compared with query-origin cause attributions (exact set, per evaluation fixture): ${totals.baseAttribution}; one-way: final Known results that need the same Known base: ${totals.baseOneWay}`,
         `S6 step B materiality assertions checked (material facts; contract §4.2 step B): ${totals.material} (passed ${totals.materialPassed})`,
         `one-way from final results: Known needs a Known status after step B; Unresolved over a Known base needs a material record: ${totals.materialOneWay}`,
-        `S6 step C exact cause-attribution checks (Unresolved evaluation fixtures: causeAttribution and causes, all fields, as sets; contract §4.2 step C): ${totals.causes} (passed ${totals.causesPassed})`,
+        `S6 step C exact cause-attribution checks (Unresolved evaluation fixtures: the fixture-format projection — cause, origin label, stage, reason, refs — and causes, as sets; contract §4.2 step C): ${totals.causes} (passed ${totals.causesPassed})`,
         `S6 step C on Known evaluation fixtures (aggregation NotApplicable, no causes): ${totals.causesKnown}; blocked by a documented upstream limitation (not counted as passing): ${totals.causesBlocked}`,
         `expected fields/assertions outside implemented scope (evidence status/value, candidateEvidenceIds, decision, Needs, S7; not checked): ${totals.outOfScope}`,
         `fixtures not run: ${notRun.length}: ${notRun.join(', ')}`,

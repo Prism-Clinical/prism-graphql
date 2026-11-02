@@ -266,19 +266,24 @@ describe('S6 step C: determinism, identity, ownership and immutability', () => {
     expect(r.causes).toEqual(['Invalid']);
   });
 
-  it('context findings: one entry per binding, cause and reason, listing every affected revision of a material record', () => {
+  it('context findings: one entry per binding, cause and reason, listing the affected revisions of material keys only (sorted, deduplicated)', () => {
     const s4 = experimentalSelectForQuery({
       package: PKG,
       query: 'q',
       subject: 'P1',
-      revisions: [rev('r4', { assertion: 'Denied' }), rev('r12')] as JsonValue[],
+      // r7 has the same context finding but can only be NonInformative or excluded: immaterial, so not in refs.
+      revisions: [rev('r4', { assertion: 'Denied' }), rev('r12'), rev('r7', { assertion: 'Indeterminate' })] as JsonValue[],
       retractions: [],
       contextEncounter: { known: 'N1' },
       contextEpisode: { unknown: ['Conflicting'] },
       snapshot: snap(),
     });
     const r = experimentalCauseAttribution({ package: PKG, query: 'q', s4 });
-    expect(entries(r)).toEqual([['Conflicting', 'context.episode', 'S3', 'ContextUnknown:episode', ['s1/r12@1', 's1/r4@1']]]);
+    expect(r.stepB.immaterial.map((k) => k.localId)).toEqual(['r7']);
+    expect(entries(r)).toEqual([
+      ['Conflicting', 'context.episode', 'S3', 'ContextUnknown:episode', ['s1/r12@1', 's1/r4@1']],
+      ['InsufficientEvidence', 'query', 'S6', 'NonInformativeSeen', ['s1/r7']],
+    ]);
     expect(r.attribution[0]!.origin).toEqual({ kind: 'context', binding: 'episode' });
   });
 

@@ -158,7 +158,8 @@ export interface FixtureReport {
   materialOneWay: number;
   /**
    * S6 step C (§4.2 step C): an Unresolved evaluation fixture's `causeAttribution` and `causes`,
-   * compared EXACTLY (all fields, as sets) with the step C result projected to fixture notation.
+   * compared exactly, as sets, with the step C result projected to fixture notation (cause, origin
+   * label, stage, reason, refs as labels). Structured origins, keys and ids are not in the fixture format.
    */
   causesApplicable: number;
   causesPassed: number;
