@@ -448,6 +448,15 @@
     ],
     "141": [
       "EA-141"
+    ],
+    "142": [
+      "EA-142"
+    ],
+    "143": [
+      "EA-143"
+    ],
+    "144": [
+      "EA-144"
     ]
   },
   "pairs": [
@@ -703,6 +712,13 @@
         "EA-138"
       ],
       "claim": "An unresolved key whose possibilities are in domain but all inadmissible is a seen record (InsufficientEvidence, never a base Inadmissible); a key whose every possible current is out of domain is not seen (Missing)"
+    },
+    {
+      "fixtures": [
+        "EA-142",
+        "EA-143"
+      ],
+      "claim": "Every unresolved record is assessed against the original step A base: a record that can only support stays immaterial under Known(true) even after another record has made the result Unresolved, and symmetrically under Known(false)"
     }
   ]
 }

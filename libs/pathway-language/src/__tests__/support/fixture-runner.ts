@@ -10,12 +10,13 @@
  * of an evidence result and of Needs; and S6 gap relevance (§1.5, §4.1): `cell`, `gap`, `notCurrent`
  * and the coverage diagnostics, plus two one-way implications from evidence expectations; and the S6
  * step A base result (§4.2 step A): `rule` and `baseCauses` facts, the `query`-origin cause
- * attributions (exactly the base causes) and one one-way implication from Known results.
+ * attributions (exactly the base causes) and one one-way implication from Known results; and step B
+ * (§4.2 step B): `material` facts, plus two one-way implications from final results.
  *
- * A fixture is never reported as passing as a whole: only its S1–S5, S6 gap-relevance and step A
- * assertions are checked, plus one-way implications from downstream expectations. `stage` fixtures
+ * A fixture is never reported as passing as a whole: only its S1–S5, S6 gap-relevance, step A
+ * and step B assertions are checked, plus one-way implications from downstream expectations. `stage` fixtures
  * (stage-v1) assert S1–S3, S1–S4, S1–S5 or S1–S6 and carry no downstream expectation. Every other
- * expected field or trace fact (materiality, final cause attribution, evidence, Needs, S7) is outside the scope.
+ * expected field or trace fact (final cause union and attribution, evidence, Needs, S7) is outside the scope.
  */
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -30,6 +31,8 @@ import {
   experimentalCompilePreview,
   experimentalEvaluatePreviewQuery,
   experimentalBaseResult,
+  experimentalMateriality,
+  type MaterialityResult,
   experimentalGapRelevance,
   type BaseResult,
   type GapRelevanceResult,
@@ -142,6 +145,14 @@ export interface FixtureReport {
   baseAttribution: number;
   /** One-way: a final Known result needs a Known base (rule 2 or 3) with the same references (step B only demotes). */
   baseOneWay: number;
+  /** S6 step B `material` facts (§4.2 step B), checked directly against the materiality result. */
+  materialApplicable: number;
+  materialPassed: number;
+  /**
+   * One-way, from final results only: a final Known needs a Known status after step B, and a final
+   * Unresolved over a Known base needs at least one material record. Neither proves a decision.
+   */
+  materialOneWay: number;
   /** Combined S3 `admissibility` facts (contract §2.7), checked directly. */
   admissibilityApplicable: number;
   admissibilityPassed: number;
@@ -343,6 +354,9 @@ export function runFixtures(dir: string = FIXTURE_DIR): { reports: FixtureReport
       basePassed: 0,
       baseAttribution: 0,
       baseOneWay: 0,
+      materialApplicable: 0,
+      materialPassed: 0,
+      materialOneWay: 0,
       admissibilityApplicable: 0,
       admissibilityPassed: 0,
       outOfScope: 0,
@@ -453,6 +467,8 @@ export function runFixtures(dir: string = FIXTURE_DIR): { reports: FixtureReport
     const gaps: GapRelevanceResult | null = bound && typeof compiledQuery !== 'string' ? experimentalGapRelevance({ package: compiledQuery, query: query.query.id, s4: bound }) : null;
     // Step A over the same bound evaluation (contract §4.2 step A): no materiality or final causes.
     const baseRes: BaseResult | null = bound && typeof compiledQuery !== 'string' ? experimentalBaseResult({ package: compiledQuery, query: query.query.id, s4: bound }) : null;
+    // Step B over the same bound evaluation (contract §4.2 step B): no cause union or attribution.
+    const matRes: MaterialityResult | null = bound && typeof compiledQuery !== 'string' ? experimentalMateriality({ package: compiledQuery, query: query.query.id, s4: bound }) : null;
     const boundKeys = new Map((bound?.keys ?? []).map((k) => [`${k.key.source}/${k.key.localId}`, k] as const));
     const boundNodes = new Map<string, Extract<PossibleSelection, { kind: 'node' }>>();
     for (const k of bound?.keys ?? []) for (const p of k.possibilities) if (p.kind === 'node') boundNodes.set(showRev(p.node.revision) + (p.node.digest ? `#${p.node.digest}` : ''), p);
@@ -485,6 +501,14 @@ export function runFixtures(dir: string = FIXTURE_DIR): { reports: FixtureReport
         const got = !baseRes ? 'no base result (the query does not compile)' : t.fact === 'rule' ? baseRes.rule : baseRes.baseCauses.map((c) => c.cause);
         if (isDeepStrictEqual(got, t.value)) report.basePassed += 1;
         else report.failures.push(`${t.fact}: ${JSON.stringify(got)}, expected ${JSON.stringify(t.value)}`);
+        continue;
+      }
+      if (t.fact === 'material') {
+        report.materialApplicable += 1;
+        // A material fact names a key; it must be one of the evaluation's unresolved records.
+        const rec = matRes?.records.find((x) => `${x.key.source}/${x.key.localId}` === t.ref);
+        if (rec?.material === t.value) report.materialPassed += 1;
+        else report.failures.push(`material ${t.ref}: ${!matRes ? 'no materiality result (the query does not compile)' : rec ? rec.material : 'not an unresolved record'}, expected ${t.value}`);
         continue;
       }
       if (t.fact === 'gap') {
@@ -704,6 +728,17 @@ export function runFixtures(dir: string = FIXTURE_DIR): { reports: FixtureReport
       const ok = baseRes.base.status === 'Known' && baseRes.base.value === exp.evidence.value && isDeepStrictEqual(ids, exp.evidence.supportingEvidenceIds);
       if (!ok) report.failures.push(`Known(${exp.evidence.value}) result, but base rule ${baseRes.rule} with ${JSON.stringify(ids)}`);
     }
+    // One-way (§4.2 step B), from final results: a final Known survived step B; a final Unresolved
+    // over a Known base was demoted by at least one material record.
+    if (exp.evidence && matRes) {
+      if (exp.evidence.status === 'Known') {
+        report.materialOneWay += 1;
+        if (matRes.after.status !== 'Known') report.failures.push(`Known result, but step B demotes the base (material ${matRes.material.map((k) => `${k.source}/${k.localId}`)})`);
+      } else if (matRes.stepA.base.status === 'Known') {
+        report.materialOneWay += 1;
+        if (matRes.after.status !== 'Unresolved') report.failures.push(`Unresolved result over a Known base, but no record is material`);
+      }
+    }
     // One-way (contract §4.2 rules 2-3): a Known result is supported only by selected revisions.
     if (exp.evidence?.status === 'Known' && s4) {
       const selected = new Set(s4.selected.map((x) => showRev(x.node.revision) + (x.node.digest ? `#${x.node.digest}` : '')));
@@ -745,7 +780,9 @@ export function runFixtures(dir: string = FIXTURE_DIR): { reports: FixtureReport
       report.gapOneWay +
       report.baseApplicable +
       report.baseAttribution +
-      report.baseOneWay;
+      report.baseOneWay +
+      report.materialApplicable +
+      report.materialOneWay;
     if (checked === 0) missing.push(fx.id);
   }
   return { reports, noApplicableAssertions: missing };

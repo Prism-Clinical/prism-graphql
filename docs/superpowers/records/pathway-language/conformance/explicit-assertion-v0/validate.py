@@ -16,7 +16,7 @@ Usage: python3 validate.py [--self-test]
 import copy, hashlib, json, os, sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-CASE_RANGE = range(1, 142)
+CASE_RANGE = range(1, 145)
 CAUSES = ["Missing", "Conflicting", "Unavailable", "Invalid", "Inadmissible", "InsufficientEvidence"]
 MARKERS = ["excluded", "unknown"]
 # Trace facts a partial-stage (S1-S3) fixture may assert.
@@ -29,8 +29,9 @@ S4_FACTS = {"selection", "disposition"}
 S5_FACTS = {"criterion", "classification", "possibleClasses"}
 # S6 facts, allowed only when a stage fixture declares stages S1-S6: gap relevance (contract §1.5,
 # §4.1: combined coverage cells, gap relevance and not-current statements) and the step A base result
-# (§4.2 step A: `rule` and its `baseCauses`). No `material`, cause attribution or evidence result.
-S6_FACTS = {"cell", "gap", "notCurrent", "rule", "baseCauses"}
+# (§4.2 step A: `rule` and its `baseCauses`) and step B materiality (`material`, relative to that base).
+# No cause attribution or evidence result.
+S6_FACTS = {"cell", "gap", "notCurrent", "rule", "baseCauses", "material"}
 # Base causes each step A rule can produce (rule 4 has none: its causes come from step C).
 RULE_BASE_CAUSES = {1: {"Conflicting"}, 2: set(), 3: set(), 4: set(), 5: {"Missing", "Inadmissible", "InsufficientEvidence"}}
 CELL_STATUS = {"Complete", "Incomplete", "Unknown", "Absent"}
@@ -285,6 +286,11 @@ def check(fixtures, index, query):
                         err(i, "baseCauses fact: needs exactly one rule fact and only that rule's base causes")
                     else:
                         check_sorted(i + " baseCauses", v, CAUSES.index)
+                if t["fact"] == "material":
+                    # Materiality is relative to the step A base (§4.2 step B), so the base rule must be stated.
+                    rules = [x for x in fx["expected"]["traceAssertions"] if x["fact"] == "rule"]
+                    if not isinstance(t.get("value"), bool) or not isinstance(t.get("ref"), str) or "@" in t["ref"] or len(rules) != 1:
+                        err(i, "material fact: boolean value for a key ref, with exactly one rule fact")
                 if t["fact"] == "admissibility":
                     if t["value"] == "Inadmissible" and not t.get("reasons", [t.get("reason")])[0]:
                         err(i, "Inadmissible admissibility fact without a reason")
@@ -438,6 +444,9 @@ def self_test(fixtures, index, query):
     def add_material_s6(e):
         e["traceAssertions"].append({"fact": "material", "ref": "s1/r135a", "value": True})
 
+    def material_not_boolean(e):
+        next(t for t in e["traceAssertions"] if t["fact"] == "material")["value"] = "yes"
+
     def rule_out_of_range(e):
         next(t for t in e["traceAssertions"] if t["fact"] == "rule")["value"] = 6
 
@@ -472,13 +481,14 @@ def self_test(fixtures, index, query):
         ("stage fixture: a classification outside the four classes is rejected", mutated("EA-133", bad_class), "value must be one of"),
         ("stage fixture: an Unknown criterion without causes is rejected", mutated("EA-131", drop_unknown_causes), "nonempty causes exactly when Unknown"),
         ("stage fixture: a gap fact in an S1-S5 fixture is rejected", mutated("EA-134", add_gap_fact), "outside S1-S5"),
-        ("stage fixture: material in an S1-S6 (gap relevance) fixture is rejected", mutated("EA-135", add_material_s6), "outside S1-S6"),
+        ("stage fixture: material without a step A rule is rejected", mutated("EA-135", add_material_s6), "with exactly one rule fact"),
         ("stage fixture: a gap proven irrelevant by episode is rejected", mutated("EA-135", gap_proven_by_episode), "provenBy (recordType, subject or sources)"),
         ("stage fixture: a relevant gap with a proving dimension is rejected", mutated("EA-136", relevant_gap_with_proof), "exactly when irrelevant"),
         ("stage fixture: a rule outside 1-5 is rejected", mutated("EA-137", rule_out_of_range), "must be a step A rule"),
         ("stage fixture: a gap cause as a base cause is rejected", mutated("EA-137", gap_cause_as_base_cause), "only that rule's base causes"),
         ("stage fixture: a base cause under rule 4 is rejected", mutated("EA-139", base_cause_under_rule_4), "only that rule's base causes"),
-        ("stage fixture: material in an S1-S6 (base result) fixture is rejected", mutated("EA-140", add_material_s6), "outside S1-S6"),
+        ("stage fixture: material with a non-boolean value is rejected", mutated("EA-142", material_not_boolean), "boolean value for a key ref"),
+        ("stage fixture: a downstream evidence expectation in an S1-S6 fixture is rejected", mutated("EA-142", add_evidence), "must expect exactly stages"),
         ("inline contract: reusing the shared digest is rejected", inline_with_shared_digest(), "must be a full query with its own contract digest"),
     ]
     failed = 0

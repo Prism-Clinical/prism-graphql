@@ -2,7 +2,7 @@
 
 **Status:** Proposed design draft. **Not** accepted, not finalized syntax, not a schema and not implemented. It contains no clinical content: the record type, enum values, codes, sources and permission below are fictional and illustrate language behavior only. They do not map to dysphagia, progression, urgency or any other clinical definition.
 
-**Date:** 2026-10-03. **Revised:** 2026-10-03, nine times, 2026-10-04, once, 2026-10-05, three times, 2026-10-09, three times, 2026-10-28, three times, and 2026-10-29, eight times, 2026-10-31, once, and 2026-11-02, twice, after review. The third revision fixed three things:
+**Date:** 2026-10-03. **Revised:** 2026-10-03, nine times, 2026-10-04, once, 2026-10-05, three times, 2026-10-09, three times, 2026-10-28, three times, and 2026-10-29, eight times, 2026-10-31, once, and 2026-11-02, three times, after review. The third revision fixed three things:
 
 - revision-chain boundaries: source-scoped identity, same-source corrections and one fully specified schematic authority rule;
 - deterministic outcomes for malformed history;
@@ -13,6 +13,13 @@ The fourth revision made three changes:
 - Proven cross-boundary corrections and retractions are now rejected without changing their target. This keeps gap irrelevance consistent with S1.
 - Payload identity for duplicate detection is defined.
 - An unsupported justification about coverage attestations is removed.
+
+The thirty-first revision specifies the step B boundary of S6 (4.2 "Step B boundary", cases 142–144, decision 28):
+
+- Materiality reads one query-bound evaluation: step A and the possible classes of its unresolved records are derived from the same S4 result; nothing is accepted from the caller.
+- Every unresolved record is assessed against the **original** step A base. The comparison row is fixed once from that base, so a record that demotes `Known` does not change how any other record is judged.
+- A material record can only demote a `Known` base to `Unresolved`; nothing promotes, flips or resolves a conflict. Step C, the final evidence result and Needs remain unimplemented.
+- Group R adds three partial-stage fixtures. The `stage-v1` S1–S6 vocabulary gains `material`, which needs the step A `rule` it is relative to.
 
 The thirtieth revision records the review of the twenty-ninth (2026-11-02). Unresolved candidacy beside inadmissibility (2.8) is decided as an **unresolved candidate**: potentially in domain (no `Missing`), not a confirmed in-domain inadmissible candidate (no base `Inadmissible`), and, with possible classes {`excluded`}, `InsufficientEvidence`. Its candidacy uncertainty and mismatch stay in the trace. Nothing in step A is undecided any more. The `unknown`-marker reading (potentially in domain, so no base `Missing`) is confirmed. Case 141 is added.
 
@@ -961,6 +968,22 @@ Consequence: a `Known` result requires every declared source’s cell to be `Com
 - **Unresolved candidacy beside inadmissibility** (decided on review, 2026-11-02). The record is an unresolved candidate like any other, with no exception: potentially in domain, so no `Missing`; not a confirmed in-domain inadmissible candidate, so no base `Inadmissible`; possible classes {`excluded`}, so `InsufficientEvidence`. Its candidacy uncertainty and definite mismatch stay visible (S4 blockers, its own role in the base trace). Beside a `Supporting` or `Refuting` record it cannot oppose the base, since it can only be excluded. An `unknown` marker likewise counts as potentially in domain and prevents a base `Missing`; the uncertainty behind it keeps its own cause and attribution.
 - **Output.** A base-stage discriminator, the rule, the provisional base (`Known(value)` or `Unresolved`), *S* and *R* in `RevisionRef`-then-digest order, the base causes only (never gap causes), the relevant and irrelevant gap references (collision-safe identities, 4.1), and per key: S4 status, S2 key candidacy, role, the selected revision or the possible classes read, and the three rule 5 columns. Detached and deep-frozen. No materiality, final cause set, attribution, `Evidence<Boolean>` or Need.
 
+**Step B boundary** (implemented experimentally; the `material` facts of cases 4, 10, 11 and 55a, and cases 142–144). A separate entry point computes step A internally and then decides materiality only. It is intermediate: step C (the cause union and attribution) has not run, so it is never an `Evidence<Boolean>`.
+
+- **Input.** As step A: an authentic `CompiledPackage`, one `EvidenceQuery` ID and an S4 result of query-bound selection for exactly that package object and query, made with a snapshot. The base result, possible classes and gaps are computed internally; no base, materiality decision, classification, possible class, gap, payload or query setting is accepted. Preview packages are rejected.
+- **Unresolved records.** Each S4 `Unresolved` key and each selected key classified `Unclassified`, with the possible classes of 3.7 as step A read them. Nothing is reclassified and no history is reinterpreted.
+- **Table, fixed by the original step A base.**
+
+| Original step A base | Row | A record is material when its possible classes include | After step B |
+|---|---|---|---|
+| `Known(true)` | `KnownTrue` | `Refuting` | `Unresolved` if any record is material, else `Known(true)` |
+| `Known(false)` | `KnownFalse` | `Supporting` | `Unresolved` if any record is material, else `Known(false)` |
+| `Unresolved` (rules 1, 4, 5; including an established conflict) | `Unresolved` | `Supporting` or `Refuting` | `Unresolved` |
+
+- **Original-base rule.** The row is chosen once from the step A base and every record is judged against it. A record that demotes `Known(true)` does not make the next record judged against `Unresolved`: a record that could only support stays immaterial under `Known(true)` whatever order records are considered in (cases 142, 143). Otherwise input or key order would change materiality and, later, cause attribution.
+- **Never.** No record promotes an `Unresolved` base to `Known`, flips `Known(true)` to `Known(false)` or the reverse, or removes an established conflict. `NonInformative` and `excluded` never make a record material by themselves; an `excluded`-only record (including unresolved candidacy beside inadmissibility) is immaterial. A base made `Unresolved` by a relevant gap (rule 4) uses the `Unresolved` row; gaps are not reinterpreted and their causes are not copied.
+- **Output.** A step B discriminator, the original step A result unchanged, the row and its opposing classes, one entry per unresolved record (structured `RecordKey`, kind, S4 status, step A role, possible classes, material, the classes satisfying the row, and for an immaterial record the reason `NoRefutingPossibility`, `NoSupportingPossibility` or `NoSupportingOrRefutingPossibility`), the material and immaterial keys in `RecordKey` order, the provisional status after step B, and what has not run. Detached and deep-frozen. No cause union, attribution, `Evidence<Boolean>`, `candidateEvidenceIds` or Need.
+
 **Determinism.** Every rule reads sets keyed by identity, classifications, cell statuses and stated gap dimensions. No rule reads input order or revision-ID order. Section 7.4 lists the invariance checks.
 
 ### 4.3 Cases the policy answers
@@ -1423,6 +1446,14 @@ In cases 114, 115b and 116–118 the record is the only candidate and its possib
 | 140 | Inadmissible, non-informative and unclassified together | s1/r140a `Indeterminate`; s1/r140b encounter N0; s1/r140c `assertion` omitted | rule 5, base causes {`Inadmissible`, `InsufficientEvidence`}; the `Unclassified` record adds none and blocks `Missing` |
 | 141 | Unresolved candidacy beside definite inadmissibility (2.8) | s1/r141 concept `other-cs#item-x`, encounter N0 | `Unresolved` [`CandidacyUnresolved`]; @1 blockers [`CandidacyUnresolved`, `Inadmissible`]; possible {excluded}; rule 5, base causes {`InsufficientEvidence`}: no `Missing`, no base `Inadmissible` |
 
+**R. S6 step B materiality (4.2 step B)** (D0 unless stated; the shared query; `cov-all`). **Partial-stage**: stages S1–S6 with `material`, relative to the stated step A `rule`; no cause union, attribution or evidence result. Evaluation fixtures already state `material` for cases 4, 10, 11 and 55a.
+
+| # | Case | Records / changes | Materiality |
+|---|---|---|---|
+| 142 | Original `Known(true)` base, demoting record first | s1/r142a `Affirmed`; s1/r142b `Denied`, encounter omitted; s1/r142c `Affirmed`, encounter omitted | Rule 2. r142b {Refuting, excluded} material; r142c {Supporting, excluded} **immaterial**: judged against `Known(true)`, not the `Unresolved` status r142b produces |
+| 143 | Original `Known(false)` base, demoting record first | s1/r143a `Denied`; s1/r143b `Affirmed`, encounter omitted; s1/r143c `Denied`, encounter omitted | Rule 3. r143b {Supporting, excluded} material; r143c {Refuting, excluded} immaterial |
+| 144 | `Unresolved` base, non-supporting possibilities | s1/r144a `Indeterminate`; s1/r144b `Affirmed`, encounter omitted; s1/r144c `Indeterminate`, encounter omitted; s1/r144d concept `other-cs#item-x`, encounter N0 | Rule 5 {`InsufficientEvidence`}. r144b material; r144c {NonInformative, excluded} and r144d {excluded} immaterial |
+
 ### 7.5 Invariance checks
 
 These must hold for every case:
@@ -1551,6 +1582,11 @@ These must hold for every case:
     - Rule 1 `Conflicting` with both sides; rules 2–3 provisional `Known`; rule 4 with no base cause; rule 5 by the decision table, with S2 key candidacy deciding "seen".
     - Unresolved candidacy beside inadmissibility (2.8) is an unresolved candidate: no `Missing`, no base `Inadmissible`, `InsufficientEvidence` from {`excluded`} (decided on review, 2026-11-02; case 141). An `unknown` marker is potentially in domain (confirmed).
     - Materiality (step B), the cause union and attribution (step C), the final evidence result and Needs remain unimplemented.
+28. S6 step B materiality (4.2 "Step B boundary", cases 142–144), proposed:
+    - Same boundary as step A; the base and possible classes are derived from the bound S4 result, never supplied.
+    - Unresolved records are the S4 `Unresolved` keys and the selected `Unclassified` keys; their 3.7 possible classes decide materiality by the 4.2 table.
+    - Every record is judged against the original step A base (the row is fixed once); only a `Known` base can change, and only to `Unresolved`.
+    - The cause union and attribution (step C), the final evidence result and Needs remain unimplemented.
 
 **Possible conflicts needing a Stage A amendment.** None found. Items to confirm:
 
@@ -1560,7 +1596,7 @@ These must hold for every case:
 
 **Query/predicate split.** The query carries the reasoning. A projection-only Predicate is optional naming and composition structure. No node kind is added or removed.
 
-**Conformance fixtures.** [conformance/explicit-assertion-v0/](conformance/explicit-assertion-v0/README.md) holds machine-readable fixtures for cases 1–141, mapped by case number, with expected outputs written from this contract. They are proposed, like this document.
+**Conformance fixtures.** [conformance/explicit-assertion-v0/](conformance/explicit-assertion-v0/README.md) holds machine-readable fixtures for cases 1–144, mapped by case number, with expected outputs written from this contract. They are proposed, like this document.
 
 **Remaining items.**
 
