@@ -8,12 +8,14 @@
  * and query-bound preview evaluation (§3.5 "Preview evaluation", §6.1): the `criterion` facts of
  * preview fixtures, their `stagesRun` facts, and their markers, publication, outcome, and the absence
  * of an evidence result and of Needs; and S6 gap relevance (§1.5, §4.1): `cell`, `gap`, `notCurrent`
- * and the coverage diagnostics, plus two one-way implications from evidence expectations.
+ * and the coverage diagnostics, plus two one-way implications from evidence expectations; and the S6
+ * step A base result (§4.2 step A): `rule` and `baseCauses` facts, the `query`-origin cause
+ * attributions (exactly the base causes) and one one-way implication from Known results.
  *
- * A fixture is never reported as passing as a whole: only its S1–S4 and S5 (criterion, classification, possibleClasses) assertions are
- * checked, plus one-way implications from downstream expectations. `stage` fixtures (stage-v1)
- * assert S1–S3, S1–S4 or S1–S5 and carry no downstream expectation. Every other expected field or
- * trace fact (materiality, evidence, S6–S7) is outside the scope.
+ * A fixture is never reported as passing as a whole: only its S1–S5, S6 gap-relevance and step A
+ * assertions are checked, plus one-way implications from downstream expectations. `stage` fixtures
+ * (stage-v1) assert S1–S3, S1–S4, S1–S5 or S1–S6 and carry no downstream expectation. Every other
+ * expected field or trace fact (materiality, final cause attribution, evidence, Needs, S7) is outside the scope.
  */
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -27,7 +29,9 @@ import {
   experimentalCompile,
   experimentalCompilePreview,
   experimentalEvaluatePreviewQuery,
+  experimentalBaseResult,
   experimentalGapRelevance,
+  type BaseResult,
   type GapRelevanceResult,
   type PreviewQueryResult,
   type PreviewRecord,
@@ -127,6 +131,17 @@ export interface FixtureReport {
    * reason, and a `Known` result must have no relevant gap (§4.2). Not base results or attribution.
    */
   gapOneWay: number;
+  /** S6 step A facts (§4.2 step A): `rule` and `baseCauses`, checked directly against the base result. */
+  baseApplicable: number;
+  basePassed: number;
+  /**
+   * Evaluation fixtures: their `query`-origin cause attributions are exactly the step A base causes
+   * (README "Identifier notation"), compared as a set with the base result, refs included for
+   * `AssertionConflict`. One check per fixture with a stated attribution.
+   */
+  baseAttribution: number;
+  /** One-way: a final Known result needs a Known base (rule 2 or 3) with the same references (step B only demotes). */
+  baseOneWay: number;
   /** Combined S3 `admissibility` facts (contract §2.7), checked directly. */
   admissibilityApplicable: number;
   admissibilityPassed: number;
@@ -324,6 +339,10 @@ export function runFixtures(dir: string = FIXTURE_DIR): { reports: FixtureReport
       gapApplicable: 0,
       gapPassed: 0,
       gapOneWay: 0,
+      baseApplicable: 0,
+      basePassed: 0,
+      baseAttribution: 0,
+      baseOneWay: 0,
       admissibilityApplicable: 0,
       admissibilityPassed: 0,
       outOfScope: 0,
@@ -432,6 +451,8 @@ export function runFixtures(dir: string = FIXTURE_DIR): { reports: FixtureReport
         });
     if (bound && !isDeepStrictEqual(bound, s4)) report.failures.push('query-bound selection differs from the standalone S1–S4 stages');
     const gaps: GapRelevanceResult | null = bound && typeof compiledQuery !== 'string' ? experimentalGapRelevance({ package: compiledQuery, query: query.query.id, s4: bound }) : null;
+    // Step A over the same bound evaluation (contract §4.2 step A): no materiality or final causes.
+    const baseRes: BaseResult | null = bound && typeof compiledQuery !== 'string' ? experimentalBaseResult({ package: compiledQuery, query: query.query.id, s4: bound }) : null;
     const boundKeys = new Map((bound?.keys ?? []).map((k) => [`${k.key.source}/${k.key.localId}`, k] as const));
     const boundNodes = new Map<string, Extract<PossibleSelection, { kind: 'node' }>>();
     for (const k of bound?.keys ?? []) for (const p of k.possibilities) if (p.kind === 'node') boundNodes.set(showRev(p.node.revision) + (p.node.digest ? `#${p.node.digest}` : ''), p);
@@ -457,6 +478,13 @@ export function runFixtures(dir: string = FIXTURE_DIR): { reports: FixtureReport
         const f = checkCoverageFact(t, gaps);
         if (f) report.failures.push(f);
         else report.coveragePassed += 1;
+        continue;
+      }
+      if (t.fact === 'rule' || t.fact === 'baseCauses') {
+        report.baseApplicable += 1;
+        const got = !baseRes ? 'no base result (the query does not compile)' : t.fact === 'rule' ? baseRes.rule : baseRes.undecided.length > 0 ? `undecided ${baseRes.undecided.map((u) => u.cause)}` : baseRes.baseCauses.map((c) => c.cause);
+        if (isDeepStrictEqual(got, t.value)) report.basePassed += 1;
+        else report.failures.push(`${t.fact}: ${JSON.stringify(got)}, expected ${JSON.stringify(t.value)}`);
         continue;
       }
       if (t.fact === 'gap') {
@@ -662,6 +690,20 @@ export function runFixtures(dir: string = FIXTURE_DIR): { reports: FixtureReport
       report.gapOneWay += 1;
       if (gaps.relevant.length > 0) report.failures.push(`Known result with relevant gap(s) ${gaps.relevant.map((x) => x.label).join(', ')}`);
     }
+    // Base causes (§4.2 step A) are exactly the `query`-origin attributions of an evaluation fixture.
+    if (Array.isArray(exp.causeAttribution) && baseRes) {
+      report.baseAttribution += 1;
+      const want = (exp.causeAttribution as Json[]).filter((a) => a.origin === 'query').map((a) => JSON.stringify([a.cause, a.reason, a.refs ?? null])).sort();
+      const got = baseRes.baseCauses.map((c) => JSON.stringify([c.cause, c.reason, c.cause === 'Conflicting' ? c.refs.map((n) => showRev(n.revision) + (n.digest ? `#${n.digest}` : '')) : null])).sort();
+      if (!isDeepStrictEqual(got, want) || baseRes.undecided.length > 0) report.failures.push(`base causes ${got.join(' ')}${baseRes.undecided.length ? ' (undecided ' + baseRes.undecided.map((u) => u.cause) + ')' : ''}, expected query attributions ${want.join(' ')}`);
+    }
+    // One-way (§4.2 steps A-B): a final Known result needs the same provisional Known base.
+    if (exp.evidence?.status === 'Known' && baseRes) {
+      report.baseOneWay += 1;
+      const ids = (exp.evidence.value ? baseRes.supporting : baseRes.refuting).map((n) => showRev(n.revision) + (n.digest ? `#${n.digest}` : ''));
+      const ok = baseRes.base.status === 'Known' && baseRes.base.value === exp.evidence.value && isDeepStrictEqual(ids, exp.evidence.supportingEvidenceIds);
+      if (!ok) report.failures.push(`Known(${exp.evidence.value}) result, but base rule ${baseRes.rule} with ${JSON.stringify(ids)}`);
+    }
     // One-way (contract §4.2 rules 2-3): a Known result is supported only by selected revisions.
     if (exp.evidence?.status === 'Known' && s4) {
       const selected = new Set(s4.selected.map((x) => showRev(x.node.revision) + (x.node.digest ? `#${x.node.digest}` : '')));
@@ -700,7 +742,10 @@ export function runFixtures(dir: string = FIXTURE_DIR): { reports: FixtureReport
       report.previewApplicable +
       report.coverageApplicable +
       report.gapApplicable +
-      report.gapOneWay;
+      report.gapOneWay +
+      report.baseApplicable +
+      report.baseAttribution +
+      report.baseOneWay;
     if (checked === 0) missing.push(fx.id);
   }
   return { reports, noApplicableAssertions: missing };

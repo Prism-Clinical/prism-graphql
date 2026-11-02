@@ -84,6 +84,8 @@ for (const name of fs.readdirSync(fxDir).sort()) {
   if (fx.kind !== 'evaluation' && fx.kind !== 'stage') continue;
   const groups = new Map();
   for (const occ of fx.input.records) {
+    // An occurrence without a key has no identity (S1 lists it as unidentified); it is never a variant.
+    if (!occ.key || typeof occ.key !== 'object') continue;
     const ref = `${occ.key.source}/${occ.key.localId}@${occ.revision}`;
     const id = `${ref}#${sha(canonicalize(payload(occ)))}`;
     if (!groups.has(ref)) groups.set(ref, new Map());

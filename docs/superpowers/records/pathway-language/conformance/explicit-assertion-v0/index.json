@@ -433,6 +433,18 @@
     ],
     "136": [
       "EA-136"
+    ],
+    "137": [
+      "EA-137"
+    ],
+    "138": [
+      "EA-138"
+    ],
+    "139": [
+      "EA-139"
+    ],
+    "140": [
+      "EA-140"
     ]
   },
   "pairs": [
@@ -681,6 +693,13 @@
         "EA-127"
       ],
       "claim": "Unresolved history stays Unresolved (HistoryUnresolved) whether one alternative is admissible or every alternative is inadmissible: an admissible possibility selects nothing, and all-inadmissible possibilities do not resolve history"
+    },
+    {
+      "fixtures": [
+        "EA-137",
+        "EA-138"
+      ],
+      "claim": "An unresolved key whose possibilities are in domain but all inadmissible is a seen record (InsufficientEvidence, never a base Inadmissible); a key whose every possible current is out of domain is not seen (Missing)"
     }
   ]
 }
