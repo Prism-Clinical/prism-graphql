@@ -66,6 +66,15 @@ describe('final Evidence<Boolean>: Known results (§4.2 rules 2–3)', () => {
     expect(b.evidence.provenance[0]!.occurrences).toEqual([{ acquisition: 'a0', sourceRecordRef: 's1:r1' }, { acquisition: 'a1', sourceRecordRef: 's1:r1' }]);
   });
 
+  it('missing provenance is kept explicitly as null, never dropped or manufactured (decided on review, 2026-11-02)', () => {
+    const r = run([rev('r1', { provenance: undefined }), { ...SUPPORTING, provenance: { acquisition: 'a1', sourceRecordRef: 's1:r1' } }]);
+    if (r.evidence.status !== 'Known') throw new Error('Known');
+    // §5.3 occurrence order: a missing acquisition sorts first.
+    expect(r.evidence.provenance).toEqual([{ ref: { revision: { source: 's1', localId: 'r1', revision: '1' } }, occurrences: [null, { acquisition: 'a1', sourceRecordRef: 's1:r1' }] }]);
+    const none = run([rev('r1', { provenance: undefined })]);
+    expect(none.evidence.status === 'Known' && none.evidence.provenance[0]!.occurrences).toEqual([null]);
+  });
+
   it('a Known result never lists a merely possible supporting revision', () => {
     // r12 could support but is unresolved: Known(true) stands on r1 alone (r12 is immaterial).
     expect(ev(run([SUPPORTING, canSupport('r12')]))).toEqual({ status: 'Known', value: true, supportingEvidenceIds: ['s1/r1@1'] });

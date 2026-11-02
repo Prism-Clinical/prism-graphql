@@ -2,7 +2,7 @@
 
 **Status:** Proposed design draft. **Not** accepted, not finalized syntax, not a schema and not implemented. It contains no clinical content: the record type, enum values, codes, sources and permission below are fictional and illustrate language behavior only. They do not map to dysphagia, progression, urgency or any other clinical definition.
 
-**Date:** 2026-10-03. **Revised:** 2026-10-03, nine times, 2026-10-04, once, 2026-10-05, three times, 2026-10-09, three times, 2026-10-28, three times, and 2026-10-29, eight times, 2026-10-31, once, and 2026-11-02, six times, after review. The third revision fixed three things:
+**Date:** 2026-10-03. **Revised:** 2026-10-03, nine times, 2026-10-04, once, 2026-10-05, three times, 2026-10-09, three times, 2026-10-28, three times, and 2026-10-29, eight times, 2026-10-31, once, and 2026-11-02, seven times, after review. The third revision fixed three things:
 
 - revision-chain boundaries: source-scoped identity, same-source corrections and one fully specified schematic authority rule;
 - deterministic outcomes for malformed history;
@@ -13,6 +13,8 @@ The fourth revision made three changes:
 - Proven cross-boundary corrections and retractions are now rejected without changing their target. This keeps gap irrelevance consistent with S1.
 - Payload identity for duplicate detection is defined.
 - An unsupported justification about coverage attestations is removed.
+
+The thirty-fifth revision records the review of the thirty-fourth (2026-11-02). The proposed shape of `Known` `provenance` is confirmed: each supporting reference carries the distinct acquisition provenance values S1 retained, in deterministic order. Missing provenance is kept explicitly, never manufactured. Provenance says where supporting evidence came from; the evaluation reasoning stays in the trace. Candidate membership is confirmed against 5.1. I5 is complete as an experimental increment, with the S1 fork-fallback limitation (EA-083/EA-092) retained.
 
 The thirty-fourth revision specifies the query evidence boundary (5.1 "Query evidence boundary", cases 145–148, decision 30):
 
@@ -1057,14 +1059,14 @@ Consequence: a `Known` result requires every declared source’s cell to be `Com
 |---|---|
 | Status and value | Step C's status, which is step B's, unchanged |
 | `supportingEvidenceIds` (`Known`) | Step A's *S* (`true`) or *R* (`false`): definitely selected revisions only, never a possible one |
-| `provenance` (`Known`) | The evaluation's own S1 result: the occurrences of each supporting revision (proposed reading, below) |
+| `provenance` (`Known`) | The evaluation's own S1 result: the occurrences of each supporting revision (decided on review, below) |
 | `causes` (`Unresolved`) | Step C's cause set, unchanged; its attribution stays in the trace |
 | `candidateEvidenceIds` (`Unresolved`) | The membership rule below, over the S4 keys; independent of materiality, classification, admissibility and causes |
 
 - **Candidate membership.** For each S4 key that is `Selected`, `Unresolved` or `Inadmissible`, each node possibility (the current revision, or each possible current revision or variant) whose S2 candidacy is `InDomain` or `Unresolved`. Excluded: `excluded` and `unknown` markers (not identities), out-of-domain possibilities (also within an unresolved key), `OutOfDomain`, `Retracted` and no-record keys, superseded revisions that are no longer possible current, and S1-unidentified occurrences (no identity; their effect is an `Invalid` gap).
 - **Identity, order, deduplication.** References are `NodeRef`s: `RevisionRef`, plus the digest for a variant of a conflicted revision. Lists are in 5.3 order (by `source`, `localId`, `revision`, then digest, as a tuple, never by display string) and deduplicated by that structured identity. The fixture string is a projection for display and comparison; it is not unique for every valid identity (`s1`/`a@1`@`1` and `s1`/`a`@`1@1` both display as `s1/a@1@1`), so nothing is keyed by it.
 - **Invariants, never repaired.** A `Known` status with no supporting reference on its side, or with references on both sides, and an `Unresolved` status without a cause, are engine defects (errors), never patched with a default cause or reference. Every context binding marked unknown carries at least one cause, so the second cannot arise from valid input.
-- **`provenance` (proposed clarification).** Stage A §4.1 lists `provenance` on `Known` without a shape, and the fixture format omits it. Proposed: for each supporting reference, the distinct acquisition provenance values S1 retained for its occurrences (1.2; RFC 8785 equality), in 5.3 occurrence order. Identical duplicate occurrences add nothing; occurrences differing only in provenance keep both (case 59).
+- **`provenance`** (decided on review, 2026-11-02). Stage A §4.1 lists `provenance` on `Known` without a shape, and the fixture format omits it. For each supporting reference, the distinct acquisition provenance values S1 retained for its occurrences (1.2; RFC 8785 equality), in 5.3 occurrence order. Identical duplicate occurrences add nothing; occurrences differing only in provenance keep both (case 59). An occurrence without provenance contributes an explicit `null`: it is never dropped or manufactured. S1 retains an absent `provenance` and an explicit `null` alike as `null`, so the two are not distinguished. Provenance describes where the supporting evidence came from; the reasoning that produced the result is in the trace, not here.
 - **Executor input.** The isolated executor (first-program contract, I2) takes `SuppliedEvidence` with string IDs in fixture notation and validates them against that notation. This result is not passed to it: converting is program-executor integration, outside this boundary, and would need either a collision-free ID encoding or structured IDs in the executor.
 - **Known S1 limitation.** The result reports the current S1 contract (EA-083/EA-092, 4.2 "Step C boundary"). It does not show that S1 captures every underlying conflict, so it must not drive acquisition or conflict resolution until that is settled.
 - **Output.** A discriminator, the evidence, the step C result unchanged as the S6 trace (step B, step A and the attribution inside), and what has not run (`Needs`, `PredicateProjection`, `ProgramExecution`). Detached and deep-frozen.
@@ -1656,11 +1658,11 @@ These must hold for every case:
     - Confirmed (no fixture has two affected revisions): a context finding is one entry per binding, cause and reason, with the affected revisions of material keys only in sorted, deduplicated `refs`.
     - Fixture coverage is the projection (cause, origin label, stage, reason, `refs`); the EA-083/EA-092 S1 limitation stays open and is not settled by step C.
     - The final evidence result, `candidateEvidenceIds` and Needs remain unimplemented.
-30. Final query evidence (5.1 "Query evidence boundary", cases 145–148), proposed:
+30. Final query evidence (5.1 "Query evidence boundary", cases 145–148), proposed; confirmed on review (2026-11-02):
     - Same boundary as steps A–C; status, causes, *S*/*R* and candidate membership are derived from the bound S4 result, never supplied.
     - `Known` lists only definitely selected *S* or *R*; `Unresolved` keeps step C's causes unchanged and lists candidates by 5.1 membership, independent of materiality.
     - References are structured `NodeRef`s in 5.3 tuple order; the fixture string is a display projection.
-    - Proposed, to confirm: `Known` `provenance` is the distinct acquisition provenance of each supporting reference's occurrences.
+    - Confirmed: `Known` `provenance` is the distinct acquisition provenance of each supporting reference's occurrences, in deterministic order; missing provenance is an explicit `null`, never manufactured.
     - Needs, predicate projection (5.2) and program execution remain unimplemented; the result is not passed to the isolated executor.
 
 **Possible conflicts needing a Stage A amendment.** None found. Items to confirm:
