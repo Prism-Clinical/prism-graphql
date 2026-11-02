@@ -13,12 +13,13 @@
  * attributions (exactly the base causes) and one one-way implication from Known results; and step B
  * (§4.2 step B): `material` facts, plus two one-way implications from final results; and step C
  * (§4.2 step C): the `causeAttribution` and `causes` of Unresolved evaluation fixtures, exactly; and the
- * final Evidence<Boolean> (§5.1) of evaluation fixtures and S1–S6 stage fixtures that state it, exactly.
+ * final Evidence<Boolean> (§5.1) of evaluation fixtures and S1–S6 stage fixtures that state it, exactly;
+ * and the S7 `decision` (§5.2) of evaluation fixtures, exactly.
  *
  * A fixture is never reported as passing as a whole: only its S1–S5, S6 gap-relevance, step A,
- * step B and step C assertions are checked, plus one-way implications from downstream expectations. `stage` fixtures
+ * step B, step C, final-evidence and S7 decision assertions are checked, plus one-way implications from downstream expectations. `stage` fixtures
  * (stage-v1) assert S1–S3, S1–S4, S1–S5 or S1–S6 and carry no downstream expectation. Every other
- * expected field or trace fact (decision, Needs, S7) is outside the scope.
+ * expected field or trace fact (Needs, needDeferred, program-level expectations) is outside the scope.
  */
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -37,6 +38,7 @@ import {
   type MaterialityResult,
   experimentalCauseAttribution,
   type CauseAttributionResult,
+  experimentalQueryDecision,
   experimentalQueryEvidence,
   type QueryEvidenceResult,
   experimentalGapRelevance,
@@ -176,6 +178,9 @@ export interface FixtureReport {
    */
   evidenceApplicable: number;
   evidencePassed: number;
+  /** S7 `decision` (§5.2), exact, projected from the same bound evaluation's evidence. */
+  decisionApplicable: number;
+  decisionPassed: number;
   /** Combined S3 `admissibility` facts (contract §2.7), checked directly. */
   admissibilityApplicable: number;
   admissibilityPassed: number;
@@ -393,6 +398,8 @@ export function runFixtures(dir: string = FIXTURE_DIR): { reports: FixtureReport
       causesBlocked: 0,
       evidenceApplicable: 0,
       evidencePassed: 0,
+      decisionApplicable: 0,
+      decisionPassed: 0,
       admissibilityApplicable: 0,
       admissibilityPassed: 0,
       outOfScope: 0,
@@ -810,6 +817,14 @@ export function runFixtures(dir: string = FIXTURE_DIR): { reports: FixtureReport
       if (isDeepStrictEqual(got, exp.evidence)) report.evidencePassed += 1;
       else report.failures.push(`evidence ${JSON.stringify(got)}, expected ${JSON.stringify(exp.evidence)}`);
     }
+    // S7 decision (§5.2), exact, over the same bound evaluation; its retained evidence must be evRes.
+    if (exp.decision && evRes && fx.kind === 'evaluation') {
+      report.decisionApplicable += 1;
+      report.outOfScope -= 1; // `decision` is checked here
+      const d = experimentalQueryDecision({ package: compiledQuery as CompiledPackage, query: query.query.id, s4: bound! });
+      if (isDeepStrictEqual(d.decision, exp.decision) && isDeepStrictEqual(d.queryEvidence, evRes)) report.decisionPassed += 1;
+      else report.failures.push(`decision ${JSON.stringify(d.decision)}, expected ${JSON.stringify(exp.decision)}`);
+    }
     // One-way (contract §4.2 rules 2-3): a Known result is supported only by selected revisions.
     if (exp.evidence?.status === 'Known' && s4) {
       const selected = new Set(s4.selected.map((x) => showRev(x.node.revision) + (x.node.digest ? `#${x.node.digest}` : '')));
@@ -856,7 +871,8 @@ export function runFixtures(dir: string = FIXTURE_DIR): { reports: FixtureReport
       report.materialOneWay +
       report.causesApplicable +
       report.causesKnown +
-      report.evidenceApplicable;
+      report.evidenceApplicable +
+      report.decisionApplicable;
     if (checked === 0) missing.push(fx.id);
   }
   return { reports, noApplicableAssertions: missing };

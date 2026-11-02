@@ -9,6 +9,7 @@
 import { compiledKind, contractHoles, detach } from '../compile/compile';
 import type { CompiledDeclaration, CompiledPackage, Expr, PreviewPackage } from '../compile/types';
 import { compareCodePoints } from '../s1/resolve';
+import { projectEvidence } from './project';
 import type {
   Cause,
   DecisionValue,
@@ -178,9 +179,10 @@ function evaluate(pkg: CompiledPackage | PreviewPackage, evidence: Map<string, S
         because = 'the projected query is an authoring hole, so the marker is kept';
       } else {
         const ev = (a as { kind: 'evidence'; evidence: SuppliedEvidence }).evidence;
-        v = ev.status === 'Known'
-          ? { kind: 'decision', value: ev.value ? 'True' : 'False', causes: [], ids: [...ev.supportingEvidenceIds] }
-          : { kind: 'decision', value: 'Unknown', causes: [...ev.causes], ids: [...ev.candidateEvidenceIds] };
+        const d = projectEvidence(ev);
+        v = d.value === 'Unknown'
+          ? { kind: 'decision', value: 'Unknown', causes: [...d.causes], ids: [...(ev as Extract<SuppliedEvidence, { status: 'Unresolved' }>).candidateEvidenceIds] }
+          : { kind: 'decision', value: d.value, causes: [], ids: [...(ev as Extract<SuppliedEvidence, { status: 'Known' }>).supportingEvidenceIds] };
         because = `${show(a)} projects to ${show(v)} with the same ${ev.status === 'Known' ? 'supporting' : 'candidate'} IDs (contract §5.2)`;
       }
       steps.push({ source: e.location, form: 'evidenceValue', result: show(v), uses, because });

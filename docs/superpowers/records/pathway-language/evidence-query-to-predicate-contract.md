@@ -2,7 +2,7 @@
 
 **Status:** Proposed design draft. **Not** accepted, not finalized syntax, not a schema and not implemented. It contains no clinical content: the record type, enum values, codes, sources and permission below are fictional and illustrate language behavior only. They do not map to dysphagia, progression, urgency or any other clinical definition.
 
-**Date:** 2026-10-03. **Revised:** 2026-10-03, nine times, 2026-10-04, once, 2026-10-05, three times, 2026-10-09, three times, 2026-10-28, three times, and 2026-10-29, eight times, 2026-10-31, once, and 2026-11-02, seven times, after review. The third revision fixed three things:
+**Date:** 2026-10-03. **Revised:** 2026-10-03, nine times, 2026-10-04, once, 2026-10-05, three times, 2026-10-09, three times, 2026-10-28, three times, and 2026-10-29, eight times, 2026-10-31, once, and 2026-11-02, eight times, after review. The third revision fixed three things:
 
 - revision-chain boundaries: source-scoped identity, same-source corrections and one fully specified schematic authority rule;
 - deterministic outcomes for malformed history;
@@ -13,6 +13,13 @@ The fourth revision made three changes:
 - Proven cross-boundary corrections and retractions are now rejected without changing their target. This keeps gap irrelevance consistent with S1.
 - Payload identity for duplicate detection is defined.
 - An unsupported justification about coverage attestations is removed.
+
+The thirty-sixth revision specifies the query decision boundary (5.2 "Query decision boundary", decision 31):
+
+- One query's `Decision` is projected from its final `Evidence<Boolean>`, computed from the same query-bound evaluation; nothing is accepted from the caller.
+- The projection is the isolated executor's own (`evidenceValue`): `Known(true)` → `True`, `Known(false)` → `False`, `Unresolved(causes)` → `Unknown(causes)`, causes unchanged and in order. It reads nothing else.
+- Every evaluation fixture's `decision` is reproduced exactly (123). No expected decision was changed.
+- Needs, program execution, preview evidence and end-to-end integration (I6) are still not implemented.
 
 The thirty-fifth revision records the review of the thirty-fourth (2026-11-02). The proposed shape of `Known` `provenance` is confirmed: each supporting reference carries the distinct acquisition provenance values S1 retained, in deterministic order. Missing provenance is kept explicitly, never manufactured. Provenance says where supporting evidence came from; the evaluation reasoning stays in the trace. Candidate membership is confirmed against 5.1. I5 is complete as an experimental increment, with the S1 fork-fallback limitation (EA-083/EA-092) retained.
 
@@ -1081,6 +1088,14 @@ Consequence: a `Known` result requires every declared source’s cell to be `Com
 
 `p = evidenceValue(ref q)` adds and removes nothing. Composition such as `finding = all(A, p)` keeps `p`’s value, causes and trace (§4.3; minimal model §6.1).
 
+**Query decision boundary** (implemented experimentally; the `decision` of every evaluation fixture). A separate entry point computes one query's final evidence (5.1) and projects it to `Decision`. It emits no Need, evaluates no program expression or graph and runs no preview.
+
+- **Input.** As 5.1: an authentic `CompiledPackage`, one `EvidenceQuery` ID and an S4 result of query-bound selection for exactly that package object and query, made with a snapshot. No evidence, decision, cause, stage result, snapshot or query setting is accepted. Preview packages are rejected.
+- **Projection.** The table above, applied to the status, value and causes only: `Known(true)` → `True`, `Known(false)` → `False`, `Unresolved(causes)` → `Unknown(causes)`, the causes unchanged and in their 5.3 order. Supporting and candidate references, provenance and attribution are never read to decide it. `Unknown` is never turned into `False`, and no cause (such as `Missing`) is added as a fallback.
+- **Representation.** The isolated executor's `Decision` value (`{value: 'True' | 'False'}` or `{value: 'Unknown', causes}`), produced by the same pure projection its `evidenceValue` uses. The references that support or are candidates for the decision stay in the retained evidence; they are not copied.
+- **Output.** A discriminator, the package, query and snapshot, the `Decision`, the 5.1 query-evidence result unchanged (with its S6 trace), and what has not run (`Needs`, `ProgramExecution`). Detached and deep-frozen.
+- **Not here.** Program-level predicates, `all`, Findings and graph execution; Needs; preview evidence. The result is not passed to the isolated executor (I6). The EA-083/EA-092 S1 limitation (5.1) applies unchanged.
+
 ### 5.3 Canonical ordering (representation only)
 
 These orderings exist only so expected traces and lists compare byte-for-byte. They never influence candidacy, selection, classification or resolution, and no variant is ever preferred because of its digest or lexical position.
@@ -1664,6 +1679,11 @@ These must hold for every case:
     - References are structured `NodeRef`s in 5.3 tuple order; the fixture string is a display projection.
     - Confirmed: `Known` `provenance` is the distinct acquisition provenance of each supporting reference's occurrences, in deterministic order; missing provenance is an explicit `null`, never manufactured.
     - Needs, predicate projection (5.2) and program execution remain unimplemented; the result is not passed to the isolated executor.
+31. Query decision (5.2 "Query decision boundary"), proposed:
+    - Same boundary as 5.1; the evidence is computed from the bound evaluation, never supplied.
+    - The 5.2 table on status, value and causes only, through the isolated executor's own projection, so the two cannot diverge; references stay in the retained evidence.
+    - Every evaluation fixture's `decision` matches exactly (123); no expectation was changed.
+    - Needs, program execution, preview evidence and I6 remain unimplemented.
 
 **Possible conflicts needing a Stage A amendment.** None found. Items to confirm:
 
