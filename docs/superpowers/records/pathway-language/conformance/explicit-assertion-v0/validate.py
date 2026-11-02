@@ -16,7 +16,7 @@ Usage: python3 validate.py [--self-test]
 import copy, hashlib, json, os, sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-CASE_RANGE = range(1, 145)
+CASE_RANGE = range(1, 149)
 CAUSES = ["Missing", "Conflicting", "Unavailable", "Invalid", "Inadmissible", "InsufficientEvidence"]
 MARKERS = ["excluded", "unknown"]
 # Trace facts a partial-stage (S1-S3) fixture may assert.
@@ -240,9 +240,27 @@ def check(fixtures, index, query):
             # Partial-stage fixture: S1-S3, S1-S4, S1-S5 (criterion, classification, possibleClasses) or S1-S6
             # (gap relevance only) facts, and no downstream expectation.
             stages = fx["expected"].get("stages")
-            if fx["comparison"] != "stage-v1" or set(fx["expected"]) != {"stages", "traceAssertions"} \
+            # S1-S6 may also state the final evidence (contract §5.1); never a decision, attribution or Needs.
+            fields = {"stages", "traceAssertions"} | ({"evidence"} if stages and "S6" in stages else set())
+            if fx["comparison"] != "stage-v1" or not {"stages", "traceAssertions"} <= set(fx["expected"]) <= fields \
                     or stages not in (["S1", "S2", "S3"], ["S1", "S2", "S3", "S4"], ["S1", "S2", "S3", "S4", "S5"], ["S1", "S2", "S3", "S4", "S5", "S6"]):
-                err(i, "stage fixture must expect exactly stages [S1, S2, S3], [S1, S2, S3, S4], [S1, S2, S3, S4, S5] or [S1, S2, S3, S4, S5, S6] and traceAssertions")
+                err(i, "stage fixture must expect exactly stages [S1, S2, S3], [S1, S2, S3, S4], [S1, S2, S3, S4, S5] or [S1, S2, S3, S4, S5, S6] and traceAssertions (S1-S6 may add evidence)")
+            if "evidence" in fx["expected"]:
+                ev = fx["expected"]["evidence"]
+                ids = ev.get("supportingEvidenceIds" if ev.get("status") == "Known" else "candidateEvidenceIds")
+                ok = isinstance(ids, list) and all(isinstance(x, str) and "/" in x and "@" in x for x in ids) and len(set(ids)) == len(ids)
+                if ev.get("status") == "Known":
+                    ok = ok and set(ev) == {"status", "value", "supportingEvidenceIds"} and isinstance(ev["value"], bool) and len(ids) > 0
+                else:
+                    cs = ev.get("causes")
+                    ok = ok and ev.get("status") == "Unresolved" and set(ev) == {"status", "causes", "candidateEvidenceIds"} \
+                        and isinstance(cs, list) and len(cs) > 0 and set(cs) <= set(CAUSES) and len(set(cs)) == len(cs)
+                if not ok:
+                    err(i, "stage evidence: Known(value, nonempty distinct supportingEvidenceIds) or Unresolved(nonempty distinct causes, distinct candidateEvidenceIds)")
+                else:
+                    check_sorted(i + " evidence ids", ids, id_key)
+                    if ev["status"] == "Unresolved":
+                        check_sorted(i + " evidence causes", ev["causes"], CAUSES.index)
             allowed = STAGE_FACTS | (S4_FACTS if stages and "S4" in stages else set()) | (S5_FACTS if stages and "S5" in stages else set()) \
                 | (S6_FACTS if stages and "S6" in stages else set())
             for t in fx["expected"]["traceAssertions"]:
@@ -411,6 +429,15 @@ def self_test(fixtures, index, query):
     def add_evidence(e):
         e["evidence"] = {"status": "Unresolved", "causes": ["Inadmissible"], "candidateEvidenceIds": ["s1/r119@1"]}
 
+    def add_decision(e):
+        e["decision"] = {"value": "Unknown", "causes": ["Missing"]}
+
+    def drop_evidence_causes(e):
+        e["evidence"]["causes"] = []
+
+    def misorder_candidates(e):
+        e["evidence"]["candidateEvidenceIds"].reverse()
+
     def add_s4_fact_to_s3_stage(e):
         e["traceAssertions"].append({"fact": "selection", "ref": "s1/r119", "value": "Inadmissible"})
 
@@ -488,7 +515,10 @@ def self_test(fixtures, index, query):
         ("stage fixture: a gap cause as a base cause is rejected", mutated("EA-137", gap_cause_as_base_cause), "only that rule's base causes"),
         ("stage fixture: a base cause under rule 4 is rejected", mutated("EA-139", base_cause_under_rule_4), "only that rule's base causes"),
         ("stage fixture: material with a non-boolean value is rejected", mutated("EA-142", material_not_boolean), "boolean value for a key ref"),
-        ("stage fixture: a downstream evidence expectation in an S1-S6 fixture is rejected", mutated("EA-142", add_evidence), "must expect exactly stages"),
+        ("stage fixture: a decision expectation in an S1-S6 fixture is rejected", mutated("EA-142", add_decision), "must expect exactly stages"),
+        ("stage fixture: an evidence expectation in an S1-S5 fixture is rejected", mutated("EA-134", add_evidence), "must expect exactly stages"),
+        ("stage fixture: Unresolved evidence without causes is rejected", mutated("EA-146", drop_evidence_causes), "stage evidence:"),
+        ("stage fixture: candidateEvidenceIds out of canonical order are rejected", mutated("EA-147", misorder_candidates), "not in canonical order"),
         ("inline contract: reusing the shared digest is rejected", inline_with_shared_digest(), "must be a full query with its own contract digest"),
     ]
     failed = 0

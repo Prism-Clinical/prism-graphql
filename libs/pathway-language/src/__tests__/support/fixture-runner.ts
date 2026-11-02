@@ -12,12 +12,13 @@
  * step A base result (§4.2 step A): `rule` and `baseCauses` facts, the `query`-origin cause
  * attributions (exactly the base causes) and one one-way implication from Known results; and step B
  * (§4.2 step B): `material` facts, plus two one-way implications from final results; and step C
- * (§4.2 step C): the `causeAttribution` and `causes` of Unresolved evaluation fixtures, exactly.
+ * (§4.2 step C): the `causeAttribution` and `causes` of Unresolved evaluation fixtures, exactly; and the
+ * final Evidence<Boolean> (§5.1) of evaluation fixtures and S1–S6 stage fixtures that state it, exactly.
  *
  * A fixture is never reported as passing as a whole: only its S1–S5, S6 gap-relevance, step A,
  * step B and step C assertions are checked, plus one-way implications from downstream expectations. `stage` fixtures
  * (stage-v1) assert S1–S3, S1–S4, S1–S5 or S1–S6 and carry no downstream expectation. Every other
- * expected field or trace fact (evidence status and candidateEvidenceIds, decision, Needs, S7) is outside the scope.
+ * expected field or trace fact (decision, Needs, S7) is outside the scope.
  */
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -36,6 +37,8 @@ import {
   type MaterialityResult,
   experimentalCauseAttribution,
   type CauseAttributionResult,
+  experimentalQueryEvidence,
+  type QueryEvidenceResult,
   experimentalGapRelevance,
   type BaseResult,
   type GapRelevanceResult,
@@ -167,6 +170,12 @@ export interface FixtureReport {
   causesKnown: number;
   /** Fixtures whose attribution is blocked by a documented upstream limitation (none are counted as passing). */
   causesBlocked: number;
+  /**
+   * Final query evidence (§5.1), exact: status, value, supportingEvidenceIds, causes and
+   * candidateEvidenceIds, the references projected to fixture notation. Not decision or Needs.
+   */
+  evidenceApplicable: number;
+  evidencePassed: number;
   /** Combined S3 `admissibility` facts (contract §2.7), checked directly. */
   admissibilityApplicable: number;
   admissibilityPassed: number;
@@ -382,6 +391,8 @@ export function runFixtures(dir: string = FIXTURE_DIR): { reports: FixtureReport
       causesPassed: 0,
       causesKnown: 0,
       causesBlocked: 0,
+      evidenceApplicable: 0,
+      evidencePassed: 0,
       admissibilityApplicable: 0,
       admissibilityPassed: 0,
       outOfScope: 0,
@@ -496,6 +507,8 @@ export function runFixtures(dir: string = FIXTURE_DIR): { reports: FixtureReport
     const matRes: MaterialityResult | null = bound && typeof compiledQuery !== 'string' ? experimentalMateriality({ package: compiledQuery, query: query.query.id, s4: bound }) : null;
     // Step C over the same bound evaluation (contract §4.2 step C): no evidence result or Needs.
     const causeRes: CauseAttributionResult | null = bound && typeof compiledQuery !== 'string' ? experimentalCauseAttribution({ package: compiledQuery, query: query.query.id, s4: bound }) : null;
+    // The final Evidence<Boolean> over the same bound evaluation (§5.1): no decision, Needs or execution.
+    const evRes: QueryEvidenceResult | null = bound && typeof compiledQuery !== 'string' ? experimentalQueryEvidence({ package: compiledQuery, query: query.query.id, s4: bound }) : null;
     const boundKeys = new Map((bound?.keys ?? []).map((k) => [`${k.key.source}/${k.key.localId}`, k] as const));
     const boundNodes = new Map<string, Extract<PossibleSelection, { kind: 'node' }>>();
     for (const k of bound?.keys ?? []) for (const p of k.possibilities) if (p.kind === 'node') boundNodes.set(showRev(p.node.revision) + (p.node.digest ? `#${p.node.digest}` : ''), p);
@@ -771,17 +784,31 @@ export function runFixtures(dir: string = FIXTURE_DIR): { reports: FixtureReport
     if (exp.evidence && causeRes && fx.kind === 'evaluation') {
       if (exp.evidence.status === 'Known') {
         report.causesKnown += 1;
+        report.outOfScope -= 1; // `causeAttribution` (empty for Known) is checked here
         if (causeRes.aggregation !== 'NotApplicable' || causeRes.causes.length > 0) report.failures.push(`Known result, but step C aggregates ${causeRes.causes.join(', ')}`);
       } else if (CAUSES_BLOCKED[fx.id]) {
         report.causesBlocked += 1;
       } else {
         report.causesApplicable += 1;
+        report.outOfScope -= 1; // `causeAttribution` is checked here
         const want = ((exp.causeAttribution ?? []) as Json[]).map((a) => JSON.stringify([a.cause, a.origin, a.stage, a.reason, a.refs ?? null])).sort();
         const got = [...new Set(causeRes.attribution.map((a) => JSON.stringify([a.cause, a.label, a.stage, a.reason, a.refs ? a.refs.map(showRef) : null])))].sort();
         const ok = causeRes.status.status === 'Unresolved' && isDeepStrictEqual(got, want) && isDeepStrictEqual(causeRes.causes, exp.evidence.causes);
         if (ok) report.causesPassed += 1;
         else report.failures.push(`step C ${causeRes.status.status} causes ${causeRes.causes.join(',')}; attribution\n  got  ${got.join('\n       ')}\n  want ${want.join('\n       ')}`);
       }
+    }
+    // Final Evidence<Boolean> (§5.1), exact. References are structured; the string form is a projection.
+    // Evaluation fixtures, and S1–S6 stage fixtures that state the final evidence (group S).
+    if (exp.evidence && evRes) {
+      report.evidenceApplicable += 1;
+      report.outOfScope -= 1; // `evidence` is checked here
+      const e = evRes.evidence;
+      const got = e.status === 'Known'
+        ? { status: 'Known', value: e.value, supportingEvidenceIds: e.supportingEvidenceIds.map(showRef) }
+        : { status: 'Unresolved', causes: e.causes, candidateEvidenceIds: e.candidateEvidenceIds.map(showRef) };
+      if (isDeepStrictEqual(got, exp.evidence)) report.evidencePassed += 1;
+      else report.failures.push(`evidence ${JSON.stringify(got)}, expected ${JSON.stringify(exp.evidence)}`);
     }
     // One-way (contract §4.2 rules 2-3): a Known result is supported only by selected revisions.
     if (exp.evidence?.status === 'Known' && s4) {
@@ -828,7 +855,8 @@ export function runFixtures(dir: string = FIXTURE_DIR): { reports: FixtureReport
       report.materialApplicable +
       report.materialOneWay +
       report.causesApplicable +
-      report.causesKnown;
+      report.causesKnown +
+      report.evidenceApplicable;
     if (checked === 0) missing.push(fx.id);
   }
   return { reports, noApplicableAssertions: missing };

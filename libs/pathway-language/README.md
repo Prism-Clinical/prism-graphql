@@ -1,6 +1,6 @@
 # @prism/pathway-language (experimental, nonclinical)
 
-**Status:** an implementation experiment. It covers **S1–S5** of the *proposed* [evidence-query-to-predicate contract](../../docs/superpowers/records/pathway-language/evidence-query-to-predicate-contract.md): S1 revision history, S2 candidate identification, the S3 same-encounter, same-episode and `assertionKind` rules, their combination into one admissibility result per possible revision (increment I3), S4 selection, S5 criterion evaluation and classification **for one record at a time**, S5 **key-level possible classes**, and **query-bound preview evaluation** of whole-criterion holes (increment I4). Every acceptance item of I4 is now checked and passes, including EA-052a’s two preview `criterion` facts (case 52), so I4 is complete **as an experimental increment** only. Of S6 (I5), **gap relevance** (coverage cells and the relevance of each gap), the **step A base result** (rules 1–5 and rule 5’s base causes), **step B materiality** of unresolved records and the **step C cause union and attribution** exist. The final evidence result (`Evidence<Boolean>` with `candidateEvidenceIds`) does not, so no query result is computed and I5 is not complete. It also has the **first PPL compiler subset** and **isolated program-expression execution** over supplied query results (increments I1 and I2 of the [first-program implementation contract](../../docs/superpowers/records/pathway-language/first-program-implementation-contract.md)). It is not an end-to-end PPL evaluator and is not clinically approved; compiling or executing a program confers no clinical approval. It must not be used for patient care. The RFC, Stage A, the contract and the delivery plans keep their existing statuses; nothing here completes a delivery story.
+**Status:** an implementation experiment. It covers **S1–S5** of the *proposed* [evidence-query-to-predicate contract](../../docs/superpowers/records/pathway-language/evidence-query-to-predicate-contract.md): S1 revision history, S2 candidate identification, the S3 same-encounter, same-episode and `assertionKind` rules, their combination into one admissibility result per possible revision (increment I3), S4 selection, S5 criterion evaluation and classification **for one record at a time**, S5 **key-level possible classes**, and **query-bound preview evaluation** of whole-criterion holes (increment I4). Every acceptance item of I4 is now checked and passes, including EA-052a’s two preview `criterion` facts (case 52), so I4 is complete **as an experimental increment** only. Of S6 (I5), **gap relevance** (coverage cells and the relevance of each gap), the **step A base result** (rules 1–5 and rule 5’s base causes), **step B materiality** of unresolved records, the **step C cause union and attribution** and the **final `Evidence<Boolean>`** with `candidateEvidenceIds` exist. Every listed I5 acceptance item passes, but I5 is not marked complete: that awaits review. No Need, `Decision` projection or program execution is computed from records. It also has the **first PPL compiler subset** and **isolated program-expression execution** over supplied query results (increments I1 and I2 of the [first-program implementation contract](../../docs/superpowers/records/pathway-language/first-program-implementation-contract.md)). It is not an end-to-end PPL evaluator and is not clinically approved; compiling or executing a program confers no clinical approval. It must not be used for patient care. The RFC, Stage A, the contract and the delivery plans keep their existing statuses; nothing here completes a delivery story.
 
 This package is the isolated `libs/pathway-language` boundary named in RFC §10. It has no imports from applications, resolvers, databases or the network; `src/` imports only Node’s `crypto` and one RFC 8785 library.
 
@@ -625,7 +625,7 @@ Causes: a failure `Unavailable`; a stated rejected item `Invalid`; an S1 unattri
 
 **Clarifications** (contract §4.1), reviewed 2026-10-31: structure versus content, malformed failures and items, unreadable currency, duplicate IDs (with unambiguous identities), unidentified occurrences, the missing-target attestation and source disjointness under the correction rule are accepted; unrecognized members are rejected rather than ignored.
 
-**Not implemented here.** Base results, materiality and cause attribution are the next sections; the final `Evidence<Boolean>` is not implemented.
+**Not implemented here.** Base results, materiality, cause attribution and the final `Evidence<Boolean>` are the next sections.
 
 ## S6: base result (I5, step A)
 
@@ -674,7 +674,7 @@ Possible classes are read only for these conditions; materiality is never decide
 
 **Result.** Discriminators, rule, provisional `base`, *S*, *R*, relevant and irrelevant gap references (collision-safe identities), `baseCauses`, `causes`, and per key its S4 status, S2 candidacy, role, selected revision or possible classes, and the three columns. Detached and deep-frozen.
 
-**Not implemented here.** Materiality and cause attribution are the next sections; the final `Evidence<Boolean>` and Needs are not implemented.
+**Not implemented here.** Materiality, cause attribution and the final `Evidence<Boolean>` are the next sections; Needs are not implemented.
 
 ## S6: materiality of unresolved records (I5, step B)
 
@@ -739,7 +739,50 @@ const c = experimentalCauseAttribution({ package: pkg, query: 'q.demo', s4 });
 
 **Identity, deduplication and order.** An entry’s `id` is the RFC 8785 bytes of its cause, stage, reason, structured origin, `refs` and `keys`; only identical entries merge, except that a context finding is one entry per binding, cause and reason. The `label` is derived from the origin (a gap’s is its own label) and is for display only; two entries can share one (a stated rejected item named `unidentified:revision#1` and S1’s own unidentified occurrence #1). Entries are ordered by cause (Stage A order), label, reason, then `id`. The cause set is the distinct causes, so two failures give one `Unavailable` and two entries.
 
-**Not implemented (rest of I5).** The final `Evidence<Boolean>` and `candidateEvidenceIds`, then Needs (§6.2) and program-executor integration.
+**Not implemented here.** The final `Evidence<Boolean>` is the next section.
+
+## S6: the final `Evidence<Boolean>` (I5)
+
+`experimentalQueryEvidence` computes step C (with steps A and B) and assembles the query's `Evidence<Boolean>` (contract §5.1, “Query evidence boundary”). It emits no Need, does not project to a `Decision` (§5.2) and does not execute a program.
+
+```ts
+const q = experimentalQueryEvidence({ package: pkg, query: 'q.demo', s4 });
+// q.stage 'S6', q.scope 'query-evidence'
+// q.evidence: { status: 'Known', value: true, supportingEvidenceIds: [NodeRef s1/r1@1],
+//               provenance: [{ ref: NodeRef s1/r1@1, occurrences: [{ acquisition: 'a0', sourceRecordRef: 's1:r1' }] }] }
+//          or { status: 'Unresolved', causes: ['Missing', 'Conflicting'], candidateEvidenceIds: [NodeRef, …] }
+// q.trace: the step C result, unchanged (step B, step A and the cause attribution inside)
+// q.notRun ['Needs', 'PredicateProjection', 'ProgramExecution']
+```
+
+**Ownership.** Exactly `{ package, query, s4 }`, as for steps A–C. A status, value, cause, attribution, supporting or candidate reference, stage result, snapshot or query setting is never accepted. Foreign, copied, standalone, other-query, snapshot-less and preview inputs are rejected with `QueryEvidenceConfigurationError`.
+
+| Field | Owner |
+|---|---|
+| `status`, `value` | Step C’s status (step B’s, unchanged) |
+| `supportingEvidenceIds` (`Known`) | Step A’s *S* (`true`) or *R* (`false`): definitely selected revisions, never a possible one |
+| `provenance` (`Known`) | This evaluation’s own S1 result: the distinct acquisition provenance values of each supporting revision’s occurrences (proposed shape, contract §5.1) |
+| `causes` (`Unresolved`) | Step C’s cause set, unchanged; the attribution is in `trace` |
+| `candidateEvidenceIds` (`Unresolved`) | The membership rule below, over the bound S4 keys |
+
+**Candidate membership** (§5.1), independent of materiality, classification, admissibility and causes:
+
+| Included | Excluded |
+|---|---|
+| The current revision of a `Selected` key, including `NonInformative` and `Unclassified` ones | `excluded` and `unknown` markers: not identities |
+| The current revision of an `Inadmissible` key (definitely inadmissible, in domain) | Out-of-domain possibilities, also within an unresolved key; `OutOfDomain` keys |
+| Every possible current revision or variant of an `Unresolved` key whose candidacy is `InDomain` or `Unresolved`, material or not, admissible or not (unresolved candidacy beside a definite mismatch included) | `Retracted` and no-record keys; superseded revisions no longer possible current |
+| | S1-unidentified occurrences: no identity (their `Invalid` gap is a cause, not a candidate) |
+
+**Identity.** References are `NodeRef`s (the `RevisionRef`, plus the digest of a variant of a conflicted revision), deduplicated by that structured identity and ordered by (`source`, `localId`, `revision`, digest) as a tuple (§5.3), so `s1/r1@1` precedes `s1/r12@1`. The fixture notation `source/localId@revision[#digest]` is a display projection only: S1 accepts components containing `/`, `@` or `#`, or empty ones, and `s1`/`a@1`@`1` and `s1`/`a`@`1@1` both display as `s1/a@1@1`.
+
+**Relation to the isolated executor.** `experimentalExecuteWithSuppliedQueryResults` takes `SuppliedEvidence`: the same two cases with string IDs in fixture notation, validated against it, and no `provenance`. This result is not passed to it: that is program-executor integration (I6), which would need a collision-free ID encoding or structured IDs in the executor.
+
+**Invariants.** A `Known` status without exactly one nonempty side, or an `Unresolved` status without a cause, throws an engine error; nothing is patched with a default cause or reference.
+
+**Known S1 limitation.** The result reports the current S1 contract, including the EA-083/EA-092 asymmetry (see Limitations). It does not show that S1 captures every underlying conflict, so it must not drive acquisition or conflict resolution yet.
+
+**Not implemented.** Needs (§6.2), the `Decision` projection (§5.2), acquisition, preview evidence results and program-executor integration.
 
 ## PPL compiler (I1): `experimentalCompile` and `experimentalCompilePreview`
 
@@ -1194,7 +1237,22 @@ This package has its own Jest configuration and is not part of the root Jest roo
   | S3 findings retained beside a definite mismatch dropped | 1 |
 
   The last two boundaries are not exercised by any fixture; only the unit test above catches each.
-- **`src/__tests__/fixtures.test.ts`** runs the committed [explicit-assertion-v0 fixtures](../../docs/superpowers/records/pathway-language/conformance/explicit-assertion-v0/README.md) and checks **only** their S1–S4 assertions, S5 `criterion`, `classification` and `possibleClasses` assertions, the preview expectations of preview fixtures, S6 coverage-cell and gap-relevance facts, S6 step A facts, step B `material` facts and step C cause attribution, plus one-way implications from downstream expectations. It never reports a fixture as passing as a whole, because the final evidence result, Needs and S7 are not implemented. On the current fixtures it reports:
+- **`src/__tests__/s6-evidence.test.ts`** has 20 independent tests of the final `Evidence<Boolean>`, with expected values written from §4.2 (status, *S*, *R*) and §5.1 (membership). They cover `Known(true)` with one and several references and their provenance, `Known(false)`, repeated occurrences (no duplicate reference; differing provenance kept), no possible support in a `Known` result, empty complete coverage staying `Unresolved{Missing}`, a conflict with both candidates, relevant gaps blocking either `Known`, a demoted base keeping step C's causes, immaterial, `Unclassified`, `NonInformative`, inadmissible and §2.8 records as candidates, out-of-domain possibilities (also within an unresolved key), retracted keys and superseded revisions excluded, possible currents and payload variants with exact digests, markers never becoming IDs, an unidentified occurrence giving a cause but no candidate, permutation and duplication, colliding display labels, interleaved evaluations, ownership and override rejection, and deep immutability with no decision, Needs, projection or execution.
+
+  Deliberate faults, each applied alone (failures in these tests and the fixture runner):
+
+  | Fault | Tests failing |
+  |---|---|
+  | `Known(false)` for empty complete coverage | 11 |
+  | Possible support included in a `Known` result | 4 |
+  | Candidates filtered to material keys | 36 |
+  | Candidates filtered to admissible records | 37 |
+  | Out-of-domain possibilities included | 4 |
+  | Superseded historical revisions included | 11 |
+  | Markers turned into IDs | 13 |
+  | Variant digest dropped | 13 |
+  | Step C causes recomputed from base causes, `Missing` by default | 69 |
+- **`src/__tests__/fixtures.test.ts`** runs the committed [explicit-assertion-v0 fixtures](../../docs/superpowers/records/pathway-language/conformance/explicit-assertion-v0/README.md) and checks **only** their S1–S4 assertions, S5 `criterion`, `classification` and `possibleClasses` assertions, the preview expectations of preview fixtures, S6 coverage-cell and gap-relevance facts, S6 step A facts, step B `material` facts, step C cause attribution and the final `evidence`, plus one-way implications from downstream expectations. It never reports a fixture as passing as a whole, because `decision`, Needs and S7 are not computed. On the current fixtures it reports:
   - **180 S1 assertions checked, 180 passing.** That is 92 trace facts (`keyResult`, `variants`, `occurrences`, `rejected`, `outOfEnvelope`, `outsideEnvelope`, and the `HistoricalDefect`, `CrossKeyCorrection` and `UndeclaredField` diagnostics) plus 75 canonicalization checks (bytes, digests, variant partition, undeclared fields). EA-104 adds two; EA-123 and EA-124 add three; EA-126 to EA-129 add five; EA-132, EA-133, EA-134, EA-135 and EA-136 add one each.
   - **16 S2 assertions checked, 16 passing:** every `candidacy` trace fact (EA-013, EA-014, EA-024, three in EA-033, and EA-093 to EA-100).
   - **15 encounter-check assertions checked, 15 passing:** every `encounterScope` trace fact (EA-101 to EA-103, both variants of EA-104, EA-105, EA-106a/b, EA-107, EA-112, EA-115a and EA-119 to EA-122).
@@ -1206,35 +1264,36 @@ This package has its own Jest configuration and is not part of the root Jest roo
   - **2 preview criterion assertions evaluated, 2 passing:** EA-052a’s two `criterion` facts (`establishes` `Marker`, `refutes` True for s1/r2@1), checked directly against `experimentalEvaluatePreviewQuery` over the fixture query exactly as written, preview-compiled in a minimal program. A `Marker` must also name one of the query’s holes.
   - **18 preview compiler, marker and publication checks, 18 passing,** for EA-050, EA-052a and EA-052b (six each): `outcome: PreviewOnly` (preview compiles and normal compilation reports only holes), `markers` (equal to the compiler’s, with the query’s own marker in the evaluation result), `publication: Blocked` (package and result), `evidence: null` and empty `needs` (the result has no evidence or Needs field at all), and the `stagesRun` fact (`[]` for EA-050, S1–S5 for EA-052a/b). These check compilation and the absence of clinical outputs, not evidence semantics.
   - **10 S5 classification assertions checked, 10 passing:** every `classification` trace fact, checked directly with `experimentalClassifyRecord` over the bound result (contract §3.3, §3.6): `Unclassified` in EA-004 and EA-074 and `NonInformative` in EA-006 (evaluation fixtures, written before §3.6), seven in the partial-stage fixture EA-133 (`Supporting`, `Refuting`, `NonInformative`, `Unclassified{Missing}`, `Unclassified{Invalid}`, and the two variants of an unresolved key), and three in EA-139 and EA-140.
-  - **27 S5 `possibleClasses` assertions checked, 27 passing:** every `possibleClasses` trace fact, checked directly with `experimentalPossibleClasses` over the bound result (contract §4.2 step B, §3.7). Twelve are in evaluation fixtures written before §3.7, unchanged: EA-004 (`Unclassified`), EA-010 and EA-011 (unresolved admissibility), EA-018, EA-030, EA-078, EA-084 and EA-088 (alternatives), EA-028 and EA-104 (an inadmissible alternative) and EA-062 and EA-085 (an `excluded` marker). Six are in the partial-stage fixture EA-134: unresolved candidacy, unresolved candidacy beside a mismatch, an `unknown` marker, deduplication, all alternatives excluded, and a retracted key; one each is in EA-137 and EA-141, and seven in EA-142 to EA-144.
+  - **27 S5 `possibleClasses` assertions checked, 27 passing:** every `possibleClasses` trace fact, checked directly with `experimentalPossibleClasses` over the bound result (contract §4.2 step B, §3.7). Twelve are in evaluation fixtures written before §3.7, unchanged: EA-004 (`Unclassified`), EA-010 and EA-011 (unresolved admissibility), EA-018, EA-030, EA-078, EA-084 and EA-088 (alternatives), EA-028 and EA-104 (an inadmissible alternative) and EA-062 and EA-085 (an `excluded` marker). Six are in the partial-stage fixture EA-134: unresolved candidacy, unresolved candidacy beside a mismatch, an `unknown` marker, deduplication, all alternatives excluded, and a retracted key; one each is in EA-137 and EA-141, seven in EA-142 to EA-144, and three in EA-145 to EA-147.
 
-  Trace `causes` are compared as sets in Stage A order, for every check. EA-119 to EA-124 (S1–S3), EA-125 to EA-129 (S1–S4) and EA-130 to EA-134 (S1–S5: `criterion`, `classification`, `possibleClasses`) EA-135 to EA-136 (S1–S6, gap relevance: `cell`, `gap`, `notCurrent`) EA-137 to EA-141 (S1–S6, step A: `rule`, `baseCauses`) and EA-142 to EA-144 (S1–S6, step B: `material`, with step A facts) are `stage-v1` fixtures: they state no downstream result, and their assertions are partial-stage checks, not end-to-end conformance.
+  Trace `causes` are compared as sets in Stage A order, for every check. EA-119 to EA-124 (S1–S3), EA-125 to EA-129 (S1–S4) and EA-130 to EA-134 (S1–S5: `criterion`, `classification`, `possibleClasses`) EA-135 to EA-136 (S1–S6, gap relevance: `cell`, `gap`, `notCurrent`) EA-137 to EA-141 (S1–S6, step A: `rule`, `baseCauses`) and EA-142 to EA-144 (S1–S6, step B: `material`, with step A facts) and EA-145 to EA-148 (S1–S6: the final `evidence`, with step A, step B or gap facts) are `stage-v1` fixtures: they state no downstream result, and their assertions are partial-stage checks, not end-to-end conformance.
   - **One-way checks**, which can fail but cannot prove completeness:
     - 33 S1-stage cause attributions, each of which must be an active S1 defect;
     - 12 S2-stage cause attributions (EA-013, EA-014, EA-093 to EA-099), each of which must be an S2 finding on that revision;
     - 33 `supportingEvidenceIds` entries of `Known` results, each of which must be a revision S4 selected (contract §4.2 rules 2–3). None of the existing fixtures conflicts with §2.8;
-    - 117 `candidateEvidenceIds` entries, each of which must have S2 candidacy `InDomain` or `Unresolved` (contract §5.1). The field is an S6 output, and its converse is not checked;
+    - 122 `candidateEvidenceIds` entries, each of which must have S2 candidacy `InDomain` or `Unresolved` (contract §5.1). The field itself is now also checked exactly (below);
     - 16 encounter outcomes implied by combined S3 expectations (also EA-123, EA-124). `admissibility: Admissible` implies `Matches` (EA-052a, EA-114, EA-115b). `Inadmissible` with reason `OtherEncounter` implies `DoesNotMatch` (EA-009, EA-025, EA-107). An S3 attribution with an encounter reason must be a finding of the check (EA-010, EA-015, EA-101 to EA-103, EA-105, EA-106a/b).
     - 17 episode outcomes implied by combined S3 expectations (also EA-123, EA-124). `admissibility: Admissible` implies `Matches` (EA-052a, EA-114, EA-115b). `Inadmissible(OtherEpisode)` implies `DoesNotMatch` (EA-112). An S3 attribution with an episode reason must be a finding of the check (EA-012, EA-108 to EA-110, EA-111a/b, EA-113a/b).
     - 12 `assertionKind` outcomes implied by combined S3 expectations (also EA-123, EA-124). `admissibility: Admissible` implies `Matches` (EA-052a, EA-114, EA-115b). `Inadmissible(AssertionKindNotAllowed)` implies `DoesNotMatch` (EA-115a). An S3 attribution with an `assertionKind` reason must be a finding of the check (EA-116, EA-117, EA-118a–d).
 
     The absence of an attribution proves nothing, because attribution also depends on S5/S6 materiality.
   - **31 S6 coverage-state assertions checked, 31 passing:** every `cell` (21) and `notCurrent` (3) fact and every `ContradictoryAttestation` (6) and `InsufficientlyScopedStatement` (1) diagnostic, from `experimentalGapRelevance` over the bound selection with the fixture’s own snapshot statements. Evaluation fixtures EA-005, EA-015, EA-026, EA-035 to EA-041, EA-043 and EA-044, unchanged, and partial-stage EA-135 and EA-136.
-  - **21 S6 gap-relevance assertions checked, 21 passing:** every `gap` fact, with `relevant` and, when stated, `provenBy`: EA-008, EA-041, EA-042, EA-045 to EA-049, EA-053, EA-055a/b (unchanged), nine in EA-135 and EA-136 (stated rejected items, an unattributable retraction, simultaneous failures) and one in EA-139 (an S1-unidentified occurrence).
+  - **22 S6 gap-relevance assertions checked, 22 passing:** every `gap` fact, with `relevant` and, when stated, `provenBy`: EA-008, EA-041, EA-042, EA-045 to EA-049, EA-053, EA-055a/b (unchanged), nine in EA-135 and EA-136 (stated rejected items, an unattributable retraction, simultaneous failures), one in EA-139 and one in EA-148 (S1-unidentified occurrences).
   - **48 one-way gap checks:** each of the 16 `coverage`/`gap` cause attributions must be a relevant gap with that cause and reason, and each of the 32 `Known` results must have no relevant gap. These do not check base results or attribution itself.
-  - **32 S6 step A assertions checked, 32 passing:** the 16 `rule` facts of evaluation fixtures written before step A was implemented (unchanged) and the 16 `rule` and `baseCauses` facts of EA-137 to EA-144, from `experimentalBaseResult` over the bound selection. The 16 evaluation `rule` facts include EA-010 and EA-055a, whose rule 2 base becomes `Unresolved` only in step B.
+  - **40 S6 step A assertions checked, 40 passing:** the 16 `rule` facts of evaluation fixtures written before step A was implemented (unchanged) and the 24 `rule` and `baseCauses` facts of EA-137 to EA-148, from `experimentalBaseResult` over the bound selection. The 16 evaluation `rule` facts include EA-010 and EA-055a, whose rule 2 base becomes `Unresolved` only in step B.
   - **123 base-cause comparisons:** in every evaluation fixture, the `query`-origin cause attributions (by the README's definition, the rule 1 conflict and rule 5 base causes) must equal the base causes exactly, with refs for `AssertionConflict`. Other attributions stay outside scope.
   - **32 one-way base checks:** each final `Known` result needs a provisional `Known` base with the same value and references (step B only demotes).
-  - **11 S6 step B assertions checked, 11 passing:** every `material` fact, from `experimentalMateriality` over the bound selection: EA-004, EA-010, EA-011 and EA-055a (evaluation fixtures written before step B was implemented, unchanged) and seven in EA-142 to EA-144. A `material` fact must name one of the evaluation's unresolved records.
+  - **14 S6 step B assertions checked, 14 passing:** every `material` fact, from `experimentalMateriality` over the bound selection: EA-004, EA-010, EA-011 and EA-055a (evaluation fixtures written before step B was implemented, unchanged), seven in EA-142 to EA-144 and three in EA-145 to EA-147. A `material` fact must name one of the evaluation's unresolved records.
   - **34 one-way step B checks, from final results only:** each of the 32 final `Known` results needs a `Known` status after step B, and each of the 2 final `Unresolved` results over a `Known` base (EA-010, EA-055a) needs a material record. These never decide which record is material.
   - **91 exact S6 step C checks, 91 passing:** for every evaluation fixture with an `Unresolved` result, `experimentalCauseAttribution` over the bound selection, projected to fixture notation, must equal the fixture’s `causeAttribution` as a set, and its cause set must equal `evidence.causes`. The comparison covers the fixture-format projection only (cause, origin label, stage, reason, `refs` as labels); the structured origin, `keys` and `id` of each entry are not in the fixture format and are checked by the unit tests. These include EA-083 and EA-092 (below).
   - **32 step C checks on `Known` results:** aggregation `NotApplicable`, with no causes.
   - **0 fixtures blocked** by a documented upstream limitation. None is weakened or skipped.
-  - **497 expected fields and trace facts outside the implemented scope,** not checked: the evidence status, value and `candidateEvidenceIds` (checked one way only, above), decision, Needs, and so on.
+  - **127 exact final-evidence checks, 127 passing:** the `evidence` of all 123 evaluation fixtures and of the partial-stage EA-145 to EA-148, from `experimentalQueryEvidence` over the bound selection: status, value, `supportingEvidenceIds`, `causes` and `candidateEvidenceIds`, the structured references projected to fixture notation. `provenance` is not in the fixture format; only the unit tests check it, and the structured identities behind the strings.
+  - **251 expected fields and trace facts outside the implemented scope,** not checked: the `decision` (123) and `needs` (123) of evaluation fixtures, and 5 `needDeferred` facts.
   - **2 fixtures not run:** EA-051a/b (compilation).
   - Every other fixture has at least one applicable assertion.
 
-  None of this is end-to-end evidence conformance: no `Evidence<Boolean>`, Need or decision is computed or compared.
+  None of this is end-to-end PPL conformance: the `Evidence<Boolean>` is computed and compared, but no Need or `Decision` is, and no program runs over a computed result.
 
 ## Interpretations where the contract is silent
 
@@ -1305,7 +1364,7 @@ Two former items are now settled in the contract:
 
 - **I1 compiles; I2 executes program expressions only.** No stable serialized IR, manifest, signing or persistence exists. The compiler supports only the first-program subset and one fictional evidence model.
 
-- Evidence stages: S1, S2, S3 (three rules and their per-revision combination), S4 selection, per-record S5 criterion values and classification, and key-level possible classes. Of S6, gap relevance, the step A base result, step B materiality and the step C cause union and attribution exist; there is no final `Evidence<Boolean>`, `candidateEvidenceIds` or Needs. S5 evaluates only S4 results of query-bound selection for the same compiled package and query (contract §3.5); query-bound selection runs S1–S4 for one query and stops there, so it is not end-to-end evaluation. The S4–S6 consequence of a revision that is `Inadmissible` beside an unresolved rule is unspecified; fixtures EA-119 to EA-124 are partial-stage for that reason.
+- Evidence stages: S1, S2, S3 (three rules and their per-revision combination), S4 selection, per-record S5 criterion values and classification, and key-level possible classes. Of S6, gap relevance, the step A base result, step B materiality, the step C cause union and attribution and the final `Evidence<Boolean>` exist; there are no Needs, no `Decision` projection and no execution of a program over computed results. S5 evaluates only S4 results of query-bound selection for the same compiled package and query (contract §3.5); query-bound selection runs S1–S4 for one query and stops there, so it is not end-to-end evaluation. The S4–S6 consequence of a revision that is `Inadmissible` beside an unresolved rule is unspecified; fixtures EA-119 to EA-124 are partial-stage for that reason.
 - The encounter and episode checks each recognize exactly one authored rule shape, and the `assertionKind` check one shape (`in` over pinned codes). They do not evaluate expressions.
 - S2 supports only the fixtures’ flat expansion format: no hierarchies, intensional definitions, terminology service, normalization, code-system conversion or version resolution.
 - The fixtures assert S2 candidacy for 16 revisions. Variants, `excluded`/`unknown` propagation and configuration errors are covered by the independent tests only.

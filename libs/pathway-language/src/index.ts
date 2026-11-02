@@ -125,6 +125,8 @@ export { materiality as experimentalMateriality, MaterialityConfigurationError }
 export type { MaterialityInput, MaterialityResult, MaterialityRow, RecordMateriality } from './s6/materiality';
 export { causeAttribution as experimentalCauseAttribution, CauseAttributionConfigurationError } from './s6/causes';
 export type { Attribution, AttributionOrigin, AttributionStage, CauseAttributionInput, CauseAttributionResult } from './s6/causes';
+export { queryEvidence as experimentalQueryEvidence, QueryEvidenceConfigurationError } from './s6/evidence';
+export type { QueryEvidence, QueryEvidenceInput, QueryEvidenceResult, SupportingProvenance } from './s6/evidence';
 /** Snapshot statements nested deeper than this are a configuration error (contract §1.5). */
 export { MAX_JSON_DEPTH } from './s1/payload';
 export type {

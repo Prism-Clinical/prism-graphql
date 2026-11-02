@@ -2,7 +2,7 @@
 
 **Status:** Proposed design draft. **Not** accepted, not finalized syntax, not a schema and not implemented. It contains no clinical content: the record type, enum values, codes, sources and permission below are fictional and illustrate language behavior only. They do not map to dysphagia, progression, urgency or any other clinical definition.
 
-**Date:** 2026-10-03. **Revised:** 2026-10-03, nine times, 2026-10-04, once, 2026-10-05, three times, 2026-10-09, three times, 2026-10-28, three times, and 2026-10-29, eight times, 2026-10-31, once, and 2026-11-02, five times, after review. The third revision fixed three things:
+**Date:** 2026-10-03. **Revised:** 2026-10-03, nine times, 2026-10-04, once, 2026-10-05, three times, 2026-10-09, three times, 2026-10-28, three times, and 2026-10-29, eight times, 2026-10-31, once, and 2026-11-02, six times, after review. The third revision fixed three things:
 
 - revision-chain boundaries: source-scoped identity, same-source corrections and one fully specified schematic authority rule;
 - deterministic outcomes for malformed history;
@@ -13,6 +13,14 @@ The fourth revision made three changes:
 - Proven cross-boundary corrections and retractions are now rejected without changing their target. This keeps gap irrelevance consistent with S1.
 - Payload identity for duplicate detection is defined.
 - An unsupported justification about coverage attestations is removed.
+
+The thirty-fourth revision specifies the query evidence boundary (5.1 "Query evidence boundary", cases 145–148, decision 30):
+
+- The final `Evidence<Boolean>` reads one query-bound evaluation: step C's status and causes, step A's *S* or *R*, and candidate membership over the same S4 keys; nothing is accepted from the caller.
+- References are structured revision or variant identities. The fixture notation `source/localId@revision[#digest]` is a display projection, not an identity: S1 accepts components that contain `/`, `@` or `#`, or are empty.
+- `provenance` on `Known` is not given a shape by Stage A or this contract. The smallest clarification is proposed: per supporting reference, the distinct acquisition provenance values S1 retained for its occurrences (1.2), in 5.3 order. It is outside the fixture format.
+- Every evaluation fixture's `evidence` is reproduced exactly (123). Group S adds four partial-stage fixtures for candidate membership, and the `stage-v1` S1–S6 vocabulary may now state `evidence`, never a decision, attribution or Needs.
+- Needs, predicate projection and program execution are still not implemented.
 
 The thirty-third revision records the review of the thirty-second (2026-11-02). Its two readings are confirmed: S3 findings retained beside a definite mismatch are attributed when the key is material (they explain that key's uncertainty; an attributed problem does not by itself need correction), and context findings are combined by binding, cause and reason with sorted, deduplicated `refs` from material keys only. The fixture coverage is restated precisely: the 91 comparisons cover the fixture-format projection, not every structured field. The EA-083/EA-092 limitation stays open; reproducing those fixtures does not show that S1 captures every underlying conflict.
 
@@ -1040,6 +1048,27 @@ Consequence: a `Known` result requires every declared source’s cell to be `Com
 - every failure and rejected item, with its relevance decision and the proving dimension;
 - the rule applied.
 
+**Query evidence boundary** (implemented experimentally; the `evidence` of every evaluation fixture and cases 145–148). A separate entry point computes step C (with steps A and B) and assembles the final `Evidence<Boolean>`. It emits no Need, runs no predicate projection (5.2) and executes no program.
+
+- **Input.** As steps A–C: an authentic `CompiledPackage`, one `EvidenceQuery` ID and an S4 result of query-bound selection for exactly that package object and query, made with a snapshot. No status, cause, attribution, supporting or candidate reference, stage result, snapshot or query setting is accepted. Preview packages are rejected.
+- **Owners.**
+
+| Field | Owner |
+|---|---|
+| Status and value | Step C's status, which is step B's, unchanged |
+| `supportingEvidenceIds` (`Known`) | Step A's *S* (`true`) or *R* (`false`): definitely selected revisions only, never a possible one |
+| `provenance` (`Known`) | The evaluation's own S1 result: the occurrences of each supporting revision (proposed reading, below) |
+| `causes` (`Unresolved`) | Step C's cause set, unchanged; its attribution stays in the trace |
+| `candidateEvidenceIds` (`Unresolved`) | The membership rule below, over the S4 keys; independent of materiality, classification, admissibility and causes |
+
+- **Candidate membership.** For each S4 key that is `Selected`, `Unresolved` or `Inadmissible`, each node possibility (the current revision, or each possible current revision or variant) whose S2 candidacy is `InDomain` or `Unresolved`. Excluded: `excluded` and `unknown` markers (not identities), out-of-domain possibilities (also within an unresolved key), `OutOfDomain`, `Retracted` and no-record keys, superseded revisions that are no longer possible current, and S1-unidentified occurrences (no identity; their effect is an `Invalid` gap).
+- **Identity, order, deduplication.** References are `NodeRef`s: `RevisionRef`, plus the digest for a variant of a conflicted revision. Lists are in 5.3 order (by `source`, `localId`, `revision`, then digest, as a tuple, never by display string) and deduplicated by that structured identity. The fixture string is a projection for display and comparison; it is not unique for every valid identity (`s1`/`a@1`@`1` and `s1`/`a`@`1@1` both display as `s1/a@1@1`), so nothing is keyed by it.
+- **Invariants, never repaired.** A `Known` status with no supporting reference on its side, or with references on both sides, and an `Unresolved` status without a cause, are engine defects (errors), never patched with a default cause or reference. Every context binding marked unknown carries at least one cause, so the second cannot arise from valid input.
+- **`provenance` (proposed clarification).** Stage A §4.1 lists `provenance` on `Known` without a shape, and the fixture format omits it. Proposed: for each supporting reference, the distinct acquisition provenance values S1 retained for its occurrences (1.2; RFC 8785 equality), in 5.3 occurrence order. Identical duplicate occurrences add nothing; occurrences differing only in provenance keep both (case 59).
+- **Executor input.** The isolated executor (first-program contract, I2) takes `SuppliedEvidence` with string IDs in fixture notation and validates them against that notation. This result is not passed to it: converting is program-executor integration, outside this boundary, and would need either a collision-free ID encoding or structured IDs in the executor.
+- **Known S1 limitation.** The result reports the current S1 contract (EA-083/EA-092, 4.2 "Step C boundary"). It does not show that S1 captures every underlying conflict, so it must not drive acquisition or conflict resolution until that is settled.
+- **Output.** A discriminator, the evidence, the step C result unchanged as the S6 trace (step B, step A and the attribution inside), and what has not run (`Needs`, `PredicateProjection`, `ProgramExecution`). Detached and deep-frozen.
+
 ### 5.2 Projection to `Decision` (S7)
 
 | `Evidence<Boolean>` | `Decision` |
@@ -1477,6 +1506,15 @@ In cases 114, 115b and 116–118 the record is the only candidate and its possib
 | 143 | Original `Known(false)` base, demoting record first | s1/r143a `Denied`; s1/r143b `Affirmed`, encounter omitted; s1/r143c `Denied`, encounter omitted | Rule 3. r143b {Supporting, excluded} material; r143c {Refuting, excluded} immaterial |
 | 144 | `Unresolved` base, non-supporting possibilities | s1/r144a `Indeterminate`; s1/r144b `Affirmed`, encounter omitted; s1/r144c `Indeterminate`, encounter omitted; s1/r144d concept `other-cs#item-x`, encounter N0 | Rule 5 {`InsufficientEvidence`}. r144b material; r144c {NonInformative, excluded} and r144d {excluded} immaterial |
 
+**S. Final evidence: candidate membership (5.1)** (D0 unless stated; the shared query; `cov-all`). **Partial-stage**: stages S1–S6 with the step A `rule`, `baseCauses`, step B facts and the final `evidence`; no decision, attribution or Needs. Evaluation fixtures already state `evidence` for every other case.
+
+| # | Case | Records / changes | Evidence |
+|---|---|---|---|
+| 145 | Out-of-domain possibility of an unresolved key | s1/r145@1 `Affirmed`; @2 supersedes @1, concept `demo-cs#item-y`, author `u2` with `permissions` absent (authority missing) | Rule 5, no base cause; r145 {Supporting, excluded} material. `Unresolved{Missing}`, candidates [s1/r145@1]: @2 is out of domain |
+| 146 | Unresolved candidacy beside a definite mismatch | s1/r146 concept `other-cs#item-x`, encounter N0 | Rule 5 {`InsufficientEvidence`}; {excluded}, immaterial. `Unresolved{InsufficientEvidence}`, candidates [s1/r146@1] |
+| 147 | Non-informative and immaterial unresolved records | s1/r147a `Indeterminate`; s1/r147b `Indeterminate`, encounter omitted | Rule 5 {`InsufficientEvidence`}; r147b immaterial. `Unresolved{InsufficientEvidence}`, candidates [s1/r147a@1, s1/r147b@1] |
+| 148 | Unidentified rejected occurrence beside a supporting revision | s1/r148 `Affirmed`; a second occurrence with no `key` | Rule 4; relevant gap `unidentified:revision#1`. `Unresolved{Invalid}`, candidates [s1/r148@1]: the occurrence has no identity |
+
 ### 7.5 Invariance checks
 
 These must hold for every case:
@@ -1618,6 +1656,12 @@ These must hold for every case:
     - Confirmed (no fixture has two affected revisions): a context finding is one entry per binding, cause and reason, with the affected revisions of material keys only in sorted, deduplicated `refs`.
     - Fixture coverage is the projection (cause, origin label, stage, reason, `refs`); the EA-083/EA-092 S1 limitation stays open and is not settled by step C.
     - The final evidence result, `candidateEvidenceIds` and Needs remain unimplemented.
+30. Final query evidence (5.1 "Query evidence boundary", cases 145–148), proposed:
+    - Same boundary as steps A–C; status, causes, *S*/*R* and candidate membership are derived from the bound S4 result, never supplied.
+    - `Known` lists only definitely selected *S* or *R*; `Unresolved` keeps step C's causes unchanged and lists candidates by 5.1 membership, independent of materiality.
+    - References are structured `NodeRef`s in 5.3 tuple order; the fixture string is a display projection.
+    - Proposed, to confirm: `Known` `provenance` is the distinct acquisition provenance of each supporting reference's occurrences.
+    - Needs, predicate projection (5.2) and program execution remain unimplemented; the result is not passed to the isolated executor.
 
 **Possible conflicts needing a Stage A amendment.** None found. Items to confirm:
 
@@ -1627,7 +1671,7 @@ These must hold for every case:
 
 **Query/predicate split.** The query carries the reasoning. A projection-only Predicate is optional naming and composition structure. No node kind is added or removed.
 
-**Conformance fixtures.** [conformance/explicit-assertion-v0/](conformance/explicit-assertion-v0/README.md) holds machine-readable fixtures for cases 1–144, mapped by case number, with expected outputs written from this contract. They are proposed, like this document.
+**Conformance fixtures.** [conformance/explicit-assertion-v0/](conformance/explicit-assertion-v0/README.md) holds machine-readable fixtures for cases 1–148, mapped by case number, with expected outputs written from this contract. They are proposed, like this document.
 
 **Remaining items.**
 

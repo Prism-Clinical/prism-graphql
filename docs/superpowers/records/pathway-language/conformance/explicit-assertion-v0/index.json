@@ -457,6 +457,18 @@
     ],
     "144": [
       "EA-144"
+    ],
+    "145": [
+      "EA-145"
+    ],
+    "146": [
+      "EA-146"
+    ],
+    "147": [
+      "EA-147"
+    ],
+    "148": [
+      "EA-148"
     ]
   },
   "pairs": [
@@ -719,6 +731,13 @@
         "EA-143"
       ],
       "claim": "Every unresolved record is assessed against the original step A base: a record that can only support stays immaterial under Known(true) even after another record has made the result Unresolved, and symmetrically under Known(false)"
+    },
+    {
+      "fixtures": [
+        "EA-145",
+        "EA-147"
+      ],
+      "claim": "Candidate membership (contract §5.1) is independent of materiality: an out-of-domain possibility of a material key is not a candidate, while immaterial unresolved and non-informative records in domain are"
     }
   ]
 }
