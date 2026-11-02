@@ -11,7 +11,7 @@ The expected outputs were written by hand from the contract (§§1–7) and [CAN
 | `query/q.demo.json` | The query contract (contract §7.1), predicate `p.demo` and pinned value-set expansion. Symbolic contract digest `d1` |
 | `fixtures/EA-*.json` | Evaluation, partial-stage, preview and compilation fixtures |
 | `fixtures/CAN-*.json` | Canonicalization fixtures |
-| `index.json` | Contract case number (1–140) → fixture IDs; pairs (with their comparison mode); history-resolution groups; contrasts |
+| `index.json` | Contract case number (1–141) → fixture IDs; pairs (with their comparison mode); history-resolution groups; contrasts |
 | `validate.py` | Structural validator and pair self-tests (`python3 validate.py --self-test`) |
 | `check-canonical.cjs` | Canonical bytes, digests and variant IDs, verified with the RFC 8785 library `canonicalize@5.1.0` (see “Canonicalization checks”) |
 
@@ -184,7 +184,7 @@ Two helpers divide the work. Neither computes an expected evidence outcome.
 
 It checks that:
 
-- every file parses, IDs are unique and match file names, and the index maps every case 1–140 to existing fixtures;
+- every file parses, IDs are unique and match file names, and the index maps every case 1–141 to existing fixtures;
 - expected lists and attributions are in canonical order;
 - decisions are the projection of evidence, and Need causes equal result causes;
 - a `stage` fixture expects exactly stages S1–S3, S1–S4, S1–S5 or S1–S6 and only facts of those stages (for S5, `criterion`, `classification` and `possibleClasses` only; for S6, `cell`, `gap` and `notCurrent` only), with no downstream expectation; a stage `cell` fact has one of the four statuses; a stage `gap` fact has a boolean `relevant` and `provenBy` (`recordType`, `subject` or `sources`) exactly when irrelevant; a stage `criterion` fact names `establishes` or `refutes`, has value `True`, `False` or `Unknown`, and has nonempty `causes` exactly when `Unknown`; a stage `classification` fact has one of the four classes and nonempty `causes` exactly when `Unclassified`; a stage `possibleClasses` fact lists distinct classes in canonical order; `reasons`, `causes`, `unresolvedBy` and `blockers` are in canonical order; `selected` appears only with `Selected`, `unresolvedBy` only with `Unresolved`, and `blockers` only with `NotSelected`;

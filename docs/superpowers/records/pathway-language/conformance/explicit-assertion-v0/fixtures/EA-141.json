@@ -1,0 +1,125 @@
+{
+  "id": "EA-141",
+  "contractCases": [
+    141
+  ],
+  "title": "Step A rule 5: unresolved candidacy beside definite inadmissibility (contract §2.8)",
+  "kind": "stage",
+  "policy": "explicit-assertion-v0",
+  "evidenceModel": "demo-model@0.1",
+  "query": {
+    "file": "../query/q.demo.json",
+    "contractDigest": "d1"
+  },
+  "requestedOutputs": [
+    "p.demo"
+  ],
+  "comparison": "stage-v1",
+  "input": {
+    "snapshot": "snap-1",
+    "supersedesSnapshot": null,
+    "context": {
+      "subject": "P1",
+      "episode": {
+        "known": "E1"
+      },
+      "encounter": {
+        "known": "N1"
+      },
+      "clock": "2026-01-01T00:00:00Z",
+      "mode": "nonclinical"
+    },
+    "records": [
+      {
+        "key": {
+          "source": "s1",
+          "localId": "r141"
+        },
+        "revision": "1",
+        "recordType": "demo-model/DemoAssessment@0.1",
+        "subject": "P1",
+        "episode": "E1",
+        "encounter": "N0",
+        "concept": {
+          "system": "other-cs",
+          "code": "item-x"
+        },
+        "assertion": "Affirmed",
+        "assertionKind": "ClinicianDocumented",
+        "author": {
+          "actor": "u1",
+          "permissions": []
+        },
+        "provenance": {
+          "acquisition": "a0",
+          "sourceRecordRef": "s1:r141:1"
+        }
+      }
+    ],
+    "retractions": [],
+    "coverage": [
+      {
+        "id": "cov-all",
+        "appliesTo": {
+          "snapshot": "snap-1"
+        },
+        "recordType": "demo-model/DemoAssessment@0.1",
+        "subject": "P1",
+        "sources": [
+          "s1",
+          "s2"
+        ],
+        "status": "Complete",
+        "attestedBy": "demo-adapter@1"
+      }
+    ],
+    "failures": [],
+    "rejectedItems": []
+  },
+  "expected": {
+    "stages": [
+      "S1",
+      "S2",
+      "S3",
+      "S4",
+      "S5",
+      "S6"
+    ],
+    "traceAssertions": [
+      {
+        "fact": "selection",
+        "ref": "s1/r141",
+        "value": "Unresolved",
+        "unresolvedBy": [
+          "CandidacyUnresolved"
+        ]
+      },
+      {
+        "fact": "disposition",
+        "ref": "s1/r141@1",
+        "value": "NotSelected",
+        "blockers": [
+          "CandidacyUnresolved",
+          "Inadmissible"
+        ]
+      },
+      {
+        "fact": "possibleClasses",
+        "ref": "s1/r141",
+        "value": [
+          "excluded"
+        ]
+      },
+      {
+        "fact": "rule",
+        "value": 5
+      },
+      {
+        "fact": "baseCauses",
+        "value": [
+          "InsufficientEvidence"
+        ]
+      }
+    ]
+  }
+}

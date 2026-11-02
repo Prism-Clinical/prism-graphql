@@ -120,7 +120,7 @@ export { selectForQuery as experimentalSelectForQuery, QuerySelectionConfigurati
 export type { EvaluationSnapshot, QuerySelectionInput } from './bound';
 export { gapRelevance as experimentalGapRelevance, GapRelevanceConfigurationError } from './s6/gaps';
 export { baseResult as experimentalBaseResult, BaseResultConfigurationError } from './s6/base';
-export type { BaseCause, BaseKey, BaseKeyRole, BaseResult, BaseResultInput, BaseRule, Rule5Cause, Seen } from './s6/base';
+export type { BaseCause, BaseKey, BaseKeyRole, BaseResult, BaseResultInput, BaseRule } from './s6/base';
 /** Snapshot statements nested deeper than this are a configuration error (contract §1.5). */
 export { MAX_JSON_DEPTH } from './s1/payload';
 export type {

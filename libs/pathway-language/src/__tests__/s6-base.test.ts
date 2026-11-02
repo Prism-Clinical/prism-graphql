@@ -102,7 +102,6 @@ const facts = (r: BaseResult) => ({
   S: r.supporting.map(show),
   R: r.refuting.map(show),
   baseCauses: r.baseCauses.map((c) => c.cause),
-  undecided: r.undecided.map((u) => u.cause),
   G: r.relevantGaps.map((g) => g.label),
 });
 const role = (r: BaseResult, key: string) => r.keys.find((k) => `${k.key.source}/${k.key.localId}` === key)!;
@@ -121,17 +120,17 @@ const history = (localId: string, first: J, second: J) => [rev(localId, first), 
 describe('S6 step A: rules 1–4 (§4.2)', () => {
   it('1. supporting only, complete coverage, no relevant gap: rule 2, provisional Known(true) referencing S', () => {
     const r = base([SUPPORTING]);
-    expect(facts(r)).toEqual({ rule: 2, base: { status: 'Known', value: true }, S: ['s1/r1@1'], R: [], baseCauses: [], undecided: [], G: [] });
+    expect(facts(r)).toEqual({ rule: 2, base: { status: 'Known', value: true }, S: ['s1/r1@1'], R: [], baseCauses: [], G: [] });
     expect(r.causes).toBe('NoneForKnown');
   });
 
   it('2. refuting only, complete coverage, no relevant gap: rule 3, provisional Known(false) referencing R', () => {
-    expect(facts(base([REFUTING]))).toEqual({ rule: 3, base: { status: 'Known', value: false }, S: [], R: ['s1/r2@1'], baseCauses: [], undecided: [], G: [] });
+    expect(facts(base([REFUTING]))).toEqual({ rule: 3, base: { status: 'Known', value: false }, S: [], R: ['s1/r2@1'], baseCauses: [], G: [] });
   });
 
   it('3. supporting and refuting together: rule 1 Conflicting with both sides, with or without a relevant gap', () => {
     const plain = base([SUPPORTING, rev('r2', { assertion: 'Denied' }, 's2')]);
-    expect(facts(plain)).toEqual({ rule: 1, base: { status: 'Unresolved' }, S: ['s1/r1@1'], R: ['s2/r2@1'], baseCauses: ['Conflicting'], undecided: [], G: [] });
+    expect(facts(plain)).toEqual({ rule: 1, base: { status: 'Unresolved' }, S: ['s1/r1@1'], R: ['s2/r2@1'], baseCauses: ['Conflicting'], G: [] });
     expect(plain.baseCauses[0]).toEqual({ cause: 'Conflicting', reason: 'AssertionConflict', refs: [...plain.supporting, ...plain.refuting] });
     // Case 8: the failure is a relevant gap, but only Conflicting is a base cause (Unavailable is step C's).
     const gapped = base([SUPPORTING, rev('r2', { assertion: 'Denied' }, 's2')], [], snap([COMPLETE], [fail('f1', { sources: null })]));
@@ -146,7 +145,7 @@ describe('S6 step A: rules 1–4 (§4.2)', () => {
         expect(r.rule).toBe(4);
         expect(r.base).toEqual({ status: 'Unresolved' });
         expect(r[side === 'S' ? 'supporting' : 'refuting'].map(show)).toEqual([rec === SUPPORTING ? 's1/r1@1' : 's1/r2@1']);
-        expect([r.baseCauses, r.undecided, r.causes]).toEqual([[], [], 'DeferredToStepC']);
+        expect([r.baseCauses, r.causes]).toEqual([[], 'DeferredToStepC']);
         expect(r.relevantGaps.length).toBe(1);
       }
     }
@@ -170,7 +169,7 @@ describe('S6 step A: rules 1–4 (§4.2)', () => {
 describe('S6 step A: rule 5 and its base causes', () => {
   it('6. empty evidence with complete coverage is Unresolved{Missing}, never Known(false); a gap adds no base cause', () => {
     const r = base([]);
-    expect(facts(r)).toEqual({ rule: 5, base: { status: 'Unresolved' }, S: [], R: [], baseCauses: ['Missing'], undecided: [], G: [] });
+    expect(facts(r)).toEqual({ rule: 5, base: { status: 'Unresolved' }, S: [], R: [], baseCauses: ['Missing'], G: [] });
     expect(r.baseCauses[0]).toEqual({ cause: 'Missing', reason: 'NoInDomainRecord' });
     expect(facts(base([], [], snap([], [fail('f1')])))).toEqual({ ...facts(r), G: ['cell:s1', 'cell:s2', 'f1'] });
   });
@@ -179,7 +178,7 @@ describe('S6 step A: rule 5 and its base causes', () => {
     const retracted = base([SUPPORTING], [retract('x1', 'r1')]);
     const corrected = base([rev('r8'), rev('r8', { revision: '2', supersedes: sup('r8'), concept: OUT, author: AMEND })]);
     for (const [r, key, k] of [[retracted, 's1/r1', 'Retracted'], [corrected, 's1/r8', 'OutOfDomain']] as const) {
-      expect(facts(r)).toMatchObject({ rule: 5, baseCauses: ['Missing'], undecided: [] });
+      expect(facts(r)).toMatchObject({ rule: 5, baseCauses: ['Missing'] });
       expect(role(r, key)).toMatchObject({ role: k, inDomainSeen: false, inadmissibleSeen: false, nonInformativeSeen: false });
     }
   });
@@ -198,7 +197,7 @@ describe('S6 step A: rule 5 and its base causes', () => {
     expect(facts(base([NONINF, INADMISSIBLE, UNCLASSIFIED])).baseCauses).toEqual(['Inadmissible', 'InsufficientEvidence']);
     // Only an Unclassified record: no base cause at all; its own causes come from step C (case 4).
     const u = base([UNCLASSIFIED]);
-    expect(facts(u)).toMatchObject({ rule: 5, baseCauses: [], undecided: [] });
+    expect(facts(u)).toMatchObject({ rule: 5, baseCauses: [] });
     expect(role(u, 's1/r3')).toMatchObject({ role: 'Unclassified', possibleClasses: ['Supporting', 'Refuting', 'NonInformative'], inDomainSeen: true, nonInformativeSeen: false });
     // Missing and Inadmissible together: an out-of-domain key does not count as seen.
     expect(facts(base([rev('r4', { concept: OUT }), INADMISSIBLE])).baseCauses).toEqual(['Inadmissible']);
@@ -225,26 +224,31 @@ describe('S6 step A: unresolved records never enter S or R', () => {
 describe('S6 step A: rule 5 boundary cases (decision table)', () => {
   it('unresolved candidacy alone counts as an in-domain record seen: no Missing (case 13)', () => {
     const r = base([rev('r10', { concept: OTHER_CS })]);
-    expect(facts(r)).toMatchObject({ rule: 5, baseCauses: [], undecided: [] });
+    expect(facts(r)).toMatchObject({ rule: 5, baseCauses: [] });
     expect(role(r, 's1/r10')).toMatchObject({ role: 'UnresolvedCandidate', candidate: true, possibleClasses: ['Supporting', 'excluded'], inDomainSeen: true });
   });
 
-  it('unresolved candidacy beside definite inadmissibility (§2.8, r6) is undecided, never guessed', () => {
+  it('unresolved candidacy beside definite inadmissibility (§2.8, r6) is an unresolved candidate: InsufficientEvidence only (review of 8de77ae)', () => {
     const r6 = rev('r6', { concept: OTHER_CS, encounter: 'N0' });
     const alone = base([r6]);
-    expect(facts(alone)).toMatchObject({ rule: 5, baseCauses: [], undecided: ['Missing', 'Inadmissible', 'InsufficientEvidence'] });
-    expect(alone.undecided[0]).toEqual({ cause: 'Missing', keys: [{ source: 's1', localId: 'r6' }], question: 'CandidacyUnresolvedBesideInadmissible' });
-    expect(role(alone, 's1/r6')).toMatchObject({ role: 'CandidacyUnresolvedBesideInadmissible', possibleClasses: ['excluded'], inDomainSeen: 'Undecided' });
-    // A cause another key decides is not undecided.
-    expect(facts(base([r6, INADMISSIBLE]))).toMatchObject({ baseCauses: ['Inadmissible'], undecided: ['InsufficientEvidence'] });
-    expect(facts(base([r6, NONINF]))).toMatchObject({ baseCauses: ['InsufficientEvidence'], undecided: ['Inadmissible'] });
-    // Beside a supporting record, rule 2 applies and rule 5's question never arises.
-    expect(facts(base([r6, SUPPORTING]))).toMatchObject({ rule: 2, undecided: [] });
+    // Potentially in domain (no Missing); not a confirmed in-domain inadmissible candidate (no
+    // Inadmissible); only possible class excluded (InsufficientEvidence).
+    expect(facts(alone)).toMatchObject({ rule: 5, baseCauses: ['InsufficientEvidence'] });
+    expect(alone.baseCauses[0]).toEqual({ cause: 'InsufficientEvidence', reason: 'NonInformativeSeen', keys: [{ source: 's1', localId: 'r6' }] });
+    // Both facts stay visible: the role names the case, the key is Unresolved by candidacy, and its possible classes are {excluded}.
+    expect(role(alone, 's1/r6')).toEqual({
+      key: { source: 's1', localId: 'r6' }, status: 'Unresolved', candidate: true, role: 'CandidacyUnresolvedBesideInadmissible',
+      possibleClasses: ['excluded'], inDomainSeen: true, inadmissibleSeen: false, nonInformativeSeen: true,
+    });
+    expect(facts(base([r6, INADMISSIBLE])).baseCauses).toEqual(['Inadmissible', 'InsufficientEvidence']);
+    // It cannot oppose an established base: beside a supporting record, rule 2.
+    expect(facts(base([r6, SUPPORTING]))).toMatchObject({ rule: 2, S: ['s1/r1@1'], baseCauses: [] });
+    expect(facts(base([r6, REFUTING]))).toMatchObject({ rule: 3, R: ['s1/r2@1'] });
   });
 
   it('excluded-only: an in-domain unresolved candidate is InsufficientEvidence, not Inadmissible (case 127 shape, case 104)', () => {
     const r = base(history('r9', { encounter: 'N0' }, { encounter: 'N0' }));
-    expect(facts(r)).toMatchObject({ rule: 5, baseCauses: ['InsufficientEvidence'], undecided: [] });
+    expect(facts(r)).toMatchObject({ rule: 5, baseCauses: ['InsufficientEvidence'] });
     expect(role(r, 's1/r9')).toMatchObject({ role: 'UnresolvedCandidate', possibleClasses: ['excluded'], inadmissibleSeen: false });
     // With a NonInformative alternative too: {NonInformative, excluded}.
     expect(facts(base(history('r9', { assertion: 'Indeterminate' }, { encounter: 'N0' }))).baseCauses).toEqual(['InsufficientEvidence']);
@@ -255,7 +259,7 @@ describe('S6 step A: rule 5 boundary cases (decision table)', () => {
     const oodHistory = base(history('r43', { concept: OUT }, { concept: OUT }));
     const oodRetraction = base([rev('r44', { concept: OUT })], [retract('x44', 'r44', { actor: 'u2' })]);
     for (const r of [oodHistory, oodRetraction]) {
-      expect(facts(r)).toMatchObject({ rule: 5, baseCauses: ['Missing'], undecided: [] });
+      expect(facts(r)).toMatchObject({ rule: 5, baseCauses: ['Missing'] });
       expect(r.keys).toHaveLength(1);
       expect(r.keys[0]).toMatchObject({ status: 'Unresolved', candidate: false, role: 'UnresolvedNotCandidate', inDomainSeen: false, nonInformativeSeen: false });
     }
@@ -267,7 +271,7 @@ describe('S6 step A: rule 5 boundary cases (decision table)', () => {
   it('an unknown marker could be in domain: the key is a candidate, so no Missing; its classes include S and R, so no InsufficientEvidence', () => {
     const r = base([rev('r11', { revision: '2', supersedes: sup('r11'), concept: OUT, author: AMEND })]);
     expect(role(r, 's1/r11')).toMatchObject({ role: 'UnresolvedCandidate', candidate: true, possibleClasses: ['Supporting', 'Refuting', 'NonInformative', 'excluded'] });
-    expect(facts(r)).toMatchObject({ rule: 5, baseCauses: [], undecided: [] });
+    expect(facts(r)).toMatchObject({ rule: 5, baseCauses: [] });
   });
 
   it('empty possible-class sets: retracted and no-record keys have none and are not seen', () => {
@@ -293,7 +297,7 @@ describe('S6 step A: determinism, S1-rejected occurrences and ownership', () => 
     const bad = rev('r1', { revision: '2', supersedes: sup('r1'), assertion: 'Denied', author: AMEND, provenance: { acquisition: '\uD800', sourceRecordRef: 's1:r1:2' } });
     const r = base([SUPPORTING, bad]);
     expect(role(r, 's1/r1')).toMatchObject({ status: 'Selected', role: 'Supporting' });
-    expect(facts(r)).toEqual({ rule: 4, base: { status: 'Unresolved' }, S: ['s1/r1@1'], R: [], baseCauses: [], undecided: [], G: ['unidentified:revision#1'] });
+    expect(facts(r)).toEqual({ rule: 4, base: { status: 'Unresolved' }, S: ['s1/r1@1'], R: [], baseCauses: [], G: ['unidentified:revision#1'] });
     expect(r.relevantGaps[0]!.identity).toEqual({ kind: 'RejectedItem', origin: 'S1', occurrence: 'revision', inputIndex: 1 });
   });
 
@@ -349,7 +353,7 @@ describe('S6 step A: determinism, S1-rejected occurrences and ownership', () => 
       (r.baseCauses as unknown[]).push({ cause: 'Missing' });
     }).toThrow();
     expect(Object.keys(r).sort()).toEqual(
-      ['base', 'baseCauses', 'causes', 'experimental', 'irrelevantGaps', 'keys', 'notRun', 'packageId', 'query', 'refuting', 'relevantGaps', 'rule', 'scope', 'snapshot', 'stage', 'step', 'supporting', 'undecided'].sort(),
+      ['base', 'baseCauses', 'causes', 'experimental', 'irrelevantGaps', 'keys', 'notRun', 'packageId', 'query', 'refuting', 'relevantGaps', 'rule', 'scope', 'snapshot', 'stage', 'step', 'supporting'].sort(),
     );
     expect([r.experimental, r.stage, r.step, r.scope]).toEqual(['nonclinical-s6-base-result-v0', 'S6', 'A', 'base-result']);
   });

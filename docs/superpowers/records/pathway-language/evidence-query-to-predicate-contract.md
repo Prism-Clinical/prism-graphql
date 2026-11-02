@@ -2,7 +2,7 @@
 
 **Status:** Proposed design draft. **Not** accepted, not finalized syntax, not a schema and not implemented. It contains no clinical content: the record type, enum values, codes, sources and permission below are fictional and illustrate language behavior only. They do not map to dysphagia, progression, urgency or any other clinical definition.
 
-**Date:** 2026-10-03. **Revised:** 2026-10-03, nine times, 2026-10-04, once, 2026-10-05, three times, 2026-10-09, three times, 2026-10-28, three times, and 2026-10-29, eight times, 2026-10-31, once, and 2026-11-02, once, after review. The third revision fixed three things:
+**Date:** 2026-10-03. **Revised:** 2026-10-03, nine times, 2026-10-04, once, 2026-10-05, three times, 2026-10-09, three times, 2026-10-28, three times, and 2026-10-29, eight times, 2026-10-31, once, and 2026-11-02, twice, after review. The third revision fixed three things:
 
 - revision-chain boundaries: source-scoped identity, same-source corrections and one fully specified schematic authority rule;
 - deterministic outcomes for malformed history;
@@ -14,11 +14,13 @@ The fourth revision made three changes:
 - Payload identity for duplicate detection is defined.
 - An unsupported justification about coverage attestations is removed.
 
+The thirtieth revision records the review of the twenty-ninth (2026-11-02). Unresolved candidacy beside inadmissibility (2.8) is decided as an **unresolved candidate**: potentially in domain (no `Missing`), not a confirmed in-domain inadmissible candidate (no base `Inadmissible`), and, with possible classes {`excluded`}, `InsufficientEvidence`. Its candidacy uncertainty and mismatch stay in the trace. Nothing in step A is undecided any more. The `unknown`-marker reading (potentially in domain, so no base `Missing`) is confirmed. Case 141 is added.
+
 The twenty-ninth revision specifies the step A boundary of S6 (4.2 "Step A boundary", cases 137–140, decision 27):
 
 - The base result reads one query-bound evaluation: classifications, possible classes and gap relevance are derived from the same S4 result; nothing is accepted from the caller.
 - A rule 5 decision table states, per S4 key, whether it is an in-domain record seen, an inadmissible candidate seen or a non-informative record seen, from 2.3, 2.8, 3.7, 7.5 and cases 4, 6, 9, 13, 24, 25, 27, 28, 32, 33, 104 and 127.
-- Unresolved candidacy beside inadmissibility (2.8) stays open: its rule 5 contribution is reported as undecided, never chosen.
+- Unresolved candidacy beside inadmissibility (2.8) stays open: its rule 5 contribution is reported as undecided, never chosen (decided in the thirtieth revision).
 - Rule 4 has no base cause; its causes come only from step C. The base result is intermediate: no materiality, final cause set, attribution, `Evidence<Boolean>` or Need.
 - Group Q adds four partial-stage fixtures. The `stage-v1` S1–S6 vocabulary gains the step A facts `rule` and `baseCauses`.
 
@@ -650,7 +652,7 @@ Blockers are a set, listed by code point; none is chosen by evaluation order. `e
 - Both facts stay attached to its possibility: the blockers `CandidacyUnresolved` and `Inadmissible`, with every S3 reason and finding.
 - Its definite mismatch prevents it from supplying `Supporting` or `Refuting` evidence, whatever its candidacy turns out to be (its possible classes in 4.2 step B are `{excluded}`).
 - Unresolved selection alone neither establishes materiality nor blocks the query.
-- How it contributes to S6’s base causes (4.2 rule 5: `Inadmissible` for an inadmissible candidate seen, `Missing` when no in-domain record was seen) is **deferred** to S6, and is still open: the step A boundary (4.2) reports it as undecided.
+- How it contributes to S6’s base causes (4.2 rule 5: `Inadmissible` for an inadmissible candidate seen, `Missing` when no in-domain record was seen) was deferred to S6, and is decided there (review, 2026-11-02): it is an unresolved candidate (4.2 "Step A boundary", case 141), giving neither `Missing` nor a base `Inadmissible`, and `InsufficientEvidence` from its possible classes {`excluded`}.
 
 Case 125 (r6) shows this outcome.
 
@@ -938,7 +940,7 @@ An established conflict stays `Conflicting`, with the other causes added. Immate
 
 Consequence: a `Known` result requires every declared source’s cell to be `Complete` and no relevant failure or rejected item.
 
-**Step A boundary** (implemented experimentally; the `rule` facts and `query`-origin attributions of the evaluation fixtures, and cases 137–140). A separate entry point computes the **base result** only. It is intermediate: step B (materiality) and step C (cause union and attribution) have not run, so it is never an `Evidence<Boolean>`.
+**Step A boundary** (implemented experimentally; the `rule` facts and `query`-origin attributions of the evaluation fixtures, and cases 137–141). A separate entry point computes the **base result** only. It is intermediate: step B (materiality) and step C (cause union and attribution) have not run, so it is never an `Evidence<Boolean>`.
 
 - **Input.** As gap relevance (4.1): an authentic `CompiledPackage`, one `EvidenceQuery` ID, and an S4 result of query-bound selection for exactly that package object and query, made with a snapshot. Classifications (3.6), possible classes (3.7) and gap relevance (4.1) are computed internally from that S4 result. No classification, gap decision, payload or query setting is accepted from the caller. Preview packages are rejected.
 - **Rules.** *S* and *R* are the selected keys' `Supporting` and `Refuting` current revisions (exact revision and variant identity); *G* is the relevant gaps of the same evaluation. Rule 1 (`Conflicting`, reason `AssertionConflict`, with *S* ∪ *R*), rule 2 (`Known(true)`, provisional), rule 3 (`Known(false)`, provisional), rule 4 (`Unresolved`, **no** base cause: its causes come only from step C), rule 5 (below). Repeated consistent assertions keep every distinct reference; nothing is counted or weighted.
@@ -952,12 +954,12 @@ Consequence: a `Known` result requires every declared source’s cell to be `Com
 | `Inadmissible` (current, in domain) | Yes | **Yes** | No | Cases 9, 25 |
 | `Unresolved`, S2 key candidate (some possibility could be in domain: in domain, candidacy unresolved, or an `unknown` marker, 2.3) | Yes | No: an inadmissible possibility of an unresolved key adds `excluded`, not a base `Inadmissible` | Yes exactly when its possible classes ⊆ {`NonInformative`, `excluded`} (also {`excluded`} alone) | 2.3; case 13 (unresolved candidacy: no `Missing`); cases 27, 28, 104; case 127 shape |
 | `Unresolved`, not a candidate (every possible current out of domain or `excluded`) | No | No | No: not seen | 7.5 ("a key whose every possible current is out of domain": unchanged result), case 33 |
-| `Unresolved` by `CandidacyUnresolved` only, current revision `Inadmissible` (2.8, case 125 r6) | **Undecided** | **Undecided** | **Undecided** | 2.8 defers this contribution to S6 and names both readings |
+| `Unresolved` by `CandidacyUnresolved` only, current revision `Inadmissible` (2.8, case 125 r6) | Yes: potentially in domain | No: not a confirmed in-domain inadmissible candidate | Yes: possible classes {`excluded`} | As the row above, an unresolved candidate (decided on review, 2026-11-02; case 141) |
 | `OutOfDomain` (including corrected out of domain), `Retracted`, `NoRecord` | No | No | No | Cases 5, 24, 32 |
 
   `possibleClasses` are read only for these seen-record conditions; no materiality is decided. Unresolved keys and selected `Unclassified` records never enter *S* or *R*.
-- **Open: unresolved candidacy beside inadmissibility.** The contract leaves the contribution open (2.8): in domain the record would be an inadmissible candidate; out of domain, no candidate at all; and the "unresolved key" reading of case 104 would give neither. With only such a record and `Complete` coverage, the readings give base causes {`Inadmissible`, `InsufficientEvidence`}, {`Missing`} or {`InsufficientEvidence`}, and step C adds nothing (the record's possible classes are {`excluded`}, so it is immaterial). The implementation reports each base cause the record could decide as **undecided** (with the key) instead of choosing; a cause already established by another key is not undecided.
-- **Output.** A base-stage discriminator, the rule, the provisional base (`Known(value)` or `Unresolved`), *S* and *R* in `RevisionRef`-then-digest order, the decided base causes only (never gap causes), any undecided base causes, the relevant and irrelevant gap references (collision-safe identities, 4.1), and per key: S4 status, S2 key candidacy, role, the selected revision or the possible classes read, and the three rule 5 columns. Detached and deep-frozen. No materiality, final cause set, attribution, `Evidence<Boolean>` or Need.
+- **Unresolved candidacy beside inadmissibility** (decided on review, 2026-11-02). The record is an unresolved candidate like any other, with no exception: potentially in domain, so no `Missing`; not a confirmed in-domain inadmissible candidate, so no base `Inadmissible`; possible classes {`excluded`}, so `InsufficientEvidence`. Its candidacy uncertainty and definite mismatch stay visible (S4 blockers, its own role in the base trace). Beside a `Supporting` or `Refuting` record it cannot oppose the base, since it can only be excluded. An `unknown` marker likewise counts as potentially in domain and prevents a base `Missing`; the uncertainty behind it keeps its own cause and attribution.
+- **Output.** A base-stage discriminator, the rule, the provisional base (`Known(value)` or `Unresolved`), *S* and *R* in `RevisionRef`-then-digest order, the base causes only (never gap causes), the relevant and irrelevant gap references (collision-safe identities, 4.1), and per key: S4 status, S2 key candidacy, role, the selected revision or the possible classes read, and the three rule 5 columns. Detached and deep-frozen. No materiality, final cause set, attribution, `Evidence<Boolean>` or Need.
 
 **Determinism.** Every rule reads sets keyed by identity, classifications, cell statuses and stated gap dimensions. No rule reads input order or revision-ID order. Section 7.4 lists the invariance checks.
 
@@ -1419,6 +1421,7 @@ In cases 114, 115b and 116–118 the record is the only candidate and its possib
 | 138 | Nothing in domain seen | s1/r138a@1 and @2 (supersedes @1, `perm omitted`) both concept `item-y`; s1/r138b retracted (`+amend`); s1/r138c@2 corrects @1 to `item-y` (`+amend`) | r138a `Unresolved`, not a candidate; r138b `Retracted`; r138c `OutOfDomain`; rule 5, base causes {`Missing`} |
 | 139 | Supporting revision beside an occurrence S1 could not identify | s1/r139@1 `Affirmed`; a second occurrence (a `Denied` correction of @1, `+amend`) without `key` | r139 `Selected`, `Supporting`; gap `unidentified:revision#1` relevant; rule 4, no base cause |
 | 140 | Inadmissible, non-informative and unclassified together | s1/r140a `Indeterminate`; s1/r140b encounter N0; s1/r140c `assertion` omitted | rule 5, base causes {`Inadmissible`, `InsufficientEvidence`}; the `Unclassified` record adds none and blocks `Missing` |
+| 141 | Unresolved candidacy beside definite inadmissibility (2.8) | s1/r141 concept `other-cs#item-x`, encounter N0 | `Unresolved` [`CandidacyUnresolved`]; @1 blockers [`CandidacyUnresolved`, `Inadmissible`]; possible {excluded}; rule 5, base causes {`InsufficientEvidence`}: no `Missing`, no base `Inadmissible` |
 
 ### 7.5 Invariance checks
 
@@ -1542,11 +1545,11 @@ These must hold for every case:
     - Failures and rejected items: irrelevant only by a stated, well-formed, different record type or subject, or by stated sources disjoint from the declared set under a same-source correction rule; value set, episode, encounter and unstated dimensions never prove.
     - S1's unattributable retractions and unidentified occurrences are rejected items of the same evaluation; S1 history defects and boundary rejections are not gaps.
     - Clarifications reviewed 2026-10-31 (1–4, 6–8 accepted; 5 revised to reject unrecognized members). Snapshot statements are validated as plain JSON before canonicalization; gap and statement identities are structured and collision-safe. Base results, materiality of unresolved records, cause attribution and the final evidence result remain unimplemented.
-27. S6 step A base result (4.2 "Step A boundary", cases 137–140), proposed:
+27. S6 step A base result (4.2 "Step A boundary", cases 137–141), proposed:
     - Same boundary as gap relevance; classifications, possible classes and gaps are derived from the bound S4 result, never supplied.
     - *S* and *R* only from selected keys' classifications; unresolved keys and selected `Unclassified` records never enter them.
     - Rule 1 `Conflicting` with both sides; rules 2–3 provisional `Known`; rule 4 with no base cause; rule 5 by the decision table, with S2 key candidacy deciding "seen".
-    - Unresolved candidacy beside inadmissibility (2.8) is reported as undecided, not chosen; it needs a decision.
+    - Unresolved candidacy beside inadmissibility (2.8) is an unresolved candidate: no `Missing`, no base `Inadmissible`, `InsufficientEvidence` from {`excluded`} (decided on review, 2026-11-02; case 141). An `unknown` marker is potentially in domain (confirmed).
     - Materiality (step B), the cause union and attribution (step C), the final evidence result and Needs remain unimplemented.
 
 **Possible conflicts needing a Stage A amendment.** None found. Items to confirm:
@@ -1557,7 +1560,7 @@ These must hold for every case:
 
 **Query/predicate split.** The query carries the reasoning. A projection-only Predicate is optional naming and composition structure. No node kind is added or removed.
 
-**Conformance fixtures.** [conformance/explicit-assertion-v0/](conformance/explicit-assertion-v0/README.md) holds machine-readable fixtures for cases 1–140, mapped by case number, with expected outputs written from this contract. They are proposed, like this document.
+**Conformance fixtures.** [conformance/explicit-assertion-v0/](conformance/explicit-assertion-v0/README.md) holds machine-readable fixtures for cases 1–141, mapped by case number, with expected outputs written from this contract. They are proposed, like this document.
 
 **Remaining items.**
 

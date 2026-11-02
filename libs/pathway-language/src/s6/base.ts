@@ -36,8 +36,6 @@ export type BaseCause =
   | { readonly cause: 'Inadmissible'; readonly reason: 'InadmissibleSeen'; readonly keys: readonly RecordKey[] }
   | { readonly cause: 'InsufficientEvidence'; readonly reason: 'NonInformativeSeen'; readonly keys: readonly RecordKey[] };
 
-export type Rule5Cause = 'Missing' | 'Inadmissible' | 'InsufficientEvidence';
-
 /** What one key is for step A (contract "Rule 5 decision table"). */
 export type BaseKeyRole =
   | 'Supporting'
@@ -48,13 +46,14 @@ export type BaseKeyRole =
   | 'InadmissibleCandidate'
   | 'UnresolvedCandidate'
   | 'UnresolvedNotCandidate'
-  /** §2.8: unresolved candidacy beside a definite mismatch; its rule 5 contribution is undecided. */
+  /**
+   * §2.8: a current revision with unresolved candidacy and a definite mismatch. An unresolved
+   * candidate (decided on review, 2026-11-02): potentially in domain, never a base Inadmissible.
+   */
   | 'CandidacyUnresolvedBesideInadmissible'
   | 'OutOfDomain'
   | 'Retracted'
   | 'NoRecord';
-
-export type Seen = boolean | 'Undecided';
 
 export interface BaseKey {
   readonly key: RecordKey;
@@ -66,9 +65,9 @@ export interface BaseKey {
   readonly node?: NodeRef;
   /** Unresolved records only: read for rule 5's condition, never for materiality. */
   readonly possibleClasses?: readonly EvidenceClass[];
-  readonly inDomainSeen: Seen;
-  readonly inadmissibleSeen: Seen;
-  readonly nonInformativeSeen: Seen;
+  readonly inDomainSeen: boolean;
+  readonly inadmissibleSeen: boolean;
+  readonly nonInformativeSeen: boolean;
 }
 
 export interface BaseResult {
@@ -95,8 +94,6 @@ export interface BaseResult {
    */
   readonly baseCauses: readonly BaseCause[];
   readonly causes: 'Conflict' | 'NoneForKnown' | 'DeferredToStepC' | 'Rule5';
-  /** Rule 5 causes that only an undecided key (§2.8) could add; never in baseCauses. */
-  readonly undecided: readonly { readonly cause: Rule5Cause; readonly keys: readonly RecordKey[]; readonly question: 'CandidacyUnresolvedBesideInadmissible' }[];
   /** Every S4 key, RecordKey order. */
   readonly keys: readonly BaseKey[];
   readonly notRun: readonly ['StepB:Materiality', 'StepC:Causes', 'Evidence', 'Needs'];
@@ -159,13 +156,14 @@ export function baseResult(input: BaseResultInput): BaseResult {
         return { ...common, role: 'InadmissibleCandidate', inDomainSeen: true, inadmissibleSeen: true, nonInformativeSeen: false };
       case 'Unresolved': {
         const pc = classesOf(k);
-        if (candidacyBesideInadmissible(k)) {
-          return { ...common, role: 'CandidacyUnresolvedBesideInadmissible', possibleClasses: pc, inDomainSeen: 'Undecided', inadmissibleSeen: 'Undecided', nonInformativeSeen: 'Undecided' };
-        }
         // 7.5: a key no possibility of which could be in domain is not seen at all.
         if (!k.candidate) return { ...common, role: 'UnresolvedNotCandidate', possibleClasses: pc, ...none };
+        // An unresolved candidate, the §2.8 case included: potentially in domain, never a base
+        // Inadmissible (only a definite current in-domain revision is), and InsufficientEvidence
+        // exactly when it could only be non-informative or excluded.
         const onlyUninformative = pc.length > 0 && pc.every((c) => c === 'NonInformative' || c === 'excluded');
-        return { ...common, role: 'UnresolvedCandidate', possibleClasses: pc, inDomainSeen: true, inadmissibleSeen: false, nonInformativeSeen: onlyUninformative };
+        const role = candidacyBesideInadmissible(k) ? 'CandidacyUnresolvedBesideInadmissible' : 'UnresolvedCandidate';
+        return { ...common, role, possibleClasses: pc, inDomainSeen: true, inadmissibleSeen: false, nonInformativeSeen: onlyUninformative };
       }
       default:
         return { ...common, role: k.status, ...none };
@@ -180,7 +178,6 @@ export function baseResult(input: BaseResultInput): BaseResult {
 
   let rule: BaseRule;
   let baseCauses: BaseCause[] = [];
-  let undecided: BaseResult['undecided'][number][] = [];
   let causes: BaseResult['causes'];
   if (S && R) {
     rule = 1;
@@ -197,27 +194,12 @@ export function baseResult(input: BaseResultInput): BaseResult {
   } else {
     rule = 5;
     causes = 'Rule5';
-    const keysWhere = (f: (k: BaseKey) => Seen) => keys.filter((k) => f(k) === true).map((k) => k.key);
-    const open = (f: (k: BaseKey) => Seen) => keys.filter((k) => f(k) === 'Undecided').map((k) => k.key);
-    const inDomain = keysWhere((k) => k.inDomainSeen);
+    const keysWhere = (f: (k: BaseKey) => boolean) => keys.filter(f).map((k) => k.key);
     const inadmissible = keysWhere((k) => k.inadmissibleSeen);
     const uninformative = keysWhere((k) => k.nonInformativeSeen);
-    // A cause another key already decides is not undecided; otherwise an undecided key leaves it open.
-    if (inDomain.length === 0) {
-      const u = open((k) => k.inDomainSeen);
-      if (u.length > 0) undecided.push({ cause: 'Missing', keys: u, question: 'CandidacyUnresolvedBesideInadmissible' });
-      else baseCauses.push({ cause: 'Missing', reason: 'NoInDomainRecord' });
-    }
+    if (keysWhere((k) => k.inDomainSeen).length === 0) baseCauses.push({ cause: 'Missing', reason: 'NoInDomainRecord' });
     if (inadmissible.length > 0) baseCauses.push({ cause: 'Inadmissible', reason: 'InadmissibleSeen', keys: inadmissible });
-    else {
-      const u = open((k) => k.inadmissibleSeen);
-      if (u.length > 0) undecided.push({ cause: 'Inadmissible', keys: u, question: 'CandidacyUnresolvedBesideInadmissible' });
-    }
     if (uninformative.length > 0) baseCauses.push({ cause: 'InsufficientEvidence', reason: 'NonInformativeSeen', keys: uninformative });
-    else {
-      const u = open((k) => k.nonInformativeSeen);
-      if (u.length > 0) undecided.push({ cause: 'InsufficientEvidence', keys: u, question: 'CandidacyUnresolvedBesideInadmissible' });
-    }
   }
 
   return detach({
@@ -236,7 +218,6 @@ export function baseResult(input: BaseResultInput): BaseResult {
     irrelevantGaps: gaps.irrelevant,
     baseCauses,
     causes,
-    undecided,
     keys,
     notRun: ['StepB:Materiality', 'StepC:Causes', 'Evidence', 'Needs'],
   } as BaseResult);

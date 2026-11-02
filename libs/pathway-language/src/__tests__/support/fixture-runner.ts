@@ -482,7 +482,7 @@ export function runFixtures(dir: string = FIXTURE_DIR): { reports: FixtureReport
       }
       if (t.fact === 'rule' || t.fact === 'baseCauses') {
         report.baseApplicable += 1;
-        const got = !baseRes ? 'no base result (the query does not compile)' : t.fact === 'rule' ? baseRes.rule : baseRes.undecided.length > 0 ? `undecided ${baseRes.undecided.map((u) => u.cause)}` : baseRes.baseCauses.map((c) => c.cause);
+        const got = !baseRes ? 'no base result (the query does not compile)' : t.fact === 'rule' ? baseRes.rule : baseRes.baseCauses.map((c) => c.cause);
         if (isDeepStrictEqual(got, t.value)) report.basePassed += 1;
         else report.failures.push(`${t.fact}: ${JSON.stringify(got)}, expected ${JSON.stringify(t.value)}`);
         continue;
@@ -695,7 +695,7 @@ export function runFixtures(dir: string = FIXTURE_DIR): { reports: FixtureReport
       report.baseAttribution += 1;
       const want = (exp.causeAttribution as Json[]).filter((a) => a.origin === 'query').map((a) => JSON.stringify([a.cause, a.reason, a.refs ?? null])).sort();
       const got = baseRes.baseCauses.map((c) => JSON.stringify([c.cause, c.reason, c.cause === 'Conflicting' ? c.refs.map((n) => showRev(n.revision) + (n.digest ? `#${n.digest}` : '')) : null])).sort();
-      if (!isDeepStrictEqual(got, want) || baseRes.undecided.length > 0) report.failures.push(`base causes ${got.join(' ')}${baseRes.undecided.length ? ' (undecided ' + baseRes.undecided.map((u) => u.cause) + ')' : ''}, expected query attributions ${want.join(' ')}`);
+      if (!isDeepStrictEqual(got, want)) report.failures.push(`base causes ${got.join(' ')}, expected query attributions ${want.join(' ')}`);
     }
     // One-way (§4.2 steps A-B): a final Known result needs the same provisional Known base.
     if (exp.evidence?.status === 'Known' && baseRes) {
