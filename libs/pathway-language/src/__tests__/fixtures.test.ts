@@ -6,8 +6,9 @@
  * expectations of preview fixtures (query-bound preview evaluation), and S6 coverage-cell and gap-relevance
  * facts with two one-way implications, and S6 step A base-result facts (`rule`, `baseCauses`, the
  * `query`-origin attributions, which are exactly the base causes) with one one-way implication, and
- * step B `material` facts with two one-way implications. No
- * fixture is claimed to pass as a whole: final causes (step C), the evidence result and S7 are not implemented.
+ * step B `material` facts with two one-way implications, and step C cause attribution of Unresolved
+ * evaluation fixtures (exact) and Known ones (no aggregation). No fixture is claimed to pass as a
+ * whole: the evidence result, Needs and S7 are not implemented.
  */
 import { runFixtures } from './support/fixture-runner';
 
@@ -56,6 +57,10 @@ describe('explicit-assertion-v0 fixtures: S1, S2 and encounter-check assertions 
     material: sum((r) => r.materialApplicable),
     materialPassed: sum((r) => r.materialPassed),
     materialOneWay: sum((r) => r.materialOneWay),
+    causes: sum((r) => r.causesApplicable),
+    causesPassed: sum((r) => r.causesPassed),
+    causesKnown: sum((r) => r.causesKnown),
+    causesBlocked: sum((r) => r.causesBlocked),
     admissibility: sum((r) => r.admissibilityApplicable),
     admissibilityPassed: sum((r) => r.admissibilityPassed),
     outOfScope: sum((r) => r.outOfScope),
@@ -90,7 +95,9 @@ describe('explicit-assertion-v0 fixtures: S1, S2 and encounter-check assertions 
         `S6 step A base causes compared with query-origin cause attributions (exact set, per evaluation fixture): ${totals.baseAttribution}; one-way: final Known results that need the same Known base: ${totals.baseOneWay}`,
         `S6 step B materiality assertions checked (material facts; contract §4.2 step B): ${totals.material} (passed ${totals.materialPassed})`,
         `one-way from final results: Known needs a Known status after step B; Unresolved over a Known base needs a material record: ${totals.materialOneWay}`,
-        `expected fields/assertions outside implemented scope (evidence results, final cause attribution, Needs, S7; not checked): ${totals.outOfScope}`,
+        `S6 step C exact cause-attribution checks (Unresolved evaluation fixtures: causeAttribution and causes, all fields, as sets; contract §4.2 step C): ${totals.causes} (passed ${totals.causesPassed})`,
+        `S6 step C on Known evaluation fixtures (aggregation NotApplicable, no causes): ${totals.causesKnown}; blocked by a documented upstream limitation (not counted as passing): ${totals.causesBlocked}`,
+        `expected fields/assertions outside implemented scope (evidence status/value, candidateEvidenceIds, decision, Needs, S7; not checked): ${totals.outOfScope}`,
         `fixtures not run: ${notRun.length}: ${notRun.join(', ')}`,
         `evaluation/preview fixtures with no applicable S1–S5 assertion: ${noApplicableAssertions.length}: ${noApplicableAssertions.join(', ')}`,
       ].join('\n'),
@@ -113,11 +120,13 @@ describe('explicit-assertion-v0 fixtures: S1, S2 and encounter-check assertions 
     expect(totals.base).toBeGreaterThan(0);
     expect(totals.baseAttribution).toBeGreaterThan(0);
     expect(totals.material).toBeGreaterThan(0);
+    expect(totals.causes).toBeGreaterThan(0);
+    expect(totals.causesPassed).toBe(totals.causes);
   });
 
   const checked = (r: (typeof reports)[number]) =>
-    r.s1Applicable + r.s1AttributionOneWay + r.s2Applicable + r.s2AttributionOneWay + r.s2CandidateIdsOneWay + r.encounterApplicable + r.encounterOneWay + r.episodeApplicable + r.episodeOneWay + r.assertionKindApplicable + r.assertionKindOneWay + r.admissibilityApplicable + r.selectionApplicable + r.selectionOneWay + r.criterionApplicable + r.classificationApplicable + r.possibleClassesApplicable + r.previewCriterionApplicable + r.previewApplicable + r.coverageApplicable + r.gapApplicable + r.gapOneWay + r.baseApplicable + r.baseAttribution + r.baseOneWay + r.materialApplicable + r.materialOneWay > 0;
-  it.each(reports.filter((r) => !r.notRun && checked(r)).map((r) => [r.id, r] as const))('%s: S1–S5, preview, S6 gap-relevance, step A and step B assertions hold (not a whole-fixture pass)', (_id, report) => {
+    r.s1Applicable + r.s1AttributionOneWay + r.s2Applicable + r.s2AttributionOneWay + r.s2CandidateIdsOneWay + r.encounterApplicable + r.encounterOneWay + r.episodeApplicable + r.episodeOneWay + r.assertionKindApplicable + r.assertionKindOneWay + r.admissibilityApplicable + r.selectionApplicable + r.selectionOneWay + r.criterionApplicable + r.classificationApplicable + r.possibleClassesApplicable + r.previewCriterionApplicable + r.previewApplicable + r.coverageApplicable + r.gapApplicable + r.gapOneWay + r.baseApplicable + r.baseAttribution + r.baseOneWay + r.materialApplicable + r.materialOneWay + r.causesApplicable + r.causesKnown > 0;
+  it.each(reports.filter((r) => !r.notRun && checked(r)).map((r) => [r.id, r] as const))('%s: S1–S5, preview, S6 gap-relevance, step A, step B and step C assertions hold (not a whole-fixture pass)', (_id, report) => {
     expect(report.failures).toEqual([]);
   });
 });

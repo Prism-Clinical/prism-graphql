@@ -102,7 +102,7 @@ export interface BaseResult {
 const INPUT_FIELDS = ['package', 'query', 's4'];
 
 const nodeTuple = (n: NodeRef) => [n.revision.source, n.revision.localId, n.revision.revision, n.digest ?? ''];
-function compareNodes(a: NodeRef, b: NodeRef): number {
+export function compareNodes(a: NodeRef, b: NodeRef): number {
   const x = nodeTuple(a);
   const y = nodeTuple(b);
   for (let i = 0; i < x.length; i++) {

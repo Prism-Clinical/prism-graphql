@@ -63,6 +63,7 @@ Each evaluation and preview fixture requests output `p.demo`. The query output i
 - `evidence.status`, `value` and `decision` compare exactly.
 - `causes`, `supportingEvidenceIds` and `candidateEvidenceIds` compare as sets. Each is also written in canonical order (contract §5.3), so an implementation emitting canonical order can compare them exactly.
 - `causeAttribution` compares as a set of entries (all fields), canonically ordered by cause, then origin, then reason.
+- An attribution `origin` (and each `refs` entry) is written in the notation above, a display label. Two distinct origins can share a label (a rejected item named `unidentified:revision#1` beside S1's own unidentified occurrence #1); implementations keep a structured, collision-safe origin and compare its projection (contract §4.2 "Step C boundary").
 - `needs` compares exactly: Need key, state causes as a set, `deferred`, and obligations as a set.
 - `traceAssertions`: every listed fact must hold in the implementation’s trace. List-valued facts (`variants`, `possibleCurrent`, `possibleClasses`, `stagesRun`) compare as sets, and are written in canonical order. Facts not listed are not asserted.
 

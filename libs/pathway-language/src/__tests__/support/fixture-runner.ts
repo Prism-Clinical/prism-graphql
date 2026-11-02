@@ -11,12 +11,13 @@
  * and the coverage diagnostics, plus two one-way implications from evidence expectations; and the S6
  * step A base result (§4.2 step A): `rule` and `baseCauses` facts, the `query`-origin cause
  * attributions (exactly the base causes) and one one-way implication from Known results; and step B
- * (§4.2 step B): `material` facts, plus two one-way implications from final results.
+ * (§4.2 step B): `material` facts, plus two one-way implications from final results; and step C
+ * (§4.2 step C): the `causeAttribution` and `causes` of Unresolved evaluation fixtures, exactly.
  *
- * A fixture is never reported as passing as a whole: only its S1–S5, S6 gap-relevance, step A
- * and step B assertions are checked, plus one-way implications from downstream expectations. `stage` fixtures
+ * A fixture is never reported as passing as a whole: only its S1–S5, S6 gap-relevance, step A,
+ * step B and step C assertions are checked, plus one-way implications from downstream expectations. `stage` fixtures
  * (stage-v1) assert S1–S3, S1–S4, S1–S5 or S1–S6 and carry no downstream expectation. Every other
- * expected field or trace fact (final cause union and attribution, evidence, Needs, S7) is outside the scope.
+ * expected field or trace fact (evidence status and candidateEvidenceIds, decision, Needs, S7) is outside the scope.
  */
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -33,6 +34,8 @@ import {
   experimentalBaseResult,
   experimentalMateriality,
   type MaterialityResult,
+  experimentalCauseAttribution,
+  type CauseAttributionResult,
   experimentalGapRelevance,
   type BaseResult,
   type GapRelevanceResult,
@@ -153,6 +156,16 @@ export interface FixtureReport {
    * Unresolved over a Known base needs at least one material record. Neither proves a decision.
    */
   materialOneWay: number;
+  /**
+   * S6 step C (§4.2 step C): an Unresolved evaluation fixture's `causeAttribution` and `causes`,
+   * compared EXACTLY (all fields, as sets) with the step C result projected to fixture notation.
+   */
+  causesApplicable: number;
+  causesPassed: number;
+  /** A Known evaluation fixture: step C must report aggregation NotApplicable, no causes. */
+  causesKnown: number;
+  /** Fixtures whose attribution is blocked by a documented upstream limitation (none are counted as passing). */
+  causesBlocked: number;
   /** Combined S3 `admissibility` facts (contract §2.7), checked directly. */
   admissibilityApplicable: number;
   admissibilityPassed: number;
@@ -163,6 +176,13 @@ export interface FixtureReport {
 
 // Display strings are used only to compare with the fixtures' notation (README "Identifier notation").
 const showKey = (k: { source: string; localId: string }) => `${k.source}/${k.localId}`;
+const showRef = (n: { revision: { source: string; localId: string; revision: string }; digest?: string }) => `${showKey(n.revision)}@${n.revision.revision}${n.digest ? `#${n.digest}` : ''}`;
+
+/**
+ * Evaluation fixtures whose exact attribution a documented upstream limitation blocks, with the
+ * reason. Counted separately and never as passing.
+ */
+const CAUSES_BLOCKED: Record<string, string> = {};
 const showRev = (r: { source: string; localId: string; revision: string }) => `${showKey(r)}@${r.revision}`;
 const showPossible = (p: PossibleCurrent) =>
   p.kind === 'node' ? showRev(p.node.revision) + (p.node.digest ? `#${p.node.digest}` : '') : p.kind;
@@ -357,6 +377,10 @@ export function runFixtures(dir: string = FIXTURE_DIR): { reports: FixtureReport
       materialApplicable: 0,
       materialPassed: 0,
       materialOneWay: 0,
+      causesApplicable: 0,
+      causesPassed: 0,
+      causesKnown: 0,
+      causesBlocked: 0,
       admissibilityApplicable: 0,
       admissibilityPassed: 0,
       outOfScope: 0,
@@ -469,6 +493,8 @@ export function runFixtures(dir: string = FIXTURE_DIR): { reports: FixtureReport
     const baseRes: BaseResult | null = bound && typeof compiledQuery !== 'string' ? experimentalBaseResult({ package: compiledQuery, query: query.query.id, s4: bound }) : null;
     // Step B over the same bound evaluation (contract §4.2 step B): no cause union or attribution.
     const matRes: MaterialityResult | null = bound && typeof compiledQuery !== 'string' ? experimentalMateriality({ package: compiledQuery, query: query.query.id, s4: bound }) : null;
+    // Step C over the same bound evaluation (contract §4.2 step C): no evidence result or Needs.
+    const causeRes: CauseAttributionResult | null = bound && typeof compiledQuery !== 'string' ? experimentalCauseAttribution({ package: compiledQuery, query: query.query.id, s4: bound }) : null;
     const boundKeys = new Map((bound?.keys ?? []).map((k) => [`${k.key.source}/${k.key.localId}`, k] as const));
     const boundNodes = new Map<string, Extract<PossibleSelection, { kind: 'node' }>>();
     for (const k of bound?.keys ?? []) for (const p of k.possibilities) if (p.kind === 'node') boundNodes.set(showRev(p.node.revision) + (p.node.digest ? `#${p.node.digest}` : ''), p);
@@ -739,6 +765,23 @@ export function runFixtures(dir: string = FIXTURE_DIR): { reports: FixtureReport
         if (matRes.after.status !== 'Unresolved') report.failures.push(`Unresolved result over a Known base, but no record is material`);
       }
     }
+    // Step C (§4.2 step C), exact: the projected attribution set and the cause set of an Unresolved
+    // result; a Known result has no aggregation. Status itself was checked one-way above (step B).
+    if (exp.evidence && causeRes && fx.kind === 'evaluation') {
+      if (exp.evidence.status === 'Known') {
+        report.causesKnown += 1;
+        if (causeRes.aggregation !== 'NotApplicable' || causeRes.causes.length > 0) report.failures.push(`Known result, but step C aggregates ${causeRes.causes.join(', ')}`);
+      } else if (CAUSES_BLOCKED[fx.id]) {
+        report.causesBlocked += 1;
+      } else {
+        report.causesApplicable += 1;
+        const want = ((exp.causeAttribution ?? []) as Json[]).map((a) => JSON.stringify([a.cause, a.origin, a.stage, a.reason, a.refs ?? null])).sort();
+        const got = [...new Set(causeRes.attribution.map((a) => JSON.stringify([a.cause, a.label, a.stage, a.reason, a.refs ? a.refs.map(showRef) : null])))].sort();
+        const ok = causeRes.status.status === 'Unresolved' && isDeepStrictEqual(got, want) && isDeepStrictEqual(causeRes.causes, exp.evidence.causes);
+        if (ok) report.causesPassed += 1;
+        else report.failures.push(`step C ${causeRes.status.status} causes ${causeRes.causes.join(',')}; attribution\n  got  ${got.join('\n       ')}\n  want ${want.join('\n       ')}`);
+      }
+    }
     // One-way (contract §4.2 rules 2-3): a Known result is supported only by selected revisions.
     if (exp.evidence?.status === 'Known' && s4) {
       const selected = new Set(s4.selected.map((x) => showRev(x.node.revision) + (x.node.digest ? `#${x.node.digest}` : '')));
@@ -782,7 +825,9 @@ export function runFixtures(dir: string = FIXTURE_DIR): { reports: FixtureReport
       report.baseAttribution +
       report.baseOneWay +
       report.materialApplicable +
-      report.materialOneWay;
+      report.materialOneWay +
+      report.causesApplicable +
+      report.causesKnown;
     if (checked === 0) missing.push(fx.id);
   }
   return { reports, noApplicableAssertions: missing };

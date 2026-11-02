@@ -2,7 +2,7 @@
 
 **Status:** Proposed design draft. **Not** accepted, not finalized syntax, not a schema and not implemented. It contains no clinical content: the record type, enum values, codes, sources and permission below are fictional and illustrate language behavior only. They do not map to dysphagia, progression, urgency or any other clinical definition.
 
-**Date:** 2026-10-03. **Revised:** 2026-10-03, nine times, 2026-10-04, once, 2026-10-05, three times, 2026-10-09, three times, 2026-10-28, three times, and 2026-10-29, eight times, 2026-10-31, once, and 2026-11-02, three times, after review. The third revision fixed three things:
+**Date:** 2026-10-03. **Revised:** 2026-10-03, nine times, 2026-10-04, once, 2026-10-05, three times, 2026-10-09, three times, 2026-10-28, three times, and 2026-10-29, eight times, 2026-10-31, once, and 2026-11-02, four times, after review. The third revision fixed three things:
 
 - revision-chain boundaries: source-scoped identity, same-source corrections and one fully specified schematic authority rule;
 - deterministic outcomes for malformed history;
@@ -13,6 +13,14 @@ The fourth revision made three changes:
 - Proven cross-boundary corrections and retractions are now rejected without changing their target. This keeps gap irrelevance consistent with S1.
 - Payload identity for duplicate detection is defined.
 - An unsupported justification about coverage attestations is removed.
+
+The thirty-second revision specifies the step C boundary of S6 (4.2 "Step C boundary", decision 29):
+
+- The cause union reads one query-bound evaluation: steps A and B, the relevant gaps and every material record's origin causes are derived from the same S4 result; nothing is accepted from the caller.
+- Each cause keeps its own origin, stage, reason and references; distinct origins of the same cause stay distinct. Attribution identity and order are stated exactly.
+- A material record contributes the causes of **all** its possible current revisions or variants, including S3 findings retained beside a definite mismatch (2.7), not only the possibility that made it material.
+- Every `Unresolved` evaluation fixture's `causeAttribution` and `causes` are reproduced exactly (91 fixtures), and every `Known` one reports no aggregation (32). No fixture is changed or added. The final `Evidence<Boolean>`, `candidateEvidenceIds` and Needs remain unimplemented.
+- The S1 fork-fallback asymmetry (EA-083 versus EA-092) is reproduced as S1 decides it, and stays an open S1 question.
 
 The thirty-first revision specifies the step B boundary of S6 (4.2 "Step B boundary", cases 142–144, decision 28):
 
@@ -984,6 +992,19 @@ Consequence: a `Known` result requires every declared source’s cell to be `Com
 - **Never.** No record promotes an `Unresolved` base to `Known`, flips `Known(true)` to `Known(false)` or the reverse, or removes an established conflict. `NonInformative` and `excluded` never make a record material by themselves; an `excluded`-only record (including unresolved candidacy beside inadmissibility) is immaterial. A base made `Unresolved` by a relevant gap (rule 4) uses the `Unresolved` row; gaps are not reinterpreted and their causes are not copied.
 - **Output.** A step B discriminator, the original step A result unchanged, the row and its opposing classes, one entry per unresolved record (structured `RecordKey`, kind, S4 status, step A role, possible classes, material, the classes satisfying the row, and for an immaterial record the reason `NoRefutingPossibility`, `NoSupportingPossibility` or `NoSupportingOrRefutingPossibility`), the material and immaterial keys in `RecordKey` order, the provisional status after step B, and what has not run. Detached and deep-frozen. No cause union, attribution, `Evidence<Boolean>`, `candidateEvidenceIds` or Need.
 
+**Step C boundary** (implemented experimentally; the `causeAttribution` and `causes` of every `Unresolved` evaluation fixture). A separate entry point computes steps A and B internally and then the cause union and its attribution. It is intermediate: it is never an `Evidence<Boolean>`, lists no `candidateEvidenceIds` and emits no Need.
+
+- **Input.** As steps A and B: an authentic `CompiledPackage`, one `EvidenceQuery` ID and an S4 result of query-bound selection for exactly that package object and query, made with a snapshot. No materiality decision, cause, base or stage result, snapshot or query setting is accepted. Preview packages are rejected.
+- **Applicability.** Exactly when the status after step B is `Unresolved`. A status still `Known` after step B has no cause aggregation (`NotApplicable`, no causes): agreeing uncertainty and irrelevant gaps add nothing to it. Step C never changes the step B status and never recomputes materiality.
+- **Sources.** The union of: (1) the step A base causes, origin `query`, stage `S6` (rule 1 with *S* ∪ *R* as `refs`; `InadmissibleSeen` and `NonInformativeSeen` with the keys seen); (2) every finding of every relevant gap (4.1), stage `coverage` for a coverage cell and `gap` for a failure or rejected item, including S1's unidentified occurrences and unattributable retractions; (3) for every **material** record (step B), its key's active S1 defects (stage `S1`, origin the key) and, for **each** of its possible current revisions or variants checked by S2 (out of domain, `excluded` and `unknown` carry none), its S2 findings, its S3 findings (record findings on the revision; context findings on `context.<binding>` with the revision in `refs`), including findings retained beside a definite mismatch (2.7), and the findings of each `Unknown` S5 criterion. Materiality is decided per record: attribution is not restricted to the possibility or class that satisfied the step B row.
+- **Never added.** Immaterial records, irrelevant gaps, historical (resolved) S1 defects, and the definite mismatch of an inadmissible possibility, which is never a cause. A cause is never replaced by a generic `Missing` or `Invalid`, and an established `Conflicting` stays beside every other cause.
+- **Attribution entry.** Cause, stage, reason, structured origin (`query`; `record`: the `RecordKey` with the defect's subject and involved revisions; `revision`: the exact `NodeRef`, digest included for a variant; `context`: the binding; `gap`: the collision-safe gap identity of 4.1), and, where they apply, `refs` (`NodeRef` order) and `keys` (`RecordKey` order). Its identity is the RFC 8785 bytes of those fields. Its label (README notation) is derived from the origin, or is the gap's own label, and is for display only: two entries may share a label.
+- **Deduplication.** Only entries with identical identity merge. The one deliberate grouping is a context finding: one entry per binding, cause and reason, with every affected revision in `refs`. This is the fixtures' form (cases 12, 102, 103, 113), each of which has one affected revision; grouping several revisions in one entry is a reading taken, covered by unit tests only. The cause set is the distinct causes of all entries, in Stage A order (5.3); a cause reached from several origins appears once, with each origin kept as its own entry.
+- **Order.** Cause (5.3), then label by code point, then reason, then identity bytes (a deterministic tie-break between entries whose labels coincide). Input order, key order and evaluation order have no effect.
+- **Fixture projection.** An entry projects to the README's `{cause, origin, stage, reason, refs?}` as label, `refs` as labels; `keys` is not part of the fixture format. The projection of every `Unresolved` evaluation fixture's result equals its `causeAttribution` as a set, and its cause set equals `evidence.causes`.
+- **Known S1 limitation, reproduced.** Step C attributes exactly S1's active defects. With retraction authority missing on one of two heads, EA-083 (a fork recorded at step 5) is `Missing` and `Conflicting`, while EA-092 (the fork suppressed by a now-historical conflict, so the step 7 fallback does not apply) is `Missing` only, with the same possible currents (README "Fork fallback"). Both fixtures state these results, so they are reproduced exactly. Whether EA-092 should also be `Conflicting` is an open S1 question, not a step C question: answering it needs a rule for whether an active defect explains several heads, which this revision does not define.
+- **Output.** A step C discriminator, the step B result unchanged (with step A inside it), the status after step B, whether aggregation applies, the cause set, the attribution entries, and what has not run (`Evidence`, `CandidateEvidenceIds`, `Needs`). Detached and deep-frozen.
+
 **Determinism.** Every rule reads sets keyed by identity, classifications, cell statuses and stated gap dimensions. No rule reads input order or revision-ID order. Section 7.4 lists the invariance checks.
 
 ### 4.3 Cases the policy answers
@@ -1587,6 +1608,13 @@ These must hold for every case:
     - Unresolved records are the S4 `Unresolved` keys and the selected `Unclassified` keys; their 3.7 possible classes decide materiality by the 4.2 table.
     - Every record is judged against the original step A base (the row is fixed once); only a `Known` base can change, and only to `Unresolved`.
     - The cause union and attribution (step C), the final evidence result and Needs remain unimplemented.
+29. S6 step C cause union and attribution (4.2 "Step C boundary"), proposed:
+    - Same boundary as steps A and B; base causes, relevant gaps, materiality and every origin cause are derived from the bound S4 result, never supplied.
+    - The union of base causes, relevant gap findings and every material record's origin causes over all its possible current revisions or variants; nothing from immaterial records or irrelevant gaps; no aggregation for a `Known` status.
+    - Each cause keeps a structured, collision-safe origin; only identical entries merge, apart from one entry per context binding, cause and reason.
+    - Reading taken from the text (no fixture exercises it): S3 findings retained beside a definite mismatch (2.7) on a possible current of a material record are attributed.
+    - Reading taken (no fixture has two affected revisions): a context finding on several revisions of material records is one entry with every revision in `refs`.
+    - The final evidence result, `candidateEvidenceIds` and Needs remain unimplemented.
 
 **Possible conflicts needing a Stage A amendment.** None found. Items to confirm:
 

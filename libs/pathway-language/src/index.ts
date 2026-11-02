@@ -123,6 +123,8 @@ export { baseResult as experimentalBaseResult, BaseResultConfigurationError } fr
 export type { BaseCause, BaseKey, BaseKeyRole, BaseResult, BaseResultInput, BaseRule } from './s6/base';
 export { materiality as experimentalMateriality, MaterialityConfigurationError } from './s6/materiality';
 export type { MaterialityInput, MaterialityResult, MaterialityRow, RecordMateriality } from './s6/materiality';
+export { causeAttribution as experimentalCauseAttribution, CauseAttributionConfigurationError } from './s6/causes';
+export type { Attribution, AttributionOrigin, AttributionStage, CauseAttributionInput, CauseAttributionResult } from './s6/causes';
 /** Snapshot statements nested deeper than this are a configuration error (contract §1.5). */
 export { MAX_JSON_DEPTH } from './s1/payload';
 export type {
