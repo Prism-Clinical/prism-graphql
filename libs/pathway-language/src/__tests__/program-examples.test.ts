@@ -1,7 +1,8 @@
 /**
- * EXPERIMENTAL, NONCLINICAL. First-program acceptance examples: I1 compile/preview checks, and I2
- * isolated program-expression and preview-output checks. Query results are SUPPLIED from each
- * example's own expectations; no example is evaluated end to end.
+ * EXPERIMENTAL, NONCLINICAL. First-program acceptance examples: I1 compile/preview checks, I2
+ * isolated program-expression and preview-output checks (query results SUPPLIED from each example's
+ * own expectations), and raw-input checks of one-query programs (query evidence COMPUTED from the
+ * example's records; a bounded I6 slice, not I6 completion).
  */
 import { runProgramExamples } from './support/program-runner';
 
@@ -15,14 +16,15 @@ describe('first-program examples: I1 compile/preview and I2 isolated execution',
         `examples: ${reports.length}`,
         ...reports.map(
           (r) =>
-            `${r.id}: compiler ${r.checked}, isolated program-expression ${r.executionChecked}, preview-output ${r.previewChecked} checks (failures ${r.failures.length}); outside scope: ${r.outOfScope.join('; ') || 'none'}`,
+            `${r.id}: compiler ${r.checked}, isolated program-expression ${r.executionChecked}, preview-output ${r.previewChecked}, raw-input ${r.rawChecked} checks (failures ${r.failures.length}); outside scope: ${r.outOfScope.join('; ') || 'none'}`,
         ),
       ].join('\n'),
     );
     expect(reports.length).toBeGreaterThan(0);
+    expect(reports.filter((r) => r.rawChecked > 0).map((r) => r.id)).toEqual(['PPL-01', 'PPL-02', 'PPL-03']);
   });
 
-  it.each(reports.map((r) => [r.id, r] as const))('%s: compile, isolated-execution and preview-output expectations hold', (_id, r) => {
+  it.each(reports.map((r) => [r.id, r] as const))('%s: compile, isolated-execution, preview-output and raw-input expectations hold', (_id, r) => {
     expect(r.failures).toEqual([]);
   });
 });

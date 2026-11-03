@@ -2,7 +2,7 @@
 
 **Status:** Proposed design draft. **Not** accepted, not finalized syntax, not a schema and not implemented. It contains no clinical content: the record type, enum values, codes, sources and permission below are fictional and illustrate language behavior only. They do not map to dysphagia, progression, urgency or any other clinical definition.
 
-**Date:** 2026-10-03. **Revised:** 2026-10-03, nine times, 2026-10-04, once, 2026-10-05, three times, 2026-10-09, three times, 2026-10-28, three times, and 2026-10-29, eight times, 2026-10-31, once, and 2026-11-02, eight times, after review. The third revision fixed three things:
+**Date:** 2026-10-03. **Revised:** 2026-10-03, nine times, 2026-10-04, once, 2026-10-05, three times, 2026-10-09, three times, 2026-10-28, three times, and 2026-10-29, eight times, 2026-10-31, once, and 2026-11-02, eight times, and 2026-11-03, once, after review. The third revision fixed three things:
 
 - revision-chain boundaries: source-scoped identity, same-source corrections and one fully specified schematic authority rule;
 - deterministic outcomes for malformed history;
@@ -13,6 +13,8 @@ The fourth revision made three changes:
 - Proven cross-boundary corrections and retractions are now rejected without changing their target. This keeps gap irrelevance consistent with S1.
 - Payload identity for duplicate detection is defined.
 - An unsupported justification about coverage attestations is removed.
+
+The thirty-seventh revision records a bounded I6 slice (first-program contract section 8, “Raw-input execution boundary”): the final evidence of a one-query program's query is now passed, with its structured references, to the isolated executor's evaluator. The 5.1 “Executor input” and 5.2 “Not here” notes are updated; no evidence-query semantics change.
 
 The thirty-sixth revision specifies the query decision boundary (5.2 "Query decision boundary", decision 31):
 
@@ -1074,7 +1076,7 @@ Consequence: a `Known` result requires every declared source’s cell to be `Com
 - **Identity, order, deduplication.** References are `NodeRef`s: `RevisionRef`, plus the digest for a variant of a conflicted revision. Lists are in 5.3 order (by `source`, `localId`, `revision`, then digest, as a tuple, never by display string) and deduplicated by that structured identity. The fixture string is a projection for display and comparison; it is not unique for every valid identity (`s1`/`a@1`@`1` and `s1`/`a`@`1@1` both display as `s1/a@1@1`), so nothing is keyed by it.
 - **Invariants, never repaired.** A `Known` status with no supporting reference on its side, or with references on both sides, and an `Unresolved` status without a cause, are engine defects (errors), never patched with a default cause or reference. Every context binding marked unknown carries at least one cause, so the second cannot arise from valid input.
 - **`provenance`** (decided on review, 2026-11-02). Stage A §4.1 lists `provenance` on `Known` without a shape, and the fixture format omits it. For each supporting reference, the distinct acquisition provenance values S1 retained for its occurrences (1.2; RFC 8785 equality), in 5.3 occurrence order. Identical duplicate occurrences add nothing; occurrences differing only in provenance keep both (case 59). An occurrence without provenance contributes an explicit `null`: it is never dropped or manufactured. S1 retains an absent `provenance` and an explicit `null` alike as `null`, so the two are not distinguished. Provenance describes where the supporting evidence came from; the reasoning that produced the result is in the trace, not here.
-- **Executor input.** The isolated executor (first-program contract, I2) takes `SuppliedEvidence` with string IDs in fixture notation and validates them against that notation. This result is not passed to it: converting is program-executor integration, outside this boundary, and would need either a collision-free ID encoding or structured IDs in the executor.
+- **Executor input.** The isolated executor (first-program contract, I2) takes `SuppliedEvidence` with string IDs in fixture notation and validates them against that notation. That API is unchanged. For a program with exactly one complete query, the raw-input execution boundary (first-program contract section 8) passes this result to the same evaluator with structured references, compared by their 5.3 tuple and never by display string; no string conversion or token is used.
 - **Known S1 limitation.** The result reports the current S1 contract (EA-083/EA-092, 4.2 "Step C boundary"). It does not show that S1 captures every underlying conflict, so it must not drive acquisition or conflict resolution until that is settled.
 - **Output.** A discriminator, the evidence, the step C result unchanged as the S6 trace (step B, step A and the attribution inside), and what has not run (`Needs`, `PredicateProjection`, `ProgramExecution`). Detached and deep-frozen.
 
@@ -1094,7 +1096,7 @@ Consequence: a `Known` result requires every declared source’s cell to be `Com
 - **Projection.** The table above, applied to the status, value and causes only: `Known(true)` → `True`, `Known(false)` → `False`, `Unresolved(causes)` → `Unknown(causes)`, the causes unchanged and in their 5.3 order. Supporting and candidate references, provenance and attribution are never read to decide it. `Unknown` is never turned into `False`, and no cause (such as `Missing`) is added as a fallback.
 - **Representation.** The isolated executor's `Decision` value (`{value: 'True' | 'False'}` or `{value: 'Unknown', causes}`), produced by the same pure projection its `evidenceValue` uses. The references that support or are candidates for the decision stay in the retained evidence; they are not copied.
 - **Output.** A discriminator, the package, query and snapshot, the `Decision`, the 5.1 query-evidence result unchanged (with its S6 trace), and what has not run (`Needs`, `ProgramExecution`). Detached and deep-frozen.
-- **Not here.** Program-level predicates, `all`, Findings and graph execution; Needs; preview evidence. The result is not passed to the isolated executor (I6). The EA-083/EA-092 S1 limitation (5.1) applies unchanged.
+- **Not here.** Program-level predicates, `all`, Findings and graph execution; Needs; preview evidence. Program execution over computed evidence is the separate raw-input execution boundary (first-program contract section 8), a bounded I6 slice. The EA-083/EA-092 S1 limitation (5.1) applies unchanged.
 
 ### 5.3 Canonical ordering (representation only)
 

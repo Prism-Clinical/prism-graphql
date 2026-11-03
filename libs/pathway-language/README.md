@@ -1,6 +1,6 @@
 # @prism/pathway-language (experimental, nonclinical)
 
-**Status:** an implementation experiment. It covers **S1–S5** of the *proposed* [evidence-query-to-predicate contract](../../docs/superpowers/records/pathway-language/evidence-query-to-predicate-contract.md): S1 revision history, S2 candidate identification, the S3 same-encounter, same-episode and `assertionKind` rules, their combination into one admissibility result per possible revision (increment I3), S4 selection, S5 criterion evaluation and classification **for one record at a time**, S5 **key-level possible classes**, and **query-bound preview evaluation** of whole-criterion holes (increment I4). Every acceptance item of I4 is now checked and passes, including EA-052a’s two preview `criterion` facts (case 52), so I4 is complete **as an experimental increment** only. Of S6 (I5), **gap relevance** (coverage cells and the relevance of each gap), the **step A base result** (rules 1–5 and rule 5’s base causes), **step B materiality** of unresolved records, the **step C cause union and attribution** and the **final `Evidence<Boolean>`** with `candidateEvidenceIds` exist. I5 is complete **as an experimental increment** (review, 2026-11-02), with the S1 fork-fallback limitation (EA-083/EA-092) retained. Query evidence, and its `Decision` (S7), can now be computed from a bound raw-record evaluation; no Need or end-to-end program execution from raw records is. It also has the **first PPL compiler subset** and **isolated program-expression execution** over supplied query results (increments I1 and I2 of the [first-program implementation contract](../../docs/superpowers/records/pathway-language/first-program-implementation-contract.md)). It is not an end-to-end PPL evaluator and is not clinically approved; compiling or executing a program confers no clinical approval. It must not be used for patient care. The RFC, Stage A, the contract and the delivery plans keep their existing statuses; nothing here completes a delivery story.
+**Status:** an implementation experiment. It covers **S1–S5** of the *proposed* [evidence-query-to-predicate contract](../../docs/superpowers/records/pathway-language/evidence-query-to-predicate-contract.md): S1 revision history, S2 candidate identification, the S3 same-encounter, same-episode and `assertionKind` rules, their combination into one admissibility result per possible revision (increment I3), S4 selection, S5 criterion evaluation and classification **for one record at a time**, S5 **key-level possible classes**, and **query-bound preview evaluation** of whole-criterion holes (increment I4). Every acceptance item of I4 is now checked and passes, including EA-052a’s two preview `criterion` facts (case 52), so I4 is complete **as an experimental increment** only. Of S6 (I5), **gap relevance** (coverage cells and the relevance of each gap), the **step A base result** (rules 1–5 and rule 5’s base causes), **step B materiality** of unresolved records, the **step C cause union and attribution** and the **final `Evidence<Boolean>`** with `candidateEvidenceIds` exist. I5 is complete **as an experimental increment** (review, 2026-11-02), with the S1 fork-fallback limitation (EA-083/EA-092) retained. Query evidence, and its `Decision` (S7), can now be computed from a bound raw-record evaluation, and a program with exactly one complete query can be executed over that computed evidence (a bounded I6 slice; I6 is not complete). No Need, preview or multi-query execution from raw records exists. It also has the **first PPL compiler subset** and **isolated program-expression execution** over supplied query results (increments I1 and I2 of the [first-program implementation contract](../../docs/superpowers/records/pathway-language/first-program-implementation-contract.md)). It is not an end-to-end PPL evaluator and is not clinically approved; compiling or executing a program confers no clinical approval. It must not be used for patient care. The RFC, Stage A, the contract and the delivery plans keep their existing statuses; nothing here completes a delivery story.
 
 This package is the isolated `libs/pathway-language` boundary named in RFC §10. It has no imports from applications, resolvers, databases or the network; `src/` imports only Node’s `crypto` and one RFC 8785 library.
 
@@ -776,7 +776,7 @@ const q = experimentalQueryEvidence({ package: pkg, query: 'q.demo', s4 });
 
 **Identity.** References are `NodeRef`s (the `RevisionRef`, plus the digest of a variant of a conflicted revision), deduplicated by that structured identity and ordered by (`source`, `localId`, `revision`, digest) as a tuple (§5.3), so `s1/r1@1` precedes `s1/r12@1`. The fixture notation `source/localId@revision[#digest]` is a display projection only: S1 accepts components containing `/`, `@` or `#`, or empty ones, and `s1`/`a@1`@`1` and `s1`/`a`@`1@1` both display as `s1/a@1@1`.
 
-**Relation to the isolated executor.** `experimentalExecuteWithSuppliedQueryResults` takes `SuppliedEvidence`: the same two cases with string IDs in fixture notation, validated against it, and no `provenance`. This result is not passed to it: that is program-executor integration (I6), which would need a collision-free ID encoding or structured IDs in the executor.
+**Relation to the isolated executor.** `experimentalExecuteWithSuppliedQueryResults` takes `SuppliedEvidence`: the same two cases with string IDs in fixture notation, validated against it, and no `provenance`. That API is unchanged. For a one-query program, `experimentalExecuteFromRawRecords` (below) passes this result, with its structured references, to the same evaluator.
 
 **Invariants.** A `Known` status without exactly one nonempty side, or an `Unresolved` status without a cause, throws an engine error; nothing is patched with a default cause or reference.
 
@@ -808,7 +808,37 @@ const d = experimentalQueryDecision({ package: pkg, query: 'q.demo', s4 });
 
 **Known S1 limitation.** As for the query evidence: the decision reports the current S1 contract (EA-083/EA-092) and must not drive acquisition or conflict resolution.
 
-**Not implemented.** Needs, program-level predicates and graph execution over computed results, preview evidence, acquisition and program-executor integration (I6).
+**Not implemented.** Needs, preview evidence and acquisition. Program execution over computed evidence is the raw-input execution below (one query only).
+
+## I6 slice: raw-input execution of a one-query program
+
+`experimentalExecuteFromRawRecords` executes a compiled program over the evidence of its only EvidenceQuery, computed from raw records (first-program contract §8, “Raw-input execution boundary”). It is a bounded I6 slice, not I6.
+
+```ts
+const r = experimentalExecuteFromRawRecords(pkg, {
+  subject: 'P1', revisions, retractions,
+  contextEncounter: { known: 'N1' }, contextEpisode: { known: 'E1' },
+  snapshot: { id: 'snap-1', coverage, failures, rejectedItems },
+});
+// r.outcome 'Executed', r.scope 'one-query-program-from-raw-records', r.query (from the package), r.snapshot
+// r.outputs['q.demo']: { evidence: <the computed Evidence<Boolean>, provenance included>, origin: 'computed' }
+// r.outputs['p.demo']: { decision: { value: 'True' }, supportingEvidenceIds: [NodeRef s1/r1@1] }
+// r.outputs['f.demo']: { status: …, supportingEvidenceIds | candidateEvidenceIds: [NodeRef, …] }
+// r.trace: the I2 program trace; r.queryEvidence: the experimentalQueryEvidence result, unchanged
+// r.notRun ['Needs', 'Acquisition', 'Preview', 'MultiQuery']
+```
+
+**Scope.** An authentic `CompiledPackage` with exactly one EvidenceQuery; none, several, preview packages and copies throw `RawExecutionConfigurationError`. The input is exactly the runtime part of `experimentalSelectForQuery` (snapshot required). A query ID, supplied results, evidence, decisions, stage results, evidence IDs, token maps and overrides of authored settings are rejected.
+
+**One evaluator.** S1–S4 run in `experimentalSelectForQuery`, S6 in `experimentalQueryEvidence`, and the program in the I2 evaluator itself (`evaluateProgram`, internal), given that evidence object unchanged. `evidenceValue`, `all`, applicability and Findings behave exactly as in I2; a parity test runs the same packages through both paths. The program subset has no proposal construct, so none is executed.
+
+**Identity.** The evaluator is generic over its reference type (`RefOps`: an identity comparator and a display label). I2 passes fixture-notation strings, compared by their §5.3 tuple as before, so its API and results are unchanged. This entry point passes `NodeRef`s compared by `compareNodes`, so references are deduplicated and ordered by structured identity, digest included. Two references that both display as `s1/a@1@1` stay two references through `evidenceValue`, `all` and the Finding. Labels appear only in trace text. No string conversion or token map exists, and `NodeRef` components are not narrowed to the I2 notation.
+
+**Ownership.** Evidence is computed within the call from the given package object and inputs. Nothing is cached, so interleaved evaluations never share evidence, references or traces.
+
+**Known S1 limitation.** As for the query evidence (EA-083/EA-092): the result must not drive acquisition or conflict resolution.
+
+**Not implemented.** Needs, acquisition, PPL-04 preview from raw inputs, programs with several queries, and the rest of I6.
 
 ## PPL compiler (I1): `experimentalCompile` and `experimentalCompilePreview`
 
@@ -890,7 +920,7 @@ Markers are computed statically from references, so no Boolean simplification ca
 
 - `programs/check.py` checks JSON, quotations, digests and links without compiling anything.
 - This compiler validates and types programs and derives dependencies, but executes nothing.
-- I2 (below) executes program expressions over **supplied** query results. I3, S4 and S5 (per-record criteria and classification, key-level possible classes; above) are computed, but no end-to-end evaluator exists yet (increments I5–I6), so no program has been evaluated from raw records.
+- I2 (below) executes program expressions over **supplied** query results. I3, S4 and S5 (per-record criteria and classification, key-level possible classes; above) are computed, and S6 too; `experimentalExecuteFromRawRecords` executes a one-query program from raw records (a bounded I6 slice). There is still no end-to-end evaluator for preview or multi-query programs.
 
 ## Isolated program-expression execution (I2)
 
@@ -1028,19 +1058,19 @@ This package has its own Jest configuration and is not part of the root Jest roo
   Review of 51609c5 added malformed arrays (an `undefined` cause, sparse causes, an `undefined` supporting ID, sparse supporting IDs, a `null` candidate ID), plus frozen fabricated packages, deep-frozen copies and relabelled packages in both directions. Five of these fail against the 51609c5 code.
 
   Targeted mutations each fail tests: False support taken from every operand, a decisive `False` dropping a marker, a missing result not reported, a holed-query result accepted, no ID deduplication, and operand traces hidden after a decisive `False`.
-- **`src/__tests__/program-examples.test.ts`** runs the six [first-program examples](../../docs/superpowers/records/pathway-language/programs/README.md). It reports I1 compiler checks, I2 isolated program-expression checks and I2 preview-output checks separately:
+- **`src/__tests__/program-examples.test.ts`** runs the six [first-program examples](../../docs/superpowers/records/pathway-language/programs/README.md). It reports I1 compiler checks, I2 isolated program-expression checks, I2 preview-output checks and raw-input checks separately:
 
-  | Example | Compiler | Isolated program-expression | Preview-output |
-  |---|---|---|---|
-  | PPL-01 to -03 | 5 each | 6 each (applicability, predicate and finding outputs and traces), with the query evidence supplied from the example itself | — |
-  | PPL-04 | 9 | — | 9 (every output and trace entry) |
-  | PPL-05a/b | 6 each | — | — |
+  | Example | Compiler | Isolated program-expression | Preview-output | Raw-input (I6 slice) |
+  |---|---|---|---|---|
+  | PPL-01 to -03 | 5 each | 6 each (applicability, predicate and finding outputs and traces), with the query evidence supplied from the example itself | — | 10 each: the 4 outputs (query evidence included), 4 trace `source`/`result` pairs, `causeAttribution` and `state`, from the example's own records and snapshot |
+  | PPL-04 | 9 | — | 9 (every output and trace entry) | — (preview) |
+  | PPL-05a/b | 6 each | — | — | — (no package) |
 
-  Supplied query outputs and traces, `causeAttribution` (S1–S6) and evaluated `state` values are reported as outside scope. It applies each patch in the harness, which is input preparation and not a language feature, and checks **only** the `compile` and `preview` blocks. It also checks `state` where compilation alone decides it (`InvalidProgram`, `IncompleteAuthoring`); for compiled programs it only confirms the state is an evaluation state.
-  - **PPL-01, -02, -03:** 5/5 checks each.
-  - **PPL-04:** 9/9.
+  Raw-input outputs are compared in fixture notation, a display projection of the structured references (`provenance` and `origin` are not in the example format); the structured identities are checked by `raw-execution.test.ts`. `state` is read from the single Finding's status. `context.clock`, `context.mode` and `supersedesSnapshot` are not inputs of query-bound selection and are reported as not read. PPL-04's `causeAttribution` stays outside scope. It applies each patch in the harness, which is input preparation and not a language feature, and checks **only** the `compile` and `preview` blocks. It also checks `state` where compilation alone decides it (`InvalidProgram`, `IncompleteAuthoring`); for compiled programs it only confirms the state is an evaluation state.
+  - **PPL-01, -02, -03:** 5/5 compiler, 6/6 isolated and 10/10 raw-input checks each.
+  - **PPL-04:** 9/9 compiler and 9/9 preview-output.
   - **PPL-05a, -05b:** 6/6 each.
-  - No example is evaluated from raw records.
+  - Only PPL-01 to PPL-03 are evaluated from raw records.
 - **`src/__tests__/canonical-json.test.ts`** has 28 tests of the RFC 8785 library (above).
 - **`src/__tests__/s1.test.ts`** has 99 independent tests (counting each parameterized case) whose expectations are derived by hand from the contract. They cover:
   - identical versus conflicting payloads, RFC 8785 number equality, absent versus `null`, and set-valued permissions;
@@ -1290,6 +1320,17 @@ This package has its own Jest configuration and is not part of the root Jest roo
   | Causes replaced by `Missing` | 78 |
   | Causes reordered | 14 |
   | Decision cached per query, so taken from another evaluation | 102 |
+- **`src/__tests__/raw-execution.test.ts`** has 16 independent tests of raw-input execution over a schematic program (`pv = evidenceValue(ref q)`, `p2 = all(ref pv, ref pv)`, Finding `f = all(ref scope, ref p2)`), with expected outputs written from the contracts. They cover the True, False and Unknown(Missing) paths, conflicts, relevant failure and coverage gaps, a demoting material record, immaterial uncertainty, an applicability that reads the query predicate, parity with I2 over the same packages and evidence, equality with standalone query evidence (provenance included), colliding display labels, variant digests through every declaration kind, deduplication, interleaved evaluations, permutation, ownership and override rejection, zero- and two-query packages, preview packages, and deep immutability with no Needs, acquisition or preview output.
+
+  Deliberate faults, each applied alone (failures in these tests and the program-example runner):
+
+  | Fault | Tests failing |
+  |---|---|
+  | Evidence cached per query ID instead of computed | 15 |
+  | Evidence reused per package object (another evaluation's) | 12 |
+  | Display labels used as identity | 2 |
+  | Variant digests dropped at handoff | 1 |
+  | `Unknown` causes dropped at handoff | 8 |
 - **`src/__tests__/fixtures.test.ts`** runs the committed [explicit-assertion-v0 fixtures](../../docs/superpowers/records/pathway-language/conformance/explicit-assertion-v0/README.md) and checks **only** their S1–S4 assertions, S5 `criterion`, `classification` and `possibleClasses` assertions, the preview expectations of preview fixtures, S6 coverage-cell and gap-relevance facts, S6 step A facts, step B `material` facts, step C cause attribution and the final `evidence`, plus one-way implications from downstream expectations. It also checks the S7 `decision`. It never reports a fixture as passing as a whole, because Needs are not computed and no program runs. On the current fixtures it reports:
   - **180 S1 assertions checked, 180 passing.** That is 92 trace facts (`keyResult`, `variants`, `occurrences`, `rejected`, `outOfEnvelope`, `outsideEnvelope`, and the `HistoricalDefect`, `CrossKeyCorrection` and `UndeclaredField` diagnostics) plus 75 canonicalization checks (bytes, digests, variant partition, undeclared fields). EA-104 adds two; EA-123 and EA-124 add three; EA-126 to EA-129 add five; EA-132, EA-133, EA-134, EA-135 and EA-136 add one each.
   - **16 S2 assertions checked, 16 passing:** every `candidacy` trace fact (EA-013, EA-014, EA-024, three in EA-033, and EA-093 to EA-100).

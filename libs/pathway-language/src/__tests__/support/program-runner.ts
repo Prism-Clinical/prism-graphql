@@ -7,9 +7,13 @@
  * - I2 isolated program-expression checks: applicability, Predicate and Finding outputs and their
  *   trace entries, executed over the example's own expected query evidence SUPPLIED directly. These
  *   are isolated tests, NOT end-to-end runs: no query is computed;
- * - I2 preview-output checks: every preview output and trace entry that depends only on markers.
- * Query outputs and query traces of complete queries (supplied, not computed), causeAttribution
- * (S1–S6) and evaluated `state` values stay outside scope.
+ * - I2 preview-output checks: every preview output and trace entry that depends only on markers;
+ * - raw-input checks (bounded I6 slice): for a compiled one-query program with raw inputs, every
+ *   expected output (query evidence included), trace `source`/`result`, `causeAttribution` and
+ *   `state`, from experimentalExecuteFromRawRecords over the example's own records and snapshot.
+ *   Structured references are compared in fixture notation (a display projection); the structured
+ *   identities themselves are checked by the unit tests.
+ * Everything else (Needs, preview from raw inputs, multi-query programs) stays outside scope.
  */
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -18,7 +22,10 @@ import {
   experimentalCompile,
   experimentalCompilePreview,
   experimentalExecutePreviewWithSuppliedQueryResults,
+  experimentalExecuteFromRawRecords,
   experimentalExecuteWithSuppliedQueryResults,
+  type NodeRef,
+  type RawExecutionResult,
   type CompiledProgram,
   type Diagnostic,
   type JsonValue,
@@ -51,6 +58,8 @@ export interface ExampleReport {
   executionChecked: number;
   /** I2 preview-output checks. */
   previewChecked: number;
+  /** Raw-input checks: the program executed over query evidence computed from the example's records. */
+  rawChecked: number;
   failures: string[];
   outOfScope: string[];
 }
@@ -82,6 +91,55 @@ function compareExecution(exp: Json, result: Json, supplied: Set<string>, report
   return n;
 }
 
+const showRef = (n: NodeRef) => `${n.revision.source}/${n.revision.localId}@${n.revision.revision}${n.digest ? `#${n.digest}` : ''}`;
+
+function runRaw(pkg: CompiledProgram, i: Json): RawExecutionResult {
+  return experimentalExecuteFromRawRecords(pkg as never, {
+    subject: i.context.subject,
+    revisions: i.records,
+    retractions: i.retractions,
+    contextEncounter: i.context.encounter,
+    contextEpisode: i.context.episode,
+    snapshot: { id: i.snapshot, coverage: i.coverage, failures: i.failures, rejectedItems: i.rejectedItems },
+  });
+}
+
+/** Fixture notation of one raw-execution output (display projection; provenance and `origin` are outside the example format). */
+function project(o: Json): Json {
+  const refs = (x: Json) => ('supportingEvidenceIds' in x ? { supportingEvidenceIds: x.supportingEvidenceIds.map(showRef) } : { candidateEvidenceIds: x.candidateEvidenceIds.map(showRef) });
+  if ('evidence' in o) {
+    const e = o.evidence;
+    return { evidence: e.status === 'Known' ? { status: 'Known', value: e.value, ...refs(e) } : { status: 'Unresolved', causes: e.causes, ...refs(e) } };
+  }
+  return { ...o, ...refs(o) };
+}
+
+/** Every expected output, trace `source`/`result`, `causeAttribution` (fixture projection, as a set) and `state`. */
+function compareRaw(exp: Json, r: RawExecutionResult, report: ExampleReport): number {
+  let n = 0;
+  const check = (ok: boolean, what: string) => {
+    n += 1;
+    if (!ok) report.failures.push(`raw ${what}`);
+  };
+  for (const [name, expected] of Object.entries(exp.outputs as Json)) {
+    const got = r.outputs[name] ? project(r.outputs[name] as Json) : undefined;
+    check(isDeepStrictEqual(got, expected), `outputs[${name}] ${JSON.stringify(got)}`);
+  }
+  for (const t of exp.trace as Json[]) {
+    const got = r.trace.find((x) => x.output === t.output);
+    check(got?.source === t.source && got?.result === t.result, `trace ${t.output}: ${JSON.stringify(got && { source: got.source, result: got.result })}`);
+  }
+  const key = (a: Json) => JSON.stringify([a.cause, a.origin, a.stage, a.reason, a.refs ?? null]);
+  const want = (exp.causeAttribution as Json[]).map(key).sort();
+  const gotA = [...new Set(r.queryEvidence.trace.attribution.map((a) => key({ ...a, origin: a.label, refs: a.refs?.map(showRef) })))].sort();
+  check(isDeepStrictEqual(gotA, want), `causeAttribution ${JSON.stringify(gotA)}`);
+  const findings = Object.entries(r.outputs).filter(([, o]) => 'status' in o);
+  const status = findings.length === 1 ? (findings[0]![1] as Json).status.value : null;
+  const state = { True: 'EstablishedTrue', False: 'EstablishedFalse', Unknown: 'UnresolvedPatientEvidence' }[status as string];
+  check(state === exp.state, `state ${state} from the Finding status, expected ${exp.state}`);
+  return n;
+}
+
 const diagKey = (d: Json | Diagnostic) => JSON.stringify([d.code, d.location, d.hole ?? null]);
 const sameSet = (a: string[], b: string[]) => isDeepStrictEqual([...a].sort(), [...b].sort());
 
@@ -89,7 +147,7 @@ export function runProgramExamples(dir: string = PROGRAM_DIR): ExampleReport[] {
   const reports: ExampleReport[] = [];
   for (const name of readdirSync(join(dir, 'examples')).sort()) {
     const ex = JSON.parse(readFileSync(join(dir, 'examples', name), 'utf8')) as Json;
-    const report: ExampleReport = { id: ex.id, checked: 0, executionChecked: 0, previewChecked: 0, failures: [], outOfScope: [] };
+    const report: ExampleReport = { id: ex.id, checked: 0, executionChecked: 0, previewChecked: 0, rawChecked: 0, failures: [], outOfScope: [] };
     reports.push(report);
     const program = JSON.parse(readFileSync(join(dir, 'examples', ex.program.file), 'utf8')) as JsonValue;
     const source = applyPatch(program, ex.program.patch);
@@ -132,10 +190,7 @@ export function runProgramExamples(dir: string = PROGRAM_DIR): ExampleReport[] {
     // program it can only confirm that the state is one of the three evaluation states.
     if (c.outcome === 'CompileFailure' && !c.wellFormed) check(exp.state === 'InvalidProgram', `state ${exp.state} for a structural failure`);
     else if (c.outcome === 'CompileFailure') check(exp.state === 'IncompleteAuthoring', `state ${exp.state} for a holed program`);
-    else {
-      check(['EstablishedTrue', 'EstablishedFalse', 'UnresolvedPatientEvidence'].includes(exp.state), `state ${exp.state} for a compiled program`);
-      report.outOfScope.push(`state value ${exp.state} (decided by evaluation)`);
-    }
+    else check(['EstablishedTrue', 'EstablishedFalse', 'UnresolvedPatientEvidence'].includes(exp.state), `state ${exp.state} for a compiled program`);
     // I2: isolated execution with the example's own query evidence supplied directly.
     const entry = ex.entryPoints as string[];
     if (entry.includes('evaluate') && c.outcome === 'Compiled') {
@@ -154,10 +209,19 @@ export function runProgramExamples(dir: string = PROGRAM_DIR): ExampleReport[] {
         if (supplied.size > 0) report.outOfScope.push(`query evidence for ${[...supplied].join(', ')} (supplied, not computed)`);
       }
     }
+    // Raw-input execution: one complete query, computed from the example's own records and snapshot.
+    let raw = false;
+    if (entry.includes('evaluate') && c.outcome === 'Compiled' && ex.input?.records && completeQueries(c.package).size === 1) {
+      raw = true;
+      report.rawChecked += compareRaw(exp, runRaw(c.package, ex.input), report);
+      report.outOfScope.push('input.context.clock, input.context.mode and input.supersedesSnapshot (not inputs of query-bound selection)');
+      // The raw run checks the query output itself, so the isolated run's "supplied" note no longer applies.
+      report.outOfScope = report.outOfScope.filter((x) => !x.startsWith('query evidence for'));
+    } else if (c.outcome === 'Compiled') report.outOfScope.push(`state value ${exp.state} (decided by evaluation)`);
     if (!entry.includes('evaluate') && !entry.includes('evaluatePreview')) {
       for (const k of ['outputs', 'trace']) if (exp[k] !== null && exp[k] !== undefined) report.outOfScope.push(`${k} (no execution entry point)`);
     }
-    if (exp.causeAttribution !== null && exp.causeAttribution !== undefined) report.outOfScope.push('causeAttribution (S1–S6, not run)');
+    if (!raw && exp.causeAttribution !== null && exp.causeAttribution !== undefined) report.outOfScope.push('causeAttribution (S1–S6, not run)');
   }
   return reports;
 }

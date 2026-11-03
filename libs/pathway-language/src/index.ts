@@ -201,6 +201,8 @@ export {
   executeWithSuppliedQueryResults as experimentalExecuteWithSuppliedQueryResults,
   executePreviewWithSuppliedQueryResults as experimentalExecutePreviewWithSuppliedQueryResults,
 } from './execute/execute';
+export { executeFromRawRecords as experimentalExecuteFromRawRecords, RawExecutionConfigurationError } from './execute/raw';
+export type { RawDecisionOutput, RawExecutionInput, RawExecutionResult, RawFindingOutput, RawProgramOutput, RawQueryOutput } from './execute/raw';
 export type {
   Cause,
   DecisionOutput,

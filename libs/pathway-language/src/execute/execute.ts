@@ -32,8 +32,17 @@ function idTuple(id: string): string[] {
   const m = EVIDENCE_ID.exec(id) as RegExpExecArray;
   return [m[1] as string, m[2] as string, m[3] as string, m[4] ?? ''];
 }
-function sortIds(ids: Iterable<string>): string[] {
-  return [...new Set(ids)].sort((a, b) => {
+/**
+ * How the evaluator orders, deduplicates and displays evidence references. Identity is `compare`
+ * (0 means the same reference); `label` is display text for trace strings only, never a key.
+ */
+export interface RefOps<R> {
+  readonly compare: (a: R, b: R) => number;
+  readonly label: (r: R) => string;
+}
+/** Supplied fixture-notation strings: §5.3 tuple order; the string is its own identity. */
+const STRING_REFS: RefOps<string> = {
+  compare: (a, b) => {
     const x = idTuple(a);
     const y = idTuple(b);
     for (let i = 0; i < 4; i += 1) {
@@ -41,8 +50,14 @@ function sortIds(ids: Iterable<string>): string[] {
       if (d !== 0) return d;
     }
     return 0;
-  });
+  },
+  label: (r) => r,
+};
+/** Sorted by identity, one entry per identity. */
+function sortRefs<R>(ids: Iterable<R>, refs: RefOps<R>): R[] {
+  return [...ids].sort(refs.compare).filter((r, i, a) => i === 0 || refs.compare(a[i - 1] as R, r) !== 0);
 }
+const sortIds = (ids: Iterable<string>): string[] => sortRefs(ids, STRING_REFS);
 const sortCauses = (cs: Iterable<Cause>): Cause[] => {
   const set = new Set(cs);
   return CAUSES.filter((c) => set.has(c));
@@ -50,15 +65,19 @@ const sortCauses = (cs: Iterable<Cause>): Cause[] => {
 
 // ---------- runtime values
 
-type Decision = { kind: 'decision'; value: 'True' | 'False' | 'Unknown'; causes: Cause[]; ids: string[] };
-type Value = Decision | { kind: 'evidence'; evidence: SuppliedEvidence } | { kind: 'marker'; holes: string[] };
+/** `Evidence<Boolean>` over any reference type; extra fields (such as `provenance`) pass through untouched. */
+export type EvidenceOf<R> =
+  | { readonly status: 'Known'; readonly value: boolean; readonly supportingEvidenceIds: readonly R[] }
+  | { readonly status: 'Unresolved'; readonly causes: readonly Cause[]; readonly candidateEvidenceIds: readonly R[] };
 
-const showIds = (ids: readonly string[]) => `[${ids.join(', ')}]`;
-function show(v: Value): string {
+type Decision<R> = { kind: 'decision'; value: 'True' | 'False' | 'Unknown'; causes: Cause[]; ids: R[] };
+type Value<R> = Decision<R> | { kind: 'evidence'; evidence: EvidenceOf<R> } | { kind: 'marker'; holes: string[] };
+
+function showValue<R>(v: Value<R>, refs: RefOps<R>): string {
   if (v.kind === 'marker') return `Marker[${v.holes.join(', ')}]`;
   if (v.kind === 'evidence') {
     const e = v.evidence;
-    return e.status === 'Known' ? `Known(${e.value}, ${showIds(e.supportingEvidenceIds)})` : `Unresolved{${e.causes.join(', ')}}`;
+    return e.status === 'Known' ? `Known(${e.value}, [${e.supportingEvidenceIds.map(refs.label).join(', ')}])` : `Unresolved{${e.causes.join(', ')}}`;
   }
   return v.value === 'Unknown' ? `Unknown(${v.causes.join(', ')})` : v.value;
 }
@@ -148,8 +167,11 @@ function checkInputs(
 
 // ---------- evaluation
 
-function evaluate(pkg: CompiledPackage | PreviewPackage, evidence: Map<string, SuppliedEvidence>) {
-  const values = new Map<string, Value>();
+function evaluate<R>(pkg: CompiledPackage | PreviewPackage, evidence: ReadonlyMap<string, EvidenceOf<R>>, refs: RefOps<R>, origin: 'supplied' | 'computed') {
+  type V = Value<R>;
+  type D = Decision<R>;
+  const show = (v: V) => showValue(v, refs);
+  const values = new Map<string, V>();
   const outputs: [string, ProgramOutput][] = [];
   const trace: TraceEntry[] = [];
   const attributes: [string, FindingAttributes][] = [];
@@ -157,14 +179,14 @@ function evaluate(pkg: CompiledPackage | PreviewPackage, evidence: Map<string, S
 
   /** The declarations and holes a sub-expression's steps read directly. */
   const readsOf = (ss: readonly TraceStep[]): string[] => [...new Set(ss.flatMap((x) => (x.form === 'ref' || x.form === 'hole' ? x.uses : [])))];
-  const expr = (e: Expr, steps: TraceStep[]): Value => {
+  const expr = (e: Expr, steps: TraceStep[]): V => {
     if (e.form === 'hole') {
-      const v: Value = { kind: 'marker', holes: [e.hole] };
+      const v: V = { kind: 'marker', holes: [e.hole] };
       steps.push({ source: e.location, form: 'hole', result: show(v), uses: [e.hole], because: `authoring hole ${e.hole}: incomplete authoring, not patient uncertainty` });
       return v;
     }
     if (e.form === 'ref') {
-      const v = values.get(e.target) as Value;
+      const v = values.get(e.target) as V;
       steps.push({ source: e.location, form: 'ref', result: show(v), uses: [e.target], because: `reads ${e.target}` });
       return v;
     }
@@ -172,17 +194,17 @@ function evaluate(pkg: CompiledPackage | PreviewPackage, evidence: Map<string, S
       const before = steps.length;
       const a = expr(e.arg, steps);
       const uses = readsOf(steps.slice(before));
-      let v: Value;
+      let v: V;
       let because: string;
       if (a.kind === 'marker') {
         v = a;
         because = 'the projected query is an authoring hole, so the marker is kept';
       } else {
-        const ev = (a as { kind: 'evidence'; evidence: SuppliedEvidence }).evidence;
+        const ev = (a as { kind: 'evidence'; evidence: EvidenceOf<R> }).evidence;
         const d = projectEvidence(ev);
         v = d.value === 'Unknown'
-          ? { kind: 'decision', value: 'Unknown', causes: [...d.causes], ids: [...(ev as Extract<SuppliedEvidence, { status: 'Unresolved' }>).candidateEvidenceIds] }
-          : { kind: 'decision', value: d.value, causes: [], ids: [...(ev as Extract<SuppliedEvidence, { status: 'Known' }>).supportingEvidenceIds] };
+          ? { kind: 'decision', value: 'Unknown', causes: [...d.causes], ids: [...(ev as Extract<EvidenceOf<R>, { status: 'Unresolved' }>).candidateEvidenceIds] }
+          : { kind: 'decision', value: d.value, causes: [], ids: [...(ev as Extract<EvidenceOf<R>, { status: 'Known' }>).supportingEvidenceIds] };
         because = `${show(a)} projects to ${show(v)} with the same ${ev.status === 'Known' ? 'supporting' : 'candidate'} IDs (contract §5.2)`;
       }
       steps.push({ source: e.location, form: 'evidenceValue', result: show(v), uses, because });
@@ -195,18 +217,18 @@ function evaluate(pkg: CompiledPackage | PreviewPackage, evidence: Map<string, S
       return { v, uses: readsOf(steps.slice(before)) };
     });
     const marked = ops.filter((o) => o.v.kind === 'marker');
-    let v: Value;
+    let v: V;
     let because: string;
     if (marked.length > 0) {
       v = { kind: 'marker', holes: [...new Set(marked.flatMap((o) => (o.v as { holes: string[] }).holes))].sort(compareCodePoints) };
       because = `an operand depends on authoring hole(s) ${v.holes.join(', ')}; Boolean simplification never removes a marker`;
     } else {
-      const ds = ops.map((o) => o.v as Decision);
+      const ds = ops.map((o) => o.v as D);
       const f = ds.filter((d) => d.value === 'False');
       const u = ds.filter((d) => d.value === 'Unknown');
-      if (f.length > 0) v = { kind: 'decision', value: 'False', causes: [], ids: sortIds(f.flatMap((d) => d.ids)) };
-      else if (u.length > 0) v = { kind: 'decision', value: 'Unknown', causes: sortCauses(u.flatMap((d) => d.causes)), ids: sortIds(u.flatMap((d) => d.ids)) };
-      else v = { kind: 'decision', value: 'True', causes: [], ids: sortIds(ds.flatMap((d) => d.ids)) };
+      if (f.length > 0) v = { kind: 'decision', value: 'False', causes: [], ids: sortRefs(f.flatMap((d) => d.ids), refs) };
+      else if (u.length > 0) v = { kind: 'decision', value: 'Unknown', causes: sortCauses(u.flatMap((d) => d.causes)), ids: sortRefs(u.flatMap((d) => d.ids), refs) };
+      else v = { kind: 'decision', value: 'True', causes: [], ids: sortRefs(ds.flatMap((d) => d.ids), refs) };
       because = ds.length === 0
         ? 'all() over zero operands is True with empty support'
         : `all(${ds.map(show).join(', ')}) = ${show(v)} (Kleene; ${f.length > 0 ? 'support from the False operands' : u.length > 0 ? 'causes and candidates from the Unknown operands' : 'support from every operand'})`;
@@ -215,14 +237,14 @@ function evaluate(pkg: CompiledPackage | PreviewPackage, evidence: Map<string, S
     return v;
   };
 
-  const decisionOutput = (v: Value, field: 'decision' | 'status'): ProgramOutput => {
+  const decisionOutput = (v: V, field: 'decision' | 'status'): ProgramOutput => {
     if (v.kind === 'marker') return (field === 'decision' ? { marker: { holes: v.holes } } : { status: { marker: { holes: v.holes } } }) as ProgramOutput;
-    const d = v as Decision;
+    const d = v as D;
     const value: DecisionValue = d.value === 'Unknown' ? { value: 'Unknown', causes: d.causes } : { value: d.value };
     const ids = d.value === 'Unknown' ? { candidateEvidenceIds: d.ids } : { supportingEvidenceIds: d.ids };
     return { [field]: value, ...ids } as unknown as ProgramOutput;
   };
-  const checkMarker = (output: string, v: Value) => {
+  const checkMarker = (output: string, v: V) => {
     const expected = staticMarkers.get(output) ?? [];
     const got = v.kind === 'marker' ? v.holes : [];
     if (expected.join('\u0000') !== got.join('\u0000')) throw new Error(`invariant: ${output} marker ${got} differs from the compiler's static marker ${expected}`);
@@ -234,7 +256,7 @@ function evaluate(pkg: CompiledPackage | PreviewPackage, evidence: Map<string, S
       const source = `${d.location}/contract`;
       const holes = contractHoles(d.contract);
       if (holes.length > 0) {
-        const v: Value = { kind: 'marker', holes: [...holes].sort(compareCodePoints) };
+        const v: V = { kind: 'marker', holes: [...holes].sort(compareCodePoints) };
         values.set(d.id, v);
         checkMarker(d.id, v);
         outputs.push([d.id, { marker: { holes: v.holes }, stagesRun: [] }]);
@@ -244,11 +266,15 @@ function evaluate(pkg: CompiledPackage | PreviewPackage, evidence: Map<string, S
           : `criterion authoring hole(s) ${holes.join(', ')}: the query is marked; no evidence stage runs in isolated execution (S1–S4 and the sibling criterion run in experimentalEvaluatePreviewQuery)`;
         trace.push({ output: d.id, source, result: show(v), because, steps });
       } else {
-        const ev = evidence.get(d.id) as SuppliedEvidence;
-        const v: Value = { kind: 'evidence', evidence: ev };
+        const ev = evidence.get(d.id) as EvidenceOf<R>;
+        const v: V = { kind: 'evidence', evidence: ev };
         values.set(d.id, v);
-        outputs.push([d.id, { evidence: ev, origin: 'supplied' }]);
-        trace.push({ output: d.id, source, result: show(v), because: 'supplied directly as Evidence<Boolean>; the evidence-query pipeline (S1–S6) did not run', steps });
+        // The evidence object itself, unchanged (computed evidence keeps its provenance).
+        outputs.push([d.id, { evidence: ev, origin } as unknown as ProgramOutput]);
+        const because = origin === 'supplied'
+          ? 'supplied directly as Evidence<Boolean>; the evidence-query pipeline (S1–S6) did not run'
+          : 'computed by the evidence-query pipeline (S1–S6) from this evaluation’s raw records; its S6 trace is in queryEvidence.trace';
+        trace.push({ output: d.id, source, result: show(v), because, steps });
       }
     } else if (d.kind === 'Predicate') {
       const v = expr(d.expr, steps);
@@ -262,7 +288,7 @@ function evaluate(pkg: CompiledPackage | PreviewPackage, evidence: Map<string, S
       const out = decisionOutput(v, 'status') as { [k: string]: unknown };
       trace.push({ output: `${d.id}.status`, source: `${d.location}/status`, result: show(v), because: `${(steps[steps.length - 1] as TraceStep).because}. A False status says only that this finding is not established`, steps });
       if (d.urgency) {
-        const u: Value = { kind: 'marker', holes: [d.urgency.hole] };
+        const u: V = { kind: 'marker', holes: [d.urgency.hole] };
         checkMarker(`${d.id}.urgency`, u);
         out['urgency'] = { marker: { holes: u.holes } };
         const source = d.urgency.location.replace(/\/hole$/, '');
@@ -275,17 +301,23 @@ function evaluate(pkg: CompiledPackage | PreviewPackage, evidence: Map<string, S
   return { outputs, trace, attributes };
 }
 
+/**
+ * Internal (not exported from the package): the one expression evaluator, over any reference type.
+ * Callers own the evidence: the supplied-results APIs validate it, the raw-record entry point computes it.
+ */
+export function evaluateProgram<R>(pkg: CompiledPackage | PreviewPackage, evidence: ReadonlyMap<string, EvidenceOf<R>>, refs: RefOps<R>, origin: 'supplied' | 'computed') {
+  const { outputs, trace, attributes } = evaluate(pkg, evidence, refs, origin);
+  // Pairs → own data properties (detach), so IDs such as `__proto__` stay ordinary keys.
+  return { outputs: Object.fromEntries(outputs), findingAttributes: Object.fromEntries(attributes), trace };
+}
+
 function run(pkg: CompiledPackage | PreviewPackage, evidence: Map<string, SuppliedEvidence>) {
-  const { outputs, trace, attributes } = evaluate(pkg, evidence);
   return {
     outcome: 'Executed' as const,
     experimental: 'nonclinical-ppl-isolated-execution-v0' as const,
     scope: 'program-expressions-with-supplied-query-results' as const,
     packageId: pkg.packageId,
-    // Pairs → own data properties (detach), so IDs such as `__proto__` stay ordinary keys.
-    outputs: Object.fromEntries(outputs),
-    findingAttributes: Object.fromEntries(attributes),
-    trace,
+    ...evaluateProgram(pkg, evidence, STRING_REFS, 'supplied'),
   };
 }
 
