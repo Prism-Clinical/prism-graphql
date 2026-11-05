@@ -2,7 +2,7 @@
 
 **Status:** Proposed design draft. **Not** accepted, not finalized syntax, not a schema and not implemented. It contains no clinical content: the record type, enum values, codes, sources and permission below are fictional and illustrate language behavior only. They do not map to dysphagia, progression, urgency or any other clinical definition.
 
-**Date:** 2026-10-03. **Revised:** 2026-10-03, nine times, 2026-10-04, once, 2026-10-05, three times, 2026-10-09, three times, 2026-10-28, three times, and 2026-10-29, eight times, 2026-10-31, once, and 2026-11-02, eight times, and 2026-11-03, once, after review. The third revision fixed three things:
+**Date:** 2026-10-03. **Revised:** 2026-10-03, nine times, 2026-10-04, once, 2026-10-05, three times, 2026-10-09, three times, 2026-10-28, three times, and 2026-10-29, eight times, 2026-10-31, once, and 2026-11-02, eight times, and 2026-11-03, once, and 2026-11-05, once, after review. The third revision fixed three things:
 
 - revision-chain boundaries: source-scoped identity, same-source corrections and one fully specified schematic authority rule;
 - deterministic outcomes for malformed history;
@@ -13,6 +13,8 @@ The fourth revision made three changes:
 - Proven cross-boundary corrections and retractions are now rejected without changing their target. This keeps gap irrelevance consistent with S1.
 - Payload identity for duplicate detection is defined.
 - An unsupported justification about coverage attestations is removed.
+
+The thirty-eighth revision records a second bounded I6 slice (first-program contract section 8, “Raw-input preview boundary”): preview evaluation (3.5) runs unchanged for a program's only, holed query, and only its marker reaches the program evaluator. A bullet is added to 3.5 “Preview evaluation”; no evidence-query semantics change.
 
 The thirty-seventh revision records a bounded I6 slice (first-program contract section 8, “Raw-input execution boundary”): the final evidence of a one-query program's query is now passed, with its structured references, to the isolated executor's evaluator. The 5.1 “Executor input” and 5.2 “Not here” notes are updated; no evidence-query semantics change.
 
@@ -825,6 +827,7 @@ The standalone S1–S4 entry points remain for isolated stage testing. Their res
 - **Query level.** The query’s marker is reported whatever the snapshot holds and whatever is eligible: an empty snapshot keeps it. Disjointness stays `Pending`: evaluating the sibling proves nothing. S4 facts (key statuses, dispositions, blockers and findings) are reported unchanged.
 - **Not produced.** No classification (3.3), possible classes (3.7), materiality, `Evidence<Boolean>` or Need. The query stays incomplete and publication blocked.
 - **A complete query in a preview package** is rejected by this entry point. This is a **scope restriction** of the slice, not a semantic limit (confirmed on review, 2026-10-29): per-record preview of a complete query could be supported without S6; only its final query result needs S6. Until then its per-record S5 values are available only after normal compilation of a hole-free program.
+- **Program use.** The raw-input preview boundary (first-program contract section 8) calls this entry point unchanged for a program whose only query is holed. It returns this result with the program preview and passes only the query’s marker to the program evaluator; no per-record value reaches a program output.
 
 ### 3.6 S5 per-record classification (one possibility)
 

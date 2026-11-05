@@ -13,7 +13,11 @@
  *   `state`, from experimentalExecuteFromRawRecords over the example's own records and snapshot.
  *   Structured references are compared in fixture notation (a display projection); the structured
  *   identities themselves are checked by the unit tests.
- * Everything else (Needs, preview from raw inputs, multi-query programs) stays outside scope.
+ * - raw-input preview checks (bounded I6 slice): for a one-query PreviewPackage whose query is holed,
+ *   every expected output and trace `source`/`result` from experimentalExecutePreviewFromRawRecords
+ *   over the example's own raw inputs; and, separately, partial query-stage checks (the stages the
+ *   preview query actually ran, the query marker, no S6 cause attribution, publication blocked).
+ * Everything else (Needs, multi-query programs) stays outside scope.
  */
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -23,6 +27,7 @@ import {
   experimentalCompilePreview,
   experimentalExecutePreviewWithSuppliedQueryResults,
   experimentalExecuteFromRawRecords,
+  experimentalExecutePreviewFromRawRecords,
   experimentalExecuteWithSuppliedQueryResults,
   type NodeRef,
   type RawExecutionResult,
@@ -60,6 +65,10 @@ export interface ExampleReport {
   previewChecked: number;
   /** Raw-input checks: the program executed over query evidence computed from the example's records. */
   rawChecked: number;
+  /** Raw-input preview checks: program preview outputs and trace from the example's own raw inputs. */
+  rawPreviewChecked: number;
+  /** Partial query-stage checks of that raw preview (stages run, query marker, no attribution, publication). */
+  partialStageChecked: number;
   failures: string[];
   outOfScope: string[];
 }
@@ -93,15 +102,38 @@ function compareExecution(exp: Json, result: Json, supplied: Set<string>, report
 
 const showRef = (n: NodeRef) => `${n.revision.source}/${n.revision.localId}@${n.revision.revision}${n.digest ? `#${n.digest}` : ''}`;
 
-function runRaw(pkg: CompiledProgram, i: Json): RawExecutionResult {
-  return experimentalExecuteFromRawRecords(pkg as never, {
-    subject: i.context.subject,
-    revisions: i.records,
-    retractions: i.retractions,
-    contextEncounter: i.context.encounter,
-    contextEpisode: i.context.episode,
-    snapshot: { id: i.snapshot, coverage: i.coverage, failures: i.failures, rejectedItems: i.rejectedItems },
-  });
+const rawInput = (i: Json) => ({
+  subject: i.context.subject,
+  revisions: i.records,
+  retractions: i.retractions,
+  contextEncounter: i.context.encounter,
+  contextEpisode: i.context.episode,
+  snapshot: { id: i.snapshot, coverage: i.coverage, failures: i.failures, rejectedItems: i.rejectedItems },
+});
+const runRaw = (pkg: CompiledProgram, i: Json): RawExecutionResult => experimentalExecuteFromRawRecords(pkg as never, rawInput(i));
+
+/** Raw-input preview of a one-holed-query PreviewPackage: [program-preview checks, partial query-stage checks]. */
+function compareRawPreview(exp: Json, pkg: CompiledProgram, i: Json, report: ExampleReport): [number, number] {
+  const r = experimentalExecutePreviewFromRawRecords(pkg as never, rawInput(i));
+  let n = 0;
+  let m = 0;
+  const check = (ok: boolean, what: string, partial = false) => {
+    if (partial) m += 1;
+    else n += 1;
+    if (!ok) report.failures.push(`raw preview ${what}`);
+  };
+  for (const [name, expected] of Object.entries(exp.outputs as Json)) check(isDeepStrictEqual(r.outputs[name], expected), `outputs[${name}] ${JSON.stringify(r.outputs[name])}`);
+  for (const t of exp.trace as Json[]) {
+    const got = r.trace.find((x) => x.output === t.output);
+    check(got?.source === t.source && got?.result === t.result, `trace ${t.output}: ${JSON.stringify(got && { source: got.source, result: got.result })}`);
+  }
+  const q = r.query;
+  check(isDeepStrictEqual(r.previewQuery.stagesRun, (exp.outputs as Json)[q]?.stagesRun), `previewQuery.stagesRun ${JSON.stringify(r.previewQuery.stagesRun)}`, true);
+  check(isDeepStrictEqual(r.previewQuery.marker, (exp.outputs as Json)[q]?.marker) && r.previewQuery.queryStatus === 'Incomplete', 'previewQuery marker or status', true);
+  // Preview runs no S6, so no cause can be attributed: the expectation must be empty.
+  check(isDeepStrictEqual(exp.causeAttribution, []), `causeAttribution ${JSON.stringify(exp.causeAttribution)} (no S6 in preview)`, true);
+  check(exp.state === 'IncompleteAuthoring' && r.publication === 'Blocked', `state ${exp.state}, publication ${r.publication}`, true);
+  return [n, m];
 }
 
 /** Fixture notation of one raw-execution output (display projection; provenance and `origin` are outside the example format). */
@@ -147,7 +179,7 @@ export function runProgramExamples(dir: string = PROGRAM_DIR): ExampleReport[] {
   const reports: ExampleReport[] = [];
   for (const name of readdirSync(join(dir, 'examples')).sort()) {
     const ex = JSON.parse(readFileSync(join(dir, 'examples', name), 'utf8')) as Json;
-    const report: ExampleReport = { id: ex.id, checked: 0, executionChecked: 0, previewChecked: 0, rawChecked: 0, failures: [], outOfScope: [] };
+    const report: ExampleReport = { id: ex.id, checked: 0, executionChecked: 0, previewChecked: 0, rawChecked: 0, rawPreviewChecked: 0, partialStageChecked: 0, failures: [], outOfScope: [] };
     reports.push(report);
     const program = JSON.parse(readFileSync(join(dir, 'examples', ex.program.file), 'utf8')) as JsonValue;
     const source = applyPatch(program, ex.program.patch);
@@ -207,6 +239,14 @@ export function runProgramExamples(dir: string = PROGRAM_DIR): ExampleReport[] {
         const map = new Map([...supplied].map((q) => [q, exp.outputs[q].evidence as SuppliedEvidence]));
         report.previewChecked += compareExecution(exp, experimentalExecutePreviewWithSuppliedQueryResults(p.package, map), supplied, report, 'preview');
         if (supplied.size > 0) report.outOfScope.push(`query evidence for ${[...supplied].join(', ')} (supplied, not computed)`);
+        // Raw-input preview: one holed query, run from the example's own raw inputs.
+        const queries = p.package.declarations.filter((d) => d.kind === 'EvidenceQuery');
+        if (ex.input?.records && queries.length === 1 && supplied.size === 0) {
+          const [n, m] = compareRawPreview(exp, p.package, ex.input, report);
+          report.rawPreviewChecked += n;
+          report.partialStageChecked += m;
+          report.outOfScope.push('input.context.clock, input.context.mode and input.supersedesSnapshot (not preview-query inputs); snapshot statements validated, not read (no S6 in preview)');
+        }
       }
     }
     // Raw-input execution: one complete query, computed from the example's own records and snapshot.
@@ -221,7 +261,7 @@ export function runProgramExamples(dir: string = PROGRAM_DIR): ExampleReport[] {
     if (!entry.includes('evaluate') && !entry.includes('evaluatePreview')) {
       for (const k of ['outputs', 'trace']) if (exp[k] !== null && exp[k] !== undefined) report.outOfScope.push(`${k} (no execution entry point)`);
     }
-    if (!raw && exp.causeAttribution !== null && exp.causeAttribution !== undefined) report.outOfScope.push('causeAttribution (S1–S6, not run)');
+    if (!raw && !entry.includes('evaluatePreview') && exp.causeAttribution !== null && exp.causeAttribution !== undefined) report.outOfScope.push('causeAttribution (S1–S6, not run)');
   }
   return reports;
 }

@@ -102,11 +102,11 @@ export function selectWithSettings(settings: ExplicitAssertionSettings, valueSet
 }
 
 /**
- * Structural validation only: these are configuration errors (no identity to trace or deduplicate).
+ * INTERNAL, shared with raw-input preview execution. Structural validation only: these are configuration errors (no identity to trace or deduplicate).
  * Malformed statement *content* (status, outcome, dimensions, appliesTo) is evidence for gap
  * relevance to judge, never a reason to throw or to drop the statement.
  */
-function checkSnapshot(v: unknown, fail: (m: string) => never): EvaluationSnapshot {
+export function checkSnapshot(v: unknown, fail: (m: string) => never): EvaluationSnapshot {
   if (v === null || typeof v !== 'object' || Array.isArray(v)) return fail('snapshot must be an object');
   const keys = Object.keys(v);
   const extra = keys.filter((k) => !(SNAPSHOT_FIELDS as readonly string[]).includes(k));

@@ -1,7 +1,7 @@
 {
   "id": "PPL-04",
   "title": "GERD program: unresolved clinical authoring holes",
-  "status": "Proposed, hand-derived acceptance expectation. Not produced by any PPL compiler or evaluator. The experimental I1 compiler checks the compile and preview blocks, and I2 checks program-level outputs with the query evidence supplied directly (libs/pathway-language); no end-to-end evaluator exists yet.",
+  "status": "Proposed, hand-derived acceptance expectation. Not produced by any PPL compiler or evaluator. The experimental I1 compiler checks the compile and preview blocks, I2 checks the preview outputs, and a bounded I6 slice (experimentalExecutePreviewFromRawRecords) checks every expected output and trace result from this example's own raw inputs, with no evidence stage run for the whole-contract hole (libs/pathway-language). The expectations were hand-derived first and are unchanged; no end-to-end PPL conformance, I6 completion or clinical approval is implied.",
   "program": {
     "file": "../gerd-progressive-dysphagia.ppl.json",
     "patch": []

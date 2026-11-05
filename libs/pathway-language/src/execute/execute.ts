@@ -167,7 +167,7 @@ function checkInputs(
 
 // ---------- evaluation
 
-function evaluate<R>(pkg: CompiledPackage | PreviewPackage, evidence: ReadonlyMap<string, EvidenceOf<R>>, refs: RefOps<R>, origin: 'supplied' | 'computed') {
+function evaluate<R>(pkg: CompiledPackage | PreviewPackage, evidence: ReadonlyMap<string, EvidenceOf<R>>, refs: RefOps<R>, origin: 'supplied' | 'computed', previewStages?: ReadonlyMap<string, readonly string[]>) {
   type V = Value<R>;
   type D = Decision<R>;
   const show = (v: V) => showValue(v, refs);
@@ -259,11 +259,14 @@ function evaluate<R>(pkg: CompiledPackage | PreviewPackage, evidence: ReadonlyMa
         const v: V = { kind: 'marker', holes: [...holes].sort(compareCodePoints) };
         values.set(d.id, v);
         checkMarker(d.id, v);
-        outputs.push([d.id, { marker: { holes: v.holes }, stagesRun: [] }]);
-        // A criterion hole's S1–S4 and sibling-criterion traces belong to preview evaluation, which this API does not perform.
+        // The stages a raw-input preview actually ran for this query; isolated execution runs none.
+        const ran = previewStages?.get(d.id) ?? [];
+        outputs.push([d.id, { marker: { holes: v.holes }, stagesRun: [...ran] } as ProgramOutput]);
         const because = d.contract.kind === 'hole'
           ? `whole-contract authoring hole ${d.contract.hole}: no evidence stage runs and nothing is read`
-          : `criterion authoring hole(s) ${holes.join(', ')}: the query is marked; no evidence stage runs in isolated execution (S1–S4 and the sibling criterion run in experimentalEvaluatePreviewQuery)`;
+          : previewStages
+            ? `criterion authoring hole(s) ${holes.join(', ')}: the query stays marked (incomplete authoring, not patient uncertainty). Preview-query evaluation ran ${ran.join(', ')} on this evaluation's records (per-record results in previewQuery); nothing was classified and no S6 result or Evidence<Boolean> exists`
+            : `criterion authoring hole(s) ${holes.join(', ')}: the query is marked; no evidence stage runs in isolated execution (S1–S4 and the sibling criterion run in experimentalEvaluatePreviewQuery)`;
         trace.push({ output: d.id, source, result: show(v), because, steps });
       } else {
         const ev = evidence.get(d.id) as EvidenceOf<R>;
@@ -305,8 +308,15 @@ function evaluate<R>(pkg: CompiledPackage | PreviewPackage, evidence: ReadonlyMa
  * Internal (not exported from the package): the one expression evaluator, over any reference type.
  * Callers own the evidence: the supplied-results APIs validate it, the raw-record entry point computes it.
  */
-export function evaluateProgram<R>(pkg: CompiledPackage | PreviewPackage, evidence: ReadonlyMap<string, EvidenceOf<R>>, refs: RefOps<R>, origin: 'supplied' | 'computed') {
-  const { outputs, trace, attributes } = evaluate(pkg, evidence, refs, origin);
+export function evaluateProgram<R>(
+  pkg: CompiledPackage | PreviewPackage,
+  evidence: ReadonlyMap<string, EvidenceOf<R>>,
+  refs: RefOps<R>,
+  origin: 'supplied' | 'computed',
+  /** Raw-input preview only: the stages its preview-query evaluation actually ran, per holed query. */
+  previewStages?: ReadonlyMap<string, readonly string[]>,
+) {
+  const { outputs, trace, attributes } = evaluate(pkg, evidence, refs, origin, previewStages);
   // Pairs → own data properties (detach), so IDs such as `__proto__` stay ordinary keys.
   return { outputs: Object.fromEntries(outputs), findingAttributes: Object.fromEntries(attributes), trace };
 }

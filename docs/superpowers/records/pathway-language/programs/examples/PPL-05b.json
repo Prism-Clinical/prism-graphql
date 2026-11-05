@@ -1,7 +1,7 @@
 {
   "id": "PPL-05b",
   "title": "Structural error: non-Decision operand of all",
-  "status": "Proposed, hand-derived acceptance expectation. Not produced by any PPL compiler or evaluator. The experimental I1 compiler checks the compile and preview blocks, and I2 checks program-level outputs with the query evidence supplied directly (libs/pathway-language); no end-to-end evaluator exists yet.",
+  "status": "Proposed, hand-derived acceptance expectation. Not produced by any PPL compiler or evaluator. The experimental I1 compiler checks the compile and preview blocks (libs/pathway-language); compilation fails, so there is no package to execute. The expectations were hand-derived first and are unchanged; no end-to-end PPL conformance, I6 completion or clinical approval is implied.",
   "program": {
     "file": "../schematic-demo-finding.ppl.json",
     "patch": [
