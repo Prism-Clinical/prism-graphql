@@ -1,0 +1,148 @@
+{
+  "ppl": {
+    "languageVersion": "ppl-1",
+    "capabilityProfileVersion": "ppl-core-v0",
+    "sourceStatus": "Proposed source syntax, not a finalized schema. NONCLINICAL SCHEMATIC COMPANION to the GERD program: it exercises the same constructs end to end with the fictional demo-model@0.1. It is not a translation of GERD, encodes no clinical meaning, and must not be used for patient care."
+  },
+  "package": {
+    "id": "schematic.demo-finding",
+    "state": "Draft",
+    "nonclinical": true
+  },
+  "valueSets": {
+    "demo-vs/item-x@1": {
+      "expansion": [
+        {
+          "system": "demo-cs",
+          "code": "item-x"
+        }
+      ],
+      "coveredSystems": [
+        "demo-cs"
+      ]
+    }
+  },
+  "applicability": {
+    "id": "applicability",
+    "kind": "Predicate",
+    "expr": {
+      "all": []
+    },
+    "rationale": "Schematic assumption, written explicitly: unconditional scope (the empty conjunction is True). Not a clinical applicability rule."
+  },
+  "nodes": [
+    {
+      "id": "q.demo",
+      "kind": "EvidenceQuery",
+      "subject": "patient",
+      "output": "Evidence<Boolean>",
+      "contract": {
+        "retrieve": {
+          "type": "demo-model/DemoAssessment@0.1",
+          "sources": [
+            "s1",
+            "s2"
+          ],
+          "valueSet": "demo-vs/item-x@1"
+        },
+        "corrections": {
+          "authority": "demo-policy/same-source-amend@1"
+        },
+        "admissible": {
+          "episode": {
+            "eq": [
+              {
+                "field": [
+                  "c",
+                  "episode"
+                ]
+              },
+              {
+                "ref": "ctx.episode"
+              }
+            ]
+          },
+          "encounter": {
+            "eq": [
+              {
+                "field": [
+                  "c",
+                  "encounter"
+                ]
+              },
+              {
+                "ref": "ctx.encounter"
+              }
+            ]
+          },
+          "assertionKind": {
+            "in": [
+              "ClinicianDocumented",
+              "PatientReport"
+            ]
+          }
+        },
+        "policy": "explicit-assertion-v0",
+        "establishes": {
+          "eq": [
+            {
+              "field": [
+                "c",
+                "assertion"
+              ]
+            },
+            {
+              "enum": "AssertionValue.Affirmed"
+            }
+          ]
+        },
+        "refutes": {
+          "eq": [
+            {
+              "field": [
+                "c",
+                "assertion"
+              ]
+            },
+            {
+              "enum": "AssertionValue.Denied"
+            }
+          ]
+        },
+        "obligations": [
+          {
+            "disjoint": [
+              "establishes",
+              "refutes"
+            ]
+          }
+        ]
+      },
+      "rationale": "The contract of conformance/explicit-assertion-v0/query/q.demo.json, verbatim: fictional DemoAssessment records, value set demo-vs/item-x@1, policy explicit-assertion-v0, establishes = assertion == Affirmed, refutes = assertion == Denied."
+    },
+    {
+      "id": "p.demo",
+      "kind": "Predicate",
+      "expr": {
+        "evidenceValue": {
+          "ref": "q.demo"
+        }
+      }
+    },
+    {
+      "id": "f.demo",
+      "kind": "Finding",
+      "status": {
+        "all": [
+          {
+            "ref": "applicability"
+          },
+          {
+            "ref": "p.demo"
+          }
+        ]
+      },
+      "label": "Schematic finding: demonstration item affirmed (nonclinical)"
+    }
+  ]
+}

@@ -1,0 +1,138 @@
+{
+  "id": "EA-102",
+  "contractCases": [
+    102
+  ],
+  "title": "Evaluation encounter unknown (Conflicting)",
+  "kind": "evaluation",
+  "policy": "explicit-assertion-v0",
+  "evidenceModel": "demo-model@0.1",
+  "query": {
+    "file": "../query/q.demo.json",
+    "contractDigest": "d1"
+  },
+  "requestedOutputs": [
+    "p.demo"
+  ],
+  "comparison": "evaluation-v1",
+  "input": {
+    "snapshot": "snap-1",
+    "supersedesSnapshot": null,
+    "context": {
+      "subject": "P1",
+      "episode": {
+        "known": "E1"
+      },
+      "encounter": {
+        "unknown": [
+          "Conflicting"
+        ]
+      },
+      "clock": "2026-01-01T00:00:00Z",
+      "mode": "nonclinical"
+    },
+    "records": [
+      {
+        "key": {
+          "source": "s1",
+          "localId": "r102"
+        },
+        "revision": "1",
+        "recordType": "demo-model/DemoAssessment@0.1",
+        "subject": "P1",
+        "episode": "E1",
+        "encounter": "N1",
+        "concept": {
+          "system": "demo-cs",
+          "code": "item-x"
+        },
+        "assertion": "Affirmed",
+        "assertionKind": "ClinicianDocumented",
+        "author": {
+          "actor": "u1",
+          "permissions": []
+        },
+        "provenance": {
+          "acquisition": "a0",
+          "sourceRecordRef": "s1:r102:1"
+        }
+      }
+    ],
+    "retractions": [],
+    "coverage": [
+      {
+        "id": "cov-all",
+        "appliesTo": {
+          "snapshot": "snap-1"
+        },
+        "recordType": "demo-model/DemoAssessment@0.1",
+        "subject": "P1",
+        "sources": [
+          "s1",
+          "s2"
+        ],
+        "status": "Complete",
+        "attestedBy": "demo-adapter@1"
+      }
+    ],
+    "failures": [],
+    "rejectedItems": []
+  },
+  "expected": {
+    "evidence": {
+      "status": "Unresolved",
+      "causes": [
+        "Conflicting"
+      ],
+      "candidateEvidenceIds": [
+        "s1/r102@1"
+      ]
+    },
+    "decision": {
+      "value": "Unknown",
+      "causes": [
+        "Conflicting"
+      ]
+    },
+    "causeAttribution": [
+      {
+        "cause": "Conflicting",
+        "origin": "context.encounter",
+        "stage": "S3",
+        "reason": "ContextUnknown:encounter",
+        "refs": [
+          "s1/r102@1"
+        ]
+      }
+    ],
+    "needs": {
+      "evidence": null,
+      "deferred": {
+        "binding": "encounter"
+      },
+      "obligations": []
+    },
+    "traceAssertions": [
+      {
+        "fact": "encounterScope",
+        "ref": "s1/r102@1",
+        "value": "Unresolved",
+        "causes": [
+          "Conflicting"
+        ]
+      },
+      {
+        "fact": "admissibility",
+        "ref": "s1/r102@1",
+        "value": "UnresolvedAdmissibility",
+        "causes": [
+          "Conflicting"
+        ]
+      },
+      {
+        "fact": "needDeferred",
+        "binding": "encounter"
+      }
+    ]
+  }
+}

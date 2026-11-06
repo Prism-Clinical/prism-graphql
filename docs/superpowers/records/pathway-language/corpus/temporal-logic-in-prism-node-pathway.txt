@@ -1,0 +1,88 @@
+# Temporal Logic in Prism's Node Pathway
+## Design Discussion Document — Time as a First-Class Concept for Data Entry Nodes and Plan Nodes
+
+**Date:** July 23, 2026
+**Author:** Josh
+**Status:** Draft for review — captures design reasoning prior to formal specification
+
+---
+
+## 1. Purpose and Framing
+
+This document captures the reasoning behind how Prism will treat time as a structural concept across two distinct parts of the clinical reasoning pipeline: **data entry nodes** (how historical patient data is scanned and weighted) and **plan nodes** (how future-dated recommendations become clinically actionable). These are related but intentionally separate problems, and this document exists to make sure that separation is deliberate and documented before implementation begins.
+
+This is explicitly framed as an **extensible, tiered model rather than a fixed specification**. As Prism expands beyond its initial OB/GYN proving ground into other specialties, additional temporal components will likely need to slot into this system. The architecture should be malleable enough to accommodate that without requiring a redesign.
+
+---
+
+## 2. Input Side: Time-Aware Data Retrieval
+
+### 2.1 Core Problem
+
+When Prism scans a patient's historical data to establish a clinical trend, not all history is equally relevant. A hemoglobin value from twenty five years ago carries essentially no signal for a current anemia assessment, while a value from three months ago may be highly relevant. The system needs the ability to define **how far back to look**, not simply how many data points to retrieve, and this lookback definition should be configurable rather than hardcoded.
+
+### 2.2 The Complication: Reference Ranges Are Not Static
+
+A fixed lookback window is insufficient because clinical normal ranges themselves shift with context. The clearest example: the definition of anemia changes by trimester in pregnancy. A stable, one-size-fits-all window would prevent the system from correctly adjusting reference ranges alongside the time window itself.
+
+This means the lookback window and the reference range cannot be treated as independent constants — they both need to be a function of a **contextual variable** (for example, gestational week for OB, or age bracket for a pediatric heart rate). The system needs a **pluggable reference-range resolver** per data type: something that accepts a context variable and returns both the valid lookback window and the applicable normal range for that moment.
+
+This keeps the architecture specialty-agnostic from day one, since future verticals (orthopedics, cardiology, GI, behavioral health) will each have their own version of a context-driven variable, not just gestational age.
+
+### 2.3 Three Tiers of Complexity (Explicitly Decoupled)
+
+To avoid conflating simple and complex cases, and to ensure simpler data types are never burdened by the overhead of more complex ones, the model separates into three tiers:
+
+1. **Tier 1 — Strict fixed window, no lookup.** A plain time-bounded scan with no contextual adjustment. This should stand alone and be independently usable.
+2. **Tier 2 — Lookup keyed on a simple variable, no calculation.** Example: pediatric reference ranges keyed on age, with no derived computation required.
+3. **Tier 3 — Lookup requiring a calculated input, potentially with a decision aid layered on top.** Example: OB reference ranges keyed on gestational age (itself calculated), potentially combined with a further derived decision aid.
+
+**Design principle:** the lookup and calculation layers are optional add-ons to the base windowed-lookback capability, not a single mandatory pipeline. A simple data type should never pay the architectural cost of the more complex tiers.
+
+### 2.4 Edge Cases to Account For (Input Side)
+
+- **Data gaps / sparse history.** If the expected cadence of entries isn't met (for example, missed visits, or only two days of a four-times-daily glucose log), the system must not silently compute a trend on thin data. Sparse data should lower the confidence level of any computed trend or recommendation to the point that it **surfaces to the provider as a visible flag** requesting interpretation, rather than being silently absorbed into a number.
+- **Timestamp ambiguity.** Lab collection time and result time can differ by days, particularly for send-out labs. **Collection time is the anchor** for window calculations. A future consideration (explicitly not required for version one): surfacing cases where the EHR indicates a lab was collected but not yet resulted, since the system currently has no defined behavior for that state.
+- **Retroactive edits.** If a note or lab value is amended after the fact (for example, a transcription correction or a corrected collection date) and this shifts an entry into or out of a lookback window, the trend and any downstream recommendation should **recompute automatically** — this is a natural consequence of the system re-querying fresh data at each encounter. However, if a recomputation produces a delta from what was previously shown to the provider at a prior encounter for the same problem, that **change should be explicitly surfaced in the UI**, so the provider understands why a recommendation moved rather than seeing a silent shift. This only applies where multiple encounters exist for the same problem; a single encounter has no prior state to diverge from.
+- **Estimated due date (EDD) revisions (OB-specific).** If gestational age is recalculated mid-pregnancy, this could move a prior data point across a trimester window boundary. Resolution: gestational-age-dependent windows and reference ranges should be **computed live at the encounter**, using current information, rather than relying on a previously stored value.
+- **Context resets across pregnancies.** A prior pregnancy's data should not leak into the current pregnancy's lookback window. The system needs a clear reset boundary rather than rolling history across pregnancies. This is expected to resolve straightforwardly based on the start date of the current pregnancy relative to when a given lab, image, or other data point occurred.
+- **Unit or assay inconsistency (open question / unresolved concern).** If two labs report the same analyte using different units or different assay methodologies, a trend line can appear to shift when the change is actually a measurement artifact rather than a true biological change. This is flagged as a genuine open concern without a clean resolution at this stage. **Example use case:** beta <lexeme><grapheme>hCG</grapheme><alias>H C G</alias></lexeme> trend monitoring in a patient with an ectopic pregnancy being treated with <lexeme><grapheme>methotrexate</grapheme><alias>meth-oh-TREK-sate</alias></lexeme> — different labs or assay platforms could produce values that appear to show a meaningful trend shift when it is actually measurement noise.
+- **Intervening treatment effects.** If a patient begins an intervention mid-window (for example, starting iron supplementation during an anemia workup), a rising value trend means something clinically different than the same trend occurring untreated. The window logic may need awareness of interventions, not just raw values, though this is noted as a consideration for future refinement rather than a solved problem here.
+
+---
+
+## 3. Output Side: Deferred Activation of Plan Recommendations
+
+### 3.1 Core Problem
+
+A recommended order can exist within a generated care plan before it is clinically actionable. Example: a patient at twenty two weeks gestation will need a glucose tolerance test at twenty four weeks. That future order should not be presented as active today, but the system should still be aware of it and place it appropriately for the two-to-six week window in which it becomes relevant (between twenty four and twenty eight weeks).
+
+### 3.2 Design Direction: Validity Window as an Order Attribute, Not a Display Toggle
+
+Rather than treating this as a binary interface question (show the order now versus hide it entirely), the correct framing is that **the order itself carries a validity window** as an attribute. This window can be expressed either as:
+
+- A **relative time-forward offset** from the current encounter, for general (non-pregnancy) use cases, or
+- A **gestational-age range**, for pregnancy-specific use cases.
+
+This mirrors existing real-world practice at many institutions, where an anatomy ultrasound order is placed early in pregnancy and dated for a future encounter, while a glucose tolerance test order is typically not placed until its window opens. Framing this as an order-attribute problem rather than a display problem means the interface's decision of when to surface an order follows naturally from the order's own validity window, rather than requiring separate display logic.
+
+### 3.3 Start Point vs. End Point
+
+- **Start point:** required. This defines when the recommendation becomes eligible / actionable.
+- **End point:** the recommendation itself is a **soft threshold, not a hard clinical cutoff** — once the start point passes, the recommendation remains available indefinitely, since a provider should still have the opportunity to complete it even outside the originally anticipated window.
+- **System-level note:** despite the recommendation having no true clinical expiration, most EHR systems require an order to carry an end date as part of their data model. An end date should therefore be included **to satisfy EHR system requirements**, not because the underlying clinical recommendation expires. This distinction should be clearly documented so it is not later mistaken for a clinical cutoff.
+
+---
+
+## 4. Summary of Open Questions and Future Considerations
+
+- Unit and assay inconsistency across labs affecting trend interpretation (see beta <lexeme><grapheme>hCG</grapheme><alias>H C G</alias></lexeme> / <lexeme><grapheme>methotrexate</grapheme><alias>meth-oh-TREK-sate</alias></lexeme> example above) — unresolved, flagged for further design work.
+- Handling of "collected but not yet resulted" lab states — explicitly out of scope for version one, but noted for future design.
+- Intervention-aware trend interpretation (e.g., treatment effects altering the clinical meaning of a trend) — noted as a future refinement area.
+- The tiered input-side model (fixed window / simple lookup / calculated lookup with decision aid) should remain open to additional future components (for example, a lab-specific correction factor or device-calibration adjustment) without requiring architectural redesign.
+
+---
+
+## 5. Next Steps
+
+This document should be reviewed by the engineering team (Wyeth) to evaluate implementation feasibility, particularly around the pluggable reference-range resolver pattern and the order validity-window attribute model. Additional edge cases are expected to surface during that review and should be appended here as they are identified.

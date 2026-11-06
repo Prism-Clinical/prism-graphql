@@ -1,0 +1,69 @@
+{
+  "ppl": {
+    "languageVersion": "ppl-1",
+    "capabilityProfileVersion": "ppl-core-v0",
+    "sourceStatus": "Proposed source syntax, not a finalized schema. Structurally checkable in the planned preview mode. Not publishable and not clinically executable while holes remain. No clinical question (Q1-Q14, A1-A3) is answered; L00.1.a remains open."
+  },
+  "package": { "id": "gerd-pregnancy.alarm.progressive-dysphagia", "state": "Draft" },
+  "references": [
+    {
+      "id": "src.gerd.l85-86",
+      "kind": "EvidenceReference",
+      "file": "../corpus/GERD-Pregnancy-Care-Pathway.txt",
+      "sha256": "937859b9b22f672e4d212cdd99b188f1e1d12b6cd4217459155d2c34a8f67032",
+      "lines": [85, 86],
+      "quote": {
+        "85": "ALARM SYMPTOMS REQUIRING IMMEDIATE EVALUATION:",
+        "86": "• Progressive dysphagia (particularly solids before liquids)"
+      }
+    }
+  ],
+  "applicability": {
+    "id": "applicability",
+    "kind": "Predicate",
+    "expr": {
+      "hole": {
+        "id": "H-SCOPE",
+        "type": "Decision",
+        "explains": "Population and encounter scope in which this alarm applies (interpretation draft A1, A2; Q14). Not decided."
+      }
+    }
+  },
+  "nodes": [
+    {
+      "id": "q.pd",
+      "kind": "EvidenceQuery",
+      "subject": "patient",
+      "output": "Evidence<Boolean>",
+      "contract": {
+        "hole": {
+          "id": "H-EVIDENCE",
+          "type": "EvidenceSelectionContract<Boolean>",
+          "explains": "What establishes presence or explicit absence of progressive dysphagia for this alarm, from which sources, in what episode/encounter scope and window, and how conflicts resolve (Q1-Q7; A2, A3). Not decided."
+        }
+      },
+      "cites": ["src.gerd.l85-86"]
+    },
+    {
+      "id": "p.alarm",
+      "kind": "Predicate",
+      "expr": { "evidenceValue": { "ref": "q.pd" } },
+      "cites": ["src.gerd.l85-86"]
+    },
+    {
+      "id": "f.alarm",
+      "kind": "Finding",
+      "status": { "all": [{ "ref": "applicability" }, { "ref": "p.alarm" }] },
+      "label": "Progressive dysphagia (particularly solids before liquids)",
+      "heading": "ALARM SYMPTOMS REQUIRING IMMEDIATE EVALUATION",
+      "urgency": {
+        "hole": {
+          "id": "H-URGENCY",
+          "type": "UrgencyRequirement",
+          "explains": "Display or finalization effect of this finding, and what 'immediate' means (Q11-Q13). Not equated with 'urgent' (lines 376, 449; Q12). Not decided."
+        }
+      },
+      "cites": ["src.gerd.l85-86"]
+    }
+  ]
+}

@@ -1,0 +1,196 @@
+{
+  "id": "EA-055a",
+  "contractCases": [
+    55
+  ],
+  "title": "Missing correction target with irrelevant P2 failure",
+  "kind": "evaluation",
+  "policy": "explicit-assertion-v0",
+  "evidenceModel": "demo-model@0.1",
+  "query": {
+    "file": "../query/q.demo.json",
+    "contractDigest": "d1"
+  },
+  "requestedOutputs": [
+    "p.demo"
+  ],
+  "comparison": "evaluation-v1",
+  "input": {
+    "snapshot": "snap-1",
+    "supersedesSnapshot": null,
+    "context": {
+      "subject": "P1",
+      "episode": {
+        "known": "E1"
+      },
+      "encounter": {
+        "known": "N1"
+      },
+      "clock": "2026-01-01T00:00:00Z",
+      "mode": "nonclinical"
+    },
+    "records": [
+      {
+        "key": {
+          "source": "s1",
+          "localId": "r9"
+        },
+        "revision": "2",
+        "recordType": "demo-model/DemoAssessment@0.1",
+        "subject": "P1",
+        "episode": "E1",
+        "encounter": "N1",
+        "concept": {
+          "system": "demo-cs",
+          "code": "item-x"
+        },
+        "assertion": "Affirmed",
+        "assertionKind": "ClinicianDocumented",
+        "author": {
+          "actor": "u2",
+          "permissions": [
+            "demo.permission.amend-record"
+          ]
+        },
+        "provenance": {
+          "acquisition": "a0",
+          "sourceRecordRef": "s1:r9:2"
+        },
+        "supersedes": {
+          "source": "s1",
+          "localId": "r9",
+          "revision": "1"
+        }
+      },
+      {
+        "key": {
+          "source": "s1",
+          "localId": "r1"
+        },
+        "revision": "1",
+        "recordType": "demo-model/DemoAssessment@0.1",
+        "subject": "P1",
+        "episode": "E1",
+        "encounter": "N1",
+        "concept": {
+          "system": "demo-cs",
+          "code": "item-x"
+        },
+        "assertion": "Affirmed",
+        "assertionKind": "ClinicianDocumented",
+        "author": {
+          "actor": "u1",
+          "permissions": []
+        },
+        "provenance": {
+          "acquisition": "a0",
+          "sourceRecordRef": "s1:r1:1"
+        }
+      }
+    ],
+    "retractions": [],
+    "coverage": [
+      {
+        "id": "cov-all",
+        "appliesTo": {
+          "snapshot": "snap-1"
+        },
+        "recordType": "demo-model/DemoAssessment@0.1",
+        "subject": "P1",
+        "sources": [
+          "s1",
+          "s2"
+        ],
+        "status": "Complete",
+        "attestedBy": "demo-adapter@1"
+      }
+    ],
+    "failures": [
+      {
+        "id": "f1",
+        "attempt": "a-f1",
+        "appliesTo": {
+          "snapshot": "snap-1"
+        },
+        "outcome": "Failed",
+        "recordType": "demo-model/DemoAssessment@0.1",
+        "subject": "P2",
+        "sources": [
+          "s1"
+        ]
+      }
+    ],
+    "rejectedItems": []
+  },
+  "expected": {
+    "evidence": {
+      "status": "Unresolved",
+      "causes": [
+        "Missing"
+      ],
+      "candidateEvidenceIds": [
+        "s1/r1@1",
+        "s1/r9@2"
+      ]
+    },
+    "decision": {
+      "value": "Unknown",
+      "causes": [
+        "Missing"
+      ]
+    },
+    "causeAttribution": [
+      {
+        "cause": "Missing",
+        "origin": "s1/r9",
+        "stage": "S1",
+        "reason": "CorrectionTargetAbsent"
+      }
+    ],
+    "needs": {
+      "evidence": {
+        "key": {
+          "query": "q.demo",
+          "contractDigest": "d1",
+          "subject": "P1",
+          "episode": "E1",
+          "encounter": "N1"
+        },
+        "causes": [
+          "Missing"
+        ]
+      },
+      "deferred": null,
+      "obligations": [
+        {
+          "kind": "CorrectRecord",
+          "needKey": {
+            "query": "q.demo",
+            "contractDigest": "d1",
+            "subject": "P1",
+            "episode": "E1",
+            "encounter": "N1"
+          },
+          "record": "s1/r9"
+        }
+      ]
+    },
+    "traceAssertions": [
+      {
+        "fact": "gap",
+        "ref": "f1",
+        "relevant": false,
+        "provenBy": "subject"
+      },
+      {
+        "fact": "material",
+        "ref": "s1/r9",
+        "value": true
+      },
+      {
+        "fact": "rule",
+        "value": 2
+      }
+    ]
+  }
+}

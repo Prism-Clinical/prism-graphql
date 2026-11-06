@@ -1,0 +1,420 @@
+================================================================================
+CARE PLAN DOCUMENT
+================================================================================
+
+[METADATA]
+Title: Gestational Diabetes Mellitus (GDM) Care Pathway - GDMA1 and GDMA2
+Category: CHRONIC_DISEASE
+Version: 2.0
+Last Updated: 2026-01-30
+Author: Clinical Guidelines Committee
+Guideline Source: ACOG Practice Bulletin 190, ADA Standards of Care 2026, SMFM Guidelines
+Evidence Grade: A
+
+[CONDITION CODES]
+| Code       | System    | Description                                              |
+|------------|-----------|----------------------------------------------------------|
+| O24.4      | ICD-10    | Gestational diabetes mellitus (parent code)              |
+| O24.410    | ICD-10    | GDM in pregnancy, diet controlled (GDMA1)                |
+| O24.414    | ICD-10    | GDM in pregnancy, insulin controlled (GDMA2)             |
+| O24.415    | ICD-10    | GDM, controlled by oral hypoglycemic drugs (GDMA2)       |
+| O24.419    | ICD-10    | GDM in pregnancy, unspecified control                    |
+| O24.420    | ICD-10    | GDM in childbirth, diet controlled                       |
+| O24.424    | ICD-10    | GDM in childbirth, insulin controlled                    |
+| O24.430    | ICD-10    | GDM in puerperium, diet controlled                       |
+| O24.434    | ICD-10    | GDM in puerperium, insulin controlled                    |
+| 11687002   | SNOMED    | Gestational diabetes mellitus                            |
+| 237599002  | SNOMED    | Insulin-treated gestational diabetes mellitus            |
+| 472971004  | SNOMED    | History of gestational diabetes mellitus                 |
+| 237627000  | SNOMED    | Pregnancy and type 2 diabetes mellitus                   |
+| 15777000   | SNOMED    | Prediabetes                                              |
+| 267384006  | SNOMED    | Impaired glucose tolerance                               |
+
+[MEDICATION CODES]
+| Code       | System    | Description                                              |
+|------------|-----------|----------------------------------------------------------|
+| 86009      | RxNorm    | Insulin lispro (Humalog) - preferred rapid-acting        |
+| 51428      | RxNorm    | Insulin aspart (NovoLog) - preferred rapid-acting        |
+| 274783     | RxNorm    | Insulin glargine (Lantus) - long-acting                  |
+| 253182     | RxNorm    | Insulin detemir (Levemir) - long-acting                  |
+| 5856       | RxNorm    | Insulin, regular human                                   |
+| 5880       | RxNorm    | Insulin isophane (NPH) - intermediate-acting             |
+| 6809       | RxNorm    | Metformin - alternative oral agent                       |
+| 861007     | RxNorm    | Metformin hydrochloride 500 MG Oral Tablet               |
+| 861010     | RxNorm    | Metformin hydrochloride 850 MG Oral Tablet               |
+| 861004     | RxNorm    | Metformin hydrochloride 1000 MG Oral Tablet              |
+| 311040     | RxNorm    | Insulin lispro 100 UNT/ML Injectable Solution            |
+| 311041     | RxNorm    | Insulin aspart 100 UNT/ML Injectable Solution            |
+| 847187     | RxNorm    | Insulin glargine 100 UNT/ML Injection                    |
+| 311034     | RxNorm    | Insulin NPH 100 UNT/ML Injectable Suspension             |
+
+[LAB CODES]
+| Code       | System    | Description                                              |
+|------------|-----------|----------------------------------------------------------|
+| 1558-6     | LOINC     | Fasting glucose [Mass/volume] in Serum or Plasma         |
+| 2345-7     | LOINC     | Glucose [Mass/volume] in Serum or Plasma                 |
+| 20438-8    | LOINC     | Glucose --1 hour post 50 g glucose PO (screening)        |
+| 1507-3     | LOINC     | Glucose --1 hour post 75 g glucose PO                    |
+| 1518-0     | LOINC     | Glucose --2 hours post 75 g glucose PO                   |
+| 20437-0    | LOINC     | Glucose --3 hours post 100 g glucose PO                  |
+| 1549-5     | LOINC     | Glucose --1 hour post 100 g glucose PO                   |
+| 1504-0     | LOINC     | Glucose --2 hours post 100 g glucose PO                  |
+| 72171-2    | LOINC     | Glucose tolerance 2 hours panel                          |
+| 81324-6    | LOINC     | Glucose tolerance 2 hours gestational panel              |
+| 4548-4     | LOINC     | Hemoglobin A1c/Hemoglobin.total in Blood                 |
+| 41653-7    | LOINC     | Glucose [Mass/volume] in Capillary blood by Glucometer   |
+| 2340-8     | LOINC     | Glucose [Mass/volume] in Blood by Automated test strip   |
+
+[PROCEDURE CODES]
+| Code       | System    | Description                                              |
+|------------|-----------|----------------------------------------------------------|
+| 82950      | CPT       | Glucose, post glucose dose (50g challenge screening)     |
+| 82951      | CPT       | Glucose tolerance test, three specimens (100g OGTT)      |
+| 82952      | CPT       | Glucose tolerance test, each additional specimen         |
+| 82947      | CPT       | Glucose; quantitative, blood                             |
+| 83036      | CPT       | Hemoglobin A1c                                           |
+| 36415      | CPT       | Collection of venous blood by venipuncture               |
+| 97802      | CPT       | Medical nutrition therapy; initial assessment            |
+| 97803      | CPT       | Medical nutrition therapy; re-assessment                 |
+| 76816      | CPT       | Ultrasound, pregnant uterus, follow-up                   |
+| 76817      | CPT       | Ultrasound, pregnant uterus, transvaginal                |
+| 76818      | CPT       | Fetal biophysical profile (BPP)                          |
+| 76819      | CPT       | Fetal biophysical profile without NST                    |
+| 59025      | CPT       | Fetal non-stress test (NST)                              |
+| 76815      | CPT       | Ultrasound, pregnant uterus, limited                     |
+| 76805      | CPT       | Ultrasound, pregnant uterus, detailed                    |
+
+[GOALS]
+GOAL-001:
+  Description: Achieve glycemic control meeting ACOG/ADA targets
+  Target Value: Fasting <95 mg/dL, 1-hr PP <140 mg/dL, 2-hr PP <120 mg/dL, >=80% values at target
+  Target Days: 14
+  Priority: HIGH
+  Guideline: ACOG Practice Bulletin 190, ADA Standards of Care 2026
+
+GOAL-002:
+  Description: Classify GDM as GDMA1 or GDMA2 based on response to lifestyle modification
+  Target Value: Determine if >20% glucose values out of range after 1-2 weeks MNT
+  Target Days: 14
+  Priority: HIGH
+  Guideline: ACOG/SMFM Classification Criteria
+
+GOAL-003:
+  Description: Prevent fetal macrosomia through glycemic control
+  Target Value: Estimated fetal weight <4000 grams at delivery
+  Target Days: 280
+  Priority: HIGH
+  Guideline: ACOG Fetal Growth Monitoring Guidelines
+
+GOAL-004:
+  Description: Implement appropriate fetal surveillance based on GDM class
+  Target Value: GDMA1 no routine testing; GDMA2 testing at 32 weeks
+  Target Days: 224
+  Priority: HIGH
+  Guideline: SMFM Choosing Wisely, ACOG Practice Bulletin 190
+
+GOAL-005:
+  Description: Achieve appropriate delivery timing by GDM class and control status
+  Target Value: GDMA1 39-40+6wk; GDMA2 good 39wk; GDMA2 poor 37-38+6wk
+  Target Days: 280
+  Priority: HIGH
+  Guideline: ACOG Delivery Timing Recommendations
+
+GOAL-006:
+  Description: Complete postpartum glucose tolerance testing
+  Target Value: 75-gram OGTT completed between 4-12 weeks postpartum
+  Target Days: 84
+  Priority: HIGH
+  Guideline: ACOG/ADA Postpartum Diabetes Screening
+
+GOAL-007:
+  Description: Establish long-term diabetes prevention plan
+  Target Value: Lifelong screening every 1-3 years, lifestyle intervention if prediabetes
+  Target Days: 365
+  Priority: MEDIUM
+  Guideline: ADA Diabetes Prevention Program Standards
+
+[INTERVENTIONS]
+INT-001:
+  Type: PROCEDURE
+  Description: GDM screening with 50-gram glucose challenge test at 24-28 weeks
+  Procedure Code: 82950
+  Schedule Days: 0
+  Instructions: Non-fasting; draw blood 1 hour post; threshold 130-140 mg/dL per institution
+  Guideline: ACOG Universal Two-Step Screening
+
+INT-002:
+  Type: PROCEDURE
+  Description: Diagnostic 100-gram 3-hour OGTT if screening positive
+  Procedure Code: 82951
+  Schedule Days: 7
+  Instructions: Fasting 8+ hours; Carpenter-Coustan criteria; diagnose if >=2 abnormal values (FPG>=95, 1hr>=180, 2hr>=155, 3hr>=140)
+  Guideline: ACOG Carpenter-Coustan Diagnostic Criteria
+
+INT-003:
+  Type: EDUCATION
+  Description: Medical nutrition therapy initiation within 1 week of diagnosis
+  Procedure Code: 97802
+  Schedule Days: 0
+  Instructions: RDN consultation; carb counting 175-200g/day; 3 meals + 2-3 snacks; individualized plan
+  Guideline: ADA Medical Nutrition Therapy Guidelines
+
+INT-004:
+  Type: LIFESTYLE
+  Description: Physical activity prescription for 150 minutes per week
+  Schedule Days: 0
+  Instructions: 30 min moderate activity 5 days/wk; walking after meals; avoid supine exercise after 1st trimester
+  Guideline: ADA Physical Activity Guidelines
+
+INT-005:
+  Type: MONITORING
+  Description: Self-monitoring blood glucose 4 times daily for classification
+  Schedule Days: 0
+  Instructions: Fasting + 1-2 hr post each meal; record in log; assess after 1-2 weeks for A1 vs A2 classification
+  Guideline: ACOG/ADA Glucose Monitoring for Classification
+
+INT-006:
+  Type: MONITORING
+  Description: Control assessment at 1-2 weeks to classify GDMA1 vs GDMA2
+  Schedule Days: 14
+  Instructions: Calculate % values out of range; if <=20% out of range = GDMA1; if >20% out of range = GDMA2; alternative triggers: >5 abnormal in 7 days, >2 elevated at same meal over 2 weeks
+  Guideline: ACOG Practice Bulletin 190
+
+INT-007:
+  Type: MEDICATION
+  Description: Insulin therapy for GDMA2 (first-line pharmacotherapy)
+  Medication Code: 86009
+  Dosage: 0.7-1.0 units/kg/day total, 50% basal/50% prandial
+  Frequency: QID
+  Schedule Days: 14
+  Instructions: Lispro or aspart for prandial; NPH or glargine for basal; titrate based on glucose patterns; anticipate increasing requirements
+  Guideline: ACOG Insulin First-Line Recommendation
+
+INT-008:
+  Type: MEDICATION
+  Description: Metformin as alternative for GDMA2 if insulin declined
+  Medication Code: 861007
+  Dosage: Start 500mg, titrate to max 2500mg daily
+  Frequency: BID
+  Schedule Days: 14
+  Instructions: Counsel placental transfer; 50% will need supplemental insulin; contraindicated in preeclampsia/IUGR risk; expeditious transition to insulin if inadequate
+  Guideline: SMFM Metformin Alternative Statement
+
+INT-009:
+  Type: MONITORING
+  Description: GDMA1 fetal surveillance - NO routine testing unless risk factors
+  Schedule Days: 224
+  Instructions: No routine NST/BPP for well-controlled GDMA1; initiate testing at 32 weeks ONLY if: macrosomia, FGR, polyhydramnios, preeclampsia, prior stillbirth, or suboptimal control develops
+  Guideline: SMFM Choosing Wisely, ACOG Practice Bulletin 190
+
+INT-010:
+  Type: MONITORING
+  Description: GDMA2 well-controlled fetal surveillance - 1-2x weekly at 32 weeks
+  Procedure Code: 59025
+  Schedule Days: 224
+  Instructions: Begin NST or BPP at 32 weeks; frequency 1-2x weekly; options: weekly NST + weekly modified BPP, OR twice weekly NST, OR weekly BPP
+  Guideline: SMFM Pharmacotherapy Surveillance Recommendation
+
+INT-011:
+  Type: MONITORING
+  Description: GDMA2 poorly controlled fetal surveillance - 2x weekly minimum
+  Procedure Code: 59025
+  Schedule Days: 224
+  Instructions: Poorly controlled = HbA1c >8.5% or >20% values out of range on meds; NST/BPP 2x weekly minimum; consider 3x weekly if severe; earlier start if complications
+  Guideline: ACOG High-Risk Fetal Surveillance
+
+INT-012:
+  Type: MONITORING
+  Description: Growth ultrasound schedule based on GDM class
+  Procedure Code: 76816
+  Schedule Days: 224
+  Instructions: GDMA1: baseline at diagnosis, repeat only if indicated, consider 36-37wk if concerns. GDMA2: initial at 28-32wk, every 4 weeks, final 36-37wk. GDMA2 poor: q4wk plus targeted scans at 32, 36, 37+ wk
+  Guideline: ACOG Fetal Growth Monitoring
+
+INT-013:
+  Type: PROCEDURE
+  Description: Delivery timing based on GDM class and control
+  Schedule Days: 273
+  Instructions: GDMA1 well-controlled: 39 0/7 to 40 6/7 weeks. GDMA2 well-controlled: 39 0/7 to 39 6/7 weeks. GDMA2 poorly controlled: 37 0/7 to 38 6/7 weeks. Earlier (34-36 6/7) only for failed inpatient optimization, abnormal surveillance, or complications
+  Guideline: ACOG Delivery Timing by GDM Class
+
+INT-014:
+  Type: PROCEDURE
+  Description: Intrapartum glucose management
+  Schedule Days: 273
+  Instructions: Monitor glucose q1-2hr during labor; target 70-110 mg/dL. GDMA1: monitor only, treat if hyperglycemia. GDMA2 insulin: IV insulin protocol or sliding scale. GDMA2 metformin: hold, insulin PRN
+  Guideline: ACOG Intrapartum Glucose Management
+
+INT-015:
+  Type: EDUCATION
+  Description: Breastfeeding initiation and support
+  Schedule Days: 273
+  Instructions: Encourage early and frequent breastfeeding; reduces neonatal hypoglycemia; may reduce maternal T2DM risk
+  Guideline: ADA Breastfeeding Recommendations
+
+INT-016:
+  Type: PROCEDURE
+  Description: Postpartum 75-gram OGTT at 4-12 weeks
+  Procedure Code: 82951
+  Schedule Days: 301
+  Instructions: Use non-pregnancy criteria. Normal: FPG <100 AND 2hr <140. Prediabetes: FPG 100-125 OR 2hr 140-199. T2DM: FPG >=126 OR 2hr >=200
+  Guideline: ACOG/ADA Postpartum Screening
+
+INT-017:
+  Type: FOLLOW_UP
+  Description: Long-term diabetes screening every 1-3 years lifelong
+  Procedure Code: 83036
+  Schedule Days: 365
+  Instructions: If postpartum OGTT normal, screen every 1-3 years for minimum 10 years; lifelong recommended given >50% lifetime T2DM risk
+  Guideline: ADA Long-Term Surveillance
+
+INT-018:
+  Type: EDUCATION
+  Description: Diabetes prevention counseling for prediabetes
+  Schedule Days: 301
+  Instructions: Intensive lifestyle intervention reduces T2DM risk 58%; consider metformin if BMI >=35; annual screening if prediabetes
+  Guideline: ADA Diabetes Prevention Program
+
+INT-019:
+  Type: EDUCATION
+  Description: Preconception counseling for future pregnancies
+  Schedule Days: 365
+  Instructions: 40-84% GDM recurrence risk; optimize weight and metabolic health; if T2DM diagnosed, achieve HbA1c <6.5% before conception
+  Guideline: ADA Preconception Care Standards
+
+[CLINICAL CONTENT]
+--- CLASSIFICATION ---
+GDMA1 (Class A1 - Diet-Controlled):
+- Abnormal OGTT meeting diagnostic criteria
+- Fasting glucose <105 mg/dL AND 2-hour postprandial <120 mg/dL on lifestyle alone
+- Managed with MNT + exercise without pharmacotherapy
+- <=20% of glucose values out of target range
+- ICD-10-CM: O24.410
+
+GDMA2 (Class A2 - Medication-Requiring):
+- Fasting glucose >=105 mg/dL AND/OR postprandial >=120 mg/dL (2-hr) or >=140 mg/dL (1-hr)
+- Requires insulin or oral hypoglycemic agents
+- >20% of glucose values remain out of range despite 1-2 weeks of MNT
+- ICD-10-CM: O24.414 (insulin), O24.415 (oral agents)
+
+--- GLYCEMIC CONTROL DEFINITIONS ---
+Well-Controlled:
+- <=1 occasion of FPG >=95 OR 2-hr PP >=120 during monitoring period
+- <25% time above range (>140 mg/dL) if using CGM
+- >=80% of glucose values at target
+
+Suboptimally Controlled:
+- >1 occasion of FPG >=95 OR 2-hr PP >=120
+- Associated with higher postpartum T2DM risk
+
+Poorly Controlled:
+- HbA1c >8.5%
+- Persistent hyperglycemia despite pharmacotherapy
+- >20% values out of range on current regimen
+- 3-8 fold increased congenital anomaly risk if early pregnancy
+
+--- A1 TO A2 ESCALATION TRIGGERS ---
+Primary: >20% of blood glucose values out of target range after 1-2 weeks MNT
+
+Alternative triggers (any one):
+- >5 abnormal values in any 7-day period
+- >2 elevated values at same meal during 2-week period (>10 mg/dL above target)
+- >=50% of values in a given week elevated above target
+
+--- FETAL SURVEILLANCE BY CLASS ---
+GDMA1 (Diet-Controlled):
+- Routine antenatal testing: NOT indicated
+- SMFM Choosing Wisely: "Do not perform routine fetal surveillance in patients with
+  appropriate glucose control via dietary modifications alone"
+- Exceptions requiring testing at 32 weeks: macrosomia, FGR, polyhydramnios, preeclampsia,
+  prior stillbirth, suboptimal control
+- Growth US: Not routine; consider 36-37 weeks if any concerns
+
+GDMA2 Well-Controlled:
+- Start testing: 32 weeks (earlier if renal/vascular disease or IUGR)
+- NST/BPP: 1-2x weekly
+- Growth US: Every 4 weeks, final at 36-37 weeks
+
+GDMA2 Poorly Controlled:
+- Start testing: 32 weeks (or earlier if complications)
+- NST/BPP: 2x weekly MINIMUM; consider 3x weekly if severe
+- Growth US: Every 4 weeks PLUS targeted scans at 32, 36, 37+ weeks
+- Consider hospitalization for optimization
+
+--- DELIVERY TIMING BY CLASS ---
+| Classification           | Delivery Timing          |
+|--------------------------|--------------------------|
+| GDMA1 well-controlled    | 39 0/7 - 40 6/7 weeks    |
+| GDMA2 well-controlled    | 39 0/7 - 39 6/7 weeks    |
+| GDMA2 suboptimally ctrl  | 38 0/7 - 39 0/7 weeks    |
+| GDMA2 poorly controlled  | 37 0/7 - 38 6/7 weeks    |
+| Any GDM + complications  | Individualized, earlier  |
+
+Earlier delivery (34-36 6/7 weeks) reserved for:
+- Failed in-hospital glycemic optimization
+- Abnormal fetal surveillance
+- Fetal growth restriction
+- Preeclampsia/severe hypertension
+
+--- PHARMACOTHERAPY ---
+First-Line: INSULIN (preferred - does not cross placenta)
+- Rapid-acting: Lispro (Humalog) or Aspart (NovoLog) for prandial
+- Basal: NPH, Glargine (Lantus), or Detemir (Levemir)
+- Starting dose: 0.7-1.0 units/kg/day, divided 50% basal/50% prandial
+- Titrate based on glucose patterns
+
+Alternative: METFORMIN (if insulin declined)
+- Crosses placenta (cord levels = maternal levels)
+- 50% will require supplemental insulin
+- Contraindicated: preeclampsia, hypertension, IUGR risk
+- Start 500mg daily, max 2500mg divided
+
+NOT Recommended: Glyburide (inferior outcomes)
+
+--- POSTPARTUM SCREENING ---
+75-gram OGTT at 4-12 weeks postpartum using NON-PREGNANCY criteria:
+- Normal: FPG <100 mg/dL AND 2-hr <140 mg/dL
+- Prediabetes: FPG 100-125 mg/dL OR 2-hr 140-199 mg/dL
+- Type 2 Diabetes: FPG >=126 mg/dL OR 2-hr >=200 mg/dL
+
+Long-term: Screen every 1-3 years lifelong (>50% lifetime T2DM risk)
+
+--- REFERENCES ---
+1. American College of Obstetricians and Gynecologists. ACOG Practice Bulletin
+   No. 190: Gestational Diabetes Mellitus. Obstet Gynecol. 2018;131(2):e49-e64.
+   doi:10.1097/AOG.0000000000002501
+
+2. Society for Maternal-Fetal Medicine. SMFM Statement: Pharmacological Treatment
+   of Gestational Diabetes. Am J Obstet Gynecol. 2018;218(5):B2-B4.
+   doi:10.1016/j.ajog.2018.02.015
+
+3. American Diabetes Association Professional Practice Committee. Standards of Care
+   in Diabetes—2026. 15. Management of Diabetes in Pregnancy. Diabetes Care.
+   2026;49(Suppl 1):S321-S340.
+
+4. SMFM Choosing Wisely Campaign. Don't perform routine antenatal fetal surveillance
+   for well-controlled diet-treated gestational diabetes. 2019.
+
+5. Metzger BE, et al. Hyperglycemia and adverse pregnancy outcomes (HAPO Study).
+   N Engl J Med. 2008;358(19):1991-2002. doi:10.1056/NEJMoa0707943
+
+6. Landon MB, et al. A multicenter, randomized trial of treatment for mild
+   gestational diabetes. N Engl J Med. 2009;361(14):1339-1348.
+   doi:10.1056/NEJMoa0902430
+
+7. U.S. Preventive Services Task Force. Screening for Gestational Diabetes: US
+   Preventive Services Task Force Recommendation Statement. JAMA. 2021;326(6):531-538.
+   doi:10.1001/jama.2021.11922
+
+8. California Diabetes and Pregnancy Program (CDAPP) Sweet Success Guidelines. 2015.
+
+9. Carpenter MW, Coustan DR. Criteria for screening tests for gestational diabetes.
+   Am J Obstet Gynecol. 1982;144(7):768-773.
+
+10. International Association of Diabetes and Pregnancy Study Groups (IADPSG).
+    Recommendations on the Diagnosis and Classification of Hyperglycemia in Pregnancy.
+    Diabetes Care. 2010;33(3):676-682. doi:10.2337/dc09-1848
+
+================================================================================
+END OF DOCUMENT
+================================================================================

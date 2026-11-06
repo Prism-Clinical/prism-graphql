@@ -1,0 +1,321 @@
+================================================================================
+CARE PLAN DOCUMENT
+================================================================================
+
+[METADATA]
+Title: Hyperthyroidism in Pregnancy Care Pathway
+Category: CHRONIC_DISEASE
+Version: 1.0
+Last Updated: 2025-01-30
+Author: Clinical Guidelines Committee
+Guideline Source: ATA 2017 Guidelines, ACOG Practice Bulletin No. 223 (2020, reaffirmed 2024)
+Evidence Grade: A
+
+[CONDITION CODES]
+| Code       | System    | Description                                              |
+|------------|-----------|----------------------------------------------------------|
+| O99.281    | ICD-10    | Hyperthyroidism complicating pregnancy, first trimester  |
+| O99.282    | ICD-10    | Hyperthyroidism complicating pregnancy, second trimester |
+| O99.283    | ICD-10    | Hyperthyroidism complicating pregnancy, third trimester  |
+| O99.284    | ICD-10    | Hyperthyroidism complicating childbirth                  |
+| O99.285    | ICD-10    | Hyperthyroidism complicating the puerperium              |
+| E05.00     | ICD-10    | Thyrotoxicosis with diffuse goiter without storm         |
+| E05.01     | ICD-10    | Thyrotoxicosis with diffuse goiter with thyroid storm    |
+| E05.90     | ICD-10    | Thyrotoxicosis unspecified without storm                 |
+| O90.5      | ICD-10    | Postpartum thyroiditis                                   |
+| P72.1      | ICD-10    | Transitory neonatal hyperthyroidism                      |
+| 34486009   | SNOMED    | Hyperthyroidism (disorder)                               |
+| 353295004  | SNOMED    | Graves' disease (disorder)                               |
+| 237540006  | SNOMED    | Hyperthyroidism in pregnancy (disorder)                  |
+| 237532005  | SNOMED    | Gestational thyrotoxicosis (disorder)                    |
+| 84295004   | SNOMED    | Thyrotoxic crisis (disorder)                             |
+| 427970008  | SNOMED    | Subclinical hyperthyroidism (disorder)                   |
+| 190268005  | SNOMED    | Neonatal thyrotoxicosis (disorder)                       |
+| 237538009  | SNOMED    | Postpartum thyroiditis (disorder)                        |
+| 360335006  | SNOMED    | Fetal goiter (disorder)                                  |
+
+[MEDICATION CODES]
+| Code       | System    | Description                                              |
+|------------|-----------|----------------------------------------------------------|
+| 8787       | RxNorm    | Propylthiouracil (ingredient)                            |
+| 198175     | RxNorm    | Propylthiouracil 50 MG Oral Tablet                       |
+| 6835       | RxNorm    | Methimazole (ingredient)                                 |
+| 197942     | RxNorm    | Methimazole 5 MG Oral Tablet                             |
+| 197943     | RxNorm    | Methimazole 10 MG Oral Tablet                            |
+| 197944     | RxNorm    | Methimazole 20 MG Oral Tablet                            |
+| 8698       | RxNorm    | Propranolol (ingredient)                                 |
+| 198104     | RxNorm    | Propranolol 10 MG Oral Tablet                            |
+| 198108     | RxNorm    | Propranolol 40 MG Oral Tablet                            |
+| 6038       | RxNorm    | Potassium Iodide (ingredient)                            |
+| 6037       | RxNorm    | Lugol's Solution                                         |
+| 217128     | RxNorm    | SSKI (Saturated Solution of Potassium Iodide)            |
+| 3264       | RxNorm    | Dexamethasone (ingredient)                               |
+
+[LAB CODES]
+| Code       | System    | Description                                              |
+|------------|-----------|----------------------------------------------------------|
+| 3016-3     | LOINC     | Thyrotropin (TSH) [Units/volume] in Serum or Plasma      |
+| 11580-8    | LOINC     | Thyrotropin by 3rd generation method                     |
+| 3024-7     | LOINC     | Thyroxine (T4) free [Mass/volume] in Serum or Plasma     |
+| 3051-0     | LOINC     | Triiodothyronine (T3) free [Mass/volume] in Serum        |
+| 3026-2     | LOINC     | Thyroxine (T4) total [Mass/volume] in Serum or Plasma    |
+| 3053-6     | LOINC     | Triiodothyronine (T3) total [Mass/volume] in Serum       |
+| 5385-0     | LOINC     | Thyrotropin receptor Ab (TRAb) [Units/volume] in Serum   |
+| 5379-3     | LOINC     | Thyroid stimulating immunoglobulin (TSI)                 |
+| 8099-4     | LOINC     | Thyroperoxidase Ab (TPO Ab) in Serum or Plasma           |
+| 8098-6     | LOINC     | Thyroglobulin Ab (TgAb) in Serum                         |
+
+[PROCEDURE CODES]
+| Code       | System    | Description                                              |
+|------------|-----------|----------------------------------------------------------|
+| 84443      | CPT       | Thyroid Stimulating Hormone (TSH)                        |
+| 84439      | CPT       | Thyroxine; free (Free T4)                                |
+| 84481      | CPT       | Triiodothyronine T3; free (Free T3)                      |
+| 84436      | CPT       | Thyroxine; total (Total T4)                              |
+| 84480      | CPT       | Triiodothyronine T3; total (Total T3)                    |
+| 80091      | CPT       | Thyroid panel (T3, T4, TSH)                              |
+| 86376      | CPT       | Microsomal antibodies (TPO antibodies)                   |
+| 86800      | CPT       | Thyroglobulin antibody                                   |
+| 76536      | CPT       | Ultrasound, soft tissues of head and neck (thyroid)      |
+| 76805      | CPT       | Ultrasound, pregnant uterus                              |
+| 76811      | CPT       | Ultrasound, detailed fetal anatomic examination          |
+| 76818      | CPT       | Fetal biophysical profile                                |
+| 59025      | CPT       | Fetal non-stress test                                    |
+
+[GOALS]
+GOAL-001:
+  Description: Maintain maternal free T4 at upper limit of trimester-specific normal range
+  Target Value: Free T4 at 90-100% of upper limit
+  Target Days: Throughout pregnancy
+  Priority: HIGH
+  Guideline: ATA 2017 Guidelines - prevents fetal hypothyroidism from overtreatment
+
+GOAL-002:
+  Description: Prevent maternal thyroid storm during pregnancy and delivery
+  Target Value: No thyroid storm events
+  Target Days: Throughout pregnancy and immediate postpartum
+  Priority: HIGH
+  Guideline: Maternal mortality 8-25% if thyroid storm occurs
+
+GOAL-003:
+  Description: Identify and monitor fetuses at risk for thyrotoxicosis
+  Target Value: TRAb monitoring per protocol, monthly ultrasound if elevated
+  Target Days: 18-22 weeks initial, 28-32 weeks if high TRAb
+  Priority: HIGH
+  Guideline: Fetal thyrotoxicosis occurs in 1-5% of TRAb-positive mothers
+
+GOAL-004:
+  Description: Transition from PTU to methimazole to minimize hepatotoxicity
+  Target Value: Complete transition by 16 weeks gestation
+  Target Days: 12-16 weeks gestation
+  Priority: HIGH
+  Guideline: PTU hepatotoxicity can be fatal; methimazole preferred after organogenesis
+
+GOAL-005:
+  Description: Screen and manage at-risk neonates for thyrotoxicosis
+  Target Value: Cord blood TRAb, TSH/T4 at days 3-7 and 10-14
+  Target Days: Birth through 14 days
+  Priority: HIGH
+  Guideline: Neonatal thyrotoxicosis has 12-20% untreated mortality
+
+GOAL-006:
+  Description: Achieve euthyroid state before conception or early pregnancy
+  Target Value: TSH within trimester-specific range
+  Target Days: Preconception or first trimester
+  Priority: MEDIUM
+  Guideline: Uncontrolled hyperthyroidism increases preeclampsia, preterm birth
+
+GOAL-007:
+  Description: Reassess and adjust therapy postpartum for immune rebound
+  Target Value: Thyroid function testing at 6-12 weeks postpartum
+  Target Days: 42-84 days postpartum
+  Priority: MEDIUM
+  Guideline: Graves' disease flares in 3-12 months postpartum
+
+[INTERVENTIONS]
+INT-001:
+  Type: PROCEDURE
+  Description: TSH screening with trimester-specific reference ranges
+  Procedure Code: 84443
+  Schedule Days: 0
+  Instructions: First trimester 0.1-2.5 mU/L, second 0.2-3.0 mU/L, third 0.3-3.5 mU/L. Screen all high-risk women at first prenatal visit
+  Guideline: ATA 2017 recommends aggressive case-finding vs universal screening
+
+INT-002:
+  Type: PROCEDURE
+  Description: Confirmatory testing with free T4 and TRAb if TSH suppressed
+  Procedure Code: 84439
+  Schedule Days: 0
+  Instructions: Obtain free T4 or total T4 x1.5. Check TRAb to differentiate Graves' from gestational thyrotoxicosis
+  Guideline: TRAb-positive indicates Graves' disease requiring treatment; TRAb-negative suggests gestational thyrotoxicosis
+
+INT-003:
+  Type: MEDICATION
+  Description: Propylthiouracil first-line therapy during first trimester
+  Medication Code: 198175
+  Dosage: 50-300mg
+  Frequency: TID
+  Schedule Days: 0-112
+  Instructions: Mild disease 50-100mg TID, moderate 100-150mg TID, severe 200-300mg TID (max 450mg/day). Dose to maintain free T4 at upper normal limit
+  Guideline: PTU preferred over methimazole in first trimester due to methimazole embryopathy risk (1.6-4% congenital anomalies)
+
+INT-004:
+  Type: MEDICATION
+  Description: Methimazole therapy after first trimester
+  Medication Code: 197942
+  Dosage: 5-15mg
+  Frequency: QD
+  Schedule Days: 84-280
+  Instructions: Switch from PTU at 12-16 weeks. Conversion ratio PTU:methimazole = 20:1. Once-daily dosing improves adherence
+  Guideline: Methimazole preferred after organogenesis to avoid PTU hepatotoxicity (25-50% fatal in severe cases)
+
+INT-005:
+  Type: MONITORING
+  Description: Thyroid function testing during dose adjustments
+  Schedule Days: 14
+  Instructions: Check TSH and free T4 every 2-4 weeks during dose titration, then every 4 weeks once stable. Minimum check at 30 weeks
+  Guideline: Target free T4 at upper limit of normal; normalizing TSH suggests overtreatment
+
+INT-006:
+  Type: MONITORING
+  Description: TRAb monitoring for Graves' disease patients
+  Schedule Days: 0
+  Instructions: Check at diagnosis/initial visit, repeat at 18-22 weeks, repeat at 28-32 weeks if >3x upper limit
+  Guideline: TRAb >3x upper limit (~>5 IU/L) indicates high fetal risk requiring intensive surveillance
+
+INT-007:
+  Type: PROCEDURE
+  Description: Fetal ultrasound surveillance for high-risk pregnancies
+  Procedure Code: 76811
+  Schedule Days: 126
+  Instructions: Begin at 18-22 weeks for TRAb-positive mothers or those on antithyroid drugs. Monthly from 22 weeks: assess thyroid size, heart rate, growth, bone maturation, fluid
+  Guideline: Doppler thyroid vascularity: central flow = hyperthyroidism, peripheral = hypothyroidism
+
+INT-008:
+  Type: EDUCATION
+  Description: Differentiation of Graves' disease vs gestational thyrotoxicosis counseling
+  Schedule Days: 0
+  Instructions: Explain that TRAb-negative thyrotoxicosis with hyperemesis is likely gestational (resolves 14-20 weeks, no treatment needed). TRAb-positive requires ongoing antithyroid therapy
+  Guideline: Gestational thyrotoxicosis affects 1-3% pregnancies, associated with hCG >200,000 IU/L
+
+INT-009:
+  Type: MEDICATION
+  Description: Beta-blocker symptom management (if needed)
+  Medication Code: 198108
+  Dosage: 40mg
+  Frequency: TID
+  Instructions: Use propranolol for severe symptoms (tachycardia, tremor). Safe during pregnancy and breastfeeding
+  Guideline: Symptom control while awaiting antithyroid drug effect
+
+INT-010:
+  Type: PROCEDURE
+  Description: Thyroid storm emergency protocol
+  Procedure Code: 80091
+  Schedule Days: 0
+  Instructions: PTU 500-1000mg load then 200-250mg q4h; iodine 1-2h AFTER PTU (Lugol's 10 drops q8h); dexamethasone 2mg IV q6h x4; propranolol 60-80mg q4-6h; ICU admission
+  Guideline: Mortality 8-25%. Delay delivery 24-48h if possible to stabilize mother first
+
+INT-011:
+  Type: MONITORING
+  Description: Neonatal thyroid screening for at-risk infants
+  Schedule Days: 0
+  Instructions: Cord blood TRAb if mother TRAb-positive. TSH/free T4/free T3 at days 3-7 and 10-14. Continue weekly until TRAb normalizes
+  Guideline: Symptoms may be delayed 1-10 days (maternal ATD clearance) or up to 45 days in rare cases
+
+INT-012:
+  Type: REFERRAL
+  Description: Pediatric endocrinology consultation for neonatal thyrotoxicosis
+  Referral Specialty: Pediatric Endocrinology
+  Schedule Days: 0
+  Instructions: Immediate referral if neonate develops symptoms: irritability, tachycardia, poor weight gain despite appetite, diarrhea, goiter, exophthalmos
+  Guideline: Treatment includes methimazole 0.5-1mg/kg/day and propranolol 2mg/kg/day
+
+INT-013:
+  Type: FOLLOW_UP
+  Description: Postpartum thyroid function reassessment
+  Schedule Days: 42
+  Instructions: Check thyroid function at 6-12 weeks postpartum. Differentiate postpartum thyroiditis (TRAb-negative, self-limiting) from Graves' flare (TRAb-positive). Expect need for increased ATD doses due to immune rebound
+  Guideline: Postpartum thyroiditis affects 5-10% all postpartum women; Graves' flares most common 3-12 months after delivery
+
+INT-014:
+  Type: EDUCATION
+  Description: Breastfeeding safety counseling with antithyroid medications
+  Schedule Days: 0
+  Instructions: Reassure that both PTU (≤450mg/day) and methimazole (≤20-30mg/day) are compatible with breastfeeding per ATA/AAP. No routine infant monitoring needed. Propranolol preferred beta-blocker
+  Guideline: PTU only 0.025% excreted in milk; radioactive iodine absolutely contraindicated
+
+[CLINICAL CONTENT]
+
+--- OVERVIEW ---
+Hyperthyroidism affects 0.1-0.4% of pregnancies and requires carefully orchestrated management across all trimesters to optimize maternal and fetal outcomes. The cornerstone of treatment involves using propylthiouracil (PTU) during the first trimester due to methimazole's teratogenic risk, then switching to methimazole after 16 weeks to avoid PTU hepatotoxicity. Treatment targets should maintain maternal free T4 at the upper limit of normal rather than normalizing TSH, which helps prevent fetal hypothyroidism from antithyroid drug overexposure. Modern management has reduced perinatal mortality from historical rates of 20-45% to approximately 1.7% when disease is well-controlled.
+
+--- PATHOPHYSIOLOGY ---
+Understanding normal pregnancy thyroid physiology is essential for accurate diagnosis. Human chorionic gonadotropin (hCG) shares structural homology with TSH at its beta subunit, allowing hCG to weakly stimulate the TSH receptor. As hCG peaks between 8-14 weeks gestation, this causes physiologic TSH suppression and mild elevation in free T4. Pregnancy induces a 50% increase in thyroxine-binding globulin due to elevated estrogen, which increases total T4 and T3 concentrations while free hormone levels remain relatively stable. The thyroid gland enlarges by 10-30% and approximately doubles its hormone production.
+
+While thyroid hormones cross the placenta minimally, TSH receptor antibodies (TRAb) freely cross as IgG molecules, potentially causing fetal or neonatal thyrotoxicosis. Antithyroid medications also cross freely and can treat fetal hyperthyroidism but may cause fetal hypothyroidism if doses are excessive.
+
+--- RISK FACTORS ---
+The ATA and ACOG recommend aggressive case-finding rather than universal screening. Women with any of the following risk factors should undergo TSH testing at the first prenatal visit:
+- Personal history of thyroid disease, thyroid surgery, or radioiodine therapy
+- Family history of thyroid disease, particularly autoimmune conditions
+- Type 1 diabetes mellitus or other autoimmune disorders
+- Age greater than 30 years
+- History of miscarriage, preterm delivery, or infertility
+- Presence of goiter or thyroid nodules
+- Symptoms suggestive of thyroid dysfunction (tremor, palpitations, heat intolerance, unexplained weight loss)
+- Multiple gestation or hyperemesis gravidarum
+- Women with prior Graves' disease remain at risk even after thyroidectomy or radioiodine ablation because TRAb can persist for years
+
+--- DIAGNOSIS ---
+The diagnosis of hyperthyroidism in pregnancy requires TSH measurement using trimester-specific reference ranges. Practical trimester ranges when laboratory-specific ranges are unavailable: First trimester 0.1-2.5 mU/L, Second trimester 0.2-3.0 mU/L, Third trimester 0.3-3.5 mU/L.
+
+Overt hyperthyroidism is defined as TSH suppressed below the trimester-specific lower limit with elevated free T4 or free T3. Subclinical hyperthyroidism involves suppressed TSH with normal free thyroid hormone levels and notably does not require treatment during pregnancy.
+
+The distinction between Graves' disease and gestational transient thyrotoxicosis (GTT) fundamentally changes management. Graves' disease requires antithyroid drug therapy, while GTT is self-limiting and requires only supportive care. TRAb testing is essential: TRAb-positive indicates Graves' disease, TRAb-negative suggests GTT. GTT affects 1-3% of pregnancies, occurs with extremely high hCG levels (typically >200,000 IU/L), and resolves spontaneously as hCG declines in the second trimester.
+
+--- TREATMENT ---
+First trimester: Propylthiouracil is the only recommended antithyroid drug. Methimazole exposure during weeks 5-10 carries 1.6-4% absolute risk for specific congenital anomalies including aplasia cutis, choanal atresia, esophageal atresia, omphalocele, and facial dysmorphism. PTU dosing: mild disease 50-100mg TID, moderate 100-150mg TID, severe 200-300mg TID (maximum 450mg/day).
+
+Second and third trimester: At 12-16 weeks gestation, switch from PTU to methimazole to minimize PTU hepatotoxicity risk (25-50% fatal in severe cases). Conversion ratio approximately PTU:methimazole = 20:1. Methimazole administered as 5-15mg once daily for most patients.
+
+Treatment target: Maintain free T4 at upper limit of normal rather than normalizing TSH. If TSH normalizes during treatment, this indicates potential overtreatment and risk of fetal hypothyroidism.
+
+--- FETAL MONITORING ---
+Fetal risks: Poorly controlled maternal hyperthyroidism substantially increases complications. Intrauterine growth restriction shows odds ratio of 4.57 compared to euthyroid pregnancies. Additional fetal risks include tachycardia (>160 bpm), goiter, thyrotoxicosis, hydrops fetalis, and stillbirth.
+
+Fetal ultrasound surveillance should begin at 18-22 weeks for all women with elevated maternal TRAb, current antithyroid drug therapy, or history of Graves' disease. Monthly ultrasound from 22 weeks should assess fetal thyroid size, heart rate, growth parameters, bone maturation, and amniotic fluid volume.
+
+--- NEONATAL CONSIDERATIONS ---
+Neonatal thyrotoxicosis occurs in 1-5% of infants born to TRAb-positive mothers, with untreated mortality of 12-20%. The condition typically lasts 2-3 months, correlating with TRAb clearance (half-life 1-2 weeks). Presentation includes irritability, tachycardia, poor weight gain despite voracious appetite, diarrhea, goiter, and exophthalmos. Symptoms may be delayed 1-10 days if the mother was taking antithyroid drugs.
+
+Testing protocol for at-risk neonates: cord blood TRAb if mother TRAb-positive, TSH/free T4/free T3 at days 3-7 and 10-14, continue weekly until TRAb normalizes.
+
+--- COMPLICATIONS ---
+Thyroid storm: Thyroid storm in pregnancy carries 8-25% mortality and affects approximately 1-2% of hyperthyroid pregnancies. Common precipitants include labor, cesarean section, preeclampsia, infection, and diabetic ketoacidosis.
+
+Emergency treatment must begin immediately: PTU loading 500-1000mg then 200-250mg every 4 hours; iodine 1-2 hours AFTER PTU (Lugol's solution 10 drops every 8 hours); dexamethasone 2mg IV every 6 hours for 4 doses; propranolol 60-80mg every 4-6 hours; ICU admission with supportive care. Delivery should be avoided during active thyroid storm—stabilize the mother for 24-48 hours before delivery if possible.
+
+Maternal complications: Uncontrolled hyperthyroidism significantly increases preeclampsia (odds ratio 1.78), preterm birth (odds ratio 1.81, absolute risk 19.3% vs 12.3% baseline), low birth weight (9x higher if uncontrolled), and ICU admission (odds ratio 3.70).
+
+--- POSTPARTUM MANAGEMENT ---
+The postpartum period represents immune rebound from pregnancy-related immunosuppression, with Graves' disease flare risk highest 3-12 months after delivery. Postpartum thyroiditis affects 5-10% of all postpartum women and carries approximately 50% risk of permanent hypothyroidism.
+
+Reassess thyroid function at 6-12 weeks postpartum. Differentiate postpartum thyroiditis (TRAb-negative, self-limiting) from Graves' disease recurrence (TRAb-positive, requires treatment). Women with Graves' disease typically require increased antithyroid drug doses postpartum due to immune rebound.
+
+--- BREASTFEEDING ---
+Both PTU and methimazole are compatible with breastfeeding per ATA and AAP guidelines. PTU is safe at doses ≤450mg/day with only 0.025% excreted in milk. Methimazole is safe at doses ≤20-30mg/day. No routine monitoring of infant thyroid function is required. Propranolol is the preferred beta-blocker during breastfeeding. Radioactive iodine is absolutely contraindicated during breastfeeding.
+
+--- REFERENCES ---
+1. Alexander EK, Pearce EN, Brent GA, et al. 2017 Guidelines of the American Thyroid Association for the Diagnosis and Management of Thyroid Disease During Pregnancy and the Postpartum. Thyroid. 2017;27(3):315-389.
+
+2. American College of Obstetricians and Gynecologists. Practice Bulletin No. 223: Thyroid Disease in Pregnancy. Obstet Gynecol. 2020;135(6):e261-e274. Reaffirmed March 2024.
+
+3. De Groot L, Abalovich M, Alexander EK, et al. Management of Thyroid Dysfunction during Pregnancy and Postpartum: An Endocrine Society Clinical Practice Guideline. J Clin Endocrinol Metab. 2012;97(8):2543-2565.
+
+4. Ross DS, Burch HB, Cooper DS, et al. 2016 American Thyroid Association Guidelines for Diagnosis and Management of Hyperthyroidism and Other Causes of Thyrotoxicosis. Thyroid. 2016;26(10):1343-1421.
+
+5. Burch HB, Wartofsky L. Life-Threatening Thyrotoxicosis: Thyroid Storm. Endocrinol Metab Clin North Am. 1993;22(2):263-277.
+
+================================================================================
+END OF DOCUMENT
+================================================================================
