@@ -22,6 +22,7 @@ import {
   type NodeRef,
   type PreviewPackage,
   type PreviewQueryResult,
+  type RawPreviewIncompleteResult,
   type RawPreviewResult,
 } from '../index';
 import { PROGRAM_DIR } from './support/program-runner';
@@ -61,7 +62,12 @@ const REF_HOLE = preview(source(REF));
 const BOTH_HOLES = preview(source(BOTH));
 
 const input = (revisions: J[], snapshot: EvaluationSnapshot = snap(), retractions: J[] = []) => ({ ...CTX, revisions: revisions as JsonValue[], retractions: retractions as JsonValue[], snapshot });
-const run = (pkg: PreviewPackage, revisions: J[], snapshot?: EvaluationSnapshot): RawPreviewResult => experimentalExecutePreviewFromRawRecords(pkg, input(revisions, snapshot));
+/** Every package here has a holed query: the result must be the incomplete-authoring branch. */
+const holed = (r: RawPreviewResult): RawPreviewIncompleteResult => {
+  if (r.queryAuthoring !== 'Incomplete') throw new Error(`expected the incomplete-authoring branch, got ${r.queryAuthoring}`);
+  return r;
+};
+const run = (pkg: PreviewPackage, revisions: J[], snapshot?: EvaluationSnapshot) => holed(experimentalExecutePreviewFromRawRecords(pkg, input(revisions, snapshot)));
 
 const node = (localId: string, revision = '1', digest?: string): NodeRef => ({ revision: { source: 's1', localId, revision }, ...(digest ? { digest } : {}) });
 const marker = (...holes: string[]) => ({ marker: { holes } });
@@ -80,12 +86,12 @@ const expectedOutputs = (hs: string[], stages: string[]) => ({
   g: G,
 });
 type Incomplete = Extract<PreviewQueryResult, { contract: 'IncompleteCriteria' }>;
-const incomplete = (r: RawPreviewResult): Incomplete => {
+const incomplete = (r: RawPreviewIncompleteResult): Incomplete => {
   if (r.previewQuery.contract !== 'IncompleteCriteria') throw new Error(r.previewQuery.contract);
   return r.previewQuery;
 };
 /** [establishes, refutes] per evaluated key, `source/localId` → values. */
-const criteria = (r: RawPreviewResult) =>
+const criteria = (r: RawPreviewIncompleteResult) =>
   Object.fromEntries(incomplete(r).keys.map((k) => {
     const rec = k.possibilities[0]!.record;
     return [`${k.key.source}/${k.key.localId}`, rec.outcome === 'Evaluated' ? [rec.establishes.result.value, rec.refutes.result.value] : rec.outcome];
@@ -97,14 +103,14 @@ describe('raw-input preview: PPL-04 and the supported hole shapes', () => {
     const ex = JSON.parse(readFileSync(join(PROGRAM_DIR, 'examples', 'PPL-04.json'), 'utf8')) as J;
     const pkg = preview(JSON.parse(readFileSync(join(PROGRAM_DIR, 'examples', ex.program.file), 'utf8')));
     const i = ex.input;
-    const r = experimentalExecutePreviewFromRawRecords(pkg, {
+    const r = holed(experimentalExecutePreviewFromRawRecords(pkg, {
       subject: i.context.subject,
       revisions: i.records,
       retractions: i.retractions,
       contextEncounter: i.context.encounter,
       contextEpisode: i.context.episode,
       snapshot: { id: i.snapshot, coverage: i.coverage, failures: i.failures, rejectedItems: i.rejectedItems },
-    });
+    }));
     expect(r.outputs).toEqual(ex.expected.outputs);
     for (const t of ex.expected.trace) expect([traceOf(r, t.output).source, traceOf(r, t.output).result]).toEqual([t.source, t.result]);
     expect(r.previewQuery).toMatchObject({ contract: 'WholeContractHole', stagesRun: [], queryStatus: 'Incomplete', marker: { holes: ['H-EVIDENCE'] } });
@@ -220,7 +226,7 @@ describe('raw-input preview: partial query results, traces, identity and ownersh
     const digests = experimentalResolveRevisionHistory({ envelope: { recordType: T, subject: 'P1', sources: ['s1', 's2'] }, authorityRule: DEMO_AUTHORITY_RULE, revisions: variants as JsonValue[], retractions: [] })
       .keys[0]!.revisions[0]!.variants.map((v) => v.digest).sort();
     expect(digests).toHaveLength(2);
-    const nodes = (r: RawPreviewResult) => incomplete(r).keys.flatMap((k) => k.possibilities.map((p) => (p.record.outcome === 'Evaluated' ? p.record.node : p.record.node ?? null)));
+    const nodes = (r: RawPreviewIncompleteResult) => incomplete(r).keys.flatMap((k) => k.possibilities.map((p) => (p.record.outcome === 'Evaluated' ? p.record.node : p.record.node ?? null)));
     expect(nodes(run(EST_HOLE, variants))).toEqual(digests.map((d) => node('r11', '1', d)));
     // localId `a@1` at revision 1 and localId `a` at revision `1@1` share a display label and stay distinct.
     expect(nodes(run(EST_HOLE, [rev('a@1'), rev('a', { revision: '1@1' })]))).toEqual([node('a', '1@1'), node('a@1', '1')]);
@@ -262,11 +268,12 @@ describe('raw-input preview: partial query results, traces, identity and ownersh
     bad(JSON.parse(JSON.stringify(EST_HOLE)), ok, /produced by experimentalCompilePreview/);
     bad({ ...EST_HOLE }, ok, /produced by experimentalCompilePreview/);
     bad(experimentalCompilePreview(source(EST) as JsonValue), ok, /produced by experimentalCompilePreview/);
-    // Zero queries (the hole is elsewhere), two holed queries, and a complete query in a PreviewPackage.
+    // Zero queries (the hole is elsewhere) and two holed queries. A complete query in a PreviewPackage is
+    // no longer rejected: raw-preview-complete.test.ts covers it.
     const scopeHole = (nodes: J[]) => preview({ ...program(), applicability: { id: 'scope', kind: 'Predicate', expr: hole('H-S') }, nodes });
     bad(scopeHole([{ id: 'f', kind: 'Finding', status: { all: [{ ref: 'scope' }] }, label: 'x' }]), ok, /exactly one EvidenceQuery; the package has 0/);
     bad(preview(source(EST, [{ ...Q0, id: 'q2', contract: REF }])), ok, /exactly one EvidenceQuery; the package has 2/);
-    bad(scopeHole(program().nodes), ok, /'q' is complete: .*a scope restriction/);
+    expect(experimentalExecutePreviewFromRawRecords(scopeHole(program().nodes), ok).queryAuthoring).toBe('Complete');
     const errors = [RawPreviewConfigurationError, RawExecutionConfigurationError];
     expect(new Set(errors).size).toBe(2);
   });
@@ -306,12 +313,12 @@ describe('raw-input preview: partial query results, traces, identity and ownersh
   it('18. no final evidence, Needs, acquisition or multi-query result is introduced', () => {
     for (const pkg of [WHOLE, EST_HOLE, BOTH_HOLES]) {
       const r = run(pkg, [SUPPORTING, REFUTING, rev('r4', { encounter: undefined })]);
-      expect(Object.keys(r).sort()).toEqual(['experimental', 'findingAttributes', 'inspectable', 'markers', 'mode', 'notRun', 'outcome', 'outputs', 'packageId', 'previewQuery', 'publication', 'query', 'remainingScope', 'scope', 'snapshot', 'snapshotStatements', 'stagesRun', 'trace'].sort());
-      expect([r.outcome, r.experimental, r.scope, r.mode, r.publication, r.snapshotStatements]).toEqual(['Executed', 'nonclinical-ppl-raw-input-preview-v0', 'one-holed-query-program-preview-from-raw-records', 'preview', 'Blocked', 'ValidatedNotRead']);
+      expect(Object.keys(r).sort()).toEqual(['experimental', 'findingAttributes', 'inspectable', 'markers', 'mode', 'notRun', 'outcome', 'outputs', 'packageId', 'previewQuery', 'publication', 'query', 'queryAuthoring', 'remainingScope', 'scope', 'snapshot', 'snapshotStatements', 'stagesRun', 'trace'].sort());
+      expect([r.outcome, r.experimental, r.scope, r.mode, r.publication, r.snapshotStatements]).toEqual(['Executed', 'nonclinical-ppl-raw-input-preview-v0', 'one-query-program-preview-from-raw-records', 'preview', 'Blocked', 'ValidatedNotRead']);
       const text = JSON.stringify(r);
       for (const f of ['evidence', 'queryEvidence', 'needs', 'possibleClasses', 'classification', 'attribution', 'materiality', 'provenance"']) expect(text).not.toContain(`"${f}${f.endsWith('"') ? '' : '"'}`);
       expect(r.notRun).toEqual(expect.arrayContaining(['S6', 'QueryEvidence', 'Needs', 'Acquisition', 'MultiQuery']));
-      expect(r.remainingScope).toMatch(/complete query in a PreviewPackage, programs with several queries, Needs and acquisition are not executed/);
+      expect(r.remainingScope).toMatch(/zero or several queries, Needs and acquisition are not executed/);
     }
   });
 });

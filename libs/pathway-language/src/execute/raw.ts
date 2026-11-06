@@ -15,13 +15,15 @@
  * No Need, acquisition, preview or multi-query execution runs here.
  *
  * `executePreviewFromRawRecords` is the preview counterpart (first-program contract §8, "Raw-input
- * preview boundary"): one PreviewPackage whose only query has an authoring hole. The existing
- * preview-query evaluator runs on this evaluation's records, and the same program evaluator keeps
- * the query's marker through every dependent expression. No Evidence<Boolean> is produced.
+ * preview boundary"): one PreviewPackage with exactly one query. A holed query runs the existing
+ * preview-query evaluator and stays a marker (no Evidence<Boolean>). A complete query runs the full
+ * S1–S6 pipeline through a private selection bound to the exact preview package and query
+ * (`selectForPreviewCompleteQuery`). Either way the same program evaluator keeps every authoring
+ * marker through its dependent expressions, and publication stays blocked.
  */
 import { compiledKind, contractHoles, detach } from '../compile/compile';
 import type { CompiledPackage } from '../compile/types';
-import { checkSnapshot, selectForQuery, QuerySelectionConfigurationError, type EvaluationSnapshot, type QuerySelectionInput } from '../bound';
+import { checkSnapshot, selectForPreviewCompleteQuery, selectForQuery, QuerySelectionConfigurationError, type EvaluationSnapshot, type QuerySelectionInput } from '../bound';
 import type { PreviewPackage } from '../compile/types';
 import { evaluatePreviewQuery, PreviewEvaluationConfigurationError, type PreviewQueryResult } from '../preview';
 import type { NodeRef } from '../s1/types';
@@ -111,7 +113,7 @@ export function executeFromRawRecords(pkg: CompiledPackage, input: RawExecutionI
   } as unknown as RawExecutionResult);
 }
 
-// ---------- preview (bounded I6 slice: one holed query)
+// ---------- preview (bounded I6 slice: one query, holed or complete)
 
 /** Invalid API input or unsupported preview scope. Never an authoring marker and never patient uncertainty. */
 export class RawPreviewConfigurationError extends Error {}
@@ -120,37 +122,61 @@ export class RawPreviewConfigurationError extends Error {}
 export type RawPreviewQueryOutput = { readonly marker: Marker; readonly stagesRun: readonly [] | readonly ['S1', 'S2', 'S3', 'S4', 'S5'] };
 export type RawPreviewOutput =
   | RawPreviewQueryOutput
+  | RawQueryOutput
   | { readonly marker: Marker }
-  | { readonly decision: DecisionValue; readonly supportingEvidenceIds: readonly NodeRef[] }
-  | { readonly status: { readonly marker: Marker } | DecisionValue; readonly urgency?: { readonly marker: Marker } };
+  | RawDecisionOutput
+  | RawFindingOutput
+  | { readonly status: { readonly marker: Marker }; readonly urgency?: { readonly marker: Marker } };
 
-/** Not run by this entry point. Evidence stages missing from `stagesRun` are listed first. */
+/** Not run for a holed query. Evidence stages missing from `stagesRun` are listed first. */
 const PREVIEW_NOT_RUN = ['Classification', 'PossibleClasses', 'S6', 'QueryEvidence', 'Needs', 'Acquisition', 'MultiQuery'] as const;
+const COMPLETE_STAGES = ['S1', 'S2', 'S3', 'S4', 'S5', 'S6'] as const;
 
-export interface RawPreviewResult {
+interface RawPreviewCommon {
   readonly outcome: 'Executed';
   readonly experimental: 'nonclinical-ppl-raw-input-preview-v0';
-  readonly scope: 'one-holed-query-program-preview-from-raw-records';
+  readonly scope: 'one-query-program-preview-from-raw-records';
   readonly mode: 'preview';
   readonly publication: 'Blocked';
   readonly packageId: string;
   readonly query: string;
-  /** The snapshot ID. Its statements were validated as input only: no S6 coverage resolution ran. */
+  /** The snapshot ID. */
   readonly snapshot: string;
-  readonly snapshotStatements: 'ValidatedNotRead';
   /** The compiler's static markers and inspectable attributes, unchanged. */
   readonly markers: PreviewPackage['markers'];
   readonly inspectable: PreviewPackage['inspectable'];
   readonly outputs: { readonly [output: string]: RawPreviewOutput };
   readonly findingAttributes: { readonly [findingId: string]: FindingAttributes };
-  /** Program trace. The holed query's entry states the stages that ran; per-record results are in `previewQuery`. */
+  /** Program trace. The query's entry states what ran; its stage results are in `previewQuery` or `queryEvidence`. */
   readonly trace: readonly TraceEntry[];
-  /** The `experimentalEvaluatePreviewQuery` result of these inputs, unchanged (structured NodeRefs). */
-  readonly previewQuery: PreviewQueryResult;
-  readonly stagesRun: PreviewQueryResult['stagesRun'];
   readonly notRun: readonly string[];
   readonly remainingScope: string;
 }
+
+/**
+ * Discriminated by the query's AUTHORING state, read from the compiled contract; never by whether
+ * its evidence is Known (a complete query can be Unresolved for this patient).
+ */
+export type RawPreviewResult = RawPreviewCommon & (
+  | {
+      /** The query has an authoring hole: partial results and markers only, no Evidence<Boolean>. */
+      readonly queryAuthoring: 'Incomplete';
+      /** Validated as input only: no S6 coverage resolution ran. */
+      readonly snapshotStatements: 'ValidatedNotRead';
+      /** The `experimentalEvaluatePreviewQuery` result of these inputs, unchanged (structured NodeRefs). */
+      readonly previewQuery: PreviewQueryResult;
+      readonly stagesRun: PreviewQueryResult['stagesRun'];
+    }
+  | {
+      /** The query is complete: its evidence was computed by the full pipeline. */
+      readonly queryAuthoring: 'Complete';
+      /** Coverage, failure and rejected-item statements were read by S6 gap relevance. */
+      readonly snapshotStatements: 'ReadByS6';
+      /** The query evidence result the program read, unchanged (its S6 trace included). */
+      readonly queryEvidence: QueryEvidenceResult;
+      readonly stagesRun: typeof COMPLETE_STAGES;
+    }
+);
 
 export function executePreviewFromRawRecords(pkg: PreviewPackage, input: RawExecutionInput): RawPreviewResult {
   const fail = (m: string): never => {
@@ -163,13 +189,48 @@ export function executePreviewFromRawRecords(pkg: PreviewPackage, input: RawExec
   const extra = Object.keys(input).filter((k) => !RUNTIME_FIELDS.includes(k));
   // In particular a query, supplied results, markers, decisions, stage results, token maps or authored settings.
   if (extra.length > 0) fail(`unexpected input field(s) ${extra.join(', ')}; the query, its markers and settings come only from the package`);
-  if (input.snapshot === undefined) fail('a snapshot is required (validated as input; preview runs no S6)');
+  if (input.snapshot === undefined) fail('a snapshot is required');
   const snapshot: EvaluationSnapshot = checkSnapshot(input.snapshot, fail);
   const queries = pkg.declarations.filter((d) => d.kind === 'EvidenceQuery');
   if (queries.length !== 1) fail(`this slice previews exactly one EvidenceQuery; the package has ${queries.length}`);
   const q = queries[0]!;
-  // A scope restriction of this slice (the preview-query entry point covers holed queries only), not a semantic limit.
-  if (contractHoles(q.contract).length === 0) fail(`'${q.id}' is complete: this slice previews only a query with an authoring hole (a scope restriction)`);
+  const common = {
+    outcome: 'Executed',
+    experimental: 'nonclinical-ppl-raw-input-preview-v0',
+    scope: 'one-query-program-preview-from-raw-records',
+    mode: 'preview',
+    publication: 'Blocked',
+    packageId: pkg.packageId,
+    query: q.id,
+    snapshot: snapshot.id,
+    markers: pkg.markers,
+    inspectable: pkg.inspectable,
+  } as const;
+  const remainingScope = 'Exactly one EvidenceQuery, holed or complete. Programs with zero or several queries, Needs and acquisition are not executed here.';
+
+  // The branch is the query's authoring state only; holes elsewhere in the program do not affect it.
+  if (contractHoles(q.contract).length === 0) {
+    let ev: QueryEvidenceResult;
+    try {
+      const s4 = selectForPreviewCompleteQuery(pkg, q.id, { ...input, snapshot }, fail);
+      // Type-level only: the runtime gate (queryContract) accepts this PreviewPackage solely with the s4 bound to it above.
+      ev = queryEvidence({ package: pkg as unknown as CompiledPackage, query: q.id, s4 });
+    } catch (e) {
+      if (e instanceof QuerySelectionConfigurationError || e instanceof QueryEvidenceConfigurationError) fail(e.message);
+      throw e;
+    }
+    const program = evaluateProgram<NodeRef>(pkg, new Map([[q.id, ev.evidence]]), NODE_REFS, 'computed');
+    return detach({
+      ...common,
+      ...program,
+      queryAuthoring: 'Complete',
+      snapshotStatements: 'ReadByS6',
+      queryEvidence: ev,
+      stagesRun: COMPLETE_STAGES,
+      notRun: ['Needs', 'Acquisition', 'MultiQuery'],
+      remainingScope,
+    } as unknown as RawPreviewResult);
+  }
 
   let pq: PreviewQueryResult;
   try {
@@ -183,21 +244,15 @@ export function executePreviewFromRawRecords(pkg: PreviewPackage, input: RawExec
   const program = evaluateProgram<NodeRef>(pkg, new Map(), NODE_REFS, 'computed', new Map([[q.id, pq.stagesRun]]));
   const ran: readonly string[] = pq.stagesRun;
   return detach({
-    outcome: 'Executed',
-    experimental: 'nonclinical-ppl-raw-input-preview-v0',
-    scope: 'one-holed-query-program-preview-from-raw-records',
-    mode: 'preview',
-    publication: 'Blocked',
-    packageId: pkg.packageId,
-    query: q.id,
-    snapshot: snapshot.id,
-    snapshotStatements: 'ValidatedNotRead',
-    markers: pkg.markers,
-    inspectable: pkg.inspectable,
+    ...common,
     ...program,
+    queryAuthoring: 'Incomplete',
+    snapshotStatements: 'ValidatedNotRead',
     previewQuery: pq,
     stagesRun: pq.stagesRun,
     notRun: [...['S1', 'S2', 'S3', 'S4', 'S5'].filter((x) => !ran.includes(x)), ...PREVIEW_NOT_RUN],
-    remainingScope: 'One holed EvidenceQuery only. A complete query in a PreviewPackage, programs with several queries, Needs and acquisition are not executed here.',
+    remainingScope,
   } as unknown as RawPreviewResult);
 }
+export type RawPreviewIncompleteResult = Extract<RawPreviewResult, { readonly queryAuthoring: 'Incomplete' }>;
+export type RawPreviewCompleteResult = Extract<RawPreviewResult, { readonly queryAuthoring: 'Complete' }>;

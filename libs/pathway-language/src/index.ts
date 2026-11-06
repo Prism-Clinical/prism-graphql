@@ -207,7 +207,7 @@ export {
   RawExecutionConfigurationError,
   RawPreviewConfigurationError,
 } from './execute/raw';
-export type { RawDecisionOutput, RawExecutionInput, RawExecutionResult, RawFindingOutput, RawPreviewOutput, RawPreviewQueryOutput, RawPreviewResult, RawProgramOutput, RawQueryOutput } from './execute/raw';
+export type { RawDecisionOutput, RawExecutionInput, RawExecutionResult, RawFindingOutput, RawPreviewCompleteResult, RawPreviewIncompleteResult, RawPreviewOutput, RawPreviewQueryOutput, RawPreviewResult, RawProgramOutput, RawQueryOutput } from './execute/raw';
 export type {
   Cause,
   DecisionOutput,

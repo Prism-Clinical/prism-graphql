@@ -16,8 +16,8 @@
  * result of this very run, so gap relevance reads one evaluation's inputs and never reattaches
  * statements or S1 rejected items afterwards by matching identifiers.
  */
-import { compiledKind, detach } from './compile/compile';
-import type { CompiledPackage, ExplicitAssertionContract, ExplicitAssertionSettings } from './compile/types';
+import { compiledKind, contractHoles, detach } from './compile/compile';
+import type { CompiledPackage, ExplicitAssertionContract, ExplicitAssertionSettings, PreviewPackage } from './compile/types';
 import { jsonValueProblem } from './s1/payload';
 import { resolveRevisionHistory } from './s1/resolve';
 import type { JsonValue, S1Result } from './s1/types';
@@ -146,15 +146,29 @@ const bindings = new WeakMap<object, { readonly package: object; readonly query:
 /** INTERNAL: the binding of `s4`, or undefined for an unbound, copied or fabricated result. */
 export const selectionQuery = (s4: unknown) => (typeof s4 === 'object' && s4 !== null ? bindings.get(s4) : undefined);
 
-/** The complete contract of `query` in an authentic CompiledPackage, or `fail`. Shared with S5. */
-export function queryContract(pkg: unknown, query: unknown, fail: (m: string) => never): ExplicitAssertionContract {
+/**
+ * S4 results that `selectForPreviewCompleteQuery` produced for a complete query of an authentic
+ * PreviewPackage. Private: membership, together with the exact package/query binding, is the only
+ * capability that lets S5 and S6 evaluate a query of a PreviewPackage.
+ */
+const previewCompleteSelections = new WeakSet<object>();
+
+/**
+ * The complete contract of `query` in an authentic CompiledPackage, or `fail`. Shared with S5 and S6.
+ * A PreviewPackage is accepted only with `s4` from `selectForPreviewCompleteQuery` bound to this exact
+ * package object and query ID; without one (every public selection call) it is rejected as before.
+ */
+export function queryContract(pkg: unknown, query: unknown, fail: (m: string) => never, s4?: unknown): ExplicitAssertionContract {
   const kind = compiledKind(pkg);
-  // Holes are authoring state, not patient uncertainty: preview is outside this slice (§6.1).
-  if (kind === 'PreviewPackage') fail('preview packages are not evaluated here; authoring holes are never Missing or False');
-  if (kind !== 'CompiledPackage') fail('package must be a CompiledPackage produced by experimentalCompile in this process');
+  if (kind === 'PreviewPackage') {
+    const b = typeof s4 === 'object' && s4 !== null && previewCompleteSelections.has(s4) ? bindings.get(s4) : undefined;
+    // Holes are authoring state, not patient uncertainty (§6.1): no other route evaluates a preview query.
+    if (!b || b.package !== pkg || b.query !== query) fail('preview packages are not evaluated here; authoring holes are never Missing or False');
+  } else if (kind !== 'CompiledPackage') fail('package must be a CompiledPackage produced by experimentalCompile in this process');
   const decl = (pkg as CompiledPackage).declarations.find((d) => d.id === query);
   if (!decl || decl.kind !== 'EvidenceQuery') return fail(`query ${JSON.stringify(query)} is not an EvidenceQuery of the package`);
-  if (decl.contract.kind !== 'explicit-assertion-v0') return fail(`query ${String(query)} has no complete contract`); // unreachable: compile() checks every contract is complete
+  // Unreachable for a CompiledPackage (compile() checks every contract is complete) and for a preview selection (checked when it was made).
+  if (decl.contract.kind !== 'explicit-assertion-v0') return fail(`query ${String(query)} has no complete contract`);
   return decl.contract;
 }
 
@@ -168,5 +182,26 @@ export function selectForQuery(input: QuerySelectionInput): SelectionResult {
   const { s1, s4 } = selectWithSettings(contract, input.package.valueSets, input, fail);
   bindings.set(s4, { package: input.package, query: input.query });
   evaluations.set(s4, { subject: input.subject, settings: contract, s1, snapshot });
+  return s4;
+}
+
+/**
+ * INTERNAL, raw-input preview execution only (not exported from the package index): query-bound
+ * selection for a COMPLETE EvidenceQuery of an authentic PreviewPackage. Completeness is read from
+ * the compiler-produced declaration (contract `explicit-assertion-v0`, no contract hole); a whole-
+ * contract or criterion hole is rejected. The S4 result is bound to the exact package object and
+ * query ID exactly as `selectForQuery` binds it, and is the capability `queryContract` checks.
+ */
+export function selectForPreviewCompleteQuery(pkg: PreviewPackage, query: string, input: RuntimeInput & { readonly snapshot: EvaluationSnapshot }, fail: (m: string) => never): SelectionResult {
+  if (compiledKind(pkg) !== 'PreviewPackage') fail('expected a PreviewPackage produced by experimentalCompilePreview in this process');
+  const decl = pkg.declarations.find((d) => d.id === query);
+  if (!decl || decl.kind !== 'EvidenceQuery') return fail(`query ${JSON.stringify(query)} is not an EvidenceQuery of the package`);
+  const contract = decl.contract;
+  if (contract.kind !== 'explicit-assertion-v0' || contractHoles(contract).length > 0) return fail(`query ${query} has an authoring hole; only a complete query is evaluated`);
+  const snapshot = checkSnapshot(input.snapshot, fail);
+  const { s1, s4 } = selectWithSettings(contract, pkg.valueSets, input, fail);
+  bindings.set(s4, { package: pkg, query });
+  evaluations.set(s4, { subject: input.subject, settings: contract, s1, snapshot });
+  previewCompleteSelections.add(s4);
   return s4;
 }

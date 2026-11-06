@@ -335,7 +335,7 @@ function bound(input: GapRelevanceInput) {
   const extra = Object.keys(input).filter((k) => !['package', 'query', 's4'].includes(k));
   // In particular coverage, failures, rejected items, a subject or an S1 result: they come only from the evaluation.
   if (extra.length > 0) fail(`unexpected input field(s) ${extra.join(', ')}; gap information comes only from the query-bound evaluation`);
-  const contract = queryContract(input.package, input.query, fail);
+  const contract = queryContract(input.package, input.query, fail, input.s4);
   if (!isSelectionResult(input.s4)) fail('s4 must be an S4 result produced by experimentalSelectForQuery in this process');
   const b = selectionQuery(input.s4);
   if (!b) fail('s4 is not bound to a query: only experimentalSelectForQuery results are accepted');

@@ -61,7 +61,7 @@ export function boundContract(input: { readonly package: unknown; readonly query
   const extra = keys.filter((k) => !fields.includes(k));
   // In particular a payload, snapshot or S1–S3 result: evidence comes only from the S4 handoff.
   if (extra.length > 0) fail(`unexpected input field(s) ${extra.join(', ')}`);
-  const contract = queryContract(input.package, input.query, fail);
+  const contract = queryContract(input.package, input.query, fail, input.s4);
   if (!isSelectionResult(input.s4)) fail('s4 must be an S4 result produced by experimentalSelectForQuery in this process');
   // Exact package object and query ID (§3.5): a matching package ID or value-set pin is no proof.
   const bound = selectionQuery(input.s4);
