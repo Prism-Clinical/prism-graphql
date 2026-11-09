@@ -1,18 +1,20 @@
 /**
- * EXPERIMENTAL, NONCLINICAL. A bounded I6 slice: one compiled program with exactly one complete
- * EvidenceQuery, executed over that query's evidence COMPUTED from raw records (first-program
- * contract §8 I6, "Raw-input execution boundary").
+ * EXPERIMENTAL, NONCLINICAL. Bounded I6 slices: one compiled program with one or more complete
+ * EvidenceQueries, executed over their evidence COMPUTED from raw records (first-program contract
+ * §8 I6, "Raw-input execution boundary").
  *
- * The query and every authored setting come from the compiled package; the caller gives only the
- * runtime inputs of query-bound selection. S1–S4 run in `selectForQuery`, S6 in `queryEvidence`, and
- * the program runs in the isolated executor's own evaluator, given that evidence object unchanged.
+ * The queries and every authored setting come from the compiled package; the caller gives only one
+ * runtime envelope, shared by every query. For each query, S1–S4 run in `selectForQuery` from that
+ * query's own contract, and S6 in `queryEvidence`; nothing is shared between queries except the
+ * runtime inputs. The program runs in the isolated executor's own evaluator, given those evidence
+ * objects unchanged.
  *
  * Identity: the evaluator is generic over the reference type, so references stay structured
  * `NodeRef`s (variant digests included) through `evidenceValue`, `all`, Predicates and Findings, and
  * are deduplicated and ordered by `compareNodes` (contract §5.3). Display labels appear only in trace
  * text. No token or string bridge exists.
  *
- * No Need, acquisition, preview or multi-query execution runs here.
+ * No Need, acquisition or multi-query preview runs here.
  *
  * `executePreviewFromRawRecords` is the preview counterpart (first-program contract §8, "Raw-input
  * preview boundary"): one PreviewPackage with exactly one query. A holed query runs the existing
@@ -28,6 +30,7 @@ import type { PreviewPackage } from '../compile/types';
 import { evaluatePreviewQuery, PreviewEvaluationConfigurationError, type PreviewQueryResult } from '../preview';
 import type { NodeRef } from '../s1/types';
 import { compareNodes } from '../s6/base';
+import { compareCodePoints } from '../s1/resolve';
 import { queryEvidence, QueryEvidenceConfigurationError, type QueryEvidence, type QueryEvidenceResult } from '../s6/evidence';
 import { evaluateProgram, type RefOps } from './execute';
 import type { DecisionValue, FindingAttributes, Marker, TraceEntry } from './types';
@@ -50,22 +53,45 @@ export type RawFindingOutput = (
 export type RawQueryOutput = { readonly evidence: QueryEvidence; readonly origin: 'computed' };
 export type RawProgramOutput = RawDecisionOutput | RawFindingOutput | RawQueryOutput;
 
-export interface RawExecutionResult {
+interface RawExecutionCommon {
   readonly outcome: 'Executed';
   readonly experimental: 'nonclinical-ppl-raw-input-execution-v0';
-  readonly scope: 'one-query-program-from-raw-records';
   readonly mode: 'normal';
   readonly packageId: string;
-  readonly query: string;
+  /** The one snapshot ID every query read. */
   readonly snapshot: string;
   readonly outputs: { readonly [output: string]: RawProgramOutput };
   readonly findingAttributes: { readonly [findingId: string]: FindingAttributes };
   /** Program trace (contract §4). `result` and `because` are display text; identities are in `outputs`. */
   readonly trace: readonly TraceEntry[];
-  /** The `experimentalQueryEvidence` result the program read, unchanged (its S6 trace included). */
-  readonly queryEvidence: QueryEvidenceResult;
-  readonly notRun: readonly ['Needs', 'Acquisition', 'Preview', 'MultiQuery'];
 }
+
+/**
+ * Discriminated by `scope`. A one-query program keeps the original shape exactly; a program with
+ * several queries has no singular `query`/`queryEvidence` and lists every query's result instead.
+ */
+export type RawExecutionResult = RawExecutionCommon & (
+  | {
+      readonly scope: 'one-query-program-from-raw-records';
+      readonly query: string;
+      /** The `experimentalQueryEvidence` result the program read, unchanged (its S6 trace included). */
+      readonly queryEvidence: QueryEvidenceResult;
+      readonly notRun: readonly ['Needs', 'Acquisition', 'Preview', 'MultiQuery'];
+    }
+  | {
+      readonly scope: 'multi-query-program-from-raw-records';
+      /** Every EvidenceQuery ID of the package, code-point order. */
+      readonly queries: readonly string[];
+      /**
+       * One `experimentalQueryEvidence` result per query, unchanged (its own `query`, evidence,
+       * provenance and S6 trace), in the order of `queries`. A list, not an object keyed by ID.
+       */
+      readonly queryEvidenceResults: readonly QueryEvidenceResult[];
+      readonly notRun: readonly ['Needs', 'Acquisition', 'Preview'];
+    }
+);
+export type RawSingleQueryExecutionResult = Extract<RawExecutionResult, { readonly scope: 'one-query-program-from-raw-records' }>;
+export type RawMultiQueryExecutionResult = Extract<RawExecutionResult, { readonly scope: 'multi-query-program-from-raw-records' }>;
 
 const RUNTIME_FIELDS = ['subject', 'revisions', 'retractions', 'contextEncounter', 'contextEpisode', 'snapshot'];
 
@@ -86,30 +112,54 @@ export function executeFromRawRecords(pkg: CompiledPackage, input: RawExecutionI
   if (extra.length > 0) fail(`unexpected input field(s) ${extra.join(', ')}; the query and its answer come only from the package and the raw records`);
   if (input.snapshot === undefined) fail('a snapshot is required: query evidence needs its coverage, failure and rejected-item statements');
   const queries = pkg.declarations.filter((d) => d.kind === 'EvidenceQuery');
-  if (queries.length !== 1) fail(`this slice executes exactly one EvidenceQuery; the package has ${queries.length}`);
-  const q = queries[0]!;
-  if (contractHoles(q.contract).length > 0) fail(`'${q.id}' is not complete`);
+  if (queries.length === 0) fail('this slice executes one or more EvidenceQueries; the package has 0');
+  for (const q of queries) if (contractHoles(q.contract).length > 0) fail(`'${q.id}' is not complete`);
+  if (!Array.isArray(input.revisions) || !Array.isArray(input.retractions)) fail('revisions and retractions must be arrays');
 
-  let ev: QueryEvidenceResult;
+  // One evaluation input for every query: the snapshot validated and detached once, and the record
+  // lists fixed once (slice keeps array holes, so S1 still sees them). Records and contexts are read
+  // by each query's own S1/S3, which validate and detach what they keep.
+  const shared = Object.freeze({
+    subject: input.subject,
+    revisions: Object.freeze(input.revisions.slice()),
+    retractions: Object.freeze(input.retractions.slice()),
+    contextEncounter: input.contextEncounter,
+    contextEpisode: input.contextEpisode,
+    snapshot: checkSnapshot(input.snapshot, fail),
+  });
+
+  // Every query, each from its own contract: a fresh selection and S6 per query, nothing reused.
+  // Any configuration error fails the whole call; no partial program is returned.
+  const results: QueryEvidenceResult[] = [];
   try {
-    const s4 = selectForQuery({ ...input, package: pkg, query: q.id });
-    ev = queryEvidence({ package: pkg, query: q.id, s4 });
+    for (const q of queries) {
+      const s4 = selectForQuery({ ...shared, package: pkg, query: q.id });
+      results.push(queryEvidence({ package: pkg, query: q.id, s4 }));
+    }
   } catch (e) {
     if (e instanceof QuerySelectionConfigurationError || e instanceof QueryEvidenceConfigurationError) fail(e.message);
     throw e;
   }
-  const program = evaluateProgram(pkg, new Map([[q.id, ev.evidence]]), NODE_REFS, 'computed');
-  return detach({
+  // A Map: query IDs such as `__proto__` stay ordinary keys.
+  const program = evaluateProgram(pkg, new Map(results.map((r) => [r.query, r.evidence])), NODE_REFS, 'computed');
+  const common = {
     outcome: 'Executed',
     experimental: 'nonclinical-ppl-raw-input-execution-v0',
-    scope: 'one-query-program-from-raw-records',
     mode: 'normal',
     packageId: pkg.packageId,
-    query: q.id,
-    snapshot: ev.snapshot,
+    snapshot: shared.snapshot.id,
     ...program,
-    queryEvidence: ev,
-    notRun: ['Needs', 'Acquisition', 'Preview', 'MultiQuery'],
+  } as const;
+  if (results.length === 1) {
+    return detach({ ...common, scope: 'one-query-program-from-raw-records', query: results[0]!.query, queryEvidence: results[0]!, notRun: ['Needs', 'Acquisition', 'Preview', 'MultiQuery'] } as unknown as RawExecutionResult);
+  }
+  const ordered = [...results].sort((a, b) => compareCodePoints(a.query, b.query));
+  return detach({
+    ...common,
+    scope: 'multi-query-program-from-raw-records',
+    queries: ordered.map((r) => r.query),
+    queryEvidenceResults: ordered,
+    notRun: ['Needs', 'Acquisition', 'Preview'],
   } as unknown as RawExecutionResult);
 }
 

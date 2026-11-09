@@ -156,6 +156,7 @@ describe('raw-input preview, complete query: patient evidence beside unrelated a
     for (const [records, sn] of cases) {
       const p = run(records, sn);
       const n = experimentalExecuteFromRawRecords(EQUIVALENT, input(records, sn));
+      if (n.scope !== 'one-query-program-from-raw-records') throw new Error(n.scope);
       expect(p.queryEvidence).toEqual(n.queryEvidence);
       for (const k of ['q', 'pv', 'p2']) expect(p.outputs[k]).toEqual(n.outputs[k]);
       expect({ ...(p.outputs['f'] as J), urgency: undefined }).toEqual({ ...(n.outputs['f'] as J), urgency: undefined });

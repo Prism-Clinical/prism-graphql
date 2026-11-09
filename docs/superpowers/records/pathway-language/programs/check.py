@@ -14,7 +14,7 @@ output. It checks only:
 - no example promises a Need, which is deferred from this slice, and no example of a program with
   holes claims any patient-data request;
 - examples based on an EA fixture use that fixture's input verbatim, and the claimed outputs equal
-  the fixture's expected values;
+  the fixture's expected values (per named query for multi-query examples);
 - the schematic query contract and value sets equal the pinned q.demo.json ones;
 - every corpus file still matches its manifest digest.
 
@@ -234,6 +234,16 @@ def main():
                 err(where, f"p.demo decision differs from {base['fixture']}")
             if exp["causeAttribution"] != fx["expected"]["causeAttribution"]:
                 err(where, f"causeAttribution differs from {base['fixture']}")
+        # Multi-query examples: each named query's evidence and attribution equal its fixture's.
+        for b in base.get("queries", []):
+            fx = load(os.path.join(CONF, "fixtures", f"{b['fixture']}.json"))
+            if ex.get("input") != fx["input"]:
+                err(where, f"input differs from {b['fixture']}")
+            if exp["outputs"][b["query"]]["evidence"] != fx["expected"]["evidence"]:
+                err(where, f"{b['query']} evidence differs from {b['fixture']}")
+            per_query = {a["query"]: a["attribution"] for a in exp["causeAttribution"]}
+            if per_query.get(b["query"]) != fx["expected"]["causeAttribution"]:
+                err(where, f"{b['query']} causeAttribution differs from {b['fixture']}")
 
     manifest = load(os.path.join(REC, "corpus", "manifest.json"))
     for f in manifest["files"]:

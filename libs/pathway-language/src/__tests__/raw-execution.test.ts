@@ -19,6 +19,7 @@ import {
   type JsonValue,
   type NodeRef,
   type RawExecutionResult,
+  type RawSingleQueryExecutionResult,
   type SuppliedEvidence,
 } from '../index';
 import { COMPLETE, CTX, REFUTING, SUPPORTING, T, compiled, fail, program, rev, show, snap, type J } from './support/s6-records';
@@ -40,7 +41,12 @@ const source = (applicability: J = { all: [] }): J => {
 const PROG = compiled(source());
 
 const input = (revisions: J[], snapshot: EvaluationSnapshot = snap(), retractions: J[] = []) => ({ ...CTX, revisions: revisions as JsonValue[], retractions: retractions as JsonValue[], snapshot });
-const run = (revisions: J[], snapshot?: EvaluationSnapshot, pkg: CompiledPackage = PROG): RawExecutionResult => experimentalExecuteFromRawRecords(pkg, input(revisions, snapshot));
+/** A one-query program keeps the one-query result shape. */
+const single = (r: RawExecutionResult): RawSingleQueryExecutionResult => {
+  if (r.scope !== 'one-query-program-from-raw-records') throw new Error(`expected the one-query shape, got ${r.scope}`);
+  return r;
+};
+const run = (revisions: J[], snapshot?: EvaluationSnapshot, pkg: CompiledPackage = PROG): RawSingleQueryExecutionResult => single(experimentalExecuteFromRawRecords(pkg, input(revisions, snapshot)));
 
 const node = (localId: string, revision = '1', digest?: string): NodeRef => ({ revision: { source: 's1', localId, revision }, ...(digest ? { digest } : {}) });
 const ids = (o: unknown) => {
@@ -204,9 +210,10 @@ describe('raw-input execution: computed evidence, identity and ownership', () =>
     const p = experimentalCompilePreview({ ...source(), nodes: [{ ...program().nodes[0], contract: { hole: { id: 'H', type: 'EvidenceSelectionContract<Boolean>', explains: 'x' } } }, ...source().nodes.slice(1)] } as JsonValue);
     if (p.outcome !== 'PreviewPackage') throw new Error('preview');
     bad(p.package, ok, /preview packages are not executed here/);
-    bad(compiled({ ...source(), nodes: [] }), ok, /exactly one EvidenceQuery; the package has 0/);
+    bad(compiled({ ...source(), nodes: [] }), ok, /one or more EvidenceQueries; the package has 0/);
+    // Several complete queries were a scope restriction of the first slice; they now execute (multi-query shape).
     const two = compiled({ ...source(), nodes: [...source().nodes, { ...program().nodes[0], id: 'q2' }] });
-    bad(two, ok, /exactly one EvidenceQuery; the package has 2/);
+    expect(experimentalExecuteFromRawRecords(two, ok).scope).toBe('multi-query-program-from-raw-records');
     bad(PROG, { ...ok, snapshot: { id: 'snap-1', coverage: [] } }, /snapshot must state/);
   });
 
