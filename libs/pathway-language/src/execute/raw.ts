@@ -28,7 +28,8 @@ import type { CompiledPackage } from '../compile/types';
 import { checkSnapshot, selectForPreviewCompleteQuery, selectForQuery, QuerySelectionConfigurationError, type EvaluationSnapshot, type QuerySelectionInput } from '../bound';
 import type { PreviewPackage } from '../compile/types';
 import { evaluatePreviewQuery, PreviewEvaluationConfigurationError, type PreviewQueryResult } from '../preview';
-import type { NodeRef } from '../s1/types';
+import { MAX_JSON_DEPTH } from '../s1/payload';
+import type { JsonValue, NodeRef } from '../s1/types';
 import { compareNodes } from '../s6/base';
 import { compareCodePoints } from '../s1/resolve';
 import { queryEvidence, QueryEvidenceConfigurationError, type QueryEvidence, type QueryEvidenceResult } from '../s6/evidence';
@@ -95,6 +96,54 @@ export type RawMultiQueryExecutionResult = Extract<RawExecutionResult, { readonl
 
 const RUNTIME_FIELDS = ['subject', 'revisions', 'retractions', 'contextEncounter', 'contextEpisode', 'snapshot'];
 
+/**
+ * A stable copy of one runtime value (a record, a retraction or a context), read once, so every
+ * query sees the same data. Own string-keyed data properties are copied (enumerability, array holes,
+ * cycles and `null` prototypes kept), so S1 still judges the copy exactly as it would the original:
+ * a cycle stays a cycle, and a container deeper than S1's limit becomes an empty container of the
+ * same kind, which S1 rejects at the same path without reading it. Accessors and non-plain
+ * prototypes (which could carry inherited accessors) are rejected without invoking anything.
+ * Symbol-keyed members are dropped: S1 and S3 never read them. Only the copies are frozen.
+
+ * ponytail: shared acyclic objects are copied once per path, so a deliberately shared DAG costs as
+ * much here as S1's own per-path representability walk already does; memoize if that ever matters.
+ */
+function capture(v: unknown, path: string, fail: (m: string) => never, ancestors: Map<object, object> = new Map()): unknown {
+  if (v === null || typeof v !== 'object') return v;
+  const back = ancestors.get(v);
+  if (back) return back;
+  const isArray = Array.isArray(v);
+  const proto = Object.getPrototypeOf(v);
+  if (isArray ? proto !== Array.prototype : proto !== Object.prototype && proto !== null) fail(`${path} is not a plain ${isArray ? 'array' : 'object'}; runtime records and contexts must be plain data`);
+  const out: object = isArray ? new Array((v as unknown[]).length) : Object.create(proto);
+  // S1 rejects a container this deep before reading it (MAX_JSON_DEPTH); nothing below is read.
+  if (ancestors.size >= MAX_JSON_DEPTH) return Object.freeze(out);
+  ancestors.set(v, out);
+  for (const k of Object.getOwnPropertyNames(v)) {
+    if (isArray && k === 'length') continue;
+    const d = Object.getOwnPropertyDescriptor(v, k);
+    if (!d) continue; // a proxy listing a key it does not have: nothing to read
+    const at = isArray && /^(0|[1-9]\d*)$/.test(k) ? `${path}[${k}]` : `${path}.${k}`;
+    if (!('value' in d)) fail(`${at} is an accessor; runtime records and contexts must hold data properties only`);
+    Object.defineProperty(out, k, { value: capture(d.value, at, fail, ancestors), enumerable: d.enumerable, writable: false, configurable: false });
+  }
+  ancestors.delete(v);
+  return Object.freeze(out);
+}
+
+/** A record list copied once: each element captured on its own (S1 judges each occurrence from level 1), holes kept. */
+function captureList(v: unknown, name: string, fail: (m: string) => never): readonly unknown[] {
+  if (!Array.isArray(v) || Object.getPrototypeOf(v) !== Array.prototype) return fail(`${name} must be a plain array`);
+  const out: unknown[] = new Array(v.length);
+  for (let i = 0; i < v.length; i += 1) {
+    const d = Object.getOwnPropertyDescriptor(v, i);
+    if (!d) continue; // a hole stays a hole
+    if (!('value' in d)) fail(`${name}[${i}] is an accessor; runtime records must be data`);
+    out[i] = capture(d.value, `${name}[${i}]`, fail);
+  }
+  return Object.freeze(out);
+}
+
 const nodeLabel = (n: NodeRef) => `${n.revision.source}/${n.revision.localId}@${n.revision.revision}${n.digest ? `#${n.digest}` : ''}`;
 /** Structured identity (§5.3 tuple, digest included); the label is display only. */
 const NODE_REFS: RefOps<NodeRef> = { compare: compareNodes, label: nodeLabel };
@@ -114,17 +163,16 @@ export function executeFromRawRecords(pkg: CompiledPackage, input: RawExecutionI
   const queries = pkg.declarations.filter((d) => d.kind === 'EvidenceQuery');
   if (queries.length === 0) fail('this slice executes one or more EvidenceQueries; the package has 0');
   for (const q of queries) if (contractHoles(q.contract).length > 0) fail(`'${q.id}' is not complete`);
-  if (!Array.isArray(input.revisions) || !Array.isArray(input.retractions)) fail('revisions and retractions must be arrays');
 
-  // One evaluation input for every query: the snapshot validated and detached once, and the record
-  // lists fixed once (slice keeps array holes, so S1 still sees them). Records and contexts are read
-  // by each query's own S1/S3, which validate and detach what they keep.
+  // One evaluation input for every query, read once before any query runs: the snapshot validated
+  // and detached, and every record, retraction and context captured as stable data (`capture`).
+  // No caller-owned object is frozen or read again.
   const shared = Object.freeze({
     subject: input.subject,
-    revisions: Object.freeze(input.revisions.slice()),
-    retractions: Object.freeze(input.retractions.slice()),
-    contextEncounter: input.contextEncounter,
-    contextEpisode: input.contextEpisode,
+    revisions: captureList(input.revisions, 'revisions', fail) as JsonValue[],
+    retractions: captureList(input.retractions, 'retractions', fail) as JsonValue[],
+    contextEncounter: capture(input.contextEncounter, 'contextEncounter', fail) as RawExecutionInput['contextEncounter'],
+    contextEpisode: capture(input.contextEpisode, 'contextEpisode', fail) as RawExecutionInput['contextEpisode'],
     snapshot: checkSnapshot(input.snapshot, fail),
   });
 

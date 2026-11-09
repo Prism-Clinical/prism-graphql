@@ -21,6 +21,8 @@ import {
   experimentalQueryEvidence,
   experimentalSelectForQuery,
   RawPreviewConfigurationError,
+  DEMO_AUTHORITY_RULE,
+  experimentalResolveRevisionHistory as resolve,
   type CompiledPackage,
   type EvaluationSnapshot,
   type JsonValue,
@@ -323,5 +325,118 @@ describe('multi-query raw execution: determinism, ownership and failure', () => 
     expect([r.outcome, r.experimental, r.scope, r.mode, r.packageId, r.snapshot, r.notRun]).toEqual(['Executed', 'nonclinical-ppl-raw-input-execution-v0', 'multi-query-program-from-raw-records', 'normal', 'test.i6.multi', 'snap-1', ['Needs', 'Acquisition', 'Preview']]);
     for (const f of ['needs', 'markers', 'publication', 'inspectable', 'marker', 'acquisition"', 'query"']) expect(Object.keys(r)).not.toContain(f);
     expect(JSON.stringify(r)).not.toMatch(/"needs"|"markers"|"publication"/);
+  });
+});
+
+describe('multi-query raw execution: one stable evaluation input (review of e366fce)', () => {
+  const TWIN = () => compiled(source());
+  /** A record whose `assertion` getter returns Affirmed for its first two reads, then Denied (the review counterexample). */
+  const flipping = () => {
+    let reads = 0;
+    const r = rev('r1');
+    delete r['assertion'];
+    Object.defineProperty(r, 'assertion', { enumerable: true, get: () => (++reads <= 2 ? 'Affirmed' : 'Denied') });
+    return { r, reads: () => reads };
+  };
+
+  it('rejects an accessor record without invoking it (the review counterexample)', () => {
+    const { r, reads } = flipping();
+    expect(() => experimentalExecuteFromRawRecords(TWIN(), input([r]))).toThrow(RawExecutionConfigurationError);
+    expect(() => experimentalExecuteFromRawRecords(TWIN(), input([r]))).toThrow(/revisions\[0\]\.assertion is an accessor/);
+    expect(reads()).toBe(0);
+  });
+
+  it('rejects accessors anywhere in records, retractions, list slots and contexts, never invoking them', () => {
+    let calls = 0;
+    const getter = { enumerable: true, get: () => { calls += 1; return 's1'; } };
+    const nested = rev('r1');
+    nested['key'] = Object.defineProperty({ localId: 'r1' }, 'source', getter);
+    const slot: J[] = [];
+    Object.defineProperty(slot, 0, getter);
+    const retraction = Object.defineProperty({ id: 'x1', key: { source: 's1', localId: 'r1' } }, 'target', getter);
+    const ctx = Object.defineProperty({}, 'known', getter);
+    const pkg = TWIN();
+    const cases: [unknown, RegExp][] = [
+      [input([nested]), /revisions\[0\]\.key\.source is an accessor/],
+      [{ ...input([]), revisions: slot }, /revisions\[0\] is an accessor/],
+      [input([SUPPORTING], snap(), [retraction]), /retractions\[0\]\.target is an accessor/],
+      [{ ...input([SUPPORTING]), contextEncounter: ctx }, /contextEncounter\.known is an accessor/],
+    ];
+    for (const [inp, msg] of cases) {
+      expect(() => experimentalExecuteFromRawRecords(pkg, inp as never)).toThrow(RawExecutionConfigurationError);
+      expect(() => experimentalExecuteFromRawRecords(pkg, inp as never)).toThrow(msg);
+    }
+    expect(calls).toBe(0);
+  });
+
+  it('rejects non-plain prototypes, which could carry inherited accessors', () => {
+    let calls = 0;
+    class Rec { get assertion() { calls += 1; return 'Affirmed'; } }
+    const inherited = Object.assign(new Rec(), rev('r1', { assertion: undefined }));
+    expect(() => experimentalExecuteFromRawRecords(TWIN(), input([inherited]))).toThrow(/revisions\[0\] is not a plain object/);
+    class List extends Array {}
+    expect(() => experimentalExecuteFromRawRecords(TWIN(), { ...input([]), revisions: List.from([SUPPORTING]) } as never)).toThrow(/revisions must be a plain array/);
+    expect(calls).toBe(0);
+  });
+
+  it('reads each value once: a proxy that changes its answer between reads gives every query the same data', () => {
+    let descriptorReads = 0;
+    const record = new Proxy(rev('r1'), {
+      getOwnPropertyDescriptor(t, k) {
+        const d = Reflect.getOwnPropertyDescriptor(t, k);
+        if (k !== 'assertion' || !d) return d;
+        descriptorReads += 1;
+        return { ...d, value: descriptorReads === 1 ? 'Affirmed' : 'Denied' };
+      },
+    });
+    const r = run(TWIN(), [record]);
+    expect(descriptorReads).toBe(1);
+    expect(evidenceOf(r, 'qa').evidence).toEqual(evidenceOf(r, 'qb').evidence);
+    expect(decisions(r)['f']).toEqual([TRUE, ['s1/r1@1']]);
+  });
+
+  it('S1 judges the captured records exactly as the originals: malformed occurrences keep their rejection', () => {
+    const cyc = rev('c1');
+    cyc['extra'] = { back: cyc };
+    const root: J = {};
+    let deep = root;
+    for (let i = 0; i < 40; i += 1) deep = deep['n'] = {};
+    const nonEnumerableKey = rev('n1');
+    Object.defineProperty(nonEnumerableKey, 'key', { value: { source: 's1', localId: 'n1' }, enumerable: false });
+    const shared = { acquisition: 'a0', sourceRecordRef: 's1:sh' };
+    const records = [
+      cyc, rev('d1', { extra: root }), rev('s1x', { assertion: '\uD800' }), rev('nan', { extra: NaN }), nonEnumerableKey,
+      5, null, undefined, Object.assign(Object.create(null), rev('np')), rev('sh1', { provenance: shared }), rev('sh2', { provenance: shared }), SUPPORTING,
+    ] as J[];
+    const sparse = [...records];
+    delete sparse[7];
+    const retractions = [{ id: 'x1', key: { source: 's1', localId: 'c1' }, target: sup('c1'), author: AMEND, extra: { n: { n: {} } } }] as J[];
+    const cycR = retractions[0]!;
+    (cycR['extra'] as J)['n']['n']['up'] = cycR;
+    const pkg = compiled(source(contract(), S1_ONLY));
+    const bound = require('../bound') as typeof import('../bound');
+    const spy = jest.spyOn(bound, 'selectForQuery');
+    try {
+      const r = multi(experimentalExecuteFromRawRecords(pkg, input(sparse, snap(), retractions)));
+      expect(spy).toHaveBeenCalledTimes(2);
+      const T0 = program().nodes[0].contract.retrieve.type as string;
+      const s1 = (revisions: unknown, rets: unknown) => resolve({ envelope: { recordType: T0, subject: 'P1', sources: ['s1', 's2'] }, authorityRule: DEMO_AUTHORITY_RULE, revisions: revisions as JsonValue[], retractions: rets as JsonValue[] });
+      for (const [arg] of spy.mock.calls) {
+        // The copies, not the caller's objects, and the same S1 verdicts (unidentified reasons included).
+        expect(arg.revisions).not.toBe(sparse);
+        expect(Object.prototype.hasOwnProperty.call(arg.revisions, 7)).toBe(false);
+        expect(s1(arg.revisions, arg.retractions)).toEqual(s1(sparse, retractions));
+      }
+      // Each query equals its standalone evaluation over the caller's original objects.
+      for (const q of ['qa', 'qb']) {
+        const s4 = experimentalSelectForQuery({ package: pkg, query: q, ...input(sparse, snap(), retractions) });
+        expect(evidenceOf(r, q)).toEqual(experimentalQueryEvidence({ package: pkg, query: q, s4 }));
+      }
+    } finally {
+      spy.mockRestore();
+    }
+    // Caller-owned objects are neither frozen nor changed.
+    for (const x of [cyc, root, shared, sparse, retractions[0]]) expect(Object.isFrozen(x)).toBe(false);
+    expect(cyc['extra'].back).toBe(cyc);
   });
 });
