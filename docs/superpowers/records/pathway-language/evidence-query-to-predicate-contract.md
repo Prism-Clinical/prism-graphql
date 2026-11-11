@@ -2,7 +2,7 @@
 
 **Status:** Proposed design draft. **Not** accepted, not finalized syntax, not a schema and not implemented. It contains no clinical content: the record type, enum values, codes, sources and permission below are fictional and illustrate language behavior only. They do not map to dysphagia, progression, urgency or any other clinical definition.
 
-**Date:** 2026-10-03. **Revised:** 2026-10-03, nine times, 2026-10-04, once, 2026-10-05, three times, 2026-10-09, three times, 2026-10-28, three times, and 2026-10-29, eight times, 2026-10-31, once, and 2026-11-02, eight times, and 2026-11-03, once, and 2026-11-05, once, and 2026-11-06, once, and 2026-11-09, once, and 2026-11-11, once, after review. The third revision fixed three things:
+**Date:** 2026-10-03. **Revised:** 2026-10-03, nine times, 2026-10-04, once, 2026-10-05, three times, 2026-10-09, three times, 2026-10-28, three times, and 2026-10-29, eight times, 2026-10-31, once, and 2026-11-02, eight times, and 2026-11-03, once, and 2026-11-05, once, and 2026-11-06, once, and 2026-11-09, once, and 2026-11-11, twice, after review. The third revision fixed three things:
 
 - revision-chain boundaries: source-scoped identity, same-source corrections and one fully specified schematic authority rule;
 - deterministic outcomes for malformed history;
@@ -13,6 +13,8 @@ The fourth revision made three changes:
 - Proven cross-boundary corrections and retractions are now rejected without changing their target. This keeps gap irrelevance consistent with S1.
 - Payload identity for duplicate detection is defined.
 - An unsupported justification about coverage attestations is removed.
+
+The forty-second revision records the first-program milestone split (first-program contract section 8, “I6 split” and “Needs generation (I7)”, 2026-11-11). Program execution and preview from raw records (I6) are closed as an experimental increment. Needs generation is planned as I7 from 6.1–6.3 and the acceptance cases, unimplemented, with its open parts and its dependency on the EA-083/EA-092 S1 question listed there. A pointer is added to 6.2; no evidence-query semantics change.
 
 The forty-first revision records multi-query raw-input preview (first-program contract section 8, “Raw-input preview boundary”): a `PreviewPackage` with several EvidenceQueries reads one captured runtime input, and each query is evaluated under its own authoring state, a holed query through the 3.5 preview entry point, a complete one through the bound pipeline. A bullet is added to 3.5 “Preview evaluation”; no evidence-query semantics change.
 
@@ -1157,6 +1159,8 @@ Causes, contributing records, gap diagnostics and the orchestrator’s recorded 
 4. If the record’s defect is still material and an evidence Need now exists, that revision emits the `CorrectRecord` (or `ResolveConflict`) obligation under the Need’s key.
 
 There is no separate correction obligation for an unidentifiable Need (case 113).
+
+**Implementation status.** Not implemented. The first-program contract plans it as increment I7 (section 8, “Needs generation (I7)”), which takes its acceptance from this section, 6.1, 6.3 and the acceptance cases unchanged, and lists the parts left unspecified here.
 
 **Ownership.** The core emits Needs only where backward dependency tracing shows materiality (§4.3, §7). The orchestrator chooses the fulfiller, dispatches it, retries, enforces deadlines and records outcomes, and each outcome creates a new evaluation revision.
 
