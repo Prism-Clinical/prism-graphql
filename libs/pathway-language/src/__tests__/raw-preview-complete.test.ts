@@ -14,6 +14,7 @@ import {
   experimentalCompile,
   experimentalCompilePreview,
   experimentalEvaluateCriteria,
+  experimentalEvaluatePreviewQuery,
   experimentalExecuteFromRawRecords,
   experimentalExecutePreviewFromRawRecords,
   experimentalExecutePreviewWithSuppliedQueryResults,
@@ -328,5 +329,80 @@ describe('raw-input preview, complete query: ownership of the preview selection'
       snapshot: { id: i.snapshot, coverage: i.coverage, failures: i.failures, rejectedItems: i.rejectedItems },
     });
     expect([p4.queryAuthoring, p4.outputs]).toEqual(['Incomplete', ex.expected.outputs]);
+  });
+});
+
+describe('raw-input preview: one stable evaluation input, shared with normal execution (review of 32121be)', () => {
+  const thrower = (m: string): never => {
+    throw new Error(m);
+  };
+
+  it('every query shape rejects accessors and functions (toJSON included) without invoking them', () => {
+    let calls = 0;
+    const getter = rev('r1');
+    delete getter['assertion'];
+    Object.defineProperty(getter, 'assertion', { enumerable: true, get: () => (++calls, 'Affirmed') });
+    const fn = () => (++calls === 1 ? 'Affirmed' : 'Denied');
+    for (const pkg of [PKG, EST_HOLE, WHOLE]) {
+      for (const [inp, msg] of [
+        [input([getter]), /revisions\[0\]\.assertion is an accessor/],
+        [input([rev('r1', { assertion: { toJSON: fn } })]), /revisions\[0\]\.assertion\.toJSON is a function/],
+        [input([SUPPORTING], snap(), [{ id: 'x1', target: fn }]), /retractions\[0\]\.target is a function/],
+        [{ ...input([SUPPORTING]), contextEncounter: { toJSON: fn } }, /contextEncounter\.toJSON is a function/],
+      ] as [unknown, RegExp][]) {
+        expect(() => experimentalExecutePreviewFromRawRecords(pkg, inp as never)).toThrow(RawPreviewConfigurationError);
+        expect(() => experimentalExecutePreviewFromRawRecords(pkg, inp as never)).toThrow(msg);
+      }
+    }
+    expect(calls).toBe(0);
+  });
+
+  it('complete and criterion-holed queries read each value once: a proxy changing its answer between reads cannot split S1', () => {
+    let descriptorReads = 0;
+    const flipping = () => {
+      descriptorReads = 0;
+      return new Proxy(rev('r1'), {
+        getOwnPropertyDescriptor(t, k) {
+          const d = Reflect.getOwnPropertyDescriptor(t, k);
+          if (k !== 'assertion' || !d) return d;
+          descriptorReads += 1;
+          return { ...d, value: descriptorReads === 1 ? 'Affirmed' : 'Denied' };
+        },
+      });
+    };
+    const r = run([flipping()]);
+    expect(descriptorReads).toBe(1);
+    expect(r.queryEvidence.evidence).toEqual(run([rev('r1')]).queryEvidence.evidence);
+    const h = experimentalExecutePreviewFromRawRecords(EST_HOLE, input([flipping()]));
+    expect(descriptorReads).toBe(1);
+    expect(h).toEqual(experimentalExecutePreviewFromRawRecords(EST_HOLE, input([rev('r1')])));
+  });
+
+  it('malformed records keep their meaning: whole-contract hole runs no stage, holed and complete queries match their standalone stages', () => {
+    const cyc = rev('c1');
+    cyc['extra'] = { back: cyc };
+    const root: J = {};
+    let deep = root;
+    for (let i = 0; i < 40; i += 1) deep = deep['n'] = {};
+    const records = [cyc, rev('d1', { extra: root }), rev('s1x', { assertion: '\uD800' }), rev('nan', { extra: NaN }), 5, null, undefined, Object.assign(Object.create(null), rev('np')), rev('t1', { extra: { toJSON: 'x' } }), SUPPORTING] as J[];
+    delete records[6];
+
+    // Whole-contract hole: no stage runs, so malformed records change nothing.
+    const w = experimentalExecutePreviewFromRawRecords(WHOLE, input(records));
+    expect(w).toEqual(experimentalExecutePreviewFromRawRecords(WHOLE, input([])));
+    expect([w.queryAuthoring, w.stagesRun, w.outputs['q']]).toEqual(['Incomplete', [], { ...marker('H-C'), stagesRun: [] }]);
+
+    // Criterion hole: the partial query equals isolated preview evaluation over the caller's originals.
+    const h = experimentalExecutePreviewFromRawRecords(EST_HOLE, input(records));
+    if (h.queryAuthoring !== 'Incomplete') throw new Error('expected an incomplete query');
+    expect(h.previewQuery).toEqual(experimentalEvaluatePreviewQuery({ ...CTX, revisions: records as JsonValue[], retractions: [], package: EST_HOLE, query: 'q' }));
+
+    // Complete query: evidence equals the bound stages run directly over the originals.
+    const c = run(records);
+    expect(c.queryEvidence).toEqual(experimentalQueryEvidence({ package: PKG as never, query: 'q', s4: selectForPreviewCompleteQuery(PKG, 'q', input(records), thrower) }));
+
+    // Caller-owned objects are neither frozen nor changed.
+    for (const x of [cyc, root, records]) expect(Object.isFrozen(x)).toBe(false);
+    expect(cyc['extra'].back).toBe(cyc);
   });
 });

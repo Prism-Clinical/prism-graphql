@@ -102,13 +102,16 @@ const RUNTIME_FIELDS = ['subject', 'revisions', 'retractions', 'contextEncounter
  * cycles and `null` prototypes kept), so S1 still judges the copy exactly as it would the original:
  * a cycle stays a cycle, and a container deeper than S1's limit becomes an empty container of the
  * same kind, which S1 rejects at the same path without reading it. Accessors and non-plain
- * prototypes (which could carry inherited accessors) are rejected without invoking anything.
+ * prototypes (which could carry inherited accessors) are rejected without invoking anything, and so
+ * are functions: canonicalization would call a function-valued `toJSON`, and a function's answer can
+ * change between reads. A data member named `toJSON` holding a JSON value stays ordinary data.
  * Symbol-keyed members are dropped: S1 and S3 never read them. Only the copies are frozen.
 
  * ponytail: shared acyclic objects are copied once per path, so a deliberately shared DAG costs as
  * much here as S1's own per-path representability walk already does; memoize if that ever matters.
  */
 function capture(v: unknown, path: string, fail: (m: string) => never, ancestors: Map<object, object> = new Map()): unknown {
+  if (typeof v === 'function') fail(`${path} is a function; runtime records and contexts must be plain data`);
   if (v === null || typeof v !== 'object') return v;
   const back = ancestors.get(v);
   if (back) return back;
@@ -144,6 +147,21 @@ function captureList(v: unknown, name: string, fail: (m: string) => never): read
   return Object.freeze(out);
 }
 
+/**
+ * The runtime input of one raw-input call, read once before anything runs: records, retractions and
+ * contexts captured, the snapshot validated and detached. No caller-owned object is frozen or read again.
+ */
+function captureInput(input: RawExecutionInput, fail: (m: string) => never) {
+  return Object.freeze({
+    subject: input.subject,
+    revisions: captureList(input.revisions, 'revisions', fail) as JsonValue[],
+    retractions: captureList(input.retractions, 'retractions', fail) as JsonValue[],
+    contextEncounter: capture(input.contextEncounter, 'contextEncounter', fail) as RawExecutionInput['contextEncounter'],
+    contextEpisode: capture(input.contextEpisode, 'contextEpisode', fail) as RawExecutionInput['contextEpisode'],
+    snapshot: checkSnapshot(input.snapshot, fail),
+  });
+}
+
 const nodeLabel = (n: NodeRef) => `${n.revision.source}/${n.revision.localId}@${n.revision.revision}${n.digest ? `#${n.digest}` : ''}`;
 /** Structured identity (§5.3 tuple, digest included); the label is display only. */
 const NODE_REFS: RefOps<NodeRef> = { compare: compareNodes, label: nodeLabel };
@@ -164,17 +182,8 @@ export function executeFromRawRecords(pkg: CompiledPackage, input: RawExecutionI
   if (queries.length === 0) fail('this slice executes one or more EvidenceQueries; the package has 0');
   for (const q of queries) if (contractHoles(q.contract).length > 0) fail(`'${q.id}' is not complete`);
 
-  // One evaluation input for every query, read once before any query runs: the snapshot validated
-  // and detached, and every record, retraction and context captured as stable data (`capture`).
-  // No caller-owned object is frozen or read again.
-  const shared = Object.freeze({
-    subject: input.subject,
-    revisions: captureList(input.revisions, 'revisions', fail) as JsonValue[],
-    retractions: captureList(input.retractions, 'retractions', fail) as JsonValue[],
-    contextEncounter: capture(input.contextEncounter, 'contextEncounter', fail) as RawExecutionInput['contextEncounter'],
-    contextEpisode: capture(input.contextEpisode, 'contextEpisode', fail) as RawExecutionInput['contextEpisode'],
-    snapshot: checkSnapshot(input.snapshot, fail),
-  });
+  // One evaluation input for every query, read once before any query runs.
+  const shared = captureInput(input, fail);
 
   // Every query, each from its own contract: a fresh selection and S6 per query, nothing reused.
   // Any configuration error fails the whole call; no partial program is returned.
@@ -288,7 +297,9 @@ export function executePreviewFromRawRecords(pkg: PreviewPackage, input: RawExec
   // In particular a query, supplied results, markers, decisions, stage results, token maps or authored settings.
   if (extra.length > 0) fail(`unexpected input field(s) ${extra.join(', ')}; the query, its markers and settings come only from the package`);
   if (input.snapshot === undefined) fail('a snapshot is required');
-  const snapshot: EvaluationSnapshot = checkSnapshot(input.snapshot, fail);
+  // Read once, as in normal execution; a whole-contract hole still runs no stage on it.
+  const captured = captureInput(input, fail);
+  const snapshot: EvaluationSnapshot = captured.snapshot;
   const queries = pkg.declarations.filter((d) => d.kind === 'EvidenceQuery');
   if (queries.length !== 1) fail(`this slice previews exactly one EvidenceQuery; the package has ${queries.length}`);
   const q = queries[0]!;
@@ -310,7 +321,7 @@ export function executePreviewFromRawRecords(pkg: PreviewPackage, input: RawExec
   if (contractHoles(q.contract).length === 0) {
     let ev: QueryEvidenceResult;
     try {
-      const s4 = selectForPreviewCompleteQuery(pkg, q.id, { ...input, snapshot }, fail);
+      const s4 = selectForPreviewCompleteQuery(pkg, q.id, captured, fail);
       // Type-level only: the runtime gate (queryContract) accepts this PreviewPackage solely with the s4 bound to it above.
       ev = queryEvidence({ package: pkg as unknown as CompiledPackage, query: q.id, s4 });
     } catch (e) {
@@ -332,7 +343,7 @@ export function executePreviewFromRawRecords(pkg: PreviewPackage, input: RawExec
 
   let pq: PreviewQueryResult;
   try {
-    const { snapshot: _validated, ...runtime } = input;
+    const { snapshot: _validated, ...runtime } = captured;
     pq = evaluatePreviewQuery({ ...runtime, package: pkg, query: q.id });
   } catch (e) {
     if (e instanceof PreviewEvaluationConfigurationError || e instanceof QuerySelectionConfigurationError) fail(e.message);

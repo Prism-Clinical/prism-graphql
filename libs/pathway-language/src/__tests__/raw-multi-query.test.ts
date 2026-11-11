@@ -369,6 +369,38 @@ describe('multi-query raw execution: one stable evaluation input (review of e366
     expect(calls).toBe(0);
   });
 
+  it('rejects function values without invoking them: a function-valued toJSON (review of 32121be)', () => {
+    let calls = 0;
+    const fn = () => (++calls === 1 ? 'Affirmed' : 'Denied');
+    const counterexample = rev('r1', { assertion: { toJSON: fn } });
+    expect(() => experimentalExecuteFromRawRecords(TWIN(), input([counterexample]))).toThrow(RawExecutionConfigurationError);
+    expect(() => experimentalExecuteFromRawRecords(TWIN(), input([counterexample]))).toThrow(/revisions\[0\]\.assertion\.toJSON is a function/);
+    const pkg = TWIN();
+    const cases: [unknown, RegExp][] = [
+      [input([rev('r1', { assertion: fn })]), /revisions\[0\]\.assertion is a function/],
+      [input([rev('r1', { key: { source: 's1', localId: 'r1', toJSON: fn } })]), /revisions\[0\]\.key\.toJSON is a function/],
+      [input([fn as unknown as J]), /revisions\[0\] is a function/],
+      [input([SUPPORTING], snap(), [{ id: 'x1', key: { source: 's1', localId: 'r1' }, target: { toJSON: fn } }]), /retractions\[0\]\.target\.toJSON is a function/],
+      [{ ...input([SUPPORTING]), contextEncounter: { toJSON: fn } }, /contextEncounter\.toJSON is a function/],
+      [{ ...input([SUPPORTING]), contextEpisode: { nested: [fn] } }, /contextEpisode\.nested\[0\] is a function/],
+    ];
+    for (const [inp, msg] of cases) {
+      expect(() => experimentalExecuteFromRawRecords(pkg, inp as never)).toThrow(RawExecutionConfigurationError);
+      expect(() => experimentalExecuteFromRawRecords(pkg, inp as never)).toThrow(msg);
+    }
+    expect(calls).toBe(0);
+  });
+
+  it('a data member named toJSON stays ordinary data: accepted, and each query equals its standalone evaluation', () => {
+    const pkg = TWIN();
+    const records = [rev('r1', { extra: { toJSON: 'Denied' } }), rev('r2', { assertion: { toJSON: 'Denied' } })];
+    const r = run(pkg, records);
+    for (const q of ['qa', 'qb']) {
+      const s4 = experimentalSelectForQuery({ package: pkg, query: q, ...input(records) });
+      expect(evidenceOf(r, q)).toEqual(experimentalQueryEvidence({ package: pkg, query: q, s4 }));
+    }
+  });
+
   it('rejects non-plain prototypes, which could carry inherited accessors', () => {
     let calls = 0;
     class Rec { get assertion() { calls += 1; return 'Affirmed'; } }

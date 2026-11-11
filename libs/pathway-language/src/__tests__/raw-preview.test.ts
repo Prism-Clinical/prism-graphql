@@ -263,7 +263,7 @@ describe('raw-input preview: partial query results, traces, identity and ownersh
     bad(EST_HOLE, { ...CTX, revisions: [], retractions: [] }, /a snapshot is required/);
     bad(EST_HOLE, { ...ok, snapshot: { id: 'snap-1', coverage: [] } }, /snapshot must state/);
     bad(EST_HOLE, { ...ok, subject: 7 }, /subject/);
-    bad(WHOLE, { ...ok, revisions: 'none' }, /revisions and retractions must be arrays/);
+    bad(WHOLE, { ...ok, revisions: 'none' }, /revisions must be a plain array/);
     bad(compiled(), ok, /a CompiledPackage is executed by experimentalExecuteFromRawRecords/);
     bad(JSON.parse(JSON.stringify(EST_HOLE)), ok, /produced by experimentalCompilePreview/);
     bad({ ...EST_HOLE }, ok, /produced by experimentalCompilePreview/);
