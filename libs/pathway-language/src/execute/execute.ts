@@ -265,7 +265,7 @@ function evaluate<R>(pkg: CompiledPackage | PreviewPackage, evidence: ReadonlyMa
         const because = d.contract.kind === 'hole'
           ? `whole-contract authoring hole ${d.contract.hole}: no evidence stage runs and nothing is read`
           : previewStages
-            ? `criterion authoring hole(s) ${holes.join(', ')}: the query stays marked (incomplete authoring, not patient uncertainty). Preview-query evaluation ran ${ran.join(', ')} on this evaluation's records (per-record results in previewQuery); nothing was classified and no S6 result or Evidence<Boolean> exists`
+            ? `criterion authoring hole(s) ${holes.join(', ')}: the query stays marked (incomplete authoring, not patient uncertainty). Preview-query evaluation ran ${ran.join(', ')} on this evaluation's records (per-record results in this query's preview result); nothing was classified and no S6 result or Evidence<Boolean> exists`
             : `criterion authoring hole(s) ${holes.join(', ')}: the query is marked; no evidence stage runs in isolated execution (S1–S4 and the sibling criterion run in experimentalEvaluatePreviewQuery)`;
         trace.push({ output: d.id, source, result: show(v), because, steps });
       } else {
