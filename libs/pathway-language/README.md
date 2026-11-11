@@ -1,6 +1,6 @@
 # @prism/pathway-language (experimental, nonclinical)
 
-**Status:** an implementation experiment. It covers **S1–S5** of the *proposed* [evidence-query-to-predicate contract](../../docs/superpowers/records/pathway-language/evidence-query-to-predicate-contract.md): S1 revision history, S2 candidate identification, the S3 same-encounter, same-episode and `assertionKind` rules, their combination into one admissibility result per possible revision (increment I3), S4 selection, S5 criterion evaluation and classification **for one record at a time**, S5 **key-level possible classes**, and **query-bound preview evaluation** of whole-criterion holes (increment I4). Every acceptance item of I4 is now checked and passes, including EA-052a’s two preview `criterion` facts (case 52), so I4 is complete **as an experimental increment** only. Of S6 (I5), **gap relevance** (coverage cells and the relevance of each gap), the **step A base result** (rules 1–5 and rule 5’s base causes), **step B materiality** of unresolved records, the **step C cause union and attribution** and the **final `Evidence<Boolean>`** with `candidateEvidenceIds` exist. I5 is complete **as an experimental increment** (review, 2026-11-02), with the S1 fork-fallback limitation (EA-083/EA-092) retained. Query evidence, and its `Decision` (S7), can now be computed from a bound raw-record evaluation, and a program with one or more complete queries can be executed over that computed evidence, each query under its own contract over one shared snapshot (bounded I6 slices). A program with exactly one query can be previewed from raw records (a second bounded I6 slice): a holed query stays a marker, and a complete query is computed by S1–S6 while holes elsewhere stay markers. I6 is not complete: no Need, acquisition or multi-query preview from raw records exists. It also has the **first PPL compiler subset** and **isolated program-expression execution** over supplied query results (increments I1 and I2 of the [first-program implementation contract](../../docs/superpowers/records/pathway-language/first-program-implementation-contract.md)). It is not an end-to-end PPL evaluator and is not clinically approved; compiling or executing a program confers no clinical approval. It must not be used for patient care. The RFC, Stage A, the contract and the delivery plans keep their existing statuses; nothing here completes a delivery story.
+**Status:** an implementation experiment. It covers **S1–S5** of the *proposed* [evidence-query-to-predicate contract](../../docs/superpowers/records/pathway-language/evidence-query-to-predicate-contract.md): S1 revision history, S2 candidate identification, the S3 same-encounter, same-episode and `assertionKind` rules, their combination into one admissibility result per possible revision (increment I3), S4 selection, S5 criterion evaluation and classification **for one record at a time**, S5 **key-level possible classes**, and **query-bound preview evaluation** of whole-criterion holes (increment I4). Every acceptance item of I4 is now checked and passes, including EA-052a’s two preview `criterion` facts (case 52), so I4 is complete **as an experimental increment** only. Of S6 (I5), **gap relevance** (coverage cells and the relevance of each gap), the **step A base result** (rules 1–5 and rule 5’s base causes), **step B materiality** of unresolved records, the **step C cause union and attribution** and the **final `Evidence<Boolean>`** with `candidateEvidenceIds` exist. I5 is complete **as an experimental increment** (review, 2026-11-02), with the S1 fork-fallback limitation (EA-083/EA-092) retained. Query evidence, and its `Decision` (S7), can now be computed from a bound raw-record evaluation, and a program with one or more complete queries can be executed over that computed evidence, each query under its own contract over one shared snapshot (bounded I6 slices). A program with exactly one query can be previewed from raw records (a second bounded I6 slice): a holed query stays a marker, and a complete query is computed by S1–S6 while holes elsewhere stay markers. I6 is not complete: no Need or acquisition from raw records exists. It also has the **first PPL compiler subset** and **isolated program-expression execution** over supplied query results (increments I1 and I2 of the [first-program implementation contract](../../docs/superpowers/records/pathway-language/first-program-implementation-contract.md)). It is not an end-to-end PPL evaluator and is not clinically approved; compiling or executing a program confers no clinical approval. It must not be used for patient care. The RFC, Stage A, the contract and the delivery plans keep their existing statuses; nothing here completes a delivery story.
 
 This package is the isolated `libs/pathway-language` boundary named in RFC §10. It has no imports from applications, resolvers, databases or the network; `src/` imports only Node’s `crypto` and one RFC 8785 library.
 
@@ -852,11 +852,11 @@ const r = experimentalExecuteFromRawRecords(pkg, {
 
 **Known S1 limitation.** As for the query evidence (EA-083/EA-092): the result must not drive acquisition or conflict resolution.
 
-**Not implemented.** Needs, acquisition, multi-query preview, and the rest of I6. Preview from raw inputs is the next section.
+**Not implemented.** Needs, acquisition, and the rest of I6. Preview from raw inputs is the next section.
 
-## I6 slice: raw-input preview of a one-query program
+## I6 slice: raw-input preview
 
-`experimentalExecutePreviewFromRawRecords` previews a program with exactly one EvidenceQuery, holed or complete, from raw records (first-program contract §8, “Raw-input preview boundary”). It is a bounded I6 slice, not I6.
+`experimentalExecutePreviewFromRawRecords` previews a program with one or more EvidenceQueries, each holed or complete, from raw records (first-program contract §8, “Raw-input preview boundary”). It is a bounded I6 slice, not I6.
 
 ```ts
 const r = experimentalExecutePreviewFromRawRecords(previewPkg, {
@@ -878,9 +878,20 @@ if (r.queryAuthoring === 'Incomplete') {
 // Both: dependents of any hole keep its marker; r.publication 'Blocked'; r.markers / r.inspectable from the compiler; r.remainingScope
 ```
 
-**Branch.** Read from the query's compiled contract: no contract hole means `Complete`. Holes elsewhere (applicability, a Finding urgency) never make the query holed, and the branch is never inferred from the evidence: `Unresolved` patient evidence is still `Complete`.
+With several queries the result has `scope: 'multi-query-program-preview-from-raw-records'` and one entry per query instead of the one-query fields:
 
-**Supported shapes.** A whole-contract hole (no stage runs; nothing is read), a holed `establishes` or `refutes`, or both (S1–S4 from the query's complete settings, S5 for each complete sibling criterion, a `Marker` per hole slot; nothing classified, no S6 or `Evidence<Boolean>`). Or a complete query (S1–S6 unchanged). Normal compiled packages, copies, relabelled objects, packages with no or several queries, and any caller-supplied query, results, markers, decisions, stage results, token maps or settings throw `RawPreviewConfigurationError`.
+```ts
+// r.queries:              ['qa', 'qb']   (code-point order)
+// r.queryPreviewResults:  [{ query: 'qa', queryAuthoring: 'Complete',   snapshotStatements: 'ReadByS6',         stagesRun: ['S1',…,'S6'], notRun: [], queryEvidence },
+//                          { query: 'qb', queryAuthoring: 'Incomplete', snapshotStatements: 'ValidatedNotRead', stagesRun: ['S1',…,'S5'] or [], notRun: [...], previewQuery }]
+// r.notRun ['Needs','Acquisition']; outputs, trace, markers, inspectable and publication as above
+```
+
+**Several queries.** The input is captured once (below), then each query runs its own branch from its own compiled contract over that one copy: a fresh selection per query, nothing reused. A hole in one query never stops an independent complete query, and an independent Finding stays `True`, `False` or `Unknown` beside another query's hole. The program evaluator runs once with every complete query's evidence and every holed query's stages. Stages and snapshot-statement handling are reported per query, since a mixed program has no single value for either. A configuration error in any query fails the whole call. The one-query result shape is unchanged; only its `remainingScope` text was updated.
+
+**Branch.** Read per query from its compiled contract: no contract hole means `Complete`. Holes elsewhere (applicability, a Finding urgency, another query) never make the query holed, and the branch is never inferred from the evidence: `Unresolved` patient evidence is still `Complete`.
+
+**Supported shapes.** A whole-contract hole (no stage runs; nothing is read), a holed `establishes` or `refutes`, or both (S1–S4 from the query's complete settings, S5 for each complete sibling criterion, a `Marker` per hole slot; nothing classified, no S6 or `Evidence<Boolean>`). Or a complete query (S1–S6 unchanged). Normal compiled packages, copies, relabelled objects, packages with no query, and any caller-supplied query, results, markers, decisions, stage results, token maps or settings throw `RawPreviewConfigurationError`.
 
 **Ownership of a complete query.** The query pipeline accepts only a `CompiledPackage`, and its public entry points still reject every preview package. An internal selection function, `selectForPreviewCompleteQuery` in `bound.ts` (not exported), accepts an authentic `PreviewPackage` and the ID of a query whose compiled contract is complete, rejecting any holed one. It runs the same S1–S4 selection, binds the S4 result to that exact package object and query ID, and records it in a private set. `queryContract`, the contract check shared by S5 and S6, accepts a `PreviewPackage` only with an S4 result from that set bound to the same package and query. A normal, copied or foreign S4 result, or one for another query, leaves the package rejected as before. The bound S4 result never leaves the call. Nothing is relabelled or recompiled, no `CompiledPackage` is fabricated, and S5/S6 code is unchanged apart from passing `s4` to that check.
 
@@ -1108,7 +1119,7 @@ This package has its own Jest configuration and is not part of the root Jest roo
   Review of 51609c5 added malformed arrays (an `undefined` cause, sparse causes, an `undefined` supporting ID, sparse supporting IDs, a `null` candidate ID), plus frozen fabricated packages, deep-frozen copies and relabelled packages in both directions. Five of these fail against the 51609c5 code.
 
   Targeted mutations each fail tests: False support taken from every operand, a decisive `False` dropping a marker, a missing result not reported, a holed-query result accepted, no ID deduplication, and operand traces hidden after a decisive `False`.
-- **`src/__tests__/program-examples.test.ts`** runs the thirteen [first-program examples](../../docs/superpowers/records/pathway-language/programs/README.md). It reports I1 compiler checks, I2 isolated program-expression checks, I2 preview-output checks, raw-input checks, raw-input preview checks, partial query-stage checks, complete-query preview checks and multi-query raw-input checks separately:
+- **`src/__tests__/program-examples.test.ts`** runs the sixteen [first-program examples](../../docs/superpowers/records/pathway-language/programs/README.md). It reports I1 compiler checks, I2 isolated program-expression checks, I2 preview-output checks, raw-input checks, raw-input preview checks, partial query-stage checks, complete-query preview checks, multi-query raw-input checks and multi-query preview checks separately:
 
   | Example | Compiler | Isolated program-expression | Preview-output | Raw-input (I6 slice) | Raw-input preview (I6 slice) | Partial query-stage | Complete-query preview (I6 slice) | Multi-query raw-input (I6 slice) |
   |---|---|---|---|---|---|---|---|---|
@@ -1124,7 +1135,10 @@ This package has its own Jest configuration and is not part of the root Jest roo
   - **PPL-05a, -05b:** 6/6 each.
   - **PPL-06a, -06b, -06c:** 9/9 compiler, 7/7 preview-output and 11/11 complete-query preview checks each.
   - **PPL-07a, -07b, -07c, -07d:** 5/5 compiler, 8/8 isolated and 16/16 multi-query raw-input checks each.
-  - PPL-01 to PPL-04 and PPL-06a–c are run from raw records; PPL-05a/b have no package to run.
+  - **PPL-08a, -08b, -08c:** 9/9 compiler, 10/10, 12/12 and 12/12 preview-output, and 21/21, 21/21 and 22/22 multi-query preview checks.
+  - PPL-01 to PPL-04, PPL-06a–c, PPL-07a–d and PPL-08a–c are run from raw records; PPL-05a/b have no package to run.
+
+  Multi-query preview checks (PPL-08a–c, a ninth column omitted from the table above): every expected output (7) and trace `source`/`result` (7), the query list, and per query its authoring state with stages run and snapshot-statement handling. An incomplete query also gets its preview-query marker and its per-record `establishes`/`refutes` values. A complete query gets its S6 `causeAttribution` and no per-record criterion value, because its evidence trace holds only S6 summaries. Then `IncompleteAuthoring` with publication blocked. In the preview-output column, a criterion-holed query's output and trace are left to the raw run: its expected `stagesRun` is the S1–S5 that raw preview runs, and isolated preview runs none.
 - **`src/__tests__/canonical-json.test.ts`** has 28 tests of the RFC 8785 library (above).
 - **`src/__tests__/s1.test.ts`** has 99 independent tests (counting each parameterized case) whose expectations are derived by hand from the contract. They cover:
   - identical versus conflicting payloads, RFC 8785 number equality, absent versus `null`, and set-valued permissions;
@@ -1441,6 +1455,34 @@ This package has its own Jest configuration and is not part of the root Jest roo
   | Holed branch reading the caller's input instead of the copy | 1 |
 
   After review of 32121be, 3 more tests cover the shared input capture: in every branch (complete, criterion hole, whole-contract hole) accessors and functions in records, retractions and contexts are rejected with zero calls; a proxy answering differently on each read is read once in the complete and criterion-holed branches; and over malformed records (cycle, over-deep nesting, lone surrogate, NaN, non-JSON members, a hole, a `null` prototype, a data `toJSON`) a whole-contract hole gives exactly its no-record result with no stage run, a criterion hole equals isolated preview evaluation over the originals, and a complete query equals the bound stages over the originals, with caller objects left unfrozen.
+- **`src/__tests__/raw-multi-query-preview.test.ts`** has 16 independent tests of raw-input preview of two- and three-query `PreviewPackage`s. The program is `qa`, `qb`; `pa`/`pb = evidenceValue`, `both = all(ref pa, ref pb)`, Finding `f = all(ref scope, ref both)`, and independent Findings `ga`/`gb` reading one query each. Expected values are written from the contracts; parity checks supplement them: each complete query equals the standalone complete-query preview path (`selectForPreviewCompleteQuery` + query evidence), and each incomplete query equals `experimentalEvaluatePreviewQuery`, both over the caller's original input. They cover:
+  - two complete queries, with and without an unrelated hole;
+  - a complete query beside a criterion hole (`all(False, marker)` keeps the marker) and beside a whole-contract hole (no stage, whatever the records hold);
+  - two incomplete queries of different hole kinds;
+  - an independent Finding `True`, `False` and `Unknown(Conflicting)` beside a hole, with the dependent Finding a marker carrying no patient cause;
+  - per-query sources, criteria and admissibility over the same input;
+  - declaration order and record permutation; code-point query order with `Qa`, `qz`, `__proto__` and `constructor`;
+  - variant digests and colliding display labels;
+  - interleaved evaluations with different snapshots;
+  - ownership and override rejection;
+  - a configuration error in one query failing the whole call, while an engine error is not reclassified;
+  - the shared capture: no getter or function invoked, a flipping proxy read once, and every branch receiving the same captured arrays;
+  - deep freezing; the unchanged one-query shape; zero-query rejection.
+
+  Deliberate faults, each applied alone and type-correct (full suite, files restored after each run; evaluator faults also with the compiler-marker invariant disabled):
+
+  | Fault | Tests failing |
+  |---|---|
+  | Every complete query given the first one's evidence | 4 |
+  | Every complete query selected and evaluated with the first complete query's contract | 4 |
+  | Every holed query evaluated with the first holed query's contract | 3 |
+  | Complete queries reading the caller's input instead of the captured copy | 2 |
+  | Holed queries reading the caller's input instead of the captured copy | 2 |
+  | `all` dropping a marker beside a `False` operand (invariant on / off) | 7 / 5 |
+  | A holed query projected by `evidenceValue` as patient `Unknown(Missing)` (invariant on / off) | 38 / 19 |
+  | Every Finding status replaced by a marker when any query is holed | 16 |
+
+  Updated for this slice: tests that expected a multi-query preview to be rejected now check the new routing; one raw-preview test now computes `all(False, marker)` from raw records instead of only through isolated preview; and the zero-query and `remainingScope` messages changed.
 - **`src/__tests__/fixtures.test.ts`** runs the committed [explicit-assertion-v0 fixtures](../../docs/superpowers/records/pathway-language/conformance/explicit-assertion-v0/README.md) and checks **only** their S1–S4 assertions, S5 `criterion`, `classification` and `possibleClasses` assertions, the preview expectations of preview fixtures, S6 coverage-cell and gap-relevance facts, S6 step A facts, step B `material` facts, step C cause attribution and the final `evidence`, plus one-way implications from downstream expectations. It also checks the S7 `decision`. It never reports a fixture as passing as a whole, because Needs are not computed and no program runs. On the current fixtures it reports:
   - **180 S1 assertions checked, 180 passing.** That is 92 trace facts (`keyResult`, `variants`, `occurrences`, `rejected`, `outOfEnvelope`, `outsideEnvelope`, and the `HistoricalDefect`, `CrossKeyCorrection` and `UndeclaredField` diagnostics) plus 75 canonicalization checks (bytes, digests, variant partition, undeclared fields). EA-104 adds two; EA-123 and EA-124 add three; EA-126 to EA-129 add five; EA-132, EA-133, EA-134, EA-135 and EA-136 add one each.
   - **16 S2 assertions checked, 16 passing:** every `candidacy` trace fact (EA-013, EA-014, EA-024, three in EA-033, and EA-093 to EA-100).

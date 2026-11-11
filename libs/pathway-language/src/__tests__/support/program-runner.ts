@@ -44,6 +44,7 @@ import {
   type JsonValue,
   type SuppliedEvidence,
 } from '../../index';
+import type { RawPreviewSingleQueryResult } from '../../index';
 
 export const PROGRAM_DIR = join(__dirname, '..', '..', '..', '..', '..', 'docs', 'superpowers', 'records', 'pathway-language', 'programs');
 
@@ -81,13 +82,18 @@ export interface ExampleReport {
   completePreviewChecked: number;
   /** Multi-query raw-input checks: several complete queries computed over one shared snapshot. */
   multiRawChecked: number;
+  /** Multi-query raw-input preview checks: program outputs and trace, plus per query its authoring state, stages, snapshot handling, criteria or attribution. */
+  multiPreviewChecked: number;
   failures: string[];
   outOfScope: string[];
 }
 
-/** Complete EvidenceQuery IDs of a package, read from the package (never hard-coded). */
+/** Complete EvidenceQuery IDs of a package, read from the package (never hard-coded); a criterion-holed query is not complete. */
 const completeQueries = (p: CompiledProgram) =>
-  new Set(p.declarations.filter((d) => d.kind === 'EvidenceQuery' && d.contract.kind !== 'hole').map((d) => d.id));
+  new Set(p.declarations.filter((d) => d.kind === 'EvidenceQuery' && d.contract.kind === 'explicit-assertion-v0').map((d) => d.id));
+/** Criterion-holed EvidenceQuery IDs: their raw-preview output reports S1–S5, isolated preview runs none. */
+const criterionHoledQueries = (p: CompiledProgram) =>
+  new Set(p.declarations.filter((d) => d.kind === 'EvidenceQuery' && d.contract.kind === 'explicit-assertion-v0-incomplete').map((d) => d.id));
 
 /** Compares program-level outputs and trace entries of one execution; returns the number of checks. */
 function compareExecution(exp: Json, result: Json, supplied: Set<string>, report: ExampleReport, label: string): number {
@@ -123,10 +129,16 @@ const rawInput = (i: Json) => ({
   snapshot: { id: i.snapshot, coverage: i.coverage, failures: i.failures, rejectedItems: i.rejectedItems },
 });
 const runRaw = (pkg: CompiledProgram, i: Json): RawExecutionResult => experimentalExecuteFromRawRecords(pkg as never, rawInput(i));
+const runPreview = (pkg: CompiledProgram, i: Json) => experimentalExecutePreviewFromRawRecords(pkg as never, rawInput(i));
+const previewOne = (pkg: CompiledProgram, i: Json): RawPreviewSingleQueryResult => {
+  const r = runPreview(pkg, i);
+  if (r.scope !== 'one-query-program-preview-from-raw-records') throw new Error(`expected the one-query preview shape, got ${r.scope}`);
+  return r;
+};
 
 /** Raw-input preview of a one-holed-query PreviewPackage: [program-preview checks, partial query-stage checks]. */
 function compareRawPreview(exp: Json, pkg: CompiledProgram, i: Json, report: ExampleReport): [number, number] {
-  const r = experimentalExecutePreviewFromRawRecords(pkg as never, rawInput(i));
+  const r = previewOne(pkg, i);
   if (r.queryAuthoring !== 'Incomplete') {
     report.failures.push(`raw preview: expected the incomplete-authoring branch, got ${r.queryAuthoring}`);
     return [1, 0];
@@ -154,7 +166,7 @@ function compareRawPreview(exp: Json, pkg: CompiledProgram, i: Json, report: Exa
 
 /** Raw-input preview of a one-complete-query PreviewPackage: outputs, trace, causeAttribution, state and publication. */
 function compareCompletePreview(exp: Json, pkg: CompiledProgram, i: Json, report: ExampleReport): number {
-  const r = experimentalExecutePreviewFromRawRecords(pkg as never, rawInput(i));
+  const r = previewOne(pkg, i);
   let n = 0;
   const check = (ok: boolean, what: string) => {
     n += 1;
@@ -174,6 +186,59 @@ function compareCompletePreview(exp: Json, pkg: CompiledProgram, i: Json, report
   }
   check(isDeepStrictEqual(attribution(r.queryEvidence), (exp.causeAttribution as Json[]).map(attrKey).sort()), `causeAttribution ${JSON.stringify(attribution(r.queryEvidence))}`);
   // A hole elsewhere keeps the program incomplete whatever the patient evidence is.
+  check(exp.state === 'IncompleteAuthoring' && r.publication === 'Blocked', `state ${exp.state}, publication ${r.publication}`);
+  return n;
+}
+
+/** A criterion value in example notation: True/False/Unknown, or Marker[hole]. */
+const criterionValue = (c: Json) => (c.result.value === 'Marker' ? `Marker[${c.result.hole}]` : c.result.value);
+
+/**
+ * Raw-input preview of a multi-query PreviewPackage. Program level: every expected output and trace
+ * `source`/`result`, the query list, state and publication. Per query (`queryPreview`): authoring
+ * state, stages run and snapshot-statement handling; for an incomplete query its marker and the
+ * per-record establishes/refutes values of its preview-query result; for a complete query its S6
+ * cause attribution (its trace has S6 summaries only, so no per-record criterion value is checked).
+ */
+function compareMultiPreview(exp: Json, pkg: CompiledProgram, i: Json, report: ExampleReport): number {
+  const r = runPreview(pkg, i);
+  let n = 0;
+  const check = (ok: boolean, what: string) => {
+    n += 1;
+    if (!ok) report.failures.push(`multi-query preview ${what}`);
+  };
+  if (r.scope !== 'multi-query-program-preview-from-raw-records') {
+    check(false, `expected the multi-query shape, got ${r.scope}`);
+    return n;
+  }
+  for (const [name, expected] of Object.entries(exp.outputs as Json)) {
+    const got = r.outputs[name] ? project(r.outputs[name] as Json) : undefined;
+    check(isDeepStrictEqual(got, expected), `outputs[${name}] ${JSON.stringify(got)}`);
+  }
+  for (const t of exp.trace as Json[]) {
+    const got = r.trace.find((x) => x.output === t.output);
+    check(got?.source === t.source && got?.result === t.result, `trace ${t.output}: ${JSON.stringify(got && { source: got.source, result: got.result })}`);
+  }
+  const qp = exp.queryPreview as Json;
+  check(isDeepStrictEqual([...r.queries], Object.keys(qp).sort()) && isDeepStrictEqual(r.queryPreviewResults.map((x) => x.query), [...r.queries]), `queries ${JSON.stringify(r.queries)}`);
+  for (const [q, e] of Object.entries(qp) as [string, Json][]) {
+    const got = r.queryPreviewResults.find((x) => x.query === q);
+    if (!got) {
+      check(false, `queryPreviewResults has no ${q}`);
+      continue;
+    }
+    check(isDeepStrictEqual([got.queryAuthoring, got.stagesRun, got.snapshotStatements], [e.queryAuthoring, e.stagesRun, e.snapshotStatements]), `${q} ${JSON.stringify([got.queryAuthoring, got.stagesRun, got.snapshotStatements])}`);
+    if (got.queryAuthoring === 'Incomplete') {
+      check(isDeepStrictEqual(got.previewQuery.marker, (exp.outputs as Json)[q]?.marker) && got.previewQuery.queryStatus === 'Incomplete', `${q} previewQuery marker or status`);
+      const criteria = got.previewQuery.contract === 'IncompleteCriteria'
+        ? got.previewQuery.keys.flatMap((k) => k.possibilities.flatMap((p) => (p.record.outcome === 'Evaluated' ? [{ record: showRef(p.record.node), establishes: criterionValue(p.record.establishes), refutes: criterionValue(p.record.refutes) }] : [])))
+        : [];
+      check(isDeepStrictEqual(criteria, e.criteria), `${q} criteria ${JSON.stringify(criteria)}`);
+    } else {
+      const a = (exp.causeAttribution as Json[]).find((x) => x.query === q);
+      check(a !== undefined && isDeepStrictEqual(attribution(got.queryEvidence), (a.attribution as Json[]).map(attrKey).sort()), `causeAttribution[${q}] ${JSON.stringify(attribution(got.queryEvidence))}`);
+    }
+  }
   check(exp.state === 'IncompleteAuthoring' && r.publication === 'Blocked', `state ${exp.state}, publication ${r.publication}`);
   return n;
 }
@@ -231,7 +296,7 @@ export function runProgramExamples(dir: string = PROGRAM_DIR): ExampleReport[] {
   const reports: ExampleReport[] = [];
   for (const name of readdirSync(join(dir, 'examples')).sort()) {
     const ex = JSON.parse(readFileSync(join(dir, 'examples', name), 'utf8')) as Json;
-    const report: ExampleReport = { id: ex.id, checked: 0, executionChecked: 0, previewChecked: 0, rawChecked: 0, rawPreviewChecked: 0, partialStageChecked: 0, completePreviewChecked: 0, multiRawChecked: 0, failures: [], outOfScope: [] };
+    const report: ExampleReport = { id: ex.id, checked: 0, executionChecked: 0, previewChecked: 0, rawChecked: 0, rawPreviewChecked: 0, partialStageChecked: 0, completePreviewChecked: 0, multiRawChecked: 0, multiPreviewChecked: 0, failures: [], outOfScope: [] };
     reports.push(report);
     const program = JSON.parse(readFileSync(join(dir, 'examples', ex.program.file), 'utf8')) as JsonValue;
     const source = applyPatch(program, ex.program.patch);
@@ -289,11 +354,17 @@ export function runProgramExamples(dir: string = PROGRAM_DIR): ExampleReport[] {
       else {
         const supplied = completeQueries(p.package);
         const map = new Map([...supplied].map((q) => [q, exp.outputs[q].evidence as SuppliedEvidence]));
-        report.previewChecked += compareExecution(exp, experimentalExecutePreviewWithSuppliedQueryResults(p.package, map), supplied, report, 'preview');
+        // A criterion-holed query's expected output lists the S1–S5 its raw preview ran; isolated preview runs none, so it is checked by the raw run only.
+        const partial = criterionHoledQueries(p.package);
+        report.previewChecked += compareExecution(exp, experimentalExecutePreviewWithSuppliedQueryResults(p.package, map), new Set([...supplied, ...partial]), report, 'preview');
         if (supplied.size > 0) report.outOfScope.push(`query evidence for ${[...supplied].join(', ')} (supplied, not computed)`);
         // Raw-input preview: one query, holed or complete, run from the example's own raw inputs.
         const queries = p.package.declarations.filter((d) => d.kind === 'EvidenceQuery');
-        if (ex.input?.records && queries.length === 1 && supplied.size === 0) {
+        if (ex.input?.records && queries.length > 1) {
+          report.multiPreviewChecked += compareMultiPreview(exp, p.package, ex.input, report);
+          report.outOfScope.push('input.context.clock, input.context.mode and input.supersedesSnapshot (not inputs of query-bound selection)');
+          report.outOfScope = report.outOfScope.filter((x) => !x.startsWith('query evidence for'));
+        } else if (ex.input?.records && queries.length === 1 && supplied.size === 0) {
           const [n, m] = compareRawPreview(exp, p.package, ex.input, report);
           report.rawPreviewChecked += n;
           report.partialStageChecked += m;

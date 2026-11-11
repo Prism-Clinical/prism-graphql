@@ -234,6 +234,23 @@ def main():
                 err(where, f"p.demo decision differs from {base['fixture']}")
             if exp["causeAttribution"] != fx["expected"]["causeAttribution"]:
                 err(where, f"causeAttribution differs from {base['fixture']}")
+        if base.get("inputFixture"):
+            fx = load(os.path.join(CONF, "fixtures", f"{base['inputFixture']}.json"))
+            if ex.get("input") != fx["input"]:
+                err(where, f"input differs from {base['inputFixture']}")
+        # Multi-query preview: one queryPreview entry per EvidenceQuery; attribution only for complete ones.
+        if "queryPreview" in exp:
+            qids = {d["id"] for d in prog["nodes"] if d.get("kind") == "EvidenceQuery"}
+            qp = exp["queryPreview"]
+            if set(qp) != qids:
+                err(where, f"queryPreview names {sorted(qp)}, program queries {sorted(qids)}")
+            complete = sorted(q for q, v in qp.items() if v.get("queryAuthoring") == "Complete")
+            if sorted(a["query"] for a in exp["causeAttribution"]) != complete:
+                err(where, "causeAttribution must list exactly the complete queries")
+            for q, v in qp.items():
+                holed = "hole" in json.dumps(next(d for d in prog["nodes"] if d["id"] == q)["contract"])
+                if (v.get("queryAuthoring") == "Incomplete") != holed:
+                    err(where, f"queryPreview[{q}] authoring does not match its contract")
         # Multi-query examples: each named query's evidence and attribution equal its fixture's.
         for b in base.get("queries", []):
             fx = load(os.path.join(CONF, "fixtures", f"{b['fixture']}.json"))

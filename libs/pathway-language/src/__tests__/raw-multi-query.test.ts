@@ -20,7 +20,6 @@ import {
   experimentalExecutePreviewFromRawRecords,
   experimentalQueryEvidence,
   experimentalSelectForQuery,
-  RawPreviewConfigurationError,
   DEMO_AUTHORITY_RULE,
   experimentalResolveRevisionHistory as resolve,
   type CompiledPackage,
@@ -295,11 +294,12 @@ describe('multi-query raw execution: determinism, ownership and failure', () => 
     bad(p.package, ok, /preview packages are not executed here/);
   });
 
-  it('18, 21. multi-query preview stays unsupported; the preview entry point is unchanged', () => {
+  it('18, 21. a two-query PreviewPackage is previewed only by the preview entry point; normal execution still rejects it', () => {
     const p = experimentalCompilePreview({ ...source(), nodes: [...source().nodes, { id: 'g', kind: 'Finding', status: { all: [] }, label: 'y', urgency: { hole: { id: 'H-U', type: 'UrgencyRequirement', explains: 'x' } } }] } as JsonValue);
     if (p.outcome !== 'PreviewPackage') throw new Error('preview');
-    expect(() => experimentalExecutePreviewFromRawRecords(p.package, input([SUPPORTING]))).toThrow(RawPreviewConfigurationError);
-    expect(() => experimentalExecutePreviewFromRawRecords(p.package, input([SUPPORTING]))).toThrow(/exactly one EvidenceQuery; the package has 2/);
+    // Routing only; multi-query preview itself is covered in raw-multi-query-preview.test.ts.
+    expect(experimentalExecutePreviewFromRawRecords(p.package, input([SUPPORTING])).scope).toBe('multi-query-program-preview-from-raw-records');
+    expect(() => experimentalExecuteFromRawRecords(p.package as never, input([SUPPORTING]))).toThrow(/preview packages are not executed here/);
   });
 
   it('17. a one-query program keeps the one-query result shape exactly', () => {

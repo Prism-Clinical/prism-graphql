@@ -2,7 +2,7 @@
 
 **Status:** Proposed design draft. **Not** accepted, not finalized syntax, not a schema and not implemented. It contains no clinical content: the record type, enum values, codes, sources and permission below are fictional and illustrate language behavior only. They do not map to dysphagia, progression, urgency or any other clinical definition.
 
-**Date:** 2026-10-03. **Revised:** 2026-10-03, nine times, 2026-10-04, once, 2026-10-05, three times, 2026-10-09, three times, 2026-10-28, three times, and 2026-10-29, eight times, 2026-10-31, once, and 2026-11-02, eight times, and 2026-11-03, once, and 2026-11-05, once, and 2026-11-06, once, and 2026-11-09, once, after review. The third revision fixed three things:
+**Date:** 2026-10-03. **Revised:** 2026-10-03, nine times, 2026-10-04, once, 2026-10-05, three times, 2026-10-09, three times, 2026-10-28, three times, and 2026-10-29, eight times, 2026-10-31, once, and 2026-11-02, eight times, and 2026-11-03, once, and 2026-11-05, once, and 2026-11-06, once, and 2026-11-09, once, and 2026-11-11, once, after review. The third revision fixed three things:
 
 - revision-chain boundaries: source-scoped identity, same-source corrections and one fully specified schematic authority rule;
 - deterministic outcomes for malformed history;
@@ -13,6 +13,8 @@ The fourth revision made three changes:
 - Proven cross-boundary corrections and retractions are now rejected without changing their target. This keeps gap irrelevance consistent with S1.
 - Payload identity for duplicate detection is defined.
 - An unsupported justification about coverage attestations is removed.
+
+The forty-first revision records multi-query raw-input preview (first-program contract section 8, “Raw-input preview boundary”): a `PreviewPackage` with several EvidenceQueries reads one captured runtime input, and each query is evaluated under its own authoring state, a holed query through the 3.5 preview entry point, a complete one through the bound pipeline. A bullet is added to 3.5 “Preview evaluation”; no evidence-query semantics change.
 
 The fortieth revision records multi-query normal execution from raw records (first-program contract section 8, “Raw-input execution boundary”): a compiled program with several complete queries reads one shared runtime input, and each query runs its own query-bound selection and query evidence under its own contract. A bullet is added to 5.1 “Query evidence boundary”; no evidence-query semantics change.
 
@@ -833,6 +835,7 @@ The standalone S1–S4 entry points remain for isolated stage testing. Their res
 - **A complete query in a preview package** is rejected by this entry point. This is a **scope restriction** of the slice, not a semantic limit (confirmed on review, 2026-10-29): per-record preview of a complete query could be supported without S6; only its final query result needs S6. Until then its per-record S5 values are available only after normal compilation of a hole-free program.
 - **Program use.** The raw-input preview boundary (first-program contract section 8) calls this entry point unchanged for a program whose only query is holed. It returns this result with the program preview and passes only the query’s marker to the program evaluator; no per-record value reaches a program output.
 - **Complete query in a preview program.** The raw-input preview boundary does not call this entry point for a complete query. It runs the normal pipeline (S1–S4 selection, S5, S6 and the `Evidence<Boolean>` of 5.1) through an internal selection bound to the exact `PreviewPackage` object and query ID; S5 and S6 accept the preview package only with that bound selection. Its result is the query evidence of 5.1, whose trace holds the step A, B and C summaries and the attribution, not per-record `establishes` and `refutes` values. This entry point still rejects a complete query, and `experimentalSelectForQuery` and the other public stages still reject every preview package.
+- **Several queries of one preview program** (2026-11-11). Raw-input preview of a `PreviewPackage` with several EvidenceQueries (first-program contract section 8) evaluates each query on its own: a holed query through this entry point, a complete one through the bound pipeline above, each from its own compiled contract and the one captured runtime input. Nothing is shared between queries (no S1, S4, preview or evidence result), and a hole in one query never changes how another is evaluated. This entry point and its results are unchanged.
 
 ### 3.6 S5 per-record classification (one possibility)
 

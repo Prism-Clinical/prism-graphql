@@ -16,7 +16,8 @@ import {
   experimentalEvaluateCriteria,
   experimentalEvaluatePreviewQuery,
   experimentalExecuteFromRawRecords,
-  experimentalExecutePreviewFromRawRecords,
+  experimentalExecutePreviewFromRawRecords as previewFromRaw,
+  type RawPreviewSingleQueryResult,
   experimentalExecutePreviewWithSuppliedQueryResults,
   experimentalGapRelevance,
   experimentalQueryEvidence,
@@ -32,6 +33,13 @@ import {
 } from '../index';
 import { PROGRAM_DIR } from './support/program-runner';
 import { COMPLETE, CTX, REFUTING, SUPPORTING, T, compiled, fail, program, rev, show, snap, type J } from './support/s6-records';
+
+/** This file covers one-query previews: the result narrowed to the one-query shape (multi-query: raw-multi-query-preview.test.ts). */
+const experimentalExecutePreviewFromRawRecords = (pkg: PreviewPackage, inp: Parameters<typeof previewFromRaw>[1]): RawPreviewSingleQueryResult => {
+  const r = previewFromRaw(pkg, inp);
+  if (r.scope !== 'one-query-program-preview-from-raw-records') throw new Error(`expected the one-query shape, got ${r.scope}`);
+  return r;
+};
 
 const hole = (id: string, type = 'Decision') => ({ hole: { id, type, explains: `${id} is undecided` } });
 const Q0 = program().nodes[0] as J;
@@ -65,7 +73,7 @@ const EST_HOLE = preview(source([{ ...Q0, contract: { ...Q0.contract, establishe
 const WHOLE = preview(source([{ ...Q0, contract: hole('H-C', 'EvidenceSelectionContract<Boolean>') }, ...NODES.slice(1)]));
 
 const input = (revisions: J[], snapshot: EvaluationSnapshot = snap(), retractions: J[] = []) => ({ ...CTX, revisions: revisions as JsonValue[], retractions: retractions as JsonValue[], snapshot });
-const complete = (r: RawPreviewResult): RawPreviewCompleteResult => {
+const complete = (r: RawPreviewSingleQueryResult): RawPreviewCompleteResult => {
   if (r.queryAuthoring !== 'Complete') throw new Error(`expected the complete-query branch, got ${r.queryAuthoring}`);
   return r;
 };
@@ -222,7 +230,7 @@ describe('raw-input preview, complete query: patient evidence beside unrelated a
     (sn.coverage as J[]).length = 0;
     expect(JSON.stringify(r)).toBe(before);
     expect(Object.keys(r).sort()).toEqual(['experimental', 'findingAttributes', 'inspectable', 'markers', 'mode', 'notRun', 'outcome', 'outputs', 'packageId', 'publication', 'query', 'queryAuthoring', 'queryEvidence', 'remainingScope', 'scope', 'snapshot', 'snapshotStatements', 'stagesRun', 'trace'].sort());
-    expect(r.remainingScope).toMatch(/zero or several queries, Needs and acquisition are not executed/);
+    expect(r.remainingScope).toMatch(/Programs with zero queries, Needs and acquisition are not executed/);
     expect(JSON.stringify(r)).not.toMatch(/"previewQuery"|"needs"|"acquisition"/);
   });
 });
@@ -295,8 +303,8 @@ describe('raw-input preview, complete query: ownership of the preview selection'
     bad(PKG, { ...CTX, revisions: [], retractions: [] }, /a snapshot is required/);
     bad(PKG, { ...ok, snapshot: { id: 'snap-1', coverage: [] } }, /snapshot must state/);
     bad(PKG, { ...ok, subject: 7 }, /subject/);
-    bad(preview(source([...NODES, { ...Q0, id: 'q2' }])), ok, /exactly one EvidenceQuery; the package has 2/);
-    bad(preview(source([{ id: 'f', kind: 'Finding', status: { all: [{ ref: 'scope' }] }, label: 'x', urgency: hole('H-U', 'UrgencyRequirement') }])), ok, /exactly one EvidenceQuery; the package has 0/);
+    expect(previewFromRaw(preview(source([...NODES, { ...Q0, id: 'q2' }])), ok).scope).toBe('multi-query-program-preview-from-raw-records');
+    bad(preview(source([{ id: 'f', kind: 'Finding', status: { all: [{ ref: 'scope' }] }, label: 'x', urgency: hole('H-U', 'UrgencyRequirement') }])), ok, /one or more EvidenceQueries; the package has 0/);
   });
 
   it('10, 20. holed preview, normal raw execution, isolated execution and PPL-04 are unchanged', () => {

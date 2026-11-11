@@ -14,7 +14,8 @@ import {
   experimentalCompilePreview,
   experimentalEvaluatePreviewQuery,
   experimentalExecuteFromRawRecords,
-  experimentalExecutePreviewFromRawRecords,
+  experimentalExecutePreviewFromRawRecords as previewFromRaw,
+  type RawPreviewSingleQueryResult,
   experimentalExecutePreviewWithSuppliedQueryResults,
   experimentalResolveRevisionHistory,
   type EvaluationSnapshot,
@@ -27,6 +28,13 @@ import {
 } from '../index';
 import { PROGRAM_DIR } from './support/program-runner';
 import { COMPLETE, CTX, REFUTING, SUPPORTING, T, compiled, program, rev, snap, type J } from './support/s6-records';
+
+/** This file covers one-query previews: the result narrowed to the one-query shape (multi-query: raw-multi-query-preview.test.ts). */
+const experimentalExecutePreviewFromRawRecords = (pkg: PreviewPackage, inp: Parameters<typeof previewFromRaw>[1]): RawPreviewSingleQueryResult => {
+  const r = previewFromRaw(pkg, inp);
+  if (r.scope !== 'one-query-program-preview-from-raw-records') throw new Error(`expected the one-query shape, got ${r.scope}`);
+  return r;
+};
 
 const hole = (id: string, type = 'Decision') => ({ hole: { id, type, explains: `${id} is undecided` } });
 const Q0 = program().nodes[0] as J;
@@ -63,7 +71,7 @@ const BOTH_HOLES = preview(source(BOTH));
 
 const input = (revisions: J[], snapshot: EvaluationSnapshot = snap(), retractions: J[] = []) => ({ ...CTX, revisions: revisions as JsonValue[], retractions: retractions as JsonValue[], snapshot });
 /** Every package here has a holed query: the result must be the incomplete-authoring branch. */
-const holed = (r: RawPreviewResult): RawPreviewIncompleteResult => {
+const holed = (r: RawPreviewSingleQueryResult): RawPreviewIncompleteResult => {
   if (r.queryAuthoring !== 'Incomplete') throw new Error(`expected the incomplete-authoring branch, got ${r.queryAuthoring}`);
   return r;
 };
@@ -173,10 +181,10 @@ describe('raw-input preview: PPL-04 and the supported hole shapes', () => {
     expect(criteria(run(EST_HOLE, records))['s1/r3']).toEqual(['Marker', 'Unknown']);
   });
 
-  it('8. Boolean simplification never erases a marker (True from raw preview; False through the same evaluator)', () => {
+  it('8. Boolean simplification never erases a marker (True and False beside it, both from raw preview)', () => {
     // Raw: all(True, marker) and all(marker, marker) both stay markers (f and p2 above). A False operand
-    // beside the marker needs a second, complete query: outside this one-query slice, so the same
-    // evaluator is checked through isolated preview with that query's False supplied.
+    // beside the marker needs a second, complete query: a multi-query preview computes it from raw
+    // records, and isolated preview with the same False supplied agrees.
     const r = run(EST_HOLE, [SUPPORTING]);
     expect(traceOf(r, 'f.status').result).toBe('Marker[H-E]');
     const two = preview(source(EST, [
@@ -187,7 +195,11 @@ describe('raw-input preview: PPL-04 and the supported hole shapes', () => {
     const iso = experimentalExecutePreviewWithSuppliedQueryResults(two, new Map([['q2', { status: 'Known', value: false, supportingEvidenceIds: ['s1/r2@1'] }]]));
     if (iso.outcome !== 'Executed') throw new Error(JSON.stringify(iso));
     expect(iso.outputs['h']).toEqual({ status: marker('H-E') });
-    expect(() => run(two, [])).toThrow(/exactly one EvidenceQuery; the package has 2/);
+    // q2 is complete over the Denied record: Known(false), so p3 is False with s1/r2 as support.
+    const raw = previewFromRaw(two, input([REFUTING]));
+    if (raw.scope !== 'multi-query-program-preview-from-raw-records') throw new Error(raw.scope);
+    expect(raw.outputs['p3']).toEqual({ decision: { value: 'False' }, supportingEvidenceIds: [node('r2')] });
+    expect(raw.outputs['h']).toEqual({ status: marker('H-E') });
   });
 
   it('9. an independently evaluated Finding keeps its status when only its urgency is holed', () => {
@@ -271,8 +283,9 @@ describe('raw-input preview: partial query results, traces, identity and ownersh
     // Zero queries (the hole is elsewhere) and two holed queries. A complete query in a PreviewPackage is
     // no longer rejected: raw-preview-complete.test.ts covers it.
     const scopeHole = (nodes: J[]) => preview({ ...program(), applicability: { id: 'scope', kind: 'Predicate', expr: hole('H-S') }, nodes });
-    bad(scopeHole([{ id: 'f', kind: 'Finding', status: { all: [{ ref: 'scope' }] }, label: 'x' }]), ok, /exactly one EvidenceQuery; the package has 0/);
-    bad(preview(source(EST, [{ ...Q0, id: 'q2', contract: REF }])), ok, /exactly one EvidenceQuery; the package has 2/);
+    bad(scopeHole([{ id: 'f', kind: 'Finding', status: { all: [{ ref: 'scope' }] }, label: 'x' }]), ok, /one or more EvidenceQueries; the package has 0/);
+    // Several queries are in scope since the multi-query preview slice (raw-multi-query-preview.test.ts).
+    expect(previewFromRaw(preview(source(EST, [{ ...Q0, id: 'q2', contract: REF }])), ok).scope).toBe('multi-query-program-preview-from-raw-records');
     expect(experimentalExecutePreviewFromRawRecords(scopeHole(program().nodes), ok).queryAuthoring).toBe('Complete');
     const errors = [RawPreviewConfigurationError, RawExecutionConfigurationError];
     expect(new Set(errors).size).toBe(2);
@@ -318,7 +331,7 @@ describe('raw-input preview: partial query results, traces, identity and ownersh
       const text = JSON.stringify(r);
       for (const f of ['evidence', 'queryEvidence', 'needs', 'possibleClasses', 'classification', 'attribution', 'materiality', 'provenance"']) expect(text).not.toContain(`"${f}${f.endsWith('"') ? '' : '"'}`);
       expect(r.notRun).toEqual(expect.arrayContaining(['S6', 'QueryEvidence', 'Needs', 'Acquisition', 'MultiQuery']));
-      expect(r.remainingScope).toMatch(/zero or several queries, Needs and acquisition are not executed/);
+      expect(r.remainingScope).toMatch(/Programs with zero queries, Needs and acquisition are not executed/);
     }
   });
 });
