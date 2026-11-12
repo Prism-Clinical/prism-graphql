@@ -1,11 +1,11 @@
 # Contract digest and structured Need key (I7 identity proposal)
 
-**Status:** Proposed, not accepted. This is a design record for the first sub-slice of [I7 Needs generation](first-program-implementation-contract.md) (section 8, “Needs generation (I7)”, gap G2). It does not implement anything, decide whether a Need exists, or change any contract semantics, fixture expectation or story status. All content is fictional and nonclinical. **Date:** 2026-11-11.
+**Status:** Proposed, not accepted as a whole, and not implemented. Decisions O1–O5 were reviewed on 2026-11-12 (section 5): O1 and O4 were revised, O2 and O5 kept, O3 settled at the identity boundary. This is a design record for the first sub-slice of [I7 Needs generation](first-program-implementation-contract.md) (section 8, “Needs generation (I7)”, gap G2). It does not implement anything, decide whether a Need exists, or change any contract semantics, fixture expectation or story status. All content is fictional and nonclinical. **Date:** 2026-11-11. **Revised:** 2026-11-12, applying the review of O1–O5.
 
 **Problem statement.** Given a complete compiled evidence-query contract and resolved subject, episode and encounter bindings, define a deterministic contract digest and a structured Need key. Under explicitly defined equivalence rules, equivalent contracts produce the same digest. A change to executable meaning must not accidentally reuse a Need identity. The key is the existing one: (query ID, contract digest, subject, episode binding, encounter binding). This record defines that identity boundary only.
 
 **Settled already (not changed here):**
-- the key's five components;
+- the key's five components (the query component is represented package-qualified, section 3, O4);
 - the cause is not part of it (evidence-query contract §6.2);
 - K1 persists across snapshots 1–4, and a new digest or encounter gives a new key (§6.3);
 - the authored `assertionKind` set is covered by the digest (§2.6, cases 115a/b use `d-ak1`);
@@ -15,13 +15,13 @@
 - RFC 8785 canonical bytes and SHA-256 identify variants ([CANONICALIZATION.md](conformance/explicit-assertion-v0/CANONICALIZATION.md) §7);
 - a changed meaning must never reuse an old identifier (Stage A §12.1).
 
-Everything marked **Proposed** below is a recommendation.
+Everything marked **Proposed** below is a recommendation; items marked **Reviewed** record the 2026-11-12 decisions.
 
 ## 1. Inputs and output
 
 **Inputs.**
 - One `EvidenceQuery` declaration of a compiled package (`CompiledPackage` or `PreviewPackage`, `compile/types.ts`), taken from that package's own `declarations`. A caller-supplied object resembling a declaration is not accepted. This is the same ownership rule the query binding already enforces.
-- That package's `languageVersion`, `capabilityProfileVersion` and `valueSets`.
+- That package's `packageId`, `languageVersion`, `capabilityProfileVersion` and `valueSets`.
 - The evaluation context's `subject` and its `episode` and `encounter` bindings (`{known}` or `{unknown}`, `s3/types.ts`).
 
 Raw program source is never digested. Only the compiled contract is.
@@ -29,7 +29,7 @@ Raw program source is never digested. Only the compiled contract is.
 **Output (Proposed).** One of:
 - `{ key: NeedKey }`: every component is defined;
 - `{ noContractIdentity: { holes } }`: the contract is incomplete (`explicit-assertion-v0-incomplete`) or a whole-contract hole;
-- `{ unresolvedBindings: [...] }`: the contract is complete, but `episode` and/or `encounter` is `{unknown}`. The digest is still computable.
+- `{ unresolvedBindings: [...] }`: the contract is complete, but `episode` and/or `encounter` is `{unknown}`. Every unresolved binding is listed, in key order (`episode`, then `encounter`), each once (O3). The digest is still computable.
 
 Whether any of these leads to a Need, a deferral record or nothing is decided by the emission slice, not here.
 
@@ -54,20 +54,23 @@ The digest covers a projection of the compiled contract. It never covers the who
 | `establishes`, `refutes` = `{field, enumType, value}` | the `EnumCriterion`s, without `location` | S5 criteria (§3.5) |
 
 **Excluded:**
-- **Already in the key or runtime data:** query ID, subject, episode, encounter, snapshot, records, coverage, failures, evaluation clock and `mode`.
-- **Non-executable:** `cites`, `location`s, the frozen `contract.source` copy, package `id`, `state` and `nonclinical`, `references`, `holes`, `markers`, `inspectable`, labels and headings.
+- **Already in the key or runtime data:** package namespace, query ID, subject, episode, encounter, snapshot, records, coverage, failures, evaluation clock and `mode`.
+- **Non-executable:** `cites`, `location`s, the frozen `contract.source` copy, package `state` and `nonclinical`, `references`, `holes`, `markers`, `inspectable`, labels and headings.
 - **Unrelated:** other declarations, value sets the query does not pin, and `dependencyEdges`.
 - **The disjointness obligation:** every complete contract must prove it to compile. It gates publication, not evaluation, so it adds nothing to a complete contract's meaning.
-- **The `experimental` tag and compiler or runtime build identity:** these are implementation identities, kept separate in Stage A §12.1. Including them would change every key on every rebuild.
+- **The `experimental` tag and compiler or runtime build identity:** these are implementation identities, kept separate in Stage A §12.1 and recorded with each evaluation instead (Rule B). Including them would change every key on every rebuild.
 
-### 2.2 Pins that do not bind content (Proposed rules)
+### 2.2 Pins that do not bind content (Reviewed rules)
 
 A version string does not prove content identity. This subset has two kinds of pins.
 
 - **Pins whose content is package data: the value set.** The package supplies the expansion itself, and the compiler accepts any well-formed expansion under any ID. Two packages can pin `demo-vs/item-x@1` with different codes. **Rule V:** the digest includes the expansion and covered systems, not only the ID. It also keeps the ID, conservatively, because the ID is the declared pin S2 checks and traces.
-- **Pins whose content is built into the implementation:** `recordType` (fields, enums and payload canonicalization of `demo-model@0.1`), `authorityRule`, `policy`, `languageVersion` and `capabilityProfileVersion`. Their meaning is prose contract text plus code, not data in the package. The digest can bind only the identifier. **Rule B:** a built-in identifier names exactly one executable meaning. Any change to that meaning, including a bug fix that changes a fixture outcome, ships under a new identifier. This applies Stage A §12.1's "no reuse of an old identifier with different behavior" to Need identity.
+- **Pins whose content is built into the implementation:** `recordType` (fields, enums and payload canonicalization of `demo-model@0.1`), `authorityRule`, `policy`, `languageVersion` and `capabilityProfileVersion`. Their meaning is prose contract text plus code, not data in the package. The digest can bind only the identifier. **Rule B** (revised on review, O1) separates two kinds of change:
+  - **Specification change.** The specified meaning of a built-in identifier is immutable. The specification is its contract text and accepted cases. Changing either requires a new identifier, so the digest and every key change. This applies Stage A §12.1's "no reuse of an old identifier with different behavior" to Need identity.
+  - **Implementation correction.** Code changed to conform to the *unchanged* specification keeps the identifier, the digest and the keys. The implementation version is recorded separately, with each evaluation, and never enters the digest or key. After such a correction, Needs produced under an affected implementation version are explicitly reevaluated. That reevaluation is a new evaluation revision under the same keys, and how affected Needs are found and reevaluated belongs to the I7 lifecycle sub-slice.
+  - **Classification.** The review accepting the change decides which kind it is. If contract text and a fixture disagree, that review settles which one is the specification. A resolution that changes specified behavior is a specification change.
 
-  The evidence that an implementation realizes an identifier is conformance against its fixtures, not the digest. Without Rule B, a changed built-in would silently reuse old keys. That gap is exposed here, not closed by the digest (open decision O1).
+  The evidence that an implementation realizes an identifier is conformance against its accepted cases, not the digest. The digest binds the identifier; Rule B binds the identifier to one specified meaning.
 
 ### 2.3 Semantic normalization, then canonical serialization
 
@@ -113,7 +116,7 @@ A complete contract inside a `PreviewPackage` has the same projection and digest
 
 ```json
 {
-  "query": "q.demo",
+  "query": { "package": "<package namespace>", "id": "q.demo" },
   "contractDigest": { "scheme": "ppl-query-contract-digest/0", "sha256": "<64 hex>" },
   "subject": "P1",
   "episode": "E1",
@@ -121,16 +124,16 @@ A complete contract inside a `PreviewPackage` has the same projection and digest
 }
 ```
 
-- `query`: the `EvidenceQuery` declaration ID, as the existing key and fixtures use it.
+- `query` (revised on review, O4): the package namespace and the `EvidenceQuery` declaration ID, as two members. The namespace is the compiled `packageId` (source `package.id`, e.g. `gerd-pregnancy.alarm.progressive-dysphagia`). It names the pathway across its revisions and carries no version, so revising a package keeps the namespace and only a changed contract changes the digest. Identical query contracts in two pathways therefore never share a key or Need lifecycle state. Renaming a package is a new namespace and gives new keys. The compiler checks only that the ID is a string; allocating namespaces so they stay stable and unique across authors and institutions is not specified here (section 5).
 - `subject`: the context `subject` string.
 - `episode`, `encounter`: the `known` values. These are already validated as `EpisodeRef` and `EncounterRef` (§2.4, §2.5); an invalid value is a configuration error, not a deferral.
-- **Identity:** the RFC 8785 bytes of this object; two keys are equal if and only if those bytes are equal. This is the collision-safe pattern gap and attribution identities already use (§4.1, §4.2). No component is joined with a delimiter. The fixture tuple `(q.demo, d1, P1, E1, N1)` is a display label only. Fixtures keep `d1` and `d-ak1` as symbolic labels, mapped to computed digests as the conformance README directs.
+- **Identity:** the RFC 8785 bytes of this object; two keys are equal if and only if those bytes are equal. This is the collision-safe pattern gap and attribution identities already use (§4.1, §4.2). No component is joined with a delimiter. The fixture tuple `(q.demo, d1, P1, E1, N1)` is a display label only. Fixtures keep `query: "q.demo"`, `d1` and `d-ak1` unchanged: a conformance run maps `q.demo` to one fixed test namespace, just as it maps `d1` and `d-ak1` to computed digests (conformance README, open item 1).
 - **Not part of the key:** snapshot IDs, evaluation revisions, causes, contributing records, gap diagnostics and acquisition attempts. These are Need state (§6.2).
-- **Unresolved bindings:** if `episode` or `encounter` is `{unknown}`, no fully bound key is produced. There is no placeholder ID, `null` component or partial key, and no context-binding Need is defined here (gap G5). The fixtures' `deferred: {binding}` names one binding. How to record both being unresolved at once is left to the emission slice (O3).
+- **Unresolved bindings:** if `episode` or `encounter` is `{unknown}`, no fully bound key is produced. There is no placeholder ID, `null` component or partial key, and no context-binding Need is defined here (gap G5). The identity boundary returns every unresolved binding (O3). How Need emission records them, including the case where the fixtures' `deferred: {binding}` names only one, is left to the emission slice.
 
 ## 4. Examples (hand-derived expectations)
 
-Base: `q.demo` as in `query/q.demo.json`, context P1/E1/N1. Its normalized projection, serialized by hand under section 2:
+Base: `q.demo` as in `query/q.demo.json`, in a package with namespace `pkg.a`, context P1/E1/N1. Its normalized projection, serialized by hand under section 2:
 
 ```text
 {"admissible":{"assertionKind":["ClinicianDocumented","PatientReport"],"encounter":{"eq":[{"field":["c","encounter"]},{"ref":"ctx.encounter"}]},"episode":{"eq":[{"field":["c","episode"]},{"ref":"ctx.episode"}]}},"capabilityProfileVersion":"ppl-core-v0","corrections":{"authority":"demo-policy/same-source-amend@1"},"declaration":{"kind":"EvidenceQuery","output":"Evidence<Boolean>","subject":"patient"},"establishes":{"enumType":"AssertionValue","field":"assertion","value":"Affirmed"},"languageVersion":"ppl-1","policy":"explicit-assertion-v0","refutes":{"enumType":"AssertionValue","field":"assertion","value":"Denied"},"retrieve":{"recordType":"demo-model/DemoAssessment@0.1","sources":["s1","s2"],"valueSet":{"coveredSystems":["demo-cs"],"expansion":[{"code":"item-x","system":"demo-cs"}],"id":"demo-vs/item-x@1"}},"scheme":"ppl-query-contract-digest/0"}
@@ -157,19 +160,29 @@ Each row compares a variant with the base. "Same digest" means identical project
 | X15 | snap-1 → snap-2 → snap-3 (§6.3 rows 1–3): attempts, causes and contributing records change | Same | Same |
 | X16 | Key A: subject `P1,E1`, episode `N1`, encounter `N2`. Key B: subject `P1`, episode `E1,N1`, encounter `N2`. Joining with `,` would give `P1,E1,N1,N2` for both | Same | Differs: the RFC 8785 bytes differ |
 | X17 | Context episode `{unknown: ["Conflicting"]}` (cases 12, 113a) | Same | None: `unresolvedBindings: ["episode"]` |
+| X17b | Episode and encounter both `{unknown}` | Same | None: `unresolvedBindings: ["episode", "encounter"]` |
 | X18 | `establishes` is a criterion hole (EA-052a); or the contract is a whole hole (EA-050) | None: `noContractIdentity` | None |
-| X19 | Compiler build or `experimental` tag changes; projection unchanged | Same | Same. Rule B governs any change in meaning |
+| X19 | Compiler build or `experimental` tag changes; projection unchanged | Same | Same |
+| X20 | Implementation correction: S1 code fixed to match the unchanged authority-rule specification, so a fixture outcome changes (Rule B) | Same | Same. The new implementation version is recorded with each evaluation, and affected Needs are explicitly reevaluated |
+| X21 | Specification change: the authority rule's specified meaning changes, published under a new rule ID (Rule B) | Differs | Differs |
+| X22 | The same `q.demo` contract declared in package `pkg.b` (O4) | Same | Differs: `query.package` differs |
+| X23 | Package `pkg.a` revised elsewhere (another Finding, new citations); namespace kept | Same | Same |
 
-## 5. Open decisions (require review)
+## 5. Decisions (reviewed 2026-11-12)
 
-- **O1. Rule B, binding built-in identifiers.** Accept the rule that a built-in record type, authority rule, policy, language or profile identifier never changes meaning? The alternative is to digest an implementation or catalogue identity, at the cost of new keys on every rebuild. Recommendation: Rule B, with fixture conformance as the evidence.
-- **O2. Rule V, value-set content in the digest.** Recommendation: include the content inline. Large expansions might later be referenced by their own content digest instead; this needs no change until such expansions exist.
-- **O3. Both bindings unresolved.** The fixture shape `deferred: {binding}` has one binding, and no fixture has both unknown. This belongs to the emission slice, not identity.
-- **O4. Package qualification of `query`.** The declaration ID is unique only within its package, and `package.id` carries no version. Two packages with the same query ID and the same digest would share a key. Because the digest covers the whole executable contract, that would merge only identical requirements. Recommendation: keep the existing key unchanged and revisit this with cross-query and cross-package deduplication (gap G7).
-- **O5. Relation to Stage A §17 item 7.** This scheme is bounded to this subset's compiled contract. A canonical IR schema would get a new `scheme`, and every key would change once. Carrying Needs across that change is a lifecycle question (I7 lifecycle sub-slice).
+- **O1. Built-in identifiers (revised).** Specified meaning is immutable, and a specification change needs a new identifier. An implementation correction keeps the identifier, digest and keys, with the implementation version recorded separately and affected Needs explicitly reevaluated (Rule B, 2.2). The 2026-11-11 version instead required a new identifier for any bug fix that changed a fixture outcome.
+- **O2. Value-set content in the digest (kept).** The content is included inline (Rule V). Large expansions might later be referenced by their own content digest.
+- **O3. Unresolved bindings (settled at the identity boundary).** All unresolved bindings are returned (section 1). Their Need-emission behavior is deferred to the emission slice.
+- **O4. Package qualification (revised).** The query component is `{package, id}` (section 3), so identical contracts in two pathways do not share Need lifecycle state. The 2026-11-11 version left the query ID unqualified.
+- **O5. Scheme versioning (kept).** The digest scheme is versioned whenever its definition changes. A canonical IR schema (Stage A §17 item 7) would introduce a new `scheme` and change every key once. Carrying Needs across schemes is deferred to the I7 lifecycle sub-slice.
+
+**Still open, outside this proposal:**
+- How package namespaces are allocated so they stay stable and unique across authors and institutions (O4). This is governance or registry work, not compiler behavior.
+- Where the implementation version is recorded with an evaluation, and how affected Needs are selected for reevaluation (O1). Both belong to the lifecycle sub-slice.
 
 ## 6. Consistency notes
 
-- The structured digest object replaces the symbolic strings `d1` and `d-ak1` only when computed. The fixtures, the README mapping and §6.3 stay as they are.
+- The structured digest object and the package-qualified `query` replace the symbolic `d1`, `d-ak1` and bare `q.demo` only when computed. The fixtures, the README mapping and §6.3 stay as they are.
+- §6.2 names the first key component "query ID". Representing it as `{package, id}` refines that representation without changing the component's role; §6.3's display tuples stay unchanged.
 - §6.2 lists what the digest covers: the envelope, declared sources, value-set version, authority rule, admissibility rules, criteria and policy version. Each has a member in 2.1. This proposal adds value-set content, language/profile versions and the declaration signature, and states the exclusions.
 - Nothing here changes S1–S7, the EA-083/EA-092 limitation, or any acceptance case.
