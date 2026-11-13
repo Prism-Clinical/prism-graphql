@@ -39,6 +39,7 @@ import {
   experimentalCauseAttribution,
   type CauseAttributionResult,
   experimentalQueryDecision,
+  experimentalQueryNeed,
   experimentalQueryEvidence,
   type QueryEvidenceResult,
   experimentalGapRelevance,
@@ -184,6 +185,19 @@ export interface FixtureReport {
   /** Combined S3 `admissibility` facts (contract §2.7), checked directly. */
   admissibilityApplicable: number;
   admissibilityPassed: number;
+  /**
+   * I7 single-query Need existence and deferral, over the same fixture input: evidence-Need existence,
+   * key components (namespace `fixture`, symbolic digest recorded in `needDigest`), causes, `deferred`,
+   * and no evidence Need for Known. Obligations are NOT checked, so the `needs` field itself stays out of scope.
+   */
+  needApplicable: number;
+  needPassed: number;
+  /** `needDeferred` trace facts checked against the same result. */
+  needDeferredApplicable: number;
+  /** `CorrectRecord` / `ResolveConflict` expectations present but not evaluated. */
+  obligationsUnchecked: number;
+  /** The fixture's symbolic contract digest and the computed one, when an evidence Need was checked. */
+  needDigest: { readonly symbol: string; readonly sha256: string } | null;
   outOfScope: number;
   failures: string[];
   notRun: string | null;
@@ -402,6 +416,11 @@ export function runFixtures(dir: string = FIXTURE_DIR): { reports: FixtureReport
       decisionPassed: 0,
       admissibilityApplicable: 0,
       admissibilityPassed: 0,
+      needApplicable: 0,
+      needPassed: 0,
+      needDeferredApplicable: 0,
+      obligationsUnchecked: 0,
+      needDigest: null,
       outOfScope: 0,
       failures: [],
       notRun: null,
@@ -825,6 +844,50 @@ export function runFixtures(dir: string = FIXTURE_DIR): { reports: FixtureReport
       if (isDeepStrictEqual(d.decision, exp.decision) && isDeepStrictEqual(d.queryEvidence, evRes)) report.decisionPassed += 1;
       else report.failures.push(`decision ${JSON.stringify(d.decision)}, expected ${JSON.stringify(exp.decision)}`);
     }
+    // I7 single-query Need existence and deferral, from the fixture input itself (one evaluation).
+    if (exp.needs && evRes && fx.kind === 'evaluation') {
+      report.needApplicable += 1;
+      report.obligationsUnchecked += (exp.needs.obligations as unknown[]).length;
+      const r = experimentalQueryNeed({
+        package: compiledQuery as CompiledPackage,
+        query: query.query.id,
+        subject: fx.input.context.subject,
+        revisions: fx.input.records as JsonValue[],
+        retractions: fx.input.retractions as JsonValue[],
+        contextEncounter: fx.input.context.encounter as EncounterBinding,
+        contextEpisode: fx.input.context.episode as EpisodeBinding,
+        snapshot: { id: fx.input.snapshot, coverage: fx.input.coverage, failures: fx.input.failures, rejectedItems: fx.input.rejectedItems },
+      });
+      const problems: string[] = [];
+      if (!isDeepStrictEqual(r.queryEvidence, evRes)) problems.push('Need evaluation differs from the query-bound evaluation');
+      const want = exp.needs.evidence as Json | null;
+      if (exp.evidence.status === 'Known' && r.need.kind !== 'none') problems.push('Known result with a Need result');
+      if (want === null) {
+        if (r.need.kind === 'evidence') problems.push('unexpected evidence Need');
+      } else if (r.need.kind !== 'evidence') problems.push(`no evidence Need (${r.need.kind})`);
+      else {
+        const k = r.need.key;
+        // Documented mapping: the fixture query ID lives in the runner's fixed test namespace `fixture`.
+        const got = { query: k.query, subject: k.subject, episode: k.episode, encounter: k.encounter, causes: r.need.causes };
+        const exp2 = { query: { package: 'fixture', id: want.key.query }, subject: want.key.subject, episode: want.key.episode, encounter: want.key.encounter, causes: want.causes };
+        if (!isDeepStrictEqual(got, exp2)) problems.push(`evidence Need ${JSON.stringify(got)}, expected ${JSON.stringify(exp2)}`);
+        if (want.key.contractDigest !== (fx.query.inline?.contractDigest ?? fx.query.contractDigest)) problems.push('fixture key digest differs from its query digest');
+        report.needDigest = { symbol: want.key.contractDigest, sha256: k.contractDigest.sha256 };
+      }
+      // `{binding}` names one unresolved binding; `{bindings}` lists several, episode first.
+      const d = exp.needs.deferred as Json | null;
+      const wantDeferred = d === null ? null : 'bindings' in d ? d.bindings : [d.binding];
+      const gotDeferred = r.need.kind === 'deferred' ? [...r.need.unresolvedBindings] : null;
+      if (!isDeepStrictEqual(gotDeferred, wantDeferred)) problems.push(`deferred ${JSON.stringify(gotDeferred)}, expected ${JSON.stringify(wantDeferred)}`);
+      for (const t of (exp.traceAssertions ?? []) as Json[]) {
+        if (t.fact !== 'needDeferred') continue;
+        report.needDeferredApplicable += 1;
+        report.outOfScope -= 1; // counted out of scope by the trace loop above
+        if (!gotDeferred?.includes(t.binding)) problems.push(`needDeferred ${t.binding}: not deferred`);
+      }
+      if (problems.length === 0) report.needPassed += 1;
+      else report.failures.push(...problems.map((m) => `need: ${m}`));
+    }
     // One-way (contract §4.2 rules 2-3): a Known result is supported only by selected revisions.
     if (exp.evidence?.status === 'Known' && s4) {
       const selected = new Set(s4.selected.map((x) => showRev(x.node.revision) + (x.node.digest ? `#${x.node.digest}` : '')));
@@ -872,7 +935,8 @@ export function runFixtures(dir: string = FIXTURE_DIR): { reports: FixtureReport
       report.causesApplicable +
       report.causesKnown +
       report.evidenceApplicable +
-      report.decisionApplicable;
+      report.decisionApplicable +
+      report.needApplicable;
     if (checked === 0) missing.push(fx.id);
   }
   return { reports, noApplicableAssertions: missing };

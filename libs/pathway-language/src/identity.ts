@@ -110,6 +110,27 @@ export function contractDigest(projection: JsonValue): ContractDigest {
 }
 
 /**
+ * INTERNAL, shared with query Needs: the own properties of a plain-object input, each read exactly
+ * once as a descriptor (no accessor or proxy trap runs twice). Every field in `fields` is required
+ * and no other is accepted; `why` explains the rejection of an extra field.
+ */
+export function readFields(input: unknown, fields: readonly string[], why: string, fail: (m: string) => never): Map<string, unknown> {
+  if (input === null || typeof input !== 'object' || Array.isArray(input)) fail('input must be an object');
+  const proto = Object.getPrototypeOf(input);
+  if (proto !== Object.prototype && proto !== null) fail('input must be a plain object');
+  const out = new Map<string, unknown>();
+  for (const k of Reflect.ownKeys(input as object)) {
+    if (typeof k !== 'string' || !fields.includes(k)) fail(`unexpected input field ${String(k)}; ${why}`);
+    const d = Object.getOwnPropertyDescriptor(input, k);
+    if (!d || !('value' in d)) return fail(`input.${String(k)} must be a data property`);
+    out.set(k as string, d.value);
+  }
+  const missing = fields.filter((k) => !out.has(k));
+  if (missing.length > 0) fail(`missing input field(s) ${missing.join(', ')}`);
+  return out;
+}
+
+/**
  * Validation order (every configuration check precedes every outcome, so invalid input can never
  * surface as `noContractIdentity` or `unresolvedBindings`):
  * 1. input: a plain object whose own properties are exactly the five fields, all data properties;
@@ -127,20 +148,8 @@ export function needIdentity(input: NeedIdentityInput): NeedIdentityResult {
   const fail = (m: string): never => {
     throw new NeedIdentityConfigurationError(m);
   };
-  // 1. Each own property is read exactly once, as a descriptor: no accessor or proxy trap runs twice.
-  if (input === null || typeof input !== 'object' || Array.isArray(input)) fail('input must be an object');
-  const proto = Object.getPrototypeOf(input);
-  if (proto !== Object.prototype && proto !== null) fail('input must be a plain object');
-  const fields = new Map<string, unknown>();
-  for (const k of Reflect.ownKeys(input)) {
-    // In particular a digest, projection, namespace override or authored setting.
-    if (typeof k !== 'string' || !(INPUT_FIELDS as readonly string[]).includes(k)) fail(`unexpected input field ${String(k)}; identity is derived only from the compiled package`);
-    const d = Object.getOwnPropertyDescriptor(input, k);
-    if (!d || !('value' in d)) return fail(`input.${String(k)} must be a data property`);
-    fields.set(k as string, d.value);
-  }
-  const missing = INPUT_FIELDS.filter((k) => !fields.has(k));
-  if (missing.length > 0) fail(`missing input field(s) ${missing.join(', ')}`);
+  // 1.
+  const fields = readFields(input, INPUT_FIELDS, 'identity is derived only from the compiled package', fail);
 
   // 2–3.
   const pkg = fields.get('package');

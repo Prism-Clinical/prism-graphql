@@ -38,7 +38,7 @@ Each evaluation and preview fixture requests output `p.demo`. The query output i
 | `expected.evidence` | `{"status":"Known","value":bool,"supportingEvidenceIds":[…]}` or `{"status":"Unresolved","causes":[…],"candidateEvidenceIds":[…]}` (contract §5.1) |
 | `expected.decision` | The projection (contract §5.2) |
 | `expected.causeAttribution` | Entries `{cause, origin, stage, reason, refs?}`. Empty for `Known` |
-| `expected.needs` | `evidence` (Need key and state causes, or `null`), `deferred` (`{"binding":…}` when a key binding is unresolved, else `null`) and `obligations` (`ResolveConflict` / `CorrectRecord` emissions only; fulfillment is deferred) |
+| `expected.needs` | `evidence` (Need key and state causes, or `null`), `deferred` (`{"binding":…}` when one key binding is unresolved, `{"bindings":[…]}` listing `episode` before `encounter` when both are (case 149), else `null`) and `obligations` (`ResolveConflict` / `CorrectRecord` emissions only; fulfillment is deferred) |
 | `expected.stages` | `stage` fixtures only: `["S1", "S2", "S3"]` or `["S1", "S2", "S3", "S4"]`, the stages whose facts the fixture asserts |
 | `expected.traceAssertions` | Required trace facts; see the vocabulary below. **Partial**: a conforming trace may contain more |
 
@@ -185,7 +185,7 @@ Two helpers divide the work. Neither computes an expected evidence outcome.
 
 It checks that:
 
-- every file parses, IDs are unique and match file names, and the index maps every case 1–148 to existing fixtures;
+- every file parses, IDs are unique and match file names, and the index maps every case 1–149 to existing fixtures;
 - expected lists and attributions are in canonical order;
 - decisions are the projection of evidence, and Need causes equal result causes;
 - a `stage` fixture expects exactly stages S1–S3, S1–S4, S1–S5 or S1–S6 and only facts of those stages (for S5, `criterion`, `classification` and `possibleClasses` only; for S6, `cell`, `gap` and `notCurrent` only), with no downstream expectation other than an S1–S6 fixture's optional `evidence`, whose shape and order are checked; a stage `cell` fact has one of the four statuses; a stage `gap` fact has a boolean `relevant` and `provenBy` (`recordType`, `subject` or `sources`) exactly when irrelevant; a stage `criterion` fact names `establishes` or `refutes`, has value `True`, `False` or `Unknown`, and has nonempty `causes` exactly when `Unknown`; a stage `classification` fact has one of the four classes and nonempty `causes` exactly when `Unclassified`; a stage `possibleClasses` fact lists distinct classes in canonical order; `reasons`, `causes`, `unresolvedBy` and `blockers` are in canonical order; `selected` appears only with `Selected`, `unresolvedBy` only with `Unresolved`, and `blockers` only with `NotSelected`;

@@ -67,8 +67,15 @@ describe('explicit-assertion-v0 fixtures: S1, S2 and encounter-check assertions 
     decisionPassed: sum((r) => r.decisionPassed),
     admissibility: sum((r) => r.admissibilityApplicable),
     admissibilityPassed: sum((r) => r.admissibilityPassed),
+    need: sum((r) => r.needApplicable),
+    needPassed: sum((r) => r.needPassed),
+    needDeferred: sum((r) => r.needDeferredApplicable),
+    obligationsUnchecked: sum((r) => r.obligationsUnchecked),
     outOfScope: sum((r) => r.outOfScope),
   };
+  /** Symbolic digest → computed digests: each symbol one digest, distinct symbols distinct digests. */
+  const digestMap = new Map<string, Set<string>>();
+  for (const r of reports) if (r.needDigest) digestMap.set(r.needDigest.symbol, (digestMap.get(r.needDigest.symbol) ?? new Set()).add(r.needDigest.sha256));
 
   it('reports S1, S2 and encounter-check coverage explicitly', () => {
     const notRun = reports.filter((r) => r.notRun).map((r) => `${r.id} (${r.notRun})`);
@@ -103,7 +110,9 @@ describe('explicit-assertion-v0 fixtures: S1, S2 and encounter-check assertions 
         `S6 step C on Known evaluation fixtures (aggregation NotApplicable, no causes): ${totals.causesKnown}; blocked by a documented upstream limitation (not counted as passing): ${totals.causesBlocked}`,
         `final query evidence checked exactly (evaluation fixtures and S1–S6 stage fixtures stating it: status, value, supportingEvidenceIds, causes, candidateEvidenceIds; contract §5.1): ${totals.evidence} (passed ${totals.evidencePassed})`,
         `S7 decision checked exactly (evaluation fixtures: True/False/Unknown(causes), projected from the same evaluation's evidence, retained unchanged; contract §5.2): ${totals.decision} (passed ${totals.decisionPassed})`,
-        `expected fields/assertions outside implemented scope (Needs, needDeferred and other trace facts; not checked): ${totals.outOfScope}`,
+        `I7 single-query Need existence/deferral checked (evaluation fixtures with a needs block: evidence-Need existence, key components with namespace 'fixture', causes, deferred bindings, no Need for Known; NOT obligations, so no needs block passes as a whole): ${totals.need} (passed ${totals.needPassed}); needDeferred trace facts: ${totals.needDeferred}; obligation expectations unchecked: ${totals.obligationsUnchecked}`,
+        `symbolic contract digests mapped: ${[...digestMap].map(([k, v]) => `${k} -> ${[...v].map((x) => x.slice(0, 12)).join('|')}`).join(', ')}`,
+        `expected fields/assertions outside implemented scope (needs blocks (obligations unchecked) and other trace facts; not checked): ${totals.outOfScope}`,
         `fixtures not run: ${notRun.length}: ${notRun.join(', ')}`,
         `evaluation/preview fixtures with no applicable S1–S5 assertion: ${noApplicableAssertions.length}: ${noApplicableAssertions.join(', ')}`,
       ].join('\n'),
@@ -132,10 +141,15 @@ describe('explicit-assertion-v0 fixtures: S1, S2 and encounter-check assertions 
     expect(totals.evidencePassed).toBe(totals.evidence);
     expect(totals.decision).toBeGreaterThan(0);
     expect(totals.decisionPassed).toBe(totals.decision);
+    expect(totals.need).toBeGreaterThan(0);
+    expect(totals.needPassed).toBe(totals.need);
+    for (const [, v] of digestMap) expect(v.size).toBe(1);
+    const computed = [...digestMap.values()].map((v) => [...v][0]);
+    expect(new Set(computed).size).toBe(computed.length);
   });
 
   const checked = (r: (typeof reports)[number]) =>
-    r.s1Applicable + r.s1AttributionOneWay + r.s2Applicable + r.s2AttributionOneWay + r.s2CandidateIdsOneWay + r.encounterApplicable + r.encounterOneWay + r.episodeApplicable + r.episodeOneWay + r.assertionKindApplicable + r.assertionKindOneWay + r.admissibilityApplicable + r.selectionApplicable + r.selectionOneWay + r.criterionApplicable + r.classificationApplicable + r.possibleClassesApplicable + r.previewCriterionApplicable + r.previewApplicable + r.coverageApplicable + r.gapApplicable + r.gapOneWay + r.baseApplicable + r.baseAttribution + r.baseOneWay + r.materialApplicable + r.materialOneWay + r.causesApplicable + r.causesKnown + r.evidenceApplicable + r.decisionApplicable > 0;
+    r.s1Applicable + r.s1AttributionOneWay + r.s2Applicable + r.s2AttributionOneWay + r.s2CandidateIdsOneWay + r.encounterApplicable + r.encounterOneWay + r.episodeApplicable + r.episodeOneWay + r.assertionKindApplicable + r.assertionKindOneWay + r.admissibilityApplicable + r.selectionApplicable + r.selectionOneWay + r.criterionApplicable + r.classificationApplicable + r.possibleClassesApplicable + r.previewCriterionApplicable + r.previewApplicable + r.coverageApplicable + r.gapApplicable + r.gapOneWay + r.baseApplicable + r.baseAttribution + r.baseOneWay + r.materialApplicable + r.materialOneWay + r.causesApplicable + r.causesKnown + r.evidenceApplicable + r.decisionApplicable + r.needApplicable > 0;
   it.each(reports.filter((r) => !r.notRun && checked(r)).map((r) => [r.id, r] as const))('%s: S1–S5, preview, S6 gap-relevance, step A–C, evidence and S7 decision assertions hold (not a whole-fixture pass)', (_id, report) => {
     expect(report.failures).toEqual([]);
   });

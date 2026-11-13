@@ -1,6 +1,6 @@
 # @prism/pathway-language (experimental, nonclinical)
 
-**Status:** an implementation experiment. It covers **S1–S5** of the *proposed* [evidence-query-to-predicate contract](../../docs/superpowers/records/pathway-language/evidence-query-to-predicate-contract.md): S1 revision history, S2 candidate identification, the S3 same-encounter, same-episode and `assertionKind` rules, their combination into one admissibility result per possible revision (increment I3), S4 selection, S5 criterion evaluation and classification **for one record at a time**, S5 **key-level possible classes**, and **query-bound preview evaluation** of whole-criterion holes (increment I4). Every acceptance item of I4 is now checked and passes, including EA-052a’s two preview `criterion` facts (case 52), so I4 is complete **as an experimental increment** only. Of S6 (I5), **gap relevance** (coverage cells and the relevance of each gap), the **step A base result** (rules 1–5 and rule 5’s base causes), **step B materiality** of unresolved records, the **step C cause union and attribution** and the **final `Evidence<Boolean>`** with `candidateEvidenceIds` exist. I5 is complete **as an experimental increment** (review, 2026-11-02), with the S1 fork-fallback limitation (EA-083/EA-092) retained. Query evidence, and its `Decision` (S7), can now be computed from a bound raw-record evaluation, and a program with one or more complete queries can be executed over that computed evidence, each query under its own contract over one shared snapshot. A program with one or more queries, each complete or holed, can be previewed from raw records: a holed query stays a marker, and a complete query is computed by S1–S6 while holes elsewhere stay markers. Together these are I6, program execution and preview from raw inputs, **complete as an experimental increment** (first-program contract §8, split 2026-11-11). Needs generation is the separate increment I7 and is **not implemented**; only its first sub-slice, the contract digest and structured Need key, exists experimentally (below); acquisition and conflict resolution are later work. It also has the **first PPL compiler subset** and **isolated program-expression execution** over supplied query results (increments I1 and I2 of the [first-program implementation contract](../../docs/superpowers/records/pathway-language/first-program-implementation-contract.md)). It is not an end-to-end PPL evaluator and is not clinically approved; compiling or executing a program confers no clinical approval. It must not be used for patient care. The RFC, Stage A, the contract and the delivery plans keep their existing statuses; nothing here completes a delivery story.
+**Status:** an implementation experiment. It covers **S1–S5** of the *proposed* [evidence-query-to-predicate contract](../../docs/superpowers/records/pathway-language/evidence-query-to-predicate-contract.md): S1 revision history, S2 candidate identification, the S3 same-encounter, same-episode and `assertionKind` rules, their combination into one admissibility result per possible revision (increment I3), S4 selection, S5 criterion evaluation and classification **for one record at a time**, S5 **key-level possible classes**, and **query-bound preview evaluation** of whole-criterion holes (increment I4). Every acceptance item of I4 is now checked and passes, including EA-052a’s two preview `criterion` facts (case 52), so I4 is complete **as an experimental increment** only. Of S6 (I5), **gap relevance** (coverage cells and the relevance of each gap), the **step A base result** (rules 1–5 and rule 5’s base causes), **step B materiality** of unresolved records, the **step C cause union and attribution** and the **final `Evidence<Boolean>`** with `candidateEvidenceIds` exist. I5 is complete **as an experimental increment** (review, 2026-11-02), with the S1 fork-fallback limitation (EA-083/EA-092) retained. Query evidence, and its `Decision` (S7), can now be computed from a bound raw-record evaluation, and a program with one or more complete queries can be executed over that computed evidence, each query under its own contract over one shared snapshot. A program with one or more queries, each complete or holed, can be previewed from raw records: a holed query stays a marker, and a complete query is computed by S1–S6 while holes elsewhere stay markers. Together these are I6, program execution and preview from raw inputs, **complete as an experimental increment** (first-program contract §8, split 2026-11-11). Needs generation is the separate increment I7 and is **not implemented**; only two sub-slices exist experimentally (below): the contract digest and structured Need key, and single-query Need existence and deferral; acquisition and conflict resolution are later work. It also has the **first PPL compiler subset** and **isolated program-expression execution** over supplied query results (increments I1 and I2 of the [first-program implementation contract](../../docs/superpowers/records/pathway-language/first-program-implementation-contract.md)). It is not an end-to-end PPL evaluator and is not clinically approved; compiling or executing a program confers no clinical approval. It must not be used for patient care. The RFC, Stage A, the contract and the delivery plans keep their existing statuses; nothing here completes a delivery story.
 
 This package is the isolated `libs/pathway-language` boundary named in RFC §10. It has no imports from applications, resolvers, databases or the network; `src/` imports only Node’s `crypto` and one RFC 8785 library.
 
@@ -928,6 +928,70 @@ Then: any hole → `noContractIdentity`; otherwise any `unknown` → `unresolved
 
 **Not shown by any test:** that a built-in identifier keeps one specified meaning across releases. That is a versioning obligation (proposal Rule B). A specification change needs a new identifier; a code correction to match unchanged semantics keeps the key; clarifying wording or adding a test needs neither. Recording the implementation version and reevaluating affected Needs belong to the lifecycle sub-slice.
 
+## I7 single-query Need existence and deferral: `experimentalQueryNeed`
+
+**Scope.** The second I7 sub-slice, implemented experimentally on 2026-11-13. It is specified in the [first-program contract](../../docs/superpowers/records/pathway-language/first-program-implementation-contract.md) §8, *Single-query existence and deferral*.
+- **Unit:** one explicitly requested complete query of an authentic `CompiledPackage`, evaluated once.
+- **Current state only:** an evidence Need is not labelled Opened, Reopened or Satisfied.
+- **Not implemented:**
+  - program-level backward materiality (G1);
+  - `CorrectRecord` / `ResolveConflict` obligations;
+  - lifecycle and attempt history;
+  - `fulfilled_by`;
+  - the scope source's own Need (G5);
+  - fulfiller selection, acquisition and dispatch.
+- **Obligations:** a missing obligation never means none is required.
+- **Causes:** reported exactly as S6 attributes them, with the EA-083/EA-092 limitation. They must not drive acquisition or conflict resolution.
+- I7 is still incomplete.
+
+**Input.** Exactly `{ package, query, subject, revisions, retractions, contextEncounter, contextEpisode, snapshot }` (the snapshot is required).
+- **Rejected input:** a `PreviewPackage`, a copied or fabricated package, an ID that is not one of the package's EvidenceQueries, and any other field (evidence, stage results, keys, digests, causes, namespaces). Each throws `QueryNeedConfigurationError`.
+- **One evaluation:**
+  - Each field is read once, and the runtime input is captured once (the raw-execution capture).
+  - The key comes from `experimentalNeedIdentity` and the evidence from `experimentalSelectForQuery` + `experimentalQueryEvidence`, both computed inside the call from that one captured input and the same package object and query.
+  - There is no cache or lookup across calls.
+- **Validation order:** input shape, package kind, capture and snapshot, identity checks, selection and evidence checks, then the outcome.
+
+**Result** (detached, deep-frozen): `{ experimental, query: { package, id }, snapshot, queryEvidence, need, notImplemented }`.
+- `queryEvidence` is the unchanged query-evidence result: the evidence plus the S6 trace.
+- `need` is one of:
+
+| Evidence | Bindings | `need` |
+|---|---|---|
+| `Known(true/false)` | well-formed | `{ kind: 'none' }` |
+| `Unresolved{causes}` | both `known` | `{ kind: 'evidence', key, causes }` (causes exactly the evidence's, in order) |
+| `Unresolved{causes}` | any `unknown` | `{ kind: 'deferred', unresolvedBindings }` (`episode` before `encounter`; no key) |
+| any | malformed | `QueryNeedConfigurationError` |
+
+**Tests.**
+- **Unit tests** (`src/__tests__/query-need.test.ts`, 11), with expectations from the outcome table and contract §6.3:
+  - `Known(true)` and `Known(false)`;
+  - rows 1–3: the causes `{Missing, InsufficientEvidence}`, then `{Missing, Unavailable, InsufficientEvidence}`, then `{Conflicting}`, all under one key with no state in it;
+  - key changes by contract, namespace, query, subject, episode and encounter;
+  - all three deferrals;
+  - malformed bindings and rejected fields;
+  - copied, fabricated, foreign-query and preview packages;
+  - interleaved evaluations of identical query IDs in two packages, and two queries in one package;
+  - frozen outputs and unchanged caller inputs.
+- **Fixture runner:**
+  - **Checked:** over the 124 evaluation fixtures, for each `needs` block:
+    - evidence-Need existence (86 Needs; 32 `Known` with none);
+    - key components, with the query in the runner's fixed namespace `fixture`;
+    - causes;
+    - deferrals (6, including case 149);
+    - the 7 `needDeferred` trace facts.
+  - **Digest mapping:** `d1` and `d-ak1` each map to exactly one computed digest, and to different ones.
+  - **Unchecked:** the 62 obligations (60 `CorrectRecord`, 2 `ResolveConflict`), so no `needs` block is reported as passing whole.
+- **Fault check** (not committed): 11 injected faults. Each made unit tests fail; the faults caught by fixtures as well are marked:
+  - an Unresolved result treated as Known (fixtures too);
+  - a deferral reported as no Need (fixtures too);
+  - a Need emitted for a Known result (fixtures too);
+  - causes dropped, reordered or one removed (fixtures too, each);
+  - the snapshot, or the causes, in the key;
+  - another query's key;
+  - evidence reused by query ID across evaluations (fixtures too);
+  - a key emitted for an unresolved binding (fixtures too).
+
 ## PPL compiler (I1): `experimentalCompile` and `experimentalCompilePreview`
 
 The first compiler subset, specified by [first-program-implementation-contract.md](../../docs/superpowers/records/pathway-language/first-program-implementation-contract.md) §2, §5, §6 (compile rows), §7 and §8 (I1).
@@ -1623,7 +1687,7 @@ Two former items are now settled in the contract:
 
 - **I1 compiles; I2 executes program expressions only.** No stable serialized IR, manifest, signing or persistence exists. The compiler supports only the first-program subset and one fictional evidence model.
 
-- Evidence stages: S1, S2, S3 (three rules and their per-revision combination), S4 selection, per-record S5 criterion values and classification, and key-level possible classes. Of S6, gap relevance, the step A base result, step B materiality, the step C cause union and attribution and the final `Evidence<Boolean>` exist; S7 projects one query’s evidence to a `Decision`; programs with one or more EvidenceQueries execute from raw records, and programs with one or more queries, each complete or holed, preview from raw records (I6, below); there are no Needs (I7; only the identity sub-slice exists) and no acquisition. S5 evaluates only S4 results of query-bound selection for the same compiled package and query (contract §3.5); query-bound selection runs S1–S4 for one query and stops there, so it is not end-to-end evaluation. The S4–S6 consequence of a revision that is `Inadmissible` beside an unresolved rule is unspecified; fixtures EA-119 to EA-124 are partial-stage for that reason.
+- Evidence stages: S1, S2, S3 (three rules and their per-revision combination), S4 selection, per-record S5 criterion values and classification, and key-level possible classes. Of S6, gap relevance, the step A base result, step B materiality, the step C cause union and attribution and the final `Evidence<Boolean>` exist; S7 projects one query’s evidence to a `Decision`; programs with one or more EvidenceQueries execute from raw records, and programs with one or more queries, each complete or holed, preview from raw records (I6, below); of Needs (I7) only the key and single-query existence/deferral exist (no obligations, lifecycle or program materiality), and there is no acquisition. S5 evaluates only S4 results of query-bound selection for the same compiled package and query (contract §3.5); query-bound selection runs S1–S4 for one query and stops there, so it is not end-to-end evaluation. The S4–S6 consequence of a revision that is `Inadmissible` beside an unresolved rule is unspecified; fixtures EA-119 to EA-124 are partial-stage for that reason.
 - The encounter and episode checks each recognize exactly one authored rule shape, and the `assertionKind` check one shape (`in` over pinned codes). They do not evaluate expressions.
 - S2 supports only the fixtures’ flat expansion format: no hierarchies, intensional definitions, terminology service, normalization, code-system conversion or version resolution.
 - The fixtures assert S2 candidacy for 16 revisions. Variants, `excluded`/`unknown` propagation and configuration errors are covered by the independent tests only.

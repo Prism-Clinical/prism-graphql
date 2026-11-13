@@ -148,10 +148,10 @@ function captureList(v: unknown, name: string, fail: (m: string) => never): read
 }
 
 /**
- * The runtime input of one raw-input call, read once before anything runs: records, retractions and
+ * INTERNAL, shared with query Needs. The runtime input of one raw-input call, read once before anything runs: records, retractions and
  * contexts captured, the snapshot validated and detached. No caller-owned object is frozen or read again.
  */
-function captureInput(input: RawExecutionInput, fail: (m: string) => never) {
+export function captureInput(input: RawExecutionInput, fail: (m: string) => never) {
   return Object.freeze({
     subject: input.subject,
     revisions: captureList(input.revisions, 'revisions', fail) as JsonValue[],

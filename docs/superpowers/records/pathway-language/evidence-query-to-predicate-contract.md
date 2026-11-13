@@ -2,7 +2,7 @@
 
 **Status:** Proposed design draft. **Not** accepted, not finalized syntax, not a schema and not implemented. It contains no clinical content: the record type, enum values, codes, sources and permission below are fictional and illustrate language behavior only. They do not map to dysphagia, progression, urgency or any other clinical definition.
 
-**Date:** 2026-10-03. **Revised:** 2026-10-03, nine times, 2026-10-04, once, 2026-10-05, three times, 2026-10-09, three times, 2026-10-28, three times, and 2026-10-29, eight times, 2026-10-31, once, and 2026-11-02, eight times, and 2026-11-03, once, and 2026-11-05, once, and 2026-11-06, once, and 2026-11-09, once, and 2026-11-11, twice, after review. The third revision fixed three things:
+**Date:** 2026-10-03. **Revised:** 2026-10-03, nine times, 2026-10-04, once, 2026-10-05, three times, 2026-10-09, three times, 2026-10-28, three times, and 2026-10-29, eight times, 2026-10-31, once, and 2026-11-02, eight times, and 2026-11-03, once, and 2026-11-05, once, and 2026-11-06, once, and 2026-11-09, once, and 2026-11-11, twice, and 2026-11-13, once, after review. The third revision fixed three things:
 
 - revision-chain boundaries: source-scoped identity, same-source corrections and one fully specified schematic authority rule;
 - deterministic outcomes for malformed history;
@@ -13,6 +13,8 @@ The fourth revision made three changes:
 - Proven cross-boundary corrections and retractions are now rejected without changing their target. This keeps gap irrelevance consistent with S1.
 - Payload identity for duplicate detection is defined.
 - An unsupported justification about coverage attestations is removed.
+
+The forty-third revision records the second I7 sub-slice, single-query Need existence and deferral (first-program contract section 8, *Single-query existence and deferral*, 2026-11-13), implemented experimentally. It adds case 149: both key bindings unknown, with no evidence Need and both bindings deferred. The fixture format gains `deferred: {"bindings": [...]}` for more than one unresolved binding; `{"binding": …}` keeps its meaning for one. 6.2 gets a status pointer. No evidence-query semantics change: case 149 applies the existing context-cause rules (cases 12, 102) to both bindings at once.
 
 The forty-second revision records the first-program milestone split (first-program contract section 8, “I6 split” and “Needs generation (I7)”, 2026-11-11). Program execution and preview from raw records (I6) are closed as an experimental increment. Needs generation is planned as I7 from 6.1–6.3 and the acceptance cases, unimplemented, with its open parts and its dependency on the EA-083/EA-092 S1 question listed there. A pointer is added to 6.2; no evidence-query semantics change.
 
@@ -1160,7 +1162,7 @@ Causes, contributing records, gap diagnostics and the orchestrator’s recorded 
 
 There is no separate correction obligation for an unidentifiable Need (case 113).
 
-**Implementation status.** Not implemented. The first-program contract plans it as increment I7 (section 8, “Needs generation (I7)”), which takes its acceptance from this section, 6.1, 6.3 and the acceptance cases unchanged, and lists the parts left unspecified here.
+**Implementation status.** Mostly not implemented. Two sub-slices of I7 exist experimentally: the Need key (contract digest and structured key) and, for one explicitly requested complete query, current Need existence and deferral (no obligations, lifecycle or program-level materiality). The first-program contract plans the rest as increment I7 (section 8, “Needs generation (I7)”), which takes its acceptance from this section, 6.1, 6.3 and the acceptance cases unchanged, and lists the parts left unspecified here.
 
 **Ownership.** The core emits Needs only where backward dependency tracing shows materiality (§4.3, §7). The orchestrator chooses the fulfiller, dispatches it, retries, enforces deadlines and records outcomes, and each outcome creates a new evaluation revision.
 
@@ -1550,6 +1552,12 @@ In cases 114, 115b and 116–118 the record is the only candidate and its possib
 | 147 | Non-informative and immaterial unresolved records | s1/r147a `Indeterminate`; s1/r147b `Indeterminate`, encounter omitted | Rule 5 {`InsufficientEvidence`}; r147b immaterial. `Unresolved{InsufficientEvidence}`, candidates [s1/r147a@1, s1/r147b@1] |
 | 148 | Unidentified rejected occurrence beside a supporting revision | s1/r148 `Affirmed`; a second occurrence with no `key` | Rule 4; relevant gap `unidentified:revision#1`. `Unresolved{Invalid}`, candidates [s1/r148@1]: the occurrence has no identity |
 
+**T. Need deferral (6.2)** (D0; the shared query; `cov-all`).
+
+| # | Case | Records / changes | `Evidence<Boolean>` | `Decision` | Trace must show | Need |
+|---|---|---|---|---|---|---|
+| 149 | Both key bindings unknown | s1/r1 `Affirmed`; context episode `{unknown: [Conflicting]}`, context encounter `{unknown: [Missing]}` | `Unresolved{Missing, Conflicting}`: `Missing` @context encounter (S3, `ContextUnknown:encounter`), `Conflicting` @context episode (S3, `ContextUnknown:episode`) | Unknown(Missing, Conflicting) | Both context causes kept with their own origins, neither relabelled (cases 12, 102); `needDeferred` for each binding | **No** evidence Need; deferred (episode, encounter) |
+
 ### 7.5 Invariance checks
 
 These must hold for every case:
@@ -1711,7 +1719,7 @@ These must hold for every case:
 
 **Query/predicate split.** The query carries the reasoning. A projection-only Predicate is optional naming and composition structure. No node kind is added or removed.
 
-**Conformance fixtures.** [conformance/explicit-assertion-v0/](conformance/explicit-assertion-v0/README.md) holds machine-readable fixtures for cases 1–148, mapped by case number, with expected outputs written from this contract. They are proposed, like this document.
+**Conformance fixtures.** [conformance/explicit-assertion-v0/](conformance/explicit-assertion-v0/README.md) holds machine-readable fixtures for cases 1–149, mapped by case number, with expected outputs written from this contract. They are proposed, like this document.
 
 **Remaining items.**
 
